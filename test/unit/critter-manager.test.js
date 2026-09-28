@@ -213,13 +213,14 @@ test('every management route is admin-gated in-route (requireAdmin), matching th
 // ---- the client half: Settings section + manager UI -------------------------
 
 const { JSDOM } = require('jsdom');
+const { loadUi, openDialog, parts, answer, settle, drainSheets, DISMISSALS } = require('../helpers/ui-dialogs');
 const SETUP_HTML = fs.readFileSync(path.join(__dirname, '../../public/setup.html'), 'utf8');
 const SETUP_JS = fs.readFileSync(path.join(__dirname, '../../public/js/setup.js'), 'utf8');
 const COMMON = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
 const CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
 
 test('setup.html: Critters is its OWN section (Dean\'s ruling) - the toggle/density MOVED out of Appearance, the manager ships hidden', () => {
-  assert.match(SETUP_HTML, /<details class="setup-box sub-collapsible"[^>]*data-collapse-key="critters"[^>]*data-md-icon="paw"[^>]*open>/,
+  assert.match(SETUP_HTML, /<details class="setup-box setup-sec sub-collapsible"[^>]*data-collapse-key="critters"[^>]*data-md-icon="paw"[^>]*open>/,
     'the section exists with its own collapse key + paw icon');
   // The toggle/density ids live inside the critters section, NOT in appearance.
   const appearance = SETUP_HTML.slice(SETUP_HTML.indexOf('data-collapse-key="appearance"'), SETUP_HTML.indexOf('data-collapse-key="critters"'));
@@ -230,7 +231,7 @@ test('setup.html: Critters is its OWN section (Dean\'s ruling) - the toggle/dens
     'critter-download-all-link', 'critter-delete-all-btn', 'critter-manager-status']) {
     assert.ok(critters.includes(`id="${id}"`), id + ' lives in the critters section');
   }
-  assert.match(critters, /<div id="critter-manager" hidden>/, 'the manager ships HIDDEN (admin-only reveal)');
+  assert.match(critters, /<div id="critter-manager" class="setup-group" hidden>/, 'the manager ships HIDDEN (admin-only reveal)');
   assert.match(critters, /id="critter-download-all-link" href="\/api\/critters\/archive"/, 'Download all is a plain link to the archive route');
   assert.ok(!SETUP_HTML.includes('accept="image/svg') && !critters.includes('.svg'), 'svg is not offered for upload (stored-XSS posture)');
 });
@@ -256,12 +257,18 @@ test('v1.174: the section is just CRITTERS (Dean killed the companions split) an
   assert.match(contributing, /No em dashes, anywhere \(MANDATORY/, 'the rule is codified in CONTRIBUTING');
 });
 
-test('common.js: the paw icon exists for the section; style.css styles the grid + armed state with tokens', () => {
+// Sweep S8 (AC12 conversion): the v1.171 armed class (`.critter-delete-armed`, --yt-red) is
+// gone with the two-tap arm - Delete / Delete all are ui-btn--danger buttons (the D8.8
+// danger role) behind ui.confirm. The styling-source law stays: every class the manager
+// renders has a rule.
+test('common.js: the paw icon exists for the section; style.css styles the grid; the deletes wear the danger role', () => {
   assert.match(COMMON, /\n {2}paw: '<circle/, 'MD_ICON_PATHS.paw');
-  for (const cls of ['.critter-pool-grid', '.critter-pool-item', '.critter-pool-name', '.critter-pool-empty', '.critter-delete-armed']) {
+  for (const cls of ['.critter-pool-grid', '.critter-pool-item', '.critter-pool-name', '.critter-pool-empty', '.critter-pool-voice']) {
     assert.match(CSS, new RegExp(cls.replace(/\./g, '\\.') + '\\s*\\{'), cls + ' has a rule');
   }
-  assert.match(CSS, /\.critter-delete-armed\s*\{[^}]*var\(--yt-red\)/, 'armed state paints the danger token');
+  assert.doesNotMatch(CSS, /\.critter-delete-armed/, 'the armed class is retired');
+  assert.match(SETUP_JS, /del\.className = 'ui-btn ui-btn--danger ui-btn--sm critter-pool-delete'/, 'per-item Delete is a danger ui-btn');
+  assert.match(SETUP_HTML, /class="ui-btn ui-btn--danger ui-btn--md" id="critter-delete-all-btn"/, 'Delete all is a danger ui-btn');
 });
 
 test('setup.js: wireCritterManager is called ONLY from the admin branch (the reveal gate binds)', () => {
@@ -276,17 +283,19 @@ test('setup.js: wireCritterManager is called ONLY from the admin branch (the rev
 
 // jsdom harness for the manager: mount the REAL section markup, stub fetch.
 function mountManager(t, fetchImpl) {
-  const critters = SETUP_HTML.slice(SETUP_HTML.indexOf('<details class="setup-box sub-collapsible" data-collapse-key="critters"'), SETUP_HTML.indexOf('data-collapse-key="video-folders"'));
+  const critters = SETUP_HTML.slice(SETUP_HTML.indexOf('<details class="setup-box setup-sec sub-collapsible" data-collapse-key="critters"'), SETUP_HTML.indexOf('data-collapse-key="video-folders"'));
   const dom = new JSDOM('<!DOCTYPE html><body>' + critters.slice(0, critters.lastIndexOf('<details')) + '</body>', { url: 'http://localhost/' });
   global.window = dom.window;
   global.document = dom.window.document;
   global.fetch = fetchImpl;
+  global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
+  loadUi(); // the REAL ui.js (window.ui): the deletes' confirm step
   global.setActionStatus = (el, text) => { if (el && text !== null && text !== undefined) el.textContent = text; };
   const critterModeCalls = { n: 0 };
   global.applyCritterMode = () => { critterModeCalls.n += 1; };
   t.after(() => {
     delete global.window; delete global.document; delete global.fetch;
-    delete global.setActionStatus; delete global.applyCritterMode;
+    delete global.setActionStatus; delete global.applyCritterMode; delete global.requestAnimationFrame;
     dom.window.close();
   });
   return { dom, critterModeCalls };
@@ -341,54 +350,76 @@ test('manager: reveals the hidden box and renders the pool grid (thumbnail, name
   const items = dom.window.document.querySelectorAll('.critter-pool-item');
   assert.strictEqual(items.length, 2);
   assert.strictEqual(items[0].querySelector('img').getAttribute('src'), '/critters/pearl.png');
-  assert.ok(items[0].querySelector('.critter-pool-name').textContent.includes('♪'), 'paired sound shows the note');
-  assert.ok(!items[1].querySelector('.critter-pool-name').textContent.includes('♪'), 'no sound, no note');
+  // Sweep S8: the note is a sprite glyph (music_note), never the U+266A text glyph.
+  assert.ok(items[0].querySelector('.critter-pool-name use[href="#i-music_note"]'), 'paired sound shows the note');
+  assert.ok(!items[1].querySelector('.critter-pool-name .ui-icon'), 'no sound, no note');
+  assert.ok(!dom.window.document.body.textContent.includes('♪'), 'no text glyph');
   assert.strictEqual(items[0].querySelector('button').textContent, 'Delete');
 });
 
-test('manager DESTRUCTIVE two-tap: ONE tap NEVER deletes; the second fires exactly one DELETE for that id and refreshes', async (t) => {
+// Sweep S8 (D4.8, AC12 conversion of the v1.162 two-tap locks): Delete opens a DANGER
+// ui.confirm and the DELETE is sent only after it resolves true. Every dismissal (Cancel,
+// Esc, the scrim, Close) sends nothing and leaves the row intact.
+test('manager DESTRUCTIVE confirm: a tap only opens the danger confirm; every dismissal deletes nothing; OK fires exactly one DELETE', async (t) => {
   const state = { pool: POOL2() };
   const fetchImpl = listingFetch(state);
   const { dom, critterModeCalls } = mountManager(t, fetchImpl);
   const { wireCritterManager } = require('../../public/js/setup.js');
   wireCritterManager(new dom.window.AbortController().signal);
   await flush();
-  const del = dom.window.document.querySelectorAll('.critter-pool-item button')[0];
-  del.click();
-  await flush();
-  assert.strictEqual(fetchImpl.calls.filter((c) => c.opts.method === 'DELETE').length, 0, 'first tap ARMS, never deletes');
-  assert.strictEqual(del.textContent, 'Really delete?');
-  assert.ok(del.classList.contains('critter-delete-armed'));
-  del.click();
-  await flush(); await flush();
-  const dels = fetchImpl.calls.filter((c) => c.opts.method === 'DELETE');
-  assert.strictEqual(dels.length, 1, 'exactly one DELETE');
-  assert.strictEqual(dels[0].url, '/api/critters/item?id=pearl');
+  const doc = dom.window.document;
+  const dels = () => fetchImpl.calls.filter((c) => c.opts.method === 'DELETE');
+  for (const how of DISMISSALS) {
+    doc.querySelectorAll('.critter-pool-item button')[0].click();
+    await settle();
+    const k = openDialog(doc);
+    assert.ok(parts(k).ok.classList.contains('ui-btn--destructive'), 'the confirm is the danger fill');
+    assert.match(parts(k).title, /Delete pearl\?/, 'the confirm names the critter');
+    assert.strictEqual(dels().length, 0, 'opening the confirm deletes nothing');
+    answer(doc, how);
+    await settle();
+    assert.strictEqual(dels().length, 0, how + ': nothing deleted');
+    await drainSheets(dom.window);
+  }
+  doc.querySelectorAll('.critter-pool-item button')[0].click();
+  await settle();
+  answer(doc, 'ok');
+  await settle(); await flush();
+  assert.deepStrictEqual(dels().map((c) => c.url), ['/api/critters/item?id=pearl'], 'OK: exactly one DELETE, for that id');
   assert.ok(critterModeCalls.n >= 1, 'applyCritterMode fired (manifest cache bust + live re-scatter)');
-  const items = dom.window.document.querySelectorAll('.critter-pool-item');
+  const items = doc.querySelectorAll('.critter-pool-item');
   assert.strictEqual(items.length, 1, 'the grid re-rendered from the fresh listing');
-  assert.strictEqual(items[0].querySelector('button').textContent, 'Delete', 'the rebuilt row is UNARMED (v1.159/v1.162: state never leaks across renders)');
+  await drainSheets(dom.window);
 });
 
-test('manager delete-all two-tap: the armed label carries the LIVE count; the second tap fires DELETE /api/critters/all', async (t) => {
+test('manager delete-all confirm: the title carries the LIVE count; dismissals send nothing; OK fires DELETE /api/critters/all', async (t) => {
   const state = { pool: POOL2() };
   const fetchImpl = listingFetch(state);
   const { dom, critterModeCalls } = mountManager(t, fetchImpl);
   const { wireCritterManager } = require('../../public/js/setup.js');
   wireCritterManager(new dom.window.AbortController().signal);
   await flush();
-  const btn = dom.window.document.getElementById('critter-delete-all-btn');
+  const doc = dom.window.document;
+  const btn = doc.getElementById('critter-delete-all-btn');
+  const dels = () => fetchImpl.calls.filter((c) => c.opts.method === 'DELETE');
+  for (const how of DISMISSALS) {
+    btn.click();
+    await settle();
+    assert.match(parts(openDialog(doc)).title, /Delete all 2 critters\?/, 'the confirm shows the pool count');
+    answer(doc, how);
+    await settle();
+    assert.strictEqual(dels().length, 0, how + ': nothing deleted');
+    await drainSheets(dom.window);
+  }
   btn.click();
-  await flush();
-  assert.strictEqual(fetchImpl.calls.filter((c) => c.opts.method === 'DELETE').length, 0, 'first tap arms only');
-  assert.ok(btn.textContent.includes('2'), 'the armed label shows the pool count: ' + btn.textContent);
-  btn.click();
-  await flush(); await flush();
-  const dels = fetchImpl.calls.filter((c) => c.opts.method === 'DELETE');
-  assert.deepStrictEqual(dels.map((c) => c.url), ['/api/critters/all']);
+  await settle();
+  answer(doc, 'ok');
+  await settle(); await flush();
+  assert.deepStrictEqual(dels().map((c) => c.url), ['/api/critters/all']);
   assert.ok(critterModeCalls.n >= 1);
-  assert.ok(dom.window.document.querySelector('.critter-pool-empty'), 'empty state after the purge');
-  assert.strictEqual(btn.textContent, 'Delete all…', 'the button disarms after firing');
+  assert.ok(doc.querySelector('.critter-pool-empty'), 'empty state after the purge');
+  assert.strictEqual(btn.disabled, false, 'the button is usable again');
+  await drainSheets(dom.window);
 });
 
 test('manager upload: each picked file POSTs raw with its name + mime; unsupported extensions are SKIPPED client-side', async (t) => {

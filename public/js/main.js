@@ -32,6 +32,16 @@
 // touching `window`/`document` (mirrors watch.js's/player.js's own
 // top-of-file pure-helper + `module.exports` guard pattern).
 
+// Sweep S8 (F55): a refused folder action says so in a ui.toast (it was a blocking
+// window.alert); showToast is the fallback when ui.js is absent.
+function libraryNotice(message) {
+  if (typeof window !== 'undefined' && window.ui && typeof window.ui.toast === 'function') {
+    window.ui.toast(String(message), { kind: 'error' });
+    return;
+  }
+  if (typeof showToast === 'function') showToast(String(message));
+}
+
 // buildCardDownloadHref: the home/library card's "save to device" anchor
 // href -- reuses the EXISTING, unmodified `/video/:id?download=1` route
 // (shipped v1.19.0 on the watch page; see watch.js's `downloadBtn` wiring)

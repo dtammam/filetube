@@ -6061,6 +6061,41 @@ function repopulateOneOffFiletypeSelect(doc, format, filetypeSelect) {
   filetypeSelect.value = matchedValue !== null ? matchedValue : (options.length > 0 ? options[0].value : undefined);
 }
 
+// Sweep S8: the one-off dialog's primitive parts. A registry sprite glyph needs
+// createElementNS; a document without it (the builder's pure-DOM unit tests) gets no glyph.
+function oneOffIconSlot(d, name) {
+  if (!d || typeof d.createElementNS !== 'function') return null;
+  const ns = 'http://www.w3.org/2000/svg';
+  const slot = d.createElement('span');
+  slot.className = 'ui-btn__icon';
+  const svg = d.createElementNS(ns, 'svg');
+  svg.setAttribute('class', 'ui-icon ui-icon--md');
+  svg.setAttribute('aria-hidden', 'true');
+  const use = d.createElementNS(ns, 'use');
+  use.setAttribute('href', '#i-' + name);
+  svg.appendChild(use);
+  slot.appendChild(svg);
+  return slot;
+}
+// Wraps a native <select> in the ui-select box (the field styling + a chevron).
+function oneOffSelectBox(d, select) {
+  const box = d.createElement('span');
+  box.className = 'ui-select';
+  select.className = 'ui-select__native';
+  box.appendChild(select);
+  if (typeof d.createElementNS === 'function') {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = d.createElementNS(ns, 'svg');
+    svg.setAttribute('class', 'ui-icon ui-icon--md ui-select__chevron');
+    svg.setAttribute('aria-hidden', 'true');
+    const use = d.createElementNS(ns, 'use');
+    use.setAttribute('href', '#i-expand_more');
+    svg.appendChild(use);
+    box.appendChild(svg);
+  }
+  return box;
+}
+
 /**
  * Builds the compact one-off download modal as real DOM nodes -- backdrop +
  * dialog, appended to `document.body` by the caller. `createElement`/
@@ -6087,7 +6122,11 @@ function buildOneOffModal(doc, handlers) {
   bindBackdropDismiss(backdrop, () => { if (typeof h.onClose === 'function') h.onClose(); });
 
   const modal = d.createElement('div');
-  modal.className = 'oneoff-modal';
+  // Sweep S8: the dialog's shell (.oneoff-modal, shared with the Subscribe and shortcuts
+  // dialogs) is unchanged; `--form` lays this form out on one gap, and every control in it is
+  // a primitive: ui-field inputs (16px, focus ring), ui-select selects, ui-btn buttons and an
+  // icon-button Close (it was a U+00D7 text glyph). The returned API is unchanged.
+  modal.className = 'oneoff-modal oneoff-modal--form';
   modal.hidden = true;
   backdrop.appendChild(modal);
 
@@ -6099,9 +6138,10 @@ function buildOneOffModal(doc, handlers) {
   header.appendChild(title);
   const closeBtn = d.createElement('button');
   closeBtn.type = 'button';
-  closeBtn.className = 'oneoff-modal-close';
+  closeBtn.className = 'ui-btn ui-btn--plain ui-btn--sm ui-btn--icon';
   closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.textContent = '×';
+  const closeIcon = oneOffIconSlot(d, 'close');
+  if (closeIcon) closeBtn.appendChild(closeIcon);
   closeBtn.addEventListener('click', () => {
     if (typeof h.onClose === 'function') h.onClose();
   });
@@ -6110,26 +6150,30 @@ function buildOneOffModal(doc, handlers) {
 
   const urlInput = d.createElement('input');
   urlInput.type = 'text';
-  urlInput.className = 'oneoff-modal-field';
+  urlInput.className = 'ui-field__input';
   // v1.41.13: any yt-dlp-supported site, not just YouTube (universal one-offs).
   urlInput.setAttribute('placeholder', 'Media URL — any yt-dlp-supported site');
+  urlInput.setAttribute('aria-label', 'Media URL');
   modal.appendChild(urlInput);
 
   const row = d.createElement('div');
-  row.className = 'oneoff-modal-row';
+  row.className = 'oneoff-modal-selects';
 
   const formatSelect = buildOneOffSelect(d, ONEOFF_FORMAT_OPTIONS, 'video');
-  row.appendChild(formatSelect);
+  formatSelect.setAttribute('aria-label', 'Format');
+  row.appendChild(oneOffSelectBox(d, formatSelect));
 
   const qualitySelect = buildOneOffSelect(
     d,
     ONEOFF_QUALITY_OPTIONS.map((q) => ({ value: q, label: q })),
     ONEOFF_DEFAULT_QUALITY
   );
-  row.appendChild(qualitySelect);
+  qualitySelect.setAttribute('aria-label', 'Quality');
+  row.appendChild(oneOffSelectBox(d, qualitySelect));
 
   const filetypeSelect = buildOneOffSelect(d, ONEOFF_FILETYPE_OPTIONS.video, ONEOFF_DEFAULT_FILETYPE.video);
-  row.appendChild(filetypeSelect);
+  filetypeSelect.setAttribute('aria-label', 'File type');
+  row.appendChild(oneOffSelectBox(d, filetypeSelect));
 
   formatSelect.addEventListener('change', () => {
     repopulateOneOffFiletypeSelect(d, formatSelect.value, filetypeSelect);
@@ -6146,7 +6190,7 @@ function buildOneOffModal(doc, handlers) {
   // its controls, matching `urlInput`'s own placeholder-only precedent).
   const folderInput = d.createElement('input');
   folderInput.type = 'text';
-  folderInput.className = 'oneoff-modal-field';
+  folderInput.className = 'ui-field__input';
   folderInput.setAttribute('placeholder', 'Folder (optional — defaults to the channel)');
   folderInput.setAttribute('aria-label', 'Folder (optional — defaults to the channel)');
   modal.appendChild(folderInput);
@@ -6194,7 +6238,7 @@ function buildOneOffModal(doc, handlers) {
   // Download now share ONE .action-bar row (equal-width cells) instead of a
   // small stray button floating above a big primary. Same lifecycle: Retry
   // exists only while the entry is in its error state (setStatus below).
-  retryBtn.className = 'btn oneoff-modal-retry';
+  retryBtn.className = 'ui-btn ui-btn--secondary ui-btn--md oneoff-modal-retry';
   retryBtn.textContent = 'Retry';
   retryBtn.hidden = true;
   retryBtn.addEventListener('click', () => {
@@ -6203,7 +6247,7 @@ function buildOneOffModal(doc, handlers) {
 
   const downloadBtn = d.createElement('button');
   downloadBtn.type = 'button';
-  downloadBtn.className = 'btn btn-primary';
+  downloadBtn.className = 'ui-btn ui-btn--primary ui-btn--md';
   downloadBtn.textContent = 'Download';
   downloadBtn.addEventListener('click', () => {
     const url = typeof urlInput.value === 'string' ? urlInput.value.trim() : '';
@@ -16330,7 +16374,7 @@ function buildSortableTable(host, config) {
     bar.className = 'stable-toolbar';
     filterInput = doc.createElement('input');
     filterInput.type = 'search';
-    filterInput.className = 'stable-filter';
+    filterInput.className = 'ui-field__input stable-filter'; // sweep S8: the ui-field input (16px, focus ring)
     filterInput.setAttribute('aria-label', cfg.filter.placeholder || 'Filter');
     filterInput.placeholder = cfg.filter.placeholder || 'Filter...';
     bar.appendChild(filterInput);

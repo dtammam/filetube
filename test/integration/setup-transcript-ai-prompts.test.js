@@ -72,6 +72,19 @@ function loadSetup({ prompts, postStatus, holdPosts }) {
   });
 }
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+// Sweep S8 (D4.8): Remove on a saved prompt opens the danger ui.confirm; nothing is POSTed
+// until it resolves true. Asserts the dialog is up and the list untouched, then confirms.
+async function removeConfirmed(dom, row) {
+  const d = dom.window.document;
+  const before = d.querySelectorAll('.transcript-ai-prompt-row').length;
+  row.querySelector('button.transcript-ai-prompt-remove').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  await wait(50);
+  const dlg = d.querySelectorAll('.ui-sheet--dialog');
+  assert.ok(dlg.length, 'the Remove confirm opened');
+  assert.strictEqual(d.querySelectorAll('.transcript-ai-prompt-row').length, before, 'nothing removed before the answer');
+  dlg[dlg.length - 1].querySelectorAll('.ui-confirm__actions .ui-btn')[1].click();
+  await wait(100);
+}
 const rows = (d) => Array.from(d.querySelectorAll('.transcript-ai-prompt-row'));
 
 test('setup: the prompt editor renders one row per prompt from GET /api/settings (name input + textarea + Remove)', async () => {
@@ -84,7 +97,7 @@ test('setup: the prompt editor renders one row per prompt from GET /api/settings
     assert.strictEqual(r[0].querySelector('.transcript-ai-prompt-name').value, 'Summarize');
     assert.strictEqual(r[0].querySelector('.transcript-ai-prompt-text').value, 'Sum it up.');
     assert.strictEqual(r[1].dataset.promptId, 'analyze');
-    assert.ok(r[1].querySelector('button.btn').textContent === 'Remove');
+    assert.ok(r[1].querySelector('button.transcript-ai-prompt-remove').textContent === 'Remove');
   } finally { dom.window.close(); }
 });
 
@@ -114,8 +127,7 @@ test('setup: Remove POSTs the list WITHOUT that row immediately; Add appends an 
   try {
     await wait(100);
     const d = dom.window.document;
-    rows(d)[0].querySelector('button.btn').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
-    await wait(100);
+    await removeConfirmed(dom, rows(d)[0]);
     assert.strictEqual(posts.length, 1);
     assert.deepStrictEqual(posts[0].transcriptAiPrompts.map((p) => p.id), ['analyze']);
     assert.strictEqual(rows(d).length, 1);
@@ -145,7 +157,7 @@ test('setup: a 400 from the server lands in the field error and the typed rows s
 
 test('setup.html: the section is registered like its siblings (setup-box, collapse key, md icon + Advanced group) and uses NO reveal-toggle barrier', () => {
   const html = fs.readFileSync(path.join(PUBLIC_DIR, 'setup.html'), 'utf8');
-  assert.match(html, /<details class="setup-box sub-collapsible" data-collapse-key="transcript-ai" data-md-icon="copy" data-md-group="Advanced" open>/);
+  assert.match(html, /<details class="setup-box setup-sec sub-collapsible" data-collapse-key="transcript-ai" data-md-icon="copy" data-md-group="Advanced" open>/);
   const section = html.slice(html.indexOf('data-collapse-key="transcript-ai"'));
   const end = section.indexOf('</details>');
   assert.ok(!section.slice(0, end).includes('reveal-toggle'), 'the editor is fed by its own fetch, not the automation-settings barrier (the v1.96 rule)');
@@ -183,8 +195,7 @@ test('setup: with a blank Add row present, Remove of another row and an edit of 
     await wait(600);
     assert.strictEqual(posts.length, 1);
     assert.deepStrictEqual(posts[0].transcriptAiPrompts.map((p) => p.text), ['Sum it up.', 'Analyze it thoroughly.'], 'the edit went, the blank row did not');
-    rows(d)[0].querySelector('button.btn').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
-    await wait(100);
+    await removeConfirmed(dom, rows(d)[0]);
     assert.strictEqual(posts.length, 2);
     assert.deepStrictEqual(posts[1].transcriptAiPrompts.map((p) => p.id), ['analyze'], 'the remove persisted; no blank row');
     assert.strictEqual(d.getElementById('transcript-ai-error').textContent, '');

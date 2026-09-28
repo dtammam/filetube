@@ -72,25 +72,27 @@
       </div>
 
       <form class="login-form" id="login-form" autocomplete="on" novalidate>
-        <div class="login-field">
-          <label for="login-username">Username</label>
-          <input type="text" id="login-username" name="username" autocomplete="username"
+        <div class="ui-field">
+          <label class="ui-field__label" for="login-username">Username</label>
+          <input type="text" id="login-username" class="ui-field__input" name="username" autocomplete="username"
                  autocapitalize="none" autocorrect="off" spellcheck="false" required>
         </div>
-        <div class="login-field">
-          <label for="login-password">Password</label>
-          <input type="password" id="login-password" name="password" autocomplete="current-password" required>
+        <div class="ui-field">
+          <label class="ui-field__label" for="login-password">Password</label>
+          <input type="password" id="login-password" class="ui-field__input" name="password" autocomplete="current-password" required>
         </div>
         <div class="login-error" id="login-error" role="alert" aria-live="polite"></div>
-        <button type="submit" class="login-submit" id="login-submit">Sign in</button>
+        <button type="submit" class="ui-btn ui-btn--primary ui-btn--lg" id="login-submit">Sign in</button>
       </form>
 
-      <div class="login-era-switch" role="group" aria-label="Choose a theme era">
-        <span>Era:</span>
-        <button type="button" data-era="2005" aria-pressed="false">'05</button>
-        <button type="button" data-era="2009" aria-pressed="false">'09</button>
-        <button type="button" data-era="2014" aria-pressed="false">'14</button>
-        <button type="button" data-era="2021" aria-pressed="false">'21</button>
+      <div class="login-era-switch">
+        <span class="login-era-label" id="login-era-label">Era</span>
+        <div class="ui-segmented" role="radiogroup" aria-labelledby="login-era-label">
+          <button type="button" class="ui-segmented__item" role="radio" aria-checked="false" data-era="2005" data-value="2005">'05</button>
+          <button type="button" class="ui-segmented__item" role="radio" aria-checked="false" data-era="2009" data-value="2009">'09</button>
+          <button type="button" class="ui-segmented__item" role="radio" aria-checked="false" data-era="2014" data-value="2014">'14</button>
+          <button type="button" class="ui-segmented__item" role="radio" aria-checked="false" data-era="2021" data-value="2021">'21</button>
+        </div>
       </div>
     </div>
     <p class="login-foot">A private FileTube library. Your session stays signed in on this device.</p>

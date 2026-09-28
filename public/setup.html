@@ -208,1071 +208,707 @@
       <div id="view-root" data-view="setup">
       <!-- v1.152: master-detail menu wrapper. wireMasterDetail (common.js) turns
            these <details data-collapse-key> sections into a grouped menu +
-           detail pane; the data-md-icon/data-md-group attrs below feed it. -->
+           detail pane; the data-md-icon/data-md-group attrs below feed it.
+           UI pass sweep S8 (plan D4.10): each section is a stack of .setup-group
+           blocks on the page ground - a grouped ui-list of switch rows (native
+           checkboxes wearing .ui-switch, so every id/.checked/change wire is
+           unchanged), ui-field inputs and ui-select selects (16px, focus ring),
+           and a .setup-note footer under the group it explains. No inline styles. -->
       <div class="md-root" data-md-page="setup" data-md-title="Settings" data-md-desc="Manage FileTube's setup and day-to-day experience: appearance, folders, downloads, and account." data-md-hero-icon="sliders" data-md-groups="Library,System,Account,Advanced">
-      <!-- v1.48 item 5 (Dean): Appearance sits FIRST, above the folder boxes.
-           It is the section reached most often and the one users came here to
-           change; the folder configuration below it is set-once. Moving the
-           box is a pure markup reorder -- every control inside is wired by id
-           from public/js/setup.js, never by document order. -->
-      <details class="setup-box sub-collapsible" data-collapse-key="appearance" data-md-icon="era" open>
+      <!-- v1.48 item 5 (Dean): Appearance sits FIRST; every control is wired by id from setup.js, never by document order. -->
+      <details class="setup-box setup-sec sub-collapsible" data-collapse-key="appearance" data-md-icon="era" open>
         <summary>Appearance</summary>
-        <p>Pick the YouTube era FileTube dresses up as. Light / dark lives in
-           the account menu (your avatar, top-right).</p>
+        <p class="setup-intro">Pick the YouTube era FileTube dresses up as. Light / dark lives in the account menu (your avatar, top-right).</p>
         <div class="theme-picker" id="theme-picker"><!-- rendered by JS --></div>
-        <h3 style="margin-top:20px;">Icons</h3>
-        <p>Pick the icon style for FileTube's chrome. <strong>Auto</strong>
-           matches it to the era above.</p>
-        <div class="theme-picker" id="icon-picker"><!-- rendered by JS --></div>
-        <!-- v1.230 (Dean): the mobile Music-player skin, per-device (localStorage
-             ft-music-skin, via FileTubeMusicSkins). Rendered by setup.js
-             renderMusicSkinPicker; the skins only apply to the phone Music player. -->
-        <h3 style="margin-top:20px;">Music skin</h3>
-        <p>Pick how the full-screen Music player looks <strong>on your phone</strong>:
-           Cider, Nordic, or one of the Click colors. Remembered on this device; the
-           desktop player is unchanged.</p>
-        <div class="theme-picker" id="music-skin-picker"><!-- rendered by JS --></div>
-        <!-- v1.238 (Dean): the player "sticker" - the little logo bottom-left of the
-             Music skins (+ desktop pop-out) that opens the speed / loop / skin menu.
-             The ICON is a per-user setting: the FileTube logo (default), an emoji, or a
-             custom uploaded image. The emoji/logo choice is per-device (localStorage
-             ft-sticker); a custom image is per-user (POST /api/me/sticker). Rendered +
-             wired by setup.js renderStickerPicker. -->
-        <h3 style="margin-top:20px;">Player sticker</h3>
-        <p>Pick the little sticker in the corner of the Music player that opens the
-           speed / loop / skin menu. Use the <strong>FileTube logo</strong>, an emoji,
-           or upload your own small image.</p>
-        <div id="sticker-picker" class="sticker-picker"><!-- rendered by JS --></div>
-        <input type="file" id="sticker-file-input" accept="image/png,image/jpeg,image/webp" hidden />
-        <!-- v1.63.1 (Dean): the stars are decorative - a deterministic mock,
-             not real ratings - and now optional. common.js owns the pref
-             (localStorage truth + per-user mirror); ONE root class hides
-             every star writer. Class-based styling (setup-check-label),
-             NOT this page's legacy inline-style checkboxes - new markup
-             does not extend the #71 unscanned-channel debt. -->
-        <h3 class="setup-subhead">Star ratings</h3>
-        <p>The stars are decorative &mdash; a deterministic mock, not real
-           ratings. Hide them app-wide for a cleaner look.</p>
-        <label class="setup-check-label">
-          <input type="checkbox" id="hide-stars-check" />
-          Hide star ratings
-        </label>
-        <!-- v1.171: the Sneaky critter controls MOVED to their own section
-             below (Dean's ruling: sub-page via the master-detail) - every
-             control is wired by id from setup.js, never by document order. -->
-        <!-- v1.77 (Dean): the Library entries' glyphs. Rendered by setup.js
-             renderLibraryGlyphEditor, per-user SERVER-persisted, one
-             POST /api/me/settings key per change, no localStorage. Each
-             folder's own glyph is picked on its row in the Media folders
-             section instead, since that setting belongs to the folder. -->
-        <h3 class="setup-subhead">Library icons</h3>
-        <p>Pick the icon for each Library entry &mdash; Downloads,
-           Music, Books, Podcasts and History. The choice applies wherever that
-           entry appears, sidebar and mobile bar alike. Default keeps the icon it
-           has always used. Saved to your account, so it follows you across devices.</p>
-        <div id="library-glyph-editor" class="card-corner-editor"><!-- rendered by JS --></div>
-        <!-- v1.32 (Dean, "white-label"): replaceable header logo.
-             v1.33.1: split into per-mode variants -- a light-mode and a
-             dark-mode logo; if only one is uploaded it is used for BOTH
-             modes (server-side fallback). -->
-        <h3 style="margin-top:20px;">Logo</h3>
-        <p>Replace the "FileTube" header text with your own image
-           (PNG/JPEG/WebP, max 1&nbsp;MB — it is scaled to fit the header).
-           You can upload a separate logo per light/dark mode; with only one
-           uploaded, it is used for both.</p>
-        <!-- v1.55 gate round 1 (adversarial W5): the upload/remove pairs
-             join the action-bar grid the exec plan promised - the hidden
-             Remove button now occupies a capped equal cell when it appears
-             instead of popping in at intrinsic width. -->
-        <div class="form-group">
-          <label>Light-mode logo</label>
-          <input type="file" id="logo-file-input" accept="image/png,image/jpeg,image/webp" style="display:none;">
-          <div class="action-bar">
-            <button type="button" class="btn btn-sm" id="logo-upload-btn">Upload light logo…</button>
-            <button type="button" class="btn btn-sm" id="logo-reset-btn" hidden>Remove light logo</button>
-          </div>
+        <div class="setup-group">
+          <h3 class="setup-heading">Icons</h3>
+          <p class="setup-note">Pick the icon style for FileTube's chrome. <strong>Auto</strong> matches it to the era above.</p>
+          <div class="theme-picker" id="icon-picker"><!-- rendered by JS --></div>
         </div>
-        <div class="form-group">
-          <label>Dark-mode logo</label>
-          <input type="file" id="logo-file-input-dark" accept="image/png,image/jpeg,image/webp" style="display:none;">
-          <div class="action-bar">
-            <button type="button" class="btn btn-sm" id="logo-upload-btn-dark">Upload dark logo…</button>
-            <button type="button" class="btn btn-sm" id="logo-reset-btn-dark" hidden>Remove dark logo</button>
-          </div>
+        <!-- v1.230 (Dean): the mobile Music-player skin, per-device (localStorage ft-music-skin). -->
+        <div class="setup-group">
+          <h3 class="setup-heading">Music skin</h3>
+          <p class="setup-note">Pick how the full-screen Music player looks <strong>on your phone</strong>: Cider, Nordic, or one of the Click colors. Remembered on this device; the desktop player is unchanged.</p>
+          <div class="theme-picker" id="music-skin-picker"><!-- rendered by JS --></div>
         </div>
-        <div id="logo-status" class="action-status" style="margin-top:6px;" aria-live="polite"></div>
+        <!-- v1.238 (Dean): the player "sticker" (setup.js renderStickerPicker); emoji/logo per device, a custom image per user (POST /api/me/sticker). -->
+        <div class="setup-group">
+          <h3 class="setup-heading">Player sticker</h3>
+          <p class="setup-note">Pick the little sticker in the corner of the Music player that opens the speed / loop / skin menu. Use the <strong>FileTube logo</strong>, an emoji, or upload your own small image.</p>
+          <div id="sticker-picker" class="sticker-picker"><!-- rendered by JS --></div>
+          <input type="file" id="sticker-file-input" accept="image/png,image/jpeg,image/webp" hidden />
+        </div>
+        <!-- v1.63.1 (Dean): the decorative stars are optional; common.js owns the pref. -->
+        <div class="setup-group">
+          <h3 class="setup-heading">Star ratings</h3>
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="hide-stars-check">Hide star ratings</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="hide-stars-check" /></span></div>
+          </div>
+          <p class="setup-note">The stars are decorative &mdash; a deterministic mock, not real ratings. Hide them app-wide for a cleaner look.</p>
+        </div>
+        <!-- v1.77 (Dean): the Library entries' glyphs (renderLibraryGlyphEditor, per-user server-persisted). -->
+        <div class="setup-group">
+          <h3 class="setup-heading">Library icons</h3>
+          <p class="setup-note">Pick the icon for each Library entry &mdash; Downloads, Music, Books, Podcasts and History. The choice applies wherever that entry appears, sidebar and mobile bar alike. Default keeps the icon it has always used. Saved to your account, so it follows you across devices.</p>
+          <div id="library-glyph-editor" class="card-corner-editor"><!-- rendered by JS --></div>
+        </div>
+        <!-- v1.32 / v1.33.1 (Dean, "white-label"): a replaceable header logo per light/dark mode. -->
+        <div class="setup-group">
+          <h3 class="setup-heading">Logo</h3>
+          <p class="setup-note">Replace the "FileTube" header text with your own image (PNG/JPEG/WebP, max 1&nbsp;MB &mdash; it is scaled to fit the header). You can upload a separate logo per light/dark mode; with only one uploaded, it is used for both.</p>
+          <div class="ui-field setup-field">
+            <span class="ui-field__label" id="logo-light-label">Light-mode logo</span>
+            <input type="file" id="logo-file-input" accept="image/png,image/jpeg,image/webp" hidden />
+            <div class="action-bar" role="group" aria-labelledby="logo-light-label">
+              <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="logo-upload-btn"><span class="ui-btn__label">Upload light logo…</span></button>
+              <button type="button" class="ui-btn ui-btn--danger ui-btn--md" id="logo-reset-btn" hidden><span class="ui-btn__label">Remove light logo</span></button>
+            </div>
+          </div>
+          <div class="ui-field setup-field">
+            <span class="ui-field__label" id="logo-dark-label">Dark-mode logo</span>
+            <input type="file" id="logo-file-input-dark" accept="image/png,image/jpeg,image/webp" hidden />
+            <div class="action-bar" role="group" aria-labelledby="logo-dark-label">
+              <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="logo-upload-btn-dark"><span class="ui-btn__label">Upload dark logo…</span></button>
+              <button type="button" class="ui-btn ui-btn--danger ui-btn--md" id="logo-reset-btn-dark" hidden><span class="ui-btn__label">Remove dark logo</span></button>
+            </div>
+          </div>
+          <div id="logo-status" class="action-status setup-status" aria-live="polite"></div>
+        </div>
       </details>
-
-      <!-- v1.171 (Dean): Sneaky critters get their OWN section (a sub-page on
-           mobile via the master-detail). The mode toggle + density are
-           per-DEVICE (localStorage; moved verbatim from Appearance, ids
-           unchanged - wireCritterModeControls is untouched). The MANAGER
-           below them is ADMIN-ONLY (revealed by setup.js from the account
-           role; the server enforces every management route regardless) and
-           writes the pool itself: the folder stays the manifest (v1.166),
-           this page is just a writer to public/critters/. -->
-      <!-- v1.174 (Dean): the feature is just CRITTERS - name matches every
-           route, key, and identifier, so nothing is split (the v1.173
-           "companions" verbiage lasted one release; the generic spirit lives
-           on in the description copy). -->
-      <details class="setup-box sub-collapsible" data-collapse-key="critters" data-md-icon="paw" open>
+      <!-- v1.171 / v1.174 (Dean): Critters get their OWN section; the mode + density are per-DEVICE (ids unchanged). -->
+      <details class="setup-box setup-sec sub-collapsible" data-collapse-key="critters" data-md-icon="paw" open>
         <summary>Critters</summary>
-        <p>Completely optional and purely for fun: little critters - or
-           characters, or anything with a transparent background - peek out
-           from behind cards and menus around the app, never over the video or
-           audio player. Tap one for a little noise. Saved on this device. Drop
-           your own transparent images into the <code>public/critters</code>
-           folder and they join in automatically.</p>
-        <label class="setup-check-label">
-          <input type="checkbox" id="critter-mode-check" />
-          Enable critters
-        </label>
-        <label class="setup-check-label" id="critter-density-label">
-          How many:
-          <select id="critter-density-select">
-            <option value="sparse">Sparse (an odd one)</option>
-            <option value="normal">Normal (a tasteful smattering)</option>
-            <option value="obscene">Obscene (a little extreme)</option>
-          </select>
-        </label>
-        <!-- v1.187 (Dean): critter SIZE. Scales the placement size and its
-             proportion allowance; every peek/edge/exclusion rule still applies. -->
-        <label class="setup-check-label" id="critter-size-label">
-          Size:
-          <select id="critter-size-select">
-            <option value="tiny">Tiny (easy to miss)</option>
-            <option value="normal">Normal</option>
-            <option value="large">Large (twice the size)</option>
-            <option value="xlarge">Extra large (three times)</option>
-          </select>
-        </label>
-        <!-- v1.193 (Dean): EXPERIMENTAL "light kiss" - relax the strict
-             no-overlap rule to a small area budget, so critters may graze but
-             never stack. Placement-affecting, so it re-scatters on change. -->
-        <label class="setup-check-label" id="critter-kiss-label">
-          <input type="checkbox" id="critter-kiss-check" />
-          Let critters overlap a little (experimental)
-        </label>
-        <p>Off: critters never overlap at all (the default). On: they may
-           lightly overlap each other, so you get more of them in tight spots.
-           They still won't pile into a heavy stack - just the occasional light
-           graze.</p>
-        <!-- v1.185 (Dean): opt-in variety. A critter with its own same-named
-             sound always plays that; this only affects the rest. -->
-        <label class="setup-check-label" id="critter-randomsound-label">
-          <input type="checkbox" id="critter-randomsound-check" />
-          Random sound each tap
-        </label>
-        <p>Off: each critter without its own sound file keeps one consistent
-           borrowed sound. On: those critters play a random sound from your
-           collection every tap. Critters paired with their own same-named sound
-           file always play that.</p>
-        <!-- v1.181: the Voice check diagnostic moved to Troubleshooting. -->
-        <div id="critter-manager" hidden>
-          <h3 class="setup-subhead">Critter pool</h3>
-          <p>The pool is server-wide - everyone's critters come from here.
-             Upload transparent images (PNG, JPEG, WebP, GIF); a sound with the
-             same name (<code>pearl.png</code> + <code>pearl.mp3</code>) becomes
-             that critter's tap voice. Names do not have to match: a critter
-             without its own sound borrows one from the folder and keeps that
-             same borrowed voice everywhere (the note badge below marks a
-             critter's OWN sound). Deleting is permanent - Download all first
-             if you want a backup.</p>
-          <div id="critter-pool-grid" class="critter-pool-grid" aria-live="polite"><!-- rendered by JS --></div>
-          <input type="file" id="critter-image-input" accept="image/png,image/jpeg,image/webp,image/gif" multiple style="display:none;">
-          <input type="file" id="critter-sound-input" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/ogg,.mp3,.wav,.m4a,.ogg" multiple style="display:none;">
-          <div class="action-bar">
-            <button type="button" class="btn btn-sm" id="critter-upload-images-btn">Upload images&hellip;</button>
-            <button type="button" class="btn btn-sm" id="critter-upload-sounds-btn">Upload sounds&hellip;</button>
-            <a class="btn btn-sm" id="critter-download-all-link" href="/api/critters/archive">Download all</a>
-            <button type="button" class="btn btn-sm" id="critter-delete-all-btn">Delete all&hellip;</button>
+        <p class="setup-intro">Completely optional and purely for fun: little critters - or characters, or anything with a transparent background - peek out from behind cards and menus around the app, never over the video or audio player. Tap one for a little noise. Saved on this device. Drop your own transparent images into the <code>public/critters</code> folder and they join in automatically.</p>
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="critter-mode-check">Enable critters</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="critter-mode-check" /></span></div>
           </div>
-          <div id="critter-manager-status" class="action-status" style="margin-top:6px;" aria-live="polite"></div>
+        </div>
+        <div class="setup-group">
+          <div class="ui-field setup-field" id="critter-density-label">
+            <label class="ui-field__label" for="critter-density-select">How many</label>
+            <span class="ui-select"><select id="critter-density-select" class="ui-select__native">
+                <option value="sparse">Sparse (an odd one)</option>
+                <option value="normal">Normal (a tasteful smattering)</option>
+                <option value="obscene">Obscene (a little extreme)</option>
+              </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+          </div>
+          <!-- v1.187 (Dean): critter SIZE scales the placement size; every peek/edge/exclusion rule still applies. -->
+          <div class="ui-field setup-field" id="critter-size-label">
+            <label class="ui-field__label" for="critter-size-select">Size</label>
+            <span class="ui-select"><select id="critter-size-select" class="ui-select__native">
+                <option value="tiny">Tiny (easy to miss)</option>
+                <option value="normal">Normal</option>
+                <option value="large">Large (twice the size)</option>
+                <option value="xlarge">Extra large (three times)</option>
+              </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+          </div>
+        </div>
+        <!-- v1.193 (Dean): EXPERIMENTAL "light kiss" - a small overlap budget; re-scatters on change. -->
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem" id="critter-kiss-label"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="critter-kiss-check">Let critters overlap a little (experimental)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="critter-kiss-check" /></span></div>
+          </div>
+          <p class="setup-note">Off: critters never overlap at all (the default). On: they may lightly overlap each other, so you get more of them in tight spots. They still won't pile into a heavy stack - just the occasional light graze.</p>
+        </div>
+        <!-- v1.185 (Dean): opt-in variety; a critter with its own same-named sound always plays that. -->
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem" id="critter-randomsound-label"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="critter-randomsound-check">Random sound each tap</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="critter-randomsound-check" /></span></div>
+          </div>
+          <p class="setup-note">Off: each critter without its own sound file keeps one consistent borrowed sound. On: those critters play a random sound from your collection every tap. Critters paired with their own same-named sound file always play that.</p>
+        </div>
+        <!-- v1.171: the critter pool MANAGER is admin-only (revealed by setup.js from the account role; the server enforces every route). -->
+        <div id="critter-manager" class="setup-group" hidden>
+          <h3 class="setup-heading">Critter pool</h3>
+          <p class="setup-note">The pool is server-wide - everyone's critters come from here. Upload transparent images (PNG, JPEG, WebP, GIF); a sound with the same name (<code>pearl.png</code> + <code>pearl.mp3</code>) becomes that critter's tap voice. Names do not have to match: a critter without its own sound borrows one from the folder and keeps that same borrowed voice everywhere (the note badge below marks a critter's OWN sound). Deleting is permanent - Download all first if you want a backup.</p>
+          <div id="critter-pool-grid" class="critter-pool-grid" aria-live="polite"><!-- rendered by JS --></div>
+          <input type="file" id="critter-image-input" accept="image/png,image/jpeg,image/webp,image/gif" multiple hidden />
+          <input type="file" id="critter-sound-input" accept="audio/mpeg,audio/wav,audio/x-wav,audio/mp4,audio/x-m4a,audio/ogg,.mp3,.wav,.m4a,.ogg" multiple hidden />
+          <div class="action-bar">
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="critter-upload-images-btn"><span class="ui-btn__label">Upload images&hellip;</span></button>
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="critter-upload-sounds-btn"><span class="ui-btn__label">Upload sounds&hellip;</span></button>
+            <a class="ui-btn ui-btn--secondary ui-btn--md" id="critter-download-all-link" href="/api/critters/archive"><span class="ui-btn__label">Download all</span></a>
+            <button type="button" class="ui-btn ui-btn--danger ui-btn--md" id="critter-delete-all-btn"><span class="ui-btn__label">Delete all&hellip;</span></button>
+          </div>
+          <div id="critter-manager-status" class="action-status setup-status" aria-live="polite"></div>
         </div>
       </details>
-
-      <details class="setup-box sub-collapsible" data-collapse-key="video-folders" data-md-icon="video" data-md-group="Library" data-md-label="Video folders" open>
-        <summary>FileTube Setup & Configuration</summary>
-        <p>
-          Configure the local directories where your media (videos and audio files) are stored.
-          Each directory will appear as a playlist (or channel) in the sidebar. FileTube scans these folders recursively.
-        </p>
-
-        <div class="form-group">
-          <label for="new-folder-path">Add media folder directory path</label>
-          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <input type="text" id="new-folder-path" placeholder="e.g. C:\Users\dean\Videos or /mnt/media" style="flex: 1 1 220px; min-width: 0;" />
-            <button class="btn" id="add-folder-btn" style="flex-shrink: 0;">Add folder</button>
+      <details class="setup-box setup-sec sub-collapsible" data-collapse-key="video-folders" data-md-icon="video" data-md-group="Library" data-md-label="Video folders" open>
+        <summary>FileTube Setup &amp; Configuration</summary>
+        <p class="setup-intro">Configure the local directories where your media (videos and audio files) are stored. Each directory will appear as a playlist (or channel) in the sidebar. FileTube scans these folders recursively.</p>
+        <div class="ui-field setup-field">
+          <label class="ui-field__label" for="new-folder-path">Add media folder directory path</label>
+          <div class="setup-inline">
+            <input type="text" id="new-folder-path" class="ui-field__input" placeholder="e.g. C:\Users\dean\Videos or /mnt/media" />
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="add-folder-btn"><span class="ui-btn__label">Add folder</span></button>
           </div>
-          <small style="color: var(--text-secondary); margin-top: 6px; display: block;">
-            For Docker deployments, specify the directory path inside your container (e.g. /media/movies).
-          </small>
+          <p class="ui-field__help">For Docker deployments, specify the directory path inside your container (e.g. /media/movies).</p>
         </div>
-
-        <div class="form-group">
-          <label>Configured directories</label>
-          <div class="folder-list-builder" id="folders-builder-list">
-            <!-- Dynamically populated rows -->
+        <div class="ui-field setup-field">
+          <span class="ui-field__label" id="folders-builder-list-label">Configured directories</span>
+          <div class="folder-list-builder" id="folders-builder-list" role="group" aria-labelledby="folders-builder-list-label">
             <div class="empty-folders-msg">No folders configured yet. Add one above.</div>
           </div>
-          <!-- v1.76 (QA gate S2): this list lost its up/down buttons, and
-               long-press-to-drag is not discoverable on its own. -->
-          <small style="color: var(--text-secondary); margin-top:6px; display:block;">
-            This order is the order folders appear in the sidebar. Drag a row to reorder it (press and hold on a touch screen), or focus its handle and use the arrow keys. Changes are saved when you press Save.
-          </small>
+          <p class="ui-field__help">This order is the order folders appear in the sidebar. Drag a row to reorder it (press and hold on a touch screen), or focus its handle and use the arrow keys. Changes are saved when you press Save.</p>
         </div>
-
-        <!-- v1.55 Track B/C: shared footer row + the ONE status treatment
-             (setup.js writes it via setActionStatus). -->
+        <!-- v1.55 Track B/C: shared footer row + the ONE status treatment (setActionStatus). -->
         <div class="action-footer">
           <span id="scan-status" class="action-status"></span>
           <div class="action-bar">
-            <button class="btn btn-primary" id="save-config-btn">Save & Scan Library</button>
+            <button type="button" class="ui-btn ui-btn--primary ui-btn--md" id="save-config-btn"><span class="ui-btn__label">Save &amp; Scan Library</span></button>
           </div>
         </div>
       </details>
-
-      <!-- v1.38.0 (Part A): book folders. Mirrors the media-folders box above,
-           wired to the existing GET/POST /api/books/config + POST /api/books/scan
-           (config was API-only since v1.37.0 -- this closes that gap). Book roots
-           are an unordered set with no per-folder display/hide/reorder. -->
-      <details class="setup-box sub-collapsible" data-collapse-key="book-folders" data-md-icon="book" data-md-group="Library" open>
+      <!-- v1.38.0: book folders (GET/POST /api/books/config + POST /api/books/scan); an unordered set. -->
+      <details class="setup-box setup-sec sub-collapsible" data-collapse-key="book-folders" data-md-icon="book" data-md-group="Library" open>
         <summary>Book folders</summary>
-        <p>
-          Directories where your EPUB and PDF books live. They appear in the Books library.
-          Book folders may not overlap your media folders (the server rejects an overlap).
-        </p>
-
-        <div class="form-group">
-          <label for="new-book-folder-path">Add book folder directory path</label>
-          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <input type="text" id="new-book-folder-path" placeholder="e.g. /mnt/books" style="flex: 1 1 220px; min-width: 0;" />
-            <button class="btn" id="add-book-folder-btn" style="flex-shrink: 0;">Add folder</button>
+        <p class="setup-intro">Directories where your EPUB and PDF books live. They appear in the Books library. Book folders may not overlap your media folders (the server rejects an overlap).</p>
+        <div class="ui-field setup-field">
+          <label class="ui-field__label" for="new-book-folder-path">Add book folder directory path</label>
+          <div class="setup-inline">
+            <input type="text" id="new-book-folder-path" class="ui-field__input" placeholder="e.g. /mnt/books" />
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="add-book-folder-btn"><span class="ui-btn__label">Add folder</span></button>
           </div>
-          <small style="color: var(--text-secondary); margin-top: 6px; display: block;">
-            For Docker deployments, specify the directory path inside your container (e.g. /books).
-          </small>
+          <p class="ui-field__help">For Docker deployments, specify the directory path inside your container (e.g. /books).</p>
         </div>
-
-        <div class="form-group">
-          <label>Configured book directories</label>
-          <div class="folder-list-builder" id="book-folders-builder-list">
+        <div class="ui-field setup-field">
+          <span class="ui-field__label" id="book-folders-builder-list-label">Configured book directories</span>
+          <div class="folder-list-builder" id="book-folders-builder-list" role="group" aria-labelledby="book-folders-builder-list-label">
             <div class="empty-folders-msg">No book folders configured yet. Add one above.</div>
           </div>
         </div>
-
         <div class="action-footer">
           <span id="book-scan-status" class="action-status"></span>
           <div class="action-bar">
-            <button class="btn" id="scan-books-btn">Scan books now</button>
-            <button class="btn btn-primary" id="save-book-config-btn">Save book folders</button>
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="scan-books-btn"><span class="ui-btn__label">Scan books now</span></button>
+            <button type="button" class="ui-btn ui-btn--primary ui-btn--md" id="save-book-config-btn"><span class="ui-btn__label">Save book folders</span></button>
           </div>
         </div>
       </details>
-
-      <!-- v1.44 music folders. Mirrors the book-folders box, wired to
-           GET/POST /api/music/config + POST /api/music/scan. Music roots are an
-           unordered set. The server rejects any overlap with media OR book
-           folders (three-way, both directions). -->
-      <details class="setup-box sub-collapsible" data-collapse-key="music-folders" data-md-icon="music" data-md-group="Library" open>
+      <!-- v1.44: music folders (GET/POST /api/music/config + POST /api/music/scan); the server rejects any three-way overlap. -->
+      <details class="setup-box setup-sec sub-collapsible" data-collapse-key="music-folders" data-md-icon="music" data-md-group="Library" open>
         <summary>Music folders</summary>
-        <p>
-          Directories where your music lives (MP3, M4A/AAC, FLAC, WAV). They appear in the Music library.
-          Music folders may not overlap your media or book folders (the server rejects an overlap).
-        </p>
-
-        <div class="form-group">
-          <label for="new-music-folder-path">Add music folder directory path</label>
-          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <input type="text" id="new-music-folder-path" placeholder="e.g. /mnt/music" style="flex: 1 1 220px; min-width: 0;" />
-            <button class="btn" id="add-music-folder-btn" style="flex-shrink: 0;">Add folder</button>
+        <p class="setup-intro">Directories where your music lives (MP3, M4A/AAC, FLAC, WAV). They appear in the Music library. Music folders may not overlap your media or book folders (the server rejects an overlap).</p>
+        <div class="ui-field setup-field">
+          <label class="ui-field__label" for="new-music-folder-path">Add music folder directory path</label>
+          <div class="setup-inline">
+            <input type="text" id="new-music-folder-path" class="ui-field__input" placeholder="e.g. /mnt/music" />
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="add-music-folder-btn"><span class="ui-btn__label">Add folder</span></button>
           </div>
-          <small style="color: var(--text-secondary); margin-top: 6px; display: block;">
-            For Docker deployments, specify the directory path inside your container (e.g. /music).
-          </small>
+          <p class="ui-field__help">For Docker deployments, specify the directory path inside your container (e.g. /music).</p>
         </div>
-
-        <div class="form-group">
-          <label>Configured music directories</label>
-          <div class="folder-list-builder" id="music-folders-builder-list">
+        <div class="ui-field setup-field">
+          <span class="ui-field__label" id="music-folders-builder-list-label">Configured music directories</span>
+          <div class="folder-list-builder" id="music-folders-builder-list" role="group" aria-labelledby="music-folders-builder-list-label">
             <div class="empty-folders-msg">No music folders configured yet. Add one above.</div>
           </div>
         </div>
-
         <div class="action-footer">
           <span id="music-scan-status" class="action-status"></span>
           <div class="action-bar">
-            <button class="btn" id="scan-music-btn">Scan music now</button>
-            <button class="btn btn-primary" id="save-music-config-btn">Save music folders</button>
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="scan-music-btn"><span class="ui-btn__label">Scan music now</span></button>
+            <button type="button" class="ui-btn ui-btn--primary ui-btn--md" id="save-music-config-btn"><span class="ui-btn__label">Save music folders</span></button>
           </div>
         </div>
       </details>
-
-      <details class="setup-box sub-collapsible" data-collapse-key="tv-folders" data-md-icon="tv" data-md-group="Library" open>
+      <details class="setup-box setup-sec sub-collapsible" data-collapse-key="tv-folders" data-md-icon="tv" data-md-group="Library" open>
         <summary>Shows folders</summary>
-        <p>
-          Directories where your TV Shows live. Organize each as
-          <code>Show name / Season N / Show SxxEyy - Title.mp4</code>
-          (e.g. <code>House MD / Season 2 / House MD S02E22 - Forever.mp4</code>); drop a
-          <code>poster.jpg</code> in a show's folder for its cover. They appear in the Shows
-          library. Shows folders may not overlap your media, book, or music folders (the
-          server rejects an overlap).
-        </p>
-
-        <div class="form-group">
-          <label for="new-tv-folder-path">Add Shows folder directory path</label>
-          <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <input type="text" id="new-tv-folder-path" placeholder="e.g. /mnt/tv" style="flex: 1 1 220px; min-width: 0;" />
-            <button class="btn" id="add-tv-folder-btn" style="flex-shrink: 0;">Add folder</button>
+        <p class="setup-intro">Directories where your TV Shows live. Organize each as <code>Show name / Season N / Show SxxEyy - Title.mp4</code> (e.g. <code>House MD / Season 2 / House MD S02E22 - Forever.mp4</code>); drop a <code>poster.jpg</code> in a show's folder for its cover. They appear in the Shows library. Shows folders may not overlap your media, book, or music folders (the server rejects an overlap).</p>
+        <div class="ui-field setup-field">
+          <label class="ui-field__label" for="new-tv-folder-path">Add Shows folder directory path</label>
+          <div class="setup-inline">
+            <input type="text" id="new-tv-folder-path" class="ui-field__input" placeholder="e.g. /mnt/tv" />
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="add-tv-folder-btn"><span class="ui-btn__label">Add folder</span></button>
           </div>
-          <small style="color: var(--text-secondary); margin-top: 6px; display: block;">
-            For Docker deployments, specify the directory path inside your container (e.g. /tv).
-          </small>
+          <p class="ui-field__help">For Docker deployments, specify the directory path inside your container (e.g. /tv).</p>
         </div>
-
-        <div class="form-group">
-          <label>Configured Shows directories</label>
-          <div class="folder-list-builder" id="tv-folders-builder-list">
+        <div class="ui-field setup-field">
+          <span class="ui-field__label" id="tv-folders-builder-list-label">Configured Shows directories</span>
+          <div class="folder-list-builder" id="tv-folders-builder-list" role="group" aria-labelledby="tv-folders-builder-list-label">
             <div class="empty-folders-msg">No Shows folders configured yet. Add one above.</div>
           </div>
         </div>
-
         <div class="action-footer">
           <span id="tv-scan-status" class="action-status"></span>
           <div class="action-bar">
-            <button class="btn" id="scan-tv-btn">Scan Shows now</button>
-            <button class="btn btn-primary" id="save-tv-config-btn">Save Shows folders</button>
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="scan-tv-btn"><span class="ui-btn__label">Scan Shows now</span></button>
+            <button type="button" class="ui-btn ui-btn--primary ui-btn--md" id="save-tv-config-btn"><span class="ui-btn__label">Save Shows folders</span></button>
           </div>
         </div>
       </details>
-
-      <!-- v1.69.1: the Podcasts zero-state DOOR (Dean's device-pass find).
-           Podcasts has no folder config here - subscriptions are managed on
-           the Podcasts page itself - but the nav entry is content-gated
-           (zero subscriptions = no sidebar link), so without this box a
-           fresh install had NO path to /podcasts at all (the chicken-and-egg
-           the v1.69.0 gate missed). A static link; no wiring. -->
-      <details class="setup-box sub-collapsible" data-collapse-key="podcasts-place" data-md-icon="podcast" data-md-group="Library" open>
+      <!-- v1.69.1: the Podcasts zero-state DOOR - a fresh install has no other path to /podcasts. A static link; no wiring. -->
+      <details class="setup-box setup-sec sub-collapsible" data-collapse-key="podcasts-place" data-md-icon="podcast" data-md-group="Library" open>
         <summary>Podcasts</summary>
-        <p>
-          Subscribe to podcast RSS feeds - public ones, or private tokened
-          feeds like Patreon's "listen in other podcast apps" URL - and
-          FileTube keeps an offline cache of the episodes. Subscriptions,
-          download policy, and the check interval are all managed on the
-          Podcasts page (its link appears in the sidebar once you have a
-          subscription; episodes save under the data directory unless
-          <code>FILETUBE_PODCASTS_DIR</code> points elsewhere - set that
-          before your first subscription).
-        </p>
+        <p class="setup-intro">Subscribe to podcast RSS feeds - public ones, or private tokened feeds like Patreon's "listen in other podcast apps" URL - and FileTube keeps an offline cache of the episodes. Subscriptions, download policy, and the check interval are all managed on the Podcasts page (its link appears in the sidebar once you have a subscription; episodes save under the data directory unless <code>FILETUBE_PODCASTS_DIR</code> points elsewhere - set that before your first subscription).</p>
         <div class="action-footer">
           <div class="action-bar">
-            <a class="btn btn-primary" href="/podcasts">Open the Podcasts page</a>
+            <a class="ui-btn ui-btn--primary ui-btn--md" id="podcasts-open-link" href="/podcasts"><span class="ui-btn__label">Open the Podcasts page</span></a>
           </div>
         </div>
       </details>
-
-      <details class="setup-box sub-collapsible" data-collapse-key="automation-storage" data-md-icon="sliders" data-md-group="System" open>
-        <summary>Automation & Storage</summary>
-        <p>
-          Control how often FileTube rescans your library and how the on-demand
-          transcode cache is kept in check.
-        </p>
-
-        <h3>Home page</h3>
-        <div class="form-group">
-          <label for="default-view-select">Default view when opening FileTube</label>
-          <select id="default-view-select" class="setup-select">
-            <option value="">Most recent</option>
-            <!-- Additional options (one per configured folder) populated dynamically -->
-          </select>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            If the chosen folder is later removed, FileTube falls back to Most recent automatically.
-          </small>
-          <small id="default-view-error" class="field-error"></small>
-        </div>
-
-        <!-- v1.34 (Dean): the default home sort -- what the library uses in a
-             browser that has never touched the sort dropdown. -->
-        <div class="form-group">
-          <label for="default-sort-select">Default sort order</label>
-          <select id="default-sort-select" class="setup-select">
-            <option value="release-date">Release date</option>
-            <option value="newest">Newest first</option>
-            <option value="oldest">Oldest first</option>
-            <option value="title-asc">Title (A–Z)</option>
-            <option value="title-desc">Title (Z–A)</option>
-            <option value="size-desc">Largest first</option>
-            <option value="size-asc">Smallest first</option>
-            <!-- "Feeling lucky" is deliberately not offered as a DEFAULT --
-                 prev/next would be nondeterministic; pick it per-session from
-                 the library dropdown instead. -->
-          </select>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Applies wherever you haven't picked a sort from the library dropdown in that browser — an explicit dropdown pick always wins there.
-          </small>
-          <small id="default-sort-error" class="field-error"></small>
-        </div>
-
-        <h3>Playback</h3>
-        <div class="form-group">
-          <label class="reveal-toggle" data-loading style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="autoplay-next-check" />
-            Autoplay next video
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            When a video finishes, automatically start playing the next one in your current sort order. Off by default.
-          </small>
-          <small id="autoplay-next-error" class="field-error"></small>
-        </div>
-
-        <!-- v1.181 (Dean's settings-cleanup pass): the background-audio
-             FAMILY (parent + pre-extract + pre-sync) moved to the
-             Experimental section - every control wired by id, never
-             document order. -->
-
-        <!-- v1.41.6 (Dean): relocate hydrated imports into their channel folder. -->
-        <div class="form-group">
-          <label class="reveal-toggle" data-loading style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="relocate-hydrated-check" />
-            File imported videos under their channel
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            When "Reheat metadata &amp; channels" (on the Subscriptions page) finds a video that was downloaded outside FileTube but still carries its YouTube link, it moves the file into that channel's folder in your downloads directory — so it appears under the channel, can be pinned, and behaves like anything FileTube downloaded itself. Only ever touches videos with a real YouTube identity; your own local media is never moved. On by default.
-          </small>
-          <small id="relocate-hydrated-error" class="field-error"></small>
-        </div>
-
-        <!-- v1.51 (Dean): the notification bell's instance-wide toggle. -->
-        <div class="form-group">
-          <label class="reveal-toggle" data-loading style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="notifications-enabled-check" />
-            Show download notifications (bell)
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Adds a notification bell to the top-right corner that counts new subscription and one-off downloads, YouTube-style — tap one to watch it. The bell appears once at least one subscription exists. Turning this off hides the bell for everyone on this server; downloads are still tracked in the background, so turning it back on shows the full history with no gap. On by default.
-          </small>
-          <small id="notifications-enabled-error" class="field-error"></small>
-        </div>
-
-        <!-- v1.66: web push. Hidden until the capability probe (GET
-             /api/push/key) says the notifications feature is on; the enable
-             button is the USER GESTURE the permission prompt requires. -->
-        <div class="form-group" id="push-controls" hidden>
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="push-user-enabled-check" />
-            Send push notifications to my devices
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Pushes each new download to your subscribed devices even when FileTube is closed. Unchecking pauses pushes to ALL your devices without forgetting them. Each device also has to be enabled once, below. On iPhone/iPad this works only for the home-screen-installed app (Share &rarr; Add to Home Screen), and only over HTTPS.
-          </small>
-          <div style="margin-top: 8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-            <button type="button" class="btn btn-sm" id="push-device-enable-btn" hidden>Enable notifications on this device</button>
-            <button type="button" class="btn btn-sm" id="push-device-disable-btn" hidden>Disable on this device</button>
-            <small id="push-device-status" style="color: var(--text-secondary);"></small>
+      <details class="setup-box setup-sec sub-collapsible" data-collapse-key="automation-storage" data-md-icon="sliders" data-md-group="System" open>
+        <summary>Automation &amp; Storage</summary>
+        <p class="setup-intro">Control how often FileTube rescans your library and how the on-demand transcode cache is kept in check.</p>
+        <h3 class="setup-heading">Home page</h3>
+        <div class="setup-group">
+          <div class="ui-field setup-field">
+            <label class="ui-field__label" for="default-view-select">Default view when opening FileTube</label>
+            <span class="ui-select"><select id="default-view-select" class="ui-select__native">
+                <option value="">Most recent</option>
+                <!-- one option per configured folder, populated dynamically -->
+              </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+            <p class="ui-field__help">If the chosen folder is later removed, FileTube falls back to Most recent automatically.</p>
+            <p id="default-view-error" class="ui-field__error" hidden></p>
           </div>
-          <small id="push-error" class="field-error"></small>
+          <!-- v1.34 (Dean): the default home sort; "Feeling lucky" is deliberately not offered as a DEFAULT. -->
+          <div class="ui-field setup-field">
+            <label class="ui-field__label" for="default-sort-select">Default sort order</label>
+            <span class="ui-select"><select id="default-sort-select" class="ui-select__native">
+                <option value="release-date">Release date</option>
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+                <option value="title-asc">Title (A–Z)</option>
+                <option value="title-desc">Title (Z–A)</option>
+                <option value="size-desc">Largest first</option>
+                <option value="size-asc">Smallest first</option>
+              </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+            <p class="ui-field__help">Applies wherever you haven't picked a sort from the library dropdown in that browser — an explicit dropdown pick always wins there.</p>
+            <p id="default-sort-error" class="ui-field__error" hidden></p>
+          </div>
         </div>
-
-        <!-- v1.181: the custom-player toggle moved to Experimental. -->
-
+        <h3 class="setup-heading">Playback</h3>
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default reveal-toggle" role="listitem" data-loading><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="autoplay-next-check">Autoplay next video</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="autoplay-next-check" /></span></div>
+          </div>
+          <p class="setup-note">When a video finishes, automatically start playing the next one in your current sort order. Off by default.</p>
+          <p id="autoplay-next-error" class="ui-field__error" hidden></p>
+        </div>
+        <!-- v1.41.6 (Dean): relocate hydrated imports into their channel folder. -->
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default reveal-toggle" role="listitem" data-loading><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="relocate-hydrated-check">File imported videos under their channel</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="relocate-hydrated-check" /></span></div>
+          </div>
+          <p class="setup-note">When "Reheat metadata &amp; channels" (on the Subscriptions page) finds a video that was downloaded outside FileTube but still carries its YouTube link, it moves the file into that channel's folder in your downloads directory — so it appears under the channel, can be pinned, and behaves like anything FileTube downloaded itself. Only ever touches videos with a real YouTube identity; your own local media is never moved. On by default.</p>
+          <p id="relocate-hydrated-error" class="ui-field__error" hidden></p>
+        </div>
+        <!-- v1.51 (Dean): the notification bell's instance-wide toggle. -->
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default reveal-toggle" role="listitem" data-loading><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="notifications-enabled-check">Show download notifications (bell)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="notifications-enabled-check" /></span></div>
+          </div>
+          <p class="setup-note">Adds a notification bell to the top-right corner that counts new subscription and one-off downloads, YouTube-style — tap one to watch it. The bell appears once at least one subscription exists. Turning this off hides the bell for everyone on this server; downloads are still tracked in the background, so turning it back on shows the full history with no gap. On by default.</p>
+          <p id="notifications-enabled-error" class="ui-field__error" hidden></p>
+        </div>
+        <!-- v1.66: web push. Hidden until the capability probe (GET /api/push/key) says the feature is on; the enable button is the USER GESTURE the permission prompt requires. -->
+        <div class="setup-group" id="push-controls" hidden>
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="push-user-enabled-check">Send push notifications to my devices</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="push-user-enabled-check" /></span></div>
+          </div>
+          <p class="setup-note">Pushes each new download to your subscribed devices even when FileTube is closed. Turning it off pauses pushes to ALL your devices without forgetting them. Each device also has to be enabled once, below. On iPhone/iPad this works only for the home-screen-installed app (Share &rarr; Add to Home Screen), and only over HTTPS.</p>
+          <div class="setup-inline setup-inline--wrap">
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" id="push-device-enable-btn" hidden><span class="ui-btn__label">Enable notifications on this device</span></button>
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" id="push-device-disable-btn" hidden><span class="ui-btn__label">Disable on this device</span></button>
+            <span id="push-device-status" class="action-status"></span>
+          </div>
+          <p id="push-error" class="ui-field__error" hidden></p>
+        </div>
         <!-- v1.45.6 (Dean): per-page sort memory (device-local). -->
-        <div class="form-group">
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="per-page-sort-check" />
-            Remember sort per folder
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            When on, each folder / playlist / the home page keeps its own sort order. When off, one sort applies everywhere. Per device; off by default.
-          </small>
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="per-page-sort-check">Remember sort per folder</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="per-page-sort-check" /></span></div>
+          </div>
+          <p class="setup-note">When on, each folder / playlist / the home page keeps its own sort order. When off, one sort applies everywhere. Per device; off by default.</p>
         </div>
-
-        <!-- v1.181: the audio-session-declare + keep-alive experiments moved
-             to Experimental; the lifecycle debug log moved to
-             Troubleshooting. -->
-
-        <div class="form-group">
-          <label for="resume-threshold-input">Skip the resume prompt for videos under this many seconds of saved progress</label>
-          <input type="number" id="resume-threshold-input" min="0" step="1" value="60" style="max-width: 160px;" />
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Saved progress below this threshold just resumes automatically, without asking. Progress at or above it still shows the "Resume playback?" prompt. Defaults to 60 seconds; takes effect on the very next video you open, no reload needed.
-          </small>
+        <div class="setup-group">
+          <div class="ui-field setup-field">
+            <label class="ui-field__label" for="resume-threshold-input">Skip the resume prompt for videos under this many seconds of saved progress</label>
+            <input type="number" id="resume-threshold-input" class="ui-field__input" min="0" step="1" value="60" inputmode="numeric" />
+            <p class="ui-field__help">Saved progress below this threshold just resumes automatically, without asking. Progress at or above it still shows the "Resume playback?" prompt. Defaults to 60 seconds; takes effect on the very next video you open, no reload needed.</p>
+          </div>
         </div>
-
-        <!-- v1.132: resume-countdown - the prompt auto-fires its default
-             choice after a short countdown. Device-local (localStorage),
-             same pattern as the resume threshold above; ON by default. -->
-        <div class="form-group">
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="resume-countdown-check" checked />
-            Auto-choose on the resume prompt after a short countdown
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            When the "Resume playback?" prompt appears, its default button counts down and fires on its own if you don't choose - handy while driving or heads-down. Any tap or keypress on the player cancels the countdown and leaves the prompt up. Off = the prompt always waits, exactly as before. Per device; takes effect on the next video you open.
-          </small>
-          <label for="resume-countdown-seconds-input" style="margin-top:8px;">Countdown length (seconds)</label>
-          <input type="number" id="resume-countdown-seconds-input" min="0" max="30" step="1" value="5" style="max-width: 120px;" />
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            How long the countdown runs, 0 to 30. 0 = resume instantly with no prompt at all.
-          </small>
-          <label for="resume-countdown-action-select" style="margin-top:8px;">Default choice when the countdown fires</label>
-          <select id="resume-countdown-action-select" style="max-width: 260px;">
-            <option value="resume">Resume from saved position</option>
-            <option value="beginning">Start from beginning</option>
-          </select>
+        <!-- v1.132: resume-countdown - device-local (localStorage), ON by default. -->
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="resume-countdown-check">Auto-choose on the resume prompt after a short countdown</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="resume-countdown-check" checked /></span></div>
+          </div>
+          <p class="setup-note">When the "Resume playback?" prompt appears, its default button counts down and fires on its own if you don't choose - handy while driving or heads-down. Any tap or keypress on the player cancels the countdown and leaves the prompt up. Off = the prompt always waits, exactly as before. Per device; takes effect on the next video you open.</p>
+          <div class="ui-field setup-field">
+            <label class="ui-field__label" for="resume-countdown-seconds-input">Countdown length (seconds)</label>
+            <input type="number" id="resume-countdown-seconds-input" class="ui-field__input" min="0" max="30" step="1" value="5" inputmode="numeric" />
+            <p class="ui-field__help">How long the countdown runs, 0 to 30. 0 = resume instantly with no prompt at all.</p>
+          </div>
+          <div class="ui-field setup-field">
+            <label class="ui-field__label" for="resume-countdown-action-select">Default choice when the countdown fires</label>
+            <span class="ui-select"><select id="resume-countdown-action-select" class="ui-select__native">
+                <option value="resume">Resume from saved position</option>
+                <option value="beginning">Start from beginning</option>
+              </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+          </div>
         </div>
-
-        <!-- v1.79: the home experience toggle - per-user, synced to your
-             account (not device-local like the row toggles below). -->
-        <div class="form-group">
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="home-feed-check" />
-            Use the personalized home feed (YouTube-style rows)
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Replaces the classic file grid on the home page with rows tailored to you - Continue watching, New from your subscriptions, Recently added, More from your channels, and more. Turn off for the classic sortable grid. Syncs to your account; takes effect on the next home load.
-          </small>
+        <!-- v1.79 / v1.84: the home experience toggles - per-user, synced to your account. -->
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="home-feed-check">Use the personalized home feed (YouTube-style rows)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="home-feed-check" /></span></div>
+          </div>
+          <p class="setup-note">Replaces the classic file grid on the home page with rows tailored to you - Continue watching, New from your subscriptions, Recently added, More from your channels, and more. Turn off for the classic sortable grid. Syncs to your account; takes effect on the next home load.</p>
         </div>
-
-        <!-- v1.84: Modern YouTube Mode - a third home layout. Per-user, synced
-             to your account (like the home-feed toggle above). -->
-        <div class="form-group">
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="modern-mode-check" />
-            Modern YouTube Mode (big-tile grid + filter chips)
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            A modern YouTube-style home: one grid of large tiles (three across on desktop, one big card on mobile), a one-line filter row (All, Videos, Audio, Podcasts, Continue watching, Unwatched), and - on mobile - a bar of your recently-active subscriptions up top. Takes precedence over the personalized feed above. Syncs to your account; takes effect on the next home load.
-          </small>
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="modern-mode-check">Modern YouTube Mode (big-tile grid + filter chips)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="modern-mode-check" /></span></div>
+          </div>
+          <p class="setup-note">A modern YouTube-style home: one grid of large tiles (three across on desktop, one big card on mobile), a one-line filter row (All, Videos, Audio, Podcasts, Continue watching, Unwatched), and - on mobile - a bar of your recently-active subscriptions up top. Takes precedence over the personalized feed above. Syncs to your account; takes effect on the next home load.</p>
         </div>
-
-        <!-- v1.242 (Dean): downloaded audio is ALWAYS in the Music library now (the old
-             opt-in master toggle is retired). The "Channels in Music" manager below is now an
-             OPT-OUT list - every channel is included by default; switch one OFF to hide it. -->
-        <div class="form-group" id="music-channels-group" hidden>
-          <label style="font-weight:600; display:block; margin-bottom:4px;">Channels in Music</label>
-          <small style="color: var(--text-secondary); margin-bottom:8px; display:block;">
-            Every channel you've downloaded audio from is in the Music library automatically. Switch a channel OFF to hide all of its songs from Music (future downloads included); leave it on to keep them.
-          </small>
-          <div id="music-channels-list" role="group" aria-label="Channels included in the Music library"></div>
+        <!-- v1.242 (Dean): "Channels in Music" is an OPT-OUT list (setup.js builds a switch row per channel). -->
+        <div class="setup-group" id="music-channels-group" hidden>
+          <h3 class="setup-heading" id="music-channels-heading">Channels in Music</h3>
+          <p class="setup-note">Every channel you've downloaded audio from is in the Music library automatically. Switch a channel OFF to hide all of its songs from Music (future downloads included); leave it on to keep them.</p>
+          <div id="music-channels-list" class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list" aria-labelledby="music-channels-heading"></div>
         </div>
-
-        <!-- v1.246 (Dean): the "Open downloaded music in the music player" opt-out was RETIRED -
-             audio-only items now ALWAYS open in the music player/skin (Dean's directive; the
-             destination matches v1.242's project-all-audio-into-Music). Nothing to toggle. -->
-
-        <!-- v1.44: home-page row toggles (device-local display prefs). -->
-        <div class="form-group">
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="home-continue-watching-check" checked />
-            Show "Continue watching" on the home page
-          </label>
-          <!-- v1.198.2 (Dean): the Shows page's own row toggle - the home checkbox
-               is labelled (and scoped) home-only, so Shows gets a sibling. -->
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:8px;">
-            <input type="checkbox" id="tv-continue-watching-check" checked />
-            Show "Continue watching" on the Shows page
-          </label>
-          <!-- v1.73 (Dean ruling 1): ONE merged listening row - the separate
-               Podcasts toggle retired; the old key is still read so a device
-               where either was on keeps the row. -->
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:8px;">
-            <input type="checkbox" id="home-continue-listening-check" checked />
-            Show "Continue listening" (music + podcasts) on the home page
-          </label>
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal; margin-top:8px;">
-            <input type="checkbox" id="home-continue-reading-check" checked />
-            Show "Continue reading" on the home page
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Toggle the resume rows above the home grid. Device-local; takes effect on the next home load.
-          </small>
+        <!-- v1.44 / v1.73 / v1.198.2: the resume rows (device-local display prefs). -->
+        <div class="setup-group">
+          <h3 class="setup-heading">Resume rows</h3>
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="home-continue-watching-check">Show "Continue watching" on the home page</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="home-continue-watching-check" checked /></span></div>
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="tv-continue-watching-check">Show "Continue watching" on the Shows page</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="tv-continue-watching-check" checked /></span></div>
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="home-continue-listening-check">Show "Continue listening" (music + podcasts) on the home page</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="home-continue-listening-check" checked /></span></div>
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="home-continue-reading-check">Show "Continue reading" on the home page</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="home-continue-reading-check" checked /></span></div>
+          </div>
+          <p class="setup-note">Toggle the resume rows above the home grid. Device-local; takes effect on the next home load.</p>
         </div>
-
-        <!-- v1.44 T12: customizable bottom bar. -->
-        <div class="form-group">
-          <label>Bottom bar (mobile)</label>
-          <div id="bottombar-editor"><!-- rows rendered by setup.js --></div>
-          <small style="color: var(--text-secondary); margin-top:6px; display:block;">
-            Show/hide and reorder every item in the mobile bottom bar - Home, Liked and Settings included. Drag a row to reorder it (press and hold on a touch screen), or focus its handle and use the arrow keys. Keep at least one item showing. Some items (Subscriptions, Download) only appear when their feature is enabled. Device-local.
-          </small>
+        <!-- v1.44 T12: the customizable bottom bar (rows rendered by setup.js). -->
+        <div class="setup-group">
+          <h3 class="setup-heading" id="bottombar-heading">Bottom bar (mobile)</h3>
+          <div id="bottombar-editor" class="bottombar-editor" role="group" aria-labelledby="bottombar-heading"><!-- rows rendered by setup.js --></div>
+          <p class="setup-note">Show/hide and reorder every item in the mobile bottom bar - Home, Liked and Settings included. Drag a row to reorder it (press and hold on a touch screen), or focus its handle and use the arrow keys. Keep at least one item showing. Some items (Subscriptions, Download) only appear when their feature is enabled. Device-local.</p>
         </div>
-
-        <h3>Scan</h3>
-        <div class="form-group">
-          <label for="scan-interval-select">Scan interval</label>
-          <select id="scan-interval-select" class="setup-select">
-            <option value="0">Off (manual only)</option>
-            <option value="30" selected>Every 30 minutes</option>
-            <option value="60">Every 1 hour</option>
-            <option value="360">Every 6 hours</option>
-            <option value="720">Every 12 hours</option>
-            <option value="1440">Every 24 hours</option>
-          </select>
-          <small id="scan-interval-error" class="field-error"></small>
+        <h3 class="setup-heading">Scan</h3>
+        <div class="setup-group">
+          <div class="ui-field setup-field">
+            <label class="ui-field__label" for="scan-interval-select">Scan interval</label>
+            <span class="ui-select"><select id="scan-interval-select" class="ui-select__native">
+                <option value="0">Off (manual only)</option>
+                <option value="30" selected>Every 30 minutes</option>
+                <option value="60">Every 1 hour</option>
+                <option value="360">Every 6 hours</option>
+                <option value="720">Every 12 hours</option>
+                <option value="1440">Every 24 hours</option>
+              </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+            <p id="scan-interval-error" class="ui-field__error" hidden></p>
+          </div>
         </div>
-
-        <div class="form-group">
-          <label class="reveal-toggle" data-loading style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="prune-missing-check" checked />
-            Remove entries for deleted files during scan
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Only removes an entry when its file is individually gone from a
-            folder that IS present — a folder that's currently unmounted or
-            unreachable is treated as a mount failure, never a deletion, so its
-            entries are always kept.
-          </small>
-          <small id="prune-missing-error" class="field-error"></small>
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default reveal-toggle" role="listitem" data-loading><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="prune-missing-check">Remove entries for deleted files during scan</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="prune-missing-check" checked /></span></div>
+          </div>
+          <p class="setup-note">Only removes an entry when its file is individually gone from a folder that IS present — a folder that's currently unmounted or unreachable is treated as a mount failure, never a deletion, so its entries are always kept.</p>
+          <p id="prune-missing-error" class="ui-field__error" hidden></p>
         </div>
-
-        <!-- Chapter Snap (2026-09-24) (Dean): the server-wide LEAD-IN - how far before the
-             first sound after a silence a snapped chapter starts. -->
-        <div class="form-group">
-          <label for="chapter-snap-leadin-select">Chapter snap lead-in</label>
-          <select id="chapter-snap-leadin-select" class="setup-select">
-            <option value="0">None (start on the first sound)</option>
-            <option value="0.1">0.1 seconds</option>
-            <option value="0.25" selected>0.25 seconds</option>
-            <option value="0.5">0.5 seconds</option>
-            <option value="0.75">0.75 seconds</option>
-            <option value="1">1 second</option>
-            <option value="1.5">1.5 seconds</option>
-            <option value="2">2 seconds</option>
-          </select>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            When you fix a chaptered album's times, "Snap" moves each chapter to
-            just before the music starts after a silence. This is how much quiet
-            to keep in front of the first sound.
-          </small>
-          <small id="chapter-snap-leadin-error" class="field-error"></small>
+        <!-- Chapter Snap (2026-09-24) (Dean): the server-wide LEAD-IN before the first sound after a silence. -->
+        <div class="setup-group">
+          <div class="ui-field setup-field">
+            <label class="ui-field__label" for="chapter-snap-leadin-select">Chapter snap lead-in</label>
+            <span class="ui-select"><select id="chapter-snap-leadin-select" class="ui-select__native">
+                <option value="0">None (start on the first sound)</option>
+                <option value="0.1">0.1 seconds</option>
+                <option value="0.25" selected>0.25 seconds</option>
+                <option value="0.5">0.5 seconds</option>
+                <option value="0.75">0.75 seconds</option>
+                <option value="1">1 second</option>
+                <option value="1.5">1.5 seconds</option>
+                <option value="2">2 seconds</option>
+              </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+            <p class="ui-field__help">When you fix a chaptered album's times, "Snap" moves each chapter to just before the music starts after a silence. This is how much quiet to keep in front of the first sound.</p>
+            <p id="chapter-snap-leadin-error" class="ui-field__error" hidden></p>
+          </div>
         </div>
-
         <div class="action-footer">
           <span id="automation-scan-status" class="action-status" aria-live="polite">Last scanned: loading…</span>
           <div class="action-bar">
-            <button class="btn" id="scan-now-btn">Scan now</button>
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="scan-now-btn"><span class="ui-btn__label">Scan now</span></button>
           </div>
         </div>
-
-        <h3 style="margin-top:28px;">Transcode cache</h3>
-        <div class="form-group">
-          <label>Current size</label>
-          <div style="display:flex; justify-content: space-between; align-items:center; gap:10px; flex-wrap:wrap;">
-            <span id="cache-size-display" style="color: var(--text-secondary);" aria-live="polite">Loading…</span>
-            <button class="btn" id="clear-cache-btn">Clear cache now</button>
+        <h3 class="setup-heading">Transcode cache</h3>
+        <div class="setup-group">
+          <div class="ui-field setup-field">
+            <span class="ui-field__label" id="cache-size-label">Current size</span>
+            <div class="setup-inline" role="group" aria-labelledby="cache-size-label">
+              <span id="cache-size-display" class="setup-value" aria-live="polite">Loading…</span>
+              <button type="button" class="ui-btn ui-btn--danger ui-btn--md" id="clear-cache-btn"><span class="ui-btn__label">Clear cache now</span></button>
+            </div>
           </div>
-        </div>
-
-        <div class="form-group">
-          <label for="cache-age-select">Delete cached files not watched in</label>
-          <select id="cache-age-select" class="setup-select">
-            <option value="0">Off (never expire by age)</option>
-            <option value="7">7 days</option>
-            <option value="14">14 days</option>
-            <option value="30" selected>30 days</option>
-            <option value="90">90 days</option>
-          </select>
-          <small id="cache-age-error" class="field-error"></small>
-        </div>
-
-        <div class="form-group">
-          <label for="cache-cap-input">Cache size cap (GB)</label>
-          <input type="number" id="cache-cap-input" min="0" step="0.1" placeholder="Default" style="max-width: 160px;" />
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Leave blank to use the default (the <code>TRANSCODE_CACHE_MAX_BYTES</code>
-            environment variable, or 5 GB if that isn't set).
-          </small>
-          <small id="cache-cap-error" class="field-error"></small>
+          <div class="ui-field setup-field">
+            <label class="ui-field__label" for="cache-age-select">Delete cached files not watched in</label>
+            <span class="ui-select"><select id="cache-age-select" class="ui-select__native">
+                <option value="0">Off (never expire by age)</option>
+                <option value="7">7 days</option>
+                <option value="14">14 days</option>
+                <option value="30" selected>30 days</option>
+                <option value="90">90 days</option>
+              </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+            <p id="cache-age-error" class="ui-field__error" hidden></p>
+          </div>
+          <div class="ui-field setup-field">
+            <label class="ui-field__label" for="cache-cap-input">Cache size cap (GB)</label>
+            <input type="number" id="cache-cap-input" class="ui-field__input" min="0" step="0.1" placeholder="Default" inputmode="decimal" />
+            <p class="ui-field__help">Leave blank to use the default (the <code>TRANSCODE_CACHE_MAX_BYTES</code> environment variable, or 5 GB if that isn't set).</p>
+            <p id="cache-cap-error" class="ui-field__error" hidden></p>
+          </div>
         </div>
       </details>
-
-      <!-- v1.65: Trash -- every delete lands here for the retention window;
-           rows render from GET /api/trash (public/js/setup.js). -->
-      <!-- v1.146 (downloader-engine): the Downloads box. Admin-only AND
-           yt-dlp-module-only - it stays hidden until the /api/ytdlp/engine
-           probe answers 200 (the notification-bell probe pattern), so
-           members and module-off instances never see it. Its controls are
-           fed by that FOREIGN fetch, so none of them carry the
-           /api/settings reveal-toggle barrier (the v1.96 partial-render
-           lesson); the box reveals whole, already populated. -->
-      <details class="setup-box sub-collapsible" id="downloads-box" hidden data-collapse-key="downloads" data-md-icon="download" data-md-group="System" data-md-badge="Admin" data-md-reserve open>
+      <!-- v1.146 (downloader-engine): admin-only AND yt-dlp-module-only; hidden until /api/ytdlp/engine answers 200. Fed by that FOREIGN fetch, so no control carries the /api/settings reveal barrier; the box reveals whole, already populated. -->
+      <details class="setup-box setup-sec sub-collapsible" id="downloads-box" hidden data-collapse-key="downloads" data-md-icon="download" data-md-group="System" data-md-badge="Admin" data-md-reserve open>
         <summary>Downloads</summary>
-        <h3>Downloader engine</h3>
-        <p>
-          FileTube downloads videos with the yt-dlp engine. The bundled engine
-          ships inside the app image and always remains as the fallback. The
-          stable and nightly channels install the newest yt-dlp release at
-          runtime - nightly tracks YouTube's changes closest. Every installed
-          engine must pass a health check before it is used, and an engine
-          that breaks later automatically reverts to bundled - the bell
-          reports it either way.
-        </p>
-        <div class="engine-channels" id="engine-channels">
-          <label class="engine-channel">
-            <input type="radio" name="engine-channel" value="bundled" id="engine-channel-bundled" />
-            <span class="engine-channel-name">Bundled</span>
-            <span class="engine-channel-version" id="engine-version-bundled">&hellip;</span>
-          </label>
-          <label class="engine-channel">
-            <input type="radio" name="engine-channel" value="stable" id="engine-channel-stable" />
-            <span class="engine-channel-name">Latest stable</span>
-            <span class="engine-channel-version" id="engine-version-stable">&hellip;</span>
-          </label>
-          <label class="engine-channel">
-            <input type="radio" name="engine-channel" value="nightly" id="engine-channel-nightly" />
-            <span class="engine-channel-name">Latest nightly</span>
-            <span class="engine-channel-version" id="engine-version-nightly">&hellip;</span>
-          </label>
+        <h3 class="setup-heading">Downloader engine</h3>
+        <p class="setup-intro">FileTube downloads videos with the yt-dlp engine. The bundled engine ships inside the app image and always remains as the fallback. The stable and nightly channels install the newest yt-dlp release at runtime - nightly tracks YouTube's changes closest. Every installed engine must pass a health check before it is used, and an engine that breaks later automatically reverts to bundled - the bell reports it either way.</p>
+        <div class="setup-group">
+          <div id="engine-channels" class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="radiogroup" aria-label="Engine channel">
+            <label class="ui-row ui-row--default"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><span class="ui-row__title">Bundled</span><span class="ui-row__meta" id="engine-version-bundled">&hellip;</span></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="radio" class="setup-radio" name="engine-channel" value="bundled" id="engine-channel-bundled" /></span></label>
+            <label class="ui-row ui-row--default"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><span class="ui-row__title">Latest stable</span><span class="ui-row__meta" id="engine-version-stable">&hellip;</span></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="radio" class="setup-radio" name="engine-channel" value="stable" id="engine-channel-stable" /></span></label>
+            <label class="ui-row ui-row--default"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><span class="ui-row__title">Latest nightly</span><span class="ui-row__meta" id="engine-version-nightly">&hellip;</span></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="radio" class="setup-radio" name="engine-channel" value="nightly" id="engine-channel-nightly" /></span></label>
+          </div>
         </div>
-        <div class="form-group">
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="engine-autoupdate-check" />
-            Check for engine updates daily and install them automatically
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Off by default. FileTube rings the bell with the result either way.
-          </small>
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="engine-autoupdate-check">Check for engine updates daily and install them automatically</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="engine-autoupdate-check" /></span></div>
+          </div>
+          <p class="setup-note">Off by default. FileTube rings the bell with the result either way.</p>
         </div>
-        <div class="form-group" style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-          <button type="button" class="btn btn-sm" id="engine-update-btn">Update now</button>
-          <span id="engine-status" class="action-status"></span>
+        <div class="setup-group">
+          <div class="setup-inline setup-inline--wrap">
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" id="engine-update-btn"><span class="ui-btn__label">Update now</span></button>
+            <span id="engine-status" class="action-status"></span>
+          </div>
+          <p id="engine-error" class="ui-field__error" hidden></p>
         </div>
-        <small id="engine-error" class="field-error"></small>
       </details>
-
-      <details class="setup-box sub-collapsible" data-collapse-key="trash" data-md-icon="trash" data-md-group="System" open>
+      <!-- v1.65: Trash -- every delete lands here for the retention window; rows render from GET /api/trash (public/js/setup.js). -->
+      <details class="setup-box setup-sec sub-collapsible" data-collapse-key="trash" data-md-icon="trash" data-md-group="System" open>
         <summary>Trash</summary>
-        <p>
-          Deleted videos move to a per-folder trash instead of being erased.
-          Restoring brings back watch history, likes and queue spots exactly
-          as they were.
-        </p>
-        <div class="form-group">
-          <label for="trash-retention-select">Purge trashed items after</label>
-          <select id="trash-retention-select" class="setup-select">
-            <option value="0">Never (keep until purged by hand)</option>
-            <option value="7">7 days</option>
-            <option value="14">14 days</option>
-            <option value="30" selected>30 days</option>
-            <option value="90">90 days</option>
-          </select>
-          <small id="trash-retention-error" class="field-error"></small>
+        <p class="setup-intro">Deleted videos move to a per-folder trash instead of being erased. Restoring brings back watch history, likes and queue spots exactly as they were.</p>
+        <div class="setup-group">
+          <div class="ui-field setup-field">
+            <label class="ui-field__label" for="trash-retention-select">Purge trashed items after</label>
+            <span class="ui-select"><select id="trash-retention-select" class="ui-select__native">
+                <option value="0">Never (keep until purged by hand)</option>
+                <option value="7">7 days</option>
+                <option value="14">14 days</option>
+                <option value="30" selected>30 days</option>
+                <option value="90">90 days</option>
+              </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+            <p id="trash-retention-error" class="ui-field__error" hidden></p>
+          </div>
         </div>
-        <!-- v1.158 (Dean): the total held + a one-button "Empty trash" (two-tap
-             arm). Hidden while the trash is empty; populated by setup.js. -->
+        <!-- v1.158 (Dean): the total held + one "Empty trash" (confirmed in a ui.confirm dialog). Hidden while the trash is empty. -->
         <div id="trash-toolbar" class="trash-toolbar" hidden>
           <span id="trash-total" class="trash-total"></span>
-          <button type="button" id="trash-empty-all" class="btn btn-sm trash-empty-all">Empty trash</button>
+          <button type="button" id="trash-empty-all" class="ui-btn ui-btn--danger ui-btn--sm trash-empty-all">Empty trash</button>
         </div>
         <div id="trash-list" class="trash-list"></div>
         <div id="trash-empty" class="trash-empty" hidden>Trash is empty.</div>
       </details>
-
-      <!-- v1.97.1: Hidden -- videos you pruned from YOUR modern feed. Moved here
-           from the account menu (Dean) so a long list scrolls with the page.
-           Rows render from GET /api/feed-hidden (public/js/setup.js). -->
-      <details class="setup-box sub-collapsible" data-collapse-key="feedhidden" data-md-icon="hidden" data-md-group="System" open>
+      <!-- v1.97.1: Hidden -- videos you pruned from YOUR modern feed; rows render from GET /api/feed-hidden. -->
+      <details class="setup-box setup-sec sub-collapsible" data-collapse-key="feedhidden" data-md-icon="hidden" data-md-group="System" open>
         <summary>Hidden</summary>
-        <p>
-          Videos you've hidden from your modern feed. Hiding never deletes them -
-          they stay findable in search, their channel, playlists and Liked.
-          Restore brings a video back to your feed.
-        </p>
+        <p class="setup-intro">Videos you've hidden from your modern feed. Hiding never deletes them - they stay findable in search, their channel, playlists and Liked. Restore brings a video back to your feed.</p>
         <div id="feedhidden-list" class="feed-hidden-list"></div>
         <div id="feedhidden-empty" class="feed-hidden-empty" hidden>Nothing hidden from your feed.</div>
       </details>
-
-      <!-- v1.43: Account (everyone) - who you are + sign out. Markup lives
-           INSIDE #view-root and styles in style.css (the v1.41.8 SPA-swap
-           lesson). -->
-      <details class="setup-box sub-collapsible" id="account-box" data-collapse-key="account" data-md-icon="account" data-md-group="Account" open>
+      <!-- v1.43: Account (everyone) - who you are + sign out. Styles live in style.css (the v1.41.8 SPA-swap lesson). -->
+      <details class="setup-box setup-sec sub-collapsible" id="account-box" data-collapse-key="account" data-md-icon="account" data-md-group="Account" open>
         <summary>Account</summary>
         <div class="account-row">
           <span id="account-chip" aria-live="polite">Loading your account...</span>
-          <button class="btn" id="logout-btn">Sign out</button>
+          <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="logout-btn"><span class="ui-btn__label">Sign out</span></button>
         </div>
-        <!-- v1.82: profile photo (the second entry point; the account menu's
-             "Change photo" hits the same /api/me/avatar endpoint). -->
+        <!-- v1.82: profile photo (the account menu's "Change photo" hits the same /api/me/avatar). -->
         <div class="account-row">
           <span>Profile photo</span>
           <span class="account-photo-actions">
-            <button class="btn btn-sm" id="account-photo-upload">Upload</button>
-            <button class="btn btn-sm" id="account-photo-remove" hidden>Remove</button>
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" id="account-photo-upload"><span class="ui-btn__label">Upload</span></button>
+            <button type="button" class="ui-btn ui-btn--danger ui-btn--sm" id="account-photo-remove" hidden><span class="ui-btn__label">Remove</span></button>
           </span>
           <input type="file" id="account-photo-input" accept="image/png,image/jpeg,image/webp" hidden>
         </div>
       </details>
-
-      <!-- v1.43: Users (admin only - revealed by setup.js after /api/auth/me
-           confirms the role; the server enforces it regardless). -->
-      <details class="setup-box sub-collapsible" id="users-box" hidden data-collapse-key="users" data-md-icon="users" data-md-group="Account" data-md-badge="Admin" data-md-reserve open>
+      <!-- v1.43: Users (admin only - revealed by setup.js after /api/auth/me confirms the role; the server enforces it regardless). -->
+      <details class="setup-box setup-sec sub-collapsible" id="users-box" hidden data-collapse-key="users" data-md-icon="users" data-md-group="Account" data-md-badge="Admin" data-md-reserve open>
         <summary>Users</summary>
-        <p>
-          Accounts for your family and friends. Everyone signed in sees the same library for now -
-          per-person library limits arrive in a later release. Each person gets their own watch
-          progress, likes, reading positions, and pinned channels.
-        </p>
+        <p class="setup-intro">Accounts for your family and friends. Everyone signed in sees the same library for now - per-person library limits arrive in a later release. Each person gets their own watch progress, likes, reading positions, and pinned channels.</p>
         <div id="users-list" class="users-list" aria-live="polite"></div>
-
-        <h3>Add a user</h3>
-        <div class="users-add-form">
-          <div class="form-group">
-            <label for="new-user-username">Username</label>
-            <input type="text" id="new-user-username" autocomplete="off" />
+        <h3 class="setup-heading">Add a user</h3>
+        <div class="users-add-form setup-group">
+          <div class="ui-field setup-field">
+            <label class="ui-field__label" for="new-user-username">Username</label>
+            <input type="text" id="new-user-username" class="ui-field__input" autocomplete="off" autocapitalize="none" spellcheck="false" />
           </div>
-          <div class="form-group">
-            <label for="new-user-displayname">Display name (optional)</label>
-            <input type="text" id="new-user-displayname" autocomplete="off" />
+          <div class="ui-field setup-field">
+            <label class="ui-field__label" for="new-user-displayname">Display name (optional)</label>
+            <input type="text" id="new-user-displayname" class="ui-field__input" autocomplete="off" />
           </div>
-          <div class="form-group">
-            <label for="new-user-password">Password</label>
-            <input type="password" id="new-user-password" autocomplete="new-password" />
+          <div class="ui-field setup-field">
+            <label class="ui-field__label" for="new-user-password">Password</label>
+            <input type="password" id="new-user-password" class="ui-field__input" autocomplete="new-password" />
           </div>
-          <div class="form-group">
-            <label for="new-user-role">Role</label>
-            <select id="new-user-role" class="setup-select">
-              <option value="member" selected>Member</option>
-              <option value="admin">Admin</option>
-            </select>
+          <div class="ui-field setup-field">
+            <label class="ui-field__label" for="new-user-role">Role</label>
+            <span class="ui-select"><select id="new-user-role" class="ui-select__native">
+                <option value="member" selected>Member</option>
+                <option value="admin">Admin</option>
+              </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
           </div>
-          <div class="form-group">
-            <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-              <input type="checkbox" id="new-user-subs-flag" />
-              Can manage channel subscriptions
-            </label>
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="new-user-subs-flag">Can manage channel subscriptions</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="new-user-subs-flag" /></span></div>
           </div>
           <div class="account-row">
-            <button class="btn btn-primary" id="add-user-btn">Add user</button>
-            <small id="add-user-error" class="field-error" role="alert" aria-live="polite"></small>
+            <button type="button" class="ui-btn ui-btn--primary ui-btn--md" id="add-user-btn"><span class="ui-btn__label">Add user</span></button>
           </div>
+          <p id="add-user-error" class="ui-field__error" role="alert" aria-live="polite" hidden></p>
         </div>
       </details>
-
-      <!-- v1.43: instance backup/restore (admin only - revealed with the
-           Users box). The bundle now includes user accounts, so the download
-           is flagged sensitive. -->
-      <details class="setup-box sub-collapsible" id="backup-box" hidden data-collapse-key="backup-restore" data-md-icon="backup" data-md-group="Account" data-md-badge="Admin" data-md-reserve open>
+      <!-- v1.43: instance backup/restore (admin only - revealed with the Users box). The bundle includes user accounts, so the download is flagged sensitive. -->
+      <details class="setup-box setup-sec sub-collapsible" id="backup-box" hidden data-collapse-key="backup-restore" data-md-icon="backup" data-md-group="Account" data-md-badge="Admin" data-md-reserve open>
         <summary>Backup &amp; Restore</summary>
-        <p>
-          Downloads a snapshot of this FileTube's configuration and everyone's personal state -
-          folders, settings, watch progress, likes, reading positions, pins, view counts, and
-          user accounts. Media files are never included.
-        </p>
-        <div class="form-group">
-          <a class="btn" id="backup-download-link" href="/api/admin/backup" download>Download backup</a>
-          <small style="color: var(--text-secondary); margin-top:6px; display:block;">
-            This file contains every account's password hash. Treat it like a password: store it
-            somewhere private, never share it.
-          </small>
-        </div>
-        <div class="form-group">
-          <label for="restore-file-input">Restore from a backup file</label>
-          <input type="file" id="restore-file-input" accept="application/json,.json" />
-          <div class="account-row" style="margin-top:8px;">
-            <button class="btn" id="restore-btn">Restore</button>
-            <small id="restore-status" class="field-error" role="alert" aria-live="polite"></small>
+        <p class="setup-intro">Downloads a snapshot of this FileTube's configuration and everyone's personal state - folders, settings, watch progress, likes, reading positions, pins, view counts, and user accounts. Media files are never included.</p>
+        <div class="setup-group">
+          <div class="action-bar">
+            <a class="ui-btn ui-btn--secondary ui-btn--md" id="backup-download-link" href="/api/admin/backup" download><span class="ui-btn__label">Download backup</span></a>
           </div>
-          <small style="color: var(--text-secondary); margin-top:6px; display:block;">
-            Restoring replaces this FileTube's configuration and accounts with the backup's
-            contents. A backup that does not include your own admin account is refused, so a
-            restore can never lock you out.
-          </small>
+          <p class="setup-note">This file contains every account's password hash. Treat it like a password: store it somewhere private, never share it.</p>
+        </div>
+        <div class="setup-group">
+          <div class="ui-field setup-field">
+            <label class="ui-field__label" for="restore-file-input">Restore from a backup file</label>
+            <input type="file" id="restore-file-input" class="setup-file" accept="application/json,.json" />
+          </div>
+          <div class="action-bar">
+            <button type="button" class="ui-btn ui-btn--danger ui-btn--md" id="restore-btn"><span class="ui-btn__label">Restore</span></button>
+          </div>
+          <p id="restore-status" class="ui-field__error" role="alert" aria-live="polite" hidden></p>
+          <p class="setup-note">Restoring replaces this FileTube's configuration and accounts with the backup's contents. A backup that does not include your own admin account is refused, so a restore can never lock you out.</p>
         </div>
       </details>
-
-      <!-- v1.181 (Dean's settings-cleanup pass): TWO new subpages at the
-           bottom of the list. Everything in both is per-DEVICE localStorage
-           (Dean's gating ruling: visible to everyone - nothing here is
-           server-wide or destructive). Controls are wired by id from
-           setup.js; the moves change markup location only. -->
-      <details class="setup-box sub-collapsible" data-collapse-key="troubleshooting" data-md-icon="wrench" data-md-group="Advanced" open>
+      <!-- v1.181 (Dean's settings-cleanup pass): two subpages at the bottom; everything in both is per-DEVICE localStorage unless a setting says otherwise. -->
+      <details class="setup-box setup-sec sub-collapsible" data-collapse-key="troubleshooting" data-md-icon="wrench" data-md-group="Advanced" open>
         <summary>Troubleshooting</summary>
-        <p>Diagnostics for when something on THIS device misbehaves. Nothing
-           here changes how FileTube works - these tools only observe and
-           report. All device-local.</p>
-        <div class="form-group">
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="debug-lifecycle-check" />
-            Show lifecycle debug log
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            An on-screen event log for diagnosing player lifecycle issues (e.g.
-            background audio not engaging) -- survives a force-quit. This is a
-            device-local setting, not shared across devices; reload the page
-            after enabling for the overlay to appear. Tap the overlay to clear
-            it.
-          </small>
-        </div>
-        <!-- v1.179.1 instrument: runs the REAL critter manifest path + a REAL
-             playback attempt on THIS device and reports which link breaks
-             (incl. the error name) plus why the last tap fell back to the
-             chirp. -->
-        <div class="form-group">
-          <label style="font-weight:normal;">Critter sound check</label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Tests the critter tap sounds on this device and reports exactly
-            what happened, including the precise error when a sound cannot
-            load or play.
-          </small>
-          <div class="action-bar" style="margin-top:6px;">
-            <button type="button" class="btn btn-sm" id="critter-voice-check-btn">Voice check</button>
+        <p class="setup-intro">Diagnostics for when something on THIS device misbehaves. Nothing here changes how FileTube works - these tools only observe and report. All device-local.</p>
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="debug-lifecycle-check">Show lifecycle debug log</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="debug-lifecycle-check" /></span></div>
           </div>
-          <div id="critter-voice-check-status" class="action-status" style="margin-top:6px;" aria-live="polite"></div>
+          <p class="setup-note">An on-screen event log for diagnosing player lifecycle issues (e.g. background audio not engaging) -- survives a force-quit. This is a device-local setting, not shared across devices; reload the page after enabling for the overlay to appear. Tap the overlay to clear it.</p>
+        </div>
+        <!-- v1.179.1 instrument: runs the REAL critter manifest path + a REAL playback attempt on THIS device and reports which link breaks. -->
+        <div class="setup-group">
+          <h3 class="setup-heading">Critter sound check</h3>
+          <p class="setup-note">Tests the critter tap sounds on this device and reports exactly what happened, including the precise error when a sound cannot load or play.</p>
+          <div class="action-bar">
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" id="critter-voice-check-btn"><span class="ui-btn__label">Voice check</span></button>
+          </div>
+          <div id="critter-voice-check-status" class="action-status setup-status" aria-live="polite"></div>
         </div>
       </details>
-
-      <details class="setup-box sub-collapsible" data-collapse-key="experimental" data-md-icon="flask" data-md-group="Advanced" open>
+      <details class="setup-box setup-sec sub-collapsible" data-collapse-key="experimental" data-md-icon="flask" data-md-group="Advanced" open>
         <summary>Experimental</summary>
-        <p>Features that are still earning their keep - sharp edges, battery
-           costs, and platform quirks disclosed on each one. All device-local
-           unless a setting says otherwise.</p>
-        <div class="form-group">
-          <label class="reveal-toggle" data-loading style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="background-audio-check" />
-            Background audio for video (experimental)
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Keeps a video's audio playing when you switch apps or lock your screen -- mobile only. Off by default.
-          </small>
-          <small id="background-audio-error" class="field-error"></small>
+        <p class="setup-intro">Features that are still earning their keep - sharp edges, battery costs, and platform quirks disclosed on each one. All device-local unless a setting says otherwise.</p>
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default reveal-toggle" role="listitem" data-loading><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="background-audio-check">Background audio for video (experimental)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="background-audio-check" /></span></div>
+          </div>
+          <p class="setup-note">Keeps a video's audio playing when you switch apps or lock your screen -- mobile only. Off by default.</p>
+          <p id="background-audio-error" class="ui-field__error" hidden></p>
         </div>
         <!-- v1.35 (Dean): deterministic background audio. -->
-        <div class="form-group">
-          <label class="reveal-toggle" data-loading style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="pre-extract-audio-check" />
-            Pre-extract background audio (experimental)
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Makes background audio dependable: new downloads get their audio track extracted immediately, and extracted tracks are kept (not evicted from the cache) while this is on. Costs roughly 1&nbsp;MB per minute of video on disk, and while on, the cache size cap governs video transcodes only (kept audio is excluded). Pairs with "Background audio for video" above.
-          </small>
-          <small id="pre-extract-audio-error" class="field-error"></small>
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default reveal-toggle" role="listitem" data-loading><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="pre-extract-audio-check">Pre-extract background audio (experimental)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="pre-extract-audio-check" /></span></div>
+          </div>
+          <p class="setup-note">Makes background audio dependable: new downloads get their audio track extracted immediately, and extracted tracks are kept (not evicted from the cache) while this is on. Costs roughly 1&nbsp;MB per minute of video on disk, and while on, the cache size cap governs video transcodes only (kept audio is excluded). Pairs with "Background audio for video" above.</p>
+          <p id="pre-extract-audio-error" class="ui-field__error" hidden></p>
         </div>
-        <!-- v1.202 (Dean): manual channel attribution, OPT-IN. Off by default;
-             hides the watch-page Attribute button and the folder-view bulk tool,
-             and the attribution routes answer 404. -->
-        <div class="form-group">
-          <label class="reveal-toggle" data-loading style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="attribute-control-check" />
-            Manual channel attribution (experimental)
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Shows an Attribute button on unattributed videos and a bulk "attribute this folder" tool, for libraries with older downloads filed under the wrong channel. A library that was clean from the start never needs this. Off by default.
-          </small>
-          <small id="attribute-control-error" class="field-error"></small>
+        <!-- v1.202 (Dean): manual channel attribution, OPT-IN; off hides the Attribute button and the bulk tool, and the routes answer 404. -->
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default reveal-toggle" role="listitem" data-loading><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="attribute-control-check">Manual channel attribution (experimental)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="attribute-control-check" /></span></div>
+          </div>
+          <p class="setup-note">Shows an Attribute button on unattributed videos and a bulk "attribute this folder" tool, for libraries with older downloads filed under the wrong channel. A library that was clean from the start never needs this. Off by default.</p>
+          <p id="attribute-control-error" class="ui-field__error" hidden></p>
         </div>
         <!-- v1.121 (Dean): background-audio position pre-sync (the lock-blip tuning). -->
-        <div class="form-group">
-          <label class="reveal-toggle" data-loading style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="bg-audio-sync-check" />
-            Instant background-audio handoff (experimental)
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Shrinks the brief audio gap when you lock the screen during a video: the background audio track quietly keeps pace with your position while you watch, so the switch-over doesn't have to fetch. Costs occasional extra network requests during mobile video playback. Pairs with the two settings above.
-          </small>
-          <small id="bg-audio-sync-error" class="field-error"></small>
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default reveal-toggle" role="listitem" data-loading><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="bg-audio-sync-check">Instant background-audio handoff (experimental)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="bg-audio-sync-check" /></span></div>
+          </div>
+          <p class="setup-note">Shrinks the brief audio gap when you lock the screen during a video: the background audio track quietly keeps pace with your position while you watch, so the switch-over doesn't have to fetch. Costs occasional extra network requests during mobile video playback. Pairs with the two settings above.</p>
+          <p id="bg-audio-sync-error" class="ui-field__error" hidden></p>
         </div>
-        <!-- v1.161.3 (Dean): the background keep-alive experiment. Device-local;
-             OFF by default (real battery cost). -->
-        <div class="form-group">
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="bg-keepalive-check" />
-            Experimental: keep background video-audio controllable while locked (iOS)
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            When a video's audio is playing in the background, this plays a silent loop to keep the app awake so pausing from your AirPods or the lock screen can be un-paused again. Fixes the "pauses but won't resume when locked" quirk - but the app never sleeps while backgrounded, so it uses more battery. Leave off unless you want it. Per device; takes effect on the next video you open.
-          </small>
+        <!-- v1.161.3 (Dean): the background keep-alive experiment. Device-local; OFF by default (real battery cost). -->
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="bg-keepalive-check">Experimental: keep background video-audio controllable while locked (iOS)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="bg-keepalive-check" /></span></div>
+          </div>
+          <p class="setup-note">When a video's audio is playing in the background, this plays a silent loop to keep the app awake so pausing from your AirPods or the lock screen can be un-paused again. Fixes the "pauses but won't resume when locked" quirk - but the app never sleeps while backgrounded, so it uses more battery. Leave off unless you want it. Per device; takes effect on the next video you open.</p>
         </div>
-        <!-- Lock-to-audio phase 1 (Dean 2026-09-24): MEASURE the audio gap when a
-             playing video hands off to background audio. Device-local, OFF by
-             default; player.js collects, setup.js wireBgTimingLog renders. -->
-        <div class="form-group">
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="bg-timing-log-check" />
-            Background audio timing log
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Measures the audio gap when a playing video switches to background audio (lock, app switch or tab switch) on this device, and how the video picks up again when you come back. Shows the last 20 below; Copy puts the full detail on the clipboard to share. Per device, nothing is sent anywhere; starts with the next switch.
-          </small>
+        <!-- Lock-to-audio phase 1 (Dean 2026-09-24): MEASURE the audio gap on a background handoff. player.js collects, setup.js wireBgTimingLog renders. -->
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="bg-timing-log-check">Background audio timing log</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="bg-timing-log-check" /></span></div>
+          </div>
+          <p class="setup-note">Measures the audio gap when a playing video switches to background audio (lock, app switch or tab switch) on this device, and how the video picks up again when you come back. Shows the last 20 below; Copy puts the full detail on the clipboard to share. Per device, nothing is sent anywhere; starts with the next switch.</p>
           <div id="bg-timing-log-panel" class="bg-timing-log" hidden>
             <div class="action-bar">
-              <button type="button" class="btn btn-sm" id="bg-timing-log-copy">Copy</button>
-              <button type="button" class="btn btn-sm" id="bg-timing-log-clear">Clear</button>
+              <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" id="bg-timing-log-copy"><span class="ui-btn__label">Copy</span></button>
+              <button type="button" class="ui-btn ui-btn--danger ui-btn--sm" id="bg-timing-log-clear">Clear</button>
             </div>
             <div id="bg-timing-log-status" class="action-status" aria-live="polite"></div>
             <div id="bg-timing-log-table" class="bg-timing-log-table"></div>
             <textarea id="bg-timing-log-text" class="bg-timing-log-text" readonly hidden aria-label="Timing log text"></textarea>
           </div>
         </div>
-        <!-- v1.136.1: the audio-session declare EXPERIMENT (PWA coupling E2),
-             demoted from unconditional after a failed device test. Device-
-             local; OFF by default. -->
-        <div class="form-group">
-          <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="audio-session-declare-check" />
-            Experimental: declare a playback audio session for audio items (iOS)
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Marks this app as a media playback app to iOS when music/podcasts load. In first testing this made backgrounded audio MORE fragile on iOS 26.6 - leave off unless experimenting. Per device; takes effect on the next item you open.
-          </small>
+        <!-- v1.136.1: the audio-session declare EXPERIMENT (PWA coupling E2). Device-local; OFF by default. -->
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="audio-session-declare-check">Experimental: declare a playback audio session for audio items (iOS)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="audio-session-declare-check" /></span></div>
+          </div>
+          <p class="setup-note">Marks this app as a media playback app to iOS when music/podcasts load. In first testing this made backgrounded audio MORE fragile on iOS 26.6 - leave off unless experimenting. Per device; takes effect on the next item you open.</p>
         </div>
         <!-- v1.34 T4 (Dean): custom-vs-native mobile video controls. -->
-        <div class="form-group">
-          <label class="reveal-toggle" data-loading style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="mobile-custom-player-check" />
-            Use custom player controls on touch devices
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            On devices shown the touch layout (phones and tablets), replaces the browser's native video controls with FileTube's own control bar - chapters, scrubbing and CC in one place. Desktops, including touchscreen laptops, always use FileTube's controls regardless of this setting. Off by default (native controls on touch).
-          </small>
-          <small id="mobile-custom-player-error" class="field-error"></small>
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default reveal-toggle" role="listitem" data-loading><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="mobile-custom-player-check">Use custom player controls on touch devices</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="mobile-custom-player-check" /></span></div>
+          </div>
+          <p class="setup-note">On devices shown the touch layout (phones and tablets), replaces the browser's native video controls with FileTube's own control bar - chapters, scrubbing and CC in one place. Desktops, including touchscreen laptops, always use FileTube's controls regardless of this setting. Off by default (native controls on touch).</p>
+          <p id="mobile-custom-player-error" class="ui-field__error" hidden></p>
         </div>
-        <!-- Click wheel test: a device-local diagnostic that
-             reproduces the iPod wheel's native haptic so the tick behaviour
-             can be felt AND measured on a real phone. Opens a full-screen
-             tool (setup.js openWheelCal); does NOT change the live wheel. -->
-        <div class="form-group">
-          <button type="button" class="btn" id="wheel-cal-open">Open Click wheel test</button>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            A diagnostic for the click-wheel's Taptic feedback on the Click skins. Spin the on-screen wheel to feel the haptic and watch where ticks thin out toward the rim - it helps pin why the buzz can feel inconsistent further from the centre. Reading only; it never changes the real wheel.
-          </small>
+        <!-- Click wheel test: a device-local diagnostic (setup.js openWheelCal); does NOT change the live wheel. -->
+        <div class="setup-group">
+          <div class="action-bar">
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="wheel-cal-open"><span class="ui-btn__label">Open Click wheel test</span></button>
+          </div>
+          <p class="setup-note">A diagnostic for the click-wheel's Taptic feedback on the Click skins. Spin the on-screen wheel to feel the haptic and watch where ticks thin out toward the rim - it helps pin why the buzz can feel inconsistent further from the centre. Reading only; it never changes the real wheel.</p>
         </div>
-        <!-- Performance diagnostics: a device-real measurement suite for
-             navigation/playback latency across networks (LAN vs 5G/VPN). When
-             on, it exposes the /diag control page and rides a passive collector
-             on the shells; off by default so a normal install carries no cost. -->
-        <div class="form-group">
-          <label class="reveal-toggle" data-loading style="display:flex; align-items:center; gap:8px; font-weight:normal;">
-            <input type="checkbox" id="perf-diag-check" />
-            Performance diagnostics (experimental)
-          </label>
-          <small style="color: var(--text-secondary); margin-top:4px; display:block;">
-            Turns on a measurement suite for how fast content navigates and starts to play, across different networks. When on, opens the <a href="/diag" id="perf-diag-open-link">/diag</a> control page - arm a labelled run (LAN, 5G+VPN...), follow the guided scenarios, fire the RTT / throughput / compression probes, then read the isolation matrix to see which fix would help most. Adds a small timing header to responses and a passive collector to pages while on. Admin-only; off by default.
-          </small>
-          <small id="perf-diag-error" class="field-error"></small>
-          <div style="margin-top:8px;">
-            <a class="btn" href="/diag" id="perf-diag-open-btn" target="_blank" rel="noopener" hidden>Open performance diagnostics &#8599;</a>
+        <!-- Performance diagnostics: exposes the /diag control page and a passive collector while on; off by default. -->
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default reveal-toggle" role="listitem" data-loading><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="perf-diag-check">Performance diagnostics (experimental)</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="perf-diag-check" /></span></div>
+          </div>
+          <p class="setup-note">Turns on a measurement suite for how fast content navigates and starts to play, across different networks. When on, opens the <a href="/diag" id="perf-diag-open-link">/diag</a> control page - arm a labelled run (LAN, 5G+VPN...), follow the guided scenarios, fire the RTT / throughput / compression probes, then read the isolation matrix to see which fix would help most. Adds a small timing header to responses and a passive collector to pages while on. Admin-only; off by default.</p>
+          <p id="perf-diag-error" class="ui-field__error" hidden></p>
+          <div class="action-bar">
+            <a class="ui-btn ui-btn--secondary ui-btn--md" href="/diag" id="perf-diag-open-btn" target="_blank" rel="noopener" hidden><span class="ui-btn__label">Open performance diagnostics</span><span class="ui-btn__icon"><svg class="ui-icon ui-icon--md" aria-hidden="true"><use href="#i-open_in_new"/></svg></span></a>
           </div>
         </div>
       </details>
-
-      <!-- v1.201 (Dean): "Share transcript with AI" - named preamble prompts
-           sent in front of a transcript through the share sheet, so any AI
-           app (Claude, Gemini, ChatGPT...) gets the analysis request AND the
-           text in one share. Instance-wide (admin edits, everyone uses);
-           several prompts allowed, picked by name at share time; an EMPTY
-           list hides the action on the watch page. Saved on change via
-           POST /api/settings `transcriptAiPrompts` (setup.js
-           renderTranscriptAiPromptsEditor). -->
-      <details class="setup-box sub-collapsible" data-collapse-key="transcript-ai" data-md-icon="copy" data-md-group="Advanced" open>
+      <!-- v1.201 (Dean): "Share transcript with AI" - named preamble prompts, instance-wide (admin edits, everyone uses); saved on change via POST /api/settings `transcriptAiPrompts`. -->
+      <details class="setup-box setup-sec sub-collapsible" data-collapse-key="transcript-ai" data-md-icon="copy" data-md-group="Advanced" open>
         <summary>Transcript sharing</summary>
-        <p>Prompts for the <strong>Share with AI</strong> action on a video's
-           transcript. The prompt you pick is placed in front of the transcript
-           in the share sheet, so the AI app you send it to gets your request
-           and the text together. Add one per kind of analysis you ask for;
-           remove them all to hide the action.</p>
+        <p class="setup-intro">Prompts for the <strong>Share with AI</strong> action on a video's transcript. The prompt you pick is placed in front of the transcript in the share sheet, so the AI app you send it to gets your request and the text together. Add one per kind of analysis you ask for; remove them all to hide the action.</p>
         <div id="transcript-ai-prompts" class="transcript-ai-prompts" aria-live="polite"></div>
-        <button type="button" class="btn" id="transcript-ai-add-btn">Add prompt</button>
-        <small id="transcript-ai-error" class="field-error"></small>
+        <div class="action-bar">
+          <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="transcript-ai-add-btn"><span class="ui-btn__label">Add prompt</span></button>
+        </div>
+        <p id="transcript-ai-error" class="ui-field__error" hidden></p>
       </details>
       </div><!-- /.md-root -->
       </div>

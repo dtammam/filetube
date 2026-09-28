@@ -19,6 +19,7 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM, VirtualConsole } = require('jsdom');
+const { loadUi, openDialog, parts, answer, settle, drainSheets, DISMISSALS } = require('../helpers/ui-dialogs');
 
 const PUB = path.join(__dirname, '..', '..', 'public');
 const LOCK_SRC = fs.readFileSync(path.join(PUB, 'js', 'body-scroll-lock.js'), 'utf8');
@@ -596,16 +597,19 @@ test('a no-swap return records a video that KEPT playing (native fullscreen sust
 // ---- the Setup readout, fed by records the REAL player wrote --------------------
 
 function setupDom(storageItems) {
-  const start = SETUP_HTML.indexOf('<div class="form-group">', SETUP_HTML.indexOf('Lock-to-audio phase 1'));
+  // Sweep S8: the block is a .setup-group (a switch row + note + the panel).
+  const start = SETUP_HTML.indexOf('<div class="setup-group">', SETUP_HTML.indexOf('Lock-to-audio phase 1'));
   const end = SETUP_HTML.indexOf('<!-- v1.136.1: the audio-session declare EXPERIMENT');
   assert.ok(start > 0 && end > start, 'the markup block is in setup.html');
   const sdom = new JSDOM('<!DOCTYPE html><body>' + SETUP_HTML.slice(start, end) + '</body>', { url: 'http://localhost/setup' });
   for (const [k, v] of Object.entries(storageItems || {})) sdom.window.localStorage.setItem(k, v);
   const saved = { navigator: Object.getOwnPropertyDescriptor(globalThis, 'navigator') };
   global.window = sdom.window; global.document = sdom.window.document; global.localStorage = sdom.window.localStorage;
+  global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
+  loadUi(); // the REAL ui.js: Clear's confirm step (sweep S8)
   Object.defineProperty(globalThis, 'navigator', { value: sdom.window.navigator, configurable: true, writable: true });
   const restore = () => {
-    delete global.window; delete global.document; delete global.localStorage;
+    delete global.window; delete global.document; delete global.localStorage; delete global.requestAnimationFrame;
     if (saved.navigator) Object.defineProperty(globalThis, 'navigator', saved.navigator); else delete globalThis.navigator;
     sdom.window.close();
   };
@@ -693,7 +697,9 @@ test('Setup: Copy puts every record on the clipboard; without a clipboard the te
   assert.match(ta.value, /hide->audio/);
 });
 
-test('Setup: Clear takes two taps - one tap never clears a populated log; the second empties storage and the table', async (t) => {
+// Sweep S8 (D4.8, AC12 conversion of the two-tap Clear): Clear opens a danger ui.confirm; the
+// log is removed only after it resolves true - every dismissal keeps a populated log.
+test('Setup: Clear asks first - no dismissal clears a populated log; OK empties storage and the table', async (t) => {
   const raw = await realRecords();
   const s = setupDom({ [ON_KEY]: '1', [LOG_KEY]: raw });
   t.after(s.restore);
@@ -702,15 +708,25 @@ test('Setup: Clear takes two taps - one tap never clears a populated log; the se
   const { wireBgTimingLog } = require('../../public/js/setup.js');
   wireBgTimingLog(ac.signal);
   const btn = s.doc.getElementById('bg-timing-log-clear');
+  for (const how of DISMISSALS) {
+    btn.click();
+    await settle();
+    assert.match(parts(openDialog(s.doc)).title, /Clear the timing log\?/);
+    assert.ok(parts(openDialog(s.doc)).ok.classList.contains('ui-btn--destructive'), 'a danger confirm');
+    answer(s.doc, how);
+    await settle();
+    assert.ok(s.sdom.window.localStorage.getItem(LOG_KEY), how + ' kept the log');
+    assert.strictEqual(s.doc.querySelectorAll('.bg-timing-log-row').length, 1);
+    await drainSheets(s.sdom.window);
+  }
   btn.click();
-  assert.strictEqual(btn.textContent, 'Tap again to clear');
-  assert.ok(s.sdom.window.localStorage.getItem(LOG_KEY), 'one tap kept the log');
-  assert.strictEqual(s.doc.querySelectorAll('.bg-timing-log-row').length, 1);
-  btn.click();
+  await settle();
+  answer(s.doc, 'ok');
+  await settle();
   assert.strictEqual(s.sdom.window.localStorage.getItem(LOG_KEY), null, 'cleared');
   assert.strictEqual(s.doc.querySelectorAll('.bg-timing-log-row').length, 0);
   assert.match(s.doc.getElementById('bg-timing-log-table').textContent, /No handoffs recorded yet/);
-  assert.strictEqual(btn.textContent, 'Clear');
+  await drainSheets(s.sdom.window);
 });
 
 test('Setup: Copy calls writeText SYNCHRONOUSLY inside the tap (iOS user activation); a REJECTED write shows the text box', async (t) => {
@@ -733,20 +749,24 @@ test('Setup: Copy calls writeText SYNCHRONOUSLY inside the tap (iOS user activat
   assert.match(s.doc.getElementById('bg-timing-log-status').textContent, /select the text below/);
 });
 
-test('Setup: an armed Clear disarms after 4 s - a later single tap never clears', async (t) => {
+test('Setup: a Clear confirm left open when the view is torn down never clears (the view signal answers false)', async (t) => {
   const raw = await realRecords();
   const s = setupDom({ [ON_KEY]: '1', [LOG_KEY]: raw });
   t.after(s.restore);
-  t.mock.timers.enable({ apis: ['setTimeout'] });
-  const { wireBgTimingLog } = require('../../public/js/setup.js');
-  wireBgTimingLog(new s.sdom.window.AbortController().signal);
-  const btn = s.doc.getElementById('bg-timing-log-clear');
-  btn.click();
-  assert.strictEqual(btn.textContent, 'Tap again to clear');
-  t.mock.timers.tick(4000);
-  assert.strictEqual(btn.textContent, 'Clear', 'disarmed');
-  btn.click();
-  assert.ok(s.sdom.window.localStorage.getItem(LOG_KEY), 'one tap after the disarm only re-arms');
+  const setup = require('../../public/js/setup.js');
+  const ac = new s.sdom.window.AbortController();
+  setup.__setFolderStateForTests({ controller: ac }); // the view's controller: the confirm rides its signal
+  t.after(() => setup.__setFolderStateForTests({ controller: null }));
+  setup.wireBgTimingLog(ac.signal);
+  s.doc.getElementById('bg-timing-log-clear').click();
+  await settle();
+  const k = parts(openDialog(s.doc));
+  ac.abort(); // navigate away
+  await settle();
+  k.ok.click(); // a late OK on the closing dialog
+  await settle();
+  assert.ok(s.sdom.window.localStorage.getItem(LOG_KEY), 'the log survives the teardown');
+  await drainSheets(s.sdom.window);
 });
 
 test('Setup: the note words a no-swap return by what the video did; a pending return and a retried cycle say so; a bad t never throws Copy', () => {

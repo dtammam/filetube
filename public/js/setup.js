@@ -73,9 +73,9 @@ function buildSetupFolderSkeleton(n) {
   for (let i = 0; i < count; i++) {
     html += '<div class="folder-item-row" aria-hidden="true">'
       + '<span class="drag-handle"></span>'
-      + '<div style="flex:1; min-width:0;">'
+      + '<div class="folder-item-body">'
       + '<div class="skeleton-shimmer skeleton-line skeleton-line-title"></div>'
-      + '<div class="skeleton-shimmer skeleton-line" style="margin-top:8px; max-width:55%;"></div>'
+      + '<div class="skeleton-shimmer skeleton-line folder-item-skeleton-meta"></div>'
       + '</div></div>';
   }
   return html;
@@ -123,7 +123,6 @@ async function loadConfig() {
       folderList.innerHTML = '';
       const note = document.createElement('div');
       note.className = 'config-load-error';
-      note.style.cssText = 'padding: var(--space-3) 0; color: var(--text-secondary);';
       note.textContent = CONFIG_NOT_LOADED_MESSAGE;
       folderList.appendChild(note);
     }
@@ -166,6 +165,28 @@ function buildGlyphOptionsHtml(selected, includeDefault) {
 }
 
 // Render configured folder rows in wizard
+// Sweep S8: the shared Remove control of every configured-folder row (a ui-btn icon
+// button over the registry's close glyph; it was a U+00D7 text glyph) and its confirm.
+const FOLDER_SELECT_CHEVRON = '<svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg>';
+function folderRemoveBtnHtml(folder, index) {
+  return '<button type="button" class="ui-btn ui-btn--plain ui-btn--sm ui-btn--icon folder-remove-btn" data-index="' + index + '"'
+    + ' data-path="' + escapeHtml(folder) + '" aria-label="Remove ' + escapeHtml(folder) + '" title="Remove folder">'
+    + '<span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true"><use href="#i-close"/></svg></span></button>';
+}
+const FOLDER_REMOVE_COPY = {
+  video: 'Its videos leave your library when you save (the files on disk are not touched), along with their watch progress and likes.',
+  book: 'Its books leave the Books library when you save (the files on disk are not touched).',
+  music: 'Its music leaves the Music library when you save (the files on disk are not touched).',
+  tv: 'Its shows leave the Shows library when you save (the files on disk are not touched).',
+};
+function confirmFolderRemove(folder, kind) {
+  return confirmDestructive({
+    title: 'Remove this folder?',
+    body: String(folder || '') + ' - ' + (FOLDER_REMOVE_COPY[kind] || FOLDER_REMOVE_COPY.video),
+    confirmLabel: 'Remove folder',
+  });
+}
+
 function renderFolders() {
   const container = document.getElementById('folders-builder-list');
   if (!container) return;
@@ -186,28 +207,31 @@ function renderFolders() {
     // on Dean's phone. The handle is no longer aria-hidden either: it is now
     // the keyboard reorder control that replaces the deleted buttons.
     row.dataset.index = String(index);
+    // Sweep S8: the row's controls are primitives (ui-field input, ui-select, two
+    // ui-switch checkboxes, a ui-btn icon Remove); no inline styles. Every class and
+    // data-index hook the listeners below key off is unchanged.
     row.innerHTML = `
       <span class="drag-handle" title="Drag to reorder"></span>
-      <div style="flex:1; min-width:0;">
+      <div class="folder-item-body">
         <div class="folder-path-text" title="${escapeHtml(folder)}">${escapeHtml(folder)}</div>
-        <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
-          <input type="text" class="folder-name-input" data-index="${index}" placeholder="Display name (optional)"
-                 value="${escapeHtml(s.name || '')}" style="flex:1; min-width:120px; padding:8px 10px;" />
-          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); white-space:nowrap;">
-            Icon
-            <select class="folder-glyph-select" data-index="${index}" aria-label="Icon for ${escapeHtml(folder)}">
+        <div class="folder-item-controls">
+          <input type="text" class="ui-field__input folder-name-input" data-index="${index}" placeholder="Display name (optional)"
+                 aria-label="Display name for ${escapeHtml(folder)}" value="${escapeHtml(s.name || '')}" />
+          <label class="folder-item-opt">
+            <span>Icon</span>
+            <span class="ui-select"><select class="ui-select__native folder-glyph-select" data-index="${index}" aria-label="Icon for ${escapeHtml(folder)}">
               ${buildGlyphOptionsHtml(s.glyph, false)}
-            </select>
+            </select>${FOLDER_SELECT_CHEVRON}</span>
           </label>
-          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); white-space:nowrap;">
-            <input type="checkbox" class="folder-hidden-check" data-index="${index}" ${s.hidden ? 'checked' : ''} /> Hide from home
+          <label class="folder-item-opt">
+            <input type="checkbox" role="switch" class="ui-switch folder-hidden-check" data-index="${index}" ${s.hidden ? 'checked' : ''} /> <span>Hide from home</span>
           </label>
-          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); white-space:nowrap;">
-            <input type="checkbox" class="folder-hidden-sidebar-check" data-index="${index}" ${s.hiddenFromSidebar ? 'checked' : ''} /> Hide from sidebar
+          <label class="folder-item-opt">
+            <input type="checkbox" role="switch" class="ui-switch folder-hidden-sidebar-check" data-index="${index}" ${s.hiddenFromSidebar ? 'checked' : ''} /> <span>Hide from sidebar</span>
           </label>
         </div>
       </div>
-      <button class="remove-folder-btn" data-index="${index}" title="Remove folder">&times;</button>
+      ${folderRemoveBtnHtml(folder, index)}
     `;
     container.appendChild(row);
 
@@ -224,7 +248,7 @@ function renderFolders() {
     // text is a static literal (no dynamic/user data), so no innerHTML
     // interpolation of dynamic strings is introduced.
     if (isSyntheticFolder(folder, syntheticFolders)) {
-      const removeBtn = row.querySelector('.remove-folder-btn');
+      const removeBtn = row.querySelector('.folder-remove-btn');
       if (removeBtn) {
         removeBtn.disabled = true;
         removeBtn.title = "This is the auto-managed downloads folder — rename or reorder it here, but it can't be removed (disable the yt-dlp module to remove it).";
@@ -307,19 +331,24 @@ function renderFolders() {
     }, { signal: controller.signal });
   });
 
-  // Add delete handlers
-  container.querySelectorAll('.remove-folder-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const index = parseInt(e.target.dataset.index);
+  // Add delete handlers. Sweep S8 (D4.8): Remove asks first (confirmFolderRemove); the
+  // folder leaves this form only on yes, and nothing is persisted until Save, as before.
+  container.querySelectorAll('.folder-remove-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const path = configuredFolders[parseInt(btn.dataset.index)];
       // FR-4 (v1.19.0): defensive guard, belt-and-suspenders alongside the
       // `disabled` DOM property set above (which already stops a click from
       // ever reaching this handler for the synthetic row) -- removing it
       // would accomplish nothing durable anyway (see server.js's synthetic-
       // folder self-heal), so never mutate state for it even if this handler
       // somehow ran.
-      if (isSyntheticFolder(configuredFolders[index], syntheticFolders)) return;
-      delete folderSettings[configuredFolders[index]];
-      configuredFolders.splice(index, 1);
+      if (path === undefined || isSyntheticFolder(path, syntheticFolders)) return;
+      if (!(await confirmFolderRemove(path, 'video'))) return;
+      // The list may have been reordered while the dialog was open: remove by PATH.
+      const at = configuredFolders.indexOf(path);
+      if (at === -1) return;
+      delete folderSettings[path];
+      configuredFolders.splice(at, 1);
       renderFolders();
     }, { signal: controller.signal });
   });
@@ -489,8 +518,8 @@ function renderThemePicker() {
     <button type="button" class="theme-card${t.id === active ? ' active' : ''}"
             data-era="${t.id}">
       <span class="theme-swatch">
-        <span style="background:${t.swatch[0]}"></span>
-        <span style="background:${t.swatch[1]}"></span>
+        <span style="--swatch:${t.swatch[0]}"></span>
+        <span style="--swatch:${t.swatch[1]}"></span>
       </span>
       <span class="theme-card-name">${t.name}
         <span class="theme-card-year">${t.year}</span></span>
@@ -631,7 +660,7 @@ function writeStickerPref(obj) {
 // kind change preserves size/tilt (JSON drops any explicit `undefined`). Mirrors music.js's
 // ft-sticker shape {kind,value?,v?,size?,tilt?}.
 function mergeStickerPref(patch) { writeStickerPref(Object.assign({}, readStickerPref(), patch)); }
-const STICKER_SIZES = [['default', 'Default'], ['2x', '2×'], ['3x', '3×']]; // v1.243: 5x removed (overlapped the wheel)
+const STICKER_SIZES = [['default', 'Default'], ['2x', '2x'], ['3x', '3x']]; // v1.243: 5x removed (overlapped the wheel)
 const STICKER_TILTS = [['straight', 'Straight'], ['left', 'Left'], ['right', 'Right']];
 function escStickerHtml(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -659,19 +688,28 @@ async function renderStickerPicker() {
   }
   container.innerHTML = `<div class="sticker-cards">${cards.join('')}</div>
     <div class="sticker-emoji-row">
-      <input type="text" id="sticker-emoji-input" class="sticker-emoji-input" maxlength="8" placeholder="Any emoji" aria-label="Custom emoji" />
-      <button type="button" class="btn btn-sm" id="sticker-emoji-set">Use emoji</button>
+      <input type="text" id="sticker-emoji-input" class="ui-field__input sticker-emoji-input" maxlength="8" placeholder="Any emoji" aria-label="Custom emoji" />
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="sticker-emoji-set">Use emoji</button>
     </div>
-    <div class="sticker-actions">
-      <button type="button" class="btn btn-sm" id="sticker-upload-btn">Upload image…</button>
-      <button type="button" class="btn btn-sm" id="sticker-remove-custom"${hasCustom ? '' : ' hidden'}>Remove your image</button>
+    <div class="action-bar">
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="sticker-upload-btn">Upload image…</button>
+      <button type="button" class="ui-btn ui-btn--danger ui-btn--md" id="sticker-remove-custom"${hasCustom ? '' : ' hidden'}>Remove your image</button>
     </div>
-    <div class="sticker-opt-row"><span class="sticker-opt-label">Size</span><div class="sticker-opts">${
-      STICKER_SIZES.map(([v, l]) => `<button type="button" class="theme-card sticker-opt${(pref.size || 'default') === v ? ' active' : ''}" data-sticker-size="${v}">${l}</button>`).join('')
-    }</div></div>
-    <div class="sticker-opt-row"><span class="sticker-opt-label">Tilt</span><div class="sticker-opts">${
-      STICKER_TILTS.map(([v, l]) => `<button type="button" class="theme-card sticker-opt${(pref.tilt || 'left') === v ? ' active' : ''}" data-sticker-tilt="${v}">${l}</button>`).join('')
-    }</div></div>`;
+    <div class="sticker-opt-row"><span class="ui-field__label">Size</span><span data-sticker-seg="size"></span></div>
+    <div class="sticker-opt-row"><span class="ui-field__label">Tilt</span><span data-sticker-seg="tilt"></span></div>`;
+  // Sweep S8: Size and Tilt are ui.segmented controls (were theme-card chips). Each item keeps
+  // its data-sticker-size / data-sticker-tilt hook; a pick merges the pref and re-renders.
+  const u = settingsUi();
+  [['size', STICKER_SIZES, pref.size || 'default', 'Sticker size'], ['tilt', STICKER_TILTS, pref.tilt || 'left', 'Sticker tilt']].forEach(([key, opts, cur, label]) => {
+    const host = container.querySelector('[data-sticker-seg="' + key + '"]');
+    if (!host || !u || typeof u.segmented !== 'function') return;
+    const seg = u.segmented({
+      label, value: cur, options: opts.map(([v, l]) => ({ value: v, label: l })),
+      onChange: (v) => { mergeStickerPref({ [key]: v }); renderStickerPicker(); },
+    });
+    seg.querySelectorAll('.ui-segmented__item').forEach((b) => b.setAttribute('data-sticker-' + key, b.getAttribute('data-value')));
+    host.replaceWith(seg);
+  });
   const sig = { signal: controller.signal };
   container.querySelectorAll('.sticker-card').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -684,8 +722,6 @@ async function renderStickerPicker() {
       renderStickerPicker();
     }, sig);
   });
-  container.querySelectorAll('[data-sticker-size]').forEach((b) => b.addEventListener('click', () => { mergeStickerPref({ size: b.dataset.stickerSize }); renderStickerPicker(); }, sig));
-  container.querySelectorAll('[data-sticker-tilt]').forEach((b) => b.addEventListener('click', () => { mergeStickerPref({ tilt: b.dataset.stickerTilt }); renderStickerPicker(); }, sig));
   const emojiSet = document.getElementById('sticker-emoji-set');
   const emojiInput = document.getElementById('sticker-emoji-input');
   if (emojiSet && emojiInput) emojiSet.addEventListener('click', () => {
@@ -714,6 +750,12 @@ async function renderStickerPicker() {
   }
   const removeBtn = document.getElementById('sticker-remove-custom');
   if (removeBtn) removeBtn.addEventListener('click', async () => {
+    const yes = await confirmDestructive({
+      title: 'Remove your sticker image?',
+      body: 'The uploaded image is deleted from your account; the sticker goes back to the FileTube logo.',
+      confirmLabel: 'Remove',
+    });
+    if (!yes) return;
     try {
       const res = await fetch('/api/me/sticker', { method: 'DELETE' });
       if (!res.ok) { showToast('Could not remove your sticker.'); return; }
@@ -736,15 +778,35 @@ async function renderStickerPicker() {
 // Shows/clears a field-level validation error next to a control (400s
 // from POST /api/settings), instead of silently swallowing them or using
 // a page-wide alert.
+// Sweep S8: the error line is a `ui-field__error` shown and hidden by the `hidden`
+// attribute (the global [hidden] rule), never by an inline display write.
 function setFieldError(el, message) {
   if (!el) return;
-  if (message) {
-    el.textContent = message;
-    el.style.display = 'block';
-  } else {
-    el.textContent = '';
-    el.style.display = 'none';
-  }
+  el.textContent = message ? message : '';
+  el.hidden = !message;
+}
+
+// ---- Sweep S8 (plan D4.8): the ONE confirm step for every destructive Settings action.
+// Resolves true only when the user confirms in the ui.confirm dialog (danger fill); every
+// caller sends its request only AFTER that. Cancel, Esc, the scrim, Close, a view teardown
+// (the controller's signal) and a missing ui.js all answer false, so no path can reach a
+// destructive request without an explicit yes.
+function settingsUi() {
+  return (typeof window !== 'undefined' && window.ui) || null;
+}
+function confirmDestructive(o) {
+  const u = settingsUi();
+  if (!u || typeof u.confirm !== 'function') return Promise.resolve(false);
+  return u.confirm({
+    title: o.title, body: o.body, confirmLabel: o.confirmLabel, cancelLabel: 'Cancel', danger: true,
+    signal: controller ? controller.signal : undefined,
+  }).then((yes) => yes === true);
+}
+// A refused or failed action says so in a toast (it was a window.alert, F55).
+function settingsNotice(message, kind) {
+  const u = settingsUi();
+  if (u && typeof u.toast === 'function') { u.toast(String(message), { kind: kind || 'error' }); return; }
+  if (typeof showToast === 'function') showToast(String(message));
 }
 
 // Chapter Snap (2026-09-24): the server-wide lead-in select (seconds, 0-2). Its own
@@ -935,20 +997,26 @@ function wireCritterManager(signal) {
       img.loading = 'lazy';
       const name = document.createElement('span');
       name.className = 'critter-pool-name';
-      // ♪ = a small eighth note: this critter has a tap voice.
-      name.textContent = c.sound ? c.id + ' ♪' : c.id;
+      name.textContent = c.id;
+      // A sprite note glyph = this critter has its own tap voice (was a U+266A text glyph).
+      const u = settingsUi();
+      if (c.sound && u && typeof u.icon === 'function') {
+        name.appendChild(u.icon('music_note', { size: 'sm', cls: 'critter-pool-voice' }));
+        name.setAttribute('aria-label', c.id + ' (has its own sound)');
+      }
       const del = document.createElement('button');
       del.type = 'button';
-      del.className = 'btn btn-sm critter-pool-delete';
+      del.className = 'ui-btn ui-btn--danger ui-btn--sm critter-pool-delete';
       del.textContent = 'Delete';
-      let armed = false; // closure-LOCAL two-tap arm (the v1.162 load-bearing shape)
+      // Sweep S8 (D4.8): the v1.162 two-tap arm became the ui.confirm step; the DELETE is
+      // sent only after it resolves true.
       del.addEventListener('click', async () => {
-        if (!armed) {
-          armed = true;
-          del.textContent = 'Really delete?';
-          del.classList.add('critter-delete-armed');
-          return;
-        }
+        const yes = await confirmDestructive({
+          title: 'Delete ' + c.id + '?',
+          body: 'This critter' + (c.sound ? ' and its sound are' : ' is') + ' removed from the pool for everyone. This cannot be undone.',
+          confirmLabel: 'Delete',
+        });
+        if (!yes) return;
         del.disabled = true;
         try {
           const r = await fetch('/api/critters/item?id=' + encodeURIComponent(c.id), { method: 'DELETE' });
@@ -1034,14 +1102,14 @@ function wireCritterManager(signal) {
     uploadFiles(files, CRITTER_SOUND_MIME_BY_EXT, 'sound (MP3, WAV, M4A, OGG)');
   }, { signal });
 
-  let delAllArmed = false; // closure-local, same discipline as the per-item arm
   delAllBtn.addEventListener('click', async () => {
-    if (!delAllArmed) {
-      delAllArmed = true;
-      delAllBtn.textContent = 'Really delete all ' + pool.length + (pool.length === 1 ? ' critter?' : ' critters?');
-      delAllBtn.classList.add('critter-delete-armed');
-      return;
-    }
+    const n = pool.length;
+    const yes = await confirmDestructive({
+      title: 'Delete all ' + n + (n === 1 ? ' critter?' : ' critters?'),
+      body: 'Every custom critter image and sound is removed from the pool for everyone. Download all first if you want a backup. This cannot be undone.',
+      confirmLabel: 'Delete all',
+    });
+    if (!yes) return;
     delAllBtn.disabled = true;
     try {
       const r = await fetch('/api/critters/all', { method: 'DELETE' });
@@ -1053,10 +1121,7 @@ function wireCritterManager(signal) {
     } catch (_) {
       setActionStatus(statusEl, 'Could not delete the pool (network error).', 'error');
     }
-    delAllArmed = false;
     delAllBtn.disabled = false;
-    delAllBtn.textContent = 'Delete all…';
-    delAllBtn.classList.remove('critter-delete-armed');
     afterMutation();
   }, { signal });
 
@@ -1253,7 +1318,8 @@ function renderBgTimingLog(host, records) {
 }
 
 // The toggle (device-local, '1' = on, absent = off - player.js reads it LIVE at
-// every hide), the panel (shown only while on), Copy and a two-tap Clear.
+// every hide), the panel (shown only while on), Copy and Clear (behind the
+// ui.confirm step since sweep S8; it was a two-tap arm).
 function wireBgTimingLog(signal) {
   const check = document.getElementById('bg-timing-log-check');
   const panel = document.getElementById('bg-timing-log-panel');
@@ -1264,16 +1330,9 @@ function wireBgTimingLog(signal) {
   const textArea = document.getElementById('bg-timing-log-text');
   if (!check || !panel) return;
   const say = (text) => { if (status) status.textContent = text || ''; };
-  let clearArmed = false;
-  let clearTimer = null;
-  const disarmClear = () => {
-    clearArmed = false;
-    if (clearTimer) { clearTimeout(clearTimer); clearTimer = null; }
-    if (clearBtn) clearBtn.textContent = 'Clear';
-  };
   const refresh = () => {
     panel.hidden = !check.checked;
-    if (!check.checked) { disarmClear(); return; }
+    if (!check.checked) return;
     renderBgTimingLog(tableHost, readBgTimingLog());
   };
   let raw = null;
@@ -1311,20 +1370,18 @@ function wireBgTimingLog(signal) {
     }, { signal });
   }
   if (clearBtn) {
-    clearBtn.addEventListener('click', () => {
-      if (!clearArmed) {
-        clearArmed = true;
-        clearBtn.textContent = 'Tap again to clear';
-        clearTimer = setTimeout(disarmClear, 4000);
-        return;
-      }
-      disarmClear();
+    clearBtn.addEventListener('click', async () => {
+      const yes = await confirmDestructive({
+        title: 'Clear the timing log?',
+        body: 'Every recorded handoff on this device is deleted. Copy it first if you want to share it.',
+        confirmLabel: 'Clear',
+      });
+      if (!yes || (signal && signal.aborted)) return;
       try { localStorage.removeItem(BG_TIMING_LOG_KEY); } catch (_) { /* storage disabled -- nothing to clear */ }
       if (textArea) { textArea.value = ''; textArea.hidden = true; }
       say('Cleared.');
       refresh();
     }, { signal });
-    if (signal) signal.addEventListener('abort', disarmClear, { once: true });
   }
 }
 
@@ -1420,9 +1477,14 @@ function drawLibraryGlyphEditor(host, settings, signal) {
     const label = document.createElement('span');
     label.className = 'card-corner-editor-label';
     label.textContent = slot.name;
+    // Sweep S8: a ui-select (the field styling + a chevron) trailing the label.
     const select = document.createElement('select');
-    select.className = 'card-corner-editor-select';
+    select.className = 'ui-select__native';
     select.setAttribute('aria-label', `${slot.name} icon`);
+    const box = document.createElement('span');
+    box.className = 'ui-select';
+    box.appendChild(select);
+    box.insertAdjacentHTML('beforeend', FOLDER_SELECT_CHEVRON);
     // The stored value, or the Default row when nothing valid is stored.
     select.innerHTML = buildGlyphOptionsHtml(settings[slot.key], true);
     select.addEventListener('change', () => {
@@ -1453,7 +1515,7 @@ function drawLibraryGlyphEditor(host, settings, signal) {
         });
     }, { signal });
     row.appendChild(label);
-    row.appendChild(select);
+    row.appendChild(box);
     host.appendChild(row);
   });
 }
@@ -1530,13 +1592,17 @@ function renderBottomBarEditor(signal) {
     const label = document.createElement('span');
     label.className = 'bottombar-editor-label';
     label.textContent = BOTTOMBAR_LABELS[id] || id;
-    const toggle = document.createElement('label');
-    toggle.style.cssText = 'display:flex; align-items:center; gap:var(--space-3); font-weight:normal;';
+    // Sweep S8: the Show control is a switch (a native checkbox wearing .ui-switch, so the
+    // .checked/change wiring below is unchanged), named for its item; no inline style.
+    const toggle = document.createElement('span');
+    toggle.className = 'bottombar-editor-toggle';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
+    cb.setAttribute('role', 'switch');
+    cb.className = 'ui-switch';
+    cb.setAttribute('aria-label', 'Show ' + (BOTTOMBAR_LABELS[id] || id));
     cb.checked = visibleSet.has(id);
     toggle.appendChild(cb);
-    toggle.appendChild(document.createTextNode('Show'));
 
     cb.addEventListener('change', () => {
       const c = FT.readBottomNavConfig();
@@ -1676,19 +1742,19 @@ function renderTranscriptAiPromptsEditor(signal) {
       head.appendChild(handle);
       const name = document.createElement('input');
       name.type = 'text';
-      name.className = 'transcript-ai-prompt-name';
+      name.className = 'ui-field__input transcript-ai-prompt-name';
       name.placeholder = 'Prompt name (e.g. Summarize)';
       name.maxLength = 60;
       name.value = prompt.name || '';
       name.setAttribute('aria-label', 'Prompt name');
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
-      removeBtn.className = 'btn';
+      removeBtn.className = 'ui-btn ui-btn--danger ui-btn--sm transcript-ai-prompt-remove';
       removeBtn.textContent = 'Remove';
       head.appendChild(name);
       head.appendChild(removeBtn);
       const text = document.createElement('textarea');
-      text.className = 'transcript-ai-prompt-text';
+      text.className = 'ui-field__input transcript-ai-prompt-text';
       text.placeholder = 'What to ask the AI - it goes in front of the transcript.';
       text.maxLength = 4000;
       text.value = prompt.text || '';
@@ -1698,7 +1764,19 @@ function renderTranscriptAiPromptsEditor(signal) {
       host.appendChild(row);
       name.addEventListener('input', scheduleSave, { signal });
       text.addEventListener('input', scheduleSave, { signal });
-      removeBtn.addEventListener('click', () => {
+      // Sweep S8 (D4.8): removing a SAVED or filled-in prompt is confirmed first (the list
+      // saves on change, instance-wide); an empty unsaved row just goes.
+      removeBtn.addEventListener('click', async () => {
+        const filled = !!row.dataset.promptId || name.value.trim() !== '' || text.value.trim() !== '';
+        if (filled) {
+          const label = name.value.trim();
+          const yes = await confirmDestructive({
+            title: 'Remove ' + (label ? 'the "' + label + '" prompt' : 'this prompt') + '?',
+            body: 'It is removed for everyone on this server, and the Share with AI action loses it.',
+            confirmLabel: 'Remove',
+          });
+          if (!yes || !row.isConnected) return;
+        }
         row.remove();
         if (saveTimer) clearTimeout(saveTimer);
         saveNow();
@@ -1949,6 +2027,12 @@ function wireLogoVariantControls(variant, inputId, uploadId, resetId) {
   });
 
   resetBtn.addEventListener('click', async () => {
+    const yes = await confirmDestructive({
+      title: 'Remove the ' + variant + '-mode logo?',
+      body: 'The header goes back to the "FileTube" text' + (variant === 'dark' ? ' in dark mode' : ' in light mode') + ' (or to your other logo, if you uploaded one). You can upload it again at any time.',
+      confirmLabel: 'Remove',
+    });
+    if (!yes) return;
     try {
       const r = await fetch('/api/settings/logo' + routeSuffix, { method: 'DELETE' });
       if (!r.ok) {
@@ -2067,22 +2151,23 @@ function renderBookFolders() {
     const row = document.createElement('div');
     row.className = 'folder-item-row';
     const pathWrap = document.createElement('div');
-    pathWrap.style.cssText = 'flex:1; min-width:0;';
+    pathWrap.className = 'folder-item-body';
     const pathText = document.createElement('div');
     pathText.className = 'folder-path-text';
     pathText.title = folder;
     pathText.textContent = folder;
     pathWrap.appendChild(pathText);
     row.appendChild(pathWrap);
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'remove-folder-btn';
-    removeBtn.title = 'Remove folder';
-    removeBtn.textContent = '×'; // ×
-    removeBtn.addEventListener('click', () => {
-      bookFolders.splice(index, 1);
+    row.insertAdjacentHTML('beforeend', folderRemoveBtnHtml(folder, index));
+    const removeBtn = row.lastElementChild;
+    // Sweep S8 (D4.8): confirmed first; the folder leaves this form only on yes (Save persists).
+    removeBtn.addEventListener('click', async () => {
+      if (!(await confirmFolderRemove(folder, 'book'))) return;
+      const at = bookFolders.indexOf(folder);
+      if (at === -1) return;
+      bookFolders.splice(at, 1);
       renderBookFolders();
     }, { signal: controller.signal });
-    row.appendChild(removeBtn);
     container.appendChild(row);
   });
 }
@@ -2122,7 +2207,7 @@ function wireBookFolderControls(signal) {
     const add = () => {
       const v = input.value.trim();
       if (!v) return;
-      if (bookFolders.includes(v)) { alert('This book folder is already added.'); return; }
+      if (bookFolders.includes(v)) { settingsNotice('This book folder is already added.'); return; }
       bookFolders.push(v);
       renderBookFolders();
       input.value = '';
@@ -2191,22 +2276,23 @@ function renderMusicFolders() {
     const row = document.createElement('div');
     row.className = 'folder-item-row';
     const pathWrap = document.createElement('div');
-    pathWrap.style.cssText = 'flex:1; min-width:0;';
+    pathWrap.className = 'folder-item-body';
     const pathText = document.createElement('div');
     pathText.className = 'folder-path-text';
     pathText.title = folder;
     pathText.textContent = folder;
     pathWrap.appendChild(pathText);
     row.appendChild(pathWrap);
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'remove-folder-btn';
-    removeBtn.title = 'Remove folder';
-    removeBtn.textContent = '×';
-    removeBtn.addEventListener('click', () => {
-      musicFolders.splice(index, 1);
+    row.insertAdjacentHTML('beforeend', folderRemoveBtnHtml(folder, index));
+    const removeBtn = row.lastElementChild;
+    // Sweep S8 (D4.8): confirmed first; the folder leaves this form only on yes (Save persists).
+    removeBtn.addEventListener('click', async () => {
+      if (!(await confirmFolderRemove(folder, 'music'))) return;
+      const at = musicFolders.indexOf(folder);
+      if (at === -1) return;
+      musicFolders.splice(at, 1);
       renderMusicFolders();
     }, { signal: controller.signal });
-    row.appendChild(removeBtn);
     container.appendChild(row);
   });
 }
@@ -2246,7 +2332,7 @@ function wireMusicFolderControls(signal) {
     const add = () => {
       const v = input.value.trim();
       if (!v) return;
-      if (musicFolders.includes(v)) { alert('This music folder is already added.'); return; }
+      if (musicFolders.includes(v)) { settingsNotice('This music folder is already added.'); return; }
       musicFolders.push(v);
       renderMusicFolders();
       input.value = '';
@@ -2312,22 +2398,23 @@ function renderTvFolders() {
     const row = document.createElement('div');
     row.className = 'folder-item-row';
     const pathWrap = document.createElement('div');
-    pathWrap.style.cssText = 'flex:1; min-width:0;';
+    pathWrap.className = 'folder-item-body';
     const pathText = document.createElement('div');
     pathText.className = 'folder-path-text';
     pathText.title = folder;
     pathText.textContent = folder;
     pathWrap.appendChild(pathText);
     row.appendChild(pathWrap);
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'remove-folder-btn';
-    removeBtn.title = 'Remove folder';
-    removeBtn.textContent = '×';
-    removeBtn.addEventListener('click', () => {
-      tvFolders.splice(index, 1);
+    row.insertAdjacentHTML('beforeend', folderRemoveBtnHtml(folder, index));
+    const removeBtn = row.lastElementChild;
+    // Sweep S8 (D4.8): confirmed first; the folder leaves this form only on yes (Save persists).
+    removeBtn.addEventListener('click', async () => {
+      if (!(await confirmFolderRemove(folder, 'tv'))) return;
+      const at = tvFolders.indexOf(folder);
+      if (at === -1) return;
+      tvFolders.splice(at, 1);
       renderTvFolders();
     }, { signal: controller.signal });
-    row.appendChild(removeBtn);
     container.appendChild(row);
   });
 }
@@ -2367,7 +2454,7 @@ function wireTvFolderControls(signal) {
     const add = () => {
       const v = input.value.trim();
       if (!v) return;
-      if (tvFolders.includes(v)) { alert('This Shows folder is already added.'); return; }
+      if (tvFolders.includes(v)) { settingsNotice('This Shows folder is already added.'); return; }
       tvFolders.push(v);
       renderTvFolders();
       input.value = '';
@@ -2477,7 +2564,7 @@ function wireStaticControls(signal) {
       const pathValue = newFolderPathInput.value.trim();
       if (!pathValue) return;
       if (configuredFolders.includes(pathValue)) {
-        alert('This folder directory is already added.');
+        settingsNotice('This folder directory is already added.');
         return;
       }
       configuredFolders.push(pathValue);
@@ -2839,32 +2926,37 @@ function wireStaticControls(signal) {
         if (!data) return;
         const channels = Array.isArray(data.channels) ? data.channels : [];
         musicChannelsList.textContent = '';
+        // Sweep S8: one grouped ui-row per channel - the name, a meta line ("8 songs",
+        // "· auto" while it is on only because it is mostly music), and a trailing switch
+        // (a native checkbox wearing .ui-switch; the same change -> POST wiring).
+        const slot = (cls) => { const el = document.createElement('span'); el.className = cls; return el; };
         if (channels.length === 0) {
-          const empty = document.createElement('small');
-          empty.className = 'music-channels-empty';
-          empty.textContent = 'No downloaded audio channels yet.';
+          const empty = document.createElement('div');
+          empty.className = 'ui-row ui-row--default music-channels-empty';
+          empty.setAttribute('role', 'listitem');
+          const body = slot('ui-row__body');
+          const t = slot('ui-row__meta');
+          t.textContent = 'No downloaded audio channels yet.';
+          body.appendChild(t);
+          empty.append(slot('ui-row__lead'), slot('ui-row__media'), body, slot('ui-row__aside'), slot('ui-row__actions'));
           musicChannelsList.appendChild(empty);
         } else {
           for (const ch of channels) {
             const row = document.createElement('label');
-            row.className = 'music-channels-row';
+            row.className = 'ui-row ui-row--default music-channels-row';
+            row.setAttribute('role', 'listitem');
             const cb = document.createElement('input');
             cb.type = 'checkbox';
+            cb.setAttribute('role', 'switch');
+            cb.className = 'ui-switch';
             cb.checked = !!ch.effective;
+            const meta = slot('ui-row__meta');
             // A channel that is on only because it's mostly-music (no explicit
-            // choice) is tagged "(auto)" so the on-state is never a mystery.
-            let autoTag = null;
+            // choice) is tagged "auto" so the on-state is never a mystery.
             const paintAutoTag = () => {
               const isAuto = ch.auto && ch.override == null;
-              if (isAuto && !autoTag) {
-                autoTag = document.createElement('span');
-                autoTag.className = 'auto-tag';
-                autoTag.textContent = '(auto)';
-                row.appendChild(autoTag);
-              } else if (!isAuto && autoTag) {
-                autoTag.remove();
-                autoTag = null;
-              }
+              const n = Number(ch.audioCount) || 0;
+              meta.textContent = (n === 1 ? '1 song' : n + ' songs') + (isAuto ? ' · auto' : '');
             };
             cb.addEventListener('change', () => {
               const next = cb.checked ? 'on' : 'off';
@@ -2875,15 +2967,18 @@ function wireStaticControls(signal) {
               })
                 .then((res) => {
                   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                  ch.override = next; // now an explicit choice - the "(auto)" tag drops
+                  ch.override = next; // now an explicit choice - the "auto" tag drops
                   paintAutoTag();
                 })
                 .catch(() => { showToast('Could not update that channel.'); cb.checked = !cb.checked; });
             }, { signal });
-            const name = document.createElement('span');
-            name.textContent = `${ch.displayName} (${ch.audioCount})`;
-            row.appendChild(cb);
-            row.appendChild(name);
+            const body = slot('ui-row__body');
+            const name = slot('ui-row__title');
+            name.textContent = ch.displayName;
+            body.append(name, meta);
+            const acts = slot('ui-row__actions');
+            acts.appendChild(cb);
+            row.append(slot('ui-row__lead'), slot('ui-row__media'), body, slot('ui-row__aside'), acts);
             paintAutoTag();
             musicChannelsList.appendChild(row);
           }
@@ -2945,30 +3040,32 @@ function wireStaticControls(signal) {
 
   const clearCacheBtn = document.getElementById('clear-cache-btn');
   if (clearCacheBtn) {
-    clearCacheBtn.addEventListener('click', () => {
-      showConfirmModal(
-        'Clear transcode cache?',
-        'This deletes all cached transcoded files. They will be regenerated automatically the next time they\'re watched.',
-        async () => {
-          const original = clearCacheBtn.textContent;
-          setButtonBusy(clearCacheBtn, true);
-          clearCacheBtn.textContent = 'Clearing…';
-          try {
-            const r = await fetch('/api/cache/clear', { method: 'POST' });
-            const data = await r.json();
-            if (data.success) {
-              await loadCacheSize();
-            } else {
-              console.error('Failed to clear cache:', data.error);
-            }
-          } catch (err) {
-            console.error('Failed to clear cache:', err);
-          } finally {
-            setButtonBusy(clearCacheBtn, false);
-            clearCacheBtn.textContent = original;
-          }
+    // Sweep S8 (D4.8): showConfirmModal -> the one ui.confirm step (danger); the same
+    // POST /api/cache/clear, sent only after it resolves true.
+    clearCacheBtn.addEventListener('click', async () => {
+      const yes = await confirmDestructive({
+        title: 'Clear the transcode cache?',
+        body: 'This deletes all cached transcoded files. They will be regenerated automatically the next time they\'re watched.',
+        confirmLabel: 'Clear cache',
+      });
+      if (!yes) return;
+      const original = clearCacheBtn.textContent;
+      setButtonBusy(clearCacheBtn, true);
+      clearCacheBtn.textContent = 'Clearing…';
+      try {
+        const r = await fetch('/api/cache/clear', { method: 'POST' });
+        const data = await r.json();
+        if (data.success) {
+          await loadCacheSize();
+        } else {
+          console.error('Failed to clear cache:', data.error);
         }
-      );
+      } catch (err) {
+        console.error('Failed to clear cache:', err);
+      } finally {
+        setButtonBusy(clearCacheBtn, false);
+        clearCacheBtn.textContent = original;
+      }
     }, { signal });
   }
 }
@@ -3029,6 +3126,12 @@ async function initAccountSection(signal) {
       } catch (_) { showToast('Could not update your photo (network error).'); }
     }, { signal });
     photoRemove.addEventListener('click', async () => {
+      const yes = await confirmDestructive({
+        title: 'Remove your profile photo?',
+        body: 'Your photo is deleted; your initials show in its place. You can upload a new one at any time.',
+        confirmLabel: 'Remove',
+      });
+      if (!yes) return;
       try {
         const res = await fetch('/api/me/avatar', { method: 'DELETE' });
         if (!res.ok) { showToast('Could not remove your photo.'); return; }
@@ -3082,7 +3185,13 @@ function wireRestoreControls(signal) {
       setFieldError(statusEl, 'That file is not valid JSON.');
       return;
     }
-    if (!window.confirm('Restore this backup? It replaces this FileTube\'s configuration and accounts with the backup\'s contents.')) return;
+    // Sweep S8 (F55): ui.confirm (danger) replaces window.confirm; the same POST, only on yes.
+    const yes = await confirmDestructive({
+      title: 'Restore this backup?',
+      body: 'It replaces this FileTube\'s configuration and accounts with the backup\'s contents.',
+      confirmLabel: 'Restore',
+    });
+    if (!yes) return;
     try {
       const r = await fetch('/api/admin/restore', {
         method: 'POST',
@@ -3094,8 +3203,9 @@ function wireRestoreControls(signal) {
         setFieldError(statusEl, data.error || 'Restore failed.');
         return;
       }
-      window.alert('Restore complete. The page will reload.');
-      window.location.reload();
+      // (was a blocking window.alert; the reload is the confirmation, the toast says why)
+      settingsNotice('Restore complete. Reloading...', 'success');
+      window.setTimeout(() => window.location.reload(), 900);
     } catch (_) {
       setFieldError(statusEl, 'Restore failed (network error).');
     }
@@ -3160,8 +3270,11 @@ function buildUserActions(user, me, signal, rowEl) {
   const actions = document.createElement('div');
   actions.className = 'users-row-actions';
   const refresh = () => loadUsersList(signal, me);
-  const act = async (path, body, confirmText) => {
-    if (confirmText && !window.confirm(confirmText)) return;
+  // Sweep S8 (F55): the same routes and bodies as before; a refusal or failure is a toast
+  // (was window.alert). A destructive call passes `confirm`, and the request is sent only
+  // after confirmDestructive resolves true.
+  const act = async (path, body, confirm) => {
+    if (confirm && !(await confirmDestructive(confirm))) return;
     try {
       const r = await fetch(path, {
         method: body === undefined ? 'DELETE' : 'POST',
@@ -3170,45 +3283,62 @@ function buildUserActions(user, me, signal, rowEl) {
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) {
-        window.alert(data.error || 'That change was refused.');
-        return;
+        settingsNotice(data.error || 'That change was refused.');
+        return false;
       }
       refresh();
+      return true;
     } catch (_) {
-      window.alert('That change failed (network error).');
+      settingsNotice('That change failed (network error).');
+      return false;
     }
   };
 
-  const addBtn = (label, onClick) => {
+  const addBtn = (key, label, onClick, variant) => {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'btn btn-sm';
+    b.className = 'ui-btn ui-btn--' + (variant || 'secondary') + ' ui-btn--sm';
+    b.setAttribute('data-user-action', key);
     b.textContent = label;
     b.addEventListener('click', onClick, { signal });
     actions.appendChild(b);
   };
 
-  addBtn('Reset password', () => {
-    const pw = window.prompt(`New password for ${user.username} (at least 8 characters):`);
-    if (pw === null) return;
-    act(`/api/users/${user.id}/password`, { password: pw });
+  // Sweep S8 (F55): the password reset is a ui.prompt with a MASKED field and a show toggle
+  // (window.prompt echoed it in plain text). The typed value goes only to the same
+  // POST /api/users/:id/password body; Cancel/Esc/the scrim answer null and send nothing.
+  addBtn('reset-password', 'Reset password', async () => {
+    const u = settingsUi();
+    if (!u || typeof u.prompt !== 'function') return;
+    const pw = await u.prompt({
+      title: `Reset ${user.username}'s password`,
+      body: 'At least 8 characters. They sign in with it from now on.',
+      label: 'New password',
+      type: 'password',
+      confirmLabel: 'Set password',
+    });
+    if (pw === null || pw === undefined) return;
+    if (await act(`/api/users/${user.id}/password`, { password: pw })) settingsNotice('Password updated.', 'success');
   });
   if (!isSelf) {
-    addBtn(user.disabled ? 'Enable' : 'Disable', () => act(`/api/users/${user.id}/disabled`, { disabled: !user.disabled }));
+    addBtn('disabled', user.disabled ? 'Enable' : 'Disable', () => act(`/api/users/${user.id}/disabled`, { disabled: !user.disabled }));
   }
-  addBtn(user.role === 'admin' ? 'Make member' : 'Make admin', () => act(`/api/users/${user.id}/role`, { role: user.role === 'admin' ? 'member' : 'admin' }));
-  addBtn(user.canManageSubscriptions ? 'Revoke subscriptions' : 'Allow subscriptions', () => act(`/api/users/${user.id}/subscriptions-flag`, { canManageSubscriptions: !user.canManageSubscriptions }));
+  addBtn('role', user.role === 'admin' ? 'Make member' : 'Make admin', () => act(`/api/users/${user.id}/role`, { role: user.role === 'admin' ? 'member' : 'admin' }));
+  addBtn('subscriptions', user.canManageSubscriptions ? 'Revoke subscriptions' : 'Allow subscriptions', () => act(`/api/users/${user.id}/subscriptions-flag`, { canManageSubscriptions: !user.canManageSubscriptions }));
   // v1.80 RBAC: per-user library access. Only members are restrictable (an admin
   // always sees everything), so the editor is offered for members only.
   if (user.role !== 'admin') {
     // v1.81 write-RBAC: grant/revoke library-MODIFY (delete/move/edit/scan).
     // Admins always can, so the toggle is member-only like the Access editor.
-    addBtn(user.canModifyLibrary ? 'Revoke edit' : 'Allow edit', () => act(`/api/users/${user.id}/modify-library-flag`, { canModifyLibrary: !user.canModifyLibrary }));
-    addBtn('Access', () => openAccessEditor(user, rowEl, signal));
+    addBtn('edit', user.canModifyLibrary ? 'Revoke edit' : 'Allow edit', () => act(`/api/users/${user.id}/modify-library-flag`, { canModifyLibrary: !user.canModifyLibrary }));
+    addBtn('access', 'Access', () => openAccessEditor(user, rowEl, signal));
   }
   if (!isSelf) {
-    addBtn('Delete', () => act(`/api/users/${user.id}`, undefined,
-      `Delete ${user.username}? Their watch progress, likes, reading positions, and pins go with the account. This cannot be undone.`));
+    addBtn('delete', 'Delete', () => act(`/api/users/${user.id}`, undefined, {
+      title: `Delete ${user.username}?`,
+      body: 'Their watch progress, likes, reading positions, and pins go with the account. This cannot be undone.',
+      confirmLabel: 'Delete account',
+    }), 'danger');
   }
   return actions;
 }
@@ -3235,33 +3365,44 @@ async function openAccessEditor(user, row, signal) {
 
   const boxes = []; // {kind, value, input}
   const section = (title) => { const h = document.createElement('h4'); h.textContent = title; panel.appendChild(h); };
+  // Sweep S8: each unit is a switch (a native checkbox wearing .ui-switch - the same
+  // .checked read by Save below), and the mode is a ui.segmented pair.
   const checkbox = (kind, value, label) => {
     const l = document.createElement('label');
     l.className = 'access-item';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
+    cb.setAttribute('role', 'switch');
+    cb.className = 'ui-switch';
     cb.checked = chosen.has(`${kind}:${value}`);
+    const text = document.createElement('span');
+    text.textContent = label;
+    l.appendChild(text);
     l.appendChild(cb);
-    l.appendChild(document.createTextNode(' ' + label));
     panel.appendChild(l);
     boxes.push({ kind, value, input: cb });
   };
 
   // Mode
   section('Mode');
-  const modeWrap = document.createElement('div');
-  modeWrap.className = 'access-mode';
-  for (const m of ['blocklist', 'allowlist']) {
-    const l = document.createElement('label');
-    l.className = 'access-item';
-    const r = document.createElement('input');
-    r.type = 'radio'; r.name = `mode-${user.id}`; r.value = m; r.checked = mode === m;
-    r.addEventListener('change', () => { if (r.checked) mode = m; }, { signal });
-    l.appendChild(r);
-    l.appendChild(document.createTextNode(m === 'blocklist' ? ' Block-list (see everything except what is checked)' : ' Allow-list (see ONLY what is checked - safest for a kid)'));
-    modeWrap.appendChild(l);
+  const u = settingsUi();
+  const MODE_HELP = {
+    blocklist: 'Block-list: see everything except what is switched on below.',
+    allowlist: 'Allow-list: see ONLY what is switched on below - safest for a kid.',
+  };
+  const modeHelp = document.createElement('p');
+  modeHelp.className = 'access-mode-help';
+  modeHelp.textContent = MODE_HELP[mode];
+  if (u && typeof u.segmented === 'function') {
+    const seg = u.segmented({
+      label: 'Access mode', value: mode,
+      options: [{ value: 'blocklist', label: 'Block-list' }, { value: 'allowlist', label: 'Allow-list' }],
+      onChange: (v) => { mode = v; modeHelp.textContent = MODE_HELP[v]; },
+    });
+    seg.classList.add('access-mode');
+    panel.appendChild(seg);
   }
-  panel.appendChild(modeWrap);
+  panel.appendChild(modeHelp);
 
   section('Whole libraries');
   // v1.196: Shows (the tv library) is restrictable as a whole library too - its
@@ -3278,7 +3419,7 @@ async function openAccessEditor(user, row, signal) {
   }
 
   const save = document.createElement('button');
-  save.type = 'button'; save.className = 'btn'; save.textContent = 'Save access';
+  save.type = 'button'; save.className = 'ui-btn ui-btn--primary ui-btn--md access-save'; save.textContent = 'Save access';
   save.addEventListener('click', async () => {
     const restrictions = boxes.filter((b) => b.input.checked).map((b) => ({ kind: b.kind, value: b.value }));
     try {
@@ -3286,12 +3427,11 @@ async function openAccessEditor(user, row, signal) {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode, restrictions }),
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok) { window.alert(data.error || 'Saving access failed.'); return; }
+      if (!r.ok) { settingsNotice(data.error || 'Saving access failed.'); return; }
       save.textContent = 'Saved';
       window.setTimeout(() => { panel.remove(); }, 700);
-    } catch (_) { window.alert('Saving access failed (network error).'); }
+    } catch (_) { settingsNotice('Saving access failed (network error).'); }
   }, { signal });
-  panel.appendChild(document.createElement('br'));
   panel.appendChild(save);
 }
 
@@ -3394,81 +3534,62 @@ function buildTrashActions(item) {
   box.className = 'trash-actions';
   var restore = document.createElement('button');
   restore.type = 'button';
-  restore.className = 'btn btn-sm trash-restore-btn';
+  restore.className = 'ui-btn ui-btn--secondary ui-btn--sm trash-restore-btn';
   restore.setAttribute('data-trash-id', tid);
   restore.textContent = 'Restore';
   var purge = document.createElement('button');
   purge.type = 'button';
-  purge.className = 'btn btn-sm trash-purge-btn';
+  purge.className = 'ui-btn ui-btn--danger ui-btn--sm trash-purge-btn';
   purge.setAttribute('data-trash-id', tid);
-  purge.innerHTML = '<span class="trash-purge-label">Purge</span><span class="trash-purge-confirm">Sure?</span>';
+  purge.textContent = 'Purge';
   box.appendChild(restore);
   box.appendChild(purge);
   return box;
 }
 
 // v1.158: the trash toolbar's two label strings, pure (unit-tested). The
-// resting total ("N items - X GB", size omitted when 0/unknown) and the armed
-// confirm ("Sure? Deletes N (X GB)") both name exactly what emptying destroys.
+// resting total ("N items - X GB", size omitted when 0/unknown) and the Empty
+// trash confirm's title ("Permanently delete N items (X GB)?") both name exactly
+// what emptying destroys.
 function formatTrashToolbarLabel(count, totalSizeBytes) {
   var n = Number(count) || 0;
   var sizeLabel = formatTrashSize(totalSizeBytes);
   var noun = n === 1 ? '1 item' : n + ' items';
   return sizeLabel ? noun + ' - ' + sizeLabel : noun;
 }
-function formatTrashArmLabel(count, totalSizeBytes) {
+function formatTrashEmptyTitle(count, totalSizeBytes) {
   var n = Number(count) || 0;
   var sizeLabel = formatTrashSize(totalSizeBytes);
-  return 'Sure? Deletes ' + n + (sizeLabel ? ' (' + sizeLabel + ')' : '');
+  return 'Permanently delete ' + (n === 1 ? '1 item' : n + ' items') + (sizeLabel ? ' (' + sizeLabel + ')' : '') + '?';
 }
 
 // Fetch + render the Trash list; wires Restore (single tap -- it destroys
-// nothing) and the two-tap Purge (the history/queue arm pattern). Re-renders
-// after every action and after a retention change (the days-left labels).
+// nothing) and Purge / Empty trash, each behind the ui.confirm step (sweep S8,
+// D4.8: the v1.158 two-tap arms are gone; the request is sent only after the
+// dialog resolves true). Re-renders after every action and after a retention
+// change (the days-left labels).
 function renderTrashSection(signal) {
   const listEl = document.getElementById('trash-list');
   const emptyEl = document.getElementById('trash-empty');
   if (!listEl) return;
-  // v1.158: the "N items - X GB" line + the two-tap "Empty trash" button.
+  // v1.158: the "N items - X GB" line + the "Empty trash" button.
   const toolbarEl = document.getElementById('trash-toolbar');
   const totalEl = document.getElementById('trash-total');
   const emptyAllBtn = document.getElementById('trash-empty-all');
 
-  let armed = null; // { id, timer }
-  function disarm() {
-    if (!armed) return;
-    clearTimeout(armed.timer);
-    const el = listEl.querySelector('.trash-purge-btn.trash-confirming');
-    if (el) el.classList.remove('trash-confirming');
-    armed = null;
-  }
-
-  // v1.158: separate arm state for the bulk button. Its label at arm time names
-  // exactly what the second tap destroys ("Sure? Deletes N (X GB)"). lastCount/
-  // lastSizeLabel are the most recent /api/trash figures.
+  // The most recent /api/trash figures: the Empty trash confirm names exactly
+  // what it destroys.
   let lastCount = 0;
   let lastTotalBytes = 0;
-  let emptyArmed = null; // { timer }
-  function emptyLabel(text) { if (emptyAllBtn) emptyAllBtn.textContent = text; }
-  function disarmEmpty() {
-    if (!emptyArmed) return;
-    clearTimeout(emptyArmed.timer);
-    emptyArmed = null;
-    if (emptyAllBtn) emptyAllBtn.classList.remove('trash-confirming');
-    emptyLabel('Empty trash');
-  }
 
   function refresh() {
     fetch('/api/trash')
       .then((r) => { if (!r.ok) throw new Error('trash fetch failed: ' + r.status); return r.json(); })
       .then((body) => {
         if (signal.aborted) return;
-        disarm();
-        disarmEmpty();
         // v1.159: render the trash as a sortable table (Title | Size | Expires,
-        // + Restore/Purge actions). The delegated restore/purge handler + the
-        // per-item two-tap arm below are UNCHANGED (they key off the button
-        // classes + data-trash-id, which the actions cell still carries).
+        // + Restore/Purge actions). The delegated restore/purge handler below
+        // keys off the button classes + data-trash-id the actions cell carries.
         const count = body.items.length;
         if (count === 0) {
           listEl.textContent = ''; // the #trash-empty blurb below carries the empty state
@@ -3486,10 +3607,6 @@ function renderTrashSection(signal) {
             filter: { text: (it) => it.title || it.name || '', placeholder: 'Filter by title...' },
             defaultSort: { key: 'trashed', dir: 'desc' },
             persistKey: 'ft-stable:trash',
-            // v1.159 (gate SUGGESTION): a sort/filter re-render rebuilds the rows;
-            // clear any armed per-item Purge so it can't survive INVISIBLY (its
-            // "Sure?" button is gone) into a one-tap delete on the next tap.
-            onRender: disarm,
           });
         }
         if (emptyEl) emptyEl.hidden = count > 0;
@@ -3503,18 +3620,16 @@ function renderTrashSection(signal) {
       .catch((err) => { if (!signal.aborted) console.error('Trash: list failed', err); });
   }
 
-  // Two-tap Empty-trash: first tap arms (naming the count + size), second tap
-  // within ~4s purges ALL visible items. Disarms on timeout or a refresh.
+  // Empty trash: the confirm names the count + size; POST purge-all only on yes.
   if (emptyAllBtn) {
-    emptyAllBtn.addEventListener('click', () => {
-      if (!emptyArmed) {
-        if (lastCount === 0) return; // nothing to empty
-        emptyAllBtn.classList.add('trash-confirming');
-        emptyLabel(formatTrashArmLabel(lastCount, lastTotalBytes));
-        emptyArmed = { timer: setTimeout(disarmEmpty, 4000) };
-        return;
-      }
-      disarmEmpty();
+    emptyAllBtn.addEventListener('click', async () => {
+      if (lastCount === 0) return; // nothing to empty
+      const yes = await confirmDestructive({
+        title: formatTrashEmptyTitle(lastCount, lastTotalBytes),
+        body: 'Everything in the trash is erased from disk now instead of at the end of its retention window. This cannot be undone.',
+        confirmLabel: 'Empty trash',
+      });
+      if (!yes || signal.aborted) return;
       emptyAllBtn.disabled = true;
       fetch('/api/trash/purge-all', { method: 'POST' })
         .then(async (r) => {
@@ -3555,25 +3670,31 @@ function renderTrashSection(signal) {
     if (purgeBtn) {
       const tid = purgeBtn.getAttribute('data-trash-id');
       if (!tid) return;
-      if (!(armed && armed.id === tid)) {
-        disarm();
-        purgeBtn.classList.add('trash-confirming');
-        armed = { id: tid, timer: setTimeout(disarm, 3000) };
-        return;
-      }
-      disarm();
-      fetch('/api/trash/' + encodeURIComponent(tid), { method: 'DELETE' })
-        .then(async (r) => {
-          if (signal.aborted) return;
-          if (!r.ok) {
-            const body = await r.json().catch(() => ({}));
-            if (typeof showToast === 'function') showToast(body.error || 'Could not purge.');
-          }
-          refresh();
-        })
-        .catch(() => { if (!signal.aborted) refresh(); });
+      const row = purgeBtn.closest('.stable-row');
+      const titleEl = row && row.querySelector('.trash-title');
+      purgeTrashItem(tid, titleEl ? titleEl.textContent : '');
     }
   }, { signal });
+
+  // Purge one item: DELETE /api/trash/:id, sent only after the confirm resolves true.
+  async function purgeTrashItem(tid, title) {
+    const yes = await confirmDestructive({
+      title: 'Permanently delete ' + (title ? '"' + title + '"' : 'this item') + '?',
+      body: 'It is erased from disk now. This cannot be undone.',
+      confirmLabel: 'Delete permanently',
+    });
+    if (!yes || signal.aborted) return;
+    fetch('/api/trash/' + encodeURIComponent(tid), { method: 'DELETE' })
+      .then(async (r) => {
+        if (signal.aborted) return;
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          if (typeof showToast === 'function') showToast(body.error || 'Could not purge.');
+        }
+        refresh();
+      })
+      .catch(() => { if (!signal.aborted) refresh(); });
+  }
 
   refresh();
   // Expose the re-render for the retention listener (labels change with it).
@@ -3601,7 +3722,7 @@ function buildFeedHiddenRowHtml(item) {
     '<div class="feed-hidden-title" title="' + title + '">' + title + '</div>' +
     (meta ? '<div class="feed-hidden-meta">' + meta + '</div>' : '') +
     '</div>' +
-    '<button type="button" class="btn btn-sm feedhidden-restore-btn" data-id="' + id + '">Restore</button>' +
+    '<button type="button" class="ui-btn ui-btn--secondary ui-btn--sm feedhidden-restore-btn" data-id="' + id + '">Restore</button>' +
     '</div>';
 }
 
@@ -4601,7 +4722,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildTrashTitleCell, buildTrashActions,
     // v1.158: the trash toolbar's two pure label strings + the render/wiring
     // (jsdom-mounted to bind the DESTRUCTIVE two-tap: one tap never fires).
-    formatTrashToolbarLabel, formatTrashArmLabel, renderTrashSection,
+    formatTrashToolbarLabel, formatTrashEmptyTitle, renderTrashSection,
     // v1.97.1 "Hidden" section row builder (pure; the render/wiring is jsdom-adjacent).
     buildFeedHiddenRowHtml,
     // v1.77: the glyph pickers. The option list is a pure decision; the DRAWN
@@ -4641,5 +4762,11 @@ if (typeof module !== 'undefined' && module.exports) {
       if (Object.prototype.hasOwnProperty.call(state, 'configVersion')) configBaseVersion = state.configVersion;
     },
     __getConfiguredFoldersForTests() { return configuredFolders.slice(); },
+    // Sweep S8: every destructive Settings path runs through confirmDestructive, and the
+    // password reset through ui.prompt; settings-forms-sweep.test.js drives each REAL wiring
+    // with the REAL ui.js (no path reaches its request without the confirm resolving true).
+    confirmDestructive, wireStaticControls, wireRestoreControls, initAccountSection,
+    renderStickerPicker, renderTranscriptAiPromptsEditor, wireLogoControls, loadBookConfig,
+    wireBookFolderControls,
   };
 }

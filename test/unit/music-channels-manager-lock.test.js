@@ -19,7 +19,9 @@ const SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'se
   .split('\n').map((l) => l.replace(/\/\/.*$/, '')).join('\n');
 
 test('the manager renders only for a library-write user (admin or canModifyLibrary)', () => {
-  const m = SRC.match(/musicChannelsGroup && musicChannelsList[\s\S]{0,3200}?musicChannelsGroup\.hidden = false/);
+  // Sweep S8: the window grew with the ui-row markup (3200 -> 5200 chars); the block is
+  // still anchored on its own two statements, first match only.
+  const m = SRC.match(/musicChannelsGroup && musicChannelsList[\s\S]{0,5200}?musicChannelsGroup\.hidden = false/);
   assert.ok(m, 'the channels-manager render block is present');
   const block = m[0];
   assert.match(block, /me\.user\.role === 'admin' \|\| me\.user\.canModifyLibrary === true/, 'gated on the library-write capability');
@@ -37,5 +39,7 @@ test('the manager reads the channel list and writes an explicit on/off per toggl
 test('the group is revealed only after a successful render (hidden by default)', () => {
   assert.match(SRC, /musicChannelsGroup\.hidden = false/, 'unhides on success');
   // and it uses class-based rows (no raw literals on a governed JS style surface)
-  assert.match(SRC, /row\.className = 'music-channels-row'/, 'class-based row, not inline .style literals');
+  // Sweep S8: each row is a grouped ui-row with a trailing ui-switch (a native checkbox).
+  assert.match(SRC, /row\.className = 'ui-row ui-row--default music-channels-row'/, 'a primitive row, not inline .style literals');
+  assert.match(SRC, /cb\.setAttribute\('role', 'switch'\);\s*cb\.className = 'ui-switch';/, 'the toggle is a ui-switch');
 });

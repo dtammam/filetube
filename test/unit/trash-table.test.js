@@ -1,14 +1,14 @@
 'use strict';
 
 // [UNIT] v1.159 (Dean): the Trash list as a sortable table (Title | Size |
-// Expires + Restore/Purge). The v1.158 two-tap "Empty trash" toolbar is
-// untouched; here we bind the per-ROW wiring: the Title cell escapes a hostile
-// title (textContent), the actions carry data-trash-id, and the per-item two-tap
-// Purge still DELETEs the CORRECT item even after a sort reorders the rows.
+// Expires + Restore/Purge). Here we bind the per-ROW wiring: the Title cell escapes
+// a hostile title (textContent), the actions carry data-trash-id, and Purge (behind
+// the ui.confirm step since sweep S8) DELETEs the CORRECT item even after a sort.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
+const { loadUi, openDialog, parts, answer, settle, drainSheets, DISMISSALS } = require('../helpers/ui-dialogs');
 
 const common = require('../../public/js/common.js');
 global.buildSortableTable = common.buildSortableTable;
@@ -38,11 +38,13 @@ function mountTrash() {
     <div id="trash-empty" hidden></div>
   </body>`, { url: 'http://localhost/setup.html' });
   global.window = dom.window; global.document = dom.window.document;
+  global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
+  loadUi(); // the REAL ui.js: Purge / Empty trash confirm first (sweep S8)
   return dom;
 }
 function teardownTrash(dom) {
   try { global.window.localStorage.clear(); } catch (_) { /* ignore */ }
-  delete global.window; delete global.document; delete global.fetch; dom.window.close();
+  delete global.window; delete global.document; delete global.fetch; delete global.requestAnimationFrame; dom.window.close();
 }
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const titles = (host) => Array.from(host.querySelectorAll('.stable-row .stable-cell--name .trash-title')).map((c) => c.textContent);
@@ -64,7 +66,10 @@ test('renders Title|Size|Expires columns; sort by Size works', async () => {
   } finally { teardownTrash(dom); }
 });
 
-test('GATE: the per-item two-tap Purge DELETEs the CORRECT item after a sort', async () => {
+// Sweep S8 (D4.8, AC12 conversion of the v1.159 two-tap gates): Purge opens a danger
+// ui.confirm naming the item; the DELETE goes to the item whose button was tapped - after a
+// sort too - and only once the confirm resolves true.
+test('GATE: Purge DELETEs the CORRECT item after a sort, only after the confirm resolves true', async () => {
   const dom = mountTrash();
   const calls = [];
   try {
@@ -80,19 +85,21 @@ test('GATE: the per-item two-tap Purge DELETEs the CORRECT item after a sort', a
     listEl.querySelector('.stable-th[data-col="size"]').dispatchEvent(new dom.window.Event('click'));
     assert.deepEqual(titles(listEl), ['Charlie', 'Alpha', 'Bravo']);
     const purgeBtn = listEl.querySelectorAll('.stable-row')[0].querySelector('.trash-purge-btn');
-    // First tap arms (no DELETE), second tap purges t-c.
     purgeBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-    assert.strictEqual(calls.filter((c) => c.method === 'DELETE').length, 0, 'one tap does not purge');
-    assert.ok(purgeBtn.classList.contains('trash-confirming'), 'armed after tap 1');
-    purgeBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-    await tick();
-    const del = calls.find((c) => c.method === 'DELETE');
-    assert.ok(del, 'the second tap purged');
-    assert.strictEqual(del.url, '/api/trash/t-c', 'DELETEd Charlie (the actual row-0 item), not a stale index');
+    await settle();
+    assert.strictEqual(calls.filter((c) => c.method === 'DELETE').length, 0, 'a tap only opens the confirm');
+    const k = parts(openDialog(global.document));
+    assert.match(k.title, /Charlie/, 'the confirm names the row that was tapped');
+    assert.ok(k.ok.classList.contains('ui-btn--destructive'), 'a danger confirm');
+    answer(global.document, 'ok');
+    await settle();
+    const dels = calls.filter((c) => c.method === 'DELETE');
+    assert.deepStrictEqual(dels.map((c) => c.url), ['/api/trash/t-c'], 'DELETEd Charlie (the actual row-0 item), exactly once');
+    await drainSheets(dom.window);
   } finally { teardownTrash(dom); }
 });
 
-test('GATE SUGGESTION: a sort while a Purge is armed CLEARS the arm (no invisible one-tap delete)', async () => {
+test('GATE: every dismissal of the Purge confirm deletes nothing, and a sort meanwhile never re-targets it', async () => {
   const dom = mountTrash();
   const calls = [];
   try {
@@ -105,14 +112,21 @@ test('GATE SUGGESTION: a sort while a Purge is armed CLEARS the arm (no invisibl
     await tick();
     const listEl = global.document.getElementById('trash-list');
     const btnFor = (tid) => listEl.querySelector('.trash-purge-btn[data-trash-id="' + tid + '"]');
-    // Arm the Purge for a SPECIFIC item (t-a), then sort so it moves position.
+    for (const how of DISMISSALS) {
+      btnFor('t-a').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      await settle();
+      answer(global.document, how);
+      await settle();
+      assert.strictEqual(calls.filter((c) => c.method === 'DELETE').length, 0, how + ': nothing deleted');
+      await drainSheets(dom.window);
+    }
+    // Open for t-a, re-sort underneath the dialog, confirm: still t-a.
     btnFor('t-a').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-    listEl.querySelector('.stable-th[data-col="size"]').dispatchEvent(new dom.window.Event('click')); // Size desc -> t-a is no longer row 0
-    assert.strictEqual(listEl.querySelector('.trash-purge-btn.trash-confirming'), null, 'no button is left visibly armed after the re-render');
-    // A SINGLE tap on the SAME item t-a must only RE-ARM, never DELETE (without
-    // the onRender disarm, the stale arm would make this one tap delete t-a).
-    btnFor('t-a').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-    assert.strictEqual(calls.filter((c) => c.method === 'DELETE').length, 0, 'the stale arm did not carry into a one-tap delete of t-a');
-    assert.ok(btnFor('t-a').classList.contains('trash-confirming'), 're-armed cleanly instead');
+    await settle();
+    listEl.querySelector('.stable-th[data-col="size"]').dispatchEvent(new dom.window.Event('click'));
+    answer(global.document, 'ok');
+    await settle();
+    assert.deepStrictEqual(calls.filter((c) => c.method === 'DELETE').map((c) => c.url), ['/api/trash/t-a']);
+    await drainSheets(dom.window);
   } finally { teardownTrash(dom); }
 });

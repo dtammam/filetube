@@ -165,10 +165,11 @@ test('v1.67.1: setup.js push setError reveals the element (routes through setFie
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'setup.js'), 'utf8');
   // The push controls' setError must delegate to the show/hide helper.
   assert.match(src, /const setError = \(msg\) => setFieldError\(errorEl, msg\);/,
-    'push setError must use setFieldError (which sets display:block); a textContent-only setError writes to a display:none element and is invisible');
-  // And setFieldError itself must still toggle display (the mechanism).
-  assert.match(src, /function setFieldError\(el, message\)[\s\S]*?el\.style\.display = 'block'/,
-    'setFieldError must set display:block when showing a message');
+    'push setError must use setFieldError (which un-hides the element); a textContent-only setError writes to a hidden element and is invisible');
+  // And setFieldError itself must still reveal the element (the mechanism). Sweep S8: the
+  // reveal is the `hidden` attribute (no inline display write; the global [hidden] rule).
+  assert.match(src, /function setFieldError\(el, message\) \{\s*if \(!el\) return;\s*el\.textContent = message \? message : '';\s*el\.hidden = !message;\s*\}/,
+    'setFieldError must un-hide the element when showing a message');
 });
 
 // ---- v1.73: podcast rows in the bell panel ----------------------------------

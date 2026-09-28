@@ -252,7 +252,7 @@ test('v1.76: a press on the remove button never starts a drag', () => {
   withFolderList((dom) => {
     const rows = rowsIn(dom);
     layOut(rows);
-    const btn = rows[0].querySelector('.remove-folder-btn');
+    const btn = rows[0].querySelector('.folder-remove-btn');
     pointerAt(dom, btn, 'pointerdown', 10);
     pointerAt(dom, dom.window.document, 'pointermove', 2 * 60 + 45);
     pointerAt(dom, dom.window.document, 'pointerup', 2 * 60 + 45);
@@ -333,7 +333,7 @@ test('v1.76: the synthetic downloads folder is still reorderable, still not remo
   withFolderList((dom) => {
     const rows = rowsIn(dom);
     layOut(rows);
-    assert.equal(rows[2].querySelector('.remove-folder-btn').disabled, true, 'not removable');
+    assert.equal(rows[2].querySelector('.folder-remove-btn').disabled, true, 'not removable');
     assert.ok(rows[2].querySelector('.drag-handle'), 'but it has a grip');
     drag(dom, rows, 2, 10);
     assert.deepEqual(setup.__getConfiguredFoldersForTests(), ['/media/c', '/media/a', '/media/b'], 'and it reorders');

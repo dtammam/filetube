@@ -193,7 +193,8 @@ const SETUP_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js'
 const SERVER_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'server.js'), 'utf8');
 
 test('setup.html: the checkbox (default checked) + the action select exist in the Playback section', () => {
-  assert.match(SETUP_HTML, /<input type="checkbox" id="resume-countdown-check" checked \/>/);
+  // Sweep S8: a switch row (a native checkbox wearing ui-switch), still default checked.
+  assert.match(SETUP_HTML, /<input type="checkbox" role="switch" class="ui-switch" id="resume-countdown-check" checked \/>/);
   assert.match(SETUP_HTML, /<select id="resume-countdown-action-select"[^>]*>\s*<option value="resume">Resume from saved position<\/option>\s*<option value="beginning">Start from beginning<\/option>\s*<\/select>/);
 });
 
@@ -207,7 +208,7 @@ test('setup.js and player.js agree on ALL THREE storage keys byte-for-byte (the 
 });
 
 test('v1.161: setup.html carries the seconds field (0-30) + the "0 = instant" hint, and setup.js clamps on write', () => {
-  assert.match(SETUP_HTML, /<input type="number" id="resume-countdown-seconds-input" min="0" max="30" step="1"[^>]*\/>/);
+  assert.match(SETUP_HTML, /<input type="number" id="resume-countdown-seconds-input" class="ui-field__input" min="0" max="30" step="1"[^>]*\/>/);
   assert.match(SETUP_HTML, /0 = resume instantly with no prompt at all/);
   // The field stores a clamped value, and a BLANK/garbage entry removes the key so
   // the player default (5) returns - never stores junk.

@@ -42,17 +42,29 @@ const FOREIGN = [
 
 // ---- source locks: the barrier ships at first paint, scoped correctly -------
 
-test('setup.html: each /api/settings-fed toggle label ships class="reveal-toggle" data-loading', () => {
+// Sweep S8 (AC12 conversion): the toggles are switch ROWS now (a ui-row carrying the
+// barrier, the checkbox in its actions slot), so the locks read the parsed DOM instead of
+// a label-then-input regex: the barrier is the control's own row, never a foreign one.
+const SETUP_DOC = new JSDOM(SETUP_HTML).window.document;
+const barrierOf = (id) => {
+  const el = SETUP_DOC.getElementById(id);
+  assert.ok(el, id + ' exists');
+  assert.strictEqual(el.getAttribute('type'), 'checkbox', id + ' is a checkbox (a ui-switch)');
+  return el.closest('.reveal-toggle[data-loading]');
+};
+
+test('setup.html: each /api/settings-fed toggle row ships class="reveal-toggle" data-loading', () => {
   for (const id of SETTINGS_FED) {
-    const re = new RegExp('<label class="reveal-toggle" data-loading[^>]*>\\s*\\n\\s*<input type="checkbox" id="' + id + '"');
-    assert.match(SETUP_HTML, re, `${id} ships the reveal-once barrier`);
+    const row = barrierOf(id);
+    assert.ok(row, `${id} ships the reveal-once barrier`);
+    assert.ok(row.classList.contains('ui-row'), `${id}: the barrier is the switch's own row`);
+    assert.strictEqual(row.querySelectorAll('input').length, 1, `${id}: the row holds exactly its own control`);
   }
 });
 
 test('setup.html: NO foreign-fetch control carries the barrier (no early-reveal partial render)', () => {
   for (const id of FOREIGN) {
-    const re = new RegExp('reveal-toggle" data-loading[^>]*>\\s*\\n\\s*<input type="checkbox" id="' + id + '"');
-    assert.doesNotMatch(SETUP_HTML, re, `${id} is NOT barriered (foreign fetch)`);
+    assert.strictEqual(barrierOf(id), null, `${id} is NOT barriered (foreign fetch)`);
   }
 });
 
@@ -60,7 +72,8 @@ test('setup.html: exactly 10 reveal-toggle barriers exist (matches the /api/sett
   // v1.121 DELIBERATE count bump (7 -> 8): the bg-audio-sync-check toggle.
   // v1.202 DELIBERATE count bump (8 -> 9): the attribute-control-check opt-in.
   // DELIBERATE count bump (9 -> 10): the perf-diag-check opt-in.
-  assert.strictEqual((SETUP_HTML.match(/class="reveal-toggle" data-loading/g) || []).length, 10);
+  assert.strictEqual(SETUP_DOC.querySelectorAll('.reveal-toggle[data-loading]').length, 10);
+  assert.strictEqual((SETUP_HTML.match(/reveal-toggle/g) || []).length, 10, 'no other element names the class');
 });
 
 test('style.css: .reveal-toggle[data-loading] reuses the shared v1.96 sweep barrier', () => {

@@ -205,6 +205,14 @@ function sceneKit(FX, BASE) {
       // (before the sweep) photographs the card corners instead.
       if (await p.locator('.video-card .card-kebab').count()) { await tap(p, '.video-card .card-kebab', vp); await p.waitForSelector('.ui-sheet.is-open', { timeout: 8000 }); await sleep(500); } } },
     { id: '33-watch-related', path: `/watch.html?v=${FX.video}`, vps: ['phone', 'desktop'], run: async (p) => { await p.waitForSelector('#related-files-container a', { timeout: 12000 }); await pausePlayback(p); await scrollCenter(p, '#related-files-container a'); } },
+    // Sweep S8 (Settings and forms): each Settings section by its #<collapse-key> deep link
+    // (the phone opens the section's detail pane), the sign-in page, the one-off download
+    // dialog, and the admin password-reset prompt.
+    ...SETTINGS_SECTIONS.map(([id, name, key, scroll]) => ({ id: `6${id}-settings-${name}`, path: `/setup.html#${key}`, vps: scroll ? ['phone'] : undefined,
+      run: async (p) => { await p.waitForLoadState('networkidle'); await sleep(800); await openSettingsSection(p, key); if (scroll) { await p.evaluate(() => window.scrollTo(0, Math.round(document.documentElement.scrollHeight / 2))); await snapScroll(p); } } })),
+    { id: '70-login-page', path: '/login', run: async (p) => { await p.context().clearCookies(); await p.goto(`${BASE}/login`, { waitUntil: 'networkidle' }); await sleep(400); } },
+    { id: '71-oneoff-dialog', path: '/', run: async (p, vp) => { const sel = vp === 'phone' ? '[data-nav="oneoff-download"]' : '#ytdlp-oneoff-btn'; await p.waitForSelector(sel, { timeout: 12000 }); await tap(p, sel, vp); await p.waitForSelector('.oneoff-modal:not([hidden])', { timeout: 8000 }); await sleep(500); } },
+    { id: '72-settings-password-prompt', path: '/setup.html#users', vps: ['phone', 'desktop'], run: async (p, vp) => { await p.waitForLoadState('networkidle'); await openSettingsSection(p, 'users'); await p.waitForSelector('[data-user-action="reset-password"]', { timeout: 12000 }); await tap(p, '[data-user-action="reset-password"]', vp); await p.waitForSelector('.ui-sheet.is-open', { timeout: 8000 }); await p.fill('.ui-sheet .ui-field__input', 'correct-horse'); await sleep(400); } },
     // Books and the reader (sweep S10): the library, one shelf, the reader and its two sheets.
     { id: '50-books-library', path: '/books', run: async (p) => { await p.waitForSelector('#books-grid .book-card img', { timeout: 12000 }); await sleep(600); } },
     { id: '51-books-shelf', path: `/books?root=${encodeURIComponent(FX.bookShelf || '')}`, vps: ['phone', 'desktop'], run: async (p) => { await p.waitForSelector('#books-grid .book-card img', { timeout: 12000 }); await sleep(600); } },
@@ -223,6 +231,23 @@ function sceneKit(FX, BASE) {
     }
   }
   return { SCENES, openPocket };
+}
+
+// [id digit, scene name, #collapse-key, scrolled half-way (phone only)] - the Settings sections sweep S8
+// migrated; a scene per section so each one's before/after pair is reviewable on its own.
+const SETTINGS_SECTIONS = [
+  ['0', 'appearance', 'appearance'], ['1', 'critters', 'critters'], ['2', 'folders', 'video-folders'],
+  ['3', 'automation', 'automation-storage'], ['4', 'automation-mid', 'automation-storage', true],
+  ['5', 'downloads', 'downloads'], ['6', 'trash', 'trash'], ['7', 'users', 'users'],
+  ['8', 'backup', 'backup-restore'], ['9', 'experimental', 'experimental'],
+];
+
+// Opens a Settings section through its menu row (the admin sections reveal after the
+// capability fetch, so a #hash alone lands on the menu for them).
+async function openSettingsSection(page, key) {
+  await page.waitForSelector(`.md-row[data-md-target="${key}"]`, { state: 'attached', timeout: 12000 });
+  await page.evaluate((k) => { const r = document.querySelector(`.md-row[data-md-target="${k}"]`); if (r) r.click(); }, key);
+  await sleep(500);
 }
 
 const shotName = (sceneId, vp, mode, era) => `${sceneId}--${vp}-${mode}${era === '2021' ? '' : '-' + era}.png`;

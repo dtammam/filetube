@@ -373,7 +373,20 @@ test('buildOneOffModal: builds the expected structure, starts hidden, with corre
   assert.strictEqual(modal.qualitySelect.value, 'best');
   assert.strictEqual(modal.filetypeSelect.value, 'mp4');
   assert.strictEqual(modal.downloadBtn.textContent, 'Download');
-  assert.strictEqual(modal.closeBtn.textContent, '×');
+  // Sweep S8: Close is a ui-btn icon button named by aria-label (the sprite glyph needs
+  // createElementNS, which this pure-DOM fake omits) - never the U+00D7 text glyph.
+  assert.strictEqual(modal.closeBtn.textContent, '', 'no text glyph on Close');
+  assert.strictEqual(modal.closeBtn.attributes['aria-label'], 'Close');
+  assert.match(modal.closeBtn.className, /\bui-btn--icon\b/);
+  // The form's controls are primitives: ui-field inputs, ui-select selects, ui-btn buttons.
+  assert.strictEqual(modal.urlInput.className, 'ui-field__input');
+  assert.strictEqual(modal.folderInput.className, 'ui-field__input');
+  for (const sel of [modal.formatSelect, modal.qualitySelect, modal.filetypeSelect]) {
+    assert.strictEqual(sel.className, 'ui-select__native');
+    const box = [...modal.backdrop.walk()].find((el) => el.className === 'ui-select' && el.children.includes(sel));
+    assert.ok(box, 'each select sits in its ui-select box');
+  }
+  assert.strictEqual(modal.downloadBtn.className, 'ui-btn ui-btn--primary ui-btn--md');
 
   // v1.25 QoL (T3/T5): the folder field is an OPTIONAL channel-override --
   // an INPUT with an accessible name, left blank by default (no forced

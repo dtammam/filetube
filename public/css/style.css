@@ -753,22 +753,8 @@ a.sidebar-item {
   align-self: center;
 }
 
-/* v1.211: the Settings "Channels in Music" manager rows (class-based so the
-   JS never sets a raw literal on a governed style surface). */
-.music-channels-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-weight: normal;
-  padding: var(--space-1) 0;
-}
-.music-channels-row .auto-tag {
-  color: var(--text-secondary);
-  font-size: var(--fs-sm);
-}
-.music-channels-empty {
-  color: var(--text-secondary);
-}
+/* v1.211 -> sweep S8: the Settings "Channels in Music" rows are grouped ui-rows with a
+   trailing ui-switch (setup.js); the primitives style them, nothing here. */
 
 .library-item-count {
   font-size: var(--fs-sm);
@@ -2668,6 +2654,7 @@ select {
   align-items: stretch;
 }
 .action-bar > .btn,
+.action-bar > .ui-btn,
 .action-bar-cell > .btn {
   width: 100%;
 }
@@ -2781,20 +2768,55 @@ select {
    by the "UI pass S5" section of this file. The Setup folder-management builder
    (#folders-builder-list) is unchanged. */
 
+/* Sweep S8: a configured folder is a surface-1 card (the grouped-list ground) holding
+   the handle, the path over its controls (all primitives), and a ui-btn icon Remove. */
 .folder-item-row {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-5);
-  padding: var(--space-5) var(--space-6);
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
+  align-items: flex-start;
+  gap: var(--space-6);
+  padding: var(--space-6) var(--space-2) var(--space-6) var(--inset);
+  background-color: var(--surface-1);
+  border-radius: var(--r-md);
   /* v1.76 (Dean): "enough space between the cards" to drop between them - the
      gap is also the drop-indicator's landing strip. */
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-4);
   cursor: grab;
+}
+.folder-item-body {
+  flex: 1 1 0;
+  min-width: 0;
+  display: grid;
+  gap: var(--space-4);
+}
+.folder-item-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4) var(--space-8);
+}
+.folder-item-controls > .folder-name-input {
+  flex: 1 1 100%;
+}
+.folder-item-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-4);
+  font: var(--t-meta);
+  color: var(--ink-2);
+}
+.folder-item-skeleton-meta {
+  max-width: 55%;
+}
+.setup-sec .folder-list-builder {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+}
+.config-load-error {
+  padding: var(--space-3) 0;
+  font: var(--t-meta);
+  color: var(--ink-2);
 }
 
 .folder-item-row:last-child {
@@ -2892,11 +2914,10 @@ select {
 }
 
 .folder-path-text {
+  font: var(--t-meta);
   font-family: var(--mono-font);
-  font-size: var(--fs-sm);
+  color: var(--ink-1);
   word-break: break-all;
-  flex: 1;
-  margin-right: var(--space-6);
 }
 
 .file-path {
@@ -2904,16 +2925,9 @@ select {
   overflow-wrap: anywhere; /* long underscored paths (no spaces) must break, not overflow */
 }
 
-/* v1.26.2 polish fix (Dean punchlist #6, systemic iOS-zoom fix): this input
-   used to carry an INLINE `style="...font-size:var(--fs-sm);"` (public/js/setup.js's
-   renderFolders) -- an inline style always beats any stylesheet rule
-   (including the mobile-only global `input`/`select`/`textarea` 16px floor
-   added below), so it stayed 12px on mobile and auto-zoomed iOS Safari on
-   focus no matter what CSS said. Moved here as a real class rule so the
-   mobile override in the `max-width: 768px` block can actually reach it. */
-.folder-name-input {
-  font-size: var(--fs-sm);
-}
+/* v1.26.2 -> sweep S8: `.folder-name-input` carries `ui-field__input` now, whose 16px
+   (--fs-input-min) holds at EVERY width - the iOS zoom-on-focus floor no longer needs a
+   mobile override, and no class rule here may shrink it (mobile-input-zoom census). */
 
 .remove-folder-btn {
   background: none;
@@ -2936,10 +2950,9 @@ select {
 }
 
 .empty-folders-msg {
-  color: var(--text-secondary);
-  font-style: italic;
-  text-align: center;
-  padding: var(--space-6) 0;
+  padding: var(--space-6) var(--inset);
+  font: var(--t-meta);
+  color: var(--ink-2);
 }
 
 /* Appearance (era theme) picker — setup.html */
@@ -2962,7 +2975,7 @@ select {
 }
 .theme-card.active { border-color: var(--yt-red); border-width: 2px; }
 .theme-swatch { display: flex; height: 20px; border-radius: var(--radius); overflow: hidden; }
-.theme-swatch span { flex: 1; }
+.theme-swatch span { flex: 1; background: var(--swatch, var(--thumb-ground)); } /* --swatch: the era's colour as data (setup.js) */
 .theme-card-name { font-weight: var(--fw-bold); font-size: var(--fs-base); }
 .theme-card-year { color: var(--text-secondary); font-weight: normal; }
 .theme-card-blurb { font-size: var(--fs-xs); color: var(--text-secondary); }
@@ -2973,14 +2986,13 @@ select {
 .sticker-card-ic { width: 40px; height: 40px; flex: none; display: grid; place-items: center; }
 .sticker-card-ic img { width: 100%; height: 100%; object-fit: contain; }
 .sticker-card-emoji { font-size: var(--fs-2xl); }
-.sticker-emoji-row { display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-6); }
-.sticker-emoji-input { width: 120px; padding: var(--space-3) var(--space-4); border: 1px solid var(--border-dark); border-radius: var(--radius); background: var(--card-bg); color: var(--text-primary); font-size: var(--fs-lg); }
-.sticker-actions { display: flex; flex-wrap: wrap; gap: var(--space-4); margin-top: var(--space-6); }
-/* v1.241: the Size + Tilt option rows (reuse .theme-card for the chips). */
-.sticker-opt-row { display: flex; align-items: center; gap: var(--space-4); margin-top: var(--space-6); }
-.sticker-opt-label { font-size: var(--fs-sm); color: var(--text-secondary); min-width: 44px; }
-.sticker-opts { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-.sticker-opt { flex-direction: row; padding: var(--space-2) var(--space-4); font-size: var(--fs-sm); }
+/* Sweep S8: the emoji field + Use button, the Upload/Remove bar, and the Size / Tilt
+   ui.segmented rows - primitives inside; only the layout lives here. */
+.sticker-picker { display: grid; gap: var(--space-6); }
+.sticker-emoji-row { display: flex; align-items: center; gap: var(--space-4); }
+.sticker-emoji-row > .ui-field__input { flex: 1 1 0; min-width: 0; }
+.sticker-emoji-row > .ui-btn { flex: none; }
+.sticker-opt-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-6); padding: 0 var(--inset); }
 /* Tokens Phase 1 Tier 1: the stats glance-tile value, moved out of
    JS-applied styles (buildStatTile). 22px == var(--fs-4xl). */
 .stat-tile-value { font-size: var(--fs-4xl); }
@@ -3155,10 +3167,10 @@ select {
 .transcript-ai-prompt-row {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-4);
   padding: var(--space-6);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
+  border-radius: var(--r-md);
+  background-color: var(--surface-1);
 }
 .transcript-ai-prompt-head {
   display: flex;
@@ -3177,27 +3189,17 @@ select {
 .transcript-ai-prompt-row.drag-over-after {
   box-shadow: inset 0 -2px 0 0 var(--yt-red);
 }
+/* sweep S8: both fields are ui-field__input (16px, surface-2, the focus ring); the name
+   flexes in its head row, the textarea grows past the input's one-line height */
 .transcript-ai-prompt-name {
   flex: 1;
   min-width: 0;
-  font-size: var(--fs-base);
-  padding: var(--space-3) var(--space-4);
-  background: var(--input-bg, var(--header-bg));
-  color: var(--text-primary);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
 }
-.transcript-ai-prompt-text {
-  width: 100%;
-  min-height: 96px; /* token-exempt: layout geometry (four-line prompt field) */
-  font-family: inherit;
-  font-size: var(--fs-base);
+.transcript-ai-prompt-text.ui-field__input {
+  height: auto;
+  min-height: calc(var(--ctl-lg) * 2);
+  padding: var(--space-4) var(--space-6);
   line-height: var(--lh-relaxed);
-  padding: var(--space-4);
-  background: var(--input-bg, var(--header-bg));
-  color: var(--text-primary);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
   resize: vertical;
 }
 
@@ -3643,6 +3645,25 @@ select {
 .oneoff-modal-actions .btn {
   width: 100%;
   justify-content: center;
+}
+/* Sweep S8: the one-off download form (buildOneOffModal) on the primitives - one gap
+   between its rows (a hidden Retry/progress row drops out by the global [hidden] rule),
+   the three ui-selects in a grid (one column on a phone: "MP4 (recommended)" never clips), and the title row
+   holding a ui-btn icon Close. */
+.oneoff-modal--form {
+  display: grid;
+  gap: var(--space-6);
+}
+.oneoff-modal--form > .oneoff-modal-header {
+  margin-bottom: 0;
+}
+.oneoff-modal--form > .oneoff-modal-status {
+  margin: 0;
+}
+.oneoff-modal-selects {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(calc(var(--av-2xl) * 2), 1fr));
+  gap: var(--space-4);
 }
 .oneoff-modal .btn-primary {
   width: 100%;
@@ -4137,12 +4158,11 @@ select {
      already targeted by an unconditional (all-viewport) CLASS selector with
      a smaller font-size -- a class selector always outranks a bare element
      selector by CSS specificity, regardless of source order or media-query
-     nesting. `.comment-input-box` (13px), `.sort-select` (12px), and
-     `.folder-name-input` (12px, formerly an inline style -- see its own
-     comment above) are exactly that case; explicit mobile-only overrides
-     here restore the 16px no-zoom floor for them specifically. */
-  .comment-input-box,
-  .folder-name-input {
+     nesting. `.comment-input-box` (13px) and `.sort-select` (12px) are that
+     case; explicit mobile-only overrides here restore the 16px no-zoom floor
+     for them specifically. (`.folder-name-input` left this list at sweep S8:
+     it is a ui-field__input, 16px at every width.) */
+  .comment-input-box {
     font-size: var(--fs-input-min);
   }
   /* Lock-to-audio phase 1 (gate r1 qa W2): the timing log's fallback text box
@@ -4518,15 +4538,6 @@ select {
     row-gap: var(--space-5);
   }
 
-  .folder-item-row {
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--space-5);
-  }
-
-  .folder-item-row .remove-folder-btn {
-    align-self: flex-end;
-  }
 
   /* ---- v1.15.0 item 2: home-page sort-row overflow fix -----------------
      Pre-fix: `.section-title` was a single non-wrapping flex row of
@@ -7018,6 +7029,27 @@ html:has(> body.ft-audio-expanded),
 .reloc-preview-entry-detail { font: var(--t-footnote); color: var(--ink-2); }
 .reloc-preview-entry-title > .reloc-copy { color: var(--danger); }
 
+/* The Settings sections' native <details>/<summary> disclosure (`.sub-collapsible`: born on
+   the Subscriptions page, which left it in UI pass sweep S5; Settings keeps it). Inside the
+   master-detail menu the summary is hidden (the menu row is the heading), so this is the
+   no-menu fallback look. */
+.sub-collapsible > summary {
+  font-size: var(--fs-4xl);
+  font-weight: var(--fw-bold);
+  color: var(--yt-red);
+  padding-bottom: var(--space-6);
+}
+
+.sub-collapsible[open] > summary {
+  border-bottom: var(--hairline) solid var(--separator);
+  margin-bottom: var(--space-8);
+}
+
+.sub-collapsible > summary::-webkit-details-marker,
+.sub-collapsible > summary::marker {
+  color: var(--yt-red);
+}
+
 /* ===========================================================================
    v1.152 master-detail menu (wireMasterDetail in common.js). Mobile-first:
    the menu and the detail are two "screens" (data-md-open toggles which shows,
@@ -7054,7 +7086,7 @@ html:has(> body.ft-audio-expanded),
   .md-row:hover { background: var(--bg-secondary); }
 }
 .md-row--active { background: var(--bg-secondary); }
-.md-row:focus-visible { outline: 2px solid var(--yt-red); outline-offset: -2px; }
+.md-row:focus-visible { outline: var(--ring-w) solid var(--focus-ring); outline-offset: calc(-1 * var(--ring-w)); } /* sweep S8 (F36): the one focus ring, never red */
 .md-row-label { flex: 1; font-size: var(--fs-lg); }
 .md-row-badge {
   font-size: var(--fs-2xs); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--tracking-caps);
@@ -8818,7 +8850,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
    form read as a cramped panel; the form now sits open on the page —
    .login-page's own padding provides the edge gutters, so the horizontal
    padding went too. The inputs carry the "distinct well" job the card used
-   to do — see .login-field input's --bg-secondary note below. */
+   to do (sweep S8: the ui-field inputs are surface-2 wells). */
 .login-card {
   width: 100%;
   max-width: 420px;
@@ -8880,61 +8912,17 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   flex-direction: column;
   gap: calc(var(--density) * 1.75);
 }
-.login-field {
-  display: flex;
-  flex-direction: column;
-  gap: calc(var(--density) * 0.5);
-}
-.login-field label {
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.04em; /* token-exempt: era display styling */
-}
-.login-field input {
-  font-family: var(--font-family);
-  font-size: var(--fs-input-min); /* >=16px: the iOS-zoom-on-focus floor */
-  color: var(--text-primary);
-  /* v1.43.1 B1: --bg-secondary, not --bg-color. With the card chrome gone
-     the page behind the inputs IS --bg-color — inputs sharing it would
-     dissolve into the page (worst in dark mode). The secondary tone keeps
-     each field a legible, distinct well without the card. */
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-  padding: calc(var(--density) * 1.25) calc(var(--density) * 1.5);
+/* Sweep S8: the fields are ui-field (16px - the iOS no-zoom floor - and the focus ring),
+   Sign in is a primary ui-btn at the phone hit size, the era picker is a ui-segmented.
+   The primitives own every control's look; these rules own the card's layout only. */
+.login-form > .ui-btn {
   width: 100%;
+  margin-top: var(--space-4);
 }
-.login-field input:focus {
-  outline: 2px solid var(--yt-red);
-  outline-offset: 1px;
-  border-color: var(--yt-red);
-}
-.login-submit {
-  font-family: var(--font-family);
-  font-size: var(--fs-lg);
-  font-weight: var(--fw-bold);
-  color: var(--on-accent);
-  background: var(--yt-red);
-  border: 1px solid var(--yt-red-dark, var(--yt-red));
-  border-radius: var(--radius);
-  padding: calc(var(--density) * 1.4) var(--density);
-  cursor: pointer;
-  margin-top: calc(var(--density) * 0.5);
-  transition: filter var(--dur-fast) var(--ease-ui);
-}
-@media (hover: hover) {
-  .login-submit:hover { filter: brightness(1.08); }
-}
-.login-submit:active { filter: brightness(0.94); }
-.login-submit:disabled { opacity: 0.6; cursor: default; filter: none; }
-.login-submit:focus-visible { outline: 3px solid var(--text-link); outline-offset: 2px; }
 /* The error region is always present for aria-live; it only shows when filled. */
 .login-error {
-  min-height: 0;
-  font-size: var(--fs-sm);
-  color: var(--yt-red);
+  font: var(--t-callout);
+  color: var(--danger);
   text-align: center;
 }
 .login-error:empty { display: none; }
@@ -8948,30 +8936,12 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 .login-era-switch {
   display: flex;
   align-items: center;
-  gap: calc(var(--density) * 0.75);
-  flex-wrap: wrap;
   justify-content: center;
-  font-size: var(--fs-xs);
-  color: var(--text-secondary);
+  gap: var(--space-6);
 }
-.login-era-switch button {
-  font-family: var(--font-family);
-  font-size: var(--fs-xs);
-  color: var(--text-secondary);
-  background: var(--btn-bg, var(--bg-secondary));
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  padding: var(--space-2) var(--space-4);
-  cursor: pointer;
-}
-.login-era-switch button[aria-pressed="true"] {
-  color: var(--on-accent);
-  background: var(--yt-red);
-  border-color: var(--yt-red);
-  font-weight: var(--fw-bold);
-}
-@media (prefers-reduced-motion: reduce) {
-  .login-submit { transition: none; }
+.login-era-label {
+  font: var(--t-footnote);
+  color: var(--ink-2);
 }
 
 /* ---- v1.43: Settings Account + Users (chunk 4c) --------------------------
@@ -9027,15 +8997,20 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 
 /* v1.80 RBAC: the per-user access editor (setup.js openAccessEditor). Tokens
    only; inherits era styling. */
+/* Sweep S8: a surface-2 panel of switch rows (label left, ui-switch right) under a
+   ui.segmented mode picker; the Save is a ui-btn primary. */
 .access-editor {
+  display: grid;
+  gap: var(--space-4);
   margin-top: var(--space-4);
-  padding: var(--space-4);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  background: var(--bg-secondary);
+  padding: var(--space-6);
+  border-radius: var(--r-md);
+  background: var(--surface-2);
 }
-.access-editor h4 { margin: var(--space-4) 0 var(--space-2); font-size: var(--fs-sm); }
-.access-item { display: block; font-weight: normal; }
+.access-editor h4 { margin: var(--space-4) 0 0; font: var(--t-footnote); font-weight: var(--fw-semibold); color: var(--ink-2); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
+.access-item { display: flex; align-items: center; justify-content: space-between; gap: var(--space-6); font: var(--t-body); color: var(--ink-1); }
+.access-mode-help { margin: 0; font: var(--t-footnote); color: var(--ink-2); }
+.access-editor > .access-save { justify-self: start; }
 
 /* v1.44 Music page -- era/mode tokens only (type sizes via --fs-* tokens
    only, per the type-scale lock), glyphs via icon-* masks never emoji,
@@ -10882,30 +10857,55 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
    one global [hidden]{display:none!important} rule (sweep S1 deleted this family's own patch). */
 
 /* The Settings bottom-bar editor rows (toggle + up/down reorder). */
-/* v1.67's editor-row idiom (label left, control right, hairline separators),
-   born with the retired card-corner editor; the v1.77 Library-icon editor
-   (#library-glyph-editor) still uses it. */
+/* v1.67 -> sweep S8: the editor-row family (the card-corner editor that owned it is
+   retired with the card corners, D8.5; the Library-icon editor keeps it): a grouped
+   surface-1 list, label left, a ui-select right, inset hairlines. */
+.card-corner-editor {
+  border-radius: var(--r-md);
+  background-color: var(--surface-1);
+  overflow: hidden;
+}
 .card-corner-editor-row {
   display: flex;
   align-items: center;
-  gap: var(--space-5);
-  padding: var(--space-4) 0;
-  border-bottom: 1px solid var(--border-color);
+  gap: var(--space-6);
+  min-height: var(--row-default);
+  padding: var(--space-3) var(--space-4) var(--space-3) var(--inset);
+  background-image: linear-gradient(var(--separator), var(--separator));
+  background-repeat: no-repeat;
+  background-position: right bottom;
+  background-size: calc(100% - var(--inset)) var(--hairline);
 }
-
+.card-corner-editor > :last-child { background-image: none; }
 .card-corner-editor-row .card-corner-editor-label {
   flex: 1;
-  color: var(--text-primary);
+  font: var(--t-body);
+  color: var(--ink-1);
+}
+.card-corner-editor-row > .ui-select {
+  width: 50%;
 }
 
+/* sweep S8: the bar editor is a grouped surface-1 list (handle, label, a trailing switch) */
+.bottombar-editor {
+  border-radius: var(--r-md);
+  background-color: var(--surface-1);
+  overflow: hidden;
+}
 .bottombar-editor-row {
   display: flex;
   align-items: center;
-  gap: var(--space-5);
-  padding: var(--space-4) 0;
-  border-bottom: 1px solid var(--border-color);
+  gap: var(--space-6);
+  min-height: var(--row-default);
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--inset);
+  background-image: linear-gradient(var(--separator), var(--separator));
+  background-repeat: no-repeat;
+  background-position: right bottom;
+  background-size: calc(100% - var(--inset)) var(--hairline);
 }
-.bottombar-editor-row .bottombar-editor-label { flex: 1; color: var(--text-primary); }
+.bottombar-editor > :last-child { background-image: none; }
+.bottombar-editor-row .bottombar-editor-label { flex: 1; font: var(--t-body); color: var(--ink-1); }
+.bottombar-editor-toggle { display: flex; }
 /* v1.76: `.bottombar-editor-btn` (the up/down arrows) is GONE, and so are its
    rules - the row's grip is the shared `.drag-handle` above, which is both the
    drag surface and the keyboard control. */
@@ -11116,12 +11116,9 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   color: var(--text-secondary);
 }
 
-/* The armed half of the two-tap delete (per-item AND delete-all). */
-.critter-delete-armed {
-  background-color: var(--yt-red);
-  color: var(--on-overlay);
-  border-color: var(--yt-red);
-}
+/* sweep S8: the two-tap delete's armed state is gone - Delete / Delete all are
+   ui-btn--danger buttons behind the ui.confirm step. The note glyph is a sprite icon. */
+.critter-pool-voice { margin-left: var(--space-2); }
 
 /* v1.170 (Dean's Bernard screenshot): behind a TRUE-CIRCLE anchor (the channel
    avatar disc) the rect clip cuts straight hard edges where the avatar's square
@@ -12561,18 +12558,107 @@ html:not([data-era-flourish="on"]) .ft-fabricated {
   display: none;
 }
 
-/* v1.63.1: class-based settings-checkbox styling (the page's legacy
-   checkboxes use inline style attrs - the #71 unscanned channel; new
-   markup uses THESE instead and existing ones migrate opportunistically). */
-.setup-subhead {
-  margin-top: var(--space-10);
+/* ---- UI pass sweep S8: Settings sections on the primitives (plan D4.10) -------------
+   A Settings section is a stack of .setup-group blocks on the page ground (direction C):
+   grouped ui-lists of switch rows (native checkboxes wearing .ui-switch), ui-field and
+   ui-select blocks, and a .setup-note footer under the group it explains. The primitives
+   own every control's look; these rules own only the section's layout and its caption
+   text. Captions sit at the group inset (the row text's start edge); surfaces run flush. */
+.md-root .md-panes > details.setup-sec {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
 }
-
-.setup-check-label {
+.setup-sec .setup-intro {
+  margin: 0 0 var(--space-12);
+  font: var(--t-body);
+  color: var(--ink-2);
+}
+.setup-sec .setup-group {
+  display: grid;
+  gap: var(--space-6);
+  margin: 0 0 var(--space-12);
+}
+.setup-sec .setup-heading {
+  margin: var(--space-16) 0 var(--space-4);
+  padding: 0 var(--inset);
+  font: var(--t-footnote);
+  font-weight: var(--fw-semibold);
+  color: var(--ink-2);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+}
+.setup-sec .setup-group > .setup-heading,
+.setup-sec .setup-heading:first-of-type {
+  margin-top: 0;
+}
+.setup-sec .setup-group > .setup-heading {
+  margin-bottom: 0;
+}
+.setup-sec .setup-note {
+  margin: 0;
+  padding: 0 var(--inset);
+  font: var(--t-footnote);
+  color: var(--ink-2);
+}
+.setup-sec .ui-list--grouped {
+  margin: 0;
+}
+.setup-sec label.ui-row {
+  cursor: pointer;
+}
+.setup-sec .setup-field > .ui-field__label,
+.setup-sec .setup-field > .ui-field__help,
+.setup-sec .setup-group > .ui-field__error,
+.setup-sec .setup-field > .ui-field__error {
+  padding: 0 var(--inset);
+}
+/* the section's legacy `.setup-box p` body rule (0,1,1) must not re-size the field's
+   help and error lines: they stay the primitive's footnote */
+.setup-sec .ui-field__help,
+.setup-sec .ui-field__error {
+  margin: 0;
+  font: var(--t-footnote);
+}
+.setup-sec .ui-field__help { color: var(--ink-2); }
+.setup-sec .ui-field__error { color: var(--danger); }
+.setup-sec .setup-inline {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  font-weight: normal;
+}
+.setup-sec .setup-inline--wrap {
+  flex-wrap: wrap;
+}
+.setup-sec .setup-inline > .ui-field__input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.setup-sec .setup-inline > .ui-btn {
+  flex: none;
+}
+.setup-sec .setup-value {
+  flex: 1 1 0;
+  min-width: 0;
+  font: var(--t-body);
+  color: var(--ink-2);
+}
+.setup-sec .setup-status {
+  display: block;
+}
+/* the downloader engine's channel picker: one row per channel, a native radio trailing */
+.setup-radio {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  margin: 0;
+  accent-color: var(--accent-fill);
+}
+.setup-file {
+  max-width: 100%;
+  font: var(--t-callout);
+  color: var(--ink-1);
 }
 
 /* ---- v1.64 watch history (/history) --------------------------------------- */
@@ -12637,12 +12723,9 @@ html:not([data-era-flourish="on"]) .ft-fabricated {
 /* v1.159: the Trash Title cell (thumb + truncating title) + its actions cell. */
 .trash-title-cell { display: flex; align-items: center; gap: var(--space-5); min-width: 0; }
 .trash-actions { display: inline-flex; gap: var(--space-3); }
-.trash-purge-confirm { display: none; }
-.trash-purge-btn.trash-confirming .trash-purge-label { display: none; }
-.trash-purge-btn.trash-confirming .trash-purge-confirm { display: inline; }
-.trash-purge-btn.trash-confirming { color: var(--yt-red); }
-/* v1.158: the trash toolbar (total held + two-tap Empty). display:flex would
-   beat a bare [hidden], so guard it explicitly (the repo [hidden]-loses rule). */
+/* v1.158: the trash toolbar (total held + Empty trash, confirmed by ui.confirm since
+   sweep S8). display:flex would beat a bare [hidden], so guard it explicitly (the repo
+   [hidden]-loses rule). */
 .trash-toolbar {
   display: flex;
   align-items: center;
@@ -12652,7 +12735,6 @@ html:not([data-era-flourish="on"]) .ft-fabricated {
 }
 .trash-toolbar[hidden] { display: none; }
 .trash-total { color: var(--text-secondary); font-size: var(--fs-sm); }
-.trash-empty-all.trash-confirming { color: var(--yt-red); }
 .trash-empty {
   color: var(--text-secondary);
   padding: var(--space-6) 0;
@@ -12674,16 +12756,9 @@ html:not([data-era-flourish="on"]) .ft-fabricated {
    to fill - KEEPS its card padding (unlike -host, which a .stable table owns). */
 .folder-list-builder--fill { max-height: none; overflow: visible; }
 .stable-toolbar { padding: var(--space-5) var(--space-6) var(--space-4); }
-.stable-filter {
-  width: 100%;
-  padding: var(--space-4) var(--space-6);
-  background: var(--input-bg, var(--bg-secondary));
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  font: inherit;
-}
-.stable-filter::placeholder { color: var(--text-secondary); }
+/* sweep S8: the filter field is a ui-field__input (16px at every width - its old
+   `font: inherit` let a phone's text size through under the iOS no-zoom floor - the
+   focus ring, the surface-2 well); .stable-filter stays as the hook. */
 .stable-head,
 .stable-row {
   display: grid;
@@ -13054,38 +13129,6 @@ html:not([data-era-flourish="on"]) .ft-fabricated {
    the prev-next/playlist buttons (outside `.watch-actions`) are untouched. */
 @media (max-width: 768px) {
   .watch-actions .btn { min-height: var(--size-touch-watch-action); }
-}
-
-/* ---- v1.146 downloader-engine: the Downloads box's channel selector.
-   Three side-by-side radio cards (the ruling's term 5); wraps on narrow
-   widths via flex-wrap, so no media query is needed. Version strings can
-   be long nightly spellings - break-all keeps a card from forcing the
-   row wide. */
-.engine-channels {
-  display: flex;
-  gap: var(--space-4);
-  flex-wrap: wrap;
-  margin: var(--space-4) 0;
-}
-.engine-channel {
-  flex: 1 1 150px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  align-items: flex-start;
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  padding: var(--space-4);
-  cursor: pointer;
-  background-color: var(--bg-secondary);
-}
-.engine-channel-name {
-  font-weight: var(--fw-semibold);
-}
-.engine-channel-version {
-  color: var(--text-secondary);
-  font-size: var(--fs-sm);
-  word-break: break-all;
 }
 
 /* ---- v1.150 (Dean's device report): the search-box clear X ----------------

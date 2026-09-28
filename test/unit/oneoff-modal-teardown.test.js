@@ -195,9 +195,9 @@ test('the [x] close button hits the SAME teardown as a backdrop tap', async () =
   await withGlobals(doc, () => Promise.resolve({ ok: true, status: 200 }), async () => {
     await bootAndOpen({ doc, headerRight });
     const backdrop = body.children[0];
-    const modal = backdrop.children.find((c) => c.className === 'oneoff-modal');
+    const modal = backdrop.children.find((c) => c.className === 'oneoff-modal oneoff-modal--form');
     const header = modal && modal.children.find((c) => c.className === 'oneoff-modal-header');
-    const closeBtn = header && header.children.find((c) => c.className === 'oneoff-modal-close');
+    const closeBtn = header && header.children.find((c) => c.getAttribute && c.getAttribute('aria-label') === 'Close' && /\bui-btn--icon\b/.test(c.className));
     assert.ok(closeBtn, 'expected the [x] close button inside the modal header');
 
     closeBtn.click();
@@ -256,7 +256,7 @@ test('a click that bubbled from inside the modal (target is the inner .oneoff-mo
   await withGlobals(doc, () => Promise.resolve({ ok: true, status: 200 }), async () => {
     await bootAndOpen({ doc, headerRight });
     const backdrop = body.children[0];
-    const modal = backdrop.children.find((c) => c.className === 'oneoff-modal');
+    const modal = backdrop.children.find((c) => c.className === 'oneoff-modal oneoff-modal--form');
     assert.ok(modal, 'expected the inner .oneoff-modal dialog');
 
     backdrop.fire('click', { target: modal });

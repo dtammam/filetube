@@ -59,11 +59,18 @@ test('mobile: a media query gives .setup-box comfortable controls (min-height ta
   );
 });
 
-test('mobile: .folder-item-row stacks vertically on a narrow phone (comfortable wrapping, not per-row overflow)', () => {
-  const mobileBlockRe = /@media \(max-width: 768px\) \{([\s\S]*?)\n\}\n\n\/\* In landscape/;
-  const block = mobileBlockRe.exec(css);
-  assert.ok(block);
-  assert.match(block[1], /\.folder-item-row\s*\{[^}]*flex-direction:\s*column/);
+// Sweep S8 (AC12 conversion): the v1.13.0 phone column-stack is replaced by ONE layout at
+// every width - a card whose controls row wraps (the name field takes its own full line),
+// so nothing overflows a narrow phone and no mobile rule has to reshape the row.
+test('the folder row wraps its controls at every width instead of a phone-only column stack (sweep S8)', () => {
+  const rule = (sel) => { const m = new RegExp(sel.replace(/[.>]/g, (c) => '\\' + c) + '\\s*\\{([^}]*)\\}').exec(css); assert.ok(m, sel); return m[1]; };
+  assert.match(rule('.folder-item-controls'), /flex-wrap:\s*wrap/, 'the controls row wraps');
+  assert.match(rule('.folder-item-controls > .folder-name-input'), /flex:\s*1 1 100%/, 'the name field takes a full line');
+  assert.match(rule('.folder-item-body'), /min-width:\s*0/, 'the body can shrink (long paths break, never overflow)');
+  // and no rule anywhere turns the row back into a column (the retired phone stack)
+  const rows = css.match(/\.folder-item-row\s*\{[^}]*\}/g) || [];
+  assert.ok(rows.length >= 1);
+  for (const r of rows) assert.doesNotMatch(r, /flex-direction:\s*column/, 'no column stack: ' + r.slice(0, 60));
 });
 
 // v1.21.0 FR-3, T3 -> UI pass S5: the subscription row is a ui-row now (a grid with
@@ -99,7 +106,7 @@ test('v1.21.0 FR-3: #sub-list-container carries no scoped max-height override --
   }
 });
 
-test('the /subscriptions forms are the shared ui-field primitive (one fix improves every form that adopts it)', () => {
+test('Settings and /subscriptions fields are the shared ui-field primitive (one fix improves every form that adopts it); Settings keeps the .folder-list-builder container', () => {
   const setupHtml = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'setup.html'), 'utf8');
   const subsHtml = fs.readFileSync(
     path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html'),
@@ -109,7 +116,13 @@ test('the /subscriptions forms are the shared ui-field primitive (one fix improv
   // ui-select / ui-switch (D4.10), so the shared fix is the primitive in ui.css.
   // setup.html keeps its own .setup-box/.form-group chrome until sweep S8.
   assert.ok(setupHtml.includes('class="setup-box'), 'setup.html must use .setup-box');
-  assert.ok(setupHtml.includes('class="form-group'), 'setup.html must use .form-group');
+  // Sweep S8: Settings' fields left .form-group for the ui-field primitive (S5 moves the
+  // Subscriptions forms the same way); the list container is still shared.
+  assert.ok(setupHtml.includes('class="folder-list-builder'), 'setup.html must use .folder-list-builder');
+  // (S5 retired .folder-list-builder from the Subscriptions view: its lists are ui-lists.)
+  assert.ok(!subsHtml.includes('class="folder-list-builder'), 'the Subscriptions view has no bespoke list container left');
+  assert.ok(!setupHtml.includes('class="form-group'), 'setup.html fields are ui-field, not .form-group');
+  assert.ok(setupHtml.includes('class="ui-field setup-field"'), 'setup.html uses ui-field');
   assert.ok(subsHtml.includes('class="ui-field"'), 'subscriptions.html uses .ui-field');
   assert.doesNotMatch(subsHtml, /class="(form-group|setup-box|setup-select)/, 'no pre-primitive form chrome left on subscriptions.html');
 });

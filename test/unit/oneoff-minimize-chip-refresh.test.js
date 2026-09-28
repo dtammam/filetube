@@ -185,7 +185,7 @@ async function bootOpenAndFillUrl({ doc, headerRight }, url) {
 
   const backdrop = doc.body.children.find((c) => c.className === 'oneoff-modal-backdrop');
   assert.ok(backdrop, 'expected the modal backdrop appended to document.body on open');
-  const modal = backdrop.children.find((c) => c.className === 'oneoff-modal');
+  const modal = backdrop.children.find((c) => c.className === 'oneoff-modal oneoff-modal--form');
   assert.ok(modal, 'expected the inner .oneoff-modal dialog');
   const urlInput = modal.children[1]; // header, urlInput, row, folderInput, statusEl, progressTrack, actionsRow(Retry+Download)
   urlInput.value = url;
@@ -194,7 +194,7 @@ async function bootOpenAndFillUrl({ doc, headerRight }, url) {
   // Download button is now inside that row, not a direct modal child.
   const actionsRow = modal.children.find((c) => c.className === 'action-bar oneoff-modal-actions');
   assert.ok(actionsRow, 'expected the shared Retry+Download action row');
-  const downloadBtn = actionsRow.children.find((c) => c.className === 'btn btn-primary');
+  const downloadBtn = actionsRow.children.find((c) => c.className === 'ui-btn ui-btn--primary ui-btn--md');
   assert.ok(downloadBtn, 'expected the Download button');
   const statusEl = modal.children.find((c) => c.className === 'oneoff-modal-status');
   assert.ok(statusEl, 'expected the status line element');

@@ -218,10 +218,18 @@ function cssRulesWithMedia(source) {
   })(source.replace(/\/\*[\s\S]*?\*\//g, ''), []);
   return rules;
 }
+// Sweep S8 (the v1.25.4 risky conversion): Settings' fields moved onto the ui-field
+// primitive, styled in ui.css with the `font:` shorthand, and several of them are built by
+// setup.js templates. The census now reads BOTH stylesheets, resolves a size from `font:` as
+// well as `font-size:`, and scans the Settings builder's markup too - so a ui-field (16px)
+// and a JS-built field enter it like any shell control.
 function classedEntryControls() {
   const out = [];
-  for (const file of fs.readdirSync(PUBLIC_DIR).filter((f) => f.endsWith('.html'))) {
-    const html = fs.readFileSync(path.join(PUBLIC_DIR, file), 'utf8');
+  const sources = fs.readdirSync(PUBLIC_DIR).filter((f) => f.endsWith('.html')).map((f) => path.join(PUBLIC_DIR, f))
+    .concat([path.join(PUBLIC_DIR, 'js', 'setup.js')]);
+  for (const fileAbs of sources) {
+    const file = path.relative(PUBLIC_DIR, fileAbs);
+    const html = fs.readFileSync(fileAbs, 'utf8');
     const re = /<(textarea|select|input)\b([^>]*)>/g;
     let m;
     while ((m = re.exec(html))) {
@@ -239,10 +247,34 @@ function classedEntryControls() {
 // <select class="btn btn-sm"> (tracker #252).
 const ZOOM_CENSUS_KNOWN = { btn: '#252' };
 
-test('census: every classed input/select/textarea in public/*.html that a class rule sizes under 16px is lifted to >=16px on mobile', () => {
-  const rules = cssRulesWithMedia(css);
+// The size a rule body sets: `font-size: X`, or the size inside a `font:` shorthand
+// (`font: 400 var(--fs-input-min) / 1.2 family`, or a type role `font: var(--t-meta)`,
+// resolved through its `--t-meta-size` twin in tokens.css). null when the body sets none.
+const T_SIZES = {};
+for (const m of TOKENS_CSS.matchAll(/(--t-[a-z]+)-size:\s*([0-9]+)px/g)) T_SIZES[m[1]] = Number(m[2]);
+function bodySizePx(body) {
+  const fsDecl = /(?:^|;)\s*font-size:\s*([^;]+)/.exec(body);
+  if (fsDecl) {
+    const v = fsDecl[1].trim().replace(/\s*!important$/, '');
+    return /^(var\(--fs-[a-z0-9-]+\)|[0-9]+px)$/.test(v) ? resolveFontSizePx(v) : null;
+  }
+  const font = /(?:^|;)\s*font:\s*([^;]+)/.exec(body);
+  if (!font) return null;
+  const role = /^var\((--t-[a-z]+)\)$/.exec(font[1].trim());
+  if (role) return T_SIZES[role[1]] === undefined ? null : T_SIZES[role[1]];
+  const size = /(var\(--fs-[a-z0-9-]+\)|\b[0-9]+px)/.exec(font[1]);
+  return size ? resolveFontSizePx(size[1]) : null;
+}
+
+test('census: every classed input/select/textarea in public/*.html (and the Settings builder) that a class rule sizes under 16px is lifted to >=16px on mobile', () => {
+  const uiCss = require('../helpers/stylesheets').readUiCss();
+  const rules = cssRulesWithMedia(uiCss + '\n' + css);
   const controls = classedEntryControls();
   assert.ok(controls.some((c) => c.cls === 'bg-timing-log-text'), 'precondition: the census sees the timing-log text box');
+  assert.ok(controls.some((c) => c.cls === 'ui-field__input' && c.file === 'setup.html'), 'precondition: the census sees the Settings ui-field inputs');
+  assert.ok(controls.some((c) => c.cls === 'folder-name-input' && c.file === path.join('js', 'setup.js')), 'precondition: the census sees the JS-built folder name field');
+  const fieldRule = rules.find((r) => r.selectors.includes('.ui-field__input') && !r.media.length && bodySizePx(r.body) !== null);
+  assert.ok(fieldRule && bodySizePx(fieldRule.body) >= 16, 'witness: the ui-field input resolves to >= 16px through its font shorthand');
   const offenders = [];
   const seen = new Set();
   for (const { cls, tag, file } of controls) {
@@ -252,11 +284,9 @@ test('census: every classed input/select/textarea in public/*.html that a class 
     let small = null;
     let floored = false;
     for (const r of rules) {
-      const fsDecl = /(?:^|;)\s*font-size:\s*([^;]+)/.exec(r.body);
-      if (!fsDecl || !r.selectors.some((sel) => hit.test(sel))) continue;
-      const trimmed = fsDecl[1].trim().replace(/\s*!important$/, '');
-      if (!/^(var\(--fs-[a-z0-9-]+\)|[0-9]+px)$/.test(trimmed)) continue;
-      const px = resolveFontSizePx(trimmed);
+      if (!r.selectors.some((sel) => hit.test(sel))) continue;
+      const px = bodySizePx(r.body);
+      if (px === null) continue;
       if (r.media.some((q) => /max-width:\s*768px/.test(q))) { if (px >= 16) floored = true; } else if (!r.media.length && px < 16) small = px;
     }
     if (small !== null && !floored) offenders.push('.' + cls + ' (' + tag + ' in ' + file + ') computes ' + small + 'px on mobile');
