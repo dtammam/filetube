@@ -3314,7 +3314,7 @@
   {
     "version": "1.341.3",
     "date": "2026-09-28",
-    "title": "Rotating back to portrait no longer bumps the watch page",
-    "intent": "When you turn your phone back upright while watching, the page settles straight into place instead of sitting a little too high for a moment and then jumping."
+    "title": "Rotating back no longer bumps the watch page, and Modern folders fit the phone",
+    "intent": "When you turn your phone back upright while watching, the page settles straight into place instead of sitting a little too high for a moment and then jumping. In the Modern theme, a folder with a long video title or channel name no longer spreads wider than your phone's screen."
   }
 ]

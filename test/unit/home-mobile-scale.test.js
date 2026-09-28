@@ -148,7 +148,8 @@ test('mobile (<=480px): .video-grid forces exactly 2 columns via repeat(2, 1fr),
   assert.ok(block, 'expected a @media (max-width: 480px) block');
   const rule = /\.video-grid\s*\{([^}]*)\}/.exec(block[1]);
   assert.ok(rule, 'expected a .video-grid rule inside the 480px block');
-  assert.match(rule[1], /grid-template-columns:\s*repeat\(2,\s*1fr\)/, 'phones must get a deterministic 2-column grid');
+  // v1.341.3 (DELIBERATE lock update): minmax(0, 1fr), so a long word can never widen the grid.
+  assert.match(rule[1], /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/, 'phones must get a deterministic 2-column grid');
 });
 
 test('mobile (<=480px): the .video-grid gap stays tight (< the 768px block\'s 12px) so 2 columns are comfortable, not cramped', () => {

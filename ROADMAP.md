@@ -58,7 +58,7 @@
 - [x] **Bug: pinned channels in the sidebar: a long one-line name pushes its pin further right than the
   others** - SHIPPED v1.341.1 (see Shipped) _(Dean, 2026-09-28)_; his pick: one line with an ellipsis.
 
-- [ ] **Bug: Modern theme on a phone: a channel folder and the Downloads folder render wider than the
+- [x] **Bug: Modern theme on a phone: a channel folder and the Downloads folder render wider than the
   screen** _(Dean, 2026-09-28)_ (Dean's iPhone screenshots). The card grid shows two columns with the
   right one cut off at the screen edge (durations read "21:0", "4:4"), a stray sliver of another card
   (its "hours" text, a duration and progress bar) peeks in at the top right beside the header, and the
@@ -71,10 +71,15 @@
   toolbar fits (16-414px of 430; the chip strip scrolls inside it), and Dean's two ~235px columns match
   the tablet grid (auto-fill minmax(210px)) at a ~520px layout width, i.e. iOS laid the page out WIDER
   than the screen (its fit-to-width, the v1.24.6 subscriptions-zoom class), which headless Chromium does
-  not emulate. NEXT: v1.341.3 ships `?debugLayout=1` (a readout box: inner/client/scroll/visual width,
-  whether the 480px phone query matched, the html classes, and the non-fixed elements past the right
-  edge, widest first). Dean opens the Modern Downloads folder with it and sends a screenshot; then fix
-  the element it names.
+  not emulate. Dean's second recording (2026-09-28): the folder loads and FITS (two columns, 0.5-2.5 s);
+  at 3.0 s, while scrolling, the layout widens (a third column cut off at the right), i.e. a card
+  rendered later is too wide for Modern's card layout.
+  FIXED v1.341.3 (confirm on device): the mechanism is the grid, not the item: every phone
+  `.video-grid` track was a bare `1fr` (= minmax(auto, 1fr)), which cannot shrink below a card's longest
+  unbreakable word; Modern's channel avatar leaves each card ~36px less room, so titles that just fit
+  in the other themes overflowed in Modern. Measured at 430px with one long word injected: 556px wide
+  (classic), 628px (Modern); now `minmax(0, 1fr)` tracks + `overflow-wrap: anywhere` on the card text:
+  430px in both, two 194px columns.
 
 - [ ] **Bug: the Click Original skin shows emoji in colour where everything else is black and white**
   _(Dean, 2026-09-28)_: the Original is a monochrome skin, but emoji glyphs (colour emoji fonts ignore
@@ -366,14 +371,15 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
-### v1.341.3 - Rotating back to portrait no longer bumps the watch page (2026-09-28)
+### v1.341.3 - Rotating back no longer bumps the watch page, and Modern folders fit the phone (2026-09-28)
 
 - **The watch page settles in one step after you turn the phone back upright.** It used to sit a
   notch-height too high for about a third of a second before snapping into place; the correction now
   lands on the next frame.
 - For the next device check, `?debugLifecycle=1` now logs the page's scroll position around a rotation.
-- For the Modern phone folders that render too wide, `?debugLayout=1` shows the page's real widths and
-  names the element that sticks out, so one screenshot pins the cause.
+- **Modern theme folders fit the phone screen again.** One long title or channel name could push the
+  whole page wider than the screen (Modern first, because its channel avatars leave each card a little
+  less room); long words now wrap inside their card. 
 
 ### v1.341.2 - Opening a panel no longer shifts the page on desktop (2026-09-28)
 
