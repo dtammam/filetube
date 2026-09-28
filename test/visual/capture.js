@@ -189,7 +189,7 @@ function sceneKit(FX, BASE) {
       await sleep(800); } },
     // Phone only: the landscape phone (844px) shows the sidebar, not the bottom bar, so it has
     // no #nav-playlists-btn (the scene timed out there on every run).
-    { id: '24-playlists-sheet', path: '/', vps: ['phone'], run: async (p, vp) => { await tap(p, '#nav-playlists-btn', vp); await p.waitForSelector('.playlists-sheet:not([hidden])', { timeout: 8000 }); await sleep(600); } },
+    { id: '24-playlists-sheet', path: '/', vps: ['phone'], run: async (p, vp) => { await tap(p, '#nav-playlists-btn', vp); await p.waitForSelector('#playlists-sheet.is-open', { timeout: 8000 }); await sleep(600); } },
     // Not on the phone: phone portrait has no #menu-toggle (the bottom bar replaces the
     // sidebar), so the scene timed out there on every run (2 capture failures per era).
     { id: '25-hamburger-sidebar', path: '/', vps: ['land', 'desktop'], run: async (p, vp) => { await tap(p, '#menu-toggle', vp); await sleep(700); } },

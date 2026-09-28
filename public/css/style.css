@@ -367,7 +367,7 @@ header {
      row at var(--header-h); the padding pushes it below the inset. */
   height: calc(var(--header-h) + env(safe-area-inset-top));
   background-color: var(--header-bg);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: var(--hairline) solid var(--separator);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -391,14 +391,9 @@ html.reader-immersive .app-container { padding-top: 0; }
   gap: var(--space-8);
 }
 
-.menu-toggle {
-  background: none;
-  border: none;
-  color: var(--text-primary);
-  font-size: var(--fs-3xl);
-  cursor: pointer;
-  padding: var(--space-2);
-}
+/* Sweep S1 (F31): the hamburger, the search button and every header-right control are plain
+   ui-btn icon buttons (ui.css: 36px on desktop, 44px on the phone, a 44px hit area always);
+   nothing here restyles them - the rules below only place them. */
 
 .logo {
   display: flex;
@@ -451,51 +446,45 @@ html.reader-immersive .app-container { padding-top: 0; }
   margin: 0 var(--space-8);
 }
 
+/* Sweep S1 (D4.10): the header search is a ui-field-styled input - the --surface-2 ground,
+   --r-md corners, a --ctl-md tall box (--ctl-lg on the phone), the focus ring on the field -
+   with the search ui-btn (a plain icon button) at its trailing edge inside the same ground.
+   The input keeps the 16px iOS no-zoom floor on the phone (the mobile block below). */
 .search-form {
   display: flex;
+  align-items: center;
+  box-sizing: border-box;
   width: 100%;
   min-width: 0; /* allow the form (and its input) to shrink instead of pushing off-screen */
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-  overflow: hidden;
-  box-shadow: inset 0 1px 2px rgba(0,0,0,0.05); /* token-exempt: era skin art */
+  height: var(--ctl-md);
+  border-radius: var(--r-md);
+  background-color: var(--surface-2);
+}
+.search-form:focus-within {
+  outline: var(--ring-w) solid var(--focus-ring);
+  outline-offset: 0;
 }
 
 .search-input {
   flex: 1;
   min-width: 0; /* critical: lets the input shrink below its default intrinsic width */
-  border: none;
-  padding: var(--space-4) var(--space-6);
-  font-size: var(--fs-md);
-  background-color: var(--bg-color);
-  color: var(--text-primary);
-  outline: none;
+  height: 100%;
+  margin: 0;
+  padding: 0 var(--space-6);
+  border: 0;
+  background: transparent;
+  color: var(--ink-1);
+  font: var(--t-body);
+  outline: none; /* the ring is the field's (.search-form:focus-within) */
+  -webkit-appearance: none;
+  appearance: none;
 }
-
-.search-btn {
-  background-color: var(--btn-bg);
-  border: none;
-  border-left: 1px solid var(--border-dark);
-  color: var(--text-primary);
-  padding: 0 var(--space-8);
-  cursor: pointer;
-  font-size: var(--fs-base);
-  font-weight: var(--fw-semibold);
-  flex-shrink: 0;      /* keep the "Search" label from being clipped */
-  white-space: nowrap;
-  transition: background-color var(--dur-fast) var(--ease-ui);
-}
-
-@media (hover: hover) {
-  .search-btn:hover {
-    background-color: var(--btn-hover);
-  }
-}
+.search-input::placeholder { color: var(--ink-3); }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: var(--space-6);
+  gap: var(--space-2);
 }
 
 /* v1.24 FR F2: elegance polish -- a touch more breathing room (12px->14px
@@ -544,8 +533,7 @@ html.reader-immersive .app-container { padding-top: 0; }
    6), so every hidden .btn used to SHOW - Settings' perf-diag Open, logo Remove (light and
    dark), photo Remove and push enable/disable in every state, the watch page's cached-hidden
    Subscribe, the reader / podcast / history / subscriptions buttons their code hides. One
-   guard for the whole family; !important also beats the id rules that re-display a .btn
-   (`.header-right #ytdlp-oneoff-btn`). */
+   guard for the whole family; !important also beats any id rule that re-displays a .btn. */
 .btn[hidden] { display: none !important; }
 
 /* The 2005 era-theme underlines all <a>; an <a class="btn"> is a button, not a link -- keep it clean. */
@@ -611,7 +599,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .sidebar {
   width: var(--sidebar-w);
   background-color: var(--bg-sidebar);
-  border-right: 1px solid var(--border-color);
+  border-right: var(--hairline) solid var(--separator);
   padding: var(--space-6) 0;
   position: fixed;
   top: calc(var(--header-h) + env(safe-area-inset-top)); /* pinned flush under the fixed header, incl. the top safe-area (v1.106) */
@@ -619,7 +607,20 @@ html.reader-immersive .app-container { padding-top: 0; }
   left: 0;
   overflow-y: auto;
   z-index: 99; /* token-exempt: grandfathered chrome rung - above the 0-40 local band but below every --z-* ladder rung (900+); predates the ladder (amendment d ruled it stays literal). NOT an example to copy: new stacking goes on the ladder or in the 0-40 band */
-  transition: transform var(--dur-fast);
+}
+/* D7 (sweep S1, AC9 stillness): the drawer moves by transform ONLY, and it slides only while
+   `.is-animating` is set - which only the header menu toggle sets (common.js armSidebarSlide).
+   A theatre collapse, a resize or a rotation moves it without a slide. */
+.sidebar.is-animating {
+  transition: transform var(--dur-fast) var(--ease-std);
+}
+/* D7: a real width change (a rotation, a window resize) holds html.no-motion for 300ms
+   (common.js wireNoMotionOnResize) - no box animates between the old and the new layout
+   (animations - a spinner, a shimmer - keep running; they move nothing). */
+html.no-motion *,
+html.no-motion *::before,
+html.no-motion *::after {
+  transition: none !important;
 }
 
 .sidebar.hidden {
@@ -643,16 +644,16 @@ html.reader-immersive .app-container { padding-top: 0; }
 }
 
 .sidebar-section {
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: var(--hairline) solid var(--separator);
   padding-bottom: var(--space-4);
   margin-bottom: var(--space-4);
 }
 
 .sidebar-section-title {
   padding: var(--space-3) var(--space-12);
-  font-size: var(--fs-xs);
+  font: var(--t-footnote);
   font-weight: var(--fw-bold);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   text-transform: uppercase;
   letter-spacing: 0.5px; /* token-exempt: era display styling */
 }
@@ -662,31 +663,39 @@ html.reader-immersive .app-container { padding-top: 0; }
   align-items: center;
   gap: var(--space-6);
   padding: var(--density) var(--space-12);
-  color: var(--text-primary);
+  color: var(--ink-1);
   text-decoration: none;
   cursor: pointer;
   font-size: var(--fs-base);
 }
 
+/* Sweep S1 (F50, D8.8): selected and hovered are a neutral FILL only - the weight never
+   changes (a bold hover re-flowed the label), and never red. F20: a nav row never underlines
+   in any era or state; the [data-theme] prefix outranks the 2005 era's `a` underline and the
+   global `a:hover` without !important. */
 .sidebar-item.active {
-  background-color: var(--bg-secondary);
+  background-color: var(--fill-selected);
+}
+[data-theme] a.sidebar-item,
+a.sidebar-item {
   text-decoration: none;
-  font-weight: var(--fw-bold);
+}
+.sidebar-item:active {
+  background-color: var(--tint-press);
 }
 @media (hover: hover) {
   .sidebar-item:hover {
-    background-color: var(--bg-secondary);
-    text-decoration: none;
-    font-weight: var(--fw-bold);
+    background-color: var(--tint-hover);
+  }
+  .sidebar-item.active:hover {
+    background-color: var(--fill-selected);
   }
 }
 
 .sidebar-item i {
-  width: 18px;
-  height: 18px;
-  text-align: center;
-  font-size: var(--fs-xl);
-  color: var(--text-secondary);
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--ink-2);
 }
 /* v1.157 (P2a): the desktop sidebar Home/Settings/Stats glyphs are inline
    chrome-icon <svg> now (not `.icon-*` mask <i>), so `.sidebar-item i` no
@@ -694,9 +703,9 @@ html.reader-immersive .app-container { padding-top: 0; }
    fill:currentColor picks up `color`). Dynamic folder-row `.icon-*` masks, if
    any, still ride the `.sidebar-item i` rule above. */
 .sidebar-item .chrome-icon {
-  width: 18px;
-  height: 18px;
-  color: var(--text-secondary);
+  width: var(--icon-sm);
+  height: var(--icon-sm);
+  color: var(--ink-2);
 }
 
 /* Item 1 (v1.15.0): sidebar drag-and-drop folder reordering. The dragged
@@ -839,8 +848,9 @@ html.reader-immersive .app-container { padding-top: 0; }
      isolation, the critter plane resolves in the root context: above the
      canvas ground, below every furniture background, and no overlay stacking
      changes AT ALL. Re-adding a background here re-hides the critters - the
-     critter-mode test locks this contract. */
-  transition: margin-left var(--dur-fast);
+     critter-mode test locks this contract.
+     D7 (sweep S1, AC9): NO transition - margin-left is a layout property; when the sidebar
+     collapses, the content column takes its new width in one frame while the drawer slides. */
 }
 
 .main-content.expanded {
@@ -4052,9 +4062,7 @@ select {
 
 /* New mobile-shell elements never render outside the phone breakpoint.
    Additive: new selectors only — no existing desktop rule is touched. */
-.bottom-nav,
-.playlists-sheet,
-.playlists-sheet-backdrop {
+.bottom-nav {
   display: none;
 }
 
@@ -4180,28 +4188,21 @@ select {
   .header-search {
     margin: 0 var(--space-3);
   }
+  .search-form {
+    height: var(--ctl-lg);
+  }
   .search-input {
-    padding: var(--space-3) var(--space-5);
     /* v1.25.10: 16px so tapping the search box doesn't trigger iOS's
        focus auto-zoom (same <16px rule fixed for the modal/form inputs in v1.25.4). */
     font-size: var(--fs-input-min);
   }
-  .search-btn {
-    padding: 0 var(--space-5);
-  }
-  .header-right {
-    gap: var(--space-3);
-  }
-  /* Hide header `.btn` controls on phones (reclaim the top row). The v1.82
-     Settings link that used to live here is gone, but this rule is NOT dead: the
-     yt-dlp one-off "Download" button (`#ytdlp-oneoff-btn`, class `btn`, injected
-     into .header-right by common.js) still relies on it - mobile reaches that
-     flow through the bottom-nav one-off entry instead. */
-  .header-right .btn {
-    display: none;
-  }
 
   /* ---- Mobile app shell: bottom nav ------------------------------------ */
+  /* Sweep S1 (F49, D4.1): each tab is a ui-btn stack (common.js bottomNavItemEl; the shells'
+     static tabs are the same markup) - a fixed 24px icon slot over a one-line caption label,
+     so a tab holding the avatar (You) sits on the same line as the rest. Unselected tabs are
+     --ink-2; the selected one is --ink-1 with its FILLED glyph (setBottomNavItemFilled) -
+     never red, and never a weight change (D8.8). Only the bar's layout lives here. */
   .bottom-nav {
     display: flex;
     position: fixed;
@@ -4212,38 +4213,20 @@ select {
     justify-content: space-around;
     align-items: stretch;
     background: var(--header-bg);
-    border-top: 1px solid var(--border-color);
-    box-shadow: var(--shadow);
+    border-top: var(--hairline) solid var(--separator);
     padding-bottom: env(safe-area-inset-bottom);
-    font-family: var(--font-family);
   }
 
-  .bottom-nav-item {
+  .bottom-nav > .bottom-nav-item {
     flex: 1 1 0;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: var(--space-1);
+    min-width: 0;
+    height: auto;
     padding: var(--space-4) 0 var(--space-3);
-    background: none;
-    border: none;
-    cursor: pointer;
-    text-decoration: none;
-    color: var(--text-secondary);
-    font-family: inherit;
-    font-size: var(--fs-xs);
+    border-radius: 0;
+    color: var(--ink-2);
   }
-
-  .bottom-nav-item i,
-  .bottom-nav-item .chrome-icon {
-    font-size: var(--fs-3xl);
-    line-height: 1; /* token-exempt: glyph centering */
-    color: inherit;
-  }
-
-  .bottom-nav-item.active {
-    color: var(--yt-red);
+  .bottom-nav > .bottom-nav-item.active {
+    color: var(--ink-1);
   }
 
   /* v1.75 (Dean's report: "In bottom bar, Home is not always left-most"):
@@ -4292,7 +4275,7 @@ select {
     padding-top: var(--mobile-header-h);
   }
 
-  .menu-toggle {
+  .header-left > .menu-toggle {
     display: none;   /* hamburger reconciled — Playlists sheet replaces it */
   }
 
@@ -4315,154 +4298,29 @@ select {
     display: none;
   }
   .search-open .header-search { display: block; }
-  /* v1.85.1 (#D): the one-off Download button IS wanted in the mobile top-right
-     (Dean) - exempt it from the v1.82 `.header-right .btn { display:none }` hide.
-     The id selector (1,1,0) beats that rule (0,2,0) regardless of order. */
-  /* v1.86.1 (Dean): on mobile, style the Download button like the bell/search
-     glyph buttons - drop the .btn BOX (background/border/shadow), circular hit
-     area, and a touch larger than the .btn default (--fs-sm=12px) so it no longer
-     reads smaller than the ~13px sibling glyphs. The (1,1,0) id selector beats
-     the (0,1,0) .btn base for all of these. */
-  /* v1.339 (L2): the shells' pre-paint reserve for this button (`[data-ft-reserve="download"]`)
-     rides the SAME mobile rules, so the placeholder is the real button's box at every width. */
-  .header-right #ytdlp-oneoff-btn,
-  .header-right [data-ft-reserve="download"] {
+  /* v1.85 #1: the magnifier owns the far-right CORNER - order:1 makes it the rightmost
+     item regardless of injection order (v1.86.0, Dean). Sweep S1: every header glyph is a
+     44px ui-btn icon button here, so the row needs no gap of its own (each button's box
+     already spaces the glyphs 44px apart, evenly - v1.87.0's "evenly spaced" report). */
+  /* (0,2,1): out-specifies the desktop hide `.header-right > .search-toggle-btn` (0,2,0),
+     which sits LATER in the file - a @media adds no specificity (the v1.85 device-pass
+     lesson; the geometry check HDR renders it at 390px, test/geometry). */
+  header .header-right > .search-toggle-btn {
     display: inline-flex;
-    background: none;
-    border: none;
-    box-shadow: none;
-    padding: var(--space-3);
-    border-radius: var(--radius-full);
-    font-size: var(--fs-4xl); /* v1.86.3 (Dean): 22px 1em mask box == the bell/queue inline-SVG box (22px), so the whole header glyph family is one size */
-  }
-  @media (hover: hover) {
-    .header-right #ytdlp-oneoff-btn:hover { background-color: var(--bg-secondary); }
-  }
-  /* v1.86.0 (Dean): on mobile the Download button is GLYPH-ONLY - hide its label
-     (desktop keeps the word). .btn is inline-flex with a gap, so the lone icon
-     stays clean. */
-  .header-right #ytdlp-oneoff-btn .btn-label,
-  .header-right [data-ft-reserve="download"] .btn-label { display: none; }
-  /* v1.86.0 (Dean): the search magnifier owns the far-right CORNER - order:1
-     makes it the rightmost item regardless of injection order.
-     v1.87.0 (Dean): DROP the extra margin-left. It stacked a second gap on top
-     of the container's own `gap: var(--space-6)`, so the magnifier sat ~28px
-     from its neighbour while every other glyph was 14px apart - the "not evenly
-     spaced, especially the magnifying glass" device report. Now the whole row
-     shares the single container gap and reads uniform. */
-  .header-right .search-toggle-btn {
     order: 1;
-    font-size: var(--fs-4xl); /* v1.86.3 (Dean): 22px, uniform with the download/sort glyphs + the bell/queue SVG box */
   }
-  /* v1.85 #1: the magnifier lives in the top-right slot beside the bell/avatar.
-     v1.85.1: these three overrides MUST out-specify their base rules, which live
-     LATER in the file (.search-toggle-btn ~7623, .account-menu-trigger ~9387,
-     .account-menu-dropdown ~9418) - a @media block adds NO specificity, so a
-     same-specificity later rule would win and silently defeat all of this (the
-     v1.85 device-pass failure). Scoping under `.header-right` makes them (0,2,0)
-     and they win regardless of source order. */
-  .header-right .search-toggle-btn { display: inline-flex; }
-  /* v1.85 #2: the "You" bottom-nav tab owns account access on mobile - hide the
-     header avatar (keep the bell + magnifier in .header-right), and drop the
-     account menu as a bottom SHEET above the nav when opened from the You tab. */
+  /* v1.85 #2: the "You" bottom-nav tab owns account access on mobile - the header avatar
+     hides (the bell + magnifier stay); the menu opens as a bottom sheet (ui.sheet 'auto'). */
   .header-right .account-menu-trigger { display: none; }
-  .header-right .account-menu-dropdown {
-    position: fixed;
-    top: auto;
-    /* v1.91.2 (Dean): a RIGHT-anchored narrow card, not a full-width sheet. The
-       old `left+right: --space-4` stretched it edge-to-edge, and with short
-       left-aligned rows the whole right half was dead space ("feels too wide").
-       Anchoring to the right edge (above the nav, near the You tab it opens from)
-       and capping the width makes it read as a menu tied to its trigger. */
-    left: auto;
-    right: var(--space-4);
-    bottom: calc(64px + env(safe-area-inset-bottom)); /* token-exempt: clears the fixed bottom nav */
-    min-width: 240px;
-    max-width: min(340px, calc(100vw - 2 * var(--space-4)));
-  }
 
   .header-right {
-    display: none;   /* Settings + moon toggle now live in bottom nav */
+    display: none;   /* re-shown as the top-right glyph slot in the later mobile block */
   }
 
-  /* ---- Mobile app shell: Playlists sheet -------------------------------- */
-  /* v1.26.2 polish (Dean punchlist -- sheet/modal transitions): pre-fix,
-     `[hidden]` was the ONLY state change -- an instant display:none <-> block
-     teleport. A CSS transition can't start FROM display:none, so
-     `openPlaylistsSheet`/`closePlaylistsSheet` (common.js) now do the
-     two-step reveal (unhide, force reflow, add `.sheet-open`) via the shared
-     `openOverlay`/`closeOverlayThen` helpers -- this rule just needs a real
-     "from" state (`opacity: 0`) and a transition to animate between it and
-     `.sheet-open`'s `opacity: 1`. */
-  .playlists-sheet-backdrop:not([hidden]) {
-    display: block;
-    position: fixed;
-    inset: 0;
-    z-index: var(--z-sheet);
-    background: var(--scrim-legacy);
-    opacity: 0;
-    transition: opacity var(--dur-fast) ease-out;
-  }
-
-  .playlists-sheet-backdrop:not([hidden]).sheet-open {
-    opacity: 1;
-  }
-
-  /* Same two-step-reveal posture as the backdrop above, but a slide (not a
-     fade) -- `translateY(100%)` (fully off-screen, below the viewport) to
-     `translateY(0)` on `.sheet-open`. */
-  .playlists-sheet:not([hidden]) {
-    display: flex; /* v1.310 anti-bleed: column = static header + inner scrolling list (was block+overflow-y:auto on the rounded sheet = iOS corner-clip escape) */
-    flex-direction: column;
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: calc(var(--z-sheet) + 1); /* the sheet rides one above its own backdrop (--z-sheet) */
-    max-height: 70vh;
-    overflow: hidden; /* clip children to the rounded top; the LIST scrolls, not the sheet */
-    background: var(--bg-sidebar);
-    border-top: 1px solid var(--border-color);
-    border-top-left-radius: var(--radius-lg);
-    border-top-right-radius: var(--radius-lg);
-    box-shadow: var(--shadow-lg);
-    font-family: var(--font-family);
-    transform: translateY(100%);
-    transition: transform var(--dur-fast) ease-out;
-  }
-
-  /* v1.310 anti-bleed: the scroll region. overflow + the safe-area pad live
-     HERE (no border-radius); min-height:0 lets the flex item shrink so the list
-     scrolls instead of the sheet overflowing. The header stays pinned above it. */
-  .playlists-sheet-list {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-
-  .playlists-sheet:not([hidden]).sheet-open {
-    transform: translateY(0);
-  }
-
-  .playlists-sheet-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-6) var(--space-8);
-    font-weight: var(--fw-bold);
-    color: var(--text-primary);
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  .playlists-sheet-close {
-    background: none;
-    border: none;
-    font-size: var(--fs-4xl);
-    line-height: 1; /* token-exempt: glyph centering */
-    color: var(--text-secondary);
-    cursor: pointer;
-  }
+  /* ---- Mobile app shell: Playlists sheet --------------------------------
+     Sweep S1 (D4.6, F50): the sheet is a ui.sheet (common.js ensurePlaylistsSheet) - its
+     surface, scrim, motion, grab handle, header and Close are the primitive's; its rows
+     are ui-rows (see .playlists-sheet-list below the mobile block). */
   .watch-action-bar {
     flex-direction: column;
     align-items: flex-start;
@@ -4863,7 +4721,8 @@ select {
    dominates the screen. Before this change, .player-container (line ~614)
    had NO mobile-specific height cap at all -- only width:100%/aspect-ratio:
    16/9 applied everywhere (the pre-existing max-height:70vh a few rules
-   above belongs to .playlists-sheet, a different element, not the player).
+   above belonged to the old .playlists-sheet, a different element, not the player;
+   that sheet is a ui.sheet since sweep S1).
    Scoped to `orientation: portrait` specifically (not just max-width:768px,
    which some phones also match in landscape) so desktop, mobile landscape,
    and the audio-mode/.audio-bg-art layout are all completely unaffected --
@@ -5780,15 +5639,13 @@ html:has(> body.ft-css-fullscreen),
 html:has(> body.ft-audio-expanded),
 .mms-full,
 #player-wrapper.css-fullscreen,
-#player-wrapper.audio-expanded,
-.playlists-sheet {
+#player-wrapper.audio-expanded {
   overscroll-behavior: none;
 }
 .modal-content,
 .oneoff-modal,
 .speed-sheet,
-.hard-delete-modal,
-.playlists-sheet-list {
+.hard-delete-modal {
   overscroll-behavior: contain;
 }
 
@@ -7369,51 +7226,42 @@ html:has(> body.ft-audio-expanded),
         plus `.icon-star` (the existing fixed-glyph star, line ~2276 above)
         on each pinned entry so it reads as "pinned," matching the research's
         "left-nav Pinned list with a star icon" retro translation. */
+/* Sweep S1 (F50): the playlists sheet's body (common.js renderPlaylistsSheet /
+   renderPinnedPlaylists): two ui-lists of 56px ui-rows at the sheet's inset - the library
+   and the pinned playlists, the second under a small heading - with the folder glyph (a
+   glyph-pool mask <i>) or the pin's ui-avatar in the media column and the unpin control in
+   the one reserved action column. */
+.playlists-sheet-group {
+  --row-pad-start: var(--inset);
+  --row-pad-end: var(--space-4);
+}
+.playlists-sheet-group .ui-row__media > i {
+  width: var(--icon-md);
+  height: var(--icon-md);
+  color: var(--ink-2);
+}
+.playlists-sheet-heading {
+  padding: var(--space-8) var(--inset) var(--space-2);
+  color: var(--ink-2);
+  font: var(--t-footnote);
+  font-weight: var(--fw-semibold);
+}
+.playlists-sheet-note {
+  margin: 0;
+  padding: var(--space-6) var(--inset);
+  color: var(--ink-2);
+  font: var(--t-meta);
+}
 .playlists-pinned-section {
   margin-top: var(--space-4);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--border-color);
+  border-top: var(--hairline) solid var(--separator);
 }
 
-/* v1.25.5: fix real channel avatars (v1.25.4) rendering UNBOUNDED in the
-   pinned lists -- buildPinAvatarNode (public/js/common.js) builds an
-   `<img class="pinned-avatar pinned-avatar-img">` for a real captured avatar,
-   or a `<span class="pinned-avatar pinned-avatar-generated">` letter
-   fallback, for BOTH the Playlists-sheet pinned rows above and the sidebar
-   pinned rows (#sidebar-pinned-section below) -- but until now no CSS
-   constrained either variant's size at all, so a real avatar rendered at
-   its natural (often huge) pixel dimensions and filled the row's full
-   width. Sized to 18x18 to match `.sidebar-item i`'s icon box (line ~556
-   above) -- both pinned lists reuse the plain `.sidebar-item` row class, so
-   this keeps the avatar visually uniform with that row's other leading
-   glyphs and keeps the row's existing height (driven by that same 18px
-   icon box previously) unchanged. Fixed width+height (not max-width) is
-   deliberate: an unconstrained/percentage size would still let a large
-   natural image blow out the circle before object-fit could crop it. */
-.pinned-avatar {
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  flex-shrink: 0;
-}
-
-.pinned-avatar-img {
-  display: block;
-  object-fit: cover;
-}
-
-.pinned-avatar-generated {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-bold);
-  color: var(--on-accent);
-  line-height: 1; /* token-exempt: glyph centering */
-  text-transform: uppercase;
-  /* background-color is set inline by buildPinAvatarNode per-entry -- not
-     duplicated here. */
-}
+/* v1.25.5: a real channel avatar once rendered UNBOUNDED in the pinned lists (no size CSS
+   at all). Sweep S1 (D4.4): the pinned avatar is a ui-avatar (common.js buildPinAvatarNode ->
+   chromeAvatarEl), a fixed --av-* box that crops its photo (object-fit: cover) and falls back
+   to the monogram - 20px in the desktop sidebar's rows, 36px in the phone sheet. The contract
+   is ui.css's; pinned-avatar is only a hook class. */
 
 /* === v1.21 FR-7: hard-delete confirm ========================================
    T6. `common.js`'s `showHardDeleteModal` -- the extra-deliberate confirm for
@@ -7817,9 +7665,7 @@ html:has(> body.ft-audio-expanded),
    OS-level preference. */
 @media (prefers-reduced-motion: reduce) {
   .modal-backdrop,
-  .modal-content,
-  .playlists-sheet-backdrop:not([hidden]),
-  .playlists-sheet:not([hidden]) {
+  .modal-content {
     transition: none;
     opacity: 1;
     transform: none;
@@ -8268,7 +8114,7 @@ body:not([data-view="watch"]) #watch-loop-row { display: none; }
 #sidebar-pinned-section {
   margin-top: var(--space-4);
   padding-top: var(--space-4);
-  border-top: 1px solid var(--border-color);
+  border-top: var(--hairline) solid var(--separator);
 }
 
 /* v1.24.3: drag-and-drop reorder for pinned-channel sidebar rows
@@ -8462,79 +8308,31 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
    The magnifier is mobile-only (desktop keeps the always-on search
    bar); the history panel only shows while `.search-open`.
    ============================================================ */
-.search-toggle-btn {
-  display: none; /* desktop: hidden - the full search bar is always visible */
-  background: none;
-  border: none;
-  color: var(--text-primary);
-  cursor: pointer;
-  padding: var(--space-3);
-  border-radius: var(--radius-full);
-  align-items: center;
-  justify-content: center;
+.header-right > .search-toggle-btn {
+  display: none; /* desktop: hidden - the full search bar is always visible (a ui-btn; the phone re-shows it) */
 }
 .search-history-panel { display: none; }
+/* Sweep S1: the recent searches are a compact ui-list on the field's --surface-2 ground
+   (common.js renderSearchHistoryPanel); only the panel's place and ground live here. */
 .search-open .search-history-panel {
   display: block;
   margin-top: var(--space-3);
-  background-color: var(--bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-lg);
+  padding: var(--space-2) 0;
+  border-radius: var(--r-md);
+  background-color: var(--surface-2);
   overflow: hidden;
 }
+.search-history-panel .search-history-list {
+  --row-pad-start: var(--space-4);
+}
 .search-history-empty {
+  margin: 0;
   padding: var(--space-6);
-  color: var(--text-secondary);
-  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  font: var(--t-meta);
 }
-.search-history-row { display: flex; align-items: center; }
-.search-history-term {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-6);
-  background: none;
-  border: none;
-  color: var(--text-primary);
-  font-size: var(--fs-md);
-  text-align: left;
-  cursor: pointer;
-}
-.search-history-term span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@media (hover: hover) {
-  .search-history-term:hover { background-color: var(--bg-secondary); }
-}
-.search-history-del {
-  flex: 0 0 auto;
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  font-size: var(--fs-xl);
-  padding: var(--space-4) var(--space-6);
-  cursor: pointer;
-}
-@media (hover: hover) {
-  .search-history-del:hover { color: var(--text-primary); }
-}
-.search-history-clear {
-  width: 100%;
-  padding: var(--space-4);
-  background: none;
-  border: none;
-  border-top: 1px solid var(--border-color);
-  color: var(--text-link);
-  font-size: var(--fs-sm);
-  cursor: pointer;
-}
-
-/* v1.85 #2: the "You" bottom-nav tab avatar - sized like a nav glyph (the
-   `.bottom-nav-item` context out-specifies the base 32px .account-avatar). */
-.bottom-nav-item .bottom-nav-you-avatar {
-  width: 24px; /* token-exempt: nav-glyph geometry */
-  height: 24px; /* token-exempt: nav-glyph geometry */
-  font-size: var(--fs-2xs);
+.search-history-panel > .search-history-clear {
+  margin: var(--space-2) var(--space-4) 0;
 }
 
 .books-home-row { margin-bottom: var(--space-8); }
@@ -8588,32 +8386,11 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 }
 
 /* ---- v1.37.0: pinned-row unpin control (Dean's orphaned-pin report) --------
-   A pin whose folder emptied out (or whose subscription was removed) had no
-   surface left to unpin from -- the control now lives on the row itself.
-   Subtle at rest, arm/confirm on tap (the card-delete pattern). */
-.pinned-unpin-btn {
-  margin-left: auto;
-  border: none;
-  background: none;
-  color: inherit;
-  opacity: 0.45;
-  cursor: pointer;
-  font-size: var(--fs-md);
-  line-height: 1; /* token-exempt: glyph centering */
-  padding: var(--space-1) var(--space-3);
-  border-radius: 2px; /* token-exempt: ruling B per-site radius (was 3px; no small-radius token exists by design) */
-  flex: 0 0 auto;
-}
-.sidebar-item .pinned-unpin-btn { float: right; }
-@media (hover: hover) {
-  .pinned-unpin-btn:hover { opacity: 1; }
-}
-.pinned-unpin-btn.armed {
-  opacity: 1;
-  background: var(--yt-red);
-  color: var(--on-accent);
-  font-size: var(--fs-xs);
-}
+   A pin whose folder emptied out (or whose subscription was removed) had no surface left to
+   unpin from - the control lives on the row itself. Sweep S1: a plain ui-btn icon toggle
+   (the filled pin, F32) that asks through ui.confirm; in a desktop sidebar row it sits at the
+   row's trailing edge (in the phone sheet it takes the row's reserved action column). */
+.sidebar-item .pinned-unpin-btn { margin-left: auto; }
 
 /* ---- v1.37.1: books page styles (moved from the page <head> -- the SPA
    router swaps only #view-root, so page-local styles were lost on in-app
@@ -11101,9 +10878,8 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 .video-row-card { width: 164px; }
 .video-row-cover { width: 164px; height: auto; aspect-ratio: 16 / 9; }
 
-/* v1.44 T12: a bottom-nav item hidden by the user's bar customization. The
-   generic [hidden] can lose to .bottom-nav-item's own display, so enforce it. */
-.bottom-nav-item[hidden] { display: none !important; }
+/* v1.44 T12: a bottom-nav item hidden by the user's bar customization is hidden by ui.css's
+   one global [hidden]{display:none!important} rule (sweep S1 deleted this family's own patch). */
 
 /* The Settings bottom-bar editor rows (toggle + up/down reorder). */
 /* v1.67's editor-row idiom (label left, control right, hairline separators),
@@ -11921,56 +11697,23 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
    JS, the v1.50.3 lesson). Tokens only -- no new custom properties, so
    every era skin inherits correctly. */
 
-.notif-bell-btn {
-  position: relative;
-  background: none;
-  border: none;
-  color: var(--text-primary);
-  cursor: pointer;
-  padding: var(--space-3);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* v1.101: the notification-bell reserve placeholder's shimmer disc - a 22px
-   circle (matching the real bell's 22px svg) inside a #notif-bell-placeholder
-   styled as a .notif-bell-btn, so the reserved slot is the exact bell size and
-   the reveal is zero-shift. `.skeleton-shimmer` supplies the fill + sweep. */
+/* Sweep S1 (F31): the bell is a plain ui-btn icon button (common.js chromeButtonEl) - no
+   styling of its own. Its reserve placeholder (the shells' pre-paint block) is the same
+   ui-btn box with a shimmer disc in the 22px icon slot, so the reveal is zero-shift
+   (the geometry check HDR measures the two boxes equal, test/geometry). */
 .notif-bell-skel {
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-full);
   display: block;
+  width: var(--icon-md);
+  height: var(--icon-md);
+  border-radius: 50%;
 }
-
-@media (hover: hover) {
-  .notif-bell-btn:hover {
-    background-color: var(--bg-secondary);
-  }
-}
-
-.notif-bell-badge {
+/* The header count badges (bell, queue) are ui-chip counts pinned to their button's
+   top-right corner - out of the flow, so a count never moves the glyph. */
+.header-right .ui-btn > .ui-chip--count {
   position: absolute;
   top: 0;
-  right: -2px; /* token-exempt: positional */
-  min-width: 16px;
-  height: 16px;
-  padding: 0 var(--space-2);
-  border-radius: 8px; /* token-exempt: geometry - half the 16px badge height, pill (F.5 ruling 5) */
-  background: var(--yt-red);
-  color: var(--on-accent);
-  font-size: var(--fs-xs);
-  line-height: 16px; /* token-exempt: positional */
-  font-weight: var(--fw-semibold);
-  text-align: center;
-  box-sizing: border-box;
+  right: 0;
   pointer-events: none;
-}
-
-.notif-bell-badge[hidden] {
-  display: none;
 }
 
 /* Backdrop is a MOBILE-ONLY affordance; on desktop the dropdown closes on
@@ -12273,213 +12016,74 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   font-size: var(--fs-sm);
 }
 
-/* ---- v1.82: the account menu (avatar + dropdown) ---- */
+/* ---- v1.82: the account menu (avatar + menu) ----
+   Sweep S1 (D4.4, D4.6): the trigger is a plain ui-btn icon button holding a 28px ui-avatar;
+   the menu is a ui.sheet (a popover under the trigger on desktop, a bottom sheet on the
+   phone) of compact ui-rows. What lives here is the menu's own layout: the head (avatar with
+   its pencil badge, name, role) and the quiet footer list. */
 .account-menu {
   position: relative;
   display: inline-flex;
 }
-.account-menu-trigger {
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  border-radius: var(--radius-full);
-  display: inline-flex;
-}
-.account-avatar {
-  width: 32px; /* token-exempt: control geometry (Stop A Batch A) */
-  height: 32px; /* token-exempt: control geometry (Stop A Batch A) */
-  border-radius: var(--radius-full);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--btn-primary-text, #fff); /* token-exempt: monogram glyph on a coloured disc */
-  font-weight: var(--fw-semibold);
-  font-size: var(--fs-sm);
-  overflow: hidden;
-}
-.account-avatar-lg {
-  width: 44px; /* token-exempt: control geometry (Stop A Batch A) */
-  height: 44px; /* token-exempt: control geometry (Stop A Batch A) */
-  font-size: var(--fs-md);
-}
-.account-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-/* v1.157.1 (Dean): the avatar photo reveals only once it has loaded+decoded -
-   the disc shimmers (.skeleton-shimmer, added in buildAccountAvatarEl) until
-   then, so the "You" button never paints an empty box first. */
-.account-avatar img:not(.is-loaded) { opacity: 0; }
-.account-avatar img.is-loaded { opacity: 1; }
-/* v1.305 (Dean): the avatar edit affordance - a pencil BADGE pinned to the large
-   avatar disc (replaced the "Change photo" row, which felt derpy). The wrapper is
-   sized to the disc so the badge pins to its bottom-right; refreshAvatars swaps
-   only the inner disc, leaving the badge in place. */
-.account-menu-avatar-wrap {
-  position: relative;
-  display: inline-flex;
-  flex: 0 0 auto;
-}
-.account-menu-avatar-edit {
-  position: absolute;
-  right: -2px; /* token-exempt: badge nudge onto the disc corner */
-  bottom: -2px; /* token-exempt: badge nudge onto the disc corner */
-  width: 20px; /* control geometry (width/height ungoverned) */
-  height: 20px;
-  padding: 0;
-  border: 2px solid var(--bg-sidebar); /* a ring in the menu bg so the badge reads as lifted off the disc */
-  border-radius: var(--radius-full);
-  background: var(--yt-red);
-  color: var(--btn-primary-text, #fff); /* token-exempt: pencil glyph on the accent disc (matches the monogram rule) */
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-.account-menu-avatar-edit svg {
-  width: 12px; /* icon box (width/height ungoverned) */
-  height: 12px;
-}
-@media (hover: hover) {
-  .account-menu-avatar-edit:hover { filter: brightness(1.08); }
-}
-.account-menu-dropdown {
-  position: absolute;
-  top: calc(100% + var(--space-2));
-  right: 0;
-  min-width: 220px; /* token-exempt: panel geometry (Stop A Batch A) */
-  background: var(--bg-sidebar);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-modal);
-  z-index: var(--z-panel);
-  padding: var(--space-2) 0;
-  overflow: hidden;
-}
-.account-menu-dropdown[hidden] {
-  display: none;
-}
+/* v1.157.1 (Dean): the avatar photo reveals only once it has loaded+decoded - the disc
+   shimmers (.skeleton-shimmer, added in buildAccountAvatarEl) until then, so the "You"
+   button never paints an empty box first. */
+.account-avatar > .ui-avatar__img:not(.is-loaded) { opacity: 0; }
 .account-menu-head {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
-  padding: var(--space-4) var(--space-6) var(--space-5);
-  border-bottom: 1px solid var(--bg-secondary);
+  gap: var(--space-8);
+  padding: var(--space-2) var(--space-8) var(--space-8);
+}
+/* v1.305 (Dean): the avatar is edited through a pencil BADGE on the disc (the old "Change
+   photo" row felt derpy): a tonal ui-btn icon button pinned to the disc's corner. */
+.account-menu-avatar-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+.account-menu-avatar-edit {
+  position: absolute;
+  right: calc(-1 * var(--space-2)); /* token-exempt: positional - the badge sits on the disc's corner */
+  bottom: calc(-1 * var(--space-2)); /* token-exempt: positional - the badge sits on the disc's corner */
+}
+.account-menu-who {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
 }
 .account-menu-name {
-  font-weight: var(--fw-semibold);
-  color: var(--text-primary);
+  font: var(--t-title);
+  color: var(--ink-1);
+  overflow-wrap: anywhere;
 }
 .account-menu-role {
-  font-size: var(--fs-sm);
-  color: var(--text-secondary);
+  font: var(--t-meta);
+  color: var(--ink-2);
 }
-.account-menu-item {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  width: 100%;
-  text-align: left;
-  background: none;
-  border: none;
-  color: var(--text-primary);
-  font-family: var(--font-family);
-  font-size: var(--fs-base);
-  padding: var(--space-4) var(--space-6);
-  cursor: pointer;
-  text-decoration: none;
-  white-space: nowrap;
+/* The menu's lists sit at the sheet's inset (their rows' start/end padding). */
+.account-menu-panel > .ui-list {
+  --row-pad-start: var(--inset);
+  --row-pad-end: var(--space-4);
 }
-@media (hover: hover) {
-  .account-menu-item:hover {
-    background: var(--hover-bg, rgba(128, 128, 128, 0.15)); /* token-exempt: theme-neutral fallback */
-  }
+/* The footer: a compact list of quiet info-links (on disk, in trash, the version), under a
+   hairline. */
+.account-menu-footer {
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: var(--hairline) solid var(--separator);
 }
-.account-menu-item i {
-  width: 18px; /* token-exempt: icon box (Stop A Batch A) */
-  text-align: center;
-  color: var(--text-secondary);
-}
-.account-menu-divider {
-  height: 1px;
-  background: var(--bg-secondary);
-  margin: var(--space-2) 0;
-}
-.account-menu-signout {
-  color: var(--yt-red);
-}
-/* v1.230: the "Music skin" picker moved to the Settings page (Appearance), where it
-   reuses the shared .theme-card picker styles - no account-menu-specific CSS needed. */
-/* v1.90 / v1.91.1 (Dean): the subtle version footer at the bottom of the account
-   menu. LEFT-aligned at the SAME horizontal inset as the rows (--space-6), so it
-   reads as a quiet footer that belongs to the left-aligned list rather than a
-   centered stamp that breaks the column's vertical rhythm. */
-/* v1.144: the version row became an <a> (opens the build's release notes on
-   GitHub) - keep the exact subtle footer look (block layout, muted color, no
-   link styling) with a quiet underline on hover as the affordance. Known +
-   accepted (gate S1): the 2005 era skin's global `a { text-decoration:
-   underline }` outranks this rule's 0,1,0, so THAT skin underlines the row
-   always - era-correct, since 2005 underlined every link. */
-.account-menu-version {
-  display: block;
-  text-decoration: none;
-  padding: var(--space-2) var(--space-6);
-  color: var(--text-secondary);
-  font-size: var(--fs-sm);
-  text-align: left;
+.account-menu-footer .ui-row__title {
+  font: var(--t-meta);
+  color: var(--ink-2);
   font-variant-numeric: tabular-nums;
-  /* UI pass (plan D6, Dean's LOCKED ruling): no longer selectable - only fields
-     and the listed .ui-selectable surfaces are. */
-}
-@media (hover: hover) {
-  .account-menu-version:hover {
-    text-decoration: underline;
-  }
-}
-/* v1.158 (Dean): the "total size on disk" footer link into Stats - styled like
-   the version row beside it. Tabular digits so the figure sits steady; the
-   shimmer is a fixed-size loading bar in the label span until the lazy fetch
-   resolves. */
-.account-menu-disk {
-  display: block;
-  text-decoration: none;
-  padding: var(--space-2) var(--space-6);
-  color: var(--text-secondary);
-  font-size: var(--fs-sm);
-  text-align: left;
-  font-variant-numeric: tabular-nums;
-}
-@media (hover: hover) {
-  .account-menu-disk:hover { text-decoration: underline; }
 }
 .account-menu-disk-shimmer {
   display: inline-block;
-  min-width: 5em;
-  height: 0.9em;
-  border-radius: var(--radius);
+  min-width: calc(var(--space-16) * 2);
+  height: var(--space-6);
+  border-radius: var(--r-xs);
 }
-/* v1.305 (Dean): the "N items in trash" footer link into Settings -> Trash. Sits
-   directly under the disk figure and is styled identically to it (a quiet footer
-   info-link into a section). */
-.account-menu-trash {
-  display: block;
-  text-decoration: none;
-  padding: var(--space-2) var(--space-6);
-  color: var(--text-secondary);
-  font-size: var(--fs-sm);
-  text-align: left;
-  font-variant-numeric: tabular-nums;
-}
-@media (hover: hover) {
-  .account-menu-trash:hover { text-decoration: underline; }
-}
-/* Both footer info-links hide on a failed lazy fetch (el.hidden = true). An
-   author `display` rule (above) OUTRANKS the UA `[hidden] { display:none }`, so
-   the hide needs this explicit guard or the row would stay visible (the crown-
-   jewel `[hidden]` lesson - and the disk row had the same latent gap). */
-.account-menu-disk[hidden],
-.account-menu-trash[hidden] { display: none !important; }
 /* v1.82: the Settings->Account profile-photo controls. */
 .account-photo-actions {
   display: inline-flex;
@@ -12561,12 +12165,14 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      v1.82 account-menu avatar (the mobile header restructure hides the whole
      container otherwise). Absolute against the fixed header, aligned with the
      logo row. DEVICE PROBE: logo-row collision + safe-area. */
+  /* Sweep S1: the 44px ui-btn glyph buttons sit centred in the 56px logo row, flush with a
+     4px edge; no gap - each button's own box spaces the glyphs. */
   header .header-right {
     display: flex;
     position: absolute;
-    top: calc(10px + env(safe-area-inset-top)); /* token-exempt: positional geometry (Stop A Batch A) */
-    right: 10px; /* token-exempt: positional geometry (Stop A Batch A) */
-    gap: var(--space-3); /* room between the bell and the avatar */
+    top: calc(var(--space-3) + env(safe-area-inset-top));
+    right: var(--space-2);
+    gap: 0;
     align-items: center;
   }
 
@@ -12610,7 +12216,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 }
 
 /* Reduced motion: collapse closed/open states to identical (the same
-   posture as the playlists-sheet carve-out above -- openOverlay never adds
+   posture the pre-S1 playlists-sheet carve-out had -- openOverlay never adds
    the open class under this preference, so the base opacity/transform must
    not leave the panel invisible). */
 @media (prefers-reduced-motion: reduce) {
@@ -12634,48 +12240,9 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
    future change lets them co-open, that is a NEW pair for the co-open
    matrix, docs/references/z-ladder-coopen-enumeration.md). */
 
-.queue-btn {
-  position: relative;
-  background: none;
-  border: none;
-  color: var(--text-primary);
-  cursor: pointer;
-  padding: var(--space-3);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-@media (hover: hover) {
-  .queue-btn:hover {
-    background-color: var(--bg-secondary);
-  }
-}
-/* v1.339 (L2): `display:flex` above beat `[hidden]`, so the header queue button showed with
-   an EMPTY queue (setChrome's `btn.hidden = !shouldShowQueueButton(q)` was inert). */
-.queue-btn[hidden] { display: none !important; }
-
-.queue-btn-badge {
-  position: absolute;
-  top: 0;
-  right: -2px; /* token-exempt: positional */
-  min-width: 16px;
-  height: 16px;
-  padding: 0 var(--space-2);
-  border-radius: var(--radius-full);
-  background: var(--yt-red);
-  color: var(--on-accent);
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-bold);
-  line-height: 16px; /* token-exempt: glyph centering in the fixed 16px bubble (the bell badge's own treatment) */
-  text-align: center;
-  box-sizing: border-box;
-}
-
-.queue-btn-badge[hidden] {
-  display: none;
-}
+/* Sweep S1 (F31): the queue button is a plain ui-btn icon button (common.js
+   chromeButtonEl); its badge is the header ui-chip count (see the bell section). ui.css's
+   global [hidden] rule hides it with an empty queue (v1.339 L2). */
 
 .queue-panel-backdrop {
   display: none; /* desktop: the popover needs no scrim; mobile block below */
@@ -13524,37 +13091,11 @@ html:not([data-era-flourish="on"]) .ft-fabricated {
 /* ---- v1.150 (Dean's device report): the search-box clear X ----------------
    (Its Half 1, the search toolbar strip, retired in UI pass sweep S2: every
    toolbar is one chip row now.) */
-/* Half 2: the search-box clear X (injected by common.js into every shell's
-   .search-form, between the input and the Search button). Glyph-only on a
-   transparent ground - a glyph-only posture - so the mobile
-   touch-size bump below grows only the invisible tap zone. Visible ONLY
-   while the input carries text ([hidden] toggled on input events; the
-   explicit display override is the [hidden]-loses-to-author-display
-   lesson). */
-.search-clear-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border: none;
-  background: none;
-  color: var(--text-secondary);
-  font-size: var(--fs-base);
-  line-height: 1; /* token-exempt: glyph centering */
-  padding: 0 var(--space-4);
-  cursor: pointer;
-}
-.search-clear-btn:focus-visible {
-  color: var(--text-primary);
-}
-@media (hover: hover) {
-  .search-clear-btn:hover {
-    color: var(--text-primary);
-  }
-}
-.search-clear-btn[hidden] { display: none !important; }
-@media (max-width: 768px) {
-  .search-clear-btn { min-width: var(--size-touch); min-height: var(--size-touch); }
-}
+/* Half 2: the search-box clear X (injected by common.js into every shell's .search-form,
+   between the input and the search button). Sweep S1: a plain ui-btn icon button (the
+   registry's close glyph, a 44px hit area from the primitive); visible ONLY while the input
+   carries text - [hidden] toggled on input events, which ui.css's global
+   [hidden]{display:none!important} honours. Nothing here restyles it. */
 
 /* ===== Click wheel test (Settings › Experimental) =================
    A self-contained dark instrument overlay, built in JS and appended to

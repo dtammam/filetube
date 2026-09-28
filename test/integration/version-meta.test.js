@@ -64,12 +64,17 @@ test('v1.90: the version string is a valid semver-ish X.Y.Z (what appVersionStri
 // row inset so it belongs to the left-aligned menu list instead of floating
 // centered (which "felt off"). jsdom can't see the visual, so lock it structurally.
 test('v1.91.1: the account-menu version footer is labeled and left-aligned to the row inset', () => {
+  // Sweep S1 (DELIBERATE lock update, AC12 - the triage's "ui-menu footer row"): the footer
+  // is a ui-row in the menu's footer ui-list, so its left alignment and its inset are the SAME
+  // ones every menu row has (ui.css .ui-row; the panel's lists share one --row-pad-start).
   const common = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'common.js'), 'utf8');
-  assert.match(common, /ver\.textContent = 'Version ' \+ version;/, 'footer reads "Version X.Y.Z", not a bare "vX.Y.Z"');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  const rule = /\.account-menu-version \{[^}]*\}/.exec(css);
-  assert.ok(rule, 'the .account-menu-version rule exists');
-  assert.match(rule[0], /text-align:\s*left/, 'left-aligned to match the menu list (NOT centered)');
-  assert.doesNotMatch(rule[0], /text-align:\s*center/, 'the old centered treatment is gone');
-  assert.match(rule[0], /padding:\s*var\(--space-2\) var\(--space-6\)/, 'same horizontal inset (--space-6) as the menu rows');
+  assert.match(common, /const ver = U\.row\(\{ size: 'compact', href: notesUrl, title: 'Version ' \+ version,/, 'footer reads "Version X.Y.Z" (not a bare "vX.Y.Z") on a ui-row');
+  assert.match(common, /ver\.classList\.add\('account-menu-version'\);/);
+  const strip = (x) => x.replace(/\/\*[\s\S]*?\*\//g, '');
+  const ui = strip(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8'));
+  const row = /\n\.ui-row \{[^}]*\}/.exec(ui);
+  assert.ok(row && /text-align:\s*left;/.test(row[0]), 'left-aligned like every row (NOT centered)');
+  const css = strip(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
+  assert.match(css, /\.account-menu-panel > \.ui-list \{\s*--row-pad-start: var\(--inset\);/, 'one inset for the item rows and the footer rows');
+  assert.doesNotMatch(css, /\.account-menu-version[^{]*\{[^}]*text-align:\s*center/, 'the old centered treatment is gone');
 });

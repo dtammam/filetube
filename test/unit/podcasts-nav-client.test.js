@@ -186,7 +186,8 @@ test('v1.72: every bottom-nav shell carries the music + books items, hidden unti
   for (const f of shells) {
     const html = fs.readFileSync(path.join(pub, f), 'utf8');
     for (const [nav, href] of [['music', '/music'], ['books', '/books'], ['downloads', '/']]) {
-      const re = new RegExp(`<a href="${href}" class="bottom-nav-item" data-nav="${nav}" hidden>`);
+      // Sweep S1 (DELIBERATE lock update): the tab is a ui-btn stack (F49).
+      const re = new RegExp(`<a href="${href}" class="ui-btn ui-btn--plain ui-btn--md ui-btn--stack bottom-nav-item" data-nav="${nav}" hidden>`);
       assert.match(html, re, `${f}: missing (or un-hidden) ${nav} bottom-nav item`);
     }
   }

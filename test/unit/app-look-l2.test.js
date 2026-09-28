@@ -49,13 +49,21 @@ function freshCommon() {
 }
 
 // ---------------------------------------------------------------- 1. [hidden] guards
-test('CSS: .btn[hidden] and .queue-btn[hidden] are display:none !important, AFTER their base rules', () => {
+test('CSS: .btn[hidden] is display:none !important AFTER its base rule; the queue button rides the global [hidden] rule', () => {
   const css = stripCss(read('public/css/style.css'));
-  for (const [base, guard] of [['.btn {', '.btn[hidden] { display: none !important; }'], ['.queue-btn {', '.queue-btn[hidden] { display: none !important; }']]) {
-    const g = css.indexOf(guard);
-    assert.ok(g >= 0, `${guard} exists (comments stripped)`);
-    assert.strictEqual(css.indexOf(guard, g + 1), -1, `${guard} is unique`);
-    assert.ok(css.indexOf('\n' + base) >= 0 && css.indexOf('\n' + base) < g, `${guard} follows its base rule`);
+  const guard = '.btn[hidden] { display: none !important; }';
+  const g = css.indexOf(guard);
+  assert.ok(g >= 0, `${guard} exists (comments stripped)`);
+  assert.strictEqual(css.indexOf(guard, g + 1), -1, `${guard} is unique`);
+  assert.ok(css.indexOf('\n.btn {') >= 0 && css.indexOf('\n.btn {') < g, `${guard} follows its base rule`);
+  // Sweep S1 (DELIBERATE lock update, AC12): the header queue button is a ui-btn now, so its
+  // own `.queue-btn[hidden]` patch went with its bespoke rule. The v1.339 bug (display:flex
+  // beat [hidden], an EMPTY queue showed the button) is guarded by ui.css's one global rule,
+  // and no stylesheet may give .queue-btn a display of its own again.
+  const ui = stripCss(read('public/css/ui.css'));
+  assert.match(ui, /(^|\n)\[hidden\] \{\s*display: none !important;\s*\}/, 'the global [hidden] rule is in ui.css');
+  for (const f of ['public/css/ui.css', 'public/css/style.css']) {
+    assert.doesNotMatch(stripCss(read(f)), /\.queue-btn[^{,]*\{[^}]*display\s*:/, `${f}: no rule re-displays the queue button`);
   }
 });
 
@@ -280,9 +288,11 @@ test('header block: paints queue / bell / search / download / account placeholde
   const dom = shellDom({ 'ft-queue-shown': '1', 'ft-notif-bell-enabled': '1', 'ft-ytdlp-module': '1' });
   const hr = dom.window.document.querySelector('.header-right');
   assert.deepStrictEqual(kidsOf(hr), ['queue', 'notif-bell-placeholder', 'search', 'download', 'account-menu-placeholder']);
-  assert.ok(hr.querySelector('[data-ft-reserve="queue"].queue-btn svg[width="22"]'), 'the queue box = the real 22px svg button');
-  assert.ok(hr.querySelector('[data-ft-reserve="download"].btn .btn-label'), 'the download box = the real .btn + label');
-  assert.ok(hr.querySelector('#account-menu-placeholder.account-menu > .account-menu-trigger > .account-avatar'), 'the account slot mirrors the real root');
+  // Sweep S1 (DELIBERATE lock update): each placeholder is the real control's ui-btn box.
+  assert.ok(hr.querySelector('[data-ft-reserve="queue"].ui-btn.ui-btn--plain.ui-btn--md.ui-btn--icon.queue-btn > .ui-btn__icon > svg.ui-icon.ui-icon--md'), 'the queue box = the real ui-btn icon button');
+  assert.ok(hr.querySelector('#notif-bell-placeholder.ui-btn.ui-btn--icon.notif-bell-btn > .ui-btn__icon > .notif-bell-skel'), 'the bell box = the real ui-btn, a shimmer disc in its icon slot');
+  assert.ok(hr.querySelector('[data-ft-reserve="download"].ui-btn.ui-btn--icon.oneoff-download-btn > .ui-btn__icon > svg.ui-icon'), 'the download box = the real icon-only ui-btn (no label since S1)');
+  assert.ok(hr.querySelector('#account-menu-placeholder.account-menu > .ui-btn.ui-btn--icon.account-menu-trigger > .ui-avatar.ui-avatar--sm.account-avatar'), 'the account slot mirrors the real root');
   const none = shellDom({ 'ft-queue-shown': '0', 'ft-ytdlp-module': '0' });
   assert.deepStrictEqual(kidsOf(none.window.document.querySelector('.header-right')), ['search', 'account-menu-placeholder'], 'no flag -> no reserve (first-ever / feature off)');
 });
@@ -294,7 +304,8 @@ test('nav block: lays the bar out as it last resolved - statics shown/hidden + o
     .map((e) => e.getAttribute('data-nav') || 'reserve:' + e.getAttribute('data-ft-reserve'));
   assert.deepStrictEqual(visible, ['home', 'playlists', 'history', 'reserve:oneoff-download', 'reserve:subscriptions', 'reserve:you']);
   assert.strictEqual(nav.querySelector('[data-nav="settings"]').hidden, true, 'a static item the layout dropped is hidden pre-paint');
-  assert.ok(nav.querySelector('a[data-ft-reserve="subscriptions"][href="/subscriptions"] svg.chrome-icon'), 'Subs reserve: a working link with its inline glyph');
+  assert.ok(nav.querySelector('a[data-ft-reserve="subscriptions"][href="/subscriptions"].ui-btn.ui-btn--stack.bottom-nav-item > .ui-btn__icon > svg.ui-icon.ui-icon--lg'), 'Subs reserve: a working link, the real tab box with its inline glyph');
+  assert.ok(nav.querySelector('[data-ft-reserve="you"] > .ui-btn__icon > .ui-avatar.ui-avatar--xs'), 'You reserve: the avatar disc in the fixed icon slot');
   const junk = shellDom({ 'ft-bottomnav-last': '["<img>", 42]' });
   assert.strictEqual(junk.window.document.querySelector('#bottom-nav [data-nav="settings"]').hidden, false, 'an unusable layout leaves the static bar alone');
 });
@@ -339,8 +350,8 @@ test('injectors REPLACE their placeholders in place: the header and the bar keep
   const visible = Array.from(nav.querySelectorAll('.bottom-nav-item')).filter((e) => !e.hidden).map((e) => e.getAttribute('data-nav'));
   assert.deepStrictEqual(visible, ['home', 'playlists', 'history', 'oneoff-download', 'subscriptions', 'you']);
   assert.strictEqual(doc.querySelectorAll('[data-ft-reserve]').length, 0, 'no placeholder survives');
-  assert.ok(nav.querySelector('[data-nav="subscriptions"] svg.chrome-icon') && nav.querySelector('[data-nav="oneoff-download"] svg.chrome-icon'),
-    'Subs + Download tabs carry the inline chrome glyph (no iOS mask decode lag)');
+  assert.ok(nav.querySelector('[data-nav="subscriptions"] > .ui-btn__icon > svg.ui-icon') && nav.querySelector('[data-nav="oneoff-download"] > .ui-btn__icon > svg.ui-icon'),
+    'Subs + Download tabs carry the inline sprite glyph (no iOS mask decode lag)');
   assert.strictEqual(nav.querySelector('[data-nav="subscriptions"] i, [data-nav="oneoff-download"] i'), null, 'the old mask <i> glyphs are gone');
   assert.deepStrictEqual(JSON.parse(doc.defaultView.localStorage.getItem('ft-bottomnav-last')), visible, 'the resolved bar is remembered for the next launch');
   assert.strictEqual(doc.defaultView.localStorage.getItem('ft-ytdlp-module'), '1');

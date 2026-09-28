@@ -194,10 +194,34 @@ test('v1.150 locks: the CSS carries the one chip row and the X with their load-b
   assert.match(css, /\.library-chips \{[^}]*overflow-x: auto;/);
   assert.match(css, /\.library-chips::-webkit-scrollbar \{ display: none; \}/);
   assert.ok(!/search-scoped-toolbar|#sort-menu/.test(css), 'the strip and its dropdown escape are gone');
-  // The X: a styling source exists, the [hidden] override survives, and the
-  // mobile tap bump is the invisible-zone kind.
-  assert.match(css, /\.search-clear-btn \{[^}]*background: none;/);
-  assert.match(css, /\.search-clear-btn\[hidden\] \{ display: none !important; \}/,
-    'the [hidden]-loses-to-author-display lesson');
-  assert.match(css, /\.search-clear-btn \{ min-width: var\(--size-touch\); min-height: var\(--size-touch\); \}/);
+  // Sweep S1 (DELIBERATE lock update, AC12 - the triage's "X = ui-btn icon; strip layout
+  // stays in style.css"): the X is a plain ui-btn icon button, so its glyph, box and 44px hit
+  // area are the primitive's, and its own rules are gone. The [hidden]-loses-to-author-display
+  // lesson is guarded by ui.css's ONE global rule; no stylesheet may re-display the X.
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8').replace(/\/\*[^]*?\*\//g, '');
+  assert.match(ui, /(^|\n)\[hidden\] \{\s*display: none !important;\s*\}/, 'the global [hidden] rule');
+  assert.match(ui, /\.ui-btn--icon::before \{[^}]*width: var\(--hit\);[^}]*height: var\(--hit\);/, 'the icon button\'s 44px hit area');
+  for (const [f, text] of [['style.css', css], ['ui.css', ui]]) {
+    assert.doesNotMatch(text, /\.search-clear-btn[^{,]*\{[^}]*display\s*:/, `${f}: no rule re-displays the X`);
+  }
+});
+
+test('sweep S1: the X is a plain ui-btn icon button drawing the registry close glyph (no text glyph)', () => {
+  const { JSDOM } = require('jsdom');
+  const COMMON = require.resolve('../../public/js/common.js');
+  delete global.document; delete global.window;
+  delete require.cache[COMMON];
+  const c = require(COMMON);
+  const dom = new JSDOM('<!DOCTYPE html><body><div class="search-form"><input id="search-input"><button id="search-btn"></button></div></body>', { url: 'http://localhost/' });
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const x = c.injectSearchClearButton(dom.window.document.getElementById('search-input'), dom.window.document.getElementById('search-btn'));
+    assert.ok(x.matches('button.ui-btn.ui-btn--plain.ui-btn--icon.search-clear-btn'), 'a plain ui-btn icon button');
+    assert.ok(x.querySelector('.ui-btn__icon > svg.ui-icon use[href="#i-close"]'), 'the registry close glyph');
+    assert.strictEqual(x.textContent.trim(), '', 'no text glyph (AC4)');
+  } finally {
+    dom.window.close();
+    delete global.document; delete global.window;
+    delete require.cache[COMMON];
+  }
 });

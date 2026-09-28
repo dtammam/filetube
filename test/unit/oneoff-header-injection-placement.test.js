@@ -116,7 +116,10 @@ test('no Settings link at all (the real v1.82+ index header) -> button is append
   assert.strictEqual(btn.parentElement, hr, 'with no anchor, the button is appended into .header-right');
 });
 
-test('(v1.86.0) the injected button carries "Download" in a .btn-label span (so mobile CSS can go glyph-only)', async () => {
+// Sweep S1 (DELIBERATE lock update, F31): the header Download was a bevelled text .btn on
+// desktop beside flat round glyphs (and glyph-only on the phone through a .btn-label hide).
+// It is ONE plain ui-btn icon button at every width now; its name is the aria-label.
+test('(sweep S1) the injected button is a plain ui-btn icon button with the sprite download glyph and an accessible name', async () => {
   const dom = makeShell();
   const doc = dom.window.document;
 
@@ -124,10 +127,9 @@ test('(v1.86.0) the injected button carries "Download" in a .btn-label span (so 
 
   const btn = doc.getElementById('ytdlp-oneoff-btn');
   assert.ok(btn, 'button injects');
-  const label = btn.querySelector('.btn-label');
-  assert.ok(label, 'the "Download" text is in a .btn-label span (not a raw text node) so the mobile glyph-only CSS has a target');
-  assert.strictEqual(label.textContent, 'Download');
-  // v1.87.1 (Dean): the glyph is an inline chrome-icon <svg> now (not an
-  // `.icon-download` mask - the mask decode-lagged on a mobile cold start).
-  assert.ok(btn.querySelector('svg.chrome-icon'), 'the download glyph (inline chrome-icon svg) remains alongside the label');
+  assert.ok(btn.matches('button.ui-btn.ui-btn--plain.ui-btn--md.ui-btn--icon'), 'a plain ui-btn icon button');
+  assert.strictEqual(btn.getAttribute('aria-label'), 'Download a video', 'its accessible name');
+  assert.strictEqual(btn.querySelector('.btn-label, .ui-btn__label'), null, 'no visible label at any width');
+  // v1.87.1 (Dean): the glyph is an inline sprite <svg> (a mask decode-lagged on a mobile cold start).
+  assert.ok(btn.querySelector('.ui-btn__icon > svg.ui-icon use[href="#i-download"]'), 'the download glyph is the sprite svg in the icon slot');
 });

@@ -105,7 +105,9 @@ test('SITE 1/4 (setup.js sidebar): each folder row RENDERS its chosen glyph', ()
 test('SITE 2/4 (common.js Playlists sheet): each folder row RENDERS its chosen glyph', () => {
   withDom('<body><div id="playlists-sheet-list"></div></body>', (dom) => {
     common.renderPlaylistsSheet(FOLDERS, SETTINGS, []);
-    const glyphs = [...dom.window.document.querySelectorAll('#playlists-sheet-list .sidebar-item i')]
+    // Sweep S1 (DELIBERATE lock update, F50): the sheet's rows are ui-rows, the glyph in
+    // the media column.
+    const glyphs = [...dom.window.document.querySelectorAll('#playlists-sheet-list .ui-row .ui-row__media > i')]
       .map((i) => i.className);
     assert.deepEqual(glyphs, ['icon-shows', 'icon-school']);
   });
@@ -115,7 +117,7 @@ test('SITE 1+2: a folder with NO glyph set still renders the default (no blank, 
   // The upgrade path: every existing folder on Dean's server has no glyph key.
   withDom('<body><div id="playlists-sheet-list"></div></body>', (dom) => {
     common.renderPlaylistsSheet(['/media/old'], { '/media/old': { name: 'Old' } }, []);
-    const i = dom.window.document.querySelector('#playlists-sheet-list .sidebar-item i');
+    const i = dom.window.document.querySelector('#playlists-sheet-list .ui-row .ui-row__media > i');
     assert.equal(i.className, 'icon-folder');
   });
 });
@@ -125,7 +127,7 @@ test('SITE 1+2: a hand-edited/garbage glyph renders the default, never an inject
     common.renderPlaylistsSheet(['/media/x'],
       { '/media/x': { name: 'X', glyph: '"><img src=x onerror=alert(1)>' } }, []);
     const list = dom.window.document.querySelector('#playlists-sheet-list');
-    assert.equal(list.querySelector('.sidebar-item i').className, 'icon-folder');
+    assert.equal(list.querySelector('.ui-row .ui-row__media > i').className, 'icon-folder');
     assert.equal(list.querySelectorAll('img').length, 0, 'no markup escaped the class attribute');
   });
 });

@@ -11,7 +11,10 @@
   <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
   <link rel="apple-touch-icon" media="(prefers-color-scheme: dark)" href="/icons/apple-touch-icon-dark.png">
   <link rel="manifest" href="/manifest.webmanifest">
-  <meta name="theme-color" content="#cc0000">
+  <!-- F66 (UI pass sweep S1): the pre-paint guess by OS scheme (the 2021 header grounds);
+       common.js syncThemeColorMeta collapses both to the app's own era + mode header. -->
+  <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="FileTube">

@@ -42,7 +42,7 @@ function loadCommon() {
 }
 
 const common = (() => { delete require.cache[COMMON]; return require(COMMON); })();
-const { CHROME_ICON, chromeIconMarkup } = common;
+const { CHROME_ICON, chromeIconMarkup, uiIconMarkup } = common;
 const FTIcons = require('../../public/js/icons.js');
 
 // chrome name -> registry icon. Pinned whole: a glyph swap is a visible change and must be
@@ -77,7 +77,10 @@ const BOTTOM_NAV_GLYPHS = ['home', 'liked', 'folder', 'history', 'podcast', 'mus
 // cross-shell left a hole: a single-glyph revert to a decode-lagging mask on any
 // of the 8 non-index shells shipped green (the exact pop-in this wave prevents).
 // This iterates every shell that carries a bottom-nav and asserts all 10 glyphs
-// are the exact inline chromeIconMarkup output, with no `.icon-*` mask left.
+// are the exact inline sprite markup, with no `.icon-*` mask left.
+// Sweep S1 (DELIBERATE lock update, F49): a tab is a ui-btn stack, so its glyph is the
+// ui.icon markup at the tab size (uiIconMarkup(registry name, 'lg'), a ui-icon--lg in the
+// fixed 24px icon slot), still a sprite <use> that paints with the text.
 const SHELLS = fs.readdirSync(path.join(REPO, 'public'))
   .filter((f) => f.endsWith('.html'))
   .filter((f) => fs.readFileSync(path.join(REPO, 'public', f), 'utf8').includes('<nav class="bottom-nav"'));
@@ -87,7 +90,7 @@ test('roster sanity: at least the 9 known shells carry a bottom-nav (guards the 
 });
 
 for (const shell of SHELLS) {
-  test(`${shell}: every bottom-nav glyph is the inline chrome-icon <svg> (byte-exact), NO .icon-* mask`, () => {
+  test(`${shell}: every bottom-nav glyph is the inline sprite ui-icon <svg> in the tab's icon slot (byte-exact), NO .icon-* mask`, () => {
     const html = fs.readFileSync(path.join(REPO, 'public', shell), 'utf8');
     const start = html.indexOf('<nav class="bottom-nav"');
     const block = html.slice(start, html.indexOf('</nav>', start));
@@ -95,9 +98,10 @@ for (const shell of SHELLS) {
     // Each glyph is the exact chromeIconMarkup output (the registry binds the path),
     // so no shell can drift from the shared source.
     for (const name of BOTTOM_NAV_GLYPHS) {
-      assert.ok(block.includes(chromeIconMarkup(name)),
-        `the bottom-nav ${name} item embeds the inline chrome-icon <svg>`);
+      assert.ok(block.includes('<span class="ui-btn__icon">' + uiIconMarkup(CHROME_ICON[name], 'lg') + '</span>'),
+        `the bottom-nav ${name} item embeds the inline sprite ui-icon <svg> in its icon slot`);
     }
+    assert.doesNotMatch(block, /chrome-icon/, 'no pre-S1 chrome-icon glyph survives in the bar');
     assert.doesNotMatch(block, /<i class="icon-/,
       'no `.icon-*` mask <i> survives in the bottom-nav (a mask decode-lags -> pop-in)');
   });
@@ -122,9 +126,12 @@ test('roster sanity: the sidebar-icon shell set is non-vacuous', () => {
 });
 
 for (const rel of SIDEBAR_ICON_SHELLS) {
-  test(`${rel}: hamburger + sidebar Home/Settings/Stats are inline chrome-icon <svg>, NO menu/home/cog/star mask`, () => {
+  test(`${rel}: hamburger + sidebar Home/Settings/Stats are inline sprite <svg>s, NO menu/home/cog/star mask`, () => {
     const html = fs.readFileSync(path.join(REPO, rel), 'utf8');
-    for (const name of ['menu', 'home', 'cog', 'star']) {
+    // Sweep S1: the hamburger is a plain ui-btn icon button, its glyph the ui.icon markup.
+    assert.ok(html.includes('<span class="ui-btn__icon">' + uiIconMarkup('menu', 'md') + '</span></button>'),
+      `${rel}: the hamburger embeds the sprite ui-icon in its ui-btn icon slot`);
+    for (const name of ['home', 'cog', 'star']) {
       assert.ok(html.includes(chromeIconMarkup(name)),
         `${rel} must embed the inline chrome-icon <svg> for "${name}" (byte-exact chromeIconMarkup output)`);
     }
@@ -152,10 +159,12 @@ test('chromeIconEl builds a namespaced <svg class="chrome-icon"> that uses the s
 test('the JS build sites go through chromeIconEl, not an `.icon-*` mask <i> (source-lock, comments stripped)', () => {
   const src = fs.readFileSync(COMMON, 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
-  assert.match(src, /chromeIconEl\('search'\)/, 'the header search toggle uses chromeIconEl');
-  assert.match(src, /chromeIconEl\('download'\)/, 'the one-off download button uses chromeIconEl');
-  assert.match(src, /chromeIconEl\(dark \? 'sun' : 'moon'\)/, 'the nav theme item builds the inline svg for the current mode');
-  assert.match(src, /icon\.replaceWith\(swapped\)/, 'and swaps the whole element (not a class)');
+  // Sweep S1 (DELIBERATE lock update): the header glyph buttons are ui-btn icon buttons
+  // built by chromeButtonEl with the registry name, and the tabs by bottomNavItemEl.
+  assert.match(src, /chromeButtonEl\(\{ cls: 'search-toggle-btn', icon: CHROME_ICON\.search/, 'the header search toggle is a ui-btn with the sprite search glyph');
+  assert.match(src, /chromeButtonEl\(\{ cls: 'oneoff-download-btn', icon: CHROME_ICON\.download/, 'the one-off download button is a ui-btn with the sprite download glyph');
+  assert.match(src, /bottomNavItemEl\(\{ tag: 'button', nav: 'oneoff-download', icon: CHROME_ICON\.download/, 'its bottom-bar tab too');
+  assert.match(src, /use\.setAttribute\('href', iconHref\(CHROME_ICON\[dark \? 'sun' : 'moon'\]\)\)/, 'the nav theme item swaps its sprite reference for the current mode');
   // The one-off download button's old mask-<i> builder is gone (this exact
   // append pattern). NOTE: `icon-search`/`icon-download` masks survive ELSEWHERE
   // on purpose - the "no results" error-state search glyph and the sidebar

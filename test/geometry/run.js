@@ -72,6 +72,11 @@ function planScenes(opts) {
   return out;
 }
 
+// Check id -> its in-page collector and pure evaluator. HDR / NAV (sweep S1) are the chrome's
+// rendered contracts (checks.js); G1-G3 take the surface's optional `scope` selector.
+const COLLECT = { G1: checks.collectG1, G2: checks.collectG2, G3: checks.collectG3, HDR: checks.collectHeader, NAV: checks.collectBottomBar };
+const EVALUATE = { G1: checks.evalG1, G2: checks.evalG2, G3: checks.evalG3, HDR: checks.evalHeader, NAV: checks.evalBottomBar };
+
 async function measureScene(env, scene, mutationCss) {
   const surf = SURFACES.find((s) => s.id === scene.surface);
   const { ctx, page } = await capture.newScenePage(env.browser, { vp: scene.vp, mode: scene.mode, era: scene.era, storageState: env.st,
@@ -88,8 +93,8 @@ async function measureScene(env, scene, mutationCss) {
     const res = {};
     for (const c of surf.checks) {
       if (env.only && !env.only.includes(c)) continue;
-      const data = await page.evaluate(c === 'G1' ? checks.collectG1 : c === 'G2' ? checks.collectG2 : checks.collectG3);
-      const ev = c === 'G1' ? checks.evalG1(data) : c === 'G2' ? checks.evalG2(data) : checks.evalG3(data);
+      const data = await page.evaluate(COLLECT[c], surf.scope || null);
+      const ev = EVALUATE[c](data);
       const floor = (surf.min && surf.min[c]) || {};
       const vacuous = Object.entries(floor).filter(([k, v]) => !(ev.measured[k] >= v)).map(([k, v]) => `${k} ${ev.measured[k]} < ${v}`);
       res[c] = { ...ev, vacuous };
@@ -190,6 +195,8 @@ function describe(check, ev) {
   const m = ev.measured;
   if (check === 'G1') return `(${m.lists} lists, ${m.rows} rows)`;
   if (check === 'G2') return `(${m.items} icon/label pairs)`;
+  if (check === 'HDR') return `(${m.buttons} header buttons, ${m.sidebar} sidebar rows)`;
+  if (check === 'NAV') return `(${m.tabs} tabs)`;
   return `(${m.groups} groups)`;
 }
 

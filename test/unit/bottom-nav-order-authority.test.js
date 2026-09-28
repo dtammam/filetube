@@ -122,7 +122,8 @@ test('v1.75: EVERY shell that carries the bar carries the Liked item, hidden unt
     const html = fs.readFileSync(path.join(PUBLIC_DIR, f), 'utf8');
     assert.match(
       html,
-      /<a href="\/\?liked=1" class="bottom-nav-item" data-nav="liked" hidden>/,
+      // Sweep S1 (DELIBERATE lock update): the tab is a ui-btn stack (F49).
+      /<a href="\/\?liked=1" class="ui-btn ui-btn--plain ui-btn--md ui-btn--stack bottom-nav-item" data-nav="liked" hidden>/,
       `${f}: missing (or un-hidden) liked bottom-nav item`,
     );
     // Exactly one, and it sits directly after Home - the DOM order IS the
@@ -152,11 +153,13 @@ test('v1.87.1: every shell renders the SAME inline "liked" chrome-icon in its bo
   // exact same inline glyph (chromeIconMarkup('liked'), itself byte-bound to
   // star.svg in chrome-icons.test.js). A shell that drifts (or reverts to a
   // decode-lagging mask) fails here.
-  const likedSvg = require('../../public/js/common.js').chromeIconMarkup('liked');
+  // Sweep S1 (DELIBERATE lock update): the tab's glyph is the ui.icon markup in its slot.
+  const c = require('../../public/js/common.js');
+  const likedSvg = '<span class="ui-btn__icon">' + c.uiIconMarkup(c.CHROME_ICON.liked, 'lg') + '</span>';
   for (const f of SHELLS) {
     const html = fs.readFileSync(path.join(PUBLIC_DIR, f), 'utf8');
     const item = html.slice(html.indexOf('data-nav="liked"'), html.indexOf('data-nav="liked"') + 800);
-    assert.ok(item.includes(likedSvg), `${f}: liked must render the shared inline "liked" chrome-icon svg`);
+    assert.ok(item.includes(likedSvg), `${f}: liked must render the shared inline "liked" sprite glyph`);
     // The v1.38 lesson: glyphs come from CSS/icon assets or inline svg, never a
     // codepoint typed into markup.
     assert.ok(!/[☀-➿\u{1F300}-\u{1F9FF}]/u.test(item), `${f}: raw emoji codepoint in markup`);

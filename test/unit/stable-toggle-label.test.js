@@ -63,7 +63,8 @@ test('stableToggleLabelHtml: labels are escaped (the call sites pass literals; t
 });
 
 test('the header bell draws the SHARED bell path (one glyph everywhere, not a private copy)', () => {
-  // UI pass step 2: the header bell is the sprite's shared bell (CHROME_ICON.bell).
-  assert.match(COMMON_SRC, /const svg = spriteIconEl\(CHROME_ICON\.bell\);/);
+  // UI pass step 2: the header bell is the sprite's shared bell (CHROME_ICON.bell). Sweep S1
+  // (DELIBERATE lock update): built as a plain ui-btn icon button with that registry name.
+  assert.match(COMMON_SRC, /const bellBtn = chromeButtonEl\(\{ cls: 'notif-bell-btn', icon: CHROME_ICON\.bell,/);
   assert.ok(!/setAttribute\('d', 'M/.test(COMMON_SRC), 'no literal path left in common.js');
 });

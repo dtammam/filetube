@@ -168,16 +168,22 @@ test('unpin: fetchAllPins tags every pin with its source, and pinDeleteEndpoint 
 test('unpin: BOTH pinned surfaces (sidebar + playlists sheet) attach buildUnpinButton to every row (source locks)', () => {
   const calls = (commonSrc.match(/buildUnpinButton\(/g) || []).length;
   assert.ok(calls >= 3, 'the builder + two renderer call sites');
-  assert.ok(commonSrc.includes('link.appendChild(buildUnpinButton(sourcePin, refreshAllPinSurfaces))'), 'sidebar rows carry the control');
-  assert.ok(commonSrc.includes('link.appendChild(buildUnpinButton(sheetSourcePin, refreshAllPinSurfaces))'), 'sheet rows carry the control');
+  // Sweep S1 (DELIBERATE lock update): the sidebar row keeps the control inline (a sm
+  // button); the sheet row's control sits in the ui-row's reserved action column (md).
+  assert.ok(commonSrc.includes("link.appendChild(buildUnpinButton(sourcePin, refreshAllPinSurfaces, 'sm', entry.label))"), 'sidebar rows carry the control');
+  assert.ok(commonSrc.includes("acts.appendChild(buildUnpinButton(sheetSourcePin, refreshAllPinSurfaces, 'md', entry.label))"), 'sheet rows carry the control');
 });
 
-test('unpin: the control is arm/confirm (card-delete pattern) and never navigates the row link', () => {
+// Sweep S1 (DELIBERATE lock update, D4.8): the in-row "Unpin?" arm is replaced by ui.confirm.
+// Bound behaviourally in test/unit/chrome-primitives.test.js (a confirmed answer DELETEs once;
+// Cancel / Esc / the scrim / Close never do); this keeps the never-navigates half.
+test('unpin: the control asks through ui.confirm and never navigates the row link', () => {
   const fnStart = commonSrc.indexOf('function buildUnpinButton');
   const fnBody = commonSrc.slice(fnStart, commonSrc.indexOf('\nfunction ', fnStart + 10));
   assert.ok(fnBody.includes('event.preventDefault()') && fnBody.includes('event.stopPropagation()'), 'clicks never fall through to the row link');
-  assert.ok(fnBody.includes("classList.contains('armed')"), 'first tap arms');
-  assert.ok(fnBody.includes("method: 'DELETE'"), 'second tap deletes');
+  assert.ok(fnBody.includes('U.confirm('), 'a tap asks first');
+  assert.ok(/if \(!ok\) return;[\s\S]*method: 'DELETE'/.test(fnBody), 'only a confirmed answer deletes');
+  assert.ok(!fnBody.includes("'armed'"), 'no in-row arm state survives');
 });
 
 // ---- GATE FIXES (both reviewers' CRITICAL + warnings): source locks ----------
@@ -332,10 +338,13 @@ test('v1.73.2 SOURCE-LOCK: Books wears icon-books everywhere - injector, sheet m
   // `.icon-*` mask decode-lags -> pop-in on a mobile cold start). The mask rule
   // + injector/sheet-mirror above are UNCHANGED (icon-books still
   // serves the sidebar/mirror). Only the static bottom item flipped to svg.
-  const booksSvg = require('../../public/js/common.js').chromeIconMarkup('books');
+  // Sweep S1 (DELIBERATE lock update): the tab is a ui-btn stack, its glyph the ui.icon
+  // markup (the registry's books glyph) in the fixed icon slot.
+  const c = require('../../public/js/common.js');
+  const booksSvg = c.uiIconMarkup(c.CHROME_ICON.books, 'lg');
   for (const f of shells) {
     const html = fs.readFileSync(path.join(pub, f), 'utf8');
-    const m = /data-nav="books"[^>]*>\s*(<svg class="chrome-icon"[^>]*>.*?<\/svg>)/.exec(html);
-    assert.ok(m && m[1] === booksSvg, `${f}: the bottom item wears the inline books chrome-icon`);
+    const m = /data-nav="books"[^>]*>\s*<span class="ui-btn__icon">(<svg class="ui-icon[^>]*>.*?<\/svg>)<\/span>/.exec(html);
+    assert.ok(m && m[1] === booksSvg, `${f}: the bottom item wears the inline books sprite glyph`);
   }
 });

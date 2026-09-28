@@ -21,11 +21,15 @@ const G4_TOL = 1;
 
 // ---------------------------------------------------------------- collectors (in the page)
 
-function collectG1() {
+// Each collector takes an optional `scope` selector (a surface's `scope`): only that subtree
+// is measured, so a page-wide surface (the header on Home) is not failed by another sweep's
+// controls elsewhere on the page.
+function collectG1(scope) {
   const SLOTS = ['lead', 'media', 'body', 'aside', 'actions'];
   const shown = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 || r.height > 0; };
+  const root = (scope && document.querySelector(scope)) || document;
   const lists = [];
-  document.querySelectorAll('.ui-list').forEach((list, li) => {
+  root.querySelectorAll('.ui-list').forEach((list, li) => {
     if (!shown(list)) return;
     const rows = Array.from(list.querySelectorAll('.ui-row')).filter((r) => r.closest('.ui-list') === list && shown(r));
     lists.push({
@@ -43,12 +47,13 @@ function collectG1() {
   return lists;
 }
 
-function collectG2() {
+function collectG2(scope) {
   const box = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
   const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
   const name = (el) => (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 30);
+  const root = (scope && document.querySelector(scope)) || document;
   const items = [];
-  document.querySelectorAll('.ui-btn').forEach((btn) => {
+  root.querySelectorAll('.ui-btn').forEach((btn) => {
     const icon = btn.querySelector('.ui-btn__icon .ui-icon');
     if (!icon || !visible(btn) || !visible(icon)) return;
     const stack = btn.classList.contains('ui-btn--stack');
@@ -59,7 +64,7 @@ function collectG2() {
     if (!ref) return;
     items.push({ where: 'ui-btn', name: name(btn), axis: stack ? 'x' : 'y', refKind, icon: box(icon), ref: box(ref) });
   });
-  document.querySelectorAll('.ui-row .ui-icon').forEach((icon) => {
+  root.querySelectorAll('.ui-row .ui-icon').forEach((icon) => {
     if (icon.closest('.ui-btn') || !visible(icon)) return;
     const row = icon.closest('.ui-row');
     const body = row && Array.from(row.children).find((c) => c.classList.contains('ui-row__body'));
@@ -69,9 +74,10 @@ function collectG2() {
   return items;
 }
 
-function collectG3() {
+function collectG3(scope) {
   const groups = new Map();
-  document.querySelectorAll('.ui-btn').forEach((btn) => {
+  const root = (scope && document.querySelector(scope)) || document;
+  root.querySelectorAll('.ui-btn').forEach((btn) => {
     const r = btn.getBoundingClientRect();
     if (!(r.width > 0 && r.height > 0) || !btn.parentElement) return;
     if (!groups.has(btn.parentElement)) groups.set(btn.parentElement, []);
@@ -222,4 +228,152 @@ function evalG4(frames, tol = 1) {
   return out;
 }
 
-module.exports = { TOL, G4_TOL, collectG1, collectG2, collectG3, startG4Recorder, evalG1, evalG2, evalG3, evalG4 };
+
+// ---------------------------------------------------------------- the chrome (sweep S1)
+// HDR and NAV are the app chrome's rendered contracts: what the old selector locks
+// (mobile-header-css-source-lock, header-right-reserve, pinned-avatar-css) guarded, measured
+// on the live page instead (the v1.85 device-pass failure was a CASCADE bug - a later
+// same-specificity base rule silently beat a mobile override - which only a render sees).
+
+// HDR, in the page: the header's glyph buttons, the search toggle / account trigger
+// visibility, the search field, the bell's pre-paint reserve against the real bell, and the
+// desktop sidebar's rows.
+function collectHeader() {
+  const vis = (el) => {
+    if (!el) return false;
+    const r = el.getBoundingClientRect();
+    const cs = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && cs.display !== 'none' && cs.visibility !== 'hidden';
+  };
+  const box = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
+  const hr = document.querySelector('header .header-right');
+  const buttons = hr ? Array.from(hr.querySelectorAll(':scope > .ui-btn, :scope > .account-menu > .ui-btn')).filter(vis)
+    .map((b) => ({ name: b.getAttribute('aria-label') || b.className, box: box(b) })) : [];
+  const search = document.getElementById('search-toggle-btn');
+  const acct = document.querySelector('#account-menu-root .account-menu-trigger');
+  const field = document.querySelector('header .search-form');
+  // The bell's pre-paint reserve (the shells' inline block and injectNotificationBellIfEnabled
+  // build exactly this DOM - app-look-l2 binds the classes) against the real bell: the same
+  // button box, the shimmer disc = the glyph's box. Measured beside the bell, then removed.
+  let reserve = null;
+  const bell = document.getElementById('notif-bell-btn');
+  if (bell && vis(bell)) {
+    const ph = document.createElement('span');
+    ph.className = 'ui-btn ui-btn--plain ui-btn--md ui-btn--icon notif-bell-btn';
+    const slot = document.createElement('span');
+    slot.className = 'ui-btn__icon';
+    const skel = document.createElement('span');
+    skel.className = 'notif-bell-skel skeleton-shimmer';
+    slot.appendChild(skel);
+    ph.appendChild(slot);
+    bell.after(ph);
+    const pb = box(ph); const sb = box(skel); const bb = box(bell); const ib = box(bell.querySelector('.ui-icon'));
+    reserve = { w: pb.w, h: pb.h, bellW: bb.w, bellH: bb.h, skel: { dx: sb.x - pb.x, dy: sb.y - pb.y, w: sb.w, h: sb.h },
+      glyph: { dx: ib.x - bb.x, dy: ib.y - bb.y, w: ib.w, h: ib.h } };
+    ph.remove();
+  }
+  const sidebar = Array.from(document.querySelectorAll('#sidebar .sidebar-item')).filter(vis).map((a) => {
+    const cs = getComputedStyle(a);
+    return { name: a.textContent.trim().slice(0, 24), active: a.classList.contains('active'), deco: cs.textDecorationLine, weight: cs.fontWeight };
+  });
+  return { vw: innerWidth, buttons, searchVisible: vis(search), searchBox: vis(search) ? box(search) : null,
+    accountVisible: vis(acct), field: vis(field) ? box(field) : null, reserve, sidebar };
+}
+
+// NAV, in the page: every shown bottom-bar tab's icon slot and label, and the colours the
+// active and idle tabs resolve to against the role tokens.
+function collectBottomBar() {
+  const nav = document.getElementById('bottom-nav');
+  if (!nav || getComputedStyle(nav).display === 'none') return { shown: false, tabs: [] };
+  const box = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
+  const probe = document.createElement('span');
+  document.body.appendChild(probe);
+  const role = (v) => { probe.style.color = 'var(' + v + ')'; return getComputedStyle(probe).color; };
+  const inks = { ink1: role('--ink-1'), ink2: role('--ink-2'), accent: role('--accent'), accentFill: role('--accent-fill') };
+  probe.remove();
+  const tabs = Array.from(nav.children).filter((t) => t.classList.contains('bottom-nav-item') && getComputedStyle(t).display !== 'none')
+    .map((t) => {
+      const slot = t.querySelector(':scope > .ui-btn__icon');
+      const label = t.querySelector(':scope > .ui-btn__label');
+      const cs = label ? getComputedStyle(label) : null;
+      return { name: t.getAttribute('data-nav') || t.getAttribute('data-ft-reserve') || '?', active: t.classList.contains('active'),
+        slot: slot ? box(slot) : null, label: label ? box(label) : null, color: cs && cs.color, weight: cs && cs.fontWeight,
+        // text-decoration does not inherit (it paints through): read the tab link's own line
+        // AND the label's.
+        deco: [getComputedStyle(t).textDecorationLine, cs && cs.textDecorationLine].filter((v) => v && v !== 'none').join(' ') || 'none', href: (t.querySelector('.ui-btn__icon use') || { getAttribute: () => '' }).getAttribute('href') };
+    });
+  return { shown: true, inks, tabs };
+}
+
+// -> { measured: {buttons, sidebar}, failures: [string] }
+function evalHeader(d, tol = TOL) {
+  const failures = [];
+  const phone = d.vw <= 768;
+  const near = (a, b) => Math.abs(a - b) <= tol;
+  const want = phone ? 44 : 36;
+  if (d.buttons.length < 2) failures.push(`VACUOUS-ish: only ${d.buttons.length} header glyph button(s) shown`);
+  for (const b of d.buttons) {
+    if (!near(b.box.h, want) || !near(b.box.w, want)) failures.push(`${b.name}: ${b.box.w}x${b.box.h}, want ${want}x${want}`);
+  }
+  const cy = (b) => b.box.y + b.box.h / 2;
+  for (const b of d.buttons.slice(1)) if (!near(cy(b), cy(d.buttons[0]))) failures.push(`${b.name}: centre-y ${cy(b)} vs ${cy(d.buttons[0])} (the row is not level)`);
+  const sorted = d.buttons.slice().sort((a, b) => a.box.x - b.box.x);
+  const gaps = sorted.slice(1).map((b, i) => b.box.x - (sorted[i].box.x + sorted[i].box.w));
+  if (gaps.length && Math.max(...gaps) - Math.min(...gaps) > tol) failures.push(`uneven glyph spacing: gaps ${gaps.map((g) => Math.round(g * 100) / 100).join(', ')}`);
+  if (phone) {
+    if (!d.searchVisible) failures.push('phone: the search magnifier is hidden (a later base rule beat the mobile show - the v1.85 cascade bug)');
+    else {
+      const right = Math.max(...d.buttons.map((b) => b.box.x + b.box.w));
+      if (!near(d.searchBox.x + d.searchBox.w, right)) failures.push('phone: the magnifier is not the rightmost glyph (v1.86.0 corner)');
+    }
+    if (d.accountVisible) failures.push('phone: the header avatar shows (the You tab owns the account on the phone)');
+  } else {
+    if (d.searchVisible) failures.push('desktop: the search magnifier shows beside the always-on field');
+    if (!d.accountVisible) failures.push('desktop: the account avatar is hidden');
+    if (!d.field) failures.push('desktop: the search field is hidden');
+    else if (!near(d.field.h, 36)) failures.push(`desktop: the search field is ${d.field.h}px tall, want 36 (--ctl-md)`);
+  }
+  if (d.reserve) {
+    const r = d.reserve;
+    if (!near(r.w, r.bellW) || !near(r.h, r.bellH)) failures.push(`bell reserve ${r.w}x${r.h} != bell ${r.bellW}x${r.bellH} (the reveal would shift)`);
+    for (const k of ['dx', 'dy', 'w', 'h']) if (!near(r.skel[k], r.glyph[k])) failures.push(`bell reserve disc ${k} ${r.skel[k]} != glyph ${r.glyph[k]}`);
+  }
+  for (const s of d.sidebar) if (s.deco !== 'none') failures.push(`sidebar "${s.name}": underlined (${s.deco}) - F20`);
+  const weights = new Set(d.sidebar.map((s) => s.weight));
+  if (weights.size > 1) failures.push(`sidebar rows differ in weight (${[...weights].join('/')}) - F50: selected is a fill, never bold`);
+  return { measured: { buttons: d.buttons.length, sidebar: d.sidebar.length }, failures };
+}
+
+// -> { measured: {tabs}, failures: [string] }
+function evalBottomBar(d, tol = TOL) {
+  const failures = [];
+  if (!d.shown) return { measured: { tabs: 0 }, failures };
+  const near = (a, b) => Math.abs(a - b) <= tol;
+  const tabs = d.tabs;
+  for (const t of tabs) {
+    if (!t.slot || !t.label) { failures.push(`${t.name}: not a ui-btn stack (no icon slot / label)`); continue; }
+    if (!near(t.slot.w, 24) || !near(t.slot.h, 24)) failures.push(`${t.name}: icon slot ${t.slot.w}x${t.slot.h}, want 24x24 (F49)`);
+    if (t.deco !== 'none') failures.push(`${t.name}: label underlined (${t.deco}) - F20`);
+  }
+  const withLabel = tabs.filter((t) => t.label);
+  for (const t of withLabel.slice(1)) {
+    if (!near(t.label.y, withLabel[0].label.y)) failures.push(`${t.name}: label top ${t.label.y} vs ${withLabel[0].label.y} (F49: a label sits lower)`);
+  }
+  const active = tabs.filter((t) => t.active);
+  if (active.length !== 1) failures.push(`${active.length} active tabs, want 1`);
+  for (const t of tabs) {
+    if (t.active) {
+      if (t.color !== d.inks.ink1) failures.push(`${t.name} (active): label ${t.color}, want --ink-1 ${d.inks.ink1} (D8.8)`);
+      if (t.color === d.inks.accent || t.color === d.inks.accentFill) failures.push(`${t.name} (active): red - selected is ink, never red (D8.8)`);
+      if (t.href && !/-fill$/.test(t.href)) failures.push(`${t.name} (active): glyph ${t.href} is not the filled twin (F49)`);
+    } else if (t.color !== d.inks.ink2) {
+      failures.push(`${t.name}: label ${t.color}, want --ink-2 ${d.inks.ink2}`);
+    }
+  }
+  const weights = new Set(tabs.map((t) => t.weight));
+  if (weights.size > 1) failures.push(`tab labels differ in weight (${[...weights].join('/')})`);
+  return { measured: { tabs: tabs.length }, failures };
+}
+
+module.exports = { TOL, G4_TOL, collectG1, collectG2, collectG3, startG4Recorder, evalG1, evalG2, evalG3, evalG4,
+  collectHeader, collectBottomBar, evalHeader, evalBottomBar };

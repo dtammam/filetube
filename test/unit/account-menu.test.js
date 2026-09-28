@@ -12,6 +12,7 @@ const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
 
 const COMMON = require.resolve('../../public/js/common.js');
+const UI = require.resolve('../../public/js/ui.js');
 let dom, savedFetch;
 
 function fresh(mePayload, url) {
@@ -23,6 +24,10 @@ function fresh(mePayload, url) {
   global.window = dom.window;
   global.document = dom.window.document;
   global.sessionStorage = dom.window.sessionStorage;
+  // Sweep S1: the menu is a ui.sheet of ui-rows, built on the first open by the page's
+  // window.ui (public/js/ui.js ships on every shell, before common.js).
+  delete require.cache[UI];
+  dom.window.ui = require(UI);
   savedFetch = global.fetch;
   global.fetch = async (url, init) => {
     const method = (init && init.method) || 'GET';
@@ -35,19 +40,30 @@ function fresh(mePayload, url) {
   };
   return common;
 }
-afterEach(() => {
+afterEach(async () => {
+  // A ui.sheet that is closing removes itself on a timer (~320ms); let it finish while this
+  // test's window still exists (it would otherwise run against the next test's globals).
+  if (global.document && global.document.querySelector('.ui-sheet')) await new Promise((r) => setTimeout(r, 400));
   global.fetch = savedFetch;
   if (dom) { dom.window.close(); dom = null; }
   delete global.window; delete global.document; delete global.sessionStorage;
   delete require.cache[COMMON];
 });
 const tick = () => new Promise((r) => setTimeout(r, 0));
+// Sweep S1: the menu content exists once the menu has been opened (built on the first open).
+const trigger = () => global.document.querySelector('.account-menu-trigger');
+const openMenu = () => trigger().dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+const sheetEl = () => global.document.getElementById('account-menu-sheet');
+const itemLabels = () => [...global.document.querySelectorAll('.account-menu-item .ui-row__title')].map((s) => s.textContent);
 
 test('buildAccountAvatarEl: no photo -> initials monogram + a deterministic colour', () => {
   const { buildAccountAvatarEl } = fresh({});
   const el = buildAccountAvatarEl({ id: 1, displayName: 'Dean', avatar: { present: false } });
   assert.strictEqual(el.textContent, 'D', 'first-letter monogram');
-  assert.ok(el.style.backgroundColor, 'a palette colour is applied');
+  // Sweep S1 (DELIBERATE lock update, D4.4): a ui-avatar - the tone is a name-hashed data-tone.
+  const mono = el.querySelector('.ui-avatar__mono');
+  assert.ok(mono && /^[1-8]$/.test(mono.getAttribute('data-tone')), 'a palette tone is applied');
+  assert.strictEqual(mono.getAttribute('data-tone'), buildAccountAvatarEl({ id: 2, displayName: 'Dean', avatar: { present: false } }).querySelector('.ui-avatar__mono').getAttribute('data-tone'), 'deterministic by name');
   assert.strictEqual(el.querySelector('img'), null, 'no image element when unset');
 });
 
@@ -67,21 +83,29 @@ test('injectAccountMenu: builds the trigger + full dropdown, once, with account 
 
   const root = global.document.getElementById('account-menu-root');
   assert.ok(root, 'the menu mounted into .header-right');
-  const trigger = root.querySelector('.account-menu-trigger');
-  assert.strictEqual(trigger.getAttribute('aria-haspopup'), 'menu');
-  assert.strictEqual(trigger.getAttribute('aria-expanded'), 'false');
-  assert.strictEqual(trigger.querySelector('.account-avatar').textContent, 'D', 'monogram in the trigger');
+  const trig = root.querySelector('.account-menu-trigger');
+  assert.strictEqual(trig.getAttribute('aria-haspopup'), 'menu');
+  assert.strictEqual(trig.getAttribute('aria-expanded'), 'false');
+  assert.strictEqual(trig.querySelector('.account-avatar').textContent, 'D', 'monogram in the trigger');
+  // Sweep S1 (D4.1/D4.4): the trigger is a plain ui-btn icon button holding a 28px ui-avatar.
+  assert.ok(trig.matches('button.ui-btn.ui-btn--plain.ui-btn--icon') && trig.querySelector('.ui-avatar.ui-avatar--sm'), 'a ui-btn icon button with a sm ui-avatar');
+  assert.strictEqual(sheetEl(), null, 'nothing is built into the page before the first open');
 
-  const labels = [...root.querySelectorAll('.account-menu-item span')].map((s) => s.textContent);
+  openMenu();
+  // Sweep S1 (D4.6): the menu is a ui.sheet of compact ui-rows, the glyph in each row's media slot.
+  assert.ok(sheetEl() && sheetEl().classList.contains('ui-sheet'), 'the menu opened as a ui.sheet');
+  assert.ok([...global.document.querySelectorAll('.account-menu-item')].every((r) => r.classList.contains('ui-row') && r.querySelector('.ui-row__media .ui-icon')),
+    'every item is a ui-row with a registry glyph');
+  const labels = itemLabels();
   // v1.153: Stats joined the quick links (mobile's way in, sidebar-only otherwise).
   // Subscriptions is NOT here because this fixture has no subscriptions nav entry
   // (the enabled-module gate) - covered by its own test below.
   // v1.305 (Dean): "Change photo" ROW retired - the avatar is now edited via a
   // pencil badge on the disc (asserted below), so it is no longer a menu item.
   assert.deepStrictEqual(labels, ['Liked', 'History', 'Stats', 'Settings', 'Theme', 'Sign out'], 'all items present, in order');
-  assert.strictEqual(root.querySelector('.account-menu-name').textContent, 'Dean');
-  assert.strictEqual(root.querySelector('.account-menu-role').textContent, 'Admin');
-  const links = [...root.querySelectorAll('a.account-menu-item')].map((a) => a.getAttribute('href'));
+  assert.strictEqual(global.document.querySelector('.account-menu-name').textContent, 'Dean');
+  assert.strictEqual(global.document.querySelector('.account-menu-role').textContent, 'Admin');
+  const links = [...global.document.querySelectorAll('a.account-menu-item')].map((a) => a.getAttribute('href'));
   assert.deepStrictEqual(links, ['/?liked=1', '/history', '/stats.html', '/setup.html']);
 
   injectAccountMenu();
@@ -97,11 +121,11 @@ test('injectAccountMenu: the Subscriptions quick link appears only when the modu
   global.document.body.appendChild(marker);
   injectAccountMenu();
   await tick();
-  const root = global.document.getElementById('account-menu-root');
-  const labels = [...root.querySelectorAll('.account-menu-item span')].map((s) => s.textContent);
+  openMenu();
+  const labels = itemLabels();
   assert.deepStrictEqual(labels, ['Liked', 'History', 'Stats', 'Subscriptions', 'Settings', 'Theme', 'Sign out'],
     'Subscriptions joins the quick links when enabled');
-  const subs = [...root.querySelectorAll('a.account-menu-item')].find((a) => a.textContent.includes('Subscriptions'));
+  const subs = [...global.document.querySelectorAll('a.account-menu-item')].find((a) => a.textContent.includes('Subscriptions'));
   assert.strictEqual(subs.getAttribute('href'), '/subscriptions');
 });
 
@@ -111,17 +135,18 @@ test('v1.153 (Dean): a quick-link click SPA-navigates + closes the menu (keeps t
   global.window.FileTube = { navigate: (url) => navd.push(url) };
   injectAccountMenu();
   await tick();
-  const settings = [...global.document.querySelectorAll('a.account-menu-item')].find((a) => a.getAttribute('href') === '/setup.html');
-  assert.ok(settings, 'the Settings quick link exists');
   // open the menu, then plain-click Settings
   global.document.querySelector('.account-menu-trigger').click();
+  const settings = [...global.document.querySelectorAll('a.account-menu-item')].find((a) => a.getAttribute('href') === '/setup.html');
+  assert.ok(settings, 'the Settings quick link exists');
   const evt = new global.window.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
   settings.dispatchEvent(evt);
   // The menu stops propagation to the document router, so WITHOUT the explicit
   // handler this click would full-reload (default nav) and kill playback.
   assert.strictEqual(evt.defaultPrevented, true, 'the default full navigation is prevented');
   assert.deepStrictEqual(navd, ['http://localhost/setup.html'], 'routed through the in-app SPA navigate');
-  assert.strictEqual(global.document.querySelector('.account-menu-dropdown').hidden, true, 'the menu closed');
+  assert.strictEqual(trigger().getAttribute('aria-expanded'), 'false', 'the menu closed');
+  assert.ok(!sheetEl().classList.contains('is-open'), 'the sheet is closing');
 });
 
 test('v1.153.1: Subscriptions is added to an ALREADY-BUILT menu when the module enables late (cold-cache first load)', async () => {
@@ -130,8 +155,10 @@ test('v1.153.1: Subscriptions is added to an ALREADY-BUILT menu when the module 
   // cold cache: NO subscriptions marker in the DOM when the menu builds
   injectAccountMenu();
   await tick();
-  const labelsOf = () => [...global.document.querySelectorAll('.account-menu-item span')].map((s) => s.textContent);
-  assert.ok(!labelsOf().includes('Subscriptions'), 'not present at build time (cold cache)');
+  ensureAccountMenuSubscriptionsRow(); // before the first open: nothing built yet -> a no-op
+  openMenu();
+  const labelsOf = itemLabels;
+  assert.ok(labelsOf().length >= 6 && !labelsOf().includes('Subscriptions'), 'not present at build time (cold cache)');
   // the /health probe resolves later -> injectSubscriptionsNavNodes patches the menu
   ensureAccountMenuSubscriptionsRow();
   assert.deepStrictEqual(labelsOf(), ['Liked', 'History', 'Stats', 'Subscriptions', 'Settings', 'Theme', 'Sign out'],
@@ -142,26 +169,33 @@ test('v1.153.1: Subscriptions is added to an ALREADY-BUILT menu when the module 
   assert.strictEqual([...global.document.querySelectorAll('a.account-menu-item[href="/subscriptions"]')].length, 1);
 });
 
-test('injectAccountMenu: click toggles the dropdown; outside-click + Escape close it', async () => {
+test('injectAccountMenu: click toggles the menu; the scrim, Escape and Close dismiss it (ui.sheet)', async () => {
   const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', role: 'member', avatar: { present: false } } });
   injectAccountMenu();
   await tick();
+  const trig = trigger();
+  assert.strictEqual(sheetEl(), null, 'starts closed (nothing in the page)');
 
-  const trigger = global.document.querySelector('.account-menu-trigger');
-  const menu = global.document.querySelector('.account-menu-dropdown');
-  assert.strictEqual(menu.hidden, true, 'starts closed');
+  trig.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.ok(sheetEl() && sheetEl().isConnected, 'opens on trigger click');
+  assert.strictEqual(trig.getAttribute('aria-expanded'), 'true');
+  trig.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.strictEqual(trig.getAttribute('aria-expanded'), 'false', 'a second trigger click closes it');
 
-  trigger.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  assert.strictEqual(menu.hidden, false, 'opens on trigger click');
-  assert.strictEqual(trigger.getAttribute('aria-expanded'), 'true');
+  trig.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.strictEqual(trig.getAttribute('aria-expanded'), 'true', 're-opens');
+  global.document.querySelector('.ui-scrim').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.strictEqual(trig.getAttribute('aria-expanded'), 'false', 'a tap outside (the scrim) closes it');
 
-  global.document.body.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  assert.strictEqual(menu.hidden, true, 'outside-click closes');
-
-  trigger.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  assert.strictEqual(menu.hidden, false);
+  trig.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.strictEqual(trig.getAttribute('aria-expanded'), 'true');
   global.document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape' }));
-  assert.strictEqual(menu.hidden, true, 'Escape closes');
+  assert.strictEqual(trig.getAttribute('aria-expanded'), 'false', 'Escape closes');
+
+  trig.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.strictEqual(trig.getAttribute('aria-expanded'), 'true');
+  sheetEl().querySelector('.ui-sheet__close').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.strictEqual(trig.getAttribute('aria-expanded'), 'false', 'the one Close closes');
 });
 
 test('injectAccountMenu: the Theme item glyph reflects the current mode and updates on toggle', async () => {
@@ -169,13 +203,16 @@ test('injectAccountMenu: the Theme item glyph reflects the current mode and upda
   global.document.documentElement.setAttribute('data-mode', 'light');
   common.injectAccountMenu();
   await tick();
+  openMenu();
   const icon = global.document.getElementById('account-menu-theme-icon');
   assert.ok(icon, 'the theme item icon carries the sync id');
-  assert.strictEqual(icon.className, 'icon-moon', 'light mode shows the moon (switch-to-dark)');
+  // Sweep S1: a sprite ui-icon; its <use> names the mode a tap switches TO.
+  const href = () => icon.querySelector('use').getAttribute('href');
+  assert.strictEqual(href(), '#i-dark_mode', 'light mode shows the moon (switch-to-dark)');
   // Flip to dark and re-sync (applyTheme calls updateAccountMenuThemeItem).
   global.document.documentElement.setAttribute('data-mode', 'dark');
   common.updateAccountMenuThemeItem();
-  assert.strictEqual(icon.className, 'icon-sun', 'dark mode shows the sun');
+  assert.strictEqual(href(), '#i-light_mode', 'dark mode shows the sun');
 });
 
 test('applyTheme syncs the account-menu theme glyph on every toggle (source lock)', () => {
@@ -215,6 +252,7 @@ test('injectAccountMenu: the version row is an ANCHOR to the running build\'s re
 
   injectAccountMenu();
   await tick();
+  openMenu();
 
   const ver = global.document.querySelector('.account-menu-version');
   assert.ok(ver, 'the version row rendered (meta present)');
@@ -238,6 +276,8 @@ test('injectAccountMenu: a version the URL builder rejects renders NO row (gate 
   global.document.head.appendChild(meta);
   injectAccountMenu();
   await tick();
+  openMenu();
+  assert.ok(global.document.querySelector('.account-menu-disk'), 'the footer rendered (the absence below is not vacuous)');
   assert.strictEqual(global.document.querySelector('.account-menu-version'), null,
     'a version that cannot build a valid release URL renders no row - never a dead or attacker-shaped link');
 });
@@ -246,6 +286,8 @@ test('injectAccountMenu: no version meta -> no version row at all (never a dead 
   const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', username: 'dean', role: 'admin', avatar: { present: false, version: 0 } } });
   injectAccountMenu();
   await tick();
+  openMenu();
+  assert.ok(global.document.querySelector('.account-menu-disk'), 'the footer rendered (the absence below is not vacuous)');
   assert.strictEqual(global.document.querySelector('.account-menu-version'), null);
 });
 
@@ -280,13 +322,15 @@ function stubStorage(bytes) {
   };
 }
 
-test('the disk row is an account-menu-disk LINK to Stats, ABOVE the version row, shimmering before open', async () => {
+test('the disk row is an account-menu-disk LINK to Stats, ABOVE the version row, shimmering until the lazy fetch answers', async () => {
   const { injectAccountMenu } = withDiskMenu();
   injectAccountMenu();
   await tick();
+  openMenu(); // synchronous: the lazy fetch has not answered yet
   const disk = global.document.querySelector('.account-menu-disk');
   assert.ok(disk, 'the disk row rendered');
   assert.strictEqual(disk.tagName, 'A');
+  assert.ok(disk.classList.contains('ui-row'), 'a ui-row in the footer list (sweep S1)');
   assert.strictEqual(disk.getAttribute('href'), '/stats.html', 'clicking opens Stats');
   assert.ok(disk.querySelector('.account-menu-disk-shimmer.skeleton-shimmer'), 'shimmers until the lazy fetch');
   // Ordering: disk sits ABOVE the version row.
@@ -328,18 +372,19 @@ test('the disk fetch is lazy (only on open) and happens at most once across open
   assert.strictEqual(hits, 1, 'fetched exactly once (first open), not on every open');
 });
 
-test('a failed disk fetch hides the row AND its divider (never a broken value)', async () => {
+test('a failed disk fetch hides the row (never a broken value)', async () => {
+  // Sweep S1 (DELIBERATE lock update): the footer is one ui-list under a hairline, so there
+  // is no per-row divider to orphan; the row itself hides.
   const { injectAccountMenu } = withDiskMenu();
   injectAccountMenu();
   await tick();
-  const disk = global.document.querySelector('.account-menu-disk');
-  const divider = disk.previousElementSibling; // the footer divider we added above it
-  assert.ok(divider.classList.contains('account-menu-divider'), 'precondition: a divider sits above the disk row');
   stubStorage(null); // 500
-  global.document.querySelector('.account-menu-trigger').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  openMenu();
+  const disk = global.document.querySelector('.account-menu-disk');
+  assert.strictEqual(disk.hidden, false, 'populated first: the row is shown while the fetch is in flight');
   await tick();
   assert.strictEqual(disk.hidden, true, 'the disk row hides on failure');
-  assert.strictEqual(divider.hidden, true, 'and its divider hides too (no orphan separator)');
+  assert.strictEqual(global.document.querySelector('.account-menu-divider'), null, 'no separate divider exists to orphan');
 });
 
 // ---- v1.158 (Dean): the per-device admin flag (drives the nav admin-reserve) --
@@ -373,9 +418,10 @@ test('v1.230: the account menu has NO music-skin picker (it moved to the Setting
   dom.window.FileTubeMusicSkins = require('../../public/js/music-skins.js');
   injectAccountMenu();
   await tick();
-  const root = global.document.getElementById('account-menu-root');
-  assert.ok(!root.querySelector('.account-menu-skinpicker'), 'no in-menu skin picker anymore');
-  const labels = [...root.querySelectorAll('.account-menu-item span')].map((s) => s.textContent);
+  openMenu();
+  assert.ok(!global.document.querySelector('.account-menu-skinpicker'), 'no in-menu skin picker anymore');
+  const labels = itemLabels();
+  assert.ok(labels.length >= 6, 'the item-label net read real rows');
   assert.ok(!labels.includes('Music skin'), 'and the item-label net is unchanged');
 });
 
@@ -415,16 +461,18 @@ test('v1.305: the "Change photo" ROW is retired; a pencil badge on the avatar op
   const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', role: 'admin', avatar: { present: false } } });
   injectAccountMenu();
   await tick();
+  openMenu();
   const root = global.document.getElementById('account-menu-root');
-  const labels = [...root.querySelectorAll('.account-menu-item span')].map((s) => s.textContent);
-  assert.ok(!labels.includes('Change photo'), 'no Change photo menu row anymore');
-  const wrap = root.querySelector('.account-menu-head .account-menu-avatar-wrap');
+  const labels = itemLabels();
+  assert.ok(labels.length >= 6 && !labels.includes('Change photo'), 'no Change photo menu row anymore');
+  const wrap = global.document.querySelector('.account-menu-head .account-menu-avatar-wrap');
   assert.ok(wrap, 'the head avatar is wrapped for the badge');
-  assert.ok(wrap.querySelector('.account-avatar-lg'), 'the wrapper holds the large avatar disc');
+  assert.ok(wrap.querySelector('.account-avatar.ui-avatar--xl'), 'the wrapper holds the large avatar disc');
   const edit = wrap.querySelector('.account-menu-avatar-edit');
   assert.ok(edit, 'the pencil badge exists on the disc');
   assert.strictEqual(edit.getAttribute('aria-label'), 'Change photo', 'the badge carries the accessible name');
-  assert.ok(edit.querySelector('svg'), 'it renders the inline pencil glyph');
+  // Sweep S1: a ui-btn icon button drawing the registry's edit glyph (no private inline path).
+  assert.ok(edit.matches('button.ui-btn.ui-btn--icon') && edit.querySelector('.ui-btn__icon use[href="#i-edit"]'), 'the pencil is the registry glyph in a ui-btn');
   // clicking the badge opens the SAME hidden file input the old row drove
   const fileInput = root.querySelector('input[type="file"]');
   assert.ok(fileInput, 'the hidden avatar file input still exists');
@@ -442,10 +490,11 @@ test('v1.305: the disc + badge share the wrapper (the contract refreshAvatars sw
   const { injectAccountMenu } = fresh({ user: { id: 9, displayName: 'Dean', role: 'admin', avatar: { present: false } } });
   injectAccountMenu();
   return tick().then(() => {
+    openMenu();
     const wrap = global.document.querySelector('.account-menu-head .account-menu-avatar-wrap');
     assert.ok(wrap, 'the wrapper is inside the head');
     assert.strictEqual(wrap.querySelectorAll('.account-menu-avatar-edit').length, 1, 'exactly one badge, in the wrapper');
-    assert.strictEqual(wrap.querySelector('.account-avatar-lg').parentNode, wrap, 'the disc is a direct child of the wrapper');
+    assert.strictEqual(wrap.querySelector('.account-avatar.ui-avatar--xl').parentNode, wrap, 'the disc is a direct child of the wrapper');
   });
 });
 
@@ -461,10 +510,11 @@ function stubEndpoints({ bytes = 100, trash = { total: 0, items: [] } } = {}) {
   };
 }
 
-test('v1.305: "N items in trash" is an account-menu-trash LINK to /setup.html#trash, between the disk and version rows, shimmering before open', async () => {
+test('v1.305: "N items in trash" is an account-menu-trash LINK to /setup.html#trash, between the disk and version rows, shimmering until the count answers', async () => {
   const { injectAccountMenu } = withDiskMenu();
   injectAccountMenu();
   await tick();
+  openMenu(); // synchronous: the lazy count has not answered yet
   const trash = global.document.querySelector('.account-menu-trash');
   assert.ok(trash, 'the trash row rendered');
   assert.strictEqual(trash.tagName, 'A');
@@ -483,7 +533,7 @@ test('v1.305: on first open the count resolves from body.total (divergent items.
   await tick();
   // total=1 but items has 4 entries -> reads TOTAL (=> "1 item"), not items.length
   stubEndpoints({ trash: { total: 1, items: [{}, {}, {}, {}] } });
-  global.document.querySelector('.account-menu-trigger').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  openMenu();
   await tick();
   const trash = global.document.querySelector('.account-menu-trash');
   assert.strictEqual(trash.hidden, false, 'the row stays visible');
@@ -496,7 +546,7 @@ test('v1.305: the count falls back to items.length when body.total is absent', a
   injectAccountMenu();
   await tick();
   stubEndpoints({ trash: { items: [{}, {}] } }); // no `total` field
-  global.document.querySelector('.account-menu-trigger').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  openMenu();
   await tick();
   assert.strictEqual(global.document.querySelector('.account-menu-trash').textContent, '2 items in trash');
 });
@@ -519,20 +569,18 @@ test('v1.305: the trash count is lazy (only on open) and fetched at most once ac
   assert.strictEqual(hits, 1, 'fetched exactly once (first open), not on every open');
 });
 
-test('v1.305: a failed trash count hides the trash row ONLY (disk row + shared divider untouched)', async () => {
+test('v1.305: a failed trash count hides the trash row ONLY (the disk row untouched)', async () => {
   const { injectAccountMenu } = withDiskMenu();
   injectAccountMenu();
   await tick();
+  stubEndpoints({ bytes: 100, trash: null }); // /api/trash -> 500
+  openMenu();
   const trash = global.document.querySelector('.account-menu-trash');
   const disk = global.document.querySelector('.account-menu-disk');
-  const divider = disk.previousElementSibling;
-  assert.ok(divider.classList.contains('account-menu-divider'), 'precondition: the footer divider sits above the disk row');
-  stubEndpoints({ bytes: 100, trash: null }); // /api/trash -> 500
-  global.document.querySelector('.account-menu-trigger').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  assert.strictEqual(trash.hidden, false, 'populated first: shown while the count is in flight');
   await tick();
   assert.strictEqual(trash.hidden, true, 'the trash row hides on a failed count (never a wrong "0 items")');
   assert.strictEqual(disk.hidden, false, 'the disk row is unaffected by the trash failure');
-  assert.strictEqual(divider.hidden, false, 'the shared footer divider stays (it belongs to the disk row)');
 });
 
 test('v1.305: a trash-row click SPA-navigates to /setup.html#trash + closes the menu (keeps the mini-player)', async () => {
@@ -541,14 +589,14 @@ test('v1.305: a trash-row click SPA-navigates to /setup.html#trash + closes the 
   global.window.FileTube = { navigate: (url) => navd.push(url) };
   injectAccountMenu();
   await tick();
+  global.document.querySelector('.account-menu-trigger').click();
   const trash = global.document.querySelector('a.account-menu-trash');
   assert.ok(trash, 'the trash link exists');
-  global.document.querySelector('.account-menu-trigger').click();
   const evt = new global.window.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
   trash.dispatchEvent(evt);
   assert.strictEqual(evt.defaultPrevented, true, 'the default full navigation is prevented');
   assert.deepStrictEqual(navd, ['http://localhost/setup.html#trash'], 'routed through the in-app SPA navigate (hash preserved)');
-  assert.strictEqual(global.document.querySelector('.account-menu-dropdown').hidden, true, 'the menu closed');
+  assert.strictEqual(trigger().getAttribute('aria-expanded'), 'false', 'the menu closed');
 });
 
 test('v1.305 (gate): clicking "N items in trash" while ALREADY on Settings sets the hash directly (navigate would no-op), so Trash still opens', async () => {
@@ -561,15 +609,15 @@ test('v1.305 (gate): clicking "N items in trash" while ALREADY on Settings sets 
   global.window.FileTube = { navigate: (url) => { navd.push(url); } }; // in prod this would no-op the same-location nav
   injectAccountMenu();
   await tick();
+  global.document.querySelector('.account-menu-trigger').click();
   const trash = global.document.querySelector('a.account-menu-trash');
   assert.ok(trash, 'the trash link exists');
-  global.document.querySelector('.account-menu-trigger').click();
   const evt = new global.window.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 });
   trash.dispatchEvent(evt);
   assert.strictEqual(evt.defaultPrevented, true, 'the default full navigation is prevented');
   assert.strictEqual(global.window.location.hash, '#trash', 'the hash is set directly (hashchange -> selectFromHash opens Trash)');
   assert.deepStrictEqual(navd, [], 'navigate() is NOT called for a same-path hash-only change (it would no-op)');
-  assert.strictEqual(global.document.querySelector('.account-menu-dropdown').hidden, true, 'the menu closed');
+  assert.strictEqual(trigger().getAttribute('aria-expanded'), 'false', 'the menu closed');
 });
 
 test('v1.305: refreshAvatars swaps the disc WITHIN the wrapper (source lock - the badge must survive the swap)', () => {
@@ -583,6 +631,7 @@ test('v1.305: refreshAvatars swaps the disc WITHIN the wrapper (source lock - th
   const src = require('node:fs').readFileSync(COMMON, 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
   const refreshBody = /const refreshAvatars = \([\s\S]*?\n {4}\};/.exec(src);
+  assert.ok(refreshBody && /buildAccountAvatarEl\(user, 'xl'\)/.test(refreshBody[0]), 'the refresh rebuilds the head disc at the head size');
   assert.ok(refreshBody, 'refreshAvatars found');
   assert.match(refreshBody[0], /avatarWrap\.replaceChild\(/, 'the head-avatar refresh swaps the disc INSIDE the wrapper');
   assert.doesNotMatch(refreshBody[0], /head\.replaceChild\(/, 'never on .head (that would throw and strand/duplicate the badge)');

@@ -483,9 +483,19 @@ test('.modal-content caps its height (dvh + safe-area insets) and scrolls intern
     'Save/Cancel stays clear of the home indicator when scrolled to the bottom');
 });
 
-test('.playlists-sheet slides up via .sheet-open (translateY(100%) -> translateY(0)), scoped to the mobile :not([hidden]) state', () => {
-  assert.match(css, /\.playlists-sheet:not\(\[hidden\]\)\s*\{[^}]*transform:\s*translateY\(100%\);/s);
-  assert.match(css, /\.playlists-sheet:not\(\[hidden\]\)\.sheet-open\s*\{\s*transform:\s*translateY\(0\);/);
+// Sweep S1 (DELIBERATE lock update, AC12 - the triage's "ui-sheet open/close contract
+// (--dur-sheet)"): the Playlists sheet is a ui.sheet bottom sheet, so its slide is the
+// primitive's (translateY(100%) -> the drag offset, 0, on .is-open, over --dur-sheet) and
+// no bespoke .playlists-sheet rule may re-style it.
+test('the Playlists sheet slides up as a ui.sheet bottom sheet (ui.css: translateY(100%) -> is-open), with no bespoke rule of its own', () => {
+  const ui = fs.readFileSync(path.join(ROOT, 'public', 'css', 'ui.css'), 'utf8');
+  assert.match(ui, /\.ui-sheet--bottom \{[^}]*transform:\s*translateY\(100%\);/s);
+  assert.match(ui, /\.ui-sheet--bottom\.is-open \{\s*transform:\s*translateY\(var\(--ui-drag, 0px\)\);/);
+  assert.match(ui, /\.ui-sheet \{[^}]*transition:[^;]*transform var\(--dur-sheet\)/s, 'the slide runs over --dur-sheet');
+  const live = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(live, /\.playlists-sheet(?![-\w])[^{]*\{/, 'no .playlists-sheet rule in style.css');
+  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'common.js'), 'utf8');
+  assert.match(src, /U\.sheet\(\{ variant: 'bottom', title: 'Playlists', content: list,/, 'built as a bottom ui.sheet titled Playlists');
 });
 
 // UI pass S5 (AC12): the Subscriptions settings/panel sheets are ui.sheets now, so the
@@ -501,14 +511,19 @@ test('the Subscriptions sheets are ui.sheets: bottom slides translateY(100%) -> 
 });
 
 test('prefers-reduced-motion: reduce collapses every sheet/modal transition to instant, fully-visible/in-place (no stuck half-state)', () => {
-  const rule = /\.modal-backdrop,\s*\.modal-content,\s*\.playlists-sheet-backdrop:not\(\[hidden\]\),\s*\.playlists-sheet:not\(\[hidden\]\)\s*\{([^}]*)\}/.exec(css);
-  assert.ok(rule, 'expected a combined selector list covering every pre-primitive sheet/modal surface');
+  // Sweeps S1 + S5: the Playlists sheet and the Subscriptions sheet left this list (a ui.sheet: ui.css's own reduced-motion rule
+  // makes it opacity-only and ALWAYS applies the open class, F48).
+  const rule = /\.modal-backdrop,\s*\.modal-content\s*\{([^}]*)\}/.exec(css); // S5 moved the sub-sheet to ui.sheet too
+  const ui = fs.readFileSync(path.join(ROOT, 'public', 'css', 'ui.css'), 'utf8');
+  assert.match(ui, /@media \(prefers-reduced-motion: reduce\) \{\s*\.ui-sheet,\s*\.ui-sheet\.is-open,\s*\.ui-sheet--bottom,\s*\.ui-sheet--panel \{\s*transform: none;\s*transition: opacity var\(--dur-fade\) linear;/,
+    'the ui.sheet reduced-motion contract');
+  assert.ok(rule, 'expected a combined selector list covering every sheet/modal surface');
   assert.match(rule[1], /transition:\s*none;/);
   assert.match(rule[1], /opacity:\s*1;/);
   assert.match(rule[1], /transform:\s*none;/);
 
   // And that selector list must actually live inside the reduced-motion query.
-  const queryBlock = /@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*?\.playlists-sheet:not\(\[hidden\]\)\s*\{[^}]*\}\s*\n\}/.exec(css);
+  const queryBlock = /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.modal-backdrop,\s*\.modal-content\s*\{[^}]*\}\s*\n\}/.exec(css);
   assert.ok(queryBlock, 'expected the combined rule to sit inside @media (prefers-reduced-motion: reduce)');
   // The ui.sheets (the Subscriptions panels + settings sheet) take their own reduced-motion
   // rule in ui.css: opacity only, never a transform (F48 - the open class still applies).
@@ -516,50 +531,21 @@ test('prefers-reduced-motion: reduce collapses every sheet/modal transition to i
 });
 
 test('every open/close call site of the Playlists sheet routes through openPlaylistsSheet/closePlaylistsSheet (no bypass leaving a stuck half-state)', () => {
-  const commonJs = fs.readFileSync(path.join(ROOT, 'public', 'js', 'common.js'), 'utf8');
-
+  // Sweep S1 (DELIBERATE lock update): the sheet is ONE ui.sheet controller
+  // (playlistsSheetCtrl, built by ensurePlaylistsSheet). Its open() / close() are called only
+  // from openPlaylistsSheet / closePlaylistsSheet, and nothing reaches into its element to
+  // flip `hidden` (which would bypass ui.sheet's state machine - the class of stuck
+  // half-state the F1 fix above was about).
+  const commonJs = fs.readFileSync(path.join(ROOT, 'public', 'js', 'common.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
   const openFn = extractFunctionBody(commonJs, 'openPlaylistsSheet');
   const closeFn = extractFunctionBody(commonJs, 'closePlaylistsSheet');
-  assert.ok(openFn, 'expected to find openPlaylistsSheet\'s function body');
-  assert.ok(closeFn, 'expected to find closePlaylistsSheet\'s function body');
-
-  const HIDDEN_ASSIGNMENT = /(?:backdrop|sheet)\.hidden\s*=/g;
-  const inClose = closeFn.text.match(HIDDEN_ASSIGNMENT) || [];
-  assert.ok(inClose.length >= 2, 'expected the sheet/backdrop hidden assignments inside closePlaylistsSheet to still exist');
-
-  // v1.26.2 code-review fix (F4, NIT): the check above alone is unscoped in
-  // spirit -- `(?:backdrop|sheet)\.hidden\s*=` is a generic pattern that
-  // ALSO matches plenty of other, unrelated local `backdrop`/`sheet`
-  // variables elsewhere in this file (e.g. buildSubscribeModal's own
-  // `backdrop`), so counting matches file-wide (the pre-fix version of this
-  // test) would still pass even if those unrelated assignments changed --
-  // it was never actually verifying anything about the PLAYLISTS sheet
-  // specifically. What actually matters: every place in the file that gets
-  // a handle on the Playlists sheet's OWN `#playlists-backdrop`/
-  // `#playlists-sheet` nodes (there is exactly one other call site today --
-  // the bottom-nav's one-time close-wiring block) must ONLY ever wire an
-  // event listener against them, never assign `.hidden` directly (which
-  // would bypass openOverlay/closeOverlayThen, and so the F1 stale-timer
-  // fix, entirely).
-  function isInside(index, fn) {
-    return !!fn && index >= fn.start && index < fn.end;
-  }
-
-  const ID_LOOKUP = /const\s+(backdrop|sheet)\s*=\s*document\.getElementById\('playlists-(?:backdrop|sheet)'\);/g;
-  let lookupMatch;
-  let outsideLookupCount = 0;
-  while ((lookupMatch = ID_LOOKUP.exec(commonJs))) {
-    if (isInside(lookupMatch.index, openFn) || isInside(lookupMatch.index, closeFn)) continue;
-    outsideLookupCount++;
-    const varName = lookupMatch[1];
-    // A generous fixed window after the lookup -- comfortably covers a
-    // wiring block's own `if (x) x.addEventListener(...)` lines without
-    // reaching into unrelated code further down the file.
-    const windowText = commonJs.slice(lookupMatch.index, lookupMatch.index + 600);
-    assert.ok(
-      !new RegExp(`${varName}\\.hidden\\s*=`).test(windowText),
-      `found a direct .hidden assignment on the Playlists sheet's own "${varName}" OUTSIDE openPlaylistsSheet/closePlaylistsSheet -- a bypass of openOverlay/closeOverlayThen`
-    );
-  }
-  assert.ok(outsideLookupCount >= 1, 'expected at least one other #playlists-backdrop/#playlists-sheet reference outside the two functions (the bottom-nav wiring) to actually exercise this guard');
+  assert.ok(openFn && closeFn, 'both functions exist');
+  const inside = (i) => (i >= openFn.start && i < openFn.end) || (i >= closeFn.start && i < closeFn.end);
+  const calls = [...commonJs.matchAll(/(?:playlistsSheetCtrl|ctrl)\.(open|close)\(\)/g)];
+  const ctrlCalls = calls.filter((m) => commonJs.slice(Math.max(0, m.index - 40), m.index).includes('playlistsSheet') || m[0].startsWith('playlistsSheetCtrl') || inside(m.index));
+  assert.ok(ctrlCalls.length >= 2, 'the sheet is opened and closed somewhere (anti-vacuity)');
+  for (const m of ctrlCalls) assert.ok(inside(m.index), 'a Playlists sheet open/close outside openPlaylistsSheet/closePlaylistsSheet: ' + commonJs.slice(m.index - 60, m.index + 20));
+  assert.doesNotMatch(commonJs, /getElementById\('playlists-(?:sheet|backdrop)'\)/, 'nothing looks the sheet element up to poke it');
+  assert.doesNotMatch(commonJs, /playlistsSheetCtrl\.el\.hidden\s*=/, 'nothing flips hidden on the ui.sheet element');
 });

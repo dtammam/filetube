@@ -6,7 +6,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { evalG1, evalG2, evalG3, evalG4, TOL, G4_TOL } = require('../geometry/checks.js');
+const { evalG1, evalG2, evalG3, evalG4, evalHeader, evalBottomBar, TOL, G4_TOL } = require('../geometry/checks.js');
 const { summarize, expectedFor, loadExpected } = require('../geometry/run.js');
 const { SURFACES, FAST_SCENES, G4_SEQUENCES } = require('../geometry/scenes.js');
 const { MUTATIONS } = require('../geometry/mutations.js');
@@ -134,11 +134,85 @@ test('every check has at least one mutation proof, each aimed at a live scene or
     if (m.check === 'G4') assert.ok(G4_SEQUENCES.find((q) => q.id === m.target.sequence), name);
     else assert.ok(SURFACES.find((s) => s.id === m.target.surface && !s.pending), name);
   }
-  assert.deepStrictEqual(Object.keys(byCheck).sort(), ['G1', 'G2', 'G3', 'G4']);
+  // Sweep S1 adds HDR / NAV, the chrome's rendered contracts.
+  assert.deepStrictEqual(Object.keys(byCheck).sort(), ['G1', 'G2', 'G3', 'G4', 'HDR', 'NAV']);
 });
 
 test('geometry files are not *.test.js (npm test must not try to boot Playwright)', () => {
   const files = fs.readdirSync(path.join(__dirname, '..', 'geometry'));
   assert.ok(files.includes('run.js'));
   assert.deepStrictEqual(files.filter((f) => f.endsWith('.test.js')), []);
+});
+
+// ---- sweep S1: the chrome's evaluators (HDR, NAV) on synthetic measurements ----
+const btn = (name, x, w, y = 6, h = w) => ({ name, box: { x, y, w, h } });
+const phoneHeader = (over) => ({
+  vw: 390,
+  buttons: [btn('queue', 214, 44), btn('bell', 258, 44), btn('download', 302, 44), btn('search', 346, 44)],
+  searchVisible: true, searchBox: { x: 346, y: 6, w: 44, h: 44 }, accountVisible: false, field: null,
+  reserve: { w: 44, h: 44, bellW: 44, bellH: 44, skel: { dx: 11, dy: 11, w: 22, h: 22 }, glyph: { dx: 11, dy: 11, w: 22, h: 22 } },
+  sidebar: [{ name: 'Home', active: true, deco: 'none', weight: '400' }, { name: 'Settings', active: false, deco: 'none', weight: '400' }],
+  ...over,
+});
+
+test('HDR: a level, evenly spaced 44px phone row with the magnifier rightmost passes', () => {
+  const { measured, failures } = evalHeader(phoneHeader());
+  assert.deepStrictEqual(failures, []);
+  assert.strictEqual(measured.buttons, 4);
+});
+
+test('HDR: each broken property fails on its own (hidden magnifier, avatar shown, 43px, uneven gap, shifted reserve, bold/underlined sidebar)', () => {
+  const cases = [
+    [{ searchVisible: false, searchBox: null }, /magnifier is hidden/],
+    [{ accountVisible: true }, /header avatar shows/],
+    [{ buttons: [btn('queue', 214, 44), btn('bell', 258, 43, 6, 43), btn('download', 302, 44), btn('search', 346, 44)] }, /bell: 43x43, want 44x44/],
+    [{ buttons: [btn('queue', 210, 44), btn('bell', 258, 44), btn('download', 302, 44), btn('search', 346, 44)] }, /uneven glyph spacing/],
+    [{ searchBox: { x: 214, y: 6, w: 44, h: 44 } }, /not the rightmost/],
+    [{ reserve: { w: 44, h: 44, bellW: 44, bellH: 44, skel: { dx: 12, dy: 11, w: 20, h: 22 }, glyph: { dx: 11, dy: 11, w: 22, h: 22 } } }, /bell reserve disc dx/],
+    [{ sidebar: [{ name: 'Home', active: true, deco: 'none', weight: '700' }, { name: 'Settings', active: false, deco: 'none', weight: '400' }] }, /differ in weight/],
+    [{ sidebar: [{ name: 'Home', active: true, deco: 'underline', weight: '400' }] }, /underlined/],
+  ];
+  for (const [over, re] of cases) {
+    const { failures } = evalHeader(phoneHeader(over));
+    assert.ok(failures.some((f) => re.test(f)), `${re} in ${JSON.stringify(failures)}`);
+  }
+});
+
+test('HDR: desktop wants 36px buttons, the avatar and the 36px field, and no magnifier', () => {
+  const desk = (over) => phoneHeader({ vw: 1440, searchVisible: false, searchBox: null, accountVisible: true, field: { x: 400, y: 10, w: 600, h: 36 },
+    buttons: [btn('queue', 1260, 36), btn('bell', 1300, 36), btn('download', 1340, 36), btn('Account menu', 1380, 36)], ...over });
+  assert.deepStrictEqual(evalHeader(desk()).failures, []);
+  assert.ok(evalHeader(desk({ searchVisible: true, searchBox: { x: 1, y: 1, w: 36, h: 36 } })).failures.some((f) => /magnifier shows/.test(f)));
+  assert.ok(evalHeader(desk({ accountVisible: false })).failures.some((f) => /avatar is hidden/.test(f)));
+  assert.ok(evalHeader(desk({ field: { x: 400, y: 10, w: 600, h: 40 } })).failures.some((f) => /search field is 40px/.test(f)));
+});
+
+const INKS = { ink1: 'rgb(255, 255, 255)', ink2: 'rgb(161, 161, 166)', accent: 'rgb(255, 69, 58)', accentFill: 'rgb(224, 25, 15)' };
+const tab = (name, x, over) => ({ name, active: false, slot: { x, y: 800, w: 24, h: 24 }, label: { x, y: 826, w: 40, h: 13 },
+  color: INKS.ink2, weight: '500', deco: 'none', href: '#i-' + name, ...over });
+const bar = (over) => ({ shown: true, inks: INKS, tabs: [tab('home', 20, { active: true, color: INKS.ink1, href: '#i-home-fill' }), tab('history', 90), tab('you', 160, { href: '' })], ...over });
+
+test('NAV: fixed 24px slots, one label line, one ink-1 active tab with its filled glyph pass', () => {
+  const { measured, failures } = evalBottomBar(bar());
+  assert.deepStrictEqual(failures, []);
+  assert.strictEqual(measured.tabs, 3);
+  assert.deepStrictEqual(evalBottomBar({ shown: false, tabs: [] }).failures, [], 'no bar (desktop) - nothing to check');
+});
+
+test('NAV: each broken property fails on its own', () => {
+  const t = bar().tabs;
+  const cases = [
+    [[t[0], t[1], tab('you', 160, { slot: { x: 160, y: 800, w: 24, h: 28 }, label: { x: 160, y: 830, w: 40, h: 13 } })], /icon slot 24x28/],
+    [[t[0], t[1], tab('you', 160, { label: { x: 160, y: 827, w: 40, h: 13 } })], /label top 827/],
+    [[tab('home', 20, { active: true, color: INKS.accent, href: '#i-home-fill' }), t[1]], /red/],
+    [[tab('home', 20, { active: true, color: INKS.ink1, href: '#i-home' }), t[1]], /not the filled twin/],
+    [[t[0], tab('history', 90, { color: INKS.ink1 })], /want --ink-2/],
+    [[t[0], tab('history', 90, { deco: 'underline' })], /underlined/],
+    [[t[0], tab('history', 90, { weight: '700' })], /differ in weight/],
+    [[tab('home', 20), t[1]], /0 active tabs/],
+  ];
+  for (const [tabs, re] of cases) {
+    const { failures } = evalBottomBar(bar({ tabs }));
+    assert.ok(failures.some((f) => re.test(f)), `${re} in ${JSON.stringify(failures)}`);
+  }
 });

@@ -72,6 +72,122 @@ function spriteIconEl(registryName, cls, doc) {
   return svg;
 }
 
+// ---- sweep S1 (UI pass, plan D4.1/D4.2): the chrome's primitive builders ----------------
+// The header icon buttons, the bottom-bar tabs, the account menu and the playlists sheet
+// are ui-* primitives (public/css/ui.css). These two builders emit EXACTLY the DOM
+// public/js/ui.js's ui.icon / ui.button build (test/unit/chrome-primitives.test.js compares
+// the two outerHTML-for-outerHTML), so the chrome and the primitives cannot drift; they
+// exist because common.js runs in jsdom harnesses that never load ui.js, and because the
+// bottom-bar tabs are <a> links, which ui.button does not build.
+// The markup twin of ui.icon, for the shells' static bottom bar (chrome-icons.test.js binds
+// every shell's glyph to it).
+function uiIconMarkup(registryName, size) {
+  return '<svg class="ui-icon ui-icon--' + (size || 'md') + '" aria-hidden="true" focusable="false"><use href="'
+    + iconHref(registryName) + '"/></svg>';
+}
+function uiIconEl(registryName, size, doc) {
+  const d = doc || (typeof document !== 'undefined' ? document : null);
+  if (!registryName || !d || typeof d.createElementNS !== 'function') return null;
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = d.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'ui-icon ui-icon--' + (size || 'md'));
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  const use = d.createElementNS(NS, 'use');
+  use.setAttribute('href', iconHref(registryName));
+  svg.appendChild(use);
+  return svg;
+}
+// A plain ui-btn: `shape` 'icon' (a header glyph button: 36px desktop / 44px phone, a 44px
+// hit area either way) or 'stack' (a bottom-bar tab: the icon over its label). `media` (an
+// element) takes the icon's place for the account avatar. `cls` adds the element's own hook
+// class (queue-btn, bottom-nav-item ...): a JS/test hook, never a styled control family.
+function chromeButtonEl(o) {
+  const d = o.doc || document;
+  const shape = o.shape === 'stack' ? 'stack' : 'icon';
+  const b = d.createElement(o.tag || 'button');
+  b.className = 'ui-btn ui-btn--plain ui-btn--md ui-btn--' + shape + (o.cls ? ' ' + o.cls : '');
+  if (!o.tag || o.tag === 'button') b.setAttribute('type', 'button');
+  if (o.ariaLabel) b.setAttribute('aria-label', o.ariaLabel);
+  if (o.media) {
+    b.appendChild(o.media);
+  } else if (o.icon || o.slotEl) {
+    const slot = d.createElement('span');
+    slot.className = 'ui-btn__icon';
+    const svg = o.slotEl || uiIconEl(o.icon, shape === 'stack' ? 'lg' : 'md', d);
+    if (svg) slot.appendChild(svg);
+    b.appendChild(slot);
+  }
+  if (shape === 'stack' && o.label != null) {
+    const l = d.createElement('span');
+    l.className = 'ui-btn__label' + (o.labelCls ? ' ' + o.labelCls : '');
+    l.textContent = o.label;
+    b.appendChild(l);
+  }
+  return b;
+}
+// A bottom-bar tab (F49): a ui-btn stack - a fixed --icon-lg icon slot over its label, so
+// every label sits on one line whatever the slot holds (the You tab's avatar included).
+// The shells' static tabs are the same markup (chrome-icons.test.js binds both).
+function bottomNavItemEl(o) {
+  const el = chromeButtonEl({ tag: o.tag || 'a', shape: 'stack', cls: 'bottom-nav-item', icon: o.icon, slotEl: o.slotEl,
+    label: o.label, labelCls: 'bottom-nav-label', ariaLabel: o.ariaLabel, doc: o.doc });
+  if (o.href) el.setAttribute('href', o.href);
+  if (o.nav) el.setAttribute('data-nav', o.nav);
+  return el;
+}
+// The selected tab shows its FILLED glyph (F49: one active style - the filled glyph in ink,
+// the sidebar's rows use a neutral fill). Swaps the tab's sprite reference between NAME and
+// NAME.fill; a name without a registered twin keeps its outline (never a blank glyph).
+function setBottomNavItemFilled(item, on) {
+  const use = item && item.querySelector('.ui-btn__icon use');
+  if (!use) return;
+  const href = use.getAttribute('href') || '';
+  const base = href.replace(/-fill$/, '');
+  if (!on) { if (href !== base) use.setAttribute('href', base); return; }
+  const reg = typeof window !== 'undefined' ? window.FTIcons : null;
+  const name = base.replace(/^#i-/, '') + '.fill';
+  if (reg && typeof reg.has === 'function' && reg.has(name)) use.setAttribute('href', iconHref(name));
+}
+// The avatar (ui.avatar's DOM, ui.css .ui-avatar): the photo when there is one, else the
+// initials monogram on a name-hashed tone; a failed photo becomes the monogram - never a
+// broken image or an empty disc. Delegates to window.ui.avatar when ui.js is loaded (every
+// shell), else builds the same DOM (jsdom harnesses).
+function chromeAvatarEl(name, url, size, doc) {
+  const d = doc || document;
+  const w = d.defaultView;
+  if (w && w.ui && typeof w.ui.avatar === 'function') return w.ui.avatar({ name, url, kind: 'person', size, doc: d });
+  const a = d.createElement('span');
+  a.className = 'ui-avatar ui-avatar--' + size;
+  const mono = () => {
+    const words = String(name == null ? '' : name).trim().split(/\s+/).filter(Boolean);
+    const m = d.createElement('span');
+    m.className = 'ui-avatar__mono';
+    m.textContent = words.length ? words.slice(0, 2).map((x) => Array.from(x)[0]).join('').toUpperCase() : '?';
+    let h = 5381;
+    const s = String(name == null ? '' : name);
+    for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+    m.setAttribute('data-tone', String((h % 8) + 1));
+    return m;
+  };
+  if (url) {
+    const img = d.createElement('img');
+    img.className = 'ui-avatar__img';
+    img.setAttribute('alt', '');
+    img.setAttribute('decoding', 'async');
+    img.setAttribute('loading', 'lazy');
+    img.addEventListener('error', () => {
+      if (img.parentNode) img.parentNode.removeChild(img);
+      if (!a.querySelector('.ui-avatar__mono')) a.appendChild(mono());
+    });
+    img.setAttribute('src', url);
+    a.appendChild(img);
+  } else {
+    a.appendChild(mono());
+  }
+  return a;
+}
+
 // v1.340 (Dean, 2026-09-26: "notify button shifts unreasonably - should be stable"): the
 // label of a TWO-STATE button whose words change width (Notify / Notifying, Subscribe /
 // Subscribed, Pin channel / Pinned). Every label is laid out in ONE grid cell, so the
@@ -293,6 +409,26 @@ function applyTheme(era, mode) {
   // was removed) and the bottom-nav theme item - keep both glyphs in sync.
   if (typeof updateAccountMenuThemeItem === 'function') updateAccountMenuThemeItem();
   if (typeof updateNavThemeItem === 'function') updateNavThemeItem();
+  syncThemeColorMeta(); // F66 (sweep S1): the browser / PWA chrome follows the era + mode
+}
+
+// F66 (sweep S1): the browser's theme colour (Android / desktop PWA title bar, Safari's
+// tab tint) follows the app's header ground for the CURRENT era and mode, not a static
+// brand red. The shells ship a light/dark pair (media = the OS scheme) for the pre-paint
+// guess; once the app's mode is known this collapses both to the header's resolved
+// `--header-bg` (a custom property's computed value is its resolved colour). Returns the
+// colour it applied, or '' when it could not resolve one (the shell pair then stands).
+function syncThemeColorMeta(doc) {
+  const d = doc || (typeof document !== 'undefined' ? document : null);
+  const w = d && d.defaultView;
+  if (!d || !w || typeof w.getComputedStyle !== 'function') return '';
+  const metas = d.querySelectorAll('meta[name="theme-color"]');
+  if (!metas.length) return '';
+  let colour = '';
+  try { colour = w.getComputedStyle(d.documentElement).getPropertyValue('--header-bg').trim(); } catch (_) { colour = ''; }
+  if (!/^(#[0-9a-f]{3,8}|rgba?\([^)]*\))$/i.test(colour)) return '';
+  metas.forEach((m) => { m.setAttribute('content', colour); m.removeAttribute('media'); });
+  return colour;
 }
 
 // Runs on DOMContentLoaded: resolves stored/legacy state and (re-)applies it,
@@ -3185,14 +3321,14 @@ function applyNavHighlight(pathname, search) {
   const key = activeNavItem(pathname, search);
   const bottomNav = document.getElementById('bottom-nav');
   if (bottomNav) {
-    bottomNav.querySelectorAll('.bottom-nav-item.active').forEach((el) => el.classList.remove('active'));
+    bottomNav.querySelectorAll('.bottom-nav-item.active').forEach((el) => { el.classList.remove('active'); setBottomNavItemFilled(el, false); });
     const likedItem = bottomNav.querySelector('[data-nav="liked"]');
     const barKey = bottomNavKeyForHighlight(key, !!likedItem && !likedItem.hidden);
     const item = barKey && bottomNav.querySelector('[data-nav="' + barKey + '"]');
     // Never light an item the layout has hidden (adversarial gate round 2, S4):
     // a floored/opt-in change between paints could otherwise strand `.active`
     // on a display:none node, which reads to the user as an unlit bar.
-    if (item && !item.hidden) item.classList.add('active');
+    if (item && !item.hidden) { item.classList.add('active'); setBottomNavItemFilled(item, true); }
   }
   const sidebar = document.getElementById('sidebar');
   if (sidebar) {
@@ -3347,19 +3483,10 @@ function injectSubscriptionsNavNodes() {
       // existing Settings item.
       const settingsNavItem = document.querySelector('#bottom-nav [data-nav="settings"]');
       if (settingsNavItem && settingsNavItem.parentElement) {
-        const navLink = document.createElement('a');
-        navLink.href = '/subscriptions';
-        navLink.className = 'bottom-nav-item';
-        navLink.setAttribute('data-nav', 'subscriptions');
-        // v1.339 (L2): an inline chrome-icon <svg>, not the `.icon-refresh` mask (iOS
-        // decode lag - the v1.87.1 first-paint glyph rule), matching the reserve's glyph;
-        // the tab takes its pre-paint reserve's place when the shell painted one.
-        const navIcon = chromeIconEl('refresh');
-        const navLabel = document.createElement('span');
-        navLabel.className = 'bottom-nav-label';
-        navLabel.textContent = 'Subs';
-        if (navIcon) navLink.appendChild(navIcon);
-        navLink.appendChild(navLabel);
+        // v1.339 (L2): a sprite <svg>, not the `.icon-refresh` mask (iOS decode lag - the
+        // v1.87.1 first-paint glyph rule), matching the reserve's glyph; the tab takes its
+        // pre-paint reserve's place when the shell painted one. Sweep S1: a ui-btn stack tab.
+        const navLink = bottomNavItemEl({ href: '/subscriptions', nav: 'subscriptions', icon: CHROME_ICON.refresh, label: 'Subs' });
         const navReserve = chromeReserveEl(document.getElementById('bottom-nav'), 'subscriptions');
         if (navReserve) navReserve.replaceWith(navLink);
         else settingsNavItem.insertAdjacentElement('afterend', navLink);
@@ -3368,6 +3495,7 @@ function injectSubscriptionsNavNodes() {
         // below) in case injection resolves after that already ran.
         if (activeNavItem(window.location.pathname, window.location.search) === 'subscriptions') {
           navLink.classList.add('active');
+          setBottomNavItemFilled(navLink, true);
         }
         // v1.44 T12: re-apply the user's bar layout now that this item exists.
         applyBottomNavCustomization();
@@ -3386,13 +3514,17 @@ function injectSubscriptionsNavNodes() {
 // row already exists. Inserted after Stats, before Settings, matching the
 // build-time order; the menu's delegated click handler gives it the same
 // in-app SPA navigation as the other quick links.
+let accountMenuLinksEl = null; // the built menu's link list (injectAccountMenu buildPanel)
 function ensureAccountMenuSubscriptionsRow() {
   if (typeof document === 'undefined') return;
-  const menu = document.querySelector('.account-menu-dropdown');
-  if (!menu) return;
+  // Sweep S1: the menu's link list lives in the ui.sheet panel, built on the first open and
+  // detached from the document while the sheet is closed - so it is held by reference
+  // (accountMenuLinksEl), never looked up in the document.
+  const U = typeof window !== 'undefined' ? window.ui : null;
+  const menu = accountMenuLinksEl;
+  if (!menu || !U) return;
   if (menu.querySelector('a.account-menu-item[href="/subscriptions"]')) return;
-  const subs = buildAccountMenuRow('a', 'Subscriptions', 'icon-refresh');
-  subs.href = '/subscriptions';
+  const subs = accountMenuRow(U, { href: '/subscriptions', icon: 'subscriptions', label: 'Subscriptions' });
   const stats = menu.querySelector('a.account-menu-item[href="/stats.html"]');
   const settings = menu.querySelector('a.account-menu-item[href="/setup.html"]');
   if (stats) stats.insertAdjacentElement('afterend', subs);
@@ -3887,13 +4019,17 @@ function injectNotificationBellIfEnabled() {
   const queueEl = () => document.getElementById('queue-btn') || chromeReserveEl(headerRight, 'queue');
   const afterQueue = () => { const q = queueEl(); return q && q.parentNode === headerRight ? q.nextSibling : headerRight.firstChild; };
   if (bellWasEnabled && !document.getElementById('notif-bell-placeholder')) {
+    // Sweep S1: the real bell's ui-btn box, a shimmer disc in its icon slot.
     const ph = document.createElement('span');
     ph.id = 'notif-bell-placeholder';
-    ph.className = 'notif-bell-btn';
+    ph.className = 'ui-btn ui-btn--plain ui-btn--md ui-btn--icon notif-bell-btn';
     ph.setAttribute('aria-hidden', 'true');
+    const slot = document.createElement('span');
+    slot.className = 'ui-btn__icon';
     const disc = document.createElement('span');
     disc.className = 'notif-bell-skel skeleton-shimmer';
-    ph.appendChild(disc);
+    slot.appendChild(disc);
+    ph.appendChild(slot);
     headerRight.insertBefore(ph, afterQueue());
   }
 
@@ -3913,20 +4049,14 @@ function injectNotificationBellIfEnabled() {
       try { localStorage.setItem(NOTIF_BELL_ENABLED_KEY, '1'); } catch (_) { /* private mode */ }
 
       // ---- bell button + badge bubble (createElement/textContent only) ----
-      const bellBtn = document.createElement('button');
+      // Sweep S1 (F31): a plain ui-btn icon button, the shared bell (v1.340) from the sprite.
+      const bellBtn = chromeButtonEl({ cls: 'notif-bell-btn', icon: CHROME_ICON.bell, ariaLabel: 'Notifications' });
       bellBtn.id = 'notif-bell-btn';
-      bellBtn.className = 'notif-bell-btn';
-      bellBtn.setAttribute('aria-label', 'Notifications');
       bellBtn.setAttribute('aria-haspopup', 'true');
       bellBtn.setAttribute('aria-expanded', 'false');
-      // The shared bell (v1.340), from the icon registry's sprite (UI pass step 2).
-      const svg = spriteIconEl(CHROME_ICON.bell);
-      svg.setAttribute('width', '22');
-      svg.setAttribute('height', '22');
-      bellBtn.appendChild(svg);
       const badge = document.createElement('span');
       badge.id = 'notif-bell-badge';
-      badge.className = 'notif-bell-badge';
+      badge.className = 'ui-chip ui-chip--count notif-bell-badge';
       badge.hidden = true;
       bellBtn.appendChild(badge);
       const bellPlaceholder = document.getElementById('notif-bell-placeholder');
@@ -4556,21 +4686,15 @@ function injectQueueChrome() {
       if (queueButtonAlreadyInjected()) { dropReserve(); return; } // async double-inject window
 
       // ---- button + badge (createElement/textContent only) ---------------
-      const btn = document.createElement('button');
+      // Sweep S1 (F31): a plain ui-btn icon button (44px hit area), the queue glyph (list
+      // lines + a play triangle, YouTube's queue vocabulary) from the icon sprite.
+      const btn = chromeButtonEl({ cls: 'queue-btn', icon: CHROME_ICON.queue, ariaLabel: 'Playback queue' });
       btn.id = 'queue-btn';
-      btn.className = 'queue-btn';
-      btn.setAttribute('aria-label', 'Playback queue');
       btn.setAttribute('aria-haspopup', 'true');
       btn.setAttribute('aria-expanded', 'false');
-      // Inline SVG like the bell (paired header chrome): list lines + a play
-      // triangle - YouTube's queue vocabulary. From the icon sprite (UI pass step 2).
-      const svg = spriteIconEl(CHROME_ICON.queue);
-      svg.setAttribute('width', '22');
-      svg.setAttribute('height', '22');
-      btn.appendChild(svg);
       const badge = document.createElement('span');
       badge.id = 'queue-btn-badge';
-      badge.className = 'queue-btn-badge';
+      badge.className = 'ui-chip ui-chip--count queue-btn-badge';
       badge.hidden = true;
       btn.appendChild(badge);
       // Beside the bell (ruling 4), LEFT of it. v1.339 (L2, tracker #140): the queue now
@@ -6274,37 +6398,29 @@ function accountSignOut() {
 // The avatar visual: the uploaded photo (cache-busted by its mtime version) when
 // present, else the initials monogram + deterministic palette colour. `big` is
 // the larger variant shown in the dropdown header.
-function buildAccountAvatarEl(user, big) {
-  const el = document.createElement('span');
-  el.className = 'account-avatar' + (big ? ' account-avatar-lg' : '');
+// Sweep S1 (D4.4): a ui-avatar (chromeAvatarEl -> ui.avatar), sized by the surface: `size`
+// is a D2.3 avatar size ('xs' the You tab's 24px icon slot, 'sm' the header trigger, 'lg'
+// the account menu's head); a legacy `true` means the menu head. The monogram is the
+// primitive's initials on a name-hashed tone, and a failed photo becomes that monogram.
+function buildAccountAvatarEl(user, size) {
+  const sz = size === true ? 'lg' : (typeof size === 'string' ? size : 'sm');
   const avatar = user && user.avatar;
-  const paintMonogram = () => {
-    const d = deriveAvatar((user && (user.displayName || user.username)) || '');
-    el.textContent = d.glyph;
-    el.style.backgroundColor = d.color; // runtime palette value (not a literal -- census-safe)
-  };
-  if (avatar && avatar.present) {
-    // v1.157.1 (Dean device report): the "You" avatar painted an EMPTY disc
-    // until the photo loaded+decoded ("empty then fills"). Shimmer the disc as a
-    // placeholder and reveal the <img> only once it has loaded (CSS keeps it
-    // opacity:0 until .is-loaded); on a load error drop it and paint the monogram
-    // so the disc is never left blank.
+  const url = avatar && avatar.present ? `/api/users/${user.id}/avatar?v=${avatar.version || 0}` : null;
+  const el = chromeAvatarEl((user && (user.displayName || user.username)) || '', url, sz);
+  el.classList.add('account-avatar');
+  const img = el.querySelector('img');
+  if (img) {
+    // v1.157.1 (Dean device report): the "You" avatar painted an EMPTY disc until the
+    // photo loaded+decoded ("empty then fills"). The disc shimmers as a placeholder and
+    // the <img> reveals only once it has loaded (style.css keeps it opacity:0 until
+    // .is-loaded); on a load error the primitive swaps in the monogram, and the shimmer
+    // clears either way, so the disc is never left blank.
     el.classList.add('skeleton-shimmer');
-    const img = document.createElement('img');
-    img.alt = '';
     img.addEventListener('load', () => {
       el.classList.remove('skeleton-shimmer');
       img.classList.add('is-loaded');
     }, { once: true });
-    img.addEventListener('error', () => {
-      el.classList.remove('skeleton-shimmer');
-      img.remove();
-      paintMonogram();
-    }, { once: true });
-    img.src = `/api/users/${user.id}/avatar?v=${avatar.version || 0}`; // set last: the listeners are already attached
-    el.appendChild(img);
-  } else {
-    paintMonogram();
+    img.addEventListener('error', () => { el.classList.remove('skeleton-shimmer'); }, { once: true });
   }
   return el;
 }
@@ -6361,28 +6477,15 @@ function formatTrashCountLabel(count, totalSizeBytes) {
   return bytes > 0 ? noun + ' (' + formatDiskBytes(bytes) + ')' : noun;
 }
 
-function buildAccountMenuRow(tag, label, iconClass) {
-  const row = document.createElement(tag);
-  row.className = 'account-menu-item';
+// Sweep S1 (D4.6): one account-menu row - a compact ui-row with the glyph in its media
+// slot; a link row when `href`, a button row when `onClick`. `account-menu-item` is the
+// row's hook (tests, the Subscriptions late-insert), never a styled family.
+function accountMenuRow(U, o) {
+  const row = U.row({ size: 'compact', media: U.icon(o.icon, { doc: document }), title: o.label,
+    href: o.href, onClick: o.onClick, doc: document });
+  row.classList.add('account-menu-item');
   row.setAttribute('role', 'menuitem');
-  if (tag === 'button') row.type = 'button';
-  if (iconClass) {
-    const i = document.createElement('i');
-    i.className = iconClass;
-    i.setAttribute('aria-hidden', 'true');
-    row.appendChild(i);
-  }
-  const span = document.createElement('span');
-  span.textContent = label;
-  row.appendChild(span);
   return row;
-}
-
-function accountMenuDivider() {
-  const hr = document.createElement('div');
-  hr.className = 'account-menu-divider';
-  hr.setAttribute('role', 'separator');
-  return hr;
 }
 
 // v1.230 (Dean): the "Music skin" picker was briefly here (v1.229), but the account
@@ -6645,43 +6748,62 @@ function renderSearchHistoryPanel(panel, terms, onSearch) {
   panel.textContent = '';
   const list = Array.isArray(terms) ? terms : [];
   if (list.length === 0) {
-    const empty = document.createElement('div');
+    const empty = document.createElement('p');
     empty.className = 'search-history-empty';
     empty.textContent = 'No recent searches';
     panel.appendChild(empty);
     return;
   }
+  // Sweep S1: a compact ui-list - the history glyph in the media column, the term as the
+  // row's (stretched) button, one reserved action column for its remove X (a plain ui-btn
+  // icon button, never a text glyph) - and a plain "Clear all" button under it.
+  const span = (cls) => { const n = document.createElement('span'); n.className = cls; return n; };
   const rows = document.createElement('div');
-  rows.className = 'search-history-list';
+  rows.className = 'ui-list ui-list--compact ui-list--media-avatar ui-list--aside-none ui-list--actions-1 ui-list--divider-none search-history-list';
+  rows.setAttribute('role', 'list');
+  rows.setAttribute('aria-label', 'Recent searches');
   for (const term of list) {
     const row = document.createElement('div');
-    row.className = 'search-history-row';
+    row.className = 'ui-row ui-row--compact search-history-row';
+    row.setAttribute('role', 'listitem');
+    row.appendChild(span('ui-row__lead'));
+    const media = span('ui-row__media');
+    const glyph = uiIconEl('history', 'md');
+    if (glyph) media.appendChild(glyph);
+    row.appendChild(media);
+    const body = span('ui-row__body');
+    const title = span('ui-row__title');
     const pick = document.createElement('button');
     pick.type = 'button';
-    pick.className = 'search-history-term';
-    const icon = document.createElement('i'); icon.className = 'icon-search'; icon.setAttribute('aria-hidden', 'true');
-    const label = document.createElement('span'); label.textContent = term;
-    pick.appendChild(icon); pick.appendChild(label);
+    pick.className = 'ui-row__link search-history-term';
+    const label = document.createElement('span');
+    label.textContent = term;
+    pick.appendChild(label);
     pick.addEventListener('click', () => { if (typeof onSearch === 'function') onSearch(term); });
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'search-history-del';
-    del.setAttribute('aria-label', `Remove ${term} from recent searches`);
-    del.textContent = '×';
+    title.appendChild(pick);
+    body.appendChild(title);
+    row.appendChild(body);
+    row.appendChild(span('ui-row__aside'));
+    const acts = span('ui-row__actions');
+    const del = chromeButtonEl({ cls: 'search-history-del', icon: 'close', ariaLabel: 'Remove ' + term + ' from recent searches' });
     del.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (typeof fetch === 'function') fetch(`/api/search-history/${encodeURIComponent(term)}`, { method: 'DELETE' }).catch(() => {});
+      if (typeof fetch === 'function') fetch('/api/search-history/' + encodeURIComponent(term), { method: 'DELETE' }).catch(() => {});
       row.remove();
       if (!rows.querySelector('.search-history-row')) renderSearchHistoryPanel(panel, [], onSearch);
     });
-    row.appendChild(pick); row.appendChild(del);
+    acts.appendChild(del);
+    row.appendChild(acts);
     rows.appendChild(row);
   }
   panel.appendChild(rows);
   const clear = document.createElement('button');
   clear.type = 'button';
-  clear.className = 'search-history-clear';
-  clear.textContent = 'Clear all';
+  clear.className = 'ui-btn ui-btn--plain ui-btn--sm search-history-clear';
+  const clearLabel = document.createElement('span');
+  clearLabel.className = 'ui-btn__label';
+  clearLabel.textContent = 'Clear all';
+  clear.appendChild(clearLabel);
   clear.addEventListener('click', () => {
     if (typeof fetch === 'function') fetch('/api/search-history', { method: 'DELETE' }).catch(() => {});
     renderSearchHistoryPanel(panel, [], onSearch);
@@ -6697,16 +6819,11 @@ function wireSearchAffordances() {
   const searchInput = document.getElementById('search-input');
   if (!headerRight || !searchInput || document.getElementById('search-toggle-btn')) return;
 
-  const btn = document.createElement('button');
-  btn.type = 'button';
+  // v1.87.1 (Dean): an inline <svg>, not an `.icon-search` mask - a mask shows nothing
+  // until it decodes, so it "popped in" after the label on a mobile cold start. Sweep S1
+  // (F31): a plain ui-btn icon button (44px on the phone, where it shows).
+  const btn = chromeButtonEl({ cls: 'search-toggle-btn', icon: CHROME_ICON.search, ariaLabel: 'Search' });
   btn.id = 'search-toggle-btn';
-  btn.className = 'search-toggle-btn';
-  btn.setAttribute('aria-label', 'Search');
-  // v1.87.1 (Dean): inline <svg>, not an `.icon-search` mask - a mask shows
-  // nothing until it decodes, so it "popped in" after the label on a mobile
-  // cold start (the bell/queue, inline SVG, never did). See CHROME_ICON.
-  const searchGlyph = chromeIconEl('search');
-  if (searchGlyph) btn.appendChild(searchGlyph);
   // v1.339 (L2): take the pre-paint reserve's place (same box) when the shell painted one.
   const searchReserve = chromeReserveEl(headerRight, 'search');
   if (searchReserve) searchReserve.replaceWith(btn);
@@ -6792,18 +6909,11 @@ function injectYouNavItem() {
   fetchCurrentUser().then((me) => {
     if (!me || !me.user) { dropReserve(); return; } // signed-out shell: no You tab
     if (nav.querySelector('[data-nav="you"]')) { dropReserve(); return; } // race guard
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'bottom-nav-item';
-    btn.setAttribute('data-nav', 'you');
-    btn.setAttribute('aria-label', 'You (account menu)');
-    const avatar = buildAccountAvatarEl(me.user);
+    // Sweep S1 (F49): the avatar sits in the SAME fixed 24px icon slot as every other
+    // tab's glyph, so "You" no longer sits lower than the other labels.
+    const avatar = buildAccountAvatarEl(me.user, 'xs');
     avatar.classList.add('bottom-nav-you-avatar');
-    const label = document.createElement('span');
-    label.className = 'bottom-nav-label';
-    label.textContent = 'You';
-    btn.appendChild(avatar);
-    btn.appendChild(label);
+    const btn = bottomNavItemEl({ tag: 'button', nav: 'you', slotEl: avatar, label: 'You', ariaLabel: 'You (account menu)' });
     btn.addEventListener('click', (e) => {
       // v1.85.1: STOP this click bubbling to document. The account menu closes on
       // any document click (outside-click-to-dismiss); without this, our own
@@ -6826,26 +6936,25 @@ function injectAccountMenu() {
   const headerRight = document.querySelector('.header-right');
   if (!headerRight || document.getElementById('account-menu-root')) return;
 
-  // v1.101 shimmer sweep: RESERVE the avatar slot with a shimmer placeholder
-  // BEFORE the /api/auth/me fetch, so the account avatar reveals in place instead
-  // of popping into an empty header. Reuses the real .account-menu-trigger /
-  // .account-avatar (32px disc) box - so it's zero-shift AND inherits the same
-  // mobile `.account-menu-trigger { display:none }` hide the real trigger has
-  // (mobile reaches account via the You tab). Removed on resolve (signed-in ->
-  // real menu; signed-out / error -> just gone, never a stranded shimmer).
+  // v1.101 shimmer sweep: RESERVE the avatar slot with a shimmer placeholder BEFORE the
+  // /api/auth/me fetch, so the account avatar reveals in place instead of popping into an
+  // empty header. It is the real trigger's box (sweep S1: a plain ui-btn icon button
+  // holding a 28px ui-avatar), so it is zero-shift AND inherits the same mobile
+  // `.account-menu-trigger { display:none }` hide the real trigger has (mobile reaches the
+  // account via the You tab). Removed on resolve (signed-in -> real menu; signed-out /
+  // error -> just gone, never a stranded shimmer).
   if (!document.getElementById('account-menu-placeholder')) {
     // v1.339 (L2): an `.account-menu` wrapper around the trigger-shaped disc, like the real
-    // root - so on mobile (trigger display:none) it still takes the row's flex gap and the
-    // swap to the real menu no longer nudges the glyph row 6px (home-fouc-probe). The shells'
+    // root - so on mobile (trigger display:none) it still takes the row's slot. The shells'
     // inline pre-paint block paints this same shape, so this copy only runs without it.
     const ph = document.createElement('span');
     ph.id = 'account-menu-placeholder';
     ph.className = 'account-menu';
     ph.setAttribute('aria-hidden', 'true');
     const phTrigger = document.createElement('span');
-    phTrigger.className = 'account-menu-trigger';
+    phTrigger.className = 'ui-btn ui-btn--plain ui-btn--md ui-btn--icon account-menu-trigger';
     const avatarSkel = document.createElement('span');
-    avatarSkel.className = 'account-avatar skeleton-shimmer';
+    avatarSkel.className = 'ui-avatar ui-avatar--sm account-avatar skeleton-shimmer';
     phTrigger.appendChild(avatarSkel);
     ph.appendChild(phTrigger);
     headerRight.appendChild(ph);
@@ -6863,73 +6972,35 @@ function injectAccountMenu() {
     root.className = 'account-menu';
     root.id = 'account-menu-root';
 
-    const trigger = document.createElement('button');
-    trigger.type = 'button';
-    trigger.className = 'account-menu-trigger';
+    // Sweep S1 (F31, D4.4): the trigger is a plain ui-btn icon button (36px desktop, a
+    // 44px hit area) holding the 28px ui-avatar.
+    let triggerAvatar = buildAccountAvatarEl(user, 'sm');
+    const trigger = chromeButtonEl({ cls: 'account-menu-trigger', media: triggerAvatar, ariaLabel: 'Account menu' });
     trigger.setAttribute('aria-haspopup', 'menu');
     trigger.setAttribute('aria-expanded', 'false');
-    trigger.setAttribute('aria-label', 'Account menu');
     trigger.title = user.displayName || user.username || 'Account';
-    let triggerAvatar = buildAccountAvatarEl(user);
-    trigger.appendChild(triggerAvatar);
     root.appendChild(trigger);
 
-    const menu = document.createElement('div');
-    menu.className = 'account-menu-dropdown';
-    menu.setAttribute('role', 'menu');
-    menu.hidden = true;
-
-    // Header: large avatar + name + role.
-    const head = document.createElement('div');
-    head.className = 'account-menu-head';
-    // v1.305 (Dean): the avatar is edited via a pencil BADGE on the disc itself -
-    // the old "Change photo" ROW felt derpy (Dean). A positioned wrapper holds the
-    // avatar + the badge so refreshAvatars can swap ONLY the avatar (replaceChild)
-    // and leave the badge untouched. The badge opens the same hidden file input +
-    // crop + POST /api/me/avatar flow wired just below.
-    const avatarWrap = document.createElement('div');
-    avatarWrap.className = 'account-menu-avatar-wrap';
-    let headAvatar = buildAccountAvatarEl(user, true);
-    avatarWrap.appendChild(headAvatar);
-    const editAvatar = document.createElement('button');
-    editAvatar.type = 'button';
-    editAvatar.className = 'account-menu-avatar-edit';
-    editAvatar.setAttribute('aria-label', 'Change photo');
-    editAvatar.title = 'Change photo';
-    // Inline pencil SVG (self-contained, like the master-detail back chevron) -
-    // the mask-icon set has no pencil, and inlining avoids a new asset + class.
-    editAvatar.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
-      + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-      + '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
-    avatarWrap.appendChild(editAvatar);
-    head.appendChild(avatarWrap);
-    const who = document.createElement('div');
-    who.className = 'account-menu-who';
-    const nameEl = document.createElement('div');
-    nameEl.className = 'account-menu-name';
-    nameEl.textContent = user.displayName || user.username || 'Account';
-    const roleEl = document.createElement('div');
-    roleEl.className = 'account-menu-role';
-    roleEl.textContent = user.role === 'admin' ? 'Admin' : 'Member';
-    who.appendChild(nameEl);
-    who.appendChild(roleEl);
-    head.appendChild(who);
-    menu.appendChild(head);
-
-    // Change photo: a hidden file input driven by a menu item. On pick, upload to
-    // /api/me/avatar and re-render BOTH avatars (cache-busted) on success.
+    // Change photo: a hidden file input driven by the pencil badge on the menu's avatar.
+    // On pick, crop, upload to /api/me/avatar and re-render BOTH avatars on success. It
+    // lives on the root (not in the sheet), so it survives the sheet's close.
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = 'image/png,image/jpeg,image/webp';
     fileInput.hidden = true;
+    root.appendChild(fileInput);
+    let headAvatar = null;
+    let avatarWrap = null;
     const refreshAvatars = (avatarInfo) => {
       user.avatar = avatarInfo;
-      const t2 = buildAccountAvatarEl(user);
+      const t2 = buildAccountAvatarEl(user, 'sm');
       trigger.replaceChild(t2, triggerAvatar);
       triggerAvatar = t2;
-      const h2 = buildAccountAvatarEl(user, true);
-      avatarWrap.replaceChild(h2, headAvatar); // swap the disc only; the pencil badge stays
-      headAvatar = h2;
+      if (avatarWrap && headAvatar) {
+        const h2 = buildAccountAvatarEl(user, 'xl');
+        avatarWrap.replaceChild(h2, headAvatar); // swap the disc only; the pencil badge stays
+        headAvatar = h2;
+      }
     };
     fileInput.addEventListener('change', async () => {
       const file = fileInput.files && fileInput.files[0];
@@ -6949,87 +7020,142 @@ function injectAccountMenu() {
         showToast('Could not update your photo (network error).');
       }
     });
-    editAvatar.addEventListener('click', () => fileInput.click());
-    menu.appendChild(fileInput); // hidden; the head's border-bottom now separates the head from the quick links (no divider)
 
-    // Quick links to the library pages. Hrefs to known routes; the menu's own
-    // click handler (below) SPA-navigates them in-app -- the delegated document
-    // router can't see these clicks (the menu stops their propagation), so
-    // without that they full-reloaded.
-    // v1.153 (Dean): this "You" menu is mobile's main way into these pages
-    // (the sidebar is a drawer there), so Stats + Subscriptions join it -
-    // they are sidebar-only otherwise, unreachable on a phone without opening
-    // the drawer or rotating.
-    const liked = buildAccountMenuRow('a', 'Liked', 'icon-heart'); liked.href = '/?liked=1';
-    const history = buildAccountMenuRow('a', 'History', 'icon-history'); history.href = '/history';
-    const stats = buildAccountMenuRow('a', 'Stats', 'icon-star'); stats.href = '/stats.html';
-    const settings = buildAccountMenuRow('a', 'Settings', 'icon-cog'); settings.href = '/setup.html';
-    menu.appendChild(liked);
-    menu.appendChild(history);
-    menu.appendChild(stats);
-    // Subscriptions only when the optional yt-dlp module is enabled - gated by
-    // the presence of its nav entry (the same signal the sidebar/bottom-nav
-    // links use; absent module -> no row). NOTE: on a session's FIRST load the
-    // capability cache (sessionStorage) is cold, so this marker may not be in
-    // the DOM yet when the menu builds (the /api/subscriptions/health probe can
-    // resolve after it) -> the row can be missing until the next full load.
-    // Self-heals then (warm cache injects synchronously first); the sidebar
-    // still exposes Subscriptions meanwhile. Disclosed in ROADMAP.
-    if (document.querySelector('[data-nav="subscriptions"], [data-nav-sidebar="subscriptions"]')) {
-      const subs = buildAccountMenuRow('a', 'Subscriptions', 'icon-refresh'); subs.href = '/subscriptions';
-      menu.appendChild(subs);
-    }
-    // v1.97.1 (Dean): the feed-hidden RESTORE surface moved OUT of this menu and
-    // into a "Hidden" SECTION on the settings page beside Trash (setup.html /
-    // setup.js renderFeedHiddenSection) - the settings page scrolls, so a long
-    // hidden list is reachable (the account-menu modal couldn't). No menu row here.
-    menu.appendChild(settings);
-
-    // Theme: the same light/dark toggle the header button used to drive. The
-    // glyph reflects the current mode and updates on toggle (updateAccountMenu-
-    // ThemeItem, called from applyTheme) - tag the icon so it can be found.
-    const theme = buildAccountMenuRow('button', 'Theme', 'icon-moon');
-    const themeIcon = theme.querySelector('i');
-    if (themeIcon) themeIcon.id = 'account-menu-theme-icon';
-    theme.addEventListener('click', () => { toggleTheme(); });
-    menu.appendChild(theme);
-    updateAccountMenuThemeItem(); // initial glyph from the current data-mode
-    // v1.230: the "Music skin" picker moved to the Settings page (Appearance) - it
-    // was unreliable here (the menu builds once, not every shell loaded the module).
-
-    menu.appendChild(accountMenuDivider());
-
-    const signOut = buildAccountMenuRow('button', 'Sign out', null);
-    signOut.classList.add('account-menu-signout');
-    signOut.addEventListener('click', () => accountSignOut());
-    menu.appendChild(signOut);
-
-    // v1.90 (Dean): a subtle version footer so you can tell at a glance which
-    // build you're on. Non-interactive; reads the server-stamped meta (zero
-    // fetch). This ONE menu is what the desktop header dropdown AND the mobile
-    // "You" bottom-nav tab both open, so it covers both surfaces at once. Absent
-    // meta (e.g. a shell not templated) -> no footer, never a broken "Version undefined".
-    // v1.158 (Dean): the library's total size on disk - the core self-hosted
-    // number, surfaced here so it is not a tap away in Stats. A link INTO Stats
-    // (rides the account-menu-item SPA intercept above, so no full reload).
-    // Lazily fetched on first menu-open (shimmer until then); on a fetch failure
-    // the row + its divider hide, never a broken value (the version-footer
-    // posture). Sits ABOVE the version row, sharing this one footer divider.
-    const diskDivider = accountMenuDivider();
-    menu.appendChild(diskDivider);
-    // Its OWN class (not account-menu-item) - it is a footer info-link like the
-    // version row, and must stay out of the quick-link censuses. The SPA
-    // intercept below is broadened to route it too.
-    const diskRow = document.createElement('a');
-    diskRow.className = 'account-menu-disk';
-    diskRow.href = '/stats.html';
-    diskRow.setAttribute('role', 'menuitem');
-    diskRow.setAttribute('aria-label', 'Total size on disk - open Stats');
-    const diskLabel = document.createElement('span');
-    diskLabel.className = 'account-menu-disk-shimmer skeleton-shimmer';
-    diskRow.appendChild(diskLabel);
-    menu.appendChild(diskRow);
+    // ---- the menu (sweep S1, D4.6): a ui.sheet - a popover anchored under the trigger on
+    // desktop, a bottom sheet on the phone - of ui-rows: selected/current never red, the
+    // theme row's glyph shows the mode a tap switches TO. Built on the FIRST open (ui.js
+    // is loaded by then on every shell; the build-time Subscriptions gate therefore sees
+    // the module's nav marker whenever the /health probe has resolved).
+    let sheet = null;
+    let panel = null;
     let diskLoaded = false;
+    let trashLoaded = false;
+    let diskRow = null; let diskLabel = null;
+    let trashRow = null; let trashLabel = null;
+
+    const buildPanel = (U) => {
+      const p = document.createElement('div');
+      p.className = 'account-menu-panel';
+      p.setAttribute('role', 'menu');
+
+      // Header: the large avatar (with the v1.305 pencil BADGE on the disc - the old
+      // "Change photo" ROW felt derpy, Dean) + name + role. The wrapper holds the disc and
+      // the badge so refreshAvatars swaps ONLY the disc.
+      const head = document.createElement('div');
+      head.className = 'account-menu-head';
+      avatarWrap = document.createElement('div');
+      avatarWrap.className = 'account-menu-avatar-wrap';
+      headAvatar = buildAccountAvatarEl(user, 'xl');
+      avatarWrap.appendChild(headAvatar);
+      const editAvatar = U.button({ variant: 'tonal', size: 'sm', shape: 'icon', icon: 'edit', ariaLabel: 'Change photo', doc: document });
+      editAvatar.classList.add('account-menu-avatar-edit');
+      editAvatar.title = 'Change photo';
+      editAvatar.addEventListener('click', () => fileInput.click());
+      avatarWrap.appendChild(editAvatar);
+      head.appendChild(avatarWrap);
+      const who = document.createElement('div');
+      who.className = 'account-menu-who';
+      const nameEl = document.createElement('div');
+      nameEl.className = 'account-menu-name';
+      nameEl.textContent = user.displayName || user.username || 'Account';
+      const roleEl = document.createElement('div');
+      roleEl.className = 'account-menu-role';
+      roleEl.textContent = user.role === 'admin' ? 'Admin' : 'Member';
+      who.appendChild(nameEl);
+      who.appendChild(roleEl);
+      head.appendChild(who);
+      p.appendChild(head);
+
+      // Quick links to the library pages (v1.153: this "You" menu is mobile's main way
+      // into these pages - the sidebar is a drawer there - so Stats + Subscriptions join
+      // it). Subscriptions only when the optional yt-dlp module is enabled - gated by the
+      // presence of its nav entry (the signal the sidebar/bottom-nav links use); a late
+      // /health answer adds it through ensureAccountMenuSubscriptionsRow.
+      const links = U.list({ size: 'compact', media: 'avatar', label: 'Account', doc: document });
+      links.classList.add('account-menu-links');
+      accountMenuLinksEl = links;
+      links.appendChild(accountMenuRow(U, { href: '/?liked=1', icon: 'favorite', label: 'Liked' }));
+      links.appendChild(accountMenuRow(U, { href: '/history', icon: 'history', label: 'History' }));
+      links.appendChild(accountMenuRow(U, { href: '/stats.html', icon: 'bar_chart', label: 'Stats' }));
+      if (document.querySelector('[data-nav="subscriptions"], [data-nav-sidebar="subscriptions"]')) {
+        links.appendChild(accountMenuRow(U, { href: '/subscriptions', icon: 'subscriptions', label: 'Subscriptions' }));
+      }
+      // v1.97.1 (Dean): the feed-hidden RESTORE surface lives on the settings page.
+      links.appendChild(accountMenuRow(U, { href: '/setup.html', icon: 'settings', label: 'Settings' }));
+      // Theme: light/dark. The glyph reflects the mode a tap switches TO and updates on
+      // toggle (updateAccountMenuThemeItem, called from applyTheme) - tagged by id. The
+      // menu stays open on a toggle (the old dropdown's behaviour).
+      const theme = accountMenuRow(U, { icon: 'dark_mode', label: 'Theme', onClick: () => toggleTheme() });
+      const themeIcon = theme.querySelector('.ui-row__media .ui-icon');
+      if (themeIcon) themeIcon.id = 'account-menu-theme-icon';
+      links.appendChild(theme);
+      const signOut = accountMenuRow(U, { icon: 'logout', label: 'Sign out', onClick: () => accountSignOut() });
+      signOut.classList.add('account-menu-signout');
+      links.appendChild(signOut);
+      p.appendChild(links);
+
+      // The quiet footer (v1.90 version, v1.158 total on disk, v1.305 items in trash): one
+      // compact ui-list of info-links. The disk and trash rows are lazily counted on the
+      // first open (shimmer until then); a failed fetch hides ITS row only (never a broken
+      // or wrong value); the version row links to the build's release notes in a new tab.
+      const foot = U.list({ size: 'compact', divider: 'none', label: 'About', doc: document });
+      foot.classList.add('account-menu-footer');
+      diskLabel = document.createElement('span');
+      diskLabel.className = 'account-menu-disk-shimmer skeleton-shimmer';
+      diskRow = U.row({ size: 'compact', href: '/stats.html', title: diskLabel, doc: document });
+      diskRow.classList.add('account-menu-disk');
+      diskRow.setAttribute('role', 'menuitem');
+      diskRow.setAttribute('aria-label', 'Total size on disk - open Stats');
+      foot.appendChild(diskRow);
+      trashLabel = document.createElement('span');
+      trashLabel.className = 'account-menu-disk-shimmer skeleton-shimmer'; // the disk row's loading-bar sizing
+      trashRow = U.row({ size: 'compact', href: '/setup.html#trash', title: trashLabel, doc: document });
+      trashRow.classList.add('account-menu-trash');
+      trashRow.setAttribute('role', 'menuitem');
+      trashRow.setAttribute('aria-label', 'Review trash');
+      foot.appendChild(trashRow);
+      const version = appVersionString();
+      const notesUrl = releaseNotesUrl(version);
+      if (version && notesUrl) {
+        const ver = U.row({ size: 'compact', href: notesUrl, title: 'Version ' + version, doc: document });
+        ver.classList.add('account-menu-version');
+        ver.setAttribute('target', '_blank');
+        ver.setAttribute('rel', 'noopener');
+        ver.setAttribute('aria-label', `Version ${version} - open release notes`);
+        foot.appendChild(ver);
+      }
+      p.appendChild(foot);
+
+      // In-app links SPA-navigate (the docked mini-player survives; v1.153: a full reload
+      // tore it down) and close the menu. The click stops at the panel so the document
+      // router never handles it a second time.
+      p.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a[href]') : null;
+        if (!a || !p.contains(a)) return;
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.getAttribute('target') === '_blank') return;
+        let u;
+        try { u = new URL(a.getAttribute('href'), window.location.href); } catch (_) { return; }
+        if (u.origin !== window.location.origin) return;
+        if (typeof deriveRouteView === 'function' && deriveRouteView(u.pathname)
+          && window.FileTube && typeof window.FileTube.navigate === 'function') {
+          e.preventDefault();
+          closeMenu();
+          // v1.305 (gate): when we are ALREADY on the target path+search and only the hash
+          // differs (e.g. "N items in trash" -> /setup.html#trash while already on
+          // Settings), navigate() no-ops - its same-location check ignores the hash - so
+          // set the hash directly; the master-detail hashchange listener opens the section.
+          const samePathSearch = (u.pathname + u.search) === (window.location.pathname + window.location.search);
+          if (samePathSearch && u.hash && u.hash !== window.location.hash) {
+            window.location.hash = u.hash;
+          } else {
+            window.FileTube.navigate(u.href);
+          }
+        }
+      });
+      return p;
+    };
+
     const loadDiskUsage = () => {
       if (diskLoaded) return; // fetch once per menu instance, on first open
       diskLoaded = true;
@@ -7041,26 +7167,8 @@ function injectAccountMenu() {
           diskLabel.className = ''; // drop the shimmer, reveal the value
           diskLabel.textContent = formatDiskBytes(bytes) + ' on disk';
         })
-        .catch(() => { diskRow.hidden = true; diskDivider.hidden = true; });
+        .catch(() => { diskRow.hidden = true; });
     };
-
-    // v1.305 (Dean): "N items in trash" - a one-tap route into the Trash section
-    // (Settings -> Trash was too many taps). Sits directly UNDER the disk figure,
-    // sharing the same footer divider, styled like it (a quiet footer info-link).
-    // Links to /setup.html#trash: wireMasterDetail deep-links that section open on
-    // the hash. ALWAYS shown (Dean: "0 items in trash" / "1 item" / "2 items"),
-    // lazily counted on first open like the disk row; a failed count hides the row
-    // only (never a wrong "0 items"), leaving the disk row + divider untouched.
-    const trashRow = document.createElement('a');
-    trashRow.className = 'account-menu-trash';
-    trashRow.href = '/setup.html#trash';
-    trashRow.setAttribute('role', 'menuitem');
-    trashRow.setAttribute('aria-label', 'Review trash');
-    const trashLabel = document.createElement('span');
-    trashLabel.className = 'account-menu-disk-shimmer skeleton-shimmer'; // reuse the disk row's loading-bar sizing
-    trashRow.appendChild(trashLabel);
-    menu.appendChild(trashRow);
-    let trashLoaded = false;
     const loadTrashCount = () => {
       if (trashLoaded) return; // fetch once per menu instance, on first open
       trashLoaded = true;
@@ -7070,86 +7178,39 @@ function injectAccountMenu() {
           const count = body && Number(Number.isFinite(Number(body.total)) ? body.total : (body.items || []).length);
           if (!Number.isFinite(count)) throw new Error('bad count');
           trashLabel.className = ''; // drop the shimmer, reveal the value
-          // v1.306: /api/trash already returns totalSizeBytes (summed server-side);
-          // pass it so the label shows the reclaimable size alongside the count.
+          // v1.306: /api/trash returns totalSizeBytes (summed server-side).
           trashLabel.textContent = formatTrashCountLabel(count, Number(body.totalSizeBytes));
         })
         .catch(() => { trashRow.hidden = true; });
     };
 
-    const version = appVersionString();
-    const notesUrl = releaseNotesUrl(version);
-    if (version && notesUrl) {
-      // v1.144 (Dean): the version row is a LINK now - click it to open this
-      // build's release notes (the user-language ledger entry from
-      // docs/releases.json, published to GitHub Releases). New tab +
-      // noopener since it leaves the app.
-      const ver = document.createElement('a');
-      ver.className = 'account-menu-version';
-      ver.href = notesUrl;
-      ver.target = '_blank';
-      ver.rel = 'noopener';
-      ver.setAttribute('aria-label', `Version ${version} - open release notes`);
-      ver.textContent = 'Version ' + version;
-      menu.appendChild(ver);
+    function closeMenu() { if (sheet) sheet.close(); }
+    function openMenu() {
+      const U = typeof window !== 'undefined' ? window.ui : null;
+      if (!U || typeof U.sheet !== 'function') return; // ui.js ships on every shell
+      if (!panel) panel = buildPanel(U);
+      if (!sheet) {
+        sheet = U.sheet({
+          // A title, so the header reads 'Account' with the one Close at its trailing edge.
+          variant: 'auto', anchor: trigger, title: 'Account', content: panel, doc: document,
+          onClosing: () => trigger.setAttribute('aria-expanded', 'false'),
+        });
+        sheet.el.id = 'account-menu-sheet'; // an id: ui.sheet rewrites className on every open
+      }
+      sheet.open();
+      trigger.setAttribute('aria-expanded', 'true');
+      updateAccountMenuThemeItem();
+      loadDiskUsage(); loadTrashCount(); // v1.158 / v1.305: lazily, on the first open
     }
+    trigger.addEventListener('click', (e) => {
+      // v1.85.1: the You tab forwards its tap here; stop it reaching the document.
+      e.stopPropagation();
+      if (sheet && sheet.isOpen()) closeMenu(); else openMenu();
+    });
 
-    root.appendChild(menu);
     const phNow = document.getElementById('account-menu-placeholder');
     if (phNow && phNow.parentNode === headerRight) phNow.replaceWith(root);
     else { if (phNow) phNow.remove(); headerRight.appendChild(root); }
-
-    // Interaction: click toggles; outside-click + Escape close; aria in sync.
-    const setOpen = (open) => {
-      menu.hidden = !open;
-      trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
-      if (open) { loadDiskUsage(); loadTrashCount(); } // v1.158 / v1.305: lazily resolve the on-disk total + trash count on first open
-    };
-    trigger.addEventListener('click', (e) => {
-      e.stopPropagation();
-      setOpen(menu.hidden);
-    });
-    // Keep clicks INSIDE the menu from bubbling to the document-close handler
-    // (so a Theme toggle etc. doesn't close the menu). But that same
-    // stopPropagation ALSO starves the document-level SPA router
-    // (handleDocumentClick) of the quick-link anchor clicks, so a plain tap on
-    // e.g. Settings fell through to a FULL page reload -- which unloads the
-    // shell and TEARS DOWN the docked mini-player (Dean, v1.153: "You ->
-    // Settings on mobile stops playback"; the sidebar works because it is not
-    // inside this stopPropagation container). Drive the router EXPLICITLY here
-    // for a same-origin known-route anchor -- close the menu and SPA-navigate,
-    // mirroring shouldInterceptLinkClick -- so the mini-player survives.
-    menu.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a.account-menu-item[href], a.account-menu-disk[href], a.account-menu-trash[href]') : null;
-      if (!a) return;
-      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.getAttribute('target') === '_blank') return;
-      let u;
-      try { u = new URL(a.getAttribute('href'), window.location.href); } catch (_) { return; }
-      if (u.origin !== window.location.origin) return;
-      if (typeof deriveRouteView === 'function' && deriveRouteView(u.pathname)
-        && window.FileTube && typeof window.FileTube.navigate === 'function') {
-        e.preventDefault();
-        setOpen(false);
-        // v1.305 (gate): when we are ALREADY on the target path+search and only
-        // the hash differs (e.g. "N items in trash" -> /setup.html#trash while
-        // already on Settings), navigate() no-ops - its same-location check
-        // ignores the hash - so the section would never open. Set the hash
-        // directly instead; the master-detail hashchange listener then drives
-        // selectFromHash to open the section. Every cross-page click still
-        // routes through navigate() (which preserves the hash for init()).
-        const samePathSearch = (u.pathname + u.search) === (window.location.pathname + window.location.search);
-        if (samePathSearch && u.hash && u.hash !== window.location.hash) {
-          window.location.hash = u.hash;
-        } else {
-          window.FileTube.navigate(u.href);
-        }
-      }
-    });
-    document.addEventListener('click', () => { if (!menu.hidden) setOpen(false); });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !menu.hidden) { setOpen(false); trigger.focus(); }
-    });
   }).catch(() => { /* signed-out / network -- no menu */ });
 }
 
@@ -7305,25 +7366,12 @@ function injectOneOffDownloadButtonIfEnabled() {
       // header has no Settings link get the button appended to
       // `.header-right`).
       if (headerRight) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
+        // Sweep S1 (F31): the header Download is a plain ui-btn icon button at every width
+        // (it was a bevelled text .btn on desktop beside flat round glyphs, and glyph-only
+        // on the phone). The sprite glyph paints with the text (v1.87.1's first-paint rule).
+        const btn = chromeButtonEl({ cls: 'oneoff-download-btn', icon: CHROME_ICON.download, ariaLabel: 'Download a video' });
         btn.id = 'ytdlp-oneoff-btn';
-        btn.className = 'btn';
-        btn.setAttribute('aria-label', 'Download a video');
         btn.title = 'Download a video';
-        // v1.87.1 (Dean): inline <svg> (chrome-icon), not an `.icon-download`
-        // mask - the mask decode-lags on a mobile cold start. See CHROME_ICON.
-        const dlGlyph = chromeIconEl('download');
-        if (dlGlyph) btn.appendChild(dlGlyph);
-        // v1.86.0 (Dean): the word "Download" lives in a .btn-label span (like the
-        // classic Shuffle/Rescan buttons) so CSS can hide it on mobile - the
-        // button goes glyph-only there, keeps its text on desktop. `.btn` is
-        // inline-flex with a gap, so hiding the label leaves a clean lone icon
-        // (no stray leading-space text node).
-        const label = document.createElement('span');
-        label.className = 'btn-label';
-        label.textContent = 'Download';
-        btn.appendChild(label);
 
         // v1.85.2 (Dean, on-device ROOT CAUSE): scope to a DIRECT CHILD. The
         // original intent was "insert before the Settings link when THIS header
@@ -7366,19 +7414,10 @@ function injectOneOffDownloadButtonIfEnabled() {
       // own bottom-nav injection) -- a `<button>` (not a link) since it opens
       // the modal in place rather than navigating.
       if (settingsNavItem && settingsNavItem.parentElement) {
-        const navBtn = document.createElement('button');
-        navBtn.type = 'button';
-        navBtn.className = 'bottom-nav-item';
-        navBtn.setAttribute('data-nav', 'oneoff-download');
-        navBtn.setAttribute('aria-label', 'Download a video');
-        // v1.339 (L2): an inline chrome-icon <svg>, not the `.icon-download` mask (iOS
-        // decode lag - the v1.87.1 first-paint glyph rule), matching the reserve's glyph.
-        const navIcon = chromeIconEl('download');
-        const navLabel = document.createElement('span');
-        navLabel.className = 'bottom-nav-label';
-        navLabel.textContent = 'Download';
-        if (navIcon) navBtn.appendChild(navIcon);
-        navBtn.appendChild(navLabel);
+        // v1.339 (L2): a sprite <svg>, not the `.icon-download` mask (iOS decode lag - the
+        // v1.87.1 first-paint glyph rule), matching the reserve's glyph. Sweep S1 (F49): a
+        // ui-btn stack tab like every other.
+        const navBtn = bottomNavItemEl({ tag: 'button', nav: 'oneoff-download', icon: CHROME_ICON.download, label: 'Download', ariaLabel: 'Download a video' });
         const navReserve = chromeReserveEl(document.getElementById('bottom-nav'), 'oneoff-download');
         if (navReserve) navReserve.replaceWith(navBtn);
         else settingsNavItem.insertAdjacentElement('afterend', navBtn);
@@ -7763,7 +7802,6 @@ const SHELL_SINGLETON_SELECTORS = [
   '#search-input',
   '#ytdlp-oneoff-btn',
   '#playlists-sheet',
-  '#playlists-backdrop',
   '[data-nav="subscriptions"]',
   '[data-nav-sidebar="subscriptions"]',
   '[data-nav-sidebar="books"]',
@@ -11523,12 +11561,12 @@ function renderPlaylistsSheet(folders, folderSettings, syntheticFolders) {
   // count-gated applyLikedSidebarEntry helper every sidebar surface now
   // uses (visible iff at least one liked video exists), so the sheet and
   // the sidebars can never disagree.
-  if (visible.length === 0) {
-    list.innerHTML = libEntries + '<div class="sidebar-item">No folders configured.</div>';
-    applyLikedSidebarEntry(list);
-    return;
-  }
-  list.innerHTML = libEntries + visible.map((f) => {
+  // Sweep S1 (F50): the sheet's rows are ui-rows in ONE ui-list (a 56px row, the glyph in
+  // the media column, a reserved action column so every title starts at the same x - G1).
+  // The entries themselves still come from the SAME generators the sidebar mirrors
+  // (libraryEntriesHtml's sidebar-item markup), converted in place by toSheetRow, so the
+  // sheet and the sidebar can never disagree about WHAT is listed.
+  const folderRows = visible.map((f) => {
     const base = f.split(/[\\/]/).pop() || f;
     const label = (settings[f] && settings[f].name) || base;
     const glyphClass = resolveFolderGlyphClass(settings[f] && settings[f].glyph); // v1.77
@@ -11536,7 +11574,49 @@ function renderPlaylistsSheet(folders, folderSettings, syntheticFolders) {
       '" class="sidebar-item"><i class="' + glyphClass + '"></i> ' +
       escapeAttr(label) + '</a>';
   }).join('');
-  applyLikedSidebarEntry(list); // v1.33.1: count-gated Liked entry, prepended
+  list.innerHTML = '<div class="' + PLAYLISTS_SHEET_LIST_CLASS + '" role="list" aria-label="Library">' + libEntries + folderRows + '</div>'
+    + (visible.length === 0 ? '<p class="playlists-sheet-note">No folders configured.</p>' : '');
+  const group = list.firstChild;
+  Array.prototype.slice.call(group.children).forEach(toSheetRow);
+  applyLikedSidebarEntry(group, { decorate: toSheetRow }); // v1.33.1: count-gated Liked entry, prepended
+}
+
+// The sheet's list classes (ui.css ui-list): 56px rows, a 36px media column, one reserved
+// 44px action column (a pinned row's unpin; an empty slot elsewhere), no dividers.
+const PLAYLISTS_SHEET_LIST_CLASS = 'ui-list ui-list--default ui-list--media-avatar ui-list--aside-none ui-list--actions-1 ui-list--divider-none playlists-sheet-group';
+
+// Sweep S1 (F50): turn one generator row (`<a class="sidebar-item"><i class="icon-x"></i>
+// Label</a>`) into a whole-row ui-row link IN PLACE: the glyph moves to the media slot, the
+// label to the title, and the action column is reserved with an empty slot. Idempotent (a
+// converted row is returned as is); the count-gated Liked row keeps its `sidebar-item-liked`
+// hook, which applyLikedSidebarEntry's dedupe reads.
+function toSheetRow(a) {
+  if (!a || !a.classList || a.classList.contains('ui-row') || a.tagName !== 'A') return a;
+  const d = a.ownerDocument;
+  const glyph = a.querySelector('i');
+  const label = (a.textContent || '').trim();
+  const liked = a.classList.contains('sidebar-item-liked');
+  const active = a.classList.contains('active');
+  a.className = 'ui-row ui-row--default playlists-sheet-item' + (liked ? ' sidebar-item-liked' : '') + (active ? ' active' : '');
+  a.setAttribute('role', 'listitem');
+  a.textContent = '';
+  const span = (cls) => { const n = d.createElement('span'); n.className = cls; return n; };
+  a.appendChild(span('ui-row__lead'));
+  const media = span('ui-row__media');
+  if (glyph) media.appendChild(glyph);
+  a.appendChild(media);
+  const body = span('ui-row__body');
+  const title = span('ui-row__title');
+  title.textContent = label;
+  body.appendChild(title);
+  a.appendChild(body);
+  a.appendChild(span('ui-row__aside'));
+  const acts = span('ui-row__actions');
+  const slot = span('ui-row__slot');
+  slot.setAttribute('aria-hidden', 'true');
+  acts.appendChild(slot);
+  a.appendChild(acts);
+  return a;
 }
 
 // v1.21.0 FR-5: pure filter/derive step for the pinned-playlist Playlists-
@@ -11598,33 +11678,40 @@ function pinDeleteEndpoint(pin) {
   return `/api/subscriptions/pins/${encodeURIComponent(pin.id)}`;
 }
 
-function buildUnpinButton(pin, onDone) {
+// Sweep S1 (D4.6/D4.8, F32): the unpin control is the one Pin concept - a plain ui-btn icon
+// toggle showing the filled pin (`keep.fill`, pressed) - and the in-row "Unpin?" arm is
+// gone: a tap asks through ui.confirm, and only a confirmed answer DELETEs (Cancel, Esc,
+// the scrim and Close all keep the pin). `size`: 'md' in the phone sheet (a 44px button),
+// 'sm' in the desktop sidebar's 13px rows (the hit area is 44 either way).
+function buildUnpinButton(pin, onDone, size, label) {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'pinned-unpin-btn';
+  btn.className = 'ui-btn ui-btn--plain ui-btn--' + (size === 'md' ? 'md' : 'sm') + ' ui-btn--icon pinned-unpin-btn';
   btn.setAttribute('aria-label', 'Unpin');
-  btn.textContent = '×';
-  let armTimer = null;
+  btn.setAttribute('aria-pressed', 'true');
+  const slot = document.createElement('span');
+  slot.className = 'ui-btn__icon';
+  const glyph = uiIconEl('keep.fill', 'md');
+  if (glyph) slot.appendChild(glyph);
+  btn.appendChild(slot);
+  let asking = false;
   btn.addEventListener('click', (event) => {
     // Never navigate the row's own link.
     event.preventDefault();
     event.stopPropagation();
-    if (!pin || typeof pin.id !== 'string') return;
-    if (!btn.classList.contains('armed')) {
-      btn.classList.add('armed');
-      btn.textContent = 'Unpin?';
-      armTimer = setTimeout(() => {
-        btn.classList.remove('armed');
-        btn.textContent = '×';
-      }, 3000);
-      return;
-    }
-    if (armTimer) clearTimeout(armTimer);
-    btn.disabled = true;
-    fetch(pinDeleteEndpoint(pin), { method: 'DELETE' })
-      .catch(() => {})
-      .finally(() => {
-        if (typeof onDone === 'function') onDone();
+    if (!pin || typeof pin.id !== 'string' || asking) return;
+    const U = typeof window !== 'undefined' ? window.ui : null;
+    if (!U || typeof U.confirm !== 'function') return; // ui.js ships on every shell
+    asking = true;
+    const name = typeof label === 'string' && label.trim() ? label.trim() : 'this playlist';
+    U.confirm({ title: 'Unpin ' + name + '?', body: 'It leaves your pinned playlists. You can pin it again from its page.', confirmLabel: 'Unpin' })
+      .then((ok) => {
+        asking = false;
+        if (!ok) return;
+        btn.disabled = true;
+        return fetch(pinDeleteEndpoint(pin), { method: 'DELETE' })
+          .catch(() => {})
+          .finally(() => { if (typeof onDone === 'function') onDone(); });
       });
   });
   return btn;
@@ -11703,20 +11790,15 @@ function derivePinnedPlaylistEntries(pins) {
 // only, matching this file's SECURITY discipline for pin data (a pin's
 // label/channelAvatarUrl are the same untrusted, creator-controlled snapshot
 // `renderPinnedPlaylists`'s own comment already documents).
-function buildPinAvatarNode(label, channelAvatarUrl) {
+// Sweep S1 (D4.4): a ui-avatar (chromeAvatarEl) - the captured channel photo, else the
+// primitive's monogram; a photo that fails becomes the monogram (never a broken image).
+// `size` is a D2.3 avatar size: 'xs' (20px) in the desktop sidebar's rows, 'md' (36px, the
+// list's media column) in the phone sheet.
+function buildPinAvatarNode(label, channelAvatarUrl, size) {
   const source = resolveAvatarSource(label, channelAvatarUrl);
-  if (source.type === 'url') {
-    const img = document.createElement('img');
-    img.className = 'pinned-avatar pinned-avatar-img';
-    img.src = source.url;
-    img.alt = '';
-    return img;
-  }
-  const glyph = document.createElement('span');
-  glyph.className = 'pinned-avatar pinned-avatar-generated';
-  if (glyph.style) glyph.style.backgroundColor = source.color;
-  glyph.appendChild(document.createTextNode(source.glyph));
-  return glyph;
+  const el = chromeAvatarEl(label, source.type === 'url' ? source.url : null, size || 'xs');
+  el.classList.add('pinned-avatar');
+  return el;
 }
 
 // v1.21.0 FR-5 (AC35/AC36): renders the pinned-channel-playlist subsection
@@ -11775,9 +11857,16 @@ function renderPinnedPlaylists(pins, moduleEnabled) {
   section.className = 'playlists-pinned-section';
 
   const heading = document.createElement('div');
-  heading.className = 'sidebar-section-title';
+  heading.className = 'playlists-sheet-heading';
   heading.textContent = 'Pinned';
   section.appendChild(heading);
+  // Sweep S1 (F50): the pinned rows are ui-rows in the same list shape as the library rows
+  // above (media column, one action column), so the two lists' columns line up.
+  const group = document.createElement('div');
+  group.className = PLAYLISTS_SHEET_LIST_CLASS;
+  group.setAttribute('role', 'list');
+  group.setAttribute('aria-label', 'Pinned');
+  section.appendChild(group);
 
   // v1.37.0: same-predicate parallel view of the raw pins, so each rendered
   // row can recover its source record (id + pinSource) for the unpin
@@ -11786,26 +11875,43 @@ function renderPinnedPlaylists(pins, moduleEnabled) {
     .filter((p) => p && typeof p.channelDir === 'string' && p.channelDir !== '');
 
   entries.forEach((entry, sheetIndex) => {
+    const span = (cls) => { const n = document.createElement('span'); n.className = cls; return n; };
+    // A ui-row div (it holds a button, so the whole row cannot be one link): the title's
+    // link is stretched over the row by ui.css (.ui-row__link::before).
+    const row = document.createElement('div');
+    row.className = 'ui-row ui-row--default playlists-sheet-item';
+    row.setAttribute('role', 'listitem');
+    row.appendChild(span('ui-row__lead'));
+    const media = span('ui-row__media');
+    // F1: real channel icon when captured (C6), else the monogram avatar.
+    media.appendChild(buildPinAvatarNode(entry.label, entry.channelAvatarUrl, 'md'));
+    row.appendChild(media);
+    const body = span('ui-row__body');
+    const title = span('ui-row__title');
     const link = document.createElement('a');
-    link.className = 'sidebar-item';
+    link.className = 'ui-row__link';
     // v1.37.0: a pre-shaped href (book shelves) wins; ytdlp pins keep the
     // classic /?root= link (entry.href is null there).
     link.href = entry.href || ('/?root=' + encodeURIComponent(entry.channelDir));
-    // F1: real channel icon when captured (C6), else a deterministic
-    // generated avatar -- replaces the old generic icon-star glyph.
-    link.appendChild(buildPinAvatarNode(entry.label, entry.channelAvatarUrl));
-    // SECURITY: entry.label is untrusted -- a dedicated text node (not
-    // link.textContent, which would also wipe the avatar appended above) so
-    // both the avatar and the label survive, neither ever passed through
-    // innerHTML.
-    link.appendChild(document.createTextNode(' ' + entry.label));
+    // SECURITY: entry.label is untrusted -- a text node, never innerHTML.
+    link.appendChild(document.createTextNode(entry.label));
+    title.appendChild(link);
+    body.appendChild(title);
+    row.appendChild(body);
+    row.appendChild(span('ui-row__aside'));
+    const acts = span('ui-row__actions');
     // v1.37.0 (Dean's orphaned-pin report): the unpin control -- see
     // buildUnpinButton's comment.
     const sheetSourcePin = validSheetPins[sheetIndex];
     if (sheetSourcePin && typeof sheetSourcePin.id === 'string') {
-      link.appendChild(buildUnpinButton(sheetSourcePin, refreshAllPinSurfaces));
+      acts.appendChild(buildUnpinButton(sheetSourcePin, refreshAllPinSurfaces, 'md', entry.label));
+    } else {
+      const slot = span('ui-row__slot');
+      slot.setAttribute('aria-hidden', 'true');
+      acts.appendChild(slot);
     }
-    section.appendChild(link);
+    row.appendChild(acts);
+    group.appendChild(row);
   });
 
   list.appendChild(section);
@@ -11903,7 +12009,7 @@ function renderPinnedSidebar(pins) {
     // v1.37.0 (Dean's orphaned-pin report): every pinned row carries its
     // own unpin control -- see buildUnpinButton's comment.
     if (sourcePin && typeof sourcePin.id === 'string') {
-      link.appendChild(buildUnpinButton(sourcePin, refreshAllPinSurfaces));
+      link.appendChild(buildUnpinButton(sourcePin, refreshAllPinSurfaces, 'sm', entry.label));
     }
     section.appendChild(link);
   });
@@ -12069,9 +12175,9 @@ function overlayCanAnimate(el) {
 // counter plus a `cancel` closure that tears down that close's
 // transitionend/transitioncancel listeners and fallback timer. Without this,
 // a close-then-reopen-within-~300ms sequence on a REUSED node (e.g. the
-// Playlists sheet's persistent #playlists-sheet/#playlists-backdrop --
-// unlike the confirm/move modals or the subs settings sheet, which build a
-// brand-new node on every open) left the abandoned close's
+// Playlists sheet's persistent #playlists-sheet/#playlists-backdrop, before
+// sweep S1 moved that sheet onto ui.sheet -- unlike the confirm/move modals
+// or the subs settings sheet, which build a brand-new node on every open) left the abandoned close's
 // `setTimeout(finish, 300)` fallback armed; when it fired, `afterClose`
 // (which sets `hidden = true`) hid the sheet the user had just reopened. A
 // reopen interrupts the CSS transition mid-flight, which fires
@@ -12232,12 +12338,36 @@ function renderPlaylistsSheetContent(snapshot) {
 
 // Lazily fetches /api/config on first open, populates the sheet, then reveals
 // it. Feature-detects its own elements so it's safe to call on any page.
+// Sweep S1 (D4.6, F50): the sheet is ONE ui.sheet (a bottom sheet with a grab handle, the
+// "Playlists" title and the one Close; scrim, Esc, a swipe down and Close all dismiss it),
+// built on the first open and reused. Its list keeps the #playlists-sheet-list id the
+// renderers write into; while the sheet is closed the list is detached (renders to it no-op).
+let playlistsSheetCtrl = null;
+function ensurePlaylistsSheet() {
+  if (playlistsSheetCtrl) return playlistsSheetCtrl;
+  const U = typeof window !== 'undefined' ? window.ui : null;
+  if (!U || typeof U.sheet !== 'function') return null; // ui.js ships on every shell
+  const list = document.createElement('div');
+  list.id = 'playlists-sheet-list';
+  list.className = 'playlists-sheet-list';
+  playlistsSheetCtrl = U.sheet({ variant: 'bottom', title: 'Playlists', content: list, doc: document });
+  // An id, not a class: ui.sheet rewrites the element's className on every open.
+  playlistsSheetCtrl.el.id = 'playlists-sheet';
+  // Tapping a playlist/folder LINK navigates (SPA) - close the sheet too, so the user is
+  // not left with the overlay open after picking one (Dean: no extra manual close). Does
+  // NOT preventDefault, so the navigation still happens; an unpin tap never reaches here
+  // (its handler stops the event).
+  list.addEventListener('click', (e) => {
+    if (e.target && e.target.closest && e.target.closest('a')) closePlaylistsSheet();
+  });
+  return playlistsSheetCtrl;
+}
+
+// Lazily fetches /api/config on every open, populates the sheet, then reveals it.
 function openPlaylistsSheet() {
-  const backdrop = document.getElementById('playlists-backdrop');
-  const sheet = document.getElementById('playlists-sheet');
-  if (!backdrop || !sheet) return;
-  openOverlay(backdrop, 'sheet-open');
-  openOverlay(sheet, 'sheet-open');
+  const ctrl = ensurePlaylistsSheet();
+  if (!ctrl) return;
+  ctrl.open();
 
   // Paint last-known content SYNCHRONOUSLY, before any await -- the sheet then
   // animates open already at its final height instead of growing into it.
@@ -12260,7 +12390,7 @@ function openPlaylistsSheet() {
       // content with an error -- only a sheet with nothing in it says so.
       if (!playlistsSheetCache) {
         const list = document.getElementById('playlists-sheet-list');
-        if (list) list.innerHTML = '<div class="sidebar-item">Failed to load folders.</div>';
+        if (list) list.innerHTML = '<p class="playlists-sheet-note">Failed to load folders.</p>';
       }
       return;
     }
@@ -12278,10 +12408,7 @@ function openPlaylistsSheet() {
 }
 
 function closePlaylistsSheet() {
-  const backdrop = document.getElementById('playlists-backdrop');
-  const sheet = document.getElementById('playlists-sheet');
-  if (sheet) closeOverlayThen(sheet, 'sheet-open', () => { sheet.hidden = true; });
-  if (backdrop) closeOverlayThen(backdrop, 'sheet-open', () => { backdrop.hidden = true; });
+  if (playlistsSheetCtrl) playlistsSheetCtrl.close();
 }
 
 // Mirrors the bottom nav's Dark/Light item icon/label to the current data-mode.
@@ -12291,23 +12418,25 @@ function updateNavThemeItem() {
   const item = document.getElementById('nav-theme-toggle');
   if (!item) return;
   const dark = document.documentElement.getAttribute('data-mode') === 'dark';
-  // v1.87.1 (Dean): the nav theme glyph is an inline <svg> (chrome-icon) now, not
-  // an `.icon-moon/.icon-sun` mask - swap the whole element rather than a class.
-  // Tolerate a legacy `<i>` too (defensive; the static markup ships the svg).
-  const icon = item.querySelector('.chrome-icon, i');
+  // v1.87.1 (Dean): the nav theme glyph is an inline sprite <svg>, not an
+  // `.icon-moon/.icon-sun` mask. Sweep S1: the tab's ui-icon keeps its box; only its
+  // <use> reference swaps (the glyph for the mode a tap switches TO).
+  const use = item.querySelector('.ui-btn__icon use');
   const label = item.querySelector('.bottom-nav-label');
-  const swapped = chromeIconEl(dark ? 'sun' : 'moon');
-  if (icon && swapped) icon.replaceWith(swapped);
+  if (use) use.setAttribute('href', iconHref(CHROME_ICON[dark ? 'sun' : 'moon']));
   if (label) label.textContent = dark ? 'Light' : 'Dark';
 }
 
 // v1.82: the account menu's Theme row glyph reflects the current mode (sun in
 // dark, moon in light), updated on every toggle exactly like the bottom-nav item.
 function updateAccountMenuThemeItem() {
+  // Sweep S1: the row's glyph is a sprite ui-icon; its <use> swaps between the two modes.
+  // (The menu is attached only while open, and openMenu re-syncs on every open.)
   const icon = document.getElementById('account-menu-theme-icon');
-  if (!icon) return;
+  const use = icon && icon.querySelector('use');
+  if (!use) return;
   const dark = document.documentElement.getAttribute('data-mode') === 'dark';
-  icon.className = dark ? 'icon-sun' : 'icon-moon';
+  use.setAttribute('href', iconHref(dark ? 'light_mode' : 'dark_mode'));
 }
 
 // Global modal dialog helpers
@@ -14335,6 +14464,9 @@ function applyLikedSidebarEntry(listEl, opts) {
       icon.className = 'icon-liked';
       entry.appendChild(icon);
       entry.appendChild(document.createTextNode(' Liked'));
+      // Sweep S1: a caller can reshape the entry for its surface (the playlists sheet's
+      // ui-row, toSheetRow) - the WHETHER stays this one count-gated decision.
+      if (typeof options.decorate === 'function') options.decorate(entry);
       listEl.insertBefore(entry, listEl.firstChild);
     } else if (existing) {
       existing.remove();
@@ -16446,12 +16578,10 @@ function injectSearchClearButton(inputEl, btnEl) {
   if (!inputEl || !btnEl || !btnEl.parentNode) return null;
   const already = document.getElementById('search-clear-btn');
   if (already) return already;
-  const clearBtn = document.createElement('button');
-  clearBtn.type = 'button';
+  // Sweep S1 (AC4): a plain ui-btn icon button with the registry's close glyph (it was a
+  // text X glyph); its 44px hit area comes from the primitive.
+  const clearBtn = chromeButtonEl({ cls: 'search-clear-btn', icon: 'close', ariaLabel: 'Clear search' });
   clearBtn.id = 'search-clear-btn';
-  clearBtn.className = 'search-clear-btn';
-  clearBtn.setAttribute('aria-label', 'Clear search');
-  clearBtn.appendChild(document.createTextNode('✕'));
   clearBtn.hidden = !shouldShowSearchClear(inputEl.value);
   btnEl.parentNode.insertBefore(clearBtn, btnEl);
   inputEl.addEventListener('input', () => {
@@ -16463,6 +16593,45 @@ function injectSearchClearButton(inputEl, btnEl) {
     inputEl.focus();
   });
   return clearBtn;
+}
+
+// D7 (sweep S1, AC9 stillness): the sidebar's slide transition is gated by `.is-animating`,
+// which only the menu toggle sets; it clears on the transition's end (or a fallback timer
+// past --dur-fast, so a transition that never runs cannot leave it armed).
+const SIDEBAR_SLIDE_MS = 250;
+function armSidebarSlide(sidebar) {
+  if (!sidebar || !sidebar.classList) return;
+  sidebar.classList.add('is-animating');
+  const done = () => {
+    sidebar.classList.remove('is-animating');
+    sidebar.removeEventListener('transitionend', onEnd);
+    clearTimeout(timer);
+  };
+  const onEnd = (e) => { if (e.target === sidebar) done(); };
+  sidebar.addEventListener('transitionend', onEnd);
+  const timer = setTimeout(done, SIDEBAR_SLIDE_MS);
+}
+// D7: a real width change (a rotation, a window resize - not the iOS toolbar collapsing,
+// which changes only the height) adds html.no-motion for 300ms, which zeroes every
+// transition (style.css), so no box animates between the old and the new layout.
+const NO_MOTION_MS = 300;
+function wireNoMotionOnResize(win) {
+  const w = win || (typeof window !== 'undefined' ? window : null);
+  if (!w || !w.document) return;
+  const root = w.document.documentElement;
+  let lastWidth = w.innerWidth;
+  let timer = null;
+  const hold = () => {
+    root.classList.add('no-motion');
+    clearTimeout(timer);
+    timer = setTimeout(() => root.classList.remove('no-motion'), NO_MOTION_MS);
+  };
+  w.addEventListener('resize', () => {
+    if (w.innerWidth === lastWidth) return;
+    lastWidth = w.innerWidth;
+    hold();
+  });
+  w.addEventListener('orientationchange', hold);
 }
 
 // Sidebar toggle responsive menu helper. Guarded so requiring this file in Node
@@ -16685,12 +16854,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
+  wireNoMotionOnResize(window); // D7 (sweep S1)
   const menuToggle = document.getElementById('menu-toggle');
   const sidebar = document.getElementById('sidebar');
   const mainContent = document.getElementById('main-content');
   
   if (menuToggle && sidebar && mainContent) {
     menuToggle.addEventListener('click', () => {
+      // D7 (sweep S1): the drawer slides (transform only) ONLY when the user toggles it;
+      // `.is-animating` gates the sidebar's transition (style.css), so a theatre collapse,
+      // a resize or a rotation moves it without a slide.
+      armSidebarSlide(sidebar);
       sidebar.classList.toggle('hidden');
       sidebar.classList.toggle('mobile-open');
       mainContent.classList.toggle('expanded');
@@ -16872,23 +17046,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const playlistsBtn = document.getElementById('nav-playlists-btn');
     if (playlistsBtn) playlistsBtn.addEventListener('click', openPlaylistsSheet);
 
-    // Close wiring (feature-detected)
-    const backdrop = document.getElementById('playlists-backdrop');
-    const closeBtn = document.getElementById('playlists-close');
-    if (backdrop) backdrop.addEventListener('click', closePlaylistsSheet);
-    if (closeBtn) closeBtn.addEventListener('click', closePlaylistsSheet);
-
-    // Tapping a playlist/folder LINK inside the sheet navigates (SPA) -- close
-    // the sheet too so the user isn't left with the overlay open after picking
-    // one (Dean: no extra manual close). Delegated on the whole sheet so it
-    // covers both the async-rendered folder list and the pinned-playlist
-    // section; does NOT preventDefault, so the navigation still happens.
-    const sheet = document.getElementById('playlists-sheet');
-    if (sheet) {
-      sheet.addEventListener('click', (e) => {
-        if (e.target && e.target.closest && e.target.closest('a')) closePlaylistsSheet();
-      });
-    }
+    // Sweep S1: the sheet's own close wiring (scrim, Close, Esc, swipe down, a link tap)
+    // lives with the ui.sheet it builds on the first open (ensurePlaylistsSheet).
   }
 });
 }
@@ -16910,6 +17069,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // builders over the icon sprite). chrome-icons.test.js binds every map entry to a
     // registry icon and source-locks the shells' static markup against chromeIconMarkup.
     CHROME_ICON, chromeIconMarkup, chromeIconEl, spriteIconEl, stableToggleLabelHtml,
+    uiIconMarkup, uiIconEl, chromeButtonEl, bottomNavItemEl, setBottomNavItemFilled, chromeAvatarEl, syncThemeColorMeta,
+    armSidebarSlide, wireNoMotionOnResize, toSheetRow, buildUnpinButton, buildPinAvatarNode, openPlaylistsSheet, closePlaylistsSheet,
     // v1.102 (tranche 4 shimmer): the art-decode reveal helper (jsdom-tested).
     shimmerArt,
     // v1.339 (L1): the batched in-viewport reveal + its cap (jsdom-tested).
