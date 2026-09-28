@@ -349,6 +349,8 @@ header {
   align-items: center;
   justify-content: space-between;
   padding: env(safe-area-inset-top) var(--space-8) 0;
+  /* v1.341.2: while a panel locks the page, the scrollbar's width (body-scroll-lock.js) */
+  padding-right: calc(var(--space-8) + var(--scroll-lock-gap, 0px));
   z-index: var(--z-header);
 }
 
@@ -1285,7 +1287,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
    background matches `.player-container` above (not a themed surface). */
 #player-dock {
   position: fixed;
-  right: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
+  right: calc(16px + var(--scroll-lock-gap, 0px)); /* token-exempt: positional geometry (Stop A Batch A); v1.341.2 the scroll-lock gap */
   bottom: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
   width: 280px;
   z-index: var(--z-dock); /* above the mobile .bottom-nav (--z-nav), below modals/sheets (--z-sheet+) */
@@ -7138,7 +7140,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 .reader-nowplaying {
   position: fixed;
   left: 0;
-  right: 0;
+  right: var(--scroll-lock-gap, 0px); /* v1.341.2: clear of a scroll lock's padded gap */
   bottom: 0;
   z-index: var(--z-chip); /* above .bottom-nav (--z-nav), below #player-dock (--z-dock)/modals */
   display: flex;

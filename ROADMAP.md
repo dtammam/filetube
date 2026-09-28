@@ -49,17 +49,8 @@
   while the bar is laid out. A `?debugLifecycle=1` capture of the bar's rect against `visualViewport`
   when it happens decides which one.
 
-- [ ] **Bug: opening a panel shifts the page on desktop** _(Dean, 2026-09-28)_: the notification tray,
-  the account menu, a card's menu and its right-click menu (every surface that goes through the one body
-  scroll lock, `public/js/body-scroll-lock.js`, which pins body `position: fixed`) hide a CLASSIC
-  scrollbar, so the page shifts by its width (header bell x 1296 -> 1308 at 1440x900). NOT
-  `scrollbar-gutter: stable`: built for v1.341.1 and pulled at the gate (adversary r1 W1/W2, measured in
-  real Chromium with classic scrollbars) because Chrome keeps the reserved gutter in FULLSCREEN (a 12px
-  black band on the right of fullscreen video, the picture 6px off centre) and a fixed scrim cannot dim
-  the gutter (an undimmed strip beside every dialog). NEXT: the lock pads by the measured scrollbar width
-  while it holds (body padding-right, and the same offset for the fixed header / bottom chrome), measured
-  on every locking surface AND in fullscreen, with scrollbars visible (Playwright
-  `ignoreDefaultArgs: ['--hide-scrollbars']`).
+- [x] **Bug: opening a panel shifts the page on desktop** - SHIPPED v1.341.2 (see Shipped) _(Dean, 2026-09-28)_:
+  the scroll lock pads by the scrollbar's width only while it holds (not scrollbar-gutter).
 
 - [x] **Bug: the Music chapter editor jumped to the top after a nudge, and "can't be closed"** - SHIPPED
   v1.341.1 (see Shipped) _(Dean, 2026-09-28)_ (the discard question was never seen).
@@ -324,6 +315,13 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.341.2 - Opening a panel no longer shifts the page on desktop (2026-09-28)
+
+- **The page holds still when a panel opens.** Notifications, the account menu, a card's menu, its
+  right-click menu and every dialog hold the page still, which hid a desktop scrollbar and moved the
+  whole page by its width. The page is now padded by exactly that width while the panel is open (the
+  header, the mini player and the reader bar too), and fullscreen and dialogs look as they did before.
 
 ### v1.341.1 - The chapter editor keeps your place, and pinned channels line up (2026-09-28)
 

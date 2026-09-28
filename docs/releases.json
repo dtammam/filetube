@@ -3304,5 +3304,11 @@
     "date": "2026-09-28",
     "title": "The chapter editor keeps your place, and pinned channels line up",
     "intent": "The chapter time editor stays where you were after you nudge a start, instead of jumping back to the top, and closing it with unsaved changes now asks in a dialog you can see. Pinned channels in the sidebar line up, with long names cut short by an ellipsis."
+  },
+  {
+    "version": "1.341.2",
+    "date": "2026-09-28",
+    "title": "Opening a panel no longer shifts the page on desktop",
+    "intent": "On a desktop with a regular scrollbar, opening notifications, the account menu, a card's menu or a dialog no longer nudges the whole page sideways. Fullscreen video and dialogs look exactly as before."
   }
 ]
