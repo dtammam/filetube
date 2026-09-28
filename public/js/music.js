@@ -943,7 +943,7 @@ if (typeof module !== 'undefined' && module.exports) {
     chapterAlbumBaseId, isChapterAlbum, chapterStamp, buildListenChapterTracks, channelFolderOf, nowPlayingFrom,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
     MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
-    buildMusicSkeletonCards, buildMusicSkeletonRows, buildMusicArtistSkeletonCards,
+    buildMusicSkeletonCards, buildMusicSkeletonRows, buildMusicArtistSkeletonCards, buildMusicHomeSkeleton,
     MUSIC_JUMPBACK_COUNT_KEY, readJumpBackCount, writeJumpBackCount, buildJumpBackSkeletonHtml,
     setToolbarSlot, toolbarSlotLive,
     reserveDockSpace, // UI pass D7 (F58): the mini player's footprint, reserved at the view's bottom

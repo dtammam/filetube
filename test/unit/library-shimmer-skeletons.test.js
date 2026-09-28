@@ -15,7 +15,7 @@ const path = require('node:path');
 
 const { buildHistorySkeletonRows } = require('../../public/js/history.js');
 const { buildBookSkeletonCards } = require('../../public/js/books.js');
-const { buildMusicSkeletonCards, buildMusicSkeletonRows, buildMusicArtistSkeletonCards } = require('../../public/js/music.js');
+const { buildMusicSkeletonCards, buildMusicSkeletonRows, buildMusicArtistSkeletonCards, buildMusicHomeSkeleton } = require('../../public/js/music.js');
 const { buildPodcastSkeletonRows } = require('../../public/js/podcasts.js');
 
 // Count class-attribute tokens EXACTLY equal to `cls` (a trailing lookahead
@@ -191,4 +191,16 @@ test('book skeleton: the ui-thumb box shows the shimmer fill (style.css after ui
   assert.ok(base, 'the shared .skeleton-shimmer rule paints --surface-2');
   assert.doesNotMatch(style, /\.ui-thumb[^{},]*\{[^}]*background/, 'no style.css rule repaints a ui-thumb ground');
   assert.ok(buildBookSkeletonCards(1).includes('ui-thumb ui-thumb--2x3 ui-thumb--card skeleton-shimmer'), 'the skeleton box is the card thumb, shimmering');
+});
+
+// step 7 (retire R2): the Home cold-landing skeleton seeds the shape renderHome reveals - two
+// shelves of the SAME ui-tile cards in the .music-shelf-strip scroller (a card without the
+// ui-tile chassis would reserve a different box than the revealed card)
+test('music home skeleton: two shelves of ui-tile cards in the real shelf strip', () => {
+  const { JSDOM } = require('jsdom');
+  const doc = new JSDOM('<!doctype html><body>' + buildMusicHomeSkeleton() + '</body>').window.document;
+  const strips = doc.querySelectorAll('.music-shelf > .music-shelf-strip');
+  assert.strictEqual(strips.length, 2, 'two shelves');
+  assert.strictEqual(strips[0].querySelectorAll(':scope > .ui-tile.music-artist-card[aria-hidden="true"]').length, 6, 'six artist tiles');
+  assert.strictEqual(strips[1].querySelectorAll(':scope > .ui-tile.music-album-card[aria-hidden="true"]').length, 6, 'six album tiles');
 });
