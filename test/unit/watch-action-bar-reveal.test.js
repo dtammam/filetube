@@ -26,7 +26,7 @@ const watchJs = fs.readFileSync(WATCH_JS_PATH, 'utf8');
 // UI pass sweep S3 (D4.9; converts the v1.96 A1 locks, AC12): the bar's buttons are stacked
 // ui-btns (icon over a caption) whose height is the primitive's own --ctl-lg floor (44px, the
 // hit area); the v1.96 39px scoped override (--size-touch-watch-action) is retired with the
-// .btn row it shortened (the token itself is left for step 7's token retirement).
+// .btn row it shortened (gate r1 removed the token itself from tokens.css).
 test('A1 (S3): the bar reserves the stacked button\'s 44px height; no scoped shorter override remains', () => {
   assert.match(css, /\n\.watch-actions \{[^}]*min-height: var\(--ctl-lg\);[^}]*\}/, 'the row reserves the stacked ui-btn height');
   assert.ok(!/var\(--size-touch-watch-action\)/.test(css), 'no rule reads the retired 39px knob');

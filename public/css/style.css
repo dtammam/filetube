@@ -671,9 +671,6 @@ a.sidebar-item {
   box-shadow: inset 0 2px 0 0 var(--yt-red);
 }
 
-/* v1.24.0 (C2/C3): library item-count badge + format toggle. The toggle
-   buttons already inherit .btn/.btn-sm; this adds the group layout, the
-   active-state highlight, and the muted count badge. Era tokens only. */
 /* v1.45.2 (#4): name + count are one shrinkable flex item so the count sits
    directly beside the folder name (as "(N items)") instead of floating in the
    space-between centre. min-width:0 lets a long folder name ellipsize rather
