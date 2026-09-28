@@ -23,189 +23,79 @@
 //     while the refresh hook DID fire, and `decideOneOffTerminalAction`'s
 //     `rescan: false` lock still holds.
 //
-// The integration-level submit tests reuse the established
-// `injectOneOffDownloadButtonIfEnabled`-against-a-fake-DOM pattern from
-// test/unit/oneoff-modal-teardown.test.js / test/unit/oneoff-modal-mobile-
-// polish.test.js (this codebase has no jsdom/browser harness -- see
-// docs/CONTRIBUTING.md); the pure-helper tests need no DOM at all.
+// The integration-level submit tests drive the REAL
+// `injectOneOffDownloadButtonIfEnabled` in jsdom with the real ui.js (sweep S9:
+// the dialog is a ui.sheet, the oneoff-modal-teardown.test.js harness); the
+// pure-helper tests need no DOM at all.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { JSDOM } = require('jsdom');
 const {
   detectNewlyDoneOneShots,
   refreshLibraryInPlace,
   decideOneOffTerminalAction,
-  injectOneOffDownloadButtonIfEnabled,
 } = require('../../public/js/common.js');
 
-// ---- Minimal fake DOM (mirrors test/unit/oneoff-modal-teardown.test.js) ----
+// ---- jsdom harness (sweep S9: the dialog is a ui.sheet) ---------------------
 
-class FakeElement {
-  constructor(tag) {
-    this.tagName = String(tag).toUpperCase();
-    this.children = [];
-    this.parentElement = null;
-    this.attributes = {};
-    this.className = '';
-    this._textContent = '';
-    this._listeners = {};
-    this.hidden = false;
-    this.style = {};
-  }
+const COMMON = require.resolve('../../public/js/common.js');
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-  appendChild(child) {
-    child.parentElement = this;
-    this.children.push(child);
-    return child;
-  }
-
-  insertBefore(newNode, refNode) {
-    newNode.parentElement = this;
-    const idx = this.children.indexOf(refNode);
-    if (idx === -1) this.children.push(newNode);
-    else this.children.splice(idx, 0, newNode);
-    return newNode;
-  }
-
-  insertAdjacentElement(position, el) {
-    if (!this.parentElement) return null;
-    el.parentElement = this.parentElement;
-    if (position === 'afterend') {
-      const idx = this.parentElement.children.indexOf(this);
-      this.parentElement.children.splice(idx + 1, 0, el);
-    }
-    return el;
-  }
-
-  remove() {
-    if (this.parentElement) {
-      const idx = this.parentElement.children.indexOf(this);
-      if (idx >= 0) this.parentElement.children.splice(idx, 1);
-      this.parentElement = null;
-    }
-  }
-
-  setAttribute(name, value) {
-    this.attributes[name] = value;
-  }
-
-  getAttribute(name) {
-    return this.attributes[name];
-  }
-
-  addEventListener(type, handler) {
-    (this._listeners[type] = this._listeners[type] || []).push(handler);
-  }
-
-  fire(type, evt) {
-    const event = evt || { target: this };
-    (this._listeners[type] || []).forEach((fn) => fn(event));
-  }
-
-  click() {
-    this.fire('click', { target: this });
-  }
-
-  querySelector() {
-    return null; // no pre-existing Settings link in this test's header
-  }
-
-  get textContent() {
-    return this._textContent;
-  }
-
-  set textContent(value) {
-    this._textContent = value;
-    this.children = [];
-  }
-
-  set innerHTML(_value) {
-    throw new Error('must never assign innerHTML -- use textContent/DOM nodes instead');
-  }
-
-  get innerHTML() {
-    throw new Error('must never read/assign innerHTML');
-  }
-}
-
-function makeFakeDocument() {
-  const headerRight = new FakeElement('div');
-  const body = new FakeElement('body');
-  const docListeners = {};
-
-  const doc = {
-    getElementById: () => null,
-    querySelector: (sel) => (sel === '.header-right' ? headerRight : null),
-    createElement: (tag) => new FakeElement(tag),
-    createTextNode: (text) => ({ nodeType: 3, textContent: text }),
-    addEventListener: (type, handler) => { (docListeners[type] = docListeners[type] || []).push(handler); },
-    body,
-  };
-
-  return { doc, headerRight, body, docListeners };
-}
-
-function flush() {
-  return new Promise((resolve) => setTimeout(resolve, 0));
-}
-
-function withGlobals(doc, fetchImpl, run) {
-  const originalDocument = global.document;
-  const originalFetch = global.fetch;
-  const originalWindow = global.window;
-  global.document = doc;
+// Boots a FRESH common.js against a jsdom page (no document at require -> boot skipped),
+// runs `run(ctx)` with the globals in place, drains closing sheets, then restores.
+async function withPage(fetchImpl, run) {
+  const saved = { window: global.window, document: global.document, fetch: global.fetch };
+  delete global.window; delete global.document;
+  delete require.cache[COMMON];
+  const common = require(COMMON);
+  const dom = new JSDOM('<!doctype html><html><body><header><div class="header-right"></div></header></body></html>', {
+    url: 'http://localhost/',
+    // A VISIBLE page (document.hidden false): the chip a successful submit injects parks its
+    // poll on a hidden tab by re-arming a timer, which would keep this process alive.
+    pretendToBeVisual: true,
+  });
+  global.window = dom.window;
+  global.document = dom.window.document;
   global.fetch = fetchImpl;
-  // `location.pathname`/`addEventListener` are needed because a SUCCESSFUL
-  // submit's `injectDownloadStatusChip()` call (see the test below) wires a
-  // real `window.addEventListener('popstate', render)` -- a minimal stub
-  // here, mirroring the shape `withGlobals` in
-  // test/unit/oneoff-modal-teardown.test.js/oneoff-modal-mobile-polish.test.js
-  // already provides, extended with what the chip's own wiring additionally
-  // touches.
-  global.window = { location: { reload: () => {}, pathname: '/' }, addEventListener: () => {} };
-  return Promise.resolve()
-    .then(run)
-    .finally(() => {
-      global.document = originalDocument;
-      global.fetch = originalFetch;
-      global.window = originalWindow;
-    });
+  try {
+    await run({ common, dom, doc: dom.window.document });
+  } finally {
+    for (let i = 0; i < 60 && dom.window.document.querySelector('.ui-sheet'); i++) await new Promise((r) => setTimeout(r, 20));
+    dom.window.close();
+    delete require.cache[COMMON];
+    Object.assign(global, saved);
+  }
 }
 
-// Boots the module-enabled injection, opens the modal, fills the URL field,
-// and returns the modal's DOM nodes needed by the submit tests below.
-async function bootOpenAndFillUrl({ doc, headerRight }, url) {
-  injectOneOffDownloadButtonIfEnabled();
-  await flush();
-  const headerBtn = headerRight.children.find((c) => c.id === 'ytdlp-oneoff-btn');
+// Opens the dialog from the header button, fills the URL field, returns its parts.
+async function bootOpenAndFillUrl({ common, doc }, url) {
+  common.injectOneOffDownloadButtonIfEnabled();
+  await flush(); await flush();
+  const headerBtn = doc.getElementById('ytdlp-oneoff-btn');
   assert.ok(headerBtn, 'expected the header button to be injected');
   headerBtn.click();
-
-  const backdrop = doc.body.children.find((c) => c.className === 'oneoff-modal-backdrop');
-  assert.ok(backdrop, 'expected the modal backdrop appended to document.body on open');
-  const modal = backdrop.children.find((c) => c.className === 'oneoff-modal');
-  assert.ok(modal, 'expected the inner .oneoff-modal dialog');
-  const urlInput = modal.children[1]; // header, urlInput, row, folderInput, statusEl, progressTrack, actionsRow(Retry+Download)
+  const sheet = doc.querySelector('.ui-sheet');
+  assert.ok(sheet, 'expected the dialog (a ui.sheet) open on document.body');
+  const modal = sheet.querySelector('.oneoff-form');
+  assert.ok(modal, 'expected the one-off form as its content');
+  const urlInput = modal.querySelector('input.ui-field__input');
   urlInput.value = url;
-  // v1.55 Track B (DELIBERATE harness update): Retry+Download moved into one
-  // .action-bar row (the stray floating Retry was Dean's complaint) -- the
-  // Download button is now inside that row, not a direct modal child.
-  const actionsRow = modal.children.find((c) => c.className === 'action-bar oneoff-modal-actions');
+  // v1.55 Track B: Retry+Download share one .action-bar row.
+  const actionsRow = modal.querySelector('.action-bar.oneoff-modal-actions');
   assert.ok(actionsRow, 'expected the shared Retry+Download action row');
-  const downloadBtn = actionsRow.children.find((c) => c.className === 'btn btn-primary');
+  const downloadBtn = actionsRow.querySelector('.ui-btn--primary');
   assert.ok(downloadBtn, 'expected the Download button');
-  const statusEl = modal.children.find((c) => c.className === 'oneoff-modal-status');
+  const statusEl = modal.querySelector('.oneoff-modal-status');
   assert.ok(statusEl, 'expected the status line element');
-
-  return { backdrop, modal, downloadBtn, statusEl };
+  return { sheet, modal, downloadBtn, statusEl };
 }
 
 // ---- submitOneOffDownload: minimize-on-success / stay-open-on-error --------
 
 test('submitOneOffDownload: a SUCCESSFUL submit closes the modal and injects the corner chip (R2.1/AC4.1)', async () => {
-  const { doc, headerRight, body } = makeFakeDocument();
   const fetchImpl = (url) => {
     if (url === '/api/subscriptions/health') return Promise.resolve({ ok: true, status: 200 });
     if (url === '/api/ytdlp/download') return Promise.resolve({ ok: true, json: async () => ({ jobId: 'job-123' }) });
@@ -213,57 +103,58 @@ test('submitOneOffDownload: a SUCCESSFUL submit closes the modal and injects the
     return Promise.reject(new Error('unexpected fetch: ' + url));
   };
 
-  await withGlobals(doc, fetchImpl, async () => {
-    const { backdrop, downloadBtn } = await bootOpenAndFillUrl({ doc, headerRight }, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  await withPage(fetchImpl, async (ctx) => {
+    const { sheet, downloadBtn } = await bootOpenAndFillUrl(ctx, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
 
     downloadBtn.click();
     await flush();
     await flush(); // let the chained injectDownloadStatusChip() health fetch resolve too
 
-    assert.strictEqual(backdrop.parentElement, null, 'the modal backdrop must be fully detached (minimized), not merely hidden');
-    assert.ok(!body.children.includes(backdrop), 'the modal must no longer be in document.body');
-    const chip = body.children.find((c) => c.id === 'dl-status-chip');
-    assert.ok(chip, 'expected the corner chip to have been injected as the new progress surface');
+    assert.ok(sheet.classList.contains('is-closing'), 'the dialog is closing (minimized), not merely hidden');
+    for (let i = 0; i < 60 && sheet.isConnected; i++) await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(sheet.isConnected, false, 'the dialog must no longer be in the document');
+    assert.strictEqual(ctx.doc.querySelector('.ui-scrim'), null, 'nor its scrim');
+    assert.ok(ctx.doc.getElementById('dl-status-chip'), 'expected the corner chip to have been injected as the new progress surface');
   });
 });
 
 test('submitOneOffDownload: an !r.ok submit leaves the modal OPEN with the server error rendered (T6 non-regression)', async () => {
-  const { doc, headerRight, body } = makeFakeDocument();
   const fetchImpl = (url) => {
     if (url === '/api/subscriptions/health') return Promise.resolve({ ok: true, status: 200 });
     if (url === '/api/ytdlp/download') return Promise.resolve({ ok: false, json: async () => ({ error: 'Invalid URL' }) });
     return Promise.reject(new Error('unexpected fetch: ' + url));
   };
 
-  await withGlobals(doc, fetchImpl, async () => {
-    const { backdrop, downloadBtn, statusEl } = await bootOpenAndFillUrl({ doc, headerRight }, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  await withPage(fetchImpl, async (ctx) => {
+    const { sheet, downloadBtn, statusEl } = await bootOpenAndFillUrl(ctx, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
 
     downloadBtn.click();
     await flush();
 
-    assert.strictEqual(backdrop.parentElement, body, 'the modal must stay open on a non-OK submit response');
+    assert.ok(sheet.isConnected && !sheet.classList.contains('is-closing'), 'the modal must stay open on a non-OK submit response');
     assert.strictEqual(statusEl.textContent, 'Invalid URL');
-    assert.ok(!body.children.some((c) => c.id === 'dl-status-chip'), 'the chip must NOT be injected on a failed submit');
+    assert.strictEqual(ctx.doc.getElementById('dl-status-chip'), null, 'the chip must NOT be injected on a failed submit');
+    sheet.querySelector('.ui-sheet__close').click();
   });
 });
 
 test('submitOneOffDownload: a network-error submit leaves the modal OPEN with a network-error message (T6 non-regression)', async () => {
-  const { doc, headerRight, body } = makeFakeDocument();
   const fetchImpl = (url) => {
     if (url === '/api/subscriptions/health') return Promise.resolve({ ok: true, status: 200 });
     if (url === '/api/ytdlp/download') return Promise.reject(new Error('network down'));
     return Promise.reject(new Error('unexpected fetch: ' + url));
   };
 
-  await withGlobals(doc, fetchImpl, async () => {
-    const { backdrop, downloadBtn, statusEl } = await bootOpenAndFillUrl({ doc, headerRight }, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
+  await withPage(fetchImpl, async (ctx) => {
+    const { sheet, downloadBtn, statusEl } = await bootOpenAndFillUrl(ctx, 'https://www.youtube.com/watch?v=dQw4w9WgXcQ');
 
     downloadBtn.click();
     await flush();
 
-    assert.strictEqual(backdrop.parentElement, body, 'the modal must stay open on a network-error submit');
+    assert.ok(sheet.isConnected && !sheet.classList.contains('is-closing'), 'the modal must stay open on a network-error submit');
     assert.strictEqual(statusEl.textContent, 'Could not start download (network error).');
-    assert.ok(!body.children.some((c) => c.id === 'dl-status-chip'), 'the chip must NOT be injected on a network-error submit');
+    assert.strictEqual(ctx.doc.getElementById('dl-status-chip'), null, 'the chip must NOT be injected on a network-error submit');
+    sheet.querySelector('.ui-sheet__close').click();
   });
 });
 

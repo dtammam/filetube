@@ -19,10 +19,10 @@
 // user-controlled filenames/folder names/titles, so nothing here is ever
 // interpreted as markup.
 //
-// Reuses EXISTING classes only (`.setup-box`, `.theme-picker`/`.theme-card`/
-// `.theme-card-name`/`.theme-card-blurb` from the Appearance picker on
-// setup.html, `.folder-list-builder` from the folder-management list) --
-// this page owns no new CSS (see the T10 task card's client-ownership note).
+// Styling: the page's sections reuse the Settings chrome (`.setup-box`,
+// `.folder-list-builder`), its tiles the `.theme-picker`/`.theme-card` grid, its
+// controls the ui.css primitives (ui-btn), and the About / Under the hood lines
+// the `.stats-kv` family in style.css (retire R3: they were inline cssText).
 //
 // Deliberately self-contained: common.js already defines equivalent
 // `formatDuration`/`formatFileSize`/`formatRelativeTime` globals, but this
@@ -233,7 +233,6 @@ function renderMostWatched(root, mostWatched, canModify) {
     return;
   }
   const rows = mostWatched.map((e) => ({ id: (e.id || '').toString(), title: (e.title || '').toString(), plays: Number(e.viewCount) || 0 }));
-  const armRef = { current: null };
   let table = null;
   const cfg = {
     caption: 'Most watched',
@@ -252,9 +251,8 @@ function renderMostWatched(root, mostWatched, canModify) {
         const idx = rows.indexOf(row);
         if (idx >= 0) rows.splice(idx, 1);
         if (table) table.update(rows);
-      }, armRef)
+      })
       : null;
-    cfg.onRender = () => resetStatsArm(armRef);
   }
   table = buildSortableTable(root, cfg);
 }
@@ -262,9 +260,9 @@ function renderMostWatched(root, mostWatched, canModify) {
 // ---- v1.41.11 (Dean): duplicates report -------------------------------------
 // Renders GET /api/duplicates (see lib/stats.js computeDuplicateReport for the
 // two sections' semantics). Same idioms as the rest of this page: textContent
-// only (filenames are user-controlled), inline styles (this page owns no CSS),
-// and the existing container classes. v1.162 (Dean): library-write users get a
-// per-group expand toggle -> per-copy two-tap delete (buildDuplicateExpando);
+// only (filenames are user-controlled) and the existing container classes.
+// v1.162 (Dean): library-write users get a per-group expand toggle -> per-copy
+// confirmed delete (buildDuplicateExpando);
 // read-only users see the report unchanged. Long reports render the top groups
 // per section with an explicit "N more in the CSV" line -- never a silent cap.
 const DUPLICATE_GROUPS_RENDER_CAP = 50;
@@ -319,7 +317,6 @@ function renderDuplicates(root, report, canModify) {
     }));
     const host = document.createElement('div');
     root.appendChild(host);
-    const armRef = { current: null };
     let table = null;
     const cfg = {
       caption: title,
@@ -336,12 +333,11 @@ function renderDuplicates(root, report, canModify) {
     };
     // v1.162: library-write users get an expand toggle per group -> per-copy deletes.
     if (canModify) {
-      cfg.actions = (row, tr) => buildDuplicateExpando(row, tr, armRef, () => {
+      cfg.actions = (row, tr) => buildDuplicateExpando(row, tr, () => {
         const idx = rows.indexOf(row);
         if (idx >= 0) rows.splice(idx, 1);
         if (table) table.update(rows); // group is no longer a duplicate -> drop the row
       });
-      cfg.onRender = () => resetStatsArm(armRef);
     }
     table = buildSortableTable(host, cfg);
     if (groups.length > DUPLICATE_GROUPS_RENDER_CAP) {
@@ -355,54 +351,52 @@ function renderDuplicates(root, report, canModify) {
   renderSection('Same video, different filenames', idGroups, (group) => `Video id [${group.key}]`, 'ft-stable:stats-dup-id');
 }
 
-// v1.162 (Dean): the shared two-tap delete affordance for the Stats tables that
-// list deletable media - the SAME card/notification flow (DELETE /api/videos/:id
-// -> Trash, recoverable). Only rendered for library-write users (the caller gates
-// on canModify); the server DELETE is RBAC-guarded regardless. `armRef` is a shared
-// {current} so only ONE delete is armed at a time; `onDeleted` removes the row
-// after a confirmed 2xx (NON-OPTIMISTIC - failure re-enables). RE-RENDER SAFETY
-// (the v1.159 Trash-arm class): the LOAD-BEARING guarantee is that armState is
-// closure-local, so a sort/filter/update rebuild makes every new button idle - a
-// re-render can NEVER leave a hot one-tap delete. resetStatsArm (the table's
-// onRender) is DEFENSIVE belt-and-suspenders on top: it clears a dangling armRef
-// pointer to the now-detached armed button. The safety holds without it (gate:
-// neutering resetStatsArm keeps the destructive suite green; the closure-local
-// armState is what binds).
-function buildStatsDeleteAction(mediaId, title, onDeleted, armRef) {
+// v1.162 (Dean) -> retire R3 (D4.8 / F33, the rule sweep S8 applied to Settings): the
+// Stats-table per-item delete for the tables that list deletable media - the SAME request
+// as a card's (DELETE /api/videos/:id, which moves the file to Trash: recoverable from
+// Settings until the retention window empties it). Only rendered for library-write users
+// (the caller gates on canModify); the server DELETE is RBAC-guarded regardless.
+// The v1.162 two-tap in-row arm ("Sure?") is gone: a tap asks the one danger ui.confirm,
+// and the DELETE is sent only when that dialog answers OK - Cancel, Esc, the scrim, Close
+// and a view teardown (the dialog is bound to the view's signal) all send nothing. While
+// a confirm is pending the button ignores further taps, so a double tap asks once and one
+// OK sends one request. NON-OPTIMISTIC: the row goes only after a 2xx; a failure
+// re-enables the button. The row's id is closed over (never a render index), so a
+// sort/filter re-render can never re-target it.
+function statsUi() {
+  return (typeof window !== 'undefined' && window.ui) || null;
+}
+function confirmStatsDelete(title, signal) {
+  const u = statsUi();
+  if (!u || typeof u.confirm !== 'function') return Promise.resolve(false);
+  const name = title ? '"' + title + '"' : 'This item';
+  return u.confirm({
+    title: 'Move to Trash?',
+    body: name + ' leaves your library now. It stays in Trash, where you can restore it from Settings, until the Trash retention window empties it.',
+    confirmLabel: 'Move to Trash',
+    cancelLabel: 'Cancel',
+    danger: true,
+    signal: signal || undefined,
+  }).then((yes) => yes === true);
+}
+function buildStatsDeleteAction(mediaId, title, onDeleted) {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'stable-delete-btn';
+  btn.className = 'ui-btn ui-btn--plain ui-btn--sm ui-btn--icon stats-delete-btn';
   btn.setAttribute('aria-label', 'Delete ' + (title || 'this item'));
   btn.title = 'Delete';
-  const icon = document.createElement('i');
-  icon.className = 'icon-delete';
-  const confirm = document.createElement('span');
-  confirm.className = 'stable-delete-confirm';
-  confirm.textContent = 'Sure?';
-  btn.appendChild(icon);
-  btn.appendChild(confirm);
-  let armState = 'idle';
-  let armTimer = null;
-  const disarm = () => {
-    armState = 'idle';
-    btn.classList.remove('stable-delete-armed');
-    if (armTimer) { clearTimeout(armTimer); armTimer = null; }
-    if (armRef && armRef.current === btn) armRef.current = null;
-  };
-  btn._disarm = disarm;
-  btn.addEventListener('click', () => {
-    if (btn.disabled) return;
-    const next = nextArmState(armState, 'tap');
-    armState = next.state;
-    if (!next.deleted) {
-      if (armRef && armRef.current && armRef.current !== btn && typeof armRef.current._disarm === 'function') armRef.current._disarm();
-      if (armRef) armRef.current = btn;
-      btn.classList.add('stable-delete-armed');
-      if (armTimer) clearTimeout(armTimer);
-      armTimer = setTimeout(disarm, 3000);
-      return;
-    }
-    disarm();
+  btn.innerHTML = '<span class="ui-btn__icon"><svg class="ui-icon ui-icon--md" aria-hidden="true"><use href="#i-delete"/></svg></span>';
+  let asking = false;
+  btn.addEventListener('click', async () => {
+    if (btn.disabled || asking) return;
+    asking = true;
+    // The view's signal as it is NOW (gate r1, adversary 5): destroy() nulls statsController
+    // and a later init() makes a fresh one, so re-reading it after the await could never see
+    // this view's abort. The captured signal can.
+    const signal = statsController ? statsController.signal : null;
+    let yes = false;
+    try { yes = await confirmStatsDelete(title, signal); } finally { asking = false; }
+    if (!yes || (signal && signal.aborted)) return;
     btn.disabled = true;
     fetch('/api/videos/' + encodeURIComponent(mediaId), { method: 'DELETE' })
       .then((res) => (res.ok ? res.json().catch(() => ({})) : Promise.reject(new Error(`delete failed: ${res.status}`))))
@@ -418,33 +412,23 @@ function buildStatsDeleteAction(mediaId, title, onDeleted, armRef) {
   return btn;
 }
 
-// The buildSortableTable onRender hook: DEFENSIVE cleanup - drop the shared armed
-// pointer after a re-render so it never dangles at a detached button. NOT the
-// load-bearing safety (that is the closure-local armState in buildStatsDeleteAction,
-// which rebuilds every button idle); this is belt-and-suspenders only.
-function resetStatsArm(armRef) {
-  if (armRef && armRef.current && typeof armRef.current._disarm === 'function') armRef.current._disarm();
-  if (armRef) armRef.current = null;
-}
-
 // v1.162 (Dean): the Duplicates per-copy delete. A duplicate ROW is a GROUP of N
 // copies, so instead of guessing which copy to keep, an expand toggle reveals each
-// actual copy (its path + size) with its OWN two-tap delete - you remove exactly
-// the copies you choose. The expando is a full-row child of the .stable-row (the
+// actual copy (its path + size) with its OWN confirmed delete - you remove exactly
+// the copies you choose. The expando is a full-row child of the table row (the
 // Users-access-editor pattern, grid-column 1/-1). Deleting a copy removes it from
 // the group + the panel and keeps the row's aggregates honest for a later re-sort;
 // when a group drops to <=1 copy it is no longer a duplicate, so onGroupCollapsed
-// removes the whole row. armRef is shared with the table so only one delete arms.
-function buildDuplicateExpando(row, tr, armRef, onGroupCollapsed) {
+// removes the whole row. Retire R3: the toggle is a plain icon ui-btn whose chevron
+// turns over while the copies show (style.css .dup-expand).
+function buildDuplicateExpando(row, tr, onGroupCollapsed) {
   const toggle = document.createElement('button');
   toggle.type = 'button';
-  toggle.className = 'stable-expand-btn';
+  toggle.className = 'ui-btn ui-btn--plain ui-btn--sm ui-btn--icon dup-expand';
   toggle.setAttribute('aria-expanded', 'false');
   toggle.setAttribute('aria-label', 'Delete individual copies');
   toggle.title = 'Delete individual copies';
-  const chevron = document.createElement('i');
-  chevron.className = 'icon-arrow-down';
-  toggle.appendChild(chevron);
+  toggle.innerHTML = '<span class="ui-btn__icon"><svg class="ui-icon ui-icon--md" aria-hidden="true"><use href="#i-expand_more"/></svg></span>';
   let panel = null;
   const recomputeRowAggregates = () => {
     const items = Array.isArray(row.group.items) ? row.group.items : [];
@@ -458,7 +442,7 @@ function buildDuplicateExpando(row, tr, armRef, onGroupCollapsed) {
     box.className = 'stable-expando dup-expando';
     (Array.isArray(row.group.items) ? row.group.items : []).slice().forEach((item) => {
       const line = document.createElement('div');
-      line.className = 'dup-copy-row';
+      line.className = 'dup-copy';
       const label = document.createElement('span');
       label.className = 'dup-copy-path stats-meta-text';
       label.textContent = `${item.filePath} (${formatByteSize(Number(item.size) || 0)})`;
@@ -468,7 +452,7 @@ function buildDuplicateExpando(row, tr, armRef, onGroupCollapsed) {
         line.remove();
         recomputeRowAggregates();
         if (row.group.items.length <= 1 && typeof onGroupCollapsed === 'function') onGroupCollapsed();
-      }, armRef);
+      });
       line.appendChild(label);
       line.appendChild(del);
       box.appendChild(line);
@@ -488,7 +472,7 @@ function buildDuplicateExpando(row, tr, armRef, onGroupCollapsed) {
 // sortable rows (Title | Type | Length | Size) from its own /api/library-items
 // fetch. renderCap keeps a multi-thousand-item library from mounting thousands
 // of nodes; sort (biggest/longest) + the title filter reach the FULL set.
-// v1.162: library-write users get a per-row trash icon (two-tap -> Trash).
+// v1.162: library-write users get a per-row trash icon (confirmed -> Trash).
 const AV_RENDER_CAP = 300;
 function renderAvTable(root, items, canModify) {
   clearChildren(root);
@@ -507,7 +491,6 @@ function renderAvTable(root, items, canModify) {
     dur: Number(it.durationSeconds) || 0,
     bytes: Number(it.sizeBytes) || 0,
   }));
-  const armRef = { current: null };
   let table = null;
   const cfg = {
     caption: 'Videos and audio',
@@ -523,18 +506,17 @@ function renderAvTable(root, items, canModify) {
     persistKey: 'ft-stable:stats-av',
     renderCap: AV_RENDER_CAP,
   };
-  // v1.162: library-write users get a per-row two-tap delete (-> Trash). The row
+  // v1.162: library-write users get a per-row confirmed delete (-> Trash). The row
   // closes over its own `id`/`title` (never a render index), so a sort can't
-  // mis-target; onRender resets the shared arm (the v1.159 re-render-arm safety).
+  // mis-target.
   if (canModify) {
     cfg.actions = (row) => (row && row.id)
       ? buildStatsDeleteAction(row.id, row.title, () => {
         const idx = rows.indexOf(row);
         if (idx >= 0) rows.splice(idx, 1);
         if (table) table.update(rows);
-      }, armRef)
+      })
       : null;
-    cfg.onRender = () => resetStatsArm(armRef);
   }
   table = buildSortableTable(root, cfg);
 }
@@ -589,23 +571,25 @@ function renderBookFolders(root, books) {
 // trusted constant, never user data) with a fixed path; label is fixed text.
 function buildRepoLink(href, text) {
   const a = document.createElement('a');
+  a.className = 'stats-link';
   a.href = href;
   a.textContent = text;
   a.target = '_blank';
   a.rel = 'noopener noreferrer';
-  a.style.cssText = 'color:var(--yt-red); text-decoration:none; font-weight:var(--fw-bold);';
   return a;
 }
 
-// One "label ..... value" row where the value can be a text node OR a link.
+// One "label ..... value" line where the value can be a text node OR a link. Retire R3:
+// the look is the .stats-kv family in style.css (it was inline cssText, the page's only
+// JS-written styles).
 function buildAboutRow(label, valueNode) {
   const row = document.createElement('div');
-  row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
+  row.className = 'stats-kv';
   const labelEl = document.createElement('span');
+  labelEl.className = 'stats-kv__label';
   labelEl.textContent = label;
-  labelEl.style.cssText = 'font-weight:var(--fw-bold);';
   const valueEl = document.createElement('span');
-  valueEl.style.cssText = 'color:var(--text-secondary); flex-shrink:0;';
+  valueEl.className = 'stats-kv__value';
   valueEl.appendChild(valueNode);
   row.appendChild(labelEl);
   row.appendChild(valueEl);
@@ -652,7 +636,7 @@ function renderAbout(root, system) {
 
   // GitHub links.
   const links = document.createElement('div');
-  links.style.cssText = 'display:flex; flex-wrap:wrap; gap:var(--space-8); padding:var(--space-6) var(--space-2) var(--space-2);';
+  links.className = 'stats-links';
   links.appendChild(buildRepoLink(repoUrl, 'GitHub repository'));
   links.appendChild(buildRepoLink(`${repoUrl}/releases`, 'Releases'));
   links.appendChild(buildRepoLink(`${repoUrl}/issues`, 'Report an issue'));
@@ -696,8 +680,8 @@ function renderInventory(root, inventory) {
 // shimmer placeholder into every container so the dashboard never paints empty
 // then reflows twice as the two independent fetches land. Reuses ONLY existing
 // shared classes (the real `.theme-card` tile box + the `.skeleton-line`/
-// `.skeleton-shimmer` toolkit) and the SAME inline row box model as
-// buildAboutRow -- this page still owns no CSS. Every render*
+// `.skeleton-shimmer` toolkit) and the SAME `.stats-kv` line box as
+// buildAboutRow. Every render*
 // below does clearChildren(root) before it fills, so the swap to real content is
 // automatic; on the four FIXED-shape tile grids the seed count is the real count
 // (true zero-shift), and the variable-length lists seed a representative row
@@ -730,13 +714,12 @@ const STATS_FETCH_CONTAINERS = [
   'stats-records-grid', 'stats-most-watched-list', 'stats-books-grid',
   'stats-books-folder-list', 'stats-inventory-list', 'stats-about',
 ];
-// The shared row box model -- tracks buildAboutRow (inventory / About still
-// render as these flex rows). v1.159/v1.160: the By-folder / By-channel /
+// The skeleton line is buildAboutRow's `.stats-kv` box (inventory / About still
+// render as these lines). v1.159/v1.160: the By-folder / By-channel /
 // Books / Duplicates / Most-watched breakdowns now render via the sortable `.stable` table
 // instead, so their skeleton is an APPROXIMATE placeholder (the real table adds
 // a filter bar + header row) -- a minor one-time Stats-open reflow, accepted as
 // tech-debt (a shape-matched .stable skeleton is the fast-follow).
-const STATS_SKELETON_ROW_CSS = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
 
 // A `.theme-card`-shaped shimmer tile: two block skeleton lines (value + caption)
 // standing in for buildStatTile's number + muted caption.
@@ -753,20 +736,17 @@ function buildStatsSkeletonTile() {
   return tile;
 }
 
-// A breakdown/about-row-shaped shimmer row: label bar + value bar in the same
-// flex box the real rows use. Widths are inline (not a governed colour property,
-// census-safe); margin:0 neutralises `.skeleton-line`'s default margin-bottom so
-// the centred flex row height matches the real single-line row.
+// A breakdown/about-line-shaped shimmer line: label bar + value bar in the same
+// `.stats-kv` box the real lines use (style.css sizes the two bars and zeroes
+// `.skeleton-line`'s margin so the centred line is as tall as a real one).
 function buildStatsSkeletonRow() {
   const row = document.createElement('div');
-  row.style.cssText = STATS_SKELETON_ROW_CSS;
+  row.className = 'stats-kv stats-kv--skeleton';
   row.setAttribute('aria-hidden', 'true');
   const label = document.createElement('span');
-  label.className = 'skeleton-line skeleton-shimmer';
-  label.style.cssText = 'width:40%; margin:0;';
+  label.className = 'skeleton-line skeleton-shimmer stats-kv__label';
   const value = document.createElement('span');
-  value.className = 'skeleton-line skeleton-shimmer';
-  value.style.cssText = 'width:25%; margin:0; flex-shrink:0;';
+  value.className = 'skeleton-line skeleton-shimmer stats-kv__value';
   row.appendChild(label);
   row.appendChild(value);
   return row;
@@ -966,5 +946,5 @@ if (typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.r
 // Guarded so requiring this file in Node (for unit tests) never touches
 // `window`/`document` -- mirrors setup.js/player.js's own module.exports guard.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, channelBreakdownLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS, renderBreakdownList, renderBookFolders, renderDuplicates, DUPLICATE_GROUPS_RENDER_CAP, renderAvTable, AV_RENDER_CAP, renderMostWatched, buildStatsDeleteAction, resolveStatsCanModify };
+  module.exports = { formatCount, formatTotalDuration, formatByteSize, formatItemDuration, formatRelativeDate, shortenChannelLabel, channelBreakdownLabel, seedStatsSkeleton, renderStatsDashboard, renderStatsError, formatYtdlpAboutText, STATS_TILE_GRIDS, STATS_LIST_CONTAINERS, STATS_FETCH_CONTAINERS, renderBreakdownList, renderBookFolders, renderDuplicates, DUPLICATE_GROUPS_RENDER_CAP, renderAvTable, AV_RENDER_CAP, renderMostWatched, buildStatsDeleteAction, resolveStatsCanModify, renderAbout, init, destroy };
 }

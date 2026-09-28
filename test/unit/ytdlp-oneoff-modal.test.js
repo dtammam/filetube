@@ -14,15 +14,15 @@
 //     untested-by-necessity shell around this decision (this codebase has no
 //     browser/DOM harness for any per-page script), same as the existing
 //     nav-link injection.
-//   - test/unit/ytdlp-subscriptions-client.test.js: a purpose-built, minimal
-//     fake `document`/`Element` sufficient to exercise `buildOneOffModal`'s
-//     real construction path, whose `innerHTML` setter unconditionally
-//     THROWS -- if any future edit ever assigned `innerHTML` with a
-//     dynamic/hostile string (the live-status line, in particular), this
-//     test would fail loudly rather than silently passing.
+//   - Sweep S9: the dialog is a ui.sheet now (the real ui.js builds it), so
+//     `buildOneOffModal` runs against a real jsdom document instead of the old
+//     hand-rolled fake. The XSS guard keeps its teeth: the test that feeds a
+//     hostile live entry traps every `innerHTML` write on that document's
+//     elements and throws, so a markup write fails it loudly.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const { JSDOM } = require('jsdom');
 const {
   shouldInjectOneOffButton,
   reduceOneOffFiletypeOptions,
@@ -47,95 +47,12 @@ const {
   triggerLibraryRescanAndRefresh,
 } = require('../../public/js/common.js');
 
-// ---- Minimal fake DOM (test-only, mirrors ytdlp-subscriptions-client.test.js) --
+// ---- Sweep S9: a real jsdom document (the dialog is a ui.sheet built by the real ui.js) --
 
-class FakeElement {
-  constructor(tagName) {
-    this.tagName = String(tagName).toUpperCase();
-    this.children = [];
-    this.attributes = {};
-    this.className = '';
-    this._textContent = '';
-    this._listeners = {};
-    this.style = {};
-    this.hidden = false;
-  }
-
-  appendChild(child) {
-    this.children.push(child);
-    return child;
-  }
-
-  // Real-DOM-equivalent surface needed by `repopulateOneOffFiletypeSelect`'s
-  // `clearOneOffChildren` helper (a `while (el.firstChild) el.removeChild(...)`
-  // loop) so the format->filetype rebuild wiring can be exercised end-to-end
-  // through a real `change` event, not just the pure reducer in isolation.
-  get firstChild() {
-    return this.children.length > 0 ? this.children[0] : null;
-  }
-
-  removeChild(child) {
-    const idx = this.children.indexOf(child);
-    if (idx >= 0) this.children.splice(idx, 1);
-    return child;
-  }
-
-  setAttribute(name, value) {
-    this.attributes[name] = value;
-  }
-
-  addEventListener(type, handler) {
-    (this._listeners[type] = this._listeners[type] || []).push(handler);
-  }
-
-  // Simulates a real DOM event dispatch: invokes every registered listener
-  // for `type` with `evt` (defaulting to `{ target: this }`, mirroring an
-  // un-bubbled click directly on this element).
-  fire(type, evt) {
-    const event = evt || { target: this };
-    (this._listeners[type] || []).forEach((fn) => fn(event));
-  }
-
-  // Convenience: a plain click with no custom event target (used for buttons
-  // whose handlers don't inspect `e.target`, e.g. the close/download buttons).
-  click() {
-    this.fire('click', { target: this });
-  }
-
-  get textContent() {
-    return this._textContent;
-  }
-
-  // A real DOM's `textContent` setter never parses its argument as markup --
-  // this fake mirrors that (plain string storage, no parsing).
-  set textContent(value) {
-    this._textContent = value;
-    this.children = [];
-  }
-
-  // Deliberately UNIMPLEMENTED as a hard failure: buildOneOffModal must never
-  // assign `innerHTML` for any dynamic string (the live-status line in
-  // particular). If it ever did, this setter turns that into an immediate,
-  // loud test failure instead of a silently-passed XSS hole.
-  set innerHTML(_value) {
-    throw new Error('buildOneOffModal must never assign innerHTML -- use textContent instead');
-  }
-
-  get innerHTML() {
-    throw new Error('buildOneOffModal must never read/assign innerHTML');
-  }
-
-  *walk() {
-    yield this;
-    for (const child of this.children) {
-      if (child instanceof FakeElement) yield* child.walk();
-    }
-  }
-}
-
-const fakeDoc = {
-  createElement: (tag) => new FakeElement(tag),
-};
+const fakeDom = new JSDOM('<!doctype html><html><body></body></html>', { url: 'http://localhost/' });
+const fakeDoc = fakeDom.window.document;
+const walk = (root) => [root, ...root.querySelectorAll('*')];
+const fire = (el, type) => el.dispatchEvent(new fakeDom.window.Event(type, { bubbles: true }));
 
 // ---- shouldInjectOneOffButton: the gated-injection decision -----------------
 
@@ -365,27 +282,48 @@ test('formatOneOffStatusText: never renders "undefined" or "NaN" for any downloa
 
 test('buildOneOffModal: builds the expected structure, starts hidden, with correct default select values', () => {
   const modal = buildOneOffModal(fakeDoc, {});
-  assert.strictEqual(modal.backdrop.hidden, true, 'the modal must start hidden');
-  assert.strictEqual(modal.modal.hidden, true);
+  // Sweep S9: built as a ui.sheet that is NOT open yet - nothing in the document until the
+  // caller opens it (the header button's openModal).
+  assert.strictEqual(modal.sheet.isOpen(), false, 'the modal must start closed');
+  assert.strictEqual(modal.backdrop, modal.sheet.scrim, 'the backdrop is the sheet\'s one scrim');
+  assert.strictEqual(modal.backdrop.isConnected, false);
+  assert.strictEqual(modal.modal.isConnected, false);
+  assert.strictEqual(modal.modal.parentElement, modal.sheet.body, 'the form is the sheet body content');
+  assert.strictEqual(modal.sheet.el.querySelector('.ui-sheet__title').textContent, 'One-off download');
   assert.strictEqual(modal.urlInput.tagName, 'INPUT');
   assert.strictEqual(modal.formatSelect.tagName, 'SELECT');
   assert.strictEqual(modal.formatSelect.value, 'video');
   assert.strictEqual(modal.qualitySelect.value, 'best');
   assert.strictEqual(modal.filetypeSelect.value, 'mp4');
   assert.strictEqual(modal.downloadBtn.textContent, 'Download');
-  assert.strictEqual(modal.closeBtn.textContent, '×');
+  // Close is the sheet's own ui-btn icon button (the registry glyph) - never the U+00D7 text glyph.
+  assert.strictEqual(modal.closeBtn, modal.sheet.el.querySelector('.ui-sheet__close'), 'the ONE close is the sheet\'s');
+  assert.strictEqual(modal.closeBtn.textContent, '', 'no text glyph on Close');
+  assert.strictEqual(modal.closeBtn.getAttribute('aria-label'), 'Close');
+  assert.match(modal.closeBtn.className, /\bui-btn--icon\b/);
+  assert.strictEqual(modal.closeBtn.querySelector('use').getAttribute('href'), '#i-close');
+  // The form's controls are primitives: ui-field inputs, ui-select selects, ui-btn buttons.
+  assert.strictEqual(modal.urlInput.className, 'ui-field__input');
+  assert.strictEqual(modal.folderInput.className, 'ui-field__input');
+  for (const sel of [modal.formatSelect, modal.qualitySelect, modal.filetypeSelect]) {
+    assert.strictEqual(sel.className, 'ui-select__native');
+    const box = walk(modal.modal).find((el) => el.className === 'ui-select' && [...el.children].includes(sel));
+    assert.ok(box, 'each select sits in its ui-select box');
+  }
+  assert.strictEqual(modal.downloadBtn.className, 'ui-btn ui-btn--primary ui-btn--md');
 
   // v1.25 QoL (T3/T5): the folder field is an OPTIONAL channel-override --
   // an INPUT with an accessible name, left blank by default (no forced
   // value, unlike the format/quality/filetype selects above).
   assert.strictEqual(modal.folderInput.tagName, 'INPUT');
   assert.ok(!modal.folderInput.value, 'folder input must start blank -- the channel-derived default applies otherwise');
-  assert.strictEqual(modal.folderInput.attributes['aria-label'], 'Folder (optional — defaults to the channel)');
+  assert.strictEqual(modal.folderInput.getAttribute('aria-label'), 'Folder (optional — defaults to the channel)');
 
   // Only the known, fixed set of tags may exist anywhere in the built modal.
-  const tagNames = new Set([...modal.backdrop.walk()].map((el) => el.tagName));
+  // (the form; the ui-select chevron is a registry svg/use)
+  const tagNames = new Set(walk(modal.modal).map((el) => el.tagName));
   for (const tag of tagNames) {
-    assert.ok(['DIV', 'SPAN', 'BUTTON', 'SELECT', 'OPTION', 'INPUT'].includes(tag), `unexpected element tag in the one-off modal: ${tag}`);
+    assert.ok(['DIV', 'SPAN', 'BUTTON', 'SELECT', 'OPTION', 'INPUT', 'svg', 'use'].includes(tag), `unexpected element tag in the one-off modal: ${tag}`);
   }
 });
 
@@ -426,16 +364,18 @@ test('buildOneOffModal: Download with a typed folder override includes the trimm
 test('buildOneOffModal: switching the format select to audio repopulates the filetype select (reduceOneOffFiletypeOptions wiring)', () => {
   const modal = buildOneOffModal(fakeDoc, {});
   modal.formatSelect.value = 'audio';
-  modal.formatSelect.fire('change');
-  assert.deepStrictEqual(modal.filetypeSelect.children.map((o) => o.value), ['mp3', 'm4a', 'opus', 'default']);
+  fire(modal.formatSelect, 'change');
+  assert.deepStrictEqual([...modal.filetypeSelect.children].map((o) => o.value), ['mp3', 'm4a', 'opus', 'default']);
   assert.strictEqual(modal.filetypeSelect.value, 'mp3');
 });
 
 test('buildOneOffModal: the [x] close button calls onClose', () => {
   let closed = false;
   const modal = buildOneOffModal(fakeDoc, { onClose: () => { closed = true; } });
+  modal.sheet.open();
   modal.closeBtn.click();
   assert.strictEqual(closed, true);
+  assert.strictEqual(modal.sheet.isOpen(), false);
 });
 
 // BUG 2 regression guard: the freeze this fixed left the modal showing
@@ -445,41 +385,51 @@ test('buildOneOffModal: the [x] close button calls onClose', () => {
 test('buildOneOffModal: the [x] close button still dismisses after a "done" or "error" status was rendered (BUG 2 regression guard)', () => {
   let closed = false;
   const doneModal = buildOneOffModal(fakeDoc, { onClose: () => { closed = true; } });
+  doneModal.sheet.open();
   doneModal.setStatus({ state: 'done' });
   doneModal.closeBtn.click();
   assert.strictEqual(closed, true, 'the X button must dismiss even after a terminal "done" status was rendered');
 
   closed = false;
   const errorModal = buildOneOffModal(fakeDoc, { onClose: () => { closed = true; } });
+  errorModal.sheet.open();
   errorModal.setStatus({ state: 'error', error: 'boom' });
   errorModal.closeBtn.click();
   assert.strictEqual(closed, true, 'the X button must dismiss even after a terminal "error" status was rendered');
 });
 
-test('buildOneOffModal: a tap that starts+ends on the backdrop calls onClose, but a drag from inside the modal does not', () => {
+test('buildOneOffModal: a tap on the scrim calls onClose once; a drag from inside the form never reaches the scrim', () => {
   let closeCalls = 0;
   const modal = buildOneOffModal(fakeDoc, { onClose: () => { closeCalls += 1; } });
+  modal.sheet.open();
 
-  // A genuine tap on the backdrop: press AND release both land on it.
-  modal.backdrop.fire('pointerdown', { target: modal.backdrop });
-  modal.backdrop.fire('click', { target: modal.backdrop });
+  // v1.289, by construction now: the scrim is a SIBLING of the sheet (never its ancestor),
+  // so a text-selection drag that BEGINS in a field and releases outside makes the browser
+  // click their common ancestor (body) - never the scrim.
+  assert.strictEqual(modal.backdrop.contains(modal.urlInput), false, 'the form is not inside the scrim');
+  assert.strictEqual(modal.backdrop.parentElement, modal.sheet.el.parentElement, 'scrim and sheet are siblings');
+  fire(modal.urlInput, 'pointerdown');
+  fire(fakeDoc.body, 'click'); // the common ancestor's synthesized click
+  assert.strictEqual(closeCalls, 0, 'a drag that starts inside the form must not close it');
+  assert.strictEqual(modal.sheet.isOpen(), true);
+
+  // A genuine tap on the scrim closes it, once.
+  modal.backdrop.click();
+  modal.backdrop.click();
   assert.strictEqual(closeCalls, 1);
-
-  // v1.289: a drag that BEGINS inside the dialog (press on the inner modal) and
-  // releases on the backdrop - the browser's synthesized click targets the
-  // common ancestor (the backdrop). This is the text-selection case that used to
-  // eat the modal; it must NOT close now.
-  modal.backdrop.fire('pointerdown', { target: modal.modal });
-  modal.backdrop.fire('click', { target: modal.backdrop });
-  assert.strictEqual(closeCalls, 1, 'a drag that starts inside the modal must not close it');
 });
 
 test('buildOneOffModal: setStatus renders a hostile live entry as inert TEXT, never innerHTML (XSS regression)', () => {
   const modal = buildOneOffModal(fakeDoc, {});
   const hostileError = '<img src=x onerror=alert(1)>';
 
-  // Must not throw -- if setStatus ever assigned innerHTML with this string,
-  // the fake's innerHTML setter above would throw and fail this test loudly.
+  // Must not throw -- every innerHTML write on this document's elements throws while
+  // setStatus runs, so a markup write fails this test loudly.
+  const proto = fakeDom.window.Element.prototype;
+  const desc = Object.getOwnPropertyDescriptor(proto, 'innerHTML');
+  Object.defineProperty(proto, 'innerHTML', { configurable: true, get: desc.get,
+    set() { throw new Error('buildOneOffModal must never assign innerHTML -- use textContent instead'); } });
+  try {
   modal.setStatus({ state: 'error', error: hostileError });
   assert.strictEqual(modal.statusEl.textContent, hostileError);
 
@@ -487,8 +437,10 @@ test('buildOneOffModal: setStatus renders a hostile live entry as inert TEXT, ne
   modal.setStatus({ state: 'downloading', title: hostileTitle, percent: 5 });
   assert.ok(modal.statusEl.textContent.startsWith(hostileTitle));
 
+  } finally { Object.defineProperty(proto, 'innerHTML', desc); }
+
   // No <script>/<img> element must ever exist anywhere in the modal.
-  const tagNames = new Set([...modal.backdrop.walk()].map((el) => el.tagName));
+  const tagNames = new Set(walk(modal.modal).map((el) => el.tagName));
   assert.ok(!tagNames.has('SCRIPT'));
   assert.ok(!tagNames.has('IMG'));
 });
@@ -750,7 +702,8 @@ test('buildOneOffModal: setStatus shows the bar at the real percent width once t
   const modal = buildOneOffModal(fakeDoc, {});
   modal.setStatus({ state: 'downloading', percent: 47 });
   assert.strictEqual(modal.progressTrack.hidden, false);
-  assert.strictEqual(modal.progressFill.style.width, '47%');
+  assert.strictEqual(modal.progressFill.style.getPropertyValue('--p'), '0.47', 'the fill scales by --p (0..1), never an inline width');
+  assert.strictEqual(modal.progressFill.style.width, '');
   assert.strictEqual(modal.progressFill.className, 'dl-status-chip-progress-fill');
 });
 
@@ -759,12 +712,12 @@ test('buildOneOffModal: setStatus marks the bar indeterminate (full-width, .inde
 
   modal.setStatus({ state: 'queued' });
   assert.strictEqual(modal.progressTrack.hidden, false);
-  assert.strictEqual(modal.progressFill.style.width, '100%');
+  assert.strictEqual(modal.progressFill.style.getPropertyValue('--p'), '1');
   assert.match(modal.progressFill.className, /\bindeterminate\b/);
 
   modal.setStatus({ state: 'downloading', phase: 'merging', percent: 100 });
   assert.strictEqual(modal.progressTrack.hidden, false);
-  assert.strictEqual(modal.progressFill.style.width, '100%');
+  assert.strictEqual(modal.progressFill.style.getPropertyValue('--p'), '1');
   assert.match(modal.progressFill.className, /\bindeterminate\b/);
 });
 

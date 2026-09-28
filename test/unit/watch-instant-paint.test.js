@@ -225,8 +225,9 @@ test('LOCK: watch.html carries NO flashable placeholder literal, and the skeleto
   assert.match(viewRoot, /id="media-title"[^>]*><\/h1>|class="watch-title skeleton-shimmer/,
     'the title ships as an empty skeleton');
   assert.ok(viewRoot.includes('skeleton-shimmer'), 'skeletons present for cold loads');
-  // The "Show more" control ships hidden (it used to sit under an empty box).
-  assert.match(viewRoot, /id="expand-desc-btn" style="display: none;"/);
+  // The "Show more" control ships hidden (it used to sit under an empty box); UI pass S3: the
+  // `hidden` attribute (the global [hidden] rule), no inline style.
+  assert.match(viewRoot, /id="expand-desc-btn" hidden/);
   // The related header ships hidden (a lone header over an empty list).
   assert.match(viewRoot, /id="related-header" hidden/);
 });

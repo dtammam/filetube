@@ -218,9 +218,9 @@ const OBSERVER_JS = `(function () {
     }
     var subBtn = document.getElementById('subscribe-btn-mock');
     if (subBtn) {
-      // v1.340: the label is a stable-width stack holding BOTH words (common.js
-      // stableToggleLabelHtml) - read the CURRENT one from data-label (gate r1 W3), never textContent.
-      var subStack = subBtn.querySelector('.btn-label-stack');
+      // The label is a stable-width stack holding BOTH words (ui.js ui.button({ labels }),
+      // the ui-btn__stack) - read the CURRENT one from data-label, never textContent.
+      var subStack = subBtn.querySelector('.ui-btn__stack');
       var subLabel = subStack ? subStack.getAttribute('data-label') : subBtn.textContent.trim();
       var sk = (subBtn.isConnected ? (subBtn.hidden ? 'hidden' : 'shown:' + subLabel) : 'removed');
       var bell = document.querySelector('.watch-bell-btn, #subscribe-bell-btn, .subscribe-bell-btn');

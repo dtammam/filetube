@@ -59,6 +59,26 @@
   function ipRwdGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h1.8v12H4zM13 6v12l-6-6zM21 6v12l-6-6z"/></svg>'; }
   function ipFfwdGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6v12l6-6zM11 6v12l6-6zM18.2 6H20v12h-1.8z"/></svg>'; }
   function ipPlayPauseGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5v14l10-7zM15 5h2.2v14H15zM19.8 5H22v14h-2.2z"/></svg>'; }
+  // UI pass S7 (F60): the skins' small MARKS are drawn, never text symbols. A text play triangle (U+25B6)
+  // turns into a colour emoji on iOS and ignores `color`, and the status bar's play / pause-bars swap
+  // changed its width (a different advance per symbol). Each mark is an SVG path filled with
+  // currentColor, sized by its container's --mms-g-size (the text role it replaces, style.css).
+  // The play / pause pair is BOTH glyphs stacked in one cell (the reflect toggles is-paused), so
+  // the status bar never re-measures when the state flips.
+  var SK_GLYPH = {
+    play: 'M8 5v14l11-7z',
+    pause: 'M6 5h4v14H6zM14 5h4v14h-4z',
+    chevDown: 'M7 9.5l5 5 5-5z',
+    chevRight: 'M9.5 7l5 5-5 5z',
+    check: 'M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z',
+    star: 'M12 17.3 18.2 21l-1.6-7L22 9.2l-7.2-.6L12 2 9.2 8.6 2 9.2 7.4 14l-1.6 7z',
+  };
+  function skGlyph(name) {
+    return '<svg class="mms-g mms-g-' + name + '" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="' + SK_GLYPH[name] + '"/></svg>';
+  }
+  function playIndHtml(paused) {
+    return '<span class="mms-playind' + (paused ? ' is-paused' : '') + '" aria-hidden="true">' + skGlyph('play') + skGlyph('pause') + '</span>';
+  }
   // speaker glyph for the desktop pop-out's wheel-VOLUME bar (v1.235; SVG not emoji).
   function ipVolGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4 4 0 0 0-2.2-3.6v7.2A4 4 0 0 0 16.5 12zM14.3 4.3v1.9a6 6 0 0 1 0 11.6v1.9a8 8 0 0 0 0-15.4z"/></svg>'; }
 
@@ -75,7 +95,7 @@
   function playBtn(ctx) { return '<button type="button" class="mms-play" data-skin-play aria-label="' + (ctx.playing ? 'Pause' : 'Play') + '">' + playGlyph(ctx.playing) + '</button>'; }
   function prevBtn() { return '<button type="button" class="mms-skip mms-prev" data-skin-prev aria-label="Previous">' + prevGlyph() + '</button>'; }
   function nextBtn() { return '<button type="button" class="mms-skip mms-next" data-skin-next aria-label="Next">' + nextGlyph() + '</button>'; }
-  function collapseBtn() { return '<button type="button" class="mms-chev" data-skin-collapse aria-label="Collapse">▾</button>'; }
+  function collapseBtn() { return '<button type="button" class="mms-chev" data-skin-collapse aria-label="Collapse">' + skGlyph('chevDown') + '</button>'; }
   // v1.317 (M1, Dean: "no easy way to get to a channel's stuff in the music player"): the
   // now-playing ARTIST LINE is a real control on EVERY skin - a `data-skin-artist` button the
   // engine's delegated click proxies to the view's onArtist hook (the in-Music artist drill,
@@ -120,10 +140,10 @@
           (knownDurLabel(it.durLabel) ? '<span class="mms-rd">' + esc(knownDurLabel(it.durLabel)) + '</span>' : '') + '</button>';
       }
       return '<button type="button" class="' + c + '" data-skin-go="' + it.index + '">' +
-        '<span class="mms-rn">' + (it.state === 'current' ? '▶' : (it.index + 1)) + '</span>' +
+        '<span class="mms-rn">' + (it.state === 'current' ? skGlyph('play') : (it.index + 1)) + '</span>' +
         '<span class="mms-rt">' + esc(it.title || 'Track') + '</span>' +
         '<span class="mms-rd">' + esc(it.durLabel || '') + '</span>' +
-        '<span class="mms-chev-r" aria-hidden="true">›</span></button>';
+        '<span class="mms-chev-r" aria-hidden="true">' + skGlyph('chevRight') + '</span></button>';
     }).join('');
   }
 
@@ -174,7 +194,7 @@
     var nof = (Number(ctx.curNum) || 0) > 0 ? (ctx.curNum + ' of ' + (ctx.total || ctx.curNum)) : '';
     return '<div class="ip-lcd"><div class="ip-lcd-in">' +
       '<div class="ip-status"><span class="ip-np">Now Playing</span>' +
-      '<span class="ip-status-rt"><span class="mms-playind" aria-hidden="true">▶</span><span class="ip-batt" aria-hidden="true"><i></i></span></span></div>' +
+      '<span class="ip-status-rt">' + playIndHtml(ctx.playing === false) + '<span class="ip-batt" aria-hidden="true"><i></i></span></span></div>' +
       // --- Now Playing view ---
       '<div class="ip-npview">' +
       '<div class="ip-npmain"><div class="ip-cover"' + artVar(ctx) + '>' +
@@ -183,7 +203,7 @@
       '<div class="ip-ttl">' + esc(a.title || 'Unknown track') + '</div>' +
       artistLine('ip-artist', a.artist, ctx.artistTap, ctx.artistTitle) +
       '<div class="ip-album">' + esc(a.album || '') + '</div>' +
-      '<div class="ip-stars" aria-hidden="true">★★★★★</div>' +
+      '<div class="ip-stars" aria-hidden="true">' + skGlyph('star') + skGlyph('star') + skGlyph('star') + skGlyph('star') + skGlyph('star') + '</div>' +
       '<div class="ip-nof">' + esc(nof) + '</div></div></div>' +
       '<div class="ip-scrub"><span class="mms-pos">' + esc(ctx.posLabel || '0:00') + '</span>' +
       '<div class="ip-track" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div>' +
@@ -323,18 +343,88 @@
     return 'music-nowplaying-panel mms mms-full mms-' + id + (s.base ? ' mms-' + s.base : '') + (s.look ? ' mms-look-' + s.look : '');
   }
 
-  // The GATE: the mobile-music skin is active on a mobile viewport AND an audio item
-  // the skin can drive - a MUSIC item (meta.isMusic) or, since v1.246, a PODCAST episode
+  // The GATE: the mobile-music skin is active on a PHONE AND an audio item the skin can
+  // drive - a MUSIC item (meta.isMusic) or, since v1.246, a PODCAST episode
   // (meta.resumeMode==='podcast'; player.js exposes resumeMode via getCurrentMeta, so no
   // player.js change is needed here). `meta` is player.getCurrentMeta() (or an {isMusic}/
-  // {resumeMode} stand-in); `mql` lets a test inject the matchMedia result. Desktop +
-  // video/book stay default.
-  function isMobileViewport(mql) {
-    if (typeof mql === 'boolean') return mql;
-    try { return !!(typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(max-width: 768px)').matches); } catch (_) { return false; }
+  // {resumeMode} stand-in); `phone` lets a test inject the answer. Desktop + video/book
+  // stay default.
+  //
+  // UI pass D7 (Dean's ruling: "Pocket is a phone mode, not a width mode"). The gate was
+  // a WIDTH (max-width 768px), which every non-SE iPhone exceeds in landscape, so a rotate
+  // tore the skin down and the rotate back rebuilt it and replayed every reveal (F23). It
+  // is a DEVICE class now: `html.is-phone`, set ONCE when this module loads (every shell
+  // that can host a skin loads it before any view script) from a coarse primary pointer
+  // plus the screen's SHORT side (<= 500 CSS px). The short side is the same in both
+  // orientations, and the class is never re-evaluated, so a rotation cannot change it.
+  // style.css keys the whole takeover on the same class, so CSS and JS are ONE writer.
+  // An iPad (short side 768-1024) and a desktop (fine pointer) are not phones.
+  var PHONE_CLASS = 'is-phone';
+  var PHONE_SHORT_SIDE_MAX = 500;
+  // Pure: the device-class decision from its two inputs (exported for the tests).
+  function phoneFrom(coarse, screenW, screenH) {
+    var w = Number(screenW), h = Number(screenH);
+    if (!coarse || !isFinite(w) || !isFinite(h)) return false;
+    return Math.min(w, h) <= PHONE_SHORT_SIDE_MAX;
   }
-  function skinActiveFor(meta, mql) {
-    return !!(meta && (meta.isMusic || meta.resumeMode === 'podcast')) && isMobileViewport(mql);
+  function detectPhone(win) {
+    try {
+      var coarse = !!(win.matchMedia && win.matchMedia('(pointer: coarse)').matches);
+      var scr = win.screen || {};
+      return phoneFrom(coarse, scr.width, scr.height);
+    } catch (_) { return false; }
+  }
+  // Set once per document: adds the class when the device is a phone, never removes it.
+  function markPhoneClass(win) {
+    try {
+      var html = win && win.document && win.document.documentElement;
+      if (!html) return false;
+      if (!html.classList.contains(PHONE_CLASS) && detectPhone(win)) html.classList.add(PHONE_CLASS);
+      return html.classList.contains(PHONE_CLASS);
+    } catch (_) { return false; }
+  }
+  // The JS half reads the SAME class the CSS keys on - never matchMedia, never a width.
+  function isPhone(phone) {
+    if (typeof phone === 'boolean') return phone;
+    try {
+      return !!(typeof document !== 'undefined' && document.documentElement && document.documentElement.classList.contains(PHONE_CLASS));
+    } catch (_) { return false; }
+  }
+  function skinActiveFor(meta, phone) {
+    return !!(meta && (meta.isMusic || meta.resumeMode === 'podcast')) && isPhone(phone);
+  }
+  if (typeof window !== 'undefined' && window.document) markPhoneClass(window);
+
+  // Measure AFTER settle (UI pass D7, F59). A size the skin reads once (the haptic ghost's
+  // scale, the Brick canvas's backing store) goes stale when a rotate or the iOS toolbar
+  // resizes the page after it was taken. `observeSettled` calls `apply()` once `el`'s box has
+  // held still for TWO animation frames after any change: a ResizeObserver report (including
+  // the one it delivers when it starts observing) restarts a frame watch, which applies in
+  // the frame after two equal reads, so a layout still moving is never measured. Returns a
+  // disconnect(). No ResizeObserver or rAF (an old engine, a jsdom fixture) -> nothing to
+  // watch, and the caller's one synchronous measure stands.
+  function observeSettled(el, win, apply) {
+    var RO = win && win.ResizeObserver;
+    var raf = win && typeof win.requestAnimationFrame === 'function' ? win.requestAnimationFrame.bind(win) : null;
+    if (!el || !RO || !raf || typeof apply !== 'function') return function () {};
+    var seq = 0, stopped = false;
+    function sizeOf() {
+      try { var r = el.getBoundingClientRect(); return r.width + 'x' + r.height; } catch (_) { return ''; }
+    }
+    function watch() {
+      var mine = ++seq;
+      var last = sizeOf(), stable = 0;
+      function tick() {
+        if (stopped || mine !== seq || !el.isConnected) return;
+        var now = sizeOf();
+        if (now === last) { stable++; if (stable >= 2) { apply(); return; } } else { stable = 0; last = now; }
+        raf(tick);
+      }
+      raf(tick);
+    }
+    var ro;
+    try { ro = new RO(function () { watch(); }); ro.observe(el); } catch (_) { return function () {}; }
+    return function () { stopped = true; try { ro.disconnect(); } catch (_) { /* already gone */ } };
   }
 
   // ==== POCKET MENUS (Dean 2026-09-24: "I'd love classic pocket skin to truly emulate.
@@ -685,9 +775,9 @@
         (v.currentId && it.id === v.currentId ? ' is-current' : '') + (it.check ? ' is-checked' : '');
       html += '<button type="button" class="' + cls + '" data-skin-mi="' + i + '" role="option" aria-selected="' + (i === v.cursor ? 'true' : 'false') + '">' +
         '<span class="ipm-lbl">' + esc(it.label) + '</span>' +
-        (it.check ? '<span class="ipm-check" aria-label="Selected">✓</span>' : '') +
+        (it.check ? '<span class="ipm-check" aria-label="Selected">' + skGlyph('check') + '</span>' : '') +
         (v.currentId && it.id === v.currentId ? '<span class="ipm-now" aria-label="Now playing">' + ipVolGlyph() + '</span>' : '') +
-        (it.node ? '<span class="ipm-chev" aria-hidden="true">›</span>' : '') +
+        (it.node ? '<span class="ipm-chev" aria-hidden="true">' + skGlyph('chevRight') + '</span>' : '') +
         '</button>';
     }
     html += '<div class="ipm-pad" style="height:' + (Math.max(0, items.length - v.end) * rowH) + 'px"></div>';
@@ -730,7 +820,8 @@
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
     skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, isClickColorway: isClickColorway,
     renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
-    skinActiveFor: skinActiveFor, isMobileViewport: isMobileViewport,
+    skinActiveFor: skinActiveFor, isPhone: isPhone, phoneFrom: phoneFrom, markPhoneClass: markPhoneClass,
+    PHONE_CLASS: PHONE_CLASS, PHONE_SHORT_SIDE_MAX: PHONE_SHORT_SIDE_MAX, observeSettled: observeSettled,
     // the pocket menus (the pure half - see the block above).
     menuStyle: menuStyle, menuTitle: menuTitle, menuStaticItems: menuStaticItems,
     menuArtistItems: menuArtistItems, menuAlbumItems: menuAlbumItems, menuSongItems: menuSongItems,

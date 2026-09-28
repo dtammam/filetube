@@ -37,7 +37,7 @@ test('watch.js no longer declares the vestigial defaultMaxVideosForModal closure
 test('watch.js still builds the subscribe modal options without a defaultMaxVideos field', () => {
   assert.match(
     watchJs,
-    /channelName: currentChannelName,\s*channelUrl: currentSubState\.identity\.channelUrl,\s*format: mediaData && mediaData\.type === 'audio' \? 'audio' : 'video',\s*\},/,
-    'expected the buildSubscribeModal options object to end after `format`, with no defaultMaxVideos field'
+    /channelName: currentChannelName,\s*channelUrl: currentSubState\.identity\.channelUrl,\s*format: mediaData && mediaData\.type === 'audio' \? 'audio' : 'video',\s*signal, \/\/ the view's: an SPA nav away closes the sheet\s*\},/,
+    'expected the buildSubscribeModal options object to end after `format` and the view signal (step 7), with no defaultMaxVideos field'
   );
 });

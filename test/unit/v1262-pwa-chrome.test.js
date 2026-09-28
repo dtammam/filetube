@@ -62,18 +62,28 @@ test('the @font-face rule keeps font-display: swap (preload shrinks the swap win
   assert.match(fontFaceBlock[1], /font-display:\s*swap;/);
 });
 
-test('.toast bottom offset adds env(safe-area-inset-bottom) on top of the existing 24px, with a 0px fallback', () => {
-  // The BASE (non-media-query, unindented) .toast rule -- there is also an
-  // earlier mobile-scoped `.toast { bottom: ... }` override (clears the
-  // bottom nav), which a bare (non-anchored) regex would match first.
-  const rule = /^\.toast\s*\{([^}]*)\}/m.exec(css);
-  assert.ok(rule, 'expected a base .toast rule');
-  assert.match(rule[1], /bottom:\s*calc\(24px \+ env\(safe-area-inset-bottom,\s*0px\)\);/);
+// Sweep S9 (F56, AC12 conversion of the toast half): the toast is ui.css's ui-toast now - ONE
+// queue, one host - and the v1.26.2 intent survives on the primitive: the host clears the
+// iOS home indicator (env(safe-area-inset-bottom) on top of its offset) on every width, and on
+// a phone it clears the fixed bottom nav through --mobile-bottom-nav-h, which itself carries
+// the safe-area inset (so the two never drift through the address-bar collapse). The old
+// .toast rules are gone, so nothing in style.css can re-anchor a second toast family.
+const UI_CSS = fs.readFileSync(path.join(ROOT, 'public', 'css', 'ui.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const CSS_NC = css.replace(/\/\*[\s\S]*?\*\//g, '');
+
+test('the toast host adds env(safe-area-inset-bottom) on top of its offset (ui.css .ui-toast-host, base rule)', () => {
+  const rule = /^\.ui-toast-host\s*\{([^}]*)\}/m.exec(UI_CSS);
+  assert.ok(rule, 'expected a base .ui-toast-host rule');
+  assert.match(rule[1], /bottom:\s*calc\(var\(--toast-offset\) \+ env\(safe-area-inset-bottom\)\);/);
+  assert.match(rule[1], /position:\s*fixed/);
 });
 
-test('the mobile .toast override (clearing the bottom nav) is unchanged by the safe-area fix -- it already routes safe-area-inset-bottom via --mobile-bottom-nav-h', () => {
-  // Step 3 opener (2026-07-31): the line now carries a token-exempt
-  // directive comment (positional geometry) - the lock tolerates it; the
-  // DECLARATION is still pinned byte-exactly.
-  assert.match(css, /\.toast\s*\{\s*bottom:\s*calc\(var\(--mobile-bottom-nav-h\)\s*\+\s*12px\);\s*(?:\/\*[^*]*token-exempt[^*]*\*\/\s*)?\}/);
+test('on a phone the toast host clears the bottom nav via --mobile-bottom-nav-h, and that token carries the safe-area inset', () => {
+  assert.match(UI_CSS, /@media \(max-width: 768px\)\s*\{\s*\.ui-toast-host\s*\{\s*bottom:\s*calc\(var\(--mobile-bottom-nav-h, 0px\) \+ var\(--space-4\)\);\s*\}/);
+  assert.match(CSS_NC, /--mobile-bottom-nav-h:\s*calc\(72px \+ env\(safe-area-inset-bottom\)\);/);
+});
+
+test('no bespoke toast family is left in style.css (every toast is a ui-toast, F56)', () => {
+  assert.doesNotMatch(CSS_NC, /\.toast\b/, 'a .toast rule');
+  assert.doesNotMatch(CSS_NC, /\.toast-action-btn\b/, 'the old red caps Undo');
 });

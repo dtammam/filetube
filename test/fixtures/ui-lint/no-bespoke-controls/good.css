@@ -1,0 +1,8 @@
+/* ui-lint-canary: path=public/css/ui.css */
+.ui-btn { cursor: pointer; }
+.ui-row__link { cursor: pointer; }
+.ui-chip--filter:hover { color: var(--ink-1); }
+.ui-btn.foo-btn { color: var(--ink-1); }
+.card-title { color: var(--ink-1); }
+.btn-group-label { color: var(--ink-2); }
+button.ui-btn { margin: 0; }

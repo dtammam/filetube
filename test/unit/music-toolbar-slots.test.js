@@ -102,12 +102,14 @@ test('music.html ships the view toggle and the pop-out already RESERVED (the fir
   }
 });
 
-test('the pop-out has no box at the mobile width - the SAME query popoutSupported() reads', () => {
-  const m = /@media \(max-width: (\d+)px\)\s*\{\s*#music-popout-btn\s*\{\s*display:\s*none !important;\s*\}\s*\}/.exec(CSS);
-  assert.ok(m, 'a mobile-width rule removes the pop-out box before music.js runs');
+// UI pass D7: the pop-out's gate is the device class (html.is-phone), so its pre-JS box rule keys
+// on the SAME class popoutSupported() reads through music-skins.js isPhone - never a width.
+test('the pop-out has no box on a phone - the SAME class popoutSupported() reads', () => {
+  const m = /(?:^|\n)html\.is-phone #music-popout-btn\s*\{\s*display:\s*none;?\s*\}/.exec(CSS);
+  assert.ok(m, 'a phone-class rule removes the pop-out box before music.js runs');
+  assert.doesNotMatch(CSS, /@media \(max-width: \d+px\)\s*\{\s*#music-popout-btn/, 'no width query decides the pop-out box');
   const skins = fs.readFileSync(path.join(REPO, 'public/js/music-skins.js'), 'utf8');
-  const q = /matchMedia\('\(max-width: (\d+)px\)'\)/.exec(skins);
-  assert.ok(q, 'the isMobileViewport query');
-  assert.strictEqual(m[1], q[1], 'CSS and isMobileViewport agree on the width');
-  assert.match(MUSIC, /function popoutSupported\(\) \{\s*try \{ if \(SKINS && SKINS\.isMobileViewport && SKINS\.isMobileViewport\(\)\) return false;/, 'popoutSupported reads isMobileViewport');
+  assert.match(skins, /var PHONE_CLASS = 'is-phone';/, 'music-skins.js names the same class');
+  assert.match(skins, /function isPhone\(phone\) \{[\s\S]*?classList\.contains\(PHONE_CLASS\)/, 'isPhone reads the class');
+  assert.match(MUSIC, /function popoutSupported\(\) \{\s*try \{ if \(SKINS && SKINS\.isPhone && SKINS\.isPhone\(\)\) return false;/, 'popoutSupported reads isPhone');
 });

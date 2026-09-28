@@ -2,9 +2,10 @@
 
 // [UNIT] v1.51 - the notification bell's pure client decisions
 // (public/js/common.js): the capability-probe predicate, the badge label
-// formatter, and the server-row -> render-model mapper. The DOM injector
-// itself is the usual untested-by-necessity thin shell (no browser harness
-// in this repo); the integration suite + Dean's device probes cover it.
+// formatter, and the server-row -> render-model mapper. Sweep S4: the panel's rendered
+// rows are driven in jsdom too (the real injector + ui.js + interaction.js, through
+// test/helpers/notif-panel-harness.js; see also notif-delete-confirm.test.js and
+// notification-dismiss-client.test.js).
 //
 // Fixture spellings are divergent (v1.41.9): nothing below matches a default
 // the code could invent.
@@ -76,35 +77,23 @@ test('v1.208: durationSec is a positive number or 0 - the badge renders only whe
   assert.equal(buildNotificationRowModel({ ...FULL_ROW, durationSec: 62.4 }).durationSec, 62.4, 'a float length is kept (formatDuration rounds)');
 });
 
-test('v1.208 SOURCE-LOCK: renderRows wraps the thumb and appends a duration badge ONLY when durationSec > 0', () => {
-  // renderRows is an internal panel closure (not exported); bind its shape on
-  // the source so the wrap + the guarded .duration-badge append cannot silently
-  // regress. The data path (model + server payload) is bound behaviourally
-  // elsewhere; the visual fit is measured against the 72x40 thumb.
-  const fs = require('node:fs');
-  const path = require('node:path');
-  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'common.js'), 'utf8');
-  assert.match(src, /notif-row-thumb-wrap/, 'the positioned thumb wrapper exists');
-  assert.match(src, /m\.durationSec > 0 && typeof formatDuration === 'function'/, 'the badge is guarded on a positive duration');
-  assert.match(src, /badge\.className = 'duration-badge'/, 'it reuses the .duration-badge system');
-  assert.match(src, /badge\.textContent = formatDuration\(m\.durationSec\)/, 'formatted via the shared formatDuration');
-});
-
-test('v1.208 CSS: the thumb wrapper is positioned and the panel badge is SCALED DOWN (fs-xs), winning over the mobile fs-2xl bump', () => {
-  const fs = require('node:fs');
-  const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8')
-    .replace(/\/\*[^]*?\*\//g, ''); // strip comments once
-  const wrap = /\.notif-row-thumb-wrap\s*\{([^}]*)\}/.exec(css);
-  assert.ok(wrap, '.notif-row-thumb-wrap rule exists');
-  assert.match(wrap[1], /position:\s*relative/, 'the wrapper hosts the absolute badge');
-  const badge = /\.notif-row-thumb-wrap\s+\.duration-badge\s*\{([^}]*)\}/.exec(css);
-  assert.ok(badge, 'the scoped panel-badge rule exists');
-  assert.match(badge[1], /font-size:\s*var\(--fs-xs\)/, 'scaled to fs-xs (the list-view small-pill language) so it fits a 72x40 thumb');
-  // 0-2-0 specificity beats the mobile `.duration-badge { font-size: --fs-2xl }`
-  // (0-1-0), so the panel badge stays small at every width - measured ~15px
-  // tall in the 72x40 corner (width tracks the label: ~33px for "1:23",
-  // ~40px for "12:34"), identical desktop + mobile.
+// Sweep S4 (AC12 conversion): the v1.208 thumb wrapper + scaled-down .duration-badge (and
+// the v1.68.3 isolation that kept that badge under the sticky header) became ui.thumb's
+// ONE duration badge (F04) inside a reserved aside column; the source locks on the old
+// render loop are replaced by the rendered DOM below and by panel-chrome-mirror.test.js.
+test('v1.208 (sweep S4): the panel thumb carries ui.thumb\'s duration badge ONLY on a real thumbnail with a length', async () => {
+  const { mountBell } = require('../helpers/notif-panel-harness');
+  const h = await mountBell();
+  try {
+    await h.open();
+    const badgeOf = (id) => { const b = h.row(id).querySelector('.ui-row__aside .ui-thumb .ui-thumb__duration'); return b ? b.textContent : null; };
+    assert.strictEqual(badgeOf(41), '12:34', 'a media thumbnail with a length');
+    assert.strictEqual(badgeOf(43), '30:00', 'a podcast\'s show art with an episode length');
+    assert.strictEqual(badgeOf(42), null, 'no thumbnail -> the logo, which hangs no badge');
+    assert.strictEqual(badgeOf(44), null, 'the engine mark hangs no badge');
+    // every row renders its aside thumb (the column is reserved on every row, F28)
+    for (const r of h.rows()) assert.ok(r.querySelector('.ui-row__aside > .ui-thumb.ui-thumb--row'), `row ${r.dataset.notifId} has its thumb`);
+  } finally { await h.teardown(); }
 });
 
 test('buildNotificationRowModel: channel label falls back channelName -> folderName -> Library', () => {
@@ -165,10 +154,11 @@ test('v1.67.1: setup.js push setError reveals the element (routes through setFie
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'setup.js'), 'utf8');
   // The push controls' setError must delegate to the show/hide helper.
   assert.match(src, /const setError = \(msg\) => setFieldError\(errorEl, msg\);/,
-    'push setError must use setFieldError (which sets display:block); a textContent-only setError writes to a display:none element and is invisible');
-  // And setFieldError itself must still toggle display (the mechanism).
-  assert.match(src, /function setFieldError\(el, message\)[\s\S]*?el\.style\.display = 'block'/,
-    'setFieldError must set display:block when showing a message');
+    'push setError must use setFieldError (which un-hides the element); a textContent-only setError writes to a hidden element and is invisible');
+  // And setFieldError itself must still reveal the element (the mechanism). Sweep S8: the
+  // reveal is the `hidden` attribute (no inline display write; the global [hidden] rule).
+  assert.match(src, /function setFieldError\(el, message\) \{\s*if \(!el\) return;\s*el\.textContent = message \? message : '';\s*el\.hidden = !message;\s*\}/,
+    'setFieldError must un-hide the element when showing a message');
 });
 
 // ---- v1.73: podcast rows in the bell panel ----------------------------------
@@ -205,28 +195,35 @@ test('v1.288: a podcast row with no resolvable show art falls back to the FileTu
   assert.equal(undef.thumbnailIsIcon, true);
 });
 
-// v1.288 (Dean's "nothing iconless" rule): the render loop is the repo's
-// untested-by-necessity thin DOM shell (no browser harness), so bind its net
-// with a source-lock - the two axes that keep a row from ever showing the
-// browser's broken-image glyph: (1) BOTH the avatar and thumbnail imgs carry an
-// onerror that swaps to the FileTube logo (self-nulling so it can't loop), and
-// (2) the icon-fit thumb wears the contain class and a logo hangs no duration badge.
-test('v1.288: the notification render loop wires an onerror logo-fallback on both images + icon-fit gating', () => {
-  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/js/common.js'), 'utf8');
-  // The two fallback marks exist as named constants.
-  assert.match(src, /const NOTIF_ENGINE_ICON = '\/icons\/ytdlp\.svg';/, 'the vendored yt-dlp mark');
-  assert.match(src, /const NOTIF_FALLBACK_ICON = '\/icons\/icon-192\.png';/, 'the FileTube logo floor');
-  // Avatar onerror: self-null, then swap to the logo (contain via the fallback class).
-  assert.match(src, /img\.onerror = function \(\) \{[\s\S]{0,200}this\.onerror = null;[\s\S]{0,200}this\.src = NOTIF_FALLBACK_ICON;[\s\S]{0,200}notif-row-avatar-fallback/,
-    'the avatar img must degrade a 404 to the logo, self-nulling first');
-  // Thumb onerror: self-null, swap to the logo icon-fit, and drop any duration badge.
-  assert.match(src, /thumb\.onerror = function \(\) \{[\s\S]{0,240}this\.onerror = null;[\s\S]{0,240}this\.src = NOTIF_FALLBACK_ICON;[\s\S]{0,240}notif-row-thumb-icon[\s\S]{0,240}duration-badge[\s\S]{0,80}\.remove\(\)/,
-    'the thumb img must degrade a 404 to the icon-fit logo and remove its duration badge');
-  // The icon-fit class is applied from the model flag, and a logo hangs no badge.
-  assert.match(src, /m\.thumbnailIsIcon \? 'notif-row-thumb notif-row-thumb-icon' : 'notif-row-thumb'/,
-    'an icon-fit thumb gets the contain class');
-  assert.match(src, /if \(!m\.thumbnailIsIcon && m\.durationSec > 0/,
-    'a duration badge is suppressed on a logo/icon thumb');
+// v1.288 (Dean's "nothing iconless" rule), sweep S4 (AC12 conversion of the source lock):
+// driven on the rendered panel. (1) a logo thumbnail (engine mark, the FileTube floor) is
+// contained (.notif-thumb-icon), (2) a thumbnail that 404s becomes the contained logo and
+// drops its duration badge, once (no loop), and (3) an avatar that 404s becomes ui.avatar's
+// monogram (D4.4: never the logo, never a broken image).
+test('v1.288 (sweep S4): logo thumbs are contained; a 404 thumb becomes the contained logo without its badge; a 404 avatar becomes the monogram', async () => {
+  const { mountBell } = require('../helpers/notif-panel-harness');
+  const h = await mountBell();
+  try {
+    await h.open();
+    const logoOf = (id) => h.row(id).querySelector('.ui-thumb__img.notif-thumb-icon');
+    assert.strictEqual(logoOf(44).getAttribute('src'), '/icons/ytdlp.svg', 'the engine row wears the yt-dlp mark, contained');
+    assert.strictEqual(logoOf(42).getAttribute('src'), '/icons/icon-192.png', 'a thumbnail-less row wears the FileTube floor, contained');
+    assert.strictEqual(logoOf(41), null, 'a real thumbnail is a photo, not contained');
+    const img = h.row(41).querySelector('.ui-thumb__img');
+    assert.strictEqual(img.getAttribute('src'), '/thumbnail/Vídeo-One', 'the raw md5-style id, as main.js cards build it');
+    img.dispatchEvent(new h.w.Event('error'));
+    assert.strictEqual(logoOf(41).getAttribute('src'), '/icons/icon-192.png', 'the 404 thumb became the logo');
+    assert.strictEqual(h.row(41).querySelectorAll('.ui-thumb__img').length, 1, 'the broken image is gone, one logo in its place');
+    assert.strictEqual(h.row(41).querySelector('.ui-thumb__duration'), null, 'and its duration badge went with it');
+    logoOf(41).dispatchEvent(new h.w.Event('error'));
+    assert.strictEqual(h.row(41).querySelectorAll('.ui-thumb__img').length, 1, 'a failing logo never loops or stacks');
+    const art = h.row(43).querySelector('.ui-row__media .ui-art .ui-avatar__img');
+    assert.strictEqual(art.getAttribute('src'), '/podcastart/s%C3%BCb', 'the podcast avatar is its show ART (D4.4)');
+    art.dispatchEvent(new h.w.Event('error'));
+    const media = h.row(43).querySelector('.ui-row__media');
+    assert.strictEqual(media.querySelector('img'), null, 'no broken image');
+    assert.strictEqual(media.querySelector('.ui-avatar__mono').textContent, 'S', 'the monogram, never the logo');
+  } finally { await h.teardown(); }
 });
 
 test('v1.73 (adversarial W5): the bell row TAP stashes a watch seed for MEDIA rows only (the fourth strike of the seed class)', () => {

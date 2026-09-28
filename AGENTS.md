@@ -102,8 +102,10 @@ blood more than once. The full guards are in `docs/LESSONS.md` (sections noted):
   (page-local `<head>` styles are lost on in-app nav), and a same-route SPA nav
   IGNORES the URL hash (a `#section` deep-link from the same page no-ops — set
   `location.hash` directly); Express static-segment routes before `/:id`.
-- **Design-token census** (LESSONS 3) — `npm run lint:css` ceiling is ZERO; new raw literals
-  in governed properties must be tokenized or `token-exempt`-annotated.
+- **UI ratchet** (LESSONS 3) - `npm run lint:ui` fails on any debt above the shrink-only
+  `docs/ui-exceptions.json`; new raw literals in governed properties must be tokenized or
+  `token-exempt`-annotated, and every annotation is counted debt there too (it superseded
+  the `lint:css` token census).
 - **Overlay containment census (anti-bleed)** (LESSONS 3, 6) — `node scripts/overlay-containment-lint.js
   --enforce` ceiling is ZERO. A rounded overlay that scrolls SPLITS clip from
   scroll (`overflow:hidden` + `border-radius` on the outer element; `overflow:auto`

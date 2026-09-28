@@ -7,14 +7,14 @@
 // is an accessibility anti-pattern that is NOT used here -- see index.html/
 // watch.html/setup.html's shared viewport meta tag, unchanged). The one-off
 // download modal's URL/folder text inputs and format/quality/filetype
-// selects (shared by common.js's buildOneOffModal AND buildSubscribeModal,
-// both reuse `.oneoff-modal-field`/`.oneoff-modal-row select`), the Settings
+// selects (shared by common.js's buildOneOffModal AND buildSubscribeModal - ui-field /
+// ui-select since UI pass S8 / step 7, 16px at every width), the Settings
 // (setup.html) form's text/number inputs and selects (`.setup-box
 // .setup-select`/`input[type="text"|"number"]`, which also reaches the
 // Subscriptions page's own format/quality/filetype selects since its
 // "Add a subscription"/one-shot rows share the SAME `.setup-select` class),
 // and the per-subscription settings sheet's cutoff-date/max-duration inputs
-// and selects (`.sub-sheet-field`) were all 13px -- bumped to 16px, scoped
+// and selects (the retired `.sub-sheet-field`; ui-field since UI pass S5) were all 13px -- bumped to 16px, scoped
 // to the existing mobile `@media (max-width: 768px)` breakpoint so desktop
 // (mouse input, no zoom-on-focus behavior to guard against) keeps its
 // compact 13px sizing.
@@ -25,6 +25,8 @@ const path = require('node:path');
 
 const CSS_PATH = path.join(__dirname, '..', '..', 'public', 'css', 'style.css');
 const css = fs.readFileSync(CSS_PATH, 'utf8');
+// UI pass step 1: the --fs-* scale is defined in tokens.css (loaded before style.css).
+const TOKENS_CSS = require('../helpers/stylesheets').readTokensCss();
 
 // v1.30 C1 (AC7.1/AC7.2): style.css's font-size declarations are now
 // token-driven (`var(--fs-*)`) rather than bare px literals -- see the
@@ -34,7 +36,7 @@ const css = fs.readFileSync(CSS_PATH, 'utf8');
 // spelling.
 function parseRootFsTokens(source) {
   const rootMatch = /:root\s*\{([\s\S]*?)\n\}/.exec(source);
-  assert.ok(rootMatch, 'expected a :root block in style.css');
+  assert.ok(rootMatch, 'expected a :root block in tokens.css');
   const tokens = {};
   const re = /(--fs-[a-z0-9-]+):\s*([0-9]+)px/g;
   let m;
@@ -44,7 +46,7 @@ function parseRootFsTokens(source) {
   return tokens;
 }
 
-const fsTokens = parseRootFsTokens(css);
+const fsTokens = parseRootFsTokens(TOKENS_CSS);
 
 // Resolves a font-size declaration's VALUE (e.g. "16px" or
 // "var(--fs-input-min)") to a numeric px, following the token indirection
@@ -65,7 +67,7 @@ function resolveFontSizePx(value) {
 // This file has several independent `@media (max-width: 768px) { ... }`
 // blocks (one per feature area) -- isolate the one containing `marker` by
 // brace-depth counting, mirroring the pattern in
-// watch-action-bar-nowrap.test.js, rather than a single `[\s\S]*?` regex
+// the (retired, UI pass S3) watch-action-bar-nowrap.test.js, rather than a single `[\s\S]*?` regex
 // that could span (and falsely match against) unrelated blocks.
 function findMobileBlockContaining(marker) {
   const mediaRe = /@media \(max-width: 768px\)\s*\{/g;
@@ -96,68 +98,80 @@ function assertMobileFontSizeAtLeast16(marker, selectorSource, ruleRe) {
   assert.ok(px >= 16, `expected ${selectorSource}'s mobile font-size >= 16px to avoid iOS auto-zoom-on-focus (got ${px}px)`);
 }
 
-test('one-off download modal: .oneoff-modal-field (URL/folder text inputs) is >=16px on mobile', () => {
-  assertMobileFontSizeAtLeast16(
-    '.oneoff-modal-field',
-    '.oneoff-modal-field, .oneoff-modal-row select',
-    /\.oneoff-modal-field,\s*\n\s*\.oneoff-modal-row select\s*\{([^}]*)\}/
-  );
+// Step 7 (UI pass, DELIBERATE conversion): the one-off download dialog (sweep S8/S9) and the
+// Subscribe dialog (step 7) build ui-field inputs and ui-select selects, so the 16px floor is
+// the primitive's at EVERY width (the ui-field test below) - the .oneoff-modal-field /
+// .oneoff-modal-row select mobile bump these two tests pinned is retired with its rules.
+// Bound here: every text/date field and select either dialog builds IS a ui field.
+test('one-off download dialog + Subscribe dialog: every field they build is a ui-field input or a ui-select (16px at every width, the primitive\'s floor)', () => {
+  const { JSDOM } = require('jsdom');
+  const common = require('../../public/js/common.js');
+  const dom = new JSDOM('<!DOCTYPE html><body></body>');
+  const w = dom.window;
+  w.matchMedia = () => ({ matches: false });
+  const uiPath = require.resolve('../../public/js/ui.js');
+  delete require.cache[uiPath];
+  w.ui = require(uiPath);
+  try {
+    const one = common.buildOneOffModal(w.document, {});
+    const sub = common.buildSubscribeModal(w.document, { channelUrl: 'https://www.youtube.com/@x' }, {});
+    for (const [name, form] of [['one-off', one.modal], ['Subscribe', sub.modal]]) {
+      const fields = Array.from(form.querySelectorAll('input, select, textarea')).filter((f) => f.type !== 'checkbox');
+      assert.ok(fields.length >= 4, name + ': the scan reached the fields');
+      for (const f of fields) {
+        assert.ok(f.classList.contains('ui-field__input') || f.classList.contains('ui-select__native'),
+          name + ': <' + f.tagName.toLowerCase() + ' class="' + f.className + '"> is a ui field');
+      }
+    }
+    assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.oneoff-modal-field|\.oneoff-modal-row\b/, 'the retired bespoke field rules are gone');
+  } finally { dom.window.close(); }
 });
 
-test('one-off download modal / Subscribe modal: .oneoff-modal-row select (format/quality/filetype) is >=16px on mobile', () => {
-  // Same grouped rule as above -- .oneoff-modal-field is reused by BOTH the
-  // header one-off download modal AND buildSubscribeModal's cutoff-date
-  // input (common.js), and .oneoff-modal-row select is reused by both
-  // modals' format/quality/filetype selects, so this single rule covers all
-  // of them.
-  const block = findMobileBlockContaining('.oneoff-modal-field');
-  const rule = /\.oneoff-modal-field,\s*\n\s*\.oneoff-modal-row select\s*\{([^}]*)\}/.exec(block);
-  assert.ok(rule, 'expected the grouped .oneoff-modal-field/.oneoff-modal-row select mobile rule');
-  assert.match(rule[1], /font-size:\s*var\(--fs-input-min\);/);
-  const fontMatch = /font-size:\s*([^;]+);/.exec(rule[1]);
-  assert.ok(resolveFontSizePx(fontMatch[1]) >= 16);
+// Retire R3 (DELIBERATE conversion of the two v1.25.4 `.setup-box .setup-select / input`
+// locks): that mobile 16px rule is gone because nothing needs it - the `.setup-select` class is
+// rendered nowhere any more (the Subscriptions builders' last default became ui-select__native),
+// and every Settings text field is a ui-field input, 16px at EVERY width in ui.css (the census
+// below holds that for every classed control). This pins both halves so the old rule's reason
+// cannot quietly come back.
+test('Settings form: no field wears the retired .setup-select, and every Settings text field is a 16px ui field', () => {
+  const read = (rel) => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
+  const strip = (t) => t.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"\\])\/\/.*$/gm, '$1');
+  for (const rel of ['public/setup.html', 'public/stats.html', 'public/js/setup.js', 'public/js/stats.js', 'lib/ytdlp/views/subscriptions.html', 'lib/ytdlp/client/subscriptions.js']) {
+    assert.doesNotMatch(strip(read(rel)), /setup-select/, `${rel}: no .setup-select field`);
+  }
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.setup-select\b/, 'and no rule styles one');
+  const setupHtml = read('public/setup.html');
+  const viewRoot = setupHtml.slice(setupHtml.indexOf('<div id="view-root"'));
+  const fields = [...viewRoot.matchAll(/<input\b([^>]*)>/g)].map((m) => m[1])
+    .filter((a) => /\btype="(text|number|password|search|url|email)"/.test(a));
+  assert.ok(fields.length >= 5, 'precondition: the Settings text fields are seen (' + fields.length + ')');
+  for (const a of fields) assert.match(a, /class="[^"]*\bui-field__input\b/, `a Settings text field is a ui field: <input${a}>`);
+  const uiCss = require('../helpers/stylesheets').readUiCss().replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(uiCss, /\n\.ui-field__input,\s*\n\.ui-select__native \{[^}]*font:\s*var\(--fw-normal\) var\(--fs-input-min\)/, 'the ui field is 16px at every width');
 });
 
-test('Settings form: .setup-box .setup-select / input[type="text"|"number"] are >=16px on mobile (also reaches the Subscriptions page\'s own .setup-select fields)', () => {
-  // NOTE: the same 3-selector group appears TWICE in this mobile block --
-  // once for the pre-existing `min-height: 44px` tap-target rule, once for
-  // the NEW font-size rule -- so match the font-size occurrence specifically
-  // (a bare `ruleRe.exec(block)` would find the first, min-height, match).
-  const block = findMobileBlockContaining('.setup-box .setup-select,\n  .setup-box input[type="text"],\n  .setup-box input[type="number"] {\n    font-size: var(--fs-input-min);');
-  assert.ok(block, 'expected to find the @media (max-width: 768px) block containing the .setup-box font-size rule');
-  const occurrences = block.match(/\.setup-box \.setup-select,\s*\n\s*\.setup-box input\[type="text"\],\s*\n\s*\.setup-box input\[type="number"\]\s*\{([^}]*)\}/g) || [];
-  assert.strictEqual(occurrences.length, 2, 'expected the .setup-box .setup-select/input group to appear twice (min-height rule + font-size rule)');
-  const fontSizeOccurrence = occurrences.find((o) => /font-size:\s*var\(--fs-input-min\);/.test(o));
-  assert.ok(fontSizeOccurrence, 'expected one of the two occurrences to carry font-size: var(--fs-input-min)');
-});
-
-test('Settings form fix does not touch .setup-box .btn (buttons never trigger iOS zoom-on-focus)', () => {
-  const block = findMobileBlockContaining('.setup-box .setup-select,\n  .setup-box input[type="text"],\n  .setup-box input[type="number"] {\n    font-size: var(--fs-input-min);');
-  assert.ok(block);
-  // A rule of exactly these 3 selectors (no .setup-box .btn) carrying the
-  // font-size bump confirms .btn was deliberately left out.
-  assert.match(block, /\.setup-box \.setup-select,\s*\n\s*\.setup-box input\[type="text"\],\s*\n\s*\.setup-box input\[type="number"\]\s*\{\s*font-size:\s*var\(--fs-input-min\);\s*\}/);
-});
-
-test('per-subscription settings sheet: .sub-sheet-field input / .setup-select are >=16px on mobile', () => {
-  // The `.sub-sheet-field .setup-select, .sub-sheet-field input` selector
-  // group appears TWICE: once as the base (desktop, 13px) rule, once inside
-  // the NEW mobile-scoped font-size rule -- find the mobile occurrence
-  // specifically, and confirm it really is inside an
-  // `@media (max-width: 768px)` block (not accidentally unconditional).
-  const occurrences = [...css.matchAll(/\.sub-sheet-field \.setup-select,\s*\n\s*\.sub-sheet-field input\s*\{([^}]*)\}/g)];
-  assert.strictEqual(occurrences.length, 2, 'expected the .sub-sheet-field selector group to appear twice (base rule + mobile font-size rule)');
-  const mobileOccurrence = occurrences.find((o) => /font-size:\s*var\(--fs-input-min\);/.test(o[1]));
-  assert.ok(mobileOccurrence, 'expected one occurrence to carry font-size: var(--fs-input-min)');
-
-  const idx = mobileOccurrence.index;
-  const before = css.slice(0, idx);
-  const lastMediaOpenIdx = before.lastIndexOf('@media (max-width: 768px) {');
-  assert.ok(lastMediaOpenIdx > -1, 'expected an @media (max-width: 768px) block to precede the mobile .sub-sheet-field rule');
-  const betweenMediaAndRule = css.slice(lastMediaOpenIdx, idx);
-  const closeBraceCount = (betweenMediaAndRule.match(/\}/g) || []).length;
-  const openBraceCount = (betweenMediaAndRule.match(/\{/g) || []).length;
-  assert.ok(openBraceCount > closeBraceCount, 'expected the mobile .sub-sheet-field rule to still be inside the @media block (unbalanced braces = still open)');
+test('per-subscription settings sheet + the Subscriptions forms: ui-field / ui-select fields are 16px at EVERY width (UI pass S5)', () => {
+  // UI pass S5 (AC12): the settings sheet and the Add / One-off forms are ui-field /
+  // ui-select markup now (ui.js field/select + the view's static fields), and the
+  // primitive holds the 16px iOS floor UNCONDITIONALLY (no mobile override to forget).
+  // It must be exactly --fs-input-min (16px), in the field rule's font shorthand.
+  const uiCss = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const rule = /\n\.ui-field__input,\s*\n\.ui-select__native \{([^}]*)\}/.exec(uiCss);
+  assert.ok(rule, 'expected the shared .ui-field__input, .ui-select__native rule');
+  assert.match(rule[1], /font:\s*var\(--fw-normal\) var\(--fs-input-min\) \/ var\(--lh-tight\) var\(--font-ui\);/);
+  const tokens = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'tokens.css'), 'utf8');
+  assert.match(tokens, /--fs-input-min:\s*16px;/, 'the floor token is 16px');
+  // no later rule in the ui layer shrinks the field font
+  assert.doesNotMatch(uiCss.slice(rule.index + rule[0].length), /\.(ui-field__input|ui-select__native)[^{]*\{[^}]*font(-size)?:/,
+    'nothing after the base rule re-sizes a ui field');
+  // and the Subscriptions view's fields actually ARE ui fields (no bare classed input left)
+  const subsHtml = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html'), 'utf8');
+  const viewRoot = subsHtml.slice(subsHtml.indexOf('<div id="view-root"'), subsHtml.indexOf('</main>'));
+  const fields = [...viewRoot.matchAll(/<(input|select)\b([^>]*)>/g)].map((m) => m[2]);
+  assert.strictEqual(fields.length, 13, 'the view carries its 13 form fields (search + Add 7 + One-off 5)');
+  for (const attrs of fields) {
+    assert.match(attrs, /class="(ui-field__input|ui-select__native)"/, `every view field is a ui field: <${attrs}>`);
+  }
 });
 
 test('header search: .search-input is >=16px on mobile (v1.25.10 -- tapping search no longer auto-zooms on iOS)', () => {
@@ -168,23 +182,9 @@ test('header search: .search-input is >=16px on mobile (v1.25.10 -- tapping sear
   );
 });
 
-test('desktop sizing is unchanged: the base (unscoped) .oneoff-modal-field/.oneoff-modal-row select/.setup-select/.sub-sheet-field rules still resolve to 13px', () => {
-  const oneOffField = /(?:^|\n)\.oneoff-modal-field\s*\{([^}]*)\}/.exec(css);
-  assert.ok(oneOffField);
-  assert.strictEqual(resolveFontSizePx(/font-size:\s*([^;]+);/.exec(oneOffField[1])[1]), 13);
-
-  const oneOffSelect = /(?:^|\n)\.oneoff-modal-row select\s*\{([^}]*)\}/.exec(css);
-  assert.ok(oneOffSelect);
-  assert.strictEqual(resolveFontSizePx(/font-size:\s*([^;]+);/.exec(oneOffSelect[1])[1]), 13);
-
-  const setupSelect = /(?:^|\n)\.setup-select\s*\{([^}]*)\}/.exec(css);
-  assert.ok(setupSelect);
-  assert.strictEqual(resolveFontSizePx(/font-size:\s*([^;]+);/.exec(setupSelect[1])[1]), 13);
-
-  const subSheetField = /\.sub-sheet-field \.setup-select,\s*\n\.sub-sheet-field input\s*\{([^}]*)\}/.exec(css);
-  assert.ok(subSheetField);
-  assert.strictEqual(resolveFontSizePx(/font-size:\s*([^;]+);/.exec(subSheetField[1])[1]), 13);
-});
+// (The v1.25.4 "desktop sizing is unchanged: 13px" lock is gone with its three members: step 7
+// made the one-off and Subscribe fields ui fields - 16px at every width - and retire R3 retired
+// .setup-select.)
 
 // ---- census: every CLASSED text-entry control in the shells ------------------
 // Gate r1 (lock-audio-measure, qa W2): the tests above are a hand-picked list of
@@ -216,10 +216,18 @@ function cssRulesWithMedia(source) {
   })(source.replace(/\/\*[\s\S]*?\*\//g, ''), []);
   return rules;
 }
+// Sweep S8 (the v1.25.4 risky conversion): Settings' fields moved onto the ui-field
+// primitive, styled in ui.css with the `font:` shorthand, and several of them are built by
+// setup.js templates. The census now reads BOTH stylesheets, resolves a size from `font:` as
+// well as `font-size:`, and scans the Settings builder's markup too - so a ui-field (16px)
+// and a JS-built field enter it like any shell control.
 function classedEntryControls() {
   const out = [];
-  for (const file of fs.readdirSync(PUBLIC_DIR).filter((f) => f.endsWith('.html'))) {
-    const html = fs.readFileSync(path.join(PUBLIC_DIR, file), 'utf8');
+  const sources = fs.readdirSync(PUBLIC_DIR).filter((f) => f.endsWith('.html')).map((f) => path.join(PUBLIC_DIR, f))
+    .concat([path.join(PUBLIC_DIR, 'js', 'setup.js')]);
+  for (const fileAbs of sources) {
+    const file = path.relative(PUBLIC_DIR, fileAbs);
+    const html = fs.readFileSync(fileAbs, 'utf8');
     const re = /<(textarea|select|input)\b([^>]*)>/g;
     let m;
     while ((m = re.exec(html))) {
@@ -237,10 +245,34 @@ function classedEntryControls() {
 // <select class="btn btn-sm"> (tracker #252).
 const ZOOM_CENSUS_KNOWN = { btn: '#252' };
 
-test('census: every classed input/select/textarea in public/*.html that a class rule sizes under 16px is lifted to >=16px on mobile', () => {
-  const rules = cssRulesWithMedia(css);
+// The size a rule body sets: `font-size: X`, or the size inside a `font:` shorthand
+// (`font: 400 var(--fs-input-min) / 1.2 family`, or a type role `font: var(--t-meta)`,
+// resolved through its `--t-meta-size` twin in tokens.css). null when the body sets none.
+const T_SIZES = {};
+for (const m of TOKENS_CSS.matchAll(/(--t-[a-z]+)-size:\s*([0-9]+)px/g)) T_SIZES[m[1]] = Number(m[2]);
+function bodySizePx(body) {
+  const fsDecl = /(?:^|;)\s*font-size:\s*([^;]+)/.exec(body);
+  if (fsDecl) {
+    const v = fsDecl[1].trim().replace(/\s*!important$/, '');
+    return /^(var\(--fs-[a-z0-9-]+\)|[0-9]+px)$/.test(v) ? resolveFontSizePx(v) : null;
+  }
+  const font = /(?:^|;)\s*font:\s*([^;]+)/.exec(body);
+  if (!font) return null;
+  const role = /^var\((--t-[a-z]+)\)$/.exec(font[1].trim());
+  if (role) return T_SIZES[role[1]] === undefined ? null : T_SIZES[role[1]];
+  const size = /(var\(--fs-[a-z0-9-]+\)|\b[0-9]+px)/.exec(font[1]);
+  return size ? resolveFontSizePx(size[1]) : null;
+}
+
+test('census: every classed input/select/textarea in public/*.html (and the Settings builder) that a class rule sizes under 16px is lifted to >=16px on mobile', () => {
+  const uiCss = require('../helpers/stylesheets').readUiCss();
+  const rules = cssRulesWithMedia(uiCss + '\n' + css);
   const controls = classedEntryControls();
   assert.ok(controls.some((c) => c.cls === 'bg-timing-log-text'), 'precondition: the census sees the timing-log text box');
+  assert.ok(controls.some((c) => c.cls === 'ui-field__input' && c.file === 'setup.html'), 'precondition: the census sees the Settings ui-field inputs');
+  assert.ok(controls.some((c) => c.cls === 'folder-name-input' && c.file === path.join('js', 'setup.js')), 'precondition: the census sees the JS-built folder name field');
+  const fieldRule = rules.find((r) => r.selectors.includes('.ui-field__input') && !r.media.length && bodySizePx(r.body) !== null);
+  assert.ok(fieldRule && bodySizePx(fieldRule.body) >= 16, 'witness: the ui-field input resolves to >= 16px through its font shorthand');
   const offenders = [];
   const seen = new Set();
   for (const { cls, tag, file } of controls) {
@@ -250,11 +282,9 @@ test('census: every classed input/select/textarea in public/*.html that a class 
     let small = null;
     let floored = false;
     for (const r of rules) {
-      const fsDecl = /(?:^|;)\s*font-size:\s*([^;]+)/.exec(r.body);
-      if (!fsDecl || !r.selectors.some((sel) => hit.test(sel))) continue;
-      const trimmed = fsDecl[1].trim().replace(/\s*!important$/, '');
-      if (!/^(var\(--fs-[a-z0-9-]+\)|[0-9]+px)$/.test(trimmed)) continue;
-      const px = resolveFontSizePx(trimmed);
+      if (!r.selectors.some((sel) => hit.test(sel))) continue;
+      const px = bodySizePx(r.body);
+      if (px === null) continue;
       if (r.media.some((q) => /max-width:\s*768px/.test(q))) { if (px >= 16) floored = true; } else if (!r.media.length && px < 16) small = px;
     }
     if (small !== null && !floored) offenders.push('.' + cls + ' (' + tag + ' in ' + file + ') computes ' + small + 'px on mobile');

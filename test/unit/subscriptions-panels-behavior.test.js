@@ -1,142 +1,153 @@
-// v1.156 (T3, gate WARNING 1): BEHAVIORAL coverage for the pills->panel
-// controller (openPanel/closePanel/wirePanels), which is closure-internal in
-// initSubscriptionsView and was previously bound only by static HTML string
-// matching. The whole redesign rests on this controller, and "presence not
-// binding" is this repo's most-struck class -- a mutant on the `'sub-panel-'`
-// id concat or the backdrop guard must go RED here.
-//
-// The controller is not exported, so this mounts the real subscriptions.html in
-// jsdom, stubs the browser globals subscriptions.js reaches for, requires it
-// fresh so its self-registration runs against our FileTube stub, captures the
-// init, and drives real click/keydown events.
+// v1.156 (T3, gate WARNING 1) -> UI pass S5: BEHAVIORAL coverage for the
+// toolbar->panel controller (openPanel/closePanel/wirePanels and the relocation
+// preview's stacked sheet), closure-internal in initSubscriptionsView. It mounts the
+// real subscriptions.html in jsdom with the real ui.js and drives real events
+// (test/helpers/subs-view-harness.js). A mutant on the `'sub-panel-'` id concat, on
+// the move-back-to-holder, on the stacked preview or on the signal must go RED here.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const fs = require('node:fs');
-const path = require('node:path');
-const { JSDOM } = require('jsdom');
+const { mountSubsView, jsonRes, settle, click } = require('../helpers/subs-view-harness');
 
-const SUBS_HTML = fs.readFileSync(
-  path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html'),
-  'utf8',
-);
-const SUBS_PATH = require.resolve('../../lib/ytdlp/client/subscriptions.js');
+const holderOf = (document) => document.querySelector('.subs-panels');
+const sheetOf = (panel) => (panel && panel.parentNode && panel.parentNode.classList.contains('ui-sheet__body') ? panel.parentNode.parentNode : null);
+const esc = (window, document) => document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }));
 
-function mountView() {
-  const dom = new JSDOM(SUBS_HTML, { url: 'http://localhost/subscriptions' });
-  const { window } = dom;
-  const { document } = window;
-
-  // Synchronous stand-ins for the CSS-transition overlay helpers: just toggle
-  // the class (openPanel/closePanel only need the class + the hidden flag).
-  const openOverlay = (el, cls) => { if (el && el.classList) el.classList.add(cls); };
-  const closeOverlayThen = (el, cls, after) => {
-    if (el && el.classList) el.classList.remove(cls);
-    if (typeof after === 'function') after();
-  };
-  // Every endpoint the init path hits resolves to a harmless empty shape.
-  const fetchStub = () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve([]) });
-
-  global.window = window;
-  global.document = document;
-  global.localStorage = window.localStorage;
-  global.navigator = window.navigator;
-  global.AbortController = window.AbortController;
-  global.openOverlay = openOverlay;
-  global.closeOverlayThen = closeOverlayThen;
-  global.fetch = fetchStub;
-  window.openOverlay = openOverlay;
-  window.closeOverlayThen = closeOverlayThen;
-  window.fetch = fetchStub;
-
-  let captured = null;
-  window.FileTube = {
-    registerView: (name, handlers) => { if (name === 'subscriptions') captured = handlers; },
-    navigate: () => {},
-  };
-
-  delete require.cache[SUBS_PATH]; // re-run top-level so registerView fires against our stub
-  require(SUBS_PATH);
-  assert.ok(captured && typeof captured.init === 'function', 'subscriptions.js must self-register an init');
-
-  const viewRoot = document.getElementById('view-root');
-  captured.init(viewRoot);
-  return { window, document, viewRoot, handlers: captured };
-}
-
-const click = (window, el) => el.dispatchEvent(new window.Event('click', { bubbles: true, cancelable: true }));
-
-test('T3 controller: each pill opens its matching panel; opening another closes the first', () => {
-  const { window, document, viewRoot, handlers } = mountView();
+test('S5 controller: each toolbar button opens its panel IN a ui.sheet titled from data-title; opening another closes the first, which goes back to the holder', async () => {
+  const { window, document, handlers } = mountSubsView();
   try {
     const add = document.getElementById('sub-panel-add');
-    const oneoff = document.getElementById('sub-panel-oneoff');
     const activity = document.getElementById('sub-panel-activity');
-    assert.strictEqual(add.hidden, true, 'panels start hidden');
-    assert.strictEqual(oneoff.hidden, true);
-    assert.strictEqual(activity.hidden, true);
+    const oneoff = document.getElementById('sub-panel-oneoff');
+    for (const p of [add, activity, oneoff]) assert.strictEqual(p.parentNode, holderOf(document), 'panels rest in the hidden holder');
+    assert.strictEqual(holderOf(document).hidden, true);
 
-    click(window, viewRoot.querySelector('[data-sub-panel="add"]'));
-    assert.strictEqual(add.hidden, false, 'the Add pill opens #sub-panel-add (binds the sub-panel-<key> concat)');
+    click(window, document.querySelector('.subs-toolbar [data-sub-panel="add"]'));
+    const addSheet = sheetOf(add);
+    assert.ok(addSheet, 'the Add button moves #sub-panel-add into a ui.sheet body (binds the sub-panel-<key> concat)');
+    assert.strictEqual(addSheet.querySelector('.ui-sheet__title').textContent, 'Add a subscription');
+    assert.strictEqual(addSheet.parentNode, document.body, 'the sheet lives on <body>');
 
-    // switch panels: opening Activity closes Add
-    click(window, viewRoot.querySelector('[data-sub-panel="activity"]'));
-    assert.strictEqual(add.hidden, true, 'opening another panel closes the first');
-    assert.strictEqual(activity.hidden, false);
+    click(window, document.querySelector('.subs-toolbar [data-sub-panel="activity"]'));
+    assert.ok(sheetOf(activity), 'Activity opens');
+    await settle(() => add.parentNode === holderOf(document), 'the first panel returns to the holder once its sheet has closed');
+    assert.strictEqual(addSheet.parentNode, null, 'the first sheet left the DOM');
 
-    click(window, viewRoot.querySelector('[data-sub-panel="oneoff"]'));
-    assert.strictEqual(activity.hidden, true);
-    assert.strictEqual(oneoff.hidden, false, 'the One-off pill opens #sub-panel-oneoff');
+    click(window, document.querySelector('.subs-toolbar [data-sub-panel="oneoff"]'));
+    assert.ok(sheetOf(oneoff), 'One-off opens');
+    await settle(() => activity.parentNode === holderOf(document), 'Activity went back');
   } finally {
     handlers.destroy();
   }
 });
 
-test('T3 controller: a click INSIDE the sheet never closes; the backdrop, the back chevron, and Esc all close', () => {
-  const { window, document, viewRoot, handlers } = mountView();
+test('S5 controller: Esc, the scrim and Close each close the panel sheet; the panel returns with its ids and wiring intact', async () => {
+  const { window, document, handlers, calls } = mountSubsView();
   try {
-    const activity = document.getElementById('sub-panel-activity');
-    click(window, viewRoot.querySelector('[data-sub-panel="activity"]'));
-    assert.strictEqual(activity.hidden, false);
-
-    // a click that lands inside the .sub-sheet (target !== backdrop) must NOT close
-    click(window, activity.querySelector('.sub-sheet-body'));
-    assert.strictEqual(activity.hidden, false, 'a click inside the sheet must not close the panel (backdrop guard)');
-
-    // a click ON the backdrop itself (target === panel) closes
-    click(window, activity);
-    assert.strictEqual(activity.hidden, true, 'a click on the backdrop closes the panel');
-
-    // Esc closes an open panel
-    click(window, viewRoot.querySelector('[data-sub-panel="add"]'));
     const add = document.getElementById('sub-panel-add');
-    assert.strictEqual(add.hidden, false);
-    document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }));
-    assert.strictEqual(add.hidden, true, 'Esc closes the open panel');
+    const open = () => click(window, document.querySelector('.subs-toolbar [data-sub-panel="add"]'));
+    const back = () => settle(() => add.parentNode === holderOf(document), 'panel back in the holder');
 
-    // the back chevron closes
-    click(window, viewRoot.querySelector('[data-sub-panel="oneoff"]'));
-    const oneoff = document.getElementById('sub-panel-oneoff');
-    assert.strictEqual(oneoff.hidden, false);
-    click(window, oneoff.querySelector('[data-sub-panel-close]'));
-    assert.strictEqual(oneoff.hidden, true, 'the nav-bar back chevron closes the panel');
+    open(); esc(window, document); await back();
+    open(); click(window, document.querySelector('.ui-scrim')); await back();
+    open(); click(window, sheetOf(add).querySelector('.ui-sheet__close')); await back();
+
+    // wiring survived three round trips: the Add button still validates and posts
+    open();
+    click(window, document.getElementById('sub-add-btn'));
+    const err = document.getElementById('sub-add-error');
+    assert.strictEqual(err.hidden, false, 'an empty URL shows the field error (hidden flips, no inline display)');
+    assert.strictEqual(err.textContent, 'Enter a channel URL.');
+    document.getElementById('sub-add-url').value = 'https://www.youtube.com/@x';
+    click(window, document.getElementById('sub-add-skipshorts'));
+    assert.strictEqual(document.getElementById('sub-add-skipshorts').getAttribute('aria-checked'), 'true', 'the Skip Shorts switch toggles');
+    click(window, document.getElementById('sub-add-btn'));
+    const post = calls.find((c) => c.method === 'POST' && c.url === '/api/subscriptions');
+    assert.ok(post, 'the add POST was sent');
+    assert.strictEqual(post.body.skipShorts, true, 'the switch state travels as skipShorts');
+    assert.strictEqual(err.hidden, true, 'a valid submit clears the error');
   } finally {
     handlers.destroy();
   }
 });
 
-test('T3 controller: with the reloc-preview modal open, Esc dismisses the MODAL, not the panel underneath (QA layering fix)', () => {
-  const { window, document, viewRoot, handlers } = mountView();
+test('S5 controller: the reloc preview STACKS over Activity; Esc closes the preview first and Activity stays open', async () => {
+  const preview = { summary: { moves: 0 }, moves: [], skips: [] };
+  const { window, document, handlers } = mountSubsView((m, url) => (m === 'POST' && url === '/api/ytdlp/repull-metadata/preview' ? jsonRes(200, preview) : undefined));
   try {
-    click(window, viewRoot.querySelector('[data-sub-panel="activity"]'));
+    click(window, document.querySelector('.subs-toolbar [data-sub-panel="activity"]'));
     const activity = document.getElementById('sub-panel-activity');
-    const reloc = document.getElementById('reloc-preview-backdrop');
-    assert.strictEqual(activity.hidden, false);
-    // simulate the reloc-preview modal being open over the Activity panel
-    reloc.hidden = false;
-    document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape' }));
-    assert.strictEqual(reloc.hidden, true, 'Esc dismisses the top-most overlay (the reloc modal) first');
-    assert.strictEqual(activity.hidden, false, 'the Activity panel stays open underneath');
+    const reloc = document.getElementById('reloc-preview-panel');
+    assert.ok(sheetOf(activity));
+    click(window, document.getElementById('sub-reheat-preview-btn'));
+    await settle(() => !!sheetOf(reloc), 'the preview opens in its own sheet');
+    assert.ok(sheetOf(activity), 'opening the preview does NOT close Activity');
+    assert.strictEqual(sheetOf(reloc).querySelector('.ui-sheet__title').textContent, 'Preview: what a reheat would move');
+    esc(window, document);
+    await settle(() => reloc.parentNode === holderOf(document), 'Esc closed the top-most sheet (the preview)');
+    assert.ok(sheetOf(activity), 'the Activity sheet stays open underneath');
+    esc(window, document);
+    await settle(() => activity.parentNode === holderOf(document), 'a second Esc closes Activity');
+  } finally {
+    handlers.destroy();
+  }
+});
+
+test('S5 controller: an SPA teardown (destroy) closes an open panel sheet - nothing is stranded on <body>', async () => {
+  const { window, document, handlers } = mountSubsView();
+  click(window, document.querySelector('.subs-toolbar [data-sub-panel="oneoff"]'));
+  const oneoff = document.getElementById('sub-panel-oneoff');
+  assert.ok(sheetOf(oneoff));
+  handlers.destroy();
+  await settle(() => document.querySelectorAll('.ui-sheet').length === 0 && document.querySelectorAll('.ui-scrim').length === 0,
+    'the view signal closed the sheet and its scrim');
+  assert.strictEqual(oneoff.parentNode, holderOf(document), 'and returned the panel to the (now detached-able) holder');
+  click(window, document.querySelector('.subs-toolbar [data-sub-panel="add"]'));
+  assert.strictEqual(document.querySelectorAll('.ui-sheet').length, 0, 'a torn-down view opens nothing');
+});
+
+test('S5 Activity: the segmented control shows one pane at a time (History first)', () => {
+  const { window, document, handlers } = mountSubsView();
+  try {
+    const seg = document.querySelector('#sub-activity-tabs .ui-segmented');
+    assert.ok(seg, 'the segmented control mounted');
+    const items = [...seg.querySelectorAll('.ui-segmented__item')];
+    assert.deepStrictEqual(items.map((b) => b.getAttribute('data-value')), ['history', 'failures', 'maintenance']);
+    const visible = () => [...document.querySelectorAll('[data-activity-pane]')].filter((p) => !p.hidden).map((p) => p.getAttribute('data-activity-pane'));
+    assert.deepStrictEqual(visible(), ['history']);
+    click(window, items[1]);
+    assert.deepStrictEqual(visible(), ['failures']);
+    click(window, items[2]);
+    assert.deepStrictEqual(visible(), ['maintenance']);
+    click(window, items[0]);
+    assert.deepStrictEqual(visible(), ['history']);
+  } finally {
+    handlers.destroy();
+  }
+});
+
+test('S5: the members-only switch reflects the stored setting, posts its new state and REVERTS on a refused save', async () => {
+  let answer = 400;
+  const { window, document, handlers, calls } = mountSubsView((m, url) => {
+    // the stored value is ON, so the load and a revert both write 'true' and a tap writes 'false'
+    if (m === 'GET' && url === '/api/subscriptions/settings') return jsonRes(200, { allowMembersOnly: true });
+    if (m === 'POST' && url === '/api/subscriptions/settings') return jsonRes(answer, answer === 200 ? { allowMembersOnly: false } : { error: 'nope' });
+    return undefined;
+  });
+  try {
+    const sw = document.getElementById('sub-members-only-check');
+    // wait for the load to land FIRST, so the only later writer of 'true' is the revert
+    await settle(() => sw.getAttribute('aria-checked') === 'true', 'the stored setting is reflected on load');
+    await new Promise((r) => setTimeout(r, 20));
+    click(window, sw);
+    assert.strictEqual(sw.getAttribute('aria-checked'), 'false', 'optimistic flip on tap');
+    await settle(() => sw.getAttribute('aria-checked') === 'true', 'a 400 reverts the switch');
+    assert.strictEqual(document.getElementById('sub-members-only-error').textContent, 'nope');
+    assert.deepStrictEqual(calls.filter((c) => c.url === '/api/subscriptions/settings' && c.method === 'POST').map((c) => c.body), [{ allowMembersOnly: false }]);
+    answer = 200;
+    click(window, sw);
+    await settle(() => document.getElementById('sub-members-only-error').hidden === true, 'a 200 clears the error');
+    assert.strictEqual(sw.getAttribute('aria-checked'), 'false', 'and keeps the new state');
   } finally {
     handlers.destroy();
   }

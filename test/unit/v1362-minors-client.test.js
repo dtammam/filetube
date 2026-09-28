@@ -32,14 +32,17 @@ test('v1.40.0 A (supersedes v1.36.2 list=liked): home grid cards carry the FULL 
   // exact on-screen order, not just the Liked list.
   assert.ok(
     mainSrc.includes('const ctxParam = currentBrowseContextParam();'),
-    'buildCardHtml must derive the browse-context param from the live view state',
+    'buildVideoCardEl must derive the browse-context param from the live view state',
   );
   assert.ok(
     mainSrc.includes("${ctxParam ? '&ctx=' + encodeURIComponent(ctxParam) : ''}"),
     'the ctx param is URL-encoded and appended to watchHref only when non-empty (empty -> folder fallback)',
   );
-  const anchorUses = (mainSrc.match(/href="\$\{watchHref\}"/g) || []).length;
-  assert.equal(anchorUses, 2, 'both the thumbnail and the title anchors must use the context-carrying href');
+  // UI pass sweep S2: the card is DOM (buildVideoCardEl) - its media link and its
+  // title link both take the ONE href buildCardEl derives with the ctx param.
+  assert.ok(mainSrc.includes("return buildVideoCardEl(item, { doc: document, href, channelName, channelHref, avatar });"), 'the view hands the ctx-carrying href to the card');
+  const builder = mainSrc.slice(mainSrc.indexOf('function buildVideoCardEl(item, o) {'), mainSrc.indexOf('function buildSkeletonCardEl('));
+  assert.equal((builder.match(/\.setAttribute\('href', opts\.href\)/g) || []).length, 2, 'both the thumbnail and the title anchors must use the context-carrying href');
   assert.ok(
     !mainSrc.includes('href="/watch.html?v=${item.id}"'),
     'no card anchor may bypass watchHref with a bare context-less URL',

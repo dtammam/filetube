@@ -93,20 +93,35 @@ test('SOURCE-LOCK: podcasts.html carries the dock + host template and the FOUC g
   assert.ok(html.includes('/js/podcasts.js'), 'the view controller loads in the shell');
 });
 
-test('SOURCE-LOCK: every new podcast className in the controller is bound by a style.css rule (the v1.68.3 styling-source law)', () => {
+test('SOURCE-LOCK: every podcast className in the controller is bound by a rule in ui.css or style.css (the v1.68.3 styling-source law)', () => {
   const js = fs.readFileSync(path.join(__dirname, '../../public/js/podcasts.js'), 'utf8');
-  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+  // UI pass S6 (AC12 conversion): the law reads the primitives' sheet too - a ui-* part class
+  // (ui-field__error, ui-confirm__actions) is bound by ui.css. The scan now admits `_` (the BEM
+  // part separator): the old [a-z0-9- ] class never saw a ui-* part at all.
+  const css = fs.readFileSync(path.join(__dirname, '../../public/css/ui.css'), 'utf8') + '\n'
+    + fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+  const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '');
   const classNames = new Set();
-  // Every string literal assigned to className / classList in the controller.
-  for (const m of js.matchAll(/className = '([a-z0-9- ]+)'/g)) {
+  // Every string literal assigned to className / classList in the controller (code AND the
+  // skeleton HTML strings' class attributes).
+  for (const m of js.matchAll(/className = '([a-z0-9_ -]+)'/g)) {
     for (const cls of m[1].split(/\s+/)) classNames.add(cls);
   }
-  for (const m of js.matchAll(/classList\.(?:add|toggle)\('([a-z0-9-]+)'/g)) classNames.add(m[1]);
-  assert.ok(classNames.size >= 10, `sanity: the scan found the controller's classes (${classNames.size})`);
+  for (const m of js.matchAll(/classList\.(?:add|toggle)\('([a-z0-9_-]+)'/g)) classNames.add(m[1]);
+  for (const m of js.matchAll(/class="([a-z0-9_ -]+)"/g)) {
+    for (const cls of m[1].split(/\s+/)) classNames.add(cls);
+  }
+  assert.ok(classNames.size >= 12, `sanity: the scan found the controller's classes (${classNames.size})`);
+  assert.ok(classNames.has('ui-field__error') && classNames.has('podcast-show-head'), 'sanity: the scan sees ui-* parts and surface classes');
+  const unbound = [];
   for (const cls of classNames) {
     if (cls.startsWith('btn') || cls === 'icon-refresh') continue; // pre-existing shared affordances
-    assert.ok(new RegExp(`\\.${cls}[\\s,{.:\\[]`).test(css), `className '${cls}' has NO CSS rule binding it - a bare control (CONTRIBUTING.md styling-source rule)`);
+    // ui.row's size modifier: emitted by ui.js itself and styled through the LIST's size class
+    // (ui-list--media / --default); the skeleton strings mirror ui.row's exact output.
+    if (/^ui-row--(compact|default|media)$/.test(cls)) continue;
+    if (!new RegExp(`\\.${cls}(?![-\\w])`).test(strip(css))) unbound.push(cls);
   }
+  assert.deepStrictEqual(unbound, [], 'classNames with NO CSS rule binding them - a bare control (CONTRIBUTING.md styling-source rule)');
 });
 
 test('v1.69.1 SOURCE-LOCK: setup.html carries the Podcasts zero-state door (Dean\'s device-pass find)', () => {
@@ -171,7 +186,8 @@ test('v1.72: every bottom-nav shell carries the music + books items, hidden unti
   for (const f of shells) {
     const html = fs.readFileSync(path.join(pub, f), 'utf8');
     for (const [nav, href] of [['music', '/music'], ['books', '/books'], ['downloads', '/']]) {
-      const re = new RegExp(`<a href="${href}" class="bottom-nav-item" data-nav="${nav}" hidden>`);
+      // Sweep S1 (DELIBERATE lock update): the tab is a ui-btn stack (F49).
+      const re = new RegExp(`<a href="${href}" class="ui-btn ui-btn--plain ui-btn--md ui-btn--stack bottom-nav-item" data-nav="${nav}" hidden>`);
       assert.match(html, re, `${f}: missing (or un-hidden) ${nav} bottom-nav item`);
     }
   }
@@ -200,8 +216,11 @@ test('v1.75 REMOVAL OVERREACH GUARD: the episode-row HEART still writes, so the 
   const src = fs.readFileSync(path.join(__dirname, '../../public/js/podcasts.js'), 'utf8');
   assert.ok(src.includes("'/api/podcasts/episodes/' + encodeURIComponent(ep.id) + '/liked'"), 'the per-episode like endpoint is still called');
   assert.ok(src.includes("{ method: next ? 'POST' : 'DELETE' }"), 'both directions still ride it');
-  assert.ok(src.includes("likeBtn.className = 'podcast-like-toggle'"), 'the heart control is still built on every episode row');
-  assert.ok(src.includes("likeBtn.setAttribute('aria-pressed', next ? 'true' : 'false')"), 'and still reports its state');
+  // UI pass S6 (F27, AC12 conversion): the heart moved from a resting row button into the
+  // episode's action menu (Like / Unlike); podcasts-ui-sweep.test.js drives it end to end
+  // (menu -> Like -> POST .../liked, then Unlike -> DELETE).
+  assert.ok(src.includes("label: ep.liked ? 'Unlike' : 'Like'"), 'the like control is still built for every downloaded RSS episode');
+  assert.ok(src.includes('ep.liked = next;'), 'and still records its state');
 });
 
 // ---- v1.72 (intake ruling 5): show pins ride every pin surface --------------

@@ -390,7 +390,9 @@ t32l('v1.32: main.js routes ?liked=1 to GET /api/liked and renders the built-in 
   // silently drop the shared helper.
   const setupSrc = fs32.readFileSync(require('node:path').join(__dirname, '../../public/js/setup.js'), 'utf8');
   a32l.ok(setupSrc.includes('applyLikedSidebarEntry(sidebarContainer'), 'the setup sidebar must apply the shared Liked entry helper');
-  a32l.ok(commonSrc.includes('applyLikedSidebarEntry(list)'), 'the mobile Playlists sheet must route through the shared helper');
+  // Sweep S1 (DELIBERATE lock update): the sheet passes its ui-row list and the in-place row
+  // converter; the WHETHER is still the shared count-gated helper.
+  a32l.ok(commonSrc.includes('applyLikedSidebarEntry(group, { decorate: toSheetRow })'), 'the mobile Playlists sheet must route through the shared helper');
   a32l.ok(commonSrc.includes("applyLikedSidebarEntry(document.getElementById('sidebar-folders-list'))"), 'the shared boot call must cover the stats/subscriptions shells');
   a32l.ok((watchSrc.match(/applyLikedSidebarEntry\(sidebarFoldersList, \{ force: true \}\)/g) || []).length >= 2, 'both count-mutating paths (like toggle AND item delete) must force-refresh the cached total');
 });

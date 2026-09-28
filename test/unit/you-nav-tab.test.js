@@ -41,6 +41,10 @@ test('signed-in: injects a right-most "You" tab with an avatar + label', async (
   assert.ok(you, 'the You tab was injected');
   assert.strictEqual(you.querySelector('.bottom-nav-label').textContent, 'You');
   assert.ok(you.querySelector('.account-avatar.bottom-nav-you-avatar'), 'carries the account avatar');
+  // Sweep S1 (F49): a ui-btn stack tab; the avatar sits IN the fixed icon slot (a 20px
+  // ui-avatar), so its label shares the other tabs' line.
+  assert.ok(you.matches('button.ui-btn.ui-btn--stack.bottom-nav-item'), 'a ui-btn stack tab');
+  assert.ok(you.querySelector(':scope > .ui-btn__icon > .ui-avatar.ui-avatar--xs.bottom-nav-you-avatar'), 'the avatar is in the icon slot');
   // right-most: last child of the nav
   assert.strictEqual(global.document.querySelector('#bottom-nav').lastElementChild, you, 'the You tab is right-most');
 });
@@ -50,18 +54,24 @@ test('clicking "You" opens the REAL account menu and it STAYS open (v1.85.1 bubb
   // its document-close-on-outside-click handler) + the bottom nav.
   const c = fresh('<nav id="bottom-nav"></nav><div class="header-right"></div>');
   global.fetch = () => Promise.resolve({ ok: true, json: async () => ({ user: { id: 1, username: 'dean', displayName: 'Dean', role: 'member', avatar: { present: false } } }) });
+  // Sweep S1: the menu is a ui.sheet built by the page's window.ui on the first open.
+  delete require.cache[require.resolve('../../public/js/ui.js')];
+  dom.window.ui = require('../../public/js/ui.js');
   c.injectAccountMenu();
   c.injectYouNavItem();
   await tick();
-  const dropdown = global.document.querySelector('.account-menu-dropdown');
-  assert.ok(dropdown, 'the real account menu was built');
-  assert.strictEqual(dropdown.hidden, true, 'starts closed');
+  const trigger = global.document.querySelector('#account-menu-root .account-menu-trigger');
+  assert.ok(trigger, 'the real account menu was built');
+  assert.strictEqual(trigger.getAttribute('aria-expanded'), 'false', 'starts closed');
+  assert.strictEqual(global.document.getElementById('account-menu-sheet'), null, 'no sheet yet');
 
-  // Tap "You". Without stopPropagation the click bubbles to document, whose
-  // close-handler fires right after trigger.click() opens it -> menu closes
-  // (the device-pass "tab does nothing" failure). With the fix it stays open.
+  // Tap "You". It forwards to the trigger; the click must not ALSO reach anything that
+  // closes the menu again (the v1.85.1 device-pass "tab does nothing" failure).
   global.document.querySelector('[data-nav="you"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  assert.strictEqual(dropdown.hidden, false, 'the account menu opened AND stayed open (did not open-then-close)');
+  await tick();
+  assert.strictEqual(trigger.getAttribute('aria-expanded'), 'true', 'the account menu opened AND stayed open (did not open-then-close)');
+  const sheet = global.document.getElementById('account-menu-sheet');
+  assert.ok(sheet && sheet.isConnected && sheet.classList.contains('ui-sheet'), 'the ui.sheet is in the page');
 });
 
 test('signed-out shell: no "You" tab (fetch not ok / no user)', async () => {

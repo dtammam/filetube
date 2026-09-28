@@ -13,9 +13,9 @@ const path = require('node:path');
 const { buildSetupFolderSkeleton } = require('../../public/js/setup.js');
 const { buildPodcastShowSkeleton } = require('../../public/js/podcasts.js');
 
-test('buildSetupFolderSkeleton: N shape-matched .folder-item-row shimmer rows, all aria-hidden', () => {
+test('buildSetupFolderSkeleton: N shape-matched .folder-item shimmer cards, all aria-hidden', () => {
   const html = buildSetupFolderSkeleton(3);
-  assert.strictEqual((html.match(/class="folder-item-row"/g) || []).length, 3, 'one skeleton per requested row');
+  assert.strictEqual((html.match(/class="folder-item"/g) || []).length, 3, 'one skeleton per requested row');
   assert.strictEqual((html.match(/aria-hidden="true"/g) || []).length, 3, 'every skeleton row is aria-hidden');
   assert.match(html, /skeleton-shimmer/, 'uses the shared shimmer primitive');
   assert.match(html, /skeleton-line-title/, 'has a title bar (mirrors the real folder-path row)');
@@ -29,7 +29,8 @@ test('buildSetupFolderSkeleton: non-positive / non-integer counts render nothing
 
 test('buildPodcastShowSkeleton: a show-art header over N episode-row shimmers, all aria-hidden', () => {
   const html = buildPodcastShowSkeleton(6);
-  assert.match(html, /podcast-show-art skeleton-shimmer/, 'reuses the real show-art box as the header shimmer');
+  // UI pass S6: the header art is the real ui-art 2xl square inside the real .podcast-show-head.
+  assert.match(html, /<div class="podcast-show-head" aria-hidden="true"><span class="ui-art ui-avatar--2xl skeleton-shimmer">/, 'reuses the real show-art box as the header shimmer');
   // header title + 6 episode rows each carry the shimmer line
   assert.ok((html.match(/skeleton-line-title/g) || []).length >= 2, 'a header title + per-row title bars');
   assert.strictEqual((html.match(/skeleton-line-meta/g) || []).length, 6, 'one meta bar per episode row');
@@ -38,7 +39,7 @@ test('buildPodcastShowSkeleton: a show-art header over N episode-row shimmers, a
 });
 
 test('buildPodcastShowSkeleton: zero rows still renders the header, negative/garbage is harmless', () => {
-  assert.match(buildPodcastShowSkeleton(0), /podcast-show-art/, 'the header shows even with no episode rows');
+  assert.match(buildPodcastShowSkeleton(0), /class="podcast-show-head"[^>]*><span class="ui-art ui-avatar--2xl/, 'the header shows even with no episode rows');
   assert.doesNotThrow(() => buildPodcastShowSkeleton(-3));
   assert.doesNotThrow(() => buildPodcastShowSkeleton('x'));
 });

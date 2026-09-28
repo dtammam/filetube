@@ -25,9 +25,16 @@ test('the flat grid: 3-up on desktop, 4-up on wide, 1-up on phones', () => {
     'one full-width card per row on phones');
 });
 
-test('the filter chips + active pill', () => {
-  assert.match(css, /\.modern-chip \{[^}]*border-radius:\s*var\(--radius-full\)/, 'chips are pills');
-  assert.match(css, /\.modern-chip\.active \{[^}]*background-color:\s*var\(--text-primary\)/, 'the active chip is the inverted pill');
+// UI pass sweep S2 (F19, AC12): the Modern chips are the ui-chip filter primitive
+// in the shared .library-chips row - the pill and the selected state are ui.css's.
+test('the filter chips are ui-chip filter pills; the selected chip is ink on the tonal fill, never red', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
+  assert.match(main, /<button type="button" class="ui-chip ui-chip--filter" aria-pressed="\$\{on\}" data-chip="\$\{c\.filter\}">/);
+  assert.match(main, /<div class="modern-chip-row library-chips" role="group"/);
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8');
+  assert.match(ui, /\.ui-chip--filter \{[^}]*border-radius:\s*var\(--r-pill\)/, 'chips are pills');
+  // UI pass S7: the tonal fill is LAYERED over the chip ground (ui-chip-selected.test.js measures that it shows)
+  assert.match(ui, /\.ui-chip--filter\[aria-pressed="true"\] \{[^}]*background-image:\s*linear-gradient\(var\(--fill-selected\), var\(--fill-selected\)\)/, 'the selected chip');
 });
 
 test('the mobile avatar bar is hidden on desktop', () => {
@@ -36,14 +43,22 @@ test('the mobile avatar bar is hidden on desktop', () => {
     'desktop hides the avatar bar (YouTube desktop uses the sidebar for subs)');
 });
 
-test('rounded thumbnails wherever modern is on', () => {
-  assert.match(css, /html\[data-modern="on"\][^{]*\.card-media[^{]*\{[^}]*border-radius:\s*var\(--radius-lg\)/,
-    'modern rounds the thumbnail');
+// UI pass sweep S2 (F53, D4.4; AC12): thumbnail rounding is the ui-thumb's era
+// knob (--thumb-radius: --r-md in Modern, 0 in the square retro eras) and the
+// byline avatar is ui.avatar (a monogram on a hash tone - never an inline colour).
+test('rounded thumbnails come from the ui-thumb era knob, not a data-modern override', () => {
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8');
+  assert.match(ui, /\.ui-thumb \{[^}]*border-radius:\s*var\(--thumb-radius\)/, 'the thumb radius is the era knob');
+  const tokens = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'tokens.css'), 'utf8');
+  assert.match(tokens, /:root \{[\s\S]*?--thumb-radius:\s*var\(--r-md\)/, 'Modern rounds');
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /html\[data-modern="on"\][^{]*\.card-media|\.thumbnail-container/, 'no bespoke rounding rule');
 });
 
-test('the byline monogram consumes the inline --ch-av custom property (census-safe colour)', () => {
-  assert.match(css, /\.card-channel-avatar-mono \{\s*background-color:\s*var\(--ch-av\b/,
-    'the per-card monogram colour comes from the inline custom property T5 sets');
+test('the byline avatar is ui.avatar - a monogram tone from the palette, never an inline --ch-av colour', () => {
+  const main = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
+  assert.match(main, /ui\.avatar\(\{ name: opts\.channelName, url: opts\.avatar\.url \|\| null, kind: 'channel', size: 'sm', doc \}\)/);
+  assert.doesNotMatch(main, /--ch-av|card-channel-avatar/, 'the inline colour and the bespoke disc are gone');
+  assert.doesNotMatch(css, /\.card-channel-avatar/, 'no bespoke avatar CSS');
 });
 
 test('(v1.85.2 #3+#4) modern home hides the whole section-title row (folder heading + controls bar)', () => {
@@ -77,10 +92,11 @@ test('(v1.86.0 gate WARNING) the header sort ▾ is ROUTE-GATED: display:none by
     'only the home route shows the ▾ (re-shows on cache-restore, hides on every other view)');
 });
 
-test('(v1.86.3 Dean) the sort chevron button is sized to the uniform 22px header-glyph box (--fs-4xl)', () => {
-  // The caret is now a keyboard_arrow_down MASK-ICON (main.js), a 1em glyph like
-  // download/search - so the button's --fs-4xl makes it a 22px box == the
-  // bell/queue inline-SVG box. All header glyphs are one size.
-  assert.match(css, /\.modern-sort-btn \{[^}]*font-size:\s*var\(--fs-4xl\)/,
-    'the sort glyph is --fs-4xl (22px) - the uniform header-glyph box');
+// v1.86.3 (Dean): the sort glyph is the uniform header-glyph box. Sweep S9: it is a header
+// ui-btn (chromeButtonEl: plain, md, icon - the 22px --icon-md glyph every header button
+// draws), so no bespoke rule sizes or paints it; the header geometry check (HDR) measures
+// the header's buttons level and equal.
+test('(v1.86.3 Dean, sweep S9) the sort glyph needs no bespoke size or paint rule - it is a header ui-btn', () => {
+  assert.doesNotMatch(css, /\.modern-sort-btn\s*\{/, 'no bespoke .modern-sort-btn rule');
+  assert.doesNotMatch(css, /\.modern-sort-caret|\.sort-menu\b/, 'the caret and the hand-built menu are gone');
 });

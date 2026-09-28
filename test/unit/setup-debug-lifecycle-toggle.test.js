@@ -34,13 +34,14 @@ const ROUTE_SURFACE = routeSurfaceSource();
 // ---- setup.html: the checkbox exists, with a hint ---------------------
 
 test('setup.html: a "Show lifecycle debug log" checkbox exists (#debug-lifecycle-check)', () => {
-  assert.match(SETUP_HTML, /<input type="checkbox" id="debug-lifecycle-check" \/>/);
+  assert.match(SETUP_HTML, /<input type="checkbox" role="switch" class="ui-switch" id="debug-lifecycle-check" \/>/);
   assert.match(SETUP_HTML, /Show lifecycle debug log/);
 });
 
 test('setup.html: the checkbox has an explanatory hint mentioning force-quit survival (matches player.js\'s own documented rationale)', () => {
-  const match = /<input type="checkbox" id="debug-lifecycle-check" \/>[\s\S]*?<\/label>\s*<small[^>]*>([\s\S]*?)<\/small>/.exec(SETUP_HTML);
-  assert.ok(match, 'expected a <small> hint immediately following the checkbox label');
+  // Sweep S8: the hint is the .setup-note footer directly under the switch's grouped list.
+  const match = /id="debug-lifecycle-check" \/><\/span><\/div>\s*<\/div>\s*<p class="setup-note">([\s\S]*?)<\/p>/.exec(SETUP_HTML);
+  assert.ok(match, 'expected a .setup-note hint immediately following the switch row');
   assert.match(match[1], /diagnosing player lifecycle issues/);
   assert.match(match[1], /survives a force-quit/);
 });

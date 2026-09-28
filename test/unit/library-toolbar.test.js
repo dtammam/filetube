@@ -7,7 +7,9 @@
 // never hidden), the `filetube_format` localStorage preference
 // (`getStoredFormatFilter`/`setStoredFormatFilter`, mirroring the existing
 // `filetube_sort` persistence pattern), and the createElement-built
-// `buildFormatToggleControl`/`renderFormatToggle` widgets.
+// `buildFormatToggleControl`/`renderFormatToggle` widgets - replaced in UI pass
+// sweep S2 (F19) by the ONE library filter chip row, buildFilterChipRow (ui-chip
+// filter chips; the v1.50/v1.149 locks below are converted onto it, AC12).
 //
 // `common.js` only touches the GLOBAL `document`/`localStorage` inside
 // function bodies (never at module-eval time), so it's required FIRST, with
@@ -22,63 +24,82 @@ const path = require('node:path');
 const {
   countItems, formatItemCountLabel, renderItemCountBadge,
   filterByMediaType, getStoredFormatFilter, setStoredFormatFilter,
-  FORMAT_FILTER_MODES, buildFormatToggleControl, renderFormatToggle,
-  WATCH_TOGGLE_MODES, getStoredWatchFilter, setStoredWatchFilter,
-  buildWatchToggleControl, renderWatchToggle,
+  FORMAT_FILTER_MODES, FORMAT_TOGGLE_OPTIONS,
+  WATCH_TOGGLE_MODES, WATCH_TOGGLE_OPTIONS, getStoredWatchFilter, setStoredWatchFilter,
+  buildFilterChipRow,
 } = require('../../public/js/common.js');
+const { JSDOM } = require('jsdom');
 
 const STYLE_CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+const { cssRules } = require('../helpers/stylesheets');
 
 // ---- v1.188 (Dean): the library toolbar wears the modern feed-chip PILL look --
 
-test('v1.188 the .section-actions toolbar buttons adopt the modern-chip pill recipe (rounded/flat/secondary), with an inverted active filter', () => {
-  const base = /\.section-actions \.btn \{([^}]*)\}/.exec(STYLE_CSS);
-  assert.ok(base, 'the .section-actions .btn pill rule exists');
-  assert.match(base[1], /border-radius:\s*var\(--radius-full\)/, 'fully-rounded like a feed chip');
-  assert.match(base[1], /background-color:\s*var\(--bg-secondary\)/, 'flat secondary fill');
-  assert.match(base[1], /border-color:\s*var\(--border-color\)/, 'hairline border');
-  assert.match(base[1], /box-shadow:\s*none/, 'flat - the base .btn shadow is dropped');
-  assert.match(base[1], /font-weight:\s*normal/, 'v1.190: normal weight to match the feed chips (not the base .btn semibold)');
-  const hover = /\.section-actions \.btn:hover \{([^}]*)\}/.exec(STYLE_CSS);
-  assert.ok(hover, 'the hover rule exists');
-  assert.match(hover[1], /background-color:\s*var\(--bg-sidebar\)/, 'hover tints to the sidebar bg like a chip');
-  // The selected filter reads like an ACTIVE feed chip (inverted), not the old
-  // red-accent. Higher specificity than the base .format-toggle-btn.active.
-  const active = /\.section-actions \.format-toggle-btn\.active \{([^}]*)\}/.exec(STYLE_CSS);
-  assert.ok(active, 'the inverted active-filter rule exists');
-  assert.match(active[1], /background-color:\s*var\(--text-primary\)/, 'active fills with the primary ink');
-  assert.match(active[1], /color:\s*var\(--bg-color\)/, 'active text inverts to the page bg');
-  assert.match(active[1], /font-weight:\s*normal/, 'v1.190: the active chip is not bold either (the inverted fill is the emphasis)');
-  // gate QA-W2: 2009 keeps its gloss (background-image), so the inverted fill
-  // never shows there - the active label must stay legible with --text-primary
-  // ink rather than the inverted --bg-color (which would be near-invisible on the
-  // retained light gloss). This 0-4-0 selector outranks the gloss .btn rule.
-  const era2009 = /\[data-theme="2009"\] \.section-actions \.format-toggle-btn\.active \{([^}]*)\}/.exec(STYLE_CSS);
-  assert.ok(era2009, 'the 2009 legibility override exists');
-  assert.match(era2009[1], /color:\s*var\(--text-primary\)/, '2009 active label keeps legible primary ink on its retained gloss');
+// UI pass sweep S2 (F19, AC12 conversion of the v1.188/v1.190 pill-recipe lock):
+// the toolbar's filters are ui-chip filter chips (the primitive owns 32px pills,
+// --surface-2, selected = ink on --fill-selected, never red, hover gated) in ONE
+// horizontally scrolling row, and the trailing tools are ui-btn icons.
+test('sweep S2 (F19): the library toolbar is one chip row - .library-chips scrolls, never wraps; the tools never shrink', () => {
+  const rules = cssRules(STYLE_CSS);
+  const rule = (sel) => { const r = rules.find((x) => x.sel.replace(/\s+/g, ' ') === sel && x.at.length === 0); return r ? r.body : ''; };
+  const chips = rule('.library-chips');
+  assert.match(chips, /display:\s*flex/);
+  assert.match(chips, /overflow-x:\s*auto/, 'the chips scroll horizontally');
+  assert.doesNotMatch(chips, /flex-wrap:\s*wrap/, 'never a second row');
+  assert.match(rule('.library-chip-host'), /min-width:\s*0/, 'the chip host can shrink so the row never overflows');
+  assert.match(rule('.library-tools'), /flex:\s*none/, 'the trailing tools keep their size');
+  // No bespoke chip/pill recipe survives on the toolbar (the primitive is the look).
+  assert.doesNotMatch(STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, ''), /\.section-actions \.btn(?![\w-])|\.format-toggle-btn|\.modern-chip(?![\w-])/, 'the v1.188 pill recipe and .modern-chip are gone');
+  // The primitive itself: selected is ink on the tonal fill, never red (F13/F19).
+  const UI = fs.readFileSync(path.join(__dirname, '../../public/css/ui.css'), 'utf8');
+  const sel = cssRules(UI).find((x) => x.sel === '.ui-chip--filter[aria-pressed="true"]');
+  assert.ok(sel && /--fill-selected/.test(sel.body) && !/--accent/.test(sel.body));
 });
 
-test('v1.189.0 the pill look extends to the books / music / podcasts / history toolbars, tokens only, primary accent preserved', () => {
-  // The three other list-page toolbar containers all get the pill SHAPE.
-  const shape = /\.books-toolbar \.btn,\s*\.music-toolbar-actions \.btn,\s*\.history-toolbar-actions \.btn \{([^}]*)\}/.exec(STYLE_CSS);
-  assert.ok(shape, 'the grouped pill-shape rule for the other toolbars exists (books + music/podcasts + history)');
-  assert.match(shape[1], /border-radius:\s*var\(--radius-full\)/, 'fully rounded like the home toolbar');
-  assert.match(shape[1], /box-shadow:\s*none/, 'flat - base .btn shadow dropped');
-  assert.match(shape[1], /font-weight:\s*normal/, 'v1.190: normal weight to match the feed chips + the home toolbar');
-  // The flat secondary FILL is scoped to :not(.btn-primary) so +Add / Subscribe
-  // keep their --yt-red accent (only the shape rounds).
-  const fill = /\.books-toolbar \.btn:not\(\.btn-primary\),\s*\.music-toolbar-actions \.btn:not\(\.btn-primary\),\s*\.history-toolbar-actions \.btn:not\(\.btn-primary\) \{([^}]*)\}/.exec(STYLE_CSS);
-  assert.ok(fill, 'the fill rule excludes .btn-primary (accent preserved)');
-  assert.match(fill[1], /background-color:\s*var\(--bg-secondary\)/, 'non-primary buttons get the flat secondary fill');
-  assert.match(fill[1], /border-color:\s*var\(--border-color\)/, 'hairline border');
-  // Bind the hover tint too (gate SUGGESTION: without this a future edit could
-  // silently drop it, matching the v1.188 sibling test's own hover lock).
-  const hover = /\.books-toolbar \.btn:not\(\.btn-primary\):hover,\s*\.music-toolbar-actions \.btn:not\(\.btn-primary\):hover,\s*\.history-toolbar-actions \.btn:not\(\.btn-primary\):hover \{([^}]*)\}/.exec(STYLE_CSS);
-  assert.ok(hover, 'the non-primary hover rule exists for the other toolbars');
-  assert.match(hover[1], /background-color:\s*var\(--bg-sidebar\)/, 'hover tints to the sidebar bg like the home toolbar');
-  // No raw color literal sneaks in (the census enforces this globally, but bind
-  // it here too since this is the theming question Dean raised).
-  assert.doesNotMatch(shape[1] + fill[1], /#[0-9a-fA-F]{3,8}\b|rgb\(|hsl\(/, 'every color is a token, none raw - themes with the era system');
+test('sweep S2: the toolbar markup is one row - the chip host, then ui-btn icon tools (sort, shuffle, rescan, view)', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../../public/index.html'), 'utf8');
+  const bar = html.slice(html.indexOf('<div class="section-actions">'), html.indexOf('<div class="video-grid"'));
+  assert.match(bar, /<div class="library-chip-host" id="library-chip-host"><\/div>\s*<div class="library-tools">/);
+  for (const [id, icon] of [['sort-select-btn', 'sort'], ['shuffle-again-btn', 'shuffle'], ['rescan-library-btn', 'refresh'], ['view-mode-btn', 'view_list']]) {
+    const m = new RegExp('<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--icon" id="' + id + '"[^>]*aria-label="[^"]+"[^>]*>[\\s\\S]*?<use href="#i-' + icon + '"/>').exec(bar);
+    assert.ok(m, id + ' is a ui-btn tonal icon with an aria-label and the ' + icon + ' registry icon');
+  }
+  assert.doesNotMatch(bar, /sort-menu|sort-caret|btn-label|&#9662;/, 'no hand-built dropdown or text caret');
+});
+
+test('v1.189.0 the pill look extends to the music / podcasts toolbars, tokens only, primary accent preserved (books is ui-btn since S10, History since S2)', () => {
+  // UI pass sweep S10 (AC12 conversion of the books third): the books toolbar left this
+  // recipe for ui-btn primitives - its Sort and Scan are tonal pill ui-btns in the shell
+  // markup, and no .books-toolbar .btn rule survives to restyle them.
+  const books = fs.readFileSync(path.join(__dirname, '../../public/books.html'), 'utf8');
+  for (const id of ['books-sort-btn', 'books-scan-btn']) {
+    const tag = new RegExp(`<button[^>]*id="${id}"[^>]*>`).exec(books);
+    assert.ok(tag, `books.html carries #${id}`);
+    for (const cls of ['ui-btn', 'ui-btn--tonal', 'ui-btn--pill']) assert.match(tag[0], new RegExp(`class="[^"]*\\b${cls}(?![\\w-])`), `#${id} is a ${cls}`);
+  }
+  assert.doesNotMatch(STYLE_CSS, /\.books-toolbar \.btn/, 'no bespoke .btn recipe for the books toolbar remains');
+  // UI pass sweep S7 (AC12 conversion of the music / podcasts third): both toolbars left the
+  // v1.189 .btn pill recipe for ui primitives - every control is a ui-btn (tonal sm pills;
+  // podcasts' one primary Add), a ui-chip mode toggle or the ui-select sort field - and no
+  // .music-toolbar-actions .btn rule survives to restyle them.
+  const music = fs.readFileSync(path.join(__dirname, '../../public/music.html'), 'utf8');
+  const bar = music.slice(music.indexOf('<div class="music-toolbar-actions">'), music.indexOf('<div id="music-stage"'));
+  assert.ok(bar.length > 200, 'precondition: the music toolbar markup');
+  for (const id of ['music-shuffle-btn', 'music-scan-btn', 'music-popout-btn', 'music-actions-btn', 'music-view-toggle']) {
+    const tag = new RegExp(`<button[^>]*id="${id}"[^>]*>`).exec(bar);
+    assert.ok(tag, `music.html carries #${id}`);
+    for (const cls of ['ui-btn', 'ui-btn--tonal', 'ui-btn--sm', 'ui-btn--pill']) assert.match(tag[0], new RegExp(`class="[^"]*\\b${cls}(?![\\w-])`), `#${id} is a ${cls}`);
+  }
+  for (const id of ['music-loop-btn', 'music-autoplay-btn']) {
+    assert.match(bar, new RegExp(`<button class="ui-chip ui-chip--filter music-mode-btn" id="${id}"[^>]*aria-pressed="false"`), `#${id} is a filter chip (its ON state is the chip's selected fill)`);
+  }
+  assert.match(bar, /<span class="ui-select music-sort"><select id="music-sort-select" class="ui-select__native"/, 'the sort is the ui-select field');
+  assert.doesNotMatch(bar, /class="btn\b|class="[^"]*\sbtn\b|btn-sm/, 'no legacy .btn control left in the music toolbar');
+  const pods = fs.readFileSync(path.join(__dirname, '../../public/podcasts.html'), 'utf8');
+  const podBar = pods.slice(pods.indexOf('<div class="music-toolbar-actions">'), pods.indexOf('id="podcasts-status"'));
+  assert.ok(podBar.length > 100, 'precondition: the podcasts toolbar markup');
+  assert.doesNotMatch(podBar, /class="btn\b|btn-sm|music-theater-btn/, 'the podcasts toolbar: no legacy .btn control (its theatre toggle is the player\'s own #theater-btn since S7)');
+  assert.doesNotMatch(STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, ''), /\.music-toolbar-actions \.btn\b/, 'no bespoke .btn recipe for the music/podcasts toolbar remains');
 });
 
 // ---- countItems / formatItemCountLabel (pure, no DOM) ----------------------
@@ -309,125 +330,68 @@ function makeFakeDoc(registry) {
   };
 }
 
-test('buildFormatToggleControl: builds 3 buttons (All/Videos/Audio), marking the current mode active/aria-pressed', () => {
-  global.document = makeFakeDoc({});
-  const control = buildFormatToggleControl('video');
-  assert.strictEqual(control.id, 'library-format-toggle');
-  assert.strictEqual(control.children.length, 3);
-  const [all, videos, audio] = control.children;
-  assert.strictEqual(all.tagName, 'BUTTON');
-  assert.strictEqual(all.getAttribute('aria-pressed'), 'false');
-  assert.strictEqual(videos.getAttribute('aria-pressed'), 'true');
-  assert.ok(videos.classList.contains('active'));
-  assert.strictEqual(audio.getAttribute('aria-pressed'), 'false');
-  delete global.document;
+// ---- UI pass sweep S2 (F19): the ONE filter chip row (buildFilterChipRow) ----
+// Converted from the v1.24/v1.50/v1.149 buildFormatToggleControl /
+// buildWatchToggleControl / buildSearchScopeToggleControl locks (AC12): the
+// dimensions and their persistence/onChange contracts carry over; the widget is
+// one row of ui-chip filter chips with ONE leading "All".
+
+function chipDoc() {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>');
+  return dom.window.document;
+}
+const FORMAT_GROUP = (v) => ({ key: 'format', value: v, all: 'both', options: FORMAT_TOGGLE_OPTIONS.map((o) => ({ value: o.mode, label: o.label })) });
+const WATCH_GROUP = (v) => ({ key: 'watch', value: v, all: 'all', options: WATCH_TOGGLE_OPTIONS.map((o) => ({ value: o.mode, label: o.label })) });
+const pressed = (row) => Array.from(row.querySelectorAll('.ui-chip')).map((c) => c.textContent + '=' + c.getAttribute('aria-pressed'));
+
+test('buildFilterChipRow: ONE leading All, then each dimension\'s chips - all ui-chip filter buttons, one row', () => {
+  const doc = chipDoc();
+  const row = buildFilterChipRow([FORMAT_GROUP('video'), WATCH_GROUP('all')], null, { doc, id: 'library-filter-chips' });
+  assert.strictEqual(row.id, 'library-filter-chips');
+  assert.strictEqual(row.className, 'library-chips');
+  assert.strictEqual(row.getAttribute('role'), 'group');
+  const chips = Array.from(row.children);
+  assert.ok(chips.every((c) => c.tagName === 'BUTTON' && c.className === 'ui-chip ui-chip--filter'));
+  assert.deepStrictEqual(chips.map((c) => c.textContent), ['All', 'Videos', 'Audio', 'New', 'Watching', 'Watched'],
+    'exactly one All (F19: two rows each starting with All is the bug)');
+  assert.deepStrictEqual(pressed(row), ['All=false', 'Videos=true', 'Audio=false', 'New=false', 'Watching=false', 'Watched=false']);
 });
 
-test('buildFormatToggleControl: an unrecognized currentMode falls back to "both" active', () => {
-  global.document = makeFakeDoc({});
-  const control = buildFormatToggleControl('bogus');
-  const all = control.children[0];
-  assert.ok(all.classList.contains('active'));
-  delete global.document;
+test('buildFilterChipRow: All is pressed exactly when every dimension is at its all-value', () => {
+  const doc = chipDoc();
+  assert.strictEqual(buildFilterChipRow([FORMAT_GROUP('both'), WATCH_GROUP('all')], null, { doc }).children[0].getAttribute('aria-pressed'), 'true');
+  assert.strictEqual(buildFilterChipRow([FORMAT_GROUP('both'), WATCH_GROUP('new')], null, { doc }).children[0].getAttribute('aria-pressed'), 'false');
 });
 
-test('buildFormatToggleControl: clicking a button persists the mode, updates aria-pressed across all buttons, and invokes onChange', () => {
-  global.document = makeFakeDoc({});
-  global.localStorage = makeFakeLocalStorage();
-  let changedTo = null;
-  const control = buildFormatToggleControl('both', (mode) => { changedTo = mode; });
-  const [, videosBtn] = control.children;
-
-  videosBtn.click();
-
-  assert.strictEqual(changedTo, 'video');
-  assert.strictEqual(getStoredFormatFilter(), 'video');
-  assert.ok(videosBtn.classList.contains('active'));
-  assert.strictEqual(videosBtn.getAttribute('aria-pressed'), 'true');
-  assert.ok(!control.children[0].classList.contains('active'), 'the previously-active "All" button is deactivated');
-  assert.strictEqual(control.children[0].getAttribute('aria-pressed'), 'false');
-
-  delete global.document;
-  delete global.localStorage;
+test('buildFilterChipRow: a chip selects its value (deselecting its siblings); tapping it again returns the dimension to all - ONE onChange per tap', () => {
+  const doc = chipDoc();
+  const calls = [];
+  const row = buildFilterChipRow([FORMAT_GROUP('both'), WATCH_GROUP('all')], (ch) => calls.push(ch), { doc });
+  const chip = (label) => Array.from(row.children).find((c) => c.textContent === label);
+  chip('Videos').click();
+  chip('Audio').click();
+  assert.deepStrictEqual(pressed(row).slice(0, 3), ['All=false', 'Videos=false', 'Audio=true'], 'single-select within a dimension');
+  chip('Watching').click();
+  assert.deepStrictEqual(pressed(row), ['All=false', 'Videos=false', 'Audio=true', 'New=false', 'Watching=true', 'Watched=false'], 'dimensions are independent');
+  chip('Audio').click();
+  assert.deepStrictEqual(calls, [{ format: 'video' }, { format: 'audio' }, { watch: 'watching' }, { format: 'both' }]);
 });
 
-test('buildFormatToggleControl: builds via createElement/textContent only, never innerHTML (regression guard)', () => {
-  const stripComments = (src) => src.replace(/\/\/.*$/gm, '');
-  const src = stripComments(buildFormatToggleControl.toString());
+test('buildFilterChipRow: All resets EVERY dimension in ONE onChange (one reload); an All tap that changes nothing never calls it', () => {
+  const doc = chipDoc();
+  const calls = [];
+  const row = buildFilterChipRow([FORMAT_GROUP('audio'), WATCH_GROUP('new')], (ch) => calls.push(ch), { doc });
+  row.children[0].click();
+  assert.deepStrictEqual(calls, [{ format: 'both', watch: 'all' }]);
+  assert.deepStrictEqual(pressed(row).filter((p) => p.endsWith('=true')), ['All=true']);
+  row.children[0].click();
+  assert.strictEqual(calls.length, 1, 'no-op tap, no reload');
+});
+
+test('buildFilterChipRow: builds via createElement/textContent only, never innerHTML (regression guard)', () => {
+  const src = buildFilterChipRow.toString().replace(/\/\/.*$/gm, '');
   assert.doesNotMatch(src, /\.innerHTML\s*=/);
-});
-
-test('renderFormatToggle: mounts as the FIRST child of actionsEl', () => {
-  const registry = {};
-  global.document = makeFakeDoc(registry);
-  const actions = new FakeNode('div');
-  const existingChild = new FakeNode('select');
-  actions.appendChild(existingChild);
-
-  renderFormatToggle(actions, 'both');
-
-  assert.strictEqual(actions.children.length, 2);
-  assert.strictEqual(actions.children[0].id, 'library-format-toggle');
-  assert.strictEqual(actions.children[1], existingChild);
-  delete global.document;
-});
-
-test('renderFormatToggle: idempotent -- a second call removes the prior control rather than duplicating it', () => {
-  global.document = makeFakeDoc({});
-  const actions = new FakeNode('div');
-
-  renderFormatToggle(actions, 'both');
-  const firstControl = actions.children[0];
-
-  renderFormatToggle(actions, 'video');
-  assert.strictEqual(actions.children.length, 1, 'still exactly one toggle control, never a duplicate');
-  assert.notStrictEqual(actions.children[0], firstControl);
-  delete global.document;
-});
-
-// ---- v1.50 T1 regression: the "doubled All/Videos/Audio row" bug -----------
-// homeViewCache keeps the home view alive DETACHED (no destroy()), and a
-// background `__filetubeRefreshLibrary` can re-render it there while another
-// view is live. The old document.getElementById de-dupe could not see the
-// detached tree (-> double-append on reattach) and could find-and-remove the
-// LIVE page's control instead. The fix scopes every de-dupe lookup to the
-// container that is being rendered into. These tests simulate exactly that:
-// `document.getElementById` deliberately CANNOT see the detached nodes.
-
-test('renderFormatToggle: re-render against a DETACHED cached view never doubles the toggle (the v1.50 doubled-row bug)', () => {
-  // getElementById never finds anything -- exactly the detached-cache case.
-  global.document = makeFakeDoc({});
-  const detachedActions = new FakeNode('div');
-
-  renderFormatToggle(detachedActions, 'both');
-  renderFormatToggle(detachedActions, 'both'); // background refresh while off Home
-
-  const toggles = detachedActions.children.filter((c) => c.id === 'library-format-toggle');
-  assert.strictEqual(toggles.length, 1, 'exactly one toggle after a detached re-render, never two');
-  delete global.document;
-});
-
-test('renderFormatToggle: a detached re-render never steals/removes the LIVE page\'s toggle', () => {
-  const registry = {};
-  global.document = makeFakeDoc(registry);
-  const liveActions = new FakeNode('div');
-  renderFormatToggle(liveActions, 'both');
-  const liveToggle = liveActions.children[0];
-  registry['library-format-toggle'] = liveToggle; // the live one IS document-visible
-
-  const detachedActions = new FakeNode('div');
-  renderFormatToggle(detachedActions, 'video');
-
-  assert.strictEqual(liveActions.children[0], liveToggle, 'live toggle untouched');
-  assert.strictEqual(liveToggle.parentNode, liveActions);
-  assert.strictEqual(detachedActions.children.filter((c) => c.id === 'library-format-toggle').length, 1);
-  delete global.document;
-});
-
-test('renderFormatToggle: no-ops safely when actionsEl is missing', () => {
-  global.document = makeFakeDoc({});
-  assert.doesNotThrow(() => renderFormatToggle(null, 'both'));
-  delete global.document;
+  assert.doesNotMatch(src, /localStorage/, 'the row never persists anything - the caller owns state');
 });
 
 test('renderItemCountBadge: inserts a sibling badge right after headerEl with the correct label', () => {
@@ -539,69 +503,11 @@ test('WATCH_TOGGLE_MODES: exactly the 4 modes, matching the server\'s WATCH_FILT
   assert.deepStrictEqual(WATCH_TOGGLE_MODES, ['all', 'new', 'watching', 'watched']);
 });
 
-test('buildWatchToggleControl: 4 buttons (All/New/Watching/Watched), current mode active/aria-pressed, format-toggle component classes', () => {
-  global.document = makeFakeDoc({});
-  const control = buildWatchToggleControl('watching');
-  assert.strictEqual(control.id, 'library-watch-toggle');
-  assert.ok(control.className.includes('format-toggle'), 'reuses the format-toggle component styling');
-  assert.ok(control.className.includes('watch-toggle'), 'carries the layout-override class');
-  assert.strictEqual(control.children.length, 4);
-  const labels = control.children.map((b) => b.textContent || (b.children[0] && b.children[0].textContent));
-  assert.deepStrictEqual(labels, ['All', 'New', 'Watching', 'Watched']);
-  const pressed = control.children.map((b) => b.getAttribute('aria-pressed'));
-  assert.deepStrictEqual(pressed, ['false', 'false', 'true', 'false']);
-  delete global.document;
-});
-
-test('buildWatchToggleControl: clicking persists the mode, flips active/aria-pressed, and invokes onChange', () => {
-  global.document = makeFakeDoc({});
-  global.localStorage = makeFakeLocalStorage();
-  let changedTo = null;
-  const control = buildWatchToggleControl('all', (mode) => { changedTo = mode; });
-  const newBtn = control.children[1];
-
-  newBtn.click();
-
-  assert.strictEqual(changedTo, 'new');
-  assert.strictEqual(getStoredWatchFilter(), 'new');
-  assert.ok(newBtn.classList.contains('active'));
-  assert.strictEqual(control.children[0].getAttribute('aria-pressed'), 'false', 'the previously-active "All" is deactivated');
-  delete global.document;
-  delete global.localStorage;
-});
-
-test('renderWatchToggle: mounts DIRECTLY AFTER the format toggle; falls back to first child without one', () => {
-  global.document = makeFakeDoc({});
-  const actions = new FakeNode('div');
-  const sortBtn = new FakeNode('button');
-  actions.appendChild(sortBtn);
-  renderFormatToggle(actions, 'both');
-
-  renderWatchToggle(actions, 'all');
-
-  assert.strictEqual(actions.children[0].id, 'library-format-toggle');
-  assert.strictEqual(actions.children[1].id, 'library-watch-toggle');
-  assert.strictEqual(actions.children[2], sortBtn);
-
-  const bare = new FakeNode('div');
-  const other = new FakeNode('button');
-  bare.appendChild(other);
-  renderWatchToggle(bare, 'all');
-  assert.strictEqual(bare.children[0].id, 'library-watch-toggle', 'no format toggle -> first child');
-  delete global.document;
-});
-
-test('renderWatchToggle: idempotent + detached-cache safe (the doubled-row class, from birth)', () => {
-  global.document = makeFakeDoc({}); // getElementById never finds anything -- the detached case
-  const actions = new FakeNode('div');
-
-  renderWatchToggle(actions, 'all');
-  renderWatchToggle(actions, 'watched'); // background refresh while detached
-
-  const toggles = actions.children.filter((c) => c.id === 'library-watch-toggle');
-  assert.strictEqual(toggles.length, 1, 'exactly one watch toggle, never two');
-  assert.doesNotThrow(() => renderWatchToggle(null, 'all'), 'no-ops safely without a container');
-  delete global.document;
+test('the watch dimension offers New/Watching/Watched (all = the row\'s shared All); the format dimension Videos/Audio', () => {
+  assert.deepStrictEqual(WATCH_TOGGLE_OPTIONS.map((o) => [o.mode, o.label]), [['new', 'New'], ['watching', 'Watching'], ['watched', 'Watched']]);
+  assert.deepStrictEqual(FORMAT_TOGGLE_OPTIONS.map((o) => [o.mode, o.label]), [['video', 'Videos'], ['audio', 'Audio']]);
+  for (const o of WATCH_TOGGLE_OPTIONS) assert.ok(WATCH_TOGGLE_MODES.includes(o.mode));
+  for (const o of FORMAT_TOGGLE_OPTIONS) assert.ok(FORMAT_FILTER_MODES.includes(o.mode));
 });
 
 // ---- v1.149: the search-scope toggle (All | Titles | Channels) --------------
@@ -612,8 +518,7 @@ test('renderWatchToggle: idempotent + detached-cache safe (the doubled-row class
 // fake-doc shims as its siblings.
 
 const {
-  SEARCH_SCOPE_MODES, normalizeSearchScopeMode,
-  buildSearchScopeToggleControl, renderSearchScopeToggle,
+  SEARCH_SCOPE_MODES, SEARCH_SCOPE_OPTIONS, normalizeSearchScopeMode,
 } = require('../../public/js/common.js');
 
 test('v1.149 normalizeSearchScopeMode: whitelist with all-fallback, mirroring the server normalizer', () => {
@@ -625,64 +530,23 @@ test('v1.149 normalizeSearchScopeMode: whitelist with all-fallback, mirroring th
   }
 });
 
-test('v1.149 buildSearchScopeToggleControl: three buttons (All/Titles/Channels - never a second "Videos" label), active from the argument', () => {
-  global.document = makeFakeDoc({});
-  const control = buildSearchScopeToggleControl('channel');
-  assert.strictEqual(control.id, 'library-search-scope-toggle');
-  assert.strictEqual(control.children.length, 3);
-  // FakeNode keeps appended text nodes in `children` (nodeType 3) rather
-  // than aggregating textContent - read the label from the text-node child.
-  const labels = Array.prototype.map.call(control.children,
-    (b) => (b.children.find((c) => c.nodeType === 3) || {}).textContent);
-  assert.deepEqual(labels, ['All', 'Titles', 'Channels'], 'the format toggle beside it owns "Videos" - this one must not');
-  assert.deepEqual(Array.prototype.map.call(control.children, (b) => b.dataset.searchScope), ['all', 'title', 'channel']);
-  assert.ok(control.children[2].classList.contains('active'));
-  assert.strictEqual(control.children[2].getAttribute('aria-pressed'), 'true');
-  assert.strictEqual(control.children[0].getAttribute('aria-pressed'), 'false');
-  delete global.document;
+test('v1.149 the scope dimension: Titles/Channels (never a second "Videos" label beside the format\'s)', () => {
+  assert.deepStrictEqual(SEARCH_SCOPE_OPTIONS.map((o) => [o.mode, o.label]), [['title', 'Titles'], ['channel', 'Channels']]);
+  const doc = chipDoc();
+  const row = buildFilterChipRow([FORMAT_GROUP('both'), { key: 'scope', value: 'channel', all: 'all', options: SEARCH_SCOPE_OPTIONS.map((o) => ({ value: o.mode, label: o.label })) }], null, { doc });
+  const labels = Array.from(row.children).map((c) => c.textContent);
+  assert.strictEqual(labels.filter((l) => l === 'Videos').length, 1, 'one Videos in the row');
+  assert.strictEqual(Array.from(row.children).find((c) => c.textContent === 'Channels').getAttribute('aria-pressed'), 'true');
 });
 
-test('v1.149 buildSearchScopeToggleControl: click flips active + fires onChange - and NEVER touches localStorage (the no-persistence decision)', () => {
-  global.document = makeFakeDoc({});
-  const writes = [];
-  global.localStorage = { getItem: () => null, setItem: (k, v) => { writes.push([k, v]); } };
-  let changedTo = null;
-  const control = buildSearchScopeToggleControl('all', (mode) => { changedTo = mode; });
-  control.children[2].click();
-  assert.strictEqual(changedTo, 'channel');
-  assert.ok(control.children[2].classList.contains('active'));
-  assert.strictEqual(control.children[0].getAttribute('aria-pressed'), 'false');
-  assert.deepEqual(writes, [], 'a scope click must not persist anything - each new search starts on all');
-  delete global.document;
-  delete global.localStorage;
-});
-
-test('v1.149 renderSearchScopeToggle: mounts AFTER the watch toggle and de-dupes container-scoped', () => {
-  global.document = makeFakeDoc({});
-  const actions = global.document.createElement('div');
-  renderFormatToggle(actions, 'both', () => {});
-  renderWatchToggle(actions, 'all', () => {});
-  renderSearchScopeToggle(actions, 'title', () => {});
-  const ids = Array.prototype.map.call(actions.children, (c) => c.id);
-  assert.deepEqual(ids, ['library-format-toggle', 'library-watch-toggle', 'library-search-scope-toggle']);
-  renderSearchScopeToggle(actions, 'channel', () => {});
-  assert.strictEqual(actions.children.length, 3, 'a re-render replaces, never accumulates (the doubled-row class)');
-  delete global.document;
-});
-
-test('v1.149 main.js source locks: the scope rides the query only under a search, and both toolbar sites are search-gated', () => {
-  const fs = require('node:fs');
-  const path = require('node:path');
+test('v1.149 main.js source locks: the scope rides the query only under a search; the chip row adds it only on a non-liked search', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
   assert.match(src, /if \(searchQuery && activeSearchScope !== 'all'\) queryParams\.push\(`searchIn=\$\{encodeURIComponent\(activeSearchScope\)\}`\)/,
     'buildVideosApiUrl sends searchIn only for a non-default scope during a search');
-  // v1.205 Wave B: the two toolbar sites are still search-gated + liked-
-  // excluded, but each now BRANCHES: a global search mounts the type-chip row,
-  // a folder/root search keeps the video-only scope toggle.
-  assert.strictEqual((src.match(/searchQuery && !likedFilter && sectionActions/g) || []).length, 2,
-    'both toolbar render sites exist, search-gated and liked-excluded');
-  assert.strictEqual((src.match(/!isUnifiedSearch && !sectionActions\.querySelector\('#library-search-scope-toggle'\)/g) || []).length, 2,
-    'the video-only searchIn scope toggle mounts ONLY for a non-unified (folder/root) search, at both sites');
+  const mount = src.slice(src.indexOf('function mountLibraryChips() {'), src.indexOf('function updateShuffleButtonVisibility() {'));
+  assert.match(mount, /if \(isUnifiedSearch\) \{\s*groups\.push\(\{ key: 'type'/, 'a global search shows the type dimension only');
+  assert.match(mount, /if \(searchQuery && !likedFilter\) \{\s*groups\.push\(\{ key: 'scope'/, 'the scope dimension: a folder/root search, never over Liked');
+  assert.strictEqual((src.match(/ensureLibraryChips\(\);/g) || []).length, 2, 'mounted (guarded) at the two toolbar sites');
 });
 
 test('v1.149 gate round 1: main.js source locks - deep-link init, ctx threading, and the liked-view mount exclusion', () => {
@@ -697,8 +561,6 @@ test('v1.149 gate round 1: main.js source locks - deep-link init, ctx threading,
   assert.match(src, /searchIn: activeSearchScope/, 'encodeListContext receives the live scope');
   // S2: no scope toggle over a Liked view (its endpoint ignores search).
   // v1.205: the scope-toggle mount is now the else-branch of the type-chip row.
-  assert.strictEqual((src.match(/searchQuery && !likedFilter && sectionActions/g) || []).length, 2,
-    'both mount sites are search-gated AND liked-excluded');
-  assert.strictEqual((src.match(/!isUnifiedSearch && !sectionActions\.querySelector\('#library-search-scope-toggle'\)/g) || []).length, 2,
-    'the scope toggle is gated to a non-unified search at both sites');
+  // S2: no scope over a Liked view (its endpoint ignores search) - the chip row's
+  // scope dimension is gated on a non-liked search (bound in the test above).
 });

@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const common = require('../../public/js/common.js');
+const { ICON_SETS, liveCss, effectiveMask } = require('../helpers/icon-sets');
 
 test('T7: deriveRouteView maps /books, /books.html, and /read.html; unknown paths still fall through', () => {
   assert.equal(common.deriveRouteView('/books'), 'books');
@@ -54,18 +55,33 @@ test('T7: vendored reader libs carry their upstream LICENSE files with the expec
 
 const booksView = require('../../public/js/books.js');
 
-test('T8: buildBookCardHtml -- escaped title/author, encoded id in hrefs, progress bar only when meaningful', () => {
-  const html = booksView.buildBookCardHtml({
+// UI pass sweep S10 (AC12 conversion): the card was an HTML string (escaped by hand, an
+// inline `width: N%` progress fill); it is now DOM built on ui.thumb, so the same four
+// properties are asserted on the built element instead of on a string.
+test('T8: buildBookCard -- title/author are TEXT, encoded id in both hrefs, a 2:3 ui-thumb cover, progress only when meaningful', () => {
+  const { JSDOM } = require('jsdom');
+  const doc = new JSDOM('<!DOCTYPE html><body></body>').window.document;
+  const card = booksView.buildBookCard({
     id: 'abc/def', title: '<b>Sneaky</b> & Title', author: "O'Author",
     progress: { percent: 37.4 },
-  });
-  assert.ok(html.includes('/read.html?b=abc%2Fdef'), 'id URL-encoded');
-  assert.ok(!html.includes('<b>Sneaky</b>'), 'title escaped');
-  assert.ok(html.includes('&lt;b&gt;Sneaky&lt;/b&gt;'));
-  assert.ok(html.includes('&#039;Author'), 'author escaped');
-  assert.ok(html.includes('width: 37.4%'), 'progress fill');
-  const fresh = booksView.buildBookCardHtml({ id: 'x', title: 'T', author: '' });
-  assert.ok(!fresh.includes('book-progress-track'), 'no bar on unread books');
+  }, doc);
+  const links = card.querySelectorAll('a');
+  assert.equal(links.length, 2, 'the cover link and the title link');
+  for (const a of links) assert.equal(a.getAttribute('href'), '/read.html?b=abc%2Fdef', 'id URL-encoded');
+  const title = card.querySelector('.book-title');
+  assert.equal(title.textContent, '<b>Sneaky</b> & Title', 'the title is text');
+  assert.equal(title.querySelector('b'), null, 'never parsed as markup');
+  assert.equal(card.querySelector('.book-author').textContent, "O'Author");
+  const thumb = card.querySelector('.book-cover-link > .ui-thumb');
+  assert.ok(thumb && thumb.classList.contains('ui-thumb--2x3') && thumb.classList.contains('ui-thumb--card'), 'a 2:3 card thumb');
+  assert.equal(thumb.querySelector('img').getAttribute('src'), '/bookcover/abc%2Fdef');
+  const bar = thumb.querySelector('.ui-thumb__bar');
+  assert.ok(bar, 'a progress bar');
+  assert.equal(bar.style.getPropertyValue('--p'), '0.374', 'the fraction is DATA (--p), not an inline width');
+  const fresh = booksView.buildBookCard({ id: 'x', title: 'T', author: '' }, doc);
+  assert.equal(fresh.querySelector('.ui-thumb__progress'), null, 'no bar on unread books');
+  const sliver = booksView.buildBookCard({ id: 'y', title: 'T', progress: { percent: 0.4 } }, doc);
+  assert.equal(sliver.querySelector('.ui-thumb__progress'), null, 'no sliver bar for an opened-once book (<= 0.5%)');
 });
 
 test('T8: deriveShelfChips -- sorted, malformed entries dropped, non-arrays degrade to []', () => {
@@ -152,16 +168,24 @@ test('unpin: fetchAllPins tags every pin with its source, and pinDeleteEndpoint 
 test('unpin: BOTH pinned surfaces (sidebar + playlists sheet) attach buildUnpinButton to every row (source locks)', () => {
   const calls = (commonSrc.match(/buildUnpinButton\(/g) || []).length;
   assert.ok(calls >= 3, 'the builder + two renderer call sites');
-  assert.ok(commonSrc.includes('link.appendChild(buildUnpinButton(sourcePin, refreshAllPinSurfaces))'), 'sidebar rows carry the control');
-  assert.ok(commonSrc.includes('link.appendChild(buildUnpinButton(sheetSourcePin, refreshAllPinSurfaces))'), 'sheet rows carry the control');
+  // Sweep S1 (DELIBERATE lock update): the sidebar row keeps the control inline (a sm
+  // button); the sheet row's control sits in the ui-row's reserved action column (md).
+  assert.ok(commonSrc.includes("link.appendChild(buildUnpinButton(sourcePin, refreshAllPinSurfaces, 'sm', entry.label))"), 'sidebar rows carry the control');
+  assert.ok(commonSrc.includes("acts.appendChild(buildUnpinButton(sheetSourcePin, refreshAllPinSurfaces, 'md', entry.label))"), 'sheet rows carry the control');
 });
 
-test('unpin: the control is arm/confirm (card-delete pattern) and never navigates the row link', () => {
+// Sweep S1 (DELIBERATE lock update, D4.8): the in-row "Unpin?" arm is replaced by ui.confirm.
+// Bound behaviourally in test/unit/chrome-primitives.test.js (a confirmed answer DELETEs once;
+// Cancel / Esc / the scrim / Close never do); this keeps the never-navigates half.
+test('unpin: the control asks through ui.confirm and never navigates the row link', () => {
   const fnStart = commonSrc.indexOf('function buildUnpinButton');
   const fnBody = commonSrc.slice(fnStart, commonSrc.indexOf('\nfunction ', fnStart + 10));
   assert.ok(fnBody.includes('event.preventDefault()') && fnBody.includes('event.stopPropagation()'), 'clicks never fall through to the row link');
-  assert.ok(fnBody.includes("classList.contains('armed')"), 'first tap arms');
-  assert.ok(fnBody.includes("method: 'DELETE'"), 'second tap deletes');
+  assert.ok(fnBody.includes('U.confirm('), 'a tap asks first');
+  // Gate r1 (adversary 3/5, DELIBERATE lock update): exactly `true`, and the shown-view
+  // signal re-checked after the answer (bound behaviourally in chrome-primitives.test.js).
+  assert.ok(/if \(ok !== true \|\| \(shown && shown\.aborted\)\) return;[\s\S]*method: 'DELETE'/.test(fnBody), 'only a confirmed answer deletes');
+  assert.ok(!fnBody.includes("'armed'"), 'no in-row arm state survives');
 });
 
 // ---- GATE FIXES (both reviewers' CRITICAL + warnings): source locks ----------
@@ -206,14 +230,42 @@ test("v1.37.1: ePub() is called with openAs:'epub' -- the extension-less /book/:
   assert.ok(readSrc.includes("{ openAs: 'epub' }"), 'the archived-epub hint must be explicit');
 });
 
-test('v1.37.1: books/reader styles live in the SHARED stylesheet -- the SPA router swaps only #view-root, so page-local <head> styles are lost on in-app navigation', () => {
-  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
-  for (const cls of ['.reader-chassis', '.reader-topbar', '.reader-drawer', '.books-grid', '.book-cover-link', '.books-shelf-chip']) {
-    assert.ok(css.includes(`${cls} {`) || css.includes(`${cls},`), `${cls} must be in style.css`);
-  }
+// UI pass sweep S10 (AC12 conversion): this pinned a hand-kept list of six bespoke
+// classes in style.css. Most of them are gone (the shelf chips, the drawers and the
+// cover link's look are ui-* primitives now), so the lock is the styling-source law it
+// stood for, derived instead of listed: EVERY class the books and reader views put on
+// the page (their #view-root markup and every className / classList literal in
+// books.js and read.js) has a rule in the SHARED stylesheets (ui.css or style.css),
+// and neither shell carries a page-local <style> (lost on the SPA #view-root swap,
+// v1.37.1; ui-lint no-shell-style enforces the same app-wide).
+test('v1.37.1: books/reader styles live in the SHARED stylesheets -- every class the two views use has a rule in ui.css or style.css; no page-local <style>', () => {
+  const pub = path.join(__dirname, '../../public');
+  const strip = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = strip(fs.readFileSync(path.join(pub, 'css/ui.css'), 'utf8')) + strip(fs.readFileSync(path.join(pub, 'css/style.css'), 'utf8'));
+  const classes = new Map(); // class -> where it came from
   for (const page of ['books.html', 'read.html']) {
-    const html = fs.readFileSync(path.join(__dirname, `../../public/${page}`), 'utf8');
-    assert.ok(!html.includes('<style>'), `${page} must carry NO page-local style block (lost on SPA swap)`);
+    const html = fs.readFileSync(path.join(pub, page), 'utf8');
+    assert.ok(!/<style[\s>]/.test(html), `${page} must carry NO page-local style block (lost on SPA swap)`);
+    const viewStart = html.indexOf('<div id="view-root"');
+    const viewEnd = html.indexOf('</main>');
+    assert.ok(viewStart > 0 && viewEnd > viewStart, `${page}: the #view-root region is found`);
+    const view = html.slice(viewStart, viewEnd).replace(/<!--[\s\S]*?-->/g, '');
+    for (const m of view.matchAll(/class="([^"]+)"/g)) for (const c of m[1].split(/\s+/)) if (c) classes.set(c, page);
+  }
+  for (const file of ['js/books.js', 'js/read.js']) {
+    const js = fs.readFileSync(path.join(pub, file), 'utf8');
+    for (const m of js.matchAll(/className = '([a-z0-9_ -]+)'/g)) for (const c of m[1].split(/\s+/)) if (c) classes.set(c, file);
+    for (const m of js.matchAll(/classList\.(?:add|toggle)\('([a-z0-9_-]+)'/g)) classes.set(m[1], file);
+    for (const m of js.matchAll(/class="([^"$]+)"/g)) for (const c of m[1].split(/\s+/)) if (c) classes.set(c, file);
+  }
+  assert.ok(classes.size >= 30, `sanity: the scan found the views' classes (${classes.size})`);
+  // One listed exception: ui.thumb's DEFAULT context modifier. ui.css paints the card
+  // radius on the base .ui-thumb and styles only the --row override, so --card is a
+  // builder-emitted marker with nothing to add (ui-builders.test.js pins it).
+  const EXCUSED = new Map([['ui-thumb--card', "ui.thumb's default context; the base .ui-thumb rule is the card look"]]);
+  for (const [cls, from] of classes) {
+    if (EXCUSED.has(cls)) continue;
+    assert.ok(new RegExp(`\\.${cls.replace(/[-_]/g, (ch) => '\\' + ch)}(?![\\w-])`).test(css), `${from}: class '${cls}' has NO rule in ui.css or style.css - a bare control (the styling-source law)`);
   }
 });
 
@@ -230,7 +282,7 @@ test('v1.37.3: epub.js is NEVER handed percentage dimensions -- explicit measure
 
 // ---- v1.73.2 (Dean): Books' own glyph ----------------------------------------
 
-test('v1.73.2 SOURCE-LOCK: Books wears icon-books everywhere - injector, sheet mirror, all nine shells, real mask asset + emoji entry', () => {
+test('v1.73.2 SOURCE-LOCK: Books wears icon-books everywhere - injector, sheet mirror, all nine shells, real mask asset in every icon set', () => {
   const pub = path.join(__dirname, '../../public');
   const commonSrc = fs.readFileSync(path.join(pub, 'js/common.js'), 'utf8');
   assert.ok(commonSrc.includes("injectLibraryNavEntry('books', '/books', 'Books', 'icon-books')"), 'the Library injector');
@@ -247,7 +299,15 @@ test('v1.73.2 SOURCE-LOCK: Books wears icon-books everywhere - injector, sheet m
   assert.ok(!commonSrc.includes('\'icon-folder\'); // v1.73.2'), 'no stale folder-icon books call survives');
   const css = fs.readFileSync(path.join(pub, 'css/style.css'), 'utf8');
   assert.ok(css.includes('.icon-books { -webkit-mask-image: url(/assets/icons/books.svg)'), 'a real mask rule');
-  assert.ok(css.includes('[data-icons="emoji"] .icon-books::before { content: "\\1F4DA"; }'), 'the emoji-set entry (no silent drop - the v1.73 W2 lesson)');
+  // No silent drop in any set (the v1.73 W2 lesson). This pinned the emoji-set entry
+  // until the UI pass retired that set (D2.6); the three-set form: under each of
+  // outlined/rounded/filled both mask spellings resolve to the books asset, so no
+  // set-scoped rule blanks it.
+  for (const set of ICON_SETS) {
+    const m = effectiveMask(liveCss(), set, 'icon-books');
+    assert.equal(m.std, 'url(/assets/icons/books.svg)', `${set}: .icon-books paints the books mask`);
+    assert.equal(m.webkit, m.std, `${set}: the -webkit- spelling agrees`);
+  }
   assert.ok(fs.existsSync(path.join(pub, 'assets/icons/books.svg')), 'the asset exists');
   assert.ok(fs.readFileSync(path.join(pub, 'assets/icons/books.svg'), 'utf8').includes('<svg'), 'and is a real svg, not a corrupted husk (slim-gate S2)');
   // Slim-gate W1: the two memberships the first lock left unbound - both
@@ -263,18 +323,30 @@ test('v1.73.2 SOURCE-LOCK: Books wears icon-books everywhere - injector, sheet m
   const sizingGroup = css.slice(css.indexOf('\n.icon-home,\n'), css.indexOf('{', css.indexOf('\n.icon-home,\n')))
     .replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(sizingGroup, /\.icon-books(?![a-z0-9-])/, 'base sizing-group membership (dropped = zero-area icon in every mask set)');
-  assert.ok(css.includes('[data-icons="emoji"] .icon-books,'), 'emoji mask-STRIP membership (dropped = the documented colored-box-behind-the-emoji class)');
+  // The second membership was the emoji set's mask-STRIP group until that set was
+  // retired (D2.6). Every set is a mask set now, so the membership that matters is
+  // the @supports currentColor fill list (dropped = a mask with no fill: a blank box,
+  // the v1.47.6 class), read by selector list, comments stripped.
+  const live = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const supportsAt = live.indexOf('@supports (mask-image: url("#"))');
+  assert.notEqual(supportsAt, -1, 'the @supports fill block');
+  const fillBrace = live.lastIndexOf('{', live.indexOf('background-color: currentColor', supportsAt));
+  const fillList = live.slice(live.indexOf('{', supportsAt) + 1, fillBrace);
+  assert.match(fillList, /\.icon-books(?![a-z0-9-])/, '@supports fill-list membership (dropped = a blank box in every set)');
   const shells = fs.readdirSync(pub).filter((f) => f.endsWith('.html'))
     .filter((f) => fs.readFileSync(path.join(pub, f), 'utf8').includes('data-nav="books"'));
   assert.ok(shells.length >= 9, `full shell roster (${shells.length})`);
   // v1.87.1 (Dean): the bottom-nav glyph is an inline chrome-icon <svg> now (a
   // `.icon-*` mask decode-lags -> pop-in on a mobile cold start). The mask rule
-  // + emoji entry + injector/sheet-mirror above are UNCHANGED (icon-books still
+  // + injector/sheet-mirror above are UNCHANGED (icon-books still
   // serves the sidebar/mirror). Only the static bottom item flipped to svg.
-  const booksSvg = require('../../public/js/common.js').chromeIconMarkup('books');
+  // Sweep S1 (DELIBERATE lock update): the tab is a ui-btn stack, its glyph the ui.icon
+  // markup (the registry's books glyph) in the fixed icon slot.
+  const c = require('../../public/js/common.js');
+  const booksSvg = c.uiIconMarkup(c.CHROME_ICON.books, 'lg');
   for (const f of shells) {
     const html = fs.readFileSync(path.join(pub, f), 'utf8');
-    const m = /data-nav="books"[^>]*>\s*(<svg class="chrome-icon"[^>]*>.*?<\/svg>)/.exec(html);
-    assert.ok(m && m[1] === booksSvg, `${f}: the bottom item wears the inline books chrome-icon`);
+    const m = /data-nav="books"[^>]*>\s*<span class="ui-btn__icon">(<svg class="ui-icon[^>]*>.*?<\/svg>)<\/span>/.exec(html);
+    assert.ok(m && m[1] === booksSvg, `${f}: the bottom item wears the inline books sprite glyph`);
   }
 });

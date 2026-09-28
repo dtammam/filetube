@@ -46,6 +46,7 @@ async function bootView({ modulePath, html, url, fetchMap, initArg }, run) {
   function name(u) { return u.indexOf('/podcasts') !== -1 ? 'podcasts' : 'tv'; }
   const resolved = require.resolve(modulePath);
   try {
+    delete require.cache[require.resolve('../../public/js/ui.js')]; require('../../public/js/ui.js'); // UI pass S6: every shell loads ui.js (window.ui) before the view
     delete require.cache[resolved];
     require(resolved);
     assert.ok(mod && typeof mod.init === 'function', 'view registered with init');
@@ -87,7 +88,7 @@ const pcContent = (dom) => dom.window.document.getElementById('podcasts-content'
 
 test('v1.218 podcasts: opening a show from the grid PUSHES a {t:show} history level', async () => {
   await bootPodcasts(async (dom, ctx) => {
-    const card = pcContent(dom).querySelector('.podcast-card');
+    const card = pcContent(dom).querySelector('[data-show-id]');
     assert.ok(card, 'a show card rendered');
     card.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     for (let i = 0; i < 8; i++) await settle();
@@ -99,22 +100,22 @@ test('v1.218 podcasts: opening a show from the grid PUSHES a {t:show} history le
 
 test('v1.218 podcasts: onPopState(browse-root) COLLAPSES to the grid; onPopState(show) RE-OPENS', async () => {
   await bootPodcasts(async (dom, ctx) => {
-    pcContent(dom).querySelector('.podcast-card').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    pcContent(dom).querySelector('[data-show-id]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     for (let i = 0; i < 8; i++) await settle();
-    assert.ok(!pcContent(dom).querySelector('.podcast-card'), 'in the show view (grid gone)');
+    assert.ok(!pcContent(dom).querySelector('[data-show-id]'), 'in the show view (grid gone)');
     assert.strictEqual(ctx.mod.onPopState({ view: 'podcasts', viewState: null }), true, 'handled the within-view pop');
     for (let i = 0; i < 8; i++) await settle();
-    assert.ok(pcContent(dom).querySelector('.podcast-card'), 'collapsed back to the shows grid');
+    assert.ok(pcContent(dom).querySelector('[data-show-id]'), 'collapsed back to the shows grid');
     // Forward re-pop into the show payload re-opens it.
     assert.strictEqual(ctx.mod.onPopState({ view: 'podcasts', viewState: { t: 'show', id: 'sh1', name: 'Show One' } }), true);
     for (let i = 0; i < 8; i++) await settle();
-    assert.ok(!pcContent(dom).querySelector('.podcast-card'), 're-popping the show payload re-opens the show');
+    assert.ok(!pcContent(dom).querySelector('[data-show-id]'), 're-popping the show payload re-opens the show');
   });
 });
 
 test('v1.218 podcasts: the in-app Back button CONSUMES the pushed entry via history.back()', async () => {
   await bootPodcasts(async (dom, ctx) => {
-    pcContent(dom).querySelector('.podcast-card').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    pcContent(dom).querySelector('[data-show-id]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     for (let i = 0; i < 8; i++) await settle();
     assert.strictEqual(dom.window.history.state.viewState.t, 'show', 'the top entry is the show push');
     const back = dom.window.document.querySelector('#podcasts-crumb button');

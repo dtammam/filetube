@@ -24,9 +24,13 @@ test('the initial state reads the SERVER derivation (mediaData.watchState), neve
   assert.ok(!/progressPercent[^\n]*>=\s*90/.test(watchSrc), 'no client-side watched-threshold re-derivation anywhere in watch.js');
 });
 
-test('the control mounts into the action-bar group and is wired through the view signal', () => {
-  assert.ok(watchSrc.includes("watchedBtn.id = 'watched-media-btn'"));
-  assert.ok(watchSrc.includes("watchedBtn.addEventListener('click', handleToggleWatched, { signal });"),
-    'abort-signal bound - the v1.41.11 stale-handler rule');
-  assert.ok(watchSrc.includes('setupWatchedButton();'), 'the setup call actually runs in the media-resolved path');
+// UI pass sweep S3 (D4.9): the toggle is a More-menu entry (the menu is built at each open
+// from the live state and closes with the view's signal); driven behaviourally in
+// watch-sweep-s3.test.js ("More: Mark as watched POSTs ... and the next open reads Mark as unwatched").
+test('the More menu entry is wired to the toggle, and its label follows the state', () => {
+  assert.ok(watchSrc.includes("else if (id === 'watched') handleToggleWatched();"), 'the menu pick runs the toggle');
+  assert.ok(watchSrc.includes('setupWatchedState();'), 'the state is seeded in the media-resolved path');
+  const { buildWatchMoreItems } = require('../../public/js/watch.js');
+  assert.strictEqual(buildWatchMoreItems({ watched: false }).find((i) => i.id === 'watched').label, 'Mark as watched');
+  assert.strictEqual(buildWatchMoreItems({ watched: true }).find((i) => i.id === 'watched').label, 'Mark as unwatched');
 });

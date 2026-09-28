@@ -17,14 +17,9 @@
 // bound exactly once per live/cached instance -- never zero, never two --
 // across any number of cache hits. See common.js's
 // homeViewCache/swapToView/restoreHomeFromCache comments for the full
-// contract this view must keep honoring. T2's card trash-can arm/disarm now
-// adds a `document` click/scroll listener (still AbortSignal-bound to the
-// SAME per-instance controller, so it is still cleaned up exactly once by
-// destroy()) plus a plain (non-Signal) ~3s `setTimeout` for the auto-disarm,
-// which `destroy()` now explicitly clears via `disarmCardDeleteFn` -- see
-// that comment below. Both are deliberately harmless while this view is
-// CACHED-but-not-destroyed (a no-op state reset against an already-detached
-// node), matching the design's "disarm on any document click/scroll" intent.
+// contract this view must keep honoring. The card action menu (UI pass sweep
+// S2) binds its long-press/right-click trigger through the SAME per-instance
+// signal and closes any open menu in destroy() (teardownCardMenuFn).
 //
 // NOTE (C1 remediation, v1.16.0): the shared shell's header #search-input/
 // #search-btn are SHELL-owned -- bound exactly once at real-page-load boot
@@ -53,10 +48,8 @@ function buildCardDownloadHref(id) {
 // header). Byte-identical fallback logic to watch.js's `downloadBtn` wiring
 // (`title || 'download'` plus the raw extension, e.g. ".mp4") so a missing
 // title/ext can never produce a blank or "undefined"-suffixed filename.
-// Returned RAW (not HTML-escaped) -- callers building an HTML attribute
-// string must escape it themselves, exactly like this file's other
-// interpolated attribute values (v1.67: the one caller is the corner
-// renderer, which escapes via module-scope `escapeBookRowHtml`).
+// Returned RAW (not HTML-escaped): the one caller (the card menu's Save to
+// device, saveCardToDevice) sets it through setAttribute, never markup.
 function buildCardDownloadFilename(title, ext) {
   return `${title || 'download'}${ext || ''}`;
 }
@@ -66,44 +59,23 @@ function buildCardDownloadFilename(title, ext) {
 // `/api/config`+`/api/videos` fetch chain in `loadLibrary()` settles --
 // replaces the old "ships empty, pops the whole grid in at once" blank
 // window. `aria-hidden="true"` on every skeleton card since it carries no real
-// content for assistive tech to announce. Pure (string-building only, no
-// DOM/timer) -- the shimmer motion itself is CSS-only (`.skeleton-shimmer`,
-// prefers-reduced-motion honored -- see style.css). Exported for node:test.
+// content for assistive tech to announce. No timer -- the shimmer motion is
+// CSS-only (`.skeleton-shimmer`, prefers-reduced-motion honored -- see
+// style.css). Exported for node:test.
 //
-// v1.339 (L2, plan D5 - "seed the SHAPE you reveal", LESSONS 7): the old
-// skeleton claimed "zero layout shift" but carried two short bars in a
-// ~30px `.video-info`, while the real card's info block is a 2-line title +
-// uploader + meta + stars row (~90px): every card GREW ~52-65px on reveal
-// (home-fouc-probe: 52.4px at 390, 57.7px at 1440, 46-65px modern). The
-// skeleton is now built from the REAL card's own line classes
-// (`.video-title` holding two lines, `.video-uploader`, `.video-meta`,
-// `.card-rating`), each line a transparent-text `.skeleton-text` bar in the
-// same font and line-height, so each line box - and the card - is the real
-// size. The title reserves TWO lines (the clamp maximum; a grid row
-// stretches every card to its tallest, so a row holding any 2-line title is
-// 2-line tall). `opts.avatar` adds the Modern byline avatar disc (the real
-// modern card's 24px `.card-channel-avatar` sets the uploader row's height).
-// `.card-rating` rides `ft-hide-stars` exactly like the real row.
+// v1.339 (L2, plan D5 - "seed the SHAPE you reveal", LESSONS 7): the skeleton
+// is the real card's own geometry, so the reveal swaps in place. UI pass sweep
+// S2 (D9, F63): it is now built by buildSkeletonCardEl from the SAME ui
+// primitives as the real card (the ui-thumb box, a two-line title, byline, meta
+// and the five-icon rating row) and serialized here for the innerHTML seed.
+// `opts.avatar` reserves the Modern byline avatar; `opts.typeLine` the unified
+// search's type label line. `opts.doc` for tests.
 function buildSkeletonGrid(n, opts) {
   const count = Number.isInteger(n) && n > 0 ? n : 0;
-  const avatar = (opts && opts.avatar)
-    ? '<span class="card-channel-avatar skeleton-shimmer"></span>'
-    : '';
-  const bar = (cls) => `<span class="skeleton-text ${cls} skeleton-shimmer">&nbsp;</span>`;
+  const doc = (opts && opts.doc) || (typeof document !== 'undefined' ? document : null);
+  if (!doc || count === 0) return '';
   let html = '';
-  for (let i = 0; i < count; i++) {
-    html += `
-      <div class="video-card skeleton-card" aria-hidden="true">
-        <div class="card-media"><div class="thumbnail-container skeleton-shimmer"></div></div>
-        <div class="video-info">
-          <div class="video-title">${bar('skeleton-text-long')}<br>${bar('skeleton-text-mid')}</div>
-          <div class="video-uploader">${avatar}${bar('skeleton-text-short')}</div>
-          <div class="video-meta">${bar('skeleton-text-mid')}</div>
-          <div class="card-rating"><span class="skeleton-text skeleton-shimmer">&#9733;&#9733;&#9733;&#9733;&#9733;</span></div>
-        </div>
-      </div>
-    `;
-  }
+  for (let i = 0; i < count; i++) html += buildSkeletonCardEl(doc, { avatar: !!(opts && opts.avatar), typeLine: !!(opts && opts.typeLine) }).outerHTML;
   return html;
 }
 
@@ -136,7 +108,7 @@ function buildSidebarSkeletonRows(n) {
 const SIDEBAR_SKELETON_ROWS = 5;
 
 // The zero-folders sidebar affordance (also the cold-load error fallback below).
-const SIDEBAR_NONE_HTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
+const SIDEBAR_NONE_HTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--ink-2);">None</div>';
 
 // v1.102 (tranche 4, gate CRITICAL): a total /api/config failure must not leave
 // the cold-load sidebar skeleton (buildSidebarSkeletonRows) shimmering forever in
@@ -154,7 +126,7 @@ function clearSidebarSkeletonOnError(listEl) {
 // v1.37.0 T10 (books): pure builders for the home surfaces -- the
 // continue-reading row (bare home view only) and the books-in-search
 // section. Cover cards are compact portrait tiles linking to /read.html;
-// escapeHtml discipline matches buildCardHtml's (attribute + text escapes).
+// escapeHtml discipline (attribute + text escapes).
 function escapeBookRowHtml(text) {
   return String(text)
     .replace(/&/g, '&amp;')
@@ -471,13 +443,16 @@ const MODERN_CHIPS = [
 // are visible here via the shared classic-script global scope, exactly like
 // MODERN_CHIP_FILTERS / resolveModernChip.
 
+// UI pass sweep S2 (F19): the Modern chips are the ui-chip filter primitive
+// (selected = aria-pressed, ink on the tonal fill - never red). Single-select:
+// All is one of the chips here (one dimension).
 function buildModernChipRowHtml(active) {
   const a = typeof resolveModernChip === 'function' ? resolveModernChip(active) : 'all';
   const chips = MODERN_CHIPS.map((c) => {
     const on = c.filter === a;
-    return `<button type="button" class="modern-chip${on ? ' active' : ''}" role="tab" aria-selected="${on}" data-chip="${c.filter}">${c.label}</button>`;
+    return `<button type="button" class="ui-chip ui-chip--filter" aria-pressed="${on}" data-chip="${c.filter}">${c.label}</button>`;
   }).join('');
-  return `<div class="modern-chip-row" role="tablist" aria-label="Filter the home feed">${chips}</div>`;
+  return `<div class="modern-chip-row library-chips" role="group" aria-label="Filter the home feed">${chips}</div>`;
 }
 // v1.99 shimmer sweep (Dean's device report): the avatar bar sits ABOVE the chip
 // row and used to ship `hidden`, then POP IN after /api/channels resolved -
@@ -486,8 +461,8 @@ function buildModernChipRowHtml(active) {
 // count and, on the next load, RESERVE the strip with that many shimmer chips
 // before the fetch (the v1.53 capability-cache pattern). buildAvatarBarSkeleton
 // is a pure builder (the buildSkeletonGrid contract) reusing the REAL
-// `.modern-avatar-chip` / `.modern-avatar-circle` (56px disc) box, so the swap to
-// real chips is zero-shift.
+// `.modern-avatar-chip` / ui-avatar xl disc box, so the swap to real chips is
+// zero-shift.
 const MODERN_AVATARBAR_COUNT_KEY = 'ft-modern-avatarbar-count';
 function readModernAvatarBarCount() {
   try {
@@ -503,17 +478,17 @@ function buildAvatarBarSkeleton(n) {
   let html = '';
   for (let i = 0; i < count; i++) {
     html += '<span class="modern-avatar-chip" aria-hidden="true">'
-      + '<span class="modern-avatar-circle skeleton-shimmer"></span>'
+      + '<span class="ui-avatar ui-avatar--xl skeleton-shimmer"></span>'
       + '<span class="skeleton-line skeleton-line-meta skeleton-shimmer"></span>'
       + '</span>';
   }
   return html;
 }
 
-// v1.84 T4: the mobile recent-uploader subscription bar. Built as DOM (not an
-// HTML string) so the generated monogram colour is applied via
-// `.style.backgroundColor` (a runtime palette value - census-safe, the same way
-// buildAccountAvatarEl does it). Empty -> the bar stays hidden (no empty strip).
+// v1.84 T4: the mobile recent-uploader subscription bar. Built as DOM; each
+// channel is a ui.avatar (UI pass sweep S2, D4.4: the photo, else a monogram on
+// a hash-derived tone - never an inline colour). Empty -> the bar stays hidden
+// (no empty strip).
 function populateModernAvatarBar(barEl, channels) {
   if (!barEl) return;
   barEl.textContent = '';
@@ -523,26 +498,19 @@ function populateModernAvatarBar(barEl, channels) {
     return;
   }
   writeModernAvatarBarCount(channels.length); // v1.99: reserve this many on the next load
+  const u = cardUi();
   for (const c of channels) {
     const a = document.createElement('a');
     a.className = 'modern-avatar-chip';
     a.href = `/?folder=${encodeURIComponent(c.folder)}`;
-    a.title = c.name;
-    const circle = document.createElement('span');
-    circle.className = 'modern-avatar-circle';
-    const src = (typeof resolveAvatarSource === 'function') ? resolveAvatarSource(c.name, c.avatarUrl) : { type: 'generated', glyph: '?', color: '#888' };
-    if (src.type === 'url') {
-      const img = document.createElement('img');
-      img.src = src.url; img.alt = ''; img.loading = 'lazy'; img.className = 'art-shimmer';
-      circle.appendChild(img);
-    } else {
-      circle.textContent = src.glyph;
-      circle.style.backgroundColor = src.color; // runtime palette value (census-safe)
-    }
+    a.setAttribute('aria-label', c.name);
+    const av = u.avatar({ name: c.name, url: c.avatarUrl || null, kind: 'channel', size: 'xl' });
+    const img = av.querySelector('img');
+    if (img) img.classList.add('art-shimmer');
     const name = document.createElement('span');
     name.className = 'modern-avatar-name';
     name.textContent = c.name;
-    a.appendChild(circle);
+    a.appendChild(av);
     a.appendChild(name);
     barEl.appendChild(a);
   }
@@ -563,7 +531,7 @@ function buildModernEmptyHtml(filter) {
     unwatched: "Nothing unwatched - you're all caught up.",
     all: 'Nothing here yet - add media and it fills in.',
   };
-  return `<div class="home-feed-empty">${msgs[filter] || msgs.all}</div>`;
+  return uiStateHtml({ icon: 'smart_display', title: msgs[filter] || msgs.all });
 }
 
 // v1.79 home feed: fetch the per-user rows and render them into `host`. Every
@@ -582,7 +550,7 @@ async function renderHomeFeed(host, signal) {
     const data = res.ok ? await res.json() : { rows: [] };
     const rows = Array.isArray(data.rows) ? data.rows : [];
     if (rows.length === 0) {
-      host.innerHTML = '<div class="home-feed-empty">Nothing here yet - start watching and your feed fills in.</div>';
+      host.innerHTML = uiStateHtml({ icon: 'smart_display', title: 'Nothing here yet', body: 'Start watching and your feed fills in.' });
       return;
     }
     host.innerHTML = rows.map(buildFeedRowHtml).join('');
@@ -592,66 +560,14 @@ async function renderHomeFeed(host, signal) {
     // QA gate SUGGESTION: feed mode hides the classic grid, so a thrown fetch
     // error must not leave a fully blank home - render a message with the way
     // back to the classic grid, never an empty surface.
-    host.innerHTML = '<div class="home-feed-empty">Could not load your home feed. Try again, or switch to the classic grid in Settings.</div>';
+    host.innerHTML = uiStateHtml({ icon: 'error', tone: 'error', title: 'Could not load your home feed', body: 'Try again, or switch to the classic grid in Settings.' });
   }
 }
 
-// ---- v1.67: the card-corner renderer (plan D3) ------------------------------
-//
-// ONE module-scope, exported, pure renderer for the FOUR assignable card
-// corners. Position comes from the `.card-corner-tl/tr/bl/br` classes;
-// identity/look/behavior stay on the control classes (`.card-delete-btn`
-// etc.), so the delete arm state machine and every delegated click handler
-// keep keying off the control class unchanged wherever the control lands.
-// Never copy this renderer (the v1.41.4 every-writer scar) - buildCardHtml is
-// its one caller.
-//
-// v1.204 (Dean): the bottom-right corner became SELECTABLE too. It SHARES the
-// bottom-right with the duration badge: when the BR slot renders a real button
-// the badge shifts LEFT to sit beside it (buildCardCorners returns brOccupied,
-// which buildCardHtml turns into `.duration-badge--beside-corner`); when BR is
-// unassigned or its control does not apply, the badge stays pinned in its home
-// and nothing changes. BR defaults to 'none', so no existing card moves.
-
-const CARD_CORNER_KEYS = [
-  ['cornerTL', 'card-corner-tl'],
-  ['cornerTR', 'card-corner-tr'],
-  ['cornerBL', 'card-corner-bl'],
-  ['cornerBR', 'card-corner-br'], // v1.204: shares bottom-right with the duration badge
-];
-
-// C5: the defaults reproduce today's layout so nobody's muscle memory breaks.
-// Queue is deliberately UNASSIGNED by default; the bottom-right slot (v1.204)
-// is 'none' by default too, so the duration badge keeps its home until a user
-// opts a control into that corner.
-const CARD_CORNER_DEFAULTS = { cornerTL: 'download', cornerTR: 'delete', cornerBL: 'like', cornerBR: 'none' };
-
-const CARD_CORNER_CONTROLS = ['download', 'delete', 'like', 'queue', 'share', 'reheat', 'transcript']; // v1.203: + transcript (Dean)
-
-// Settings object (from GET /api/auth/me, or nothing) -> the resolved
-// four-corner layout. The server lane is SHAPE-only (plan D1), so THIS is
-// where garbage defends: an unknown value falls back to that corner's C5
-// default (the starRatings garbage-tolerance precedent); `none` is an
-// explicit empty corner and survives as-is.
-function resolveCardCornerPrefs(settings) {
-  const s = settings && typeof settings === 'object' ? settings : {};
-  const out = {};
-  for (const [key] of CARD_CORNER_KEYS) {
-    const v = s[key];
-    out[key] = (v === 'none' || CARD_CORNER_CONTROLS.includes(v)) ? v : CARD_CORNER_DEFAULTS[key];
-  }
-  return out;
-}
-
-// One corner control's markup, or '' when the control does not apply to this
-// item (C4: an inapplicable corner renders NOTHING, never a substitute).
-// Attribute shapes are byte-compatible with the pre-v1.67 inline template
-// (plus the appended corner class) so every delegated handler and CSS state
-// rule keeps matching.
 // v1.72 (#94): the kind dispatch for a mixed-kind Liked card. A shaped
 // non-media item (kind 'podcast' | 'track', 'book' rides the books commit)
 // renders through the SAME video-card markup and classes - only the
-// destination, art route, byline and applicable corner controls differ.
+// destination, art route, byline and applicable menu actions differ.
 // Returns null for kind 'media'/absent kind: the media path stays
 // byte-identical (kind is CARRIED by the server, never inferred here).
 function cardKindPresentation(item) {
@@ -704,8 +620,8 @@ function cardKindPresentation(item) {
   // episode opens the shared watch page (?tv=, tv.js's own openEpisode); a
   // show opens the Shows page scrolled to it (/tv?show=, tv.js reads it on
   // load). TV cards are NOT card-downloadable/likeable/queueable (no such
-  // routes), so downloadHref is '' (the download arm skips an empty href) and
-  // likeable:false suppresses the like corner.
+  // routes), so downloadHref is '' (the menu offers no Save to device) and
+  // likeable:false drops Like from the card menu.
   if (kind === 'tv-episode') {
     return {
       kind,
@@ -746,120 +662,241 @@ function searchResultBadgeLabel(resultType) {
   return (typeof resultType === 'string' && SEARCH_RESULT_BADGE[resultType]) || '';
 }
 
-function buildCardCornerControlHtml(control, cornerClass, item, caps) {
-  const id = escapeBookRowHtml(item.id);
+// ---- UI pass sweep S2 (D8.5): the clean card and its ONE action menu ---------
+//
+// A card's thumbnail carries only the duration badge and the progress bar (the
+// ui-thumb primitive). Every action the v1.67-v1.204 corner overlays held
+// (Download, Delete, Like, Queue, Share, Reheat, Transcript) plus the modern
+// feed's Hide-from-feed lives in ONE action menu built with ui.menu, reached by
+// the kebab in the card's meta row, a long-press, or a desktop right-click
+// (FTInteraction.onActionMenu). The per-user corner layout (Settings "Card
+// corners", the cornerTL..BR settings lane) no longer places anything: the menu
+// lists every action that APPLIES to the item (the same applicability rules the
+// corners had - C4: an inapplicable action is absent, never a substitute).
+
+// The ui builders: the page's window.ui, else (node:test) the sibling module.
+function cardUi() {
+  if (typeof window !== 'undefined' && window.ui) return window.ui;
+  if (typeof module !== 'undefined' && module.require) {
+    try { return module.require('./ui.js'); } catch (_) { return null; }
+  }
+  return null;
+}
+
+// Pure: the item's shareable original link (the SERVER-resolved field, never
+// re-approximated from a raw youtubeId - the v1.52 lesson). YouTube's watchUrl
+// wins; a download from another site shares its saved page link (v1.338).
+function cardShareUrl(item) {
+  if (item && typeof item.watchUrl === 'string' && item.watchUrl !== '') return item.watchUrl;
+  if (item && typeof item.sourceShareUrl === 'string' && item.sourceShareUrl !== '') return item.sourceShareUrl;
+  return '';
+}
+
+// Pure: the save-to-device href for a card ('' when the kind has none - TV).
+function cardDownloadHref(item) {
   const kp = cardKindPresentation(item);
-  const kindAttr = kp ? ` data-kind="${escapeBookRowHtml(kp.kind)}"` : '';
-  switch (control) {
-    case 'download':
-      // A non-media save rides its kind's ?download=1 route; the server's
-      // Content-Disposition names the file, so the download attr is bare.
-      if (kp) {
-        // v1.205: a kind with no card-download route (TV) renders nothing here.
-        if (!kp.downloadHref) return '';
-        return `<a class="card-download-btn ${cornerClass}" href="${escapeBookRowHtml(kp.downloadHref)}" download aria-label="Save to device" title="Save to device">
-              <i class="icon-download"></i>
-            </a>`;
-      }
-      return `<a class="card-download-btn ${cornerClass}" href="${buildCardDownloadHref(item.id)}" download="${escapeBookRowHtml(buildCardDownloadFilename(item.title, item.ext))}" aria-label="Save to device" title="Save to device">
-              <i class="icon-download"></i>
-            </a>`;
-    case 'delete':
-      if (kp) return ''; // the card delete verb is DELETE /api/videos/:id - media only
-      // v1.81 write-RBAC: a member without the modify-library capability cannot
-      // delete - hide the affordance (the server is the real gate; this only
-      // spares them a button that always 403s). Admin's effective cap is true.
-      if (!caps || caps.canModifyLibrary !== true) return '';
-      return `<button type="button" class="card-delete-btn ${cornerClass}" data-id="${id}" aria-label="Delete this video">
-              <i class="icon-delete"></i><span class="card-delete-confirm">Sure?</span>
-            </button>`;
-    case 'like':
-      // v1.205: a kind with no like route (TV) renders nothing here.
-      if (kp && kp.likeable === false) return '';
-      return `<button type="button" class="card-like-btn${item.liked ? ' liked' : ''} ${cornerClass}" data-id="${id}"${kindAttr} aria-label="${item.liked ? 'Unlike' : 'Like'}" aria-pressed="${item.liked ? 'true' : 'false'}" title="Like">
-              <i class="icon-heart"></i>
-            </button>`;
-    case 'queue':
-      if (kp && !kp.canQueue) return '';
-      return `<button type="button" class="card-queue-btn ${cornerClass}" data-id="${id}"${kindAttr} aria-label="Add to queue" title="Add to queue">
-              <i class="icon-queue"></i>
-            </button>`;
-    case 'share': {
-      // Applies only when the server derived an original link (C4); the URL
-      // is the SERVER-resolved field, never re-approximated from the raw
-      // youtubeId client-side (the v1.52 lesson). v1.338 (Dean: "Is there a
-      // reason we can't just like share from the bottom right corner?"): a
-      // download from another site shares its saved page link
-      // (`sourceShareUrl`, server-checked); YouTube's `watchUrl` wins.
-      const isYouTubeLink = typeof item.watchUrl === 'string' && item.watchUrl !== '';
-      const shareUrl = isYouTubeLink ? item.watchUrl
-        : ((typeof item.sourceShareUrl === 'string' && item.sourceShareUrl !== '') ? item.sourceShareUrl : '');
-      if (!shareUrl) return '';
-      const shareName = isYouTubeLink ? 'Share the original YouTube link' : 'Share the original link';
-      return `<button type="button" class="card-share-btn ${cornerClass}" data-id="${id}" data-share-url="${escapeBookRowHtml(shareUrl)}" aria-label="${shareName}" title="Share">
-              <i class="icon-share"></i>
-            </button>`;
-    }
-    case 'transcript':
-      // v1.203 (Dean: "add the transcript button as a selectable option for
-      // a given card ... from a card view maybe send a video along to an
-      // AI"). Applies only when the item HAS captions (`hasSubtitles`, the
-      // scan's sidecar detection) - exactly Share's only-when-it-applies
-      // posture. The click runs the SAME flow as the watch page's button
-      // (common.js openTranscriptFor): desktop modal, phone picker with
-      // Share / Copy / Share with AI.
-      if (kp) return '';
-      if (item.hasSubtitles !== true) return '';
-      return `<button type="button" class="card-transcript-btn ${cornerClass}" data-id="${id}" aria-label="Transcript: read, copy or share the captions as text" title="Transcript">
-              <i class="icon-transcript"></i>
-            </button>`;
-    case 'reheat':
-      // Applies only when the yt-dlp module capability is affirmatively
-      // enabled (=== true, matching the watch page's module-health gate).
-      // Never on a non-media card - the repull endpoint is a media verb.
-      if (kp) return '';
-      if (!caps || caps.reheatEnabled !== true) return '';
-      return `<button type="button" class="card-reheat-btn ${cornerClass}" data-id="${id}" aria-label="Reheat this video's metadata" title="Reheat">
-              <i class="icon-flame"></i>
-            </button>`;
-    default:
-      return '';
-  }
+  if (kp) return kp.downloadHref || '';
+  return buildCardDownloadHref(item.id);
 }
 
-// The four corners' combined markup PLUS whether the bottom-right slot
-// actually rendered a button (brOccupied) - the one signal buildCardHtml
-// needs to shift the duration badge left. Dedupe (plan D5): the editor
-// enforces C2, but a direct POST /api/me/settings can assign one control to
-// two corners - the FIRST assignment (TL > TR > BL > BR) wins and later
-// duplicates render nothing. Deduped by ASSIGNMENT, not render outcome:
-// applicability is uniform per item, so an inapplicable duplicate is empty
-// either way and assignment-order keeps the rule deterministic. brOccupied is
-// the RENDER outcome for BR specifically: a BR control that does not apply to
-// this card (no captions, no watchUrl, deduped away) leaves the badge home.
-function buildCardCorners(item, prefs, caps) {
-  const resolved = prefs && typeof prefs === 'object' ? prefs : resolveCardCornerPrefs(null);
-  const seen = new Set();
-  let html = '';
-  let brOccupied = false;
-  for (const [key, cornerClass] of CARD_CORNER_KEYS) {
-    const control = resolved[key];
-    if (!control || control === 'none' || seen.has(control)) continue;
-    seen.add(control);
-    const markup = buildCardCornerControlHtml(control, cornerClass, item, caps);
-    if (markup) {
-      html += `\n            ${markup}`;
-      if (key === 'cornerBR') brOccupied = true;
-    }
+// Pure: the card action menu's items, in menu order, for one item. `caps` =
+// { canModifyLibrary, reheatEnabled } (the signed-in user's effective library
+// capability and the yt-dlp module health); `opts.feedHideable` = the modern
+// feed's Hide-from-feed (explicit, never inferred from a global mode flag).
+// Each entry: { id, icon, label, danger? }. Applicability is the corners' C4
+// rules verbatim: a non-media kind (podcast/track/book/tv) gets only what its
+// own routes support; Delete and Reheat are media verbs; Delete also needs the
+// capability (v1.81 write-RBAC - the server is the real gate).
+function buildCardMenuItems(item, caps, opts) {
+  const it = item || {};
+  const c = caps || {};
+  const kp = cardKindPresentation(it);
+  const out = [];
+  if (!kp || kp.canQueue) out.push({ id: 'queue', icon: 'playlist_add', label: 'Add to queue' });
+  if (!(kp && kp.likeable === false)) {
+    out.push(it.liked === true
+      ? { id: 'like', icon: 'favorite.fill', label: 'Unlike' }
+      : { id: 'like', icon: 'favorite', label: 'Like' });
   }
-  return { html, brOccupied };
+  if (cardShareUrl(it)) out.push({ id: 'share', icon: 'share', label: 'Share' });
+  if (cardDownloadHref(it)) out.push({ id: 'download', icon: 'download', label: 'Save to device' });
+  if (!kp && it.hasSubtitles === true) out.push({ id: 'transcript', icon: 'subject', label: 'Transcript' });
+  if (!kp && c.reheatEnabled === true) out.push({ id: 'reheat', icon: 'local_fire_department', label: 'Reheat metadata' });
+  if (!kp && opts && opts.feedHideable) out.push({ id: 'feedhide', icon: 'visibility_off', label: 'Hide from feed' });
+  if (!kp && c.canModifyLibrary === true) out.push({ id: 'delete', icon: 'delete', label: 'Move to Trash', danger: true });
+  return out;
 }
 
-// Back-compat thin wrapper: the corner markup alone (every pre-v1.204 caller
-// and test reads just the string). buildCardCorners is the single source of
-// truth for the dedupe - never re-derive the corner set anywhere else.
-function buildCardCornerButtonsHtml(item, prefs, caps) {
-  return buildCardCorners(item, prefs, caps).html;
+// Pure: the Delete confirm's copy. It says exactly what the one code path does:
+// the card's Delete calls DELETE /api/videos/:id (the watch page's verb), which
+// MOVES the file to Trash for every item - yt-dlp-managed and local alike (the
+// route's v1.65 trash move; never a permanent unlink). A local file cannot be
+// re-downloaded once the Trash retention window empties it, so its copy says so.
+// The watch page's More menu and the Pocket extras ask this same copy (step 7 retired
+// the old checkbox-gated local-file dialog, showHardDeleteModal, which had no caller left).
+function cardDeleteConfirmCopy(item) {
+  const title = item && typeof item.title === 'string' && item.title !== '' ? item.title : 'This file';
+  const local = typeof isYtdlpManagedItem === 'function' ? !isYtdlpManagedItem(item) : false;
+  const body = '"' + title + '" leaves your library now. It stays in Trash, where you can restore it from Settings, until the Trash retention window empties it.'
+    + (local ? ' This local file cannot be re-downloaded.' : '');
+  return { title: 'Move to Trash?', body, confirmLabel: 'Move to Trash', cancelLabel: 'Cancel', danger: true };
+}
+
+// The card's DOM, built with the ui primitives (ui.thumb, ui.avatar, ui.button,
+// ui.icon, ui.chip). `o`: { doc, href, channelName, channelHref, avatar
+// ({ url } or null = no avatar), menu (render the kebab) }. Everything textual is
+// textContent - no markup string carries item data.
+function buildVideoCardEl(item, o) {
+  const opts = o || {};
+  const ui = cardUi();
+  const doc = opts.doc || document;
+  const kp = cardKindPresentation(item);
+  const card = doc.createElement('div');
+  card.className = 'video-card';
+  card.setAttribute('data-id', String(item.id));
+
+  // Media: a link around the ui-thumb (duration badge + progress bar only).
+  const media = doc.createElement('a');
+  media.className = 'card-media';
+  media.setAttribute('href', opts.href);
+  const pct = typeof item.progressPercent === 'number' && item.progressPercent > 0.5 ? Math.min(100, item.progressPercent) / 100 : 0;
+  const thumb = ui.thumb({ src: kp ? kp.thumbSrc : '/thumbnail/' + item.id, alt: item.title || '', duration: item.duration, progress: pct, context: 'card', doc });
+  const img = thumb.querySelector('.ui-thumb__img');
+  if (img) img.classList.add('art-shimmer');
+  if (!kp && item.hasPreview) {
+    const preview = doc.createElement('div');
+    preview.className = 'card-preview';
+    preview.setAttribute('aria-hidden', 'true');
+    preview.setAttribute('data-preview-id', String(item.id));
+    thumb.insertBefore(preview, img ? img.nextSibling : thumb.firstChild);
+  }
+  media.appendChild(thumb);
+  card.appendChild(media);
+
+  const info = doc.createElement('div');
+  info.className = 'video-info';
+  if (opts.avatar) info.appendChild(ui.avatar({ name: opts.channelName, url: opts.avatar.url || null, kind: 'channel', size: 'sm', doc }));
+
+  const text = doc.createElement('div');
+  text.className = 'card-text';
+  if (item.resultType) {
+    const badge = ui.chip({ kind: 'meta', label: searchResultBadgeLabel(item.resultType), doc });
+    badge.classList.add('card-type');
+    text.appendChild(badge);
+  }
+  const title = doc.createElement('a');
+  title.className = 'video-title';
+  title.setAttribute('href', opts.href);
+  title.setAttribute('title', item.title || '');
+  title.textContent = item.title || '';
+  text.appendChild(title);
+
+  const byline = doc.createElement('div');
+  byline.className = 'video-uploader';
+  const channel = doc.createElement('a');
+  channel.setAttribute('href', opts.channelHref);
+  channel.textContent = opts.channelName || '';
+  byline.appendChild(channel);
+  text.appendChild(byline);
+
+  // Meta: views (the mock is a fabricated stat - the era flourish, D8.1) + age.
+  const meta = doc.createElement('div');
+  meta.className = 'video-meta';
+  const views = doc.createElement('span');
+  views.className = 'card-views' + (isFabricatedViewCount(item) ? ' ft-fabricated' : '');
+  views.textContent = resolveViewCountLabel(item);
+  const when = doc.createElement('span');
+  when.className = 'card-when';
+  when.textContent = formatRelativeTime(item.addedAt);
+  meta.appendChild(views);
+  meta.appendChild(when);
+  text.appendChild(meta);
+
+  // The deterministic mock stars: always fabricated (D8.1), drawn icons (AC4).
+  const rating = getStarRating(item.id);
+  const stars = doc.createElement('div');
+  stars.className = 'card-rating ft-fabricated';
+  stars.setAttribute('role', 'img');
+  stars.setAttribute('aria-label', 'Rated ' + rating + ' out of 5 stars');
+  for (let i = 0; i < 5; i++) stars.appendChild(ui.icon(i < rating ? 'star.fill' : 'star', { size: 'sm', cls: i < rating ? 'on' : 'off', doc }));
+  text.appendChild(stars);
+  info.appendChild(text);
+
+  // The kebab renders only when the menu can hold something: the caps-free
+  // entries (queue/like/save/share/transcript) decide it - every capability-gated
+  // entry (delete/reheat/feedhide) is a media verb, and a media item always
+  // offers Like. A TV card (no such routes) gets no kebab: never an inert control.
+  if (opts.menu !== false && buildCardMenuItems(item, {}, {}).length > 0) {
+    const kebab = ui.button({ variant: 'plain', shape: 'icon', size: 'sm', icon: 'more_vert', ariaLabel: 'More actions', doc });
+    kebab.classList.add('card-kebab');
+    kebab.setAttribute('aria-haspopup', 'menu');
+    kebab.setAttribute('data-id', String(item.id));
+    info.appendChild(kebab);
+  }
+  card.appendChild(info);
+  return card;
+}
+
+// A skeleton card of the FINAL geometry (D9, F63): the same ui-thumb box, the
+// same info block with a two-line title, byline, meta and rating line boxes -
+// so the reveal swaps in place. `opts.avatar` reserves the byline avatar.
+function buildSkeletonCardEl(doc, opts) {
+  const ui = cardUi();
+  const card = doc.createElement('div');
+  card.className = 'video-card skeleton-card';
+  card.setAttribute('aria-hidden', 'true');
+  const media = doc.createElement('div');
+  media.className = 'card-media';
+  const thumb = ui.thumb({ context: 'card', doc });
+  thumb.classList.add('skeleton-shimmer');
+  media.appendChild(thumb);
+  card.appendChild(media);
+  const info = doc.createElement('div');
+  info.className = 'video-info';
+  if (opts && opts.avatar) {
+    const av = ui.avatar({ name: '', kind: 'channel', size: 'sm', doc });
+    av.classList.add('skeleton-shimmer');
+    while (av.firstChild) av.removeChild(av.firstChild);
+    info.appendChild(av);
+  }
+  const text = doc.createElement('div');
+  text.className = 'card-text';
+  const bar = (host, cls) => {
+    const s = doc.createElement('span');
+    s.className = 'skeleton-text skeleton-shimmer ' + cls;
+    s.textContent = ' ';
+    host.appendChild(s);
+    return s;
+  };
+  // A unified-search result card carries the type label line (opts.typeLine).
+  if (opts && opts.typeLine) {
+    const type = doc.createElement('span');
+    type.className = 'ui-chip ui-chip--meta card-type';
+    bar(type, 'skeleton-text-short').textContent = 'Video';
+    text.appendChild(type);
+  }
+  const title = doc.createElement('div');
+  title.className = 'video-title';
+  bar(title, 'skeleton-text-long');
+  title.appendChild(doc.createElement('br'));
+  bar(title, 'skeleton-text-mid');
+  text.appendChild(title);
+  const by = doc.createElement('div');
+  by.className = 'video-uploader';
+  bar(by, 'skeleton-text-short');
+  text.appendChild(by);
+  const meta = doc.createElement('div');
+  meta.className = 'video-meta';
+  bar(meta, 'skeleton-text-mid');
+  text.appendChild(meta);
+  // The rating row: the real row's five icon boxes, invisible, on the shimmer.
+  const rating = doc.createElement('div');
+  rating.className = 'card-rating ft-fabricated skeleton-shimmer';
+  for (let i = 0; i < 5; i++) rating.appendChild(ui.icon('star', { size: 'sm', doc }));
+  text.appendChild(rating);
+  info.appendChild(text);
+  card.appendChild(info);
+  return card;
 }
 
 // Home-row visibility toggles (device-local display prefs, like the sort/
@@ -946,12 +983,15 @@ if (typeof module !== 'undefined' && module.exports) {
     homeRowEnabled,
     musicHrefForItem,
     migrateListeningRowPref,
-    resolveCardCornerPrefs,
-    buildCardCorners,
-    buildCardCornerButtonsHtml,
     cardKindPresentation,
     searchResultBadgeLabel,
-    CARD_CORNER_CONTROLS,
+    // UI pass sweep S2 (D8.5): the clean card + its one action menu.
+    cardShareUrl,
+    cardDownloadHref,
+    buildCardMenuItems,
+    cardDeleteConfirmCopy,
+    buildVideoCardEl,
+    buildSkeletonCardEl,
   };
 }
 
@@ -1062,11 +1102,13 @@ const PreviewCards = (function () {
   // Desktop: delegated so it covers cards from every render path (initial,
   // append, modern grid) with no per-render registration. The overlay itself is
   // `pointer-events:none` (it must never eat the card's tap), so hover events
-  // target the INTERACTIVE `.thumbnail-container` (the card's <a>) beneath it -
-  // we match THAT and reach the overlay child, never the overlay directly (a
-  // pointer-events:none sibling is never `e.target` nor its ancestor).
+  // target the INTERACTIVE `.card-media` (the card's <a>, UI pass sweep S2 -
+  // was `.thumbnail-container`) beneath it - we match THAT and reach the overlay
+  // child, never the overlay directly (a pointer-events:none sibling is never
+  // `e.target` nor its ancestor).
+  const PREVIEW_HOST = '.card-media';
   function overlayForEvent(e) {
-    const host = e.target.closest && e.target.closest('.thumbnail-container');
+    const host = e.target.closest && e.target.closest(PREVIEW_HOST);
     return host ? host.querySelector('.card-preview[data-preview-id]') : null;
   }
   function onOver(e) {
@@ -1074,7 +1116,7 @@ const PreviewCards = (function () {
     if (el) start(el);
   }
   function onOut(e) {
-    const host = e.target.closest && e.target.closest('.thumbnail-container');
+    const host = e.target.closest && e.target.closest(PREVIEW_HOST);
     if (!host) return;
     // still inside the same card (e.g. moving img -> duration badge) -> keep going
     if (host.contains(e.relatedTarget)) return;
@@ -1159,11 +1201,10 @@ const PreviewCards = (function () {
   // home's draggable + active-highlighted rendering. Cleared in destroy() so
   // a torn-down instance can never be (mis)invoked after the fact.
   let restoreSidebarFn = null;
-  // v1.17.0 FR-3(b), T2: set inside init() to that instance's own
-  // disarmCardDelete() closure, so destroy() can clear a pending ~3s
-  // auto-disarm setTimeout (a plain timer, NOT AbortSignal-bound) rather
-  // than leaving it to fire later against an already-torn-down instance.
-  let disarmCardDeleteFn = null;
+  // UI pass sweep S2: set inside init() to that instance's closeCardMenu, so
+  // destroy() closes an open card action menu (a sheet on <body>, outside the
+  // view) instead of leaving it acting on a torn-down instance.
+  let teardownCardMenuFn = null;
   // v1.30.0 T7: set inside init() to that instance's own
   // teardownGridSentinel() closure -- an IntersectionObserver is NOT
   // AbortSignal-bound (there is no such integration on the platform), so
@@ -1219,35 +1260,20 @@ const PreviewCards = (function () {
     const searchInput = document.getElementById('search-input');
     const rescanBtn = root.querySelector('#rescan-library-btn');
     const videosHeader = root.querySelector('#videos-section-header');
-    // v1.41.2: the sort control is a custom .btn dropdown (not a native
-    // <select> -- see index.html / the wiring below).
-    const sortDropdown = root.querySelector('#sort-dropdown');
+    // UI pass sweep S2: the sort control is a ui-btn icon that opens a ui.menu
+    // (the options live in SORT_MENU_OPTIONS below, not in markup).
     const sortBtn = root.querySelector('#sort-select-btn');
-    const sortLabel = root.querySelector('#sort-select-label');
-    const sortMenu = root.querySelector('#sort-menu');
+    const chipHost = root.querySelector('#library-chip-host'); // the ONE filter chip row (F19)
     const shuffleAgainBtn = root.querySelector('#shuffle-again-btn');
     const viewModeBtn = root.querySelector('#view-mode-btn'); // v1.45.6: card/list toggle
-    // C2/C3 (v1.24.0, T3-WIRE): the shared "actions" row that already holds
-    // the sort <select>/shuffle/rescan controls -- the format toggle mounts
-    // into it too (renderFormatToggle inserts itself as the FIRST child, so
-    // it never disturbs the existing controls' order/listeners).
+    // The toolbar row: the filter chip host + the trailing icon tools (sort,
+    // shuffle, rescan, view); the bulk-attribution control joins it on an
+    // eligible folder view.
     const sectionActions = root.querySelector('.section-actions');
 
-    // v1.17.0 FR-3(b), T2: card trash-can arm/disarm state, driven by
-    // common.js's pure `nextArmState` reducer. `armedBtn` is the ACTUAL
-    // `.card-delete-btn` DOM node currently armed (or null); `armState`
-    // mirrors the reducer's `'idle'|'armed'` for that node. Only one card is
-    // ever armed at a time -- arming a different card, a ~3s timeout, or any
-    // document click/scroll outside the armed button all disarm. Reset (via
-    // disarmCardDelete()) at the top of every renderMediaGridPage() FULL
-    // REPLACE (never on an append -- appending only ADDS cards, it never
-    // detaches an existing/armed one), since a replace re-render replaces
-    // the grid's children -- an armed reference to a about-to-be-detached
-    // node must never leak/double-fire across it.
-    let armState = 'idle';
-    let armedBtn = null;
-    let armDisarmTimer = null;
-    const CARD_ARM_TIMEOUT_MS = 3000;
+    // The one open card action menu (UI pass sweep S2), or null. A new menu, a
+    // full grid re-render and destroy() all close it (closeCardMenu).
+    let openCardMenuCtrl = null;
 
     // Sort preference persists across visits. v1.34 (Dean): precedence is
     // explicit per-browser dropdown pick (localStorage `filetube_sort`) >
@@ -1258,13 +1284,12 @@ const PreviewCards = (function () {
     // BEFORE the first page fetch whenever no explicit pick exists.
     let currentItems = [];
     let folderSettings = {}; // { "<path>": { name, hidden, hiddenFromSidebar } } — for author display, shared with cards
-    // v1.67: the per-user corner layout + capability, latched by loadLibrary
-    // BEFORE the first card render (plan D2: server-authoritative per C1 -
-    // deliberately NO localStorage lane, the v1.53 cross-user-bleed class).
-    // C5 defaults until the latch lands; a signed-out shell or fetch failure
-    // keeps them.
-    let cardCornerPrefs = resolveCardCornerPrefs(null);
-    let cardCornerCaps = {};
+    // The signed-in user's card-action capability (library modify + the yt-dlp
+    // module's reheat), latched by loadLibrary BEFORE the first card render
+    // (server-authoritative - deliberately NO localStorage lane, the v1.53
+    // cross-user-bleed class). Empty until the latch lands: the card menu then
+    // offers neither Delete nor Reheat.
+    let cardCaps = {};
     const storedSortPick = localStorage.getItem('filetube_sort');
     let currentSort = storedSortPick || 'release-date';
 
@@ -1430,11 +1455,9 @@ const PreviewCards = (function () {
       videoGrid.classList.toggle('list-view', m === 'list');
       if (viewModeBtn) {
         const targetIsList = m === 'card'; // in card mode, a click switches TO list
-        const icon = viewModeBtn.querySelector('i');
-        if (icon) icon.className = targetIsList ? 'icon-list' : 'icon-grid';
-        const label = targetIsList ? 'Switch to list view' : 'Switch to card view';
-        viewModeBtn.title = label;
-        viewModeBtn.setAttribute('aria-label', label);
+        const use = viewModeBtn.querySelector('use');
+        if (use) use.setAttribute('href', targetIsList ? '#i-view_list' : '#i-grid_view');
+        viewModeBtn.setAttribute('aria-label', targetIsList ? 'Switch to list view' : 'Switch to card view');
       }
     }
     applyViewMode(getStoredViewMode());
@@ -1468,43 +1491,40 @@ const PreviewCards = (function () {
       videosHeader.textContent = 'From your subscriptions'; // v1.79.1 See-all target
     }
 
-    // v1.67 (plan D2/D4): resolve the signed-in user's corner layout and -
-    // only when a corner actually assigns reheat - the module capability.
-    // Never throws (loadLibrary races it against /api/config in one
-    // Promise.all; a failure here must never block the grid): any failure
-    // resolves to the C5 defaults / an empty caps object, and C4 then
-    // renders nothing in a reheat corner rather than guessing.
-    async function fetchCardCornerState() {
-      let prefs = resolveCardCornerPrefs(null);
-      // v1.81 write-RBAC: the EFFECTIVE library-modify capability drives whether
-      // the card delete affordance renders. Admin bypasses via role (their
-      // stored flag is irrelevant), so compute admin-OR-flag exactly like the
-      // server gate - never key the client purely off the raw column.
+    // The card menu's capability (UI pass sweep S2; was the v1.67 corner latch).
+    // Never throws (loadLibrary races it against /api/config in one Promise.all;
+    // a failure here must never block the grid): any failure resolves to "no
+    // capability", so the menu offers no Delete/Reheat rather than guessing.
+    // v1.81 write-RBAC: the EFFECTIVE library-modify capability - admin bypasses
+    // via role, exactly like the server gate (never the raw column alone).
+    async function fetchCardCaps() {
       let canModifyLibrary = false;
       try {
         const r = await fetch('/api/auth/me');
         if (r.ok) {
           const me = await r.json();
-          prefs = resolveCardCornerPrefs(me && me.settings);
           canModifyLibrary = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
         }
-      } catch (_) { /* signed-out shell / network failure -> defaults */ }
-      const needsReheat = prefs.cornerTL === 'reheat' || prefs.cornerTR === 'reheat' || prefs.cornerBL === 'reheat';
-      if (!needsReheat) return { prefs, caps: { canModifyLibrary } };
-      // The same latched module-health capability the watch page and the
-      // subscriptions nav injector use (common.js capability cache; the
-      // fresh answer refreshes it for them too).
+      } catch (_) { /* signed-out shell / network failure -> no capability */ }
+      // Reheat rides the latched module-health capability the watch page and the
+      // subscriptions nav injector use (common.js capability cache). With no
+      // latch yet, the health probe runs in the BACKGROUND and upgrades the
+      // latched caps when it answers - the grid never waits on it (the menu
+      // reads cardCaps when it opens, so a late answer still lands).
       const cached = readCapabilityCache();
       if (cached && typeof cached.moduleEnabled === 'boolean') {
-        return { prefs, caps: { canModifyLibrary, reheatEnabled: cached.moduleEnabled === true } };
+        return { canModifyLibrary, reheatEnabled: cached.moduleEnabled === true };
       }
-      try {
-        const res = await fetch('/api/subscriptions/health');
-        writeCapabilityCache({ moduleEnabled: res.ok === true });
-        return { prefs, caps: { canModifyLibrary, reheatEnabled: res.ok === true } };
-      } catch (_) {
-        return { prefs, caps: { canModifyLibrary, reheatEnabled: false } };
-      }
+      // The late answer mutates the SAME object loadLibrary latches into cardCaps,
+      // so it lands whichever of the two settles first.
+      const caps = { canModifyLibrary, reheatEnabled: false };
+      fetch('/api/subscriptions/health')
+        .then((res) => {
+          writeCapabilityCache({ moduleEnabled: res.ok === true });
+          caps.reheatEnabled = res.ok === true;
+        })
+        .catch(() => { /* no module answer -> no Reheat */ });
+      return caps;
     }
 
     // Load configuration and files
@@ -1517,74 +1537,16 @@ const PreviewCards = (function () {
       // the Retry button's re-invocation of this same function (see the
       // catch block below) -- a retry gets its own fresh skeleton, not a
       // stale error card sitting there while the retried fetch is in flight.
-      videoGrid.innerHTML = buildSkeletonGrid(SKELETON_CARD_COUNT, { avatar: !!modernMode });
-      // v1.100 (Dean): the classic toolbar's format (All/Videos/Audio) + watch-
-      // state (All/New/Watching/Watched) toggles are SYNCHRONOUS (localStorage
-      // prefs), so render them NOW - before the config/videos fetches - so the
-      // toolbar is COMPLETE from the first paint. Previously they injected in
-      // fetchLibraryPage0 AFTER the fetch, so the static sort/rescan/view buttons
-      // showed first and these grew the row a beat later ("starts with only a few
-      // buttons"). Classic/folder/search only (modern home uses its own chip
-      // chrome, section-actions hidden); guarded on not-present so a loadLibrary
-      // retry / cached re-entry never removes+reinserts them (a flash).
-      if (!modernMode && sectionActions && !sectionActions.querySelector('#library-format-toggle')) {
-        renderFormatToggle(sectionActions, getStoredFormatFilter(), () => resetAndReload());
-        renderWatchToggle(sectionActions, getStoredWatchFilter(), () => resetAndReload());
-      }
-      // v1.150 belt: a NON-search render must never inherit a prior search
-      // render's scope toggle or its mobile strip class (cached/reused view
-      // DOM - the homeViewCache posture makes persistence possible, so the
-      // cleanup is unconditional rather than reasoned away).
-      if (!searchQuery && sectionActions) {
-        const staleScope = sectionActions.querySelector('#library-search-scope-toggle');
-        if (staleScope && staleScope.parentNode) staleScope.parentNode.removeChild(staleScope);
-        // v1.205: also drop a prior unified-search TYPE chip row (same cached-
-        // view cleanup posture) so a non-search render never inherits it.
-        const staleTypeChips = sectionActions.querySelector('#library-search-type-chips');
-        if (staleTypeChips && staleTypeChips.parentNode) staleTypeChips.parentNode.removeChild(staleTypeChips);
-        sectionActions.classList.remove('search-scoped-toolbar');
-      }
-      // v1.149: the search-scope toggle - SEARCH VIEWS ONLY (the guard is the
-      // whole feature gate: no search, no third toggle, every other view
-      // byte-identical). Same synchronous-before-fetch posture as its two
-      // siblings above (the v1.100 complete-from-first-paint rule; the scope
-      // is known synchronously from the URL). On change: state + URL
-      // (replaceState keeps the deep link shareable without a history spam
-      // entry per click) + the same resetAndReload the siblings use.
-      if (!modernMode && searchQuery && !likedFilter && sectionActions) {
-        // v1.150 (Dean's device report): mark the toolbar as search-scoped so
-        // mobile CSS collapses it into ONE scrollable strip instead of the
-        // v1.50 two-row layout (whose zero-slack budget orphaned this toggle
-        // onto a third row). Removed by the non-search cleanup below.
-        sectionActions.classList.add('search-scoped-toolbar');
-        // v1.205 Wave B: a GLOBAL search shows the content-TYPE chip row;
-        // a folder/root-scoped search keeps the video-only searchIn toggle.
-        if (isUnifiedSearch && typeof renderSearchTypeChips === 'function') {
-          if (!sectionActions.querySelector('#library-search-type-chips')) {
-            renderSearchTypeChips(sectionActions, activeSearchType, (chip) => {
-              activeSearchType = chip;
-              try {
-                const u = new URL(window.location.href);
-                if (chip === 'all') u.searchParams.delete('type');
-                else u.searchParams.set('type', chip);
-                history.replaceState(null, '', u);
-              } catch (_) { /* URL/history quirk - the in-view state still drives the fetch */ }
-              resetAndReload();
-            });
-          }
-        } else if (!isUnifiedSearch && !sectionActions.querySelector('#library-search-scope-toggle')) {
-          renderSearchScopeToggle(sectionActions, activeSearchScope, (mode) => {
-            activeSearchScope = mode;
-            try {
-              const u = new URL(window.location.href);
-              if (mode === 'all') u.searchParams.delete('searchIn');
-              else u.searchParams.set('searchIn', mode);
-              history.replaceState(null, '', u);
-            } catch (_) { /* URL/history quirk - the in-view state still drives the fetch */ }
-            resetAndReload();
-          });
-        }
-      }
+      videoGrid.innerHTML = buildSkeletonGrid(SKELETON_CARD_COUNT, { avatar: !!modernMode, typeLine: isUnifiedSearch });
+      // v1.100 (Dean): the toolbar's filters are SYNCHRONOUS (localStorage prefs,
+      // the URL's search scope/type), so the chip row renders NOW - before the
+      // config/videos fetches - and the toolbar is complete from the first
+      // paint. Classic/folder/search only (modern home uses its own chip
+      // chrome). ensureLibraryChips builds the row only when the host has none of
+      // THIS view's kind, so a loadLibrary retry or a rescan's in-place refresh
+      // never rebuilds it (scroll position and focus stay put), and never stacks
+      // a second one.
+      if (!modernMode) ensureLibraryChips();
       // v1.102 (tranche 4 shimmer): the Library folder list built after
       // /api/config with no placeholder - a blank rail until the fetch landed.
       // Seed a shape-matched skeleton (mirrors the real `.sidebar-item` box, so
@@ -1598,17 +1560,15 @@ const PreviewCards = (function () {
         // v1.339 (L2): the modern chrome paints NOW, before the first await (see
         // mountModernChrome; its function declaration is hoisted within this block).
         if (modernMode) mountModernChrome(modernChromeHost, signal);
-        // 1. Check configs (+ the v1.67 corner latch, raced in parallel so
-        // the pref never delays the grid behind a second round-trip; both
-        // must land BEFORE the first buildCardHtml call below - a
-        // paint-then-reshuffle of custom corners is exactly what plan D2
-        // rules out, and the skeleton grid above already covers the wait).
-        const [configRes, cornerState] = await Promise.all([
+        // 1. Check configs (+ the card-menu capability latch, raced in parallel
+        // so it never delays the grid behind a second round-trip; both land
+        // BEFORE the first card render below, and the skeleton grid above
+        // already covers the wait).
+        const [configRes, caps] = await Promise.all([
           fetch('/api/config'),
-          fetchCardCornerState(),
+          fetchCardCaps(),
         ]);
-        cardCornerPrefs = cornerState.prefs;
-        cardCornerCaps = cornerState.caps;
+        cardCaps = caps;
         const configData = await configRes.json();
         const folders = configData.folders || [];
         folderSettings = configData.folderSettings || {};
@@ -1617,15 +1577,17 @@ const PreviewCards = (function () {
         if (typeof setFolderDisplayNames === 'function') setFolderDisplayNames(configData.folderDisplayNames);
         syntheticFolderPaths = Array.isArray(configData.syntheticFolders) ? configData.syntheticFolders : [];
 
+        // UI pass sweep S2: the welcome box and the library swap via `hidden`
+        // (the global [hidden] rule), never an inline display write.
         if (folders.length === 0) {
-          welcomeMessage.style.display = 'block';
-          libraryContent.style.display = 'none';
-          sidebarFoldersList.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
+          welcomeMessage.hidden = false;
+          libraryContent.hidden = true;
+          sidebarFoldersList.innerHTML = SIDEBAR_NONE_HTML;
           return;
         }
 
-        welcomeMessage.style.display = 'none';
-        libraryContent.style.display = 'block';
+        welcomeMessage.hidden = true;
+        libraryContent.hidden = false;
 
         // Item 4 (v1.14.0): on a BARE home load (no ?search=/?folder=/?root=
         // at all) apply the configured default view -- an explicit deep link
@@ -1673,7 +1635,7 @@ const PreviewCards = (function () {
           videosHeader.textContent = label;
         }
 
-        // v1.84 Modern Mode renderers (nested so they reach buildCardHtml + the
+        // v1.84 Modern Mode renderers (nested so they reach putCards + the
         // grid). fetchModernGrid fetches the active chip's items and renders the
         // rich cards into #video-grid; a request token drops a stale response so
         // rapid chip switching never paints an out-of-order result.
@@ -1695,7 +1657,7 @@ const PreviewCards = (function () {
             data = res.ok ? await res.json() : { items: [] };
           } catch (err) {
             if (err && err.name === 'AbortError') return;
-            if (token === modernReqToken) videoGrid.innerHTML = '<div class="home-feed-empty">Could not load. Try again, or switch layout in Settings.</div>';
+            if (token === modernReqToken) videoGrid.innerHTML = uiStateHtml({ icon: 'error', tone: 'error', title: 'Could not load', body: 'Try again, or switch layout in Settings.' });
             return;
           }
           if (token !== modernReqToken) return; // a newer chip click superseded this
@@ -1704,8 +1666,8 @@ const PreviewCards = (function () {
           currentOffset = typeof data.offset === 'number' ? data.offset : 0;
           currentLimit = typeof data.limit === 'number' && data.limit > 0 ? data.limit : HOME_PAGE_LIMIT;
           currentTotal = typeof data.total === 'number' ? data.total : items.length;
-          videoGrid.innerHTML = items.length ? items.map((it) => buildCardHtml(it, { feedHideable: true })).join('') : buildModernEmptyHtml(filter);
-          revealHomeArt(videoGrid, sig);
+          if (items.length) putCards(items, false);
+          else videoGrid.innerHTML = buildModernEmptyHtml(filter);
           ensureGridSentinel(); // append further pages as the user scrolls
         }
         // v1.86.0 (Dean): a glyph-only sort ▾ injected as the LEFTMOST control in
@@ -1724,6 +1686,11 @@ const PreviewCards = (function () {
         // the grid. Self-contained (own menu + handlers) because the classic
         // #sort-dropdown wiring drives the classic grid's resetAndReload, not this
         // endpoint. Reuses .sort-menu.
+        // Sweep S9 (F46, F31): the glyph is a plain icon ui-btn (the header's own button, the
+        // registry `sort` glyph - never a text caret) and the options are a ui.menu anchored
+        // under it: the current sort is a trailing ink CHECK, never red text (F46), and the
+        // menu owns Esc / arrow keys / the outside tap / focus return. `menuCtrl` closes with
+        // the view (the signal) like every other body-level overlay.
         function injectModernHeaderSort(sig) {
           const headerRight = document.querySelector('.header-right');
           if (!headerRight) return; // signed-out / no shell -> nothing to attach to
@@ -1732,56 +1699,15 @@ const PreviewCards = (function () {
 
           const wrap = document.createElement('div');
           wrap.className = 'modern-sort';
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'modern-sort-btn';
-          btn.setAttribute('aria-haspopup', 'listbox');
+          const btn = chromeButtonEl({ icon: 'sort', ariaLabel: 'Sort', cls: 'modern-sort-btn' });
+          btn.setAttribute('aria-haspopup', 'menu');
           btn.setAttribute('aria-expanded', 'false');
-          btn.setAttribute('aria-label', 'Sort');
           btn.title = 'Sort';
-          // v1.86.3 (Dean): a real chevron (keyboard_arrow_down) instead of a tiny
-          // ▾ text character, so it sizes like the download/search glyphs.
-          // v1.87.1 (Dean): inline <svg> (chrome-icon), not an `.icon-arrow-down`
-          // mask - the mask decode-lags on a mobile cold start (chromeIconEl is a
-          // common.js top-level, available here like MODERN_SORT_OPTIONS).
-          const caret = chromeIconEl('caret', 'modern-sort-caret');
-          if (caret) btn.appendChild(caret);
-          const menu = document.createElement('ul');
-          menu.className = 'sort-menu modern-sort-menu';
-          menu.setAttribute('role', 'listbox');
-          menu.setAttribute('aria-label', 'Sort');
-          menu.hidden = true;
-          for (const [val, label] of MODERN_SORT_OPTIONS) {
-            const li = document.createElement('li');
-            li.setAttribute('role', 'option');
-            li.setAttribute('data-sort', val);
-            li.tabIndex = -1;
-            li.textContent = label;
-            menu.appendChild(li);
-          }
           wrap.appendChild(btn);
-          wrap.appendChild(menu);
           headerRight.insertBefore(wrap, headerRight.firstChild); // leftmost of the cluster
 
-          const opts = () => Array.prototype.slice.call(menu.querySelectorAll('[data-sort]'));
-          const applyActive = () => opts().forEach((li) => {
-            const on = li.getAttribute('data-sort') === activeModernSort;
-            li.classList.toggle('active', on);
-            li.setAttribute('aria-selected', on ? 'true' : 'false');
-          });
-          const open = () => {
-            menu.hidden = false;
-            btn.setAttribute('aria-expanded', 'true');
-            const cur = opts().find((li) => li.getAttribute('data-sort') === activeModernSort) || opts()[0];
-            if (cur) cur.focus();
-          };
-          const close = (returnFocus) => {
-            menu.hidden = true;
-            btn.setAttribute('aria-expanded', 'false');
-            if (returnFocus) btn.focus();
-          };
-          const choose = (val, returnFocus) => {
-            close(returnFocus);
+          let menuCtrl = null;
+          const choose = (val) => {
             const next = resolveModernSort(val);
             // v1.86.0 gate SUGGESTION: re-picking the SAME key is a no-op EXCEPT
             // 'random' - "Feeling lucky" should re-roll each time (the server
@@ -1790,36 +1716,19 @@ const PreviewCards = (function () {
             if (next === activeModernSort && next !== 'random') return;
             activeModernSort = next;
             try { localStorage.setItem('filetube_modern_sort', next); } catch (_) { /* private mode */ }
-            applyActive();
             fetchModernGrid(sig);
           };
-          applyActive();
-
-          btn.addEventListener('click', (e) => { e.stopPropagation(); if (menu.hidden) open(); else close(); }, { signal: sig });
-          btn.addEventListener('keydown', (e) => {
-            if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && menu.hidden) { e.preventDefault(); open(); }
-          }, { signal: sig });
-          menu.addEventListener('click', (e) => {
-            const li = e.target.closest('[data-sort]');
-            if (li) choose(li.getAttribute('data-sort'), false);
-          }, { signal: sig });
-          menu.addEventListener('keydown', (e) => {
-            const list = opts();
-            const idx = list.indexOf(document.activeElement);
-            if (e.key === 'ArrowDown') { e.preventDefault(); (list[idx + 1] || list[0]).focus(); }
-            else if (e.key === 'ArrowUp') { e.preventDefault(); (list[idx - 1] || list[list.length - 1]).focus(); }
-            else if (e.key === 'Home') { e.preventDefault(); list[0].focus(); }
-            else if (e.key === 'End') { e.preventDefault(); list[list.length - 1].focus(); }
-            else if (e.key === 'Enter' || e.key === ' ') {
-              e.preventDefault();
-              const li = document.activeElement;
-              if (li && li.getAttribute('data-sort')) choose(li.getAttribute('data-sort'), true);
-            } else if (e.key === 'Escape') { e.preventDefault(); close(true); }
-          }, { signal: sig });
-          document.addEventListener('click', (e) => {
-            if (menu.hidden) return;
-            if (wrap.contains(e.target)) return;
-            close();
+          btn.addEventListener('click', () => {
+            if (menuCtrl && menuCtrl.isOpen()) { menuCtrl.close(); return; }
+            btn.setAttribute('aria-expanded', 'true');
+            menuCtrl = window.ui.menu({
+              title: 'Sort by',
+              anchor: btn,
+              signal: shownViewSignal(), // gate r2: `sig` is the cached home's, never aborted on nav-away
+              items: MODERN_SORT_OPTIONS.map(([val, label]) => ({ label, value: val, checked: val === activeModernSort })),
+              onSelect: choose,
+              onClose: () => { btn.setAttribute('aria-expanded', 'false'); },
+            });
           }, { signal: sig });
 
           // Genuine view DESTROY (fresh/folder home load): remove the node
@@ -1845,16 +1754,13 @@ const PreviewCards = (function () {
           if (!headerRight) return;
           const prior = headerRight.querySelector('.modern-view-toggle');
           if (prior) prior.remove(); // idempotent
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          // v1.160.1 (Dean): the transparent glyph style (like .modern-sort-btn),
-          // NOT the filled .btn look which read as "always selected/grey".
-          btn.className = 'modern-view-toggle';
-          const icon = document.createElement('i');
-          btn.appendChild(icon);
+          // Sweep S9 (F31): a plain icon ui-btn like every header glyph; the registry
+          // grid_view / view_list glyph shows the mode a click switches TO.
+          const btn = chromeButtonEl({ icon: 'view_list', ariaLabel: 'Switch to list view', cls: 'modern-view-toggle' });
+          const use = btn.querySelector('.ui-btn__icon use');
           const sync = () => {
             const isList = getStoredViewMode() === 'list';
-            icon.className = isList ? 'icon-grid' : 'icon-list'; // show the mode a click switches TO
+            if (use) use.setAttribute('href', isList ? '#i-grid_view' : '#i-view_list'); // the mode a click switches TO
             const label = isList ? 'Switch to card view' : 'Switch to list view';
             btn.title = label;
             btn.setAttribute('aria-label', label);
@@ -1890,7 +1796,7 @@ const PreviewCards = (function () {
             const chipRow = chromeHost.querySelector('.modern-chip-row');
             if (chipRow) {
               chipRow.addEventListener('click', (e) => {
-                const btn = e.target.closest('.modern-chip');
+                const btn = e.target.closest('.ui-chip[data-chip]');
                 if (!btn) return;
                 const next = resolveModernChip(btn.dataset.chip);
                 if (next === activeModernChip) return;
@@ -1899,10 +1805,8 @@ const PreviewCards = (function () {
                 // the sort's own persistence line (injectModernHeaderSort's
                 // choose(), the 'filetube_modern_sort' write).
                 try { localStorage.setItem('filetube_modern_chip', next); } catch (_) { /* private mode */ }
-                chipRow.querySelectorAll('.modern-chip').forEach((b) => {
-                  const on = b.dataset.chip === next;
-                  b.classList.toggle('active', on);
-                  b.setAttribute('aria-selected', on ? 'true' : 'false');
+                chipRow.querySelectorAll('.ui-chip[data-chip]').forEach((b) => {
+                  b.setAttribute('aria-pressed', b.dataset.chip === next ? 'true' : 'false');
                 });
                 fetchModernGrid(sig);
               }, { signal: sig });
@@ -2091,23 +1995,21 @@ const PreviewCards = (function () {
         const label = mapped || resolveRootHeaderLabel(currentItems, folderSettings, folderFilter);
         videosHeader.textContent = `Playlist: ${label}`;
       }
-      // v1.126: the rename affordance - a small pencil AFTER the header (a
-      // SIBLING, never inside it: textContent writes above would wipe an inner
-      // node - the v1.122 count-badge lesson). Folder views only, library-write
-      // members only. Re-rendered idempotently on every page-0 load.
+      // v1.126: the rename affordance. UI pass sweep S2 (F61): the heading's
+      // controls are ui-btn plain icons (no text dingbats), APPENDED at the END
+      // of the heading group - after the name and the item count - so a control
+      // that appears or leaves after its fetch never moves anything beside it.
+      // Folder views only, library-write members only. Re-rendered idempotently
+      // on every page-0 load.
+      const headingGroup = videosHeader ? videosHeader.parentNode : null;
       const staleRenameBtn = document.getElementById('folder-rename-btn');
       if (staleRenameBtn && staleRenameBtn.parentNode) staleRenameBtn.parentNode.removeChild(staleRenameBtn);
-      if (folderFilter && videosHeader && cardCornerCaps && cardCornerCaps.canModifyLibrary === true) {
-        const btn = document.createElement('button');
+      if (folderFilter && headingGroup && cardCaps.canModifyLibrary === true) {
+        const btn = cardUi().button({ variant: 'plain', shape: 'icon', size: 'sm', icon: 'edit', ariaLabel: 'Rename this playlist' });
         btn.id = 'folder-rename-btn';
-        btn.type = 'button';
-        btn.className = 'folder-rename-btn';
-        btn.title = 'Rename this playlist';
-        btn.setAttribute('aria-label', 'Rename this playlist');
-        btn.textContent = '✎'; // pencil glyph
         btn.addEventListener('click', async () => {
           const current = (typeof folderDisplayName === 'function' && folderDisplayName(folderFilter)) || '';
-          const entered = window.prompt('Display name for this playlist (empty to reset):', current);
+          const entered = await cardUi().prompt({ title: 'Rename this playlist', label: 'Display name (empty to reset)', value: current, confirmLabel: 'Save' });
           if (entered === null) return; // cancelled
           try {
             const res = await fetch('/api/folders/display-name', {
@@ -2123,31 +2025,25 @@ const PreviewCards = (function () {
             const mappedNow = (typeof folderDisplayName === 'function') ? folderDisplayName(folderFilter) : null;
             videosHeader.textContent = `Playlist: ${mappedNow || resolveRootHeaderLabel(currentItems, folderSettings, folderFilter)}`;
           } catch (err) {
-            window.alert('Could not save the name. ' + (err && err.message ? err.message : ''));
+            cardUi().toast('Could not save the name. ' + (err && err.message ? err.message : ''), { kind: 'error' });
           }
         });
-        videosHeader.insertAdjacentElement('afterend', btn);
+        headingGroup.appendChild(btn);
       }
-      // Wave G: the "Show in Music library" toggle - a SIBLING next to the rename
-      // pencil (same idempotent-remove + canModifyLibrary gate). Only on a folder
-      // view that actually HAS audio (the mark is meaningless otherwise). Marks
-      // the channel (folder) so its downloaded music projects into the Music
+      // Wave G: the "Show in Music library" toggle - next to the rename control
+      // (same idempotent-remove + canModifyLibrary gate). Only on a folder view
+      // that actually HAS audio (the mark is meaningless otherwise). Marks the
+      // channel (folder) so its downloaded music projects into the Music
       // library. (The per-user opt-in master toggle was RETIRED in v1.242 - audio
       // projects into Music unconditionally and this mark is the OPT-OUT.)
       const staleMusicBtn = document.getElementById('folder-music-toggle');
       if (staleMusicBtn && staleMusicBtn.parentNode) staleMusicBtn.parentNode.removeChild(staleMusicBtn);
       const folderHasAudio = Array.isArray(currentItems) && currentItems.some((it) => it && it.type === 'audio');
-      // v1.224 (Dean): the ♪ shows whenever the FOLDER has audio (server truth),
-      // not just when an audio file is on the loaded page - so it appears on the
-      // "home -> click channel" view too (that's a ?folder= view whose first page
-      // may be all videos). Gate only on the folder view + permission here; start
-      // hidden unless the loaded page already shows audio (no flash), then the
-      // music-flag fetch's hasAudio is authoritative (reveal, or remove).
-      // v1.225 (Dean): a PINNED sidebar channel navigates via ?root= (not ?folder=),
-      // so the ♪ was absent there. Derive the channel folder from the loaded items'
-      // OWN folderName (correct by construction - it IS their channel, and the
-      // music-flag is keyed by folderName) when the whole view is ONE channel; a
-      // multi-channel root gets no single mark (skip). Prefer an explicit ?folder=.
+      // v1.224 (Dean): the toggle shows whenever the FOLDER has audio (server
+      // truth), not just when an audio file is on the loaded page. v1.225: a
+      // PINNED sidebar channel navigates via ?root=, so derive the channel folder
+      // from the loaded items' OWN folderName when the whole view is ONE channel;
+      // a multi-channel root gets no single mark. Prefer an explicit ?folder=.
       let musicFolderName = folderFilter;
       if (!musicFolderName && rootFilter) {
         const itemFolders = Array.from(new Set((Array.isArray(currentItems) ? currentItems : [])
@@ -2155,44 +2051,30 @@ const PreviewCards = (function () {
           .filter(Boolean)));
         if (itemFolders.length === 1) musicFolderName = itemFolders[0];
       }
-      if (musicFolderName && videosHeader && cardCornerCaps && cardCornerCaps.canModifyLibrary === true) {
-        const mbtn = document.createElement('button');
+      if (musicFolderName && headingGroup && cardCaps.canModifyLibrary === true) {
+        // A ui-btn icon toggle: pressed = showing in Music (music_note), not
+        // pressed = hidden from Music (music_off). v1.268 slim W2: seeded to the
+        // v1.242 DEFAULT (on) - never a pessimistic guess the fetch then flips.
+        const mbtn = cardUi().button({ variant: 'plain', shape: 'icon', size: 'sm', icon: { off: 'music_off', on: 'music_note' }, pressed: true, ariaLabel: 'Show in Music' });
         mbtn.id = 'folder-music-toggle';
-        mbtn.type = 'button';
-        mbtn.className = 'folder-music-toggle';
-        mbtn.textContent = '♪';
         mbtn.hidden = !folderHasAudio; // optimistic show if the page has audio; the fetch confirms
-        // v1.268 slim W2: seed the optimistic state to the v1.242 DEFAULT (on).
-        // Seeding false painted a struck-through "Hidden from Music" on every load
-        // until the fetch corrected it - invisible when the states differed only by
-        // colour, glaring once this wave made OFF a strikethrough. It also meant a
-        // tap landing before the fetch resolved POSTed 'on' for an already-on
-        // channel: no visible change, and an auto default silently promoted to an
-        // explicit override. The button only renders for channels WITH audio, and
-        // such a channel is eligible unless explicitly marked 'off'.
         let effectiveNow = true;
         const paint = (effective) => {
-          mbtn.classList.toggle('is-on', !!effective);
-          // v1.268 (Dean): this button reads as a decorative badge and its only
-          // explanation was a hover title, which does not exist on a phone - so he
-          // tapped it and could not tell it had done anything. It is also an
-          // OPT-OUT control since v1.242 (every channel is in Music by default),
-          // so "click to remove" both understated the default AND sounded like it
-          // might delete files. Say what it actually does, in both states.
+          // v1.268 (Dean): say what the control does in both states (it is an
+          // OPT-OUT: every channel is in Music by default) - one label source for
+          // the accessible name; the icon (music_note / music_off) shows the state
+          // without hover.
           const t = effective
             ? 'Showing in Music - tap to hide this channel\u2019s songs from your Music library'
             : 'Hidden from Music - tap to show this channel\u2019s songs in your Music library';
-          mbtn.title = t;
           mbtn.setAttribute('aria-label', t);
-          mbtn.setAttribute('aria-pressed', effective ? 'true' : 'false');
+          cardUi().setPressed(mbtn, !!effective);
         };
-        paint(true); // the v1.242 default, not a pessimistic guess (slim W2)
+        paint(true);
         fetch(`/api/folders/music-flag?folderName=${encodeURIComponent(musicFolderName)}`)
           .then((r) => r.json())
           .then((s) => {
-            // hasAudio is the authority: a folder with NO audio never gets the mark
-            // (the toggle would be meaningless); one WITH audio shows it even if the
-            // loaded page happened to be all videos (the channel-view gap Dean hit).
+            // hasAudio is the authority: a folder with NO audio never gets the mark.
             if (!s || s.hasAudio !== true) { if (mbtn.parentNode) mbtn.parentNode.removeChild(mbtn); return; }
             mbtn.hidden = false;
             effectiveNow = !!s.effective;
@@ -2210,53 +2092,16 @@ const PreviewCards = (function () {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             effectiveNow = (next === 'on');
             paint(effectiveNow);
+            cardUi().toast(effectiveNow ? 'Showing in Music' : 'Hidden from Music');
           } catch (err) {
-            window.alert('Could not update the Music setting. ' + (err && err.message ? err.message : ''));
+            cardUi().toast('Could not update the Music setting. ' + (err && err.message ? err.message : ''), { kind: 'error' });
           }
         });
-        const anchor = document.getElementById('folder-rename-btn') || videosHeader;
-        anchor.insertAdjacentElement('afterend', mbtn);
+        headingGroup.appendChild(mbtn);
       }
-      // v1.100: the format + watch-state toggles now render synchronously at the
-      // top of loadLibrary (before the fetch) so the toolbar is complete from
-      // first paint - no longer injected here post-fetch. A guarded re-render
-      // covers the rare path where loadLibrary's early render was skipped (e.g. a
-      // future modern->classic in-view transition) without a flash otherwise.
-      if (sectionActions && !sectionActions.querySelector('#library-format-toggle')) {
-        renderFormatToggle(sectionActions, getStoredFormatFilter(), () => resetAndReload());
-        renderWatchToggle(sectionActions, getStoredWatchFilter(), () => resetAndReload());
-      }
-      // v1.149: the guarded re-render twin of the search-scope toggle (same
-      // rare-path rationale as the siblings directly above). v1.205 Wave B: the
-      // twin branch to the type-chip row for a global search (site 2).
-      if (searchQuery && !likedFilter && sectionActions) {
-        sectionActions.classList.add('search-scoped-toolbar'); // v1.150: the mobile strip marker (twin of site 1)
-        if (isUnifiedSearch && typeof renderSearchTypeChips === 'function') {
-          if (!sectionActions.querySelector('#library-search-type-chips')) {
-            renderSearchTypeChips(sectionActions, activeSearchType, (chip) => {
-              activeSearchType = chip;
-              try {
-                const u = new URL(window.location.href);
-                if (chip === 'all') u.searchParams.delete('type');
-                else u.searchParams.set('type', chip);
-                history.replaceState(null, '', u);
-              } catch (_) { /* URL/history quirk - the in-view state still drives the fetch */ }
-              resetAndReload();
-            });
-          }
-        } else if (!isUnifiedSearch && !sectionActions.querySelector('#library-search-scope-toggle')) {
-          renderSearchScopeToggle(sectionActions, activeSearchScope, (mode) => {
-            activeSearchScope = mode;
-            try {
-              const u = new URL(window.location.href);
-              if (mode === 'all') u.searchParams.delete('searchIn');
-              else u.searchParams.set('searchIn', mode);
-              history.replaceState(null, '', u);
-            } catch (_) { /* URL/history quirk - the in-view state still drives the fetch */ }
-            resetAndReload();
-          });
-        }
-      }
+      // The chip row rendered synchronously at the top of loadLibrary; this
+      // guarded twin covers a path where that early render was skipped.
+      ensureLibraryChips();
       // v1.53 (Dean): the bulk-attribution control for folder views (data-
       // dependent - it needs the fetched items to know eligibility, so it stays
       // here, post-fetch; it appears only on an eligible folder view, disclosed).
@@ -2296,20 +2141,10 @@ const PreviewCards = (function () {
         return;
       }
       if (existing) return;
-      const btn = document.createElement('button');
-      btn.type = 'button';
+      // UI pass sweep S2: a ui-btn (tonal, the toolbar's size) with its label.
+      const btn = cardUi().button({ variant: 'tonal', size: 'sm', pill: true, label: 'Attribute folder',
+        ariaLabel: 'Attribute unattributed videos in this folder to a channel' });
       btn.id = 'attribute-folder-btn';
-      btn.className = 'btn';
-      btn.title = 'Attribute unattributed videos in this folder to a channel';
-      btn.setAttribute('aria-label', 'Attribute unattributed videos in this folder to a channel');
-      const icon = document.createElement('i');
-      icon.className = 'icon-attribute'; // v1.202: the same real mask as the watch-page control
-      btn.appendChild(icon);
-      const label = document.createElement('span');
-      label.className = 'btn-label';
-      label.textContent = 'Attribute folder';
-      btn.appendChild(document.createTextNode(' '));
-      btn.appendChild(label);
       btn.addEventListener('click', async () => {
         let targets = [];
         try {
@@ -2452,8 +2287,7 @@ const PreviewCards = (function () {
           const seenIds = new Set(currentItems.map((it) => String(it.id)));
           const fresh = items.filter((it) => !seenIds.has(String(it.id)));
           currentItems = currentItems.concat(fresh);
-          videoGrid.insertAdjacentHTML('beforeend', fresh.map((it) => buildCardHtml(it, { feedHideable: true })).join(''));
-          revealHomeArt(videoGrid, signal);
+          putCards(fresh, true);
         } catch (err) {
           console.error('Failed to load the next modern grid page:', err);
         } finally {
@@ -2565,120 +2399,41 @@ const PreviewCards = (function () {
       });
     }
 
-    function buildCardHtml(item, opts) {
-      // v1.72 (#94): a mixed-kind Liked item renders through this SAME
-      // template - identical classes, so tile and list view CSS apply
-      // unchanged - with only destination/art/byline swapped per kind.
+    // One card, as DOM (UI pass sweep S2: module-scope buildVideoCardEl builds it
+    // from the ui primitives). The view supplies what only it knows: the
+    // destination (with the browse context, v1.40.0), the channel identity, and
+    // the Modern byline avatar decision (common.js modernCardAvatar).
+    function buildCardEl(item) {
       const kp = cardKindPresentation(item);
-      // v1.97 "Hide from feed": a feed-only affordance, passed EXPLICITLY by the
-      // modern-grid render paths (never inferred from the global modernMode flag,
-      // which persists across folder/search views where the feed prune must NOT
-      // appear). Media items only (kp === null) - per-VIDEO, the media-only set.
-      const feedHideable = !!(opts && opts.feedHideable) && !kp;
-      const views = resolveViewCountLabel(item);
-      const relativeTime = formatRelativeTime(item.addedAt);
-      // v1.40.0 (Dean, superseding the v1.36.2 `list=liked`-only carry): carry
-      // the FULL browse context into the watch page so prev/next walks THIS
-      // view's exact on-screen order -- the current folder/search/liked scope,
-      // sort, AND the server shuffle seed -- not the item's own channel folder.
-      // The watch page re-fetches the same list-API query and steps through the
-      // response order (see common.js buildContextListUrl / watch.js
-      // setupTrackNavContext). Empty ctx (nothing meaningful to carry) -> bare URL ->
-      // the folder-scoped fallback, byte-identical to pre-v1.40.0.
+      // v1.40.0: carry the FULL browse context into the watch page so prev/next
+      // walks THIS view's exact on-screen order; a non-media card opens its own
+      // kind's surface; an audio-only tile opens the music player (v1.236/v1.246).
       const ctxParam = currentBrowseContextParam();
-      // A non-media card's destination is its kind's own surface (the ctx
-      // contract is a watch-page/media concept and never rides along).
-      // v1.236: an audio-only tile taps into the music player when the flag is on (override
-      // ONLY the destination - the card keeps its video-side thumbnail/byline).
-      const watchHref = musicHrefForItem(item) || (kp ? kp.href : `/watch.html?v=${item.id}${ctxParam ? '&ctx=' + encodeURIComponent(ctxParam) : ''}`);
-      // Author/channel resolved the same way as the watch page (see common.js).
-      const channelName = resolveChannelName(item, folderSettings);
-      // Deterministic 3–5 star rating — the same value shows on this item's watch page.
-      const rating = getStarRating(item.id);
-      // v1.84 T5: the channel avatar beside the byline (Modern mode, media cards
-      // only - a kp card's byline is its own kind's identity). Decision is pure
-      // (common.js modernCardAvatar); render + escape here. The monogram colour
-      // rides an inline custom property the CSS consumes with var() (census-safe).
+      const href = musicHrefForItem(item) || (kp ? kp.href : `/watch.html?v=${item.id}${ctxParam ? '&ctx=' + encodeURIComponent(ctxParam) : ''}`);
+      const channelName = kp ? kp.uploaderLabel : resolveChannelName(item, folderSettings);
+      const channelHref = kp ? kp.uploaderHref : `/?folder=${encodeURIComponent(item.folderName)}`;
       const chAv = (!kp && typeof modernCardAvatar === 'function')
         ? modernCardAvatar(channelName, item.channelAvatarUrl, typeof modernModeEnabled === 'function' && modernModeEnabled())
         : { kind: 'none' };
-      let channelAvatarHtml = '';
-      if (chAv.kind === 'img') {
-        channelAvatarHtml = `<span class="card-channel-avatar"><img src="${escapeHtml(chAv.url)}" alt="" loading="lazy" /></span>`;
-      } else if (chAv.kind === 'mono') {
-        channelAvatarHtml = `<span class="card-channel-avatar card-channel-avatar-mono" style="--ch-av:${chAv.color}">${escapeHtml(chAv.glyph)}</span>`;
-      }
-
-      // v1.204: build the corners first - the bottom-right slot shares its
-      // space with the duration badge, so the badge's home depends on whether
-      // BR actually rendered a button for THIS card.
-      const cardCorners = buildCardCorners(item, cardCornerPrefs, cardCornerCaps);
-
-      // Calculate duration format
-      const durationStr = item.duration > 0 ? formatDuration(item.duration) : (item.type === 'audio' ? 'Audio' : '');
-      const durationBadge = durationStr
-        ? `<div class="duration-badge${cardCorners.brOccupied ? ' duration-badge--beside-corner' : ''}">${durationStr}</div>`
-        : '';
-
-      // Playback progress indicator
-      let progressBar = '';
-      if (item.progressPercent > 0.5) {
-        // Only show if watched more than 0.5%
-        progressBar = `
-          <div class="progress-bar-container">
-            <div class="progress-bar-fill" style="width: ${Math.min(100, item.progressPercent)}%"></div>
-          </div>
-        `;
-      }
-
-      return `
-        <div class="video-card">
-          <div class="card-media">
-            <a href="${watchHref}" class="thumbnail-container">
-              <img class="thumbnail-img art-shimmer" src="${kp ? kp.thumbSrc : `/thumbnail/${item.id}`}" alt="${escapeHtml(item.title)}" loading="lazy" />
-              ${(!kp && item.hasPreview)
-                ? `<div class="card-preview" aria-hidden="true" data-preview-id="${item.id}"></div>`
-                : ''}
-              ${durationBadge}
-              ${progressBar}
-            </a>
-            ${cardCorners.html}
-          </div>
-          <div class="video-info">
-            ${item.resultType ? `<span class="card-type-badge">${escapeHtml(searchResultBadgeLabel(item.resultType))}</span>` : ''}
-            ${feedHideable
-              ? `<button type="button" class="card-feedhide-btn" data-id="${escapeHtml(item.id)}" aria-label="Hide from feed" title="Hide from feed"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2c1.85 0 3.55.63 4.9 1.69L5.69 16.9A7.95 7.95 0 0 1 4 12a8 8 0 0 1 8-8zm0 16a7.96 7.96 0 0 1-4.9-1.69L18.31 7.1A7.95 7.95 0 0 1 20 12a8 8 0 0 1-8 8z" fill="currentColor"/></svg></button>`
-              : ''}
-            <a href="${watchHref}" class="video-title" title="${escapeHtml(item.title)}">
-              ${escapeHtml(item.title)}
-            </a>
-            <div class="video-uploader">
-              ${channelAvatarHtml}
-              ${kp
-                ? `<a href="${kp.uploaderHref}">${escapeHtml(kp.uploaderLabel)}</a>`
-                : `<a href="/?folder=${encodeURIComponent(item.folderName)}">${escapeHtml(channelName)}</a>`}
-            </div>
-            <div class="video-meta">
-              <span>${views}</span> &bull; <span>${relativeTime}</span>
-            </div>
-            <div class="card-rating" title="${rating} / 5 stars" aria-label="Rated ${rating} out of 5 stars"><span class="on">${'★'.repeat(rating)}</span><span class="off">${'☆'.repeat(5 - rating)}</span></div>
-          </div>
-        </div>
-      `;
+      const avatar = chAv.kind === 'img' ? { url: chAv.url } : (chAv.kind === 'mono' ? { url: null } : null);
+      return buildVideoCardEl(item, { doc: document, href, channelName, channelHref, avatar });
     }
 
-    // Appends `items` as NEW card elements at the tail of #video-grid --
-    // via createElement/append, NOT an innerHTML rebuild of the whole grid
-    // (the old full-library-in-one-join pattern this task removes). Builds
-    // the new items' markup into a detached wrapper, then moves just those
-    // resulting elements into the live grid -- the existing (already
-    // rendered) cards are never touched/re-parsed.
+    // Replaces (or, with `append`, extends) the grid's cards. DOM nodes, never a
+    // markup string: every card is built by buildVideoCardEl.
+    function putCards(items, append) {
+      const frag = document.createDocumentFragment();
+      items.forEach((it) => frag.appendChild(buildCardEl(it)));
+      if (append) videoGrid.appendChild(frag);
+      else videoGrid.replaceChildren(frag);
+      revealHomeArt(videoGrid, signal);
+    }
+
+    // Appends `items` as NEW cards at the tail of #video-grid - the existing
+    // (already rendered) cards are never touched.
     function appendCardsToGrid(items) {
       if (!items || items.length === 0) return;
-      const wrapper = document.createElement('div');
-      wrapper.innerHTML = items.map(buildCardHtml).join('');
-      Array.from(wrapper.children).forEach((card) => videoGrid.append(card));
-      revealHomeArt(videoGrid, signal);
+      putCards(items, true);
     }
 
     // renderItemCountBadge (common.js) only ever reads `.length` off
@@ -2695,16 +2450,11 @@ const PreviewCards = (function () {
     // WITHOUT a server refetch/full re-render -- deleting an item is not one
     // of the "reset to page 0" actions (sort/format/search/shuffle change);
     // it just shrinks the currently-rendered set in place. Falls back to the
-    // shared empty-state render (mirrors the old renderMediaGrid([]) path)
-    // once the grid has no cards left.
+    // shared empty-state render once the grid has no cards left.
     function removeCardFromGrid(id) {
-      const buttons = videoGrid.querySelectorAll('.card-delete-btn');
-      for (let i = 0; i < buttons.length; i++) {
-        if (buttons[i].dataset.id === id) {
-          const card = buttons[i].closest('.video-card');
-          if (card) card.remove();
-          break;
-        }
+      const cards = videoGrid.querySelectorAll('.video-card[data-id]');
+      for (let i = 0; i < cards.length; i++) {
+        if (cards[i].getAttribute('data-id') === String(id)) { cards[i].remove(); break; }
       }
       if (!videoGrid.querySelector('.video-card')) {
         renderMediaGridPage([], { append: false });
@@ -2747,7 +2497,7 @@ const PreviewCards = (function () {
       // drag wiring below is unaffected.
       if (visibleFolders.length === 0) {
         sidebarFoldersList.innerHTML =
-          '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
+          '<div style="padding: 6px 24px; font-style: italic; color: var(--ink-2);">None</div>';
         applyLikedSidebarEntry(sidebarFoldersList, { active: likedFilter });
         return;
       }
@@ -2819,44 +2569,87 @@ const PreviewCards = (function () {
       renderSidebarFolders(cfg.folders || [], folderSettings);
     }
 
-    // Item 1 (v1.14.0): show/hide the "shuffle again" re-roll button to match
-    // the current sort selection (visible only for `random`).
-    function updateShuffleButtonVisibility() {
-      if (shuffleAgainBtn) shuffleAgainBtn.hidden = !shouldShowShuffleButton(currentSort);
+    // UI pass sweep S2 (F19): the library's ONE filter chip row (common.js
+    // buildFilterChipRow). Its dimensions depend on the view:
+    //   - a GLOBAL search (unified /api/search): the content TYPE only - sort,
+    //     format and watch state do not apply to the server-ranked stream, so
+    //     neither those chips nor the sort/shuffle tools show there;
+    //   - everything else: format + watch state, plus the Titles/Channels scope
+    //     on a folder/root-scoped search.
+    // One tap = one reload (onChange reports every changed dimension at once).
+    // The row's KIND - which dimensions it carries. v1.150's belt, kept: a
+    // reused view DOM (the homeViewCache posture) must never keep a row of a
+    // different kind (a search's type chips on a library view, or the reverse).
+    function chipRowKind() { return isUnifiedSearch ? 'search' : ((searchQuery && !likedFilter) ? 'scoped-search' : 'library'); }
+    function ensureLibraryChips() {
+      if (!chipHost) return;
+      const cur = chipHost.firstElementChild;
+      if (cur && cur.getAttribute('data-kind') === chipRowKind()) return;
+      mountLibraryChips();
     }
-
-    // v1.17.0 FR-3(b), T2: clears any pending auto-disarm timer and drops the
-    // armed reference WITHOUT requiring the armed node to still be attached
-    // (classList.remove on a detached node is a harmless no-op) -- safe to
-    // call unconditionally from a re-render, a timeout, an outside click/
-    // scroll, or after a delete.
-    function disarmCardDelete() {
-      if (armDisarmTimer) {
-        clearTimeout(armDisarmTimer);
-        armDisarmTimer = null;
+    function mountLibraryChips() {
+      if (!chipHost || typeof buildFilterChipRow !== 'function') return;
+      const groups = [];
+      if (isUnifiedSearch) {
+        groups.push({ key: 'type', value: activeSearchType, all: 'all',
+          options: SEARCH_TYPE_OPTIONS.map((o) => ({ value: o.chip, label: o.label })) });
+      } else {
+        groups.push({ key: 'format', value: getStoredFormatFilter(), all: 'both',
+          options: FORMAT_TOGGLE_OPTIONS.map((o) => ({ value: o.mode, label: o.label })) });
+        groups.push({ key: 'watch', value: getStoredWatchFilter(), all: 'all',
+          options: WATCH_TOGGLE_OPTIONS.map((o) => ({ value: o.mode, label: o.label })) });
+        if (searchQuery && !likedFilter) {
+          groups.push({ key: 'scope', value: activeSearchScope, all: 'all',
+            options: SEARCH_SCOPE_OPTIONS.map((o) => ({ value: o.mode, label: o.label })) });
+        }
       }
-      if (armedBtn) armedBtn.classList.remove('armed');
-      armState = 'idle';
-      armedBtn = null;
+      const row = buildFilterChipRow(groups, (changes) => {
+        if ('format' in changes) setStoredFormatFilter(changes.format);
+        if ('watch' in changes) setStoredWatchFilter(changes.watch);
+        // The search dimensions are URL state (replaceState keeps the deep link
+        // shareable without a history entry per tap).
+        const urlKey = ('type' in changes) ? ['type', 'type'] : (('scope' in changes) ? ['scope', 'searchIn'] : null);
+        if ('type' in changes) activeSearchType = changes.type;
+        if ('scope' in changes) activeSearchScope = changes.scope;
+        if (urlKey) {
+          try {
+            const u = new URL(window.location.href);
+            const v = changes[urlKey[0]];
+            if (v === 'all') u.searchParams.delete(urlKey[1]);
+            else u.searchParams.set(urlKey[1], v);
+            history.replaceState(null, '', u);
+          } catch (_) { /* URL/history quirk - the in-view state still drives the fetch */ }
+        }
+        resetAndReload();
+      }, { id: 'library-filter-chips', label: 'Filter the library' });
+      row.setAttribute('data-kind', chipRowKind());
+      chipHost.replaceChildren(row);
+      if (sortBtn) sortBtn.hidden = isUnifiedSearch;
+      if (isUnifiedSearch && shuffleAgainBtn) shuffleAgainBtn.hidden = true;
     }
-    disarmCardDeleteFn = disarmCardDelete;
 
-    // Arms `btn` (revealing its inline "Sure?" affordance via the `.armed`
-    // CSS class) and starts the ~3s auto-disarm timer. Disarms whatever was
-    // PREVIOUSLY armed first, so only one card is ever armed at a time.
-    function armCardDelete(btn) {
-      disarmCardDelete();
-      armState = 'armed';
-      armedBtn = btn;
-      btn.classList.add('armed');
-      armDisarmTimer = setTimeout(disarmCardDelete, CARD_ARM_TIMEOUT_MS);
+    // Item 1 (v1.14.0): show/hide the "shuffle again" re-roll button to match
+    // the current sort selection (visible only for `random`; never on a global
+    // search, where sort does not apply).
+    function updateShuffleButtonVisibility() {
+      if (shuffleAgainBtn) shuffleAgainBtn.hidden = isUnifiedSearch || !shouldShowShuffleButton(currentSort);
     }
+
+    // Closes the open card menu (if any). Safe to call unconditionally: from a
+    // full re-render (its card is about to be detached), a new menu, destroy().
+    function closeCardMenu() {
+      const c = openCardMenuCtrl;
+      openCardMenuCtrl = null;
+      if (c && typeof c.isOpen === 'function' && c.isOpen()) c.close();
+    }
+    teardownCardMenuFn = closeCardMenu;
 
     // v1.17.0 FR-3(b), T2: fires the SAME `DELETE /api/videos/:id` endpoint
     // the watch page's delete flow uses -- no new endpoint, no contract
-    // change. `id` is read straight off the tapped button's OWN `data-id`
-    // (never a closed-over/stale value), so there is no id mixup between
-    // cards. On a 409 (read-only/permission-denied mount, `{readOnly:true}`)
+    // change. `id` is the menu's own item id (the menu is built per card from
+    // that card's item - never an index or a shared variable), so there is no id
+    // mixup between cards. It runs ONLY after the Move to Trash confirm resolved
+    // true (confirmAndDeleteCard). On a 409 (read-only/permission-denied mount, `{readOnly:true}`)
     // this surfaces an explanatory toast and stops -- it NEVER follows up
     // with `?removeAnyway=true` (that opt-in UI stays out of scope per the
     // design; only a path that has already seen a 409 may ever send it, and
@@ -2913,11 +2706,9 @@ const PreviewCards = (function () {
         return;
       }
 
-      // Any full replace re-render replaces the grid's children -- an armed
-      // reference to a node that's about to be detached must never leak/
-      // double-fire across it (hard constraint: reset arm state on
-      // re-render).
-      disarmCardDelete();
+      // A full replace detaches every card - a menu opened on one must not
+      // outlive it.
+      closeCardMenu();
 
       if (items.length === 0) {
         // Item 2 (v1.26.3): the shared, styled `.empty-state` card (replaces
@@ -2930,22 +2721,21 @@ const PreviewCards = (function () {
         // is context-aware: a search miss, an empty folder, or a genuinely
         // empty library each get their own message + hint.
         const actionHtml = (searchQuery || folderFilter)
-          ? '<a href="/" class="btn empty-state-action">View All Media</a>'
+          ? '<a href="/" class="ui-btn ui-btn--secondary ui-btn--md empty-state-action"><span class="ui-btn__label">View All Media</span></a>'
           : '';
         let emptyOpts;
         if (searchQuery) {
-          emptyOpts = { icon: 'icon-search', message: 'No results found.', hint: 'Try a different search, or browse all your media.', actionHtml };
+          emptyOpts = { icon: 'search', message: 'No results found.', hint: 'Try a different search, or browse all your media.', actionHtml };
         } else if (folderFilter) {
-          emptyOpts = { icon: 'icon-folder', message: 'This folder is empty.', hint: 'Nothing here yet — new files in this folder will show up after a scan.', actionHtml };
+          emptyOpts = { icon: 'folder', message: 'This folder is empty.', hint: 'Nothing here yet - new files in this folder show up after a scan.', actionHtml };
         } else {
-          emptyOpts = { icon: 'icon-play', message: 'No videos or audio yet.', hint: 'Files in your media folders show up here — with thumbnails, durations, and playback that picks up where you left off.' };
+          emptyOpts = { icon: 'smart_display', message: 'No videos or audio yet.', hint: 'Files in your media folders show up here - with thumbnails, durations, and playback that picks up where you left off.' };
         }
         videoGrid.innerHTML = buildEmptyStateHtml(emptyOpts);
         return;
       }
 
-      videoGrid.innerHTML = items.map(buildCardHtml).join('');
-      revealHomeArt(videoGrid, signal);
+      putCards(items, false);
     }
 
     // Local escape HTML helper
@@ -2963,43 +2753,27 @@ const PreviewCards = (function () {
     // (bound once at boot by common.js — see the C1 remediation comment
     // there), not wired per-view here.
 
-    // v1.41.2: custom sort dropdown wiring. Function DECLARATIONS (hoisted) so
-    // the async settings-default apply above (applySortLabel) can call them.
-    function sortOptions() {
-      return sortMenu ? Array.prototype.slice.call(sortMenu.querySelectorAll('[data-sort]')) : [];
-    }
-    function sortMenuItem(value) {
-      // NOTE: `value` can be an untrusted localStorage string -- a selector-
-      // breaking char (e.g. `"]`) would make querySelector throw and, since
-      // applySortLabel runs synchronously at init, take down the whole home
-      // view. Match by iterating instead of interpolating into a selector.
-      return sortOptions().find((li) => li.getAttribute('data-sort') === value) || null;
-    }
+    // The sort menu (UI pass sweep S2): a ui-btn icon that opens a ui.menu of
+    // the sorts, the current one checked (D4.6: selected = a trailing check in
+    // ink). Function DECLARATIONS (hoisted) so the async settings-default apply
+    // above (applySortLabel) can call them.
+    const SORT_MENU_OPTIONS = [
+      { value: 'newest', label: 'Newest first' },
+      { value: 'oldest', label: 'Oldest first' },
+      { value: 'release-date', label: 'Release date' },
+      { value: 'title-asc', label: 'Title (A-Z)' },
+      { value: 'title-desc', label: 'Title (Z-A)' },
+      { value: 'size-desc', label: 'Largest first' },
+      { value: 'size-asc', label: 'Smallest first' },
+      { value: 'random', label: 'Feeling lucky' },
+    ];
     function applySortLabel(value) {
-      const item = sortMenuItem(value);
-      if (sortLabel && item) sortLabel.textContent = item.textContent;
-      sortOptions().forEach((li) => {
-        const on = li.getAttribute('data-sort') === value;
-        li.classList.toggle('active', on);
-        li.setAttribute('aria-selected', on ? 'true' : 'false');
-      });
+      // `value` can be an untrusted localStorage string: matched by equality,
+      // never interpolated into a selector.
+      const opt = SORT_MENU_OPTIONS.find((o) => o.value === value);
+      if (sortBtn) sortBtn.setAttribute('aria-label', opt ? 'Sort: ' + opt.label : 'Sort');
     }
-    function openSortMenu(focusValue) {
-      if (!sortMenu || !sortBtn) return;
-      sortMenu.hidden = false;
-      sortBtn.setAttribute('aria-expanded', 'true');
-      const opts = sortOptions();
-      const target = opts.find((li) => li.getAttribute('data-sort') === focusValue) || opts[0];
-      if (target) target.focus();
-    }
-    function closeSortMenu(returnFocus) {
-      if (!sortMenu || !sortBtn) return;
-      sortMenu.hidden = true;
-      sortBtn.setAttribute('aria-expanded', 'false');
-      if (returnFocus) sortBtn.focus();
-    }
-    function chooseSort(value, returnFocus) {
-      closeSortMenu(returnFocus);
+    function chooseSort(value) {
       if (!value || value === currentSort) return;
       currentSort = value;
       // v1.45.6 (Dean): when per-page sort is on, persist to THIS page's slot;
@@ -3010,46 +2784,19 @@ const PreviewCards = (function () {
       updateShuffleButtonVisibility();
       resetAndReload();
     }
-    if (sortBtn && sortMenu) {
-      sortOptions().forEach((li) => { li.tabIndex = -1; }); // roving focus target
+    if (sortBtn) {
       applySortLabel(currentSort);
       updateShuffleButtonVisibility();
-      sortBtn.addEventListener('click', (e) => {
-        e.stopPropagation(); // don't let the document-level close handler see this
-        if (sortMenu.hidden) openSortMenu(currentSort); else closeSortMenu();
-      }, { signal });
-      // Keyboard: open on ArrowDown/Up from the button (Enter/Space already
-      // open via native button activation -> click).
-      sortBtn.addEventListener('keydown', (e) => {
-        if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && sortMenu.hidden) {
-          e.preventDefault();
-          openSortMenu(currentSort);
-        }
-      }, { signal });
-      sortMenu.addEventListener('click', (e) => {
-        const li = e.target.closest('[data-sort]');
-        if (li) chooseSort(li.getAttribute('data-sort'), false);
-      }, { signal });
-      // Keyboard nav within the open menu: arrows move roving focus, Enter/
-      // Space selects, Escape/Tab close (Escape returns focus to the button).
-      sortMenu.addEventListener('keydown', (e) => {
-        const opts = sortOptions();
-        const idx = opts.indexOf(document.activeElement);
-        if (e.key === 'ArrowDown') { e.preventDefault(); (opts[idx + 1] || opts[0]).focus(); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); (opts[idx - 1] || opts[opts.length - 1]).focus(); }
-        else if (e.key === 'Home') { e.preventDefault(); opts[0].focus(); }
-        else if (e.key === 'End') { e.preventDefault(); opts[opts.length - 1].focus(); }
-        else if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          const li = document.activeElement;
-          if (li && li.getAttribute('data-sort')) chooseSort(li.getAttribute('data-sort'), true);
-        } else if (e.key === 'Escape') { e.preventDefault(); closeSortMenu(true); }
-      }, { signal });
-      // Close on any outside click (the menu overlays the grid).
-      document.addEventListener('click', (e) => {
-        if (sortMenu.hidden) return;
-        if (sortDropdown && sortDropdown.contains(e.target)) return;
-        closeSortMenu();
+      sortBtn.addEventListener('click', () => {
+        const u = cardUi();
+        if (!u || typeof u.menu !== 'function') return;
+        u.menu({
+          title: 'Sort by',
+          anchor: sortBtn,
+          signal: shownViewSignal(), // gate r2: leaving the view closes it and frees the scroll lock
+          items: SORT_MENU_OPTIONS.map((o) => ({ label: o.label, value: o.value, checked: o.value === currentSort })),
+          onSelect: (value) => chooseSort(value),
+        });
       }, { signal });
     }
 
@@ -3070,7 +2817,7 @@ const PreviewCards = (function () {
     // any 202 (whether this click started a fresh scan OR simply joined one
     // already running -- `alreadyInProgress: true`, e.g. the periodic/boot
     // scan beat this click to it) goes straight into polling
-    // `GET /api/scan-status`, keeping the button in its "Scanning..." state,
+    // `GET /api/scan-status`, keeping the button in its busy (spinner) state,
     // until `scanning` flips false -- then the grid refreshes IN PLACE via
     // `window.__filetubeRefreshLibrary` (the `loadLibrary` hook set up
     // below). This generalizes the v1.29 BUG-2 reload-never contract to scan
@@ -3078,7 +2825,7 @@ const PreviewCards = (function () {
     // trigger any other full-page navigation.
     // v1.45.8: extracted so BOTH the Rescan button AND pull-to-refresh (below)
     // trigger the identical scan. The `disabled` guard makes a second trigger
-    // (a pull while the button already says "Scanning...") a no-op.
+    // (a pull while the button is already busy) a no-op.
     // v1.47.4 item 3 (Dean): the pull indicator's released-and-working state.
     // Declared before runRescan because runRescan drives them; the indicator
     // element itself is created further below, so these are only ever CALLED
@@ -3095,10 +2842,20 @@ const PreviewCards = (function () {
     }
 
     // `fromPull` is passed ONLY by the pull gesture. The Rescan button keeps
-    // its own "Scanning..." label as its affordance and deliberately does not
+    // its own busy spinner as its affordance and deliberately does not
     // raise the pull indicator (the button is right there, on-screen, saying
     // it). Note the button is wired through a wrapper below rather than
     // directly, so a click Event can never arrive here as `opts`.
+    // The Rescan tool's in-flight state: `disabled` is the "already scanning"
+    // flag the pull-to-refresh and the click both read; aria-busy shows the
+    // ui-btn spinner (no label swap - the button is icon-only).
+    function setRescanBusy(on) {
+      rescanBtn.disabled = !!on;
+      const u = cardUi();
+      if (u && typeof u.setBusy === 'function') u.setBusy(rescanBtn, !!on);
+      rescanBtn.setAttribute('aria-label', on ? 'Scanning files' : 'Rescan files');
+    }
+
     async function runRescan(opts) {
       const fromPull = Boolean(opts && opts.fromPull === true);
       if (rescanBtn.disabled) {
@@ -3110,8 +2867,7 @@ const PreviewCards = (function () {
         return; // already scanning -- don't double-fire
       }
       if (fromPull) ptrBeginRefreshing();
-      rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Scanning...</span>';
-      rescanBtn.disabled = true;
+      setRescanBusy(true);
       try {
         const res = await fetch('/api/scan', { method: 'POST' });
         if (!res.ok) {
@@ -3122,13 +2878,8 @@ const PreviewCards = (function () {
           showToast(res.status === 403
             ? "You don't have permission to rescan the library."
             : 'Failed to rescan: ' + (data.error || 'unknown error'));
-          // Visual-consistency polish: reset to the SAME short "Rescan"
-          // label the static markup starts with (was "Rescan Files" here,
-          // a casing/length mismatch against the button's own resting
-          // label -- the fuller "Rescan Files" name still lives in
-          // title/aria-label).
-          rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Rescan</span>';
-          rescanBtn.disabled = false;
+          // Back to the resting Rescan state.
+          setRescanBusy(false);
           // The scan never started, so nothing will ever poll it to completion
           // -- the indicator must come down here or it spins forever.
           ptrEndRefreshing();
@@ -3138,8 +2889,7 @@ const PreviewCards = (function () {
       } catch (err) {
         console.error(err);
         showToast('Network error trigger scanner.');
-        rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Rescan</span>';
-        rescanBtn.disabled = false;
+        setRescanBusy(false);
         ptrEndRefreshing(); // same reasoning as the !res.ok path above
       }
     }
@@ -3246,8 +2996,7 @@ const PreviewCards = (function () {
           if (typeof window.__filetubeRefreshLibrary === 'function') {
             window.__filetubeRefreshLibrary();
           }
-          rescanBtn.innerHTML = '<i class="icon-refresh"></i> <span class="btn-label">Rescan</span>';
-          rescanBtn.disabled = false;
+          setRescanBusy(false);
           // v1.47.4 item 3: the scan is genuinely finished AND the grid has been
           // refreshed above, so this is the honest moment to drop the pull
           // indicator -- not finger-release. Ordered after the refresh so the
@@ -3256,7 +3005,7 @@ const PreviewCards = (function () {
         })
         .catch(() => {
           // Transient fetch failure while polling -- retry rather than
-          // leaving the button stuck in "Scanning..." forever (mirrors
+          // leaving the button stuck busy forever (mirrors
           // pollAutomationScanStatus's own retry-on-transient-failure
           // posture).
           if (!controller || controller.signal.aborted) return;
@@ -3264,36 +3013,16 @@ const PreviewCards = (function () {
         });
     }
 
-    // v1.17.0 FR-3(b), T2: ONE delegated click listener on #video-grid (never
-    // per-card -- delegation means it covers BOTH a full renderMediaGridPage()
-    // replace and an appended page's new cards with zero extra wiring, so a
-    // per-card listener would leak/duplicate).
-    // Drives the pure `nextArmState` reducer: a tap on an idle card's delete
-    // button arms it (no delete yet); a tap on the SAME already-armed button
-    // is the confirming second tap that actually deletes. A tap that lands on
-    // a DIFFERENT card's delete button re-arms the new one (only one card is
-    // ever armed at a time) rather than deleting the previously-armed one.
-    //
-    // v1.86.2 (Dean): the confirming second tap deletes straight to (recoverable)
-    // Trash via `deleteCardById` -> `DELETE /api/videos/:id`, for EVERY item.
-    // (Superseded the v1.21 FR-7 escalation: a LOCAL card item used to route the
-    // second tap through the checkbox-gated `showHardDeleteModal` as a conscious
-    // 3rd step; that is dropped ON THE CARD - it moves to Trash either way, so the
-    // extra modal was friction Dean didn't want on the feed. showHardDeleteModal
-    // still guards the WATCH-page delete for local files - the card revert is
-    // scoped to the card, matching the pre-YouTube-feed inline two-tap.)
-    // v1.40.0 (Dean): per-card Like toggle. Same `db.liked` id-array membership
-    // the watch page's Like button uses (POST/DELETE /api/liked/:id), and the
-    // same NON-optimistic posture -- the heart flips only after the request
-    // resolves, never on a failed/pending request. Delegated on the grid like
-    // the delete control. The card stays in place on unlike (even in the Liked
-    // view) -- removing a card mid-grid is disruptive; the heart just greys.
-    function applyCardLikeState(btn, liked) {
-      btn.classList.toggle('liked', liked);
-      btn.setAttribute('aria-pressed', liked ? 'true' : 'false');
-      btn.setAttribute('aria-label', liked ? 'Unlike' : 'Like');
-      btn.setAttribute('title', liked ? 'Unlike' : 'Like');
+    // UI pass sweep S2 (D8.5): the card action menu. ONE delegated kebab click
+    // on #video-grid plus ONE FTInteraction.onActionMenu (long-press on touch,
+    // right-click on desktop) on the grid - delegation covers a full replace and
+    // an appended page with zero extra wiring. Every action reads the item from
+    // THIS view's currentItems by the card's own data-id.
+    function cardItemOf(card) {
+      const id = card ? card.getAttribute('data-id') : null;
+      return id == null ? null : (currentItems.find((it) => it && String(it.id) === id) || null);
     }
+
     // v1.72 (#94): the per-kind membership endpoints. Each kind's liked
     // carrier keeps its own route family (the existing lanes stay the write
     // authorities); a card button carries data-kind so the toggle dispatches
@@ -3309,40 +3038,30 @@ const PreviewCards = (function () {
       if (kind === 'book') return '/api/books/liked/' + encId;
       return '/api/liked/' + encId;
     }
-    async function toggleCardLike(btn) {
-      const id = btn.dataset.id;
-      if (!id || btn.disabled) return;
-      const currentlyLiked = btn.classList.contains('liked');
-      btn.disabled = true;
+    // v1.40.0: the per-card Like toggle, NON-optimistic (the state flips only
+    // after the request resolves). The item carries the state, so the next menu
+    // reads Like/Unlike from it and a re-render rebuilds it correctly.
+    async function toggleCardLike(item) {
+      if (!item || !item.id) return;
+      const currentlyLiked = item.liked === true;
+      const kp = cardKindPresentation(item);
       try {
-        const res = await fetch(cardLikeEndpoint(btn.dataset.kind, id), { method: currentlyLiked ? 'DELETE' : 'POST' });
+        const res = await fetch(cardLikeEndpoint(kp ? kp.kind : undefined, item.id), { method: currentlyLiked ? 'DELETE' : 'POST' });
         if (!res.ok) throw new Error('like request failed: ' + res.status);
         const data = await res.json().catch(() => ({}));
-        const nowLiked = typeof data.liked === 'boolean' ? data.liked : !currentlyLiked;
-        applyCardLikeState(btn, nowLiked);
-        // Persist onto the in-memory item so a later grid re-render (sort/seed
-        // reset) rebuilds the card in its correct state.
-        const item = currentItems.find((it) => it.id === id);
-        if (item) item.liked = nowLiked;
+        item.liked = typeof data.liked === 'boolean' ? data.liked : !currentlyLiked;
+        showToast(item.liked ? 'Added to Liked' : 'Removed from Liked');
       } catch (_) {
-        /* leave the heart unchanged on failure -- never fake success */
-      } finally {
-        btn.disabled = false;
+        showToast('Could not update Liked.'); // never fake success
       }
     }
-    // v1.67: the card reheat corner fires the SAME per-item endpoint as the
-    // watch page's flame button, with the same status->toast vocabulary. On
-    // 202 the job runs server-side and its progress/result surface in the
-    // existing download status chip (watch parity - deliberately NO second
-    // progress mechanism and NO fake "done" state on the card; the watch
-    // page's completion-diff/relocation modal stays a watch-page
-    // affordance, disclosed in the plan).
-    async function triggerCardReheat(btn) {
-      const id = btn.dataset.id;
-      if (!id || btn.disabled) return;
-      btn.disabled = true;
+    // v1.67: Reheat fires the SAME per-item endpoint as the watch page's flame
+    // button, with the same status->toast vocabulary; progress surfaces in the
+    // existing download status chip (no second progress mechanism).
+    async function triggerCardReheat(item) {
+      if (!item || !item.id) return;
       try {
-        const res = await fetch(`/api/ytdlp/repull-metadata/item/${encodeURIComponent(id)}`, { method: 'POST' });
+        const res = await fetch(`/api/ytdlp/repull-metadata/item/${encodeURIComponent(item.id)}`, { method: 'POST' });
         const body = await res.json().catch(() => ({}));
         if (res.status === 202) { showToast('Reheating…'); return; }
         if (res.status === 409) { showToast('A reheat is already running.'); return; }
@@ -3351,24 +3070,15 @@ const PreviewCards = (function () {
         showToast((body && body.error) || 'Reheat could not be started.');
       } catch (_) {
         showToast('Reheat could not be started.');
-      } finally {
-        btn.disabled = false;
       }
     }
 
     // v1.97 "Hide from feed": optimistically pull the card, POST the prune, and
-    // offer Undo (DELETE) via the toast. Reversible with no one-way trap (the
-    // toast now, the You-tab "Hidden from feed" list later). Pagination stays
-    // consistent: the loaded window shrank by one, so drop currentOffset AND
-    // currentTotal by one (nextOffset = currentOffset + currentLimit would else
-    // skip the item that shifted down). The next server fetch overwrites both
-    // with the fresh filtered values, so this only has to be right for the
-    // immediately-next lazy page. On any failure the card is restored in place.
-    function hideCardFromFeed(btn) {
-      const id = btn.getAttribute('data-id');
-      if (!id) return;
-      const card = btn.closest('.video-card');
-      if (!card) return;
+    // offer Undo (DELETE) via the toast. Pagination stays consistent: the loaded
+    // window shrank by one, so drop currentOffset AND currentTotal by one. On any
+    // failure the card is restored in place.
+    function hideCardFromFeed(card, id) {
+      if (!card || !id) return;
       const parent = card.parentNode;
       const anchor = card.nextSibling; // reinsertion point for a byte-identical undo
       const itemObj = currentItems.find((it) => String(it.id) === String(id));
@@ -3400,99 +3110,134 @@ const PreviewCards = (function () {
         .catch(() => { restore(); showToast('Could not hide from feed.'); });
     }
 
-    videoGrid.addEventListener('click', (e) => {
-      const feedhideBtn = e.target.closest('.card-feedhide-btn');
-      if (feedhideBtn) { e.preventDefault(); hideCardFromFeed(feedhideBtn); return; }
-      const likeBtn = e.target.closest('.card-like-btn');
-      if (likeBtn) { e.preventDefault(); toggleCardLike(likeBtn); return; }
-      // v1.63: add-to-queue rides the same delegation (common.js addToQueue
-      // is THE one verb - toast + header-chrome refresh included).
-      const cardQueueBtn = e.target.closest('.card-queue-btn');
-      // v1.72: the kind rides the button (a mixed-kind Liked card queues a
-      // podcast episode under its own entry kind - addToQueue's third arg).
-      if (cardQueueBtn) { e.preventDefault(); addToQueue(cardQueueBtn.getAttribute('data-id'), undefined, cardQueueBtn.getAttribute('data-kind') || undefined); return; }
-      // v1.67: the two NEW corner controls ride the same delegation. Share
-      // runs common.js's ONE share decision (plan D6) with the item's title
-      // for the sheet; the URL is the renderer-emitted data-share-url (the
-      // server-derived watchUrl, never assembled client-side).
-      const cardShareBtn = e.target.closest('.card-share-btn');
-      if (cardShareBtn) {
-        e.preventDefault();
-        const url = cardShareBtn.getAttribute('data-share-url');
-        if (url) {
-          const item = currentItems.find((it) => it.id === cardShareBtn.dataset.id);
-          shareExternalUrl(url, item && item.title).then((outcome) => {
-            if (outcome === 'copied') showToast('Link copied');
-            // QA S6: unlike the watch page (whose metadata block still shows
-            // the URL), a card has no visible fallback - a silent failure
-            // here reads as a dead button, so both failure outcomes toast.
-            if (outcome === 'copy-failed' || outcome === 'unavailable') showToast('Could not share the link.');
-          });
-        }
-        return;
-      }
-      const cardReheatBtn = e.target.closest('.card-reheat-btn');
-      if (cardReheatBtn) { e.preventDefault(); triggerCardReheat(cardReheatBtn); return; }
-      // v1.203: the Transcript corner - the shared flow, keyed by the item's
-      // id + title from the fetched list (never from DOM text). Busy state
-      // disables the corner while the text loads; the view's signal tears
-      // down whichever modal it opened.
-      const cardTranscriptBtn = e.target.closest('.card-transcript-btn');
-      if (cardTranscriptBtn) {
-        e.preventDefault();
-        const item = currentItems.find((it) => it.id === cardTranscriptBtn.dataset.id);
-        if (!item || cardTranscriptBtn.disabled) return;
-        openTranscriptFor({
-          id: item.id,
-          title: item.title,
-          signal,
-          onBusy: (busy) => { cardTranscriptBtn.disabled = busy; },
-          // This view is CACHED on nav-away (its signal never fires), so the
-          // corner itself answers "am I still on screen" when the text lands
-          // - a detached grid opens nothing (gate finding).
-          stillWanted: () => cardTranscriptBtn.isConnected,
+    // Save to device: the /video/:id?download=1 route (or the kind's own), the
+    // server's Content-Disposition names the file. A transient <a download>
+    // (never a navigation: the SPA router does not route a ?download=1 href).
+    function saveCardToDevice(item) {
+      const href = cardDownloadHref(item);
+      if (!href) return;
+      const a = document.createElement('a');
+      a.href = href;
+      a.setAttribute('download', cardKindPresentation(item) ? '' : buildCardDownloadFilename(item.title, item.ext));
+      a.hidden = true;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    // DELETE IS DESTRUCTIVE (LESSONS 9): the ONLY path to the delete request.
+    // It asks ui.confirm with copy that says what DELETE /api/videos/:id does
+    // (cardDeleteConfirmCopy: a move to Trash) and calls deleteCardById only
+    // when the confirm resolves exactly true - Cancel, Esc, the scrim, Close and
+    // a missing ui all resolve to no delete.
+    // The router's SHOWN-view signal, read when a surface opens (this view's own `signal`
+    // outside the router, e.g. a unit harness). Gate r2: every menu or confirm a card or the
+    // sort button opens is bound to it, or it stays up over the next view and still acts.
+    function shownViewSignal() {
+      const ft = window.FileTube;
+      return (ft && typeof ft.viewSignal === 'function') ? ft.viewSignal() : signal;
+    }
+
+    // Gate r1 (adversary 3): the confirm is bound to the router's SHOWN-view signal, read now.
+    // This view is CACHED on nav-away and its own `signal` never fires then, so a confirm bound
+    // only to it stayed open over the next view and its OK still deleted; viewSignal() aborts
+    // the moment the user leaves, which dismisses the dialog (resolving false).
+    async function confirmAndDeleteCard(item) {
+      if (!item || !item.id) return;
+      const u = cardUi();
+      if (!u || typeof u.confirm !== 'function') return;
+      const shown = shownViewSignal();
+      const ok = await u.confirm(Object.assign({}, cardDeleteConfirmCopy(item), { signal: shown }));
+      if (ok !== true) return;
+      if (shown.aborted || signal.aborted) return;
+      deleteCardById(item.id);
+    }
+
+    // Items whose transcript is loading (see runCardAction's transcript arm).
+    const transcriptBusy = new Set();
+
+    // Runs one menu action for one card's item.
+    function runCardAction(action, card, item) {
+      if (!item) return;
+      if (action === 'queue') {
+        const kp = cardKindPresentation(item);
+        addToQueue(item.id, undefined, kp ? kp.kind : undefined); // common.js: THE one queue verb
+      } else if (action === 'like') {
+        toggleCardLike(item);
+      } else if (action === 'share') {
+        const url = cardShareUrl(item);
+        if (!url) return;
+        shareExternalUrl(url, item.title).then((outcome) => {
+          if (outcome === 'copied') showToast('Link copied');
+          if (outcome === 'copy-failed' || outcome === 'unavailable') showToast('Could not share the link.');
         });
-        return;
+      } else if (action === 'download') {
+        saveCardToDevice(item);
+      } else if (action === 'transcript') {
+        // v1.203: the watch page's own transcript flow. This view is CACHED on
+        // nav-away (its signal never fires), so the card answers "am I still on
+        // screen" when the text lands - a detached grid opens nothing. While
+        // the text loads the item is busy: choosing Transcript again is a
+        // no-op (the v1.203 corner disabled itself; one fetch, one modal).
+        if (transcriptBusy.has(item.id)) return;
+        openTranscriptFor({
+          id: item.id, title: item.title, signal,
+          onBusy: (busy) => { if (busy) transcriptBusy.add(item.id); else transcriptBusy.delete(item.id); },
+          stillWanted: () => card.isConnected,
+        });
+      } else if (action === 'reheat') {
+        triggerCardReheat(item);
+      } else if (action === 'feedhide') {
+        hideCardFromFeed(card, item.id);
+      } else if (action === 'delete') {
+        confirmAndDeleteCard(item);
       }
-    }, { signal });
+    }
+
+    // Opens the action menu for `card`. `anchor` = the kebab, or a point
+    // ({ x, y }) for a long-press / right-click.
+    function openCardMenu(card, anchor) {
+      const item = cardItemOf(card);
+      const u = cardUi();
+      if (!item || !u || typeof u.menu !== 'function') return;
+      const entries = buildCardMenuItems(item, cardCaps, { feedHideable: modernMode });
+      if (!entries.length) return;
+      closeCardMenu();
+      const anchorEl = anchor && anchor.nodeType ? anchor
+        : { getBoundingClientRect: () => ({ left: anchor ? anchor.x : 0, bottom: anchor ? anchor.y : 0 }) };
+      openCardMenuCtrl = u.menu({
+        title: item.title || 'Actions',
+        anchor: anchorEl,
+        signal: shownViewSignal(), // gate r2: leaving the view closes it (home is cached, never aborted)
+        items: entries.map((en) => ({
+          icon: en.icon,
+          label: en.label,
+          danger: !!en.danger,
+          value: en.id,
+          onSelect: () => runCardAction(en.id, card, item),
+        })),
+        onClose: () => { openCardMenuCtrl = null; },
+      });
+    }
 
     videoGrid.addEventListener('click', (e) => {
-      const btn = e.target.closest('.card-delete-btn');
-      if (!btn) return; // any other click inside the grid -- outside-click disarm (below) handles it
+      const kebab = e.target && e.target.closest ? e.target.closest('.card-kebab') : null;
+      if (!kebab) return;
       e.preventDefault();
-      const isArmedCard = armedBtn === btn;
-      const result = nextArmState(isArmedCard ? armState : 'idle', 'tap');
-      if (result.deleted) {
-        const id = btn.dataset.id;
-        disarmCardDelete();
-        // v1.86.2 (Dean): the card's confirming SECOND tap deletes straight to
-        // (recoverable) Trash - the original pre-YouTube-feed inline two-tap
-        // (arm -> "Sure?" -> tap again). The v1.21 checkbox-gated hard-delete
-        // escalation for LOCAL files is dropped HERE, on the card: it moves to
-        // Trash either way (recoverable within the retention window), so the
-        // extra modal+checkbox was friction Dean didn't want on the feed. (The
-        // watch-page delete keeps its own flow; this reverts the CARD only.)
-        deleteCardById(id);
-      } else {
-        armCardDelete(btn);
-      }
+      openCardMenu(kebab.closest('.video-card'), kebab);
     }, { signal });
 
-    // Disarms the currently-armed card on any click elsewhere in the document
-    // (outside the armed button itself -- that tap is handled by the grid
-    // listener above, which always runs first since it fires during the same
-    // bubble phase closer to the target) or on any scroll. `scroll` does not
-    // bubble, so `capture: true` is required to observe it regardless of
-    // which element actually scrolled.
-    document.addEventListener('click', (e) => {
-      if (armState !== 'armed') return;
-      const btn = e.target.closest ? e.target.closest('.card-delete-btn') : null;
-      if (btn === armedBtn) return; // this click IS the armed tap -- already handled above
-      disarmCardDelete();
-    }, { signal });
-    window.addEventListener('scroll', () => {
-      if (armState === 'armed') disarmCardDelete();
-    }, { signal, capture: true, passive: true });
+    // Long-press (touch) and right-click (desktop) on a card open the SAME menu
+    // (D6; interaction.js owns the gesture and the contextmenu listener).
+    const FTI = (typeof window !== 'undefined' && window.FTInteraction) || null;
+    if (FTI && typeof FTI.onActionMenu === 'function') {
+      const offActionMenu = FTI.onActionMenu(videoGrid, (e, pt) => {
+        const card = e && e.target && e.target.closest ? e.target.closest('.video-card') : null;
+        if (!card || card.classList.contains('skeleton-card')) return;
+        openCardMenu(card, pt);
+      });
+      signal.addEventListener('abort', offActionMenu, { once: true });
+    }
 
     // v1.117 (Dean bug): the desktop-sidebar pin render moved to common.js's
     // shell-level DOMContentLoaded boot (it runs on EVERY page, not just here +
@@ -3593,8 +3338,8 @@ const PreviewCards = (function () {
       controller.abort();
       controller = null;
     }
-    if (typeof disarmCardDeleteFn === 'function') disarmCardDeleteFn();
-    disarmCardDeleteFn = null;
+    if (typeof teardownCardMenuFn === 'function') teardownCardMenuFn();
+    teardownCardMenuFn = null;
     if (typeof disconnectGridSentinelFn === 'function') disconnectGridSentinelFn();
     disconnectGridSentinelFn = null;
     restoreSidebarFn = null;

@@ -21,18 +21,29 @@ const SETUP_HTML = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 's
 test('setup.html: the Downloads box ships hidden with a collapse key and all three channel radios', () => {
   // v1.152: the opening tag gained data-md-* attrs for the master-detail menu;
   // match the load-bearing bits (hidden + collapse key) without pinning attr order.
-  assert.match(SETUP_HTML, /<details class="setup-box sub-collapsible"[^>]*id="downloads-box"[^>]*hidden[^>]*data-collapse-key="downloads"[^>]*open>/);
+  assert.match(SETUP_HTML, /<details class="setup-box setup-sec sub-collapsible"[^>]*id="downloads-box"[^>]*hidden[^>]*data-collapse-key="downloads"[^>]*open>/);
   for (const value of ['bundled', 'stable', 'nightly']) {
-    assert.match(SETUP_HTML, new RegExp(`<input type="radio" name="engine-channel" value="${value}"`), `radio ${value}`);
+    assert.match(SETUP_HTML, new RegExp(`<input type="radio" class="setup-radio" name="engine-channel" value="${value}"`), `radio ${value}`);
   }
   assert.match(SETUP_HTML, /id="engine-autoupdate-check"/);
   assert.match(SETUP_HTML, /id="engine-update-btn"/);
 });
 
-test('style.css: the engine channel cards have a real styling source (no orphan classes)', () => {
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  for (const cls of ['.engine-channels', '.engine-channel', '.engine-channel-name', '.engine-channel-version']) {
-    assert.match(css, new RegExp(cls.replace(/\./g, '\\.') + '\\s*\\{'), `${cls} has a rule`);
+// Sweep S8 (AC12 conversion): the channel picker is grouped ui-rows with a trailing radio.
+// The styling-source law now reads ui.css + style.css and covers EVERY class the Downloads
+// box uses (derived from the markup, not a hand list), so no class ships bare.
+test('the Downloads box: every class it uses has a real styling source in ui.css or style.css (no orphan classes)', () => {
+  const css = ['ui.css', 'style.css'].map((f) => fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', f), 'utf8')).join('\n');
+  const box = SETUP_HTML.slice(SETUP_HTML.indexOf('id="downloads-box"'), SETUP_HTML.indexOf('data-collapse-key="trash"'));
+  const classes = new Set();
+  for (const m of box.matchAll(/class="([^"]+)"/g)) m[1].split(/\s+/).forEach((c) => c && classes.add(c));
+  assert.ok(classes.has('setup-radio') && classes.has('ui-row') && classes.has('ui-switch'), 'the scan sees the box');
+  // The one listed exception: `ui-row--default`, the ui.row builder's size tag (the LIST's
+  // `ui-list--default` carries the row geometry; public/js/ui.js emits the same pair).
+  const BUILDER_TAGS = new Set(['ui-row--default']);
+  for (const cls of classes) {
+    if (BUILDER_TAGS.has(cls)) continue;
+    assert.match(css, new RegExp('\\.' + cls.replace(/[-]/g, '\\-') + '(?![\\w-])[^{]*\\{'), `.${cls} has a rule`);
   }
 });
 

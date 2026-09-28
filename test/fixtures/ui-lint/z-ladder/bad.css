@@ -1,0 +1,7 @@
+/* ui-lint-canary: path=public/css/style.css expect=5 */
+.a { position: fixed; z-index: 999; }
+.b-modal { z-index: 50; }
+.c { position: sticky; top: 0; z-index: var(--z-local); }
+.d { position: fixed; }
+.d.open { z-index: 5; }
+.e { position: fixed; z-index: var(--z-modal, 2000); }

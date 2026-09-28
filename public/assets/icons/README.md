@@ -1,8 +1,8 @@
 # Bundled icons
 
 FileTube's chrome iconography ships as three self-hosted, offline vector
-icon sets — plus a colorful emoji set defined directly in `style.css` (no
-SVG files) — selectable via the `data-icons` axis (see
+icon sets - `outlined`, `rounded` and `filled` - selectable via the
+`data-icons` axis (see
 `docs/exec-plans/completed/2026-07-05-icon-sets.md`). Every asset is used as a CSS
 `mask-image` and painted with `currentColor`, so a single unmodified file
 renders correctly in every FileTube theme (era × light/dark).
@@ -11,15 +11,13 @@ Two groups of classes live here, and they have different coverage rules:
 
 1. **Chrome icons** - the 14 `.icon-*` classes each vector set covers in full
    (the tables below), plus ten later additions that ship ONE base asset other
-   sets fall back to. Not uniformly, though: **eight** of them (`heart`,
-   `share`, `flame`, `history`, `queue`, `podcast`, `grid`, `list`) fall back in
-   `rounded`, `filled` AND `emoji`, while `downloads` and `books` have their own
-   emoji codepoints (U+1F4FC and U+1F4DA) and fall back only in `rounded` and
+   sets fall back to: all ten (`heart`, `share`, `flame`, `history`, `queue`,
+   `podcast`, `downloads`, `books`, `grid`, `list`) fall back in `rounded` and
    `filled`. That fallback is deliberate, not a gap - but it is now the minority
    behaviour, and it is tracked as tech-debt row 113.
 2. **The assignable glyph pool** (v1.77) - 20 user-selectable folder/Library
    glyphs plus `.icon-liked`, every one of which carries a real variant in
-   **all four** sets. See "The assignable glyph pool" at the end of this file;
+   **all three** sets. See "The assignable glyph pool" at the end of this file;
    do not hand-maintain it.
 
 ## Material Symbols (Outlined) — `outlined` (default)
@@ -28,8 +26,8 @@ Fourteen individual SVG icons from Google's Material Symbols set (Outlined
 style), living at the top level of this directory (`public/assets/icons/*.svg`)
 — twelve are the v1.6.0 baseline set (FileTube's default look); `download.svg`
 was added in v1.17.0 (FR-7); `shuffle.svg` was added later as a fix for the
-Shuffle button rendering a raw emoji instead of a themed glyph in non-emoji
-icon sets (it previously used a fixed `::before` unicode glyph, unlike every
+Shuffle button rendering a raw emoji instead of a themed glyph (it previously
+used a fixed `::before` unicode glyph, unlike every
 other `.icon-*`).
 
 - Icon set: **Material Symbols**, © Google
@@ -53,7 +51,7 @@ Apache-2.0 permits redistribution; these files are included unmodified.
 | `keyboard_arrow_up.svg` | `keyboard_arrow_up` | `.icon-arrow-up` |
 | `keyboard_arrow_down.svg` | `keyboard_arrow_down` | `.icon-arrow-down` |
 | `download.svg` | `download` | `.icon-download` |
-| `books.svg` | `menu_book` | Books library entry + bottom-nav item (v1.73.2; emoji set uses U+1F4DA) |
+| `books.svg` | `menu_book` | Books library entry + bottom-nav item (v1.73.2) |
 | `shuffle.svg` | `shuffle` | `.icon-shuffle` |
 | `chat.svg` | `chat` | `.icon-transcript` (the watch-page Transcript button; base set only, other sets fall back like `share`) |
 | `drive_file_move.svg` | `drive_file_move` | `.icon-attribute` (the opt-in Attribute button; base set only, other sets fall back like `share`) |
@@ -73,7 +71,7 @@ FileTube-specific concept with no Material counterpart worth borrowing.
   tables above.
 
 Like `heart.svg` and `share.svg` it lives at the top level only, with no
-per-icon-set variants — the `rounded`/`filled`/`emoji` blocks in `style.css`
+per-icon-set variants - the `rounded`/`filled` blocks in `style.css`
 enumerate their members individually, so an icon without a set-specific entry
 falls back to this base asset in every set. That is the established behaviour
 for those two icons and is deliberate here too.
@@ -180,38 +178,21 @@ Classic launch set). The file is saved as `download.svg` here (not
 is unmodified from the upstream `file_download` asset, only the filename
 differs from its source path.
 
-## Emoji — `emoji`
+## Retired: the emoji set
 
-The pre-v1.6.0 emoji glyphs, restored as a selectable icon set. Unlike the
-three vector sets above, `emoji` has **no bundled SVGs** — the glyphs are
-CSS `::before { content: "\XXXX" }` unicode escapes directly in
-`public/css/style.css` (see the `[data-icons="emoji"]` block), so it's
-intentionally colorful rather than `currentColor`-themed.
-
-| `.icon-*` class | emoji |
-|---|---|
-| `.icon-home` | 🏠 |
-| `.icon-folder` | 📁 |
-| `.icon-cog` | ⚙ |
-| `.icon-delete` | 🗑 |
-| `.icon-moon` | 🌙 |
-| `.icon-sun` | ☀️ |
-| `.icon-menu` | ☰ |
-| `.icon-search` | 🔍 |
-| `.icon-play` | ▶ |
-| `.icon-refresh` | 🔄 |
-| `.icon-arrow-up` | ▲ |
-| `.icon-arrow-down` | ▼ |
-| `.icon-download` | 📥 |
-| `.icon-shuffle` | 🔀 |
+Until the UI professionalism pass, a fourth set, `emoji`, drew the pre-v1.6.0
+emoji glyphs as CSS `::before` unicode escapes (no SVGs). It was retired
+(plan D2.6, `docs/exec-plans/completed/2026-09-27-ui-professionalism-pass.md`):
+its `[data-icons="emoji"]` rules are gone, a stored `ft-icons` of `emoji`
+resolves to `filled`, and Auto maps every retro era to `filled`.
 
 ## Inline-only chrome glyphs - `v1.340`
 
 `notifications.svg` (the header bell's own path) and `notifications_off.svg` (Material Icons
 `notifications_off`, upstream `google/material-design-icons`
 `src/social/notifications_off/materialicons/24px.svg`, its empty box path dropped) are NOT
-`.icon-*` mask classes and have no rounded / filled / emoji variants: they are the source of
-`CHROME_ICON_SVG.bell` / `.bellOff` in `public/js/common.js`, drawn as inline SVG by the
+`.icon-*` mask classes and have no rounded / filled variants: they are the source of
+`CHROME_ICON.bell` / `.bellOff` in `public/js/common.js` (the icon sprite), drawn by the
 header bell, the watch page's Notify button and the Subscriptions rows.
 `test/unit/chrome-icons.test.js` binds each path to its file byte for byte.
 
@@ -224,58 +205,58 @@ Appearance → **Library icons**), plus `.icon-liked` for the Liked lane.
 Unlike the ten single-asset glyphs named in item 1 at the top of this file
 (`heart`, `share`, `flame`, `history`, `queue`, `podcast`, `downloads`,
 `books`, `grid`, `list`), **every entry here ships a
-real variant in all four sets** - outlined, rounded, filled and an emoji
-codepoint. That was the explicit requirement: "each glyph we choose should be
-out of a set of four for the different eras."
+real variant in all three sets** - outlined, rounded and filled. The original
+requirement was "each glyph we choose should be out of a set of four for the
+different eras"; the fourth was an emoji codepoint, retired with the emoji set.
 
 - Outlined / Rounded: **Material Symbols**, © Google, Apache-2.0
 - Filled: **Material Icons** (Filled style), © Google, Apache-2.0 - see the
   provenance note in the `filled` section above; four of these postdate 2014
-- Emoji: CSS `content` codepoints, no asset
 
 **Do not hand-maintain this.** `public/js/glyph-pool.js` is the single source
 of truth - `server.js` requires it to validate saves and the browser loads it
 as a script to render - and `test/unit/glyph-pool.test.js` re-derives, for
-every member, all **seven** required `style.css` enumerations (base mask,
-sizing list, `@supports` fill list, rounded override, filled override, emoji
-neutralize group, emoji `::before`) plus its three SVGs. A member missing any
+every member, all **five** required `style.css` enumerations (base mask,
+sizing list, `@supports` fill list, rounded override, filled override) plus its
+three SVGs, and that each set actually paints that set's asset. A member missing any
 one of them fails CI. The fill list is the one that matters most: a mask with
 no fill renders as an invisible box, which is exactly the v1.47.6 bug Dean
 found on-device.
 
-| `.icon-*` class | Asset | Label in the picker | Emoji |
-|---|---|---|---|
-| `.icon-folder` | `folder.svg` | Folder | U+1F4C1 |
-| `.icon-school` | `school.svg` | School | U+1F393 |
-| `.icon-movies` | `movie.svg` | Movies | U+1F3AC |
-| `.icon-shows` | `tv.svg` | Shows | U+1F4FA |
-| `.icon-documents` | `description.svg` | Documents | U+1F4C4 |
-| `.icon-music-note` | `music_note.svg` | Music | U+1F3B5 |
-| `.icon-kids` | `child_care.svg` | Kids | U+1F9F8 |
-| `.icon-games` | `sports_esports.svg` | Games | U+1F3AE |
-| `.icon-camcorder` | `videocam.svg` | Home video | U+1F4F9 |
-| `.icon-photos` | `photo_camera.svg` | Photos | U+1F4F7 |
-| `.icon-travel` | `flight.svg` | Travel | U+2708 U+FE0F |
-| `.icon-work` | `work.svg` | Work | U+1F4BC |
-| `.icon-cooking` | `restaurant.svg` | Cooking | U+1F37D U+FE0F |
-| `.icon-fitness` | `fitness_center.svg` | Fitness | U+1F3CB U+FE0F |
-| `.icon-comedy` | `theater_comedy.svg` | Comedy | U+1F3AD |
-| `.icon-pets` | `pets.svg` | Pets | U+1F43E |
-| `.icon-cars` | `directions_car.svg` | Cars | U+1F697 |
-| `.icon-archive` | `archive.svg` | Archive | U+1F4E6 |
-| `.icon-radio` | `radio.svg` | Radio | U+1F4FB |
-| `.icon-favorites` | `star.svg` | Favorites | U+2B50 |
-| `.icon-liked` | `star.svg` | Liked (not a pool member) | U+2B50 |
+| `.icon-*` class | Asset | Label in the picker |
+|---|---|---|
+| `.icon-folder` | `folder.svg` | Folder |
+| `.icon-school` | `school.svg` | School |
+| `.icon-movies` | `movie.svg` | Movies |
+| `.icon-shows` | `tv.svg` | Shows |
+| `.icon-documents` | `description.svg` | Documents |
+| `.icon-music-note` | `music_note.svg` | Music |
+| `.icon-kids` | `child_care.svg` | Kids |
+| `.icon-games` | `sports_esports.svg` | Games |
+| `.icon-camcorder` | `videocam.svg` | Home video |
+| `.icon-photos` | `photo_camera.svg` | Photos |
+| `.icon-travel` | `flight.svg` | Travel |
+| `.icon-work` | `work.svg` | Work |
+| `.icon-cooking` | `restaurant.svg` | Cooking |
+| `.icon-fitness` | `fitness_center.svg` | Fitness |
+| `.icon-comedy` | `theater_comedy.svg` | Comedy |
+| `.icon-pets` | `pets.svg` | Pets |
+| `.icon-cars` | `directions_car.svg` | Cars |
+| `.icon-archive` | `archive.svg` | Archive |
+| `.icon-radio` | `radio.svg` | Radio |
+| `.icon-favorites` | `star.svg` | Favorites |
+| `.icon-liked` | `star.svg` | Liked (not a pool member) |
 
 `.icon-favorites` and `.icon-liked` deliberately share `star.svg`: different
 intents, same picture, kept separate so the Liked lane's glyph can change later
 without silently changing every folder that chose Favorites.
 
 **A collision that was resolved, not disclosed:** `.icon-shows` and the
-pre-existing `.icon-downloads` both rendered U+1F4FA (📺) in the emoji set.
-Dean ruled they must not share, so `.icon-downloads` moved to U+1F4FC (📼
-videocassette) and Shows kept the television - a TV being the literal read of a
-Shows folder. Downloads' mask assets are unchanged in all three vector sets;
-only its emoji glyph moved. Both are user-changeable now, though not in the same
+pre-existing `.icon-downloads` both rendered U+1F4FA (TV) in the since-retired
+emoji set. Dean ruled they must not share, so Downloads moved off the TV and
+Shows kept it - a TV being the literal read of a Shows folder. The rule now
+binds the masks: `test/unit/glyph-pool.test.js` fails if two glyph classes
+paint the same picture in any set (documented twins aside), and pins Shows to
+`tv.svg` with Downloads on another asset. Both are user-changeable now, though not in the same
 way: Downloads is a Library ENTRY with its own picker, while Shows is a POOL
 GLYPH that any folder or Library entry can be given.

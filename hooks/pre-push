@@ -27,7 +27,20 @@ fi
 echo "→ eslint"
 npm run --silent lint
 
+echo "→ ui ratchet (lint:ui --enforce)"
+npm run --silent lint:ui
+
 echo "→ full test suite"
 npm test
+
+# Geometry G1-G3 fast set (UI professionalism pass, plan D10.2, ~10s): only when
+# public/ changed against the upstream (or origin/main). Row columns, icon centring and
+# equal heights in a button group, on the seeded instance; a listed expected failure
+# (test/geometry/expected-failures.json) is XFAIL, an unlisted one fails the push.
+geo_up="$(git rev-parse --verify -q '@{upstream}' 2>/dev/null || git rev-parse --verify -q origin/main 2>/dev/null || true)"
+if [ -z "$geo_up" ] || ! git diff --quiet "$(git merge-base HEAD "$geo_up")" HEAD -- public/; then
+  echo "→ geometry (fast): public/ changed"
+  npm run --silent test:geometry:fast
+fi
 
 echo "Pre-push checks passed."

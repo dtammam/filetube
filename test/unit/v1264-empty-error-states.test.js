@@ -2,76 +2,100 @@
 
 // [UNIT] v1.26.4 Items 2/3 (unified empty/error states): `buildEmptyStateHtml`
 // / `buildErrorStateHtml` (public/js/common.js) -- pure string builders
-// shared by the home/library grid (public/js/main.js) and the subscriptions
-// list (lib/ytdlp/client/subscriptions.js). Also locks that `.empty-state`/
-// `.error-state` exist as REAL shared CSS classes (not per-surface inline
-// styles) and that the old bare inline-styled markup is gone from both
-// consuming call sites.
+// shared by the home/library grid (public/js/main.js); the subscriptions list
+// has its own DOM twin. Sweep S9 (F65, D9, AC12 conversion): both builders now emit
+// the ONE ui-state block (ui.css) - byte-for-byte the DOM ui.state() builds - and
+// the bespoke `.empty-state` / `.error-state` family is gone. Parsed in jsdom so the
+// assertions read the structure, not a regex over a string.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { JSDOM } = require('jsdom');
 
-const { buildEmptyStateHtml, buildErrorStateHtml } = require('../../public/js/common.js');
+const { buildEmptyStateHtml, buildErrorStateHtml, uiStateHtml } = require('../../public/js/common.js');
+const ui = require('../../public/js/ui.js');
 
 const ROOT = path.join(__dirname, '..', '..');
-const CSS_PATH = path.join(ROOT, 'public', 'css', 'style.css');
 const MAIN_JS_PATH = path.join(ROOT, 'public', 'js', 'main.js');
 const SUBS_CLIENT_JS_PATH = path.join(ROOT, 'lib', 'ytdlp', 'client', 'subscriptions.js');
-const css = fs.readFileSync(CSS_PATH, 'utf8');
 const mainJs = fs.readFileSync(MAIN_JS_PATH, 'utf8');
 const subsClientJs = fs.readFileSync(SUBS_CLIENT_JS_PATH, 'utf8');
+const { readStyleCss, readUiCss } = require('../helpers/stylesheets');
 
-test('buildEmptyStateHtml: default (no options) renders the .empty-state card with a fallback icon/message', () => {
-  const html = buildEmptyStateHtml();
-  assert.match(html, /class="empty-state"/);
-  assert.match(html, /class="icon-search empty-state-icon"/);
-  assert.match(html, /class="empty-state-message">Nothing here yet\.</);
+const parse = (html) => {
+  const d = new JSDOM('<!DOCTYPE html><body></body>').window.document;
+  d.body.innerHTML = html;
+  assert.strictEqual(d.body.children.length, 1, 'one block');
+  return d.body.firstElementChild;
+};
+
+test('buildEmptyStateHtml: default renders the ui-state block - search icon disc, a title "Nothing here yet.", no body', () => {
+  const s = parse(buildEmptyStateHtml());
+  assert.strictEqual(s.className, 'ui-state');
+  assert.strictEqual(s.querySelector('.ui-state__icon use').getAttribute('href'), '#i-search');
+  assert.ok(s.querySelector('.ui-state__icon svg').classList.contains('ui-icon--lg'));
+  assert.strictEqual(s.querySelector('h3.ui-state__title').textContent, 'Nothing here yet.');
+  assert.strictEqual(s.querySelector('.ui-state__body'), null);
 });
 
-test('buildEmptyStateHtml: custom icon/message/hint/actionHtml are threaded through', () => {
-  const html = buildEmptyStateHtml({
+test('buildEmptyStateHtml: icon / message / hint / actionHtml are threaded through (a legacy icon-* name still resolves to its glyph)', () => {
+  const s = parse(buildEmptyStateHtml({
     icon: 'icon-folder',
     message: 'No video or audio files found.',
     hint: 'Try a different search.',
-    actionHtml: '<a href="/" class="btn empty-state-action">View All Media</a>',
-  });
-  assert.match(html, /class="icon-folder empty-state-icon"/);
-  assert.match(html, /No video or audio files found\./);
-  assert.match(html, /class="empty-state-hint">Try a different search\.<\/p>/);
-  assert.match(html, /<a href="\/" class="btn empty-state-action">View All Media<\/a>/);
+    actionHtml: '<a href="/" class="ui-btn ui-btn--secondary ui-btn--md empty-state-action"><span class="ui-btn__label">View All Media</span></a>',
+  }));
+  assert.strictEqual(s.querySelector('.ui-state__icon use').getAttribute('href'), '#i-folder');
+  assert.strictEqual(s.querySelector('.ui-state__title').textContent, 'No video or audio files found.');
+  assert.strictEqual(s.querySelector('.ui-state__body').textContent, 'Try a different search.');
+  const a = s.querySelector('a.ui-btn.empty-state-action');
+  assert.ok(a && a.getAttribute('href') === '/' && a.textContent === 'View All Media');
+  assert.strictEqual(s.lastElementChild, a, 'the action comes last');
+  assert.strictEqual(parse(buildEmptyStateHtml({ icon: 'smart_display' })).querySelector('use').getAttribute('href'), '#i-smart_display');
 });
 
-test('buildEmptyStateHtml: compact option adds the empty-state-inline modifier class (for non-grid surfaces)', () => {
-  const html = buildEmptyStateHtml({ compact: true, message: 'No playlists pinned yet.' });
-  assert.match(html, /class="empty-state empty-state-inline"/);
+test('the string builder is byte-for-byte the DOM ui.state() builds (one component, two builders)', () => {
+  const d = new JSDOM('<!DOCTYPE html><body></body>').window.document;
+  const dom = ui.state({ icon: 'folder', title: 'This folder is empty.', body: 'Nothing here yet.', doc: d });
+  const str = parse(uiStateHtml({ icon: 'folder', title: 'This folder is empty.', body: 'Nothing here yet.' }));
+  const norm = (el) => el.outerHTML.replace(/ focusable="false"/g, '');
+  assert.strictEqual(norm(str), norm(dom));
 });
 
-test('buildEmptyStateHtml: omitting hint/actionHtml renders neither wrapper', () => {
-  const html = buildEmptyStateHtml({ message: 'x' });
-  assert.doesNotMatch(html, /empty-state-hint/);
-  assert.doesNotMatch(html, /<a /);
+test('buildEmptyStateHtml: omitting hint / actionHtml renders neither', () => {
+  const s = parse(buildEmptyStateHtml({ message: 'x' }));
+  assert.strictEqual(s.querySelector('.ui-state__body'), null);
+  assert.strictEqual(s.querySelector('a, button'), null);
 });
 
-test('buildErrorStateHtml: default message + a wired-up-by-caller Retry button with a stable hook', () => {
-  const html = buildErrorStateHtml();
-  assert.match(html, /class="error-state"/);
-  assert.match(html, /class="error-state-message">Something went wrong\.</);
-  assert.match(html, /<button type="button" class="btn error-state-retry" data-error-retry>Retry<\/button>/);
+test('buildErrorStateHtml: an error ui-state - the error glyph and the words carry it (not red text) - with a secondary ui-btn Retry on a stable hook', () => {
+  const s = parse(buildErrorStateHtml());
+  assert.strictEqual(s.className, 'ui-state ui-state--error');
+  assert.strictEqual(s.querySelector('.ui-state__icon use').getAttribute('href'), '#i-error');
+  assert.strictEqual(s.querySelector('.ui-state__title').textContent, 'Something went wrong.');
+  const retry = s.querySelector('[data-error-retry]');
+  assert.strictEqual(retry.tagName, 'BUTTON');
+  assert.strictEqual(retry.getAttribute('type'), 'button');
+  assert.strictEqual(retry.className, 'ui-btn ui-btn--secondary ui-btn--md');
+  assert.strictEqual(retry.textContent, 'Retry');
+  assert.strictEqual(retry.id, '', 'no id - several error states may coexist');
 });
 
-test('buildErrorStateHtml: custom message is threaded through', () => {
-  const html = buildErrorStateHtml({ message: 'Failed to load subscriptions.' });
-  assert.match(html, /Failed to load subscriptions\./);
+test('buildErrorStateHtml: a custom message is threaded through', () => {
+  assert.strictEqual(parse(buildErrorStateHtml({ message: 'Failed to load subscriptions.' })).querySelector('.ui-state__title').textContent, 'Failed to load subscriptions.');
 });
 
-// ---- CSS lock: shared classes exist, not per-surface inline styles --------
+// ---- CSS: ONE state block (sweep S9, was "shared classes exist") ------------
 
-test('style.css defines .empty-state/.error-state as real, shared classes', () => {
-  assert.match(css, /\.empty-state,\s*\n\.error-state\s*\{/);
-  assert.match(css, /\.error-state-retry\s*\{/);
-  assert.match(css, /\.empty-state-inline\s*\{/);
+test('the ui-state block is ui.css\'s; style.css keeps no bespoke empty / error family and only places the block', () => {
+  const uiCss = readUiCss().replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(uiCss, /\.ui-state\s*\{/);
+  assert.match(uiCss, /\.ui-state__title\s*\{/);
+  const css = readStyleCss().replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(css, /\.empty-state(?![\w-]*-action)|\.error-state|\.home-feed-empty/, 'no bespoke empty/error family (F65)');
+  assert.match(css, /\.video-grid > \.ui-state,\s*#home-feed-host > \.ui-state\s*\{\s*grid-column:\s*1 \/ -1;/, 'in a grid the block spans every column');
 });
 
 // ---- Regression guard: the old bare inline-styled markup is gone ----------

@@ -1508,7 +1508,7 @@ test('v1.161.3: setup.js and player.js agree on the keep-alive key byte-for-byte
   const SERVER_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'server.js'), 'utf8');
   assert.match(PLAYER_JS, /var BG_KEEPALIVE_STORAGE_KEY = 'filetube_bg_keepalive';/);
   assert.match(SETUP_JS, /const BG_KEEPALIVE_KEY = 'filetube_bg_keepalive';/);
-  assert.match(SETUP_HTML, /<input type="checkbox" id="bg-keepalive-check" \/>/, 'the Settings checkbox exists');
+  assert.match(SETUP_HTML, /<input type="checkbox" role="switch" class="ui-switch" id="bg-keepalive-check" \/>/, 'the Settings switch exists (sweep S8: a checkbox wearing ui-switch)');
   assert.match(SETUP_JS, /if \(e\.target\.checked\) localStorage\.setItem\(BG_KEEPALIVE_KEY, '1'\);\s*else localStorage\.removeItem\(BG_KEEPALIVE_KEY\);/,
     'stores 1 only when checked (absent = off)');
   assert.ok(!SERVER_JS.includes('filetube_bg_keepalive'), 'device-local only - never a server surface');

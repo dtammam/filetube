@@ -1,0 +1,8 @@
+/* ui-lint-canary: path=public/css/style.css expect=7 */
+.a:hover { color: var(--accent); }
+.tab.active { background: var(--accent-fill); }
+.x[aria-selected="true"] { border-color: var(--danger); }
+.y:focus-visible { outline-color: var(--indicator, red); }
+.ui-btn--primary:active { background: var(--accent-fill); }
+.legacy.selected { background: var(--yt-red); }
+.legacy2:active { color: var(--yt-red-dark); }

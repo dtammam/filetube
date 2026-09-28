@@ -31,8 +31,9 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { unscopePocket } = require('../helpers/stylesheets.js'); // UI pass D7: the Pocket takeover's device-class scope
 
-const cssText = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+const cssText = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
 
 const normProp = (p) => p.trim().toLowerCase().replace(/^-(webkit|moz|ms|o)-/, '');
 const normVal = (v) => v.trim().toLowerCase().replace(/\s*!important$/, '').replace(/\s+/g, ' ');
@@ -238,7 +239,6 @@ const CLUSTER_RULES = {
 // the panel or the pop-out). Anything else that reaches counts.
 const EXCEPTIONS = [
   { selector: '.theme-swatch span', ancestor: 'theme-swatch', why: 'the Setup page theme picker swatch (setup.js)' },
-  { selector: '.section-actions.search-scoped-toolbar > *', ancestor: 'search-scoped-toolbar', why: 'the Home search toolbar strip (main.js)' },
 ];
 const PANEL_HOSTS = ['public/music.html', 'public/podcasts.html', 'public/js/music.js', 'public/js/podcasts.js', 'public/js/music-skins.js', 'public/js/skin-surface.js', 'public/js/ipod-brick.js'];
 function census(el, base, table) {
@@ -265,7 +265,9 @@ test('NO other rule whose final selector can match the TITLE (any ancestor, any 
 
 test('NO other rule that can match the BAR stacks, wraps or re-lays it out', () => {
   const { found, bad } = census(BAR, '.mms-ipod .ip-status', BAR_RULES);
-  assert.ok(found.some((r) => r.selectors.includes('.section-actions.search-scoped-toolbar > *')), 'precondition: a universal rule is found (the census is not vacuous)');
+  // UI pass sweep S2 retired the search-strip universal rule this precondition
+  // used; the watch-actions reveal barrier is another universal final compound.
+  assert.ok(found.some((r) => r.selectors.includes('.watch-actions[data-loading] > *')), 'precondition: a universal rule is found (the census is not vacuous)');
   assert.deepStrictEqual(bad, [], 'rules that break the bar');
 });
 
@@ -332,7 +334,8 @@ test('the rules land on the element every pocket skin renders: .ip-status > .ip-
   const SK = require('../../public/js/music-skins.js');
   for (const id of SK.SKINS.filter((s) => s.menus === 'click').map((s) => s.id)) {
     const html = SK.renderFull(id, { track: { title: 'x', artist: 'y', album: 'z' } });
-    assert.match(html, /<div class="ip-status"><span class="ip-np">Now Playing<\/span><span class="ip-status-rt"><span class="mms-playind"[^>]*>[^<]*<\/span><span class="ip-batt"[^>]*><i><\/i><\/span><\/span><\/div>/, id + ' renders the status bar the lock covers');
+    // UI pass S7 (F60): the play mark is two DRAWN glyphs stacked in one cell (play, pause), never text
+    assert.match(html, /<div class="ip-status"><span class="ip-np">Now Playing<\/span><span class="ip-status-rt"><span class="mms-playind"[^>]*><svg class="mms-g mms-g-play"[^>]*><path[^>]*\/><\/svg><svg class="mms-g mms-g-pause"[^>]*><path[^>]*\/><\/svg><\/span><span class="ip-batt"[^>]*><i><\/i><\/span><\/span><\/div>/, id + ' renders the status bar the lock covers');
   }
   for (const id of SK.SKINS.filter((s) => s.menus === 'click' && s.id !== 'ipod').map((s) => s.id)) assert.strictEqual(SK.skinById(id).base, 'ipod', id + ' carries the shared .mms-ipod CSS');
 });

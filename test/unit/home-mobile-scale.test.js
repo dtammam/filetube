@@ -20,6 +20,8 @@ const path = require('node:path');
 const CSS_PATH = path.join(__dirname, '..', '..', 'public', 'css', 'style.css');
 const HTML_PATH = path.join(__dirname, '..', '..', 'public', 'index.html');
 const css = fs.readFileSync(CSS_PATH, 'utf8');
+// UI pass step 1: the --fs-* scale is defined in tokens.css (loaded before style.css).
+const TOKENS_CSS = require('../helpers/stylesheets').readTokensCss();
 const html = fs.readFileSync(HTML_PATH, 'utf8');
 
 // v1.30 C1 (AC7.1): style.css's font-size declarations are now token-driven
@@ -28,7 +30,7 @@ const html = fs.readFileSync(HTML_PATH, 'utf8');
 // assertions below keep working regardless of the token's source spelling.
 function parseRootFsTokens(source) {
   const rootMatch = /:root\s*\{([\s\S]*?)\n\}/.exec(source);
-  assert.ok(rootMatch, 'expected a :root block in style.css');
+  assert.ok(rootMatch, 'expected a :root block in tokens.css');
   const tokens = {};
   const re = /(--fs-[a-z0-9-]+):\s*([0-9]+)px/g;
   let m;
@@ -38,7 +40,7 @@ function parseRootFsTokens(source) {
   return tokens;
 }
 
-const fsTokens = parseRootFsTokens(css);
+const fsTokens = parseRootFsTokens(TOKENS_CSS);
 
 function resolveFontSizePx(value) {
   const trimmed = value.trim();
@@ -64,23 +66,22 @@ function mobileBlock() {
   return block[1];
 }
 
-test('index.html: the sort-row heading, sort-select, and Shuffle/Rescan buttons share .section-title/.section-actions', () => {
-  // v1.50.2: sentence case app-wide (Dean's capitalization pass).
+// UI pass sweep S2 (F19; converts the v1.15/v1.45/v1.50 toolbar-row locks, AC12):
+// the toolbar is ONE row - the scrolling chip host + the icon tools (ui-btn icons
+// with aria-labels, no word labels to hide). The rendered fit (one line at 390px,
+// two grid columns, no horizontal overflow) is test/geometry/library-toolbar.check.js.
+test('index.html: the heading and the toolbar (chip host + sort/shuffle/rescan/view tools) share .section-title/.section-actions', () => {
   assert.match(html, /<span id="videos-section-header">Recently added<\/span>/);
-  assert.match(html, /<div class="section-actions">/);
-  assert.match(html, /id="sort-dropdown"/); // v1.41.2: custom .btn dropdown (was a native <select id="sort-select">)
-  assert.match(html, /id="shuffle-again-btn"/);
-  assert.match(html, /id="rescan-library-btn"/);
+  assert.match(html, /<div class="section-actions">\s*<div class="library-chip-host" id="library-chip-host"><\/div>\s*<div class="library-tools">/);
+  for (const id of ['sort-select-btn', 'shuffle-again-btn', 'rescan-library-btn', 'view-mode-btn']) assert.match(html, new RegExp(`id="${id}"`));
 });
 
-test('index.html: the Shuffle / Rescan button labels are wrapped in .btn-label (short one-word visible labels so the mobile actions row fits on one line; full names live in aria-label)', () => {
-  assert.match(html, /id="shuffle-again-btn"[^>]*>[\s\S]*?<span class="btn-label">Shuffle<\/span>/);
-  assert.match(html, /id="rescan-library-btn"[^>]*>[\s\S]*?<span class="btn-label">Rescan<\/span>/);
-});
-
-test('index.html: the Shuffle again / Rescan Files buttons carry an accessible name independent of the visible label', () => {
+test('index.html: the tools are icon-only ui-btns whose accessible name is their aria-label (no word label to hide on a phone)', () => {
   assert.match(html, /id="shuffle-again-btn"[^>]*aria-label="Shuffle again"/);
-  assert.match(html, /id="rescan-library-btn"[^>]*aria-label="Rescan Files"/);
+  assert.match(html, /id="rescan-library-btn"[^>]*aria-label="Rescan files"/);
+  assert.match(html, /id="sort-select-btn"[^>]*aria-label="Sort"/);
+  const bar = html.slice(html.indexOf('<div class="library-tools">'), html.indexOf('<div class="video-grid"'));
+  assert.doesNotMatch(bar, /btn-label|ui-btn__label/, 'no visible word labels in the tool group');
 });
 
 test('mobile: .section-title wraps so the heading and the actions row are never forced onto one clipped line', () => {
@@ -88,50 +89,12 @@ test('mobile: .section-title wraps so the heading and the actions row are never 
   assert.match(body, /\.section-title\s*\{[^}]*flex-wrap:\s*wrap/);
 });
 
-test('mobile (v1.45.2 #3, v1.50 update): .section-actions wraps ONLY for the watch group\'s own row; the glyph line itself is unchanged', () => {
+test('mobile (sweep S2): .section-actions is one full-width row that never wraps; the tool group never shrinks; no word labels to hide', () => {
   const body = mobileBlock();
-  // v1.45.2 reversed the v1.23 wrap (one glyph line, icon-only). v1.50
-  // relaxes nowrap -> wrap SOLELY so the watched-state group -- forced last
-  // (order) and full-width -- takes a second row of its own; every v1.45
-  // one-line member still shares the original line and its width budget.
-  assert.match(body, /\.section-actions\s*\{[^}]*flex-wrap:\s*wrap[^}]*width:\s*100%/);
-  // v1.50.4: the wrap trigger is flex-basis 70% now (grows to fill row 2
-  // alone; leaves room for the order-11 Re-pull button beside it on
-  // subscribed-channel views -- no more orphaned middle row).
-  assert.match(body, /\.section-actions \.watch-toggle\s*\{[^}]*order:\s*10[^}]*flex:\s*1 1 70%/, 'the watch group anchors row 2 via order + a 70% basis');
-});
-
-test('mobile (v1.45.2 #3, REVISITS v1.23): Shuffle/Rescan WORD labels are hidden so the row fits one glyph line', () => {
-  const body = mobileBlock();
-  // v1.23 showed the words (icon-only "read as just an emoji") by wrapping the
-  // row. v1.45.2 moves the item count beside the name (#4), frees the row, and
-  // goes icon-only to fit ONE clean line. Meaning is preserved via each button's
-  // title/aria-label (asserted above), and DESKTOP keeps its labels.
-  assert.match(
-    body,
-    /\.section-actions \.btn \.btn-label\s*\{[^}]*display:\s*none/,
-    'section-actions button word-labels ARE hidden on mobile now (icon-only, one row)'
-  );
-});
-
-test('mobile (v1.45.3): the icon action buttons keep a comfortable minimum tap-target width', () => {
-  const body = mobileBlock();
-  // v1.45.3 targets the three icon buttons by id (not a blanket .section-actions
-  // .btn, which had forced the format pills wide and overflowed the row).
-  const rule = /#sort-select-btn,\s*#shuffle-again-btn,\s*#rescan-library-btn\s*\{([^}]*)\}/.exec(body);
-  assert.ok(rule, 'expected a mobile min-width rule on the icon action buttons');
-  const minWidthMatch = /min-width:\s*(\d+)px/.exec(rule[1]);
-  assert.ok(minWidthMatch, 'expected a min-width on the icon-only mobile buttons');
-  assert.ok(Number(minWidthMatch[1]) >= 32, 'tap target should be at least 32px');
-});
-
-test('mobile (v1.45.3, title updated v1.50): the fit budget — format pills compact + sort label hidden so the glyph line fits its width budget', () => {
-  const body = mobileBlock();
-  // The format pills must drop the desktop 58px min-width (compact) and the
-  // sort's current-value label must be hidden (caret only) — the two things
-  // whose absence overflowed the row in the v1.45.2 swing.
-  assert.match(body, /\.section-actions \.format-toggle-btn\s*\{[^}]*min-width:\s*0/, 'format pills go compact on mobile');
-  assert.match(body, /#sort-select-label\s*\{[^}]*display:\s*none/, 'the sort value-label is hidden on mobile (caret only)');
+  assert.match(body, /\.section-actions\s*\{[^}]*width:\s*100%/);
+  assert.doesNotMatch(/\.section-actions\s*\{([^}]*)\}/.exec(body)[1], /flex-wrap/, 'no second toolbar row');
+  assert.doesNotMatch(body, /\.section-actions [^{}]*\.btn-label|#sort-select-label|\.watch-toggle|\.format-toggle-btn/, 'the v1.45-v1.50 fit machinery is gone');
+  assert.match(css, /\n\.library-tools \{[^}]*flex:\s*none/, 'the tools keep their 44px hit areas (ui-btn --icon)');
 });
 
 test('mobile: .video-grid uses a tighter column minimum + gap than the desktop 210px/20px so more than one card is comfortably visible', () => {
@@ -146,12 +109,14 @@ test('mobile: .video-grid uses a tighter column minimum + gap than the desktop 2
   assert.ok(Number(gapMatch[1]) < 20, 'mobile gap must be tighter than the desktop 20px');
 });
 
-test('mobile: video-card text (.video-title/.video-uploader/.video-meta) shrinks alongside the tighter grid', () => {
+test('mobile: video-card text sizes - the title holds 13px (F18), the byline and meta have their own phone rules', () => {
   const body = mobileBlock();
   assert.match(body, /\.video-title\s*\{[^}]*font-size:\s*var\(--fs-[a-z0-9-]+\)/);
   const titleRule = /\.video-title\s*\{([^}]*)\}/.exec(body);
   const titleFontSize = resolveFontSizePx(/font-size:\s*([^;]+);/.exec(titleRule[1])[1]);
-  assert.ok(titleFontSize < 13, `mobile .video-title should be smaller than the desktop 13px (got ${titleFontSize}px)`);
+  // F18 (sweep S2): the phone title no longer shrinks below the desktop 13px -
+  // 12px on a full-width tile read tiny; the byline and meta still step down.
+  assert.ok(titleFontSize >= 13, `mobile .video-title keeps at least the desktop 13px (got ${titleFontSize}px)`);
 
   const uploaderRule = /\.video-uploader\s*\{([^}]*)\}/.exec(body);
   assert.ok(uploaderRule, 'expected a mobile .video-uploader rule');

@@ -105,7 +105,7 @@ async function until(pred, label, n) {
   assert.fail('timed out waiting for: ' + label);
 }
 const click = (el) => el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-const rowsOf = (h) => Array.from(h.list.querySelectorAll('.chapter-snap-row'));
+const rowsOf = (h) => Array.from(h.list.querySelectorAll('.chapter-snap-item'));
 const nowOf = (h) => rowsOf(h).map((r) => r.querySelector('.chapter-snap-now').textContent);
 const step = (h, ms) => h.shiftBox.querySelector('.chapter-snap-shift-btn[data-shift="' + ms + '"]');
 const q = (h, sel) => h.shiftBox.querySelector(sel);

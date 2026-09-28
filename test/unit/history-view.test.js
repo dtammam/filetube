@@ -9,7 +9,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const {
-  escapeHistoryHtml, formatHistoryDuration, formatHistoryWhen, historyBarPercent, buildHistoryRowHtml,
+  escapeHistoryHtml, formatHistoryDuration, formatHistoryWhen, historyBarPercent, buildHistoryRowEl, historyMetaText,
 } = require('../../public/js/history.js');
 
 const NOW = Date.parse('2026-07-20T12:00:00.000Z');
@@ -54,35 +54,44 @@ test('historyBarPercent: >0.5 threshold (the home-card rule), watched -> no part
   assert.equal(historyBarPercent({ progressPercent: NaN }), null);
 });
 
-test('buildHistoryRowHtml: escapes hostile titles AND channel names, carries data-id, and NEVER emits an inline style attribute', () => {
-  const html = buildHistoryRowHtml({
+// UI pass sweep S2 (converts the v1.64 row-markup locks, AC12): the row is a
+// ui-row built as DOM (textContent only - so escaping is structural, and the
+// hostile-text binds read the TEXT back), with a ui-thumb (duration + resume bar
+// as the --p data property), the meta line, and ONE reserved Remove slot.
+const { JSDOM } = require('jsdom');
+const rowOf = (item, now) => buildHistoryRowEl(item, now, new JSDOM('<!doctype html><body></body>').window.document);
+
+test('buildHistoryRowEl: hostile titles AND channel names are TEXT, the row carries data-id, and no inline style is ever written but the --p data property', () => {
+  const row = rowOf({
     // A hostile CHANNEL too (adversarial gate W2): folder names come from
-    // on-disk dirnames, and '<img onerror=...>' is a legal Linux dirname --
-    // the channel escape must be BOUND, not merely present.
+    // on-disk dirnames, and '<img onerror=...>' is a legal Linux dirname.
     id: 'abc123', title: '<script>alert(1)</script>', channelName: '<img src=x onerror=alert(2)>', folderName: 'Chan',
     duration: 65, progressPercent: 43.2, watchState: 'watching', lastWatchedAt: '2026-07-20T09:00:00.000Z', type: 'video',
   }, NOW);
-  assert.ok(!html.includes('<script>alert'), 'title is escaped');
-  assert.ok(html.includes('&lt;script&gt;'), 'escaped title still renders as text');
-  assert.ok(!html.includes('<img src=x'), 'channel is escaped');
-  assert.ok(html.includes('&lt;img src=x onerror=alert(2)&gt;'), 'escaped channel still renders as text');
-  assert.ok(html.includes('data-id="abc123"'));
-  assert.ok(html.includes('href="/watch.html?v=abc123"'));
-  assert.ok(html.includes('3 hours ago'));
-  assert.ok(html.includes('1:05'));
-  assert.ok(html.includes('data-pct="43.2"'), 'the bar width travels as data, wired to --history-pct after insertion');
-  assert.ok(!/style\s*=/.test(html), 'no inline style attribute, ever (#71/ratchet posture)');
+  assert.strictEqual(row.querySelectorAll('script').length, 0, 'the title never parses');
+  assert.strictEqual(row.querySelectorAll('img').length, 1, 'only the thumbnail image - the channel never parses');
+  assert.strictEqual(row.querySelector('.ui-row__link').textContent, '<script>alert(1)</script>', 'the title renders as text');
+  assert.match(row.querySelector('.ui-row__meta').textContent, /^<img src=x onerror=alert\(2\)> · 3 hours ago$/, 'the channel renders as text');
+  assert.strictEqual(row.getAttribute('data-id'), 'abc123');
+  assert.strictEqual(row.querySelector('.ui-row__link').getAttribute('href'), '/watch.html?v=abc123');
+  assert.strictEqual(row.querySelector('.ui-thumb__duration').textContent, '1:05');
+  assert.ok(Math.abs(Number(row.querySelector('.ui-thumb__bar').style.getPropertyValue('--p')) - 0.432) < 1e-9, 'the resume bar rides the ui-thumb data property (43.2%)');
+  for (const el of row.querySelectorAll('[style]')) assert.match(el.getAttribute('style'), /^--p: [\d.]+;$/, 'no visual inline style');
+  const remove = row.querySelector('.ui-row__actions > .history-remove');
+  assert.ok(remove && remove.classList.contains('ui-btn') && remove.classList.contains('ui-btn--icon'), 'the ONE action slot holds the Remove ui-btn');
+  assert.strictEqual(remove.getAttribute('data-id'), 'abc123');
+  assert.strictEqual(remove.getAttribute('aria-label'), 'Remove from history');
 });
 
-test('buildHistoryRowHtml: v1.114 A2 strips a leading "@" so a handle-as-name shows the name (the standalone History page was an un-swept surface)', () => {
-  const html = buildHistoryRowHtml({ id: 'x', title: 'V', channelName: '@Apple' }, Date.now());
-  assert.ok(html.includes('Apple') && !html.includes('@Apple'), 'renders "Apple", not "@Apple"');
+test('buildHistoryRowEl: v1.114 A2 strips a leading "@" so a handle-as-name shows the name (the standalone History page was an un-swept surface)', () => {
+  const meta = historyMetaText({ id: 'x', title: 'V', channelName: '@Apple' }, Date.now());
+  assert.ok(meta.startsWith('Apple') && !meta.includes('@Apple'), 'renders "Apple", not "@Apple"');
 });
 
-test('buildHistoryRowHtml: watched item gets the chip and no bar; audio gets the Audio badge', () => {
-  const watched = buildHistoryRowHtml({ id: 'w1', title: 'Done', duration: 100, progressPercent: 97, watchState: 'watched', lastWatchedAt: '2026-07-19T10:00:00.000Z' }, NOW);
-  assert.ok(watched.includes('history-watched-chip'));
-  assert.ok(!watched.includes('history-bar-fill'));
-  const audio = buildHistoryRowHtml({ id: 'a1', title: 'Song', type: 'audio', duration: 0, progressPercent: 0, watchState: 'new' }, NOW);
-  assert.ok(audio.includes('>Audio<'));
+test('buildHistoryRowEl: a watched item says Watched in its meta and shows no partial bar; a zero-duration item shows no badge', () => {
+  const watched = rowOf({ id: 'w1', title: 'Done', duration: 100, progressPercent: 97, watchState: 'watched', lastWatchedAt: '2026-07-19T10:00:00.000Z' }, NOW);
+  assert.match(watched.querySelector('.ui-row__meta').textContent, / · Watched$/);
+  assert.strictEqual(watched.querySelector('.ui-thumb__progress'), null, 'watched -> no partial bar');
+  const audio = rowOf({ id: 'a1', title: 'Song', type: 'audio', duration: 0, progressPercent: 0, watchState: 'new' }, NOW);
+  assert.strictEqual(audio.querySelector('.ui-thumb__duration'), null, 'the thumbnail shows only a real duration (D8.5)');
 });

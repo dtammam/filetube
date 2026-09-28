@@ -37,33 +37,52 @@ if (!global.sessionStorage) {
 
 const common = require('../../public/js/common.js');
 
-// v1.340: the channel-row buttons render their label through common.js's
-// stableToggleLabelHtml (innerHTML: every label in one grid cell, the current one in
-// `data-label`, CHROME_ICON_SVG glyphs inside the slots). The shim's innerHTML is a plain
-// string, so read the VISIBLE slot back from it, each glyph as "[name]" where it sits:
-// "[bellOff] Notify", "Pinned [starFilled]".
-const GLYPH_BY_PATH = new Map(Object.entries(common.CHROME_ICON_SVG).map(([name, g]) => [g.d, name]));
+// UI pass sweep S3 (D4.9): the channel-row controls are ui-btns. Subscribe is a pill whose
+// label is the stable stack (aria-pressed picks "Subscribed"); the bell and the pin are
+// icon toggles (aria-pressed swaps the registry glyph, ui.setPressed). Read what the user
+// SEES back from the recorded attributes: "Subscribed", "[notifications_off] Notify",
+// "[keep.fill] Pinned". A reserved (unsubscribed) bell reads "(reserved)".
 function labelOf(el) {
-  const html = String(el.innerHTML || '');
-  const m = /data-label="([^"]*)"/.exec(html);
-  if (!m) return el.textContent;
-  const shown = (/<span class="btn-label-slot">(.*?)<\/span>/.exec(html) || [])[1] || '';
-  const text = shown.replace(/<svg [^>]*><path d="([^"]*)"\/><\/svg>/g, (_, d) => ` [${GLYPH_BY_PATH.get(d) || '?'}] `)
-    .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&')
-    .replace(/\s+/g, ' ').trim();
-  assert.ok(text.replace(/\s*\[[^\]]*\]\s*/g, '') === m[1].replace(/&amp;/g, '&'), 'data-label names the visible slot');
-  return text;
+  const pressed = el.getAttribute('aria-pressed') === 'true';
+  if (el.id === 'subscribe-btn-mock') return pressed ? 'Subscribed' : 'Subscribe';
+  const icon = el.getAttribute(pressed ? 'data-icon-on' : 'data-icon-off');
+  if (el.id === 'notify-channel-btn') {
+    if (el.hasAttribute('data-reserved')) return '(reserved)';
+    return `[${icon}] ${pressed ? 'Notifying' : 'Notify'}`;
+  }
+  if (el.id === 'pin-channel-btn') return `[${icon}] ${el.getAttribute('aria-label')}`;
+  return el.textContent;
 }
 
 // ---- minimal generic DOM shim ---------------------------------------------
+// UI pass sweep S2: the related rail renders DOM nodes (buildRelatedCardEl), so
+// the rail asserts read the recorded replaceChildren nodes' href/src/text.
+function railDump(box) {
+  const out = [];
+  const walk = (e) => { if (!e) return; out.push(e.href || '', e.src || '', e.textContent || ''); (e.children || []).forEach(walk); };
+  (box._rail || []).forEach(walk);
+  return out.join('|');
+}
+
 function makeEl(tag) {
   const el = {
     tagName: (tag || 'div').toUpperCase(),
-    children: [], style: {}, dataset: {}, hidden: false, disabled: false,
+    children: [], style: { setProperty() {}, removeProperty() {} }, dataset: {}, hidden: false, disabled: false,
     textContent: '', innerHTML: '', className: '', title: '', href: '', src: '',
     isConnected: true, value: '',
-    classList: { add() {}, remove() {}, toggle() {}, contains() { return false; } },
-    setAttribute() {}, removeAttribute() {}, getAttribute() { return null; },
+    // UI pass sweep S3: the channel row's ui-btns carry their state in classes and
+    // attributes (aria-pressed, data-icon-on/off, data-reserved) - both are RECORDED.
+    classList: {
+      add(...c) { const set = new Set(el.className.split(/\s+/).filter(Boolean)); c.forEach((x) => set.add(x)); el.className = [...set].join(' '); },
+      remove(...c) { el.className = el.className.split(/\s+/).filter((x) => x && !c.includes(x)).join(' '); },
+      toggle(c, on) { const has = el.classList.contains(c); const want = on === undefined ? !has : !!on; if (want && !has) el.classList.add(c); if (!want && has) el.classList.remove(c); return want; },
+      contains(c) { return el.className.split(/\s+/).includes(c); },
+    },
+    _attrs: {},
+    // UI pass sweep S2: the related rail's cards are DOM now - keep their href/src.
+    setAttribute(n, v) { el._attrs[n] = String(v); if (n === 'href' || n === 'src') el[n] = v; },
+    removeAttribute(n) { delete el._attrs[n]; },
+    getAttribute(n) { return Object.prototype.hasOwnProperty.call(el._attrs, n) ? el._attrs[n] : null; },
     // v1.314 gate r1: listeners are RECORDED so a test can drive a click; every earlier
     // test ignores them. v1.317 gate r2: the OPTIONS too (_lo), so a test can bind a
     // listener's `{ signal }` by execution. Music follow-ups item 4d: EVERY listener is
@@ -85,18 +104,29 @@ function makeEl(tag) {
     insertAdjacentHTML() {},
     getContext() { return { drawImage() {}, getImageData() { return { data: [] }; }, clearRect() {}, fillRect() {} }; },
     appendChild(c) { if (c) { try { c.parentNode = el; c.isConnected = true; } catch (_) { /* shim */ } el.children.push(c); } return c; },
-    insertBefore(c) { if (c) { try { c.parentNode = el; c.isConnected = true; } catch (_) { /* shim */ } el.children.unshift(c); } return c; },
+    insertBefore(c, ref) {
+      if (c) {
+        try { c.parentNode = el; c.isConnected = true; } catch (_) { /* shim */ }
+        const i = ref ? el.children.indexOf(ref) : -1;
+        if (i === -1 && ref === null) el.children.push(c);
+        else if (i === -1) el.children.unshift(c);
+        else el.children.splice(i, 0, c);
+      }
+      return c;
+    },
+    replaceChild(c, old) { const i = el.children.indexOf(old); if (i !== -1) { el.children[i] = c; try { c.parentNode = el; } catch (_) { /* shim */ } } return old; },
     removeChild() {}, remove() { el.isConnected = false; },
     querySelectorAll() { return []; },
     querySelector() { return null; }, // v1.317: the hydrated video path asks its action row for children ("not found" branch)
     // v1.317: the hydrated video path (initWatch steps 3-9) mounts the action-row buttons;
     // permissive no-ops like insertAdjacentHTML above (nothing here is under test).
-    replaceChildren() {}, append() {}, prepend() {}, before() {}, after() {}, matches() { return false; }, hasAttribute() { return false; }, contains() { return false; }, dispatchEvent() { return true; }, scrollIntoView() {},
+    replaceChildren() {}, append() {}, prepend() {}, before() {}, after() {}, matches() { return false; }, hasAttribute(n) { return Object.prototype.hasOwnProperty.call(el._attrs, n); }, contains() { return false; }, dispatchEvent() { return true; }, scrollIntoView() {},
     closest() { return null; },
     focus() {}, click() {},
     getBoundingClientRect() { return { top: 0, left: 0, width: 100, height: 100 }; },
   };
   Object.defineProperty(el, 'firstChild', { get() { return el.children[0] || null; }, configurable: true });
+  Object.defineProperty(el, 'nextSibling', { get() { const sibs = (parent && parent.children) || []; const i = sibs.indexOf(el); return i === -1 ? null : (sibs[i + 1] || null); }, configurable: true });
   let parent;
   Object.defineProperty(el, 'parentNode', {
     get() { if (parent === undefined) parent = makeEl('div'); return parent; },
@@ -185,6 +215,10 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides,
   const theaterCalls = [];
   const documentShim = {
     createElement: (t) => makeEl(t),
+    // UI pass sweep S2: the related rail builds through the ui primitives
+    // (window.ui below), and ui.icon draws an SVG element.
+    createElementNS: (_ns, t) => makeEl(t),
+    createDocumentFragment: () => makeEl('fragment'),
     createTextNode: () => makeEl('text'),
     querySelector: (sel) => getEl(sel),
     querySelectorAll: () => [],
@@ -253,6 +287,10 @@ function buildWatchRealm({ cacheEntry, search = '?v=vid1', fetchImpl, overrides,
   sandbox.renderPinnedSidebar = () => {};
   sandbox.FileTube = windowShim.FileTube;
   vm.createContext(sandbox);
+  // UI pass sweeps S2/S3: every shell loads ui.js before watch.js; the related rail, the
+  // action bar, the channel row and About this file are built by it - evaluated IN this
+  // realm, so its builders draw on the shim document (window.ui).
+  vm.runInContext(fs.readFileSync(path.join(REPO, 'public/js/ui.js'), 'utf8'), sandbox, { filename: 'ui.js' });
   // v1.317 M4: every shell loads ambient.js BEFORE watch.js (the census in
   // shell-script-global-collisions.test.js); load it here too, so the watch path's
   // setupAmbientMode runs the REAL shared host instead of returning at its guard.
@@ -271,7 +309,7 @@ const WARM_SUBSCRIBED_CACHE = {
 
 test('frame-one seed + warm cache: init() completes (no TDZ) and renders Subscribed + Pin synchronously', () => {
   const { init, els } = buildWatchRealm({ cacheEntry: WARM_SUBSCRIBED_CACHE });
-  const btn = Object.assign(makeEl('button'), { hidden: true });
+  const btn = Object.assign(makeEl('button'), { hidden: true, id: 'subscribe-btn-mock' });
   els.set('#subscribe-btn-mock', btn);
   const root = makeEl('div');
   root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
@@ -282,48 +320,60 @@ test('frame-one seed + warm cache: init() completes (no TDZ) and renders Subscri
   assert.equal(labelOf(btn), 'Subscribed', 'labeled from the cached sub match, never the "Subscribe" flash');
   const pin = btn.parentNode.children.find((c) => c.id === 'pin-channel-btn');
   assert.ok(pin, 'Pin button created in the SAME frame-one apply, not a later round trip');
-  assert.equal(labelOf(pin), 'Pin channel');
+  assert.equal(labelOf(pin), '[keep] Pin channel');
   // v1.314: the push bell renders in the same frame-one apply, OFF for a cached
   // record without the flag (the opt-in default).
   const bell = btn.parentNode.children.find((c) => c.id === 'notify-channel-btn');
   assert.ok(bell, 'Notify bell created in the SAME frame-one apply');
-  assert.equal(labelOf(bell), '[bellOff] Notify');
-  // v1.340 (Dean: "notify button shifts unreasonably"): BOTH labels are laid out, only the
-  // idle one hidden, so the button is as wide as "Notifying" in either state.
-  assert.match(bell.innerHTML, /<span class="btn-label-slot" data-idle><svg [^>]*><path d="[^"]*"\/><\/svg>Notifying<\/span><span class="btn-label-slot"><svg [^>]*><path d="[^"]*"\/><\/svg>Notify<\/span>/);
-  assert.doesNotMatch(bell.innerHTML, /\u{1F514}|\u{1F515}/u, 'no emoji bell');
-  assert.match(pin.innerHTML, /<span class="btn-label-slot">Pin channel<\/span><span class="btn-label-slot" data-idle>Pinned<svg [^>]*><path d="[^"]*"\/><\/svg><\/span>/);
-  assert.doesNotMatch(pin.innerHTML, /★/, 'gate r1 W2: no text star (a taller fallback-font glyph) - it is drawn');
-  assert.match(btn.innerHTML, /<span class="btn-label-slot">Subscribed<\/span><span class="btn-label-slot" data-idle>Subscribe<\/span>/);
-  // (the shim's setAttribute is a no-op, so aria-pressed is bound in ytdlp-subscriptions-client / by the label here)
+  assert.equal(labelOf(bell), '[notifications_off] Notify');
+  // UI pass sweep S3 (D4.9, F06, F32): Subscribed is the SECONDARY pill (the primary red is
+  // "Subscribe" only), and the bell and pin are sm plain icon toggles - never gold or red,
+  // their state is aria-pressed + the filled registry glyph (no text symbol, no emoji).
+  assert.ok(btn.classList.contains('ui-btn--secondary') && !btn.classList.contains('ui-btn--primary'), 'Subscribed = secondary');
+  for (const t of [bell, pin]) {
+    for (const c of ['ui-btn', 'ui-btn--plain', 'ui-btn--sm', 'ui-btn--icon']) assert.ok(t.classList.contains(c), `${t.id} carries ${c}`);
+    assert.ok(!/primary|danger/.test(t.className), `${t.id} is never the red fill`);
+  }
+  assert.deepEqual([bell.getAttribute('data-icon-off'), bell.getAttribute('data-icon-on')], ['notifications_off', 'notifications_active']);
+  assert.deepEqual([pin.getAttribute('data-icon-off'), pin.getAttribute('data-icon-on')], ['keep', 'keep.fill']);
+  // the order is Subscribe, the bell, the pin (the bell's slot sits between them)
+  const ids = btn.parentNode.children.map((c) => c.id);
+  assert.ok(ids.indexOf('notify-channel-btn') > ids.indexOf('subscribe-btn-mock') && ids.indexOf('pin-channel-btn') > ids.indexOf('notify-channel-btn'), 'order: ' + ids.join(','));
 });
 
 test('v1.314 frame-one bell: a cached subscription with pushBell:true renders the bell ON; an UNSUBSCRIBED page renders no bell at all', () => {
   const on = buildWatchRealm({ cacheEntry: { ...WARM_SUBSCRIBED_CACHE, subs: [{ ...WARM_SUBSCRIBED_CACHE.subs[0], pushBell: true }] } });
-  const btn = Object.assign(makeEl('button'), { hidden: true });
+  const btn = Object.assign(makeEl('button'), { hidden: true, id: 'subscribe-btn-mock' });
   on.els.set('#subscribe-btn-mock', btn);
   const root = makeEl('div');
   root.querySelector = (sel) => { if (!on.els.has(sel)) on.els.set(sel, makeEl('div')); return on.els.get(sel); };
   on.init(root);
   const bell = btn.parentNode.children.find((c) => c.id === 'notify-channel-btn');
   assert.ok(bell, 'bell present');
-  assert.equal(labelOf(bell), '[bell] Notifying', 'the cached ON flag renders ON in frame one (scrubSubsForCache must carry it)');
+  assert.equal(labelOf(bell), '[notifications_active] Notifying', 'the cached ON flag renders ON in frame one (scrubSubsForCache must carry it)');
 
   const off = buildWatchRealm({ cacheEntry: { ...WARM_SUBSCRIBED_CACHE, subs: [{ id: 's9', channelUrl: 'https://www.youtube.com/@someoneelse', name: 'Else' }] } });
-  const btn2 = Object.assign(makeEl('button'), { hidden: true });
+  const btn2 = Object.assign(makeEl('button'), { hidden: true, id: 'subscribe-btn-mock' });
   off.els.set('#subscribe-btn-mock', btn2);
   const root2 = makeEl('div');
   root2.querySelector = (sel) => { if (!off.els.has(sel)) off.els.set(sel, makeEl('div')); return off.els.get(sel); };
   off.init(root2);
   assert.equal(labelOf(btn2), 'Subscribe', 'precondition: not subscribed to this channel');
-  assert.equal(btn2.parentNode.children.find((c) => c.id === 'notify-channel-btn'), undefined, 'no bell without a subscription record to hang it on');
+  assert.ok(btn2.classList.contains('ui-btn--primary'), 'not subscribed: Subscribe is the primary pill');
+  // UI pass sweep S3 (D4.9): no LIVE bell without a subscription record to hang it on - its
+  // slot is RESERVED (visibility:hidden, inert, out of the a11y tree) so Pin never moves.
+  const reserved = btn2.parentNode.children.find((c) => c.id === 'notify-channel-btn');
+  assert.ok(reserved, 'the bell slot is reserved');
+  assert.equal(labelOf(reserved), '(reserved)');
+  assert.equal(reserved.getAttribute('aria-hidden'), 'true');
+  assert.ok(reserved.hasAttribute('inert'), 'inert: it can never be tabbed to or tapped');
 });
 
 test('cached moduleEnabled:false HIDES but never removes (the confirmed answer must still be able to show)', () => {
   const { init, els } = buildWatchRealm({
     cacheEntry: { ...WARM_SUBSCRIBED_CACHE, moduleEnabled: false },
   });
-  const btn = Object.assign(makeEl('button'), { hidden: true });
+  const btn = Object.assign(makeEl('button'), { hidden: true, id: 'subscribe-btn-mock' });
   els.set('#subscribe-btn-mock', btn);
   const root = makeEl('div');
   root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
@@ -392,7 +442,7 @@ test('a watch URL with NO id still bounces home (the guard the fallback must not
 
 test('cold cache: init() completes and the button simply stays as the markup left it', () => {
   const { init, els } = buildWatchRealm({}); // no cache entry at all
-  const btn = Object.assign(makeEl('button'), { hidden: true });
+  const btn = Object.assign(makeEl('button'), { hidden: true, id: 'subscribe-btn-mock' });
   els.set('#subscribe-btn-mock', btn);
   const root = makeEl('div');
   root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
@@ -440,6 +490,7 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
   const commentsBox = makeEl('div'); els.set('#comments-container', commentsBox);
   const relatedHeader = makeEl('div'); relatedHeader.hidden = true; els.set('#related-header', relatedHeader);
   const relatedBox = makeEl('div'); els.set('#related-files-container', relatedBox);
+  relatedBox.replaceChildren = (...nodes) => { relatedBox._rail = nodes; }; // sweep S2: the rail renders DOM nodes
   const root = makeEl('div');
   root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
 
@@ -486,7 +537,7 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
   // v1.198 (Dean's polish round, all device-confirmed via the live probe):
   assert.equal(filePathEl.textContent, 'My Show S01E02 - Pilot.mp4', 'the File Path row paints the BASENAME (was a forever-shimmer)');
   assert.equal(descPara.textContent, '', 'the description is empty now (the filename moved to the File Path row - no duplication)');
-  assert.equal(subBtn.style.display, 'none', 'NO Subscribe on an episode (the [hidden]-loses-to-display class made it show)');
+  assert.equal(subBtn.hidden, true, 'NO Subscribe on an episode (hidden; ui.css\'s global [hidden] rule closed the [hidden]-loses-to-display class that made it show)');
   assert.ok(commentsBox.children.length > 0, 'the fake retro comments render on episodes (same machinery as videos, episode-id-scoped)');
   // Slim-gate WARNING 1: rendering alone is not VISIBILITY - re-adding
   // '#comments-container' to hideTvVideoChrome's list appends children into a
@@ -502,19 +553,19 @@ test('v1.196 ?tv= load: drives the shared player with the tv descriptor and neve
   // [ep0, ep1, ep2] -> [ep2, ep0]; the ep0-after-ep2 ordering IS the wrap bind).
   assert.equal(relatedHeader.hidden, false, 'the Up-next header is revealed on tv');
   assert.equal(relatedHeader.textContent, 'Up next', 'labelled Up next, not Related files');
-  const ep2At = relatedBox.innerHTML.indexOf('?tv=ep2');
-  const ep0At = relatedBox.innerHTML.indexOf('?tv=ep0');
+  const ep2At = railDump(relatedBox).indexOf('?tv=ep2');
+  const ep0At = railDump(relatedBox).indexOf('?tv=ep0');
   assert.ok(ep2At !== -1 && ep0At !== -1, 'both other episodes render as ?tv= cards');
   assert.ok(ep2At < ep0At, 'ep2 (next in order) precedes ep0 (the wrap-around)');
-  assert.ok(!relatedBox.innerHTML.includes('?tv=ep1'), 'the CURRENT episode is excluded');
-  assert.ok(relatedBox.innerHTML.includes('/tvthumb/ep2'), 'cards use the per-episode art route');
+  assert.ok(!railDump(relatedBox).includes('?tv=ep1'), 'the CURRENT episode is excluded');
+  assert.ok(railDump(relatedBox).includes('/tvthumb/ep2'), 'cards use the per-episode art route');
   // Gate W1 (presence-not-binding): the hide mechanism is style.display, which
   // the .hidden asserts above cannot see - re-adding the rail selectors to the
   // hide list rendered everything into an invisible container, suite green.
   assert.notEqual(relatedHeader.style.display, 'none', 'the header is not display-hidden (the tv hide-list must not cover it)');
   assert.notEqual(relatedBox.style.display, 'none', 'the container is not display-hidden');
   // Gate S1: the enriched fixture drives the real card-title path.
-  assert.ok(relatedBox.innerHTML.includes('S01E03 - End'), 'the SxxEyy code + title render (padding + escape path exercised)');
+  assert.ok(railDump(relatedBox).includes('S01E03 - End'), 'the SxxEyy code + title render (padding + escape path exercised)');
 });
 
 // Gate W2's empty axis: a single-episode show has NO "up next" - the header must
@@ -538,6 +589,7 @@ test('v1.198.1 Up-next rail: a single-episode show hides the header and clears t
   const { init, els } = buildWatchRealm({ search: '?tv=solo', fetchImpl });
   const relatedHeader = makeEl('div'); relatedHeader.hidden = true; els.set('#related-header', relatedHeader);
   const relatedBox = makeEl('div'); els.set('#related-files-container', relatedBox);
+  relatedBox.replaceChildren = (...nodes) => { relatedBox._rail = nodes; }; // sweep S2: the rail renders DOM nodes
   const root = makeEl('div');
   root.querySelector = (sel) => { if (!els.has(sel)) els.set(sel, makeEl('div')); return els.get(sel); };
   init(root);
@@ -600,7 +652,7 @@ function mountSubscribed(cacheEntry, extra) {
     },
     overrides: extra && extra.overrides,
   });
-  const btn = Object.assign(makeEl('button'), { hidden: true });
+  const btn = Object.assign(makeEl('button'), { hidden: true, id: 'subscribe-btn-mock' });
   realm.els.set('#subscribe-btn-mock', btn);
   const root = makeEl('div');
   root.querySelector = (sel) => { if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div')); return realm.els.get(sel); };
@@ -609,35 +661,49 @@ function mountSubscribed(cacheEntry, extra) {
   return { realm, btn, calls, bell };
 }
 
-test('v1.314 gate W1: an in-page UNSUBSCRIBE (DELETE 200) removes the bell - it can never PATCH a deleted subscription', async () => {
-  const { btn, calls, bell } = mountSubscribed(WARM_SUBSCRIBED_CACHE, {
+test('v1.314 gate W1: an in-page UNSUBSCRIBE (DELETE 200) disarms the bell - it can never PATCH a deleted subscription', async () => {
+  const { btn, calls, bell, realm } = mountSubscribed(WARM_SUBSCRIBED_CACHE, {
     route: (m, url) => (m === 'DELETE' && url === '/api/subscriptions/s1') ? jsonRes(200, {}) : null,
   });
+  // UI pass S3 (F33): unsubscribing goes through ui.confirm - answered yes here (the
+  // confirm's own no-paths are bound in watch-destructive-confirm.test.js).
+  const asked = [];
+  realm.win.ui.confirm = (o) => { asked.push(o); return Promise.resolve(true); };
   assert.equal(labelOf(btn), 'Subscribed');
   assert.ok(bell(), 'precondition: bell present while subscribed');
   btn._l.click();
-  await settle(); await settle();
+  await settle(); await settle(); await settle();
+  assert.equal(asked.length, 1, 'one confirm');
+  assert.equal(asked[0].danger, true, 'the danger fill');
   assert.equal(labelOf(btn), 'Subscribe', 'the DELETE resolved');
-  assert.equal(bell(), undefined, 'the bell is GONE with the record (W1 scenario A)');
+  assert.equal(labelOf(bell()), '(reserved)', 'the bell is DISARMED with the record (W1 scenario A): its slot only');
+  const before = calls.length;
+  bell()._l.click();
+  await settle();
+  assert.equal(calls.length, before, 'a disarmed bell sends nothing (no PATCH to a deleted id)');
   assert.ok(calls.some((c) => c.method === 'DELETE'), 'the unsubscribe fetch fired');
 });
 
 test('v1.314 gate W1: an in-page SUBSCRIBE (modal confirm, POST 201) creates the bell OFF from the POST response, and the cache carries it', async () => {
   let handlers = null;
+  const sheetCalls = [];
   const { btn, bell, realm } = mountSubscribed({ ...WARM_SUBSCRIBED_CACHE, subs: [] }, {
     route: (m, url) => (m === 'POST' && url === '/api/subscriptions') ? jsonRes(201, { id: 'new1', channelUrl: 'https://www.youtube.com/@chan', pushBell: false }) : null,
-    overrides: { buildSubscribeModal: (doc, opts, h) => { handlers = h; return { setError() {}, backdrop: makeEl('div'), modal: makeEl('div') }; } },
+    // step 7: the dialog is a ui.sheet - the captured stub hands back a sheet controller
+    overrides: { buildSubscribeModal: (doc, opts, h) => { handlers = h; return { setError() {}, sheet: { open() { sheetCalls.push('open'); }, close() { sheetCalls.push('close'); } }, backdrop: makeEl('div'), modal: makeEl('div') }; } },
   });
   assert.equal(labelOf(btn), 'Subscribe', 'precondition: not subscribed');
-  assert.equal(bell(), undefined, 'precondition: no bell');
+  assert.equal(labelOf(bell()), '(reserved)', 'precondition: no live bell (its slot is reserved)');
   btn._l.click(); // opens the (captured) modal
   assert.ok(handlers && typeof handlers.onConfirm === 'function', 'the modal handlers were captured');
+  assert.deepEqual(sheetCalls, ['open'], 'step 7: the tap opens the Subscribe sheet');
   handlers.onConfirm({ channelUrl: 'https://www.youtube.com/@chan', format: 'video' });
   await settle(); await settle();
   assert.equal(labelOf(btn), 'Subscribed');
+  assert.deepEqual(sheetCalls, ['open', 'close'], 'a good response closes the sheet');
   const b = bell();
   assert.ok(b, 'the bell appears WITHOUT a reload (W1 scenario B / D9 "one tap after adding")');
-  assert.equal(labelOf(b), '[bellOff] Notify', 'off by default');
+  assert.equal(labelOf(b), '[notifications_off] Notify', 'off by default');
   const cached = JSON.parse(global.sessionStorage.getItem('ft-cap-cache-v1'));
   const rec = cached.subs.find((x) => x.id === 'new1');
   assert.strictEqual(rec.pushBell, false, 'the cached record carries its bell (write-through)');
@@ -652,12 +718,12 @@ test('v1.314 gate S1: tapping the bell PATCHes { pushBell: true }, the label fol
       : null,
   });
   const b = bell();
-  assert.equal(labelOf(b), '[bellOff] Notify');
+  assert.equal(labelOf(b), '[notifications_off] Notify');
   b._l.click();
   await settle(); await settle(); await settle();
   const patch = calls.find((c) => c.method === 'PATCH');
   assert.deepEqual(patch.body, { pushBell: true }, 'the PATCH body flips the flag');
-  assert.equal(labelOf(b), '[bell] Notifying', 'the label follows the server response');
+  assert.equal(labelOf(b), '[notifications_active] Notifying', 'the label follows the server response');
   assert.equal(b.disabled, false, 're-enabled');
   const cached = JSON.parse(global.sessionStorage.getItem('ft-cap-cache-v1'));
   assert.strictEqual(cached.subs.find((x) => x.id === 's1').pushBell, true, 'write-through to the cache');
@@ -665,7 +731,7 @@ test('v1.314 gate S1: tapping the bell PATCHes { pushBell: true }, the label fol
   b._l.click();
   await settle(); await settle(); await settle();
   assert.equal(calls.filter((c) => c.method === 'PATCH').length, 2, 'a second PATCH was attempted');
-  assert.equal(labelOf(b), '[bell] Notifying', 'a 403 leaves the label at the unchanged state (D8)');
+  assert.equal(labelOf(b), '[notifications_active] Notifying', 'a 403 leaves the label at the unchanged state (D8)');
   assert.equal(b.disabled, false);
 });
 
@@ -688,7 +754,7 @@ function mountVideoPath() {
   // page-side common.js globals the hydration path reaches (not exported; stubbed like
   // primePinnedSidebarFromCache above) - the harness's default hangs never got this far.
   const realm = buildWatchRealm({ cacheEntry: WARM_SUBSCRIBED_CACHE, fetchImpl: routeVideoHydration, overrides: { applyLikedSidebarEntry: () => {} } });
-  const btn = Object.assign(makeEl('button'), { hidden: true });
+  const btn = Object.assign(makeEl('button'), { hidden: true, id: 'subscribe-btn-mock' });
   realm.els.set('#subscribe-btn-mock', btn);
   const root = makeEl('div');
   root.querySelector = (sel) => { if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div')); return realm.els.get(sel); };
@@ -719,7 +785,7 @@ test('gate r1 F3: both watch player.load calls claim the plain-video end: autoAd
   // the ADOPT entry: the player already holds vid1 (a Listen play of it), so init() mounts through
   // the synchronous early adopt call and step 4 re-loads once the detail resolves
   const realm = buildWatchRealm({ cacheEntry: WARM_SUBSCRIBED_CACHE, fetchImpl: routeVideoHydration, overrides: { applyLikedSidebarEntry: () => {} }, playerCurrentId: 'vid1' });
-  const btn = Object.assign(makeEl('button'), { hidden: true });
+  const btn = Object.assign(makeEl('button'), { hidden: true, id: 'subscribe-btn-mock' });
   realm.els.set('#subscribe-btn-mock', btn);
   const root = makeEl('div');
   root.querySelector = (sel) => { if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div')); return realm.els.get(sel); };
@@ -837,14 +903,15 @@ function makeReserveRealm(search, fetchImpl) {
   get('.watch-container').style.setProperty = (k, v) => { writes.push([k, v]); };
   get('.watch-container').style.removeProperty = (k) => { removed.push(k); };
   const rects = { stage: { bottom: 564, height: 484 }, bar: { bottom: 736.4, height: 119 }, row: { bottom: 826, height: 74 }, title: { bottom: 605, height: 25 } };
-  // gate r1 (qa W1 = adversary W1): the rects honour an inline `display: none` exactly as a
-  // browser does (all zeros) - hideTvVideoChrome hides the bar that way on a TV episode, and
-  // the r0 test hand-typed a bar box the tv path can never produce.
+  // gate r1 (qa W1 = adversary W1): the rects honour `hidden` exactly as a browser does
+  // (all zeros; ui.css's global [hidden] rule) - hideTvVideoChrome hides the bar that way on
+  // a TV episode (UI pass S3; an inline display:none before), and the r0 test hand-typed a
+  // bar box the tv path can never produce.
   const HIDDEN_RECT = { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 };
-  const rectFor = (sel, key) => { const el = get(sel); el.getBoundingClientRect = () => (el.style.display === 'none' ? HIDDEN_RECT : rects[key]); };
+  const rectFor = (sel, key) => { const el = get(sel); el.getBoundingClientRect = () => (el.hidden === true || el.style.display === 'none' ? HIDDEN_RECT : rects[key]); };
   rectFor('.watch-player-stage', 'stage');
   rectFor('.watch-action-bar', 'bar');
-  rectFor('.uploader-info-panel', 'row');
+  rectFor('.watch-channel', 'row');
   rectFor('.watch-title', 'title');
   // gate r1 (adversary W3): the host the stage holds carries player.js's `--media-aspect`
   const host = { aspect: '', style: { getPropertyValue: (k) => (k === '--media-aspect' ? host.aspect : '') } };
@@ -912,8 +979,8 @@ test('v1.319 theatre reserve (?tv=): the episode path wires the SAME reserve (th
   const ro = t.reserveRo();
   assert.ok(ro, 'initTvWatch reached setupTheatreReserve');
   // gate r1 (qa W1 = adversary W1): the REAL tv shape - hideTvVideoChrome hid the bar
-  assert.strictEqual(t.get('.watch-action-bar').style.display, 'none', 'precondition: the tv path hid the action bar (its rect now reads all zeros)');
-  assert.ok(ro.targets.includes(t.get('.uploader-info-panel')), 'the show row is observed');
+  assert.strictEqual(t.get('.watch-action-bar').hidden, true, 'precondition: the tv path hid the action bar (its rect now reads all zeros)');
+  assert.ok(ro.targets.includes(t.get('.watch-channel')), 'the show row is observed');
   assert.ok(ro.targets.includes(t.get('.watch-main')), 'the column is observed (the tv back link inserted above the title moves the row without resizing it)');
   t.flush();
   const n = t.writes.length;
@@ -1146,7 +1213,7 @@ function mountUniversal({ item = UNIVERSAL_ITEM, cacheEntry = WARM_UNSUBSCRIBED_
       return r ? Promise.resolve(r) : new Promise(() => {});
     },
   });
-  const btn = Object.assign(makeEl('button'), { hidden: true });
+  const btn = Object.assign(makeEl('button'), { hidden: true, id: 'subscribe-btn-mock' });
   realm.els.set('#subscribe-btn-mock', btn);
   const container = btn.parentNode;
   const root = makeEl('div');
@@ -1167,7 +1234,7 @@ test('v1.338 D8a frame one: a download from another site renders Pin (visible, "
   const p = pin();
   assert.ok(p, 'Pin is created in the frame-one apply for a sourceExtractor item');
   assert.equal(p.hidden, false, 'and it is visible');
-  assert.equal(labelOf(p), 'Pin channel');
+  assert.equal(labelOf(p), '[keep] Pin channel');
   assert.equal(bell(), undefined, 'no bell: it belongs to a subscription record');
 });
 
@@ -1211,11 +1278,11 @@ test('v1.338 D8a: the Pin POSTs the item\'s own folder + uploader, flips to Pinn
   const post = calls.find((c) => c.method === 'POST' && c.url === '/api/subscriptions/pins');
   assert.ok(post, 'the pin request fired');
   assert.deepStrictEqual(post.body, { channelDir: '/downloads/someuser', label: 'someuser' }, 'the folder the universal lane put the uploader in, labelled with the uploader');
-  assert.equal(labelOf(p), 'Pinned [starFilled]');
+  assert.equal(labelOf(p), '[keep.fill] Pinned');
   p._l.click();
   for (let i = 0; i < 6; i++) await settle();
   assert.ok(calls.some((c) => c.method === 'DELETE' && c.url === '/api/subscriptions/pins/pin-someuser'), 'unpin DELETEs the id the POST returned');
-  assert.equal(labelOf(p), 'Pin channel');
+  assert.equal(labelOf(p), '[keep] Pin channel');
 });
 
 test('v1.338 D8a: the module gate still rules - a disabled module (cached AND confirmed) gives a download from another site no Pin', async () => {
@@ -1251,32 +1318,7 @@ test('v1.338 D8a UNCHANGED: a plain local file (no sourceExtractor, no identity)
 // isYtdlpManagedItem. A download from another site whose site reported no uploader
 // (no channelName) got the local-file hard-delete modal; it now gets the downloaded-
 // item confirm. Both arms end in the SAME DELETE /api/videos/:id (performMediaDelete).
-async function driveWatchDelete(item) {
-  const seen = [];
-  const u = mountUniversal({
-    item, health: null,
-    pinRoute: (m, url) => (m === 'DELETE' && url === '/api/videos/vid1') ? jsonRes(200, { success: true, outcome: 'clean' }) : null,
-    overrides: {
-      showConfirmModal: (title, html, onConfirm) => { seen.push({ modal: 'confirm', title, onConfirm }); },
-      showHardDeleteModal: (it, onConfirm) => { seen.push({ modal: 'hard', onConfirm }); },
-      deleteResultToast: () => 'ok', showToast: () => {},
-    },
-  });
-  for (let i = 0; i < 60 && !u.calls.some((c) => c.url === '/api/videos/vid1'); i++) await settle();
-  for (let i = 0; i < 20; i++) await settle();
-  const del = u.realm.els.get('#delete-media-btn');
-  assert.ok(del && del._l && typeof del._l.click === 'function', 'precondition: the delete click listener is wired');
-  del._l.click();
-  assert.equal(seen.length, 1, 'exactly one confirm opened');
-  await seen[0].onConfirm();
-  for (let i = 0; i < 6; i++) await settle();
-  assert.ok(u.calls.some((c) => c.method === 'DELETE' && c.url === '/api/videos/vid1'), 'the confirm fires DELETE /api/videos/:id');
-  return seen[0].modal;
-}
-
-test('v1.338 D8d watch delete: a download from another site with NO captured uploader gets the downloaded-item confirm; a plain local file keeps the hard-delete modal', async () => {
-  const noUploader = { ...UNIVERSAL_ITEM, channelName: undefined };
-  assert.equal(await driveWatchDelete(noUploader), 'confirm', 'sourceExtractor alone marks it downloaded (re-downloadable)');
-  const local = { ...UNIVERSAL_ITEM, filePath: '/media/home/movie.mp4', sourceExtractor: undefined, sourceId: undefined, channelName: undefined };
-  assert.equal(await driveWatchDelete(local), 'hard', 'a plain local file is still irreplaceable: the checkbox-gated modal');
-});
+// v1.338 D8d (the watch delete's copy per item kind: a download from another site with no
+// captured uploader is re-downloadable; a plain local file is not) moved with the delete to
+// the More menu's ui.confirm in UI pass sweep S3 - bound on the REAL DOM in
+// test/unit/watch-destructive-confirm.test.js ("the copy says what runs, per item kind").

@@ -1,13 +1,13 @@
 'use strict';
 
 // [UNIT] v1.96 Wave A -- the watch-page action row (`.watch-actions`):
-//   A1: on mobile its buttons drop 5px UNDER the v1.95 44px touch floor, to a
-//       single tunable token (Dean's device pass is the arbiter), SCOPED so no
-//       other `.btn` and none of the v1.95 44px controls regress.
+//   A1: (v1.96: its .btn buttons sat 5px under the 44px floor via a scoped token;
+//       UI pass S3 retired that row) the bar's stacked ui-btns keep the primitive's
+//       44px floor and the row reserves it.
 //   A2: the row reveals ONCE in its final state -- watch.html ships it
 //       `data-loading` (shimmered, all children hidden), and watch.js drops the
-//       attribute only after the COMPLETE synchronous injected-button set is
-//       mounted, so the user never sees the static-4 -> injected-rest pop-in.
+//       attribute only after every input the actions depend on has settled, so
+//       the user never sees a partial set.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -21,49 +21,16 @@ const css = fs.readFileSync(CSS_PATH, 'utf8');
 const html = fs.readFileSync(HTML_PATH, 'utf8');
 const watchJs = fs.readFileSync(WATCH_JS_PATH, 'utf8');
 
-// Depth-count a `@media (max-width: 768px)` block's body by a marker it contains.
-function mediaBlockContaining(marker) {
-  const mediaRe = /@media \(max-width: 768px\)\s*\{/g;
-  let m;
-  while ((m = mediaRe.exec(css))) {
-    let depth = 1;
-    let i = m.index + m[0].length;
-    const start = i;
-    while (depth > 0 && i < css.length) {
-      if (css[i] === '{') depth++;
-      else if (css[i] === '}') depth--;
-      i++;
-    }
-    const body = css.slice(start, i - 1);
-    if (body.includes(marker)) return body;
-  }
-  return null;
-}
+// ---- A1: the bar height (UI pass S3: the stacked ui-btn floor) -----------
 
-function rootTokenPx(name) {
-  // Sizing tokens live in style.css's SECOND :root block, so scan the whole
-  // file for the token's DEFINITION (`--name: <n>px`, not a `var()` usage).
-  const re = new RegExp(`${name.replace(/[-]/g, '\\-')}:\\s*(\\d+)px`);
-  const m = re.exec(css);
-  return m ? Number(m[1]) : undefined;
-}
-
-// ---- A1: shorter, scoped, tunable ----------------------------------------
-
-test('A1: --size-touch-watch-action is defined and sits 5px UNDER the 44px --size-touch floor', () => {
-  const watchAction = rootTokenPx('--size-touch-watch-action');
-  const touch = rootTokenPx('--size-touch');
-  assert.equal(touch, 44, 'sanity: --size-touch is the 44px iOS floor');
-  assert.ok(watchAction !== undefined, 'expected --size-touch-watch-action in :root (the tunable knob)');
-  assert.ok(watchAction < touch,
-    `the watch action buttons must be shorter than the 44px floor (got ${watchAction}px)`);
-  assert.equal(watchAction, 39, 'Dean\'s starting number is 39px (tunable; his device pass is the arbiter)');
-});
-
-test('A1: a mobile @media block scopes the shorter height to .watch-actions .btn via the token', () => {
-  // The rule must exist in SOME max-width:768px block, keyed to .watch-actions .btn.
-  const block = mediaBlockContaining('.watch-actions .btn { min-height: var(--size-touch-watch-action)');
-  assert.ok(block, 'expected an @media(max-width:768px) `.watch-actions .btn { min-height: var(--size-touch-watch-action) }` rule');
+// UI pass sweep S3 (D4.9; converts the v1.96 A1 locks, AC12): the bar's buttons are stacked
+// ui-btns (icon over a caption) whose height is the primitive's own --ctl-lg floor (44px, the
+// hit area); the v1.96 39px scoped override (--size-touch-watch-action) is retired with the
+// .btn row it shortened (gate r1 removed the token itself from tokens.css).
+test('A1 (S3): the bar reserves the stacked button\'s 44px height; no scoped shorter override remains', () => {
+  assert.match(css, /\n\.watch-actions \{[^}]*min-height: var\(--ctl-lg\);[^}]*\}/, 'the row reserves the stacked ui-btn height');
+  assert.ok(!/var\(--size-touch-watch-action\)/.test(css), 'no rule reads the retired 39px knob');
+  assert.match(watchJs, /const b = ui\.button\(Object\.assign\(\{ variant: 'plain', shape: 'stack' \}, o\)\);/, 'every bar button is a stacked plain ui-btn');
 });
 
 test('A1: the shorter height is SCOPED -- the global .btn keeps the v1.95 44px floor (no bare `.btn { min-height:39... }`)', () => {
@@ -79,9 +46,9 @@ test('A1: the shorter height is SCOPED -- the global .btn keeps the v1.95 44px f
 // ---- A2: reveal-once (no pop-in) -----------------------------------------
 
 test('A2: watch.html ships .watch-actions with the data-loading attribute (shimmer-until-ready)', () => {
-  assert.match(html, /<div class="watch-actions" data-loading>/,
+  assert.match(html, /<div class="watch-actions" id="watch-actions" role="toolbar" data-loading><\/div>/,
     'the action row must ship `data-loading` so it shimmers until the full button set is mounted');
-  // The `class="watch-actions"` substring lock (watch-action-bar-nowrap.test.js) stays intact.
+  // The `class="watch-actions"` substring (bound by watch-sweep-s3.test.js) stays intact.
   assert.ok(html.includes('class="watch-actions"'),
     'the class="watch-actions" lock must be preserved (attribute, not a second class)');
 });
@@ -96,7 +63,7 @@ test('A2: CSS hides every child of a loading row and shimmers it', () => {
     'every child of a loading `.watch-actions` must be visibility:hidden (no partial button set shown)');
   const loadingRule = /\.watch-actions\[data-loading\][^{]*\{([^}]*)\}/.exec(css);
   assert.ok(loadingRule, 'expected a `.watch-actions[data-loading]` base rule');
-  assert.match(loadingRule[1], /background-color:\s*var\(--bg-secondary\)/,
+  assert.match(loadingRule[1], /background-color:\s*var\(--surface-2\)/,
     'the loading row wears the shared skeleton fill');
   assert.match(css, /\.watch-actions\[data-loading\]::after[^{]*\{[\s\S]*?animation:\s*skeleton-sweep/,
     'the loading row reuses the shared skeleton-sweep shimmer');

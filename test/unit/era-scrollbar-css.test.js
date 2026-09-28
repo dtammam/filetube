@@ -22,12 +22,14 @@
 //    for EVERY pseudo it overrides (gate W2: an earlier substring check let
 //    a deleted root form survive via the :hover sibling's spelling).
 //
-// 3. CENSUS BLINDNESS (gate W1, measured): css-token-lint's era/def-layer
-//    exclusion is SELECTOR-based (scripts/css-token-lint.js DEF_SELECTOR
-//    matches any [data-theme...] selector), so the era-scoped scrollbar
-//    rules are invisible to the token ratchet - a raw hex there ships with
-//    the census green. The tokens-only test below is the binding lock for
-//    this section; the linter-side gap is tech-debt #103.
+// 3. CENSUS BLINDNESS (gate W1, measured, history): the retired
+//    css-token-lint excluded any [data-theme...] selector, so the era-scoped
+//    scrollbar rules were invisible to its token ratchet (tech-debt #103).
+//    Its successor, ui-lint's no-raw-values (plan D10.1), counts era-scoped
+//    rules (test/unit/ui-lint.test.js, "#103"), so #103 closed at step 7. The
+//    tokens-only test below stays as this section's own lock: it forbids any
+//    raw colour here outright, where the ui-lint ratchet would only hold the
+//    section at its docs/ui-exceptions.json count.
 //
 // All source matching runs on a comment-stripped copy - the v1.50.x lesson,
 // re-proved by this very file's first run: the section-header PROSE mentions
@@ -79,7 +81,7 @@ test('base ::-webkit-scrollbar family exists with explicit bar sizing', () => {
 
   const track = findRule('::-webkit-scrollbar-track');
   assert.ok(track, 'expected a base ::-webkit-scrollbar-track rule');
-  assert.match(track[1], /background:\s*var\(--bg-color\);/);
+  assert.match(track[1], /background:\s*var\(--surface-0\);/);
 
   const thumb = findRule('::-webkit-scrollbar-thumb');
   assert.ok(thumb, 'expected a base ::-webkit-scrollbar-thumb rule');
@@ -137,16 +139,16 @@ test('2021 has NO era-scoped ::-webkit-scrollbar override at all: the base rules
   assert.ok(!stripped.includes('[data-theme="2021"] ::-webkit-scrollbar'));
 });
 
-test('CENSUS-BLINDNESS LOCK (gate W1): the entire scrollbar section carries NO raw color literal - css-token-lint cannot see [data-theme]-scoped rules, so this test is the ratchet for them', () => {
+test('CENSUS-BLINDNESS LOCK (gate W1): the entire scrollbar section carries NO raw color literal - a hard zero for the era-scoped rules (the retired css-token-lint could not see them; ui-lint only ratchets a count)', () => {
   const guard = supportsGuardRange();
   assert.ok(guard, 'expected the @supports guard (section end marker)');
   const sectionStart = stripped.indexOf('::-webkit-scrollbar');
   assert.ok(sectionStart !== -1 && sectionStart < guard.start, 'expected the webkit rules to precede the guard');
   const section = stripped.slice(sectionStart, guard.end);
-  // Sanity: the slice really spans the era-scoped rules the census is blind to.
+  // Sanity: the slice really spans the era-scoped rules (the ones the old census was blind to).
   assert.ok(section.includes('[data-theme="2005"]::-webkit-scrollbar'), 'section slice must cover the era-scoped rules');
   const literal = /#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(|(?<![\w-])(white|black|gold)(?![\w-])/.exec(section);
-  assert.strictEqual(literal, null, `raw color literal in the scrollbar section: "${literal && literal[0]}" - consume an era token instead (the token census is selector-blind here, tech-debt #103)`);
+  assert.strictEqual(literal, null, `raw color literal in the scrollbar section: "${literal && literal[0]}" - consume an era token instead (this section's hard zero; see the header note 3)`);
 });
 
 test('ENGINE PARTITION: every scrollbar-color and scrollbar-width declaration lives inside @supports not selector(::-webkit-scrollbar) - unguarded, Chromium 121+ discards the whole ::-webkit-scrollbar art', () => {
@@ -173,12 +175,12 @@ test('Firefox fallback: scrollbar-width does NOT inherit (gate W3), so both guar
   const body = stripped.slice(guard.start, guard.end);
   assert.match(
     body,
-    /html\s*,\s*html \*\s*\{[^}]*scrollbar-width:\s*thin;[^}]*scrollbar-color:\s*var\(--border-dark\)\s+var\(--bg-color\);[^}]*\}/,
+    /html\s*,\s*html \*\s*\{[^}]*scrollbar-width:\s*thin;[^}]*scrollbar-color:\s*var\(--border-dark\)\s+var\(--surface-0\);[^}]*\}/,
     'expected the 2021-look base on html AND html * (width does not inherit to inner scrollers)'
   );
   assert.match(
     body,
-    /\[data-theme="2005"\]\s*,\s*\[data-theme="2005"\] \*\s*,\s*\[data-theme="2009"\]\s*,\s*\[data-theme="2009"\] \*\s*,\s*\[data-theme="2014"\]\s*,\s*\[data-theme="2014"\] \*\s*\{[^}]*scrollbar-width:\s*auto;[^}]*scrollbar-color:\s*var\(--border-dark\)\s+var\(--bg-secondary\);[^}]*\}/,
+    /\[data-theme="2005"\]\s*,\s*\[data-theme="2005"\] \*\s*,\s*\[data-theme="2009"\]\s*,\s*\[data-theme="2009"\] \*\s*,\s*\[data-theme="2014"\]\s*,\s*\[data-theme="2014"\] \*\s*\{[^}]*scrollbar-width:\s*auto;[^}]*scrollbar-color:\s*var\(--border-dark\)\s+var\(--surface-2\);[^}]*\}/,
     'expected the retro-era override with per-era * descendant forms'
   );
 });

@@ -1,18 +1,16 @@
-// v1.316 (Dean, B2): the /subscriptions row chips (pin / push-bell / kebab)
-// are styled with each era's REAL control treatment by being real `.btn`s
-// (`btn btn-chip <role>`), not by a hand-copied per-chip bevel.
+// v1.316 (Dean, B2) -> UI pass S5: the /subscriptions row controls (pin / push-bell /
+// menu) carry each era's REAL control treatment by BEING the one control primitive,
+// not by a hand-copied per-control bevel.
 //
-// Why a lock and not only a look: the 2009 gloss is a `background-image` on
-// `.btn` alone; the 2005 flat bevel / 2014 flat / 2021 shadow ride `.btn`'s
-// `--btn-bg` + `--shadow`. A chip that declares its own background / border /
-// radius / shadow anywhere would paint OVER the era treatment (or drift from
-// it) and the row would silently fall out of the design language again. So:
-//   AC4  - every chip builder writes `btn btn-chip`; no rule targeting a chip
-//          role class declares a box property (vendor + case variants included);
-//          `.btn-chip` declares none either; the 2009 gloss still targets `.btn`.
-//   AC3  - ONE writer of the bell's rendered state (the glyph literals appear
-//          exactly once, inside applyBellState; the builder calls it).
-// Plan: docs/exec-plans/completed/2026-09-23-sub-bell-polish.md.
+// v1.316 made them `btn btn-chip <role>`; UI pass S5 converts that lock (AC12, the
+// plan's triage row "ui-btn era treatment attached once; role classes box-free"):
+//   AC4  - every row control is a ui.button (`ui-btn ui-btn--plain ui-btn--icon` +
+//          a role class); NO style.css or ui.css rule names a role class (so nothing
+//          can paint over or drift from the primitive), no per-era rule copies one,
+//          and the retired `.sub-row*` / `.btn-chip` family is gone for good;
+//   AC3  - ONE writer of the bell's rendered state (applyBellState -> ui.setPressed);
+//          the builder declares the bell's two glyphs exactly once.
+// Plan: docs/exec-plans/completed/2026-09-23-sub-bell-polish.md; UI pass D4.1/D4.9.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -21,140 +19,94 @@ const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
 const ROOT = path.join(__dirname, '..', '..');
-const CSS = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const strip = (css) => css.replace(/\/\*[\s\S]*?\*\//g, '');
+const STYLE = strip(fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8'));
+const UI = strip(fs.readFileSync(path.join(ROOT, 'public', 'css', 'ui.css'), 'utf8'));
 const JS_RAW = fs.readFileSync(path.join(ROOT, 'lib', 'ytdlp', 'client', 'subscriptions.js'), 'utf8');
 const JS = JS_RAW.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
 const { createSubscriptionRow, applyBellState } = require('../../lib/ytdlp/client/subscriptions.js');
-// The row builder reaches for common.js's avatar helpers as page globals.
-const common = require('../../public/js/common.js');
-global.resolveAvatarSource = common.resolveAvatarSource;
-global.chromeIconEl = common.chromeIconEl; // v1.340: the Subscriptions bell glyph (a common.js global)
-global.deriveAvatar = common.deriveAvatar;
 
-// v1.317 (QA r2 suggestion on v1.316.0): the `-active` modifier tokens join the census so a
-// future `.sub-row-bell-active { background }` cannot slip past the box-property lock.
-const ROLES = ['sub-row-pin', 'sub-row-bell', 'sub-row-kebab', 'sub-row-pin-active', 'sub-row-bell-active'];
+const ROLES = ['subs-pin', 'subs-bell', 'subs-more'];
+const doc = () => new JSDOM('<!doctype html><body></body>').window.document;
 
-// Every rule block whose selector list mentions `sel` (as a class token).
+// Every rule block whose selector list mentions `.sel` as a class token.
 function rulesTargeting(css, sel) {
   const out = [];
   const re = /([^{}]+)\{([^{}]*)\}/g;
   let m;
   while ((m = re.exec(css))) {
-    const selectors = m[1].trim();
-    if (new RegExp(`\\.${sel}(?![\\w-])`).test(selectors)) out.push({ selectors, body: m[2] });
-  }
-  return out;
-}
-// The box properties that carry an era's control treatment. Case-insensitive
-// and vendor-prefix-aware (the v1.313 lesson: a lower-case list is porous).
-// Gate r1 (qa #4, adversary #3): widened past the first cut - min/max box,
-// margin/inset, aspect-ratio, flex-basis, box-sizing, opacity, transform/scale/
-// translate/filter/mask, the `-o-` prefix - so a deforming or repainting rule on
-// a role class cannot ship with AC4 green.
-const BOX_PROP = /(^|[;\s])(-(?:webkit|moz|ms|o)-)?(background(?:-[a-z]+)?|border(?:-[a-z-]+)?|box-shadow|box-sizing|(?:min-|max-)?(?:width|height)|padding(?:-[a-z]+)?|margin(?:-[a-z]+)?|inset(?:-[a-z]+)?|aspect-ratio|flex(?:-[a-z]+)?|outline(?:-[a-z]+)?|opacity|transform|scale|translate|filter|mask(?:-[a-z]+)?|clip-path)\s*:/i;
-// A DIVERGENT selector that could still reach a chip: any rule whose selector
-// list names a subscription-row ancestor AND a bare `button`/`.btn` descendant
-// (e.g. `.sub-row > button`, `.sub-list .btn`) - the adversary's MI3 survivor.
-function rulesReachingChipsByAncestor(css) {
-  const out = [];
-  const re = /([^{}]+)\{([^{}]*)\}/g;
-  let m;
-  while ((m = re.exec(css))) {
-    const selectors = m[1].trim();
-    if (/@(media|supports|container)/.test(selectors)) continue;
-    if (/\.sub-(row|list|section)(?![\w-])[^,]*(\bbutton\b|\.btn(?![\w-]))/.test(selectors)) out.push({ selectors, body: m[2] });
+    if (new RegExp(`\\.${sel}(?![\\w-])`).test(m[1])) out.push(m[1].trim());
   }
   return out;
 }
 
-test('AC4: createSubscriptionRow builds pin, bell and kebab as `btn btn-chip <role>` (executed, real DOM)', () => {
-  const { document } = new JSDOM('<!doctype html><body></body>').window;
-  const row = createSubscriptionRow(
-    { id: 'c1', name: 'Chip', channelUrl: 'https://www.youtube.com/@chip', channelDir: '/data/chip', pushBell: true },
-    document, {}, null, true,
-  );
-  const buttons = [...row.querySelectorAll('button')];
-  assert.deepStrictEqual(buttons.map((b) => b.className), [
-    'btn btn-chip sub-row-pin sub-row-pin-active',
-    'btn btn-chip sub-row-bell sub-row-bell-active',
-    'btn btn-chip sub-row-kebab',
-  ]);
-  for (const b of buttons) assert.ok(b.classList.contains('btn') && b.classList.contains('btn-chip'), `${b.className} is a .btn.btn-chip`);
-  const off = createSubscriptionRow({ id: 'c2', name: 'Off', channelUrl: 'https://www.youtube.com/@off' }, document, {}, null, false);
-  assert.deepStrictEqual([...off.querySelectorAll('button')].map((b) => b.className), ['btn btn-chip sub-row-bell', 'btn btn-chip sub-row-kebab']);
+test('AC4: createSubscriptionRow builds pin, bell and menu as plain icon ui-btns with a role class (executed, real DOM)', () => {
+  const d = doc();
+  const row = createSubscriptionRow({ id: 's1', name: 'Alpha', channelDir: '/dl/Alpha', pushBell: true }, d, {}, undefined, true);
+  const acts = [...row.querySelector('.ui-row__actions').children];
+  assert.strictEqual(acts.length, 3, 'three trailing slots');
+  ROLES.forEach((role, i) => {
+    const b = acts[i];
+    assert.strictEqual(b.tagName, 'BUTTON', `${role} is a button`);
+    assert.deepStrictEqual(b.className.split(' '), ['ui-btn', 'ui-btn--plain', 'ui-btn--md', 'ui-btn--icon', role], `${role} is exactly a plain icon ui-btn + its role`);
+    assert.ok(b.getAttribute('aria-label'), `${role} is named`);
+    assert.ok(b.querySelector('.ui-btn__icon > svg.ui-icon use'), `${role} draws a sprite glyph (no text glyph)`);
+  });
 });
 
-test('AC4: no rule targeting a chip role class declares a box property - the era treatment can only come from .btn', () => {
+test('AC4: no stylesheet rule names a row-control role class - the treatment can only come from .ui-btn', () => {
   for (const role of ROLES) {
-    const rules = rulesTargeting(CSS, role);
-    assert.ok(rules.length > 0, `${role} still has its state-colour rules`);
-    for (const r of rules) {
-      assert.doesNotMatch(r.body, BOX_PROP, `${r.selectors.replace(/\s+/g, ' ')} must not declare a box property (got: ${r.body.trim().replace(/\s+/g, ' ')})`);
-      assert.doesNotMatch(r.body, /gradient|filter|transform|mask|clip-path|scale|translate/i, `${role}: no paint/transform of its own`);
+    assert.deepStrictEqual(rulesTargeting(STYLE, role), [], `style.css must not style .${role}`);
+    assert.deepStrictEqual(rulesTargeting(UI, role), [], `ui.css must not style .${role}`);
+  }
+});
+
+test('AC4: the retired .sub-row* / .btn-chip family is gone (no rule, no builder) - nothing can reach a row control by ancestry', () => {
+  assert.doesNotMatch(STYLE, /\.sub-row(?![\w-])|\.sub-row-[a-z-]+|\.btn-chip(?![\w-])|\.sub-sheet|\.sub-list(?![\w-])/, 'no .sub-row* / .btn-chip / .sub-sheet / .sub-list rule remains');
+  assert.doesNotMatch(JS, /btn-chip|'sub-row/, 'the client builds none of them');
+  // a divergent ancestor selector could still reach the controls: the channel list (or a row
+  // keyed by data-sub-id) with a bare button / .ui-btn descendant
+  const reaching = [];
+  const re = /([^{}]+)\{[^{}]*\}/g;
+  let m;
+  while ((m = re.exec(STYLE))) {
+    for (const sel of m[1].split(',')) {
+      if (/(\.subs-(list|sections)(?![\w-])|\[data-sub-id)[^,]*(\bbutton\b|\.ui-btn(?![\w-]))/.test(sel)) reaching.push(sel.trim());
     }
   }
-  for (const r of rulesReachingChipsByAncestor(CSS)) {
-    assert.doesNotMatch(r.body, BOX_PROP, `${r.selectors.replace(/\s+/g, ' ')} reaches the chips through an ancestor selector and must not declare a box property (got: ${r.body.trim().replace(/\s+/g, ' ')})`);
+  assert.deepStrictEqual(reaching, [], 'no channel-list ancestor rule styles its buttons');
+});
+
+test('AC4: the era treatment is attached ONCE, on the primitive - no per-era rule copies a role class', () => {
+  assert.match(UI, /\[data-theme="2009"\] \.ui-btn--secondary,\s*\[data-theme="2009"\] \.ui-btn--tonal \{\s*background: var\(--btn-fill\);/, 'the 2009 gloss rides the primitive');
+  assert.match(UI, /\[data-theme="2005"\] \.ui-btn--icon,/, '2005 squares every icon button');
+  for (const css of [STYLE, UI]) {
+    for (const role of ROLES) {
+      assert.doesNotMatch(css, new RegExp(`\\[data-theme="[0-9]+"\\][^{]*\\.${role}(?![\\w-])`), `no per-era hand copy for .${role}`);
+    }
   }
 });
 
-test('AC4: .btn-chip exists, declares NO background/border/radius/shadow (any spelling), sits AFTER .btn so its padding/size win, and its only other rule is the phone touch-floor exemption', () => {
-  const chip = rulesTargeting(CSS, 'btn-chip');
-  assert.ok(chip.length >= 1, 'the .btn-chip base rule exists');
-  // Any FURTHER .btn-chip rule may only re-floor the box (the v1.95 mobile
-  // `.btn { min-height: 44px }` would otherwise stretch the square chip).
-  for (const extra of chip.slice(1)) {
-    assert.match(extra.body.trim(), /^min-height:\s*var\(--size-control-sm\);?$/, `a second .btn-chip rule may only pin min-height (got: ${extra.body.trim()})`);
-  }
-  assert.strictEqual(chip.length, 2, 'the base rule + the phone floor exemption, nothing else');
-  const body = chip[0].body;
-  assert.doesNotMatch(body, /(^|[;\s])(-(?:webkit|moz|ms|o)-)?(background(?:-[a-z]+)?|border(?:-[a-z-]+)?|box-shadow|box-sizing|min-(?:width|height)|max-(?:width|height)|margin(?:-[a-z]+)?|inset(?:-[a-z]+)?|aspect-ratio|opacity|transform|scale|translate|filter|mask(?:-[a-z]+)?|clip-path)\s*:/i, '.btn-chip declares no fill/border/shadow and no second box constraint of its own (adversary MJ2: a min-width would stretch the square)');
-  assert.doesNotMatch(body, /gradient|filter|transform|mask|opacity/i);
-  assert.match(body, /width:\s*var\(--size-control-sm\)/);
-  assert.match(body, /height:\s*var\(--size-control-sm\)/);
-  assert.match(body, /padding:\s*0\b/, 'drops .btn\'s text padding');
-  assert.match(body, /justify-content:\s*center/);
-  const btnAt = CSS.search(/\n\.btn \{/);
-  const chipAt = CSS.search(/\n\.btn-chip \{/);
-  assert.ok(btnAt !== -1 && chipAt > btnAt, '.btn-chip must come after .btn (equal specificity: source order wins for padding)');
-});
-
-test('AC4: the 2009 gloss (light + dark) still targets .btn - the chip inherits it by BEING a .btn, not by a copy', () => {
-  assert.match(CSS, /\[data-theme="2009"\]\[data-mode="light"\] \.btn \{[^}]*background-image:\s*linear-gradient/);
-  assert.match(CSS, /\[data-theme="2009"\]\[data-mode="dark"\] \.btn \{[^}]*background-image:\s*linear-gradient/);
-  for (const role of ROLES) {
-    assert.doesNotMatch(CSS, new RegExp(`\\[data-theme="[0-9]+"\\][^{]*\\.${role}(?![\\w-])`), `no per-era hand copy for .${role}`);
-  }
-  assert.doesNotMatch(CSS, /\[data-theme="[0-9]+"\][^{]*\.btn-chip(?![\w-])/, 'no per-era hand copy for .btn-chip');
-});
-
-test('AC3: ONE writer of the bell state - the glyph is chosen in exactly one place (applyBellState), the builder calls it, and the writer sets class + aria + glyph together', () => {
-  // v1.340: the emoji pair became the shared bell glyphs (common.js CHROME_ICON_SVG bell /
-  // bellOff), so the one-writer census counts the glyph NAMES.
-  assert.strictEqual((JS.match(/'bellOff'/g) || []).length, 1, 'the OFF glyph is chosen in exactly one place');
-  assert.strictEqual((JS.match(/'bell'/g) || []).length, 1, 'the ON glyph is chosen in exactly one place (qa r1 Q3)');
-  assert.strictEqual((JS.match(/setAttribute\('data-glyph'/g) || []).length, 1, 'one writer of data-glyph (qa r1 Q3)');
-  assert.doesNotMatch(JS, /\u{1F514}|\u{1F515}|🔔|🔕/u, 'no emoji bell is left');
+test('AC3: ONE writer of the bell state - applyBellState is ui.setPressed, the builder declares the two glyphs once, and only boolean true is ON', () => {
+  assert.strictEqual((JS.match(/'notifications_off'/g) || []).length, 1, 'the OFF glyph is named in exactly one place');
+  assert.strictEqual((JS.match(/'notifications_active'/g) || []).length, 1, 'the ON glyph is named in exactly one place');
+  assert.doesNotMatch(JS, /\u{1F514}|\u{1F515}|🔔|🔕/u, 'no emoji bell');
   const fnStart = JS.indexOf('function applyBellState(bellBtn, on) {');
   assert.ok(fnStart !== -1);
   const fn = JS.slice(fnStart, JS.indexOf('\n}', fnStart));
-  assert.match(fn, /'bellOff'/);
-  assert.match(fn, /aria-pressed/);
-  assert.match(fn, /aria-label/);
-  assert.match(fn, /'btn btn-chip sub-row-bell sub-row-bell-active' : 'btn btn-chip sub-row-bell'/);
-  // the builder routes through the writer (no second copy of the four lines)
+  assert.match(fn, /subsUi\(\)\.setPressed\(bellBtn, on === true\)/, 'the writer is the primitive\'s pressed writer');
   const rowStart = JS.indexOf('function createSubscriptionRow(');
   const rowFn = JS.slice(rowStart, JS.indexOf('\n}', rowStart));
-  assert.match(rowFn, /applyBellState\(bellBtn, sub\.pushBell === true\)/);
+  assert.match(rowFn, /pressed: sub\.pushBell === true/, 'the build reads the record\'s boolean truth');
   assert.doesNotMatch(rowFn, /bellBtn\.className =/, 'the builder never writes the bell class itself');
-  // executed: the writer is the same function the module exports, and it DRAWS the glyph
-  const { CHROME_ICON_SVG } = require('../../public/js/common.js');
-  const { document } = new JSDOM('<button>old</button>').window;
-  const b = document.querySelector('button');
-  const drawn = () => { const svgs = b.querySelectorAll('svg'); return svgs.length === 1 ? svgs[0].querySelector('path').getAttribute('d') : `${svgs.length} svgs`; };
+  // executed: the writer flips aria-pressed and the drawn glyph together
+  const d = doc();
+  const row = createSubscriptionRow({ id: 's1', name: 'Alpha', pushBell: false }, d, {});
+  const b = row.querySelector('.subs-bell');
+  const drawn = () => b.querySelector('.ui-btn__icon use').getAttribute('href');
+  assert.deepStrictEqual([b.getAttribute('aria-pressed'), drawn()], ['false', '#i-notifications_off']);
   applyBellState(b, true);
-  assert.deepStrictEqual([b.className, b.getAttribute('aria-pressed'), b.getAttribute('data-glyph'), drawn(), b.textContent], ['btn btn-chip sub-row-bell sub-row-bell-active', 'true', 'bell', CHROME_ICON_SVG.bell.d, '']);
+  assert.deepStrictEqual([b.getAttribute('aria-pressed'), drawn(), b.querySelectorAll('svg').length], ['true', '#i-notifications_active', 1]);
   applyBellState(b, 1);
-  assert.deepStrictEqual([b.className, b.getAttribute('aria-pressed'), b.getAttribute('data-glyph'), drawn(), b.textContent], ['btn btn-chip sub-row-bell', 'false', 'bellOff', CHROME_ICON_SVG.bellOff.d, ''], 'only boolean true is ON; the old glyph is replaced, never stacked');
+  assert.deepStrictEqual([b.getAttribute('aria-pressed'), drawn(), b.querySelectorAll('svg').length], ['false', '#i-notifications_off', 1], 'only boolean true is ON; the glyph is swapped, never stacked');
 });

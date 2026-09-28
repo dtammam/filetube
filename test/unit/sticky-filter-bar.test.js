@@ -37,19 +37,15 @@ test('#4: the item count is parenthesized in CSS (data string stays "N items")',
   assert.match(css, /\.library-item-count::after\s*\{\s*content:\s*"\)"/, 'close paren');
 });
 
-test('#3: on mobile the action row keeps its one-glyph-line contract; wrap exists ONLY for the watch group\'s own second row', () => {
-  // v1.45.2 made .section-actions nowrap (one clean line, icon-only). v1.50
-  // relaxed nowrap -> wrap SOLELY so the watched-state group can take a
-  // full-width second row -- the original line's members are unchanged and
-  // the watch group is forced off it (order + width:100%), so the v1.45
-  // width budget still holds. These declarations exist only in the mobile
-  // block (desktop .section-actions has no flex-wrap and never hides
-  // labels), so a bare match is unambiguous.
-  assert.match(css, /\.section-actions\s*\{[^}]*flex-wrap:\s*wrap/, '.section-actions wraps on mobile (v1.50: watch-group second row)');
-  assert.match(css, /\.section-actions \.watch-toggle\s*\{[^}]*order:\s*10/, 'the watch group is forced OFF the one-glyph line');
-  assert.match(css, /\.section-actions \.watch-toggle\s*\{[^}]*flex:\s*1 1 70%/, 'v1.50.4: grows to fill row 2 alone, leaves room for Re-pull beside it');
-  assert.match(css, /\.section-actions #sub-repull-channel-btn\s*\{[^}]*order:\s*11/, 'v1.50.4: Re-pull joins row 2, never orphans a middle row');
-  assert.match(css, /\.section-actions \.btn \.btn-label\s*\{\s*display:\s*none/, 'Shuffle/Rescan labels are hidden on mobile');
+// UI pass sweep S2 (F19): the v1.45-v1.50.4 two-row machinery (the watch group's
+// order/basis, Re-pull's order band, hidden word labels) retired with the ONE
+// chip row: the toolbar never wraps, and every tool - Re-pull included - is an
+// icon joining the fixed .library-tools group (common.js ensureRepullButton).
+test('#3 (converted): on mobile the toolbar is ONE row - it never wraps, and Re-pull joins the icon tools', () => {
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.section-actions\s*\{[^}]*flex-wrap:\s*wrap|\.watch-toggle|#sub-repull-channel-btn/, 'no second-row machinery');
+  const common = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
+  assert.match(common, /btn = ui\.button\(\{ variant: 'tonal', size: 'sm', shape: 'icon', icon: 'subscriptions', ariaLabel: 'Re-pull this channel now' \}\);/);
+  assert.match(common, /const tools = actions\.querySelector\('\.library-tools'\);\s*\(tools \|\| actions\)\.appendChild\(btn\);/);
 });
 
 // The base (desktop) sticky rule.
@@ -66,9 +62,12 @@ test('the home filter bar is sticky and HOME-SCOPED (not the bare .section-title
   assert.match(body, /position:\s*sticky/, 'must be position: sticky');
   assert.match(body, /top:\s*var\(--sticky-bar-top\)/, 'pins at the --sticky-bar-top offset (the fixed header height)');
   // Solid background so grid rows scroll UNDER it rather than showing through.
-  assert.match(body, /background-color:\s*var\(--bg-color\)/, 'needs a solid background');
-  // Above grid cards (z-index 2), below the sort-menu (30) and dock/modals.
-  assert.match(body, /z-index:\s*20/, 'z-index 20: above cards, below the sort-menu/dock');
+  assert.match(body, /background-color:\s*var\(--surface-0\)/, 'needs a solid background');
+  // step 7: the value is the ladder's in-content sticky rung --z-sticky (tokens.css pins it at
+  // 30 - retire R2's rung; it was a literal 20): still above the cards (2), and the sort popover
+  // is the bar's own descendant, so it stays on top of the bar whatever the bar's rung.
+  assert.match(body, /z-index:\s*var\(--z-sticky\)/, 'z-index --z-sticky: above cards, below the pull-to-refresh indicator and the chrome');
+  assert.match(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'tokens.css'), 'utf8'), /--z-sticky:\s*30;/);
 });
 
 test('the bar pins FLUSH with zero pre-stick jump: pull-up == give-back == the desktop content padding (v1.45.1)', () => {
@@ -102,7 +101,7 @@ test('--sticky-bar-top is the desktop header height and is overridden to the tal
   // fullscreen exit). Still DERIVES var(--header-h) (token-scale-lock is the
   // byte-exact authority that --header-h == 56px), so the sticky offset can never
   // silently diverge from the real header height.
-  assert.match(css, /--sticky-bar-top:\s*calc\(var\(--header-h\) \+ env\(safe-area-inset-top\)\)/, 'base derives the desktop header height token + the top safe-area');
+  assert.match(require('../helpers/stylesheets').readTokensCss(), /--sticky-bar-top:\s*calc\(var\(--header-h\) \+ env\(safe-area-inset-top\)\)/, 'base derives the desktop header height token + the top safe-area');
   // The mobile :root (inside the max-width:768px block, alongside --mobile-header-h)
   // re-points it at the taller mobile header.
   assert.match(css, /--sticky-bar-top:\s*var\(--mobile-header-h\)/, 'mobile override clears the taller header');

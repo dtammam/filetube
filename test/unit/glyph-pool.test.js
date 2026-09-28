@@ -2,9 +2,10 @@
 
 // ---- v1.77: the glyph pool's CSS/asset completeness lock -------------------
 //
-// Every pool member needs SEVEN disjoint enumerations in style.css plus THREE
-// SVG assets. Twenty members = 140 CSS enumerations + 60 files, all of which
-// would otherwise be maintained by hand.
+// Every pool member needs FIVE disjoint enumerations in style.css plus THREE
+// SVG assets. Twenty members = 100 CSS enumerations + 60 files, all of which
+// would otherwise be maintained by hand. (Seven enumerations until the UI pass
+// retired the emoji icon set, D2.6: its neutralize group and ::before went with it.)
 //
 // This repo has shipped that exact failure twice:
 //   - v1.41.4: a writer of a rendered element that nobody remembered to update.
@@ -14,8 +15,8 @@
 //
 // So this test does not check a list I typed. It iterates the registry in
 // public/js/glyph-pool.js and re-derives what style.css must contain for each
-// member - including the exact mask URLs and the exact emoji codepoint escape.
-// Adding a glyph to the pool and forgetting any one of the seven sites, or
+// member - including the exact mask URLs for every set.
+// Adding a glyph to the pool and forgetting any one of the five sites, or
 // shipping a member whose SVG is absent from any set, fails CI here.
 
 const { test } = require('node:test');
@@ -27,17 +28,17 @@ const REPO = path.join(__dirname, '..', '..');
 const ICON_DIR = path.join(REPO, 'public', 'assets', 'icons');
 // Comments are stripped ONCE, at read, so every check below sees only live
 // CSS. Doing it per-extraction was not enough and shipped porous:
-// `selectorList` stripped (sites 2 and 6) and the fill-list extraction stripped
+// `selectorList` stripped (site 2, and the emoji group then) and the fill-list extraction stripped
 // (site 3), but the four checks that match against the raw stylesheet - the
-// base mask, the rounded and filled overrides, and the emoji ::before - did
-// not. The adversarial seat reproduced both of Dean's on-device failure modes
+// base mask, the rounded and filled overrides, and (then) the emoji ::before -
+// did not. The adversarial seat reproduced both of Dean's on-device failure modes
 // through that hole with the whole suite green:
 //
 //   - Comment out a base mask rule and the literal survives INSIDE the comment,
 //     so site 1 passes. The glyph keeps its sizing rule and its currentColor
 //     fill with no mask to cut: a SOLID COLOURED SQUARE (the AC7 class).
-//   - Comment out a rounded/filled override or an emoji ::before and that set
-//     silently falls back or renders nothing.
+//   - Comment out a rounded/filled override and that set silently falls back
+//     (the emoji ::before, while that set lived, rendered nothing).
 //
 // "Temporarily disabled, see TODO" is exactly how a real commented-out rule
 // enters a stylesheet, so this is not a contrived mutant. Strip at the source
@@ -47,6 +48,7 @@ const css = fs.readFileSync(path.join(REPO, 'public', 'css', 'style.css'), 'utf8
 
 const pool = require(path.join(REPO, 'public', 'js', 'glyph-pool.js'));
 const ENTRIES = pool.allGlyphEntries();
+const { ICON_SETS, effectiveMask } = require('../helpers/icon-sets');
 
 // The registry is the spec; if it silently emptied, every assertion below
 // would vacuously pass. (A test that can't fail is the "self-proof" trap this
@@ -59,7 +61,8 @@ test('registry sanity: the pool is non-empty and every entry is well-formed', ()
     assert.ok(!ids.has(g.id), `duplicate glyph id: ${g.id}`);
     ids.add(g.id);
     assert.match(g.asset, /^[a-z][a-z0-9_]*$/, `bad asset name for ${g.id}: ${g.asset}`);
-    assert.match(g.emoji, /^[0-9A-F]{4,6}( [0-9A-F]{4,6})*$/, `bad emoji codepoints for ${g.id}: ${g.emoji}`);
+    // D2.6: the emoji icon set is retired, and its codepoints with it.
+    assert.ok(!('emoji' in g), `${g.id} still carries an emoji codepoint for the retired emoji set`);
     assert.ok(g.name && typeof g.name === 'string', `missing display name for ${g.id}`);
   }
 });
@@ -80,14 +83,13 @@ function selectorList(start) {
 }
 
 const SIZING_LIST = selectorList('\n.icon-home,\n');
-const EMOJI_GROUP = selectorList('\n[data-icons="emoji"] .icon-home,\n');
 
 // The @supports fill rule's SELECTOR LIST only - sliced to the `{` that opens
 // the rule carrying `background-color: currentColor`, not to the declaration
 // itself. (QA gate v1.77 S7: slicing to the first `background-color:
 // currentColor` meant a second rule inserted above the fill rule would let a
 // glyph satisfy site 3 from an unrelated selector list. This matches how
-// SIZING_LIST and EMOJI_GROUP are already bounded.)
+// SIZING_LIST is already bounded.)
 const FILL_BLOCK = (() => {
   const i = css.indexOf('@supports (mask-image: url("#"))');
   assert.notEqual(i, -1, 'expected the @supports fill block');
@@ -115,11 +117,10 @@ function listHasClass(list, cls) {
   return new RegExp(`\\.${cls}(?![a-z0-9-])`).test(list);
 }
 
-test('SEVEN-SITE LOCK: every glyph is enumerated in all 7 style.css sites', () => {
+test('FIVE-SITE LOCK: every glyph is enumerated in all 5 style.css sites', () => {
   const failures = [];
   for (const g of ENTRIES) {
     const cls = pool.glyphClassName(g.id);
-    const emojiEsc = g.emoji.split(' ').map((c) => '\\' + c).join('');
 
     const checks = [
       ['1 base mask', css.includes(
@@ -131,20 +132,6 @@ test('SEVEN-SITE LOCK: every glyph is enumerated in all 7 style.css sites', () =
         `[data-icons="rounded"] .${cls} { -webkit-mask-image: url(/assets/icons/rounded/${g.asset}.svg); mask-image: url(/assets/icons/rounded/${g.asset}.svg); }`)],
       ['5 filled override', css.includes(
         `[data-icons="filled"] .${cls} { -webkit-mask-image: url(/assets/icons/filled/${g.asset}.svg); mask-image: url(/assets/icons/filled/${g.asset}.svg); }`)],
-      // Without this the emoji set paints a solid currentColor box BEHIND the
-      // emoji (the AC7 no-square fix).
-      //
-      // The SCOPE PREFIX is part of the assertion, not decoration. Membership
-      // alone was satisfied by a line that had lost its `[data-icons="emoji"]`
-      // prefix - and an unscoped entry in this group is WORSE than absence: it
-      // applies `mask-image: none; background-color: transparent` in EVERY set,
-      // so the glyph renders nothing at all in the default outlined theme. The
-      // adversarial seat reproduced that on `.icon-liked` (all ten Liked
-      // surfaces blank) with the suite green.
-      ['6 emoji neutralize group', new RegExp(
-        `\\[data-icons="emoji"\\]\\s+\\.${cls}(?![a-z0-9-])`).test(EMOJI_GROUP)],
-      ['7 emoji ::before content', new RegExp(
-        `\\[data-icons="emoji"\\] \\.${cls}::before\\s*\\{\\s*content: "${emojiEsc.replace(/\\/g, '\\\\')}";`).test(css)],
     ];
 
     for (const [site, ok] of checks) {
@@ -153,6 +140,26 @@ test('SEVEN-SITE LOCK: every glyph is enumerated in all 7 style.css sites', () =
   }
   assert.deepEqual(failures, [],
     `glyphs missing a required style.css enumeration (a mask without a fill renders INVISIBLE):\n${failures.join('\n')}`);
+});
+
+// Sites 4/5 prove the override EXISTS; this proves it is what PAINTS. The emoji set's
+// site 6 carried a scope-prefix scar (an unscoped kill blanked .icon-liked in every
+// set with the suite green); its three-set form: under each set, both mask spellings
+// resolve to that set's asset, so a later set-scoped kill or a prefix-only rule is red.
+test('every glyph paints its own asset in every icon set (the cascade, both spellings)', () => {
+  const failures = [];
+  const dir = { outlined: '', rounded: 'rounded/', filled: 'filled/' };
+  assert.deepEqual(Object.keys(dir), ICON_SETS, 'one directory per set on the axis');
+  for (const g of ENTRIES) {
+    const cls = pool.glyphClassName(g.id);
+    for (const set of ICON_SETS) {
+      const want = `url(/assets/icons/${dir[set]}${g.asset}.svg)`;
+      const m = effectiveMask(css, set, cls);
+      if (m.std !== want) failures.push(`${cls} @ ${set}: mask-image is ${m.std}, not ${want}`);
+      if (m.webkit !== want) failures.push(`${cls} @ ${set}: -webkit-mask-image is ${m.webkit}, not ${want}`);
+    }
+  }
+  assert.deepEqual(failures, [], failures.join('\n'));
 });
 
 test('ASSET LOCK: every glyph ships a valid SVG in all three vector sets', () => {
@@ -170,7 +177,7 @@ test('ASSET LOCK: every glyph ships a valid SVG in all three vector sets', () =>
   assert.deepEqual(missing, [], `pool assets missing or unusable:\n${missing.join('\n')}`);
 });
 
-test('the registry carries codepoints, never literal emoji (icon-assets rule)', () => {
+test('the registry carries no literal emoji (icon-assets rule)', () => {
   // The repo's rule is that chrome emoji live in CSS as \XXXX escapes, never as
   // literal characters in HTML/JS. icon-assets.test.js enforces that for a
   // fixed 12-glyph list across five named files - glyph-pool.js is NOT one of
@@ -194,7 +201,7 @@ test('the registry carries codepoints, never literal emoji (icon-assets rule)', 
     `glyph-pool.js must carry codepoints, not literal emoji (found: ${literalEmoji && literalEmoji.join(' ')})`);
 });
 
-// ---- v1.77 (Dean): no two chrome glyphs may share an emoji codepoint -------
+// ---- v1.77 (Dean): no two chrome glyphs may share a picture -----------------
 //
 // Dean, on reading the shipped-gaps disclosure: "i want downloads and shows to
 // not share". `.icon-shows` (the new Shows folder glyph) and `.icon-downloads`
@@ -202,63 +209,76 @@ test('the registry carries codepoints, never literal emoji (icon-assets rule)', 
 // two different destinations wore the same picture. Downloads moved to U+1F4FC
 // VIDEOCASSETTE; Shows kept the TV.
 //
-// This binds the RULE rather than that one pair, because nothing bound the
-// downloads codepoint at all before now - a typo there, or the next glyph that
-// reaches for an obvious emoji, would have been invisible to the whole suite.
-// It reads the stylesheet rather than the registry on purpose: `.icon-downloads`
-// is NOT a pool member, and it was half of the collision.
-const EMOJI_TWINS_ALLOWED = [
+// Until the UI pass this bound the emoji set's codepoints. That set is retired
+// (D2.6), so the rule is bound where the pictures now are: the mask each glyph
+// class paints under each of the three sets. It reads the stylesheet rather than
+// the registry on purpose: `.icon-downloads` is NOT a pool member, and it was half
+// of the collision.
+const PICTURE_TWINS_ALLOWED = [
   // Deliberate: same picture, different intents, kept as separate classes so
   // the Liked lane's glyph can change later without dragging every folder that
   // chose "Favorites" along with it. Documented in glyph-pool.js.
   ['icon-favorites', 'icon-liked'],
+  // One intent: `.icon-tv` is the Shows library's own nav glyph (v1.195) and
+  // `.icon-shows` the Shows pool glyph a folder can wear. Both are the TV.
+  ['icon-shows', 'icon-tv'],
 ];
 
-test('no two emoji-set glyphs share a codepoint (except documented twins)', () => {
-  const byCodepoint = new Map();
-  const re = /\[data-icons="emoji"\]\s*\.(icon-[a-z0-9-]+)::before\s*\{\s*content:\s*"([^"]+)"/g;
-  let m;
-  while ((m = re.exec(css)) !== null) {
-    if (!byCodepoint.has(m[2])) byCodepoint.set(m[2], []);
-    byCodepoint.get(m[2]).push(m[1]);
+test('no two chrome glyphs share a picture in any icon set (except documented twins)', () => {
+  const classes = new Set();
+  for (const rule of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    if (!/mask-image/.test(rule[2])) continue;
+    for (const sel of rule[1].split(',')) {
+      const m = /^\s*\.(icon-[a-z0-9-]+)\s*$/.exec(sel);
+      if (m) classes.add(m[1]);
+    }
   }
   // Vacuity guard: a changed rule shape must not silently empty this.
-  assert.ok(byCodepoint.size >= 30,
-    `expected to find the emoji-set glyphs, found ${byCodepoint.size} codepoints`);
+  assert.ok(classes.size >= 40, `expected to find the masked glyph classes, found ${classes.size}`);
 
-  const allowed = new Set(EMOJI_TWINS_ALLOWED.map((pair) => pair.slice().sort().join('+')));
+  const allowed = new Set(PICTURE_TWINS_ALLOWED.map((pair) => pair.slice().sort().join('+')));
   const collisions = [];
-  for (const [cp, classes] of byCodepoint) {
-    if (classes.length < 2) continue;
-    if (allowed.has(classes.slice().sort().join('+'))) continue;
-    collisions.push(`${cp} is worn by ${classes.join(' and ')}`);
+  for (const set of ICON_SETS) {
+    const byPicture = new Map();
+    for (const cls of classes) {
+      const url = effectiveMask(css, set, cls).std;
+      if (!byPicture.has(url)) byPicture.set(url, []);
+      byPicture.get(url).push(cls);
+    }
+    for (const [url, worn] of byPicture) {
+      if (worn.length < 2) continue;
+      if (allowed.has(worn.slice().sort().join('+'))) continue;
+      collisions.push(`${set}: ${url} is worn by ${worn.join(' and ')}`);
+    }
   }
   assert.deepEqual(collisions, [],
-    `two chrome glyphs would render the same emoji - pick a distinct one, or add the pair to EMOJI_TWINS_ALLOWED with a reason:\n${collisions.join('\n')}`);
+    `two chrome glyphs would render the same picture - pick a distinct one, or add the pair to PICTURE_TWINS_ALLOWED with a reason:\n${collisions.join('\n')}`);
 });
 
-test("Dean's ruling, concretely: Shows keeps the TV and Downloads wears a tape", () => {
+test("Dean's ruling, concretely: Shows keeps the TV and Downloads never wears it, in every set", () => {
   // The general rule above would also be satisfied by moving SHOWS, which is
-  // not what was ruled. This pins which one moved.
-  assert.match(css, /\[data-icons="emoji"\] \.icon-shows::before \{ content: "\\1F4FA"; \}/,
-    'Shows keeps U+1F4FA TELEVISION - a TV is the literal read of a Shows folder');
-  assert.match(css, /\[data-icons="emoji"\] \.icon-downloads::before \{ content: "\\1F4FC"; \}/,
-    'Downloads wears U+1F4FC VIDEOCASSETTE (moved from the TV it shared with Shows)');
+  // not what was ruled. This pins which one keeps the TV.
+  const dir = { outlined: '', rounded: 'rounded/', filled: 'filled/' };
+  for (const set of ICON_SETS) {
+    const shows = effectiveMask(css, set, 'icon-shows').std;
+    assert.equal(shows, `url(/assets/icons/${dir[set]}tv.svg)`, `${set}: Shows wears the TV - the literal read of a Shows folder`);
+    assert.notEqual(effectiveMask(css, set, 'icon-downloads').std, shows, `${set}: Downloads does not share the TV with Shows`);
+  }
 });
 
 // ---- v1.77 (adversarial gate round 2, W2): the sizing rule must still SIZE --
 //
-// The seven-site lock binds every glyph's MEMBERSHIP in the shared sizing rule
+// The five-site lock binds every glyph's MEMBERSHIP in the shared sizing rule
 // and slices that list off at its `{` - it never looked at what the rule
 // declares. One character too early.
 //
 // Deleting `width: 1em; height: 1em` from that one rule turns every masked
 // chrome glyph into a 0x0 inline-block: EVERY icon in the application
-// disappears, all four sets, all 44 classes, with the whole suite green. That
+// disappears, every set, all 44 classes, with the whole suite green. That
 // is a larger blast radius than the invisible-box bug this file was built for.
 //
 // The asymmetry is what makes it a finding rather than scenery: download-icon
-// .test.js already binds the EMOJI group's declarations (strengthened in
+// .test.js already bound the (since retired) EMOJI group's declarations (strengthened in
 // 431a22d), and this file already extracts this rule's selector list.
 test('the shared sizing rule still SIZES: membership in it is worthless if its body is gone', () => {
   const brace = css.indexOf('{', css.indexOf('\n.icon-home,\n'));
@@ -276,9 +296,9 @@ test('the shared sizing rule still SIZES: membership in it is worthless if its b
 });
 
 // A later duplicate rule silently overrides an earlier one, and later-override
-// is the established idiom in this stylesheet (the whole emoji set works that
+// is the established idiom in this stylesheet (the retired emoji set worked that
 // way) - so a contradictory `.icon-shows { mask-image: none }` appended after
-// the pool block would pass all seven sites. Adversarial round 2, SUGGESTION.
+// the pool block would pass all five sites. Adversarial round 2, SUGGESTION.
 test('no later rule overrides a pool glyph mask: the base declaration is the LAST word', () => {
   // RULE-WISE, not line-wise (adversarial round 3, ask 3). The first cut
   // anchored on `(^|\})\s*\.icon-x`, which required the class to sit at the

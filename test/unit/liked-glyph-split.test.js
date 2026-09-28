@@ -48,15 +48,16 @@ test('every static Liked nav item wears the inline "liked" chrome-icon (not the 
   // glyph (star.svg via chromeIconMarkup('liked')), distinct from the Stats link
   // which still uses `.icon-star`. Now bound to the exact inline-svg markup.
   const common = require('../../public/js/common.js');
-  const likedSvg = common.chromeIconMarkup('liked');
+  // Sweep S1 (DELIBERATE lock update): the tab's glyph is the ui.icon markup (F49).
+  const likedSvg = common.uiIconMarkup(common.CHROME_ICON.liked, 'lg');
   const wrong = [];
   for (const f of LIKED_SHELLS) {
     const html = fs.readFileSync(path.join(PUB, f), 'utf8');
     // The glyph inside the Liked anchor specifically - not just "somewhere in
     // the file" (the Stats link's icon-star would otherwise satisfy it).
-    const m = /data-nav="liked"[^>]*>\s*(<svg class="chrome-icon"[^>]*>.*?<\/svg>|<i class="[a-z-]+")/.exec(html);
+    const m = /data-nav="liked"[^>]*>\s*(?:<span class="ui-btn__icon">)?(<svg class="[^"]*"[^>]*>.*?<\/svg>|<i class="[a-z-]+")/.exec(html);
     if (!m) { wrong.push(`${f}: no glyph found inside the Liked anchor`); continue; }
-    if (m[1] !== likedSvg) wrong.push(`${f}: Liked glyph is not the inline "liked" chrome-icon`);
+    if (m[1] !== likedSvg) wrong.push(`${f}: Liked glyph is not the inline "liked" sprite glyph`);
   }
   assert.deepEqual(wrong, [], `Liked nav glyph is wrong in:\n${wrong.join('\n')}`);
 });

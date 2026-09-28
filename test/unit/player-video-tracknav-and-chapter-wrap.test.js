@@ -71,6 +71,8 @@ test('the mobile button row pins prev | play | next (unordered, both track butto
 test('dock and reader keep the pair hidden via CSS regardless of the new show rule', () => {
   assert.match(STYLE_CSS, /#player-dock #track-prev-btn, #player-dock #track-next-btn,\n\.reader-nowplaying #track-prev-btn, \.reader-nowplaying #track-next-btn \{ display: none; \}/);
   // The [hidden] belt (repo lesson 3: [hidden] loses to any author display
-  // rule without this) survives.
-  assert.match(STYLE_CSS, /\.track-nav-btn\[hidden\] \{ display: none !important; \}/);
+  // rule without this) survives - step 7 (retire R2, deliberate): as ui.css's app-wide
+  // [hidden] rule, which the per-control duplicate here repeated.
+  const UI_CSS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(UI_CSS, /(^|\n)\[hidden\] \{\s*display: none !important;\s*\}/);
 });

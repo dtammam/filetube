@@ -161,9 +161,14 @@ test('reflect() syncs the fill AND FLIPS the iPod play indicator from the LIVE e
     assert.strictEqual(p.querySelector('.mms-fill').style.width, '50%', 'reflect set the fill to 100/200 = 50%');
     const pind = p.querySelector('.mms-playind');
     assert.ok(pind, 'the iPod status-bar play indicator exists');
-    assert.strictEqual(pind.textContent, '▶', 'playing -> play triangle');
+    // UI pass S7 (F60): two DRAWN marks in one cell (no text symbol, no width change); the class flips
+    assert.strictEqual(pind.textContent, '', 'no text symbol (U+25B6 turns into a colour emoji on iOS)');
+    assert.ok(pind.querySelector('svg.mms-g-play') && pind.querySelector('svg.mms-g-pause'), 'both marks are drawn, stacked');
+    assert.strictEqual(pind.classList.contains('is-paused'), false, 'playing -> the play mark shows');
     paused = true; engine.reflect();
-    assert.strictEqual(pind.textContent, '❚❚', 'paused -> pause bars (non-vacuous: the indicator actually flipped)');
+    assert.strictEqual(pind.classList.contains('is-paused'), true, 'paused -> the pause mark shows (non-vacuous: the indicator actually flipped)');
+    paused = false; engine.reflect();
+    assert.strictEqual(pind.classList.contains('is-paused'), false, 'and back');
   } finally { restore(); }
 });
 
@@ -250,7 +255,10 @@ test('podcasts.js WIRES the engine (reachable): creates it with a podcast ctx, f
   // runs a CONFIRM, then player.close(), then the RECOVERABLE trash via method:'DELETE' to
   // /api/podcasts/episodes/:id (never GET, never /api/videos). Deleting onDelete or flipping the
   // verb reds this (mutation-verified) - the guard-shipped-unbound class (v1.273), destructive.
-  assert.match(src, /onDelete: function[\s\S]{0,600}showConfirmModal\([\s\S]{0,500}player\.close\(\)[\s\S]{0,200}fetchJson\('\/api\/podcasts\/episodes\/' \+ encodeURIComponent\(item\.id\), \{ method: 'DELETE' \}\)/, 'podcast onDelete: confirm -> player.close -> recoverable DELETE');
+  // UI pass S7: the confirm is ui.confirm (danger), and the DELETE sits behind `ok !== true` (the
+  // behaviour: test/unit/extras-delete-confirm.test.js drives every answer through the real ui.js).
+  assert.match(src, /onDelete: function[\s\S]{0,900}U\.confirm\(\{[\s\S]{0,400}danger: true[\s\S]{0,200}\}\)\.then\(function \(ok\) \{\s*if \(ok !== true \|\| signal\.aborted\) \{ release\(\); return; \}[\s\S]{0,500}player\.close\(\)[\s\S]{0,200}fetchJson\('\/api\/podcasts\/episodes\/' \+ encodeURIComponent\(item\.id\), \{ method: 'DELETE' \}\)/, 'podcast onDelete: ui.confirm -> (only on true) player.close -> recoverable DELETE');
+  assert.doesNotMatch(src, /showConfirmModal/, 'podcasts.js no longer reaches the legacy confirm');
   // and skin-surface.js is loaded on the podcasts shell (before podcasts.js, after music-skins.js)
   const html = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'podcasts.html'), 'utf8');
   assert.match(html, /music-skins\.js"><\/script>\s*<script src="\/js\/skin-surface\.js"/, 'skin-surface.js loads after music-skins.js on podcasts.html');
@@ -522,7 +530,9 @@ function bootSticker({ extras, eligible, video, skin, adapter } = {}) {
   dom.window.fetchCurrentUser = () => Promise.resolve({ user: { role: 'admin' } });
   dom.window.fetchLikedTotal = () => Promise.resolve(0);
   dom.window.isYtdlpManagedItem = (it) => !!(it && it.channelName);
-  dom.window.showConfirmModal = (t, b, onConfirm) => { spy.confirm = { t, b, onConfirm }; };
+  dom.window.showConfirmModal = (t, b, onConfirm) => { spy.legacyConfirm = { t, b, onConfirm }; };
+  // UI pass S7: the Extras Delete asks ui.confirm - a HELD fake the test answers (onConfirm = true)
+  dom.window.ui = { confirm: (o) => new Promise((resolve) => { spy.confirm = { t: o.title, b: o.body, o, onConfirm: () => resolve(true), onCancel: () => resolve(false) }; }) };
   dom.window.showHardDeleteModal = (it, onConfirm) => { spy.hard = { it, onConfirm }; };
   dom.window.deleteResultToast = () => 'deleted-toast';
   global.fetch = (url, init) => {
@@ -747,7 +757,7 @@ test('v1.287 PODCAST adapter: Queue + Delete route to the podcast handlers', asy
   } finally { b.restoreAll(); }
 });
 
-test('U2 extras delete: the trash confirm -> real DELETE -> player.close + onMutated (the view refresh hook)', async () => {
+test('U2 extras delete: the ui.confirm (danger) -> real DELETE -> player.close + onMutated (the view refresh hook)', async () => {
   const b = bootSticker({});
   try {
     b.engine.paint();
@@ -755,8 +765,11 @@ test('U2 extras delete: the trash confirm -> real DELETE -> player.close + onMut
     sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
     for (let i = 0; i < 6; i++) await b.settle();
     sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-x="delete"]'));
-    assert.ok(b.spy.confirm, 'yt-dlp item -> the trash confirm opened');
+    assert.ok(b.spy.confirm, 'the ui.confirm opened');
+    assert.strictEqual(b.spy.legacyConfirm, undefined, 'never the legacy modal');
+    assert.strictEqual(b.spy.confirm.o.danger, true, 'the danger fill');
     assert.ok(b.spy.confirm.b.indexOf('Song One') !== -1, 'the confirm names the item');
+    assert.ok(!b.calls.some((c) => c.method === 'DELETE'), 'nothing deleted before the answer');
     b.spy.confirm.onConfirm();
     for (let i = 0; i < 6; i++) await b.settle();
     assert.ok(b.calls.some((c) => c.url === '/api/videos/s1' && c.method === 'DELETE'), 'the real DELETE fired');
@@ -1664,11 +1677,12 @@ test('v1.311.2: the skin releases ONLY its own hold - a player owner that also h
 });
 
 // ---- v1.311.3 (Dean: "rotating the phone in music mode locks all scrolling") --------------
-// The full-screen skin is position:fixed only inside style.css's max-width:768px block, so a
-// rotate to landscape un-fixes the panel WITHOUT removing the ghost: the v1.256 observer never
-// fired and the body stayed pinned. jsdom never matches media queries, so the fixture models
-// the rotate with a <style> the test flips - the fixture must carry the REAL rule (fixed), or a
-// "still covers" assertion would be vacuous.
+// Then the full-screen skin was position:fixed only inside a max-width:768px block, so a rotate
+// to landscape un-fixed the panel WITHOUT removing the ghost: the v1.256 observer never fired and
+// the body stayed pinned. Since UI pass D7 the takeover keys on html.is-phone, which a rotate
+// never changes, so this is the engine's BACKSTOP for that invariant (anything that ever un-fixes
+// the panel drops the lock). The fixture models the un-fix with a <style> the test flips - it must
+// carry the REAL rule (fixed), or a "still covers" assertion would be vacuous.
 function withCoverRule(b) {
   const st = b.dom.window.document.createElement('style');
   st.textContent = '.mms-full{position:fixed}';
@@ -1696,7 +1710,7 @@ test('v1.311.3 rotate: a viewport change that un-fixes the skin releases the gho
     assert.strictEqual(ghostOf(b.dom), null, 'the ghost that needs the lock is gone too');
     assert.ok(!panel(b.dom).classList.contains('mms-haptic'), 'the touch-action carve-out is lifted');
     cover.rotateNarrow();
-    b.engine.paint(); // the view's watchSkinViewport hook re-runs its panel update
+    b.engine.paint(); // the view's next panel update re-paints and re-locks
     assert.strictEqual(body.style.position, 'fixed', 'rotating back re-paints and re-locks');
     assert.ok(ghostOf(b.dom), 'with a fresh ghost');
   } finally { b.restore(); }
@@ -1725,37 +1739,94 @@ test('v1.311.3 rotate: orientationchange alone releases too, and a destroyed ski
   } finally { b.restore(); }
 });
 
-test('v1.311.3 watchSkinViewport: fires once per crossing of the 768px gate, never on a same-side resize, and dies with its signal', () => {
+// UI pass D7 (converted from v1.311.3's watchSkinViewport tests): the width gate is gone, and with
+// it the helper that re-rendered the skin on a gate crossing - a rotate never tears Pocket down
+// (F23). Nothing may re-introduce a crossing listener: the shared engine exports none, and neither
+// view listens for resize/orientationchange to re-run its panel update (behaviour: the rotate tests
+// in music-skin-integration and podcast-nowplaying-view drive the real views).
+test('UI pass D7: no gate-crossing helper exists and neither skin view re-renders on a viewport event', () => {
   const b = bootEngine({});
   try {
-    const w = b.dom.window;
-    let narrow = true;
-    w.matchMedia = (q) => ({ matches: q === '(max-width: 768px)' ? narrow : false });
-    const calls = [];
-    const ctl = new w.AbortController();
-    assert.strictEqual(w.FileTubeSkinSurface.watchSkinViewport(w, (n) => calls.push(n), ctl.signal), true);
-    fire(b, 'resize');
-    assert.deepStrictEqual(calls, [], 'a resize that stays narrow (the iOS URL bar) is not a crossing');
-    narrow = false; fire(b, 'orientationchange'); fire(b, 'resize');
-    assert.deepStrictEqual(calls, [false], 'narrow -> wide fires once, however many events report it');
-    narrow = true; fire(b, 'resize');
-    assert.deepStrictEqual(calls, [false, true], 'wide -> narrow fires again');
-    ctl.abort();
-    narrow = false; fire(b, 'resize');
-    assert.deepStrictEqual(calls, [false, true], 'a torn-down view hears nothing');
+    assert.strictEqual(b.dom.window.FileTubeSkinSurface.watchSkinViewport, undefined, 'the engine exports no crossing helper');
   } finally { b.restore(); }
-});
-
-test('v1.311.3 both skin views route a viewport crossing to their panel update through the ONE shared helper', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').split('\n').map((l) => l.replace(/(^|[^:])\/\/.*$/, '$1')).join('\n');
   for (const f of ['music.js', 'podcasts.js']) {
     const src = strip(fs.readFileSync(path.join(__dirname, '../../public/js', f), 'utf8'));
-    assert.match(src, /watchSkinViewport\(window,\s*function \(\) \{ updateNowPlayingPanel\(\); \},\s*signal\)/,
-      `${f}: a crossing re-runs updateNowPlayingPanel, bound to the view's signal`);
-    assert.doesNotMatch(src, /matchMedia\(['"]\(max-width: 768px\)['"]\)\.addEventListener/, `${f}: no hand-copied gate listener`);
+    assert.doesNotMatch(src, /watchSkinViewport/, `${f}: no crossing helper call`);
+    assert.doesNotMatch(src, /addEventListener\(\s*['"](?:resize|orientationchange)['"]\s*,\s*function[^{]*\{[^}]*(?:updateNowPlayingPanel|isPhone|teardown)/, `${f}: no viewport listener re-renders the panel or re-reads the skin gate`);
+    const vp = [...src.matchAll(/addEventListener\(\s*['"](?:resize|orientationchange)['"]\s*,\s*([A-Za-z_$][\w$]*)/g)].map((m) => m[1]);
+    for (const name of vp) assert.ok(!/NowPlaying|Skin|Popout/i.test(name), `${f}: a named viewport listener (${name}) is not a skin/panel handler`);
+    assert.doesNotMatch(src, /matchMedia\(\s*['"]\(max-width/, `${f}: no width query decides the skin`);
+    assert.match(src, /SKINS\.isPhone\(\)/, `${f}: the gate reads the device class`);
   }
+});
+
+// UI pass D7 (F59, "measure after settle"): the ghost's arming scale is the wheel's height, and the
+// landscape layout / the iOS toolbar change that height after mount. A ResizeObserver report starts
+// a frame watch; the new scale is applied in the frame after TWO equal reads - never while the box
+// is still moving, never mid-gesture.
+function withSettleHarness(b) {
+  const w = b.dom.window;
+  const frames = [];
+  w.requestAnimationFrame = (cb) => { frames.push(cb); return frames.length; };
+  const observers = [];
+  w.ResizeObserver = class { constructor(cb) { this.cb = cb; this.els = []; observers.push(this); } observe(el) { this.els.push(el); } disconnect() { this.els = []; this.off = true; } };
+  let h = 240;
+  const origRect = w.Element.prototype.getBoundingClientRect;
+  w.Element.prototype.getBoundingClientRect = function () {
+    if (this.classList && this.classList.contains('ip-wheel')) return { width: h, height: h, left: 0, top: 0, right: h, bottom: h, x: 0, y: 0 };
+    return origRect.call(this);
+  };
+  return {
+    setH: (v) => { h = v; },
+    report: () => observers.filter((o) => !o.off && o.els.length).forEach((o) => o.cb([])),
+    step: (n) => { for (let i = 0; i < (n || 1); i++) { const q = frames.splice(0); q.forEach((cb) => cb(0)); } },
+    live: () => observers.filter((o) => !o.off && o.els.length).length,
+  };
+}
+
+test('UI pass D7 (F59): the haptic ghost re-measures its scale only after the wheel holds still for two frames', () => {
+  const b = bootHaptic({});
+  try {
+    const s = withSettleHarness(b);
+    b.engine.paint();
+    const g = ghostOf(b.dom);
+    assert.ok(g, 'precondition: the ghost mounted');
+    assert.strictEqual(g.style.transform, 'scale(7.5)', 'mount measures synchronously (240 / 32)');
+    assert.strictEqual(s.live(), 1, 'one settle observer on the wheel');
+    s.setH(320); // a rotate: the landscape layout fits the wheel to the short side
+    s.report();
+    s.step(1);
+    assert.strictEqual(g.style.transform, 'scale(7.5)', 'first frame: nothing applied yet (one read)');
+    s.setH(288); // still moving
+    s.step(1);
+    s.step(1);
+    assert.strictEqual(g.style.transform, 'scale(7.5)', 'a box that moved restarts the count');
+    s.step(2);
+    assert.strictEqual(g.style.transform, 'scale(9)', 'two equal reads later: the settled height (288 / 32)');
+    b.engine.destroy();
+    assert.strictEqual(s.live(), 0, 'destroy disconnects the settle observer');
+  } finally { b.restore(); }
+});
+
+test('UI pass D7 (F59): a settle that lands mid-spin leaves the riding ghost alone, and a repaint replaces the observer', () => {
+  const b = bootHaptic({});
+  try {
+    const s = withSettleHarness(b);
+    const w = b.dom.window;
+    b.engine.paint();
+    const wheel = panel(b.dom).querySelector('.ip-wheel');
+    wheel.dispatchEvent(new w.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    wheel.dispatchEvent(new w.MouseEvent('pointermove', { bubbles: true, clientX: 0, clientY: 100 }));
+    const riding = ghostOf(b.dom).style.transform;
+    s.setH(320); s.report(); s.step(4);
+    assert.strictEqual(ghostOf(b.dom).style.transform, riding, 'mid-gesture the ghost rides the finger - the settle does not snap it back');
+    w.document.dispatchEvent(new w.MouseEvent('pointerup', { bubbles: true }));
+    b.engine.paint();
+    assert.strictEqual(s.live(), 1, 'a repaint re-arms exactly one observer (the old wheel\'s is dropped)');
+  } finally { b.restore(); }
 });
 
 test('v1.311.3 gate r1 W1: a rotate DURING a wheel scrub does not re-lock when the finger lifts (the deferred paint is dropped)', async () => {
@@ -1781,22 +1852,6 @@ test('v1.311.3 gate r1 W1: a rotate DURING a wheel scrub does not re-lock when t
     assert.strictEqual(body.style.position, '', 'still released - the deferred paint never re-drew the skin');
     assert.strictEqual(ghostOf(b.dom), null, 'no ghost came back');
     assert.ok(panel(b.dom).querySelector('.mnp'), 'the desktop panel survives the lift');
-  } finally { b.restore(); }
-});
-
-test('v1.311.3 gate r1 S1/S2: watchSkinViewport starts from the REAL side (a view opened wide) and hears orientationchange alone', () => {
-  const b = bootEngine({});
-  try {
-    const w = b.dom.window;
-    let narrow = false;
-    w.matchMedia = (q) => ({ matches: q === '(max-width: 768px)' ? narrow : false });
-    const calls = [];
-    w.FileTubeSkinSurface.watchSkinViewport(w, (n) => calls.push(n));
-    fire(b, 'resize');
-    assert.deepStrictEqual(calls, [], 'opened wide, still wide: no crossing');
-    narrow = true;
-    fire(b, 'orientationchange'); // iOS can report the orientation before any resize
-    assert.deepStrictEqual(calls, [true], 'wide -> narrow on orientationchange alone');
   } finally { b.restore(); }
 });
 
@@ -1836,7 +1891,7 @@ test('v1.311.3 gate r1 W1 (no view re-render): the viewport release drops the de
     b.engine.paint(); // deferred
     wheel.setAttribute('data-sentinel', '1'); // a repaint would replace the whole skin DOM
     cover.rotateWide();
-    fire(b, 'resize'); // a host with no watchSkinViewport hook: the skin DOM (and mms-full) stays
+    fire(b, 'resize'); // no view re-renders on a viewport event (UI pass D7): the skin DOM (and mms-full) stays
     assert.strictEqual(locks, 1, 'no second lock acquisition');
     assert.ok(panel(b.dom).querySelector('.ip-wheel[data-sentinel]'), 'the release never flushed the deferred paint (no re-draw into a non-covering panel)');
     assert.strictEqual(body.style.position, '', 'released');

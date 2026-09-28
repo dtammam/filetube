@@ -3292,5 +3292,11 @@
     "date": "2026-09-27",
     "title": "A steadier channel row with a real bell, and a plainer Original wheel",
     "intent": "The Notify, Subscribe and Pin buttons under a video no longer change width when you tap them, so nothing beside them jumps, and Notify shows the same bell as the top bar (crossed out when off) instead of an emoji; the Subscriptions page's bells match. The Subscriptions page's bottom bar now has every place the other pages do (Liked, Podcasts, Music, Books, Downloads). Continue listening loads a smaller cover. The Original iPod skin's scroll wheel is a plain disc, like the real one."
+  },
+  {
+    "version": "1.341.0",
+    "date": "2026-09-28",
+    "title": "One consistent look across the whole app",
+    "intent": "Every page now uses the same buttons, rows, menus, dialogs and icons, so things line up, match each other and stop shifting when you tap them. Menus stay on screen and open above their button when there is no room below, a quick double tap can no longer answer a delete question for you, and a menu or question left open closes when you move to another page. Pocket stays in Pocket when you turn your phone. Your choice of era and icon style carries over; emoji icons now show as the filled style."
   }
 ]

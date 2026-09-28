@@ -1,6 +1,8 @@
 'use strict';
 
-// v1.69.0: the /podcasts place controller. Show grid -> episode list drill
+// v1.69.0: the /podcasts place controller. Show list -> episode list drill
+// (UI pass S6: the root level is a ui-list of show rows; the "grid" in older names and
+// comments below - backToGrid, "the grid" - means that root level)
 // (the music-place pattern: playback in the DOCKED mini-player, browse-while-
 // listening), the add-subscription sheet, per-user played/resume display.
 //
@@ -67,7 +69,7 @@
     return Math.min(1, Math.max(0, f));
   }
 
-  // The show card's one-line summary: "12 of 484 downloaded" (or the plain
+  // The show's count line: "12 of 484 downloaded" (or the plain
   // count once everything is local).
   function showCountLine(show) {
     if (!show) return '';
@@ -76,6 +78,56 @@
     if (total === 0) return 'No episodes yet';
     if (down >= total) return total + (total === 1 ? ' episode' : ' episodes');
     return down + ' of ' + total + ' downloaded';
+  }
+
+  // The show row's one meta line: "Author · 12 of 484 downloaded", led by the re-entry
+  // warning when the feed's tokened URL was lost (the row also carries data-warn).
+  function showMetaLine(show) {
+    if (!show) return '';
+    var parts = [];
+    if (show.secretMissing) parts.push('Feed URL needs re-entry');
+    if (show.author) parts.push(String(show.author));
+    parts.push(showCountLine(show));
+    return parts.filter(Boolean).join(' · ');
+  }
+
+  // The show header's count line; the last check's status only when it says something
+  // ("ok" is the normal case and reads as noise).
+  function showStatusLine(show) {
+    if (!show) return '';
+    var st = typeof show.lastStatus === 'string' ? show.lastStatus : '';
+    return showCountLine(show) + (st && st !== 'ok' ? ' · ' + st : '');
+  }
+
+  // F42: the artwork a show row/header paints. An RSS show's cover is its own route; a
+  // yt-dlp show carries the server's artUrl (its channel avatar), or null - and null means
+  // the monogram, never a guessed route or a video frame.
+  function showArtUrl(show) {
+    if (!show) return null;
+    if (show.source === 'ytdlp') return (typeof show.artUrl === 'string' && show.artUrl) ? show.artUrl : null;
+    return (typeof show.artUrl === 'string' && show.artUrl) ? show.artUrl : ('/podcastart/' + encodeURIComponent(show.id));
+  }
+
+  // F27: the episode row's one quiet meta line - its state word, "Played", the date, then the
+  // time left for a started episode or the duration. Played is text, never a red fill.
+  function episodeMetaLine(ep) {
+    if (!ep) return '';
+    var parts = [];
+    var chip = episodeChipLabel(ep);
+    if (chip) parts.push(chip);
+    if (ep.played) parts.push('Played');
+    var date = formatEpisodeDate(ep.pubDateMs);
+    if (date) parts.push(date);
+    var frac = resumeFraction(ep);
+    var dur = Number(ep.progress && ep.progress.duration) || Number(ep.durationSec);
+    if (frac !== null && dur > 0) {
+      var left = formatEpisodeDuration(dur - Number(ep.progress.position));
+      if (left) parts.push(left + ' left');
+    } else {
+      var d = formatEpisodeDuration(ep.durationSec);
+      if (d) parts.push(d);
+    }
+    return parts.join(' · ');
   }
 
   // ---- the view ------------------------------------------------------------
@@ -96,6 +148,7 @@
   function init(root) {
     controller = new AbortController();
     var signal = controller.signal;
+    var extrasEpisodeDeleteBusy = false; // UI pass S7: one Extras delete confirm (or its request) at a time
 
     var content = root.querySelector('#podcasts-content');
     var emptyNote = root.querySelector('#podcasts-empty');
@@ -103,13 +156,6 @@
     var statusEl = root.querySelector('#podcasts-status');
     var addBtn = root.querySelector('#podcasts-add-btn');
     var checkBtn = root.querySelector('#podcasts-check-btn');
-    var sheet = root.querySelector('#podcasts-add-sheet');
-    var sheetBackdrop = root.querySelector('#podcasts-add-backdrop');
-    var sheetUrl = root.querySelector('#podcasts-add-url');
-    var sheetBackfill = root.querySelector('#podcasts-add-backfill');
-    var sheetSubmit = root.querySelector('#podcasts-add-submit');
-    var sheetCancel = root.querySelector('#podcasts-add-cancel');
-    var sheetError = root.querySelector('#podcasts-add-error');
 
     var shows = [];
     var currentShow = null; // null = the grid
@@ -120,19 +166,31 @@
     var statusPollTimer = null;
     var nowPlayingPanel = root.querySelector('#podcast-nowplaying-panel');
     var podcastStage = root.querySelector('#podcast-stage');
-    var theaterBtn = root.querySelector('#podcast-theater-btn');
+    var theaterBtn = null; // UI pass S7: the player's own #theater-btn, bound by bindTheaterControl once the host exists
 
     // v1.251 (R2): desktop THEATRE for podcasts - the same music v1.222 toggle (panel beside
-    // the expanded player), its own persisted key. The button is desktop-only (CSS) and shows
-    // only while an episode is expanded (updateNowPlayingPanel toggles it in lockstep).
+    // the expanded player), its own persisted key (ft-podcast-theater).
+    // UI pass S7: the toggle is the PLAYER's own era-style #theater-btn in the control bar, as
+    // music has used since v1.317 (T1) - one control, one glyph writer (player.js
+    // ensureTheaterButton) - instead of a second bespoke toolbar button. Its visibility is CSS
+    // (hidden below the desktop breakpoint, in the dock, and on views that do not wire it);
+    // `hidden` is never touched here - the button is shared with the watch and music views.
+    // Bound at BOTH seams: init (a host already exists) and updateNowPlayingPanel (the first
+    // load); idempotent per init.
     var THEATER_KEY = 'ft-podcast-theater';
     function theaterOn() { try { return localStorage.getItem(THEATER_KEY) === '1'; } catch (_) { return false; } }
     function applyTheater(on) {
       if (podcastStage) podcastStage.classList.toggle('is-theater', !!on);
       if (theaterBtn) theaterBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
-    applyTheater(theaterOn());
-    if (theaterBtn) {
+    applyTheater(theaterOn()); // the stage class synchronously, before any host exists
+    function bindTheaterControl() {
+      if (theaterBtn) return; // bound for this init already
+      var pl = window.FileTube && window.FileTube.player;
+      var btn = (pl && typeof pl.ensureTheaterButton === 'function') ? pl.ensureTheaterButton() : null;
+      if (!btn) return; // no host in the document yet - the mount seam calls again
+      theaterBtn = btn;
+      applyTheater(theaterOn()); // aria-pressed reflects the PODCASTS state on every podcasts mount
       theaterBtn.addEventListener('click', function () {
         var next = !theaterOn();
         try { localStorage.setItem(THEATER_KEY, next ? '1' : '0'); } catch (_) { /* ignore */ }
@@ -140,6 +198,7 @@
         updateNowPlayingPanel(); // recompute (or clear) the theatre panel height cap
       }, { signal: signal });
     }
+    bindTheaterControl();
     // v1.251 (R2): the shared panel's rows are innerHTML now - ONE delegated tap listener
     // (music's exact contract: .mnp-queue-row data-index -> playAt) replaces the retired
     // per-row listeners. The mobile SKIN renders no .mnp-queue-row, so no double-handling.
@@ -253,19 +312,30 @@
             onQueue: function (item, pos) { if (typeof window.addToQueue === 'function') window.addToQueue(item.id, pos, 'podcast'); },
             likeRequest: function (item, nextOn) { return fetch('/api/podcasts/episodes/' + encodeURIComponent(item.id) + '/liked', { method: nextOn ? 'POST' : 'DELETE' }); },
             watchedRequest: function (item, nextOn) { return fetch('/api/podcasts/episodes/' + encodeURIComponent(item.id) + '/played', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ played: nextOn }) }); },
+            // UI pass S7 (the shared Extras delete, D4.8 F33): a danger ui.confirm (the episode
+            // list's own Move to Trash copy), then the SAME DELETE - only when it resolves exactly
+            // `true`; the view's signal closes it (answering false) on a teardown. One confirm at a
+            // time: a second tap while one is open or its request runs is ignored. The title is
+            // textContent inside ui.confirm (RSS titles are attacker-influenced: no markup string).
             onDelete: function (item, onSuccess, player) {
-              if (typeof window.showConfirmModal !== 'function') return;
-              // RSS titles are attacker-influenced - escape via textContent before the innerHTML body.
-              var esc = function (s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; };
-              window.showConfirmModal('Move to Trash?', 'Move <strong>' + esc(item.title || 'this episode') + '</strong> to Trash? You can Restore it from the episode list.', function () {
+              var U = window.ui;
+              if (extrasEpisodeDeleteBusy || !U || typeof U.confirm !== 'function') return;
+              extrasEpisodeDeleteBusy = true;
+              var release = function () { extrasEpisodeDeleteBusy = false; };
+              U.confirm({
+                title: 'Move to Trash?',
+                body: '“' + (item.title || 'This episode') + '” moves to Trash. You can restore it from this episode list.', // the episode list's own copy (confirmTrashEpisode)
+                confirmLabel: 'Move to Trash', cancelLabel: 'Cancel', danger: true, signal: signal,
+              }).then(function (ok) {
+                if (ok !== true || signal.aborted) { release(); return; }
                 // v1.339 R1 (T-C4): the confirm outlives an auto-advance - stop playback only when
                 // the deleted episode is STILL what plays, never the episode that followed it.
                 var stillPlaying = !!(player && player.currentId === item.id);
                 if (stillPlaying && typeof player.close === 'function') player.close();
-                fetchJson('/api/podcasts/episodes/' + encodeURIComponent(item.id), { method: 'DELETE' })
-                  .then(function () { if (typeof onSuccess === 'function') onSuccess(stillPlaying); })
-                  .catch(function () { setStatus('Could not delete the episode.'); });
-              });
+                return fetchJson('/api/podcasts/episodes/' + encodeURIComponent(item.id), { method: 'DELETE' })
+                  .then(function () { release(); if (typeof onSuccess === 'function') onSuccess(stillPlaying); })
+                  .catch(function () { release(); setStatus('Could not delete the episode.'); });
+              }, release);
             },
           },
           // v1.273 (Dean): "podcasts just doesn't show up as an option even though it's
@@ -301,7 +371,7 @@
     // desktop viewport + a podcast episode current.
     var popoutBtn = root.querySelector('#podcast-popout-btn');
     function podcastPopoutSupported() {
-      try { if (SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()) return false; } catch (_) { /* treat as desktop */ }
+      try { if (SKINS && SKINS.isPhone && SKINS.isPhone()) return false; } catch (_) { /* treat as desktop */ }
       return !!(typeof window !== 'undefined' && (window.documentPictureInPicture || typeof window.open === 'function'));
     }
     function hasCurrentPodcastEpisode() {
@@ -325,21 +395,10 @@
       popoutBtn.setAttribute('aria-pressed', (popoutShell && popoutShell.isOpen()) ? 'true' : 'false');
     }
     if (popoutBtn && popoutShell) popoutBtn.addEventListener('click', function () { popoutShell.toggle(); }, { signal });
-    // the never-both-live split, enforced on resize (the music v1.235 gate finding, same shape).
-    if (popoutShell && typeof window !== 'undefined' && window.addEventListener) {
-      window.addEventListener('resize', function () {
-        var narrow = false;
-        try { narrow = !!(SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()); } catch (_) { /* desktop */ }
-        if (narrow && popoutShell.isOpen()) popoutShell.teardown();
-        else updatePopoutBtn();
-      }, { signal });
-    }
+    // The never-both-live split is structural (UI pass D7, music.js parity): the in-tab skin
+    // runs only on a phone, the pop-out only off one, and html.is-phone never changes after
+    // load - so no resize listener enforces it and a rotate never re-renders the skin (F23).
     activePodcastPopoutTeardown = popoutShell ? function () { popoutShell.teardown(); } : null; // destroy() closes it on a cross-view swap
-    // v1.311.3: re-run the panel update when the viewport crosses the mobile skin gate (a
-    // rotate), so the skin un-renders / re-paints - music.js parity, the same shared helper.
-    if (window.FileTubeSkinSurface && typeof window.FileTubeSkinSurface.watchSkinViewport === 'function') {
-      window.FileTubeSkinSurface.watchSkinViewport(window, function () { updateNowPlayingPanel(); }, signal);
-    }
 
     function setStatus(msg) {
       if (!statusEl) return;
@@ -356,20 +415,29 @@
       });
     }
 
-    // ---- the show grid ----
+    // ---- the show list ----
+    // UI pass S6: the shows are a ui-list of media rows (the Spotify library row: rounded-square
+    // art, name, "author · N episodes"), built by the primitives in public/js/ui.js.
     function renderShows() {
       if (!content) return;
       content.textContent = '';
       if (crumb) { crumb.hidden = true; crumb.textContent = ''; }
       if (emptyNote) emptyNote.hidden = shows.length > 0;
       if (shows.length === 0) return;
-      var grid = document.createElement('div');
-      grid.className = 'podcast-grid';
+      var list = window.ui.list({ size: 'media', media: 'art', label: 'Podcasts' });
+      list.classList.add('podcast-show-list');
       shows.forEach(function (show) {
-        grid.appendChild(buildShowCard(show));
+        list.appendChild(buildShowRow(show));
       });
-      content.appendChild(grid);
+      content.appendChild(list);
       revealPodcastArt();
+    }
+
+    // A failed load is an error state with a Retry, never "No podcasts yet" (plan D9).
+    function renderLoadError(title, retry) {
+      if (!content) return;
+      content.innerHTML = '';
+      content.appendChild(window.ui.state({ icon: 'error', title: title, action: { label: 'Retry', onClick: retry } }));
     }
 
     // v1.102 (tranche 4 shimmer): the show/episode art images ship `art-shimmer`;
@@ -381,16 +449,6 @@
       }
     }
 
-    // v1.102 (tranche 4): the episode-row action glyphs (like/queue/save/delete)
-    // are inline chrome-icon SVGs, not `.icon-*` masks - a mask paints nothing
-    // until it decodes, so on an iOS cold start it popped in a beat late (the v1.87
-    // class). chromeIconEl is a common.js browser global reached via `window.`;
-    // returns null only if the map/document is unavailable (never in a real
-    // browser), so callers null-guard the append.
-    function rowGlyphEl(name) {
-      return (typeof window !== 'undefined' && typeof window.chromeIconEl === 'function') ? window.chromeIconEl(name) : null;
-    }
-
     // Refresh whatever list is on screen from server state (delete/restore/
     // like handlers).
     function refreshCurrentView() {
@@ -398,34 +456,28 @@
       openShow(currentShow);
     }
 
-    function buildShowCard(show) {
-      var card = document.createElement('button');
-      card.type = 'button';
-      card.className = 'podcast-card';
-      var art = document.createElement('img');
-      art.className = 'podcast-card-art art-shimmer';
-      art.alt = '';
-      art.loading = 'lazy';
-      // A ytdlp-sourced show carries a server-built artUrl (a /thumbnail/
-      // path); RSS shows use the show-cover route.
-      art.src = show.artUrl || ('/podcastart/' + encodeURIComponent(show.id));
-      card.appendChild(art);
-      var title = document.createElement('div');
-      title.className = 'podcast-card-title';
-      title.textContent = show.name;
-      card.appendChild(title);
-      var line = document.createElement('div');
-      line.className = 'podcast-card-sub';
-      line.textContent = showCountLine(show);
-      card.appendChild(line);
-      if (show.secretMissing) {
-        var warn = document.createElement('div');
-        warn.className = 'podcast-card-warn';
-        warn.textContent = 'Feed URL needs re-entry';
-        card.appendChild(warn);
-      }
-      card.addEventListener('click', function () { pushShowLevel(show); openShow(show); }, { signal: signal });
-      return card;
+    // The show's artwork as a ui-art rounded square (plan D4.4, audit decision 7). The source is
+    // showArtUrl (the feed's cover route, or a yt-dlp show's channel avatar); with no source, or
+    // a failed load, ui.avatar draws the monogram - never a broken image, never a video frame
+    // (F42). The img keeps the decode-reveal shimmer (FileTube.shimmerArt clears it).
+    function showArtEl(show, size) {
+      var a = window.ui.avatar({ kind: 'podcast', name: show && show.name, url: showArtUrl(show), size: size });
+      var img = a.querySelector('img');
+      if (img) img.classList.add('art-shimmer');
+      return a;
+    }
+
+    function buildShowRow(show) {
+      var r = window.ui.row({
+        size: 'media',
+        media: showArtEl(show, 'xl'),
+        title: show.name || 'Podcast',
+        meta: showMetaLine(show),
+        onClick: function () { pushShowLevel(show); openShow(show); },
+      });
+      r.setAttribute('data-show-id', show.id);
+      if (show.secretMissing) r.setAttribute('data-warn', '');
+      return r;
     }
 
     // ---- the episode list ----
@@ -448,7 +500,7 @@
         .catch(function () {
           if (signal.aborted || showKey(currentShow) !== showKey(show)) return; // T-C8: never wipe the view that replaced us
           if (content) content.innerHTML = ''; // never strand the shimmer
-          setStatus('Could not load episodes.');
+          renderLoadError('Could not load episodes', function () { openShow(show); });
         });
     }
 
@@ -460,13 +512,13 @@
 
     // v1.218 in-view back-stack: opening a show from the grid stamps a history
     // level so OS/browser back steps back to the grid instead of leaving
-    // Podcasts. INTERACTIVE descents only (the card click); the ?show= init deep
+    // Podcasts. INTERACTIVE descents only (the show-row click); the ?show= init deep
     // link and refreshCurrentView re-open via openShow directly, no push.
     function showKey(s) { return (s && s.id) ? String(s.id) : ''; }
     function pushShowLevel(show) {
       var ft = window.FileTube;
       // The same-id check is a DEFENSIVE guard, not a live dedup: today the only
-      // caller is the grid card, which only exists while currentShow is null, so
+      // caller is the show row, which only exists while currentShow is null, so
       // the keys always differ. It future-proofs a non-grid descent (e.g. a
       // "related show" link) against a duplicate level. (gate SUGGESTION: this is
       // currently unreachable, kept as cheap insurance rather than dropped.)
@@ -491,15 +543,15 @@
 
     function renderEpisodes() {
       if (!content) return;
+      var ui = window.ui;
+      var show = currentShow; // every handler below closes over THIS show, never the live currentShow
       content.textContent = '';
       if (emptyNote) emptyNote.hidden = true;
       if (crumb) {
+        // F41: the crumb is Back alone - the show's name is the header's title, once.
         crumb.textContent = '';
         crumb.hidden = false;
-        var back = document.createElement('button');
-        back.type = 'button';
-        back.className = 'btn btn-sm';
-        back.textContent = '‹ All podcasts';
+        var back = ui.button({ variant: 'plain', size: 'sm', icon: 'arrow_back', label: 'All podcasts' });
         // v1.218: consume the pushed show level via history.back() when one exists
         // (keeps OS-back in sync); else collapse directly (a show reached without a
         // pushed level, e.g. a ?show= deep-link restore).
@@ -512,95 +564,49 @@
           }
         }, { signal: signal });
         crumb.appendChild(back);
-        var name = document.createElement('span');
-        name.className = 'podcast-crumb-name';
-        name.textContent = currentShow ? currentShow.name : '';
-        crumb.appendChild(name);
       }
 
       var head = document.createElement('div');
       head.className = 'podcast-show-head';
-      var art = document.createElement('img');
-      art.className = 'podcast-show-art art-shimmer';
-      art.alt = '';
-      art.src = currentShow.artUrl || ('/podcastart/' + encodeURIComponent(currentShow.id));
-      head.appendChild(art);
+      head.appendChild(showArtEl(show, '2xl'));
       var meta = document.createElement('div');
       meta.className = 'podcast-show-meta';
       var h = document.createElement('h3');
-      h.textContent = currentShow.name;
+      h.className = 'podcast-show-title';
+      h.textContent = show.name;
       meta.appendChild(h);
-      if (currentShow.author) {
+      if (show.author) {
         var by = document.createElement('div');
         by.className = 'podcast-show-author';
-        by.textContent = currentShow.author;
+        by.textContent = show.author;
         meta.appendChild(by);
       }
-      if (currentShow.description) {
+      if (show.description) {
         var desc = document.createElement('p');
         desc.className = 'podcast-show-desc';
-        desc.textContent = currentShow.description;
+        desc.textContent = show.description;
         meta.appendChild(desc);
       }
       var counts = document.createElement('div');
-      counts.className = 'podcast-card-sub';
-      counts.textContent = showCountLine(currentShow) + (currentShow.lastStatus ? ' · ' + currentShow.lastStatus : '');
+      counts.className = 'podcast-show-counts';
+      counts.textContent = showStatusLine(show);
       meta.appendChild(counts);
-      // The management row (v1.69 QA gate #3): pause/resume + unsubscribe +
-      // the secretMissing re-entry lane. RSS shows only - a ytdlp-sourced
-      // show is managed on its own /subscriptions page.
-      if (currentShow.source !== 'ytdlp') {
-        // v1.72 (intake ruling 5): pin this show into the Playlists
-        // surface - the channel-folder/book-shelf parity affordance.
-        // Non-optimistic: label flips only after the round trip; current
-        // state is read from the pins route (membership IS the state).
-        var pinBtn = document.createElement('button');
-        pinBtn.type = 'button';
-        pinBtn.className = 'btn btn-sm podcast-pin-btn';
-        // v1.340 (the watch page's Pin sibling, gate r1): one stable width in both states
-        // (common.js stableToggleLabelHtml, a page global), the star drawn as a glyph.
-        function writePinLabel(pinned) {
-          if (typeof window !== 'undefined' && typeof window.stableToggleLabelHtml === 'function') {
-            pinBtn.innerHTML = window.stableToggleLabelHtml(pinned ? 'Pinned' : 'Pin to Playlists', ['Pin to Playlists', 'Pinned'], { Pinned: { name: 'starFilled', after: true } });
-          } else {
-            pinBtn.textContent = pinned ? 'Pinned' : 'Pin to Playlists';
-          }
-        }
-        writePinLabel(false);
-        pinBtn.disabled = true;
-        var showPinned = false;
-        function paintPinBtn() {
-          writePinLabel(showPinned);
-          pinBtn.setAttribute('aria-pressed', showPinned ? 'true' : 'false');
-          pinBtn.disabled = false;
-        }
-        fetchJson('/api/podcasts/pins')
-          .then(function (pins) {
-            if (signal.aborted) return;
-            showPinned = Array.isArray(pins) && pins.some(function (p) { return p && p.id === currentShow.id; });
-            paintPinBtn();
-          })
-          .catch(function () { /* leave disabled - state unknown */ });
-        pinBtn.addEventListener('click', function () {
-          pinBtn.disabled = true;
-          var req = showPinned
-            ? fetchJson('/api/podcasts/pins/' + encodeURIComponent(currentShow.id), { method: 'DELETE' })
-            : fetchJson('/api/podcasts/pins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subId: currentShow.id }) });
-          req.then(function () {
-            showPinned = !showPinned;
-            paintPinBtn();
-            // The pinned sidebar + Playlists sheet re-read the merged pins.
-            if (window.FileTube && typeof window.FileTube.refreshAllPinSurfaces === 'function') window.FileTube.refreshAllPinSurfaces();
-          }).catch(function () { paintPinBtn(); });
-        }, { signal: signal });
-        meta.appendChild(pinBtn);
-        meta.appendChild(buildManageRow());
-      }
+      // The management actions (v1.69 QA gate #3): pin, pause/resume, unsubscribe and the
+      // secretMissing re-entry lane. RSS shows only - a ytdlp-sourced show is managed on its
+      // own /subscriptions page. F41: ONE action group on its own full-width line under the
+      // header (not a lone Pin line above a second row), so it holds one line on a phone.
       head.appendChild(meta);
       content.appendChild(head);
+      if (show.source !== 'ytdlp') {
+        content.appendChild(buildShowActions(show));
+        if (show.secretMissing) content.appendChild(buildReenter(show));
+      }
 
-      var list = document.createElement('div');
-      list.className = 'podcast-episode-list';
+      // AC5: the list reserves two trailing action columns (queue, more) on every row, so a
+      // row without a queue button (trashed, not downloaded, a yt-dlp episode) never moves
+      // the kebab.
+      var list = ui.list({ size: 'default', actions: 2, label: 'Episodes' });
+      list.classList.add('podcast-episodes');
       // Dock-playable = downloaded RSS episodes; external (watchHref) rows
       // navigate to their watch page and never join the dock prev/next set.
       playable = episodes.filter(function (e) { return e.status === 'downloaded' && !e.watchHref; });
@@ -612,283 +618,272 @@
       revealPodcastArt();
     }
 
-    function buildManageRow() {
+    function buildShowActions(show) {
+      var ui = window.ui;
       var row = document.createElement('div');
-      row.className = 'podcast-manage-row';
+      row.className = 'podcast-show-actions';
 
-      var pauseBtn = document.createElement('button');
-      pauseBtn.type = 'button';
-      pauseBtn.className = 'btn btn-sm';
-      pauseBtn.textContent = currentShow.paused ? 'Resume checks' : 'Pause checks';
+      // v1.72 (intake ruling 5): pin this show into the Playlists surface. Non-optimistic:
+      // the state flips only after the round trip; membership in the pins route IS the state.
+      // F41: while the pins load (and during a toggle's round trip) the button is BUSY - a
+      // reserved pending state at full width, never a disabled flash.
+      var pinBtn = ui.button({ variant: 'secondary', pill: true, icon: { off: 'keep', on: 'keep.fill' }, labels: ['Pin', 'Pinned'], pressed: false });
+      pinBtn.setAttribute('aria-label', 'Pin to Playlists');
+      ui.setBusy(pinBtn, true);
+      var showPinned = false;
+      function paintPin() {
+        ui.setPressed(pinBtn, showPinned);
+        ui.setBusy(pinBtn, false);
+      }
+      fetchJson('/api/podcasts/pins')
+        .then(function (pins) {
+          if (signal.aborted) return;
+          showPinned = Array.isArray(pins) && pins.some(function (p) { return p && p.id === show.id; });
+          paintPin();
+        })
+        .catch(function () {
+          // State unknown: an honest disabled control, not a toggle that would guess.
+          ui.setBusy(pinBtn, false);
+          pinBtn.disabled = true;
+        });
+      pinBtn.addEventListener('click', function () {
+        ui.setBusy(pinBtn, true);
+        var req = showPinned
+          ? fetchJson('/api/podcasts/pins/' + encodeURIComponent(show.id), { method: 'DELETE' })
+          : fetchJson('/api/podcasts/pins', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ subId: show.id }) });
+        req.then(function () {
+          showPinned = !showPinned;
+          paintPin();
+          // The pinned sidebar + Playlists sheet re-read the merged pins.
+          if (window.FileTube && typeof window.FileTube.refreshAllPinSurfaces === 'function') window.FileTube.refreshAllPinSurfaces();
+        }).catch(function () { paintPin(); setStatus('Could not update the pin.'); });
+      }, { signal: signal });
+      row.appendChild(pinBtn);
+
+      var pauseBtn = ui.button({ variant: 'secondary', pill: true, icon: { off: 'pause', on: 'play_arrow' },
+        labels: ['Pause checks', 'Resume checks'], pressed: !!show.paused });
       pauseBtn.addEventListener('click', function () {
-        fetchJson('/api/podcasts/subscriptions/' + encodeURIComponent(currentShow.id), {
+        ui.setBusy(pauseBtn, true);
+        fetchJson('/api/podcasts/subscriptions/' + encodeURIComponent(show.id), {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ paused: !currentShow.paused }),
+          body: JSON.stringify({ paused: !show.paused }),
         }).then(function () {
-          currentShow.paused = !currentShow.paused;
-          pauseBtn.textContent = currentShow.paused ? 'Resume checks' : 'Pause checks';
-        }).catch(function () { setStatus('Could not update the subscription.'); });
+          show.paused = !show.paused;
+          ui.setPressed(pauseBtn, show.paused);
+        }).catch(function () { setStatus('Could not update the subscription.'); })
+          .then(function () { ui.setBusy(pauseBtn, false); });
       }, { signal: signal });
       row.appendChild(pauseBtn);
 
-      // Unsubscribe: the two-tap confirm (the trash-purge pattern), with the
-      // files-stay-on-disk disclosure IN the confirming label (D13).
-      var unsubBtn = document.createElement('button');
-      unsubBtn.type = 'button';
-      unsubBtn.className = 'btn btn-sm podcast-unsub-btn';
-      unsubBtn.textContent = 'Unsubscribe';
-      var confirming = false;
-      unsubBtn.addEventListener('click', function () {
-        if (!confirming) {
-          confirming = true;
-          unsubBtn.classList.add('confirming');
-          unsubBtn.textContent = 'Unsubscribe? Downloaded files stay on disk';
-          return;
-        }
-        fetchJson('/api/podcasts/subscriptions/' + encodeURIComponent(currentShow.id), { method: 'DELETE' })
-          .then(function () { backToGrid(); })
-          .catch(function () { setStatus('Could not unsubscribe.'); });
+      // The show's overflow (one icon button, so the group holds one line on a phone): Unsubscribe
+      // is destructive - its menu item opens ui.confirm (danger), and the DELETE runs only after
+      // the confirm resolves true (F33 / plan D4.8). The files-stay-on-disk disclosure is the
+      // confirm's body.
+      var moreBtn = ui.button({ variant: 'secondary', pill: true, shape: 'icon', icon: 'more_horiz', ariaLabel: 'More show actions' });
+      moreBtn.setAttribute('data-show-more', '');
+      moreBtn.addEventListener('click', function () {
+        ui.menu({ anchor: moreBtn, title: show.name || 'Podcast', signal: signal, items: [
+          { label: 'Unsubscribe', danger: true, onSelect: function () { confirmUnsubscribe(show); } },
+        ] });
       }, { signal: signal });
-      row.appendChild(unsubBtn);
-
-      // The secretMissing recovery lane (a restored backup lost the tokened
-      // URL): inline re-entry, wired to the same-feed-only route.
-      if (currentShow.secretMissing) {
-        var reenter = document.createElement('div');
-        reenter.className = 'podcast-reenter-row';
-        var input = document.createElement('input');
-        input.type = 'url';
-        input.className = 'search-input';
-        input.placeholder = 'Paste this feed’s URL again (with its token)';
-        reenter.appendChild(input);
-        var saveBtn = document.createElement('button');
-        saveBtn.type = 'button';
-        saveBtn.className = 'btn btn-sm btn-primary';
-        saveBtn.textContent = 'Save feed URL';
-        saveBtn.addEventListener('click', function () {
-          fetchJson('/api/podcasts/subscriptions/' + encodeURIComponent(currentShow.id) + '/feed-url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ feedUrl: input.value.trim() }),
-          }).then(function () {
-            setStatus('Feed URL saved - checking the feed…');
-            startStatusPolling();
-            openShow(currentShow);
-          }).catch(function (err) {
-            setStatus(err.message || 'Could not save the feed URL.');
-          });
-        }, { signal: signal });
-        reenter.appendChild(saveBtn);
-        row.appendChild(reenter);
-      }
+      row.appendChild(moreBtn);
       return row;
     }
 
-    function buildEpisodeRow(ep) {
-      var row = document.createElement('div');
-      row.className = 'podcast-episode-row';
-      row.setAttribute('data-episode-id', ep.id);
-      if (ep.played) row.classList.add('played');
+    function confirmUnsubscribe(show) {
+      return window.ui.confirm({
+        title: 'Unsubscribe from ' + (show.name || 'this podcast') + '?',
+        body: 'New episodes stop downloading. Episodes already downloaded stay on disk.',
+        confirmLabel: 'Unsubscribe',
+        danger: true,
+        signal: signal, // an SPA nav away closes it and answers false
+      }).then(function (ok) {
+        if (ok !== true || signal.aborted) return;
+        return fetchJson('/api/podcasts/subscriptions/' + encodeURIComponent(show.id), { method: 'DELETE' })
+          .then(function () { if (!signal.aborted) backToGrid(); })
+          .catch(function () { setStatus('Could not unsubscribe.'); });
+      });
+    }
 
-      var main = document.createElement('button');
-      main.type = 'button';
-      main.className = 'podcast-episode-main';
-      main.disabled = ep.status !== 'downloaded';
-      var title = document.createElement('div');
-      title.className = 'podcast-episode-title';
-      title.textContent = ep.title || 'Untitled episode';
-      main.appendChild(title);
-      var meta = document.createElement('div');
-      meta.className = 'podcast-episode-meta';
-      meta.textContent = formatEpisodeMeta(ep);
-      main.appendChild(meta);
-      var chipLabel = episodeChipLabel(ep);
-      if (chipLabel) {
-        var chip = document.createElement('span');
-        chip.className = 'podcast-episode-chip' + (ep.status === 'failed' ? ' failed' : '');
-        chip.textContent = chipLabel;
-        main.appendChild(chip);
-      }
-      var frac = resumeFraction(ep);
-      if (frac !== null) {
-        var bar = document.createElement('div');
-        bar.className = 'podcast-episode-resume';
-        var fill = document.createElement('div');
-        fill.className = 'podcast-episode-resume-fill';
-        fill.style.width = (frac * 100).toFixed(1) + '%'; /* token-exempt: positional geometry (progress fraction) */
-        bar.appendChild(fill);
-        main.appendChild(bar);
-      }
+    // The secretMissing recovery lane (a restored backup lost the tokened URL): inline
+    // re-entry, wired to the same-feed-only route.
+    function buildReenter(show) {
+      var ui = window.ui;
+      var wrap = document.createElement('div');
+      wrap.className = 'podcast-reenter';
+      var f = ui.field({ label: 'Feed URL needs re-entry', type: 'url', placeholder: 'Paste this feed’s URL again (with its token)' });
+      f.input.setAttribute('autocomplete', 'off');
+      f.input.setAttribute('spellcheck', 'false');
+      wrap.appendChild(f.el);
+      var saveBtn = ui.button({ variant: 'secondary', label: 'Save feed URL' });
+      saveBtn.addEventListener('click', function () {
+        fetchJson('/api/podcasts/subscriptions/' + encodeURIComponent(show.id) + '/feed-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feedUrl: f.input.value.trim() }),
+        }).then(function () {
+          setStatus('Feed URL saved - checking the feed…');
+          startStatusPolling();
+          openShow(show);
+        }).catch(function (err) {
+          setStatus(err.message || 'Could not save the feed URL.');
+        });
+      }, { signal: signal });
+      wrap.appendChild(saveBtn);
+      return wrap;
+    }
+
+    // UI pass S6 (F27): an episode is a ui-row - title, one quiet meta line (state, Played,
+    // date, duration or time left), and two reserved trailing slots: Add to queue and a kebab
+    // holding Like, Mark played, Save to device and Move to Trash. Played is meta text, never a
+    // red fill; the row itself plays the episode.
+    function buildEpisodeRow(ep) {
+      var ui = window.ui;
+      var rss = !ep.watchHref;
+      var downloaded = ep.status === 'downloaded';
+      var opts = { title: ep.title || 'Untitled episode', meta: episodeMetaLine(ep) };
       if (ep.watchHref) {
-        // A ytdlp-sourced episode is a media item: it plays on its watch
-        // page (watch-history state, chapters, everything) - navigate.
-        main.addEventListener('click', function () {
-          window.location.href = ep.watchHref;
-        }, { signal: signal });
-      } else if (ep.status === 'downloaded') {
-        main.addEventListener('click', function () {
+        // A ytdlp-sourced episode is a media item: it plays on its watch page (watch-history
+        // state, chapters, everything) - the row is a link there.
+        opts.href = ep.watchHref;
+      } else if (downloaded) {
+        opts.onClick = function () {
           var i = playable.indexOf(ep);
           if (i !== -1) playAt(i);
-        }, { signal: signal });
+        };
       }
-      row.appendChild(main);
-
-      // v1.71 T4: the like heart (RSS episodes; the podcast arm of the
-      // music-liked pattern). v1.75: this is the WRITE surface and the only
-      // one - the Liked lane it used to also feed is gone; see the handler
-      // below.
-      if (!ep.watchHref && ep.status === 'downloaded') {
-        var likeBtn = document.createElement('button');
-        likeBtn.type = 'button';
-        likeBtn.className = 'podcast-like-toggle' + (ep.liked ? ' liked' : '');
-        likeBtn.title = ep.liked ? 'Unlike' : 'Like';
-        likeBtn.setAttribute('aria-pressed', ep.liked ? 'true' : 'false');
-        var likeIcon = rowGlyphEl('heart');
-        if (likeIcon) likeBtn.appendChild(likeIcon);
-        likeBtn.addEventListener('click', function (e) {
-          e.stopPropagation();
-          var next = !ep.liked;
-          fetchJson('/api/podcasts/episodes/' + encodeURIComponent(ep.id) + '/liked', { method: next ? 'POST' : 'DELETE' })
-            .then(function () {
-              // v1.75: the heart is the WRITE surface and stays; the central
-              // Liked playlist (/?liked=1) is the only place that READS it, so
-              // there is no local lane left to re-render or re-count.
-              ep.liked = next;
-              likeBtn.classList.toggle('liked', next);
-              likeBtn.title = next ? 'Unlike' : 'Like';
-              likeBtn.setAttribute('aria-pressed', next ? 'true' : 'false');
-            })
-            .catch(function () { setStatus('Could not update the like.'); });
-        }, { signal: signal });
-        row.appendChild(likeBtn);
-      }
-
-      // v1.71 T6: add-to-queue through the ONE shared verb (toast + Undo),
-      // kind 'podcast' so the entry resolves against the episodes map.
-      // v1.71.1 (Dean's device find): glyph, not text - three text buttons
-      // truncated the episode title. Same icon vocabulary as the card
-      // corner controls (icon-queue/download/delete).
-      if (!ep.watchHref && ep.status === 'downloaded') {
-        var queueBtn = document.createElement('button');
-        queueBtn.type = 'button';
-        queueBtn.className = 'podcast-ep-action';
-        queueBtn.title = 'Add to queue';
-        queueBtn.setAttribute('aria-label', 'Add to queue');
-        var queueIcon = rowGlyphEl('queue');
-        if (queueIcon) queueBtn.appendChild(queueIcon);
+      var actions = [null, null];
+      var row;
+      if (rss && downloaded) {
+        // v1.71 T6: add-to-queue through the ONE shared verb (toast + Undo), kind 'podcast'
+        // so the entry resolves against the episodes map.
+        var queueBtn = ui.button({ variant: 'plain', shape: 'icon', icon: 'playlist_play', ariaLabel: 'Add to queue' });
         queueBtn.addEventListener('click', function (e) {
           e.stopPropagation();
           if (typeof window.addToQueue === 'function') window.addToQueue(ep.id, 'end', 'podcast');
         }, { signal: signal });
-        row.appendChild(queueBtn);
+        actions[0] = queueBtn;
       }
-
-      // v1.71: save-to-device (RSS episodes only - a ytdlp episode is a
-      // media item and keeps its watch-page download affordance). An <a
-      // download> pointed at the confined stream route's ?download=1 arm.
-      if (!ep.watchHref && ep.status === 'downloaded') {
-        var saveLink = document.createElement('a');
-        saveLink.className = 'podcast-ep-action';
-        saveLink.href = '/episode/' + encodeURIComponent(ep.id) + '?download=1';
-        saveLink.setAttribute('download', '');
-        saveLink.title = 'Save to device';
-        saveLink.setAttribute('aria-label', 'Save to device');
-        var saveIcon = rowGlyphEl('download');
-        if (saveIcon) saveLink.appendChild(saveIcon);
-        saveLink.addEventListener('click', function (e) { e.stopPropagation(); }, { signal: signal });
-        row.appendChild(saveLink);
-      }
-
-      // v1.70: the recoverable delete (RSS episodes only). Downloaded rows
-      // get a two-tap delete; trashed rows get Restore. Both refresh the
-      // list from server state on success.
-      if (!ep.watchHref && ep.status === 'downloaded') {
-        var delBtn = document.createElement('button');
-        delBtn.type = 'button';
-        delBtn.className = 'podcast-ep-action podcast-ep-delete';
-        delBtn.title = 'Move to trash';
-        delBtn.setAttribute('aria-label', 'Move to trash');
-        var delIcon = rowGlyphEl('delete');
-        if (delIcon) delBtn.appendChild(delIcon);
-        // The two-tap honesty survives the glyph swap: arming widens the
-        // circle into a pill and reveals the copy (the card-delete REVEAL
-        // styling only - unlike armCardDelete there is NO auto-disarm
-        // timer and no single-armed invariant; an armed pill stays armed
-        // until the row rebuilds, same as the v1.71.0 text version).
-        var delConfirm = document.createElement('span');
-        delConfirm.className = 'podcast-ep-confirm';
-        delConfirm.textContent = 'Move to trash?';
-        delBtn.appendChild(delConfirm);
-        var delConfirming = false;
-        delBtn.addEventListener('click', function (e) {
+      if (rss) {
+        var moreBtn = ui.button({ variant: 'plain', shape: 'icon', icon: 'more_vert', ariaLabel: 'More actions' });
+        moreBtn.setAttribute('data-episode-more', '');
+        moreBtn.addEventListener('click', function (e) {
           e.stopPropagation();
-          if (!delConfirming) {
-            delConfirming = true;
-            delBtn.classList.add('confirming');
-            return;
-          }
-          fetchJson('/api/podcasts/episodes/' + encodeURIComponent(ep.id), { method: 'DELETE' })
-            .then(function () { refreshCurrentView(); })
-            .catch(function () { setStatus('Could not delete the episode.'); });
+          openEpisodeMenu(ep, row, moreBtn);
         }, { signal: signal });
-        row.appendChild(delBtn);
+        actions[1] = moreBtn;
+        opts.actions = actions;
+      } else {
+        opts.actions = [];
       }
-      if (!ep.watchHref && ep.status === 'trashed') {
-        var restoreBtn = document.createElement('button');
-        restoreBtn.type = 'button';
-        restoreBtn.className = 'btn btn-sm';
-        restoreBtn.textContent = 'Restore';
-        restoreBtn.addEventListener('click', function (e) {
-          e.stopPropagation();
-          fetchJson('/api/podcasts/episodes/' + encodeURIComponent(ep.id) + '/restore', { method: 'POST' })
-            .then(function () { refreshCurrentView(); })
-            .catch(function (err) { setStatus(err.message || 'Could not restore the episode.'); });
-        }, { signal: signal });
-        row.appendChild(restoreBtn);
-      }
-
-      // The played toggle writes the podcast latch - external (media-item)
-      // episodes get their played state from watch history instead, shown
-      // read-only (no toggle).
-      if (!ep.watchHref) {
-        var playedBtn = document.createElement('button');
-        playedBtn.type = 'button';
-        playedBtn.className = 'podcast-played-toggle';
-        playedBtn.title = ep.played ? 'Mark unplayed' : 'Mark played';
-        playedBtn.setAttribute('aria-pressed', ep.played ? 'true' : 'false');
-        playedBtn.textContent = '✓';
-        playedBtn.addEventListener('click', function (e) {
-          e.stopPropagation();
-          togglePlayed(ep, row, playedBtn);
-        }, { signal: signal });
-        row.appendChild(playedBtn);
-      }
+      row = ui.row(opts);
+      row.setAttribute('data-episode-id', ep.id);
+      if (ep.played) row.setAttribute('data-played', '');
       return row;
     }
 
-    function togglePlayed(ep, row, btn) {
+    // The episode's action menu (kebab). Item ids are the DATA (this episode), never an index.
+    function episodeMenuItems(ep, row) {
+      var items = [];
+      if (ep.status === 'downloaded') {
+        // v1.71 T4 / v1.75: the like is the WRITE surface for the central Liked playlist.
+        items.push({ label: ep.liked ? 'Unlike' : 'Like', icon: ep.liked ? 'favorite.fill' : 'favorite', onSelect: function () { toggleLiked(ep); } });
+      }
+      // The played toggle writes the podcast latch (external episodes take theirs from watch
+      // history and never reach this menu).
+      items.push({ label: ep.played ? 'Mark unplayed' : 'Mark played', icon: 'check', onSelect: function () { togglePlayed(ep, row); } });
+      if (ep.status === 'downloaded') {
+        // v1.71: save-to-device, the confined stream route's ?download=1 arm.
+        items.push({ label: 'Save to device', icon: 'download', onSelect: function () { saveToDevice(ep); } });
+        // v1.70: the recoverable delete - through ui.confirm, never an in-row arm.
+        items.push({ label: 'Move to Trash', icon: 'delete', danger: true, onSelect: function () { confirmTrashEpisode(ep); } });
+      }
+      if (ep.status === 'trashed') {
+        items.push({ label: 'Restore', icon: 'refresh', onSelect: function () { restoreEpisode(ep); } });
+      }
+      return items;
+    }
+    function openEpisodeMenu(ep, row, anchor) {
+      return window.ui.menu({ anchor: anchor, title: ep.title || 'Untitled episode', items: episodeMenuItems(ep, row), signal: signal });
+    }
+
+    function toggleLiked(ep) {
+      var next = !ep.liked;
+      return fetchJson('/api/podcasts/episodes/' + encodeURIComponent(ep.id) + '/liked', { method: next ? 'POST' : 'DELETE' })
+        .then(function () {
+          // v1.75: the central Liked playlist (/?liked=1) is the only READ surface, so there
+          // is no local lane to re-render or re-count.
+          ep.liked = next;
+        })
+        .catch(function () { setStatus('Could not update the like.'); });
+    }
+
+    function saveToDevice(ep) {
+      var a = document.createElement('a');
+      a.href = '/episode/' + encodeURIComponent(ep.id) + '?download=1';
+      a.setAttribute('download', '');
+      a.hidden = true;
+      document.body.appendChild(a);
+      try { a.click(); } finally { a.remove(); }
+    }
+
+    // Move to Trash is destructive (recoverable, but it moves the file): the DELETE runs only
+    // after ui.confirm resolves true. Cancel, Esc, the scrim and Close all resolve false.
+    function confirmTrashEpisode(ep) {
+      return window.ui.confirm({
+        title: 'Move to Trash?',
+        body: '“' + (ep.title || 'This episode') + '” moves to Trash. You can restore it from this episode list.',
+        confirmLabel: 'Move to Trash',
+        danger: true,
+        signal: signal, // an SPA nav away closes it and answers false
+      }).then(function (ok) {
+        if (ok !== true || signal.aborted) return;
+        return fetchJson('/api/podcasts/episodes/' + encodeURIComponent(ep.id), { method: 'DELETE' })
+          .then(function () { refreshCurrentView(); })
+          .catch(function () { setStatus('Could not delete the episode.'); });
+      });
+    }
+
+    function restoreEpisode(ep) {
+      return fetchJson('/api/podcasts/episodes/' + encodeURIComponent(ep.id) + '/restore', { method: 'POST' })
+        .then(function () { refreshCurrentView(); })
+        .catch(function (err) { setStatus(err.message || 'Could not restore the episode.'); });
+    }
+
+    function togglePlayed(ep, row) {
       var next = !ep.played;
-      fetchJson('/api/podcasts/episodes/' + encodeURIComponent(ep.id) + '/played', {
+      return fetchJson('/api/podcasts/episodes/' + encodeURIComponent(ep.id) + '/played', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ played: next }),
       }).then(function () {
         ep.played = next;
-        row.classList.toggle('played', next);
-        btn.title = next ? 'Mark unplayed' : 'Mark played';
-        btn.setAttribute('aria-pressed', next ? 'true' : 'false');
+        if (!row) return;
+        if (next) row.setAttribute('data-played', ''); else row.removeAttribute('data-played');
+        var metaEl = row.querySelector('.ui-row__meta');
+        var line = episodeMetaLine(ep);
+        if (!metaEl && line) {
+          metaEl = document.createElement('span');
+          metaEl.className = 'ui-row__meta';
+          var body = row.querySelector('.ui-row__body');
+          if (body) body.appendChild(metaEl);
+        }
+        if (metaEl) metaEl.textContent = line;
       }).catch(function () { setStatus('Could not update played state.'); });
     }
 
+    // The playing episode's row: aria-current (styled as the selected tonal fill, D8.8).
     function applyPlayingHighlight() {
       if (!content) return;
-      content.querySelectorAll('.podcast-episode-row.playing').forEach(function (el) {
-        el.classList.remove('playing');
+      content.querySelectorAll('[data-episode-id][aria-current]').forEach(function (el) {
+        el.removeAttribute('aria-current');
       });
       if (!playingId) return;
-      var row = content.querySelector('.podcast-episode-row[data-episode-id="' + playingId + '"]');
-      if (row) row.classList.add('playing');
+      var rows = content.querySelectorAll('[data-episode-id]');
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i].getAttribute('data-episode-id') === playingId) rows[i].setAttribute('aria-current', 'true');
+      }
     }
 
     // v1.105 (mirror music): the dock × (close()) doesn't notify this view, so a
@@ -934,7 +929,6 @@
         if (skinEngine) { try { document.body.classList.remove('mms-on'); } catch (_) { /* ignore */ } nowPlayingPanel.className = 'music-nowplaying-panel'; }
         nowPlayingPanel.hidden = true;
         nowPlayingPanel.textContent = '';
-        if (theaterBtn) theaterBtn.hidden = true; // no expanded episode -> no theatre toggle (music parity)
         return;
       }
       // v1.246: on mobile, the panel BECOMES the chosen skin (owns its own art/transport/wheel +
@@ -986,7 +980,7 @@
       }
       nowPlayingPanel.hidden = false;
       if (window.FileTube && typeof window.FileTube.shimmerArt === 'function') window.FileTube.shimmerArt(nowPlayingPanel);
-      if (theaterBtn) theaterBtn.hidden = false; // an episode is expanded -> the toggle is available (desktop-gated by CSS)
+      bindTheaterControl(); // an episode is expanded, so the host exists: wire the player's theatre toggle (idempotent)
       // Music's v1.224-226 settle, ported: cap the panel to the player's measured height in
       // THEATRE (the up-next scrolls inside, the stage never grows), then scroll the current
       // row into the bounded queue - scrollTop only, never the page; rAF-deferred so the
@@ -999,9 +993,9 @@
           if (isTheater) {
             var slotEl = root.querySelector('#player-slot');
             var ph = slotEl ? slotEl.getBoundingClientRect().height : 0;
-            nowPlayingPanel.style.maxHeight = ph > 120 ? (ph + 'px') : '';
+            if (ph > 120) nowPlayingPanel.style.setProperty('--mnp-cap-h', ph + 'px'); else nowPlayingPanel.style.removeProperty('--mnp-cap-h'); // UI pass S7: the cap is DATA (style.css reads it), never an inline style
           } else {
-            nowPlayingPanel.style.maxHeight = '';
+            nowPlayingPanel.style.removeProperty('--mnp-cap-h');
           }
         } catch (_) { /* no layout */ }
         if (mnpQueue && curRow) {
@@ -1130,39 +1124,121 @@
       });
     }
 
-    // ---- the add sheet ----
-    function openSheet() {
-      if (!sheet) return;
-      if (sheetError) { sheetError.hidden = true; sheetError.textContent = ''; }
-      if (sheetUrl) sheetUrl.value = '';
-      if (sheetBackfill) sheetBackfill.value = 'all';
-      sheet.hidden = false;
-      if (sheetBackdrop) sheetBackdrop.hidden = false;
-      if (sheetUrl) sheetUrl.focus();
+    // ---- the add + settings sheets (UI pass S6: ui.sheet dialogs built on demand) ----
+    // A sheet lives on <body>, outside #view-root, so the view closes it on teardown (an SPA
+    // nav away must never strand it over the next view).
+    function openFormSheet(title, content, initialFocus) {
+      var ctrl = window.ui.sheet({ variant: 'dialog', title: title, content: content, initialFocus: initialFocus, signal: signal });
+      ctrl.open();
+      return ctrl;
     }
-    function closeSheet() {
-      if (sheet) sheet.hidden = true;
-      if (sheetBackdrop) sheetBackdrop.hidden = true;
+    function formError() {
+      var p = document.createElement('p');
+      p.className = 'ui-field__error';
+      p.setAttribute('role', 'alert');
+      p.hidden = true;
+      return p;
     }
-    function submitSheet() {
-      var url = sheetUrl ? sheetUrl.value.trim() : '';
-      var backfill = sheetBackfill ? sheetBackfill.value : 'all';
-      if (sheetError) { sheetError.hidden = true; sheetError.textContent = ''; }
-      if (sheetSubmit) sheetSubmit.disabled = true;
-      fetchJson('/api/podcasts/subscriptions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ feedUrl: url, backfill: backfill }),
-      }).then(function () {
-        closeSheet();
-        setStatus('Subscribed - checking the feed…');
-        startStatusPolling();
-        loadShows();
-      }).catch(function (err) {
-        if (sheetError) { sheetError.textContent = err.message || 'Could not subscribe.'; sheetError.hidden = false; }
-      }).finally(function () {
-        if (sheetSubmit) sheetSubmit.disabled = false;
+    function showFormError(p, msg) { p.textContent = msg; p.hidden = !msg; }
+    function formActions(cancelLabel, okLabel) {
+      var row = document.createElement('div');
+      row.className = 'ui-confirm__actions';
+      var cancel = window.ui.button({ variant: 'secondary', label: cancelLabel });
+      var ok = window.ui.button({ variant: 'primary', label: okLabel });
+      row.appendChild(cancel);
+      row.appendChild(ok);
+      return { row: row, cancel: cancel, ok: ok };
+    }
+
+    function openAddSheet() {
+      var ui = window.ui;
+      var form = document.createElement('div');
+      form.className = 'podcast-form';
+      var url = ui.field({ label: 'RSS feed URL', type: 'url', placeholder: 'https://example.com/feed.xml',
+        help: 'Private feed URLs (Patreon etc.) contain a personal access token. FileTube keeps the URL on your server in a permissions-restricted file - it never appears in the interface, logs, or backups again.' });
+      url.input.setAttribute('autocomplete', 'off');
+      url.input.setAttribute('spellcheck', 'false');
+      form.appendChild(url.el);
+      var backfill = ui.select({ label: 'Download', value: 'all', options: [
+        { value: 'all', label: 'Every episode (full offline cache)' },
+        { value: '10', label: 'The latest 10 episodes' },
+        { value: '25', label: 'The latest 25 episodes' },
+        { value: 'new', label: 'New episodes only' },
+      ] });
+      form.appendChild(backfill.el);
+      var err = formError();
+      form.appendChild(err);
+      var acts = formActions('Cancel', 'Subscribe');
+      form.appendChild(acts.row);
+      var ctrl = openFormSheet('Add a podcast', form, url.input);
+      function submit() {
+        showFormError(err, '');
+        ui.setBusy(acts.ok, true);
+        fetchJson('/api/podcasts/subscriptions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ feedUrl: url.input.value.trim(), backfill: backfill.select.value }),
+        }).then(function () {
+          ctrl.close();
+          setStatus('Subscribed - checking the feed…');
+          startStatusPolling();
+          loadShows();
+        }).catch(function (e) {
+          showFormError(err, e.message || 'Could not subscribe.');
+        }).then(function () { ui.setBusy(acts.ok, false); });
+      }
+      acts.cancel.addEventListener('click', function () { ctrl.close(); });
+      acts.ok.addEventListener('click', submit);
+      url.input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); }
       });
+      return ctrl;
+    }
+
+    function openSettingsSheet() {
+      var ui = window.ui;
+      return fetchJson('/api/podcasts/settings').then(function (s) {
+        if (signal.aborted) return null;
+        var options = [
+          { value: '30', label: '30 minutes' }, { value: '60', label: 'Hour' }, { value: '180', label: '3 hours' },
+          { value: '360', label: '6 hours' }, { value: '720', label: '12 hours' }, { value: '1440', label: 'Day' },
+          { value: '0', label: 'Manual checks only' },
+        ];
+        var v = String(s.pollMinutes);
+        // An interval outside the preset list still displays honestly.
+        if (!options.some(function (o) { return o.value === v; })) options.push({ value: v, label: s.pollMinutes + ' minutes' });
+        var form = document.createElement('div');
+        form.className = 'podcast-form';
+        var poll = ui.select({ label: 'Check feeds every', value: v, options: options });
+        form.appendChild(poll.el);
+        var dir = document.createElement('div');
+        dir.className = 'ui-field';
+        var dirLabel = document.createElement('span');
+        dirLabel.className = 'ui-field__label';
+        dirLabel.textContent = 'Episodes are saved to';
+        var dirText = document.createElement('p');
+        dirText.className = 'ui-field__help';
+        dirText.textContent = s.downloadDir + ' (set FILETUBE_PODCASTS_DIR to change)';
+        dir.appendChild(dirLabel);
+        dir.appendChild(dirText);
+        form.appendChild(dir);
+        var err = formError();
+        form.appendChild(err);
+        var acts = formActions('Cancel', 'Save');
+        form.appendChild(acts.row);
+        var ctrl = openFormSheet('Podcast settings', form, null);
+        acts.cancel.addEventListener('click', function () { ctrl.close(); });
+        acts.ok.addEventListener('click', function () {
+          showFormError(err, '');
+          fetchJson('/api/podcasts/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pollMinutes: Number(poll.select.value) }),
+          }).then(function () { ctrl.close(); })
+            .catch(function (e) { showFormError(err, e.message || 'Could not save.'); });
+        });
+        return ctrl;
+      }).catch(function () { setStatus('Could not load podcast settings.'); return null; });
     }
 
     // ---- feed checking + live status ----
@@ -1192,13 +1268,13 @@
       // shows only now. The route itself stays (other consumers).
       // v1.98 shimmer sweep: seed the grid shimmer before the fetch, but ONLY at
       // the true blank moment - when the grid is on screen (not an open show's
-      // episodes) AND not already populated. Guarding on an existing .podcast-grid
+      // episodes) AND not already populated. Guarding on an existing .podcast-show-list
       // stops a status-poll refresh (refreshCurrentView after a subscribe/like/
       // check-feeds) from flashing loaded content back to shimmer (gate
       // SUGGESTION: a reveal-once violation). renderShows' content.textContent=''
       // is the reveal; the catch clears it.
-      if (!currentShow && content && !content.querySelector('.podcast-grid')) {
-        content.innerHTML = buildPodcastSkeletonCards(8);
+      if (!currentShow && content && !content.querySelector('.podcast-show-list')) {
+        content.innerHTML = buildPodcastSkeletonRows(6);
       }
       fetchJson('/api/podcasts/shows').then(function (data) {
         if (signal.aborted) return;
@@ -1206,70 +1282,27 @@
         if (!currentShow) renderShows();
       }).catch(function () {
         if (signal.aborted) return;
-        if (!currentShow && content) content.innerHTML = ''; // never strand the shimmer
-        setStatus('Could not load podcasts.');
-        if (emptyNote) emptyNote.hidden = false;
-      });
-    }
-
-    // ---- the settings sheet (v1.69 QA gate #2) ----
-    var settingsBtn = root.querySelector('#podcasts-settings-btn');
-    var settingsSheet = root.querySelector('#podcasts-settings-sheet');
-    var settingsBackdrop = root.querySelector('#podcasts-settings-backdrop');
-    var settingsPoll = root.querySelector('#podcasts-settings-poll');
-    var settingsDir = root.querySelector('#podcasts-settings-dir');
-    var settingsSave = root.querySelector('#podcasts-settings-save');
-    var settingsCancel = root.querySelector('#podcasts-settings-cancel');
-    var settingsError = root.querySelector('#podcasts-settings-error');
-
-    function closeSettings() {
-      if (settingsSheet) settingsSheet.hidden = true;
-      if (settingsBackdrop) settingsBackdrop.hidden = true;
-    }
-    function openSettings() {
-      if (!settingsSheet) return;
-      if (settingsError) { settingsError.hidden = true; settingsError.textContent = ''; }
-      fetchJson('/api/podcasts/settings').then(function (s) {
-        if (settingsPoll) {
-          var v = String(s.pollMinutes);
-          // An interval outside the preset list still displays honestly.
-          if (![...settingsPoll.options].some(function (o) { return o.value === v; })) {
-            var opt = document.createElement('option');
-            opt.value = v;
-            opt.textContent = s.pollMinutes + ' minutes';
-            settingsPoll.appendChild(opt);
-          }
-          settingsPoll.value = v;
+        if (!currentShow && content) {
+          content.innerHTML = ''; // never strand the shimmer
+          // D9: a failed load is an error state, never the "No podcasts yet" empty state.
+          if (emptyNote) emptyNote.hidden = true;
+          renderLoadError('Could not load podcasts', loadShows);
         }
-        if (settingsDir) settingsDir.textContent = s.downloadDir + ' (set FILETUBE_PODCASTS_DIR to change)';
-        settingsSheet.hidden = false;
-        if (settingsBackdrop) settingsBackdrop.hidden = false;
-      }).catch(function () { setStatus('Could not load podcast settings.'); });
-    }
-    function saveSettings() {
-      fetchJson('/api/podcasts/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pollMinutes: Number(settingsPoll ? settingsPoll.value : 60) }),
-      }).then(function () {
-        closeSettings();
-      }).catch(function (err) {
-        if (settingsError) { settingsError.textContent = err.message || 'Could not save.'; settingsError.hidden = false; }
       });
     }
-    if (settingsBtn) settingsBtn.addEventListener('click', openSettings, { signal: signal });
-    if (settingsCancel) settingsCancel.addEventListener('click', closeSettings, { signal: signal });
-    if (settingsBackdrop) settingsBackdrop.addEventListener('click', closeSettings, { signal: signal });
-    if (settingsSave) settingsSave.addEventListener('click', saveSettings, { signal: signal });
 
-    if (addBtn) addBtn.addEventListener('click', openSheet, { signal: signal });
-    if (sheetCancel) sheetCancel.addEventListener('click', closeSheet, { signal: signal });
-    if (sheetBackdrop) sheetBackdrop.addEventListener('click', closeSheet, { signal: signal });
-    if (sheetSubmit) sheetSubmit.addEventListener('click', submitSheet, { signal: signal });
-    if (sheetUrl) {
-      sheetUrl.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter') submitSheet();
-      }, { signal: signal });
+    var settingsBtn = root.querySelector('#podcasts-settings-btn');
+    if (settingsBtn) settingsBtn.addEventListener('click', function () { openSettingsSheet(); }, { signal: signal });
+    if (addBtn) addBtn.addEventListener('click', function () { openAddSheet(); }, { signal: signal });
+    // The zero-shows state (plan D9: one ui-state block), drawn into its host once per init.
+    if (emptyNote) {
+      emptyNote.textContent = '';
+      emptyNote.appendChild(window.ui.state({
+        icon: 'podcasts',
+        title: 'No podcasts yet',
+        body: 'Add a podcast with its RSS feed URL: a public feed, or a private one from Patreon\'s "listen in other podcast apps" (its URL carries your personal token; it is stored on your server only).',
+        action: { label: 'Add podcast', onClick: function () { openAddSheet(); } },
+      }));
     }
     if (checkBtn) {
       checkBtn.addEventListener('click', function () {
@@ -1339,8 +1372,8 @@
 
     // v1.72 (intake ruling 5): /podcasts?show=<subId> - a pinned show in
     // the Playlists surface deep-links its drill. A bad/gone id lands in
-    // openShow's catch, which paints "Could not load episodes." over the
-    // grid (deliberately LOUDER than ?play='s silent degrade: a dead pin
+    // openShow's catch, which paints a "Could not load episodes" error state
+    // (with Retry) where the grid was (deliberately LOUDER than ?play='s silent degrade: a dead pin
     // deserves a visible signal - adversarial gate v1.72 S1 measured the
     // difference; this comment records it honestly). The show list may not
     // have loaded yet, so the drill opens from the id alone - openShow
@@ -1451,44 +1484,52 @@
     });
   }
 
-  // v1.98 shimmer sweep: a `.podcast-grid` of n `.podcast-card`-shaped shimmer
-  // cards, seeded into #podcasts-content before the shows fetch. Reuses the REAL
-  // `.podcast-card-art` (aspect 1) as the shimmer box, so the reveal is
-  // zero-shift. Pure -> node:test-covered.
-  function buildPodcastSkeletonCards(n) {
+  // UI pass S6 (D9: skeletons of the FINAL geometry). The loading placeholders are the real
+  // primitives' DOM - the same ui-list classes ui.list() emits and the same ui-row slots
+  // ui.row() emits - so the reveal swaps boxes of identical size. The class strings are pinned
+  // against ui.list()'s own output by test/unit/podcasts-ui-sweep.test.js. Pure (strings) ->
+  // node:test-covered.
+  var SHOW_LIST_CLASS = 'ui-list ui-list--media ui-list--media-art ui-list--aside-none ui-list--actions-0 ui-list--divider-inset podcast-show-list';
+  var EPISODE_LIST_CLASS = 'ui-list ui-list--default ui-list--media-none ui-list--aside-none ui-list--actions-2 ui-list--divider-inset podcast-episodes';
+  var SKELETON_LINES = '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>' +
+    '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>';
+
+  // The show list's placeholder: n media rows, each with the xl art square.
+  function buildPodcastSkeletonRows(n) {
     var count = Number.isInteger(n) && n > 0 ? n : 0;
     if (count === 0) return '';
-    var cards = '';
+    var rows = '';
     for (var i = 0; i < count; i++) {
-      cards += '' +
-        '<div class="podcast-card" aria-hidden="true">' +
-        '<span class="podcast-card-art skeleton-shimmer"></span>' +
-        '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>' +
-        '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>' +
+      rows += '<div class="ui-row ui-row--media" role="listitem" aria-hidden="true">' +
+        '<span class="ui-row__lead"></span>' +
+        '<span class="ui-row__media"><span class="ui-art ui-avatar--xl skeleton-shimmer"></span></span>' +
+        '<span class="ui-row__body">' + SKELETON_LINES + '</span>' +
+        '<span class="ui-row__aside"></span><span class="ui-row__actions"></span>' +
         '</div>';
     }
-    return '<div class="podcast-grid">' + cards + '</div>';
+    return '<div class="' + SHOW_LIST_CLASS + '" role="list" aria-hidden="true">' + rows + '</div>';
   }
 
-  // v1.157 (P3, crispness): a header-over-episode-rows shimmer for the opened /
-  // pinned SHOW view, seeded into #podcasts-content before the episodes fetch so
-  // the show does not paint empty then pop in (the GRID already seeds its own
-  // via buildPodcastSkeletonCards). A `.podcast-show-art` box + title over N
-  // episode-row lines; existing skeleton primitives + inline spacing, no new
-  // CSS. Pure -> node:test-covered.
+  // v1.157 (P3, crispness): the opened / pinned SHOW view's placeholder, seeded into
+  // #podcasts-content before the episodes fetch so the show does not paint empty then pop in.
+  // The real header box (2xl art + a title bar) over n episode rows with both action slots
+  // reserved.
   function buildPodcastShowSkeleton(n) {
     var count = Number.isInteger(n) && n > 0 ? n : 0;
     var rows = '';
     for (var i = 0; i < count; i++) {
-      rows += '<div aria-hidden="true" style="margin-top:16px;">' +
-        '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>' +
-        '<div class="skeleton-line skeleton-line-meta skeleton-shimmer" style="margin-top:6px; max-width:45%;"></div>' +
+      rows += '<div class="ui-row ui-row--default" role="listitem" aria-hidden="true">' +
+        '<span class="ui-row__lead"></span><span class="ui-row__media"></span>' +
+        '<span class="ui-row__body">' + SKELETON_LINES + '</span>' +
+        '<span class="ui-row__aside"></span>' +
+        '<span class="ui-row__actions"><span class="ui-row__slot"></span><span class="ui-row__slot"></span></span>' +
         '</div>';
     }
-    return '<div aria-hidden="true" style="display:flex; gap:16px; align-items:center; margin-bottom:8px;">' +
-      '<span class="podcast-show-art skeleton-shimmer" style="flex:none;"></span>' +
-      '<div class="skeleton-line skeleton-line-title skeleton-shimmer" style="max-width:60%;"></div>' +
-      '</div>' + rows;
+    return '<div class="podcast-show-head" aria-hidden="true">' +
+      '<span class="ui-art ui-avatar--2xl skeleton-shimmer"></span>' +
+      '<div class="podcast-show-meta"><div class="skeleton-line skeleton-line-title skeleton-shimmer"></div></div>' +
+      '</div>' +
+      '<div class="' + EPISODE_LIST_CLASS + '" role="list" aria-hidden="true">' + rows + '</div>';
   }
 
   if (typeof module !== 'undefined' && module.exports) {
@@ -1498,8 +1539,14 @@
       episodeChipLabel: episodeChipLabel,
       resumeFraction: resumeFraction,
       showCountLine: showCountLine,
-      buildPodcastSkeletonCards: buildPodcastSkeletonCards,
+      showMetaLine: showMetaLine,
+      showStatusLine: showStatusLine,
+      showArtUrl: showArtUrl,
+      episodeMetaLine: episodeMetaLine,
+      buildPodcastSkeletonRows: buildPodcastSkeletonRows,
       buildPodcastShowSkeleton: buildPodcastShowSkeleton,
+      SHOW_LIST_CLASS: SHOW_LIST_CLASS,
+      EPISODE_LIST_CLASS: EPISODE_LIST_CLASS,
     };
   }
 })();

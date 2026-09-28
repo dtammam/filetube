@@ -35,6 +35,7 @@ test('a present photo: the disc shimmers as a placeholder and the hidden <img> p
   const { c, dom } = loadCommon();
   const el = c.buildAccountAvatarEl(PHOTO_USER, false);
   assert.ok(el.classList.contains('account-avatar'), 'the disc is an .account-avatar');
+  assert.ok(el.classList.contains('ui-avatar') && el.classList.contains('ui-avatar--sm'), 'a ui-avatar at the header size (sweep S1)');
   assert.ok(el.classList.contains('skeleton-shimmer'),
     'the disc shimmers while the photo loads (no empty box on first paint)');
   const img = el.querySelector('img');
@@ -64,7 +65,11 @@ test('on error: the photo is dropped and the monogram is painted so the disc is 
   assert.ok(!el.classList.contains('skeleton-shimmer'), 'the shimmer is cleared on error (no stranded shimmer)');
   assert.strictEqual(el.querySelector('img'), null, 'the failed photo <img> is removed');
   assert.ok(el.textContent && el.textContent.length > 0, 'a monogram glyph is painted as the fallback');
-  assert.ok(el.style.backgroundColor, 'the monogram disc gets its deterministic palette colour');
+  // Sweep S1 (DELIBERATE lock update, D4.4): the avatar is a ui-avatar - the monogram's tone
+  // is a name-hashed data-tone the stylesheet paints (no inline colour).
+  const mono = el.querySelector('.ui-avatar__mono');
+  assert.ok(mono && /^[1-8]$/.test(mono.getAttribute('data-tone')), 'the monogram disc gets its deterministic tone');
+  assert.strictEqual(el.getAttribute('style'), null, 'no inline style');
   dom.window.close();
 });
 

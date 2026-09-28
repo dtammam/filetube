@@ -81,7 +81,7 @@ function withFolderList(fn, opts) {
   return result;
 }
 
-const rowsIn = (dom) => Array.prototype.slice.call(dom.window.document.querySelectorAll('.folder-item-row'));
+const rowsIn = (dom) => Array.prototype.slice.call(dom.window.document.querySelectorAll('.folder-item'));
 
 // jsdom does no layout: give the rows the geometry a browser would.
 // 60px rows stacked from 0, which is roughly what the real row measures.
@@ -125,7 +125,7 @@ test('v1.76: every row turns native HTML5 drag OFF explicitly', () => {
 
 test('v1.76: every row has a focusable, ITEM-NAMED handle (the accessibility the buttons carried)', () => {
   withFolderList((dom) => {
-    const handles = rowsIn(dom).map((r) => r.querySelector('.drag-handle'));
+    const handles = rowsIn(dom).map((r) => r.querySelector('.ui-reorder__handle'));
     assert.equal(handles.filter(Boolean).length, 3);
     assert.equal(handles[0].getAttribute('tabindex'), '0');
     assert.equal(handles[0].getAttribute('role'), 'button');
@@ -226,7 +226,7 @@ test('v1.76: a press on the "Hide from home" checkbox never starts a drag', () =
 test('v1.77: a press on the glyph picker never starts a drag', () => {
   // The row is a drag surface and v1.77 added a new interactive child to it.
   // Three things independently make it a dead zone: this list is
-  // handleSelector-gated to `.drag-handle`, the picker sits inside a <label>,
+  // handleSelector-gated to `.ui-reorder__handle`, the picker sits inside a <label>,
   // and `select` is in wireReorderable's REORDER_DEFAULT_IGNORE (common.js).
   // The adversarial gate measured that removing only the `select` token leaves
   // this green - so this test binds the OUTCOME (pressing the picker reorders
@@ -252,7 +252,7 @@ test('v1.76: a press on the remove button never starts a drag', () => {
   withFolderList((dom) => {
     const rows = rowsIn(dom);
     layOut(rows);
-    const btn = rows[0].querySelector('.remove-folder-btn');
+    const btn = rows[0].querySelector('.folder-remove-btn');
     pointerAt(dom, btn, 'pointerdown', 10);
     pointerAt(dom, dom.window.document, 'pointermove', 2 * 60 + 45);
     pointerAt(dom, dom.window.document, 'pointerup', 2 * 60 + 45);
@@ -297,14 +297,14 @@ test('v1.76: arrow keys on the handle reorder, and focus follows the item', () =
   withFolderList((dom) => {
     const rows = rowsIn(dom);
     layOut(rows);
-    rows[0].querySelector('.drag-handle').dispatchEvent(
+    rows[0].querySelector('.ui-reorder__handle').dispatchEvent(
       new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })
     );
     assert.deepEqual(setup.__getConfiguredFoldersForTests(), ['/media/b', '/media/a', '/media/c']);
     const focused = dom.window.document.activeElement;
-    assert.ok(focused && focused.classList.contains('drag-handle'), 'focus stayed on a handle');
+    assert.ok(focused && focused.classList.contains('ui-reorder__handle'), 'focus stayed on a handle');
     assert.equal(
-      focused.closest('.folder-item-row').querySelector('.folder-path-text').textContent, '/media/a',
+      focused.closest('.folder-item').querySelector('.folder-path-text').textContent, '/media/a',
       'and on the SAME folder at its new index - a second press must keep working',
     );
   });
@@ -313,12 +313,12 @@ test('v1.76: arrow keys on the handle reorder, and focus follows the item', () =
 test('v1.76: End moves a row to the bottom, Home to the top', () => {
   withFolderList((dom) => {
     layOut(rowsIn(dom));
-    rowsIn(dom)[0].querySelector('.drag-handle').dispatchEvent(
+    rowsIn(dom)[0].querySelector('.ui-reorder__handle').dispatchEvent(
       new dom.window.KeyboardEvent('keydown', { key: 'End', bubbles: true, cancelable: true })
     );
     assert.deepEqual(setup.__getConfiguredFoldersForTests(), ['/media/b', '/media/c', '/media/a']);
     layOut(rowsIn(dom));
-    rowsIn(dom)[2].querySelector('.drag-handle').dispatchEvent(
+    rowsIn(dom)[2].querySelector('.ui-reorder__handle').dispatchEvent(
       new dom.window.KeyboardEvent('keydown', { key: 'Home', bubbles: true, cancelable: true })
     );
     assert.deepEqual(setup.__getConfiguredFoldersForTests(), ['/media/a', '/media/b', '/media/c']);
@@ -333,8 +333,8 @@ test('v1.76: the synthetic downloads folder is still reorderable, still not remo
   withFolderList((dom) => {
     const rows = rowsIn(dom);
     layOut(rows);
-    assert.equal(rows[2].querySelector('.remove-folder-btn').disabled, true, 'not removable');
-    assert.ok(rows[2].querySelector('.drag-handle'), 'but it has a grip');
+    assert.equal(rows[2].querySelector('.folder-remove-btn').disabled, true, 'not removable');
+    assert.ok(rows[2].querySelector('.ui-reorder__handle'), 'but it has a grip');
     drag(dom, rows, 2, 10);
     assert.deepEqual(setup.__getConfiguredFoldersForTests(), ['/media/c', '/media/a', '/media/b'], 'and it reorders');
   }, { synthetic: ['/media/c'] });

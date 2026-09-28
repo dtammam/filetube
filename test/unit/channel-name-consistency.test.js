@@ -78,10 +78,10 @@ const WATCH_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js'
 const MAIN_JS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
 
 test('watch.js: the related rail renders resolveChannelName, NEVER raw folderName', () => {
-  assert.match(WATCH_JS, /<div class="related-uploader">\$\{escapeHtml\(resolveChannelName\(item, folderSettings\)\)\}<\/div>/,
+  // UI pass sweep S2: the rail card is DOM (buildRelatedCardEl); its byline is handed the resolver's name.
+  assert.match(WATCH_JS, /byline: resolveChannelName\(item, folderSettings\),/,
     'the uploader line routes through the shared resolver');
-  assert.ok(!/related-uploader">\$\{escapeHtml\(item\.folderName\)\}/.test(WATCH_JS),
-    'the raw folderName render must not return');
+  assert.ok(!/byline: item\.folderName/.test(WATCH_JS), 'the raw folderName render must not return');
 });
 
 test('main.js: fetchLibraryPage0 retitles a ?root= view via resolveRootHeaderLabel with a DERIVED fallback', () => {

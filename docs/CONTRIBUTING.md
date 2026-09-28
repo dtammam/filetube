@@ -48,23 +48,55 @@ file-local convention never overrides this rule.
 
 ## Styling: the design-token system (MANDATORY for any CSS/JS style change)
 
-FileTube's styling runs on a governed design-token system (built up
-across v1.56.0-v1.59.0; contract in
-`docs/references/design-token-audit-v1.1.md`).
-If you touch a color, spacing, radius, z-index, shadow, motion, type, or
-control-size value ANYWHERE (style.css, `<style>` blocks, `el.style.*` /
-`cssText` / `setProperty` in JS), the rules are:
+FileTube's styling runs on a governed design system (the token layer was
+built up across v1.56.0-v1.59.0, contract in
+`docs/references/design-token-audit-v1.1.md`; the UI professionalism pass
+added the roles, the primitives and the linter). Three files are the
+cascade, loaded in this order by every shell:
 
-- **Never write a raw literal in a governed property. Consume a token**
-  (`var(--space-*)`, `var(--yt-red)`, `var(--radius)`, `var(--z-*)`,
-  `var(--scrim)`, `var(--dur-fast)`, ...). The token layer lives at the top
-  of `public/css/style.css` (`:root` + the `[data-theme]` era blocks); many
-  tokens are ERA-VARYING by design - adopting one means your surface follows
-  the eras, which is the point.
-- **z-index:** only the nine `--z-*` ladder names; backdrop/content pairs
-  derive with `calc(var(--z-X) +/- N)`. Never a new raw rung. Local
-  in-component stacking (0-40 band) stays literal with a
-  `token-exempt: local stacking` comment.
+- `public/css/tokens.css` - THE token layer: the ROLES (surfaces
+  `--surface-0/1/2`, ink `--ink-1/2/3`, `--accent` for red text and icons,
+  `--accent-fill` for a red-filled button, `--danger`, `--indicator`,
+  `--fill-selected`, `--tint-press`, `--focus-ring`, `--scrim`,
+  `--separator`), written for every era x mode block; the type roles
+  (`font: var(--t-body)`, `--t-caption` ... `--t-display`, with
+  `--t-*-size` twins); the geometry (`--space-*`, `--ctl-sm/md/lg`,
+  `--hit`, `--icon-sm/md/lg`, `--r-xs/sm/md/lg/pill`, `--av-*`,
+  `--row-*`, `--inset`); motion (`--dur-fast`, `--dur-slow`,
+  `--ease-ui`) and the `--z-*` ladder. Red is brand, primary action,
+  progress, danger and the unread indicator ONLY; a selected state is ink
+  on `--fill-selected`.
+- `public/css/ui.css` - the primitives (`ui-btn`, `ui-row`, `ui-list`,
+  `ui-sheet` (menus and dialogs are sheets), `ui-field`, `ui-select`,
+  `ui-switch`, `ui-segmented`, `ui-chip`, `ui-avatar`, `ui-thumb`,
+  `ui-tile`, `ui-toast`, `ui-state`, `ui-icon`), built from
+  JS by `public/js/ui.js` (`ui.button`, `ui.row`, `ui.sheet`, `ui.menu`,
+  `ui.confirm`, `ui.prompt`, `ui.toast`, `ui.field`, `ui.select`,
+  `ui.switch`, `ui.segmented`, `ui.chip`, `ui.avatar`, `ui.thumb`,
+  `ui.state`, `ui.icon`, `ui.setPressed`, `ui.setBusy`).
+- `public/css/style.css` - feature layout, consuming the two above.
+
+If you touch a color, spacing, radius, z-index, shadow, motion, type, or
+control-size value ANYWHERE (a stylesheet, `<style>` blocks, `style=""`,
+`el.style.*` / `cssText` / `setProperty` in JS), the rules are:
+
+- **Never write a raw literal in a governed property. Consume a role or a
+  scale token** (`var(--ink-2)`, `var(--accent)`, `var(--space-*)`,
+  `var(--r-md)`, `font: var(--t-meta)`, `var(--z-*)`, `var(--scrim)`,
+  `var(--dur-fast)`, ...). Many tokens are ERA-VARYING by design -
+  adopting one means your surface follows the eras, which is the point.
+  The pre-pass per-era names (`--yt-red`, `--radius*`, `--fs-*`,
+  `--text-link`, `--btn-*`, `--header-bg`, `--bg-sidebar`,
+  `--border-dark`, `--star-*`, `--shadow`, `--shadow-lg`, `--scrim-legacy`) are LEGACY:
+  ui-lint's `no-legacy-tokens` counts a new use as new debt, so a new rule
+  names the role instead.
+- **z-index:** only the ten `--z-*` ladder names (`--z-sticky`, `--z-nav`,
+  `--z-chip`, `--z-dock`, `--z-header`, `--z-player-max`, `--z-sheet`,
+  `--z-panel`, `--z-modal`, `--z-top`); backdrop/content pairs derive
+  with `calc(var(--z-X) +/- N)`. Never a new raw rung (ui-lint's
+  `z-ladder` rule). Local in-component stacking (0-40 band) stays literal
+  with a `token-exempt: local stacking` comment, which is itself counted
+  debt (below).
 - **Overlay containment (anti-bleed).** The z-ladder governs stacking BETWEEN
   surfaces; these rules stop a surface bleeding over its OWN chrome (the class
   behind v1.309-v1.310). Two invariants, enforced by the ratchet
@@ -77,7 +109,7 @@ control-size value ANYWHERE (style.css, `<style>` blocks, `el.style.*` /
     Safari rounded-corner clip-escape shape and FAILS the census. The panels and
     sheets do this with a flex column: `overflow:hidden` on the panel, a static
     header, and `overflow-y:auto; flex:1; min-height:0` on the list (see
-    `.notif-panel` / `.notif-panel-list`). A surface proven to have no
+    `.ui-sheet` / `.ui-sheet__body` in ui.css). A surface proven to have no
     compositing-layer descendant that can reach a corner (a centered modal, a
     native `<textarea>`, a short menu) is exempted with a
     `/* corner-clip-safe: <reason> */` comment - the `token-exempt` convention.
@@ -87,30 +119,51 @@ control-size value ANYWHERE (style.css, `<style>` blocks, `el.style.*` /
     later positioned siblings that scroll beneath it).
   - Scope isolation (`isolation:isolate`) to small row/badge containers, NEVER a
     large layout ancestor - it traps every fixed overlay inside it (tech-debt #173).
-- **The linter is the drift detector, and since v1.62.0 it is THE
-  RATCHET:** the census reached ZERO at v1.61.0 and is enforced there -
-  `node scripts/css-token-lint.js --enforce` runs in pre-commit and CI,
-  and ANY raw literal in a governed property FAILS the commit. Either
-  adopt a token or, if the value is genuinely outside the system
-  (positional geometry, era skin art, a legibility floor), annotate the
-  line `/* token-exempt: <reason> */` and be prepared to defend the
-  reason in review. `npm run lint:css` is the report-only view of the
-  same census.
+- **The linter is the drift detector, and it is THE RATCHET:**
+  `npm run lint:ui` (`scripts/ui-lint.js --enforce`, plan D10 of the UI
+  professionalism pass) runs in pre-commit, pre-push and CI. Its
+  `no-raw-values` rule covers every stylesheet in `public/css/`, every
+  shell's `<style>` and `style=""`, and every JS style write
+  (`el.style.*`, `cssText`, `setProperty`, `style="..."` in a string);
+  the remaining debt is listed per key in the shrink-only
+  `docs/ui-exceptions.json`, and ANY new raw literal in a governed
+  property FAILS the commit (paid debt must be shrunk out of the file
+  with `node scripts/ui-lint.js --shrink`). Either adopt a token or, if
+  the value is genuinely outside the system (positional geometry, era
+  skin art, a legibility floor), annotate the line
+  `/* token-exempt: <reason> */` and be prepared to defend the reason in
+  review. The annotation is not free: ui-lint's `token-exempt` rule counts
+  every annotation per file under the same ratchet, so a new one fails the
+  commit until `docs/ui-exceptions.json` grows with it (a reviewer sees
+  that), and a removed one must shrink it. The other rules the ratchet
+  holds: `no-legacy-tokens`, `no-bespoke-controls` (a control-shaped rule
+  or a `<button>` must be a `ui-*` primitive), `hover-gated` (`:hover`
+  only inside `@media (hover: hover)`), `pressed-state`,
+  `native-interaction` (user-select, the touch callout and the tap
+  highlight are set ONCE in ui.css; nothing else may set them),
+  `icons` (the registry only), `no-layout-transition`, `z-ladder`,
+  `display-ownership`, `colour-roles` and `no-shell-style` - the header
+  of `scripts/ui-lint.js` states each one. Each rule runs its canary fixtures first
+  (`test/fixtures/ui-lint/`), so a broken rule fails LOUD (exit 2).
+  `node scripts/ui-lint.js --verbose` is the report view. (It replaced
+  the v1.62.0 token ratchet, `css-token-lint.js`, retired at the UI
+  pass's step 7.)
 - **Never define a new token casually:** a new name joins the contract doc,
   the `:root` layer, AND `test/unit/token-scale-lock.test.js` (the byte-exact
   value authority) together - see `--thumbnail-bg` (Tier 4) for the pattern.
-  `--accent`/`--accent-color` are ruled NEVER-DEFINE (consume `--yt-red`).
+  The red roles are `--accent` (text, icons) and `--accent-fill` (a filled
+  button); `--progress` is the progress bar's red.
 - **Do not edit token VALUES in passing** - a scale value change re-renders
   every consumer and fails token-scale-lock loudly; that is a design
   decision (Dean's), not a refactor.
-- Every raw literal still in the census is enumerated with its reason in
-  `docs/exec-plans/completed/2026-07-31-tokens-tier4-ledger.md` (bound by
-  `npm run ledger:check`); `npm run lint:css` prints the current count -
-  the ledger's unstruck rows and that number are the same set by
-  construction. Breakpoints are documented constants, not tokens;
-  width/height layout geometry is ungoverned by design (two ruled
-  exceptions: `--header-h`/`--sidebar-w`, whose coupled sites are the
-  point).
+- Every raw literal the ratchet still allows is a keyed entry, with its
+  reason, in `docs/ui-exceptions.json` (the Tier 4 ledger in
+  `docs/exec-plans/completed/2026-07-31-tokens-tier4-ledger.md` and its
+  `ledger:check` retired with css-token-lint: that census was zero).
+  Breakpoints are documented constants, not tokens. Since the UI pass,
+  width/height ARE governed (`no-raw-values` counts them; allowed are
+  tokens, `%`, `vw`/`vh`/`dvh`, `fr`, `auto`, and `min()`/`clamp()`/
+  `calc()` over tokens).
 
 ### Every rendered element must have a styling SOURCE - "none" is a finding
 
@@ -125,8 +178,11 @@ had shipped the same bug earlier and its point-wise fix left the class
 open. The rules, for ANY new control or surface:
 
 1. **Find the existing pattern FIRST.** Enumerate what the system already
-   has for that element type and leverage it (selects: the base `select`
-   element rule, `.setup-select`, `.btn`, scoped modal rules). Two surfaces
+   has for that element type and leverage it: a button is `ui.button`, a
+   select is `ui.select` / `ui.field`, a list row is `ui.row`, a dialog is
+   `ui.confirm` / `ui.prompt` / `ui.sheet`, a menu is `ui.menu`, a toggle is
+   `ui.switch` or `ui.segmented`, an icon is `ui.icon` (all in
+   `public/js/ui.js`, styled by `public/css/ui.css`). Two surfaces
    rendering the same affordance must SHARE declarations, never hand-roll
    parallel stylings - if they must live in separate rules, add a mirror
    lock (`test/unit/panel-chrome-mirror.test.js`, the queue/notif
@@ -328,44 +384,57 @@ everything's offset or it's not the right size." The transcript wave found
 the mechanism: a `flex-wrap: nowrap` action row that is wider than its
 column does not overflow cleanly, it SHRINKS its items - a label breaks onto
 two lines and every button in the row grows taller (31px -> 42px on the
-watch page at 1280-1600). The rules, for EVERY row of `.btn`s (the watch
-action row, section actions, modal actions, settings rows):
+watch page at 1280-1600). The rules, for EVERY row of buttons (the watch
+action row, section actions, dialog actions, settings rows):
 
-1. **A button keeps its natural size at every width.** Inside a flex row:
-   `white-space: nowrap; flex-shrink: 0` on the button, `flex-wrap: wrap`
-   on the group. Overflow becomes a second row of correctly-sized buttons,
-   never a squeeze. (Phone widths may additionally hide `.btn-label` words
-   and tighten padding - the watch row's 768px block - but the same
-   no-deform rule holds for the glyph-only buttons.)
+1. **A button keeps its natural size at every width.** Every button is a
+   `ui.button` (`ui-btn`), which is `flex: none` with a `nowrap` label, so
+   it never shrinks; the group wraps (`flex-wrap: wrap`) and overflow
+   becomes a second row of correctly-sized buttons, never a squeeze. A
+   stacked bar button (`shape: 'stack'`, icon over caption, the watch
+   action row) keeps the `--ctl-lg` 44px floor.
 2. **Adding, removing, relabelling or re-iconing a button is a MEASURED
-   change, never an eyeballed one.** Run the headless-Chromium probe BEFORE
-   and AFTER against the same seeded page and diff the geometry:
+   change, never an eyeballed one.** Two instruments:
+   - `test/geometry/` (`npm run test:geometry`; the fast set runs in
+     pre-push when `public/` changed, the full set in CI's visual job)
+     runs G1-G4 (row columns, icon centring, equal heights in a button
+     group, and the rotation sequences) on a seeded instance, each check
+     mutation-proven (`--mutants`). The watch page's own measure (one top
+     and one height per row, equal bar widths, a toggle's width identical
+     in both states) is `test/geometry/watch.check.js`, run by hand against
+     a seeded server (its header gives the command).
+   - For a before/after diff of the watch action row at many widths, run
+     the headless-Chromium probe against the same seeded page on both
+     trees:
 
-   ```
-   node scripts/action-row-probe.js <out-dir> [widths...]      # this tree
-   FT_ROOT=<path to a main worktree> node scripts/action-row-probe.js <out-dir-main>
-   ```
+     ```
+     node scripts/action-row-probe.js <out-dir> [widths...]      # this tree
+     FT_ROOT=<path to a main worktree> node scripts/action-row-probe.js <out-dir-main>
+     ```
 
-   It boots the real app on a scratch `DATA_DIR` with a seeded captioned
-   video, drives the Playwright-cached Chromium over CDP, and prints one JSON
-   line per width (`x/y/w/h` of every `.watch-action-btns .btn`, the stars,
-   the title, the description box) plus a PNG clip of the action bar. The
-   acceptance evidence is: every PRE-EXISTING button has the same `w/h` (and
-   the same `y` unless a wrap is the intended outcome), and the row count is
-   what you intended, at 390 and 375 (phones) and 1280 / 1366 / 1600 / 1920
-   (desktop). Quote the numbers in the commit message - and quote what the
-   probe PRINTED, never what you expected: the wave that wrote this rule
-   mis-quoted 1600 as "one row" from a line where only four buttons had
-   mounted (it is two rows of 32px; the gate caught it). A glyph must be
-   listed in ALL THREE icon lists (size block, mask line, `@supports` fill -
-   the v1.47.6 blank-box scar) and measure `1em` like its siblings.
-   Audit status: only the watch action row (`.watch-action-btns`) has been
-   measured and converted under this rule so far; the other rows named
-   above are governed by it but UNAUDITED (tech-debt row 184 carries the
-   revisit trigger - the next change to any of them).
-3. **A new button joins an existing group's markup shape exactly** (`.btn`,
-   `<i class="icon-*">` + `<span class="btn-label">`, `title` + `aria-label`)
-   so every rule above applies to it for free. No bespoke sizing.
+     It boots the real app on a scratch `DATA_DIR` with a seeded captioned
+     video, drives the Playwright-cached Chromium over CDP, and prints one
+     JSON line per width (`x/y/w/h` of every `.watch-actions .ui-btn`, the
+     rating, the title, the description box) plus a PNG clip of the action
+     bar. The acceptance evidence is: every PRE-EXISTING button has the
+     same `w/h` (and the same `y` unless a wrap is the intended outcome),
+     and the row count is what you intended, at 390 and 375 (phones) and
+     1280 / 1366 / 1600 / 1920 (desktop). Quote what the probe PRINTED,
+     never what you expected: the wave that wrote this rule mis-quoted 1600
+     as "one row" from a line where only four buttons had mounted (the gate
+     caught it).
+3. **A new button is a `ui.button`, never a bespoke element.** It takes its
+   icon from the registry by name (`ui.button({ icon: 'share', label:
+   'Share' })`, or `ui.icon(name)` alone); the registry is
+   `public/js/icons.js`, GENERATED from `tools/icons/src` (to add a glyph:
+   its Material Symbols name in `tools/icons/names.js`, then
+   `node tools/icons/fetch.js` and `node tools/icons/build.js`;
+   `test/unit/icons-registry.test.js` fails on a missing name). ui-lint's
+   `no-bespoke-controls` fails a `<button>` without a `ui-` class and a
+   control-shaped rule outside the primitives, and its `icons` rule fails
+   an inline `<svg>` or a text glyph outside the registry. A toggle whose
+   words change passes both `labels` (the stable-width label stack) and is
+   flipped with `ui.setPressed`, so its width never changes.
 
 ## Reordering: ONE gesture layer (MANDATORY, Dean's ruling 2026-08-04)
 
@@ -437,7 +506,8 @@ standard.
 - Isolation: each test file sets `process.env.DATA_DIR` to a fresh temp dir **before** `require('../../server')`. The runner gives each file its own process, so there is no shared state. Tests never touch real project data.
 - `server.js` exports `app` and the pure helpers; it only starts listening / scanning under `require.main === module`, so importing it is side-effect-free.
 - **Every new feature or bugfix ships with tests.** Add a regression test for each bug you fix. Keep FFmpeg out of the core suite (it isn't installed on CI runners).
-- Gates: `pre-commit` runs lint + unit tests; `pre-push` and CI run lint + the full suite (Node 22).
+- Gates: `pre-commit` runs lint + unit tests; `pre-push` and CI run lint, `npm run lint:ui` and the full suite (Node 22). When `public/` changed against the upstream, `pre-push` also runs the fast geometry set (`npm run test:geometry:fast`), and CI's `visual` job runs the full geometry set and the visual diff (`.github/workflows/visual.yml`, `docs/RELEASING.md`).
+- **Playwright is a prerequisite for the geometry and visual runners** (and so for a push that touches `public/`). It lives in its own package, not the app's: install it once per clone with `cd tools/capture && npm ci && npx playwright install chromium`. Without it the push fails with "Playwright not found".
 
 ## Git conventions
 

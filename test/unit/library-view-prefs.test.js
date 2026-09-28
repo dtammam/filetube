@@ -111,8 +111,10 @@ test('SOURCE-LOCK (#2): the view toggle applies .list-view to #video-grid, persi
   assert.match(MAIN, /setStoredViewMode\(next\)/, 'persists the mode on toggle');
   assert.match(HTML, /id="view-mode-btn"/, 'the toggle button is in the bar');
   assert.match(CSS, /\.video-grid\.list-view\b/, 'the list-view reflow CSS exists');
-  assert.match(CSS, /\.icon-grid \{[^}]*grid_view\.svg/, 'grid glyph registered');
-  assert.match(CSS, /\.icon-list \{[^}]*view_list\.svg/, 'list glyph registered');
+  // step 7: the toggle draws the registry glyphs (sweep S2); the retired .icon-grid mask is gone
+  assert.match(HTML, /id="view-mode-btn"[^>]*>[\s\S]{0,200}?<use href="#i-view_list"\/>/, 'the toggle draws the registry view_list glyph');
+  assert.match(MAIN, /use\.setAttribute\('href', targetIsList \? '#i-view_list' : '#i-grid_view'\)/, 'and swaps to the registry grid_view glyph');
+  assert.doesNotMatch(CSS.replace(/\/\*[\s\S]*?\*\//g, ''), /\.icon-grid\b/, 'no .icon-grid mask left');
 });
 
 test('SOURCE-LOCK v1.160 (#7): the MODERN home injects a card/list toggle driving the SAME ft-view-mode', () => {
@@ -127,6 +129,9 @@ test('SOURCE-LOCK v1.160 (#7): the MODERN home injects a card/list toggle drivin
   assert.match(body, /setStoredViewMode\(next\)/, 'persists to the SAME key');
   assert.match(body, /applyViewMode\(next\)/, 'applies via the SAME reflow path');
   assert.match(body, /modern-view-toggle/, 'a distinct class for placement + cleanup');
+  // Sweep S9 (F31): a header ui-btn (chromeButtonEl) with the registry grid_view / view_list glyph.
+  assert.match(body, /chromeButtonEl\(\{ icon: 'view_list', ariaLabel: 'Switch to list view', cls: 'modern-view-toggle' \}\)/);
+  assert.match(body, /isList \? '#i-grid_view' : '#i-view_list'/, 'shows the mode a click switches TO');
   // cleaned up on destroy like the modern sort (no orphan in the persistent shell)
   assert.match(body, /\.modern-view-toggle'\)/, 'removed on the abort/destroy path');
   // gate WARNING: home is CACHED (not destroyed) on nav-away so abort may not
@@ -134,14 +139,11 @@ test('SOURCE-LOCK v1.160 (#7): the MODERN home injects a card/list toggle drivin
   // in the persistent header on watch/stats/etc.
   assert.match(CSS, /\.modern-view-toggle\s*\{[^}]*display:\s*none/, 'route-gated off by default (persistent-header safety)');
   assert.match(CSS, /body\[data-view="home"\]\s*\.modern-view-toggle\s*\{[^}]*display:\s*inline-flex/, 'shown only on the home view');
-  // v1.160.1 (Dean): the transparent glyph style (like .modern-sort-btn), NOT the
-  // filled .btn look that read as "always selected/grey".
-  assert.match(CSS, /\.modern-view-toggle\s*\{[^}]*background:\s*none/, 'transparent, not the filled .btn look');
-  assert.match(MAIN, /className\s*=\s*'modern-view-toggle'/, 'the button does not carry the filled .btn class');
-  // v1.160.2 (Dean): the grid/list glyph is a 1em mask - without a font-size it
-  // inherited ~16px and read "a little small" next to the 22px header glyph
-  // family (download/search/sort). Bind the sizing so it can't silently regress.
-  assert.match(CSS, /\.modern-view-toggle\s*\{[^}]*font-size:\s*var\(--fs-4xl\)/, 'sized to 22px, uniform with the header glyph family');
+  // v1.160.1 (Dean): the transparent glyph style, NOT the filled .btn look that read as
+  // "always selected/grey"; v1.160.2: the 22px header-glyph size. Sweep S9: both come from
+  // the primitive - a PLAIN (transparent) md header ui-btn with the --icon-md glyph.
+  assert.match(MAIN, /cls: 'modern-view-toggle'/, 'built by chromeButtonEl (ui-btn plain md)');
+  assert.doesNotMatch(MAIN, /className\s*=\s*'[^']*\bbtn\b[^']*modern-view-toggle/, 'never the filled .btn class');
 });
 
 test('SOURCE-LOCK (#1): per-page sort reads/writes by pageSortKey only when enabled, and pins over defaultSort', () => {

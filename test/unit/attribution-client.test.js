@@ -19,8 +19,9 @@ function strippedSource(rel) {
 
 test('LOCK (wiring): the watch page mounts the Attribute control, gated on the ONE unattributed predicate', () => {
   const src = strippedSource('public/js/watch.js');
-  assert.match(src, /setupAttributeButton\(\);/, 'the initWatch call site was deleted');
-  assert.match(src, /resolveFileChannelIdentity\(mediaData\) !== null/, 'the visibility gate must be the shared predicate, never resolveChannelName');
+  // UI pass sweep S3: a More-menu entry, offered from the live state at each open
+  assert.match(src, /else if \(id === 'attribute'\) handleAttributeClick\(\);/, 'the menu call site was deleted');
+  assert.match(src, /canAttribute: attributeControlEnabled && !!mediaData && resolveFileChannelIdentity\(mediaData\) === null/, 'the visibility gate must be the shared predicate, never resolveChannelName');
   assert.match(src, /\/api\/videos\/\$\{encodeURIComponent\(mediaId\)\}\/attribute-channel/, 'the attribute POST was deleted');
   assert.match(src, /window\.FileTube\.player\.close\(\);/, 'the move confirm must close the player before moving (the offerRelocation posture)');
   assert.match(src, /entry\.attributionConflict && entry\.attributionConflict\.kept/, 'the conflict toast branch was deleted (decision 3: the conflict must be NAMED)');
@@ -31,10 +32,13 @@ test('LOCK (wiring): the folder view mounts the bulk control with the order-band
   assert.match(main, /ensureAttributeFolderButton\(sectionActions\);/, 'the render call site was deleted');
   assert.match(main, /typeof it\.channelUrl !== 'string' \|\| it\.channelUrl === ''/, 'the unattributed predicate was changed');
   assert.match(main, /\/api\/videos\/attribute-channel-bulk/, 'the bulk POST was deleted');
-  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
-  const idx = css.indexOf('.section-actions #attribute-folder-btn');
-  assert.ok(idx !== -1, 'the order-band rule exists');
-  assert.match(css.slice(idx, css.indexOf('}', idx)), /order: 12/, 'the v1.50.4 orphan-row lesson: an explicit order after repull’s 11');
+  // UI pass sweep S2 (F19; converts the v1.53 order-band lock, AC12): the toolbar
+  // is ONE row that never wraps (no orphan row to band against); the control is
+  // a ui-btn appended after the tools.
+  assert.match(main, /const btn = cardUi\(\)\.button\(\{ variant: 'tonal', size: 'sm', pill: true, label: 'Attribute folder',/, 'a ui-btn');
+  assert.match(main, /btn\.id = 'attribute-folder-btn';/);
+  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(!/#attribute-folder-btn/.test(css), 'no bespoke rule: the primitive owns the look, the one row owns the place');
 });
 
 test('LOCK (wiring): the shared picker exists once, in common.js, and both callers use it', () => {
@@ -46,14 +50,17 @@ test('LOCK (wiring): the shared picker exists once, in common.js, and both calle
   assert.match(main, /showAttributionPicker\(targets, \{ title: 'Attribute this folder to', showRelocate: true \}/);
 });
 
-test('LOCK (gate C1): the picker is REVEALED through the shared overlay helper and torn down through it', () => {
-  // The adversarial repro: a .modal-backdrop without openOverlay sits at
-  // opacity 0 -- an invisible full-viewport click-eater whose invisible
-  // rows could fire a blind 200-file bulk move.
+test('LOCK (gate C1): the picker is a ui.sheet that is OPENED (so revealed) and closes through it; the W6 dismiss handle stays', () => {
+  // The adversarial repro: a backdrop that is never revealed sits at opacity 0 -- an
+  // invisible full-viewport click-eater whose invisible rows could fire a blind 200-file
+  // bulk move. Sweep S9: the picker is a ui.sheet, which ALWAYS gets is-open on the next
+  // frame (reduced motion included, F48); overlays-dialogs-s9.test.js watches it happen.
   const common = strippedSource('public/js/common.js');
-  assert.match(common, /openOverlay\(backdrop, 'modal-open'\);/, 'the reveal call was deleted -- the picker is invisible again');
-  assert.match(common, /closeOverlayThen\(backdrop, 'modal-open',/, 'teardown must animate out through the shared helper');
-  assert.match(common, /return \{ dismiss: teardown \};/, 'the W6 dismiss handle was deleted');
+  const start = common.indexOf('function showAttributionPicker(');
+  const body = common.slice(start, common.indexOf('\nfunction ', start + 1));
+  assert.match(body, /ctrl = U\.sheet\(\{ variant: 'dialog'/, 'the picker is a ui.sheet dialog');
+  assert.match(body, /ctrl\.open\(\);/, 'the open call was deleted -- the picker is invisible again');
+  assert.match(body, /return \{ dismiss: \(\) => ctrl\.close\(\) \};/, 'the W6 dismiss handle was deleted');
 });
 
 test('LOCK (gate C3/W1/W6/QA-C1): the bulk flow is preview -> confirm -> execute -> poll, dies with the view, re-checks per page', () => {

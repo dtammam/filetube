@@ -43,14 +43,13 @@ fi
 echo "→ eslint"
 npm run --silent lint
 
-# THE TOKEN RATCHET (v1.62.0): the census hit zero at v1.61.0 and stays
-# there - any raw literal in a governed style property fails the commit
-# (adopt a token, use a recognized idiom, or annotate token-exempt with a
-# reason; docs/CONTRIBUTING.md, MANDATORY styling section). Runs its own
-# known-violation canary first, so a broken linter fails LOUD, never
-# passes quiet.
-echo "→ token ratchet (lint:css --enforce)"
-node scripts/css-token-lint.js --enforce
+# THE UI RATCHET (UI professionalism pass, plan D10): ui-lint's twelve rules
+# over every stylesheet, shell and client script, against the shrink-only
+# docs/ui-exceptions.json - new debt fails, paid debt must be shrunk out of the
+# file, and a broken rule's canary fails LOUD (exit 2). Its no-raw-values rule
+# superseded the v1.62.0 token ratchet (css-token-lint, retired at step 7).
+echo "→ ui ratchet (lint:ui --enforce)"
+npm run --silent lint:ui
 
 # Fast unit tests only (no server boot)
 echo "→ unit tests"

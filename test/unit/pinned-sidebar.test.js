@@ -36,7 +36,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 
-const { renderPinnedSidebar, derivePinnedPlaylistEntries, deriveAvatar } = require('../../public/js/common.js');
+const { renderPinnedSidebar, derivePinnedPlaylistEntries } = require('../../public/js/common.js');
+const UI = require('../../public/js/ui.js');
 
 // ---- Minimal fake DOM (mirrors the FakeElement/innerHTML-throws pattern
 // established by test/unit/subscribe-button.test.js and
@@ -231,17 +232,17 @@ test('renderPinnedSidebar: renders a pin entry with a generated avatar glyph and
   // v1.76: `reorder-row` is stamped by the shared gesture layer on every row
   // it wires, so its presence here is also the proof that this pin row IS
   // wired for drag-to-reorder.
-  assert.deepEqual(link.className.split(' ').sort(), ['reorder-row', 'sidebar-item']);
+  assert.deepEqual(link.className.split(' ').sort(), ['sidebar-item', 'ui-reorder']); // step 7: the ui-reorder primitive
   assert.strictEqual(link.href, '/?root=' + encodeURIComponent(PIN.channelDir));
   const avatar = link.children.find((c) => c.tagName === 'SPAN');
-  assert.ok(avatar, 'expected a generated avatar <span> child (no channelAvatarUrl on this pin)');
-  assert.strictEqual(avatar.className, 'pinned-avatar pinned-avatar-generated');
-  assert.ok(avatar.style.backgroundColor, 'expected a deterministic background color to be set');
-  const glyphNode = avatar.children.find((c) => c.nodeType === 3);
-  // The glyph is the label's own first letter, uppercased -- assert against
-  // `deriveAvatar` itself (the shared source of truth) rather than a
-  // hardcoded letter.
-  assert.strictEqual(glyphNode.textContent, deriveAvatar(PIN.label).glyph, 'glyph matches the shared deriveAvatar contract');
+  assert.ok(avatar, 'expected an avatar <span> child');
+  // Sweep S1 (DELIBERATE lock update, D4.4): a 20px ui-avatar; with no photo, the primitive's
+  // monogram - the label's initials on a name-hashed tone (no inline colour).
+  assert.strictEqual(avatar.className, 'ui-avatar ui-avatar--xs pinned-avatar');
+  const mono = avatar.children[0];
+  assert.strictEqual(mono.className, 'ui-avatar__mono');
+  assert.strictEqual(mono.getAttribute('data-tone'), String(UI.toneOf(PIN.label)), 'a deterministic tone');
+  assert.strictEqual(mono.textContent, UI.initials(PIN.label), 'glyph matches the primitive initials contract');
   const textNode = link.children.find((c) => c.nodeType === 3);
   assert.ok(textNode, 'expected a createTextNode-built label, not a textContent assignment (which would also wipe the avatar)');
   assert.match(textNode.textContent, /Real Creator/);
@@ -256,10 +257,11 @@ test('renderPinnedSidebar: a pin with a channelAvatarUrl renders an <img> instea
 
   const section = sidebarShell.children[1];
   const link = section.children[1];
-  const img = link.children.find((c) => c.tagName === 'IMG');
+  const avatar = link.children.find((c) => c.tagName === 'SPAN');
+  const img = avatar && avatar.children.find((c) => c.tagName === 'IMG');
   assert.ok(img, 'expected an <img> child when channelAvatarUrl is present');
-  assert.strictEqual(img.className, 'pinned-avatar pinned-avatar-img');
-  assert.strictEqual(img.src, 'https://example.com/a.jpg');
+  assert.strictEqual(img.className, 'ui-avatar__img');
+  assert.strictEqual(img.getAttribute('src'), 'https://example.com/a.jpg');
 });
 
 test('renderPinnedSidebar: a hostile label is rendered as inert text, never assigned via innerHTML (XSS regression, AC35)', () => {

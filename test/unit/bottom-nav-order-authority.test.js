@@ -122,7 +122,8 @@ test('v1.75: EVERY shell that carries the bar carries the Liked item, hidden unt
     const html = fs.readFileSync(path.join(PUBLIC_DIR, f), 'utf8');
     assert.match(
       html,
-      /<a href="\/\?liked=1" class="bottom-nav-item" data-nav="liked" hidden>/,
+      // Sweep S1 (DELIBERATE lock update): the tab is a ui-btn stack (F49).
+      /<a href="\/\?liked=1" class="ui-btn ui-btn--plain ui-btn--md ui-btn--stack bottom-nav-item" data-nav="liked" hidden>/,
       `${f}: missing (or un-hidden) liked bottom-nav item`,
     );
     // Exactly one, and it sits directly after Home - the DOM order IS the
@@ -152,11 +153,13 @@ test('v1.87.1: every shell renders the SAME inline "liked" chrome-icon in its bo
   // exact same inline glyph (chromeIconMarkup('liked'), itself byte-bound to
   // star.svg in chrome-icons.test.js). A shell that drifts (or reverts to a
   // decode-lagging mask) fails here.
-  const likedSvg = require('../../public/js/common.js').chromeIconMarkup('liked');
+  // Sweep S1 (DELIBERATE lock update): the tab's glyph is the ui.icon markup in its slot.
+  const c = require('../../public/js/common.js');
+  const likedSvg = '<span class="ui-btn__icon">' + c.uiIconMarkup(c.CHROME_ICON.liked, 'lg') + '</span>';
   for (const f of SHELLS) {
     const html = fs.readFileSync(path.join(PUBLIC_DIR, f), 'utf8');
     const item = html.slice(html.indexOf('data-nav="liked"'), html.indexOf('data-nav="liked"') + 800);
-    assert.ok(item.includes(likedSvg), `${f}: liked must render the shared inline "liked" chrome-icon svg`);
+    assert.ok(item.includes(likedSvg), `${f}: liked must render the shared inline "liked" sprite glyph`);
     // The v1.38 lesson: glyphs come from CSS/icon assets or inline svg, never a
     // codepoint typed into markup.
     assert.ok(!/[☀-➿\u{1F300}-\u{1F9FF}]/u.test(item), `${f}: raw emoji codepoint in markup`);
@@ -406,7 +409,7 @@ function withEditor(config, fn) {
 }
 
 const editorRows = () => Array.prototype.slice
-  .call(global.document.querySelectorAll('.bottombar-editor-row'))
+  .call(global.document.querySelectorAll('#bottombar-editor .ui-reorder'))
   .map((row) => ({
     label: row.querySelector('.bottombar-editor-label').textContent,
     checked: row.querySelector('input[type="checkbox"]').checked,
@@ -506,14 +509,14 @@ test('v1.75 EDITOR: a move persists the FULL roster, which is what releases the 
     // only swaps it with the hidden Liked row, which correctly leaves the
     // VISIBLE bar unchanged and would prove nothing about the rendered order.
     const moveHomeDown = () => {
-      const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('.bottombar-editor-row'));
+      const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('#bottombar-editor .ui-reorder'));
       const row = rows.find((r) => r.querySelector('.bottombar-editor-label').textContent === 'Home');
-      row.querySelector('.drag-handle').dispatchEvent(
+      row.querySelector('.ui-reorder__handle').dispatchEvent(
         new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })
       );
     };
     assert.equal(
-      dom.window.document.querySelector('.bottombar-editor-row .bottombar-editor-label').textContent,
+      dom.window.document.querySelector('#bottombar-editor .ui-reorder .bottombar-editor-label').textContent,
       'Home', 'Home heads the panel before any move',
     );
     moveHomeDown();
@@ -538,14 +541,14 @@ test('v1.75 EDITOR: a move persists the FULL roster, which is what releases the 
 test('v1.76 EDITOR: every row has a drag handle and NO up/down buttons survive', () => {
   withEditor({}, (dom, signal) => {
     setup.renderBottomBarEditor(signal);
-    const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('.bottombar-editor-row'));
+    const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('#bottombar-editor .ui-reorder'));
     assert.ok(rows.length > 0, 'the panel rendered');
     assert.equal(
       dom.window.document.querySelectorAll('.bottombar-editor-btn').length, 0,
       'the up/down buttons Dean asked to be rid of are gone',
     );
     for (const row of rows) {
-      const handle = row.querySelector('.drag-handle');
+      const handle = row.querySelector('.ui-reorder__handle');
       assert.ok(handle, 'every row has a grip');
       // The grip carries the accessibility the deleted buttons used to.
       assert.equal(handle.getAttribute('tabindex'), '0');
@@ -561,7 +564,7 @@ test('v1.76 EDITOR: a POINTER drag reorders the bar and persists the full roster
   // panel writes a real config the real resolver then renders.
   withEditor({}, (dom, signal) => {
     setup.renderBottomBarEditor(signal);
-    const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('.bottombar-editor-row'));
+    const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('#bottombar-editor .ui-reorder'));
     // jsdom does no layout, so give the rows the geometry a browser would.
     rows.forEach((row, i) => { row.getBoundingClientRect = () => ({ top: i * 20, bottom: i * 20 + 20, height: 20 }); });
     const labelAt = (i) => rows[i].querySelector('.bottombar-editor-label').textContent;
@@ -595,7 +598,7 @@ test('v1.76 EDITOR: a drag that ends where it started persists nothing', () => {
   withEditor({}, (dom, signal) => {
     setup.renderBottomBarEditor(signal);
     const before = dom.window.localStorage.getItem('ft-bottomnav');
-    const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('.bottombar-editor-row'));
+    const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('#bottombar-editor .ui-reorder'));
     rows.forEach((row, i) => { row.getBoundingClientRect = () => ({ top: i * 20, bottom: i * 20 + 20, height: 20 }); });
     const pointerAt = (el, type, clientY) => el.dispatchEvent(new dom.window.PointerEvent(type, {
       bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', button: 0, clientX: 0, clientY,

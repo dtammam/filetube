@@ -7,27 +7,51 @@
 
 (function () {
   // ---- era switcher (the signature flourish; pre-login theming) -----------
+  // Sweep S8: the switcher is a ui-segmented radiogroup. The page ships its static markup
+  // (the same classes, so the first paint already has the right shape); ui.segmented then
+  // takes it over for the checked state, roving focus and arrow keys. Without ui.js the
+  // static buttons still switch the era.
   var d = document.documentElement;
-  var eraButtons = Array.prototype.slice.call(document.querySelectorAll('.login-era-switch button[data-era]'));
-  function syncEraPressed() {
-    var current = d.getAttribute('data-theme') || '2021';
-    eraButtons.forEach(function (b) {
-      b.setAttribute('aria-pressed', b.getAttribute('data-era') === current ? 'true' : 'false');
-    });
+  function applyEra(era) {
+    if (typeof window.applyTheme === 'function') {
+      window.applyTheme(era, d.getAttribute('data-mode') || 'light');
+    } else {
+      d.setAttribute('data-theme', era);
+      try { localStorage.setItem('ft-era', era); } catch (_) { /* storage off */ }
+    }
   }
-  eraButtons.forEach(function (b) {
-    b.addEventListener('click', function () {
-      var era = b.getAttribute('data-era');
-      if (typeof window.applyTheme === 'function') {
-        window.applyTheme(era, d.getAttribute('data-mode') || 'light');
-      } else {
-        d.setAttribute('data-theme', era);
-        try { localStorage.setItem('ft-era', era); } catch (_) { /* storage off */ }
-      }
-      syncEraPressed();
-    });
-  });
-  syncEraPressed();
+  var staticSeg = document.querySelector('.login-era-switch .ui-segmented');
+  if (staticSeg) {
+    var current = d.getAttribute('data-theme') || '2021';
+    var items = Array.prototype.slice.call(staticSeg.querySelectorAll('[data-era]'));
+    if (window.ui && typeof window.ui.segmented === 'function') {
+      var seg = window.ui.segmented({
+        label: 'Theme era',
+        value: current,
+        options: items.map(function (b) { return { value: b.getAttribute('data-era'), label: b.textContent }; }),
+        onChange: applyEra,
+      });
+      seg.setAttribute('aria-labelledby', staticSeg.getAttribute('aria-labelledby') || '');
+      seg.removeAttribute('aria-label');
+      Array.prototype.forEach.call(seg.querySelectorAll('.ui-segmented__item'), function (b) {
+        b.setAttribute('data-era', b.getAttribute('data-value'));
+      });
+      staticSeg.replaceWith(seg);
+    } else {
+      var sync = function () {
+        var era = d.getAttribute('data-theme') || '2021';
+        items.forEach(function (b) {
+          var on = b.getAttribute('data-era') === era;
+          b.setAttribute('aria-checked', on ? 'true' : 'false');
+          b.setAttribute('tabindex', on ? '0' : '-1');
+        });
+      };
+      items.forEach(function (b) {
+        b.addEventListener('click', function () { applyEra(b.getAttribute('data-era')); sync(); });
+      });
+      sync();
+    }
+  }
 
   // ---- custom-logo (white-label) banner on the sign-in card ---------------
   // Dean's request: the login/welcome card shows the configured custom logo

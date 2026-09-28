@@ -4,7 +4,7 @@
 // a CARD read surface (`GET /api/videos`) spreading the raw item without
 // resolving the channel avatar -- and it had UN-SWEPT SIBLINGS (`/api/liked`,
 // `/api/history`) doing the same, because they all feed the shared
-// buildCardHtml -> modernCardAvatar path (main.js). This is this repo's
+// buildVideoCardEl -> modernCardAvatar path (main.js). This is this repo's
 // repeatedly-paid "enumerate EVERY surface / shared resolver not called" class
 // (v1.41.4, v1.80). Rather than trust a hand list, DERIVE the surfaces: every
 // route projection that spreads `...item,` into a returned object must resolve

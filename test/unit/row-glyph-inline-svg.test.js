@@ -6,10 +6,10 @@
 // decodes, so on an iOS cold start these glyphs popped in a beat after the row
 // (the v1.87 class); an inline svg rides the text layer and reveals instantly.
 //
-// The swap is SURGICAL: the card-corner queue mask and the watch action-row
-// masks are NOT first-paint-lagging in the same way and stay masks (bound by
-// card-corner-renderer.test.js / era-row-overflow.test.js). This test binds the
-// two row surfaces flipped AND that the survivors did not.
+// The swap was SURGICAL: the card-corner queue mask and the watch action-row
+// masks stayed masks then; UI pass sweeps S2 / S3 moved both onto registry
+// icons (card-action-menu.test.js / watch-sweep-s3.test.js). This test binds the
+// two row surfaces flipped AND (last test) where the card and watch glyphs come from now.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -30,63 +30,77 @@ const { buildSongRowHtml } = require('../../public/js/music.js');
 
 // ---- the 3 new glyphs exist in the shared map -------------------------------
 
-test('CHROME_ICON_SVG gained queue, heart, delete (the row action glyphs)', () => {
-  const map = require('../../public/js/common.js').CHROME_ICON_SVG;
+// UI pass step 2 (DELIBERATE lock update): the map names registry icons (the sprite draws
+// them); icons-registry.test.js binds the paths.
+test('CHROME_ICON has queue, heart, delete (the row action glyphs), each a registry icon', () => {
+  const map = require('../../public/js/common.js').CHROME_ICON;
+  const FTIcons = require('../../public/js/icons.js');
   for (const name of ['queue', 'heart', 'delete']) {
-    assert.ok(map[name] && map[name].d && map[name].vb, `${name} is in the chrome-icon map`);
+    assert.ok(map[name] && FTIcons.has(map[name]), `${name} is in the chrome-icon map`);
   }
 });
 
 // ---- music song row: inline svgs, no masks ----------------------------------
 
-test('music song row: queue/download/like are inline chrome-icon svgs, NO .icon-* masks', () => {
+// UI pass S7 (AC12 conversion of the v1.102 lock): the song row's actions are ui-btn icon
+// buttons drawing registry sprite icons (the same no-decode-lag property the inline chrome-icon
+// gave) - Add to queue (playlist_add), Like (favorite / favorite.fill) and the row menu
+// (more_vert; Save to device moved into it) - and no .icon-* mask survives.
+test('music song row: queue / like / menu are ui-btn icon buttons with registry sprite icons, NO .icon-* masks', () => {
   const html = buildSongRowHtml({ id: 't1', title: 'x', artist: 'a', album: 'b', durationSec: 60, liked: false }, 0);
-  // Three inline chrome-icon svgs (queue, download, heart), each with its path.
-  assert.strictEqual((html.match(/<svg class="chrome-icon"/g) || []).length, 3, 'three inline chrome-icon glyphs');
-  assert.match(html, /<path d="M3 6h13v2H3V6/, 'queue glyph path');
-  assert.match(html, /<path d="M480-337/, 'download glyph path');
-  assert.match(html, /<path d="m480-120-58-52/, 'heart glyph path');
-  // No decode-lagging mask <i> survives in the row.
-  assert.doesNotMatch(html, /<i class="icon-(queue|download|heart)"/, 'no .icon-* mask <i> in the song row');
+  const btns = html.match(/<button type="button" class="ui-btn ui-btn--plain ui-btn--sm ui-btn--icon [^"]*"[^>]*><span class="ui-btn__icon"><svg class="ui-icon ui-icon--md" aria-hidden="true" focusable="false"><use href="#i-[a-z_-]+"\/><\/svg><\/span><\/button>/g) || [];
+  assert.strictEqual(btns.length, 3, 'three icon buttons in the action slots');
+  assert.match(html, /music-queue-btn[^>]*>[\s\S]*?<use href="#i-playlist_add"\/>/, 'queue glyph');
+  assert.match(html, /music-like-btn"[^>]*>[\s\S]*?<use href="#i-favorite"\/>/, 'heart glyph');
+  assert.match(html, /music-song-more"[^>]*>[\s\S]*?<use href="#i-more_vert"\/>/, 'menu glyph');
+  assert.doesNotMatch(html, /<i class="icon-/, 'no .icon-* mask <i> in the song row');
+  const FTIcons = require('../../public/js/icons.js');
+  for (const n of ['playlist_add', 'favorite', 'favorite.fill', 'more_vert', 'queue_music', 'download', 'account_circle']) assert.ok(FTIcons.has(n), n + ' is a registry icon');
 });
 
-test('music.js reaches chromeIconMarkup via window (no bare require - the client-scripts convention)', () => {
+test('music.js draws its row glyphs from the registry sprite (no chrome-icon resolver, no bare require)', () => {
   const src = stripComments(read('public/js/music.js'));
-  assert.match(src, /window\.chromeIconMarkup/, 'the row builder reads window.chromeIconMarkup');
+  assert.doesNotMatch(src, /rowGlyphMarkup|chromeIconMarkup/, 'the retired resolver is gone');
   assert.doesNotMatch(src, /require\(\s*['"]\.\/common/, 'no bare require of common.js in a client script');
-  // The three row buttons emit the glyph via the resolver, not a mask <i>.
-  assert.match(src, /rowGlyphMarkup\('queue'\)/);
-  assert.match(src, /rowGlyphMarkup\('download'\)/);
-  assert.match(src, /rowGlyphMarkup\('heart'\)/);
+  assert.match(src, /function songIconHtml\(name\) \{[\s\S]*?<use href="#i-/, 'one sprite-icon writer');
 });
 
-// ---- podcast episode row: chromeIconEl, no mask className -------------------
+// ---- podcast episode row: registry sprite icons via ui.button, no masks -------
+// UI pass S6 (AC12 conversion of the v1.102 lock): the episode row's actions are ui.button
+// icon buttons (ui-btn--icon, a ui-icon <use href="#i-NAME"> from the sprite - the same
+// no-decode-lag property the inline chrome-icon gave, now from the registry), and the old
+// 14px `.podcast-ep-action .chrome-icon` sizing rule is replaced by the ui-btn icon slot
+// contract in ui.css. podcasts-ui-sweep.test.js renders the row and binds the DOM.
 
-test('podcast episode row: like/queue/save/delete build via chromeIconEl, NO icon-* mask className', () => {
+test('podcast episode row: queue + more are ui.button sprite icons, NO icon-* mask and no bespoke glyph class', () => {
   const src = stripComments(read('public/js/podcasts.js'));
-  for (const name of ['heart', 'queue', 'download', 'delete']) {
-    assert.match(src, new RegExp("rowGlyphEl\\('" + name + "'\\)"), `episode-row ${name} builds an inline chrome-icon el`);
+  assert.match(src, /ui\.button\(\{ variant: 'plain', shape: 'icon', icon: 'playlist_play', ariaLabel: 'Add to queue' \}\)/, 'the queue action is a plain icon ui-btn');
+  assert.match(src, /ui\.button\(\{ variant: 'plain', shape: 'icon', icon: 'more_vert', ariaLabel: 'More actions' \}\)/, 'the more action is a plain icon ui-btn');
+  const FTIcons = require('../../public/js/icons.js');
+  for (const name of ['playlist_play', 'more_vert', 'favorite', 'favorite.fill', 'check', 'download', 'delete', 'refresh']) {
+    assert.ok(FTIcons.has(name), `registry has ${name}`);
   }
-  // The old mask <i> builders (className = 'icon-*') are gone from the episode row.
-  assert.doesNotMatch(src, /\.className = 'icon-(heart|queue|download|delete)'/,
-    'no .icon-* mask <i> className assignment survives in the episode row');
+  assert.doesNotMatch(src, /\.className = 'icon-(heart|queue|download|delete)'/, 'no .icon-* mask <i> className in the episode row');
+  assert.doesNotMatch(src, /rowGlyphEl|podcast-ep-action/, 'the retired bespoke glyph path is gone');
 });
 
-test('style.css: .podcast-ep-action sizes the inline chrome-icon (parity with the old 14px mask)', () => {
-  const css = read('public/css/style.css');
-  assert.match(css, /\.podcast-ep-action \.chrome-icon\b/, 'the svg glyph is sized in the ep-action button');
-  assert.match(css, /\.podcast-ep-action[^{]*\.chrome-icon[^{]*\{[^}]*width: 14px/,
-    'same 14px box the mask had (no size regression)');
+test('ui.css: the ui-btn icon slot sizes the sprite glyph (replaces the 14px .podcast-ep-action rule)', () => {
+  const css = read('public/css/ui.css');
+  assert.match(css, /\.ui-btn__icon > \.ui-icon \{[^}]*width: var\(--btn-icon\);[^}]*height: var\(--btn-icon\);/, 'the icon takes the slot size');
+  assert.doesNotMatch(read('public/css/style.css').replace(/\/\*[\s\S]*?\*\//g, ''), /\.podcast-ep-action/, 'the bespoke rule is deleted');
 });
 
 // ---- SURGICAL SCOPE: the survivors stay masks -------------------------------
 
-test('surgical scope: the card-corner queue mask and watch-row masks are NOT swapped', () => {
-  // The card-corner queue button (main.js) is a promoted mask, deliberately kept
-  // (card-corner-renderer.test.js binds it) - a mask here does not first-paint-lag
-  // the way the row glyphs did.
-  assert.match(read('public/js/main.js'), /icon-queue/, 'the card-corner queue mask survives');
-  // The watch action row keeps its masks (era-row-overflow.test.js binds them).
-  const watch = read('public/watch.html') + read('public/js/watch.js');
-  assert.match(watch, /icon-heart/, 'the watch action-row like mask survives');
+test('the card and watch queue entries draw registry icons (sweeps S2, S3); the watch row carries no mask icon', () => {
+  // UI pass sweep S2 retired the card-corner queue button: the card's queue is a
+  // menu entry drawing the registry's playlist_add (card-action-menu.test.js).
+  assert.match(read('public/js/main.js'), /icon: 'playlist_add', label: 'Add to queue'/, 'the card queue entry draws a registry icon');
+  // UI pass sweep S3: the watch action bar and its More menu draw registry icons too - the
+  // .icon-* masks (and their decode-after-text pop, F52) are gone from the watch page.
+  const watchJs = read('public/js/watch.js');
+  assert.match(watchJs, /icon: 'playlist_add', label: 'Add to queue'/, 'the watch More menu queue entry');
+  assert.match(watchJs, /icon: \{ off: 'favorite', on: 'favorite\.fill' \}, labels: \['Like', 'Liked'\]/, 'the watch Like is a registry glyph toggle');
+  const watch = read('public/watch.html') + watchJs;
+  assert.doesNotMatch(watch, /class="icon-|className = 'icon-/, 'no mask icon on the watch page');
 });

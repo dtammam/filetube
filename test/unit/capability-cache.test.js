@@ -69,7 +69,8 @@ test('LOCK (wiring): the probes WRITE the cache and the render sites READ it opt
   const watch = stripped('public/js/watch.js');
   assert.match(watch, /writeCapabilityCache\(\{ moduleEnabled: res\.ok \}\)/, 'reheat probe write deleted');
   assert.match(watch, /writeCapabilityCache\(\{ moduleEnabled, subs: scrubSubsForCache\(subs\) \}\)/, 'subscribe probe write deleted');
-  assert.match(watch, /if \(cachedCap && cachedCap\.moduleEnabled === true\) mountReheatBtn\(\);/, 'reheat optimistic mount deleted');
+  // UI pass S3: Reheat is a More-menu entry; the cache makes it available before the probe answers
+  assert.match(watch, /if \(cachedCap && cachedCap\.moduleEnabled === true\) reheatAvailable = true;/, 'reheat optimistic availability deleted');
   // v1.54 A1 (DELIBERATE lock update): the label-only optimistic render was
   // replaced by the full cached-first applier -- rendered AND wired from the
   // cache at hydration, plus a FRAME-ONE call from the seed path, with

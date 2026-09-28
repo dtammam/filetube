@@ -173,9 +173,9 @@ test('LIBRARY PICKER: one row per slot, each labelled and preset from the user r
   await withDom(LIB_SHELL, async (dom) => {
     await setup.renderLibraryGlyphEditor();
     await flush();
-    const rows = dom.window.document.querySelectorAll('#library-glyph-editor .card-corner-editor-row');
+    const rows = dom.window.document.querySelectorAll('#library-glyph-editor .ui-row');
     assert.equal(rows.length, LIBRARY_GLYPH_SLOTS.length, 'every Library entry gets a picker (ruling 5)');
-    const labels = [...rows].map((r) => r.querySelector('.card-corner-editor-label').textContent);
+    const labels = [...rows].map((r) => r.querySelector('.library-glyph-label').textContent);
     assert.deepEqual(labels, LIBRARY_GLYPH_SLOTS.map((s) => s.name));
     assert.equal(dom.window.document.querySelectorAll('#library-glyph-editor select')[2].value, 'default');
   }, { serverSettings: {} });

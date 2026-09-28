@@ -96,7 +96,9 @@ test('a remembered count reserves the EXACT final shape synchronously at init, t
     const h = env.host();
     assert.equal(h.hidden, false, 'reserved before the fetch resolves (same task as init)');
     assert.ok(h.querySelector('h2.music-jump-head'), 'the real heading');
-    const skel = h.querySelectorAll('.music-jump-row > button.music-jump-tile.music-jump-skel');
+    // step 7 (retire R2, deliberate): the scroller is .music-jump-strip and each tile is the
+    // ui-tile primitive (the same button chassis the real tiles are)
+    const skel = h.querySelectorAll('.music-jump-strip > button.ui-tile.music-jump-tile.music-jump-skel');
     assert.equal(skel.length, 3, 'one skeleton tile per remembered item');
     // Seed the SHAPE you reveal: the real tile chassis (a BUTTON - its line-height reset is
     // part of the height), the real 116px art box, and one-line title + sub.
@@ -223,6 +225,6 @@ test('music.html: the static pre-paint skeleton IS buildJumpBackSkeletonHtml(6),
 
 test('the skeleton reuses the real tile box CSS, and restores the shimmer fill', () => {
   const css = fs.readFileSync(path.join(REPO, 'public/css/style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-  assert.match(css, /\.music-jump-art\.skeleton-shimmer\s*\{\s*background-color:\s*var\(--bg-secondary\);\s*\}/);
+  assert.match(css, /\.music-jump-art\.skeleton-shimmer\s*\{\s*background-color:\s*var\(--surface-2\);\s*\}/);
   assert.match(css, /\.music-jump-art\s*\{[^}]*width:\s*116px;[^}]*height:\s*116px;/, 'the one art box both tiles use');
 });

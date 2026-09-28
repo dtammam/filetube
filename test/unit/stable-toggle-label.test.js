@@ -1,9 +1,20 @@
 'use strict';
 
-// v1.340 (Dean, 2026-09-26: "notify button shifts unreasonably - should be stable"): the
-// stable-width two-state label (common.js stableToggleLabelHtml) and the CSS that makes it
-// stable. Gate r1 W1: every one of these rules could be deleted with the suite green (only the
-// manual scripts/channel-row-probe.js saw it) - so each is locked here by value.
+// v1.340 (Dean, 2026-09-26: "notify button shifts unreasonably - should be stable"): a two-state
+// button whose words change must not change WIDTH. UI pass sweep S3 converted this lock (AC12;
+// a RISKY conversion in the step 0 triage: gate r1 W1 found every v1.340 rule deletable with
+// the suite green). The v1.340 mechanism (common.js stableToggleLabelHtml + the .btn-label-stack
+// rules in style.css) is retired with its last callers (the watch channel row); the SAME
+// mechanism is the ui-btn primitive's label stack (D4.1: ui.button({ labels }) + ui.setPressed),
+// which the watch page's toggles now use. Three layers bind it:
+//   1. by value here: the stack CSS in ui.css (every label in one grid cell, the idle ones
+//      visibility:hidden - never display:none, which would drop their width);
+//   2. by DOM here: the watch toggles are built with both labels (Like/Liked; Subscribe's pill
+//      carries Subscribe/Subscribed) and the channel row's Notify / Pin are icon toggles (no
+//      label to change);
+//   3. by MEASUREMENT: test/geometry/watch.check.js toggles each in a real engine and compares
+//      widths across states and across a subscribed / unsubscribed channel, mutation-proven
+//      (its `stack-collapse` mutant, idle labels display:none, goes red).
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -11,14 +22,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
-const CSS = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+const strip = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '');
+const UI_CSS = strip(fs.readFileSync(path.join(ROOT, 'public', 'css', 'ui.css'), 'utf8'));
+const STYLE_CSS = strip(fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8'));
 const COMMON_SRC = fs.readFileSync(path.join(ROOT, 'public', 'js', 'common.js'), 'utf8');
-const { stableToggleLabelHtml, CHROME_ICON_SVG } = require('../../public/js/common.js');
+const WATCH_SRC = fs.readFileSync(path.join(ROOT, 'public', 'js', 'watch.js'), 'utf8');
 
-// The ONE top-level rule for a selector, as { prop: value } (whitespace-normalized).
-function decls(selector) {
+// The ONE top-level rule for a selector in a sheet, as { prop: value } (whitespace-normalized).
+function decls(css, selector) {
   const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s*');
-  const found = [...CSS.matchAll(new RegExp('(^|[}\\s])' + esc + '\\s*\\{([^}]*)\\}', 'g'))];
+  const found = [...css.matchAll(new RegExp('(^|[}\\s])' + esc + '\\s*\\{([^}]*)\\}', 'g'))];
   assert.strictEqual(found.length, 1, `exactly one rule for ${selector}`);
   const out = {};
   for (const d of found[0][2].split(';')) {
@@ -28,40 +41,37 @@ function decls(selector) {
   return out;
 }
 
-test('W1: every label shares ONE grid cell (the button is as wide as its longest label)', () => {
-  assert.strictEqual(decls('.btn-label-stack').display, 'inline-grid');
-  assert.strictEqual(decls('.btn-label-slot')['grid-area'], '1 / 1');
+test('W1 (the primitive): every label shares ONE grid cell, so the button is as wide as its longest label', () => {
+  assert.strictEqual(decls(UI_CSS, '.ui-btn__stack').display, 'grid');
+  assert.strictEqual(decls(UI_CSS, '.ui-btn__stack > .ui-btn__slot')['grid-area'], '1 / 1');
 });
 
-test('W1: only the current label is visible (the idle ones keep their width, and leave the accessible name)', () => {
-  assert.strictEqual(decls('.btn-label-slot[data-idle]').visibility, 'hidden');
+test('W1 (the primitive): only the current label is visible - the idle ones keep their width (visibility, never display)', () => {
+  assert.deepStrictEqual(decls(UI_CSS, '.ui-btn__stack > .ui-btn__slot[data-idle]'), { visibility: 'hidden' });
 });
 
-test('W1/W2: the row stays level - the stacked buttons middle-align, and a glyph never grows its line', () => {
-  assert.strictEqual(decls('.btn:has(> .btn-label-stack)')['vertical-align'], 'middle');
-  const g = decls('.btn .btn-glyph');
-  assert.strictEqual(g.margin, '-0.2em 0.3em -0.2em 0', 'negative block margins keep the glyph inside the text line');
-  assert.strictEqual(decls('.btn .btn-glyph-after').margin, '-0.2em 0 -0.2em 0.3em');
+test('the watch toggles use the stack: Like carries Like + Liked, Subscribe carries Subscribe + Subscribed; Notify and Pin are icon toggles (no label to change)', () => {
+  assert.match(WATCH_SRC, /icon: \{ off: 'favorite', on: 'favorite\.fill' \}, labels: \['Like', 'Liked'\]/);
+  assert.match(WATCH_SRC, /stack\.className = 'ui-btn__label ui-btn__stack';\n\s*\['Subscribe', 'Subscribed'\]\.forEach/);
+  assert.match(WATCH_SRC, /icon: \{ off: 'notifications_off', on: 'notifications_active' \},\n\s*pressed: false, ariaLabel:/);
+  assert.match(WATCH_SRC, /icon: \{ off: 'keep', on: 'keep\.fill' \}, pressed: currentPinState\.pinned, ariaLabel: 'Pin channel'/);
+  // one writer of the pressed state: ui.setPressed (it swaps the idle slot and the glyph)
+  for (const fn of ['applySubscribeButtonLabel', 'applyPinButtonLabel', 'applyBellButtonLabel', 'applyLikeButtonLabel']) {
+    const body = WATCH_SRC.slice(WATCH_SRC.indexOf('function ' + fn + '('), WATCH_SRC.indexOf('\n    }\n', WATCH_SRC.indexOf('function ' + fn + '(')));
+    assert.match(body, /ui\.setPressed\(/, fn + ' writes through ui.setPressed');
+    assert.ok(!/innerHTML/.test(body), fn + ' never rebuilds the label from a string');
+  }
 });
 
-test('stableToggleLabelHtml: every label laid out, the current one named and visible, the rest idle', () => {
-  const html = stableToggleLabelHtml('B', ['A', 'B']);
-  assert.strictEqual(html, '<span class="btn-label-stack" data-label="B"><span class="btn-label-slot" data-idle>A</span><span class="btn-label-slot">B</span></span>');
-});
-
-test('stableToggleLabelHtml: a glyph sits INSIDE its slot, before the words or after them', () => {
-  const html = stableToggleLabelHtml('On', ['On', 'Off'], { On: 'bell', Off: { name: 'bellOff', after: true } });
-  assert.ok(html.includes('<span class="btn-label-slot"><svg class="chrome-icon btn-glyph" viewBox="0 0 24 24" aria-hidden="true"><path d="' + CHROME_ICON_SVG.bell.d + '"/></svg>On</span>'));
-  assert.ok(html.includes('<span class="btn-label-slot" data-idle>Off<svg class="chrome-icon btn-glyph btn-glyph-after" viewBox="0 0 24 24" aria-hidden="true"><path d="' + CHROME_ICON_SVG.bellOff.d + '"/></svg></span>'));
-});
-
-test('stableToggleLabelHtml: labels are escaped (the call sites pass literals; this is the belt)', () => {
-  const html = stableToggleLabelHtml('<b>"x"&', ['<b>"x"&']);
-  assert.ok(!/<b>/.test(html));
-  assert.ok(html.includes('data-label="&lt;b&gt;&quot;x&quot;&amp;"'));
+test('the v1.340 helper and its CSS are retired with their last callers (no second mechanism)', () => {
+  assert.ok(!/stableToggleLabelHtml/.test(COMMON_SRC + WATCH_SRC), 'common.js stableToggleLabelHtml is gone');
+  assert.ok(!/\.btn-label-stack|\.btn-label-slot|\.btn-glyph/.test(STYLE_CSS), 'its style.css rules are gone');
+  assert.ok(!/btn-label-stack|btn-glyph/.test(fs.readFileSync(path.join(ROOT, 'public', 'watch.html'), 'utf8')));
 });
 
 test('the header bell draws the SHARED bell path (one glyph everywhere, not a private copy)', () => {
-  assert.match(COMMON_SRC, /bellPath\.setAttribute\('d', CHROME_ICON_SVG\.bell\.d\)/);
-  assert.ok(!COMMON_SRC.includes("bellPath.setAttribute('d', 'M"), 'no literal path left on the header bell');
+  // UI pass step 2: the header bell is the sprite's shared bell (CHROME_ICON.bell). Sweep S1
+  // (DELIBERATE lock update): built as a plain ui-btn icon button with that registry name.
+  assert.match(COMMON_SRC, /const bellBtn = chromeButtonEl\(\{ cls: 'notif-bell-btn', icon: CHROME_ICON\.bell,/);
+  assert.ok(!/setAttribute\('d', 'M/.test(COMMON_SRC), 'no literal path left in common.js');
 });

@@ -5081,7 +5081,7 @@ function resolveHomeItem(db, id, kind, progressPercent) {
   if (!item) return null;
   // v1.92 note: the horizontal home-ROW card (buildFeedCardHtml/buildVideoRowCardHtml)
   // does NOT render a .card-preview overlay, so no storyboard descriptor is sent
-  // here - the preview lives on the main + modern GRID cards (buildCardHtml),
+  // here - the preview lives on the main + modern GRID cards (buildVideoCardEl),
   // fed by /api/videos (spreads ...item) and resolveModernGridItem.
   // v1.236 (Dean): carry `type` + `chapterCount` so the client can reroute an AUDIO download
   // to the music player from the ROW feed too (the card otherwise has no audio/chapter signal).
@@ -5097,7 +5097,7 @@ function resolveHomeItem(db, id, kind, progressPercent) {
 }
 
 // v1.84 Modern Mode: resolve a grid candidate into the RICH card shape the
-// client's buildCardHtml expects (a superset of resolveHomeItem's row-card
+// client's buildVideoCardEl expects (a superset of resolveHomeItem's row-card
 // fields). Media cards carry the channel identity + view count + channel avatar
 // (via the SAME resolver that feeds subscription avatars - Dean's call) + type +
 // duration; podcast cards carry subId/showName so cardKindPresentation renders
@@ -6843,11 +6843,39 @@ function ytdlpPodcastItemsUnder(db, dir, itemVisible) {
   items.sort((a, b) => ytdlpPodcastItemDateMs(b) - ytdlpPodcastItemDateMs(a));
   return items;
 }
+// UI pass S6 (F42): a yt-dlp show's cover is the SHOW's artwork - its channel avatar - never a
+// cropped frame of its newest video (the old `/thumbnail/<first item>`). A yt-dlp source has no
+// feed image, so the chain is: the subscription's own captured avatar, the channelId-keyed
+// avatar registry, then the newest visible episode's baked avatar (or its channelId in the
+// registry). Every candidate is re-validated by the store's sanitizer (getChannelAvatar
+// sanitizes too). Nothing found = null, and the client draws the monogram. READ-ONLY: a
+// serve-time projection; it writes nothing, and no stored field changes.
+function ytdlpPodcastShowArtUrl(sub, items, channelAvatars) {
+  const reg = { ytdlp: { channelAvatars: channelAvatars && typeof channelAvatars === 'object' ? channelAvatars : {} } };
+  const own = ytdlpStore.sanitizeChannelAvatarUrl(sub && sub.channelAvatarUrl);
+  if (own) return own;
+  if (sub && typeof sub.channelId === 'string' && sub.channelId) {
+    const hit = ytdlpStore.getChannelAvatar(reg, sub.channelId);
+    if (hit) return hit;
+  }
+  const first = Array.isArray(items) && items.length ? items[0] : null;
+  if (first) {
+    const baked = ytdlpStore.sanitizeChannelAvatarUrl(first.channelAvatarUrl);
+    if (baked) return baked;
+    if (typeof first.channelId === 'string' && first.channelId) {
+      const hit = ytdlpStore.getChannelAvatar(reg, first.channelId);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
 function listYtdlpPodcastShows(db, itemVisible) {
   const cfg = ytdlp.parseYtdlpConfig();
   if (!ytdlp.isEnabled(cfg)) return [];
   const subs = ytdlpDb.readPart('subscriptions') // Wave 5: from its table
     .filter((s) => s && s.libraryPlace === 'podcasts');
+  let channelAvatars = {};
+  try { channelAvatars = ytdlpDb.readPart('channelAvatars') || {}; } catch (_) { channelAvatars = {}; }
   return subs.map((sub) => {
     // v1.128 Wave B (L10, gate WARNING-1 fix): decide the show-level drop from
     // RAW-vs-VISIBLE counts, NOT from predicate-presence. `mediaItemVisible`
@@ -6872,7 +6900,7 @@ function listYtdlpPodcastShows(db, itemVisible) {
       pendingCount: 0,
       failedCount: 0,
       newestPubDateMs: items.length ? ytdlpPodcastItemDateMs(items[0]) : null,
-      artUrl: items.length ? `/thumbnail/${items[0].id}` : null,
+      artUrl: ytdlpPodcastShowArtUrl(sub, items, channelAvatars), // F42: the show's art, never a video frame
       lastStatus: typeof sub.lastStatus === 'string' ? sub.lastStatus : '',
       secretMissing: false,
       __rawCount: rawItems.length, // internal: drop decision only, stripped below

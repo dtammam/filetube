@@ -282,8 +282,13 @@ test('v1.73 (ruling 6): the audio Prev/Next pair - queue-aware steps, audio-mode
     const html = fs.readFileSync(path.join(pub, f), 'utf8');
     assert.ok(html.includes('id="track-prev-btn"') && html.includes('id="track-next-btn"'), `${f}: missing the track-nav pair`);
   }
-  // The [hidden]-vs-display enforcement (the v1.44 class).
+  // The [hidden]-vs-display enforcement (the v1.44 class). Step 7 (retire R2, deliberate): the
+  // per-control .track-nav-btn[hidden] belt was the app-wide rule's duplicate and is gone; the
+  // enforcement is ui.css's global [hidden] rule, which every player-hosting shell loads.
   const css = fs.readFileSync(path.join(pub, 'css/style.css'), 'utf8');
-  assert.ok(css.includes('.track-nav-btn[hidden] { display: none !important; }'), 'pc-btn inline-flex would beat [hidden] without the enforcement rule');
+  const uiCss = fs.readFileSync(path.join(pub, 'css/ui.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(uiCss, /(^|\n)\[hidden\] \{\s*display: none !important;\s*\}/, 'pc-btn inline-flex would beat [hidden] without the enforcement rule');
+  for (const f of shells) assert.ok(fs.readFileSync(path.join(pub, f), 'utf8').includes('href="/css/ui.css'), `${f}: loads ui.css (the global [hidden] rule)`);
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.track-nav-btn[^{]*\{[^}]*display:\s*(flex|inline-flex|block)[^}]*!important/, 'no !important display on the pair could beat it');
   assert.ok(css.includes('#player-dock #track-prev-btn'), 'the dock never shows the pair (full view only - the ruling)');
 });

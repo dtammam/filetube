@@ -200,7 +200,8 @@ test('rescan: POST /api/scan 202 -> polls /api/scan-status until done -> refresh
 
     rescanBtn.click();
     await flush();
-    assert.match(rescanBtn.innerHTML, /Scanning\.\.\./, 'expected the button to show its scanning state immediately');
+    // UI pass sweep S2: an icon tool - its scanning state is aria-busy (the spinner).
+    assert.strictEqual(rescanBtn.getAttribute('aria-busy'), 'true', 'expected the button to show its scanning state immediately');
     assert.strictEqual(rescanBtn.disabled, true);
 
     // Two "still scanning" ticks, ~1s cadence each (mirrors setup.js's
@@ -212,7 +213,7 @@ test('rescan: POST /api/scan 202 -> polls /api/scan-status until done -> refresh
 
     assert.strictEqual(refreshCalls, 1, 'expected the in-place refresh hook to have fired exactly once');
     assert.deepStrictEqual(navigationErrors, [], 'window.location.reload (or any other full navigation) must NEVER be called on the scan-completion path');
-    assert.match(rescanBtn.innerHTML, /Rescan<\/span>/, 'expected the button to return to its resting "Rescan" label');
+    assert.strictEqual(rescanBtn.getAttribute('aria-busy'), null, 'expected the button to return to its resting state');
     assert.strictEqual(rescanBtn.disabled, false);
 
     const scanStatusCalls = log.filter((c) => c.url === '/api/scan-status');
@@ -247,7 +248,7 @@ test('rescan: alreadyInProgress:true still lands in the poll-then-refresh path (
     assert.strictEqual(refreshCalls, 1, 'expected the in-place refresh hook to have fired for the already-in-progress scan too');
     assert.deepStrictEqual(navigationErrors, []);
     assert.strictEqual(rescanBtn.disabled, false);
-    assert.match(rescanBtn.innerHTML, /Rescan<\/span>/);
+    assert.strictEqual(rescanBtn.getAttribute('aria-busy'), null);
 
     const scanPostCalls = log.filter((c) => c.url === '/api/scan' && c.method === 'POST');
     assert.strictEqual(scanPostCalls.length, 1);
@@ -280,7 +281,7 @@ test('rescan: a non-2xx POST /api/scan alerts and resets the button, and never r
     assert.strictEqual(alerts.length, 1, 'expected exactly one toast on a non-2xx POST');
     assert.match(alerts[0], /scan failed to start/);
     assert.strictEqual(rescanBtn.disabled, false, 'expected the button to be re-enabled after the error');
-    assert.match(rescanBtn.innerHTML, /Rescan<\/span>/, 'expected the button label reset to "Rescan"');
+    assert.strictEqual(rescanBtn.getAttribute('aria-busy'), null, 'expected the button reset to its resting state');
     assert.strictEqual(refreshCalls, 0, 'the in-place refresh hook must never fire on the error path');
     assert.deepStrictEqual(navigationErrors, [], 'window.location.reload must never be called on the error path either');
   } finally {
@@ -318,7 +319,7 @@ test('rescan: a network-level failure on POST /api/scan alerts and resets the bu
     assert.strictEqual(alerts.length, 1);
     assert.match(alerts[0], /Network error/);
     assert.strictEqual(rescanBtn.disabled, false);
-    assert.match(rescanBtn.innerHTML, /Rescan<\/span>/);
+    assert.strictEqual(rescanBtn.getAttribute('aria-busy'), null);
     assert.strictEqual(refreshCalls, 0);
     assert.deepStrictEqual(navigationErrors, []);
 

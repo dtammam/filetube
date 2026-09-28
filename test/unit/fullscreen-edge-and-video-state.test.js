@@ -2,7 +2,7 @@
 
 // [UNIT] v1.336 (Dean, 2026-09-26; plan docs/exec-plans/completed/2026-09-26-fullscreen-black-and-border.md).
 //  D2 "in full screen, in all modes, I see a very thin white border around the entire screen": the base
-//     `.player-container` 1px --border-color border (and its era radius) survived into every fullscreen.
+//     `.player-container` 1px --separator border (and its era radius) survived into every fullscreen.
 //     Measured by scripts/faux-fullscreen-probe.js: 24 of 24 combos painted it before, 0 after. These
 //     locks bind the CSS; the probe is the rendered measurement.
 //  D1 "after I pause or resume, pause and resume again, the screen of the video goes black": not
@@ -66,7 +66,7 @@ test('D2: NO rule re-adds an edge to the host in any fullscreen (a later or stro
 test('D2: the INLINE player keeps its 1px border (only fullscreen changed)', () => {
   const body = ruleBody('.player-container');
   assert.ok(body, 'the base rule exists');
-  assert.match(body, /border:\s*1px solid var\(--border-color\);/);
+  assert.match(body, /border:\s*1px solid var\(--separator\);/);
   assert.match(body, /border-radius:\s*var\(--radius-lg\);/);
 });
 

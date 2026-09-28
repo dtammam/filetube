@@ -9,6 +9,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
+const { drainSheets } = require('../helpers/ui-dialogs');
 
 const skinsPath = require.resolve('../../public/js/music-skins.js');
 const surfacePath = require.resolve('../../public/js/skin-surface.js');
@@ -584,5 +585,11 @@ test('gate r1 K2: the chapters editor raises the ONE library-changed event on a 
     btn = [...dom.window.document.querySelectorAll('button')].filter((x) => x.textContent === 'Save').pop();
     btn.click(); await flush(); await flush();
     assert.strictEqual(events.length, 1, 'a FAILED save announces nothing');
-  } finally { delete require.cache[COMMON]; Object.assign(global, saved); }
+  } finally {
+    // Sweep S9: the editor is a ui.sheet; let every closing sheet finish (a jsdom fallback
+    // timer) while its window still exists, and close the one the failed save left open.
+    dom.window.document.querySelectorAll('.ui-sheet .ui-sheet__close').forEach((c) => c.click());
+    await drainSheets(dom.window);
+    delete require.cache[COMMON]; Object.assign(global, saved);
+  }
 });
