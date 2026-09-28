@@ -169,6 +169,14 @@
   when you finish it); "Play all" feeds it into the queue. Open question: how it relates to the existing
   Pin feature.
 
+- [ ] **Suggestive delete: FileTube suggests what to clear, you confirm** _(Dean, 2026-09-28)_ (Dean:
+  "predictive/suggestive delete"; his pick of the outcome: "Suggest what to clear"). FileTube proposes
+  items worth deleting (watched to the end, old subscription downloads, big files never opened) and
+  NOTHING is deleted without the user's tap; deletes go through Trash like every other delete. Not auto-
+  clean rules and not a disk-space alarm (both considered, not picked). Order (Dean): after the v1.341.1
+  bugs and the #289 cleanup, alongside Watch later. A delete feature: the full gate, never slimmed, and the
+  Adversary briefed to destroy data (a suggestion must never widen into a delete of an unshown item).
+
 - [x] **UI professionalism pass: an audit, a component layer, guardrails that hold** - SHIPPED v1.341.0 (see Shipped) (Dean, 2026-09-27:
   "Something about the full UI feels 'amateurish' ... flimsy and not premium ... make sure our design
   system doesn't allow for anything imperfect when tweaking in the future"; plus native interactions:
