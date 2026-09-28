@@ -3996,7 +3996,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // sidebar -- the visibility setting held on Home but was ignored on watch.
       const visibleFolders = visibleSidebarFolders(folders, settings, watchSyntheticFolders); // v1.73.1: synthetic threads here too (slim-gate C1)
       if (visibleFolders.length === 0) {
-        sidebarFoldersList.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
+        sidebarFoldersList.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--ink-2);">None</div>';
         // v1.33.1 (Dean): the count-gated Liked entry, via the SAME shared
         // helper every other sidebar surface uses -- this list previously
         // never rendered it at all, so opening a video "lost" the Liked link.

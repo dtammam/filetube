@@ -118,7 +118,7 @@ function buildSidebarSkeletonRows(n) {
 const SIDEBAR_SKELETON_ROWS = 5;
 
 // The zero-folders sidebar affordance (also the cold-load error fallback below).
-const SIDEBAR_NONE_HTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
+const SIDEBAR_NONE_HTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--ink-2);">None</div>';
 
 // v1.102 (tranche 4, gate CRITICAL): a total /api/config failure must not leave
 // the cold-load sidebar skeleton (buildSidebarSkeletonRows) shimmering forever in
@@ -2506,7 +2506,7 @@ const PreviewCards = (function () {
       // drag wiring below is unaffected.
       if (visibleFolders.length === 0) {
         sidebarFoldersList.innerHTML =
-          '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
+          '<div style="padding: 6px 24px; font-style: italic; color: var(--ink-2);">None</div>';
         applyLikedSidebarEntry(sidebarFoldersList, { active: likedFilter });
         return;
       }

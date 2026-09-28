@@ -223,6 +223,6 @@ test('music.html: the static pre-paint skeleton IS buildJumpBackSkeletonHtml(6),
 
 test('the skeleton reuses the real tile box CSS, and restores the shimmer fill', () => {
   const css = fs.readFileSync(path.join(REPO, 'public/css/style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-  assert.match(css, /\.music-jump-art\.skeleton-shimmer\s*\{\s*background-color:\s*var\(--bg-secondary\);\s*\}/);
+  assert.match(css, /\.music-jump-art\.skeleton-shimmer\s*\{\s*background-color:\s*var\(--surface-2\);\s*\}/);
   assert.match(css, /\.music-jump-art\s*\{[^}]*width:\s*116px;[^}]*height:\s*116px;/, 'the one art box both tiles use');
 });

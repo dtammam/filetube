@@ -600,12 +600,12 @@ function buildRepoLink(href, text) {
 // One "label ..... value" row where the value can be a text node OR a link.
 function buildAboutRow(label, valueNode) {
   const row = document.createElement('div');
-  row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
+  row.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--separator);';
   const labelEl = document.createElement('span');
   labelEl.textContent = label;
   labelEl.style.cssText = 'font-weight:var(--fw-bold);';
   const valueEl = document.createElement('span');
-  valueEl.style.cssText = 'color:var(--text-secondary); flex-shrink:0;';
+  valueEl.style.cssText = 'color:var(--ink-2); flex-shrink:0;';
   valueEl.appendChild(valueNode);
   row.appendChild(labelEl);
   row.appendChild(valueEl);
@@ -736,7 +736,7 @@ const STATS_FETCH_CONTAINERS = [
 // instead, so their skeleton is an APPROXIMATE placeholder (the real table adds
 // a filter bar + header row) -- a minor one-time Stats-open reflow, accepted as
 // tech-debt (a shape-matched .stable skeleton is the fast-follow).
-const STATS_SKELETON_ROW_CSS = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--border-color);';
+const STATS_SKELETON_ROW_CSS = 'display:flex; justify-content:space-between; align-items:center; gap:var(--space-5); padding:var(--space-4) var(--space-2); border-bottom:1px solid var(--separator);';
 
 // A `.theme-card`-shaped shimmer tile: two block skeleton lines (value + caption)
 // standing in for buildStatTile's number + muted caption.

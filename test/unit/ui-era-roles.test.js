@@ -53,17 +53,16 @@ test('role tokens are defined ONLY in tokens.css (style.css never shadows a role
   assert.deepStrictEqual(shadowed, [], 'a role redefined in style.css would override every era at once');
 });
 
-test('the old palette names alias their exact role (the sweeps retire their consumers; step 7 deletes them)', () => {
-  const css = readTokensCss();
-  const ALIASES = {
-    '--font-family': '--font-ui', '--heading-font': '--font-heading', '--bg-color': '--surface-0',
-    '--card-bg': '--surface-1', '--bg-secondary': '--surface-2', '--text-primary': '--ink-1',
-    '--text-secondary': '--ink-2', '--border-color': '--separator',
-  };
-  for (const [old, role] of Object.entries(ALIASES)) {
-    const defs = [...css.matchAll(new RegExp(`${old.replace(/-/g, '\\-')}\\s*:\\s*([^;]+);`, 'g'))].map((m) => m[1].trim());
-    assert.deepStrictEqual(defs, [`var(${role})`], `${old} is defined once, as var(${role}) - an era literal would bypass the role`);
+test('step 7: the eight exact aliases are retired - defined nowhere, used nowhere, banned by ui-lint', () => {
+  const RETIRED = ['--font-family', '--heading-font', '--bg-color', '--card-bg', '--bg-secondary', '--text-primary', '--text-secondary', '--border-color'];
+  const css = readTokensCss() + readStyleCss();
+  for (const old of RETIRED) {
+    const re = new RegExp(`(?<![\\w-])${old.replace(/-/g, '\\-')}(?![\\w-])`);
+    assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), re, `${old} is neither defined nor used (a var() of it would paint nothing)`);
   }
+  const { tokensInfo } = require('../../scripts/ui-lint.js');
+  const info = tokensInfo(require('node:path').join(__dirname, '..', '..'));
+  for (const old of RETIRED) assert.ok(info.legacy.has(old), `${old} stays banned (no-legacy-tokens)`);
 });
 
 test('red roles: selected state is a neutral fill, never the accent (D8.8)', () => {

@@ -11,11 +11,14 @@
    2. One block per era x mode. EVERY role and era knob is written in EVERY block
       (test/unit/ui-era-roles.test.js), including values that happen to repeat, so
       a block can never inherit a role from the wrong era by omission.
-   3. The alias block: old names that have an exact role equivalent point at the
-      role. The sweeps retire their consumers; step 7 deletes them and ui-lint bans
-      them. Old names WITHOUT an exact equivalent (--yt-red, --text-link, --btn-*,
-      --header-bg, --bg-sidebar, --border-dark, --star-*, --radius*, --shadow*) stay
-      per-era literals until the sweep that owns their consumers splits them.
+   3. (Retired at step 7.) The eight old names that had an exact role equivalent
+      (--font-family, --heading-font, --bg-color, --card-bg, --bg-secondary,
+      --text-primary, --text-secondary, --border-color) are gone: every consumer
+      now names the role, and ui-lint's no-legacy-tokens bans them for good
+      (RETIRED_ALIASES). Old names WITHOUT an exact equivalent (--yt-red,
+      --text-link, --btn-*, --header-bg, --bg-sidebar, --border-dark, --star-*,
+      --radius*, --shadow*, --fs-*) stay per-era literals; their remaining uses are
+      shrink-only debt, retired when their surface is next touched.
    4. The Phase-1 mode-invariant layer (spacing, sizes, overlay chrome, reader
       themes, z ladder...), moved here verbatim from style.css.
 
@@ -584,21 +587,6 @@
   --btn-bg: #303030;
   --btn-hover: #3d3d3d;
   --star-gray: #4d4d4d;
-}
-
-/* ---- 3. aliases: old names with an exact role equivalent ---------------------- */
-/* Resolved on <html> (where data-theme/data-mode live), so each era's roles flow
-   through. In the retro eras every role above carries that era's old value, so
-   these render byte-identically there; in 2021 they carry the C palette. */
-:root {
-  --font-family: var(--font-ui);
-  --heading-font: var(--font-heading);
-  --bg-color: var(--surface-0);
-  --card-bg: var(--surface-1);
-  --bg-secondary: var(--surface-2);
-  --text-primary: var(--ink-1);
-  --text-secondary: var(--ink-2);
-  --border-color: var(--separator);
 }
 
 /* ---- 4. the Phase-1 mode-invariant layer (moved verbatim from style.css) ---- */

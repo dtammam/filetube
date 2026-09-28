@@ -58,8 +58,8 @@ test('a BASE `select` element rule exists and carries the full tokened control s
     'border: 1px solid var(--border-dark)',
     'border-radius: var(--radius)',
     'font-size: var(--fs-base)',
-    'background-color: var(--bg-color)',
-    'color: var(--text-primary)',
+    'background-color: var(--surface-0)',
+    'color: var(--ink-1)',
     'cursor: pointer',
   ]) {
     assert.ok(decls.includes(required), `base select rule carries: ${required}`);

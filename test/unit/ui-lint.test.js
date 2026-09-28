@@ -59,10 +59,10 @@ test('every rule has a canary pair and --canaries exits 0 on the committed tree'
   assert.match(r.out, /canaries OK \(12 rules/);
 });
 
-test('the rule table is the twelve D10.1 rules, with no-legacy-tokens OFF until step 7', () => {
+test('the rule table is the twelve D10.1 rules, every one ON since step 7 (no-legacy-tokens turned on with the aliases deleted)', () => {
   assert.deepStrictEqual(L.RULE_IDS, ['no-raw-values', 'no-legacy-tokens', 'no-bespoke-controls', 'hover-gated', 'pressed-state',
     'native-interaction', 'icons', 'no-layout-transition', 'z-ladder', 'display-ownership', 'colour-roles', 'no-shell-style']);
-  assert.deepStrictEqual(L.RULES.filter((r) => !r.on).map((r) => r.id), ['no-legacy-tokens']);
+  assert.deepStrictEqual(L.RULES.filter((r) => !r.on).map((r) => r.id), []);
 });
 
 // ---- 2. mutation: a neutered detector must make the runner exit 2 ---------------------
@@ -134,7 +134,7 @@ test('modes: write-baseline, exact, new debt, paid debt, malformed, missing, ref
   assert.strictEqual(r.code, 0, r.err);
   const base = JSON.parse(fs.readFileSync(file, 'utf8'));
   assert.deepStrictEqual(L.validateExceptions(base), []);
-  assert.ok(!('no-legacy-tokens' in base.rules), 'an OFF rule is not baselined');
+  for (const r of L.RULES) assert.strictEqual(r.id in base.rules, r.on, `${r.id}: baselined exactly when ON`);
   for (const [rule, entries] of Object.entries(base.rules)) {
     for (const e of entries) assert.doesNotMatch(e.key, /:\d+$|\|\d+\|/, `${rule} key carries no line number: ${e.key}`);
   }
@@ -245,9 +245,13 @@ test('compareDebt: over and under are both reported, OFF rules are ignored', () 
   const results = {};
   for (const id of L.RULE_IDS) results[id] = { keys: new Map() };
   results['hover-gated'].keys.set('k1', 2).set('k2', 1);
+  // Every rule is ON since step 7: switch one off for the test, so the OFF path stays proven.
+  const off = L.RULES.find((r) => r.id === 'no-legacy-tokens');
   results['no-legacy-tokens'].keys.set('legacy', 9);
   const data = { rules: { 'hover-gated': [{ key: 'k1', count: 2 }, { key: 'k3', count: 1 }] } };
-  const { over, under } = L.compareDebt(results, data);
+  off.on = false;
+  let over, under;
+  try { ({ over, under } = L.compareDebt(results, data)); } finally { off.on = true; }
   assert.deepStrictEqual(over, [{ rule: 'hover-gated', key: 'k2', live: 1, allowed: 0 }]);
   assert.deepStrictEqual(under, [{ rule: 'hover-gated', key: 'k3', live: 0, allowed: 1 }]);
 });

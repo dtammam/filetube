@@ -19,8 +19,8 @@ const path = require('node:path');
 const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
 
 // UI pass step 1 (DELIBERATE lock update): the era token blocks moved to tokens.css. The
-// family knobs are --font-ui / --font-heading (plan D2.5); --font-family and
-// --heading-font are aliases of them in tokens.css's alias block. 2021 light is the
+// family knobs are --font-ui / --font-heading (plan D2.5); the old --font-family and
+// --heading-font aliases of them were retired at step 7 (consumers name the knobs). 2021 light is the
 // :root safe-default block, which every era inherits roles from ONLY by omission -
 // and every era block now writes every knob (ui-era-roles), so none inherits Geist.
 const stylesheets = require('../helpers/stylesheets');
@@ -64,15 +64,15 @@ test('gate C1 lock: every non-2021 era sets its heading family to its OWN body s
     assert.doesNotMatch(heading[1], /Roboto|YouTube Sans|Geist/, `${era} heading font must name neither Roboto, YouTube Sans nor Geist`);
   }
   const css = stylesheets.readTokensCss();
-  assert.match(css, /--heading-font:\s*var\(--font-heading\);/, 'the legacy --heading-font aliases the knob');
-  assert.match(css, /--font-family:\s*var\(--font-ui\);/, 'the legacy --font-family aliases the knob');
+  assert.doesNotMatch(css, /--heading-font\s*:/, 'the retired --heading-font alias is gone (step 7)');
+  assert.doesNotMatch(css, /--font-family\s*:/, 'the retired --font-family alias is gone (step 7)');
 });
 
 test('the three title surfaces consume the tokens with safe fallbacks -- and ONLY those three (body text untouched)', () => {
   for (const selector of ['.section-title', '.video-title', '.watch-title']) {
     const m = new RegExp(`\\n\\${selector} \\{([\\s\\S]*?)\\}`).exec(css);
     assert.ok(m, `expected the base ${selector} rule`);
-    assert.match(m[1], /font-family:\s*var\(--heading-font, var\(--font-family\)\)/, `${selector} heading family token`);
+    assert.match(m[1], /font-family:\s*var\(--font-heading, var\(--font-ui\)\)/, `${selector} heading family token`);
     // Tier 2 commit 4 (DELIBERATE lock update): the vacuous fallback is now
     // spelled var(--fw-bold) - same resolved weight (700 == bold, pinned by
     // the token-scale lock), one weight spelling system-wide.
@@ -81,7 +81,7 @@ test('the three title surfaces consume the tokens with safe fallbacks -- and ONL
   }
   // Gate S3: count all three tokens, not just weight -- a rogue family-only
   // or tracking-only consumer must trip this too.
-  for (const token of ['--heading-font', '--heading-weight', '--heading-tracking']) {
+  for (const token of ['--font-heading', '--heading-weight', '--heading-tracking']) {
     const consumers = css.match(new RegExp(`var\\(${token}`, 'g')) || [];
     assert.strictEqual(consumers.length, 3, `exactly the three title surfaces consume ${token} -- a fourth needs its own review`);
   }

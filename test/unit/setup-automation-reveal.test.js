@@ -77,7 +77,7 @@ test('setup.html: exactly 10 reveal-toggle barriers exist (matches the /api/sett
 });
 
 test('style.css: .reveal-toggle[data-loading] reuses the shared v1.96 sweep barrier', () => {
-  assert.match(CSS, /\.reveal-toggle\[data-loading\][^]*?background-color: var\(--bg-secondary\)/, 'gets the shimmer base fill');
+  assert.match(CSS, /\.reveal-toggle\[data-loading\][^]*?background-color: var\(--surface-2\)/, 'gets the shimmer base fill');
   assert.match(CSS, /\.reveal-toggle\[data-loading\] \{ color: transparent; \}/, 'label text hidden via transparent colour');
   assert.match(CSS, /\.reveal-toggle\[data-loading\]::after/, 'grouped into the sweep ::after (no duplicated literal)');
   assert.match(CSS, /\.reveal-toggle\[data-loading\] > \* \{ visibility: hidden; \}/, 'the checkbox is hidden until reveal');

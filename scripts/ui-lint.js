@@ -23,7 +23,7 @@
  *                           are the token layer and are exempt; a line carrying a
  *                           `token-exempt` comment is exempt (css-token-lint's
  *                           convention; a LINE comment in JS).
- *   2 no-legacy-tokens      (OFF until step 7) var() of an alias-block or legacy per-era
+ *   2 no-legacy-tokens      (ON since step 7) var() of an alias-block or legacy per-era
  *                           name from tokens.css, or the --fs-* scale / --scrim-legacy.
  *   3 no-bespoke-controls   a control-shaped rule subject must be a ui-* primitive; every
  *                           <button> / createElement('button') carries a ui- class.
@@ -117,6 +117,9 @@ function collectSources(root) {
 // tokens.css facts (read from the scanned tree: the legacy names and the z ladder)
 // ---------------------------------------------------------------------------------------
 
+// The eight old palette names the alias block pointed at their exact role (plan step 7).
+const RETIRED_ALIASES = ['--font-family', '--heading-font', '--bg-color', '--card-bg', '--bg-secondary', '--text-primary', '--text-secondary', '--border-color'];
+
 function tokensInfo(root) {
   const text = fs.readFileSync(path.join(root, 'public/css/tokens.css'), 'utf8');
   const legacy = new Set();
@@ -137,6 +140,9 @@ function tokensInfo(root) {
     for (const d of body.slice(at).matchAll(/(--[\w-]+)\s*:/g)) legacy.add(d[1]);
   }
   legacy.add('--scrim-legacy');
+  // Retired at step 7: the alias block is deleted, so these names are defined nowhere and a
+  // new var() of one would paint NOTHING. They stay legacy forever, read from here.
+  for (const n of RETIRED_ALIASES) legacy.add(n);
   const ladder = [];
   for (const m of text.matchAll(/(--z-[\w-]+)\s*:\s*\d+\s*;/g)) ladder.push(m[1]);
   return { legacy, legacyPrefixes: ['--fs-'], ladder };
@@ -907,7 +913,7 @@ function detectNoShellStyle(model, report) {
 
 const RULES = [
   { id: 'no-raw-values', on: true, detect: detectNoRawValues },
-  { id: 'no-legacy-tokens', on: false, detect: detectNoLegacyTokens }, // OFF until step 7 (aliases deleted)
+  { id: 'no-legacy-tokens', on: true, detect: detectNoLegacyTokens }, // ON since step 7 (aliases deleted)
   { id: 'no-bespoke-controls', on: true, detect: detectNoBespokeControls },
   { id: 'hover-gated', on: true, detect: detectHoverGated },
   { id: 'pressed-state', on: true, detect: detectPressedState },

@@ -5307,6 +5307,2984 @@
         "added": "2026-09-27"
       }
     ],
+    "no-legacy-tokens": [
+      {
+        "key": "public/css/style.css|#account-chip|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|#player-dock .cc-overlay-text|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|#seek-bar::-webkit-slider-runnable-track|background-image",
+        "count": 4,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|#settings-menu .cc-btn.active|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|#settings-menu .settings-menu-item|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|#settings-menu .settings-menu-toggle|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|#speed-btn|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|#theater-btn[aria-pressed=\"true\"]|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|#vol-bar::-webkit-slider-runnable-track|background-image",
+        "count": 4,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.action-status-error|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.action-status|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.audio-artwork|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.audio-subtitle|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.audio-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.audio-vinyl::after|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.avatar-crop-hint|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.avatar-crop-stage|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.bg-timing-log-empty|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.bg-timing-log-table table|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.bg-timing-log-text|font-size",
+        "count": 2,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.book-row-cover|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.book-row-progress-fill|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.book-row-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.books-home-row-header h3|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.books-row-seeall|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.bottom-nav|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.bottombar-editor-row.drag-over-after|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.bottombar-editor-row.drag-over-before|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.btn-primary:hover|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.btn-primary|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.btn-primary|border-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.btn.liked|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.btn:hover|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.btn|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.btn|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.btn|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.btn|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.btn|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.card-rating .off|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.card-rating .on|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.cc-overlay-text|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.cc-overlay-text|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-now.changed|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-now.chapter-looping|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-now|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-badge|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-badge|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-chip|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-confirm-text|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-confirm|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-confirm|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-now|font-size",
+        "count": 2,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-nudge|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-n|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-n|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-row.is-focus|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-row.is-moved .chapter-snap-chip-moved|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-row.is-playing .chapter-snap-play|border-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-row.is-playing .chapter-snap-play|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-shift-readout|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-shift-readout|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-shift-why, .chapter-snap-shift-note|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-status|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-sub|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-times|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapter-snap-was|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-editor-textarea|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-editor-textarea|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-editor-textarea|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-editor-textarea|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-editor-textarea|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-menu-close|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-menu-edited|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-menu-edited|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-menu-edit|border-top",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-menu-header|border-bottom",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-menu-header|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-menu-item-current|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-menu-item-current|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-menu-item|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-menu-loop.active|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-menu-loop|border-left",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-menu-loop|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-menu-share|border-left",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-menu|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-menu|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.chapters-menu|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.comment-input-box|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.critter-pool-item|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.critter-pool-name|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.drag-handle:focus-visible|outline",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.drag-handle|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.duration-badge|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.duration-badge|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.duration-badge|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.feed-hidden-meta|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.feed-hidden-thumb|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.feed-hidden-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.field-error|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.field-error|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.file-path|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.folder-item-row.drag-over-after|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.folder-item-row.drag-over-before|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.folder-list-builder|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.folder-path-text|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.form-group input[type=\"text\"], .form-group input[type=\"password\"], .form-group input[type=\"number\"]|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.form-group input[type=\"text\"], .form-group input[type=\"password\"], .form-group input[type=\"number\"]|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.form-group input[type=\"text\"], .form-group input[type=\"password\"], .form-group input[type=\"number\"]|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.form-group label|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.fs-btn|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.library-item-count|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.login-brand|gap",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.login-card|gap",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.login-card|padding",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.login-foot|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.login-form|gap",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.login-page|gap",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.login-page|padding",
+        "count": 2,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.login-tagline|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.login-wordmark .tube|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.login-wordmark .tube|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.login-wordmark|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.login-wordmark|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.logo span.tube|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.logo span.tube|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.logo|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.logo|font-size",
+        "count": 2,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.md-back|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.md-back|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.md-detail-title|font-size",
+        "count": 2,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.md-group-card|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.md-group-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.md-hero .md-tile--hero|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.md-hero-text h2|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.md-hero-text p|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.md-hero|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.md-row-badge|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.md-row-label|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.md-row-skeleton-label|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.md-row-skeleton-label|height",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.md-tile[data-md-era=\"2021\"]|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.md-tile[data-md-tone=\"red\"]|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-apple .mms-sub|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-apple .mms-ttl|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-full .mms-chev|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-full .mms-times|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod .ipm-letter|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-about",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-badge",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-check",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-chev",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-jump",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-menu",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-note",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-np-album",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-np-artist",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-np-meta",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-np-title",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-picker",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-row",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-row-meta",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-status",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-status-mark",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-time",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-tray-sub",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-tray-title",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-zone-menu",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-zone-play",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod|--pk-fs-zone-skip",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-spotify .mms-ctx|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-spotify .mms-qh|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-spotify .mms-ra|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-spotify .mms-rd|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-spotify .mms-row|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-spotify .mms-rt|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-spotify .mms-sub|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-spotify .mms-ttl|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker .mms-sticker-emoji|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-act|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-act|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-back|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-chip|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-chip|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-danger|border-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-danger|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-extras .mms-sm-state|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-h|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-lbl|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-loop .mms-sm-state|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-note|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-opt|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-opt|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-sz-2x .mms-sticker-emoji|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker-sz-3x .mms-sticker-emoji|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-sticker|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-tapplay|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-tapplay|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mms-tapplay|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mnp-desc|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mnp-queue-dur|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mnp-queue-head|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mnp-queue-row|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mnp-queue-sub|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mnp-queue-thumb|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mnp-queue-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mnp-sub|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.mnp-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.modern-avatar-name|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-album-art, .music-artist-mosaic|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-album-artist, .music-album-count, .music-artist-meta|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-album-card:hover .music-album-art, .music-artist-card:hover .music-artist-mosaic|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-album-title, .music-artist-name|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-artist-avatar .maa-mono|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-artist-avatar|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-artist-card:hover .music-artist-avatar|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-crumb-label|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-drill-artist|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-drill-art|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-drill-art|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-drill-edited|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-drill-edited|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-drill-meta|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-drill-title|font-size",
+        "count": 2,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-eq|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-jump-art|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-jump-art|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-jump-head|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-jump-sub|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-jump-tile:hover .music-jump-art|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-jump-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-row-artist|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-shelf-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-status|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-sticky-thumb|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.music-sticky-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.oneoff-modal-backdrop|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.oneoff-modal-close|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.oneoff-modal-field, .oneoff-modal-row select|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.oneoff-modal-field|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.oneoff-modal-field|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.oneoff-modal-field|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.oneoff-modal-hint|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.oneoff-modal-row select|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.oneoff-modal-row select|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.oneoff-modal-row select|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.oneoff-modal-status|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.oneoff-modal-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.oneoff-modal|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.oneoff-modal|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.oneoff-modal|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.pc-btn:hover|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.pc-btn|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.pc-btn|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.pc-btn|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.pc-range::-moz-range-progress|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.pc-range::-moz-range-thumb|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.pc-range::-moz-range-track|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.pc-range::-moz-range-track|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.pc-range::-webkit-slider-runnable-track|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.pc-range::-webkit-slider-runnable-track|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.pc-range::-webkit-slider-thumb|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.pc-time|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.pc-time|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.pip-btn|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.player-container|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.player-controls|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.player-controls|border-top",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.player-dock-close|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.player-dock-close|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.ptr-indicator.ready|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.ptr-indicator.refreshing|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.ptr-indicator|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.queue-upnext-box|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.queue-upnext-box|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.queue-upnext-label|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.queue-upnext-next|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.reader-nowplaying|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.reader-nowplaying|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.reader-np-chapter|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.related-header|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.related-meta|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.related-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.related-uploader|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.remove-folder-btn:hover|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.remove-folder-btn|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.remove-folder-btn|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.resume-overlay h3|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.search-input|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.section-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.section-title|font-weight",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.section-title|letter-spacing",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.seek-chapters-gap|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.seek-preview-chapter|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.seek-preview-chapter|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.seek-preview-chapter|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.seek-preview-chapter|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.seek-preview-img|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.seek-preview-img|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.seek-preview-img|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.seek-preview-time|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.seek-preview-time|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.seek-preview-time|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.seek-preview-time|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.seek-preview-time|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.setup-box .setup-select, .setup-box input[type=\"text\"], .setup-box input[type=\"number\"]|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.setup-box h2|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.setup-box h2|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.setup-box p|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.setup-box|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.setup-box|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.setup-box|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.setup-select|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.setup-select|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.setup-select|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-ddr-arrow--h.ddr-hit|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-ddr-arrow--h.ddr-hit|border-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-ddr-arrow--v.ddr-hit|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-ddr-arrow--v.ddr-hit|border-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-ddr-arrow.ddr-hit|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-ddr-arrow.ddr-hit|border-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-desc|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-group-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-modal kbd|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-modal kbd|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-modal kbd|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-modal kbd|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-modal kbd|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-modal kbd|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-note|border-top",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-note|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.shortcuts-subtitle|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.show-card-meta|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.show-card-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.show-card:hover .show-poster|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.show-poster|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.show-poster|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.sidebar-item.drag-over-after|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.sidebar-item.drag-over-before|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.sidebar-item|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.sidebar-item|padding",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.sidebar|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.skeleton-line|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.skeleton-shimmer.skel-title|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.skeleton-shimmer.skel-w60, .skeleton-shimmer.skel-w120, .skeleton-shimmer.skel-w140, .skeleton-shimmer.skel-w200|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.skeleton-text|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.skip-ripple|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.speed-menu-item.active|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.speed-sheet-backdrop|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.speed-sheet|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.speed-sheet|border-radius",
+        "count": 2,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.speed-sheet|border-top",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.stable-delete-btn.stable-delete-armed|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.stable-delete-btn:focus-visible|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.stable-delete-btn:hover|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.stable-delete-btn|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.stable-delete-confirm|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.stable-more|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.stable-th[aria-sort=\"ascending\"]::after|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.stable-th[aria-sort=\"descending\"]::after|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.stable-th|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.stat-tile-value|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.stats-meta-text|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.sticker-card-emoji|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.sub-collapsible > summary::-webkit-details-marker, .sub-collapsible > summary::marker|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.sub-collapsible > summary|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.sub-collapsible > summary|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.subscribe-modal-checkbox-row|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.subscribe-modal-identity-name|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.subscribe-modal-identity-url|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.subscribe-modal-identity|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.subscribe-modal-identity|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.subscribe-modal-identity|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.theme-card-blurb|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.theme-card-name|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.theme-card.active|border-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.theme-card|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.theme-card|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.theme-swatch|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.transcode-spinner.failed|border-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.transcode-spinner.failed|border-top-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.transcode-spinner|border-top-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.transcript-ai-prompt-row.drag-over-after|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.transcript-ai-prompt-row.drag-over-before|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.trash-meta|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.trash-thumb|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.trash-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.trash-total|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.tv-back|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.tv-back|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.tv-continue-ep|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.tv-continue-fill|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.tv-continue-heading|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.tv-continue-poster|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.tv-continue-show|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.tv-detail-poster|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.tv-detail-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.tv-episode-code|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.tv-episode-dur|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.tv-episode-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.tv-player-wrap|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.tv-season-label|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.users-cap-badge|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.users-cap-badge|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.users-row-meta|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.users-row|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.video-card|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.video-info|padding",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.video-meta|font-size",
+        "count": 2,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.video-title|font-size",
+        "count": 2,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.video-title|font-weight",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.video-title|letter-spacing",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.video-uploader|font-size",
+        "count": 2,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.watch-actions[data-loading], .reveal-toggle[data-loading]|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.watch-autoplay-label|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.watch-autoplay-switch input:checked ~ .watch-autoplay-track|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.watch-autoplay-switch input:focus-visible ~ .watch-autoplay-track|outline",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.watch-autoplay-thumb|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.watch-autoplay-track|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.watch-container #player-slot:empty|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.watch-desc-skel .skel-line|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.watch-rating .off|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.watch-rating .on|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.watch-title|font-weight",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.watch-title|letter-spacing",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-bands-cap|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-bands|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-bandtag|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-bandtag|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-bandtag|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-bar-name|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-bar-name|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-ctl-label|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-dead|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-fill|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-guide|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-guide|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-hero .whcal-v|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-k|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-note|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-num|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-num|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-seg button|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-seg button|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-seg button|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-seg|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-step-val|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-step-val|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-tile|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-title|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-track|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-v|font-family",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-v|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|.whcal-wheel|box-shadow",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|::-webkit-scrollbar-thumb|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|::-webkit-scrollbar-thumb|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2005\"], [data-theme=\"2005\"] *, [data-theme=\"2009\"], [data-theme=\"2009\"] *, [data-theme=\"2014\"], [data-theme=\"2014\"] *|scrollbar-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2005\"]::-webkit-scrollbar-thumb, [data-theme=\"2005\"] ::-webkit-scrollbar-thumb|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2005\"]::-webkit-scrollbar-thumb, [data-theme=\"2005\"] ::-webkit-scrollbar-thumb|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2005\"]::-webkit-scrollbar-thumb:hover, [data-theme=\"2005\"] ::-webkit-scrollbar-thumb:hover|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2009\"] #seek-bar::-webkit-slider-runnable-track|background-image",
+        "count": 4,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2009\"] #vol-bar::-webkit-slider-runnable-track|background-image",
+        "count": 4,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2009\"] .player-controls|border-top",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2009\"]::-webkit-scrollbar-thumb, [data-theme=\"2009\"] ::-webkit-scrollbar-thumb|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2009\"]::-webkit-scrollbar-thumb, [data-theme=\"2009\"] ::-webkit-scrollbar-thumb|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2009\"]::-webkit-scrollbar-thumb:hover, [data-theme=\"2009\"] ::-webkit-scrollbar-thumb:hover|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2014\"] #seek-bar::-webkit-slider-runnable-track|background-image",
+        "count": 4,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2014\"] #vol-bar::-webkit-slider-runnable-track|background-image",
+        "count": 4,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2014\"] .pc-btn:active|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2014\"] .pc-btn:hover|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2014\"] .pc-range::-moz-range-thumb|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2014\"] .pc-range::-webkit-slider-thumb|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2014\"]::-webkit-scrollbar-thumb, [data-theme=\"2014\"] ::-webkit-scrollbar-thumb|background",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2021\"] #seek-bar::-webkit-slider-runnable-track|background-image",
+        "count": 4,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2021\"] #vol-bar::-webkit-slider-runnable-track|background-image",
+        "count": 4,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2021\"] .pc-btn:active|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2021\"] .pc-btn:hover|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2021\"] .pc-range::-moz-range-thumb|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|[data-theme=\"2021\"] .pc-range::-webkit-slider-thumb|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|a|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|body.mms-tray .music-nowplaying-panel|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|body|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|header|background-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|html, html *|scrollbar-color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|input, select, textarea|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|select|border",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|select|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/style.css|select|font-size",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/css/ui.css|.ui-field__input, .ui-select__native|font",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/js/common.js|js|--header-bg",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/js/main.js|js-template-style|border-radius",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/js/stats.js|js-style|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/js/stats.js|js|--yt-red",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/js/watch.js|js-style|color",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      },
+      {
+        "key": "public/js/watch.js|js|--yt-red",
+        "count": 1,
+        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
+        "added": "2026-09-28"
+      }
+    ],
     "no-bespoke-controls": [
       {
         "key": ".account-menu",

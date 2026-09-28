@@ -155,7 +155,7 @@ test('AC4: every token the card consumes resolves in ALL FOUR era skins', () => 
   assert.ok(consumed.size >= 10, `expected the card's real token roster, derived ${consumed.size}`);
   // Sweep S9 (F57's family): the card paints the overlay roles, never a legacy surface / red.
   for (const t of ['--surface-overlay', '--shadow-overlay', '--ink-1', '--ink-2']) assert.ok(consumed.has(t), 'consumes ' + t);
-  for (const t of ['--yt-red', '--bg-sidebar', '--border-color']) assert.ok(!consumed.has(t), 'no legacy ' + t);
+  for (const t of ['--yt-red', '--bg-sidebar', '--separator']) assert.ok(!consumed.has(t), 'no legacy ' + t);
 
   // A token resolves for an era if that era's block defines it, or :root does
   // (:root is the base every era inherits and selectively overrides).

@@ -23,8 +23,8 @@ test('v1.107: the Geist woff2 actually ships under public/fonts (the Dockerfile 
 });
 
 // UI pass step 1 (DELIBERATE lock update): the token blocks moved to tokens.css and the
-// families are the --font-ui / --font-heading knobs (--font-family / --heading-font alias them).
-const { eraBlock, readTokensCss } = require('../helpers/stylesheets');
+// families are the --font-ui / --font-heading knobs (the old --font-family / --heading-font aliases were retired at step 7).
+const { eraBlock, readStyleCss } = require('../helpers/stylesheets');
 
 test('v1.107: the :root pre-theme default is Geist (mirrors Modern), so there is no Roboto->Geist FOUC flash', () => {
   const rootBlock = eraBlock('2021');
@@ -32,7 +32,7 @@ test('v1.107: the :root pre-theme default is Geist (mirrors Modern), so there is
   assert.match(rootBlock, /--font-ui:\s*'Geist',\s*'Roboto'/, ':root body font = Geist (Roboto fallback)');
   assert.match(rootBlock, /--font-heading:\s*'Geist',\s*'Roboto'/, ':root heading font = Geist');
   assert.match(rootBlock, /--logo-font:\s*'Geist'/, ':root logo font = Geist');
-  assert.match(readTokensCss(), /--font-family:\s*var\(--font-ui\);/, 'the body family reads the knob');
+  assert.match(readStyleCss(), /\nbody\s*\{[^}]*font-family:\s*var\(--font-ui\);/, 'the body family reads the knob');
 });
 
 test('v1.107: the retro eras are UNTOUCHED (no Geist leaks into 2005/2009/2014)', () => {

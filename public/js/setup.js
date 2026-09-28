@@ -373,7 +373,7 @@ function renderSidebarFolders(folders, settings = {}) {
   if (!sidebarContainer) return;
   const visible = visibleSidebarFolders(folders, settings, syntheticFolders); // v1.73.1: the hard Downloads entry owns the sidebar surface
   if (visible.length === 0) {
-    sidebarContainer.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
+    sidebarContainer.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--ink-2);">None</div>';
     // v1.33.1 (Dean): count-gated Liked entry, same shared helper as every
     // other sidebar surface (prepends without touching siblings).
     applyLikedSidebarEntry(sidebarContainer);

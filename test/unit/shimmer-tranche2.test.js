@@ -78,8 +78,8 @@ test('watch related: seed shimmer + reveal the header BEFORE the fetch; the real
 
 test('CSS: the related thumb restores the shimmer fill (it is #000 letterbox) and the avatar name line is sized for zero-shift', () => {
   const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
-  assert.match(css, /\.related-thumb\.skeleton-shimmer \{[\s\S]*?background-color: var\(--bg-secondary\)/,
-    'related-thumb skeleton restores --bg-secondary (else the sweep is swallowed by #000)');
+  assert.match(css, /\.related-thumb\.skeleton-shimmer \{[\s\S]*?background-color: var\(--surface-2\)/,
+    'related-thumb skeleton restores --surface-2 (else the sweep is swallowed by #000)');
   // Bind the ACTUAL height (not just margin-bottom presence): the real
   // .modern-avatar-name is --fs-2xs (10px) x 1.4 = a 14px line box, so the
   // skeleton line MUST be 14px for a true zero-shift chip (gate WARNING: a 10px

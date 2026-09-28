@@ -207,7 +207,7 @@ test('AC6 (b)/(c): the screen re-points stop at the glass; the ring, gaps and di
   for (const t of ['--pk-s-paper:var(--pk-o-lcd)', '--pk-s-ink:var(--pk-o-ink)', '--pk-s-sel1:var(--pk-o-sel)', '--pk-s-sel2:var(--pk-o-sel)', '--pk-s-sub:var(--pk-o-sub)']) {
     assert.ok(glass.includes(t), 'the glass re-points ' + t);
   }
-  assert.match(glass, /font-family:'Jersey 10', var\(--font-family\)/, 'the bitmap face on the glass');
+  assert.match(glass, /font-family:'Jersey 10', var\(--font-ui\)/, 'the bitmap face on the glass');
   // the look never redefines a palette token (token-scale-lock: one value each) and never re-points the
   // screen roles on the PANEL (the sticker and the body would repaint)
   const panelBlock = find('.mms-look-original');

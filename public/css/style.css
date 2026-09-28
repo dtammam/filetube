@@ -153,7 +153,7 @@ summary,
   height: 12px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--bg-color);
+  background: var(--surface-0);
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border-dark);
@@ -163,11 +163,11 @@ summary,
 }
 @media (hover: hover) {
   ::-webkit-scrollbar-thumb:hover {
-    background: var(--text-secondary);
+    background: var(--ink-2);
   }
 }
 ::-webkit-scrollbar-corner {
-  background: var(--bg-color);
+  background: var(--surface-0);
 }
 
 /* 2005 Original: the chunky hard-edged OS scrollbar of the era - full-width
@@ -179,7 +179,7 @@ summary,
 }
 [data-theme="2005"]::-webkit-scrollbar-track,
 [data-theme="2005"] ::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
+  background: var(--surface-2);
 }
 [data-theme="2005"]::-webkit-scrollbar-thumb,
 [data-theme="2005"] ::-webkit-scrollbar-thumb {
@@ -195,7 +195,7 @@ summary,
 }
 [data-theme="2005"]::-webkit-scrollbar-corner,
 [data-theme="2005"] ::-webkit-scrollbar-corner {
-  background: var(--bg-secondary);
+  background: var(--surface-2);
 }
 
 /* 2009 Classic: same button-face construction, slightly slimmer, warm grays
@@ -207,7 +207,7 @@ summary,
 }
 [data-theme="2009"]::-webkit-scrollbar-track,
 [data-theme="2009"] ::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
+  background: var(--surface-2);
 }
 [data-theme="2009"]::-webkit-scrollbar-thumb,
 [data-theme="2009"] ::-webkit-scrollbar-thumb {
@@ -223,14 +223,14 @@ summary,
 }
 [data-theme="2009"]::-webkit-scrollbar-corner,
 [data-theme="2009"] ::-webkit-scrollbar-corner {
-  background: var(--bg-secondary);
+  background: var(--surface-2);
 }
 
 /* 2014 Flat: borderless flat bar on a light track - the flat-design era.
    Keeps the base 12px width; only the construction changes. */
 [data-theme="2014"]::-webkit-scrollbar-track,
 [data-theme="2014"] ::-webkit-scrollbar-track {
-  background: var(--bg-secondary);
+  background: var(--surface-2);
 }
 [data-theme="2014"]::-webkit-scrollbar-thumb,
 [data-theme="2014"] ::-webkit-scrollbar-thumb {
@@ -241,12 +241,12 @@ summary,
 @media (hover: hover) {
   [data-theme="2014"]::-webkit-scrollbar-thumb:hover,
   [data-theme="2014"] ::-webkit-scrollbar-thumb:hover {
-    background: var(--text-secondary);
+    background: var(--ink-2);
   }
 }
 [data-theme="2014"]::-webkit-scrollbar-corner,
 [data-theme="2014"] ::-webkit-scrollbar-corner {
-  background: var(--bg-secondary);
+  background: var(--surface-2);
 }
 
 /* Firefox (no ::-webkit-scrollbar): the standard two-property system.
@@ -262,7 +262,7 @@ summary,
   html * {
     /* 2021 Modern base: thin thumb floating on the page background. */
     scrollbar-width: thin;
-    scrollbar-color: var(--border-dark) var(--bg-color);
+    scrollbar-color: var(--border-dark) var(--surface-0);
   }
   [data-theme="2005"], [data-theme="2005"] *,
   [data-theme="2009"], [data-theme="2009"] *,
@@ -270,7 +270,7 @@ summary,
     /* Retro eras: full-width bar (auto), visible track. Firefox exposes no
        thumb borders/radius, so the era palette is the whole statement here. */
     scrollbar-width: auto;
-    scrollbar-color: var(--border-dark) var(--bg-secondary);
+    scrollbar-color: var(--border-dark) var(--surface-2);
   }
   /* v1.84: the modern chip row + avatar bar are horizontal scrollers that hide
      their scrollbar on webkit (::-webkit-scrollbar display:none); Firefox hides
@@ -309,11 +309,11 @@ html {
 }
 
 body {
-  font-family: var(--font-family);
+  font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-color: var(--bg-color);
-  color: var(--text-primary);
+  background-color: var(--surface-0);
+  color: var(--ink-1);
   font-size: var(--fs-base);
   line-height: 1.4; /* token-exempt: global body base - deliberate site-wide tuning (OQ6 ruling) */
   transition: background-color var(--dur-fast), color var(--dur-fast);
@@ -402,7 +402,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   font-weight: var(--fw-bold);
   letter-spacing: -1px; /* token-exempt: era display styling */
   font-family: var(--logo-font);
-  color: var(--text-primary);
+  color: var(--ink-1);
 }
 
 /* v1.41.17 (Dean): logo FOUC guard. html.ft-custom-logo is stamped PRE-PAINT by
@@ -515,7 +515,7 @@ html.reader-immersive .app-container { padding-top: 0; }
 .btn {
   background-color: var(--btn-bg);
   border: 1px solid var(--border-dark);
-  color: var(--text-primary);
+  color: var(--ink-1);
   padding: var(--space-3) var(--space-6);
   border-radius: var(--radius);
   font-weight: var(--fw-semibold);
@@ -756,7 +756,7 @@ a.sidebar-item {
 
 .library-item-count {
   font-size: var(--fs-sm);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   margin-left: 0;
   font-weight: normal;
 }
@@ -796,7 +796,7 @@ a.sidebar-item {
   margin-left: var(--sidebar-w); /* clears the fixed sidebar */
   padding: var(--space-12);
   /* v1.166.1 GROUND CONTRACT (gate C1+C2, the structural fix): .main-content
-     paints NO background. `body` already paints the identical var(--bg-color)
+     paints NO background. `body` already paints the identical var(--surface-0)
      (propagated to the canvas, same token in every era/skin), so the old
      declaration here was redundant - and it was the ONLY paint between the
      canvas and the furniture, which hid the z-index:-1 critter plane
@@ -825,11 +825,11 @@ a.sidebar-item {
      was. The var() fallbacks keep any era that doesn't define the tokens
      byte-identical to before. Applied to the three title surfaces only
      (.section-title/.video-title/.watch-title); body text untouched. */
-  font-family: var(--heading-font, var(--font-family));
+  font-family: var(--font-heading, var(--font-ui));
   font-weight: var(--heading-weight, var(--fw-bold));
   letter-spacing: var(--heading-tracking, normal);
   margin-bottom: var(--space-8);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--separator);
   padding-bottom: var(--space-4);
   display: flex;
   justify-content: space-between;
@@ -855,7 +855,7 @@ a.sidebar-item {
   position: sticky;
   top: var(--sticky-bar-top);
   z-index: 20; /* token-exempt: local stacking */
-  background-color: var(--bg-color);
+  background-color: var(--surface-0);
   /* v1.45.1 (Dean on-device): pin FLUSH under the header with NO pre-stick
      "jump". The bar naturally rests one `.main-content` top-padding below the
      header (24px desktop / 16px mobile), so with `top` == header height it slid
@@ -903,14 +903,14 @@ a.sidebar-item {
 .video-card {
   display: flex;
   flex-direction: column;
-  background-color: var(--card-bg);
+  background-color: var(--surface-1);
   border-radius: var(--radius);
   overflow: hidden;
   position: relative;
 }
 /* F53 (UI pass sweep S2): Modern has no card tile - the thumbnail and the text
    sit on the page ground (C, the YouTube/Spotify card); the retro eras keep
-   their tile (--card-bg). It PAINTS the ground (--surface-0, the page's own)
+   their tile (--surface-1). It PAINTS the ground (--surface-0, the page's own)
    rather than going transparent: the critter layer hides behind cards (the
    ground contract, critter-mode.test.js). */
 [data-theme="2021"] .video-card {
@@ -1044,9 +1044,9 @@ a.sidebar-item {
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background-color: var(--card-bg);
+  background-color: var(--surface-1);
   box-shadow: var(--shadow);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   opacity: 0;
   pointer-events: none;
   transform: translateX(-50%) translateY(-12px) scale(0.9);
@@ -1104,7 +1104,7 @@ a.sidebar-item {
   color: var(--ink-link);
   text-decoration: none;
   font-size: var(--fs-base);
-  font-family: var(--heading-font, var(--font-family));
+  font-family: var(--font-heading, var(--font-ui));
   font-weight: var(--heading-weight, var(--fw-bold));
   letter-spacing: var(--heading-tracking, normal);
   line-height: var(--lh-tight);
@@ -1146,7 +1146,7 @@ a.sidebar-item {
 /* v1.26.3 (Item 1): shared skeleton-loading placeholder shimmer. CSS-only
    (a sliding gradient sweep via `::after`, no JS timer/rAF) so the
    loading-state cost is a single pseudo-element + one animation per card,
-   and it stays era-theme-neutral -- `--bg-secondary` is the same flat,
+   and it stays era-theme-neutral -- `--surface-2` is the same flat,
    accent-free neutral surface tone every era already defines, so a
    skeleton never clashes with an era's accent palette while the real
    content is still loading. Two call sites reuse this ONE class: the home/
@@ -1157,7 +1157,7 @@ a.sidebar-item {
 .skeleton-shimmer {
   position: relative;
   overflow: hidden;
-  background-color: var(--bg-secondary);
+  background-color: var(--surface-2);
 }
 
 .skeleton-shimmer::after {
@@ -1202,8 +1202,8 @@ a.sidebar-item {
    order. Reduced-motion drops the sweep (the base fill still reads as a
    placeholder), matching the .skeleton-shimmer carve-out. */
 img.art-shimmer {
-  background-color: var(--bg-secondary);
-  background-image: linear-gradient(100deg, var(--bg-secondary) 30%, var(--border-color) 50%, var(--bg-secondary) 70%);
+  background-color: var(--surface-2);
+  background-image: linear-gradient(100deg, var(--surface-2) 30%, var(--separator) 50%, var(--surface-2) 70%);
   background-size: 220% 100%;
   background-repeat: no-repeat;
   animation: art-shimmer-sweep 1.6s ease-in-out infinite; /* token-exempt: choreography, matches the shared .skeleton-shimmer sweep timing */
@@ -1236,7 +1236,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 .music-artist-mosaic.skeleton-shimmer, /* v1.103: the artist mosaic box (also thumbnail-bg) on the now-DEFAULT Artists cold landing */
 .book-row-cover.skeleton-shimmer, /* v1.102: the feed-mode skeleton card cover (also has thumbnail-bg) */
 .related-thumb.skeleton-shimmer { /* v1.99: the rail thumb skeleton takes the shimmer's base fill */
-  background-color: var(--bg-secondary);
+  background-color: var(--surface-2);
 }
 
 /* v1.99: the avatar-bar skeleton name line - the reused `.skeleton-line` is sized
@@ -1282,7 +1282,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 
 /* Respect the user's OS-level reduced-motion preference: the shimmer sweep
    is purely decorative motion -- turning it off leaves the flat
-   `--bg-secondary` placeholder fill in place (still a clear "loading"
+   `--surface-2` placeholder fill in place (still a clear "loading"
    signal), it just stops sliding. */
 @media (prefers-reduced-motion: reduce) {
   .skeleton-shimmer::after {
@@ -1327,7 +1327,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   aspect-ratio: 16/9;
   background-color: #000; /* token-exempt: letterbox black */
   margin-bottom: var(--space-8);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--separator);
   border-radius: var(--radius-lg);
   overflow: hidden;
   position: relative;
@@ -1765,7 +1765,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   gap: var(--space-3);
   font-weight: var(--fw-bold);
   font-size: var(--fs-sm);
-  color: var(--text-primary);
+  color: var(--ink-1);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -1828,7 +1828,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 .watch-title {
   margin: 0 0 var(--space-2);
   font: var(--t-headline);
-  font-family: var(--heading-font, var(--font-family));
+  font-family: var(--font-heading, var(--font-ui));
   font-weight: var(--heading-weight, var(--fw-bold));
   letter-spacing: var(--heading-tracking, normal);
   overflow-wrap: anywhere;
@@ -2173,7 +2173,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 .setup-box {
   max-width: 780px;
   margin: var(--space-16) auto;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--separator);
   background-color: var(--bg-sidebar);
   border-radius: var(--radius);
   padding: var(--space-16);
@@ -2184,7 +2184,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   font-size: var(--fs-4xl);
   font-weight: var(--fw-bold);
   margin-bottom: var(--space-8);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--separator);
   padding-bottom: var(--space-6);
   color: var(--yt-red);
 }
@@ -2192,7 +2192,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 .setup-box p {
   font-size: var(--fs-md);
   margin-bottom: var(--space-10);
-  color: var(--text-primary);
+  color: var(--ink-1);
   line-height: var(--lh-relaxed);
 }
 
@@ -2215,8 +2215,8 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   font-size: var(--fs-base);
-  background-color: var(--bg-color);
-  color: var(--text-primary);
+  background-color: var(--surface-0);
+  color: var(--ink-1);
   outline: none;
 }
 
@@ -2241,8 +2241,8 @@ select {
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   font-size: var(--fs-base);
-  background-color: var(--bg-color);
-  color: var(--text-primary);
+  background-color: var(--surface-0);
+  color: var(--ink-1);
   cursor: pointer;
 }
 
@@ -2253,8 +2253,8 @@ select {
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   font-size: var(--fs-base);
-  background-color: var(--bg-color);
-  color: var(--text-primary);
+  background-color: var(--surface-0);
+  color: var(--ink-1);
   cursor: pointer;
 }
 
@@ -2277,7 +2277,7 @@ select {
      get it from their own layout. */
   display: inline-block;
   font-size: var(--fs-xs);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   line-height: var(--lh-tight);
   min-height: 15px;
 }
@@ -2291,8 +2291,8 @@ select {
   height: 10px;
   margin-right: var(--space-3);
   vertical-align: -1px;
-  border: 2px solid var(--border-color);
-  border-top-color: var(--text-secondary);
+  border: 2px solid var(--separator);
+  border-top-color: var(--ink-2);
   border-radius: 50%;
   animation: spin 0.9s linear infinite; /* token-exempt: choreography */
 }
@@ -2311,7 +2311,7 @@ select {
   height: 10px;
   margin-left: var(--space-3);
   vertical-align: -1px;
-  border: 2px solid var(--border-color);
+  border: 2px solid var(--separator);
   border-top-color: currentColor;
   border-radius: 50%;
   animation: spin 0.9s linear infinite; /* token-exempt: choreography */
@@ -2368,17 +2368,17 @@ select {
   text-align: right;
   vertical-align: bottom;
 }
-.bg-timing-log-table th { font-weight: var(--fw-normal); color: var(--text-secondary); }
+.bg-timing-log-table th { font-weight: var(--fw-normal); color: var(--ink-2); }
 .bg-timing-log-row td { white-space: nowrap; } /* a number or a drift never breaks mid-value */
 .bg-timing-log-table th:first-child,
 .bg-timing-log-table td:first-child { text-align: left; }
 .bg-timing-log-note td {
   text-align: left;
-  color: var(--text-secondary);
-  border-bottom: 1px solid var(--border-color);
+  color: var(--ink-2);
+  border-bottom: 1px solid var(--separator);
   padding-bottom: var(--space-3);
 }
-.bg-timing-log-empty { font-size: var(--fs-xs); color: var(--text-secondary); }
+.bg-timing-log-empty { font-size: var(--fs-xs); color: var(--ink-2); }
 .bg-timing-log-text {
   display: block;
   width: 100%;
@@ -2395,7 +2395,7 @@ select {
   justify-content: space-between;
   align-items: center;
   margin-top: var(--space-12);
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--separator);
   padding-top: var(--space-8);
   flex-wrap: wrap;
   gap: var(--space-5);
@@ -2428,8 +2428,8 @@ select {
 
 .folder-list-builder {
   /* corner-clip-safe: in-flow Setup config list, not an overlay edge; a lifted drag row's transform is transient */
-  border: 1px solid var(--border-color);
-  background-color: var(--bg-color);
+  border: 1px solid var(--separator);
+  background-color: var(--surface-0);
   border-radius: var(--radius);
   padding: var(--space-6);
   margin-bottom: var(--space-8);
@@ -2566,7 +2566,7 @@ select {
 .drag-handle {
   flex-shrink: 0;
   width: 16px;
-  color: var(--text-secondary);
+  color: var(--ink-2);
   font-size: var(--fs-md);
   line-height: 1; /* token-exempt: glyph centering */
   letter-spacing: -2px; /* token-exempt: era display styling */
@@ -2654,18 +2654,18 @@ select {
   gap: var(--space-3);
   text-align: left;
   padding: var(--space-6);
-  background-color: var(--card-bg);
+  background-color: var(--surface-1);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   cursor: pointer;
-  color: var(--text-primary);
+  color: var(--ink-1);
 }
 .theme-card.active { border-color: var(--yt-red); border-width: 2px; }
 .theme-swatch { display: flex; height: 20px; border-radius: var(--radius); overflow: hidden; }
 .theme-swatch span { flex: 1; background: var(--swatch, var(--thumb-ground)); } /* --swatch: the era's colour as data (setup.js) */
 .theme-card-name { font-weight: var(--fw-bold); font-size: var(--fs-base); }
-.theme-card-year { color: var(--text-secondary); font-weight: normal; }
-.theme-card-blurb { font-size: var(--fs-xs); color: var(--text-secondary); }
+.theme-card-year { color: var(--ink-2); font-weight: normal; }
+.theme-card-blurb { font-size: var(--fs-xs); color: var(--ink-2); }
 /* v1.238: the player-sticker icon picker (Settings > Appearance). Reuses .theme-card for
    the option cards; these add the icon preview + the emoji/upload rows. */
 .sticker-cards { display: flex; flex-wrap: wrap; gap: var(--space-6); }
@@ -2690,7 +2690,7 @@ select {
    deliberately avoids the size property-colon-value spelling: the
    type-scale lock scanner cannot tell prose from code. */
 .stats-meta-text {
-  color: var(--text-secondary);
+  color: var(--ink-2);
   font-size: var(--fs-sm);
 }
 
@@ -2800,7 +2800,7 @@ select {
   aspect-ratio: 16 / 9;
   object-fit: cover;
   border-radius: var(--radius);
-  background-color: var(--bg-secondary);
+  background-color: var(--surface-2);
   flex: 0 0 auto;
 }
 .feed-hidden-info {
@@ -2808,19 +2808,19 @@ select {
   min-width: 0;
 }
 .feed-hidden-title {
-  color: var(--text-primary);
+  color: var(--ink-1);
   font-size: var(--fs-md);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .feed-hidden-meta {
-  color: var(--text-secondary);
+  color: var(--ink-2);
   font-size: var(--fs-sm);
 }
 .feed-hidden-row .btn { flex: 0 0 auto; }
 .feed-hidden-empty {
-  color: var(--text-secondary);
+  color: var(--ink-2);
   padding: var(--space-6) 0;
 }
 
@@ -2985,7 +2985,7 @@ select {
 }
 
 .oneoff-modal {
-  background-color: var(--bg-color);
+  background-color: var(--surface-0);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   max-width: 460px;
@@ -3010,7 +3010,7 @@ select {
 .oneoff-modal-title {
   font-size: var(--fs-xl);
   font-weight: var(--fw-bold);
-  color: var(--text-primary);
+  color: var(--ink-1);
 }
 
 .oneoff-modal-close {
@@ -3019,13 +3019,13 @@ select {
   font-size: var(--fs-3xl);
   line-height: 1; /* token-exempt: glyph centering */
   cursor: pointer;
-  color: var(--text-secondary);
+  color: var(--ink-2);
   padding: var(--space-1) var(--space-3);
 }
 
 @media (hover: hover) {
   .oneoff-modal-close:hover {
-    color: var(--text-primary);
+    color: var(--ink-1);
   }
 }
 
@@ -3037,8 +3037,8 @@ select {
   padding: var(--space-4) var(--space-5);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
-  background-color: var(--bg-color);
-  color: var(--text-primary);
+  background-color: var(--surface-0);
+  color: var(--ink-1);
   font-size: var(--fs-base);
 }
 
@@ -3066,14 +3066,14 @@ select {
   padding: var(--space-4) var(--space-5);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
-  background-color: var(--bg-color);
-  color: var(--text-primary);
+  background-color: var(--surface-0);
+  color: var(--ink-1);
   font-size: var(--fs-base);
 }
 
 .oneoff-modal-status {
   font-size: var(--fs-sm);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   margin: var(--space-2) 0 var(--space-6);
   min-height: 16px;
 }
@@ -3094,7 +3094,7 @@ select {
    margin is a pull-up against the field above. */
 .oneoff-modal-hint {
   font-size: var(--fs-sm);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   margin: -6px 0 10px; /* token-exempt: positional */
 }
 
@@ -3161,12 +3161,12 @@ select {
 
 .subscribe-modal-identity-name {
   font-weight: var(--fw-bold);
-  color: var(--text-primary);
+  color: var(--ink-1);
   font-size: var(--fs-base);
 }
 
 .subscribe-modal-identity-url {
-  color: var(--text-secondary);
+  color: var(--ink-2);
   font-size: var(--fs-xs);
   word-break: break-all;
   margin-top: var(--space-1);
@@ -3181,7 +3181,7 @@ select {
   gap: var(--space-3);
   margin-bottom: var(--space-5);
   font-size: var(--fs-base);
-  color: var(--text-primary);
+  color: var(--ink-1);
   cursor: pointer;
 }
 
@@ -4128,7 +4128,7 @@ select {
 .pc-time {
   font-family: var(--mono-font);
   font-size: var(--fs-xs);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   min-width: var(--size-control);
   text-align: center;
   flex-shrink: 0;
@@ -4147,7 +4147,7 @@ select {
   border: 1px solid var(--border-dark);
   border-radius: 0;
   background-color: var(--btn-bg);
-  color: var(--text-primary);
+  color: var(--ink-1);
   font-size: var(--fs-lg);
   line-height: 1; /* token-exempt: glyph centering */
   cursor: pointer;
@@ -4170,7 +4170,7 @@ select {
 /* Play/pause glyphs -- drawn purely in CSS (no new image asset): a triangle
    via the classic CSS border trick, and two blocky bars for pause via a
    single zero-width element duplicated with box-shadow. `currentColor` (=
-   `.pc-btn`'s `color: var(--text-primary)`) keeps both fully era/dark-mode
+   `.pc-btn`'s `color: var(--ink-1)`) keeps both fully era/dark-mode
    themed with no separate color token needed. */
 .pp-btn .pp-icon-play,
 .pp-btn .pp-icon-pause {
@@ -4290,7 +4290,7 @@ select {
   margin-top: -5px; /* token-exempt: positional */ /* vertically center the 16px thumb on the 6px track below */
   border: 1px solid var(--border-dark);
   border-radius: 0;
-  background-color: var(--text-primary);
+  background-color: var(--ink-1);
   box-shadow: inset 1px 1px 0 rgba(255, 255, 255, 0.4); /* token-exempt: era skin art */
 }
 .pc-range::-moz-range-thumb {
@@ -4298,7 +4298,7 @@ select {
   height: 16px;
   border: 1px solid var(--border-dark);
   border-radius: 0;
-  background-color: var(--text-primary);
+  background-color: var(--ink-1);
 }
 
 /* Track base (both sliders) -- beveled inset groove; the FILLED portion is
@@ -4398,7 +4398,7 @@ select {
 
 /* ---- 2014 Flat: material, no chrome -------------------------------------- */
 [data-theme="2014"] .player-controls {
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--separator);
   box-shadow: none;
 }
 [data-theme="2014"] .pc-btn {
@@ -4450,7 +4450,7 @@ select {
 
 /* ---- 2021 Modern: flat + round + crisp ------------------------------------ */
 [data-theme="2021"] .player-controls {
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--separator);
   box-shadow: none;
 }
 [data-theme="2021"] .pc-btn {
@@ -4549,7 +4549,7 @@ select {
   width: 100%;
   height: 100%;
   /* v1.336 (Dean: "a very thin white border around the entire screen"): the base
-     `.player-container` 1px `--border-color` border and its era radius are inline
+     `.player-container` 1px `--separator` border and its era radius are inline
      chrome; fullscreen is edge to edge, so both go (the audio-expanded and docked
      twins already drop them). Measured by scripts/faux-fullscreen-probe.js. */
   border: none;
@@ -4813,7 +4813,7 @@ select {
   background: #000; /* token-exempt: letterbox black */
   /* v1.336 (Dean: "in full screen, in all modes, I see a very thin white border
      around the entire screen"): the base `.player-container` rule paints a 1px
-     `--border-color` border (rgb 204-226 in the light modes, 45-56 in dark) and
+     `--separator` border (rgb 204-226 in the light modes, 45-56 in dark) and
      this overlay reset only its radius, so the border ringed the whole screen in
      every era and mode. The audio-expanded overlay has always dropped it. */
   border: none;
@@ -5009,8 +5009,8 @@ html:has(> body.ft-audio-expanded),
   text-align: left;
   background: none;
   border: none;
-  color: var(--text-primary);
-  font-family: var(--font-family);
+  color: var(--ink-1);
+  font-family: var(--font-ui);
   font-size: var(--fs-base);
   padding: var(--space-4) var(--space-6);
   cursor: pointer;
@@ -5053,8 +5053,8 @@ html:has(> body.ft-audio-expanded),
   border-radius: 0;
   box-shadow: none;
   background: none;
-  color: var(--text-primary);
-  font-family: var(--font-family);
+  color: var(--ink-1);
+  font-family: var(--font-ui);
   font-size: var(--fs-base);
   font-weight: normal;
   padding: var(--space-4) var(--space-6);
@@ -5148,7 +5148,7 @@ html:has(> body.ft-audio-expanded),
   justify-content: center;
 }
 .chapters-menu-time {
-  color: var(--text-secondary);
+  color: var(--ink-2);
   font-variant-numeric: tabular-nums;
   margin-right: var(--space-2);
 }
@@ -5158,13 +5158,13 @@ html:has(> body.ft-audio-expanded),
   justify-content: space-between;
   padding: var(--space-3) var(--space-4) var(--space-3) var(--space-6);
   border-bottom: 1px solid var(--border-dark);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   font-size: var(--fs-sm);
 }
 .chapters-menu-close {
   background: none;
   border: none;
-  color: var(--text-primary);
+  color: var(--ink-1);
   font-size: var(--fs-2xl);
   line-height: 1; /* token-exempt: glyph centering */
   padding: var(--space-2) var(--space-5);
@@ -5173,7 +5173,7 @@ html:has(> body.ft-audio-expanded),
 }
 .chapters-menu-edit {
   border-top: 1px solid var(--border-dark);
-  color: var(--text-secondary);
+  color: var(--ink-2);
 }
 /* v1.41.12 (Dean): per-chapter loop toggle. Each chapter is a flex ROW (seek
    button + Loop toggle); the toggle is a WORD, not a glyph (v1.39 lesson:
@@ -5192,8 +5192,8 @@ html:has(> body.ft-audio-expanded),
   background: none;
   border: none;
   border-left: 1px solid var(--border-dark);
-  color: var(--text-secondary);
-  font-family: var(--font-family);
+  color: var(--ink-2);
+  font-family: var(--font-ui);
   font-size: var(--fs-sm);
   padding: var(--space-4) var(--space-6);
   cursor: pointer;
@@ -5216,7 +5216,7 @@ html:has(> body.ft-audio-expanded),
   background: none;
   border: none;
   border-left: 1px solid var(--border-dark);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   padding: var(--space-4) var(--space-6);
   cursor: pointer;
   align-self: stretch;
@@ -5293,7 +5293,7 @@ html:has(> body.ft-audio-expanded),
   font-family: var(--mono-font);
   font-size: var(--fs-base);
   background: var(--input-bg, var(--header-bg));
-  color: var(--text-primary);
+  color: var(--ink-1);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
   padding: var(--space-4);
@@ -5333,7 +5333,7 @@ html:has(> body.ft-audio-expanded),
   flex-direction: column;
   gap: var(--space-3);
   padding-bottom: var(--space-4);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--separator);
 }
 .chapter-snap-titlerow {
   display: flex;
@@ -5357,12 +5357,12 @@ html:has(> body.ft-audio-expanded),
 .chapter-snap-badge[hidden] { display: none !important; }
 .chapter-snap-sub {
   font-size: var(--fs-sm);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   overflow-wrap: anywhere;
 }
 .chapter-snap-status {
   font-size: var(--fs-sm);
-  color: var(--text-primary);
+  color: var(--ink-1);
   min-height: 1.4em; /* token-exempt: layout geometry (one line reserved so the head never jumps) */
 }
 .chapter-snap-tools,
@@ -5375,7 +5375,7 @@ html:has(> body.ft-audio-expanded),
 .chapter-snap-confirm[hidden] { display: none !important; }
 .chapter-snap-confirm {
   border: 1px solid var(--border-dark);
-  background: var(--bg-secondary);
+  background: var(--surface-2);
   border-radius: var(--radius);
   padding: var(--space-5);
   display: flex;
@@ -5403,10 +5403,10 @@ html:has(> body.ft-audio-expanded),
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-5) var(--space-2);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--separator);
 }
 .chapter-snap-row.is-focus {
-  background: var(--bg-secondary);
+  background: var(--surface-2);
   box-shadow: inset 3px 0 0 var(--yt-red); /* token-exempt: a focus rail, not an elevation shadow */
 }
 .chapter-snap-rowtop {
@@ -5419,7 +5419,7 @@ html:has(> body.ft-audio-expanded),
   flex: 0 0 auto;
   font-family: var(--mono-font);
   font-size: var(--fs-xs);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   min-width: 2ch; /* token-exempt: layout geometry */
 }
 .chapter-snap-name {
@@ -5438,18 +5438,18 @@ html:has(> body.ft-audio-expanded),
 }
 .chapter-snap-now {
   font-size: var(--fs-md);
-  color: var(--text-primary);
+  color: var(--ink-1);
 }
 .chapter-snap-was {
   font-size: var(--fs-xs);
-  color: var(--text-secondary);
+  color: var(--ink-2);
 }
 .chapter-snap-chip {
   font-size: var(--fs-xs);
-  color: var(--text-secondary);
+  color: var(--ink-2);
 }
 .chapter-snap-chip-hint {
-  color: var(--text-primary);
+  color: var(--ink-1);
   font-weight: var(--fw-semibold);
 }
 .chapter-snap-row.is-moved .chapter-snap-chip-moved {
@@ -5483,7 +5483,7 @@ html:has(> body.ft-audio-expanded),
   flex-direction: column;
   gap: var(--space-3);
   padding: var(--space-5) var(--space-2);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--separator);
 }
 .chapter-snap-shift[hidden],
 .chapter-snap-shift [hidden] { display: none !important; }
@@ -5502,13 +5502,13 @@ html:has(> body.ft-audio-expanded),
   font-family: var(--mono-font);
   font-variant-numeric: tabular-nums;
   font-size: var(--fs-sm);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   overflow-wrap: anywhere;
 }
 .chapter-snap-shift-why,
 .chapter-snap-shift-note {
   font-size: var(--fs-xs);
-  color: var(--text-secondary);
+  color: var(--ink-2);
 }
 .chapter-snap-shift-suggest {
   display: flex;
@@ -5532,7 +5532,7 @@ html:has(> body.ft-audio-expanded),
 .chapter-snap-actions {
   flex: 0 0 auto;
   padding-top: var(--space-5);
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--separator);
 }
 /* The Music album drill's "Edited" badge (music.js buildDrillHeaderHtml). */
 .music-drill-edited {
@@ -5627,7 +5627,7 @@ html:has(> body.ft-audio-expanded),
     position: sticky;
     bottom: 0;
     z-index: 1; /* token-exempt: local stacking - the pinned Save/Cancel row paints over the rows that scroll under it */
-    background: var(--bg-color);
+    background: var(--surface-0);
     padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
   }
 }
@@ -5721,7 +5721,7 @@ html:has(> body.ft-audio-expanded),
   max-width: 92%;
   background: rgba(0, 0, 0, 0.72); /* token-exempt: cc legibility floor over arbitrary video (amendment c - permanent) */
   color: var(--on-overlay);
-  font-family: var(--font-family);
+  font-family: var(--font-ui);
   font-size: var(--fs-md);
   line-height: 1.35; /* token-exempt: caption legibility spacing, protected-background-adjacent (OQ6 ruling) */
   padding: var(--space-2) var(--space-5);
@@ -5777,7 +5777,7 @@ html:has(> body.ft-audio-expanded),
 .seek-preview-img {
   width: 160px; /* token-exempt: fixed sprite tile width (matches server SB_TILE_W) */
   background-repeat: no-repeat;
-  background-color: var(--bg-color);
+  background-color: var(--surface-0);
   border: 2px solid var(--border-dark);
   border-radius: var(--radius);
   box-shadow: var(--shadow-lg);
@@ -5785,7 +5785,7 @@ html:has(> body.ft-audio-expanded),
 .seek-preview-time {
   font-family: var(--mono-font);
   font-size: var(--fs-xs);
-  color: var(--text-primary);
+  color: var(--ink-1);
   background-color: var(--header-bg);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
@@ -5796,7 +5796,7 @@ html:has(> body.ft-audio-expanded),
    width so a long title never blows the preview box wide. */
 .seek-preview-chapter {
   font-size: var(--fs-xs);
-  color: var(--text-primary);
+  color: var(--ink-1);
   background-color: var(--header-bg);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
@@ -5861,7 +5861,7 @@ html:has(> body.ft-audio-expanded),
   max-width: 40%;
   font: inherit;
   font-size: var(--fs-xs);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   background: none;
   border: 0;
   border-radius: 0;
@@ -5874,7 +5874,7 @@ html:has(> body.ft-audio-expanded),
   transition: color var(--dur-slow) var(--ease-ui);
 }
 @media (hover: hover) {
-  .chapter-now:hover { color: var(--text-primary); }
+  .chapter-now:hover { color: var(--ink-1); }
 }
 .chapter-now.changed { color: var(--yt-red); }
 .chapter-now[hidden] { display: none !important; }
@@ -6006,7 +6006,7 @@ html:has(> body.ft-audio-expanded),
    existing mobile `@media (max-width: 768px)` rules above (`.player-controls`
    44px height, `.pc-btn` 44x44px) are unscoped to `.audio-expanded`, so the
    >=44px touch-target floor is preserved here too.
-   `background-color: var(--bg-color)` (the same page-
+   `background-color: var(--surface-0)` (the same page-
    background token `body`/`.modal-content`/etc. already use) replaces
    `.player-container`'s hardcoded `#000` video-letterbox background with a
    themed solid surface -- era tokens only, no hardcoded color.
@@ -6402,33 +6402,33 @@ html:has(> body.ft-audio-expanded),
 .md-nav { display: flex; flex-direction: column; gap: var(--space-10); }
 .md-group { display: flex; flex-direction: column; }
 .md-group-title {
-  font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--text-secondary);
+  font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--ink-2);
   text-transform: uppercase; letter-spacing: var(--tracking-caps); padding: 0 var(--space-6) var(--space-3);
 }
 .md-group-card {
-  background: var(--card-bg); border: 1px solid var(--border-color);
+  background: var(--surface-1); border: 1px solid var(--separator);
   border-radius: var(--radius-lg); overflow: hidden;
 }
 .md-row {
   display: flex; align-items: center; gap: var(--space-6); width: 100%;
   text-align: left; background: none; border: 0; cursor: pointer; font: inherit;
-  color: var(--text-primary); padding: var(--space-5) var(--space-6); position: relative;
+  color: var(--ink-1); padding: var(--space-5) var(--space-6); position: relative;
 }
 .md-row + .md-row::before {
-  content: ""; position: absolute; top: 0; left: var(--md-divider-inset); right: 0; height: 1px; background: var(--border-color);
+  content: ""; position: absolute; top: 0; left: var(--md-divider-inset); right: 0; height: 1px; background: var(--separator);
 }
 @media (hover: hover) {
-  .md-row:hover { background: var(--bg-secondary); }
+  .md-row:hover { background: var(--surface-2); }
 }
-.md-row--active { background: var(--bg-secondary); }
+.md-row--active { background: var(--surface-2); }
 .md-row:focus-visible { outline: var(--ring-w) solid var(--focus-ring); outline-offset: calc(-1 * var(--ring-w)); } /* sweep S8 (F36): the one focus ring, never red */
 .md-row-label { flex: 1; font-size: var(--fs-lg); }
 .md-row-badge {
   font-size: var(--fs-2xs); font-weight: var(--fw-bold); text-transform: uppercase; letter-spacing: var(--tracking-caps);
-  background: var(--bg-secondary); color: var(--text-secondary);
+  background: var(--surface-2); color: var(--ink-2);
   padding: var(--space-1) var(--space-3); border-radius: var(--radius-full);
 }
-.md-row-chev { color: var(--text-secondary); opacity: 0.55; display: inline-flex; }
+.md-row-chev { color: var(--ink-2); opacity: 0.55; display: inline-flex; }
 .md-row-chev svg { width: 16px; height: 16px; }
 /* v1.158 (Dean): the reserved shimmer row for an admin section still loading
    behind setup.js's capability reveal. A .md-row (same flex/gap/padding) with a
@@ -6460,7 +6460,7 @@ html:has(> body.ft-audio-expanded),
 .md-detail-head {
   position: relative; display: flex; align-items: center; justify-content: center;
   min-height: var(--size-touch); padding: var(--space-3) var(--space-12) var(--space-5);
-  border-bottom: 1px solid var(--border-color); margin-bottom: var(--space-6);
+  border-bottom: 1px solid var(--separator); margin-bottom: var(--space-6);
 }
 .md-back {
   position: absolute; left: 0; top: 50%; transform: translateY(-50%);
@@ -6482,7 +6482,7 @@ html:has(> body.ft-audio-expanded),
    2-line clamp on the description. */
 .md-hero {
   display: flex; align-items: center; gap: var(--space-6);
-  background: var(--card-bg); border: 1px solid var(--border-color); border-radius: var(--radius-lg);
+  background: var(--surface-1); border: 1px solid var(--separator); border-radius: var(--radius-lg);
   margin: var(--space-8) 0; padding: var(--space-8); min-height: 96px;
 }
 .md-hero .md-tile--hero { width: 60px; height: 60px; border-radius: var(--radius-lg); }
@@ -6490,7 +6490,7 @@ html:has(> body.ft-audio-expanded),
 .md-hero-text { min-width: 0; }
 .md-hero-text h2 { margin: 0; font-size: var(--fs-4xl); font-weight: var(--fw-bold); }
 .md-hero-text p {
-  margin: var(--space-2) 0 0; color: var(--text-secondary); font-size: var(--fs-base); line-height: var(--lh-relaxed);
+  margin: var(--space-2) 0 0; color: var(--ink-2); font-size: var(--fs-base); line-height: var(--lh-relaxed);
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 
@@ -7352,7 +7352,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   gap: var(--space-2);
   width: 64px; /* token-exempt: avatar-chip column geometry */
   text-decoration: none;
-  color: var(--text-secondary);
+  color: var(--ink-2);
 }
 .modern-avatar-name {
   max-width: 64px; /* token-exempt: avatar-chip label width */
@@ -7690,7 +7690,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   gap: var(--space-2);
   padding: var(--space-3) var(--space-5) calc(var(--space-3) + env(safe-area-inset-bottom));
   background: var(--header-bg);
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--separator);
   box-shadow: var(--shadow);
 }
 .reader-nowplaying[hidden] { display: none; }
@@ -7698,7 +7698,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 .reader-np-art { display: flex; flex: none; }
 .reader-np-art:empty { display: none; }
 .reader-np-chapter {
-  font-size: var(--fs-xs); color: var(--text-secondary);
+  font-size: var(--fs-xs); color: var(--ink-2);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .reader-np-transport { display: flex; align-items: center; gap: var(--space-4); }
@@ -7874,9 +7874,9 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   justify-content: center;
   gap: calc(var(--density) * 2);
   padding: calc(var(--density) * 3) var(--density);
-  background: var(--bg-color);
-  color: var(--text-primary);
-  font-family: var(--font-family);
+  background: var(--surface-0);
+  color: var(--ink-1);
+  font-family: var(--font-ui);
 }
 /* v1.43.1 B1 (Dean: "feels constrained"): de-boxed. The original bordered/
    shadowed card (background/border/border-radius/box-shadow, 380px) made the
@@ -7907,7 +7907,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   font-size: var(--fs-5xl);
   font-weight: var(--fw-bold);
   letter-spacing: -1px; /* token-exempt: era display styling */
-  color: var(--text-primary);
+  color: var(--ink-1);
   line-height: 1; /* token-exempt: glyph centering */
 }
 .login-wordmark .tube {
@@ -7937,7 +7937,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 .ft-custom-logo .login-logo-img { display: block; }
 .login-tagline {
   font-size: var(--fs-md);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   text-wrap: balance;
 }
 .login-form {
@@ -7961,7 +7961,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 .login-error:empty { display: none; }
 .login-foot {
   font-size: var(--fs-xs);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   text-align: center;
   text-wrap: balance;
 }
@@ -7989,7 +7989,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 }
 #account-chip {
   font-size: var(--fs-md);
-  color: var(--text-primary);
+  color: var(--ink-1);
   font-weight: var(--fw-bold);
 }
 .users-list {
@@ -8004,13 +8004,13 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   justify-content: space-between;
   gap: var(--space-5);
   flex-wrap: wrap;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--separator);
   border-radius: var(--radius);
   padding: var(--space-5) var(--space-6);
   /* Pre-existing since v1.43 (found by the v1.70 undefined-token sweep):
      --bg-primary has never existed, so this row has been background-less
      all along - visible only as a missing panel fill behind the border. */
-  background: var(--card-bg);
+  background: var(--surface-1);
 }
 .users-row-who {
   display: flex;
@@ -8020,7 +8020,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 }
 .users-row-meta {
   font-size: var(--fs-sm);
-  color: var(--text-secondary);
+  color: var(--ink-2);
 }
 .users-row-actions {
   display: flex;
@@ -8095,7 +8095,7 @@ html.is-phone #music-popout-btn { display: none; }
 /* v1.69 gate suggestion #10: .music-status had NO binding rule since v1.44
    (a pre-existing bare class music.html applied and podcasts.html then
    copied). Bound now - a transient status line in the secondary voice. */
-.music-status { color: var(--text-secondary); font-size: var(--fs-sm); margin-bottom: var(--space-5); }
+.music-status { color: var(--ink-2); font-size: var(--fs-sm); margin-bottom: var(--space-5); }
 
 /* Redesign S1: the "Jump back in" strip - a horizontal scroll of resume tiles
    above the tabs (hidden via [hidden] when empty). */
@@ -8137,11 +8137,11 @@ html.is-phone #music-popout-btn { display: none; }
 /* v1.339 (L1, M1): the reserved strip's skeleton tile (buildJumpBackSkeletonHtml) reuses
    the real 116px art box; restore the shimmer base fill its --thumbnail-bg would swallow
    (the v1.98 library-skeleton rule, 2-class specificity). */
-.music-jump-art.skeleton-shimmer { background-color: var(--bg-secondary); }
+.music-jump-art.skeleton-shimmer { background-color: var(--surface-2); }
 .music-jump-title {
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
-  color: var(--text-primary);
+  color: var(--ink-1);
   max-width: 116px;
   white-space: nowrap;
   overflow: hidden;
@@ -8149,7 +8149,7 @@ html.is-phone #music-popout-btn { display: none; }
 }
 .music-jump-sub {
   font-size: var(--fs-xs);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   max-width: 116px;
   white-space: nowrap;
   overflow: hidden;
@@ -8180,7 +8180,7 @@ html.is-phone #music-popout-btn { display: none; }
 
 .music-crumb { display: flex; align-items: center; gap: var(--space-5); margin-bottom: var(--space-6); }
 .music-crumb[hidden] { display: none !important; }
-.music-crumb-label { font-size: var(--fs-lg); font-weight: var(--fw-semibold); color: var(--text-primary); }
+.music-crumb-label { font-size: var(--fs-lg); font-weight: var(--fw-semibold); color: var(--ink-1); }
 
 /* v1.44.2 (Spotify feel): the collapsing / sticky album+artist drill header.
    At rest: big art + title + artist + meta + Play/Shuffle. As the tracklist
@@ -8202,9 +8202,9 @@ html.is-phone #music-popout-btn { display: none; }
   flex-shrink: 0;
 }
 .music-drill-info { display: flex; flex-direction: column; gap: var(--space-3); min-width: 0; }
-.music-drill-title { margin: 0; font-size: var(--fs-2xl); font-weight: var(--fw-bold); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; }
-.music-drill-artist { font-size: var(--fs-lg); color: var(--text-primary); }
-.music-drill-meta { font-size: var(--fs-sm); color: var(--text-secondary); }
+.music-drill-title { margin: 0; font-size: var(--fs-2xl); font-weight: var(--fw-bold); color: var(--ink-1); overflow: hidden; text-overflow: ellipsis; }
+.music-drill-artist { font-size: var(--fs-lg); color: var(--ink-1); }
+.music-drill-meta { font-size: var(--fs-sm); color: var(--ink-2); }
 .music-drill-actions { display: flex; gap: var(--space-4); margin-top: var(--space-4); flex-wrap: wrap; }
 
 .music-drill-sticky {
@@ -8216,13 +8216,13 @@ html.is-phone #music-popout-btn { display: none; }
   gap: var(--space-5);
   padding: var(--space-4) var(--space-3);
   margin-bottom: var(--space-4);
-  background: var(--bg-color);
-  border-bottom: 1px solid var(--border-color);
+  background: var(--surface-0);
+  border-bottom: 1px solid var(--separator);
 }
 .music-drill.collapsed .music-drill-sticky { display: flex; }
 .music-drill.collapsed .music-drill-header { display: none; }
 .music-sticky-thumb { width: 36px; height: 36px; border-radius: var(--radius); object-fit: cover; background: var(--thumbnail-bg); flex-shrink: 0; }
-.music-sticky-title { flex: 1; min-width: 0; font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.music-sticky-title { flex: 1; min-width: 0; font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--ink-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .music-drill-sentinel { width: 100%; height: 1px; }
 
 /* breakpoint 600px - deliberate (audit amendment a): music grid column drop. */
@@ -8325,7 +8325,7 @@ html.is-phone #music-popout-btn { display: none; }
 .music-artist-avatar .maa-mono {
   font-size: var(--fs-2xl);
   font-weight: var(--fw-bold);
-  color: var(--text-secondary);
+  color: var(--ink-2);
 }
 .music-artist-avatar .maa-img {
   position: absolute;
@@ -8341,7 +8341,7 @@ html.is-phone #music-popout-btn { display: none; }
 .music-artist-name {
   font-size: var(--fs-base);
   font-weight: var(--fw-semibold);
-  color: var(--text-primary);
+  color: var(--ink-1);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -8350,7 +8350,7 @@ html.is-phone #music-popout-btn { display: none; }
 .music-album-count,
 .music-artist-meta {
   font-size: var(--fs-sm);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -8368,19 +8368,19 @@ html.is-phone #music-popout-btn { display: none; }
 @media (hover: hover) {
   .show-card:hover .show-poster { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
 }
-.show-card-title { font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.show-card-meta { font-size: var(--fs-sm); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.show-card-title { font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--ink-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.show-card-meta { font-size: var(--fs-sm); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* v1.196: the Shows-home Continue-Watching row (horizontal poster strip). */
 .tv-continue-row { margin-bottom: var(--space-6); }
-.tv-continue-heading { font-size: var(--fs-lg); color: var(--text-primary); margin-bottom: var(--space-3); }
+.tv-continue-heading { font-size: var(--fs-lg); color: var(--ink-1); margin-bottom: var(--space-3); }
 .tv-continue-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(140px, 1fr); gap: var(--space-4); overflow-x: auto; padding-bottom: var(--space-2); }
 .tv-continue-card { min-width: 0; background: transparent; border: none; cursor: pointer; text-align: left; color: inherit; display: flex; flex-direction: column; gap: var(--space-1); padding: 0; }
 .tv-continue-poster-wrap { position: relative; display: block; }
 .tv-continue-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-lg); background: var(--thumbnail-bg); object-fit: cover; display: block; }
-.tv-continue-bar { position: absolute; left: 0; right: 0; bottom: 0; height: var(--space-1); background: var(--border-color); }
+.tv-continue-bar { position: absolute; left: 0; right: 0; bottom: 0; height: var(--space-1); background: var(--separator); }
 .tv-continue-fill { display: block; height: 100%; background: var(--yt-red); }
-.tv-continue-show { font-size: var(--fs-sm); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.tv-continue-ep { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-continue-show { font-size: var(--fs-sm); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tv-continue-ep { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--ink-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tv-detail-title { font-size: var(--fs-xl); margin-bottom: var(--space-4); }
 /* v1.196: the show-detail hero (poster + name + admin poster control). The poster
    column uses the grid minmax idiom so no bare width is needed (census-safe). */
@@ -8389,15 +8389,15 @@ html.is-phone #music-popout-btn { display: none; }
 .tv-detail-hero-main { min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 .tv-detail-hero-main .tv-detail-title { margin-bottom: 0; }
 .tv-season { margin-bottom: var(--space-6); }
-.tv-season-label { font-size: var(--fs-lg); color: var(--text-primary); margin-bottom: var(--space-3); }
+.tv-season-label { font-size: var(--fs-lg); color: var(--ink-1); margin-bottom: var(--space-3); }
 .tv-episode-list { display: flex; flex-direction: column; }
-.tv-episode-row { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-2); border: none; background: transparent; border-bottom: 1px solid var(--border-color); text-align: left; cursor: pointer; color: inherit; width: 100%; }
+.tv-episode-row { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-2); border: none; background: transparent; border-bottom: 1px solid var(--separator); text-align: left; cursor: pointer; color: inherit; width: 100%; }
 @media (hover: hover) {
   .tv-episode-row:hover { background: var(--thumbnail-bg); }
 }
-.tv-episode-code { font-size: var(--fs-sm); color: var(--text-secondary); font-weight: var(--fw-semibold); flex-shrink: 0; min-width: 56px; }
-.tv-episode-title { flex: 1; min-width: 0; font-size: var(--fs-base); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tv-episode-dur { font-size: var(--fs-sm); color: var(--text-secondary); flex-shrink: 0; }
+.tv-episode-code { font-size: var(--fs-sm); color: var(--ink-2); font-weight: var(--fw-semibold); flex-shrink: 0; min-width: 56px; }
+.tv-episode-title { flex: 1; min-width: 0; font-size: var(--fs-base); color: var(--ink-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tv-episode-dur { font-size: var(--fs-sm); color: var(--ink-2); flex-shrink: 0; }
 .tv-player-wrap { margin-bottom: var(--space-5); background: var(--thumbnail-bg); border-radius: var(--radius-lg); overflow: hidden; }
 .tv-player-video { width: 100%; max-height: 70vh; display: block; background: var(--thumbnail-bg); }
 
@@ -8496,14 +8496,14 @@ html.is-phone #music-popout-btn { display: none; }
 .mnp-title {
   font-size: var(--fs-lg);
   font-weight: var(--fw-semibold);
-  color: var(--text-primary);
+  color: var(--ink-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .mnp-sub {
   font-size: var(--fs-base);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -8551,7 +8551,7 @@ html.is-phone #music-popout-btn { display: none; }
    up-next list off-screen. Plain text (stripped at parse + set via textContent). */
 .mnp-desc {
   font-size: var(--fs-sm);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   line-height: 1.5; /* token-exempt: readable body copy leading for show-notes */
   max-height: 8.4em; /* token-exempt: ~6 lines of show-notes before it scrolls */
   overflow-y: auto;
@@ -8569,7 +8569,7 @@ html.is-phone #music-popout-btn { display: none; }
 .mnp-queue-head {
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   text-transform: uppercase;
   margin-bottom: var(--space-2);
 }
@@ -8587,7 +8587,7 @@ html.is-phone #music-popout-btn { display: none; }
   cursor: pointer;
 }
 @media (hover: hover) {
-  .mnp-queue-row:hover { background: var(--bg-secondary); }
+  .mnp-queue-row:hover { background: var(--surface-2); }
 }
 /* v1.223 (Dean): the panel lists the whole queue - already-played rows grey out
    but stay clickable (hover restores them), the current row is marked. */
@@ -8595,7 +8595,7 @@ html.is-phone #music-popout-btn { display: none; }
 @media (hover: hover) {
   .mnp-queue-row.is-played:hover { opacity: 1; }
 }
-.mnp-queue-row.is-current { background: var(--bg-secondary); }
+.mnp-queue-row.is-current { background: var(--surface-2); }
 .mnp-queue-row.is-current .mnp-queue-title { font-weight: var(--fw-semibold); }
 .mnp-queue-thumb {
   width: 40px;
@@ -8607,11 +8607,11 @@ html.is-phone #music-popout-btn { display: none; }
   display: block;
 }
 .mnp-queue-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.mnp-queue-title { font-size: var(--fs-base); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mnp-queue-sub { font-size: var(--fs-sm); color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mnp-queue-title { font-size: var(--fs-base); color: var(--ink-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mnp-queue-sub { font-size: var(--fs-sm); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* v1.317 (M2): each row's own length, a trailing right column (the .music-song-duration
    pattern); absent when the view has no duration (podcasts render no span). */
-.mnp-queue-dur { flex: none; font-size: var(--fs-sm); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.mnp-queue-dur { flex: none; font-size: var(--fs-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; }
 
 /* ===================== MOBILE MUSIC SKINS (Dean's wave) =====================
    A new full-screen PRESENTATION for a music item on a phone, in the user's chosen
@@ -8729,12 +8729,12 @@ html.is-phone #music-popout-btn { display: none; }
      stays in the @media (max-width:768px) block below. */
   .mms-sticker-menu[hidden]{ display:none !important; } /* the [hidden] lesson: a flex/grid menu's own display beats [hidden] */
   .mms-sticker-menu{ min-width:min(320px, 88vw); max-width:92vw; max-height:86vh; overflow-y:auto; /* corner-clip-safe: flex-column menu, buttons/chips only, no positioned descendant (do NOT swap to overflow:hidden - it would clip a tall list) */ /* v1.255 (Dean): the Extras page fits without scrolling; auto-scroll is the small-phone safety net */ display:flex; flex-direction:column; gap:var(--space-5); /* v1.252 L1 (Dean): thumb-sized menu */
-    background:var(--overlay-surface); color:var(--mms-white); border:1px solid var(--overlay-border); border-radius:var(--r-md); box-shadow:var(--shadow-overlay); padding:var(--space-6); font-family:var(--font-family); } /* sweep S9 (D4.6): the SHELL takes the one overlay radius + shadow (a popover, --r-md); its surface and ink stay the skin's - the rows (S7's) paint on them */
+    background:var(--overlay-surface); color:var(--mms-white); border:1px solid var(--overlay-border); border-radius:var(--r-md); box-shadow:var(--shadow-overlay); padding:var(--space-6); font-family:var(--font-ui); } /* sweep S9 (D4.6): the SHELL takes the one overlay radius + shadow (a popover, --r-md); its surface and ink stay the skin's - the rows (S7's) paint on them */
   /* v1.255 (Dean's parity pass): buttons do NOT inherit the body font - every other menu
      sets it explicitly (.account-menu-item, settings-menu-item, .md-row's font:inherit).
      Without this the whole sticker menu rendered in the UA default - his "the font, the
      vibe... doesn't feel the same". */
-  .mms-sticker-menu button, .mms-sticker-menu a{ font-family:var(--font-family); }
+  .mms-sticker-menu button, .mms-sticker-menu a{ font-family:var(--font-ui); }
   .mms-sticker-menu .mms-sm-sec{ display:flex; flex-direction:column; gap:var(--space-4); }
   /* v1.255: section headings use the APP's caps idiom (.md-group-title: bold + the app
      tracking token) - the old --mms-ls-caps was ~3x the app's own letter-spacing. */
@@ -8922,7 +8922,7 @@ html.is-phone #music-popout-btn { display: none; }
      one clear pill over the upper half of the skin (the art / the LCD, never the wheel or the sticker),
      shown only while player.js's autoStartRefused() holds (skin-surface.js syncTapPlay). No backdrop or
      filter: a lit Click panel sits under it. */
-  :where(html.is-phone, html.mms-popout) .mms-tapplay{ position:absolute; left:50%; top:30%; transform:translate(-50%, -50%); z-index:39; /* token-exempt: local stacking - over the skin chrome (z 5 at most), UNDER the sticker wrap (40) so an open sticker menu stays on top (gate r1 qa W1) */ display:inline-flex; align-items:center; gap:var(--space-4); min-height:48px; padding:var(--space-4) var(--space-8); border:0; border-radius:var(--radius-full); background:var(--yt-red); color:var(--on-accent); font-family:var(--font-family); font-size:var(--fs-lg); font-weight:var(--fw-bold); box-shadow:var(--shadow-lg); cursor:pointer; }
+  :where(html.is-phone, html.mms-popout) .mms-tapplay{ position:absolute; left:50%; top:30%; transform:translate(-50%, -50%); z-index:39; /* token-exempt: local stacking - over the skin chrome (z 5 at most), UNDER the sticker wrap (40) so an open sticker menu stays on top (gate r1 qa W1) */ display:inline-flex; align-items:center; gap:var(--space-4); min-height:48px; padding:var(--space-4) var(--space-8); border:0; border-radius:var(--radius-full); background:var(--yt-red); color:var(--on-accent); font-family:var(--font-ui); font-size:var(--fs-lg); font-weight:var(--fw-bold); box-shadow:var(--shadow-lg); cursor:pointer; }
   :where(html.is-phone, html.mms-popout) .mms-tapplay svg{ width:22px; height:22px; fill:currentColor; flex:none; }
   :where(html.is-phone, html.mms-popout) .mms-tapplay:focus-visible{ outline:2px solid var(--on-accent); outline-offset:2px; }
 
@@ -9591,7 +9591,7 @@ html.is-phone #music-popout-btn { display: none; }
     --pk-s-sub:var(--pk-o-sub); --pk-s-bar1:var(--pk-o-lcd); --pk-s-bar2:var(--pk-o-lcd);
     --pk-s-hair:var(--pk-o-ink); --pk-s-line:var(--pk-o-clear); --pk-s-groove:var(--pk-o-lcd); --pk-s-art-shadow:none;
     --pk-s-batt1:var(--pk-o-ink); --pk-s-batt2:var(--pk-o-ink); --pk-s-batt-line:var(--pk-o-ink); --pk-s-jump-bg:var(--pk-o-ink);
-    color:var(--pk-s-ink); font-family:'Jersey 10', var(--font-family); font-size-adjust:var(--pk-o-xh); }
+    color:var(--pk-s-ink); font-family:'Jersey 10', var(--font-ui); font-size-adjust:var(--pk-o-xh); }
   /* no album art on the first iPod: the cover and the menus' art pane go, the list takes the glass */
   :where(html.is-phone, html.mms-popout) .mms-look-original .ip-cover, :where(html.is-phone, html.mms-popout) .mms-look-original .ip-stars, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-art{ display:none; }
   :where(html.is-phone, html.mms-popout) .mms-look-original .ip-meta{ text-align:center; }
@@ -9805,7 +9805,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
 @media (prefers-reduced-motion: reduce){ .mms-full .mms-mq-on .mms-mq{ animation:none; } .mms-ipod .ipm-art-img{ transition:none; transform:none; } .mms-look-original .ip-wheel::after{ transform:none; }
   .mms-ipod .ipm-slide, .mms-ipod .ipm-slide.is-drift{ transition:none; transform:none; } }
 
-.music-empty { color: var(--text-secondary); padding: var(--space-12) 0; }
+.music-empty { color: var(--ink-2); padding: var(--space-12) 0; }
 .music-empty[hidden] { display: none !important; }
 
 /* v1.44 "Continue listening" home row -- reuses the books-home-row scroller;
@@ -9815,7 +9815,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
 .music-row-artist {
   display: block;
   font-size: var(--fs-sm);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -9951,7 +9951,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
 /* The Discord-homage subtitle, sitting just under the title/arrow header. */
 .shortcuts-subtitle {
   margin-bottom: var(--space-2);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   font-size: var(--fs-xs);
   font-style: italic; /* token-exempt: easter-egg flavour text */
 }
@@ -9992,7 +9992,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
    live on the POSE inside - a tilted critter still gets a straight cut. */
 .critter {
   position: absolute;
-  color: var(--text-secondary);
+  color: var(--ink-2);
   /* v1.175 (Dean: no FOUC-style pop-in): every (re)arrival fades in.
      v1.187 (Dean: "abrupt - make it smooth and seamless, like they sneak in"):
      the ramp slows from 0.25s to 1.2s with a gentle ease. The OPACITY lives here
@@ -10044,7 +10044,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-5);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--separator);
   border-radius: var(--radius);
   background-color: var(--thumbnail-bg);
 }
@@ -10057,7 +10057,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
 
 .critter-pool-name {
   font-size: var(--fs-sm);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -10065,7 +10065,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
 }
 
 .critter-pool-empty {
-  color: var(--text-secondary);
+  color: var(--ink-2);
 }
 
 /* sweep S8: the two-tap delete's armed state is gone - Delete / Delete all are
@@ -10371,7 +10371,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
 .shortcuts-group-title {
   font-size: var(--fs-sm);
   font-weight: var(--fw-bold);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   text-transform: uppercase;
   letter-spacing: 0.04em; /* token-exempt: era display styling */
   margin-bottom: var(--space-3);
@@ -10398,7 +10398,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
 .shortcuts-desc {
   flex: 1 1 auto;
   min-width: 0;
-  color: var(--text-primary);
+  color: var(--ink-1);
   font-size: var(--fs-sm);
 }
 
@@ -10412,7 +10412,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
   font-family: var(--mono-font);
   font-size: var(--fs-xs);
   line-height: var(--lh-relaxed);
-  color: var(--text-primary);
+  color: var(--ink-1);
   background-color: var(--btn-bg);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
@@ -10423,7 +10423,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
   margin-top: var(--space-8);
   padding-top: var(--space-6);
   border-top: 1px solid var(--border-dark);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   font-size: var(--fs-xs);
 }
 
@@ -10436,7 +10436,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
    Sizing lives on COMPOUND selectors (.skeleton-shimmer.skel-*) so the
    painter only ever removes the ONE shimmer class and the forced dimensions
    vanish with it -- painted text keeps its natural layout classes. Tokens
-   only (--bg-secondary via .skeleton-shimmer), so every era skin inherits.
+   only (--surface-2 via .skeleton-shimmer), so every era skin inherits.
    The reduced-motion carve-out at the .skeleton-shimmer definition already
    covers these. */
 
@@ -10508,7 +10508,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
   width: 100%;
   aspect-ratio: 16 / 9;
   background: #000; /* token-exempt: letterbox black */
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--separator);
   border-radius: var(--radius-lg);
   margin-bottom: var(--space-8);
 }
@@ -10695,7 +10695,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
   height: 280px; /* token-exempt: crop viewport geometry (Stop A Batch A) */
   overflow: hidden;
   border-radius: var(--radius);
-  background: var(--bg-secondary);
+  background: var(--surface-2);
   touch-action: none; /* pan/zoom is ours, not the browser's */
 }
 .avatar-crop-canvas {
@@ -10723,7 +10723,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
 }
 .avatar-crop-hint {
   font-size: var(--fs-sm);
-  color: var(--text-secondary);
+  color: var(--ink-2);
 }
 .avatar-crop-actions {
   align-self: stretch;
@@ -10775,7 +10775,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
   padding: var(--space-5) var(--space-8);
   margin-bottom: var(--space-6);
   background: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--separator);
   border-radius: var(--radius-lg);
 }
 
@@ -10786,14 +10786,14 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
 .queue-upnext-label {
   font-size: var(--fs-xs);
   font-weight: var(--fw-semibold);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   text-transform: uppercase;
   letter-spacing: 0.4px; /* token-exempt: micro-tracking on an all-caps label (single consumer) */
 }
 
 .queue-upnext-next {
   font-size: var(--fs-sm);
-  color: var(--text-primary);
+  color: var(--ink-1);
   text-decoration: none;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -10981,7 +10981,7 @@ html[data-era-flourish="on"] .ft-unfabricated {
   aspect-ratio: 16 / 9;
   object-fit: cover;
   border-radius: var(--radius);
-  background-color: var(--bg-secondary);
+  background-color: var(--surface-2);
   flex: 0 0 auto;
 }
 .trash-info {
@@ -10989,14 +10989,14 @@ html[data-era-flourish="on"] .ft-unfabricated {
   min-width: 0;
 }
 .trash-title {
-  color: var(--text-primary);
+  color: var(--ink-1);
   font-size: var(--fs-md);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .trash-meta {
-  color: var(--text-secondary);
+  color: var(--ink-2);
   font-size: var(--fs-sm);
 }
 /* v1.159: the Trash Title cell (thumb + truncating title) + its actions cell. */
@@ -11013,9 +11013,9 @@ html[data-era-flourish="on"] .ft-unfabricated {
   margin-bottom: var(--space-6);
 }
 .trash-toolbar[hidden] { display: none; }
-.trash-total { color: var(--text-secondary); font-size: var(--fs-sm); }
+.trash-total { color: var(--ink-2); font-size: var(--fs-sm); }
 .trash-empty {
-  color: var(--text-secondary);
+  color: var(--ink-2);
   padding: var(--space-6) 0;
 }
 
@@ -11047,7 +11047,7 @@ html[data-era-flourish="on"] .ft-unfabricated {
 }
 .stable-head {
   padding: 0 var(--space-6) var(--space-3);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--separator);
 }
 .stable-th {
   background: none;
@@ -11056,7 +11056,7 @@ html[data-era-flourish="on"] .ft-unfabricated {
   font: inherit;
   font-size: var(--fs-sm);
   font-weight: var(--fw-semibold);
-  color: var(--text-secondary);
+  color: var(--ink-2);
   text-align: left;
   cursor: pointer;
   display: inline-flex;
@@ -11067,29 +11067,29 @@ html[data-era-flourish="on"] .ft-unfabricated {
 .stable-th--end { justify-content: flex-end; text-align: right; }
 .stable-th--actions { cursor: default; }
 @media (hover: hover) {
-  .stable-th:hover { color: var(--text-primary); }
+  .stable-th:hover { color: var(--ink-1); }
 }
 .stable-th[aria-sort="ascending"],
-.stable-th[aria-sort="descending"] { color: var(--text-primary); }
+.stable-th[aria-sort="descending"] { color: var(--ink-1); }
 /* the caret marks (and points for) the active sort column */
 .stable-th[aria-sort="ascending"]::after { content: "\25B4"; font-size: var(--fs-xs); }
 .stable-th[aria-sort="descending"]::after { content: "\25BE"; font-size: var(--fs-xs); }
 .stable-row {
   padding: var(--space-5) var(--space-6);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--separator);
 }
 .stable-row:last-child { border-bottom: 0; }
 .stable-cell { min-width: 0; }
 .stable-cell--name {
   font-weight: var(--fw-semibold);
-  color: var(--text-primary);
+  color: var(--ink-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .stable-cell--num {
   text-align: right;
-  color: var(--text-secondary);
+  color: var(--ink-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -11098,8 +11098,8 @@ html[data-era-flourish="on"] .ft-unfabricated {
    and its rows top-align so the numeric columns sit against the first line. */
 .stable--top .stable-row { align-items: start; }
 .stable-cell--wrap { min-width: 0; }
-.stable-empty { color: var(--text-secondary); padding: var(--space-8) var(--space-6); text-align: center; }
-.stable-more { color: var(--text-secondary); font-size: var(--fs-sm); padding: var(--space-5) var(--space-6); text-align: center; }
+.stable-empty { color: var(--ink-2); padding: var(--space-8) var(--space-6); text-align: center; }
+.stable-more { color: var(--ink-2); font-size: var(--fs-sm); padding: var(--space-5) var(--space-6); text-align: center; }
 /* v1.159: action-dense tables (Users/Trash/Music) - the actions cell wraps its
    buttons, and the Users access editor spans the whole row as an expando. */
 .stable-actions { flex-wrap: wrap; }
@@ -11118,7 +11118,7 @@ html[data-era-flourish="on"] .ft-unfabricated {
   border: none;
   border-radius: var(--radius);
   background: none;
-  color: var(--text-secondary);
+  color: var(--ink-2);
   cursor: pointer;
   opacity: 0.7; /* token-exempt: resting de-emphasis, full on hover/focus/armed */
   touch-action: manipulation;
@@ -11141,14 +11141,14 @@ html[data-era-flourish="on"] .ft-unfabricated {
   min-height: var(--size-touch);
   border: none;
   background: none;
-  color: var(--text-secondary);
+  color: var(--ink-2);
   cursor: pointer;
   opacity: 0.7; /* token-exempt: resting de-emphasis */
   touch-action: manipulation;
 }
-.stable-expand-btn:focus-visible { opacity: 1; color: var(--text-primary); }
+.stable-expand-btn:focus-visible { opacity: 1; color: var(--ink-1); }
 @media (hover: hover) {
-  .stable-expand-btn:hover { opacity: 1; color: var(--text-primary); }
+  .stable-expand-btn:hover { opacity: 1; color: var(--ink-1); }
 }
 .stable-expand-btn[aria-expanded="true"] .icon-arrow-down { transform: rotate(180deg); }
 .stable-expando { grid-column: 1 / -1; }
@@ -11170,8 +11170,8 @@ html[data-era-flourish="on"] .ft-unfabricated {
   margin-left: var(--space-3);
   padding: 0 var(--space-3);
   font-size: var(--fs-xs);
-  color: var(--text-secondary);
-  background: var(--bg-secondary);
+  color: var(--ink-2);
+  background: var(--surface-2);
   border-radius: var(--radius);
 }
 /* Duplicates: a section title above each table, and the wrap cell's key + paths. */
@@ -11179,7 +11179,7 @@ html[data-era-flourish="on"] .ft-unfabricated {
   font-weight: var(--fw-bold);
   padding: var(--space-6) var(--space-6) var(--space-3);
 }
-.dup-key { font-weight: var(--fw-semibold); color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dup-key { font-weight: var(--fw-semibold); color: var(--ink-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dup-path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- v1.69 Podcasts place (UI pass S6: surface layout only) -----------------
@@ -11322,7 +11322,7 @@ html[data-era-flourish="on"] .ft-unfabricated {
 .reveal-toggle[data-loading] {
   position: relative;
   overflow: hidden;
-  background-color: var(--bg-secondary);
+  background-color: var(--surface-2);
   border-radius: var(--radius);
 }
 /* A toggle label wraps an <input> plus a raw TEXT node (not an element), so
@@ -11372,7 +11372,7 @@ html[data-era-flourish="on"] .ft-unfabricated {
 .whcal-overlay {
   position: fixed; inset: 0; z-index: var(--z-top);
   background: var(--whcal-bg); color: var(--whcal-text);
-  font-family: var(--font-family);
+  font-family: var(--font-ui);
   display: flex; flex-direction: column; gap: var(--space-5);
   padding: var(--space-6);
   overflow-y: auto; -webkit-overflow-scrolling: touch;

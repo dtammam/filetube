@@ -130,7 +130,7 @@ test('every surface hands its rendered art to FileTube.shimmerArt (music: reveal
 
 test('the CSS shimmer rides the img background (token-only, reduced-motion carve-out)', () => {
   const css = read('public/css/style.css');
-  assert.match(css, /img\.art-shimmer\s*\{[\s\S]*?background-image: linear-gradient\([^)]*var\(--bg-secondary\)[^)]*var\(--border-color\)/,
+  assert.match(css, /img\.art-shimmer\s*\{[\s\S]*?background-image: linear-gradient\([^)]*var\(--surface-2\)[^)]*var\(--separator\)/,
     'a token-only gradient (no raw literal) on the img background');
   assert.match(css, /@keyframes art-shimmer-sweep/, 'its own background-position sweep keyframe');
   assert.match(css, /prefers-reduced-motion: reduce\)\s*\{\s*img\.art-shimmer \{ animation: none/,

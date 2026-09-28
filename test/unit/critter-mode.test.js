@@ -1012,7 +1012,7 @@ test('v1.166.1 GROUND CONTRACT (gate C1+C2 structural fix): .main-content paints
     'no per-mode escape arms remain (the structural fix made them unnecessary; their return means someone re-isolated)');
   // The canvas ground this design relies on: body still paints the token.
   const body = /(?:^|\n)body\s*\{([^}]*)\}/.exec(CSS);
-  assert.match(body[1], /background-color:\s*var\(--bg-color\)/,
+  assert.match(body[1], /background-color:\s*var\(--surface-0\)/,
     'body paints the ground the critters sit on (propagates to the canvas, below negative-z)');
 });
 
@@ -2423,7 +2423,7 @@ test('CSS (v1.168 sandwich): the layer paints ABOVE furniture (z 2, under every 
   assert.doesNotMatch(decls, /z-index:\s*-1/, 'the swallowed-peek plane must not return');
   assert.match(decls, /pointer-events:\s*none/, 'the layer never intercepts input');
   const critter = /(?:^|\n)\.critter\s*\{([^}]*)\}/.exec(CSS);
-  assert.match(critter[1], /color:\s*var\(--text-secondary\)/, 'placeholder colour rides a token');
+  assert.match(critter[1], /color:\s*var\(--ink-2\)/, 'placeholder colour rides a token');
   assert.doesNotMatch(critter[1].replace(/\/\*[\s\S]*?\*\//g, ''), /transform/, 'the WRAPPER never transforms (the clip cut must hug the anchor edge)');
   const pose = /\.critter-pose\s*\{([^}]*)\}/.exec(CSS);
   assert.ok(pose, '.critter-pose rule exists');

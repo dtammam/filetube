@@ -79,7 +79,7 @@ test('base ::-webkit-scrollbar family exists with explicit bar sizing', () => {
 
   const track = findRule('::-webkit-scrollbar-track');
   assert.ok(track, 'expected a base ::-webkit-scrollbar-track rule');
-  assert.match(track[1], /background:\s*var\(--bg-color\);/);
+  assert.match(track[1], /background:\s*var\(--surface-0\);/);
 
   const thumb = findRule('::-webkit-scrollbar-thumb');
   assert.ok(thumb, 'expected a base ::-webkit-scrollbar-thumb rule');
@@ -173,12 +173,12 @@ test('Firefox fallback: scrollbar-width does NOT inherit (gate W3), so both guar
   const body = stripped.slice(guard.start, guard.end);
   assert.match(
     body,
-    /html\s*,\s*html \*\s*\{[^}]*scrollbar-width:\s*thin;[^}]*scrollbar-color:\s*var\(--border-dark\)\s+var\(--bg-color\);[^}]*\}/,
+    /html\s*,\s*html \*\s*\{[^}]*scrollbar-width:\s*thin;[^}]*scrollbar-color:\s*var\(--border-dark\)\s+var\(--surface-0\);[^}]*\}/,
     'expected the 2021-look base on html AND html * (width does not inherit to inner scrollers)'
   );
   assert.match(
     body,
-    /\[data-theme="2005"\]\s*,\s*\[data-theme="2005"\] \*\s*,\s*\[data-theme="2009"\]\s*,\s*\[data-theme="2009"\] \*\s*,\s*\[data-theme="2014"\]\s*,\s*\[data-theme="2014"\] \*\s*\{[^}]*scrollbar-width:\s*auto;[^}]*scrollbar-color:\s*var\(--border-dark\)\s+var\(--bg-secondary\);[^}]*\}/,
+    /\[data-theme="2005"\]\s*,\s*\[data-theme="2005"\] \*\s*,\s*\[data-theme="2009"\]\s*,\s*\[data-theme="2009"\] \*\s*,\s*\[data-theme="2014"\]\s*,\s*\[data-theme="2014"\] \*\s*\{[^}]*scrollbar-width:\s*auto;[^}]*scrollbar-color:\s*var\(--border-dark\)\s+var\(--surface-2\);[^}]*\}/,
     'expected the retro-era override with per-era * descendant forms'
   );
 });

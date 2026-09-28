@@ -62,7 +62,7 @@ test('the home filter bar is sticky and HOME-SCOPED (not the bare .section-title
   assert.match(body, /position:\s*sticky/, 'must be position: sticky');
   assert.match(body, /top:\s*var\(--sticky-bar-top\)/, 'pins at the --sticky-bar-top offset (the fixed header height)');
   // Solid background so grid rows scroll UNDER it rather than showing through.
-  assert.match(body, /background-color:\s*var\(--bg-color\)/, 'needs a solid background');
+  assert.match(body, /background-color:\s*var\(--surface-0\)/, 'needs a solid background');
   // Above grid cards (z-index 2), below the sort-menu (30) and dock/modals.
   assert.match(body, /z-index:\s*20/, 'z-index 20: above cards, below the sort-menu/dock');
 });

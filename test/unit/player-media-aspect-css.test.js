@@ -53,11 +53,11 @@ test('.cc-overlay exists, positioned/hidden via the native [hidden] attribute, a
   assert.match(css, /\.cc-overlay\[hidden\]\s*\{\s*display:\s*none;/);
 });
 
-test('.cc-overlay-text renders via textContent-safe styling (white-space: pre-line preserves player.js\'s newline-joined multi-line cues) and uses the era --font-family token, not a hardcoded font', () => {
+test('.cc-overlay-text renders via textContent-safe styling (white-space: pre-line preserves player.js\'s newline-joined multi-line cues) and uses the era --font-ui token, not a hardcoded font', () => {
   const rule = /\.cc-overlay-text\s*\{([^}]*)\}/.exec(css);
   assert.ok(rule, 'expected a .cc-overlay-text rule');
   assert.match(rule[1], /white-space:\s*pre-line;/);
-  assert.match(rule[1], /font-family:\s*var\(--font-family\);/);
+  assert.match(rule[1], /font-family:\s*var\(--font-ui\);/);
 });
 
 test('.cc-overlay gets the mobile 44px offset and the docked 26px offset, mirroring #audio-bg-art\'s own per-view offsets', () => {

@@ -321,8 +321,8 @@ test('v1.255 (Dean\'s parity pass) source-lock: the sticker menu speaks the APP\
   // states every reference surface has.
   const fs = require('node:fs'); const path = require('node:path');
   const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
-  assert.match(css, /\.mms-sticker-menu\{[^}]*font-family:var\(--font-family\)/, 'the menu container carries the app font');
-  assert.match(css, /\.mms-sticker-menu button, \.mms-sticker-menu a\{ font-family:var\(--font-family\); \}/, 'buttons/anchors get it explicitly (they do not inherit)');
+  assert.match(css, /\.mms-sticker-menu\{[^}]*font-family:var\(--font-ui\)/, 'the menu container carries the app font');
+  assert.match(css, /\.mms-sticker-menu button, \.mms-sticker-menu a\{ font-family:var\(--font-ui\); \}/, 'buttons/anchors get it explicitly (they do not inherit)');
   assert.match(css, /\.mms-sm-h\{[^}]*letter-spacing:var\(--tracking-caps\)/, 'headings use the APP caps tracking token');
   assert.ok(!/\.mms-sm-h\{[^}]*--mms-ls-caps/.test(css), 'the over-wide mms tracking is gone from headings');
   assert.match(css, /\.mms-sm-lbl\{[^}]*font-weight:var\(--fw-semibold\)/, 'row labels are semibold (the settings-menu idiom)');

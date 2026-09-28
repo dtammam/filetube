@@ -63,7 +63,7 @@ test('A2: CSS hides every child of a loading row and shimmers it', () => {
     'every child of a loading `.watch-actions` must be visibility:hidden (no partial button set shown)');
   const loadingRule = /\.watch-actions\[data-loading\][^{]*\{([^}]*)\}/.exec(css);
   assert.ok(loadingRule, 'expected a `.watch-actions[data-loading]` base rule');
-  assert.match(loadingRule[1], /background-color:\s*var\(--bg-secondary\)/,
+  assert.match(loadingRule[1], /background-color:\s*var\(--surface-2\)/,
     'the loading row wears the shared skeleton fill');
   assert.match(css, /\.watch-actions\[data-loading\]::after[^{]*\{[\s\S]*?animation:\s*skeleton-sweep/,
     'the loading row reuses the shared skeleton-sweep shimmer');

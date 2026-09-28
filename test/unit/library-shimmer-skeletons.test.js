@@ -144,8 +144,8 @@ test('the shimmer base fill is restored on the reused art boxes (so the sweep is
   // .music-artist-mosaic joins between album-art and podcast-card-art.
   // UI pass S6 + S10: podcasts and books left the list (their placeholders are a .ui-art square and a
   // .ui-thumb card box, which the later .skeleton-shimmer rule already fills; each sweep's own test binds that order).
-  assert.match(css, /\.music-album-art\.skeleton-shimmer,\s*\n\s*\.music-artist-mosaic\.skeleton-shimmer,[\s\S]{0,360}background-color: var\(--bg-secondary\);/,
-    'a specificity-winning rule restores --bg-secondary on the reused skeleton art boxes (incl. the artist mosaic)');
+  assert.match(css, /\.music-album-art\.skeleton-shimmer,\s*\n\s*\.music-artist-mosaic\.skeleton-shimmer,[\s\S]{0,360}background-color: var\(--surface-2\);/,
+    'a specificity-winning rule restores --surface-2 on the reused skeleton art boxes (incl. the artist mosaic)');
   assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.podcast-card-art/, 'no rule for the retired podcast card art box');
   // History's thumb is a ui-thumb since sweep S2 (the .skeleton-shimmer fill applies directly).
   assert.doesNotMatch(css, /\.history-thumb/, 'no bespoke history thumb rule');
@@ -183,8 +183,8 @@ test('book skeleton: the ui-thumb box shows the shimmer fill (style.css after ui
     assert.ok(uiAt < styleAt, `${page}: ui.css loads before style.css`);
   }
   const style = fs.readFileSync(path.join(pub, 'css/style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
-  const base = /\n\.skeleton-shimmer \{[^}]*background-color: var\(--bg-secondary\);/.exec(style);
-  assert.ok(base, 'the shared .skeleton-shimmer rule paints --bg-secondary');
+  const base = /\n\.skeleton-shimmer \{[^}]*background-color: var\(--surface-2\);/.exec(style);
+  assert.ok(base, 'the shared .skeleton-shimmer rule paints --surface-2');
   assert.doesNotMatch(style, /\.ui-thumb[^{},]*\{[^}]*background/, 'no style.css rule repaints a ui-thumb ground');
   assert.ok(buildBookSkeletonCards(1).includes('ui-thumb ui-thumb--2x3 ui-thumb--card skeleton-shimmer'), 'the skeleton box is the card thumb, shimmering');
 });
