@@ -13514,18 +13514,40 @@ function showChapterSnapEditor(mediaId, opts) {
     Array.prototype.forEach.call(ctl.querySelectorAll('button'), function (b) { if (busy || (staleSeed && b.getAttribute('data-act') !== 'play')) b.disabled = true; });
   }
 
+  // v1.341.1 (Dean, desktop, Music "Fix times"): a nudge re-renders the rows, which destroyed
+  // the button that had focus, and Chrome then scrolled the list back toward the top (1200 ->
+  // 21 -> 0 px over two nudges). A re-render now keeps the reader's place: the list's scroll
+  // position, and focus on the same control of the same row (keyboard users kept losing it too).
+  function keepPlace(render) {
+    const top = scroller.scrollTop;
+    const a = d.activeElement;
+    let key = null;
+    if (a && list.contains(a) && a.closest) {
+      const li = a.closest('.chapter-snap-item');
+      if (li) key = { i: li.getAttribute('data-index'), act: a.getAttribute('data-act'), delta: a.getAttribute('data-delta') };
+    }
+    render();
+    if (key && key.act) {
+      const sel = '.chapter-snap-item[data-index="' + key.i + '"] button[data-act="' + key.act + '"]' + (key.delta != null ? '[data-delta="' + key.delta + '"]' : '');
+      const b = list.querySelector(sel);
+      if (b && !b.disabled) { try { b.focus({ preventScroll: true }); } catch (_) { /* old engines */ } }
+    }
+    if (scroller.scrollTop !== top) scroller.scrollTop = top;
+  }
   function renderList() {
-    while (list.firstChild) list.removeChild(list.firstChild);
-    rows.forEach(function (_, i) {
-      const li = el('li', 'chapter-snap-item');
-      renderRow(li, i);
-      list.appendChild(li);
+    keepPlace(function () {
+      while (list.firstChild) list.removeChild(list.firstChild);
+      rows.forEach(function (_, i) {
+        const li = el('li', 'chapter-snap-item');
+        renderRow(li, i);
+        list.appendChild(li);
+      });
     });
     renderHead();
   }
   function rerenderRow(i) {
     const li = list.children[i];
-    if (li) renderRow(li, i);
+    if (li) keepPlace(function () { renderRow(li, i); });
     renderHead();
   }
 
