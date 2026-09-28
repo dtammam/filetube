@@ -6,7 +6,7 @@
 // (tools/capture/compare.js, channel threshold 16, AA-suppressed) -> report + crops.
 //
 //   node test/visual/run.js [--update] [--data DIR] [--out DIR] [--era 2021,2005|all]
-//        [--only 04,18] [--jobs N] [--dpr N] [--baselines DIR] [--idle SECONDS]
+//        [--only 04,18] [--vp phone,land,desktop] [--jobs N] [--dpr N] [--baselines DIR] [--idle SECONDS]
 //
 // --update writes the captured shots as the new baselines (the CI rebaseline job,
 // .github/workflows/visual.yml; D10.5: committed baselines come ONLY from the pinned CI
@@ -42,6 +42,11 @@ const OUT = path.resolve(arg('--out', path.join(os.tmpdir(), 'filetube-visual-ru
 const eraArg = arg('--era', 'all');
 const eras = eraArg === 'all' ? ERAS : eraArg.split(',');
 const ONLY = arg('--only', '');
+// --vp: the viewports this run shoots and compares (CI: one leg per era x viewport).
+const { viewports } = require('./capture.js');
+const VPS = Object.keys(viewports(1));
+const vpArg = arg('--vp', 'all');
+const vps = vpArg === 'all' ? VPS : vpArg.split(',');
 const JOBS = Math.max(1, Number(arg('--jobs', '1')) || 1);
 const DPR = arg('--dpr', '1');
 const THRESHOLD = 16;
@@ -51,12 +56,17 @@ const IDLE_S = Math.max(0, Number(arg('--idle', '0')) || 0);
 
 function die(code, msg) { console.error(msg); process.exit(code); }
 for (const e of eras) if (!ERAS.includes(e)) die(2, `run: --era must be 2021, 2014, 2009, 2005, a comma list of them, or all (got ${eraArg})`);
+for (const v of vps) if (!VPS.includes(v)) die(2, `run: --vp must be ${VPS.join(', ')}, a comma list of them, or all (got ${vpArg})`);
 
 // The baselines a run with --era/--only covers (its compare scope, and what --update replaces).
-const FILTERED = Boolean(ONLY) || eras.length < ERAS.length;
+const FILTERED = Boolean(ONLY) || eras.length < ERAS.length || vps.length < VPS.length;
 const scope = (f) => {
   const era = (f.match(/-(2014|2009|2005)\.png$/) || [null, '2021'])[1];
   if (!eras.includes(era)) return false;
+  // <scene>--<vp>-<mode>[-<era>].png; a name that does not parse is IN scope (so it fails as
+  // missing somewhere instead of silently escaping every leg).
+  const vp = ((f.split('--')[1] || '').split('-')[0]);
+  if (VPS.includes(vp) && !vps.includes(vp)) return false;
   return !ONLY || ONLY.split(',').some((s) => f.startsWith(s) || f.split('--')[0].includes(s));
 };
 
@@ -70,7 +80,7 @@ if (!UPDATE && pngs(BASELINES).length === 0) {
 const children = new Set();
 function captureEra(era, base, shots) {
   return new Promise((resolve) => {
-    const cargs = [path.join(__dirname, 'capture.js'), '--data', DATA, '--out', path.join(shots, `.era-${era}`), '--era', era, '--dpr', DPR, '--no-rotation'];
+    const cargs = [path.join(__dirname, 'capture.js'), '--data', DATA, '--out', path.join(shots, `.era-${era}`), '--era', era, '--vp', vps.join(','), '--dpr', DPR, '--no-rotation'];
     if (ONLY) cargs.push('--only', ONLY);
     const child = spawn(process.execPath, cargs, { cwd: REPO, env: { ...process.env, BASE_URL: base }, stdio: ['ignore', 'pipe', 'pipe'] });
     children.add(child);

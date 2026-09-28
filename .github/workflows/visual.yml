@@ -2,7 +2,9 @@ name: Visual
 
 # UI professionalism pass, plan D10.5 (visual diff) + D10.2 (geometry checks G1-G4).
 #
-# `visual` runs on every push and PR: in the pinned Playwright container it seeds the
+# `visual` runs on every push and PR (except docs-only ones, below), one parallel leg per era x
+# viewport:
+# in the pinned Playwright container each leg seeds the
 # synthetic fixture (test/visual/seed.js), boots a FRESH read-only server on it
 # (test/visual/start-server.sh sets FILETUBE_READONLY=1 and FILETUBE_READ_ONLY_MEDIA=1 and
 # turns every background poller off), runs the geometry checks, then captures the scene
@@ -12,28 +14,44 @@ name: Visual
 # `rebaseline` runs only from "Run workflow" (workflow_dispatch), or on a push to a
 # `rebaseline/*` branch (GitHub dispatches a workflow only once it exists on the default
 # branch, so the FIRST baselines, and any taken before a merge, come from a pushed
-# rebaseline/<step> branch at the reviewed sha), in the SAME container, and uploads the new
-# baselines as an artifact. The visual diff skips those branches (they have no baselines yet). Committing them is a human/Architect step: download
+# rebaseline/<step> branch at the reviewed sha), in the SAME container, one leg per era x
+# viewport, and `rebaseline-merge` joins the 12 into ONE `visual-baselines` artifact. The visual diff skips those branches (they have no baselines yet). Committing them is a human/Architect step: download
 # the artifact into test/visual/baselines/ and commit it as its own commit, named for the step.
 # Baselines are never generated on a dev box (fonts and raster differ outside the container).
 #
 # The container tag must equal the Playwright version tools/capture/package-lock.json pins
 # (test/unit/visual-workflow.test.js binds the two).
 
+# Docs-only changes skip both jobs: the app renders nothing from docs/ or a .md file, so a
+# change touching ONLY those paths cannot move a pixel (a change that touches anything else
+# runs everything). main requires no status checks, so a skipped run holds nothing up.
 on:
   push:
     branches: ['**']
+    paths-ignore: ['**/*.md', 'docs/**']
   pull_request:
+    paths-ignore: ['**/*.md', 'docs/**']
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  # One leg per era x viewport, 12 in parallel (it was ONE job, ~50 min; an era alone takes
+  # ~23 min, so the viewport split is what brings a run near 10). Each leg diffs only its own
+  # baselines (run.js --era/--vp scope the compare); together the 12 cover the whole set. The
+  # geometry checks ride the 2021 desktop leg. A failing leg uploads the shots it took, and
+  # `visual-shots` joins them: for an INTENDED change, check the report crops, then commit those
+  # shots as the new baselines (no separate rebaseline run).
   visual:
     if: github.event_name != 'workflow_dispatch' && !startsWith(github.ref, 'refs/heads/rebaseline/')
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        era: ['2021', '2014', '2009', '2005']
+        vp: ['phone', 'land', 'desktop']
     container:
       image: mcr.microsoft.com/playwright:v1.62.0-jammy
       options: --ipc=host
@@ -61,17 +79,18 @@ jobs:
           node -e "const v = require('./tools/capture/node_modules/playwright/package.json').version; if (v !== '1.62.0') { console.error('tools/capture installed Playwright ' + v + ' but the container is v1.62.0-jammy - bump both together'); process.exit(1); } console.log('playwright ' + v)"
 
       - name: Geometry checks (G1-G4)
+        if: matrix.era == '2021' && matrix.vp == 'desktop'
         run: npm run test:geometry
 
       - name: Visual diff (0 changed pixels)
         if: ${{ !cancelled() }}
-        run: node test/visual/run.js --data /tmp/filetube-visual-data --out test-results/visual --jobs 2
+        run: node test/visual/run.js --era ${{ matrix.era }} --vp ${{ matrix.vp }} --data /tmp/filetube-visual-data --out test-results/visual
 
       - name: Upload the report and crops (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: visual-report
+          name: visual-report-${{ matrix.era }}-${{ matrix.vp }}
           path: |
             test-results/visual/report/
             test-results/visual/run-record-*.json
@@ -79,10 +98,39 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+      - name: Upload the shots this leg took (on failure; the new baselines if the change is intended)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-shots-${{ matrix.era }}-${{ matrix.vp }}
+          path: test-results/visual/shots/*.png
+          if-no-files-found: ignore
+          retention-days: 14
+
+  visual-shots:
+    needs: visual
+    if: ${{ always() && needs.visual.result == 'failure' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Join the failing legs' shots into one artifact
+        uses: actions/upload-artifact/merge@v4
+        with:
+          name: visual-shots
+          pattern: visual-shots-*
+          retention-days: 14
+
+  # The same 12 legs; `rebaseline-merge` joins them into the ONE `visual-baselines` artifact
+  # (flat, and only when EVERY leg passed: a plain `needs`, no `if`), so the download-and-commit
+  # step is unchanged.
   rebaseline:
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/rebaseline/'))
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        era: ['2021', '2014', '2009', '2005']
+        vp: ['phone', 'land', 'desktop']
     container:
       image: mcr.microsoft.com/playwright:v1.62.0-jammy
       options: --ipc=host
@@ -108,13 +156,28 @@ jobs:
         run: |
           node -e "const v = require('./tools/capture/node_modules/playwright/package.json').version; if (v !== '1.62.0') { console.error('tools/capture installed Playwright ' + v + ' but the container is v1.62.0-jammy - bump both together'); process.exit(1); } console.log('playwright ' + v)"
 
-      - name: Capture new baselines
-        run: node test/visual/run.js --update --data /tmp/filetube-visual-data --out test-results/visual --jobs 2
+      # The committed baselines are removed first, so the directory (and the upload) holds
+      # ONLY this era's fresh shots, never a stale one from the checkout.
+      - name: Capture new baselines (this era)
+        run: |
+          rm -f test/visual/baselines/*.png
+          node test/visual/run.js --update --era ${{ matrix.era }} --vp ${{ matrix.vp }} --data /tmp/filetube-visual-data --out test-results/visual
 
-      - name: Upload the baselines (commit them into test/visual/baselines/ yourself)
+      - name: Upload this era's baselines
         uses: actions/upload-artifact@v4
         with:
-          name: visual-baselines
+          name: visual-baselines-${{ matrix.era }}-${{ matrix.vp }}
           path: test/visual/baselines/*.png
           if-no-files-found: error
+          retention-days: 30
+
+  rebaseline-merge:
+    needs: rebaseline
+    runs-on: ubuntu-latest
+    steps:
+      - name: Join the four eras into one artifact (commit it into test/visual/baselines/ yourself)
+        uses: actions/upload-artifact/merge@v4
+        with:
+          name: visual-baselines
+          pattern: visual-baselines-*
           retention-days: 30
