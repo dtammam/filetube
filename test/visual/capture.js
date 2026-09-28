@@ -260,6 +260,10 @@ function sceneKit(FX, BASE) {
     // failed), the handoff card (a scripted presence), the Modern header sort menu, and a
     // search that finds nothing (the ui-state).
     ...S9_SCENES(FX),
+    // Step 7 retire, R3 (Settings, Stats, TV): the surfaces the retire moved onto the primitives
+    // that no scene above shows (the TV view, the Stats tables and About, the Settings sections
+    // not in SETTINGS_SECTIONS). Stubbed payloads stand in where the fixture holds nothing.
+    ...R3_SCENES(FX),
     // Books and the reader (sweep S10): the library, one shelf, the reader and its two sheets.
     { id: '50-books-library', path: '/books', run: async (p) => { await p.waitForSelector('#books-grid .book-card img', { timeout: 12000 }); await sleep(600); } },
     { id: '51-books-shelf', path: `/books?root=${encodeURIComponent(FX.bookShelf || '')}`, vps: ['phone', 'desktop'], run: async (p) => { await p.waitForSelector('#books-grid .book-card img', { timeout: 12000 }); await sleep(600); } },
@@ -338,6 +342,68 @@ function S9_SCENES(FX) {
     { id: '90-sort-menu', path: '/', vps: ['phone', 'desktop'], run: async (p, vp) => { await p.evaluate(() => localStorage.setItem('ft-modern-mode', 'on')); await p.reload({ waitUntil: 'networkidle' });
       await p.waitForSelector('.modern-sort-btn', { timeout: 12000 }); await tap(p, '.modern-sort-btn', vp); await sleep(600); } },
     { id: '91-search-empty', path: '/?search=zzqqxx', vps: ['phone', 'desktop'], run: async (p) => { await p.waitForLoadState('networkidle'); await sleep(900); } },
+  ];
+}
+
+// Step 7 retire, R3: every selector a scene waits on or taps exists in BOTH the pre-retire tree and
+// the retired one, so one capture.js shoots the before/after pair. The fixture has no TV library,
+// no duplicates, no trash and nothing hidden from the feed, so those payloads are stubbed (the
+// poster / thumbnail images then fail alike on both sides).
+function R3_SCENES(FX) {
+  const stubFetches = async (p, map) => {
+    await p.addInitScript((m) => {
+      const real = window.fetch.bind(window);
+      window.fetch = (input, init) => {
+        const s = typeof input === 'string' ? input : (input && input.url) || '';
+        const hit = Object.keys(m).find((u) => s === u || s.startsWith(u + '?'));
+        if (hit && (!init || !init.method || init.method === 'GET')) {
+          return Promise.resolve(new Response(JSON.stringify(m[hit]), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+        }
+        return real(input, init);
+      };
+    }, map);
+    await p.reload({ waitUntil: 'networkidle' });
+  };
+  const ep = (id, n, title, dur) => ({ id, seasonNum: 1, episodeNum: n, title, durationSec: dur });
+  const TV = {
+    '/api/tv': { shows: [
+      { id: 'sh1', name: 'Harbor Nights', seasonCount: 2, episodeCount: 14 },
+      { id: 'sh2', name: 'The Long Field', seasonCount: 1, episodeCount: 6 },
+      { id: 'sh3', name: 'Signal Box', seasonCount: 1, episodeCount: 1 },
+    ] },
+    '/api/tv/continue': { episodes: [{ id: 'e2', showId: 'sh1', showName: 'Harbor Nights', seasonNum: 1, episodeNum: 2, title: 'Low Tide', durationSec: 2580, position: 1290 }] },
+    '/api/tv/sh1': { id: 'sh1', name: 'Harbor Nights', seasons: [
+      { seasonNum: 1, label: 'Season 1', episodes: [ep('e1', 1, 'Pilot', 3725), ep('e2', 2, 'Low Tide', 2580), ep('e3', 3, 'The Lighthouse Keeper Who Stayed Up All Night', 2610)] },
+      { seasonNum: 2, label: 'Season 2', episodes: [ep('e4', 1, 'Return', 2700)] },
+    ] },
+  };
+  const DUPS = { nameGroups: [{ key: 'Bench build, part 2.mp4', totalBytes: 3000000, wastedBytes: 1500000, items: [
+    { id: 'd1', filePath: '/media/Harbor Workshop/Bench build, part 2.mp4', size: 1500000 },
+    { id: 'd2', filePath: '/media/Archive/Bench build, part 2.mp4', size: 1500000 },
+  ] }], idGroups: [] };
+  const TRASH = { items: [
+    { trashId: 't1', title: 'Garden party 2019', size: 734003200, trashedAt: Date.UTC(2026, 7, 30), type: 'video' },
+    { trashId: 't2', title: 'Bench build, part 1', size: 52428800, trashedAt: Date.UTC(2026, 7, 25), type: 'video' },
+  ], total: 2, totalSizeBytes: 786432000, retentionDays: 30 };
+  const HIDDEN = { items: [
+    { id: FX.video, title: 'Bench build, part 2', channelName: 'Harbor Workshop' },
+    { id: FX.videoUnsub || FX.video, title: 'River walk at dawn', channelName: 'Northbound Field Notes' },
+  ] };
+  const section = async (p, key) => { await p.waitForLoadState('networkidle'); await sleep(800); await openSettingsSection(p, key); };
+  return [
+    { id: '93-tv-shows', path: '/tv', run: async (p) => { await stubFetches(p, TV); await p.waitForSelector('.show-card', { timeout: 12000 }); await sleep(800); } },
+    { id: '94-tv-show-detail', path: '/tv', run: async (p, vp) => { await stubFetches(p, TV); await p.waitForSelector('.show-card', { timeout: 12000 });
+      await tap(p, '.show-card', vp); await p.waitForSelector('.tv-episode-list', { timeout: 8000 }); await sleep(800); } },
+    { id: '95-stats-av', path: '/stats.html', run: async (p) => { await section(p, 'videos-audio'); await p.waitForSelector('#stats-av-list [role="row"]', { timeout: 12000 }); await sleep(400); } },
+    { id: '96-stats-duplicates', path: '/stats.html', run: async (p, vp) => { await stubFetches(p, { '/api/duplicates': DUPS }); await section(p, 'duplicates');
+      await p.waitForSelector('.stable-expand-btn, .dup-expand', { timeout: 12000 }); await tap(p, '.stable-expand-btn, .dup-expand', vp); await sleep(500); } },
+    { id: '97-stats-about', path: '/stats.html', run: async (p) => { await section(p, 'about-filetube'); await sleep(400); } },
+    { id: '98-settings-trash', path: '/setup.html', run: async (p) => { await stubFetches(p, { '/api/trash': TRASH }); await section(p, 'trash'); await sleep(400); } },
+    { id: '99-settings-hidden', path: '/setup.html', run: async (p) => { await stubFetches(p, { '/api/feed-hidden': HIDDEN }); await section(p, 'feedhidden'); await sleep(400); } },
+    { id: '9a-settings-account', path: '/setup.html', run: async (p) => { await section(p, 'account'); await sleep(400); } },
+    { id: '9b-settings-book-folders', path: '/setup.html', run: async (p) => { await section(p, 'book-folders'); await sleep(400); } },
+    { id: '9c-settings-transcript-ai', path: '/setup.html', run: async (p, vp) => { await section(p, 'transcript-ai');
+      await tap(p, '#transcript-ai-add-btn', vp); await sleep(300); await tap(p, '#transcript-ai-add-btn', vp); await sleep(500); } },
   ];
 }
 
