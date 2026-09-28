@@ -2,7 +2,7 @@
 
 // [UNIT] v1.202: the `.icon-attribute` glyph (Material `drive_file_move`).
 // Locks the three CSS sites (size block, mask line, @supports fill - the
-// v1.47.6 blank-box scar), the asset + README row, and that watch.js emits
+// v1.47.6 blank-box scar), the asset + README row, and (UI pass S3) that watch.js draws the registry glyph instead; watch.js used to emit
 // it (and no longer the mask-less `icon-user`). Comments stripped at read.
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -31,8 +31,10 @@ test('icon-attribute: style.css carries the mask, the 1em size-block membership 
 });
 
 test('icon-attribute: watch.js (Attribute button) emits icon-attribute; main.js (folder bulk tool, a labelled ui-btn since sweep S2) needs no mask; neither uses the old mask-less class', () => {
+  // UI pass sweep S3: the watch page's Attribute is a More-menu entry drawing the registry's
+  // `edit` glyph (no mask).
   const watch = stripJs(fs.readFileSync(path.join(PUB, 'js', 'watch.js'), 'utf8'));
-  assert.match(watch, /icon\.className = 'icon-attribute';/, 'watch.js');
+  assert.match(watch, /id: 'attribute', icon: 'edit', label: 'Attribute to a channel'/, 'watch.js');
   const main = stripJs(fs.readFileSync(path.join(PUB, 'js', 'main.js'), 'utf8'));
   assert.match(main, /cardUi\(\)\.button\(\{ variant: 'tonal', size: 'sm', pill: true, label: 'Attribute folder',/, 'main.js: a labelled ui-btn');
   for (const js of [watch, main]) assert.ok(!/icon-user/.test(js), 'no icon-user left');

@@ -2,8 +2,7 @@
 // The geometry scene list (plan D10.2). A SURFACE is one page state the checks measure; the
 // runner expands each into scenes = surface x era x mode x viewport.
 //
-// Today only the primitive kit (/ui-kit.html, D12 step 3) is built from ui-* primitives, so
-// G1-G3 run against it. Each sweep that migrates a surface onto ui-row / ui-btn turns its
+// The primitive kit (/ui-kit.html, D12 step 3) and each migrated surface. Each sweep that migrates a surface onto ui-row / ui-btn turns its
 // PENDING entry below into a live one (drop `pending`, write `open`, set `min` from a real
 // measurement) in the same commit - the runner lists every pending surface on each run, so
 // a sweep that forgets is visible. `fast: true` puts a surface in the pre-push set (D10.2:
@@ -11,6 +10,7 @@
 //
 // Surface fields:
 //   id, owner (the D12 step or sweep), pending (the sweep that will make it live; skipped),
+//   scope: a selector - measure only that subtree (default: the whole page),
 //   path(FX, era, mode) -> the URL path, open(page, vp, helpers) -> drives it to the state,
 //   ready: a selector that exists once the surface rendered,
 //   checks: which of G1-G3 apply (plus HDR / NAV, the chrome's own rendered contracts),
@@ -61,24 +61,49 @@ const SURFACES = [
     min: { G2: { items: 5 }, G3: { groups: 1 }, NAV: { tabs: 5 } },
   },
   // ---- pending: each sweep makes its surface live (D1 AC4/AC5 name these) ----
-  { id: 'channel-card', owner: 'S3', pending: 'S3', note: 'watch page channel row: Subscribe / Notify / Pin (G2, G3)', checks: ['G2', 'G3'], fast: true },
-  { id: 'action-bar', owner: 'S3', pending: 'S3', note: 'watch action bar, stacked buttons (G2, G3)', checks: ['G2', 'G3'], fast: true },
+  // Sweep S3 (D4.9; Dean's "the notification glyph not aligned with the text"): the watch
+  // page's channel row, SUBSCRIBED (Subscribed pill + live bell + pin) and NOT subscribed
+  // (Subscribe pill + the bell's reserved, invisible slot + pin), and the action bar. `scope`
+  // measures only that row. G2: each icon toggle's glyph centred in its button; G3: the
+  // row's buttons one height. Measured at S3 (all eras, phone + desktop): the channel row
+  // has 2 visible icon buttons subscribed / 1 unsubscribed and one 3-button group; the bar
+  // has 4 stacked buttons (Like, Listen, Transcript, More; the fixture has no share link).
+  {
+    id: 'channel-card', owner: 'S3', fast: true, scope: '#watch-channel',
+    path: (FX) => `/watch.html?v=${FX.video}`,
+    ready: '#watch-channel #notify-channel-btn:not([data-reserved])',
+    checks: ['G2', 'G3'],
+    min: { G2: { items: 2 }, G3: { groups: 1 } },
+  },
+  {
+    id: 'channel-card-unsub', owner: 'S3', scope: '#watch-channel',
+    path: (FX) => `/watch.html?v=${FX.videoUnsub}`,
+    ready: '#watch-channel #notify-channel-btn[data-reserved]',
+    checks: ['G2', 'G3'],
+    min: { G2: { items: 1 }, G3: { groups: 1 } },
+  },
+  {
+    id: 'action-bar', owner: 'S3', fast: true, scope: '#watch-actions',
+    path: (FX) => `/watch.html?v=${FX.video}`,
+    ready: '#watch-actions:not([data-loading]) #more-actions-btn',
+    checks: ['G2', 'G3'],
+    min: { G2: { items: 4 }, G3: { groups: 1 } },
+  },
   { id: 'notifications', owner: 'S4', pending: 'S4', note: 'notifications panel: mixed media / podcast / engine rows (G1, G2)', checks: ['G1', 'G2'], fast: true },
   { id: 'subscriptions', owner: 'S5', pending: 'S5', note: 'Subscriptions rows: pinned and unpinned, errored and ok (G1, G2, G3)', checks: ['G1', 'G2', 'G3'], fast: true },
   { id: 'podcast-episodes', owner: 'S6', pending: 'S6', note: 'a podcast episode list (G1)', checks: ['G1'] },
   { id: 'sheet-header', owner: 'S9', pending: 'S9', note: 'a sheet header: title + close (G2)', checks: ['G2'] },
 ];
 
-// The pre-push set: 4 scenes of the fast surfaces (D10.2, about 20s). Until the D10.2 four
-// land, the kit (Modern light, 2005) and the chrome (sweep S1) stand in.
+// The pre-push set: 4 scenes of the fast surfaces (D10.2, about 20s).
 const FAST_SCENES = [
-  { surface: 'kit', era: '2021', mode: 'light', vp: 'phone' },
-  { surface: 'kit', era: '2005', mode: 'light', vp: 'phone' },
-  // Sweep S1: the chrome rides every page and its cascade bug class (v1.85) is invisible to
-  // unit tests, so the header and the bar take two of the kit's four stand-in slots (the
-  // set stays 4 scenes, D10.2).
+  // Sweeps S1 + S3: the real D10.2 surfaces replace the kit stand-ins - the chrome (its
+  // cascade bug class, v1.85, is invisible to unit tests) and the watch page's channel card
+  // and action bar (Dean's bell-alignment complaint). The set stays 4 scenes.
   { surface: 'header', era: '2021', mode: 'dark', vp: 'phone' },
   { surface: 'bottom-bar', era: '2005', mode: 'light', vp: 'phone' },
+  { surface: 'channel-card', era: '2021', mode: 'dark', vp: 'phone' },
+  { surface: 'action-bar', era: '2009', mode: 'dark', vp: 'desktop' },
 ];
 
 // G4 sequences (AC9). `pocket-rotation` is the capture's Pocket sequence (test/visual/capture.js

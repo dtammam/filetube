@@ -141,16 +141,18 @@ async function settle(times) {
 // heart is gone deliberately -- this repo's v1.38 lesson is "draw glyphs in CSS,
 // never emoji codepoints" (iOS renders them inconsistently), and `.icon-heart`
 // has existed since v1.40.
+// UI pass sweep S3 (D4.9): the Like button is a stacked ui-btn whose label is the stable
+// stack (both words laid out, the idle one hidden) - the label read is the VISIBLE slot.
 function likeLabel(btn) {
-  const label = btn && btn.querySelector('.btn-label');
-  return label ? label.textContent : null;
+  const slot = btn && btn.querySelector('.ui-btn__stack > .ui-btn__slot:not([data-idle])');
+  return slot ? slot.textContent : null;
 }
 
-// The glyph must accompany the label, or hiding the label at phone widths would
-// leave an EMPTY button -- the specific regression this shape exists to prevent.
+// The glyph must accompany the label: a registry heart (favorite / favorite.fill).
 function likeHasIcon(btn) {
-  return Boolean(btn && btn.querySelector('i.icon-heart'));
+  return Boolean(btn && btn.querySelector('.ui-btn__icon > svg.ui-icon use[href^="#i-favorite"]'));
 }
+const likeGlyph = (btn) => btn.querySelector('.ui-btn__icon use').getAttribute('href');
 
 test('watch page: the Like button reflects the initial NOT-liked membership state', async () => {
   const { fetchImpl } = makeWatchFetchStub(false);
@@ -161,17 +163,17 @@ test('watch page: the Like button reflects the initial NOT-liked membership stat
     const likeBtn = document.getElementById('like-media-btn');
     assert.ok(likeBtn, 'expected a #like-media-btn to be mounted');
     assert.ok(
-      document.querySelector('.watch-action-btns').contains(likeBtn),
-      'expected the Like button to live inside .watch-action-btns, alongside Download/Delete/Move'
+      document.querySelector('#watch-actions').contains(likeBtn),
+      'expected the Like button to live in the action bar'
     );
     assert.strictEqual(likeLabel(likeBtn), 'Like');
     assert.ok(likeHasIcon(likeBtn), 'the glyph must survive alongside the hideable label');
     assert.strictEqual(likeBtn.getAttribute('aria-pressed'), 'false');
-    // v1.108 (Dean): the YouTube heart convention -- NOT-liked is the neutral
-    // grey resting state (no `.liked`, and deliberately no `.btn-primary`: the
-    // old red-as-actionable convention is REVERSED).
-    assert.ok(!likeBtn.classList.contains('liked'), 'not-yet-liked must be the neutral/grey resting state');
-    assert.ok(!likeBtn.classList.contains('btn-primary'), 'not-yet-liked is NO LONGER the primary/red CTA (convention reversed)');
+    // v1.108 (Dean): the YouTube heart convention -- NOT-liked is the resting state
+    // (the outline heart, deliberately no primary/red CTA). UI pass S3 (D8.8): the
+    // liked state is the FILLED heart in ink - red is not a selected role.
+    assert.strictEqual(likeGlyph(likeBtn), '#i-favorite', 'not-yet-liked: the outline heart');
+    assert.ok(!/primary|danger/.test(likeBtn.className), 'never the primary/red CTA');
   } finally {
     dom.window.close();
   }
@@ -187,10 +189,9 @@ test('watch page: the Like button reflects the initial ALREADY-liked membership 
     assert.ok(likeBtn, 'expected a #like-media-btn to be mounted');
     assert.strictEqual(likeLabel(likeBtn), 'Liked');
     assert.strictEqual(likeBtn.getAttribute('aria-pressed'), 'true');
-    // v1.108: LIKED fills the heart red via the `.liked` class (mirrors
-    // `.card-like-btn.liked`); never `.btn-primary`.
-    assert.ok(likeBtn.classList.contains('liked'), 'already-liked must carry .liked (red heart)');
-    assert.ok(!likeBtn.classList.contains('btn-primary'), 'liked state is red-via-.liked, never btn-primary');
+    // v1.108: LIKED fills the heart; UI pass S3: the registry's filled glyph (never a red class).
+    assert.strictEqual(likeGlyph(likeBtn), '#i-favorite-fill', 'already-liked: the filled heart');
+    assert.ok(!/primary|danger/.test(likeBtn.className));
   } finally {
     dom.window.close();
   }
@@ -213,8 +214,7 @@ test('watch page: clicking Like toggles via POST then DELETE /api/liked/:id, re-
     assert.deepStrictEqual(calls[0], { url: `/api/liked/${MEDIA_ID}`, method: 'POST' });
     assert.strictEqual(likeLabel(likeBtn), 'Liked', 'expected the button to flip to liked AFTER the POST resolved');
     assert.strictEqual(likeBtn.getAttribute('aria-pressed'), 'true');
-    assert.ok(likeBtn.classList.contains('liked'), 'liked after POST => .liked (red heart)');
-    assert.ok(!likeBtn.classList.contains('btn-primary'));
+    assert.strictEqual(likeGlyph(likeBtn), '#i-favorite-fill', 'liked after POST => the filled heart');
 
     likeBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
     await settle();
@@ -223,8 +223,7 @@ test('watch page: clicking Like toggles via POST then DELETE /api/liked/:id, re-
     assert.deepStrictEqual(calls[1], { url: `/api/liked/${MEDIA_ID}`, method: 'DELETE' });
     assert.strictEqual(likeLabel(likeBtn), 'Like', 'expected the button to flip back to not-liked AFTER the DELETE resolved');
     assert.strictEqual(likeBtn.getAttribute('aria-pressed'), 'false');
-    assert.ok(!likeBtn.classList.contains('liked'), 'un-liked after DELETE => no .liked (grey heart)');
-    assert.ok(!likeBtn.classList.contains('btn-primary'));
+    assert.strictEqual(likeGlyph(likeBtn), '#i-favorite', 'un-liked after DELETE => the outline heart');
   } finally {
     dom.window.close();
   }

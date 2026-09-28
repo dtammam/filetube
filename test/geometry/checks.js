@@ -2,7 +2,9 @@
 // Geometry checks G1-G4 (UI professionalism pass, plan D10.2). Two halves:
 //
 // - COLLECTORS run in the page (passed to page.evaluate, so each is self-contained): they
-//   read getBoundingClientRect() boxes off the live DOM and return plain data;
+//   read getBoundingClientRect() boxes off the live DOM and return plain data. Each takes an
+//   optional SCOPE selector (a surface's `scope`): only that subtree is measured (a missing
+//   scope element measures nothing, which the surface's anti-vacuity floor then fails);
 // - EVALUATORS are pure (node side, unit-tested in test/unit/geometry-checks.test.js with
 //   synthetic boxes): they turn that data into failures.
 //
@@ -25,9 +27,10 @@ const G4_TOL = 1;
 // is measured, so a page-wide surface (the header on Home) is not failed by another sweep's
 // controls elsewhere on the page.
 function collectG1(scope) {
+  const root = scope ? document.querySelector(scope) : document;
+  if (!root) return [];
   const SLOTS = ['lead', 'media', 'body', 'aside', 'actions'];
   const shown = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 || r.height > 0; };
-  const root = (scope && document.querySelector(scope)) || document;
   const lists = [];
   root.querySelectorAll('.ui-list').forEach((list, li) => {
     if (!shown(list)) return;
@@ -48,10 +51,11 @@ function collectG1(scope) {
 }
 
 function collectG2(scope) {
+  const root = scope ? document.querySelector(scope) : document;
+  if (!root) return [];
   const box = (el) => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
   const visible = (el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; };
   const name = (el) => (el.getAttribute('aria-label') || el.textContent || '').trim().replace(/\s+/g, ' ').slice(0, 30);
-  const root = (scope && document.querySelector(scope)) || document;
   const items = [];
   root.querySelectorAll('.ui-btn').forEach((btn) => {
     const icon = btn.querySelector('.ui-btn__icon .ui-icon');
@@ -75,8 +79,9 @@ function collectG2(scope) {
 }
 
 function collectG3(scope) {
+  const root = scope ? document.querySelector(scope) : document;
+  if (!root) return [];
   const groups = new Map();
-  const root = (scope && document.querySelector(scope)) || document;
   root.querySelectorAll('.ui-btn').forEach((btn) => {
     const r = btn.getBoundingClientRect();
     if (!(r.width > 0 && r.height > 0) || !btn.parentElement) return;

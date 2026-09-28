@@ -929,13 +929,9 @@
     <div class="player-container" id="player-wrapper">
       <div id="audio-bg-art" class="audio-bg-art"></div>
       <div id="art-play-glyph" class="art-play-glyph" aria-hidden="true"></div>
-      <div id="resume-overlay" class="resume-overlay" style="display: none;">
-        <h3>Resume playback?</h3>
-        <p>You watched this media up to <span id="resume-time-str">0:00</span>. Would you like to resume from there?</p>
-        <div class="resume-actions">
-          <button class="btn" id="resume-no-btn">Start from beginning</button>
-          <button class="btn btn-primary" id="resume-yes-btn">Resume</button>
-        </div>
+      <div id="resume-toast" class="player-resumed" role="status" hidden>
+        <span class="player-resumed__text">Resumed at <span id="resume-time-str">0:00</span></span>
+        <button type="button" class="ui-btn ui-btn--plain ui-btn--sm player-resumed__action" id="resume-restart-btn"><span class="ui-btn__label">Start over</span></button>
       </div>
       <div id="transcode-overlay" class="resume-overlay" style="display: none;">
         <div class="transcode-spinner" id="transcode-spinner"></div>
@@ -946,7 +942,7 @@
         <track id="cc-track" kind="captions" srclang="en" label="English">
         Your browser does not support HTML5 video player.
       </video>
-      <div id="speed-badge" class="speed-badge" style="display: none;">2× ▶▶</div>
+      <div id="speed-badge" class="speed-badge" hidden><svg class="ui-icon ui-icon--sm" aria-hidden="true"><use href="#i-fast_forward"/></svg><span class="speed-badge__label">2x</span></div>
       <div id="skip-controls" class="skip-controls" style="display: none;">
         <div class="skip-ripple skip-ripple-left" id="skip-ripple-left">« 15s</div>
         <div class="skip-ripple skip-ripple-right" id="skip-ripple-right">15s »</div>

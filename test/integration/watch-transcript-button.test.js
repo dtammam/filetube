@@ -143,7 +143,7 @@ function installClipboard(window, writes) {
 
 function click(dom, el) { el.dispatchEvent(new dom.window.Event('click', { bubbles: true })); }
 
-test('watch page: the Transcript button mounts inside .watch-action-btns (icon + hideable label) when the item has captions', async () => {
+test('watch page: the Transcript button mounts in the action bar (a stacked ui-btn: glyph over caption) when the item has captions', async () => {
   const { fetchImpl } = makeWatchFetchStub(true);
   const { dom } = await loadWatchWithFetchStub(fetchImpl);
   try {
@@ -151,10 +151,10 @@ test('watch page: the Transcript button mounts inside .watch-action-btns (icon +
     const { document } = dom.window;
     const btn = document.getElementById('transcript-media-btn');
     assert.ok(btn, 'expected a #transcript-media-btn');
-    assert.ok(document.querySelector('.watch-action-btns').contains(btn), 'lives in the nowrap button sub-group beside Share');
-    assert.strictEqual(btn.querySelector('.btn-label').textContent, 'Transcript');
-    assert.ok(btn.querySelector('i.icon-transcript'), 'the glyph accompanies the phone-hideable label');
-    assert.strictEqual(btn.className, 'btn', 'the SAME .btn as Share/Like - no bespoke sizing');
+    assert.ok(document.querySelector('#watch-actions').contains(btn), 'lives in the action bar beside Share');
+    assert.strictEqual(btn.querySelector('.ui-btn__label').textContent, 'Transcript');
+    assert.ok(btn.querySelector('.ui-btn__icon use[href="#i-subject"]'), 'the registry glyph over the caption');
+    assert.strictEqual(btn.className, 'ui-btn ui-btn--plain ui-btn--md ui-btn--stack', 'the SAME stacked ui-btn as Share/Like - no bespoke sizing');
   } finally { dom.window.close(); }
 });
 
@@ -511,8 +511,16 @@ test('watch page (phone): a COMPLETED share-sheet share shows no toast; the clip
   } finally { dom.window.close(); }
 });
 
-// ---- v1.202 (Dean's action-row re-evaluation): the compact-mode "More" pick-one ----
-test('watch page: More lists exactly the MOUNTED secondary buttons, in tier order, with their CURRENT labels; a pick clicks the real button', async () => {
+// ---- UI pass sweep S3 (D4.9, F45; converts the v1.202 "More" pick-one locks, AC12): More opens
+// ONE ui.menu of every action not in the bar, built from the LIVE state at each open; a pick
+// runs the real handler; the menu closes with the view. ----
+const menuLabels = (document) => Array.from(document.querySelectorAll('.ui-sheet.is-open .ui-row')).map((r) => r.textContent.trim());
+async function openMore(dom) {
+  click(dom, dom.window.document.getElementById('more-actions-btn'));
+  await settle();
+  await new Promise((r) => setTimeout(r, 40)); // the sheet opens on the next frame
+}
+test('watch page: More lists the live entries in order (no capability -> no Move / Move to Trash; no module answer -> no Reheat); a pick runs the REAL handler', async () => {
   const watchedPosts = [];
   const { fetchImpl } = makeWatchFetchStub(true, 200, []);
   const wrapped = (input, init) => {
@@ -525,35 +533,40 @@ test('watch page: More lists exactly the MOUNTED secondary buttons, in tier orde
     await settle();
     const { document } = dom.window;
     const more = document.getElementById('more-actions-btn');
-    assert.ok(more, 'the More button ships in the markup');
-    assert.ok(document.querySelector('.watch-action-btns').contains(more));
-    click(dom, more);
-    await settle();
-    // NOT listed, by the mechanism: Delete is `hidden` and Move never mounts
-    // because this stub's user probe never resolves (no canModifyLibrary);
-    // Reheat's yt-dlp health probe never resolves; Attribute is behind the
-    // v1.202 flag. The label is the button's CURRENT .btn-label text.
-    assert.deepStrictEqual(choiceLabels(document), ['Queue', 'Next', 'Download', 'Mark watched'], 'mounted, non-hidden secondary buttons only, in SECONDARY_ACTION_IDS order (v1.253: Queue leads - Dean moved it under More)');
-    click(dom, document.querySelectorAll('.choice-modal-btn')[3]);
+    assert.ok(more && document.querySelector('#watch-actions').contains(more), 'More is the bar\'s last column');
+    await openMore(dom);
+    // NOT listed, by the mechanism: this stub's user probe never resolves (no
+    // canModifyLibrary -> no Move / Move to Trash); Reheat's yt-dlp health probe never
+    // resolves; Attribute is behind the v1.202 flag.
+    const labels = menuLabels(document);
+    assert.deepStrictEqual(labels.slice(0, 4), ['Play next', 'Add to queue', 'Save to device', 'Mark as watched']);
+    for (const gone of ['Move to another folder', 'Move to Trash', 'Reheat metadata', 'Attribute to a channel']) assert.ok(!labels.includes(gone), gone + ' is not offered');
+    const row = Array.from(document.querySelectorAll('.ui-sheet.is-open .ui-row')).find((r) => r.textContent.trim() === 'Mark as watched');
+    click(dom, row);
     await settle();
     assert.deepStrictEqual(watchedPosts, [`/api/watched/${MEDIA_ID}`], 'the pick ran the REAL Mark-watched handler');
   } finally { dom.window.close(); }
 });
 
-test('watch page: the More pick-one reflects a mutated label and is torn down on SPA navigation', async () => {
+test('watch page: the More menu reads the state at each open (Mark as watched -> Mark as unwatched) and closes on SPA navigation', async () => {
   const { fetchImpl } = makeWatchFetchStub(true, 200, []);
-  const { dom } = await loadWatchWithFetchStub(fetchImpl);
+  const wrapped = (input, init) => {
+    const url = typeof input === 'string' ? input : (input && input.url);
+    if (url === `/api/watched/${MEDIA_ID}`) return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+    return fetchImpl(input, init);
+  };
+  const { dom } = await loadWatchWithFetchStub(wrapped);
   try {
     await settle();
     const { document } = dom.window;
-    const watched = document.getElementById('watched-media-btn');
-    watched.querySelector('.btn-label').textContent = 'Watched';
-    click(dom, document.getElementById('more-actions-btn'));
+    await openMore(dom);
+    click(dom, Array.from(document.querySelectorAll('.ui-sheet.is-open .ui-row')).find((r) => r.textContent.trim() === 'Mark as watched'));
     await settle();
-    assert.ok(choiceLabels(document).includes('Watched'), 'says what the button says now');
+    await openMore(dom);
+    assert.ok(menuLabels(document).includes('Mark as unwatched'), 'says what the toggle does now');
     dom.window.FileTube.navigate('/');
     await new Promise((r) => setTimeout(r, 500));
-    assert.strictEqual(document.querySelector('.choice-modal-list'), null, 'torn down on view abort');
+    assert.strictEqual(document.querySelector('.ui-sheet.is-open'), null, 'closed on view abort');
   } finally { dom.window.close(); }
 });
 
@@ -582,23 +595,32 @@ function adminStub(flag, opts) {
   };
   return { wrapped, held };
 }
-const attrBtn = (d) => d.getElementById('attribute-media-btn');
+// UI pass S3: Attribute is a More-menu entry; "mounted" = offered when More opens.
+async function attrOffered(dom) {
+  await openMore(dom);
+  const on = menuLabels(dom.window.document).includes('Attribute to a channel');
+  const x = dom.window.document.querySelector('.ui-sheet.is-open [aria-label="Close"]');
+  if (x) click(dom, x);
+  await settle();
+  return on;
+}
 const barRevealed = (d) => !d.querySelector('.watch-actions').hasAttribute('data-loading');
 
-test('watch page: admin + flag ON -> the Attribute button mounts (with the icon-attribute glyph); admin + flag OFF -> absent', async () => {
+test('watch page: admin + flag ON -> More offers Attribute (the registry edit glyph); admin + flag OFF -> absent', async () => {
   let { wrapped } = adminStub(true);
   let { dom } = await loadWatchWithFetchStub(wrapped);
   try {
     await settle(20);
-    const btn = attrBtn(dom.window.document);
-    assert.ok(btn, 'mounted for an admin with the opt-in on');
-    assert.strictEqual(btn.querySelector('i').className, 'icon-attribute');
+    await openMore(dom);
+    const row = Array.from(dom.window.document.querySelectorAll('.ui-sheet.is-open .ui-row')).find((r) => r.textContent.trim() === 'Attribute to a channel');
+    assert.ok(row, 'offered to an admin with the opt-in on');
+    assert.ok(row.querySelector('use[href="#i-edit"]'), 'the registry glyph');
   } finally { dom.window.close(); }
   ({ wrapped } = adminStub(false));
   ({ dom } = await loadWatchWithFetchStub(wrapped));
   try {
     await settle(20);
-    assert.strictEqual(attrBtn(dom.window.document), null, 'absent with the opt-in off, even for an admin');
+    assert.strictEqual(await attrOffered(dom), false, 'absent with the opt-in off, even for an admin');
   } finally { dom.window.close(); }
 });
 
@@ -607,23 +629,23 @@ test('watch page: the flag gate holds in BOTH resolution orders (settings last /
   let { dom } = await loadWatchWithFetchStub(wrapped);
   try {
     await settle(20);
-    assert.strictEqual(attrBtn(dom.window.document), null, 'not before the flag is known');
+    assert.strictEqual(await attrOffered(dom), false, 'not before the flag is known');
     held.release(); await settle(20);
-    assert.ok(attrBtn(dom.window.document), 'mounts when the flag arrives last');
+    assert.ok(await attrOffered(dom), 'offered when the flag arrives last');
   } finally { dom.window.close(); }
   ({ wrapped, held } = adminStub(true, { holdMe: true }));
   ({ dom } = await loadWatchWithFetchStub(wrapped));
   try {
     await settle(20);
-    assert.strictEqual(attrBtn(dom.window.document), null);
+    assert.strictEqual(await attrOffered(dom), false);
     held.me(); await settle(20);
-    assert.ok(attrBtn(dom.window.document), 'mounts when the user probe arrives last');
+    assert.ok(await attrOffered(dom), 'offered when the user probe arrives last');
   } finally { dom.window.close(); }
   ({ wrapped } = adminStub('reject'));
   ({ dom } = await loadWatchWithFetchStub(wrapped));
   try {
     await settle(20);
-    assert.strictEqual(attrBtn(dom.window.document), null, 'a failed settings fetch = opt-in unknown = absent');
+    assert.strictEqual(await attrOffered(dom), false, 'a failed settings fetch = opt-in unknown = absent');
     assert.ok(barRevealed(dom.window.document), 'the bar still reveals (the flag SETTLED on failure)');
   } finally { dom.window.close(); }
 });
@@ -637,20 +659,22 @@ test('watch page: the action-bar reveal barrier WAITS for the flag answer (no la
     assert.strictEqual(barRevealed(d), false, 'media + capability settled, but the flag has not - still barriered');
     held.release(); await settle(20);
     assert.ok(barRevealed(d), 'revealed once the flag answered');
-    assert.ok(attrBtn(d), 'and Attribute is already in the row at reveal time');
+    assert.ok(await attrOffered(dom), 'and Attribute is already in More at reveal time');
   } finally { dom.window.close(); }
 });
 
-test('watch page: More lists Attribute for admin + flag, and OMITS a disabled secondary button', async () => {
+test('watch page: More lists the admin verbs in order - Move, Attribute (flag on, unattributed), then the danger Move to Trash last', async () => {
   const { wrapped } = adminStub(true);
   const { dom } = await loadWatchWithFetchStub(wrapped);
   try {
     await settle(20);
     const d = dom.window.document;
-    d.getElementById('move-media-btn').disabled = true;
-    click(dom, d.getElementById('more-actions-btn'));
-    await settle();
-    assert.deepStrictEqual(choiceLabels(d), ['Queue', 'Next', 'Download', 'Delete', 'Mark watched', 'Attribute'], 'Move (disabled) omitted; Attribute (flag on, admin, unattributed) listed; Queue leads since v1.253');
+    await openMore(dom);
+    const labels = menuLabels(d);
+    const tail = labels.slice(labels.indexOf('Move to another folder'));
+    assert.deepStrictEqual(tail, ['Move to another folder', 'Attribute to a channel', 'Move to Trash'], labels.join(', '));
+    const trash = Array.from(d.querySelectorAll('.ui-sheet.is-open .ui-row')).find((r) => r.textContent.trim() === 'Move to Trash');
+    assert.ok(trash.classList.contains('ui-row--danger'), 'the danger row');
   } finally { dom.window.close(); }
 });
 

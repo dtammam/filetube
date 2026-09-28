@@ -175,33 +175,32 @@ test('BIDIRECTIONAL: the reference documents every player shortcut, and no other
     + 'add it to CAP_FOR_CASE and document it, or it is an undocumented shortcut');
 
   // ...and nothing advertised is unaccounted for (separators and `?` aside).
-  // R/S live OUTSIDE the main switch by design (the switch early-returns on
-  // a focused BUTTON, the exact post-overlay-render state) -- they are
-  // accounted for here and drift-locked against their OWN listener below.
+  // S (UI pass S3: R went with the resume modal) lives OUTSIDE the main switch by design (the switch early-returns on
+  // a focused BUTTON) -- it is
+  // accounted for here and drift-locked against its OWN listener below.
   // D (v1.50.3 dark/light) is GLOBAL (any page, not just the player) and
   // lives in common.js's capture-phase handler -- drift-locked below too.
-  const accountedFor = new Set([...Object.values(CAP_FOR_CASE), 'Shift', '0', '9', '\u2026', '?', 'R', 'S', 'D']);
+  const accountedFor = new Set([...Object.values(CAP_FOR_CASE), 'Shift', '0', '9', '\u2026', '?', 'S', 'D']);
   const invented = [...documented].filter((k) => !accountedFor.has(k));
   assert.deepEqual(invented, [], `advertised but unaccounted for: ${invented}`);
 });
 
-test('DRIFT LOCK: the documented R/S resume keys are really handled (their own listener + the pure decision table)', () => {
-  // The dialog documents R/S with a "while the Resume prompt is showing"
-  // scope; the real handler is resolveResumeShortcutAction + a dedicated
-  // listener that routes through the REAL buttons' .click() (one shared
-  // decision path with the mouse). Both halves are locked:
+test('DRIFT LOCK: the documented S resume key is really handled (its own listener + the pure decision table)', () => {
+  // UI pass sweep S3 (D8.2): the dialog documents S with a "while "Resumed at" shows"
+  // scope (R went with the modal); the real handler is resolveResumeShortcutAction + a
+  // dedicated listener that routes through the REAL Start over button's .click() (one
+  // shared decision path with the mouse). Both halves are locked:
   const { resolveResumeShortcutAction } = require('../../public/js/player.js');
-  assert.equal(resolveResumeShortcutAction({ key: 'r', overlayVisible: true }), 'resume');
   assert.equal(resolveResumeShortcutAction({ key: 'S', overlayVisible: true }), 'restart');
-  assert.equal(resolveResumeShortcutAction({ key: 'r', overlayVisible: false }), 'none',
-    'the advertised scoping ("while the prompt is showing") must be real');
+  assert.equal(resolveResumeShortcutAction({ key: 's', overlayVisible: false }), 'none',
+    'the advertised scoping ("while it shows") must be real');
+  assert.equal(resolveResumeShortcutAction({ key: 'r', overlayVisible: true }), 'none', 'R is not advertised and does nothing');
 
-  // ...and the listener actually wires the verdicts to the real buttons.
+  // ...and the listener actually wires the verdict to the real button.
   const start = PLAYER.indexOf('resolveResumeShortcutAction({');
   assert.notEqual(start, -1, 'expected the resume-shortcut listener call site');
   const wiring = PLAYER.slice(start, start + 800);
-  assert.match(wiring, /resumeYesBtn\.click\(\)/, 'R must route through the real Resume button');
-  assert.match(wiring, /resumeNoBtn\.click\(\)/, 'S must route through the real Start-over button');
+  assert.match(wiring, /resumeRestartBtn\.click\(\)/, 'S must route through the real Start over button');
 });
 
 test('DRIFT LOCK: the documented D dark/light key is really handled (pure decision + the shared toggleTheme path)', () => {

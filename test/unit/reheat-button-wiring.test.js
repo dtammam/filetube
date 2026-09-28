@@ -70,27 +70,33 @@ function functionBody(src, fnName) {
 
 // ---- 1. It is a sibling of the other five, in the nowrap sub-group ---------
 
-test('the Reheat button mounts into .watch-action-btns, reusing the shared .btn class -- the row stays one line', () => {
-  const body = functionBody(watchJs, 'setupReheatButton');
-  assert.ok(/watch-action-btns/.test(body),
-    'must mount into the nowrap sub-group, like Download/Delete/Move/Like/Share');
-  assert.ok(/reheatBtn\.className = 'btn'/.test(body),
-    'must reuse the SAME .btn token as its five neighbours (no bespoke sizing)');
-  assert.ok(/btn-label/.test(body),
-    'the word must live in .btn-label so the phone breakpoint can hide it and leave the glyph');
-  assert.ok(/reheat-media-btn/.test(body), 'stable id for the control');
+// UI pass sweep S3 (D4.9; converts the v1.49 row locks, AC12): Reheat is a More-menu entry -
+// the bar holds only Like / Share / Listen / Transcript / More, so no count of verbs can widen
+// the row again. It is offered from the live state at each open (the probe's answer, the
+// capability cache before it) and disabled while a run is in flight.
+test('Reheat is a More-menu entry offered by the module probe (the cache first), busy while a run is in flight', () => {
+  const body = functionBody(watchJs, 'setupReheat');
+  assert.match(body, /probeReheatModule\(\)\.then/, 'the latched health probe decides it');
+  assert.match(body, /if \(signal\.aborted\) return;/, 'a dead view ignores a late answer');
+  assert.match(body, /reheatAvailable = enabled === true;/, 'the probe answer is the truth');
+  const { buildWatchMoreItems } = require('../../public/js/watch.js');
+  assert.strictEqual(buildWatchMoreItems({}).some((i) => i.id === 'reheat'), false, 'absent without the module');
+  const on = buildWatchMoreItems({ reheatEnabled: true }).find((i) => i.id === 'reheat');
+  assert.deepStrictEqual([on.label, on.icon, !!on.disabled], ['Reheat metadata', 'local_fire_department', false]);
+  const busy = buildWatchMoreItems({ reheatEnabled: true, reheatBusy: true }).find((i) => i.id === 'reheat');
+  assert.deepStrictEqual([busy.label, busy.disabled], ['Reheating…', true], 'a second run cannot be started from the menu');
+  assert.match(functionBody(watchJs, 'handleReheatClick'), /if \(!mediaData \|\| !reheatAvailable \|\| reheatBusy\) return;/, 'and the handler refuses one too');
 });
 
-test('the button is created at runtime, not added to watch.html', () => {
-  assert.ok(!/reheat-media-btn/.test(watchHtml),
-    'watch.html must not carry the button -- it is built per view instance like Move/Like/Share');
+test('the control is built at runtime, not added to watch.html', () => {
+  assert.ok(!/reheat-media-btn|Reheat metadata/.test(watchHtml),
+    'watch.html must not carry it -- the menu is built per open');
 });
 
 // ---- 2 + 3. The glyph is a real mask, and it resolves --------------------
 
-test('the glyph is a CSS-masked .icon-flame, never an emoji codepoint (the v1.38 iOS lesson)', () => {
-  const body = functionBody(watchJs, 'setupReheatButton');
-  assert.ok(/icon-flame/.test(body), 'uses the .icon-flame mask class');
+test('the glyph is a drawn registry icon (the watch menu) / the .icon-flame mask (Pocket), never an emoji codepoint (the v1.38 iOS lesson)', () => {
+  assert.match(watchJs, /id: 'reheat', icon: 'local_fire_department'/, 'the watch menu draws the registry flame');
   assert.ok(!/\u{1F525}/u.test(watchJs), 'watch.js must not contain the fire emoji codepoint');
   assert.ok(!/\\1F525/.test(styleCss), 'style.css must not render the flame as an emoji escape');
 });

@@ -46,9 +46,10 @@ test('icon-transcript: style.css carries the mask, the 1em size-block membership
   }
 });
 
-test('icon-transcript: watch.js is the renderer - the Transcript button emits <i class="icon-transcript"> with a .btn-label', () => {
+test('icon-transcript: the watch Transcript button draws the registry\'s subject glyph (UI pass S3); the mask stays for the Pocket extras', () => {
   const js = stripJs(fs.readFileSync(path.join(PUB, 'js', 'watch.js'), 'utf8'));
-  assert.match(js, /icon\.className = 'icon-transcript';/);
-  assert.match(js, /transcriptBtn\.id = 'transcript-media-btn';/);
-  assert.match(js, /label\.textContent = 'Transcript';/);
+  assert.match(js, /transcriptBtn = barButton\('transcript', 'transcript-media-btn', \{ icon: 'subject', label: 'Transcript',/);
+  assert.ok(!/icon-transcript/.test(js), 'no mask class on the watch page');
+  const skin = stripJs(fs.readFileSync(path.join(PUB, 'js', 'skin-surface.js'), 'utf8'));
+  assert.match(skin, /icon-transcript/, 'the mask\'s remaining consumer (the Pocket extras row)');
 });

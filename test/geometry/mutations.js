@@ -38,6 +38,23 @@ const MUTATIONS = {
     check: 'G2', target: { surface: 'kit', era: '2005', mode: 'light', vp: 'desktop' },
     css: '.ui-row .ui-row__actions > .ui-icon{transform:translateY(1px)!important}',
   },
+  // Sweep S3 (Dean's complaint, closed by measurement): the channel row's bell glyph sits
+  // 1px low in its button - the v1.340 "glyph below the text's centre line" shape.
+  'g2-channel-bell-low': {
+    check: 'G2', target: { surface: 'channel-card', era: '2021', mode: 'dark', vp: 'phone' },
+    css: '#notify-channel-btn .ui-btn__icon{position:relative!important;top:1px!important}',
+  },
+  // Sweep S3: the action bar's Like glyph drifts 1px right of its caption.
+  'g2-action-bar-icon': {
+    check: 'G2', target: { surface: 'action-bar', era: '2005', mode: 'light', vp: 'phone' },
+    css: '#like-media-btn .ui-btn__icon{position:relative!important;left:1px!important}',
+  },
+  // Sweep S3: the channel row's pin is taller than the Subscribe pill beside it (the v1.340
+  // "Pin 3px taller than its neighbours" shape).
+  'g3-channel-pin-tall': {
+    check: 'G3', target: { surface: 'channel-card-unsub', era: '2014', mode: 'light', vp: 'desktop' },
+    css: '#pin-channel-btn{height:35px!important}',
+  },
   // G3: one button in a group is 2px taller than its siblings.
   'g3-tall-button': {
     check: 'G3', target: { surface: 'kit', era: '2009', mode: 'light', vp: 'phone' },

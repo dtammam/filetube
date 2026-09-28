@@ -504,7 +504,7 @@ html.reader-immersive .app-container { padding-top: 0; }
       era's documented "sharp 0px" character) instead of a 1px near-square.
     - horizontal padding tightens 14px->12px (a touch less bulky, hit target
       unaffected -- height is unchanged and every scoped override, e.g.
-      `.watch-actions .btn`/`.setup-box .btn`'s mobile min-height, still sets
+      `.setup-box .btn`'s mobile min-height, still sets
       its own padding/min-height explicitly).
     - `box-shadow: var(--shadow)` adds a subtle era-aware bevel -- resolves
       to a soft ambient shadow for 2021/2009 (complementing, not flattening,
@@ -525,7 +525,7 @@ html.reader-immersive .app-container { padding-top: 0; }
   display: inline-flex;
   align-items: center;
   gap: var(--space-3);
-  text-decoration: none; /* .btn is used on <a> too (e.g. #download-media-btn) -- keep it button-like, never underlined */
+  text-decoration: none; /* .btn is used on <a> too -- keep it button-like, never underlined */
   box-shadow: var(--shadow);
   transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui), box-shadow var(--dur-fast) var(--ease-ui);
 }
@@ -538,14 +538,12 @@ html.reader-immersive .app-container { padding-top: 0; }
 
 /* The 2005 era-theme underlines all <a>; an <a class="btn"> is a button, not a link -- keep it clean. */
 [data-theme="2005"] a.btn { text-decoration: none; }
-/* Same specificity fix for the FR-3 creator-name link: [data-theme="2005"] a
-   ((0,1,1)) would otherwise beat the plain .uploader-channel-link class
-   ((0,1,0)) and force an underline even at rest, defeating the hover-only
-   affordance above. Re-add the underline explicitly on :hover so the
-   affordance still works under the 2005 theme. */
-[data-theme="2005"] a.uploader-channel-link { text-decoration: none; }
+/* Same specificity fix for the FR-3 creator-name link (UI pass S3: the channel row's
+   name): [data-theme="2005"] a would otherwise force an underline even at rest, defeating
+   the hover-only affordance. Re-add the underline explicitly on :hover. */
+[data-theme="2005"] a.watch-channel__name { text-decoration: none; }
 @media (hover: hover) {
-  [data-theme="2005"] a.uploader-channel-link:hover { text-decoration: underline; }
+  [data-theme="2005"] a.watch-channel__name[href]:hover { text-decoration: underline; }
 }
 
 @media (hover: hover) {
@@ -1457,7 +1455,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
    see player.js). On the watch page itself the player always renders via
    `.player-container` above, completely unaffected by any of this -- the
    watch page is never "docked" while it is the active view. Era-themed via
-   existing tokens (--shadow-lg/--radius-lg); the video's own #000 letterbox
+   the role tokens (--shadow-overlay/--r-md); the video's own #000 letterbox
    background matches `.player-container` above (not a themed surface). */
 #player-dock {
   position: fixed;
@@ -1465,8 +1463,10 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   bottom: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
   width: 280px;
   z-index: var(--z-dock); /* above the mobile .bottom-nav (--z-nav), below modals/sheets (--z-sheet+) */
-  box-shadow: var(--shadow-lg);
-  border-radius: var(--radius-lg);
+  /* UI pass sweep S3: restyled in C's language (the floating surface's one shadow and the
+     grouped-list radius; both era roles) - geometry and behaviour unchanged (D0 carve-out). */
+  box-shadow: var(--shadow-overlay);
+  border-radius: var(--r-md);
   overflow: hidden;
 }
 
@@ -1495,10 +1495,10 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   display: none !important;
 }
 
-/* Belt-and-braces: the resume prompt and the transcode ("Preparing video")
+/* Belt-and-braces: the resume toast (UI pass D8.2) and the transcode ("Preparing video")
    overlay are both FULL-player affordances sized for the large player, not
-   the 160/280px mini-dock. dock() (player.js) proactively dismisses an
-   already-showing resume prompt, but this CSS guard ensures neither overlay
+   the 160/280px mini-dock. dock() (player.js) hides an already-showing
+   resume toast, but this CSS guard ensures neither
    can EVER render at full size inside the dock, regardless of code path.
    NOTE: #transcode-overlay shares the .resume-overlay CLASS (see watch.html)
    rather than having its own "transcode-overlay" class, so the ID selector
@@ -1506,6 +1506,9 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 #player-dock .resume-overlay,
 #player-dock #transcode-overlay {
   display: none !important;
+}
+#player-dock .player-resumed {
+  display: none;
 }
 
 .player-dock-close {
@@ -1759,46 +1762,33 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   color: var(--on-overlay-muted);
 }
 
-.resume-actions {
-  display: flex;
-  gap: var(--space-6);
-}
-
-/* v1.132 resume-countdown: the prompt's DEFAULT button ticks ("Resume · 4",
-   label written by player.js) and drains a thin progress underline over the
-   countdown window. The animation duration comes from the JS constant
-   (RESUME_COUNTDOWN_SECONDS -> the --resume-countdown-duration custom
-   property set inline in startResumeCountdown), so the visual can never
-   drift from the timer. Cancelled = class removed -> the bar vanishes and
-   the label is restored by the same cancel. */
-.resume-actions .btn.countdown-armed {
-  position: relative;
-  overflow: hidden;
-}
-.resume-actions .btn.countdown-armed::after {
-  content: '';
+/* UI pass sweep S3 (D8.2): the resume toast - the "Resume playback?" modal is gone (the
+   .resume-overlay rules above now serve only #transcode-overlay). A ui-chip-styled pill over
+   the bottom-left of the video, above the control bar: "Resumed at 12:34 - Start over". It
+   fades in and out on opacity only (player.js toggles .is-visible; [hidden] removes it). */
+.player-resumed {
   position: absolute;
-  left: 0;
-  bottom: 0;
-  height: var(--space-1);
-  width: 100%;
-  background: currentColor;
-  opacity: 0.5; /* token-exempt: decorative underline strength on an already-token colour */
-  transform-origin: left;
-  /* No fallback duration ON PURPOSE: startResumeCountdown (player.js) always
-     sets --resume-countdown-duration before adding the class (single-sourced
-     from RESUME_COUNTDOWN_SECONDS), and an unset var() invalidates the
-     declaration -> no drain bar, the correct degrade for a class only that
-     JS applies. A raw fallback literal would also re-enter the motion census. */
-  animation: resume-countdown-drain var(--resume-countdown-duration) linear forwards;
+  left: var(--space-8);
+  bottom: calc(var(--hit) + var(--space-6));
+  z-index: 10; /* token-exempt: local stacking (the old modal's layer) */
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--ctl-sm);
+  padding: 0 var(--space-1) 0 var(--space-6);
+  border-radius: var(--r-pill);
+  background: var(--badge-ground);
+  color: var(--on-overlay);
+  font: var(--t-callout);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity var(--dur-fade) var(--ease-std);
 }
-@keyframes resume-countdown-drain {
-  from { transform: scaleX(1); }
-  to { transform: scaleX(0); }
-}
+.player-resumed.is-visible { opacity: 1; }
+.player-resumed .ui-btn { color: var(--on-overlay); font-weight: var(--fw-semibold); }
 @media (prefers-reduced-motion: reduce) {
-  /* The ticking label still counts down; only the motion is dropped. */
-  .resume-actions .btn.countdown-armed::after { animation: none; }
+  .player-resumed { transition: none; }
 }
 
 /* "Preparing video" (transcode) spinner */
@@ -1825,47 +1815,27 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   pointer-events: none; /* lets taps/clicks pass through to whichever interaction surface is active underneath -- #media-player (video) or #audio-bg-art (audio), per the v1.21 FR-2 pointer-events swap above. v1.311.2: only the double-tap ripples live here now - the ±15s buttons were removed. (Stale pre-FR-2 wording fixed, v1.21 FIX 1: this no longer refers to the native <video controls> bar -- that attribute is removed app-wide, see the FR-2 control bar section.) */
 }
 
-/* Press-and-hold-to-2x badge (mobile inline) */
+/* Press-and-hold-to-2x badge (mobile inline). UI pass (D6): a ui-chip-styled "2x" pill with
+   the fast_forward glyph, top centre of the video (was the "2x" + text-glyph run). player.js
+   shows it by dropping [hidden]. */
 .speed-badge {
   position: absolute;
-  top: 12px; /* token-exempt: positional geometry (Stop A Batch A) */
+  top: var(--space-6);
   left: 50%;
   transform: translateX(-50%);
-  background: var(--scrim-heavy);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: var(--ctl-sm);
+  padding: 0 var(--space-6) 0 var(--space-5);
+  border-radius: var(--r-pill);
+  background: var(--badge-ground);
   color: var(--on-overlay);
-  padding: var(--space-2) var(--space-6);
-  border-radius: var(--radius-lg);
-  font-size: var(--fs-base);
+  font: var(--t-callout);
   font-weight: var(--fw-semibold);
-  letter-spacing: 0.5px; /* token-exempt: era display styling */
   z-index: 20; /* token-exempt: local stacking */
   pointer-events: none;
 }
-
-/* Embedded file metadata block (additive, under the description) */
-.embedded-tags {
-  margin-top: var(--space-6);
-  padding-top: var(--space-5);
-  border-top: 1px solid var(--border-color);
-  font-size: var(--fs-base);
-}
-.embedded-tags-title {
-  font-weight: var(--fw-semibold);
-  margin-bottom: var(--space-2);
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  font-size: var(--fs-xs);
-  letter-spacing: 0.5px; /* token-exempt: era display styling */
-}
-/* overflow-wrap:anywhere so a long unbroken embedded value (a URL, id, or an
-   underscored yt-dlp filename with no spaces to wrap at) breaks and wraps
-   inside the description box instead of forcing the whole watch view wider
-   than the viewport -- the real fix for the "some videos size wrong on
-   mobile" report (only files WITH embedded metadata / long paths hit it).
-   Capping the value length (watch.js clip()) doesn't help an unbroken token;
-   this does. */
-.embedded-tag { margin: var(--space-1) 0; overflow-wrap: anywhere; }
-.embedded-tag-key { color: var(--text-secondary); font-weight: var(--fw-semibold); }
 
 /* Double-tap ripple feedback */
 .skip-ripple {
@@ -1966,192 +1936,116 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   outline-offset: 2px;
 }
 
-/* Video Information Layout */
+/* Video Information Layout. UI pass sweep S3 (direction C: D4.9, D8.1, D8.4). The title,
+   one quiet meta line, the stacked action bar, the channel row, the description with its
+   "About this file" disclosure and the comments; controls are ui-* primitives (ui.css),
+   so these rules are surface layout only. */
 .watch-title {
-  font-size: var(--fs-2xl);
+  margin: 0 0 var(--space-2);
+  font: var(--t-headline);
   font-family: var(--heading-font, var(--font-family));
   font-weight: var(--heading-weight, var(--fw-bold));
   letter-spacing: var(--heading-tracking, normal);
-  margin-bottom: var(--space-6);
-  word-break: break-word;
+  overflow-wrap: anywhere;
 }
+/* views (a MOCK count carries .ft-fabricated: retro eras only) - date - the mock stars */
+.watch-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: var(--space-4);
+  row-gap: var(--space-2);
+  min-height: var(--icon-md);
+  color: var(--ink-2);
+  font: var(--t-meta);
+}
+.watch-meta .views-count:not(:empty)::after {
+  content: '\00b7';
+  margin-left: var(--space-4);
+}
+.watch-rating {
+  display: inline-flex;
+  gap: var(--space-1);
+}
+.watch-rating .on { color: var(--star-gold); }
+.watch-rating .off { color: var(--star-gray); }
 
+/* D4.9 the action bar: stacked ui-btns (icon over a caption) in EQUAL columns - across
+   the column on a phone, a fixed width each on a wider screen. The row reserves the
+   stacked button's height while it loads (data-loading), so nothing below moves. */
 .watch-action-bar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-bottom: var(--space-6);
-  border-bottom: 1px solid var(--border-color);
-  margin-bottom: var(--space-8);
-  flex-wrap: wrap;
-  gap: var(--space-6);
-  /* v1.201 (Dean: "on desktop the button moves over to a 2nd row if not in
-     theatre mode"): this bar is the CONTAINER the label rule below queries.
-     It is a block child of `.watch-main`, so its inline size IS the column
-     width and its contents cannot influence it - never put the container
-     on the flex item (`.watch-actions`) itself, inline-size containment
-     would collapse it. */
-  container-type: inline-size;
-  container-name: watch-action-bar;
+  margin: var(--space-4) 0 var(--space-6);
 }
-
-/* v1.201: when the COLUMN is too narrow for the labelled action row, drop
-   the words and keep the glyphs - the exact treatment phones get in the
-   768px block, now driven by the column rather than the viewport, so the
-   non-theatre column (sidebar beside it) gets glyphs while theatre's wide
-   column keeps the words at the same viewport width. MEASURED (the probe,
-   v1.200.0 baseline): the ten labelled buttons are 953px and `.watch-actions`
-   wraps the stars onto their own line, so the words fit ONE row in any
-   column of 960px or more (theatre at 1280 = 1002px, at 1366 = 1088px: one
-   labelled row; a first draft at 1100px wrongly stripped those). Below 960
-   the words go: ten glyph buttons at the desktop padding are 452px, one row
-   with the stars beside them down to a 598px column (1280px viewport,
-   sidebar shown). Below that the v1.200 wrap remains the safety net.
-   The glyph keeps the label's line box (`min-height` = the row's
-   line-height) so a glyph-only button measures the SAME 32px as a
-   labelled one - without it the row dropped to 30px (measured). */
-/* v1.202 (Dean's action-row re-evaluation, ruling B of the v1.202 plan). Two tiers:
-   PRIMARY = Listen, Like, Share, Transcript (v1.253 - Queue moved to
-   SECONDARY when the Listen chip made a fifth word overflow the phone row),
-   SECONDARY = everything else (Queue, Next, Download, Delete, Move, Mark
-   watched, Reheat, Attribute). The tier list lives ONCE in watch.js
-   (SECONDARY_ACTION_IDS); the selector below mirrors it and
-   test/unit/watch-action-row-tiers.test.js locks the two lists equal.
-   - `order` fixes the row order everywhere (primary first - Listen, Like,
-     Share, Transcript (Dean, v1.203/v1.253) - then More, then the secondary
-     set in their old order) - v1 is fixed, not customizable.
-   - COMPACT (column under 960px): secondary buttons hide, "More" shows and
-     opens the pick-one listing them. Primary buttons keep their words.
-   - v1.203 (Dean): the primary buttons keep their WORDS at every width;
-     only More is a glyph. (v1.202 had a 640px glyph tier - gone.)
-   - WIDE (960px+: theatre, 1920 non-theatre): everything visible as words,
-     More hidden. Buttons never deform in any mode (v1.200 norm). */
-#listen-media-btn { order: 1; } /* v1.253 (Dean): Listen, Like, Share, Transcript, More - Queue moved under More (the Listen chip made five words overflow the phone row) */
-#like-media-btn { order: 2; }
-#share-media-btn { order: 3; }
-#transcript-media-btn { order: 4; }
-#more-actions-btn { order: 5; display: none; }
-#queue-add-btn { order: 10; }
-#queue-next-btn { order: 11; }
-#download-media-btn { order: 12; }
-#delete-media-btn { order: 13; }
-#move-media-btn { order: 14; }
-#watched-media-btn { order: 15; }
-#reheat-media-btn { order: 16; }
-#attribute-media-btn { order: 17; }
-@container watch-action-bar (max-width: 959px) {
-  #queue-add-btn, #queue-next-btn, #download-media-btn, #delete-media-btn, #move-media-btn, #watched-media-btn, #reheat-media-btn, #attribute-media-btn {
-    display: none;
-  }
-  #more-actions-btn {
-    display: inline-flex;
-  }
-}
-/* v1.203 (Dean: "we can actually have them display with the full text ...
-   we have space, it's very centralized in the middle"): in compact mode the
-   four PRIMARY buttons keep their WORDS at every width; only "More" is a
-   glyph ("..."). MEASURED: four words + a glyph More = ~333px at the phone
-   padding, one row at 390 AND 375 (the stars return to their own line
-   above, as before v1.202); a 360px phone wraps by the safety net. The
-   v1.202 639px glyph threshold is gone with it. */
-@container watch-action-bar (max-width: 959px) {
-  #more-actions-btn .btn-label {
-    display: none;
-  }
-}
-.watch-action-btns .btn > i,
-.watch-action-btns .btn > svg {
-  min-height: calc(var(--lh-relaxed) * 1em);
-}
-
-.views-count {
-  font-size: var(--fs-xl);
-  font-weight: var(--fw-bold);
-  color: var(--text-primary);
-}
-
 .watch-actions {
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: calc(var(--hit) * 2);
+  justify-content: start;
+  min-height: var(--ctl-lg);
+}
+@media (max-width: 768px) {
+  .watch-actions {
+    grid-auto-columns: minmax(0, 1fr);
+    justify-content: stretch;
+  }
+}
+.watch-actions > .ui-btn--stack {
+  width: 100%;
+}
+.watch-actions .ui-btn__label {
+  color: var(--ink-2);
+}
+
+/* D4.9 the channel row: ui-avatar lg | the name over the subscriber count | Subscribe
+   (sm pill), the bell (reserved until subscribed) and the pin (sm plain icon toggles). */
+.watch-channel {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: var(--space-6);
-  flex-wrap: wrap;
+  column-gap: var(--space-6);
+  margin: 0 0 var(--space-8);
+}
+.watch-channel__text {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
 }
-
-/* v1.25.6 hotfix: `.watch-actions` has TWO children -- the read-only
-   `.star-rating` (five 20px, non-shrinking `★` glyphs + "N / 5") and this
-   button sub-group (Download, Delete, and the JS-appended Move -- see
-   watch.js's setupMoveButton). Both live in the outer `.watch-actions` flex
-   row, which is free to WRAP as a whole (base rule above) if the star
-   rating and the button group together don't fit one line -- that's what
-   keeps the row's min-content width from ever exceeding the viewport (the
-   actual cause of the v1.25.5 iOS shrink-to-fit/zoom regression: forcing
-   `.watch-actions` itself to `nowrap` ignored the star-rating sibling and
-   pushed the row's min-content past phone widths). This inner group
-   USED to keep the action buttons themselves nowrap ("they must never split
-   across two rows").
-
-   Transcript wave (Dean's ruling, 2026-08-28: "do it once, do it right"):
-   that nowrap had a hidden cost. The group had grown to 10-11 buttons, and
-   when the row is wider than its column a nowrap flex row does not overflow
-   cleanly - it SHRINKS the items: "Mark watched" broke onto two lines and
-   every button in the row grew from 31px to 42px tall. Measured in headless
-   Chromium against main (a85fc58): already deformed at 1280 and 1366
-   (row 809px in a 598/684px column), and the Transcript button tipped 1600
-   over too (921px in 918px). The rule is now the one docs/CONTRIBUTING.md
-   codifies for every action row: a button NEVER shrinks or line-breaks
-   (the `.btn` rule below), and the GROUP wraps, so an overflow becomes a
-   second row of natural-size buttons at every width. The v1.25.4 "Move on
-   an orphaned row" case is unchanged in spirit - it was a squeeze fix - and
-   phone widths already wrapped (the 768px block below). */
-.watch-action-btns {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4);
-}
-.watch-action-btns .btn {
+.watch-channel__name {
+  overflow: hidden;
+  color: var(--ink-1);
+  font: var(--t-body);
+  font-weight: var(--fw-semibold);
+  text-decoration: none;
   white-space: nowrap;
-  flex-shrink: 0;
-  /* MEASURED (the probe, 1920px, align-items:flex-start): the buttons'
-     NATURAL heights differed - Download is an <a class="btn"> and inherits
-     the body line-height (16.8px -> 31px tall), <button>s get the UA's
-     `line-height: normal` (14px -> 28px), Queue/Next carry a 16px inline
-     svg (30px). One stretched row hid the difference; a wrapped second row
-     exposed it (28px under a 31px first row). An explicit line-height that
-     exceeds the svg makes every button 32px whatever element it is. */
-  line-height: var(--lh-relaxed);
+  text-overflow: ellipsis;
 }
-
-/* Star Rating (read-only display) */
-.star-rating {
+@media (hover: hover) {
+  a.watch-channel__name[href]:hover { text-decoration: underline; }
+}
+/* F43: the count's line is RESERVED from the first paint (a zero-width space holds the
+   line box), so it never shoves the name when it paints - or when the era hides a mock. */
+.watch-channel__meta {
+  display: block;
+  font: var(--t-meta);
+}
+.watch-channel__meta::before {
+  content: '\200b';
+}
+.watch-channel__actions {
   display: flex;
   align-items: center;
   gap: var(--space-1);
 }
-
-.star {
-  font-size: var(--fs-3xl);
-  color: var(--star-gray);
-  transition: color var(--dur-fast);
+/* Subscribe <-> Subscribed swaps primary (no border) for secondary (a hairline border): a
+   transparent hairline on the primary keeps the pill the SAME width in both states, so the
+   row never shifts on a tap (measured by test/geometry/watch.check.js; the label stack alone
+   left a 2px jump). */
+.watch-channel__actions .ui-btn--primary {
+  border: var(--hairline) solid transparent;
 }
-
-.star.active {
-  color: var(--star-gold);
-}
-
-.rating-count {
-  font-size: var(--fs-xs);
-  color: var(--text-secondary);
-  margin-left: var(--space-3);
-  /* v1.22.2 FR-3: without wrap protection, "N / 5" (watch.js's
-     renderStarRating()) wraps to a second line under a width squeeze in the
-     `.watch-actions` row. `white-space: nowrap` keeps the count atomic;
-     `flex-shrink: 0` (this is a flex child of `.star-rating`) stops it from
-     being compressed instead of the stars shrinking around it. Scoped to
-     this class only -- the home-card `.card-rating` row (main.js, drawn star
-     icons, no "N / 5" text) is a separate class/selector and is unaffected. */
-  white-space: nowrap;
-  flex-shrink: 0;
+/* the bell's slot while not subscribed: kept in the row (Pin never moves), invisible, inert */
+.watch-channel__bell[data-reserved] {
+  visibility: hidden;
 }
 
 /* Deterministic 3-5 star rating shown on each media card in the grid/list: a
@@ -2166,106 +2060,20 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 .card-rating .on { color: var(--star-gold); }
 .card-rating .off { color: var(--star-gray); }
 
-/* Uploader Profile Panel */
-.uploader-info-panel {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background-color: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  padding: var(--space-6) var(--space-8);
-  margin-bottom: var(--space-8);
-  flex-wrap: wrap;
-  gap: var(--space-6);
-}
-
-.uploader-profile {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  min-width: 0;
-}
-
-.uploader-avatar {
-  width: 48px;
-  height: 48px;
-  /* v1.52: neutral until painted -- the old hardcoded --yt-red square with a
-     literal "F" was one of the placeholder flashes. The painter always sets
-     an explicit backgroundColor (generated branch) or clears it behind an
-     <img> (url branch), so this base tone only ever shows pre-paint. */
-  background-color: var(--bg-secondary);
-  color: var(--on-accent);
-  border-radius: var(--radius);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: var(--fs-3xl);
-  font-weight: var(--fw-bold);
-  text-transform: uppercase;
-}
-
-.uploader-name {
-  font-size: var(--fs-md);
-  font-weight: var(--fw-bold);
-  color: var(--text-primary);
-}
-
-/* v1.22.0 FR-3 support: #uploader-channel-name is now an <a>
-   (public/watch.html) -- mirror the old .uploader-name look and neutralize
-   default browser link styling so it doesn't read as a hyperlink; a
-   discreet hover underline keeps it discoverable as clickable. */
-.uploader-channel-link {
-  font-size: var(--fs-md);
-  font-weight: var(--fw-bold);
-  color: var(--text-primary);
-  text-decoration: none;
-  cursor: pointer;
-}
-
-@media (hover: hover) {
-  .uploader-channel-link:hover {
-    text-decoration: underline;
-  }
-}
-
-/* v1.50 (Dean, mid-wave ask): the subscriber count reads as a BADGE now --
-   the classic-YouTube boxed-count treatment -- instead of a bare text line.
-   Everything comes from the existing era tokens (btn surface, border,
-   radius), so it is square/beveled in 2005/2009 and rounded in 2021, and
-   correct in both data-mode palettes, with zero new tokens. The count text
-   itself (mock, deterministic -- getMockSubCount) is unchanged. */
-.uploader-subs {
-  display: inline-block;
-  font-size: var(--fs-xs);
-  color: var(--text-secondary);
-  margin-top: 3px; /* token-exempt: optical nudge */
-  padding: 1px var(--space-3); /* token-exempt: hairline chip pad, sub-scale (F.5 ruling 5 disposition - Dean may overrule) */
-  background-color: var(--btn-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  line-height: var(--lh-relaxed);
-}
-
-/* Description Box */
+/* Description box: the description (clamped, Show more) and D8.4 "About this file". */
 .description-container {
-  background-color: var(--bg-sidebar);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius);
-  padding: var(--space-8);
-  margin-bottom: var(--space-12);
-}
-
-.description-meta {
-  font-weight: var(--fw-bold);
-  margin-bottom: var(--space-4);
-  font-size: var(--fs-sm);
+  margin: 0 0 var(--space-12);
+  padding: var(--space-4) 0;
+  border-radius: var(--r-md);
+  background: var(--surface-1);
+  overflow: hidden;
 }
 
 .description-text {
   white-space: normal;
   word-break: break-word;
-  font-size: var(--fs-base);
+  font: var(--t-body);
+  color: var(--ink-1);
   display: -webkit-box;
   -webkit-line-clamp: 5;
   -webkit-box-orient: vertical;
@@ -2279,87 +2087,86 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   overflow: visible;
 }
 
-/* v1.48 item 1: the video's own description, leading the description box.
-   It also carries `.description-text` above, which supplies the collapsed
-   `-webkit-line-clamp: 5` and the `.expanded` escape hatch -- so the SAME
-   collapse mechanism that already existed now applies to the description
-   instead of to the boilerplate.
-
-   `pre-wrap` overrides `.description-text`'s `white-space: normal` because a
-   real description is multi-line and its blank lines carry meaning; normal
-   would collapse the whole thing onto one run. There is deliberately NO
-   character cap anywhere in this path: the full text is in the DOM, and
-   "Show more" reveals all of it.
-
-   `:empty` (set by watch.js, which writes '' when a file has no description)
-   takes the element and its separator rule out of the layout entirely, so an
-   ordinary local file's box looks exactly as it did before v1.48. It must stay
-   AFTER the base rule to win, and uses `display: none` rather than a height of
-   0 so the separator border cannot show through. */
+/* v1.48 item 1: the video's own description (it carries `.description-text` above: the
+   collapsed 5-line clamp and the `.expanded` escape hatch). `pre-wrap`: a real
+   description is multi-line and its blank lines carry meaning. There is NO character
+   cap here beyond watch.js's MAX_DISPLAY_DESCRIPTION availability bound. `:empty`
+   (watch.js writes '' for a file with none) takes it out of the layout; it stays AFTER
+   the base rule to win. */
 .video-description {
+  margin: 0;
+  padding: var(--space-2) var(--space-8);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  margin-bottom: var(--space-6);
-  padding-bottom: var(--space-6);
-  border-bottom: 1px solid var(--border-color);
 }
 
 .video-description:empty {
   display: none;
 }
 
-/* The self-hosting boilerplate + file path. Same typography as the description
-   but deliberately NOT clamped: it is three short lines that never needed a
-   "Show more", and clamping it would hide the tail of a long file path with no
-   way to reveal it now that the toggle governs the description instead. */
-.description-fileinfo {
-  white-space: normal;
-  word-break: break-word;
-  font-size: var(--fs-base);
-}
-
 .expand-description-btn {
-  background: none;
-  border: none;
-  color: var(--text-link);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-bold);
-  cursor: pointer;
-  margin-top: var(--space-4);
-  padding: var(--space-2) 0;
-  display: block;
+  margin: 0 var(--space-4);
+}
+.expand-description-btn .ui-btn__label {
+  color: var(--ink-2);
 }
 
-/* Comments Section */
+/* "About this file": the disclosure row (info icon, chevron) and its key/value rows. The
+   rows take the box's inner inset; a separator splits it from a description above it. */
+.about-file .ui-list {
+  --row-pad-start: var(--space-8);
+  --row-pad-end: var(--space-4);
+}
+.video-description:not(:empty) ~ .about-file {
+  margin-top: var(--space-4);
+  border-top: var(--hairline) solid var(--separator);
+}
+.about-file__chevron {
+  transition: transform var(--dur-fade) var(--ease-std);
+}
+#about-file-toggle[aria-expanded="true"] .about-file__chevron {
+  transform: rotate(180deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .about-file__chevron { transition: none; }
+}
+/* a value shows whole (a long path wraps anywhere), not clamped like a list title */
+.about-file__body .ui-row__title {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow-wrap: anywhere;
+}
+
+/* Comments */
 .comments-section {
   margin-top: var(--space-12);
-  border-top: 1px solid var(--border-color);
-  padding-top: var(--space-8);
 }
 
 .comments-header {
-  font-size: var(--fs-lg);
-  font-weight: var(--fw-bold);
-  margin-bottom: var(--space-8);
+  margin: 0 0 var(--space-8);
+  font: var(--t-title);
+}
+.comments-count {
+  color: var(--ink-2);
 }
 
 .comment-input-area {
   display: flex;
+  align-items: flex-end;
   gap: var(--space-6);
   margin-bottom: var(--space-10);
 }
 
+/* a ui-field input grown into a textarea (the field look, several lines) */
 .comment-input-box {
   flex: 1;
   min-width: 0; /* v1.24.6: a flex textarea child must be allowed to shrink below its intrinsic column width, never widen the row past the viewport. */
-  border: 1px solid var(--border-dark);
-  padding: var(--space-4);
-  font-size: var(--fs-base);
-  background-color: var(--bg-color);
-  color: var(--text-primary);
-  border-radius: var(--radius);
+  height: auto;
+  min-height: calc(var(--ctl-lg) * 2);
+  padding: var(--space-5) var(--space-6);
+  /* the ui-field ground, restated: the critter layer anchors on this box (the v1.166 ground contract) */
+  background-color: var(--surface-2);
   resize: vertical;
-  min-height: 50px;
 }
 
 .comment-list {
@@ -2369,46 +2176,41 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 }
 
 .comment-item {
-  display: flex;
-  gap: var(--space-6);
-  border-bottom: 1px dotted var(--border-color);
-  padding-bottom: var(--space-6);
-}
-
-.comment-avatar {
-  width: var(--size-control);
-  height: var(--size-control);
-  background-color: var(--border-dark);
-  border-radius: var(--radius);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: var(--fw-bold);
-  font-size: var(--fs-xl);
-  color: var(--text-secondary);
-}
-
-.comment-body {
-  flex: 1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  column-gap: var(--space-6);
 }
 
 .comment-author-meta {
-  margin-bottom: var(--space-2);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  margin-bottom: var(--space-1);
 }
 
 .comment-author-name {
-  font-weight: var(--fw-bold);
-  font-size: var(--fs-sm);
-  margin-right: var(--space-4);
+  color: var(--ink-1);
+  font: var(--t-footnote);
+  font-weight: var(--fw-semibold);
 }
 
 .comment-time {
-  font-size: var(--fs-xs);
-  color: var(--text-secondary);
+  color: var(--ink-2);
+  font: var(--t-footnote);
 }
 
 .comment-content {
-  font-size: var(--fs-base);
+  color: var(--ink-1);
+  font: var(--t-body);
+  overflow-wrap: anywhere;
+}
+
+.comments-empty {
+  padding: var(--space-6) 0;
+  color: var(--ink-2);
+  font: var(--t-meta);
+  text-align: center;
 }
 
 /* Sidebar Playlist Items (Watch page) */
@@ -3734,9 +3536,9 @@ select {
    NOTE: icon-star is intentionally NOT in this group - it is a plain ::before
    character used by the two Stats sidebar links. (Before v1.77 this comment
    said it was excluded to keep "the gold rating" stable; that was never true.
-   The watch page's `#star-rating-control` stars are literal ★/☆ textContent
-   and the cards' `.card-rating` stars are drawn registry icons (UI pass sweep
-   S2); neither has ever used this class.)
+   The watch page's `#star-rating-control` stars and the cards' `.card-rating`
+   stars are drawn registry icons (UI pass sweeps S3 / S2); neither has ever used
+   this class.)
    The tail of this list, from .icon-school down, is v1.77's assignable glyph
    pool - GENERATED from public/js/glyph-pool.js and re-derived by
    test/unit/glyph-pool.test.js, which fails CI if a pool member is missing
@@ -3819,24 +3621,6 @@ select {
   fill: currentColor;
   flex: none;
 }
-
-/* v1.340: a two-state button's label (common.js stableToggleLabelHtml). Every label
-   shares ONE grid cell, so the button is as wide as its longest label in both states
-   and the row beside it never shifts on a tap; only the current label is visible. */
-.btn-label-stack { display: inline-grid; }
-.btn-label-slot { grid-area: 1 / 1; text-align: center; }
-.btn-label-slot[data-idle] { visibility: hidden; }
-/* A hidden label still sets the line box: the fallback-font star in "Pinned ★" is taller than
-   the text, which moved the baseline of an inline-flex button and dropped it ~2px below its
-   neighbours (probed at 390px, every era). Middle-align these buttons so their resting row is
-   level whatever their labels hold. */
-.btn:has(> .btn-label-stack) { vertical-align: middle; }
-/* A glyph inside a label (the Notify bell before its words, the Pinned star after): a touch
-   larger than the text, like the emoji it replaced. The negative block margins keep its
-   margin box inside the text's line, so a glyph never makes its button taller than a
-   plain-text neighbour (gate r1 W2). */
-.btn .btn-glyph { width: 1.15em; height: 1.15em; vertical-align: -0.2em; margin: -0.2em 0.3em -0.2em 0; }
-.btn .btn-glyph-after { margin: -0.2em 0 -0.2em 0.3em; }
 
 .icon-home { -webkit-mask-image: url(/assets/icons/home.svg); mask-image: url(/assets/icons/home.svg); }
 .icon-folder { -webkit-mask-image: url(/assets/icons/folder.svg); mask-image: url(/assets/icons/folder.svg); }
@@ -3979,8 +3763,8 @@ select {
    v1.77: the comment that stood here claimed this class was kept out of the
    icon-set blocks so "the gold ★ rating renders identically regardless of
    icon-set selection (AC8)". That was NEVER true: ratings never went through
-   .icon-star at all (`#star-rating-control`, watch.js, is literal ★/☆
-   textContent; the cards' `.card-rating` draws registry icons since sweep S2). The class's only
+   .icon-star at all (`#star-rating-control`, watch.js, and the cards'
+   `.card-rating` draw registry icons since sweeps S3 / S2). The class's only
    users were the Liked nav and these two Stats links - and Liked moved to its
    own `.icon-liked` in v1.77, leaving Stats alone here. */
 .icon-star::before { content: "★"; }
@@ -4076,7 +3860,7 @@ select {
    reason this comment gave until v1.77 ("the gold ★ rating renders identically
    regardless of icon-set selection (AC8)"). That binding never existed: rating
    stars (`#star-rating-control`, watch.js; the cards' `.card-rating`, drawn
-   icons since sweep S2) have never gone through this class.
+   icons since sweeps S3 / S2) have never gone through this class.
    The real reason is simply that .icon-star is a plain ::before character, not
    a mask - its only remaining users are the two Stats sidebar links. The Liked
    nav moved to .icon-liked in v1.77, which DOES carry all three sets. */
@@ -4341,154 +4125,6 @@ select {
      Sweep S1 (D4.6, F50): the sheet is a ui.sheet (common.js ensurePlaylistsSheet) - its
      surface, scrim, motion, grab handle, header and Close are the primitive's; its rows
      are ui-rows (see .playlists-sheet-list below the mobile block). */
-  .watch-action-bar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  /* v1.25.4 polish: the watch-page action-button row (Download/Delete/Move,
-     glyph + short label since v1.25.0) wraps at phone widths -- Move (last
-     in DOM order, appended by watch.js's setupMoveButton) drops onto its own
-     orphaned line even though the row has room for all three at a slightly
-     tighter size. Scoped to `.watch-actions .btn` (not `.btn` globally) so
-     no other button elsewhere in the app is affected -- same `.btn`/
-     `.icon-*` family, no `btn-sm` class and no inline style reintroduced
-     (both were removed from this row in v1.25.0).
-     v1.25.5 (REVERTED in v1.25.6, see below): tried to force single-row by
-     making `.watch-actions` itself `flex-wrap: nowrap` at this breakpoint.
-     That missed that `.watch-actions` has a SECOND child besides the button
-     group -- the read-only `.star-rating` (five 20px `★` glyphs + "N / 5",
-     no mobile shrink) -- so the row's min-content width (stars + Download +
-     Delete + Move + gaps, ~380px) could exceed a phone's viewport width.
-     `overflow-x: clip` on `html` (see below) does NOT stop this: iOS
-     Safari's shrink-to-fit zoom is computed from the page's preferred
-     (min-content) width BEFORE any clipping is applied, so the whole page
-     rendered zoomed out instead of overflowing visibly.
-     v1.25.6 hotfix: `.watch-actions` is reverted to `wrap` (base rule,
-     unchanged) so it can wrap the star-rating and the button group onto
-     separate lines when needed -- the row's min-content can never exceed
-     the viewport, so no more iOS shrink-to-fit. The three action BUTTONS
-     still guarantee a single row (the actual v1.25.4 goal), but that now
-     lives on the `.watch-action-btns` sub-group (see base rules above),
-     which is viewport-width independent -- not on this outer row. */
-  .watch-actions {
-    gap: var(--space-4);
-    flex-wrap: wrap;
-  }
-  .watch-actions .btn {
-    padding: var(--space-3) var(--space-5);
-    gap: var(--space-2);
-    font-size: var(--fs-xs);
-  }
-
-  /* v1.47.5 (Dean, on-device): "if I go to the earliest era the Download,
-     Delete, Move, Like Share row goes a little too far off the right (not
-     properly constrained within the bounds)."
-
-     ROOT CAUSE -- corrected at the v1.47.5 gate, which disproved the first
-     version of this comment. The DOMINANT cause is not the era at all: this
-     group has grown from 3 buttons to 5 (watch.html ships Download + Delete;
-     watch.js appends Move, Like and Share). At a 360px viewport that is
-     5 x ~60px + 4 x 8px gap ~= 332px against ~328px available, so it overflows
-     in Roboto too -- Verdana merely makes it visible first.
-
-     The era ASYMMETRY is real but secondary, and narrower than first claimed:
-     the four eras share an identical type scale (no era redefines --fs-*), but
-     they do NOT otherwise differ "only in font family" -- each also sets its own
-     --density (2005: 4px, 2009: 6px, 2014: 10px, 2021: 8px), which drives
-     padding/gap. 2005 is the sole era on Verdana (~10% wider than Arial/Roboto),
-     and it also has the TIGHTEST density, which partially counteracts it.
-
-     `.watch-action-btns` is `flex-wrap: nowrap` (base rule) so Download/Delete/
-     Move can never split across rows. That is a fine PREFERENCE and a bad
-     GUARANTEE: a nowrap flex row's min-content width is the SUM of its items,
-     so once the sum exceeds the viewport the row simply overflows to the right.
-     No amount of per-era padding tuning fixes that class -- it just moves the
-     font size at which it breaks, and would rot the next time a font changes.
-
-     The fix is structural and font-independent: allow wrapping at the phone
-     breakpoint ONLY. A wrapping row's min-content width is its WIDEST SINGLE
-     ITEM, so it can never exceed the viewport for any era, any font, any future
-     button added to the group. Worst case is a second line; the current worst
-     case is content off-screen and unreachable, which is strictly worse.
-
-     WHAT THIS DELIBERATELY GIVES UP (gate correction -- the first version of
-     this comment claimed the opposite, and was wrong): v1.25.4's "Move must not
-     land on an orphaned line" was EXCLUSIVELY a phone fix -- its rule lives
-     inside this very @media block. So this reverses that guarantee on phones,
-     which is the right trade (content off-screen and unreachable is strictly
-     worse than a second line) but is a reversal, not a preservation. Desktop
-     keeps nowrap because there is room there. Disclosed in ROADMAP.
-
-     It also moves AWAY from the v1.25.5 iOS shrink-to-fit regression rather
-     than toward it: wrapping REDUCES the row's min-content width, and that
-     regression was caused by min-content exceeding the viewport. */
-  .watch-action-btns {
-    flex-wrap: wrap;
-    max-width: 100%;
-    min-width: 0;
-    /* The one lever v1.25.4's mobile block never pulled: the group's own gap.
-       Tightening it buys back ~16px across five buttons, so the common case
-       still fits one line in most eras and the wrap stays a genuine last
-       resort rather than the normal state. */
-    gap: var(--space-2);
-  }
-
-  /* v1.47.6 (Dean, on-device follow-up to v1.47.5): with wrapping in place the
-     row was CONTAINED, but Share still dropped to a second line in Original
-     (Verdana) and Classic (Arial) while Flat (Arial) / Modern (Geist since
-     v1.107, Roboto before) fit -- an exact
-     font-width ordering, and confirmation that the row was only marginally
-     over budget.
-
-     Rather than tune padding until it happens to fit one font, drop the WORDS
-     at phone widths and keep the glyphs. Five labelled buttons cannot fit a
-     ~328px content box in a wide font; five glyphs fit any font with room to
-     spare, so this removes the whole class rather than the current instance.
-
-     This is the SAME treatment `.section-actions` already uses one breakpoint
-     down (v1.45.3), for the same reason -- so it is the established pattern
-     here, not a new idea. Meaning is preserved: every one of these five buttons
-     already carries both `title` and `aria-label`, so screen readers and
-     tooltips are unaffected, and desktop keeps its labels (there is room).
-
-     Wrapping above is retained deliberately as the SAFETY NET: this rule makes
-     overflow unlikely, `flex-wrap` makes it impossible. */
-  /* v1.203: only "More" drops its word on phones - the four primary
-     buttons keep theirs (Dean). The v1.47.6 rationale (five WORDED buttons
-     cannot fit a ~328px box) no longer applies: the secondary tier folds
-     into More (v1.202), so the row is four words + one glyph. */
-  #more-actions-btn .btn-label {
-    display: none;
-  }
-
-  /* Phone side padding for the action-row buttons: --space-4 (8px), down
-     from this block's --space-5 (10px). HISTORY: v1.200 measured ten glyph
-     buttons at 366px vs a 358px box (wrapped) and 325px at 8px (one row).
-     v1.202 folded the secondary tier into More; v1.203 (Dean) brought the
-     words back on the four primary buttons. MEASURED now (the probe, v1.203):
-     Queue 73 + Like 56 + Share 65 + Transcript 88 + More 29 = 311px of
-     buttons + four 4px gaps = a ~327px row span (probe: 326, subpixel) in a
-     328px column at 360, one row at 360/375/390 - the 8px sides
-     are what make the 360 fit (2px of slack; a wrap there is allowed by the
-     v1.200 norm, a deformation is not). Desktop is untouched. */
-  .watch-action-btns .btn {
-    padding-left: var(--space-4);
-    padding-right: var(--space-4);
-  }
-
-  /* v1.50 (Dean: "Reheat shifted the whole row down on mobile. Makes me
-     sad."): Reheat made the glyph group SIX buttons, and with the "N / 5"
-     text beside the stars the .watch-actions row's two members no longer
-     share one line -- the wrap safety net above kicked in and pushed the
-     buttons to a second row. Drop the NUMBER at phone widths and keep the
-     stars: the rating text is the cosmetic hash value (getStarRating), so
-     nothing informational is lost, and the width it frees puts stars +
-     six glyphs back on one line. Desktop keeps the number (there is room). */
-  .star-rating .rating-count {
-    display: none;
-  }
-
   /* ---- v1.13.0 item 6: mobile-portrait polish for the Setup (Library ------
      Settings) page and the /subscriptions page. Comfortable spacing/
      wrapping for rows and controls, and larger tap targets, without
@@ -9398,7 +9034,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 .tv-crumb { margin-bottom: var(--space-4); }
 .tv-back { background: transparent; border: none; color: var(--text-link); cursor: pointer; font-size: var(--fs-base); padding: var(--space-2) 0; }
 /* v1.196: the watch-page "back to show" link for an episode. */
-.tv-back-to-show { display: inline-block; color: var(--text-link); text-decoration: none; font-size: var(--fs-base); margin-bottom: var(--space-3); }
+.tv-back-to-show { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--ink-link); text-decoration: none; font: var(--t-body); margin-bottom: var(--space-3); }
 .show-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--space-8); }
 .show-card { display: flex; flex-direction: column; min-width: 0; gap: var(--space-2); padding: 0; border: none; background: transparent; text-align: left; cursor: pointer; color: inherit; }
 .show-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-lg); background: var(--thumbnail-bg); object-fit: cover; display: block; box-shadow: var(--shadow); transition: box-shadow var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui); }
@@ -11511,35 +11147,12 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 .skeleton-shimmer.skel-w140 { width: 140px; }
 .skeleton-shimmer.skel-w200 { width: 220px; }
 
-/* The subscriber badge is a bordered chip -- an empty chip reads as broken,
-   so it simply does not exist until painted. */
-.uploader-subs:empty {
-  display: none;
-}
-
-/* v1.54 (Dean's bug 2): the subs chip must never push the Subscribe/Pin
-   buttons down a row -- with REAL counts the label lengthens ("1.2M
-   subscribers as of 2026-07-29"), so it ellipsizes inside a bounded chip
-   instead of growing the row. Device probe: narrow phone, real count. */
-.uploader-subs {
-  max-width: 240px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Gate round 1 (adversarial W5): at phone widths ~200px remain for the chip
-   and the ellipsis eats from the tail -- exactly the as-of date, which is
-   the feature. Wrap to a second line instead; the Subscribe/Pin buttons are
-   a separate flex child, so a taller chip never pushes them down a row. */
-/* breakpoint 480px - deliberate (audit amendment a): v1.54 subs-chip two-line wrap. */
-@media (max-width: 480px) {
-  .uploader-subs {
-    max-width: 100%;
-    white-space: normal;
-    overflow: visible;
-    text-overflow: clip;
-  }
+/* v1.54 (Dean's bug 2), UI pass S3: the subscriber count (a ui-chip--meta, text only)
+   with a REAL count reads "1.2M subscribers as of 2026-07-29" - it wraps inside its text
+   column rather than pushing the channel row's controls (a separate grid column) away. */
+.watch-channel__meta .ui-chip--meta {
+  display: inline;
+  white-space: normal;
 }
 
 /* Cold-load description skeleton lines (hidden by the first real paint). */
@@ -12520,30 +12133,13 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   padding: var(--space-1) var(--space-2);
 }
 
-/* ---- v1.63.1 (Dean, v1.63.0 device pass): the watch action rows center on
-   phones, and the fake stars become optional ------------------------------
-   The seven-button row wraps below the star rating at phone widths (the
-   DELIBERATE v1.25.6 whole-row wrap - forcing nowrap was the iOS
-   shrink-to-fit regression and stays dead). Dean's intent: each wrapped
-   line CENTERS - the icon row (queue ... reheat) as one centered line, the
-   stars (when shown) as their own centered line above it. Desktop
-   byte-identical. */
-@media (max-width: 768px) {
-  .watch-actions {
-    justify-content: center;
-    /* Slim gate W3: definite width, or a lone icon row that FITS one line
-       hugs its content and sits at the column's flex-start (left) instead
-       of centering. width alone adds NO min-content growth - the v1.25.5
-       shrink-to-fit class stays dead. */
-    width: 100%;
-  }
-}
-
+/* ---- v1.63.1: the fake stars are optional (the watch action row's phone centring
+   went with its flex row in UI pass S3: the bar is equal grid columns) ---- */
 /* The hide-the-fake-stars pref: ONE rule gates every star writer (watch's
    control, the cards' rating rows, and any future writer - the CSS is the
    gate, so a new writer cannot forget it). display:none removes them from
    layout entirely, so the icon row centers alone. */
-.ft-hide-stars .star-rating,
+.ft-hide-stars .watch-rating,
 .ft-hide-stars .card-rating {
   display: none;
 }
@@ -12555,6 +12151,12 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
    counts never carry the class. A missing attribute counts as off, so Modern is
    the safe default. The ft-hide-stars rule above composes with it. */
 html:not([data-era-flourish="on"]) .ft-fabricated {
+  display: none;
+}
+/* UI pass sweep S3: the inverse, for a REAL-only stand-in of a fabricated one (the watch
+   page's comment count without the mock commenters, and its empty state when every
+   comment is a mock) - shown exactly when the flourish is off. */
+html[data-era-flourish="on"] .ft-unfabricated {
   display: none;
 }
 
@@ -13050,37 +12652,16 @@ html:not([data-era-flourish="on"]) .ft-fabricated {
 }
 
 /* === v1.96 A2: watch action-row REVEAL-ONCE (no pop-in) ====================
-   The `.watch-actions` row ships 4 static buttons in watch.html, then watch.js
-   INJECTS the rest (Move/Attribute/Like/Watched/Share/Reheat) after the record
-   loads -- a two-render reflow the user sees as buttons popping in one by one.
-   Reveal the WHOLE row ONCE, in final state: shimmer the row (the SAME treatment
-   `#views-count` right above it already uses), hide every child, and drop the
-   attribute (revealActionBar()) only when watch.js has BOTH async inputs -- the
-   media record AND the write capability -- settled (see the barrier in watch.js;
-   Move/Attribute mount from whichever resolves last).
-
-   What this DOES and does NOT guarantee (QA v1.96 WARNING 2 correction -- the
-   first version of this comment overclaimed an absolute zero-shift):
-   - The injected buttons are appended (still `visibility:hidden`) DURING the load,
-     under the shimmer, BEFORE the reveal. So at the moment of reveal every child
-     is already laid out and the reveal itself is zero-shift -- children just turn
-     visible in the boxes they already occupy.
-   - It is NOT an absolute no-resize: the shimmer box occupies the 4 static
-     buttons' height (~1 row on mobile) during the record fetch, then SETTLES to
-     its final height (up to ~2 wrapped rows of glyph-only buttons on a phone) as
-     the injected buttons mount invisibly. That settle happens under the uniform
-     shimmer -- a loading placeholder resizing once, NOT the button-by-button
-     pop-in this fix targets. Reserving a fixed final height is impossible (the
-     count is data-dependent: canModifyLibrary, share availability, reheat), so a
-     browser-measured settle (repo lesson #7: never guess CSS-var height
-     arithmetic) is the honest floor. Desktop is a single row throughout.
-
-   Keyed off a `data-loading` ATTRIBUTE, not a second class, so the
-   `class="watch-actions"` lock and the base-rule `/\.watch-actions\s*\{/`
-   extractors in watch-action-bar-nowrap.test.js are undisturbed. Non-media (all
-   viewports): the flash exists everywhere; fixing it at the source is
-   viewport-independent. If another half-state row shows up, reuse this
-   `data-loading` pattern rather than decorating the partial state. */
+   watch.js builds the action bar's buttons after the record loads. Reveal the
+   WHOLE row ONCE, in final state: shimmer the row, hide every child, and drop the
+   attribute (revealActionBar()) only when watch.js has every async input settled
+   (the barrier in watch.js). UI pass sweep S3 (D4.9): the row is ONE line of
+   equal columns of stacked buttons whose height the row reserves (.watch-actions
+   min-height), so the reveal is zero-shift - the children turn visible in the
+   boxes they already occupy, and no count of buttons changes the row's height.
+   Keyed off a `data-loading` ATTRIBUTE (not a second class). If another half-state
+   row shows up, reuse this `data-loading` pattern rather than decorating the
+   partial state. */
 /* v1.102 (tranche 4): the SAME reveal-once barrier now also serves the setup
    Automation toggles (`.reveal-toggle`), which ship a static default and would
    visibly flip once /api/settings lands (guaranteed on the two default-ON
@@ -13119,21 +12700,11 @@ html:not([data-era-flourish="on"]) .ft-fabricated {
   .watch-actions[data-loading]::after,
   .reveal-toggle[data-loading]::after { animation: none; }
 }
-/* Every child (the read-only star-rating AND the button sub-group; the setup
-   toggle's checkbox) stays invisible-but-laid-out until reveal, so no partial
+/* Every child (the bar's buttons; the setup toggle's checkbox) stays
+   invisible-but-laid-out until reveal, so no partial
    set is ever shown and the reserved height is the real (measured) final one. */
 .watch-actions[data-loading] > *,
 .reveal-toggle[data-loading] > * { visibility: hidden; }
-
-/* === v1.96 A1: watch action-row buttons sit 5px under the mobile 44px floor.
-   Scoped to `.watch-actions .btn` so it BEATS the v1.95 EOF `.btn { min-height:
-   44px }` on specificity (0,2,0 > 0,1,0) -- cascade order is irrelevant, but a
-   fresh EOF @media block keeps the positional CSS tests happy (v1.95 lesson).
-   min-height is NOT census-governed. The queue/notif/resume 44px controls and
-   the prev-next/playlist buttons (outside `.watch-actions`) are untouched. */
-@media (max-width: 768px) {
-  .watch-actions .btn { min-height: var(--size-touch-watch-action); }
-}
 
 /* ---- v1.150 (Dean's device report): the search-box clear X ----------------
    (Its Half 1, the search toolbar strip, retired in UI pass sweep S2: every

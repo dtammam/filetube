@@ -246,138 +246,52 @@
                surface's seed (common path) or wears a neutral skeleton until
                hydration (cold loads). -->
           <h1 class="watch-title skeleton-shimmer skel-title" id="media-title"></h1>
-          
-          <div class="watch-action-bar">
-            <div>
-              <span class="views-count skeleton-shimmer skel-w120" id="views-count"></span>
-            </div>
-            
-            <!-- v1.96 A2: `data-loading` shimmers the WHOLE row and hides
-                 every child until watch.js has the COMPLETE injected button
-                 set, then revealActionBar() drops the attribute -- the row
-                 appears once, in final state (no partial->full pop-in). An
-                 attribute (not a second class) so `class="watch-actions"` and
-                 the base-rule extractors stay locked. See style.css. -->
-            <div class="watch-actions" data-loading>
-              <!-- Star Rating (read-only; deterministic per item, set by watch.js) -->
-              <div class="star-rating" id="star-rating-control" title="Rating">
-                <span class="star" data-value="1">★</span>
-                <span class="star" data-value="2">★</span>
-                <span class="star" data-value="3">★</span>
-                <span class="star" data-value="4">★</span>
-                <span class="star" data-value="5">★</span>
-                <span class="rating-count" id="rating-text"></span>
-              </div>
-              
-              <!-- v1.25.6 hotfix: Download/Delete (and the JS-appended Move
-                   button -- see watch.js's setupMoveButton) live in their own
-                   sub-group, `.watch-action-btns`. It was nowrap until the
-                   transcript wave (2026-08-28): a nowrap row wider than its
-                   column SHRANK its buttons, so the group now wraps and the
-                   buttons themselves never shrink or line-break (style.css,
-                   docs/CONTRIBUTING.md "Action rows"), while `.watch-actions` itself (this
-                   element's parent) is free to wrap as a whole against its
-                   OTHER sibling, `.star-rating` above. See style.css's
-                   `.watch-actions`/`.watch-action-btns` rules for the full
-                   iOS shrink-to-fit regression story. -->
-              <div class="watch-action-btns">
-                <!-- v1.63 playback queue (Dean rulings 3): both verbs, armed
-                     per media load by watch.js (inert until then, the
-                     download-btn posture). One shared verb helper
-                     (common.js addToQueue) - never a copied fetch. -->
-                <button type="button" class="btn" id="queue-add-btn" title="Add to queue" aria-label="Add to queue">
-                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M3 6h13v2H3V6zm0 4h13v2H3v-2zm0 4h9v2H3v-2zm14-1v6l5-3-5-3z" fill="currentColor"/></svg><span class="btn-label">Queue</span>
-                </button>
-                <button type="button" class="btn" id="queue-next-btn" title="Play next" aria-label="Play next">
-                  <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M4 5h2v14H4V5zm4 7 10-7v14L8 12z" fill="currentColor" transform="rotate(180 12 12)"/></svg><span class="btn-label">Next</span>
-                </button>
-                <!-- Download option (FR-3, v1.19.0): saves the ORIGINAL source
-                     file to the device, via GET /video/:id?download=1 (server
-                     sets Content-Disposition: attachment). href/download are
-                     set per media load by watch.js's populateMetadata() --
-                     inert until then. iOS Safari note: Content-Disposition:
-                     attachment is the authoritative same-origin download path
-                     on iOS Safari 13+; the anchor `download` attribute here is
-                     a belt-and-suspenders hint for desktop browsers. -->
-                <a class="btn" id="download-media-btn" title="Download video" aria-label="Download video">
-                  <!-- v1.47.6: the word is wrapped in `.btn-label` so the phone
-                       breakpoint can hide it (see style.css). Bare text nodes
-                       cannot be targeted by CSS, which is why this row could not
-                       go icon-only before. Meaning is preserved by the
-                       title/aria-label already on the button. -->
-                  <i class="icon-download"></i> <span class="btn-label">Download</span>
-                </a>
+          <!-- UI pass sweep S3: one quiet meta line under the title - the views
+               (a MOCK count carries .ft-fabricated and shows only in the retro
+               eras, D8.1), the added date and the fabricated stars. -->
+          <div class="watch-meta" id="watch-meta">
+            <span class="views-count skeleton-shimmer skel-w120" id="views-count"></span>
+            <span class="watch-meta__date" id="added-date-text"></span>
+            <span class="watch-rating ft-fabricated" id="star-rating-control" role="img"></span>
+          </div>
 
-                <!-- Delete option -->
-                <button class="btn" id="delete-media-btn" style="color: var(--yt-red); border-color: var(--yt-red);" title="Delete video" aria-label="Delete video">
-                  <i class="icon-delete"></i> <span class="btn-label">Delete</span>
-                </button>
-                <!-- v1.202 (Dean's action-row re-evaluation): in COMPACT mode
-                     (the column under 960px - phones, and desktop with the
-                     sidebar beside it) only the PRIMARY buttons stay in the row
-                     (Like, Share, Transcript, Queue - his real taps) and this
-                     "More" opens the app's pick-one modal listing every
-                     mounted SECONDARY button (Next, Download, Delete, Move,
-                     Mark watched, Reheat, Attribute) - a pick clicks the real
-                     button, so every existing handler/confirm/state is reused.
-                     Hidden in wide mode (style.css shows it via the container
-                     query); the tier list lives ONCE in watch.js
-                     (SECONDARY_ACTION_IDS) and style.css mirrors it (locked). -->
-                <button type="button" class="btn" id="more-actions-btn" title="More actions" aria-label="More actions" aria-haspopup="dialog">
-                  <i class="icon-more"></i> <span class="btn-label">More</span>
-                </button>
-              </div>
-            </div>
+          <!-- UI pass sweep S3 (D4.9): the action bar - one row of stacked ui-btns
+               (icon over label) in equal columns: Like, Share, Listen,
+               Transcript, More; every other action lives in More's menu.
+               watch.js builds the buttons; `data-loading` shimmers the reserved
+               row until the set is final (revealActionBar), so nothing pops in. -->
+          <div class="watch-action-bar">
+            <div class="watch-actions" id="watch-actions" role="toolbar" data-loading></div>
           </div>
 
           <!-- v1.63: "Up next in queue" box (Dean ruling 5) - rendered by
-               watch.js when a queue is engaged; hidden otherwise. Sits in
-               the uploader block's slot, pushing it down (the YouTube
-               playlist-box treatment). -->
+               watch.js when a queue is engaged; hidden otherwise. -->
           <div class="queue-upnext-box" id="queue-upnext-box" hidden></div>
 
-          <!-- Uploader details -->
-          <div class="uploader-info-panel">
-            <div class="uploader-profile">
-              <div class="uploader-avatar skeleton-shimmer" id="uploader-avatar-letter"></div>
-              <div>
-                <!-- v1.22.0 FR-3 (AC23-27): a real <a>, not a <div> -- no
-                     default `href` so, with the module off or no resolvable
-                     identity, it renders as inert plain text (never a dead
-                     link, AC25). `href` is wired by watch.js's
-                     setupSubscribeButton() once the module-enabled probe
-                     resolves; `.textContent` is set by populateMetadata()
-                     exactly as before (unchanged, XSS-safe). -->
-                <a class="uploader-channel-link skeleton-shimmer skel-w140" id="uploader-channel-name"></a>
-                <div class="uploader-subs" id="uploader-subs-count"></div>
-              </div>
+          <!-- UI pass sweep S3 (D4.9): the channel row - ui-avatar lg, the name
+               over the subscriber count (a ui-chip--meta on a reserved line,
+               F43), then Subscribe (primary pill; "Subscribed" = secondary),
+               the bell (reserved, hidden until subscribed) and the pin. The
+               name is a real <a> with no default href (v1.22.0 FR-3: inert
+               text until watch.js resolves the channel's folder). -->
+          <div class="watch-channel" id="watch-channel">
+            <span class="ui-avatar ui-avatar--lg skeleton-shimmer" id="uploader-avatar-letter"></span>
+            <div class="watch-channel__text">
+              <a class="watch-channel__name skeleton-shimmer skel-w140" id="uploader-channel-name"></a>
+              <span class="watch-channel__meta"><span class="ui-chip ui-chip--meta" id="uploader-subs-count"></span></span>
             </div>
-            <div>
-              <!-- v1.20.0 FR-1/FR-3 (T3): real toggle wired by public/js/watch.js.
-                   Default `hidden` -- shown only after the module-enabled +
-                   resolvable-channel-identity check resolves true (FR-3);
-                   otherwise it stays absent for the whole visit (never
-                   merely greyed/disabled). -->
-              <button class="btn btn-primary" id="subscribe-btn-mock" hidden>Subscribe</button>
+            <div class="watch-channel__actions" id="watch-channel-actions">
+              <!-- v1.20.0 FR-1/FR-3: `hidden` until the module-enabled +
+                   channel-identity check resolves true; otherwise absent. -->
+              <button type="button" class="ui-btn ui-btn--primary ui-btn--sm ui-btn--pill" id="subscribe-btn-mock" hidden></button>
             </div>
           </div>
 
           <!-- Description Box -->
           <div class="description-container">
-            <div class="description-meta">
-              Added <span id="added-date-text" class="skeleton-shimmer skel-w60"></span> &bull; File Size: <span id="file-size-text" class="skeleton-shimmer skel-w60"></span> &bull; Type: <span id="file-type-text" class="skeleton-shimmer skel-w60"></span>
-            </div>
-            <!-- v1.48 item 1 (Dean, "full description of the video pulled").
-                 The video's OWN description now leads this box and is the
-                 element the "Show more" button governs. It carries
-                 `.description-text` (the collapsed `-webkit-line-clamp`) so the
-                 clamp applies to the DESCRIPTION rather than, as before, to the
-                 self-hosting boilerplate below it -- which is what made the old
-                 toggle expand three lines of static text and nothing else.
-                 Populated by watch.js from the embedded `description` tag;
-                 stays empty (and, via `.video-description:empty`, out of the
-                 layout entirely) for files carrying no description, so an
-                 ordinary local file's box looks exactly as it did pre-v1.48. -->
+            <!-- v1.48 item 1: the video's OWN description (`.description-text`
+                 is the collapsed line clamp "Show more" governs). Empty (and,
+                 via `:empty`, out of the layout) for files with none. -->
             <div class="description-text video-description" id="video-description"></div>
             <!-- v1.52: cold-load description skeleton; hidden by the first real
                  renderVideoDescription paint (seeded paints hide it in frame one). -->
@@ -386,32 +300,23 @@
               <div class="skeleton-shimmer skel-line short"></div>
             </div>
             <!-- GATE FIX (adversarial WARNING W2): "Show more" sits IMMEDIATELY
-                 after the element it expands. It used to be the last child of
-                 this box, which was coherent while the clamped element was the
-                 boilerplate -- but now the clamp is on the description above, so
-                 leaving the button at the bottom put the file-path block AND the
-                 whole Embedded-info table (up to ~12 rows for an mp3) between an
-                 ellipsis and its only control, reading as an affordance for
-                 Embedded info instead. -->
-            <!-- v1.52: hidden until setupDescriptionToggle measures a real overflow --
-                 a "Show more" under an empty box was one of the flash literals. -->
-            <button class="expand-description-btn" id="expand-desc-btn" style="display: none;">Show more</button>
-            <div class="description-fileinfo">
-              File Path: <span id="file-path-text" class="file-path skeleton-shimmer skel-w200"></span>
-              <br><br>
-              This file is self-hosted on your network. Playback progress is automatically saved to your FileTube server, allowing you to resume playing this video or audio clip at any time.
-            </div>
-            <!-- Additive: embedded file metadata (populated by watch.js; hidden if none) -->
-            <div id="embedded-tags" class="embedded-tags" style="display: none;"></div>
+                 after the element it expands. v1.52: hidden until
+                 setupDescriptionToggle measures a real overflow. -->
+            <button type="button" class="ui-btn ui-btn--plain ui-btn--sm expand-description-btn" id="expand-desc-btn" hidden><span class="ui-btn__label">Show more</span></button>
+            <!-- UI pass sweep S3 (D8.4): "About this file" - a collapsed ui-row
+                 (built by watch.js) that expands to the file's size, type, path
+                 (with a Copy action) and its embedded tags. The self-hosting
+                 paragraph is gone. The value rows keep the painter's ids. -->
+            <div class="about-file" id="about-file"></div>
           </div>
 
           <!-- Comments Section -->
           <div class="comments-section">
-            <div class="comments-header">Comments (<span id="comment-count-badge">0</span>)</div>
-            
+            <div class="comments-header">Comments <span class="comments-count"><span class="ft-fabricated" id="comment-count-badge">0</span><span class="ft-unfabricated" id="comment-count-real">0</span></span></div>
+
             <div class="comment-input-area">
-              <textarea class="comment-input-box" id="new-comment-text" placeholder="Add a public comment..."></textarea>
-              <button class="btn btn-primary" id="post-comment-btn" style="align-self: flex-end; height: 36px;">Comment</button>
+              <textarea class="ui-field__input comment-input-box" id="new-comment-text" placeholder="Add a public comment..."></textarea>
+              <button type="button" class="ui-btn ui-btn--primary ui-btn--md" id="post-comment-btn"><span class="ui-btn__label">Comment</span></button>
             </div>
 
             <div class="comment-list" id="comments-container">
@@ -465,14 +370,12 @@
            resume/transcode overlays. -->
       <div id="art-play-glyph" class="art-play-glyph" aria-hidden="true"></div>
 
-      <!-- Resume overlay popup -->
-      <div id="resume-overlay" class="resume-overlay" style="display: none;">
-        <h3>Resume playback?</h3>
-        <p>You watched this media up to <span id="resume-time-str">0:00</span>. Would you like to resume from there?</p>
-        <div class="resume-actions">
-          <button class="btn" id="resume-no-btn">Start from beginning</button>
-          <button class="btn btn-primary" id="resume-yes-btn">Resume</button>
-        </div>
+      <!-- UI pass sweep S3 (D8.2): the resume toast. A load with saved progress past the
+           threshold auto-resumes (player.js) and this chip says so over the bottom-left of
+           the video for 4s, with Start over. It replaced the Resume? modal. -->
+      <div id="resume-toast" class="player-resumed" role="status" hidden>
+        <span class="player-resumed__text">Resumed at <span id="resume-time-str">0:00</span></span>
+        <button type="button" class="ui-btn ui-btn--plain ui-btn--sm player-resumed__action" id="resume-restart-btn"><span class="ui-btn__label">Start over</span></button>
       </div>
 
       <!-- Transcode ("Preparing video") overlay for AVI-class files being converted to MP4 -->
@@ -494,8 +397,9 @@
         Your browser does not support HTML5 video player.
       </video>
 
-      <!-- Shown while press-and-hold-to-2x is active (mobile inline) -->
-      <div id="speed-badge" class="speed-badge" style="display: none;">2× ▶▶</div>
+      <!-- Shown while press-and-hold-to-2x is active (mobile inline): a chip-styled "2x" pill
+           with the fast_forward glyph, top centre of the video (UI pass D6) -->
+      <div id="speed-badge" class="speed-badge" hidden><svg class="ui-icon ui-icon--sm" aria-hidden="true"><use href="#i-fast_forward"/></svg><span class="speed-badge__label">2x</span></div>
 
       <!-- Double-tap seek feedback (shown for video only, toggled via JS). v1.311.2: the
            tappable ±15s buttons were removed (Dean) - double-tap seek stays. -->

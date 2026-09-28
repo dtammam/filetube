@@ -5,13 +5,13 @@
 // test/integration/watch-like-button.test.js) with a scripted fetch stub,
 // and asserts the DOM-level contract directly:
 //
-//   - the button mounts inside `.watch-action-btns` ONLY when
+//   - the button mounts in the action bar (#watch-actions) ONLY when
 //     `GET /api/videos/:id` carries a server-derived `watchUrl`
 //   - an item WITHOUT a watchUrl gets no button at all
 //   - clicking it calls `navigator.share({title, url})` with the ORIGINAL
 //     YouTube link when the API exists
 //   - without navigator.share, it falls back to `navigator.clipboard
-//     .writeText(url)` and shows the transient "Copied!" label
+//     .writeText(url)` and says so with a toast (UI pass S3: the "Copied!" label swap is gone)
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -126,16 +126,14 @@ async function settle(times) {
   for (let i = 0; i < (times || 10); i++) await flush();
 }
 
-// v1.47.6: the Share button is now `<i class="icon-share"> <span class="btn-label">`
-// so the phone breakpoint can hide the WORD and keep the glyph. The transient
-// "Copied!" feedback therefore writes to the label span -- writing the button's
-// own textContent (as it did before) would destroy the icon.
+// UI pass sweep S3 (D4.9): the Share button is a stacked ui-btn (a registry glyph over its
+// caption); its label never changes - "Copied!" is a ui.toast (F21: the swap shoved the row).
 function shareLabel(btn) {
-  const label = btn && btn.querySelector('.btn-label');
+  const label = btn && btn.querySelector('.ui-btn__label');
   return label ? label.textContent : null;
 }
 
-test('watch page: the Share button mounts inside .watch-action-btns when the item carries a watchUrl', async () => {
+test('watch page: the Share button mounts in the action bar when the item carries a watchUrl', async () => {
   const { fetchImpl } = makeWatchFetchStub(true);
   const { dom } = await loadWatchWithFetchStub(fetchImpl);
   try {
@@ -144,11 +142,11 @@ test('watch page: the Share button mounts inside .watch-action-btns when the ite
     const shareBtn = document.getElementById('share-media-btn');
     assert.ok(shareBtn, 'expected a #share-media-btn to be mounted');
     assert.ok(
-      document.querySelector('.watch-action-btns').contains(shareBtn),
-      'expected the Share button to live inside .watch-action-btns, alongside Download/Delete/Move/Like'
+      document.querySelector('#watch-actions').contains(shareBtn),
+      'expected the Share button to live in the action bar'
     );
     assert.strictEqual(shareLabel(shareBtn), 'Share');
-    assert.ok(shareBtn.querySelector('i.icon-share'), 'the glyph must accompany the hideable label');
+    assert.ok(shareBtn.querySelector('.ui-btn__icon use[href="#i-share"]'), 'the registry glyph accompanies the caption');
   } finally {
     dom.window.close();
   }
@@ -195,7 +193,7 @@ test('watch page: clicking Share calls navigator.share with the ORIGINAL YouTube
   }
 });
 
-test('watch page: without navigator.share, clicking Share copies the link to the clipboard and shows the transient "Copied!" label', async () => {
+test('watch page: without navigator.share, clicking Share copies the link to the clipboard and says so with a toast (the label never changes)', async () => {
   const writes = [];
   const { fetchImpl } = makeWatchFetchStub(true);
   const { dom } = await loadWatchWithFetchStub(fetchImpl, (window) => {
@@ -221,8 +219,10 @@ test('watch page: without navigator.share, clicking Share copies the link to the
     await settle();
 
     assert.deepStrictEqual(writes, [WATCH_URL]);
-    assert.strictEqual(shareLabel(shareBtn), 'Copied!', 'transient feedback after the clipboard write resolves');
-    assert.ok(shareBtn.querySelector('i.icon-share'), 'the Copied! feedback must NOT wipe the icon (textContent= would)');
+    assert.strictEqual(shareLabel(shareBtn), 'Share', 'the label never swaps (F21)');
+    const toast = dom.window.document.querySelector('.ui-toast');
+    assert.ok(toast && /Link copied/.test(toast.textContent), 'a ui.toast says the link was copied');
+    assert.ok(shareBtn.querySelector('.ui-btn__icon use[href="#i-share"]'), 'the glyph is intact');
   } finally {
     dom.window.close();
   }
@@ -305,7 +305,7 @@ test('v1.337 watch page: Share of a non-YouTube download sends its source URL as
     const shareBtn = dom.window.document.getElementById('share-media-btn');
     shareBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
     await settle();
-    assert.strictEqual(dom.window.document.querySelector('.choice-modal-list'), null, 'no "at current time" choice for another site');
+    assert.strictEqual(dom.window.document.querySelector('.ui-sheet'), null, 'no "at current time" choice for another site');
     assert.strictEqual(calls.length, 1);
     assert.strictEqual(calls[0].url, SOURCE_URL, 'the logged URL, untouched (no ?t=)');
     assert.strictEqual(calls[0].title, 'A Shareable Video 🎵');
@@ -324,8 +324,9 @@ test('v1.337 watch page: a YouTube item mid-video STILL offers the "at current t
     const shareBtn = dom.window.document.getElementById('share-media-btn');
     shareBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
     await settle();
-    const list = dom.window.document.querySelector('.choice-modal-list');
-    assert.ok(list, 'the choice modal opened');
+    await settle();
+    const list = dom.window.document.querySelector('.ui-sheet');
+    assert.ok(list, 'the choice menu opened (UI pass S3: a ui.menu, was the choice modal)');
     assert.match(list.textContent, /Share at current time \(0:42\)/);
     assert.strictEqual(calls.length, 0, 'nothing shared until a pick');
   } finally {

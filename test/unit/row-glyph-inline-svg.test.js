@@ -6,10 +6,10 @@
 // decodes, so on an iOS cold start these glyphs popped in a beat after the row
 // (the v1.87 class); an inline svg rides the text layer and reveals instantly.
 //
-// The swap is SURGICAL: the card-corner queue mask and the watch action-row
-// masks are NOT first-paint-lagging in the same way and stay masks (bound by
-// card-action-menu.test.js / era-row-overflow.test.js). This test binds the
-// two row surfaces flipped AND that the survivors did not.
+// The swap was SURGICAL: the card-corner queue mask and the watch action-row
+// masks stayed masks then; UI pass sweeps S2 / S3 moved both onto registry
+// icons (card-action-menu.test.js / watch-sweep-s3.test.js). This test binds the
+// two row surfaces flipped AND (last test) where the card and watch glyphs come from now.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -90,11 +90,15 @@ test('ui.css: the ui-btn icon slot sizes the sprite glyph (replaces the 14px .po
 
 // ---- SURGICAL SCOPE: the survivors stay masks -------------------------------
 
-test('surgical scope: the watch-row masks are NOT swapped (the card queue is a menu entry since sweep S2)', () => {
+test('the card and watch queue entries draw registry icons (sweeps S2, S3); the watch row carries no mask icon', () => {
   // UI pass sweep S2 retired the card-corner queue button: the card's queue is a
   // menu entry drawing the registry's playlist_add (card-action-menu.test.js).
   assert.match(read('public/js/main.js'), /icon: 'playlist_add', label: 'Add to queue'/, 'the card queue entry draws a registry icon');
-  // The watch action row keeps its masks (era-row-overflow.test.js binds them).
-  const watch = read('public/watch.html') + read('public/js/watch.js');
-  assert.match(watch, /icon-heart/, 'the watch action-row like mask survives');
+  // UI pass sweep S3: the watch action bar and its More menu draw registry icons too - the
+  // .icon-* masks (and their decode-after-text pop, F52) are gone from the watch page.
+  const watchJs = read('public/js/watch.js');
+  assert.match(watchJs, /icon: 'playlist_add', label: 'Add to queue'/, 'the watch More menu queue entry');
+  assert.match(watchJs, /icon: \{ off: 'favorite', on: 'favorite\.fill' \}, labels: \['Like', 'Liked'\]/, 'the watch Like is a registry glyph toggle');
+  const watch = read('public/watch.html') + watchJs;
+  assert.doesNotMatch(watch, /class="icon-|className = 'icon-/, 'no mask icon on the watch page');
 });

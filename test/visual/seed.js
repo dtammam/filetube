@@ -363,7 +363,9 @@ const CHANNELS = [
   // row, route-stamped ones included, is in the past and reads the same relative date.
   const fixtures = { dataDir: DATA, seededAt: NOW, viewNow: NOW + 3600e3, pinned: Number(process.env.SEED_NOW) > 0, user: USER, password: PASSWORD,
     video: harbor[0], videoUnsub: byChannel['Northbound Field Notes'][0], track: musicIds[0],
-    // a video with saved progress past the resume threshold (the resume toast, D8.2)
+    // the resume toast's video (D8.2): the seed stores its progress through its OWN minted session,
+    // which is not the capture login's user, so a probe routes GET /api/progress/<it> to a position
+    // past the threshold (the S3 probe does) - on its own it resumes nothing
     videoResume: home[1],
     book: readingBook, bookShelf: path.join(booksRoot, 'Harbor Library'),
     counts: { videos: Object.values(meta).filter((m) => m.type === 'video').length, musicTracks: musicIds.length,

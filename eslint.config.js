@@ -136,6 +136,9 @@ module.exports = [
       globals: {
         computeQueueNext: 'readonly',
         computeQueuePrev: 'readonly',
+        // UI pass sweep S3: the watch page's Move to Trash confirm reads main.js's
+        // (the card menu's) copy, so the two can never disagree (main.js loads first).
+        cardDeleteConfirmCopy: 'readonly',
       },
     },
   },

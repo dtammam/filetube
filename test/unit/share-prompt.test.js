@@ -90,7 +90,9 @@ test('v1.110 source-lock: player.getCurrentTime is VOD-only (null for live), and
   // v1.337: the prompt is YouTube's `?t=` - a non-YouTube download's own link is shared as it is.
   assert.match(fn, /const isYouTube = base === mediaData\.watchUrl;/, 'the time choice is keyed on the YouTube link');
   assert.match(fn, /if \(isYouTube && typeof t === 'number' && isFinite\(t\) && t >= 1\) \{/, 'prompts only for a meaningful position (>= 1s), YouTube only');
-  assert.match(fn, /label: 'Share video', onPick: \(\) => runShare\(base\)/, 'a plain-link choice');
-  assert.match(fn, /withShareStartTime\(base, t\)/, 'a share-at-current-time choice with ?t=');
+  // UI pass sweep S3: the choice is a ui.menu anchored to Share (was the choice modal)
+  assert.match(fn, /ui\.menu\(\{/, 'the choice is a ui.menu');
+  assert.match(fn, /label: 'Share video', value: 'video'/, 'a plain-link choice');
+  assert.match(fn, /onSelect: \(v\) => runShare\(v === 'at' \? withShareStartTime\(base, t\) : base\)/, 'a share-at-current-time choice with ?t=, else the plain link');
   assert.match(fn, /runShare\(base\);/, 'falls back to the plain share under 1s / null');
 });

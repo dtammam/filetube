@@ -134,14 +134,14 @@ test('.folder-name-input is a ui-field__input: 16px at every width, and no style
   }
 });
 
-test('desktop sizing for the systemic-fix surfaces is unchanged outside the mobile breakpoint (13px base still present, tokenized)', () => {
-  // v1.41.2: the former .sort-select (12px) is gone -- the sort control is now a
-  // custom .btn dropdown (.sort-select-btn), which inherits .btn's --fs-sm (12px)
-  // and, being a button not a <select>, never triggers the iOS focus-zoom this
-  // suite guards. So this now only pins .comment-input-box's desktop base.
+test('the comment box is a ui-field at every width (16px, no iOS focus zoom): its base rule sets no smaller font-size', () => {
+  // v1.41.2: the former .sort-select (12px) is gone (a custom .btn dropdown now). UI pass
+  // sweep S3: the watch page's comment box was the last 13px desktop class here; it is a
+  // ui-field input now (ui.css .ui-field__input: the 16px --fs-input-min at EVERY width, the
+  // D4.10 contract), so its base rule must not re-shrink it (was: "13px on desktop").
   const commentBoxRule = /^\.comment-input-box\s*\{([^}]*)\}/m.exec(css);
   assert.ok(commentBoxRule, 'expected a base (non-media-query) .comment-input-box rule');
-  const commentBoxFontSize = /font-size:\s*([^;]+);/.exec(commentBoxRule[1]);
-  assert.ok(commentBoxFontSize, 'expected a font-size declaration on the base .comment-input-box rule');
-  assert.strictEqual(resolveFontSizePx(commentBoxFontSize[1]), 13, 'expected .comment-input-box base to stay 13px on desktop');
+  assert.ok(!/font-size:|font:/.test(commentBoxRule[1]), 'the base rule sets no font (the ui-field 16px stands)');
+  const html = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/watch.html'), 'utf8');
+  assert.match(html, /<textarea class="ui-field__input comment-input-box"/, 'the textarea carries the ui-field input class');
 });

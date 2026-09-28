@@ -188,32 +188,6 @@ function chromeAvatarEl(name, url, size, doc) {
   return a;
 }
 
-// v1.340 (Dean, 2026-09-26: "notify button shifts unreasonably - should be stable"): the
-// label of a TWO-STATE button whose words change width (Notify / Notifying, Subscribe /
-// Subscribed, Pin channel / Pinned). Every label is laid out in ONE grid cell, so the
-// button is always as wide as the longest and nothing beside it moves on a tap; only the
-// current one is visible (the idle ones are `visibility:hidden`, which also keeps them
-// out of the accessible name). `glyphs` (optional) = { label: CHROME_ICON name } draws
-// that glyph INSIDE the label's slot before its words, or { label: { name, after: true } }
-// after them - inside, so the button's baseline stays the text's (a leading svg item would
-// set a flex button's baseline to its bottom edge and drop the neighbouring buttons ~3px).
-// A glyph never grows the line (negative block margins, style.css .btn-glyph), and no
-// label may carry a text symbol from a fallback font (gate r1 W2: the hidden "Pinned ★"
-// made Pin 3px taller than its neighbours on desktop) - draw it as a glyph. `data-label` carries the
-// current label for tests and CSS. Labels are fixed literals at every call site; they
-// are escaped anyway.
-function stableToggleLabelHtml(current, labels, glyphs) {
-  const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const slots = labels.map((l) => {
-    const g = glyphs && glyphs[l];
-    const name = g && (typeof g === 'string' ? g : g.name);
-    const after = !!(g && typeof g === 'object' && g.after);
-    const svg = name ? chromeIconMarkup(name, after ? 'btn-glyph btn-glyph-after' : 'btn-glyph') : '';
-    return '<span class="btn-label-slot"' + (l === current ? '' : ' data-idle') + '>'
-      + (after ? esc(l) + svg : svg + esc(l)) + '</span>';
-  }).join('');
-  return '<span class="btn-label-stack" data-label="' + esc(current) + '">' + slots + '</span>';
-}
 
 // v1.102 (tranche 4 shimmer): the ART-DECODE reveal. Every card image (album/
 // podcast/book/history art, mobile avatar) ships with the `art-shimmer` class so
@@ -3590,12 +3564,16 @@ function deriveWatchPaintPlan(item, channelName) {
   if (typeof item.title === 'string' && item.title !== '') plan.title = item.title;
   if (Number.isInteger(item.sourceViewCount) || typeof item.size === 'number') {
     plan.viewsLabel = resolveViewCountLabel({ ...item, id: item.id }, { detailed: true });
+    // UI pass D8.1: the mock is a fabricated stat (the era flourish); the painter marks it.
+    plan.viewsFabricated = isFabricatedViewCount(item);
   }
   if (typeof channelName === 'string' && channelName !== '') {
     plan.channelName = channelName;
     plan.channelAvatarUrl = typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '';
     // v1.54: real captured count when present, mock fallback otherwise.
     plan.subsLabel = resolveSubscriberLabel(item, channelName);
+    // UI pass D8.1: true when that label is the mock (no captured count) - resolveSubscriberLabel's own test.
+    plan.subsFabricated = !(Number.isInteger(item.sourceFollowerCount) && item.sourceFollowerCount >= 0);
   }
   if (typeof item.addedAt === 'number') plan.dateLabel = formatRelativeTime(item.addedAt);
   if (typeof item.size === 'number') plan.sizeLabel = formatFileSize(item.size);
@@ -8016,11 +7994,10 @@ const KEYBOARD_SHORTCUT_GROUPS = [
       { keys: ['0', '…', '9'], desc: 'Jump to 0% - 90% of the item' },
       { keys: ['<'], desc: 'Slow down' },
       { keys: ['>'], desc: 'Speed up' },
-      // v1.50: only live while the "Resume playback?" prompt is showing --
-      // the desc says so, keeping the reference's one rule ("every listed
+      // v1.50 (UI pass S3, D8.2): only live while the "Resumed at" toast is
+      // showing (R went with the modal: the load has already resumed) -- the desc says so, keeping the reference's one rule ("every listed
       // key ACTUALLY works") honest about the scoping.
-      { keys: ['R'], desc: 'Resume (while the Resume prompt is showing)' },
-      { keys: ['S'], desc: 'Start over (while the Resume prompt is showing)' },
+      { keys: ['S'], desc: 'Start over (while "Resumed at" shows)' },
     ],
   },
   {
@@ -17112,7 +17089,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.87.1 / UI pass step 2: the chrome glyphs (the name map + markup/element
     // builders over the icon sprite). chrome-icons.test.js binds every map entry to a
     // registry icon and source-locks the shells' static markup against chromeIconMarkup.
-    CHROME_ICON, chromeIconMarkup, chromeIconEl, spriteIconEl, stableToggleLabelHtml,
+    CHROME_ICON, chromeIconMarkup, chromeIconEl, spriteIconEl,
     uiIconMarkup, uiIconEl, chromeButtonEl, bottomNavItemEl, setBottomNavItemFilled, chromeAvatarEl, syncThemeColorMeta,
     armSidebarSlide, wireNoMotionOnResize, toSheetRow, buildUnpinButton, buildPinAvatarNode, openPlaylistsSheet, closePlaylistsSheet,
     // v1.102 (tranche 4 shimmer): the art-decode reveal helper (jsdom-tested).

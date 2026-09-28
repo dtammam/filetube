@@ -67,7 +67,7 @@ function resolveFontSizePx(value) {
 // This file has several independent `@media (max-width: 768px) { ... }`
 // blocks (one per feature area) -- isolate the one containing `marker` by
 // brace-depth counting, mirroring the pattern in
-// watch-action-bar-nowrap.test.js, rather than a single `[\s\S]*?` regex
+// the (retired, UI pass S3) watch-action-bar-nowrap.test.js, rather than a single `[\s\S]*?` regex
 // that could span (and falsely match against) unrelated blocks.
 function findMobileBlockContaining(marker) {
   const mediaRe = /@media \(max-width: 768px\)\s*\{/g;

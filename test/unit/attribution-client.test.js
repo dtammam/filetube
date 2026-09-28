@@ -19,8 +19,9 @@ function strippedSource(rel) {
 
 test('LOCK (wiring): the watch page mounts the Attribute control, gated on the ONE unattributed predicate', () => {
   const src = strippedSource('public/js/watch.js');
-  assert.match(src, /setupAttributeButton\(\);/, 'the initWatch call site was deleted');
-  assert.match(src, /resolveFileChannelIdentity\(mediaData\) !== null/, 'the visibility gate must be the shared predicate, never resolveChannelName');
+  // UI pass sweep S3: a More-menu entry, offered from the live state at each open
+  assert.match(src, /else if \(id === 'attribute'\) handleAttributeClick\(\);/, 'the menu call site was deleted');
+  assert.match(src, /canAttribute: attributeControlEnabled && !!mediaData && resolveFileChannelIdentity\(mediaData\) === null/, 'the visibility gate must be the shared predicate, never resolveChannelName');
   assert.match(src, /\/api\/videos\/\$\{encodeURIComponent\(mediaId\)\}\/attribute-channel/, 'the attribute POST was deleted');
   assert.match(src, /window\.FileTube\.player\.close\(\);/, 'the move confirm must close the player before moving (the offerRelocation posture)');
   assert.match(src, /entry\.attributionConflict && entry\.attributionConflict\.kept/, 'the conflict toast branch was deleted (decision 3: the conflict must be NAMED)');

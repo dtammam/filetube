@@ -184,7 +184,7 @@ test('v1.252 (Listen-mode): the watch page mounts a Listen button that navigates
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'watch.js'), 'utf8');
   assert.match(src, /function setupListenButton\(\)/, 'the Listen mount exists');
   assert.match(src, /setupListenButton\(\);/, 'and is actually called on media load (reachable)');
-  assert.match(src, /listenBtn\.id = 'listen-media-btn'/, 'the Share-chassis id posture');
+  assert.match(src, /listenBtn = barButton\('listen', 'listen-media-btn',/, 'a bar button (UI pass S3: the stacked ui-btn, the Share chassis)');
   assert.match(src, /'\/music\?play=' \+ encodeURIComponent\(mediaData\.id\) \+ '&listen=1'/, 'the tap targets the listen URL');
   assert.match(src, /window\.FileTube\.navigate\(target\)/, 'through the SPA navigate');
 });

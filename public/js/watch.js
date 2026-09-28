@@ -667,6 +667,54 @@ function reconcileStoredComments(stored, makeFreshMock) {
   return { comments: [...mine, ...fresh()], changed: true };
 }
 
+// ---- UI pass sweep S3: the watch page's pure plans (exported for node:test) ----------
+
+// D8.1: a comment Dean posted (author 'You', the reconcile's own test) is REAL and shows in
+// every era; every other one is a mock persona - a fabricated stat, shown only in the retro
+// eras (.ft-fabricated).
+function isUserComment(c) {
+  return !!c && typeof c.author === 'string' && c.author.trim().toLowerCase() === USER_COMMENT_AUTHOR.toLowerCase();
+}
+
+// D4.9: the action bar's columns, in order. Like and Listen always; Share and Transcript
+// when the item has a link / a caption sidecar; More always (every other action is in its
+// menu - buildWatchMoreItems). One list: the bar mounts each button at its index here.
+const WATCH_BAR_ORDER = ['like', 'share', 'listen', 'transcript', 'more'];
+
+// D4.9: the More menu's items for the state RIGHT NOW (built at every open, so a late
+// capability or a toggled state is always current). `s`: { downloadHref, watched,
+// hasDescription, reheatEnabled, reheatBusy, canModifyLibrary, canAttribute }. The
+// capability-gated verbs (Move, Attribute, Move to Trash) appear only when the capability
+// is CONFIRMED true (v1.81 write-RBAC: never a dead control).
+function buildWatchMoreItems(s) {
+  const st = s || {};
+  const out = [
+    { id: 'queue-next', icon: 'playlist_play', label: 'Play next' },
+    { id: 'queue-add', icon: 'playlist_add', label: 'Add to queue' },
+  ];
+  if (typeof st.downloadHref === 'string' && st.downloadHref !== '') out.push({ id: 'download', icon: 'download', label: 'Save to device' });
+  out.push({ id: 'watched', icon: 'history', label: st.watched === true ? 'Mark as unwatched' : 'Mark as watched' });
+  if (st.hasDescription === true) out.push({ id: 'copy-description', icon: 'content_copy', label: 'Copy description' });
+  if (st.reheatEnabled === true) out.push({ id: 'reheat', icon: 'local_fire_department', label: st.reheatBusy === true ? 'Reheating…' : 'Reheat metadata', disabled: st.reheatBusy === true });
+  if (st.canModifyLibrary === true) out.push({ id: 'move', icon: 'folder', label: 'Move to another folder' });
+  if (st.canModifyLibrary === true && st.canAttribute === true) out.push({ id: 'attribute', icon: 'edit', label: 'Attribute to a channel' });
+  if (st.canModifyLibrary === true) out.push({ id: 'delete', icon: 'delete', label: 'Move to Trash', danger: true });
+  return out;
+}
+
+// D8.4: "About this file" - the embedded-tag rows under the disclosure, after the file's
+// size, type and path (the pre-S3 "Embedded info" block): title/artist/description are shown
+// elsewhere and skipped, as is a tag that only repeats the title; a value is clipped at 400
+// characters so a huge lyrics or comment tag cannot blow out the layout. Plain text.
+const ABOUT_TAG_CLIP = 400;
+function buildAboutTagRows(tags, itemTitle) {
+  const title = (itemTitle || '').toLowerCase();
+  const clip = (v) => (v.length > ABOUT_TAG_CLIP ? v.slice(0, ABOUT_TAG_CLIP) + '…' : v);
+  return Object.entries(tags || {})
+    .filter(([k, v]) => k !== 'title' && k !== 'artist' && k !== 'description' && String(v).toLowerCase() !== title)
+    .map(([k, v]) => ({ id: 'tag-' + k, label: k.charAt(0).toUpperCase() + k.slice(1), value: clip(String(v)) }));
+}
+
 // v1.68.1: the watch id from the query string -- `?v=`, with legacy `?id=` as
 // a fallback. Push banners minted before v1.67.4 (when lib/push/deliver.js's
 // pushWatchUrl built `?id=`) OUTLIVE that server-side fix in the phone's
@@ -775,6 +823,11 @@ if (typeof module !== 'undefined' && module.exports) {
   const ambientExports = module.require('./ambient.js'); // module.require: the player.js / skin-surface.js convention (browser-env lint)
   module.exports = {
     resolveDisplayDescription,
+    // UI pass sweep S3: the action bar's order, the More menu, About this file, real comments.
+    WATCH_BAR_ORDER,
+    buildWatchMoreItems,
+    buildAboutTagRows,
+    isUserComment,
     buildRelatedSkeletonCards,
     buildRelatedCardEl, // UI pass sweep S2 (F63): the related-rail card
     MAX_DISPLAY_DESCRIPTION,
@@ -856,26 +909,20 @@ if (typeof module !== 'undefined' && module.exports) {
     const existing = root.querySelector('.watch-view-error');
     if (existing) existing.remove();
 
-    const box = document.createElement('div');
-    box.className = 'watch-view-error';
-    box.style.cssText = 'display:flex;flex-direction:column;justify-content:center;align-items:center;padding:var(--space-12) var(--space-8);text-align:center;color:var(--text-secondary);';
-
-    const heading = document.createElement('h3');
-    heading.style.marginBottom = 'var(--space-6)';
-    heading.textContent = 'Failed to Load Media';
-
-    const message = document.createElement('p');
-    message.textContent = 'The file may have been moved, deleted, or the format is unsupported by your browser.';
-
-    const backLink = document.createElement('a');
-    backLink.href = '/';
-    backLink.className = 'btn';
-    backLink.style.marginTop = 'var(--space-8)';
-    backLink.textContent = 'Back to Home';
-
-    box.appendChild(heading);
-    box.appendChild(message);
-    box.appendChild(backLink);
+    // UI pass sweep S3 (D9): the one ui-state block (icon, title, body, action).
+    const box = relatedUi().state({
+      icon: 'error',
+      title: 'Failed to Load Media',
+      body: 'The file may have been moved, deleted, or the format is unsupported by your browser.',
+      action: {
+        label: 'Back to Home',
+        onClick: () => {
+          if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate('/');
+          else window.location.href = '/';
+        },
+      },
+    });
+    box.classList.add('watch-view-error');
 
     const slot = root.querySelector('#player-slot');
     if (slot && slot.parentNode) {
@@ -904,11 +951,13 @@ if (typeof module !== 'undefined' && module.exports) {
       return;
     }
 
+    const ui = relatedUi(); // UI pass: the primitives' builders (window.ui)
     const mediaTitle = root.querySelector('#media-title');
     const viewsCount = root.querySelector('#views-count');
-    const deleteBtn = root.querySelector('#delete-media-btn');
-    const downloadBtn = root.querySelector('#download-media-btn');
-    const uploaderAvatar = root.querySelector('#uploader-avatar-letter');
+    // UI pass sweep S3 (D4.9): the action bar's host; its buttons are built below.
+    const actionsHost = root.querySelector('#watch-actions');
+    // The uploader avatar is a ui-avatar REPLACED on every paint (never re-filled in place).
+    let uploaderAvatar = root.querySelector('#uploader-avatar-letter');
     const uploaderChannelName = root.querySelector('#uploader-channel-name');
     const uploaderSubsCount = root.querySelector('#uploader-subs-count');
     const subscribeBtn = root.querySelector('#subscribe-btn-mock');
@@ -923,29 +972,24 @@ if (typeof module !== 'undefined' && module.exports) {
     // per-user flag) gates the delete/move/attribute affordances on this page.
     // Resolved from the memoized /api/auth/me WITHOUT blocking the player load
     // (a slow /api/auth/me must never stall playback). Fail-safe: the affordances
-    // stay hidden until the capability confirms TRUE, so a capability-less member
-    // (or an auth hiccup) never sees a delete/move/edit control. The server is
-    // the real gate; this just removes dead buttons. setupMoveButton/
-    // setupAttributeButton are ALSO called in the media-load flow (guarded), so
-    // whichever of {capability, mediaData} resolves last mounts them.
+    // stay out of the More menu until the capability confirms TRUE, so a
+    // capability-less member (or an auth hiccup) never sees a delete/move/edit
+    // entry (UI pass S3: the menu is built at every open from the live values).
+    // The server is the real gate; this just removes dead controls.
     let canModifyLibrary = false;
     // v1.202: the manual-attribution opt-in (settings.attributeControlEnabled),
     // read once per view load alongside the current-user probe. Until it
     // resolves (or if it fails) the control stays hidden - opt-in means the
     // default is "not there".
     let attributeControlEnabled = false;
-    if (deleteBtn) deleteBtn.hidden = true; // hidden until the capability confirms
-    // v1.96 A2 reveal-once barrier: the action row's FINAL button set depends
-    // on BOTH async inputs -- the media record (Move/Like/.../Attribute) AND
-    // the write capability. Move/Attribute are gated on canModifyLibrary and
-    // mount from WHICHEVER of {mediaData, capability} resolves LAST (see the
-    // "guarded, whichever resolves last mounts them" note below). So revealing
-    // when only mediaData is in hand would show a partial row on a cold load
-    // whose /api/auth/me lands after /api/videos -- then Move/Attribute pop in.
-    // Reveal ONCE, only when BOTH have SETTLED. (Cold-cache Reheat's own async
-    // health probe is the sole disclosed late-mount NOT gated here -- blocking
-    // the row on a network probe would keep the common buttons non-tappable
-    // longer; the v1.53 capability cache mounts it pre-reveal on warm cache.)
+    // v1.96 A2 reveal-once barrier: the action row reveals ONCE, when every
+    // input its actions depend on has SETTLED - the media record (which bar
+    // buttons exist: Share, Transcript), the write capability and the
+    // attribution opt-in (which More entries exist). UI pass S3 (D4.9): the
+    // capability and the flag no longer add bar buttons (Move/Attribute/Delete
+    // live in the More menu), but the barrier keeps them so a More tapped the
+    // moment the bar appears already lists the final set. (Cold-cache Reheat's
+    // own async health probe is not gated: its menu entry appears once known.)
     let actionMediaSettled = false;
     let actionCapabilitySettled = false;
     // v1.202 (gate): the attribution opt-in is a THIRD input to the final
@@ -963,50 +1007,107 @@ if (typeof module !== 'undefined' && module.exports) {
       .then((settings) => {
         if (signal.aborted) return;
         attributeControlEnabled = !!(settings && settings.attributeControlEnabled === true);
-        // Mount now in case the user probe AND the media already resolved.
-        if (attributeControlEnabled && canModifyLibrary) setupAttributeButton();
         actionFlagSettled = true;
         maybeRevealActionBar();
       })
       .catch(() => {
-        // stays hidden - but the answer is SETTLED (no Attribute will mount)
+        // stays out of the menu - but the answer is SETTLED
         actionFlagSettled = true;
         maybeRevealActionBar();
       });
     if (typeof fetchCurrentUser === 'function') {
       fetchCurrentUser().then(function (me) {
         canModifyLibrary = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
-        if (canModifyLibrary) {
-          if (deleteBtn) deleteBtn.hidden = false;
-          // Mount now in case the media already loaded before this resolved.
-          setupMoveButton();
-          setupAttributeButton();
-        }
         // The capability answer is now known (true OR false), so the final set
         // is determined -- release this half of the reveal barrier either way.
         actionCapabilitySettled = true;
         maybeRevealActionBar();
       }).catch(function () {
-        // signed-out / offline -> affordances stay hidden, but the capability
-        // is still SETTLED (no Move/Attribute will ever mount) -> release.
+        // signed-out / offline -> the verbs stay out of the menu, but the
+        // capability is still SETTLED -> release.
         actionCapabilitySettled = true;
         maybeRevealActionBar();
       });
     } else {
-      // No capability probe at all -> Move/Attribute never mount -> settled now.
+      // No capability probe at all -> the verbs never appear -> settled now.
       actionCapabilitySettled = true;
       maybeRevealActionBar();
     }
 
     const addedDateText = root.querySelector('#added-date-text');
-    const fileSizeText = root.querySelector('#file-size-text');
-    const fileTypeText = root.querySelector('#file-type-text');
-    const filePathText = root.querySelector('#file-path-text');
+
+    // UI pass sweep S3 (D8.4, F25, F68): "About this file" - a collapsed ui-row (the
+    // `info` icon) that expands to key/value rows: the file's size, type and path (the
+    // path row carries a Copy action - selection is off app-wide, D6), then its embedded
+    // tags. Built here, synchronously (frame one), from the ui primitives; the painter
+    // writes the value rows by their ids (#file-size-text, #file-type-text,
+    // #file-path-text, kept from the old description box). No monospace, no bold labels:
+    // the key is the row's overline, the value its title.
+    const aboutHost = root.querySelector('#about-file');
+    let aboutToggle = null;
+    let aboutBody = null;
+    let aboutTagsList = null;
+    const aboutValue = {};
+    function setAboutOpen(open) {
+      if (!aboutToggle || !aboutBody) return;
+      aboutToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+      aboutBody.hidden = !open;
+    }
+    function buildAboutFile() {
+      if (!aboutHost || !ui) return;
+      const head = ui.list({ size: 'compact', media: 'avatar', aside: 'text', divider: 'none', label: 'About this file' });
+      aboutToggle = ui.row({
+        size: 'compact',
+        media: ui.icon('info'),
+        title: 'About this file',
+        aside: ui.icon('expand_more', { cls: 'about-file__chevron' }),
+        onClick: () => setAboutOpen(aboutToggle.getAttribute('aria-expanded') !== 'true'),
+      });
+      aboutToggle.id = 'about-file-toggle';
+      aboutToggle.setAttribute('aria-controls', 'about-file-body');
+      aboutToggle.setAttribute('aria-expanded', 'false');
+      head.appendChild(aboutToggle);
+      aboutBody = document.createElement('div');
+      aboutBody.id = 'about-file-body';
+      aboutBody.className = 'about-file__body';
+      aboutBody.hidden = true;
+      const facts = ui.list({ size: 'default', media: 'none', actions: 1, divider: 'inset', label: 'File details' });
+      [['size', 'Size', 'file-size-text'], ['type', 'Type', 'file-type-text'], ['path', 'Location', 'file-path-text']].forEach(([key, label, id]) => {
+        const copy = key === 'path'
+          ? ui.button({
+            variant: 'plain', size: 'sm', shape: 'icon', icon: 'content_copy', ariaLabel: 'Copy the file path',
+            onClick: () => {
+              const text = aboutValue.path ? aboutValue.path.textContent : '';
+              if (text) ui.copy(text, { label: 'Path copied' });
+            },
+          })
+          : null;
+        const row = ui.row({ size: 'default', overline: label, title: label, actions: [copy] });
+        const value = row.querySelector('.ui-row__title');
+        if (value) {
+          value.id = id;
+          value.textContent = '';
+          value.classList.add('skeleton-shimmer', 'skel-w60');
+          aboutValue[key] = value;
+        }
+        facts.appendChild(row);
+      });
+      aboutTagsList = ui.list({ size: 'default', media: 'none', actions: 1, divider: 'inset', label: 'Embedded info' });
+      aboutTagsList.hidden = true;
+      aboutBody.appendChild(facts);
+      aboutBody.appendChild(aboutTagsList);
+      aboutHost.replaceChildren(head, aboutBody);
+    }
+    buildAboutFile();
+    // (the id lookups are the same nodes - a harness without querySelector on rows gets them this way)
+    const fileSizeText = aboutValue.size || root.querySelector('#file-size-text');
+    const fileTypeText = aboutValue.type || root.querySelector('#file-type-text');
+    const filePathText = aboutValue.path || root.querySelector('#file-path-text');
 
     // v1.48 item 1: the collapse/"Show more" mechanism now governs the VIDEO'S
     // DESCRIPTION (#video-description). It used to expand the static
-    // self-hosting boilerplate, which is now the unnamed `.description-fileinfo`
-    // block below it and is never clamped. The variable name is kept because
+    // self-hosting boilerplate (gone since UI pass S3: the file facts are in
+    // "About this file"). The variable name is kept because
     // every reference below means "the thing Show more expands".
     const descriptionParagraph = root.querySelector('#video-description');
     const expandDescBtn = root.querySelector('#expand-desc-btn');
@@ -1017,7 +1118,6 @@ if (typeof module !== 'undefined' && module.exports) {
     const postCommentBtn = root.querySelector('#post-comment-btn');
 
     const starRatingControl = root.querySelector('#star-rating-control');
-    const ratingText = root.querySelector('#rating-text');
 
     // v1.186: Autoplay, Loop, Theatre and Ambient controls now live INSIDE the
     // player host (cog menu / control bar), which is reparented into #player-slot
@@ -1122,7 +1222,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // (mediaData is declared ABOVE the ?tv= branch - the v1.197.1 TDZ fix.)
     // C2 (v1.24 UX Round, Wave 3, T10 follow-up): one-shot guard so
     // pingView() below fires AT MOST ONCE per view instance -- fresh
-    // (`false`) on every init(), like `currentSubState`/`moveBtn` above.
+    // (`false`) on every init(), like `currentSubState` above.
     let viewPinged = false;
     let folderSettings = {};   // { "<path>": { name, hidden } } — for channel display name
     // v1.73.1 slim-gate C1: the module-contributed roots - the shared
@@ -1132,91 +1232,117 @@ if (typeof module !== 'undefined' && module.exports) {
     // C1 follow-up (v1.24 UX Round, Wave 3): the FULL folders array from the
     // SAME `GET /api/config` fetch initWatch() already makes for the sidebar
     // (step 1 below) -- no new network call. Feeds `showMoveModal`'s
-    // `folders` argument for this page's "Move to..." trigger (setupMoveButton
-    // below). `moveBtn` is the runtime-created control itself -- fresh per
-    // view instance, like `pinBtn` below.
+    // `folders` argument for this page's "Move to another folder" (a More-menu
+    // entry, handleMoveClick below).
     let currentFolders = [];
-    let moveBtn = null;
     // v1.30 C2 (Visual polish cluster): watch-page "Like" toggle -- the
-    // runtime-created control itself (fresh per view instance, like
-    // `moveBtn`/`pinBtn` above) plus its local mirror of server membership.
-    // Like state IS `db.liked` membership (server.js) -- `currentLikeState`
-    // here is purely a UI-local cache of that membership for THIS view
-    // instance, never an independent source of truth; every toggle round-
-    // trips through `POST`/`DELETE /api/liked/:id` before this local mirror
-    // is updated.
+    // runtime-created control itself (fresh per view instance) plus its local
+    // mirror of server membership. Like state IS `db.liked` membership
+    // (server.js) -- `currentLikeState` is purely a UI-local cache of it for
+    // THIS view instance; every toggle round-trips through `POST`/`DELETE
+    // /api/liked/:id` before this local mirror is updated.
     let likeBtn = null;
     let currentLikeState = { liked: false };
-    // v1.72 (cap 6): the manual mark-as-watched toggle - the podcast
-    // played-toggle pattern on the watch action bar. Watched state IS the
+    // v1.72 (cap 6): the manual mark-as-watched toggle. Watched state IS the
     // server's derivation (latch OR >=90% position, GET /api/videos/:id's
     // watchState field); this local mirror updates ONLY after
-    // POST/DELETE /api/watched/:id resolves, exactly like the Like button.
-    let watchedBtn = null;
+    // POST/DELETE /api/watched/:id resolves, exactly like Like. UI pass S3: it
+    // is a More-menu entry ("Mark as watched" / "Mark as unwatched").
     let currentWatchedState = { watched: false };
-    // v1.33 T2: watch-page "Share" button -- the runtime-created control
-    // itself (fresh per view instance, like `moveBtn`/`likeBtn` above).
-    // Mounted ONLY when the server derived an original link for this item
-    // (`mediaData.watchUrl`, or v1.337's `sourceShareUrl` for a non-YouTube
-    // download; GET /api/videos/:id) -- a plain local library file has nothing
-    // to share, so it gets no button at all.
+    let watchedBusy = false;
+    // v1.33 T2: watch-page "Share" button -- mounted ONLY when the server
+    // derived an original link for this item (`mediaData.watchUrl`, or
+    // v1.337's `sourceShareUrl` for a non-YouTube download) -- a plain local
+    // library file has nothing to share, so it gets no button at all.
     let shareBtn = null;
     let listenBtn = null; // v1.252: the Listen-mode entry (per view instance, the shareBtn posture)
-    // Restores the button's label after the transient "Copied!" feedback of
-    // the clipboard fallback below; tracked so a rapid double-tap never
-    // stacks two timers (the second tap clears the first).
-    let shareBtnResetTimer = null;
-    // v1.49 (Dean): the per-video "reheat" control -- the runtime-created
-    // control itself (fresh per view instance, like `moveBtn`/`likeBtn`/
-    // `shareBtn` above), plus the poll handle for the background job it
-    // starts. The poll handle is tracked so leaving the page mid-reheat can
-    // stop it: this is an SPA, the view instance is torn down on navigation,
-    // and an un-cleared interval would keep polling (and keep holding a
-    // reference to a dead view's DOM) for the life of the tab. See the
-    // v1.41.11 lesson about async-registered handlers outliving their view.
-    let reheatBtn = null;
+    // v1.49 (Dean): the per-video "reheat" (a More-menu entry since UI pass S3):
+    // whether the module offers it, whether a run is in flight, and the poll
+    // handle for the background job. The poll handle is tracked so leaving the
+    // page mid-reheat can stop it: this is an SPA, the view instance is torn
+    // down on navigation, and an un-cleared interval would keep polling (and
+    // keep holding a reference to a dead view's DOM) for the life of the tab.
+    let reheatAvailable = false;
+    let reheatBusy = false;
     let reheatPollTimer = null;
-    // v1.53: the manual-attribution control (fresh per view instance, like
-    // moveBtn/likeBtn/reheatBtn above).
-    let attributeBtn = null;
     // v1.49 gate fix (adversarial WARNING 2): the dismiss handle for an open
     // relocation confirm, so navigating away closes it instead of leaving a
     // "move this file" dialog for the PREVIOUS video on screen.
     let relocationDismiss = null;
-    // v1.110 (Dean): dismiss handle for the share "video vs current time" choice
-    // modal, torn down on view abort like relocationDismiss (a body-level modal
-    // survives SPA nav on its own -- the v1.49 lesson).
-    let shareChoiceDismiss = null;
-    // v1.202 (Dean's action-row re-evaluation): the SECONDARY tier - hidden in
-    // compact mode (style.css mirrors this list; the tiers lock keeps them
-    // equal) and offered through the "More" pick-one instead. Order here is
-    // the pick order. PRIMARY (never here): Listen, Like, Share, Transcript.
-    // v1.253 (Dean): Queue joins the secondary tier - the Listen chip made a
-    // fifth word overflow the phone row, and his ruling moved Queue under More.
-    const SECONDARY_ACTION_IDS = ['queue-add-btn', 'queue-next-btn', 'download-media-btn', 'delete-media-btn', 'move-media-btn', 'watched-media-btn', 'reheat-media-btn', 'attribute-media-btn'];
-    let moreActionsDismiss = null;
+    // UI pass sweep S3 (D4.9): the bar's More button, and the one-at-a-time
+    // guard of the destructive path (a confirm up or a DELETE in flight).
+    let moreBtn = null;
+    let deleteInFlight = false;
 
-    // The accessible name of a button as it reads RIGHT NOW (its label span
-    // mutates: Like/Liked, Mark watched/Watched) - the pick must say what the
-    // button says.
-    function actionLabelOf(btn) {
-      const span = btn.querySelector('.btn-label');
-      const text = span ? span.textContent.trim() : '';
-      return text || btn.getAttribute('aria-label') || btn.title || btn.id;
+    // UI pass sweep S3 (D4.9): the action bar. Each button is a stacked ui-btn
+    // (icon over a caption label) mounted at its WATCH_BAR_ORDER column, so the
+    // order never depends on which setup ran first.
+    function mountInBar(btn, key) {
+      if (!actionsHost) return;
+      btn.setAttribute('data-action', key);
+      const idx = WATCH_BAR_ORDER.indexOf(key);
+      const next = Array.from(actionsHost.children || [])
+        .find((c) => WATCH_BAR_ORDER.indexOf(c.getAttribute && c.getAttribute('data-action')) > idx);
+      if (next) actionsHost.insertBefore(btn, next);
+      else actionsHost.appendChild(btn);
+    }
+    function barButton(key, id, o) {
+      const b = ui.button(Object.assign({ variant: 'plain', shape: 'stack' }, o));
+      b.id = id;
+      mountInBar(b, key);
+      return b;
     }
 
-    // Opens the pick-one of every MOUNTED, non-hidden secondary button and
-    // clicks the real one - its own handler, confirm flow and state run
-    // untouched (Delete still confirms; Download is the same <a download>).
+    // UI pass sweep S3 (D4.9, F45): More opens ONE ui.menu (a popover on
+    // desktop, a bottom sheet on a phone) of every action not in the bar,
+    // built at each open from the live state (buildWatchMoreItems); the menu
+    // closes with the view (its `signal`).
+    function moreMenuState() {
+      const cap = readCapabilityCache();
+      return {
+        downloadHref: mediaData ? '/video/' + encodeURIComponent(mediaData.id) + '?download=1' : '',
+        watched: currentWatchedState.watched,
+        hasDescription: !!(descriptionParagraph && descriptionParagraph.textContent !== ''),
+        reheatEnabled: reheatAvailable || (reheatModuleEnabled === null && !!(cap && cap.moduleEnabled === true)),
+        reheatBusy,
+        canModifyLibrary,
+        canAttribute: attributeControlEnabled && !!mediaData && resolveFileChannelIdentity(mediaData) === null,
+      };
+    }
     function handleMoreActionsClick() {
-      const items = SECONDARY_ACTION_IDS
-        .map((id) => root.querySelector('#' + id))
-        .filter((btn) => btn && !btn.hidden && btn.style.display !== 'none' && !btn.disabled)
-        .map((btn) => ({ label: actionLabelOf(btn), onPick: () => btn.click() }));
-      if (items.length === 0) return;
-      if (moreActionsDismiss) { signal.removeEventListener('abort', moreActionsDismiss); moreActionsDismiss(); }
-      moreActionsDismiss = showChoiceModal('More', items);
-      signal.addEventListener('abort', moreActionsDismiss, { once: true });
+      if (!mediaData || !ui) return;
+      const items = buildWatchMoreItems(moreMenuState()).map((it) => Object.assign({ value: it.id }, it));
+      ui.menu({ title: 'More', anchor: moreBtn, items, signal, onSelect: runMoreAction });
+    }
+    function runMoreAction(id) {
+      if (!mediaData || signal.aborted) return;
+      if (id === 'queue-next') addToQueue(mediaData.id, 'next');
+      else if (id === 'queue-add') addToQueue(mediaData.id, 'end');
+      else if (id === 'download') saveToDevice();
+      else if (id === 'watched') handleToggleWatched();
+      else if (id === 'copy-description') ui.copy(descriptionParagraph ? descriptionParagraph.textContent : '', { label: 'Description copied' });
+      else if (id === 'reheat') handleReheatClick();
+      else if (id === 'move') handleMoveClick();
+      else if (id === 'attribute') handleAttributeClick();
+      else if (id === 'delete') confirmAndDelete();
+    }
+    // FR-3 (v1.19.0): Save to device = GET /video/:id?download=1 (the server's
+    // Content-Disposition: attachment is authoritative, the iOS Safari 13+
+    // same-origin path; the `download` attribute is a filename hint for desktop).
+    function saveToDevice() {
+      if (!mediaData) return;
+      const a = document.createElement('a');
+      a.href = '/video/' + encodeURIComponent(mediaData.id) + '?download=1';
+      a.setAttribute('download', `${mediaData.title || 'download'}${mediaData.ext || ''}`);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+    function setupMoreButton() {
+      if (moreBtn || !ui) return;
+      moreBtn = barButton('more', 'more-actions-btn', { icon: 'more_horiz', label: 'More', ariaLabel: 'More actions' });
+      moreBtn.setAttribute('aria-haspopup', 'menu');
+      moreBtn.addEventListener('click', handleMoreActionsClick, { signal });
     }
 
     // Transcript export (Dean): the "Transcript" control (fresh per view
@@ -1366,7 +1492,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // OUT of the metadata item, where the scan could clobber it) exactly
     // ONCE per watch-page open. `viewPinged` (declared above, alongside `mediaData`) is a
     // one-shot flag scoped to THIS view instance, fresh on every init() --
-    // mirrors how setupPinButton/setupMoveButton etc. guard their own
+    // mirrors how the per-view setups guard their own
     // once-per-open setup work, so a stray second call (there isn't one
     // today -- initWatch() only reaches this once per open -- but this keeps
     // it true even if that ever changes) can never double-count a single
@@ -1435,20 +1561,14 @@ if (typeof module !== 'undefined' && module.exports) {
         // 3. Populate metadata details
         populateMetadata(channelName);
 
-        // 3b. C1 follow-up (v1.24 UX Round, Wave 3): mount/refresh the
-        // "Move to..." trigger now that both `mediaData` and `currentFolders`
-        // are resolved.
-        setupMoveButton();
-
         // 3c. v1.30 C2 (Visual polish cluster, T11): mount/refresh the
         // "Like" toggle now that `mediaData` (carrying the server-derived
         // `liked` field) is resolved.
         setupLikeButton();
 
-        // 3c-bis. v1.72 (cap 6): mount/refresh the manual "Watched" toggle
-        // now that `mediaData` (carrying the server-derived `watchState`)
-        // is resolved.
-        setupWatchedButton();
+        // 3c-bis. v1.72 (cap 6): the manual "Watched" toggle's state (a More-menu
+        // entry, UI pass S3) from `mediaData`'s server-derived `watchState`.
+        setupWatchedState();
 
         // 3d. v1.33 T2: mount the "Share" button when the server derived an
         // original link for this item (`mediaData.watchUrl`, or v1.337's
@@ -1465,31 +1585,17 @@ if (typeof module !== 'undefined' && module.exports) {
         // the item has a caption sidecar (`mediaData.hasSubtitles`).
         setupTranscriptButton();
 
-        // 3d''. v1.202: the compact-mode "More" pick-one (static button in
-        // watch.html; shown by the container query). Wired once per view.
-        const moreBtn = root.querySelector('#more-actions-btn');
-        if (moreBtn && !moreBtn.dataset.wired) {
-          moreBtn.dataset.wired = '1';
-          moreBtn.addEventListener('click', handleMoreActionsClick, { signal });
-        }
-
-        // 3e. v1.49 (Dean): mount the per-video "Reheat" button. Gated on a
-        // latched yt-dlp health probe, so this is at most one extra request
-        // per tab session, and none at all once the answer is known.
-        setupReheatButton();
-
-        // 3f. v1.53 (Dean): mount the "Attribute..." control for genuinely
-        // unattributed items (absent otherwise -- the AC15 posture).
-        setupAttributeButton();
+        // 3d''. UI pass S3 (D4.9): the bar's last column, More (its menu holds
+        // every other action). 3e. v1.49 (Dean): whether the per-video Reheat is
+        // offered (a latched yt-dlp health probe: at most one extra request per
+        // tab session, none once the answer is known).
+        setupMoreButton();
+        setupReheat();
 
         // 3g. v1.96 A2 (Dean): the media half of the button set is now mounted.
         // Release the media side of the reveal barrier; the row reveals in one
-        // shot once the capability side has ALSO settled (so Move/Attribute --
-        // which mount from whichever of {media, capability} resolves last --
-        // are never shown popping in post-reveal). The one late-mount NOT gated
-        // by the barrier is the COLD-cache Reheat button (setupReheatButton's
-        // async probe), a disclosed 1-RTT residual the v1.53 capability cache
-        // avoids on warm cache. See the barrier note above and ROADMAP.
+        // shot once the capability and flag sides have ALSO settled (see the
+        // barrier note above).
         actionMediaSettled = true;
         maybeRevealActionBar();
 
@@ -1591,7 +1697,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     // v1.96 A2: drop the `data-loading` attribute so `.watch-actions`'
-    // children (star-rating + the now-complete button set) become visible in
+    // children (the now-complete button set) become visible in
     // one shot -- the reveal-once that eliminates the partial->full pop-in.
     // Idempotent (removeAttribute on an absent attr is a no-op), so calling it
     // from both the success path and the catch is safe.
@@ -1600,39 +1706,19 @@ if (typeof module !== 'undefined' && module.exports) {
       if (wa) wa.removeAttribute('data-loading');
     }
 
-    // F1 (v1.24.0, T4): applies the avatar precedence -- a real captured
-    // `channelAvatarUrl` (C6, populated by T11 in Wave 3; always null/absent
-    // today) wins when present, else the deterministic generated
-    // {glyph, color} fallback -- via common.js's frozen `resolveAvatarSource`
-    // contract (T3, same wave). Shared by BOTH the persistent uploader
-    // avatar and every per-comment avatar below, which is what guarantees
-    // the SAME name always renders the SAME avatar everywhere on this page
-    // (F1's MANUAL acceptance criterion). createElement/textContent only --
-    // never innerHTML. `el` is fully reset on every call, since the uploader
-    // avatar is a single SPA-reused node that must never keep a stale
-    // glyph/image from the previously-viewed item.
-    function applyAvatarToElement(el, name, channelAvatarUrl) {
-      if (!el) return;
-      const source = resolveAvatarSource(name, channelAvatarUrl);
-      el.textContent = '';
-      if (source.type === 'url') {
-        el.style.backgroundColor = '';
-        el.style.color = '';
-        el.style.overflow = 'hidden';
-        const img = document.createElement('img');
-        img.alt = '';
-        img.src = source.url;
-        img.style.width = '100%';
-        img.style.height = '100%';
-        img.style.objectFit = 'cover';
-        img.style.display = 'block';
-        el.appendChild(img);
-        return;
-      }
-      el.style.overflow = '';
-      el.style.backgroundColor = source.color;
-      el.style.color = 'var(--on-accent)'; // AVATAR_PALETTE entries are all dark -- the on-accent white keeps the glyph legible regardless of era theme
-      el.textContent = source.glyph;
+    // F1 (v1.24.0, T4), UI pass sweep S3 (D4.4, F14): the uploader avatar is ONE
+    // ui.avatar (lg): the captured `channelAvatarUrl` when present, else the
+    // monogram on its hash-derived tone (the same name -> the same avatar
+    // everywhere, the F1 criterion); a broken image falls back to the monogram,
+    // never a broken glyph. The node is REPLACED on each (re)paint - the SPA-reused
+    // slot never keeps a stale image from the previous item - and keeps its id.
+    // `kind` 'album' draws the artwork shape (ui-art, a TV show's poster).
+    function paintUploaderAvatar(name, url, kind) {
+      if (!uploaderAvatar || !ui) return;
+      const av = ui.avatar({ name: name || '', url: (typeof url === 'string' && url.trim() !== '') ? url.trim() : null, kind: kind || 'channel', size: 'lg' });
+      av.id = 'uploader-avatar-letter';
+      if (uploaderAvatar.parentNode) uploaderAvatar.parentNode.replaceChild(av, uploaderAvatar);
+      uploaderAvatar = av;
     }
 
     // v1.52 instant watch: the ONE metadata painter, callable from the seed
@@ -1661,9 +1747,12 @@ if (typeof module !== 'undefined' && module.exports) {
         document.title = `${plan.title} - FileTube`;
       }
       paintText(viewsCount, plan.viewsLabel);
+      // UI pass D8.1: a MOCK view count is a fabricated stat - it shows only in the retro
+      // eras (.ft-fabricated, the S2 era flourish); a captured count shows in every era.
+      if (viewsCount && plan.viewsLabel !== undefined) viewsCount.classList.toggle('ft-fabricated', plan.viewsFabricated === true);
       if (plan.channelName !== undefined) {
-        // v1.52 T3 hydration discipline: applyAvatarToElement fully RESETS
-        // the node (recreates the <img>), so re-running it with identical
+        // v1.52 T3 hydration discipline: paintUploaderAvatar REPLACES
+        // the node (a new ui-avatar), so re-running it with identical
         // inputs at hydration would flicker the already-painted avatar. The
         // key diff makes a repaint happen ONLY when the rendered source
         // actually changes -- which is exactly the one legitimate upgrade
@@ -1672,10 +1761,9 @@ if (typeof module !== 'undefined' && module.exports) {
         // dataset key can never carry over from a previous item.
         const avatarKey = `${plan.channelName}|${plan.channelAvatarUrl}`;
         if (uploaderAvatar && uploaderAvatar.dataset.ftAvatarKey !== avatarKey) {
-          applyAvatarToElement(uploaderAvatar, plan.channelName, plan.channelAvatarUrl);
-          uploaderAvatar.dataset.ftAvatarKey = avatarKey;
+          paintUploaderAvatar(plan.channelName, plan.channelAvatarUrl);
+          if (uploaderAvatar) uploaderAvatar.dataset.ftAvatarKey = avatarKey;
         }
-        uploaderAvatar.classList.remove('skeleton-shimmer');
         paintText(uploaderChannelName, plan.channelName);
         // Creator/uploader name links to THIS item's folder content view
         // (/?root=<folder>). Re-set (or cleared) every paint so the
@@ -1686,29 +1774,16 @@ if (typeof module !== 'undefined' && module.exports) {
           else uploaderChannelName.removeAttribute('href');
         }
         paintText(uploaderSubsCount, plan.subsLabel);
+        // UI pass D8.1: a MOCK subscriber count is a fabricated stat (retro eras only).
+        if (uploaderSubsCount && plan.subsLabel !== undefined) uploaderSubsCount.classList.toggle('ft-fabricated', plan.subsFabricated === true);
       }
       paintText(addedDateText, plan.dateLabel);
       paintText(fileSizeText, plan.sizeLabel);
       paintText(fileTypeText, plan.typeLabel);
       paintText(filePathText, plan.filePath);
 
-      // FR-3 (v1.19.0): wire the Download button per paint -- the SPA reuses
-      // this anchor node, so both attributes are re-set (never left stale
-      // from a previous item). The save is authoritative on the server's
-      // Content-Disposition header; the `download` attribute is a filename
-      // hint for browsers that honor it.
-      if (downloadBtn) {
-        downloadBtn.href = `/video/${encodeURIComponent(plan.id)}?download=1`;
-        downloadBtn.setAttribute('download', `${item.title || 'download'}${item.ext || ''}`);
-      }
-
-      // v1.63 playback queue: arm both verbs with THIS load's id. Direct
-      // onclick (not addEventListener) so a re-arm on the next SPA load
-      // REPLACES the handler - the accumulate-listeners leak class.
-      const queueAddBtn = root.querySelector('#queue-add-btn');
-      const queueNextBtn = root.querySelector('#queue-next-btn');
-      if (queueAddBtn) queueAddBtn.onclick = () => addToQueue(plan.id, 'end');
-      if (queueNextBtn) queueNextBtn.onclick = () => addToQueue(plan.id, 'next');
+      // (UI pass S3: Save to device and the two queue verbs are More-menu entries
+      // that read the CURRENT mediaData at tap time - nothing to re-arm per paint.)
 
       if (plan.isFullItem) {
         renderVideoDescription(item.tags, item.title);
@@ -1753,55 +1828,47 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // Only offer "Show more" when the description overflows by a meaningful amount;
     // otherwise show it in full. Avoids the silly toggle that hid a single line.
+    // UI pass S3: the toggle is a plain ui-btn shown/hidden by `hidden` (the global
+    // [hidden] rule), its words in its label span.
+    function setExpandLabel(text) {
+      const label = expandDescBtn && (expandDescBtn.querySelector('.ui-btn__label') || expandDescBtn);
+      if (label) label.textContent = text;
+    }
     function setupDescriptionToggle() {
       if (!descriptionParagraph || !expandDescBtn) return;
       descriptionParagraph.classList.remove('expanded');
-      expandDescBtn.textContent = 'Show more';
+      setExpandLabel('Show more');
       // v1.48 item 1: with no description there is nothing to expand -- the
       // element is `display: none` via `:empty`, so its scrollHeight/clientHeight
       // are both 0 and the overflow test below would otherwise leave a "Show
       // more" button sitting under an empty box.
       if (descriptionParagraph.textContent === '') {
-        expandDescBtn.style.display = 'none';
+        expandDescBtn.hidden = true;
         return;
       }
       const lh = parseFloat(getComputedStyle(descriptionParagraph).lineHeight) || 18;
       const hidden = descriptionParagraph.scrollHeight - descriptionParagraph.clientHeight;
       if (hidden <= lh * 1.5) {
         descriptionParagraph.classList.add('expanded'); // fits (or nearly) — show it all
-        expandDescBtn.style.display = 'none';
+        expandDescBtn.hidden = true;
       } else {
-        expandDescBtn.style.display = '';
+        expandDescBtn.hidden = false;
       }
     }
 
-    // Additive: render any embedded file metadata (title/artist are shown elsewhere
-    // so they're skipped) under the file-path block. Shows nothing if there are no
-    // usable tags — the existing UI is untouched in that case.
+    // UI pass sweep S3 (D8.4): the embedded tags (title/artist/description skipped,
+    // values clipped - buildAboutTagRows) as key/value rows inside "About this file",
+    // after the size/type/path rows. No usable tags -> the list stays hidden. Every
+    // key and value is textContent (tags are attacker-influenced file metadata).
     function renderEmbeddedTags(tags, itemTitle) {
-      const el = root.querySelector('#embedded-tags');
-      if (!el) return;
-      const title = (itemTitle || '').toLowerCase();
-      // Skip title/artist (shown elsewhere) and any tag whose value just repeats the
-      // title. Cap very long values so a huge embedded tag can't blow out layout.
-      //
-      // v1.48 item 1: `description` is skipped here too -- it now has its own
-      // full-text home at the top of this box (renderVideoDescription above), and
-      // leaving it in would print it a SECOND time, still clipped to 400
-      // characters, directly underneath the untruncated copy. This 400-char clip
-      // deliberately survives for every OTHER tag: it exists to stop a huge
-      // embedded lyrics/comment tag from blowing out the layout, and that guard is
-      // still wanted for values with no expand affordance of their own.
-      const clip = v => v.length > 400 ? v.slice(0, 400) + '…' : v;
-      const entries = Object.entries(tags || {}).filter(([k, v]) =>
-        k !== 'title' && k !== 'artist' && k !== 'description' && String(v).toLowerCase() !== title);
-      if (!entries.length) { el.style.display = 'none'; return; }
-      const label = k => k.charAt(0).toUpperCase() + k.slice(1);
-      el.innerHTML = '<div class="embedded-tags-title">Embedded info</div>' +
-        entries.map(([k, v]) =>
-          `<div class="embedded-tag"><span class="embedded-tag-key">${escapeHtml(label(k))}:</span> ${escapeHtml(clip(String(v)))}</div>`
-        ).join('');
-      el.style.display = 'block';
+      if (!aboutTagsList || !ui) return;
+      const rows = buildAboutTagRows(tags, itemTitle);
+      aboutTagsList.replaceChildren(...rows.map((r) => {
+        const row = ui.row({ size: 'default', overline: r.label, title: r.value, actions: [null] });
+        row.setAttribute('data-tag', r.id);
+        return row;
+      }));
+      aboutTagsList.hidden = rows.length === 0;
     }
 
     // NOTE (T2): Media Session setup, resume overlay, transcode overlay +
@@ -2255,7 +2322,7 @@ if (typeof module !== 'undefined' && module.exports) {
       const stage = root.querySelector('.watch-player-stage');
       const bar = root.querySelector('.watch-action-bar');
       const title = root.querySelector('.watch-title');
-      const showRow = root.querySelector('.uploader-info-panel');
+      const showRow = root.querySelector('.watch-channel');
       const column = root.querySelector('.watch-main');
       if (!stage || !bar) return;
       const rectOf = (el) => (el ? el.getBoundingClientRect() : null);
@@ -2421,21 +2488,39 @@ if (typeof module !== 'undefined' && module.exports) {
     // every media load like every other closure in this init().
     let pinBtn = null;
     let currentPinState = { channelDir: null, label: '', pinned: false, pinId: null };
-    // v1.314 (Dean's opt-in bell): the per-subscription WEB PUSH toggle, rendered
-    // beside Pin ONLY while this channel is subscribed (the flag lives on the
-    // subscription record). Same one-applier / write-through posture as Pin.
+    // v1.314 (Dean's opt-in bell): the per-subscription WEB PUSH toggle. UI pass
+    // sweep S3 (D4.9): its slot sits between Subscribe and Pin and is RESERVED
+    // whenever Subscribe shows - an unsubscribed channel keeps the bell's box
+    // (visibility:hidden, inert: you cannot be notified without subscribing) so
+    // Pin never moves when you subscribe. It ACTS only while subscribed (the flag
+    // lives on the subscription record). Same one-applier / write-through posture as Pin.
     let bellBtn = null;
     let currentBellState = { subId: null, on: false };
+    // one request per toggle at a time (the busy state keeps a toggle at full opacity, F34)
+    let pinBusy = false;
+    let bellBusy = false;
+    let unsubscribeInFlight = false;
 
+    // UI pass sweep S3 (D4.9): Subscribe is ONE ui-btn pill whose label is the stable
+    // stack (both words in one grid cell - the width never changes, v1.340's fix as the
+    // primitive): not subscribed = PRIMARY "Subscribe" (the one red action here),
+    // subscribed = SECONDARY "Subscribed" (outlined). aria-pressed carries the state.
     function applySubscribeButtonLabel(subscribed) {
-      if (!subscribeBtn) return;
-      // v1.340: a stable width (stableToggleLabelHtml) - the row beside it never jumps.
-      subscribeBtn.innerHTML = stableToggleLabelHtml(subscribed ? 'Subscribed' : 'Subscribe', ['Subscribed', 'Subscribe']);
-      // Reuses the existing era-themed .btn/.btn-primary tokens (no new CSS)
-      // -- "Subscribed" drops the red primary styling for the neutral .btn
-      // look, "Subscribe" keeps it, mirroring the real YouTube's own
-      // subscribed/unsubscribed button treatment.
-      subscribeBtn.classList.toggle('btn-primary', !subscribed);
+      if (!subscribeBtn || !ui) return;
+      if (!subscribeBtn.querySelector('.ui-btn__stack')) {
+        const stack = document.createElement('span');
+        stack.className = 'ui-btn__label ui-btn__stack';
+        ['Subscribe', 'Subscribed'].forEach((word) => {
+          const slot = document.createElement('span');
+          slot.className = 'ui-btn__slot';
+          slot.textContent = word;
+          stack.appendChild(slot);
+        });
+        subscribeBtn.replaceChildren(stack);
+      }
+      ui.setPressed(subscribeBtn, !!subscribed);
+      subscribeBtn.classList.toggle('ui-btn--primary', !subscribed);
+      subscribeBtn.classList.toggle('ui-btn--secondary', !!subscribed);
     }
 
     function closeSubscribeModal() {
@@ -2510,19 +2595,41 @@ if (typeof module !== 'undefined' && module.exports) {
       subscribeModalState.modal.hidden = false;
     }
 
-    // One-tap unsubscribe (Dean's explicit direction -- no options modal for
-    // removal, low blast radius: this only stops future polling, it never
-    // deletes already-downloaded files).
+    // UI pass sweep S3 (D4.9, F33 - one destructive rule app-wide): unsubscribing
+    // goes through ui.confirm with the danger fill. (It was one tap by Dean's v1.20
+    // direction - low blast radius: it only stops future polling and never deletes
+    // downloaded files; the confirm says exactly that.) The SAME DELETE runs only after
+    // the confirm resolves exactly true, one confirm at a time, never after the view is
+    // gone (the confirm is bound to the view's signal).
+    async function confirmUnsubscribe() {
+      if (!ui || unsubscribeInFlight || !currentSubState.subId) return;
+      unsubscribeInFlight = true;
+      try {
+        const ok = await ui.confirm({
+          title: 'Unsubscribe from ' + (currentChannelName || 'this channel') + '?',
+          body: 'New videos stop downloading. The videos you already have stay in your library.',
+          confirmLabel: 'Unsubscribe',
+          cancelLabel: 'Cancel',
+          danger: true,
+          signal,
+        });
+        if (ok !== true || signal.aborted) return;
+        await handleUnsubscribe();
+      } finally {
+        unsubscribeInFlight = false;
+      }
+    }
+
     function handleUnsubscribe() {
       const subId = currentSubState.subId;
-      if (!subId) return;
-      fetch(`/api/subscriptions/${encodeURIComponent(subId)}`, { method: 'DELETE' })
+      if (!subId) return Promise.resolve();
+      return fetch(`/api/subscriptions/${encodeURIComponent(subId)}`, { method: 'DELETE' })
         .then((r) => {
           if (!r.ok) return;
           const removedSubId = subId;
           currentSubState = { ...currentSubState, subscribed: false, subId: null };
           applySubscribeButtonLabel(false);
-          removeBell(); // v1.314 gate r1 W1: no record, no bell (it would PATCH a deleted id)
+          removeBell(); // v1.314 gate r1 W1: no record, no live bell (it would PATCH a deleted id); UI pass S3: its slot stays reserved
           // v1.54 A2 write-through (the unsubscribe mirror).
           const capAfterUnsub = readCapabilityCache();
           if (capAfterUnsub && Array.isArray(capAfterUnsub.subs)) {
@@ -2532,58 +2639,90 @@ if (typeof module !== 'undefined' && module.exports) {
         .catch((e) => console.error('Error unsubscribing:', e));
     }
 
-    // B3 (v1.24.0, T6): mirrors applySubscribeButtonLabel's exact
-    // primary-when-actionable / neutral-when-already-done convention (a
-    // discoverable red "do this" state vs. a settled/neutral "already done"
-    // state) -- reuses the SAME era-themed .btn/.btn-primary tokens, no new
-    // CSS.
+    // UI pass sweep S3 (D4.9, F06, F16, F32): Pin and Notify are ONE concept everywhere -
+    // plain sm icon toggles (a 44px hit area), never gold or red: the pin is `keep` /
+    // `keep.fill`, the bell `notifications_off` / `notifications_active`; the state is
+    // aria-pressed + the filled glyph (ui.setPressed). The glyph sits in the button's
+    // icon slot, centred by the box (G2) - Dean's "the notification glyph not aligned
+    // with the text" is closed by construction and measured by the geometry scenes.
     function applyPinButtonLabel(pinned) {
-      if (!pinBtn) return;
-      // v1.340: stable width; the star is a glyph (a text \u2605 is a taller fallback-font glyph that grew the button)
-      pinBtn.innerHTML = stableToggleLabelHtml(pinned ? 'Pinned' : 'Pin channel', ['Pin channel', 'Pinned'], { Pinned: { name: 'starFilled', after: true } });
-      pinBtn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
-      pinBtn.classList.toggle('btn-primary', !pinned);
+      if (!pinBtn || !ui) return;
+      ui.setPressed(pinBtn, !!pinned);
+      pinBtn.setAttribute('aria-label', pinned ? 'Pinned' : 'Pin channel');
+      pinBtn.title = pinned ? 'Pinned to the sidebar' : 'Pin this channel to the sidebar';
     }
 
-    // v1.314: the bell's label is the ONLY thing `on` affects here; the
-    // persisted truth is the subscription record (PATCH /api/subscriptions/:id).
+    // v1.314: `on` affects only the label; the persisted truth is the subscription
+    // record (PATCH /api/subscriptions/:id).
     function applyBellButtonLabel(on) {
-      if (!bellBtn) return;
-      // v1.340 (Dean): the header's own bell glyph (slashed when off), never the emoji
-      // pair, and a stable width so "Pin channel" beside it holds still on every tap.
-      bellBtn.innerHTML = stableToggleLabelHtml(on ? 'Notifying' : 'Notify', ['Notifying', 'Notify'], { Notifying: 'bell', Notify: 'bellOff' });
-      bellBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      if (!bellBtn || !ui) return;
+      ui.setPressed(bellBtn, !!on);
       bellBtn.setAttribute('aria-label', on ? 'Push notifications for this channel are on' : 'Push notifications for this channel are off');
+      bellBtn.title = on ? 'Notifying' : 'Notify';
+    }
+
+    // The bell's slot: created with Subscribe (placed right after it, before Pin),
+    // RESERVED while not subscribed (visibility:hidden + inert - the box holds its
+    // place), live while subscribed. `reserved` true = the placeholder state.
+    function ensureBellSlot() {
+      if (bellBtn || !ui || !subscribeBtnContainer) return;
+      bellBtn = ui.button({
+        variant: 'plain', size: 'sm', shape: 'icon',
+        icon: { off: 'notifications_off', on: 'notifications_active' },
+        pressed: false, ariaLabel: 'Push notifications for this channel are off',
+      });
+      bellBtn.id = 'notify-channel-btn';
+      bellBtn.classList.add('watch-channel__bell');
+      if (subscribeBtn && subscribeBtn.parentNode === subscribeBtnContainer && subscribeBtn.nextSibling) {
+        subscribeBtnContainer.insertBefore(bellBtn, subscribeBtn.nextSibling);
+      } else {
+        subscribeBtnContainer.appendChild(bellBtn);
+      }
+      bellBtn.addEventListener('click', handleToggleBell, { signal });
+    }
+    function setBellReserved(reserved) {
+      if (!bellBtn) return;
+      if (reserved) {
+        bellBtn.setAttribute('data-reserved', '');
+        bellBtn.setAttribute('aria-hidden', 'true');
+        bellBtn.setAttribute('inert', '');
+        bellBtn.tabIndex = -1;
+      } else {
+        bellBtn.removeAttribute('data-reserved');
+        bellBtn.removeAttribute('aria-hidden');
+        bellBtn.removeAttribute('inert');
+        bellBtn.tabIndex = 0;
+      }
     }
 
     // Gate r1 (adversary W1 + qa W1): the bell is a property of the subscription
-    // RECORD, so every arm that changes "subscribed" in-page must create/remove
-    // it too - the applier (reload / confirmed answers), the unsubscribe ok arm,
-    // and the subscribe modal's success arm all route through these two.
+    // RECORD, so every arm that changes "subscribed" in-page must arm/disarm it too -
+    // the applier (reload / confirmed answers), the unsubscribe ok arm, and the
+    // subscribe modal's success arm all route through these two.
     function ensureBell(matchedSub) {
       if (!matchedSub || !subscribeBtnContainer) return;
       currentBellState = { subId: matchedSub.id, on: matchedSub.pushBell === true };
-      if (!bellBtn) {
-        bellBtn = document.createElement('button');
-        bellBtn.type = 'button';
-        bellBtn.id = 'notify-channel-btn';
-        bellBtn.className = 'btn';
-        bellBtn.style.marginLeft = 'var(--space-4)';
-        subscribeBtnContainer.appendChild(bellBtn);
-        bellBtn.addEventListener('click', handleToggleBell, { signal });
-      }
+      ensureBellSlot();
+      if (!bellBtn) return;
       bellBtn.hidden = false;
+      setBellReserved(false);
       applyBellButtonLabel(currentBellState.on);
     }
-    function removeBell() {
-      if (bellBtn) { bellBtn.remove(); bellBtn = null; }
+    // No record: the bell never acts (it would PATCH a deleted id). While Subscribe
+    // shows, its slot stays reserved; `drop` removes it (no Subscribe at all).
+    function removeBell(drop) {
       currentBellState = { subId: null, on: false };
+      if (!bellBtn) return;
+      if (drop) { bellBtn.remove(); bellBtn = null; return; }
+      applyBellButtonLabel(false);
+      setBellReserved(true);
     }
 
     function handleToggleBell() {
-      if (!currentBellState.subId || !bellBtn) return;
+      if (!currentBellState.subId || !bellBtn || bellBusy) return;
       const next = !currentBellState.on;
-      bellBtn.disabled = true;
+      bellBusy = true;
+      ui.setBusy(bellBtn, true);
       fetch('/api/subscriptions/' + encodeURIComponent(currentBellState.subId), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
@@ -2606,7 +2745,9 @@ if (typeof module !== 'undefined' && module.exports) {
         })
         .catch((err) => console.error('Notification bell toggle failed (network error):', err))
         .finally(() => {
-          bellBtn.disabled = false;
+          bellBusy = false;
+          if (!bellBtn) return;
+          ui.setBusy(bellBtn, false);
           applyBellButtonLabel(currentBellState.on);
         });
     }
@@ -2628,9 +2769,10 @@ if (typeof module !== 'undefined' && module.exports) {
     // record shape `{channelDir, label}` the subscriptions-page pin flow
     // sends (AC: "identical pin record shape... single source of truth").
     function handleTogglePin() {
-      if (!currentPinState.channelDir || !pinBtn) return;
+      if (!currentPinState.channelDir || !pinBtn || pinBusy) return;
       const wasPinned = currentPinState.pinned;
-      pinBtn.disabled = true;
+      pinBusy = true;
+      ui.setBusy(pinBtn, true);
       const request = wasPinned
         ? (currentPinState.pinId
           ? fetch('/api/subscriptions/pins/' + encodeURIComponent(currentPinState.pinId), { method: 'DELETE' })
@@ -2673,7 +2815,8 @@ if (typeof module !== 'undefined' && module.exports) {
         })
         .catch((err) => console.error('Pin toggle failed (network error):', err))
         .finally(() => {
-          pinBtn.disabled = false;
+          pinBusy = false;
+          if (pinBtn) ui.setBusy(pinBtn, false);
           applyPinButtonLabel(currentPinState.pinned);
           refreshPinnedSidebar();
         });
@@ -2747,10 +2890,13 @@ if (typeof module !== 'undefined' && module.exports) {
         if (pinBtn) pinBtn.hidden = false;
         if (bellBtn) bellBtn.hidden = false;
         applySubscribeButtonLabel(currentSubState.subscribed);
+        // UI pass S3 (D4.9): the bell's slot exists whenever Subscribe shows (reserved
+        // until subscribed), so Pin never moves.
+        ensureBellSlot();
         if (!subscribeClickWired) {
           subscribeClickWired = true;
           subscribeBtn.addEventListener('click', () => {
-            if (currentSubState.subscribed) handleUnsubscribe();
+            if (currentSubState.subscribed) confirmUnsubscribe(); // UI pass S3 (F33): through ui.confirm
             else openSubscribeModal();
           }, { signal });
         }
@@ -2761,12 +2907,13 @@ if (typeof module !== 'undefined' && module.exports) {
       const matchedSub = currentSubState.subscribed && Array.isArray(subs)
         ? subs.find((sub) => sub && sub.id === currentSubState.subId)
         : null;
-      // v1.314: the bell exists only while SUBSCRIBED (it is a property of the
-      // subscription record) - created/removed here, from the same answer set,
+      // v1.314: the bell ACTS only while SUBSCRIBED (it is a property of the
+      // subscription record) - armed/disarmed here, from the same answer set,
       // before the Pin block's own channelDir gate (Pin needs a resolved
-      // directory; the bell needs only the record).
+      // directory; the bell needs only the record). UI pass S3: disarmed = its
+      // slot reserved while Subscribe shows; a pin-only item has no bell at all.
       if (matchedSub) ensureBell(matchedSub);
-      else removeBell();
+      else removeBell(!currentSubState.visible);
       const channelDir = (matchedSub && typeof matchedSub.channelDir === 'string' && matchedSub.channelDir !== '')
         ? matchedSub.channelDir
         : resolveChannelDirFromFilePath(item.filePath);
@@ -2776,12 +2923,12 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       const existingPin = Array.isArray(channelPins) ? channelPins.find((p) => p && p.channelDir === channelDir) : null;
       currentPinState = { channelDir, label: currentChannelName, pinned: Boolean(existingPin), pinId: existingPin ? existingPin.id : null };
-      if (!pinBtn) {
-        pinBtn = document.createElement('button');
-        pinBtn.type = 'button';
+      if (!pinBtn && ui) {
+        pinBtn = ui.button({
+          variant: 'plain', size: 'sm', shape: 'icon',
+          icon: { off: 'keep', on: 'keep.fill' }, pressed: currentPinState.pinned, ariaLabel: 'Pin channel',
+        });
         pinBtn.id = 'pin-channel-btn';
-        pinBtn.className = 'btn';
-        pinBtn.style.marginLeft = 'var(--space-4)';
         subscribeBtnContainer.appendChild(pinBtn);
         pinBtn.addEventListener('click', handleTogglePin, { signal });
       }
@@ -2894,15 +3041,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // Read-only star rating: a deterministic 3–5 value derived from the media id
     // (shared with the home cards via common.js getStarRating). Not user input —
     // just a fun cosmetic touch that's consistent across the card and this page.
+    // UI pass S3: always a MOCK (D8.1 - the markup carries .ft-fabricated, so it shows
+    // only in the retro eras); drawn registry stars (AC4 - no text glyphs), the card's
+    // S2 treatment.
     function renderStarRating() {
+      if (!starRatingControl || !ui) return;
       const rating = getStarRating(mediaId);
-      starRatingControl.querySelectorAll('.star').forEach(star => {
-        const val = parseInt(star.dataset.value);
-        star.classList.toggle('active', val <= rating);
-      });
-      starRatingControl.style.cursor = 'default';
-      starRatingControl.title = `Rated ${rating} / 5`;
-      if (ratingText) ratingText.textContent = `${rating} / 5`;
+      starRatingControl.replaceChildren();
+      for (let i = 0; i < 5; i++) starRatingControl.appendChild(ui.icon(i < rating ? 'star.fill' : 'star', { size: 'sm', cls: i < rating ? 'on' : 'off' }));
+      starRatingControl.setAttribute('aria-label', 'Rated ' + rating + ' out of 5 stars');
     }
 
     // Load comments
@@ -2941,26 +3088,18 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     // F1 (v1.24.0, T4): builds ONE comment row via createElement/textContent
-    // only -- NEVER innerHTML -- which is what lets the avatar safely carry
-    // either a real captured `channelAvatarUrl` (a future `<img src="...">`,
-    // C6/T11, Wave 3) or a generated {glyph, color} node without ever
-    // concatenating an untrusted string into an HTML template (an author
-    // name/comment text/avatar URL never gets string-interpolated into
-    // markup). Mirrors common.js's own buildPinAvatarNode construction
-    // discipline (T3, same wave).
+    // only -- NEVER innerHTML (an author name / comment text never gets
+    // string-interpolated into markup). UI pass sweep S3: the avatar is a ui.avatar
+    // (md; the mock personas are fictional, so always the monogram - `url: null` is a
+    // deliberate "no real avatar for this author"), and a MOCK comment carries
+    // .ft-fabricated (D8.1: the mock commenters show only in the retro eras; Dean's
+    // own 'You' comments are real and show in every era).
     function buildCommentNode(c) {
       const item = document.createElement('div');
-      item.className = 'comment-item';
+      item.className = 'comment-item' + (isUserComment(c) ? '' : ' ft-fabricated');
 
-      const avatar = document.createElement('div');
-      avatar.className = 'comment-avatar';
-      // Mock comment authors are fictional personas, not real channels --
-      // there is no real channelAvatarUrl to look up for them, so this
-      // always resolves to the deterministic generated fallback. Passing
-      // `null` explicitly (rather than omitting the arg) documents that this
-      // is a deliberate "no real avatar for this author" choice, not an
-      // oversight.
-      applyAvatarToElement(avatar, c.author, null);
+      const avatar = ui.avatar({ name: c.author, url: null, kind: 'person', size: 'md' });
+      avatar.classList.add('comment-item__avatar');
       item.appendChild(avatar);
 
       const body = document.createElement('div');
@@ -2987,17 +3126,23 @@ if (typeof module !== 'undefined' && module.exports) {
       return item;
     }
 
+    // UI pass sweep S3 (D8.1): two counts - every comment (the retro eras, where the
+    // mock personas show) and Dean's own only (Modern, where they are hidden); the era
+    // flourish rule shows exactly one. The empty state shows wherever no comment does:
+    // everywhere when there are none, only in Modern when all of them are mocks.
     function renderComments(comments) {
+      const real = comments.filter(isUserComment).length;
       commentCountBadge.textContent = comments.length;
+      const realBadge = root.querySelector('#comment-count-real');
+      if (realBadge) realBadge.textContent = real;
 
       commentsContainer.textContent = ''; // clear any previous render (never innerHTML)
 
-      if (comments.length === 0) {
+      if (real === 0) {
         const empty = document.createElement('div');
-        empty.style.cssText = 'color: var(--text-secondary); text-align: center; padding: var(--space-6) 0;';
+        empty.className = 'comments-empty' + (comments.length > 0 ? ' ft-unfabricated' : '');
         empty.textContent = 'No comments yet. Be the first to comment!';
         commentsContainer.appendChild(empty);
-        return;
       }
 
       comments.forEach((c) => {
@@ -3048,67 +3193,11 @@ if (typeof module !== 'undefined' && module.exports) {
       return buildMockComments(commentScopeId, MOCK_COMMENT_BANK, count, videoTitle);
     }
 
-    // C1 follow-up (v1.24 UX Round, Wave 3): "Move to..." trigger. Mirrors
-    // `setupPinButton`'s runtime-creation pattern above (created once per
-    // view instance, mounted into existing shell markup this file doesn't
-    // own) since `watch.html`'s static markup carries no placeholder for
-    // this control and this task edits ONLY `main.js`/`watch.js`. Mounted as
-    // a sibling of Download/Delete inside `.watch-action-btns`, the nowrap
-    // button sub-group of `.watch-actions` those two already live in (see
-    // the v1.25.6 hotfix comment on `.watch-action-btns` in watch.html/
-    // style.css), reusing the EXACT `.btn` class those buttons use -- no new
-    // CSS. Idempotent (guarded on `moveBtn` already existing) so a second
-    // media load within the same cached view instance never duplicates the
-    // control. Falls back to `.watch-actions` itself if the sub-group is
-    // ever absent (e.g. stale cached markup) so Move still mounts somewhere
-    // rather than silently vanishing.
-    //
-    // Visual-consistency follow-up (button glyph polish): Download/Delete
-    // already carry a leading <i class="icon-*"> glyph -- Move was the odd
-    // one out (text-only), which also made it the widest/least predictable
-    // width in the row and the one most likely to wrap onto its own line on
-    // a narrow phone. Gives it `.icon-folder` (the closest existing glyph to
-    // "move to a folder" in the icon-set -- see style.css's icon-set-axis
-    // section; there is no dedicated move/arrow-into-folder asset and this
-    // task does not add new icon assets), built via createElement/
-    // createTextNode (not innerHTML) to match the rest of this file's DOM
-    // conventions. `aria-label`/`title` stay fully descriptive even though
-    // the visible label is the same short "Move" as before.
     // v1.53 (Dean): "Attribute..." -- the manual escape hatch for items no
-    // reheat can ever attribute (dead/renamed channels, MeTube imports).
-    // Structurally ABSENT unless the item is genuinely unattributed
-    // (resolveFileChannelIdentity null -- the same predicate every other
-    // surface uses), the setupMoveButton runtime-control pattern.
-    function setupAttributeButton() {
-      const watchActions = root.querySelector('.watch-actions');
-      if (!watchActions || !mediaData) return;
-      if (!canModifyLibrary) return; // v1.81 write-RBAC: attribution is a content edit
-      if (!attributeControlEnabled) return; // v1.202: opt-in (Settings -> Experimental)
-      const attributed = resolveFileChannelIdentity(mediaData) !== null;
-      if (attributed) {
-        if (attributeBtn) { attributeBtn.remove(); attributeBtn = null; }
-        return;
-      }
-      if (attributeBtn) return;
-      attributeBtn = document.createElement('button');
-      attributeBtn.type = 'button';
-      attributeBtn.id = 'attribute-media-btn';
-      attributeBtn.className = 'btn';
-      attributeBtn.title = 'Attribute to a channel';
-      attributeBtn.setAttribute('aria-label', 'Attribute to a channel');
-      const icon = document.createElement('i');
-      icon.className = 'icon-attribute'; // v1.202: a real mask (the old class had none)
-      attributeBtn.appendChild(icon);
-      const label = document.createElement('span');
-      label.className = 'btn-label';
-      label.textContent = 'Attribute';
-      attributeBtn.appendChild(document.createTextNode(' '));
-      attributeBtn.appendChild(label);
-      const btnGroup = watchActions.querySelector('.watch-action-btns');
-      (btnGroup || watchActions).appendChild(attributeBtn);
-      attributeBtn.addEventListener('click', handleAttributeClick, { signal });
-    }
-
+    // reheat can ever attribute (dead/renamed channels, MeTube imports). A
+    // More-menu entry (UI pass S3) offered ONLY for a genuinely unattributed item
+    // (resolveFileChannelIdentity null -- the same predicate every other surface
+    // uses), with the write capability and the Settings -> Experimental opt-in.
     async function handleAttributeClick() {
       let targets = [];
       try {
@@ -3134,7 +3223,6 @@ if (typeof module !== 'undefined' && module.exports) {
             mediaData.channelAttributedManually = true;
             currentChannelName = resolveChannelName(mediaData, folderSettings);
             paintMetadata(mediaData, currentChannelName);
-            setupAttributeButton();
             showToast(`Attributed to ${target.channelName}.`);
             const reloc = body && body.relocation;
             if (reloc && reloc.available && reloc.destinationDir) {
@@ -3179,75 +3267,29 @@ if (typeof module !== 'undefined' && module.exports) {
       );
     }
 
-    function setupMoveButton() {
-      const watchActions = root.querySelector('.watch-actions');
-      if (!watchActions || !mediaData) return;
-      if (!canModifyLibrary) return; // v1.81 write-RBAC: move is a content mutation
-      if (!moveBtn) {
-        moveBtn = document.createElement('button');
-        moveBtn.type = 'button';
-        moveBtn.id = 'move-media-btn';
-        moveBtn.className = 'btn';
-        moveBtn.title = 'Move to another folder';
-        moveBtn.setAttribute('aria-label', 'Move to another folder');
-        const moveIcon = document.createElement('i');
-        moveIcon.className = 'icon-folder';
-        moveBtn.appendChild(moveIcon);
-        // v1.47.6: `.btn-label` rather than a bare text node, so the phone
-        // breakpoint can hide the word and leave the glyph (see style.css).
-        const moveLabel = document.createElement('span');
-        moveLabel.className = 'btn-label';
-        moveLabel.textContent = 'Move';
-        moveBtn.appendChild(document.createTextNode(' '));
-        moveBtn.appendChild(moveLabel);
-        const btnGroup = watchActions.querySelector('.watch-action-btns');
-        (btnGroup || watchActions).appendChild(moveBtn);
-        moveBtn.addEventListener('click', handleMoveClick, { signal });
-      }
-    }
-
-    // "Like" toggle, painted in the YouTube heart convention (v1.108, Dean):
-    // NOT-liked is the neutral/grey resting state; LIKED fills the heart RED.
-    // This is a DELIBERATE reversal of the old v1.30 "primary-when-actionable"
-    // convention (which made the un-liked button `btn-primary`/red as a
-    // call-to-action and the liked button neutral) -- Dean found red-as-CTA /
-    // grey-as-done backwards, since it read the wrong way round. The state is
-    // now carried by the `.liked` class (red heart via `color: var(--yt-red)`,
-    // exactly mirroring `.card-like-btn.liked`, style.css) instead of
-    // `btn-primary`; `aria-pressed` still carries it for AT and at phone widths
-    // where the `.btn-label` word is hidden.
-    // v1.47.6: rebuilt as icon + `.btn-label` instead of `textContent`.
-    //   - `textContent =` wiped every child, so the button could never hold a
-    //     glyph or a hideable label at all.
-    //   - the heart is a real `.icon-heart` CSS mask, never a unicode codepoint:
-    //     this repo's v1.38 lesson is "draw glyphs in CSS, never emoji
-    //     codepoints" (iOS force-renders U+2665 as the red-heart emoji).
+    // "Like" toggle in the YouTube heart convention (v1.108, Dean): NOT-liked is the
+    // resting state, LIKED fills the heart. UI pass sweep S3 (D4.9, F21, D8.8): a stacked
+    // ui-btn in the bar whose label is the stable stack (Like / Liked: one grid cell, the
+    // width never changes on a tap) and whose icon swaps to `favorite.fill` (ui.setPressed);
+    // the pressed state is the filled glyph in ink - red is not a selected role. The heart
+    // is a registry glyph, never U+2665 (the v1.38 iOS colour-emoji lesson).
     function applyLikeButtonLabel(liked) {
-      if (!likeBtn) return;
-      likeBtn.replaceChildren();
-      const icon = document.createElement('i');
-      icon.className = 'icon-heart';
-      const label = document.createElement('span');
-      label.className = 'btn-label';
-      label.textContent = liked ? 'Liked' : 'Like';
-      likeBtn.appendChild(icon);
-      likeBtn.appendChild(document.createTextNode(' '));
-      likeBtn.appendChild(label);
-      likeBtn.setAttribute('aria-pressed', liked ? 'true' : 'false');
-      likeBtn.classList.toggle('liked', liked);
+      if (!likeBtn || !ui) return;
+      ui.setPressed(likeBtn, !!liked);
+      likeBtn.setAttribute('aria-label', liked ? 'Unlike this video' : 'Like this video');
     }
 
     // One-tap like/unlike -- `POST`/`DELETE /api/liked/:id` (the server-side
-    // `db.liked` membership store, server.js). Membership on the server is
-    // the single source of truth; `currentLikeState` here only mirrors it
-    // for this view instance's own render, updated ONLY after the request
-    // resolves successfully (never optimistically), mirroring
-    // `handleTogglePin`'s exact disable-during-request / resolve-then-render
-    // shape above.
+    // `db.liked` membership store). Membership on the server is the single source
+    // of truth; `currentLikeState` mirrors it, updated ONLY after the request
+    // resolves (never optimistically). Busy (aria-busy) during the request: a
+    // toggle keeps full opacity and spins in its icon slot (F34).
+    let likeBusy = false;
     function handleToggleLike() {
-      if (!mediaData || !likeBtn) return;
+      if (!mediaData || !likeBtn || likeBusy) return;
       const wasLiked = currentLikeState.liked;
-      likeBtn.disabled = true;
+      likeBusy = true;
+      ui.setBusy(likeBtn, true);
       const request = fetch(`/api/liked/${encodeURIComponent(mediaData.id)}`, { method: wasLiked ? 'DELETE' : 'POST' });
       request
         .then((res) => {
@@ -3264,151 +3306,83 @@ if (typeof module !== 'undefined' && module.exports) {
         })
         .catch((err) => console.error('Like toggle failed (network error):', err))
         .finally(() => {
-          likeBtn.disabled = false;
+          likeBusy = false;
+          if (!likeBtn) return;
+          ui.setBusy(likeBtn, false);
           applyLikeButtonLabel(currentLikeState.liked);
         });
     }
 
-    // Creates (once per view instance) and mounts the Like button as a
-    // sibling of Download/Delete/Move inside `.watch-action-btns` -- the SAME
-    // nowrap sub-group `setupMoveButton` mounts into just above -- reading
-    // the INITIAL liked state off `mediaData.liked` (a field GET
-    // /api/videos/:id derives from `db.liked` membership at request time;
-    // see that route's own comment, server.js). Unlike `setupPinButton`, the
-    // Like control is never conditionally hidden/removed -- liking is a
-    // per-item action independent of any resolved channel/subscribe
-    // identity, so it's always shown for a valid media item.
+    // Creates (once per view instance) the bar's Like, reading the INITIAL
+    // liked state off `mediaData.liked` (GET /api/videos/:id derives it from
+    // `db.liked` membership at request time). Always shown for a media item.
     function setupLikeButton() {
-      const watchActions = root.querySelector('.watch-actions');
-      if (!watchActions || !mediaData) return;
+      if (!actionsHost || !mediaData || !ui) return;
       currentLikeState = { liked: !!mediaData.liked };
       if (!likeBtn) {
-        likeBtn = document.createElement('button');
-        likeBtn.type = 'button';
-        likeBtn.id = 'like-media-btn';
-        likeBtn.className = 'btn';
-        likeBtn.title = 'Like this video';
-        likeBtn.setAttribute('aria-label', 'Like this video');
-        const btnGroup = watchActions.querySelector('.watch-action-btns');
-        (btnGroup || watchActions).appendChild(likeBtn);
+        likeBtn = barButton('like', 'like-media-btn', {
+          icon: { off: 'favorite', on: 'favorite.fill' }, labels: ['Like', 'Liked'], pressed: currentLikeState.liked,
+        });
         likeBtn.addEventListener('click', handleToggleLike, { signal });
       }
       applyLikeButtonLabel(currentLikeState.liked);
     }
 
-    // v1.72 (cap 6): the manual watched toggle's label/state painter -
-    // applyLikeButtonLabel's exact shape (icon + hideable .btn-label,
-    // aria-pressed carries state at phone widths where the label hides).
-    function applyWatchedButtonLabel(watched) {
-      if (!watchedBtn) return;
-      watchedBtn.replaceChildren();
-      const icon = document.createElement('i');
-      icon.className = 'icon-history';
-      const label = document.createElement('span');
-      label.className = 'btn-label';
-      label.textContent = watched ? 'Watched' : 'Mark watched';
-      watchedBtn.appendChild(icon);
-      watchedBtn.appendChild(document.createTextNode(' '));
-      watchedBtn.appendChild(label);
-      watchedBtn.setAttribute('aria-pressed', watched ? 'true' : 'false');
-      watchedBtn.title = watched ? 'Mark as unwatched' : 'Mark as watched';
-    }
-
-    // POST marks the latch now; DELETE is the un-watch verb (the server
-    // clears latch + position - the history-row-delete semantics, so a
-    // fully-watched item's toggle actually releases). Non-optimistic,
-    // disable-during-request - handleToggleLike's exact shape.
+    // POST marks the latch now; DELETE is the un-watch verb (the server clears
+    // latch + position - the history-row-delete semantics, so a fully-watched
+    // item's toggle actually releases). Non-optimistic, one request at a time;
+    // the More menu reads the state at its next open, and a toast says what
+    // happened (UI pass S3: the entry is in More, not the bar).
     function handleToggleWatched() {
-      if (!mediaData || !watchedBtn) return;
+      if (!mediaData || watchedBusy) return;
       const wasWatched = currentWatchedState.watched;
-      watchedBtn.disabled = true;
+      watchedBusy = true;
       fetch(`/api/watched/${encodeURIComponent(mediaData.id)}`, { method: wasWatched ? 'DELETE' : 'POST' })
         .then((res) => {
           if (!res || !res.ok) {
             console.error('Watched toggle failed:', res && res.status);
+            if (ui && !signal.aborted) ui.toast('Could not update watched', { kind: 'error' });
             return;
           }
           currentWatchedState = { watched: !wasWatched };
+          if (ui && !signal.aborted) ui.toast(currentWatchedState.watched ? 'Marked as watched' : 'Marked as unwatched', { kind: 'success' });
         })
-        .catch((err) => console.error('Watched toggle failed (network error):', err))
-        .finally(() => {
-          watchedBtn.disabled = false;
-          applyWatchedButtonLabel(currentWatchedState.watched);
-        });
+        .catch((err) => {
+          console.error('Watched toggle failed (network error):', err);
+          if (ui && !signal.aborted) ui.toast('Could not update watched', { kind: 'error' });
+        })
+        .finally(() => { watchedBusy = false; });
     }
 
-    // Mounts the Watched toggle as a sibling of Like inside
-    // `.watch-action-btns` (setupLikeButton's exact mount), reading the
-    // INITIAL state off `mediaData.watchState` - the server's one
+    // The INITIAL watched state off `mediaData.watchState` - the server's one
     // derivation authority, never a client-side re-derivation.
-    function setupWatchedButton() {
-      const watchActions = root.querySelector('.watch-actions');
-      if (!watchActions || !mediaData) return;
+    function setupWatchedState() {
+      if (!mediaData) return;
       currentWatchedState = { watched: mediaData.watchState === 'watched' };
-      if (!watchedBtn) {
-        watchedBtn = document.createElement('button');
-        watchedBtn.type = 'button';
-        watchedBtn.id = 'watched-media-btn';
-        watchedBtn.className = 'btn';
-        watchedBtn.setAttribute('aria-label', 'Mark as watched');
-        const btnGroup = watchActions.querySelector('.watch-action-btns');
-        (btnGroup || watchActions).appendChild(watchedBtn);
-        watchedBtn.addEventListener('click', handleToggleWatched, { signal });
-      }
-      applyWatchedButtonLabel(currentWatchedState.watched);
     }
 
     // v1.33 T2: share the item's ORIGINAL link - its YouTube `mediaData.watchUrl`
     // (a server-side buildWatchUrl product -- never assembled client-side) or,
     // v1.337, a non-YouTube download's `sourceShareUrl` (server-read from the file).
-    // Native share sheet when the browser has one (iOS/Android
-    // `navigator.share` -- exactly Dean's "share sheet with the real YouTube
-    // link" ask); clipboard copy with a transient "Copied!" label as the
-    // desktop fallback. An AbortError from `navigator.share` is the user
-    // closing the sheet -- silently fine, never an error.
-    // v1.110 (Dean): run the actual share of `url` (the original YouTube link,
-    // optionally with a `?t=`; v1.337: or a non-YouTube download's own link, as
-    // it is) + the desktop-fallback "Copied!" feedback. Called directly, or from
-    // a share-choice pick below.
+    // Native share sheet when the browser has one (iOS/Android `navigator.share`);
+    // clipboard copy as the desktop fallback. An AbortError from `navigator.share`
+    // is the user closing the sheet -- silently fine, never an error.
+    // v1.67 (plan D6): the share-sheet-vs-clipboard DECISION lives in common.js's
+    // shareExternalUrl (the card menu's Share runs the same one). UI pass sweep S3
+    // (D4.9, F21): the "Copied!" feedback is a ui.toast - the button's label never
+    // changes (the old label swap shoved the row).
     function runShare(url) {
-      // v1.67 (plan D6): the share-sheet-vs-clipboard DECISION lives in
-      // common.js's shareExternalUrl (the card share corner runs the same
-      // one); only the watch-local "Copied!" label feedback stays here.
       shareExternalUrl(url, mediaData.title).then((outcome) => {
-        if (outcome !== 'copied' || !shareBtn) return;
-        // v1.47.6: write to the `.btn-label` span, NOT the button's own
-        // textContent -- that would wipe the icon element added alongside
-        // it. Falls back to the button itself if the span is somehow
-        // absent, so the feedback can never silently disappear.
-        //
-        // Note 'copied' is the DESKTOP fallback: mobile has
-        // `navigator.share` and resolves 'shared' above, so hiding the label
-        // at phone widths does not cost anyone this confirmation. On the
-        // rare mobile browser with no share sheet, the label is hidden and
-        // the clipboard write still succeeds -- the toast below covers it.
-        const label = shareBtn.querySelector('.btn-label') || shareBtn;
-        label.textContent = 'Copied!';
-        if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
-          window.showToast('Link copied');
-        }
-        if (shareBtnResetTimer) clearTimeout(shareBtnResetTimer);
-        shareBtnResetTimer = setTimeout(() => {
-          if (shareBtn) {
-            const resetTarget = shareBtn.querySelector('.btn-label') || shareBtn;
-            resetTarget.textContent = 'Share';
-          }
-          shareBtnResetTimer = null;
-        }, 1500);
+        if (outcome !== 'copied' || !ui || signal.aborted) return;
+        ui.toast('Link copied', { kind: 'success' });
       });
     }
 
     // v1.110 (Dean): the Share button. When there's a meaningful playback position
     // to offer (>= 1s, non-live -- player.getCurrentTime returns null for live),
-    // PROMPT "Share video" vs "Share at current time (M:SS)"; each shares the
-    // original YouTube link, the second with a `?t=` start. Under 1s / no position
-    // it shares the plain link directly (no pointless 0:00 prompt), the pre-v1.110
-    // behaviour. The choice modal is body-level, so its dismiss is torn down on
-    // view abort.
+    // it offers "Share video" vs "Share at current time (M:SS)" - UI pass S3: a
+    // ui.menu anchored to the button (was the choice modal), torn down with the
+    // view. Under 1s / no position it shares the plain link directly.
     // v1.337 (Dean: "a share button that basically just shares the logged URL of whatever it is that
     // we captured"): the link this item shares - its YouTube `watchUrl`, else the `sourceShareUrl`
     // the server read from a non-YouTube download's own file tags (Facebook, Reddit, ...). '' = none.
@@ -3427,76 +3401,47 @@ if (typeof module !== 'undefined' && module.exports) {
       // The "at current time" choice is YouTube's `?t=`; another site's link is shared as it is.
       const isYouTube = base === mediaData.watchUrl;
       if (isYouTube && typeof t === 'number' && isFinite(t) && t >= 1) {
-        if (shareChoiceDismiss) { signal.removeEventListener('abort', shareChoiceDismiss); shareChoiceDismiss = null; }
-        shareChoiceDismiss = showChoiceModal('Share', [
-          { label: 'Share video', onPick: () => runShare(base) },
-          { label: 'Share at current time (' + formatDuration(t) + ')', onPick: () => runShare(withShareStartTime(base, t)) },
-        ]);
-        signal.addEventListener('abort', shareChoiceDismiss, { once: true });
+        ui.menu({
+          title: 'Share', anchor: shareBtn, signal,
+          items: [
+            { icon: 'share', label: 'Share video', value: 'video' },
+            { icon: 'history', label: 'Share at current time (' + formatDuration(t) + ')', value: 'at' },
+          ],
+          onSelect: (v) => runShare(v === 'at' ? withShareStartTime(base, t) : base),
+        });
         return;
       }
       runShare(base);
     }
 
-    // Creates (once per view instance) and mounts the Share button as a
-    // sibling of Download/Delete/Move/Like inside `.watch-action-btns` --
-    // the SAME nowrap sub-group and createElement/textContent conventions as
-    // `setupMoveButton`/`setupLikeButton` above. Unlike those, it is
-    // CONDITIONAL: only an item the server derived an original link for gets
-    // one - its YouTube `watchUrl`, or (v1.337) a non-YouTube download's
-    // `sourceShareUrl` - and a stale button from a prior item on this SPA view
-    // is removed when the current item has no link.
+    // Creates (once per view instance) the bar's Share - CONDITIONAL: only an item
+    // the server derived an original link for gets one, and a stale button from a
+    // prior item on this SPA view is removed when the current item has none.
     function setupShareButton() {
-      const watchActions = root.querySelector('.watch-actions');
-      if (!watchActions || !mediaData) return;
+      if (!actionsHost || !mediaData || !ui) return;
       const link = shareLinkOf(mediaData);
       if (!link) {
         if (shareBtn) { shareBtn.remove(); shareBtn = null; }
         return;
       }
+      // v1.337: named for what it shares.
+      const shareName = link === mediaData.watchUrl ? 'Share the original YouTube link' : 'Share the original link';
       if (!shareBtn) {
-        shareBtn = document.createElement('button');
-        shareBtn.type = 'button';
-        shareBtn.id = 'share-media-btn';
-        shareBtn.className = 'btn';
-        const btnGroup = watchActions.querySelector('.watch-action-btns');
-        (btnGroup || watchActions).appendChild(shareBtn);
+        shareBtn = barButton('share', 'share-media-btn', { icon: 'share', label: 'Share', ariaLabel: shareName });
         shareBtn.addEventListener('click', handleShareClick, { signal });
       }
-      // v1.337: named for what it shares (setupShareButton runs once per watch view).
-      const shareName = link === mediaData.watchUrl ? 'Share the original YouTube link' : 'Share the original link';
       shareBtn.title = shareName;
       shareBtn.setAttribute('aria-label', shareName);
-      // v1.47.6: icon + hideable label, rebuilt each time so a pending
-      // "Copied!" state is reset on re-render. `replaceChildren` first, because
-      // this runs on every media load and must not accumulate children.
-      shareBtn.replaceChildren();
-      const shareIcon = document.createElement('i');
-      shareIcon.className = 'icon-share';
-      const shareLabel = document.createElement('span');
-      shareLabel.className = 'btn-label';
-      shareLabel.textContent = 'Share';
-      shareBtn.appendChild(shareIcon);
-      shareBtn.appendChild(document.createTextNode(' '));
-      shareBtn.appendChild(shareLabel);
     }
 
     // ---- Transcript export (Dean) --------------------------------------------
     //
     // "Allow me to see and then copy/paste the full transcript from the video."
-    // The server renders the document (`GET /api/transcript/:id`, header +
-    // de-duplicated caption lines); this control only decides HOW to hand it
-    // over. Desktop: a read-only text-field modal with a Copy button and a
-    // "Show timestamps" toggle. Phone widths (the page's own 768px query):
-    // the share sheet / clipboard picker, because a phone wants to SEND the
-    // text somewhere, not read it in a textarea. The text is fetched BEFORE
-    // either opens, so the picker's Copy runs synchronously inside its tap
-    // (iOS clipboard writes need the user gesture).
-    // v1.203: the whole flow lives in common.js (openTranscriptFor) so the
-    // card corner runs the identical hand-off; this page just calls it with
-    // the item at click time, the view's abort signal, and a busy hook for
-    // the button. The title is captured BEFORE the await (the fetched text
-    // belongs to the item at click time).
+    // The server renders the document (`GET /api/transcript/:id`); the shared flow
+    // in common.js (openTranscriptFor, v1.203 - the card menu runs the identical
+    // hand-off) decides HOW to hand it over. This page calls it with the item at
+    // click time, the view's abort signal, and a busy hook for the button (a
+    // double-tap never opens two). The title is captured BEFORE the await.
     function handleTranscriptClick() {
       if (!mediaData || transcriptLoading) return;
       const title = (mediaData && mediaData.title) || 'Transcript';
@@ -3506,87 +3451,46 @@ if (typeof module !== 'undefined' && module.exports) {
         signal,
         onBusy: (busy) => {
           transcriptLoading = busy;
-          if (transcriptBtn) transcriptBtn.disabled = busy;
+          if (transcriptBtn && ui) ui.setBusy(transcriptBtn, busy);
         },
       });
     }
 
-    // v1.252 (Dean, Listen-mode): the "Listen" button - the setupShareButton
-    // chassis (same .btn, icon + hideable .btn-label, same nowrap sub-group).
-    // Navigates to /music?play=<id>&listen=1: music.js's listen arm plays the
-    // video AS AUDIO in the full music presentation (skin/wheel/sticker), the
-    // SAME media progress store both directions, and the sticker menu's page 1
-    // carries the "Watch" way back. Unconditional for media items (per-play -
-    // no remembered flag, no Music-library membership; the locked intake).
-    // Edge, accepted (QA S7): a DEEP-LINKED /watch.html?v=<audioId> (audio never
-    // lands here organically since v1.246/v1.251) also mounts Listen; tapping it
-    // plays the audio as a listen track, which skips the music-resume pointer -
-    // a genuine Music member briefly opting out of its Continue-listening write.
-    // Per-play and self-healing (the next normal music play rewrites it).
+    // v1.252 (Dean, Listen-mode): the bar's "Listen" - navigates to
+    // /music?play=<id>&listen=1: music.js's listen arm plays the video AS AUDIO in
+    // the full music presentation (skin/wheel/sticker), the SAME media progress store
+    // both directions, and the sticker menu's page 1 carries the "Watch" way back.
+    // Unconditional for media items (per-play - no remembered flag, no Music-library
+    // membership; the locked intake). Edge, accepted (QA S7): a DEEP-LINKED
+    // /watch.html?v=<audioId> also mounts Listen; tapping it plays the audio as a
+    // listen track, which skips the music-resume pointer (self-healing).
     function setupListenButton() {
-      const watchActions = root.querySelector('.watch-actions');
-      if (!watchActions || !mediaData) return;
-      if (!listenBtn) {
-        listenBtn = document.createElement('button');
-        listenBtn.type = 'button';
-        listenBtn.id = 'listen-media-btn';
-        listenBtn.className = 'btn';
-        listenBtn.title = 'Listen: play this video as audio in the music player';
-        listenBtn.setAttribute('aria-label', 'Listen to this video in the music player');
-        const btnGroup = watchActions.querySelector('.watch-action-btns');
-        (btnGroup || watchActions).appendChild(listenBtn);
-        listenBtn.addEventListener('click', () => {
-          if (!mediaData) return;
-          const target = '/music?play=' + encodeURIComponent(mediaData.id) + '&listen=1';
-          if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(target);
-          else window.location.href = target;
-        }, { signal });
-      }
-      // rebuilt each media load, the Share-button posture (never accumulate children).
-      listenBtn.replaceChildren();
-      const licon = document.createElement('i');
-      licon.className = 'icon-music-note';
-      const llabel = document.createElement('span');
-      llabel.className = 'btn-label';
-      llabel.textContent = 'Listen';
-      listenBtn.appendChild(licon);
-      listenBtn.appendChild(document.createTextNode(' '));
-      listenBtn.appendChild(llabel);
+      if (!actionsHost || !mediaData || !ui) return;
+      if (listenBtn) return;
+      listenBtn = barButton('listen', 'listen-media-btn', { icon: 'headphones', label: 'Listen', ariaLabel: 'Listen to this video in the music player' });
+      listenBtn.title = 'Listen: play this video as audio in the music player';
+      listenBtn.addEventListener('click', () => {
+        if (!mediaData) return;
+        const target = '/music?play=' + encodeURIComponent(mediaData.id) + '&listen=1';
+        if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(target);
+        else window.location.href = target;
+      }, { signal });
     }
 
-    // Mounts the "Transcript" button as a sibling of Share inside
-    // `.watch-action-btns` - setupShareButton's exact shape (same `.btn`,
-    // same icon + hideable `.btn-label`, CONDITIONAL on the item having a
-    // caption sidecar). The remove-if-present arm below mirrors Share's for
+    // The bar's "Transcript" - CONDITIONAL on the item having a caption sidecar
+    // (`mediaData.hasSubtitles`). The remove-if-present arm mirrors Share's for
     // symmetry only: `transcriptBtn` is per view instance and initWatch runs
     // once per view, so it cannot fire today (gate note).
     function setupTranscriptButton() {
-      const watchActions = root.querySelector('.watch-actions');
-      if (!watchActions || !mediaData) return;
+      if (!actionsHost || !mediaData || !ui) return;
       if (mediaData.hasSubtitles !== true) {
         if (transcriptBtn) { transcriptBtn.remove(); transcriptBtn = null; }
         return;
       }
-      if (!transcriptBtn) {
-        transcriptBtn = document.createElement('button');
-        transcriptBtn.type = 'button';
-        transcriptBtn.id = 'transcript-media-btn';
-        transcriptBtn.className = 'btn';
-        transcriptBtn.title = 'Transcript: read, copy or share the captions as text';
-        transcriptBtn.setAttribute('aria-label', 'Transcript: read, copy or share the captions as text');
-        const btnGroup = watchActions.querySelector('.watch-action-btns');
-        (btnGroup || watchActions).appendChild(transcriptBtn);
-        transcriptBtn.addEventListener('click', handleTranscriptClick, { signal });
-      }
-      transcriptBtn.replaceChildren();
-      const icon = document.createElement('i');
-      icon.className = 'icon-transcript';
-      const label = document.createElement('span');
-      label.className = 'btn-label';
-      label.textContent = 'Transcript';
-      transcriptBtn.appendChild(icon);
-      transcriptBtn.appendChild(document.createTextNode(' '));
-      transcriptBtn.appendChild(label);
+      if (transcriptBtn) return;
+      transcriptBtn = barButton('transcript', 'transcript-media-btn', { icon: 'subject', label: 'Transcript', ariaLabel: 'Transcript: read, copy or share the captions as text' });
+      transcriptBtn.title = 'Transcript: read, copy or share the captions as text';
+      transcriptBtn.addEventListener('click', handleTranscriptClick, { signal });
     }
 
     // ---- v1.49 (Dean): per-video reheat --------------------------------------
@@ -3595,64 +3499,30 @@ if (typeof module !== 'undefined' && module.exports) {
     // Reheat lives on the Subscriptions page and is all-or-nothing; this is the
     // same work scoped to the item you are looking at -- refresh the channel
     // identity, the real title, the view count, chapters and subtitles for THIS
-    // video, and then offer to file it under its channel.
-    //
-    // Mounted as a sibling of Download/Delete/Move/Like/Share inside
-    // `.watch-action-btns` -- the SAME nowrap sub-group, the SAME `.btn` class
-    // and the SAME icon + `.btn-label` shape as the other five, so it is the
-    // same size as its neighbours and inherits the phone breakpoint's
-    // label-hiding for free (Dean: "same size as the rest, maintain on the one
-    // width"). No new button CSS is added; that is the point.
+    // video, and then offer to file it under its channel. UI pass sweep S3: a
+    // More-menu entry ("Reheat metadata"; "Reheating..." and disabled while a run
+    // is in flight).
     //
     // Gated on the latched module health probe (see `probeReheatModule`): an
-    // install running without yt-dlp has no reheat to offer and gets no button.
-    function setupReheatButton() {
-      const watchActions = root.querySelector('.watch-actions');
-      if (!watchActions || !mediaData) return;
-      const mountReheatBtn = () => {
-        if (reheatBtn) return; // idempotent: a second media load must not duplicate it
-        reheatBtn = document.createElement('button');
-        reheatBtn.type = 'button';
-        reheatBtn.id = 'reheat-media-btn';
-        reheatBtn.className = 'btn';
-        reheatBtn.title = 'Reheat: re-fetch this video’s channel, title, view count and subtitles';
-        reheatBtn.setAttribute('aria-label', 'Reheat this video’s metadata');
-        const icon = document.createElement('i');
-        icon.className = 'icon-flame';
-        const label = document.createElement('span');
-        label.className = 'btn-label';
-        label.textContent = 'Reheat';
-        reheatBtn.appendChild(icon);
-        reheatBtn.appendChild(document.createTextNode(' '));
-        reheatBtn.appendChild(label);
-        const btnGroup = watchActions.querySelector('.watch-action-btns');
-        (btnGroup || watchActions).appendChild(reheatBtn);
-        reheatBtn.addEventListener('click', handleReheatClick, { signal });
-      };
-      // v1.53 capability cache: OPTIMISTIC mount from the last known answer
-      // (frame-one on refresh). The REAL probe below is the reconciler -- its
-      // !enabled branch removes an optimistically-mounted button, so a
-      // module revoked since the cache was written corrects after ~1 RTT
-      // (the disclosed window).
+    // install running without yt-dlp has no reheat to offer and gets no entry.
+    // v1.53 capability cache: OPTIMISTIC from the last known answer; the REAL
+    // probe reconciles (a module revoked since the cache was written corrects
+    // after ~1 RTT, the disclosed window).
+    function setupReheat() {
+      if (!mediaData) return;
       const cachedCap = readCapabilityCache();
-      if (cachedCap && cachedCap.moduleEnabled === true) mountReheatBtn();
+      if (cachedCap && cachedCap.moduleEnabled === true) reheatAvailable = true;
       probeReheatModule().then((enabled) => {
         // The probe is async, so by the time it resolves this view may already
         // have been torn down (SPA navigation) -- the abort signal is the
         // staleness truth this file uses everywhere else for exactly this.
         if (signal.aborted) return;
-        if (!enabled) {
-          if (reheatBtn) { reheatBtn.remove(); reheatBtn = null; }
-          return;
-        }
-        mountReheatBtn();
+        reheatAvailable = enabled === true;
       });
     }
 
     function setReheatBusy(busy) {
-      if (!reheatBtn) return;
-      reheatBtn.disabled = busy;
-      reheatBtn.setAttribute('aria-busy', busy ? 'true' : 'false');
+      reheatBusy = !!busy;
     }
 
     function stopReheatPoll() {
@@ -3667,7 +3537,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // so the result arrives via the SAME `GET /api/subscriptions/status`
     // snapshot the download chip already polls -- no second progress mechanism.
     function handleReheatClick() {
-      if (!mediaData || !reheatBtn || reheatBtn.disabled) return;
+      if (!mediaData || !reheatAvailable || reheatBusy) return;
       const id = mediaData.id;
       setReheatBusy(true);
       fetch(`/api/ytdlp/repull-metadata/item/${encodeURIComponent(id)}`, { method: 'POST' })
@@ -3778,7 +3648,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (after.channelName && after.channelName !== before.channelName) parts.push(`channel: ${after.channelName}`);
       if (after.title && after.title !== before.title) parts.push('title updated');
       if (typeof after.sourceViewCount === 'number' && after.sourceViewCount !== before.sourceViewCount) {
-        parts.push(`views: ${formatCount(before.sourceViewCount)} → ${formatCount(after.sourceViewCount)}`);
+        parts.push(`views: ${formatCount(before.sourceViewCount)} to ${formatCount(after.sourceViewCount)}`); // UI pass S3: no arrow glyph (AC4)
       }
       if (after.hasSubtitles && !before.hasSubtitles) parts.push('subtitles added');
       // GATE FIX (adversarial SUGGESTION 1): the type check is load-bearing.
@@ -4038,13 +3908,30 @@ if (typeof module !== 'undefined' && module.exports) {
       });
     }
 
-    // Deletion logic. FR-7 (v1.21.0, T6): a yt-dlp-managed file is
-    // re-downloadable, so it keeps this EXACT, unmodified confirm flow
-    // (AC47). A LOCAL file is irreplaceable, so it routes through the more
-    // deliberate, checkbox-gated `showHardDeleteModal` (common.js) instead
-    // (AC46/AC49) -- both paths converge on the exact same
-    // `performMediaDelete()` below, which fires the SAME, unmodified
-    // `DELETE /api/videos/:id` (AC48).
+    // Deletion logic. UI pass sweep S3 (D4.8, F33, F44; full gate - destructive): the
+    // More menu's "Move to Trash" asks ONE ui.confirm (the danger fill) whose copy says
+    // what actually runs - `DELETE /api/videos/:id`, the route's v1.65 TRASH move for
+    // every item, yt-dlp-managed and local alike (never a permanent unlink; the copy is
+    // main.js's cardDeleteConfirmCopy, the card menu's own, so the two can never
+    // disagree; a local file's copy adds that it cannot be re-downloaded). The SAME,
+    // unmodified `performMediaDelete()` below runs only when the confirm resolves
+    // EXACTLY true, while the view is alive, one confirm/request at a time. (Before S3:
+    // showConfirmModal for a yt-dlp file, the checkbox-gated showHardDeleteModal for a
+    // local one - whose title said "Move ... to Trash" and whose button said "Delete
+    // permanently", F44.)
+    async function confirmAndDelete() {
+      if (!mediaData || !ui || deleteInFlight || !canModifyLibrary) return;
+      if (typeof cardDeleteConfirmCopy !== 'function') return; // never delete without the copy that names the action
+      deleteInFlight = true;
+      try {
+        const ok = await ui.confirm(Object.assign({}, cardDeleteConfirmCopy(mediaData), { signal }));
+        if (ok !== true || signal.aborted) return;
+        await performMediaDelete();
+      } finally {
+        deleteInFlight = false;
+      }
+    }
+
     async function performMediaDelete() {
       try {
         // Stop playback and release the (about to be deleted) media
@@ -4088,26 +3975,10 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
 
-    deleteBtn.addEventListener('click', () => {
-      if (isYtdlpManagedItem(mediaData)) {
-        // yt-dlp-managed confirm flow (AC47). v1.65 gate fix (QA W3): the
-        // copy tells the trash truth now -- "permanent" became a lie the
-        // moment deletes started routing through Trash.
-        showConfirmModal(
-          'Move to Trash?',
-          `Move <strong>${escapeHtml(mediaData.title)}</strong> to Trash?<br><br><span style="color:var(--yt-red); font-weight:bold;">The file leaves your library now and is permanently removed when the Trash retention window empties it:</span><br><code style="word-break:break-all; font-size:11px;">${escapeHtml(mediaData.filePath)}</code>`,
-          performMediaDelete
-        );
-      } else {
-        // Local/irreplaceable -- the escalated, checkbox-gated confirm (AC46/AC49).
-        showHardDeleteModal(mediaData, performMediaDelete);
-      }
-    }, { signal });
-
     // Description expand/collapse toggle
     expandDescBtn.addEventListener('click', () => {
       const isExpanded = descriptionParagraph.classList.toggle('expanded');
-      expandDescBtn.textContent = isExpanded ? 'Show less' : 'Show more';
+      setExpandLabel(isExpanded ? 'Show less' : 'Show more');
     }, { signal });
 
     // Header folder list rendering
@@ -4165,9 +4036,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // siblings, so they share this closure's consts (root/playerSlot/mediaTitle/signal).
     function hideTvVideoChrome() {
       // A TV episode has no comments/related and no video-management actions -
-      // those chrome blocks assume a db.metadata id + /api/videos routes. Hide
-      // via style.display (an [hidden] attribute loses to these blocks' own
-      // display rules - the standing lesson). v1.197 (W2, Dean): the uploader
+      // those chrome blocks assume a db.metadata id + /api/videos routes. Hidden
+      // by the `hidden` attribute (UI pass: ui.css's global [hidden] rule wins over
+      // every author display rule, the standing lesson closed once). v1.197 (W2, Dean): the uploader
       // panel + description container now STAY - the uploader row becomes the
       // SHOW (poster icon, tap -> back) and the description shows the episode's
       // file name + metadata, painted by paintTvEpisodePanel below.
@@ -4177,7 +4048,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // with the show's next episodes in order, wrapping to episode 1.
       ['.watch-action-bar'].forEach(function (sel) {
         var el = root.querySelector(sel);
-        if (el) el.style.display = 'none';
+        if (el) el.hidden = true;
       });
     }
     // v1.197 (W2): the episode's "channel = the show" row + file metadata, in the
@@ -4185,8 +4056,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // textContent (a filename/show name is attacker-influenced text).
     function paintTvEpisodePanel(ep) {
       if (uploaderAvatar) {
-        applyAvatarToElement(uploaderAvatar, ep.showName, '/tvposter/' + encodeURIComponent(ep.showId || ''));
-        uploaderAvatar.classList.remove('skeleton-shimmer');
+        // UI pass S3: the show's poster as ui-art (the artwork shape), monogram on a broken image
+        paintUploaderAvatar(ep.showName, '/tvposter/' + encodeURIComponent(ep.showId || ''), 'album');
       }
       if (uploaderChannelName) {
         uploaderChannelName.textContent = ep.showName || 'Show';
@@ -4217,17 +4088,18 @@ if (typeof module !== 'undefined' && module.exports) {
         descSkel.querySelectorAll('.skeleton-shimmer').forEach(function (el) { el.classList.remove('skeleton-shimmer'); });
       }
       // v1.198 (Dean): NO Subscribe on an episode - the show is not a
-      // subscribable channel. The default `hidden` attribute LOSES to .btn's
-      // display rule (the standing [hidden] lesson), so once v1.197 un-hid the
-      // uploader panel the button showed; hide it via style (device-confirmed).
-      if (subscribeBtn) subscribeBtn.style.display = 'none';
+      // subscribable channel. It stays `hidden` (the markup default; the global
+      // [hidden] rule now wins over the button's display, so no style write).
+      if (subscribeBtn) subscribeBtn.hidden = true;
     }
     function renderTvBackLink(showId, showName) {
       if (!mediaTitle || !mediaTitle.parentNode || root.querySelector('.tv-back-to-show')) return;
       var back = document.createElement('a');
       back.className = 'tv-back-to-show';
       back.href = '/tv?show=' + encodeURIComponent(showId || '');
-      back.textContent = '← ' + (showName || 'All shows');
+      // UI pass S3 (AC4): the registry's arrow_back, never a text arrow
+      if (ui) back.appendChild(ui.icon('arrow_back', { size: 'sm' }));
+      back.appendChild(document.createTextNode(showName || 'All shows'));
       back.addEventListener('click', function (e) {
         if (window.FileTube && typeof window.FileTube.navigate === 'function') {
           e.preventDefault();

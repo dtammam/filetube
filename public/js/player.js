@@ -10,7 +10,7 @@
 // the host and every listener wired to it are created exactly once and
 // never re-created by navigation, so every existing player feature (inline
 // iOS playback, +-15s skip controls, audio-bg-art, the transcode overlay +
-// polling, the resume overlay, Media Session, progress saving, live
+// polling, the resume toast (UI pass D8.2), Media Session, progress saving, live
 // transcode) is preserved automatically across FULL <-> DOCKED "by
 // construction" (see the exec plan's "Approach").
 //
@@ -533,13 +533,11 @@ function buildSilentWavDataUri(seconds, sampleRate) {
   return 'data:audio/wav;base64,' + ((typeof btoa === 'function') ? btoa(bin) : '');
 }
 
-// D2 (v1.24.0, T13): the resume-prompt threshold, in seconds, applied by
-// `shouldShowResumeOverlay` below. Saved progress AT OR ABOVE this still
-// shows the "Resume at..." overlay; progress below it is treated as too
-// short to bother asking about (the caller's existing `savedProgress > 5`
-// direct-resume fallback in `handleResumePlayback` still resumes it
-// silently -- this only suppresses the INTERRUPTING prompt, not the resume
-// itself). Configurable via the Setup page's "Playback" section
+// D2 (v1.24.0, T13): the resume threshold, in seconds, applied by
+// `shouldShowResumeOverlay` below. UI pass sweep S3 (D8.2): saved progress AT
+// OR ABOVE this auto-resumes WITH the "Resumed at 12:34 - Start over" toast;
+// progress below it (and over 5s) auto-resumes silently (the resume itself
+// never depended on the threshold, only whether it is announced). Configurable via the Setup page's "Playback" section
 // (`RESUME_THRESHOLD_STORAGE_KEY` below); this is just the fallback default.
 var DEFAULT_RESUME_THRESHOLD_SECONDS = 60;
 
@@ -562,8 +560,9 @@ function resolveResumeThreshold(raw) {
   return n;
 }
 
-// Should the resume overlay show for this load (FR-4b, T3; threshold made
-// configurable in D2, v1.24.0, T13)? True whenever there's saved progress AT
+// Should this load's resume be ANNOUNCED (FR-4b, T3; threshold made
+// configurable in D2, v1.24.0, T13; UI pass sweep S3, D8.2: the answer now picks the
+// "Resumed at" toast - the name is the pre-D8.2 one, when it opened the modal)? True whenever there's saved progress AT
 // OR ABOVE the configurable threshold (`ctx.threshold`, default ~60s, see
 // `DEFAULT_RESUME_THRESHOLD_SECONDS`/`resolveResumeThreshold` above) --
 // UNLESS this specific load was reached by autoplay advancing to the next
@@ -571,8 +570,8 @@ function resolveResumeThreshold(raw) {
 // `autoplayAdvancePending` flag immediately before navigating; `load()` then
 // captures it into a per-load snapshot at load START -- see
 // `captureAutoplayAdvanceForLoad` -- which `handleResumePlayback` reads). An
-// autoplay-advanced load skips the "Resume at..." prompt entirely and just
-// plays on, so the autoplay flow is never interrupted by a manual decision.
+// autoplay-advanced load resumes without the "Resumed at" toast (pre-D8.2: without the
+// "Resume at..." prompt) and just plays on, so the autoplay flow is never interrupted.
 // A normal navigation (autoplayAdvance falsy) to a video with saved progress
 // is unaffected -- still shows the overlay exactly as before, just against
 // the (now-configurable) threshold instead of a fixed 5s. Deliberately NOT
@@ -611,82 +610,40 @@ function shouldResumeMidTrack(ctx) {
   return dur > threshold;
 }
 
-// D3 (v1.24.0, T13): pure decision for what to do with a genuine resume
-// decision (one `shouldShowResumeOverlay` above has already said "yes, ask")
-// given where the persistent player host currently is. Problem: the docked
-// mini-player (`#player-dock`, 280px desktop / 160px mobile -- see
-// style.css) is too small to legibly read/tap a "Resume at.../Start over"
-// choice. Recommended (Dean's design pick, per the exec plan's D3 -- the
-// ONE behavior implemented here, not the rejected "expand-to-FULL"
-// alternative): DOCKED suppresses the overlay entirely and resumes silently
-// instead, exactly like `handleResumePlayback`'s existing autoplay-advance
-// direct-resume fallback already does for a below-threshold-but-real save --
-// resuming is overwhelmingly the correct default, and the user can always
-// tap the dock to expand + seek elsewhere if it wasn't. FULL shows the
-// overlay exactly as before D3 (plenty of room there). CLOSED never actually
-// reaches this in practice (`handleResumePlayback`'s `gen !== loadGeneration`
-// guard bails out before this runs -- `close()` bumps `loadGeneration`) but
-// degrades to `'prompt'` defensively rather than silently dropping a pending
-// decision. Returns `'none'` when no resume decision is pending at all (the
-// call site only invokes this from inside the `shouldShowResumeOverlay`
-// branch, so in practice `resumeDecisionPending` is always `true` there --
-// this input/branch exists so the helper is a complete, self-contained
-// decision table rather than relying on the caller to only ever call it
-// correctly).
-//
-// NOTE on form factor: the exec plan's stated inputs for this helper include
-// a mobile/desktop form-factor signal (reusing `resolveMobileFormFactor`/
-// `isMobileFormFactor`, never a second mobile check). The chosen (recommended)
-// behavior above does not need to branch on it -- `#player-dock` is small on
-// EVERY form factor (280px desktop / 160px mobile, both well under a legible
-// two-button dialog's comfortable width), so suppression applies uniformly
-// whether DOCKED on a phone or a desktop browser. Only the REJECTED
-// alternative (expand-to-FULL) would have needed it, and implementing both
-// behaviors is explicitly out of scope (pick ONE, deterministic). Not
-// accepted as a parameter for that reason -- see the T13 report for this
-// call.
-function resolveDockedResumeAction(ctx) {
-  var opts = ctx || {};
-  if (!opts.resumeDecisionPending) return 'none';
-  return opts.dockState === 'docked' ? 'auto-resume' : 'prompt';
+// UI pass sweep S3 (D8.2, Dean's audit decision 3): the ONE pure resume decision for a
+// plain video load. The "Resume playback?" modal (and its v1.132 countdown) is gone: a
+// load with real saved progress AUTO-RESUMES, and only announces it - the
+// "Resumed at 12:34 - Start over" toast over the bottom-left of the video - when
+// shouldShowResumeOverlay says the progress is worth announcing (at/over the threshold,
+// not an autoplay advance) AND the player is not DOCKED (the 160/280px mini-player is too
+// small for it: the v1.24.0 D3 rule, which used to suppress the modal there). Returns
+// { action: 'resume' | 'start', toast: boolean }:
+//   - announced progress              -> resume, toast unless docked;
+//   - real but quiet progress (> 5s)  -> resume, no toast (unchanged since D2);
+//   - none                            -> start (from 0; the live-transcode path starts at 0).
+// The caller applies it through the EXISTING seek (resumeDirectly: currentTime + play, or the
+// live restart at the offset) - no new media path. Pure, exported for node:test.
+function resolveResumeStart(ctx) {
+  var savedProgress = Number(ctx && ctx.savedProgress) || 0;
+  if (shouldShowResumeOverlay(ctx)) return { action: 'resume', toast: !(ctx && ctx.dockState === 'docked') };
+  if (savedProgress > 5) return { action: 'resume', toast: false };
+  return { action: 'start', toast: false };
 }
 
-// v1.24.5 (fast-follow): companion to `resolveDockedResumeAction` above for
-// the OPPOSITE ordering. `resolveDockedResumeAction` only covers a resume
-// decision made WHILE already docked; it does nothing for a decision made
-// while FULL (the overlay is legitimately shown there) that the user then
-// docks AWAY from mid-prompt. Without this, `dock()` (the DOM call site)
-// would strand the full-size "Resume at..." prompt rendering inside the
-// tiny 160/280px `#player-dock` mini-player. `dock()` calls this on every
-// dock transition; a still-showing overlay is converted to D3's own
-// auto-resume intent (dismiss + resume directly) so the outcome matches
-// exactly what would have happened had the decision been made AFTER
-// docking instead of before.
-function resolveDockTransitionResumeAction(ctx) {
-  var opts = ctx || {};
-  return opts.resumeOverlayVisible ? 'dismiss-and-auto-resume' : 'none';
-}
-
-// v1.50 (Dean): keyboard shortcuts for the Resume prompt -- `R` = Resume,
-// `S` = Start from the beginning, active ONLY while `#resume-overlay` is
-// actually showing. Pure decision table (exported for node:test); the DOM
-// listener routes the verdict through the REAL buttons' .click() so the
-// keyboard path and the click path can never diverge (the v1.41.7 "one
-// shared decision function" doctrine -- liveMode branching, progress save,
-// overlay dismissal all live in exactly one place, the click handlers).
-// Deliberately NOT folded into the main FULL-only shortcut switch: that
-// switch early-returns on a focused BUTTON, which is precisely the state
-// after the overlay's own buttons render (same reasoning as the
-// audio-expand Escape listener). No Escape binding here -- "dismiss" is
-// ambiguous between the two choices, so Escape stays unbound on this
-// overlay by design.
+// v1.50 (Dean): the resume keyboard shortcut. UI pass sweep S3 (D8.2): the load has
+// already resumed, so `R` is gone; `S` = Start over, active ONLY while the
+// "Resumed at" toast (`#resume-toast`) is showing (`ctx.overlayVisible` = the toast).
+// Pure decision table (exported for node:test); the DOM listener routes the verdict
+// through the REAL Start over button's .click(), so the keyboard path and the click path
+// can never diverge (the v1.41.7 "one shared decision function" doctrine). Deliberately
+// NOT folded into the main FULL-only shortcut switch: that switch early-returns on a
+// focused BUTTON (same reasoning as the audio-expand Escape listener).
 function resolveResumeShortcutAction(ctx) {
   var opts = ctx || {};
   if (!opts.overlayVisible) return 'none';
   if (opts.hasModifier) return 'none';
   if (opts.isTypingContext) return 'none';
   var key = String(opts.key || '');
-  if (key === 'r' || key === 'R') return 'resume';
   if (key === 's' || key === 'S') return 'restart';
   return 'none';
 }
@@ -910,48 +867,6 @@ function formatMsActionDetail(ctx) {
   return 'el=' + (c.el || '?')
     + ' state=' + (c.state || '?')
     + ' ' + (c.hidden ? 'hidden' : 'visible');
-}
-
-// ---- v1.132 resume-countdown pure helpers ----------------------------------
-// Dean (2026-08-16): the "Resume at..." prompt forces an interaction - while
-// driving or heads-down that friction is the whole cost of opening the next
-// item. With the (default-ON) Setup -> Playback option, the prompt arms a
-// short countdown on its DEFAULT button and fires that button's own click
-// when it expires; any interaction with the player cancels the auto-fire and
-// leaves the prompt up. OFF = exactly the pre-wave prompt.
-//
-// Config resolution from the two raw localStorage values (both read LIVE at
-// every prompt, the getStoredResumeThreshold posture). Deliberate defaults:
-// absent/garbage enabled-flag -> ON (Dean: "defaulted as on"; only the
-// literal '0' the Setup checkbox writes disables), absent/garbage action ->
-// 'resume' (continuing is the common intent; only the literal 'beginning'
-// selects start-over).
-function resolveResumeCountdownConfig(rawEnabled, rawAction) {
-  return {
-    enabled: rawEnabled !== '0',
-    action: rawAction === 'beginning' ? 'beginning' : 'resume',
-  };
-}
-
-// v1.161 (Dean): the countdown length in seconds, configurable in Setup ->
-// Playback. Integer, clamped to [0, 30] (a countdown past ~30s is just a stuck
-// prompt); absent/garbage -> the default 5. ZERO is special and handled by the
-// wiring: 0 fires the configured action IMMEDIATELY with no prompt at all
-// ("instant resume"). Read LIVE at every prompt, like the config above.
-var RESUME_COUNTDOWN_SECONDS_DEFAULT = 5;
-var RESUME_COUNTDOWN_SECONDS_MAX = 30;
-function resolveResumeCountdownSeconds(raw) {
-  var n = parseInt(raw, 10);
-  if (!isFinite(n)) return RESUME_COUNTDOWN_SECONDS_DEFAULT; // absent/garbage
-  if (n < 0) return 0;
-  if (n > RESUME_COUNTDOWN_SECONDS_MAX) return RESUME_COUNTDOWN_SECONDS_MAX;
-  return n;
-}
-
-// The armed button's ticking label, e.g. "Resume · 4". One builder so the
-// per-tick rewrite and the initial arm can never drift in format.
-function resumeCountdownLabel(baseLabel, secondsLeft) {
-  return String(baseLabel) + ' · ' + secondsLeft;
 }
 
 // ---- v1.139 autoplay playlist wrap pure helper -----------------------------
@@ -1846,9 +1761,9 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldShowResumeOverlay,
     shouldResumeMidTrack,
     resolveResumeThreshold,
-    resolveDockedResumeAction,
-    resolveDockTransitionResumeAction,
-    // v1.50: the Resume prompt's R/S keyboard decision table.
+    // UI pass sweep S3 (D8.2): the auto-resume + toast decision.
+    resolveResumeStart,
+    // v1.50: the resume keyboard decision table (S = Start over while the toast shows).
     resolveResumeShortcutAction,
     // v1.50 item 6: rotate-to-landscape auto-fullscreen requires playing.
     shouldAutoFullscreenOnRotate,
@@ -1872,11 +1787,6 @@ if (typeof module !== 'undefined' && module.exports) {
     formatMsActionDetail,
     // v1.161.4: the runtime silent-WAV builder (the background keep-alive's loop).
     buildSilentWavDataUri,
-    // v1.132: resume-countdown config + ticking-label builders.
-    resolveResumeCountdownConfig,
-    resumeCountdownLabel,
-    // v1.161 (Dean): the configurable countdown length (0 = instant).
-    resolveResumeCountdownSeconds,
     // v1.161 (Dean): the background-audio playback-rate carry sanitizer.
     sanitizePlaybackRate,
     // v1.134: video tap-to-pause reveal-consume + stamp-idempotence decisions.
@@ -1953,7 +1863,7 @@ if (typeof module !== 'undefined' && module.exports) {
   var audioBgArt, audioVisualizer, audioVisualTitle, audioVisualFolder;
   var skipControls, skipRippleLeft, skipRippleRight, speedBadge;
   var transcodeOverlay, transcodeSpinner, transcodeTitle, transcodeMessage;
-  var resumeOverlay, resumeTimeStr, resumeYesBtn, resumeNoBtn;
+  var resumeToast, resumeTimeStr, resumeRestartBtn; // UI pass S3 (D8.2): the resume toast
 
   // FR-2 (T2, v1.21.0): the custom control bar + cover-art play/pause glyph.
   var playerControls, ppBtn, timeCur, seekBar, timeDur, muteBtn, volBar, fsBtn, artPlayGlyph;
@@ -2213,7 +2123,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // if that transcode then failed (or the user navigated away first),
   // `handleResumePlayback` never ran again for that load -- leaving the
   // global `true` for a LATER, unrelated manual load to wrongly consume,
-  // silently skipping its resume overlay. Capturing+resetting at load START
+  // silently skipping its resume announcement. Capturing+resetting at load START
   // instead means the global is cleared the instant the NEXT load begins,
   // regardless of how (or whether) that load's own resume decision resolves.
   var autoplayAdvancePending = false;
@@ -2724,11 +2634,10 @@ if (typeof module !== 'undefined' && module.exports) {
     transcodeSpinner = host.querySelector('#transcode-spinner');
     transcodeTitle = host.querySelector('#transcode-title');
     transcodeMessage = host.querySelector('#transcode-message');
-    resumeOverlay = host.querySelector('#resume-overlay');
+    resumeToast = host.querySelector('#resume-toast');
     fsStageEl = document.getElementById('fs-stage'); // v1.138: shell-level, NOT inside host
     resumeTimeStr = host.querySelector('#resume-time-str');
-    resumeYesBtn = host.querySelector('#resume-yes-btn');
-    resumeNoBtn = host.querySelector('#resume-no-btn');
+    resumeRestartBtn = host.querySelector('#resume-restart-btn');
     playerControls = host.querySelector('#player-controls');
     ppBtn = host.querySelector('#pp-btn');
     trackPrevBtn = host.querySelector('#track-prev-btn');
@@ -3303,7 +3212,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // promise. `keepalive: true` (small-body, still a normal `fetch`, no new
   // request/response shape) tells the browser to let the request complete
   // even after the document is gone. Every OTHER progress-save call site
-  // (the 4s interval, pause, skip, ended, resumeNoBtn) stays exactly as
+  // (the 4s interval, pause, skip, ended, the resume toast's Start over) stays exactly as
   // before -- those all run mid-session with the page fully alive, so there
   // is nothing for keepalive to protect against there, and always setting it
   // would be an unnecessary behavior change to a working path.
@@ -4769,14 +4678,14 @@ if (typeof module !== 'undefined' && module.exports) {
     holdActive = true;
     prevRate = mediaPlayer.playbackRate || 1;
     mediaPlayer.playbackRate = 2;
-    if (speedBadge) speedBadge.style.display = 'block';
+    if (speedBadge) speedBadge.hidden = false; // UI pass: the chip-styled 2x pill (global [hidden] rule)
   }
 
   function releaseHold() {
     if (!holdActive) return;
     holdActive = false;
     if (mediaPlayer) mediaPlayer.playbackRate = prevRate || 1;
-    if (speedBadge) speedBadge.style.display = 'none';
+    if (speedBadge) speedBadge.hidden = true;
   }
 
   // Called on dock()/close() so no gesture-in-progress can strand the player
@@ -5009,13 +4918,12 @@ if (typeof module !== 'undefined' && module.exports) {
       });
   }
 
-  // ---- resume overlay + progress saving ---------------------------------------
+  // ---- resume (auto-resume + toast, UI pass D8.2) + progress saving ---------------------------------------
 
-  // Resume playback at `progress` seconds WITHOUT showing the "Resume at..."
-  // overlay -- shared by two call sites in `handleResumePlayback` below: the
-  // pre-existing autoplay-advance/below-threshold direct-resume fallback,
-  // and D3's (v1.24.0, T13) docked-suppression auto-resume. Handles the
-  // desktop live-transcode case exactly like the overlay's own resumeYesBtn
+  // Resume playback at `progress` seconds -- THE seek every resume path takes (UI pass
+  // D8.2: the plain-video auto-resume, announced or quiet, the podcast / tv / long music
+  // resumes and the chapter-track seek; the toast is shown separately). Handles the
+  // desktop live-transcode case exactly like the old overlay's Resume button
   // handler does (a live-transcode source must be RESTARTED at the target
   // offset, not merely seeked).
   function resumeDirectly(progress) {
@@ -5103,7 +5011,7 @@ if (typeof module !== 'undefined' && module.exports) {
       return;
     }
     // v1.44 music: read from the music coalescer and apply the SMART-RESUME
-    // rule instead of the video resume-overlay -- a song restarts from the top,
+    // rule instead of the video resume toast -- a song restarts from the top,
     // a >10-min track resumes mid-track. No "Resume at…" prompt for music.
     var progressReadBase = (currentData && typeof currentData.progressEndpoint === 'string' && currentData.progressEndpoint) || '/api/progress';
     if (currentData && currentData.resumeMode === 'music') {
@@ -5153,46 +5061,13 @@ if (typeof module !== 'undefined' && module.exports) {
         // D2 (v1.24.0, T13): read the configurable threshold LIVE, right at
         // this decision point -- see getStoredResumeThreshold's comment.
         var threshold = getStoredResumeThreshold();
-        if (shouldShowResumeOverlay({ savedProgress: savedProgress, autoplayAdvance: autoplayAdvance, threshold: threshold })) {
-          // D3 (v1.24.0, T13): a genuine resume decision is pending -- decide
-          // whether the current dock state can actually surface it legibly.
-          var dockedAction = resolveDockedResumeAction({ dockState: state, resumeDecisionPending: true });
-          if (dockedAction === 'auto-resume') {
-            // DOCKED: the mini-player is too small to read/tap the prompt --
-            // suppress it and resume directly instead, same mechanics as the
-            // autoplay-advance direct-resume branch just below.
-            resumeDirectly(savedProgress);
-          } else {
-            // v1.161 (Dean): 0 seconds = INSTANT resume - no prompt at all. When
-            // the countdown is enabled AND its length is 0, fire the configured
-            // action's button immediately (the SAME handler the countdown would
-            // auto-click, so behaviour is identical by construction) and never
-            // show the overlay. Any positive length keeps the prompt + countdown.
-            // Config + length read LIVE here, like the threshold above.
-            var rcConfig = getStoredResumeCountdownConfig();
-            if (rcConfig.enabled && getStoredResumeCountdownSeconds() === 0) {
-              if (resumeTimeStr) resumeTimeStr.textContent = formatDuration(savedProgress);
-              var instantBtn = rcConfig.action === 'beginning' ? resumeNoBtn : resumeYesBtn;
-              if (instantBtn) instantBtn.click();
-              else resumeDirectly(savedProgress); // belt: buttons absent -> still resume
-            } else {
-              if (resumeTimeStr) resumeTimeStr.textContent = formatDuration(savedProgress);
-              if (resumeOverlay) resumeOverlay.style.display = 'flex';
-              mediaPlayer.autoplay = false;
-              // v1.132: arm the auto-fire countdown on the prompt's default
-              // button (config read LIVE here, like the threshold above; OFF
-              // -> this is a no-op and the prompt behaves exactly as before).
-              startResumeCountdown(gen);
-            }
-          }
-        } else if (savedProgress > 5) {
-          // Overlay suppressed (autoplay just advanced here, or savedProgress
-          // is real but below the D2 threshold) WITH real saved progress:
-          // resume directly instead of prompting, matching the resumeYesBtn
-          // handler below -- autoplay-to-next never interrupts with a
-          // "resume?" dialog, and short-of-threshold progress is restored
-          // quietly rather than discarded.
+        // UI pass sweep S3 (D8.2): no modal - real saved progress AUTO-RESUMES through the
+        // existing seek (resumeDirectly), and an announced one shows the "Resumed at"
+        // toast (never while DOCKED: the D3 rule). resolveResumeStart is the one decision.
+        var start = resolveResumeStart({ savedProgress: savedProgress, autoplayAdvance: autoplayAdvance, threshold: threshold, dockState: state });
+        if (start.action === 'resume') {
           resumeDirectly(savedProgress);
+          if (start.toast) showResumeToast(gen, savedProgress);
         } else if (liveMode) {
           startLiveStream(0, true);
         } else {
@@ -5204,8 +5079,8 @@ if (typeof module !== 'undefined' && module.exports) {
           // maximumIntervalForUserGestureForwardingForFetch) -> autoStart logs it and raises
           // the refused flag (v1.334: the skin's "Tap to play" cue); once the
           // user has tapped play once, the persistent <video> is unlocked and
-          // every later pick auto-plays. The resume-overlay / saved-progress
-          // branches above are unchanged (they intentionally do NOT auto-play).
+          // every later pick auto-plays. The saved-progress branch above resumes
+          // through resumeDirectly, which auto-starts the same way (UI pass S3, D8.2).
           autoStart();
         }
       })
@@ -5412,7 +5287,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // autoplay THERE (that would regress the "no general mobile initial-load
   // autoplay" hard constraint). FR-4b (T3) is a narrower exception: when the
   // NEXT video has real saved progress (>5s), `autoplayAdvancePending` (set
-  // just below) suppresses the resume-overlay prompt and resumes directly on
+  // just below) suppresses the resume announcement (the toast) and resumes directly on
   // EVERY platform -- this is a deliberate, already-in-motion autoplay
   // action continuing itself, not a general initial-load autoplay, so it
   // isn't the case the mobile gate exists to prevent. Whichever play() call
@@ -5646,7 +5521,7 @@ if (typeof module !== 'undefined' && module.exports) {
               // FR-4b (T3): arm the one-shot flag IMMEDIATELY before
               // navigating -- consumed by the next video's own
               // handleResumePlayback (via shouldShowResumeOverlay) to skip
-              // the resume-overlay prompt for THIS specific advance only.
+              // the resume toast for THIS specific advance only (UI pass D8.2).
               autoplayAdvancePending = true;
               immersiveCarryPending = true; // v1.130: autoplay-ended context advance is a continuation - carry the immersive state
               // v1.40.0: preserve the context so the NEXT autoplay hop keeps
@@ -6335,118 +6210,45 @@ if (typeof module !== 'undefined' && module.exports) {
     try { return resolveResumeThreshold(localStorage.getItem(RESUME_THRESHOLD_STORAGE_KEY)); } catch (_) { return DEFAULT_RESUME_THRESHOLD_SECONDS; }
   }
 
-  // ---- v1.132 resume-countdown machinery -------------------------------------
-  // See resolveResumeCountdownConfig's header for the feature contract. The
-  // keys MUST match RESUME_COUNTDOWN_KEY/RESUME_COUNTDOWN_ACTION_KEY in
-  // setup.js exactly (the RESUME_THRESHOLD cross-file string-literal
-  // convention); read LIVE at every prompt, never cached at boot.
-  var RESUME_COUNTDOWN_STORAGE_KEY = 'filetube_resume_countdown';
-  var RESUME_COUNTDOWN_ACTION_STORAGE_KEY = 'filetube_resume_countdown_action';
-  // v1.161 (Dean): the countdown length is now configurable (Setup -> Playback).
-  // Key MUST match setup.js's RESUME_COUNTDOWN_SECONDS_KEY. Read LIVE at every
-  // prompt (like the config), clamped to [0,30] with a default of 5; the CSS fill
-  // animation reads the SAME resolved value (inline --resume-countdown-duration in
-  // startResumeCountdown), so the visual can never drift from the timer.
-  var RESUME_COUNTDOWN_SECONDS_STORAGE_KEY = 'filetube_resume_countdown_seconds';
+  // ---- UI pass sweep S3 (D8.2): the "Resumed at 12:34 - Start over" toast ----------
+  // Replaces the v1.24 "Resume playback?" modal and its v1.132 countdown. The load has
+  // already resumed (handleResumePlayback -> resumeDirectly); this only SAYS so, over the
+  // bottom-left of the video, for RESUME_TOAST_MS, then fades (--dur-fade) and hides. Start
+  // over is the old "Start from beginning" handler, unchanged. Hidden at EVERY seam that
+  // used to hide the modal (a new load's teardown, dock, close), so a stale toast can
+  // never outlive its load, sit in the mini-player, or answer an S key for a torn-down
+  // player. The timers carry the load generation (the TOCTOU belt).
+  var RESUME_TOAST_MS = 4000;
+  var RESUME_TOAST_FADE_MS = 200; // the --dur-fade token (180ms) plus a frame
+  var resumeToastTimer = null;
+  var resumeToastFadeTimer = null;
 
-  function getStoredResumeCountdownConfig() {
-    try {
-      return resolveResumeCountdownConfig(
-        localStorage.getItem(RESUME_COUNTDOWN_STORAGE_KEY),
-        localStorage.getItem(RESUME_COUNTDOWN_ACTION_STORAGE_KEY)
-      );
-    } catch (_) {
-      return resolveResumeCountdownConfig(null, null); // storage disabled -> the defaults (on, resume)
-    }
+  function hideResumeToast() {
+    if (resumeToastTimer) { clearTimeout(resumeToastTimer); resumeToastTimer = null; }
+    if (resumeToastFadeTimer) { clearTimeout(resumeToastFadeTimer); resumeToastFadeTimer = null; }
+    if (!resumeToast) return;
+    resumeToast.classList.remove('is-visible');
+    resumeToast.hidden = true;
   }
 
-  function getStoredResumeCountdownSeconds() {
-    try {
-      return resolveResumeCountdownSeconds(localStorage.getItem(RESUME_COUNTDOWN_SECONDS_STORAGE_KEY));
-    } catch (_) {
-      return resolveResumeCountdownSeconds(null); // storage disabled -> the default (5)
-    }
-  }
-
-  // Per-prompt countdown state. The interval handle is per-load state and is
-  // cancelled at EVERY seam that hides the prompt (both choice buttons, the
-  // dock-transition auto-resume, teardownMediaState, close) plus every
-  // user interaction with the player (the pointerdown/keydown listeners
-  // armed in startResumeCountdown) - an auto-fire must never race a human
-  // who is actively deciding, and a stale timer must never fire into a
-  // LATER load (the gen guard inside the tick is the TOCTOU belt).
-  var resumeCountdownTimer = null;
-  var resumeCountdownBtn = null;
-  var resumeCountdownBaseLabel = '';
-  var resumeCountdownCancelPointer = null;
-  var resumeCountdownCancelKey = null;
-
-  function cancelResumeCountdown() {
-    if (resumeCountdownTimer) { clearInterval(resumeCountdownTimer); resumeCountdownTimer = null; }
-    if (resumeCountdownBtn) {
-      resumeCountdownBtn.textContent = resumeCountdownBaseLabel;
-      resumeCountdownBtn.classList.remove('countdown-armed');
-      resumeCountdownBtn.style.removeProperty('--resume-countdown-duration');
-      resumeCountdownBtn = null;
-    }
-    resumeCountdownBaseLabel = '';
-    if (resumeCountdownCancelPointer && host) {
-      host.removeEventListener('pointerdown', resumeCountdownCancelPointer, true);
-      resumeCountdownCancelPointer = null;
-    }
-    if (resumeCountdownCancelKey) {
-      document.removeEventListener('keydown', resumeCountdownCancelKey, true);
-      resumeCountdownCancelKey = null;
-    }
-  }
-
-  function startResumeCountdown(gen) {
-    cancelResumeCountdown(); // belt: never two timers (a re-prompt on the same load)
-    var config = getStoredResumeCountdownConfig();
-    if (!config.enabled) return;
-    var btn = config.action === 'beginning' ? resumeNoBtn : resumeYesBtn;
-    if (!btn) return;
-    resumeCountdownBtn = btn;
-    resumeCountdownBaseLabel = btn.textContent;
-    btn.classList.add('countdown-armed');
-    // v1.161: the configured length (0 is handled at the prompt site as an
-    // instant fire, so this path always sees >=1). The CSS fill reads the SAME
-    // resolved value the timer runs on - custom property, consumed by style.css.
-    var countdownSeconds = getStoredResumeCountdownSeconds();
-    btn.style.setProperty('--resume-countdown-duration', countdownSeconds + 's');
-    var secondsLeft = countdownSeconds;
-    btn.textContent = resumeCountdownLabel(resumeCountdownBaseLabel, secondsLeft);
-    // Any interaction with the player surface cancels the auto-fire and
-    // leaves the prompt up: capture-phase so a tap/keypress is seen before
-    // any handler it triggers (a tap ON a choice button still runs its
-    // click - the cancel only stops the timer; R/S shortcuts likewise
-    // cancel first, then their own dismiss logic runs).
-    resumeCountdownCancelPointer = function () { cancelResumeCountdown(); };
-    resumeCountdownCancelKey = function () { cancelResumeCountdown(); };
-    if (host) host.addEventListener('pointerdown', resumeCountdownCancelPointer, true);
-    document.addEventListener('keydown', resumeCountdownCancelKey, true);
-    resumeCountdownTimer = setInterval(function () {
-      // TOCTOU belt: a newer load, or a prompt hidden by any seam that
-      // (correctly) also cancelled, must never be auto-clicked into.
-      if (gen !== loadGeneration || !resumeOverlay || resumeOverlay.style.display === 'none') {
-        cancelResumeCountdown();
-        return;
-      }
-      secondsLeft--;
-      if (secondsLeft > 0) {
-        if (resumeCountdownBtn) resumeCountdownBtn.textContent = resumeCountdownLabel(resumeCountdownBaseLabel, secondsLeft);
-        return;
-      }
-      var fireBtn = resumeCountdownBtn;
-      cancelResumeCountdown(); // restores the label BEFORE the click - the handler hides the prompt
-      // Fire the SAME handler a human tap runs - never a duplicated
-      // seek/play path (behavior parity by construction). On iOS the
-      // programmatic play() inside that handler can be refused without a
-      // fresh gesture (the existing v1.23.6 first-play posture, .catch'd
-      // there): the prompt still dismisses and the position is set, one tap
-      // resumes. Disclosed in the ROADMAP entry.
-      if (fireBtn) fireBtn.click();
-    }, 1000);
+  function showResumeToast(gen, seconds) {
+    hideResumeToast();
+    if (!resumeToast) return;
+    if (resumeTimeStr) resumeTimeStr.textContent = formatDuration(seconds);
+    resumeToast.hidden = false;
+    // the fade-in needs one painted frame with the hidden-less, invisible state first
+    requestAnimationFrame(function () {
+      if (gen === loadGeneration && !resumeToast.hidden) resumeToast.classList.add('is-visible');
+    });
+    resumeToastTimer = setTimeout(function () {
+      resumeToastTimer = null;
+      if (gen !== loadGeneration) { hideResumeToast(); return; }
+      resumeToast.classList.remove('is-visible');
+      resumeToastFadeTimer = setTimeout(function () {
+        resumeToastFadeTimer = null;
+        if (resumeToast) resumeToast.hidden = true;
+      }, RESUME_TOAST_FADE_MS);
+    }, RESUME_TOAST_MS);
   }
 
   function updateSpeedBtnUI(rate) {
@@ -6891,22 +6693,12 @@ if (typeof module !== 'undefined' && module.exports) {
       if (volumeSettable) persistVolume(mediaPlayer.volume, mediaPlayer.muted);
     });
 
-    if (resumeYesBtn) {
-      resumeYesBtn.addEventListener('click', function () {
-        cancelResumeCountdown(); // v1.132 belt: a programmatic dismiss must kill the timer too
-        if (resumeOverlay) resumeOverlay.style.display = 'none';
-        if (liveMode) {
-          startLiveStream(savedProgress, true);
-        } else {
-          mediaPlayer.currentTime = savedProgress;
-          mediaPlayer.play().catch(function () {});
-        }
-      });
-    }
-    if (resumeNoBtn) {
-      resumeNoBtn.addEventListener('click', function () {
-        cancelResumeCountdown(); // v1.132 belt: mirrors resumeYesBtn's own
-        if (resumeOverlay) resumeOverlay.style.display = 'none';
+    // UI pass sweep S3 (D8.2): the toast's Start over = the old modal's "Start from
+    // beginning", unchanged (a live-transcode source restarts at 0; otherwise seek 0 + play),
+    // and the saved position is cleared on the server.
+    if (resumeRestartBtn) {
+      resumeRestartBtn.addEventListener('click', function () {
+        hideResumeToast();
         if (liveMode) {
           startLiveStream(0, true);
         } else {
@@ -8407,16 +8199,14 @@ if (typeof module !== 'undefined' && module.exports) {
       var tag = active && active.tagName ? String(active.tagName).toUpperCase() : '';
       var action = resolveResumeShortcutAction({
         key: e.key,
-        // Same visibility spelling as resolveDockTransitionResumeAction's
-        // call site: the overlay carries an inline display style from birth.
-        overlayVisible: !!(resumeOverlay && resumeOverlay.style.display !== 'none'),
+        // UI pass S3 (D8.2): the "overlay" is the resume toast, visible while not [hidden].
+        overlayVisible: !!(resumeToast && !resumeToast.hidden),
         hasModifier: !!(e.ctrlKey || e.metaKey || e.altKey),
         isTypingContext: !!(active && (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || active.isContentEditable)),
       });
       if (action === 'none') return;
       e.preventDefault();
-      if (action === 'resume' && resumeYesBtn) resumeYesBtn.click();
-      else if (action === 'restart' && resumeNoBtn) resumeNoBtn.click();
+      if (action === 'restart' && resumeRestartBtn) resumeRestartBtn.click();
     });
   }
 
@@ -8488,8 +8278,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // toggleArtPlayPause() on the persistent element afterward.
     cancelPendingArtTap();
     if (artPlayGlyph) artPlayGlyph.classList.remove('art-play-glyph-flash', 'art-play-glyph-playing');
-    if (resumeOverlay) resumeOverlay.style.display = 'none';
-    cancelResumeCountdown(); // v1.132: a stale timer must never fire into the NEXT load
+    hideResumeToast(); // UI pass S3: a toast never outlives its load
     if (transcodeOverlay) transcodeOverlay.style.display = 'none';
     if (transcodeSpinner) transcodeSpinner.classList.remove('failed');
     // A6 (T16, v1.24 UX Round, Wave 5): reset the CC button/track for the
@@ -8987,9 +8776,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // `handleResumePlayback` itself branches on `liveMode` (only starting the
     // live stream at 0 when there's no meaningful saved position) -- it must
     // run for EVERY load, live or not, so a live-transcode item with real
-    // saved progress still shows the resume overlay instead of always
-    // restarting at 0 (a live stream's resume/skip-from choices are wired
-    // through liveMode in the resume button handlers above).
+    // saved progress still resumes (resumeDirectly restarts the live stream at the
+    // offset) instead of always restarting at 0; Start over restarts it at 0.
     handleResumePlayback(gen, id);
   }
 
@@ -9057,9 +8845,9 @@ if (typeof module !== 'undefined' && module.exports) {
   // FULL player expanding at the top of the view and pushing the header down.
   // Mounting DIRECTLY here (vs. mountInSlot then dock()) avoids reparenting the
   // media element twice -- an iOS-sensitive op. Mirrors dock()'s reparent tail;
-  // it deliberately omits dock()'s resume-overlay handling, which never applies
-  // to a fresh music load (music decides resume silently -- no "Resume at…"
-  // prompt; see handleResumePlayback's resumeMode==='music' branch).
+  // it deliberately omits dock()'s resume-toast hide, which never applies
+  // to a fresh music load (music decides resume silently -- no "Resumed at"
+  // toast; see handleResumePlayback's resumeMode==='music' branch).
   function mountInDock() {
     var dockEl = document.getElementById('player-dock');
     if (!host || !dockEl) return;
@@ -9133,19 +8921,10 @@ if (typeof module !== 'undefined' && module.exports) {
     ensureDockChrome(dockEl);
     var wasPlaying = !mediaPlayer.paused;
     resetTransientPlaybackUi();
-    // v1.24.5 FIX C: D3 (v1.24.0, T13) only suppresses the resume prompt in
-    // favor of auto-resume when the dock state is ALREADY docked at the
-    // moment handleResumePlayback's fetch resolves. If the prompt is already
-    // showing (state was FULL then) and the user docks from there, it would
-    // otherwise keep rendering the full-size prompt inside the tiny
-    // 160/280px dock. Bring that case in line with D3's intent: dismiss the
-    // showing prompt and resume directly, exactly as if D3 had fired.
-    var resumeOverlayVisible = !!(resumeOverlay && resumeOverlay.style.display !== 'none');
-    if (resolveDockTransitionResumeAction({ resumeOverlayVisible: resumeOverlayVisible }) === 'dismiss-and-auto-resume') {
-      resumeOverlay.style.display = 'none';
-      cancelResumeCountdown(); // v1.132: the dock transition dismissed the prompt - its timer dies with it
-      resumeDirectly(savedProgress);
-    }
+    // UI pass sweep S3 (D8.2): the resume toast is a FULL-player affordance - docking hides
+    // it (the load already resumed; the v1.24.5 FIX C dismiss-and-resume had nothing left
+    // to do once the modal went).
+    hideResumeToast();
     exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): never dock a fixed-overlay expanded wrapper
     // v1.41.11: chapters are hidden entirely while docked (style.css
     // `#player-dock #chapters-btn/.chapters-menu`) -- close the menu here so
@@ -9213,16 +8992,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // art single-tap toggle so it can never fire on the (about to be
     // detached) persistent element after close().
     cancelPendingArtTap();
-    // v1.50 gate (QA WARNING): reset the resume overlay's visibility here,
-    // exactly as dock() already does on its own transition. Without this, a
-    // close() while the "Resume playback?" prompt is open (Delete / Move /
-    // relocate all call close() from outside the player chrome) leaves
-    // `resumeOverlay.style.display === 'flex'` on the DETACHED host forever
-    // -- and the R/S shortcut listener keys its visibility check off exactly
-    // that, so bare r/s anywhere on the page would keep firing clicks at a
-    // torn-down player until the next genuine load().
-    if (resumeOverlay) resumeOverlay.style.display = 'none';
-    cancelResumeCountdown(); // v1.132: a closed player must never auto-click a vanished prompt
+    // v1.50 gate (QA WARNING), UI pass S3: hide the resume toast here, exactly as dock()
+    // does on its own transition. Without this, a close() while it shows (Delete / Move /
+    // relocate all call close() from outside the player chrome) leaves it up on the
+    // DETACHED host - and the S shortcut listener keys its visibility off exactly that, so
+    // a bare s anywhere on the page would keep firing at a torn-down player.
+    hideResumeToast();
     exitAudioExpand(); // FR-1 (T1, v1.22.2, AC5): never leave a closed player's host expanded for a future re-open
     // v1.311.2 gate W1 (adversary, measured): the video twin of the line above. A
     // close() from faux fullscreen (watch.js closes a carried-immersive preload
