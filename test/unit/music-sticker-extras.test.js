@@ -71,7 +71,7 @@ async function boot(run, opts) {
   const tracks = opts.tracks || LIB_TRACKS;
   const playId = tracks[0].id;
   const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music?play=' + encodeURIComponent(playId) });
-  const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController };
+  const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController, isYtdlpManagedItem: global.isYtdlpManagedItem };
   const mobile = !opts.desktop;
   dom.window.matchMedia = () => ({ matches: mobile, media: '(max-width: 768px)', addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent() { return false; } });
   global.window = dom.window; global.document = dom.window.document;
@@ -161,11 +161,21 @@ async function boot(run, opts) {
   dom.window.showChoiceModal = (title, choices) => { choiceModals.push({ title, choices }); return () => {}; };
   dom.window.showMoveModal = (item, folders, onMove) => { moveModals.push({ item, folders, onMove }); };
   dom.window.requestMoveItem = (id, folder) => { requestedMoves.push({ id, folder }); return Promise.resolve({ success: true }); };
-  dom.window.showConfirmModal = (title, body, onConfirm) => { confirmModals.push({ title, body, onConfirm }); };
+  // UI pass S7: the Extras Delete asks ui.confirm (the card menu's copy, main.js
+  // cardDeleteConfirmCopy). The real ui.js with a HELD confirm: each call is recorded and the
+  // test answers it (onConfirm -> true, onCancel -> false). The legacy modals are still stubbed,
+  // only to prove nothing reaches them any more.
+  dom.window.showConfirmModal = (title, body, onConfirm) => { confirmModals.push({ legacy: true, title, body, onConfirm }); };
   dom.window.showHardDeleteModal = (item, onConfirm) => { hardDeletes.push({ item, onConfirm }); };
+  delete require.cache[require.resolve('../../public/js/ui.js')];
+  dom.window.ui = Object.assign({}, require('../../public/js/ui.js'), {
+    confirm: (o) => new Promise((resolve) => { confirmModals.push({ title: o.title, body: o.body, opts: o, onConfirm: () => resolve(true), onCancel: () => resolve(false) }); }),
+  });
+  dom.window.cardDeleteConfirmCopy = require('../../public/js/main.js').cardDeleteConfirmCopy;
   dom.window.openTranscriptFor = (o) => { transcripts.push(o); return Promise.resolve(null); };
   dom.window.addToQueue = (id, position, kind) => { queued.push({ id, position, kind }); };
   dom.window.isYtdlpManagedItem = require('../../public/js/common.js').isYtdlpManagedItem;
+  global.isYtdlpManagedItem = dom.window.isYtdlpManagedItem; // main.js cardDeleteConfirmCopy reads it as a page global
   dom.window.deleteResultToast = () => 'deleted-toast';
   global.fetch = (u, init) => fetchMap(u, init);
   delete require.cache[require.resolve('../../public/js/music-skins.js')];
@@ -422,29 +432,51 @@ test('anti-INERT Move: loads the folder list, opens the shared move modal; a con
   });
 });
 
-test('Delete routes a yt-dlp item through the TRASH confirm and a local item through the HARD-delete modal; confirm fires the real DELETE', async () => {
-  // yt-dlp-managed (channelName present) -> trash confirm
+// UI pass S7 (converted from "Delete routes a yt-dlp item through the TRASH confirm and a local
+// item through the HARD-delete modal"): ONE danger ui.confirm with the card menu's copy
+// (cardDeleteConfirmCopy: DELETE /api/videos/:id moves to Trash for every item; a LOCAL file adds
+// that it cannot be re-downloaded), and only its OK fires the real DELETE. Cancel sends nothing.
+// The legacy modals are never reached.
+test('Delete asks ONE danger ui.confirm (the card menu copy) and only its OK fires the real DELETE; Cancel sends nothing', async () => {
+  // yt-dlp-managed (channelName present)
   await boot(async (dom, ctx) => {
     await openExtras(dom);
     click(dom, act(dom, 'delete'));
-    assert.strictEqual(ctx.confirmModals.length, 1, 'trash confirm opened');
-    assert.strictEqual(ctx.hardDeletes.length, 0);
-    assert.ok(ctx.confirmModals[0].body.indexOf('Song One') !== -1, 'the confirm names the item');
-    ctx.confirmModals[0].onConfirm();
-    for (let i = 0; i < 6; i++) await settle();
-    assert.ok(ctx.calls.some((c) => c.url === '/api/videos/s1' && c.method === 'DELETE'), 'the real DELETE fired');
+    assert.strictEqual(ctx.confirmModals.length, 1, 'one confirm opened');
+    const c = ctx.confirmModals[0];
+    assert.ok(!c.legacy, 'through ui.confirm, not the legacy modal');
+    assert.strictEqual(ctx.hardDeletes.length, 0, 'never the hard-delete modal');
+    assert.strictEqual(c.title, 'Move to Trash?');
+    assert.strictEqual(c.opts.confirmLabel, 'Move to Trash', 'the button says what the route does');
+    assert.strictEqual(c.opts.danger, true, 'the danger fill');
+    assert.ok(c.body.indexOf('Song One') !== -1, 'the confirm names the item');
+    assert.ok(c.body.indexOf('cannot be re-downloaded') === -1, 'a yt-dlp item has no local-file line');
+    assert.ok(c.opts.signal, 'bound to the view signal (a teardown closes it)');
+    assert.strictEqual(menu(dom).hidden, true, 'the menu closed behind the confirm');
+    await openExtras(dom); // reopen Extras under the held confirm and tap Delete again
+    click(dom, act(dom, 'delete'));
+    assert.strictEqual(ctx.confirmModals.length, 1, 'a second Delete while the confirm is open opens nothing');
+    assert.ok(!ctx.calls.some((x) => x.method === 'DELETE'), 'nothing is deleted before the answer');
+    c.onConfirm();
+    for (let i = 0; i < 8; i++) await settle();
+    assert.strictEqual(ctx.calls.filter((x) => x.method === 'DELETE').length, 1, 'exactly one DELETE');
+    assert.ok(ctx.calls.some((x) => x.url === '/api/videos/s1' && x.method === 'DELETE'), 'the real DELETE, same route');
     assert.ok(ctx.state.closed, 'player closed before the DELETE');
     assert.ok(ctx.toasts.includes('deleted-toast'), 'outcome reported via the shared deleteResultToast mapper');
     assert.ok(!dom.window.document.body.classList.contains('mms-on'), 'the full-screen skin tore down after the delete');
     assert.ok(ctx.likedTotalCalls.includes(true), 'the Liked sidebar cache is re-primed (a liked item may just have vanished)');
   });
-  // local/irreplaceable (no channel identity) -> escalated hard-delete modal
+  // local/irreplaceable (no channel identity): the same confirm, with the local-file line
   await boot(async (dom, ctx) => {
     await openExtras(dom);
     click(dom, act(dom, 'delete'));
-    assert.strictEqual(ctx.confirmModals.length, 0);
-    assert.strictEqual(ctx.hardDeletes.length, 1, 'hard-delete modal opened for a local file');
-    assert.strictEqual(ctx.hardDeletes[0].item.id, 's1');
+    assert.strictEqual(ctx.hardDeletes.length, 0, 'no hard-delete modal');
+    assert.strictEqual(ctx.confirmModals.length, 1);
+    assert.ok(ctx.confirmModals[0].body.indexOf('This local file cannot be re-downloaded.') !== -1, 'a local file says it cannot be re-downloaded');
+    ctx.confirmModals[0].onCancel();
+    for (let i = 0; i < 8; i++) await settle();
+    assert.ok(!ctx.calls.some((x) => x.method === 'DELETE'), 'Cancel deletes nothing');
+    assert.strictEqual(ctx.state.closed, false, 'and leaves playback alone');
   }, { video: { channelName: undefined, channelId: undefined, channelUrl: undefined, watchUrl: undefined } });
 });
 

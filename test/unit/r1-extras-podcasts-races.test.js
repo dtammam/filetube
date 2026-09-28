@@ -44,7 +44,8 @@ function bootExtras() {
   };
   w.fetchCurrentUser = () => Promise.resolve({ user: { role: 'admin' } });
   w.isYtdlpManagedItem = () => true;
-  w.showConfirmModal = (title, html, onOk) => { state.confirm = onOk; }; // held open until the test confirms
+  // UI pass S7: the Extras Delete asks ui.confirm - a HELD fake (the test answers it)
+  w.ui = { confirm: (o) => new Promise((resolve) => { state.confirmOpts = o; state.confirm = () => resolve(true); }) };
   w.showMoveModal = (item, folders, onPick) => { state.move = onPick; };
   w.requestMoveItem = () => Promise.resolve({ success: true });
   w.showToast = () => {};
@@ -189,13 +190,14 @@ async function bootPodcasts(opts, run) {
     delete require.cache[surfacePath]; require(surfacePath);
     const realCreate = w.FileTubeSkinSurface.create;
     w.FileTubeSkinSurface.create = (cfg) => { engineCfg = cfg; return realCreate(cfg); };
+    delete require.cache[require.resolve('../../public/js/ui.js')]; require('../../public/js/ui.js'); // UI pass S6: every shell loads ui.js (window.ui) before the view
     delete require.cache[podcastsPath]; require(podcastsPath);
     registered.init(w.document.getElementById('view-root'));
     const content = () => w.document.getElementById('podcasts-content');
     await run({
       w, player, loads, fetches, registered, content,
       engineCfg: () => engineCfg,
-      cards: () => content().querySelectorAll('.podcast-card'),
+      cards: () => content().querySelectorAll('[data-show-id]'),
       text: () => content().textContent,
     });
     registered.destroy();
@@ -218,7 +220,7 @@ for (const [label, playingAtConfirm, expectClose] of [
       const extras = cfg && cfg.sticker && cfg.sticker.extras;
       assert.ok(extras && typeof extras.onDelete === 'function', 'precondition: the podcast Extras adapter is wired');
       let confirm = null;
-      c.w.showConfirmModal = (t, h, ok) => { confirm = ok; };
+      c.w.ui = Object.assign({}, c.w.ui, { confirm: () => new Promise((resolve) => { confirm = () => resolve(true); }) }); // UI pass S7: a held ui.confirm
       const successes = [];
       extras.onDelete({ id: 'e1', title: 'One Ep' }, (removed) => { successes.push(removed); }, c.player);
       assert.strictEqual(typeof confirm, 'function', 'precondition: the confirm is open (held)');
@@ -313,7 +315,14 @@ for (const back of [true, false]) {
       hold.resolve();
       await settleMany();
       if (back) assert.strictEqual(c.cards().length, 2, 'the grid survived the stale failure');
-      else assert.strictEqual(c.content().innerHTML, '', 'the skeleton was cleared');
+      else {
+        // UI pass S6 (plan D9): the cleared skeleton is replaced by the error state (with Retry),
+        // never left blank and never stranded.
+        assert.strictEqual(c.content().querySelector('.skeleton-shimmer, [class*="skeleton"]'), null, 'the skeleton was cleared');
+        const st = c.content().querySelector('.ui-state');
+        assert.ok(st && /Could not load episodes/.test(st.textContent), 'the error state took its place');
+        assert.strictEqual(c.content().children.length, 1, 'and nothing else');
+      }
     });
   });
 

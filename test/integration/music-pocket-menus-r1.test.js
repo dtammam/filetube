@@ -266,7 +266,7 @@ test('K6 A10: an in-flight browse album select cannot play over a menu pick', as
     menu(h); select(h); tapRow(h, 'Albums'); await settleNet();
     tapRow(h, 'Retro Mix'); await settleNet(); // the menu level is ready
     click(h.dom, h.D.querySelector('.music-tab[data-tab="songs"]')); await settleNet();
-    const row = h.D.querySelector('#music-content .music-song-row[data-id="za1"] .music-song-main');
+    const row = h.D.querySelector('#music-content .music-song-row[data-id="za1"] .music-song-play');
     assert.ok(row, 'the Songs tab lists the single');
     click(h.dom, row); // a browse select: it drills into za1's album first (an awaited render)...
     tapRow(h, 'Pixel Rain'); // ...and before that lands, a pick from the menu
@@ -355,8 +355,13 @@ test('K3 (qa W2 + adversary W3): a pick from a long flat list clears the browse 
     const behind = [...h.D.querySelectorAll('#music-content .music-song-row')];
     assert.deepStrictEqual(behind.map((r) => r.getAttribute('data-id')), added.map((t) => t.id), 'only the NEWER list, whole and in order');
     assert.ok(behind.every((r, i) => r.getAttribute('data-index') === String(i)), 'every row indexes the queue');
+    // step 7 (retire R2): a chunk-built row of the playing track carries the row primitive's
+    // current state with its equalizer class, and no other row does
+    const current = behind.filter((r) => r.classList.contains('ui-row--current'));
+    assert.deepStrictEqual(current.map((r) => r.getAttribute('data-id')), [h.player.currentId], 'the playing row is the one current row');
+    assert.ok(current[0].classList.contains('playing'), 'with its equalizer');
     const late = behind[behind.length - 3];
-    click(h.dom, late.querySelector('.music-song-main'));
+    click(h.dom, late.querySelector('.music-song-play'));
     await settleNet();
     assert.strictEqual(h.player.currentId, late.getAttribute('data-id'), 'a late-built row plays its own track');
   } });
@@ -558,7 +563,7 @@ test('Chapter Snap: a SAVE and a REVERT through the REAL snap editor each re-loa
       // (1) SAVE: nudge Track A (chapter 2) one second later, Save
       const ed1 = showChapterSnapEditor('djmix1', { fetchImpl, pollMs: 60000, doc: h.D });
       await ed1.ready;
-      click(h.dom, ed1.list.querySelectorAll('.chapter-snap-row')[1].querySelector('[data-act="nudge"][data-delta="1"]'));
+      click(h.dom, ed1.list.querySelectorAll('.chapter-snap-item')[1].querySelector('[data-act="nudge"][data-delta="1"]'));
       click(h.dom, ed1.saveBtn);
       await waitFor(() => ed1.isClosed(), 'the snap editor closes after its save');
       assert.deepStrictEqual(events, [{ kind: 'chapters', mediaId: 'djmix1' }], 'the save raised the ONE library-changed event');

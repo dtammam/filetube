@@ -1,0 +1,4 @@
+/* ui-lint-canary: path=public/css/style.css expect=3 */
+.a:hover { color: var(--ink-1); }
+@media (max-width: 768px) { .b:hover { color: var(--ink-1); } }
+@media (hover: none) { .c:hover { color: var(--ink-1); } }

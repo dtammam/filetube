@@ -59,20 +59,33 @@ function freshWithCanvas(tracker) {
 }
 const afterEachCanvas = () => { delete global.URL; delete global.Image; };
 
+// Sweep S9: the cropper is a ui.sheet dialog titled "Crop photo" (Cancel / Save ui-btns in
+// its actions row). These helpers find it the way a user sees it.
+const cropSheet = () => [...global.document.querySelectorAll('.ui-sheet')].find((s) => !s.classList.contains('is-closing')
+  && s.querySelector('.ui-sheet__title') && s.querySelector('.ui-sheet__title').textContent === 'Crop photo');
+const cropButton = (label) => [...cropSheet().querySelectorAll('.avatar-crop-actions .ui-btn')].find((b) => b.textContent === label);
+const clickEl = (el) => el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+// A closing sheet finishes on a fallback timer (no transitionend in jsdom).
+const drain = async () => { for (let i = 0; i < 40 && global.document.querySelector('.ui-sheet'); i++) await new Promise((r) => setTimeout(r, 20)); };
+
 test('S3 (stubbed canvas): Save resolves a jpeg Blob and revokes the object URL exactly once (no leak)', async () => {
   const tracker = { created: 0, revoked: 0 };
   const common = freshWithCanvas(tracker);
   try {
     const p = common.cropAvatarFile({ type: 'image/png' });
-    await tick(); // Image.onload -> modal builds
-    const backdrop = global.document.querySelector('.avatar-crop-backdrop');
-    assert.ok(backdrop, 'the modal opened');
-    backdrop.querySelector('.btn-primary').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await tick(); // Image.onload -> the dialog builds
+    const sheet = cropSheet();
+    assert.ok(sheet, 'the dialog opened as a ui.sheet titled "Crop photo"');
+    assert.ok(sheet.classList.contains('ui-sheet--dialog'), 'a centred dialog');
+    assert.ok(sheet.querySelector('.ui-sheet__body .avatar-crop canvas.avatar-crop-canvas'), 'the crop stage is its content');
+    assert.strictEqual(global.document.querySelector('.avatar-crop-backdrop'), null, 'no bespoke backdrop');
+    clickEl(cropButton('Save'));
     const out = await p;
     assert.ok(out && out.type === 'image/jpeg', 'Save produced a jpeg Blob');
     assert.strictEqual(tracker.created, tracker.revoked, 'object URL created == revoked (no leak)');
     assert.ok(tracker.revoked >= 1, 'the URL was actually revoked');
-    assert.strictEqual(global.document.querySelector('.avatar-crop-backdrop'), null, 'the modal was removed');
+    await drain();
+    assert.strictEqual(global.document.querySelector('.ui-sheet'), null, 'the dialog was removed');
   } finally { afterEachCanvas(); }
 });
 
@@ -82,30 +95,78 @@ test('S3 (stubbed canvas): Cancel-then-Save settles ONCE as null (the double-set
   try {
     const p = common.cropAvatarFile({ type: 'image/png' });
     await tick();
-    const backdrop = global.document.querySelector('.avatar-crop-backdrop');
-    backdrop.querySelectorAll('.btn')[0].dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // Cancel
-    backdrop.querySelector('.btn-primary').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // late Save
+    const save = cropButton('Save');
+    clickEl(cropButton('Cancel'));
+    clickEl(save); // a late Save on the closing dialog
     assert.strictEqual(await p, null, 'the first settle (Cancel) wins; the late Save is eaten');
     // The `settled` guard's REAL job: cleanup runs EXACTLY once (Promise
     // resolve-once alone makes `await p === null` true even without the guard, so
     // that assertion does not bind it - this one does).
     assert.strictEqual(tracker.revoked, 1, 'cleanup ran exactly once (the settled guard)');
+    await drain();
   } finally { afterEachCanvas(); }
 });
+
+test('S3 (stubbed canvas): a double tap on Save resolves ONE blob and cleans up once', async () => {
+  const tracker = { created: 0, revoked: 0 };
+  const common = freshWithCanvas(tracker);
+  try {
+    const p = common.cropAvatarFile({ type: 'image/png' });
+    await tick();
+    const save = cropButton('Save');
+    clickEl(save); clickEl(save);
+    const out = await p;
+    assert.ok(out && out.type === 'image/jpeg');
+    assert.strictEqual(tracker.revoked, 1, 'one cleanup for two taps');
+    await drain();
+  } finally { afterEachCanvas(); }
+});
+
+// Sweep S9: every way out the sheet owns (Esc, the scrim, its Close) is a CANCEL - null,
+// settled once, the object URL revoked once, the dialog gone.
+for (const how of ['esc', 'scrim', 'close']) {
+  test(`S9 (stubbed canvas): ${how} cancels - resolves null once and removes the dialog`, async () => {
+    const tracker = { created: 0, revoked: 0 };
+    const common = freshWithCanvas(tracker);
+    try {
+      const p = common.cropAvatarFile({ type: 'image/png' });
+      await tick();
+      const sheet = cropSheet();
+      if (how === 'esc') global.document.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      else if (how === 'scrim') clickEl(global.document.querySelector('.ui-scrim'));
+      else clickEl(sheet.querySelector('.ui-sheet__close'));
+      assert.strictEqual(await p, null, how + ' is a cancel');
+      assert.strictEqual(tracker.revoked, 1, 'cleaned up once');
+      await drain();
+      assert.strictEqual(global.document.querySelector('.ui-sheet'), null, 'the dialog is gone');
+      // ...and the single-instance claim was released: a new crop opens.
+      const again = common.cropAvatarFile({ type: 'image/png' });
+      await tick();
+      assert.ok(cropSheet(), 'a fresh cropper opens after the cancel');
+      clickEl(cropButton('Cancel'));
+      assert.strictEqual(await again, null);
+      await drain();
+    } finally { afterEachCanvas(); }
+  });
+}
 
 test('S3 (stubbed canvas): a second cropAvatarFile while one is open declines as null (single-instance)', async () => {
   const tracker = { created: 0, revoked: 0 };
   const common = freshWithCanvas(tracker);
   try {
     const first = common.cropAvatarFile({ type: 'image/png' });
+    // Sweep S9: the claim is taken at CALL time, so a second call before the first image
+    // has even loaded declines too (the old DOM query could not see a dialog not yet built).
+    assert.strictEqual(await common.cropAvatarFile({ type: 'image/png' }), null, 'a second call before the image loads declines');
     await tick();
-    assert.strictEqual(global.document.querySelectorAll('.avatar-crop-backdrop').length, 1, 'one modal open');
+    assert.strictEqual(global.document.querySelectorAll('.ui-sheet').length, 1, 'one dialog open');
     assert.strictEqual(await common.cropAvatarFile({ type: 'image/png' }), null, 'the second call declines');
-    assert.strictEqual(global.document.querySelectorAll('.avatar-crop-backdrop').length, 1, 'still exactly one modal');
+    assert.strictEqual(global.document.querySelectorAll('.ui-sheet').length, 1, 'still exactly one dialog');
+    assert.strictEqual(tracker.created, 1, 'the declined calls never even made an object URL');
     // close the first so the promise settles and nothing leaks.
-    global.document.querySelector('.avatar-crop-backdrop').querySelectorAll('.btn')[0]
-      .dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    clickEl(cropButton('Cancel'));
     assert.strictEqual(await first, null);
+    await drain();
   } finally { afterEachCanvas(); }
 });
 

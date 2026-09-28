@@ -33,8 +33,9 @@ const COMMON = fs.readFileSync(path.join(__dirname, '../../public/js/common.js')
 // the `hidden` ATTRIBUTE rather than by being added/removed from the DOM. Each
 // therefore needs an explicit `[hidden]` display override, or it stays painted
 // while "hidden" and swallows every touch underneath it.
+// (step 7: '.oneoff-modal-backdrop' left the list with the bespoke backdrop itself - see the
+// v1.17.0 test below)
 const ATTRIBUTE_HIDDEN_OVERLAYS = [
-  '.oneoff-modal-backdrop',
   '.playlists-sheet-backdrop',
   '.chapters-menu',
   '#player-dock',
@@ -90,10 +91,19 @@ test('AUDIT: the audit itself can actually detect the v1.17.0 bug (negative cont
 });
 
 test('AUDIT: the v1.17.0 regression itself stays fixed (the original touch-eater)', () => {
-  // This is the exact rule whose absence caused the original bug. If someone
-  // deletes it, the one-off modal backdrop starts eating every touch again.
-  assert.match(CSS, /\.oneoff-modal-backdrop\[hidden\]/,
-    'the fix for the original full-viewport touch-eater must not be removed');
+  // The original touch-eater was the one-off modal's `.oneoff-modal-backdrop` (display:flex,
+  // no [hidden] override). Step 7 (UI pass, DELIBERATE conversion): its last user, the
+  // Subscribe dialog, moved onto ui.sheet like the one-off dialog before it, so the bespoke
+  // backdrop is GONE - not patched. Bound here: no rule and no builder of it is left, and the
+  // one scrim every sheet uses is covered by the global [hidden] rule and leaves the document
+  // on close (test/unit/subscribe-button.test.js drives every way out of the dialog).
+  const rules = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(rules, /\.oneoff-modal-backdrop/, 'no bespoke backdrop rule is left');
+  const COMMON_JS = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
+  const WATCH_JS = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
+  assert.doesNotMatch(COMMON_JS + WATCH_JS, /['"]oneoff-modal-backdrop['"]|\.backdrop\.remove\(\)/, 'no bespoke backdrop is built or hand-removed');
+  const UI_CSS = fs.readFileSync(path.join(__dirname, '../../public/css/ui.css'), 'utf8');
+  assert.match(UI_CSS, /\n\[hidden\][^{]*\{[^}]*display:\s*none\s*!important/, 'the global [hidden] rule still wins over any author display');
 });
 
 test('AUDIT: the pull-to-refresh indicator cannot eat touches', () => {

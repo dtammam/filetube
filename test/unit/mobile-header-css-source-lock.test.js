@@ -1,46 +1,41 @@
 'use strict';
 
-// [UNIT] v1.85.1 - source-lock the mobile header overrides at the SPECIFICITY
-// that makes them win. The v1.85 device-pass failure was a pure CSS cascade bug:
-// the base rules for .search-toggle-btn / .account-menu-trigger /
-// .account-menu-dropdown live LATER in style.css than the mobile @media
-// overrides, and a media query adds NO specificity, so a same-specificity later
-// rule won and silently defeated the whole mobile search + account UX. The fix
-// scopes each override under `.header-right` (0,2,0) so it beats its (0,1,0)
-// base regardless of source order. This binds that the scoped form survives -
-// a revert to the bare `.search-toggle-btn {...}` form goes red here. (It cannot
-// prove the cascade in general - CSS cascade is a device concern - but it pins
-// this exact fix.)
+// [UNIT] v1.85.1 - the mobile header overrides must WIN the cascade. The v1.85 device-pass
+// failure was a pure CSS cascade bug: the base rules for the search magnifier / the account
+// trigger / the account dropdown lived LATER in style.css than the mobile @media overrides,
+// and a media query adds NO specificity, so a same-specificity later rule won and silently
+// defeated the whole mobile search + account UX.
+//
+// Sweep S1 (AC12, the triage's "risky conversion": convert to a RENDERED check at phone
+// width, not a selector lock). The header's glyphs are ui-btn icon buttons and the account
+// menu is a ui.sheet, so the Download-button and dropdown value locks this file held have no
+// element left to pin. What they protected - the phone header SHOWS the magnifier (rightmost),
+// HIDES the avatar, and every glyph is one evenly spaced 44px button - is now measured on
+// the live page by the geometry check HDR (test/geometry/checks.js evalHeader, surface
+// `header` in test/geometry/scenes.js, all eras x modes x phone/desktop; its phone scene is in
+// the pre-push fast set) and mutation-proven there (hdr-cascade-hides-magnifier re-creates the
+// v1.85 bug and HDR goes red). This file keeps the two source facts a render cannot name, and
+// binds the replacement's wiring so it cannot be dropped silently.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '');
+const css = strip(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
 
-test('the magnifier show is scoped under .header-right (out-specifies the base display:none)', () => {
-  assert.match(css, /\.header-right \.search-toggle-btn \{\s*display:\s*inline-flex/,
-    'the mobile magnifier-show must be .header-right-scoped to beat the later base rule');
+test('the phone magnifier-show out-specifies the LATER desktop hide (the v1.85 cascade fix, by specificity)', () => {
+  const show = css.search(/header \.header-right > \.ui-btn\.search-toggle-btn \{\s*display:\s*inline-flex;/);
+  const hide = css.search(/\n\.header-right > \.ui-btn\.search-toggle-btn \{\s*display:\s*none;/);
+  assert.ok(show > 0, 'the phone show is `header .header-right > .ui-btn.search-toggle-btn` (0,3,1) - step 7 named the primitive');
+  assert.ok(hide > 0, 'the desktop hide is `.header-right > .ui-btn.search-toggle-btn` (0,3,0)');
+  assert.ok(show < hide, 'the hide sits LATER in the file - which is exactly why the show must out-specify it');
 });
 
 test('the mobile header-avatar hide is scoped under .header-right', () => {
   assert.match(css, /\.header-right \.account-menu-trigger \{\s*display:\s*none/,
-    'the mobile trigger-hide must be .header-right-scoped');
-});
-
-test('the mobile account dropdown bottom-sheet is scoped under .header-right', () => {
-  assert.match(css, /\.header-right \.account-menu-dropdown \{[^}]*position:\s*fixed/,
-    'the mobile bottom-sheet reposition must be .header-right-scoped');
-});
-
-test('(v1.91.2 Dean) the mobile account dropdown is a RIGHT-anchored narrow card, not a full-width sheet', () => {
-  const rule = /\.header-right \.account-menu-dropdown \{[^}]*\}/.exec(css);
-  assert.ok(rule, 'the mobile account-menu-dropdown rule exists');
-  assert.match(rule[0], /left:\s*auto/, 'left is released (was --space-4) so the card no longer stretches full-width');
-  assert.match(rule[0], /right:\s*var\(--space-4\)/, 'anchored to the right edge (near the You tab it opens from)');
-  assert.match(rule[0], /max-width:\s*min\(340px,/, 'width is capped so short rows do not leave a dead right half');
-  assert.doesNotMatch(rule[0], /left:\s*var\(--space-4\)/, 'the old full-width left inset is gone');
+    'the mobile trigger-hide must be .header-right-scoped (0,2,0) to beat the ui-btn display (0,1,0)');
 });
 
 test('(#E) the mobile header collapses to the logo-row height (no empty band under the banner)', () => {
@@ -51,34 +46,14 @@ test('(#E) the mobile header collapses to the logo-row height (no empty band und
     'the mobile header default must be the compact logo-row height, not the old 96px');
 });
 
-test('(#D) the one-off Download button is un-hidden on mobile via id specificity', () => {
-  // The v1.82 `.header-right .btn { display:none }` (0,2,0) hides it on phones;
-  // the id selector (1,1,0) beats it so the button shows in the top-right.
-  // v1.339 (L2): the pre-paint reserve rides the same rule (a second selector).
-  assert.match(css, /\.header-right #ytdlp-oneoff-btn,\s*\.header-right \[data-ft-reserve="download"\] \{\s*display:\s*inline-flex/,
-    'the mobile Download exemption must use the id selector to out-specify the .btn hide');
-});
-
-test('(v1.86.0) the mobile Download button is GLYPH-ONLY (its .btn-label is hidden; desktop keeps the word)', () => {
-  assert.match(css, /\.header-right #ytdlp-oneoff-btn \.btn-label,\s*\.header-right \[data-ft-reserve="download"\] \.btn-label \{\s*display:\s*none/,
-    'mobile Download hides its .btn-label -> glyph-only');
-});
-
-test('(v1.86.1 Dean) the mobile Download button drops the .btn box (bell/search styling) and is sized to match the siblings', () => {
-  const rule = (css.match(/\.header-right #ytdlp-oneoff-btn,\s*\.header-right \[data-ft-reserve="download"\] \{[^}]*\}/) || [''])[0];
-  assert.match(rule, /background:\s*none/, 'no .btn background box');
-  assert.match(rule, /border:\s*none/, 'no .btn border box');
-  assert.match(rule, /border-radius:\s*var\(--radius-full\)/, 'circular hit area like the bell');
-  assert.match(rule, /font-size:\s*var\(--fs-4xl\)/, 'sized to the 22px header-glyph box (== bell/queue SVG), not the small .btn --fs-sm');
-});
-
-test('(v1.87.0 Dean) the search magnifier owns the far-right corner (order) + is uniform - NO split margin (even spacing)', () => {
-  const rule = (css.match(/\.header-right \.search-toggle-btn \{[^}]*order:\s*1[^}]*\}/) || [''])[0];
-  assert.ok(rule, 'a .header-right .search-toggle-btn rule sets order:1 (rightmost corner)');
-  assert.match(rule, /font-size:\s*var\(--fs-4xl\)/, 'the search glyph is sized to the uniform 22px header-glyph box');
-  // v1.87.0: the extra margin-left is GONE - it stacked a second gap on the
-  // container's own gap, so the magnifier sat ~28px from its neighbour while the
-  // rest were 14px apart (Dean: "not evenly spaced, especially the magnifier").
-  assert.doesNotMatch(rule, /margin-left/,
-    'no split margin-left: the row shares the single container gap (even spacing)');
+test('the rendered replacement is wired: the header geometry surface runs HDR on the phone, pre-push, with its cascade mutant', () => {
+  const { SURFACES, FAST_SCENES } = require('../geometry/scenes.js');
+  const { MUTATIONS } = require('../geometry/mutations.js');
+  const header = SURFACES.find((s) => s.id === 'header');
+  assert.ok(header && !header.pending, 'the header surface is live');
+  assert.ok(header.checks.includes('HDR'), 'it runs HDR');
+  assert.ok(!header.vps || header.vps.includes('phone'), 'on the phone');
+  assert.ok(FAST_SCENES.some((f) => f.surface === 'header' && f.vp === 'phone'), 'in the pre-push fast set');
+  const m = MUTATIONS['hdr-cascade-hides-magnifier'];
+  assert.ok(m && m.check === 'HDR' && m.target.vp === 'phone', 'the v1.85 cascade bug is a mutation HDR must kill');
 });

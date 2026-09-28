@@ -5,14 +5,14 @@
 // the card-corner renderer treats all six corner controls uniformly.
 // Follows the heart/share/flame/history precedent EXACTLY: base
 // (outlined-dir) mask only, every other icon set falls back to it
-// automatically, and it is deliberately ABSENT from the emoji-set block
-// (those four never joined it either - emoji queue codepoints render
+// automatically (it was deliberately ABSENT from the emoji-set block too,
+// until the UI pass retired that set, D2.6 - emoji queue codepoints render
 // inconsistently on iOS, the v1.38 lesson).
 //
 // Source-text checks here strip comments first, SYMMETRICALLY (the v1.50.3
 // lock lesson, re-struck in v1.66: a comment quoting the locked line must
 // never satisfy - or defeat - a lock). The RENDERED bind (the real
-// buildCardHtml emitting <i class="icon-queue"> into a real jsdom grid)
+// buildVideoCardEl emitting <i class="icon-queue"> into a real jsdom grid)
 // lands with the T4 full-chain suite; this file locks the asset + CSS
 // mechanics that rendering depends on.
 
@@ -25,6 +25,7 @@ const PUB = path.join(__dirname, '..', '..', 'public');
 const QUEUE_SVG_PATH = path.join(PUB, 'assets', 'icons', 'queue.svg');
 const STYLE_CSS_PATH = path.join(PUB, 'css', 'style.css');
 const MAIN_JS_PATH = path.join(PUB, 'js', 'main.js');
+const { ICON_SETS, liveCss, effectiveMask } = require('../helpers/icon-sets');
 
 // The exact glyph shipped inline since v1.63 (three list lines + a play
 // triangle - YouTube's queue vocabulary). Promotion preserves the drawing.
@@ -87,32 +88,30 @@ test('style.css: .icon-queue joins the @supports currentColor-fill group', () =>
   );
 });
 
-test('style.css: .icon-queue stays OUT of the emoji-set block (the heart/share/flame precedent)', () => {
-  const emojiSelectorHits = css.match(/\[data-icons="emoji"\][^{]*\{/g) || [];
-  for (const sel of emojiSelectorHits) {
-    assert.ok(
-      !sel.includes('.icon-queue'),
-      `.icon-queue must not appear in any emoji-set selector, found in: ${sel.trim().slice(0, 120)}`
-    );
+// This bound "OUT of the emoji-set block" until the UI pass retired that set (D2.6).
+// The three-set form of the heart/share/flame precedent: no set scopes a rule to
+// .icon-queue, so under each of outlined/rounded/filled both mask spellings resolve
+// to the one base queue.svg.
+test('style.css: .icon-queue falls back to its one base mask in every icon set (the heart/share/flame precedent)', () => {
+  const live = liveCss();
+  for (const set of ICON_SETS) {
+    const m = effectiveMask(live, set, 'icon-queue');
+    assert.equal(m.std, 'url(/assets/icons/queue.svg)', `${set}: the base queue.svg mask`);
+    assert.equal(m.webkit, m.std, `${set}: the -webkit- spelling agrees`);
   }
 });
 
-test('main.js: the card queue button renders the mask, and the inline glyph path is GONE from main.js', () => {
-  assert.match(
-    mainJs,
-    /card-queue-btn[\s\S]{0,400}?<i class="icon-queue"><\/i>/,
-    'the card queue button must emit <i class="icon-queue"></i>'
-  );
-  assert.ok(
-    !mainJs.includes(QUEUE_GLYPH_D),
-    'no inline copy of the queue glyph path may remain in main.js (the drift class; watch.html/common.js chrome copies are deliberately out of this lock\'s scope)'
-  );
+// UI pass sweep S2 (D8.5; AC12): the card's queue control is an entry of its
+// ONE action menu, drawing the registry's playlist_add icon (sized by the
+// ui-row media slot, not a 14px corner rule); the .icon-queue mask above keeps
+// serving the watch page's queue verbs (sweep S3).
+test('main.js: the card menu\'s queue entry draws a registry icon, and the inline glyph path is GONE from main.js', () => {
+  assert.match(mainJs, /\{ id: 'queue', icon: 'playlist_add', label: 'Add to queue' \}/, 'the card queue entry');
+  assert.ok(require('../../public/js/icons.js').has('playlist_add'), 'the icon is in the registry');
+  assert.ok(!mainJs.includes(QUEUE_GLYPH_D), 'no inline copy of the queue glyph path may remain in main.js (the drift class)');
+  assert.ok(!/card-queue-btn/.test(mainJs), 'the corner queue button is gone');
 });
 
-test('style.css: the card queue icon is sized like its corner siblings (14px)', () => {
-  assert.match(
-    css,
-    /\.card-queue-btn\s+\.icon-queue\s*\{[^}]*width:\s*14px;[^}]*height:\s*14px;/,
-    'expected .card-queue-btn .icon-queue sized 14px x 14px (the .card-*-btn sibling convention)'
-  );
+test('style.css: no card-corner queue sizing rule survives (the menu row owns the icon size)', () => {
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.card-queue-btn/);
 });

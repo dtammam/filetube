@@ -28,7 +28,10 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
 const commonSrc = fs.readFileSync(path.join(ROOT, 'public/js/common.js'), 'utf8');
-const cssSrc = fs.readFileSync(path.join(ROOT, 'public/css/style.css'), 'utf8');
+// Sweep S9: the card is built from ui.css primitives (ui-btn, ui-thumb, ui-icon) plus its own
+// layout rules in style.css - the styling source is both sheets.
+const cssSrc = fs.readFileSync(path.join(ROOT, 'public/css/ui.css'), 'utf8') + '\n'
+  + fs.readFileSync(path.join(ROOT, 'public/css/style.css'), 'utf8');
 
 // The controller is one IIFE; slice it out so we only mine ITS class names and
 // never the rest of a 10k-line file.
@@ -79,10 +82,26 @@ test('every className the card renders has a CSS rule behind it (derived, not en
     `these classNames render with NO CSS rule binding them - a DEFECT, not a stub: ${missing.join(', ')}`);
 });
 
-test('the card element id has a rule, and a hidden rule that actually hides it', () => {
-  assert.ok(/#handoff-card\s*\{/.test(css), '#handoff-card must have its own rule');
-  assert.ok(/#handoff-card\[hidden\]\s*\{\s*display:\s*none/.test(css),
-    '[hidden] must be backed by display:none - the card sets .hidden and a flex container ignores the attribute otherwise');
+test('the card element id has a rule, and [hidden] actually hides it (the one global [hidden] rule, !important over its display:flex)', () => {
+  assert.ok(/#handoff-card\s*\{[^}]*display:\s*flex/.test(css), '#handoff-card must have its own (flex) rule');
+  // UI pass step 3 / sweep S9: the per-class [hidden] patch is gone; ui.css's global
+  // [hidden] { display: none !important } beats the card's author display.
+  assert.ok(/(^|\n)\[hidden\]\s*\{\s*display:\s*none\s*!important/.test(css),
+    'the global [hidden] rule must exist - the card sets .hidden and a flex container ignores the attribute otherwise');
+  assert.ok(!/#handoff-card[^{]*\{[^}]*display:[^;}]*!important/.test(css), 'no card rule out-ranks the global [hidden]');
+});
+
+// Sweep S9 (F47, D4.6): the card's controls are the primitives - the ONE close mark (a plain
+// icon ui-btn with the registry close glyph, never a text x), a primary ui-btn link, a
+// ui-thumb whose bar is scaled by --p (data), registry play / pause glyphs for the state.
+test('S9: the dismiss is the one plain icon ui-btn close, Continue a primary ui-btn link, the thumb a ui-thumb fed --p, the state a registry glyph', () => {
+  assert.match(controller, /U\.button\(\{ variant: 'plain', shape: 'icon', size: 'sm', icon: 'close', ariaLabel: 'Dismiss' \}\)/);
+  assert.ok(!/textContent = '\\u00d7'|'×'/.test(controller), 'no text-glyph close mark');
+  assert.match(controller, /go\.className = 'ui-btn ui-btn--primary ui-btn--sm'/);
+  assert.match(controller, /U\.thumb\(\{ aspect: '16x9', context: 'row' \}\)/);
+  assert.match(controller, /fill\.style\.setProperty\('--p', String\(handoffProgressPercent\(presence\.position, presence\.duration\) \/ 100\)\)/);
+  assert.ok(!/\.style\.width\s*=/.test(controller), 'no inline width');
+  assert.match(controller, /stateName = presence\.state === 'paused' \? 'pause' : 'play_arrow'/);
 });
 
 test('the card mounts on <body>, never inside #view-root (the v1.38 SPA class)', () => {
@@ -108,7 +127,7 @@ test('the two client-supplied fields are written as textContent, never innerHTML
   assert.ok(!/innerHTML/.test(controller), 'the handoff controller must never use innerHTML');
 });
 
-test('no literal emoji/pictographic characters in the card source (glyphs come from CSS)', () => {
+test('no literal emoji/pictographic characters in the card source (glyphs come from the icon registry)', () => {
   // The v1.38 rule: chrome glyphs live in CSS, never as codepoints in markup.
   // FE0F (the emoji variation selector) is a COMBINING mark, so it lives as
   // its own alternation rather than inside the class - eslint's
@@ -116,22 +135,27 @@ test('no literal emoji/pictographic characters in the card source (glyphs come f
   // set, and it refused this very commit until I split it out.
   const pictographic = /[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]|\uFE0F/u;
   assert.ok(!pictographic.test(controller),
-    'the controller must not carry literal emoji - the state/play glyphs are CSS shapes');
+    'the controller must not carry literal emoji - the state/play glyphs are registry icons');
 });
 
 test('AC4: every token the card consumes resolves in ALL FOUR era skins', () => {
   // Mine the card's own CSS block for the tokens it reads.
-  // Search for the terminator AFTER the card's start - `.toast {` also occurs
-  // earlier in the file, and slicing to the first hit produced a backwards
-  // (empty) range that made this assertion vacuous.
-  const cardStart = css.indexOf('#handoff-card {');
-  assert.ok(cardStart > -1, 'the card CSS block must be findable');
-  const cardCss = css.slice(cardStart, css.indexOf('.toast {', cardStart));
+  // Search for the terminator AFTER the card's start (slicing to an earlier hit produced a
+  // backwards, empty range that made this assertion vacuous). Sweep S9 deleted the `.toast`
+  // rule that used to follow the card; the next rule after it is the one-off dialog's.
+  // Sweep S9: the card's rules are every rule whose selector names it (parsed, not sliced
+  // between two neighbours that a later sweep can move).
+  const { cssRules } = require('../helpers/stylesheets');
+  const cardCss = cssRules(fs.readFileSync(path.join(ROOT, 'public/css/style.css'), 'utf8'))
+    .filter((r) => /handoff/.test(r.sel)).map((r) => r.body).join('\n');
   assert.ok(cardCss.length > 500, `the card CSS block must be non-trivial, got ${cardCss.length} chars`);
 
   const consumed = new Set();
   for (const m of cardCss.matchAll(/var\((--[a-z0-9-]+)/g)) consumed.add(m[1]);
   assert.ok(consumed.size >= 10, `expected the card's real token roster, derived ${consumed.size}`);
+  // Sweep S9 (F57's family): the card paints the overlay roles, never a legacy surface / red.
+  for (const t of ['--surface-overlay', '--shadow-overlay', '--ink-1', '--ink-2']) assert.ok(consumed.has(t), 'consumes ' + t);
+  for (const t of ['--yt-red', '--bg-sidebar', '--separator']) assert.ok(!consumed.has(t), 'no legacy ' + t);
 
   // A token resolves for an era if that era's block defines it, or :root does
   // (:root is the base every era inherits and selectively overrides).
@@ -139,9 +163,12 @@ test('AC4: every token the card consumes resolves in ALL FOUR era skins', () => 
   // There are THREE separate :root blocks in style.css, not one - reading only
   // the first reported 12 perfectly good tokens as missing from all four eras.
   // Union them all.
+  // UI pass step 1: the token layer moved to tokens.css (loaded first), so scan both
+  // files in load order; 2021 light is tokens.css's :root block itself.
+  const all = require('../helpers/stylesheets').readAllCss();
   const rootDefined = new Set();
-  for (const m of css.matchAll(/:root\s*\{/g)) {
-    const block = css.slice(m.index, css.indexOf('}', m.index));
+  for (const m of all.matchAll(/:root\s*\{/g)) {
+    const block = all.slice(m.index, all.indexOf('}', m.index));
     for (const t of block.matchAll(/(--[a-z0-9-]+)\s*:/g)) rootDefined.add(t[1]);
   }
   assert.ok(rootDefined.size > 40, `the :root token layer must be found in full, got ${rootDefined.size}`);
@@ -149,9 +176,9 @@ test('AC4: every token the card consumes resolves in ALL FOUR era skins', () => 
   const eras = ['2005', '2009', '2014', '2021'];
   const failures = [];
   for (const era of eras) {
-    const start = css.indexOf(`[data-theme="${era}"] {`);
+    const start = era === '2021' ? all.indexOf(':root {') : all.indexOf(`[data-theme="${era}"] {`);
     assert.ok(start > -1, `era ${era} block must exist`);
-    const block = css.slice(start, css.indexOf('\n}', start));
+    const block = all.slice(start, all.indexOf('\n}', start));
     const eraDefined = new Set([...block.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((m) => m[1]));
     for (const tok of consumed) {
       if (!eraDefined.has(tok) && !rootDefined.has(tok)) failures.push(`${era}: ${tok}`);
@@ -178,12 +205,19 @@ test('the card carries no [data-theme]-scoped rules of its own (residual #103 po
 // showed the card had no behavioural hook for the fix). BOTH spellings are
 // required - the v1.77 prefixed-vs-standard lesson: -webkit- serves iOS, the
 // unprefixed serves the standard, and one alone leaves a browser boosting.
+// UI pass step 4 (plan D6): the pin moved from style.css's html rule into the
+// native-interaction base at the top of ui.css (loaded by every shell before
+// style.css), so the lock reads it there and asserts nothing later unpins it.
 test('v1.194: the html root PINS text-size-adjust:100% (both spellings) - iOS font-boost defeat', () => {
-  const rule = /(?:^|\n)html\s*\{([^}]*)\}/.exec(css);
-  assert.ok(rule, 'the html rule must exist');
+  const { readUiCss, readAllCss, cssRules } = require('../helpers/stylesheets');
+  const uiCss = readUiCss().replace(/\/\*[\s\S]*?\*\//g, '');
+  const rule = /(?:^|\n)html\s*\{([^}]*)\}/.exec(uiCss);
+  assert.ok(rule, 'the html rule must exist in ui.css');
+  const later = cssRules(readAllCss()).filter((r) => /text-size-adjust/.test(r.body) && !/text-size-adjust:\s*100%/.test(r.body));
+  assert.deepStrictEqual(later.map((r) => r.sel), [], 'no rule sets another text-size-adjust');
   // Strip comments first (the comment-porous class - the fix comment names the
   // property and the mechanism, which would false-pass a naive grep).
-  const decls = rule[1].replace(/\/\*[\s\S]*?\*\//g, '');
+  const decls = rule[1];
   assert.match(decls, /-webkit-text-size-adjust:\s*100%/,
     'the -webkit- spelling pins iOS Safari to 100% (no boost) - deleting it re-inflates the handoff text on fullscreen exit');
   assert.match(decls, /(?<!-webkit-)text-size-adjust:\s*100%/,

@@ -1,0 +1,9 @@
+/* ui-lint-canary: path=public/css/ui.css expect=3 */
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+       -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+img, a, video, svg { -webkit-user-drag: none; user-drag: none; }
+input, textarea, select, [contenteditable="true"], [contenteditable=""] {
+  -webkit-user-select: text; user-select: text; -webkit-touch-callout: default; }
+.later { user-select: none; }
+.y { -webkit-touch-callout: none; }

@@ -1,24 +1,27 @@
 'use strict';
 
-// [UNIT] v1.158 (Dean) - the Trash toolbar: the total-held line + the two-tap
-// "Empty trash" button (bulk purge-all). Two layers:
-//   1. the pure label strings (resting total + armed confirm), and
-//   2. a jsdom mount of renderTrashSection that binds the DESTRUCTIVE contract -
-//      ONE tap only ARMS (never hits the network); the SECOND tap within the
-//      window is what POSTs /api/trash/purge-all. A regression that fired on the
-//      first tap would let a single misclick wipe the trash.
+// [UNIT] v1.158 (Dean) - the Trash toolbar: the total-held line + the "Empty trash"
+// button (bulk purge-all). Two layers:
+//   1. the pure label strings (resting total + the confirm's title), and
+//   2. a jsdom mount of renderTrashSection (with the REAL ui.js) that binds the
+//      DESTRUCTIVE contract. Sweep S8 (D4.8) replaced the v1.158 two-tap arm with the
+//      one ui.confirm step: a tap only opens a danger confirm that names the damage,
+//      every dismissal (Cancel, Esc, the scrim, Close) sends nothing, and POST
+//      /api/trash/purge-all goes out exactly once, only after it resolves true. A
+//      regression that fired on the tap would let a single misclick wipe the trash.
 
 const fs = require('node:fs');
 const path = require('node:path');
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
+const { loadUi, openDialog, parts, answer, settle, drainSheets, DISMISSALS } = require('../helpers/ui-dialogs');
 
 // v1.159: renderTrashSection renders the list via the shared table component
 // (a common.js global in the browser); wire it for node.
 global.buildSortableTable = require('../../public/js/common.js').buildSortableTable;
 const {
-  formatTrashToolbarLabel, formatTrashArmLabel, renderTrashSection,
+  formatTrashToolbarLabel, formatTrashEmptyTitle, renderTrashSection,
 } = require('../../public/js/setup.js');
 
 const GB = 1024 ** 3;
@@ -32,48 +35,55 @@ test('formatTrashToolbarLabel: singular/plural + size, omitting an unknown size'
   assert.equal(formatTrashToolbarLabel(0, 0), '0 items');
 });
 
-test('formatTrashArmLabel: names exactly what the second tap destroys', () => {
-  assert.equal(formatTrashArmLabel(12, 2.5 * GB), 'Sure? Deletes 12 (2.5 GB)');
-  assert.equal(formatTrashArmLabel(1, 0), 'Sure? Deletes 1', 'no size -> no parenthetical');
+test('formatTrashEmptyTitle: the confirm names exactly what emptying destroys', () => {
+  assert.equal(formatTrashEmptyTitle(12, 2.5 * GB), 'Permanently delete 12 items (2.5 GB)?');
+  assert.equal(formatTrashEmptyTitle(1, 0), 'Permanently delete 1 item?', 'no size -> no parenthetical; singular');
 });
 
 // ---- source locks ----------------------------------------------------------
 
-test('setup.html: the trash toolbar ships hidden with the total + Empty-all button', () => {
+test('setup.html: the trash toolbar ships hidden with the total + a danger Empty-all button', () => {
   const html = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'setup.html'), 'utf8');
   assert.match(html, /<div id="trash-toolbar" class="trash-toolbar" hidden>/, 'toolbar exists + hidden');
   assert.match(html, /id="trash-total"/);
-  assert.match(html, /id="trash-empty-all"[^>]*>Empty trash<\/button>/);
+  assert.match(html, /id="trash-empty-all" class="ui-btn ui-btn--danger ui-btn--sm trash-empty-all">Empty trash<\/button>/);
 });
 
-test('style.css: the toolbar has a real style source incl. the [hidden] guard', () => {
+// Retire R3 (DELIBERATE conversion): the toolbar's own `.trash-toolbar[hidden]` patch is gone -
+// ui.css's ONE global `[hidden] { display: none !important }` (plan D11: the per-class patches
+// retire behind it) is what beats the toolbar's display:flex now, so that is what this pins.
+test('style.css: the toolbar has a real style source, its hidden state wins through the global [hidden] rule; the armed state is retired', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(css, /\.trash-toolbar\s*\{[^}]*display:\s*flex/, '.trash-toolbar is a flex row');
-  assert.match(css, /\.trash-toolbar\[hidden\]\s*\{[^}]*display:\s*none/, 'the [hidden] guard beats display:flex');
-  assert.match(css, /\.trash-empty-all\.trash-confirming\s*\{[^}]*var\(--yt-red\)/, 'armed state reddens');
+  assert.match(ui, /\n\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/, 'the global [hidden] guard beats display:flex');
+  assert.doesNotMatch(css, /trash-confirming/, 'the two-tap armed class is gone');
 });
 
-// ---- jsdom: the two-tap destructive contract -------------------------------
+// ---- jsdom: the confirm-first destructive contract -------------------------
 
 function mountTrashDom() {
   const dom = new JSDOM(`<!DOCTYPE html><body>
     <div id="trash-toolbar" class="trash-toolbar" hidden>
       <span id="trash-total"></span>
-      <button type="button" id="trash-empty-all" class="btn btn-sm trash-empty-all">Empty trash</button>
+      <button type="button" id="trash-empty-all" class="ui-btn ui-btn--danger ui-btn--sm trash-empty-all">Empty trash</button>
     </div>
     <div id="trash-list"></div>
     <div id="trash-empty" hidden></div>
   </body>`, { url: 'http://localhost/' });
   global.window = dom.window;
   global.document = dom.window.document;
+  global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
+  loadUi();
   return dom;
 }
+function teardown(dom) {
+  delete global.fetch; delete global.document; delete global.window; delete global.requestAnimationFrame;
+  dom.window.close();
+}
 const tick = () => new Promise((r) => setTimeout(r, 0));
-
-test('two-tap: renders the total, ARMS on tap 1 (no network), PURGES on tap 2', async () => {
-  const dom = mountTrashDom();
-  const calls = [];
-  global.fetch = (url, opts) => {
+function trashFetch(calls) {
+  return (url, opts) => {
     calls.push({ url, method: (opts && opts.method) || 'GET' });
     if (url === '/api/trash') {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({
@@ -84,82 +94,81 @@ test('two-tap: renders the total, ARMS on tap 1 (no network), PURGES on tap 2', 
         total: 2, totalSizeBytes: 2.5 * GB, retentionDays: 30,
       }) });
     }
-    // purge-all
     return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true, purgedCount: 2, freedBytes: 2.5 * GB }) });
   };
+}
 
-  try {
-    const ac = new dom.window.AbortController(); // jsdom's own AbortSignal type
-    renderTrashSection(ac.signal);
-    await tick(); // the initial GET /api/trash resolves
-
-    const doc = dom.window.document;
-    const toolbar = doc.getElementById('trash-toolbar');
-    const total = doc.getElementById('trash-total');
-    const btn = doc.getElementById('trash-empty-all');
-    assert.equal(toolbar.hidden, false, 'toolbar shown when the trash is non-empty');
-    assert.equal(total.textContent, '2 items - 2.5 GB', 'the total line');
-
-    const getCalls = () => calls.filter((c) => c.url === '/api/trash/purge-all');
-
-    // Tap 1: arms only.
-    btn.dispatchEvent(new dom.window.Event('click'));
-    await tick();
-    assert.equal(getCalls().length, 0, 'ONE tap must NOT purge (no network)');
-    assert.match(btn.textContent, /^Sure\? Deletes 2 \(2\.5 GB\)$/, 'armed label names the damage');
-    assert.ok(btn.classList.contains('trash-confirming'), 'armed class on');
-
-    // Tap 2: purges.
-    btn.dispatchEvent(new dom.window.Event('click'));
-    await tick();
-    const purge = getCalls();
-    assert.equal(purge.length, 1, 'the SECOND tap POSTs purge-all');
-    assert.equal(purge[0].method, 'POST');
-  } finally {
-    delete global.fetch; delete global.document; delete global.window;
-    dom.window.close();
-  }
-});
-
-test('two-tap: the arm auto-disarms after ~4s - a stale first tap never carries into a later purge', async (t) => {
+test('Empty trash: a tap only opens a DANGER confirm naming the damage; every dismissal purges nothing', async () => {
   const dom = mountTrashDom();
   const calls = [];
-  global.fetch = (url, opts) => {
-    calls.push({ url, method: (opts && opts.method) || 'GET' });
-    if (url === '/api/trash') {
-      return Promise.resolve({ ok: true, json: () => Promise.resolve({
-        items: [{ trashId: 't1', title: 'A', trashedAt: 1700000000000, size: 1024 ** 3, type: 'video' }],
-        total: 1, totalSizeBytes: 1024 ** 3, retentionDays: 30,
-      }) });
-    }
-    return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
-  };
+  global.fetch = trashFetch(calls);
   try {
     renderTrashSection(new dom.window.AbortController().signal);
-    await tick(); // initial GET resolves (real timers)
-
-    const btn = dom.window.document.getElementById('trash-empty-all');
-    const purges = () => calls.filter((c) => c.url === '/api/trash/purge-all').length;
-
-    t.mock.timers.enable({ apis: ['setTimeout'] }); // now control the 4s disarm window
-    btn.dispatchEvent(new dom.window.Event('click'));  // tap 1: arms
-    assert.ok(btn.classList.contains('trash-confirming'), 'armed after tap 1');
-    t.mock.timers.tick(4000); // the window elapses with no second tap
-    assert.ok(!btn.classList.contains('trash-confirming'), 'auto-disarmed');
-    assert.strictEqual(btn.textContent, 'Empty trash', 'label reset');
-
-    // A later single tap must ARM again, NOT purge (the stale arm is gone).
-    btn.dispatchEvent(new dom.window.Event('click'));
-    assert.strictEqual(purges(), 0, 'a lone tap after the window never purges');
-    assert.ok(btn.classList.contains('trash-confirming'), 're-arms cleanly');
-  } finally {
-    t.mock.timers.reset();
-    delete global.fetch; delete global.document; delete global.window;
-    dom.window.close();
-  }
+    await tick(); // the initial GET /api/trash resolves
+    const doc = dom.window.document;
+    assert.equal(doc.getElementById('trash-toolbar').hidden, false, 'toolbar shown when the trash is non-empty');
+    assert.equal(doc.getElementById('trash-total').textContent, '2 items - 2.5 GB', 'the total line');
+    const btn = doc.getElementById('trash-empty-all');
+    const purges = () => calls.filter((c) => c.url === '/api/trash/purge-all');
+    for (const how of DISMISSALS) {
+      btn.dispatchEvent(new dom.window.Event('click'));
+      await settle();
+      const k = parts(openDialog(doc));
+      assert.equal(k.title, 'Permanently delete 2 items (2.5 GB)?', 'the confirm names the damage');
+      assert.ok(k.ok.classList.contains('ui-btn--destructive'), 'the danger fill');
+      assert.equal(purges().length, 0, 'opening the confirm purges nothing');
+      answer(doc, how);
+      await settle();
+      assert.equal(purges().length, 0, how + ': nothing purged');
+      await drainSheets(dom.window);
+    }
+  } finally { teardown(dom); }
 });
 
-test('two-tap: a bare empty trash never shows the toolbar (nothing to purge)', async () => {
+test('Empty trash: OK POSTs purge-all exactly once, and only then', async () => {
+  const dom = mountTrashDom();
+  const calls = [];
+  global.fetch = trashFetch(calls);
+  try {
+    renderTrashSection(new dom.window.AbortController().signal);
+    await tick();
+    const doc = dom.window.document;
+    doc.getElementById('trash-empty-all').dispatchEvent(new dom.window.Event('click'));
+    await settle();
+    const k = answer(doc, 'ok');
+    k.ok.click(); // a second tap on the closing dialog must not purge twice
+    await settle();
+    const purge = calls.filter((c) => c.url === '/api/trash/purge-all');
+    assert.equal(purge.length, 1, 'exactly one POST');
+    assert.equal(purge[0].method, 'POST');
+    await drainSheets(dom.window);
+  } finally { teardown(dom); }
+});
+
+test('Empty trash: a confirm left open when the view is torn down never purges', async () => {
+  const dom = mountTrashDom();
+  const calls = [];
+  global.fetch = trashFetch(calls);
+  const setup = require('../../public/js/setup.js');
+  const ac = new dom.window.AbortController();
+  setup.__setFolderStateForTests({ controller: ac }); // the view's controller (its signal rides the confirm)
+  try {
+    renderTrashSection(ac.signal);
+    await tick();
+    const doc = dom.window.document;
+    doc.getElementById('trash-empty-all').dispatchEvent(new dom.window.Event('click'));
+    await settle();
+    const k = parts(openDialog(doc));
+    ac.abort(); // navigate away
+    await settle();
+    k.ok.click();
+    await settle();
+    assert.equal(calls.filter((c) => c.url === '/api/trash/purge-all').length, 0, 'the teardown answered false');
+    await drainSheets(dom.window);
+  } finally { setup.__setFolderStateForTests({ controller: null }); teardown(dom); }
+});
+
+test('a bare empty trash never shows the toolbar (nothing to purge)', async () => {
   const dom = mountTrashDom();
   global.fetch = (url) => {
     if (url === '/api/trash') {
@@ -171,8 +180,5 @@ test('two-tap: a bare empty trash never shows the toolbar (nothing to purge)', a
     renderTrashSection(new dom.window.AbortController().signal);
     await tick();
     assert.equal(dom.window.document.getElementById('trash-toolbar').hidden, true, 'empty trash -> toolbar hidden');
-  } finally {
-    delete global.fetch; delete global.document; delete global.window;
-    dom.window.close();
-  }
+  } finally { teardown(dom); }
 });

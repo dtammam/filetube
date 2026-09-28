@@ -13,6 +13,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { unscopePocket } = require('../helpers/stylesheets.js'); // UI pass D7: the Pocket takeover's device-class scope
 const { JSDOM } = require('jsdom');
 
 const ROOT = path.join(__dirname, '..', '..');
@@ -783,7 +784,7 @@ test('E timers over N mounts: every teardown arm (destroy, skin switch, the tray
 });
 
 test('E CSS lock: the drift\'s rules animate ONLY transform + opacity - no filter / blur / mask / backdrop / keyframes, any spelling or case', () => {
-  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = unscopePocket(fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8')).replace(/\/\*[\s\S]*?\*\//g, '');
   const rules = [];
   const re = /([^{}]+)\{([^{}]*)\}/g;
   let m;
@@ -1140,7 +1141,7 @@ test('r1 (adversary S1): the letter of EVERY Latin, fullwidth, circled and Roman
 });
 
 test('r1 Q3 (qa W4 + S5) CSS lock: the A-Z picker centres SAFELY (a short LCD keeps its first rows reachable) and Click drops to six columns under 340 px', () => {
-  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const css = unscopePocket(fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8')).replace(/\/\*[\s\S]*?\*\//g, '');
   const base = /\.mms-ipod \.ipm-grid\{([^}]*)\}/.exec(css);
   assert.ok(base, 'the picker rule');
   assert.match(base[1], /align-content:\s*safe center/i, 'safe centring (plain `center` puts overflowing first rows above the scroll origin)');

@@ -104,7 +104,7 @@ test('T9: formatTrackDuration renders m:ss / h:mm:ss; empty for zero/NaN', () =>
 
 test('T9: buildAlbumCardHtml carries album key + escaped title/artist + art src', () => {
   const html = buildAlbumCardHtml({ albumKey: 'k1', album: 'The <Wall>', artist: 'Pink Floyd', artId: 'abc', trackCount: 2 });
-  assert.match(html, /data-album-key="k1"/);
+  assert.match(html, /^<button type="button" class="ui-tile music-album-card" data-album-key="k1"/, 'a ui-tile button (step 7: the card primitive)');
   assert.match(html, /src="\/albumart\/abc\?s=\d+"/);
   assert.match(html, /The &lt;Wall&gt;/, 'album title escaped');
   assert.match(html, /2 tracks/);
@@ -151,21 +151,23 @@ test('v1.103: an artist with NO art still renders one placeholder tile (never a 
 
 test('redesign S1: an artist WITH a channel avatar renders a round circle (avatar over a monogram), not the mosaic', () => {
   const html = buildArtistCardHtml({ artist: 'NESTALGIA', albumCount: 1, trackCount: 352, avatarUrl: 'https://yt3.example/n.jpg', artIds: ['x'] });
-  assert.match(html, /class="music-artist-avatar"/, 'the round avatar circle');
-  assert.match(html, /class="maa-img" src="https:\/\/yt3\.example\/n\.jpg"/, 'the channel avatar image');
-  assert.match(html, /class="maa-mono">N</, 'the uppercased first-letter monogram behind it');
+  // step 7 (retire R2, deliberate): the circle is the ui-avatar primitive (D4.4) - the photo
+  // over ui.js's monogram on its hash tone (the Artists list rows' markup, at the card's size)
+  assert.match(html, /class="ui-avatar ui-avatar--2xl music-artist-circle"/, 'the round avatar circle');
+  assert.match(html, /class="ui-avatar__img maa-img" src="https:\/\/yt3\.example\/n\.jpg"/, 'the channel avatar image');
+  assert.match(html, /class="ui-avatar__mono maa-mono" data-tone="\d">N</, 'the uppercased monogram behind it');
   assert.doesNotMatch(html, /music-artist-mosaic/, 'the mosaic is NOT rendered when there is an avatar');
 });
 
 test('redesign S1: an artist WITHOUT an avatar still falls back to the mosaic (native-album artist)', () => {
   const html = buildArtistCardHtml({ artist: 'Pink Floyd', albumCount: 2, trackCount: 20, avatarUrl: '', artIds: ['a', 'b'] });
   assert.match(html, /class="music-artist-mosaic" data-tiles="2"/, 'no avatar -> the album-art mosaic');
-  assert.doesNotMatch(html, /music-artist-avatar/, 'no round circle without an avatar');
+  assert.doesNotMatch(html, /music-artist-circle|ui-avatar/, 'no round circle without an avatar');
 });
 
 test('friction: buildRecentArtistTileHtml renders a round drillable artist tile (art + name, no meta)', () => {
   const html = buildRecentArtistTileHtml({ id: 'trk7', artist: 'NESTALGIA' });
-  assert.match(html, /class="music-artist-card" data-artist="NESTALGIA"/, 'drills into the artist (same delegation)');
+  assert.match(html, /class="ui-tile music-artist-card" data-artist="NESTALGIA"/, 'drills into the artist (same delegation; a ui-tile - step 7)');
   assert.match(html, /class="music-artist-mosaic" data-tiles="1"><img class="art-shimmer" src="\/albumart\/trk7\?s=\d+"/, 'a full-bleed round album-art circle from the track');
   assert.match(html, />NESTALGIA</, 'the artist name');
   assert.doesNotMatch(html, /music-artist-meta/, 'no album/track meta on a recently-played tile');
@@ -173,13 +175,15 @@ test('friction: buildRecentArtistTileHtml renders a round drillable artist tile 
 
 test('friction: buildArtistListRowHtml renders a compact drillable row (avatar circle, name, count)', () => {
   const withAvatar = buildArtistListRowHtml({ artist: 'NESTALGIA', trackCount: 352, avatarUrl: 'https://yt3.example/n.jpg', artIds: ['x'] });
-  assert.match(withAvatar, /class="music-artist-row" data-artist="NESTALGIA"/, 'a drillable row (same data-artist the card uses)');
-  assert.match(withAvatar, /class="maa-img" src="https:\/\/yt3\.example\/n\.jpg"/, 'the channel avatar in the row circle');
+  // UI pass S7: a ui-row <button> (the whole row drills) with a ui-avatar circle over its monogram
+  assert.match(withAvatar, /<button type="button" class="music-artist-row ui-row ui-row--default" role="listitem" data-artist="NESTALGIA"/, 'a drillable row (same data-artist the card uses)');
+  assert.match(withAvatar, /class="ui-avatar ui-avatar--md music-artist-row-circle"><span class="ui-avatar__mono maa-mono" data-tone="\d">N<\/span><img class="ui-avatar__img maa-img" src="https:\/\/yt3\.example\/n\.jpg"/, 'the channel avatar over its monogram in the row circle');
+  assert.match(withAvatar, /<span class="ui-row__aside music-artist-row-count">352 songs<\/span>/, 'the count in the aside column');
   assert.match(withAvatar, />NESTALGIA</, 'the name');
   assert.match(withAvatar, />352 songs</, 'the song count');
   // A native/ripped artist (no avatar) uses its album art in the circle.
   const native = buildArtistListRowHtml({ artist: 'Pink Floyd', trackCount: 1, avatarUrl: '', artIds: ['a1'] });
-  assert.match(native, /class="art-shimmer" src="\/albumart\/a1\?s=\d+"/, 'no avatar -> album art fills the row circle');
+  assert.match(native, /class="ui-avatar__img art-shimmer" src="\/albumart\/a1\?s=\d+"/, 'no avatar -> album art fills the row circle');
   assert.match(native, />1 song</, 'singular count');
 });
 
@@ -187,8 +191,8 @@ test('redesign: buildMusicShelfHtml renders a titled shelf with a See-all + a ho
   const html = buildMusicShelfHtml('Your artists', 'artists', '<button class="music-artist-card">x</button>');
   assert.match(html, /class="music-shelf"/, 'a shelf section');
   assert.match(html, /class="music-shelf-title">Your artists</, 'the title');
-  assert.match(html, /class="music-shelf-seeall" data-seeall="artists">See all</, 'a See-all that targets the tab');
-  assert.match(html, /class="music-shelf-row"><button class="music-artist-card">x<\/button>/, 'the tiles inside a scroll row');
+  assert.match(html, /class="ui-btn ui-btn--plain ui-btn--sm music-shelf-seeall" data-seeall="artists"><span class="ui-btn__label">See all</, 'a See-all (a plain ui-btn, UI pass S7) that targets the tab');
+  assert.match(html, /class="music-shelf-strip"><button class="music-artist-card">x<\/button>/, 'the tiles inside a scroll strip (step 7: a strip, not a row control)');
 });
 
 test('redesign: a shelf with no See-all target omits the See-all button', () => {
@@ -198,7 +202,7 @@ test('redesign: a shelf with no See-all target omits the See-all button', () => 
 
 test('redesign S1: buildJumpBackTileHtml renders a resume tile (data-id, /albumart art, title, artist)', () => {
   const html = buildJumpBackTileHtml({ id: 'trk9', title: 'Sonic 2 Coding', artist: 'NESTALGIA' });
-  assert.match(html, /class="music-jump-tile" data-id="trk9"/, 'the tile carries the track id for the resume tap');
+  assert.match(html, /class="ui-tile music-jump-tile" data-id="trk9"/, 'the tile (a ui-tile, step 7) carries the track id for the resume tap');
   assert.match(html, /class="music-jump-art art-shimmer" src="\/albumart\/trk9\?s=\d+"/, 'art via /albumart (falls back to the thumbnail for a library track), art-shimmer');
   assert.match(html, />Sonic 2 Coding</, 'the title');
   assert.match(html, />NESTALGIA</, 'the artist');
@@ -221,10 +225,16 @@ test('T9: buildSongRowHtml carries the index + id, escaped title, duration, and 
   assert.match(html, /Song &quot;One&quot;/, 'title escaped');
   assert.match(html, /3:20/, 'duration formatted');
   assert.match(html, /music-like-btn liked/, 'liked state reflected');
-  // v1.102 (tranche 4): the like glyph is the inline chrome-icon heart svg, not a
-  // decode-lagging `.icon-heart` mask (single heart, still no -filled variant).
-  assert.match(html, /class="chrome-icon"[^>]*><path d="m480-120/, 'the like glyph is the inline chrome-icon heart svg');
+  // UI pass S7: the like is a two-state ui-btn icon toggle - aria-pressed, the registry's
+  // favorite / favorite.fill (the swap ui.setPressed makes), ink never red; no .icon-heart mask.
+  assert.match(html, /<button type="button" class="ui-btn ui-btn--plain ui-btn--sm ui-btn--icon music-like-btn liked" data-like-id="t1" aria-pressed="true" data-icon-off="favorite" data-icon-on="favorite\.fill"[^>]*><span class="ui-btn__icon"><svg class="ui-icon ui-icon--md"[^>]*><use href="#i-favorite-fill"\/>/, 'the like glyph is the filled registry heart when liked');
   assert.doesNotMatch(html, /icon-heart/, 'no .icon-heart mask <i> survives in the song row');
+  // the row is a ui-row with every slot, three reserved action slots, the title as its stretched link
+  assert.match(html, /^<div class="music-song-row ui-row ui-row--media" role="listitem"/, 'a ui-row');
+  for (const part of ['ui-row__lead', 'ui-row__media', 'ui-row__body', 'ui-row__aside', 'ui-row__actions']) assert.ok(html.includes('class="' + part), part);
+  assert.match(html, /<span class="ui-row__title music-song-title"><button type="button" class="ui-row__link music-song-play"/, 'the title is the row link');
+  assert.match(html, /music-queue-btn[\s\S]*music-like-btn[\s\S]*music-song-more/, 'queue, like, menu - in that order');
+  assert.match(html, /<span class="ui-row__aside music-song-duration">3:20<\/span>/, 'the length in the aside column');
 });
 
 test('T9: buildSongRowHtml unliked has no liked class', () => {
@@ -265,9 +275,9 @@ test('v1.104: buildNowPlayingPanelHtml renders escaped title + "artist · album"
   );
   assert.match(html, /class="mnp-title"[^>]*>Song &quot;1&quot;/, 'title escaped');
   // v1.317 (M1): the line is the artist-drill BUTTON now (data-artist), still escaped.
-  assert.match(html, /<button type="button" class="mnp-sub" data-artist="A &amp; B"[^>]*>A &amp; B · Alb&lt;x&gt;<\/button>/, 'artist · album, escaped, as the artist-drill button');
+  assert.match(html, /<button type="button" class="ui-link ui-link--block mnp-sub" data-artist="A &amp; B"[^>]*>A &amp; B · Alb&lt;x&gt;<\/button>/, 'artist · album, escaped, as the artist-drill button (a ui-link, step 7)');
   assert.match(html, /class="mnp-queue-head">Up next/);
-  assert.match(html, /class="mnp-queue-row" data-index="3"[\s\S]*src="\/albumart\/t2\?s=\d+"[\s\S]*>Two</, 'first up-next row carries its real queue index + thumb');
+  assert.match(html, /class="mnp-queue-row ui-row ui-row--default" data-index="3"[\s\S]*src="\/albumart\/t2\?s=\d+"[\s\S]*>Two</, 'first up-next row (a ui-row, step 7) carries its real queue index + thumb');
   assert.match(html, /data-index="4"[\s\S]*>Three</);
   assert.ok((html.match(/art-shimmer/g) || []).length === 2, 'each up-next thumb ships art-shimmer (reveal-once)');
 });
@@ -424,15 +434,15 @@ const { channelFolderOf } = require('../../public/js/music.js');
 
 test('v1.317 (M1): buildSongRowHtml renders the artist as a data-artist button (escaped), the album as plain text; no artist = no control', () => {
   const html = buildSongRowHtml({ id: 's1', title: 'T', artist: 'A & "B"', album: 'Alb<x>', durationSec: 61 }, 0);
-  assert.match(html, /<span class="music-song-sub"><button type="button" class="music-song-artist" data-artist="A &amp; &quot;B&quot;"[^>]*>A &amp; &quot;B&quot;<\/button> · Alb&lt;x&gt;<\/span>/, 'the artist button + the plain album');
+  assert.match(html, /<span class="ui-row__meta music-song-sub"><button type="button" class="ui-link music-song-artist" data-artist="A &amp; &quot;B&quot;"[^>]*>A &amp; &quot;B&quot;<\/button> · Alb&lt;x&gt;<\/span>/, 'the artist button + the plain album');
   const bare = buildSongRowHtml({ id: 's2', title: 'T', artist: '', album: 'Solo' }, 1);
   assert.doesNotMatch(bare, /music-song-artist/, 'an empty artist renders no control');
-  assert.match(bare, /class="music-song-sub"> · Solo</, 'the album still shows');
+  assert.match(bare, /class="ui-row__meta music-song-sub">Solo</, 'the album still shows (no leading separator without an artist)');
 });
 
 test('v1.317 (M1): the album drill header artist line is a data-artist button (the artist drill), escaped', () => {
   const html = buildDrillHeaderHtml({ type: 'album', label: 'Kid A' }, [{ id: 't1', album: 'Kid A', albumArtist: 'Radio"head', artist: 'x' }]);
-  assert.match(html, /<button type="button" class="music-drill-artist" data-artist="Radio&quot;head"[^>]*>Radio&quot;head<\/button>/);
+  assert.match(html, /<button type="button" class="ui-link ui-link--block music-drill-artist" data-artist="Radio&quot;head"[^>]*>Radio&quot;head<\/button>/);
 });
 
 test('v1.317 (M2): buildNowPlayingPanelHtml renders each row\'s own length - an explicit durLabel wins, else derived from durationSec, none for 0/missing', () => {
@@ -442,9 +452,13 @@ test('v1.317 (M2): buildNowPlayingPanelHtml renders each row\'s own length - an 
     { id: 'c', title: 'Three', index: 2, durationSec: 0 },
     { id: 'd', title: 'Four', index: 3 },
   ]);
-  assert.match(html, /data-index="0"[\s\S]*?<span class="mnp-queue-dur">3:05<\/span><\/button>/, 'the explicit label, after the title block');
-  assert.match(html, /data-index="1"[\s\S]*?<span class="mnp-queue-dur">1:40<\/span><\/button>/, 'derived from durationSec');
-  assert.strictEqual((html.match(/mnp-queue-dur/g) || []).length, 2, 'a 0/missing duration renders NO span');
+  // step 7 (retire R2, deliberate): the length is the ui-row's aside column, before the (empty)
+  // actions slot; a row without one keeps the reserved aside slot but not the hook class
+  assert.match(html, /data-index="0"[\s\S]*?<span class="ui-row__aside mnp-queue-dur">3:05<\/span><span class="ui-row__actions"><\/span><\/button>/, 'the explicit label, after the title block');
+  assert.match(html, /data-index="1"[\s\S]*?<span class="ui-row__aside mnp-queue-dur">1:40<\/span><span class="ui-row__actions"><\/span><\/button>/, 'derived from durationSec');
+  assert.strictEqual((html.match(/mnp-queue-dur/g) || []).length, 2, 'a 0/missing duration renders NO length span');
+  assert.strictEqual((html.match(/<span class="ui-row__aside"><\/span>/g) || []).length, 2, 'their aside slot stays reserved and empty');
+  assert.match(html, /class="mnp-queue ui-list ui-list--default ui-list--media-art ui-list--aside-text"/, 'a list with lengths declares the aside column');
 });
 
 test('v1.317 (M1): buildNowPlayingPanelHtml keeps the plain sub-line (no data-artist) when the track has an album but no artist', () => {
@@ -493,7 +507,7 @@ test('v1.317 gate r1 W2: an EMPTY drill never requests /albumart/ with an empty 
   assert.match(header, /<h3 class="music-drill-title" title="Ghost">Ghost<\/h3>/, 'the name still heads the drill');
   const sticky = buildStickyBarHtml({ type: 'artist', label: 'Ghost' }, []);
   assert.doesNotMatch(sticky, /\/albumart\//);
-  assert.match(sticky, /<img class="music-sticky-thumb" alt="" \/>/);
+  assert.match(sticky, /<span class="ui-art ui-avatar--md music-sticky-art"><img class="ui-avatar__img music-sticky-thumb" alt="" \/><\/span>/, 'the ui-art slot (step 7) stays, srcless');
   // the populated axis is unchanged
   assert.match(buildDrillHeaderHtml({ type: 'artist', label: 'X' }, [{ id: 't9' }]), /src="\/albumart\/t9\?s=\d+"/);
 });
@@ -502,12 +516,12 @@ test('v1.317 gate r1 W2: buildNowPlayingPanelHtml honours the view\'s veto - art
   const html = buildNowPlayingPanelHtml({ title: 'S', artist: 'The Channel', album: 'Vid', artistTap: false }, []);
   assert.match(html, /<div class="mnp-sub">The Channel · Vid<\/div>/, 'a div');
   assert.doesNotMatch(html, /data-artist/);
-  assert.match(buildNowPlayingPanelHtml({ title: 'S', artist: 'A', artistTap: true }, []), /<button type="button" class="mnp-sub" data-artist="A"/, 'true keeps the control');
+  assert.match(buildNowPlayingPanelHtml({ title: 'S', artist: 'A', artistTap: true }, []), /<button type="button" class="ui-link ui-link--block mnp-sub" data-artist="A"/, 'true keeps the control');
 });
 
 test('v1.317 gate r2 S4: the panel line\'s tooltip names its target - "Go to channel" when the view says so, else "Go to artist"', () => {
-  assert.match(buildNowPlayingPanelHtml({ title: 'S', artist: 'The Channel', artistTitle: 'Go to channel' }, []), /<button type="button" class="mnp-sub" data-artist="The Channel" title="Go to channel">/);
-  assert.match(buildNowPlayingPanelHtml({ title: 'S', artist: 'A' }, []), /<button type="button" class="mnp-sub" data-artist="A" title="Go to artist">/, 'the default');
+  assert.match(buildNowPlayingPanelHtml({ title: 'S', artist: 'The Channel', artistTitle: 'Go to channel' }, []), /<button type="button" class="ui-link ui-link--block mnp-sub" data-artist="The Channel" title="Go to channel">/);
+  assert.match(buildNowPlayingPanelHtml({ title: 'S', artist: 'A' }, []), /<button type="button" class="ui-link ui-link--block mnp-sub" data-artist="A" title="Go to artist">/, 'the default');
   assert.match(buildNowPlayingPanelHtml({ title: 'S', artist: 'A', artistTitle: '' }, []), /title="Go to artist"/, 'an empty title keeps the default');
 });
 

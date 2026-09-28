@@ -88,19 +88,23 @@ test('shimmerArt: scoped to its root, tolerant of a non-element arg', () => {
 
 const ART_SITES = [
   ['public/js/music.js', 'class="music-album-art art-shimmer"'],
-  ['public/js/music.js', 'class="music-song-thumb art-shimmer"'],
+  ['public/js/music.js', 'class="music-song-thumb ui-avatar__img art-shimmer"'], // UI pass S7: the song row's art is the ui-art box's image
   ['public/js/music.js', 'class="music-drill-art art-shimmer"'],
-  ['public/js/music.js', 'class="music-sticky-thumb art-shimmer"'],
+  ['public/js/music.js', 'class="ui-avatar__img music-sticky-thumb art-shimmer"'], // step 7 (retire R2, deliberate): the sticky bar's thumb is the ui-art box's image
   ['public/js/music.js', 'class="art-shimmer" src="\' + escapeMusicHtml(albumArtSrc('], // v1.103: the artist mosaic tile (v1.339: the sized, shared art URL)
-  ['public/js/podcasts.js', "'podcast-card-art art-shimmer'"],
-  ['public/js/podcasts.js', "'podcast-show-art art-shimmer'"],
-  ['public/js/books.js', 'class="book-cover-img art-shimmer"'],
-  ['public/js/history.js', 'class="history-thumb-img art-shimmer"'],
-  ['public/js/main.js', "img.className = 'art-shimmer';"],
+  // UI pass S6: the show row and the show header share ONE art builder (podcasts.js showArtEl,
+  // a ui.avatar kind 'podcast' whose img takes the class); podcasts-ui-sweep.test.js binds both
+  // rendered imgs carrying it.
+  ['public/js/podcasts.js', "img.classList.add('art-shimmer')"],
+  ['public/js/books.js', "img.classList.add('art-shimmer');"], // UI pass S10: the ui.thumb cover's img (books-reader-ui.test.js runs it)
+  // UI pass sweep S2: History's row thumb and the Modern avatar bar are ui
+  // primitives built as DOM; their image takes the class after the build.
+  ['public/js/history.js', "if (img) img.classList.add('art-shimmer');"],
+  ['public/js/main.js', "if (img) img.classList.add('art-shimmer');"],
 ];
 
-test('all 10 art image sites ship the art-shimmer class (prediction: exactly 10)', () => {
-  assert.strictEqual(ART_SITES.length, 10, 'the audit predicted 10 art img sites (v1.103: +artist mosaic tile)');
+test('all 9 art image sites ship the art-shimmer class (prediction: exactly 9)', () => {
+  assert.strictEqual(ART_SITES.length, 9, 'the audit predicted 10 art img sites (v1.103: +artist mosaic tile); UI pass S6 folded podcasts\' two into one builder');
   for (const [file, needle] of ART_SITES) {
     assert.ok(read(file).includes(needle), `${file} ships ${needle}`);
   }
@@ -126,7 +130,7 @@ test('every surface hands its rendered art to FileTube.shimmerArt (music: reveal
 
 test('the CSS shimmer rides the img background (token-only, reduced-motion carve-out)', () => {
   const css = read('public/css/style.css');
-  assert.match(css, /img\.art-shimmer\s*\{[\s\S]*?background-image: linear-gradient\([^)]*var\(--bg-secondary\)[^)]*var\(--border-color\)/,
+  assert.match(css, /img\.art-shimmer\s*\{[\s\S]*?background-image: linear-gradient\([^)]*var\(--surface-2\)[^)]*var\(--separator\)/,
     'a token-only gradient (no raw literal) on the img background');
   assert.match(css, /@keyframes art-shimmer-sweep/, 'its own background-position sweep keyframe');
   assert.match(css, /prefers-reduced-motion: reduce\)\s*\{\s*img\.art-shimmer \{ animation: none/,

@@ -50,7 +50,7 @@ function createPocketHarness(env) {
     global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
     global.Event = dom.window.Event;
     global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
-    dom.window.matchMedia = (q) => ({ matches: /max-width:\s*768px/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+    dom.window.matchMedia = (q) => ({ matches: /max-width:\s*768px|pointer:\s*coarse/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
     dom.window.scrollTo = function () {};
     const log = [];
     const failed = new Set();

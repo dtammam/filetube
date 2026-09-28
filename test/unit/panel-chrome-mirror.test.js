@@ -17,8 +17,8 @@
 // The locks:
 //   - the BASE `select` element rule exists with the tokened declarations
 //     (the structural fix: the styled path is the default);
-//   - the queue/notif panel chrome pairs are declaration-IDENTICAL (edit
-//     either side and this forces the other, or a deliberate lock update);
+//   - (sweep S4) the queue and notification panels are ONE primitive (ui.sheet), so the
+//     v1.68.3 declaration mirror became "no hand-built panel family is styled again";
 //   - the queue panel's empty posture (no auto-close, the bell-style copy)
 //     is bound as comment-stripped source (execution vacuity disclosed
 //     under tech-debt #78's class - the DOM chrome has no jsdom harness).
@@ -31,12 +31,14 @@ const path = require('node:path');
 const REPO = path.join(__dirname, '..', '..');
 const STYLE_CSS = fs.readFileSync(path.join(REPO, 'public', 'css', 'style.css'), 'utf8');
 const COMMON_JS = fs.readFileSync(path.join(REPO, 'public', 'js', 'common.js'), 'utf8');
+const { cssRules } = require('../helpers/stylesheets');
 
 // Extract a rule's declarations as a SORTED array of `prop: value` strings,
-// comments stripped - order-insensitive, whitespace-insensitive.
+// comments stripped - order-insensitive, whitespace-insensitive. A rule may be
+// indented: UI pass step 4 (AC6) moved every :hover rule inside @media (hover: hover).
 function declarations(css, selector) {
   const esc = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`(?:^|\\n)${esc} \\{([\\s\\S]*?)\\}`);
+  const re = new RegExp(`(?:^|\\n)[ ]*${esc} \\{([\\s\\S]*?)\\}`);
   const m = re.exec(css);
   assert.ok(m, `rule found: ${selector}`);
   return m[1]
@@ -56,77 +58,87 @@ test('a BASE `select` element rule exists and carries the full tokened control s
     'border: 1px solid var(--border-dark)',
     'border-radius: var(--radius)',
     'font-size: var(--fs-base)',
-    'background-color: var(--bg-color)',
-    'color: var(--text-primary)',
+    'background-color: var(--surface-0)',
+    'color: var(--ink-1)',
     'cursor: pointer',
   ]) {
     assert.ok(decls.includes(required), `base select rule carries: ${required}`);
   }
 });
 
-test('the base select rule mirrors .setup-select (the settings pattern it was lifted from)', () => {
-  assert.deepStrictEqual(declarations(STYLE_CSS, 'select'), declarations(STYLE_CSS, '.setup-select'),
-    'base select and .setup-select must not drift apart');
+// Retire R3 (DELIBERATE conversion): the base rule was lifted from .setup-select and locked
+// declaration-identical to it so the two could not drift. The .setup-select class is retired
+// with its last select (every select is a ui-select__native now), so there is no twin left to
+// drift from: the lock pins that the retired rule stays gone rather than comparing to it.
+test('the base select rule stands alone: its .setup-select twin is retired (no rule, no markup)', () => {
+  const stripped = STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(!/\.setup-select\b/.test(stripped), 'no .setup-select rule survives');
+  const subs = fs.readFileSync(path.join(REPO, 'lib', 'ytdlp', 'client', 'subscriptions.js'), 'utf8');
+  assert.ok(!/'setup-select'/.test(subs), 'the Subscriptions select builders no longer default to it');
 });
 
-// ---- queue panel chrome mirrors the notification panel ----------------------
-
-for (const [queueSel, notifSel] of [
-  ['.queue-panel-header', '.notif-panel-header'],
-  ['.queue-clear-btn', '.notif-clear-btn'],
-  ['.queue-clear-btn:hover', '.notif-clear-btn:hover'],
-  ['.queue-empty', '.notif-empty'],
-]) {
-  test(`panel mirror: ${queueSel} is declaration-identical to ${notifSel}`, () => {
-    assert.deepStrictEqual(declarations(STYLE_CSS, queueSel), declarations(STYLE_CSS, notifSel),
-      `${queueSel} must carry exactly ${notifSel}'s declarations - one panel design language`);
-    // Gate v1.68.3 S2 (measured): the extractor reads the FIRST top-level
-    // rule; a later duplicate override could drift the render behind a
-    // green mirror. Each locked selector must define exactly ONE rule.
-    for (const sel of [queueSel, notifSel]) {
-      const esc = sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const count = (STYLE_CSS.match(new RegExp(`(?:^|\\n)${esc} \\{`, 'g')) || []).length;
-      assert.strictEqual(count, 1, `${sel} defined exactly once - no shadowing duplicate`);
-    }
-  });
-}
-
-// ---- the sticky panel headers outrank their scrolling rows ------------------
+// ---- the queue and notification panels: ONE primitive (sweep S4) ------------
 //
-// The bug (Dean, on-device): the notif/queue panel header is `position: sticky`
-// and its rows carry positioned descendants (`.notif-row-thumb-wrap` is
-// `position: relative` for the duration badge). Both default to `z-index: auto`,
-// so CSS paint order draws the later-in-DOM thumbnails OVER the sticky header as
-// they scroll under it - the "17:32" thumbnail bled across "Notifications /
-// Clear all". A `z-index` on the header restores the header as the top layer.
-// The mirror lock above would NOT catch a regression that drops z-index from
-// BOTH (still identical, still green), so bind the property directly.
-for (const sel of ['.notif-panel-header', '.queue-panel-header']) {
-  test(`${sel} declares a z-index so it paints above the positioned rows scrolling under it`, () => {
-    const decls = declarations(STYLE_CSS, sel);
-    assert.ok(decls.some((d) => /^z-index: \S/.test(d)),
-      `${sel} must carry a z-index - a sticky header with z-index:auto is painted UNDER later positioned rows`);
-  });
-}
+// v1.68.3 locked the two hand-built panels' chrome declaration-identical (header, Clear
+// button, empty state) so they could not drift apart. Sweep S4 (AC12 conversion) makes the
+// drift impossible by construction: both panels ARE ui.sheet, their rows ui-rows, their
+// empty states ui.state, their Clear buttons ui.button - and the one surface rule they keep
+// is shared. What the mirror guarded is bound here as: no stylesheet still styles either
+// hand-built family, the shared rule is ONE rule naming both, and (behaviourally, in
+// notif-panel-sheet.test.js) both panels render through the same builders.
+const UI_CSS = fs.readFileSync(path.join(REPO, 'public', 'css', 'ui.css'), 'utf8');
+test('panel mirror (sweep S4): neither retired panel family has a rule left; the Clear rows share ONE rule', () => {
+  for (const r of cssRules(STYLE_CSS)) {
+    assert.doesNotMatch(r.sel, /\.(?:notif|queue)-(?:panel|row|clear|empty)\b/, `a retired panel selector is styled again: ${r.sel}`);
+  }
+  const tools = cssRules(STYLE_CSS).filter((r) => /\.(?:notif|queue)-sheet__tools/.test(r.sel));
+  assert.strictEqual(tools.length, 1, 'one rule');
+  assert.match(tools[0].sel, /\.notif-sheet__tools/);
+  assert.match(tools[0].sel, /\.queue-sheet__tools/);
+});
 
-// The header z-index alone is NOT sufficient (Dean, second on-device report):
-// the notif rows' `.duration-badge` is `position: absolute; z-index: 2` (base
-// rule ~line 1630). `.notif-row-thumb-wrap` is only `position: relative`, which
-// does NOT create a stacking context, so the badge's z-index:2 escapes to the
-// panel root and beats the header's z-index:1 - the "1:38:12" badge bled across
-// the header even after the header fix. `.notif-row-thumb-wrap` must establish a
-// stacking context (isolation / z-index / transform / opacity<1 / filter) so the
-// badge is contained WITHIN the row and the header always wins. Bind that.
-test('.notif-row-thumb-wrap establishes a stacking context so the z-index:2 duration badge cannot escape over the sticky header', () => {
-  const decls = declarations(STYLE_CSS, '.notif-row-thumb-wrap');
-  const createsStackingContext = decls.some((d) =>
-    /^isolation: isolate$/.test(d) ||
-    /^z-index: \S/.test(d) ||
-    /^transform: (?!none$)\S/.test(d) ||
-    /^filter: (?!none$)\S/.test(d) ||
-    /^opacity: 0?\.\d/.test(d));
-  assert.ok(createsStackingContext,
-    '.notif-row-thumb-wrap must create a stacking context (e.g. isolation: isolate) - otherwise the absolute z-index:2 .duration-badge inside it paints OVER the sticky panel header');
+// ---- nothing scrolls under the panel header (v1.68.3's two device reports) ----
+//
+// The bug (Dean, on-device, twice): the old panels' header was position:sticky INSIDE the
+// scroller, and the rows' positioned thumbnails - then the z-index:2 duration badge, which
+// escaped the thumb wrapper to the panel root - painted OVER it as they scrolled under. The
+// v1.68.3 fix was a z-index on the header plus `isolation: isolate` on the thumb wrapper.
+// Sweep S4 keeps the guarantee by structure, and binds each link: the ui.sheet header is a
+// SIBLING of the one scroller (.ui-sheet__body), never inside it, so nothing in the list can
+// scroll under it; the scroller clips its content; and the duration badge's container
+// (.ui-thumb) is a positioned, clipping box with no z-index stacked above it anywhere.
+test('the panel header sits OUTSIDE the scroller, and the scroller clips (no row can scroll under the header)', () => {
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<!doctype html><body></body>');
+  const ui = require('../../public/js/ui.js');
+  const sheet = ui.sheet({ variant: 'dialog', title: 'Notifications', content: dom.window.document.createElement('div'), doc: dom.window.document, win: dom.window });
+  const header = sheet.el.querySelector('.ui-sheet__header');
+  assert.ok(header && header.parentNode === sheet.el, 'the header is a direct child of the sheet');
+  assert.ok(!sheet.body.contains(header), 'the header is never inside the scrolling body');
+  const rule = (sel) => cssRules(UI_CSS).find((r) => r.sel === sel && r.at === '');
+  assert.match(rule('.ui-sheet__body').body, /overflow-y:\s*auto/, 'the body is the scroller');
+  assert.match(rule('.ui-sheet').body, /overflow:\s*hidden/, 'the sheet clips (the anti-bleed split)');
+  assert.doesNotMatch(rule('.ui-sheet__body').body, /border-radius/, 'the scroller carries no radius (LESSONS 6)');
+  dom.window.close();
+});
+
+// The v1.68.3 isolation assertion, kept on the badge's container in the panel: it must
+// establish a stacking context (a drop of the rule, or of the declaration, reds this).
+test('the panel thumbnail (the duration badge\'s container) establishes a stacking context', () => {
+  const decls = declarations(STYLE_CSS, '.notif-sheet .ui-thumb');
+  assert.ok(decls.some((d) => /^isolation: isolate$/.test(d) || /^z-index: \S/.test(d)),
+    '.notif-sheet .ui-thumb must create a stacking context (isolation: isolate)');
+});
+
+test('the duration badge stays inside its thumbnail: .ui-thumb is positioned and clipping, the badge carries no z-index', () => {
+  const thumb = cssRules(UI_CSS).find((r) => r.sel === '.ui-thumb' && r.at === '');
+  assert.match(thumb.body, /position:\s*relative/);
+  assert.match(thumb.body, /overflow:\s*hidden/);
+  for (const css of [UI_CSS, STYLE_CSS]) {
+    for (const r of cssRules(css)) {
+      if (/ui-thumb__duration/.test(r.sel)) assert.doesNotMatch(r.body, /z-index/, `no z-index lifts the badge: ${r.sel}`);
+    }
+  }
 });
 
 // ---- the queue empty posture (comment-stripped source locks) ----------------
@@ -151,8 +163,10 @@ test('an OPEN queue panel never auto-closes on empty: setChrome contains NO clos
 });
 
 test('the empty queue renders the bell-style empty message', () => {
+  // Sweep S4: the empty state is a ui.state (title + body) - the same copy, split. The
+  // rendered empty panel is driven in queue-panel-sheet.test.js.
   assert.ok(
-    STRIPPED_COMMON.includes("renderEmpty('No queued items yet. Items you queue up to play show here.')"),
-    'the exact empty copy, in the renderRows zero-models path'
+    STRIPPED_COMMON.includes("U.state({ icon: 'queue_music', title: 'No queued items yet', body: 'Items you queue up to play show here.'"),
+    'the exact empty copy, in the renderEmpty path'
   );
 });

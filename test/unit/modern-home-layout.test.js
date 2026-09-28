@@ -85,24 +85,32 @@ test('maybeLoadNextPage has a modern branch that APPENDS the next page (never re
   const modernBranch = fn.slice(fn.indexOf('if (modernMode) {'));
   assert.match(modernBranch, /buildModernGridUrl\(nextOffset\)/, 'fetches the NEXT page URL');
   assert.match(modernBranch, /if \(token !== modernReqToken\) return/, 'a chip/sort change mid-fetch drops the stale append');
-  assert.match(modernBranch, /videoGrid\.insertAdjacentHTML\('beforeend'/, 'APPENDS cards (never innerHTML-replaces)');
+  assert.match(modernBranch, /putCards\(fresh, true\);/, 'APPENDS cards (never replaces; sweep S2: DOM cards via putCards)');
 });
 
-test('(v1.86.2 #2) the card delete second tap deletes STRAIGHT to trash - no checkbox-modal escalation', () => {
-  // Dean: revert the card trash icon to the pre-YouTube-feed inline 2-tap.
-  const handler = MAIN.slice(MAIN.indexOf("closest('.card-delete-btn')"), MAIN.indexOf("closest('.card-delete-btn')") + 1400);
-  assert.match(handler, /if \(result\.deleted\) \{[\s\S]*deleteCardById\(id\)/, 'the confirming tap deletes directly');
-  assert.doesNotMatch(handler, /showHardDeleteModal|isYtdlpManagedItem/, 'the card no longer escalates local files to the checkbox hard-delete modal');
+// UI pass sweep S2 (D8.5, D4.8 F33; supersedes the v1.86.2 inline two-tap - AC12):
+// the card's Delete is a menu entry that asks ONE ui.confirm (Move to Trash) and
+// only then calls the trash delete - still never the checkbox-gated hard-delete
+// modal (the v1.86.2 friction Dean removed from the feed stays removed).
+test('(v1.86.2 #2, converted) the card Delete asks one ui.confirm then deletes to trash - no checkbox-modal escalation', () => {
+  const fn = MAIN.slice(MAIN.indexOf('async function confirmAndDeleteCard(item) {'), MAIN.indexOf('// Runs one menu action for one card'));
+  // Gate r1 (adversary 3, DELIBERATE lock update): the confirm now carries the router's
+  // shown-view signal (card-action-menu-fullchain binds that behaviourally).
+  assert.match(fn, /const ok = await u\.confirm\(Object\.assign\(\{\}, cardDeleteConfirmCopy\(item\), \{ signal: shown \}\)\);\s*if \(ok !== true\) return;[\s\S]*deleteCardById\(item\.id\);/, 'the confirm resolves true, then the trash delete');
+  assert.doesNotMatch(fn, /showHardDeleteModal/, 'the card never escalates to the checkbox hard-delete modal');
+  assert.doesNotMatch(MAIN, /card-delete-btn|nextArmState/, 'the inline two-tap arm is gone');
 });
 
-test('(v1.87.1 Dean) the sort control is an inline keyboard_arrow_down chrome-icon svg, not a mask or a ▾ text caret', () => {
-  const fn = MAIN.slice(MAIN.indexOf('function injectModernHeaderSort'), MAIN.indexOf('function injectModernHeaderSort') + 2600);
-  // v1.87.1: inline <svg> (chromeIconEl('caret')) rather than the v1.86.3
-  // `.icon-arrow-down` MASK - a mask decode-lags -> pop-in on a mobile cold
-  // start (the whole point of this wave). Still a 1em glyph sized like the
-  // download/search icons.
-  assert.match(fn, /chromeIconEl\('caret', 'modern-sort-caret'\)/,
-    'the caret is an inline chrome-icon svg (keyboard_arrow_down)');
-  assert.doesNotMatch(fn, /caret\.className = 'icon-arrow-down/, 'no leftover arrow-down mask caret');
-  assert.doesNotMatch(fn, /textContent = '▾'/, 'no ▾ text-character caret (it read half-height vs the icon family)');
+// v1.87.1 (Dean): the sort glyph paints from the sprite (no mask decode-lag pop-in on a cold
+// start). Sweep S9 (F31, F46): it is a header ui-btn drawing the registry `sort` glyph (the
+// same 22px icon box as every header glyph), and its options are a ui.menu with the current
+// sort a trailing ink CHECK - never red text in a hand-built list.
+test('(v1.87.1 Dean, sweep S9) the sort control is a header ui-btn with the sprite sort glyph, opening a ui.menu whose current sort is CHECKED', () => {
+  const fn = MAIN.slice(MAIN.indexOf('function injectModernHeaderSort'), MAIN.indexOf('function injectModernHeaderSort') + 3200);
+  assert.match(fn, /chromeButtonEl\(\{ icon: 'sort', ariaLabel: 'Sort', cls: 'modern-sort-btn' \}\)/, 'a header ui-btn with the sprite glyph');
+  assert.doesNotMatch(fn, /icon-arrow-down|textContent = '▾'|modern-sort-caret/, 'no mask, no text caret');
+  assert.match(fn, /window\.ui\.menu\(\{/, 'the options are a ui.menu');
+  assert.match(fn, /checked: val === activeModernSort/, 'the current sort is the checked item (ink check, F46)');
+  assert.match(fn, /signal: sig/, 'the menu closes with the view');
+  assert.doesNotMatch(fn, /sort-menu|\.active\b|li\.classList/, 'no hand-built list with an active (red) item');
 });

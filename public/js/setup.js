@@ -63,7 +63,7 @@ function escapeHtml(text) {
 }
 
 // v1.157 (P3, crispness): a shape-matched skeleton for the configured-folder
-// list -- N `.folder-item-row`-height shimmer rows (a title bar over a shorter
+// list -- N `.folder-item`-height shimmer cards (a title bar over a shorter
 // meta bar, mirroring renderFolders' real row) reserved BEFORE /api/config
 // resolves so the list does not paint empty then pop in on an in-app nav to
 // Settings. Reuses the shared `.skeleton-shimmer`/`.skeleton-line` primitives.
@@ -71,11 +71,11 @@ function buildSetupFolderSkeleton(n) {
   const count = Number.isInteger(n) && n > 0 ? n : 0;
   let html = '';
   for (let i = 0; i < count; i++) {
-    html += '<div class="folder-item-row" aria-hidden="true">'
-      + '<span class="drag-handle"></span>'
-      + '<div style="flex:1; min-width:0;">'
+    html += '<div class="folder-item" aria-hidden="true">'
+      + '<span class="ui-reorder__handle"></span>'
+      + '<div class="folder-item-body">'
       + '<div class="skeleton-shimmer skeleton-line skeleton-line-title"></div>'
-      + '<div class="skeleton-shimmer skeleton-line" style="margin-top:8px; max-width:55%;"></div>'
+      + '<div class="skeleton-shimmer skeleton-line folder-item-skeleton-meta"></div>'
       + '</div></div>';
   }
   return html;
@@ -123,7 +123,6 @@ async function loadConfig() {
       folderList.innerHTML = '';
       const note = document.createElement('div');
       note.className = 'config-load-error';
-      note.style.cssText = 'padding: var(--space-3) 0; color: var(--text-secondary);';
       note.textContent = CONFIG_NOT_LOADED_MESSAGE;
       folderList.appendChild(note);
     }
@@ -166,6 +165,28 @@ function buildGlyphOptionsHtml(selected, includeDefault) {
 }
 
 // Render configured folder rows in wizard
+// Sweep S8: the shared Remove control of every configured-folder row (a ui-btn icon
+// button over the registry's close glyph; it was a U+00D7 text glyph) and its confirm.
+const FOLDER_SELECT_CHEVRON = '<svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg>';
+function folderRemoveBtnHtml(folder, index) {
+  return '<button type="button" class="ui-btn ui-btn--plain ui-btn--sm ui-btn--icon folder-remove-btn" data-index="' + index + '"'
+    + ' data-path="' + escapeHtml(folder) + '" aria-label="Remove ' + escapeHtml(folder) + '" title="Remove folder">'
+    + '<span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true"><use href="#i-close"/></svg></span></button>';
+}
+const FOLDER_REMOVE_COPY = {
+  video: 'Its videos leave your library when you save (the files on disk are not touched), along with their watch progress and likes.',
+  book: 'Its books leave the Books library when you save (the files on disk are not touched).',
+  music: 'Its music leaves the Music library when you save (the files on disk are not touched).',
+  tv: 'Its shows leave the Shows library when you save (the files on disk are not touched).',
+};
+function confirmFolderRemove(folder, kind) {
+  return confirmDestructive({
+    title: 'Remove this folder?',
+    body: String(folder || '') + ' - ' + (FOLDER_REMOVE_COPY[kind] || FOLDER_REMOVE_COPY.video),
+    confirmLabel: 'Remove folder',
+  });
+}
+
 function renderFolders() {
   const container = document.getElementById('folders-builder-list');
   if (!container) return;
@@ -178,7 +199,9 @@ function renderFolders() {
   configuredFolders.forEach((folder, index) => {
     const s = folderSettings[folder] || {};
     const row = document.createElement('div');
-    row.className = 'folder-item-row';
+    // Retire R3: a configured folder is a .folder-item card wearing the ui-reorder primitive
+    // (its drag states and grip are ui.css's, shared with every reorder list).
+    row.className = 'folder-item ui-reorder';
     // v1.76: no `draggable` attribute and no up/down buttons. The row is
     // wired to the shared POINTER-event gesture layer below, which is what
     // makes it draggable on a touch screen at all - native HTML5 drag (here
@@ -186,28 +209,31 @@ function renderFolders() {
     // on Dean's phone. The handle is no longer aria-hidden either: it is now
     // the keyboard reorder control that replaces the deleted buttons.
     row.dataset.index = String(index);
+    // Sweep S8: the row's controls are primitives (ui-field input, ui-select, two
+    // ui-switch checkboxes, a ui-btn icon Remove); no inline styles. Every class and
+    // data-index hook the listeners below key off is unchanged.
     row.innerHTML = `
-      <span class="drag-handle" title="Drag to reorder"></span>
-      <div style="flex:1; min-width:0;">
+      <span class="ui-reorder__handle" title="Drag to reorder"></span>
+      <div class="folder-item-body">
         <div class="folder-path-text" title="${escapeHtml(folder)}">${escapeHtml(folder)}</div>
-        <div style="display:flex; gap:10px; align-items:center; margin-top:8px; flex-wrap:wrap;">
-          <input type="text" class="folder-name-input" data-index="${index}" placeholder="Display name (optional)"
-                 value="${escapeHtml(s.name || '')}" style="flex:1; min-width:120px; padding:8px 10px;" />
-          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); white-space:nowrap;">
-            Icon
-            <select class="folder-glyph-select" data-index="${index}" aria-label="Icon for ${escapeHtml(folder)}">
+        <div class="folder-item-controls">
+          <input type="text" class="ui-field__input folder-name-input" data-index="${index}" placeholder="Display name (optional)"
+                 aria-label="Display name for ${escapeHtml(folder)}" value="${escapeHtml(s.name || '')}" />
+          <label class="folder-item-opt">
+            <span>Icon</span>
+            <span class="ui-select"><select class="ui-select__native folder-glyph-select" data-index="${index}" aria-label="Icon for ${escapeHtml(folder)}">
               ${buildGlyphOptionsHtml(s.glyph, false)}
-            </select>
+            </select>${FOLDER_SELECT_CHEVRON}</span>
           </label>
-          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); white-space:nowrap;">
-            <input type="checkbox" class="folder-hidden-check" data-index="${index}" ${s.hidden ? 'checked' : ''} /> Hide from home
+          <label class="folder-item-opt">
+            <input type="checkbox" role="switch" class="ui-switch folder-hidden-check" data-index="${index}" ${s.hidden ? 'checked' : ''} /> <span>Hide from home</span>
           </label>
-          <label style="display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text-secondary); white-space:nowrap;">
-            <input type="checkbox" class="folder-hidden-sidebar-check" data-index="${index}" ${s.hiddenFromSidebar ? 'checked' : ''} /> Hide from sidebar
+          <label class="folder-item-opt">
+            <input type="checkbox" role="switch" class="ui-switch folder-hidden-sidebar-check" data-index="${index}" ${s.hiddenFromSidebar ? 'checked' : ''} /> <span>Hide from sidebar</span>
           </label>
         </div>
       </div>
-      <button class="remove-folder-btn" data-index="${index}" title="Remove folder">&times;</button>
+      ${folderRemoveBtnHtml(folder, index)}
     `;
     container.appendChild(row);
 
@@ -224,7 +250,7 @@ function renderFolders() {
     // text is a static literal (no dynamic/user data), so no innerHTML
     // interpolation of dynamic strings is introduced.
     if (isSyntheticFolder(folder, syntheticFolders)) {
-      const removeBtn = row.querySelector('.remove-folder-btn');
+      const removeBtn = row.querySelector('.folder-remove-btn');
       if (removeBtn) {
         removeBtn.disabled = true;
         removeBtn.title = "This is the auto-managed downloads folder — rename or reorder it here, but it can't be removed (disable the yt-dlp module to remove it).";
@@ -250,8 +276,8 @@ function renderFolders() {
     ? wireReorderable
     : (window.FileTube && window.FileTube.wireReorderable);
   wireRows(container, {
-    rowSelector: '.folder-item-row',
-    handleSelector: '.drag-handle',
+    rowSelector: '.ui-reorder',
+    handleSelector: '.ui-reorder__handle',
     focusKey: 'setup-folders',
     // The box scrolls (and got taller this wave), so a drag near its edge
     // needs the list to come to the pointer.
@@ -307,19 +333,24 @@ function renderFolders() {
     }, { signal: controller.signal });
   });
 
-  // Add delete handlers
-  container.querySelectorAll('.remove-folder-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const index = parseInt(e.target.dataset.index);
+  // Add delete handlers. Sweep S8 (D4.8): Remove asks first (confirmFolderRemove); the
+  // folder leaves this form only on yes, and nothing is persisted until Save, as before.
+  container.querySelectorAll('.folder-remove-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const path = configuredFolders[parseInt(btn.dataset.index)];
       // FR-4 (v1.19.0): defensive guard, belt-and-suspenders alongside the
       // `disabled` DOM property set above (which already stops a click from
       // ever reaching this handler for the synthetic row) -- removing it
       // would accomplish nothing durable anyway (see server.js's synthetic-
       // folder self-heal), so never mutate state for it even if this handler
       // somehow ran.
-      if (isSyntheticFolder(configuredFolders[index], syntheticFolders)) return;
-      delete folderSettings[configuredFolders[index]];
-      configuredFolders.splice(index, 1);
+      if (path === undefined || isSyntheticFolder(path, syntheticFolders)) return;
+      if (!(await confirmFolderRemove(path, 'video'))) return;
+      // The list may have been reordered while the dialog was open: remove by PATH.
+      const at = configuredFolders.indexOf(path);
+      if (at === -1) return;
+      delete folderSettings[path];
+      configuredFolders.splice(at, 1);
       renderFolders();
     }, { signal: controller.signal });
   });
@@ -344,7 +375,7 @@ function renderSidebarFolders(folders, settings = {}) {
   if (!sidebarContainer) return;
   const visible = visibleSidebarFolders(folders, settings, syntheticFolders); // v1.73.1: the hard Downloads entry owns the sidebar surface
   if (visible.length === 0) {
-    sidebarContainer.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--text-secondary);">None</div>';
+    sidebarContainer.innerHTML = '<div style="padding: 6px 24px; font-style: italic; color: var(--ink-2);">None</div>';
     // v1.33.1 (Dean): count-gated Liked entry, same shared helper as every
     // other sidebar surface (prepends without touching siblings).
     applyLikedSidebarEntry(sidebarContainer);
@@ -480,26 +511,40 @@ function pollScanStatus(statusText) {
     });
 }
 
+// Retire R3: the Appearance choice lists (era, icon set, Music skin) are grouped ui-lists of
+// button.ui-row radios (setup.html gives each host role=radiogroup). The picked row carries a
+// trailing check in ink (D4.6, F46) - no red border and no card - and aria-checked; the
+// option's name is the title and its blurb the meta line, which wraps in these lists
+// (style.css .setup-choice-list). `attrs` is the option's data-* hook; every string passed in
+// is a static registry literal (no user input), as the cards it replaces were.
+const CHOICE_CHECK_ICON = '<svg class="ui-icon ui-icon--md" aria-hidden="true"><use href="#i-check"/></svg>';
+function choiceRowHtml(o) {
+  return '<button type="button" class="ui-row ui-row--default setup-choice" role="radio" aria-checked="' + (o.on ? 'true' : 'false') + '" ' + o.attrs + '>'
+    + '<span class="ui-row__lead"></span>'
+    + '<span class="ui-row__media">' + (o.media || '') + '</span>'
+    + '<span class="ui-row__body"><span class="ui-row__title">' + o.title + '</span>'
+    + (o.meta ? '<span class="ui-row__meta">' + o.meta + '</span>' : '') + '</span>'
+    + '<span class="ui-row__aside"></span>'
+    + '<span class="ui-row__actions">' + (o.on ? CHOICE_CHECK_ICON : '') + '</span>'
+    + '</button>';
+}
+
 // Appearance (era theme) picker — THEME_REGISTRY/setTheme come from common.js
 function renderThemePicker() {
   const container = document.getElementById('theme-picker');
   if (!container) return;
   const active = document.documentElement.getAttribute('data-theme');
-  container.innerHTML = THEME_REGISTRY.map(t => `
-    <button type="button" class="theme-card${t.id === active ? ' active' : ''}"
-            data-era="${t.id}">
-      <span class="theme-swatch">
-        <span style="background:${t.swatch[0]}"></span>
-        <span style="background:${t.swatch[1]}"></span>
-      </span>
-      <span class="theme-card-name">${t.name}
-        <span class="theme-card-year">${t.year}</span></span>
-      <span class="theme-card-blurb">${t.blurb}</span>
-    </button>`).join('');
-  container.querySelectorAll('.theme-card').forEach(btn => {
+  container.innerHTML = THEME_REGISTRY.map(t => choiceRowHtml({
+    on: t.id === active,
+    attrs: `data-era="${t.id}"`,
+    media: `<span class="theme-swatch"><span style="--swatch:${t.swatch[0]}"></span><span style="--swatch:${t.swatch[1]}"></span></span>`,
+    title: `${t.name} <span class="theme-choice-year">${t.year}</span>`,
+    meta: t.blurb,
+  })).join('');
+  container.querySelectorAll('.setup-choice').forEach(btn => {
     btn.addEventListener('click', () => {
       setTheme(btn.dataset.era);   // applies + persists immediately, no Save step
-      renderThemePicker();          // re-highlight active card
+      renderThemePicker();          // re-check the active row
     }, { signal: controller.signal });
   });
 }
@@ -532,14 +577,12 @@ function renderIconPicker() {
   if (!container || !controller) return;
   let pref = null;
   try { pref = localStorage.getItem('ft-icons'); } catch (_) { /* fall through to default */ }
+  pref = migrateIconPref(pref); // a stored retired set (emoji) highlights its replacement (D2.6)
   const active = (pref === 'auto' || ICON_SETS.includes(pref)) ? pref : 'outlined';
-  container.innerHTML = ICON_SET_REGISTRY.map(s => `
-    <button type="button" class="theme-card${s.id === active ? ' active' : ''}"
-            data-icons-pref="${s.id}">
-      <span class="theme-card-name">${s.name}</span>
-      <span class="theme-card-blurb">${s.blurb}</span>
-    </button>`).join('');
-  container.querySelectorAll('.theme-card').forEach(btn => {
+  container.innerHTML = ICON_SET_REGISTRY.map(s => choiceRowHtml({
+    on: s.id === active, attrs: `data-icons-pref="${s.id}"`, title: s.name, meta: s.blurb,
+  })).join('');
+  container.querySelectorAll('.setup-choice').forEach(btn => {
     btn.addEventListener('click', () => {
       // Applies + persists immediately (no Save). setIconSet -> applyIconSet
       // already re-renders this picker (feature-detected), so the highlight
@@ -591,17 +634,15 @@ function renderMusicSkinPicker() {
   const active = skins.activeSkinId();
   container.innerHTML = (skins.IDS || []).map((id) => {
     const s = skins.skinById(id);
-    return `
-    <button type="button" class="theme-card${id === active ? ' active' : ''}"
-            data-skin-pref="${id}">
-      <span class="theme-card-name">${s && s.label ? s.label : id}</span>
-      <span class="theme-card-blurb">${MUSIC_SKIN_BLURB[id] || ''}</span>
-    </button>`;
+    return choiceRowHtml({
+      on: id === active, attrs: `data-skin-pref="${id}"`,
+      title: s && s.label ? s.label : id, meta: MUSIC_SKIN_BLURB[id] || '',
+    });
   }).join('');
-  container.querySelectorAll('.theme-card').forEach((btn) => {
+  container.querySelectorAll('.setup-choice').forEach((btn) => {
     btn.addEventListener('click', () => {
       skins.setActiveSkin(btn.dataset.skinPref); // persists ft-music-skin (per-device)
-      renderMusicSkinPicker();                   // re-highlight the active card
+      renderMusicSkinPicker();                   // re-check the active row
     }, { signal: controller.signal });
   });
 }
@@ -630,7 +671,7 @@ function writeStickerPref(obj) {
 // kind change preserves size/tilt (JSON drops any explicit `undefined`). Mirrors music.js's
 // ft-sticker shape {kind,value?,v?,size?,tilt?}.
 function mergeStickerPref(patch) { writeStickerPref(Object.assign({}, readStickerPref(), patch)); }
-const STICKER_SIZES = [['default', 'Default'], ['2x', '2×'], ['3x', '3×']]; // v1.243: 5x removed (overlapped the wheel)
+const STICKER_SIZES = [['default', 'Default'], ['2x', '2x'], ['3x', '3x']]; // v1.243: 5x removed (overlapped the wheel)
 const STICKER_TILTS = [['straight', 'Straight'], ['left', 'Left'], ['right', 'Right']];
 function escStickerHtml(s) {
   return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -643,34 +684,45 @@ async function renderStickerPicker() {
   let hasCustom = false;
   try { hasCustom = (await fetch('/api/me/sticker', { method: 'GET' })).ok; } catch (_) { hasCustom = false; }
   const isActive = (kind, value) => pref.kind === kind && (kind !== 'emoji' || pref.value === value);
+  // Retire R3: every sticker option is a ui-chip filter (aria-pressed; the picked one wears the
+  // chip's selected fill, never a red border): the logo and your image carry a small preview
+  // before their name, an emoji preset is the emoji itself.
+  const chip = (pressed, attrs, inner, label) => `<button type="button" class="ui-chip ui-chip--filter sticker-card" aria-pressed="${pressed ? 'true' : 'false'}"${label ? ` aria-label="${label}"` : ''} ${attrs}>${inner}</button>`;
   const cards = [];
-  cards.push(`<button type="button" class="theme-card sticker-card${isActive('logo') ? ' active' : ''}" data-sticker-kind="logo">
-      <span class="sticker-card-ic"><img src="/favicon.svg" alt="" /></span>
-      <span class="theme-card-name">FileTube logo</span></button>`);
+  cards.push(chip(isActive('logo'), 'data-sticker-kind="logo"',
+    '<span class="sticker-card-ic"><img src="/favicon.svg" alt="" /></span><span>FileTube logo</span>'));
   STICKER_EMOJI_PRESETS.forEach((em) => {
-    cards.push(`<button type="button" class="theme-card sticker-card${isActive('emoji', em) ? ' active' : ''}" data-sticker-kind="emoji" data-sticker-emoji="${escStickerHtml(em)}">
-      <span class="sticker-card-ic sticker-card-emoji">${escStickerHtml(em)}</span></button>`);
+    cards.push(chip(isActive('emoji', em), `data-sticker-kind="emoji" data-sticker-emoji="${escStickerHtml(em)}"`,
+      `<span class="sticker-card-emoji">${escStickerHtml(em)}</span>`, 'Emoji ' + escStickerHtml(em)));
   });
   if (hasCustom) {
-    cards.push(`<button type="button" class="theme-card sticker-card${isActive('custom') ? ' active' : ''}" data-sticker-kind="custom">
-      <span class="sticker-card-ic"><img src="/api/me/sticker?v=${encodeURIComponent(pref.v || Date.now())}" alt="" /></span>
-      <span class="theme-card-name">Your image</span></button>`);
+    cards.push(chip(isActive('custom'), 'data-sticker-kind="custom"',
+      `<span class="sticker-card-ic"><img src="/api/me/sticker?v=${encodeURIComponent(pref.v || Date.now())}" alt="" /></span><span>Your image</span>`));
   }
-  container.innerHTML = `<div class="sticker-cards">${cards.join('')}</div>
-    <div class="sticker-emoji-row">
-      <input type="text" id="sticker-emoji-input" class="sticker-emoji-input" maxlength="8" placeholder="Any emoji" aria-label="Custom emoji" />
-      <button type="button" class="btn btn-sm" id="sticker-emoji-set">Use emoji</button>
+  container.innerHTML = `<div class="sticker-cards" role="group" aria-label="Sticker">${cards.join('')}</div>
+    <div class="sticker-emoji-bar">
+      <input type="text" id="sticker-emoji-input" class="ui-field__input sticker-emoji-input" maxlength="8" placeholder="Any emoji" aria-label="Custom emoji" />
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="sticker-emoji-set">Use emoji</button>
     </div>
-    <div class="sticker-actions">
-      <button type="button" class="btn btn-sm" id="sticker-upload-btn">Upload image…</button>
-      <button type="button" class="btn btn-sm" id="sticker-remove-custom"${hasCustom ? '' : ' hidden'}>Remove your image</button>
+    <div class="action-bar">
+      <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="sticker-upload-btn">Upload image…</button>
+      <button type="button" class="ui-btn ui-btn--danger ui-btn--md" id="sticker-remove-custom"${hasCustom ? '' : ' hidden'}>Remove your image</button>
     </div>
-    <div class="sticker-opt-row"><span class="sticker-opt-label">Size</span><div class="sticker-opts">${
-      STICKER_SIZES.map(([v, l]) => `<button type="button" class="theme-card sticker-opt${(pref.size || 'default') === v ? ' active' : ''}" data-sticker-size="${v}">${l}</button>`).join('')
-    }</div></div>
-    <div class="sticker-opt-row"><span class="sticker-opt-label">Tilt</span><div class="sticker-opts">${
-      STICKER_TILTS.map(([v, l]) => `<button type="button" class="theme-card sticker-opt${(pref.tilt || 'left') === v ? ' active' : ''}" data-sticker-tilt="${v}">${l}</button>`).join('')
-    }</div></div>`;
+    <div class="sticker-opt"><span class="ui-field__label">Size</span><span data-sticker-seg="size"></span></div>
+    <div class="sticker-opt"><span class="ui-field__label">Tilt</span><span data-sticker-seg="tilt"></span></div>`;
+  // Sweep S8: Size and Tilt are ui.segmented controls (were theme-card chips). Each item keeps
+  // its data-sticker-size / data-sticker-tilt hook; a pick merges the pref and re-renders.
+  const u = settingsUi();
+  [['size', STICKER_SIZES, pref.size || 'default', 'Sticker size'], ['tilt', STICKER_TILTS, pref.tilt || 'left', 'Sticker tilt']].forEach(([key, opts, cur, label]) => {
+    const host = container.querySelector('[data-sticker-seg="' + key + '"]');
+    if (!host || !u || typeof u.segmented !== 'function') return;
+    const seg = u.segmented({
+      label, value: cur, options: opts.map(([v, l]) => ({ value: v, label: l })),
+      onChange: (v) => { mergeStickerPref({ [key]: v }); renderStickerPicker(); },
+    });
+    seg.querySelectorAll('.ui-segmented__item').forEach((b) => b.setAttribute('data-sticker-' + key, b.getAttribute('data-value')));
+    host.replaceWith(seg);
+  });
   const sig = { signal: controller.signal };
   container.querySelectorAll('.sticker-card').forEach((btn) => {
     btn.addEventListener('click', () => {
@@ -683,8 +735,6 @@ async function renderStickerPicker() {
       renderStickerPicker();
     }, sig);
   });
-  container.querySelectorAll('[data-sticker-size]').forEach((b) => b.addEventListener('click', () => { mergeStickerPref({ size: b.dataset.stickerSize }); renderStickerPicker(); }, sig));
-  container.querySelectorAll('[data-sticker-tilt]').forEach((b) => b.addEventListener('click', () => { mergeStickerPref({ tilt: b.dataset.stickerTilt }); renderStickerPicker(); }, sig));
   const emojiSet = document.getElementById('sticker-emoji-set');
   const emojiInput = document.getElementById('sticker-emoji-input');
   if (emojiSet && emojiInput) emojiSet.addEventListener('click', () => {
@@ -713,6 +763,12 @@ async function renderStickerPicker() {
   }
   const removeBtn = document.getElementById('sticker-remove-custom');
   if (removeBtn) removeBtn.addEventListener('click', async () => {
+    const yes = await confirmDestructive({
+      title: 'Remove your sticker image?',
+      body: 'The uploaded image is deleted from your account; the sticker goes back to the FileTube logo.',
+      confirmLabel: 'Remove',
+    });
+    if (!yes) return;
     try {
       const res = await fetch('/api/me/sticker', { method: 'DELETE' });
       if (!res.ok) { showToast('Could not remove your sticker.'); return; }
@@ -735,15 +791,35 @@ async function renderStickerPicker() {
 // Shows/clears a field-level validation error next to a control (400s
 // from POST /api/settings), instead of silently swallowing them or using
 // a page-wide alert.
+// Sweep S8: the error line is a `ui-field__error` shown and hidden by the `hidden`
+// attribute (the global [hidden] rule), never by an inline display write.
 function setFieldError(el, message) {
   if (!el) return;
-  if (message) {
-    el.textContent = message;
-    el.style.display = 'block';
-  } else {
-    el.textContent = '';
-    el.style.display = 'none';
-  }
+  el.textContent = message ? message : '';
+  el.hidden = !message;
+}
+
+// ---- Sweep S8 (plan D4.8): the ONE confirm step for every destructive Settings action.
+// Resolves true only when the user confirms in the ui.confirm dialog (danger fill); every
+// caller sends its request only AFTER that. Cancel, Esc, the scrim, Close, a view teardown
+// (the controller's signal) and a missing ui.js all answer false, so no path can reach a
+// destructive request without an explicit yes.
+function settingsUi() {
+  return (typeof window !== 'undefined' && window.ui) || null;
+}
+function confirmDestructive(o) {
+  const u = settingsUi();
+  if (!u || typeof u.confirm !== 'function') return Promise.resolve(false);
+  return u.confirm({
+    title: o.title, body: o.body, confirmLabel: o.confirmLabel, cancelLabel: 'Cancel', danger: true,
+    signal: controller ? controller.signal : undefined,
+  }).then((yes) => yes === true);
+}
+// A refused or failed action says so in a toast (it was a window.alert, F55).
+function settingsNotice(message, kind) {
+  const u = settingsUi();
+  if (u && typeof u.toast === 'function') { u.toast(String(message), { kind: kind || 'error' }); return; }
+  if (typeof showToast === 'function') showToast(String(message));
 }
 
 // Chapter Snap (2026-09-24): the server-wide lead-in select (seconds, 0-2). Its own
@@ -934,20 +1010,26 @@ function wireCritterManager(signal) {
       img.loading = 'lazy';
       const name = document.createElement('span');
       name.className = 'critter-pool-name';
-      // ♪ = a small eighth note: this critter has a tap voice.
-      name.textContent = c.sound ? c.id + ' ♪' : c.id;
+      name.textContent = c.id;
+      // A sprite note glyph = this critter has its own tap voice (was a U+266A text glyph).
+      const u = settingsUi();
+      if (c.sound && u && typeof u.icon === 'function') {
+        name.appendChild(u.icon('music_note', { size: 'sm', cls: 'critter-pool-voice' }));
+        name.setAttribute('aria-label', c.id + ' (has its own sound)');
+      }
       const del = document.createElement('button');
       del.type = 'button';
-      del.className = 'btn btn-sm critter-pool-delete';
+      del.className = 'ui-btn ui-btn--danger ui-btn--sm critter-pool-delete';
       del.textContent = 'Delete';
-      let armed = false; // closure-LOCAL two-tap arm (the v1.162 load-bearing shape)
+      // Sweep S8 (D4.8): the v1.162 two-tap arm became the ui.confirm step; the DELETE is
+      // sent only after it resolves true.
       del.addEventListener('click', async () => {
-        if (!armed) {
-          armed = true;
-          del.textContent = 'Really delete?';
-          del.classList.add('critter-delete-armed');
-          return;
-        }
+        const yes = await confirmDestructive({
+          title: 'Delete ' + c.id + '?',
+          body: 'This critter' + (c.sound ? ' and its sound are' : ' is') + ' removed from the pool for everyone. This cannot be undone.',
+          confirmLabel: 'Delete',
+        });
+        if (!yes) return;
         del.disabled = true;
         try {
           const r = await fetch('/api/critters/item?id=' + encodeURIComponent(c.id), { method: 'DELETE' });
@@ -1033,14 +1115,14 @@ function wireCritterManager(signal) {
     uploadFiles(files, CRITTER_SOUND_MIME_BY_EXT, 'sound (MP3, WAV, M4A, OGG)');
   }, { signal });
 
-  let delAllArmed = false; // closure-local, same discipline as the per-item arm
   delAllBtn.addEventListener('click', async () => {
-    if (!delAllArmed) {
-      delAllArmed = true;
-      delAllBtn.textContent = 'Really delete all ' + pool.length + (pool.length === 1 ? ' critter?' : ' critters?');
-      delAllBtn.classList.add('critter-delete-armed');
-      return;
-    }
+    const n = pool.length;
+    const yes = await confirmDestructive({
+      title: 'Delete all ' + n + (n === 1 ? ' critter?' : ' critters?'),
+      body: 'Every custom critter image and sound is removed from the pool for everyone. Download all first if you want a backup. This cannot be undone.',
+      confirmLabel: 'Delete all',
+    });
+    if (!yes) return;
     delAllBtn.disabled = true;
     try {
       const r = await fetch('/api/critters/all', { method: 'DELETE' });
@@ -1052,10 +1134,7 @@ function wireCritterManager(signal) {
     } catch (_) {
       setActionStatus(statusEl, 'Could not delete the pool (network error).', 'error');
     }
-    delAllArmed = false;
     delAllBtn.disabled = false;
-    delAllBtn.textContent = 'Delete all…';
-    delAllBtn.classList.remove('critter-delete-armed');
     afterMutation();
   }, { signal });
 
@@ -1082,16 +1161,6 @@ function loadResumeThresholdControl() {
 // RESUME_THRESHOLD_KEY above -- grep it there for the precedent).
 const DEBUG_LIFECYCLE_STORAGE_KEY = 'ft-debug-lifecycle';
 
-// v1.132: resume-countdown keys -- MUST match player.js's
-// RESUME_COUNTDOWN_STORAGE_KEY / RESUME_COUNTDOWN_ACTION_STORAGE_KEY exactly
-// (the RESUME_THRESHOLD_KEY cross-file string-literal convention above).
-const RESUME_COUNTDOWN_KEY = 'filetube_resume_countdown';
-const RESUME_COUNTDOWN_ACTION_KEY = 'filetube_resume_countdown_action';
-// v1.161 (Dean): the configurable countdown length. MUST match
-// RESUME_COUNTDOWN_SECONDS_STORAGE_KEY in player.js. The player clamps on read
-// (resolveResumeCountdownSeconds, [0,30] default 5); setup clamps on WRITE with
-// the SAME contract (clampResumeSeconds below) so a bad value is never stored.
-const RESUME_COUNTDOWN_SECONDS_KEY = 'filetube_resume_countdown_seconds';
 // v1.136.1: MUST match AUDIO_SESSION_DECLARE_STORAGE_KEY in player.js.
 const AUDIO_SESSION_DECLARE_KEY = 'filetube_audio_session_declare';
 // v1.161.3 (Dean): MUST match BG_KEEPALIVE_STORAGE_KEY in player.js.
@@ -1252,7 +1321,8 @@ function renderBgTimingLog(host, records) {
 }
 
 // The toggle (device-local, '1' = on, absent = off - player.js reads it LIVE at
-// every hide), the panel (shown only while on), Copy and a two-tap Clear.
+// every hide), the panel (shown only while on), Copy and Clear (behind the
+// ui.confirm step since sweep S8; it was a two-tap arm).
 function wireBgTimingLog(signal) {
   const check = document.getElementById('bg-timing-log-check');
   const panel = document.getElementById('bg-timing-log-panel');
@@ -1263,16 +1333,9 @@ function wireBgTimingLog(signal) {
   const textArea = document.getElementById('bg-timing-log-text');
   if (!check || !panel) return;
   const say = (text) => { if (status) status.textContent = text || ''; };
-  let clearArmed = false;
-  let clearTimer = null;
-  const disarmClear = () => {
-    clearArmed = false;
-    if (clearTimer) { clearTimeout(clearTimer); clearTimer = null; }
-    if (clearBtn) clearBtn.textContent = 'Clear';
-  };
   const refresh = () => {
     panel.hidden = !check.checked;
-    if (!check.checked) { disarmClear(); return; }
+    if (!check.checked) return;
     renderBgTimingLog(tableHost, readBgTimingLog());
   };
   let raw = null;
@@ -1310,35 +1373,19 @@ function wireBgTimingLog(signal) {
     }, { signal });
   }
   if (clearBtn) {
-    clearBtn.addEventListener('click', () => {
-      if (!clearArmed) {
-        clearArmed = true;
-        clearBtn.textContent = 'Tap again to clear';
-        clearTimer = setTimeout(disarmClear, 4000);
-        return;
-      }
-      disarmClear();
+    clearBtn.addEventListener('click', async () => {
+      const yes = await confirmDestructive({
+        title: 'Clear the timing log?',
+        body: 'Every recorded handoff on this device is deleted. Copy it first if you want to share it.',
+        confirmLabel: 'Clear',
+      });
+      if (!yes || (signal && signal.aborted)) return;
       try { localStorage.removeItem(BG_TIMING_LOG_KEY); } catch (_) { /* storage disabled -- nothing to clear */ }
       if (textArea) { textArea.value = ''; textArea.hidden = true; }
       say('Cleared.');
       refresh();
     }, { signal });
-    if (signal) signal.addEventListener('abort', disarmClear, { once: true });
   }
-}
-
-// v1.161 (Dean): clamp a raw seconds input to the SAME contract as player.js's
-// resolveResumeCountdownSeconds - integer [0,30]. Returns null for absent/blank
-// (the field cleared -> remove the key -> the player's default 5 applies), so the
-// setter can distinguish "cleared" from a real 0 (= instant). Out-of-range numbers
-// clamp to the nearest bound rather than reject, matching the player-side read.
-function clampResumeSeconds(raw) {
-  if (raw === null || raw === undefined || String(raw).trim() === '') return null;
-  const n = parseInt(raw, 10);
-  if (!Number.isFinite(n)) return null;
-  if (n < 0) return 0;
-  if (n > 30) return 30;
-  return n;
 }
 
 // Prefills the checkbox from whatever's currently stored -- mirrors
@@ -1382,118 +1429,9 @@ function wireHomeRowToggle(id, key, signal) {
 // against common.js's live roster - an id without a label would otherwise
 // render as its raw slug in Dean's Settings panel.
 const BOTTOMBAR_LABELS = { home: 'Home', liked: 'Liked', playlists: 'Playlists', history: 'History', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark', podcasts: 'Podcasts', music: 'Music', books: 'Books', downloads: 'Downloads', settings: 'Settings' };
-// ---- v1.67: the card-corner editor (plan D9) --------------------------------
-//
-// Four pickers (Top left / Top right / Bottom left / Bottom right) in the
-// Appearance box. The corner VOCABULARY (control roster, defaults, resolver)
-// is main.js's - consumed here as browser globals (script order: common ->
-// main -> setup), never hand-copied (the v1.64 roster-rot lesson; the unit
-// suite binds the label map against main.js's exported roster). Per-user
-// SERVER-persisted (C1): seeds from GET /api/auth/me, writes one key per
-// change via POST /api/me/settings, and deliberately touches NO localStorage.
-// v1.204: the bottom-right picker joined the other three - that corner shares
-// its space with the duration badge (the card render nudges the badge left
-// when the slot is occupied), so it defaults to None and the badge stays put.
-
-const CARD_CORNER_LABELS = {
-  download: 'Download', delete: 'Delete', like: 'Like',
-  queue: 'Queue', share: 'Share', reheat: 'Reheat', transcript: 'Transcript', none: 'None',
-};
-
-const CORNER_EDITOR_SLOTS = [
-  ['cornerTL', 'Top left'],
-  ['cornerTR', 'Top right'],
-  ['cornerBL', 'Bottom left'],
-  ['cornerBR', 'Bottom right'], // v1.204: shares bottom-right with the duration badge
-];
-
-// Pure (C2): one corner's <option> list - every canonical control MINUS the
-// ones the OTHER two corners currently hold (a duplicate is a UI bug, not a
-// feature), plus None always (two empty corners are legal). `controls` is
-// injected (main.js's CARD_CORNER_CONTROLS) so Node tests need no globals.
-function buildCornerEditorOptions(effective, cornerKey, controls) {
-  const chosenElsewhere = new Set(
-    CORNER_EDITOR_SLOTS.map((s) => s[0]).filter((k) => k !== cornerKey).map((k) => effective[k])
-  );
-  const options = [];
-  for (const control of controls) {
-    // v1.67 gate (adversarial S1): a corner's OWN stored value is never
-    // filtered, even when a direct settings POST duplicated it into another
-    // corner (bypassing this editor is the plan's accepted residual). The
-    // select must display the stored truth - a filtered-out own-value left
-    // no selected option, so the browser showed the first entry as a lie.
-    if (chosenElsewhere.has(control) && effective[cornerKey] !== control) continue;
-    options.push({
-      value: control,
-      label: CARD_CORNER_LABELS[control] || control,
-      selected: effective[cornerKey] === control,
-    });
-  }
-  options.push({ value: 'none', label: CARD_CORNER_LABELS.none, selected: effective[cornerKey] === 'none' });
-  return options;
-}
-
-async function renderCardCornerEditor(signal) {
-  const host = document.getElementById('card-corner-editor');
-  if (!host) return;
-  let settings = null;
-  try {
-    const r = await fetch('/api/auth/me');
-    if (r.ok) {
-      const me = await r.json();
-      settings = me && me.settings;
-    }
-  } catch (_) { /* signed-out/offline: draw the C5 defaults (a save would fail the same way and re-seed) */ }
-  drawCardCornerEditor(host, resolveCardCornerPrefs(settings), signal);
-}
-
-function drawCardCornerEditor(host, effective, signal) {
-  host.innerHTML = '';
-  for (const [key, slotLabel] of CORNER_EDITOR_SLOTS) {
-    const row = document.createElement('div');
-    row.className = 'card-corner-editor-row';
-    const label = document.createElement('span');
-    label.className = 'card-corner-editor-label';
-    label.textContent = slotLabel;
-    const select = document.createElement('select');
-    select.className = 'card-corner-editor-select';
-    select.setAttribute('aria-label', `${slotLabel} corner control`);
-    for (const opt of buildCornerEditorOptions(effective, key, CARD_CORNER_CONTROLS)) {
-      const o = document.createElement('option');
-      o.value = opt.value;
-      o.textContent = opt.label;
-      o.selected = opt.selected;
-      select.appendChild(o);
-    }
-    select.addEventListener('change', () => {
-      const value = select.value;
-      effective[key] = value;
-      // Redraw FIRST so the sibling pickers re-filter instantly (C2 live),
-      // then persist; a failed save re-seeds the whole editor from the
-      // server truth rather than leaving the UI lying about what stuck.
-      // QA S2: the redraw destroys the focused <select>, which strands a
-      // keyboard user (Firefox fires `change` per arrow press) - re-focus
-      // the SAME slot's fresh select so arrow-keying keeps working.
-      drawCardCornerEditor(host, effective, signal);
-      const slotIndex = CORNER_EDITOR_SLOTS.findIndex((s) => s[0] === key);
-      const freshSelect = host.querySelectorAll('select')[slotIndex];
-      if (freshSelect) freshSelect.focus();
-      fetch('/api/me/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [key]: value }),
-      })
-        .then((res) => { if (!res.ok) throw new Error(`save failed: ${res.status}`); })
-        .catch(() => {
-          showToast('Could not save the corner layout.');
-          renderCardCornerEditor(signal);
-        });
-    }, { signal });
-    row.appendChild(label);
-    row.appendChild(select);
-    host.appendChild(row);
-  }
-}
+// (v1.67's card-corner editor retired in UI pass sweep S2: every card action now
+// lives in the card's one action menu - kebab, long-press, right-click - so there
+// is no corner layout left to pick. The stored cornerTL..BR settings are ignored.)
 
 // ---- v1.77: the Library-icon editor ---------------------------------------
 //
@@ -1522,15 +1460,24 @@ async function renderLibraryGlyphEditor(signal) {
 
 function drawLibraryGlyphEditor(host, settings, signal) {
   host.innerHTML = '';
+  // Retire R3: the editor is a grouped ui-list; each slot is a ui-row (the Library entry's name
+  // as the title, its ui-select in the aside column the list sizes, style.css
+  // .library-glyph-editor).
   LIBRARY_GLYPH_SLOTS.forEach((slot, slotIndex) => {
     const row = document.createElement('div');
-    row.className = 'card-corner-editor-row';
+    row.className = 'ui-row ui-row--default';
+    row.setAttribute('role', 'listitem');
     const label = document.createElement('span');
-    label.className = 'card-corner-editor-label';
+    label.className = 'ui-row__title library-glyph-label';
     label.textContent = slot.name;
+    // Sweep S8: a ui-select (the field styling + a chevron) trailing the label.
     const select = document.createElement('select');
-    select.className = 'card-corner-editor-select';
+    select.className = 'ui-select__native';
     select.setAttribute('aria-label', `${slot.name} icon`);
+    const box = document.createElement('span');
+    box.className = 'ui-select';
+    box.appendChild(select);
+    box.insertAdjacentHTML('beforeend', FOLDER_SELECT_CHEVRON);
     // The stored value, or the Default row when nothing valid is stored.
     select.innerHTML = buildGlyphOptionsHtml(settings[slot.key], true);
     select.addEventListener('change', () => {
@@ -1560,8 +1507,19 @@ function drawLibraryGlyphEditor(host, settings, signal) {
           renderLibraryGlyphEditor(signal);
         });
     }, { signal });
-    row.appendChild(label);
-    row.appendChild(select);
+    const lead = document.createElement('span');
+    lead.className = 'ui-row__lead';
+    const media = document.createElement('span');
+    media.className = 'ui-row__media';
+    const body = document.createElement('span');
+    body.className = 'ui-row__body';
+    body.appendChild(label);
+    const aside = document.createElement('span');
+    aside.className = 'ui-row__aside';
+    aside.appendChild(box);
+    const actions = document.createElement('span');
+    actions.className = 'ui-row__actions';
+    row.append(lead, media, body, aside, actions);
     host.appendChild(row);
   });
 }
@@ -1626,25 +1584,33 @@ function renderBottomBarEditor(signal) {
 
   host.innerHTML = '';
   items.forEach((id, index) => {
+    // Retire R3: each item is a ui-row of the grouped ui-list host wearing the ui-reorder
+    // primitive (the drag states and the grip are ui.css's): the grip in the media column the
+    // list sizes (style.css .bottombar-editor), the name as the title, the switch trailing.
     const row = document.createElement('div');
-    row.className = 'bottombar-editor-row';
+    row.className = 'ui-row ui-row--default ui-reorder';
+    row.setAttribute('role', 'listitem');
     // v1.76 (Dean: the up/down arrows "just suck"): the handle replaces both
     // buttons. It is the drag grip AND the keyboard control - wireReorderable
     // gives it tabindex/role/aria-label and arrow-key reorder below, so
     // deleting the buttons costs no accessibility.
     const handle = document.createElement('span');
-    handle.className = 'drag-handle';
+    handle.className = 'ui-reorder__handle';
     handle.title = 'Drag to reorder';
     const label = document.createElement('span');
-    label.className = 'bottombar-editor-label';
+    label.className = 'ui-row__title bottombar-editor-label';
     label.textContent = BOTTOMBAR_LABELS[id] || id;
-    const toggle = document.createElement('label');
-    toggle.style.cssText = 'display:flex; align-items:center; gap:var(--space-3); font-weight:normal;';
+    // Sweep S8: the Show control is a switch (a native checkbox wearing .ui-switch, so the
+    // .checked/change wiring below is unchanged), named for its item; no inline style.
+    const toggle = document.createElement('span');
+    toggle.className = 'ui-row__actions';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
+    cb.setAttribute('role', 'switch');
+    cb.className = 'ui-switch';
+    cb.setAttribute('aria-label', 'Show ' + (BOTTOMBAR_LABELS[id] || id));
     cb.checked = visibleSet.has(id);
     toggle.appendChild(cb);
-    toggle.appendChild(document.createTextNode('Show'));
 
     cb.addEventListener('change', () => {
       const c = FT.readBottomNavConfig();
@@ -1668,7 +1634,17 @@ function renderBottomBarEditor(signal) {
       FT.writeBottomNavConfig(c);
       if (FT.applyBottomNavCustomization) FT.applyBottomNavCustomization();
     }, { signal });
-    row.appendChild(handle); row.appendChild(label); row.appendChild(toggle);
+    const lead = document.createElement('span');
+    lead.className = 'ui-row__lead';
+    const media = document.createElement('span');
+    media.className = 'ui-row__media';
+    media.appendChild(handle);
+    const body = document.createElement('span');
+    body.className = 'ui-row__body';
+    body.appendChild(label);
+    const aside = document.createElement('span');
+    aside.className = 'ui-row__aside';
+    row.append(lead, media, body, aside, toggle);
     host.appendChild(row);
   });
 
@@ -1687,8 +1663,8 @@ function renderBottomBarEditor(signal) {
   // reorderable while doing nothing. A missing helper should be loud.
   const wireRows = (typeof wireReorderable === 'function') ? wireReorderable : FT.wireReorderable;
   wireRows(host, {
-    rowSelector: '.bottombar-editor-row',
-    handleSelector: '.drag-handle',
+    rowSelector: '.ui-reorder',
+    handleSelector: '.ui-reorder__handle',
     focusKey: 'bottombar-editor',
     labelOf: (i) => BOTTOMBAR_LABELS[items[i]] || items[i],
     onReorder: (from, to) => moveBottomBarItem(items, from, to, signal),
@@ -1735,7 +1711,7 @@ function renderTranscriptAiPromptsEditor(signal) {
   // that HAS an id always goes, so blanking an existing prompt still
   // surfaces the server's 400 as designed.
   function readRows() {
-    return Array.from(host.querySelectorAll('.transcript-ai-prompt-row')).map((row) => ({
+    return Array.from(host.querySelectorAll('.transcript-ai-prompt')).map((row) => ({
       id: row.dataset.promptId || undefined,
       name: row.querySelector('.transcript-ai-prompt-name').value,
       text: row.querySelector('.transcript-ai-prompt-text').value,
@@ -1769,8 +1745,9 @@ function renderTranscriptAiPromptsEditor(signal) {
   function render() {
     host.replaceChildren();
     prompts.forEach((prompt) => {
+      // Retire R3: a prompt is a .transcript-ai-prompt card wearing the ui-reorder primitive.
       const row = document.createElement('div');
-      row.className = 'transcript-ai-prompt-row';
+      row.className = 'transcript-ai-prompt ui-reorder';
       if (prompt.id) row.dataset.promptId = prompt.id;
       const head = document.createElement('div');
       head.className = 'transcript-ai-prompt-head';
@@ -1779,24 +1756,24 @@ function renderTranscriptAiPromptsEditor(signal) {
       // pointer grip and the keyboard control (arrow keys), exactly the
       // bottom-bar editor's shape. The list order IS the saved order.
       const handle = document.createElement('span');
-      handle.className = 'drag-handle';
+      handle.className = 'ui-reorder__handle';
       handle.title = 'Drag to reorder';
       head.appendChild(handle);
       const name = document.createElement('input');
       name.type = 'text';
-      name.className = 'transcript-ai-prompt-name';
+      name.className = 'ui-field__input transcript-ai-prompt-name';
       name.placeholder = 'Prompt name (e.g. Summarize)';
       name.maxLength = 60;
       name.value = prompt.name || '';
       name.setAttribute('aria-label', 'Prompt name');
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
-      removeBtn.className = 'btn';
+      removeBtn.className = 'ui-btn ui-btn--danger ui-btn--sm transcript-ai-prompt-remove';
       removeBtn.textContent = 'Remove';
       head.appendChild(name);
       head.appendChild(removeBtn);
       const text = document.createElement('textarea');
-      text.className = 'transcript-ai-prompt-text';
+      text.className = 'ui-field__input transcript-ai-prompt-text';
       text.placeholder = 'What to ask the AI - it goes in front of the transcript.';
       text.maxLength = 4000;
       text.value = prompt.text || '';
@@ -1806,7 +1783,19 @@ function renderTranscriptAiPromptsEditor(signal) {
       host.appendChild(row);
       name.addEventListener('input', scheduleSave, { signal });
       text.addEventListener('input', scheduleSave, { signal });
-      removeBtn.addEventListener('click', () => {
+      // Sweep S8 (D4.8): removing a SAVED or filled-in prompt is confirmed first (the list
+      // saves on change, instance-wide); an empty unsaved row just goes.
+      removeBtn.addEventListener('click', async () => {
+        const filled = !!row.dataset.promptId || name.value.trim() !== '' || text.value.trim() !== '';
+        if (filled) {
+          const label = name.value.trim();
+          const yes = await confirmDestructive({
+            title: 'Remove ' + (label ? 'the "' + label + '" prompt' : 'this prompt') + '?',
+            body: 'It is removed for everyone on this server, and the Share with AI action loses it.',
+            confirmLabel: 'Remove',
+          });
+          if (!yes || !row.isConnected) return;
+        }
         row.remove();
         if (saveTimer) clearTimeout(saveTimer);
         saveNow();
@@ -1828,16 +1817,16 @@ function renderTranscriptAiPromptsEditor(signal) {
     const wireSignal = wireCtl.signal;
     if (signal) signal.addEventListener('abort', () => wireCtl.abort(), { once: true, signal: wireSignal });
     wireReorderable(host, {
-      rowSelector: '.transcript-ai-prompt-row',
-      handleSelector: '.drag-handle',
+      rowSelector: '.ui-reorder',
+      handleSelector: '.ui-reorder__handle',
       labelOf: (index) => {
-        const row = host.querySelectorAll('.transcript-ai-prompt-row')[index];
+        const row = host.querySelectorAll('.transcript-ai-prompt')[index];
         const typed = row ? row.querySelector('.transcript-ai-prompt-name').value.trim() : '';
         return typed || 'prompt';
       },
       focusKey: 'transcript-ai-prompts',
       onReorder: (fromIndex, toIndex) => {
-        const rows = Array.from(host.querySelectorAll('.transcript-ai-prompt-row'));
+        const rows = Array.from(host.querySelectorAll('.transcript-ai-prompt'));
         const row = rows[fromIndex];
         const target = rows[toIndex];
         if (!row || !target || row === target) return;
@@ -2057,6 +2046,12 @@ function wireLogoVariantControls(variant, inputId, uploadId, resetId) {
   });
 
   resetBtn.addEventListener('click', async () => {
+    const yes = await confirmDestructive({
+      title: 'Remove the ' + variant + '-mode logo?',
+      body: 'The header goes back to the "FileTube" text' + (variant === 'dark' ? ' in dark mode' : ' in light mode') + ' (or to your other logo, if you uploaded one). You can upload it again at any time.',
+      confirmLabel: 'Remove',
+    });
+    if (!yes) return;
     try {
       const r = await fetch('/api/settings/logo' + routeSuffix, { method: 'DELETE' });
       if (!r.ok) {
@@ -2173,24 +2168,25 @@ function renderBookFolders() {
   }
   bookFolders.forEach((folder, index) => {
     const row = document.createElement('div');
-    row.className = 'folder-item-row';
+    row.className = 'folder-item';
     const pathWrap = document.createElement('div');
-    pathWrap.style.cssText = 'flex:1; min-width:0;';
+    pathWrap.className = 'folder-item-body';
     const pathText = document.createElement('div');
     pathText.className = 'folder-path-text';
     pathText.title = folder;
     pathText.textContent = folder;
     pathWrap.appendChild(pathText);
     row.appendChild(pathWrap);
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'remove-folder-btn';
-    removeBtn.title = 'Remove folder';
-    removeBtn.textContent = '×'; // ×
-    removeBtn.addEventListener('click', () => {
-      bookFolders.splice(index, 1);
+    row.insertAdjacentHTML('beforeend', folderRemoveBtnHtml(folder, index));
+    const removeBtn = row.lastElementChild;
+    // Sweep S8 (D4.8): confirmed first; the folder leaves this form only on yes (Save persists).
+    removeBtn.addEventListener('click', async () => {
+      if (!(await confirmFolderRemove(folder, 'book'))) return;
+      const at = bookFolders.indexOf(folder);
+      if (at === -1) return;
+      bookFolders.splice(at, 1);
       renderBookFolders();
     }, { signal: controller.signal });
-    row.appendChild(removeBtn);
     container.appendChild(row);
   });
 }
@@ -2230,7 +2226,7 @@ function wireBookFolderControls(signal) {
     const add = () => {
       const v = input.value.trim();
       if (!v) return;
-      if (bookFolders.includes(v)) { alert('This book folder is already added.'); return; }
+      if (bookFolders.includes(v)) { settingsNotice('This book folder is already added.'); return; }
       bookFolders.push(v);
       renderBookFolders();
       input.value = '';
@@ -2297,24 +2293,25 @@ function renderMusicFolders() {
   }
   musicFolders.forEach((folder, index) => {
     const row = document.createElement('div');
-    row.className = 'folder-item-row';
+    row.className = 'folder-item';
     const pathWrap = document.createElement('div');
-    pathWrap.style.cssText = 'flex:1; min-width:0;';
+    pathWrap.className = 'folder-item-body';
     const pathText = document.createElement('div');
     pathText.className = 'folder-path-text';
     pathText.title = folder;
     pathText.textContent = folder;
     pathWrap.appendChild(pathText);
     row.appendChild(pathWrap);
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'remove-folder-btn';
-    removeBtn.title = 'Remove folder';
-    removeBtn.textContent = '×';
-    removeBtn.addEventListener('click', () => {
-      musicFolders.splice(index, 1);
+    row.insertAdjacentHTML('beforeend', folderRemoveBtnHtml(folder, index));
+    const removeBtn = row.lastElementChild;
+    // Sweep S8 (D4.8): confirmed first; the folder leaves this form only on yes (Save persists).
+    removeBtn.addEventListener('click', async () => {
+      if (!(await confirmFolderRemove(folder, 'music'))) return;
+      const at = musicFolders.indexOf(folder);
+      if (at === -1) return;
+      musicFolders.splice(at, 1);
       renderMusicFolders();
     }, { signal: controller.signal });
-    row.appendChild(removeBtn);
     container.appendChild(row);
   });
 }
@@ -2354,7 +2351,7 @@ function wireMusicFolderControls(signal) {
     const add = () => {
       const v = input.value.trim();
       if (!v) return;
-      if (musicFolders.includes(v)) { alert('This music folder is already added.'); return; }
+      if (musicFolders.includes(v)) { settingsNotice('This music folder is already added.'); return; }
       musicFolders.push(v);
       renderMusicFolders();
       input.value = '';
@@ -2418,24 +2415,25 @@ function renderTvFolders() {
   }
   tvFolders.forEach((folder, index) => {
     const row = document.createElement('div');
-    row.className = 'folder-item-row';
+    row.className = 'folder-item';
     const pathWrap = document.createElement('div');
-    pathWrap.style.cssText = 'flex:1; min-width:0;';
+    pathWrap.className = 'folder-item-body';
     const pathText = document.createElement('div');
     pathText.className = 'folder-path-text';
     pathText.title = folder;
     pathText.textContent = folder;
     pathWrap.appendChild(pathText);
     row.appendChild(pathWrap);
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'remove-folder-btn';
-    removeBtn.title = 'Remove folder';
-    removeBtn.textContent = '×';
-    removeBtn.addEventListener('click', () => {
-      tvFolders.splice(index, 1);
+    row.insertAdjacentHTML('beforeend', folderRemoveBtnHtml(folder, index));
+    const removeBtn = row.lastElementChild;
+    // Sweep S8 (D4.8): confirmed first; the folder leaves this form only on yes (Save persists).
+    removeBtn.addEventListener('click', async () => {
+      if (!(await confirmFolderRemove(folder, 'tv'))) return;
+      const at = tvFolders.indexOf(folder);
+      if (at === -1) return;
+      tvFolders.splice(at, 1);
       renderTvFolders();
     }, { signal: controller.signal });
-    row.appendChild(removeBtn);
     container.appendChild(row);
   });
 }
@@ -2475,7 +2473,7 @@ function wireTvFolderControls(signal) {
     const add = () => {
       const v = input.value.trim();
       if (!v) return;
-      if (tvFolders.includes(v)) { alert('This Shows folder is already added.'); return; }
+      if (tvFolders.includes(v)) { settingsNotice('This Shows folder is already added.'); return; }
       tvFolders.push(v);
       renderTvFolders();
       input.value = '';
@@ -2585,7 +2583,7 @@ function wireStaticControls(signal) {
       const pathValue = newFolderPathInput.value.trim();
       if (!pathValue) return;
       if (configuredFolders.includes(pathValue)) {
-        alert('This folder directory is already added.');
+        settingsNotice('This folder directory is already added.');
         return;
       }
       configuredFolders.push(pathValue);
@@ -2773,60 +2771,6 @@ function wireStaticControls(signal) {
     }, { signal });
   }
 
-  // v1.132: resume-countdown controls -- same immediate-apply localStorage
-  // pattern as the resume-threshold control just above. Keys MUST match
-  // RESUME_COUNTDOWN_STORAGE_KEY / RESUME_COUNTDOWN_ACTION_STORAGE_KEY in
-  // player.js exactly (the RESUME_THRESHOLD cross-file convention). The
-  // checkbox stores '0' ONLY when unchecked (absent = ON, the default -
-  // mirrors player.js's resolveResumeCountdownConfig `!== '0'` check); the
-  // action select stores its value verbatim ('resume' | 'beginning'), where
-  // anything but the literal 'beginning' resolves to resume on the player
-  // side. The select stays enabled regardless of the checkbox - a stored
-  // preference survives toggling the feature off and back on.
-  const resumeCountdownCheck = document.getElementById('resume-countdown-check');
-  const resumeCountdownActionSelect = document.getElementById('resume-countdown-action-select');
-  if (resumeCountdownCheck) {
-    let rawEnabled = null;
-    try { rawEnabled = localStorage.getItem(RESUME_COUNTDOWN_KEY); } catch (_) { /* storage disabled -- show the default (on) */ }
-    resumeCountdownCheck.checked = rawEnabled !== '0';
-    resumeCountdownCheck.addEventListener('change', (e) => {
-      try {
-        if (e.target.checked) localStorage.removeItem(RESUME_COUNTDOWN_KEY);
-        else localStorage.setItem(RESUME_COUNTDOWN_KEY, '0');
-      } catch (_) { /* storage disabled/full -- best-effort only */ }
-    }, { signal });
-  }
-  if (resumeCountdownActionSelect) {
-    let rawAction = null;
-    try { rawAction = localStorage.getItem(RESUME_COUNTDOWN_ACTION_KEY); } catch (_) { /* storage disabled -- show the default */ }
-    resumeCountdownActionSelect.value = rawAction === 'beginning' ? 'beginning' : 'resume';
-    resumeCountdownActionSelect.addEventListener('change', (e) => {
-      try { localStorage.setItem(RESUME_COUNTDOWN_ACTION_KEY, e.target.value === 'beginning' ? 'beginning' : 'resume'); } catch (_) { /* storage disabled/full -- best-effort only */ }
-    }, { signal });
-  }
-  // v1.161 (Dean): the countdown-length field. Same immediate-apply localStorage
-  // pattern. Shows the stored seconds (default 5 when absent); on change, clamp to
-  // [0,30] and store - a cleared/blank field removes the key so the player's
-  // default (5) returns. ZERO is a real, storable value ("instant resume"), which
-  // is why clampResumeSeconds returns null (not 0) for a BLANK field.
-  const resumeCountdownSecondsInput = document.getElementById('resume-countdown-seconds-input');
-  if (resumeCountdownSecondsInput) {
-    let rawSeconds = null;
-    try { rawSeconds = localStorage.getItem(RESUME_COUNTDOWN_SECONDS_KEY); } catch (_) { /* storage disabled -- show the default */ }
-    const shown = clampResumeSeconds(rawSeconds);
-    resumeCountdownSecondsInput.value = String(shown === null ? 5 : shown);
-    resumeCountdownSecondsInput.addEventListener('change', (e) => {
-      const clamped = clampResumeSeconds(e.target.value);
-      try {
-        if (clamped === null) localStorage.removeItem(RESUME_COUNTDOWN_SECONDS_KEY);
-        else localStorage.setItem(RESUME_COUNTDOWN_SECONDS_KEY, String(clamped));
-      } catch (_) { /* storage disabled/full -- best-effort only */ }
-      // Reflect the clamp back into the field so a typed 99 shows 30, blank -> 5.
-      if (clamped !== null) e.target.value = String(clamped);
-      else e.target.value = '5';
-    }, { signal });
-  }
-
   // v1.136.1: the audio-session declare experiment toggle - same immediate-
   // apply localStorage pattern. Key MUST match
   // AUDIO_SESSION_DECLARE_STORAGE_KEY in player.js exactly; stores '1' only
@@ -2947,32 +2891,37 @@ function wireStaticControls(signal) {
         if (!data) return;
         const channels = Array.isArray(data.channels) ? data.channels : [];
         musicChannelsList.textContent = '';
+        // Sweep S8: one grouped ui-row per channel - the name, a meta line ("8 songs",
+        // "· auto" while it is on only because it is mostly music), and a trailing switch
+        // (a native checkbox wearing .ui-switch; the same change -> POST wiring).
+        const slot = (cls) => { const el = document.createElement('span'); el.className = cls; return el; };
         if (channels.length === 0) {
-          const empty = document.createElement('small');
-          empty.className = 'music-channels-empty';
-          empty.textContent = 'No downloaded audio channels yet.';
+          const empty = document.createElement('div');
+          empty.className = 'ui-row ui-row--default music-channels-empty';
+          empty.setAttribute('role', 'listitem');
+          const body = slot('ui-row__body');
+          const t = slot('ui-row__meta');
+          t.textContent = 'No downloaded audio channels yet.';
+          body.appendChild(t);
+          empty.append(slot('ui-row__lead'), slot('ui-row__media'), body, slot('ui-row__aside'), slot('ui-row__actions'));
           musicChannelsList.appendChild(empty);
         } else {
           for (const ch of channels) {
             const row = document.createElement('label');
-            row.className = 'music-channels-row';
+            row.className = 'ui-row ui-row--default music-channels-row';
+            row.setAttribute('role', 'listitem');
             const cb = document.createElement('input');
             cb.type = 'checkbox';
+            cb.setAttribute('role', 'switch');
+            cb.className = 'ui-switch';
             cb.checked = !!ch.effective;
+            const meta = slot('ui-row__meta');
             // A channel that is on only because it's mostly-music (no explicit
-            // choice) is tagged "(auto)" so the on-state is never a mystery.
-            let autoTag = null;
+            // choice) is tagged "auto" so the on-state is never a mystery.
             const paintAutoTag = () => {
               const isAuto = ch.auto && ch.override == null;
-              if (isAuto && !autoTag) {
-                autoTag = document.createElement('span');
-                autoTag.className = 'auto-tag';
-                autoTag.textContent = '(auto)';
-                row.appendChild(autoTag);
-              } else if (!isAuto && autoTag) {
-                autoTag.remove();
-                autoTag = null;
-              }
+              const n = Number(ch.audioCount) || 0;
+              meta.textContent = (n === 1 ? '1 song' : n + ' songs') + (isAuto ? ' · auto' : '');
             };
             cb.addEventListener('change', () => {
               const next = cb.checked ? 'on' : 'off';
@@ -2983,15 +2932,18 @@ function wireStaticControls(signal) {
               })
                 .then((res) => {
                   if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                  ch.override = next; // now an explicit choice - the "(auto)" tag drops
+                  ch.override = next; // now an explicit choice - the "auto" tag drops
                   paintAutoTag();
                 })
                 .catch(() => { showToast('Could not update that channel.'); cb.checked = !cb.checked; });
             }, { signal });
-            const name = document.createElement('span');
-            name.textContent = `${ch.displayName} (${ch.audioCount})`;
-            row.appendChild(cb);
-            row.appendChild(name);
+            const body = slot('ui-row__body');
+            const name = slot('ui-row__title');
+            name.textContent = ch.displayName;
+            body.append(name, meta);
+            const acts = slot('ui-row__actions');
+            acts.appendChild(cb);
+            row.append(slot('ui-row__lead'), slot('ui-row__media'), body, slot('ui-row__aside'), acts);
             paintAutoTag();
             musicChannelsList.appendChild(row);
           }
@@ -3053,30 +3005,32 @@ function wireStaticControls(signal) {
 
   const clearCacheBtn = document.getElementById('clear-cache-btn');
   if (clearCacheBtn) {
-    clearCacheBtn.addEventListener('click', () => {
-      showConfirmModal(
-        'Clear transcode cache?',
-        'This deletes all cached transcoded files. They will be regenerated automatically the next time they\'re watched.',
-        async () => {
-          const original = clearCacheBtn.textContent;
-          setButtonBusy(clearCacheBtn, true);
-          clearCacheBtn.textContent = 'Clearing…';
-          try {
-            const r = await fetch('/api/cache/clear', { method: 'POST' });
-            const data = await r.json();
-            if (data.success) {
-              await loadCacheSize();
-            } else {
-              console.error('Failed to clear cache:', data.error);
-            }
-          } catch (err) {
-            console.error('Failed to clear cache:', err);
-          } finally {
-            setButtonBusy(clearCacheBtn, false);
-            clearCacheBtn.textContent = original;
-          }
+    // Sweep S8 (D4.8): showConfirmModal -> the one ui.confirm step (danger); the same
+    // POST /api/cache/clear, sent only after it resolves true.
+    clearCacheBtn.addEventListener('click', async () => {
+      const yes = await confirmDestructive({
+        title: 'Clear the transcode cache?',
+        body: 'This deletes all cached transcoded files. They will be regenerated automatically the next time they\'re watched.',
+        confirmLabel: 'Clear cache',
+      });
+      if (!yes) return;
+      const original = clearCacheBtn.textContent;
+      setButtonBusy(clearCacheBtn, true);
+      clearCacheBtn.textContent = 'Clearing…';
+      try {
+        const r = await fetch('/api/cache/clear', { method: 'POST' });
+        const data = await r.json();
+        if (data.success) {
+          await loadCacheSize();
+        } else {
+          console.error('Failed to clear cache:', data.error);
         }
-      );
+      } catch (err) {
+        console.error('Failed to clear cache:', err);
+      } finally {
+        setButtonBusy(clearCacheBtn, false);
+        clearCacheBtn.textContent = original;
+      }
     }, { signal });
   }
 }
@@ -3137,6 +3091,12 @@ async function initAccountSection(signal) {
       } catch (_) { showToast('Could not update your photo (network error).'); }
     }, { signal });
     photoRemove.addEventListener('click', async () => {
+      const yes = await confirmDestructive({
+        title: 'Remove your profile photo?',
+        body: 'Your photo is deleted; your initials show in its place. You can upload a new one at any time.',
+        confirmLabel: 'Remove',
+      });
+      if (!yes) return;
       try {
         const res = await fetch('/api/me/avatar', { method: 'DELETE' });
         if (!res.ok) { showToast('Could not remove your photo.'); return; }
@@ -3190,7 +3150,13 @@ function wireRestoreControls(signal) {
       setFieldError(statusEl, 'That file is not valid JSON.');
       return;
     }
-    if (!window.confirm('Restore this backup? It replaces this FileTube\'s configuration and accounts with the backup\'s contents.')) return;
+    // Sweep S8 (F55): ui.confirm (danger) replaces window.confirm; the same POST, only on yes.
+    const yes = await confirmDestructive({
+      title: 'Restore this backup?',
+      body: 'It replaces this FileTube\'s configuration and accounts with the backup\'s contents.',
+      confirmLabel: 'Restore',
+    });
+    if (!yes) return;
     try {
       const r = await fetch('/api/admin/restore', {
         method: 'POST',
@@ -3202,8 +3168,9 @@ function wireRestoreControls(signal) {
         setFieldError(statusEl, data.error || 'Restore failed.');
         return;
       }
-      window.alert('Restore complete. The page will reload.');
-      window.location.reload();
+      // (was a blocking window.alert; the reload is the confirmation, the toast says why)
+      settingsNotice('Restore complete. Reloading...', 'success');
+      window.setTimeout(() => window.location.reload(), 900);
     } catch (_) {
       setFieldError(statusEl, 'Restore failed (network error).');
     }
@@ -3242,9 +3209,11 @@ async function loadUsersList(signal, me) {
   });
 }
 
-// The Role cell: the role word + small capability badges (subscriptions / edit).
+// The Role cell: the role word + the capability tags (subscriptions / edit). Retire R3: a tag
+// is a ui-chip meta (non-interactive text, F43), never a pill that reads as a button.
 function buildUserRoleCell(user) {
   const box = document.createElement('span');
+  box.className = 'users-role-cell';
   const role = document.createElement('span');
   role.textContent = user.role === 'admin' ? 'Admin' : 'Member';
   box.appendChild(role);
@@ -3253,7 +3222,7 @@ function buildUserRoleCell(user) {
   if (user.canModifyLibrary) caps.push('can edit'); // v1.81 write-RBAC
   caps.forEach((c) => {
     const b = document.createElement('span');
-    b.className = 'users-cap-badge';
+    b.className = 'ui-chip ui-chip--meta users-cap';
     b.textContent = c;
     box.appendChild(b);
   });
@@ -3268,8 +3237,11 @@ function buildUserActions(user, me, signal, rowEl) {
   const actions = document.createElement('div');
   actions.className = 'users-row-actions';
   const refresh = () => loadUsersList(signal, me);
-  const act = async (path, body, confirmText) => {
-    if (confirmText && !window.confirm(confirmText)) return;
+  // Sweep S8 (F55): the same routes and bodies as before; a refusal or failure is a toast
+  // (was window.alert). A destructive call passes `confirm`, and the request is sent only
+  // after confirmDestructive resolves true.
+  const act = async (path, body, confirm) => {
+    if (confirm && !(await confirmDestructive(confirm))) return;
     try {
       const r = await fetch(path, {
         method: body === undefined ? 'DELETE' : 'POST',
@@ -3278,45 +3250,62 @@ function buildUserActions(user, me, signal, rowEl) {
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) {
-        window.alert(data.error || 'That change was refused.');
-        return;
+        settingsNotice(data.error || 'That change was refused.');
+        return false;
       }
       refresh();
+      return true;
     } catch (_) {
-      window.alert('That change failed (network error).');
+      settingsNotice('That change failed (network error).');
+      return false;
     }
   };
 
-  const addBtn = (label, onClick) => {
+  const addBtn = (key, label, onClick, variant) => {
     const b = document.createElement('button');
     b.type = 'button';
-    b.className = 'btn btn-sm';
+    b.className = 'ui-btn ui-btn--' + (variant || 'secondary') + ' ui-btn--sm';
+    b.setAttribute('data-user-action', key);
     b.textContent = label;
     b.addEventListener('click', onClick, { signal });
     actions.appendChild(b);
   };
 
-  addBtn('Reset password', () => {
-    const pw = window.prompt(`New password for ${user.username} (at least 8 characters):`);
-    if (pw === null) return;
-    act(`/api/users/${user.id}/password`, { password: pw });
+  // Sweep S8 (F55): the password reset is a ui.prompt with a MASKED field and a show toggle
+  // (window.prompt echoed it in plain text). The typed value goes only to the same
+  // POST /api/users/:id/password body; Cancel/Esc/the scrim answer null and send nothing.
+  addBtn('reset-password', 'Reset password', async () => {
+    const u = settingsUi();
+    if (!u || typeof u.prompt !== 'function') return;
+    const pw = await u.prompt({
+      title: `Reset ${user.username}'s password`,
+      body: 'At least 8 characters. They sign in with it from now on.',
+      label: 'New password',
+      type: 'password',
+      confirmLabel: 'Set password',
+    });
+    if (pw === null || pw === undefined) return;
+    if (await act(`/api/users/${user.id}/password`, { password: pw })) settingsNotice('Password updated.', 'success');
   });
   if (!isSelf) {
-    addBtn(user.disabled ? 'Enable' : 'Disable', () => act(`/api/users/${user.id}/disabled`, { disabled: !user.disabled }));
+    addBtn('disabled', user.disabled ? 'Enable' : 'Disable', () => act(`/api/users/${user.id}/disabled`, { disabled: !user.disabled }));
   }
-  addBtn(user.role === 'admin' ? 'Make member' : 'Make admin', () => act(`/api/users/${user.id}/role`, { role: user.role === 'admin' ? 'member' : 'admin' }));
-  addBtn(user.canManageSubscriptions ? 'Revoke subscriptions' : 'Allow subscriptions', () => act(`/api/users/${user.id}/subscriptions-flag`, { canManageSubscriptions: !user.canManageSubscriptions }));
+  addBtn('role', user.role === 'admin' ? 'Make member' : 'Make admin', () => act(`/api/users/${user.id}/role`, { role: user.role === 'admin' ? 'member' : 'admin' }));
+  addBtn('subscriptions', user.canManageSubscriptions ? 'Revoke subscriptions' : 'Allow subscriptions', () => act(`/api/users/${user.id}/subscriptions-flag`, { canManageSubscriptions: !user.canManageSubscriptions }));
   // v1.80 RBAC: per-user library access. Only members are restrictable (an admin
   // always sees everything), so the editor is offered for members only.
   if (user.role !== 'admin') {
     // v1.81 write-RBAC: grant/revoke library-MODIFY (delete/move/edit/scan).
     // Admins always can, so the toggle is member-only like the Access editor.
-    addBtn(user.canModifyLibrary ? 'Revoke edit' : 'Allow edit', () => act(`/api/users/${user.id}/modify-library-flag`, { canModifyLibrary: !user.canModifyLibrary }));
-    addBtn('Access', () => openAccessEditor(user, rowEl, signal));
+    addBtn('edit', user.canModifyLibrary ? 'Revoke edit' : 'Allow edit', () => act(`/api/users/${user.id}/modify-library-flag`, { canModifyLibrary: !user.canModifyLibrary }));
+    addBtn('access', 'Access', () => openAccessEditor(user, rowEl, signal));
   }
   if (!isSelf) {
-    addBtn('Delete', () => act(`/api/users/${user.id}`, undefined,
-      `Delete ${user.username}? Their watch progress, likes, reading positions, and pins go with the account. This cannot be undone.`));
+    addBtn('delete', 'Delete', () => act(`/api/users/${user.id}`, undefined, {
+      title: `Delete ${user.username}?`,
+      body: 'Their watch progress, likes, reading positions, and pins go with the account. This cannot be undone.',
+      confirmLabel: 'Delete account',
+    }), 'danger');
   }
   return actions;
 }
@@ -3343,33 +3332,44 @@ async function openAccessEditor(user, row, signal) {
 
   const boxes = []; // {kind, value, input}
   const section = (title) => { const h = document.createElement('h4'); h.textContent = title; panel.appendChild(h); };
+  // Sweep S8: each unit is a switch (a native checkbox wearing .ui-switch - the same
+  // .checked read by Save below), and the mode is a ui.segmented pair.
   const checkbox = (kind, value, label) => {
     const l = document.createElement('label');
     l.className = 'access-item';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
+    cb.setAttribute('role', 'switch');
+    cb.className = 'ui-switch';
     cb.checked = chosen.has(`${kind}:${value}`);
+    const text = document.createElement('span');
+    text.textContent = label;
+    l.appendChild(text);
     l.appendChild(cb);
-    l.appendChild(document.createTextNode(' ' + label));
     panel.appendChild(l);
     boxes.push({ kind, value, input: cb });
   };
 
   // Mode
   section('Mode');
-  const modeWrap = document.createElement('div');
-  modeWrap.className = 'access-mode';
-  for (const m of ['blocklist', 'allowlist']) {
-    const l = document.createElement('label');
-    l.className = 'access-item';
-    const r = document.createElement('input');
-    r.type = 'radio'; r.name = `mode-${user.id}`; r.value = m; r.checked = mode === m;
-    r.addEventListener('change', () => { if (r.checked) mode = m; }, { signal });
-    l.appendChild(r);
-    l.appendChild(document.createTextNode(m === 'blocklist' ? ' Block-list (see everything except what is checked)' : ' Allow-list (see ONLY what is checked - safest for a kid)'));
-    modeWrap.appendChild(l);
+  const u = settingsUi();
+  const MODE_HELP = {
+    blocklist: 'Block-list: see everything except what is switched on below.',
+    allowlist: 'Allow-list: see ONLY what is switched on below - safest for a kid.',
+  };
+  const modeHelp = document.createElement('p');
+  modeHelp.className = 'access-mode-help';
+  modeHelp.textContent = MODE_HELP[mode];
+  if (u && typeof u.segmented === 'function') {
+    const seg = u.segmented({
+      label: 'Access mode', value: mode,
+      options: [{ value: 'blocklist', label: 'Block-list' }, { value: 'allowlist', label: 'Allow-list' }],
+      onChange: (v) => { mode = v; modeHelp.textContent = MODE_HELP[v]; },
+    });
+    seg.classList.add('access-mode');
+    panel.appendChild(seg);
   }
-  panel.appendChild(modeWrap);
+  panel.appendChild(modeHelp);
 
   section('Whole libraries');
   // v1.196: Shows (the tv library) is restrictable as a whole library too - its
@@ -3386,7 +3386,7 @@ async function openAccessEditor(user, row, signal) {
   }
 
   const save = document.createElement('button');
-  save.type = 'button'; save.className = 'btn'; save.textContent = 'Save access';
+  save.type = 'button'; save.className = 'ui-btn ui-btn--primary ui-btn--md access-save'; save.textContent = 'Save access';
   save.addEventListener('click', async () => {
     const restrictions = boxes.filter((b) => b.input.checked).map((b) => ({ kind: b.kind, value: b.value }));
     try {
@@ -3394,12 +3394,11 @@ async function openAccessEditor(user, row, signal) {
         method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode, restrictions }),
       });
       const data = await r.json().catch(() => ({}));
-      if (!r.ok) { window.alert(data.error || 'Saving access failed.'); return; }
+      if (!r.ok) { settingsNotice(data.error || 'Saving access failed.'); return; }
       save.textContent = 'Saved';
       window.setTimeout(() => { panel.remove(); }, 700);
-    } catch (_) { window.alert('Saving access failed (network error).'); }
+    } catch (_) { settingsNotice('Saving access failed (network error).'); }
   }, { signal });
-  panel.appendChild(document.createElement('br'));
   panel.appendChild(save);
 }
 
@@ -3471,23 +3470,26 @@ function formatTrashSize(bytes) {
   return Math.max(1, Math.round(n / 1024)) + ' KB';
 }
 
-// One trash row: thumbnail (the sidecar re-keyed with the move, so
-// /thumbnail/<trashId> resolves), title, meta line, Restore + two-tap Purge.
 // v1.159 (Dean): the Trash Title cell - thumbnail + title (textContent-escaped);
-// the title truncates, the thumb is fixed.
+// the title truncates, the thumb is fixed. The thumbnail is the sidecar re-keyed with the
+// move, so /thumbnail/<trashId> resolves. Retire R3: the thumbnail is a ui-thumb (the row
+// radius and the placeholder ground are the primitive's).
 function buildTrashTitleCell(item) {
   var box = document.createElement('div');
   box.className = 'trash-title-cell';
+  var thumb = document.createElement('span');
+  thumb.className = 'ui-thumb ui-thumb--16x9 ui-thumb--row trash-thumb';
   var img = document.createElement('img');
-  img.className = 'trash-thumb';
+  img.className = 'ui-thumb__img';
   img.src = '/thumbnail/' + encodeURIComponent(item.trashId || '');
   img.alt = '';
   img.loading = 'lazy';
+  thumb.appendChild(img);
   var t = document.createElement('span');
   t.className = 'trash-title';
   t.textContent = item.title || item.name || 'Untitled';
   t.title = t.textContent;
-  box.appendChild(img);
+  box.appendChild(thumb);
   box.appendChild(t);
   return box;
 }
@@ -3502,81 +3504,62 @@ function buildTrashActions(item) {
   box.className = 'trash-actions';
   var restore = document.createElement('button');
   restore.type = 'button';
-  restore.className = 'btn btn-sm trash-restore-btn';
+  restore.className = 'ui-btn ui-btn--secondary ui-btn--sm trash-restore-btn';
   restore.setAttribute('data-trash-id', tid);
   restore.textContent = 'Restore';
   var purge = document.createElement('button');
   purge.type = 'button';
-  purge.className = 'btn btn-sm trash-purge-btn';
+  purge.className = 'ui-btn ui-btn--danger ui-btn--sm trash-purge-btn';
   purge.setAttribute('data-trash-id', tid);
-  purge.innerHTML = '<span class="trash-purge-label">Purge</span><span class="trash-purge-confirm">Sure?</span>';
+  purge.textContent = 'Purge';
   box.appendChild(restore);
   box.appendChild(purge);
   return box;
 }
 
 // v1.158: the trash toolbar's two label strings, pure (unit-tested). The
-// resting total ("N items - X GB", size omitted when 0/unknown) and the armed
-// confirm ("Sure? Deletes N (X GB)") both name exactly what emptying destroys.
+// resting total ("N items - X GB", size omitted when 0/unknown) and the Empty
+// trash confirm's title ("Permanently delete N items (X GB)?") both name exactly
+// what emptying destroys.
 function formatTrashToolbarLabel(count, totalSizeBytes) {
   var n = Number(count) || 0;
   var sizeLabel = formatTrashSize(totalSizeBytes);
   var noun = n === 1 ? '1 item' : n + ' items';
   return sizeLabel ? noun + ' - ' + sizeLabel : noun;
 }
-function formatTrashArmLabel(count, totalSizeBytes) {
+function formatTrashEmptyTitle(count, totalSizeBytes) {
   var n = Number(count) || 0;
   var sizeLabel = formatTrashSize(totalSizeBytes);
-  return 'Sure? Deletes ' + n + (sizeLabel ? ' (' + sizeLabel + ')' : '');
+  return 'Permanently delete ' + (n === 1 ? '1 item' : n + ' items') + (sizeLabel ? ' (' + sizeLabel + ')' : '') + '?';
 }
 
 // Fetch + render the Trash list; wires Restore (single tap -- it destroys
-// nothing) and the two-tap Purge (the history/queue arm pattern). Re-renders
-// after every action and after a retention change (the days-left labels).
+// nothing) and Purge / Empty trash, each behind the ui.confirm step (sweep S8,
+// D4.8: the v1.158 two-tap arms are gone; the request is sent only after the
+// dialog resolves true). Re-renders after every action and after a retention
+// change (the days-left labels).
 function renderTrashSection(signal) {
   const listEl = document.getElementById('trash-list');
   const emptyEl = document.getElementById('trash-empty');
   if (!listEl) return;
-  // v1.158: the "N items - X GB" line + the two-tap "Empty trash" button.
+  // v1.158: the "N items - X GB" line + the "Empty trash" button.
   const toolbarEl = document.getElementById('trash-toolbar');
   const totalEl = document.getElementById('trash-total');
   const emptyAllBtn = document.getElementById('trash-empty-all');
 
-  let armed = null; // { id, timer }
-  function disarm() {
-    if (!armed) return;
-    clearTimeout(armed.timer);
-    const el = listEl.querySelector('.trash-purge-btn.trash-confirming');
-    if (el) el.classList.remove('trash-confirming');
-    armed = null;
-  }
-
-  // v1.158: separate arm state for the bulk button. Its label at arm time names
-  // exactly what the second tap destroys ("Sure? Deletes N (X GB)"). lastCount/
-  // lastSizeLabel are the most recent /api/trash figures.
+  // The most recent /api/trash figures: the Empty trash confirm names exactly
+  // what it destroys.
   let lastCount = 0;
   let lastTotalBytes = 0;
-  let emptyArmed = null; // { timer }
-  function emptyLabel(text) { if (emptyAllBtn) emptyAllBtn.textContent = text; }
-  function disarmEmpty() {
-    if (!emptyArmed) return;
-    clearTimeout(emptyArmed.timer);
-    emptyArmed = null;
-    if (emptyAllBtn) emptyAllBtn.classList.remove('trash-confirming');
-    emptyLabel('Empty trash');
-  }
 
   function refresh() {
     fetch('/api/trash')
       .then((r) => { if (!r.ok) throw new Error('trash fetch failed: ' + r.status); return r.json(); })
       .then((body) => {
         if (signal.aborted) return;
-        disarm();
-        disarmEmpty();
         // v1.159: render the trash as a sortable table (Title | Size | Expires,
-        // + Restore/Purge actions). The delegated restore/purge handler + the
-        // per-item two-tap arm below are UNCHANGED (they key off the button
-        // classes + data-trash-id, which the actions cell still carries).
+        // + Restore/Purge actions). The delegated restore/purge handler below
+        // keys off the button classes + data-trash-id the actions cell carries.
         const count = body.items.length;
         if (count === 0) {
           listEl.textContent = ''; // the #trash-empty blurb below carries the empty state
@@ -3594,10 +3577,6 @@ function renderTrashSection(signal) {
             filter: { text: (it) => it.title || it.name || '', placeholder: 'Filter by title...' },
             defaultSort: { key: 'trashed', dir: 'desc' },
             persistKey: 'ft-stable:trash',
-            // v1.159 (gate SUGGESTION): a sort/filter re-render rebuilds the rows;
-            // clear any armed per-item Purge so it can't survive INVISIBLY (its
-            // "Sure?" button is gone) into a one-tap delete on the next tap.
-            onRender: disarm,
           });
         }
         if (emptyEl) emptyEl.hidden = count > 0;
@@ -3611,18 +3590,16 @@ function renderTrashSection(signal) {
       .catch((err) => { if (!signal.aborted) console.error('Trash: list failed', err); });
   }
 
-  // Two-tap Empty-trash: first tap arms (naming the count + size), second tap
-  // within ~4s purges ALL visible items. Disarms on timeout or a refresh.
+  // Empty trash: the confirm names the count + size; POST purge-all only on yes.
   if (emptyAllBtn) {
-    emptyAllBtn.addEventListener('click', () => {
-      if (!emptyArmed) {
-        if (lastCount === 0) return; // nothing to empty
-        emptyAllBtn.classList.add('trash-confirming');
-        emptyLabel(formatTrashArmLabel(lastCount, lastTotalBytes));
-        emptyArmed = { timer: setTimeout(disarmEmpty, 4000) };
-        return;
-      }
-      disarmEmpty();
+    emptyAllBtn.addEventListener('click', async () => {
+      if (lastCount === 0) return; // nothing to empty
+      const yes = await confirmDestructive({
+        title: formatTrashEmptyTitle(lastCount, lastTotalBytes),
+        body: 'Everything in the trash is erased from disk now instead of at the end of its retention window. This cannot be undone.',
+        confirmLabel: 'Empty trash',
+      });
+      if (!yes || signal.aborted) return;
       emptyAllBtn.disabled = true;
       fetch('/api/trash/purge-all', { method: 'POST' })
         .then(async (r) => {
@@ -3663,25 +3640,31 @@ function renderTrashSection(signal) {
     if (purgeBtn) {
       const tid = purgeBtn.getAttribute('data-trash-id');
       if (!tid) return;
-      if (!(armed && armed.id === tid)) {
-        disarm();
-        purgeBtn.classList.add('trash-confirming');
-        armed = { id: tid, timer: setTimeout(disarm, 3000) };
-        return;
-      }
-      disarm();
-      fetch('/api/trash/' + encodeURIComponent(tid), { method: 'DELETE' })
-        .then(async (r) => {
-          if (signal.aborted) return;
-          if (!r.ok) {
-            const body = await r.json().catch(() => ({}));
-            if (typeof showToast === 'function') showToast(body.error || 'Could not purge.');
-          }
-          refresh();
-        })
-        .catch(() => { if (!signal.aborted) refresh(); });
+      const row = purgeBtn.closest('.stable-row');
+      const titleEl = row && row.querySelector('.trash-title');
+      purgeTrashItem(tid, titleEl ? titleEl.textContent : '');
     }
   }, { signal });
+
+  // Purge one item: DELETE /api/trash/:id, sent only after the confirm resolves true.
+  async function purgeTrashItem(tid, title) {
+    const yes = await confirmDestructive({
+      title: 'Permanently delete ' + (title ? '"' + title + '"' : 'this item') + '?',
+      body: 'It is erased from disk now. This cannot be undone.',
+      confirmLabel: 'Delete permanently',
+    });
+    if (!yes || signal.aborted) return;
+    fetch('/api/trash/' + encodeURIComponent(tid), { method: 'DELETE' })
+      .then(async (r) => {
+        if (signal.aborted) return;
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}));
+          if (typeof showToast === 'function') showToast(body.error || 'Could not purge.');
+        }
+        refresh();
+      })
+      .catch(() => { if (!signal.aborted) refresh(); });
+  }
 
   refresh();
   // Expose the re-render for the retention listener (labels change with it).
@@ -3702,15 +3685,22 @@ function buildFeedHiddenRowHtml(item) {
   // the raw folderName (the enumerate-every-surface class; mirrors resolveChannelName).
   if (!chName && typeof folderDisplayName === 'function') { var mapped = folderDisplayName(item.folderName); if (mapped) chName = mapped; }
   var meta = chName ? escapeTrashHtml(chName) : '';
+  // Retire R3: one ui-row of the section's grouped ui-list (setup.html #feedhidden-list
+  // declares the thumbnail media column and a two-slot action column): the thumbnail is a
+  // ui-thumb, the title and channel are the row's title and meta, and Restore trails.
   return '' +
-    '<div class="feed-hidden-row" data-id="' + id + '">' +
-    '<img class="feed-hidden-thumb" src="/thumbnail/' + encodeURIComponent(item.id || '') + '" alt="" loading="lazy" />' +
-    '<div class="feed-hidden-info">' +
-    '<div class="feed-hidden-title" title="' + title + '">' + title + '</div>' +
-    (meta ? '<div class="feed-hidden-meta">' + meta + '</div>' : '') +
-    '</div>' +
-    '<button type="button" class="btn btn-sm feedhidden-restore-btn" data-id="' + id + '">Restore</button>' +
-    '</div>';
+    '<div class="ui-row ui-row--media" role="listitem" data-id="' + id + '">' +
+    '<span class="ui-row__lead"></span>' +
+    '<span class="ui-row__media"><span class="ui-thumb ui-thumb--16x9 ui-thumb--row">' +
+    '<img class="ui-thumb__img" src="/thumbnail/' + encodeURIComponent(item.id || '') + '" alt="" loading="lazy" /></span></span>' +
+    '<span class="ui-row__body">' +
+    '<span class="ui-row__title" title="' + title + '">' + title + '</span>' +
+    (meta ? '<span class="ui-row__meta feed-hidden-meta">' + meta + '</span>' : '') +
+    '</span>' +
+    '<span class="ui-row__aside"></span>' +
+    '<span class="ui-row__actions">' +
+    '<button type="button" class="ui-btn ui-btn--secondary ui-btn--sm feedhidden-restore-btn" data-id="' + id + '">Restore</button>' +
+    '</span></div>';
 }
 
 // Fetch + render the Hidden list; wires the single-tap Restore (DELETE
@@ -3768,7 +3758,7 @@ function pushSupportProblem() {
     if (typeof window !== 'undefined' && window.location && window.location.protocol === 'http:') {
       return 'Push needs HTTPS - this page was loaded over plain http.';
     }
-    return 'This browser does not support push here. On iPhone/iPad: Share → Add to Home Screen, then enable from the installed app.';
+    return 'This browser does not support push here. On iPhone/iPad: tap Share, then Add to Home Screen, then enable from the installed app.';
   }
   if (typeof window === 'undefined' || !('PushManager' in window) || !('Notification' in window)) {
     return 'This browser does not support Web Push notifications.';
@@ -3785,8 +3775,9 @@ function initPushControls(signal) {
   const errorEl = document.getElementById('push-error');
   if (!group || !userCheck || !enableBtn || !disableBtn || !statusEl) return;
 
-  // v1.67.1 ROOT-CAUSE FIX: .field-error is display:none by default (it is
-  // only revealed by toggling display, see setFieldError). The v1.66 setError
+  // v1.67.1 ROOT-CAUSE FIX: the push error line starts hidden (it is only
+  // revealed through setFieldError - the `hidden` attribute since sweep S8; the
+  // v1.67 .field-error class it wore is retired). The v1.66 setError
   // set textContent ONLY, so EVERY push error message - denied permission, a
   // subscribe() DOMException, a server refusal - was written to a hidden
   // element and never seen. Route through setFieldError so the message
@@ -4621,7 +4612,6 @@ function init(root) {
   loadHomeRowControl('home-continue-listening-check', 'ft-home-continue-listening');
   loadHomeRowControl('home-continue-reading-check', 'ft-home-continue-reading');
   renderBottomBarEditor(controller.signal); // v1.44 T12 bottom-bar editor
-  renderCardCornerEditor(controller.signal); // v1.67 card-corner pickers (Appearance box)
   renderLibraryGlyphEditor(controller.signal); // v1.77 Library-icon pickers (Appearance box)
   renderTrashSection(controller.signal); // v1.65 trash list + actions
   renderFeedHiddenSection(controller.signal); // v1.97.1 Hidden (feed-hide restore) list
@@ -4703,18 +4693,14 @@ if (typeof module !== 'undefined' && module.exports) {
     BG_TIMING_ENABLED_KEY, BG_TIMING_LOG_KEY,
     // v1.157 (P3): the configured-folder-list skeleton (pure string builder).
     buildSetupFolderSkeleton,
-    // v1.161 (Dean): the resume-countdown seconds clamp (mirrors player.js's read).
-    clampResumeSeconds,
     transcodeNamesSuffix, escapeTrashHtml, trashDaysLeftLabel, formatTrashSize,
     // v1.159: the trash-table cell builders (jsdom-tested in trash-table.test.js).
     buildTrashTitleCell, buildTrashActions,
     // v1.158: the trash toolbar's two pure label strings + the render/wiring
     // (jsdom-mounted to bind the DESTRUCTIVE two-tap: one tap never fires).
-    formatTrashToolbarLabel, formatTrashArmLabel, renderTrashSection,
+    formatTrashToolbarLabel, formatTrashEmptyTitle, renderTrashSection,
     // v1.97.1 "Hidden" section row builder (pure; the render/wiring is jsdom-adjacent).
     buildFeedHiddenRowHtml,
-    // v1.67: the card-corner editor (drawn pieces are jsdom-tested).
-    buildCornerEditorOptions, CARD_CORNER_LABELS, CORNER_EDITOR_SLOTS, renderCardCornerEditor,
     // v1.77: the glyph pickers. The option list is a pure decision; the DRAWN
     // editors are jsdom-tested, because a correct list nothing renders is the
     // decision-vs-use trap this repo keeps falling into.
@@ -4752,5 +4738,11 @@ if (typeof module !== 'undefined' && module.exports) {
       if (Object.prototype.hasOwnProperty.call(state, 'configVersion')) configBaseVersion = state.configVersion;
     },
     __getConfiguredFoldersForTests() { return configuredFolders.slice(); },
+    // Sweep S8: every destructive Settings path runs through confirmDestructive, and the
+    // password reset through ui.prompt; settings-forms-sweep.test.js drives each REAL wiring
+    // with the REAL ui.js (no path reaches its request without the confirm resolving true).
+    confirmDestructive, wireStaticControls, wireRestoreControls, initAccountSection,
+    renderStickerPicker, renderTranscriptAiPromptsEditor, wireLogoControls, loadBookConfig,
+    wireBookFolderControls,
   };
 }

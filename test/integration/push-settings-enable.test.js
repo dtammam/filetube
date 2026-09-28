@@ -140,8 +140,9 @@ test('denied permission: the enable click makes #push-error VISIBLE with the blo
   // set textContent but left display:none - this would have caught it.
   assert.match(err.textContent, /blocked/i, 'the denied message is written');
   assert.match(err.textContent, /Settings > Notifications/i, 'and points at the iOS toggle');
-  assert.notEqual(err.style.display, 'none', 'the error element is REVEALED, not muted');
-  assert.equal(err.style.display, 'block', 'shown via setFieldError display:block');
+  // Sweep S8: setFieldError reveals by the `hidden` attribute (no inline display write).
+  assert.equal(err.hidden, false, 'the error element is REVEALED, not muted');
+  assert.notEqual(dom.window.getComputedStyle(err).display, 'none', 'and it computes visible');
 
   // And the status still reads not-enabled (nothing falsely claims success).
   const status = doc.getElementById('push-device-status');
@@ -159,7 +160,7 @@ test('dismissed prompt (default): the click reveals the distinct retry message, 
   btn.dispatchEvent(new dom.window.Event('click'));
   await settle(dom);
 
-  assert.equal(err.style.display, 'block', 'the message is revealed');
+  assert.equal(err.hidden, false, 'the message is revealed');
   assert.match(err.textContent, /again/i, 'a dismissed prompt tells the user to retry');
   assert.doesNotMatch(err.textContent, /blocked/i, 'and does NOT show the blocked copy (distinct cause)');
   dom.window.close();
@@ -184,7 +185,7 @@ test('granted permission + failing subscribe(): the visible message names the st
   btn.dispatchEvent(new dom.window.Event('click'));
   await settle(dom);
 
-  assert.equal(err.style.display, 'block', 'the diagnostic is revealed');
+  assert.equal(err.hidden, false, 'the diagnostic is revealed');
   assert.match(err.textContent, /could not register with the push service/i, 'names the failing step');
   assert.match(err.textContent, /\[AbortError: registration failed - push service unreachable\]/,
     'and carries the RAW exception - always, not behind a debug flag the standalone PWA cannot set');

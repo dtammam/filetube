@@ -656,90 +656,17 @@ test('injectDownloadStatusChip: a second synchronous call before the first fetch
 
 // ---- v1.26 code-review fix (F2): panel diff-update helpers -----------------
 //
-// A purpose-built, minimal fake DOM (mirrors the FakeElement patterns
-// already established in ytdlp-oneoff-modal.test.js/oneoff-modal-teardown.
-// test.js) sufficient to prove `updateDownloadChipPanel` reuses row DOM
-// nodes across ticks instead of rebuilding them -- the exact defect class
-// F2 fixes (the fill's width transition never firing, the barber-pole
-// animation restarting, Cancel/Retry/Dismiss buttons losing a bound tap).
+// Proves `updateDownloadChipPanel` reuses row DOM nodes across ticks instead of rebuilding
+// them -- the exact defect class F2 fixes (the fill's progress transition never firing, the
+// indeterminate sweep restarting, Cancel/Retry/Dismiss buttons losing a bound tap).
 
-class FakeChipElement {
-  constructor(tagName) {
-    this.tagName = String(tagName).toUpperCase();
-    this.children = [];
-    this.parentElement = null;
-    this.className = '';
-    this._textContent = '';
-    this._listeners = {};
-    this.style = {};
-    this.hidden = false;
-    this._classes = new Set();
-    this.classList = {
-      add: (cls) => this._classes.add(cls),
-      remove: (cls) => this._classes.delete(cls),
-      contains: (cls) => this._classes.has(cls),
-      toggle: (cls, force) => {
-        const on = force !== undefined ? Boolean(force) : !this._classes.has(cls);
-        if (on) this._classes.add(cls); else this._classes.delete(cls);
-        return on;
-      },
-    };
-  }
-
-  appendChild(child) {
-    // Real-DOM semantics: appending an ALREADY-present child MOVES it (no
-    // duplicate, no new node) -- this is what lets `updateDownloadChipPanel`
-    // reorder rows via a plain `appendChild` without ever recreating them.
-    if (child.parentElement === this) {
-      const idx = this.children.indexOf(child);
-      if (idx >= 0) this.children.splice(idx, 1);
-    } else if (child.parentElement) {
-      child.parentElement.removeChild(child);
-    }
-    child.parentElement = this;
-    this.children.push(child);
-    return child;
-  }
-
-  removeChild(child) {
-    const idx = this.children.indexOf(child);
-    if (idx >= 0) this.children.splice(idx, 1);
-    child.parentElement = null;
-    return child;
-  }
-
-  get firstChild() {
-    return this.children.length > 0 ? this.children[0] : null;
-  }
-
-  setAttribute(name, value) {
-    this[name] = value;
-  }
-
-  addEventListener(type, handler) {
-    (this._listeners[type] = this._listeners[type] || []).push(handler);
-  }
-
-  fire(type, evt) {
-    const event = evt || { target: this };
-    (this._listeners[type] || []).forEach((fn) => fn(event));
-  }
-
-  click() {
-    this.fire('click', { target: this });
-  }
-
-  get textContent() {
-    return this._textContent;
-  }
-
-  set textContent(value) {
-    this._textContent = value;
-    this.children = [];
-  }
-}
-
-const fakeChipDoc = { createElement: (tag) => new FakeChipElement(tag) };
+// Sweep S9: the rows build their controls with ui.js (ui-btn Cancel / Retry / Dismiss, the
+// registry error glyph), so the harness is a real jsdom document whose window carries ui.js -
+// the same document the chip runs in. Row identity across renders (F2) is DOM identity here.
+const { JSDOM } = require('jsdom');
+const chipDom = new JSDOM('<!DOCTYPE html><body></body>');
+chipDom.window.ui = require('../../public/js/ui.js');
+const fakeChipDoc = chipDom.window.document;
 
 function noopHandlers() {
   return { onCancel: () => {}, onRetry: () => {}, onDismiss: () => {} };
@@ -754,7 +681,7 @@ test('createDownloadChipItemRow: builds a row with every optional section presen
   assert.equal(row.els.actions.hidden, true);
 });
 
-test('updateDownloadChipItemRow: populates name/status/percent/fill width on a freshly built row', () => {
+test('updateDownloadChipItemRow: populates name/status/percent/fill progress on a freshly built row', () => {
   const row = createDownloadChipItemRow(fakeChipDoc, noopHandlers());
   const item = {
     key: 'oneshot:job1', id: 'job1', kind: 'oneshot', name: 'My Video',
@@ -767,12 +694,13 @@ test('updateDownloadChipItemRow: populates name/status/percent/fill width on a f
   assert.equal(row.els.pctEl.hidden, false);
   assert.equal(row.els.pctEl.textContent, '42%');
   assert.equal(row.els.track.hidden, false);
-  assert.equal(row.els.fill.style.width, '42%');
+  assert.equal(row.els.fill.style.getPropertyValue('--p'), '0.42', 'the fill scales by --p (data), never an inline width');
+  assert.equal(row.els.fill.style.width, '', 'no inline width');
   assert.equal(row.els.fill.classList.contains('indeterminate'), false);
 });
 
 test('updateDownloadChipPanel: the SAME key across two renders reuses the SAME row DOM node (not a fresh one)', () => {
-  const panel = new FakeChipElement('div');
+  const panel = fakeChipDoc.createElement('div');
   const rowsByKey = new Map();
   const snapshot1 = { subscriptions: {}, oneShots: { job1: { state: 'downloading', percent: 10, title: 'Vid' } } };
   const state1 = reduceDownloadChipState(snapshot1, new Set());
@@ -788,23 +716,23 @@ test('updateDownloadChipPanel: the SAME key across two renders reuses the SAME r
   assert.strictEqual(panel.children[0], firstNode, 'F2: the SAME key must reuse the SAME row node across renders, not a freshly built one');
 });
 
-test('updateDownloadChipPanel: the reused node\'s fill width is updated in place on the second render', () => {
-  const panel = new FakeChipElement('div');
+test('updateDownloadChipPanel: the reused node\'s fill progress is updated in place on the second render', () => {
+  const panel = fakeChipDoc.createElement('div');
   const rowsByKey = new Map();
   const snapshot1 = { subscriptions: {}, oneShots: { job1: { state: 'downloading', percent: 10, title: 'Vid' } } };
   updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, reduceDownloadChipState(snapshot1, new Set()), snapshot1, noopHandlers());
   const row = panel.children[0];
-  assert.equal(row.els.fill.style.width, '10%');
+  assert.equal(row.els.fill.style.getPropertyValue('--p'), '0.1');
 
   const snapshot2 = { subscriptions: {}, oneShots: { job1: { state: 'downloading', percent: 55, title: 'Vid' } } };
   updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, reduceDownloadChipState(snapshot2, new Set()), snapshot2, noopHandlers());
 
   assert.strictEqual(panel.children[0], row, 'must still be the same node');
-  assert.equal(row.els.fill.style.width, '55%', 'F2: the fill width must be updated on the REUSED node, not lost by a rebuild');
+  assert.equal(row.els.fill.style.getPropertyValue('--p'), '0.55', 'F2: the fill progress must be updated on the REUSED node, not lost by a rebuild');
 });
 
 test('updateDownloadChipPanel: an item that disappears between renders (dismissed/settled) has its row REMOVED', () => {
-  const panel = new FakeChipElement('div');
+  const panel = fakeChipDoc.createElement('div');
   const rowsByKey = new Map();
   const snapshot1 = {
     subscriptions: {},
@@ -830,7 +758,7 @@ test('updateDownloadChipPanel: an item that disappears between renders (dismisse
 });
 
 test('updateDownloadChipPanel: Cancel/Retry/Dismiss buttons are the SAME node across renders (never re-created/re-bound)', () => {
-  const panel = new FakeChipElement('div');
+  const panel = fakeChipDoc.createElement('div');
   const rowsByKey = new Map();
   const snapshot1 = { subscriptions: {}, oneShots: { job1: { state: 'error', title: 'Vid', error: 'boom' } } };
   updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, reduceDownloadChipState(snapshot1, new Set()), snapshot1, noopHandlers());
@@ -848,7 +776,7 @@ test('updateDownloadChipPanel: Cancel/Retry/Dismiss buttons are the SAME node ac
 });
 
 test('updateDownloadChipPanel: clicking Retry invokes the SAME handler with the current item/rawEntry after a re-render (listener still bound)', () => {
-  const panel = new FakeChipElement('div');
+  const panel = fakeChipDoc.createElement('div');
   const rowsByKey = new Map();
   let retryCalls = 0;
   let lastRawEntry = null;
@@ -917,7 +845,7 @@ test('T6 R1.3 confirmation: a ONE-SHOT chip item in error state has its Retry bu
 test('T6 R1.3 confirmation: clicking Retry on a one-shot error row invokes onRetry(item, rawEntry) with kind "oneshot" -- the live wiring dispatches this to retryOneShot', () => {
   const calls = [];
   const handlers = { onCancel: () => {}, onRetry: (item, rawEntry) => calls.push({ item, rawEntry }), onDismiss: () => {} };
-  const panel = new FakeChipElement('div');
+  const panel = fakeChipDoc.createElement('div');
   const rowsByKey = new Map();
   const snapshot = { subscriptions: {}, oneShots: { job1: { state: 'error', title: 'Vid', error: 'boom', url: 'https://youtu.be/x' } } };
   updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, reduceDownloadChipState(snapshot, new Set()), snapshot, handlers);
@@ -988,7 +916,7 @@ test('AC6.2: a genuinely downloading ONE-SHOT is shown -- summary carries channe
   assert.match(summary, /Cool Video/, 'the collapsed summary must surface the item\'s attribution (title/channel)');
   assert.match(summary, /47%/, 'the collapsed summary must surface live progress');
 
-  const panel = new FakeChipElement('div');
+  const panel = fakeChipDoc.createElement('div');
   const rowsByKey = new Map();
   updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, state, snapshot, noopHandlers());
   assert.equal(panel.children.length, 1, 'the active job expands to exactly one detail row');
@@ -1007,7 +935,7 @@ test('AC6.2: a genuinely downloading SUBSCRIPTION is shown -- summary + detail r
   assert.equal(state.count, 1);
   assert.match(formatDownloadChipSummary(state), /Cool Channel/);
 
-  const panel = new FakeChipElement('div');
+  const panel = fakeChipDoc.createElement('div');
   const rowsByKey = new Map();
   updateDownloadChipPanel(fakeChipDoc, panel, rowsByKey, state, snapshot, noopHandlers());
   const row = panel.children[0];
@@ -1081,22 +1009,35 @@ test('AC6.4: a queued-state SUBSCRIPTION row also exposes no cancel control (can
   assert.equal(row.els.cancelActions.hidden, true);
 });
 
-// ---- CSS: chip references the C1 --fs-* type-scale tokens (T9) -------------
+// ---- CSS: the chip's type is the D2.2 roles (sweep S9; was the T9 --fs-* lock) -----------
+const chipCssRules = () => {
+  const { cssRules, readStyleCss } = require('../helpers/stylesheets');
+  return cssRules(readStyleCss()).filter((r) => /dl-status-chip/.test(r.sel));
+};
 
-test('CSS conformance: the chip\'s font-size declarations in style.css already reference C1 --fs-* tokens (T9 swept the whole file) -- no stray literal px/em remains in the chip block', () => {
-  const fs = require('node:fs');
-  const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  const chipBlockMatch = css.match(/#dl-status-chip\s*{[\s\S]*?\.dl-status-chip-dismiss-btn:hover[\s\S]*?}\n/);
-  assert.ok(chipBlockMatch, 'expected to locate the #dl-status-chip CSS block');
-  const chipBlock = chipBlockMatch[0];
-  const fontSizeLines = chipBlock.match(/font-size\s*:[^;]+;/g) || [];
-  assert.ok(fontSizeLines.length > 0, 'expected at least one font-size declaration in the chip block');
-  fontSizeLines.forEach((line) => {
-    assert.match(line, /var\(--fs-/, `expected every chip font-size to reference a --fs-* token, found: ${line}`);
-  });
+test('CSS conformance: every font / font-size in the chip\'s rules is a D2.2 type role (var(--t-*)), never a literal', () => {
+  const decls = [];
+  for (const r of chipCssRules()) for (const m of r.body.matchAll(/(?:^|;)\s*(font(?:-size)?)\s*:\s*([^;]+)/g)) decls.push([r.sel, m[1], m[2].trim()]);
+  assert.ok(decls.length >= 4, `expected the chip's type declarations, found ${decls.length}`);
+  for (const [sel, prop, value] of decls) assert.match(value, /^var\(--t-[a-z]+(-size)?\)$/, `${sel} ${prop}: ${value}`);
 });
 
+// F57 (sweep S9): red was both "downloading" and "failed"; the Modern era carried a Win95 bevel
+// and a barber pole. Active progress is ink, a failure --danger PLUS its error glyph; no
+// bevel, stripes or legacy red anywhere in the chip's rules.
+test('F57: active progress is ink, a failed row\'s fill --danger; no red for "active", no bevel / stripes / legacy red in any chip rule', () => {
+  const rules = chipCssRules();
+  const body = (sel) => { const r = rules.find((x) => x.sel === sel && x.at === ''); assert.ok(r, sel); return r.body; };
+  assert.match(body('.dl-status-chip-progress-fill'), /background-color:\s*var\(--ink-1\)/);
+  assert.match(body('.dl-status-chip-progress-fill-error'), /background-color:\s*var\(--danger\)/);
+  assert.match(body('.dl-status-chip-progress-fill'), /transform:\s*scaleX\(var\(--p, 0\)\)/, 'progress scales by --p');
+  assert.doesNotMatch(body('.dl-status-chip-progress-fill'), /transition:[^;]*width/, 'never a width transition (AC9)');
+  for (const r of rules) {
+    assert.doesNotMatch(r.body, /--yt-red|--accent(?![\w-])|--accent-fill|--progress(?![\w-])/, `${r.sel}: no red role for a status`);
+    assert.doesNotMatch(r.body, /repeating-linear-gradient|inset \d/, `${r.sel}: no stripes or bevel`);
+    assert.doesNotMatch(r.body, /border-(top|left|right|bottom):\s*1px solid/, `${r.sel}: no hand bevel borders`);
+  }
+});
 
 // ---- v1.32: check-vs-download failure kinds + Dismiss all -------------------
 const { test: t32 } = require('node:test');
@@ -1159,24 +1100,26 @@ t32('v1.32 gate fix: a stale/absent failureKind on the client side always lands 
   }
 });
 
-// ---- v1.50.1 (Dean): collapsed-chip transparency ---------------------------
-// The collapsed chip is just a pulsing dot in a solid box -- "something is
-// happening", nothing more until clicked -- so it must not sit at full
-// opacity over content. Dimmed while collapsed; full opacity on hover,
-// keyboard focus, and while the panel is expanded (the summary doubles as
-// the expanded panel's header, where dimming would read as disabled).
+// ---- v1.50.1 (Dean): collapsed-chip transparency, F57 (sweep S9) --------------------------
+// The collapsed, healthy chip must not sit at full strength over content: dimmed while
+// collapsed, full on hover, keyboard focus and while expanded. F57: a touch screen has no
+// hover to bring it back, so the dim applies ONLY where a pointer can hover; a failure is
+// never dimmed.
 
-test('v1.50.1: the collapsed chip summary is dimmed, and restored on hover/focus/expanded', () => {
-  const fs = require('node:fs');
-  const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /\.dl-status-chip-summary\s*\{[^}]*opacity:\s*0\.55/, 'collapsed summary dimmed');
-  const restore = /#dl-status-chip:hover \.dl-status-chip-summary,\s*\.dl-status-chip-summary:focus-visible,\s*\.dl-status-chip-expanded \.dl-status-chip-summary\s*\{[^}]*opacity:\s*1/;
-  assert.match(css, restore, 'hover, focus-visible, and the expanded state all restore full opacity');
-  // v1.50.1 slim-gate WARNING: the ERROR state must be exempt from the dim
-  // entirely -- a sticky unacknowledged failure is an attention affordance,
-  // and touch devices have no hover to rescue it.
-  assert.match(css, /\.dl-status-chip-has-error \.dl-status-chip-summary\s*\{[^}]*opacity:\s*1/, 'the error state is never dimmed');
+test('v1.50.1 + F57: the collapsed summary is dimmed ONLY inside @media (hover: hover), restored on hover / focus / expanded / error there', () => {
+  const { cssRules, readStyleCss, isHoverGated } = require('../helpers/stylesheets');
+  const rules = cssRules(readStyleCss());
+  const dim = rules.filter((r) => /dl-status-chip-summary/.test(r.sel) && /opacity:\s*0\.55/.test(r.body));
+  assert.strictEqual(dim.length, 1, 'one dim rule');
+  assert.ok(isHoverGated(dim[0].at), 'the dim sits inside @media (hover: hover) - touch rests at full opacity (F57)');
+  const restore = rules.find((r) => /opacity:\s*1\b/.test(r.body) && /dl-status-chip-summary/.test(r.sel) && r.at === dim[0].at);
+  assert.ok(restore, 'a restore rule in the same gated block');
+  for (const leg of ['#dl-status-chip:hover .dl-status-chip-summary', '#dl-status-chip .dl-status-chip-summary:focus-visible',
+    '#dl-status-chip.dl-status-chip-expanded .dl-status-chip-summary', '#dl-status-chip.dl-status-chip-has-error .dl-status-chip-summary']) {
+    assert.ok(restore.sel.split(/\s*,\s*/).includes(leg), 'restores: ' + leg);
+  }
+  const ungated = rules.filter((r) => /dl-status-chip-summary/.test(r.sel) && /opacity:\s*0\.\d/.test(r.body) && !isHoverGated(r.at));
+  assert.deepStrictEqual(ungated.map((r) => r.sel), [], 'no dim outside the hover gate');
 });
 
 test('v1.50.1 (slim-gate suggestion): the expanded/error classes the CSS keys off are really toggled on the chip ELEMENT that ancestors the summary', () => {

@@ -94,10 +94,19 @@ test('both per-device header reserves are dropped on sign-out (no stale reserve 
   assert.match(fn, /removeItem\('ft-notif-bell-enabled'\)/, 'bell-enabled flag cleared on sign-out');
 });
 
-test('CSS: the bell placeholder disc is sized to the real 22px bell (zero-shift reveal)', () => {
-  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+// Sweep S1 (AC12, the triage's class c: "G: bell placeholder box == bell box"). The old lock
+// pinned the disc's 22px VALUE; the header geometry check HDR now measures the reserve's
+// button box against the real bell's and the shimmer disc against the bell glyph's box on
+// the live page, every era and mode (test/geometry/checks.js evalHeader), and the mutation
+// hdr-bell-reserve-shift (a 20px disc) turns it red. What stays here: the disc reads the
+// glyph's own size token and is round, and the replacement is wired.
+test('CSS: the bell placeholder disc takes the glyph size token (--icon-md) and is round; HDR measures it == the bell', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   const rule = /\.notif-bell-skel \{([\s\S]*?)\}/.exec(css);
   assert.ok(rule, 'the .notif-bell-skel rule exists');
-  assert.match(rule[1], /width: 22px;/, '22px disc matching the real bell svg');
-  assert.match(rule[1], /border-radius: var\(--radius-full\)/, 'a round disc');
+  assert.match(rule[1], /width: var\(--icon-md\);/, 'the disc is the header glyph size (ui-btn md icon slot)');
+  assert.match(rule[1], /height: var\(--icon-md\);/);
+  assert.match(rule[1], /border-radius: 50%;/, 'a round disc');
+  const { MUTATIONS } = require('../geometry/mutations.js');
+  assert.strictEqual(MUTATIONS['hdr-bell-reserve-shift'].check, 'HDR', 'the rendered equality is mutation-proven');
 });

@@ -48,48 +48,24 @@ test('main.js: no card-level "Move to..." trigger -- no .card-move-btn markup, n
 
 // ---- watch.js: current-item trigger -----------------------------------------
 
-test('watch.js window-qualifies neither showMoveModal nor requestMoveItem -- reached the SAME bare-global way as showHardDeleteModal/nextArmState (common.js loads first as a classic script)', () => {
+test('watch.js window-qualifies neither showMoveModal nor requestMoveItem -- reached the SAME bare-global way as every other common.js helper (common.js loads first as a classic script)', () => {
   assert.ok(!/window\.showMoveModal/.test(watchJs));
   assert.ok(!/window\.requestMoveItem/.test(watchJs));
   assert.ok(/showMoveModal\(/.test(watchJs), 'watch.js should call showMoveModal');
   assert.ok(/requestMoveItem\(/.test(watchJs), 'watch.js should call requestMoveItem');
 });
 
-// v1.25.6 hotfix: Move now mounts into the `.watch-action-btns` nowrap
-// sub-group of `.watch-actions` (falling back to `.watch-actions` itself if
-// that sub-group is ever absent) instead of `.watch-actions` directly -- see
-// test/unit/watch-action-bar-nowrap.test.js for the full iOS shrink-to-fit
-// regression story this was part of.
-test('watch.js: builds a "Move" button reusing the existing .btn class (same family as #download-media-btn/#delete-media-btn) and mounts it into .watch-action-btns', () => {
-  assert.match(watchJs, /moveBtn\.className = 'btn';/);
-  assert.match(watchJs, /root\.querySelector\('\.watch-actions'\)/);
-  assert.match(watchJs, /watchActions\.querySelector\('\.watch-action-btns'\)/);
-  assert.match(watchJs, /\(btnGroup \|\| watchActions\)\.appendChild\(moveBtn\)/);
-});
-
-// Visual-consistency polish: Move previously had no leading glyph (the only
-// text-only button in the Download/Delete/Move row) -- it now gets
-// `.icon-folder` (closest existing icon to "move to a folder"; no new icon
-// asset added) built via createElement/createTextNode, mirroring how
-// Download/Delete already pair an `<i class="icon-*">` with a short label.
-test('watch.js: the Move button carries an .icon-folder glyph (built via DOM methods, not innerHTML) plus a descriptive aria-label/title', () => {
-  const setupMatch = /function setupMoveButton\(\) \{[\s\S]*?\n {4}\}/.exec(watchJs);
-  assert.ok(setupMatch, 'expected to find setupMoveButton in watch.js');
-  const body = setupMatch[0];
-  assert.match(body, /moveIcon\.className = 'icon-folder';/);
-  assert.match(body, /moveBtn\.appendChild\(moveIcon\)/);
-  // v1.47.6: the word moved from a bare text node into a `.btn-label` span so
-  // the phone breakpoint can hide it while keeping the glyph (CSS cannot target
-  // a bare text node, which is why this row could not go icon-only before).
-  assert.match(body, /moveLabel\.className = 'btn-label';/);
-  assert.match(body, /moveLabel\.textContent = 'Move';/);
-  assert.match(body, /moveBtn\.appendChild\(moveLabel\)/);
-  // The glyph must still be appended BEFORE the label, or hiding the label
-  // would leave the icon trailing a stray space.
-  assert.ok(body.indexOf('moveBtn.appendChild(moveIcon)') < body.indexOf('moveBtn.appendChild(moveLabel)'),
-    'the icon must precede the label');
-  assert.match(body, /moveBtn\.setAttribute\('aria-label', 'Move to another folder'\);/);
-  assert.doesNotMatch(body, /moveBtn\.innerHTML/, 'the Move button markup should be built via DOM methods, not innerHTML');
+// UI pass sweep S3 (D4.9; converts the v1.24/v1.25.6/v1.47.6 mount locks, AC12): Move is a
+// More-menu entry (the registry `folder` glyph, the descriptive label, offered only with
+// the write capability; the menu is built at each open, so there is no control to
+// duplicate). Driven on the real DOM in watch-destructive-confirm.test.js (a member never
+// sees Move) and watch-sweep-s3.test.js (the menu opens the move picker).
+test('watch.js: Move is a More-menu entry (registry folder glyph, descriptive label) gated on the write capability, routed to handleMoveClick', () => {
+  const { buildWatchMoreItems } = require('../../public/js/watch.js');
+  assert.strictEqual(buildWatchMoreItems({ canModifyLibrary: false }).some((i) => i.id === 'move'), false, 'no capability, no Move');
+  assert.deepStrictEqual(buildWatchMoreItems({ canModifyLibrary: true }).find((i) => i.id === 'move'), { id: 'move', icon: 'folder', label: 'Move to another folder' });
+  assert.match(watchJs, /else if \(id === 'move'\) handleMoveClick\(\);/, 'the pick runs the move flow');
+  assert.ok(!/moveBtn|setupMoveButton/.test(watchJs), 'no runtime Move button remains');
 });
 
 test('watch.js: the folders list is READ from the SAME GET /api/config fetch initWatch() already makes for the sidebar -- no second /api/config call', () => {
@@ -141,8 +117,3 @@ test('watch.js: a successful move stops the player BEFORE navigating away (mirro
   assert.ok(closeIdx < navigateIdx, 'player.close() must run BEFORE navigate() away from the (now stale) watch page');
 });
 
-test('watch.js: setupMoveButton is idempotent -- guarded on moveBtn already existing, so a second call within the same view instance never appends a duplicate control', () => {
-  const setupMatch = /function setupMoveButton\(\) \{[\s\S]*?\n {4}\}/.exec(watchJs);
-  assert.ok(setupMatch, 'expected to find setupMoveButton in watch.js');
-  assert.match(setupMatch[0], /if \(!moveBtn\) \{/);
-});

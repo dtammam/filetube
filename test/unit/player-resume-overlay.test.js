@@ -176,9 +176,11 @@ test('captureAutoplayAdvanceForLoad + shouldShowResumeOverlay: simulates the fix
 
 const { resolveResumeShortcutAction } = require('../../public/js/player.js');
 
-test('resolveResumeShortcutAction: r/R resume, s/S restart -- only while the overlay is visible', () => {
+// UI pass sweep S3 (D8.2): the modal is replaced by auto-resume + the "Resumed at" toast, so
+// R (Resume) has nothing left to do and is gone; S (Start over) works while the toast shows.
+test('resolveResumeShortcutAction: s/S restart only while the resume toast is visible; r/R is gone with the modal', () => {
   for (const key of ['r', 'R']) {
-    assert.strictEqual(resolveResumeShortcutAction({ key, overlayVisible: true }), 'resume');
+    assert.strictEqual(resolveResumeShortcutAction({ key, overlayVisible: true }), 'none');
     assert.strictEqual(resolveResumeShortcutAction({ key, overlayVisible: false }), 'none');
   }
   for (const key of ['s', 'S']) {
@@ -205,26 +207,23 @@ test('resolveResumeShortcutAction: never throws on a missing/garbage context', (
   assert.strictEqual(resolveResumeShortcutAction({ overlayVisible: true, key: { bogus: 1 } }), 'none');
 });
 
-// ---- v1.50 gate (QA WARNING): close() must reset the overlay visibility ----
-// Delete / Move / relocate all call window.FileTube.player.close() from
-// OUTSIDE the player chrome, reachable while the "Resume Playback?" prompt
-// is open. close() detaches the host but the module-level resumeOverlay ref
-// lives on -- and the R/S shortcut listener keys its visibility check off
-// `resumeOverlay.style.display`. Without the reset, bare r/s anywhere on the
-// page keeps firing clicks at the torn-down player until the next genuine
-// load(). Source-text lock (no DOM harness in this codebase; the same
-// pattern as the dock()-transition handling this mirrors).
-
-test('close() resets the resume overlay display, exactly as dock() does on its transition', () => {
+// ---- v1.50 gate (QA WARNING): close() must reset the resume UI's visibility ----
+// Delete / Move / relocate all call window.FileTube.player.close() from OUTSIDE the player
+// chrome. close() detaches the host but the module-level ref lives on - and the S shortcut
+// listener keys its visibility check off it, so without the reset a bare s anywhere on the
+// page kept firing at the torn-down player. UI pass S3: the resume UI is the toast; this is
+// bound BEHAVIOURALLY in player-resume-toast.test.js ("every seam that hid the modal hides
+// the toast: dock, close, and the next load"). The source lock stays as a second net.
+test('close() hides the resume toast, exactly as dock() does on its transition', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
-  const start = src.indexOf('function close() {');
-  assert.notEqual(start, -1, 'expected close() in player.js');
-  // Bounded to close()'s own body: it ends where the next top-level function
-  // in the IIFE begins.
-  const end = src.indexOf('\n  function ', start + 10);
-  const body = src.slice(start, end === -1 ? src.length : end)
-    .split('\n').filter((line) => !/^\s*\/\//.test(line)).join('\n');
-  assert.match(body, /resumeOverlay\.style\.display = 'none'/, 'close() must hide the resume overlay so the R/S listener can never fire against a closed player');
+  for (const fn of ['function close() {', 'function dock() {']) {
+    const start = src.indexOf(fn);
+    assert.notEqual(start, -1, 'expected ' + fn + ' in player.js');
+    const end = src.indexOf('\n  function ', start + 10);
+    const body = src.slice(start, end === -1 ? src.length : end)
+      .split('\n').filter((line) => !/^\s*\/\//.test(line)).join('\n');
+    assert.match(body, /hideResumeToast\(\);/, fn + ' must hide the resume toast so the S listener can never fire against it');
+  }
 });

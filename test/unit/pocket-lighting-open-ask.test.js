@@ -31,7 +31,7 @@ async function settleAll(n = 20) { for (let i = 0; i < n; i++) await settle(); a
 // An iPhone-shaped window: a phone-width viewport (the skins' breakpoint), a coarse pointer, the iOS
 // permission API (counted, answered by the test), reduced motion as asked.
 function phoneWindow(W, { mobile = true, fine = false, reduced = false, api = true } = {}) {
-  W.matchMedia = (q) => ({ matches: (/max-width:\s*768px/.test(q) && mobile) || (/pointer:\s*fine/.test(q) && fine) || (/reduced-motion/.test(q) && reduced), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+  W.matchMedia = (q) => ({ matches: (/max-width:\s*768px|pointer:\s*coarse/.test(q) && mobile) || (/pointer:\s*fine/.test(q) && fine) || (/reduced-motion/.test(q) && reduced), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   W.scrollTo = () => {};
   W.requestAnimationFrame = (cb) => setTimeout(cb, 0);
   const asks = { n: 0, answer: null, reject: null };
@@ -416,15 +416,16 @@ test('podcasts: the episode tap that opens the Click player asks inside that tap
   loadModules(W);
   delete require.cache[podcastsPath];
   try {
+    delete require.cache[require.resolve('../../public/js/ui.js')]; require('../../public/js/ui.js'); // UI pass S6: every shell loads ui.js (window.ui) before the view
     require(podcastsPath);
     mod.init(W.document.getElementById('view-root'));
     await settleAll();
-    const card = W.document.querySelector('.podcast-card');
-    assert.ok(card, 'the shows grid rendered');
+    const card = W.document.querySelector('[data-show-id]');
+    assert.ok(card, 'the show list rendered');
     tapEl(W, card);
     assert.strictEqual(asks.n, 0, 'opening a SHOW is browsing, not the player');
     await settleAll();
-    const main = W.document.querySelector('.podcast-episode-main');
+    const main = W.document.querySelector('[data-episode-id] .ui-row__link');
     assert.ok(main, 'the episode list rendered');
     tapEl(W, main);
     assert.strictEqual(asks.n, 1, 'the episode tap asked inside the gesture');

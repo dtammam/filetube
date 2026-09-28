@@ -1,0 +1,6 @@
+/* ui-lint-canary: path=public/css/style.css expect=4 */
+/* An era legacy name, the --fs-* scale, an alias-block name, and --scrim-legacy. */
+.a { color: var(--yt-red); }
+.b { font-size: var(--fs-sm); }
+.c { background: var(--bg-color); }
+.d { background: var(--scrim-legacy); }

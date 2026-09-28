@@ -1,0 +1,6 @@
+/* ui-lint-canary: path=public/css/style.css expect=5 */
+.foo-btn { color: var(--ink-1); }
+button.plain { padding: 0; }
+[role="button"] { margin: 0; }
+.clicky { cursor: pointer; }
+.card .bar-chip:hover { color: var(--ink-1); }

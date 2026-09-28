@@ -105,11 +105,22 @@ test('both zoom-suppression calls run at boot on EVERY page, outside the router'
     'both seeded at boot, before the route-driven re-evaluation takes over');
 });
 
+// UI pass step 4 (plan D6): the app-wide body rule is the native-interaction base at
+// the top of ui.css; the reader's carve-out stays in style.css and wins by
+// specificity (body[data-view="read"] 0,1,1 over body 0,0,1), whatever the file order.
+const { readUiCss, cssRules } = require('../helpers/stylesheets');
+const UI_CSS = readUiCss();
+const bodyBase = () => cssRules(UI_CSS).find((r) => r.sel === 'body');
+
 test('CSS: double-tap zoom is off app-wide and the reader opts back in', () => {
-  assert.match(CSS, /body \{\s*touch-action: manipulation;\s*\}/,
+  const base = bodyBase();
+  assert.ok(base, 'the D6 body base rule exists in ui.css');
+  assert.match(base.body, /(?:^|;)\s*touch-action:\s*manipulation;/,
     'manipulation is what kills double-tap zoom while leaving panning intact');
   assert.match(CSS, /body\[data-view="read"\] \{\s*touch-action: auto;\s*\}/,
     'the reader carve-out re-enables the browser default');
+  const rivals = cssRules(CSS).filter((r) => /^body\s*$/.test(r.sel) && /touch-action/.test(r.body));
+  assert.deepStrictEqual(rivals, [], 'no later bare body rule re-sets touch-action');
 });
 
 test('ACCESSIBILITY LOCK: only GESTURE zoom is suppressed -- text scaling is untouched', () => {
@@ -119,6 +130,6 @@ test('ACCESSIBILITY LOCK: only GESTURE zoom is suppressed -- text scaling is unt
   const zoomBlock = COMMON.slice(COMMON.indexOf('const ZOOM_ALLOWED_VIEW'), COMMON.indexOf('function wirePinchZoomSuppression'));
   assert.doesNotMatch(zoomBlock, /text-size-adjust/i,
     'never pin text scaling to achieve the zoom lock');
-  assert.doesNotMatch(CSS.slice(CSS.indexOf('body {\n  touch-action'), CSS.indexOf('body[data-view="read"]')), /font-size/,
+  assert.doesNotMatch(bodyBase().body, /font-size/,
     'the touch-action rule must not smuggle in a font-size lock');
 });

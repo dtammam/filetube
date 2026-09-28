@@ -72,7 +72,29 @@ function loadSetup({ prompts, postStatus, holdPosts }) {
   });
 }
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const rows = (d) => Array.from(d.querySelectorAll('.transcript-ai-prompt-row'));
+// Sweep S8 (D4.8): Remove on a saved prompt opens the danger ui.confirm; nothing is POSTed
+// until it resolves true. Asserts the dialog is up and the list untouched, then confirms.
+async function removeConfirmed(dom, row, posts) {
+  const d = dom.window.document;
+  const before = d.querySelectorAll('.transcript-ai-prompt').length;
+  const postsBefore = posts.length;
+  // Cancel first: nothing removed, nothing POSTed.
+  row.querySelector('button.transcript-ai-prompt-remove').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  await wait(50);
+  let open = d.querySelectorAll('.ui-sheet--dialog');
+  open[open.length - 1].querySelectorAll('.ui-confirm__actions .ui-btn')[0].click();
+  await wait(450);
+  assert.strictEqual(d.querySelectorAll('.transcript-ai-prompt').length, before, 'Cancel keeps the prompt');
+  assert.strictEqual(posts.length, postsBefore, 'Cancel POSTs nothing');
+  row.querySelector('button.transcript-ai-prompt-remove').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  await wait(50);
+  const dlg = d.querySelectorAll('.ui-sheet--dialog');
+  assert.ok(dlg.length, 'the Remove confirm opened');
+  assert.strictEqual(d.querySelectorAll('.transcript-ai-prompt').length, before, 'nothing removed before the answer');
+  dlg[dlg.length - 1].querySelectorAll('.ui-confirm__actions .ui-btn')[1].click();
+  await wait(100);
+}
+const rows = (d) => Array.from(d.querySelectorAll('.transcript-ai-prompt'));
 
 test('setup: the prompt editor renders one row per prompt from GET /api/settings (name input + textarea + Remove)', async () => {
   const { dom } = await loadSetup({ prompts: TWO });
@@ -84,7 +106,7 @@ test('setup: the prompt editor renders one row per prompt from GET /api/settings
     assert.strictEqual(r[0].querySelector('.transcript-ai-prompt-name').value, 'Summarize');
     assert.strictEqual(r[0].querySelector('.transcript-ai-prompt-text').value, 'Sum it up.');
     assert.strictEqual(r[1].dataset.promptId, 'analyze');
-    assert.ok(r[1].querySelector('button.btn').textContent === 'Remove');
+    assert.ok(r[1].querySelector('button.transcript-ai-prompt-remove').textContent === 'Remove');
   } finally { dom.window.close(); }
 });
 
@@ -114,8 +136,7 @@ test('setup: Remove POSTs the list WITHOUT that row immediately; Add appends an 
   try {
     await wait(100);
     const d = dom.window.document;
-    rows(d)[0].querySelector('button.btn').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
-    await wait(100);
+    await removeConfirmed(dom, rows(d)[0], posts);
     assert.strictEqual(posts.length, 1);
     assert.deepStrictEqual(posts[0].transcriptAiPrompts.map((p) => p.id), ['analyze']);
     assert.strictEqual(rows(d).length, 1);
@@ -145,7 +166,7 @@ test('setup: a 400 from the server lands in the field error and the typed rows s
 
 test('setup.html: the section is registered like its siblings (setup-box, collapse key, md icon + Advanced group) and uses NO reveal-toggle barrier', () => {
   const html = fs.readFileSync(path.join(PUBLIC_DIR, 'setup.html'), 'utf8');
-  assert.match(html, /<details class="setup-box sub-collapsible" data-collapse-key="transcript-ai" data-md-icon="copy" data-md-group="Advanced" open>/);
+  assert.match(html, /<details class="setup-box setup-sec sub-collapsible" data-collapse-key="transcript-ai" data-md-icon="copy" data-md-group="Advanced" open>/);
   const section = html.slice(html.indexOf('data-collapse-key="transcript-ai"'));
   const end = section.indexOf('</details>');
   assert.ok(!section.slice(0, end).includes('reveal-toggle'), 'the editor is fed by its own fetch, not the automation-settings barrier (the v1.96 rule)');
@@ -183,8 +204,7 @@ test('setup: with a blank Add row present, Remove of another row and an edit of 
     await wait(600);
     assert.strictEqual(posts.length, 1);
     assert.deepStrictEqual(posts[0].transcriptAiPrompts.map((p) => p.text), ['Sum it up.', 'Analyze it thoroughly.'], 'the edit went, the blank row did not');
-    rows(d)[0].querySelector('button.btn').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
-    await wait(100);
+    await removeConfirmed(dom, rows(d)[0], posts);
     assert.strictEqual(posts.length, 2);
     assert.deepStrictEqual(posts[1].transcriptAiPrompts.map((p) => p.id), ['analyze'], 'the remove persisted; no blank row');
     assert.strictEqual(d.getElementById('transcript-ai-error').textContent, '');
@@ -289,7 +309,7 @@ test('setup: each prompt row has a drag handle (the keyboard control too); Arrow
   try {
     await wait(100);
     const d = dom.window.document;
-    const handles = Array.from(d.querySelectorAll('.transcript-ai-prompt-row .drag-handle'));
+    const handles = Array.from(d.querySelectorAll('.transcript-ai-prompt .ui-reorder__handle'));
     assert.strictEqual(handles.length, 2, 'one handle per row');
     assert.strictEqual(handles[0].getAttribute('tabindex'), '0', 'focusable - the helper made it the keyboard affordance');
     handles[0].focus(); // a keyboard user HAS the handle focused (gate: the unfocused dispatch was a divergent fixture)
@@ -306,7 +326,7 @@ test('setup: each prompt row has a drag handle (the keyboard control too); Arrow
 // SECOND gesture scrambled the order or left the DOM and server disagreeing.
 const THREE = [{ id: 'a', name: 'A', text: 'a.' }, { id: 'b', name: 'B', text: 'b.' }, { id: 'c', name: 'C', text: 'c.' }];
 const arrowDown = (dom, el) => { el.focus(); el.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })); };
-const handleOfRow = (d, i) => rows(d)[i].querySelector('.drag-handle');
+const handleOfRow = (d, i) => rows(d)[i].querySelector('.ui-reorder__handle');
 
 test('setup: two consecutive ArrowDowns on the SAME row (focused handle) end [b, c, a] even while the list is in a 400 state (no re-render to hide behind)', async () => {
   const { dom } = await loadSetup({ prompts: THREE, postStatus: 400 });

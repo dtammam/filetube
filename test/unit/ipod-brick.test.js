@@ -19,6 +19,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { unscopePocket } = require('../helpers/stylesheets.js'); // UI pass D7: the Pocket takeover's device-class scope
 const { JSDOM } = require('jsdom');
 
 const ROOT = path.join(__dirname, '..', '..');
@@ -894,7 +895,7 @@ test('v1.270 GEOMETRY LOCK: the overlay\'s containing block is the LCD inner box
   // un-exitable. `position:relative` on .ip-lcd-in is 45 lines from the rule that
   // depends on it and was tied to it only by a comment; deleting it restored the
   // defect with the whole suite green. This asserts the RELATIONSHIP instead.
-  const cssRaw = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  const cssRaw = unscopePocket(fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8'));
   const css = cssRaw.replace(/\/\*[\s\S]*?\*\//g, ' ');
   // Rules that can establish a containing block for an absolutely-positioned child.
   // NOTE contain:size does NOT - only layout/paint/strict/content do.
@@ -954,6 +955,46 @@ test('v1.270 GEOMETRY LOCK: the overlay\'s containing block is the LCD inner box
   dom.window.close();
 });
 
+
+// UI pass D7 (F59, measure after settle): with the skin registry and a ResizeObserver on the page,
+// the board re-measures its backing store only after its box holds still for two frames - no
+// window resize listener at all - and destroy disconnects the observer. The canvas's CSS box is
+// the stylesheet's (100% x 100%), never an inline size.
+test('D7 F59: the board re-measures after its box settles (ResizeObserver + two stable frames), disconnects on destroy, never writes an inline size', () => {
+  const dom = new JSDOM('<!doctype html><body><div id="lcd"></div></body>', { url: 'http://localhost/', runScripts: 'outside-only' });
+  const frames = [];
+  dom.window.requestAnimationFrame = (cb) => { frames.push(cb); return frames.length; };
+  dom.window.cancelAnimationFrame = () => {};
+  dom.window.HTMLCanvasElement.prototype.getContext = function () {
+    return new Proxy({}, { get: (_t, k) => (k === 'measureText' ? () => ({ width: 10 }) : () => {}), set: () => true });
+  };
+  const obs = [];
+  dom.window.ResizeObserver = class { constructor(cb) { this.cb = cb; obs.push(this); } observe(el) { this.el = el; } disconnect() { this.off = true; } };
+  let resizeListeners = 0;
+  const addR = dom.window.addEventListener.bind(dom.window);
+  dom.window.addEventListener = (t, f, o) => { if (t === 'resize') resizeListeners++; return addR(t, f, o); };
+  dom.window.eval(fs.readFileSync(path.join(ROOT, 'public', 'js', 'music-skins.js'), 'utf8'));
+  dom.window.eval(BRICK_SRC);
+  let box = { width: 300, height: 200 };
+  dom.window.HTMLElement.prototype.getBoundingClientRect = function () { return { width: box.width, height: box.height, left: 0, top: 0, right: box.width, bottom: box.height }; };
+  const host = dom.window.document.getElementById('lcd');
+  const g = dom.window.FileTubeBrick.mount(host, {});
+  const canvas = host.querySelector('canvas');
+  const step = (n) => { for (let i = 0; i < n; i++) frames.splice(0).forEach((cb) => cb(16 * (i + 1))); };
+  assert.strictEqual(resizeListeners, 0, 'no window resize listener when the settle observer is available');
+  assert.strictEqual(obs.length, 1, 'one settle observer on the board');
+  assert.strictEqual(canvas.getAttribute('style'), null, 'no inline size on the canvas (the stylesheet sizes its box)');
+  const w0 = canvas.width;
+  box = { width: 480, height: 300 }; // the rotate: the LCD grew
+  obs[0].cb([]);
+  step(1);
+  assert.strictEqual(canvas.width, w0, 'one frame in: not yet re-measured');
+  step(3);
+  assert.notStrictEqual(canvas.width, w0, 'two stable frames later: the backing store matches the new box');
+  g.destroy();
+  assert.ok(obs[0].off, 'destroy disconnects the observer');
+  dom.window.close();
+});
 
 test('slim W-C: the resize listener is BALANCED - a mount/destroy cycle strands nothing on window', () => {
   const dom = new JSDOM('<!doctype html><body><div id="lcd"></div></body>', { url: 'http://localhost/', runScripts: 'outside-only' });

@@ -64,6 +64,7 @@ test('probeAndReconcileRepullButton (module ENABLED): injects the button for a m
     getElementById: (id) => findById(actions, id),
     querySelector: (sel) => (sel === '.section-actions' ? actions : null),
     createElement: (tag) => new FakeElement(tag),
+    createElementNS: (_ns, tag) => new FakeElement(tag), // UI pass sweep S2: the ui.button's icon
     createTextNode: (text) => ({ nodeType: 3, textContent: text }),
   };
 

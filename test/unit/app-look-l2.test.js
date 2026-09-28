@@ -33,6 +33,12 @@ function setGlobals(dom) {
   global.document = dom.window.document;
   global.localStorage = dom.window.localStorage;
   global.sessionStorage = dom.window.sessionStorage;
+  // Sweep S4 (DELIBERATE, AC12): the bell and queue panels are ui.sheets, so their injectors
+  // need the page's window.ui (ui.js loads before common.js on every shell); bind it here.
+  const UI = require.resolve('../../public/js/ui.js');
+  delete require.cache[UI];
+  require(UI);
+  delete require.cache[UI]; // this instance baked in THIS window; later plain requires get a fresh one
 }
 let lastCommon = null;
 afterEach(() => {
@@ -49,13 +55,21 @@ function freshCommon() {
 }
 
 // ---------------------------------------------------------------- 1. [hidden] guards
-test('CSS: .btn[hidden] and .queue-btn[hidden] are display:none !important, AFTER their base rules', () => {
+test('CSS: .btn[hidden] is display:none !important AFTER its base rule; the queue button rides the global [hidden] rule', () => {
   const css = stripCss(read('public/css/style.css'));
-  for (const [base, guard] of [['.btn {', '.btn[hidden] { display: none !important; }'], ['.queue-btn {', '.queue-btn[hidden] { display: none !important; }']]) {
-    const g = css.indexOf(guard);
-    assert.ok(g >= 0, `${guard} exists (comments stripped)`);
-    assert.strictEqual(css.indexOf(guard, g + 1), -1, `${guard} is unique`);
-    assert.ok(css.indexOf('\n' + base) >= 0 && css.indexOf('\n' + base) < g, `${guard} follows its base rule`);
+  const guard = '.btn[hidden] { display: none !important; }';
+  const g = css.indexOf(guard);
+  assert.ok(g >= 0, `${guard} exists (comments stripped)`);
+  assert.strictEqual(css.indexOf(guard, g + 1), -1, `${guard} is unique`);
+  assert.ok(css.indexOf('\n.btn {') >= 0 && css.indexOf('\n.btn {') < g, `${guard} follows its base rule`);
+  // Sweep S1 (DELIBERATE lock update, AC12): the header queue button is a ui-btn now, so its
+  // own `.queue-btn[hidden]` patch went with its bespoke rule. The v1.339 bug (display:flex
+  // beat [hidden], an EMPTY queue showed the button) is guarded by ui.css's one global rule,
+  // and no stylesheet may give .queue-btn a display of its own again.
+  const ui = stripCss(read('public/css/ui.css'));
+  assert.match(ui, /(^|\n)\[hidden\] \{\s*display: none !important;\s*\}/, 'the global [hidden] rule is in ui.css');
+  for (const f of ['public/css/ui.css', 'public/css/style.css']) {
+    assert.doesNotMatch(stripCss(read(f)), /\.queue-btn[^{,]*\{[^}]*display\s*:/, `${f}: no rule re-displays the queue button`);
   }
 });
 
@@ -130,7 +144,8 @@ test('TV: a poster that ERRORS (404) clears its shimmer through the real reveal 
 // ---------------------------------------------------------------- 3. home art
 test('home: every card thumbnail and row cover ships art-shimmer (the six builders)', () => {
   const src = read('public/js/main.js');
-  assert.match(src, /<img class="thumbnail-img art-shimmer" src="\$\{kp \? kp\.thumbSrc/, 'buildCardHtml thumbnail');
+  // UI pass sweep S2: the grid card is DOM (buildVideoCardEl) - its ui-thumb image takes the class.
+  assert.match(src, /const img = thumb\.querySelector\('\.ui-thumb__img'\);\s*if \(img\) img\.classList\.add\('art-shimmer'\);/, 'buildVideoCardEl thumbnail');
   const m = require('../../public/js/main.js');
   // the row builders read common.js's resolveChannelName (a shell global) - stub it
   const hadResolve = 'resolveChannelName' in global;
@@ -168,36 +183,41 @@ test('home: revealHomeArt hands the scope (+ signal) to revealArtTogether, else 
 
 test('home: EVERY grid/row render and append reveals right after it writes (source lock, comments stripped)', () => {
   const src = stripJs(read('public/js/main.js'));
+  // UI pass sweep S2: every grid write (classic page 0 + append, modern page 0 +
+  // append) goes through putCards, which reveals right after it writes.
   const sites = [
-    /videoGrid\.innerHTML = items\.map\(buildCardHtml\)\.join\(''\);\s*revealHomeArt\(videoGrid, signal\);/, // classic/folder/search/Liked page 0
-    /Array\.from\(wrapper\.children\)\.forEach\(\(card\) => videoGrid\.append\(card\)\);\s*revealHomeArt\(videoGrid, signal\);/, // classic append
-    /buildModernEmptyHtml\(filter\);\s*revealHomeArt\(videoGrid, sig\);/, // modern page 0
-    /videoGrid\.insertAdjacentHTML\('beforeend', fresh\.map\([^\n]*\);\s*revealHomeArt\(videoGrid, signal\);/, // modern append
+    /if \(append\) videoGrid\.appendChild\(frag\);\s*else videoGrid\.replaceChildren\(frag\);\s*revealHomeArt\(videoGrid, signal\);/, // putCards: every grid render + append
+    /putCards\(items, false\);/, // classic/folder/search/Liked page 0 (and the modern page 0)
+    /putCards\(items, true\);/, // classic append (appendCardsToGrid)
+    /putCards\(fresh, true\);/, // modern append
     /host\.innerHTML = html \|\| '';\s*revealHomeArt\(host\);/, // Continue rows
     /host\.innerHTML = rows\.map\(buildFeedRowHtml\)\.join\(''\);\s*revealHomeArt\(host, signal\);/, // feed
     /encodeURIComponent\(searchQuery\),\s*\);\s*revealHomeArt\(booksRowHost, signal\);/, // search books row
   ];
+  assert.ok(!/videoGrid\.innerHTML = items|videoGrid\.insertAdjacentHTML/.test(src), 'no grid write bypasses putCards');
   for (const re of sites) assert.match(src, re, String(re).slice(0, 90));
-  assert.strictEqual((src.match(/revealHomeArt\(/g) || []).length, 8, 'the seven call sites + the definition (a new render site must join)');
+  assert.strictEqual((src.match(/revealHomeArt\(/g) || []).length, 5, 'putCards + the three row/feed sites + the definition (a new render site must join)');
 });
 
 // ---------------------------------------------------------------- 4. grid skeleton
-test('buildSkeletonGrid: each card is built from the REAL card line structure (2-line title, uploader, meta, stars)', () => {
+test('buildSkeletonGrid: each card is built from the REAL card line structure (ui-thumb, 2-line title, uploader, meta, stars)', () => {
+  // UI pass sweep S2 (D9, F63): built by buildSkeletonCardEl from the same primitives as the card.
   const { buildSkeletonGrid } = require('../../public/js/main.js');
-  const dom = new JSDOM(`<div id="g">${buildSkeletonGrid(2)}</div>`);
-  const cards = dom.window.document.querySelectorAll('#g > .video-card.skeleton-card[aria-hidden="true"]');
+  const doc = new JSDOM('<!doctype html><body></body>').window.document;
+  const g = new JSDOM(`<div id="g">${buildSkeletonGrid(2, { doc })}</div>`).window.document;
+  const cards = g.querySelectorAll('#g > .video-card.skeleton-card[aria-hidden="true"]');
   assert.strictEqual(cards.length, 2);
   for (const card of cards) {
-    const info = card.querySelector(':scope > .video-info');
-    assert.ok(card.querySelector(':scope > .card-media > .thumbnail-container.skeleton-shimmer'), 'the real 16:9 box');
-    const kids = Array.from(info.children).map((k) => k.className);
+    const text = card.querySelector(':scope > .video-info > .card-text');
+    assert.ok(card.querySelector(':scope > .card-media > .ui-thumb.ui-thumb--16x9.skeleton-shimmer'), 'the real 16:9 ui-thumb box');
+    const kids = Array.from(text.children).map((k) => k.className.split(' ')[0]);
     assert.deepStrictEqual(kids, ['video-title', 'video-uploader', 'video-meta', 'card-rating'], 'the real info rows, in order');
-    assert.strictEqual(info.querySelectorAll('.video-title > .skeleton-text').length, 2, 'the title reserves TWO lines');
-    assert.ok(info.querySelector('.video-title > br'), 'the two title lines are separate line boxes');
-    assert.strictEqual(info.querySelector('.card-channel-avatar'), null, 'no avatar disc on a classic card');
+    assert.strictEqual(text.querySelectorAll('.video-title > .skeleton-text').length, 2, 'the title reserves TWO lines');
+    assert.ok(text.querySelector('.video-title > br'), 'the two title lines are separate line boxes');
+    assert.strictEqual(card.querySelector('.ui-avatar'), null, 'no avatar on a classic card');
   }
-  const modern = new JSDOM(buildSkeletonGrid(1, { avatar: true })).window.document;
-  assert.ok(modern.querySelector('.video-uploader > .card-channel-avatar.skeleton-shimmer + .skeleton-text'), 'Modern: the 24px byline avatar disc sets the uploader row height');
+  const modern = new JSDOM(buildSkeletonGrid(1, { avatar: true, doc })).window.document;
+  assert.ok(modern.querySelector('.video-info > .ui-avatar.ui-avatar--sm.skeleton-shimmer + .card-text'), 'Modern: the byline avatar reserve sits where the real avatar does');
 });
 
 test('CSS: a .skeleton-text bar is one transparent line box, top-aligned (baseline + overflow:hidden would grow the line)', () => {
@@ -235,25 +255,29 @@ test('reserve blocks: every header shell (discovered, not listed) carries BOTH b
     assert.strictEqual(html.slice(0, h.start).trimEnd().endsWith('</header>'), true, `${shell}: the header block follows </header>`);
     const navOpen = html.indexOf('id="bottom-nav"');
     assert.ok(navOpen > 0 && html.slice(navOpen, n.start).trimEnd().endsWith('</nav>'), `${shell}: the nav block follows the bottom nav`);
-    assert.ok(n.end < html.indexOf('<script src='), `${shell}: both run before the first external script`);
+    // UI pass step 2: icons.js (the sprite) is the one external script in <head>, by design:
+    // the reserves must still run before the first external script in <body>.
+    assert.ok(n.end < html.indexOf('<script src=', html.indexOf('<body')), `${shell}: both run before the first external script in <body>`);
     if (!ref) ref = { h: h.text, n: n.text };
     assert.strictEqual(h.text, ref.h, `${shell}: header block byte-identical`);
     assert.strictEqual(n.text, ref.n, `${shell}: nav block byte-identical`);
   }
 });
 
-test('reserve blocks: their glyphs are the chrome-icon paths common.js builds (no drift)', () => {
+test('reserve blocks: their glyphs are the sprite icons common.js builds (no drift)', () => {
+  // UI pass step 2 (DELIBERATE lock update): the reserves draw <use href="#i-NAME"> from the
+  // icon sprite, like the injectors they stand in for; bind each to the SAME registry name
+  // common.js's CHROME_ICON map gives the real glyph.
   const c = freshCommon();
   const html = read('public/index.html');
   const h = block(html, 'header').text; const n = block(html, 'nav').text;
   for (const name of ['search', 'download', 'queue']) {
-    const g = c.CHROME_ICON_SVG[name];
-    assert.ok(h.includes(`'${g.vb}', '${g.d}'`), `header block ${name} glyph`);
+    assert.ok(h.includes(`svg('${c.CHROME_ICON[name]}'`), `header block ${name} glyph`);
   }
   for (const name of ['refresh', 'download']) {
-    const g = c.CHROME_ICON_SVG[name];
-    assert.ok(n.includes(`'${g.vb}', '${g.d}'`), `nav block ${name} glyph`);
+    assert.ok(n.includes(`svg('${c.CHROME_ICON[name]}'`), `nav block ${name} glyph`);
   }
+  assert.ok(h.includes("u.setAttribute('href', '#i-' + name)") && n.includes("u.setAttribute('href', '#i-' + name)"), 'both draw from the sprite');
 });
 
 // Parse index.html with its inline scripts (external scripts are never fetched by jsdom).
@@ -270,9 +294,11 @@ test('header block: paints queue / bell / search / download / account placeholde
   const dom = shellDom({ 'ft-queue-shown': '1', 'ft-notif-bell-enabled': '1', 'ft-ytdlp-module': '1' });
   const hr = dom.window.document.querySelector('.header-right');
   assert.deepStrictEqual(kidsOf(hr), ['queue', 'notif-bell-placeholder', 'search', 'download', 'account-menu-placeholder']);
-  assert.ok(hr.querySelector('[data-ft-reserve="queue"].queue-btn svg[width="22"]'), 'the queue box = the real 22px svg button');
-  assert.ok(hr.querySelector('[data-ft-reserve="download"].btn .btn-label'), 'the download box = the real .btn + label');
-  assert.ok(hr.querySelector('#account-menu-placeholder.account-menu > .account-menu-trigger > .account-avatar'), 'the account slot mirrors the real root');
+  // Sweep S1 (DELIBERATE lock update): each placeholder is the real control's ui-btn box.
+  assert.ok(hr.querySelector('[data-ft-reserve="queue"].ui-btn.ui-btn--plain.ui-btn--md.ui-btn--icon.queue-btn > .ui-btn__icon > svg.ui-icon.ui-icon--md'), 'the queue box = the real ui-btn icon button');
+  assert.ok(hr.querySelector('#notif-bell-placeholder.ui-btn.ui-btn--icon.notif-bell-btn > .ui-btn__icon > .notif-bell-skel'), 'the bell box = the real ui-btn, a shimmer disc in its icon slot');
+  assert.ok(hr.querySelector('[data-ft-reserve="download"].ui-btn.ui-btn--icon.oneoff-download-btn > .ui-btn__icon > svg.ui-icon'), 'the download box = the real icon-only ui-btn (no label since S1)');
+  assert.ok(hr.querySelector('#account-menu-placeholder.account-menu > .ui-btn.ui-btn--icon.account-menu-trigger > .ui-avatar.ui-avatar--sm.account-avatar'), 'the account slot mirrors the real root');
   const none = shellDom({ 'ft-queue-shown': '0', 'ft-ytdlp-module': '0' });
   assert.deepStrictEqual(kidsOf(none.window.document.querySelector('.header-right')), ['search', 'account-menu-placeholder'], 'no flag -> no reserve (first-ever / feature off)');
 });
@@ -284,7 +310,8 @@ test('nav block: lays the bar out as it last resolved - statics shown/hidden + o
     .map((e) => e.getAttribute('data-nav') || 'reserve:' + e.getAttribute('data-ft-reserve'));
   assert.deepStrictEqual(visible, ['home', 'playlists', 'history', 'reserve:oneoff-download', 'reserve:subscriptions', 'reserve:you']);
   assert.strictEqual(nav.querySelector('[data-nav="settings"]').hidden, true, 'a static item the layout dropped is hidden pre-paint');
-  assert.ok(nav.querySelector('a[data-ft-reserve="subscriptions"][href="/subscriptions"] svg.chrome-icon'), 'Subs reserve: a working link with its inline glyph');
+  assert.ok(nav.querySelector('a[data-ft-reserve="subscriptions"][href="/subscriptions"].ui-btn.ui-btn--stack.bottom-nav-item > .ui-btn__icon > svg.ui-icon.ui-icon--lg'), 'Subs reserve: a working link, the real tab box with its inline glyph');
+  assert.ok(nav.querySelector('[data-ft-reserve="you"] > .ui-btn__icon > .ui-avatar.ui-avatar--xs'), 'You reserve: the avatar disc in the fixed icon slot');
   const junk = shellDom({ 'ft-bottomnav-last': '["<img>", 42]' });
   assert.strictEqual(junk.window.document.querySelector('#bottom-nav [data-nav="settings"]').hidden, false, 'an unusable layout leaves the static bar alone');
 });
@@ -329,8 +356,8 @@ test('injectors REPLACE their placeholders in place: the header and the bar keep
   const visible = Array.from(nav.querySelectorAll('.bottom-nav-item')).filter((e) => !e.hidden).map((e) => e.getAttribute('data-nav'));
   assert.deepStrictEqual(visible, ['home', 'playlists', 'history', 'oneoff-download', 'subscriptions', 'you']);
   assert.strictEqual(doc.querySelectorAll('[data-ft-reserve]').length, 0, 'no placeholder survives');
-  assert.ok(nav.querySelector('[data-nav="subscriptions"] svg.chrome-icon') && nav.querySelector('[data-nav="oneoff-download"] svg.chrome-icon'),
-    'Subs + Download tabs carry the inline chrome glyph (no iOS mask decode lag)');
+  assert.ok(nav.querySelector('[data-nav="subscriptions"] > .ui-btn__icon > svg.ui-icon') && nav.querySelector('[data-nav="oneoff-download"] > .ui-btn__icon > svg.ui-icon'),
+    'Subs + Download tabs carry the inline sprite glyph (no iOS mask decode lag)');
   assert.strictEqual(nav.querySelector('[data-nav="subscriptions"] i, [data-nav="oneoff-download"] i'), null, 'the old mask <i> glyphs are gone');
   assert.deepStrictEqual(JSON.parse(doc.defaultView.localStorage.getItem('ft-bottomnav-last')), visible, 'the resolved bar is remembered for the next launch');
   assert.strictEqual(doc.defaultView.localStorage.getItem('ft-ytdlp-module'), '1');

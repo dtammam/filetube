@@ -18,23 +18,29 @@ const path = require('node:path');
 
 const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
 
+// UI pass step 1 (DELIBERATE lock update): the era token blocks moved to tokens.css. The
+// family knobs are --font-ui / --font-heading (plan D2.5); the old --font-family and
+// --heading-font aliases of them were retired at step 7 (consumers name the knobs). 2021 light is the
+// :root safe-default block, which every era inherits roles from ONLY by omission -
+// and every era block now writes every knob (ui-era-roles), so none inherits Geist.
+const stylesheets = require('../helpers/stylesheets');
 function eraBlock(era) {
-  const m = new RegExp(`\\[data-theme="${era}"\\] \\{([\\s\\S]*?)\\}`).exec(css);
-  assert.ok(m, `expected the [data-theme="${era}"] token block`);
-  return m[1];
+  const block = stylesheets.eraBlock(era);
+  assert.ok(block !== null, `expected the [data-theme="${era}"] token block`);
+  return block;
 }
 
 test('2014 Flat is Arial, not Roboto (era-accurate: pre-Polymer YouTube desktop was Arial)', () => {
   const block = eraBlock('2014');
-  assert.match(block, /--font-family:\s*Arial, Helvetica, sans-serif/);
-  assert.doesNotMatch(block, /--font-family:[^;]*Roboto/, 'Roboto in 2014 reads as "2017 wearing a 2014 layout"');
+  assert.match(block, /--font-ui:\s*Arial, Helvetica, sans-serif/);
+  assert.doesNotMatch(block, /--font-ui:[^;]*Roboto/, 'Roboto in 2014 reads as "2017 wearing a 2014 layout"');
 });
 
 test('v1.107: 2021 Modern is GEIST across all elements (body + logo + headings), medium weight, slight negative tracking', () => {
   const block = eraBlock('2021');
-  assert.match(block, /--font-family:\s*'Geist',\s*'Roboto'/, 'body: Geist first, Roboto the bundled fallback');
+  assert.match(block, /--font-ui:\s*'Geist',\s*'Roboto'/, 'body: Geist first, Roboto the bundled fallback');
   assert.match(block, /--logo-font:\s*'Geist'/, 'logo: Geist too (one font across all elements)');
-  assert.match(block, /--heading-font:\s*'Geist',\s*'Roboto'/, 'headings: Geist (replaces the old YouTube-Sans-first stack)');
+  assert.match(block, /--font-heading:\s*'Geist',\s*'Roboto'/, 'headings: Geist (replaces the old YouTube-Sans-first stack)');
   assert.doesNotMatch(block, /YouTube Sans/, 'the proprietary YouTube Sans heading face is gone - Geist is bundled');
   assert.match(block, /--heading-weight:\s*500/, 'Modern titles stay medium, not bold');
   assert.match(block, /--heading-tracking:\s*-0\.01em/);
@@ -48,20 +54,25 @@ test('every era defines --heading-weight; non-2021 eras stay bold/normal (byte-i
   }
 });
 
-test('gate C1 lock: every non-2021 era OVERRIDES --heading-font to its own stack -- :root\'s 2021 default INHERITS otherwise (custom properties ignore the var() fallback once defined up-tree)', () => {
+test('gate C1 lock: every non-2021 era sets its heading family to its OWN body stack (never inherits Modern Geist), and the old names alias the knobs', () => {
   for (const era of ['2005', '2009', '2014']) {
     const block = eraBlock(era);
-    assert.match(block, /--heading-font:\s*var\(--font-family\)/, `${era} must re-point the heading family at its own body stack`);
-    const headingFontLine = /--heading-font:[^;]*/.exec(block)[0];
-    assert.doesNotMatch(headingFontLine, /Roboto|YouTube Sans/, `${era} heading font must name neither Roboto nor YouTube Sans literally`);
+    const ui = /--font-ui:\s*([^;]*)/.exec(block);
+    const heading = /--font-heading:\s*([^;]*)/.exec(block);
+    assert.ok(ui && heading, `${era} must define both family knobs`);
+    assert.equal(heading[1].trim(), ui[1].trim(), `${era} headings use its own body stack`);
+    assert.doesNotMatch(heading[1], /Roboto|YouTube Sans|Geist/, `${era} heading font must name neither Roboto, YouTube Sans nor Geist`);
   }
+  const css = stylesheets.readTokensCss();
+  assert.doesNotMatch(css, /--heading-font\s*:/, 'the retired --heading-font alias is gone (step 7)');
+  assert.doesNotMatch(css, /--font-family\s*:/, 'the retired --font-family alias is gone (step 7)');
 });
 
 test('the three title surfaces consume the tokens with safe fallbacks -- and ONLY those three (body text untouched)', () => {
   for (const selector of ['.section-title', '.video-title', '.watch-title']) {
     const m = new RegExp(`\\n\\${selector} \\{([\\s\\S]*?)\\}`).exec(css);
     assert.ok(m, `expected the base ${selector} rule`);
-    assert.match(m[1], /font-family:\s*var\(--heading-font, var\(--font-family\)\)/, `${selector} heading family token`);
+    assert.match(m[1], /font-family:\s*var\(--font-heading, var\(--font-ui\)\)/, `${selector} heading family token`);
     // Tier 2 commit 4 (DELIBERATE lock update): the vacuous fallback is now
     // spelled var(--fw-bold) - same resolved weight (700 == bold, pinned by
     // the token-scale lock), one weight spelling system-wide.
@@ -70,7 +81,7 @@ test('the three title surfaces consume the tokens with safe fallbacks -- and ONL
   }
   // Gate S3: count all three tokens, not just weight -- a rogue family-only
   // or tracking-only consumer must trip this too.
-  for (const token of ['--heading-font', '--heading-weight', '--heading-tracking']) {
+  for (const token of ['--font-heading', '--heading-weight', '--heading-tracking']) {
     const consumers = css.match(new RegExp(`var\\(${token}`, 'g')) || [];
     assert.strictEqual(consumers.length, 3, `exactly the three title surfaces consume ${token} -- a fourth needs its own review`);
   }

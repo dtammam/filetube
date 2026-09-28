@@ -96,8 +96,9 @@ module.exports = [
       // `FileTube` is the SPA-lite router/view-registry namespace common.js
       // attaches to `window` (FR-1, T1); every other view script
       // (main/watch/setup/subscriptions) calls `FileTube.registerView`/
-      // `FileTube.navigate`.
-      globals: { ...globals.browser, module: 'readonly', FileTube: 'readonly' },
+      // `FileTube.navigate`. `ui` is the primitives' builder namespace ui.js
+      // attaches to `window` (UI professionalism pass, plan D4).
+      globals: { ...globals.browser, module: 'readonly', FileTube: 'readonly', FTIcons: 'readonly', ui: 'readonly', FTInteraction: 'readonly' },
     },
     rules: {
       ...commonRules,
@@ -122,7 +123,7 @@ module.exports = [
     languageOptions: { globals: { ...globals.node } },
   },
   {
-    files: ['tools/capture/settle.js', 'tools/capture/capture.js', 'test/integration/capture-determinism.test.js', 'test/integration/capture-guard-browser.test.js'],
+    files: ['tools/capture/settle.js', 'tools/capture/capture.js', 'test/visual/capture.js', 'test/geometry/*.js', 'test/integration/capture-determinism.test.js', 'test/integration/capture-guard-browser.test.js'],
     languageOptions: { globals: { ...globals.node, ...globals.browser } },
   },
 
@@ -135,6 +136,9 @@ module.exports = [
       globals: {
         computeQueueNext: 'readonly',
         computeQueuePrev: 'readonly',
+        // UI pass sweep S3: the watch page's Move to Trash confirm reads main.js's
+        // (the card menu's) copy, so the two can never disagree (main.js loads first).
+        cardDeleteConfirmCopy: 'readonly',
       },
     },
   },
@@ -199,9 +203,7 @@ module.exports = [
         wireMasterDetail: 'readonly',
         showConfirmModal: 'readonly',
         // FR-3 (T2): the toast helper (watch.js's post-delete success +
-        // main.js's card trash-can outcomes) and the card trash-can's pure
-        // arm/disarm reducer (main.js only, but declared alongside its
-        // sibling helpers here for consistency).
+        // main.js's card trash-can outcomes).
         showToast: 'readonly',
         // v1.63 playback queue: THE one add verb (common.js), called by
         // every affordance (main.js cards, watch.js verbs, music.js rows).
@@ -255,20 +257,17 @@ module.exports = [
         // used by main.js's injected modern-home sort caret.
         chromeIconEl: 'readonly',
         chromeIconMarkup: 'readonly',
-        CHROME_ICON_SVG: 'readonly',
-        // v1.340: the stable-width two-state button label (common.js), used by watch.js.
-        stableToggleLabelHtml: 'readonly',
         selectRecentUploaderChannels: 'readonly',
         modernCardAvatar: 'readonly',
         // v1.41.10 (QA gate): shared delete-outcome -> toast-message mapper
         // (common.js), used by both delete flows (main.js cards + watch.js).
         deleteResultToast: 'readonly',
-        nextArmState: 'readonly',
         THEME_REGISTRY: 'readonly',
         resolveIconSet: 'readonly',
         setIconSet: 'readonly',
         ICON_SET_REGISTRY: 'readonly',
         ICON_SETS: 'readonly',
+        migrateIconPref: 'readonly',
         sortItems: 'readonly',
         shouldShowShuffleButton: 'readonly',
         visibleSidebarFolders: 'readonly',
@@ -309,11 +308,10 @@ module.exports = [
         decideSubscribeButtonState: 'readonly',
         buildSubscribeModal: 'readonly',
         // FR-7 (T6, v1.21.0): the fail-safe yt-dlp-vs-local detection
-        // predicate and the escalated, checkbox-gated hard-delete confirm,
-        // consumed by watch.js's delete button and main.js's card two-tap
-        // arm.
+        // predicate, consumed by the watch page's and the card menu's delete
+        // paths (the checkbox-gated hard-delete dialog it once picked between
+        // was retired in the UI professionalism pass, step 7).
         isYtdlpManagedItem: 'readonly',
-        showHardDeleteModal: 'readonly',
         // FR-5 (TC, v1.22.0): desktop-sidebar channel-pins renderer, called
         // from each of main.js/watch.js/setup.js's own init().
         renderPinnedSidebar: 'readonly',
@@ -335,23 +333,27 @@ module.exports = [
         // v1.77: common.js's Library-glyph repainter, called by setup.js's
         // Library-icon picker so a change is visible on this page immediately.
         applyLibraryGlyphs: 'readonly',
-        // C2/C3 (T3-WIRE, v1.24.0): item-count badge + format-toggle
+        // C2/C3 (T3-WIRE, v1.24.0): item-count badge + the format filter
         // (video/audio/both) library controls, consumed by main.js's
         // home/folder/playlist/channel grid render.
         renderItemCountBadge: 'readonly',
         filterByMediaType: 'readonly',
         getStoredFormatFilter: 'readonly',
         setStoredFormatFilter: 'readonly',
-        renderFormatToggle: 'readonly',
-        // v1.50: watched-state toggle (common.js), consumed by main.js.
+        // v1.50: the watched-state filter (common.js), consumed by main.js.
         getStoredWatchFilter: 'readonly',
-        renderWatchToggle: 'readonly',
-        // v1.149: the search-scope toggle family (common.js -> main.js).
+        setStoredWatchFilter: 'readonly',
+        // v1.149: the search scope; v1.205 Wave B: the unified-search type (common.js -> main.js).
         normalizeSearchScopeMode: 'readonly',
-        renderSearchScopeToggle: 'readonly',
-        // v1.205 Wave B: the unified-search content-type chip family (common.js -> main.js).
         normalizeSearchTypeChip: 'readonly',
-        renderSearchTypeChips: 'readonly',
+        // UI pass sweep S2 (F19): the ONE library filter chip row and its dimensions.
+        buildFilterChipRow: 'readonly',
+        FORMAT_TOGGLE_OPTIONS: 'readonly',
+        WATCH_TOGGLE_OPTIONS: 'readonly',
+        SEARCH_SCOPE_OPTIONS: 'readonly',
+        SEARCH_TYPE_OPTIONS: 'readonly',
+        // UI pass D8.1: the era flourish (fabricated stats).
+        isFabricatedViewCount: 'readonly',
         // v1.161 (Dean): clear the search box after a search that found results.
         shouldClearSearchInputAfterResults: 'readonly',
         // v1.45.6 (Dean): library view-mode + per-page-sort helpers (common.js),
@@ -374,6 +376,12 @@ module.exports = [
         // consumed by main.js's home/library grid render + load-error path.
         buildEmptyStateHtml: 'readonly',
         buildErrorStateHtml: 'readonly',
+        // Sweep S9: the ui-state markup builder (main.js's string-rendered empty and
+        // error states), the header glyph builder (main.js's Modern sort / view glyphs)
+        // and the live-dialog query (watch.js's relocation offer).
+        uiStateHtml: 'readonly',
+        chromeButtonEl: 'readonly',
+        isLiveDialogOpen: 'readonly',
       },
     },
   },
@@ -402,20 +410,6 @@ module.exports = [
     },
   },
 
-  // v1.67 (plan D9): the corner VOCABULARY (resolver + control roster) is
-  // DEFINED at main.js module scope (main.js loads before setup.js on every
-  // shell) and consumed by setup.js's corner editor. Declared ONLY for the
-  // consumer, per the "declare only where consumed, not where defined" rule.
-  {
-    files: ['public/js/setup.js'],
-    languageOptions: {
-      globals: {
-        resolveCardCornerPrefs: 'readonly',
-        CARD_CORNER_CONTROLS: 'readonly',
-      },
-    },
-  },
-
   // `renderIconPicker` is DEFINED in public/js/setup.js (a real global
   // function, deliberately not IIFE-wrapped -- see that file's module
   // comment) and feature-detected/called from common.js's `applyIconSet()`.
@@ -432,28 +426,9 @@ module.exports = [
     },
   },
 
-  // v1.26.2 polish (sheet/modal transitions): `openOverlay`/`closeOverlayThen`
-  // are DEFINED in public/js/common.js and consumed here (the subscription
-  // settings sheet's open/close), same "declare only where consumed" posture
-  // as the public/js/main.js|watch.js|setup.js|player.js block above --
-  // common.js loads first as a classic script (see `/js/subscriptions.js`'s
-  // route in lib/ytdlp/index.js), so this is the SAME bare-global pattern
-  // `showHardDeleteModal`/`showMoveModal`/etc. already use.
-  //
-  // C5 (v1.30.0, T12): `resolveAvatarSource` joins this list -- the subs-row
-  // and settings-sheet-header avatars now route through the SAME shared
-  // precedence seam `watch.js` already consumes (see the block above), rather
-  // than a locally-reimplemented one.
-  {
-    files: ['lib/ytdlp/client/subscriptions.js'],
-    languageOptions: {
-      globals: {
-        openOverlay: 'readonly',
-        closeOverlayThen: 'readonly',
-        resolveAvatarSource: 'readonly',
-      },
-    },
-  },
+  // UI pass S5: lib/ytdlp/client/subscriptions.js no longer consumes openOverlay /
+  // closeOverlayThen / resolveAvatarSource (its sheets and avatars are ui.js
+  // primitives), so its private globals block was removed.
 
   // v1.66: a PUSH-ONLY worker at public/filetube-worker.js (no fetch
   // handler, no CacheStorage - locked by test/unit/v1264-service-worker

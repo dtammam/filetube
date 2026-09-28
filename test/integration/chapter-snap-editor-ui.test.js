@@ -29,6 +29,7 @@ const { app, getMediaId, loadDatabase, updateDatabase, chapterSilenceService, re
 const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { SILENCE_PARAMS_KEY } = require('../../lib/media/chapterSilence');
+const { drainSheets } = require('../helpers/ui-dialogs');
 
 const COMMON = require.resolve('../../public/js/common.js');
 let server, base, auth, dom;
@@ -43,7 +44,10 @@ after(async () => {
   server.closeAllConnections?.();
   await new Promise((resolve) => server.close(resolve));
 });
-afterEach(() => {
+afterEach(async () => {
+  // Sweep S9: the editor is a ui.sheet; a closing sheet finishes on a timer (~320ms in jsdom,
+  // no transitionend) - let it finish while the window it needs still exists.
+  if (dom) await drainSheets(dom.window);
   if (dom) dom.window.close();
   dom = null;
   delete global.window; delete global.document;
@@ -93,7 +97,7 @@ async function until(pred, label) {
   assert.fail('timed out waiting for: ' + label);
 }
 const click = (el) => el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-const rowsOf = (h) => Array.from(h.list.querySelectorAll('.chapter-snap-row'));
+const rowsOf = (h) => Array.from(h.list.querySelectorAll('.chapter-snap-item'));
 
 test('seeds from STORAGE: one row per stored chapter, the focus row marked, chapter 1 without nudges, the suggestions shown; Snap all -> Save writes the snapped starts and closes', async () => {
   const mix = seedMix();
@@ -108,9 +112,9 @@ test('seeds from STORAGE: one row per stored chapter, the focus row marked, chap
   assert.strictEqual(rows[0].querySelectorAll('[data-act="nudge"]').length, 0, 'chapter 1 has no nudges');
   assert.strictEqual(rows[1].querySelectorAll('[data-act="nudge"]').length, 4, 'every other chapter has four');
   assert.ok(rows[1].querySelector('[data-act="snap"]'), 'chapter 2 offers its snap');
-  assert.match(rows[1].querySelector('.chapter-snap-chip').textContent, /silence/);
-  assert.match(rows[3].querySelector('.chapter-snap-chip').textContent, /end of the previous song/);
-  assert.match(rows[2].querySelector('.chapter-snap-chip').textContent, /No gap found/);
+  assert.match(rows[1].querySelector('.chapter-snap-note').textContent, /silence/);
+  assert.match(rows[3].querySelector('.chapter-snap-note').textContent, /end of the previous song/);
+  assert.match(rows[2].querySelector('.chapter-snap-note').textContent, /No gap found/);
   assert.strictEqual(h.saveBtn.disabled, true, 'nothing to save yet');
   assert.match(h.snapAllBtn.textContent, /Snap all \(2\)/);
   click(h.snapAllBtn);
@@ -154,6 +158,40 @@ test('STALE seed: the text editor saved after the time editor opened -> Save is 
   assert.strictEqual(h.isClosed(), false, 'the editor stays open to say so');
   assert.strictEqual(h.saveBtn.disabled, true, 'and cannot retry the stale save');
   assert.deepStrictEqual(loadDatabase().metadata[mix.id].chaptersManual.map((c) => c.startTime), [0, 65, 120, 180, 240], 'the typed list is what is stored');
+  h.close();
+});
+
+// Step 7 (UI pass): every editor control is a ui-btn with ONE .ui-btn__label (a relabel -
+// "Snap all (2)" -> "Snap all", the confirm's Revert/Keep words, the suggested shift - goes
+// through the label, never a bare textContent that would strip the primitive's parts); the
+// Edited badge is a meta chip; Play carries the registry play_arrow, never the .icon-play mask.
+test('step 7: every editor button is a ui-btn md with one label (relabels keep it), the Edited badge a meta chip, Play the registry glyph', async () => {
+  const mix = seedMix();
+  const { common, fetchImpl } = bootEditor();
+  const h = common.showChapterSnapEditor(mix.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+  await h.ready;
+  const buttons = Array.from(h.modal.querySelectorAll('button'));
+  assert.ok(buttons.length > 20, 'the scan reached the editor\'s controls: ' + buttons.length);
+  const check = (label) => {
+    for (const b of h.modal.querySelectorAll('button')) {
+      assert.ok(b.classList.contains('ui-btn') && b.classList.contains('ui-btn--md'), label + ': ' + b.className + ' is a ui-btn md');
+      assert.ok(!b.classList.contains('btn'), label + ': no legacy .btn');
+      assert.strictEqual(b.querySelectorAll(':scope > .ui-btn__label').length, 1, label + ': one label in ' + b.className);
+    }
+  };
+  check('first paint');
+  assert.ok(h.snapAllBtn.classList.contains('ui-btn--primary') && h.saveBtn.classList.contains('ui-btn--primary'), 'Snap all and Save are the primary fills');
+  assert.ok(h.cancelBtn.classList.contains('ui-btn--secondary'), 'Cancel is secondary');
+  assert.strictEqual(h.snapAllBtn.querySelector('.ui-btn__label').textContent, 'Snap all (2)');
+  click(h.snapAllBtn); // relabels Snap all, re-renders every row
+  assert.strictEqual(h.snapAllBtn.querySelector('.ui-btn__label').textContent, 'Snap all', 'the relabel landed in the label');
+  check('after a relabel and a re-render');
+  const badge = h.modal.querySelector('.chapter-snap-badge');
+  assert.ok(badge.classList.contains('ui-chip') && badge.classList.contains('ui-chip--meta'), 'the Edited badge is a meta chip');
+  const play = rowsOf(h)[1].querySelector('[data-act="play"]');
+  assert.strictEqual(play.querySelector('.ui-btn__label').textContent, 'Play from here');
+  assert.strictEqual(play.querySelector('.ui-btn__icon use').getAttribute('href'), '#i-play_arrow', 'the registry glyph in the icon slot');
+  assert.strictEqual(h.modal.querySelector('.icon-play'), null, 'no .icon-play mask');
   h.close();
 });
 
@@ -202,6 +240,40 @@ test('a dirty Cancel asks first: Keep editing keeps the edits; Discard closes wi
   assert.strictEqual(loadDatabase().metadata[mix.id].chaptersManual, undefined);
 });
 
+// Sweep S9: the SHELL is a ui.sheet dialog. Its own ways out - Esc, the scrim, its Close -
+// ASK exactly like Cancel (the sheet's canDismiss): with unsaved corrections they open the in-page
+// discard confirm and the editor stays; with none they close it.
+for (const how of ['esc', 'scrim', 'close']) {
+  test(`S9 shell: ${how} with unsaved corrections asks first (the editor stays); ${how} on a clean editor closes it`, async () => {
+    const mix = seedMix();
+    const { common, fetchImpl, requests } = bootEditor();
+    const h = common.showChapterSnapEditor(mix.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+    await h.ready;
+    const d = dom.window.document;
+    assert.ok(h.sheet.el.classList.contains('ui-sheet--dialog'), 'a ui.sheet dialog');
+    assert.strictEqual(h.sheet.el.querySelector('.ui-sheet__title').textContent, 'Fix chapter times');
+    assert.strictEqual(h.modal.parentElement, h.sheet.body, 'the editor is the sheet content');
+    assert.strictEqual(d.querySelector('.modal-backdrop'), null, 'no bespoke backdrop');
+    const out = () => {
+      if (how === 'esc') d.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      else if (how === 'scrim') click(h.sheet.scrim);
+      else click(h.sheet.el.querySelector('.ui-sheet__close'));
+    };
+    click(h.snapAllBtn); // unsaved corrections
+    out();
+    assert.strictEqual(h.isClosed(), false, how + ' never discards unsaved corrections silently');
+    assert.strictEqual(h.sheet.isOpen(), true);
+    assert.strictEqual(h.confirmBox.hidden, false, 'the discard confirm asks');
+    assert.match(h.confirmBox.textContent, /Discard your changes/);
+    click(h.confirmBox.querySelector('.chapter-snap-confirm-no'));
+    click(h.undoBtn); // back to clean
+    out();
+    assert.strictEqual(h.isClosed(), true, how + ' closes a clean editor');
+    assert.strictEqual(h.sheet.isOpen(), false);
+    assert.ok(!requests.some((r) => r.startsWith('POST ') && !r.endsWith('/scan')), 'nothing was written');
+  });
+}
+
 test('entry point 4: the text editor\'s "Fix times..." opens the SAME time editor, and refuses while the textarea holds unsaved typing', async () => {
   const mix = seedMix();
   const { common, fetchImpl } = bootEditor();
@@ -215,11 +287,11 @@ test('entry point 4: the text editor\'s "Fix times..." opens the SAME time edito
     ed.textarea.value = text + '\n5:00 A typed extra';
     click(ed.snapBtn);
     assert.match(ed.statusEl.textContent, /Save or undo your typed changes first/);
-    assert.strictEqual(dom.window.document.querySelectorAll('.chapter-snap-modal').length, 0, 'no time editor over unsaved typing');
+    assert.strictEqual(dom.window.document.querySelectorAll('.chapter-snap-editor').length, 0, 'no time editor over unsaved typing');
     ed.textarea.value = text;
     click(ed.snapBtn);
-    await until(() => dom.window.document.querySelectorAll('.chapter-snap-row').length === 5, 'the time editor rendered the stored chapters');
-    assert.strictEqual(dom.window.document.querySelectorAll('.chapter-snap-modal').length, 1, 'exactly ONE time editor');
+    await until(() => dom.window.document.querySelectorAll('.chapter-snap-item').length === 5, 'the time editor rendered the stored chapters');
+    assert.strictEqual(dom.window.document.querySelectorAll('.chapter-snap-editor').length, 1, 'exactly ONE time editor');
     // A single-chapter text list never offers it.
     const lone = common.showChaptersEditor(mix.id, '0:00 Only', () => {}, dom.window.document);
     assert.strictEqual(lone.snapBtn, null);

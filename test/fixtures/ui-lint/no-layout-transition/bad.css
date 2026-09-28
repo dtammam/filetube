@@ -1,0 +1,6 @@
+/* ui-lint-canary: path=public/css/style.css expect=5 */
+.a { transition: width 200ms; }
+.b { transition: all var(--dur-fade); }
+.c { transition: 0.2s ease; }
+.d { transition-property: opacity, margin-left; }
+.e { -webkit-transition: height var(--dur-fade); }

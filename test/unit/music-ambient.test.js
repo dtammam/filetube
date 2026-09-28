@@ -136,9 +136,12 @@ async function boot(opts) {
   };
   let pngs = 0;
   W.HTMLCanvasElement.prototype.toDataURL = function () { pngs++; return 'data:image/png;base64,UE5H' + pngs; };
-  // The mobile axis: the REAL music-skins isMobileViewport reads window.matchMedia.
+  // The phone axis: the REAL music-skins gate - html.is-phone, set once from (pointer: coarse)
+  // plus the screen's short side (UI pass D7). This module was required before the window
+  // existed, so the load-time mark it makes in a browser is made here, the same way.
   const mq = { mobile: !!opts.mobile, listeners: [] };
-  W.matchMedia = (q) => ({ get matches() { return /max-width:\s*768px/.test(q) ? mq.mobile : false; }, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+  W.matchMedia = (q) => ({ get matches() { return /max-width:\s*768px|pointer:\s*coarse/.test(q) ? mq.mobile : false; }, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+  SKINS.markPhoneClass(W);
   W.scrollTo = () => {};
   try { W.localStorage.setItem('filetube_music_tab', 'songs'); } catch (_) { /* ignore */ }
   if (opts.pref !== undefined) W.localStorage.setItem('ft-ambient', opts.pref);
@@ -523,7 +526,7 @@ test('v1.317 AC2c: PAUSE clears a populated glow; play re-lights it', async () =
   });
 });
 
-test('v1.317 AC3: DESKTOP ONLY - on the phone breakpoint (the real music-skins isMobileViewport) nothing lights even with every other axis on', async () => {
+test('v1.317 AC3: DESKTOP ONLY - on the phone breakpoint (the real music-skins isPhone gate) nothing lights even with every other axis on', async () => {
   await withMusic({ pref: '1', mobile: true }, async (c) => {
     await c.tapRow('n1');
     await c.play();

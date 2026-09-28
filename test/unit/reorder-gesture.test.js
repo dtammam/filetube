@@ -478,6 +478,23 @@ test('wireReorderable: a touch long-press arms the drag and the drop reorders', 
   assert.deepEqual(moves, [{ from: 0, to: 3, source: 'pointer' }]);
 });
 
+// Step 7 (UI pass): the context-menu refusal moved into interaction.js (D6: every contextmenu
+// listener lives there). Bound on the REAL wiring: the long press's callout is refused while
+// the drag is armed, and only then - before it matures and after the drop the menu is the
+// browser's again.
+test('wireReorderable: while a touch drag is ARMED the long-press context menu is refused - and only then', async () => {
+  const f = buildList();
+  wire(f);
+  const menu = () => { const e = new f.window.Event('contextmenu', { bubbles: true, cancelable: true }); f.rows[0].dispatchEvent(e); return e.defaultPrevented; };
+  assert.strictEqual(menu(), false, 'no press: the browser keeps its menu');
+  touchDown(f, 0, 5);
+  assert.strictEqual(menu(), false, 'a press that has not matured is not a drag yet');
+  await new Promise((r) => setTimeout(r, REORDER_LONG_PRESS_MS + 40));
+  assert.strictEqual(menu(), true, 'armed: the callout the same long press opens is refused');
+  pointer(f.window, f.doc, 'pointerup', { pointerType: 'touch', clientY: 5 });
+  assert.strictEqual(menu(), false, 'after the drop the listener is gone with the press');
+});
+
 test('wireReorderable: a touch that MOVES before the long press matures is a scroll, not a drag', async () => {
   // The whole reason the long press exists: the row is the drag surface, so
   // without this rule the list could never be scrolled with a finger.
@@ -769,13 +786,13 @@ test('wireReorderable: an empty container, a missing onReorder and a missing row
   // Rows present, no onReorder: must wire NOTHING rather than throw on drag.
   const f = buildList();
   assert.doesNotThrow(() => wireReorderable(f.container, { rowSelector: '.row', measure: f.measure }));
-  assert.equal(f.rows[0].classList.contains('reorder-row'), false, 'a surface with no handler is not wired at all');
+  assert.equal(f.rows[0].classList.contains('ui-reorder'), false, 'a surface with no handler is not wired at all');
   assert.doesNotThrow(() => mouseDrag(f, 0, 105), 'and dragging it is inert');
 
   // Rows present, no rowSelector.
   const g = buildList();
   assert.doesNotThrow(() => wireReorderable(g.container, { onReorder: () => {}, measure: g.measure }));
-  assert.equal(g.rows[0].classList.contains('reorder-row'), false);
+  assert.equal(g.rows[0].classList.contains('ui-reorder'), false);
 });
 
 // ---- keyboard parity (the up/down buttons this wave deletes) ---------------

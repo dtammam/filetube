@@ -43,7 +43,7 @@ test('LOCK: every management page carries its section cards AND wires the master
   assert.ok(!/data-md-/.test(subsHtml), 'subscriptions.html should have no data-md-* attrs (T3)');
   const subs = stripped('lib/ytdlp/client/subscriptions.js');
   assert.ok(!/wireMasterDetail\('subscriptions'/.test(subs), 'subscriptions must not wire master-detail (T3)');
-  assert.match(subsHtml, /class="sub-toolbar"/, 'subscriptions.html gained the pills toolbar');
+  assert.match(subsHtml, /class="subs-toolbar"/, 'subscriptions.html carries the toolbar (UI pass S5)');
   for (const key of ['sub-panel-add', 'sub-panel-oneoff', 'sub-panel-activity']) {
     assert.ok(subsHtml.includes(`id="${key}"`), `subscriptions.html lost the ${key} panel`);
   }

@@ -154,7 +154,7 @@ test('GET /api/videos/:id and /api/videos carry the DERIVED storyboard descripto
   assert.deepStrictEqual(row.storyboard, expected, 'list projection carries the derived descriptor');
 });
 
-test('GET /api/liked carries the DERIVED descriptor (the Liked view feeds buildCardHtml too)', async () => {
+test('GET /api/liked carries the DERIVED descriptor (the Liked view feeds buildVideoCardEl too)', async () => {
   // Regression bind for the v1.93.2 gate: the Liked view renders card previews,
   // so its projection must send the derived descriptor like /api/videos + grid.
   const item = seedItem('liked-clip.mp4');

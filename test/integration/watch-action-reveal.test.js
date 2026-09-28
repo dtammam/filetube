@@ -4,10 +4,11 @@
 // final state, with NO partial->full pop-in. Boots the REAL watch.html +
 // public/js under jsdom (same harness shape as watch-like-button.test.js) and
 // drives the DOM-level contract by controlling the resolution ORDER of the two
-// async inputs that decide the row's final button set:
-//   - GET /api/videos/:id  -> the media record (Move/Like/.../Attribute source)
-//   - GET /api/auth/me      -> the write capability (Move/Attribute are gated on
-//                              it and mount from whichever resolves LAST)
+// async inputs that decide the page's final action set:
+//   - GET /api/videos/:id  -> the media record (which bar buttons exist: Share, Transcript)
+//   - GET /api/auth/me      -> the write capability (UI pass S3: Move / Move to Trash /
+//                              Attribute are More-menu entries gated on it; the barrier
+//                              keeps it so the first More at reveal is already complete)
 //
 // The row ships `data-loading` (shimmered, children visibility:hidden). It must
 // stay set until BOTH inputs have settled, then drop exactly once. These tests
@@ -131,7 +132,18 @@ async function settle(times) { for (let i = 0; i < (times || 12); i++) await flu
 
 function actionRow(dom) { return dom.window.document.querySelector('.watch-actions'); }
 function isLoading(dom) { return actionRow(dom).hasAttribute('data-loading'); }
-function moveBtn(dom) { return dom.window.document.getElementById('move-media-btn'); }
+// UI pass sweep S3 (D4.9): Move is a More-menu entry (built from the live capability at each
+// open) - "Move present at reveal" = the first More opened at reveal already offers it.
+async function moveOffered(dom) {
+  const d = dom.window.document;
+  d.getElementById('more-actions-btn').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 40));
+  const labels = Array.from(d.querySelectorAll('.ui-sheet.is-open .ui-row')).map((r) => r.textContent.trim());
+  const x = d.querySelector('.ui-sheet.is-open [aria-label="Close"]');
+  if (x) x.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 40));
+  return labels.includes('Move to another folder');
+}
 
 test('reveal-once: the row ships data-loading and stays hidden until BOTH media and capability settle', async () => {
   const { fetchImpl, mediaGate, authGate } = makeStub({ authRole: 'admin' });
@@ -151,9 +163,7 @@ test('reveal-once: the row ships data-loading and stays hidden until BOTH media 
     authGate.resolve();
     await settle();
     assert.ok(!isLoading(dom), 'row must reveal once both inputs have settled');
-    assert.ok(moveBtn(dom), 'admin capability -> Move is mounted at reveal time (no post-reveal pop-in)');
-    assert.ok(dom.window.document.querySelector('.watch-action-btns').contains(moveBtn(dom)),
-      'Move lives inside the button sub-group it was revealed with');
+    assert.ok(await moveOffered(dom), 'admin capability -> More offers Move at reveal time (no post-reveal change)');
   } finally {
     dom.window.close();
   }
@@ -168,12 +178,12 @@ test('reveal-once: capability-first then media (admin) still reveals with Move p
     authGate.resolve();
     await settle();
     assert.ok(isLoading(dom), 'row must stay hidden while the media record is unresolved');
-    assert.ok(!moveBtn(dom), 'Move cannot mount before mediaData exists');
+    assert.strictEqual(dom.window.document.getElementById('more-actions-btn'), null, 'no bar buttons before mediaData exists');
 
     mediaGate.resolve();
     await settle();
     assert.ok(!isLoading(dom), 'row reveals once the media record settles too');
-    assert.ok(moveBtn(dom), 'the media path mounts Move (capability already true) before the reveal');
+    assert.ok(await moveOffered(dom), 'More offers Move (capability already true) at the reveal');
   } finally {
     dom.window.close();
   }
@@ -187,10 +197,10 @@ test('reveal-once: a read-only user reveals a strictly-complete row (no Move, no
     authGate.resolve();
     await settle();
     assert.ok(!isLoading(dom), 'row reveals for a read-only user too (capability settles false)');
-    assert.ok(!moveBtn(dom), 'a read-only user never gets Move -- its absence is the FINAL state, not a pop-in');
-    // The static buttons are present and part of the revealed row.
-    assert.ok(dom.window.document.getElementById('download-media-btn'), 'the static Download button survives');
-    assert.ok(dom.window.document.getElementById('delete-media-btn'), 'the static Delete button survives');
+    assert.ok(!(await moveOffered(dom)), 'a read-only user never gets Move -- its absence is the FINAL state');
+    // the bar itself is complete: Like, Listen and More (the stub item has no link / captions)
+    const ids = Array.from(dom.window.document.querySelectorAll('#watch-actions > .ui-btn')).map((b) => b.id);
+    assert.deepStrictEqual(ids, ['like-media-btn', 'listen-media-btn', 'more-actions-btn']);
   } finally {
     dom.window.close();
   }

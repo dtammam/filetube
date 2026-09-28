@@ -22,78 +22,72 @@ const subsHtml = fs.readFileSync(SUBS_HTML_PATH, 'utf8');
 const mainJs = fs.readFileSync(MAIN_JS_PATH, 'utf8');
 
 // ---- Item 1: subscriptions-page font unification ---------------------------
+// UI pass S5 (AC12 conversion, triage "rows and toolbar do not reflow; --t-* roles"):
+// the row and sheet names are primitive parts now - their type comes from ui.css's
+// --t-* roles, and no Subscriptions rule may re-introduce the mono font. The reflow
+// half is measured by test/geometry/subscriptions.check.js (toolbar one line, row
+// slots fixed, the status line reserved).
 
-test('.sub-row-name uses the app font, not the mono font (channel names read like the rest of the app)', () => {
-  const rule = /\.sub-row-name\s*\{([^}]*)\}/.exec(css);
-  assert.ok(rule, 'expected a .sub-row-name rule');
-  assert.match(rule[1], /font-family:\s*var\(--font-family\);/);
-  assert.ok(!/var\(--mono-font\)/.test(rule[1]), '.sub-row-name must not reference --mono-font');
+const uiCss = fs.readFileSync(path.join(ROOT, 'public', 'css', 'ui.css'), 'utf8');
+
+test('the channel name (a ui-row title) and the sheet title use the app type roles, not the mono font', () => {
+  const row = /\n\.ui-row \{([^}]*)\}/.exec(uiCss);
+  assert.ok(row, 'expected the .ui-row base rule');
+  assert.match(row[1], /font:\s*var\(--t-body\);/, 'row text (the channel name) takes --t-body');
+  const title = /\.ui-sheet__title \{([^}]*)\}/.exec(uiCss);
+  assert.ok(title, 'expected the .ui-sheet__title rule');
+  assert.match(title[1], /font:\s*var\(--t-title\);/, 'the settings sheet\'s channel name takes --t-title');
 });
 
-test('.sub-sheet-name uses the app font, not the mono font (settings-sheet channel name matches the row above it)', () => {
-  const rule = /\.sub-sheet-name\s*\{([^}]*)\}/.exec(css);
-  assert.ok(rule, 'expected a .sub-sheet-name rule');
-  assert.match(rule[1], /font-family:\s*var\(--font-family\);/);
-  assert.ok(!/var\(--mono-font\)/.test(rule[1]), '.sub-sheet-name must not reference --mono-font');
-});
-
-test('no other .sub-* selector still uses --mono-font (only the intentional path/time surfaces do)', () => {
+test('no Subscriptions rule (.subs-* / .reloc-preview-*) uses --mono-font', () => {
   const monoRuleSelectors = [];
   const ruleRe = /([^{}]+)\{([^{}]*)\}/g;
   let m;
   while ((m = ruleRe.exec(css))) {
     const selector = m[1].trim();
-    const body = m[2];
-    if (/^\.sub-/.test(selector) && /var\(--mono-font\)/.test(body)) {
-      monoRuleSelectors.push(selector);
-    }
+    if (/(^|[\s,])\.(subs-|reloc-preview)/.test(selector) && /var\(--mono-font\)/.test(m[2])) monoRuleSelectors.push(selector);
   }
-  assert.deepStrictEqual(monoRuleSelectors, [], `unexpected .sub-* rule(s) still using --mono-font: ${monoRuleSelectors.join(', ')}`);
+  assert.deepStrictEqual(monoRuleSelectors, [], `unexpected rule(s) still using --mono-font: ${monoRuleSelectors.join(', ')}`);
 });
 
 // ---- Item 2: Reheat/Rescan "trailing line" artifact -------------------------
 
-test('subscriptions.html: the three status spans moved OUT of .sub-list-header-actions into a dedicated .sub-list-header-status row', () => {
-  // v1.55 Track B (DELIBERATE lock update): the div gained the sitewide
-  // action-bar class -- match the class list openly, keep the capture shape.
-  // v1.156 (T3): no status span may sit inside a button (.sub-list-header-actions)
-  // row -- the v1.26.2 invariant that growing status text never reflows the
-  // buttons. The spans now live in TWO dedicated .sub-list-header-status rows
-  // (Check all's on the main screen; the maintenance ones in the Activity
-  // panel with their buttons), so check every actions block and the union of
-  // every status row.
-  const actionBlocks = [...subsHtml.matchAll(/<div class="sub-list-header-actions[^"]*">([\s\S]*?)<\/div>/g)].map((m) => m[1]).join('');
-  for (const id of ['sub-repull-status', 'sub-reheat-status', 'sub-refresh-avatars-status']) {
-    assert.ok(!new RegExp(`id="${id}"`).test(actionBlocks), `${id} must not live inside a .sub-list-header-actions row`);
+test('subscriptions.html: no status span sits in a button row - Check all\'s in .subs-status, each tool\'s in its text column', () => {
+  // the v1.26.2 invariant: growing status text never reflows the buttons.
+  const toolbar = /<div class="subs-toolbar"[^>]*>([\s\S]*?)<\/div>/.exec(subsHtml)[1];
+  assert.doesNotMatch(toolbar, /action-status/, 'no status span in the toolbar');
+  assert.match(subsHtml, /<div class="subs-status">\s*<span id="sub-repull-status" class="action-status" aria-live="polite"><\/span>\s*<\/div>/);
+  const acts = [...subsHtml.matchAll(/<div class="subs-tool__act">([\s\S]*?)<\/div>/g)].map((m) => m[1]).join('');
+  const texts = [...subsHtml.matchAll(/<div class="subs-tool__text">([\s\S]*?)<\/div>/g)].map((m) => m[1]).join('');
+  for (const id of ['sub-reheat-status', 'sub-refresh-avatars-status', 'sub-reheat-subs-status', 'sub-backfill-names-status']) {
+    assert.ok(!acts.includes(`id="${id}"`), `${id} must not live in an action cell`);
+    assert.ok(texts.includes(`id="${id}"`), `${id} lives in its tool's text column`);
   }
-  const statusRows = [...subsHtml.matchAll(/<div class="sub-list-header-status">([\s\S]*?)<\/div>/g)].map((m) => m[1]).join('');
-  assert.ok(statusRows.length > 0, 'expected at least one dedicated .sub-list-header-status row');
-  assert.match(statusRows, /id="sub-repull-status"/);
-  assert.match(statusRows, /id="sub-reheat-status"/);
-  assert.match(statusRows, /id="sub-refresh-avatars-status"/);
 });
 
-test('subscriptions.html: .sub-list-header-status reserves a min-height so populate/clear can never reflow the buttons row', () => {
-  const styleBlock = /<style>[\s\S]*?<\/style>/.exec(subsHtml);
-  assert.ok(styleBlock, 'expected a <style> block in subscriptions.html');
-  const rule = /\.sub-list-header-status\s*\{([^}]*)\}/.exec(styleBlock[0]);
-  assert.ok(rule, 'expected a .sub-list-header-status rule');
-  assert.match(rule[1], /flex-basis:\s*100%;/, 'expected the status row to force its own full-width line');
-  assert.match(rule[1], /min-height:\s*\d+px;/, 'expected a reserved min-height');
+test('the status line reserves its height (.action-status min-height) and .subs-status is a block line of its own', () => {
+  const rule = /\n\.action-status \{([^}]*)\}/.exec(css);
+  assert.ok(rule, 'expected the shared .action-status rule');
+  assert.match(rule[1], /min-height:\s*\d+px;/, 'a reserved min-height');
+  assert.match(css, /\.subs-status \{ display: block;/, 'Check all\'s status is its own line under the toolbar');
 });
 
-test('subscriptions.html: exactly one #sub-repull-all-btn/#sub-reheat-btn/#sub-refresh-avatars-btn remain, unmoved from the buttons row (structural test unaffected)', () => {
+test('subscriptions.html: exactly one #sub-repull-all-btn/#sub-reheat-btn/#sub-refresh-avatars-btn', () => {
   for (const id of ['sub-repull-all-btn', 'sub-reheat-btn', 'sub-refresh-avatars-btn']) {
     const matches = subsHtml.match(new RegExp(`id="${id}"`, 'g')) || [];
     assert.strictEqual(matches.length, 1, `expected exactly one #${id}`);
   }
 });
 
-test('main.js: #rescan-library-btn keeps a stable width via CSS min-width (label swap "Rescan" <-> "Scanning..." never reflows its row)', () => {
-  const rule = /#rescan-library-btn\s*\{([^}]*)\}/.exec(css);
-  assert.ok(rule, 'expected a #rescan-library-btn rule reserving width');
-  assert.match(rule[1], /min-width:\s*\d+px;/);
-  // Sanity: the label-swap code this rule protects against still exists.
-  assert.match(mainJs, /Scanning\.\.\./);
-  assert.match(mainJs, /<span class="btn-label">Rescan<\/span>/);
+// UI pass sweep S2 (F19; converts the v1.26.2 min-width lock, AC12): Rescan is a
+// square ui-btn icon (width = its height, ui.css .ui-btn--icon) and its scanning
+// state is aria-busy (the spinner swaps inside the icon slot) - there is no label
+// to swap, so the row can never reflow.
+test('main.js: #rescan-library-btn keeps a stable width - a square ui-btn icon whose busy state never changes its content box', () => {
+  const html = fs.readFileSync(path.join(__dirname, '../../public/index.html'), 'utf8');
+  assert.match(html, /<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--icon" id="rescan-library-btn"/);
+  const ui = fs.readFileSync(path.join(__dirname, '../../public/css/ui.css'), 'utf8');
+  assert.match(ui, /\.ui-btn--icon \{\s*width: var\(--btn-h\);/, 'an icon button is exactly as wide as it is tall');
+  assert.match(mainJs, /u\.setBusy\(rescanBtn, !!on\)/, 'scanning is the busy state');
+  assert.doesNotMatch(mainJs, /Scanning\.\.\.'|btn-label">Rescan/, 'no label swap left');
 });

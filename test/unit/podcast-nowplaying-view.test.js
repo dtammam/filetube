@@ -15,7 +15,6 @@ const podcastsPath = require.resolve('../../public/js/podcasts.js');
 
 const VIEW_HTML = `<body><div id="view-root" data-view="podcasts">
   <video id="media-player"></video>
-  <button id="podcast-theater-btn" class="music-theater-btn" type="button" hidden aria-pressed="false"></button>
   <button id="podcast-popout-btn" type="button" hidden aria-pressed="false"></button>
   <div id="podcast-stage" class="music-stage">
   <div id="player-slot"></div>
@@ -54,6 +53,15 @@ function makePlayer(initialState, meta) {
     },
     expand: () => { s.value = 'full'; },
     setTrackNav: (h) => { s.trackNav = h; },
+    // UI pass S7: the player's ONE writer of the shared #theater-btn (player.js ensureTheaterButton):
+    // no host until the first load mounts one (s.hostReady), then the SAME node every call.
+    ensureTheaterButton: () => {
+      if (!s.hostReady && s.loadCalls.length === 0) return null;
+      const doc = global.document;
+      let b = doc.getElementById('theater-btn');
+      if (!b) { b = doc.createElement('button'); b.id = 'theater-btn'; b.type = 'button'; b.setAttribute('aria-pressed', 'false'); doc.body.appendChild(b); s.theaterWrites = (s.theaterWrites || 0) + 1; }
+      return b;
+    },
   };
   return { player, s, setState: (v) => { s.value = v; } };
 }
@@ -113,6 +121,7 @@ async function boot(url, initialState, run, opts) {
     require('../../public/js/music-skins.js');
     delete require.cache[require.resolve('../../public/js/skin-surface.js')];
     require('../../public/js/skin-surface.js');
+    delete require.cache[require.resolve('../../public/js/ui.js')]; require('../../public/js/ui.js'); // UI pass S6: every shell loads ui.js (window.ui) before the view
     delete require.cache[podcastsPath];
     require(podcastsPath);
     assert.ok(registered && typeof registered.init === 'function', 'podcasts view registered');
@@ -130,7 +139,7 @@ async function boot(url, initialState, run, opts) {
 const panel = (dom) => dom.window.document.getElementById('podcast-nowplaying-panel');
 const lastLoad = (mock) => mock.s.loadCalls[mock.s.loadCalls.length - 1];
 const playEp = async (dom, idx) => {
-  const rows = dom.window.document.querySelectorAll('.podcast-episode-main');
+  const rows = dom.window.document.querySelectorAll('[data-episode-id] .ui-row__link');
   rows[idx].click();
   await settle(); await settle();
 };
@@ -295,11 +304,11 @@ test('v1.105 (post-await TOCTOU): a show opened DURING the rebuild fetch is not 
   // clobbers playable with s1 - else the rendered s2 rows go inert (indexOf -1).
   const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
   await boot('http://localhost/podcasts?nowplaying=1', 'full', async (dom, mock) => {
-    dom.window.document.querySelector('.podcast-card').click(); // open s2
+    dom.window.document.querySelector('[data-show-id]').click(); // open s2
     await settle(); await settle();
     mock.deferred.resolve(); // now let the in-flight s1 rebuild fetch resolve
     await settle(); await settle();
-    const rows = dom.window.document.querySelectorAll('.podcast-episode-main');
+    const rows = dom.window.document.querySelectorAll('[data-episode-id] .ui-row__link');
     rows[0].click(); // tap the rendered s2 row
     await settle(); await settle();
     assert.ok(lastLoad(mock), 'the rendered row played SOMETHING (playable still holds s2, not clobbered by s1)');
@@ -315,13 +324,19 @@ test('v1.105 (T4 reseed): a NON-podcast item on the shared host does not show th
 });
 
 // ---- v1.251 (R2): the desktop THEATRE toggle, music v1.222 parity ----------------------
+// UI pass S7: the toggle is the PLAYER's own #theater-btn (player.js ensureTheaterButton - one
+// control, one glyph writer, as on Music since v1.317), bound once the host exists; the podcast
+// toolbar's second button is gone. Its visibility is CSS (desktop-only, hidden in the dock and on
+// views that do not wire it), so the view never touches `hidden` on the shared node.
 
-test('v1.251 theatre: the button reveals with an expanded episode, toggles is-theater on the stage, and persists ft-podcast-theater', async () => {
+test('v1.251 theatre: an expanded episode binds the player\'s #theater-btn, which toggles is-theater on the stage and persists ft-podcast-theater', async () => {
   await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
-    const btn = dom.window.document.getElementById('podcast-theater-btn');
     const stage = dom.window.document.getElementById('podcast-stage');
+    assert.equal(dom.window.document.getElementById('podcast-theater-btn'), null, 'no toolbar toggle any more');
     await playEp(dom, 0);
-    assert.equal(btn.hidden, false, 'an expanded episode reveals the toggle');
+    const btn = dom.window.document.getElementById('theater-btn');
+    assert.ok(btn, 'the mount seam bound the player\'s button');
+    assert.equal(btn.getAttribute('aria-pressed'), 'false', 're-stamped from the podcasts key');
     assert.ok(!stage.classList.contains('is-theater'), 'off by default');
     btn.click();
     await settle();
@@ -332,18 +347,24 @@ test('v1.251 theatre: the button reveals with an expanded episode, toggles is-th
     await settle();
     assert.ok(!stage.classList.contains('is-theater'), 'a second tap turns it off');
     assert.equal(dom.window.localStorage.getItem('ft-podcast-theater'), '0');
+    assert.equal(btn.hasAttribute('hidden'), false, 'the view never sets `hidden` on the shared button');
   });
 });
 
-test('v1.251 theatre (reveal-once CLEAR): docking hides the toggle again (populated first, both axes)', async () => {
+test('v1.251 theatre: docking leaves the shared button to the CSS (never hidden by the view), binds once, and one click is one toggle', async () => {
   await boot('http://localhost/podcasts?show=s1', 'full', async (dom, mock) => {
-    const btn = dom.window.document.getElementById('podcast-theater-btn');
     await playEp(dom, 0);
-    assert.equal(btn.hidden, false, 'populated first (non-vacuous)');
+    const btn = dom.window.document.getElementById('theater-btn');
+    assert.ok(btn, 'populated first (non-vacuous)');
     mock.setState('docked');
     mock.s.trackNav.onNext();
     await settle(); await settle();
-    assert.equal(btn.hidden, true, 'no expanded episode -> the toggle hides');
+    assert.equal(btn.hasAttribute('hidden'), false, 'docking does not hide the shared node (the dock CSS does)');
+    await playEp(dom, 0); // expanded again: the bind is idempotent
+    btn.click();
+    await settle();
+    assert.equal(dom.window.localStorage.getItem('ft-podcast-theater'), '1', 'one click = one toggle (no double-bound listener)');
+    assert.equal(mock.s.theaterWrites, 1, 'one button node, written once');
   });
 });
 
@@ -422,7 +443,11 @@ test('W3b supported() gate: a NARROW viewport hides the button and a forced togg
   }, { meta, mm });
 });
 
-test('W3c resize enforcement: shrinking into the narrow range TEARS DOWN an open podcast pop-out', async () => {
+// UI pass D7 (converted from W3c "shrinking into the narrow range TEARS DOWN an open podcast
+// pop-out"): the in-tab / pop-out split is the device class (html.is-phone, fixed at load), so a
+// desktop window going narrow is not a phone: the open pop-out stays open and the window keeps its
+// takeover class (html.mms-popout).
+test('UI pass D7: a narrow resize on a desktop leaves an open podcast pop-out open (the split is the device class)', async () => {
   const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
   const mm = { narrow: false };
   const pipDom = new JSDOM('<body></body>', { url: 'http://localhost/pip' });
@@ -434,44 +459,51 @@ test('W3c resize enforcement: shrinking into the narrow range TEARS DOWN an open
       btn.click();
       await settle(); await settle(); await settle();
       assert.equal(btn.getAttribute('aria-pressed'), 'true', 'pop-out open (populated first - non-vacuous)');
-      const pipBody = pipDom.window.document.body;
-      mm.narrow = true; // the viewport crosses into the in-tab-skin range
+      assert.ok(pipDom.window.document.documentElement.classList.contains('mms-popout'), 'the pop-out window carries the takeover class');
+      mm.narrow = true; // every media query now says narrow AND coarse
       dom.window.dispatchEvent(new dom.window.Event('resize'));
+      dom.window.dispatchEvent(new dom.window.Event('orientationchange'));
       await settle(); await settle();
-      assert.equal(btn.getAttribute('aria-pressed'), 'false', 'the resize arm tore the pop-out down');
-      assert.ok(!pipBody.classList.contains('mms-on'), 'the pop-out surface was destroyed (mms-on cleared before close)');
+      assert.equal(dom.window.document.documentElement.classList.contains('is-phone'), false, 'the device class is never re-evaluated');
+      assert.equal(btn.getAttribute('aria-pressed'), 'true', 'the pop-out stays open');
+      assert.ok(pipDom.window.document.body.classList.contains('mms-on'), 'its surface is intact');
+      assert.doesNotMatch(panel(dom).className, /\bmms-full\b/, 'and the in-tab skin never paints beside it');
     }, { meta, mm });
   } finally {
-    // Runner hygiene (adversarial delta S2, the v1.250 wedge class): under the D7
-    // arm-deletion mutant the pop-out never tears down and its clock keeps the loop alive -
-    // close the window so a red run FAILS fast instead of wedging node:test.
-    try { pipDom.window.close(); } catch (_) { /* already closed by the resize arm */ }
+    try { pipDom.window.close(); } catch (_) { /* already closed */ }
   }
 });
 
-// v1.311.3 gate r1 W2 (adversary: the wiring was source-locked only - a dead call survived).
-// Dean: "rotating the phone locks all scrolling". A crossing of the 768px gate must RE-RENDER
-// the panel through the view: narrow -> wide drops the skin (panel classes + body.mms-on, which
-// hides scrollbars at every width and stops critters), wide -> narrow paints it again.
-test('v1.311.3: a rotate across the 768px gate un-renders the podcast skin and a rotate back re-paints it', async () => {
+// UI pass D7 (F23; converted from v1.311.3's "a rotate across the 768px gate un-renders the podcast
+// skin and a rotate back re-paints it"). Dean: Pocket STAYS on rotation. A rotate never replaces
+// the podcast skin's DOM and never drops mms-on (the old teardown + rebuild replayed every reveal).
+test('UI pass D7 (F23): a rotate to landscape and back never tears down or rebuilds the podcast skin', async () => {
   const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
   const mm = { narrow: true };
   await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
-    const body = dom.window.document.body;
+    const W = dom.window;
+    const body = W.document.body;
     await playEp(dom, 0);
-    assert.match(panel(dom).className, /\bmms-full\b/, 'precondition: narrow + podcast -> the full-screen skin');
+    const el = panel(dom);
+    assert.match(el.className, /\bmms-full\b/, 'precondition: phone + podcast -> the full-screen skin');
     assert.ok(body.classList.contains('mms-on'), 'precondition: mms-on is up');
-    mm.narrow = false;
-    dom.window.dispatchEvent(new dom.window.Event('resize'));
-    await settle();
-    assert.doesNotMatch(panel(dom).className, /\bmms\b|\bmms-full\b/, 'wide: the panel is the desktop panel, no skin classes');
-    assert.ok(panel(dom).querySelector('.mnp-queue'), 'wide: the desktop episode queue rendered');
-    assert.ok(!body.classList.contains('mms-on'), 'wide: mms-on is gone');
+    const first = el.firstElementChild;
+    let childMutations = 0;
+    const mo = new W.MutationObserver((recs) => { for (const r of recs) if (r.type === 'childList' && r.target === el) childMutations++; });
+    mo.observe(el, { childList: true });
+    mm.narrow = false; // sideways: every query now says "wide" (and fine)
+    W.dispatchEvent(new W.Event('orientationchange'));
+    W.dispatchEvent(new W.Event('resize'));
+    await settle(); await settle();
+    assert.match(el.className, /\bmms-full\b/, 'landscape: still the skin');
+    assert.ok(body.classList.contains('mms-on'), 'landscape: mms-on held');
     mm.narrow = true;
-    dom.window.dispatchEvent(new dom.window.Event('resize'));
-    await settle();
-    assert.match(panel(dom).className, /\bmms-full\b/, 'rotating back re-paints the skin');
-    assert.ok(body.classList.contains('mms-on'), 'and mms-on returns');
+    W.dispatchEvent(new W.Event('orientationchange'));
+    W.dispatchEvent(new W.Event('resize'));
+    await settle(); await settle();
+    mo.disconnect();
+    assert.equal(childMutations, 0, 'the skin DOM was never replaced');
+    assert.strictEqual(el.firstElementChild, first, 'the same nodes');
   }, { meta, mm });
 });
 
@@ -481,7 +513,7 @@ test('v1.311.3: a rotate across the 768px gate un-renders the podcast skin and a
 // so its output must not move by one byte: EXPECTED is the builder's output captured at
 // v1.316.0 (main 6ea45237) for this exact fixture, before the change.
 
-test('v1.317 (seam): buildPanelHtml on podcast-shaped input (no subArtist, no durLabel) is byte-identical to its v1.316.0 output', () => {
+test('v1.317 (seam) / step 7: buildPanelHtml on podcast-shaped input (no subArtist, no durLabel) renders no length column and the plain sub-line, byte for byte', () => {
   delete require.cache[require.resolve('../../public/js/skin-surface.js')];
   const S = require('../../public/js/skin-surface.js');
   const np = { title: 'Ep One', subline: 'The Show · 1h' };
@@ -489,12 +521,18 @@ test('v1.317 (seam): buildPanelHtml on podcast-shaped input (no subArtist, no du
     { id: 'e1', artUrl: '/podcastart/s1', title: 'Ep One', artist: 'The Show', index: 0, state: 'current' },
     { id: 'e2', artUrl: '/podcastart/s1', title: 'Ep Two', artist: 'The Show', index: 1, state: 'next' },
   ];
+  // Step 7 (retire R2, DELIBERATE re-capture): the Up next became a ui-list of ui-rows (the art a
+  // ui-art in the media column, the title / show in the body, the reserved aside and actions
+  // slots, the playing row ui-row--current). The v1.317 intent is kept: podcasts pass neither
+  // optional field, so there is NO length column (no ui-list--aside-text, no .mnp-queue-dur, an
+  // empty reserved aside) and the sub-line stays the plain div. EXPECTED is this builder's output
+  // for the fixture at the step 7 commit.
   const EXPECTED = '<div class="mnp-meta"><div class="mnp-title" title="Ep One">Ep One</div><div class="mnp-sub">The Show · 1h</div></div>'
-    + '<div class="mnp-queue"><div class="mnp-queue-head">Up next</div>'
-    + '<button type="button" class="mnp-queue-row is-current" aria-current="true" data-index="0"><img class="mnp-queue-thumb art-shimmer" src="/podcastart/s1" alt="" loading="lazy" /><span class="mnp-queue-main"><span class="mnp-queue-title">Ep One</span><span class="mnp-queue-sub">The Show</span></span></button>'
-    + '<button type="button" class="mnp-queue-row" data-index="1"><img class="mnp-queue-thumb art-shimmer" src="/podcastart/s1" alt="" loading="lazy" /><span class="mnp-queue-main"><span class="mnp-queue-title">Ep Two</span><span class="mnp-queue-sub">The Show</span></span></button>'
+    + '<div class="mnp-queue ui-list ui-list--default ui-list--media-art"><div class="mnp-queue-head">Up next</div>'
+    + '<button type="button" class="mnp-queue-row ui-row ui-row--default is-current ui-row--current" aria-current="true" data-index="0"><span class="ui-row__lead"></span><span class="ui-row__media"><span class="ui-art ui-avatar--lg"><img class="ui-avatar__img mnp-queue-thumb art-shimmer" src="/podcastart/s1" alt="" loading="lazy" /></span></span><span class="ui-row__body"><span class="ui-row__title mnp-queue-title">Ep One</span><span class="ui-row__meta mnp-queue-sub">The Show</span></span><span class="ui-row__aside"></span><span class="ui-row__actions"></span></button>'
+    + '<button type="button" class="mnp-queue-row ui-row ui-row--default" data-index="1"><span class="ui-row__lead"></span><span class="ui-row__media"><span class="ui-art ui-avatar--lg"><img class="ui-avatar__img mnp-queue-thumb art-shimmer" src="/podcastart/s1" alt="" loading="lazy" /></span></span><span class="ui-row__body"><span class="ui-row__title mnp-queue-title">Ep Two</span><span class="ui-row__meta mnp-queue-sub">The Show</span></span><span class="ui-row__aside"></span><span class="ui-row__actions"></span></button>'
     + '</div>';
-  assert.strictEqual(S.buildPanelHtml(np, rows), EXPECTED, 'byte-identical to the pre-v1.317 podcast panel');
+  assert.strictEqual(S.buildPanelHtml(np, rows), EXPECTED, 'the podcast panel: no length column, the plain sub-line');
 });
 
 // Gate r1 W1 (both seats): the podcast MOBILE SKIN shares the music renderers, and the show line

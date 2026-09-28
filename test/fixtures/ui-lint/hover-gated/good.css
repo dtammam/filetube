@@ -1,0 +1,6 @@
+/* ui-lint-canary: path=public/css/style.css */
+@media (hover: hover) { .a:hover { color: var(--ink-1); } }
+@media (hover: hover) and (pointer: fine) { .b:hover { color: var(--ink-1); } }
+@media (max-width: 768px) { @media (hover:hover) { .c:hover { color: var(--ink-1); } } }
+.d:active { color: var(--ink-1); }
+.hovercard { color: var(--ink-1); }

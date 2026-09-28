@@ -14,7 +14,8 @@
 //
 //   FIX 5 -- the modal's format/quality/filetype selects no longer clip
 //   their content, and stack full-width on a phone. Mechanical/CSS-presence
-//   only; the actual visual result is Dean's on-device call.
+//   only; the actual visual result is Dean's on-device call. (Step 7: bound on
+//   the ui-sheet / ui-select rules that carry it now.)
 //
 //   FIX 6 -- on a terminal 'done' status the modal auto-closes (after a
 //   brief pause) and triggers a library rescan+refresh; on 'error' it stays
@@ -23,11 +24,6 @@
 
 const { test } = require('node:test');
 
-// Tier 2 (DELIBERATE lock updates): control sizes became --size-* tokens;
-// values resolved back before asserting. Token VALUES are pinned by
-// test/unit/token-scale-lock.test.js.
-const SIZE_TOKENS = { '--size-touch': '44px', '--size-control': '36px', '--size-control-sm': '32px' };
-const rt = (s) => String(s).replace(/var\((--size-[\w-]+)\)/g, (_, n) => SIZE_TOKENS[n] || _);
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -158,13 +154,14 @@ test('FIX 4: a 200 (module enabled) health probe injects BOTH the header button 
     const navBtn = navParent.children.find((c) => c.attributes['data-nav'] === 'oneoff-download');
     assert.ok(navBtn, 'expected a bottom-nav entry (data-nav="oneoff-download") to be injected');
     assert.strictEqual(navBtn.tagName, 'BUTTON', 'the mobile entry point must be a button (opens the modal, not a navigation link)');
-    assert.strictEqual(navBtn.className, 'bottom-nav-item');
+    // Sweep S1 (DELIBERATE lock update, F49): the tab is a ui-btn stack like every other.
+    assert.strictEqual(navBtn.className, 'ui-btn ui-btn--plain ui-btn--md ui-btn--stack bottom-nav-item');
     // v1.339 (L2, DELIBERATE lock update): the glyph is now the inline chrome-icon <svg>
     // (chromeIconEl('download'), the header button's own glyph) - this stub document has no
     // createElementNS, so it builds none; the old `.icon-download` mask must be gone.
     // test/unit/app-look-l2.test.js binds the real <svg> in jsdom.
     assert.ok(!navBtn.children.some((c) => c.className === 'icon-download'), 'no iOS-decode-lag mask glyph');
-    const navLabel = navBtn.children.find((c) => c.className === 'bottom-nav-label');
+    const navLabel = navBtn.children.find((c) => c.className === 'ui-btn__label bottom-nav-label');
     assert.ok(navLabel, 'expected a visible label');
     assert.strictEqual(navLabel.textContent, 'Download');
   });
@@ -221,68 +218,42 @@ test('FIX 4: a page with only the header (no bottom nav) still gets the header b
 const CSS_PATH = path.join(__dirname, '..', '..', 'public', 'css', 'style.css');
 const css = fs.readFileSync(CSS_PATH, 'utf8');
 
-const mobileBlockRe = /@media \(max-width: 768px\) \{([\s\S]*?)\n\}\n\n\/\* In landscape/;
+// Step 7 (UI pass, DELIBERATE conversion): the bespoke .oneoff-modal shell and its
+// .oneoff-modal-field / .oneoff-modal-row select / .oneoff-modal .btn-primary rules are
+// retired - the one-off dialog (S8/S9) and the Subscribe dialog (step 7) are ui.sheet forms of
+// ui-field inputs and ui-select selects. FIX 5's intent is bound on the rules that carry it
+// now: a sheet caps its own height and scrolls inside; the selects sit in a grid whose columns
+// never go under twice the 2xl avatar (192px: "MP4 (recommended)" fits) and fall to one per
+// row on a phone; every field is 44 tall; Download spans its row.
+const UI_CSS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8');
+const TOKENS_CSS = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'tokens.css'), 'utf8');
 
-function mobileBlock() {
-  const block = mobileBlockRe.exec(css);
-  assert.ok(block, 'expected the main mobile (max-width:768px) media query block');
-  return block[1];
-}
-
-test('FIX 5: the base .oneoff-modal caps its own height and scrolls internally, with a roomier max-width than before', () => {
-  const rule = /\.oneoff-modal\s*\{([^}]*)\}/.exec(css);
-  assert.ok(rule, 'expected the base .oneoff-modal rule');
-  assert.match(rule[1], /max-width:\s*460px/);
-  assert.match(rule[1], /max-height:\s*85vh/);
-  assert.match(rule[1], /overflow-y:\s*auto/);
+test('FIX 5 (step 7): the dialogs are ui.sheet forms - no bespoke .oneoff-modal shell rules remain', () => {
+  const rules = css.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(rules, /\.oneoff-modal(\s*[{,:]|-backdrop|-row|-field|-close|-header|-title)/, 'the shell, its rows and fields are gone');
+  assert.match(UI_CSS, /\n\.ui-sheet \{[^}]*max-height:\s*90dvh;[^}]*overflow:\s*hidden;/, 'a sheet caps its own height and clips; its body scrolls inside');
 });
 
-test('FIX 5: .oneoff-modal-row select has enough min-width to fit the longest option label (was 100px, clipped "MP4 (recommended)")', () => {
-  const rule = /\.oneoff-modal-row select\s*\{([^}]*)\}/.exec(css);
-  assert.ok(rule, 'expected the base .oneoff-modal-row select rule');
-  const minWidthMatch = /min-width:\s*(\d+)px/.exec(rule[1]);
-  assert.ok(minWidthMatch, 'expected an explicit min-width');
-  assert.ok(Number(minWidthMatch[1]) >= 150, 'min-width must be roomy enough for the longest option label');
+test('FIX 5: the selects never clip "MP4 (recommended)" - a grid of columns at least 192px (twice the 2xl avatar), one per row on a phone', () => {
+  const rule = /\n\.oneoff-modal-selects\s*\{([^}]*)\}/.exec(css);
+  assert.ok(rule, 'expected the .oneoff-modal-selects rule');
+  assert.match(rule[1], /display:\s*grid/);
+  assert.match(rule[1], /grid-template-columns:\s*repeat\(auto-fit, minmax\(calc\(var\(--av-2xl\) \* 2\), 1fr\)\)/,
+    'auto-fit tracks of at least 2 x --av-2xl: two never fit a 390px phone form, so they stack');
+  assert.match(TOKENS_CSS, /--av-2xl:\s*96px;/, '2 x 96 = 192px, roomier than the old 150px floor');
 });
 
-test('FIX 5: the Download button is a full-width, centered primary CTA in the modal', () => {
-  const rule = /\.oneoff-modal \.btn-primary\s*\{([^}]*)\}/.exec(css);
-  assert.ok(rule, 'expected a .oneoff-modal .btn-primary rule');
-  assert.match(rule[1], /width:\s*100%/);
+test('FIX 5 (mobile): every field is a 44px tap target - the ui-field / ui-select height is --ctl-lg', () => {
+  const rule = /\n\.ui-field__input,\s*\n\.ui-select__native \{([^}]*)\}/.exec(UI_CSS);
+  assert.ok(rule, 'expected the shared .ui-field__input, .ui-select__native rule');
+  assert.match(rule[1], /height:\s*var\(--ctl-lg\)/);
+  assert.match(TOKENS_CSS, /--ctl-lg:\s*44px;/);
 });
 
-test('FIX 5 (mobile): the three selects stack one-per-row on a phone instead of crowding', () => {
-  const body = mobileBlock();
-  assert.match(body, /\.oneoff-modal-row\s*\{[^}]*flex-direction:\s*column/);
-  assert.match(body, /\.oneoff-modal-row select\s*\{[^}]*width:\s*100%/);
-});
-
-test('v1.19.0 FR-1 (mobile): .oneoff-modal-row select resets flex to 0 0 auto -- the base rule\'s 150px flex-basis/flex-grow:1 (a width hint under the desktop row layout) must not be reinterpreted as a min-height/growth-target under the mobile column layout', () => {
-  const body = mobileBlock();
-  // The base (non-mobile) `.oneoff-modal-row select` rule (~1910) also
-  // appears in `body` (mobileBlock()'s captured range spans well beyond the
-  // literal @media block -- see the other tests in this file), so this must
-  // assert the FIX is present somewhere in the mobile CSS, not merely that
-  // *a* `.oneoff-modal-row select {}` rule exists (the base rule alone would
-  // satisfy a naive first-match check without actually closing the bug).
-  assert.match(
-    body,
-    /\.oneoff-modal-row select\s*\{[^}]*flex:\s*0 0 auto[^}]*width:\s*100%/,
-    'expected a mobile .oneoff-modal-row select rule with flex reset to 0 0 auto (so the inherited 150px basis is no longer reinterpreted as a minimum height under flex-direction: column) alongside the existing width: 100%'
-  );
-});
-
-test('FIX 5 (mobile): the modal itself is near-full-width with tighter padding, and every tappable control has a comfortable minimum tap-target height', () => {
-  const body = mobileBlock();
-  const modalRule = /\.oneoff-modal\s*\{([^}]*)\}/.exec(body);
-  assert.ok(modalRule, 'expected a mobile .oneoff-modal override');
-  assert.match(modalRule[1], /width:\s*9[0-9]%/);
-
-  const minHeightRule = /\.oneoff-modal-field,\s*\n?\s*\.oneoff-modal-row select,\s*\n?\s*\.oneoff-modal \.btn-primary\s*\{([^}]*)\}/.exec(body);
-  assert.ok(minHeightRule, 'expected a grouped mobile min-height rule covering the URL field, the selects, and the Download button');
-  const minHeightMatch = /min-height:\s*(\d+)px/.exec(rt(minHeightRule[1]));
-  assert.ok(minHeightMatch, 'expected an explicit min-height');
-  assert.ok(Number(minHeightMatch[1]) >= 44, 'tap targets should be at least 44px, matching the existing Setup/Subscriptions mobile polish');
+test('FIX 5: the Download button spans its row - the one-off action row is 1fr columns (auto-fit collapses the hidden Retry)', () => {
+  const rule = /\n\.oneoff-modal-actions\s*\{([^}]*)\}/.exec(css);
+  assert.ok(rule, 'expected the .oneoff-modal-actions rule');
+  assert.match(rule[1], /grid-template-columns:\s*repeat\(auto-fit, minmax\(120px, 1fr\)\)/);
 });
 
 // ---- FIX 6: on 'done' auto-close + rescan; on 'error' stay open ------------

@@ -27,6 +27,13 @@
   or an outline / box-shadow on the overlay; why a screenshot misses it (a compositor-only edge, or the
   screenshot's own crop). Measure the overlay's rect against the viewport on the device first.
 
+- [x] **UI professionalism pass: an audit, a component layer, guardrails that hold** - SHIPPED v1.341.0 (see Shipped) (Dean, 2026-09-27:
+  "Something about the full UI feels 'amateurish' ... flimsy and not premium ... make sure our design
+  system doesn't allow for anything imperfect when tweaking in the future"; plus native interactions:
+  "If I hold the screen to have it fast forward ... I see an iOS text magnifying glass ... It shouldn't
+  be so."). Audit and ranking across EVERY surface; candidate directions side by side before a north
+  star; then primitives + hard-fail guardrails (pre-push + CI, shrink-only exceptions), then per-surface
+  sweeps. Plan 2026-09-27-ui-professionalism-pass.
 - [ ] **Real battery level in the pocket skins' status bar** (Dean, 2026-09-24: "if it's possible for
   a PWA or a web app to query the device for battery and show that battery instead of just an
   arbitrary 80%"; deferred the same night: "I don't want to make this more complex right now").
@@ -248,6 +255,31 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.341.0 - One consistent look across the whole app (2026-09-28)
+
+- **The UI professionalism pass** (Dean: "amateurish ... flimsy and not premium ... make sure our design
+  system doesn't allow for anything imperfect when tweaking in the future"). North star C (native iOS /
+  Spotify), audited across every surface (docs/references/ui-audit-2026-09-27.json), then built in one
+  branch: tokens with roles, an icon registry and sprite (the emoji set dropped; a stored `emoji` resolves
+  to `filled`), a primitive layer (ui.css / ui.js: buttons, rows, lists, tiles, links, sheets, menus,
+  confirms, prompts, toasts, swipe, reorder) and ten surface sweeps onto it, then step 7 retiring the old
+  classes, aliases and bespoke modals. style.css 15781 -> 10743 lines.
+- **Guardrails that hard-fail** in pre-commit, pre-push and CI: ui-lint (13 rules, incl. raw values,
+  legacy tokens, bespoke controls, the z ladder, native interaction and counted `token-exempt`
+  annotations) against a shrink-only `docs/ui-exceptions.json`; a geometry suite (389 checks: alignment,
+  rotation stillness, popover placement, the delete confirm's double-tap) and a pinned-container visual
+  job at 0 changed pixels (its first baselines land in the follow-up PR; it is red on main until then - the first capture's one failing scene tapped inside the new double-tap window).
+- **Pocket is a phone mode**: rotating keeps Pocket (landscape = screen beside the wheel) instead of
+  tearing it down and replaying every reveal.
+- **Delete safety** (full gate, three rounds): a confirm or menu ignores taps for 450ms after it opens
+  (a double tap measured answering Trash Purge, a notification Delete, Stats and the card menu); every
+  destructive confirm and home menu closes when you leave the view (FileTube.viewSignal); menus flip or
+  clamp to stay on screen. Dean ruled a local file keeps the plain confirm (the v1.21 checkbox retired).
+- **Restore**: a backup's subscription channelUrl must be http(s) (a `javascript:` URL refuses the
+  bundle before the wipe); any http(s) shape an older version stored, and an empty one, still restores.
+- Gate: APPROVED r3 @9cc44fa8 by adversary, qa and security-brief. Residuals and Dean's device checks:
+  tech-debt #289.
 
 ### v1.340.0 - A steadier channel row with a real bell, and a plainer Original wheel (2026-09-27)
 

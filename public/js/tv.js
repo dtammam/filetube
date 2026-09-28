@@ -38,48 +38,57 @@ function formatEpDuration(sec) {
   return m + ':' + pad2(ss);
 }
 
-// A 2:3 poster card for the grid.
+// A 2:3 poster card for the grid. Retire R3: the card is a link to the show's own deep link
+// (/tv?show=<id>, the page init reads it), so it opens in a new tab like any link; a plain
+// click stays in the view (onClick below opens the show in place and stamps a back level).
 function buildShowCardHtml(show) {
   var poster = '/tvposter/' + encodeURIComponent(show.id || '');
   var seasons = show.seasonCount ? show.seasonCount + (show.seasonCount === 1 ? ' season' : ' seasons') : '';
   var eps = show.episodeCount ? show.episodeCount + (show.episodeCount === 1 ? ' episode' : ' episodes') : '';
   var meta = [seasons, eps].filter(Boolean).join(' · ');
   return '' +
-    '<button type="button" class="show-card" data-show-id="' + escapeTvHtml(show.id) + '">' +
+    '<a class="show-card" href="/tv?show=' + encodeURIComponent(show.id || '') + '" data-show-id="' + escapeTvHtml(show.id) + '">' +
     '<img class="show-poster art-shimmer" src="' + escapeTvHtml(poster) + '" alt="' + escapeTvHtml(show.name) + '" loading="lazy" />' +
     '<span class="show-card-title" title="' + escapeTvHtml(show.name) + '">' + escapeTvHtml(show.name || 'Untitled show') + '</span>' +
     '<span class="show-card-meta">' + escapeTvHtml(meta) + '</span>' +
-    '</button>';
+    '</a>';
 }
 
 // A Continue-Watching card: the show poster, a resume bar, the show name + the
-// SxxEyy · title of the in-progress episode. Opens straight into that episode.
+// SxxEyy · title of the in-progress episode. Opens straight into that episode (retire R3: a
+// link to its watch page, like an episode row).
 function buildContinueCardHtml(ep) {
   var poster = '/tvposter/' + encodeURIComponent(ep.showId || '');
   var dur = Number(ep.durationSec) || 0;
   var pct = dur > 0 ? Math.max(0, Math.min(100, Math.round((Number(ep.position) || 0) / dur * 100))) : 0;
   var label = [episodeCode(ep), ep.title].filter(Boolean).join(' ');
   return '' +
-    '<button type="button" class="tv-continue-card" data-episode-id="' + escapeTvHtml(ep.id) + '">' +
+    '<a class="tv-continue-card" href="/watch.html?tv=' + encodeURIComponent(ep.id || '') + '" data-episode-id="' + escapeTvHtml(ep.id) + '">' +
     '<span class="tv-continue-poster-wrap">' +
     '<img class="tv-continue-poster art-shimmer" src="' + escapeTvHtml(poster) + '" alt="' + escapeTvHtml(ep.showName) + '" loading="lazy" />' +
     '<span class="tv-continue-bar"><span class="tv-continue-fill" style="width: ' + pct + '%"></span></span>' +
     '</span>' +
     '<span class="tv-continue-show" title="' + escapeTvHtml(ep.showName) + '">' + escapeTvHtml(ep.showName || '') + '</span>' +
     '<span class="tv-continue-ep" title="' + escapeTvHtml(label) + '">' + escapeTvHtml(label || 'Episode') + '</span>' +
-    '</button>';
+    '</a>';
 }
 
-// One episode row: SxxExx code + title + duration.
+// One episode row: SxxExx code + title + duration. Retire R3: a whole-row link (a.ui-row) to
+// the episode's watch page in the season's ui-list - the code is the overline, the title the
+// row title, the length the aside column the list sizes (style.css .tv-episode-list).
 function buildEpisodeRowHtml(ep) {
   var code = episodeCode(ep);
   var title = ep.title || (ep.episodeNum != null ? 'Episode ' + ep.episodeNum : 'Untitled');
   return '' +
-    '<button type="button" class="tv-episode-row" data-episode-id="' + escapeTvHtml(ep.id) + '">' +
-    (code ? '<span class="tv-episode-code">' + escapeTvHtml(code) + '</span>' : '') +
-    '<span class="tv-episode-title" title="' + escapeTvHtml(title) + '">' + escapeTvHtml(title) + '</span>' +
-    '<span class="tv-episode-dur">' + escapeTvHtml(ep.durationSec ? formatEpDuration(ep.durationSec) : '') + '</span>' +
-    '</button>';
+    '<a class="ui-row ui-row--default tv-episode" role="listitem" href="/watch.html?tv=' + encodeURIComponent(ep.id || '') + '" data-episode-id="' + escapeTvHtml(ep.id) + '">' +
+    '<span class="ui-row__lead"></span><span class="ui-row__media"></span>' +
+    '<span class="ui-row__body">' +
+    (code ? '<span class="ui-row__overline tv-episode-code">' + escapeTvHtml(code) + '</span>' : '') +
+    '<span class="ui-row__title" title="' + escapeTvHtml(title) + '">' + escapeTvHtml(title) + '</span>' +
+    '</span>' +
+    '<span class="ui-row__aside">' + escapeTvHtml(ep.durationSec ? formatEpDuration(ep.durationSec) : '') + '</span>' +
+    '<span class="ui-row__actions"></span>' +
+    '</a>';
 }
 
 // A show-detail document: a hero (poster + name), then a section per season, each
@@ -99,7 +108,7 @@ function buildShowDetailHtml(detail) {
     var s = seasons[i];
     out += '<section class="tv-season">';
     if (!hideHeader) out += '<h4 class="tv-season-label">' + escapeTvHtml(s.label) + '</h4>';
-    out += '<div class="tv-episode-list">';
+    out += '<div class="ui-list ui-list--default ui-list--divider-full tv-episode-list" role="list">';
     var eps = Array.isArray(s.episodes) ? s.episodes : [];
     for (var j = 0; j < eps.length; j++) out += buildEpisodeRowHtml(eps[j]);
     out += '</div></section>';
@@ -173,7 +182,7 @@ if (typeof document !== 'undefined') {
         // REVEAL axis: a Continue row when there ARE in-progress episodes; CLEAR
         // axis: nothing rendered when the list is empty (the row is simply gone).
         if (r.cont.length) {
-          html += '<section class="tv-continue-row"><h4 class="tv-continue-heading">Continue watching</h4>' +
+          html += '<section class="tv-continue"><h4 class="tv-continue-heading">Continue watching</h4>' +
             '<div class="tv-continue-strip">' + r.cont.map(buildContinueCardHtml).join('') + '</div></section>';
         }
         html += r.shows.length ? '<div class="show-grid">' + r.shows.map(buildShowCardHtml).join('') + '</div>' : '';
@@ -216,7 +225,11 @@ if (typeof document !== 'undefined') {
         var content = el('tv-content');
         if (!content) return;
         showEmpty(false);
-        setCrumb('<button type="button" class="tv-back" id="tv-back">← All shows</button>');
+        // Retire R3: the back control is a plain ui-btn with the registry's arrow (it was a
+        // text arrow glyph in a bespoke link-coloured button).
+        setCrumb('<button type="button" class="ui-btn ui-btn--plain ui-btn--sm" id="tv-back">' +
+          '<span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true"><use href="#i-arrow_back"/></svg></span>' +
+          '<span class="ui-btn__label">All shows</span></button>');
         var heading = el('tv-heading'); if (heading) heading.textContent = detail.name || 'Shows';
         content.innerHTML = buildShowDetailHtml(detail);
         revealTvArt(content);
@@ -238,18 +251,34 @@ if (typeof document !== 'undefined') {
       }
     }
 
+    // Retire R3: the cards and episode rows are links. A modified or non-primary click is the
+    // browser's (open in a new tab / window); a plain click is handled here and CLAIMED
+    // (preventDefault + stopPropagation), so the router's document link handler never
+    // navigates it a second time.
+    function isPlainClick(e) {
+      return !(e.button || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey);
+    }
+    function claim(e) { e.preventDefault(); e.stopPropagation(); }
     function onClick(e) {
       var cont = e.target.closest && e.target.closest('.tv-continue-card');
-      if (cont && cont.getAttribute('data-episode-id')) { openEpisode(cont.getAttribute('data-episode-id')); return; }
+      if (cont && cont.getAttribute('data-episode-id')) {
+        if (!isPlainClick(e)) return;
+        claim(e); openEpisode(cont.getAttribute('data-episode-id')); return;
+      }
       var card = e.target.closest && e.target.closest('.show-card');
       if (card && card.getAttribute('data-show-id')) {
+        if (!isPlainClick(e)) return;
+        claim(e);
         var sid = card.getAttribute('data-show-id');
         pushTvShowLevel(sid); // v1.218: a back level for the show descent
         openShow(sid);
         return;
       }
-      var row = e.target.closest && e.target.closest('.tv-episode-row');
-      if (row && row.getAttribute('data-episode-id')) { openEpisode(row.getAttribute('data-episode-id')); return; }
+      var row = e.target.closest && e.target.closest('.tv-episode');
+      if (row && row.getAttribute('data-episode-id')) {
+        if (!isPlainClick(e)) return;
+        claim(e); openEpisode(row.getAttribute('data-episode-id')); return;
+      }
       if (e.target.closest && e.target.closest('#tv-back')) {
         // v1.218: consume the pushed show level via history.back() when one exists
         // (keeps OS-back in sync); else collapse directly (a ?show= deep-link show).

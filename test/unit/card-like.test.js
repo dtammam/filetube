@@ -2,8 +2,9 @@
 
 // [UNIT] v1.40.0 — the per-card "Like" control (Dean). Source/asset locks in
 // the established style of shuffle-rescan-icon.test.js: the heart is a real SVG
-// mask painted in currentColor (NOT the U+2665 emoji codepoint), the card
-// button mirrors the download/delete corner controls, the toggle uses the same
+// mask painted in currentColor (NOT the U+2665 emoji codepoint), the card's
+// Like is an entry of its ONE action menu since UI pass sweep S2 (D8.5; the
+// v1.40-v1.67 corner button retired), the toggle uses the same
 // db.liked API the watch page does (non-optimistic), and the list endpoint
 // tags each item with `liked` so cards render their initial state. DOM behavior
 // is validated on-device; these lock the wiring so a refactor fails loudly.
@@ -55,70 +56,42 @@ test('style.css: NOT the U+2665 emoji codepoint -- the heart is a mask asset, no
   assert.ok(!/\.icon-heart::before\s*\{\s*content/.test(css), 'heart must not be a ::before content glyph');
 });
 
-test('style.css: .card-like-btn is an absolutely-positioned corner control that turns red when liked (v1.67: anchored via .card-corner-*, default bottom-left)', () => {
-  // v1.67 (plan D3): position split from identity. The like button's LOOK
-  // rule (now a selector group shared with share/reheat) keeps
-  // position:absolute; the ANCHOR lives on the corner classes, and the C5
-  // default assigns like to bottom-left (.card-corner-bl = bottom/left 6px).
-  // Match the LOOK rule by its full selector group - a looser
-  // `.card-like-btn,` prefix match grabs the touch-action group at the top
-  // of the file (which .card-like-btn joined in gate round 2, QA S5).
-  const rule = /\.card-like-btn,\s*\.card-share-btn,\s*\.card-reheat-btn,\s*\.card-transcript-btn\s*\{([^}]*)\}/.exec(css);
-  assert.ok(rule, 'expected the .card-like-btn look rule (grouped with share/reheat)');
-  assert.match(rule[1], /position:\s*absolute;/);
-  assert.ok(!/bottom:/.test(rule[1]) && !/left:/.test(rule[1]),
-    'the look rule must NOT carry anchor geometry (that is the corner classes\' job)');
-  const bl = /\.card-corner-bl\s*\{([^}]*)\}/.exec(css);
-  assert.ok(bl, 'expected the .card-corner-bl anchor class');
-  assert.match(bl[1], /bottom:\s*6px;/);
-  assert.match(bl[1], /left:\s*6px;/);
-  assert.match(css, /\.card-like-btn\.liked\s*\{[^}]*color:\s*var\(--yt-red\)/, 'liked state paints the heart red');
+// UI pass sweep S2 (D8.5; converts the v1.40/v1.67 corner-button + .card-media
+// anchor locks, AC12): Like is a card-menu entry; the card media is a link around
+// the ui-thumb, whose own aspect box keeps a portrait thumbnail cropped to 16:9
+// (the v1.40.1 regression the .card-media flex-column lock guarded).
+test('the card\'s Like is a menu entry reflecting item.liked (Like / Unlike with the heart filled), never a corner button', () => {
+  const live = stripComments(mainSrc);
+  assert.match(live, /out\.push\(it\.liked === true\s*\? \{ id: 'like', icon: 'favorite\.fill', label: 'Unlike' \}\s*: \{ id: 'like', icon: 'favorite', label: 'Like' \}\);/);
+  assert.ok(!/card-like-btn/.test(live), 'no corner like button remains in main.js');
+  assert.ok(!/\.card-like-btn/.test(css.replace(/\/\*[\s\S]*?\*\//g, '')), 'no .card-like-btn rule remains');
 });
 
-test('the corner controls anchor to the thumbnail via .card-media (so bottom:6px reaches the thumbnail, not the card bottom)', () => {
-  // v1.40.0 gate fix: overlays live in a thumbnail-height positioning box, not
-  // directly on .video-card (whose bottom is below the title/meta/rating).
-  const rule = /\.card-media\s*\{([^}]*)\}/.exec(css);
-  assert.ok(rule, 'expected a .card-media rule');
-  assert.match(rule[1], /position:\s*relative;/, 'expected .card-media { position: relative }');
-  // v1.40.1 regression lock: .card-media MUST be a flex column so
-  // .thumbnail-container stays a flex item -- otherwise its aspect-ratio:16/9
-  // height goes indefinite, .thumbnail-img{height:100%} collapses to auto, and
-  // portrait/Shorts thumbnails render oversized at natural height.
-  assert.match(rule[1], /display:\s*flex;/, 'card-media must be flex so the thumbnail keeps its definite 16:9 height');
-  assert.match(rule[1], /flex-direction:\s*column;/);
-  assert.ok(mainSrc.includes('<div class="card-media">'), 'the card wraps the thumbnail + overlays in .card-media');
+test('the thumbnail keeps a definite 16:9 box (ui-thumb), so a portrait/Shorts thumbnail is cropped, never natural height (v1.40.1)', () => {
+  const ui = fs.readFileSync(path.join(__dirname, '../../public/css/ui.css'), 'utf8');
+  assert.match(ui, /\.ui-thumb \{[^}]*aspect-ratio:\s*16 \/ 9;[^}]*overflow:\s*hidden;/);
+  assert.match(ui, /\.ui-thumb__img \{[^}]*width:\s*100%;[^}]*height:\s*100%;[^}]*object-fit:\s*cover;/);
+  assert.match(css, /\n\.card-media \{\s*display:\s*block;/, 'the media link is a block holding the thumb');
 });
 
-test('main.js: the card renders a .card-like-btn reflecting item.liked, and toggles via POST/DELETE /api/liked/:id (non-optimistic)', () => {
-  // v1.67: the like markup moved into the corner renderer (one appended
-  // corner class after the liked flag); the seeding expression is unchanged.
-  assert.ok(mainSrc.includes('class="card-like-btn${item.liked ? \' liked\' : \'\'} ${cornerClass}"'), 'the card seeds the liked class from item.liked');
-  // v1.72 (#94): the toggle dispatches per KIND (data-kind on the button) -
+test('main.js: the card menu\'s Like toggles via POST/DELETE on the item\'s kind lane (non-optimistic)', () => {
+  // v1.72 (#94): the toggle dispatches per KIND (the card item's own kind) -
   // bind the USE (the fetch consumes the dispatcher) and every arm of the
   // dispatcher, not just the helper's existence.
-  assert.ok(mainSrc.includes('fetch(cardLikeEndpoint(btn.dataset.kind, id)'), 'the fetch consumes the kind dispatcher');
+  assert.ok(mainSrc.includes('fetch(cardLikeEndpoint(kp ? kp.kind : undefined, item.id)'), 'the fetch consumes the kind dispatcher');
   assert.ok(mainSrc.includes("return '/api/liked/' + encId;"), 'media (default) arm hits the liked API by id');
   assert.ok(mainSrc.includes("if (kind === 'podcast') return '/api/podcasts/episodes/' + encId + '/liked';"), 'podcast arm');
-  // M3 chapter likes (v1.317): a `<id>::c<n>` chapter of a chaptered audio file is
-  // a MEDIA-store like; the chapter arm must sit BEFORE the native track arm or the
-  // native lane (ownTrack-gated) swallows it and an unlike strands the row.
-  // Gate r1 adversary W2: the lock reads COMMENT-STRIPPED source (a commented-out
-  // arm kept `includes` green - the v1.50/v1.77/v1.133 class); the behavioural
-  // drive of the grid heart on a `::c` card is the test below.
+  // M3 chapter likes (v1.317): the chapter arm must sit BEFORE the native track
+  // arm (comment-stripped source; the behavioural drive is the test below).
   const live = stripComments(mainSrc);
   const chapterArm = live.indexOf("if (kind === 'track' && /::c\\d+$/.test(String(id))) return '/api/liked/' + encId;");
   const nativeArm = live.indexOf("if (kind === 'track') return '/api/music/liked/' + encId;");
   assert.ok(chapterArm !== -1, 'chapter-track arm hits the media liked API (in LIVE code, not a comment)');
   assert.ok(nativeArm !== -1, 'track arm');
   assert.ok(chapterArm < nativeArm, 'the chapter arm precedes the native track arm');
-  // Adversarial gate v1.72 W1: the book arm survived the whole suite as a
-  // deletable mutant - a book unlike falling to the media default would
-  // DELETE /api/liked/<bookId>, a cross-kind kill when a media item shares
-  // the md5 id. Every arm is bound or the claim "every arm" is a lie.
   assert.ok(mainSrc.includes("if (kind === 'book') return '/api/books/liked/' + encId;"), 'book arm');
   assert.ok(mainSrc.includes("method: currentlyLiked ? 'DELETE' : 'POST'"), 'DELETE when liked, POST when not');
-  // Non-optimistic: the heart flips inside the resolved .then, guarded by res.ok.
+  // Non-optimistic: the item flips only after res.ok.
   assert.ok(mainSrc.includes("if (!res.ok) throw new Error('like request failed"), 'a failed request never fakes success');
 });
 
@@ -150,7 +123,7 @@ test('server.js: the GET /api/videos list tags each item with a `liked` flag fro
 // ---------------------------------------------------------------------------
 // Gate r1, adversary W2 (M3 chapter likes, AC11): the BEHAVIOURAL drive of the
 // Liked-grid heart. A real jsdom `index.html` at `/?liked=1` (runScripts, static
-// files from disk - the harness shape of test/integration/card-corners-fullchain),
+// files from disk - the harness shape of test/integration/card-action-menu-fullchain),
 // the REAL main.js grid and its delegated click handler, a scripted fetch. The
 // chapter card's UNLIKE must reach the MEDIA store (`DELETE /api/liked/<id>::c2`):
 // the native music lane is ownTrack-gated, so a chapter unlike sent there 404s and
@@ -222,32 +195,41 @@ function bootLikedGrid() {
 
 const flushGrid = async (n) => { for (let i = 0; i < (n || 8); i++) await new Promise((r) => setTimeout(r, 0)); };
 
-test('Liked grid (M3 AC11, gate r1 W2): the heart on a `::c` chapter card UNLIKES through DELETE /api/liked/<id>::c2 (the media store), a native track card through /api/music/liked/', async () => {
+test('Liked grid (M3 AC11, gate r1 W2): the card menu\'s Like on a `::c` chapter card UNLIKES through DELETE /api/liked/<id>::c2 (the media store), a native track card through /api/music/liked/', async () => {
   const { dom, calls } = await bootLikedGrid();
   try {
     await flushGrid();
     const { document } = dom.window;
     assert.ok(calls.some((c) => c.method === 'GET' && c.url.indexOf('/api/liked?') === 0), 'precondition: the grid read GET /api/liked');
-    const heart = (id) => document.querySelector(`#video-grid .card-like-btn[data-id="${id}"]`);
-    const chapterHeart = heart('f1::c2');
-    assert.ok(chapterHeart, 'precondition: the chapter card renders a heart');
-    assert.strictEqual(chapterHeart.getAttribute('data-kind'), 'track', 'the chapter card is a TRACK-kind card');
-    assert.ok(chapterHeart.classList.contains('liked'), 'precondition: it renders liked');
+    // UI pass sweep S2: Like lives in the card's action menu (the kebab).
+    const kebab = (id) => document.querySelector(`#video-grid .video-card[data-id="${id}"] .card-kebab`);
+    // The OPEN sheet only (a closed one animates out for a moment); is-open lands on the next frame.
+    const menuRows = () => Array.from(document.querySelectorAll('.ui-sheet.is-open .ui-row'));
+    const likeRow = () => menuRows().find((r) => /^(Like|Unlike)$/.test(r.textContent.trim()));
+    const openMenu = async (id) => { kebab(id).dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true })); await flushGrid(); await new Promise((r) => setTimeout(r, 50)); };
+    assert.ok(kebab('f1::c2'), 'precondition: the chapter card renders its kebab');
+    await openMenu('f1::c2');
+    assert.strictEqual(likeRow().textContent.trim(), 'Unlike', 'precondition: it renders liked');
     // Every POST/DELETE the page sent (the shell's own HEAD probes are not writes).
     const writes = () => calls.filter((c) => c.method === 'POST' || c.method === 'DELETE').map((c) => c.method + ' ' + decodeURIComponent(c.url));
 
-    chapterHeart.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    likeRow().click();
     await flushGrid();
     assert.deepStrictEqual(writes(), ['DELETE /api/liked/f1::c2'], 'the chapter UNLIKE hits the media store under the chapter id, never /api/music/liked/');
-    assert.ok(!chapterHeart.classList.contains('liked'), 'the heart greys once the server answered');
+    await openMenu('f1::c2');
+    assert.strictEqual(likeRow().textContent.trim(), 'Like', 'the item reads unliked once the server answered');
+    likeRow().closest('.ui-sheet').querySelector('.ui-sheet__close').click();
+    await flushGrid();
 
     // The un-liked sibling chapter: a LIKE is a POST on the same lane.
-    heart('f1::c3').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    await openMenu('f1::c3');
+    likeRow().click();
     await flushGrid();
     assert.deepStrictEqual(writes().slice(1), ['POST /api/liked/f1::c3'], 'a chapter LIKE rides the media store too');
 
     // The discriminating sibling: a NATIVE track keeps the music-native lane.
-    heart('n1').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true }));
+    await openMenu('n1');
+    likeRow().click();
     await flushGrid();
     assert.deepStrictEqual(writes().slice(2), ['DELETE /api/music/liked/n1'], 'a native track unlike stays on /api/music/liked/');
   } finally { dom.window.close(); }

@@ -16,6 +16,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { unscopePocket } = require('../helpers/stylesheets.js'); // UI pass D7: the Pocket takeover's device-class scope
 const { JSDOM } = require('jsdom');
 
 const ROOT = path.join(__dirname, '..', '..');
@@ -59,7 +60,7 @@ function spin(dom, angles) {
 }
 
 // ---- the stylesheet, comments stripped ONCE (LESSONS 3), parsed into (selector, body) ----
-const CSS_RAW = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+const CSS_RAW = unscopePocket(fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8'));
 const CSS = CSS_RAW.replace(/\/\*[\s\S]*?\*\//g, '');
 // flat (selector, body) pairs: a rule inside an @media is matched on its own (its selector cannot hold a brace)
 // each rule carries its enclosing @media prelude ('' at the top level), brace-walked
@@ -206,7 +207,7 @@ test('AC6 (b)/(c): the screen re-points stop at the glass; the ring, gaps and di
   for (const t of ['--pk-s-paper:var(--pk-o-lcd)', '--pk-s-ink:var(--pk-o-ink)', '--pk-s-sel1:var(--pk-o-sel)', '--pk-s-sel2:var(--pk-o-sel)', '--pk-s-sub:var(--pk-o-sub)']) {
     assert.ok(glass.includes(t), 'the glass re-points ' + t);
   }
-  assert.match(glass, /font-family:'Jersey 10', var\(--font-family\)/, 'the bitmap face on the glass');
+  assert.match(glass, /font-family:'Jersey 10', var\(--font-ui\)/, 'the bitmap face on the glass');
   // the look never redefines a palette token (token-scale-lock: one value each) and never re-points the
   // screen roles on the PANEL (the sticker and the body would repaint)
   const panelBlock = find('.mms-look-original');

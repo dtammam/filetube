@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+  <title>FileTube UI kit</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preload" href="/fonts/geist.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/ui.css">
+  <link rel="stylesheet" href="/css/style.css">
+  <script>
+    /* The kit's era/mode: ?era=2005|2009|2014|2021 & ?mode=light|dark, else the stored
+       app choice, else Modern light. Icons: ?icons=outlined|rounded|filled. Nothing is
+       persisted - the kit only renders. (UI professionalism pass, plan D12 step 3.) */
+    (function () {
+      var d = document.documentElement, q = new URLSearchParams(location.search), ls = {};
+      try { ls = window.localStorage; } catch (_) { /* storage off */ }
+      var pick = function (v, ok, dflt) { return ok.indexOf(v) >= 0 ? v : dflt; };
+      var get = function (k) { try { return ls.getItem(k); } catch (_) { return null; } };
+      d.setAttribute('data-theme', pick(q.get('era') || get('ft-era'), ['2005', '2009', '2014', '2021'], '2021'));
+      d.setAttribute('data-mode', pick(q.get('mode') || get('ft-mode'), ['light', 'dark'], 'light'));
+      d.setAttribute('data-icons', pick(q.get('icons'), ['outlined', 'rounded', 'filled'], 'rounded'));
+    })();
+  </script>
+  <script src="/js/icons.js"></script>
+</head>
+<body>
+  <script>FTIcons.inject();</script>
+  <main class="ui-kit" id="ui-kit" aria-label="FileTube UI kit"></main>
+  <script src="/js/body-scroll-lock.js"></script>
+  <script src="/js/ui.js"></script>
+  <script src="/js/interaction.js"></script>
+  <script src="/js/ui-kit.js"></script>
+</body>
+</html>

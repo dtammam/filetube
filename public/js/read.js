@@ -66,6 +66,30 @@ function clampSpineIndex(idx, count) {
   return idx;
 }
 
+// UI pass sweep S10: the reader toolbar's More menu (ui.menu items). Finished is a
+// toggle whose label says what a tap will do; Save and Share act on the book file.
+function readerMoreMenuItems(state) {
+  const finished = Boolean(state && state.finished);
+  return [
+    { value: 'finished', icon: 'check', label: finished ? 'Mark as unfinished' : 'Mark as finished' },
+    { value: 'save', icon: 'download', label: 'Save to device' },
+    { value: 'share', icon: 'share', label: 'Share' },
+  ];
+}
+
+// The Aa sheet's text-size stepper: the value it shows and whether each end is live.
+// PDF pages are fixed-layout, so both ends are off there.
+function readerFontStepper(size, format) {
+  const value = clampReaderFontSize(size);
+  const fixed = format === 'pdf';
+  return {
+    value,
+    label: fixed ? 'Fixed' : `${value}%`,
+    canShrink: !fixed && value > READER_FONT_MIN,
+    canGrow: !fixed && value < READER_FONT_MAX,
+  };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     READER_BLOCK_SELECTOR,
@@ -75,6 +99,8 @@ if (typeof module !== 'undefined' && module.exports) {
     buildEpubLocator,
     buildPdfLocator,
     clampSpineIndex,
+    readerMoreMenuItems,
+    readerFontStepper,
   };
 }
 
@@ -92,6 +118,25 @@ if (typeof module !== 'undefined' && module.exports) {
   let listenBusy = false;     // guards overlapping Listen/chapter-advance requests
   let sizeReaderSurface = null; // init() exposes its measure-and-fit fn so the
                                 // narration bar reveal can re-fit the chassis
+  // UI pass sweep S10: the reader's sheets (Contents, Aa, More) live on <body>, outside
+  // #view-root, so destroy() closes whichever is open; the key handler stands down
+  // while one is (arrow keys belong to the sheet's controls, never a page flip).
+  const openSheets = new Set();
+  function trackSheet(ctrl) {
+    if (!ctrl) return ctrl;
+    openSheets.add(ctrl);
+    return ctrl;
+  }
+  function anySheetOpen() {
+    for (const ctrl of openSheets) {
+      if (ctrl.isOpen()) return true;
+      openSheets.delete(ctrl);
+    }
+    return false;
+  }
+  function readerUi() {
+    return (typeof window !== 'undefined' && window.ui) || null;
+  }
 
   const FONT_KEY = 'filetube_reader_fontsize';
   const THEME_KEY = 'filetube_reader_theme';
@@ -177,29 +222,40 @@ if (typeof module !== 'undefined' && module.exports) {
     } catch (_) { /* never let a ping throw into the reader */ }
   }
 
-  function setStatus(root, text) {
+  // The pane's status layer. `text` alone is a plain line ("Opening book..."); with
+  // `{ error: true }` it is a ui-state block (plan D9) whose action leads back to the
+  // library; falsy text hides it.
+  function setStatus(root, text, opts) {
     const status = root.querySelector('#reader-status');
     if (!status) return;
-    // v1.38.4: any status change drops the tap-to-play affordance styling (its
-    // click listener removes itself on fire; a stale class must not make a
-    // plain "Preparing…" line look tappable).
-    status.classList.remove('reader-status-tap');
-    // v1.39.0: drop any pending tap-to-play click listener so it can't leak
-    // across chapters (a stale ch2 handler firing on a ch3 element).
+    // v1.38.4: any status change drops the tap-to-play affordance (its button is
+    // replaced below). v1.39.0: drop any pending tap-to-play click listener so it
+    // can't leak across chapters (a stale ch2 handler firing on a ch3 element).
     if (status._tapHandler) { status.removeEventListener('click', status._tapHandler); status._tapHandler = null; }
-    if (text) {
-      status.textContent = text;
-      status.hidden = false;
-    } else {
+    if (!text) {
       status.hidden = true;
+      return;
     }
+    const ui = readerUi();
+    if (opts && opts.error && ui) {
+      const go = () => {
+        if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate('/books');
+        else window.location.assign('/books');
+      };
+      status.replaceChildren(ui.state({ icon: 'error', title: text, body: opts.body || '',
+        action: { label: 'Back to books', onClick: go }, doc: status.ownerDocument }));
+    } else {
+      status.textContent = text;
+    }
+    status.hidden = false;
   }
 
   function updateProgressBar(root, percent) {
     const fill = root.querySelector('#reader-progress-fill');
     const label = root.querySelector('#reader-percent');
     const clamped = Math.min(100, Math.max(0, percent));
-    if (fill) fill.style.width = `${clamped}%`;
+    // --p is DATA (the read fraction); the CSS scales the bar by it (no inline width).
+    if (fill) fill.style.setProperty('--p', String(clamped / 100));
     if (label) label.textContent = `${Math.round(clamped)}%`;
   }
 
@@ -244,9 +300,14 @@ if (typeof module !== 'undefined' && module.exports) {
         if (adapter && typeof adapter.refit === 'function') adapter.refit();
       });
     }
-    const cover = root.querySelector('#reader-np-cover');
-    if (cover && cover.getAttribute('src') !== `/bookcover/${encodeURIComponent(bookId)}`) {
-      cover.setAttribute('src', `/bookcover/${encodeURIComponent(bookId)}`);
+    // The bar's cover: book art is a rounded square (decision 7), ui.avatar kind 'book'
+    // (a broken cover falls back to the title's monogram, never a broken image).
+    const art = root.querySelector('#reader-np-art');
+    const ui = readerUi();
+    const coverUrl = `/bookcover/${encodeURIComponent(bookId)}`;
+    if (art && ui && art.getAttribute('data-src') !== coverUrl) {
+      art.setAttribute('data-src', coverUrl);
+      art.replaceChildren(ui.avatar({ kind: 'book', size: 'sm', url: coverUrl, name: titleEl ? titleEl.textContent : 'Book', doc: art.ownerDocument }));
     }
     if (typeof player.setTrackNav === 'function') {
       player.setTrackNav({ onPrev: () => advanceChapter(root, -1), onNext: () => advanceChapter(root, 1) });
@@ -299,13 +360,17 @@ if (typeof module !== 'undefined' && module.exports) {
     // Drop any prior tap handler first (a fast chapter change before the user
     // tapped would otherwise leave two handlers on one click).
     if (status._tapHandler) { status.removeEventListener('click', status._tapHandler); status._tapHandler = null; }
-    status.textContent = '▶ Tap to start listening';
+    const ui = readerUi();
+    if (ui) {
+      status.replaceChildren(ui.button({ variant: 'primary', size: 'lg', pill: true, icon: 'play_arrow',
+        label: 'Tap to start listening', doc: status.ownerDocument }));
+    } else {
+      status.textContent = 'Tap to start listening';
+    }
     status.hidden = false;
-    status.classList.add('reader-status-tap');
     const onTap = () => {
       status.removeEventListener('click', onTap);
       status._tapHandler = null;
-      status.classList.remove('reader-status-tap');
       try { if (startSec > 0) mp.currentTime = startSec; } catch (_) { /* seek unsupported */ }
       const pr = mp.play();
       if (pr && typeof pr.then === 'function') {
@@ -322,7 +387,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // bar (book cover as artwork), start playback from the reading paragraph, and
   // prefetch the next chapter. play() is attempted IMMEDIATELY (never gated on a
   // media event -- iOS may never fire one before a gesture) and OBSERVED: on an
-  // autoplay block it falls back to "▶ Tap to start listening".
+  // autoplay block it falls back to the "Tap to start listening" button.
   function startTtsPlayback(root, spineIndex, blockIndex) {
     return fetch(`/book/${encodeURIComponent(bookId)}/tts/${spineIndex}/blocks`)
       .then((r) => (r.ok ? r.json() : []))
@@ -398,29 +463,13 @@ if (typeof module !== 'undefined' && module.exports) {
     });
   }
 
-  function renderToc(root, entries, onSelect, signal) {
-    const list = root.querySelector('#reader-toc-list');
-    if (!list) return;
-    list.innerHTML = '';
-    if (!entries.length) {
-      const none = document.createElement('div');
-      none.className = 'reader-toc-item';
-      none.textContent = 'No table of contents in this book.';
-      list.appendChild(none);
-      return;
-    }
-    for (const entry of entries) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'reader-toc-item';
-      btn.textContent = entry.label;
-      btn.addEventListener('click', () => {
-        onSelect(entry);
-        const drawer = root.querySelector('#reader-toc-drawer');
-        if (drawer) drawer.hidden = true;
-      }, { signal });
-      list.appendChild(btn);
-    }
+  // The book's table of contents, handed over by the format adapter; the Contents sheet
+  // (openContentsSheet in init) renders it each time it opens.
+  let tocEntries = [];
+  let tocSelect = null;
+  function renderToc(root, entries, onSelect) {
+    tocEntries = Array.isArray(entries) ? entries : [];
+    tocSelect = typeof onSelect === 'function' ? onSelect : null;
   }
 
   // ---- EPUB adapter ----------------------------------------------------------
@@ -442,7 +491,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // failure into an 'openFailed' EVENT (never a promise rejection) --
     // without this subscription, a future failure class would hang at
     // 'Opening book...' exactly like the type-sniff bug did.
-    book.on('openFailed', () => setStatus(root, 'Could not open this book.'));
+    book.on('openFailed', () => setStatus(root, 'Could not open this book', { error: true, body: 'The file may be damaged or not a valid EPUB.' }));
     // v1.37.3: EXPLICIT PIXELS, never percentages -- see waitForPaneSize's
     // comment for the whole-chapter-as-one-page failure mode percentages
     // caused on-device. minSpreadWidth 800 keeps phones strictly
@@ -578,11 +627,11 @@ if (typeof module !== 'undefined' && module.exports) {
       for (const item of (nav && nav.toc) || []) {
         toc.push({ label: (item.label || '').trim() || item.href, href: item.href });
         for (const sub of item.subitems || []) {
-          toc.push({ label: ` ${(sub.label || '').trim() || sub.href}`, href: sub.href });
+          toc.push({ label: (sub.label || '').trim() || sub.href, href: sub.href, sub: true });
         }
       }
     } catch (_) { /* no nav -- empty toc */ }
-    renderToc(root, toc, (entry) => { rendition.display(entry.href).catch(() => {}); }, signal);
+    renderToc(root, toc, (entry) => { rendition.display(entry.href).catch(() => {}); });
 
     return {
       next: () => rendition.next().catch(() => {}),
@@ -626,7 +675,7 @@ if (typeof module !== 'undefined' && module.exports) {
     for (let i = 1; i <= numPages; i++) {
       const holder = document.createElement('div');
       holder.dataset.page = String(i);
-      holder.style.minHeight = '200px';
+      holder.className = 'reader-pdf-page is-pending'; // holds a page-sized gap until it renders
       pane.appendChild(holder);
       holders.push(holder);
     }
@@ -646,7 +695,7 @@ if (typeof module !== 'undefined' && module.exports) {
         canvas.style.width = `${Math.floor(containerWidth)}px`;
         await page.render({ canvasContext: canvas.getContext('2d'), viewport: scaled }).promise;
         const holder = holders[pageNum - 1];
-        holder.style.minHeight = '';
+        holder.classList.remove('is-pending');
         holder.innerHTML = '';
         holder.appendChild(canvas);
       } catch (_) {
@@ -711,7 +760,7 @@ if (typeof module !== 'undefined' && module.exports) {
       }).catch(() => {});
     }
 
-    renderToc(root, [], () => {}, signal); // PDFs: no TOC drawer content wave 1
+    renderToc(root, [], () => {}); // PDFs: no TOC content wave 1
 
     const pageStep = (delta) => {
       const target = Math.min(Math.max(1, currentPage() + delta), numPages);
@@ -766,7 +815,7 @@ if (typeof module !== 'undefined' && module.exports) {
       const np = root.querySelector('#reader-nowplaying');
       const npH = (np && !np.hidden) ? np.offsetHeight : 0;
       const height = Math.max(320, window.innerHeight - top - navH - npH);
-      chassis.style.height = height + 'px';
+      chassis.style.setProperty('--reader-h', height + 'px');
     }
     sizeReaderSurface = sizeReader;
     sizeReader();
@@ -783,7 +832,7 @@ if (typeof module !== 'undefined' && module.exports) {
     const params = new URLSearchParams(window.location.search);
     bookId = params.get('b');
     if (!bookId) {
-      setStatus(root, 'No book selected.');
+      setStatus(root, 'No book selected', { error: true, body: 'Open a book from your library.' });
       return;
     }
 
@@ -794,53 +843,104 @@ if (typeof module !== 'undefined' && module.exports) {
     };
     applyPaneTheme(readPref(THEME_KEY, 'paper'));
 
-    // Drawers — [hidden] companions live in the page CSS (the
-    // chapters-menu lesson); pointerdown-outside closes (the iOS
-    // synthesized-click lesson).
-    const tocDrawer = root.querySelector('#reader-toc-drawer');
-    const settingsDrawer = root.querySelector('#reader-settings-drawer');
+    const ui = readerUi();
+    const doc = root.ownerDocument || document;
+    let bookFormat = null; // 'epub' | 'pdf' once the detail resolves
+
+    // UI pass sweep S10 (F69): Contents is a panel sheet and Aa a popover (desktop) /
+    // bottom sheet (phone), both ui.sheet: one scrim, Esc and scrim close, focus in and
+    // back to the opener, the body scroll lock. They replace the two hand-built drawers
+    // (no transition, no scrim, no close control).
     const tocBtn = root.querySelector('#reader-toc-btn');
     const settingsBtn = root.querySelector('#reader-settings-btn');
-    if (tocBtn && tocDrawer) {
-      tocBtn.addEventListener('click', () => {
-        tocDrawer.hidden = !tocDrawer.hidden;
-        if (settingsDrawer) settingsDrawer.hidden = true;
-      }, { signal });
-    }
-    if (settingsBtn && settingsDrawer) {
-      settingsBtn.addEventListener('click', () => {
-        settingsDrawer.hidden = !settingsDrawer.hidden;
-        if (tocDrawer) tocDrawer.hidden = true;
-      }, { signal });
-    }
-    document.addEventListener('pointerdown', (event) => {
-      for (const drawer of [tocDrawer, settingsDrawer]) {
-        if (!drawer || drawer.hidden) continue;
-        const opener = drawer === tocDrawer ? tocBtn : settingsBtn;
-        if (!drawer.contains(event.target) && event.target !== opener && !(opener && opener.contains(event.target))) {
-          drawer.hidden = true;
+
+    function openContentsSheet() {
+      if (!ui || anySheetOpen()) return;
+      let ctrl = null;
+      let body;
+      if (!tocEntries.length) {
+        body = ui.state({ icon: 'toc', title: 'No contents', body: 'This book has no table of contents.', doc });
+      } else {
+        body = ui.list({ size: 'compact', label: 'Contents', doc });
+        for (const entry of tocEntries) {
+          const row = ui.row({ size: 'compact', title: entry.label, doc, onClick: () => {
+            if (ctrl) ctrl.close();
+            if (tocSelect) tocSelect(entry);
+          } });
+          if (entry.sub) row.classList.add('reader-toc-sub');
+          body.appendChild(row);
         }
       }
-    }, { signal });
-
-    // Settings wiring.
-    const fontSmaller = root.querySelector('#reader-font-smaller');
-    const fontLarger = root.querySelector('#reader-font-larger');
-    const bumpFont = (delta) => {
-      const next = clampReaderFontSize(Number(readPref(FONT_KEY, '100')) + delta);
-      writePref(FONT_KEY, next);
-      if (adapter) adapter.setFontSize(next);
-    };
-    if (fontSmaller) fontSmaller.addEventListener('click', () => bumpFont(-READER_FONT_STEP), { signal });
-    if (fontLarger) fontLarger.addEventListener('click', () => bumpFont(READER_FONT_STEP), { signal });
-    for (const btn of root.querySelectorAll('[data-reader-theme]')) {
-      btn.addEventListener('click', () => {
-        const name = normalizeReaderTheme(btn.getAttribute('data-reader-theme'));
-        writePref(THEME_KEY, name);
-        applyPaneTheme(name);
-        if (adapter) adapter.setTheme(name);
-      }, { signal });
+      ctrl = trackSheet(ui.sheet({ variant: 'panel', title: 'Contents', content: body, doc }));
+      ctrl.open();
     }
+
+    function buildSettingsContent() {
+      const wrap = doc.createElement('div');
+      wrap.className = 'reader-settings';
+
+      const sizeLine = doc.createElement('div');
+      sizeLine.className = 'reader-setting';
+      const sizeName = doc.createElement('span');
+      sizeName.className = 'reader-setting__name';
+      sizeName.textContent = 'Text size';
+      const stepper = doc.createElement('div');
+      stepper.className = 'reader-stepper';
+      const smaller = ui.button({ variant: 'tonal', size: 'sm', shape: 'icon', icon: 'remove', ariaLabel: 'Smaller text', doc });
+      const value = doc.createElement('span');
+      value.className = 'reader-stepper__value';
+      const larger = ui.button({ variant: 'tonal', size: 'sm', shape: 'icon', icon: 'add', ariaLabel: 'Larger text', doc });
+      smaller.id = 'reader-font-smaller';
+      larger.id = 'reader-font-larger';
+      const paintStepper = () => {
+        const st = readerFontStepper(Number(readPref(FONT_KEY, '100')), bookFormat);
+        value.textContent = st.label;
+        smaller.disabled = !st.canShrink;
+        larger.disabled = !st.canGrow;
+      };
+      const bumpFont = (delta) => {
+        const next = clampReaderFontSize(Number(readPref(FONT_KEY, '100')) + delta);
+        writePref(FONT_KEY, next);
+        if (adapter) adapter.setFontSize(next);
+        paintStepper();
+      };
+      smaller.addEventListener('click', () => bumpFont(-READER_FONT_STEP));
+      larger.addEventListener('click', () => bumpFont(READER_FONT_STEP));
+      paintStepper();
+      stepper.append(smaller, value, larger);
+      sizeLine.append(sizeName, stepper);
+
+      const themeLine = doc.createElement('div');
+      themeLine.className = 'reader-setting';
+      const themeName = doc.createElement('span');
+      themeName.className = 'reader-setting__name';
+      themeName.textContent = 'Theme';
+      const themes = ui.segmented({
+        label: 'Reading theme',
+        value: normalizeReaderTheme(readPref(THEME_KEY, 'paper')),
+        options: [{ value: 'paper', label: 'Paper' }, { value: 'sepia', label: 'Sepia' }, { value: 'night', label: 'Night' }],
+        onChange: (name) => {
+          const theme = normalizeReaderTheme(name);
+          writePref(THEME_KEY, theme);
+          applyPaneTheme(theme);
+          if (adapter) adapter.setTheme(theme);
+        },
+        doc,
+      });
+      themeLine.append(themeName, themes);
+      wrap.append(sizeLine, themeLine);
+      return wrap;
+    }
+
+    function openSettingsSheet() {
+      if (!ui || anySheetOpen()) return;
+      const ctrl = trackSheet(ui.sheet({ variant: 'auto', anchor: settingsBtn, title: 'Reader settings',
+        content: buildSettingsContent(), doc }));
+      ctrl.open();
+    }
+
+    if (tocBtn) tocBtn.addEventListener('click', openContentsSheet, { signal });
+    if (settingsBtn) settingsBtn.addEventListener('click', openSettingsSheet, { signal });
 
     // v1.38.0 TTS "Listen from Here": the control lights only when an engine is
     // configured (opt-in like yt-dlp) AND the book is an EPUB (PDF has no
@@ -859,42 +959,30 @@ if (typeof module !== 'undefined' && module.exports) {
       listenBtn.addEventListener('click', () => startListenFromHere(root), { signal });
     }
 
-    // v1.72 books first-class: the topbar like / mark-finished / save
-    // controls. Hidden until the detail resolves (their state seeds from
-    // the server-derived liked/finished fields - never a client
-    // re-derivation); toggles are non-optimistic (the watch-page shape:
-    // disable during the request, flip the mirror only on ok).
+    // v1.72 books first-class: like (the toolbar toggle) and mark-finished + save
+    // (the More menu). Disabled until the detail resolves (their state seeds from the
+    // server-derived liked/finished fields - never a client re-derivation); toggles
+    // are non-optimistic (the watch-page shape: busy during the request, flip the
+    // mirror only on ok). F69: the pressed look is the filled icon, never a red fill.
     const bookLikeBtn = root.querySelector('#reader-like-btn');
-    const bookFinishedBtn = root.querySelector('#reader-finished-btn');
-    const bookDownloadBtn = root.querySelector('#reader-download-btn');
+    const moreBtn = root.querySelector('#reader-more-btn');
     // v1.287 (Dean, "everything shareable"): share the book FILE. Books have no external source,
     // so it's file-only (shareMediaFile -> navigator.share({files}), download fallback). The
-    // title is captured on detail-resolve; the listener is attached once.
-    const bookShareBtn = root.querySelector('#reader-share-btn');
+    // title is captured on detail-resolve.
     let bookShareTitle = 'Book';
-    if (bookShareBtn) {
-      bookShareBtn.addEventListener('click', () => {
-        if (typeof window.shareMediaFile !== 'function') return;
-        window.shareMediaFile({ url: `/book/${encodeURIComponent(bookId)}/file?download=1`, title: bookShareTitle, filename: bookShareTitle });
-      });
-    }
     let bookLiked = false;
     let bookFinished = false;
-    function paintBookToggles() {
-      if (bookLikeBtn) {
-        bookLikeBtn.setAttribute('aria-pressed', bookLiked ? 'true' : 'false');
-        bookLikeBtn.classList.toggle('btn-primary', bookLiked);
-        bookLikeBtn.title = bookLiked ? 'Unlike' : 'Like';
-      }
-      if (bookFinishedBtn) {
-        bookFinishedBtn.setAttribute('aria-pressed', bookFinished ? 'true' : 'false');
-        bookFinishedBtn.classList.toggle('btn-primary', bookFinished);
-        bookFinishedBtn.title = bookFinished ? 'Mark as unfinished' : 'Mark as finished';
-      }
+    let finishedBusy = false;
+    function paintBookLike() {
+      if (!bookLikeBtn) return;
+      if (ui) ui.setPressed(bookLikeBtn, bookLiked);
+      else bookLikeBtn.setAttribute('aria-pressed', bookLiked ? 'true' : 'false');
+      bookLikeBtn.title = bookLiked ? 'Unlike' : 'Like';
     }
     if (bookLikeBtn) {
       bookLikeBtn.addEventListener('click', () => {
-        bookLikeBtn.disabled = true;
+        if (bookLikeBtn.getAttribute('aria-busy') === 'true') return;
+        if (ui) ui.setBusy(bookLikeBtn, true);
         fetch(`/api/books/liked/${encodeURIComponent(bookId)}`, { method: bookLiked ? 'DELETE' : 'POST' })
           .then((res) => {
             if (!res || !res.ok) { console.error('Book like toggle failed:', res && res.status); return; }
@@ -907,23 +995,65 @@ if (typeof module !== 'undefined' && module.exports) {
             }
           })
           .catch((err) => console.error('Book like toggle failed (network error):', err))
-          .finally(() => { bookLikeBtn.disabled = false; paintBookToggles(); });
+          .finally(() => { if (ui) ui.setBusy(bookLikeBtn, false); paintBookLike(); });
       }, { signal });
     }
-    if (bookFinishedBtn) {
-      bookFinishedBtn.addEventListener('click', () => {
-        bookFinishedBtn.disabled = true;
-        fetch(`/api/books/${encodeURIComponent(bookId)}/finished`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ finished: !bookFinished }),
+
+    function toggleFinished() {
+      if (finishedBusy) return;
+      finishedBusy = true;
+      fetch(`/api/books/${encodeURIComponent(bookId)}/finished`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ finished: !bookFinished }),
+      })
+        .then((res) => {
+          if (!res || !res.ok) {
+            console.error('Book finished toggle failed:', res && res.status);
+            if (ui) ui.toast('Could not update this book', { kind: 'error', doc });
+            return;
+          }
+          bookFinished = !bookFinished;
+          if (ui) ui.toast(bookFinished ? 'Marked as finished' : 'Marked as unfinished', { kind: 'success', doc });
         })
-          .then((res) => {
-            if (!res || !res.ok) { console.error('Book finished toggle failed:', res && res.status); return; }
-            bookFinished = !bookFinished;
-          })
-          .catch((err) => console.error('Book finished toggle failed (network error):', err))
-          .finally(() => { bookFinishedBtn.disabled = false; paintBookToggles(); });
+        .catch((err) => {
+          console.error('Book finished toggle failed (network error):', err);
+          if (ui) ui.toast('Could not update this book', { kind: 'error', doc });
+        })
+        .finally(() => { finishedBusy = false; });
+    }
+
+    // Save to device: the file's ?download=1 stream through a transient <a download>.
+    function saveBook() {
+      const a = doc.createElement('a');
+      a.href = `/book/${encodeURIComponent(bookId)}/file?download=1`;
+      a.download = '';
+      a.hidden = true;
+      doc.body.appendChild(a);
+      a.click();
+      a.remove();
+    }
+
+    function shareBook() {
+      if (typeof window.shareMediaFile !== 'function') return;
+      window.shareMediaFile({ url: `/book/${encodeURIComponent(bookId)}/file?download=1`, title: bookShareTitle, filename: bookShareTitle });
+    }
+
+    if (moreBtn) {
+      moreBtn.addEventListener('click', () => {
+        if (!ui || anySheetOpen()) return;
+        trackSheet(ui.menu({
+          label: 'More actions',
+          anchor: moreBtn,
+          items: readerMoreMenuItems({ finished: bookFinished }),
+          onSelect: (value) => {
+            if (signal.aborted) return;
+            if (value === 'finished') toggleFinished();
+            else if (value === 'save') saveBook();
+            else if (value === 'share') shareBook();
+          },
+          doc,
+        }));
       }, { signal });
     }
 
@@ -960,6 +1090,9 @@ if (typeof module !== 'undefined' && module.exports) {
         && typeof window.isShortcutsModalOpen === 'function'
         && window.isShortcutsModalOpen();
       if (shortcutsOpen) return;
+      // UI pass sweep S10: an open reader sheet owns the arrows (the theme segmented
+      // control moves on ArrowLeft/Right) - flipping the page under it loses the place.
+      if (anySheetOpen()) return;
       if (event.key === 'ArrowRight') { if (adapter) adapter.next(); }
       if (event.key === 'ArrowLeft') { if (adapter) adapter.prev(); }
     }, { signal });
@@ -986,19 +1119,15 @@ if (typeof module !== 'undefined' && module.exports) {
         }
         // v1.38.0 TTS: only EPUB books can "Listen from here".
         if (detail.format === 'epub') { listenBookIsEpub = true; maybeShowListen(); }
-        // v1.72 books first-class: seed the toggles from the server's
-        // derived fields and unhide the three controls.
+        // v1.72 books first-class: seed the like toggle from the server's derived
+        // fields and enable the reserved controls (they never pop in: F69).
+        bookFormat = detail.format === 'pdf' ? 'pdf' : 'epub';
         bookLiked = detail.liked === true;
         bookFinished = detail.finished === true;
-        paintBookToggles();
-        if (bookLikeBtn) bookLikeBtn.hidden = false;
-        if (bookFinishedBtn) bookFinishedBtn.hidden = false;
+        paintBookLike();
+        if (bookLikeBtn) bookLikeBtn.disabled = false;
         bookShareTitle = detail.title || 'Book'; // v1.287: for the share filename/title
-        if (bookShareBtn) bookShareBtn.hidden = false;
-        if (bookDownloadBtn) {
-          bookDownloadBtn.href = `/book/${encodeURIComponent(detail.id)}/file?download=1`;
-          bookDownloadBtn.hidden = false;
-        }
+        if (moreBtn) moreBtn.disabled = false;
         // v1.39.0: chapter count for prev/next-chapter bounds.
         spineCount = Array.isArray(detail.spine) ? detail.spine.length : null;
         const open = detail.format === 'pdf' ? openPdf : openEpub;
@@ -1007,11 +1136,16 @@ if (typeof module !== 'undefined' && module.exports) {
       .then((created) => { adapter = created; })
       .catch((err) => {
         console.error('Reader: failed to open book:', err);
-        setStatus(root, 'Could not open this book.');
+        setStatus(root, 'Could not open this book', { error: true, body: 'It may have moved, or the server could not read it.' });
       });
   }
 
   function destroy() {
+    // The reader's sheets live on <body>: an in-app nav away must not strand one.
+    for (const ctrl of openSheets) { if (ctrl.isOpen()) ctrl.close(); }
+    openSheets.clear();
+    tocEntries = [];
+    tocSelect = null;
     if (progressTimer) {
       clearTimeout(progressTimer);
       progressTimer = null;

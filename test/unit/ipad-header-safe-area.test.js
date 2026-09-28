@@ -43,5 +43,5 @@ test('v1.106: the fixed-header clearances all consume the top safe-area at base 
 test('v1.106: this is additive - env is 0 on desktop, so --header-h stays 56px (token-scale-lock authority) and desktop is unchanged', () => {
   // Guard against a regression that "simplifies" the calc back to a raw literal
   // or drops --header-h (which token-scale-lock pins at 56px).
-  assert.match(css, /--header-h:\s*56px/, '--header-h is still the 56px content-height token');
+  assert.match(require('../helpers/stylesheets').readTokensCss(), /--header-h:\s*56px/, '--header-h is still the 56px content-height token');
 });

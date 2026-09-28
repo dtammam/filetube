@@ -69,8 +69,8 @@ test('gate W1: the restored chip PAINTS active - the mount site feeds the live s
   assert.match(MAIN_SRC, /const a = typeof resolveModernChip === 'function' \? resolveModernChip\(active\) : 'all';/,
     'link 2: the builder actually consumes its parameter, bounded');
   assert.match(MAIN_SRC, /const on = c\.filter === a;/, 'link 3: the active derivation');
-  assert.match(MAIN_SRC, /class="modern-chip\$\{on \? ' active' : ''\}"/, 'paints .active from it');
-  assert.match(MAIN_SRC, /aria-selected="\$\{on\}"/, 'and aria-selected from it');
+  // UI pass sweep S2 (F19): the chips are ui-chip filters - pressed IS the paint.
+  assert.match(MAIN_SRC, /class="ui-chip ui-chip--filter" aria-pressed="\$\{on\}"/, 'paints the pressed chip from it');
 });
 
 test('gate W2 (pre-existing v1.86 gap): the chip actually drives the fetch URL - the ?filter= wire is bound end to end', () => {

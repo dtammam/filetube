@@ -12,6 +12,8 @@ const assert = require('node:assert');
 
 const { JSDOM } = require('jsdom');
 const { buildFeedCardHtml, buildFeedRowHtml, buildFeedSkeleton, renderHomeFeed } = require('../../public/js/main.js');
+// Required at load, with no document yet (common.js skips its browser boot then).
+const { uiStateHtml } = require('../../public/js/common.js');
 
 function feedItem(over) {
   return Object.assign({
@@ -125,6 +127,9 @@ async function runFeed(fetchImpl) {
   const dom = new JSDOM('<!DOCTYPE html><body><div id="host"></div></body>', { url: 'http://localhost/' });
   global.window = dom.window;
   global.document = dom.window.document;
+  // Sweep S9: the empty / error states are common.js's uiStateHtml (a shell global in the
+  // browser, loaded before main.js).
+  global.uiStateHtml = uiStateHtml;
   const host = dom.window.document.getElementById('host');
   // A deferred fetch so we can inspect the host WHILE the fetch is pending.
   let resolveFetch;
@@ -137,6 +142,7 @@ async function runFeed(fetchImpl) {
   await done;
   const out = { midShimmer, finalShimmer: host.querySelectorAll('.skeleton-shimmer').length, html: host.innerHTML };
   dom.window.close();
+  delete global.uiStateHtml;
   return out;
 }
 
@@ -152,7 +158,8 @@ test('renderHomeFeed: an empty feed replaces the skeleton with the empty state (
   const out = await runFeed(() => ({ ok: true, json: async () => ({ rows: [] }) }));
   assert.ok(out.midShimmer > 0, 'shimmered during the fetch');
   assert.strictEqual(out.finalShimmer, 0, 'skeleton cleared');
-  assert.match(out.html, /home-feed-empty/, 'the empty state took its place');
+  assert.match(out.html, /class="ui-state"/, 'the empty state took its place (sweep S9: the one ui-state block)');
+  assert.match(out.html, /Nothing here yet/);
 });
 
 test('renderHomeFeed: a fetch error replaces the skeleton with the recovery message', async () => {
@@ -160,4 +167,5 @@ test('renderHomeFeed: a fetch error replaces the skeleton with the recovery mess
   assert.ok(out.midShimmer > 0, 'shimmered during the fetch');
   assert.strictEqual(out.finalShimmer, 0, 'skeleton cleared even on error');
   assert.match(out.html, /Could not load your home feed/, 'the recovery message took its place');
+  assert.match(out.html, /class="ui-state ui-state--error"/, 'as an error ui-state (sweep S9)');
 });

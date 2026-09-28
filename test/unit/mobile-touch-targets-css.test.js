@@ -32,9 +32,12 @@ function v195Block() {
 test('each named mobile control carries a --size-touch hit treatment in the 768px block', () => {
   const block = v195Block();
   assert.match(block, /\.btn\s*\{[^}]*min-height:\s*var\(--size-touch\)/, 'resume/all buttons: 44px min-height floor');
-  assert.match(block, /\.notif-row-dismiss\s*\{[^}]*min-width:\s*var\(--size-touch\)[^}]*min-height:\s*var\(--size-touch\)/, 'notification x: 44px box');
-  assert.match(block, /\.queue-row-remove\s*\{[^}]*min-width:\s*var\(--size-touch\)/, 'queue remove x: 44px box');
-  assert.match(block, /\.queue-row-order\s+\.queue-row-move\s*\{[^}]*min-height:\s*calc\(var\(--size-touch\)/, 'queue arrows: fill + split-height');
+  // Sweep S4 (AC12 conversion): the notification X / delete and the queue's remove X and
+  // stacked arrows are gone. Every control on those rows is now a ui-btn --icon, whose 44px
+  // hit area is the primitive's own (.ui-btn--icon::before of --hit, bound by
+  // card-kebab-hit.test.js); notif-panel-sheet.test.js and queue-panel-sheet.test.js bind
+  // that each row control IS that primitive, and the block must not grow them back.
+  assert.doesNotMatch(block, /notif-row|queue-row/, 'no per-surface touch floor for the retired panel controls');
   // The seek band is IN-SLOT-SCOPED and fills the existing 30px scrub row (NOT a
   // global `#seek-bar { height }`, which overflowed the fixed 80px in-slot budget
   // and the 26px dock - QA v1.95 CRITICAL). Binding the scoped shape guards

@@ -72,10 +72,11 @@ test('v1.241: the Size + Tilt pickers exist, MERGE (preserve other fields), and 
   assert.doesNotMatch(SETUP_JS, /\['5x'/, 'v1.243: 5x size removed (overlapped the wheel)');
   assert.match(SETUP_JS, /const STICKER_TILTS = \[\['straight'[\s\S]*?\['right'/, 'the tilt options straight/left/right');
   assert.match(SETUP_JS, /function mergeStickerPref\(patch\) \{ writeStickerPref\(Object\.assign\(\{\}, readStickerPref\(\), patch\)\)/, 'mergeStickerPref keeps existing fields (size/tilt survive a kind change and vice-versa)');
-  assert.match(SETUP_JS, /data-sticker-size=/, 'renders size chips');
-  assert.match(SETUP_JS, /data-sticker-tilt=/, 'renders tilt chips');
-  assert.match(SETUP_JS, /mergeStickerPref\(\{ size: b\.dataset\.stickerSize \}\)/, 'a size click merges just the size');
-  assert.match(SETUP_JS, /mergeStickerPref\(\{ tilt: b\.dataset\.stickerTilt \}\)/, 'a tilt click merges just the tilt');
+  // Sweep S8: Size and Tilt are ui.segmented controls (behaviour: settings-forms-sweep.test.js
+  // clicks them through the real renderStickerPicker); each item keeps its data-sticker-* hook.
+  assert.match(SETUP_JS, /\[\['size', STICKER_SIZES, pref\.size \|\| 'default', 'Sticker size'\], \['tilt', STICKER_TILTS, pref\.tilt \|\| 'left', 'Sticker tilt'\]\]/, 'renders a size and a tilt segmented control');
+  assert.match(SETUP_JS, /b\.setAttribute\('data-sticker-' \+ key, b\.getAttribute\('data-value'\)\)/, 'each segment keeps its data-sticker-* hook');
+  assert.match(SETUP_JS, /onChange: \(v\) => \{ mergeStickerPref\(\{ \[key\]: v \}\); renderStickerPicker\(\); \}/, 'a pick merges just that one field');
   // the kind-change writes now MERGE (so size/tilt persist across a kind change)
   assert.match(SETUP_JS, /mergeStickerPref\(\{ kind: 'emoji'[^)]*value: btn\.dataset\.stickerEmoji/, 'picking an emoji preset merges (keeps size/tilt)');
 });

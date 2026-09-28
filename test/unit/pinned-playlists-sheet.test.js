@@ -11,7 +11,8 @@ const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
 
-const { renderPinnedPlaylists, deriveAvatar } = require('../../public/js/common.js');
+const { renderPinnedPlaylists } = require('../../public/js/common.js');
+const UI = require('../../public/js/ui.js');
 
 const COMMON_JS_PATH = path.join(__dirname, '..', '..', 'public', 'js', 'common.js');
 const commonJsSrc = fs.readFileSync(COMMON_JS_PATH, 'utf8');
@@ -114,9 +115,11 @@ test('renderPinnedPlaylists: moduleEnabled=true renders a "No playlists pinned y
   assert.strictEqual(list.children.length, 1);
   const empty = list.children[0];
   assert.strictEqual(empty.id, 'playlists-pinned-section');
-  assert.strictEqual(empty.className, 'empty-state empty-state-inline');
+  // Sweep S9 (F65): the one ui-state block (a title-only compact note), not a bespoke empty family.
+  assert.strictEqual(empty.className, 'ui-state');
   const message = empty.children[0];
-  assert.strictEqual(message.className, 'empty-state-message');
+  assert.strictEqual(message.tagName, 'H3');
+  assert.strictEqual(message.className, 'ui-state__title');
   assert.strictEqual(message.textContent, 'No playlists pinned yet.');
   delete global.document;
 });
@@ -128,7 +131,7 @@ test('renderPinnedPlaylists: moduleEnabled=true with real pins renders the pins,
 
   renderPinnedPlaylists([PIN], true);
   assert.strictEqual(list.children.length, 1);
-  assert.notStrictEqual(list.children[0].className, 'empty-state empty-state-inline');
+  assert.notStrictEqual(list.children[0].className, 'ui-state');
   delete global.document;
 });
 
@@ -159,15 +162,23 @@ test('renderPinnedPlaylists: renders a generated avatar glyph (no channelAvatarU
 
   const section = list.children[0];
   assert.strictEqual(section.id, 'playlists-pinned-section');
-  const link = section.children[1]; // heading, then the pin link
+  // Sweep S1 (DELIBERATE lock update, F50/D4.4): heading, then a ui-list of ui-rows; the
+  // row's media slot holds a 36px ui-avatar (the primitive's monogram when there is no
+  // photo) and its title a link whose label is a text node.
+  const group = section.children[1];
+  assert.ok(group.className.split(' ').includes('ui-list'), 'the pinned rows are a ui-list');
+  const row = group.children[0];
+  assert.ok(row.className.split(' ').includes('ui-row'), 'a ui-row');
+  const media = row.children.find((c) => c.className === 'ui-row__media');
+  const avatar = media.children[0];
+  assert.strictEqual(avatar.className, 'ui-avatar ui-avatar--md pinned-avatar');
+  const mono = avatar.children[0];
+  assert.strictEqual(mono.className, 'ui-avatar__mono');
+  assert.strictEqual(mono.textContent, UI.initials(PIN.label), 'the monogram is the primitive initials of the label');
+  assert.strictEqual(mono.getAttribute('data-tone'), String(UI.toneOf(PIN.label)), 'on the primitive name-hashed tone');
+  const body = row.children.find((c) => c.className === 'ui-row__body');
+  const link = body.children[0].children[0];
   assert.strictEqual(link.tagName, 'A');
-  const avatar = link.children.find((c) => c.tagName === 'SPAN');
-  assert.ok(avatar, 'expected a generated avatar span');
-  assert.strictEqual(avatar.className, 'pinned-avatar pinned-avatar-generated');
-  // The glyph is the label's own first letter, uppercased -- assert against
-  // `deriveAvatar` itself (the shared source of truth) rather than a
-  // hardcoded letter.
-  assert.strictEqual(avatar.children.find((c) => c.nodeType === 3).textContent, deriveAvatar(PIN.label).glyph);
   const textNode = link.children.find((c) => c.nodeType === 3);
   assert.match(textNode.textContent, /Real Creator/);
   delete global.document;
@@ -182,10 +193,11 @@ test('renderPinnedPlaylists: a pin with a channelAvatarUrl renders an <img> inst
   renderPinnedPlaylists([withAvatar]);
 
   const section = list.children[0];
-  const link = section.children[1];
-  const img = link.children.find((c) => c.tagName === 'IMG');
+  const row = section.children[1].children[0];
+  const avatar = row.children.find((c) => c.className === 'ui-row__media').children[0];
+  const img = avatar.children.find((c) => c.tagName === 'IMG');
   assert.ok(img, 'expected an <img> child when channelAvatarUrl is present');
-  assert.strictEqual(img.src, 'https://example.com/a.jpg');
+  assert.strictEqual(img.getAttribute('src'), 'https://example.com/a.jpg');
   delete global.document;
 });
 

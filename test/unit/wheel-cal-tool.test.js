@@ -48,7 +48,8 @@ function injectWheelCfg(dom, seed) {
 // ---- the button exists and is wired into the view lifecycle ----------------
 
 test('setup.html: an "Open Click wheel test" button lives in Experimental (#wheel-cal-open)', () => {
-  assert.match(SETUP_HTML, /<button type="button" class="btn" id="wheel-cal-open">Open Click wheel test<\/button>/);
+  // Sweep S8: the opener is a ui-btn (the Settings surface's button primitive).
+  assert.match(SETUP_HTML, /<button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="wheel-cal-open"><span class="ui-btn__label">Open Click wheel test<\/span><\/button>/);
   const exp = /data-collapse-key="experimental"[\s\S]*?<\/details>/.exec(SETUP_HTML);
   assert.ok(exp && /id="wheel-cal-open"/.test(exp[0]), 'the button sits inside the Experimental section');
 });

@@ -5,8 +5,8 @@
 // Visual correctness itself is Dean's on-device + on-desktop call (AC26/27/
 // 29); this just proves the mobile-breakpoint rules touching the selectors
 // this item targets actually exist, and that the shared desktop-facing
-// classes (`.setup-box`, `.folder-item-row`) were widened/loosened rather
-// than left untouched.
+// classes (`.setup-box`, the folder card - `.folder-item` since retire R3) were
+// widened/loosened rather than left untouched.
 const { test } = require('node:test');
 
 // Tier 2 (DELIBERATE lock updates): spacing literals became --space-* tokens;
@@ -35,90 +35,106 @@ test('desktop: .setup-box is wider than the pre-fix 650px (both Setup and /subsc
   assert.ok(Number(maxWidthMatch[1]) > 650, '.setup-box max-width must be widened beyond the cramped 650px it shipped with');
 });
 
-test('desktop: .form-group and .folder-item-row carry more breathing room than the pre-fix values', () => {
-  const formGroupRule = /\.form-group\s*\{([^}]*)\}/.exec(css);
-  assert.ok(formGroupRule, 'expected a .form-group rule');
-  const marginMatch = /margin-bottom:\s*(\d+)px/.exec(rs(formGroupRule[1]));
-  assert.ok(marginMatch && Number(marginMatch[1]) > 20, '.form-group margin-bottom must be increased beyond the cramped 20px it shipped with');
-
-  const folderRowRule = /\.folder-item-row\s*\{([^}]*)\}/.exec(css);
-  assert.ok(folderRowRule, 'expected a .folder-item-row rule');
-  assert.match(folderRowRule[1], /gap:/, '.folder-item-row should use an explicit gap for its (now-wrappable) children');
+// Retire R3 (DELIBERATE conversion): the .form-group chrome is gone with its last markup
+// (sweep S8 moved every Settings field onto ui-field; the Subscriptions forms went in S5), so
+// the lock now pins that it STAYS gone - and the folder card keeps its explicit gap.
+test('desktop: the retired .form-group chrome is gone; the folder card (.folder-item) carries an explicit gap', () => {
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.form-group\b/, 'no .form-group rule survives (no markup wears the class)');
+  const folderRowRule = /\n\.folder-item\s*\{([^}]*)\}/.exec(css);
+  assert.ok(folderRowRule, 'expected a .folder-item rule');
+  assert.match(folderRowRule[1], /gap:/, '.folder-item should use an explicit gap for its (now-wrappable) children');
 });
 
-test('mobile: a media query gives .setup-box comfortable controls (min-height tap targets, scoped to .setup-box only)', () => {
+// Retire R3 (DELIBERATE conversion): the mobile block's `.setup-box .btn / .setup-select /
+// input` tap-target rules are gone - every control they reached is a primitive now (ui-btn,
+// ui-select, ui-field input), and the primitive carries the 44px target itself. The lock pins
+// the spacing rule that remains, that no retired member comes back, and the replacement: every
+// Settings / Stats text field is a ui-field input and ui.css sizes it to the 44px hit.
+test('mobile: .setup-box keeps its phone spacing; its controls take their tap target from the primitives', () => {
   const mobileBlockRe = /@media \(max-width: 768px\) \{([\s\S]*?)\n\}\n\n\/\* In landscape/;
   const block = mobileBlockRe.exec(css);
   assert.ok(block, 'expected the main mobile (max-width:768px) media query block');
-  const body = block[1];
+  const body = block[1].replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(body, /\.setup-box\s*\{/, 'the mobile block must adjust .setup-box spacing');
-  assert.match(
-    rs(body),
-    /\.setup-box \.btn,[\s\S]*?\.setup-box \.setup-select,[\s\S]*?min-height:\s*\d+px/,
-    'the mobile block must set a comfortable min-height tap target for Setup/.subscriptions controls, scoped to .setup-box'
-  );
+  assert.doesNotMatch(body, /\.setup-box \.(btn|setup-select)\b|\.form-group/, 'no retired .setup-box control rule survives');
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const field = /\n\.ui-field__input,\s*\n\.ui-select__native \{([^}]*)\}/.exec(ui);
+  assert.ok(field && /height:\s*var\(--hit\)|min-height:\s*var\(--hit\)|height:\s*var\(--ctl-lg\)/.test(field[1]), 'the ui field is a 44px target on its own');
+  for (const f of ['setup.html', 'stats.html']) {
+    const html = fs.readFileSync(path.join(__dirname, '..', '..', 'public', f), 'utf8');
+    const root = html.slice(html.indexOf('<div id="view-root"'));
+    for (const m of root.matchAll(/<input\b([^>]*)>/g)) {
+      const type = (/\btype="([^"]+)"/.exec(m[1]) || [])[1];
+      if (!/^(text|number)$/.test(type || '')) continue;
+      assert.match(m[1], /class="[^"]*\bui-field__input\b/, `${f}: a text field is a ui-field input: <input${m[1]}>`);
+    }
+  }
 });
 
-test('mobile: .folder-item-row stacks vertically on a narrow phone (comfortable wrapping, not per-row overflow)', () => {
-  const mobileBlockRe = /@media \(max-width: 768px\) \{([\s\S]*?)\n\}\n\n\/\* In landscape/;
-  const block = mobileBlockRe.exec(css);
-  assert.ok(block);
-  assert.match(block[1], /\.folder-item-row\s*\{[^}]*flex-direction:\s*column/);
+// Sweep S8 (AC12 conversion): the v1.13.0 phone column-stack is replaced by ONE layout at
+// every width - a card whose controls row wraps (the name field takes its own full line),
+// so nothing overflows a narrow phone and no mobile rule has to reshape the row.
+test('the folder row wraps its controls at every width instead of a phone-only column stack (sweep S8)', () => {
+  const rule = (sel) => { const m = new RegExp(sel.replace(/[.>]/g, (c) => '\\' + c) + '\\s*\\{([^}]*)\\}').exec(css); assert.ok(m, sel); return m[1]; };
+  assert.match(rule('.folder-item-controls'), /flex-wrap:\s*wrap/, 'the controls row wraps');
+  assert.match(rule('.folder-item-controls > .folder-name-input'), /flex:\s*1 1 100%/, 'the name field takes a full line');
+  assert.match(rule('.folder-item-body'), /min-width:\s*0/, 'the body can shrink (long paths break, never overflow)');
+  // and no rule anywhere turns the row back into a column (the retired phone stack)
+  const rows = css.match(/\n\.folder-item\s*\{[^}]*\}/g) || [];
+  assert.ok(rows.length >= 1);
+  for (const r of rows) assert.doesNotMatch(r, /flex-direction:\s*column/, 'no column stack: ' + r.slice(0, 60));
 });
 
-// v1.21.0 FR-3, T3: `.sub-row`'s anatomy changed from a cramped multi-button
-// cluster (which needed the column-stack fallback above) to a dense
-// avatar+info+kebab row -- it now DELIBERATELY stays a horizontal flex row
-// at every width, including mobile (a compact contact-list-style row is
-// more comfortable there than stacking three thin sub-elements), so it must
-// NOT be swept into the .folder-item-row column-stack rule anymore. See
-// public/css/style.css's ".sub-row DELIBERATELY stays a horizontal flex
-// row on mobile too" comment for the full rationale.
-test('mobile: .sub-row is NOT swept into the .folder-item-row column-stack rule (v1.21.0 FR-3 -- it deliberately stays horizontal)', () => {
+// v1.21.0 FR-3, T3 -> UI pass S5: the subscription row is a ui-row now (a grid with
+// reserved columns, ui.css), which stays horizontal at every width; it must never be
+// swept into the folder card's (.folder-item) column-stack rule.
+test('mobile: the subscription row (a ui-row) is NOT swept into the .folder-item column-stack rule', () => {
   const mobileBlockRe = /@media \(max-width: 768px\) \{([\s\S]*?)\n\}\n\n\/\* In landscape/;
   const block = mobileBlockRe.exec(css);
   assert.ok(block);
   assert.doesNotMatch(
     block[1],
-    /\.folder-item-row,\s*\n\s*\.sub-row\s*\{[^}]*flex-direction:\s*column/,
-    '.sub-row must not share .folder-item-row\'s column-stack rule -- its new avatar+info+kebab anatomy stays horizontal on mobile'
+    /\.folder-item,\s*\n\s*\.(sub-row|ui-row)\s*\{[^}]*flex-direction:\s*column/,
+    'the row must not share .folder-item\'s column-stack rule'
   );
 });
 
 // v1.21.0 FR-3, T3 (AC24): the v1.19.0 FR-2a `#sub-list-container` scoped
 // max-height override (superseded) is gone entirely -- the subscriptions
-// list is now the page's PRIMARY content and gets its own `.sub-list` class
-// with NO scroll cap, rather than a bigger-but-still-capped box. The Setup
-// folder builder and the one-shot job list are UNCHANGED -- still
-// `.folder-list-builder` at its original 240px/12px sizing.
-test('v1.21.0 FR-3: #sub-list-container no longer carries a scoped max-height override -- .sub-list has no scroll cap (AC24), while the shared .folder-list-builder default (Setup builder + one-shot list) is untouched', () => {
+// list is the page's PRIMARY content with NO scroll cap. The Setup folder builder
+// is UNCHANGED -- still `.folder-list-builder` at its original 240px/12px sizing.
+// UI pass S5: the list container is `.subs-list` (A-Z ui-lists inside).
+test('v1.21.0 FR-3: #sub-list-container carries no scoped max-height override -- the subscriptions list has no scroll cap (AC24), while the shared .folder-list-builder default is untouched', () => {
   const sharedRule = /\.folder-list-builder\s*\{([^}]*)\}/.exec(css);
   assert.ok(sharedRule, 'expected the shared .folder-list-builder rule');
-  assert.match(sharedRule[1], /max-height:\s*240px/, 'the shared class default must be unchanged -- #folders-builder-list and #oneshot-list-container must not grow');
+  assert.match(sharedRule[1], /max-height:\s*240px/, 'the shared class default must be unchanged -- #folders-builder-list must not grow');
   assert.match(rs(sharedRule[1]), /padding:\s*12px/, 'the shared class padding must be unchanged');
 
   const scopedRule = /#sub-list-container\s*\{([^}]*)\}/.exec(css);
-  assert.ok(!scopedRule, '#sub-list-container must no longer carry its own rule block -- AC24 replaces the v1.19.0 FR-2a "bigger box" override with .sub-list\'s uncapped container instead');
-
-  const subListRule = /\.sub-list\s*\{([^}]*)\}/.exec(css);
-  assert.ok(subListRule, 'expected a .sub-list rule (the new, uncapped primary-list container)');
-  assert.doesNotMatch(subListRule[1], /max-height/, '.sub-list must have NO scroll cap (AC24) -- it is the page\'s PRIMARY content now');
+  assert.ok(!scopedRule, '#sub-list-container must not carry its own rule block (AC24)');
+  for (const sel of ['subs-list', 'subs-sections', 'subs-root']) {
+    const rule = new RegExp(`\\.${sel}\\s*\\{([^}]*)\\}`).exec(css);
+    assert.ok(!rule || !/max-height|overflow/.test(rule[1]), `.${sel} must have NO scroll cap (AC24) -- the list is the page's PRIMARY content`);
+  }
 });
 
-test('the /subscriptions page and the Setup page share the same .setup-box/.form-group/.folder-item-row selectors (one fix improves both)', () => {
+test('Settings and /subscriptions fields are the shared ui-field primitive (one fix improves every form that adopts it); Settings keeps the .folder-list-builder container', () => {
   const setupHtml = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'setup.html'), 'utf8');
   const subsHtml = fs.readFileSync(
     path.join(__dirname, '..', '..', 'lib', 'ytdlp', 'views', 'subscriptions.html'),
     'utf8'
   );
-  // v1.156 (T3): the subscriptions FORMS moved into .sub-sheet slide-in panels,
-  // so subscriptions.html no longer wraps them in .setup-box cards (that card
-  // chrome now lives only on setup.html + the JS-built history/failures
-  // sections). The .form-group / .folder-list-builder selectors are still
-  // shared -- the "one fix improves both" intent holds for those.
+  // v1.156 (T3) the forms moved into panels; UI pass S5 builds them from ui-field /
+  // ui-select / ui-switch (D4.10), so the shared fix is the primitive in ui.css.
+  // setup.html keeps its own .setup-box/.form-group chrome until sweep S8.
   assert.ok(setupHtml.includes('class="setup-box'), 'setup.html must use .setup-box');
-  for (const cls of ['form-group', 'folder-list-builder']) {
-    assert.ok(setupHtml.includes(`class="${cls}`), `setup.html must use .${cls}`);
-    assert.ok(subsHtml.includes(`class="${cls}`), `subscriptions.html must use .${cls}`);
-  }
+  // Sweep S8: Settings' fields left .form-group for the ui-field primitive (S5 moves the
+  // Subscriptions forms the same way); the list container is still shared.
+  assert.ok(setupHtml.includes('class="folder-list-builder'), 'setup.html must use .folder-list-builder');
+  // (S5 retired .folder-list-builder from the Subscriptions view: its lists are ui-lists.)
+  assert.ok(!subsHtml.includes('class="folder-list-builder'), 'the Subscriptions view has no bespoke list container left');
+  assert.ok(!setupHtml.includes('class="form-group'), 'setup.html fields are ui-field, not .form-group');
+  assert.ok(setupHtml.includes('class="ui-field setup-field"'), 'setup.html uses ui-field');
+  assert.ok(subsHtml.includes('class="ui-field"'), 'subscriptions.html uses .ui-field');
+  assert.doesNotMatch(subsHtml, /class="(form-group|setup-box|setup-select)/, 'no pre-primitive form chrome left on subscriptions.html');
 });

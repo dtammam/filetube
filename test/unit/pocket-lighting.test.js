@@ -14,6 +14,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { unscopePocket } = require('../helpers/stylesheets.js'); // UI pass D7: the Pocket takeover's device-class scope
 const { JSDOM } = require('jsdom');
 
 const ROOT = path.join(__dirname, '..', '..');
@@ -927,7 +928,7 @@ test('a shell without pocket-lighting.js: the engine paints, Settings shows Abou
 });
 
 // ---------------------------------------------------------------- the CSS lock (jsdom-invisible)
-const CSS = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+const CSS = unscopePocket(fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8'));
 function rule(selector) {
   const i = CSS.indexOf('\n  ' + selector + '{');
   assert.ok(i >= 0, 'rule present: ' + selector);

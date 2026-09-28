@@ -1,0 +1,4 @@
+{
+  "comment": "Geometry checks that fail today for a known reason (test/geometry/run.js). A listed failure is XFAIL and does not fail the run; an entry that matches no failure is XPASS and DOES fail the run - delete it in the commit that fixes it. Shrink-only: the step or sweep named in owner empties its entries. id may end in * (a prefix); match narrows an entry to the failures whose text contains it.",
+  "entries": []
+}

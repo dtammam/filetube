@@ -85,10 +85,11 @@ test('DRIFT LOCK: every documented playback key is actually handled in player.js
     Space: "case ' ':",
     J: "case 'j':",
     L: "case 'l':",
-    '←': "case 'ArrowLeft':",
-    '→': "case 'ArrowRight':",
-    '↑': "case 'ArrowUp':",
-    '↓': "case 'ArrowDown':",
+    // step 7: the arrow keys are listed by their KeyboardEvent.key names (their caps draw the registry arrows)
+    ArrowLeft: "case 'ArrowLeft':",
+    ArrowRight: "case 'ArrowRight':",
+    ArrowUp: "case 'ArrowUp':",
+    ArrowDown: "case 'ArrowDown':",
     F: "case 'f':",
     C: "case 'c':",
     '<': "case '<':",
@@ -146,8 +147,8 @@ test('BIDIRECTIONAL: the reference documents every player shortcut, and no other
     "case 'k':": 'K', "case ' ':": 'Space', "case 'j':": 'J', "case 'l':": 'L',
     "case 'm':": 'M', "case 'f':": 'F', "case 'c':": 'C',
     "case '<':": '<', "case '>':": '>',
-    "case 'ArrowLeft':": '\u2190', "case 'ArrowRight':": '\u2192',
-    "case 'ArrowUp':": '\u2191', "case 'ArrowDown':": '\u2193',
+    "case 'ArrowLeft':": 'ArrowLeft', "case 'ArrowRight':": 'ArrowRight',
+    "case 'ArrowUp':": 'ArrowUp', "case 'ArrowDown':": 'ArrowDown',
     "case 'N':": 'N', "case 'P':": 'P',
   };
   const documented = new Set(allItems().flatMap((i) => i.keys));
@@ -175,33 +176,32 @@ test('BIDIRECTIONAL: the reference documents every player shortcut, and no other
     + 'add it to CAP_FOR_CASE and document it, or it is an undocumented shortcut');
 
   // ...and nothing advertised is unaccounted for (separators and `?` aside).
-  // R/S live OUTSIDE the main switch by design (the switch early-returns on
-  // a focused BUTTON, the exact post-overlay-render state) -- they are
-  // accounted for here and drift-locked against their OWN listener below.
+  // S (UI pass S3: R went with the resume modal) lives OUTSIDE the main switch by design (the switch early-returns on
+  // a focused BUTTON) -- it is
+  // accounted for here and drift-locked against its OWN listener below.
   // D (v1.50.3 dark/light) is GLOBAL (any page, not just the player) and
   // lives in common.js's capture-phase handler -- drift-locked below too.
-  const accountedFor = new Set([...Object.values(CAP_FOR_CASE), 'Shift', '0', '9', '\u2026', '?', 'R', 'S', 'D']);
+  const accountedFor = new Set([...Object.values(CAP_FOR_CASE), 'Shift', '0', '9', '\u2026', '?', 'S', 'D']);
   const invented = [...documented].filter((k) => !accountedFor.has(k));
   assert.deepEqual(invented, [], `advertised but unaccounted for: ${invented}`);
 });
 
-test('DRIFT LOCK: the documented R/S resume keys are really handled (their own listener + the pure decision table)', () => {
-  // The dialog documents R/S with a "while the Resume prompt is showing"
-  // scope; the real handler is resolveResumeShortcutAction + a dedicated
-  // listener that routes through the REAL buttons' .click() (one shared
-  // decision path with the mouse). Both halves are locked:
+test('DRIFT LOCK: the documented S resume key is really handled (its own listener + the pure decision table)', () => {
+  // UI pass sweep S3 (D8.2): the dialog documents S with a "while "Resumed at" shows"
+  // scope (R went with the modal); the real handler is resolveResumeShortcutAction + a
+  // dedicated listener that routes through the REAL Start over button's .click() (one
+  // shared decision path with the mouse). Both halves are locked:
   const { resolveResumeShortcutAction } = require('../../public/js/player.js');
-  assert.equal(resolveResumeShortcutAction({ key: 'r', overlayVisible: true }), 'resume');
   assert.equal(resolveResumeShortcutAction({ key: 'S', overlayVisible: true }), 'restart');
-  assert.equal(resolveResumeShortcutAction({ key: 'r', overlayVisible: false }), 'none',
-    'the advertised scoping ("while the prompt is showing") must be real');
+  assert.equal(resolveResumeShortcutAction({ key: 's', overlayVisible: false }), 'none',
+    'the advertised scoping ("while it shows") must be real');
+  assert.equal(resolveResumeShortcutAction({ key: 'r', overlayVisible: true }), 'none', 'R is not advertised and does nothing');
 
-  // ...and the listener actually wires the verdicts to the real buttons.
+  // ...and the listener actually wires the verdict to the real button.
   const start = PLAYER.indexOf('resolveResumeShortcutAction({');
   assert.notEqual(start, -1, 'expected the resume-shortcut listener call site');
   const wiring = PLAYER.slice(start, start + 800);
-  assert.match(wiring, /resumeYesBtn\.click\(\)/, 'R must route through the real Resume button');
-  assert.match(wiring, /resumeNoBtn\.click\(\)/, 'S must route through the real Start-over button');
+  assert.match(wiring, /resumeRestartBtn\.click\(\)/, 'S must route through the real Start over button');
 });
 
 test('DRIFT LOCK: the documented D dark/light key is really handled (pure decision + the shared toggleTheme path)', () => {
@@ -258,7 +258,7 @@ test('SEMANTIC: the documented seek amounts match the code\'s actual arguments',
   const playback = KEYBOARD_SHORTCUT_GROUPS.find((g) => g.title === 'Playback').items;
   const descFor = (cap) => playback.find((i) => i.keys.length === 1 && i.keys[0] === cap).desc;
 
-  for (const [caseLiteral, cap] of [["case 'ArrowLeft':", '\u2190'], ["case 'ArrowRight':", '\u2192'],
+  for (const [caseLiteral, cap] of [["case 'ArrowLeft':", 'ArrowLeft'], ["case 'ArrowRight':", 'ArrowRight'],
     ["case 'j':", 'J'], ["case 'l':", 'L']]) {
     const seconds = amountFor(caseLiteral);
     assert.match(descFor(cap), new RegExp(`\\b${seconds} seconds\\b`),
@@ -274,8 +274,8 @@ test('SEMANTIC: the reader arrows are documented in the RIGHT direction', () => 
   assert.match(READ, /event\.key === 'ArrowLeft'\) \{ if \(adapter\) adapter\.prev\(\); \}/,
     'ArrowLeft must go back');
   const reading = KEYBOARD_SHORTCUT_GROUPS.find((g) => g.title === 'Reading (books)');
-  const rightRow = reading.items.find((i) => i.keys[0] === '\u2192');
-  const leftRow = reading.items.find((i) => i.keys[0] === '\u2190');
+  const rightRow = reading.items.find((i) => i.keys[0] === 'ArrowRight');
+  const leftRow = reading.items.find((i) => i.keys[0] === 'ArrowLeft');
   assert.match(rightRow.desc, /Next/, 'the right arrow must be documented as forward');
   assert.match(leftRow.desc, /Previous/, 'the left arrow must be documented as back');
 });
@@ -313,15 +313,38 @@ test('shouldOpenShortcuts: never throws on a malformed event', () => {
 
 test('buildShortcutsModal renders every group and row as text (never innerHTML)', () => {
   const d = doc();
-  const { backdrop, modal } = buildShortcutsModal(d, {});
-  assert.equal(backdrop.className, 'oneoff-modal-backdrop', 'reuses the existing modal chrome');
+  const { sheet, backdrop, modal } = buildShortcutsModal(d, {});
+  // Sweep S9: the one overlay primitive - a ui.sheet dialog titled "Keyboard shortcuts", its
+  // scrim the backdrop, the reference its content.
+  assert.equal(backdrop, sheet.scrim);
+  assert.ok(backdrop.classList.contains('ui-scrim'), 'the one scrim');
+  assert.ok(sheet.el.classList.contains('ui-sheet') && sheet.el.classList.contains('ui-sheet--dialog'));
+  assert.equal(sheet.el.getAttribute('role'), 'dialog');
+  assert.equal(sheet.el.getAttribute('aria-modal'), 'true');
+  assert.equal(sheet.el.querySelector('.ui-sheet__title').textContent, 'Keyboard shortcuts');
   assert.ok(modal.classList.contains('shortcuts-modal'));
-  assert.equal(modal.getAttribute('role'), 'dialog');
-  assert.equal(modal.getAttribute('aria-modal'), 'true');
+  assert.strictEqual(modal.parentElement, sheet.body, 'the reference is the sheet body content');
 
   const titles = [...modal.querySelectorAll('.shortcuts-group-title')].map((n) => n.textContent);
   assert.deepEqual(titles, KEYBOARD_SHORTCUT_GROUPS.map((g) => g.title));
   assert.equal(modal.querySelectorAll('.shortcuts-row').length, allItems().length);
+});
+
+// Step 7 (UI pass, D1-AC4, DELIBERATE conversion of the arrow caps): an arrow key's cap is the
+// registry arrow with an accessible name, never a text arrow glyph.
+test('the arrow key caps draw the registry arrows (named for assistive tech), never a text arrow', () => {
+  const d = doc();
+  const { modal } = buildShortcutsModal(d, {});
+  const caps = [...modal.querySelectorAll('kbd.shortcuts-kbd--icon')];
+  const want = { 'Left arrow': 'arrow_back', 'Right arrow': 'arrow_forward', 'Up arrow': 'arrow_upward', 'Down arrow': 'arrow_downward' };
+  assert.equal(caps.length, 6, 'Left/Right twice (playback, reading), Up/Down once');
+  for (const k of caps) {
+    const name = k.getAttribute('aria-label');
+    assert.ok(want[name], 'a named arrow cap: ' + name);
+    assert.equal(k.querySelector('svg.ui-icon use').getAttribute('href'), '#i-' + want[name]);
+    assert.equal(k.textContent, '', 'no text glyph in the cap');
+  }
+  assert.doesNotMatch(modal.textContent, /[\u2190-\u2193]/, 'no arrow glyph anywhere in the reference');
 });
 
 test('the digit RANGE separator is not rendered as a key cap', () => {
@@ -335,14 +358,20 @@ test('the digit RANGE separator is not rendered as a key cap', () => {
 });
 
 test('the close control is wired and the backdrop closes on its own click only', () => {
-  const d = doc();
-  let closed = 0;
-  const { modal, closeBtn } = buildShortcutsModal(d, { onClose: () => { closed += 1; } });
-  closeBtn.dispatchEvent(new d.defaultView.Event('click'));
-  assert.equal(closed, 1);
-  // A click on the dialog body must NOT dismiss it.
-  modal.dispatchEvent(new d.defaultView.Event('click', { bubbles: true }));
-  assert.equal(closed, 1, 'clicking inside the dialog must not close it');
+  // Sweep S9: each of the sheet's own dismissals (Close, the scrim) reports through onClose,
+  // exactly once; a click inside the dialog never closes it.
+  for (const how of ['close', 'scrim']) {
+    const d = doc();
+    let closed = 0;
+    const { sheet, modal, closeBtn } = buildShortcutsModal(d, { onClose: () => { closed += 1; } });
+    sheet.open();
+    modal.dispatchEvent(new d.defaultView.Event('click', { bubbles: true }));
+    assert.equal(closed, 0, 'clicking inside the dialog must not close it');
+    assert.strictEqual(closeBtn, sheet.el.querySelector('.ui-sheet__close'), 'the one Close is the sheet\'s');
+    (how === 'close' ? closeBtn : sheet.scrim).dispatchEvent(new d.defaultView.Event('click', { bubbles: true }));
+    assert.equal(closed, 1, how + ' closes, once');
+    assert.equal(sheet.isOpen(), false);
+  }
 });
 
 test('buildShortcutsModal never throws without handlers', () => {
@@ -402,16 +431,36 @@ test('the desktop query matches the stylesheet phone breakpoint', () => {
 test('closing REMOVES the dialog from the DOM rather than hiding it', () => {
   // v1.17.0: a backdrop left in the tree with an author `display` is an
   // invisible full-viewport click/touch eater. This dialog must not recreate it.
+  // Sweep S9: the dialog is a ui.sheet, whose close removes the scrim AND the sheet from the
+  // DOM when its exit ends (ui-builders binds that); closing routes through it.
   const fn = COMMON.slice(COMMON.indexOf('function closeShortcutsModal()'));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /backdrop\.remove\(\)/);
+  assert.match(body, /state\.sheet\.close\(\)/);
   assert.doesNotMatch(body, /hidden = true/, 'hiding is exactly the bug that class is about');
+});
+
+test('behaviour: open, then close -> the scrim and the sheet leave the DOM (no stranded click-eater)', async () => {
+  const { JSDOM: J } = require('jsdom');
+  const dom = new J('<!doctype html><html><body></body></html>', { url: 'http://localhost/' });
+  const saved = { window: global.window, document: global.document };
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const common = require('../../public/js/common.js');
+    common.openShortcutsModal();
+    assert.ok(dom.window.document.querySelector('.ui-sheet .shortcuts-modal'), 'open');
+    assert.strictEqual(common.isShortcutsModalOpen(), true);
+    common.closeShortcutsModal();
+    assert.strictEqual(common.isShortcutsModalOpen(), false, 'closed at once for other key handlers');
+    for (let i = 0; i < 40 && dom.window.document.querySelector('.ui-sheet'); i++) await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(dom.window.document.querySelector('.ui-scrim'), null, 'no scrim left behind');
+    assert.strictEqual(dom.window.document.querySelector('.ui-sheet'), null, 'no sheet left behind');
+  } finally { Object.assign(global, saved); dom.window.close(); }
 });
 
 test('the dialog can never be stacked twice', () => {
   const fn = COMMON.slice(COMMON.indexOf('function openShortcutsModal()'));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /if \(shortcutsModalState\.backdrop\.isConnected\) return;/,
+  assert.match(body, /if \(shortcutsModalState\.sheet\.el\.isConnected\) return;/,
     'holding "?" or double-pressing must not append two backdrops');
   // gate S9: a stranded reference must self-recover, not kill `?` for the session.
   assert.match(body, /shortcutsModalState = null;/);

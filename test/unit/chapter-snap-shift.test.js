@@ -156,12 +156,20 @@ test('snapGapBreak: a pair breaks only when the edit NARROWS it into the gap AND
 // ---- phone sizing (the probe measures it; this lock keeps the rule from silently dropping) ----
 const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
 
+// Step 7 (UI pass, DELIBERATE conversion): the editor's buttons are ui-btn md - the control
+// height (--ctl-md, 36) on desktop and 44 under 768 wide by the primitive - and the phone /
+// short-screen arm floors EVERY editor button at the touch size (a landscape phone is wider
+// than 768, where md is 36).
 test('the Shift all buttons are 44 px touch targets in the phone arm and control-height on desktop (comment-stripped lock)', () => {
   const phone = /@media \(max-width: 600px\), \(max-height: 500px\) \{([\s\S]*?)\n\}/.exec(css);
   assert.ok(phone, 'the chapter snap phone arm exists');
   const touch = /([^{}]+)\{\s*min-height: var\(--size-touch\);\s*\}/.exec(phone[1]);
   assert.ok(touch, 'the phone arm has a size-touch rule');
-  assert.ok(touch[1].split(',').map((x) => x.trim()).includes('.chapter-snap-shift .btn'), 'the shift row\'s buttons are in the 44 px list: ' + touch[1]);
-  const desk = /([^{}@]+)\{\s*min-height: var\(--size-control\);\s*justify-content: center;\s*\}/.exec(css);
-  assert.ok(desk && desk[1].split(',').map((x) => x.trim()).includes('.chapter-snap-shift .btn'), 'and in the desktop control-height list');
+  assert.ok(touch[1].split(',').map((x) => x.trim()).includes('.chapter-snap-editor .ui-btn'), 'every editor button is in the 44 px list: ' + touch[1]);
+  const COMMON = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'common.js'), 'utf8');
+  const ed = COMMON.slice(COMMON.indexOf('function showChapterSnapEditor('), COMMON.indexOf('function showChapterSnapEditor(') + 60000);
+  assert.match(ed, /const b = el\('button', 'ui-btn ui-btn--' \+ variant \+ ' ui-btn--md ' \+ hooks\.join\(' '\)\);/, 'the editor builds ui-btn md buttons');
+  assert.match(ed, /btn\('secondary chapter-snap-nudge chapter-snap-shift-btn'/, 'the Shift all steps are editor buttons');
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8');
+  assert.match(ui, /\.ui-btn--md \{ --btn-h: var\(--ctl-md\); \}/, 'md is the control height on desktop');
 });

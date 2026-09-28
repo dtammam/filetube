@@ -60,7 +60,7 @@ test('v1.273: the button appears ONLY on a chapter album, ONLY with write-RBAC, 
   const chapters = [chap(0, 0, 'Intro'), chap(1, 90, 'Two')];
   const CAN = { canEditChapters: true };
   const withBtn = M.buildDrillHeaderHtml({ type: 'album', label: 'A Long Talk' }, chapters, CAN);
-  assert.match(withBtn, /class="music-drill-chapters/, 'a chaptered album offers the editor');
+  assert.match(withBtn, /class="[^"]*\bmusic-drill-chapters\b/, 'a chaptered album offers the editor (UI pass S7: a ui-btn carrying the hook class)');
   assert.match(withBtn, />\s*Edit chapters</, 'labelled for what it does');
 
   // QA WARNING-3: the watch page has gated its chapters entry on write-RBAC since

@@ -221,10 +221,15 @@ tables), `visibility.js` (the ONE pure visibility decision).
   fullscreen (desktop `requestFullscreen()`) - anything gating on fullscreen
   must handle BOTH (v1.124.1's lesson), and the controls auto-hide covers
   both immersive forms.
-- **Design tokens**: `style.css` is governed by `scripts/css-token-lint.js`
-  (colors, font sizes/weights, z-index, shadows...); the census is ZERO and
-  ratcheted in pre-commit + CI (self-canary first, so a broken linter fails
-  loud). `token-exempt` comments are the escape hatch, with reasons.
+- **Design tokens and UI guardrails**: the tokens live in
+  `public/css/tokens.css`; every styling surface (`public/css/**`, shell
+  `<style>` and `style=""`, JS style writes) is governed by
+  `scripts/ui-lint.js` (twelve rules, `no-raw-values` among them: colors,
+  sizes, radii, type, z-index, shadows, motion), ratcheted in pre-commit,
+  pre-push and CI against the shrink-only `docs/ui-exceptions.json` (canary
+  fixtures first, so a broken rule fails loud). `token-exempt` comments are
+  the escape hatch, with reasons. It superseded `css-token-lint.js` (retired
+  at the UI pass's step 7).
 - **Eras + modes**: two orthogonal axes on `<html>` - `data-theme` (2005 /
   2009 / 2014 / 2021) and `data-mode` (light/dark). Three home layouts with
   precedence modern > feed > classic (`resolveHomeLayout`, pure).

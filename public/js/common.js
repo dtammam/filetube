@@ -8,76 +8,38 @@ const THEME_MODES = ['light', 'dark'];
 const DEFAULT_ERA = '2021';
 const DEFAULT_MODE = 'light';
 
-// ---- First-paint chrome icons: inline SVG (not CSS masks) -----------------
-// v1.87.1 (Dean): the bottom-nav + top-right header glyphs used the
-// `-webkit-mask-image` technique, which on iOS shows NOTHING until the mask
-// image is DECODED - so on a mobile PWA cold start the labels paint first and
-// the glyphs "pop in" a beat later. The notification bell + queue never lagged
-// because they are inline <svg> (they ride the text layer, no mask-decode gate).
-// v1.87.0 inlined the mask as a data-URI to kill the fetch; on-device the pop-in
-// was UNCHANGED, proving the fetch was never the cause - the mask DECODE was.
-// The fix Dean chose: render these glyphs as inline <svg>, exactly like the bell
-// /queue. Trade-off (accepted): the chrome glyphs no longer follow the icon-set
-// picker (outlined/rounded/filled/emoji) - like the bell/queue, they use ONE
-// fixed style. Dean picked ROUNDED (falling back to outlined for the four glyphs
-// with no rounded variant on disk: history, podcast, books, downloads).
+// ---- Chrome icons: the icon registry's sprite ------------------------------
+// v1.87.1 (Dean): the bottom-nav + header glyphs moved off `-webkit-mask-image`
+// (iOS paints NOTHING until a mask image decodes, so glyphs popped in after their
+// labels on a cold start) to inline <svg>, which rides the text layer.
+// UI professionalism pass step 2 (plan D4.2): they are still inline <svg>, but draw a
+// <symbol> from the icon registry's sprite (public/js/icons.js, generated from
+// Material Symbols by tools/icons/build.js). Each shell injects the sprite from the
+// first script in <body>, so the glyphs still paint with the text; and the sprite
+// follows the icon-set picker again (outlined/rounded/filled), which the fixed-path
+// inline glyphs could not.
 //
-// The path data is machine-derived from the on-disk assets (rounded/ where it
-// exists, else the default outlined) and byte-bound by chrome-icons.test.js, so
-// a drift or a swapped asset goes red. All share Material's `0 -960 960 960`
-// coordinate box except `podcast` (an older `0 0 24 24` asset).
-const CHROME_ICON_SVG = {
-  home: { vb: '0 -960 960 960', d: 'M240-200h120v-200q0-17 11.5-28.5T400-440h160q17 0 28.5 11.5T600-400v200h120v-360L480-740 240-560v360Zm-80 0v-360q0-19 8.5-36t23.5-28l240-180q21-16 48-16t48 16l240 180q15 11 23.5 28t8.5 36v360q0 33-23.5 56.5T720-120H560q-17 0-28.5-11.5T520-160v-200h-80v200q0 17-11.5 28.5T400-120H240q-33 0-56.5-23.5T160-200Zm320-270Z' },
-  liked: { vb: '0 -960 960 960', d: 'm354-287 126-76 126 77-33-144 111-96-146-13-58-136-58 135-146 13 111 97-33 143Zm126 18L314-169q-11 7-23 6t-21-8q-9-7-14-17.5t-2-23.5l44-189-147-127q-10-9-12.5-20.5T140-571q4-11 12-18t22-9l194-17 75-178q5-12 15.5-18t21.5-6q11 0 21.5 6t15.5 18l75 178 194 17q14 2 22 9t12 18q4 11 1.5 22.5T809-528L662-401l44 189q3 13-2 23.5T690-171q-9 7-21 8t-23-6L480-269Zm0-201Z' },
-  folder: { vb: '0 -960 960 960', d: 'M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h207q16 0 30.5 6t25.5 17l57 57h320q33 0 56.5 23.5T880-640v400q0 33-23.5 56.5T800-160H160Zm0-80h640v-400H447l-80-80H160v480Zm0 0v-480 480Z' },
-  history: { vb: '0 -960 960 960', d: 'M480-120q-138 0-240.5-91.5T122-440h82q14 104 92.5 172T480-200q117 0 198.5-81.5T760-480q0-117-81.5-198.5T480-760q-69 0-129 32t-101 88h110v80H120v-240h80v94q51-64 124.5-99T480-840q75 0 140.5 28.5t114 77q48.5 48.5 77 114T840-480q0 75-28.5 140.5t-77 114q-48.5 48.5-114 77T480-120Zm112-192L440-464v-216h80v184l128 128-56 56Z' },
-  podcast: { vb: '0 0 24 24', d: 'M12 14.2c.85 0 1.53.73 1.44 1.58l-.58 5.32c-.05.51-.42.9-.86.9s-.81-.39-.86-.9l-.58-5.32A1.45 1.45 0 0 1 12 14.2z' },
-  music: { vb: '0 -960 960 960', d: 'M320-273v-414q0-17 12-28.5t28-11.5q5 0 10.5 1.5T381-721l326 207q9 6 13.5 15t4.5 19q0 10-4.5 19T707-446L381-239q-5 3-10.5 4.5T360-233q-16 0-28-11.5T320-273Zm80-207Zm0 134 210-134-210-134v268Z' },
-  books: { vb: '0 -960 960 960', d: 'M560-564v-68q33-14 67.5-21t72.5-7q26 0 51 4t49 10v64q-24-9-48.5-13.5T700-600q-38 0-73 9.5T560-564Zm0 220v-68q33-14 67.5-21t72.5-7q26 0 51 4t49 10v64q-24-9-48.5-13.5T700-380q-38 0-73 9t-67 27Zm0-110v-68q33-14 67.5-21t72.5-7q26 0 51 4t49 10v64q-24-9-48.5-13.5T700-490q-38 0-73 9.5T560-454ZM260-320q47 0 91.5 10.5T440-278v-394q-41-24-87-36t-93-12q-36 0-71.5 7T120-692v396q35-12 69.5-18t70.5-6Zm260 42q44-21 88.5-31.5T700-320q36 0 70.5 6t69.5 18v-396q-33-14-68.5-21t-71.5-7q-47 0-93 12t-87 36v394Zm-40 118q-48-38-104-59t-116-21q-42 0-82.5 11T100-198q-21 11-40.5-1T40-234v-482q0-11 5.5-21T62-752q46-24 96-36t102-12q58 0 113.5 15T480-740q51-30 106.5-45T700-800q52 0 102 12t96 36q11 5 16.5 15t5.5 21v482q0 23-19.5 35t-40.5 1q-37-20-77.5-31T700-240q-60 0-116 21t-104 59ZM280-494Z' },
-  downloads: { vb: '0 -960 960 960', d: 'M380-300 660-480 380-660v360ZM140-160q-24.75 0-42.37-17.63Q80-195.25 80-220v-520q0-24.75 17.63-42.38Q115.25-800 140-800h680q24.75 0 42.38 17.62Q880-764.75 880-740v520q0 24.75-17.62 42.37Q844.75-160 820-160H140Zm0-60h680v-520H140v520Zm0 0v-520 520Z' },
-  moon: { vb: '0 -960 960 960', d: 'M480-120q-151 0-255.5-104.5T120-480q0-138 90-239.5T440-838q13-2 23 3.5t16 14.5q6 9 6.5 21t-7.5 23q-17 26-25.5 55t-8.5 61q0 90 63 153t153 63q31 0 61.5-9t54.5-25q11-7 22.5-6.5T819-479q10 5 15.5 15t3.5 24q-14 138-117.5 229T480-120Zm0-80q88 0 158-48.5T740-375q-20 5-40 8t-40 3q-123 0-209.5-86.5T364-660q0-20 3-40t8-40q-78 32-126.5 102T200-480q0 116 82 198t198 82Zm-10-270Z' },
-  sun: { vb: '0 -960 960 960', d: 'M480-360q50 0 85-35t35-85q0-50-35-85t-85-35q-50 0-85 35t-35 85q0 50 35 85t85 35Zm0 80q-83 0-141.5-58.5T280-480q0-83 58.5-141.5T480-680q83 0 141.5 58.5T680-480q0 83-58.5 141.5T480-280ZM80-440q-17 0-28.5-11.5T40-480q0-17 11.5-28.5T80-520h80q17 0 28.5 11.5T200-480q0 17-11.5 28.5T160-440H80Zm720 0q-17 0-28.5-11.5T760-480q0-17 11.5-28.5T800-520h80q17 0 28.5 11.5T920-480q0 17-11.5 28.5T880-440h-80ZM480-760q-17 0-28.5-11.5T440-800v-80q0-17 11.5-28.5T480-920q17 0 28.5 11.5T520-880v80q0 17-11.5 28.5T480-760Zm0 720q-17 0-28.5-11.5T440-80v-80q0-17 11.5-28.5T480-200q17 0 28.5 11.5T520-160v80q0 17-11.5 28.5T480-40ZM226-678l-43-42q-12-11-11.5-28t11.5-29q12-12 29-12t28 12l42 43q11 12 11 28t-11 28q-11 12-27.5 11.5T226-678Zm494 495-42-43q-11-12-11-28.5t11-27.5q11-12 27.5-11.5T734-282l43 42q12 11 11.5 28T777-183q-12 12-29 12t-28-12Zm-42-495q-12-11-11.5-27.5T678-734l42-43q11-12 28-11.5t29 11.5q12 12 12 29t-12 28l-43 42q-12 11-28 11t-28-11ZM183-183q-12-12-12-29t12-28l43-42q12-11 28.5-11t27.5 11q12 11 11.5 27.5T282-226l-42 43q-11 12-28 11.5T183-183Zm297-297Z' },
-  cog: { vb: '0 -960 960 960', d: 'M433-80q-27 0-46.5-18T363-142l-9-66q-13-5-24.5-12T307-235l-62 26q-25 11-50 2t-39-32l-47-82q-14-23-8-49t27-43l53-40q-1-7-1-13.5v-27q0-6.5 1-13.5l-53-40q-21-17-27-43t8-49l47-82q14-23 39-32t50 2l62 26q11-8 23-15t24-12l9-66q4-26 23.5-44t46.5-18h94q27 0 46.5 18t23.5 44l9 66q13 5 24.5 12t22.5 15l62-26q25-11 50-2t39 32l47 82q14 23 8 49t-27 43l-53 40q1 7 1 13.5v27q0 6.5-2 13.5l53 40q21 17 27 43t-8 49l-48 82q-14 23-39 32t-50-2l-60-26q-11 8-23 15t-24 12l-9 66q-4 26-23.5 44T527-80h-94Zm7-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z' },
-  search: { vb: '0 -960 960 960', d: 'M380-320q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l224 224q11 11 11 28t-11 28q-11 11-28 11t-28-11L532-372q-30 24-69 38t-83 14Zm0-80q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z' },
-  download: { vb: '0 -960 960 960', d: 'M480-337q-8 0-15-2.5t-13-8.5L308-492q-12-12-11.5-28t11.5-28q12-12 28.5-12.5T365-549l75 75v-286q0-17 11.5-28.5T480-800q17 0 28.5 11.5T520-760v286l75-75q12-12 28.5-11.5T652-548q11 12 11.5 28T652-492L508-348q-6 6-13 8.5t-15 2.5ZM240-160q-33 0-56.5-23.5T160-240v-80q0-17 11.5-28.5T200-360q17 0 28.5 11.5T240-320v80h480v-80q0-17 11.5-28.5T760-360q17 0 28.5 11.5T800-320v80q0 33-23.5 56.5T720-160H240Z' },
-  caret: { vb: '0 -960 960 960', d: 'M480-361q-8 0-15-2.5t-13-8.5L268-556q-11-11-11-28t11-28q11-11 28-11t28 11l156 156 156-156q11-11 28-11t28 11q11 11 11 28t-11 28L508-372q-6 6-13 8.5t-15 2.5Z' },
-  // v1.102 (tranche 4): the music song-row + podcast episode-row action glyphs,
-  // swapped from `.icon-*` masks (which decode-lag on iOS -> pop-in) to these
-  // inline chrome-icon SVGs. Byte-bound to the on-disk assets in chrome-icons.test.js.
-  queue: { vb: '0 0 24 24', d: 'M3 6h13v2H3V6zm0 4h13v2H3v-2zm0 4h9v2H3v-2zm14-1v6l5-3-5-3z' },
-  heart: { vb: '0 -960 960 960', d: 'm480-120-58-52q-101-91-167-157T150-447.5Q111-500 95.5-544T80-634q0-94 63-157t157-63q52 0 99 24.5t81 66.5q34-42 81-66.5t99-24.5q94 0 157 63t63 157q0 46-15.5 90T810-447.5Q744-381 678-315T538-172l-58 52Z' },
-  delete: { vb: '0 -960 960 960', d: 'M280-120q-33 0-56.5-23.5T200-200v-520q-17 0-28.5-11.5T160-760q0-17 11.5-28.5T200-800h160q0-17 11.5-28.5T400-840h160q17 0 28.5 11.5T600-800h160q17 0 28.5 11.5T800-760q0 17-11.5 28.5T760-720v520q0 33-23.5 56.5T680-120H280Zm400-600H280v520h400v-520ZM400-280q17 0 28.5-11.5T440-320v-280q0-17-11.5-28.5T400-640q-17 0-28.5 11.5T360-600v280q0 17 11.5 28.5T400-280Zm160 0q17 0 28.5-11.5T600-320v-280q0-17-11.5-28.5T560-640q-17 0-28.5 11.5T520-600v280q0 17 11.5 28.5T560-280ZM280-720v520-520Z' },
-  // v1.157 (P2a): the hamburger + desktop-sidebar (Stats) glyphs, swapped from
-  // `.icon-*` masks (which decode-lag on iOS -> cold-start pop-in) to inline
-  // chrome-icon SVGs. Byte-bound to the on-disk rounded/ assets in
-  // chrome-icons.test.js. `home`/`cog` already exist above; `star` is the
-  // Stats glyph (same rounded/star.svg as `liked`).
-  menu: { vb: '0 -960 960 960', d: 'M160-240q-17 0-28.5-11.5T120-280q0-17 11.5-28.5T160-320h640q17 0 28.5 11.5T840-280q0 17-11.5 28.5T800-240H160Zm0-200q-17 0-28.5-11.5T120-480q0-17 11.5-28.5T160-520h640q17 0 28.5 11.5T840-480q0 17-11.5 28.5T800-440H160Zm0-200q-17 0-28.5-11.5T120-680q0-17 11.5-28.5T160-720h640q17 0 28.5 11.5T840-680q0 17-11.5 28.5T800-640H160Z' },
-  star: { vb: '0 -960 960 960', d: 'm354-287 126-76 126 77-33-144 111-96-146-13-58-136-58 135-146 13 111 97-33 143Zm126 18L314-169q-11 7-23 6t-21-8q-9-7-14-17.5t-2-23.5l44-189-147-127q-10-9-12.5-20.5T140-571q4-11 12-18t22-9l194-17 75-178q5-12 15.5-18t21.5-6q11 0 21.5 6t15.5 18l75 178 194 17q14 2 22 9t12 18q4 11 1.5 22.5T809-528L662-401l44 189q3 13-2 23.5T690-171q-9 7-21 8t-23-6L480-269Zm0-201Z' },
-  // v1.339 (L2): the bottom-nav Subs tab glyph (was the `.icon-refresh` mask, which
-  // decode-lags on iOS) - shared with the shells' pre-paint reserve. rounded/refresh.svg.
-  refresh: { vb: '0 -960 960 960', d: 'M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-70q0-17 11.5-28.5T760-800q17 0 28.5 11.5T800-760v200q0 17-11.5 28.5T760-520H560q-17 0-28.5-11.5T520-560q0-17 11.5-28.5T560-600h128q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q68 0 124.5-34.5T692-367q8-14 22.5-19.5t29.5-.5q16 5 23 21t-1 30q-41 80-117 128t-169 48Z' },
-  // v1.340 (Dean: "use the same notification glyph versus emoji"): the header bell's own
-  // path (notifications.svg, the one it always drew) and Material's notifications_off
-  // (upstream google/material-design-icons src/social/notifications_off/materialicons/24px.svg,
-  // its empty 0 0 24 24 box path dropped). The header bell, the watch page's Notify button and
-  // the Subscriptions rows all draw from these two, so the bell is one glyph everywhere.
-  bell: { vb: '0 0 24 24', d: 'M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.63-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.64 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z' },
-  bellOff: { vb: '0 0 24 24', d: 'M20 18.69L7.84 6.14 5.27 3.49 4 4.76l2.8 2.8v.01c-.52.99-.8 2.16-.8 3.42v5l-2 2v1h13.73l2 2L21 19.72l-1-1.03zM12 22c1.11 0 2-.89 2-2h-4c0 1.11.89 2 2 2zm6-7.32V11c0-3.08-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68c-.15.03-.29.08-.42.12-.1.03-.2.07-.3.11h-.01c-.01 0-.01 0-.02.01-.23.09-.46.2-.68.31 0 0-.01 0-.01.01L18 14.68z' },
-  // v1.340 (gate r1 W2): the FILLED star (filled/star.svg) that replaces the text "★" in the watch
-  // page's "Pinned" label: the text star came from a taller fallback font and grew the button.
-  starFilled: { vb: '0 0 24 24', d: 'M12 17.27 18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z' },
+// CHROME_ICON maps the chrome's historical glyph names to registry names; new code
+// names registry icons directly (ui.icon, step 3).
+const CHROME_ICON = {
+  home: 'home', liked: 'star', folder: 'folder', history: 'history', podcast: 'podcasts',
+  music: 'music_note', books: 'menu_book', downloads: 'smart_display', moon: 'dark_mode',
+  sun: 'light_mode', cog: 'settings', search: 'search', download: 'download', caret: 'expand_more',
+  queue: 'playlist_play', heart: 'favorite', delete: 'delete', menu: 'menu', star: 'star',
+  refresh: 'subscriptions', bell: 'notifications', bellOff: 'notifications_off', starFilled: 'star.fill',
 };
 
+// The sprite reference for a registry name ('keep.fill' -> '#i-keep-fill').
+const iconHref = (registryName) => '#i-' + registryName.replace(/\./g, '-');
+
 // The inline-SVG markup for a chrome glyph. Deterministic (chrome-icons.test.js
-// reconstructs it to source-lock the static bottom-nav markup in index.html).
-// Colour comes from CSS (`.chrome-icon { fill: currentColor }`), so the glyph
-// tints with its container exactly like the old mask + `background-color`.
+// reconstructs it to source-lock the shells' static header/nav markup). Colour
+// comes from CSS (`.chrome-icon { fill: currentColor }`), inherited into the symbol.
 function chromeIconMarkup(name, extraClass) {
-  const g = CHROME_ICON_SVG[name];
-  if (!g) return '';
+  const reg = CHROME_ICON[name];
+  if (!reg) return '';
   const cls = 'chrome-icon' + (extraClass ? ' ' + extraClass : '');
-  return '<svg class="' + cls + '" viewBox="' + g.vb + '" aria-hidden="true"><path d="' + g.d + '"/></svg>';
+  return '<svg class="' + cls + '" aria-hidden="true"><use href="' + iconHref(reg) + '"/></svg>';
 }
 
 // A live SVG element for the same glyph, built in the SVG namespace so it is
@@ -85,50 +47,147 @@ function chromeIconMarkup(name, extraClass) {
 // `doc` (optional, v1.340) = the document to build in - a caller holding an element from
 // another document (a test's JSDOM) passes its ownerDocument; default the page's.
 function chromeIconEl(name, extraClass, doc) {
-  const g = CHROME_ICON_SVG[name];
+  const reg = CHROME_ICON[name];
+  return reg ? spriteIconEl(reg, 'chrome-icon' + (extraClass ? ' ' + extraClass : ''), doc) : null;
+}
+
+// A live <svg><use href="#i-NAME"/></svg> for a REGISTRY name (the header bell and
+// queue, which size themselves with width/height attributes rather than .chrome-icon).
+// fill="currentColor" is inherited into the symbol, so the glyph tints with its button.
+function spriteIconEl(registryName, cls, doc) {
   const d = doc || (typeof document !== 'undefined' ? document : null);
   // Real browsers always have createElementNS (mandatory: an SVG built via the
   // plain createElement lands in the HTML namespace and never renders). Some
   // lightweight unit-test document stubs model only createElement, so degrade to
   // null there and let callers skip the (incidental) glyph.
-  if (!g || !d || typeof d.createElementNS !== 'function') return null;
+  if (!registryName || !d || typeof d.createElementNS !== 'function') return null;
   const NS = 'http://www.w3.org/2000/svg';
   const svg = d.createElementNS(NS, 'svg');
-  svg.setAttribute('class', 'chrome-icon' + (extraClass ? ' ' + extraClass : ''));
-  svg.setAttribute('viewBox', g.vb);
+  if (cls) svg.setAttribute('class', cls);
+  svg.setAttribute('fill', 'currentColor');
   svg.setAttribute('aria-hidden', 'true');
-  const path = d.createElementNS(NS, 'path');
-  path.setAttribute('d', g.d);
-  svg.appendChild(path);
+  const use = d.createElementNS(NS, 'use');
+  use.setAttribute('href', iconHref(registryName));
+  svg.appendChild(use);
   return svg;
 }
 
-// v1.340 (Dean, 2026-09-26: "notify button shifts unreasonably - should be stable"): the
-// label of a TWO-STATE button whose words change width (Notify / Notifying, Subscribe /
-// Subscribed, Pin channel / Pinned). Every label is laid out in ONE grid cell, so the
-// button is always as wide as the longest and nothing beside it moves on a tap; only the
-// current one is visible (the idle ones are `visibility:hidden`, which also keeps them
-// out of the accessible name). `glyphs` (optional) = { label: CHROME_ICON_SVG name } draws
-// that glyph INSIDE the label's slot before its words, or { label: { name, after: true } }
-// after them - inside, so the button's baseline stays the text's (a leading svg item would
-// set a flex button's baseline to its bottom edge and drop the neighbouring buttons ~3px).
-// A glyph never grows the line (negative block margins, style.css .btn-glyph), and no
-// label may carry a text symbol from a fallback font (gate r1 W2: the hidden "Pinned ★"
-// made Pin 3px taller than its neighbours on desktop) - draw it as a glyph. `data-label` carries the
-// current label for tests and CSS. Labels are fixed literals at every call site; they
-// are escaped anyway.
-function stableToggleLabelHtml(current, labels, glyphs) {
-  const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-  const slots = labels.map((l) => {
-    const g = glyphs && glyphs[l];
-    const name = g && (typeof g === 'string' ? g : g.name);
-    const after = !!(g && typeof g === 'object' && g.after);
-    const svg = name ? chromeIconMarkup(name, after ? 'btn-glyph btn-glyph-after' : 'btn-glyph') : '';
-    return '<span class="btn-label-slot"' + (l === current ? '' : ' data-idle') + '>'
-      + (after ? esc(l) + svg : svg + esc(l)) + '</span>';
-  }).join('');
-  return '<span class="btn-label-stack" data-label="' + esc(current) + '">' + slots + '</span>';
+// ---- sweep S1 (UI pass, plan D4.1/D4.2): the chrome's primitive builders ----------------
+// The header icon buttons, the bottom-bar tabs, the account menu and the playlists sheet
+// are ui-* primitives (public/css/ui.css). These two builders emit EXACTLY the DOM
+// public/js/ui.js's ui.icon / ui.button build (test/unit/chrome-primitives.test.js compares
+// the two outerHTML-for-outerHTML), so the chrome and the primitives cannot drift; they
+// exist because common.js runs in jsdom harnesses that never load ui.js, and because the
+// bottom-bar tabs are <a> links, which ui.button does not build.
+// The markup twin of ui.icon, for the shells' static bottom bar (chrome-icons.test.js binds
+// every shell's glyph to it).
+function uiIconMarkup(registryName, size) {
+  return '<svg class="ui-icon ui-icon--' + (size || 'md') + '" aria-hidden="true" focusable="false"><use href="'
+    + iconHref(registryName) + '"/></svg>';
 }
+function uiIconEl(registryName, size, doc) {
+  const d = doc || (typeof document !== 'undefined' ? document : null);
+  if (!registryName || !d || typeof d.createElementNS !== 'function') return null;
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = d.createElementNS(NS, 'svg');
+  svg.setAttribute('class', 'ui-icon ui-icon--' + (size || 'md'));
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  const use = d.createElementNS(NS, 'use');
+  use.setAttribute('href', iconHref(registryName));
+  svg.appendChild(use);
+  return svg;
+}
+// A plain ui-btn: `shape` 'icon' (a header glyph button: 36px desktop / 44px phone, a 44px
+// hit area either way) or 'stack' (a bottom-bar tab: the icon over its label). `media` (an
+// element) takes the icon's place for the account avatar. `cls` adds the element's own hook
+// class (queue-btn, bottom-nav-item ...): a JS/test hook, never a styled control family.
+function chromeButtonEl(o) {
+  const d = o.doc || document;
+  const shape = o.shape === 'stack' ? 'stack' : 'icon';
+  const b = d.createElement(o.tag || 'button');
+  b.className = 'ui-btn ui-btn--plain ui-btn--md ui-btn--' + shape + (o.cls ? ' ' + o.cls : '');
+  if (!o.tag || o.tag === 'button') b.setAttribute('type', 'button');
+  if (o.ariaLabel) b.setAttribute('aria-label', o.ariaLabel);
+  if (o.media) {
+    b.appendChild(o.media);
+  } else if (o.icon || o.slotEl) {
+    const slot = d.createElement('span');
+    slot.className = 'ui-btn__icon';
+    const svg = o.slotEl || uiIconEl(o.icon, shape === 'stack' ? 'lg' : 'md', d);
+    if (svg) slot.appendChild(svg);
+    b.appendChild(slot);
+  }
+  if (shape === 'stack' && o.label != null) {
+    const l = d.createElement('span');
+    l.className = 'ui-btn__label' + (o.labelCls ? ' ' + o.labelCls : '');
+    l.textContent = o.label;
+    b.appendChild(l);
+  }
+  return b;
+}
+// A bottom-bar tab (F49): a ui-btn stack - a fixed --icon-lg icon slot over its label, so
+// every label sits on one line whatever the slot holds (the You tab's avatar included).
+// The shells' static tabs are the same markup (chrome-icons.test.js binds both).
+function bottomNavItemEl(o) {
+  const el = chromeButtonEl({ tag: o.tag || 'a', shape: 'stack', cls: 'bottom-nav-item', icon: o.icon, slotEl: o.slotEl,
+    label: o.label, labelCls: 'bottom-nav-label', ariaLabel: o.ariaLabel, doc: o.doc });
+  if (o.href) el.setAttribute('href', o.href);
+  if (o.nav) el.setAttribute('data-nav', o.nav);
+  return el;
+}
+// The selected tab shows its FILLED glyph (F49: one active style - the filled glyph in ink,
+// the sidebar's rows use a neutral fill). Swaps the tab's sprite reference between NAME and
+// NAME.fill; a name without a registered twin keeps its outline (never a blank glyph).
+function setBottomNavItemFilled(item, on) {
+  const use = item && item.querySelector('.ui-btn__icon use');
+  if (!use) return;
+  const href = use.getAttribute('href') || '';
+  const base = href.replace(/-fill$/, '');
+  if (!on) { if (href !== base) use.setAttribute('href', base); return; }
+  const reg = typeof window !== 'undefined' ? window.FTIcons : null;
+  const name = base.replace(/^#i-/, '') + '.fill';
+  if (reg && typeof reg.has === 'function' && reg.has(name)) use.setAttribute('href', iconHref(name));
+}
+// The avatar (ui.avatar's DOM, ui.css .ui-avatar): the photo when there is one, else the
+// initials monogram on a name-hashed tone; a failed photo becomes the monogram - never a
+// broken image or an empty disc. Delegates to window.ui.avatar when ui.js is loaded (every
+// shell), else builds the same DOM (jsdom harnesses).
+function chromeAvatarEl(name, url, size, doc) {
+  const d = doc || document;
+  const w = d.defaultView;
+  if (w && w.ui && typeof w.ui.avatar === 'function') return w.ui.avatar({ name, url, kind: 'person', size, doc: d });
+  const a = d.createElement('span');
+  a.className = 'ui-avatar ui-avatar--' + size;
+  const mono = () => {
+    const words = String(name == null ? '' : name).trim().split(/\s+/).filter(Boolean);
+    const m = d.createElement('span');
+    m.className = 'ui-avatar__mono';
+    m.textContent = words.length ? words.slice(0, 2).map((x) => Array.from(x)[0]).join('').toUpperCase() : '?';
+    let h = 5381;
+    const s = String(name == null ? '' : name);
+    for (let i = 0; i < s.length; i++) h = ((h * 33) ^ s.charCodeAt(i)) >>> 0;
+    m.setAttribute('data-tone', String((h % 8) + 1));
+    return m;
+  };
+  if (url) {
+    const img = d.createElement('img');
+    img.className = 'ui-avatar__img';
+    img.setAttribute('alt', '');
+    img.setAttribute('decoding', 'async');
+    img.setAttribute('loading', 'lazy');
+    img.addEventListener('error', () => {
+      if (img.parentNode) img.parentNode.removeChild(img);
+      if (!a.querySelector('.ui-avatar__mono')) a.appendChild(mono());
+    });
+    img.setAttribute('src', url);
+    a.appendChild(img);
+  } else {
+    a.appendChild(mono());
+  }
+  return a;
+}
+
 
 // v1.102 (tranche 4 shimmer): the ART-DECODE reveal. Every card image (album/
 // podcast/book/history art, mobile avatar) ships with the `art-shimmer` class so
@@ -282,12 +341,74 @@ function resolveTheme(storedEra, storedMode, legacyTheme) {
   return { era, mode };
 }
 
+// ---- UI pass D8.1: the era flourish (fabricated stats) ----------------------
+// The deterministic MOCKS (getStarRating's stars, getMockViews' view counts,
+// getMockSubCount's subscriber counts, the mock comment roster) are the retro
+// house style: shown in the 2005/2009/2014 eras, hidden in Modern (2021) - Dean's
+// audit decision 1. ONE mechanism, not per-feature ifs: a writer that renders a
+// FABRICATED value wraps it in `.ft-fabricated`, and one style.css rule hides every
+// such node unless <html data-era-flourish="on">. The attribute is derived from the
+// era here and nowhere else, set at common.js load (before any view renders) and on
+// every era change (applyTheme). Real values (a yt-dlp view count captured at
+// download, a captured subscriber count) are never wrapped, so they show in every
+// era. The v1.63.1 ft-hide-stars preference composes on top: stars show only when
+// the era allows them AND the preference does not hide them.
+const ERA_FLOURISH_ERAS = ['2005', '2009', '2014'];
+
+// Pure: does this era show fabricated stats? Unknown/garbage = the Modern default (no).
+function eraShowsFabricated(era) {
+  return ERA_FLOURISH_ERAS.includes(String(era));
+}
+
+// Reflects the era onto <html data-era-flourish="on|off">. `doc` for jsdom tests.
+function applyEraFlourish(era, doc) {
+  const d = doc || (typeof document !== 'undefined' ? document : null);
+  if (!d || !d.documentElement) return;
+  const e = era != null ? era : d.documentElement.getAttribute('data-theme');
+  d.documentElement.setAttribute('data-era-flourish', eraShowsFabricated(e) ? 'on' : 'off');
+}
+
+// UI pass D7 (AC9 stillness): a rotate or a window resize re-lays the page out in one step.
+// An `orientationchange`, or a `resize` that CHANGES THE WIDTH, puts `html.no-motion` on for
+// STILLNESS_MS (restarted by each such event) and style.css zeroes every transition under it,
+// so nothing that transitions for a user's action (the sidebar drawer, the content margin beside
+// it) animates for a viewport change. A height-only resize (the iOS / Android URL bar
+// collapsing on a scroll) is NOT a relayout of the width-keyed layout and holds nothing: it
+// fires during every scroll, and a hold there would zero a sheet's or a toast's transition and
+// restyle the whole tree twice per event. `lastWidth` is advanced only by a resize, never by an
+// orientationchange, so iOS's resize that follows the orientationchange still restarts the hold.
+// The ONE writer of the class: registered once per document at common.js load (before
+// DOMContentLoaded, so a rotate during boot is covered too); the resize event is dispatched in
+// the frame's resize steps, BEFORE that frame's style recalc, so the class is on when the new
+// layout's styles resolve. `win` for jsdom tests. Returns false when there is nothing to watch.
+const STILLNESS_MS = 300;
+function installResizeStillness(win) {
+  const w = win || (typeof window !== 'undefined' ? window : null);
+  const html = w && w.document && w.document.documentElement;
+  if (!html || typeof w.addEventListener !== 'function') return false;
+  let timer = null;
+  let lastWidth = w.innerWidth;
+  const hold = () => {
+    html.classList.add('no-motion');
+    if (timer) w.clearTimeout(timer);
+    timer = w.setTimeout(() => { timer = null; html.classList.remove('no-motion'); }, STILLNESS_MS);
+  };
+  w.addEventListener('resize', () => {
+    if (w.innerWidth === lastWidth) return;
+    lastWidth = w.innerWidth;
+    hold();
+  });
+  w.addEventListener('orientationchange', hold);
+  return true;
+}
+
 // Applies both attributes + persists both keys. Also flips the header
 // moon/sun icon to reflect the current mode.
 function applyTheme(era, mode) {
   const d = document.documentElement;
   d.setAttribute('data-theme', era);
   d.setAttribute('data-mode', mode);
+  applyEraFlourish(era);
   try {
     localStorage.setItem('ft-era', era);
     localStorage.setItem('ft-mode', mode);
@@ -296,6 +417,26 @@ function applyTheme(era, mode) {
   // was removed) and the bottom-nav theme item - keep both glyphs in sync.
   if (typeof updateAccountMenuThemeItem === 'function') updateAccountMenuThemeItem();
   if (typeof updateNavThemeItem === 'function') updateNavThemeItem();
+  syncThemeColorMeta(); // F66 (sweep S1): the browser / PWA chrome follows the era + mode
+}
+
+// F66 (sweep S1): the browser's theme colour (Android / desktop PWA title bar, Safari's
+// tab tint) follows the app's header ground for the CURRENT era and mode, not a static
+// brand red. The shells ship a light/dark pair (media = the OS scheme) for the pre-paint
+// guess; once the app's mode is known this collapses both to the header's resolved
+// `--header-bg` (a custom property's computed value is its resolved colour). Returns the
+// colour it applied, or '' when it could not resolve one (the shell pair then stands).
+function syncThemeColorMeta(doc) {
+  const d = doc || (typeof document !== 'undefined' ? document : null);
+  const w = d && d.defaultView;
+  if (!d || !w || typeof w.getComputedStyle !== 'function') return '';
+  const metas = d.querySelectorAll('meta[name="theme-color"]');
+  if (!metas.length) return '';
+  let colour = '';
+  try { colour = w.getComputedStyle(d.documentElement).getPropertyValue('--header-bg').trim(); } catch (_) { colour = ''; }
+  if (!/^(#[0-9a-f]{3,8}|rgba?\([^)]*\))$/i.test(colour)) return '';
+  metas.forEach((m) => { m.setAttribute('content', colour); m.removeAttribute('media'); });
+  return colour;
 }
 
 // Runs on DOMContentLoaded: resolves stored/legacy state and (re-)applies it,
@@ -424,8 +565,10 @@ async function pullMirroredDisplayPrefs() {
       mode || d.getAttribute('data-mode') || DEFAULT_MODE);
     applyCustomLogoIfSet();
   }
-  if (!hasIcons && (s.icons === 'auto' || ICON_SETS.includes(s.icons))) {
-    applyIconSet(s.icons); // persists the pref + re-resolves against the era
+  // A mirrored retired set (icons: 'emoji') seeds its replacement (D2.6).
+  const seedIcons = migrateIconPref(s.icons);
+  if (!hasIcons && (seedIcons === 'auto' || ICON_SETS.includes(seedIcons))) {
+    applyIconSet(seedIcons); // persists the pref + re-resolves against the era
   }
   // v1.63.1: the stars pref seeds the same way (locally-unchosen only).
   if (!hasStars && STAR_RATINGS_VALUES.includes(s.starRatings)) {
@@ -636,7 +779,7 @@ function resolveHomeLayout(opts) {
 }
 
 // v1.84 T5: the per-card channel avatar DECISION (Modern mode, media cards).
-// Pure + exported (the render + escaping stays in main.js's buildCardHtml, where
+// Pure + exported (the render + escaping stays in main.js's buildVideoCardEl, where
 // escapeHtml lives). Returns a descriptor: {kind:'none'} in classic (so the
 // classic card is byte-unchanged); {kind:'img',url} when the channel has a photo
 // (the SAME channelAvatarUrl the subscription avatars use); else {kind:'mono',
@@ -768,30 +911,45 @@ function resolveAvatarSource(name, channelAvatarUrl) {
 // A third, orthogonal appearance axis (theme x mode x icon-set) layered on
 // top of the era/mode system above, with no change to resolveTheme/
 // applyTheme/toggleTheme. See docs/exec-plans/completed/2026-07-05-icon-sets.md for the
-// full design. Two axes: a persisted `ft-icons` preference (one of the 4
+// full design. Two axes: a persisted `ft-icons` preference (one of the 3
 // concrete sets, or the meta-value 'auto') and a `data-icons` attribute on
-// <html> that always holds one of the 4 CONCRETE values — 'auto' is never
+// <html> that always holds one of the 3 CONCRETE values - 'auto' is never
 // written to data-icons.
+//
+// UI pass D2.6: the fourth set, 'emoji', is retired. A RETIRED value still
+// arrives from older storage: this device's ft-icons, the prefs-sync row, or
+// the v1.43 user-settings mirror. It resolves through LEGACY_ICON_SET_MAP
+// (emoji -> filled) and is never rewritten on boot: a boot write would
+// re-stamp the pref and beat a newer choice from another device (the
+// prefs-sync last-BOOT-wins class). The inline FOUC bootstraps in every
+// shell <head> carry the same mapping.
 
-const ICON_SETS = ['outlined', 'rounded', 'filled', 'emoji'];
+const ICON_SETS = ['outlined', 'rounded', 'filled'];
 const DEFAULT_ICON_SET = 'outlined';
-const AUTO_ERA_ICON_MAP = { '2005': 'emoji', '2009': 'emoji', '2014': 'filled', '2021': 'rounded' };
+const AUTO_ERA_ICON_MAP = { '2005': 'filled', '2009': 'filled', '2014': 'filled', '2021': 'rounded' };
+const LEGACY_ICON_SET_MAP = { emoji: 'filled' };
+
+// Pure: a stored pref with a retired set id becomes its replacement; any
+// other value passes through unchanged (validation is resolveIconSet's job).
+function migrateIconPref(storedSet) {
+  return (typeof storedSet === 'string' && Object.prototype.hasOwnProperty.call(LEGACY_ICON_SET_MAP, storedSet))
+    ? LEGACY_ICON_SET_MAP[storedSet] : storedSet;
+}
 
 // Single source of truth for the setup-page Icons picker. Auto listed first.
 const ICON_SET_REGISTRY = [
   { id: 'auto', name: 'Auto', blurb: 'Matches the icon style to whichever era you\'ve picked.' },
   { id: 'outlined', name: 'Outlined', blurb: 'Material Symbols Outlined — today\'s default look.' },
   { id: 'rounded', name: 'Rounded', blurb: 'Material Symbols Rounded — a softer, modern style.' },
-  { id: 'filled', name: 'Filled', blurb: '2014-flavored solid Material icons — the original flat era.' },
-  { id: 'emoji', name: 'Emoji', blurb: 'The original emoji glyphs — \u{1F3E0} \u{1F4C1} \u{2699}\u{FE0F} and friends.' }
+  { id: 'filled', name: 'Filled', blurb: '2014-flavored solid Material icons — the original flat era.' }
 ];
 
 // Pure: resolves a stored icon-set preference (+ the current era, needed only
-// for 'auto') into one of the four CONCRETE set ids. Never throws; never
-// returns 'auto'. Exported for node:test — see test/unit/resolve-icon-set.test.js.
-// Kept in sync with the inline FOUC bootstrap in <head> on
-// index.html/setup.html/watch.html (see the comment there).
+// for 'auto') into one of the three CONCRETE set ids. Never throws; never
+// returns 'auto'. Exported for node:test - see test/unit/resolve-icon-set.test.js,
+// which also runs every shell's inline FOUC bootstrap against this function.
 function resolveIconSet(storedSet, era) {
+  storedSet = migrateIconPref(storedSet);                     // retired set -> its replacement
   if (ICON_SETS.includes(storedSet)) return storedSet;      // valid explicit set
   if (storedSet === 'auto') {                                // meta -> era map
     const e = THEME_ERAS.includes(era) ? era : DEFAULT_ERA;  // invalid era -> DEFAULT_ERA mapping
@@ -806,7 +964,10 @@ function resolveIconSet(storedSet, era) {
 function applyIconSet(storedSetPref) {
   const d = document.documentElement;
   const era = d.getAttribute('data-theme') || DEFAULT_ERA;
-  d.setAttribute('data-icons', resolveIconSet(storedSetPref, era));
+  const set = resolveIconSet(storedSetPref, era);
+  d.setAttribute('data-icons', set);
+  // UI pass step 2: the chrome glyphs draw from the sprite; swap it to the new set.
+  if (typeof FTIcons !== 'undefined') FTIcons.inject(set);
   if (storedSetPref === 'auto' || ICON_SETS.includes(storedSetPref)) {
     try { localStorage.setItem('ft-icons', storedSetPref); }
     catch (_) { /* storage disabled — attribute still applied */ }
@@ -928,7 +1089,7 @@ function bytesToGb(bytes) {
 // (resolveChannelName + the bell/queue row models + the pinned-sidebar render),
 // and -- because the server does not require client code -- the same one-liner
 // is INLINED at server.js /api/channels, public/js/history.js and public/js/
-// setup.js's Feed-Hidden row (their own renderers, not buildCardHtml). Change
+// setup.js's Feed-Hidden row (their own renderers, not buildVideoCardEl). Change
 // the rule -> update all four sites (a small, accepted duplication).
 function displayChannelName(name) {
   return typeof name === 'string' && name.charAt(0) === '@' ? name.slice(1) : name;
@@ -1094,11 +1255,10 @@ function resolveFileChannelIdentity(item) {
 // toggle + compact options modal" / "FR-3 -- hide when no channel / module
 // disabled") for the full design/rationale. Pure decision helpers first
 // (node:test-covered directly); `buildSubscribeModal` is a DOM builder in the
-// exact style of `buildOneOffModal` above, reusing its primitives
-// (`.oneoff-modal-*` CSS + `buildOneOffSelect`/`ONEOFF_*`/
-// `reduceOneOffFiletypeOptions`) so this modal carries the v1.17.0
-// full-teardown + v1.19.0 select-sizing fixes "for free" and takes on NO
-// dependency on the gated, lazy-loaded `/js/subscriptions.js`.
+// exact style of `buildOneOffModal` below - a ui.sheet since step 7 - reusing its
+// building blocks (`buildOneOffSelect` + `oneOffSelectBox`/`ONEOFF_*`/
+// `reduceOneOffFiletypeOptions`), and takes on NO dependency on the gated,
+// lazy-loaded `/js/subscriptions.js`.
 
 // v1.25 QoL (T5): pure converters between a subscription's `cutoffDate`
 // (the API/yt-dlp `YYYYMMDD` convention -- retires the old "download last N
@@ -1204,48 +1364,22 @@ function buildSubscribeRequestBody(channelUrl, name, format, quality, rawCutoffD
 }
 
 /**
- * v1.289 (Dean): dismiss a backdrop-style modal ONLY when the pointer
- * interaction BOTH started AND ended on the backdrop itself. The plain
- * `click`-target check alone (`e.target === backdrop`) closes the modal on a
- * text-selection DRAG that begins inside a field and releases on the backdrop:
- * the browser dispatches the synthesized `click` on the common ancestor of
- * press-and-release, which is the backdrop - so dragging to select or reposition
- * the URL/folder text ate the download and subscribe modals. Recording the
- * pointerdown target and requiring it to be the backdrop too makes a drag that
- * begins inside the modal never dismiss it, while a clean tap on the backdrop
- * still closes as before. `onClose` is read live at click time (callers may
- * swap `handlers.onClose` after build), matching the prior inline behaviour.
- */
-function bindBackdropDismiss(backdrop, onClose) {
-  if (!backdrop || typeof backdrop.addEventListener !== 'function') return;
-  let downOnBackdrop = false;
-  backdrop.addEventListener('pointerdown', (e) => {
-    downOnBackdrop = !!(e && e.target === backdrop);
-  });
-  backdrop.addEventListener('click', (e) => {
-    const hit = downOnBackdrop && e && e.target === backdrop;
-    downOnBackdrop = false; // consume: the next dismiss needs its own fresh press
-    if (hit && typeof onClose === 'function') onClose();
-  });
-}
-
-/**
- * Builds the compact subscribe-confirm modal as real DOM nodes (backdrop +
- * dialog, appended to `document.body` by the caller) -- mirrors
- * `buildOneOffModal`'s structure/primitives exactly (same `.oneoff-modal-*`
- * CSS classes, same `buildOneOffSelect`/`ONEOFF_*`/
- * `reduceOneOffFiletypeOptions`/`repopulateOneOffFiletypeSelect` building
- * blocks), so it carries the v1.17.0 full-teardown + v1.19.0 select-sizing
- * fixes "for free" and never drifts from the one-off modal's own
+ * Builds the Subscribe dialog (the watch page's channel row, sweep S3) -- step 7 (UI pass)
+ * moved its SHELL onto ui.sheet, the way sweep S9 moved the one-off download dialog: a bottom
+ * sheet on a phone, a dialog on desktop, titled "Subscribe", with the sheet's one Close. It was
+ * the last bespoke `.oneoff-modal` shell (a backdrop the caller appended itself). The form
+ * reuses `buildOneOffModal`'s building blocks (`buildOneOffSelect` + `oneOffSelectBox`,
+ * `ONEOFF_*`, `repopulateOneOffFiletypeSelect`), so it never drifts from the one-off dialog's
  * format<->filetype coupling (AC7).
  *
- * `opts` = `{ channelName, channelUrl, format }` --
+ * `opts` = `{ channelName, channelUrl, format, signal }` --
  * `channelName`/`channelUrl` are the FR-2-derived, READ-ONLY channel identity
  * (rendered via `textContent` ONLY, AC3/AC30 -- never an editable field);
  * `format` pre-fills the type select from the file's own media type
- * (`'audio'`/`'video'`). The cutoff-date field (v1.25 QoL, T5 -- retires the
- * old "download last N videos" `defaultMaxVideos`/AC26 pre-fill) is always
- * left BLANK on open, never pre-filled with a computed "yesterday" -- an
+ * (`'audio'`/`'video'`); `signal` (the view's AbortSignal) closes the sheet when
+ * the view goes, so an SPA nav never strands it over the next page. The cutoff-date
+ * field (v1.25 QoL, T5 -- retires the old "download last N videos" `defaultMaxVideos`/AC26
+ * pre-fill) is always left BLANK on open, never pre-filled with a computed "yesterday" -- an
  * empty field omits `cutoffDate` from the request entirely, letting the
  * server apply its own default at submit time (`store.addSubscription`),
  * which stays correct even if the user takes a while filling out the rest
@@ -1253,82 +1387,65 @@ function bindBackdropDismiss(backdrop, onClose) {
  *
  * `handlers` = `{ onConfirm(body), onClose() }` -- decouples DOM construction
  * from the network call, mirroring `buildOneOffModal`'s own
- * `{ onDownload, onClose }` split, so this function stays pure/DOM-only and
- * directly unit-testable with a fake `document` (no real fetch). `onConfirm`
- * receives the EXACT body `buildSubscribeRequestBody` produces -- the caller
- * (`watch.js`) is the only place that ever calls `fetch('/api/subscriptions')`.
+ * `{ onDownload, onClose }` split, so this function stays DOM-only and
+ * directly unit-testable in jsdom (no real fetch). `onConfirm` receives the EXACT
+ * body `buildSubscribeRequestBody` produces -- the caller (`watch.js`) is the only
+ * place that ever calls `fetch('/api/subscriptions')`. Every way out but Subscribe
+ * (Cancel, Close, Esc, the scrim, a drag down, the signal) closes the sheet and calls
+ * `onClose` once (through `onClosing`); none of them calls `onConfirm`. v1.289's
+ * drag-safe dismiss holds by construction: the scrim is a SIBLING of the sheet, so a
+ * text-selection drag from a field onto it clicks their common ancestor, never the scrim.
+ * The caller opens it (`sheet.open()`).
  *
- * SECURITY: the ONLY dynamic strings ever rendered into this modal are the
- * read-only `channelName`/`channelUrl` identity block, both via `textContent`
- * (never `innerHTML`) -- there is no free-text field for either, so there is
- * no way for a user (or a hostile captured value) to inject markup through
- * this modal.
+ * SECURITY: the ONLY dynamic strings ever rendered into this dialog are the
+ * read-only `channelName`/`channelUrl` identity block and the status line, all via
+ * `textContent` (never `innerHTML`) -- there is no free-text field for either, so there
+ * is no way for a user (or a hostile captured value) to inject markup through it.
  */
 function buildSubscribeModal(doc, opts, handlers) {
   const d = doc || document;
   const o = opts || {};
   const h = handlers || {};
-
-  const backdrop = d.createElement('div');
-  backdrop.className = 'oneoff-modal-backdrop';
-  backdrop.hidden = true;
-  // v1.289: drag-safe dismiss (a text-selection drag onto the backdrop must not close it).
-  bindBackdropDismiss(backdrop, () => { if (typeof h.onClose === 'function') h.onClose(); });
+  const U = overlayUiLib();
 
   const modal = d.createElement('div');
-  modal.className = 'oneoff-modal';
-  modal.hidden = true;
-  backdrop.appendChild(modal);
-
-  const header = d.createElement('div');
-  header.className = 'oneoff-modal-header';
-  const title = d.createElement('span');
-  title.className = 'oneoff-modal-title';
-  title.textContent = 'Subscribe';
-  header.appendChild(title);
-  const closeBtn = d.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'oneoff-modal-close';
-  closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.textContent = '×';
-  closeBtn.addEventListener('click', () => {
-    if (typeof h.onClose === 'function') h.onClose();
-  });
-  header.appendChild(closeBtn);
-  modal.appendChild(header);
+  modal.className = 'oneoff-form subscribe-form';
 
   // READ-ONLY channel identity -- textContent only, AC3/AC30. Never an
   // editable input: the channelUrl that reaches POST /api/subscriptions is
   // ALWAYS the FR-2-derived value the caller passes in, not anything typed
   // here.
   const identity = d.createElement('div');
-  identity.className = 'subscribe-modal-identity';
+  identity.className = 'subscribe-form__identity';
   const identityName = d.createElement('div');
-  identityName.className = 'subscribe-modal-identity-name';
+  identityName.className = 'subscribe-form__name';
   identityName.textContent = typeof o.channelName === 'string' && o.channelName ? o.channelName : 'This channel';
   identity.appendChild(identityName);
   const identityUrl = d.createElement('div');
-  identityUrl.className = 'subscribe-modal-identity-url';
+  identityUrl.className = 'subscribe-form__url';
   identityUrl.textContent = typeof o.channelUrl === 'string' ? o.channelUrl : '';
   identity.appendChild(identityUrl);
   modal.appendChild(identity);
 
   const row = d.createElement('div');
-  row.className = 'oneoff-modal-row';
+  row.className = 'oneoff-modal-selects';
 
   const initialFormat = o.format === 'audio' ? 'audio' : 'video';
   const formatSelect = buildOneOffSelect(d, ONEOFF_FORMAT_OPTIONS, initialFormat);
-  row.appendChild(formatSelect);
+  formatSelect.setAttribute('aria-label', 'Format');
+  row.appendChild(oneOffSelectBox(d, formatSelect));
 
   const qualitySelect = buildOneOffSelect(
     d,
     ONEOFF_QUALITY_OPTIONS.map((q) => ({ value: q, label: q })),
     ONEOFF_DEFAULT_QUALITY
   );
-  row.appendChild(qualitySelect);
+  qualitySelect.setAttribute('aria-label', 'Quality');
+  row.appendChild(oneOffSelectBox(d, qualitySelect));
 
   const filetypeSelect = buildOneOffSelect(d, ONEOFF_FILETYPE_OPTIONS[initialFormat], ONEOFF_DEFAULT_FILETYPE[initialFormat]);
-  row.appendChild(filetypeSelect);
+  filetypeSelect.setAttribute('aria-label', 'File type');
+  row.appendChild(oneOffSelectBox(d, filetypeSelect));
 
   formatSelect.addEventListener('change', () => {
     repopulateOneOffFiletypeSelect(d, formatSelect.value, filetypeSelect);
@@ -1341,31 +1458,36 @@ function buildSubscribeModal(doc, opts, handlers) {
   // downloads, no count cap (matches the add-subscription form's own field,
   // T1's `cutoffDate` schema). Left BLANK by default (see this function's
   // doc comment above) -- `aria-label` gives it an accessible name since
-  // this compact modal has no visible `<label>` elements for any of its
-  // controls (placeholder text alone is not a substitute for assistive
-  // tech, and a date input has no meaningful placeholder anyway).
+  // this compact form has no visible `<label>` for it (placeholder text alone
+  // is not a substitute for assistive tech, and a date input has no
+  // meaningful placeholder anyway). A ui-field input (16px, the focus ring).
   const cutoffDateInput = d.createElement('input');
   cutoffDateInput.type = 'date';
-  cutoffDateInput.className = 'oneoff-modal-field';
+  cutoffDateInput.className = 'ui-field__input';
   cutoffDateInput.setAttribute('aria-label', 'Download videos published on or after');
-  modal.appendChild(cutoffDateInput);
-
-  const cutoffDateHint = d.createElement('div');
-  // Tokens Phase 1 Tier 1: the JS-applied style triplet moved to the
-  // .oneoff-modal-hint class (style.css) - font-size rides var(--fs-sm).
-  cutoffDateHint.className = 'oneoff-modal-hint';
+  const dateField = d.createElement('div');
+  dateField.className = 'ui-field';
+  dateField.appendChild(cutoffDateInput);
+  const cutoffDateHint = d.createElement('p');
+  cutoffDateHint.className = 'ui-field__help';
   cutoffDateHint.textContent = 'Default: yesterday — only new videos going forward. Set an earlier date to pull history.';
-  modal.appendChild(cutoffDateHint);
+  dateField.appendChild(cutoffDateHint);
+  modal.appendChild(dateField);
 
   // Skip-Shorts toggle, default OFF (mirrors the existing add-subscription
-  // form's own default -- download everything unless the user opts out).
+  // form's own default -- download everything unless the user opts out). The
+  // ui-switch on a native checkbox (sweep S8), labelled by its row.
   const skipShortsLabel = d.createElement('label');
-  skipShortsLabel.className = 'subscribe-modal-checkbox-row';
+  skipShortsLabel.className = 'subscribe-form__toggle';
+  const skipShortsText = d.createElement('span');
+  skipShortsText.textContent = 'Skip Shorts';
   const skipShortsCheck = d.createElement('input');
   skipShortsCheck.type = 'checkbox';
+  skipShortsCheck.className = 'ui-switch';
+  skipShortsCheck.setAttribute('role', 'switch');
   skipShortsCheck.checked = false;
+  skipShortsLabel.appendChild(skipShortsText);
   skipShortsLabel.appendChild(skipShortsCheck);
-  skipShortsLabel.appendChild(d.createTextNode(' Skip Shorts'));
   modal.appendChild(skipShortsLabel);
 
   const statusEl = d.createElement('div');
@@ -1373,23 +1495,27 @@ function buildSubscribeModal(doc, opts, handlers) {
   statusEl.setAttribute('aria-live', 'polite');
   modal.appendChild(statusEl);
 
+  // Cancel / Subscribe: the dialog's action row (the one primary action is Subscribe).
   const actionsRow = d.createElement('div');
-  actionsRow.className = 'subscribe-modal-actions';
-
-  const cancelBtn = d.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'btn';
-  cancelBtn.textContent = 'Cancel';
-  cancelBtn.addEventListener('click', () => {
-    if (typeof h.onClose === 'function') h.onClose();
-  });
+  actionsRow.className = 'ui-confirm__actions subscribe-form__actions';
+  const cancelBtn = U.button({ variant: 'secondary', label: 'Cancel', doc: d });
+  const confirmBtn = U.button({ variant: 'primary', label: 'Subscribe', doc: d });
   actionsRow.appendChild(cancelBtn);
+  actionsRow.appendChild(confirmBtn);
+  modal.appendChild(actionsRow);
 
-  const confirmBtn = d.createElement('button');
-  confirmBtn.type = 'button';
-  confirmBtn.className = 'btn btn-primary';
-  confirmBtn.textContent = 'Subscribe';
+  const sheet = U.sheet({
+    variant: 'auto', title: 'Subscribe', content: modal,
+    onClosing: () => { if (typeof h.onClose === 'function') h.onClose(); },
+    signal: o.signal, doc: d, win: d.defaultView,
+  });
+  const closeBtn = sheet.el.querySelector('.ui-sheet__close');
+
+  // Cancel closes the sheet; onClose runs once, through onClosing (the same path as
+  // Close, Esc, the scrim and a drag).
+  cancelBtn.addEventListener('click', () => { sheet.close(); });
   confirmBtn.addEventListener('click', () => {
+    if (!sheet.isOpen()) return; // a tap on a dialog on its way out answers nothing
     const body = buildSubscribeRequestBody(
       o.channelUrl,
       o.channelName,
@@ -1401,9 +1527,6 @@ function buildSubscribeModal(doc, opts, handlers) {
     );
     if (typeof h.onConfirm === 'function') h.onConfirm(body);
   });
-  actionsRow.appendChild(confirmBtn);
-
-  modal.appendChild(actionsRow);
 
   // Renders an error string (or clears it) -- textContent only, never
   // innerHTML, no matter what the server's validation error contains.
@@ -1412,7 +1535,7 @@ function buildSubscribeModal(doc, opts, handlers) {
   }
 
   return {
-    backdrop, modal, closeBtn, identityName, identityUrl,
+    sheet, backdrop: sheet.scrim, modal, closeBtn, identityName, identityUrl,
     formatSelect, qualitySelect, filetypeSelect, cutoffDateInput, skipShortsCheck,
     confirmBtn, cancelBtn, statusEl, setError,
   };
@@ -1709,59 +1832,62 @@ function shouldShowShuffleButton(sortKey) {
 // that ever needs to interpolate untrusted data into one of these fields
 // must escape it itself first. Exported for node:test.
 
-// Pure: home/library empty-result card (no items match the current filter/
-// search/folder). `icon` is one of the existing `.icon-*` glyph classes (the
-// icon-set system already themes it across every era/mode/icon-set
-// combination via `currentColor` -- see style.css's "Chrome icons" block);
-// defaults to `icon-search` ("nothing found"), matching the "no results"
-// semantics of every call site so far. `actionHtml`, when given, is
-// appended as-is (a caller-built, already-safe HTML fragment, e.g. a "View
-// All Media" link) -- kept separate from `hint` (a caller-supplied plain
-// hint string) so callers with only one or the other never render an empty
-// wrapper element.
-function buildEmptyStateHtml(opts) {
+// Pure: the ui-state block (D9, F65) as a markup string - byte-for-byte the DOM ui.state()
+// builds (icon disc, title, body, then an action), for the views that render their lists as
+// HTML strings. `icon` is a registry name; the legacy `icon-*` names still resolve (the
+// glyph sprite, never a mask class). `title` / `body` are developer-authored static copy, as
+// every other static template in this file (a caller interpolating untrusted data escapes
+// it first). `actionHtml`, when given, is appended as-is (a caller-built, already-safe
+// fragment - a ui-btn link). `tone: 'error'` marks a failure state.
+const UI_STATE_LEGACY_ICONS = { 'icon-search': 'search', 'icon-folder': 'folder', 'icon-play': 'play_arrow', 'icon-refresh': 'refresh' };
+function uiStateHtml(opts) {
   const o = opts || {};
-  const icon = typeof o.icon === 'string' && o.icon ? o.icon : 'icon-search';
-  const message = typeof o.message === 'string' && o.message ? o.message : 'Nothing here yet.';
-  const hint = typeof o.hint === 'string' && o.hint ? `<p class="empty-state-hint">${o.hint}</p>` : '';
+  const raw = typeof o.icon === 'string' && o.icon ? o.icon : '';
+  const icon = UI_STATE_LEGACY_ICONS[raw] || raw.replace(/^icon-/, '');
+  const iconHtml = icon
+    ? `<span class="ui-state__icon"><svg class="ui-icon ui-icon--lg" aria-hidden="true" focusable="false"><use href="#i-${icon.replace(/\./g, '-')}"/></svg></span>`
+    : '';
+  const body = typeof o.body === 'string' && o.body ? `<p class="ui-state__body">${o.body}</p>` : '';
   const actionHtml = typeof o.actionHtml === 'string' ? o.actionHtml : '';
-  return `<div class="empty-state${o.compact ? ' empty-state-inline' : ''}">` +
-    `<i class="${icon} empty-state-icon" aria-hidden="true"></i>` +
-    `<p class="empty-state-message">${message}</p>` +
-    hint + actionHtml +
-    `</div>`;
+  return `<div class="ui-state${o.tone === 'error' ? ' ui-state--error' : ''}">` + iconHtml +
+    `<h3 class="ui-state__title">${typeof o.title === 'string' ? o.title : ''}</h3>` + body + actionHtml + '</div>';
 }
 
-// Pure: a failed-load card with a Retry affordance. The Retry `<button>`
-// carries a stable `data-error-retry` hook (no id, so multiple error cards
-// can safely coexist) -- callers own actually wiring a click listener to it
-// AFTER inserting this markup (e.g. `container.querySelector('[data-error-
-// retry]').addEventListener('click', reloadFn, { signal })`, mirroring
-// every other per-view AbortController-bound listener in this codebase);
-// this function never binds anything itself, keeping it a pure string
-// builder like `buildEmptyStateHtml` above.
+// Pure: home/library empty-result state (no items match the current filter / search /
+// folder). Sweep S9 (F65): the ONE ui-state block - `message` is its title, `hint` its body,
+// `icon` a registry glyph (default `search`, "nothing found"). Kept as the v1.26.3 entry point
+// its callers already use. Exported for node:test.
+function buildEmptyStateHtml(opts) {
+  const o = opts || {};
+  return uiStateHtml({
+    icon: typeof o.icon === 'string' && o.icon ? o.icon : 'search',
+    title: typeof o.message === 'string' && o.message ? o.message : 'Nothing here yet.',
+    body: typeof o.hint === 'string' ? o.hint : '',
+    actionHtml: o.actionHtml,
+  });
+}
+
+// Pure: a failed-load state with a Retry. The Retry is a secondary ui-btn carrying a stable
+// `data-error-retry` hook (no id, so several can coexist) - the caller wires its click AFTER
+// inserting the markup (bound to its view signal); this builder binds nothing. The failure
+// reads as a failure by its `error` glyph and its words, not by red text (F65, D8.8).
 function buildErrorStateHtml(opts) {
   const o = opts || {};
-  const message = typeof o.message === 'string' && o.message ? o.message : 'Something went wrong.';
-  return `<div class="error-state">` +
-    `<i class="icon-refresh error-state-icon" aria-hidden="true"></i>` +
-    `<p class="error-state-message">${message}</p>` +
-    `<button type="button" class="btn error-state-retry" data-error-retry>Retry</button>` +
-    `</div>`;
+  return uiStateHtml({
+    icon: 'error',
+    tone: 'error',
+    title: typeof o.message === 'string' && o.message ? o.message : 'Something went wrong.',
+    actionHtml: '<button type="button" class="ui-btn ui-btn--secondary ui-btn--md" data-error-retry><span class="ui-btn__label">Retry</span></button>',
+  });
 }
 
 // ---- C2/C3: item count + format-toggle library controls (v1.24.0, T3) -----
 //
-// Both are client-side only (no server change) and injected via
-// createElement/textContent -- neither control is baked into any HTML shell
-// (index.html/watch.html/setup.html/subscriptions.html all stay untouched
-// this wave; T1 owns those shells' markup). A CALLER (whichever view is
-// rendering the current item list -- home/folder/playlist/channel all funnel
-// through the same grid) owns invoking `renderItemCountBadge`/
-// `renderFormatToggle` once per render with the CURRENT (already
-// format-filtered) list; these are pure/DOM-builder primitives, not a
-// self-driving feature, so the same count is never computed two different
-// ways in two different places.
+// Client-side only (no server change), injected via createElement/textContent.
+// A CALLER (whichever view is rendering the current item list -- home/folder/
+// playlist/channel all funnel through the same grid) owns invoking
+// `renderItemCountBadge` once per render; the format filter is a dimension of
+// the one library chip row (buildFilterChipRow, UI pass sweep S2).
 
 // Pure: item count for a rendered list. Never throws on a non-array input.
 function countItems(list) {
@@ -1922,73 +2048,86 @@ function filterByMediaType(list, mode) {
   });
 }
 
+// The format dimension's chips (the 'both' mode is the chip row's shared All).
 const FORMAT_TOGGLE_OPTIONS = [
-  { mode: 'both', label: 'All' },
   { mode: 'video', label: 'Videos' },
   { mode: 'audio', label: 'Audio' },
 ];
 
-// Builds a fresh "All / Videos / Audio" toggle control (createElement +
-// textContent only -- no innerHTML). Clicking a button persists the choice
-// via `setStoredFormatFilter`, updates the pressed/active state on all three
-// buttons, and (when supplied) invokes `onChange(normalizedMode)` so a
-// mounting caller can re-filter + re-render its own grid without this
-// function needing to know anything about that caller's render pipeline
-// (mirrors the `onConfirm`-callback convention `showConfirmModal` already
-// uses elsewhere in this file).
-function buildFormatToggleControl(currentMode, onChange) {
-  const active = FORMAT_FILTER_MODES.includes(currentMode) ? currentMode : 'both';
-  const container = document.createElement('div');
-  container.className = 'format-toggle';
-  container.id = 'library-format-toggle';
-  FORMAT_TOGGLE_OPTIONS.forEach((opt) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn btn-sm format-toggle-btn' + (opt.mode === active ? ' active' : '');
-    btn.dataset.formatMode = opt.mode;
-    btn.setAttribute('aria-pressed', opt.mode === active ? 'true' : 'false');
-    btn.appendChild(document.createTextNode(opt.label));
-    btn.addEventListener('click', () => {
-      const normalized = setStoredFormatFilter(opt.mode);
-      Array.prototype.forEach.call(container.querySelectorAll('.format-toggle-btn'), (b) => {
-        const isActive = b.dataset.formatMode === normalized;
-        b.classList.toggle('active', isActive);
-        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-      });
-      if (typeof onChange === 'function') onChange(normalized);
-    });
-    container.appendChild(btn);
-  });
-  return container;
-}
-
-// Idempotently mounts the format-toggle control as the FIRST child of
-// `actionsEl` (e.g. `.section-actions`, ahead of the sort <select>) -- any
-// prior instance IN THAT CONTAINER is removed first, so repeated calls (e.g.
-// once per render) never accumulate duplicates. The lookup MUST be scoped to
-// `actionsEl`, never `document.getElementById`: this can run against the
-// DETACHED cached home view (homeViewCache + a background
-// `__filetubeRefreshLibrary` while another view is live), where a
-// document-wide lookup finds nothing (-> a second toggle appended, the
-// "doubled All/Videos/Audio row" bug) or finds the LIVE page's toggle and
-// removes it. No-ops safely when `actionsEl` is absent.
-function renderFormatToggle(actionsEl, currentMode, onChange) {
-  if (!actionsEl) return;
-  const existing = actionsEl.querySelector('#library-format-toggle');
-  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
-  const control = buildFormatToggleControl(currentMode, onChange);
-  actionsEl.insertBefore(control, actionsEl.firstChild);
-}
-
-// ---- v1.50: watched-state filter toggle ------------------------------------
+// ---- UI pass sweep S2 (F19, D4.5): the library's ONE filter chip row -------
 //
-// The home page's second segmented group: `All | New | Watching | Watched`.
-// Deliberately a sibling of the format toggle in every way -- same component
-// classes (`.format-toggle`/`.format-toggle-btn`, plus `.watch-toggle` for
-// layout-only overrides), same localStorage persistence pattern, same
-// onChange contract, and the SAME container-scoped de-dupe posture (born
-// with the fix for the doubled-row bug -- see renderFormatToggle above).
-// The value rides `GET /api/videos?watch=`; the SERVER derives watched
+// Home, channel/folder and search views used to stack up to three segmented
+// .btn groups (format All/Videos/Audio, watch All/New/Watching/Watched, the
+// search scope All/Titles/Channels), each with its own "All", wrapping to two
+// or three rows on a phone. They are now ONE horizontally scrolling row of
+// ui-chip filter chips: a leading "All", then each dimension's values. A
+// dimension is single-select-or-none: tapping a chip selects it (and deselects
+// its siblings in that dimension); tapping the selected chip again returns that
+// dimension to its all-value. "All" is pressed exactly when every dimension is
+// at its all-value, and tapping it resets them all.
+//
+//   groups: [{ key, value, all, options: [{ value, label }] }]
+//   onChange(changes): ONCE per tap, with { key: newValue } for every dimension
+//     the tap changed (All can change several; a no-op tap never calls it)
+//
+// Built with ui.chip (createElement + textContent only). The caller owns the
+// state (persistence, URL): this function only reports changes. `opts.doc` for tests.
+function buildFilterChipRow(groups, onChange, opts) {
+  const o = opts || {};
+  const doc = o.doc || document;
+  const u = (typeof window !== 'undefined' && window.ui) || (typeof module !== 'undefined' && module.require ? module.require('./ui.js') : null);
+  const state = {};
+  (groups || []).forEach((g) => { state[g.key] = g.value; });
+  const row = doc.createElement('div');
+  row.className = 'library-chips';
+  if (o.id) row.id = o.id;
+  row.setAttribute('role', 'group');
+  row.setAttribute('aria-label', o.label || 'Filter');
+  const allChip = u.chip({ kind: 'filter', label: 'All', doc });
+  allChip.setAttribute('data-chip', 'all');
+  row.appendChild(allChip);
+  const chips = [];
+  (groups || []).forEach((g) => {
+    g.options.forEach((opt) => {
+      const c = u.chip({ kind: 'filter', label: opt.label, doc });
+      c.setAttribute('data-group', g.key);
+      c.setAttribute('data-chip', String(opt.value));
+      chips.push({ el: c, group: g, value: opt.value });
+      row.appendChild(c);
+    });
+  });
+  function paint() {
+    const allOn = (groups || []).every((g) => state[g.key] === g.all);
+    allChip.setAttribute('aria-pressed', allOn ? 'true' : 'false');
+    chips.forEach((c) => c.el.setAttribute('aria-pressed', state[c.group.key] === c.value ? 'true' : 'false'));
+  }
+  function apply(next) {
+    const changes = {};
+    Object.keys(next).forEach((k) => {
+      if (state[k] !== next[k]) { state[k] = next[k]; changes[k] = next[k]; }
+    });
+    paint();
+    if (Object.keys(changes).length && typeof onChange === 'function') onChange(changes);
+  }
+  allChip.addEventListener('click', () => {
+    const next = {};
+    (groups || []).forEach((g) => { next[g.key] = g.all; });
+    apply(next);
+  });
+  chips.forEach((c) => {
+    c.el.addEventListener('click', () => {
+      apply({ [c.group.key]: state[c.group.key] === c.value ? c.group.all : c.value });
+    });
+  });
+  paint();
+  return row;
+}
+
+// ---- v1.50: watched-state filter ---------------------------------------------
+//
+// The library's watch dimension (New | Watching | Watched; 'all' = none), a
+// dimension of the one chip row above (buildFilterChipRow), persisted per
+// device like the format. The value rides `GET /api/videos?watch=`; the SERVER derives watched
 // state (progress thresholds + the sticky completion latch) -- the client
 // never re-implements the thresholds.
 
@@ -2007,133 +2146,47 @@ function setStoredWatchFilter(mode) {
   return normalized;
 }
 
+// The watch dimension's chips ('all' is the chip row's shared All).
 const WATCH_TOGGLE_OPTIONS = [
-  { mode: 'all', label: 'All' },
   { mode: 'new', label: 'New' },
   { mode: 'watching', label: 'Watching' },
   { mode: 'watched', label: 'Watched' },
 ];
 
-// Builds a fresh watched-state toggle control -- createElement + textContent
-// only, mirroring buildFormatToggleControl exactly.
-function buildWatchToggleControl(currentMode, onChange) {
-  const active = WATCH_TOGGLE_MODES.includes(currentMode) ? currentMode : 'all';
-  const container = document.createElement('div');
-  container.className = 'format-toggle watch-toggle';
-  container.id = 'library-watch-toggle';
-  WATCH_TOGGLE_OPTIONS.forEach((opt) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn btn-sm format-toggle-btn' + (opt.mode === active ? ' active' : '');
-    btn.dataset.watchMode = opt.mode;
-    btn.setAttribute('aria-pressed', opt.mode === active ? 'true' : 'false');
-    btn.appendChild(document.createTextNode(opt.label));
-    btn.addEventListener('click', () => {
-      const normalized = setStoredWatchFilter(opt.mode);
-      Array.prototype.forEach.call(container.querySelectorAll('.format-toggle-btn'), (b) => {
-        const isActive = b.dataset.watchMode === normalized;
-        b.classList.toggle('active', isActive);
-        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-      });
-      if (typeof onChange === 'function') onChange(normalized);
-    });
-    container.appendChild(btn);
-  });
-  return container;
-}
-
-// Idempotently mounts the watched toggle DIRECTLY AFTER the format toggle
-// (falling back to first child when the format toggle isn't mounted yet).
-// Container-scoped de-dupe -- never document.getElementById -- for exactly
-// the detached-homeViewCache reasons documented on renderFormatToggle.
-function renderWatchToggle(actionsEl, currentMode, onChange) {
-  if (!actionsEl) return;
-  const existing = actionsEl.querySelector('#library-watch-toggle');
-  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
-  const control = buildWatchToggleControl(currentMode, onChange);
-  const formatToggle = actionsEl.querySelector('#library-format-toggle');
-  actionsEl.insertBefore(control, formatToggle ? formatToggle.nextSibling : actionsEl.firstChild);
-}
-
 // ---- v1.149 (Dean): search-scope toggle (All | Titles | Channels) ----------
 //
-// The classic toolbar's THIRD segmented group, rendered ONLY while a search
-// is active (main.js guards on searchQuery). A sibling of the format/watch
-// toggles in every way EXCEPT persistence: each new search deliberately
-// starts on 'all' (the YouTube posture), so there is NO storage key - the
-// current value lives in the search view's closure and deep links carry it
-// via ?searchIn=. Labels are Titles/Channels (not YouTube's Videos/
-// Channels) because the format toggle beside it already owns a "Videos"
-// button - two same-labeled buttons in one toolbar would be a coin flip.
-// Three buttons = the format toggle's exact width budget, so the shared
-// .format-toggle classes style it with ZERO new CSS.
+// A dimension of the library chip row, present ONLY on a folder/root-scoped
+// search (main.js). Unlike format/watch it is NOT persisted: each new search
+// starts on 'all' (the YouTube posture) - the value lives in the search view's
+// closure and deep links carry it via ?searchIn=. Labels are Titles/Channels
+// (not YouTube's Videos/Channels) because the format dimension in the same row
+// already owns a "Videos" chip.
 const SEARCH_SCOPE_MODES = ['all', 'title', 'channel'];
 
 function normalizeSearchScopeMode(raw) {
   return SEARCH_SCOPE_MODES.includes(raw) ? raw : 'all';
 }
 
+// The search-scope dimension's chips ('all' is the chip row's shared All).
 const SEARCH_SCOPE_OPTIONS = [
-  { mode: 'all', label: 'All' },
   { mode: 'title', label: 'Titles' },
   { mode: 'channel', label: 'Channels' },
 ];
 
-// Builds a fresh search-scope toggle -- createElement + textContent only,
-// mirroring buildFormatToggleControl exactly (minus the storage write:
-// the caller owns the state).
-function buildSearchScopeToggleControl(currentMode, onChange) {
-  const active = normalizeSearchScopeMode(currentMode);
-  const container = document.createElement('div');
-  container.className = 'format-toggle';
-  container.id = 'library-search-scope-toggle';
-  SEARCH_SCOPE_OPTIONS.forEach((opt) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn btn-sm format-toggle-btn' + (opt.mode === active ? ' active' : '');
-    btn.dataset.searchScope = opt.mode;
-    btn.setAttribute('aria-pressed', opt.mode === active ? 'true' : 'false');
-    btn.appendChild(document.createTextNode(opt.label));
-    btn.addEventListener('click', () => {
-      Array.prototype.forEach.call(container.querySelectorAll('.format-toggle-btn'), (b) => {
-        const isActive = b.dataset.searchScope === opt.mode;
-        b.classList.toggle('active', isActive);
-        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-      });
-      if (typeof onChange === 'function') onChange(opt.mode);
-    });
-    container.appendChild(btn);
-  });
-  return container;
-}
-
-// Idempotent mount AFTER the watch toggle (or the format toggle, or first) -
-// the same container-scoped de-dupe posture as its two siblings (see
-// renderFormatToggle's doubled-row rationale above).
-function renderSearchScopeToggle(actionsEl, currentMode, onChange) {
-  if (!actionsEl) return;
-  const existing = actionsEl.querySelector('#library-search-scope-toggle');
-  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
-  const control = buildSearchScopeToggleControl(currentMode, onChange);
-  const anchor = actionsEl.querySelector('#library-watch-toggle') || actionsEl.querySelector('#library-format-toggle');
-  actionsEl.insertBefore(control, anchor ? anchor.nextSibling : actionsEl.firstChild);
-}
-
-// v1.205 Wave B: the unified-search content-TYPE chip row (All | Videos |
-// Audio | Music | Podcasts | Shows | Books). Same .format-toggle recipe as the
-// searchIn scope toggle (zero new CSS beyond a wrap rule), but a DIFFERENT
-// vocabulary (?type=) and SEVEN chips. The header's GLOBAL search uses this in
-// place of the video-only Titles/Channels toggle (Dean: drop the sub-scope in
-// unified search); a folder/root search keeps that toggle. State lives in the
-// view closure; the mount below and buildVideosApiUrl read/write it.
+// v1.205 Wave B: the unified-search content TYPE (Videos | Audio | Music |
+// Podcasts | Shows | Books; 'all' = none). The header's GLOBAL search shows it
+// as the ONLY dimension of the library chip row (sort/format/watch do not apply
+// to the server-ranked cross-type stream); a folder/root search keeps the
+// Titles/Channels scope instead. State lives in the view closure; main.js's
+// chip mount and buildVideosApiUrl read/write it.
 const SEARCH_TYPE_CHIPS = ['all', 'videos', 'audio', 'music', 'podcasts', 'shows', 'books'];
 
 function normalizeSearchTypeChip(raw) {
   return SEARCH_TYPE_CHIPS.includes(raw) ? raw : 'all';
 }
 
+// The unified search's type chips ('all' is the chip row's shared All).
 const SEARCH_TYPE_OPTIONS = [
-  { chip: 'all', label: 'All' },
   { chip: 'videos', label: 'Videos' },
   { chip: 'audio', label: 'Audio' },
   { chip: 'music', label: 'Music' },
@@ -2141,42 +2194,6 @@ const SEARCH_TYPE_OPTIONS = [
   { chip: 'shows', label: 'Shows' },
   { chip: 'books', label: 'Books' },
 ];
-
-function buildSearchTypeChipsControl(currentChip, onChange) {
-  const active = normalizeSearchTypeChip(currentChip);
-  const container = document.createElement('div');
-  container.className = 'format-toggle search-type-chips';
-  container.id = 'library-search-type-chips';
-  SEARCH_TYPE_OPTIONS.forEach((opt) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn btn-sm format-toggle-btn' + (opt.chip === active ? ' active' : '');
-    btn.dataset.searchType = opt.chip;
-    btn.setAttribute('aria-pressed', opt.chip === active ? 'true' : 'false');
-    btn.appendChild(document.createTextNode(opt.label));
-    btn.addEventListener('click', () => {
-      Array.prototype.forEach.call(container.querySelectorAll('.format-toggle-btn'), (b) => {
-        const isActive = b.dataset.searchType === opt.chip;
-        b.classList.toggle('active', isActive);
-        b.setAttribute('aria-pressed', isActive ? 'true' : 'false');
-      });
-      if (typeof onChange === 'function') onChange(opt.chip);
-    });
-    container.appendChild(btn);
-  });
-  return container;
-}
-
-// Idempotent mount as the FIRST control in the action row (the chip row is the
-// primary filter for a unified search). Same container-scoped de-dupe as the
-// scope/format toggles.
-function renderSearchTypeChips(actionsEl, currentChip, onChange) {
-  if (!actionsEl) return;
-  const existing = actionsEl.querySelector('#library-search-type-chips');
-  if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
-  const control = buildSearchTypeChipsControl(currentChip, onChange);
-  actionsEl.insertBefore(control, actionsEl.firstChild);
-}
 
 // ---- Prev/next derived-order helpers (FR-2, T3) ----------------------------
 //
@@ -2565,7 +2582,10 @@ async function persistSidebarMoveByPath(move, fetchImpl) {
 // swapped the gesture layer, never the ordering semantics.
 
 const REORDER_DEFAULT_CLASSES = { dragging: 'dragging', before: 'drag-over-before', after: 'drag-over-after' };
-const REORDER_ROW_CLASS = 'reorder-row';
+// Step 7 (UI pass): every wired row wears the ui-reorder primitive (ui.css: the grab cursor, the
+// dragged row's dim, the drop line) - the Settings lists put it in their markup, the sidebars
+// get it here. It was the bespoke `.reorder-row` hook.
+const REORDER_ROW_CLASS = 'ui-reorder';
 const REORDER_BODY_CLASS = 'reorder-dragging';
 // Mouse/pen: a few px of travel separates a drag from a click, so a click on
 // a sidebar link still navigates. Touch: a long press arms instead, and more
@@ -2669,6 +2689,13 @@ function computeAutoScrollDelta(rect, clientY, edge, maxStep) {
 //                   REAL handler chain with real geometry
 //   signal          AbortSignal tearing every listener down
 const REORDER_DEFAULT_IGNORE = 'input, textarea, select, button, label, [contenteditable="true"]';
+
+// The interaction policy's JS half (interaction.js): the page's window.FTInteraction, else
+// (node:test) the sibling module.
+function interactionLib() {
+  return (typeof window !== 'undefined' && window.FTInteraction)
+    || (typeof module !== 'undefined' && module.require ? module.require('./interaction.js') : null);
+}
 
 function wireReorderable(container, opts) {
   const o = opts || {};
@@ -2925,7 +2952,11 @@ function wireReorderable(container, opts) {
       // Non-passive: this is the half that actually stops the page scrolling
       // once a touch drag is armed.
       doc.addEventListener('touchmove', onDocTouchMove, { signal: pressSignal, passive: false });
-      doc.addEventListener('contextmenu', onDocContextMenu, { signal: pressSignal });
+      // The long press that arms a touch drag is also the gesture iOS/Android use for the
+      // context menu / selection callout: refused while armed (interaction.js owns every
+      // contextmenu listener, D6).
+      const FI = interactionLib();
+      if (FI) FI.suppressContextMenuWhile(doc, () => armed, { signal: pressSignal });
       if (typeof row.setPointerCapture === 'function' && e.pointerId !== undefined) {
         try { row.setPointerCapture(e.pointerId); capturedEl = row; capturedEl.__reorderPointerId = e.pointerId; } catch (_) { capturedEl = null; }
       }
@@ -3002,11 +3033,6 @@ function wireReorderable(container, opts) {
     if (armed && e.cancelable) e.preventDefault();
   }
 
-  function onDocContextMenu(e) {
-    // The long press that arms a touch drag is also the gesture iOS/Android
-    // use for the context menu / selection callout.
-    if (armed) e.preventDefault();
-  }
 
   // --- keyboard focus restore (see pendingReorderFocus above) ---------------
   // AFTER the wiring loop, never before it: the loop is what puts `tabindex`
@@ -3159,13 +3185,21 @@ function resolveSubscriberLabel(item, channelName) {
   return `${getMockSubCount(channelName)} subscribers`;
 }
 
+// UI pass D8.1: true when resolveViewCountLabel would print the MOCK (no captured
+// count), so a writer can wrap that label in `.ft-fabricated` (the era flourish).
+// The same test resolveViewCountLabel branches on - one definition of "real".
+function isFabricatedViewCount(item) {
+  const raw = item ? item.sourceViewCount : undefined;
+  return !Number.isInteger(raw) || raw < 0;
+}
+
 function resolveViewCountLabel(item, opts) {
   const detailed = !!(opts && opts.detailed);
   const raw = item ? item.sourceViewCount : undefined;
   // `Number.isInteger` rather than a truthiness test: 0 is a real view count
   // (a brand-new upload), and `count && ...` would fall it back to a fabricated
   // number that is guaranteed to be wrong.
-  if (!Number.isInteger(raw) || raw < 0) {
+  if (isFabricatedViewCount(item)) {
     return getMockViews((item && item.id) || '', (item && item.size) || 0);
   }
   const base = `${raw.toLocaleString()} view${raw === 1 ? '' : 's'}`;
@@ -3274,14 +3308,14 @@ function applyNavHighlight(pathname, search) {
   const key = activeNavItem(pathname, search);
   const bottomNav = document.getElementById('bottom-nav');
   if (bottomNav) {
-    bottomNav.querySelectorAll('.bottom-nav-item.active').forEach((el) => el.classList.remove('active'));
+    bottomNav.querySelectorAll('.bottom-nav-item.active').forEach((el) => { el.classList.remove('active'); setBottomNavItemFilled(el, false); });
     const likedItem = bottomNav.querySelector('[data-nav="liked"]');
     const barKey = bottomNavKeyForHighlight(key, !!likedItem && !likedItem.hidden);
     const item = barKey && bottomNav.querySelector('[data-nav="' + barKey + '"]');
     // Never light an item the layout has hidden (adversarial gate round 2, S4):
     // a floored/opt-in change between paints could otherwise strand `.active`
     // on a display:none node, which reads to the user as an unlit bar.
-    if (item && !item.hidden) item.classList.add('active');
+    if (item && !item.hidden) { item.classList.add('active'); setBottomNavItemFilled(item, true); }
   }
   const sidebar = document.getElementById('sidebar');
   if (sidebar) {
@@ -3436,19 +3470,10 @@ function injectSubscriptionsNavNodes() {
       // existing Settings item.
       const settingsNavItem = document.querySelector('#bottom-nav [data-nav="settings"]');
       if (settingsNavItem && settingsNavItem.parentElement) {
-        const navLink = document.createElement('a');
-        navLink.href = '/subscriptions';
-        navLink.className = 'bottom-nav-item';
-        navLink.setAttribute('data-nav', 'subscriptions');
-        // v1.339 (L2): an inline chrome-icon <svg>, not the `.icon-refresh` mask (iOS
-        // decode lag - the v1.87.1 first-paint glyph rule), matching the reserve's glyph;
-        // the tab takes its pre-paint reserve's place when the shell painted one.
-        const navIcon = chromeIconEl('refresh');
-        const navLabel = document.createElement('span');
-        navLabel.className = 'bottom-nav-label';
-        navLabel.textContent = 'Subs';
-        if (navIcon) navLink.appendChild(navIcon);
-        navLink.appendChild(navLabel);
+        // v1.339 (L2): a sprite <svg>, not the `.icon-refresh` mask (iOS decode lag - the
+        // v1.87.1 first-paint glyph rule), matching the reserve's glyph; the tab takes its
+        // pre-paint reserve's place when the shell painted one. Sweep S1: a ui-btn stack tab.
+        const navLink = bottomNavItemEl({ href: '/subscriptions', nav: 'subscriptions', icon: CHROME_ICON.refresh, label: 'Subs' });
         const navReserve = chromeReserveEl(document.getElementById('bottom-nav'), 'subscriptions');
         if (navReserve) navReserve.replaceWith(navLink);
         else settingsNavItem.insertAdjacentElement('afterend', navLink);
@@ -3457,6 +3482,7 @@ function injectSubscriptionsNavNodes() {
         // below) in case injection resolves after that already ran.
         if (activeNavItem(window.location.pathname, window.location.search) === 'subscriptions') {
           navLink.classList.add('active');
+          setBottomNavItemFilled(navLink, true);
         }
         // v1.44 T12: re-apply the user's bar layout now that this item exists.
         applyBottomNavCustomization();
@@ -3475,13 +3501,17 @@ function injectSubscriptionsNavNodes() {
 // row already exists. Inserted after Stats, before Settings, matching the
 // build-time order; the menu's delegated click handler gives it the same
 // in-app SPA navigation as the other quick links.
+let accountMenuLinksEl = null; // the built menu's link list (injectAccountMenu buildPanel)
 function ensureAccountMenuSubscriptionsRow() {
   if (typeof document === 'undefined') return;
-  const menu = document.querySelector('.account-menu-dropdown');
-  if (!menu) return;
+  // Sweep S1: the menu's link list lives in the ui.sheet panel, built on the first open and
+  // detached from the document while the sheet is closed - so it is held by reference
+  // (accountMenuLinksEl), never looked up in the document.
+  const U = typeof window !== 'undefined' ? window.ui : null;
+  const menu = accountMenuLinksEl;
+  if (!menu || !U) return;
   if (menu.querySelector('a.account-menu-item[href="/subscriptions"]')) return;
-  const subs = buildAccountMenuRow('a', 'Subscriptions', 'icon-refresh');
-  subs.href = '/subscriptions';
+  const subs = accountMenuRow(U, { href: '/subscriptions', icon: 'subscriptions', label: 'Subscriptions' });
   const stats = menu.querySelector('a.account-menu-item[href="/stats.html"]');
   const settings = menu.querySelector('a.account-menu-item[href="/setup.html"]');
   if (stats) stats.insertAdjacentElement('afterend', subs);
@@ -3547,12 +3577,16 @@ function deriveWatchPaintPlan(item, channelName) {
   if (typeof item.title === 'string' && item.title !== '') plan.title = item.title;
   if (Number.isInteger(item.sourceViewCount) || typeof item.size === 'number') {
     plan.viewsLabel = resolveViewCountLabel({ ...item, id: item.id }, { detailed: true });
+    // UI pass D8.1: the mock is a fabricated stat (the era flourish); the painter marks it.
+    plan.viewsFabricated = isFabricatedViewCount(item);
   }
   if (typeof channelName === 'string' && channelName !== '') {
     plan.channelName = channelName;
     plan.channelAvatarUrl = typeof item.channelAvatarUrl === 'string' ? item.channelAvatarUrl : '';
     // v1.54: real captured count when present, mock fallback otherwise.
     plan.subsLabel = resolveSubscriberLabel(item, channelName);
+    // UI pass D8.1: true when that label is the mock (no captured count) - resolveSubscriberLabel's own test.
+    plan.subsFabricated = !(Number.isInteger(item.sourceFollowerCount) && item.sourceFollowerCount >= 0);
   }
   if (typeof item.addedAt === 'number') plan.dateLabel = formatRelativeTime(item.addedAt);
   if (typeof item.size === 'number') plan.sizeLabel = formatFileSize(item.size);
@@ -3718,111 +3752,66 @@ function primePinnedSidebarFromCache() {
 
 // ---- v1.53: the attribution picker ------------------------------------------
 //
-// One modal, two callers (watch page single-item, folder-view bulk) -- the
-// v1.41.7 one-shared-decision-function posture. createElement/textContent
-// ONLY (target names are server-sanitized but the discipline is absolute).
-// Reuses the .modal-backdrop/.modal-content STYLE classes; behavior is fully
-// self-managed here (the v1.50.3 lesson: a shared class never implies shared
-// JS). Returns nothing; tears itself down on pick/cancel/Escape/backdrop.
+// One dialog, two callers (watch page single-item, folder-view bulk) -- the v1.41.7
+// one-shared-decision-function posture. Sweep S9: a ui.sheet of ui-rows (the channel's
+// ui.avatar, its name, where it comes from), the optional "also move" switch above them, and
+// the ui.state empty state; the sheet's Close / Esc / scrim cancel. createElement /
+// textContent ONLY (target names are server-sanitized but the discipline is absolute).
+// One pick: the first row tap closes the dialog and calls onPick once; a second tap (on any
+// row) while it closes picks nothing. Gate W6: body-mounted, so the caller wires the returned
+// dismiss to its view teardown.
 function showAttributionPicker(targets, opts, onPick) {
   if (typeof document === 'undefined') return null;
+  const U = dialogUi();
+  if (!U) return null;
   const o = opts || {};
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop attr-picker-backdrop';
-  const modal = document.createElement('div');
-  modal.className = 'modal-content attr-picker';
-  const heading = document.createElement('h3');
-  heading.textContent = o.title || 'Attribute to channel';
-  modal.appendChild(heading);
+  const body = document.createDocumentFragment();
 
   let relocateCheck = null;
   if (o.showRelocate) {
     const label = document.createElement('label');
     label.className = 'attr-picker-relocate';
+    const text = document.createElement('span');
+    text.textContent = "Also move the files into the channel's folder";
     relocateCheck = document.createElement('input');
     relocateCheck.type = 'checkbox';
+    relocateCheck.className = 'ui-switch';
+    relocateCheck.setAttribute('role', 'switch');
     relocateCheck.checked = true;
+    label.appendChild(text);
     label.appendChild(relocateCheck);
-    label.appendChild(document.createTextNode(" Also move the files into the channel's folder"));
-    modal.appendChild(label);
+    body.appendChild(label);
   }
 
-  const list = document.createElement('div');
-  list.className = 'attr-picker-list';
-  const teardown = () => {
-    document.removeEventListener('keydown', onKey, true);
-    // Gate C1 sibling-fix: animate out through the shared overlay helper,
-    // then remove -- mirroring every other .modal-backdrop creator.
-    closeOverlayThen(backdrop, 'modal-open', () => backdrop.remove());
-  };
-  const onKey = (e) => {
-    if (e.key !== 'Escape') return;
-    e.stopImmediatePropagation();
-    teardown();
-  };
+  let ctrl = null;
+  let picked = false;
+  const list = U.list({ size: 'default', media: 'avatar', label: 'Channels' });
   for (const t of (Array.isArray(targets) ? targets : [])) {
     if (!t || typeof t.channelUrl !== 'string' || typeof t.channelName !== 'string') continue;
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'attr-picker-row';
-    const avatar = document.createElement('span');
-    avatar.className = 'attr-picker-avatar';
     const source = resolveAvatarSource(t.channelName, t.channelAvatarUrl || '');
-    if (source.type === 'url') {
-      const img = document.createElement('img');
-      img.src = source.url;
-      img.alt = '';
-      img.loading = 'lazy';
-      avatar.appendChild(img);
-    } else {
-      avatar.textContent = source.glyph;
-      avatar.style.backgroundColor = source.color;
-    }
-    row.appendChild(avatar);
-    const name = document.createElement('span');
-    name.className = 'attr-picker-name';
-    name.textContent = t.channelName;
-    row.appendChild(name);
-    const tag = document.createElement('span');
-    tag.className = 'attr-picker-source';
-    tag.textContent = t.source === 'subscription' ? 'Subscribed' : 'In library';
-    row.appendChild(tag);
-    row.addEventListener('click', () => {
-      const relocate = relocateCheck ? relocateCheck.checked === true : false;
-      teardown();
-      if (typeof onPick === 'function') onPick(t, { relocate });
+    const row = U.row({
+      media: U.avatar({ name: t.channelName, url: source.type === 'url' ? source.url : null, kind: 'channel', size: 'md' }),
+      title: t.channelName,
+      meta: t.source === 'subscription' ? 'Subscribed' : 'In library',
+      onClick: () => {
+        if (picked || !ctrl || !ctrl.isOpen()) return;
+        picked = true;
+        const relocate = relocateCheck ? relocateCheck.checked === true : false;
+        ctrl.close();
+        if (typeof onPick === 'function') onPick(t, { relocate });
+      },
     });
+    row.classList.add('attr-picker-row');
     list.appendChild(row);
   }
-  if (!list.firstChild) {
-    const empty = document.createElement('div');
-    empty.className = 'attr-picker-empty';
-    empty.textContent = 'No channels to attribute to yet - subscribe to a channel first.';
-    list.appendChild(empty);
-  }
-  modal.appendChild(list);
+  if (list.firstChild) body.appendChild(list);
+  else body.appendChild(U.state({ icon: 'subscriptions', title: 'No channels to attribute to yet', body: 'Subscribe to a channel first.' }));
 
-  const cancel = document.createElement('button');
-  cancel.type = 'button';
-  cancel.className = 'btn attr-picker-cancel';
-  cancel.textContent = 'Cancel';
-  cancel.addEventListener('click', teardown);
-  modal.appendChild(cancel);
-
-  backdrop.appendChild(modal);
-  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) teardown(); });
-  document.addEventListener('keydown', onKey, true);
-  document.body.appendChild(backdrop);
-  // GATE C1 (adversarial, repro'd): without the shared reveal helper the
-  // backdrop sat at the .modal-backdrop base opacity of ZERO -- an invisible
-  // full-viewport click-eater whose invisible rows could fire a blind bulk
-  // move. Every .modal-backdrop creator calls openOverlay; this one was the
-  // sole exception (the v1.50.3 class: a shared CSS class never implies the
-  // sibling's JS reveal).
-  openOverlay(backdrop, 'modal-open');
-  // Gate W6: the picker is body-mounted, so SPA navigation never sweeps it.
-  // Callers hold this handle and wire it to their view teardown.
-  return { dismiss: teardown };
+  ctrl = U.sheet({ variant: 'dialog', title: o.title || 'Attribute to channel', content: body });
+  ctrl.open();
+  // After open(): ui.sheet sets the sheet's variant classes on open, replacing any set before.
+  ctrl.el.classList.add('attr-picker-dialog');
+  return { dismiss: () => ctrl.close() };
 }
 
 // ---- v1.51: the notification bell ------------------------------------------
@@ -3838,7 +3827,7 @@ function showAttributionPicker(targets, opts, onPick) {
 // Two-tier semantics (Dean, exec-plan decision 3): opening the panel zeroes
 // the NUMBER badge (server-persisted mark-seen); each row keeps its dot
 // until tapped (mark-read); Clear all empties the panel server-side for
-// THIS user only.
+// THIS user only (after a ui.confirm, sweep S4).
 //
 // Pure decisions extracted for node:test (no DOM), same division as every
 // injector in this file.
@@ -3863,8 +3852,9 @@ function formatNotificationBadge(count) {
 // notification row can lean on. NOTIF_ENGINE_ICON is the vendored yt-dlp mark
 // for downloader-engine rows (they have no per-item thumbnail); NOTIF_FALLBACK_ICON
 // is the FileTube logo - the guaranteed floor for a media row that never got a
-// thumbnail AND the onerror target for ANY avatar/thumb whose URL 404s, so a
+// thumbnail AND the onerror target for a thumbnail whose URL 404s, so a
 // stale/deleted image degrades to the logo instead of the browser's broken glyph.
+// (Sweep S4, D4.4: a broken AVATAR degrades to ui.avatar's monogram, never the logo.)
 const NOTIF_ENGINE_ICON = '/icons/ytdlp.svg';
 const NOTIF_FALLBACK_ICON = '/icons/icon-192.png';
 
@@ -3889,6 +3879,7 @@ function buildNotificationRowModel(row) {
       thumbnailIsIcon: true,
       timeLabel: formatRelativeTime(row.createdAt),
       unread: row.unread === true,
+      channelHref: null, // sweep S4: an engine row has no channel to open
     };
   }
   const channelName = displayChannelName(typeof row.channelName === 'string' ? row.channelName.trim() : ''); // v1.114 A2: "@handle" -> name
@@ -3938,6 +3929,47 @@ function buildNotificationRowModel(row) {
     durationSec: Number(row.durationSec) > 0 ? Number(row.durationSec) : 0,
     timeLabel: formatRelativeTime(row.createdAt),
     unread: row.unread === true,
+    // Sweep S4 (D8.3): the row menu's "Open channel" - a media row opens its folder's
+    // channel page (the card byline's own `/?folder=` href, main.js), a podcast row its
+    // show (podcasts.js reads ?show=). The API row is unchanged: the show id is read back
+    // from the server's `/podcastart/<subId>` art URL. null = no channel to open.
+    channelHref: isPodcast ? notifShowHref(row.artUrl) : (folderName ? `/?folder=${encodeURIComponent(folderName)}` : null),
+  };
+}
+
+// Sweep S4: `/podcastart/<encoded subId>` (lib/notifications/routes.js) -> the show page.
+function notifShowHref(artUrl) {
+  const m = typeof artUrl === 'string' ? /^\/podcastart\/([^/?#]+)$/.exec(artUrl) : null;
+  if (!m) return null;
+  let id;
+  try { id = decodeURIComponent(m[1]); } catch (_) { return null; }
+  return id ? `/podcasts?show=${encodeURIComponent(id)}` : null;
+}
+
+// Sweep S4 (D8.3, Dean: "Notification delete leaves the row"): the row menu - reached by
+// the trailing kebab, a long-press and a desktop right-click - in this order: Open channel
+// (when the row has one), Dismiss (every row), Delete file (MEDIA rows only: a podcast
+// episode or an engine event is not a /api/videos item). Pure, exported for tests.
+function buildNotificationMenuItems(m) {
+  if (!m) return [];
+  const items = [];
+  if (m.channelHref) items.push({ value: 'channel', icon: 'open_in_new', label: m.kind === 'podcast' ? 'Open show' : 'Open channel' });
+  items.push({ value: 'dismiss', icon: 'close', label: 'Dismiss' });
+  if (m.kind === 'media') items.push({ value: 'delete', icon: 'delete', label: 'Delete file', danger: true });
+  return items;
+}
+
+// The delete confirm's copy says what the ONE delete path does: DELETE /api/videos/:id
+// moves the file to Trash (lib/media/routes.js, the v1.65 trash move; the card menu's
+// wording, main.js cardDeleteConfirmCopy) - never "permanently". Pure, exported.
+function notifDeleteConfirmCopy(m) {
+  const title = m && typeof m.title === 'string' && m.title !== '' ? m.title : 'This file';
+  return {
+    title: 'Move to Trash?',
+    body: '"' + title + '" leaves your library now. It stays in Trash, where you can restore it from Settings, until the Trash retention window empties it.',
+    confirmLabel: 'Move to Trash',
+    cancelLabel: 'Cancel',
+    danger: true,
   };
 }
 
@@ -3976,13 +4008,17 @@ function injectNotificationBellIfEnabled() {
   const queueEl = () => document.getElementById('queue-btn') || chromeReserveEl(headerRight, 'queue');
   const afterQueue = () => { const q = queueEl(); return q && q.parentNode === headerRight ? q.nextSibling : headerRight.firstChild; };
   if (bellWasEnabled && !document.getElementById('notif-bell-placeholder')) {
+    // Sweep S1: the real bell's ui-btn box, a shimmer disc in its icon slot.
     const ph = document.createElement('span');
     ph.id = 'notif-bell-placeholder';
-    ph.className = 'notif-bell-btn';
+    ph.className = 'ui-btn ui-btn--plain ui-btn--md ui-btn--icon notif-bell-btn';
     ph.setAttribute('aria-hidden', 'true');
+    const slot = document.createElement('span');
+    slot.className = 'ui-btn__icon';
     const disc = document.createElement('span');
     disc.className = 'notif-bell-skel skeleton-shimmer';
-    ph.appendChild(disc);
+    slot.appendChild(disc);
+    ph.appendChild(slot);
     headerRight.insertBefore(ph, afterQueue());
   }
 
@@ -3999,66 +4035,75 @@ function injectNotificationBellIfEnabled() {
       // real bell takes its exact place below (v1.339 L2: replaceWith, not a re-insert at
       // firstChild, so the row never re-orders or re-spaces).
       if (!probe || notificationBellAlreadyInjected()) { removeBellPlaceholder(); return; } // (the second arm: the async double-inject window)
+      // Sweep S4: the panel is a ui.sheet; ui.js loads before common.js on every shell (step 4).
+      const U = typeof window !== 'undefined' ? window.ui : null;
+      if (!U || typeof U.sheet !== 'function') { removeBellPlaceholder(); return; }
       try { localStorage.setItem(NOTIF_BELL_ENABLED_KEY, '1'); } catch (_) { /* private mode */ }
 
       // ---- bell button + badge bubble (createElement/textContent only) ----
-      const bellBtn = document.createElement('button');
+      // Sweep S1 (F31): a plain ui-btn icon button, the shared bell (v1.340) from the sprite.
+      const bellBtn = chromeButtonEl({ cls: 'notif-bell-btn', icon: CHROME_ICON.bell, ariaLabel: 'Notifications' });
       bellBtn.id = 'notif-bell-btn';
-      bellBtn.className = 'notif-bell-btn';
-      bellBtn.setAttribute('aria-label', 'Notifications');
       bellBtn.setAttribute('aria-haspopup', 'true');
       bellBtn.setAttribute('aria-expanded', 'false');
-      // Inline SVG (currentColor) rather than an icon-font class: the era
-      // icon sets have no bell glyph, and adding one per set is a bigger
-      // change than the bell warrants. viewBox path = a plain outline bell.
-      const svgNs = 'http://www.w3.org/2000/svg';
-      const svg = document.createElementNS(svgNs, 'svg');
-      svg.setAttribute('viewBox', '0 0 24 24');
-      svg.setAttribute('width', '22');
-      svg.setAttribute('height', '22');
-      svg.setAttribute('aria-hidden', 'true');
-      const bellPath = document.createElementNS(svgNs, 'path');
-      bellPath.setAttribute('d', CHROME_ICON_SVG.bell.d); // the shared bell (v1.340)
-      bellPath.setAttribute('fill', 'currentColor');
-      svg.appendChild(bellPath);
-      bellBtn.appendChild(svg);
       const badge = document.createElement('span');
       badge.id = 'notif-bell-badge';
-      badge.className = 'notif-bell-badge';
+      badge.className = 'ui-chip ui-chip--count notif-bell-badge';
       badge.hidden = true;
       bellBtn.appendChild(badge);
       const bellPlaceholder = document.getElementById('notif-bell-placeholder');
       if (bellPlaceholder && bellPlaceholder.parentNode === headerRight) bellPlaceholder.replaceWith(bellBtn);
       else { removeBellPlaceholder(); headerRight.insertBefore(bellBtn, afterQueue()); }
 
-      // ---- panel + (mobile) backdrop, body-mounted like the one-off modal --
-      const backdrop = document.createElement('div');
-      backdrop.id = 'notif-panel-backdrop';
-      backdrop.className = 'notif-panel-backdrop';
-      backdrop.hidden = true;
-      const panel = document.createElement('div');
-      panel.id = 'notif-panel';
-      panel.className = 'notif-panel';
-      panel.hidden = true;
-      panel.setAttribute('role', 'dialog');
-      panel.setAttribute('aria-label', 'Notifications');
-      const head = document.createElement('div');
-      head.className = 'notif-panel-header';
-      const heading = document.createElement('span');
-      heading.textContent = 'Notifications';
-      const clearBtn = document.createElement('button');
+      // ---- the panel: ONE ui.sheet (sweep S4, D4.6 / D8.3) ------------------------
+      // A popover under the bell on desktop, a bottom sheet on the phone (variant 'auto').
+      // The sheet owns the scrim (a tap outside closes), Esc (the topmost overlay only),
+      // the body lock and focus return, and applies its open class under Reduce Motion too
+      // (F48). Rows are ui-rows in ONE ui-list whose columns are reserved on every row
+      // (AC5, F28): the unread dot (lead), the avatar (media), the text (body), the
+      // thumbnail (aside) and ONE trailing kebab (actions). The v1.68 X and the v1.161
+      // in-row two-tap delete are gone: Dismiss and Delete file live in the row menu (the
+      // kebab, a long-press, a desktop right-click) and behind a swipe left.
+      const content = document.createElement('div');
+      content.className = 'notif-sheet';
+      const tools = document.createElement('div');
+      tools.className = 'notif-sheet__tools';
+      const clearBtn = U.button({ variant: 'plain', size: 'sm', label: 'Clear all', doc: document });
       clearBtn.id = 'notif-clear-btn';
-      clearBtn.className = 'notif-clear-btn';
-      clearBtn.textContent = 'Clear all';
-      head.appendChild(heading);
-      head.appendChild(clearBtn);
-      panel.appendChild(head);
-      const list = document.createElement('div');
+      tools.appendChild(clearBtn);
+      const list = U.list({ size: 'media', lead: true, media: 'avatar', aside: 'thumb', actions: 1, divider: 'inset', label: 'Notifications', doc: document });
       list.id = 'notif-panel-list';
-      list.className = 'notif-panel-list';
-      panel.appendChild(list);
-      document.body.appendChild(backdrop);
-      document.body.appendChild(panel);
+      const stateHost = document.createElement('div');
+      stateHost.className = 'notif-sheet__state';
+      content.appendChild(tools);
+      content.appendChild(list);
+      content.appendChild(stateHost);
+
+      // Per-open lifetime: every menu and confirm the panel opens takes this signal, so the
+      // panel closing (Esc, the scrim, a row tap, a back navigation, the feature switching
+      // off) closes them too - a confirm can never outlive the panel and answer later.
+      let openCtl = null;
+      // Every row's gesture handles (its swipe controller, its action-menu trigger), torn
+      // down on every re-render and on close so nothing outlives its row.
+      let rowHandles = [];
+      const dropHandle = (h) => {
+        try { if (h.swipe) h.swipe.destroy(); } catch (_) { /* already gone */ }
+        try { if (h.offMenu) h.offMenu(); } catch (_) { /* already gone */ }
+      };
+      const teardownRows = () => {
+        const hs = rowHandles;
+        rowHandles = [];
+        hs.forEach(dropHandle);
+      };
+      const sheet = U.sheet({
+        variant: 'auto', anchor: bellBtn, title: 'Notifications', content, doc: document,
+        onClosing: () => {
+          bellBtn.setAttribute('aria-expanded', 'false');
+          if (openCtl) { openCtl.abort(); openCtl = null; }
+        },
+      });
+      sheet.el.id = 'notif-panel'; // an id: ui.sheet rewrites className on every open
+      const panelOpen = () => sheet.isOpen();
 
       const setBadge = (count) => {
         const label = formatNotificationBadge(count);
@@ -4067,167 +4112,186 @@ function injectNotificationBellIfEnabled() {
       };
       setBadge(probe.count);
 
-      const renderEmpty = (text) => {
+      // One state at a time: the rows, a skeleton, or a ui.state (empty / error).
+      const showState = (node) => {
+        teardownRows();
         list.textContent = '';
-        const empty = document.createElement('div');
-        empty.className = 'notif-empty';
-        empty.textContent = text;
-        list.appendChild(empty);
+        stateHost.textContent = '';
+        list.hidden = !!node;
+        tools.hidden = true;
+        if (node) stateHost.appendChild(node);
+      };
+      const renderEmpty = () => showState(U.state({ icon: 'notifications', title: 'No notifications yet', body: 'New downloads land here.', doc: document }));
+      const renderError = () => showState(U.state({ icon: 'error', title: 'Could not load notifications', action: { label: 'Try again', onClick: () => loadRows() }, doc: document }));
+      // D9: the loading skeleton is the REAL row grid (same list, same slots), so the rows
+      // replace it without moving a column.
+      const renderSkeleton = () => {
+        showState(null);
+        for (let i = 0; i < 3; i++) {
+          const media = document.createElement('span');
+          media.className = 'ui-avatar ui-avatar--md skeleton-shimmer';
+          const title = document.createElement('span');
+          title.className = 'skeleton-text skeleton-text-long skeleton-shimmer';
+          title.textContent = ' ';
+          const meta = document.createElement('span');
+          meta.className = 'skeleton-text skeleton-text-mid skeleton-shimmer';
+          meta.textContent = ' ';
+          const thumb = U.thumb({ context: 'row', doc: document });
+          thumb.classList.add('skeleton-shimmer');
+          const row = U.row({ size: 'media', media, title, meta, aside: thumb, actions: [null], doc: document });
+          row.setAttribute('aria-hidden', 'true');
+          list.appendChild(row);
+        }
       };
 
-      // v1.161 (Dean): shared row teardown - drop the wrap, keep keyboard focus in
-      // the list (the next row's dismiss/delete, else the bell), surface the empty
-      // state when the last row goes, and reconcile the badge from the SERVER truth
-      // (never arithmetic on a stale count; same panel-open suppression the poll
-      // uses). Used by BOTH the dismiss X and the v1.161 delete button so the two
-      // removal paths can never drift.
-      const removeNotifRowReconcile = (wrap) => {
-        const wraps = Array.from(list.querySelectorAll('.notif-row-wrap'));
-        const idx = wraps.indexOf(wrap);
-        const nextWrap = wraps[idx + 1] || wraps[idx - 1] || null;
-        wrap.remove();
-        const nextFocus = (nextWrap && (nextWrap.querySelector('.notif-row-dismiss') || nextWrap.querySelector('.notif-row-delete'))) || bellBtn;
-        if (nextFocus && document.activeElement === document.body) nextFocus.focus();
-        if (!list.querySelector('.notif-row')) {
-          renderEmpty('No notifications yet. New downloads land here.');
-        }
+      // v1.161 (Dean): shared row teardown - drop the row, keep keyboard focus in the list
+      // (the next row's kebab, else the bell), show the empty state when the last row
+      // goes, and reconcile the badge from the SERVER truth (never arithmetic on a stale
+      // count; same panel-open suppression the poll uses). Dismiss and delete both use it.
+      const removeNotifRowReconcile = (row) => {
+        const rows = Array.from(list.querySelectorAll('.ui-row[data-notif-id]'));
+        const idx = rows.indexOf(row);
+        const next = rows[idx + 1] || rows[idx - 1] || null;
+        const h = rowHandles.find((x) => x.row === row);
+        if (h) { rowHandles = rowHandles.filter((x) => x !== h); dropHandle(h); }
+        row.remove();
+        const nextFocus = (next && next.querySelector('.notif-more')) || bellBtn;
+        if (nextFocus && (!document.activeElement || document.activeElement === document.body || !document.activeElement.isConnected)) nextFocus.focus();
+        if (!list.querySelector('.ui-row[data-notif-id]')) renderEmpty();
         return fetch('/api/notifications/badge')
           .then((r) => (r.ok ? r.json() : null))
-          .then((b) => { if (b && panel.hidden) setBadge(b.count); })
+          .then((b) => { if (b && !panelOpen()) setBadge(b.count); })
           .catch(() => { /* cosmetic - next open reconciles */ });
       };
 
-      const renderRows = (rows) => {
-        list.textContent = '';
-        // v1.161: at most ONE delete button armed at a time (the card-delete UX).
-        // Render-local: rebuilt fresh every render, so a reopen never inherits a
-        // "hot" armed button (the v1.159 Trash-arm class).
-        let armedNotifDelete = null;
-        const models = rows.map(buildNotificationRowModel).filter(Boolean);
-        if (models.length === 0) {
-          renderEmpty('No notifications yet. New downloads land here.');
-          return;
-        }
-        for (const m of models) {
-          const a = document.createElement('a');
-          a.className = m.unread ? 'notif-row notif-row-unread' : 'notif-row';
-          a.href = m.href;
-          // Avatar: captured URL wins, else the generated first-letter tile
-          // (the resolveAvatarSource precedence, applied with the same
-          // createElement discipline as watch.js's applyAvatarToElement).
-          const avatarHolder = document.createElement('span');
-          avatarHolder.className = 'notif-row-avatar';
-          const source = resolveAvatarSource(m.channelLabel, m.channelAvatarUrl);
-          if (source.type === 'url') {
-            const img = document.createElement('img');
-            img.alt = '';
-            img.loading = 'lazy';
-            // v1.288 net: a stale/404 avatar URL degrades to the FileTube logo
-            // (contain-fit) instead of the browser's broken-image glyph. Null the
-            // handler first so a failing fallback can never loop.
-            img.onerror = function () {
-              this.onerror = null;
-              this.src = NOTIF_FALLBACK_ICON;
-              this.classList.add('notif-row-avatar-fallback');
-            };
-            img.src = source.url;
-            avatarHolder.appendChild(img);
-          } else {
-            avatarHolder.textContent = source.glyph;
-            avatarHolder.style.backgroundColor = source.color;
-            avatarHolder.classList.add('notif-row-avatar-generated');
-          }
-          a.appendChild(avatarHolder);
-          const text = document.createElement('span');
-          text.className = 'notif-row-text';
-          const channel = document.createElement('span');
-          channel.className = 'notif-row-channel';
-          channel.textContent = m.channelLabel;
-          const title = document.createElement('span');
-          title.className = 'notif-row-title';
-          title.textContent = m.title;
-          const time = document.createElement('span');
-          time.className = 'notif-row-time';
-          time.textContent = m.timeLabel;
-          text.appendChild(channel);
-          text.appendChild(title);
-          text.appendChild(time);
-          a.appendChild(text);
-          if (m.thumbnailUrl) {
-            // v1.208 (Dean): wrap the thumb so a small duration badge can sit in
-            // its bottom-right corner (the .duration-badge system, scaled down),
-            // to triage length before deleting. The wrapper owns the flex sizing;
-            // the img keeps its 72x40 box.
-            const wrap = document.createElement('div');
-            wrap.className = 'notif-row-thumb-wrap';
-            const thumb = document.createElement('img');
-            thumb.className = m.thumbnailIsIcon ? 'notif-row-thumb notif-row-thumb-icon' : 'notif-row-thumb';
-            thumb.alt = '';
-            thumb.loading = 'lazy';
-            // v1.288 net: a deleted/404 thumbnail degrades to the FileTube logo
-            // (icon-fit) and drops its duration badge, rather than showing a
-            // broken-image glyph. Null the handler first so it can never loop.
-            thumb.onerror = function () {
-              this.onerror = null;
-              this.src = NOTIF_FALLBACK_ICON;
-              this.classList.add('notif-row-thumb-icon');
-              const b = wrap.querySelector('.duration-badge');
-              if (b) b.remove();
-            };
-            thumb.src = m.thumbnailUrl;
-            wrap.appendChild(thumb);
-            // A duration badge belongs only on a real photographic thumbnail - never
-            // on a logo/icon fallback (nothing to triage there).
-            if (!m.thumbnailIsIcon && m.durationSec > 0 && typeof formatDuration === 'function') {
-              const badge = document.createElement('div');
-              badge.className = 'duration-badge';
-              badge.textContent = formatDuration(m.durationSec);
-              wrap.appendChild(badge);
-            }
-            a.appendChild(wrap);
-          }
-          const dot = document.createElement('span');
-          dot.className = 'notif-row-dot';
-          a.appendChild(dot);
-          // v1.68 (Dean ruling 3): the per-row dismiss X. A SIBLING of the
-          // row anchor inside a flex wrap - a <button> can never nest in an
-          // <a> (the card-corner rule). NON-OPTIMISTIC (v1.54 law): the row
-          // leaves only on a confirmed 2xx; failure re-enables for retry.
-          const wrap = document.createElement('div');
-          wrap.className = 'notif-row-wrap';
-          const dismissBtn = document.createElement('button');
-          dismissBtn.type = 'button';
-          dismissBtn.className = 'notif-row-dismiss';
-          dismissBtn.setAttribute('aria-label', 'Dismiss this notification');
-          dismissBtn.title = 'Dismiss';
-          dismissBtn.textContent = '×';
-          dismissBtn.addEventListener('click', () => {
-            if (dismissBtn.disabled) return;
-            dismissBtn.disabled = true;
-            fetch('/api/notifications/dismiss', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: m.id }),
-            })
-              .then((res) => {
-                if (!res.ok) throw new Error(`dismiss failed: ${res.status}`);
-                // v1.161: the removal + focus-keep + empty-state + badge-reconcile
-                // (server truth, not stale arithmetic) is the shared helper the
-                // delete button also uses.
-                return removeNotifRowReconcile(wrap);
+      // window.showToast, not the bare binding (the watch.js share pattern): present in the
+      // browser, absent under the jsdom harness so a failure-path toast's auto-dismiss timer
+      // never outlives a test's document.
+      const showToastSafe = (msg) => {
+        if (typeof window !== 'undefined' && typeof window.showToast === 'function') window.showToast(msg);
+      };
+
+      // Rows with a request in flight (a dismiss or a delete): every other path on that row
+      // is a no-op until it settles.
+      const busyRows = new WeakSet();
+
+      // DISMISS - not destructive (D4.8): no confirm. NON-OPTIMISTIC (v1.54 law): the row
+      // leaves only on a confirmed 2xx; a failure keeps it and allows a retry.
+      const dismissRow = (m, row) => {
+        if (busyRows.has(row) || !row.isConnected) return;
+        busyRows.add(row);
+        fetch('/api/notifications/dismiss', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: m.id }),
+        })
+          .then((res) => {
+            if (!res.ok) throw new Error(`dismiss failed: ${res.status}`);
+            return removeNotifRowReconcile(row);
+          })
+          .catch(() => {
+            busyRows.delete(row);
+            showToastSafe('Could not dismiss the notification.');
+          });
+      };
+
+      // DELETE FILE - DESTRUCTIVE (D8.3, full gate). Every path (the menu item, the swipe's
+      // Delete button) lands here, and NOTHING reaches the delete request unless ui.confirm
+      // resolved exactly `true`: Cancel, Esc, the scrim, Close, the panel closing (the
+      // signal) and a late tap on a closing dialog all resolve false. One confirm at a time
+      // for the whole panel; a row with a request in flight asks nothing. The request is
+      // the SAME one the v1.161 button sent: DELETE /api/videos/:id (-> Trash, recoverable),
+      // then a best-effort dismiss of the row's notification.
+      let confirmOpen = false;
+      const requestDelete = (m, row) => {
+        if (m.kind !== 'media') return; // a podcast/engine id is not a /api/videos item
+        if (confirmOpen || busyRows.has(row) || !row.isConnected || !openCtl) return;
+        const signal = openCtl.signal;
+        confirmOpen = true;
+        U.confirm(Object.assign(notifDeleteConfirmCopy(m), { signal, doc: document }))
+          .then((ok) => {
+            confirmOpen = false;
+            if (ok !== true) return;
+            if (signal.aborted || !row.isConnected || busyRows.has(row)) return;
+            busyRows.add(row);
+            fetch('/api/videos/' + encodeURIComponent(m.mediaId), { method: 'DELETE' })
+              .then((res) => (res.ok ? res.json().catch(() => ({})) : Promise.reject(new Error(`delete failed: ${res.status}`))))
+              .then((data) => {
+                // The video is gone -> best-effort dismiss its notification server-side so
+                // it does not reappear pointing at a trashed video (a failed dismiss
+                // self-heals on the next manual one - the video is safely in Trash either
+                // way), then drop the row + reconcile the badge.
+                fetch('/api/notifications/dismiss', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ id: m.id }),
+                }).catch(() => { /* cosmetic - the row is already gone client-side */ });
+                if (typeof deleteResultToast === 'function') showToastSafe(deleteResultToast(data));
+                return removeNotifRowReconcile(row);
               })
               .catch(() => {
-                dismissBtn.disabled = false;
-                // window.showToast, not the bare binding (the watch.js share
-                // pattern): present in the browser, absent under the jsdom
-                // harness so a failure-path toast's auto-dismiss timer never
-                // outlives a test's document.
-                if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
-                  window.showToast('Could not dismiss the notification.');
-                }
+                busyRows.delete(row); // non-optimistic: a failure keeps the row for a retry
+                showToastSafe('Could not delete the video.');
               });
           });
-          a.addEventListener('click', () => {
+      };
+
+      const openChannel = (m) => {
+        if (!m.channelHref) return;
+        closePanel();
+        const nav = window.FileTube && typeof window.FileTube.navigate === 'function' ? window.FileTube.navigate : null;
+        if (nav) nav(m.channelHref);
+        else window.location.href = m.channelHref;
+      };
+
+      // The row menu (kebab / long-press / right-click): one ui.menu, anchored at the kebab.
+      const openRowMenu = (m, row, anchor) => {
+        if (!openCtl || !row.isConnected) return;
+        U.menu({
+          title: m.title || 'Notification', anchor, signal: openCtl.signal, doc: document,
+          items: buildNotificationMenuItems(m),
+          onSelect: (v) => {
+            if (v === 'channel') openChannel(m);
+            else if (v === 'dismiss') dismissRow(m, row);
+            else if (v === 'delete') requestDelete(m, row);
+          },
+        });
+      };
+
+      // One row: returns the node to place in the list (the swipe wrapper, or the row).
+      const buildRow = (m) => {
+        // Media column (D4.4): the channel's photo, a podcast's ARTWORK (a rounded ui-art),
+        // else the monogram - never the logo, never a broken image.
+        const avatar = U.avatar({ name: m.channelLabel, url: m.channelAvatarUrl || null, kind: m.kind === 'podcast' ? 'podcast' : 'channel', size: 'md', doc: document });
+        // Aside column: the thumbnail, reserved on every row. A logo thumb (the yt-dlp mark,
+        // the FileTube floor) is contained, never cropped, and hangs no duration badge.
+        const thumb = U.thumb({ src: m.thumbnailUrl, context: 'row', duration: (!m.thumbnailIsIcon && m.durationSec > 0) ? m.durationSec : 0, doc: document });
+        const img = thumb.querySelector('.ui-thumb__img');
+        if (img && m.thumbnailIsIcon) img.classList.add('notif-thumb-icon');
+        // v1.288 net (Dean's "nothing iconless" rule): a 404 thumbnail becomes the FileTube
+        // logo, contained, and drops its duration badge. ui.thumb has already removed the
+        // broken image; the logo is a fresh image with no handler, so it can never loop.
+        if (img && !m.thumbnailIsIcon) {
+          img.addEventListener('error', () => {
+            const b = thumb.querySelector('.ui-thumb__duration');
+            if (b) b.remove();
+            if (thumb.querySelector('.notif-thumb-icon')) return;
+            const logo = document.createElement('img');
+            logo.className = 'ui-thumb__img notif-thumb-icon';
+            logo.alt = '';
+            logo.src = NOTIF_FALLBACK_ICON;
+            thumb.appendChild(logo);
+          });
+        }
+        const kebab = U.button({ variant: 'plain', shape: 'icon', icon: 'more_vert', ariaLabel: 'More actions', doc: document });
+        kebab.classList.add('notif-more');
+        const time = document.createElement('span');
+        time.className = 'notif-row-time';
+        time.textContent = m.timeLabel;
+        const row = U.row({
+          size: 'media', lead: m.unread ? 'dot' : null, media: avatar, overline: m.channelLabel,
+          title: m.title || 'Notification', meta: time, aside: thumb, actions: [kebab], href: m.href, doc: document,
+          onClick: () => {
             // v1.52: partial seed -- the row model has title/channel/avatar/
             // thumbnail in hand; the watch painter fills these in frame one
             // and skeletons the rest until hydration.
@@ -4257,148 +4321,96 @@ function injectNotificationBellIfEnabled() {
               body: JSON.stringify({ id: m.id }),
               keepalive: true,
             }).catch(() => { /* cosmetic -- the dot returns next open */ });
-            a.classList.remove('notif-row-unread');
+            const dot = row.querySelector('.ui-row__dot');
+            if (dot) dot.remove();
             closePanel();
-          });
-          // v1.161 (Dean): a per-VIDEO delete button - a SIBLING of the anchor
-          // (never nested in the <a>), so a tap on it can NEVER navigate to the
-          // video; no stopPropagation, so the delegated SPA router is untouched
-          // (the v1.153 scar). Two-tap arm (the pure nextArmState reducer), same
-          // DELETE /api/videos/:id -> Trash flow a card uses (recoverable),
-          // NON-OPTIMISTIC (v1.54 law): the row leaves only on a confirmed 2xx.
-          // MEDIA rows only - an 'engine' id is synthetic and a 'podcast' row is
-          // not a /api/videos item; both keep just the dismiss X.
-          let deleteBtn = null;
-          if (m.kind === 'media') {
-            deleteBtn = document.createElement('button');
-            deleteBtn.type = 'button';
-            deleteBtn.className = 'notif-row-delete';
-            deleteBtn.setAttribute('aria-label', 'Delete this video');
-            deleteBtn.title = 'Delete video';
-            const delIcon = document.createElement('i');
-            delIcon.className = 'icon-delete';
-            const delConfirm = document.createElement('span');
-            delConfirm.className = 'notif-row-delete-confirm';
-            delConfirm.textContent = 'Sure?';
-            deleteBtn.appendChild(delIcon);
-            deleteBtn.appendChild(delConfirm);
-            let armState = 'idle';
-            let armTimer = null;
-            const disarm = () => {
-              armState = 'idle';
-              deleteBtn.classList.remove('notif-row-delete-armed');
-              if (armTimer) { clearTimeout(armTimer); armTimer = null; }
-              if (armedNotifDelete === deleteBtn) armedNotifDelete = null;
-            };
-            deleteBtn._disarm = disarm; // a sibling arming disarms this one
-            deleteBtn.addEventListener('click', () => {
-              if (deleteBtn.disabled) return;
-              const next = nextArmState(armState, 'tap');
-              armState = next.state;
-              if (!next.deleted) {
-                // first tap: arm THIS, disarm any other (one armed at a time).
-                if (armedNotifDelete && armedNotifDelete !== deleteBtn && typeof armedNotifDelete._disarm === 'function') {
-                  armedNotifDelete._disarm();
-                }
-                armedNotifDelete = deleteBtn;
-                deleteBtn.classList.add('notif-row-delete-armed');
-                if (armTimer) clearTimeout(armTimer);
-                armTimer = setTimeout(disarm, 3000); // auto-disarm, like a card
-                return;
-              }
-              // second tap on the SAME armed button: DELETE -> Trash.
-              disarm();
-              deleteBtn.disabled = true;
-              fetch('/api/videos/' + encodeURIComponent(m.mediaId), { method: 'DELETE' })
-                .then((res) => (res.ok ? res.json().catch(() => ({})) : Promise.reject(new Error(`delete failed: ${res.status}`))))
-                .then((data) => {
-                  // The video is gone -> best-effort dismiss its notification
-                  // server-side so it does not reappear pointing at a trashed
-                  // video (a failed dismiss self-heals on the next manual one - the
-                  // video is safely in Trash either way), then drop the row +
-                  // reconcile the badge.
-                  fetch('/api/notifications/dismiss', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: m.id }),
-                  }).catch(() => { /* cosmetic - the row is already gone client-side */ });
-                  if (typeof window !== 'undefined' && typeof window.showToast === 'function' && typeof deleteResultToast === 'function') {
-                    window.showToast(deleteResultToast(data));
-                  }
-                  return removeNotifRowReconcile(wrap);
-                })
-                .catch(() => {
-                  deleteBtn.disabled = false; // non-optimistic: failure re-enables for retry
-                  if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
-                    window.showToast('Could not delete the video.');
-                  }
-                });
-            });
-          }
-          wrap.appendChild(a);
-          if (deleteBtn) wrap.appendChild(deleteBtn); // left of the dismiss X
-          wrap.appendChild(dismissBtn);
-          list.appendChild(wrap);
-        }
+          },
+        });
+        row.setAttribute('data-notif-id', String(m.id));
+        row.setAttribute('data-kind', m.kind);
+        kebab.addEventListener('click', () => openRowMenu(m, row, kebab));
+        const h = { row, swipe: null, offMenu: null };
+        rowHandles.push(h);
+        const FI = typeof window !== 'undefined' ? window.FTInteraction : null;
+        if (!FI) return row;
+        h.offMenu = FI.onActionMenu(row, () => openRowMenu(m, row, kebab));
+        // Swipe left: Dismiss (neutral) and, on a media row, Delete (danger). A full swipe
+        // past 60% DISMISSES - swipeRow refuses a danger full-swipe at setup - and the
+        // Delete button only ever opens the confirm (requestDelete).
+        const actions = [{ id: 'dismiss', label: 'Dismiss', kind: 'neutral', onSelect: () => dismissRow(m, row) }];
+        if (m.kind === 'media') actions.push({ id: 'delete', label: 'Delete', kind: 'danger', onSelect: () => requestDelete(m, row) });
+        h.swipe = FI.swipeRow(row, { fullSwipe: 'dismiss', actions });
+        return row.parentNode; // the parentless row now sits in its .ui-swipe wrapper
       };
 
-      const openPanel = () => {
-        if (!panel.hidden) return;
-        bellBtn.setAttribute('aria-expanded', 'true');
-        openOverlay(backdrop, 'notif-open');
-        openOverlay(panel, 'notif-open');
-        renderEmpty('Loading…');
+      const renderRows = (rows) => {
+        const models = rows.map(buildNotificationRowModel).filter(Boolean);
+        if (models.length === 0) { renderEmpty(); return; }
+        showState(null);
+        tools.hidden = false;
+        for (const m of models) list.appendChild(buildRow(m));
+      };
+
+      let loadSeq = 0;
+      function loadRows() {
+        const seq = ++loadSeq;
+        renderSkeleton();
         fetch('/api/notifications')
           .then((res) => (res.ok ? res.json() : Promise.reject(new Error('unavailable'))))
           .then((body) => {
+            if (seq !== loadSeq || !panelOpen()) return;
             renderRows(Array.isArray(body.items) ? body.items : []);
             // Opening the panel = seen (two-tier decision 3): number badge
             // zeroes now; the per-row dots just rendered stay until tapped.
             setBadge(0);
             return fetch('/api/notifications/seen', { method: 'POST' });
           })
-          .catch(() => renderEmpty('Could not load notifications.'));
+          .catch(() => { if (seq === loadSeq && panelOpen()) renderError(); });
+      }
+
+      const openPanel = () => {
+        if (panelOpen()) return;
+        openCtl = new AbortController();
+        confirmOpen = false;
+        bellBtn.setAttribute('aria-expanded', 'true');
+        sheet.open();
+        loadRows();
       };
-      const closePanel = () => {
-        if (panel.hidden) return;
-        bellBtn.setAttribute('aria-expanded', 'false');
-        closeOverlayThen(backdrop, 'notif-open', () => { backdrop.hidden = true; });
-        closeOverlayThen(panel, 'notif-open', () => { panel.hidden = true; });
-      };
+      function closePanel() {
+        if (!panelOpen()) return;
+        sheet.close(); // onClosing aborts openCtl: its menus and confirms close with it
+      }
 
       bellBtn.addEventListener('click', () => {
-        if (panel.hidden) openPanel();
-        else closePanel();
+        if (panelOpen()) closePanel();
+        else openPanel();
       });
+      // Clear all hides every row for THIS user (a bulk dismiss, server-side): it asks
+      // first (D4.8), then POSTs the same /api/notifications/clear as before, and empties
+      // the list only on a confirmed 2xx.
+      let clearing = false;
       clearBtn.addEventListener('click', () => {
-        fetch('/api/notifications/clear', { method: 'POST' })
-          .then(() => {
-            renderEmpty('No notifications yet. New downloads land here.');
-            setBadge(0);
-          })
-          .catch(() => { /* panel keeps its rows; next open re-syncs */ });
+        if (clearing || confirmOpen || !openCtl) return;
+        const signal = openCtl.signal;
+        clearing = true;
+        confirmOpen = true;
+        U.confirm({ title: 'Clear all notifications?', body: 'Every notification leaves this list. Your videos and episodes stay in your library.', confirmLabel: 'Clear all', danger: true, signal, doc: document })
+          .then((ok) => {
+            confirmOpen = false;
+            if (ok !== true || signal.aborted) { clearing = false; return null; }
+            return fetch('/api/notifications/clear', { method: 'POST' })
+              .then((res) => {
+                if (!res.ok) throw new Error(`clear failed: ${res.status}`);
+                renderEmpty();
+                setBadge(0);
+              })
+              .catch(() => showToastSafe('Could not clear the notifications.'))
+              .then(() => { clearing = false; });
+          });
       });
-      backdrop.addEventListener('click', closePanel);
-
-      // Outside-close on click + pointerdown + touchstart (iOS does not
-      // synthesize `click` on the gesture layer -- the player-menu lesson,
-      // public/js/player.js). Cheap no-op while closed.
-      const closeOnOutside = (e) => {
-        if (panel.hidden) return;
-        if (panel.contains(e.target) || bellBtn.contains(e.target)) return;
-        closePanel();
-      };
-      document.addEventListener('click', closeOnOutside);
-      document.addEventListener('pointerdown', closeOnOutside);
-      document.addEventListener('touchstart', closeOnOutside, { passive: true });
-      // Escape on the CAPTURE phase (the shortcuts-modal posture: immune to
-      // listener-registration order), stopped so page-level Escape handlers
-      // (subscribe modal, sort menu) don't also fire underneath.
-      document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape' || panel.hidden) return;
-        e.stopImmediatePropagation();
-        closePanel();
-      }, true);
+      // A back/forward navigation leaves the page the panel was opened over: close it
+      // (and, through its signal, any menu or confirm it holds).
+      window.addEventListener('popstate', closePanel);
 
       // ---- badge poll: 60s cadence, hidden-tab skip, resume on return -----
       // (the download-chip poller's shape, simplified: the badge has no
@@ -4422,7 +4434,7 @@ function injectNotificationBellIfEnabled() {
             return res.ok ? res.json() : null;
           })
           .then((body) => {
-            if (body && Number.isInteger(body.count) && panel.hidden) setBadge(body.count);
+            if (body && Number.isInteger(body.count) && !panelOpen()) setBadge(body.count);
             schedule();
           })
           .catch(() => schedule());
@@ -4468,15 +4480,15 @@ function injectNotificationBellIfEnabled() {
 //
 // YouTube-style queue ("think YouTube" - Dean): a header icon that EXISTS
 // only while the user's queue does (ruling 4), left of the notification
-// bell, opening a notif-panel-style surface: now-playing highlighted,
-// per-row remove, up/down reorder (buttons work everywhere; desktop adds
-// drag), Clear with a two-tap confirm (toast ceremony, no modal - the
-// queue is ephemeral by spirit). Server-persisted per user (ruling 6) via
+// bell, opening a ui.sheet like the bell's (sweep S4): now-playing highlighted,
+// per-row remove, up/down reorder (icon buttons on every input device; drag
+// is tech-debt #111), Clear behind a ui.confirm (sweep S4, D4.8; it was a
+// two-tap arm in the button). Server-persisted per user (ruling 6) via
 // /api/queue; ALL semantics live server-side in lib/queue/store.js's
 // reducers - this chrome renders state and fires verbs, deciding nothing.
 //
-// Panel exclusivity with the bell comes free: both panels close on any
-// outside pointerdown, and each button is outside the other's panel.
+// Panel exclusivity with the bell comes free: an open ui.sheet's scrim
+// covers the other button, so a tap there closes this panel first.
 // dock() pair check (the v1.50.3 lesson): NOT applicable - that pair is
 // the PLAYER BAR's popups (reparented with the player); this panel is
 // body-mounted like the bell's and survives docking untouched.
@@ -4652,31 +4664,20 @@ function injectQueueChrome() {
     .then((queue) => {
       if (!queue) { dropReserve(); return; } // pre-auth / error: fail closed, inject nothing
       if (queueButtonAlreadyInjected()) { dropReserve(); return; } // async double-inject window
+      // Sweep S4: the panel is a ui.sheet; ui.js loads before common.js on every shell (step 4).
+      const U = typeof window !== 'undefined' ? window.ui : null;
+      if (!U || typeof U.sheet !== 'function') { dropReserve(); return; }
 
       // ---- button + badge (createElement/textContent only) ---------------
-      const btn = document.createElement('button');
+      // Sweep S1 (F31): a plain ui-btn icon button (44px hit area), the queue glyph (list
+      // lines + a play triangle, YouTube's queue vocabulary) from the icon sprite.
+      const btn = chromeButtonEl({ cls: 'queue-btn', icon: CHROME_ICON.queue, ariaLabel: 'Playback queue' });
       btn.id = 'queue-btn';
-      btn.className = 'queue-btn';
-      btn.setAttribute('aria-label', 'Playback queue');
       btn.setAttribute('aria-haspopup', 'true');
       btn.setAttribute('aria-expanded', 'false');
-      // Inline SVG like the bell (paired header chrome - the bell is inline
-      // too; the cards use the icon-queue mask since v1.67): three list
-      // lines + a play triangle - YouTube's queue vocabulary.
-      const svgNs = 'http://www.w3.org/2000/svg';
-      const svg = document.createElementNS(svgNs, 'svg');
-      svg.setAttribute('viewBox', '0 0 24 24');
-      svg.setAttribute('width', '22');
-      svg.setAttribute('height', '22');
-      svg.setAttribute('aria-hidden', 'true');
-      const glyph = document.createElementNS(svgNs, 'path');
-      glyph.setAttribute('d', 'M3 6h13v2H3V6zm0 4h13v2H3v-2zm0 4h9v2H3v-2zm14-1v6l5-3-5-3z');
-      glyph.setAttribute('fill', 'currentColor');
-      svg.appendChild(glyph);
-      btn.appendChild(svg);
       const badge = document.createElement('span');
       badge.id = 'queue-btn-badge';
-      badge.className = 'queue-btn-badge';
+      badge.className = 'ui-chip ui-chip--count queue-btn-badge';
       badge.hidden = true;
       btn.appendChild(badge);
       // Beside the bell (ruling 4), LEFT of it. v1.339 (L2, tracker #140): the queue now
@@ -4688,35 +4689,42 @@ function injectQueueChrome() {
       if (queueReserve) queueReserve.replaceWith(btn);
       else headerRight.insertBefore(btn, document.getElementById('notif-bell-btn') || document.getElementById('notif-bell-placeholder') || headerRight.firstChild);
 
-      // ---- panel + (mobile) backdrop, body-mounted like the bell's --------
-      const backdrop = document.createElement('div');
-      backdrop.id = 'queue-panel-backdrop';
-      backdrop.className = 'queue-panel-backdrop';
-      backdrop.hidden = true;
-      const panel = document.createElement('div');
-      panel.id = 'queue-panel';
-      panel.className = 'queue-panel';
-      panel.hidden = true;
-      panel.setAttribute('role', 'dialog');
-      panel.setAttribute('aria-label', 'Playback queue');
-      const head = document.createElement('div');
-      head.className = 'queue-panel-header';
-      const heading = document.createElement('span');
-      heading.id = 'queue-panel-heading';
-      heading.textContent = 'Queue';
-      const clearBtn = document.createElement('button');
+      // ---- the panel: ONE ui.sheet (sweep S4, D4.6) ------------------------------
+      // A popover under the queue button on desktop, a bottom sheet on the phone. F48 is
+      // fixed by construction: the old panel's open class was added only by openOverlay,
+      // which skips it under Reduce Motion, so the panel opened at opacity 0; ui.sheet
+      // ALWAYS applies its open class (Reduce Motion makes that an opacity-only change).
+      // Rows are ui-rows with reserved columns on every row: the art (media) and three
+      // action slots - Move up, Move down, Remove from queue (a queue edit, never a file
+      // delete). The ▴▾ and × text glyphs are gone (AC4).
+      const content = document.createElement('div');
+      content.className = 'queue-sheet';
+      const tools = document.createElement('div');
+      tools.className = 'queue-sheet__tools';
+      const clearBtn = U.button({ variant: 'plain', size: 'sm', label: 'Clear queue', doc: document });
       clearBtn.id = 'queue-clear-btn';
-      clearBtn.className = 'queue-clear-btn';
-      clearBtn.textContent = 'Clear queue';
-      head.appendChild(heading);
-      head.appendChild(clearBtn);
-      panel.appendChild(head);
-      const list = document.createElement('div');
+      tools.appendChild(clearBtn);
+      const list = U.list({ size: 'media', media: 'art', actions: 3, divider: 'inset', label: 'Queue', doc: document });
       list.id = 'queue-panel-list';
-      list.className = 'queue-panel-list';
-      panel.appendChild(list);
-      document.body.appendChild(backdrop);
-      document.body.appendChild(panel);
+      const stateHost = document.createElement('div');
+      stateHost.className = 'queue-sheet__state';
+      content.appendChild(tools);
+      content.appendChild(list);
+      content.appendChild(stateHost);
+
+      // Per-open lifetime for the Clear confirm (closing the panel closes it).
+      let openCtl = null;
+      const sheet = U.sheet({
+        variant: 'auto', anchor: btn, title: 'Queue', content, doc: document,
+        onClosing: () => {
+          btn.setAttribute('aria-expanded', 'false');
+          if (openCtl) { openCtl.abort(); openCtl = null; }
+        },
+      });
+      sheet.el.id = 'queue-panel'; // an id: ui.sheet rewrites className on every open
+      const heading = sheet.el.querySelector('.ui-sheet__title');
+      heading.id = 'queue-panel-heading';
+      const panelOpen = () => sheet.isOpen();
 
       const setChrome = (q) => {
         const count = Array.isArray(q.entries) ? q.entries.length : 0;
@@ -4733,45 +4741,57 @@ function injectQueueChrome() {
         // stale-button tap: open -> "Loading..." -> fetch resolves empty ->
         // panel closed = "it tries to load for a second and stops". The
         // button itself still hides (ruling 4); the open panel closes via
-        // backdrop/outside tap as always.
+        // the scrim or Esc as always.
       };
       setChrome(queue);
 
       const verb = (url, opts) => fetch(url, opts)
         .then((res) => (res.ok ? res.json() : Promise.reject(new Error('queue-verb-failed'))))
         .then((body) => {
-          if (body && body.queue) { setChrome(body.queue); if (!panel.hidden) renderRows(body.queue); }
+          if (body && body.queue) { setChrome(body.queue); if (panelOpen()) renderRows(body.queue); }
           return body;
         });
 
-      const renderEmpty = (text) => {
+      // One state at a time: the rows, a skeleton, or a ui.state (empty / error).
+      const showState = (node) => {
         list.textContent = '';
-        const empty = document.createElement('div');
-        empty.className = 'queue-empty';
-        empty.textContent = text;
-        list.appendChild(empty);
+        stateHost.textContent = '';
+        list.hidden = !!node;
+        tools.hidden = true;
+        if (node) stateHost.appendChild(node);
+      };
+      const renderEmpty = () => showState(U.state({ icon: 'queue_music', title: 'No queued items yet', body: 'Items you queue up to play show here.', doc: document }));
+      const renderError = () => showState(U.state({ icon: 'error', title: 'Could not load the queue', action: { label: 'Try again', onClick: () => loadQueue() }, doc: document }));
+      // D9: the loading skeleton is the REAL row grid (same list, same slots).
+      const renderSkeleton = () => {
+        showState(null);
+        for (let i = 0; i < 3; i++) {
+          const art = document.createElement('span');
+          art.className = 'ui-art ui-avatar--lg skeleton-shimmer';
+          const title = document.createElement('span');
+          title.className = 'skeleton-text skeleton-text-long skeleton-shimmer';
+          title.textContent = ' ';
+          const meta = document.createElement('span');
+          meta.className = 'skeleton-text skeleton-text-mid skeleton-shimmer';
+          meta.textContent = ' ';
+          const row = U.row({ size: 'media', media: art, title, meta, actions: [null, null, null], doc: document });
+          row.setAttribute('aria-hidden', 'true');
+          list.appendChild(row);
+        }
       };
 
       const renderRows = (q) => {
-        list.textContent = '';
         const models = buildQueueRowModels(q);
-        if (models.length === 0) { renderEmpty('No queued items yet. Items you queue up to play show here.'); return; }
+        if (models.length === 0) { renderEmpty(); return; }
+        showState(null);
+        tools.hidden = false;
         const uids = models.map((m) => m.uid);
         models.forEach((m, idx) => {
-          const row = document.createElement('div');
-          row.className = 'queue-row' + (m.playing ? ' queue-row-playing' : '') + (m.played ? ' queue-row-played' : '');
-          row.setAttribute('data-uid', m.uid);
-          // Reorder: up/down buttons (work on every input device; drag is a
-          // desktop nicety a later pass may add - disclosed in the plan).
-          const orderBox = document.createElement('span');
-          orderBox.className = 'queue-row-order';
-          const mkMove = (dir, label) => {
-            const b = document.createElement('button');
-            b.className = 'queue-row-move';
-            b.setAttribute('aria-label', label);
-            b.textContent = dir < 0 ? '▴' : '▾';
+          // Reorder: up/down buttons (every input device; tech-debt #111 tracks drag).
+          const mkMove = (dir, icon, label) => {
             const target = idx + dir;
-            b.disabled = target < 0 || target >= uids.length;
+            const b = U.button({ variant: 'plain', shape: 'icon', icon, ariaLabel: label, disabled: target < 0 || target >= uids.length, doc: document });
+            b.classList.add('queue-move');
             b.addEventListener('click', (e) => {
               e.stopPropagation();
               const order = uids.slice();
@@ -4782,133 +4802,102 @@ function injectQueueChrome() {
             });
             return b;
           };
-          orderBox.appendChild(mkMove(-1, 'Move up'));
-          orderBox.appendChild(mkMove(1, 'Move down'));
-          row.appendChild(orderBox);
-          const link = document.createElement('a');
-          link.className = 'queue-row-main';
-          link.href = m.href;
-          if (m.thumbnailUrl) {
-            const thumb = document.createElement('img');
-            thumb.className = 'queue-row-thumb';
-            thumb.src = m.thumbnailUrl;
-            thumb.alt = '';
-            thumb.loading = 'lazy';
-            link.appendChild(thumb);
-          }
-          const text = document.createElement('span');
-          text.className = 'queue-row-text';
-          const title = document.createElement('span');
-          title.className = 'queue-row-title';
-          title.textContent = m.title;
-          const channel = document.createElement('span');
-          channel.className = 'queue-row-channel';
-          channel.textContent = m.playing ? `Now playing - ${m.channelLabel}` : m.channelLabel;
-          text.appendChild(title);
-          text.appendChild(channel);
-          link.appendChild(text);
-          link.addEventListener('click', () => {
-            // Tapping a row makes it now-playing (server pointer) and rides
-            // the normal watch nav with a paint seed (the bell-row posture).
-            // v1.71 (gate S2): media rows only - a podcast row navigates to
-            // /podcasts and must never prime a watch page it will not visit.
-            // v1.72: 'track' joined the kinds, so the guard names media
-            // POSITIVELY (the advance seam's exact fix, same class).
-            // v1.251 (QA gate S3): "media" no longer implies watch-bound - an AUDIO
-            // media row navigates to /music now. The stash stays SAFE anyway:
-            // consumeWatchSeed is id-guarded, single-shot and TTL'd, so an audio
-            // row's seed either dies unmatched or legitimately paints the ao=1
-            // miss-bounce's watch page. Annotated, not tightened (a fifth-strike
-            // href-is-watch guard is an option if this class ever bites again).
-            if ((m.kind || 'media') === 'media') {
-              stashWatchSeed({
-                id: m.mediaId, title: m.title,
-                channelName: m.channelLabel === 'Library' ? '' : m.channelLabel,
-                channelAvatarUrl: m.channelAvatarUrl,
-                hasThumbnail: Boolean(m.thumbnailUrl),
-              });
-            }
-            fetch('/api/queue/pointer', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ uid: m.uid }), keepalive: true,
-            }).catch(() => { /* pointer re-syncs on next open */ });
-            closePanel();
-          });
-          row.appendChild(link);
-          const remove = document.createElement('button');
-          remove.className = 'queue-row-remove';
-          remove.setAttribute('aria-label', 'Remove from queue');
-          remove.textContent = '×';
+          const remove = U.button({ variant: 'plain', shape: 'icon', icon: 'close', ariaLabel: 'Remove from queue', doc: document });
+          remove.classList.add('queue-remove');
           remove.addEventListener('click', (e) => {
             e.stopPropagation();
             verb(`/api/queue/items/${m.uid}`, { method: 'DELETE' }).catch(() => refreshQueueChrome());
           });
-          row.appendChild(remove);
+          // D4.4: the entry's art as a rounded ui-art square (the album / show / video frame), the
+          // monogram if it has none or it fails - never a broken image.
+          const art = U.avatar({ name: m.title || m.channelLabel, url: m.thumbnailUrl || null, kind: m.kind === 'podcast' ? 'podcast' : 'album', size: 'lg', doc: document });
+          const row = U.row({
+            size: 'media', media: art, title: m.title || 'Untitled',
+            meta: m.playing ? `Now playing - ${m.channelLabel}` : m.channelLabel,
+            actions: [mkMove(-1, 'arrow_upward', 'Move up'), mkMove(1, 'arrow_downward', 'Move down'), remove],
+            href: m.href, doc: document,
+            onClick: () => {
+              // Tapping a row makes it now-playing (server pointer) and rides
+              // the normal watch nav with a paint seed (the bell-row posture).
+              // v1.71 (gate S2): media rows only - a podcast row navigates to
+              // /podcasts and must never prime a watch page it will not visit.
+              // v1.72: 'track' joined the kinds, so the guard names media
+              // POSITIVELY (the advance seam's exact fix, same class).
+              // v1.251 (QA gate S3): "media" no longer implies watch-bound - an AUDIO
+              // media row navigates to /music now. The stash stays SAFE anyway:
+              // consumeWatchSeed is id-guarded, single-shot and TTL'd, so an audio
+              // row's seed either dies unmatched or legitimately paints the ao=1
+              // miss-bounce's watch page. Annotated, not tightened (a fifth-strike
+              // href-is-watch guard is an option if this class ever bites again).
+              if ((m.kind || 'media') === 'media') {
+                stashWatchSeed({
+                  id: m.mediaId, title: m.title,
+                  channelName: m.channelLabel === 'Library' ? '' : m.channelLabel,
+                  channelAvatarUrl: m.channelAvatarUrl,
+                  hasThumbnail: Boolean(m.thumbnailUrl),
+                });
+              }
+              fetch('/api/queue/pointer', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uid: m.uid }), keepalive: true,
+              }).catch(() => { /* pointer re-syncs on next open */ });
+              closePanel();
+            },
+          });
+          row.setAttribute('data-uid', m.uid);
+          // Now playing = a neutral selected fill (D8.8: never red); played rows dim their text.
+          if (m.playing) row.classList.add('queue-item--playing');
+          if (m.played) row.classList.add('queue-item--played');
           list.appendChild(row);
         });
       };
 
-      const openPanel = () => {
-        if (!panel.hidden) return;
-        btn.setAttribute('aria-expanded', 'true');
-        openOverlay(backdrop, 'queue-open');
-        openOverlay(panel, 'queue-open');
-        renderEmpty('Loading…');
+      let loadSeq = 0;
+      function loadQueue() {
+        const seq = ++loadSeq;
+        renderSkeleton();
         fetch('/api/queue')
           .then((res) => (res.ok ? res.json() : Promise.reject(new Error('unavailable'))))
-          .then((q) => { setChrome(q); renderRows(q); })
-          .catch(() => renderEmpty('Could not load the queue.'));
+          .then((q) => { if (seq !== loadSeq) return; setChrome(q); if (panelOpen()) renderRows(q); })
+          .catch(() => { if (seq === loadSeq && panelOpen()) renderError(); });
+      }
+
+      const openPanel = () => {
+        if (panelOpen()) return;
+        openCtl = new AbortController();
+        btn.setAttribute('aria-expanded', 'true');
+        sheet.open();
+        loadQueue();
       };
-      const closePanel = () => {
-        if (panel.hidden) return;
-        btn.setAttribute('aria-expanded', 'false');
-        resetClearArm();
-        closeOverlayThen(backdrop, 'queue-open', () => { backdrop.hidden = true; });
-        closeOverlayThen(panel, 'queue-open', () => { panel.hidden = true; });
-      };
+      function closePanel() {
+        if (!panelOpen()) return;
+        sheet.close();
+      }
 
       btn.addEventListener('click', () => {
-        if (panel.hidden) openPanel();
-        else closePanel();
+        if (panelOpen()) closePanel();
+        else openPanel();
       });
 
-      // Clear = two-tap confirm in the button itself (toast ceremony, no
-      // modal - ruling 4). The armed state disarms on close or after 3s.
-      let clearArmTimer = null;
-      const resetClearArm = () => {
-        if (clearArmTimer) { clearTimeout(clearArmTimer); clearArmTimer = null; }
-        clearBtn.textContent = 'Clear queue';
-        clearBtn.classList.remove('queue-clear-armed');
-      };
+      // Clear: the in-button two-tap arm ("Really clear?") becomes a ui.confirm (D4.8: a
+      // confirmation never grows in place). The SAME DELETE /api/queue runs only on OK; it
+      // empties the queue, never a file.
+      let clearing = false;
       clearBtn.addEventListener('click', () => {
-        if (!clearBtn.classList.contains('queue-clear-armed')) {
-          clearBtn.textContent = 'Really clear?';
-          clearBtn.classList.add('queue-clear-armed');
-          clearArmTimer = setTimeout(resetClearArm, 3000);
-          return;
-        }
-        resetClearArm();
-        verb('/api/queue', { method: 'DELETE' })
-          .then(() => { showToast('Queue cleared'); closePanel(); })
-          .catch(() => showToast('Could not clear the queue'));
+        if (clearing || !openCtl) return;
+        const signal = openCtl.signal;
+        clearing = true;
+        U.confirm({ title: 'Clear the queue?', body: 'Every item leaves the queue. Nothing is removed from your library.', confirmLabel: 'Clear queue', danger: true, signal, doc: document })
+          .then((ok) => {
+            if (ok !== true || signal.aborted) { clearing = false; return null; }
+            return verb('/api/queue', { method: 'DELETE' })
+              .then(() => { showToast('Queue cleared'); closePanel(); })
+              .catch(() => showToast('Could not clear the queue'))
+              .then(() => { clearing = false; });
+          });
       });
-      backdrop.addEventListener('click', closePanel);
-
-      // Outside-close (click + pointerdown + touchstart - the bell's iOS
-      // posture) + capture-phase Escape.
-      const closeOnOutside = (e) => {
-        if (panel.hidden) return;
-        if (panel.contains(e.target) || btn.contains(e.target)) return;
-        closePanel();
-      };
-      document.addEventListener('click', closeOnOutside);
-      document.addEventListener('pointerdown', closeOnOutside);
-      document.addEventListener('touchstart', closeOnOutside, { passive: true });
-      document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape' || panel.hidden) return;
-        e.stopImmediatePropagation();
-        closePanel();
-      }, true);
+      // A back/forward navigation leaves the page the panel was opened over: close it.
+      window.addEventListener('popstate', closePanel);
 
       // The refresh hook: add-to-queue actions + tab-return resync (no
       // standing poller - queue edits are user-initiated; cross-device drift
@@ -4916,7 +4905,7 @@ function injectQueueChrome() {
       refreshQueueChrome = () => {
         fetch('/api/queue')
           .then((res) => (res.ok ? res.json() : null))
-          .then((q) => { if (q) { setChrome(q); if (!panel.hidden) renderRows(q); } })
+          .then((q) => { if (q) { setChrome(q); if (panelOpen()) renderRows(q); } })
           .catch(() => { /* next action re-syncs */ });
       };
       const resync = () => { if (!document.hidden) refreshQueueChrome(); };
@@ -5566,6 +5555,9 @@ const MD_ICON_PATHS = {
   flask: '<path d="M10 3h4M10.8 3v5.2L5.6 17.8A2 2 0 0 0 7.4 21h9.2a2 2 0 0 0 1.8-3.2L13.2 8.2V3M8 14.5h8"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h3.5l2 2H19a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>',
   channel: '<rect x="3.5" y="8" width="17" height="11.5" rx="2"/><path d="M8.5 3.5L12 8l3.5-4.5"/>',
+  // UI pass step 2 (F39): the Shows folders tile named `tv`, which was never here, so it
+  // drew the `info` fallback. A screen on a stand (distinct from `channel`'s antenna).
+  tv: '<rect x="3" y="4.5" width="18" height="12" rx="2"/><path d="M9 20.5h6M12 16.5v4"/>',
   trophy: '<path d="M8 4h8v3.5a4 4 0 0 1-8 0zM8 5.5H5.5v1a3 3 0 0 0 3 3M16 5.5h2.5v1a3 3 0 0 1-3 3M10.5 12h3l.7 4h-4.4zM8 20h8"/>',
   eye: '<path d="M2.5 12s3.6-6.8 9.5-6.8S21.5 12 21.5 12s-3.6 6.8-9.5 6.8S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.7"/>',
   copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5"/>',
@@ -6040,6 +6032,25 @@ function repopulateOneOffFiletypeSelect(doc, format, filetypeSelect) {
   filetypeSelect.value = matchedValue !== null ? matchedValue : (options.length > 0 ? options[0].value : undefined);
 }
 
+// Wraps a native <select> in the ui-select box (the field styling + a chevron).
+function oneOffSelectBox(d, select) {
+  const box = d.createElement('span');
+  box.className = 'ui-select';
+  select.className = 'ui-select__native';
+  box.appendChild(select);
+  if (typeof d.createElementNS === 'function') {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = d.createElementNS(ns, 'svg');
+    svg.setAttribute('class', 'ui-icon ui-icon--md ui-select__chevron');
+    svg.setAttribute('aria-hidden', 'true');
+    const use = d.createElementNS(ns, 'use');
+    use.setAttribute('href', '#i-expand_more');
+    svg.appendChild(use);
+    box.appendChild(svg);
+  }
+  return box;
+}
+
 /**
  * Builds the compact one-off download modal as real DOM nodes -- backdrop +
  * dialog, appended to `document.body` by the caller. `createElement`/
@@ -6058,57 +6069,44 @@ function repopulateOneOffFiletypeSelect(doc, format, filetypeSelect) {
 function buildOneOffModal(doc, handlers) {
   const d = doc || document;
   const h = handlers || {};
+  const U = overlayUiLib();
 
-  const backdrop = d.createElement('div');
-  backdrop.className = 'oneoff-modal-backdrop';
-  backdrop.hidden = true;
-  // v1.289: drag-safe dismiss (a text-selection drag onto the backdrop must not close it).
-  bindBackdropDismiss(backdrop, () => { if (typeof h.onClose === 'function') h.onClose(); });
-
+  // Sweep S8 put every control on the primitives (ui-field inputs, ui-select selects, ui-btn
+  // buttons); sweep S9 moves the SHELL onto ui.sheet: a bottom sheet on a phone, a dialog on
+  // desktop, titled "One-off download", with the sheet's one Close. `modal` is the form (its
+  // content). Esc, the scrim, Close and a drag down each close the sheet and call onClose
+  // (through onClosing), so the caller's teardown runs on every way out. v1.289's drag-safe
+  // dismiss holds by construction: the scrim is a SIBLING of the sheet, so a text-selection
+  // drag from a field onto it clicks their common ancestor, never the scrim.
   const modal = d.createElement('div');
-  modal.className = 'oneoff-modal';
-  modal.hidden = true;
-  backdrop.appendChild(modal);
-
-  const header = d.createElement('div');
-  header.className = 'oneoff-modal-header';
-  const title = d.createElement('span');
-  title.className = 'oneoff-modal-title';
-  title.textContent = 'One-off download';
-  header.appendChild(title);
-  const closeBtn = d.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'oneoff-modal-close';
-  closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.textContent = '×';
-  closeBtn.addEventListener('click', () => {
-    if (typeof h.onClose === 'function') h.onClose();
-  });
-  header.appendChild(closeBtn);
-  modal.appendChild(header);
+  modal.className = 'oneoff-form';
 
   const urlInput = d.createElement('input');
   urlInput.type = 'text';
-  urlInput.className = 'oneoff-modal-field';
+  urlInput.className = 'ui-field__input';
   // v1.41.13: any yt-dlp-supported site, not just YouTube (universal one-offs).
   urlInput.setAttribute('placeholder', 'Media URL — any yt-dlp-supported site');
+  urlInput.setAttribute('aria-label', 'Media URL');
   modal.appendChild(urlInput);
 
   const row = d.createElement('div');
-  row.className = 'oneoff-modal-row';
+  row.className = 'oneoff-modal-selects';
 
   const formatSelect = buildOneOffSelect(d, ONEOFF_FORMAT_OPTIONS, 'video');
-  row.appendChild(formatSelect);
+  formatSelect.setAttribute('aria-label', 'Format');
+  row.appendChild(oneOffSelectBox(d, formatSelect));
 
   const qualitySelect = buildOneOffSelect(
     d,
     ONEOFF_QUALITY_OPTIONS.map((q) => ({ value: q, label: q })),
     ONEOFF_DEFAULT_QUALITY
   );
-  row.appendChild(qualitySelect);
+  qualitySelect.setAttribute('aria-label', 'Quality');
+  row.appendChild(oneOffSelectBox(d, qualitySelect));
 
   const filetypeSelect = buildOneOffSelect(d, ONEOFF_FILETYPE_OPTIONS.video, ONEOFF_DEFAULT_FILETYPE.video);
-  row.appendChild(filetypeSelect);
+  filetypeSelect.setAttribute('aria-label', 'File type');
+  row.appendChild(oneOffSelectBox(d, filetypeSelect));
 
   formatSelect.addEventListener('change', () => {
     repopulateOneOffFiletypeSelect(d, formatSelect.value, filetypeSelect);
@@ -6125,7 +6123,7 @@ function buildOneOffModal(doc, handlers) {
   // its controls, matching `urlInput`'s own placeholder-only precedent).
   const folderInput = d.createElement('input');
   folderInput.type = 'text';
-  folderInput.className = 'oneoff-modal-field';
+  folderInput.className = 'ui-field__input';
   folderInput.setAttribute('placeholder', 'Folder (optional — defaults to the channel)');
   folderInput.setAttribute('aria-label', 'Folder (optional — defaults to the channel)');
   modal.appendChild(folderInput);
@@ -6173,7 +6171,7 @@ function buildOneOffModal(doc, handlers) {
   // Download now share ONE .action-bar row (equal-width cells) instead of a
   // small stray button floating above a big primary. Same lifecycle: Retry
   // exists only while the entry is in its error state (setStatus below).
-  retryBtn.className = 'btn oneoff-modal-retry';
+  retryBtn.className = 'ui-btn ui-btn--secondary ui-btn--md oneoff-modal-retry';
   retryBtn.textContent = 'Retry';
   retryBtn.hidden = true;
   retryBtn.addEventListener('click', () => {
@@ -6182,7 +6180,7 @@ function buildOneOffModal(doc, handlers) {
 
   const downloadBtn = d.createElement('button');
   downloadBtn.type = 'button';
-  downloadBtn.className = 'btn btn-primary';
+  downloadBtn.className = 'ui-btn ui-btn--primary ui-btn--md';
   downloadBtn.textContent = 'Download';
   downloadBtn.addEventListener('click', () => {
     const url = typeof urlInput.value === 'string' ? urlInput.value.trim() : '';
@@ -6212,7 +6210,7 @@ function buildOneOffModal(doc, handlers) {
     const bar = computeOneOffProgressBar(entry);
     progressTrack.hidden = !bar.visible;
     if (bar.visible) {
-      progressFill.style.width = (bar.indeterminate ? 100 : bar.percent) + '%';
+      progressFill.style.setProperty('--p', String((bar.indeterminate ? 100 : bar.percent) / 100));
       progressFill.className = 'dl-status-chip-progress-fill' + (bar.indeterminate ? ' indeterminate' : '');
     }
     // v1.29.0 T6 (R1.4/AC3.4): visible ONLY while the entry is genuinely in
@@ -6224,7 +6222,14 @@ function buildOneOffModal(doc, handlers) {
     retryBtn.hidden = !(entry && entry.state === 'error');
   }
 
-  return { backdrop, modal, urlInput, formatSelect, qualitySelect, filetypeSelect, folderInput, downloadBtn, retryBtn, closeBtn, statusEl, progressTrack, progressFill, setStatus };
+  const sheet = U.sheet({
+    variant: 'auto', title: 'One-off download', content: modal, initialFocus: urlInput,
+    onClosing: () => { if (typeof h.onClose === 'function') h.onClose(); },
+    doc: d, win: d.defaultView,
+  });
+  const closeBtn = sheet.el.querySelector('.ui-sheet__close');
+
+  return { sheet, backdrop: sheet.scrim, modal, urlInput, formatSelect, qualitySelect, filetypeSelect, folderInput, downloadBtn, retryBtn, closeBtn, statusEl, progressTrack, progressFill, setStatus };
 }
 
 /**
@@ -6377,37 +6382,29 @@ function accountSignOut() {
 // The avatar visual: the uploaded photo (cache-busted by its mtime version) when
 // present, else the initials monogram + deterministic palette colour. `big` is
 // the larger variant shown in the dropdown header.
-function buildAccountAvatarEl(user, big) {
-  const el = document.createElement('span');
-  el.className = 'account-avatar' + (big ? ' account-avatar-lg' : '');
+// Sweep S1 (D4.4): a ui-avatar (chromeAvatarEl -> ui.avatar), sized by the surface: `size`
+// is a D2.3 avatar size ('xs' the You tab's 24px icon slot, 'sm' the header trigger, 'lg'
+// the account menu's head); a legacy `true` means the menu head. The monogram is the
+// primitive's initials on a name-hashed tone, and a failed photo becomes that monogram.
+function buildAccountAvatarEl(user, size) {
+  const sz = size === true ? 'lg' : (typeof size === 'string' ? size : 'sm');
   const avatar = user && user.avatar;
-  const paintMonogram = () => {
-    const d = deriveAvatar((user && (user.displayName || user.username)) || '');
-    el.textContent = d.glyph;
-    el.style.backgroundColor = d.color; // runtime palette value (not a literal -- census-safe)
-  };
-  if (avatar && avatar.present) {
-    // v1.157.1 (Dean device report): the "You" avatar painted an EMPTY disc
-    // until the photo loaded+decoded ("empty then fills"). Shimmer the disc as a
-    // placeholder and reveal the <img> only once it has loaded (CSS keeps it
-    // opacity:0 until .is-loaded); on a load error drop it and paint the monogram
-    // so the disc is never left blank.
+  const url = avatar && avatar.present ? `/api/users/${user.id}/avatar?v=${avatar.version || 0}` : null;
+  const el = chromeAvatarEl((user && (user.displayName || user.username)) || '', url, sz);
+  el.classList.add('account-avatar');
+  const img = el.querySelector('img');
+  if (img) {
+    // v1.157.1 (Dean device report): the "You" avatar painted an EMPTY disc until the
+    // photo loaded+decoded ("empty then fills"). The disc shimmers as a placeholder and
+    // the <img> reveals only once it has loaded (style.css keeps it opacity:0 until
+    // .is-loaded); on a load error the primitive swaps in the monogram, and the shimmer
+    // clears either way, so the disc is never left blank.
     el.classList.add('skeleton-shimmer');
-    const img = document.createElement('img');
-    img.alt = '';
     img.addEventListener('load', () => {
       el.classList.remove('skeleton-shimmer');
       img.classList.add('is-loaded');
     }, { once: true });
-    img.addEventListener('error', () => {
-      el.classList.remove('skeleton-shimmer');
-      img.remove();
-      paintMonogram();
-    }, { once: true });
-    img.src = `/api/users/${user.id}/avatar?v=${avatar.version || 0}`; // set last: the listeners are already attached
-    el.appendChild(img);
-  } else {
-    paintMonogram();
+    img.addEventListener('error', () => { el.classList.remove('skeleton-shimmer'); }, { once: true });
   }
   return el;
 }
@@ -6464,28 +6461,15 @@ function formatTrashCountLabel(count, totalSizeBytes) {
   return bytes > 0 ? noun + ' (' + formatDiskBytes(bytes) + ')' : noun;
 }
 
-function buildAccountMenuRow(tag, label, iconClass) {
-  const row = document.createElement(tag);
-  row.className = 'account-menu-item';
+// Sweep S1 (D4.6): one account-menu row - a compact ui-row with the glyph in its media
+// slot; a link row when `href`, a button row when `onClick`. `account-menu-item` is the
+// row's hook (tests, the Subscriptions late-insert), never a styled family.
+function accountMenuRow(U, o) {
+  const row = U.row({ size: 'compact', media: U.icon(o.icon, { doc: document }), title: o.label,
+    href: o.href, onClick: o.onClick, doc: document });
+  row.classList.add('account-menu-item');
   row.setAttribute('role', 'menuitem');
-  if (tag === 'button') row.type = 'button';
-  if (iconClass) {
-    const i = document.createElement('i');
-    i.className = iconClass;
-    i.setAttribute('aria-hidden', 'true');
-    row.appendChild(i);
-  }
-  const span = document.createElement('span');
-  span.textContent = label;
-  row.appendChild(span);
   return row;
-}
-
-function accountMenuDivider() {
-  const hr = document.createElement('div');
-  hr.className = 'account-menu-divider';
-  hr.setAttribute('role', 'separator');
-  return hr;
 }
 
 // v1.230 (Dean): the "Music skin" picker was briefly here (v1.229), but the account
@@ -6545,6 +6529,11 @@ function avatarSourceRect(s, ox, oy, W, H, D) {
 // before uploading, so a raw file is never uploaded on the happy path. The
 // canvas is a fixed 280x280 (1:1 with its CSS box) so pointer deltas map
 // straight to canvas px - the pan/zoom math stays the pure T1 geometry.
+// Sweep S9: one cropper at a time - claimed when a crop starts, released on every way out.
+// (It was a DOM query for the old backdrop, which a second call made before the first
+// image loaded could not see.)
+let avatarCropOpen = false;
+
 function cropAvatarFile(file) {
   return new Promise((resolve) => {
     if (typeof document === 'undefined' || !file) { resolve(file || null); return; }
@@ -6554,15 +6543,17 @@ function cropAvatarFile(file) {
       resolve(file); return; // no real canvas 2d export -> upload raw, the server cap applies
     }
     // Single-instance: never stack two croppers (a second Escape would settle
-    // both). If one is already open, decline this one as a cancel.
-    if (document.querySelector('.avatar-crop-backdrop')) { resolve(null); return; }
-    const prevFocus = document.activeElement; // restore focus to the opener on close
+    // both). If one is already open (or loading its image), decline this one as a cancel.
+    if (avatarCropOpen) { resolve(null); return; }
+    const U = overlayUiLib();
+    if (!U) { resolve(file); return; }
+    avatarCropOpen = true;
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onerror = () => { try { URL.revokeObjectURL(url); } catch (_) {} resolve(file); }; // not an image -> let the server reject
+    img.onerror = () => { avatarCropOpen = false; try { URL.revokeObjectURL(url); } catch (_) {} resolve(file); }; // not an image -> let the server reject
     img.onload = () => {
       const imgW = img.naturalWidth, imgH = img.naturalHeight;
-      if (!imgW || !imgH) { try { URL.revokeObjectURL(url); } catch (_) {} resolve(file); return; }
+      if (!imgW || !imgH) { avatarCropOpen = false; try { URL.revokeObjectURL(url); } catch (_) {} resolve(file); return; }
 
       const W = 280, H = 280, D = 232, OUTPUT = 400; // viewport, circle, export size
       const minScale = avatarMinScale(imgW, imgH, D);
@@ -6572,15 +6563,9 @@ function cropAvatarFile(file) {
       const clamp = () => { const c = clampAvatarOffset(ox, oy, s, imgW, imgH, W, H, D); ox = c.ox; oy = c.oy; };
       clamp();
 
-      const backdrop = document.createElement('div');
-      backdrop.className = 'avatar-crop-backdrop';
+      // Sweep S9: the dialog is a ui.sheet titled "Crop photo"; `modal` is its content.
       const modal = document.createElement('div');
-      modal.className = 'avatar-crop-modal';
-      modal.setAttribute('role', 'dialog');
-      modal.setAttribute('aria-label', 'Crop photo');
-      const title = document.createElement('div');
-      title.className = 'avatar-crop-title';
-      title.textContent = 'Crop photo';
+      modal.className = 'avatar-crop';
       const hint = document.createElement('div');
       hint.className = 'avatar-crop-hint';
       hint.textContent = 'Drag to move, pinch or scroll to zoom.';
@@ -6657,21 +6642,19 @@ function cropAvatarFile(file) {
       }, { passive: false });
 
       const actions = document.createElement('div');
-      actions.className = 'avatar-crop-actions';
-      const cancelBtn = document.createElement('button');
-      cancelBtn.type = 'button'; cancelBtn.className = 'btn'; cancelBtn.textContent = 'Cancel';
-      const saveBtn = document.createElement('button');
-      saveBtn.type = 'button'; saveBtn.className = 'btn btn-primary'; saveBtn.textContent = 'Save';
+      actions.className = 'ui-confirm__actions avatar-crop-actions';
+      const cancelBtn = U.button({ variant: 'secondary', label: 'Cancel', doc: document });
+      const saveBtn = U.button({ variant: 'primary', label: 'Save', doc: document });
       actions.appendChild(cancelBtn); actions.appendChild(saveBtn);
 
       let settled = false;
+      let sheet = null;
+      // The sheet restores focus to the opener (the "Change photo" / "Upload" control) itself.
       const cleanup = () => {
+        avatarCropOpen = false;
         try { URL.revokeObjectURL(url); } catch (_) {}
         document.removeEventListener('keydown', onKey);
-        backdrop.remove();
-        // Restore focus to whatever opened the cropper (the "Change photo" /
-        // "Upload" control), not <body>.
-        try { if (prevFocus && typeof prevFocus.focus === 'function') prevFocus.focus(); } catch (_) {}
+        if (sheet) sheet.close();
       };
       const finish = (value) => { if (settled) return; settled = true; cleanup(); resolve(value); };
       const doSave = () => {
@@ -6686,13 +6669,13 @@ function cropAvatarFile(file) {
           finish(file); // export failed -> fall back to the raw upload
         }
       };
-      // Escape cancels; Tab is trapped within the modal's controls (slider ->
-      // Cancel -> Save -> slider) so focus never escapes to the page behind the
-      // scrim.
+      // Escape, the scrim and Close cancel (the sheet's own dismissals, answered through
+      // onClosing below); Tab is trapped within the dialog's controls (Close -> slider ->
+      // Cancel -> Save -> Close) so focus never escapes to the page behind the scrim.
       const onKey = (e) => {
-        if (e.key === 'Escape') { finish(null); return; }
         if (e.key !== 'Tab') return;
-        const focusables = [slider, cancelBtn, saveBtn];
+        const sheetClose = sheet && sheet.el.querySelector('.ui-sheet__close');
+        const focusables = [sheetClose, slider, cancelBtn, saveBtn].filter(Boolean);
         const idx = focusables.indexOf(document.activeElement);
         if (idx === -1) { e.preventDefault(); slider.focus(); }
         else if (e.shiftKey && idx === 0) { e.preventDefault(); saveBtn.focus(); }
@@ -6700,18 +6683,19 @@ function cropAvatarFile(file) {
       };
       cancelBtn.addEventListener('click', () => finish(null));
       saveBtn.addEventListener('click', doSave);
-      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) finish(null); });
       document.addEventListener('keydown', onKey);
 
-      modal.appendChild(title);
       modal.appendChild(stage);
       modal.appendChild(slider);
       modal.appendChild(hint);
       modal.appendChild(actions);
-      backdrop.appendChild(modal);
-      document.body.appendChild(backdrop);
+      sheet = U.sheet({
+        variant: 'dialog', title: 'Crop photo', content: modal, initialFocus: saveBtn,
+        onClosing: () => finish(null), // Esc / scrim / Close: a cancel, settled once
+        doc: document,
+      });
+      sheet.open();
       syncSlider();
-      saveBtn.focus();
     };
     img.src = url;
   });
@@ -6748,43 +6732,62 @@ function renderSearchHistoryPanel(panel, terms, onSearch) {
   panel.textContent = '';
   const list = Array.isArray(terms) ? terms : [];
   if (list.length === 0) {
-    const empty = document.createElement('div');
+    const empty = document.createElement('p');
     empty.className = 'search-history-empty';
     empty.textContent = 'No recent searches';
     panel.appendChild(empty);
     return;
   }
+  // Sweep S1: a compact ui-list - the history glyph in the media column, the term as the
+  // row's (stretched) button, one reserved action column for its remove X (a plain ui-btn
+  // icon button, never a text glyph) - and a plain "Clear all" button under it.
+  const span = (cls) => { const n = document.createElement('span'); n.className = cls; return n; };
   const rows = document.createElement('div');
-  rows.className = 'search-history-list';
+  rows.className = 'ui-list ui-list--compact ui-list--media-avatar ui-list--aside-none ui-list--actions-1 ui-list--divider-none search-history-list';
+  rows.setAttribute('role', 'list');
+  rows.setAttribute('aria-label', 'Recent searches');
   for (const term of list) {
     const row = document.createElement('div');
-    row.className = 'search-history-row';
+    row.className = 'ui-row ui-row--compact search-history-row';
+    row.setAttribute('role', 'listitem');
+    row.appendChild(span('ui-row__lead'));
+    const media = span('ui-row__media');
+    const glyph = uiIconEl('history', 'md');
+    if (glyph) media.appendChild(glyph);
+    row.appendChild(media);
+    const body = span('ui-row__body');
+    const title = span('ui-row__title');
     const pick = document.createElement('button');
     pick.type = 'button';
-    pick.className = 'search-history-term';
-    const icon = document.createElement('i'); icon.className = 'icon-search'; icon.setAttribute('aria-hidden', 'true');
-    const label = document.createElement('span'); label.textContent = term;
-    pick.appendChild(icon); pick.appendChild(label);
+    pick.className = 'ui-row__link search-history-term';
+    const label = document.createElement('span');
+    label.textContent = term;
+    pick.appendChild(label);
     pick.addEventListener('click', () => { if (typeof onSearch === 'function') onSearch(term); });
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'search-history-del';
-    del.setAttribute('aria-label', `Remove ${term} from recent searches`);
-    del.textContent = '×';
+    title.appendChild(pick);
+    body.appendChild(title);
+    row.appendChild(body);
+    row.appendChild(span('ui-row__aside'));
+    const acts = span('ui-row__actions');
+    const del = chromeButtonEl({ cls: 'search-history-del', icon: 'close', ariaLabel: 'Remove ' + term + ' from recent searches' });
     del.addEventListener('click', (e) => {
       e.stopPropagation();
-      if (typeof fetch === 'function') fetch(`/api/search-history/${encodeURIComponent(term)}`, { method: 'DELETE' }).catch(() => {});
+      if (typeof fetch === 'function') fetch('/api/search-history/' + encodeURIComponent(term), { method: 'DELETE' }).catch(() => {});
       row.remove();
       if (!rows.querySelector('.search-history-row')) renderSearchHistoryPanel(panel, [], onSearch);
     });
-    row.appendChild(pick); row.appendChild(del);
+    acts.appendChild(del);
+    row.appendChild(acts);
     rows.appendChild(row);
   }
   panel.appendChild(rows);
   const clear = document.createElement('button');
   clear.type = 'button';
-  clear.className = 'search-history-clear';
-  clear.textContent = 'Clear all';
+  clear.className = 'ui-btn ui-btn--plain ui-btn--sm search-history-clear';
+  const clearLabel = document.createElement('span');
+  clearLabel.className = 'ui-btn__label';
+  clearLabel.textContent = 'Clear all';
+  clear.appendChild(clearLabel);
   clear.addEventListener('click', () => {
     if (typeof fetch === 'function') fetch('/api/search-history', { method: 'DELETE' }).catch(() => {});
     renderSearchHistoryPanel(panel, [], onSearch);
@@ -6800,16 +6803,11 @@ function wireSearchAffordances() {
   const searchInput = document.getElementById('search-input');
   if (!headerRight || !searchInput || document.getElementById('search-toggle-btn')) return;
 
-  const btn = document.createElement('button');
-  btn.type = 'button';
+  // v1.87.1 (Dean): an inline <svg>, not an `.icon-search` mask - a mask shows nothing
+  // until it decodes, so it "popped in" after the label on a mobile cold start. Sweep S1
+  // (F31): a plain ui-btn icon button (44px on the phone, where it shows).
+  const btn = chromeButtonEl({ cls: 'search-toggle-btn', icon: CHROME_ICON.search, ariaLabel: 'Search' });
   btn.id = 'search-toggle-btn';
-  btn.className = 'search-toggle-btn';
-  btn.setAttribute('aria-label', 'Search');
-  // v1.87.1 (Dean): inline <svg>, not an `.icon-search` mask - a mask shows
-  // nothing until it decodes, so it "popped in" after the label on a mobile
-  // cold start (the bell/queue, inline SVG, never did). See CHROME_ICON_SVG.
-  const searchGlyph = chromeIconEl('search');
-  if (searchGlyph) btn.appendChild(searchGlyph);
   // v1.339 (L2): take the pre-paint reserve's place (same box) when the shell painted one.
   const searchReserve = chromeReserveEl(headerRight, 'search');
   if (searchReserve) searchReserve.replaceWith(btn);
@@ -6895,18 +6893,11 @@ function injectYouNavItem() {
   fetchCurrentUser().then((me) => {
     if (!me || !me.user) { dropReserve(); return; } // signed-out shell: no You tab
     if (nav.querySelector('[data-nav="you"]')) { dropReserve(); return; } // race guard
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'bottom-nav-item';
-    btn.setAttribute('data-nav', 'you');
-    btn.setAttribute('aria-label', 'You (account menu)');
-    const avatar = buildAccountAvatarEl(me.user);
+    // Sweep S1 (F49): the avatar sits in the SAME fixed 24px icon slot as every other
+    // tab's glyph, so "You" no longer sits lower than the other labels.
+    const avatar = buildAccountAvatarEl(me.user, 'xs');
     avatar.classList.add('bottom-nav-you-avatar');
-    const label = document.createElement('span');
-    label.className = 'bottom-nav-label';
-    label.textContent = 'You';
-    btn.appendChild(avatar);
-    btn.appendChild(label);
+    const btn = bottomNavItemEl({ tag: 'button', nav: 'you', slotEl: avatar, label: 'You', ariaLabel: 'You (account menu)' });
     btn.addEventListener('click', (e) => {
       // v1.85.1: STOP this click bubbling to document. The account menu closes on
       // any document click (outside-click-to-dismiss); without this, our own
@@ -6929,26 +6920,25 @@ function injectAccountMenu() {
   const headerRight = document.querySelector('.header-right');
   if (!headerRight || document.getElementById('account-menu-root')) return;
 
-  // v1.101 shimmer sweep: RESERVE the avatar slot with a shimmer placeholder
-  // BEFORE the /api/auth/me fetch, so the account avatar reveals in place instead
-  // of popping into an empty header. Reuses the real .account-menu-trigger /
-  // .account-avatar (32px disc) box - so it's zero-shift AND inherits the same
-  // mobile `.account-menu-trigger { display:none }` hide the real trigger has
-  // (mobile reaches account via the You tab). Removed on resolve (signed-in ->
-  // real menu; signed-out / error -> just gone, never a stranded shimmer).
+  // v1.101 shimmer sweep: RESERVE the avatar slot with a shimmer placeholder BEFORE the
+  // /api/auth/me fetch, so the account avatar reveals in place instead of popping into an
+  // empty header. It is the real trigger's box (sweep S1: a plain ui-btn icon button
+  // holding a 28px ui-avatar), so it is zero-shift AND inherits the same mobile
+  // `.account-menu-trigger { display:none }` hide the real trigger has (mobile reaches the
+  // account via the You tab). Removed on resolve (signed-in -> real menu; signed-out /
+  // error -> just gone, never a stranded shimmer).
   if (!document.getElementById('account-menu-placeholder')) {
     // v1.339 (L2): an `.account-menu` wrapper around the trigger-shaped disc, like the real
-    // root - so on mobile (trigger display:none) it still takes the row's flex gap and the
-    // swap to the real menu no longer nudges the glyph row 6px (home-fouc-probe). The shells'
+    // root - so on mobile (trigger display:none) it still takes the row's slot. The shells'
     // inline pre-paint block paints this same shape, so this copy only runs without it.
     const ph = document.createElement('span');
     ph.id = 'account-menu-placeholder';
     ph.className = 'account-menu';
     ph.setAttribute('aria-hidden', 'true');
     const phTrigger = document.createElement('span');
-    phTrigger.className = 'account-menu-trigger';
+    phTrigger.className = 'ui-btn ui-btn--plain ui-btn--md ui-btn--icon account-menu-trigger';
     const avatarSkel = document.createElement('span');
-    avatarSkel.className = 'account-avatar skeleton-shimmer';
+    avatarSkel.className = 'ui-avatar ui-avatar--sm account-avatar skeleton-shimmer';
     phTrigger.appendChild(avatarSkel);
     ph.appendChild(phTrigger);
     headerRight.appendChild(ph);
@@ -6966,73 +6956,35 @@ function injectAccountMenu() {
     root.className = 'account-menu';
     root.id = 'account-menu-root';
 
-    const trigger = document.createElement('button');
-    trigger.type = 'button';
-    trigger.className = 'account-menu-trigger';
+    // Sweep S1 (F31, D4.4): the trigger is a plain ui-btn icon button (36px desktop, a
+    // 44px hit area) holding the 28px ui-avatar.
+    let triggerAvatar = buildAccountAvatarEl(user, 'sm');
+    const trigger = chromeButtonEl({ cls: 'account-menu-trigger', media: triggerAvatar, ariaLabel: 'Account menu' });
     trigger.setAttribute('aria-haspopup', 'menu');
     trigger.setAttribute('aria-expanded', 'false');
-    trigger.setAttribute('aria-label', 'Account menu');
     trigger.title = user.displayName || user.username || 'Account';
-    let triggerAvatar = buildAccountAvatarEl(user);
-    trigger.appendChild(triggerAvatar);
     root.appendChild(trigger);
 
-    const menu = document.createElement('div');
-    menu.className = 'account-menu-dropdown';
-    menu.setAttribute('role', 'menu');
-    menu.hidden = true;
-
-    // Header: large avatar + name + role.
-    const head = document.createElement('div');
-    head.className = 'account-menu-head';
-    // v1.305 (Dean): the avatar is edited via a pencil BADGE on the disc itself -
-    // the old "Change photo" ROW felt derpy (Dean). A positioned wrapper holds the
-    // avatar + the badge so refreshAvatars can swap ONLY the avatar (replaceChild)
-    // and leave the badge untouched. The badge opens the same hidden file input +
-    // crop + POST /api/me/avatar flow wired just below.
-    const avatarWrap = document.createElement('div');
-    avatarWrap.className = 'account-menu-avatar-wrap';
-    let headAvatar = buildAccountAvatarEl(user, true);
-    avatarWrap.appendChild(headAvatar);
-    const editAvatar = document.createElement('button');
-    editAvatar.type = 'button';
-    editAvatar.className = 'account-menu-avatar-edit';
-    editAvatar.setAttribute('aria-label', 'Change photo');
-    editAvatar.title = 'Change photo';
-    // Inline pencil SVG (self-contained, like the master-detail back chevron) -
-    // the mask-icon set has no pencil, and inlining avoids a new asset + class.
-    editAvatar.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
-      + 'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-      + '<path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>';
-    avatarWrap.appendChild(editAvatar);
-    head.appendChild(avatarWrap);
-    const who = document.createElement('div');
-    who.className = 'account-menu-who';
-    const nameEl = document.createElement('div');
-    nameEl.className = 'account-menu-name';
-    nameEl.textContent = user.displayName || user.username || 'Account';
-    const roleEl = document.createElement('div');
-    roleEl.className = 'account-menu-role';
-    roleEl.textContent = user.role === 'admin' ? 'Admin' : 'Member';
-    who.appendChild(nameEl);
-    who.appendChild(roleEl);
-    head.appendChild(who);
-    menu.appendChild(head);
-
-    // Change photo: a hidden file input driven by a menu item. On pick, upload to
-    // /api/me/avatar and re-render BOTH avatars (cache-busted) on success.
+    // Change photo: a hidden file input driven by the pencil badge on the menu's avatar.
+    // On pick, crop, upload to /api/me/avatar and re-render BOTH avatars on success. It
+    // lives on the root (not in the sheet), so it survives the sheet's close.
     const fileInput = document.createElement('input');
     fileInput.type = 'file';
     fileInput.accept = 'image/png,image/jpeg,image/webp';
     fileInput.hidden = true;
+    root.appendChild(fileInput);
+    let headAvatar = null;
+    let avatarWrap = null;
     const refreshAvatars = (avatarInfo) => {
       user.avatar = avatarInfo;
-      const t2 = buildAccountAvatarEl(user);
+      const t2 = buildAccountAvatarEl(user, 'sm');
       trigger.replaceChild(t2, triggerAvatar);
       triggerAvatar = t2;
-      const h2 = buildAccountAvatarEl(user, true);
-      avatarWrap.replaceChild(h2, headAvatar); // swap the disc only; the pencil badge stays
-      headAvatar = h2;
+      if (avatarWrap && headAvatar) {
+        const h2 = buildAccountAvatarEl(user, 'xl');
+        avatarWrap.replaceChild(h2, headAvatar); // swap the disc only; the pencil badge stays
+        headAvatar = h2;
+      }
     };
     fileInput.addEventListener('change', async () => {
       const file = fileInput.files && fileInput.files[0];
@@ -7052,87 +7004,142 @@ function injectAccountMenu() {
         showToast('Could not update your photo (network error).');
       }
     });
-    editAvatar.addEventListener('click', () => fileInput.click());
-    menu.appendChild(fileInput); // hidden; the head's border-bottom now separates the head from the quick links (no divider)
 
-    // Quick links to the library pages. Hrefs to known routes; the menu's own
-    // click handler (below) SPA-navigates them in-app -- the delegated document
-    // router can't see these clicks (the menu stops their propagation), so
-    // without that they full-reloaded.
-    // v1.153 (Dean): this "You" menu is mobile's main way into these pages
-    // (the sidebar is a drawer there), so Stats + Subscriptions join it -
-    // they are sidebar-only otherwise, unreachable on a phone without opening
-    // the drawer or rotating.
-    const liked = buildAccountMenuRow('a', 'Liked', 'icon-heart'); liked.href = '/?liked=1';
-    const history = buildAccountMenuRow('a', 'History', 'icon-history'); history.href = '/history';
-    const stats = buildAccountMenuRow('a', 'Stats', 'icon-star'); stats.href = '/stats.html';
-    const settings = buildAccountMenuRow('a', 'Settings', 'icon-cog'); settings.href = '/setup.html';
-    menu.appendChild(liked);
-    menu.appendChild(history);
-    menu.appendChild(stats);
-    // Subscriptions only when the optional yt-dlp module is enabled - gated by
-    // the presence of its nav entry (the same signal the sidebar/bottom-nav
-    // links use; absent module -> no row). NOTE: on a session's FIRST load the
-    // capability cache (sessionStorage) is cold, so this marker may not be in
-    // the DOM yet when the menu builds (the /api/subscriptions/health probe can
-    // resolve after it) -> the row can be missing until the next full load.
-    // Self-heals then (warm cache injects synchronously first); the sidebar
-    // still exposes Subscriptions meanwhile. Disclosed in ROADMAP.
-    if (document.querySelector('[data-nav="subscriptions"], [data-nav-sidebar="subscriptions"]')) {
-      const subs = buildAccountMenuRow('a', 'Subscriptions', 'icon-refresh'); subs.href = '/subscriptions';
-      menu.appendChild(subs);
-    }
-    // v1.97.1 (Dean): the feed-hidden RESTORE surface moved OUT of this menu and
-    // into a "Hidden" SECTION on the settings page beside Trash (setup.html /
-    // setup.js renderFeedHiddenSection) - the settings page scrolls, so a long
-    // hidden list is reachable (the account-menu modal couldn't). No menu row here.
-    menu.appendChild(settings);
-
-    // Theme: the same light/dark toggle the header button used to drive. The
-    // glyph reflects the current mode and updates on toggle (updateAccountMenu-
-    // ThemeItem, called from applyTheme) - tag the icon so it can be found.
-    const theme = buildAccountMenuRow('button', 'Theme', 'icon-moon');
-    const themeIcon = theme.querySelector('i');
-    if (themeIcon) themeIcon.id = 'account-menu-theme-icon';
-    theme.addEventListener('click', () => { toggleTheme(); });
-    menu.appendChild(theme);
-    updateAccountMenuThemeItem(); // initial glyph from the current data-mode
-    // v1.230: the "Music skin" picker moved to the Settings page (Appearance) - it
-    // was unreliable here (the menu builds once, not every shell loaded the module).
-
-    menu.appendChild(accountMenuDivider());
-
-    const signOut = buildAccountMenuRow('button', 'Sign out', null);
-    signOut.classList.add('account-menu-signout');
-    signOut.addEventListener('click', () => accountSignOut());
-    menu.appendChild(signOut);
-
-    // v1.90 (Dean): a subtle version footer so you can tell at a glance which
-    // build you're on. Non-interactive; reads the server-stamped meta (zero
-    // fetch). This ONE menu is what the desktop header dropdown AND the mobile
-    // "You" bottom-nav tab both open, so it covers both surfaces at once. Absent
-    // meta (e.g. a shell not templated) -> no footer, never a broken "Version undefined".
-    // v1.158 (Dean): the library's total size on disk - the core self-hosted
-    // number, surfaced here so it is not a tap away in Stats. A link INTO Stats
-    // (rides the account-menu-item SPA intercept above, so no full reload).
-    // Lazily fetched on first menu-open (shimmer until then); on a fetch failure
-    // the row + its divider hide, never a broken value (the version-footer
-    // posture). Sits ABOVE the version row, sharing this one footer divider.
-    const diskDivider = accountMenuDivider();
-    menu.appendChild(diskDivider);
-    // Its OWN class (not account-menu-item) - it is a footer info-link like the
-    // version row, and must stay out of the quick-link censuses. The SPA
-    // intercept below is broadened to route it too.
-    const diskRow = document.createElement('a');
-    diskRow.className = 'account-menu-disk';
-    diskRow.href = '/stats.html';
-    diskRow.setAttribute('role', 'menuitem');
-    diskRow.setAttribute('aria-label', 'Total size on disk - open Stats');
-    const diskLabel = document.createElement('span');
-    diskLabel.className = 'account-menu-disk-shimmer skeleton-shimmer';
-    diskRow.appendChild(diskLabel);
-    menu.appendChild(diskRow);
+    // ---- the menu (sweep S1, D4.6): a ui.sheet - a popover anchored under the trigger on
+    // desktop, a bottom sheet on the phone - of ui-rows: selected/current never red, the
+    // theme row's glyph shows the mode a tap switches TO. Built on the FIRST open (ui.js
+    // is loaded by then on every shell; the build-time Subscriptions gate therefore sees
+    // the module's nav marker whenever the /health probe has resolved).
+    let sheet = null;
+    let panel = null;
     let diskLoaded = false;
+    let trashLoaded = false;
+    let diskRow = null; let diskLabel = null;
+    let trashRow = null; let trashLabel = null;
+
+    const buildPanel = (U) => {
+      const p = document.createElement('div');
+      p.className = 'account-menu-panel';
+      p.setAttribute('role', 'menu');
+
+      // Header: the large avatar (with the v1.305 pencil BADGE on the disc - the old
+      // "Change photo" ROW felt derpy, Dean) + name + role. The wrapper holds the disc and
+      // the badge so refreshAvatars swaps ONLY the disc.
+      const head = document.createElement('div');
+      head.className = 'account-menu-head';
+      avatarWrap = document.createElement('div');
+      avatarWrap.className = 'account-menu-avatar-wrap';
+      headAvatar = buildAccountAvatarEl(user, 'xl');
+      avatarWrap.appendChild(headAvatar);
+      const editAvatar = U.button({ variant: 'tonal', size: 'sm', shape: 'icon', icon: 'edit', ariaLabel: 'Change photo', doc: document });
+      editAvatar.classList.add('account-menu-avatar-edit');
+      editAvatar.title = 'Change photo';
+      editAvatar.addEventListener('click', () => fileInput.click());
+      avatarWrap.appendChild(editAvatar);
+      head.appendChild(avatarWrap);
+      const who = document.createElement('div');
+      who.className = 'account-menu-who';
+      const nameEl = document.createElement('div');
+      nameEl.className = 'account-menu-name';
+      nameEl.textContent = user.displayName || user.username || 'Account';
+      const roleEl = document.createElement('div');
+      roleEl.className = 'account-menu-role';
+      roleEl.textContent = user.role === 'admin' ? 'Admin' : 'Member';
+      who.appendChild(nameEl);
+      who.appendChild(roleEl);
+      head.appendChild(who);
+      p.appendChild(head);
+
+      // Quick links to the library pages (v1.153: this "You" menu is mobile's main way
+      // into these pages - the sidebar is a drawer there - so Stats + Subscriptions join
+      // it). Subscriptions only when the optional yt-dlp module is enabled - gated by the
+      // presence of its nav entry (the signal the sidebar/bottom-nav links use); a late
+      // /health answer adds it through ensureAccountMenuSubscriptionsRow.
+      const links = U.list({ size: 'compact', media: 'avatar', label: 'Account', doc: document });
+      links.classList.add('account-menu-links');
+      accountMenuLinksEl = links;
+      links.appendChild(accountMenuRow(U, { href: '/?liked=1', icon: 'favorite', label: 'Liked' }));
+      links.appendChild(accountMenuRow(U, { href: '/history', icon: 'history', label: 'History' }));
+      links.appendChild(accountMenuRow(U, { href: '/stats.html', icon: 'bar_chart', label: 'Stats' }));
+      if (document.querySelector('[data-nav="subscriptions"], [data-nav-sidebar="subscriptions"]')) {
+        links.appendChild(accountMenuRow(U, { href: '/subscriptions', icon: 'subscriptions', label: 'Subscriptions' }));
+      }
+      // v1.97.1 (Dean): the feed-hidden RESTORE surface lives on the settings page.
+      links.appendChild(accountMenuRow(U, { href: '/setup.html', icon: 'settings', label: 'Settings' }));
+      // Theme: light/dark. The glyph reflects the mode a tap switches TO and updates on
+      // toggle (updateAccountMenuThemeItem, called from applyTheme) - tagged by id. The
+      // menu stays open on a toggle (the old dropdown's behaviour).
+      const theme = accountMenuRow(U, { icon: 'dark_mode', label: 'Theme', onClick: () => toggleTheme() });
+      const themeIcon = theme.querySelector('.ui-row__media .ui-icon');
+      if (themeIcon) themeIcon.id = 'account-menu-theme-icon';
+      links.appendChild(theme);
+      const signOut = accountMenuRow(U, { icon: 'logout', label: 'Sign out', onClick: () => accountSignOut() });
+      signOut.classList.add('account-menu-signout');
+      links.appendChild(signOut);
+      p.appendChild(links);
+
+      // The quiet footer (v1.90 version, v1.158 total on disk, v1.305 items in trash): one
+      // compact ui-list of info-links. The disk and trash rows are lazily counted on the
+      // first open (shimmer until then); a failed fetch hides ITS row only (never a broken
+      // or wrong value); the version row links to the build's release notes in a new tab.
+      const foot = U.list({ size: 'compact', divider: 'none', label: 'About', doc: document });
+      foot.classList.add('account-menu-footer');
+      diskLabel = document.createElement('span');
+      diskLabel.className = 'account-menu-disk-shimmer skeleton-shimmer';
+      diskRow = U.row({ size: 'compact', href: '/stats.html', title: diskLabel, doc: document });
+      diskRow.classList.add('account-menu-disk');
+      diskRow.setAttribute('role', 'menuitem');
+      diskRow.setAttribute('aria-label', 'Total size on disk - open Stats');
+      foot.appendChild(diskRow);
+      trashLabel = document.createElement('span');
+      trashLabel.className = 'account-menu-disk-shimmer skeleton-shimmer'; // the disk row's loading-bar sizing
+      trashRow = U.row({ size: 'compact', href: '/setup.html#trash', title: trashLabel, doc: document });
+      trashRow.classList.add('account-menu-trash');
+      trashRow.setAttribute('role', 'menuitem');
+      trashRow.setAttribute('aria-label', 'Review trash');
+      foot.appendChild(trashRow);
+      const version = appVersionString();
+      const notesUrl = releaseNotesUrl(version);
+      if (version && notesUrl) {
+        const ver = U.row({ size: 'compact', href: notesUrl, title: 'Version ' + version, doc: document });
+        ver.classList.add('account-menu-version');
+        ver.setAttribute('target', '_blank');
+        ver.setAttribute('rel', 'noopener');
+        ver.setAttribute('aria-label', `Version ${version} - open release notes`);
+        foot.appendChild(ver);
+      }
+      p.appendChild(foot);
+
+      // In-app links SPA-navigate (the docked mini-player survives; v1.153: a full reload
+      // tore it down) and close the menu. The click stops at the panel so the document
+      // router never handles it a second time.
+      p.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a[href]') : null;
+        if (!a || !p.contains(a)) return;
+        if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.getAttribute('target') === '_blank') return;
+        let u;
+        try { u = new URL(a.getAttribute('href'), window.location.href); } catch (_) { return; }
+        if (u.origin !== window.location.origin) return;
+        if (typeof deriveRouteView === 'function' && deriveRouteView(u.pathname)
+          && window.FileTube && typeof window.FileTube.navigate === 'function') {
+          e.preventDefault();
+          closeMenu();
+          // v1.305 (gate): when we are ALREADY on the target path+search and only the hash
+          // differs (e.g. "N items in trash" -> /setup.html#trash while already on
+          // Settings), navigate() no-ops - its same-location check ignores the hash - so
+          // set the hash directly; the master-detail hashchange listener opens the section.
+          const samePathSearch = (u.pathname + u.search) === (window.location.pathname + window.location.search);
+          if (samePathSearch && u.hash && u.hash !== window.location.hash) {
+            window.location.hash = u.hash;
+          } else {
+            window.FileTube.navigate(u.href);
+          }
+        }
+      });
+      return p;
+    };
+
     const loadDiskUsage = () => {
       if (diskLoaded) return; // fetch once per menu instance, on first open
       diskLoaded = true;
@@ -7144,26 +7151,8 @@ function injectAccountMenu() {
           diskLabel.className = ''; // drop the shimmer, reveal the value
           diskLabel.textContent = formatDiskBytes(bytes) + ' on disk';
         })
-        .catch(() => { diskRow.hidden = true; diskDivider.hidden = true; });
+        .catch(() => { diskRow.hidden = true; });
     };
-
-    // v1.305 (Dean): "N items in trash" - a one-tap route into the Trash section
-    // (Settings -> Trash was too many taps). Sits directly UNDER the disk figure,
-    // sharing the same footer divider, styled like it (a quiet footer info-link).
-    // Links to /setup.html#trash: wireMasterDetail deep-links that section open on
-    // the hash. ALWAYS shown (Dean: "0 items in trash" / "1 item" / "2 items"),
-    // lazily counted on first open like the disk row; a failed count hides the row
-    // only (never a wrong "0 items"), leaving the disk row + divider untouched.
-    const trashRow = document.createElement('a');
-    trashRow.className = 'account-menu-trash';
-    trashRow.href = '/setup.html#trash';
-    trashRow.setAttribute('role', 'menuitem');
-    trashRow.setAttribute('aria-label', 'Review trash');
-    const trashLabel = document.createElement('span');
-    trashLabel.className = 'account-menu-disk-shimmer skeleton-shimmer'; // reuse the disk row's loading-bar sizing
-    trashRow.appendChild(trashLabel);
-    menu.appendChild(trashRow);
-    let trashLoaded = false;
     const loadTrashCount = () => {
       if (trashLoaded) return; // fetch once per menu instance, on first open
       trashLoaded = true;
@@ -7173,86 +7162,39 @@ function injectAccountMenu() {
           const count = body && Number(Number.isFinite(Number(body.total)) ? body.total : (body.items || []).length);
           if (!Number.isFinite(count)) throw new Error('bad count');
           trashLabel.className = ''; // drop the shimmer, reveal the value
-          // v1.306: /api/trash already returns totalSizeBytes (summed server-side);
-          // pass it so the label shows the reclaimable size alongside the count.
+          // v1.306: /api/trash returns totalSizeBytes (summed server-side).
           trashLabel.textContent = formatTrashCountLabel(count, Number(body.totalSizeBytes));
         })
         .catch(() => { trashRow.hidden = true; });
     };
 
-    const version = appVersionString();
-    const notesUrl = releaseNotesUrl(version);
-    if (version && notesUrl) {
-      // v1.144 (Dean): the version row is a LINK now - click it to open this
-      // build's release notes (the user-language ledger entry from
-      // docs/releases.json, published to GitHub Releases). New tab +
-      // noopener since it leaves the app.
-      const ver = document.createElement('a');
-      ver.className = 'account-menu-version';
-      ver.href = notesUrl;
-      ver.target = '_blank';
-      ver.rel = 'noopener';
-      ver.setAttribute('aria-label', `Version ${version} - open release notes`);
-      ver.textContent = 'Version ' + version;
-      menu.appendChild(ver);
+    function closeMenu() { if (sheet) sheet.close(); }
+    function openMenu() {
+      const U = typeof window !== 'undefined' ? window.ui : null;
+      if (!U || typeof U.sheet !== 'function') return; // ui.js ships on every shell
+      if (!panel) panel = buildPanel(U);
+      if (!sheet) {
+        sheet = U.sheet({
+          // A title, so the header reads 'Account' with the one Close at its trailing edge.
+          variant: 'auto', anchor: trigger, title: 'Account', content: panel, doc: document,
+          onClosing: () => trigger.setAttribute('aria-expanded', 'false'),
+        });
+        sheet.el.id = 'account-menu-sheet'; // an id: ui.sheet rewrites className on every open
+      }
+      sheet.open();
+      trigger.setAttribute('aria-expanded', 'true');
+      updateAccountMenuThemeItem();
+      loadDiskUsage(); loadTrashCount(); // v1.158 / v1.305: lazily, on the first open
     }
+    trigger.addEventListener('click', (e) => {
+      // v1.85.1: the You tab forwards its tap here; stop it reaching the document.
+      e.stopPropagation();
+      if (sheet && sheet.isOpen()) closeMenu(); else openMenu();
+    });
 
-    root.appendChild(menu);
     const phNow = document.getElementById('account-menu-placeholder');
     if (phNow && phNow.parentNode === headerRight) phNow.replaceWith(root);
     else { if (phNow) phNow.remove(); headerRight.appendChild(root); }
-
-    // Interaction: click toggles; outside-click + Escape close; aria in sync.
-    const setOpen = (open) => {
-      menu.hidden = !open;
-      trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
-      if (open) { loadDiskUsage(); loadTrashCount(); } // v1.158 / v1.305: lazily resolve the on-disk total + trash count on first open
-    };
-    trigger.addEventListener('click', (e) => {
-      e.stopPropagation();
-      setOpen(menu.hidden);
-    });
-    // Keep clicks INSIDE the menu from bubbling to the document-close handler
-    // (so a Theme toggle etc. doesn't close the menu). But that same
-    // stopPropagation ALSO starves the document-level SPA router
-    // (handleDocumentClick) of the quick-link anchor clicks, so a plain tap on
-    // e.g. Settings fell through to a FULL page reload -- which unloads the
-    // shell and TEARS DOWN the docked mini-player (Dean, v1.153: "You ->
-    // Settings on mobile stops playback"; the sidebar works because it is not
-    // inside this stopPropagation container). Drive the router EXPLICITLY here
-    // for a same-origin known-route anchor -- close the menu and SPA-navigate,
-    // mirroring shouldInterceptLinkClick -- so the mini-player survives.
-    menu.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const a = e.target && typeof e.target.closest === 'function' ? e.target.closest('a.account-menu-item[href], a.account-menu-disk[href], a.account-menu-trash[href]') : null;
-      if (!a) return;
-      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || a.getAttribute('target') === '_blank') return;
-      let u;
-      try { u = new URL(a.getAttribute('href'), window.location.href); } catch (_) { return; }
-      if (u.origin !== window.location.origin) return;
-      if (typeof deriveRouteView === 'function' && deriveRouteView(u.pathname)
-        && window.FileTube && typeof window.FileTube.navigate === 'function') {
-        e.preventDefault();
-        setOpen(false);
-        // v1.305 (gate): when we are ALREADY on the target path+search and only
-        // the hash differs (e.g. "N items in trash" -> /setup.html#trash while
-        // already on Settings), navigate() no-ops - its same-location check
-        // ignores the hash - so the section would never open. Set the hash
-        // directly instead; the master-detail hashchange listener then drives
-        // selectFromHash to open the section. Every cross-page click still
-        // routes through navigate() (which preserves the hash for init()).
-        const samePathSearch = (u.pathname + u.search) === (window.location.pathname + window.location.search);
-        if (samePathSearch && u.hash && u.hash !== window.location.hash) {
-          window.location.hash = u.hash;
-        } else {
-          window.FileTube.navigate(u.href);
-        }
-      }
-    });
-    document.addEventListener('click', () => { if (!menu.hidden) setOpen(false); });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !menu.hidden) { setOpen(false); trigger.focus(); }
-    });
   }).catch(() => { /* signed-out / network -- no menu */ });
 }
 
@@ -7298,7 +7240,7 @@ function injectOneOffDownloadButtonIfEnabled() {
       // SUCCESSFUL submit's minimize-into-the-chip, see
       // `submitOneOffDownload` below); none of them have their own divergent
       // close logic, they all call this one function.
-      // Root cause (style.css): `.oneoff-modal-backdrop` sets `display: flex`
+      // Root cause (style.css, then): `.oneoff-modal-backdrop` set `display: flex`
       // with no `[hidden]` override, so the old `backdrop.hidden = true`
       // alone never actually hid the full-viewport overlay -- it stayed
       // painted and ate every touch. Now the backdrop node is fully removed
@@ -7317,10 +7259,14 @@ function injectOneOffDownloadButtonIfEnabled() {
       // function is therefore now ONLY ever reached synchronously, right
       // after the last status line was rendered -- there is no longer any
       // pending timer to cancel.
+      // Sweep S9: the dialog is a ui.sheet; its close removes the scrim and the sheet from
+      // the DOM once the exit ends (and is a no-op when the sheet itself began the close -
+      // Esc, the scrim, Close - which calls back here through onClose).
       function closeModal() {
         if (!modalState) return;
-        modalState.backdrop.remove();
+        const state = modalState;
         modalState = null;
+        state.sheet.close();
       }
 
       // v1.29.0 T6 (R1.4/AC3.4): the ONE place that ever POSTs
@@ -7397,10 +7343,8 @@ function injectOneOffDownloadButtonIfEnabled() {
               submitOneOffDownload(body);
             },
           });
-          document.body.appendChild(modalState.backdrop);
         }
-        modalState.backdrop.hidden = false;
-        modalState.modal.hidden = false;
+        modalState.sheet.open();
       }
 
       // Desktop: header button, Dean-locked placement (immediately before
@@ -7408,25 +7352,12 @@ function injectOneOffDownloadButtonIfEnabled() {
       // header has no Settings link get the button appended to
       // `.header-right`).
       if (headerRight) {
-        const btn = document.createElement('button');
-        btn.type = 'button';
+        // Sweep S1 (F31): the header Download is a plain ui-btn icon button at every width
+        // (it was a bevelled text .btn on desktop beside flat round glyphs, and glyph-only
+        // on the phone). The sprite glyph paints with the text (v1.87.1's first-paint rule).
+        const btn = chromeButtonEl({ cls: 'oneoff-download-btn', icon: CHROME_ICON.download, ariaLabel: 'Download a video' });
         btn.id = 'ytdlp-oneoff-btn';
-        btn.className = 'btn';
-        btn.setAttribute('aria-label', 'Download a video');
         btn.title = 'Download a video';
-        // v1.87.1 (Dean): inline <svg> (chrome-icon), not an `.icon-download`
-        // mask - the mask decode-lags on a mobile cold start. See CHROME_ICON_SVG.
-        const dlGlyph = chromeIconEl('download');
-        if (dlGlyph) btn.appendChild(dlGlyph);
-        // v1.86.0 (Dean): the word "Download" lives in a .btn-label span (like the
-        // classic Shuffle/Rescan buttons) so CSS can hide it on mobile - the
-        // button goes glyph-only there, keeps its text on desktop. `.btn` is
-        // inline-flex with a gap, so hiding the label leaves a clean lone icon
-        // (no stray leading-space text node).
-        const label = document.createElement('span');
-        label.className = 'btn-label';
-        label.textContent = 'Download';
-        btn.appendChild(label);
 
         // v1.85.2 (Dean, on-device ROOT CAUSE): scope to a DIRECT CHILD. The
         // original intent was "insert before the Settings link when THIS header
@@ -7469,19 +7400,10 @@ function injectOneOffDownloadButtonIfEnabled() {
       // own bottom-nav injection) -- a `<button>` (not a link) since it opens
       // the modal in place rather than navigating.
       if (settingsNavItem && settingsNavItem.parentElement) {
-        const navBtn = document.createElement('button');
-        navBtn.type = 'button';
-        navBtn.className = 'bottom-nav-item';
-        navBtn.setAttribute('data-nav', 'oneoff-download');
-        navBtn.setAttribute('aria-label', 'Download a video');
-        // v1.339 (L2): an inline chrome-icon <svg>, not the `.icon-download` mask (iOS
-        // decode lag - the v1.87.1 first-paint glyph rule), matching the reserve's glyph.
-        const navIcon = chromeIconEl('download');
-        const navLabel = document.createElement('span');
-        navLabel.className = 'bottom-nav-label';
-        navLabel.textContent = 'Download';
-        if (navIcon) navBtn.appendChild(navIcon);
-        navBtn.appendChild(navLabel);
+        // v1.339 (L2): a sprite <svg>, not the `.icon-download` mask (iOS decode lag - the
+        // v1.87.1 first-paint glyph rule), matching the reserve's glyph. Sweep S1 (F49): a
+        // ui-btn stack tab like every other.
+        const navBtn = bottomNavItemEl({ tag: 'button', nav: 'oneoff-download', icon: CHROME_ICON.download, label: 'Download', ariaLabel: 'Download a video' });
         const navReserve = chromeReserveEl(document.getElementById('bottom-nav'), 'oneoff-download');
         if (navReserve) navReserve.replaceWith(navBtn);
         else settingsNavItem.insertAdjacentElement('afterend', navBtn);
@@ -7491,11 +7413,9 @@ function injectOneOffDownloadButtonIfEnabled() {
         applyBottomNavCustomization();
       }
 
-      // Esc closes the modal while it is open -- backdrop-click and the [x]
-      // button are wired inside buildOneOffModal itself.
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && modalState && !modalState.backdrop.hidden) closeModal();
-      });
+      // Esc, the scrim and the Close are the ui.sheet's own (Esc only closes the TOP
+      // sheet, so it never also closes a dialog stacked over this one); each reaches
+      // closeModal through buildOneOffModal's onClose.
     })
     .catch(() => { dropReserves(); /* network/parse failure -- fail closed, inject nothing (v1.339 L2: and clear the reserves) */ });
 }
@@ -7866,7 +7786,6 @@ const SHELL_SINGLETON_SELECTORS = [
   '#search-input',
   '#ytdlp-oneoff-btn',
   '#playlists-sheet',
-  '#playlists-backdrop',
   '[data-nav="subscriptions"]',
   '[data-nav-sidebar="subscriptions"]',
   '[data-nav-sidebar="books"]',
@@ -8032,23 +7951,22 @@ const KEYBOARD_SHORTCUT_GROUPS = [
       { keys: ['K', 'Space'], desc: 'Play / pause' },
       { keys: ['J'], desc: 'Back 10 seconds' },
       { keys: ['L'], desc: 'Forward 10 seconds' },
-      { keys: ['←'], desc: 'Back 5 seconds' },
-      { keys: ['→'], desc: 'Forward 5 seconds' },
+      { keys: ['ArrowLeft'], desc: 'Back 5 seconds' },
+      { keys: ['ArrowRight'], desc: 'Forward 5 seconds' },
       { keys: ['0', '…', '9'], desc: 'Jump to 0% - 90% of the item' },
       { keys: ['<'], desc: 'Slow down' },
       { keys: ['>'], desc: 'Speed up' },
-      // v1.50: only live while the "Resume playback?" prompt is showing --
-      // the desc says so, keeping the reference's one rule ("every listed
+      // v1.50 (UI pass S3, D8.2): only live while the "Resumed at" toast is
+      // showing (R went with the modal: the load has already resumed) -- the desc says so, keeping the reference's one rule ("every listed
       // key ACTUALLY works") honest about the scoping.
-      { keys: ['R'], desc: 'Resume (while the Resume prompt is showing)' },
-      { keys: ['S'], desc: 'Start over (while the Resume prompt is showing)' },
+      { keys: ['S'], desc: 'Start over (while "Resumed at" shows)' },
     ],
   },
   {
     title: 'Sound & display',
     items: [
-      { keys: ['↑'], desc: 'Volume up' },
-      { keys: ['↓'], desc: 'Volume down' },
+      { keys: ['ArrowUp'], desc: 'Volume up' },
+      { keys: ['ArrowDown'], desc: 'Volume down' },
       // v1.47.8 gate W4: M exists (player.js `case 'm'`) and was missing here.
       // YouTube documents it, and omitting it from the group that lists the
       // volume keys is the most conspicuous possible place to omit it.
@@ -8074,11 +7992,21 @@ const KEYBOARD_SHORTCUT_GROUPS = [
   {
     title: 'Reading (books)',
     items: [
-      { keys: ['←'], desc: 'Previous page' },
-      { keys: ['→'], desc: 'Next page' },
+      { keys: ['ArrowLeft'], desc: 'Previous page' },
+      { keys: ['ArrowRight'], desc: 'Next page' },
     ],
   },
 ];
+
+// Step 7 (UI pass, D1-AC4): an arrow key's cap draws the registry arrow (the DDR row's
+// glyphs), never a text arrow; the key is listed by its KeyboardEvent.key name, which is
+// also what the drift lock matches against the handlers' `case 'ArrowLeft':`.
+const SHORTCUT_KEY_ICONS = {
+  ArrowLeft: { icon: 'arrow_back', label: 'Left arrow' },
+  ArrowRight: { icon: 'arrow_forward', label: 'Right arrow' },
+  ArrowUp: { icon: 'arrow_upward', label: 'Up arrow' },
+  ArrowDown: { icon: 'arrow_downward', label: 'Down arrow' },
+};
 
 // The width at which this app considers itself "mobile" -- the SAME 768px the
 // stylesheet's phone breakpoint uses. Dean asked for the reference to be absent
@@ -8115,14 +8043,9 @@ function shouldOpenShortcuts(e, activeTag, isEditable) {
 }
 
 /**
- * Build the reference dialog. Reuses the EXISTING `.oneoff-modal-backdrop` /
- * `.oneoff-modal` classes rather than inventing a second modal treatment.
- *
- * What actually keeps this from becoming the v1.17.0 full-viewport touch-eater
- * is `closeShortcutsModal`'s `backdrop.remove()` -- NOT the
- * `.oneoff-modal-backdrop[hidden]` rule, which an earlier version of this
- * comment credited (gate S12). That rule only matters to code that sets
- * `.hidden`, and this dialog never does; it is irrelevant here.
+ * Build the reference dialog (sweep S9: a ui.sheet dialog - see the comment inside).
+ * What keeps it from becoming the v1.17.0 full-viewport touch-eater is the sheet's own
+ * teardown: a closed ui.sheet removes its scrim and box from the document.
  */
 // v1.163 (Dean): the DDR "Keyboard Combos" easter egg - a hidden mini-synth in the
 // shortcuts window (the Discord homage). Four arrows sit in the header top-right;
@@ -8131,24 +8054,18 @@ function shouldOpenShortcuts(e, activeTag, isEditable) {
 // player". The notes are a consonant C-D-E-G run (no dissonant clash). Pure map so
 // it is testable; the synth is Web Audio, fully guarded (silent + never throws
 // where AudioContext is absent, e.g. node:test).
-// `axis` drives the resting COLOUR (Dean's DDR scheme): 'h' = left/right = BLUE,
+// `axis` drives the press COLOUR (Dean's DDR scheme): 'h' = left/right = BLUE,
 // 'v' = up/down = RED. Rendered as a `.shortcuts-ddr-arrow--h/--v` class the CSS
-// colours; the press state (.ddr-hit) overrides both.
+// colours on the press state (.ddr-hit).
+// Sweep S9 (AC4): each arrow is a registry ICON (`icon`), never a text glyph - which
+// also retires the U+FE0E text-presentation workaround (v1.163.1: iOS painted the
+// text arrows as colour emoji; a drawn glyph has no emoji presentation at all).
 var DDR_ARROWS = [
-  { key: 'ArrowLeft', glyph: '←', freq: 523.25, axis: 'h' },  // C5, blue
-  { key: 'ArrowDown', glyph: '↓', freq: 587.33, axis: 'v' },  // D5, red
-  { key: 'ArrowUp', glyph: '↑', freq: 659.25, axis: 'v' },    // E5, red
-  { key: 'ArrowRight', glyph: '→', freq: 783.99, axis: 'h' }, // G5, blue
+  { key: 'ArrowLeft', icon: 'arrow_back', label: 'Left', freq: 523.25, axis: 'h' },      // C5, blue
+  { key: 'ArrowDown', icon: 'arrow_downward', label: 'Down', freq: 587.33, axis: 'v' },  // D5, red
+  { key: 'ArrowUp', icon: 'arrow_upward', label: 'Up', freq: 659.25, axis: 'v' },        // E5, red
+  { key: 'ArrowRight', icon: 'arrow_forward', label: 'Right', freq: 783.99, axis: 'h' }, // G5, blue
 ];
-// U+FE0E (VARIATION SELECTOR-15) forces the MONOCHROME text presentation of the
-// arrow glyphs so OUR CSS colours win instead of the OS emoji palette (iOS was
-// painting them its own blue/red, which we can neither guarantee across devices
-// nor match to a shade). Zero-width, so it never shows. The `.glyph` field stays
-// the bare arrow (its semantic identity); the selector is appended only in the DOM.
-var DDR_TEXT_PRESENTATION = '\uFE0E';
-function ddrArrowDisplayGlyph(glyph) {
-  return String(glyph == null ? '' : glyph) + DDR_TEXT_PRESENTATION;
-}
 function ddrNoteForArrow(key) {
   for (var i = 0; i < DDR_ARROWS.length; i++) if (DDR_ARROWS[i].key === key) return DDR_ARROWS[i].freq;
   return 0;
@@ -8238,19 +8155,28 @@ var CRITTER_FLIP_MIN_COVERAGE = 0.5;
 // are already skipped by the placement-rect exclusion check.
 // v1.167 (Dean: "everywhere... popping up behind the button in a cute
 // cartoonish way"): the MACHINE-DERIVED per-view sweep (exec plan carries the
-// full accept/reject table) - `.btn` (buttons, PRIORITY-weighted), `.sub-row`,
-// `.history-thumb`, `.book-row-cover`, `.music-artist-mosaic`,
+// full accept/reject table) - `.btn` (buttons, PRIORITY-weighted),
+// `.history-thumb` (now the `.ui-thumb` anchor, sweep S2), `.book-row-cover`, `.music-artist-mosaic`,
 // `.podcast-card-art`, `.comment-input-box`. Rejected as TRANSPARENT (the
 // tightened ground contract): the music/podcast CARDS (their art tiles paint
 // instead), history/song/stable rows, comment-item.
+// UI pass S6: the podcast art is the shared `.ui-art` rounded square now (ui.css paints
+// its --thumb-ground), so the pool names the primitive instead of the retired
+// `.podcast-card-art`; every surface that adopts ui-art (albums, books) anchors too.
+// UI pass S5: the Subscriptions row became a ui-row, which paints NO background (the
+// ground contract), so the retired `.sub-row` left the pool like the other transparent rows.
 var CRITTER_ANCHOR_SELECTORS = [
-  '.video-card', '.setup-box', '.md-group-card', '.md-hero', '.description-container', '.related-thumb',
-  '.btn', '.sub-row', '.history-thumb', '.book-row-cover', '.music-artist-mosaic', '.podcast-card-art', '.comment-input-box',
+  '.video-card', '.setup-box', '.md-group-card', '.md-hero', '.description-container',
+  '.btn', '.book-row-cover', '.music-artist-mosaic', '.ui-art', '.comment-input-box',
   // v1.169 (Dean: the mobile feed needs critters ON the cards): the thumbnail
-  // (paints letterbox black - critters rise from behind the artwork onto the
-  // title zone) and the tiny channel-avatar circle (24px - a micro-ambush;
-  // the anchor minimum drops to 24x24 for it, pool stays curated).
-  '.thumbnail-container', '.card-channel-avatar',
+  // (paints its ground - critters rise from behind the artwork onto the title
+  // zone) and the small channel-avatar circle (a micro-ambush; the anchor
+  // minimum drops for it, pool stays curated). UI pass sweep S2: every
+  // thumbnail the sweep migrated - the cards', the watch page's related rail
+  // (was `.related-thumb`) and History's rows (was `.history-thumb`) - is the
+  // ui-thumb primitive, which paints --thumb-ground; the card avatar is a
+  // ui-avatar (the same ground).
+  '.ui-thumb', '.video-card .ui-avatar',
 ];
 // Buttons get sampling PRIORITY (Dean's ambush-over-wallpaper ruling): anchors
 // matching these selectors carry weight 3 in the without-replacement sample.
@@ -9814,25 +9740,14 @@ function applyCritterMode() {
 
 function buildShortcutsModal(doc, handlers) {
   const d = doc || document;
+  const U = overlayUiLib();
   const onClose = handlers && typeof handlers.onClose === 'function' ? handlers.onClose : null;
 
-  const backdrop = d.createElement('div');
-  backdrop.className = 'oneoff-modal-backdrop';
-  backdrop.addEventListener('click', (e) => {
-    if (e && e.target === backdrop && onClose) onClose();
-  });
-
+  // Sweep S9: a ui.sheet dialog titled "Keyboard shortcuts" (Esc, the scrim and its one
+  // Close dismiss it; wide on desktop via style.css `:has(.shortcuts-modal)`). The sheet is
+  // built here and opened by openShortcutsModal; `modal` is its content.
   const modal = d.createElement('div');
-  modal.className = 'oneoff-modal shortcuts-modal';
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
-  modal.setAttribute('aria-label', 'Keyboard shortcuts');
-
-  const header = d.createElement('div');
-  header.className = 'oneoff-modal-header';
-  const title = d.createElement('h3');
-  title.textContent = 'Keyboard shortcuts';
-  header.appendChild(title);
+  modal.className = 'shortcuts-modal';
 
   // v1.163 (Dean): the DDR arrow row (top-right, before the close) + the mini-synth.
   // Each arrow lights + plays a note on its key press or a click; `ddrByKey` lets
@@ -9843,27 +9758,15 @@ function buildShortcutsModal(doc, handlers) {
   ddrRow.setAttribute('aria-hidden', 'true'); // decorative easter egg (keys/taps both play; arrows are tabIndex -1, never in the a11y tree)
   const pulse = (el) => { el.classList.remove('ddr-hit'); void el.offsetWidth; el.classList.add('ddr-hit'); };
   DDR_ARROWS.forEach((a) => {
-    const arrow = d.createElement('button');
-    arrow.type = 'button';
-    arrow.className = 'shortcuts-ddr-arrow';
-    // Resting colour by axis: left/right -> blue, up/down -> red (Dean's scheme).
+    const arrow = U.button({ variant: 'tonal', size: 'sm', shape: 'icon', icon: a.icon, ariaLabel: a.label, doc: d });
+    arrow.classList.add('shortcuts-ddr-arrow');
+    // Press colour by axis: left/right -> blue, up/down -> red (Dean's scheme).
     if (a.axis === 'h' || a.axis === 'v') arrow.classList.add('shortcuts-ddr-arrow--' + a.axis);
     arrow.tabIndex = -1;
-    arrow.textContent = ddrArrowDisplayGlyph(a.glyph); // force text (non-emoji) presentation
     arrow.addEventListener('click', () => { playDdrNote(a.freq); pulse(arrow); });
     ddrRow.appendChild(arrow);
     ddrByKey[a.key] = { el: arrow, freq: a.freq, pulse: () => pulse(arrow) };
   });
-  header.appendChild(ddrRow);
-
-  const closeBtn = d.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'oneoff-modal-close';
-  closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.textContent = '×';
-  if (onClose) closeBtn.addEventListener('click', onClose);
-  header.appendChild(closeBtn);
-  modal.appendChild(header);
 
   // The DDR pun subtitle (the Discord homage).
   const subtitle = d.createElement('div');
@@ -9898,7 +9801,15 @@ function buildShortcutsModal(doc, handlers) {
           return;
         }
         const kbd = d.createElement('kbd');
-        kbd.textContent = key;
+        const glyph = SHORTCUT_KEY_ICONS[key];
+        if (glyph && U && typeof U.icon === 'function') {
+          kbd.className = 'shortcuts-kbd--icon';
+          kbd.setAttribute('aria-label', glyph.label);
+          kbd.setAttribute('title', glyph.label);
+          kbd.appendChild(U.icon(glyph.icon, { size: 'sm', doc: d }));
+        } else {
+          kbd.textContent = glyph ? glyph.label : key;
+        }
         keysEl.appendChild(kbd);
       });
       row.appendChild(keysEl);
@@ -9935,8 +9846,15 @@ function buildShortcutsModal(doc, handlers) {
     + 'are typing, or while a button or link has focus (click the video to hand focus back).';
   modal.appendChild(note);
 
-  backdrop.appendChild(modal);
-  return { backdrop, modal, closeBtn, ddrByKey };
+  const sheet = U.sheet({
+    variant: 'dialog', title: 'Keyboard shortcuts', content: modal,
+    onClosing: () => { if (onClose) onClose(); },
+    doc: d, win: d.defaultView,
+  });
+  // The DDR arrows sit in the sheet header, top-right, just before its one Close.
+  const closeBtn = sheet.el.querySelector('.ui-sheet__close');
+  sheet.el.querySelector('.ui-sheet__header').insertBefore(ddrRow, closeBtn);
+  return { sheet, backdrop: sheet.scrim, modal, closeBtn, ddrByKey };
 }
 
 // The live dialog, or null. Module-level so `?` cannot stack two of them.
@@ -9950,7 +9868,7 @@ let shortcutsModalState = null;
  * bare state so a stranded reference can never wedge those handlers off.
  */
 function isShortcutsModalOpen() {
-  return Boolean(shortcutsModalState && shortcutsModalState.backdrop.isConnected);
+  return Boolean(shortcutsModalState && shortcutsModalState.sheet.el.isConnected);
 }
 
 function closeShortcutsModal() {
@@ -9963,9 +9881,11 @@ function closeShortcutsModal() {
   }
   // REMOVED from the DOM, not hidden -- the v1.17.0 lesson: a modal backdrop
   // left in the tree with an author `display` is a full-viewport, invisible
-  // touch/click eater.
-  shortcutsModalState.backdrop.remove();
+  // touch/click eater. Sweep S9: the ui.sheet's close removes the scrim and the
+  // sheet once its exit ends (a no-op when the sheet itself started the close).
+  const state = shortcutsModalState;
   shortcutsModalState = null;
+  state.sheet.close();
 }
 
 function openShortcutsModal() {
@@ -9977,7 +9897,7 @@ function openShortcutsModal() {
   // v1.45.8 isConnected lesson applied as one line of insurance rather than a
   // fix for a live bug.
   if (shortcutsModalState) {
-    if (shortcutsModalState.backdrop.isConnected) return; // genuinely open -- never stack
+    if (shortcutsModalState.sheet.el.isConnected) return; // genuinely open -- never stack
     // Stranded (backdrop removed without routing through closeShortcutsModal):
     // recover -- but FIRST unbind the leaked capture-phase DDR handler, or it
     // would keep eating every arrow key session-wide while the fresh window's
@@ -9991,11 +9911,16 @@ function openShortcutsModal() {
   }
   shortcutsModalState = buildShortcutsModal(document, { onClose: closeShortcutsModal });
   // v1.47.8 gate S10: while a video is in NATIVE fullscreen, only the
-  // fullscreen element's subtree renders -- appending to body would create an
-  // invisible dialog that then swallows `?` (state set, nothing on screen).
-  // The fullscreen element is the correct host in that case.
-  const host = document.fullscreenElement || document.body;
-  host.appendChild(shortcutsModalState.backdrop);
+  // fullscreen element's subtree renders -- a dialog on body would be invisible
+  // and then swallow `?` (state set, nothing on screen). The fullscreen element
+  // is the correct host in that case: the sheet opens on body, then its scrim and
+  // sheet move into it (the sheet removes them from wherever they are on close).
+  const sheet = shortcutsModalState.sheet;
+  sheet.open();
+  if (document.fullscreenElement) {
+    document.fullscreenElement.appendChild(sheet.scrim);
+    document.fullscreenElement.appendChild(sheet.el);
+  }
   // Focus the close control so Tab/Esc land somewhere sensible and the dialog
   // is reachable without a mouse -- it is a keyboard feature, after all.
   if (shortcutsModalState.closeBtn && typeof shortcutsModalState.closeBtn.focus === 'function') {
@@ -10731,6 +10656,26 @@ if (typeof window !== 'undefined') {
   // before the page "settles" on the correct one.
   let navGeneration = 0;
 
+  // Gate r1 (adversary 3): ONE AbortSignal per SHOWN view, aborted the moment the user leaves it.
+  // A view's own AbortController is not that: home (and its folder filters) is CACHED on
+  // nav-away and never aborted, so a destructive confirm opened from a home card stayed up over
+  // the next view and its OK still deleted. `viewSignal()` is read when a surface opens (never
+  // stored at init: a cached home would hold an already-aborted one after its restore), and
+  // leaveShownView() aborts it at every exit: a navigate() or popstate that leaves the view
+  // (at its start, before the fetch, so no OK lands mid-swap; this also covers the cached-home
+  // restore, which follows it synchronously), and swapToView (a surface opened on the old view
+  // WHILE the next one was fetching). An in-view pop (a drill collapsing) keeps it.
+  let shownViewController = null;
+  function viewSignal() {
+    if (!shownViewController) shownViewController = new AbortController();
+    return shownViewController.signal;
+  }
+  function leaveShownView() {
+    const c = shownViewController;
+    shownViewController = null;
+    if (c) c.abort();
+  }
+
   // `FileTube.registerView(name, { init, destroy })` -- called by each view
   // module (main.js/watch.js/setup.js, and lazily lib/ytdlp/client/
   // subscriptions.js) at its own top-level parse time, which happens before
@@ -10935,6 +10880,7 @@ if (typeof window !== 'undefined') {
   // the progressive-enhancement boot) funnels through -- exactly one code
   // path, matching the per-view `init`/`destroy` contract.
   function swapToView(view, root, title, scrollY, url) {
+    leaveShownView();
     applyPlayerTransition(currentViewName, view);
     const oldRoot = getViewRoot();
 
@@ -11189,6 +11135,7 @@ if (typeof window !== 'undefined') {
     // BEFORE the (possible) fetch below, so any PRIOR still-in-flight
     // navigate()/popstate fetch immediately becomes stale.
     const gen = ++navGeneration;
+    leaveShownView(); // the user is leaving: close what the view had open (viewSignal)
 
     // v1.45.0 gate-fix (C1): a PUSH to the home ROOT ('/' with no query) is the
     // TOP of the walk — always depth 0, never current+1. Every go-home path
@@ -11410,6 +11357,7 @@ if (typeof window !== 'undefined') {
     // click-then-back sequence can otherwise let an earlier fetch resolve
     // after a later one and swap in the wrong view.
     const gen = ++navGeneration;
+    leaveShownView(); // the user is leaving: close what the view had open (viewSignal)
 
     if (state.view === 'home' && homeViewCache && homeViewCache.url === targetUrl) {
       const cached = homeViewCache;
@@ -11486,6 +11434,7 @@ if (typeof window !== 'undefined') {
   window.FileTube = window.FileTube || {};
   window.FileTube.registerView = registerView;
   window.FileTube.navigate = navigate;
+  window.FileTube.viewSignal = viewSignal; // gate r1: aborts when the user leaves the shown view
   window.FileTube.pushViewState = pushViewState; // v1.217 in-view back-stack
   window.FileTube.replaceViewState = replaceViewState;
   // v1.247 (F2): the skin's MENU/collapse asks to dock back on the launch-origin tab. The getter
@@ -11617,12 +11566,12 @@ function renderPlaylistsSheet(folders, folderSettings, syntheticFolders) {
   // count-gated applyLikedSidebarEntry helper every sidebar surface now
   // uses (visible iff at least one liked video exists), so the sheet and
   // the sidebars can never disagree.
-  if (visible.length === 0) {
-    list.innerHTML = libEntries + '<div class="sidebar-item">No folders configured.</div>';
-    applyLikedSidebarEntry(list);
-    return;
-  }
-  list.innerHTML = libEntries + visible.map((f) => {
+  // Sweep S1 (F50): the sheet's rows are ui-rows in ONE ui-list (a 56px row, the glyph in
+  // the media column, a reserved action column so every title starts at the same x - G1).
+  // The entries themselves still come from the SAME generators the sidebar mirrors
+  // (libraryEntriesHtml's sidebar-item markup), converted in place by toSheetRow, so the
+  // sheet and the sidebar can never disagree about WHAT is listed.
+  const folderRows = visible.map((f) => {
     const base = f.split(/[\\/]/).pop() || f;
     const label = (settings[f] && settings[f].name) || base;
     const glyphClass = resolveFolderGlyphClass(settings[f] && settings[f].glyph); // v1.77
@@ -11630,7 +11579,49 @@ function renderPlaylistsSheet(folders, folderSettings, syntheticFolders) {
       '" class="sidebar-item"><i class="' + glyphClass + '"></i> ' +
       escapeAttr(label) + '</a>';
   }).join('');
-  applyLikedSidebarEntry(list); // v1.33.1: count-gated Liked entry, prepended
+  list.innerHTML = '<div class="' + PLAYLISTS_SHEET_LIST_CLASS + '" role="list" aria-label="Library">' + libEntries + folderRows + '</div>'
+    + (visible.length === 0 ? '<p class="playlists-sheet-note">No folders configured.</p>' : '');
+  const group = list.firstChild;
+  Array.prototype.slice.call(group.children).forEach(toSheetRow);
+  applyLikedSidebarEntry(group, { decorate: toSheetRow }); // v1.33.1: count-gated Liked entry, prepended
+}
+
+// The sheet's list classes (ui.css ui-list): 56px rows, a 36px media column, one reserved
+// 44px action column (a pinned row's unpin; an empty slot elsewhere), no dividers.
+const PLAYLISTS_SHEET_LIST_CLASS = 'ui-list ui-list--default ui-list--media-avatar ui-list--aside-none ui-list--actions-1 ui-list--divider-none playlists-sheet-group';
+
+// Sweep S1 (F50): turn one generator row (`<a class="sidebar-item"><i class="icon-x"></i>
+// Label</a>`) into a whole-row ui-row link IN PLACE: the glyph moves to the media slot, the
+// label to the title, and the action column is reserved with an empty slot. Idempotent (a
+// converted row is returned as is); the count-gated Liked row keeps its `sidebar-item-liked`
+// hook, which applyLikedSidebarEntry's dedupe reads.
+function toSheetRow(a) {
+  if (!a || !a.classList || a.classList.contains('ui-row') || a.tagName !== 'A') return a;
+  const d = a.ownerDocument;
+  const glyph = a.querySelector('i');
+  const label = (a.textContent || '').trim();
+  const liked = a.classList.contains('sidebar-item-liked');
+  const active = a.classList.contains('active');
+  a.className = 'ui-row ui-row--default playlists-sheet-item' + (liked ? ' sidebar-item-liked' : '') + (active ? ' active' : '');
+  a.setAttribute('role', 'listitem');
+  a.textContent = '';
+  const span = (cls) => { const n = d.createElement('span'); n.className = cls; return n; };
+  a.appendChild(span('ui-row__lead'));
+  const media = span('ui-row__media');
+  if (glyph) media.appendChild(glyph);
+  a.appendChild(media);
+  const body = span('ui-row__body');
+  const title = span('ui-row__title');
+  title.textContent = label;
+  body.appendChild(title);
+  a.appendChild(body);
+  a.appendChild(span('ui-row__aside'));
+  const acts = span('ui-row__actions');
+  const slot = span('ui-row__slot');
+  slot.setAttribute('aria-hidden', 'true');
+  acts.appendChild(slot);
+  a.appendChild(acts);
+  return a;
 }
 
 // v1.21.0 FR-5: pure filter/derive step for the pinned-playlist Playlists-
@@ -11692,33 +11683,45 @@ function pinDeleteEndpoint(pin) {
   return `/api/subscriptions/pins/${encodeURIComponent(pin.id)}`;
 }
 
-function buildUnpinButton(pin, onDone) {
+// Sweep S1 (D4.6/D4.8, F32): the unpin control is the one Pin concept - a plain ui-btn icon
+// toggle showing the filled pin (`keep.fill`, pressed) - and the in-row "Unpin?" arm is
+// gone: a tap asks through ui.confirm, and only a confirmed answer DELETEs (Cancel, Esc,
+// the scrim and Close all keep the pin). `size`: 'md' in the phone sheet (a 44px button),
+// 'sm' in the desktop sidebar's 13px rows (the hit area is 44 either way).
+function buildUnpinButton(pin, onDone, size, label) {
   const btn = document.createElement('button');
   btn.type = 'button';
-  btn.className = 'pinned-unpin-btn';
+  btn.className = 'ui-btn ui-btn--plain ui-btn--' + (size === 'md' ? 'md' : 'sm') + ' ui-btn--icon pinned-unpin-btn';
   btn.setAttribute('aria-label', 'Unpin');
-  btn.textContent = '×';
-  let armTimer = null;
+  btn.setAttribute('aria-pressed', 'true');
+  const slot = document.createElement('span');
+  slot.className = 'ui-btn__icon';
+  const glyph = uiIconEl('keep.fill', 'md');
+  if (glyph) slot.appendChild(glyph);
+  btn.appendChild(slot);
+  let asking = false;
   btn.addEventListener('click', (event) => {
     // Never navigate the row's own link.
     event.preventDefault();
     event.stopPropagation();
-    if (!pin || typeof pin.id !== 'string') return;
-    if (!btn.classList.contains('armed')) {
-      btn.classList.add('armed');
-      btn.textContent = 'Unpin?';
-      armTimer = setTimeout(() => {
-        btn.classList.remove('armed');
-        btn.textContent = '×';
-      }, 3000);
-      return;
-    }
-    if (armTimer) clearTimeout(armTimer);
-    btn.disabled = true;
-    fetch(pinDeleteEndpoint(pin), { method: 'DELETE' })
-      .catch(() => {})
-      .finally(() => {
-        if (typeof onDone === 'function') onDone();
+    if (!pin || typeof pin.id !== 'string' || asking) return;
+    const U = typeof window !== 'undefined' ? window.ui : null;
+    if (!U || typeof U.confirm !== 'function') return; // ui.js ships on every shell
+    asking = true;
+    const name = typeof label === 'string' && label.trim() ? label.trim() : 'this playlist';
+    // Gate r1 (adversary 3): this button lives in the SHELL (the sidebar, the playlists sheet),
+    // which no view teardown reaches, so the confirm binds the router's shown-view signal:
+    // leaving the view dismisses it (resolves false) and its OK cannot act over the next one.
+    const ft = window.FileTube;
+    const shown = (ft && typeof ft.viewSignal === 'function') ? ft.viewSignal() : undefined;
+    U.confirm({ title: 'Unpin ' + name + '?', body: 'It leaves your pinned playlists. You can pin it again from its page.', confirmLabel: 'Unpin', signal: shown })
+      .then((ok) => {
+        asking = false;
+        if (ok !== true || (shown && shown.aborted)) return;
+        btn.disabled = true;
+        return fetch(pinDeleteEndpoint(pin), { method: 'DELETE' })
+          .catch(() => {})
+          .finally(() => { if (typeof onDone === 'function') onDone(); });
       });
   });
   return btn;
@@ -11797,20 +11800,15 @@ function derivePinnedPlaylistEntries(pins) {
 // only, matching this file's SECURITY discipline for pin data (a pin's
 // label/channelAvatarUrl are the same untrusted, creator-controlled snapshot
 // `renderPinnedPlaylists`'s own comment already documents).
-function buildPinAvatarNode(label, channelAvatarUrl) {
+// Sweep S1 (D4.4): a ui-avatar (chromeAvatarEl) - the captured channel photo, else the
+// primitive's monogram; a photo that fails becomes the monogram (never a broken image).
+// `size` is a D2.3 avatar size: 'xs' (20px) in the desktop sidebar's rows, 'md' (36px, the
+// list's media column) in the phone sheet.
+function buildPinAvatarNode(label, channelAvatarUrl, size) {
   const source = resolveAvatarSource(label, channelAvatarUrl);
-  if (source.type === 'url') {
-    const img = document.createElement('img');
-    img.className = 'pinned-avatar pinned-avatar-img';
-    img.src = source.url;
-    img.alt = '';
-    return img;
-  }
-  const glyph = document.createElement('span');
-  glyph.className = 'pinned-avatar pinned-avatar-generated';
-  if (glyph.style) glyph.style.backgroundColor = source.color;
-  glyph.appendChild(document.createTextNode(source.glyph));
-  return glyph;
+  const el = chromeAvatarEl(label, source.type === 'url' ? source.url : null, size || 'xs');
+  el.classList.add('pinned-avatar');
+  return el;
 }
 
 // v1.21.0 FR-5 (AC35/AC36): renders the pinned-channel-playlist subsection
@@ -11852,13 +11850,15 @@ function renderPinnedPlaylists(pins, moduleEnabled) {
   const entries = derivePinnedPlaylistEntries(pins);
   if (entries.length === 0) {
     if (moduleEnabled) {
+      // Sweep S9 (F65): the one ui-state block (its title only - a compact note inside
+      // the sheet), in ui.state's own DOM.
       const empty = document.createElement('div');
       empty.id = 'playlists-pinned-section';
-      empty.className = 'empty-state empty-state-inline';
-      const message = document.createElement('p');
-      message.className = 'empty-state-message';
-      message.textContent = 'No playlists pinned yet.';
-      empty.appendChild(message);
+      empty.className = 'ui-state';
+      const title = document.createElement('h3');
+      title.className = 'ui-state__title';
+      title.textContent = 'No playlists pinned yet.';
+      empty.appendChild(title);
       list.appendChild(empty);
     }
     return;
@@ -11869,9 +11869,16 @@ function renderPinnedPlaylists(pins, moduleEnabled) {
   section.className = 'playlists-pinned-section';
 
   const heading = document.createElement('div');
-  heading.className = 'sidebar-section-title';
+  heading.className = 'playlists-sheet-heading';
   heading.textContent = 'Pinned';
   section.appendChild(heading);
+  // Sweep S1 (F50): the pinned rows are ui-rows in the same list shape as the library rows
+  // above (media column, one action column), so the two lists' columns line up.
+  const group = document.createElement('div');
+  group.className = PLAYLISTS_SHEET_LIST_CLASS;
+  group.setAttribute('role', 'list');
+  group.setAttribute('aria-label', 'Pinned');
+  section.appendChild(group);
 
   // v1.37.0: same-predicate parallel view of the raw pins, so each rendered
   // row can recover its source record (id + pinSource) for the unpin
@@ -11880,26 +11887,43 @@ function renderPinnedPlaylists(pins, moduleEnabled) {
     .filter((p) => p && typeof p.channelDir === 'string' && p.channelDir !== '');
 
   entries.forEach((entry, sheetIndex) => {
+    const span = (cls) => { const n = document.createElement('span'); n.className = cls; return n; };
+    // A ui-row div (it holds a button, so the whole row cannot be one link): the title's
+    // link is stretched over the row by ui.css (.ui-row__link::before).
+    const row = document.createElement('div');
+    row.className = 'ui-row ui-row--default playlists-sheet-item';
+    row.setAttribute('role', 'listitem');
+    row.appendChild(span('ui-row__lead'));
+    const media = span('ui-row__media');
+    // F1: real channel icon when captured (C6), else the monogram avatar.
+    media.appendChild(buildPinAvatarNode(entry.label, entry.channelAvatarUrl, 'md'));
+    row.appendChild(media);
+    const body = span('ui-row__body');
+    const title = span('ui-row__title');
     const link = document.createElement('a');
-    link.className = 'sidebar-item';
+    link.className = 'ui-row__link';
     // v1.37.0: a pre-shaped href (book shelves) wins; ytdlp pins keep the
     // classic /?root= link (entry.href is null there).
     link.href = entry.href || ('/?root=' + encodeURIComponent(entry.channelDir));
-    // F1: real channel icon when captured (C6), else a deterministic
-    // generated avatar -- replaces the old generic icon-star glyph.
-    link.appendChild(buildPinAvatarNode(entry.label, entry.channelAvatarUrl));
-    // SECURITY: entry.label is untrusted -- a dedicated text node (not
-    // link.textContent, which would also wipe the avatar appended above) so
-    // both the avatar and the label survive, neither ever passed through
-    // innerHTML.
-    link.appendChild(document.createTextNode(' ' + entry.label));
+    // SECURITY: entry.label is untrusted -- a text node, never innerHTML.
+    link.appendChild(document.createTextNode(entry.label));
+    title.appendChild(link);
+    body.appendChild(title);
+    row.appendChild(body);
+    row.appendChild(span('ui-row__aside'));
+    const acts = span('ui-row__actions');
     // v1.37.0 (Dean's orphaned-pin report): the unpin control -- see
     // buildUnpinButton's comment.
     const sheetSourcePin = validSheetPins[sheetIndex];
     if (sheetSourcePin && typeof sheetSourcePin.id === 'string') {
-      link.appendChild(buildUnpinButton(sheetSourcePin, refreshAllPinSurfaces));
+      acts.appendChild(buildUnpinButton(sheetSourcePin, refreshAllPinSurfaces, 'md', entry.label));
+    } else {
+      const slot = span('ui-row__slot');
+      slot.setAttribute('aria-hidden', 'true');
+      acts.appendChild(slot);
     }
-    section.appendChild(link);
+    row.appendChild(acts);
+    group.appendChild(row);
   });
 
   list.appendChild(section);
@@ -11997,7 +12021,7 @@ function renderPinnedSidebar(pins) {
     // v1.37.0 (Dean's orphaned-pin report): every pinned row carries its
     // own unpin control -- see buildUnpinButton's comment.
     if (sourcePin && typeof sourcePin.id === 'string') {
-      link.appendChild(buildUnpinButton(sourcePin, refreshAllPinSurfaces));
+      link.appendChild(buildUnpinButton(sourcePin, refreshAllPinSurfaces, 'sm', entry.label));
     }
     section.appendChild(link);
   });
@@ -12115,159 +12139,10 @@ function persistPinReorder(orderedIds, source) {
     .finally(() => refreshAllPinSurfaces());
 }
 
-// v1.26.2 polish (Dean punchlist -- sheet/modal transitions): every bottom
-// sheet / modal in this app used to be toggled purely via
-// [hidden]/create-and-remove, an instant teleport in AND out -- a CSS
-// transition can never start FROM `display: none`, and `.remove()`/
-// `removeChild()` erases the node before any closing transition could ever
-// render a single frame. These two small, dependency-free helpers fix that
-// uniformly for every open/close call site (Playlists sheet, the
-// subscription settings sheet, and the generic confirm/move modals) instead
-// of each surface reinventing its own dance. No animation library --
-// plain CSS transitions (see style.css's `.sheet-open`/`.modal-open`
-// classes) driven by these two functions.
-//
-// `openOverlay`: the two-step reveal technique -- unhide (only if the
-// element actually uses the `hidden` attribute; the confirm/move modals
-// don't, they're freshly created and appended instead), force a synchronous
-// reflow (`void el.offsetHeight`) so the browser commits the CLOSED starting
-// state BEFORE the very next line flips it to OPEN (otherwise both style
-// changes can get batched into a single paint and the transition never
-// visibly plays), then add `openClass` to trigger the CSS transition in.
-//
-// `closeOverlayThen`: removes `openClass` (triggering the CSS transition
-// back out) and calls `afterClose` once that transition actually finishes
-// (`transitionend`, with a short timeout fallback in case nothing was
-// actually transitioning) -- never leaving the caller's real teardown (the
-// `[hidden] = true` / `.remove()`) stuck half-animated.
-//
-// Both feature-detect `classList` before doing anything CSS-class-related:
-// the node:test fake-DOM harnesses used by showMoveModal's/showConfirmModal's
-// own unit tests (and any other non-browser environment) have no
-// `classList`, so on those both helpers degrade to their pre-v1.26.2
-// behavior -- an instant, synchronous show/hide -- so existing synchronous
-// test assertions (e.g. "teardown() fully detaches the backdrop") keep
-// holding exactly as before. `prefers-reduced-motion: reduce` gets the same
-// instant treatment by deliberate choice (AC: honor the OS preference).
-function prefersReducedMotion() {
-  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
-
-function overlayCanAnimate(el) {
-  return !!(el && el.classList && typeof el.classList.add === 'function' && typeof el.classList.remove === 'function');
-}
-
-// v1.26.2 code-review fix (F1, BLOCKER): a per-element WeakMap tracks each
-// overlay's own in-flight close -- a monotonically increasing `gen`eration
-// counter plus a `cancel` closure that tears down that close's
-// transitionend/transitioncancel listeners and fallback timer. Without this,
-// a close-then-reopen-within-~300ms sequence on a REUSED node (e.g. the
-// Playlists sheet's persistent #playlists-sheet/#playlists-backdrop --
-// unlike the confirm/move modals or the subs settings sheet, which build a
-// brand-new node on every open) left the abandoned close's
-// `setTimeout(finish, 300)` fallback armed; when it fired, `afterClose`
-// (which sets `hidden = true`) hid the sheet the user had just reopened. A
-// reopen interrupts the CSS transition mid-flight, which fires
-// `transitioncancel`, NOT `transitionend` -- so before this fix the stale
-// fallback timer was actually the LIVE path here, not a rare edge case.
-//
-// `cancelPendingClose(el)` is called at the TOP of both `openOverlay` and
-// `closeOverlayThen` -- it bumps `gen` (invalidating anything still in
-// flight for `el`) and, if a close was actually pending, cancels its
-// listeners/timer outright so the stale close can never reach `finish()` at
-// all. This is what makes rapid open/close/open/close sequences on the SAME
-// element always converge on the LAST call's intent: each call supersedes
-// whatever `el` was mid-animation on before it. `finish()` additionally
-// re-checks the generation counter AND (belt-and-braces, per F1's review) whether
-// `el` still carries `openClass` -- if either says "this element moved on
-// since this particular close was armed", `afterClose` is skipped even if
-// cancellation had somehow not already caught it.
-const overlayCloseState = new WeakMap();
-
-function cancelPendingClose(el) {
-  const state = overlayCloseState.get(el);
-  if (!state) return;
-  state.gen += 1; // invalidate any close armed before this point, even if nothing is actively pending
-  if (typeof state.cancel === 'function') {
-    const cancel = state.cancel;
-    state.cancel = null;
-    cancel();
-  }
-}
-
-function openOverlay(el, openClass) {
-  if (!el) return;
-  cancelPendingClose(el); // F1: a reopen always wins over an abandoned close's listeners/fallback timer
-  if ('hidden' in el) el.hidden = false;
-  if (!overlayCanAnimate(el) || prefersReducedMotion()) return;
-  void el.offsetHeight; // force reflow -- see doc comment above
-  el.classList.add(openClass);
-}
-
-function closeOverlayThen(el, openClass, afterClose) {
-  const done = typeof afterClose === 'function' ? afterClose : () => {};
-  cancelPendingClose(el); // F1: this close supersedes any earlier still-pending close on the same element
-  if (!overlayCanAnimate(el)) {
-    done();
-    return;
-  }
-  if (prefersReducedMotion()) {
-    // Still clear the open class (keeps DOM state consistent for anything
-    // that inspects it later), but skip straight to `done()` -- there is no
-    // transition to wait for.
-    el.classList.remove(openClass);
-    done();
-    return;
-  }
-  let state = overlayCloseState.get(el);
-  if (!state) {
-    state = { gen: 0, cancel: null };
-    overlayCloseState.set(el, state);
-  }
-  const myGen = state.gen;
-  let finished = false;
-  let fallbackTimer = null;
-  function finish() {
-    if (finished) return;
-    finished = true;
-    el.removeEventListener('transitionend', onTransitionEnd);
-    el.removeEventListener('transitioncancel', onTransitionEnd);
-    clearTimeout(fallbackTimer);
-    if (state.cancel === cancelThis) state.cancel = null;
-    // Belt-and-braces (should be unreachable given cancelPendingClose above,
-    // but never trust a single mechanism alone for a visible/destructive
-    // state flip): if a newer open/close has superseded this one, or `el`
-    // still carries `openClass` (it was reopened since this close was
-    // armed), skip `afterClose` outright.
-    if (state.gen !== myGen) return;
-    if (el.classList && el.classList.contains(openClass)) return;
-    done();
-  }
-  function onTransitionEnd(e) {
-    if (e.target === el) finish();
-  }
-  function cancelThis() {
-    if (finished) return;
-    finished = true;
-    el.removeEventListener('transitionend', onTransitionEnd);
-    el.removeEventListener('transitioncancel', onTransitionEnd);
-    clearTimeout(fallbackTimer);
-  }
-  el.addEventListener('transitionend', onTransitionEnd);
-  // `transitioncancel` fires (instead of `transitionend`) when the closing
-  // transition this call just started gets interrupted mid-flight -- e.g. a
-  // reopen flips `openClass` back on before the close-out transition ever
-  // finished. Handled identically to `transitionend`: either way this
-  // PARTICULAR close attempt is over and `finish()` should run (with its
-  // gen/class guard deciding whether `afterClose` actually fires).
-  el.addEventListener('transitioncancel', onTransitionEnd);
-  // Fallback in case neither event ever fires (e.g. the class removal didn't
-  // actually change any transitioning property) -- never hang.
-  fallbackTimer = setTimeout(finish, 300);
-  state.cancel = cancelThis;
-  el.classList.remove(openClass);
-}
+// (v1.26.2's openOverlay / closeOverlayThen transition helpers - and prefersReducedMotion /
+// overlayCanAnimate beside them - were retired in step 7 of the UI pass: sweeps S1, S4, S5
+// and S9 moved every sheet and modal they animated onto ui.sheet, which owns its own
+// enter/exit and reduced-motion handling (ui.js, ui.css).)
 
 // ---- v1.47.4 item 9 (Dean): the Playlists sheet's late pin shift -----------
 //
@@ -12326,12 +12201,36 @@ function renderPlaylistsSheetContent(snapshot) {
 
 // Lazily fetches /api/config on first open, populates the sheet, then reveals
 // it. Feature-detects its own elements so it's safe to call on any page.
+// Sweep S1 (D4.6, F50): the sheet is ONE ui.sheet (a bottom sheet with a grab handle, the
+// "Playlists" title and the one Close; scrim, Esc, a swipe down and Close all dismiss it),
+// built on the first open and reused. Its list keeps the #playlists-sheet-list id the
+// renderers write into; while the sheet is closed the list is detached (renders to it no-op).
+let playlistsSheetCtrl = null;
+function ensurePlaylistsSheet() {
+  if (playlistsSheetCtrl) return playlistsSheetCtrl;
+  const U = typeof window !== 'undefined' ? window.ui : null;
+  if (!U || typeof U.sheet !== 'function') return null; // ui.js ships on every shell
+  const list = document.createElement('div');
+  list.id = 'playlists-sheet-list';
+  list.className = 'playlists-sheet-list';
+  playlistsSheetCtrl = U.sheet({ variant: 'bottom', title: 'Playlists', content: list, doc: document });
+  // An id, not a class: ui.sheet rewrites the element's className on every open.
+  playlistsSheetCtrl.el.id = 'playlists-sheet';
+  // Tapping a playlist/folder LINK navigates (SPA) - close the sheet too, so the user is
+  // not left with the overlay open after picking one (Dean: no extra manual close). Does
+  // NOT preventDefault, so the navigation still happens; an unpin tap never reaches here
+  // (its handler stops the event).
+  list.addEventListener('click', (e) => {
+    if (e.target && e.target.closest && e.target.closest('a')) closePlaylistsSheet();
+  });
+  return playlistsSheetCtrl;
+}
+
+// Lazily fetches /api/config on every open, populates the sheet, then reveals it.
 function openPlaylistsSheet() {
-  const backdrop = document.getElementById('playlists-backdrop');
-  const sheet = document.getElementById('playlists-sheet');
-  if (!backdrop || !sheet) return;
-  openOverlay(backdrop, 'sheet-open');
-  openOverlay(sheet, 'sheet-open');
+  const ctrl = ensurePlaylistsSheet();
+  if (!ctrl) return;
+  ctrl.open();
 
   // Paint last-known content SYNCHRONOUSLY, before any await -- the sheet then
   // animates open already at its final height instead of growing into it.
@@ -12354,7 +12253,7 @@ function openPlaylistsSheet() {
       // content with an error -- only a sheet with nothing in it says so.
       if (!playlistsSheetCache) {
         const list = document.getElementById('playlists-sheet-list');
-        if (list) list.innerHTML = '<div class="sidebar-item">Failed to load folders.</div>';
+        if (list) list.innerHTML = '<p class="playlists-sheet-note">Failed to load folders.</p>';
       }
       return;
     }
@@ -12372,10 +12271,7 @@ function openPlaylistsSheet() {
 }
 
 function closePlaylistsSheet() {
-  const backdrop = document.getElementById('playlists-backdrop');
-  const sheet = document.getElementById('playlists-sheet');
-  if (sheet) closeOverlayThen(sheet, 'sheet-open', () => { sheet.hidden = true; });
-  if (backdrop) closeOverlayThen(backdrop, 'sheet-open', () => { backdrop.hidden = true; });
+  if (playlistsSheetCtrl) playlistsSheetCtrl.close();
 }
 
 // Mirrors the bottom nav's Dark/Light item icon/label to the current data-mode.
@@ -12385,210 +12281,137 @@ function updateNavThemeItem() {
   const item = document.getElementById('nav-theme-toggle');
   if (!item) return;
   const dark = document.documentElement.getAttribute('data-mode') === 'dark';
-  // v1.87.1 (Dean): the nav theme glyph is an inline <svg> (chrome-icon) now, not
-  // an `.icon-moon/.icon-sun` mask - swap the whole element rather than a class.
-  // Tolerate a legacy `<i>` too (defensive; the static markup ships the svg).
-  const icon = item.querySelector('.chrome-icon, i');
+  // v1.87.1 (Dean): the nav theme glyph is an inline sprite <svg>, not an
+  // `.icon-moon/.icon-sun` mask. Sweep S1: the tab's ui-icon keeps its box; only its
+  // <use> reference swaps (the glyph for the mode a tap switches TO).
+  const use = item.querySelector('.ui-btn__icon use');
   const label = item.querySelector('.bottom-nav-label');
-  const swapped = chromeIconEl(dark ? 'sun' : 'moon');
-  if (icon && swapped) icon.replaceWith(swapped);
+  if (use) use.setAttribute('href', iconHref(CHROME_ICON[dark ? 'sun' : 'moon']));
   if (label) label.textContent = dark ? 'Light' : 'Dark';
 }
 
 // v1.82: the account menu's Theme row glyph reflects the current mode (sun in
 // dark, moon in light), updated on every toggle exactly like the bottom-nav item.
 function updateAccountMenuThemeItem() {
+  // Sweep S1: the row's glyph is a sprite ui-icon; its <use> swaps between the two modes.
+  // (The menu is attached only while open, and openMenu re-syncs on every open.)
   const icon = document.getElementById('account-menu-theme-icon');
-  if (!icon) return;
+  const use = icon && icon.querySelector('use');
+  if (!use) return;
   const dark = document.documentElement.getAttribute('data-mode') === 'dark';
-  icon.className = dark ? 'icon-sun' : 'icon-moon';
+  use.setAttribute('href', iconHref(dark ? 'light_mode' : 'dark_mode'));
 }
 
-// Global modal dialog helpers
+// Global dialog helpers (sweep S9, D4.6 / D4.8): every dialog is a ui.sheet.
 //
-// v1.26.2 code-review fix (F2, MAJOR): pre-wave, `teardown()` removed the
-// node SYNCHRONOUSLY, so the buttons were physically gone the instant either
-// one was clicked -- a second click had nothing left to hit. Now the close
-// fade takes ~200-300ms (closeOverlayThen), during which the buttons are
-// still live DOM nodes sitting right where the user's finger already is --
-// a double-tap on Confirm (a real path: watch.js's delete flow) fired
-// `onConfirm()` TWICE, i.e. a duplicate destructive `DELETE` request. Fixed
-// with three independent, stacked guards (each alone would suffice; all
-// three stay cheap so there is no reason not to layer them):
-//   1. `settled` -- a plain closure flag flipped on the FIRST Confirm/Cancel
-//      click; every handler bails out immediately if it's already true, so
-//      `onConfirm`/`teardown` can only ever run once no matter how many
-//      clicks land.
-//   2. Both buttons get `disabled = true` the instant `settled` flips --
-//      belt-and-suspenders against a real click actually reaching the
-//      handler again (some environments still dispatch `click` on a
-//      just-disabled button for the SAME event loop turn).
-//   3. `.modal-closing` is added to the backdrop at the same moment,
-//      matched by `.modal-backdrop.modal-closing { pointer-events: none; }`
-//      (style.css) -- blocks any further pointer interaction with the
-//      fading-out dialog for its remaining ~200-300ms on screen. Deliberately
-//      NOT `.modal-backdrop:not(.modal-open)`: `.modal-open` is only added
-//      AFTER the two-step reveal's first frame (openOverlay), and is never
-//      added at all under `prefers-reduced-motion: reduce` -- either would
-//      make `:not(.modal-open)` match (and so block clicks on) the dialog
-//      while it's still legitimately open, not just while it's closing.
-// v1.49: `labels` is OPTIONAL and additive -- `{confirm, cancel}` override the
-// generic wording for a dialog where the specific verb is the whole point ("Move
-// it" / "Leave it where it is" reads as a decision; "Confirm" / "Cancel" reads
-// as a formality, and this dialog gates an irreversible file move). Absent or
-// partial => the existing literals, so every pre-v1.49 call site renders exactly
-// as before. Labels are set via `textContent` below, never interpolated into the
-// `innerHTML` template above -- a caller-supplied string must not become markup.
-// v1.97.1 (Dean): the feed-hidden restore surface moved to a "Hidden" SECTION on
-// the settings page (setup.html / setup.js renderFeedHiddenSection), beside Trash.
-// The old account-menu modal is gone - the settings page scrolls, so a long list
-// is reachable, and the row label shrank to just "Hidden".
+// showConfirmModal / showChoiceModal keep their v1.26-v1.110 signatures and return a
+// dismiss() - callers in other views (watch.js, skin-surface.js, podcasts.js, main.js)
+// reach them as plain globals - but they now draw ui.confirm / ui.menu: one scrim, one
+// surface, one motion, one Close, Esc, focus in and back, the body lock.
+//
+// What the bespoke modal guaranteed and where it lives now:
+//   - one answer per dialog (v1.26.2 F2: a double tap on Confirm fired a duplicate DELETE):
+//     ui.confirm answers once and only from a LIVE dialog (a tap on a closing one is a
+//     no-op), and `settled` below runs onConfirm at most once;
+//   - one dialog per call, its own buttons (v1.49: a second dialog re-bound the first one's
+//     buttons by id): ui.confirm builds its own nodes, there are no ids to collide;
+//   - a dismiss() for the caller's view teardown (v1.49 W2: body-level dialogs outlive an
+//     SPA nav): it aborts the dialog's own signal, which ui.confirm answers as a cancel.
+//
+// The title and body arrive as caller-built HTML (the callers escape the dynamic parts and
+// wrap them in <strong>/<br>/<small>). ui.confirm takes TEXT: the markup is parsed in an
+// inert <template> (no script runs, no image loads), <br> stays a line break (ui.css keeps a
+// confirm body's line breaks), and the result goes in by textContent - no caller string can
+// become live markup, and no inline style (the old red trash warning) survives into it.
+// `labels` = {confirm, cancel, danger}: `danger: true` gives the confirm button the
+// destructive treatment (D4.8, F33 - a caller whose confirm deletes passes it).
+function confirmHtmlToText(html, doc) {
+  if (html == null) return '';
+  const str = String(html).replace(/<br\s*\/?>/gi, '\n');
+  const d = doc || (typeof document !== 'undefined' ? document : null);
+  if (!d || typeof d.createElement !== 'function') return str.replace(/<[^>]*>/g, '').trim();
+  const t = d.createElement('template');
+  t.innerHTML = str;
+  const text = t.content ? t.content.textContent : t.textContent;
+  return String(text || '').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').trim();
+}
+
+function dialogUi() {
+  return overlayUiLib(); // the page's window.ui (Node tests: the sibling module)
+}
+
+// Is a LIVE dialog up - any ui.sheet that is not on its way out? A sheet carries
+// `is-closing` from the moment it starts to close (ui.js), so a dialog whose answer is
+// being acted on (the confirm that triggered this very call) does not count. The watch
+// page's relocation offer asks this before it opens a second dialog over a first.
+function isLiveDialogOpen(doc) {
+  const d = doc || (typeof document !== 'undefined' ? document : null);
+  return !!(d && d.querySelector('.ui-sheet:not(.is-closing)'));
+}
 
 function showConfirmModal(title, bodyText, onConfirm, labels) {
-  const modalBackdrop = document.createElement('div');
-  modalBackdrop.className = 'modal-backdrop';
-
-  modalBackdrop.innerHTML = `
-    <div class="modal-content">
-      <div class="modal-title">${title}</div>
-      <div class="modal-body">${bodyText}</div>
-      <div class="modal-actions">
-        <button class="btn" id="modal-cancel-btn">Cancel</button>
-        <button class="btn btn-primary" id="modal-confirm-btn">Confirm</button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(modalBackdrop);
-  openOverlay(modalBackdrop, 'modal-open');
-
-  // v1.49 GATE FIX (adversarial CRITICAL 2): resolved from THIS backdrop, not
-  // from the document. `document.getElementById` returns the FIRST match in
-  // document order, and both ids are baked into every instance's markup -- so
-  // the moment two confirm modals coexist, the second instance silently
-  // re-labels and re-binds the FIRST one's buttons, and the first modal's
-  // existing handler fires alongside the new one. That was impossible before
-  // v1.49 (every call site was synchronous from a click) and became reachable
-  // the instant a background poll could open one: a reheat completing while a
-  // DELETE confirmation is open turned the delete dialog's button into "Move
-  // it" and fired BOTH actions on one click.
-  const cancelBtn = modalBackdrop.querySelector('#modal-cancel-btn');
-  const confirmBtn = modalBackdrop.querySelector('#modal-confirm-btn');
-
-  // v1.49: optional label overrides, applied via textContent (see above).
-  if (labels && typeof labels === 'object') {
-    if (typeof labels.confirm === 'string' && labels.confirm !== '') confirmBtn.textContent = labels.confirm;
-    if (typeof labels.cancel === 'string' && labels.cancel !== '') cancelBtn.textContent = labels.cancel;
-  }
-
-  // F2: flips exactly once -- see the doc comment above this function.
+  const U = dialogUi();
+  const l = (labels && typeof labels === 'object') ? labels : {};
   let settled = false;
-
-  function teardown() {
-    if (modalBackdrop.classList) modalBackdrop.classList.add('modal-closing');
-    closeOverlayThen(modalBackdrop, 'modal-open', () => {
-      if (modalBackdrop.parentNode) document.body.removeChild(modalBackdrop);
-    });
+  if (!U || typeof AbortController === 'undefined') return function dismiss() { settled = true; };
+  const ac = new AbortController();
+  // Gate r2 (adversary): bound to the router's SHOWN-view signal, read now, like every
+  // destructive confirm. A caller on a cached view (home's bulk attribution) or one that moves
+  // a file (the watch page's attribution move) must not stay up over the next view and act.
+  const ft = (typeof window !== 'undefined') ? window.FileTube : null;
+  const shown = (ft && typeof ft.viewSignal === 'function') ? ft.viewSignal() : null;
+  const onLeave = () => ac.abort();
+  if (shown) {
+    if (shown.aborted) ac.abort();
+    else shown.addEventListener('abort', onLeave, { once: true });
   }
-
-  cancelBtn.addEventListener('click', () => {
+  const unbind = () => { if (shown) shown.removeEventListener('abort', onLeave); };
+  U.confirm({
+    title: confirmHtmlToText(title),
+    body: confirmHtmlToText(bodyText),
+    confirmLabel: (typeof l.confirm === 'string' && l.confirm !== '') ? l.confirm : 'Confirm',
+    cancelLabel: (typeof l.cancel === 'string' && l.cancel !== '') ? l.cancel : 'Cancel',
+    danger: l.danger === true,
+    signal: ac.signal,
+  }).then((ok) => {
+    unbind();
     if (settled) return;
     settled = true;
-    cancelBtn.disabled = true;
-    confirmBtn.disabled = true;
-    teardown();
+    // Exactly true: ui.confirm answers only true/false, and nothing but the confirm
+    // button's own click is true.
+    if (ok === true && !(shown && shown.aborted) && typeof onConfirm === 'function') onConfirm();
   });
-
-  confirmBtn.addEventListener('click', () => {
-    if (settled) return;
-    settled = true;
-    cancelBtn.disabled = true;
-    confirmBtn.disabled = true;
-    teardown();
-    onConfirm();
-  });
-
-  // v1.49 GATE FIX (adversarial WARNING 2): a dismiss handle for the CALLER.
-  // This modal lives on `document.body`, which the SPA router never swaps (it
-  // only replaces `#view-root`), so nothing about navigating away closes it --
-  // an open "move this file" dialog for video A survives onto video B's page,
-  // still showing A's destination. A view that opens one from an async callback
-  // must be able to close it on teardown. Idempotent, and a no-op once the user
-  // has already answered, so it can be called unconditionally from an abort
-  // handler. Returning a value is additive: every pre-v1.49 call site ignores it.
   return function dismiss() {
+    unbind();
     if (settled) return;
     settled = true;
-    cancelBtn.disabled = true;
-    confirmBtn.disabled = true;
-    teardown();
+    ac.abort();
   };
 }
 
-// v1.110 (Dean): a small pick-one action modal -- title + one stacked button per
-// choice + Cancel. Reuses the `.modal-backdrop`/`.modal-content` infra + open/
-// close overlay helpers (so it scrolls, fades, and tears down like every other
-// modal). Built with createElement + textContent ONLY (labels/titles can be
-// media-derived, e.g. a chapter title -- never innerHTML). Settles exactly once:
-// the first choice/cancel/backdrop-tap tears down; a chosen `onPick` runs
-// synchronously in the same click (so navigator.share keeps its user gesture).
-// Returns a `dismiss()` the caller can call on teardown (SPA nav never closes a
-// body-level modal on its own -- the v1.49 lesson).
+// v1.110 (Dean): the pick-one action dialog -- a title and one row per choice. Now ui.menu
+// (a bottom sheet on a phone, a dialog on desktop; Close, Esc and the scrim cancel). Labels
+// and title are textContent (they can be media-derived, e.g. a chapter title). Settles once:
+// the first pick closes the menu and runs its `onPick` SYNCHRONOUSLY in the same click (so
+// navigator.share keeps its user gesture); a second tap picks nothing. Returns a dismiss()
+// for the caller's view teardown.
 function showChoiceModal(title, choices) {
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop';
-  const content = document.createElement('div');
-  content.className = 'modal-content';
-  backdrop.appendChild(content);
-
-  const titleEl = document.createElement('div');
-  titleEl.className = 'modal-title';
-  titleEl.textContent = typeof title === 'string' ? title : '';
-  content.appendChild(titleEl);
-
-  const list = document.createElement('div');
-  list.className = 'choice-modal-list';
-  content.appendChild(list);
-
-  let settled = false;
-  function teardown() {
-    backdrop.classList.add('modal-closing');
-    closeOverlayThen(backdrop, 'modal-open', () => {
-      if (backdrop.parentNode) document.body.removeChild(backdrop);
-    });
-  }
-  function settle(onPick) {
-    if (settled) return;
-    settled = true;
-    teardown();
-    if (typeof onPick === 'function') onPick();
-  }
-
-  (Array.isArray(choices) ? choices : []).forEach((choice) => {
-    if (!choice || typeof choice.label !== 'string') return;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn choice-modal-btn';
-    btn.textContent = choice.label;
-    btn.addEventListener('click', () => settle(choice.onPick));
-    list.appendChild(btn);
-  });
-
-  const actions = document.createElement('div');
-  actions.className = 'modal-actions';
-  const cancelBtn = document.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'btn';
-  cancelBtn.textContent = 'Cancel';
-  cancelBtn.addEventListener('click', () => settle());
-  actions.appendChild(cancelBtn);
-  content.appendChild(actions);
-
-  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) settle(); });
-
-  document.body.appendChild(backdrop);
-  openOverlay(backdrop, 'modal-open');
-  return function dismiss() { settle(); };
+  const U = dialogUi();
+  if (!U) return function dismiss() {};
+  let picked = false;
+  const items = (Array.isArray(choices) ? choices : [])
+    .filter((choice) => choice && typeof choice.label === 'string')
+    .map((choice) => ({
+      label: choice.label,
+      onSelect: () => {
+        if (picked) return;
+        picked = true;
+        if (typeof choice.onPick === 'function') choice.onPick();
+      },
+    }));
+  const heading = typeof title === 'string' ? title : '';
+  const ctrl = U.menu({ title: heading, label: heading || 'Choose', items });
+  return function dismiss() { ctrl.close(); };
 }
 
 // ---- Transcript flow (v1.203: SHARED by the watch page and the card corner) ----
@@ -12711,94 +12534,81 @@ function openTranscriptFor(opts) {
   }).finally(() => onBusy(false));
 }
 
-// Transcript export (Dean: "primarily a text field on desktop"): the desktop
-// Transcript modal. `opts.text` is the already-fetched document (title / date
-// / channel, blank line, transcript); `opts.loadText(timestamps)` re-fetches
-// it with `[m:ss]` prefixes when the "Show timestamps" box is toggled
-// (default OFF - Dean's ruling). Read-only textarea (select-all + copy works
-// natively), a Copy button with the same "Copied!" label feedback the Share
-// button uses, and Close.
-// v1.201 (Dean): `opts.aiPrompts` ([{id, name, text}], may be empty) adds a
-// third button - "Share with AI" where the browser has a share sheet, else
-// "Copy for AI" - that hands `<prompt>\n\n<the CURRENT textarea value>` to
-// `opts.shareAi(promptText, currentText, label)`. One prompt acts directly;
-// several open a pick-one modal of names first (its dismiss rides on this
-// modal's). An empty list adds nothing (never a do-nothing button). Same `.modal-backdrop`/`.modal-content` infra and
-// createElement/textContent discipline as showChoiceModal; returns a
-// `dismiss()` for the view's abort teardown (body-level modals outlive SPA
-// nav on their own - the v1.49 lesson).
+// Transcript export (Dean: "primarily a text field on desktop"): the desktop Transcript
+// dialog. `opts.text` is the already-fetched document (title / date / channel, blank line,
+// transcript); `opts.loadText(timestamps)` re-fetches it with `[m:ss]` prefixes when the
+// "Show timestamps" switch is flipped (default OFF - Dean's ruling). A read-only field
+// (select-all + copy works natively) and Copy, whose feedback is a toast (D4.9: "Copied" is
+// a toast, never a label swap).
+// v1.201 (Dean): `opts.aiPrompts` ([{id, name, text}], may be empty) adds "Share with AI"
+// where the browser has a share sheet, else "Copy for AI", handing `<prompt>\n\n<the CURRENT
+// field value>` to `opts.shareAi(promptText, currentText, label)`. One prompt acts directly;
+// several open a pick-one of names first (its dismiss rides on this dialog's). An empty list
+// adds nothing (never a do-nothing button).
+// Sweep S9: a ui.sheet dialog (the wide modifier - prose wants room), the sheet's own Close,
+// Esc and scrim; textContent throughout; returns a `dismiss()` for the view's abort teardown
+// (body-level overlays outlive SPA nav on their own - the v1.49 lesson).
 function showTranscriptModal(opts) {
   const o = opts || {};
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop';
-  const content = document.createElement('div');
-  content.className = 'modal-content transcript-modal';
-  backdrop.appendChild(content);
-
-  const titleEl = document.createElement('div');
-  titleEl.className = 'modal-title';
-  titleEl.textContent = 'Transcript';
-  content.appendChild(titleEl);
+  const U = dialogUi();
+  if (!U) return function dismiss() {};
+  const body = document.createDocumentFragment();
+  const fieldWrap = document.createElement('div');
+  fieldWrap.className = 'ui-field transcript-field';
 
   const textarea = document.createElement('textarea');
-  textarea.className = 'transcript-textarea';
+  textarea.className = 'ui-field__input transcript-textarea';
   textarea.id = 'transcript-text';
   textarea.readOnly = true;
   textarea.spellcheck = false;
   textarea.setAttribute('aria-label', 'Transcript');
   textarea.value = typeof o.text === 'string' ? o.text : '';
-  content.appendChild(textarea);
+  fieldWrap.appendChild(textarea);
+  body.appendChild(fieldWrap);
 
   const options = document.createElement('label');
   options.className = 'transcript-options';
+  const tsLabel = document.createElement('span');
+  tsLabel.textContent = 'Show timestamps';
   const tsBox = document.createElement('input');
   tsBox.type = 'checkbox';
   tsBox.id = 'transcript-timestamps';
+  tsBox.className = 'ui-switch';
+  tsBox.setAttribute('role', 'switch');
   tsBox.checked = false;
+  options.appendChild(tsLabel);
   options.appendChild(tsBox);
-  options.appendChild(document.createTextNode('Show timestamps'));
-  content.appendChild(options);
+  body.appendChild(options);
 
   const actions = document.createElement('div');
-  actions.className = 'modal-actions';
-  const copyBtn = document.createElement('button');
-  copyBtn.type = 'button';
-  copyBtn.id = 'transcript-copy-btn';
-  copyBtn.className = 'btn btn-primary';
-  copyBtn.textContent = 'Copy';
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'btn';
-  closeBtn.textContent = 'Close';
+  actions.className = 'ui-confirm__actions';
   const aiPrompts = Array.isArray(o.aiPrompts) ? o.aiPrompts.filter((p) => p && typeof p.text === 'string' && p.text !== '') : [];
   const hasShareSheet = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
   let aiBtn = null;
+  const aiLabel = hasShareSheet ? 'Share with AI' : 'Copy for AI';
   if (aiPrompts.length > 0 && typeof o.shareAi === 'function') {
-    aiBtn = document.createElement('button');
-    aiBtn.type = 'button';
+    aiBtn = U.button({ variant: 'secondary', label: aiLabel });
     aiBtn.id = 'transcript-ai-btn';
-    aiBtn.className = 'btn';
-    aiBtn.textContent = hasShareSheet ? 'Share with AI' : 'Copy for AI';
     actions.appendChild(aiBtn);
   }
+  const copyBtn = U.button({ variant: 'primary', icon: 'content_copy', label: 'Copy' });
+  copyBtn.id = 'transcript-copy-btn';
   actions.appendChild(copyBtn);
-  actions.appendChild(closeBtn);
-  content.appendChild(actions);
+  body.appendChild(actions);
 
   let settled = false;
-  let copyResetTimer = null;
   let loadSeq = 0; // supersession guard for a fast double-toggle
-  let aiPickDismiss = null; // the prompt pick-one modal, torn down with this one
-  function dismiss() {
-    if (settled) return;
-    settled = true;
-    if (copyResetTimer) clearTimeout(copyResetTimer);
-    if (aiPickDismiss) { aiPickDismiss(); aiPickDismiss = null; }
-    backdrop.classList.add('modal-closing');
-    closeOverlayThen(backdrop, 'modal-open', () => {
-      if (backdrop.parentNode) document.body.removeChild(backdrop);
-    });
-  }
+  let aiPickDismiss = null; // the prompt pick-one, torn down with this dialog
+  const ctrl = U.sheet({
+    variant: 'dialog',
+    title: 'Transcript',
+    content: body,
+    onClosing: () => {
+      settled = true;
+      if (aiPickDismiss) { aiPickDismiss(); aiPickDismiss = null; }
+    },
+  });
+  function dismiss() { ctrl.close(); }
 
   tsBox.addEventListener('change', () => {
     if (typeof o.loadText !== 'function') return;
@@ -12810,7 +12620,7 @@ function showTranscriptModal(opts) {
       if (typeof text === 'string') textarea.value = text;
     }).catch(() => {
       if (settled || seq !== loadSeq) return;
-      if (typeof showToast === 'function') showToast('Could not load the transcript.');
+      showToast('Could not load the transcript.', null, { kind: 'error' });
       tsBox.checked = !wanted; // reflect the state that is actually shown
     }).then(() => { if (seq === loadSeq) tsBox.disabled = false; });
   });
@@ -12819,43 +12629,37 @@ function showTranscriptModal(opts) {
     copyTextToClipboard(textarea.value).then((outcome) => {
       if (settled) return;
       if (outcome !== 'copied') {
-        if (typeof showToast === 'function') showToast('Could not copy - select the text and copy it manually.');
+        showToast('Could not copy - select the text and copy it manually.', null, { kind: 'error' });
         return;
       }
-      copyBtn.textContent = 'Copied!';
-      if (typeof showToast === 'function') showToast('Transcript copied');
-      if (copyResetTimer) clearTimeout(copyResetTimer);
-      copyResetTimer = setTimeout(() => { copyBtn.textContent = 'Copy'; copyResetTimer = null; }, 1500);
+      showToast('Transcript copied', null, { kind: 'success' });
     });
   });
   if (aiBtn) {
     aiBtn.addEventListener('click', () => {
-      const label = aiBtn.textContent;
-      const run = (prompt) => o.shareAi(prompt.text, textarea.value, label);
+      const run = (prompt) => o.shareAi(prompt.text, textarea.value, aiLabel);
       if (aiPrompts.length === 1) { run(aiPrompts[0]); return; }
       if (aiPickDismiss) aiPickDismiss();
-      aiPickDismiss = showChoiceModal(label, aiPrompts.map((prompt) => ({ label: prompt.name, onPick: () => { aiPickDismiss = null; run(prompt); } })));
+      aiPickDismiss = showChoiceModal(aiLabel, aiPrompts.map((prompt) => ({ label: prompt.name, onPick: () => { aiPickDismiss = null; run(prompt); } })));
     });
   }
-  closeBtn.addEventListener('click', dismiss);
-  // v1.289: drag-safe dismiss - selecting the transcript text (or the timestamp
-  // input) and releasing on the backdrop must not close it.
-  bindBackdropDismiss(backdrop, dismiss);
-
-  document.body.appendChild(backdrop);
-  openOverlay(backdrop, 'modal-open');
+  // A drag that starts in the field and ends outside never closes it: the scrim is the
+  // sheet's SIBLING, so such a drag clicks their common ancestor, not the scrim (the v1.289
+  // drag-safe property, by structure).
+  ctrl.open();
+  // After open(): ui.sheet sets the sheet's variant classes on open, replacing any set before.
+  ctrl.el.classList.add('transcript-dialog');
   return dismiss;
 }
 
-// ---- FR-7 (v1.21.0, T6): extra-deliberate delete for local files ----------
-// See docs/exec-plans/completed/2026-07-08-v1.21-polish-release.md ("FR-7 --
-// extra-deliberate delete for local (non-yt-dlp) files") for the full
-// design/rationale. A yt-dlp-downloaded file is re-downloadable, so it keeps
-// today's lighter flow completely unchanged (the watch page's
-// `showConfirmModal` above / main.js's v1.17.0 two-tap card arm). A LOCAL
-// file is irreplaceable, so it gets ONE additional, more deliberate step --
-// this checkbox-gated hard-warning confirm -- before the SAME, unmodified
-// `DELETE /api/videos/:id` (+ its `removeAnyway`/409 read-only path) fires.
+// ---- FR-7 (v1.21.0, T6): which items are yt-dlp-managed ---------------------
+// See docs/exec-plans/completed/2026-07-08-v1.21-polish-release.md ("FR-7").
+// A yt-dlp-downloaded file is re-downloadable; a LOCAL file is not. Step 7 (UI pass):
+// the checkbox-gated local-file dialog (showHardDeleteModal) and its flow picker
+// (deleteFlowFor) are gone - sweeps S3/S7 moved every delete onto ONE danger
+// ui.confirm, whose copy (main.js cardDeleteConfirmCopy) reads this predicate to add
+// "This local file cannot be re-downloaded." for a local file. Every delete still
+// sends the same `DELETE /api/videos/:id` (a Trash move).
 
 // Pure, fail-safe (AC45/AC50/AC51 -- destructive-action two-reviewer gate).
 // Reuses the v1.20 FR-2 signal (never a new, divergent detection mechanism):
@@ -12867,8 +12671,8 @@ function showTranscriptModal(opts) {
 // absence/ambiguity -- a plain local file (every pre-v1.20 download has
 // none of these fields), a malformed/missing `item`, `null`/`undefined`
 // fields, or empty/whitespace-only strings -- resolves to `false`, meaning
-// "treat as LOCAL/irreplaceable" -> routes through the MORE deliberate
-// `showHardDeleteModal` below. There is no code path in this function that
+// "treat as LOCAL/irreplaceable" (the confirm then says it cannot be
+// re-downloaded). There is no code path in this function that
 // can turn a `false` into a `true` on ambiguous input, so it can only ever
 // ADD friction relative to today, never remove it. Never throws. Exported
 // for node:test.
@@ -12876,9 +12680,9 @@ function showTranscriptModal(opts) {
 // generally first-class experiences"): `sourceExtractor` is a fourth signal. A
 // download from another site carries no channelUrl/channelId, and when the
 // site reported no uploader it had no channelName either, so it got the
-// local-file modal. The scan sets `sourceExtractor` only on a file under the
+// local-file copy. The scan sets `sourceExtractor` only on a file under the
 // yt-dlp download root (lib/scan/orchestrator.js, the `ytdlpDownloadRoots`
-// gate), and the delete archives + tombstones it by (site, id). Both flows
+// gate), and the delete archives + tombstones it by (site, id). Both kinds
 // still send the same DELETE /api/videos/:id.
 function isYtdlpManagedItem(item) {
   if (!item || typeof item !== 'object') return false;
@@ -12887,139 +12691,13 @@ function isYtdlpManagedItem(item) {
     || hasSignal(item.sourceExtractor);
 }
 
-// Pure decision helper mirroring the predicate above into the two-word
-// vocabulary the two delete surfaces (watch.js/main.js) actually branch on:
-// `'normal'` = the existing, byte-unchanged confirm flow (AC47); `'hard'` =
-// the escalated `showHardDeleteModal` (AC46/AC49). A tiny separate function
-// (rather than inlining `isYtdlpManagedItem(item) ? 'normal' : 'hard'` at
-// each call site) so both surfaces share exactly ONE source of truth for
-// "which flow" and it stays directly node:test-covered. Exported for
-// node:test.
-function deleteFlowFor(item) {
-  return isYtdlpManagedItem(item) ? 'normal' : 'hard';
-}
-
-/**
- * The escalated, checkbox-gated hard-delete confirm for a LOCAL
- * (non-yt-dlp) file (AC46) -- visually/interactionally DISTINCT from
- * `showConfirmModal` above (its own `.hard-delete-modal-*` classes/red
- * hard-warning treatment, never `.modal-*`), and from the one-off/subscribe
- * modals (its own classes, not `.oneoff-modal-*`). Self-contained like
- * `showConfirmModal` -- appends itself to `doc.body` and tears itself down,
- * so both call sites (`watch.js`'s delete button, `main.js`'s card two-tap
- * arm) just call `showHardDeleteModal(item, onConfirm)` with no boilerplate.
- * `doc` is optional (defaults to `document`) purely so this is directly
- * node:test-covered against a fake DOM, mirroring `buildSubscribeModal`/
- * `buildOneOffModal`'s injectable-`doc` pattern above.
- *
- * The Delete button starts DISABLED and only enables once the "I understand"
- * checkbox (v1.65 copy: "...cannot be re-downloaded if the Trash empties
- * it") is ticked -- a conscious extra
- * action beyond the existing confirm modal / two-tap arm (a 3rd, deliberate
- * step). Reuses the v1.17.0 one-off-modal backdrop-dismiss FULL-teardown
- * pattern (`.remove()`, not merely `hidden`, so it can never get stuck as a
- * dead/dimmed overlay -- see the FR-6 fix note above `.oneoff-modal-backdrop`
- * in style.css) -- a backdrop tap or Cancel fully detaches the node and never
- * calls `onConfirm`.
- *
- * SECURITY: every dynamic string (the file's title/filePath) is rendered via
- * `createElement`/`textContent` ONLY -- never `innerHTML` (unlike the older
- * `showConfirmModal` above) -- so a hostile filename/title can never be
- * parsed as markup.
- */
-function showHardDeleteModal(item, onConfirm, doc) {
-  const d = doc || document;
-  const it = item || {};
-
-  const backdrop = d.createElement('div');
-  backdrop.className = 'hard-delete-modal-backdrop';
-  backdrop.addEventListener('click', (e) => {
-    if (e && e.target === backdrop) teardown();
-  });
-
-  const modal = d.createElement('div');
-  modal.className = 'hard-delete-modal';
-  backdrop.appendChild(modal);
-
-  const title = d.createElement('div');
-  title.className = 'hard-delete-modal-title';
-  // v1.65: deletes route through TRASH now -- the copy tells the truth
-  // (recoverable for the retention window) while keeping the guard posture
-  // for a file that cannot be re-downloaded if it ages out.
-  title.textContent = 'Move this local file to Trash?';
-  modal.appendChild(title);
-
-  const warning = d.createElement('div');
-  warning.className = 'hard-delete-modal-warning';
-  warning.textContent = 'This local file cannot be re-downloaded. It moves to Trash and can be restored from Settings until the retention window empties it.';
-  modal.appendChild(warning);
-
-  const nameEl = d.createElement('div');
-  nameEl.className = 'hard-delete-modal-filename';
-  nameEl.textContent = typeof it.title === 'string' && it.title !== '' ? it.title : 'this file';
-  modal.appendChild(nameEl);
-
-  const pathEl = d.createElement('div');
-  pathEl.className = 'hard-delete-modal-path';
-  pathEl.textContent = typeof it.filePath === 'string' ? it.filePath : '';
-  modal.appendChild(pathEl);
-
-  const checkboxLabel = d.createElement('label');
-  checkboxLabel.className = 'hard-delete-modal-checkbox-row';
-  const checkbox = d.createElement('input');
-  checkbox.type = 'checkbox';
-  checkbox.checked = false;
-  checkboxLabel.appendChild(checkbox);
-  checkboxLabel.appendChild(d.createTextNode(' I understand it cannot be re-downloaded if the Trash empties it.'));
-  modal.appendChild(checkboxLabel);
-
-  const actionsRow = d.createElement('div');
-  actionsRow.className = 'hard-delete-modal-actions';
-
-  const cancelBtn = d.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'btn';
-  cancelBtn.textContent = 'Cancel';
-  cancelBtn.addEventListener('click', () => teardown());
-  actionsRow.appendChild(cancelBtn);
-
-  // Starts disabled -- only the checkbox's 'change' handler below can ever
-  // enable it (AC46's "conscious extra action").
-  const deleteBtn = d.createElement('button');
-  deleteBtn.type = 'button';
-  deleteBtn.className = 'hard-delete-modal-confirm-btn';
-  deleteBtn.textContent = 'Delete permanently';
-  deleteBtn.disabled = true;
-  deleteBtn.addEventListener('click', () => {
-    if (deleteBtn.disabled) return; // belt-and-suspenders -- a disabled button shouldn't fire, but never trust that alone
-    teardown();
-    if (typeof onConfirm === 'function') onConfirm();
-  });
-  actionsRow.appendChild(deleteBtn);
-
-  modal.appendChild(actionsRow);
-
-  checkbox.addEventListener('change', () => {
-    deleteBtn.disabled = !checkbox.checked;
-  });
-
-  function teardown() {
-    backdrop.remove();
-  }
-
-  d.body.appendChild(backdrop);
-
-  return { backdrop, modal, title, warning, nameEl, pathEl, checkbox, cancelBtn, deleteBtn, teardown };
-}
-
 // ---- C1 (v1.24 UX Round, Wave 3): per-item "Move to..." picker -------------
 //
 // Client half of C1 (server.js's `POST /api/videos/:id/move` +
 // `moveItemToFolder`/`computeMoveTarget` -- see that file's own comment for
 // the full path-confinement + id re-key design). `showMoveModal` is a pure,
-// self-contained DOM builder (mirrors `showHardDeleteModal`'s pattern above:
-// it appends itself to `doc.body` and tears itself down, no caller
-// boilerplate) so a future per-card/per-watch-page trigger just calls
+// self-contained DOM builder (it appends itself to `doc.body` and tears
+// itself down, no caller boilerplate) so a future per-card/per-watch-page trigger just calls
 // `showMoveModal(item, folders, onMove)` with no other wiring. `folders` is
 // the SAME `data.folders` array `GET /api/config` already returns (the
 // existing "known folders" list `openPlaylistsSheet`/`renderPlaylistsSheet`
@@ -13030,155 +12708,96 @@ function showHardDeleteModal(item, onConfirm, doc) {
 // while the request is in flight, or auto-refresh on success).
 //
 // SECURITY: every dynamic string (the item's title, each folder path) is
-// rendered via `createElement`/`textContent` ONLY -- never `innerHTML` --
-// mirroring `showHardDeleteModal`'s discipline exactly.
+// rendered via `createElement`/`textContent` ONLY -- never `innerHTML`.
 //
-// CSS: reuses the existing GENERIC `.modal-backdrop`/`.modal-content`/
-// `.modal-title`/`.modal-body`/`.modal-actions` classes (`showConfirmModal`'s
-// family, style.css ~L2156) plus `.btn`/`.btn-primary` -- deliberately NOT
-// `.hard-delete-modal-*` (that family's red/warning treatment reads as
-// destructive, the wrong tone for a routine move) nor `.oneoff-modal-*` (a
-// bigger form-shaped shell this doesn't need). No new CSS class is
-// introduced; the folder `<select>` renders with default browser chrome
-// (functional, plain -- this task does not own style.css).
+// Sweep S9: a ui.sheet dialog - a line naming the file, a ui-select of the folders, a status
+// line and Cancel / Move - not the old generic modal family.
 
 /**
- * Pure, self-contained "Move to..." picker modal. `item` needs at least
- * `title` (used for the confirmation copy; falls back to a generic label
- * when absent). `folders` is a plain array of folder path strings (the SAME
- * shape `GET /api/config`'s `folders` field already returns). `onMove(
- * targetFolder, { teardown, statusEl })` fires once, only when a folder is
- * selected and Move is clicked -- the callback owns the actual request +
- * teardown timing (mirrors `buildOneOffModal`'s `handlers.onDownload`
- * convention: this function never itself calls `fetch`). `doc` defaults to
- * `document` (mirrors `showHardDeleteModal`'s injectable-`doc` pattern for
- * direct node:test coverage against a fake DOM).
+ * Pure, self-contained "Move to…" picker. `item` needs at least `title` (the confirmation
+ * copy; falls back to a generic label). `folders` is a plain array of folder path strings
+ * (the SAME shape `GET /api/config`'s `folders` field returns). `onMove(targetFolder,
+ * { teardown, statusEl, reenable })` fires once, only when a folder is selected and Move is
+ * clicked -- the callback owns the actual request + teardown timing (this function never
+ * calls `fetch`). `doc` defaults to `document` (injectable for jsdom tests).
+ *
+ * v1.26.2 F2 (a double tap on Move fired two concurrent move requests): `busy` arms BEFORE
+ * onMove runs, disables Move and Cancel, and refuses every dismissal (Cancel, Close, Esc,
+ * the scrim - ui.sheet's `canDismiss`) until the caller hands control back through
+ * `reenable` (a failed request) or closes it with `teardown` (success). A closing dialog
+ * answers nothing either (`ctrl.isOpen()`).
  */
-// v1.26.2 code-review fix (F2, MAJOR): same double-fire exposure as
-// `showConfirmModal` above (see its doc comment) -- Move calls the caller's
-// async `onMove`, which does NOT auto-teardown on success (deliberate, see
-// this function's own top-of-file design note) NOR on failure (the caller
-// shows the error in `statusEl` and leaves the modal open so the user can
-// pick a different folder and retry). A double-tap on Move before the first
-// request resolves would otherwise fire `onMove` -- and so the real
-// `POST /api/videos/:id/move` -- twice, concurrently, for the same item.
-//
-// `busy` mirrors `showConfirmModal`'s `settled` flag, but is NOT permanent:
-// it flips back to `false` via the `reenable` callback handed to `onMove`
-// alongside the existing `teardown`/`statusEl`, so a caller whose request
-// fails can hand control back to the user exactly where they left off --
-// unlike Confirm/Cancel above (which always end in `teardown()`, so
-// `settled` there never needs to un-flip). Cancel and the backdrop-dismiss
-// are guarded the same way so a stray click during an in-flight Move can't
-// also start tearing the dialog down out from under it. `teardown()` itself
-// adds `.modal-closing` (style.css's `pointer-events: none` -- see
-// `showConfirmModal`'s comment for why NOT `:not(.modal-open)`) so the
-// buttons can't be hit again during the ~200-300ms close fade either.
 function showMoveModal(item, folders, onMove, doc) {
   const d = doc || document;
+  const win = d.defaultView || (typeof window !== 'undefined' ? window : null);
+  const U = (win && win.ui) || dialogUi();
   const it = item || {};
   const list = Array.isArray(folders) ? folders.filter((f) => typeof f === 'string' && f !== '') : [];
+  if (!U) return null;
 
-  const backdrop = d.createElement('div');
-  backdrop.className = 'modal-backdrop';
-  backdrop.addEventListener('click', (e) => {
-    if (e && e.target === backdrop && !busy) teardown();
-  });
-
-  const modal = d.createElement('div');
-  modal.className = 'modal-content';
-  backdrop.appendChild(modal);
-
-  const title = d.createElement('div');
-  title.className = 'modal-title';
-  title.textContent = 'Move to...';
-  modal.appendChild(title);
-
-  const body = d.createElement('div');
-  body.className = 'modal-body';
-  modal.appendChild(body);
-
-  const label = d.createElement('div');
+  const body = d.createDocumentFragment();
+  const label = d.createElement('p');
+  label.className = 'ui-confirm__body';
   const displayName = typeof it.title === 'string' && it.title !== '' ? it.title : 'this file';
   label.textContent = `Move "${displayName}" to:`;
   body.appendChild(label);
 
-  const select = d.createElement('select');
-  if (list.length === 0) {
-    const emptyOpt = d.createElement('option');
-    emptyOpt.value = '';
-    emptyOpt.textContent = 'No folders configured';
-    select.appendChild(emptyOpt);
-  } else {
-    list.forEach((folder) => {
-      const opt = d.createElement('option');
-      opt.value = folder;
-      opt.textContent = folder;
-      select.appendChild(opt);
-    });
+  const field = U.select({
+    label: 'Folder',
+    options: list.length ? list.map((f) => ({ value: f, label: f })) : [{ value: '', label: 'No folders configured' }],
+    doc: d,
+  });
+  const select = field.select;
+  body.appendChild(field.el);
+
+  const statusEl = d.createElement('p');
+  statusEl.className = 'ui-confirm__body move-dialog__status';
+  statusEl.setAttribute('aria-live', 'polite');
+  body.appendChild(statusEl);
+
+  const actions = d.createElement('div');
+  actions.className = 'ui-confirm__actions';
+  const cancelBtn = U.button({ variant: 'secondary', label: 'Cancel', doc: d });
+  // Starts disabled when there is nothing to move into (no configured folders).
+  const moveBtn = U.button({ variant: 'primary', label: 'Move', disabled: list.length === 0, doc: d });
+  actions.appendChild(cancelBtn);
+  actions.appendChild(moveBtn);
+  body.appendChild(actions);
+
+  let busy = false;
+  const ctrl = U.sheet({ variant: 'dialog', title: 'Move to…', content: body, canDismiss: () => !busy, doc: d, win });
+
+  function setBusy(nextBusy) {
+    busy = nextBusy;
+    moveBtn.disabled = nextBusy || list.length === 0;
+    cancelBtn.disabled = nextBusy;
+    if (U.setBusy) U.setBusy(moveBtn, nextBusy);
   }
-  body.appendChild(select);
+  function teardown() { ctrl.close(); }
 
-  const statusEl = d.createElement('div');
-  statusEl.className = 'modal-body';
-  modal.appendChild(statusEl);
-
-  const actionsRow = d.createElement('div');
-  actionsRow.className = 'modal-actions';
-
-  const cancelBtn = d.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'btn';
-  cancelBtn.textContent = 'Cancel';
   cancelBtn.addEventListener('click', () => {
     if (busy) return;
     teardown();
   });
-  actionsRow.appendChild(cancelBtn);
-
-  // Starts disabled when there is nothing to move into (no configured
-  // folders) -- mirrors showHardDeleteModal's "starts disabled until a real
-  // choice exists" posture, just gated on data availability instead of a
-  // checkbox.
-  const moveBtn = d.createElement('button');
-  moveBtn.type = 'button';
-  moveBtn.className = 'btn btn-primary';
-  moveBtn.textContent = 'Move';
-  moveBtn.disabled = list.length === 0;
   moveBtn.addEventListener('click', () => {
-    if (busy || moveBtn.disabled) return; // belt-and-suspenders -- mirrors showHardDeleteModal
+    if (busy || moveBtn.disabled || !ctrl.isOpen()) return;
     const target = select.value;
     if (!target) {
       statusEl.textContent = 'Choose a folder first.';
       return;
     }
-    // F2: arm the busy guard BEFORE calling out -- onMove's request is
-    // async, so without this a second tap before it resolves would fire a
-    // second, concurrent move request for the same item.
+    // F2: arm the busy guard BEFORE calling out -- onMove's request is async.
     setBusy(true);
     if (typeof onMove === 'function') onMove(target, { teardown, statusEl, reenable: () => setBusy(false) });
   });
-  actionsRow.appendChild(moveBtn);
 
-  modal.appendChild(actionsRow);
-
-  // F2: see this function's top-of-file doc comment.
-  let busy = false;
-  function setBusy(nextBusy) {
-    busy = nextBusy;
-    moveBtn.disabled = nextBusy || list.length === 0;
-    cancelBtn.disabled = nextBusy;
-  }
-
-  function teardown() {
-    if (backdrop.classList) backdrop.classList.add('modal-closing');
-    closeOverlayThen(backdrop, 'modal-open', () => backdrop.remove());
-  }
-
-  d.body.appendChild(backdrop);
-  openOverlay(backdrop, 'modal-open');
-
-  return { backdrop, modal, title, body, label, select, statusEl, cancelBtn, moveBtn, teardown };
+  ctrl.open();
+  // After open(): ui.sheet sets the sheet's variant classes on open, replacing any set before.
+  ctrl.el.classList.add('move-dialog');
+  return {
+    sheet: ctrl.el, modal: ctrl.el, title: ctrl.el.querySelector('.ui-sheet__title'),
+    body: ctrl.body, label, select, statusEl, cancelBtn, moveBtn, teardown,
+  };
 }
 
 // Pocket menus gate r1 K2 (qa W1 + adversary W2): the ONE "the library changed under you" seam.
@@ -13199,6 +12818,15 @@ function notifyLibraryChanged(detail, doc) {
   } catch (_) { return false; }
 }
 
+// ---- Sweep S9 (UI pass): dialogs on the ui.sheet primitive --------------------------
+//
+// The ui.js builders for the dialogs below: the page's window.ui, else (Node tests) the
+// sibling module - the same resolver buildFilterChipRow uses.
+function overlayUiLib() {
+  return (typeof window !== 'undefined' && window.ui)
+    || (typeof module !== 'undefined' && module.require ? module.require('./ui.js') : null);
+}
+
 /**
  * v1.34 T3 (Dean): the per-video CHAPTERS EDITOR modal -- a textarea, one
  * "0:00 Title" line per chapter (the SAME grammar the server's
@@ -13212,48 +12840,37 @@ function notifyLibraryChanged(detail, doc) {
  */
 function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
   const d = doc || document;
+  const U = overlayUiLib();
   // chapter snap (2026-09-24, gate r1, adversary S8): the `version` the list was seeded with (GET
   // /api/videos/:id chaptersVersion) rides the save, so a list changed elsewhere since
   // (a snap save, a reheat) is refused by the server instead of overwritten.
   const seedVersion = opts && typeof opts.version === 'string' ? opts.version : undefined;
 
-  const backdrop = d.createElement('div');
-  backdrop.className = 'modal-backdrop';
-  // v1.289: drag-safe dismiss - drag-selecting chapter text and releasing on the
-  // backdrop must NOT close the editor (that discarded unsaved chapter edits -
-  // Dean's exact gesture, on a data-editing surface). The `!busy` guard is kept.
-  bindBackdropDismiss(backdrop, () => { if (!busy) teardown(); });
+  // Sweep S9: a ui.sheet dialog (the one overlay primitive). v1.289's drag-safe dismiss holds
+  // by construction: the scrim is a SIBLING of the sheet, so a text-selection drag that starts
+  // in the textarea and releases outside clicks their common ancestor, never the scrim.
+  const content = d.createElement('div');
+  content.className = 'chapters-editor';
 
-  const modal = d.createElement('div');
-  modal.className = 'modal-content';
-  backdrop.appendChild(modal);
-
-  const title = d.createElement('div');
-  title.className = 'modal-title';
-  title.textContent = 'Edit chapters';
-  modal.appendChild(title);
-
-  const body = d.createElement('div');
-  body.className = 'modal-body';
-  modal.appendChild(body);
-
-  const hint = d.createElement('div');
+  const hint = d.createElement('p');
+  hint.className = 'chapters-editor-hint';
   hint.textContent = 'One chapter per line: a timestamp then a title (e.g. "0:00 Intro"). Leave empty to remove your custom chapters.';
-  body.appendChild(hint);
+  content.appendChild(hint);
 
   const textarea = d.createElement('textarea');
   textarea.className = 'chapters-editor-textarea';
   textarea.rows = 10;
   textarea.value = typeof initialText === 'string' ? initialText : '';
   textarea.setAttribute('aria-label', 'Chapters, one "0:00 Title" line per chapter');
-  body.appendChild(textarea);
+  content.appendChild(textarea);
 
   const statusEl = d.createElement('div');
-  statusEl.className = 'modal-body';
-  modal.appendChild(statusEl);
+  statusEl.className = 'chapters-editor-status';
+  statusEl.setAttribute('aria-live', 'polite');
+  content.appendChild(statusEl);
 
   const actionsRow = d.createElement('div');
-  actionsRow.className = 'modal-actions';
+  actionsRow.className = 'ui-confirm__actions chapters-editor-actions';
 
   // Chapter Snap (2026-09-24) (Dean): the text box stays for pasting a whole list; this
   // opens the SAME time editor every other entry point opens (showChapterSnapEditor),
@@ -13262,11 +12879,8 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
   let snapBtn = null;
   const initialLines = (typeof initialText === 'string' ? initialText : '').split(/\r?\n/).filter((l) => l.trim() !== '');
   if (initialLines.length >= 2 && typeof showChapterSnapEditor === 'function') {
-    snapBtn = d.createElement('button');
-    snapBtn.type = 'button';
-    snapBtn.className = 'btn chapters-editor-snap';
-    snapBtn.textContent = 'Fix times\u2026';
-    snapBtn.setAttribute('aria-label', 'Fix chapter start times in the visual editor');
+    snapBtn = U.button({ variant: 'tonal', label: 'Fix times…', ariaLabel: 'Fix chapter start times in the visual editor', doc: d });
+    snapBtn.classList.add('chapters-editor-snap');
     snapBtn.addEventListener('click', () => {
       if (busy) return;
       if (textarea.value !== (typeof initialText === 'string' ? initialText : '')) {
@@ -13279,20 +12893,14 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
     actionsRow.appendChild(snapBtn);
   }
 
-  const cancelBtn = d.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'btn';
-  cancelBtn.textContent = 'Cancel';
+  const cancelBtn = U.button({ variant: 'secondary', label: 'Cancel', doc: d });
   cancelBtn.addEventListener('click', () => {
     if (busy) return;
     teardown();
   });
   actionsRow.appendChild(cancelBtn);
 
-  const saveBtn = d.createElement('button');
-  saveBtn.type = 'button';
-  saveBtn.className = 'btn btn-primary';
-  saveBtn.textContent = 'Save';
+  const saveBtn = U.button({ variant: 'primary', label: 'Save', doc: d });
   saveBtn.addEventListener('click', () => {
     if (busy) return;
     setBusy(true);
@@ -13319,8 +12927,7 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
       });
   });
   actionsRow.appendChild(saveBtn);
-
-  modal.appendChild(actionsRow);
+  content.appendChild(actionsRow);
 
   let busy = false;
   function setBusy(nextBusy) {
@@ -13330,15 +12937,21 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
     if (snapBtn) snapBtn.disabled = nextBusy;
   }
 
+  // A save in flight is never dismissed out from under its status line: Esc, the scrim
+  // and Close all stand down while busy (the v1.26.2 busy guard, kept, via canDismiss).
+  const sheet = U.sheet({
+    variant: 'dialog', title: 'Edit chapters', content, initialFocus: textarea,
+    canDismiss: () => !busy,
+    doc: d, win: d.defaultView,
+  });
+
   function teardown() {
-    if (backdrop.classList) backdrop.classList.add('modal-closing');
-    closeOverlayThen(backdrop, 'modal-open', () => backdrop.remove());
+    sheet.close();
   }
 
-  d.body.appendChild(backdrop);
-  openOverlay(backdrop, 'modal-open');
+  sheet.open();
 
-  return { backdrop, modal, textarea, statusEl, cancelBtn, saveBtn, snapBtn, teardown };
+  return { sheet, backdrop: sheet.scrim, modal: sheet.el, textarea, statusEl, cancelBtn, saveBtn, snapBtn, teardown };
 }
 
 // ---- Chapter Snap (2026-09-24) (Dean 2026-09-24): the chapter TIME editor ---------
@@ -13552,6 +13165,7 @@ function showChapterSnapEditor(mediaId, opts) {
   const doFetch = o.fetchImpl || (typeof fetch !== 'undefined' ? fetch : null);
   const pollMs = typeof o.pollMs === 'number' ? o.pollMs : 1500;
   const base = '/api/videos/' + encodeURIComponent(mediaId) + '/chapter-snap';
+  const U = overlayUiLib();
 
   let state = null; // the server's editor state (seed)
   let rows = [];    // [{index, title, sourceStart, savedStart, time, shift}] - `shift` = the whole ms
@@ -13571,27 +13185,35 @@ function showChapterSnapEditor(mediaId, opts) {
     if (text != null) n.textContent = text;
     return n;
   }
-  function btn(cls, text, label) {
-    const b = el('button', cls, text);
+  // Step 7 (UI pass): every control here is a ui-btn. `spec` is the variant ('primary' - the
+  // one filled action of a group - or 'secondary') followed by the chapter-snap-* hook classes;
+  // md is the desktop control height and 44 on a phone (the phone / short-screen arm below
+  // floors every one of them at the touch size). The label lives in the button's
+  // .ui-btn__label (setLabel), never as bare text, so a relabel keeps the primitive's box.
+  function setLabel(b, text) {
+    let l = b.querySelector('.ui-btn__label');
+    if (!l) { l = el('span', 'ui-btn__label'); b.appendChild(l); }
+    l.textContent = text == null ? '' : String(text);
+  }
+  function btn(spec, text, label) {
+    const hooks = spec.split(' ');
+    const variant = hooks.shift();
+    const b = el('button', 'ui-btn ui-btn--' + variant + ' ui-btn--md ' + hooks.join(' '));
     b.type = 'button';
+    setLabel(b, text);
     if (label) b.setAttribute('aria-label', label);
     return b;
   }
 
-  const backdrop = el('div', 'modal-backdrop chapter-snap-backdrop');
-  const modal = el('div', 'modal-content chapter-snap-modal');
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
-  modal.setAttribute('aria-labelledby', 'chapter-snap-title');
-  backdrop.appendChild(modal);
+  // Sweep S9: the SHELL is a ui.sheet dialog titled "Fix chapter times" (wide on desktop,
+  // the full screen on a phone - style.css `:has(.chapter-snap-editor)`); `modal` is its
+  // content: the head, the one scrolling list, the pinned actions.
+  const modal = el('div', 'chapter-snap-editor');
 
   const head = el('div', 'chapter-snap-head');
   const titleRow = el('div', 'chapter-snap-titlerow');
-  const title = el('h2', 'modal-title chapter-snap-title', 'Fix chapter times');
-  title.id = 'chapter-snap-title';
-  const badge = el('span', 'chapter-snap-badge', 'Edited');
+  const badge = el('span', 'ui-chip ui-chip--meta chapter-snap-badge', 'Edited'); // step 7: a meta chip (status, not a control)
   badge.hidden = true;
-  titleRow.appendChild(title);
   titleRow.appendChild(badge);
   head.appendChild(titleRow);
   const sub = el('div', 'chapter-snap-sub', '');
@@ -13601,10 +13223,10 @@ function showChapterSnapEditor(mediaId, opts) {
   statusEl.setAttribute('aria-live', 'polite');
   head.appendChild(statusEl);
   const tools = el('div', 'chapter-snap-tools');
-  const snapAllBtn = btn('btn btn-primary chapter-snap-snapall', 'Snap all');
-  const undoBtn = btn('btn chapter-snap-undo', 'Undo changes');
-  const revertBtn = btn('btn chapter-snap-revert', 'Revert to source chapters');
-  const retryBtn = btn('btn chapter-snap-retry', 'Try again');
+  const snapAllBtn = btn('primary chapter-snap-snapall', 'Snap all');
+  const undoBtn = btn('secondary chapter-snap-undo', 'Undo changes');
+  const revertBtn = btn('secondary chapter-snap-revert', 'Revert to source chapters');
+  const retryBtn = btn('secondary chapter-snap-retry', 'Try again');
   revertBtn.hidden = true;
   retryBtn.hidden = true;
   tools.appendChild(snapAllBtn);
@@ -13617,8 +13239,8 @@ function showChapterSnapEditor(mediaId, opts) {
   confirmBox.hidden = true;
   const confirmText = el('p', 'chapter-snap-confirm-text', '');
   const confirmActs = el('div', 'chapter-snap-confirm-actions');
-  const confirmYes = btn('btn btn-primary chapter-snap-confirm-yes', 'Revert');
-  const confirmNo = btn('btn chapter-snap-confirm-no', 'Keep my corrections');
+  const confirmYes = btn('primary chapter-snap-confirm-yes', 'Revert');
+  const confirmNo = btn('secondary chapter-snap-confirm-no', 'Keep my corrections');
   confirmActs.appendChild(confirmYes);
   confirmActs.appendChild(confirmNo);
   confirmBox.appendChild(confirmText);
@@ -13639,14 +13261,14 @@ function showChapterSnapEditor(mediaId, opts) {
   const shiftReadoutEl = el('span', 'chapter-snap-shift-readout', 'No shift');
   shiftReadoutEl.setAttribute('aria-live', 'polite');
   shiftTop.appendChild(shiftReadoutEl);
-  const shiftResetBtn = btn('btn chapter-snap-shift-reset', 'Reset shift', 'Reset the shift (your nudges stay)');
+  const shiftResetBtn = btn('secondary chapter-snap-shift-reset', 'Reset shift', 'Reset the shift (your nudges stay)');
   shiftResetBtn.setAttribute('data-shift-act', 'reset');
   shiftResetBtn.hidden = true;
   shiftTop.appendChild(shiftResetBtn);
   shiftBox.appendChild(shiftTop);
   const shiftBtnsEl = el('div', 'chapter-snap-nudges chapter-snap-shift-btns');
   const shiftStepBtns = [[-1000, '−1 s', 'earlier by 1 second'], [-100, '−0.1 s', 'earlier by a tenth of a second'], [100, '+0.1 s', 'later by a tenth of a second'], [1000, '+1 s', 'later by 1 second']].map(function (n) {
-    const b = btn('btn chapter-snap-nudge chapter-snap-shift-btn', n[1], 'Shift every chapter after the first ' + n[2]);
+    const b = btn('secondary chapter-snap-nudge chapter-snap-shift-btn', n[1], 'Shift every chapter after the first ' + n[2]);
     b.setAttribute('data-shift-act', 'step');
     b.setAttribute('data-shift', String(n[0]));
     shiftBtnsEl.appendChild(b);
@@ -13658,7 +13280,7 @@ function showChapterSnapEditor(mediaId, opts) {
   shiftBox.appendChild(shiftWhy);
   const shiftSuggestEl = el('div', 'chapter-snap-shift-suggest');
   shiftSuggestEl.hidden = true;
-  const shiftApplyBtn = btn('btn btn-primary chapter-snap-shift-apply', '');
+  const shiftApplyBtn = btn('primary chapter-snap-shift-apply', '');
   shiftApplyBtn.setAttribute('data-shift-act', 'apply');
   shiftApplyBtn.hidden = true;
   const shiftNote = el('span', 'chapter-snap-shift-note', '');
@@ -13672,8 +13294,8 @@ function showChapterSnapEditor(mediaId, opts) {
   modal.appendChild(scroller);
 
   const actions = el('div', 'modal-actions chapter-snap-actions');
-  const cancelBtn = btn('btn chapter-snap-cancel', 'Cancel');
-  const saveBtn = btn('btn btn-primary chapter-snap-save', 'Save');
+  const cancelBtn = btn('secondary chapter-snap-cancel', 'Cancel');
+  const saveBtn = btn('primary chapter-snap-save', 'Save');
   actions.appendChild(cancelBtn);
   actions.appendChild(saveBtn);
   modal.appendChild(actions);
@@ -13719,7 +13341,7 @@ function showChapterSnapEditor(mediaId, opts) {
     const srcLabel = s ? ({ embedded: 'chapters from the file', description: 'chapters from the description', manual: s.edited ? 'corrected chapters' : 'your typed chapters' }[s.chaptersSource] || 'chapters') : '';
     sub.textContent = s ? [(s.title || ''), rows.length + ' chapters', srcLabel].filter(Boolean).join(' · ') : '';
     const pending = pendingSnaps();
-    snapAllBtn.textContent = pending > 0 ? 'Snap all (' + pending + ')' : 'Snap all';
+    setLabel(snapAllBtn, pending > 0 ? 'Snap all (' + pending + ')' : 'Snap all');
     snapAllBtn.disabled = busy || staleSeed || pending === 0;
     undoBtn.disabled = busy || !dirty();
     revertBtn.hidden = !(s && s.edited);
@@ -13790,7 +13412,7 @@ function showChapterSnapEditor(mediaId, opts) {
       const g = snapShiftSuggestion(t, state.suggestions);
       if (g.kind === 'suggest') {
         shiftApplyBtn.hidden = false;
-        shiftApplyBtn.textContent = 'Suggested: shift all by ' + formatSnapShift(g.deltaMs) + ' (' + g.agree + ' of ' + g.of + ' agree)';
+        setLabel(shiftApplyBtn, 'Suggested: shift all by ' + formatSnapShift(g.deltaMs) + ' (' + g.agree + ' of ' + g.of + ' agree)');
         shiftApplyBtn.setAttribute('data-shift', String(g.deltaMs));
         const blk = snapShiftBlock(t, g.deltaMs, state.duration, state.minGapSec, savedTimes());
         shiftApplyBtn.disabled = lock || !blk.ok;
@@ -13849,7 +13471,7 @@ function showChapterSnapEditor(mediaId, opts) {
     while (li.firstChild) li.removeChild(li.firstChild);
     const sug = suggestionFor(i);
     const moved = Math.abs(r.time - r.sourceStart) >= 0.05;
-    li.className = 'chapter-snap-row' + (moved ? ' is-moved' : '') + (i === focusIndex ? ' is-focus' : '') + (auditionIndex === i ? ' is-playing' : '');
+    li.className = 'chapter-snap-item' + (moved ? ' is-moved' : '') + (i === focusIndex ? ' is-focus' : '') + (auditionIndex === i ? ' is-playing' : '');
     li.setAttribute('data-index', String(i));
     const top = el('div', 'chapter-snap-rowtop');
     top.appendChild(el('span', 'chapter-snap-n', String(i + 1)));
@@ -13860,17 +13482,17 @@ function showChapterSnapEditor(mediaId, opts) {
     top.appendChild(tm);
     li.appendChild(top);
     const chip = snapChipText(i, r, sug, silenceState());
-    if (chip.text) li.appendChild(el('div', 'chapter-snap-chip chapter-snap-chip-' + chip.kind, chip.text));
+    if (chip.text) li.appendChild(el('div', 'chapter-snap-note chapter-snap-note--' + chip.kind, chip.text));
     const ctl = el('div', 'chapter-snap-ctl');
     if (i > 0) {
       if (sug && sug.status === 'suggest' && Math.abs(sug.time - r.time) >= 0.0005) {
-        const sb = btn('btn btn-primary chapter-snap-snapone', 'Snap to ' + formatSnapTime(sug.time), 'Snap chapter ' + (i + 1) + ' to ' + formatSnapTime(sug.time));
+        const sb = btn('primary chapter-snap-snapone', 'Snap to ' + formatSnapTime(sug.time), 'Snap chapter ' + (i + 1) + ' to ' + formatSnapTime(sug.time));
         sb.setAttribute('data-act', 'snap');
         ctl.appendChild(sb);
       }
       const nudges = el('div', 'chapter-snap-nudges');
       [[-1, '−1s', 'earlier by 1 second'], [-0.1, '−0.1', 'earlier by a tenth of a second'], [0.1, '+0.1', 'later by a tenth of a second'], [1, '+1s', 'later by 1 second']].forEach(function (n) {
-        const b = btn('btn chapter-snap-nudge', n[1], 'Move chapter ' + (i + 1) + ' ' + n[2]);
+        const b = btn('secondary chapter-snap-nudge', n[1], 'Move chapter ' + (i + 1) + ' ' + n[2]);
         b.setAttribute('data-act', 'nudge');
         b.setAttribute('data-delta', String(n[0]));
         nudges.appendChild(b);
@@ -13878,14 +13500,14 @@ function showChapterSnapEditor(mediaId, opts) {
       ctl.appendChild(nudges);
     }
     const playing = auditionIndex === i;
-    const pb = btn('btn chapter-snap-play', '', (playing ? 'Stop playing chapter ' : 'Play chapter ') + (i + 1) + ' from ' + formatSnapTime(r.time));
+    const pb = btn('secondary chapter-snap-play', playing ? 'Stop' : 'Play from here', (playing ? 'Stop playing chapter ' : 'Play chapter ') + (i + 1) + ' from ' + formatSnapTime(r.time));
     pb.setAttribute('data-act', 'play');
-    if (!playing) {
-      const icon = el('i', 'icon-play');
-      icon.setAttribute('aria-hidden', 'true');
-      pb.appendChild(icon);
+    if (!playing && U && typeof U.icon === 'function') {
+      // the registry glyph in the primitive's icon slot (it was the .icon-play mask)
+      const slot = el('span', 'ui-btn__icon');
+      slot.appendChild(U.icon('play_arrow', { doc: d }));
+      pb.insertBefore(slot, pb.firstChild);
     }
-    pb.appendChild(d.createTextNode(playing ? 'Stop' : ' Play from here'));
     pb.disabled = busy;
     ctl.appendChild(pb);
     li.appendChild(ctl);
@@ -13895,7 +13517,7 @@ function showChapterSnapEditor(mediaId, opts) {
   function renderList() {
     while (list.firstChild) list.removeChild(list.firstChild);
     rows.forEach(function (_, i) {
-      const li = el('li', 'chapter-snap-row');
+      const li = el('li', 'chapter-snap-item');
       renderRow(li, i);
       list.appendChild(li);
     });
@@ -14086,7 +13708,7 @@ function showChapterSnapEditor(mediaId, opts) {
   list.addEventListener('click', function (e) {
     const b = e.target && e.target.closest ? e.target.closest('button[data-act]') : null;
     if (!b || b.disabled || busy) return;
-    const li = b.closest('.chapter-snap-row');
+    const li = b.closest('.chapter-snap-item');
     const i = li ? Number(li.getAttribute('data-index')) : -1;
     if (!(i >= 0 && i < rows.length)) return;
     focusIndex = i;
@@ -14140,8 +13762,8 @@ function showChapterSnapEditor(mediaId, opts) {
   let confirmAction = null;
   function askConfirm(text, yesLabel, noLabel, onYes) {
     confirmText.textContent = text;
-    confirmYes.textContent = yesLabel;
-    confirmNo.textContent = noLabel;
+    setLabel(confirmYes, yesLabel);
+    setLabel(confirmNo, noLabel);
     confirmAction = onYes;
     confirmBox.hidden = false;
     try { confirmYes.focus(); } catch (_) { /* jsdom */ }
@@ -14239,18 +13861,27 @@ function showChapterSnapEditor(mediaId, opts) {
   });
 
   // ---- close ---------------------------------------------------------------------
-  function requestClose() {
-    if (busy) return;
+  // May the editor close right now? A save in flight refuses; unsaved corrections open the
+  // in-page discard confirm (its Discard closes) and refuse this close. Cancel asks it, and
+  // so does every way out the sheet owns (Esc, the scrim, Close - its canDismiss).
+  function mayClose() {
+    if (busy) return false;
     if (dirty() && !staleSeed) {
       askConfirm('Discard your changes to the chapter times?', 'Discard', 'Keep editing', teardown);
-      return;
+      return false;
     }
-    teardown();
+    return true;
+  }
+  function requestClose() {
+    if (mayClose()) teardown();
   }
   cancelBtn.addEventListener('click', requestClose);
-  bindBackdropDismiss(backdrop, requestClose);
-  function onKey(e) { if (e.key === 'Escape') requestClose(); }
-  d.addEventListener('keydown', onKey);
+  // Esc, the scrim and the sheet's Close ASK first, exactly like Cancel: a save in flight
+  // refuses, unsaved corrections open the in-page discard confirm (never a silent loss).
+  const sheet = U.sheet({
+    variant: 'dialog', title: 'Fix chapter times', content: modal,
+    canDismiss: mayClose, onClosing: () => teardown(), doc: d, win: d.defaultView,
+  });
 
   function teardown() {
     if (closed) return;
@@ -14258,16 +13889,13 @@ function showChapterSnapEditor(mediaId, opts) {
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
     if (auditionTimer) { clearTimeout(auditionTimer); auditionTimer = null; }
     if (audio) { try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch (_) { /* gone */ } }
-    d.removeEventListener('keydown', onKey);
-    if (backdrop.classList) backdrop.classList.add('modal-closing');
-    closeOverlayThen(backdrop, 'modal-open', () => backdrop.remove());
+    sheet.close();
   }
 
-  d.body.appendChild(backdrop);
-  openOverlay(backdrop, 'modal-open');
+  sheet.open();
   const ready = load(false);
 
-  return { backdrop, modal, list, statusEl, saveBtn, cancelBtn, snapAllBtn, undoBtn, revertBtn, confirmBox, shiftBox, close: teardown, ready, isClosed: () => closed };
+  return { sheet, backdrop: sheet.scrim, modal, list, statusEl, saveBtn, cancelBtn, snapAllBtn, undoBtn, revertBtn, confirmBox, shiftBox, close: teardown, ready, isClosed: () => closed };
 }
 
 /**
@@ -14297,16 +13925,6 @@ function requestMoveItem(id, targetFolder, fetchImpl) {
   });
 }
 
-// v1.17.0 FR-3(a): a brief, non-blocking, auto-dismissing notification --
-// replaces the blocking `alert('File deleted successfully.')` friction the
-// watch page's post-delete success branch used to have (T2). Appends a real
-// DOM node built via `textContent` ONLY (never `innerHTML`), so `msg` can
-// only ever render as plain text no matter what it contains. Auto-dismisses
-// on a ~2.5s timer with a token-themed fade (see `.toast`/`.toast-visible` in
-// style.css) and removes itself -- no user interaction required. Reused by
-// both the watch-page delete flow (watch.js) and the home/library card
-// trash-can affordance (main.js). Guarded for Node (no-op there, matching
-// this file's other document-touching helpers).
 /**
  * v1.32 (Dean, "white-label"): replace the header's text logo with the
  * user-uploaded custom logo when one is configured. A cheap HEAD probe of
@@ -14429,6 +14047,9 @@ function applyLikedSidebarEntry(listEl, opts) {
       icon.className = 'icon-liked';
       entry.appendChild(icon);
       entry.appendChild(document.createTextNode(' Liked'));
+      // Sweep S1: a caller can reshape the entry for its surface (the playlists sheet's
+      // ui-row, toSheetRow) - the WHETHER stays this one count-gated decision.
+      if (typeof options.decorate === 'function') options.decorate(entry);
       listEl.insertBefore(entry, listEl.firstChild);
     } else if (existing) {
       existing.remove();
@@ -14679,57 +14300,26 @@ function shareMediaFile(opts) {
     });
 }
 
-function showToast(msg, action) {
-  if (typeof document === 'undefined') return;
-  const toast = document.createElement('div');
-  toast.className = 'toast';
-  toast.textContent = msg;
-  // v1.63 (gate: Dean's ruling 3 promised an Undo on the add toast): an
-  // optional single action button - {label, onAction}. Tapping it runs the
-  // action once and dismisses immediately; the auto-dismiss window widens
-  // to give the tap a real chance. createElement/textContent only.
-  let dismissed = false;
-  const dismiss = () => {
-    if (dismissed) return;
-    dismissed = true;
-    toast.classList.remove('toast-visible');
-    setTimeout(() => toast.remove(), 300); // let the fade-out finish first
-  };
+// Sweep S9 (F56): every toast rides ui.toast's ONE queue - one visible at a time, the rest
+// wait, instead of each call appending its own node on top of the last. showToast stays as
+// the thin shim every caller already uses (116 call sites, several of them in other views
+// reaching it as window.showToast): `action` is the same optional {label, onAction} (the
+// v1.63 Undo), now a sentence-case plain ui-btn in --accent; `opts.kind` ('success' |
+// 'error') adds the kind's icon, so colour is never the only signal. The text is always
+// textContent (ui.toast builds it with spanText), never markup. Returns ui.toast's handle
+// ({dismiss, el}), or null where there is no document / no ui.js (a Node require).
+function showToast(msg, action, opts) {
+  if (typeof document === 'undefined') return null;
+  const U = (typeof window !== 'undefined' && window.ui) || null;
+  if (!U || typeof U.toast !== 'function') return null;
+  const o = {};
+  if (opts && typeof opts === 'object' && (opts.kind === 'success' || opts.kind === 'error')) o.kind = opts.kind;
   if (action && typeof action.onAction === 'function' && typeof action.label === 'string') {
-    const btn = document.createElement('button');
-    btn.className = 'toast-action-btn';
-    btn.textContent = action.label;
-    btn.addEventListener('click', () => {
-      dismiss();
-      action.onAction();
-    }, { once: true });
-    toast.appendChild(btn);
+    // One tap runs the action once; ui.toast dismisses the toast after it.
+    let ran = false;
+    o.action = { label: action.label, onAction: () => { if (ran) return; ran = true; action.onAction(); } };
   }
-  document.body.appendChild(toast);
-  // Next frame so the initial (opacity:0) state is committed before adding
-  // .toast-visible -- guarantees the fade-in actually transitions instead of
-  // snapping straight to visible.
-  const raf = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn) => setTimeout(fn, 0);
-  raf(() => toast.classList.add('toast-visible'));
-  setTimeout(dismiss, action ? 5000 : 2500);
-}
-
-// v1.17.0 FR-3(b): pure arm/disarm reducer for the home/library card
-// trash-can affordance (main.js's delegated #video-grid click listener). A
-// first tap on an IDLE card's delete control ARMS it (no network call --
-// just an inline "Sure?" re-confirm); a second tap on the SAME already-armed
-// control is what actually deletes; any 'disarm' action (a ~3s timeout, a
-// document scroll, or interacting with a different card/anywhere else)
-// resets to idle without ever deleting. No DOM/timers here on purpose -- the
-// DOM layer owns those and only fires `DELETE /api/videos/:id` when
-// `deleted` comes back `true`. Directly `node:test`-covered.
-function nextArmState(current, action) {
-  if (action === 'disarm') return { state: 'idle', deleted: false };
-  if (action === 'tap') {
-    if (current === 'armed') return { state: 'idle', deleted: true };
-    return { state: 'armed', deleted: false };
-  }
-  return { state: current === 'armed' ? 'armed' : 'idle', deleted: false };
+  return U.toast(msg == null ? '' : String(msg), o);
 }
 
 // === v1.21.0 FR-8 (T7): app-wide active-download status chip ===============
@@ -15466,7 +15056,18 @@ function detectCompletedPendingOneShots(pendingJobIds, snapshot) {
  * `node:test`-callable against a fake document, no real browser needed.
  * `handlers` is `{onCancel(jobId), onRetry(item, rawEntry), onDismiss(key)}`.
  */
+// Sweep S9 (F57, F47): the row's controls are ui-btn (sm secondary: Cancel / Retry /
+// Dismiss - one button language, never a bordered bevel or a red fill), the error state
+// carries an `error` icon beside its name (colour is never the only signal), and the fill's
+// progress is the `--p` custom property (0..1, data only; ui.css-style transform, never an
+// inline width). `doc.defaultView.ui` (or window.ui) builds the buttons.
+function dlChipUi(doc) {
+  const w = (doc && doc.defaultView) || (typeof window !== 'undefined' ? window : null);
+  return (w && w.ui) || null;
+}
+
 function createDownloadChipItemRow(doc, handlers) {
+  const U = dlChipUi(doc);
   const row = doc.createElement('div');
   row.className = 'dl-status-chip-item';
   // Mutable holder the static click handlers below always read fresh data
@@ -15475,7 +15076,10 @@ function createDownloadChipItemRow(doc, handlers) {
   row.state = { item: null, rawEntry: null };
 
   const nameRow = doc.createElement('div');
-  nameRow.className = 'dl-status-chip-item-row';
+  nameRow.className = 'dl-status-chip-item-head';
+  const errIcon = U.icon('error', { size: 'sm', doc, cls: 'dl-status-chip-item-erricon' });
+  errIcon.setAttribute('hidden', '');
+  nameRow.appendChild(errIcon);
   const nameEl = doc.createElement('span');
   nameEl.className = 'dl-status-chip-item-name';
   nameRow.appendChild(nameEl);
@@ -15509,10 +15113,8 @@ function createDownloadChipItemRow(doc, handlers) {
   const cancelActions = doc.createElement('div');
   cancelActions.className = 'dl-status-chip-item-actions';
   cancelActions.hidden = true;
-  const cancelBtn = doc.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'dl-status-chip-dismiss-btn dl-status-chip-cancel-btn';
-  cancelBtn.textContent = 'Cancel';
+  const cancelBtn = U.button({ variant: 'secondary', size: 'sm', label: 'Cancel', doc });
+  cancelBtn.classList.add('dl-status-chip-cancel-btn');
   cancelBtn.addEventListener('click', () => {
     if (row.state.item) handlers.onCancel(row.state.item.id);
   });
@@ -15532,26 +15134,22 @@ function createDownloadChipItemRow(doc, handlers) {
   const actions = doc.createElement('div');
   actions.className = 'dl-status-chip-item-actions';
   actions.hidden = true;
-  const retryBtn = doc.createElement('button');
-  retryBtn.type = 'button';
-  retryBtn.className = 'dl-status-chip-retry-btn';
-  retryBtn.textContent = 'Retry';
+  const retryBtn = U.button({ variant: 'secondary', size: 'sm', icon: 'refresh', label: 'Retry', doc });
+  retryBtn.classList.add('dl-status-chip-retry-btn');
   retryBtn.hidden = true;
   retryBtn.addEventListener('click', () => {
     if (row.state.item) handlers.onRetry(row.state.item, row.state.rawEntry);
   });
   actions.appendChild(retryBtn);
-  const dismissBtn = doc.createElement('button');
-  dismissBtn.type = 'button';
-  dismissBtn.className = 'dl-status-chip-dismiss-btn';
-  dismissBtn.textContent = 'Dismiss';
+  const dismissBtn = U.button({ variant: 'secondary', size: 'sm', label: 'Dismiss', doc });
+  dismissBtn.classList.add('dl-status-chip-dismiss-btn');
   dismissBtn.addEventListener('click', () => {
     if (row.state.item) handlers.onDismiss(row.state.item.key);
   });
   actions.appendChild(dismissBtn);
   row.appendChild(actions);
 
-  row.els = { nameEl, pctEl, track, fill, statusEl, cancelActions, cancelBtn, failuresWrap, actions, retryBtn, dismissBtn };
+  row.els = { nameEl, errIcon, pctEl, track, fill, statusEl, cancelActions, cancelBtn, failuresWrap, actions, retryBtn, dismissBtn };
   return row;
 }
 
@@ -15571,6 +15169,10 @@ function updateDownloadChipItemRow(doc, row, item, rawEntry) {
   const els = row.els;
 
   els.nameEl.textContent = item.name;
+  // The error icon, not the colour alone, says a row failed (F57).
+  if (item.state === 'error') els.errIcon.removeAttribute('hidden');
+  else els.errIcon.setAttribute('hidden', '');
+  row.classList.toggle('is-error', item.state === 'error');
 
   const showPercent = downloadChipItemShowsPercent(item);
   const showBadge = showPercent && !item.phase;
@@ -15587,7 +15189,9 @@ function updateDownloadChipItemRow(doc, row, item, rawEntry) {
     // ticks (the whole point of F2) is what lets both this class toggle and
     // the width transition below actually animate instead of restarting.
     els.fill.classList.toggle('indeterminate', Boolean(item.indeterminate));
-    els.fill.style.width = (item.indeterminate ? 100 : item.percent) + '%';
+    // --p is DATA (0..1): the fill scales by transform, so its motion is never a layout
+    // transition (AC9) and nothing writes a visual style inline.
+    els.fill.style.setProperty('--p', String((item.indeterminate ? 100 : item.percent) / 100));
   }
 
   els.statusEl.textContent = item.statusText;
@@ -15687,17 +15291,23 @@ function injectDownloadStatusChip() {
       chip.className = 'dl-status-chip';
       chip.hidden = true;
 
-      const summaryBtn = document.createElement('button');
-      summaryBtn.type = 'button';
-      summaryBtn.className = 'dl-status-chip-summary';
+      // Sweep S9 (F57): the collapsed chip is a tonal pill ui-btn - a `download` glyph while
+      // work runs, an `error` glyph in --danger once something failed (the glyph, not the
+      // red alone, says so) - over the one overlay shadow. No bevel, no pulsing red dot.
+      const U = dlChipUi(document);
+      const summaryBtn = U.button({ variant: 'tonal', size: 'sm', pill: true, icon: 'download', label: 'Downloads' });
+      summaryBtn.classList.add('dl-status-chip-summary');
       summaryBtn.setAttribute('aria-expanded', 'false');
       summaryBtn.setAttribute('aria-label', 'Active downloads');
-      const dot = document.createElement('span');
-      dot.className = 'dl-status-chip-dot';
-      summaryBtn.appendChild(dot);
-      const summaryText = document.createElement('span');
-      summaryText.className = 'dl-status-chip-text';
-      summaryBtn.appendChild(summaryText);
+      const summaryIconSlot = summaryBtn.querySelector('.ui-btn__icon');
+      const summaryText = summaryBtn.querySelector('.ui-btn__label');
+      summaryText.classList.add('dl-status-chip-text');
+      let summaryIcon = 'download';
+      const setSummaryIcon = (name) => {
+        if (name === summaryIcon) return;
+        summaryIcon = name;
+        summaryIconSlot.replaceChildren(U.icon(name, { size: 'sm' }));
+      };
       chip.appendChild(summaryBtn);
 
       const panel = document.createElement('div');
@@ -15711,10 +15321,8 @@ function injectDownloadStatusChip() {
       // updateDownloadChipPanel's row-cleanup loop leaves it alone); hidden
       // whenever nothing is dismissible. Active (still-downloading/queued)
       // rows are never dismissed by it.
-      const dismissAllBtn = document.createElement('button');
-      dismissAllBtn.type = 'button';
-      dismissAllBtn.className = 'btn btn-sm dl-status-chip-dismiss-all';
-      dismissAllBtn.textContent = 'Dismiss all';
+      const dismissAllBtn = U.button({ variant: 'plain', size: 'sm', label: 'Dismiss all' });
+      dismissAllBtn.classList.add('dl-status-chip-dismiss-all');
       dismissAllBtn.hidden = true;
       dismissAllBtn.addEventListener('click', () => {
         const state = reduceDownloadChipState(latestSnapshot, dismissedKeys);
@@ -15797,7 +15405,7 @@ function injectDownloadStatusChip() {
       function cancelOneShot(jobId) {
         fetch('/api/ytdlp/download/' + encodeURIComponent(jobId) + '/cancel', { method: 'POST' })
           .then((res) => {
-            if (!res.ok) showToast("Couldn't cancel — the download may have already finished");
+            if (!res.ok) showToast("Couldn't cancel - the download may have already finished", null, { kind: 'error' });
           })
           .catch(() => { /* network-level failure -- the item stays visible; the next poll reconciles reality either way */ })
           .then(() => pollOnce());
@@ -15826,6 +15434,7 @@ function injectDownloadStatusChip() {
         chip.hidden = false;
         summaryText.textContent = state.count === 0 ? breakerText : formatDownloadChipSummary(state);
         chip.classList.toggle('dl-status-chip-has-error', state.hasError);
+        setSummaryIcon(state.hasError ? 'error' : 'download');
         // v1.32: 'Dismiss all' only when there is something dismissible.
         dismissAllBtn.hidden = !state.items.some(
           (item) => chipItemLifecycle(item.state, item.failureKind) === 'sticky',
@@ -16069,48 +15678,37 @@ function ensureRepullButton(sub) {
   const actions = document.querySelector('.section-actions');
   if (!actions) { removeRepullButton(); return; }
   let btn = document.getElementById(REPULL_BTN_ID);
-  let label;
-  if (btn) {
-    label = btn.querySelector('.btn-label');
-  } else {
-    btn = document.createElement('button');
-    btn.type = 'button';
-    // Tokens Phase 1 Tier 1: font-size/padding moved to .repull-btn-compact
-    // (style.css) - font-size rides var(--fs-xs).
-    btn.className = 'btn btn-sm repull-btn-compact';
+  if (!btn) {
+    // UI pass sweep S2 (F19): a ui-btn icon tool beside the toolbar's others (the
+    // library toolbar is ONE row that never wraps, so no word label): the
+    // subscriptions glyph, distinct from Rescan's refresh. Busy = the ui-btn
+    // spinner; the outcome is a toast (the v1.31 P5 never-silent posture).
+    const ui = (typeof window !== 'undefined' && window.ui)
+      || (typeof module !== 'undefined' && module.require ? module.require('./ui.js') : null);
+    if (!ui) return;
+    btn = ui.button({ variant: 'tonal', size: 'sm', shape: 'icon', icon: 'subscriptions', ariaLabel: 'Re-pull this channel now' });
     btn.id = REPULL_BTN_ID;
-    btn.title = 'Re-pull this channel now';
-    btn.setAttribute('aria-label', 'Re-pull this channel now');
-    const icon = document.createElement('i');
-    icon.className = 'icon-refresh';
-    btn.appendChild(icon);
-    btn.appendChild(document.createTextNode(' '));
-    label = document.createElement('span');
-    label.className = 'btn-label';
-    label.textContent = 'Re-pull';
-    btn.appendChild(label);
-    actions.appendChild(btn);
+    const tools = actions.querySelector('.library-tools');
+    (tools || actions).appendChild(btn);
     btn.addEventListener('click', () => {
       if (btn.disabled) return;
       btn.disabled = true;
-      const originalLabel = label.textContent;
-      label.textContent = 'Checking…';
+      ui.setBusy(btn, true);
       // v1.31 P5 (FR5): read the v1.29 {started, reason} body instead of
-      // discarding it -- a busy-coalesced repull shows 'Queued behind run'
-      // on the button itself for the reset window, so the click is never a
-      // silent no-op.
+      // discarding it -- a busy-coalesced repull says so, so the click is
+      // never a silent no-op.
       fetch('/api/subscriptions/' + encodeURIComponent(btn.dataset.subId) + '/repull', { method: 'POST' })
         .then((r) => (r && r.ok ? r.json() : null))
         .then((body) => {
-          if (body && body.started === false && body.reason === 'busy') {
-            label.textContent = 'Queued behind run';
-          }
+          if (body && body.started === false && body.reason === 'busy') ui.toast('Queued behind the current run');
+          else if (body) ui.toast('Checking this channel for new videos');
+          else ui.toast('Could not re-pull this channel', { kind: 'error' });
         })
-        .catch((err) => console.error('Re-pull-this-channel failed:', err))
+        .catch((err) => { console.error('Re-pull-this-channel failed:', err); ui.toast('Could not re-pull this channel', { kind: 'error' }); })
         .finally(() => {
           setTimeout(() => {
             btn.disabled = false;
-            label.textContent = originalLabel;
+            ui.setBusy(btn, false);
           }, 1500);
         });
     });
@@ -16303,7 +15901,7 @@ function buildSortableTable(host, config) {
     bar.className = 'stable-toolbar';
     filterInput = doc.createElement('input');
     filterInput.type = 'search';
-    filterInput.className = 'stable-filter';
+    filterInput.className = 'ui-field__input stable-filter'; // sweep S8: the ui-field input (16px, focus ring)
     filterInput.setAttribute('aria-label', cfg.filter.placeholder || 'Filter');
     filterInput.placeholder = cfg.filter.placeholder || 'Filter...';
     bar.appendChild(filterInput);
@@ -16318,7 +15916,9 @@ function buildSortableTable(host, config) {
   columns.forEach((col) => {
     const th = doc.createElement('button');
     th.type = 'button';
-    th.className = 'stable-th' + (col.align === 'end' ? ' stable-th--end' : '');
+    // Retire R3: a sort header is a plain sm ui-btn (the press / hover tint and the focus
+    // ring are the primitive's); style.css .stable-th sets it in the header's type.
+    th.className = 'ui-btn ui-btn--plain ui-btn--sm stable-th' + (col.align === 'end' ? ' stable-th--end' : '');
     th.setAttribute('role', 'columnheader');
     th.dataset.col = col.key;
     th.textContent = col.label;
@@ -16551,12 +16151,10 @@ function injectSearchClearButton(inputEl, btnEl) {
   if (!inputEl || !btnEl || !btnEl.parentNode) return null;
   const already = document.getElementById('search-clear-btn');
   if (already) return already;
-  const clearBtn = document.createElement('button');
-  clearBtn.type = 'button';
+  // Sweep S1 (AC4): a plain ui-btn icon button with the registry's close glyph (it was a
+  // text X glyph); its 44px hit area comes from the primitive.
+  const clearBtn = chromeButtonEl({ cls: 'search-clear-btn', icon: 'close', ariaLabel: 'Clear search' });
   clearBtn.id = 'search-clear-btn';
-  clearBtn.className = 'search-clear-btn';
-  clearBtn.setAttribute('aria-label', 'Clear search');
-  clearBtn.appendChild(document.createTextNode('✕'));
   clearBtn.hidden = !shouldShowSearchClear(inputEl.value);
   btnEl.parentNode.insertBefore(clearBtn, btnEl);
   inputEl.addEventListener('input', () => {
@@ -16568,6 +16166,23 @@ function injectSearchClearButton(inputEl, btnEl) {
     inputEl.focus();
   });
   return clearBtn;
+}
+
+// D7 (sweep S1, AC9 stillness): the sidebar's slide transition is gated by `.is-animating`,
+// which only the menu toggle sets; it clears on the transition's end (or a fallback timer
+// past --dur-fast, so a transition that never runs cannot leave it armed).
+const SIDEBAR_SLIDE_MS = 250;
+function armSidebarSlide(sidebar) {
+  if (!sidebar || !sidebar.classList) return;
+  sidebar.classList.add('is-animating');
+  const done = () => {
+    sidebar.classList.remove('is-animating');
+    sidebar.removeEventListener('transitionend', onEnd);
+    clearTimeout(timer);
+  };
+  const onEnd = (e) => { if (e.target === sidebar) done(); };
+  sidebar.addEventListener('transitionend', onEnd);
+  const timer = setTimeout(done, SIDEBAR_SLIDE_MS);
 }
 
 // Sidebar toggle responsive menu helper. Guarded so requiring this file in Node
@@ -16599,7 +16214,15 @@ const handoffCard = (() => {
   // calls rather than markup-from-strings, because two of these fields are
   // client-supplied - see the title/headline writes in render(), which are
   // always textContent.
+  // Sweep S9 (F47, D4.6): the card is built from the primitives - the one close mark (a plain
+  // icon ui-btn with the registry `close` glyph, never a text x), a ui-thumb with its progress
+  // bar (`--p` as data), a primary ui-btn "Continue here" link, and a registry play / pause
+  // glyph for the state (never a drawn dot in red). It sits on the overlay surface.
+  function glyph(name) {
+    return window.ui.icon(name, { size: 'sm' });
+  }
   function build() {
+    const U = window.ui;
     const card = document.createElement('div');
     card.id = 'handoff-card';
     card.hidden = true;
@@ -16609,28 +16232,29 @@ const handoffCard = (() => {
     const state = document.createElement('span');
     state.className = 'handoff-state';
     state.setAttribute('aria-hidden', 'true');
+    state.appendChild(glyph('play_arrow'));
     const headline = document.createElement('span');
     headline.className = 'handoff-headline';
-    const dismiss = document.createElement('button');
-    dismiss.type = 'button';
-    dismiss.className = 'handoff-dismiss';
-    dismiss.setAttribute('aria-label', 'Dismiss');
-    dismiss.textContent = '×'; // multiplication sign as an escape, never a literal glyph in source
+    const dismiss = U.button({ variant: 'plain', shape: 'icon', size: 'sm', icon: 'close', ariaLabel: 'Dismiss' });
     head.append(state, headline, dismiss);
 
     const body = document.createElement('div');
     body.className = 'handoff-body';
     const thumbLink = document.createElement('a');
-    thumbLink.className = 'handoff-thumb';
+    thumbLink.className = 'handoff-cover';
+    const thumb = U.thumb({ aspect: '16x9', context: 'row' });
     const img = document.createElement('img');
+    img.className = 'ui-thumb__img';
     img.alt = '';
     img.loading = 'lazy';
-    const bar = document.createElement('div');
-    bar.className = 'handoff-progress';
-    const fill = document.createElement('div');
-    fill.className = 'handoff-progress-fill';
+    img.decoding = 'async';
+    const bar = document.createElement('span');
+    bar.className = 'ui-thumb__progress';
+    const fill = document.createElement('span');
+    fill.className = 'ui-thumb__bar';
     bar.appendChild(fill);
-    thumbLink.append(img, bar);
+    thumb.append(img, bar);
+    thumbLink.appendChild(thumb);
 
     const meta = document.createElement('div');
     meta.className = 'handoff-meta';
@@ -16638,14 +16262,16 @@ const handoffCard = (() => {
     title.className = 'handoff-title';
     const time = document.createElement('div');
     time.className = 'handoff-time';
+    // A link (it navigates), in the ui-btn's exact DOM: icon slot, then label.
     const go = document.createElement('a');
-    go.className = 'btn btn-primary handoff-continue';
-    const ico = document.createElement('span');
-    ico.className = 'handoff-play-ico';
-    ico.setAttribute('aria-hidden', 'true');
+    go.className = 'ui-btn ui-btn--primary ui-btn--sm';
+    const goIcon = document.createElement('span');
+    goIcon.className = 'ui-btn__icon';
+    goIcon.appendChild(glyph('play_arrow'));
     const goText = document.createElement('span');
+    goText.className = 'ui-btn__label';
     goText.textContent = 'Continue here';
-    go.append(ico, goText);
+    go.append(goIcon, goText);
     meta.append(title, time, go);
 
     body.append(thumbLink, meta);
@@ -16657,7 +16283,7 @@ const handoffCard = (() => {
       hide();
     });
 
-    el = { card, state, headline, img, fill, title, time, go, thumbLink };
+    el = { card, state, headline, img, fill, title, time, go, thumbLink, stateName: 'play_arrow' };
     return el;
   }
 
@@ -16675,15 +16301,20 @@ const handoffCard = (() => {
     el.headline.textContent = formatHandoffHeadline(presence);
     el.title.textContent = presence.title || '';
     el.time.textContent = formatHandoffTime(presence.position, presence.duration);
-    el.state.classList.toggle('is-paused', presence.state === 'paused');
-    el.fill.style.width = `${handoffProgressPercent(presence.position, presence.duration)}%`;
+    const stateName = presence.state === 'paused' ? 'pause' : 'play_arrow';
+    if (stateName !== el.stateName) {
+      el.stateName = stateName;
+      el.state.replaceChildren(glyph(stateName));
+    }
+    // --p is DATA (0..1): ui.css scales the thumb's bar by it.
+    el.fill.style.setProperty('--p', String(handoffProgressPercent(presence.position, presence.duration) / 100));
     el.img.src = presence.thumbnailUrl || '';
     el.go.href = presence.href || '#';
     el.thumbLink.href = presence.href || '#';
 
     el.card.hidden = false;
     // Next frame, so the fade transition runs instead of being skipped on the
-    // same paint that unhides the card (the .toast precedent).
+    // same paint that unhides the card (the toast's precedent).
     requestAnimationFrame(() => { if (el) el.card.classList.add('handoff-visible'); });
   }
 
@@ -16745,6 +16376,14 @@ const handoffCard = (() => {
   return { init, __poll: poll, __hide: hide };
 })();
 
+// UI pass D7: no transition runs for a rotate / width change (html.no-motion, style.css).
+installResizeStillness();
+
+// UI pass D8.1: reflect the era's flourish NOW, from the data-theme the shell's
+// pre-paint bootstrap already set, so the first card render (this script runs
+// before any view's init) never shows a fabricated stat the era hides.
+applyEraFlourish();
+
 document.addEventListener('DOMContentLoaded', () => {
   initTheme();
   initIconSet();   // reads ft-icons + the just-applied data-theme
@@ -16791,6 +16430,10 @@ document.addEventListener('DOMContentLoaded', () => {
   
   if (menuToggle && sidebar && mainContent) {
     menuToggle.addEventListener('click', () => {
+      // D7 (sweep S1): the drawer slides (transform only) ONLY when the user toggles it;
+      // `.is-animating` gates the sidebar's transition (style.css), so a theatre collapse,
+      // a resize or a rotation moves it without a slide.
+      armSidebarSlide(sidebar);
       sidebar.classList.toggle('hidden');
       sidebar.classList.toggle('mobile-open');
       mainContent.classList.toggle('expanded');
@@ -16972,23 +16615,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const playlistsBtn = document.getElementById('nav-playlists-btn');
     if (playlistsBtn) playlistsBtn.addEventListener('click', openPlaylistsSheet);
 
-    // Close wiring (feature-detected)
-    const backdrop = document.getElementById('playlists-backdrop');
-    const closeBtn = document.getElementById('playlists-close');
-    if (backdrop) backdrop.addEventListener('click', closePlaylistsSheet);
-    if (closeBtn) closeBtn.addEventListener('click', closePlaylistsSheet);
-
-    // Tapping a playlist/folder LINK inside the sheet navigates (SPA) -- close
-    // the sheet too so the user isn't left with the overlay open after picking
-    // one (Dean: no extra manual close). Delegated on the whole sheet so it
-    // covers both the async-rendered folder list and the pinned-playlist
-    // section; does NOT preventDefault, so the navigation still happens.
-    const sheet = document.getElementById('playlists-sheet');
-    if (sheet) {
-      sheet.addEventListener('click', (e) => {
-        if (e.target && e.target.closest && e.target.closest('a')) closePlaylistsSheet();
-      });
-    }
+    // Sweep S1: the sheet's own close wiring (scrim, Close, Esc, swipe down, a link tap)
+    // lives with the ui.sheet it builds on the first open (ensurePlaylistsSheet).
   }
 });
 }
@@ -17006,10 +16634,14 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.286 (Dean, everything shareable): universal file-share + its pure strategy decision.
     shareMediaFile, chooseShareStrategy,
     showChoiceModal,
-    // v1.87.1: first-paint chrome inline-SVG glyphs (map + markup/element
-    // builders). chrome-icons.test.js byte-binds the map to the on-disk assets
-    // and source-locks the static bottom-nav markup against chromeIconMarkup.
-    CHROME_ICON_SVG, chromeIconMarkup, chromeIconEl, stableToggleLabelHtml,
+    // Sweep S9: the dialogs on ui.sheet (jsdom-tested with the real ui.js).
+    confirmHtmlToText, isLiveDialogOpen, showTranscriptModal,
+    // v1.87.1 / UI pass step 2: the chrome glyphs (the name map + markup/element
+    // builders over the icon sprite). chrome-icons.test.js binds every map entry to a
+    // registry icon and source-locks the shells' static markup against chromeIconMarkup.
+    CHROME_ICON, chromeIconMarkup, chromeIconEl, spriteIconEl,
+    uiIconMarkup, uiIconEl, chromeButtonEl, bottomNavItemEl, setBottomNavItemFilled, chromeAvatarEl, syncThemeColorMeta,
+    armSidebarSlide, toSheetRow, buildUnpinButton, buildPinAvatarNode, openPlaylistsSheet, closePlaylistsSheet,
     // v1.102 (tranche 4 shimmer): the art-decode reveal helper (jsdom-tested).
     shimmerArt,
     // v1.339 (L1): the batched in-viewport reveal + its cap (jsdom-tested).
@@ -17049,7 +16681,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatRepullAckText,
     // v1.32 (gate fix): the chip's one-line breaker summary.
     formatBreakerChipText,
-    getStarRating, getCommentCount, resolveChannelName, displayChannelName, resolveRootHeaderLabel, clampPositionState,
+    getStarRating, getCommentCount, formatRelativeTime, resolveChannelName, displayChannelName, resolveRootHeaderLabel, clampPositionState,
     // v1.126: the folder display-name map cache (setter + reader).
     setFolderDisplayNames, folderDisplayName,
     resolveTheme, THEME_REGISTRY, activeNavItem,
@@ -17073,7 +16705,7 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldShowHandoffCard, handoffSuppressionToken, formatHandoffHeadline,
     formatHandoffTime, formatHandoffAge, handoffProgressPercent,
     HANDOFF_LIST_SURFACES, HANDOFF_POLL_MS,
-    resolveIconSet, ICON_SET_REGISTRY, ICON_SETS,
+    resolveIconSet, ICON_SET_REGISTRY, ICON_SETS, AUTO_ERA_ICON_MAP, migrateIconPref,
     // v1.77: exported so the Playlists sheet's folder rows can be asserted as
     // RENDERED DOM rather than as a source pattern. The per-folder glyph has
     // four render sites and this is one of only two with a test seam - the
@@ -17138,7 +16770,7 @@ if (typeof module !== 'undefined' && module.exports) {
     REORDER_AUTOSCROLL_EDGE_PX, REORDER_AUTOSCROLL_STEP_PX,
     isSyntheticFolder,
     shouldInjectOneOffButton, reduceOneOffFiletypeOptions, buildOneOffDownloadBody,
-    formatOneOffStatusText, buildOneOffModal, bindBackdropDismiss,
+    formatOneOffStatusText, buildOneOffModal,
     ONEOFF_FORMAT_OPTIONS, ONEOFF_QUALITY_OPTIONS, ONEOFF_DEFAULT_QUALITY,
     ONEOFF_FILETYPE_OPTIONS, ONEOFF_DEFAULT_FILETYPE, ONEOFF_STATUS_POLL_MS,
     // v1.26 "real progress": the modal's progress-bar reducer + adaptive
@@ -17149,7 +16781,10 @@ if (typeof module !== 'undefined' && module.exports) {
     ACTIVE_ENTRY_STALE_MS, isFreshlyActiveEntry, ONEOFF_STATUS_POLL_MAX_MS, nextOneOffPollDelayMs,
     decideOneOffTerminalAction, applyOneOffTerminalAction, triggerLibraryRescanAndRefresh,
     injectOneOffDownloadButtonIfEnabled,
-    showToast, nextArmState, deleteResultToast,
+    showToast, deleteResultToast,
+    // UI pass D8.1: the era flourish (fabricated stats) mechanism.
+    ERA_FLOURISH_ERAS, eraShowsFabricated, applyEraFlourish, isFabricatedViewCount,
+    STILLNESS_MS, installResizeStillness, // UI pass D7: html.no-motion around a rotate / resize
     deriveRouteView, shouldInterceptLinkClick, buildHistoryState, parseHistoryState, popStateDelegate,
     // v1.47.4 item 2: the pure zoom-policy decision + the viewport contents it
     // selects between, exported so tests assert the reader carve-out against the
@@ -17163,7 +16798,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.47.4 item 6: the pure session-restore decisions.
     isRestorableSessionUrl, shouldRestoreSession, LAST_SESSION_KEY, LAST_SESSION_MAX_AGE_MS,
     // v1.47.8: the keyboard-shortcuts reference.
-    KEYBOARD_SHORTCUT_GROUPS, shouldOpenShortcuts, buildShortcutsModal,
+    KEYBOARD_SHORTCUT_GROUPS, SHORTCUT_KEY_ICONS, shouldOpenShortcuts, buildShortcutsModal,
     // v1.163: the DDR easter-egg mini-synth (pure key->note map + the synth).
     DDR_ARROWS, ddrNoteForArrow, playDdrNote,
     // v1.166: Sneaky critter mode - the pure core + the jsdom-testable DOM shims.
@@ -17198,8 +16833,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.311.2: the "never block a button" predicate (critter taps over these pass through).
     critterOverInteractive, CRITTER_INTERACTIVE_SELECTORS, critterPageScrollY,
     getCritterLastChirpReason,
-    // v1.163.1: force text (non-emoji) presentation on the arrow glyphs.
-    DDR_TEXT_PRESENTATION, ddrArrowDisplayGlyph,
     // v1.50.3: the D dark/light toggle's pure decision.
     shouldToggleThemeKey,
     openShortcutsModal, closeShortcutsModal, isDesktopViewport, SHORTCUTS_DESKTOP_QUERY,
@@ -17229,7 +16862,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.25 QoL (T5): cutoffDate <-> <input type="date"> converters.
     cutoffDateToDateInput, dateInputToCutoffDate,
     derivePinnedPlaylistEntries, renderPinnedSidebar, renderPinnedPlaylists, fetchAllPins,
-    isYtdlpManagedItem, deleteFlowFor, showHardDeleteModal,
+    isYtdlpManagedItem,
     // v1.24.0 (T9): C1 move-files client picker.
     showMoveModal, requestMoveItem,
     // pocket menus gate r1 K2: the library-changed seam + the chapters editor that raises it.
@@ -17267,13 +16900,14 @@ if (typeof module !== 'undefined' && module.exports) {
     getStoredViewMode, setStoredViewMode,
     isPerPageSortEnabled, setPerPageSortEnabled, pageSortKey, getPerPageSort, setPerPageSort,
     pullRefreshState, pullIsHorizontalDrag,
-    FORMAT_FILTER_MODES, buildFormatToggleControl, renderFormatToggle,
-    // v1.50: the watched-state filter toggle (the format toggle's sibling).
-    WATCH_TOGGLE_MODES, getStoredWatchFilter, setStoredWatchFilter,
-    buildWatchToggleControl, renderWatchToggle,
-    // v1.149: the search-scope toggle family (no storage - caller-owned state).
-    SEARCH_SCOPE_MODES, normalizeSearchScopeMode, buildSearchScopeToggleControl, renderSearchScopeToggle,
-    SEARCH_TYPE_CHIPS, normalizeSearchTypeChip, buildSearchTypeChipsControl, renderSearchTypeChips,
+    FORMAT_FILTER_MODES, FORMAT_TOGGLE_OPTIONS,
+    // v1.50: the watched-state filter (the format filter's sibling).
+    WATCH_TOGGLE_MODES, WATCH_TOGGLE_OPTIONS, getStoredWatchFilter, setStoredWatchFilter,
+    // v1.149: the search scope (no storage - caller-owned state); v1.205: the type.
+    SEARCH_SCOPE_MODES, SEARCH_SCOPE_OPTIONS, normalizeSearchScopeMode,
+    SEARCH_TYPE_CHIPS, SEARCH_TYPE_OPTIONS, normalizeSearchTypeChip,
+    // UI pass sweep S2 (F19): the ONE library filter chip row.
+    buildFilterChipRow,
     // v1.150: the search-box clear X (pure predicate + injector).
     shouldShowSearchClear, injectSearchClearButton, shouldClearSearchInputAfterResults,
     deriveAvatar, resolveAvatarSource, AVATAR_PALETTE,
@@ -17283,16 +16917,17 @@ if (typeof module !== 'undefined' && module.exports) {
     fetchSubscriptionsForRepull, probeAndReconcileRepullButton,
     // v1.26.2 polish (sheet/modal transitions): shared open/close animation
     // helpers, exported for direct node:test coverage against a fake DOM.
-    prefersReducedMotion, overlayCanAnimate, openOverlay, closeOverlayThen,
     // v1.26.2 code-review fix (F2): exported for direct node:test coverage
     // of the settled-guard double-click fix (showMoveModal was already
     // exported above).
     showConfirmModal,
     // v1.26.3 (Item 2/3): shared empty-state / error-state card builders.
-    buildEmptyStateHtml, buildErrorStateHtml,
+    buildEmptyStateHtml, buildErrorStateHtml, uiStateHtml,
     // v1.51: the notification bell's pure decisions.
     shouldInjectNotificationBell, formatNotificationBadge, buildNotificationRowModel,
-    // v1.68: the real injector, exported so the panel's per-row dismiss X is
+    // Sweep S4 (D8.3): the row menu's items and the delete confirm's copy (pure).
+    buildNotificationMenuItems, notifDeleteConfirmCopy, notifShowHref,
+    // v1.68: the real injector, exported so the panel's row actions (sweep S4: the menu, the swipe and the delete confirm) are
     // bound by EXECUTION in jsdom (the history-nav-gate pattern), plus the
     // poll stand-down hook its harness needs (a pending badge-poll timer is
     // a NODE timer that would outlive the test's document).

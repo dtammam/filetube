@@ -124,7 +124,7 @@ test('v1.72 (the USE bind): the video card deep-links /watch.html?v=<id> and sho
   assert.match(html, /book-row-progress-fill" style="width: 61.5%"/, 'the books-row bar classes carry the real percent');
 });
 
-test('v1.72: a sub-half-percent position renders NO progress bar (the buildCardHtml threshold)', () => {
+test('v1.72: a sub-half-percent position renders NO progress bar (the buildVideoCardEl threshold)', () => {
   const html = main.buildVideoRowCardHtml({ id: 'v2', title: 'T', folderName: 'F', progressPercent: 0.2 });
   assert.ok(!html.includes('book-row-progress'), 'noise-level progress stays invisible');
 });

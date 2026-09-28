@@ -36,6 +36,9 @@ const { buildCritterListing, buildCritterVoicePool } = require('../../server.js'
 
 const COMMON = fs.readFileSync(path.join(__dirname, '../../public/js/common.js'), 'utf8');
 const CSS = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+// UI pass S6: a pool entry may be a ui-* primitive whose base rule lives in ui.css (`.ui-art`
+// paints --thumb-ground there); the ground contract reads both sheets. Kept separate from CSS so
+// the body / .main-content locks below still read style.css alone.
 const SETUP_HTML = fs.readFileSync(path.join(__dirname, '../../public/setup.html'), 'utf8');
 const SETUP_JS = fs.readFileSync(path.join(__dirname, '../../public/js/setup.js'), 'utf8');
 
@@ -1009,7 +1012,7 @@ test('v1.166.1 GROUND CONTRACT (gate C1+C2 structural fix): .main-content paints
     'no per-mode escape arms remain (the structural fix made them unnecessary; their return means someone re-isolated)');
   // The canvas ground this design relies on: body still paints the token.
   const body = /(?:^|\n)body\s*\{([^}]*)\}/.exec(CSS);
-  assert.match(body[1], /background-color:\s*var\(--bg-color\)/,
+  assert.match(body[1], /background-color:\s*var\(--surface-0\)/,
     'body paints the ground the critters sit on (propagates to the canvas, below negative-z)');
 });
 
@@ -1151,11 +1154,24 @@ test('v1.166.2: the WATCH page has anchors, and every anchor honours the ground 
   // every pool entry: its base CSS rule paints a background (the z-1 layer
   // hides the overlap only when the anchor paints over it).
   assert.ok(CRITTER_ANCHOR_SELECTORS.indexOf('.description-container') !== -1, 'the description box anchors');
-  assert.ok(CRITTER_ANCHOR_SELECTORS.indexOf('.related-thumb') !== -1, 'related thumbs anchor (the card itself is transparent - this lock caught that)');
+  // UI pass sweep S2: the rail's thumbs are the ui-thumb primitive (the card itself is transparent - this lock caught that).
+  assert.ok(CRITTER_ANCHOR_SELECTORS.indexOf('.ui-thumb') !== -1, 'related thumbs anchor through .ui-thumb');
   assert.ok(CRITTER_ANCHOR_SELECTORS.indexOf('.comments-section') === -1,
     'the comments section paints NO background - a critter behind it would show through (deliberately not an anchor)');
+  // UI pass sweep S2: an anchor may be a ui primitive (its base rule lives in
+  // ui.css) or a descendant selector (the SUBJECT class's base rule paints).
+  const { cssRules } = require('../helpers/stylesheets');
+  const RULES = cssRules(fs.readFileSync(path.join(__dirname, '../../public/css/ui.css'), 'utf8')).concat(cssRules(CSS));
   for (const sel of CRITTER_ANCHOR_SELECTORS.filter((s) => s.startsWith('.'))) {
-    const rule = new RegExp('(?:^|\\n)' + sel.replace('.', '\\.') + '\\s*\\{([^}]*)\\}').exec(CSS);
+    const subject = sel.trim().split(/\s+/).pop();
+    const inList = (r) => r.sel.split(',').map((x) => x.trim()).includes(subject);
+    const base = RULES.find((r) => inList(r) && /background/.test(r.body)) || RULES.find((r) => r.sel === subject);
+    const rule = base ? [null, base.body] : null;
+    // An era override of the anchor must still paint (sweep S2: Modern's card has
+    // no tile, so it paints the page ground, never transparent).
+    for (const era of RULES.filter((r) => r.at === '' && new RegExp('^\\[data-theme="\\d+"\\] ' + subject.replace('.', '\\.') + '$').test(r.sel))) {
+      assert.doesNotMatch(era.body, /background(?:-color)?:\s*(?:transparent|none)/, era.sel + ' keeps painting');
+    }
     assert.ok(rule, sel + ' has a base CSS rule');
     // v1.167 TIGHTENED (the .3 gate's disclosed nit became load-bearing:
     // `.music-artist-card` paints `background: transparent`, which the old
@@ -1168,10 +1184,12 @@ test('v1.166.2: the WATCH page has anchors, and every anchor honours the ground 
 // ---- v1.167: buttons priority + scale-to-anchor + the fixed-subtree guard ---
 
 test('v1.167: the machine-derived sweep is in the pool; the transparent rejects are NOT', () => {
-  for (const sel of ['.btn', '.sub-row', '.history-thumb', '.book-row-cover', '.music-artist-mosaic', '.podcast-card-art', '.comment-input-box', '.thumbnail-container', '.card-channel-avatar']) {
+  // UI pass sweep S2: the history/card thumbnails and the card avatar are ui primitives now.
+  for (const sel of ['.btn', '.ui-thumb', '.book-row-cover', '.music-artist-mosaic', '.ui-art', '.comment-input-box', '.video-card .ui-avatar']) {
     assert.ok(CRITTER_ANCHOR_SELECTORS.indexOf(sel) !== -1, sel + ' anchors (verified painting)');
   }
-  for (const sel of ['.podcast-card', '.music-artist-card', '.music-album-card', '.history-row', '.comment-item', '.stable-row']) {
+  // UI pass S5: the Subscriptions row is a transparent ui-row now (the retired .sub-row painted).
+  for (const sel of ['.podcast-card', '.music-artist-card', '.music-album-card', '.history-row', '.comment-item', '.stable-row', '.related-thumb', '.history-thumb', '.sub-row', '.ui-row']) {
     assert.ok(CRITTER_ANCHOR_SELECTORS.indexOf(sel) === -1, sel + ' is transparent - rejected by the ground contract');
   }
   const { CRITTER_PRIORITY_SELECTORS, CRITTER_PRIORITY_WEIGHT } = require('../../public/js/common.js');
@@ -1226,7 +1244,7 @@ test('gate PNB: collectCritterRects WIRING - fixed subtrees skipped AND .btn tag
   const dom = new JSDOM('<!DOCTYPE html><body>'
     + '<div style="position: fixed;"><button class="btn" data-m="1">Pinned</button></div>'
     + '<button class="btn" data-m="1" id="free">Free</button>'
-    + '<div class="sub-row" data-m="1"></div>'
+    + '<span class="ui-art" data-m="1"></span>'
     + '</body>', { url: 'http://localhost/' });
   global.window = dom.window; global.document = dom.window.document;
   const proto = dom.window.Element.prototype;
@@ -1242,7 +1260,7 @@ test('gate PNB: collectCritterRects WIRING - fixed subtrees skipped AND .btn tag
     const rects = collectCritterRects(POOL, true);
     assert.strictEqual(rects.length, 2, 'the fixed-wrapped button is SKIPPED (viewport rect vs document critters)');
     const weights = rects.map((r) => r.weight).sort();
-    assert.deepStrictEqual(weights, [1, 3], 'the free .btn is TAGGED weight 3; .sub-row stays 1 (the ambush priority wiring)');
+    assert.deepStrictEqual(weights, [1, 3], 'the free .btn is TAGGED weight 3; .ui-art stays 1 (the ambush priority wiring)');
   } finally {
     proto.getBoundingClientRect = orig;
     delete global.window; delete global.document;
@@ -1412,7 +1430,7 @@ test('v1.170 renderer: roundCover swaps the rect clip for the circular mask clas
 
 test('v1.170 collector: a TRUE circle is marked round; pills and slightly-rounded squares are not; unreadable style fails OPEN', () => {
   const dom = new JSDOM('<!DOCTYPE html><body>'
-    + '<div class="card-channel-avatar" data-m="avatar"></div>'
+    + '<div class="video-card"><span class="ui-avatar" data-m="avatar"></span></div>'
     + '<button class="btn" data-m="pill">Pill</button>'
     + '<button class="btn" data-m="square">Sq</button>'
     + '<div class="setup-box" data-m="quarter"></div>'
@@ -1455,7 +1473,7 @@ test('v1.170 collector: a TRUE circle is marked round; pills and slightly-rounde
     // position read must keep working - a fully-throwing stub would instead
     // trip critterInsideFixed's fail-CLOSED catch and skip the anchor.)
     dom.window.getComputedStyle = () => ({ position: 'static', get borderTopLeftRadius() { throw new Error('nope'); } });
-    const rects2 = collectCritterRects(['.card-channel-avatar'], true);
+    const rects2 = collectCritterRects(['.video-card .ui-avatar'], true);
     assert.strictEqual(rects2.length, 1, 'still collected');
     assert.strictEqual(rects2[0].round, false, 'unreadable style -> rect clip (a sharper cut, never a bad hide)');
   } finally {
@@ -2405,7 +2423,7 @@ test('CSS (v1.168 sandwich): the layer paints ABOVE furniture (z 2, under every 
   assert.doesNotMatch(decls, /z-index:\s*-1/, 'the swallowed-peek plane must not return');
   assert.match(decls, /pointer-events:\s*none/, 'the layer never intercepts input');
   const critter = /(?:^|\n)\.critter\s*\{([^}]*)\}/.exec(CSS);
-  assert.match(critter[1], /color:\s*var\(--text-secondary\)/, 'placeholder colour rides a token');
+  assert.match(critter[1], /color:\s*var\(--ink-2\)/, 'placeholder colour rides a token');
   assert.doesNotMatch(critter[1].replace(/\/\*[\s\S]*?\*\//g, ''), /transform/, 'the WRAPPER never transforms (the clip cut must hug the anchor edge)');
   const pose = /\.critter-pose\s*\{([^}]*)\}/.exec(CSS);
   assert.ok(pose, '.critter-pose rule exists');
@@ -2832,7 +2850,7 @@ test('v1.187 SNEAK-IN: a slow fade on the wrapper + a rise on the POSE; still/re
   const critter = /(?:^|\n)\.critter\s*\{([^}]*)\}/.exec(CSS);
   assert.match(critter[1], /animation:\s*critter-arrive var\(--dur-critter-arrive\)/, 'the arrival uses the new slow beat');
   assert.doesNotMatch(critter[1].replace(/\/\*[\s\S]*?\*\//g, ''), /transform/, 'the WRAPPER still never transforms');
-  assert.match(CSS, /--dur-critter-arrive:\s*1\.2s;/, 'the sneak beat is 1.2s (Dean\'s pick), not the 0.25s UI duration');
+  assert.match(require('../helpers/stylesheets').readTokensCss(), /--dur-critter-arrive:\s*1\.2s;/, 'the sneak beat is 1.2s (Dean\'s pick), not the 0.25s UI duration');
   const pose = /\.critter-pose\s*\{([^}]*)\}/.exec(CSS);
   assert.match(pose[1], /animation:\s*var\(--critter-pose-anim, critter-sneak\) var\(--dur-critter-arrive\)/, 'the pose carries the rise, name via an inherited var');
   assert.match(pose[1], /transform:\s*rotate\(var\(--critter-angle/, 'the pose still owns the angle/flip transform');
