@@ -2068,3 +2068,140 @@ fix found by the render, the History confirm test, this log).
   fail 0 (19 failed before their conversions). `npx eslint .` 0 errors, 6 warnings; `lint:ui` OK TOTAL 2170;
   `lint:css` TOTAL 0; `lint:overlay` 0 violations; `test:geometry:fast` 10 checks, 10 ok. Final counts for this
   commit are in the report.
+
+### Sweep S7 - Music and Pocket (2026-09-28, branch feat/ui-sweep-s7 from 1b70322b; f3e0187f, 1e9d0afe, 1970d8f8, + this commit)
+
+- **D7, Pocket is a phone mode (f3e0187f).** The gate is `html.is-phone`, set ONCE when music-skins.js
+  loads (every shell that hosts a skin loads it before any view script) from `(pointer: coarse)` and the
+  screen's short side `<= 500` (`phoneFrom`, pure). `isPhone()` reads the class; `skinActiveFor`, the
+  pop-out gate and music ambient route through it. `isMobileViewport`, v1.311.3's `watchSkinViewport`
+  and the pop-out's resize arm are gone with the width gate (the split is structural now). style.css:
+  the takeover's `@media (max-width: 768px)` block became ONE zero-specificity scope,
+  `:where(html.is-phone, html.mms-popout)`, on every selector (the pop-out window's html carries
+  `mms-popout`); the cascade is unchanged. **Deviation (instrument, for the gate):** ui-lint keys drop
+  that exact scope (it replaced an at-rule prelude, which was never in a key), so the same rules keep
+  their debt keys; the Pocket locks read the sheet through `test/helpers/stylesheets.js unscopePocket`
+  (the scope dropped the way they dropped the @media wrapper). `pocket-phone-scope.test.js` binds that
+  every selector of the block carries the scope and that no Pocket rule is left on a width query.
+- **Landscape (audit decision 9):** `@media (orientation: landscape)` on `html.is-phone`: the Click LCD
+  left at its 4:3, height-fitted (narrower on an SE); the wheel right, the chassis size fitted to the
+  short side (a separate `--pkl-*` family so the chassis stays the one authority); Cider and Nordic put
+  the cover left; safe-area insets pad the sides; the sticker moves to the right corner (its menu anchor
+  is data, `--mms-sm-anchor-l/r`). Measured (after tree, 1x): 844x390 LCD 488x366 at x22, wheel 288 at
+  x536; 932x430 LCD 541x406, wheel 288; 667x375 LCD 352x264, wheel 251; no horizontal overflow, the panel
+  exactly the viewport in every case.
+- **AC9 stillness:** common.js `installResizeStillness` holds `html.no-motion` for 300ms after every
+  resize / orientationchange; style.css zeroes transitions under it (the sidebar drawer and the content
+  margin no longer animate for a rotate - S1 still owns gating those transitions for the menu toggle).
+- **F59 measure-after-settle:** `SKINS.observeSettled` (ResizeObserver, applied in the frame after two
+  equal reads) re-measures the haptic ghost's scale (never mid-gesture) and the Brick canvas's backing
+  store (no inline size; no window resize listener where RO exists). F59 stays a hypothesis for the
+  device: the falsifier is the new `?debugLifecycle=1` viewport line (below) showing a size change after
+  the skin painted with the wheel still mis-armed.
+- **F23 guard:** a repaint whose cover is the SAME URL is born revealed (no art-shimmer). The menu art
+  already kept `artShown`.
+- **A5:** leaving Pocket restores the Music list by its anchor row when the width changed
+  (`findListAnchor` / `anchorRestoreTarget`, pure; entry, a render behind the skin at the entry width,
+  exit through FileTubeBodyLock).
+- **F58:** the Music view reserves the docked mini player's footprint at its bottom (`reserveDockSpace`,
+  a ResizeObserver on #player-dock, `--music-dock-reserve` as data).
+- **Lifecycle log:** `?debugLifecycle=1` records resize, orientationchange and visualViewport resize
+  with sizes (`player.js formatViewportDetail`: layout + visual viewport, orientation, phone class),
+  coalesced per frame.
+- **F60:** the skins' text marks (play, pause, the chevrons, the check, the stars) are drawn SVG glyphs
+  (`skGlyph`); the status bar's play / pause pair is stacked in one cell. **F70:** one sticker row height
+  (`--size-touch`; the 48px action rows are gone), selected = the overlay's tonal fill + an ink border
+  (red is Delete only), the focus ring is `--focus-ring`, the collapse chevron and the Cider grab handle
+  are 44px targets.
+- **G4 pocket-rotation (the owner's check):** before (1b70322b) XFAIL - 1-to-landscape 178 boxes moved
+  after frame 9 (worst 457.5px, #music-autoplay-btn), 2-exit-pocket VACUOUS (the rotate had already torn
+  Pocket down), 3-to-portrait 133 moved (worst 276.6px). After: ok in dark and light - 1-to-landscape
+  0 moved, 2-exit-pocket 0 moved (change@14-16), 3-to-portrait 0 moved; both expected-failure entries
+  deleted. **Instrument changes (for the gate to attack):** (1) `rotationSteps` gives the exit step a
+  PREP - from Now Playing, the Click exit is two actions (MENU to the Main Menu, MENU to dock); the step
+  now records the dock alone (recording both called the dock's relayout "a box moving after the first
+  frame" on any correct UI); (2) the recorder takes one named ignore selector per sequence, and
+  pocket-rotation ignores `.ipm-art *` - the Main Menu's cover drift (Dean's Addendum E slideshow,
+  transform/opacity on its own 9s clock) moves by design, the transition twin of the animation skip.
+  Mutants: g4-sliding-padding rewritten as an ANIMATION (html.no-motion now masks a transition mutant);
+  new g4-pocket-no-stillness (the sidebar transition re-enabled through no-motion) - `--mutants` 8 of 8
+  killed. `npm run test:geometry`: 51 checks, 51 ok, 0 FAIL, 0 XFAIL, 0 XPASS.
+- **iPad / phone (D13), by emulation (Chromium, coarse pointer + screen size):** iPhone 15 portrait
+  390x844 phone; landscape 844x390 phone (the skin stays up); 15 Pro Max landscape 932x430 phone; SE
+  landscape 667x375 phone; iPad Air portrait 820x1180 NOT a phone (default panel); landscape 1180x820 NOT;
+  iPad mini portrait 744x1133 NOT; a desktop 1440x900 and a narrow desktop window 700x900 (fine pointer)
+  NOT. Pure table in pocket-phone-scope (500 is a phone, 501 is not).
+- **The player Extras Delete (destructive, full gate):** music sticker, pop-out and desktop actions menu
+  (skin-surface.js createExtrasMenu) and the podcast adapter (podcasts.js onDelete) ask ONE danger
+  `ui.confirm` - the card menu's copy (`cardDeleteConfirmCopy`: "Move to Trash?", a local file adds that it
+  cannot be re-downloaded) / the episode list's own copy - and send the SAME request
+  (`DELETE /api/videos/:id`, `DELETE /api/podcasts/episodes/:id`) only when it resolves exactly `true`; one
+  confirm (and its request) at a time; no `ui.confirm` on the page = no delete. **Interpretation for the
+  gate:** the local-file path lost the checkbox-gated hard-delete modal for the same danger confirm the card
+  menu uses (S2 precedent; the route moves to Trash for every item, F44). `extras-delete-confirm.test.js`
+  (13 tests, the real ui.js): Cancel, Esc, the scrim, Close and Enter send nothing; OK sends exactly one
+  DELETE (a double tap on OK too); a second Delete while open opens nothing; a late OK after Esc stays a
+  cancel; a view teardown closes it and a stale OK sends nothing; the podcast adapter the same.
+- **Music on the primitives (1970d8f8):** toolbar = tonal sm pill ui-btns with registry icons, the sort
+  in the ui-select field (16px), Loop / Autoplay as ui-chip filter chips; tabs = ONE ui-segmented; song
+  rows = ui-rows in a ui-list with reserved columns (ui-art, the title as the stretched link over
+  "artist · album", the length in the aside, three fixed action slots: Add to queue, Like - favorite /
+  favorite.fill, ink - and a ui.menu: Play next, Add to queue, Save to device, Go to artist; also by
+  long-press and desktop right-click); the playing row is a tonal fill (no red bar); skeleton = the same
+  ui-row grid; the Artists list = ui-rows + ui-avatar; album art is a rounded square (D8.7 - it had been
+  clipped to the artists' circle); the drill header / sticky bar buttons are ui-btn (arrow_back, no `‹`);
+  D9: a failed load is an error ui-state with Retry, the empty state a ui-state ("No matches" for a
+  search). The desktop theatre: podcasts retired its toolbar toggle for the player's own `#theater-btn`
+  (the one writer); the theatre panel cap is data (`--mnp-cap-h`).
+- **PRIMITIVE CHANGE (1e9d0afe, ui.css, reported):** `.ui-chip--filter[aria-pressed="true"]` layers the
+  tonal fill over the chip's own ground instead of swapping it - swapped, 2009 light showed ON 4 levels
+  from OFF (the v1.284.1 class); layered, 17-28 levels in every era x mode (`ui-chip-selected.test.js`).
+- **Locks converted (AC12, replacements in the same commits):** the step-0 S7 rows - music-actions-desktop
+  (anchor moved with D7; unchanged file, its CSS reads now go through unscopePocket where needed),
+  music-playback-modes (v1.284.1 -> the chip + ui-chip-selected), music-toolbar-slots (the pop-out box on
+  html.is-phone), music-sticker-menu (F70 rows), music-skins / pocket-* / skin-status-bar / ipod-brick /
+  player-tap-to-play / music-skin-integration (read through unscopePocket; kept otherwise); plus
+  skin-surface (watchSkinViewport -> no crossing helper; the ghost settle), music-skin-integration and
+  podcast-nowplaying-view (the v1.311.3 rotate tests -> no teardown on rotate; the pop-out resize arm ->
+  structural split), music-sticker-extras / r1-extras-podcasts-races / music-pocket-menus (-> ui.confirm),
+  art-decode-shimmer, library-shimmer-skeletons, library-toolbar, music-album-view ([hidden] -> the global
+  rule), music-chapter-rename, music-nowplaying-view, music-sort-behaviour (error state),
+  music-theater-toggle, music-view, row-glyph-inline-svg, modern-css-source-lock, ui-lint (the key scope).
+  New: pocket-phone-scope, extras-delete-confirm, music-anchor-restore, ui-chip-selected.
+- **Mutation (a git-archive sandbox of 1970d8f8, restored byte-exact after each): 18 of 18 killed** - the
+  is-phone class re-evaluated on a rotate, isPhone reading a width query, the view re-rendering the skin
+  on a rotate, Extras delete without the confirm / ignoring the answer / without the one-at-a-time guard,
+  the podcast onDelete ignoring the answer, one takeover rule unscoped, the landscape wheel column
+  dropped, stillness never releasing, the same-art guard removed, the dock reserve ignoring the page
+  padding, the anchor restoring at the same width, the chip ON swapping its ground, a failed load showing
+  the empty library, the settle applying on the first frame, the play mark flipping by text, the ui-lint
+  key keeping the scope.
+- **Debt (ui-lint --shrink; 1b70322b -> this commit):** no-raw-values 1172 -> 1151, no-bespoke-controls
+  857 -> 815, icons 139 -> 135, display-ownership 76 -> 71, colour-roles 30 -> 23; hover-gated 3,
+  pressed-state 1, native-interaction 3, no-layout-transition 2, z-ladder 11, no-shell-style 1 unchanged;
+  TOTAL 2295 -> 2216. No key added.
+- **Renders (seeded, 1x, scenes 10-16 + 40-42 Click/Cider/Nordic, phone / landscape / desktop x dark /
+  light x 4 eras):** before (1b70322b) 208 captured, 0 failed; after 208 captured, 0 failed, 0 unexpected
+  blocked; compare.js: 200 of 208 changed (8.6% - 99.99%). Looked at: Pocket landscape side by side
+  (before: the skin torn down, the music page behind); songs as ui-rows in all eras (2005 squared and
+  bordered); Loop OFF vs Autoplay ON distinct in 2009 light; album art rounded squares. Rotation
+  screencasts (spec + exit-first, dark + light, DPR 3): the rotate to landscape is ONE repaint (3 frames:
+  before, landscape, settled - no teardown, no reveal replay); the later frames of 3-to-portrait are the
+  playing row's equalizer only (the layout identical frame to frame).
+- **Deferred (why):** the desktop Now Playing panel rows (skin-surface buildPanelHtml, shared with podcasts
+  and byte-locked by the v1.317 seam test - a shared-builder change belongs with S9 / an S6 follow-up);
+  the album / artist / jump-back CARDS stay bespoke buttons around their art (no card primitive; their
+  debt keys stand); the sticker menu's `<i class="icon-*">` masks (the pop-out window has no sprite -
+  moving them needs the sprite injected there); Loop's "Loop" / "Loop chapter" relabel changes the chip
+  width (a two-slot stable label is a follow-up); the drill's sort stays reserved when entered from Home
+  (pre-existing: `reserveOnly = tab === 'home'`); the sidebar / content-margin transitions themselves (S1).
+- **Device checks for Dean:** rotate in Pocket (every skin) - it stays, lays out side by side, no replay;
+  exit after a rotate - the list returns to the row you left; the haptic wheel after a rotate (the ghost
+  re-measures - F59); tap-and-hold a song row (the menu); the Extras Delete confirm; `?debugLifecycle=1`
+  now shows the viewport line on a rotate.
+- **Counts (Node 22.23.1, on the tree of this commit):** `npm run test:unit` tests 7859, pass 7858, fail 0,
+  cancelled 0, skipped 1 (exit 0). Targeted integration (music*, pocket*, podcast*, shell*, theater*,
+  listen*, chapter*, route-census, rbac-census; 24 files): tests 243, pass 240, fail 0, skipped 3.
+  `npx eslint .` 0 errors, 6 warnings (the existing common.js unused globals); `npm run lint:ui` OK
+  (TOTAL 2216); `npm run lint:css` TOTAL 0; `npm run lint:overlay` clean (0 violations);
+  `npm run test:geometry` 51 checks, 51 ok.

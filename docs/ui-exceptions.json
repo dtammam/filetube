@@ -927,12 +927,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.mms-apple .mms-grab|height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.mms-apple .mms-grab|width",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",

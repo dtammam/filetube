@@ -8655,6 +8655,8 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 /* UI pass S7: the sort is the ui-select field at the toolbar's pill height (its 16px text stays:
    iOS zooms a focused field under 16px) */
 .music-sort .ui-select__native { height: var(--ctl-sm); border-radius: var(--r-pill); }
+/* 2005 is square everywhere (the ui-btn pill twin in ui.css) */
+[data-theme="2005"] .music-sort .ui-select__native { border-radius: 0; }
 /* the mode chips (Loop / Autoplay) carry a registry glyph before their words */
 .music-toolbar-actions .ui-chip { gap: var(--space-2); }
 /* v1.339 (L1b): the toggle and the pop-out SHIP reserved in music.html (their first JS state
@@ -9517,7 +9519,7 @@ html.is-phone #music-popout-btn { display: none; }
   :where(html.is-phone, html.mms-popout) .mms-apple .mms-top{ justify-content:center; }
   /* the dismiss grab handle - a big transparent TAP TARGET (Dean couldn't find the exit)
      with the visible 38x5 pill centered inside via ::before. */
-  :where(html.is-phone, html.mms-popout) .mms-apple .mms-grab{ width:64px; height:26px; border:0; padding:0; cursor:pointer; background:transparent; position:relative; }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-grab{ width:64px; height:var(--size-touch); border:0; padding:0; cursor:pointer; background:transparent; position:relative; }
   :where(html.is-phone, html.mms-popout) .mms-apple .mms-grab::before{ content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:38px; height:5px; border-radius:var(--radius-full); background:var(--mms-apple-grab); }
   :where(html.is-phone, html.mms-popout) .mms-apple .mms-art{ width:82%; max-width:340px; aspect-ratio:1; margin:var(--space-16) auto var(--space-12); border-radius:var(--mms-r-art); overflow:hidden; box-shadow:var(--mms-art-shadow); }
   :where(html.is-phone, html.mms-popout) .mms-apple .mms-head{ margin-top:auto; }
