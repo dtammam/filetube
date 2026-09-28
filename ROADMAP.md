@@ -49,24 +49,12 @@
   while the bar is laid out. A `?debugLifecycle=1` capture of the bar's rect against `visualViewport`
   when it happens decides which one.
 
-- [ ] **Bug: the v1.341.1 desktop bugs** (next patch) _(Dean, 2026-09-28)_. (a) Opening a top-bar
-  panel shifts the page sideways: not only the notification tray - Account, Notifications, or anything
-  in the top bar that opens a panel makes the right-hand scrollbar disappear and the page shift. All of
-  them go through the one body scroll lock (`public/js/body-scroll-lock.js` pins body `position: fixed`),
-  which drops the page scrollbar on a desktop with classic scrollbars, measured 1428 -> 1440px client
-  width, so one fix covers every surface. Planned fix: `scrollbar-gutter: stable` on the root, measured
-  on every locking surface, plus a geometry check that the page width never changes when a panel opens.
-  (b) The chapter time editor ("Fix times" on a chaptered Music album) jumps the list back to the
-  top after a nudge: reproduced headless on Music (scrollTop 1200 -> 21, then 0); the trigger is the
-  focused nudge button being destroyed by the editor's full-list re-render (with focus suppressed there
-  is no jump); not reproduced from the watch page. (c) That editor "can't be closed without a refresh":
-  not reproduced yet; X after an edit shows the in-page "Discard your changes?" confirm, and Discard
-  closes; suspect the confirm is not noticed; reproduce on Dean's setup.
+- [x] **Bug: the v1.341.1 desktop bugs** - SHIPPED v1.341.1 (see Shipped) _(Dean, 2026-09-28)_: a panel
+  shifting the page (every top-bar panel, card menus, right-click), the Music chapter editor jumping to
+  the top after a nudge, and that editor "can't be closed" (the discard question was never seen).
 
-- [ ] **Bug: pinned channels in the sidebar: a long one-line name pushes its pin further right than the
-  others** _(Dean, 2026-09-28)_ (desktop screenshot: "heavymachinegun" vs "Phantasia Records", which
-  wraps). The pin column should sit at one x for every row; the name column needs a fixed width (wrap or
-  truncate). Add a geometry check.
+- [x] **Bug: pinned channels in the sidebar: a long one-line name pushes its pin further right than the
+  others** - SHIPPED v1.341.1 (see Shipped) _(Dean, 2026-09-28)_; his pick: one line with an ellipsis.
 
 - [ ] **Bug: Modern theme on a phone: a channel folder and the Downloads folder render wider than the
   screen** _(Dean, 2026-09-28)_ (Dean's iPhone screenshots). The card grid shows two columns with the
@@ -77,7 +65,12 @@
   trigger is in the real data's shape (real view counts, channel avatars on cards, 2189 items, long
   titles / channel names). First step: measure on Dean's data shape (which element is wider than the
   viewport, and whether the 480px media query flips because the layout viewport grew), then a geometry
-  check that no Modern phone view has horizontal overflow.
+  check that no Modern phone view has horizontal overflow. v1.341.1 time-box (not fixed): the folder
+  toolbar fits (16-414px of 430; the chip strip scrolls inside it), and Dean's two ~235px columns match
+  the tablet grid (auto-fill minmax(210px)) at a ~520px layout width, i.e. iOS laid the page out WIDER
+  than the screen (its fit-to-width, the v1.24.6 subscriptions-zoom class), which headless Chromium does
+  not emulate. NEXT: one reading on Dean's phone in that folder (innerWidth, documentElement.clientWidth,
+  and the widest element), then fix the element that overflows at load.
 
 - [x] **HIGHEST PRIORITY (2 of 2). Bug: a very thin white border around the whole screen in fullscreen, in
   every mode** (Dean, 2026-09-26: "in full screen, in all modes, I see a very thin white border around the
@@ -311,6 +304,24 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.341.1 - Panels stop shifting the page, and the chapter editor keeps your place (2026-09-28)
+
+- **Opening a panel no longer shifts the page on desktop.** The notification tray, the account menu, a
+  card's menu and its right-click menu (every panel that holds the page still) hid a desktop scrollbar,
+  and the whole page moved by its width. The scrollbar's space now stays reserved.
+- **The chapter time editor keeps your place.** On a chaptered Music album's "Fix times", a nudge sent
+  the list back to the top; it now stays put, with focus on the button you pressed.
+- **Closing the editor with unsaved changes asks where you can see it.** The "Discard your changes?"
+  question sat inside the editor's header, away from the X, so the editor looked stuck; it is now the
+  app's usual confirm dialog, on top.
+- **Pinned channels line up.** Every pin sits in one column; a long name ends in an ellipsis.
+- **Faster checks (for the project).** The screenshot comparison runs as 12 parallel parts (about 10
+  minutes, was about 50), a look change you meant to make lands in one run, docs-only changes skip it,
+  a pull request runs each check once, and the local pre-push check skips branch deletes and docs-only
+  pushes.
+- Not in this patch: the Modern-theme phone folders that render wider than the screen (see Planned >
+  Bugs; it needs one reading from the phone).
 
 ### v1.341.0 - One consistent look across the whole app (2026-09-28)
 

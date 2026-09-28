@@ -3298,5 +3298,11 @@
     "date": "2026-09-28",
     "title": "One consistent look across the whole app",
     "intent": "Every page now uses the same buttons, rows, menus, dialogs and icons, so things line up, match each other and stop shifting when you tap them. Menus stay on screen and open above their button when there is no room below, a quick double tap can no longer answer a delete question for you, and a menu or question left open closes when you move to another page. Pocket stays in Pocket when you turn your phone. Your choice of era and icon style carries over; emoji icons now show as the filled style."
+  },
+  {
+    "version": "1.341.1",
+    "date": "2026-09-28",
+    "title": "Panels stop shifting the page, and the chapter editor keeps your place",
+    "intent": "On a desktop, opening notifications, the account menu or a card's menu no longer shifts the whole page sideways. The chapter time editor stays where you were after you nudge a start, and closing it with unsaved changes now asks in a dialog you can see. Pinned channels in the sidebar line up, with long names cut short by an ellipsis."
   }
 ]
