@@ -2873,56 +2873,32 @@ select {
   gap: var(--space-5);
 }
 
-/* v1.110 (Dean): the pick-one action modal (showChoiceModal) -- one full-width
-   stacked button per choice, above the Cancel row. */
-.choice-modal-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  margin: var(--space-6) 0;
+/* Sweep S9: the desktop Transcript dialog (common.js showTranscriptModal) is a ui.sheet
+   dialog, wider than a confirm because prose wants room. Only its content layout lives here:
+   the read-only field grows past a one-line input, keeps one row per spoken line, and the
+   "Show timestamps" switch row sits on the dialog's text inset. */
+.ui-sheet--dialog.transcript-dialog {
+  width: min(calc(var(--dialog-w) * 1.75), calc(100vw - var(--inset) * 2));
 }
-.choice-modal-btn {
-  width: 100%;
-  justify-content: center;
-}
-
-/* Transcript export (Dean): the desktop "Transcript" modal - a read-only
-   text field holding the full caption transcript (title / date / channel
-   header, then one spoken line per row), a "Show timestamps" toggle, and
-   Copy/Close. Wider than the 400px confirm/choice modals because prose
-   wants room; the shared .modal-content height cap + internal scroll still
-   apply, and the textarea takes the modal's own scroll budget so the
-   actions row stays reachable. Phone widths never open this modal (they
-   get the share/copy picker instead), so no phone rules are needed here. */
-.transcript-modal {
-  max-width: 720px; /* token-exempt: layout geometry (modal width cap) */
-}
-.transcript-textarea {
+.transcript-field .transcript-textarea {
   /* corner-clip-safe: native <textarea>, replaced content with no child boxes to escape the corners */
-  width: 100%;
-  min-height: 40vh; /* token-exempt: layout geometry (viewport-relative height) */
-  font-family: var(--mono-font);
-  font-size: var(--fs-sm);
+  height: auto;
+  min-height: 40vh;
+  padding: var(--space-4) var(--space-6);
   line-height: var(--lh-relaxed);
-  background: var(--input-bg, var(--header-bg));
-  color: var(--text-primary);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-  padding: var(--space-4);
   resize: vertical;
-  white-space: pre-wrap; /* one row per spoken line; only a long TITLE line (90-120 chars is routine) wraps instead of forcing a horizontal scrollbar */
+  white-space: pre-wrap; /* one row per spoken line; only a long TITLE line wraps */
   overflow: auto;
 }
 .transcript-options {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  margin: var(--space-4) 0 var(--space-6);
-  font-size: var(--fs-sm);
-  color: var(--text-secondary);
-}
-.transcript-options input[type="checkbox"] {
-  margin: 0;
+  justify-content: space-between;
+  gap: var(--space-4);
+  min-height: var(--row-default);
+  padding: 0 var(--space-8);
+  font: var(--t-body);
+  color: var(--ink-1);
 }
 
 /* v1.201 (Dean): the Settings-page "Share with AI" prompt editor - one row
@@ -5225,9 +5201,8 @@ html:has(> body.ft-audio-expanded),
   overscroll-behavior: none;
 }
 .modal-content,
-.oneoff-modal,
 .speed-sheet,
-.hard-delete-modal {
+.oneoff-modal {
   overscroll-behavior: contain;
 }
 
@@ -6866,147 +6841,53 @@ html:has(> body.ft-audio-expanded),
    to the monogram - 20px in the desktop sidebar's rows, 36px in the phone sheet. The contract
    is ui.css's; pinned-avatar is only a hook class. */
 
-/* === v1.21 FR-7: hard-delete confirm ========================================
-   T6. `common.js`'s `showHardDeleteModal` -- the extra-deliberate confirm for
-   a LOCAL (non-yt-dlp) file's delete (both the watch page's delete button and
-   the home/library card's two-tap arm route here for a local item; a
-   yt-dlp-managed item's flow is completely unchanged and never reaches this
-   CSS at all). Deliberately its OWN class family (`.hard-delete-modal-*`,
-   never `.modal-*`/`.oneoff-modal-*`) so it reads as visually/
-   interactionally DISTINCT from both the existing quick confirm modal and
-   the one-off/subscribe modals -- a red hard-warning treatment (era
-   `--yt-red` token, never a hardcoded color) plus a checkbox-gated Delete
-   button, so deleting an irreplaceable file is a conscious 3rd action, not a
-   quick tap-through. Sizing/scroll (`max-height`/`overflow-y`) mirrors the
-   v1.19.0 `.oneoff-modal` fix so a short viewport never clips the actions
-   row off-screen; `z-index: calc(var(--z-top) + 1)` sits above every other
-   overlay in this file (`.modal-backdrop` --z-modal, `.oneoff-modal-backdrop`
-   --z-modal + 100, `.toast` --z-top) so it is NEVER hidden behind another
-   dialog/toast - the toast-under-hard-delete ordering is DELIBERATE warning
-   primacy (PRESERVED INVERSION, Tier 4 re-ladder: the rung moved 2250 ->
-   2201 but the ordering is identical). */
-.hard-delete-modal-backdrop {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.65); /* token-exempt: destructive-modal dim (OQ5b ruling) */
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  z-index: calc(var(--z-top) + 1);
+/* === v1.21 FR-7: the local-file delete confirm ==============================
+   common.js showHardDeleteModal: the extra-deliberate confirm for deleting a LOCAL (non-yt-dlp)
+   file. Sweep S9 (F44, D4.8): a ui.sheet dialog with ONE danger fill (the confirm button),
+   not four stacked red treatments; its copy says what the route does (the file moves to
+   Trash). Only the content layout lives here: the file card and the "I understand" row whose
+   checkbox enables the button. */
+.hard-delete-dialog__file {
+  margin: var(--space-6) var(--space-8) 0;
+  padding: var(--space-4) var(--space-6);
+  border-radius: var(--r-md);
+  background-color: var(--surface-2);
 }
-
-.hard-delete-modal {
-  background-color: var(--bg-color);
-  border: 2px solid var(--yt-red);
-  border-radius: var(--radius);
-  max-width: 420px;
-  width: 92%;
-  padding: var(--space-10);
-  box-shadow: var(--shadow-lg);
-  box-sizing: border-box;
-  max-height: 85vh;
-  overflow-y: auto; /* corner-clip-safe: centered modal, no sticky/absolute/transform descendant */
-}
-
-.hard-delete-modal-title {
-  font-size: var(--fs-xl);
-  font-weight: var(--fw-bold);
-  color: var(--yt-red);
-  margin-bottom: var(--space-5);
-}
-
-.hard-delete-modal-warning {
-  font-size: var(--fs-base);
-  font-weight: var(--fw-bold);
-  color: var(--yt-red);
-  background-color: var(--btn-bg);
-  border: 1px solid var(--yt-red);
-  border-radius: var(--radius);
-  padding: var(--space-4) var(--space-5);
-  margin-bottom: var(--space-6);
-}
-
-.hard-delete-modal-filename {
-  font-size: var(--fs-base);
-  font-weight: var(--fw-bold);
-  color: var(--text-primary);
-  word-break: break-word;
-  margin-bottom: var(--space-2);
-}
-
-.hard-delete-modal-path {
-  font-size: var(--fs-xs);
-  color: var(--text-secondary);
-  word-break: break-all;
-  margin-bottom: var(--space-6);
-}
-
-.hard-delete-modal-checkbox-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  margin-bottom: var(--space-8);
-  font-size: var(--fs-base);
-  font-weight: var(--fw-bold);
-  color: var(--text-primary);
-  cursor: pointer;
-}
-
-.hard-delete-modal-actions {
-  display: flex;
-  gap: var(--space-4);
-  justify-content: flex-end;
-}
-
-.hard-delete-modal-actions .btn {
-  flex: 1;
-  justify-content: center;
-}
-
-/* The Delete Permanently button -- its own class (never `.btn-primary`) so
-   it never accidentally inherits a future styling change meant for the
-   ordinary primary action; deliberately red/high-alert regardless of
-   era/mode, and visibly greyed-out + inert while disabled (before the
-   checkbox is ticked). */
-.hard-delete-modal-confirm-btn {
-  flex: 1;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-4) var(--space-8);
-  border: 1px solid var(--yt-red);
-  border-radius: calc(var(--radius) + 1px);
-  background-color: var(--yt-red);
-  color: var(--on-accent);
-  font-size: var(--fs-base);
+.hard-delete-dialog__name {
+  margin: 0;
+  font: var(--t-body);
   font-weight: var(--fw-semibold);
-  cursor: pointer;
-  transition: background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui), color var(--dur-fast) var(--ease-ui), opacity var(--dur-fast) var(--ease-ui);
+  color: var(--ink-1);
+  overflow-wrap: anywhere;
+}
+.hard-delete-dialog__path {
+  margin: var(--space-2) 0 0;
+  font: var(--t-footnote);
+  color: var(--ink-2);
+  word-break: break-all;
+}
+.hard-delete-dialog__ack {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: var(--hit);
+  margin: var(--space-4) var(--space-8) 0;
+  font: var(--t-body);
+  color: var(--ink-1);
+}
+.hard-delete-dialog__ack input {
+  flex: none;
+  width: var(--icon-md);
+  height: var(--icon-md);
+  margin: 0;
 }
 
-.hard-delete-modal-confirm-btn:disabled {
-  background-color: var(--btn-bg);
-  border-color: var(--border-dark);
-  color: var(--text-secondary);
-  cursor: not-allowed;
+/* The Move dialog's status line (common.js showMoveModal) sits under the folder field. */
+.move-dialog__status:empty {
+  display: none;
 }
-
-/* Comfortable 44px tap targets on a phone, matching the v1.19.0 mobile
-   polish already applied to `.oneoff-modal`/`.subscribe-modal-checkbox-row`. */
-@media (max-width: 768px) {
-  .hard-delete-modal {
-    width: 94%;
-    padding: var(--space-8);
-  }
-
-  .hard-delete-modal-checkbox-row,
-  .hard-delete-modal-actions .btn,
-  .hard-delete-modal-confirm-btn {
-    min-height: var(--size-touch);
-  }
+.move-dialog__status {
+  margin-top: var(--space-4);
 }
 
 /* === v1.21 FR-8: download status chip ========================================
@@ -11090,87 +10971,17 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
 
 /* ---- v1.53: the attribution picker ------------------------------------- */
 
-.attr-picker-list {
-  max-height: 50vh;
-  overflow-y: auto;
-  margin: var(--space-6) 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.attr-picker-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
-  padding: var(--space-4) var(--space-5);
-  background: none;
-  border: none;
-  border-radius: var(--radius);
-  color: var(--text-primary);
-  cursor: pointer;
-  text-align: left;
-  font-size: var(--fs-md);
-}
-
-@media (hover: hover) {
-  .attr-picker-row:hover {
-    background-color: var(--bg-secondary);
-  }
-}
-
-.attr-picker-avatar {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  overflow: hidden;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--on-accent);
-  font-weight: var(--fw-semibold);
-  font-size: var(--fs-base);
-  background-color: var(--bg-secondary);
-}
-
-.attr-picker-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.attr-picker-name {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.attr-picker-source {
-  font-size: var(--fs-sm);
-  color: var(--text-secondary);
-  flex-shrink: 0;
-}
-
+/* Sweep S9: the attribution picker (common.js showAttributionPicker) is a ui.sheet dialog of
+   ui-rows; only the "also move" switch row lives here, on the dialog's text inset. */
 .attr-picker-relocate {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-4);
-  font-size: var(--fs-base);
-  margin-top: var(--space-4);
-}
-
-.attr-picker-empty {
-  padding: var(--space-8);
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: var(--fs-sm);
-}
-
-.attr-picker-cancel {
-  margin-top: var(--space-2);
+  min-height: var(--row-default);
+  padding: 0 var(--space-8);
+  font: var(--t-body);
+  color: var(--ink-1);
 }
 
 /* ---- v1.51: the notification bell ---------------------------------------

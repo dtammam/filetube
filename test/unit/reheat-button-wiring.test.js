@@ -127,8 +127,10 @@ test('the relocation confirm is the runtime showConfirmModal, never markup in wa
   assert.ok(/showConfirmModal\(/.test(body), 'reuses the shared runtime modal');
   assert.ok(!/reheat-confirm-backdrop|reheat-modal/.test(watchHtml),
     'no page markup for this dialog -- markup outside #view-root is never mounted on in-app nav (tech-debt #34)');
-  assert.ok(/document\.body\.appendChild\(modalBackdrop\)/.test(commonJs),
-    'showConfirmModal must still append to document.body (the property this test depends on)');
+  // Sweep S9: showConfirmModal draws ui.confirm - a ui.sheet the primitive appends to
+  // document.body at open (overlays-dialogs-s9.test.js drives it), still never page markup.
+  assert.ok(/U\.confirm\(\{/.test(functionBody(commonJs, 'showConfirmModal')),
+    'showConfirmModal must still build its dialog at runtime (ui.confirm, body-mounted) - the property this test depends on');
 });
 
 test('the confirm dialog escapes the filesystem paths it renders (showConfirmModal interpolates with innerHTML)', () => {
@@ -143,11 +145,14 @@ test('the confirm dialog names the actual decision rather than "Confirm"/"Cancel
     'an irreversible file move deserves a verb, not a formality');
 });
 
-test('showConfirmModal label overrides are applied with textContent, never interpolated into the innerHTML template', () => {
+// Sweep S9: the labels ride ui.confirm's confirmLabel / cancelLabel, which ui.button renders
+// by textContent (overlays-dialogs-s9.test.js proves `Move <b>it</b>` stays text).
+test('showConfirmModal label overrides are handed to ui.confirm as text options, never interpolated into markup', () => {
   const body = functionBody(commonJs, 'showConfirmModal');
-  assert.ok(/confirmBtn\.textContent = labels\.confirm/.test(body));
-  assert.ok(/cancelBtn\.textContent = labels\.cancel/.test(body));
-  assert.ok(!/\$\{labels/.test(body), 'a caller-supplied label must never become markup');
+  assert.ok(/confirmLabel: \(typeof l\.confirm === 'string' && l\.confirm !== ''\) \? l\.confirm : 'Confirm'/.test(body));
+  assert.ok(/cancelLabel: \(typeof l\.cancel === 'string' && l\.cancel !== ''\) \? l\.cancel : 'Cancel'/.test(body));
+  assert.ok(!/\$\{l(abels)?\./.test(body), 'a caller-supplied label must never become markup');
+  assert.ok(!/innerHTML/.test(body), 'no markup template at all');
 });
 
 // ---- 5. The metadata click never moves a file ----------------------------
@@ -245,19 +250,17 @@ test('a video with no source link is reported honestly, not as a success', () =>
 
 // ---- v1.49 gate fixes (adversarial seat) -----------------------------------
 
-test('CRITICAL 2: showConfirmModal resolves its buttons from ITS OWN backdrop, never document-wide', () => {
+// Sweep S9: ui.confirm builds its own buttons - no ids exist to be re-bound across dialogs;
+// overlays-dialogs-s9.test.js opens two at once and proves each Confirm runs only its own.
+test('CRITICAL 2: showConfirmModal looks nothing up by id (each dialog owns its own buttons)', () => {
   const body = functionBody(commonJs, 'showConfirmModal');
-  assert.ok(/modalBackdrop\.querySelector\('#modal-confirm-btn'\)/.test(body),
-    'document.getElementById returns the FIRST match, so a second modal re-binds the first one\'s buttons');
-  assert.ok(/modalBackdrop\.querySelector\('#modal-cancel-btn'\)/.test(body));
-  assert.ok(!/document\.getElementById\('modal-(confirm|cancel)-btn'\)/.test(body),
-    'no document-wide lookup may remain');
+  assert.ok(!/getElementById|querySelector\('#modal-/.test(body), 'no id lookup may remain');
 });
 
-test('CRITICAL 2: the relocation offer refuses to open on top of another modal', () => {
+test('CRITICAL 2: the relocation offer refuses to open on top of another live dialog', () => {
   const body = functionBody(watchJs, 'offerRelocation');
-  assert.ok(/document\.querySelector\('\.modal-backdrop:not\(\.modal-closing\)'\)/.test(body),
-    'this is the only confirm that can open without the user having just clicked something (and see CRITICAL 4 for why the :not is load-bearing)');
+  assert.ok(/if \(isLiveDialogOpen\(\)\) \{/.test(body),
+    'this is the only confirm that can open without the user having just clicked something (and see CRITICAL 4 for why "live" is load-bearing)');
 });
 
 test('CRITICAL 1: the per-video proposal and confirm pass allowRecentlyWatched; nothing else does', () => {
@@ -344,117 +347,31 @@ test('SUGGESTION 3: the poll registers its abort listener once per view, not onc
 
 // ---- v1.49 gate round 2 (adversarial CRITICAL 4 + WARNINGs 5-7) ------------
 
-test('CRITICAL 4: the re-ask guard excludes a CLOSING backdrop, or the stale-proposal path can never open', () => {
+test('CRITICAL 4: the re-ask guard excludes a CLOSING dialog, or the stale-proposal path can never open', () => {
   const body = functionBody(watchJs, 'offerRelocation');
-  assert.ok(/\.modal-backdrop:not\(\.modal-closing\)/.test(body),
-    'showConfirmModal tears down BEFORE onConfirm and leaves the node up for the ~200ms fade, so a bare .modal-backdrop always matched the dialog that triggered the re-ask');
-  assert.ok(!/querySelector\('\.modal-backdrop'\)/.test(body),
-    'the bare selector must not remain anywhere in this function');
+  assert.ok(!/querySelector\('\.(modal-backdrop|ui-sheet)'\)/.test(body),
+    'a bare selector always matches the dialog that triggered the re-ask (it is still fading out)');
+  // Sweep S9: the guard asks isLiveDialogOpen, which excludes a sheet on its way out.
+  const live = functionBody(commonJs, 'isLiveDialogOpen');
+  assert.ok(/querySelector\('\.ui-sheet:not\(\.is-closing\)'\)/.test(live),
+    'isLiveDialogOpen must exclude a closing sheet (ui.js marks it the moment close() runs)');
 });
 
 test('CRITICAL 4 (second half): a suppressed offer is announced, never silently dropped', () => {
   const body = functionBody(watchJs, 'offerRelocation');
-  const guardIdx = body.indexOf(':not(.modal-closing)');
+  const guardIdx = body.indexOf('isLiveDialogOpen()');
   const toastIdx = body.indexOf('showToast', guardIdx);
   const returnIdx = body.indexOf('return;', guardIdx);
   assert.ok(toastIdx > guardIdx && toastIdx < returnIdx,
     'the guard must toast before returning -- a second silent way for the offer to never appear is the bug this release already fixed once');
 });
 
-// The runtime property the source-locks above CANNOT see (this repo's own v1.44
-// lesson: a source-lock proves PRESENCE, not runtime BINDING). This drives the
-// REAL showConfirmModal against a fake DOM and asserts that at the moment
-// onConfirm runs -- which is when the re-ask fires -- the backdrop that is still
-// attached is marked .modal-closing, i.e. the corrected selector genuinely skips
-// it and the bare one genuinely would not have.
-test('CRITICAL 4 (runtime): when onConfirm fires, the old backdrop is still ATTACHED and carries .modal-closing', () => {
-  const vm = require('node:vm');
-  const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'common.js'), 'utf8');
-
-  const attached = [];
-  function FakeClassList() { this._set = new Set(); }
-  FakeClassList.prototype.add = function (c) { this._set.add(c); };
-  FakeClassList.prototype.remove = function (c) { this._set.delete(c); };
-  FakeClassList.prototype.contains = function (c) { return this._set.has(c); };
-
-  function makeEl() {
-    const own = new Map();
-    const el = {
-      classList: new FakeClassList(),
-      _listeners: {},
-      parentNode: null,
-      style: {},
-      addEventListener(t, fn) { (el._listeners[t] = el._listeners[t] || []).push(fn); },
-      removeEventListener() {},
-      querySelector: (sel) => own.get(String(sel).replace(/^#/, '')) || null,
-      appendChild: () => {},
-    };
-    Object.defineProperty(el, 'innerHTML', {
-      set(html) {
-        const re = /id="([\w-]+)"/g;
-        let m;
-        while ((m = re.exec(html))) {
-          own.set(m[1], {
-            id: m[1], disabled: false, _listeners: {},
-            addEventListener(t, fn) { (this._listeners[t] = this._listeners[t] || []).push(fn); },
-            click() { (this._listeners.click || []).slice().forEach((f) => f({ target: this })); },
-          });
-        }
-      },
-    });
-    return el;
-  }
-
-  const doc = {
-    createElement: makeEl,
-    body: {
-      appendChild: (el) => { attached.push(el); el.parentNode = doc.body; return el; },
-      removeChild: (el) => {
-        const i = attached.indexOf(el);
-        if (i >= 0) attached.splice(i, 1);
-        el.parentNode = null;
-      },
-    },
-    getElementById: () => null,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    // The production guard's own query, evaluated against what is attached NOW.
-    querySelector: (sel) => {
-      const wantsLive = /:not\(\.modal-closing\)/.test(sel);
-      return attached.find((el) => !wantsLive || !el.classList.contains('modal-closing')) || null;
-    },
-  };
-
-  const sandbox = {
-    document: doc,
-    window: { matchMedia: () => ({ matches: false }), addEventListener: () => {}, removeEventListener: () => {} },
-    setTimeout: () => 0,
-    clearTimeout: () => {},
-    WeakMap,
-    Set,
-    Map,
-    console,
-    module: { exports: {} },
-  };
-  sandbox.globalThis = sandbox;
-  vm.createContext(sandbox);
-  vm.runInContext(src, sandbox, { filename: 'common.js' });
-
-  const showConfirmModal = sandbox.module.exports.showConfirmModal;
-  assert.equal(typeof showConfirmModal, 'function', 'common.js must export showConfirmModal for this test');
-
-  let sawBare = null;
-  let sawLive = null;
-  showConfirmModal('t', 'b', () => {
-    // This is exactly the instant offerRelocation's re-entrant call happens.
-    sawBare = doc.querySelector('.modal-backdrop');
-    sawLive = doc.querySelector('.modal-backdrop:not(.modal-closing)');
-  });
-  attached[0].querySelector('#modal-confirm-btn').click();
-
-  assert.ok(sawBare, 'the bare selector matches the still-fading backdrop -- this is what made the re-ask unreachable');
-  assert.equal(sawLive, null, 'the corrected selector correctly sees NO live dialog, so the re-ask can open');
-});
+// The runtime property the source-locks above CANNOT see (this repo's own v1.44 lesson: a
+// source-lock proves PRESENCE, not runtime BINDING): at the moment onConfirm runs - when the
+// re-ask fires - the dialog that triggered it is still attached but marked is-closing, so
+// isLiveDialogOpen() is false while a bare `.ui-sheet` query would still match it. Sweep S9
+// moved it to overlays-dialogs-s9.test.js ("CRITICAL 4 (runtime)"), driving the real
+// showConfirmModal + ui.js in jsdom instead of a fake DOM.
 
 test('WARNING 5: the confirm binds the TRANSFER METHOD and size, not just the two paths', () => {
   const body = functionBody(watchJs, 'offerRelocation');

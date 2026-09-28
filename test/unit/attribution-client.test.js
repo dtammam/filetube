@@ -50,14 +50,17 @@ test('LOCK (wiring): the shared picker exists once, in common.js, and both calle
   assert.match(main, /showAttributionPicker\(targets, \{ title: 'Attribute this folder to', showRelocate: true \}/);
 });
 
-test('LOCK (gate C1): the picker is REVEALED through the shared overlay helper and torn down through it', () => {
-  // The adversarial repro: a .modal-backdrop without openOverlay sits at
-  // opacity 0 -- an invisible full-viewport click-eater whose invisible
-  // rows could fire a blind 200-file bulk move.
+test('LOCK (gate C1): the picker is a ui.sheet that is OPENED (so revealed) and closes through it; the W6 dismiss handle stays', () => {
+  // The adversarial repro: a backdrop that is never revealed sits at opacity 0 -- an
+  // invisible full-viewport click-eater whose invisible rows could fire a blind 200-file
+  // bulk move. Sweep S9: the picker is a ui.sheet, which ALWAYS gets is-open on the next
+  // frame (reduced motion included, F48); overlays-dialogs-s9.test.js watches it happen.
   const common = strippedSource('public/js/common.js');
-  assert.match(common, /openOverlay\(backdrop, 'modal-open'\);/, 'the reveal call was deleted -- the picker is invisible again');
-  assert.match(common, /closeOverlayThen\(backdrop, 'modal-open',/, 'teardown must animate out through the shared helper');
-  assert.match(common, /return \{ dismiss: teardown \};/, 'the W6 dismiss handle was deleted');
+  const start = common.indexOf('function showAttributionPicker(');
+  const body = common.slice(start, common.indexOf('\nfunction ', start + 1));
+  assert.match(body, /ctrl = U\.sheet\(\{ variant: 'dialog'/, 'the picker is a ui.sheet dialog');
+  assert.match(body, /ctrl\.open\(\);/, 'the open call was deleted -- the picker is invisible again');
+  assert.match(body, /return \{ dismiss: \(\) => ctrl\.close\(\) \};/, 'the W6 dismiss handle was deleted');
 });
 
 test('LOCK (gate C3/W1/W6/QA-C1): the bulk flow is preview -> confirm -> execute -> poll, dies with the view, re-checks per page', () => {

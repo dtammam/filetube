@@ -305,7 +305,8 @@ test('v1.337 watch page: Share of a non-YouTube download sends its source URL as
     const shareBtn = dom.window.document.getElementById('share-media-btn');
     shareBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
     await settle();
-    assert.strictEqual(dom.window.document.querySelector('.ui-sheet'), null, 'no "at current time" choice for another site');
+    // Sweep S9: the pick-one is a ui.menu (a live ui.sheet holding a list).
+    assert.strictEqual(Array.from(dom.window.document.querySelectorAll('.ui-sheet')).filter((s) => !s.classList.contains('is-closing') && s.querySelector('.ui-list')).length, 0, 'no "at current time" choice for another site');
     assert.strictEqual(calls.length, 1);
     assert.strictEqual(calls[0].url, SOURCE_URL, 'the logged URL, untouched (no ?t=)');
     assert.strictEqual(calls[0].title, 'A Shareable Video 🎵');
@@ -325,8 +326,8 @@ test('v1.337 watch page: a YouTube item mid-video STILL offers the "at current t
     shareBtn.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
     await settle();
     await settle();
-    const list = dom.window.document.querySelector('.ui-sheet');
-    assert.ok(list, 'the choice menu opened (UI pass S3: a ui.menu, was the choice modal)');
+    const list = Array.from(dom.window.document.querySelectorAll('.ui-sheet')).filter((s) => !s.classList.contains('is-closing') && s.querySelector('.ui-list'))[0];
+    assert.ok(list, 'the choice menu opened');
     assert.match(list.textContent, /Share at current time \(0:42\)/);
     assert.strictEqual(calls.length, 0, 'nothing shared until a pick');
   } finally {

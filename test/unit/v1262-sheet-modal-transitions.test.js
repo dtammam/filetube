@@ -14,7 +14,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 const {
   prefersReducedMotion, overlayCanAnimate, openOverlay, closeOverlayThen,
-  showMoveModal, showConfirmModal,
 } = require('../../public/js/common.js');
 
 const ROOT = path.join(__dirname, '..', '..');
@@ -283,173 +282,12 @@ test('F1: finish() belt-and-braces -- even if a stale transitionend slips throug
   assert.strictEqual(afterCloseCalls, 0, 'afterClose must be skipped when the element still/again carries the open class');
 });
 
-// ---- F2 (MAJOR) regression: showConfirmModal must never double-fire -------
-// ---- onConfirm/teardown from a double-tap during the close fade. ----------
-//
-// Unlike showMoveModal (which takes an injectable `doc` param), showConfirmModal
-// always operates against the GLOBAL `document` and builds its buttons from a
-// raw `innerHTML` template -- so this fake DOM only stubs what that call path
-// actually touches: `createElement` returns an `AnimatableFakeElement`
-// (already used above for classList/transitionend support), `innerHTML`
-// assignment naively pulls every `id="..."` out of the fixed showConfirmModal
-// template and registers a fake button for each into a document-wide id
-// registry, exactly mirroring what `document.getElementById('modal-cancel-
-// btn'|'modal-confirm-btn')` then looks up.
-
-class FakeButton extends AnimatableFakeElement {
-  constructor() {
-    super();
-    this.disabled = false;
-  }
-  click() {
-    (this._listeners.click || []).slice().forEach((fn) => fn({ target: this }));
-  }
-}
-
-function withFakeDocumentForConfirmModal(fn) {
-  const byId = new Map();
-  const bodyChildren = [];
-  const body = {
-    appendChild: (el) => { bodyChildren.push(el); el.parentNode = body; return el; },
-    removeChild: (el) => {
-      const idx = bodyChildren.indexOf(el);
-      if (idx >= 0) bodyChildren.splice(idx, 1);
-      el.parentNode = null;
-    },
-  };
-  const fakeDoc = {
-    createElement: (tag) => {
-      const el = new AnimatableFakeElement();
-      el.tagName = String(tag).toUpperCase();
-      el.parentNode = null;
-      // v1.49 gate fix (adversarial CRITICAL 2): showConfirmModal now resolves
-      // its buttons with `modalBackdrop.querySelector('#id')` instead of
-      // `document.getElementById('#id')`, because the document-wide lookup
-      // returned the FIRST match and so re-bound an ALREADY-OPEN modal's buttons
-      // the moment a second modal was created. This fake therefore has to model
-      // a PER-ELEMENT id registry as well as the document-wide one: the buttons
-      // are the same instances in both, so the assertions below (which fetch via
-      // `fakeDoc.getElementById`) are unchanged and still exercise the real
-      // objects the production code wired.
-      const ownById = new Map();
-      el.querySelector = (sel) => ownById.get(String(sel).replace(/^#/, '')) || null;
-      Object.defineProperty(el, 'innerHTML', {
-        set(html) {
-          const idRe = /id="([\w-]+)"/g;
-          let m;
-          while ((m = idRe.exec(html))) {
-            const btn = new FakeButton();
-            btn.id = m[1];
-            byId.set(m[1], btn);
-            ownById.set(m[1], btn);
-          }
-        },
-      });
-      return el;
-    },
-    getElementById: (id) => byId.get(id) || null,
-    body,
-  };
-  const originalDocument = global.document;
-  global.document = fakeDoc;
-  try {
-    fn(fakeDoc, bodyChildren);
-  } finally {
-    global.document = originalDocument;
-  }
-}
-
-test('F2: showConfirmModal -- double-clicking Confirm calls onConfirm exactly once, even before the close fade finishes', (t) => {
-  // Mock timers so closeOverlayThen's 300ms fallback (armed by the first
-  // click's teardown()) never fires for real past the end of this test.
-  t.mock.timers.enable({ apis: ['setTimeout'] });
-  withFakeDocumentForConfirmModal((fakeDoc) => {
-    let confirmCalls = 0;
-    showConfirmModal('Delete?', 'Are you sure?', () => { confirmCalls++; });
-    const confirmBtn = fakeDoc.getElementById('modal-confirm-btn');
-    confirmBtn.click();
-    confirmBtn.click(); // double-tap before the ~200-300ms close fade completes
-    confirmBtn.click();
-    assert.strictEqual(confirmCalls, 1, 'onConfirm must fire exactly once no matter how many clicks land');
-    assert.strictEqual(confirmBtn.disabled, true, 'Confirm is disabled the instant it settles');
-  });
-});
-
-test('F2: showConfirmModal -- Confirm then Cancel does not also re-run teardown/onConfirm a second time (the settled guard covers both buttons)', (t) => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
-  withFakeDocumentForConfirmModal((fakeDoc) => {
-    let confirmCalls = 0;
-    showConfirmModal('Delete?', 'Are you sure?', () => { confirmCalls++; });
-    const confirmBtn = fakeDoc.getElementById('modal-confirm-btn');
-    const cancelBtn = fakeDoc.getElementById('modal-cancel-btn');
-    confirmBtn.click();
-    cancelBtn.click();
-    assert.strictEqual(confirmCalls, 1, 'onConfirm must still have fired exactly once');
-    assert.strictEqual(cancelBtn.disabled, true, 'Cancel is also disabled once the modal has settled');
-  });
-});
-
-test('F2: showConfirmModal -- double-clicking Cancel never calls onConfirm', (t) => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
-  withFakeDocumentForConfirmModal((fakeDoc) => {
-    let confirmCalls = 0;
-    showConfirmModal('Delete?', 'Are you sure?', () => { confirmCalls++; });
-    const cancelBtn = fakeDoc.getElementById('modal-cancel-btn');
-    cancelBtn.click();
-    cancelBtn.click();
-    assert.strictEqual(confirmCalls, 0);
-  });
-});
-
-test('F2: showConfirmModal -- teardown() adds .modal-closing to the backdrop (matches style.css\'s pointer-events: none guard)', (t) => {
-  t.mock.timers.enable({ apis: ['setTimeout'] });
-  withFakeDocumentForConfirmModal((fakeDoc, bodyChildren) => {
-    showConfirmModal('Delete?', 'Are you sure?', () => {});
-    const confirmBtn = fakeDoc.getElementById('modal-confirm-btn');
-    const backdrop = bodyChildren[0];
-    assert.ok(!backdrop.classList.contains('modal-closing'), 'not closing yet');
-    confirmBtn.click();
-    assert.ok(backdrop.classList.contains('modal-closing'), 'teardown() must mark the backdrop as closing');
-  });
-});
-
-// ---- showMoveModal regression: still fully synchronous against its own ------
-// ---- fake-DOM harness (no classList) -- open/close animation must never ----
-// ---- change this pre-existing, already-tested behavior. --------------------
-
-test('showMoveModal: teardown() still fully (synchronously) detaches the backdrop against a fake DOM with no classList', () => {
-  class PlainFakeElement {
-    constructor(tagName) {
-      this.tagName = String(tagName).toUpperCase();
-      this.children = [];
-      this.className = '';
-      this._textContent = '';
-      this._listeners = {};
-      this.disabled = false;
-      this.value = undefined;
-      this.parentElement = null;
-    }
-    appendChild(child) { child.parentElement = this; this.children.push(child); return child; }
-    remove() {
-      if (this.parentElement) {
-        const idx = this.parentElement.children.indexOf(this);
-        if (idx >= 0) this.parentElement.children.splice(idx, 1);
-        this.parentElement = null;
-      }
-    }
-    setAttribute() {}
-    addEventListener(type, handler) { (this._listeners[type] = this._listeners[type] || []).push(handler); }
-    fire(type, evt) { (this._listeners[type] || []).forEach((fn) => fn(evt || { target: this })); }
-    get textContent() { return this._textContent; }
-    set textContent(v) { this._textContent = v; this.children = []; }
-  }
-  const body = new PlainFakeElement('body');
-  const doc = { createElement: (t) => new PlainFakeElement(t), createTextNode: (t) => ({ nodeType: 3, textContent: t }), body };
-  const modal = showMoveModal({ id: 'x', title: 'T' }, ['/a'], () => {}, doc);
-  assert.strictEqual(body.children.length, 1);
-  modal.teardown();
-  assert.strictEqual(body.children.length, 0, 'teardown() must still synchronously detach the backdrop with no classList support');
-});
+// ---- F2 (MAJOR) regression: showConfirmModal must never double-fire ------------------
+// Sweep S9 (AC12): showConfirmModal draws ui.confirm and showMoveModal a ui.sheet dialog, so
+// their F2 locks (a double tap on Confirm runs onConfirm once; Confirm then Cancel does not
+// re-run it; a double Cancel never confirms; the move dialog's caller-owned teardown) moved
+// to test/unit/overlays-dialogs-s9.test.js, driven in jsdom with the real ui.js - where a
+// closing dialog answers nothing because ui.confirm only answers from a LIVE dialog.
 
 // ---- CSS: .sheet-open / .modal-open transition rules -----------------------
 

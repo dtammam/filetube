@@ -3762,111 +3762,66 @@ function primePinnedSidebarFromCache() {
 
 // ---- v1.53: the attribution picker ------------------------------------------
 //
-// One modal, two callers (watch page single-item, folder-view bulk) -- the
-// v1.41.7 one-shared-decision-function posture. createElement/textContent
-// ONLY (target names are server-sanitized but the discipline is absolute).
-// Reuses the .modal-backdrop/.modal-content STYLE classes; behavior is fully
-// self-managed here (the v1.50.3 lesson: a shared class never implies shared
-// JS). Returns nothing; tears itself down on pick/cancel/Escape/backdrop.
+// One dialog, two callers (watch page single-item, folder-view bulk) -- the v1.41.7
+// one-shared-decision-function posture. Sweep S9: a ui.sheet of ui-rows (the channel's
+// ui.avatar, its name, where it comes from), the optional "also move" switch above them, and
+// the ui.state empty state; the sheet's Close / Esc / scrim cancel. createElement /
+// textContent ONLY (target names are server-sanitized but the discipline is absolute).
+// One pick: the first row tap closes the dialog and calls onPick once; a second tap (on any
+// row) while it closes picks nothing. Gate W6: body-mounted, so the caller wires the returned
+// dismiss to its view teardown.
 function showAttributionPicker(targets, opts, onPick) {
   if (typeof document === 'undefined') return null;
+  const U = dialogUi();
+  if (!U) return null;
   const o = opts || {};
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop attr-picker-backdrop';
-  const modal = document.createElement('div');
-  modal.className = 'modal-content attr-picker';
-  const heading = document.createElement('h3');
-  heading.textContent = o.title || 'Attribute to channel';
-  modal.appendChild(heading);
+  const body = document.createDocumentFragment();
 
   let relocateCheck = null;
   if (o.showRelocate) {
     const label = document.createElement('label');
     label.className = 'attr-picker-relocate';
+    const text = document.createElement('span');
+    text.textContent = "Also move the files into the channel's folder";
     relocateCheck = document.createElement('input');
     relocateCheck.type = 'checkbox';
+    relocateCheck.className = 'ui-switch';
+    relocateCheck.setAttribute('role', 'switch');
     relocateCheck.checked = true;
+    label.appendChild(text);
     label.appendChild(relocateCheck);
-    label.appendChild(document.createTextNode(" Also move the files into the channel's folder"));
-    modal.appendChild(label);
+    body.appendChild(label);
   }
 
-  const list = document.createElement('div');
-  list.className = 'attr-picker-list';
-  const teardown = () => {
-    document.removeEventListener('keydown', onKey, true);
-    // Gate C1 sibling-fix: animate out through the shared overlay helper,
-    // then remove -- mirroring every other .modal-backdrop creator.
-    closeOverlayThen(backdrop, 'modal-open', () => backdrop.remove());
-  };
-  const onKey = (e) => {
-    if (e.key !== 'Escape') return;
-    e.stopImmediatePropagation();
-    teardown();
-  };
+  let ctrl = null;
+  let picked = false;
+  const list = U.list({ size: 'default', media: 'avatar', label: 'Channels' });
   for (const t of (Array.isArray(targets) ? targets : [])) {
     if (!t || typeof t.channelUrl !== 'string' || typeof t.channelName !== 'string') continue;
-    const row = document.createElement('button');
-    row.type = 'button';
-    row.className = 'attr-picker-row';
-    const avatar = document.createElement('span');
-    avatar.className = 'attr-picker-avatar';
     const source = resolveAvatarSource(t.channelName, t.channelAvatarUrl || '');
-    if (source.type === 'url') {
-      const img = document.createElement('img');
-      img.src = source.url;
-      img.alt = '';
-      img.loading = 'lazy';
-      avatar.appendChild(img);
-    } else {
-      avatar.textContent = source.glyph;
-      avatar.style.backgroundColor = source.color;
-    }
-    row.appendChild(avatar);
-    const name = document.createElement('span');
-    name.className = 'attr-picker-name';
-    name.textContent = t.channelName;
-    row.appendChild(name);
-    const tag = document.createElement('span');
-    tag.className = 'attr-picker-source';
-    tag.textContent = t.source === 'subscription' ? 'Subscribed' : 'In library';
-    row.appendChild(tag);
-    row.addEventListener('click', () => {
-      const relocate = relocateCheck ? relocateCheck.checked === true : false;
-      teardown();
-      if (typeof onPick === 'function') onPick(t, { relocate });
+    const row = U.row({
+      media: U.avatar({ name: t.channelName, url: source.type === 'url' ? source.url : null, kind: 'channel', size: 'md' }),
+      title: t.channelName,
+      meta: t.source === 'subscription' ? 'Subscribed' : 'In library',
+      onClick: () => {
+        if (picked || !ctrl || !ctrl.isOpen()) return;
+        picked = true;
+        const relocate = relocateCheck ? relocateCheck.checked === true : false;
+        ctrl.close();
+        if (typeof onPick === 'function') onPick(t, { relocate });
+      },
     });
+    row.classList.add('attr-picker-row');
     list.appendChild(row);
   }
-  if (!list.firstChild) {
-    const empty = document.createElement('div');
-    empty.className = 'attr-picker-empty';
-    empty.textContent = 'No channels to attribute to yet - subscribe to a channel first.';
-    list.appendChild(empty);
-  }
-  modal.appendChild(list);
+  if (list.firstChild) body.appendChild(list);
+  else body.appendChild(U.state({ icon: 'subscriptions', title: 'No channels to attribute to yet', body: 'Subscribe to a channel first.' }));
 
-  const cancel = document.createElement('button');
-  cancel.type = 'button';
-  cancel.className = 'btn attr-picker-cancel';
-  cancel.textContent = 'Cancel';
-  cancel.addEventListener('click', teardown);
-  modal.appendChild(cancel);
-
-  backdrop.appendChild(modal);
-  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) teardown(); });
-  document.addEventListener('keydown', onKey, true);
-  document.body.appendChild(backdrop);
-  // GATE C1 (adversarial, repro'd): without the shared reveal helper the
-  // backdrop sat at the .modal-backdrop base opacity of ZERO -- an invisible
-  // full-viewport click-eater whose invisible rows could fire a blind bulk
-  // move. Every .modal-backdrop creator calls openOverlay; this one was the
-  // sole exception (the v1.50.3 class: a shared CSS class never implies the
-  // sibling's JS reveal).
-  openOverlay(backdrop, 'modal-open');
-  // Gate W6: the picker is body-mounted, so SPA navigation never sweeps it.
-  // Callers hold this handle and wire it to their view teardown.
-  return { dismiss: teardown };
+  ctrl = U.sheet({ variant: 'dialog', title: o.title || 'Attribute to channel', content: body });
+  ctrl.open();
+  // After open(): ui.sheet sets the sheet's variant classes on open, replacing any set before.
+  ctrl.el.classList.add('attr-picker-dialog');
+  return { dismiss: () => ctrl.close() };
 }
 
 // ---- v1.51: the notification bell ------------------------------------------
@@ -12508,191 +12463,103 @@ function updateAccountMenuThemeItem() {
   use.setAttribute('href', iconHref(dark ? 'light_mode' : 'dark_mode'));
 }
 
-// Global modal dialog helpers
+// Global dialog helpers (sweep S9, D4.6 / D4.8): every dialog is a ui.sheet.
 //
-// v1.26.2 code-review fix (F2, MAJOR): pre-wave, `teardown()` removed the
-// node SYNCHRONOUSLY, so the buttons were physically gone the instant either
-// one was clicked -- a second click had nothing left to hit. Now the close
-// fade takes ~200-300ms (closeOverlayThen), during which the buttons are
-// still live DOM nodes sitting right where the user's finger already is --
-// a double-tap on Confirm (a real path: watch.js's delete flow) fired
-// `onConfirm()` TWICE, i.e. a duplicate destructive `DELETE` request. Fixed
-// with three independent, stacked guards (each alone would suffice; all
-// three stay cheap so there is no reason not to layer them):
-//   1. `settled` -- a plain closure flag flipped on the FIRST Confirm/Cancel
-//      click; every handler bails out immediately if it's already true, so
-//      `onConfirm`/`teardown` can only ever run once no matter how many
-//      clicks land.
-//   2. Both buttons get `disabled = true` the instant `settled` flips --
-//      belt-and-suspenders against a real click actually reaching the
-//      handler again (some environments still dispatch `click` on a
-//      just-disabled button for the SAME event loop turn).
-//   3. `.modal-closing` is added to the backdrop at the same moment,
-//      matched by `.modal-backdrop.modal-closing { pointer-events: none; }`
-//      (style.css) -- blocks any further pointer interaction with the
-//      fading-out dialog for its remaining ~200-300ms on screen. Deliberately
-//      NOT `.modal-backdrop:not(.modal-open)`: `.modal-open` is only added
-//      AFTER the two-step reveal's first frame (openOverlay), and is never
-//      added at all under `prefers-reduced-motion: reduce` -- either would
-//      make `:not(.modal-open)` match (and so block clicks on) the dialog
-//      while it's still legitimately open, not just while it's closing.
-// v1.49: `labels` is OPTIONAL and additive -- `{confirm, cancel}` override the
-// generic wording for a dialog where the specific verb is the whole point ("Move
-// it" / "Leave it where it is" reads as a decision; "Confirm" / "Cancel" reads
-// as a formality, and this dialog gates an irreversible file move). Absent or
-// partial => the existing literals, so every pre-v1.49 call site renders exactly
-// as before. Labels are set via `textContent` below, never interpolated into the
-// `innerHTML` template above -- a caller-supplied string must not become markup.
-// v1.97.1 (Dean): the feed-hidden restore surface moved to a "Hidden" SECTION on
-// the settings page (setup.html / setup.js renderFeedHiddenSection), beside Trash.
-// The old account-menu modal is gone - the settings page scrolls, so a long list
-// is reachable, and the row label shrank to just "Hidden".
+// showConfirmModal / showChoiceModal keep their v1.26-v1.110 signatures and return a
+// dismiss() - callers in other views (watch.js, skin-surface.js, podcasts.js, main.js)
+// reach them as plain globals - but they now draw ui.confirm / ui.menu: one scrim, one
+// surface, one motion, one Close, Esc, focus in and back, the body lock.
+//
+// What the bespoke modal guaranteed and where it lives now:
+//   - one answer per dialog (v1.26.2 F2: a double tap on Confirm fired a duplicate DELETE):
+//     ui.confirm answers once and only from a LIVE dialog (a tap on a closing one is a
+//     no-op), and `settled` below runs onConfirm at most once;
+//   - one dialog per call, its own buttons (v1.49: a second dialog re-bound the first one's
+//     buttons by id): ui.confirm builds its own nodes, there are no ids to collide;
+//   - a dismiss() for the caller's view teardown (v1.49 W2: body-level dialogs outlive an
+//     SPA nav): it aborts the dialog's own signal, which ui.confirm answers as a cancel.
+//
+// The title and body arrive as caller-built HTML (the callers escape the dynamic parts and
+// wrap them in <strong>/<br>/<small>). ui.confirm takes TEXT: the markup is parsed in an
+// inert <template> (no script runs, no image loads), <br> stays a line break (ui.css keeps a
+// confirm body's line breaks), and the result goes in by textContent - no caller string can
+// become live markup, and no inline style (the old red trash warning) survives into it.
+// `labels` = {confirm, cancel, danger}: `danger: true` gives the confirm button the
+// destructive treatment (D4.8, F33 - a caller whose confirm deletes passes it).
+function confirmHtmlToText(html, doc) {
+  if (html == null) return '';
+  const str = String(html).replace(/<br\s*\/?>/gi, '\n');
+  const d = doc || (typeof document !== 'undefined' ? document : null);
+  if (!d || typeof d.createElement !== 'function') return str.replace(/<[^>]*>/g, '').trim();
+  const t = d.createElement('template');
+  t.innerHTML = str;
+  const text = t.content ? t.content.textContent : t.textContent;
+  return String(text || '').replace(/[ \t]+\n/g, '\n').replace(/\n[ \t]+/g, '\n').trim();
+}
+
+function dialogUi() {
+  return (typeof window !== 'undefined' && window.ui) || null;
+}
+
+// Is a LIVE dialog up - any ui.sheet that is not on its way out? A sheet carries
+// `is-closing` from the moment it starts to close (ui.js), so a dialog whose answer is
+// being acted on (the confirm that triggered this very call) does not count. The watch
+// page's relocation offer asks this before it opens a second dialog over a first.
+function isLiveDialogOpen(doc) {
+  const d = doc || (typeof document !== 'undefined' ? document : null);
+  return !!(d && d.querySelector('.ui-sheet:not(.is-closing)'));
+}
 
 function showConfirmModal(title, bodyText, onConfirm, labels) {
-  const modalBackdrop = document.createElement('div');
-  modalBackdrop.className = 'modal-backdrop';
-
-  modalBackdrop.innerHTML = `
-    <div class="modal-content">
-      <div class="modal-title">${title}</div>
-      <div class="modal-body">${bodyText}</div>
-      <div class="modal-actions">
-        <button class="btn" id="modal-cancel-btn">Cancel</button>
-        <button class="btn btn-primary" id="modal-confirm-btn">Confirm</button>
-      </div>
-    </div>
-  `;
-
-  document.body.appendChild(modalBackdrop);
-  openOverlay(modalBackdrop, 'modal-open');
-
-  // v1.49 GATE FIX (adversarial CRITICAL 2): resolved from THIS backdrop, not
-  // from the document. `document.getElementById` returns the FIRST match in
-  // document order, and both ids are baked into every instance's markup -- so
-  // the moment two confirm modals coexist, the second instance silently
-  // re-labels and re-binds the FIRST one's buttons, and the first modal's
-  // existing handler fires alongside the new one. That was impossible before
-  // v1.49 (every call site was synchronous from a click) and became reachable
-  // the instant a background poll could open one: a reheat completing while a
-  // DELETE confirmation is open turned the delete dialog's button into "Move
-  // it" and fired BOTH actions on one click.
-  const cancelBtn = modalBackdrop.querySelector('#modal-cancel-btn');
-  const confirmBtn = modalBackdrop.querySelector('#modal-confirm-btn');
-
-  // v1.49: optional label overrides, applied via textContent (see above).
-  if (labels && typeof labels === 'object') {
-    if (typeof labels.confirm === 'string' && labels.confirm !== '') confirmBtn.textContent = labels.confirm;
-    if (typeof labels.cancel === 'string' && labels.cancel !== '') cancelBtn.textContent = labels.cancel;
-  }
-
-  // F2: flips exactly once -- see the doc comment above this function.
+  const U = dialogUi();
+  const l = (labels && typeof labels === 'object') ? labels : {};
   let settled = false;
-
-  function teardown() {
-    if (modalBackdrop.classList) modalBackdrop.classList.add('modal-closing');
-    closeOverlayThen(modalBackdrop, 'modal-open', () => {
-      if (modalBackdrop.parentNode) document.body.removeChild(modalBackdrop);
-    });
-  }
-
-  cancelBtn.addEventListener('click', () => {
+  if (!U || typeof AbortController === 'undefined') return function dismiss() { settled = true; };
+  const ac = new AbortController();
+  U.confirm({
+    title: confirmHtmlToText(title),
+    body: confirmHtmlToText(bodyText),
+    confirmLabel: (typeof l.confirm === 'string' && l.confirm !== '') ? l.confirm : 'Confirm',
+    cancelLabel: (typeof l.cancel === 'string' && l.cancel !== '') ? l.cancel : 'Cancel',
+    danger: l.danger === true,
+    signal: ac.signal,
+  }).then((ok) => {
     if (settled) return;
     settled = true;
-    cancelBtn.disabled = true;
-    confirmBtn.disabled = true;
-    teardown();
+    // Exactly true: ui.confirm answers only true/false, and nothing but the confirm
+    // button's own click is true.
+    if (ok === true && typeof onConfirm === 'function') onConfirm();
   });
-
-  confirmBtn.addEventListener('click', () => {
-    if (settled) return;
-    settled = true;
-    cancelBtn.disabled = true;
-    confirmBtn.disabled = true;
-    teardown();
-    onConfirm();
-  });
-
-  // v1.49 GATE FIX (adversarial WARNING 2): a dismiss handle for the CALLER.
-  // This modal lives on `document.body`, which the SPA router never swaps (it
-  // only replaces `#view-root`), so nothing about navigating away closes it --
-  // an open "move this file" dialog for video A survives onto video B's page,
-  // still showing A's destination. A view that opens one from an async callback
-  // must be able to close it on teardown. Idempotent, and a no-op once the user
-  // has already answered, so it can be called unconditionally from an abort
-  // handler. Returning a value is additive: every pre-v1.49 call site ignores it.
   return function dismiss() {
     if (settled) return;
     settled = true;
-    cancelBtn.disabled = true;
-    confirmBtn.disabled = true;
-    teardown();
+    ac.abort();
   };
 }
 
-// v1.110 (Dean): a small pick-one action modal -- title + one stacked button per
-// choice + Cancel. Reuses the `.modal-backdrop`/`.modal-content` infra + open/
-// close overlay helpers (so it scrolls, fades, and tears down like every other
-// modal). Built with createElement + textContent ONLY (labels/titles can be
-// media-derived, e.g. a chapter title -- never innerHTML). Settles exactly once:
-// the first choice/cancel/backdrop-tap tears down; a chosen `onPick` runs
-// synchronously in the same click (so navigator.share keeps its user gesture).
-// Returns a `dismiss()` the caller can call on teardown (SPA nav never closes a
-// body-level modal on its own -- the v1.49 lesson).
+// v1.110 (Dean): the pick-one action dialog -- a title and one row per choice. Now ui.menu
+// (a bottom sheet on a phone, a dialog on desktop; Close, Esc and the scrim cancel). Labels
+// and title are textContent (they can be media-derived, e.g. a chapter title). Settles once:
+// the first pick closes the menu and runs its `onPick` SYNCHRONOUSLY in the same click (so
+// navigator.share keeps its user gesture); a second tap picks nothing. Returns a dismiss()
+// for the caller's view teardown.
 function showChoiceModal(title, choices) {
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop';
-  const content = document.createElement('div');
-  content.className = 'modal-content';
-  backdrop.appendChild(content);
-
-  const titleEl = document.createElement('div');
-  titleEl.className = 'modal-title';
-  titleEl.textContent = typeof title === 'string' ? title : '';
-  content.appendChild(titleEl);
-
-  const list = document.createElement('div');
-  list.className = 'choice-modal-list';
-  content.appendChild(list);
-
-  let settled = false;
-  function teardown() {
-    backdrop.classList.add('modal-closing');
-    closeOverlayThen(backdrop, 'modal-open', () => {
-      if (backdrop.parentNode) document.body.removeChild(backdrop);
-    });
-  }
-  function settle(onPick) {
-    if (settled) return;
-    settled = true;
-    teardown();
-    if (typeof onPick === 'function') onPick();
-  }
-
-  (Array.isArray(choices) ? choices : []).forEach((choice) => {
-    if (!choice || typeof choice.label !== 'string') return;
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'btn choice-modal-btn';
-    btn.textContent = choice.label;
-    btn.addEventListener('click', () => settle(choice.onPick));
-    list.appendChild(btn);
-  });
-
-  const actions = document.createElement('div');
-  actions.className = 'modal-actions';
-  const cancelBtn = document.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'btn';
-  cancelBtn.textContent = 'Cancel';
-  cancelBtn.addEventListener('click', () => settle());
-  actions.appendChild(cancelBtn);
-  content.appendChild(actions);
-
-  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) settle(); });
-
-  document.body.appendChild(backdrop);
-  openOverlay(backdrop, 'modal-open');
-  return function dismiss() { settle(); };
+  const U = dialogUi();
+  if (!U) return function dismiss() {};
+  let picked = false;
+  const items = (Array.isArray(choices) ? choices : [])
+    .filter((choice) => choice && typeof choice.label === 'string')
+    .map((choice) => ({
+      label: choice.label,
+      onSelect: () => {
+        if (picked) return;
+        picked = true;
+        if (typeof choice.onPick === 'function') choice.onPick();
+      },
+    }));
+  const heading = typeof title === 'string' ? title : '';
+  const ctrl = U.menu({ title: heading, label: heading || 'Choose', items });
+  return function dismiss() { ctrl.close(); };
 }
 
 // ---- Transcript flow (v1.203: SHARED by the watch page and the card corner) ----
@@ -12815,94 +12682,81 @@ function openTranscriptFor(opts) {
   }).finally(() => onBusy(false));
 }
 
-// Transcript export (Dean: "primarily a text field on desktop"): the desktop
-// Transcript modal. `opts.text` is the already-fetched document (title / date
-// / channel, blank line, transcript); `opts.loadText(timestamps)` re-fetches
-// it with `[m:ss]` prefixes when the "Show timestamps" box is toggled
-// (default OFF - Dean's ruling). Read-only textarea (select-all + copy works
-// natively), a Copy button with the same "Copied!" label feedback the Share
-// button uses, and Close.
-// v1.201 (Dean): `opts.aiPrompts` ([{id, name, text}], may be empty) adds a
-// third button - "Share with AI" where the browser has a share sheet, else
-// "Copy for AI" - that hands `<prompt>\n\n<the CURRENT textarea value>` to
-// `opts.shareAi(promptText, currentText, label)`. One prompt acts directly;
-// several open a pick-one modal of names first (its dismiss rides on this
-// modal's). An empty list adds nothing (never a do-nothing button). Same `.modal-backdrop`/`.modal-content` infra and
-// createElement/textContent discipline as showChoiceModal; returns a
-// `dismiss()` for the view's abort teardown (body-level modals outlive SPA
-// nav on their own - the v1.49 lesson).
+// Transcript export (Dean: "primarily a text field on desktop"): the desktop Transcript
+// dialog. `opts.text` is the already-fetched document (title / date / channel, blank line,
+// transcript); `opts.loadText(timestamps)` re-fetches it with `[m:ss]` prefixes when the
+// "Show timestamps" switch is flipped (default OFF - Dean's ruling). A read-only field
+// (select-all + copy works natively) and Copy, whose feedback is a toast (D4.9: "Copied" is
+// a toast, never a label swap).
+// v1.201 (Dean): `opts.aiPrompts` ([{id, name, text}], may be empty) adds "Share with AI"
+// where the browser has a share sheet, else "Copy for AI", handing `<prompt>\n\n<the CURRENT
+// field value>` to `opts.shareAi(promptText, currentText, label)`. One prompt acts directly;
+// several open a pick-one of names first (its dismiss rides on this dialog's). An empty list
+// adds nothing (never a do-nothing button).
+// Sweep S9: a ui.sheet dialog (the wide modifier - prose wants room), the sheet's own Close,
+// Esc and scrim; textContent throughout; returns a `dismiss()` for the view's abort teardown
+// (body-level overlays outlive SPA nav on their own - the v1.49 lesson).
 function showTranscriptModal(opts) {
   const o = opts || {};
-  const backdrop = document.createElement('div');
-  backdrop.className = 'modal-backdrop';
-  const content = document.createElement('div');
-  content.className = 'modal-content transcript-modal';
-  backdrop.appendChild(content);
-
-  const titleEl = document.createElement('div');
-  titleEl.className = 'modal-title';
-  titleEl.textContent = 'Transcript';
-  content.appendChild(titleEl);
+  const U = dialogUi();
+  if (!U) return function dismiss() {};
+  const body = document.createDocumentFragment();
+  const fieldWrap = document.createElement('div');
+  fieldWrap.className = 'ui-field transcript-field';
 
   const textarea = document.createElement('textarea');
-  textarea.className = 'transcript-textarea';
+  textarea.className = 'ui-field__input transcript-textarea';
   textarea.id = 'transcript-text';
   textarea.readOnly = true;
   textarea.spellcheck = false;
   textarea.setAttribute('aria-label', 'Transcript');
   textarea.value = typeof o.text === 'string' ? o.text : '';
-  content.appendChild(textarea);
+  fieldWrap.appendChild(textarea);
+  body.appendChild(fieldWrap);
 
   const options = document.createElement('label');
   options.className = 'transcript-options';
+  const tsLabel = document.createElement('span');
+  tsLabel.textContent = 'Show timestamps';
   const tsBox = document.createElement('input');
   tsBox.type = 'checkbox';
   tsBox.id = 'transcript-timestamps';
+  tsBox.className = 'ui-switch';
+  tsBox.setAttribute('role', 'switch');
   tsBox.checked = false;
+  options.appendChild(tsLabel);
   options.appendChild(tsBox);
-  options.appendChild(document.createTextNode('Show timestamps'));
-  content.appendChild(options);
+  body.appendChild(options);
 
   const actions = document.createElement('div');
-  actions.className = 'modal-actions';
-  const copyBtn = document.createElement('button');
-  copyBtn.type = 'button';
-  copyBtn.id = 'transcript-copy-btn';
-  copyBtn.className = 'btn btn-primary';
-  copyBtn.textContent = 'Copy';
-  const closeBtn = document.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'btn';
-  closeBtn.textContent = 'Close';
+  actions.className = 'ui-confirm__actions';
   const aiPrompts = Array.isArray(o.aiPrompts) ? o.aiPrompts.filter((p) => p && typeof p.text === 'string' && p.text !== '') : [];
   const hasShareSheet = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
   let aiBtn = null;
+  const aiLabel = hasShareSheet ? 'Share with AI' : 'Copy for AI';
   if (aiPrompts.length > 0 && typeof o.shareAi === 'function') {
-    aiBtn = document.createElement('button');
-    aiBtn.type = 'button';
+    aiBtn = U.button({ variant: 'secondary', label: aiLabel });
     aiBtn.id = 'transcript-ai-btn';
-    aiBtn.className = 'btn';
-    aiBtn.textContent = hasShareSheet ? 'Share with AI' : 'Copy for AI';
     actions.appendChild(aiBtn);
   }
+  const copyBtn = U.button({ variant: 'primary', icon: 'content_copy', label: 'Copy' });
+  copyBtn.id = 'transcript-copy-btn';
   actions.appendChild(copyBtn);
-  actions.appendChild(closeBtn);
-  content.appendChild(actions);
+  body.appendChild(actions);
 
   let settled = false;
-  let copyResetTimer = null;
   let loadSeq = 0; // supersession guard for a fast double-toggle
-  let aiPickDismiss = null; // the prompt pick-one modal, torn down with this one
-  function dismiss() {
-    if (settled) return;
-    settled = true;
-    if (copyResetTimer) clearTimeout(copyResetTimer);
-    if (aiPickDismiss) { aiPickDismiss(); aiPickDismiss = null; }
-    backdrop.classList.add('modal-closing');
-    closeOverlayThen(backdrop, 'modal-open', () => {
-      if (backdrop.parentNode) document.body.removeChild(backdrop);
-    });
-  }
+  let aiPickDismiss = null; // the prompt pick-one, torn down with this dialog
+  const ctrl = U.sheet({
+    variant: 'dialog',
+    title: 'Transcript',
+    content: body,
+    onClosing: () => {
+      settled = true;
+      if (aiPickDismiss) { aiPickDismiss(); aiPickDismiss = null; }
+    },
+  });
+  function dismiss() { ctrl.close(); }
 
   tsBox.addEventListener('change', () => {
     if (typeof o.loadText !== 'function') return;
@@ -12914,7 +12768,7 @@ function showTranscriptModal(opts) {
       if (typeof text === 'string') textarea.value = text;
     }).catch(() => {
       if (settled || seq !== loadSeq) return;
-      if (typeof showToast === 'function') showToast('Could not load the transcript.');
+      showToast('Could not load the transcript.', null, { kind: 'error' });
       tsBox.checked = !wanted; // reflect the state that is actually shown
     }).then(() => { if (seq === loadSeq) tsBox.disabled = false; });
   });
@@ -12923,31 +12777,26 @@ function showTranscriptModal(opts) {
     copyTextToClipboard(textarea.value).then((outcome) => {
       if (settled) return;
       if (outcome !== 'copied') {
-        if (typeof showToast === 'function') showToast('Could not copy - select the text and copy it manually.');
+        showToast('Could not copy - select the text and copy it manually.', null, { kind: 'error' });
         return;
       }
-      copyBtn.textContent = 'Copied!';
-      if (typeof showToast === 'function') showToast('Transcript copied');
-      if (copyResetTimer) clearTimeout(copyResetTimer);
-      copyResetTimer = setTimeout(() => { copyBtn.textContent = 'Copy'; copyResetTimer = null; }, 1500);
+      showToast('Transcript copied', null, { kind: 'success' });
     });
   });
   if (aiBtn) {
     aiBtn.addEventListener('click', () => {
-      const label = aiBtn.textContent;
-      const run = (prompt) => o.shareAi(prompt.text, textarea.value, label);
+      const run = (prompt) => o.shareAi(prompt.text, textarea.value, aiLabel);
       if (aiPrompts.length === 1) { run(aiPrompts[0]); return; }
       if (aiPickDismiss) aiPickDismiss();
-      aiPickDismiss = showChoiceModal(label, aiPrompts.map((prompt) => ({ label: prompt.name, onPick: () => { aiPickDismiss = null; run(prompt); } })));
+      aiPickDismiss = showChoiceModal(aiLabel, aiPrompts.map((prompt) => ({ label: prompt.name, onPick: () => { aiPickDismiss = null; run(prompt); } })));
     });
   }
-  closeBtn.addEventListener('click', dismiss);
-  // v1.289: drag-safe dismiss - selecting the transcript text (or the timestamp
-  // input) and releasing on the backdrop must not close it.
-  bindBackdropDismiss(backdrop, dismiss);
-
-  document.body.appendChild(backdrop);
-  openOverlay(backdrop, 'modal-open');
+  // A drag that starts in the field and ends outside never closes it: the scrim is the
+  // sheet's SIBLING, so such a drag clicks their common ancestor, not the scrim (the v1.289
+  // drag-safe property, by structure).
+  ctrl.open();
+  // After open(): ui.sheet sets the sheet's variant classes on open, replacing any set before.
+  ctrl.el.classList.add('transcript-dialog');
   return dismiss;
 }
 
@@ -13004,116 +12853,96 @@ function deleteFlowFor(item) {
 }
 
 /**
- * The escalated, checkbox-gated hard-delete confirm for a LOCAL
- * (non-yt-dlp) file (AC46) -- visually/interactionally DISTINCT from
- * `showConfirmModal` above (its own `.hard-delete-modal-*` classes/red
- * hard-warning treatment, never `.modal-*`), and from the one-off/subscribe
- * modals (its own classes, not `.oneoff-modal-*`). Self-contained like
- * `showConfirmModal` -- appends itself to `doc.body` and tears itself down,
- * so both call sites (`watch.js`'s delete button, `main.js`'s card two-tap
- * arm) just call `showHardDeleteModal(item, onConfirm)` with no boilerplate.
- * `doc` is optional (defaults to `document`) purely so this is directly
- * node:test-covered against a fake DOM, mirroring `buildSubscribeModal`/
- * `buildOneOffModal`'s injectable-`doc` pattern above.
+ * The escalated, checkbox-gated confirm for deleting a LOCAL (non-yt-dlp) file (AC46).
  *
- * The Delete button starts DISABLED and only enables once the "I understand"
- * checkbox (v1.65 copy: "...cannot be re-downloaded if the Trash empties
- * it") is ticked -- a conscious extra
- * action beyond the existing confirm modal / two-tap arm (a 3rd, deliberate
- * step). Reuses the v1.17.0 one-off-modal backdrop-dismiss FULL-teardown
- * pattern (`.remove()`, not merely `hidden`, so it can never get stuck as a
- * dead/dimmed overlay -- see the FR-6 fix note above `.oneoff-modal-backdrop`
- * in style.css) -- a backdrop tap or Cancel fully detaches the node and never
- * calls `onConfirm`.
+ * F44 (sweep S9): the copy says what the code does. `onConfirm` is the caller's delete - the
+ * watch page's performMediaDelete and the Pocket extras' doDelete - and both send
+ * `DELETE /api/videos/:id`, which since v1.65 moves the file to TRASH for every item
+ * (lib/media/routes.js: trashItem(), an atomic rename into the root's trash dir; the file is
+ * restorable from Settings until the retention window empties it; never an unlink here).
+ * So the title is "Move this local file to Trash?" and the button is "Move to Trash" - the
+ * old "Delete permanently" button contradicted both its own title and the route. The extra
+ * deliberate step stays: the button starts DISABLED and only the "I understand" checkbox
+ * enables it (a local file cannot be re-downloaded once the Trash empties it).
  *
- * SECURITY: every dynamic string (the file's title/filePath) is rendered via
- * `createElement`/`textContent` ONLY -- never `innerHTML` (unlike the older
- * `showConfirmModal` above) -- so a hostile filename/title can never be
- * parsed as markup.
+ * A ui.sheet dialog (D4.8: one danger fill, no stacked red treatments). Cancel, Close, Esc
+ * and the scrim all close it without calling `onConfirm`; `onConfirm` runs at most ONCE, only
+ * from the enabled button of a LIVE dialog (a double tap, or a tap on a closing one, is a
+ * no-op). Every dynamic string (the title, the path) is textContent - a hostile filename
+ * can never become markup. `doc` is injectable for jsdom tests. Returns the parts a caller
+ * or test needs, plus `teardown` (closes it; never confirms).
  */
 function showHardDeleteModal(item, onConfirm, doc) {
   const d = doc || document;
+  const win = d.defaultView || (typeof window !== 'undefined' ? window : null);
+  const U = (win && win.ui) || dialogUi();
   const it = item || {};
+  if (!U) return null;
+  const body = d.createDocumentFragment();
 
-  const backdrop = d.createElement('div');
-  backdrop.className = 'hard-delete-modal-backdrop';
-  backdrop.addEventListener('click', (e) => {
-    if (e && e.target === backdrop) teardown();
-  });
-
-  const modal = d.createElement('div');
-  modal.className = 'hard-delete-modal';
-  backdrop.appendChild(modal);
-
-  const title = d.createElement('div');
-  title.className = 'hard-delete-modal-title';
-  // v1.65: deletes route through TRASH now -- the copy tells the truth
-  // (recoverable for the retention window) while keeping the guard posture
-  // for a file that cannot be re-downloaded if it ages out.
-  title.textContent = 'Move this local file to Trash?';
-  modal.appendChild(title);
-
-  const warning = d.createElement('div');
-  warning.className = 'hard-delete-modal-warning';
+  const warning = d.createElement('p');
+  warning.className = 'ui-confirm__body';
   warning.textContent = 'This local file cannot be re-downloaded. It moves to Trash and can be restored from Settings until the retention window empties it.';
-  modal.appendChild(warning);
+  body.appendChild(warning);
 
-  const nameEl = d.createElement('div');
-  nameEl.className = 'hard-delete-modal-filename';
+  const file = d.createElement('div');
+  file.className = 'hard-delete-dialog__file';
+  const nameEl = d.createElement('p');
+  nameEl.className = 'hard-delete-dialog__name';
   nameEl.textContent = typeof it.title === 'string' && it.title !== '' ? it.title : 'this file';
-  modal.appendChild(nameEl);
-
-  const pathEl = d.createElement('div');
-  pathEl.className = 'hard-delete-modal-path';
+  const pathEl = d.createElement('p');
+  pathEl.className = 'hard-delete-dialog__path';
   pathEl.textContent = typeof it.filePath === 'string' ? it.filePath : '';
-  modal.appendChild(pathEl);
+  file.appendChild(nameEl);
+  file.appendChild(pathEl);
+  body.appendChild(file);
 
-  const checkboxLabel = d.createElement('label');
-  checkboxLabel.className = 'hard-delete-modal-checkbox-row';
+  const ack = d.createElement('label');
+  ack.className = 'hard-delete-dialog__ack';
   const checkbox = d.createElement('input');
   checkbox.type = 'checkbox';
   checkbox.checked = false;
-  checkboxLabel.appendChild(checkbox);
-  checkboxLabel.appendChild(d.createTextNode(' I understand it cannot be re-downloaded if the Trash empties it.'));
-  modal.appendChild(checkboxLabel);
+  const ackText = d.createElement('span');
+  ackText.textContent = 'I understand it cannot be re-downloaded if the Trash empties it.';
+  ack.appendChild(checkbox);
+  ack.appendChild(ackText);
+  body.appendChild(ack);
 
-  const actionsRow = d.createElement('div');
-  actionsRow.className = 'hard-delete-modal-actions';
+  const actions = d.createElement('div');
+  actions.className = 'ui-confirm__actions';
+  const cancelBtn = U.button({ variant: 'secondary', label: 'Cancel', doc: d });
+  // Starts disabled -- only the checkbox's 'change' handler can enable it (AC46).
+  const deleteBtn = U.button({ variant: 'primary', label: 'Move to Trash', disabled: true, doc: d });
+  deleteBtn.classList.add('ui-btn--destructive');
+  actions.appendChild(cancelBtn);
+  actions.appendChild(deleteBtn);
+  body.appendChild(actions);
 
-  const cancelBtn = d.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'btn';
-  cancelBtn.textContent = 'Cancel';
+  const title = 'Move this local file to Trash?';
+  const ctrl = U.sheet({ variant: 'dialog', title, content: body, doc: d, win });
+  let confirmed = false;
+  function teardown() { ctrl.close(); }
+
   cancelBtn.addEventListener('click', () => teardown());
-  actionsRow.appendChild(cancelBtn);
-
-  // Starts disabled -- only the checkbox's 'change' handler below can ever
-  // enable it (AC46's "conscious extra action").
-  const deleteBtn = d.createElement('button');
-  deleteBtn.type = 'button';
-  deleteBtn.className = 'hard-delete-modal-confirm-btn';
-  deleteBtn.textContent = 'Delete permanently';
-  deleteBtn.disabled = true;
   deleteBtn.addEventListener('click', () => {
-    if (deleteBtn.disabled) return; // belt-and-suspenders -- a disabled button shouldn't fire, but never trust that alone
+    // Belt-and-suspenders: a disabled button should not fire, a closing dialog answers
+    // nothing, and a confirmed one never confirms twice.
+    if (deleteBtn.disabled || confirmed || !ctrl.isOpen()) return;
+    confirmed = true;
     teardown();
     if (typeof onConfirm === 'function') onConfirm();
   });
-  actionsRow.appendChild(deleteBtn);
-
-  modal.appendChild(actionsRow);
-
   checkbox.addEventListener('change', () => {
     deleteBtn.disabled = !checkbox.checked;
   });
 
-  function teardown() {
-    backdrop.remove();
-  }
-
-  d.body.appendChild(backdrop);
-
-  return { backdrop, modal, title, warning, nameEl, pathEl, checkbox, cancelBtn, deleteBtn, teardown };
+  ctrl.open();
+  // After open(): ui.sheet sets the sheet's variant classes on open, replacing any set before.
+  ctrl.el.classList.add('hard-delete-dialog');
+  return {
+    sheet: ctrl.el, modal: ctrl.el, title: ctrl.el.querySelector('.ui-sheet__title'),
+    warning, nameEl, pathEl, checkbox, cancelBtn, deleteBtn, teardown,
+  };
 }
 
 // ---- C1 (v1.24 UX Round, Wave 3): per-item "Move to..." picker -------------
@@ -13137,152 +12966,94 @@ function showHardDeleteModal(item, onConfirm, doc) {
 // rendered via `createElement`/`textContent` ONLY -- never `innerHTML` --
 // mirroring `showHardDeleteModal`'s discipline exactly.
 //
-// CSS: reuses the existing GENERIC `.modal-backdrop`/`.modal-content`/
-// `.modal-title`/`.modal-body`/`.modal-actions` classes (`showConfirmModal`'s
-// family, style.css ~L2156) plus `.btn`/`.btn-primary` -- deliberately NOT
-// `.hard-delete-modal-*` (that family's red/warning treatment reads as
-// destructive, the wrong tone for a routine move) nor `.oneoff-modal-*` (a
-// bigger form-shaped shell this doesn't need). No new CSS class is
-// introduced; the folder `<select>` renders with default browser chrome
-// (functional, plain -- this task does not own style.css).
+// Sweep S9: a ui.sheet dialog - a line naming the file, a ui-select of the folders, a status
+// line and Cancel / Move - not the old generic modal family.
 
 /**
- * Pure, self-contained "Move to..." picker modal. `item` needs at least
- * `title` (used for the confirmation copy; falls back to a generic label
- * when absent). `folders` is a plain array of folder path strings (the SAME
- * shape `GET /api/config`'s `folders` field already returns). `onMove(
- * targetFolder, { teardown, statusEl })` fires once, only when a folder is
- * selected and Move is clicked -- the callback owns the actual request +
- * teardown timing (mirrors `buildOneOffModal`'s `handlers.onDownload`
- * convention: this function never itself calls `fetch`). `doc` defaults to
- * `document` (mirrors `showHardDeleteModal`'s injectable-`doc` pattern for
- * direct node:test coverage against a fake DOM).
+ * Pure, self-contained "Move to…" picker. `item` needs at least `title` (the confirmation
+ * copy; falls back to a generic label). `folders` is a plain array of folder path strings
+ * (the SAME shape `GET /api/config`'s `folders` field returns). `onMove(targetFolder,
+ * { teardown, statusEl, reenable })` fires once, only when a folder is selected and Move is
+ * clicked -- the callback owns the actual request + teardown timing (this function never
+ * calls `fetch`). `doc` defaults to `document` (injectable for jsdom tests).
+ *
+ * v1.26.2 F2 (a double tap on Move fired two concurrent move requests): `busy` arms BEFORE
+ * onMove runs, disables Move and Cancel, and refuses every dismissal (Cancel, Close, Esc,
+ * the scrim - ui.sheet's `canDismiss`) until the caller hands control back through
+ * `reenable` (a failed request) or closes it with `teardown` (success). A closing dialog
+ * answers nothing either (`ctrl.isOpen()`).
  */
-// v1.26.2 code-review fix (F2, MAJOR): same double-fire exposure as
-// `showConfirmModal` above (see its doc comment) -- Move calls the caller's
-// async `onMove`, which does NOT auto-teardown on success (deliberate, see
-// this function's own top-of-file design note) NOR on failure (the caller
-// shows the error in `statusEl` and leaves the modal open so the user can
-// pick a different folder and retry). A double-tap on Move before the first
-// request resolves would otherwise fire `onMove` -- and so the real
-// `POST /api/videos/:id/move` -- twice, concurrently, for the same item.
-//
-// `busy` mirrors `showConfirmModal`'s `settled` flag, but is NOT permanent:
-// it flips back to `false` via the `reenable` callback handed to `onMove`
-// alongside the existing `teardown`/`statusEl`, so a caller whose request
-// fails can hand control back to the user exactly where they left off --
-// unlike Confirm/Cancel above (which always end in `teardown()`, so
-// `settled` there never needs to un-flip). Cancel and the backdrop-dismiss
-// are guarded the same way so a stray click during an in-flight Move can't
-// also start tearing the dialog down out from under it. `teardown()` itself
-// adds `.modal-closing` (style.css's `pointer-events: none` -- see
-// `showConfirmModal`'s comment for why NOT `:not(.modal-open)`) so the
-// buttons can't be hit again during the ~200-300ms close fade either.
 function showMoveModal(item, folders, onMove, doc) {
   const d = doc || document;
+  const win = d.defaultView || (typeof window !== 'undefined' ? window : null);
+  const U = (win && win.ui) || dialogUi();
   const it = item || {};
   const list = Array.isArray(folders) ? folders.filter((f) => typeof f === 'string' && f !== '') : [];
+  if (!U) return null;
 
-  const backdrop = d.createElement('div');
-  backdrop.className = 'modal-backdrop';
-  backdrop.addEventListener('click', (e) => {
-    if (e && e.target === backdrop && !busy) teardown();
-  });
-
-  const modal = d.createElement('div');
-  modal.className = 'modal-content';
-  backdrop.appendChild(modal);
-
-  const title = d.createElement('div');
-  title.className = 'modal-title';
-  title.textContent = 'Move to...';
-  modal.appendChild(title);
-
-  const body = d.createElement('div');
-  body.className = 'modal-body';
-  modal.appendChild(body);
-
-  const label = d.createElement('div');
+  const body = d.createDocumentFragment();
+  const label = d.createElement('p');
+  label.className = 'ui-confirm__body';
   const displayName = typeof it.title === 'string' && it.title !== '' ? it.title : 'this file';
   label.textContent = `Move "${displayName}" to:`;
   body.appendChild(label);
 
-  const select = d.createElement('select');
-  if (list.length === 0) {
-    const emptyOpt = d.createElement('option');
-    emptyOpt.value = '';
-    emptyOpt.textContent = 'No folders configured';
-    select.appendChild(emptyOpt);
-  } else {
-    list.forEach((folder) => {
-      const opt = d.createElement('option');
-      opt.value = folder;
-      opt.textContent = folder;
-      select.appendChild(opt);
-    });
+  const field = U.select({
+    label: 'Folder',
+    options: list.length ? list.map((f) => ({ value: f, label: f })) : [{ value: '', label: 'No folders configured' }],
+    doc: d,
+  });
+  const select = field.select;
+  body.appendChild(field.el);
+
+  const statusEl = d.createElement('p');
+  statusEl.className = 'ui-confirm__body move-dialog__status';
+  statusEl.setAttribute('aria-live', 'polite');
+  body.appendChild(statusEl);
+
+  const actions = d.createElement('div');
+  actions.className = 'ui-confirm__actions';
+  const cancelBtn = U.button({ variant: 'secondary', label: 'Cancel', doc: d });
+  // Starts disabled when there is nothing to move into (no configured folders).
+  const moveBtn = U.button({ variant: 'primary', label: 'Move', disabled: list.length === 0, doc: d });
+  actions.appendChild(cancelBtn);
+  actions.appendChild(moveBtn);
+  body.appendChild(actions);
+
+  let busy = false;
+  const ctrl = U.sheet({ variant: 'dialog', title: 'Move to…', content: body, canDismiss: () => !busy, doc: d, win });
+
+  function setBusy(nextBusy) {
+    busy = nextBusy;
+    moveBtn.disabled = nextBusy || list.length === 0;
+    cancelBtn.disabled = nextBusy;
+    if (U.setBusy) U.setBusy(moveBtn, nextBusy);
   }
-  body.appendChild(select);
+  function teardown() { ctrl.close(); }
 
-  const statusEl = d.createElement('div');
-  statusEl.className = 'modal-body';
-  modal.appendChild(statusEl);
-
-  const actionsRow = d.createElement('div');
-  actionsRow.className = 'modal-actions';
-
-  const cancelBtn = d.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'btn';
-  cancelBtn.textContent = 'Cancel';
   cancelBtn.addEventListener('click', () => {
     if (busy) return;
     teardown();
   });
-  actionsRow.appendChild(cancelBtn);
-
-  // Starts disabled when there is nothing to move into (no configured
-  // folders) -- mirrors showHardDeleteModal's "starts disabled until a real
-  // choice exists" posture, just gated on data availability instead of a
-  // checkbox.
-  const moveBtn = d.createElement('button');
-  moveBtn.type = 'button';
-  moveBtn.className = 'btn btn-primary';
-  moveBtn.textContent = 'Move';
-  moveBtn.disabled = list.length === 0;
   moveBtn.addEventListener('click', () => {
-    if (busy || moveBtn.disabled) return; // belt-and-suspenders -- mirrors showHardDeleteModal
+    if (busy || moveBtn.disabled || !ctrl.isOpen()) return;
     const target = select.value;
     if (!target) {
       statusEl.textContent = 'Choose a folder first.';
       return;
     }
-    // F2: arm the busy guard BEFORE calling out -- onMove's request is
-    // async, so without this a second tap before it resolves would fire a
-    // second, concurrent move request for the same item.
+    // F2: arm the busy guard BEFORE calling out -- onMove's request is async.
     setBusy(true);
     if (typeof onMove === 'function') onMove(target, { teardown, statusEl, reenable: () => setBusy(false) });
   });
-  actionsRow.appendChild(moveBtn);
 
-  modal.appendChild(actionsRow);
-
-  // F2: see this function's top-of-file doc comment.
-  let busy = false;
-  function setBusy(nextBusy) {
-    busy = nextBusy;
-    moveBtn.disabled = nextBusy || list.length === 0;
-    cancelBtn.disabled = nextBusy;
-  }
-
-  function teardown() {
-    if (backdrop.classList) backdrop.classList.add('modal-closing');
-    closeOverlayThen(backdrop, 'modal-open', () => backdrop.remove());
-  }
-
-  d.body.appendChild(backdrop);
-  openOverlay(backdrop, 'modal-open');
-
-  return { backdrop, modal, title, body, label, select, statusEl, cancelBtn, moveBtn, teardown };
+  ctrl.open();
+  // After open(): ui.sheet sets the sheet's variant classes on open, replacing any set before.
+  ctrl.el.classList.add('move-dialog');
+  return {
+    sheet: ctrl.el, modal: ctrl.el, title: ctrl.el.querySelector('.ui-sheet__title'),
+    body: ctrl.body, label, select, statusEl, cancelBtn, moveBtn, teardown,
+  };
 }
 
 // Pocket menus gate r1 K2 (qa W1 + adversary W2): the ONE "the library changed under you" seam.
@@ -17124,6 +16895,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.286 (Dean, everything shareable): universal file-share + its pure strategy decision.
     shareMediaFile, chooseShareStrategy,
     showChoiceModal,
+    // Sweep S9: the dialogs on ui.sheet (jsdom-tested with the real ui.js).
+    confirmHtmlToText, isLiveDialogOpen, showTranscriptModal,
     // v1.87.1 / UI pass step 2: the chrome glyphs (the name map + markup/element
     // builders over the icon sprite). chrome-icons.test.js binds every map entry to a
     // registry icon and source-locks the shells' static markup against chromeIconMarkup.

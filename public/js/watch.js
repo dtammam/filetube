@@ -3720,7 +3720,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // `prefers-reduced-motion`, where the node is removed synchronously.
       // `.modal-closing` exists (v1.26.2) precisely to mean "on its way out,
       // not interactive", so this asks the right question: is a LIVE dialog up?
-      if (document.querySelector('.modal-backdrop:not(.modal-closing)')) {
+      // Sweep S9: every dialog is a ui.sheet now, and a sheet on its way out
+      // carries `is-closing` from the instant it starts to close (before the
+      // confirm's onConfirm runs) - isLiveDialogOpen (common.js) asks exactly that.
+      if (isLiveDialogOpen()) {
         // Second half of the same finding: do not drop the offer in silence.
         // A genuinely open dialog (the Delete confirm, say) would otherwise
         // make the relocation offer vanish with no toast and no retry -- a
@@ -3850,10 +3853,12 @@ if (typeof module !== 'undefined' && module.exports) {
       }
     }
 
-    // `showConfirmModal` interpolates its body with innerHTML, and both strings
-    // above are filesystem-derived (a path, a channel-named folder). Escaped
-    // here rather than trusted -- a filename is attacker-influenced input on a
-    // server that scans whatever folders it is pointed at.
+    // `showConfirmModal` parses its body as markup (common.js confirmHtmlToText)
+    // before it lands as text, and both strings above are filesystem-derived (a
+    // path, a channel-named folder). Escaped here so a filename's own `<` or `&`
+    // reads literally instead of being eaten as a tag or an entity -- a filename
+    // is attacker-influenced input on a server that scans whatever folders it is
+    // pointed at.
     function escapeHtmlText(s) {
       return String(s == null ? '' : s)
         .replace(/&/g, '&amp;')

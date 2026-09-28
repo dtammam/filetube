@@ -383,6 +383,12 @@ module.exports = [
         // consumed by main.js's home/library grid render + load-error path.
         buildEmptyStateHtml: 'readonly',
         buildErrorStateHtml: 'readonly',
+        // Sweep S9: the ui-state markup builder (main.js's string-rendered empty and
+        // error states), the header glyph builder (main.js's Modern sort / view glyphs)
+        // and the live-dialog query (watch.js's relocation offer).
+        uiStateHtml: 'readonly',
+        chromeButtonEl: 'readonly',
+        isLiveDialogOpen: 'readonly',
       },
     },
   },

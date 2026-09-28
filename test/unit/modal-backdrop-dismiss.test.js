@@ -107,7 +107,9 @@ test('every editable-text modal routes dismiss through bindBackdropDismiss (no i
     const next = src.indexOf('\nfunction ', start + 1);
     return src.slice(start, next === -1 ? src.length : next);
   }
-  for (const name of ['buildOneOffModal', 'buildSubscribeModal', 'showChaptersEditor', 'showTranscriptModal']) {
+  // Sweep S9: showTranscriptModal is a ui.sheet - drag-safe by structure (the scrim is the
+  // sheet's sibling); overlays-dialogs-s9.test.js drives that drag. The rest still bind the helper.
+  for (const name of ['buildOneOffModal', 'buildSubscribeModal', 'showChaptersEditor']) {
     const body = bodyOf(name);
     assert.match(body, /bindBackdropDismiss\(backdrop,/, name + ' must use the drag-safe helper');
     // The porous inline pattern must be gone (either quote style - eslint enforces

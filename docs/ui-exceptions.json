@@ -189,18 +189,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.attr-picker-avatar|height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.attr-picker-avatar|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.audio-artwork|height",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -718,30 +706,6 @@
       },
       {
         "key": "public/css/style.css|.handoff-thumb|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.hard-delete-modal-confirm-btn|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.hard-delete-modal-warning|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.hard-delete-modal|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.hard-delete-modal|max-width",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -3639,12 +3603,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.transcript-textarea|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.trash-thumb|width",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -5561,18 +5519,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".attr-picker-avatar",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".attr-picker-row",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".avatar-crop-backdrop",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -5598,7 +5544,7 @@
       },
       {
         "key": ".btn",
-        "count": 32,
+        "count": 30,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -5681,12 +5627,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".choice-modal-btn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".dl-status-chip-dismiss-btn",
         "count": 3,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -5761,30 +5701,6 @@
       {
         "key": ".handoff-thumb",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".hard-delete-modal",
-        "count": 3,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".hard-delete-modal-backdrop",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".hard-delete-modal-checkbox-row",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".hard-delete-modal-confirm-btn",
-        "count": 3,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -6305,12 +6221,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".transcript-modal",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".trash-row",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -6534,18 +6444,12 @@
       },
       {
         "key": "public/js/common.js|<button>|btn",
-        "count": 3,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/common.js|<button>|md-row",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/common.js|createElement(button)|aiBtn",
+        "key": "public/js/common.js|<button>|md-row",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -6563,43 +6467,19 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/common.js|createElement(button)|btn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/common.js|createElement(button)|cancel",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/js/common.js|createElement(button)|cancelBtn",
-        "count": 7,
+        "count": 4,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
       {
         "key": "public/js/common.js|createElement(button)|closeBtn",
-        "count": 3,
+        "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
       {
         "key": "public/js/common.js|createElement(button)|confirmBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/common.js|createElement(button)|copyBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/common.js|createElement(button)|deleteBtn",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -6623,19 +6503,7 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/common.js|createElement(button)|moveBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/js/common.js|createElement(button)|retryBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/common.js|createElement(button)|row",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"

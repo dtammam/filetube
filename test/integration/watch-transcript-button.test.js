@@ -8,8 +8,10 @@
 //     `hasSubtitles: true`; absent otherwise
 //   - DESKTOP click: fetches `/api/transcript/:id` (no timestamps) and opens
 //     the read-only text-field modal holding that exact text; the "Show
-//     timestamps" box re-fetches with `?timestamps=1` (and back); Copy writes
-//     the textarea's CURRENT value to the clipboard with "Copied!" feedback
+//     timestamps" switch re-fetches with `?timestamps=1` (and back); Copy writes
+//     the textarea's CURRENT value to the clipboard with a "Transcript copied" toast
+//   - sweep S9: the desktop modal is a ui.sheet dialog (`.transcript-dialog`), the phone
+//     picker a ui.menu; a sheet on its way out carries `is-closing`, so "open" = live
 //   - PHONE width (the page's 768px query): the same click opens the
 //     share/copy picker instead; "Share transcript" calls
 //     `navigator.share({title, text})` with the fetched text (no url)
@@ -134,6 +136,17 @@ function loadWatchWithFetchStub(fetchImpl, configureWindow, phoneWidth) {
 function flush() { return new Promise((resolve) => setTimeout(resolve, 0)); }
 async function settle(times) { for (let i = 0; i < (times || 10); i++) await flush(); }
 
+// Sweep S9: the phone picker is a ui.menu and the desktop transcript a ui.sheet dialog. A sheet
+// on its way out carries is-closing (and leaves after its exit), so "open" means a LIVE sheet.
+function liveSheets(document) { return Array.from(document.querySelectorAll('.ui-sheet')).filter((s) => !s.classList.contains('is-closing')); }
+function picker(document) {
+  const menus = liveSheets(document).filter((s) => s.querySelector('.ui-list') && !s.classList.contains('transcript-dialog'));
+  return menus.length ? menus[menus.length - 1] : null;
+}
+function pickerRows(document) { const p = picker(document); return p ? Array.from(p.querySelectorAll('.ui-row')) : []; }
+function transcriptDialog(document) { return liveSheets(document).find((s) => s.classList.contains('transcript-dialog')) || null; }
+function transcriptDialogs(document) { return liveSheets(document).filter((s) => s.classList.contains('transcript-dialog')); }
+
 function installClipboard(window, writes) {
   Object.defineProperty(window.navigator, 'clipboard', {
     configurable: true,
@@ -176,14 +189,14 @@ test('watch page (desktop): click fetches the plain transcript and opens the rea
     click(dom, document.getElementById('transcript-media-btn'));
     await settle();
     assert.deepStrictEqual(transcriptUrls, [`/api/transcript/${MEDIA_ID}`], 'exactly one fetch, WITHOUT timestamps (default off)');
-    const modal = document.querySelector('.modal-content.transcript-modal');
+    const modal = transcriptDialog(document);
     assert.ok(modal, 'the transcript modal opened');
     const ta = modal.querySelector('textarea#transcript-text');
     assert.ok(ta && ta.readOnly, 'a READ-ONLY textarea');
     assert.strictEqual(ta.value, PLAIN_TEXT);
     const box = modal.querySelector('#transcript-timestamps');
     assert.ok(box && box.checked === false, '"Show timestamps" defaults OFF (Dean)');
-    assert.strictEqual(document.querySelector('.choice-modal-list'), null, 'desktop never gets the phone picker');
+    assert.strictEqual(picker(document), null, 'desktop never gets the phone picker');
   } finally { dom.window.close(); }
 });
 
@@ -212,7 +225,7 @@ test('watch page (desktop): toggling "Show timestamps" re-fetches with ?timestam
   } finally { dom.window.close(); }
 });
 
-test('watch page (desktop): Copy writes the textarea\'s CURRENT value (timestamped when toggled) and shows "Copied!"', async () => {
+test('watch page (desktop): Copy writes the textarea\'s CURRENT value (timestamped when toggled) and says so in a toast (D4.9: never a label swap)', async () => {
   const writes = [];
   const { fetchImpl } = makeWatchFetchStub(true);
   const { dom } = await loadWatchWithFetchStub(fetchImpl, (w) => installClipboard(w, writes));
@@ -225,7 +238,8 @@ test('watch page (desktop): Copy writes the textarea\'s CURRENT value (timestamp
     click(dom, copyBtn);
     await settle();
     assert.deepStrictEqual(writes, [PLAIN_TEXT]);
-    assert.strictEqual(copyBtn.textContent, 'Copied!');
+    assert.ok(Array.from(document.querySelectorAll('.ui-toast__text')).some((t) => t.textContent === 'Transcript copied'), 'a "Transcript copied" toast');
+    assert.strictEqual(copyBtn.textContent, 'Copy', 'the label never swaps (the width never jumps)');
     const box = document.getElementById('transcript-timestamps');
     box.checked = true;
     box.dispatchEvent(new dom.window.Event('change', { bubbles: true }));
@@ -245,16 +259,17 @@ test('watch page (desktop): Close tears the modal down; a second click opens a f
     const btn = document.getElementById('transcript-media-btn');
     click(dom, btn);
     await settle();
-    const closeBtn = Array.from(document.querySelectorAll('.transcript-modal .modal-actions .btn')).find((b) => b.textContent === 'Close');
-    assert.ok(closeBtn, 'a Close button');
+    const dlg = transcriptDialog(document);
+    const closeBtn = dlg.querySelector('.ui-sheet__close');
+    assert.ok(closeBtn && closeBtn.classList.contains('ui-btn--icon'), 'the sheet\'s one icon Close (F47)');
     click(dom, closeBtn);
-    // closeOverlayThen waits for transitionend or its 300ms fallback (jsdom
+    // ui.sheet removes the node after transitionend or its fallback timer (jsdom
     // fires no transition events) - wait real time, not microtasks.
-    await new Promise((r) => setTimeout(r, 400));
-    assert.strictEqual(document.querySelector('.transcript-modal'), null, 'removed from the body after the close transition');
+    await new Promise((r) => setTimeout(r, 450));
+    assert.strictEqual(dlg.isConnected, false, 'removed from the body after the close transition');
     click(dom, btn);
     await settle();
-    assert.strictEqual(document.querySelectorAll('.transcript-modal').length, 1);
+    assert.strictEqual(transcriptDialogs(document).length, 1);
   } finally { dom.window.close(); }
 });
 
@@ -269,11 +284,11 @@ test('watch page (phone width): click opens the share/copy picker; "Share transc
     const { document } = dom.window;
     click(dom, document.getElementById('transcript-media-btn'));
     await settle();
-    assert.strictEqual(document.querySelector('.transcript-modal'), null, 'phones never get the textarea modal');
-    const choices = Array.from(document.querySelectorAll('.choice-modal-btn')).map((b) => b.textContent);
+    assert.strictEqual(transcriptDialog(document), null, 'phones never get the textarea modal');
+    const choices = choiceLabels(document);
     // v1.201: the stub serves ONE default prompt, so the AI pick is third.
     assert.deepStrictEqual(choices, ['Share transcript', 'Copy transcript', 'Share with AI']);
-    click(dom, document.querySelectorAll('.choice-modal-btn')[0]);
+    click(dom, pickerRows(document)[0]);
     await settle();
     assert.strictEqual(shareCalls.length, 1);
     assert.strictEqual(shareCalls[0].title, 'A Captioned Video');
@@ -292,7 +307,7 @@ test('watch page (phone width): "Copy transcript" writes the prefetched text to 
     click(dom, document.getElementById('transcript-media-btn'));
     await settle();
     const before = transcriptUrls.length;
-    click(dom, document.querySelectorAll('.choice-modal-btn')[1]);
+    click(dom, pickerRows(document)[1]);
     await settle();
     assert.deepStrictEqual(writes, [PLAIN_TEXT]);
     assert.strictEqual(transcriptUrls.length, before, 'copy uses the PREFETCHED text - no fetch inside the tap (iOS gesture rule)');
@@ -308,8 +323,8 @@ test('watch page: a failing transcript route toasts and opens nothing; the butto
     const btn = document.getElementById('transcript-media-btn');
     click(dom, btn);
     await settle();
-    assert.strictEqual(document.querySelector('.transcript-modal'), null);
-    assert.strictEqual(document.querySelector('.choice-modal-list'), null);
+    assert.strictEqual(transcriptDialog(document), null);
+    assert.strictEqual(picker(document), null);
     assert.ok(document.querySelector('.ui-toast'), 'a toast explains the failure');
     assert.strictEqual(btn.disabled, false);
   } finally { dom.window.close(); }
@@ -328,12 +343,13 @@ test('watch page: SPA navigation away tears down the open transcript modal (desk
       const { document } = dom.window;
       click(dom, document.getElementById('transcript-media-btn'));
       await settle();
-      const sel = phone ? '.choice-modal-list' : '.transcript-modal';
-      assert.ok(document.querySelector(sel), 'opened: ' + sel);
+      const open = () => (phone ? picker(document) : transcriptDialog(document));
+      const what = phone ? 'the picker' : 'the transcript dialog';
+      assert.ok(open(), 'opened: ' + what);
       assert.equal(typeof dom.window.FileTube.navigate, 'function', 'the real router is up');
       dom.window.FileTube.navigate('/');
-      await new Promise((r) => setTimeout(r, 500)); // shell fetch + destroy() + the 300ms close fallback
-      assert.strictEqual(document.querySelector(sel), null, 'torn down on view abort: ' + sel);
+      await new Promise((r) => setTimeout(r, 500)); // shell fetch + destroy() + the close fallback
+      assert.strictEqual(open(), null, 'torn down on view abort: ' + what);
     } finally { dom.window.close(); }
   }
 });
@@ -341,7 +357,7 @@ test('watch page: SPA navigation away tears down the open transcript modal (desk
 // ---- v1.201 (Dean): "Share with AI" ------------------------------------------
 // Payload contract: `<prompt>\n\n<the same document Share/Copy send>`.
 
-function choiceLabels(document) { return Array.from(document.querySelectorAll('.choice-modal-btn')).map((b) => b.textContent); }
+function choiceLabels(document) { return pickerRows(document).map((b) => b.querySelector('.ui-row__title').textContent); }
 
 test('watch page (phone): "Share with AI" is the THIRD pick when one prompt exists, and shares prompt + blank line + transcript', async () => {
   const shareCalls = [];
@@ -353,7 +369,7 @@ test('watch page (phone): "Share with AI" is the THIRD pick when one prompt exis
     click(dom, document.getElementById('transcript-media-btn'));
     await settle();
     assert.deepStrictEqual(choiceLabels(document), ['Share transcript', 'Copy transcript', 'Share with AI']);
-    click(dom, document.querySelectorAll('.choice-modal-btn')[2]);
+    click(dom, pickerRows(document)[2]);
     await settle();
     assert.strictEqual(shareCalls.length, 1, 'ONE prompt shares immediately - no second pick');
     assert.strictEqual(shareCalls[0].text, 'Summarize this.\n\n' + PLAIN_TEXT);
@@ -371,11 +387,11 @@ test('watch page (phone): with SEVERAL prompts, "Share with AI" opens a pick-one
     const { document } = dom.window;
     click(dom, document.getElementById('transcript-media-btn'));
     await settle();
-    click(dom, document.querySelectorAll('.choice-modal-btn')[2]);
+    click(dom, pickerRows(document)[2]);
     await new Promise((r) => setTimeout(r, 400)); // the first picker closes (300ms fallback), the second opens
     assert.deepStrictEqual(choiceLabels(document), ['Summarize', 'Analyze'], 'the prompt names, in settings order');
     assert.strictEqual(shareCalls.length, 0, 'nothing shared until a prompt is picked');
-    click(dom, document.querySelectorAll('.choice-modal-btn')[1]);
+    click(dom, pickerRows(document)[1]);
     await settle();
     assert.strictEqual(shareCalls[0].text, 'Analyze this deeply.\n\n' + PLAIN_TEXT);
   } finally { dom.window.close(); }
@@ -434,7 +450,7 @@ test('watch page (desktop): with a share sheet the button reads "Share with AI";
     click(dom, aiBtn);
     await settle();
     assert.deepStrictEqual(choiceLabels(document), ['Summarize', 'Analyze']);
-    click(dom, document.querySelectorAll('.choice-modal-btn')[0]);
+    click(dom, pickerRows(document)[0]);
     await settle();
     assert.strictEqual(shareCalls[0].text, 'Summarize this.\n\n' + PLAIN_TEXT);
   } finally { dom.window.close(); }
@@ -444,7 +460,7 @@ test('watch page (desktop): with a share sheet the button reads "Share with AI";
     await settle();
     click(dom, dom.window.document.getElementById('transcript-media-btn'));
     await settle();
-    assert.ok(dom.window.document.querySelector('.transcript-modal'), 'modal still opens');
+    assert.ok(transcriptDialog(dom.window.document), 'modal still opens');
     assert.strictEqual(dom.window.document.getElementById('transcript-ai-btn'), null, 'no prompts -> no AI button');
   } finally { dom.window.close(); }
 });
@@ -459,11 +475,11 @@ test('watch page (desktop): SPA navigation away with the prompt pick-one open te
     await settle();
     click(dom, document.getElementById('transcript-ai-btn'));
     await settle();
-    assert.ok(document.querySelector('.choice-modal-list'), 'the pick-one is open over the modal');
+    assert.ok(picker(document), 'the pick-one is open over the modal');
     dom.window.FileTube.navigate('/');
     await new Promise((r) => setTimeout(r, 500));
-    assert.strictEqual(document.querySelector('.transcript-modal'), null);
-    assert.strictEqual(document.querySelector('.choice-modal-list'), null);
+    assert.strictEqual(transcriptDialog(document), null);
+    assert.strictEqual(picker(document), null);
   } finally { dom.window.close(); }
 });
 
@@ -476,12 +492,12 @@ test('watch page (phone): SPA navigation away with the AI prompt pick-one open t
     const { document } = dom.window;
     click(dom, document.getElementById('transcript-media-btn'));
     await settle();
-    click(dom, document.querySelectorAll('.choice-modal-btn')[2]);
+    click(dom, pickerRows(document)[2]);
     await new Promise((r) => setTimeout(r, 400));
     assert.deepStrictEqual(choiceLabels(document), ['Summarize', 'Analyze'], 'the pick-one is open');
     dom.window.FileTube.navigate('/');
     await new Promise((r) => setTimeout(r, 500));
-    assert.strictEqual(document.querySelector('.choice-modal-list'), null, 'torn down on view abort');
+    assert.strictEqual(picker(document), null, 'torn down on view abort');
   } finally { dom.window.close(); }
 });
 
@@ -493,7 +509,7 @@ test('watch page (phone): a COMPLETED share-sheet share shows no toast; the clip
     const { document } = dom.window;
     click(dom, document.getElementById('transcript-media-btn'));
     await settle();
-    click(dom, document.querySelectorAll('.choice-modal-btn')[2]);
+    click(dom, pickerRows(document)[2]);
     await settle();
     assert.strictEqual(document.querySelector('.ui-toast'), null, 'the user saw the sheet - no toast on success');
   } finally { dom.window.close(); }
@@ -504,7 +520,7 @@ test('watch page (phone): a COMPLETED share-sheet share shows no toast; the clip
     const { document } = dom.window;
     click(dom, document.getElementById('transcript-media-btn'));
     await settle();
-    click(dom, document.querySelectorAll('.choice-modal-btn')[2]);
+    click(dom, pickerRows(document)[2]);
     await settle();
     assert.deepStrictEqual(writes, ['Summarize this.\n\n' + PLAIN_TEXT]);
     assert.match(document.querySelector('.ui-toast').textContent, /Copied with your prompt/);
@@ -691,8 +707,8 @@ test('watch page: activating Transcript again while its modal (desktop) or picke
       await settle();
       click(dom, btn); // a keyboard user can reach the button behind the backdrop (no focus trap)
       await new Promise((r) => setTimeout(r, 500));
-      const sel = phone ? '.choice-modal-list' : '.transcript-modal';
-      assert.strictEqual(document.querySelectorAll(sel).length, 1, `one ${sel} (phone=${phone})`);
+      const n = phone ? liveSheets(document).filter((x) => x.querySelector('.ui-list')).length : transcriptDialogs(document).length;
+      assert.strictEqual(n, 1, `one ${phone ? 'picker' : 'transcript dialog'} (phone=${phone})`);
     } finally { dom.window.close(); }
   }
 });
@@ -727,6 +743,6 @@ test('watch page: click Transcript, navigate away BEFORE the text lands, release
     await new Promise((r) => setTimeout(r, 400));
     deferredTranscript.splice(0).forEach((r) => r());
     await new Promise((r) => setTimeout(r, 300));
-    assert.strictEqual(document.querySelector('.transcript-modal'), null, 'the aborted view opens nothing');
+    assert.strictEqual(transcriptDialog(document), null, 'the aborted view opens nothing');
   } finally { dom.window.close(); }
 });

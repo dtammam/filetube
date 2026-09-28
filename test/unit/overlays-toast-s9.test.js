@@ -74,6 +74,7 @@ test('the action: a sentence-case plain ui-btn; one tap runs it ONCE and dismiss
 });
 
 test('a malformed action is ignored (no button), the message is text, never markup', () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
   const { showToast } = boot();
   showToast('<img src=x onerror=alert(1)>', { label: 'Undo' });
   const toast = visible()[0];

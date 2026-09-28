@@ -76,6 +76,16 @@ async function chooseTranscript(dom, id) {
   click(dom, row);
 }
 
+
+// Sweep S9: the phone picker is a ui.menu and the desktop transcript a ui.sheet dialog; a sheet
+// on its way out carries is-closing, so "open" means a LIVE sheet.
+const liveSheets = (d) => Array.from(d.querySelectorAll('.ui-sheet')).filter((s) => !s.classList.contains('is-closing'));
+const pickerRows = (d) => {
+  const menus = liveSheets(d).filter((s) => s.querySelector('.ui-list') && !s.classList.contains('transcript-dialog'));
+  return menus.length ? Array.from(menus[menus.length - 1].querySelectorAll('.ui-row')) : [];
+};
+const transcriptDialogs = (d) => liveSheets(d).filter((s) => s.classList.contains('transcript-dialog'));
+
 test('card menu: Transcript is offered on the captioned card only; choosing it (desktop) opens the read-only modal with the fetched document', async () => {
   const { dom, transcriptUrls } = await loadFolder({ phone: false });
   try {
@@ -103,8 +113,8 @@ test('card menu (phone width): choosing Transcript opens the SAME picker - Share
     const d = dom.window.document;
     await chooseTranscript(dom, 'cap');
     await wait(200);
-    assert.deepStrictEqual(Array.from(d.querySelectorAll('.choice-modal-btn')).map((b) => b.textContent), ['Share transcript', 'Copy transcript', 'Share with AI']);
-    click(dom, d.querySelectorAll('.choice-modal-btn')[0]);
+    assert.deepStrictEqual(pickerRows(d).map((b) => b.querySelector('.ui-row__title').textContent), ['Share transcript', 'Copy transcript', 'Share with AI']);
+    click(dom, pickerRows(d)[0]);
     await wait(50);
     assert.strictEqual(shares.length, 1);
     assert.strictEqual(shares[0].title, 'A Captioned Clip', 'the item title from the fetched list');
@@ -125,8 +135,8 @@ test('card menu: choose Transcript, then navigate away before the text lands -> 
       await wait(400);
       deferred.splice(0).forEach((r) => r());
       await wait(300);
-      assert.strictEqual(d.querySelector('.transcript-modal'), null, `no modal over ${target}`);
-      assert.strictEqual(d.querySelector('.choice-modal-list'), null);
+      assert.strictEqual(transcriptDialogs(d).length, 0, `no modal over ${target}`);
+      assert.strictEqual(pickerRows(d).length, 0);
     } finally { dom.window.close(); }
   }
 });
@@ -143,8 +153,8 @@ test('card menu: choosing Transcript three times while the text is loading -> ON
     assert.strictEqual(transcriptUrls.length, 1, 'one fetch');
     deferred.splice(0).forEach((r) => r());
     await wait(300);
-    assert.strictEqual(d.querySelectorAll('.transcript-modal').length, 1);
-    d.querySelector('.transcript-modal') && d.querySelector('.transcript-modal').remove();
+    assert.strictEqual(transcriptDialogs(d).length, 1);
+    click(dom, transcriptDialogs(d)[0].querySelector('.ui-sheet__close'));
     await chooseTranscript(dom, 'cap');
     await wait(50);
     assert.strictEqual(transcriptUrls.length, 2, 'not busy once the text landed - a later choice fetches again');
