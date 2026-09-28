@@ -43,6 +43,48 @@ test('visual runs the geometry checks and the diff; only the rebaseline job (dis
   assert.strictEqual(report.if, 'failure()');
 });
 
+test('both jobs run one leg per era, and the legs together cover every era capture.js shoots', () => {
+  // A leg per era in parallel (it was one ~50 min job). The matrix IS capture.js's ERAS, so an
+  // era added there without a leg here would never be diffed.
+  const { ERAS } = require('../visual/capture.js');
+  for (const job of ['visual', 'rebaseline']) {
+    assert.deepStrictEqual([...WF.jobs[job].strategy.matrix.era].sort(), [...ERAS].sort(), job);
+    assert.strictEqual(WF.jobs[job].strategy['fail-fast'], false, `${job}: one era failing must not cancel the others`);
+    assert.match(runs(job), /node test\/visual\/run\.js .*--era \$\{\{ matrix\.era \}\}/, `${job}: each leg runs only its era`);
+  }
+  // The geometry checks run ONCE (on the 2021 leg), not four times.
+  const geo = WF.jobs.visual.steps.find((s) => /npm run test:geometry/.test(s.run || ''));
+  assert.strictEqual(geo.if, "matrix.era == '2021'");
+  const report = WF.jobs.visual.steps.find((s) => s.uses && s.uses.startsWith('actions/upload-artifact'));
+  assert.match(report.with.name, /\$\{\{ matrix\.era \}\}/, 'each leg uploads its own report (artifact names must not collide)');
+  // A rebaseline leg uploads ONLY its era: the checkout's committed baselines are removed first.
+  const cap = WF.jobs.rebaseline.steps.find((s) => /--update/.test(s.run || ''));
+  assert.ok(cap.run.indexOf('rm -f test/visual/baselines/*.png') !== -1 && cap.run.indexOf('rm -f test/visual/baselines/*.png') < cap.run.indexOf('--update'));
+  // ...and the merge job joins the four into the one `visual-baselines` artifact.
+  const merge = WF.jobs['rebaseline-merge'];
+  assert.strictEqual(merge.needs, 'rebaseline');
+  const m = merge.steps.find((s) => s.uses && s.uses.startsWith('actions/upload-artifact/merge'));
+  assert.strictEqual(m.with.name, 'visual-baselines');
+  assert.strictEqual(m.with.pattern, 'visual-baselines-*');
+  const up = WF.jobs.rebaseline.steps.find((s) => s.uses && s.uses.startsWith('actions/upload-artifact'));
+  assert.strictEqual(up.with.name, 'visual-baselines-${{ matrix.era }}');
+});
+
+test('a docs-only change (.md files, docs/) skips the workflow; nothing the app renders lives there', () => {
+  const skip = ['**/*.md', 'docs/**'];
+  assert.deepStrictEqual(WF.on.push['paths-ignore'], skip);
+  assert.deepStrictEqual(WF.on.pull_request['paths-ignore'], skip);
+  // The premise: no server or client code reads a file from docs/ or a .md file (the one docs
+  // reader, scripts/sync-github-releases.js, is a CI script, not the app).
+  const files = [];
+  const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else if (/\.(js|html|css)$/.test(e.name)) files.push(p); } };
+  for (const d of ['lib', 'public']) walk(path.join(ROOT, d));
+  files.push(path.join(ROOT, 'server.js'));
+  const reads = /(readFileSync|readFile|createReadStream|sendFile|fetch)\([^)]*(\bdocs\/|['"]docs['"]|\.md['"])/;
+  const hits = files.filter((f) => reads.test(fs.readFileSync(f, 'utf8'))).map((f) => path.relative(ROOT, f));
+  assert.deepStrictEqual(hits, [], 'app code reads docs/ or a .md file: a docs-only change CAN change a page, so the skip is wrong');
+});
+
 test('run.js refuses to pass without baselines (exit 2, the rebaseline instruction) before booting anything', () => {
   const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-visual-nobase-'));
   try {

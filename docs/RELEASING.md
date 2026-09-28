@@ -120,13 +120,17 @@ existing entry. Never write a per-release file into an agent's memory (retired
 
 ## The visual job and baselines (UI professionalism pass)
 
-`.github/workflows/visual.yml` has two jobs:
+`.github/workflows/visual.yml` has two jobs, each split into four parallel legs,
+one per era (2021, 2014, 2009, 2005; a leg takes about a quarter of the old
+~50 minutes). A change that touches ONLY `.md` files or `docs/` skips the
+workflow: the app renders nothing from those paths.
 
 - **`visual`** runs on every push and PR (except `rebaseline/*` branches). In
-  the pinned Playwright container it seeds the synthetic fixture
+  the pinned Playwright container each leg seeds the synthetic fixture
   (`test/visual/seed.js`), boots a fresh read-only server, runs the full
-  geometry set (`npm run test:geometry`), then captures the scene matrix and
-  diffs it against `test/visual/baselines/` at 0 changed pixels
+  geometry set (`npm run test:geometry`, on the 2021 leg only), then captures
+  its era's scenes and diffs them against that era's `test/visual/baselines/`
+  at 0 changed pixels
   (`test/visual/run.js`). With no committed baselines it FAILS ("no baselines
   - run the rebaseline job"), so it stays red on every push until the first
   baselines land; that red is expected, not a regression to wave through
@@ -135,8 +139,9 @@ existing entry. Never write a per-release file into an agent's memory (retired
   workflow" (workflow_dispatch), or on a push to a `rebaseline/*` branch.
   GitHub dispatches a workflow only once it exists on the default branch, so
   the FIRST baselines, and any taken before a merge, come from a pushed
-  `rebaseline/<step>` branch cut at the reviewed sha. It uploads the shots as
-  an artifact; nothing is committed by CI.
+  `rebaseline/<step>` branch cut at the reviewed sha. Each era leg uploads its
+  shots, and `rebaseline-merge` joins them into one `visual-baselines`
+  artifact; nothing is committed by CI.
 
 Rebaseline procedure: cut `rebaseline/<step>` at the sha the gate reviewed,
 push it (the push is the trigger), download the `rebaseline` job's artifact
