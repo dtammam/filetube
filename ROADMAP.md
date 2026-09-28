@@ -4,6 +4,13 @@
 
 ### Bugs
 
+- [ ] **Bug: the Click Original skin shows emoji in colour where everything else is black and white**
+  _(Dean, 2026-09-28)_: the Original is a monochrome skin, but emoji glyphs (colour emoji fonts ignore
+  `color`) render in full colour inside it. Fix inside the Original's scope: a monochrome emoji
+  presentation (text presentation selector / a monochrome emoji font) or a grayscale filter on emoji
+  runs only, never on the whole surface (LESSONS 7: filters over playing media). Check every place the
+  Original draws text that can hold an emoji (menus, song and chapter titles, the status bar).
+
 - [ ] **Bug: a corrected chapter start plays at the right moment on desktop but off on mobile** _(Dean,
   2026-09-28)_: on a chaptered Music album, a start fixed in the time editor is perfect on desktop; on the
   phone the list shows the same saved time, yet playback starts off. The value is saved (both show it),
