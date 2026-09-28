@@ -14,7 +14,7 @@ const NAMES = [
   'menu_book', 'library_books', 'playlist_play', 'queue_music', 'search', 'menu', 'settings',
   'dark_mode', 'light_mode', 'account_circle', 'logout', 'refresh', 'bar_chart',
   // navigation and structure
-  'close', 'arrow_back', 'chevron_right', 'expand_more', 'more_vert', 'more_horiz', 'folder', 'tv',
+  'close', 'arrow_back', 'arrow_forward', 'arrow_upward', 'arrow_downward', 'chevron_right', 'expand_more', 'more_vert', 'more_horiz', 'folder', 'tv',
   'videocam', 'movie', 'book', 'info', 'open_in_new', 'add', 'edit', 'check', 'visibility', 'visibility_off',
   // actions and states
   'notifications', 'notifications_active', 'notifications_off', 'push_pin', 'keep', 'thumb_up',
