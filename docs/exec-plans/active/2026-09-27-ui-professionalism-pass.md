@@ -2515,3 +2515,13 @@ fix found by the render, the History confirm test, this log).
   - the Subscribe dialog's close paths and signal;
   - tracker #200 now applies to ui-lint (a `token-exempt` comment exempts its whole line);
   - perf-collector.js's joined cssText literals (only the first literal is checked).
+- **Pre-gate verification (at b6ec0541, the same code tree as the corrupted 5e9654f4):**
+  - `npm test` Node 22.23.1: tests 10204, pass 10194, fail 0, skipped 10.
+  - `npm test` Node 24.20.0: tests 10204, pass 10194, fail 0, skipped 10.
+  - `npm run test:geometry`: 363 checks, 363 ok, 0 FAIL, 0 XFAIL, 0 XPASS (152 scenes).
+  - eslint: 0 errors. lint:ui: OK (1727). lint:overlay: clean.
+
+## Gate
+
+Step 8, the full gate (destructive: D8.3 and every delete confirm). Seats: adversary + qa + security-brief.
+Each seat appends its verdict below, bound to the sha it reviewed.
