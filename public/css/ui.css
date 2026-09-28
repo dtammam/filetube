@@ -319,7 +319,9 @@ a.ui-btn {
   overflow: hidden;
 }
 .ui-list:not(.ui-list--lead) > .ui-row > .ui-row__lead,
-.ui-list--media-none > .ui-row > .ui-row__media {
+.ui-list--media-none > .ui-row > .ui-row__media,
+.ui-list:not(.ui-list--lead) > .ui-swipe > .ui-row > .ui-row__lead,
+.ui-list--media-none > .ui-swipe > .ui-row > .ui-row__media {
   visibility: hidden;
 }
 
@@ -344,19 +346,24 @@ a.ui-btn {
   transition: background-color var(--dur-press) var(--ease-std);
 }
 .ui-list--media > .ui-row,
-.ui-list--media-thumb > .ui-row {
+.ui-list--media-thumb > .ui-row,
+.ui-list--media > .ui-swipe > .ui-row,
+.ui-list--media-thumb > .ui-swipe > .ui-row {
   padding-top: var(--space-5);
   padding-bottom: var(--space-5);
 }
 /* the hairline divider, starting at the body column (inset) or the edge (full) */
 .ui-list--divider-inset > .ui-row,
-.ui-list--divider-full > .ui-row {
+.ui-list--divider-full > .ui-row,
+.ui-list--divider-inset > .ui-swipe > .ui-row,
+.ui-list--divider-full > .ui-swipe > .ui-row {
   background-image: linear-gradient(var(--separator), var(--separator));
   background-repeat: no-repeat;
   background-position: right bottom;
   background-size: calc(100% - var(--divider-start)) var(--hairline);
 }
-.ui-list > .ui-row:last-child {
+.ui-list > .ui-row:last-child,
+.ui-list > .ui-swipe:last-child > .ui-row {
   background-image: none;
 }
 .ui-row__lead,
@@ -925,6 +932,9 @@ input.ui-switch { -webkit-appearance: none; appearance: none; }
 .ui-state__body { margin: 0; max-width: var(--dialog-w); font: var(--t-body); }
 
 /* ---- swipe rows (public/js/interaction.js swipeRow) ------------------------------- */
+/* swipeRow wraps a row in div.ui-swipe, so every `.ui-list > .ui-row` rule above carries a
+   `.ui-list > .ui-swipe > .ui-row` twin (sweep S4: the notifications list swipes every row;
+   without the twins those rows lost the media padding, the divider and the lead rule). */
 .ui-swipe {
   position: relative;
   overflow: hidden;
@@ -957,6 +967,12 @@ input.ui-switch { -webkit-appearance: none; appearance: none; }
   transition: transform var(--dur-sheet) var(--ease-std);
 }
 .ui-swipe.is-dragging .ui-swipe__content { transition: none; }
+/* a closed row's underlay is not painted at all: the row's hover / press tints are
+   translucent, so over a painted underlay they showed Dismiss / Delete through the row
+   (sweep S4's render). Hidden also cannot be hit - a second guard beside `inert`. */
+.ui-swipe:not(.is-open):not(.is-dragging) > .ui-swipe__actions { visibility: hidden; }
+/* a swipe row inside a sheet slides over the sheet's own surface, not the page group's */
+.ui-sheet .ui-swipe__content { background-color: var(--surface-overlay); }
 @media (prefers-reduced-motion: reduce) {
   .ui-swipe__content { transition: none; }
 }
