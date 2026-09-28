@@ -203,6 +203,23 @@ test('ui.menu: a row under the finger that opened the menu is not picked by the 
   assert.deepStrictEqual(picks, ['trash']);
 });
 
+test('ui.menu: a row press that started inside the window never picks, and an early Enter on it is swallowed', () => {
+  const t = clock();
+  const { doc, win } = page();
+  const picks = [];
+  ui.menu({ title: 'More', items: [{ label: 'Move to Trash', value: 'trash', danger: true }], onSelect: (v) => picks.push(v), doc, win });
+  const row = doc.querySelector('.ui-sheet .ui-row');
+  t.tick(120);
+  assert.strictEqual(key(win, row, 'Enter').defaultPrevented, true, 'an early Enter on the row');
+  pointer(win, row, 'pointerdown');
+  t.tick(600); // released well after the window
+  tap(win, row);
+  assert.deepStrictEqual(picks, [], 'the held press of the opening double-tap picks nothing');
+  pointer(win, row, 'pointerdown');
+  tap(win, row);
+  assert.deepStrictEqual(picks, ['trash'], 'a fresh press picks');
+});
+
 test('ui.prompt: its OK and Cancel carry the same guard', async () => {
   const t = clock();
   const { doc, win } = page();
