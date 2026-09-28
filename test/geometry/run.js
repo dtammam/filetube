@@ -7,6 +7,8 @@
 //   npm run test:geometry                  G1-G3 on every live surface x 4 eras x 2 modes x
 //                                          phone/desktop, then G4 on every sequence
 //   npm run test:geometry:fast             G1-G3 on the 4 pre-push scenes (FAST_SCENES)
+//   (both also run DBLTAP, confirm-double-tap.js: a double-tap never answers the confirm
+//   its first tap opened; skip it with --only naming other checks)
 //   node test/geometry/run.js --mutants    every mutation must turn its check red
 //   node test/geometry/run.js [--only G1,G4] [--mutate NAME] [--json FILE]
 //        [--base URL --data DIR]           reuse a running fixture server instead of booting one
@@ -29,6 +31,7 @@ const { seed, boot } = require('../visual/server.js');
 const checks = require('./checks.js');
 const { SURFACES, ERAS, MODES, FAST_SCENES, G4_SEQUENCES } = require('./scenes.js');
 const { MUTATIONS } = require('./mutations.js');
+const doubleTap = require('./confirm-double-tap.js');
 
 const EXPECTED_PATH = path.join(__dirname, 'expected-failures.json');
 
@@ -259,7 +262,17 @@ async function main() {
         if (red) console.log(`         first: ${JSON.stringify(mutated[0]).slice(0, 220)}`);
         if (control.length) console.log(`         control not green: ${JSON.stringify(control[0]).slice(0, 220)}`);
       }
-      console.log(`geometry --mutants: ${Object.keys(MUTATIONS).length - survived} of ${Object.keys(MUTATIONS).length} killed, ${survived} survived (${Math.round((Date.now() - t0) / 1000)}s)`);
+      // DBLTAP's mutant is JS, not CSS: ui.js served with ACTIVATION_GUARD_MS = 0.
+      {
+        const fails = (rs) => rs.reduce((n, r) => n + r.failures.length, 0);
+        const control = fails(await doubleTap.run(env));
+        const mutated = fails(await doubleTap.run(env, { mutateGuard: true }));
+        const ok = mutated > 0 && control === 0;
+        if (!ok) survived++;
+        console.log(`${ok ? 'KILLED  ' : 'SURVIVED'} dbltap-guard-off (DBLTAP on stats-delete phone+desktop): control ${control} failure(s), mutated ${mutated} failure(s)`);
+      }
+      const total = Object.keys(MUTATIONS).length + 1;
+      console.log(`geometry --mutants: ${total - survived} of ${total} killed, ${survived} survived (${Math.round((Date.now() - t0) / 1000)}s)`);
       return survived ? 1 : 0;
     }
 
@@ -289,6 +302,7 @@ async function main() {
         }
       }
     }
+    if (!opts.only || opts.only.includes('DBLTAP')) results.push(...await doubleTap.run(env));
     if (record.blockedRequests.length) results.push({ id: 'REQUEST-POLICY', failures: record.blockedRequests.map((b) => `${b.scene} ${b.method} ${b.url}`) });
 
     const { fail, lines, counts } = summarize(results, expected);

@@ -50,7 +50,17 @@ function boot() {
 }
 const deletes = (calls) => calls.filter((c) => c.method === 'DELETE').map((c) => c.url);
 const confirmOpen = (doc) => Array.from(doc.querySelectorAll('.ui-sheet.is-open')).find((s) => s.querySelector('.ui-confirm__actions')) || null;
-const click = (w, el) => el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+// A pointer click. A person reads a dialog before answering it: ui.js ignores a pointer
+// activation of a sheet's controls until it has been open ACTIVATION_GUARD_MS (the double-tap
+// guard, gate r1), so a click aimed INSIDE an open sheet carries a timeStamp ANSWER_AFTER_MS
+// past the page's clock. The guard itself is bound by ui-activation-guard.test.js.
+const ANSWER_AFTER_MS = 1000;
+const click = (w, el) => {
+  const e = new w.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 });
+  if (el.closest('.ui-sheet, .ui-scrim')) Object.defineProperty(e, 'timeStamp', { value: Date.now() + ANSWER_AFTER_MS });
+  return el.dispatchEvent(e);
+};
+const dialogs = (doc) => doc.querySelectorAll('.ui-sheet--dialog').length;
 
 test('History Remove: asks ui.confirm first; Cancel and Esc send nothing; OK sends exactly one DELETE of THAT row', async () => {
   const { dom, w, calls, doc } = boot();
@@ -68,6 +78,7 @@ test('History Remove: asks ui.confirm first; Cancel and Esc send nothing; OK sen
     click(w, dlg.querySelector('.ui-confirm__actions .ui-btn--secondary'));
     await sleep(400);
     assert.strictEqual(deletes(calls).length, 0, 'Cancel sent nothing');
+    assert.strictEqual(dialogs(doc), 0, 'Cancel answered: the dialog is gone');
     click(w, removeOf('b2'));
     await sleep(40);
     doc.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -96,6 +107,7 @@ test('History Clear all: asks ui.confirm first; only a yes clears', async () => 
     click(w, dlg.querySelector('.ui-confirm__actions .ui-btn--secondary'));
     await sleep(400);
     assert.strictEqual(deletes(calls).length, 0, 'Cancel sent nothing');
+    assert.strictEqual(dialogs(doc), 0, 'Cancel answered: the dialog is gone');
     click(w, clear);
     await sleep(40);
     dlg = confirmOpen(doc);

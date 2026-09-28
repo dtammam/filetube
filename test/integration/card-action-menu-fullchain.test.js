@@ -136,8 +136,16 @@ async function settle(times) { for (let i = 0; i < (times || 8); i++) await slee
 // A sheet gets .is-open on the next animation frame; let it land.
 const frame = () => sleep(40);
 
+// A person reads a sheet before answering it: ui.js ignores a pointer activation of a sheet's
+// controls until it has been open ACTIVATION_GUARD_MS (the double-tap guard, gate r1), so a
+// pointer click aimed INSIDE an open sheet (or at its scrim) carries a timeStamp
+// ANSWER_AFTER_MS past the page's clock. The guard itself is bound by
+// ui-activation-guard.test.js and the geometry DBLTAP check.
+const ANSWER_AFTER_MS = 1000;
 function click(dom, el) {
-  el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+  const e = new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 });
+  if (el.closest && el.closest('.ui-sheet, .ui-scrim')) Object.defineProperty(e, 'timeStamp', { value: Date.now() + ANSWER_AFTER_MS });
+  el.dispatchEvent(e);
 }
 const openSheets = (doc) => Array.from(doc.querySelectorAll('.ui-sheet.is-open'));
 const menuRow = (doc, label) => {
