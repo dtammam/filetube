@@ -33,6 +33,8 @@ test('visual runs the geometry checks and the diff; only the rebaseline job (dis
   assert.strictEqual(WF.jobs.visual.if, "github.event_name != 'workflow_dispatch' && !startsWith(github.ref, 'refs/heads/rebaseline/')");
   assert.strictEqual(WF.jobs.rebaseline.if, "github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/rebaseline/'))");
   assert.ok(WF.on && 'workflow_dispatch' in WF.on && 'push' in WF.on && 'pull_request' in WF.on);
+  // A PR branch runs once (pull_request); push covers main and the rebaseline/* trigger only.
+  assert.deepStrictEqual(WF.on.push.branches, ['main', 'rebaseline/**']);
   assert.match(runs('visual'), /npm run test:geometry\b/);
   assert.match(runs('visual'), /node test\/visual\/run\.js /);
   assert.doesNotMatch(runs('visual'), /--update/);
