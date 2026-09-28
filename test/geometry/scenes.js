@@ -60,6 +60,25 @@ const SURFACES = [
     checks: ['G2', 'G3', 'NAV'],
     min: { G2: { items: 5 }, G3: { groups: 1 }, NAV: { tabs: 5 } },
   },
+  // Sweep S4 (D8.3, F28): the notifications panel - a ui.sheet over Home - with the seed's
+  // mixed rows: six unread media rows, a podcast episode (show art), a downloader-engine event
+  // and a read media row. G1: every slot (dot, avatar, text, thumbnail, kebab) starts at the
+  // same x on every row, whatever its kind or read state; G2: the kebab and Close glyphs
+  // centre on their buttons. Scoped to the sheet, so the page under it is not measured.
+  {
+    id: 'notifications', owner: 'S4', fast: true,
+    path: () => '/',
+    open: async (page, vp, { capture }) => {
+      await page.waitForSelector('#notif-bell-btn', { timeout: 12000 });
+      await capture.tap(page, '#notif-bell-btn', vp);
+      await page.waitForSelector('#notif-panel.is-open #notif-panel-list .ui-row[data-notif-id]', { timeout: 10000 });
+    },
+    ready: '#notif-panel.is-open .ui-row[data-kind="engine"]',
+    scope: '#notif-panel',
+    checks: ['G1', 'G2'],
+    // Measured at S4 (every era/mode, phone + desktop): 1 list of 9 rows; 9 kebabs + Close.
+    min: { G1: { lists: 1, rows: 9 }, G2: { items: 10 } },
+  },
   // ---- pending: each sweep makes its surface live (D1 AC4/AC5 name these) ----
   // Sweep S3 (D4.9; Dean's "the notification glyph not aligned with the text"): the watch
   // page's channel row, SUBSCRIBED (Subscribed pill + live bell + pin) and NOT subscribed
@@ -89,17 +108,19 @@ const SURFACES = [
     checks: ['G2', 'G3'],
     min: { G2: { items: 4 }, G3: { groups: 1 } },
   },
-  { id: 'notifications', owner: 'S4', pending: 'S4', note: 'notifications panel: mixed media / podcast / engine rows (G1, G2)', checks: ['G1', 'G2'], fast: true },
   { id: 'subscriptions', owner: 'S5', pending: 'S5', note: 'Subscriptions rows: pinned and unpinned, errored and ok (G1, G2, G3)', checks: ['G1', 'G2', 'G3'], fast: true },
   { id: 'podcast-episodes', owner: 'S6', pending: 'S6', note: 'a podcast episode list (G1)', checks: ['G1'] },
   { id: 'sheet-header', owner: 'S9', pending: 'S9', note: 'a sheet header: title + close (G2)', checks: ['G2'] },
 ];
 
-// The pre-push set: 4 scenes of the fast surfaces (D10.2, about 20s).
+// The pre-push set: 5 scenes of the fast surfaces (D10.2 asked for 4 at about 20s; see below).
 const FAST_SCENES = [
-  // Sweeps S1 + S3: the real D10.2 surfaces replace the kit stand-ins - the chrome (its
-  // cascade bug class, v1.85, is invisible to unit tests) and the watch page's channel card
-  // and action bar (Dean's bell-alignment complaint). The set stays 4 scenes.
+  // Sweeps S1 + S3 + S4: the real D10.2 surfaces replace the kit stand-ins - the chrome (its
+  // cascade bug class, v1.85, is invisible to unit tests), the watch page's channel card and
+  // action bar (Dean's bell-alignment complaint) and the notifications panel (D8.3, the
+  // destructive path; its 2005 slot keeps retro-era coverage on a real surface). Five scenes,
+  // ~12s measured: one over D10.2's four, kept because each guards a distinct bug class.
+  { surface: 'notifications', era: '2005', mode: 'light', vp: 'phone' },
   { surface: 'header', era: '2021', mode: 'dark', vp: 'phone' },
   { surface: 'bottom-bar', era: '2005', mode: 'light', vp: 'phone' },
   { surface: 'channel-card', era: '2021', mode: 'dark', vp: 'phone' },

@@ -11243,304 +11243,39 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
   pointer-events: none;
 }
 
-/* Backdrop is a MOBILE-ONLY affordance; on desktop the dropdown closes on
-   outside-click without dimming the page. */
-.notif-panel-backdrop {
-  display: none;
+/* Sweep S4 (D4.6, D8.3): the notifications panel is a ui.sheet (a popover under the bell on
+   desktop, a bottom sheet on the phone) holding ONE ui-list of ui-rows - every column reserved
+   on every row (lead dot, avatar, text, thumbnail, one kebab), so the thumbnails and the kebab
+   form columns (F28). The v1.68 X and the v1.161 in-row delete are gone: Dismiss and Delete
+   file live in the row menu and the swipe (interaction.js swipeRow). What lives here is the
+   panel's own layout: the Clear all row, and the contained logo thumbnail. */
+/* The panels' lists sit one level down in the sheet body (under their Clear row), so they take
+   the sheet-body list inset ui.css gives a direct child (`.ui-sheet__body > .ui-list`). */
+.notif-sheet > .ui-list,
+.queue-sheet > .ui-list {
+  --row-pad-start: var(--inset);
+  --row-pad-end: var(--space-4);
 }
-
-.notif-panel[hidden] {
-  display: none;
-}
-
-.notif-panel {
-  position: fixed;
-  top: 64px; /* token-exempt: positional geometry (Stop A Batch A) */
-  right: 16px; /* token-exempt: positional geometry (Stop A Batch A) */
-  width: 400px;
-  max-width: calc(100vw - 32px);
-  max-height: min(70vh, 560px);
-  display: flex; /* v1.310 anti-bleed: column = static header + inner scrolling list */
-  flex-direction: column;
-  overflow: hidden; /* clip children to the rounded corners; the LIST scrolls, not the panel - so no iOS rounded-corner clip-escape, and rows never scroll under the header */
-  background: var(--bg-sidebar);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-modal);
-  z-index: var(--z-panel);
-  opacity: 0;
-  transform: translateY(-6px);
-  transition: opacity var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
-}
-
-/* v1.310 anti-bleed: the scroll region. overflow lives HERE (no border-radius),
-   never on the rounded .notif-panel - the split that stops the iOS corner-clip
-   escape. min-height:0 is load-bearing: a flex item defaults to min-height:auto
-   and refuses to shrink below its content, so without it the list never scrolls
-   and the panel overflows. */
-.notif-panel-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.notif-panel.notif-open {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-.notif-panel-header {
+.notif-sheet__tools,
+.queue-sheet__tools {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-6) var(--space-8);
-  font-weight: var(--fw-semibold);
-  border-bottom: 1px solid var(--bg-secondary);
-  position: sticky;
-  top: 0;
-  z-index: 1; /* token-exempt: local stacking - outrank the positioned rows (.notif-row-thumb-wrap) that scroll under it; both are z-index:auto so DOM order paints the thumbs OVER the header without this */
-  background: var(--bg-sidebar);
+  justify-content: flex-end;
+  padding: 0 var(--space-4) var(--space-2);
 }
-
-.notif-clear-btn {
-  background: none;
-  border: none;
-  color: var(--yt-red);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  cursor: pointer;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius);
-}
-
-@media (hover: hover) {
-  .notif-clear-btn:hover {
-    background-color: var(--bg-secondary);
-  }
-}
-
-/* v1.68: each panel row = anchor + dismiss X, flex siblings (a <button>
-   can never nest in an <a>). The anchor keeps its whole existing layout;
-   the X is a slim fixed column. */
-.notif-row-wrap {
-  display: flex;
-  align-items: stretch;
-}
-
-.notif-row-wrap .notif-row {
-  flex: 1;
-  min-width: 0; /* let the text column ellipsize instead of pushing the X out */
-}
-
-.notif-row-dismiss {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--size-control); /* the control-size token (QA gate: the prior 36px literal cited a token-exempt convention that does not exist) */
-  border: none;
-  background: none;
-  color: var(--text-secondary);
-  font-size: var(--fs-md);
-  cursor: pointer;
-  opacity: 0.7; /* token-exempt: resting de-emphasis, full on hover/focus */
-  touch-action: manipulation;
-}
-
-.notif-row-dismiss:focus-visible {
-  opacity: 1;
-  color: var(--text-primary);
-}
-@media (hover: hover) {
-  .notif-row-dismiss:hover {
-    opacity: 1;
-    color: var(--text-primary);
-  }
-}
-
-/* v1.161 (Dean): the per-video delete button - a SIBLING of the row anchor,
-   left of the dismiss X. Resting: a de-emphasised trash glyph; hover/focus goes
-   red; ARMED reveals the "Sure?" confirm on a red fill (the old card-corner
-   delete's two-tap reveal, retired on cards in sweep S2). Media rows only. */
-.notif-row-delete {
-  flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--space-2);
-  min-width: var(--size-control);
-  padding: 0 var(--space-2);
-  border: none;
-  border-radius: var(--radius);
-  background: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  opacity: 0.7; /* token-exempt: resting de-emphasis, full on hover/focus/armed */
-  touch-action: manipulation;
-}
-
-.notif-row-delete:focus-visible {
-  opacity: 1;
-  color: var(--yt-red);
-}
-@media (hover: hover) {
-  .notif-row-delete:hover {
-    opacity: 1;
-    color: var(--yt-red);
-  }
-}
-
-.notif-row-delete .icon-delete {
-  width: 16px;
-  height: 16px;
-}
-
-.notif-row-delete .notif-row-delete-confirm {
-  display: none;
-  white-space: nowrap;
-  font-size: var(--fs-xs);
-  font-weight: var(--fw-bold);
-}
-
-.notif-row-delete.notif-row-delete-armed {
-  opacity: 1;
-  color: var(--on-overlay);
-  background-color: var(--yt-red);
-}
-
-.notif-row-delete.notif-row-delete-armed .notif-row-delete-confirm {
-  display: inline;
-}
-
-.notif-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
-  padding: var(--space-5) var(--space-8);
-  color: var(--text-primary);
-  text-decoration: none;
-}
-
-@media (hover: hover) {
-  .notif-row:hover {
-    background-color: var(--bg-secondary);
-  }
-}
-
-.notif-row-avatar {
-  width: var(--size-control-sm);
-  height: var(--size-control-sm);
-  border-radius: 50%;
-  overflow: hidden;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.notif-row-avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.notif-row-avatar-generated {
-  color: var(--on-accent);
-  font-weight: var(--fw-semibold);
-  font-size: var(--fs-md);
-}
-
-.notif-row-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.notif-row-channel,
-.notif-row-time {
-  font-size: var(--fs-sm);
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.notif-row-title {
-  font-size: var(--fs-base);
-  line-height: var(--lh-tight);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.notif-row-thumb {
-  width: 72px;
-  height: 40px;
-  object-fit: cover;
-  border-radius: var(--radius);
-  flex-shrink: 0;
-}
-
-/* v1.288 (Dean's "nothing iconless" rule): a logo fallback (the yt-dlp mark on a
-   downloader-engine row, or the FileTube logo on a thumbnail-less/404 row) is a
-   square icon, not a photo - contain it on a quiet fill so it is centred and
-   whole rather than cover-cropped. Also the onerror landing state for avatars. */
-.notif-row-thumb-icon {
-  object-fit: contain;
-  padding: var(--space-1);
-  background: var(--bg-secondary);
-}
-
-.notif-row-avatar img.notif-row-avatar-fallback {
-  object-fit: contain;
-  padding: var(--space-1);
-  background: var(--bg-secondary); /* the FileTube logo may be transparency-backed - give it the same quiet fill as the thumb-icon */
-}
-
-/* v1.208 (Dean): the thumb wrapper hosts a small duration badge in its corner
-   (triage length before deleting). It takes over the flex sizing from the img;
-   line-height:0 kills the inline-image baseline gap so it hugs the 72x40 box. */
-.notif-row-thumb-wrap {
-  position: relative;
-  flex-shrink: 0;
-  line-height: 0; /* token-exempt: kill the inline-image baseline gap */
-  /* Contain the child .duration-badge's z-index:2 WITHIN the row. Without a
-     stacking context here, position:relative alone does not create one, so the
-     badge's z-index:2 escapes to the panel root and paints OVER the sticky
-     .notif-panel-header (z-index:1) as the row scrolls under it (Dean device
-     report - the header z-index fix beat the plain thumb but not the badge).
-     isolate flattens the row's internal stacking so the header always wins. */
+/* v1.68.3 (Dean, device): a thumbnail's duration badge once painted over the panel header.
+   The ui.sheet header now sits outside the scroller, and the thumb clips; the thumbnail also
+   keeps its own stacking context (scoped to the badge's container, never a large ancestor,
+   #173), so no positive z-index inside it can ever reach the panel's layers. */
+.notif-sheet .ui-thumb {
   isolation: isolate;
 }
-
-/* The legacy .duration-badge, scaled to the 72x40 notif thumb (fs-xs + tight
-   2/4 padding) - the panel badge stays small at every width. */
-.notif-row-thumb-wrap .duration-badge {
-  bottom: 2px; /* token-exempt: positional geometry (tight to the small thumb) */
-  right: 2px; /* token-exempt: positional geometry */
-  padding: var(--space-1) var(--space-2);
-  font-size: var(--fs-xs);
-}
-
-.notif-row-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: transparent;
-}
-
-.notif-row-unread .notif-row-dot {
-  background: var(--yt-red);
-}
-
-.notif-empty {
-  padding: var(--space-12) var(--space-8);
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: var(--fs-sm);
+/* v1.288 (Dean's "nothing iconless" rule): a logo thumbnail (the yt-dlp mark on an engine row,
+   the FileTube floor for a thumbnail-less or 404 row) is contained on the thumb's own quiet
+   ground (--thumb-ground, ui.css), never cover-cropped. */
+.ui-thumb__img.notif-thumb-icon {
+  box-sizing: border-box;
+  padding: var(--space-1);
+  object-fit: contain;
 }
 
 /* ---- v1.82: the account menu (avatar + menu) ----
@@ -11703,56 +11438,6 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
     align-items: center;
   }
 
-  .notif-panel-backdrop:not([hidden]) {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: var(--scrim-legacy);
-    z-index: calc(var(--z-panel) - 1); /* backdrop one under its panel */
-    opacity: 0;
-    transition: opacity var(--dur-fast) var(--ease-ui);
-  }
-
-  .notif-panel-backdrop.notif-open {
-    opacity: 1;
-  }
-
-  .notif-panel {
-    top: auto;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    width: auto;
-    max-width: none;
-    max-height: 70vh;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    transform: translateY(100%);
-    transition: transform var(--dur-slow) var(--ease-ui);
-  }
-
-  /* v1.310 anti-bleed: the safe-area pad moved off the (now overflow:hidden)
-     panel onto the scrolling list, so the last row clears the home indicator
-     instead of scrolling into a clipped dead band. */
-  .notif-panel-list {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-
-  .notif-panel.notif-open {
-    transform: translateY(0);
-  }
-}
-
-/* Reduced motion: collapse closed/open states to identical (the same
-   posture the pre-S1 playlists-sheet carve-out had -- openOverlay never adds
-   the open class under this preference, so the base opacity/transform must
-   not leave the panel invisible). */
-@media (prefers-reduced-motion: reduce) {
-  .notif-panel:not([hidden]),
-  .notif-panel-backdrop:not([hidden]) {
-    transition: none;
-    opacity: 1;
-    transform: none;
-  }
 }
 
 /* v1.165 (Dean): the phone hide on `.shortcuts-entry` is REMOVED - the shortcuts
@@ -11760,241 +11445,18 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
    The `?` key stays desktop-gated in JS; this was the entry's visibility only. */
 
 /* ---- v1.63: the playback queue (header icon + panel) ---------------------
-   Mirrors the bell chrome one section up: same button treatment, same
-   fixed-popover panel on the --z-panel rung. The two panels NEVER co-open
-   (each closes on any outside pointerdown, and each button is outside the
-   other's panel - the shared-rung tie is unreachable by construction; if a
-   future change lets them co-open, that is a NEW pair for the co-open
-   matrix, docs/references/z-ladder-coopen-enumeration.md). */
-
-/* Sweep S1 (F31): the queue button is a plain ui-btn icon button (common.js
-   chromeButtonEl); its badge is the header ui-chip count (see the bell section). ui.css's
-   global [hidden] rule hides it with an empty queue (v1.339 L2). */
-
-.queue-panel-backdrop {
-  display: none; /* desktop: the popover needs no scrim; mobile block below */
+   Sweep S1 (F31): the queue button is a plain ui-btn icon button (common.js chromeButtonEl);
+   its badge is the header ui-chip count (see the bell section). ui.css's global [hidden] rule
+   hides it with an empty queue (v1.339 L2).
+   Sweep S4: the panel is a ui.sheet like the bell's (its Clear row shares .notif-sheet__tools'
+   rule above); the rows are ui-rows with three reserved action columns. F48 (the panel opened
+   invisible under Reduce Motion) is gone with the old open-class dance. */
+/* now playing: a neutral selected fill, never red (D8.8); played rows dim their text */
+.queue-item--playing {
+  background-color: var(--fill-selected);
 }
-
-.queue-panel[hidden] {
-  display: none;
-}
-
-.queue-panel {
-  position: fixed;
-  top: 64px; /* token-exempt: positional geometry (below the header, the notif-panel treatment) */
-  right: 16px; /* token-exempt: positional geometry */
-  width: 400px;
-  max-width: calc(100vw - 32px);
-  max-height: min(70vh, 560px);
-  display: flex; /* v1.310 anti-bleed: mirrors .notif-panel - static header + inner scrolling list */
-  flex-direction: column;
-  overflow: hidden; /* clip children to the rounded corners; the LIST scrolls, not the panel (iOS corner-clip-safe) */
-  background: var(--bg-sidebar);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-modal);
-  z-index: var(--z-panel);
-  opacity: 0;
-  transform: translateY(-6px);
-  transition: opacity var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
-}
-
-/* v1.310 anti-bleed: the scroll region (mirrors .notif-panel-list). overflow
-   lives HERE (no border-radius). min-height:0 lets the flex item shrink so the
-   list scrolls instead of the panel overflowing. */
-.queue-panel-list {
-  flex: 1 1 auto;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.queue-panel.queue-open {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-/* v1.68.3 (Dean): the queue panel's chrome MIRRORS the notification
-   panel's - one panel design language, two surfaces. The four pairs below
-   (.queue-panel-header/.notif-panel-header, .queue-clear-btn and its
-   :hover/.notif-clear-btn's, .queue-empty/.notif-empty) are declaration-
-   identical and LOCKED by test/unit/panel-chrome-mirror.test.js - edit
-   either side and the mirror test forces the other (or a deliberate lock
-   update). .queue-clear-armed stays queue-specific (the two-tap confirm
-   has no bell counterpart). */
-.queue-panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: var(--space-6) var(--space-8);
-  font-weight: var(--fw-semibold);
-  border-bottom: 1px solid var(--bg-secondary);
-  position: sticky;
-  top: 0;
-  z-index: 1; /* token-exempt: local stacking - outrank the positioned rows that scroll under it; mirrors .notif-panel-header (panel-chrome-mirror lock) */
-  background: var(--bg-sidebar);
-}
-
-.queue-clear-btn {
-  background: none;
-  border: none;
-  color: var(--yt-red);
-  font-size: var(--fs-sm);
-  font-weight: var(--fw-semibold);
-  cursor: pointer;
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius);
-}
-
-@media (hover: hover) {
-  .queue-clear-btn:hover {
-    background-color: var(--bg-secondary);
-  }
-}
-
-/* Armed ("Really clear?") = the hover surface LATCHED while the two-tap
-   confirm is live; the label change carries the message, the surface makes
-   the armed state survive pointer-out. */
-.queue-clear-btn.queue-clear-armed {
-  background-color: var(--bg-secondary);
-}
-
-.queue-empty {
-  padding: var(--space-12) var(--space-8);
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: var(--fs-sm);
-}
-
-.queue-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-3) var(--space-5);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.queue-row-playing {
-  background: var(--bg-secondary);
-}
-
-.queue-row-played {
-  opacity: 0.55; /* token-exempt: played-dim (ruling 6 - visible but visually spent; no dim token exists and one consumer does not earn one) */
-}
-
-.queue-row-order {
-  display: flex;
-  flex-direction: column;
-}
-
-.queue-row-move {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  padding: 0 var(--space-2);
-  font-size: var(--fs-sm);
-  line-height: var(--lh-tight);
-}
-
-.queue-row-move:disabled {
-  opacity: 0.3; /* token-exempt: disabled-affordance dim (native-control treatment) */
-  cursor: default;
-}
-
-.queue-row-main {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  flex: 1;
-  min-width: 0;
-  text-decoration: none;
-  color: var(--text-primary);
-}
-
-.queue-row-thumb {
-  width: 72px;
-  height: 40px;
-  object-fit: cover;
-  border-radius: var(--radius);
-  background: var(--thumbnail-bg);
-  flex-shrink: 0;
-}
-
-.queue-row-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.queue-row-title {
-  font-size: var(--fs-sm);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.queue-row-channel {
-  font-size: var(--fs-xs);
-  color: var(--text-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.queue-row-remove {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: var(--fs-lg);
-  padding: var(--space-2) var(--space-3);
-  line-height: 1; /* token-exempt: glyph centering, not prose */
-  flex-shrink: 0;
-}
-
-@media (hover: hover) {
-  .queue-row-remove:hover {
-    color: var(--yt-red);
-  }
-}
-
-/* Mobile: bottom-sheet posture with a scrim, the notif-panel mobile
-   treatment verbatim. */
-@media (max-width: 768px) {
-  .queue-panel-backdrop:not([hidden]) {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: var(--scrim-legacy);
-    z-index: calc(var(--z-panel) - 1); /* backdrop one under its panel */
-    opacity: 0;
-    transition: opacity var(--dur-fast) var(--ease-ui);
-  }
-
-  .queue-panel-backdrop.queue-open {
-    opacity: 1;
-  }
-
-  .queue-panel {
-    top: auto;
-    right: 0;
-    left: 0;
-    bottom: 0;
-    width: auto;
-    max-width: none;
-    max-height: 75vh;
-    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-    transform: translateY(12px);
-  }
-
-  /* v1.310 anti-bleed: home-indicator clearance on the scrolling list (parity
-     with .notif-panel-list). */
-  .queue-panel-list {
-    padding-bottom: env(safe-area-inset-bottom);
-  }
-
-  .queue-panel.queue-open {
-    transform: translateY(0);
-  }
+.queue-item--played .ui-row__title {
+  color: var(--ink-2);
 }
 
 /* v1.63: the "playing from queue" box (ruling 5) - the uploader block's
@@ -12350,7 +11812,8 @@ html[data-era-flourish="on"] .ft-unfabricated {
 .stable-row .access-editor { grid-column: 1 / -1; }
 
 /* v1.162 (Dean): the Stats-table per-item delete (two-tap) + the Duplicates
-   per-copy expando. Mirrors .notif-row-delete's armed reveal. */
+   per-copy expando. (Its armed reveal was modelled on the v1.161 notification delete, retired
+   in sweep S4.) */
 .stable-delete-btn {
   display: inline-flex;
   align-items: center;
@@ -12510,7 +11973,7 @@ html[data-era-flourish="on"] .ft-unfabricated {
 /* === v1.95: MOBILE TOUCH TARGETS ===========================================
    Bigger HIT AREAS (not bigger visuals) on phones - matches the codebase's
    `@media (max-width:768px)` convention and the `.pc-btn` exemplar (>=44px via
-   --size-touch). The glyph-only controls (queue arrows/x, notif x) have
+   --size-touch). The glyph-only controls have
    `background:none`, so a >=44px min box grows only the INVISIBLE tap area - the
    glyph stays the same size and position (Dean's "bigger hit area, same look").
    Appended at EOF (not beside the .pc-btn block) so it doesn't sit between that
@@ -12520,35 +11983,9 @@ html[data-era-flourish="on"] .ft-unfabricated {
 @media (max-width: 768px) {
   /* buttons (incl. the resume / start-over overlay CTAs): the 44px touch floor */
   .btn { min-height: var(--size-touch); }
-  /* notification dismiss x: 36px -> a centered 44px box, same glyph */
-  .notif-row-dismiss { min-width: var(--size-touch); min-height: var(--size-touch); }
-
-  /* v1.161 (Dean): the delete button gets the same 44px touch floor so it does
-     not sit fat-finger-close to the dismiss X on a phone. */
-  .notif-row-delete { min-width: var(--size-touch); min-height: var(--size-touch); }
-
-  /* queue remove x: pad-only -> a centered 44px box, same glyph */
-  .queue-row-remove {
-    min-width: var(--size-touch);
-    min-height: var(--size-touch);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  /* stacked queue reorder arrows: two in one column can't each be a full 44px
-     without breaking the compact row, so WIDEN the column and let each fill it +
-     split the row height - a much bigger tap zone, same glyphs, and NO bleed
-     into the neighbouring row (a vertical hit-extension would collide). */
-  .queue-row-order { min-width: var(--size-touch); }
-  .queue-row-order .queue-row-move {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    min-height: calc(var(--size-touch) / 2);
-    padding: 0;
-  }
+  /* Sweep S4: the notification X / delete and the queue's remove X and stacked arrows had
+     their 44px floors here; they are ui-btn icon buttons now, whose 44px hit area is the
+     primitive's own (--hit, ui.css), so their rules are gone with them. */
 
   /* THE SEEK BAR (Dean's top miss): grow the seek input to FILL the scrub row it
      already occupies, so a tap anywhere in that row-height band grabs/seeks the

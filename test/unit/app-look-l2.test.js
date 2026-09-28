@@ -33,6 +33,12 @@ function setGlobals(dom) {
   global.document = dom.window.document;
   global.localStorage = dom.window.localStorage;
   global.sessionStorage = dom.window.sessionStorage;
+  // Sweep S4 (DELIBERATE, AC12): the bell and queue panels are ui.sheets, so their injectors
+  // need the page's window.ui (ui.js loads before common.js on every shell); bind it here.
+  const UI = require.resolve('../../public/js/ui.js');
+  delete require.cache[UI];
+  require(UI);
+  delete require.cache[UI]; // this instance baked in THIS window; later plain requires get a fresh one
 }
 let lastCommon = null;
 afterEach(() => {

@@ -24,7 +24,10 @@ test('the parser sees style.css and its hover rules (guards the lock below again
   const rules = cssRules(SHEETS['style.css']);
   assert.ok(rules.length > 2000, `style.css rules parsed: ${rules.length}`);
   const hovers = rules.filter((r) => /:hover/.test(r.sel));
-  assert.ok(hovers.length > 50, `style.css :hover rules parsed: ${hovers.length}`);
+  // The floor only proves the parser SEES hover rules (a vacuous lock passes on zero). The
+  // sweeps delete bespoke hover rules as surfaces move onto ui.css (92 at step 4, 48 after S4),
+  // so it is a small floor, not a count to hold.
+  assert.ok(hovers.length > 20, `style.css :hover rules parsed: ${hovers.length}`);
 });
 
 for (const [name, css] of Object.entries(SHEETS)) {

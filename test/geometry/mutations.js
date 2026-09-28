@@ -60,6 +60,18 @@ const MUTATIONS = {
     check: 'G3', target: { surface: 'kit', era: '2009', mode: 'light', vp: 'phone' },
     css: '.ui-kit__row > .ui-btn--lg:nth-child(2){min-height:46px!important;height:46px!important}',
   },
+  // ---- sweep S4: the notifications panel (F28) ----
+  // G1: the old bug shape - a row without a thumbnail collapses its aside column (the kebab
+  // then sits where the thumbnails are), here on the engine row.
+  'g1-notif-aside-collapse': {
+    check: 'G1', target: { surface: 'notifications', era: '2021', mode: 'dark', vp: 'phone' },
+    css: '#notif-panel .ui-row[data-kind="engine"]{grid-template-columns:var(--lead-w) calc(var(--media-w) + var(--media-gap)) minmax(0,1fr) 0px var(--row-actions-w)!important}',
+  },
+  // G1: the unread dot takes space only when present (the F28 dot column), on read rows.
+  'g1-notif-dot-column': {
+    check: 'G1', target: { surface: 'notifications', era: '2005', mode: 'light', vp: 'desktop' },
+    css: '#notif-panel .ui-row[data-kind="podcast"] > .ui-row__lead{display:none!important}',
+  },
   // ---- sweep S1: the chrome's rendered contracts (HDR, NAV) ----
   // HDR: the v1.85 device-pass bug - a later same-specificity base rule hides the phone's
   // search magnifier (the selector lock this check replaced could only pin the scoping).

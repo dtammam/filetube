@@ -77,7 +77,7 @@ control-size value ANYWHERE (style.css, `<style>` blocks, `el.style.*` /
     Safari rounded-corner clip-escape shape and FAILS the census. The panels and
     sheets do this with a flex column: `overflow:hidden` on the panel, a static
     header, and `overflow-y:auto; flex:1; min-height:0` on the list (see
-    `.notif-panel` / `.notif-panel-list`). A surface proven to have no
+    `.ui-sheet` / `.ui-sheet__body` in ui.css). A surface proven to have no
     compositing-layer descendant that can reach a corner (a centered modal, a
     native `<textarea>`, a short menu) is exempted with a
     `/* corner-clip-safe: <reason> */` comment - the `token-exempt` convention.

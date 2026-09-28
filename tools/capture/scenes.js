@@ -34,7 +34,7 @@ const scenes = [
     note: 'EXPANDED drill (art + song rows - the 3g radius witnesses). The old .music-drill-sticky wait could never pass: the sticky is display:none until a scroll-driven .collapsed toggle, and .collapsed HIDES the header/art - the two states are exclusive. Collapsed-sticky state = on-device judgment (Tier 4 sticky-thumb surface).' },
   { id: '11-subs-top', path: '/subscriptions', actions: [['wait', '.sub-list-header-actions']] },
   { id: '12-subs-sheet', path: '/subscriptions', actions: [['wait', '.sub-row-kebab'], ['click', '.sub-row-kebab'], ['wait', '.sub-sheet-backdrop:not([hidden])']] },
-  { id: '12b-notif-panel', path: '/', actions: [['wait', '#notif-bell-btn'], ['click', '#notif-bell-btn'], ['wait', '.notif-panel']] },
+  { id: '12b-notif-panel', path: '/', actions: [['wait', '#notif-bell-btn'], ['click', '#notif-bell-btn'], ['wait', '#notif-panel']] },
   { id: '14-reader', path: '/read.html?id=FIXTURE_BOOK', actions: [['wait', '.reader-topbar']] },
   { id: '15-books', path: '/books.html', actions: [['wait', '.books-shelf-chip,.book-cover-link']], note: '.book-cover-link is what books.js renders per book; .book-row-cover was a HOME-page class (bucket-B fix). Shelf chips still need registered book roots - a 3a+3g witness, see the handoff question.' },
   { id: '16-stats', path: '/stats.html', actions: [['wait', '.stat-tile-value']] },

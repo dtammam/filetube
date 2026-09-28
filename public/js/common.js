@@ -3882,7 +3882,7 @@ function showAttributionPicker(targets, opts, onPick) {
 // Two-tier semantics (Dean, exec-plan decision 3): opening the panel zeroes
 // the NUMBER badge (server-persisted mark-seen); each row keeps its dot
 // until tapped (mark-read); Clear all empties the panel server-side for
-// THIS user only.
+// THIS user only (after a ui.confirm, sweep S4).
 //
 // Pure decisions extracted for node:test (no DOM), same division as every
 // injector in this file.
@@ -3907,8 +3907,9 @@ function formatNotificationBadge(count) {
 // notification row can lean on. NOTIF_ENGINE_ICON is the vendored yt-dlp mark
 // for downloader-engine rows (they have no per-item thumbnail); NOTIF_FALLBACK_ICON
 // is the FileTube logo - the guaranteed floor for a media row that never got a
-// thumbnail AND the onerror target for ANY avatar/thumb whose URL 404s, so a
+// thumbnail AND the onerror target for a thumbnail whose URL 404s, so a
 // stale/deleted image degrades to the logo instead of the browser's broken glyph.
+// (Sweep S4, D4.4: a broken AVATAR degrades to ui.avatar's monogram, never the logo.)
 const NOTIF_ENGINE_ICON = '/icons/ytdlp.svg';
 const NOTIF_FALLBACK_ICON = '/icons/icon-192.png';
 
@@ -3933,6 +3934,7 @@ function buildNotificationRowModel(row) {
       thumbnailIsIcon: true,
       timeLabel: formatRelativeTime(row.createdAt),
       unread: row.unread === true,
+      channelHref: null, // sweep S4: an engine row has no channel to open
     };
   }
   const channelName = displayChannelName(typeof row.channelName === 'string' ? row.channelName.trim() : ''); // v1.114 A2: "@handle" -> name
@@ -3982,6 +3984,47 @@ function buildNotificationRowModel(row) {
     durationSec: Number(row.durationSec) > 0 ? Number(row.durationSec) : 0,
     timeLabel: formatRelativeTime(row.createdAt),
     unread: row.unread === true,
+    // Sweep S4 (D8.3): the row menu's "Open channel" - a media row opens its folder's
+    // channel page (the card byline's own `/?folder=` href, main.js), a podcast row its
+    // show (podcasts.js reads ?show=). The API row is unchanged: the show id is read back
+    // from the server's `/podcastart/<subId>` art URL. null = no channel to open.
+    channelHref: isPodcast ? notifShowHref(row.artUrl) : (folderName ? `/?folder=${encodeURIComponent(folderName)}` : null),
+  };
+}
+
+// Sweep S4: `/podcastart/<encoded subId>` (lib/notifications/routes.js) -> the show page.
+function notifShowHref(artUrl) {
+  const m = typeof artUrl === 'string' ? /^\/podcastart\/([^/?#]+)$/.exec(artUrl) : null;
+  if (!m) return null;
+  let id;
+  try { id = decodeURIComponent(m[1]); } catch (_) { return null; }
+  return id ? `/podcasts?show=${encodeURIComponent(id)}` : null;
+}
+
+// Sweep S4 (D8.3, Dean: "Notification delete leaves the row"): the row menu - reached by
+// the trailing kebab, a long-press and a desktop right-click - in this order: Open channel
+// (when the row has one), Dismiss (every row), Delete file (MEDIA rows only: a podcast
+// episode or an engine event is not a /api/videos item). Pure, exported for tests.
+function buildNotificationMenuItems(m) {
+  if (!m) return [];
+  const items = [];
+  if (m.channelHref) items.push({ value: 'channel', icon: 'open_in_new', label: m.kind === 'podcast' ? 'Open show' : 'Open channel' });
+  items.push({ value: 'dismiss', icon: 'close', label: 'Dismiss' });
+  if (m.kind === 'media') items.push({ value: 'delete', icon: 'delete', label: 'Delete file', danger: true });
+  return items;
+}
+
+// The delete confirm's copy says what the ONE delete path does: DELETE /api/videos/:id
+// moves the file to Trash (lib/media/routes.js, the v1.65 trash move; the card menu's
+// wording, main.js cardDeleteConfirmCopy) - never "permanently". Pure, exported.
+function notifDeleteConfirmCopy(m) {
+  const title = m && typeof m.title === 'string' && m.title !== '' ? m.title : 'This file';
+  return {
+    title: 'Move to Trash?',
+    body: '"' + title + '" leaves your library now. It stays in Trash, where you can restore it from Settings, until the Trash retention window empties it.',
+    confirmLabel: 'Move to Trash',
+    cancelLabel: 'Cancel',
+    danger: true,
   };
 }
 
@@ -4047,6 +4090,9 @@ function injectNotificationBellIfEnabled() {
       // real bell takes its exact place below (v1.339 L2: replaceWith, not a re-insert at
       // firstChild, so the row never re-orders or re-spaces).
       if (!probe || notificationBellAlreadyInjected()) { removeBellPlaceholder(); return; } // (the second arm: the async double-inject window)
+      // Sweep S4: the panel is a ui.sheet; ui.js loads before common.js on every shell (step 4).
+      const U = typeof window !== 'undefined' ? window.ui : null;
+      if (!U || typeof U.sheet !== 'function') { removeBellPlaceholder(); return; }
       try { localStorage.setItem(NOTIF_BELL_ENABLED_KEY, '1'); } catch (_) { /* private mode */ }
 
       // ---- bell button + badge bubble (createElement/textContent only) ----
@@ -4064,34 +4110,55 @@ function injectNotificationBellIfEnabled() {
       if (bellPlaceholder && bellPlaceholder.parentNode === headerRight) bellPlaceholder.replaceWith(bellBtn);
       else { removeBellPlaceholder(); headerRight.insertBefore(bellBtn, afterQueue()); }
 
-      // ---- panel + (mobile) backdrop, body-mounted like the one-off modal --
-      const backdrop = document.createElement('div');
-      backdrop.id = 'notif-panel-backdrop';
-      backdrop.className = 'notif-panel-backdrop';
-      backdrop.hidden = true;
-      const panel = document.createElement('div');
-      panel.id = 'notif-panel';
-      panel.className = 'notif-panel';
-      panel.hidden = true;
-      panel.setAttribute('role', 'dialog');
-      panel.setAttribute('aria-label', 'Notifications');
-      const head = document.createElement('div');
-      head.className = 'notif-panel-header';
-      const heading = document.createElement('span');
-      heading.textContent = 'Notifications';
-      const clearBtn = document.createElement('button');
+      // ---- the panel: ONE ui.sheet (sweep S4, D4.6 / D8.3) ------------------------
+      // A popover under the bell on desktop, a bottom sheet on the phone (variant 'auto').
+      // The sheet owns the scrim (a tap outside closes), Esc (the topmost overlay only),
+      // the body lock and focus return, and applies its open class under Reduce Motion too
+      // (F48). Rows are ui-rows in ONE ui-list whose columns are reserved on every row
+      // (AC5, F28): the unread dot (lead), the avatar (media), the text (body), the
+      // thumbnail (aside) and ONE trailing kebab (actions). The v1.68 X and the v1.161
+      // in-row two-tap delete are gone: Dismiss and Delete file live in the row menu (the
+      // kebab, a long-press, a desktop right-click) and behind a swipe left.
+      const content = document.createElement('div');
+      content.className = 'notif-sheet';
+      const tools = document.createElement('div');
+      tools.className = 'notif-sheet__tools';
+      const clearBtn = U.button({ variant: 'plain', size: 'sm', label: 'Clear all', doc: document });
       clearBtn.id = 'notif-clear-btn';
-      clearBtn.className = 'notif-clear-btn';
-      clearBtn.textContent = 'Clear all';
-      head.appendChild(heading);
-      head.appendChild(clearBtn);
-      panel.appendChild(head);
-      const list = document.createElement('div');
+      tools.appendChild(clearBtn);
+      const list = U.list({ size: 'media', lead: true, media: 'avatar', aside: 'thumb', actions: 1, divider: 'inset', label: 'Notifications', doc: document });
       list.id = 'notif-panel-list';
-      list.className = 'notif-panel-list';
-      panel.appendChild(list);
-      document.body.appendChild(backdrop);
-      document.body.appendChild(panel);
+      const stateHost = document.createElement('div');
+      stateHost.className = 'notif-sheet__state';
+      content.appendChild(tools);
+      content.appendChild(list);
+      content.appendChild(stateHost);
+
+      // Per-open lifetime: every menu and confirm the panel opens takes this signal, so the
+      // panel closing (Esc, the scrim, a row tap, a back navigation, the feature switching
+      // off) closes them too - a confirm can never outlive the panel and answer later.
+      let openCtl = null;
+      // Every row's gesture handles (its swipe controller, its action-menu trigger), torn
+      // down on every re-render and on close so nothing outlives its row.
+      let rowHandles = [];
+      const dropHandle = (h) => {
+        try { if (h.swipe) h.swipe.destroy(); } catch (_) { /* already gone */ }
+        try { if (h.offMenu) h.offMenu(); } catch (_) { /* already gone */ }
+      };
+      const teardownRows = () => {
+        const hs = rowHandles;
+        rowHandles = [];
+        hs.forEach(dropHandle);
+      };
+      const sheet = U.sheet({
+        variant: 'auto', anchor: bellBtn, title: 'Notifications', content, doc: document,
+        onClosing: () => {
+          bellBtn.setAttribute('aria-expanded', 'false');
+          if (openCtl) { openCtl.abort(); openCtl = null; }
+        },
+      });
+      sheet.el.id = 'notif-panel'; // an id: ui.sheet rewrites className on every open
+      const panelOpen = () => sheet.isOpen();
 
       const setBadge = (count) => {
         const label = formatNotificationBadge(count);
@@ -4100,167 +4167,186 @@ function injectNotificationBellIfEnabled() {
       };
       setBadge(probe.count);
 
-      const renderEmpty = (text) => {
+      // One state at a time: the rows, a skeleton, or a ui.state (empty / error).
+      const showState = (node) => {
+        teardownRows();
         list.textContent = '';
-        const empty = document.createElement('div');
-        empty.className = 'notif-empty';
-        empty.textContent = text;
-        list.appendChild(empty);
+        stateHost.textContent = '';
+        list.hidden = !!node;
+        tools.hidden = true;
+        if (node) stateHost.appendChild(node);
+      };
+      const renderEmpty = () => showState(U.state({ icon: 'notifications', title: 'No notifications yet', body: 'New downloads land here.', doc: document }));
+      const renderError = () => showState(U.state({ icon: 'error', title: 'Could not load notifications', action: { label: 'Try again', onClick: () => loadRows() }, doc: document }));
+      // D9: the loading skeleton is the REAL row grid (same list, same slots), so the rows
+      // replace it without moving a column.
+      const renderSkeleton = () => {
+        showState(null);
+        for (let i = 0; i < 3; i++) {
+          const media = document.createElement('span');
+          media.className = 'ui-avatar ui-avatar--md skeleton-shimmer';
+          const title = document.createElement('span');
+          title.className = 'skeleton-text skeleton-text-long skeleton-shimmer';
+          title.textContent = ' ';
+          const meta = document.createElement('span');
+          meta.className = 'skeleton-text skeleton-text-mid skeleton-shimmer';
+          meta.textContent = ' ';
+          const thumb = U.thumb({ context: 'row', doc: document });
+          thumb.classList.add('skeleton-shimmer');
+          const row = U.row({ size: 'media', media, title, meta, aside: thumb, actions: [null], doc: document });
+          row.setAttribute('aria-hidden', 'true');
+          list.appendChild(row);
+        }
       };
 
-      // v1.161 (Dean): shared row teardown - drop the wrap, keep keyboard focus in
-      // the list (the next row's dismiss/delete, else the bell), surface the empty
-      // state when the last row goes, and reconcile the badge from the SERVER truth
-      // (never arithmetic on a stale count; same panel-open suppression the poll
-      // uses). Used by BOTH the dismiss X and the v1.161 delete button so the two
-      // removal paths can never drift.
-      const removeNotifRowReconcile = (wrap) => {
-        const wraps = Array.from(list.querySelectorAll('.notif-row-wrap'));
-        const idx = wraps.indexOf(wrap);
-        const nextWrap = wraps[idx + 1] || wraps[idx - 1] || null;
-        wrap.remove();
-        const nextFocus = (nextWrap && (nextWrap.querySelector('.notif-row-dismiss') || nextWrap.querySelector('.notif-row-delete'))) || bellBtn;
-        if (nextFocus && document.activeElement === document.body) nextFocus.focus();
-        if (!list.querySelector('.notif-row')) {
-          renderEmpty('No notifications yet. New downloads land here.');
-        }
+      // v1.161 (Dean): shared row teardown - drop the row, keep keyboard focus in the list
+      // (the next row's kebab, else the bell), show the empty state when the last row
+      // goes, and reconcile the badge from the SERVER truth (never arithmetic on a stale
+      // count; same panel-open suppression the poll uses). Dismiss and delete both use it.
+      const removeNotifRowReconcile = (row) => {
+        const rows = Array.from(list.querySelectorAll('.ui-row[data-notif-id]'));
+        const idx = rows.indexOf(row);
+        const next = rows[idx + 1] || rows[idx - 1] || null;
+        const h = rowHandles.find((x) => x.row === row);
+        if (h) { rowHandles = rowHandles.filter((x) => x !== h); dropHandle(h); }
+        row.remove();
+        const nextFocus = (next && next.querySelector('.notif-more')) || bellBtn;
+        if (nextFocus && (!document.activeElement || document.activeElement === document.body || !document.activeElement.isConnected)) nextFocus.focus();
+        if (!list.querySelector('.ui-row[data-notif-id]')) renderEmpty();
         return fetch('/api/notifications/badge')
           .then((r) => (r.ok ? r.json() : null))
-          .then((b) => { if (b && panel.hidden) setBadge(b.count); })
+          .then((b) => { if (b && !panelOpen()) setBadge(b.count); })
           .catch(() => { /* cosmetic - next open reconciles */ });
       };
 
-      const renderRows = (rows) => {
-        list.textContent = '';
-        // v1.161: at most ONE delete button armed at a time (the card-delete UX).
-        // Render-local: rebuilt fresh every render, so a reopen never inherits a
-        // "hot" armed button (the v1.159 Trash-arm class).
-        let armedNotifDelete = null;
-        const models = rows.map(buildNotificationRowModel).filter(Boolean);
-        if (models.length === 0) {
-          renderEmpty('No notifications yet. New downloads land here.');
-          return;
-        }
-        for (const m of models) {
-          const a = document.createElement('a');
-          a.className = m.unread ? 'notif-row notif-row-unread' : 'notif-row';
-          a.href = m.href;
-          // Avatar: captured URL wins, else the generated first-letter tile
-          // (the resolveAvatarSource precedence, applied with the same
-          // createElement discipline as watch.js's applyAvatarToElement).
-          const avatarHolder = document.createElement('span');
-          avatarHolder.className = 'notif-row-avatar';
-          const source = resolveAvatarSource(m.channelLabel, m.channelAvatarUrl);
-          if (source.type === 'url') {
-            const img = document.createElement('img');
-            img.alt = '';
-            img.loading = 'lazy';
-            // v1.288 net: a stale/404 avatar URL degrades to the FileTube logo
-            // (contain-fit) instead of the browser's broken-image glyph. Null the
-            // handler first so a failing fallback can never loop.
-            img.onerror = function () {
-              this.onerror = null;
-              this.src = NOTIF_FALLBACK_ICON;
-              this.classList.add('notif-row-avatar-fallback');
-            };
-            img.src = source.url;
-            avatarHolder.appendChild(img);
-          } else {
-            avatarHolder.textContent = source.glyph;
-            avatarHolder.style.backgroundColor = source.color;
-            avatarHolder.classList.add('notif-row-avatar-generated');
-          }
-          a.appendChild(avatarHolder);
-          const text = document.createElement('span');
-          text.className = 'notif-row-text';
-          const channel = document.createElement('span');
-          channel.className = 'notif-row-channel';
-          channel.textContent = m.channelLabel;
-          const title = document.createElement('span');
-          title.className = 'notif-row-title';
-          title.textContent = m.title;
-          const time = document.createElement('span');
-          time.className = 'notif-row-time';
-          time.textContent = m.timeLabel;
-          text.appendChild(channel);
-          text.appendChild(title);
-          text.appendChild(time);
-          a.appendChild(text);
-          if (m.thumbnailUrl) {
-            // v1.208 (Dean): wrap the thumb so a small duration badge can sit in
-            // its bottom-right corner (the .duration-badge system, scaled down),
-            // to triage length before deleting. The wrapper owns the flex sizing;
-            // the img keeps its 72x40 box.
-            const wrap = document.createElement('div');
-            wrap.className = 'notif-row-thumb-wrap';
-            const thumb = document.createElement('img');
-            thumb.className = m.thumbnailIsIcon ? 'notif-row-thumb notif-row-thumb-icon' : 'notif-row-thumb';
-            thumb.alt = '';
-            thumb.loading = 'lazy';
-            // v1.288 net: a deleted/404 thumbnail degrades to the FileTube logo
-            // (icon-fit) and drops its duration badge, rather than showing a
-            // broken-image glyph. Null the handler first so it can never loop.
-            thumb.onerror = function () {
-              this.onerror = null;
-              this.src = NOTIF_FALLBACK_ICON;
-              this.classList.add('notif-row-thumb-icon');
-              const b = wrap.querySelector('.duration-badge');
-              if (b) b.remove();
-            };
-            thumb.src = m.thumbnailUrl;
-            wrap.appendChild(thumb);
-            // A duration badge belongs only on a real photographic thumbnail - never
-            // on a logo/icon fallback (nothing to triage there).
-            if (!m.thumbnailIsIcon && m.durationSec > 0 && typeof formatDuration === 'function') {
-              const badge = document.createElement('div');
-              badge.className = 'duration-badge';
-              badge.textContent = formatDuration(m.durationSec);
-              wrap.appendChild(badge);
-            }
-            a.appendChild(wrap);
-          }
-          const dot = document.createElement('span');
-          dot.className = 'notif-row-dot';
-          a.appendChild(dot);
-          // v1.68 (Dean ruling 3): the per-row dismiss X. A SIBLING of the
-          // row anchor inside a flex wrap - a <button> can never nest in an
-          // <a> (the card-corner rule). NON-OPTIMISTIC (v1.54 law): the row
-          // leaves only on a confirmed 2xx; failure re-enables for retry.
-          const wrap = document.createElement('div');
-          wrap.className = 'notif-row-wrap';
-          const dismissBtn = document.createElement('button');
-          dismissBtn.type = 'button';
-          dismissBtn.className = 'notif-row-dismiss';
-          dismissBtn.setAttribute('aria-label', 'Dismiss this notification');
-          dismissBtn.title = 'Dismiss';
-          dismissBtn.textContent = '×';
-          dismissBtn.addEventListener('click', () => {
-            if (dismissBtn.disabled) return;
-            dismissBtn.disabled = true;
-            fetch('/api/notifications/dismiss', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ id: m.id }),
-            })
-              .then((res) => {
-                if (!res.ok) throw new Error(`dismiss failed: ${res.status}`);
-                // v1.161: the removal + focus-keep + empty-state + badge-reconcile
-                // (server truth, not stale arithmetic) is the shared helper the
-                // delete button also uses.
-                return removeNotifRowReconcile(wrap);
+      // window.showToast, not the bare binding (the watch.js share pattern): present in the
+      // browser, absent under the jsdom harness so a failure-path toast's auto-dismiss timer
+      // never outlives a test's document.
+      const showToastSafe = (msg) => {
+        if (typeof window !== 'undefined' && typeof window.showToast === 'function') window.showToast(msg);
+      };
+
+      // Rows with a request in flight (a dismiss or a delete): every other path on that row
+      // is a no-op until it settles.
+      const busyRows = new WeakSet();
+
+      // DISMISS - not destructive (D4.8): no confirm. NON-OPTIMISTIC (v1.54 law): the row
+      // leaves only on a confirmed 2xx; a failure keeps it and allows a retry.
+      const dismissRow = (m, row) => {
+        if (busyRows.has(row) || !row.isConnected) return;
+        busyRows.add(row);
+        fetch('/api/notifications/dismiss', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: m.id }),
+        })
+          .then((res) => {
+            if (!res.ok) throw new Error(`dismiss failed: ${res.status}`);
+            return removeNotifRowReconcile(row);
+          })
+          .catch(() => {
+            busyRows.delete(row);
+            showToastSafe('Could not dismiss the notification.');
+          });
+      };
+
+      // DELETE FILE - DESTRUCTIVE (D8.3, full gate). Every path (the menu item, the swipe's
+      // Delete button) lands here, and NOTHING reaches the delete request unless ui.confirm
+      // resolved exactly `true`: Cancel, Esc, the scrim, Close, the panel closing (the
+      // signal) and a late tap on a closing dialog all resolve false. One confirm at a time
+      // for the whole panel; a row with a request in flight asks nothing. The request is
+      // the SAME one the v1.161 button sent: DELETE /api/videos/:id (-> Trash, recoverable),
+      // then a best-effort dismiss of the row's notification.
+      let confirmOpen = false;
+      const requestDelete = (m, row) => {
+        if (m.kind !== 'media') return; // a podcast/engine id is not a /api/videos item
+        if (confirmOpen || busyRows.has(row) || !row.isConnected || !openCtl) return;
+        const signal = openCtl.signal;
+        confirmOpen = true;
+        U.confirm(Object.assign(notifDeleteConfirmCopy(m), { signal, doc: document }))
+          .then((ok) => {
+            confirmOpen = false;
+            if (ok !== true) return;
+            if (signal.aborted || !row.isConnected || busyRows.has(row)) return;
+            busyRows.add(row);
+            fetch('/api/videos/' + encodeURIComponent(m.mediaId), { method: 'DELETE' })
+              .then((res) => (res.ok ? res.json().catch(() => ({})) : Promise.reject(new Error(`delete failed: ${res.status}`))))
+              .then((data) => {
+                // The video is gone -> best-effort dismiss its notification server-side so
+                // it does not reappear pointing at a trashed video (a failed dismiss
+                // self-heals on the next manual one - the video is safely in Trash either
+                // way), then drop the row + reconcile the badge.
+                fetch('/api/notifications/dismiss', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ id: m.id }),
+                }).catch(() => { /* cosmetic - the row is already gone client-side */ });
+                if (typeof deleteResultToast === 'function') showToastSafe(deleteResultToast(data));
+                return removeNotifRowReconcile(row);
               })
               .catch(() => {
-                dismissBtn.disabled = false;
-                // window.showToast, not the bare binding (the watch.js share
-                // pattern): present in the browser, absent under the jsdom
-                // harness so a failure-path toast's auto-dismiss timer never
-                // outlives a test's document.
-                if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
-                  window.showToast('Could not dismiss the notification.');
-                }
+                busyRows.delete(row); // non-optimistic: a failure keeps the row for a retry
+                showToastSafe('Could not delete the video.');
               });
           });
-          a.addEventListener('click', () => {
+      };
+
+      const openChannel = (m) => {
+        if (!m.channelHref) return;
+        closePanel();
+        const nav = window.FileTube && typeof window.FileTube.navigate === 'function' ? window.FileTube.navigate : null;
+        if (nav) nav(m.channelHref);
+        else window.location.href = m.channelHref;
+      };
+
+      // The row menu (kebab / long-press / right-click): one ui.menu, anchored at the kebab.
+      const openRowMenu = (m, row, anchor) => {
+        if (!openCtl || !row.isConnected) return;
+        U.menu({
+          title: m.title || 'Notification', anchor, signal: openCtl.signal, doc: document,
+          items: buildNotificationMenuItems(m),
+          onSelect: (v) => {
+            if (v === 'channel') openChannel(m);
+            else if (v === 'dismiss') dismissRow(m, row);
+            else if (v === 'delete') requestDelete(m, row);
+          },
+        });
+      };
+
+      // One row: returns the node to place in the list (the swipe wrapper, or the row).
+      const buildRow = (m) => {
+        // Media column (D4.4): the channel's photo, a podcast's ARTWORK (a rounded ui-art),
+        // else the monogram - never the logo, never a broken image.
+        const avatar = U.avatar({ name: m.channelLabel, url: m.channelAvatarUrl || null, kind: m.kind === 'podcast' ? 'podcast' : 'channel', size: 'md', doc: document });
+        // Aside column: the thumbnail, reserved on every row. A logo thumb (the yt-dlp mark,
+        // the FileTube floor) is contained, never cropped, and hangs no duration badge.
+        const thumb = U.thumb({ src: m.thumbnailUrl, context: 'row', duration: (!m.thumbnailIsIcon && m.durationSec > 0) ? m.durationSec : 0, doc: document });
+        const img = thumb.querySelector('.ui-thumb__img');
+        if (img && m.thumbnailIsIcon) img.classList.add('notif-thumb-icon');
+        // v1.288 net (Dean's "nothing iconless" rule): a 404 thumbnail becomes the FileTube
+        // logo, contained, and drops its duration badge. ui.thumb has already removed the
+        // broken image; the logo is a fresh image with no handler, so it can never loop.
+        if (img && !m.thumbnailIsIcon) {
+          img.addEventListener('error', () => {
+            const b = thumb.querySelector('.ui-thumb__duration');
+            if (b) b.remove();
+            if (thumb.querySelector('.notif-thumb-icon')) return;
+            const logo = document.createElement('img');
+            logo.className = 'ui-thumb__img notif-thumb-icon';
+            logo.alt = '';
+            logo.src = NOTIF_FALLBACK_ICON;
+            thumb.appendChild(logo);
+          });
+        }
+        const kebab = U.button({ variant: 'plain', shape: 'icon', icon: 'more_vert', ariaLabel: 'More actions', doc: document });
+        kebab.classList.add('notif-more');
+        const time = document.createElement('span');
+        time.className = 'notif-row-time';
+        time.textContent = m.timeLabel;
+        const row = U.row({
+          size: 'media', lead: m.unread ? 'dot' : null, media: avatar, overline: m.channelLabel,
+          title: m.title || 'Notification', meta: time, aside: thumb, actions: [kebab], href: m.href, doc: document,
+          onClick: () => {
             // v1.52: partial seed -- the row model has title/channel/avatar/
             // thumbnail in hand; the watch painter fills these in frame one
             // and skeletons the rest until hydration.
@@ -4290,148 +4376,96 @@ function injectNotificationBellIfEnabled() {
               body: JSON.stringify({ id: m.id }),
               keepalive: true,
             }).catch(() => { /* cosmetic -- the dot returns next open */ });
-            a.classList.remove('notif-row-unread');
+            const dot = row.querySelector('.ui-row__dot');
+            if (dot) dot.remove();
             closePanel();
-          });
-          // v1.161 (Dean): a per-VIDEO delete button - a SIBLING of the anchor
-          // (never nested in the <a>), so a tap on it can NEVER navigate to the
-          // video; no stopPropagation, so the delegated SPA router is untouched
-          // (the v1.153 scar). Two-tap arm (the pure nextArmState reducer), same
-          // DELETE /api/videos/:id -> Trash flow a card uses (recoverable),
-          // NON-OPTIMISTIC (v1.54 law): the row leaves only on a confirmed 2xx.
-          // MEDIA rows only - an 'engine' id is synthetic and a 'podcast' row is
-          // not a /api/videos item; both keep just the dismiss X.
-          let deleteBtn = null;
-          if (m.kind === 'media') {
-            deleteBtn = document.createElement('button');
-            deleteBtn.type = 'button';
-            deleteBtn.className = 'notif-row-delete';
-            deleteBtn.setAttribute('aria-label', 'Delete this video');
-            deleteBtn.title = 'Delete video';
-            const delIcon = document.createElement('i');
-            delIcon.className = 'icon-delete';
-            const delConfirm = document.createElement('span');
-            delConfirm.className = 'notif-row-delete-confirm';
-            delConfirm.textContent = 'Sure?';
-            deleteBtn.appendChild(delIcon);
-            deleteBtn.appendChild(delConfirm);
-            let armState = 'idle';
-            let armTimer = null;
-            const disarm = () => {
-              armState = 'idle';
-              deleteBtn.classList.remove('notif-row-delete-armed');
-              if (armTimer) { clearTimeout(armTimer); armTimer = null; }
-              if (armedNotifDelete === deleteBtn) armedNotifDelete = null;
-            };
-            deleteBtn._disarm = disarm; // a sibling arming disarms this one
-            deleteBtn.addEventListener('click', () => {
-              if (deleteBtn.disabled) return;
-              const next = nextArmState(armState, 'tap');
-              armState = next.state;
-              if (!next.deleted) {
-                // first tap: arm THIS, disarm any other (one armed at a time).
-                if (armedNotifDelete && armedNotifDelete !== deleteBtn && typeof armedNotifDelete._disarm === 'function') {
-                  armedNotifDelete._disarm();
-                }
-                armedNotifDelete = deleteBtn;
-                deleteBtn.classList.add('notif-row-delete-armed');
-                if (armTimer) clearTimeout(armTimer);
-                armTimer = setTimeout(disarm, 3000); // auto-disarm, like a card
-                return;
-              }
-              // second tap on the SAME armed button: DELETE -> Trash.
-              disarm();
-              deleteBtn.disabled = true;
-              fetch('/api/videos/' + encodeURIComponent(m.mediaId), { method: 'DELETE' })
-                .then((res) => (res.ok ? res.json().catch(() => ({})) : Promise.reject(new Error(`delete failed: ${res.status}`))))
-                .then((data) => {
-                  // The video is gone -> best-effort dismiss its notification
-                  // server-side so it does not reappear pointing at a trashed
-                  // video (a failed dismiss self-heals on the next manual one - the
-                  // video is safely in Trash either way), then drop the row +
-                  // reconcile the badge.
-                  fetch('/api/notifications/dismiss', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id: m.id }),
-                  }).catch(() => { /* cosmetic - the row is already gone client-side */ });
-                  if (typeof window !== 'undefined' && typeof window.showToast === 'function' && typeof deleteResultToast === 'function') {
-                    window.showToast(deleteResultToast(data));
-                  }
-                  return removeNotifRowReconcile(wrap);
-                })
-                .catch(() => {
-                  deleteBtn.disabled = false; // non-optimistic: failure re-enables for retry
-                  if (typeof window !== 'undefined' && typeof window.showToast === 'function') {
-                    window.showToast('Could not delete the video.');
-                  }
-                });
-            });
-          }
-          wrap.appendChild(a);
-          if (deleteBtn) wrap.appendChild(deleteBtn); // left of the dismiss X
-          wrap.appendChild(dismissBtn);
-          list.appendChild(wrap);
-        }
+          },
+        });
+        row.setAttribute('data-notif-id', String(m.id));
+        row.setAttribute('data-kind', m.kind);
+        kebab.addEventListener('click', () => openRowMenu(m, row, kebab));
+        const h = { row, swipe: null, offMenu: null };
+        rowHandles.push(h);
+        const FI = typeof window !== 'undefined' ? window.FTInteraction : null;
+        if (!FI) return row;
+        h.offMenu = FI.onActionMenu(row, () => openRowMenu(m, row, kebab));
+        // Swipe left: Dismiss (neutral) and, on a media row, Delete (danger). A full swipe
+        // past 60% DISMISSES - swipeRow refuses a danger full-swipe at setup - and the
+        // Delete button only ever opens the confirm (requestDelete).
+        const actions = [{ id: 'dismiss', label: 'Dismiss', kind: 'neutral', onSelect: () => dismissRow(m, row) }];
+        if (m.kind === 'media') actions.push({ id: 'delete', label: 'Delete', kind: 'danger', onSelect: () => requestDelete(m, row) });
+        h.swipe = FI.swipeRow(row, { fullSwipe: 'dismiss', actions });
+        return row.parentNode; // the parentless row now sits in its .ui-swipe wrapper
       };
 
-      const openPanel = () => {
-        if (!panel.hidden) return;
-        bellBtn.setAttribute('aria-expanded', 'true');
-        openOverlay(backdrop, 'notif-open');
-        openOverlay(panel, 'notif-open');
-        renderEmpty('Loading…');
+      const renderRows = (rows) => {
+        const models = rows.map(buildNotificationRowModel).filter(Boolean);
+        if (models.length === 0) { renderEmpty(); return; }
+        showState(null);
+        tools.hidden = false;
+        for (const m of models) list.appendChild(buildRow(m));
+      };
+
+      let loadSeq = 0;
+      function loadRows() {
+        const seq = ++loadSeq;
+        renderSkeleton();
         fetch('/api/notifications')
           .then((res) => (res.ok ? res.json() : Promise.reject(new Error('unavailable'))))
           .then((body) => {
+            if (seq !== loadSeq || !panelOpen()) return;
             renderRows(Array.isArray(body.items) ? body.items : []);
             // Opening the panel = seen (two-tier decision 3): number badge
             // zeroes now; the per-row dots just rendered stay until tapped.
             setBadge(0);
             return fetch('/api/notifications/seen', { method: 'POST' });
           })
-          .catch(() => renderEmpty('Could not load notifications.'));
+          .catch(() => { if (seq === loadSeq && panelOpen()) renderError(); });
+      }
+
+      const openPanel = () => {
+        if (panelOpen()) return;
+        openCtl = new AbortController();
+        confirmOpen = false;
+        bellBtn.setAttribute('aria-expanded', 'true');
+        sheet.open();
+        loadRows();
       };
-      const closePanel = () => {
-        if (panel.hidden) return;
-        bellBtn.setAttribute('aria-expanded', 'false');
-        closeOverlayThen(backdrop, 'notif-open', () => { backdrop.hidden = true; });
-        closeOverlayThen(panel, 'notif-open', () => { panel.hidden = true; });
-      };
+      function closePanel() {
+        if (!panelOpen()) return;
+        sheet.close(); // onClosing aborts openCtl: its menus and confirms close with it
+      }
 
       bellBtn.addEventListener('click', () => {
-        if (panel.hidden) openPanel();
-        else closePanel();
+        if (panelOpen()) closePanel();
+        else openPanel();
       });
+      // Clear all hides every row for THIS user (a bulk dismiss, server-side): it asks
+      // first (D4.8), then POSTs the same /api/notifications/clear as before, and empties
+      // the list only on a confirmed 2xx.
+      let clearing = false;
       clearBtn.addEventListener('click', () => {
-        fetch('/api/notifications/clear', { method: 'POST' })
-          .then(() => {
-            renderEmpty('No notifications yet. New downloads land here.');
-            setBadge(0);
-          })
-          .catch(() => { /* panel keeps its rows; next open re-syncs */ });
+        if (clearing || confirmOpen || !openCtl) return;
+        const signal = openCtl.signal;
+        clearing = true;
+        confirmOpen = true;
+        U.confirm({ title: 'Clear all notifications?', body: 'Every notification leaves this list. Your videos and episodes stay in your library.', confirmLabel: 'Clear all', danger: true, signal, doc: document })
+          .then((ok) => {
+            confirmOpen = false;
+            if (ok !== true || signal.aborted) { clearing = false; return null; }
+            return fetch('/api/notifications/clear', { method: 'POST' })
+              .then((res) => {
+                if (!res.ok) throw new Error(`clear failed: ${res.status}`);
+                renderEmpty();
+                setBadge(0);
+              })
+              .catch(() => showToastSafe('Could not clear the notifications.'))
+              .then(() => { clearing = false; });
+          });
       });
-      backdrop.addEventListener('click', closePanel);
-
-      // Outside-close on click + pointerdown + touchstart (iOS does not
-      // synthesize `click` on the gesture layer -- the player-menu lesson,
-      // public/js/player.js). Cheap no-op while closed.
-      const closeOnOutside = (e) => {
-        if (panel.hidden) return;
-        if (panel.contains(e.target) || bellBtn.contains(e.target)) return;
-        closePanel();
-      };
-      document.addEventListener('click', closeOnOutside);
-      document.addEventListener('pointerdown', closeOnOutside);
-      document.addEventListener('touchstart', closeOnOutside, { passive: true });
-      // Escape on the CAPTURE phase (the shortcuts-modal posture: immune to
-      // listener-registration order), stopped so page-level Escape handlers
-      // (subscribe modal, sort menu) don't also fire underneath.
-      document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape' || panel.hidden) return;
-        e.stopImmediatePropagation();
-        closePanel();
-      }, true);
+      // A back/forward navigation leaves the page the panel was opened over: close it
+      // (and, through its signal, any menu or confirm it holds).
+      window.addEventListener('popstate', closePanel);
 
       // ---- badge poll: 60s cadence, hidden-tab skip, resume on return -----
       // (the download-chip poller's shape, simplified: the badge has no
@@ -4455,7 +4489,7 @@ function injectNotificationBellIfEnabled() {
             return res.ok ? res.json() : null;
           })
           .then((body) => {
-            if (body && Number.isInteger(body.count) && panel.hidden) setBadge(body.count);
+            if (body && Number.isInteger(body.count) && !panelOpen()) setBadge(body.count);
             schedule();
           })
           .catch(() => schedule());
@@ -4501,15 +4535,15 @@ function injectNotificationBellIfEnabled() {
 //
 // YouTube-style queue ("think YouTube" - Dean): a header icon that EXISTS
 // only while the user's queue does (ruling 4), left of the notification
-// bell, opening a notif-panel-style surface: now-playing highlighted,
-// per-row remove, up/down reorder (buttons work everywhere; desktop adds
-// drag), Clear with a two-tap confirm (toast ceremony, no modal - the
-// queue is ephemeral by spirit). Server-persisted per user (ruling 6) via
+// bell, opening a ui.sheet like the bell's (sweep S4): now-playing highlighted,
+// per-row remove, up/down reorder (icon buttons on every input device; drag
+// is tech-debt #111), Clear behind a ui.confirm (sweep S4, D4.8; it was a
+// two-tap arm in the button). Server-persisted per user (ruling 6) via
 // /api/queue; ALL semantics live server-side in lib/queue/store.js's
 // reducers - this chrome renders state and fires verbs, deciding nothing.
 //
-// Panel exclusivity with the bell comes free: both panels close on any
-// outside pointerdown, and each button is outside the other's panel.
+// Panel exclusivity with the bell comes free: an open ui.sheet's scrim
+// covers the other button, so a tap there closes this panel first.
 // dock() pair check (the v1.50.3 lesson): NOT applicable - that pair is
 // the PLAYER BAR's popups (reparented with the player); this panel is
 // body-mounted like the bell's and survives docking untouched.
@@ -4685,6 +4719,9 @@ function injectQueueChrome() {
     .then((queue) => {
       if (!queue) { dropReserve(); return; } // pre-auth / error: fail closed, inject nothing
       if (queueButtonAlreadyInjected()) { dropReserve(); return; } // async double-inject window
+      // Sweep S4: the panel is a ui.sheet; ui.js loads before common.js on every shell (step 4).
+      const U = typeof window !== 'undefined' ? window.ui : null;
+      if (!U || typeof U.sheet !== 'function') { dropReserve(); return; }
 
       // ---- button + badge (createElement/textContent only) ---------------
       // Sweep S1 (F31): a plain ui-btn icon button (44px hit area), the queue glyph (list
@@ -4707,35 +4744,42 @@ function injectQueueChrome() {
       if (queueReserve) queueReserve.replaceWith(btn);
       else headerRight.insertBefore(btn, document.getElementById('notif-bell-btn') || document.getElementById('notif-bell-placeholder') || headerRight.firstChild);
 
-      // ---- panel + (mobile) backdrop, body-mounted like the bell's --------
-      const backdrop = document.createElement('div');
-      backdrop.id = 'queue-panel-backdrop';
-      backdrop.className = 'queue-panel-backdrop';
-      backdrop.hidden = true;
-      const panel = document.createElement('div');
-      panel.id = 'queue-panel';
-      panel.className = 'queue-panel';
-      panel.hidden = true;
-      panel.setAttribute('role', 'dialog');
-      panel.setAttribute('aria-label', 'Playback queue');
-      const head = document.createElement('div');
-      head.className = 'queue-panel-header';
-      const heading = document.createElement('span');
-      heading.id = 'queue-panel-heading';
-      heading.textContent = 'Queue';
-      const clearBtn = document.createElement('button');
+      // ---- the panel: ONE ui.sheet (sweep S4, D4.6) ------------------------------
+      // A popover under the queue button on desktop, a bottom sheet on the phone. F48 is
+      // fixed by construction: the old panel's open class was added only by openOverlay,
+      // which skips it under Reduce Motion, so the panel opened at opacity 0; ui.sheet
+      // ALWAYS applies its open class (Reduce Motion makes that an opacity-only change).
+      // Rows are ui-rows with reserved columns on every row: the art (media) and three
+      // action slots - Move up, Move down, Remove from queue (a queue edit, never a file
+      // delete). The ▴▾ and × text glyphs are gone (AC4).
+      const content = document.createElement('div');
+      content.className = 'queue-sheet';
+      const tools = document.createElement('div');
+      tools.className = 'queue-sheet__tools';
+      const clearBtn = U.button({ variant: 'plain', size: 'sm', label: 'Clear queue', doc: document });
       clearBtn.id = 'queue-clear-btn';
-      clearBtn.className = 'queue-clear-btn';
-      clearBtn.textContent = 'Clear queue';
-      head.appendChild(heading);
-      head.appendChild(clearBtn);
-      panel.appendChild(head);
-      const list = document.createElement('div');
+      tools.appendChild(clearBtn);
+      const list = U.list({ size: 'media', media: 'art', actions: 3, divider: 'inset', label: 'Queue', doc: document });
       list.id = 'queue-panel-list';
-      list.className = 'queue-panel-list';
-      panel.appendChild(list);
-      document.body.appendChild(backdrop);
-      document.body.appendChild(panel);
+      const stateHost = document.createElement('div');
+      stateHost.className = 'queue-sheet__state';
+      content.appendChild(tools);
+      content.appendChild(list);
+      content.appendChild(stateHost);
+
+      // Per-open lifetime for the Clear confirm (closing the panel closes it).
+      let openCtl = null;
+      const sheet = U.sheet({
+        variant: 'auto', anchor: btn, title: 'Queue', content, doc: document,
+        onClosing: () => {
+          btn.setAttribute('aria-expanded', 'false');
+          if (openCtl) { openCtl.abort(); openCtl = null; }
+        },
+      });
+      sheet.el.id = 'queue-panel'; // an id: ui.sheet rewrites className on every open
+      const heading = sheet.el.querySelector('.ui-sheet__title');
+      heading.id = 'queue-panel-heading';
+      const panelOpen = () => sheet.isOpen();
 
       const setChrome = (q) => {
         const count = Array.isArray(q.entries) ? q.entries.length : 0;
@@ -4752,45 +4796,57 @@ function injectQueueChrome() {
         // stale-button tap: open -> "Loading..." -> fetch resolves empty ->
         // panel closed = "it tries to load for a second and stops". The
         // button itself still hides (ruling 4); the open panel closes via
-        // backdrop/outside tap as always.
+        // the scrim or Esc as always.
       };
       setChrome(queue);
 
       const verb = (url, opts) => fetch(url, opts)
         .then((res) => (res.ok ? res.json() : Promise.reject(new Error('queue-verb-failed'))))
         .then((body) => {
-          if (body && body.queue) { setChrome(body.queue); if (!panel.hidden) renderRows(body.queue); }
+          if (body && body.queue) { setChrome(body.queue); if (panelOpen()) renderRows(body.queue); }
           return body;
         });
 
-      const renderEmpty = (text) => {
+      // One state at a time: the rows, a skeleton, or a ui.state (empty / error).
+      const showState = (node) => {
         list.textContent = '';
-        const empty = document.createElement('div');
-        empty.className = 'queue-empty';
-        empty.textContent = text;
-        list.appendChild(empty);
+        stateHost.textContent = '';
+        list.hidden = !!node;
+        tools.hidden = true;
+        if (node) stateHost.appendChild(node);
+      };
+      const renderEmpty = () => showState(U.state({ icon: 'queue_music', title: 'No queued items yet', body: 'Items you queue up to play show here.', doc: document }));
+      const renderError = () => showState(U.state({ icon: 'error', title: 'Could not load the queue', action: { label: 'Try again', onClick: () => loadQueue() }, doc: document }));
+      // D9: the loading skeleton is the REAL row grid (same list, same slots).
+      const renderSkeleton = () => {
+        showState(null);
+        for (let i = 0; i < 3; i++) {
+          const art = document.createElement('span');
+          art.className = 'ui-art ui-avatar--lg skeleton-shimmer';
+          const title = document.createElement('span');
+          title.className = 'skeleton-text skeleton-text-long skeleton-shimmer';
+          title.textContent = ' ';
+          const meta = document.createElement('span');
+          meta.className = 'skeleton-text skeleton-text-mid skeleton-shimmer';
+          meta.textContent = ' ';
+          const row = U.row({ size: 'media', media: art, title, meta, actions: [null, null, null], doc: document });
+          row.setAttribute('aria-hidden', 'true');
+          list.appendChild(row);
+        }
       };
 
       const renderRows = (q) => {
-        list.textContent = '';
         const models = buildQueueRowModels(q);
-        if (models.length === 0) { renderEmpty('No queued items yet. Items you queue up to play show here.'); return; }
+        if (models.length === 0) { renderEmpty(); return; }
+        showState(null);
+        tools.hidden = false;
         const uids = models.map((m) => m.uid);
         models.forEach((m, idx) => {
-          const row = document.createElement('div');
-          row.className = 'queue-row' + (m.playing ? ' queue-row-playing' : '') + (m.played ? ' queue-row-played' : '');
-          row.setAttribute('data-uid', m.uid);
-          // Reorder: up/down buttons (work on every input device; drag is a
-          // desktop nicety a later pass may add - disclosed in the plan).
-          const orderBox = document.createElement('span');
-          orderBox.className = 'queue-row-order';
-          const mkMove = (dir, label) => {
-            const b = document.createElement('button');
-            b.className = 'queue-row-move';
-            b.setAttribute('aria-label', label);
-            b.textContent = dir < 0 ? '▴' : '▾';
+          // Reorder: up/down buttons (every input device; tech-debt #111 tracks drag).
+          const mkMove = (dir, icon, label) => {
             const target = idx + dir;
-            b.disabled = target < 0 || target >= uids.length;
+            const b = U.button({ variant: 'plain', shape: 'icon', icon, ariaLabel: label, disabled: target < 0 || target >= uids.length, doc: document });
+            b.classList.add('queue-move');
             b.addEventListener('click', (e) => {
               e.stopPropagation();
               const order = uids.slice();
@@ -4801,133 +4857,102 @@ function injectQueueChrome() {
             });
             return b;
           };
-          orderBox.appendChild(mkMove(-1, 'Move up'));
-          orderBox.appendChild(mkMove(1, 'Move down'));
-          row.appendChild(orderBox);
-          const link = document.createElement('a');
-          link.className = 'queue-row-main';
-          link.href = m.href;
-          if (m.thumbnailUrl) {
-            const thumb = document.createElement('img');
-            thumb.className = 'queue-row-thumb';
-            thumb.src = m.thumbnailUrl;
-            thumb.alt = '';
-            thumb.loading = 'lazy';
-            link.appendChild(thumb);
-          }
-          const text = document.createElement('span');
-          text.className = 'queue-row-text';
-          const title = document.createElement('span');
-          title.className = 'queue-row-title';
-          title.textContent = m.title;
-          const channel = document.createElement('span');
-          channel.className = 'queue-row-channel';
-          channel.textContent = m.playing ? `Now playing - ${m.channelLabel}` : m.channelLabel;
-          text.appendChild(title);
-          text.appendChild(channel);
-          link.appendChild(text);
-          link.addEventListener('click', () => {
-            // Tapping a row makes it now-playing (server pointer) and rides
-            // the normal watch nav with a paint seed (the bell-row posture).
-            // v1.71 (gate S2): media rows only - a podcast row navigates to
-            // /podcasts and must never prime a watch page it will not visit.
-            // v1.72: 'track' joined the kinds, so the guard names media
-            // POSITIVELY (the advance seam's exact fix, same class).
-            // v1.251 (QA gate S3): "media" no longer implies watch-bound - an AUDIO
-            // media row navigates to /music now. The stash stays SAFE anyway:
-            // consumeWatchSeed is id-guarded, single-shot and TTL'd, so an audio
-            // row's seed either dies unmatched or legitimately paints the ao=1
-            // miss-bounce's watch page. Annotated, not tightened (a fifth-strike
-            // href-is-watch guard is an option if this class ever bites again).
-            if ((m.kind || 'media') === 'media') {
-              stashWatchSeed({
-                id: m.mediaId, title: m.title,
-                channelName: m.channelLabel === 'Library' ? '' : m.channelLabel,
-                channelAvatarUrl: m.channelAvatarUrl,
-                hasThumbnail: Boolean(m.thumbnailUrl),
-              });
-            }
-            fetch('/api/queue/pointer', {
-              method: 'POST', headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ uid: m.uid }), keepalive: true,
-            }).catch(() => { /* pointer re-syncs on next open */ });
-            closePanel();
-          });
-          row.appendChild(link);
-          const remove = document.createElement('button');
-          remove.className = 'queue-row-remove';
-          remove.setAttribute('aria-label', 'Remove from queue');
-          remove.textContent = '×';
+          const remove = U.button({ variant: 'plain', shape: 'icon', icon: 'close', ariaLabel: 'Remove from queue', doc: document });
+          remove.classList.add('queue-remove');
           remove.addEventListener('click', (e) => {
             e.stopPropagation();
             verb(`/api/queue/items/${m.uid}`, { method: 'DELETE' }).catch(() => refreshQueueChrome());
           });
-          row.appendChild(remove);
+          // D4.4: the entry's art as a rounded ui-art square (the album / show / video frame), the
+          // monogram if it has none or it fails - never a broken image.
+          const art = U.avatar({ name: m.title || m.channelLabel, url: m.thumbnailUrl || null, kind: m.kind === 'podcast' ? 'podcast' : 'album', size: 'lg', doc: document });
+          const row = U.row({
+            size: 'media', media: art, title: m.title || 'Untitled',
+            meta: m.playing ? `Now playing - ${m.channelLabel}` : m.channelLabel,
+            actions: [mkMove(-1, 'arrow_upward', 'Move up'), mkMove(1, 'arrow_downward', 'Move down'), remove],
+            href: m.href, doc: document,
+            onClick: () => {
+              // Tapping a row makes it now-playing (server pointer) and rides
+              // the normal watch nav with a paint seed (the bell-row posture).
+              // v1.71 (gate S2): media rows only - a podcast row navigates to
+              // /podcasts and must never prime a watch page it will not visit.
+              // v1.72: 'track' joined the kinds, so the guard names media
+              // POSITIVELY (the advance seam's exact fix, same class).
+              // v1.251 (QA gate S3): "media" no longer implies watch-bound - an AUDIO
+              // media row navigates to /music now. The stash stays SAFE anyway:
+              // consumeWatchSeed is id-guarded, single-shot and TTL'd, so an audio
+              // row's seed either dies unmatched or legitimately paints the ao=1
+              // miss-bounce's watch page. Annotated, not tightened (a fifth-strike
+              // href-is-watch guard is an option if this class ever bites again).
+              if ((m.kind || 'media') === 'media') {
+                stashWatchSeed({
+                  id: m.mediaId, title: m.title,
+                  channelName: m.channelLabel === 'Library' ? '' : m.channelLabel,
+                  channelAvatarUrl: m.channelAvatarUrl,
+                  hasThumbnail: Boolean(m.thumbnailUrl),
+                });
+              }
+              fetch('/api/queue/pointer', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ uid: m.uid }), keepalive: true,
+              }).catch(() => { /* pointer re-syncs on next open */ });
+              closePanel();
+            },
+          });
+          row.setAttribute('data-uid', m.uid);
+          // Now playing = a neutral selected fill (D8.8: never red); played rows dim their text.
+          if (m.playing) row.classList.add('queue-item--playing');
+          if (m.played) row.classList.add('queue-item--played');
           list.appendChild(row);
         });
       };
 
-      const openPanel = () => {
-        if (!panel.hidden) return;
-        btn.setAttribute('aria-expanded', 'true');
-        openOverlay(backdrop, 'queue-open');
-        openOverlay(panel, 'queue-open');
-        renderEmpty('Loading…');
+      let loadSeq = 0;
+      function loadQueue() {
+        const seq = ++loadSeq;
+        renderSkeleton();
         fetch('/api/queue')
           .then((res) => (res.ok ? res.json() : Promise.reject(new Error('unavailable'))))
-          .then((q) => { setChrome(q); renderRows(q); })
-          .catch(() => renderEmpty('Could not load the queue.'));
+          .then((q) => { if (seq !== loadSeq) return; setChrome(q); if (panelOpen()) renderRows(q); })
+          .catch(() => { if (seq === loadSeq && panelOpen()) renderError(); });
+      }
+
+      const openPanel = () => {
+        if (panelOpen()) return;
+        openCtl = new AbortController();
+        btn.setAttribute('aria-expanded', 'true');
+        sheet.open();
+        loadQueue();
       };
-      const closePanel = () => {
-        if (panel.hidden) return;
-        btn.setAttribute('aria-expanded', 'false');
-        resetClearArm();
-        closeOverlayThen(backdrop, 'queue-open', () => { backdrop.hidden = true; });
-        closeOverlayThen(panel, 'queue-open', () => { panel.hidden = true; });
-      };
+      function closePanel() {
+        if (!panelOpen()) return;
+        sheet.close();
+      }
 
       btn.addEventListener('click', () => {
-        if (panel.hidden) openPanel();
-        else closePanel();
+        if (panelOpen()) closePanel();
+        else openPanel();
       });
 
-      // Clear = two-tap confirm in the button itself (toast ceremony, no
-      // modal - ruling 4). The armed state disarms on close or after 3s.
-      let clearArmTimer = null;
-      const resetClearArm = () => {
-        if (clearArmTimer) { clearTimeout(clearArmTimer); clearArmTimer = null; }
-        clearBtn.textContent = 'Clear queue';
-        clearBtn.classList.remove('queue-clear-armed');
-      };
+      // Clear: the in-button two-tap arm ("Really clear?") becomes a ui.confirm (D4.8: a
+      // confirmation never grows in place). The SAME DELETE /api/queue runs only on OK; it
+      // empties the queue, never a file.
+      let clearing = false;
       clearBtn.addEventListener('click', () => {
-        if (!clearBtn.classList.contains('queue-clear-armed')) {
-          clearBtn.textContent = 'Really clear?';
-          clearBtn.classList.add('queue-clear-armed');
-          clearArmTimer = setTimeout(resetClearArm, 3000);
-          return;
-        }
-        resetClearArm();
-        verb('/api/queue', { method: 'DELETE' })
-          .then(() => { showToast('Queue cleared'); closePanel(); })
-          .catch(() => showToast('Could not clear the queue'));
+        if (clearing || !openCtl) return;
+        const signal = openCtl.signal;
+        clearing = true;
+        U.confirm({ title: 'Clear the queue?', body: 'Every item leaves the queue. Nothing is removed from your library.', confirmLabel: 'Clear queue', danger: true, signal, doc: document })
+          .then((ok) => {
+            if (ok !== true || signal.aborted) { clearing = false; return null; }
+            return verb('/api/queue', { method: 'DELETE' })
+              .then(() => { showToast('Queue cleared'); closePanel(); })
+              .catch(() => showToast('Could not clear the queue'))
+              .then(() => { clearing = false; });
+          });
       });
-      backdrop.addEventListener('click', closePanel);
-
-      // Outside-close (click + pointerdown + touchstart - the bell's iOS
-      // posture) + capture-phase Escape.
-      const closeOnOutside = (e) => {
-        if (panel.hidden) return;
-        if (panel.contains(e.target) || btn.contains(e.target)) return;
-        closePanel();
-      };
-      document.addEventListener('click', closeOnOutside);
-      document.addEventListener('pointerdown', closeOnOutside);
-      document.addEventListener('touchstart', closeOnOutside, { passive: true });
-      document.addEventListener('keydown', (e) => {
-        if (e.key !== 'Escape' || panel.hidden) return;
-        e.stopImmediatePropagation();
-        closePanel();
-      }, true);
+      // A back/forward navigation leaves the page the panel was opened over: close it.
+      window.addEventListener('popstate', closePanel);
 
       // The refresh hook: add-to-queue actions + tab-return resync (no
       // standing poller - queue edits are user-initiated; cross-device drift
@@ -4935,7 +4960,7 @@ function injectQueueChrome() {
       refreshQueueChrome = () => {
         fetch('/api/queue')
           .then((res) => (res.ok ? res.json() : null))
-          .then((q) => { if (q) { setChrome(q); if (!panel.hidden) renderRows(q); } })
+          .then((q) => { if (q) { setChrome(q); if (panelOpen()) renderRows(q); } })
           .catch(() => { /* next action re-syncs */ });
       };
       const resync = () => { if (!document.hidden) refreshQueueChrome(); };
@@ -17404,7 +17429,9 @@ if (typeof module !== 'undefined' && module.exports) {
     buildEmptyStateHtml, buildErrorStateHtml,
     // v1.51: the notification bell's pure decisions.
     shouldInjectNotificationBell, formatNotificationBadge, buildNotificationRowModel,
-    // v1.68: the real injector, exported so the panel's per-row dismiss X is
+    // Sweep S4 (D8.3): the row menu's items and the delete confirm's copy (pure).
+    buildNotificationMenuItems, notifDeleteConfirmCopy, notifShowHref,
+    // v1.68: the real injector, exported so the panel's row actions (sweep S4: the menu, the swipe and the delete confirm) are
     // bound by EXECUTION in jsdom (the history-nav-gate pattern), plus the
     // poll stand-down hook its harness needs (a pending badge-poll timer is
     // a NODE timer that would outlive the test's document).

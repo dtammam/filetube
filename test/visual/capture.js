@@ -140,6 +140,29 @@ async function pausePlayback(page) {
   await page.evaluate(() => { document.querySelectorAll('audio,video').forEach((m) => { try { m.pause(); m.currentTime = 7; } catch (_) { /* no media */ } }); });
 }
 
+// Sweep S4: open the notifications panel (either tree: the old .notif-panel or the sheet).
+async function openNotifPanel(page, vp) {
+  await page.waitForSelector('#notif-bell-btn', { timeout: 12000 });
+  await tap(page, '#notif-bell-btn', vp);
+  await page.waitForSelector('#notif-panel.notif-open, #notif-panel.is-open, #notif-panel:not([hidden])', { state: 'attached', timeout: 8000 });
+  await page.waitForSelector('#notif-panel-list .ui-row[data-notif-id], #notif-panel-list .notif-row', { timeout: 8000 });
+  await sleep(800);
+}
+// Swipe the first matching row left far enough to reveal its actions (not a full swipe), with
+// the pointer events interaction.js reads (a touch pointer, as a finger raises them).
+async function swipeRowOpen(page, sel) {
+  await page.evaluate((s) => {
+    const el = document.querySelector(s);
+    const r = el.getBoundingClientRect();
+    const y = r.top + r.height / 2;
+    const ev = (type, x) => el.dispatchEvent(new PointerEvent(type, { bubbles: true, cancelable: true, pointerId: 31, pointerType: 'touch', isPrimary: true, clientX: x, clientY: y }));
+    const x0 = r.right - 20;
+    ev('pointerdown', x0);
+    for (const dx of [10, 40, 80, 120, 150]) ev('pointermove', x0 - dx);
+    ev('pointerup', x0 - 150);
+  }, sel);
+}
+
 // The scene list and the fixture-bound helpers. Each scene: { id, vps (default all), path, run(page, vp) }.
 function sceneKit(FX, BASE) {
   // Pocket: open the Click skin's full Now Playing on a track.
@@ -181,13 +204,25 @@ function sceneKit(FX, BASE) {
     { id: '18-watch-action-row-channel', path: `/watch.html?v=${FX.video}`, run: async (p) => { await p.waitForSelector('#subscribe-btn-mock', { timeout: 12000 }); await pausePlayback(p); await scrollCenter(p, '#subscribe-btn-mock'); } },
     { id: '19-watch-unsubscribed-channel', path: `/watch.html?v=${FX.videoUnsub}`, run: async (p) => { await p.waitForSelector('#subscribe-btn-mock', { timeout: 12000 }); await pausePlayback(p); await scrollCenter(p, '#subscribe-btn-mock'); } },
     { id: '20-watch-more-actions', path: `/watch.html?v=${FX.video}`, run: async (p, vp) => { await p.waitForSelector('#more-actions-btn', { timeout: 12000 }); await pausePlayback(p); await scrollCenter(p, '#more-actions-btn'); await tap(p, '#more-actions-btn', vp); await sleep(600); } },
-    { id: '21-notifications-open', path: '/', run: async (p, vp) => { await p.waitForSelector('#notif-bell-btn', { timeout: 12000 }); await tap(p, '#notif-bell-btn', vp); await p.waitForSelector('.notif-panel', { timeout: 8000 }); await sleep(800); } },
-    // 22: reducedMotion 'no-preference' ON PURPOSE - under prefers-reduced-motion: reduce the queue
-    // panel opens INVISIBLE (openOverlay skips .queue-open and style.css has no reduced-motion carve-out
-    // for .queue-panel, unlike .notif-panel/.sub-sheet/.playlists-sheet). 22b photographs that bug.
+    // Sweep S4: the notifications panel is a ui.sheet (#notif-panel keeps its id). The waits
+    // match both trees (a before shot of the old panel, an after shot of the sheet).
+    { id: '21-notifications-open', path: '/', run: async (p, vp) => { await openNotifPanel(p, vp); } },
+    // 21b-21d (sweep S4, D8.3): a row's menu (the kebab), a row swiped open (Dismiss + Delete)
+    // and the delete confirm. A tree without the sweep photographs the open panel instead.
+    { id: '21b-notif-row-menu', path: '/', run: async (p, vp) => { await openNotifPanel(p, vp);
+      if (await p.locator('#notif-panel .notif-more').count()) { await tap(p, '#notif-panel .notif-more', vp); await p.waitForSelector('.ui-sheet.is-open:not(#notif-panel)', { timeout: 8000 }); await sleep(500); } } },
+    { id: '21c-notif-row-swiped', path: '/', run: async (p, vp) => { await openNotifPanel(p, vp);
+      if (await p.locator('#notif-panel .ui-swipe').count()) { await swipeRowOpen(p, '#notif-panel .ui-swipe__content'); await p.waitForSelector('#notif-panel .ui-swipe.is-open', { timeout: 4000 }); await sleep(500); } } },
+    { id: '21d-notif-delete-confirm', path: '/', run: async (p, vp) => { await openNotifPanel(p, vp);
+      if (await p.locator('#notif-panel .notif-more').count()) { await tap(p, '#notif-panel .notif-more', vp); await p.waitForSelector('.ui-sheet.is-open:not(#notif-panel)', { timeout: 8000 }); await sleep(400);
+        await tap(p, '.ui-sheet.is-open:not(#notif-panel) .ui-row--danger', vp); await p.waitForSelector('.ui-sheet--dialog.is-open', { timeout: 8000 }); await sleep(500); } } },
+    // 22: reducedMotion 'no-preference'; 22b is the SAME panel under prefers-reduced-motion: reduce.
+    // F48 (fixed in sweep S4): the old panel opened INVISIBLE there (openOverlay skipped
+    // .queue-open); the ui.sheet applies its open class in every motion mode, so 22b must now
+    // show the panel. Both waits match either tree.
     { id: '22-queue-panel', path: '/', rm: 'no-preference', run: async (p, vp) => { await p.waitForSelector('#queue-btn', { timeout: 12000 }); await p.waitForLoadState('networkidle'); await sleep(600);
-      await tap(p, '#queue-btn', vp); await p.waitForSelector('#queue-panel.queue-open', { timeout: 8000 }); await sleep(800); } },
-    { id: '22b-queue-panel-reduced-motion-BUG', path: '/', vps: ['phone', 'desktop'], run: async (p, vp) => { await p.waitForSelector('#queue-btn', { timeout: 12000 }); await p.waitForLoadState('networkidle'); await sleep(600);
+      await tap(p, '#queue-btn', vp); await p.waitForSelector('#queue-panel.queue-open, #queue-panel.is-open', { timeout: 8000 }); await sleep(800); } },
+    { id: '22b-queue-panel-reduced-motion', path: '/', vps: ['phone', 'desktop'], run: async (p, vp) => { await p.waitForSelector('#queue-btn', { timeout: 12000 }); await p.waitForLoadState('networkidle'); await sleep(600);
       await tap(p, '#queue-btn', vp); await p.waitForSelector('#queue-panel:not([hidden])', { state: 'attached', timeout: 8000 }); await sleep(800); } },
     { id: '23-account-menu', path: '/', run: async (p, vp) => {
       if (isMobile(vp) && await p.locator('#bottom-nav button[aria-label*="account"], .bottom-nav-item:has-text("You")').first().isVisible().catch(() => false)) await tap(p, '.bottom-nav-item:has-text("You")', vp);
