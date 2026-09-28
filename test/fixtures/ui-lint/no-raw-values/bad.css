@@ -1,5 +1,6 @@
-/* ui-lint-canary: path=public/css/style.css expect=13 */
-/* One hit per governed category, plus the var() fallback, a calc() arm and a custom property. */
+/* ui-lint-canary: path=public/css/style.css expect=14 */
+/* One hit per governed category, plus the var() fallback, a calc() arm, a custom property and a
+   named colour in a non-colour, non-identifier property (the css-token-lint port). */
 .c1 { color: #b00b00; }
 .c2 { width: 13px; }
 .c3 { border-radius: 6px; }
@@ -13,3 +14,4 @@
 .c11 { max-height: calc(100% - 20px); }
 .c12 { color: var(--ghost, #cc0000); }
 .c13 { --local-size: 12px; }
+.c14 { -webkit-mask-image: linear-gradient(black, transparent); }

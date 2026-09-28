@@ -8,3 +8,4 @@
 .g5 { color: transparent; background: currentColor; flex: 1 1 0; line-height: normal; }
 .g6 { background: url("data:image/svg+xml,%23fff#abc") no-repeat; animation: ui-spin var(--dur-spin) linear infinite; }
 .g7 { top: env(safe-area-inset-top, 0px); box-shadow: none; font-weight: var(--btn-weight); }
+.g8 { font-family: Tan Sans, sans-serif; animation-name: gold; grid-area: black; }

@@ -314,6 +314,76 @@ test('no-raw-values: tokens.css definitions and token-exempt lines are exempt; k
   assert.deepStrictEqual([...js], [['public/js/a.js|js-style|width', 1]]);
 });
 
+// ---- css-token-lint's regression suite, ported (it retired at step 7; ui-lint supersedes it) ----
+// Each case is a hole a css-token-lint version once had, or a shape its gates pinned. ui-lint's
+// deliberate WIDENINGS (era-scoped rules, @keyframes, width/height, player.js geometry, every
+// css file and shell) are asserted above; zero durations and zero var() fallbacks stay clean.
+const raw = (file, text) => total(lint('no-raw-values', [[file, text]]));
+const css = (text) => raw('public/css/style.css', text);
+const js = (text, file) => lint('no-raw-values', [[file || 'public/js/a.js', text]]);
+
+test('ported (css-token-lint v2, v8, v8.1): one-line rules, multi-line declarations and an unterminated declaration at EOF are seen', () => {
+  assert.strictEqual(css('.x { color: #fff; }'), 1);
+  assert.strictEqual(css('.a { margin: 4px; } .b { padding: 6px; }'), 2);
+  assert.strictEqual(css('.x {\n  background-image: linear-gradient(\n    90deg,\n    rgba(0, 0, 0, 0.5),\n    transparent\n  );\n}'), 1, 'the continuation-line rgba (#68)');
+  assert.strictEqual(css('.x {\n  background-image: linear-gradient(\n    rgba(0, 0, 0, 0.5), /* token-exempt: art */\n    transparent\n  );\n}'), 0, 'exempt on a continuation line covers the whole declaration');
+  assert.strictEqual(css('.x {\n  color: #abc123\n}'), 1, 'no semicolon, next-line brace');
+  assert.strictEqual(css('.x {\n  color: #abc123'), 1, 'EOF: browsers render it, so it counts');
+  assert.strictEqual(css('.x {\n  margin: 4px /* token-exempt: eof case */'), 0);
+  assert.strictEqual(css('@media (max-width: 768px) { .x { margin: 5px; } }'), 1, 'declarations inside @media count');
+  assert.strictEqual(raw('lib/ytdlp/views/subscriptions.html', '<html><style>\n.a { font-size: 13px; }\n</style></html>'), 1, 'the subscriptions.html <style>');
+});
+
+test('ported (css-token-lint v6, v7): the z and radius idioms and their impostors', () => {
+  const c = (p, v) => L.classifyValue(p, v, INFO.ladder);
+  assert.deepStrictEqual(c('z-index', 'calc(var(--z-top) + 1)'), []);
+  assert.deepStrictEqual(c('z-index', 'calc(2000 + var(--z-top))'), ['z-index'], 'raw-number-leading calc');
+  assert.deepStrictEqual(c('z-index', 'calc(var(--z-top) + 1 + 1)'), ['z-index'], 'compound arithmetic');
+  assert.deepStrictEqual(c('z-index', 'calc(var(--dur-fast) + 1)'), ['z-index'], 'a non-ladder var');
+  assert.deepStrictEqual(c('z-index', 'calc(var(--z-top) + 1) 5'), ['z-index'], 'trailing content ($ anchor)');
+  assert.deepStrictEqual(c('z-index', '0 calc(var(--z-top) + 1)'), ['z-index'], 'leading content (^ anchor)');
+  assert.deepStrictEqual(c('border-radius', 'calc(4px + 1px)'), ['radius']);
+  assert.deepStrictEqual(c('border-radius', 'calc(var(--radius-hack) + 1px)'), ['radius'], 'a fake radius token');
+  assert.deepStrictEqual(c('border-radius', 'calc(var(--r-md) + 3px + 1px)'), ['radius'], 'compound arithmetic');
+  assert.deepStrictEqual(c('border-radius', '6px calc(var(--r-md) + 1px)'), ['radius'], 'leading content');
+  assert.deepStrictEqual(c('bottom', 'calc(24px + env(safe-area-inset-bottom, 0px))'), ['size'], 'the zero env() strip hides no other literal');
+  assert.deepStrictEqual(c('padding-bottom', 'env(safe-area-inset-bottom, 8px)'), ['size'], 'a single-digit nonzero env() fallback');
+  assert.deepStrictEqual(c('transition', 'opacity var(--dur-fast) var(--ease-ui), visibility 0s'), [], 'a zero duration is not a raw value (css-token-lint counted it)');
+});
+
+test('ported (css-token-lint v5): the JS surfaces - cssText per declaration, camelCase, setProperty, exempt, fallbacks', () => {
+  assert.deepStrictEqual([...js("el.style.cssText = 'color:var(--x); font-size:12px; font-weight:bold; flex-shrink:0;';")].sort(),
+    [['public/js/a.js|js-style|font-size', 1], ['public/js/a.js|js-style|font-weight', 1]]);
+  assert.deepStrictEqual([...js("el.style.fontSize = '13px';")], [['public/js/a.js|js-style|font-size', 1]]);
+  assert.deepStrictEqual([...js("el.style.setProperty('margin-top', '14px');")], [['public/js/a.js|js-style|margin-top', 1]]);
+  assert.strictEqual(total(js("el.style.margin = '8px'; // token-exempt: positional")), 0);
+  assert.strictEqual(total(js("el.style.color = 'var(--accent, #cc0000)';")), 1, 'a fallback literal stays visible');
+  assert.strictEqual(total(js("el.style.left = '12px'; el.style.color = '#abc123';", 'public/js/player.js')), 2, 'player.js geometry is no longer excluded');
+  assert.strictEqual(total(js("el.style.padding = '10px';", 'lib/ytdlp/client/a.js')), 1, 'lib/ytdlp/client is scanned');
+});
+
+test('ported (css-token-lint coverage): a literal-first concatenation classifies its literal prefix, and only no-raw-values sees it', () => {
+  assert.deepStrictEqual([...js("el.style.color = '#b00b00' + suffix;")], [['public/js/a.js|js-style|color', 1]]);
+  assert.deepStrictEqual([...js("el.style.cssText = 'font-size:13px; color:var(--x);' + more;")], [['public/js/a.js|js-style|font-size', 1]]);
+  assert.deepStrictEqual([...js("el.style.setProperty('margin-top', '8px ' + x);")], [['public/js/a.js|js-style|margin-top', 1]]);
+  assert.deepStrictEqual([...js("el.style.background = 'rgba(0,0,0,' + a + ')';")], [['public/js/a.js|js-style|background', 1]]);
+  assert.strictEqual(total(js("el.style.transform = 'translate(' + x + 'px)'; el.style.width = n + 'px';")), 0);
+  assert.strictEqual(total(js("el.style.color = '#b00b00' + s; // token-exempt: why")), 0);
+  const model = L.buildModel([{ path: 'public/js/a.js', kind: 'js', text: "el.style.transition = 'width ' + d + 'ms';" }], INFO);
+  assert.strictEqual(model.inline[0].value, null, 'the prefix is not a whole value: the other rules still read null');
+});
+
+test('ported (css-token-lint colour fallthrough): a named colour counts in any property that is not identifier-valued', () => {
+  const c = (p, v) => L.classifyValue(p, v, INFO.ladder);
+  assert.deepStrictEqual(c('-webkit-mask-image', 'linear-gradient(black, transparent)'), ['colour']);
+  assert.deepStrictEqual(c('mask', 'linear-gradient(gold, transparent)'), ['colour']);
+  assert.deepStrictEqual(c('border-image', 'linear-gradient(white, red) 1'), ['colour']);
+  assert.deepStrictEqual(c('font-family', 'Tan Sans'), []);
+  assert.deepStrictEqual(c('animation-name', 'gold'), []);
+  assert.deepStrictEqual(c('grid-area', 'black'), []);
+  assert.deepStrictEqual(c('white-space', 'nowrap'), [], 'a property NAME holding a colour word is not a value');
+});
+
 test('keys are file|selector|property (or a class), never a line number, and count repeats', () => {
   const keys = lint('no-raw-values', [['public/css/style.css', '.a { width: 1px; }\n\n\n@media (max-width: 9px) { .a { width: 2px; } }']]);
   assert.deepStrictEqual([...keys], [['public/css/style.css|.a|width', 2]]);

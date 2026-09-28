@@ -21,8 +21,19 @@
  *                           weight, line-height, shadow, z-index, duration, easing
  *                           must be tokens. Custom-property DEFINITIONS in tokens.css
  *                           are the token layer and are exempt; a line carrying a
- *                           `token-exempt` comment is exempt (css-token-lint's
- *                           convention; a LINE comment in JS).
+ *                           `token-exempt` comment is exempt (the convention inherited
+ *                           from the retired css-token-lint; a LINE comment in JS).
+ *                           This rule SUPERSEDES css-token-lint (retired at step 7): it
+ *                           covers every surface that linter scanned (style.css, the
+ *                           subscriptions.html <style>, JS .style.X / cssText /
+ *                           setProperty, multi-line and one-line declarations, an
+ *                           unterminated declaration at EOF) and more (every css file,
+ *                           every shell, style="" attributes, era-scoped and @keyframes
+ *                           rules, player.js geometry). Its two ported shapes: a named
+ *                           colour in ANY property that is not identifier-valued (a mask,
+ *                           a border-image), and a JS style write whose right-hand side
+ *                           STARTS with a literal ('#fff' + x): the literal prefix is
+ *                           classified (test/unit/ui-lint.test.js ports its regressions).
  *   2 no-legacy-tokens      (ON since step 7) var() of an alias-block or legacy per-era
  *                           name from tokens.css, or the --fs-* scale / --scrim-legacy.
  *   3 no-bespoke-controls   a control-shaped rule subject must be a ui-* primitive; every
@@ -311,18 +322,25 @@ function addCss(model, text, file, lineOffset, rank) {
   walk(ast.children, [], null);
 }
 
-/** Parse a declaration list (style="" / cssText) into inline declarations. */
-function addInlineDecls(model, text, file, origin, line, exemptLine) {
+/** Parse a declaration list (style="" / cssText) into [{prop, value, important}]. */
+function parseDeclList(text) {
   let ast;
   try {
     ast = csstree.parse(text, { context: 'declarationList', parseValue: false, parseCustomProperty: false, onParseError: () => {} });
-  } catch { return; }
+  } catch { return []; }
+  const out = [];
   ast.children.forEach((d) => {
     if (d.type !== 'Declaration') return;
     const prop = d.property.startsWith('--') ? d.property : d.property.toLowerCase();
     const value = (d.value && typeof d.value.value === 'string' ? d.value.value : csstree.generate(d.value)).trim();
-    model.inline.push({ file, origin, prop, value, important: !!d.important, line, exempt: !!exemptLine });
+    out.push({ prop, value, important: !!d.important });
   });
+  return out;
+}
+
+/** Parse a declaration list (style="" / cssText) into inline declarations. */
+function addInlineDecls(model, text, file, origin, line, exemptLine) {
+  for (const d of parseDeclList(text)) model.inline.push({ file, origin, ...d, line, exempt: !!exemptLine });
 }
 
 const JS_PLACEHOLDER = 'var(--js-expr)';
@@ -406,6 +424,15 @@ function addJs(model, text, file, lineOffset) {
     if (next && next.type === 'Punctuator' && !/^(;|,|\)|\}|\])$/.test(next.value)) return null;
     return u.text;
   };
+  // A right-hand side that STARTS with a literal and goes on with `+` ('#fff' + x): the
+  // literal prefix is what css-token-lint's regex read, so no-raw-values classifies it
+  // (it is never a whole value, so the other rules keep seeing `value: null`).
+  const litPrefix = (i) => {
+    const t = code[i];
+    if (!t || !(t.type === 'String' || (t.type === 'Template' && t.value.startsWith('`') && t.value.endsWith('`') && t.value.length > 1))) return null;
+    const next = code[i + 1];
+    return next && next.type === 'Punctuator' && next.value === '+' ? unitOf.get(i).text : null;
+  };
   for (let i = 1; i < code.length; i++) {
     const t = code[i];
     if (t.type === 'Identifier' && t.value === 'style' && code[i - 1].value === '.' && code[i + 1] && code[i + 1].value === '.' && code[i + 2] && code[i + 2].type === 'Identifier') {
@@ -415,22 +442,24 @@ function addJs(model, text, file, lineOffset) {
       if (!op || op.type !== 'Punctuator' || (op.value !== '=' && op.value !== '+=')) continue;
       const exempt = exemptLines.has(t.line);
       const v = lit(i + 4);
+      const prefix = v == null ? litPrefix(i + 4) : null;
       if (p === 'cssText') {
         if (v != null) addInlineDecls(model, v, file, 'js-style', t.line, exempt);
-        else model.inline.push({ file, origin: 'js-style', prop: 'css-text', value: null, important: false, line: t.line, exempt });
+        else model.inline.push({ file, origin: 'js-style', prop: 'css-text', value: null, prefix, important: false, line: t.line, exempt });
         continue;
       }
       let prop = p.replace(/[A-Z]/g, (m) => '-' + m.toLowerCase());
       if (/^(webkit|moz|ms)-/.test(prop)) prop = '-' + prop;
-      model.inline.push({ file, origin: 'js-style', prop, value: v, important: false, line: t.line, exempt });
+      model.inline.push({ file, origin: 'js-style', prop, value: v, prefix, important: false, line: t.line, exempt });
     }
     if (t.type === 'Identifier' && t.value === 'setProperty' && code[i - 1].value === '.' && code[i + 1] && code[i + 1].value === '(' && code[i + 2] && code[i + 2].type === 'String') {
       const prop = unitOf.get(i + 2).text.trim();
       if (!/^-?-?[a-zA-Z][\w-]*$/.test(prop)) continue;
       const v = code[i + 3] && code[i + 3].value === ',' ? lit(i + 4) : null;
+      const prefix = v == null && code[i + 3] && code[i + 3].value === ',' ? litPrefix(i + 4) : null;
       const imp = v != null && /important/.test(v);
       const pr = code[i + 5] && code[i + 5].value === ',' ? unitOf.get(i + 6) : null;
-      model.inline.push({ file, origin: 'js-style', prop: prop.startsWith('--') ? prop : prop.toLowerCase(), value: v, important: imp || !!(pr && /important/.test(pr.text)), line: t.line, exempt: exemptLines.has(t.line) });
+      model.inline.push({ file, origin: 'js-style', prop: prop.startsWith('--') ? prop : prop.toLowerCase(), value: v, prefix, important: imp || !!(pr && /important/.test(pr.text)), line: t.line, exempt: exemptLines.has(t.line) });
     }
   }
   // style="..." inside JS string units
@@ -490,7 +519,7 @@ function buildModel(sources, info) {
 }
 
 // ---------------------------------------------------------------------------------------
-// The raw-value classifier (css-token-lint's classifyDecl, widened to D10.1 rule 1)
+// The raw-value classifier (the retired css-token-lint's classifyDecl, widened to D10.1 rule 1)
 // ---------------------------------------------------------------------------------------
 
 const LEN_UNITS = new Set(['px', 'em', 'rem', 'pt', 'pc', 'ch', 'ex', 'cm', 'mm', 'in', 'q', 'lh', 'rlh', 'cap', 'ic', 'rex', 'rch', 'ric', 'rcap']);
@@ -500,6 +529,11 @@ const HEX_RE = /#[0-9a-fA-F]{3,8}(?![\w-])/;
 const COLOUR_FN_RE = /(?<![\w-])(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/i;
 const COLOUR_PROP = /^(color|background(-color|-image)?|border(-(top|right|bottom|left|block|inline)(-(start|end))?)?(-color)?|outline(-color)?|fill|stroke|[\w-]*-color|box-shadow|text-shadow|column-rule|text-decoration|text-emphasis|filter|backdrop-filter)$/;
 const SIZE_PROP = /^(width|height|(min|max)-(width|height)|(min-|max-)?(inline|block)-size|margin(-[\w-]+)?|padding(-[\w-]+)?|gap|row-gap|column-gap|grid-gap|grid-(row|column)-gap|top|right|bottom|left|inset(-[\w-]+)?|flex|flex-basis|font-size|letter-spacing|word-spacing|text-indent|border|border-(top|right|bottom|left|block|inline)(-(start|end))?|border(-(top|right|bottom|left|block|inline)(-(start|end))?)?-width|outline|outline-width|outline-offset|column-rule(-width)?|column-width|grid-template-columns|grid-template-rows|grid-auto-columns|grid-auto-rows|scroll-(margin|padding)(-[\w-]+)?|text-decoration-thickness|text-underline-offset|stroke-width)$/;
+// Identifier-valued properties: a colour word here is an author name (a font, a keyframes
+// name, a grid area), never a paint. Every OTHER property counts a named colour (ported from
+// css-token-lint, whose white|black|gold check covered every property it did not specialise:
+// a mask, a border-image, a list-style-image gradient).
+const IDENT_PROP = /^(font-family|font-feature-settings|font-variation-settings|(-webkit-)?(transition|animation)(-[\w-]+)?|will-change|grid|grid-template|grid-area|grid-template-areas|grid-(row|column)(-start|-end)?|counter-(reset|increment|set)|list-style-type|container(-name)?|view-transition-name|anchor-name|position-anchor|content|quotes)$/;
 const SHADOW_PROP = /^(box-shadow|text-shadow)$/;
 const MOTION_PROP = /^(-webkit-)?(transition|animation)(-[\w-]+)?$/;
 const RADIUS_PROP = /^border(-[\w]+)*-radius$/;
@@ -515,7 +549,7 @@ function denoise(value) {
   return value.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/url\((?:"[^"]*"|'[^']*'|[^)]*)\)/gi, ' ').replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, ' ').replace(/!\s*important/i, '').trim();
 }
 
-/** var() strips, but a FALLBACK survives (it paints): css-token-lint's rule. Zero env() fallbacks strip. */
+/** var() strips, but a FALLBACK survives (it paints): css-token-lint's rule, kept. Zero env() fallbacks strip. */
 function stripVars(v) {
   let bare = v.replace(/env\(\s*[\w-]+\s*,\s*0(?:px)?\s*\)/gi, ' ').replace(/env\(\s*[\w-]+\s*\)/gi, ' ');
   for (let n = 0; n < 6; n++) {
@@ -541,7 +575,7 @@ function classifyValue(prop, value, ladder) {
   const nonZero = (f) => nums.some((x) => x.n !== 0 && f(x));
   const isCustom = prop.startsWith('--');
   if (HEX_RE.test(bare) || COLOUR_FN_RE.test(bare)) cats.add('colour');
-  else if ((COLOUR_PROP.test(prop) || isCustom) && NAMED_RE.test(bare)) cats.add('colour');
+  else if ((COLOUR_PROP.test(prop) || isCustom || !IDENT_PROP.test(prop)) && NAMED_RE.test(bare)) cats.add('colour');
 
   if (prop === 'z-index') {
     const zIdiom = new RegExp(`^calc\\(\\s*var\\((?:${ladder.join('|') || '--z-none'})\\)\\s*[+-]\\s*\\d+\\s*\\)$`);
@@ -599,7 +633,18 @@ function detectNoRawValues(model, report) {
     }
   }
   for (const d of model.inline) {
-    if (d.exempt || d.value == null) continue;
+    if (d.exempt) continue;
+    if (d.value == null) {
+      // A literal-first concatenation: classify the literal prefix (a cssText prefix per
+      // declaration it holds), keyed like the whole-literal write it would have been.
+      if (d.prefix == null) continue;
+      const parts = d.prop === 'css-text' ? parseDeclList(d.prefix) : [{ prop: d.prop, value: d.prefix }];
+      for (const p of parts) {
+        const cats = classifyValue(p.prop, p.value, ladder);
+        if (cats.length) report(`${d.file}|${d.origin}|${p.prop}`, `${d.file}:${d.line}`, `${p.prop}: ${p.value.slice(0, 60)} + ... [${cats.join(',')}]`);
+      }
+      continue;
+    }
     const cats = classifyValue(d.prop, d.value, ladder);
     if (cats.length) report(inlineKey(d), `${d.file}:${d.line}`, `${d.prop}: ${d.value.slice(0, 60)} [${cats.join(',')}]`);
   }
