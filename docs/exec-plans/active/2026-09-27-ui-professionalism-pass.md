@@ -2348,3 +2348,97 @@ fix found by the render, the History confirm test, this log).
   capture-determinism 3 / 3. `npx eslint .` 0 errors, 7 warnings (the six common.js unused globals and
   main.js `libraryNotice`, all pre-existing); `npm run lint:ui` OK TOTAL 1851; `npm run lint:css` TOTAL 0;
   `npm run lint:overlay` clean (0 violations).
+
+### Sweep S9 - overlays and feedback (2026-09-28, branch feat/ui-sweep-s9 from 585d88de)
+
+- **Commits:** 07485084 and 1b4508eb (the two primitive fixes, each its own commit - below), afccf64b (toasts),
+  3656e65c (the common.js dialogs, F44), d00fd7d6 (merge of feat/ui-sweep-s9b, a parallel worktree cut from
+  1b4508eb: 1b809f43 registry arrows, 504005a1 the editors / crop / shortcuts / one-off dialogs, 7317bfe7 their
+  busy guards on canDismiss), f0a6b6e0 (status chip, handoff card, header sort menu, empty/error states, the
+  generic modal family deleted), 969c47da (geometry + capture scenes), then this log.
+- **Primitive fixes (ui.js / ui.css only; tokens.css and interaction.js untouched):** (1) a titleless ui.sheet
+  put its Close on the LEADING edge (S1's report) - `.ui-sheet__close { margin-inline-start: auto }`; (2)
+  close() now marks the sheet `is-closing` (the ui.css exit-easing rule for it was never reached) - also the
+  "is a live dialog up?" query; (3) `.ui-confirm__body` keeps line breaks (pre-line); (4) ui.menu picks once (a
+  second tap on a closing menu ran onSelect again); (5) ui.sheet `canDismiss()` - a sheet mid-request refuses
+  Esc / scrim / Close / drag, its owner's close() and a signal abort still close. **Gap left:** open() rewrites
+  the sheet's className, so a modifier class must be added after open() (a `cls` option would be cleaner).
+- **Toasts (F56):** showToast is a shim over ui.toast's one queue (116 callers unchanged; optional third arg
+  `{kind}` adds the kind's icon). The `.toast` / `.toast-action-btn` family is deleted. Not done: a shared
+  bottom-stack offset - the chip and the handoff card both sit bottom-left and can overlap when both show.
+- **Dialogs (D4.6, F30, F47):** showConfirmModal -> ui.confirm (the callers' HTML parsed inert and handed over
+  as text; `labels.danger`), showChoiceModal (Share / More / Transcript pick-ones) -> ui.menu (one pick, run
+  synchronously in the tap), showTranscriptModal -> a wide ui.sheet dialog (Copy answers with a toast),
+  showMoveModal -> a ui.sheet with a ui-select (busy refuses every dismissal), showAttributionPicker -> ui-rows,
+  a switch, the ui-state empty state. S9b: the chapters editor, the chapter snap SHELL (its inner `.btn`s are
+  S3's), the avatar crop, keyboard shortcuts + DDR (registry arrows), the one-off dialog shell. The generic
+  `.modal-backdrop / -content / -title / -body` family is deleted (no creator left; the chapter snap keeps
+  `.modal-actions`). watch.js's relocation offer asks `isLiveDialogOpen()` (one line).
+- **F44 (destructive, full gate):** the local-file dialog's copy now matches its code path: its callers
+  (watch.js performMediaDelete, skin-surface.js doDelete) send `DELETE /api/videos/:id`, whose handler moves a
+  resolvable file to Trash (`trashItem`, lib/media/routes.js; restorable from Settings). Title "Move this local
+  file to Trash?", button "Move to Trash" (was "Delete permanently"), ONE danger fill; the checkbox gate stays.
+  A test binds the copy to that route (it fails if the route stops trashing). The three trash confirms still
+  reached through the shim (watch.js / skin-surface.js yt-dlp item, podcasts.js episode) pass
+  `{ confirm: 'Move to Trash', danger: true }` (a one-argument edit in each file).
+- **Status chip (F57, F47):** a tonal pill ui-btn with a `download` glyph, an `error` glyph in --danger once
+  something failed; rows with the error glyph, ui-btn Cancel / Retry / Dismiss; active progress ink, failed
+  --danger, scaled by `--p` (data) by transform (no-layout-transition 1 -> 0); no bevel or barber pole in any
+  era; the v1.50.1 dim only where a pointer can hover. **Handoff card (F47):** overlay surface, the one icon
+  Close, a ui-thumb (`--p`), a primary ui-btn link, play / pause glyphs (was a red dot). **Modern header sort +
+  card/list (F46, F31 - deferred by S1 and S2 as each other's):** header ui-btns; the sort is a ui.menu with the
+  current sort CHECKED. **Sticker menu shell:** the overlay radius + shadow only (its surface / ink stay the
+  skin's - the rows are S7's).
+- **Empty / error (F65, D9):** buildEmptyStateHtml / buildErrorStateHtml emit the ui-state block (uiStateHtml,
+  byte-equal to ui.state()); the Home feed's italic notes, the Modern grid failure, the grid's search / folder /
+  library empties, the Shows page and the Playlists sheet's "No playlists pinned yet." are ui-states.
+  **Not done (other owners):** notif / queue empties (S4), music (S7), Settings' trash / hidden / text
+  "Loading..." placeholders (S8), the light-mode shimmer contrast.
+- **window.alert / confirm / prompt:** 0 left in public/ and lib/ (S5 had already removed the two in
+  lib/ytdlp/client/subscriptions.js).
+- **Locks (AC12, each replacement in its commit):** S9's triage six - ddr-easter-egg and keyboard-shortcuts
+  (S9b), handoff-card-styling, v1264-empty-error-states, ytdlp-download-chip converted; player-speed-btn-parity
+  checked and left: it pins the PLAYER's speed sheet (player carve-out), untouched and green. Also:
+  v1262-pwa-chrome (toast half), hard-delete-local-files / move-modal / share-prompt / v1262-sheet-modal-
+  transitions (fake-DOM halves -> jsdom in overlays-dialogs-s9.test.js), reheat-button-wiring (CRITICAL 2 / 4),
+  attribution-client (gate C1), modal-backdrop-dismiss, chrome-icons, modern-home-layout, modern-css-source-lock,
+  library-view-prefs, pinned-playlists-sheet, home-feed-render; S9b's oneoff / avatar-crop / chapter-snap files.
+  New: overlays-toast-s9 (5), overlays-dialogs-s9 (36), overlays-chip-s9 (3), overlay-dialogs-sheet (S9b).
+- **Geometry:** `sheet-header` is live (G2, G3 and a new SHD check: Close on the trailing edge titled or not,
+  level, glyph centred). `npm run test:geometry`: 171 checks - 169 ok, 0 FAIL, 2 XFAIL (F23, S7's). Mutants
+  shd-close-leading and shd-close-glyph-nudge: 16 FAIL each (every sheet-header scene).
+- **Mutation (git-archive sandbox of f0a6b6e0, pristine diff after: IDENTICAL): 26 of 26 killed** - every
+  confirm path (onConfirm on any answer, dismiss not aborting, danger dropped, hard-delete enabled at start /
+  disabled guard / one-shot guards / Cancel confirming / "Delete permanently", Move dismissable mid-request,
+  the watch.js danger arg), the primitives (canDismiss, menu pick-once, is-closing), isLiveDialogOpen, the
+  picker, the toast (kind, action once), the chip (glyph, inline width, ungated dim, red active), the handoff
+  close, the ui-state icon, the sort check, the Close rule, the transcript toast. S9b: 10 of 10.
+- **ui-lint (585d88de -> 969c47da):** no-raw-values 1004 -> 961, no-bespoke-controls 674 -> 600, icons 116 -> 112,
+  no-layout-transition 1 -> 0, z-ladder 11 -> 10, colour-roles 24 -> 21; hover-gated 3, pressed-state 1,
+  native-interaction 3, display-ownership 69, no-shell-style 1 unchanged; TOTAL 1907 -> 1781.
+- **Renders (seeded, base 585d88de :4041 / branch :4042, scenes 71 + 80-91, 4 eras x phone/landscape/desktop x
+  light/dark):** before 288, after 288, 0 failed, 0 unexpected blocked; 288 of 288 differ. Looked at: one toast
+  where three stacked; the dialogs as ui.sheets with one danger fill; the chip without bevel, its error glyph;
+  the handoff card; the sort menu's check (was red text); the search empty state; 2005 squares.
+- **Counts (Node 22.23.1, at 969c47da):** `npm run test:unit` tests 7884, pass 7883, fail 0, cancelled 0,
+  skipped 1 (exit 0). Integration (watch-transcript-button, watch-share-button, home-card-transcript-corner,
+  card-action-menu-fullchain, rescan-scan-poll, chapter-snap-editor-ui, music-pocket-menus (+ r1),
+  view-counts-carriers, shell-smoke, route-census): tests 134, pass 134, fail 0. `npx eslint .` 0 errors, 7
+  warnings (the existing unused globals). `lint:ui` OK TOTAL 1781; `lint:css` TOTAL 0; `lint:overlay` 0
+  violations; `test:geometry:fast` 12 checks, 12 ok.
+- **For the gate to attack:** (1) toasts (--z-top) now sit ABOVE every sheet, the local-file dialog included
+  (it was above toasts - "warning primacy"); (2) the showConfirmModal shim runs onConfirm a microtask after the
+  tap, not inside it (no current caller needs the gesture); (3) the confirm bodies lose their emphasis and the
+  inline red warning (text only); (4) the attribution picker lost its capture-phase Esc (a document Esc
+  handler elsewhere also sees the key); (5) the Subscribe dialog (S3) is the last bespoke `.oneoff-modal`
+  shell; (6) the sticker-menu shell line is one S7 is also editing - expect a merge conflict there.
+- **Merge onto feat/ui-professionalism (coordinator, 2026-09-28):** cherry-picked in order, S9b's
+  merge taken as its three commits. Resolutions: the toast rule and the old watch-row centring
+  both go (S9 + S3); the watch page, Pocket extras and podcast deletes keep S3/S7's direct danger
+  `ui.confirm` (S9's shim argument had no call left), so `overlays-dialogs-s9.test.js` binds that
+  instead and records that `showHardDeleteModal` has NO caller - step 7 retires it; S9b's
+  `arrow_upward`/`arrow_downward` duplicated S4's (names.js deduped, icons.js rebuilt); the
+  backdrop-helper list keeps only the Subscribe dialog; SHD mutants join S7's G4 comment; the two
+  style.css parse floors drop to > 1000 (1974 rules after S9); watch.js's escape comment now
+  describes confirmHtmlToText (the body is parsed, then lands as text).
+
