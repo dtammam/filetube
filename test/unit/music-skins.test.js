@@ -529,15 +529,31 @@ test('v1.317 gate r2 (qa W3, Dean\'s ruling): a 0/unknown length is BLANK on the
   assert.ok(ipod.includes('<span class="mms-rd">0:00</span>'), 'the iPod list keeps its pre-v1.317 bytes (out of scope)');
 });
 
-test('v1.317 (M1): the artist-line button reset is ZERO-specificity (:where) across every renderer, so each consumer\'s own line rules keep winning', () => {
+// Step 7 (retire R2, DELIBERATE conversion of the v1.317 zero-specificity lock): the song row's
+// :where(button.music-song-artist) reset became the ui-link primitive (ui.css), and the desktop
+// panel and drill lines carry ui-link too. The Pocket skins' lines are skin art (the D10.4
+// carve-out) and keep the ONE zero-specificity block reset, so each skin's palette keeps winning.
+test('v1.317 (M1) / step 7: the skins keep the zero-specificity block reset; the non-skin artist lines are the ui-link primitive', () => {
   const fs = require('node:fs'); const path = require('node:path');
+  const { cssRules } = require('../helpers/stylesheets');
   const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8');
   const m = /:where\(button\.mnp-sub, button\.mms-sub, button\.ip-artist, button\.music-drill-artist\) \{([^}]*)\}/.exec(css);
-  assert.ok(m, 'ONE :where() reset names the four block artist-line buttons (desktop panel, Cider/Nordic, the LCD skins, the album drill)');
+  assert.ok(m, 'ONE :where() reset still covers the skins\' block artist-line buttons');
   for (const decl of ['display: block', 'width: 100%', 'appearance: none', 'border: 0', 'background: transparent', 'padding: 0', 'font: inherit', 'color: inherit', 'cursor: pointer']) {
     assert.ok(m[1].indexOf(decl) !== -1, 'the reset carries ' + decl);
   }
-  assert.match(css, /:where\(button\.music-song-artist\) \{[^}]*display: inline;/, 'the song-row artist name is the inline variant');
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /:where\(button\.music-song-artist\)/, 'the inline reset is the primitive now');
+  const base = cssRules(ui).find((r) => r.sel === '.ui-link');
+  assert.ok(base, 'the primitive reset is ui.css .ui-link');
+  for (const decl of ['display: inline', 'appearance: none', 'border: 0', 'background: transparent', 'padding: 0', 'font: inherit', 'color: inherit', 'cursor: pointer']) {
+    assert.ok(base.body.indexOf(decl) !== -1, 'the ui-link reset carries ' + decl);
+  }
+  const music = require('../../public/js/music.js');
+  const surface = require('../../public/js/skin-surface.js');
+  assert.match(surface.buildPanelHtml({ title: 'S', subline: 'A', subArtist: 'A' }, []), /class="ui-link ui-link--block mnp-sub" data-artist="A"/);
+  assert.match(music.buildDrillHeaderHtml({ type: 'album', label: 'K' }, [{ id: 't', album: 'K', albumArtist: 'A' }]), /class="ui-link ui-link--block music-drill-artist" data-artist="A"/);
+  assert.match(music.buildSongRowHtml({ id: 's', title: 'T', artist: 'A' }, 0), /class="ui-link music-song-artist" data-artist="A"/, 'the song-row name is the inline variant');
   // the per-skin line rules still exist unchanged (they are what the zero-specificity reset defers to)
   assert.match(css, /\.mms-apple \.mms-sub\{ font-size:var\(--fs-xl\);/, 'Cider keeps its artist-line rule');
   assert.match(css, /\.mms-ipod \.ip-artist\{ font-size:var\(--pk-fs-np-artist\);/, 'the LCD keeps its artist-line rule (its size is the pocket type role - v1.332)');

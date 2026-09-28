@@ -6,6 +6,10 @@
 // These boot the REAL music view against a jsdom document with a stateful mock
 // player and assert BEHAVIOUR (what position the player is loaded into, what the
 // now-playing panel renders), not source strings.
+// Step 7 (retire R2, DELIBERATE conversion): the panel's rows are ui-rows (class
+// "mnp-queue-row ui-row ui-row--default", + "is-current ui-row--current" on the playing
+// row) and the sub-line control is a ui-link; the matched markup follows, the claims
+// (which rows, which states, which index, the jump-back tap) are unchanged.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -178,12 +182,30 @@ test('v1.104 (panel): playing while EXPANDED shows track metadata + up-next queu
     const el = panel(dom);
     assert.equal(el.hidden, false, 'panel visible when expanded + playing');
     assert.match(el.innerHTML, /class="mnp-title"[^>]*>Alpha</, 'shows the playing track title');
-    assert.match(el.innerHTML, /<button type="button" class="mnp-sub" data-artist="Boards"[^>]*>Boards · One</, 'artist · album (the artist-drill button, v1.317)');
+    assert.match(el.innerHTML, /<button type="button" class="ui-link ui-link--block mnp-sub" data-artist="Boards"[^>]*>Boards · One</, 'artist · album (the artist-drill button, v1.317)');
     // v1.223: the panel lists the WHOLE queue. Playing t1 (first): t1 is the current
     // row (marked), t2 (index 1) + t3 (index 2) are up next (plain rows).
-    assert.match(el.innerHTML, /class="mnp-queue-row is-current" aria-current="true" data-index="0"[\s\S]*>Alpha</, 'the current track is in the list, marked');
-    assert.match(el.innerHTML, /class="mnp-queue-row" data-index="1"[\s\S]*>Bravo</, 't2 up next (plain)');
-    assert.match(el.innerHTML, /class="mnp-queue-row" data-index="2"[\s\S]*>Charlie</, 't3 up next (plain)');
+    assert.match(el.innerHTML, /class="mnp-queue-row ui-row ui-row--default is-current ui-row--current" aria-current="true" data-index="0"[\s\S]*>Alpha</, 'the current track is in the list, marked');
+    assert.match(el.innerHTML, /class="mnp-queue-row ui-row ui-row--default" data-index="1"[\s\S]*>Bravo</, 't2 up next (plain)');
+    assert.match(el.innerHTML, /class="mnp-queue-row ui-row ui-row--default" data-index="2"[\s\S]*>Charlie</, 't3 up next (plain)');
+  });
+});
+
+test('step 7 (retire R2): the playing song row carries the row primitive\'s current state (ui-row--current) with its equalizer class, and both MOVE with the track', async () => {
+  await boot({ filetube_music_tab: 'songs' }, 'full', async (dom) => {
+    const rows = () => [...dom.window.document.querySelectorAll('#music-content .music-song-row')];
+    assert.ok(rows().length >= 3, 'precondition: the song list rendered');
+    assert.deepStrictEqual(rows().filter((r) => r.classList.contains('ui-row--current')).length, 0, 'nothing current before a play');
+    await clickRow(dom, 0);
+    const on = (r) => r.classList.contains('ui-row--current') && r.classList.contains('playing');
+    assert.deepStrictEqual(rows().map(on), [true, false, false], 'the played row is current (the fill) and playing (the equalizer)');
+    await clickRow(dom, 2);
+    assert.deepStrictEqual(rows().map((r) => r.classList.contains('ui-row--current')), [false, false, true], 'the fill moved with the track - the old row cleared');
+    assert.deepStrictEqual(rows().map((r) => r.classList.contains('playing')), [false, false, true]);
+    // the Up next marks the same track (the panel's ui-row--current)
+    const cur = panel(dom).querySelectorAll('.mnp-queue-row.ui-row--current');
+    assert.strictEqual(cur.length, 1, 'one current row in the Up next');
+    assert.strictEqual(cur[0].getAttribute('data-index'), '2');
   });
 });
 
@@ -192,9 +214,9 @@ test('v1.223 (Dean): the panel shows the WHOLE queue - already-played tracks gre
     await clickRow(dom, 1); // play t2 (the MIDDLE track) -> t1 is now behind us
     const el = panel(dom);
     // t1 (index 0) is BEHIND the current -> greyed, but still a clickable row.
-    assert.match(el.innerHTML, /class="mnp-queue-row is-played" data-index="0"[\s\S]*>Alpha</, 'the played track stays in the list, greyed');
-    assert.match(el.innerHTML, /class="mnp-queue-row is-current" aria-current="true" data-index="1"[\s\S]*>Bravo</, 't2 is the current row');
-    assert.match(el.innerHTML, /class="mnp-queue-row" data-index="2"[\s\S]*>Charlie</, 't3 still up next');
+    assert.match(el.innerHTML, /class="mnp-queue-row ui-row ui-row--default is-played" data-index="0"[\s\S]*>Alpha</, 'the played track stays in the list, greyed');
+    assert.match(el.innerHTML, /class="mnp-queue-row ui-row ui-row--default is-current ui-row--current" aria-current="true" data-index="1"[\s\S]*>Bravo</, 't2 is the current row');
+    assert.match(el.innerHTML, /class="mnp-queue-row ui-row ui-row--default" data-index="2"[\s\S]*>Charlie</, 't3 still up next');
     // the played row is clickable -> jumps back to it (loads t1)
     dom.window.document.querySelector('.mnp-queue-row[data-index="0"]').click();
     await settle(); await settle();
@@ -211,8 +233,8 @@ test('v1.223 (gate WARNING fix): a DEEP current index still shows the current + 
   await boot({ filetube_music_tab: 'songs' }, 'full', async (dom) => {
     await clickRow(dom, 250); // play a deep track (album-less -> flat queue, ci=250)
     const el = panel(dom);
-    assert.match(el.innerHTML, /class="mnp-queue-row is-current" aria-current="true" data-index="250"/, 'the current row is present at depth 250');
-    assert.match(el.innerHTML, /class="mnp-queue-row" data-index="251"/, 'up-next rows follow the current (not silently dropped)');
+    assert.match(el.innerHTML, /class="mnp-queue-row ui-row ui-row--default is-current ui-row--current" aria-current="true" data-index="250"/, 'the current row is present at depth 250');
+    assert.match(el.innerHTML, /class="mnp-queue-row ui-row ui-row--default" data-index="251"/, 'up-next rows follow the current (not silently dropped)');
     assert.doesNotMatch(el.innerHTML, /data-index="0"/, 'the window is anchored near the current track, not the queue start');
   }, { songs: many });
 });
@@ -252,7 +274,7 @@ test('v1.104 (re-init seed): a dock-tap expand re-inits with nowPlaying=null - t
       assert.equal(el.hidden, false, 'panel shows despite a fresh (null) nowPlaying');
       assert.match(el.innerHTML, /mnp-title"[^>]*>Bravo</, 're-seeded the playing title from the live player');
       // up-next rebuilt from the album queue (SONGS after t2 -> t3).
-      assert.match(el.innerHTML, /class="mnp-queue-row"[\s\S]*>Charlie</, 'up-next rebuilt from browseCtx');
+      assert.match(el.innerHTML, /class="mnp-queue-row ui-row ui-row--default"[\s\S]*>Charlie</, 'up-next rebuilt from browseCtx');
     },
     { meta, decode: (s) => (s === 'CTX' ? { src: 'music', album: 'One', sort: 'album-order' } : null) },
   );

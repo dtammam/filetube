@@ -355,6 +355,11 @@ test('K3 (qa W2 + adversary W3): a pick from a long flat list clears the browse 
     const behind = [...h.D.querySelectorAll('#music-content .music-song-row')];
     assert.deepStrictEqual(behind.map((r) => r.getAttribute('data-id')), added.map((t) => t.id), 'only the NEWER list, whole and in order');
     assert.ok(behind.every((r, i) => r.getAttribute('data-index') === String(i)), 'every row indexes the queue');
+    // step 7 (retire R2): a chunk-built row of the playing track carries the row primitive's
+    // current state with its equalizer class, and no other row does
+    const current = behind.filter((r) => r.classList.contains('ui-row--current'));
+    assert.deepStrictEqual(current.map((r) => r.getAttribute('data-id')), [h.player.currentId], 'the playing row is the one current row');
+    assert.ok(current[0].classList.contains('playing'), 'with its equalizer');
     const late = behind[behind.length - 3];
     click(h.dom, late.querySelector('.music-song-play'));
     await settleNet();

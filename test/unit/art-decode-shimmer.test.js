@@ -90,7 +90,7 @@ const ART_SITES = [
   ['public/js/music.js', 'class="music-album-art art-shimmer"'],
   ['public/js/music.js', 'class="music-song-thumb ui-avatar__img art-shimmer"'], // UI pass S7: the song row's art is the ui-art box's image
   ['public/js/music.js', 'class="music-drill-art art-shimmer"'],
-  ['public/js/music.js', 'class="music-sticky-thumb art-shimmer"'],
+  ['public/js/music.js', 'class="ui-avatar__img music-sticky-thumb art-shimmer"'], // step 7 (retire R2, deliberate): the sticky bar's thumb is the ui-art box's image
   ['public/js/music.js', 'class="art-shimmer" src="\' + escapeMusicHtml(albumArtSrc('], // v1.103: the artist mosaic tile (v1.339: the sized, shared art URL)
   // UI pass S6: the show row and the show header share ONE art builder (podcasts.js showArtEl,
   // a ui.avatar kind 'podcast' whose img takes the class); podcasts-ui-sweep.test.js binds both

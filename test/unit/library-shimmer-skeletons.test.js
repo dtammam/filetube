@@ -104,6 +104,10 @@ test('music artist skeleton: mosaic-square cards, wrapped in .music-card-grid, n
   assert.ok(html.includes('class="music-card-grid"'), 'the shared card grid wrapper');
   assert.ok(!html.includes('music-artist-grid'), 'no defunct .music-artist-grid (dropped in v1.103)');
   assert.strictEqual(countOf(html, 'music-artist-mosaic skeleton-shimmer'), 4, 'each card reserves the mosaic square (matches the revealed shape)');
+  // step 7 (retire R2): the card chassis (flex column, gap, the app type) is the ui-tile
+  // primitive now - a skeleton without it would reserve a different box than the real card
+  assert.strictEqual(countOf(html, 'ui-tile music-artist-card'), 4, 'every skeleton card is the ui-tile chassis');
+  assert.strictEqual(countOf(buildMusicSkeletonCards(3), 'ui-tile music-album-card'), 3, 'the album skeleton too');
   assert.ok(html.includes('skeleton-line-title') && html.includes('skeleton-line-meta'), 'name + meta lines');
   assert.doesNotMatch(html, /<span class="skeleton-line/, 'block div text lines');
   assert.strictEqual(buildMusicArtistSkeletonCards(0), '');

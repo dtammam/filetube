@@ -79,3 +79,14 @@ test('--z-sticky is a ladder rung in the local band: under the grandfathered sid
   assert.ok(sticky[1] > 0 && sticky[1] < 99, 'inside the local band, under the sidebar');
   for (const [n, v] of ladder) if (n !== '--z-sticky') assert.ok(v > sticky[1], `${n} above it`);
 });
+
+test('--tile-w is ONE token for a card tile\'s width: the Music shelf\'s fixed tiles and the card grid\'s minimum column', () => {
+  const { readStyleCss } = require('../helpers/stylesheets');
+  assert.match(readTokensCss(), /--tile-w:\s*108px;/);
+  const style = cssRules(readStyleCss());
+  const shelf = style.find((r) => r.sel.replace(/\s+/g, ' ') === '.music-shelf-strip > .music-album-card, .music-shelf-strip > .music-artist-card');
+  assert.ok(shelf, 'the shelf tile rule');
+  assert.strictEqual(decls(shelf.body).width, 'var(--tile-w)');
+  const grid = style.find((r) => r.sel === '.music-card-grid');
+  assert.strictEqual(decls(grid.body)['grid-template-columns'], 'repeat(auto-fill, minmax(var(--tile-w), 1fr))');
+});

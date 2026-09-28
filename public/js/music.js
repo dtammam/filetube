@@ -70,7 +70,7 @@ function buildAlbumCardHtml(album) {
   var art = albumArtSrc(album.artId || '', musicArtCardPx()); // v1.339 L1: the card-sized rendition
   var count = album.trackCount ? album.trackCount + (album.trackCount === 1 ? ' track' : ' tracks') : '';
   return '' +
-    '<button type="button" class="music-album-card" data-album-key="' + escapeMusicHtml(album.albumKey) + '">' +
+    '<button type="button" class="ui-tile music-album-card" data-album-key="' + escapeMusicHtml(album.albumKey) + '">' +
     '<img class="music-album-art art-shimmer" src="' + escapeMusicHtml(art) + '" alt="' + escapeMusicHtml(album.album) + '" loading="lazy" />' +
     '<span class="music-album-title" title="' + escapeMusicHtml(album.album) + '">' + escapeMusicHtml(album.album || 'Unknown album') + '</span>' +
     '<span class="music-album-artist" title="' + escapeMusicHtml(album.artist) + '">' + escapeMusicHtml(album.artist) + '</span>' +
@@ -99,10 +99,14 @@ function buildArtistCardHtml(artist) {
     // Redesign S1: a round CHANNEL-avatar circle (Spotify-style). A monogram sits
     // behind; the avatar reveals on load and is DROPPED on error (revealMusicArt),
     // so a broken URL degrades to the monogram - never a broken-image glyph.
-    var initial = (String(name).trim().charAt(0) || '?').toUpperCase();
-    visual = '<span class="music-artist-avatar">' +
-      '<span class="maa-mono">' + escapeMusicHtml(initial) + '</span>' +
-      '<img class="maa-img" src="' + escapeMusicHtml(artist.avatarUrl) + '" alt="" loading="lazy" />' +
+    // Step 7 (retire R2): the circle is the ui-avatar primitive (D4.4, the Artists list
+    // rows' own markup at the card's size) - ui.js's initials on its hash tone.
+    var U = (typeof window !== 'undefined' && window.ui) || null;
+    var initials = (U && typeof U.initials === 'function') ? U.initials(name) : (String(name).trim().charAt(0) || '?').toUpperCase();
+    var tone = (U && typeof U.toneOf === 'function') ? U.toneOf(name) : 1;
+    visual = '<span class="ui-avatar ui-avatar--2xl music-artist-circle">' +
+      '<span class="ui-avatar__mono maa-mono" data-tone="' + tone + '">' + escapeMusicHtml(initials) + '</span>' +
+      '<img class="ui-avatar__img maa-img" src="' + escapeMusicHtml(artist.avatarUrl) + '" alt="" loading="lazy" />' +
       '</span>';
   } else {
     var ids = (Array.isArray(artist.artIds) && artist.artIds.length) ? artist.artIds.slice(0, 4) : [''];
@@ -112,7 +116,7 @@ function buildArtistCardHtml(artist) {
     visual = '<span class="music-artist-mosaic" data-tiles="' + ids.length + '">' + tiles + '</span>';
   }
   return '' +
-    '<button type="button" class="music-artist-card" data-artist="' + escapeMusicHtml(artist.artist) + '">' +
+    '<button type="button" class="ui-tile music-artist-card" data-artist="' + escapeMusicHtml(artist.artist) + '">' +
     visual +
     '<span class="music-artist-name" title="' + escapeMusicHtml(artist.artist) + '">' + escapeMusicHtml(artist.artist || 'Unknown artist') + '</span>' +
     '<span class="music-artist-meta">' + escapeMusicHtml(meta) + '</span>' +
@@ -125,7 +129,7 @@ function buildArtistCardHtml(artist) {
 // track (playTrackFromContinue) with its saved position.
 function buildJumpBackTileHtml(item) {
   return '' +
-    '<button type="button" class="music-jump-tile" data-id="' + escapeMusicHtml(item.id) + '">' +
+    '<button type="button" class="ui-tile music-jump-tile" data-id="' + escapeMusicHtml(item.id) + '">' +
     '<img class="music-jump-art art-shimmer" src="' + escapeMusicHtml(albumArtSrc(musicArtId(item), musicArtCardPx())) + '" alt="" loading="lazy" />' +
     '<span class="music-jump-title" title="' + escapeMusicHtml(item.title) + '">' + escapeMusicHtml(item.title || 'Unknown track') + '</span>' +
     '<span class="music-jump-sub" title="' + escapeMusicHtml(item.artist || '') + '">' + escapeMusicHtml(item.artist || '') + '</span>' +
@@ -173,7 +177,7 @@ var ARTIST_LIST_OPEN = '<div class="music-artist-list ui-list ui-list--default u
 function buildRecentArtistTileHtml(item) {
   var name = item.artist || 'Unknown artist';
   return '' +
-    '<button type="button" class="music-artist-card" data-artist="' + escapeMusicHtml(name) + '">' +
+    '<button type="button" class="ui-tile music-artist-card" data-artist="' + escapeMusicHtml(name) + '">' +
     '<span class="music-artist-mosaic" data-tiles="1"><img class="art-shimmer" src="' + escapeMusicHtml(albumArtSrc(musicArtId(item), musicArtCardPx())) + '" alt="" loading="lazy" /></span>' +
     '<span class="music-artist-name" title="' + escapeMusicHtml(name) + '">' + escapeMusicHtml(name) + '</span>' +
     '</button>';
@@ -189,7 +193,7 @@ function buildMusicShelfHtml(title, seeallTab, tilesHtml) {
     '<h3 class="music-shelf-title">' + escapeMusicHtml(title) + '</h3>' +
     (seeallTab ? '<button type="button" class="ui-btn ui-btn--plain ui-btn--sm music-shelf-seeall" data-seeall="' + escapeMusicHtml(seeallTab) + '"><span class="ui-btn__label">See all</span></button>' : '') +
     '</div>' +
-    '<div class="music-shelf-row">' + tilesHtml + '</div>' +
+    '<div class="music-shelf-strip">' + tilesHtml + '</div>' +
     '</section>';
 }
 
@@ -231,7 +235,7 @@ function buildSongRowHtml(item, index) {
     '<span class="ui-row__body">' +
     '<span class="ui-row__title music-song-title"><button type="button" class="ui-row__link music-song-play" title="' + escapeMusicHtml(title) + '">' + escapeMusicHtml(title) + '</button></span>' +
     '<span class="ui-row__meta music-song-sub">' +
-    (item.artist ? '<button type="button" class="music-song-artist" data-artist="' + escapeMusicHtml(item.artist) + '" title="Go to artist">' + escapeMusicHtml(item.artist) + '</button>' : '') +
+    (item.artist ? '<button type="button" class="ui-link music-song-artist" data-artist="' + escapeMusicHtml(item.artist) + '" title="Go to artist">' + escapeMusicHtml(item.artist) + '</button>' : '') +
     (item.album ? (item.artist ? ' · ' : '') + escapeMusicHtml(item.album) : '') + '</span>' +
     '</span>' +
     '<span class="ui-row__aside music-song-duration">' + escapeMusicHtml(dur) + '</span>' +
@@ -506,7 +510,7 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
     '<div class="music-drill-info">' +
     '<h3 class="music-drill-title" title="' + escapeMusicHtml(title) + '">' + escapeMusicHtml(title) + '</h3>' +
     // v1.317 (M1): the album drill's artist line drills into that artist (the card delegation).
-    (artist ? '<button type="button" class="music-drill-artist" data-artist="' + escapeMusicHtml(artist) + '" title="Go to artist">' + escapeMusicHtml(artist) + '</button>' : '') +
+    (artist ? '<button type="button" class="ui-link ui-link--block music-drill-artist" data-artist="' + escapeMusicHtml(artist) + '" title="Go to artist">' + escapeMusicHtml(artist) + '</button>' : '') +
     '<div class="music-drill-meta">' + escapeMusicHtml(meta) +
     // Chapter Snap (2026-09-24): "Edited" when this chaptered album's times were corrected
     // (the rows carry chaptersEdited from the server's projection).
@@ -543,9 +547,12 @@ function buildStickyBarHtml(drill, tracks) {
   return '' +
     '<div class="music-drill-sticky">' +
     '<button type="button" class="ui-btn ui-btn--plain ui-btn--sm ui-btn--icon music-drill-back music-sticky-back" aria-label="Back">' + songIconHtml('arrow_back') + '</button>' +
+    // step 7 (retire R2): the thumb is a ui-art (the row art primitive, 36px)
+    '<span class="ui-art ui-avatar--md music-sticky-art">' +
     (artId
-      ? '<img class="music-sticky-thumb art-shimmer" src="' + escapeMusicHtml(albumArtSrc(artId, MUSIC_ART_ROW_PX)) + '" alt="" />'
-      : '<img class="music-sticky-thumb" alt="" />') + // gate r1 W2: no empty-id art request
+      ? '<img class="ui-avatar__img music-sticky-thumb art-shimmer" src="' + escapeMusicHtml(albumArtSrc(artId, MUSIC_ART_ROW_PX)) + '" alt="" />'
+      : '<img class="ui-avatar__img music-sticky-thumb" alt="" />') + // gate r1 W2: no empty-id art request
+    '</span>' +
     '<span class="music-sticky-title" title="' + escapeMusicHtml(title) + '">' + escapeMusicHtml(title) + '</span>' +
     '<button type="button" class="ui-btn ui-btn--primary ui-btn--sm ui-btn--icon music-drill-play music-sticky-play" aria-label="Play">' + songIconHtml('play_arrow') + '</button>' +
     '</div>';
@@ -653,7 +660,7 @@ function buildMusicSkeletonCards(n) {
   var cards = '';
   for (var i = 0; i < count; i++) {
     cards += '' +
-      '<div class="music-album-card" aria-hidden="true">' +
+      '<div class="ui-tile music-album-card" aria-hidden="true">' +
       '<span class="music-album-art skeleton-shimmer"></span>' +
       '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>' +
       '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>' +
@@ -673,7 +680,7 @@ function buildMusicArtistSkeletonCards(n) {
   var cards = '';
   for (var i = 0; i < count; i++) {
     cards += '' +
-      '<div class="music-artist-card" aria-hidden="true">' +
+      '<div class="ui-tile music-artist-card" aria-hidden="true">' +
       '<span class="music-artist-mosaic skeleton-shimmer"></span>' +
       '<div class="skeleton-line skeleton-line-title skeleton-shimmer"></div>' +
       '<div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div>' +
@@ -683,20 +690,20 @@ function buildMusicArtistSkeletonCards(n) {
 }
 
 // Redesign: the HOME cold-landing skeleton - the SAME .music-home > .music-shelf
-// > .music-shelf-row shape renderHome reveals (two titled horizontal rows of
+// > .music-shelf-strip shape renderHome reveals (two titled horizontal rows of
 // cards), so the swap is zero-shift on the default surface (the reveal-once
 // seed-the-shape-you-reveal contract; home is the cold landing off a page load).
 function buildMusicHomeSkeleton() {
   function shelf(cardsHtml) {
     return '<section class="music-shelf">' +
       '<div class="music-shelf-head"><div class="skeleton-line skeleton-line-title skeleton-shimmer"></div></div>' +
-      '<div class="music-shelf-row">' + cardsHtml + '</div></section>';
+      '<div class="music-shelf-strip">' + cardsHtml + '</div></section>';
   }
   var artistCards = '';
   var albumCards = '';
   for (var i = 0; i < 6; i++) {
-    artistCards += '<div class="music-artist-card" aria-hidden="true"><span class="music-artist-mosaic skeleton-shimmer"></span><div class="skeleton-line skeleton-line-title skeleton-shimmer"></div><div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div></div>';
-    albumCards += '<div class="music-album-card" aria-hidden="true"><span class="music-album-art skeleton-shimmer"></span><div class="skeleton-line skeleton-line-title skeleton-shimmer"></div><div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div></div>';
+    artistCards += '<div class="ui-tile music-artist-card" aria-hidden="true"><span class="music-artist-mosaic skeleton-shimmer"></span><div class="skeleton-line skeleton-line-title skeleton-shimmer"></div><div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div></div>';
+    albumCards += '<div class="ui-tile music-album-card" aria-hidden="true"><span class="music-album-art skeleton-shimmer"></span><div class="skeleton-line skeleton-line-title skeleton-shimmer"></div><div class="skeleton-line skeleton-line-meta skeleton-shimmer"></div></div>';
   }
   return '<div class="music-home">' + shelf(artistCards) + shelf(albumCards) + '</div>';
 }
@@ -825,7 +832,7 @@ function toolbarSlotLive(el) {
 // and SPA return (CLS 0.14 on every mobile tab). The v1.99 avatar-bar pattern
 // (readModernAvatarBarCount): persist the last-known tile count and, when the last visit
 // had items, reserve the strip synchronously with a skeleton of the EXACT final shape -
-// the real heading, the real `.music-jump-row`, and `.music-jump-tile` BUTTONS (a button
+// the real heading, the real `.music-jump-strip`, and `.music-jump-tile` BUTTONS (a button
 // resets line-height, so a span tile would measure differently) holding the real 116px
 // `.music-jump-art` box and one-line title/sub - so the fill is in place. A fetch that
 // returns none collapses the strip (the disclosed reverse-collapse: the one case the flag
@@ -847,13 +854,13 @@ function buildJumpBackSkeletonHtml(n) {
   if (count === 0) return '';
   var tiles = '';
   for (var i = 0; i < count; i++) {
-    tiles += '<button type="button" class="music-jump-tile music-jump-skel" tabindex="-1" disabled aria-hidden="true">' +
+    tiles += '<button type="button" class="ui-tile music-jump-tile music-jump-skel" tabindex="-1" disabled aria-hidden="true">' +
       '<span class="music-jump-art skeleton-shimmer"></span>' +
       '<span class="music-jump-title">&nbsp;</span>' +
       '<span class="music-jump-sub">&nbsp;</span>' +
       '</button>';
   }
-  return '<h2 class="music-jump-head">Jump back in</h2><div class="music-jump-row">' + tiles + '</div>';
+  return '<h2 class="music-jump-head">Jump back in</h2><div class="music-jump-strip">' + tiles + '</div>';
 }
 
 // v1.311.3 (Dean's ruling): where a chapter TAP starts. A saved place inside the chapter
@@ -2400,7 +2407,7 @@ if (typeof module !== 'undefined' && module.exports) {
       writeJumpBackCount(items.length);
       if (!items.length) { jumpbackWarmHtml = ''; jumpbackHost.hidden = true; jumpbackHost.innerHTML = ''; return; }
       var html = '<h2 class="music-jump-head">Jump back in</h2>' +
-        '<div class="music-jump-row">' + items.map(buildJumpBackTileHtml).join('') + '</div>';
+        '<div class="music-jump-strip">' + items.map(buildJumpBackTileHtml).join('') + '</div>';
       jumpbackWarmHtml = html;
       jumpbackHost.hidden = false;
       if (html === seededHtml) return; // the warm strip IS the fresh one - keep its (revealed) DOM
@@ -3011,14 +3018,17 @@ if (typeof module !== 'undefined' && module.exports) {
       revealMusicArt();
     }
 
-    // Toggle `.playing` (accent + equalizer glyph) on the row whose track id
-    // matches the currently-playing track. A pure DOM pass, NOT a re-render, so
+    // Toggle `.playing` (the equalizer glyph) and ui-row--current (the row primitive's
+    // tonal playing fill; step 7) on the row whose track id matches the currently-playing
+    // track. A pure DOM pass, NOT a re-render, so
     // it can run cheaply on every advance and after every list build. Called
     // from playAt (every tap / on-page prev-next / lock-screen next routes
     // through it), after renderSongList, and once at init.
     function applyPlayingHighlight() {
       content.querySelectorAll('.music-song-row').forEach(function (r) {
-        r.classList.toggle('playing', !!playingId && r.getAttribute('data-id') === playingId);
+        var on = !!playingId && r.getAttribute('data-id') === playingId;
+        r.classList.toggle('playing', on);
+        r.classList.toggle('ui-row--current', on);
       });
     }
 
@@ -4220,7 +4230,7 @@ if (typeof module !== 'undefined' && module.exports) {
         box.innerHTML = html;
         var rowsIn = box.querySelectorAll('.music-song-row');
         for (var r = 0; r < rowsIn.length; r++) {
-          if (playingId && rowsIn[r].getAttribute('data-id') === playingId) rowsIn[r].classList.add('playing');
+          if (playingId && rowsIn[r].getAttribute('data-id') === playingId) rowsIn[r].classList.add('playing', 'ui-row--current');
         }
         host.appendChild(box);
         revealArt(box); // v1.339 L1: a chunk's on-screen thumbs reveal together (off-screen ones per image)

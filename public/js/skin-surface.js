@@ -2749,13 +2749,19 @@
   // channel"), else "Go to artist"; a row's `durLabel` (a non-empty string) renders
   // `.mnp-queue-dur` after the title block - a chaptered album's row shows that chapter's own
   // length; '' = no span.
+  // Step 7 (retire R2): the Up next is a ui-list of ui-rows (plan D4.3) - the art is a ui-art in
+  // the reserved media column, the title over the artist line, the length in the aside column
+  // (declared only when some row has one, so podcasts' rows keep the full width), the playing
+  // row is ui-row--current; the sub-line control is the ui-link primitive. The hook classes
+  // (mnp-queue-row / -thumb / -title / -sub / -dur, data-index) are the views' delegation's
+  // and the tests', not a style.
   function buildPanelHtml(np, rows) {
     np = np || {};
     var subArtist = (typeof np.subArtist === 'string') ? np.subArtist : '';
     var sub = '';
     if (np.subline) {
       sub = subArtist
-        ? '<button type="button" class="mnp-sub" data-artist="' + panelEscape(subArtist) + '" title="' + panelEscape((typeof np.subArtistTitle === 'string' && np.subArtistTitle) ? np.subArtistTitle : 'Go to artist') + '">' + panelEscape(np.subline) + '</button>'
+        ? '<button type="button" class="ui-link ui-link--block mnp-sub" data-artist="' + panelEscape(subArtist) + '" title="' + panelEscape((typeof np.subArtistTitle === 'string' && np.subArtistTitle) ? np.subArtistTitle : 'Go to artist') + '">' + panelEscape(np.subline) + '</button>'
         : '<div class="mnp-sub">' + panelEscape(np.subline) + '</div>';
     }
     var meta = '<div class="mnp-meta">' +
@@ -2764,20 +2770,23 @@
       '</div>';
     var queue = '';
     if (Array.isArray(rows) && rows.length) {
-      queue = '<div class="mnp-queue"><div class="mnp-queue-head">Up next</div>' +
+      var hasDur = rows.some(function (it) { return typeof it.durLabel === 'string' && !!it.durLabel; });
+      queue = '<div class="mnp-queue ui-list ui-list--default ui-list--media-art' + (hasDur ? ' ui-list--aside-text' : '') + '"><div class="mnp-queue-head">Up next</div>' +
         rows.map(function (it) {
-          var cls = 'mnp-queue-row'
-            + (it.state === 'played' ? ' is-played' : '')
-            + (it.state === 'current' ? ' is-current' : '');
+          var state = (it.state === 'played' ? ' is-played' : '')
+            + (it.state === 'current' ? ' is-current ui-row--current' : '');
           // Number() coercion (QA gate S4): a two-consumer API now - an attribute-position
           // interpolation must never trust a caller's index shape (both callers pass ints).
-          return '<button type="button" class="' + cls + '"' + (it.state === 'current' ? ' aria-current="true"' : '') + ' data-index="' + Number(it.index) + '">' +
-            '<img class="mnp-queue-thumb art-shimmer" src="' + panelEscape(it.artUrl) + '" alt="" loading="lazy" />' +
-            '<span class="mnp-queue-main">' +
-            '<span class="mnp-queue-title">' + panelEscape(it.title || 'Track') + '</span>' +
-            (it.artist ? '<span class="mnp-queue-sub">' + panelEscape(it.artist) + '</span>' : '') +
+          return '<button type="button" class="mnp-queue-row ui-row ui-row--default' + state + '"' + (it.state === 'current' ? ' aria-current="true"' : '') + ' data-index="' + Number(it.index) + '">' +
+            '<span class="ui-row__lead"></span>' +
+            '<span class="ui-row__media"><span class="ui-art ui-avatar--lg"><img class="ui-avatar__img mnp-queue-thumb art-shimmer" src="' + panelEscape(it.artUrl) + '" alt="" loading="lazy" /></span></span>' +
+            '<span class="ui-row__body">' +
+            '<span class="ui-row__title mnp-queue-title">' + panelEscape(it.title || 'Track') + '</span>' +
+            (it.artist ? '<span class="ui-row__meta mnp-queue-sub">' + panelEscape(it.artist) + '</span>' : '') +
             '</span>' +
-            (typeof it.durLabel === 'string' && it.durLabel ? '<span class="mnp-queue-dur">' + panelEscape(it.durLabel) + '</span>' : '') +
+            // the aside slot is always there (reserved, AC5); only a real length carries the hook
+            (typeof it.durLabel === 'string' && it.durLabel ? '<span class="ui-row__aside mnp-queue-dur">' + panelEscape(it.durLabel) + '</span>' : '<span class="ui-row__aside"></span>') +
+            '<span class="ui-row__actions"></span>' +
             '</button>';
         }).join('') +
         '</div>';

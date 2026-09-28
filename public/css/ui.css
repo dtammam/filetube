@@ -590,11 +590,10 @@ button.ui-row:focus-visible,
 
 /* ---- ui-link ------------------------------------------------------------------------ */
 /* Step 7 (retire R2): a text control that reads as the text around it - an artist name in a
-   song row's meta line, a now-playing sub-line (the desktop panel, the album drill header,
-   the Pocket skins' artist lines). A <button> with no chrome and its context's font and
-   colour; every consumer's own type and colour rule (the skins' palettes, at two classes and
-   more) wins over these one-class defaults, as it did over the zero-specificity resets this
-   replaces. Inline by default; --block fills its line (a sub-line that ellipsizes). */
+   song row's meta line, a now-playing sub-line (the desktop panel, the album drill header).
+   A <button> with no chrome and its context's font and colour; every consumer's own type and
+   colour rule (one class, in style.css, which loads later) wins over these one-class defaults.
+   Inline by default; --block fills its line (a sub-line that ellipsizes). */
 .ui-link {
   display: inline;
   margin: 0;

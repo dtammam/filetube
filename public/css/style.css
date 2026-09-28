@@ -7761,8 +7761,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 #player-dock #track-prev-btn, #player-dock #track-next-btn,
 .reader-nowplaying #track-prev-btn, .reader-nowplaying #track-next-btn { display: none; }
 /* The .pc-btn base display (inline-flex) would beat [hidden] - the v1.44
-   bottom-nav-item lesson, enforced the same way. */
-.track-nav-btn[hidden] { display: none !important; }
+   bottom-nav-item lesson, enforced once for the app by ui.css's global [hidden] rule. */
 
 .reader-player-slot { flex: 1; min-width: 0; }
 /* Compact the FULL audio host into the bar: hide the cover art / video element /
@@ -8101,7 +8100,9 @@ html.is-phone #music-popout-btn { display: none; }
    above the tabs (hidden via [hidden] when empty). */
 .music-jumpback { margin: var(--space-2) 0 var(--space-4); }
 .music-jump-head { font-size: var(--fs-lg); font-weight: var(--fw-bold); margin: 0 0 var(--space-2); }
-.music-jump-row {
+/* step 7 (retire R2): a horizontal scroller of tiles is a STRIP (the TV shelf's
+   .tv-continue-strip naming), not a row control */
+.music-jump-strip {
   display: flex;
   gap: var(--space-3);
   overflow-x: auto;
@@ -8109,17 +8110,12 @@ html.is-phone #music-popout-btn { display: none; }
   scroll-snap-type: x proximity;
   -webkit-overflow-scrolling: touch;
 }
+/* a ui-tile (the button, its type, press and focus ring are ui.css's); the strip's own
+   fixed width and snap */
 .music-jump-tile {
   flex: 0 0 auto;
   width: 116px;
-  display: flex;
-  flex-direction: column;
   gap: var(--space-1);
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
-  text-align: left;
   scroll-snap-align: start;
 }
 .music-jump-art {
@@ -8162,7 +8158,7 @@ html.is-phone #music-popout-btn { display: none; }
 .music-shelf { display: flex; flex-direction: column; gap: var(--space-3); }
 .music-shelf-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
 .music-shelf-title { font-size: var(--fs-lg); font-weight: var(--fw-bold); margin: 0; }
-.music-shelf-row {
+.music-shelf-strip {
   display: flex;
   gap: var(--space-3);
   overflow-x: auto;
@@ -8170,17 +8166,14 @@ html.is-phone #music-popout-btn { display: none; }
   scroll-snap-type: x proximity;
   -webkit-overflow-scrolling: touch;
 }
-.music-shelf-row > .music-album-card,
-.music-shelf-row > .music-artist-card {
+.music-shelf-strip > .music-album-card,
+.music-shelf-strip > .music-artist-card {
   flex: 0 0 auto;
-  width: 108px;
+  width: var(--tile-w);
   scroll-snap-align: start;
 }
-.music-status[hidden] { display: none !important; }
 
 .music-crumb { display: flex; align-items: center; gap: var(--space-5); margin-bottom: var(--space-6); }
-.music-crumb[hidden] { display: none !important; }
-.music-crumb-label { font-size: var(--fs-lg); font-weight: var(--fw-semibold); color: var(--ink-1); }
 
 /* v1.44.2 (Spotify feel): the collapsing / sticky album+artist drill header.
    At rest: big art + title + artist + meta + Play/Shuffle. As the tracklist
@@ -8210,7 +8203,7 @@ html.is-phone #music-popout-btn { display: none; }
 .music-drill-sticky {
   position: sticky;
   top: var(--music-sticky-top, var(--header-h)); /* token-exempt: positional geometry (Stop A Batch A); music.js measures the real header into --music-sticky-top - the fallback only paints pre-measurement and now derives --header-h instead of carrying a copy */
-  z-index: 30; /* token-exempt: local stacking */
+  z-index: var(--z-sticky); /* the ladder's in-content sticky rung (over the rows, under all chrome) */
   display: none;
   align-items: center;
   gap: var(--space-5);
@@ -8221,7 +8214,6 @@ html.is-phone #music-popout-btn { display: none; }
 }
 .music-drill.collapsed .music-drill-sticky { display: flex; }
 .music-drill.collapsed .music-drill-header { display: none; }
-.music-sticky-thumb { width: 36px; height: 36px; border-radius: var(--radius); object-fit: cover; background: var(--thumbnail-bg); flex-shrink: 0; }
 .music-sticky-title { flex: 1; min-width: 0; font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--ink-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .music-drill-sentinel { width: 100%; height: 1px; }
 
@@ -8236,7 +8228,7 @@ html.is-phone #music-popout-btn { display: none; }
   display: grid;
   /* Friction pass (Dean: "circles are huge"): smaller, denser tiles -> more per
      screen, far less scrolling to reach an artist. */
-  grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(var(--tile-w), 1fr));
   gap: var(--space-5);
 }
 /* Friction pass: the compact Artists LIST - a fast index (name + count) to find a known artist
@@ -8249,20 +8241,8 @@ html.is-phone #music-popout-btn { display: none; }
 /* v1.103: album + artist cards share ONE art-forward chassis (was two divergent
    looks - borderless album vs bordered text-only artist). Both are a square art
    block over a title + secondary line; only the art block differs (single cover
-   vs 2x2 mosaic). */
-.music-album-card,
-.music-artist-card {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: var(--space-2);
-  padding: 0;
-  border: none;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  color: inherit;
-}
+   vs 2x2 mosaic). Step 7 (retire R2): the card is the ui-tile primitive (the button,
+   the app type, the press dim and focus ring are ui.css's). */
 .music-album-art,
 .music-artist-mosaic {
   width: 100%;
@@ -8303,40 +8283,24 @@ html.is-phone #music-popout-btn { display: none; }
 /* Redesign S1: the round CHANNEL-avatar circle (Spotify-style), used instead of
    the mosaic when the artist is a channel with an avatar. A monogram sits
    behind; .maa-img reveals on load (music.js) and is dropped on error, so a
-   broken avatar degrades to the monogram - never a broken-image glyph. */
-.music-artist-avatar {
-  position: relative;
+   broken avatar degrades to the monogram - never a broken-image glyph.
+   Step 7 (retire R2): the circle is a ui-avatar (D4.4: the Artists list rows' markup;
+   flat, like every primitive - D2.4); music's own is only its size (the card's width),
+   the stack (photo over its monogram in one cell), the photo's fade-in, a display-size
+   monogram and the hover lift the mosaic tiles beside it share. */
+.music-artist-card > .music-artist-circle {
   width: 100%;
+  height: auto;
   aspect-ratio: 1 / 1;
-  border-radius: 50%;
-  background: var(--thumbnail-bg);
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  box-shadow: var(--shadow);
-  transition: box-shadow var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui);
+  transition: transform var(--dur-fast) var(--ease-ui);
 }
+.music-artist-circle > * { grid-area: 1 / 1; }
+.music-artist-circle > .ui-avatar__mono { font: var(--t-display); }
+.music-artist-circle .maa-img { opacity: 0; transition: opacity var(--dur-fast) var(--ease-ui); }
+.music-artist-circle .maa-img.is-loaded { opacity: 1; }
 @media (hover: hover) {
-  .music-artist-card:hover .music-artist-avatar {
-    box-shadow: var(--shadow-lg);
-    transform: translateY(-2px);
-  }
+  .music-artist-card:hover .music-artist-circle { transform: translateY(-2px); }
 }
-.music-artist-avatar .maa-mono {
-  font-size: var(--fs-2xl);
-  font-weight: var(--fw-bold);
-  color: var(--ink-2);
-}
-.music-artist-avatar .maa-img {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease-ui);
-}
-.music-artist-avatar .maa-img.is-loaded { opacity: 1; }
 .music-album-title,
 .music-artist-name {
   font-size: var(--fs-base);
@@ -8416,9 +8380,9 @@ html.is-phone #music-popout-btn { display: none; }
 /* v1.44.2 (Spotify feel): the currently-playing row. A tonal fill + a CSS equalizer
    glyph (3 animated bars) overlaid on the thumb — NEVER an emoji codepoint
    (iOS forces blue emoji). Driven by applyPlayingHighlight() toggling
-   `.playing` on the row whose data-id == the playing track id. */
-.music-song-row.playing { background-color: var(--fill-selected); }
-.music-song-row.playing .ui-row__title { font-weight: var(--fw-semibold); }
+   `.playing` (the equalizer) and ui-row--current (the fill and the heavier title:
+   the row primitive's own playing state, ui.css - step 7) on the row whose data-id ==
+   the playing track id. */
 /* The eq overlays the thumb (dimmed via a scrim) only while playing. */
 .music-eq {
   position: absolute;
@@ -8454,16 +8418,15 @@ html.is-phone #music-popout-btn { display: none; }
 .music-nowplaying { color: var(--ink-2); margin-bottom: var(--space-4); }
 
 /* v1.104: the expanded now-playing panel (track metadata + up-next queue), under
-   #player-slot, shown only while the player is expanded. display:flex would beat
-   the UA [hidden] rule, so enforce the hide explicitly (the repo's
-   [hidden]-loses-to-author-display class). */
+   #player-slot, shown only while the player is expanded. Its display:flex would beat
+   the UA [hidden] rule; ui.css's global `[hidden] { display: none !important; }` wins
+   (the repo's [hidden]-loses-to-author-display class, fixed once for the app). */
 .music-nowplaying-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
   margin: var(--space-6) 0 var(--space-8);
 }
-.music-nowplaying-panel[hidden] { display: none !important; }
 /* v1.222 (Dean): desktop THEATRE - the album / up-next beside the expanded player
    (the watch page's Related-files space) instead of the panel stacked below. The
    stage is a plain block by default; theatre ON + a wide viewport makes it a
@@ -8511,27 +8474,16 @@ html.is-phone #music-popout-btn { display: none; }
 /* v1.317 (M1): the now-playing ARTIST LINE is a real <button> on every renderer (the desktop
    panel .mnp-sub, the Apple/Spotify skins' .mms-sub, the Click LCD .ip-artist, the album
    drill's .music-drill-artist) and the song row's artist name (.music-song-artist, inline).
-   ONE reset at ZERO specificity (:where) strips the UA button chrome, so every existing
-   consumer rule (font-size, color, margin, the per-skin palettes) keeps winning at any
-   order - no hand-copied per-skin override to drift. `font: inherit` here loses to any
-   consumer font-size for the same reason. */
+   Step 7 (retire R2): the desktop panel, drill and song-row controls are the ui-link primitive
+   (ui.css: no chrome, its context's font and colour; --block on the sub-lines), which replaced
+   the song row's inline reset. The Pocket skins' lines (.mms-sub, .ip-artist) are skin art
+   (the D10.4 carve-out) and keep this ONE reset at ZERO specificity (:where), so every
+   per-skin palette rule keeps winning at any order; the two ui-link sub-lines it still names
+   match it harmlessly (the same declarations). */
 :where(button.mnp-sub, button.mms-sub, button.ip-artist, button.music-drill-artist) {
   display: block;
   width: 100%;
   max-width: 100%;
-  appearance: none;
-  -webkit-appearance: none;
-  border: 0;
-  background: transparent;
-  padding: 0;
-  margin: 0;
-  font: inherit;
-  color: inherit;
-  text-align: inherit;
-  cursor: pointer;
-}
-:where(button.music-song-artist) {
-  display: inline;
   appearance: none;
   -webkit-appearance: none;
   border: 0;
@@ -8557,7 +8509,6 @@ html.is-phone #music-popout-btn { display: none; }
   overflow-y: auto;
   white-space: pre-wrap;
 }
-.mnp-queue { display: flex; flex-direction: column; gap: var(--space-1); }
 /* v1.224 (Dean): bound the MUSIC Up next height so it's a self-contained scroll
    area that always shows full rows - non-theatre it used to flow past the fold and
    clip the last row. v1.251 (QA gate W1): scoped to the SHARED panel class now - the
@@ -8573,45 +8524,17 @@ html.is-phone #music-popout-btn { display: none; }
   text-transform: uppercase;
   margin-bottom: var(--space-2);
 }
-.mnp-queue-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
-  width: 100%;
-  padding: var(--space-3);
-  border: none;
-  background: transparent;
-  border-radius: var(--radius-lg);
-  text-align: left;
-  color: inherit;
-  cursor: pointer;
-}
+/* v1.223 (Dean): the panel lists the whole queue - already-played rows grey out but stay
+   clickable (a hover restores them), the current row is marked. Step 7 (retire R2): the
+   queue is a ui-list of ui-rows (skin-surface.js buildPanelHtml): the row grid, art box,
+   aside, hover / press tints and the current row's fill (ui-row--current) are ui.css's.
+   The panel's own: one title line (a dense scroller) and the played dimming. */
+.mnp-queue > .ui-row .ui-row__title { -webkit-line-clamp: 1; }
+.mnp-queue > .ui-row.is-played { opacity: 0.55; }
 @media (hover: hover) {
-  .mnp-queue-row:hover { background: var(--surface-2); }
+  .mnp-queue > .ui-row.is-played:hover { opacity: 1; }
 }
-/* v1.223 (Dean): the panel lists the whole queue - already-played rows grey out
-   but stay clickable (hover restores them), the current row is marked. */
-.mnp-queue-row.is-played { opacity: 0.55; }
-@media (hover: hover) {
-  .mnp-queue-row.is-played:hover { opacity: 1; }
-}
-.mnp-queue-row.is-current { background: var(--surface-2); }
-.mnp-queue-row.is-current .mnp-queue-title { font-weight: var(--fw-semibold); }
-.mnp-queue-thumb {
-  width: 40px;
-  height: 40px;
-  flex-shrink: 0;
-  border-radius: var(--radius);
-  object-fit: cover;
-  background: var(--thumbnail-bg);
-  display: block;
-}
-.mnp-queue-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
-.mnp-queue-title { font-size: var(--fs-base); color: var(--ink-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mnp-queue-sub { font-size: var(--fs-sm); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* v1.317 (M2): each row's own length, a trailing right column (the .music-song-duration
-   pattern); absent when the view has no duration (podcasts render no span). */
-.mnp-queue-dur { flex: none; font-size: var(--fs-sm); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.mnp-queue > .ui-row .ui-row__aside { font-variant-numeric: tabular-nums; }
 
 /* ===================== MOBILE MUSIC SKINS (Dean's wave) =====================
    A new full-screen PRESENTATION for a music item on a phone, in the user's chosen
@@ -8727,7 +8650,8 @@ html.is-phone #music-popout-btn { display: none; }
      actions menu reuses the exact same .mms-sticker-menu box + .mms-sm-* item rules. Only
      the mobile POSITIONING (bottom-anchored over the corner sticker; the tray overlay)
      stays in the @media (max-width:768px) block below. */
-  .mms-sticker-menu[hidden]{ display:none !important; } /* the [hidden] lesson: a flex/grid menu's own display beats [hidden] */
+  /* (the [hidden] lesson - a flex/grid menu's own display beats [hidden] - is ui.css's global
+     [hidden] rule, which every shell and the pop-out window load) */
   .mms-sticker-menu{ min-width:min(320px, 88vw); max-width:92vw; max-height:86vh; overflow-y:auto; /* corner-clip-safe: flex-column menu, buttons/chips only, no positioned descendant (do NOT swap to overflow:hidden - it would clip a tall list) */ /* v1.255 (Dean): the Extras page fits without scrolling; auto-scroll is the small-phone safety net */ display:flex; flex-direction:column; gap:var(--space-5); /* v1.252 L1 (Dean): thumb-sized menu */
     background:var(--overlay-surface); color:var(--mms-white); border:1px solid var(--overlay-border); border-radius:var(--r-md); box-shadow:var(--shadow-overlay); padding:var(--space-6); font-family:var(--font-ui); } /* sweep S9 (D4.6): the SHELL takes the one overlay radius + shadow (a popover, --r-md); its surface and ink stay the skin's - the rows (S7's) paint on them */
   /* v1.255 (Dean's parity pass): buttons do NOT inherit the body font - every other menu
@@ -9806,7 +9730,6 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
   .mms-ipod .ipm-slide, .mms-ipod .ipm-slide.is-drift{ transition:none; transform:none; } }
 
 .music-empty { color: var(--ink-2); padding: var(--space-12) 0; }
-.music-empty[hidden] { display: none !important; }
 
 /* v1.44 "Continue listening" home row -- reuses the books-home-row scroller;
    the album-art cover is SQUARE (not the 2:3 book cover) and adds an artist

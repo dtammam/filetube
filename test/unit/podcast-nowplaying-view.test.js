@@ -513,7 +513,7 @@ test('UI pass D7 (F23): a rotate to landscape and back never tears down or rebui
 // so its output must not move by one byte: EXPECTED is the builder's output captured at
 // v1.316.0 (main 6ea45237) for this exact fixture, before the change.
 
-test('v1.317 (seam): buildPanelHtml on podcast-shaped input (no subArtist, no durLabel) is byte-identical to its v1.316.0 output', () => {
+test('v1.317 (seam) / step 7: buildPanelHtml on podcast-shaped input (no subArtist, no durLabel) renders no length column and the plain sub-line, byte for byte', () => {
   delete require.cache[require.resolve('../../public/js/skin-surface.js')];
   const S = require('../../public/js/skin-surface.js');
   const np = { title: 'Ep One', subline: 'The Show · 1h' };
@@ -521,12 +521,18 @@ test('v1.317 (seam): buildPanelHtml on podcast-shaped input (no subArtist, no du
     { id: 'e1', artUrl: '/podcastart/s1', title: 'Ep One', artist: 'The Show', index: 0, state: 'current' },
     { id: 'e2', artUrl: '/podcastart/s1', title: 'Ep Two', artist: 'The Show', index: 1, state: 'next' },
   ];
+  // Step 7 (retire R2, DELIBERATE re-capture): the Up next became a ui-list of ui-rows (the art a
+  // ui-art in the media column, the title / show in the body, the reserved aside and actions
+  // slots, the playing row ui-row--current). The v1.317 intent is kept: podcasts pass neither
+  // optional field, so there is NO length column (no ui-list--aside-text, no .mnp-queue-dur, an
+  // empty reserved aside) and the sub-line stays the plain div. EXPECTED is this builder's output
+  // for the fixture at the step 7 commit.
   const EXPECTED = '<div class="mnp-meta"><div class="mnp-title" title="Ep One">Ep One</div><div class="mnp-sub">The Show · 1h</div></div>'
-    + '<div class="mnp-queue"><div class="mnp-queue-head">Up next</div>'
-    + '<button type="button" class="mnp-queue-row is-current" aria-current="true" data-index="0"><img class="mnp-queue-thumb art-shimmer" src="/podcastart/s1" alt="" loading="lazy" /><span class="mnp-queue-main"><span class="mnp-queue-title">Ep One</span><span class="mnp-queue-sub">The Show</span></span></button>'
-    + '<button type="button" class="mnp-queue-row" data-index="1"><img class="mnp-queue-thumb art-shimmer" src="/podcastart/s1" alt="" loading="lazy" /><span class="mnp-queue-main"><span class="mnp-queue-title">Ep Two</span><span class="mnp-queue-sub">The Show</span></span></button>'
+    + '<div class="mnp-queue ui-list ui-list--default ui-list--media-art"><div class="mnp-queue-head">Up next</div>'
+    + '<button type="button" class="mnp-queue-row ui-row ui-row--default is-current ui-row--current" aria-current="true" data-index="0"><span class="ui-row__lead"></span><span class="ui-row__media"><span class="ui-art ui-avatar--lg"><img class="ui-avatar__img mnp-queue-thumb art-shimmer" src="/podcastart/s1" alt="" loading="lazy" /></span></span><span class="ui-row__body"><span class="ui-row__title mnp-queue-title">Ep One</span><span class="ui-row__meta mnp-queue-sub">The Show</span></span><span class="ui-row__aside"></span><span class="ui-row__actions"></span></button>'
+    + '<button type="button" class="mnp-queue-row ui-row ui-row--default" data-index="1"><span class="ui-row__lead"></span><span class="ui-row__media"><span class="ui-art ui-avatar--lg"><img class="ui-avatar__img mnp-queue-thumb art-shimmer" src="/podcastart/s1" alt="" loading="lazy" /></span></span><span class="ui-row__body"><span class="ui-row__title mnp-queue-title">Ep Two</span><span class="ui-row__meta mnp-queue-sub">The Show</span></span><span class="ui-row__aside"></span><span class="ui-row__actions"></span></button>'
     + '</div>';
-  assert.strictEqual(S.buildPanelHtml(np, rows), EXPECTED, 'byte-identical to the pre-v1.317 podcast panel');
+  assert.strictEqual(S.buildPanelHtml(np, rows), EXPECTED, 'the podcast panel: no length column, the plain sub-line');
 });
 
 // Gate r1 W1 (both seats): the podcast MOBILE SKIN shares the music renderers, and the show line

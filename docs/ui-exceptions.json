@@ -2733,18 +2733,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.mnp-queue-thumb|height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.mnp-queue-thumb|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.modern-avatar-chip .skeleton-line|height",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -2752,12 +2740,6 @@
       },
       {
         "key": "public/css/style.css|.modern-avatar-chip .skeleton-line|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.music-card-grid|grid-template-columns",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -2836,24 +2818,6 @@
       },
       {
         "key": "public/css/style.css|.music-jump-title|max-width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.music-shelf-row > .music-album-card, .music-shelf-row > .music-artist-card|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.music-sticky-thumb|height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.music-sticky-thumb|width",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -6515,37 +6479,7 @@
         "added": "2026-09-28"
       },
       {
-        "key": "public/css/style.css|.mnp-queue-dur|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
         "key": "public/css/style.css|.mnp-queue-head|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.mnp-queue-row|border-radius",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.mnp-queue-sub|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.mnp-queue-thumb|border-radius",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.mnp-queue-title|font-size",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
         "added": "2026-09-28"
@@ -6588,30 +6522,6 @@
       },
       {
         "key": "public/css/style.css|.music-album-title, .music-artist-name|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.music-artist-avatar .maa-mono|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.music-artist-avatar|box-shadow",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.music-artist-card:hover .music-artist-avatar|box-shadow",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.music-crumb-label|font-size",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
         "added": "2026-09-28"
@@ -6714,12 +6624,6 @@
       },
       {
         "key": "public/css/style.css|.music-status|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.music-sticky-thumb|border-radius",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
         "added": "2026-09-28"
@@ -8588,24 +8492,12 @@
       },
       {
         "key": ".mms-sticker-menu",
-        "count": 5,
+        "count": 4,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
       {
         "key": ".mms-tapplay",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".mnp-queue-row",
-        "count": 5,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".mnp-queue-thumb",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -8618,54 +8510,6 @@
       },
       {
         "key": ".modern-chip-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".music-album-card",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".music-artist-avatar",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".music-artist-card",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".music-jump-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".music-jump-tile",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".music-shelf-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".music-song-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".music-sticky-thumb",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -8912,7 +8756,7 @@
       },
       {
         "key": ".track-nav-btn",
-        "count": 3,
+        "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -9026,12 +8870,6 @@
       },
       {
         "key": "public/css/style.css|:where(button.mnp-sub, button.mms-sub, button.ip-artist, button.music-drill-artist)",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|:where(button.music-song-artist)",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -9259,36 +9097,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/music.js|<button>|music-album-card",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/music.js|<button>|music-artist-card",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/music.js|<button>|music-drill-artist",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/music.js|<button>|music-jump-tile",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/music.js|<button>|music-song-artist",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/js/player.js|<button>|pc-btn",
         "count": 1,
         "reason": "player overlay rewrite (post black-screen fix)",
@@ -9373,12 +9181,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/skin-surface.js|<button>|(no class)",
-        "count": 1,
-        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/js/skin-surface.js|<button>|mms-sm-act",
         "count": 12,
         "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
@@ -9416,12 +9218,6 @@
       },
       {
         "key": "public/js/skin-surface.js|<button>|mms-sticker",
-        "count": 1,
-        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/skin-surface.js|<button>|mnp-sub",
         "count": 1,
         "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
@@ -9465,12 +9261,6 @@
       {
         "key": "public/js/tv.js|<button>|tv-episode-row",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/music.html|<button>|music-jump-tile",
-        "count": 6,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -9918,12 +9708,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.music-drill-sticky|z-index",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.ptr-indicator|z-index",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -10010,36 +9794,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.mms-sticker-menu[hidden]|display",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.music-crumb[hidden]|display",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.music-empty[hidden]|display",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.music-nowplaying-panel[hidden]|display",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.music-status[hidden]|display",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.reader-nowplaying #media-player, .reader-nowplaying #audio-bg-art, .reader-nowplaying .art-play-glyph, .reader-nowplaying #audio-visualizer, .reader-nowplaying #skip-controls, .reader-nowplaying #speed-badge, .reader-nowplaying #fs-btn, .reader-nowplaying #pip-btn, .reader-nowplaying #cc-btn, .reader-nowplaying #mute-btn, .reader-nowplaying #vol-bar|display",
         "count": 1,
         "reason": "player overlay rewrite (post black-screen fix)",
@@ -10047,12 +9801,6 @@
       },
       {
         "key": "public/css/style.css|.seek-preview-img[hidden], .seek-preview-chapter[hidden]|display",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.track-nav-btn[hidden]|display",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
