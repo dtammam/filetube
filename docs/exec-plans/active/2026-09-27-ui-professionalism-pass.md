@@ -1765,3 +1765,114 @@ fix found by the render, the History confirm test, this log).
   `.md-hero` / `.md-tile` (S8's master-detail family, kept as the Dean-requested v1.160.1 hero);
   `.action-status` (shared with Settings); the header's global Download (the S8 one-off dialog) duplicates the
   One-off panel's form - kept, since the panel also lists the running one-off jobs.
+
+### Sweep S1 - chrome (2026-09-28, branch feat/ui-sweep-s1 from cf669c15; 2a49ad32, d02f0375, b5a462c1)
+
+- **Commits:** 2a49ad32 (registry: FILL twins for every bottom-bar glyph - folder, history, podcasts,
+  music_note, menu_book, smart_display, download, dark_mode, light_mode, settings; 70 names + 19 fills),
+  d02f0375 (the ONE primitive-side addition, its own commit: ui.css `[data-theme] a.ui-btn, a.ui-btn
+  { text-decoration: none }` - a link ui-btn was underlined by the 2005 `a` rule and the global a:hover,
+  F20; tokens.css / ui.js / interaction.js untouched), b5a462c1 (the sweep), then this log.
+- **Header (F31):** hamburger, search button and every header-right control (queue, bell, search
+  toggle, the one-off Download, the account trigger) are plain ui-btn icon buttons (36 desktop / 44
+  phone, 44 hit area), built by common.js `chromeButtonEl`, which emits exactly ui.button's DOM (a test
+  compares outerHTML). The desktop Download is an icon now (was a bevelled text `.btn` beside flat
+  glyphs). Count badges are `ui-chip--count`. The account avatar is a ui-avatar (sm header, xs You tab,
+  xl menu head; the v1.157.1 shimmer-until-loaded reveal kept). Both reserve blocks (byte-identical in
+  the 11 header shells) paint the same ui-btn boxes.
+- **Search:** a ui-field-styled field (--surface-2, --r-md, 36/44, ring on the field, 16px phone floor
+  kept) with an icon ui-btn inside; the clear X is an icon ui-btn (no text glyph); recent searches are a
+  compact ui-list with a remove icon button per row.
+- **Account menu (D4.6):** a ui.sheet titled Account (popover under the trigger on desktop, bottom sheet
+  on the phone) of compact ui-rows with registry glyphs, built on the first open; v1.305's pencil badge
+  kept (a tonal icon ui-btn on the xl disc); the disk / trash / version footer is a quiet compact
+  ui-list, lazily counted as before. The Theme row stays (F38's account-menu half).
+- **Bottom bar (F49):** each tab a ui-btn stack (fixed 24px slot over a one-line caption label; You's
+  avatar sits in the slot); idle `--ink-2`, selected `--ink-1` with its FILLED glyph
+  (`setBottomNavItemFilled`, from applyNavHighlight), never red, no weight change.
+- **Playlists sheet (F50):** a bottom ui.sheet (static markup deleted from 11 shells); rows are 56px
+  ui-rows, glyph or a 36px ui-avatar in the media column (D4.3's avatar column is --av-md, not the audit's
+  40), one reserved action column; unpin is a `keep.fill` icon toggle that asks through ui.confirm (the
+  in-row "Unpin?" arm is gone, D4.8), on the desktop sidebar too. The rows still come from the sidebar's
+  generators (`toSheetRow` converts in place).
+- **Sidebar (F50, F20, D7):** selected/hover = a neutral fill, never bold; never underlined in any era;
+  hairline separators. D7: `.main-content` no longer transitions margin-left; the drawer transitions
+  transform only under `.is-animating`, set only by the menu toggle (`armSidebarSlide`); a real width
+  change (resize, rotate - not the iOS toolbar's height-only resize) holds `html.no-motion` for 300ms.
+- **F66:** the static `#cc0000` theme-color is a light/dark pair in 13 shells (pre-paint guess by OS
+  scheme); applyTheme collapses it to the header ground of the app's era + mode (`syncThemeColorMeta`).
+- **Findings:** closed F20 (chrome: tabs, sidebar, menu and sheet rows), F29 (verified: the registry
+  test binds every source path; the Podcasts glyph renders whole in the renders), F31 (header),
+  F49, F50. Partly: F38 (the account-menu Theme row kept; the Subscriptions moon is S5's), F66 (the
+  iOS standalone `apple-mobile-web-app-status-bar-style` stays `default`: it is read once at launch
+  and `black-translucent` forces white status text over the light eras' headers - a device ruling for
+  Dean; the manifest's theme_color/background_color are static and cannot follow the mode). Deferred:
+  the modern-home header sort/view glyphs (`.modern-sort-btn`, `.modern-view-toggle`, F31's list) are
+  built in main.js - S2's file.
+- **Geometry:** surfaces `header` (G2, G3 scoped to `<header>`, and HDR: 44/36px buttons, level and
+  evenly spaced, magnifier shown + rightmost on the phone / hidden on desktop, avatar hidden on the
+  phone, the 36px field, the bell reserve's box == the bell's, sidebar rows never bold or underlined)
+  and `bottom-bar` (G2, G3, NAV: 24px slots, one label line, one ink-1 active tab with its filled
+  glyph, the rest ink-2, one weight, no underline). Collectors take a `scope`. Pre-push fast set
+  stays 4 scenes: kit 2021-light phone, kit 2005-light phone, header 2021-dark phone, bottom-bar
+  2005-light phone. `npm run test:geometry:fast`: 12 checks, 12 ok, 0 FAIL, 0 XFAIL, 0 XPASS; 4
+  scenes in 27s. Full (G1-G3 + HDR/NAV, against the seeded server): 120 checks, 120 ok, 40 scenes.
+  `--mutants`: 13 of 13 killed (6 new: hdr-cascade-hides-magnifier - the v1.85 bug -, hdr-bell-
+  reserve-shift, hdr-sidebar-bold, nav-you-label-lower, nav-active-red, nav-2005-underline; the last
+  SURVIVED the first cut - text-decoration does not inherit, the collector read only the label - fixed
+  to read the tab link too, re-run killed).
+- **Frame capture (G4-style, evalG4 over every box, base 3991 vs branch 3992):** desktop hamburger
+  close / open: base 1001 / 999 boxes outside the sidebar moved after the first changed frame (the
+  grid reflowing under the sliding margin), branch 0 / 0 (only the drawer's 31 boxes slide, by
+  transform). Phone rotate to landscape / back: base 1010 / 1012, branch 0 / 0. Cold phone load with
+  warm flags (queue, bell, module, bar layout): every header-right and tab box at its final x/width
+  from the first painted frame, no glyph slot empty, in both trees (the reserves were already
+  zero-shift; the branch keeps it with the 44px boxes).
+- **Locks (AC12, replacements in b5a462c1):** mobile-header-css-source-lock (risky; to the rendered
+  HDR check + its cascade mutant, keeping the specificity-order facts and the 56px header),
+  header-right-reserve (22px value -> the `--icon-md` token + HDR's measured box equality),
+  pinned-avatar-css (risky; the pinned half -> the ui-avatar contract + a behavioural fallback test;
+  the S5 half untouched), search-clear (the X -> ui-btn DOM + the global [hidden]), v1262-sheet-modal-
+  transitions (the playlists half -> the ui-sheet contract; the routing test rewritten for the
+  controller), version-meta (a ui-row footer). Kept (still valid): critter-mode, mobile-wordmark,
+  pre-paint-fouc-guard, reorder-single-mechanism. Updated for the new DOM (DELIBERATE, noted in each):
+  account-menu, account-avatar-shimmer, app-look-l2, chrome-icons, books-router-nav,
+  bottom-nav-order-authority, liked-glyph-split, podcasts-nav-client, folder-glyph,
+  pinned-playlists-sheet, pinned-sidebar, oneoff-header-injection-placement, oneoff-modal-mobile-
+  polish, stable-toggle-label, you-nav-tab, geometry-checks, integration/liked. New:
+  test/unit/chrome-primitives.test.js (11).
+- **Mutation (a scratchpad `git archive` sandbox of b5a462c1, a pristine copy diffed after each):** 14
+  of 14 killed - no fill on the selected tab, unpin deleting on any answer, unpin with no confirm,
+  theme-color keeping the media split, no-motion on height-only resizes, the toggle not arming the
+  slide, `.main-content` transitioning margin-left, the sidebar sliding ungated, the F20 ui.css rule
+  deleted, chromeButtonEl dropping the size class, a menu link leaving the menu open, a reserve queue
+  that is a bare button (killed by the byte-identity lock, index.html only), a sheet row without its
+  action slot, the You avatar outside the icon slot.
+- **ui-lint (cf669c15 -> b5a462c1):** TOTAL 2591 -> 2420. no-raw-values 1261 -> 1224,
+  no-bespoke-controls 1028 -> 916, icons 155 -> 139, no-layout-transition 2 -> 1, display-ownership 82
+  -> 78, colour-roles 43 -> 42; hover-gated 3, pressed-state 1, native-interaction 3, z-ladder 11,
+  no-shell-style 2 unchanged. 134 keys / 171 items shrunk. Left on the chrome (listed, not added): the
+  logo's 28/160px box, `.header-search` 600px, the grandfathered sidebar z 99, the sidebar drag
+  indicators on `--yt-red`, `.sidebar-item`'s cursor, the `.account-menu` wrapper, the two
+  `.search-toggle-btn` placement rules; `syncThemeColorMeta` reads `--header-bg` (a legacy name: step 7
+  re-spells it).
+- **Renders (seeded instance, base :3991 / branch :3992, 4 eras x phone/landscape/desktop x light/dark,
+  scenes 01, 23, 24, 25, 29):** before 80 shots, after 80 shots, 0 failed, 0 unexpected blocked
+  requests. Looked at: the bottom bar (filled Home in ink, You level with the rest), the account sheet
+  (phone) and popover (desktop), the playlists sheet, the search field open, the landscape hamburger,
+  2005 (square pills and counts, no underlined tabs).
+- **Counts (Node 22.23.1):** `npm run test:unit` (b5a462c1's pre-commit run) tests 7924, pass 7923,
+  fail 0, skipped 1. `npm test` at b5a462c1: tests 10254, pass 10244, fail 0, cancelled 0, skipped 10
+  (exit 0). The run before it (the tree before the liked-lock conversion) had fail 2:
+  `integration/liked.test.js` "v1.32 ... static-scan locks" (a lock on the old
+  `applyLikedSidebarEntry(list)` call; converted in b5a462c1) and `integration/read-only-media.test.js`
+  "every yt-dlp shared-state route refuses" (`fetch failed`, under load; the file passes alone and in
+  the b5a462c1 run). `npx eslint .` 0 errors, 6 warnings (the existing common.js unused globals); `npm run lint:ui`
+  OK (2420, equals the file); `npm run lint:css` TOTAL 0; `npm run lint:overlay` clean.
+- **For the gate:** the account-menu popover anchors at the trigger's LEFT edge, clamped to the
+  viewport (the ui.sheet popover contract), so on desktop it sits left of the avatar rather than
+  right-aligned under it; the phone sheet has a title row ("Account") so the Close sits at the trailing
+  edge (a titleless ui.sheet puts Close at the leading edge - a primitive gap S9 may want). The account
+  menu and the playlists sheet are built on first open, so the Subscriptions row's cold-cache gap
+  (v1.153.1) mostly closes; ensureAccountMenuSubscriptionsRow still patches a built menu. Sidebar rows
+  took hairline separators and a 12px section title (`--t-footnote`) - a visible desktop change.
