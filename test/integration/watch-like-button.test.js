@@ -229,16 +229,18 @@ test('watch page: clicking Like toggles via POST then DELETE /api/liked/:id, re-
   }
 });
 
-// v1.108 gate SUGGESTION T1-S1: the JS toggles `.liked`, but the VISUAL half of
-// the convention -- `.btn.liked` painting the heart red -- lived only in CSS
-// with no lock, so a refactor could silently drop the red heart and leave every
-// behavioural test green (the mirror `.card-like-btn.liked` IS locked in
-// card-like.test.js). Bind it here. Delete the CSS rule and this goes red.
-test('watch page: the .btn.liked CSS rule paints the liked heart red (source-lock)', () => {
-  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
-  assert.match(
-    css,
-    /\.btn\.liked\s*\{[^}]*color:\s*var\(--yt-red\)/,
-    'liked watch button must tint the heart red via color: var(--yt-red)'
-  );
+// v1.108 gate SUGGESTION T1-S1 bound the VISUAL half of the liked state - `.btn.liked`
+// painting the heart red. Sweep S3 (D4.9) made Like a ui-btn stack toggle: the liked state is
+// aria-pressed plus the registry `favorite` -> `favorite.fill` swap (bound behaviourally above),
+// and red stays reserved (D8.8: a selected/pressed state is never the accent). The watch page
+// never set `.liked` again, so step 7 retired the dead rule (DELIBERATE conversion of this lock):
+// bound here, the rule does not come back and no rule paints the pressed Like red.
+test('watch page: the liked state is the filled heart on a pressed ui-btn - the retired .btn.liked red rule stays gone', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.doesNotMatch(css, /\.btn\.liked\b/, 'the dead .btn.liked rule is retired');
+  assert.doesNotMatch(css, /like-media-btn[^{]*\{[^}]*(--yt-red|--accent)/, 'no rule paints the Like toggle red');
+  const watch = fs.readFileSync(path.join(ROOT, 'public', 'js', 'watch.js'), 'utf8');
+  assert.match(watch, /barButton\('like', 'like-media-btn', \{\s*icon: \{ off: 'favorite', on: 'favorite\.fill' \}, labels: \['Like', 'Liked'\]/,
+    'the liked state is drawn by the fill swap and the Liked label');
+  assert.doesNotMatch(watch.replace(/\/\/.*$/gm, ''), /classList\.(add|toggle)\('liked'/, 'the watch page sets no .liked class');
 });
