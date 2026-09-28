@@ -359,6 +359,21 @@ const CHANNELS = [
   }
   if (bookList.items.length !== BOOKS.length + 1) { postFailures++; console.error('seed: books indexed', bookList.items.length); }
   const bookByTitle = Object.fromEntries(bookList.items.map((b) => [b.title, b.id]));
+  // The scanner stamps addedAt with the real clock at scan time, so two books indexed in the
+  // same millisecond tied and their order (the default newest-first sort, search recency) flipped
+  // between runs: 48 shots changed on a re-capture of an identical tree. Pin each one, an hour
+  // apart in BOOKS order (the PDF last), the way the videos and music are pinned above.
+  const bookOrder = [...BOOKS.map((b) => b[1]), 'Tide Tables 1987']; // the PDF indexes by its file name
+  const bookIdSet = new Set(bookList.items.map((b) => b.id));
+  await updateDatabase(() => s.booksDb.mutate((db) => {
+    const ns = require(path.join(REPO, 'lib', 'books', 'store')).ensureBooks(db);
+    for (const b of bookList.items) {
+      const n = bookOrder.indexOf(b.title);
+      if (n === -1 || !ns.items[b.id]) throw new Error(`seed: cannot pin addedAt for book "${b.title}"`);
+      ns.items[b.id].addedAt = new Date(NOW - 200 * 86400e3 - n * 3600e3).toISOString();
+    }
+    return bookIdSet.size > 0;
+  }));
   const readingBook = bookByTitle['The Lamplighter\'s Ledger'];
   await post(`/api/books/${encodeURIComponent(readingBook)}/progress`, { locator: { kind: 'epub', cfi: 'epubcfi(/6/4!/4/2/1:0)', spineIndex: 1 }, percent: 38 });
   await post(`/api/books/${encodeURIComponent(bookByTitle['The Frozen Canal'])}/progress`, { locator: { kind: 'epub', cfi: 'epubcfi(/6/6!/4/2/1:0)', spineIndex: 2 }, percent: 71 });

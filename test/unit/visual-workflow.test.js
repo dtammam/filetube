@@ -103,6 +103,11 @@ test('start-server.sh boots read-only with every background poller off and TZ pi
   const seed = fs.readFileSync(path.join(ROOT, 'test', 'visual', 'seed.js'), 'utf8');
   assert.match(seed, /settings: \{ pollMinutes: 0 \}/, 'the podcast feed poll is off in the fixture');
   assert.match(seed, /settingsStore\.set\('scanIntervalMinutes', 0\)/, 'the library re-scan timer is off in the fixture');
+  // The book scanner stamps addedAt from the real clock; unpinned, books indexed in the same
+  // millisecond flipped order between runs (48 shots of books and search changed on an identical
+  // tree). The seed must pin every book's addedAt from NOW, and refuse a book it cannot pin.
+  assert.match(seed, /ns\.items\[b\.id\]\.addedAt = new Date\(NOW - /, 'the seed pins each book\'s addedAt from the fixture clock');
+  assert.match(seed, /cannot pin addedAt for book/, 'an unpinnable book fails the seed instead of drifting');
 });
 
 test('clock-shim.js: Date.now and new Date() start at FILETUBE_CLOCK_MS and flow; Date(x) and Date() behave', () => {
