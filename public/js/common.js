@@ -6220,7 +6220,7 @@ function buildOneOffModal(doc, handlers) {
     const bar = computeOneOffProgressBar(entry);
     progressTrack.hidden = !bar.visible;
     if (bar.visible) {
-      progressFill.style.width = (bar.indeterminate ? 100 : bar.percent) + '%';
+      progressFill.style.setProperty('--p', String((bar.indeterminate ? 100 : bar.percent) / 100));
       progressFill.className = 'dl-status-chip-progress-fill' + (bar.indeterminate ? ' indeterminate' : '');
     }
     // v1.29.0 T6 (R1.4/AC3.4): visible ONLY while the entry is genuinely in
@@ -13037,41 +13037,6 @@ function overlayUiLib() {
     || (typeof module !== 'undefined' && module.require ? module.require('./ui.js') : null);
 }
 
-// A ui.sheet closes on Esc, its scrim and its Close with no say from its content. A dialog
-// that must REFUSE a dismissal (a save in flight, unsaved edits that need a confirm first)
-// routes those three through `request()` instead: capture-phase listeners on the document
-// run before ui.sheet's own (its Esc listener on the document's bubble phase, the scrim's
-// and the Close button's own click), and stop the event there. Esc is taken only while this
-// sheet is the top live one, so a sheet stacked over it keeps its own Esc. Returns the
-// unbind. (A ui.sheet `beforeClose` option would replace this - sweep S9 reported the gap.)
-function guardSheetDismiss(ctrl, doc, request) {
-  const closeBtn = ctrl.el.querySelector('.ui-sheet__close');
-  function isTop() {
-    const live = doc.querySelectorAll('.ui-sheet:not(.is-closing)');
-    return live.length > 0 && live[live.length - 1] === ctrl.el;
-  }
-  function onClick(e) {
-    if (!ctrl.isOpen()) return;
-    const t = e.target;
-    if (t !== ctrl.scrim && !(closeBtn && t && closeBtn.contains(t))) return;
-    e.stopPropagation();
-    e.preventDefault();
-    request();
-  }
-  function onKey(e) {
-    if ((e.key !== 'Escape' && e.key !== 'Esc') || !ctrl.isOpen() || !isTop()) return;
-    e.stopPropagation();
-    e.preventDefault();
-    request();
-  }
-  doc.addEventListener('click', onClick, true);
-  doc.addEventListener('keydown', onKey, true);
-  return function unbind() {
-    doc.removeEventListener('click', onClick, true);
-    doc.removeEventListener('keydown', onKey, true);
-  };
-}
-
 /**
  * v1.34 T3 (Dean): the per-video CHAPTERS EDITOR modal -- a textarea, one
  * "0:00 Title" line per chapter (the SAME grammar the server's
@@ -13182,15 +13147,13 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
     if (snapBtn) snapBtn.disabled = nextBusy;
   }
 
-  let unguard = null;
+  // A save in flight is never dismissed out from under its status line: Esc, the scrim
+  // and Close all stand down while busy (the v1.26.2 busy guard, kept, via canDismiss).
   const sheet = U.sheet({
     variant: 'dialog', title: 'Edit chapters', content, initialFocus: textarea,
-    onClosing: () => { if (unguard) { unguard(); unguard = null; } },
+    canDismiss: () => !busy,
     doc: d, win: d.defaultView,
   });
-  // A save in flight is never dismissed out from under its status line: Esc, the scrim
-  // and Close all stand down while busy (the v1.26.2 busy guard, kept).
-  unguard = guardSheetDismiss(sheet, d, () => { if (!busy) teardown(); });
 
   function teardown() {
     sheet.close();
@@ -14095,22 +14058,27 @@ function showChapterSnapEditor(mediaId, opts) {
   });
 
   // ---- close ---------------------------------------------------------------------
-  function requestClose() {
-    if (busy) return;
+  // May the editor close right now? A save in flight refuses; unsaved corrections open the
+  // in-page discard confirm (its Discard closes) and refuse this close. Cancel asks it, and
+  // so does every way out the sheet owns (Esc, the scrim, Close - its canDismiss).
+  function mayClose() {
+    if (busy) return false;
     if (dirty() && !staleSeed) {
       askConfirm('Discard your changes to the chapter times?', 'Discard', 'Keep editing', teardown);
-      return;
+      return false;
     }
-    teardown();
+    return true;
+  }
+  function requestClose() {
+    if (mayClose()) teardown();
   }
   cancelBtn.addEventListener('click', requestClose);
-  const sheet = U.sheet({
-    variant: 'dialog', title: 'Fix chapter times', content: modal,
-    onClosing: () => teardown(), doc: d, win: d.defaultView,
-  });
   // Esc, the scrim and the sheet's Close ASK first, exactly like Cancel: a save in flight
   // refuses, unsaved corrections open the in-page discard confirm (never a silent loss).
-  const unguard = guardSheetDismiss(sheet, d, requestClose);
+  const sheet = U.sheet({
+    variant: 'dialog', title: 'Fix chapter times', content: modal,
+    canDismiss: mayClose, onClosing: () => teardown(), doc: d, win: d.defaultView,
+  });
 
   function teardown() {
     if (closed) return;
@@ -14118,7 +14086,6 @@ function showChapterSnapEditor(mediaId, opts) {
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
     if (auditionTimer) { clearTimeout(auditionTimer); auditionTimer = null; }
     if (audio) { try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch (_) { /* gone */ } }
-    unguard();
     sheet.close();
   }
 

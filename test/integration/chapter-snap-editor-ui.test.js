@@ -207,7 +207,7 @@ test('a dirty Cancel asks first: Keep editing keeps the edits; Discard closes wi
 });
 
 // Sweep S9: the SHELL is a ui.sheet dialog. Its own ways out - Esc, the scrim, its Close -
-// ASK exactly like Cancel (guardSheetDismiss): with unsaved corrections they open the in-page
+// ASK exactly like Cancel (the sheet's canDismiss): with unsaved corrections they open the in-page
 // discard confirm and the editor stays; with none they close it.
 for (const how of ['esc', 'scrim', 'close']) {
   test(`S9 shell: ${how} with unsaved corrections asks first (the editor stays); ${how} on a clean editor closes it`, async () => {

@@ -702,7 +702,8 @@ test('buildOneOffModal: setStatus shows the bar at the real percent width once t
   const modal = buildOneOffModal(fakeDoc, {});
   modal.setStatus({ state: 'downloading', percent: 47 });
   assert.strictEqual(modal.progressTrack.hidden, false);
-  assert.strictEqual(modal.progressFill.style.width, '47%');
+  assert.strictEqual(modal.progressFill.style.getPropertyValue('--p'), '0.47', 'the fill scales by --p (0..1), never an inline width');
+  assert.strictEqual(modal.progressFill.style.width, '');
   assert.strictEqual(modal.progressFill.className, 'dl-status-chip-progress-fill');
 });
 
@@ -711,12 +712,12 @@ test('buildOneOffModal: setStatus marks the bar indeterminate (full-width, .inde
 
   modal.setStatus({ state: 'queued' });
   assert.strictEqual(modal.progressTrack.hidden, false);
-  assert.strictEqual(modal.progressFill.style.width, '100%');
+  assert.strictEqual(modal.progressFill.style.getPropertyValue('--p'), '1');
   assert.match(modal.progressFill.className, /\bindeterminate\b/);
 
   modal.setStatus({ state: 'downloading', phase: 'merging', percent: 100 });
   assert.strictEqual(modal.progressTrack.hidden, false);
-  assert.strictEqual(modal.progressFill.style.width, '100%');
+  assert.strictEqual(modal.progressFill.style.getPropertyValue('--p'), '1');
   assert.match(modal.progressFill.className, /\bindeterminate\b/);
 });
 

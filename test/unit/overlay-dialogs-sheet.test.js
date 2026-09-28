@@ -6,10 +6,10 @@
 //   - it opens as a ui.sheet dialog titled "Edit chapters", the field its content, one scrim;
 //   - Esc, the scrim and Close each dismiss it while idle;
 //   - while a save is IN FLIGHT none of the three dismisses it (the v1.26.2 busy guard,
-//     kept - guardSheetDismiss), and a double tap on Save sends ONE request;
+//     kept - ui.sheet canDismiss), and a double tap on Save sends ONE request;
 //   - v1.289 drag safety holds by construction: a drag that starts in the textarea and
 //     releases outside clicks the common ancestor, never the scrim;
-//   - guardSheetDismiss's Esc belongs to the TOP sheet only.
+//   - Esc belongs to the TOP sheet only (a dialog stacked over the editor takes it).
 
 const { test, afterEach } = require('node:test');
 const assert = require('node:assert');
@@ -117,7 +117,7 @@ test('v1.289 drag safety by construction: the scrim is a sibling of the sheet, s
   assert.strictEqual(h.sheet.isOpen(), true);
 });
 
-test('guardSheetDismiss: Esc belongs to the TOP sheet - a dialog stacked over the editor takes it, the editor stays', () => {
+test('Esc belongs to the TOP sheet - a dialog stacked over the editor takes it, the editor stays', () => {
   const common = boot();
   const h = common.showChaptersEditor('vid1', '0:00 A', () => {}, dom.window.document);
   const ui = require('../../public/js/ui.js');
@@ -127,15 +127,4 @@ test('guardSheetDismiss: Esc belongs to the TOP sheet - a dialog stacked over th
   assert.strictEqual(h.sheet.isOpen(), true, 'the editor under it did not');
   esc();
   assert.strictEqual(h.sheet.isOpen(), false, 'the next Esc closes the editor');
-});
-
-test('guardSheetDismiss: once the editor closed, its listeners are gone (a later Esc/scrim on another sheet is untouched)', async () => {
-  const common = boot();
-  const h = common.showChaptersEditor('vid1', '0:00 A', () => {}, dom.window.document);
-  click(h.cancelBtn);
-  await drain();
-  const ui = require('../../public/js/ui.js');
-  const other = ui.sheet({ variant: 'dialog', title: 'Other', doc: dom.window.document, win: dom.window }).open();
-  esc();
-  assert.strictEqual(other.isOpen(), false, 'the other sheet still answers its own Esc');
 });
