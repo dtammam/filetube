@@ -7,7 +7,8 @@
  * WHY: three shipped device bugs (v1.309.0/.1 + one more) all bled content over
  * a panel header. Each had a different mechanism, but two are enumerable CSS
  * invariants. This is the "net, not spot-fix" for the class - the sibling of
- * css-token-lint's ratchet.
+ * the token ratchet (css-token-lint then; ui-lint's no-raw-values since the UI
+ * pass retired it).
  *
  * THE TWO INVARIANTS (per RULE, not per declaration):
  *

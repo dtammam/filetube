@@ -88,15 +88,10 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      # v1.62.0: the token ratchet - the design-token census reached zero at
-      # v1.61.0 and is ENFORCED there (self-canary first; see
-      # docs/CONTRIBUTING.md, MANDATORY styling section).
-      - name: Token ratchet
-        run: node scripts/css-token-lint.js --enforce
-
       # UI professionalism pass (plan D10): the UI ratchet - twelve rules with
-      # canaries against the shrink-only docs/ui-exceptions.json. Replaces the
-      # token ratchet above when css-token-lint retires (plan step 7).
+      # canaries against the shrink-only docs/ui-exceptions.json. Its
+      # no-raw-values rule replaced the v1.62.0 token ratchet (css-token-lint,
+      # retired at plan step 7).
       - name: UI ratchet
         run: npm run lint:ui
 

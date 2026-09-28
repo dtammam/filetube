@@ -57,8 +57,8 @@ control-size value ANYWHERE (style.css, `<style>` blocks, `el.style.*` /
 
 - **Never write a raw literal in a governed property. Consume a token**
   (`var(--space-*)`, `var(--yt-red)`, `var(--radius)`, `var(--z-*)`,
-  `var(--scrim)`, `var(--dur-fast)`, ...). The token layer lives at the top
-  of `public/css/style.css` (`:root` + the `[data-theme]` era blocks); many
+  `var(--scrim)`, `var(--dur-fast)`, ...). The token layer lives in
+  `public/css/tokens.css` (`:root` + the `[data-theme]` era blocks); many
   tokens are ERA-VARYING by design - adopting one means your surface follows
   the eras, which is the point.
 - **z-index:** only the nine `--z-*` ladder names; backdrop/content pairs
@@ -87,15 +87,24 @@ control-size value ANYWHERE (style.css, `<style>` blocks, `el.style.*` /
     later positioned siblings that scroll beneath it).
   - Scope isolation (`isolation:isolate`) to small row/badge containers, NEVER a
     large layout ancestor - it traps every fixed overlay inside it (tech-debt #173).
-- **The linter is the drift detector, and since v1.62.0 it is THE
-  RATCHET:** the census reached ZERO at v1.61.0 and is enforced there -
-  `node scripts/css-token-lint.js --enforce` runs in pre-commit and CI,
-  and ANY raw literal in a governed property FAILS the commit. Either
-  adopt a token or, if the value is genuinely outside the system
-  (positional geometry, era skin art, a legibility floor), annotate the
-  line `/* token-exempt: <reason> */` and be prepared to defend the
-  reason in review. `npm run lint:css` is the report-only view of the
-  same census.
+- **The linter is the drift detector, and it is THE RATCHET:**
+  `npm run lint:ui` (`scripts/ui-lint.js --enforce`, plan D10 of the UI
+  professionalism pass) runs in pre-commit, pre-push and CI. Its
+  `no-raw-values` rule covers every stylesheet in `public/css/`, every
+  shell's `<style>` and `style=""`, and every JS style write
+  (`el.style.*`, `cssText`, `setProperty`, `style="..."` in a string);
+  the remaining debt is listed per key in the shrink-only
+  `docs/ui-exceptions.json`, and ANY new raw literal in a governed
+  property FAILS the commit (paid debt must be shrunk out of the file
+  with `node scripts/ui-lint.js --shrink`). Either adopt a token or, if
+  the value is genuinely outside the system (positional geometry, era
+  skin art, a legibility floor), annotate the line
+  `/* token-exempt: <reason> */` and be prepared to defend the reason in
+  review. Each rule runs its canary fixtures first
+  (`test/fixtures/ui-lint/`), so a broken rule fails LOUD (exit 2).
+  `node scripts/ui-lint.js --verbose` is the report view. (It replaced
+  the v1.62.0 token ratchet, `css-token-lint.js`, retired at the UI
+  pass's step 7.)
 - **Never define a new token casually:** a new name joins the contract doc,
   the `:root` layer, AND `test/unit/token-scale-lock.test.js` (the byte-exact
   value authority) together - see `--thumbnail-bg` (Tier 4) for the pattern.
@@ -103,14 +112,14 @@ control-size value ANYWHERE (style.css, `<style>` blocks, `el.style.*` /
 - **Do not edit token VALUES in passing** - a scale value change re-renders
   every consumer and fails token-scale-lock loudly; that is a design
   decision (Dean's), not a refactor.
-- Every raw literal still in the census is enumerated with its reason in
-  `docs/exec-plans/completed/2026-07-31-tokens-tier4-ledger.md` (bound by
-  `npm run ledger:check`); `npm run lint:css` prints the current count -
-  the ledger's unstruck rows and that number are the same set by
-  construction. Breakpoints are documented constants, not tokens;
-  width/height layout geometry is ungoverned by design (two ruled
-  exceptions: `--header-h`/`--sidebar-w`, whose coupled sites are the
-  point).
+- Every raw literal the ratchet still allows is a keyed entry, with its
+  reason, in `docs/ui-exceptions.json` (the Tier 4 ledger in
+  `docs/exec-plans/completed/2026-07-31-tokens-tier4-ledger.md` and its
+  `ledger:check` retired with css-token-lint: that census was zero).
+  Breakpoints are documented constants, not tokens. Since the UI pass,
+  width/height ARE governed (`no-raw-values` counts them; allowed are
+  tokens, `%`, `vw`/`vh`/`dvh`, `fr`, `auto`, and `min()`/`clamp()`/
+  `calc()` over tokens).
 
 ### Every rendered element must have a styling SOURCE - "none" is a finding
 
