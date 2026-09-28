@@ -107,13 +107,25 @@ test('every editable-text modal routes dismiss through bindBackdropDismiss (no i
     const next = src.indexOf('\nfunction ', start + 1);
     return src.slice(start, next === -1 ? src.length : next);
   }
-  // Sweep S9: showTranscriptModal is a ui.sheet - drag-safe by structure (the scrim is the
-  // sheet's sibling); overlays-dialogs-s9.test.js drives that drag. The rest still bind the helper.
-  for (const name of ['buildOneOffModal', 'buildSubscribeModal', 'showChaptersEditor']) {
+  // Sweep S9/S9b: showTranscriptModal, buildOneOffModal and showChaptersEditor are ui.sheets -
+  // drag-safe by structure (the scrim is the sheet's sibling); overlays-dialogs-s9.test.js drives
+  // that drag. The Subscribe dialog (S3's flow) still binds the helper.
+  for (const name of ['buildSubscribeModal']) {
     const body = bodyOf(name);
     assert.match(body, /bindBackdropDismiss\(backdrop,/, name + ' must use the drag-safe helper');
     // The porous inline pattern must be gone (either quote style - eslint enforces
     // no quote convention, so a double-quoted reintroduction must fail here too).
     assert.doesNotMatch(body, /backdrop\.addEventListener\(['"]click['"]/, name + ' must not inline-close the backdrop');
+  }
+  // Sweep S9: the one-off download dialog and the chapters editor are ui.sheet dialogs. Their
+  // drag safety is STRUCTURAL - the scrim is a sibling of the sheet, so a drag from a field to
+  // outside clicks the common ancestor, never the scrim (bound behaviourally in
+  // oneoff-modal-teardown, ytdlp-oneoff-modal and overlay-dialogs-sheet). What must hold
+  // here: they build through the sheet and no hand-rolled backdrop close survives.
+  for (const name of ['buildOneOffModal', 'showChaptersEditor']) {
+    const body = bodyOf(name);
+    assert.match(body, /\.sheet\(\{/, name + ' is built on ui.sheet');
+    assert.doesNotMatch(body, /(?:modal|oneoff-modal)-backdrop/, name + ' builds no bespoke backdrop');
+    assert.doesNotMatch(body, /backdrop\.addEventListener\(['"]click['"]/, name + ' must not inline-close a backdrop');
   }
 });

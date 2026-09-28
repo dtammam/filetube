@@ -3361,16 +3361,15 @@ select {
 }
 /* Sweep S8: the one-off download form (buildOneOffModal) on the primitives - one gap
    between its rows (a hidden Retry/progress row drops out by the global [hidden] rule),
-   the three ui-selects in a grid (one column on a phone: "MP4 (recommended)" never clips), and the title row
-   holding a ui-btn icon Close. */
-.oneoff-modal--form {
+   the three ui-selects in a grid (one column on a phone: "MP4 (recommended)" never clips).
+   Sweep S9: the form is the content of a ui.sheet (its title and one Close are the sheet's),
+   on the dialog's text inset. */
+.oneoff-form {
   display: grid;
   gap: var(--space-6);
+  padding: 0 var(--space-8);
 }
-.oneoff-modal--form > .oneoff-modal-header {
-  margin-bottom: 0;
-}
-.oneoff-modal--form > .oneoff-modal-status {
+.oneoff-form > .oneoff-modal-status {
   margin: 0;
 }
 .oneoff-modal-selects {
@@ -5508,8 +5507,27 @@ html:has(> body.ft-audio-expanded),
 .chapter-now.chapter-looping {
   color: var(--yt-red);
 }
+/* Sweep S9: the chapters editor is a ui.sheet dialog; its hint, field and status line sit on
+   the dialog's text inset (the .ui-confirm__body padding), its actions are a
+   .ui-confirm__actions row. */
+.chapters-editor-hint {
+  margin: 0;
+  padding: 0 var(--space-8);
+  color: var(--ink-2);
+  font: var(--t-meta);
+}
+.chapters-editor-status {
+  padding: var(--space-4) var(--space-8) 0;
+  color: var(--ink-2);
+  font: var(--t-meta);
+}
+.chapters-editor-status:empty {
+  display: none;
+}
 .chapters-editor-textarea {
-  width: 100%;
+  box-sizing: border-box;
+  width: calc(100% - var(--space-8) * 2);
+  margin-inline: var(--space-8);
   font-family: var(--mono-font);
   font-size: var(--fs-base);
   background: var(--input-bg, var(--header-bg));
@@ -5528,13 +5546,23 @@ html:has(> body.ft-audio-expanded),
    dialog is a full-height sheet whose chapter list is the only scroller.
    Containment: the rounded dialog CLIPS (overflow hidden) and the list scrolls
    on an inner child with no radius - the split the overlay census asks for. */
-.modal-content.chapter-snap-modal {
-  max-width: 760px; /* token-exempt: layout geometry (modal width cap) */
-  width: 94%; /* token-exempt: layout geometry */
+/* Sweep S9: the shell is a ui.sheet dialog (twice the confirm width on desktop); its
+   body does not scroll - the chapter list inside is the one scroller. */
+.ui-sheet--dialog:has(> .ui-sheet__body > .chapter-snap-modal) {
+  width: min(calc(var(--dialog-w) * 2), calc(100vw - var(--inset) * 2));
+}
+.ui-sheet__body:has(> .chapter-snap-modal) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: var(--space-8);
+  padding-bottom: 0;
+}
+.chapter-snap-modal {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--space-8);
   padding-bottom: calc(var(--space-8) + env(safe-area-inset-bottom, 0px));
 }
 .chapter-snap-head {
@@ -5777,19 +5805,15 @@ html:has(> body.ft-audio-expanded),
    LANDSCAPE (844x390) is short, not narrow - the max-height arm gives it the same
    sheet and touch targets (gate r1 qa S4). */
 @media (max-width: 600px), (max-height: 500px) {
-  .modal-backdrop.chapter-snap-backdrop {
-    align-items: stretch;
-  }
-  .modal-content.chapter-snap-modal {
+  .ui-sheet--dialog:has(> .ui-sheet__body > .chapter-snap-modal) {
     width: 100%;
-    max-width: none;
     max-height: none;
     height: 100%;
     border-radius: 0;
-    border-left: 0;
-    border-right: 0;
-    padding: var(--space-5);
-    padding-top: calc(var(--space-5) + env(safe-area-inset-top, 0px));
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .chapter-snap-modal {
+    padding: 0 var(--space-5);
     padding-bottom: calc(var(--space-5) + env(safe-area-inset-bottom, 0px));
   }
   .chapter-snap-ctl {
@@ -5826,9 +5850,12 @@ html:has(> body.ft-audio-expanded),
    to the bottom. The sheet has no radius here (the phone arm above sets 0), so a
    scrolling sheet is not the corner-clip shape. */
 @media (max-height: 500px) {
-  .modal-content.chapter-snap-modal {
+  .ui-sheet__body:has(> .chapter-snap-modal) {
     display: block;
     overflow-y: auto;
+  }
+  .chapter-snap-modal {
+    display: block;
     padding-bottom: 0; /* the pinned actions row carries the bottom inset, so no row shows under it */
   }
   .chapter-snap-scroll {
@@ -10305,8 +10332,8 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
    drag surface and the keyboard control. */
 
 /* ---- v1.47.8: keyboard-shortcuts reference (Dean) --------------------------
-   Deliberately thin: the dialog reuses `.oneoff-modal-backdrop`/`.oneoff-modal`
-   wholesale (chrome, scroll cap), so only the list itself needs styling.
+   Deliberately thin: the dialog is a ui.sheet (sweep S9: its scrim, surface, title,
+   Close and scroll cap are the primitive's), so only the list itself needs styling.
 
    No new tokens -- every value below is an EXISTING token. Note the precision
    (gate S12 corrected an earlier claim here): the COLOUR/surface tokens
@@ -10315,10 +10342,15 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
    defined once globally and is NOT per-era. "All four eras theme it for free"
    was true of the surfaces, not of the type.
 
-   Slightly wider than the one-off modal because a two-column key/description
-   list reads badly when the keys wrap. */
+   Wider than a confirm dialog because a two-column key/description list reads
+   badly when the keys wrap. */
+/* Sweep S9: the shell is a ui.sheet dialog, a third wider than a confirm (560) and twice
+   its width on desktop (840, below); this is its content on the dialog's text inset. */
+.ui-sheet--dialog:has(> .ui-sheet__body > .shortcuts-modal) {
+  width: min(calc(var(--dialog-w) * 4 / 3), calc(100vw - var(--inset) * 2));
+}
 .shortcuts-modal {
-  max-width: 560px;
+  padding: 0 var(--space-8);
 }
 
 /* v1.163 (Dean): the DDR easter egg + the desktop two-column layout.
@@ -10326,37 +10358,11 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
    The header lays out as: title | (arrow row + close). `margin-left:auto` on
    the arrow row consumes the free space so the arrows + close sit together at
    the top-right, the title stays left. */
+/* Sweep S9: each arrow is a tonal sm icon ui-btn (a registry glyph, never a text arrow),
+   in the sheet header before its Close. */
 .shortcuts-ddr {
   display: flex;
   gap: var(--space-2);
-  margin-left: auto;
-}
-
-.shortcuts-ddr-arrow {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  font-size: var(--fs-lg);
-  line-height: 1; /* token-exempt: glyph centering */
-  /* v1.163.1: force MONOCHROME text presentation (belt to the U+FE0E in the glyph)
-     so iOS never paints the arrow glyph itself as a colour emoji - the glyph
-     stays the neutral resting colour; only the SQUARE lights up on press. */
-  font-variant-emoji: text;
-  color: var(--text-secondary);
-  background-color: var(--btn-bg);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-  box-shadow: var(--shadow);
-  cursor: pointer;
-}
-
-@media (hover: hover) {
-  .shortcuts-ddr-arrow:hover {
-    filter: brightness(1.2);
-  }
 }
 
 /* The light-up: pressing (or clicking) an arrow flashes its SQUARE and pops it.
@@ -10391,7 +10397,6 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
 
 /* The Discord-homage subtitle, sitting just under the title/arrow header. */
 .shortcuts-subtitle {
-  margin-top: calc(-1 * var(--space-3));
   margin-bottom: var(--space-2);
   color: var(--text-secondary);
   font-size: var(--fs-xs);
@@ -10791,8 +10796,8 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
    browsers vary on top-of-column margins, so the two columns need not align
    pixel-perfect). */
 @media (min-width: 769px) {
-  .shortcuts-modal {
-    max-width: 840px;
+  .ui-sheet--dialog:has(> .ui-sheet__body > .shortcuts-modal) {
+    width: min(calc(var(--dialog-w) * 2), calc(100vw - var(--inset) * 2));
   }
   .shortcuts-body {
     column-count: 2;
@@ -11123,32 +11128,13 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
   gap: var(--space-3);
 }
 
-/* ---- v1.83: the avatar crop modal ---- */
-.avatar-crop-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.6); /* token-exempt: modal scrim (theme-neutral) */
-  z-index: var(--z-modal);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--space-6);
-}
-.avatar-crop-modal {
-  background: var(--bg-sidebar);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-modal);
-  padding: var(--space-8);
-  max-width: 100%;
+/* ---- v1.83: the avatar crop dialog (sweep S9: its shell is a ui.sheet dialog titled
+   "Crop photo"; this is its content - the stage, the zoom, the hint, the actions) ---- */
+.avatar-crop {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: var(--space-5);
-}
-.avatar-crop-title {
-  font-weight: var(--fw-semibold);
-  color: var(--text-primary);
-  font-size: var(--fs-md);
 }
 .avatar-crop-stage {
   position: relative;
@@ -11187,10 +11173,7 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
   color: var(--text-secondary);
 }
 .avatar-crop-actions {
-  display: flex;
-  gap: var(--space-4);
   align-self: stretch;
-  justify-content: flex-end;
 }
 
 @media (max-width: 768px) {

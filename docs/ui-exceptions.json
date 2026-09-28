@@ -3363,24 +3363,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.shortcuts-ddr-arrow|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.shortcuts-ddr-arrow|height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.shortcuts-ddr-arrow|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.shortcuts-keys|flex",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -3395,12 +3377,6 @@
       {
         "key": "public/css/style.css|.shortcuts-modal kbd|min-width",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.shortcuts-modal|max-width",
-        "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -5519,18 +5495,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".avatar-crop-backdrop",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".avatar-crop-modal",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".books-home-row",
         "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -5880,7 +5844,7 @@
       },
       {
         "key": ".modal-backdrop",
-        "count": 5,
+        "count": 4,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -6095,14 +6059,8 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".shortcuts-ddr-arrow",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".shortcuts-modal",
-        "count": 2,
+        "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -6455,12 +6413,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/common.js|createElement(button)|arrow",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/js/common.js|createElement(button)|backBtn",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -6468,13 +6420,13 @@
       },
       {
         "key": "public/js/common.js|createElement(button)|cancelBtn",
-        "count": 4,
+        "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
       {
         "key": "public/js/common.js|createElement(button)|closeBtn",
-        "count": 2,
+        "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -6504,18 +6456,6 @@
       },
       {
         "key": "public/js/common.js|createElement(button)|retryBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/common.js|createElement(button)|saveBtn",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/common.js|createElement(button)|snapBtn",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -7040,19 +6980,19 @@
       },
       {
         "key": "public/js/common.js|glyph|U+00D7",
-        "count": 3,
+        "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
       {
         "key": "public/js/common.js|glyph|U+2190",
-        "count": 3,
+        "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
       {
         "key": "public/js/common.js|glyph|U+2192",
-        "count": 3,
+        "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },

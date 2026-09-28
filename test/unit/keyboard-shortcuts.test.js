@@ -312,11 +312,17 @@ test('shouldOpenShortcuts: never throws on a malformed event', () => {
 
 test('buildShortcutsModal renders every group and row as text (never innerHTML)', () => {
   const d = doc();
-  const { backdrop, modal } = buildShortcutsModal(d, {});
-  assert.equal(backdrop.className, 'oneoff-modal-backdrop', 'reuses the existing modal chrome');
+  const { sheet, backdrop, modal } = buildShortcutsModal(d, {});
+  // Sweep S9: the one overlay primitive - a ui.sheet dialog titled "Keyboard shortcuts", its
+  // scrim the backdrop, the reference its content.
+  assert.equal(backdrop, sheet.scrim);
+  assert.ok(backdrop.classList.contains('ui-scrim'), 'the one scrim');
+  assert.ok(sheet.el.classList.contains('ui-sheet') && sheet.el.classList.contains('ui-sheet--dialog'));
+  assert.equal(sheet.el.getAttribute('role'), 'dialog');
+  assert.equal(sheet.el.getAttribute('aria-modal'), 'true');
+  assert.equal(sheet.el.querySelector('.ui-sheet__title').textContent, 'Keyboard shortcuts');
   assert.ok(modal.classList.contains('shortcuts-modal'));
-  assert.equal(modal.getAttribute('role'), 'dialog');
-  assert.equal(modal.getAttribute('aria-modal'), 'true');
+  assert.strictEqual(modal.parentElement, sheet.body, 'the reference is the sheet body content');
 
   const titles = [...modal.querySelectorAll('.shortcuts-group-title')].map((n) => n.textContent);
   assert.deepEqual(titles, KEYBOARD_SHORTCUT_GROUPS.map((g) => g.title));
@@ -334,14 +340,20 @@ test('the digit RANGE separator is not rendered as a key cap', () => {
 });
 
 test('the close control is wired and the backdrop closes on its own click only', () => {
-  const d = doc();
-  let closed = 0;
-  const { modal, closeBtn } = buildShortcutsModal(d, { onClose: () => { closed += 1; } });
-  closeBtn.dispatchEvent(new d.defaultView.Event('click'));
-  assert.equal(closed, 1);
-  // A click on the dialog body must NOT dismiss it.
-  modal.dispatchEvent(new d.defaultView.Event('click', { bubbles: true }));
-  assert.equal(closed, 1, 'clicking inside the dialog must not close it');
+  // Sweep S9: each of the sheet's own dismissals (Close, the scrim) reports through onClose,
+  // exactly once; a click inside the dialog never closes it.
+  for (const how of ['close', 'scrim']) {
+    const d = doc();
+    let closed = 0;
+    const { sheet, modal, closeBtn } = buildShortcutsModal(d, { onClose: () => { closed += 1; } });
+    sheet.open();
+    modal.dispatchEvent(new d.defaultView.Event('click', { bubbles: true }));
+    assert.equal(closed, 0, 'clicking inside the dialog must not close it');
+    assert.strictEqual(closeBtn, sheet.el.querySelector('.ui-sheet__close'), 'the one Close is the sheet\'s');
+    (how === 'close' ? closeBtn : sheet.scrim).dispatchEvent(new d.defaultView.Event('click', { bubbles: true }));
+    assert.equal(closed, 1, how + ' closes, once');
+    assert.equal(sheet.isOpen(), false);
+  }
 });
 
 test('buildShortcutsModal never throws without handlers', () => {
@@ -401,16 +413,36 @@ test('the desktop query matches the stylesheet phone breakpoint', () => {
 test('closing REMOVES the dialog from the DOM rather than hiding it', () => {
   // v1.17.0: a backdrop left in the tree with an author `display` is an
   // invisible full-viewport click/touch eater. This dialog must not recreate it.
+  // Sweep S9: the dialog is a ui.sheet, whose close removes the scrim AND the sheet from the
+  // DOM when its exit ends (ui-builders binds that); closing routes through it.
   const fn = COMMON.slice(COMMON.indexOf('function closeShortcutsModal()'));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /backdrop\.remove\(\)/);
+  assert.match(body, /state\.sheet\.close\(\)/);
   assert.doesNotMatch(body, /hidden = true/, 'hiding is exactly the bug that class is about');
+});
+
+test('behaviour: open, then close -> the scrim and the sheet leave the DOM (no stranded click-eater)', async () => {
+  const { JSDOM: J } = require('jsdom');
+  const dom = new J('<!doctype html><html><body></body></html>', { url: 'http://localhost/' });
+  const saved = { window: global.window, document: global.document };
+  global.window = dom.window; global.document = dom.window.document;
+  try {
+    const common = require('../../public/js/common.js');
+    common.openShortcutsModal();
+    assert.ok(dom.window.document.querySelector('.ui-sheet .shortcuts-modal'), 'open');
+    assert.strictEqual(common.isShortcutsModalOpen(), true);
+    common.closeShortcutsModal();
+    assert.strictEqual(common.isShortcutsModalOpen(), false, 'closed at once for other key handlers');
+    for (let i = 0; i < 40 && dom.window.document.querySelector('.ui-sheet'); i++) await new Promise((r) => setTimeout(r, 20));
+    assert.strictEqual(dom.window.document.querySelector('.ui-scrim'), null, 'no scrim left behind');
+    assert.strictEqual(dom.window.document.querySelector('.ui-sheet'), null, 'no sheet left behind');
+  } finally { Object.assign(global, saved); dom.window.close(); }
 });
 
 test('the dialog can never be stacked twice', () => {
   const fn = COMMON.slice(COMMON.indexOf('function openShortcutsModal()'));
   const body = fn.slice(0, fn.indexOf('\n}\n'));
-  assert.match(body, /if \(shortcutsModalState\.backdrop\.isConnected\) return;/,
+  assert.match(body, /if \(shortcutsModalState\.sheet\.el\.isConnected\) return;/,
     'holding "?" or double-pressing must not append two backdrops');
   // gate S9: a stranded reference must self-recover, not kill `?` for the session.
   assert.match(body, /shortcutsModalState = null;/);

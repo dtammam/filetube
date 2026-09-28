@@ -29,6 +29,7 @@ const { app, getMediaId, loadDatabase, updateDatabase, chapterSilenceService, re
 const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 const { SILENCE_PARAMS_KEY } = require('../../lib/media/chapterSilence');
+const { drainSheets } = require('../helpers/ui-dialogs');
 
 const COMMON = require.resolve('../../public/js/common.js');
 let server, base, auth, dom;
@@ -43,7 +44,10 @@ after(async () => {
   server.closeAllConnections?.();
   await new Promise((resolve) => server.close(resolve));
 });
-afterEach(() => {
+afterEach(async () => {
+  // Sweep S9: the editor is a ui.sheet; a closing sheet finishes on a timer (~320ms in jsdom,
+  // no transitionend) - let it finish while the window it needs still exists.
+  if (dom) await drainSheets(dom.window);
   if (dom) dom.window.close();
   dom = null;
   delete global.window; delete global.document;
@@ -201,6 +205,40 @@ test('a dirty Cancel asks first: Keep editing keeps the edits; Discard closes wi
   assert.ok(!requests.some((r) => r.startsWith('POST ') && !r.endsWith('/scan')), 'no save was sent');
   assert.strictEqual(loadDatabase().metadata[mix.id].chaptersManual, undefined);
 });
+
+// Sweep S9: the SHELL is a ui.sheet dialog. Its own ways out - Esc, the scrim, its Close -
+// ASK exactly like Cancel (guardSheetDismiss): with unsaved corrections they open the in-page
+// discard confirm and the editor stays; with none they close it.
+for (const how of ['esc', 'scrim', 'close']) {
+  test(`S9 shell: ${how} with unsaved corrections asks first (the editor stays); ${how} on a clean editor closes it`, async () => {
+    const mix = seedMix();
+    const { common, fetchImpl, requests } = bootEditor();
+    const h = common.showChapterSnapEditor(mix.id, { fetchImpl, pollMs: 60000, doc: dom.window.document });
+    await h.ready;
+    const d = dom.window.document;
+    assert.ok(h.sheet.el.classList.contains('ui-sheet--dialog'), 'a ui.sheet dialog');
+    assert.strictEqual(h.sheet.el.querySelector('.ui-sheet__title').textContent, 'Fix chapter times');
+    assert.strictEqual(h.modal.parentElement, h.sheet.body, 'the editor is the sheet content');
+    assert.strictEqual(d.querySelector('.modal-backdrop'), null, 'no bespoke backdrop');
+    const out = () => {
+      if (how === 'esc') d.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      else if (how === 'scrim') click(h.sheet.scrim);
+      else click(h.sheet.el.querySelector('.ui-sheet__close'));
+    };
+    click(h.snapAllBtn); // unsaved corrections
+    out();
+    assert.strictEqual(h.isClosed(), false, how + ' never discards unsaved corrections silently');
+    assert.strictEqual(h.sheet.isOpen(), true);
+    assert.strictEqual(h.confirmBox.hidden, false, 'the discard confirm asks');
+    assert.match(h.confirmBox.textContent, /Discard your changes/);
+    click(h.confirmBox.querySelector('.chapter-snap-confirm-no'));
+    click(h.undoBtn); // back to clean
+    out();
+    assert.strictEqual(h.isClosed(), true, how + ' closes a clean editor');
+    assert.strictEqual(h.sheet.isOpen(), false);
+    assert.ok(!requests.some((r) => r.startsWith('POST ') && !r.endsWith('/scan')), 'nothing was written');
+  });
+}
 
 test('entry point 4: the text editor\'s "Fix times..." opens the SAME time editor, and refuses while the textarea holds unsaved typing', async () => {
   const mix = seedMix();

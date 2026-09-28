@@ -6042,22 +6042,6 @@ function repopulateOneOffFiletypeSelect(doc, format, filetypeSelect) {
   filetypeSelect.value = matchedValue !== null ? matchedValue : (options.length > 0 ? options[0].value : undefined);
 }
 
-// Sweep S8: the one-off dialog's primitive parts. A registry sprite glyph needs
-// createElementNS; a document without it (the builder's pure-DOM unit tests) gets no glyph.
-function oneOffIconSlot(d, name) {
-  if (!d || typeof d.createElementNS !== 'function') return null;
-  const ns = 'http://www.w3.org/2000/svg';
-  const slot = d.createElement('span');
-  slot.className = 'ui-btn__icon';
-  const svg = d.createElementNS(ns, 'svg');
-  svg.setAttribute('class', 'ui-icon ui-icon--md');
-  svg.setAttribute('aria-hidden', 'true');
-  const use = d.createElementNS(ns, 'use');
-  use.setAttribute('href', '#i-' + name);
-  svg.appendChild(use);
-  slot.appendChild(svg);
-  return slot;
-}
 // Wraps a native <select> in the ui-select box (the field styling + a chevron).
 function oneOffSelectBox(d, select) {
   const box = d.createElement('span');
@@ -6095,39 +6079,17 @@ function oneOffSelectBox(d, select) {
 function buildOneOffModal(doc, handlers) {
   const d = doc || document;
   const h = handlers || {};
+  const U = overlayUiLib();
 
-  const backdrop = d.createElement('div');
-  backdrop.className = 'oneoff-modal-backdrop';
-  backdrop.hidden = true;
-  // v1.289: drag-safe dismiss (a text-selection drag onto the backdrop must not close it).
-  bindBackdropDismiss(backdrop, () => { if (typeof h.onClose === 'function') h.onClose(); });
-
+  // Sweep S8 put every control on the primitives (ui-field inputs, ui-select selects, ui-btn
+  // buttons); sweep S9 moves the SHELL onto ui.sheet: a bottom sheet on a phone, a dialog on
+  // desktop, titled "One-off download", with the sheet's one Close. `modal` is the form (its
+  // content). Esc, the scrim, Close and a drag down each close the sheet and call onClose
+  // (through onClosing), so the caller's teardown runs on every way out. v1.289's drag-safe
+  // dismiss holds by construction: the scrim is a SIBLING of the sheet, so a text-selection
+  // drag from a field onto it clicks their common ancestor, never the scrim.
   const modal = d.createElement('div');
-  // Sweep S8: the dialog's shell (.oneoff-modal, shared with the Subscribe and shortcuts
-  // dialogs) is unchanged; `--form` lays this form out on one gap, and every control in it is
-  // a primitive: ui-field inputs (16px, focus ring), ui-select selects, ui-btn buttons and an
-  // icon-button Close (it was a U+00D7 text glyph). The returned API is unchanged.
-  modal.className = 'oneoff-modal oneoff-modal--form';
-  modal.hidden = true;
-  backdrop.appendChild(modal);
-
-  const header = d.createElement('div');
-  header.className = 'oneoff-modal-header';
-  const title = d.createElement('span');
-  title.className = 'oneoff-modal-title';
-  title.textContent = 'One-off download';
-  header.appendChild(title);
-  const closeBtn = d.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'ui-btn ui-btn--plain ui-btn--sm ui-btn--icon';
-  closeBtn.setAttribute('aria-label', 'Close');
-  const closeIcon = oneOffIconSlot(d, 'close');
-  if (closeIcon) closeBtn.appendChild(closeIcon);
-  closeBtn.addEventListener('click', () => {
-    if (typeof h.onClose === 'function') h.onClose();
-  });
-  header.appendChild(closeBtn);
-  modal.appendChild(header);
+  modal.className = 'oneoff-form';
 
   const urlInput = d.createElement('input');
   urlInput.type = 'text';
@@ -6270,7 +6232,14 @@ function buildOneOffModal(doc, handlers) {
     retryBtn.hidden = !(entry && entry.state === 'error');
   }
 
-  return { backdrop, modal, urlInput, formatSelect, qualitySelect, filetypeSelect, folderInput, downloadBtn, retryBtn, closeBtn, statusEl, progressTrack, progressFill, setStatus };
+  const sheet = U.sheet({
+    variant: 'auto', title: 'One-off download', content: modal, initialFocus: urlInput,
+    onClosing: () => { if (typeof h.onClose === 'function') h.onClose(); },
+    doc: d, win: d.defaultView,
+  });
+  const closeBtn = sheet.el.querySelector('.ui-sheet__close');
+
+  return { sheet, backdrop: sheet.scrim, modal, urlInput, formatSelect, qualitySelect, filetypeSelect, folderInput, downloadBtn, retryBtn, closeBtn, statusEl, progressTrack, progressFill, setStatus };
 }
 
 /**
@@ -6570,6 +6539,11 @@ function avatarSourceRect(s, ox, oy, W, H, D) {
 // before uploading, so a raw file is never uploaded on the happy path. The
 // canvas is a fixed 280x280 (1:1 with its CSS box) so pointer deltas map
 // straight to canvas px - the pan/zoom math stays the pure T1 geometry.
+// Sweep S9: one cropper at a time - claimed when a crop starts, released on every way out.
+// (It was a DOM query for the old backdrop, which a second call made before the first
+// image loaded could not see.)
+let avatarCropOpen = false;
+
 function cropAvatarFile(file) {
   return new Promise((resolve) => {
     if (typeof document === 'undefined' || !file) { resolve(file || null); return; }
@@ -6579,15 +6553,17 @@ function cropAvatarFile(file) {
       resolve(file); return; // no real canvas 2d export -> upload raw, the server cap applies
     }
     // Single-instance: never stack two croppers (a second Escape would settle
-    // both). If one is already open, decline this one as a cancel.
-    if (document.querySelector('.avatar-crop-backdrop')) { resolve(null); return; }
-    const prevFocus = document.activeElement; // restore focus to the opener on close
+    // both). If one is already open (or loading its image), decline this one as a cancel.
+    if (avatarCropOpen) { resolve(null); return; }
+    const U = overlayUiLib();
+    if (!U) { resolve(file); return; }
+    avatarCropOpen = true;
     const url = URL.createObjectURL(file);
     const img = new Image();
-    img.onerror = () => { try { URL.revokeObjectURL(url); } catch (_) {} resolve(file); }; // not an image -> let the server reject
+    img.onerror = () => { avatarCropOpen = false; try { URL.revokeObjectURL(url); } catch (_) {} resolve(file); }; // not an image -> let the server reject
     img.onload = () => {
       const imgW = img.naturalWidth, imgH = img.naturalHeight;
-      if (!imgW || !imgH) { try { URL.revokeObjectURL(url); } catch (_) {} resolve(file); return; }
+      if (!imgW || !imgH) { avatarCropOpen = false; try { URL.revokeObjectURL(url); } catch (_) {} resolve(file); return; }
 
       const W = 280, H = 280, D = 232, OUTPUT = 400; // viewport, circle, export size
       const minScale = avatarMinScale(imgW, imgH, D);
@@ -6597,15 +6573,9 @@ function cropAvatarFile(file) {
       const clamp = () => { const c = clampAvatarOffset(ox, oy, s, imgW, imgH, W, H, D); ox = c.ox; oy = c.oy; };
       clamp();
 
-      const backdrop = document.createElement('div');
-      backdrop.className = 'avatar-crop-backdrop';
+      // Sweep S9: the dialog is a ui.sheet titled "Crop photo"; `modal` is its content.
       const modal = document.createElement('div');
-      modal.className = 'avatar-crop-modal';
-      modal.setAttribute('role', 'dialog');
-      modal.setAttribute('aria-label', 'Crop photo');
-      const title = document.createElement('div');
-      title.className = 'avatar-crop-title';
-      title.textContent = 'Crop photo';
+      modal.className = 'avatar-crop';
       const hint = document.createElement('div');
       hint.className = 'avatar-crop-hint';
       hint.textContent = 'Drag to move, pinch or scroll to zoom.';
@@ -6682,21 +6652,19 @@ function cropAvatarFile(file) {
       }, { passive: false });
 
       const actions = document.createElement('div');
-      actions.className = 'avatar-crop-actions';
-      const cancelBtn = document.createElement('button');
-      cancelBtn.type = 'button'; cancelBtn.className = 'btn'; cancelBtn.textContent = 'Cancel';
-      const saveBtn = document.createElement('button');
-      saveBtn.type = 'button'; saveBtn.className = 'btn btn-primary'; saveBtn.textContent = 'Save';
+      actions.className = 'ui-confirm__actions avatar-crop-actions';
+      const cancelBtn = U.button({ variant: 'secondary', label: 'Cancel', doc: document });
+      const saveBtn = U.button({ variant: 'primary', label: 'Save', doc: document });
       actions.appendChild(cancelBtn); actions.appendChild(saveBtn);
 
       let settled = false;
+      let sheet = null;
+      // The sheet restores focus to the opener (the "Change photo" / "Upload" control) itself.
       const cleanup = () => {
+        avatarCropOpen = false;
         try { URL.revokeObjectURL(url); } catch (_) {}
         document.removeEventListener('keydown', onKey);
-        backdrop.remove();
-        // Restore focus to whatever opened the cropper (the "Change photo" /
-        // "Upload" control), not <body>.
-        try { if (prevFocus && typeof prevFocus.focus === 'function') prevFocus.focus(); } catch (_) {}
+        if (sheet) sheet.close();
       };
       const finish = (value) => { if (settled) return; settled = true; cleanup(); resolve(value); };
       const doSave = () => {
@@ -6711,13 +6679,13 @@ function cropAvatarFile(file) {
           finish(file); // export failed -> fall back to the raw upload
         }
       };
-      // Escape cancels; Tab is trapped within the modal's controls (slider ->
-      // Cancel -> Save -> slider) so focus never escapes to the page behind the
-      // scrim.
+      // Escape, the scrim and Close cancel (the sheet's own dismissals, answered through
+      // onClosing below); Tab is trapped within the dialog's controls (Close -> slider ->
+      // Cancel -> Save -> Close) so focus never escapes to the page behind the scrim.
       const onKey = (e) => {
-        if (e.key === 'Escape') { finish(null); return; }
         if (e.key !== 'Tab') return;
-        const focusables = [slider, cancelBtn, saveBtn];
+        const sheetClose = sheet && sheet.el.querySelector('.ui-sheet__close');
+        const focusables = [sheetClose, slider, cancelBtn, saveBtn].filter(Boolean);
         const idx = focusables.indexOf(document.activeElement);
         if (idx === -1) { e.preventDefault(); slider.focus(); }
         else if (e.shiftKey && idx === 0) { e.preventDefault(); saveBtn.focus(); }
@@ -6725,18 +6693,19 @@ function cropAvatarFile(file) {
       };
       cancelBtn.addEventListener('click', () => finish(null));
       saveBtn.addEventListener('click', doSave);
-      backdrop.addEventListener('click', (e) => { if (e.target === backdrop) finish(null); });
       document.addEventListener('keydown', onKey);
 
-      modal.appendChild(title);
       modal.appendChild(stage);
       modal.appendChild(slider);
       modal.appendChild(hint);
       modal.appendChild(actions);
-      backdrop.appendChild(modal);
-      document.body.appendChild(backdrop);
+      sheet = U.sheet({
+        variant: 'dialog', title: 'Crop photo', content: modal, initialFocus: saveBtn,
+        onClosing: () => finish(null), // Esc / scrim / Close: a cancel, settled once
+        doc: document,
+      });
+      sheet.open();
       syncSlider();
-      saveBtn.focus();
     };
     img.src = url;
   });
@@ -7300,10 +7269,14 @@ function injectOneOffDownloadButtonIfEnabled() {
       // function is therefore now ONLY ever reached synchronously, right
       // after the last status line was rendered -- there is no longer any
       // pending timer to cancel.
+      // Sweep S9: the dialog is a ui.sheet; its close removes the scrim and the sheet from
+      // the DOM once the exit ends (and is a no-op when the sheet itself began the close -
+      // Esc, the scrim, Close - which calls back here through onClose).
       function closeModal() {
         if (!modalState) return;
-        modalState.backdrop.remove();
+        const state = modalState;
         modalState = null;
+        state.sheet.close();
       }
 
       // v1.29.0 T6 (R1.4/AC3.4): the ONE place that ever POSTs
@@ -7380,10 +7353,8 @@ function injectOneOffDownloadButtonIfEnabled() {
               submitOneOffDownload(body);
             },
           });
-          document.body.appendChild(modalState.backdrop);
         }
-        modalState.backdrop.hidden = false;
-        modalState.modal.hidden = false;
+        modalState.sheet.open();
       }
 
       // Desktop: header button, Dean-locked placement (immediately before
@@ -7452,11 +7423,9 @@ function injectOneOffDownloadButtonIfEnabled() {
         applyBottomNavCustomization();
       }
 
-      // Esc closes the modal while it is open -- backdrop-click and the [x]
-      // button are wired inside buildOneOffModal itself.
-      document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && modalState && !modalState.backdrop.hidden) closeModal();
-      });
+      // Esc, the scrim and the Close are the ui.sheet's own (Esc only closes the TOP
+      // sheet, so it never also closes a dialog stacked over this one); each reaches
+      // closeModal through buildOneOffModal's onClose.
     })
     .catch(() => { dropReserves(); /* network/parse failure -- fail closed, inject nothing (v1.339 L2: and clear the reserves) */ });
 }
@@ -8090,24 +8059,18 @@ function shouldOpenShortcuts(e, activeTag, isEditable) {
 // player". The notes are a consonant C-D-E-G run (no dissonant clash). Pure map so
 // it is testable; the synth is Web Audio, fully guarded (silent + never throws
 // where AudioContext is absent, e.g. node:test).
-// `axis` drives the resting COLOUR (Dean's DDR scheme): 'h' = left/right = BLUE,
+// `axis` drives the press COLOUR (Dean's DDR scheme): 'h' = left/right = BLUE,
 // 'v' = up/down = RED. Rendered as a `.shortcuts-ddr-arrow--h/--v` class the CSS
-// colours; the press state (.ddr-hit) overrides both.
+// colours on the press state (.ddr-hit).
+// Sweep S9 (AC4): each arrow is a registry ICON (`icon`), never a text glyph - which
+// also retires the U+FE0E text-presentation workaround (v1.163.1: iOS painted the
+// text arrows as colour emoji; a drawn glyph has no emoji presentation at all).
 var DDR_ARROWS = [
-  { key: 'ArrowLeft', glyph: '←', freq: 523.25, axis: 'h' },  // C5, blue
-  { key: 'ArrowDown', glyph: '↓', freq: 587.33, axis: 'v' },  // D5, red
-  { key: 'ArrowUp', glyph: '↑', freq: 659.25, axis: 'v' },    // E5, red
-  { key: 'ArrowRight', glyph: '→', freq: 783.99, axis: 'h' }, // G5, blue
+  { key: 'ArrowLeft', icon: 'arrow_back', label: 'Left', freq: 523.25, axis: 'h' },      // C5, blue
+  { key: 'ArrowDown', icon: 'arrow_downward', label: 'Down', freq: 587.33, axis: 'v' },  // D5, red
+  { key: 'ArrowUp', icon: 'arrow_upward', label: 'Up', freq: 659.25, axis: 'v' },        // E5, red
+  { key: 'ArrowRight', icon: 'arrow_forward', label: 'Right', freq: 783.99, axis: 'h' }, // G5, blue
 ];
-// U+FE0E (VARIATION SELECTOR-15) forces the MONOCHROME text presentation of the
-// arrow glyphs so OUR CSS colours win instead of the OS emoji palette (iOS was
-// painting them its own blue/red, which we can neither guarantee across devices
-// nor match to a shade). Zero-width, so it never shows. The `.glyph` field stays
-// the bare arrow (its semantic identity); the selector is appended only in the DOM.
-var DDR_TEXT_PRESENTATION = '\uFE0E';
-function ddrArrowDisplayGlyph(glyph) {
-  return String(glyph == null ? '' : glyph) + DDR_TEXT_PRESENTATION;
-}
 function ddrNoteForArrow(key) {
   for (var i = 0; i < DDR_ARROWS.length; i++) if (DDR_ARROWS[i].key === key) return DDR_ARROWS[i].freq;
   return 0;
@@ -9782,25 +9745,14 @@ function applyCritterMode() {
 
 function buildShortcutsModal(doc, handlers) {
   const d = doc || document;
+  const U = overlayUiLib();
   const onClose = handlers && typeof handlers.onClose === 'function' ? handlers.onClose : null;
 
-  const backdrop = d.createElement('div');
-  backdrop.className = 'oneoff-modal-backdrop';
-  backdrop.addEventListener('click', (e) => {
-    if (e && e.target === backdrop && onClose) onClose();
-  });
-
+  // Sweep S9: a ui.sheet dialog titled "Keyboard shortcuts" (Esc, the scrim and its one
+  // Close dismiss it; wide on desktop via style.css `:has(.shortcuts-modal)`). The sheet is
+  // built here and opened by openShortcutsModal; `modal` is its content.
   const modal = d.createElement('div');
-  modal.className = 'oneoff-modal shortcuts-modal';
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
-  modal.setAttribute('aria-label', 'Keyboard shortcuts');
-
-  const header = d.createElement('div');
-  header.className = 'oneoff-modal-header';
-  const title = d.createElement('h3');
-  title.textContent = 'Keyboard shortcuts';
-  header.appendChild(title);
+  modal.className = 'shortcuts-modal';
 
   // v1.163 (Dean): the DDR arrow row (top-right, before the close) + the mini-synth.
   // Each arrow lights + plays a note on its key press or a click; `ddrByKey` lets
@@ -9811,27 +9763,15 @@ function buildShortcutsModal(doc, handlers) {
   ddrRow.setAttribute('aria-hidden', 'true'); // decorative easter egg (keys/taps both play; arrows are tabIndex -1, never in the a11y tree)
   const pulse = (el) => { el.classList.remove('ddr-hit'); void el.offsetWidth; el.classList.add('ddr-hit'); };
   DDR_ARROWS.forEach((a) => {
-    const arrow = d.createElement('button');
-    arrow.type = 'button';
-    arrow.className = 'shortcuts-ddr-arrow';
-    // Resting colour by axis: left/right -> blue, up/down -> red (Dean's scheme).
+    const arrow = U.button({ variant: 'tonal', size: 'sm', shape: 'icon', icon: a.icon, ariaLabel: a.label, doc: d });
+    arrow.classList.add('shortcuts-ddr-arrow');
+    // Press colour by axis: left/right -> blue, up/down -> red (Dean's scheme).
     if (a.axis === 'h' || a.axis === 'v') arrow.classList.add('shortcuts-ddr-arrow--' + a.axis);
     arrow.tabIndex = -1;
-    arrow.textContent = ddrArrowDisplayGlyph(a.glyph); // force text (non-emoji) presentation
     arrow.addEventListener('click', () => { playDdrNote(a.freq); pulse(arrow); });
     ddrRow.appendChild(arrow);
     ddrByKey[a.key] = { el: arrow, freq: a.freq, pulse: () => pulse(arrow) };
   });
-  header.appendChild(ddrRow);
-
-  const closeBtn = d.createElement('button');
-  closeBtn.type = 'button';
-  closeBtn.className = 'oneoff-modal-close';
-  closeBtn.setAttribute('aria-label', 'Close');
-  closeBtn.textContent = '×';
-  if (onClose) closeBtn.addEventListener('click', onClose);
-  header.appendChild(closeBtn);
-  modal.appendChild(header);
 
   // The DDR pun subtitle (the Discord homage).
   const subtitle = d.createElement('div');
@@ -9903,8 +9843,15 @@ function buildShortcutsModal(doc, handlers) {
     + 'are typing, or while a button or link has focus (click the video to hand focus back).';
   modal.appendChild(note);
 
-  backdrop.appendChild(modal);
-  return { backdrop, modal, closeBtn, ddrByKey };
+  const sheet = U.sheet({
+    variant: 'dialog', title: 'Keyboard shortcuts', content: modal,
+    onClosing: () => { if (onClose) onClose(); },
+    doc: d, win: d.defaultView,
+  });
+  // The DDR arrows sit in the sheet header, top-right, just before its one Close.
+  const closeBtn = sheet.el.querySelector('.ui-sheet__close');
+  sheet.el.querySelector('.ui-sheet__header').insertBefore(ddrRow, closeBtn);
+  return { sheet, backdrop: sheet.scrim, modal, closeBtn, ddrByKey };
 }
 
 // The live dialog, or null. Module-level so `?` cannot stack two of them.
@@ -9918,7 +9865,7 @@ let shortcutsModalState = null;
  * bare state so a stranded reference can never wedge those handlers off.
  */
 function isShortcutsModalOpen() {
-  return Boolean(shortcutsModalState && shortcutsModalState.backdrop.isConnected);
+  return Boolean(shortcutsModalState && shortcutsModalState.sheet.el.isConnected);
 }
 
 function closeShortcutsModal() {
@@ -9931,9 +9878,11 @@ function closeShortcutsModal() {
   }
   // REMOVED from the DOM, not hidden -- the v1.17.0 lesson: a modal backdrop
   // left in the tree with an author `display` is a full-viewport, invisible
-  // touch/click eater.
-  shortcutsModalState.backdrop.remove();
+  // touch/click eater. Sweep S9: the ui.sheet's close removes the scrim and the
+  // sheet once its exit ends (a no-op when the sheet itself started the close).
+  const state = shortcutsModalState;
   shortcutsModalState = null;
+  state.sheet.close();
 }
 
 function openShortcutsModal() {
@@ -9945,7 +9894,7 @@ function openShortcutsModal() {
   // v1.45.8 isConnected lesson applied as one line of insurance rather than a
   // fix for a live bug.
   if (shortcutsModalState) {
-    if (shortcutsModalState.backdrop.isConnected) return; // genuinely open -- never stack
+    if (shortcutsModalState.sheet.el.isConnected) return; // genuinely open -- never stack
     // Stranded (backdrop removed without routing through closeShortcutsModal):
     // recover -- but FIRST unbind the leaked capture-phase DDR handler, or it
     // would keep eating every arrow key session-wide while the fresh window's
@@ -9959,11 +9908,16 @@ function openShortcutsModal() {
   }
   shortcutsModalState = buildShortcutsModal(document, { onClose: closeShortcutsModal });
   // v1.47.8 gate S10: while a video is in NATIVE fullscreen, only the
-  // fullscreen element's subtree renders -- appending to body would create an
-  // invisible dialog that then swallows `?` (state set, nothing on screen).
-  // The fullscreen element is the correct host in that case.
-  const host = document.fullscreenElement || document.body;
-  host.appendChild(shortcutsModalState.backdrop);
+  // fullscreen element's subtree renders -- a dialog on body would be invisible
+  // and then swallow `?` (state set, nothing on screen). The fullscreen element
+  // is the correct host in that case: the sheet opens on body, then its scrim and
+  // sheet move into it (the sheet removes them from wherever they are on close).
+  const sheet = shortcutsModalState.sheet;
+  sheet.open();
+  if (document.fullscreenElement) {
+    document.fullscreenElement.appendChild(sheet.scrim);
+    document.fullscreenElement.appendChild(sheet.el);
+  }
   // Focus the close control so Tab/Esc land somewhere sensible and the dialog
   // is reachable without a mouse -- it is a keyboard feature, after all.
   if (shortcutsModalState.closeBtn && typeof shortcutsModalState.closeBtn.focus === 'function') {
@@ -13074,6 +13028,50 @@ function notifyLibraryChanged(detail, doc) {
   } catch (_) { return false; }
 }
 
+// ---- Sweep S9 (UI pass): dialogs on the ui.sheet primitive --------------------------
+//
+// The ui.js builders for the dialogs below: the page's window.ui, else (Node tests) the
+// sibling module - the same resolver buildFilterChipRow uses.
+function overlayUiLib() {
+  return (typeof window !== 'undefined' && window.ui)
+    || (typeof module !== 'undefined' && module.require ? module.require('./ui.js') : null);
+}
+
+// A ui.sheet closes on Esc, its scrim and its Close with no say from its content. A dialog
+// that must REFUSE a dismissal (a save in flight, unsaved edits that need a confirm first)
+// routes those three through `request()` instead: capture-phase listeners on the document
+// run before ui.sheet's own (its Esc listener on the document's bubble phase, the scrim's
+// and the Close button's own click), and stop the event there. Esc is taken only while this
+// sheet is the top live one, so a sheet stacked over it keeps its own Esc. Returns the
+// unbind. (A ui.sheet `beforeClose` option would replace this - sweep S9 reported the gap.)
+function guardSheetDismiss(ctrl, doc, request) {
+  const closeBtn = ctrl.el.querySelector('.ui-sheet__close');
+  function isTop() {
+    const live = doc.querySelectorAll('.ui-sheet:not(.is-closing)');
+    return live.length > 0 && live[live.length - 1] === ctrl.el;
+  }
+  function onClick(e) {
+    if (!ctrl.isOpen()) return;
+    const t = e.target;
+    if (t !== ctrl.scrim && !(closeBtn && t && closeBtn.contains(t))) return;
+    e.stopPropagation();
+    e.preventDefault();
+    request();
+  }
+  function onKey(e) {
+    if ((e.key !== 'Escape' && e.key !== 'Esc') || !ctrl.isOpen() || !isTop()) return;
+    e.stopPropagation();
+    e.preventDefault();
+    request();
+  }
+  doc.addEventListener('click', onClick, true);
+  doc.addEventListener('keydown', onKey, true);
+  return function unbind() {
+    doc.removeEventListener('click', onClick, true);
+    doc.removeEventListener('keydown', onKey, true);
+  };
+}
+
 /**
  * v1.34 T3 (Dean): the per-video CHAPTERS EDITOR modal -- a textarea, one
  * "0:00 Title" line per chapter (the SAME grammar the server's
@@ -13087,48 +13085,37 @@ function notifyLibraryChanged(detail, doc) {
  */
 function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
   const d = doc || document;
+  const U = overlayUiLib();
   // chapter snap (2026-09-24, gate r1, adversary S8): the `version` the list was seeded with (GET
   // /api/videos/:id chaptersVersion) rides the save, so a list changed elsewhere since
   // (a snap save, a reheat) is refused by the server instead of overwritten.
   const seedVersion = opts && typeof opts.version === 'string' ? opts.version : undefined;
 
-  const backdrop = d.createElement('div');
-  backdrop.className = 'modal-backdrop';
-  // v1.289: drag-safe dismiss - drag-selecting chapter text and releasing on the
-  // backdrop must NOT close the editor (that discarded unsaved chapter edits -
-  // Dean's exact gesture, on a data-editing surface). The `!busy` guard is kept.
-  bindBackdropDismiss(backdrop, () => { if (!busy) teardown(); });
+  // Sweep S9: a ui.sheet dialog (the one overlay primitive). v1.289's drag-safe dismiss holds
+  // by construction: the scrim is a SIBLING of the sheet, so a text-selection drag that starts
+  // in the textarea and releases outside clicks their common ancestor, never the scrim.
+  const content = d.createElement('div');
+  content.className = 'chapters-editor';
 
-  const modal = d.createElement('div');
-  modal.className = 'modal-content';
-  backdrop.appendChild(modal);
-
-  const title = d.createElement('div');
-  title.className = 'modal-title';
-  title.textContent = 'Edit chapters';
-  modal.appendChild(title);
-
-  const body = d.createElement('div');
-  body.className = 'modal-body';
-  modal.appendChild(body);
-
-  const hint = d.createElement('div');
+  const hint = d.createElement('p');
+  hint.className = 'chapters-editor-hint';
   hint.textContent = 'One chapter per line: a timestamp then a title (e.g. "0:00 Intro"). Leave empty to remove your custom chapters.';
-  body.appendChild(hint);
+  content.appendChild(hint);
 
   const textarea = d.createElement('textarea');
   textarea.className = 'chapters-editor-textarea';
   textarea.rows = 10;
   textarea.value = typeof initialText === 'string' ? initialText : '';
   textarea.setAttribute('aria-label', 'Chapters, one "0:00 Title" line per chapter');
-  body.appendChild(textarea);
+  content.appendChild(textarea);
 
   const statusEl = d.createElement('div');
-  statusEl.className = 'modal-body';
-  modal.appendChild(statusEl);
+  statusEl.className = 'chapters-editor-status';
+  statusEl.setAttribute('aria-live', 'polite');
+  content.appendChild(statusEl);
 
   const actionsRow = d.createElement('div');
-  actionsRow.className = 'modal-actions';
+  actionsRow.className = 'ui-confirm__actions chapters-editor-actions';
 
   // Chapter Snap (2026-09-24) (Dean): the text box stays for pasting a whole list; this
   // opens the SAME time editor every other entry point opens (showChapterSnapEditor),
@@ -13137,11 +13124,8 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
   let snapBtn = null;
   const initialLines = (typeof initialText === 'string' ? initialText : '').split(/\r?\n/).filter((l) => l.trim() !== '');
   if (initialLines.length >= 2 && typeof showChapterSnapEditor === 'function') {
-    snapBtn = d.createElement('button');
-    snapBtn.type = 'button';
-    snapBtn.className = 'btn chapters-editor-snap';
-    snapBtn.textContent = 'Fix times\u2026';
-    snapBtn.setAttribute('aria-label', 'Fix chapter start times in the visual editor');
+    snapBtn = U.button({ variant: 'tonal', label: 'Fix times…', ariaLabel: 'Fix chapter start times in the visual editor', doc: d });
+    snapBtn.classList.add('chapters-editor-snap');
     snapBtn.addEventListener('click', () => {
       if (busy) return;
       if (textarea.value !== (typeof initialText === 'string' ? initialText : '')) {
@@ -13154,20 +13138,14 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
     actionsRow.appendChild(snapBtn);
   }
 
-  const cancelBtn = d.createElement('button');
-  cancelBtn.type = 'button';
-  cancelBtn.className = 'btn';
-  cancelBtn.textContent = 'Cancel';
+  const cancelBtn = U.button({ variant: 'secondary', label: 'Cancel', doc: d });
   cancelBtn.addEventListener('click', () => {
     if (busy) return;
     teardown();
   });
   actionsRow.appendChild(cancelBtn);
 
-  const saveBtn = d.createElement('button');
-  saveBtn.type = 'button';
-  saveBtn.className = 'btn btn-primary';
-  saveBtn.textContent = 'Save';
+  const saveBtn = U.button({ variant: 'primary', label: 'Save', doc: d });
   saveBtn.addEventListener('click', () => {
     if (busy) return;
     setBusy(true);
@@ -13194,8 +13172,7 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
       });
   });
   actionsRow.appendChild(saveBtn);
-
-  modal.appendChild(actionsRow);
+  content.appendChild(actionsRow);
 
   let busy = false;
   function setBusy(nextBusy) {
@@ -13205,15 +13182,23 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
     if (snapBtn) snapBtn.disabled = nextBusy;
   }
 
+  let unguard = null;
+  const sheet = U.sheet({
+    variant: 'dialog', title: 'Edit chapters', content, initialFocus: textarea,
+    onClosing: () => { if (unguard) { unguard(); unguard = null; } },
+    doc: d, win: d.defaultView,
+  });
+  // A save in flight is never dismissed out from under its status line: Esc, the scrim
+  // and Close all stand down while busy (the v1.26.2 busy guard, kept).
+  unguard = guardSheetDismiss(sheet, d, () => { if (!busy) teardown(); });
+
   function teardown() {
-    if (backdrop.classList) backdrop.classList.add('modal-closing');
-    closeOverlayThen(backdrop, 'modal-open', () => backdrop.remove());
+    sheet.close();
   }
 
-  d.body.appendChild(backdrop);
-  openOverlay(backdrop, 'modal-open');
+  sheet.open();
 
-  return { backdrop, modal, textarea, statusEl, cancelBtn, saveBtn, snapBtn, teardown };
+  return { sheet, backdrop: sheet.scrim, modal: sheet.el, textarea, statusEl, cancelBtn, saveBtn, snapBtn, teardown };
 }
 
 // ---- Chapter Snap (2026-09-24) (Dean 2026-09-24): the chapter TIME editor ---------
@@ -13427,6 +13412,7 @@ function showChapterSnapEditor(mediaId, opts) {
   const doFetch = o.fetchImpl || (typeof fetch !== 'undefined' ? fetch : null);
   const pollMs = typeof o.pollMs === 'number' ? o.pollMs : 1500;
   const base = '/api/videos/' + encodeURIComponent(mediaId) + '/chapter-snap';
+  const U = overlayUiLib();
 
   let state = null; // the server's editor state (seed)
   let rows = [];    // [{index, title, sourceStart, savedStart, time, shift}] - `shift` = the whole ms
@@ -13453,20 +13439,15 @@ function showChapterSnapEditor(mediaId, opts) {
     return b;
   }
 
-  const backdrop = el('div', 'modal-backdrop chapter-snap-backdrop');
-  const modal = el('div', 'modal-content chapter-snap-modal');
-  modal.setAttribute('role', 'dialog');
-  modal.setAttribute('aria-modal', 'true');
-  modal.setAttribute('aria-labelledby', 'chapter-snap-title');
-  backdrop.appendChild(modal);
+  // Sweep S9: the SHELL is a ui.sheet dialog titled "Fix chapter times" (wide on desktop,
+  // the full screen on a phone - style.css `:has(.chapter-snap-modal)`); `modal` is its
+  // content: the head, the one scrolling list, the pinned actions.
+  const modal = el('div', 'chapter-snap-modal');
 
   const head = el('div', 'chapter-snap-head');
   const titleRow = el('div', 'chapter-snap-titlerow');
-  const title = el('h2', 'modal-title chapter-snap-title', 'Fix chapter times');
-  title.id = 'chapter-snap-title';
   const badge = el('span', 'chapter-snap-badge', 'Edited');
   badge.hidden = true;
-  titleRow.appendChild(title);
   titleRow.appendChild(badge);
   head.appendChild(titleRow);
   const sub = el('div', 'chapter-snap-sub', '');
@@ -14123,9 +14104,13 @@ function showChapterSnapEditor(mediaId, opts) {
     teardown();
   }
   cancelBtn.addEventListener('click', requestClose);
-  bindBackdropDismiss(backdrop, requestClose);
-  function onKey(e) { if (e.key === 'Escape') requestClose(); }
-  d.addEventListener('keydown', onKey);
+  const sheet = U.sheet({
+    variant: 'dialog', title: 'Fix chapter times', content: modal,
+    onClosing: () => teardown(), doc: d, win: d.defaultView,
+  });
+  // Esc, the scrim and the sheet's Close ASK first, exactly like Cancel: a save in flight
+  // refuses, unsaved corrections open the in-page discard confirm (never a silent loss).
+  const unguard = guardSheetDismiss(sheet, d, requestClose);
 
   function teardown() {
     if (closed) return;
@@ -14133,16 +14118,14 @@ function showChapterSnapEditor(mediaId, opts) {
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
     if (auditionTimer) { clearTimeout(auditionTimer); auditionTimer = null; }
     if (audio) { try { audio.pause(); audio.removeAttribute('src'); audio.load(); } catch (_) { /* gone */ } }
-    d.removeEventListener('keydown', onKey);
-    if (backdrop.classList) backdrop.classList.add('modal-closing');
-    closeOverlayThen(backdrop, 'modal-open', () => backdrop.remove());
+    unguard();
+    sheet.close();
   }
 
-  d.body.appendChild(backdrop);
-  openOverlay(backdrop, 'modal-open');
+  sheet.open();
   const ready = load(false);
 
-  return { backdrop, modal, list, statusEl, saveBtn, cancelBtn, snapAllBtn, undoBtn, revertBtn, confirmBox, shiftBox, close: teardown, ready, isClosed: () => closed };
+  return { sheet, backdrop: sheet.scrim, modal, list, statusEl, saveBtn, cancelBtn, snapAllBtn, undoBtn, revertBtn, confirmBox, shiftBox, close: teardown, ready, isClosed: () => closed };
 }
 
 /**
@@ -17094,8 +17077,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.311.2: the "never block a button" predicate (critter taps over these pass through).
     critterOverInteractive, CRITTER_INTERACTIVE_SELECTORS, critterPageScrollY,
     getCritterLastChirpReason,
-    // v1.163.1: force text (non-emoji) presentation on the arrow glyphs.
-    DDR_TEXT_PRESENTATION, ddrArrowDisplayGlyph,
     // v1.50.3: the D dark/light toggle's pure decision.
     shouldToggleThemeKey,
     openShortcutsModal, closeShortcutsModal, isDesktopViewport, SHORTCUTS_DESKTOP_QUERY,
