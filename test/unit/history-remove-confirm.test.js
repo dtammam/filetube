@@ -40,17 +40,28 @@ function boot() {
     return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
   };
   let initFn = null;
-  w.FileTube = { registerView: (name, v) => { if (name === 'history') initFn = v.init; } };
+  let destroyFn = null;
+  w.FileTube = { registerView: (name, v) => { if (name === 'history') { initFn = v.init; destroyFn = v.destroy; } } };
   w.eval(ICONS_SRC);
   w.eval(UI_SRC);
   w.eval(SRC);
   assert.ok(initFn, 'history.js registered its view');
   initFn(w.document.getElementById('view-root'));
-  return { dom, w, calls, doc: w.document };
+  return { dom, w, calls, doc: w.document, destroy: destroyFn };
 }
 const deletes = (calls) => calls.filter((c) => c.method === 'DELETE').map((c) => c.url);
 const confirmOpen = (doc) => Array.from(doc.querySelectorAll('.ui-sheet.is-open')).find((s) => s.querySelector('.ui-confirm__actions')) || null;
-const click = (w, el) => el.dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+// A pointer click. A person reads a dialog before answering it: ui.js ignores a pointer
+// activation of a sheet's controls until it has been open ACTIVATION_GUARD_MS (the double-tap
+// guard, gate r1), so a click aimed INSIDE an open sheet carries a timeStamp ANSWER_AFTER_MS
+// past the page's clock. The guard itself is bound by ui-activation-guard.test.js.
+const ANSWER_AFTER_MS = 1000;
+const click = (w, el) => {
+  const e = new w.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 });
+  if (el.closest('.ui-sheet, .ui-scrim')) Object.defineProperty(e, 'timeStamp', { value: Date.now() + ANSWER_AFTER_MS });
+  return el.dispatchEvent(e);
+};
+const dialogs = (doc) => doc.querySelectorAll('.ui-sheet--dialog').length;
 
 test('History Remove: asks ui.confirm first; Cancel and Esc send nothing; OK sends exactly one DELETE of THAT row', async () => {
   const { dom, w, calls, doc } = boot();
@@ -68,6 +79,7 @@ test('History Remove: asks ui.confirm first; Cancel and Esc send nothing; OK sen
     click(w, dlg.querySelector('.ui-confirm__actions .ui-btn--secondary'));
     await sleep(400);
     assert.strictEqual(deletes(calls).length, 0, 'Cancel sent nothing');
+    assert.strictEqual(dialogs(doc), 0, 'Cancel answered: the dialog is gone');
     click(w, removeOf('b2'));
     await sleep(40);
     doc.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -96,6 +108,7 @@ test('History Clear all: asks ui.confirm first; only a yes clears', async () => 
     click(w, dlg.querySelector('.ui-confirm__actions .ui-btn--secondary'));
     await sleep(400);
     assert.strictEqual(deletes(calls).length, 0, 'Cancel sent nothing');
+    assert.strictEqual(dialogs(doc), 0, 'Cancel answered: the dialog is gone');
     click(w, clear);
     await sleep(40);
     dlg = confirmOpen(doc);
@@ -104,3 +117,28 @@ test('History Clear all: asks ui.confirm first; only a yes clears', async () => 
     assert.deepStrictEqual(deletes(calls), ['/api/history']);
   } finally { dom.window.close(); }
 });
+
+// Gate r1 (adversary 3): both confirms are bound to the view's signal, so leaving History
+// (the router's destroy) dismisses the dialog and its OK cannot act over the next view.
+for (const which of ['Remove', 'Clear all']) {
+  test(`History ${which}: leaving the view with the confirm open dismisses it; its OK then sends nothing`, async () => {
+    const { dom, w, calls, doc, destroy } = boot();
+    try {
+      await sleep(50);
+      const trigger = which === 'Remove'
+        ? doc.querySelector('#history-list .ui-row[data-id="a1"] .history-remove')
+        : doc.getElementById('history-clear-btn');
+      click(w, trigger);
+      await sleep(40);
+      const dlg = confirmOpen(doc);
+      assert.ok(dlg, 'the confirm opened');
+      const ok = dlg.querySelector('.ui-confirm__actions .ui-btn--primary');
+      destroy(); // the router leaving the view
+      await sleep(10);
+      assert.strictEqual(confirmOpen(doc), null, 'the confirm closed with the view');
+      click(w, ok);
+      await sleep(400);
+      assert.deepStrictEqual(deletes(calls), [], 'nothing deleted after the view went away');
+    } finally { dom.window.close(); }
+  });
+}

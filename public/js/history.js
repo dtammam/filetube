@@ -250,8 +250,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // non-strict routing aliases onto CLEAR-ALL (the server now 400s that
       // form too; this is the belt to its suspenders).
       if (!id) return;
+      // `signal`: leaving the view dismisses the dialog (resolves false), so its OK cannot act later.
       historyUi().confirm({ title: 'Remove from history?', body: 'Its resume position and watched mark are cleared.',
-        confirmLabel: 'Remove', danger: true }).then(function (ok) {
+        confirmLabel: 'Remove', danger: true, signal: signal }).then(function (ok) {
         if (ok !== true || signal.aborted) return;
         row.hidden = true; // optimistic HIDE
         fetch('/api/history/' + encodeURIComponent(id), { method: 'DELETE' })
@@ -273,7 +274,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     function clearAll() {
       historyUi().confirm({ title: 'Clear all watch history?', body: 'Every resume position and watched mark is cleared.',
-        confirmLabel: 'Clear all', danger: true }).then(function (ok) {
+        confirmLabel: 'Clear all', danger: true, signal: signal }).then(function (ok) {
         if (ok !== true || signal.aborted) return;
         listEl.hidden = true; // optimistic HIDE
         fetch('/api/history', { method: 'DELETE' })

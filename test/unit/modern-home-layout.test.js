@@ -94,7 +94,9 @@ test('maybeLoadNextPage has a modern branch that APPENDS the next page (never re
 // modal (the v1.86.2 friction Dean removed from the feed stays removed).
 test('(v1.86.2 #2, converted) the card Delete asks one ui.confirm then deletes to trash - no checkbox-modal escalation', () => {
   const fn = MAIN.slice(MAIN.indexOf('async function confirmAndDeleteCard(item) {'), MAIN.indexOf('// Runs one menu action for one card'));
-  assert.match(fn, /const ok = await u\.confirm\(cardDeleteConfirmCopy\(item\)\);\s*if \(ok !== true\) return;[\s\S]*deleteCardById\(item\.id\);/, 'the confirm resolves true, then the trash delete');
+  // Gate r1 (adversary 3, DELIBERATE lock update): the confirm now carries the router's
+  // shown-view signal (card-action-menu-fullchain binds that behaviourally).
+  assert.match(fn, /const ok = await u\.confirm\(Object\.assign\(\{\}, cardDeleteConfirmCopy\(item\), \{ signal: shown \}\)\);\s*if \(ok !== true\) return;[\s\S]*deleteCardById\(item\.id\);/, 'the confirm resolves true, then the trash delete');
   assert.doesNotMatch(fn, /showHardDeleteModal/, 'the card never escalates to the checkbox hard-delete modal');
   assert.doesNotMatch(MAIN, /card-delete-btn|nextArmState/, 'the inline two-tap arm is gone');
 });

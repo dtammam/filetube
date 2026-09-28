@@ -136,8 +136,16 @@ async function settle(times) { for (let i = 0; i < (times || 8); i++) await slee
 // A sheet gets .is-open on the next animation frame; let it land.
 const frame = () => sleep(40);
 
+// A person reads a sheet before answering it: ui.js ignores a pointer activation of a sheet's
+// controls until it has been open ACTIVATION_GUARD_MS (the double-tap guard, gate r1), so a
+// pointer click aimed INSIDE an open sheet (or at its scrim) carries a timeStamp
+// ANSWER_AFTER_MS past the page's clock. The guard itself is bound by
+// ui-activation-guard.test.js and the geometry DBLTAP check.
+const ANSWER_AFTER_MS = 1000;
 function click(dom, el) {
-  el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 }));
+  const e = new dom.window.MouseEvent('click', { bubbles: true, cancelable: true, detail: 1 });
+  if (el.closest && el.closest('.ui-sheet, .ui-scrim')) Object.defineProperty(e, 'timeStamp', { value: Date.now() + ANSWER_AFTER_MS });
+  el.dispatchEvent(e);
 }
 const openSheets = (doc) => Array.from(doc.querySelectorAll('.ui-sheet.is-open'));
 const menuRow = (doc, label) => {
@@ -357,6 +365,66 @@ test('DELETE: a tap on Move to Trash AFTER Cancel (the dialog animating out) nev
   } finally { dom.window.close(); }
 });
 
+// Gate r1 (adversary 3): home (and its folder filters) is CACHED on nav-away and its own
+// AbortController never fires, so a confirm bound only to it stayed up over the next view and
+// its OK still sent DELETE. The confirm now carries the router's shown-view signal
+// (FileTube.viewSignal), which a navigation or a popstate aborts the moment it starts. The
+// stub never answers the next page's fetch, so the swap never happens: only the leave-start
+// abort can close the dialog here (swapToView's own abort is not what this binds).
+for (const [how, leave] of [
+  ['FileTube.navigate (a tap on a nav link)', (w) => { w.FileTube.navigate('/history'); }],
+  ['popstate (a Back swipe)', (w) => { w.dispatchEvent(new w.PopStateEvent('popstate', { state: { view: 'history', url: '/history', scrollY: 0, depth: 0 } })); }],
+]) {
+  test(`DELETE: leaving the view by ${how} with the confirm open dismisses it; its OK then sends nothing`, async () => {
+    const { fetchImpl, calls } = makeFetchStub({});
+    const dom = await loadIndex(fetchImpl);
+    try {
+      await settle();
+      const { document } = dom.window;
+      const dlg = await openDeleteConfirm(dom, 'yt1');
+      const ok = dlg.querySelector('.ui-confirm__actions .ui-btn--primary');
+      assert.strictEqual(typeof dom.window.FileTube.viewSignal, 'function', 'the router exposes viewSignal');
+      leave(dom.window);
+      await settle();
+      assert.strictEqual(confirmDialog(document), null, 'the confirm is no longer open after the user left');
+      click(dom, ok); // the OK a user reaches on the next view
+      await settle(); await sleep(400);
+      assert.strictEqual(deletes(calls).length, 0, 'no DELETE after the view was left');
+      assert.strictEqual(document.querySelector('.ui-sheet'), null, 'the dialog left the DOM');
+    } finally { dom.window.close(); }
+  });
+}
+
+// The same, for a confirm opened on the old view WHILE the next one is fetching (the leave
+// already happened, so only the swap's own abort can close this one).
+test('DELETE: a confirm opened while a navigation is in flight closes at the swap; its OK then sends nothing', async () => {
+  const { fetchImpl: base, calls } = makeFetchStub({});
+  let answerPage;
+  const fetchImpl = (input, init) => {
+    const url = typeof input === 'string' ? input : (input && input.url);
+    if (url === 'http://localhost/history') return new Promise((r) => { answerPage = r; });
+    return base(input, init);
+  };
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    const { document } = dom.window;
+    dom.window.FileTube.navigate('/history');
+    await settle();
+    assert.strictEqual(typeof answerPage, 'function', 'the next view is fetching');
+    const dlg = await openDeleteConfirm(dom, 'yt1'); // the old view is still on screen
+    const ok = dlg.querySelector('.ui-confirm__actions .ui-btn--primary');
+    const html = '<!DOCTYPE html><html><head><title>History</title></head><body><div id="view-root"><div id="history-list"></div></div></body></html>';
+    answerPage({ ok: true, status: 200, text: async () => html });
+    await settle(); await frame();
+    assert.ok(document.getElementById('history-list'), 'precondition: the swap happened');
+    assert.strictEqual(confirmDialog(document), null, 'the confirm closed at the swap');
+    click(dom, ok);
+    await settle(); await sleep(400);
+    assert.strictEqual(deletes(calls).length, 0, 'no DELETE after the view was swapped out');
+  } finally { dom.window.close(); }
+});
+
 test('DELETE by KEYBOARD: a detail-0 activation of the kebab and of Move to Trash still needs the confirm; Esc cancels', async () => {
   const { fetchImpl, calls } = makeFetchStub({});
   const dom = await loadIndex(fetchImpl);
@@ -438,7 +506,9 @@ test('source guard: the ONLY caller of the delete request is confirmAndDeleteCar
   const callers = src.match(/deleteCardById\(/g) || [];
   assert.strictEqual(callers.length, 2, 'the definition + ONE call');
   const fn = src.slice(src.indexOf('async function confirmAndDeleteCard(item) {'), src.indexOf('function runCardAction('));
-  assert.match(fn, /const ok = await u\.confirm\(cardDeleteConfirmCopy\(item\)\);\s*if \(ok !== true\) return;\s*if \(signal\.aborted\) return;\s*deleteCardById\(item\.id\);/);
+  // Gate r1 (adversary 3): the confirm carries the router's shown-view signal (this view is
+  // cached on nav-away), and both signals are re-checked after the answer.
+  assert.match(fn, /const ok = await u\.confirm\(Object\.assign\(\{\}, cardDeleteConfirmCopy\(item\), \{ signal: shown \}\)\);\s*if \(ok !== true\) return;\s*if \(shown\.aborted \|\| signal\.aborted\) return;\s*deleteCardById\(item\.id\);/);
   assert.match(src, /\} else if \(action === 'delete'\) \{\s*confirmAndDeleteCard\(item\);/, 'the menu entry routes through the confirm');
 });
 

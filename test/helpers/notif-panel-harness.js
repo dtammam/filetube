@@ -69,6 +69,16 @@ function mount(opts) {
     if (custom) return Promise.resolve(custom);
     return Promise.resolve(res(200, {}));
   };
+  // A person reads a sheet before answering it. ui.js ignores a pointer activation of a sheet's
+  // controls until the sheet has been open ACTIVATION_GUARD_MS (the double-tap guard, gate r1),
+  // so a pointer event this harness aims INSIDE an open sheet (or at its scrim) carries a
+  // timeStamp ANSWER_AFTER_MS past the page's clock: the answer of someone who read it. The
+  // guard itself is bound by ui-activation-guard.test.js and the geometry DBLTAP check.
+  const ANSWER_AFTER_MS = 1000;
+  function stampAnswer(e, el) {
+    if (el && el.closest && el.closest('.ui-sheet, .ui-scrim')) Object.defineProperty(e, 'timeStamp', { value: Date.now() + ANSWER_AFTER_MS });
+    return e;
+  }
   function pe(type, el, p) {
     const q = p || {};
     const e = new w.PointerEvent(type, {
@@ -76,12 +86,12 @@ function mount(opts) {
       pointerId: q.id ?? 7, pointerType: q.pointerType ?? 'touch', isPrimary: true, button: q.button ?? 0,
       clientX: q.x ?? 300, clientY: q.y ?? 100,
     });
-    el.dispatchEvent(e);
+    el.dispatchEvent(stampAnswer(e, el));
     return e;
   }
   function click(el, detail) {
     const e = new w.MouseEvent('click', { bubbles: true, cancelable: true, detail: detail === undefined ? 1 : detail });
-    el.dispatchEvent(e);
+    el.dispatchEvent(stampAnswer(e, el));
     return e;
   }
   function key(el, k) {

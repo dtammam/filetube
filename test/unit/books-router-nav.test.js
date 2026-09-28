@@ -182,7 +182,9 @@ test('unpin: the control asks through ui.confirm and never navigates the row lin
   const fnBody = commonSrc.slice(fnStart, commonSrc.indexOf('\nfunction ', fnStart + 10));
   assert.ok(fnBody.includes('event.preventDefault()') && fnBody.includes('event.stopPropagation()'), 'clicks never fall through to the row link');
   assert.ok(fnBody.includes('U.confirm('), 'a tap asks first');
-  assert.ok(/if \(!ok\) return;[\s\S]*method: 'DELETE'/.test(fnBody), 'only a confirmed answer deletes');
+  // Gate r1 (adversary 3/5, DELIBERATE lock update): exactly `true`, and the shown-view
+  // signal re-checked after the answer (bound behaviourally in chrome-primitives.test.js).
+  assert.ok(/if \(ok !== true \|\| \(shown && shown\.aborted\)\) return;[\s\S]*method: 'DELETE'/.test(fnBody), 'only a confirmed answer deletes');
   assert.ok(!fnBody.includes("'armed'"), 'no in-row arm state survives');
 });
 

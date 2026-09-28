@@ -3129,13 +3129,19 @@ const PreviewCards = (function () {
     // (cardDeleteConfirmCopy: a move to Trash) and calls deleteCardById only
     // when the confirm resolves exactly true - Cancel, Esc, the scrim, Close and
     // a missing ui all resolve to no delete.
+    // Gate r1 (adversary 3): the confirm is bound to the router's SHOWN-view signal, read now.
+    // This view is CACHED on nav-away and its own `signal` never fires then, so a confirm bound
+    // only to it stayed open over the next view and its OK still deleted; viewSignal() aborts
+    // the moment the user leaves, which dismisses the dialog (resolving false).
     async function confirmAndDeleteCard(item) {
       if (!item || !item.id) return;
       const u = cardUi();
       if (!u || typeof u.confirm !== 'function') return;
-      const ok = await u.confirm(cardDeleteConfirmCopy(item));
+      const ft = window.FileTube;
+      const shown = (ft && typeof ft.viewSignal === 'function') ? ft.viewSignal() : signal;
+      const ok = await u.confirm(Object.assign({}, cardDeleteConfirmCopy(item), { signal: shown }));
       if (ok !== true) return;
-      if (signal.aborted) return;
+      if (shown.aborted || signal.aborted) return;
       deleteCardById(item.id);
     }
 

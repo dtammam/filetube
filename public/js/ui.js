@@ -356,6 +356,40 @@
     return c;
   }
 
+  // ---------------------------------------------------------------- activation guard
+  // The second tap of a double-tap (the second click of a double-click, a held key's repeat)
+  // lands where the first one did. A sheet the FIRST tap opened can put a control under that
+  // spot: a centred dialog's OK sits over a phone row's right-edge action and over desktop
+  // popover rows, and a bottom sheet's rows sit over a card near the screen's foot. So the
+  // second tap answered the sheet the first one opened: gate r1 measured a double-tap
+  // PURGING a Trash item for good, deleting a file from a notification row and from Stats,
+  // and a double-click trashing a local file. The dialog also takes taps while it fades in.
+  // A sheet therefore ignores every POINTER activation (press or click) and every Enter/Space
+  // of its controls (OK, Cancel, Close, the scrim, a menu row) until it has been open
+  // ACTIVATION_GUARD_MS; the rules, and the one click they leave alone, are at accepts().
+  // 450ms clears a double-tap (the gaps measured were 60-300ms) and the 280ms --dur-sheet
+  // fade-in, and is shorter than a person needs to read a dialog and move to its button.
+  var ACTIVATION_GUARD_MS = 450;
+  // An event's timeStamp is compared in ITS OWN clock: a DOMHighResTimeStamp (every current
+  // engine: the performance.now() origin) or, in an older engine and in jsdom, epoch ms.
+  // Any value above this floor (2001-09-09 as epoch ms, 31 years as uptime) is epoch.
+  var EPOCH_TIMESTAMP_FLOOR = 1e12;
+  function perfNow(win) {
+    var p = (win && win.performance) || (typeof performance !== 'undefined' ? performance : null);
+    return p && typeof p.now === 'function' ? p.now() : null;
+  }
+  function clockStamp(win) { return { hr: perfNow(win), epoch: Date.now() }; }
+  // Milliseconds from `stamp` to the event (by its timeStamp: a dispatch delayed by a busy
+  // main thread still counts from when the tap HAPPENED), or to now when it carries none.
+  function msSince(stamp, e, win) {
+    var ts = e && typeof e.timeStamp === 'number' && e.timeStamp > 0 ? e.timeStamp : null;
+    if (ts !== null && ts > EPOCH_TIMESTAMP_FLOOR) return ts - stamp.epoch;
+    if (ts !== null && stamp.hr !== null) return ts - stamp.hr;
+    var now = perfNow(win);
+    return (now !== null && stamp.hr !== null) ? now - stamp.hr : Date.now() - stamp.epoch;
+  }
+  function isActivationKey(e) { return e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar'; }
+
   // ---------------------------------------------------------------- sheet
   var openStack = []; // open controllers, topmost last (Esc closes only the top one)
   var lockSeq = 0;
@@ -453,6 +487,8 @@
     }
 
     var state = 'closed'; // closed | open | closing
+    var openedAt = null; // clockStamp() of the latest open: the activation guard counts from it
+    var pressedEarly = typeof WeakSet === 'function' ? new WeakSet() : null;
     var opener = null;
     var anchorRect = null; // a popover's anchor, read at open (the page is locked while it is up)
     var placeObserver = null;
@@ -516,6 +552,7 @@
         if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
         if (onEnd) { s.removeEventListener('transitionend', onEnd); onEnd = null; }
         state = 'open';
+        openedAt = clockStamp(win);
         openStack.push(ctrl);
         doc.addEventListener('keydown', onKey);
         s.classList.remove('is-closing');
@@ -538,6 +575,7 @@
       var bl = lockApi();
       if (bl) bl.lock(doc, win, lockOwner);
       state = 'open';
+      openedAt = clockStamp(win);
       place(); // measured in the page, before the first frame paints it
       watchPlacement();
       openStack.push(ctrl);
@@ -591,8 +629,43 @@
       return ctrl;
     }
 
-    closeBtn.addEventListener('click', function () { dismiss(); });
-    scrim.addEventListener('click', function () { dismiss(); });
+    // The activation guard (see ACTIVATION_GUARD_MS), one rule per input:
+    // - a pointer press (pointerdown) on a guarded control inside the window marks it, and the
+    //   click that press makes never answers, even released after the window (a double-tap's
+    //   second finger held down is still that double-tap);
+    // - a pointer click (event.detail >= 1: the click count a mouse, touch or pen click
+    //   carries) inside the window never answers, whatever pointerdown was seen;
+    // - Enter/Space inside the window, or auto-repeated, is swallowed at keydown (guard), so
+    //   the browser never synthesises its click.
+    // A click with detail 0 and no early press is not a pointer: it is the click a browser
+    // synthesises from an ALLOWED key press, assistive tech, or a script's el.click(). It is
+    // not time-gated (the key rule above already gated the keyboard).
+    function tooEarly(e) { return openedAt === null || msSince(openedAt, e, win) < ACTIVATION_GUARD_MS; }
+    function accepts(e) {
+      if (state !== 'open') return false;
+      var node = e && e.currentTarget;
+      if (pressedEarly && node && pressedEarly.has(node)) { pressedEarly.delete(node); return false; }
+      var fromPointer = !!(e && typeof e.detail === 'number' && e.detail >= 1);
+      return !(fromPointer && tooEarly(e));
+    }
+    function guard(node) {
+      node.addEventListener('pointerdown', function (e) {
+        if (!pressedEarly) return;
+        if (tooEarly(e)) pressedEarly.add(node); else pressedEarly.delete(node);
+      });
+      node.addEventListener('pointercancel', function () { if (pressedEarly) pressedEarly.delete(node); });
+      node.addEventListener('keydown', function (e) {
+        if (!isActivationKey(e)) return;
+        if (e.repeat || tooEarly(e)) { e.preventDefault(); return; }
+        if (pressedEarly) pressedEarly.delete(node); // a fresh key press answers, whatever a finger did
+      });
+      return node;
+    }
+
+    guard(closeBtn);
+    guard(scrim);
+    closeBtn.addEventListener('click', function (e) { if (accepts(e)) dismiss(); });
+    scrim.addEventListener('click', function (e) { if (accepts(e)) dismiss(); });
     // `signal` (an AbortSignal, e.g. a view's): its abort closes the sheet, so an SPA nav away
     // never strands an overlay on <body> over the next view. A confirm/prompt resolves as a
     // dismissal (false / null) through onClosing.
@@ -634,6 +707,7 @@
       el: s, scrim: scrim, body: body,
       open: open, close: close, setContent: setContent,
       isOpen: function () { return state === 'open'; },
+      accepts: accepts, guard: guard,
     };
     return ctrl;
   }
@@ -656,15 +730,17 @@
         danger: !!it.danger,
         disabled: !!it.disabled,
         doc: doc,
-        onClick: function () {
-          // One pick per menu: a second tap while it animates out picks nothing.
-          if (!ctrl.isOpen()) return;
+        onClick: function (e) {
+          // One pick per menu: a second tap while it animates out picks nothing, and neither
+          // does the rest of the tap that opened it (a row under that finger: ACTIVATION_GUARD_MS).
+          if (!ctrl.accepts(e)) return;
           ctrl.close();
           if (typeof it.onSelect === 'function') it.onSelect(it.value);
           if (typeof o.onSelect === 'function') o.onSelect(it.value);
         },
       });
       if (it.checked) r.setAttribute('aria-current', 'true');
+      ctrl.guard(r);
       l.appendChild(r);
     });
     return ctrl.open();
@@ -770,10 +846,13 @@
       content.appendChild(acts.row);
       var ctrl = sheet({ variant: 'dialog', title: o.title, label: o.title ? null : 'Confirm', content: content,
         onClosing: function () { settle(false); }, signal: o.signal, doc: doc, win: o.win });
-      // Only a click on a LIVE dialog answers: a confirm tapped while the sheet
-      // animates out (after Esc, the scrim, Close) must not flip a cancel to true.
-      acts.cancel.addEventListener('click', function () { if (ctrl.isOpen()) { settle(false); ctrl.close(); } });
-      acts.ok.addEventListener('click', function () { if (ctrl.isOpen()) { settle(true); ctrl.close(); } });
+      // Only a click on a LIVE, SETTLED dialog answers (ctrl.accepts): a confirm tapped while
+      // the sheet animates out (after Esc, the scrim, Close) must not flip a cancel to true,
+      // and the rest of the double-tap that opened it must not answer it (ACTIVATION_GUARD_MS).
+      ctrl.guard(acts.cancel);
+      ctrl.guard(acts.ok);
+      acts.cancel.addEventListener('click', function (e) { if (ctrl.accepts(e)) { settle(false); ctrl.close(); } });
+      acts.ok.addEventListener('click', function (e) { if (ctrl.accepts(e)) { settle(true); ctrl.close(); } });
       ctrl.open();
     });
   }
@@ -805,10 +884,14 @@
       var ctrl = sheet({ variant: 'dialog', title: o.title, label: o.title ? null : (o.label || 'Prompt'), content: content,
         initialFocus: f.input, onClosing: function () { settle(null); }, doc: doc, win: o.win });
       function submit() { if (ctrl.isOpen()) { settle(f.input.value); ctrl.close(); } }
-      acts.cancel.addEventListener('click', function () { if (ctrl.isOpen()) { settle(null); ctrl.close(); } });
-      acts.ok.addEventListener('click', submit);
+      ctrl.guard(acts.cancel);
+      ctrl.guard(acts.ok);
+      acts.cancel.addEventListener('click', function (e) { if (ctrl.accepts(e)) { settle(null); ctrl.close(); } });
+      acts.ok.addEventListener('click', function (e) { if (ctrl.accepts(e)) submit(); });
       f.input.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); submit(); }
+        // A held Enter's auto-repeat is not an answer; a typed Enter is (nobody types a
+        // value inside ACTIVATION_GUARD_MS, so the field keeps its immediate submit).
+        if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); if (!e.repeat) submit(); }
       });
       ctrl.open();
     });
@@ -1017,6 +1100,7 @@
     state: stateBlock, copy: copy,
     // Pure helpers, exported for tests and for callers that need the same text.
     initials: initials, toneOf: toneOf, formatDuration: formatDuration, placePopover: placePopover,
+    ACTIVATION_GUARD_MS: ACTIVATION_GUARD_MS,
   };
   if (hasWindow) window.ui = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
