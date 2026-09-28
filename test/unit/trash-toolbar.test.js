@@ -49,10 +49,14 @@ test('setup.html: the trash toolbar ships hidden with the total + a danger Empty
   assert.match(html, /id="trash-empty-all" class="ui-btn ui-btn--danger ui-btn--sm trash-empty-all">Empty trash<\/button>/);
 });
 
-test('style.css: the toolbar has a real style source incl. the [hidden] guard; the armed state is retired', () => {
+// Retire R3 (DELIBERATE conversion): the toolbar's own `.trash-toolbar[hidden]` patch is gone -
+// ui.css's ONE global `[hidden] { display: none !important }` (plan D11: the per-class patches
+// retire behind it) is what beats the toolbar's display:flex now, so that is what this pins.
+test('style.css: the toolbar has a real style source, its hidden state wins through the global [hidden] rule; the armed state is retired', () => {
   const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(css, /\.trash-toolbar\s*\{[^}]*display:\s*flex/, '.trash-toolbar is a flex row');
-  assert.match(css, /\.trash-toolbar\[hidden\]\s*\{[^}]*display:\s*none/, 'the [hidden] guard beats display:flex');
+  assert.match(ui, /\n\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/, 'the global [hidden] guard beats display:flex');
   assert.doesNotMatch(css, /trash-confirming/, 'the two-tap armed class is gone');
 });
 

@@ -243,18 +243,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.bottombar-editor-row.drag-over-after|box-shadow",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.bottombar-editor-row.drag-over-before|box-shadow",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.btn-busy::after|border",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -501,42 +489,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.drag-handle:focus-visible|outline",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.drag-handle:focus-visible|outline-offset",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.drag-handle|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.feed-hidden-thumb|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.folder-item-row.drag-over-after|box-shadow",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.folder-item-row.drag-over-before|box-shadow",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.folder-list-builder|border",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -544,12 +496,6 @@
       },
       {
         "key": "public/css/style.css|.folder-list-builder|max-height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.form-group input[type=\"text\"], .form-group input[type=\"password\"], .form-group input[type=\"number\"]|border",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -3147,12 +3093,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.setup-select|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.shortcuts-ddr-arrow.ddr-hit|animation",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -3267,49 +3207,13 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.stable-delete-btn .icon-delete|height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.stable-delete-btn .icon-delete|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.stable-head|border-bottom",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.stable-row|border-bottom",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sticker-card-ic|height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.sticker-card-ic|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.subscribe-modal-identity|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.theme-card.active|border-width",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -3322,12 +3226,6 @@
       },
       {
         "key": "public/css/style.css|.theme-picker|grid-template-columns",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.theme-swatch|height",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -3357,24 +3255,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.transcript-ai-prompt-row.drag-over-after|box-shadow",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.transcript-ai-prompt-row.drag-over-before|box-shadow",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.trash-thumb|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.tv-continue-strip|grid-auto-columns",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -3382,24 +3262,6 @@
       },
       {
         "key": "public/css/style.css|.tv-detail-hero|grid-template-columns",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.tv-episode-code|min-width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.tv-episode-row|border-bottom",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.users-row|border",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -5253,12 +5115,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/stats.js|js-style|border-bottom",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/js/watch.js|js-template-style|padding",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -5424,18 +5280,6 @@
       },
       {
         "key": "public/css/style.css|.bottom-nav|background",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.bottombar-editor-row.drag-over-after|box-shadow",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.bottombar-editor-row.drag-over-before|box-shadow",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
         "added": "2026-09-28"
@@ -5813,18 +5657,6 @@
         "added": "2026-09-28"
       },
       {
-        "key": "public/css/style.css|.drag-handle:focus-visible|outline",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.drag-handle|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
         "key": "public/css/style.css|.duration-badge|background-color",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
@@ -5843,54 +5675,6 @@
         "added": "2026-09-28"
       },
       {
-        "key": "public/css/style.css|.feed-hidden-meta|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.feed-hidden-thumb|border-radius",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.feed-hidden-title|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.field-error|color",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.field-error|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.file-path|font-family",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.folder-item-row.drag-over-after|box-shadow",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.folder-item-row.drag-over-before|box-shadow",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
         "key": "public/css/style.css|.folder-list-builder|border-radius",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
@@ -5898,30 +5682,6 @@
       },
       {
         "key": "public/css/style.css|.folder-path-text|font-family",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.form-group input[type=\"text\"], .form-group input[type=\"password\"], .form-group input[type=\"number\"]|border",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.form-group input[type=\"text\"], .form-group input[type=\"password\"], .form-group input[type=\"number\"]|border-radius",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.form-group input[type=\"text\"], .form-group input[type=\"password\"], .form-group input[type=\"number\"]|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.form-group label|font-size",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
         "added": "2026-09-28"
@@ -6923,24 +6683,6 @@
         "added": "2026-09-28"
       },
       {
-        "key": "public/css/style.css|.remove-folder-btn:hover|color",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.remove-folder-btn|color",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.remove-folder-btn|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
         "key": "public/css/style.css|.resume-overlay h3|font-size",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
@@ -7049,12 +6791,6 @@
         "added": "2026-09-28"
       },
       {
-        "key": "public/css/style.css|.setup-box .setup-select, .setup-box input[type=\"text\"], .setup-box input[type=\"number\"]|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
         "key": "public/css/style.css|.setup-box h2|color",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
@@ -7086,24 +6822,6 @@
       },
       {
         "key": "public/css/style.css|.setup-box|box-shadow",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.setup-select|border",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.setup-select|border-radius",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.setup-select|font-size",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
         "added": "2026-09-28"
@@ -7331,55 +7049,7 @@
         "added": "2026-09-28"
       },
       {
-        "key": "public/css/style.css|.stable-delete-btn.stable-delete-armed|background-color",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.stable-delete-btn:focus-visible|color",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.stable-delete-btn:hover|color",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.stable-delete-btn|border-radius",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.stable-delete-confirm|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
         "key": "public/css/style.css|.stable-more|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.stable-th[aria-sort=\"ascending\"]::after|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.stable-th[aria-sort=\"descending\"]::after|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.stable-th|font-size",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
         "added": "2026-09-28"
@@ -7392,12 +7062,6 @@
       },
       {
         "key": "public/css/style.css|.stats-meta-text|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.sticker-card-emoji|font-size",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
         "added": "2026-09-28"
@@ -7469,12 +7133,6 @@
         "added": "2026-09-28"
       },
       {
-        "key": "public/css/style.css|.theme-card.active|border-color",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
         "key": "public/css/style.css|.theme-card|border",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
@@ -7482,12 +7140,6 @@
       },
       {
         "key": "public/css/style.css|.theme-card|border-radius",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.theme-swatch|border-radius",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
         "added": "2026-09-28"
@@ -7511,30 +7163,6 @@
         "added": "2026-09-28"
       },
       {
-        "key": "public/css/style.css|.transcript-ai-prompt-row.drag-over-after|box-shadow",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.transcript-ai-prompt-row.drag-over-before|box-shadow",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.trash-meta|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.trash-thumb|border-radius",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
         "key": "public/css/style.css|.trash-title|font-size",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
@@ -7547,25 +7175,7 @@
         "added": "2026-09-28"
       },
       {
-        "key": "public/css/style.css|.tv-back|color",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.tv-back|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
         "key": "public/css/style.css|.tv-continue-ep|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.tv-continue-fill|background",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
         "added": "2026-09-28"
@@ -7601,55 +7211,7 @@
         "added": "2026-09-28"
       },
       {
-        "key": "public/css/style.css|.tv-episode-code|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.tv-episode-dur|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.tv-episode-title|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.tv-player-wrap|border-radius",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
         "key": "public/css/style.css|.tv-season-label|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.users-cap-badge|border-radius",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.users-cap-badge|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.users-row-meta|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.users-row|border-radius",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
         "added": "2026-09-28"
@@ -8165,18 +7727,6 @@
         "added": "2026-09-28"
       },
       {
-        "key": "public/js/stats.js|js-style|color",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/js/stats.js|js|--yt-red",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
         "key": "public/js/watch.js|js-style|color",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
@@ -8197,32 +7747,14 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".account-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".books-home-row",
         "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
       {
-        "key": ".bottombar-editor-row",
-        "count": 4,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".btn",
-        "count": 30,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".card-corner-editor-row",
-        "count": 1,
+        "count": 26,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -8299,12 +7831,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".dup-copy-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".duration-badge",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -8313,24 +7839,6 @@
       {
         "key": ".expand-description-btn",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".feed-hidden-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".feed-hidden-thumb",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".folder-item-row",
-        "count": 5,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -8605,12 +8113,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".remove-folder-btn",
-        "count": 3,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".reorder-row",
         "count": 3,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -8647,12 +8149,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".setup-select",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".shortcuts-modal",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -8660,12 +8156,6 @@
       },
       {
         "key": ".shortcuts-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".show-card",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -8707,110 +8197,14 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".stable-delete-btn",
-        "count": 4,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".stable-expand-btn",
-        "count": 3,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".stable-row",
-        "count": 4,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".stable-th",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".sticker-emoji-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".sticker-opt-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".subscribe-modal-checkbox-row",
         "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
       {
-        "key": ".theme-card",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".track-nav-btn",
         "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".transcript-ai-prompt-row",
-        "count": 4,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".trash-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".trash-thumb",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".tv-back",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".tv-continue-card",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".tv-continue-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".tv-episode-row",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".users-cap-badge",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".users-row",
-        "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -9007,12 +8401,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/common.js|createElement(button)|th",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/js/diag-page.js|createElement(button)|b",
         "count": 1,
         "reason": "diag.html's <style> and page script (D10.4 carve-out): the admin diagnostics page",
@@ -9169,18 +8557,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/setup.js|<button>|theme-card",
-        "count": 3,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/setup.js|<button>|theme-card${}",
-        "count": 3,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/js/skin-surface.js|<button>|mms-sm-act",
         "count": 12,
         "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
@@ -9229,42 +8605,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/stats.js|createElement(button)|btn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/stats.js|createElement(button)|toggle",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/tv.js|<button>|show-card",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/tv.js|<button>|tv-back",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/tv.js|<button>|tv-continue-card",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/tv.js|<button>|tv-episode-row",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/music.html|<button>|pc-btn",
         "count": 9,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -9295,20 +8635,8 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/stats.html|<button>|btn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/stats.html|<button>|pc-btn",
         "count": 9,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/tv.html|<button>|btn",
-        "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -9495,18 +8823,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/setup.js|glyph|U+2192",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/tv.js|glyph|U+2190",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/music.html|<svg>",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -9586,12 +8902,6 @@
       },
       {
         "key": "public/setup.html|glyph|U+00D7",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/setup.html|glyph|U+2192",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -9834,12 +9144,6 @@
         "count": 22,
         "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/stats.js|style.display",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
       }
     ],
     "colour-roles": [
@@ -9868,37 +9172,7 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.drag-handle:focus-visible|outline",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.remove-folder-btn:hover|color",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.speed-menu-item.active|color",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.stable-delete-btn:focus-visible|color",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.stable-delete-btn:hover|color",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.theme-card.active|border-color",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"

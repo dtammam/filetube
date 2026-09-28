@@ -13,9 +13,9 @@ const path = require('node:path');
 const { buildSetupFolderSkeleton } = require('../../public/js/setup.js');
 const { buildPodcastShowSkeleton } = require('../../public/js/podcasts.js');
 
-test('buildSetupFolderSkeleton: N shape-matched .folder-item-row shimmer rows, all aria-hidden', () => {
+test('buildSetupFolderSkeleton: N shape-matched .folder-item shimmer cards, all aria-hidden', () => {
   const html = buildSetupFolderSkeleton(3);
-  assert.strictEqual((html.match(/class="folder-item-row"/g) || []).length, 3, 'one skeleton per requested row');
+  assert.strictEqual((html.match(/class="folder-item"/g) || []).length, 3, 'one skeleton per requested row');
   assert.strictEqual((html.match(/aria-hidden="true"/g) || []).length, 3, 'every skeleton row is aria-hidden');
   assert.match(html, /skeleton-shimmer/, 'uses the shared shimmer primitive');
   assert.match(html, /skeleton-line-title/, 'has a title bar (mirrors the real folder-path row)');

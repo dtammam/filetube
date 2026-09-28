@@ -66,9 +66,15 @@ test('a BASE `select` element rule exists and carries the full tokened control s
   }
 });
 
-test('the base select rule mirrors .setup-select (the settings pattern it was lifted from)', () => {
-  assert.deepStrictEqual(declarations(STYLE_CSS, 'select'), declarations(STYLE_CSS, '.setup-select'),
-    'base select and .setup-select must not drift apart');
+// Retire R3 (DELIBERATE conversion): the base rule was lifted from .setup-select and locked
+// declaration-identical to it so the two could not drift. The .setup-select class is retired
+// with its last select (every select is a ui-select__native now), so there is no twin left to
+// drift from: the lock pins that the retired rule stays gone rather than comparing to it.
+test('the base select rule stands alone: its .setup-select twin is retired (no rule, no markup)', () => {
+  const stripped = STYLE_CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.ok(!/\.setup-select\b/.test(stripped), 'no .setup-select rule survives');
+  const subs = fs.readFileSync(path.join(REPO, 'lib', 'ytdlp', 'client', 'subscriptions.js'), 'utf8');
+  assert.ok(!/'setup-select'/.test(subs), 'the Subscriptions select builders no longer default to it');
 });
 
 // ---- the queue and notification panels: ONE primitive (sweep S4) ------------

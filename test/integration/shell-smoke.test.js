@@ -411,8 +411,9 @@ test('shell smoke: setup.html loads with zero uncaught errors and the setup view
     const iconPicker = result.dom.window.document.getElementById('icon-picker');
     assert.ok(themePicker, 'expected #theme-picker to exist');
     assert.ok(iconPicker, 'expected #icon-picker to exist');
-    assert.match(themePicker.innerHTML, /theme-card/, 'expected renderThemePicker() to have synchronously rendered theme cards');
-    assert.match(iconPicker.innerHTML, /theme-card/, 'expected renderIconPicker() to have synchronously rendered icon-set cards');
+    // retire R3: the pickers render radio rows (setup.js choiceRowHtml), no longer theme cards
+    assert.match(themePicker.innerHTML, /class="ui-row ui-row--default setup-choice" role="radio"/, 'expected renderThemePicker() to have synchronously rendered the era rows');
+    assert.match(iconPicker.innerHTML, /class="ui-row ui-row--default setup-choice" role="radio"/, 'expected renderIconPicker() to have synchronously rendered the icon-set rows');
   } finally {
     result.dom.window.close();
   }

@@ -120,25 +120,27 @@ test('one-off download modal / Subscribe modal: .oneoff-modal-row select (format
   assert.ok(resolveFontSizePx(fontMatch[1]) >= 16);
 });
 
-test('Settings form: .setup-box .setup-select / input[type="text"|"number"] are >=16px on mobile (also reaches the Subscriptions page\'s own .setup-select fields)', () => {
-  // NOTE: the same 3-selector group appears TWICE in this mobile block --
-  // once for the pre-existing `min-height: 44px` tap-target rule, once for
-  // the NEW font-size rule -- so match the font-size occurrence specifically
-  // (a bare `ruleRe.exec(block)` would find the first, min-height, match).
-  const block = findMobileBlockContaining('.setup-box .setup-select,\n  .setup-box input[type="text"],\n  .setup-box input[type="number"] {\n    font-size: var(--fs-input-min);');
-  assert.ok(block, 'expected to find the @media (max-width: 768px) block containing the .setup-box font-size rule');
-  const occurrences = block.match(/\.setup-box \.setup-select,\s*\n\s*\.setup-box input\[type="text"\],\s*\n\s*\.setup-box input\[type="number"\]\s*\{([^}]*)\}/g) || [];
-  assert.strictEqual(occurrences.length, 2, 'expected the .setup-box .setup-select/input group to appear twice (min-height rule + font-size rule)');
-  const fontSizeOccurrence = occurrences.find((o) => /font-size:\s*var\(--fs-input-min\);/.test(o));
-  assert.ok(fontSizeOccurrence, 'expected one of the two occurrences to carry font-size: var(--fs-input-min)');
-});
-
-test('Settings form fix does not touch .setup-box .btn (buttons never trigger iOS zoom-on-focus)', () => {
-  const block = findMobileBlockContaining('.setup-box .setup-select,\n  .setup-box input[type="text"],\n  .setup-box input[type="number"] {\n    font-size: var(--fs-input-min);');
-  assert.ok(block);
-  // A rule of exactly these 3 selectors (no .setup-box .btn) carrying the
-  // font-size bump confirms .btn was deliberately left out.
-  assert.match(block, /\.setup-box \.setup-select,\s*\n\s*\.setup-box input\[type="text"\],\s*\n\s*\.setup-box input\[type="number"\]\s*\{\s*font-size:\s*var\(--fs-input-min\);\s*\}/);
+// Retire R3 (DELIBERATE conversion of the two v1.25.4 `.setup-box .setup-select / input`
+// locks): that mobile 16px rule is gone because nothing needs it - the `.setup-select` class is
+// rendered nowhere any more (the Subscriptions builders' last default became ui-select__native),
+// and every Settings text field is a ui-field input, 16px at EVERY width in ui.css (the census
+// below holds that for every classed control). This pins both halves so the old rule's reason
+// cannot quietly come back.
+test('Settings form: no field wears the retired .setup-select, and every Settings text field is a 16px ui field', () => {
+  const read = (rel) => fs.readFileSync(path.join(__dirname, '..', '..', rel), 'utf8');
+  const strip = (t) => t.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"\\])\/\/.*$/gm, '$1');
+  for (const rel of ['public/setup.html', 'public/stats.html', 'public/js/setup.js', 'public/js/stats.js', 'lib/ytdlp/views/subscriptions.html', 'lib/ytdlp/client/subscriptions.js']) {
+    assert.doesNotMatch(strip(read(rel)), /setup-select/, `${rel}: no .setup-select field`);
+  }
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.setup-select\b/, 'and no rule styles one');
+  const setupHtml = read('public/setup.html');
+  const viewRoot = setupHtml.slice(setupHtml.indexOf('<div id="view-root"'));
+  const fields = [...viewRoot.matchAll(/<input\b([^>]*)>/g)].map((m) => m[1])
+    .filter((a) => /\btype="(text|number|password|search|url|email)"/.test(a));
+  assert.ok(fields.length >= 5, 'precondition: the Settings text fields are seen (' + fields.length + ')');
+  for (const a of fields) assert.match(a, /class="[^"]*\bui-field__input\b/, `a Settings text field is a ui field: <input${a}>`);
+  const uiCss = require('../helpers/stylesheets').readUiCss().replace(/\/\*[\s\S]*?\*\//g, '');
+  assert.match(uiCss, /\n\.ui-field__input,\s*\n\.ui-select__native \{[^}]*font:\s*var\(--fw-normal\) var\(--fs-input-min\)/, 'the ui field is 16px at every width');
 });
 
 test('per-subscription settings sheet + the Subscriptions forms: ui-field / ui-select fields are 16px at EVERY width (UI pass S5)', () => {
@@ -173,7 +175,7 @@ test('header search: .search-input is >=16px on mobile (v1.25.10 -- tapping sear
   );
 });
 
-test('desktop sizing is unchanged: the base (unscoped) .oneoff-modal-field/.oneoff-modal-row select/.setup-select rules still resolve to 13px', () => {
+test('desktop sizing is unchanged: the base (unscoped) .oneoff-modal-field/.oneoff-modal-row select rules still resolve to 13px', () => {
   const oneOffField = /(?:^|\n)\.oneoff-modal-field\s*\{([^}]*)\}/.exec(css);
   assert.ok(oneOffField);
   assert.strictEqual(resolveFontSizePx(/font-size:\s*([^;]+);/.exec(oneOffField[1])[1]), 13);
@@ -182,10 +184,7 @@ test('desktop sizing is unchanged: the base (unscoped) .oneoff-modal-field/.oneo
   assert.ok(oneOffSelect);
   assert.strictEqual(resolveFontSizePx(/font-size:\s*([^;]+);/.exec(oneOffSelect[1])[1]), 13);
 
-  const setupSelect = /(?:^|\n)\.setup-select\s*\{([^}]*)\}/.exec(css);
-  assert.ok(setupSelect);
-  assert.strictEqual(resolveFontSizePx(/font-size:\s*([^;]+);/.exec(setupSelect[1])[1]), 13);
-
+  // (retire R3: the third member, .setup-select, is retired - see the Settings form test above)
 });
 
 // ---- census: every CLASSED text-entry control in the shells ------------------

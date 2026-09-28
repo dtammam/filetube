@@ -2196,33 +2196,10 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   line-height: var(--lh-relaxed);
 }
 
-.form-group {
-  margin-bottom: var(--space-12);
-}
-
-.form-group label {
-  display: block;
-  font-weight: var(--fw-bold);
-  margin-bottom: var(--space-5);
-  font-size: var(--fs-base);
-}
-
-.form-group input[type="text"],
-.form-group input[type="password"],
-.form-group input[type="number"] {
-  width: 100%;
-  padding: var(--space-5) var(--space-6);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-  font-size: var(--fs-base);
-  background-color: var(--surface-0);
-  color: var(--ink-1);
-  outline: none;
-}
-
 /* v1.68.3 (Dean, on-device): BASE <select> styling - the design language by
    DEFAULT. History: the styled surfaces each did it ad hoc (.btn on the
-   music/books sort selects, .setup-select below, .oneoff-modal-row select -
+   music/books sort selects, a .setup-select class (retired with its last
+   select at step 7), .oneoff-modal-row select -
    itself a fix for selects that "read as bare native controls") and THREE
    surfaces shipped bare because nothing catches a MISSING rule: the v1.67
    card-corner pickers (a class with no CSS behind it), the move-modal
@@ -2233,9 +2210,8 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
    declarations; absence is invisible to every instrument. This
    element-level rule makes the styled path the default - a future select
    is tokened before anyone remembers to class it, and the bug class dies
-   structurally. Specificity 0-0-1: every existing class pattern above
-   still wins wholesale. Declarations mirror .setup-select (the
-   settings-page pattern the corner pickers sit beside). */
+   structurally. Specificity 0-0-1: every class pattern still wins
+   wholesale - since the UI pass every select is a ui-select__native. */
 select {
   padding: var(--space-5) var(--space-6);
   border: 1px solid var(--border-dark);
@@ -2244,25 +2220,6 @@ select {
   background-color: var(--surface-0);
   color: var(--ink-1);
   cursor: pointer;
-}
-
-/* Settings <select> controls (Automation & Storage box) — same visual weight
-   as the text/number inputs above, sized to content rather than full-width. */
-.setup-select {
-  padding: var(--space-5) var(--space-6);
-  border: 1px solid var(--border-dark);
-  border-radius: var(--radius);
-  font-size: var(--fs-base);
-  background-color: var(--surface-0);
-  color: var(--ink-1);
-  cursor: pointer;
-}
-
-.field-error {
-  color: var(--yt-red);
-  font-size: var(--fs-sm);
-  margin-top: var(--space-2);
-  display: none;
 }
 
 /* ---- v1.55 Track C: the ONE action-status treatment ----------------------
@@ -2326,10 +2283,11 @@ select {
 /* ---- v1.55 Track B: the equal-width action bar ---------------------------
    Dean: "the buttons... different sizes. It's not clean" + "apply it on all
    the pages". One grid: every button the same width, wrapping whole-columns
-   on narrow screens. A trigger and its Cancel share one .action-bar-cell so
-   the swap never reflows the row (the appliers hide the trigger while its
-   Cancel is shown). Era tokens come from .btn itself -- this only owns
-   layout. */
+   on narrow screens. A trigger and its Cancel swap in place (the appliers
+   hide the trigger while its Cancel is shown). The look comes from the
+   ui-btn itself -- this only owns layout. Retire R3: the .action-bar-cell
+   wrapper and the .btn members are gone with the last markup that used
+   them (every action-bar child is a ui-btn). */
 .action-bar {
   display: grid;
   /* Capped columns, not 1fr: with auto-fit, a lone button in a wide box
@@ -2340,13 +2298,8 @@ select {
   gap: var(--space-4);
   align-items: stretch;
 }
-.action-bar > .btn,
-.action-bar > .ui-btn,
-.action-bar-cell > .btn {
+.action-bar > .ui-btn {
   width: 100%;
-}
-.action-bar-cell {
-  display: block;
 }
 /* Lock-to-audio phase 1: Setup > Experimental "Background audio timing log"
    (setup.js renderBgTimingLog). Built for a 390-wide phone: six short
@@ -2456,8 +2409,11 @@ select {
    (#folders-builder-list) is unchanged. */
 
 /* Sweep S8: a configured folder is a surface-1 card (the grouped-list ground) holding
-   the handle, the path over its controls (all primitives), and a ui-btn icon Remove. */
-.folder-item-row {
+   the handle, the path over its controls (all primitives), and a ui-btn icon Remove.
+   Retire R3: the video folders' cards wear the ui-reorder primitive (ui.css: the grab
+   cursor, the drag states and the grip); the Books / Music / Shows cards do not reorder,
+   so they no longer show a grab cursor. */
+.folder-item {
   display: flex;
   align-items: flex-start;
   gap: var(--space-6);
@@ -2467,7 +2423,6 @@ select {
   /* v1.76 (Dean): "enough space between the cards" to drop between them - the
      gap is also the drop-indicator's landing strip. */
   margin-bottom: var(--space-4);
-  cursor: grab;
 }
 .folder-item-body {
   flex: 1 1 0;
@@ -2506,7 +2461,7 @@ select {
   color: var(--ink-2);
 }
 
-.folder-item-row:last-child {
+.folder-item:last-child {
   margin-bottom: 0;
 }
 
@@ -2534,71 +2489,15 @@ select {
   -webkit-user-drag: none;
 }
 
-/* The wave's headline surface had NO drag feedback at all (QA gate W3): on a
-   phone the row simply jumped after the finger lifted, which reads as "it
-   still doesn't work" - the very report that started this wave. Mirrors
-   `.folder-item-row`'s indicators below, existing tokens only. */
-.bottombar-editor-row.dragging {
-  opacity: 0.5;
-}
-
-.bottombar-editor-row.drag-over-before {
-  box-shadow: inset 0 2px 0 0 var(--yt-red);
-}
-
-.bottombar-editor-row.drag-over-after {
-  box-shadow: inset 0 -2px 0 0 var(--yt-red);
-}
-
 .reorder-dragging,
 .reorder-dragging .reorder-row {
   cursor: grabbing;
 }
 
-/* Item 1 (v1.15.0): Setup folder-list drag-and-drop reordering. v1.76: no
-   longer native HTML5 DnD and no longer a progressive enhancement over
-   up/down buttons -- the buttons are gone and the handle IS the control
-   (pointer drag on any device, plus arrow-key reorder when focused). The
-   dragged row dims; the row currently under the pointer shows a
-   drop-indicator line matching the half (top/bottom) that will actually be
-   used on drop (see computeDropIndex in public/js/common.js). Era-theme
-   tokens only. */
-.drag-handle {
-  flex-shrink: 0;
-  width: 16px;
-  color: var(--ink-2);
-  font-size: var(--fs-md);
-  line-height: 1; /* token-exempt: glyph centering */
-  letter-spacing: -2px; /* token-exempt: era display styling */
-  cursor: grab;
-  /* The handle is the no-long-press door onto a touch drag: taking the
-     touch-action here (and ONLY here) is what lets a press on the handle arm
-     immediately without stealing the list's scroll everywhere else. */
-  touch-action: none;
-}
-
-/* A keyboard user's only reorder affordance now that the arrows are gone --
-   it must show focus. */
-.drag-handle:focus-visible {
-  outline: 2px solid var(--yt-red);
-  outline-offset: 2px;
-}
-
-.drag-handle::before {
-  content: "\22EE\22EE";
-}
-
-.folder-item-row.dragging {
-  opacity: 0.5;
-}
-
-.folder-item-row.drag-over-before {
-  box-shadow: inset 0 2px 0 0 var(--yt-red);
-}
-
-.folder-item-row.drag-over-after {
-  box-shadow: inset 0 -2px 0 0 var(--yt-red);
-}
+/* Item 1 (v1.15.0) -> v1.76 -> retire R3: the Settings reorder lists (the video
+   folders, the bottom bar editor, the Share with AI prompts) show the drag, and draw
+   their grip, through the ui-reorder primitive (ui.css) - one family for every list
+   instead of a copy per surface. The sidebar's own rows keep theirs. */
 
 .folder-path-text {
   font: var(--t-meta);
@@ -2607,34 +2506,9 @@ select {
   word-break: break-all;
 }
 
-.file-path {
-  font-family: var(--mono-font);
-  overflow-wrap: anywhere; /* long underscored paths (no spaces) must break, not overflow */
-}
-
 /* v1.26.2 -> sweep S8: `.folder-name-input` carries `ui-field__input` now, whose 16px
    (--fs-input-min) holds at EVERY width - the iOS zoom-on-focus floor no longer needs a
    mobile override, and no class rule here may shrink it (mobile-input-zoom census). */
-
-.remove-folder-btn {
-  background: none;
-  border: none;
-  color: var(--yt-red);
-  cursor: pointer;
-  font-weight: var(--fw-bold);
-  font-size: var(--fs-xl);
-}
-
-@media (hover: hover) {
-  .remove-folder-btn:hover {
-    color: var(--yt-red-dark);
-  }
-}
-
-.remove-folder-btn:disabled {
-  cursor: default;
-  opacity: 0.5;
-}
 
 .empty-folders-msg {
   padding: var(--space-6) var(--inset);
@@ -2642,7 +2516,9 @@ select {
   color: var(--ink-2);
 }
 
-/* Appearance (era theme) picker — setup.html */
+/* The Stats tiles (stats.js buildStatTile: a big value over a muted caption, in a grid).
+   Retire R3: the Settings Appearance pickers that shared these classes are grouped ui-lists
+   now (below), so a tile is display-only - no pointer cursor and no picked state. */
 .theme-picker {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
@@ -2657,29 +2533,33 @@ select {
   background-color: var(--surface-1);
   border: 1px solid var(--border-dark);
   border-radius: var(--radius);
-  cursor: pointer;
   color: var(--ink-1);
 }
-.theme-card.active { border-color: var(--yt-red); border-width: 2px; }
-.theme-swatch { display: flex; height: 20px; border-radius: var(--radius); overflow: hidden; }
-.theme-swatch span { flex: 1; background: var(--swatch, var(--thumb-ground)); } /* --swatch: the era's colour as data (setup.js) */
 .theme-card-name { font-weight: var(--fw-bold); font-size: var(--fs-base); }
-.theme-card-year { color: var(--ink-2); font-weight: normal; }
 .theme-card-blurb { font-size: var(--fs-xs); color: var(--ink-2); }
-/* v1.238: the player-sticker icon picker (Settings > Appearance). Reuses .theme-card for
-   the option cards; these add the icon preview + the emoji/upload rows. */
-.sticker-cards { display: flex; flex-wrap: wrap; gap: var(--space-6); }
-.sticker-card { flex-direction: row; align-items: center; gap: var(--space-4); min-width: 0; }
-.sticker-card-ic { width: 40px; height: 40px; flex: none; display: grid; place-items: center; }
+/* Retire R3: the Appearance choice lists (setup.js choiceRowHtml - era, icon set, Music
+   skin) are grouped ui-lists of radio rows with a trailing check. A blurb wraps rather than
+   truncating (it is the only description the option has), and the era's two-colour swatch
+   fills the media column the list declares. */
+.setup-choice-list .ui-row__meta { white-space: normal; }
+.theme-swatch { display: flex; width: 100%; height: var(--icon-md); border-radius: var(--r-xs); overflow: hidden; }
+.theme-swatch span { flex: 1; background: var(--swatch, var(--thumb-ground)); } /* --swatch: the era's colour as data (setup.js) */
+.theme-choice-year { color: var(--ink-2); }
+/* v1.238 -> retire R3: the player-sticker picker (Settings > Appearance). Every option is
+   a ui-chip filter (the picked one wears the chip's selected fill); the logo and your image
+   show a small preview before their name, an emoji preset is the emoji. */
+.sticker-cards { display: flex; flex-wrap: wrap; gap: var(--space-4); }
+.sticker-card { gap: var(--space-3); }
+.sticker-card-ic { width: var(--icon-md); height: var(--icon-md); flex: none; display: grid; place-items: center; }
 .sticker-card-ic img { width: 100%; height: 100%; object-fit: contain; }
-.sticker-card-emoji { font-size: var(--fs-2xl); }
+.sticker-card-emoji { font: var(--t-title); }
 /* Sweep S8: the emoji field + Use button, the Upload/Remove bar, and the Size / Tilt
-   ui.segmented rows - primitives inside; only the layout lives here. */
+   ui.segmented lines - primitives inside; only the layout lives here. */
 .sticker-picker { display: grid; gap: var(--space-6); }
-.sticker-emoji-row { display: flex; align-items: center; gap: var(--space-4); }
-.sticker-emoji-row > .ui-field__input { flex: 1 1 0; min-width: 0; }
-.sticker-emoji-row > .ui-btn { flex: none; }
-.sticker-opt-row { display: flex; align-items: center; justify-content: space-between; gap: var(--space-6); padding: 0 var(--inset); }
+.sticker-emoji-bar { display: flex; align-items: center; gap: var(--space-4); }
+.sticker-emoji-bar > .ui-field__input { flex: 1 1 0; min-width: 0; }
+.sticker-emoji-bar > .ui-btn { flex: none; }
+.sticker-opt { display: flex; align-items: center; justify-content: space-between; gap: var(--space-6); padding: 0 var(--inset); }
 /* Tokens Phase 1 Tier 1: the stats glance-tile value, moved out of
    JS-applied styles (buildStatTile). 22px == var(--fs-4xl). */
 .stat-tile-value { font-size: var(--fs-4xl); }
@@ -2692,6 +2572,33 @@ select {
 .stats-meta-text {
   color: var(--ink-2);
   font-size: var(--fs-sm);
+}
+/* Retire R3: the Stats About / Under the hood lines (stats.js buildAboutRow: a bold label,
+   its value trailing) and the repo links under About - they were inline cssText. A
+   skeleton line (buildStatsSkeletonRow) is the same box with two shimmer bars. */
+.stats-kv {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-4) var(--space-2);
+  border-bottom: var(--hairline) solid var(--separator);
+}
+.stats-kv__label { font-weight: var(--fw-bold); }
+.stats-kv__value { flex-shrink: 0; color: var(--ink-2); }
+.stats-kv--skeleton > .skeleton-line { margin: 0; }
+.stats-kv--skeleton > .stats-kv__label { width: 40%; }
+.stats-kv--skeleton > .stats-kv__value { width: 25%; }
+.stats-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-8);
+  padding: var(--space-6) var(--space-2) var(--space-2);
+}
+.stats-link {
+  color: var(--accent);
+  font-weight: var(--fw-bold);
+  text-decoration: none;
 }
 
 /* Sweep S9 (D4.6, F30): every dialog is a ui.sheet - the generic .modal-backdrop /
@@ -2741,7 +2648,7 @@ select {
   gap: var(--space-6);
   margin: var(--space-6) 0;
 }
-.transcript-ai-prompt-row {
+.transcript-ai-prompt {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -2754,18 +2661,8 @@ select {
   align-items: center;
   gap: var(--space-4);
 }
-/* v1.202: the reorder drag family - UNSCOPED selectors, exactly the rule
-   the reorder census locks (a container-scoped rule for one surface would
-   stand in for another that shares the class). */
-.transcript-ai-prompt-row.dragging {
-  opacity: 0.5;
-}
-.transcript-ai-prompt-row.drag-over-before {
-  box-shadow: inset 0 2px 0 0 var(--yt-red);
-}
-.transcript-ai-prompt-row.drag-over-after {
-  box-shadow: inset 0 -2px 0 0 var(--yt-red);
-}
+/* v1.202 -> retire R3: the prompt card wears the ui-reorder primitive (ui.css), which
+   draws the drag states the reorder census locks. */
 /* sweep S8: both fields are ui-field__input (16px, surface-2, the focus ring); the name
    flexes in its head row, the textarea grows past the input's one-line height */
 .transcript-ai-prompt-name {
@@ -2781,44 +2678,9 @@ select {
 }
 
 /* v1.97.1 "Hidden" settings-page section (setup.js renderFeedHiddenSection) -
-   the feed-hide restore list, mirroring the Trash section's row layout. The
-   settings page scrolls naturally, so no internal max-height/overflow (the
-   account-menu modal's no-scroll limitation is exactly what this move fixes). */
-.feed-hidden-list {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  margin-top: var(--space-6);
-}
-.feed-hidden-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-}
-.feed-hidden-thumb {
-  width: 84px;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  border-radius: var(--radius);
-  background-color: var(--surface-2);
-  flex: 0 0 auto;
-}
-.feed-hidden-info {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-.feed-hidden-title {
-  color: var(--ink-1);
-  font-size: var(--fs-md);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.feed-hidden-meta {
-  color: var(--ink-2);
-  font-size: var(--fs-sm);
-}
-.feed-hidden-row .btn { flex: 0 0 auto; }
+   the feed-hide restore list. Retire R3: a grouped ui-list of media rows (ui.css owns
+   the row, the ui-thumb and the Restore slot); only the empty line lives here. The
+   settings page scrolls naturally, so no internal max-height/overflow. */
 .feed-hidden-empty {
   color: var(--ink-2);
   padding: var(--space-6) 0;
@@ -3808,44 +3670,12 @@ select {
     padding: var(--space-10) var(--space-8);
   }
 
-  .form-group {
-    margin-bottom: var(--space-10);
-  }
-
-  /* Every control a user taps on these two pages gets a comfortable minimum
-     tap-target height on a phone -- scoped to .setup-box so it never affects
-     buttons/selects elsewhere in the app (e.g. the header/player controls). */
-  .setup-box .btn,
-  .setup-box .setup-select,
-  .setup-box input[type="text"],
-  .setup-box input[type="number"] {
-    min-height: var(--size-touch);
-  }
-
-  /* v1.25.4 polish (on-device iOS PWA): same 16px-floor fix as the one-off/
-     subscribe modal above -- these were 13px (`.setup-select`, `.form-group
-     input[type="text"|"number"]`), so focusing any of them auto-zoomed the
-     page on iOS Safari. `.setup-box .setup-select` also reaches the
-     Subscriptions page's format/quality/filetype selects (the "Add a
-     subscription"/one-shot rows there use `class="setup-box sub-collapsible"`
-     and share this same `.setup-select` class -- see
-     lib/ytdlp/views/subscriptions.html) even though this stylesheet edit
-     doesn't touch that file. Excludes `.setup-box .btn` (buttons never
-     trigger iOS's zoom-on-focus, only text-entry controls do). */
-  .setup-box .setup-select,
-  .setup-box input[type="text"],
-  .setup-box input[type="number"] {
-    font-size: var(--fs-input-min);
-  }
-
-  /* The add-subscription/one-shot rows (URL + several selects + a button)
-     already `flex-wrap: wrap` inline in subscriptions.html -- give the
-     wrapped controls room to breathe and let the button take the full row
-     width once it wraps onto its own line, rather than sitting cramped next
-     to the last select. */
-  .setup-box .form-group > div[style*="flex"] {
-    row-gap: var(--space-5);
-  }
+  /* v1.13.0 / v1.25.4 -> retire R3: the .setup-box tap-target (44px) and 16px iOS
+     no-zoom rules for its .btn / .setup-select / .form-group / text inputs are gone
+     with the last markup that needed them: every Settings / Stats button is a
+     ui-btn, every select a ui-select, and every text field a ui-field input, which
+     is 44px tall and 16px at every width on its own (ui.css; the zoom census in
+     test/unit/mobile-input-zoom-fontsize.test.js holds it). */
 
 
   /* ---- v1.15.0 item 2: home-page sort-row overflow fix -----------------
@@ -7978,14 +7808,8 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 
 /* ---- v1.43: Settings Account + Users (chunk 4c) --------------------------
    Markup lives inside setup.html's #view-root; styles here per the v1.41.8
-   SPA-swap lesson (never page-local <head> styles). */
-.account-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-6);
-  flex-wrap: wrap;
-}
+   SPA-swap lesson (never page-local <head> styles). Retire R3: the Account lines are
+   the section's .setup-inline layout (a .setup-value label, then the ui-btns). */
 #account-chip {
   font-size: var(--fs-md);
   color: var(--ink-1);
@@ -7997,29 +7821,14 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   gap: var(--space-4);
   margin-bottom: var(--space-12);
 }
-.users-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-5);
+/* v1.159: the Users list is a sortable table (buildSortableTable); a row's admin actions
+   wrap in its actions cell, and the Role cell sets the role word beside its capability
+   tags (ui-chip meta, setup.js buildUserRoleCell). */
+.users-role-cell {
+  display: inline-flex;
   flex-wrap: wrap;
-  border: 1px solid var(--separator);
-  border-radius: var(--radius);
-  padding: var(--space-5) var(--space-6);
-  /* Pre-existing since v1.43 (found by the v1.70 undefined-token sweep):
-     --bg-primary has never existed, so this row has been background-less
-     all along - visible only as a missing panel fill behind the border. */
-  background: var(--surface-1);
-}
-.users-row-who {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  min-width: 0;
-}
-.users-row-meta {
-  font-size: var(--fs-sm);
-  color: var(--ink-2);
+  align-items: baseline;
+  column-gap: var(--space-3);
 }
 .users-row-actions {
   display: flex;
@@ -8323,26 +8132,32 @@ html.is-phone #music-popout-btn { display: none; }
 /* ===== v1.195 TV Shows ("Shows") - poster grid -> show detail -> episode list ===== */
 .tv-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); }
 .tv-crumb { margin-bottom: var(--space-4); }
-.tv-back { background: transparent; border: none; color: var(--text-link); cursor: pointer; font-size: var(--fs-base); padding: var(--space-2) 0; }
 /* v1.196: the watch-page "back to show" link for an episode. */
 .tv-back-to-show { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--ink-link); text-decoration: none; font: var(--t-body); margin-bottom: var(--space-3); }
 .show-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: var(--space-8); }
-.show-card { display: flex; flex-direction: column; min-width: 0; gap: var(--space-2); padding: 0; border: none; background: transparent; text-align: left; cursor: pointer; color: inherit; }
+/* Retire R3: a show card and a Continue card are links (tv.js), not bespoke buttons: no
+   underline in any era (the 2005 rule underlines every <a>; the [data-theme] prefix
+   outranks it) and the text keeps the card's ink. */
+.show-card { display: flex; flex-direction: column; min-width: 0; gap: var(--space-2); color: inherit; }
+[data-theme] a.show-card,
+[data-theme] a.tv-continue-card,
+a.show-card,
+a.tv-continue-card { text-decoration: none; }
 .show-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-lg); background: var(--thumbnail-bg); object-fit: cover; display: block; box-shadow: var(--shadow); transition: box-shadow var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui); }
 @media (hover: hover) {
   .show-card:hover .show-poster { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
 }
 .show-card-title { font-size: var(--fs-base); font-weight: var(--fw-semibold); color: var(--ink-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .show-card-meta { font-size: var(--fs-sm); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* v1.196: the Shows-home Continue-Watching row (horizontal poster strip). */
-.tv-continue-row { margin-bottom: var(--space-6); }
+/* v1.196: the Shows-home Continue-Watching shelf (horizontal poster strip). */
+.tv-continue { margin-bottom: var(--space-6); }
 .tv-continue-heading { font-size: var(--fs-lg); color: var(--ink-1); margin-bottom: var(--space-3); }
 .tv-continue-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(140px, 1fr); gap: var(--space-4); overflow-x: auto; padding-bottom: var(--space-2); }
-.tv-continue-card { min-width: 0; background: transparent; border: none; cursor: pointer; text-align: left; color: inherit; display: flex; flex-direction: column; gap: var(--space-1); padding: 0; }
+.tv-continue-card { min-width: 0; color: inherit; display: flex; flex-direction: column; gap: var(--space-1); }
 .tv-continue-poster-wrap { position: relative; display: block; }
 .tv-continue-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-lg); background: var(--thumbnail-bg); object-fit: cover; display: block; }
 .tv-continue-bar { position: absolute; left: 0; right: 0; bottom: 0; height: var(--space-1); background: var(--separator); }
-.tv-continue-fill { display: block; height: 100%; background: var(--yt-red); }
+.tv-continue-fill { display: block; height: 100%; background: var(--progress); }
 .tv-continue-show { font-size: var(--fs-sm); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tv-continue-ep { font-size: var(--fs-sm); font-weight: var(--fw-semibold); color: var(--ink-1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tv-detail-title { font-size: var(--fs-xl); margin-bottom: var(--space-4); }
@@ -8354,16 +8169,13 @@ html.is-phone #music-popout-btn { display: none; }
 .tv-detail-hero-main .tv-detail-title { margin-bottom: 0; }
 .tv-season { margin-bottom: var(--space-6); }
 .tv-season-label { font-size: var(--fs-lg); color: var(--ink-1); margin-bottom: var(--space-3); }
-.tv-episode-list { display: flex; flex-direction: column; }
-.tv-episode-row { display: flex; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-2); border: none; background: transparent; border-bottom: 1px solid var(--separator); text-align: left; cursor: pointer; color: inherit; width: 100%; }
-@media (hover: hover) {
-  .tv-episode-row:hover { background: var(--thumbnail-bg); }
-}
-.tv-episode-code { font-size: var(--fs-sm); color: var(--ink-2); font-weight: var(--fw-semibold); flex-shrink: 0; min-width: 56px; }
-.tv-episode-title { flex: 1; min-width: 0; font-size: var(--fs-base); color: var(--ink-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tv-episode-dur { font-size: var(--fs-sm); color: var(--ink-2); flex-shrink: 0; }
-.tv-player-wrap { margin-bottom: var(--space-5); background: var(--thumbnail-bg); border-radius: var(--radius-lg); overflow: hidden; }
-.tv-player-video { width: 100%; max-height: 70vh; display: block; background: var(--thumbnail-bg); }
+/* Retire R3: a season's episodes are a ui-list of whole-row links (tv.js buildEpisodeRowHtml):
+   the SxxEyy code is the overline, the title the row title (one line), the length the aside
+   column this list sizes wide enough for an H:MM:SS. ui.css owns the row, its press / hover
+   tint and its divider. */
+.tv-episode-list { --row-aside: calc(var(--hit) + var(--space-4)); --aside-gap: var(--space-4); }
+.tv-episode-list .ui-row__title { -webkit-line-clamp: 1; }
+.tv-episode-list .ui-row__aside { font-variant-numeric: tabular-nums; }
 
 /* UI pass S7: a song list is a ui-list of ui-rows (music.js SONG_LIST_OPEN / buildSongRowHtml);
    the row grid, dividers, art box and action slots are ui.css's. Music's own: one title line,
@@ -9753,59 +9565,22 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
 /* v1.44 T12: a bottom-nav item hidden by the user's bar customization is hidden by ui.css's
    one global [hidden]{display:none!important} rule (sweep S1 deleted this family's own patch). */
 
-/* The Settings bottom-bar editor rows (toggle + up/down reorder). */
-/* v1.67 -> sweep S8: the editor-row family (the card-corner editor that owned it is
-   retired with the card corners, D8.5; the Library-icon editor keeps it): a grouped
-   surface-1 list, label left, a ui-select right, inset hairlines. */
-.card-corner-editor {
-  border-radius: var(--r-md);
-  background-color: var(--surface-1);
-  overflow: hidden;
+/* Retire R3: the Library-icon editor and the bottom bar editor are grouped ui-lists of
+   ui-rows (ui.css owns the rows, their dividers and the group surface); these rules only
+   size the columns each list declares - the Library entry's select takes the aside (half
+   the row, as the editor's select always did), the bar item's grip the media column. */
+.library-glyph-editor {
+  --row-aside: 50%;
+  --aside-gap: var(--space-6);
 }
-.card-corner-editor-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  min-height: var(--row-default);
-  padding: var(--space-3) var(--space-4) var(--space-3) var(--inset);
-  background-image: linear-gradient(var(--separator), var(--separator));
-  background-repeat: no-repeat;
-  background-position: right bottom;
-  background-size: calc(100% - var(--inset)) var(--hairline);
+.library-glyph-editor .ui-row__aside > .ui-select {
+  flex: 1 1 auto;
+  min-width: 0;
 }
-.card-corner-editor > :last-child { background-image: none; }
-.card-corner-editor-row .card-corner-editor-label {
-  flex: 1;
-  font: var(--t-body);
-  color: var(--ink-1);
-}
-.card-corner-editor-row > .ui-select {
-  width: 50%;
-}
-
-/* sweep S8: the bar editor is a grouped surface-1 list (handle, label, a trailing switch) */
 .bottombar-editor {
-  border-radius: var(--r-md);
-  background-color: var(--surface-1);
-  overflow: hidden;
+  --media-w: var(--space-8);
+  --media-gap: var(--space-6);
 }
-.bottombar-editor-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-  min-height: var(--row-default);
-  padding: var(--space-2) var(--space-4) var(--space-2) var(--inset);
-  background-image: linear-gradient(var(--separator), var(--separator));
-  background-repeat: no-repeat;
-  background-position: right bottom;
-  background-size: calc(100% - var(--inset)) var(--hairline);
-}
-.bottombar-editor > :last-child { background-image: none; }
-.bottombar-editor-row .bottombar-editor-label { flex: 1; font: var(--t-body); color: var(--ink-1); }
-.bottombar-editor-toggle { display: flex; }
-/* v1.76: `.bottombar-editor-btn` (the up/down arrows) is GONE, and so are its
-   rules - the row's grip is the shared `.drag-handle` above, which is both the
-   drag surface and the keyboard control. */
 
 /* ---- v1.47.8: keyboard-shortcuts reference (Dean) --------------------------
    Deliberately thin: the dialog is a ui.sheet (sweep S9: its scrim, surface, title,
@@ -10894,23 +10669,6 @@ html[data-era-flourish="on"] .ft-unfabricated {
   gap: var(--space-4);
   margin-top: var(--space-6);
 }
-.trash-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-6);
-}
-.trash-thumb {
-  width: 84px;
-  aspect-ratio: 16 / 9;
-  object-fit: cover;
-  border-radius: var(--radius);
-  background-color: var(--surface-2);
-  flex: 0 0 auto;
-}
-.trash-info {
-  flex: 1 1 auto;
-  min-width: 0;
-}
 .trash-title {
   color: var(--ink-1);
   font-size: var(--fs-md);
@@ -10918,16 +10676,13 @@ html[data-era-flourish="on"] .ft-unfabricated {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.trash-meta {
-  color: var(--ink-2);
-  font-size: var(--fs-sm);
-}
-/* v1.159: the Trash Title cell (thumb + truncating title) + its actions cell. */
+/* v1.159: the Trash Title cell (thumb + truncating title) + its actions cell. Retire R3:
+   the thumbnail is a ui-thumb (setup.js buildTrashTitleCell); the cell only fixes its width. */
 .trash-title-cell { display: flex; align-items: center; gap: var(--space-5); min-width: 0; }
+.trash-title-cell > .ui-thumb { flex: none; width: var(--av-2xl); }
 .trash-actions { display: inline-flex; gap: var(--space-3); }
 /* v1.158: the trash toolbar (total held + Empty trash, confirmed by ui.confirm since
-   sweep S8). display:flex would beat a bare [hidden], so guard it explicitly (the repo
-   [hidden]-loses rule). */
+   sweep S8). Its `hidden` wins through ui.css's one global [hidden] rule. */
 .trash-toolbar {
   display: flex;
   align-items: center;
@@ -10935,7 +10690,6 @@ html[data-era-flourish="on"] .ft-unfabricated {
   gap: var(--space-6);
   margin-bottom: var(--space-6);
 }
-.trash-toolbar[hidden] { display: none; }
 .trash-total { color: var(--ink-2); font-size: var(--fs-sm); }
 .trash-empty {
   color: var(--ink-2);
@@ -10960,9 +10714,14 @@ html[data-era-flourish="on"] .ft-unfabricated {
 .stable-toolbar { padding: var(--space-5) var(--space-6) var(--space-4); }
 /* sweep S8: the filter field is a ui-field__input (16px at every width - its old
    `font: inherit` let a phone's text size through under the iOS no-zoom floor - the
-   focus ring, the surface-2 well); .stable-filter stays as the hook. */
+   focus ring, the surface-2 well); .stable-filter stays as the hook.
+   Retire R3: a body row is keyed on its table role (`.stable-body > [role="row"]`), the
+   way the component builds it; `.stable-row` stays on the element only as a JS / test
+   hook. A sort header is a plain sm ui-btn (common.js buildSortableTable), set here in
+   the header's type; its caret is the ::before pseudo-element ordered after the label,
+   because the primitive's ::after is its press / hover tint layer. */
 .stable-head,
-.stable-row {
+.stable-body > [role="row"] {
   display: grid;
   grid-template-columns: var(--stable-cols);
   gap: var(--space-5);
@@ -10973,35 +10732,32 @@ html[data-era-flourish="on"] .ft-unfabricated {
   border-bottom: 1px solid var(--separator);
 }
 .stable-th {
-  background: none;
-  border: 0;
+  justify-content: flex-start;
+  height: auto;
   padding: var(--space-3) 0;
-  font: inherit;
-  font-size: var(--fs-sm);
+  font: var(--t-footnote);
   font-weight: var(--fw-semibold);
   color: var(--ink-2);
   text-align: left;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
   gap: var(--space-2);
   min-width: 0;
 }
 .stable-th--end { justify-content: flex-end; text-align: right; }
-.stable-th--actions { cursor: default; }
 @media (hover: hover) {
   .stable-th:hover { color: var(--ink-1); }
 }
 .stable-th[aria-sort="ascending"],
 .stable-th[aria-sort="descending"] { color: var(--ink-1); }
 /* the caret marks (and points for) the active sort column */
-.stable-th[aria-sort="ascending"]::after { content: "\25B4"; font-size: var(--fs-xs); }
-.stable-th[aria-sort="descending"]::after { content: "\25BE"; font-size: var(--fs-xs); }
-.stable-row {
+.stable-th[aria-sort="ascending"]::before,
+.stable-th[aria-sort="descending"]::before { order: 1; font: var(--t-caption); }
+.stable-th[aria-sort="ascending"]::before { content: "\25B4"; }
+.stable-th[aria-sort="descending"]::before { content: "\25BE"; }
+.stable-body > [role="row"] {
   padding: var(--space-5) var(--space-6);
-  border-bottom: 1px solid var(--separator);
+  border-bottom: var(--hairline) solid var(--separator);
 }
-.stable-row:last-child { border-bottom: 0; }
+.stable-body > [role="row"]:last-child { border-bottom: 0; }
 .stable-cell { min-width: 0; }
 .stable-cell--name {
   font-weight: var(--fw-semibold);
@@ -11019,61 +10775,21 @@ html[data-era-flourish="on"] .ft-unfabricated {
 .stable-actions { display: inline-flex; justify-content: flex-end; gap: var(--space-3); }
 /* a wrap column (e.g. Duplicates' filename + its file paths) is not truncated,
    and its rows top-align so the numeric columns sit against the first line. */
-.stable--top .stable-row { align-items: start; }
+.stable--top .stable-body > [role="row"] { align-items: start; }
 .stable-cell--wrap { min-width: 0; }
 .stable-empty { color: var(--ink-2); padding: var(--space-8) var(--space-6); text-align: center; }
 .stable-more { color: var(--ink-2); font-size: var(--fs-sm); padding: var(--space-5) var(--space-6); text-align: center; }
 /* v1.159: action-dense tables (Users/Trash/Music) - the actions cell wraps its
    buttons, and the Users access editor spans the whole row as an expando. */
 .stable-actions { flex-wrap: wrap; }
-.stable-row .access-editor { grid-column: 1 / -1; }
+.stable-body > [role="row"] > .access-editor { grid-column: 1 / -1; }
 
-/* v1.162 (Dean): the Stats-table per-item delete (two-tap) + the Duplicates
-   per-copy expando. (Its armed reveal was modelled on the v1.161 notification delete, retired
-   in sweep S4.) */
-.stable-delete-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-2);
-  min-width: var(--size-touch);
-  min-height: var(--size-touch);
-  border: none;
-  border-radius: var(--radius);
-  background: none;
-  color: var(--ink-2);
-  cursor: pointer;
-  opacity: 0.7; /* token-exempt: resting de-emphasis, full on hover/focus/armed */
-  touch-action: manipulation;
-}
-.stable-delete-btn:focus-visible { opacity: 1; color: var(--yt-red); }
-@media (hover: hover) {
-  .stable-delete-btn:hover { opacity: 1; color: var(--yt-red); }
-}
-.stable-delete-btn .icon-delete { width: 16px; height: 16px; }
-.stable-delete-confirm { display: none; white-space: nowrap; font-size: var(--fs-xs); font-weight: var(--fw-bold); }
-.stable-delete-btn.stable-delete-armed { opacity: 1; color: var(--on-overlay); background-color: var(--yt-red); }
-.stable-delete-btn.stable-delete-armed .stable-delete-confirm { display: inline; }
-
-/* the Duplicates expand toggle + the full-row copies panel */
-.stable-expand-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: var(--size-touch);
-  min-height: var(--size-touch);
-  border: none;
-  background: none;
-  color: var(--ink-2);
-  cursor: pointer;
-  opacity: 0.7; /* token-exempt: resting de-emphasis */
-  touch-action: manipulation;
-}
-.stable-expand-btn:focus-visible { opacity: 1; color: var(--ink-1); }
-@media (hover: hover) {
-  .stable-expand-btn:hover { opacity: 1; color: var(--ink-1); }
-}
-.stable-expand-btn[aria-expanded="true"] .icon-arrow-down { transform: rotate(180deg); }
+/* v1.162 (Dean): the Stats-table per-item delete + the Duplicates per-copy expando.
+   Retire R3: both controls are plain icon ui-btns (stats.js buildStatsDeleteAction /
+   buildDuplicateExpando) and the delete asks the one danger ui.confirm - the two-tap
+   in-row "Sure?" arm and its red fill are gone (D4.8). Only the toggle's turned
+   chevron, while the copies show, lives here. */
+.dup-expand[aria-expanded="true"] .ui-icon { transform: rotate(180deg); }
 .stable-expando { grid-column: 1 / -1; }
 .dup-expando {
   display: flex;
@@ -11081,22 +10797,13 @@ html[data-era-flourish="on"] .ft-unfabricated {
   gap: var(--space-2);
   padding: var(--space-3) 0 var(--space-3) var(--space-6);
 }
-.dup-copy-row {
+.dup-copy {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
 }
 .dup-copy-path { min-width: 0; word-break: break-all; }
-.users-cap-badge {
-  display: inline-block;
-  margin-left: var(--space-3);
-  padding: 0 var(--space-3);
-  font-size: var(--fs-xs);
-  color: var(--ink-2);
-  background: var(--surface-2);
-  border-radius: var(--radius);
-}
 /* Duplicates: a section title above each table, and the wrap cell's key + paths. */
 .stable-section-title {
   font-weight: var(--fw-bold);

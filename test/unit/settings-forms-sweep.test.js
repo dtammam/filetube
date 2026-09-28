@@ -268,7 +268,7 @@ test('Remove a configured VIDEO folder: confirm first; the folder leaves the for
     setup.__setFolderStateForTests({ controller: c.ac, folders: ['/media/a', '/media/b'], settings: {} });
     setup.renderFolders();
     const btnFor = (p) => Array.from(c.d.querySelectorAll('#folders-builder-list .folder-remove-btn'))
-      .find((b) => b.closest('.folder-item-row').querySelector('.folder-path-text').textContent === p);
+      .find((b) => b.closest('.folder-item').querySelector('.folder-path-text').textContent === p);
     for (const how of DISMISSALS) {
       btnFor('/media/a').click();
       await settle();

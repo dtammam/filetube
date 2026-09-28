@@ -159,12 +159,15 @@ test('v1.155/v1.202: exactly the six known reorder surfaces are wired, each thro
   assert.deepEqual(ROW_SELECTORS.slice().sort((a, b) => (a.file + a.selector).localeCompare(b.file + b.selector)), [
     { file: 'public/js/common.js', selector: '.sidebar-item[data-pin-id]' },
     { file: 'public/js/main.js', selector: '.sidebar-item[data-index]' },
-    { file: 'public/js/setup.js', selector: '.bottombar-editor-row' },
-    { file: 'public/js/setup.js', selector: '.folder-item-row' },
     { file: 'public/js/setup.js', selector: '.sidebar-item[data-index]' },
-    // v1.202 (Dean: "draggable/sortable, no sort buttons"): the Transcript-
-    // sharing prompt rows. Five -> six, deliberately, through the same layer.
-    { file: 'public/js/setup.js', selector: '.transcript-ai-prompt-row' },
+    // Retire R3 (DELIBERATE conversion): the three Settings lists - the bottom bar editor,
+    // the video folders and (v1.202, Dean: "draggable/sortable, no sort buttons") the
+    // Transcript-sharing prompts - wire the items of their own container that wear the
+    // ui-reorder primitive, so all three name `.ui-reorder` (each scoped to its host by
+    // wireReorderable's container). Still six surfaces, still through the same layer.
+    { file: 'public/js/setup.js', selector: '.ui-reorder' },
+    { file: 'public/js/setup.js', selector: '.ui-reorder' },
+    { file: 'public/js/setup.js', selector: '.ui-reorder' },
   ]);
 });
 
@@ -183,11 +186,13 @@ test('v1.76: every wired surface names a real onReorder, never a bare selector',
 
 // ---- every wired surface must actually SHOW the drag ------------------------
 
-// The stylesheets a client rule can live in. v1.155: this is now just the
-// shared style.css -- the subscriptions page's own <style> block used to be
-// included here for its page-local drag CSS, but the Subscriptions redesign
-// removed subscription-row reordering entirely, so no reorder surface styles
-// itself page-locally any more.
+// The stylesheets a client rule can live in. v1.155: the subscriptions page's own
+// <style> block used to be included here for its page-local drag CSS, but the
+// Subscriptions redesign removed subscription-row reordering entirely, so no reorder
+// surface styles itself page-locally any more. Retire R3 (DELIBERATE conversion): ui.css
+// joins style.css, because the three Settings lists wear the ui-reorder primitive, whose
+// drag-state rules (`.ui-reorder.dragging` / `.drag-over-before` / `.drag-over-after`) live
+// there - the same exact-selector rule check applies to them.
 //
 // COMMENTS STRIPPED (QA delta N1). Shipped without this, the lock below was
 // satisfied by PROSE: style.css:3229 and :7037 each mention
@@ -197,6 +202,7 @@ test('v1.76: every wired surface names a real onReorder, never a bare selector',
 // lies is worse than no lock - this repo has paid for that one repeatedly.
 const stripCssComments = (text) => text.replace(/\/\*[\s\S]*?\*\//g, '');
 const STYLESHEETS = [
+  fs.readFileSync(path.join(REPO, 'public/css/ui.css'), 'utf8'),
   fs.readFileSync(path.join(REPO, 'public/css/style.css'), 'utf8'),
 ].map(stripCssComments).join('\n');
 
@@ -216,7 +222,7 @@ function classFamilyFor(source, selector) {
   };
 }
 
-// `.sidebar-item[data-index]` -> `.sidebar-item`; `.folder-item-row` -> itself.
+// `.sidebar-item[data-index]` -> `.sidebar-item`; `.ui-reorder` -> itself.
 const baseClassOf = (selector) => selector.replace(/\[[^\]]*\]/g, '');
 
 // Does `sheets` carry an UNSCOPED rule for `base` + `cls`?
@@ -271,18 +277,19 @@ test('v1.76 (QA gate W3): every wired surface styles its dragging row AND both d
 });
 
 test('v1.76: the dragging-style lock can actually fail (mutation self-proof)', () => {
-  // QA delta N1: the previous positive control used `.folder-item-row`, whose
-  // rule is ALSO named in a nearby comment - so the control passed even with
+  // QA delta N1: the previous positive control used the folder row's own rule, whose
+  // name was ALSO in a nearby comment - so the control passed even with
   // the real rule deleted, and proved nothing it claimed to. Comments are
   // stripped from STYLESHEETS now, and the control below is the deletion
-  // itself rather than a same-name lookup.
-  const base = '.folder-item-row';
+  // itself rather than a same-name lookup. Retire R3: the base is the ui-reorder
+  // primitive's (the rule the three Settings lists share, in ui.css).
+  const base = '.ui-reorder';
   assert.ok(hasRuleFor(STYLESHEETS, base, 'dragging'), 'positive control: the real rule is found');
   assert.ok(hasRuleFor(STYLESHEETS, base, 'drag-over-before'), 'positive control: and its before-indicator');
 
   // Delete that rule from a COPY and the lock must fail - the mutant this
   // whole test exists to kill.
-  const mutated = STYLESHEETS.replace(/\.folder-item-row\.dragging\s*\{[^}]*\}/, '');
+  const mutated = STYLESHEETS.replace(/\.ui-reorder\.dragging\s*\{[^}]*\}/, '');
   assert.notEqual(mutated, STYLESHEETS, 'the mutation applied (else the proof is vacuous)');
   assert.equal(hasRuleFor(mutated, base, 'dragging'), false, 'a deleted rule must NOT pass');
 

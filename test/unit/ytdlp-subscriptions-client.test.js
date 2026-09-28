@@ -31,7 +31,6 @@ const {
   isFreshlyActiveEntry,
   snapshotHasActiveDownload,
   nextPollDelay,
-  formatSubMeta,
   formatSubStatus,
   formatSubscribedDate,
   cutoffDateToInputValue,
@@ -43,7 +42,6 @@ const {
   formatRowStatusLine,
   isPartialRowStatus,
   buildFailureLines,
-  formatFailuresLine,
   buildFailureItems,
   renderFailuresInto,
   formatWarningLine,
@@ -232,28 +230,8 @@ const fakeDoc = {
 
 // ---- Pure formatting helpers ------------------------------------------------
 
-test('formatSubMeta: defaults to Video / best, omits the cutoff-date segment when cutoffDate is absent', () => {
-  assert.strictEqual(formatSubMeta({}), 'Video · quality: best');
-});
-
-test('formatSubMeta: reflects audio format, a custom quality, and the cutoff date', () => {
-  assert.strictEqual(
-    formatSubMeta({ format: 'audio', quality: '720p', cutoffDate: '20260102' }),
-    'Audio · quality: 720p · Downloads since 2026-01-02'
-  );
-});
-
-test('formatSubMeta: a blank cutoffDate renders gracefully -- no "undefined"/"NaN" in the output', () => {
-  const result = formatSubMeta({ cutoffDate: '' });
-  assert.strictEqual(result, 'Video · quality: best');
-  assert.ok(!result.includes('undefined'));
-  assert.ok(!result.includes('NaN'));
-});
-
-test('formatSubMeta: a malformed cutoffDate is dropped, not rendered as garbage', () => {
-  const result = formatSubMeta({ cutoffDate: 'not-a-date' });
-  assert.strictEqual(result, 'Video · quality: best');
-});
+// Retire R3: formatSubMeta (the pre-S5 row's format/quality meta line) is deleted - sweep S5's
+// row meta is one status line and nothing else called it; its four tests went with it.
 
 test('formatSubStatus: "never checked" / "pending" when the subscription has not been polled yet', () => {
   assert.strictEqual(
@@ -682,23 +660,10 @@ test('buildFailureLines: a missing/malformed entry or failures array degrades to
   assert.deepEqual(buildFailureLines({ state: 'error', failures: 'not-an-array' }), []);
 });
 
-test('formatFailuresLine: joins multiple failure lines with " | "', () => {
-  const entry = {
-    state: 'error',
-    failures: [
-      { videoId: 'vid1', title: 'First', reason: 'reason A' },
-      { videoId: 'vid2', title: 'Second', reason: 'reason B' },
-    ],
-  };
-  assert.strictEqual(formatFailuresLine(entry), 'First: reason A | Second: reason B');
-});
+// Retire R3: formatFailuresLine (a `' | '` join of buildFailureLines with no caller outside
+// these tests) is deleted with its tests; buildFailureLines keeps its own.
 
-test('formatFailuresLine: returns "" (empty string) when there is nothing to show', () => {
-  assert.strictEqual(formatFailuresLine(undefined), '');
-  assert.strictEqual(formatFailuresLine({ state: 'downloading' }), '');
-});
-
-// ---- v1.29.0 T4 (R3a.6): buildFailureLines/formatFailuresLine ALSO render --
+// ---- v1.29.0 T4 (R3a.6): buildFailureLines ALSO renders ---------------------
 // ---- for a partial ("done" + outcome "partial") entry ----------------------
 
 test('buildFailureLines: renders reasons for a partial entry (state "done", outcome "partial")', () => {
@@ -708,18 +673,6 @@ test('buildFailureLines: renders reasons for a partial entry (state "done", outc
     failures: [{ videoId: 'vid1', title: 'My Video', reason: 'Video unavailable' }],
   };
   assert.deepEqual(buildFailureLines(entry), ['My Video: Video unavailable']);
-});
-
-test('formatFailuresLine: renders the joined reason line for a partial entry', () => {
-  const entry = {
-    state: 'done',
-    outcome: 'partial',
-    failures: [
-      { videoId: 'vid1', title: 'First', reason: 'reason A' },
-      { videoId: 'vid2', title: 'Second', reason: 'reason B' },
-    ],
-  };
-  assert.strictEqual(formatFailuresLine(entry), 'First: reason A | Second: reason B');
 });
 
 test('buildFailureLines: a plain "done" entry with NO partial outcome still renders no reasons (never masks a false positive)', () => {
@@ -1990,22 +1943,8 @@ t31test('v1.31 P2: formatBreakerBannerText composes the honest paused/deferred/r
   t31assert.match(single, /^Downloads paused after 1 consecutive failure — 1 channel deferred; retrying at not-a-date$/);
 });
 
-t31test('v1.31 P6: formatYtdlpVersionText renders the version line and "" when unknown', () => {
-  t31assert.equal(subsClient.formatYtdlpVersionText('2026.07.04'), 'yt-dlp 2026.07.04');
-  t31assert.equal(subsClient.formatYtdlpVersionText(null), '');
-  t31assert.equal(subsClient.formatYtdlpVersionText(''), '');
-  t31assert.equal(subsClient.formatYtdlpVersionText(42), '');
-});
-
-t31test('v1.31 gate fix (FR6.2): formatYtdlpVersionText appends the staleness note past 90 days and omits it for a fresh version (injectable now)', () => {
-  const fresh = subsClient.formatYtdlpVersionText('2026.07.04', Date.UTC(2026, 6, 12));
-  t31assert.equal(fresh, 'yt-dlp 2026.07.04');
-  const stale = subsClient.formatYtdlpVersionText('2026.01.01', Date.UTC(2026, 6, 12));
-  t31assert.match(stale, /^yt-dlp 2026\.01\.01 — over 90 days old; YouTube changes frequently/);
-  t31assert.match(stale, /bump the Dockerfile ARG and rebuild/);
-  // Non-CalVer strings (already charset-gated server-side) never get an age note.
-  t31assert.equal(subsClient.formatYtdlpVersionText('unknown', Date.UTC(2026, 6, 12)), 'yt-dlp unknown');
-});
+// Retire R3: formatYtdlpVersionText (the v1.31 P6 footer line; nothing renders it since the
+// footer left the page) is deleted with its two tests.
 
 t31test('v1.31 gate fix: history labels + reason lines for the tripped/requeued/dropped runlog kinds (never "Unknown")', () => {
   t31assert.equal(subsClient.formatHistoryOutcomeLine({ outcome: 'tripped' }), 'Run paused (circuit breaker)');

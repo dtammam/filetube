@@ -5,8 +5,8 @@
 // Visual correctness itself is Dean's on-device + on-desktop call (AC26/27/
 // 29); this just proves the mobile-breakpoint rules touching the selectors
 // this item targets actually exist, and that the shared desktop-facing
-// classes (`.setup-box`, `.folder-item-row`) were widened/loosened rather
-// than left untouched.
+// classes (`.setup-box`, the folder card - `.folder-item` since retire R3) were
+// widened/loosened rather than left untouched.
 const { test } = require('node:test');
 
 // Tier 2 (DELIBERATE lock updates): spacing literals became --space-* tokens;
@@ -35,28 +35,40 @@ test('desktop: .setup-box is wider than the pre-fix 650px (both Setup and /subsc
   assert.ok(Number(maxWidthMatch[1]) > 650, '.setup-box max-width must be widened beyond the cramped 650px it shipped with');
 });
 
-test('desktop: .form-group and .folder-item-row carry more breathing room than the pre-fix values', () => {
-  const formGroupRule = /\.form-group\s*\{([^}]*)\}/.exec(css);
-  assert.ok(formGroupRule, 'expected a .form-group rule');
-  const marginMatch = /margin-bottom:\s*(\d+)px/.exec(rs(formGroupRule[1]));
-  assert.ok(marginMatch && Number(marginMatch[1]) > 20, '.form-group margin-bottom must be increased beyond the cramped 20px it shipped with');
-
-  const folderRowRule = /\.folder-item-row\s*\{([^}]*)\}/.exec(css);
-  assert.ok(folderRowRule, 'expected a .folder-item-row rule');
-  assert.match(folderRowRule[1], /gap:/, '.folder-item-row should use an explicit gap for its (now-wrappable) children');
+// Retire R3 (DELIBERATE conversion): the .form-group chrome is gone with its last markup
+// (sweep S8 moved every Settings field onto ui-field; the Subscriptions forms went in S5), so
+// the lock now pins that it STAYS gone - and the folder card keeps its explicit gap.
+test('desktop: the retired .form-group chrome is gone; the folder card (.folder-item) carries an explicit gap', () => {
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /\.form-group\b/, 'no .form-group rule survives (no markup wears the class)');
+  const folderRowRule = /\n\.folder-item\s*\{([^}]*)\}/.exec(css);
+  assert.ok(folderRowRule, 'expected a .folder-item rule');
+  assert.match(folderRowRule[1], /gap:/, '.folder-item should use an explicit gap for its (now-wrappable) children');
 });
 
-test('mobile: a media query gives .setup-box comfortable controls (min-height tap targets, scoped to .setup-box only)', () => {
+// Retire R3 (DELIBERATE conversion): the mobile block's `.setup-box .btn / .setup-select /
+// input` tap-target rules are gone - every control they reached is a primitive now (ui-btn,
+// ui-select, ui-field input), and the primitive carries the 44px target itself. The lock pins
+// the spacing rule that remains, that no retired member comes back, and the replacement: every
+// Settings / Stats text field is a ui-field input and ui.css sizes it to the 44px hit.
+test('mobile: .setup-box keeps its phone spacing; its controls take their tap target from the primitives', () => {
   const mobileBlockRe = /@media \(max-width: 768px\) \{([\s\S]*?)\n\}\n\n\/\* In landscape/;
   const block = mobileBlockRe.exec(css);
   assert.ok(block, 'expected the main mobile (max-width:768px) media query block');
-  const body = block[1];
+  const body = block[1].replace(/\/\*[\s\S]*?\*\//g, '');
   assert.match(body, /\.setup-box\s*\{/, 'the mobile block must adjust .setup-box spacing');
-  assert.match(
-    rs(body),
-    /\.setup-box \.btn,[\s\S]*?\.setup-box \.setup-select,[\s\S]*?min-height:\s*\d+px/,
-    'the mobile block must set a comfortable min-height tap target for Setup/.subscriptions controls, scoped to .setup-box'
-  );
+  assert.doesNotMatch(body, /\.setup-box \.(btn|setup-select)\b|\.form-group/, 'no retired .setup-box control rule survives');
+  const ui = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'ui.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '');
+  const field = /\n\.ui-field__input,\s*\n\.ui-select__native \{([^}]*)\}/.exec(ui);
+  assert.ok(field && /height:\s*var\(--hit\)|min-height:\s*var\(--hit\)|height:\s*var\(--ctl-lg\)/.test(field[1]), 'the ui field is a 44px target on its own');
+  for (const f of ['setup.html', 'stats.html']) {
+    const html = fs.readFileSync(path.join(__dirname, '..', '..', 'public', f), 'utf8');
+    const root = html.slice(html.indexOf('<div id="view-root"'));
+    for (const m of root.matchAll(/<input\b([^>]*)>/g)) {
+      const type = (/\btype="([^"]+)"/.exec(m[1]) || [])[1];
+      if (!/^(text|number)$/.test(type || '')) continue;
+      assert.match(m[1], /class="[^"]*\bui-field__input\b/, `${f}: a text field is a ui-field input: <input${m[1]}>`);
+    }
+  }
 });
 
 // Sweep S8 (AC12 conversion): the v1.13.0 phone column-stack is replaced by ONE layout at
@@ -68,22 +80,22 @@ test('the folder row wraps its controls at every width instead of a phone-only c
   assert.match(rule('.folder-item-controls > .folder-name-input'), /flex:\s*1 1 100%/, 'the name field takes a full line');
   assert.match(rule('.folder-item-body'), /min-width:\s*0/, 'the body can shrink (long paths break, never overflow)');
   // and no rule anywhere turns the row back into a column (the retired phone stack)
-  const rows = css.match(/\.folder-item-row\s*\{[^}]*\}/g) || [];
+  const rows = css.match(/\n\.folder-item\s*\{[^}]*\}/g) || [];
   assert.ok(rows.length >= 1);
   for (const r of rows) assert.doesNotMatch(r, /flex-direction:\s*column/, 'no column stack: ' + r.slice(0, 60));
 });
 
 // v1.21.0 FR-3, T3 -> UI pass S5: the subscription row is a ui-row now (a grid with
 // reserved columns, ui.css), which stays horizontal at every width; it must never be
-// swept into the .folder-item-row column-stack rule.
-test('mobile: the subscription row (a ui-row) is NOT swept into the .folder-item-row column-stack rule', () => {
+// swept into the folder card's (.folder-item) column-stack rule.
+test('mobile: the subscription row (a ui-row) is NOT swept into the .folder-item column-stack rule', () => {
   const mobileBlockRe = /@media \(max-width: 768px\) \{([\s\S]*?)\n\}\n\n\/\* In landscape/;
   const block = mobileBlockRe.exec(css);
   assert.ok(block);
   assert.doesNotMatch(
     block[1],
-    /\.folder-item-row,\s*\n\s*\.(sub-row|ui-row)\s*\{[^}]*flex-direction:\s*column/,
-    'the row must not share .folder-item-row\'s column-stack rule'
+    /\.folder-item,\s*\n\s*\.(sub-row|ui-row)\s*\{[^}]*flex-direction:\s*column/,
+    'the row must not share .folder-item\'s column-stack rule'
   );
 });
 

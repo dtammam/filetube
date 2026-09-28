@@ -25,7 +25,9 @@ const COMMON_JS = fs.readFileSync(path.join(PUB, 'js', 'common.js'), 'utf8');
 
 test('setup.html: an Appearance "Music skin" heading + #music-skin-picker container exist', () => {
   assert.match(SETUP_HTML, /<h3[^>]*>Music skin<\/h3>/, 'a "Music skin" subheading in Appearance');
-  assert.match(SETUP_HTML, /<div class="theme-picker" id="music-skin-picker">/, 'the picker container (reuses the shared theme-picker style)');
+  // Retire R3 (DELIBERATE conversion): the container is a grouped ui-list radiogroup (the
+  // Appearance choice lists), no longer the shared theme-picker card grid.
+  assert.match(SETUP_HTML, /<div class="ui-list [^"]*\bui-list--grouped\b[^"]*\bsetup-choice-list\b[^"]*" id="music-skin-picker" role="radiogroup"/, 'the picker container (a grouped radio list)');
   // the copy tells the user it is phone-only (so a desktop change that does nothing
   // visible is not confusing).
   assert.match(SETUP_HTML, /on your phone/i, 'the hint says the skin applies to the phone player');

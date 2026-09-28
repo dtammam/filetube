@@ -21,7 +21,9 @@ test('buildTrashTitleCell: escapes a hostile title via textContent + carries the
     const cell = setup.buildTrashTitleCell({ trashId: 'tid1', title: '<img src=x onerror=alert(1)>' });
     assert.strictEqual(cell.querySelector('.trash-title').textContent, '<img src=x onerror=alert(1)>');
     assert.strictEqual(cell.querySelectorAll('img').length, 1, 'only the thumbnail img - the title is text, not parsed HTML');
-    assert.match(cell.querySelector('.trash-thumb').getAttribute('src'), /\/thumbnail\/tid1/);
+    // retire R3: the thumbnail is a ui-thumb (a box with its img inside)
+    assert.ok(cell.querySelector('.trash-thumb').classList.contains('ui-thumb'), 'the thumbnail is the ui-thumb primitive');
+    assert.match(cell.querySelector('.trash-thumb .ui-thumb__img').getAttribute('src'), /\/thumbnail\/tid1/);
   } finally { delete global.document; dom.window.close(); }
 });
 

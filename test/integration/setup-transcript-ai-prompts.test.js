@@ -76,7 +76,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // until it resolves true. Asserts the dialog is up and the list untouched, then confirms.
 async function removeConfirmed(dom, row, posts) {
   const d = dom.window.document;
-  const before = d.querySelectorAll('.transcript-ai-prompt-row').length;
+  const before = d.querySelectorAll('.transcript-ai-prompt').length;
   const postsBefore = posts.length;
   // Cancel first: nothing removed, nothing POSTed.
   row.querySelector('button.transcript-ai-prompt-remove').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
@@ -84,17 +84,17 @@ async function removeConfirmed(dom, row, posts) {
   let open = d.querySelectorAll('.ui-sheet--dialog');
   open[open.length - 1].querySelectorAll('.ui-confirm__actions .ui-btn')[0].click();
   await wait(450);
-  assert.strictEqual(d.querySelectorAll('.transcript-ai-prompt-row').length, before, 'Cancel keeps the prompt');
+  assert.strictEqual(d.querySelectorAll('.transcript-ai-prompt').length, before, 'Cancel keeps the prompt');
   assert.strictEqual(posts.length, postsBefore, 'Cancel POSTs nothing');
   row.querySelector('button.transcript-ai-prompt-remove').dispatchEvent(new dom.window.Event('click', { bubbles: true }));
   await wait(50);
   const dlg = d.querySelectorAll('.ui-sheet--dialog');
   assert.ok(dlg.length, 'the Remove confirm opened');
-  assert.strictEqual(d.querySelectorAll('.transcript-ai-prompt-row').length, before, 'nothing removed before the answer');
+  assert.strictEqual(d.querySelectorAll('.transcript-ai-prompt').length, before, 'nothing removed before the answer');
   dlg[dlg.length - 1].querySelectorAll('.ui-confirm__actions .ui-btn')[1].click();
   await wait(100);
 }
-const rows = (d) => Array.from(d.querySelectorAll('.transcript-ai-prompt-row'));
+const rows = (d) => Array.from(d.querySelectorAll('.transcript-ai-prompt'));
 
 test('setup: the prompt editor renders one row per prompt from GET /api/settings (name input + textarea + Remove)', async () => {
   const { dom } = await loadSetup({ prompts: TWO });
@@ -309,7 +309,7 @@ test('setup: each prompt row has a drag handle (the keyboard control too); Arrow
   try {
     await wait(100);
     const d = dom.window.document;
-    const handles = Array.from(d.querySelectorAll('.transcript-ai-prompt-row .drag-handle'));
+    const handles = Array.from(d.querySelectorAll('.transcript-ai-prompt .ui-reorder__handle'));
     assert.strictEqual(handles.length, 2, 'one handle per row');
     assert.strictEqual(handles[0].getAttribute('tabindex'), '0', 'focusable - the helper made it the keyboard affordance');
     handles[0].focus(); // a keyboard user HAS the handle focused (gate: the unfocused dispatch was a divergent fixture)
@@ -326,7 +326,7 @@ test('setup: each prompt row has a drag handle (the keyboard control too); Arrow
 // SECOND gesture scrambled the order or left the DOM and server disagreeing.
 const THREE = [{ id: 'a', name: 'A', text: 'a.' }, { id: 'b', name: 'B', text: 'b.' }, { id: 'c', name: 'C', text: 'c.' }];
 const arrowDown = (dom, el) => { el.focus(); el.dispatchEvent(new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })); };
-const handleOfRow = (d, i) => rows(d)[i].querySelector('.drag-handle');
+const handleOfRow = (d, i) => rows(d)[i].querySelector('.ui-reorder__handle');
 
 test('setup: two consecutive ArrowDowns on the SAME row (focused handle) end [b, c, a] even while the list is in a 400 state (no re-render to hide behind)', async () => {
   const { dom } = await loadSetup({ prompts: THREE, postStatus: 400 });

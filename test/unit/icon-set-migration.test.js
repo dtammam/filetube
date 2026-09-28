@@ -106,11 +106,20 @@ function renderPicker(storedIcons) {
   if (storedIcons !== null) w.localStorage.setItem('ft-icons', storedIcons);
   const m = /\nfunction renderIconPicker\(\) \{[\s\S]*?\n\}\n/.exec(SETUP_SRC);
   assert.ok(m, 'renderIconPicker is in setup.js');
-  vm.runInContext('var controller = new AbortController();' + m[0] + ';renderIconPicker();', w);
-  const cards = [...w.document.querySelectorAll('#icon-picker .theme-card')];
+  // Retire R3 (DELIBERATE conversion): the picker is a radio list built by choiceRowHtml (a
+  // button.ui-row per set, aria-checked + a trailing check on the picked one), not cards with
+  // an .active class - so the row builder runs beside it, and "highlighted" reads aria-checked.
+  const icon = /\nconst CHOICE_CHECK_ICON = [^\n]*\n/.exec(SETUP_SRC);
+  const row = /\nfunction choiceRowHtml\(o\) \{[\s\S]*?\n\}\n/.exec(SETUP_SRC);
+  assert.ok(icon && row, 'the choice-row builder is in setup.js');
+  vm.runInContext('var controller = new AbortController();' + icon[0] + row[0] + m[0] + ';renderIconPicker();', w);
+  const cards = [...w.document.querySelectorAll('#icon-picker .setup-choice')];
+  const active = cards.filter((c) => c.getAttribute('aria-checked') === 'true');
+  assert.deepEqual(cards.filter((c) => c.querySelector('.ui-row__actions use')).map((c) => c.dataset.iconsPref),
+    active.map((c) => c.dataset.iconsPref), 'the trailing check marks exactly the checked row');
   return {
     ids: cards.map((c) => c.dataset.iconsPref),
-    active: cards.filter((c) => c.classList.contains('active')).map((c) => c.dataset.iconsPref),
+    active: active.map((c) => c.dataset.iconsPref),
   };
 }
 

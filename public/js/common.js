@@ -16136,7 +16136,9 @@ function buildSortableTable(host, config) {
   columns.forEach((col) => {
     const th = doc.createElement('button');
     th.type = 'button';
-    th.className = 'stable-th' + (col.align === 'end' ? ' stable-th--end' : '');
+    // Retire R3: a sort header is a plain sm ui-btn (the press / hover tint and the focus
+    // ring are the primitive's); style.css .stable-th sets it in the header's type.
+    th.className = 'ui-btn ui-btn--plain ui-btn--sm stable-th' + (col.align === 'end' ? ' stable-th--end' : '');
     th.setAttribute('role', 'columnheader');
     th.dataset.col = col.key;
     th.textContent = col.label;

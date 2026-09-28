@@ -409,7 +409,7 @@ function withEditor(config, fn) {
 }
 
 const editorRows = () => Array.prototype.slice
-  .call(global.document.querySelectorAll('.bottombar-editor-row'))
+  .call(global.document.querySelectorAll('#bottombar-editor .ui-reorder'))
   .map((row) => ({
     label: row.querySelector('.bottombar-editor-label').textContent,
     checked: row.querySelector('input[type="checkbox"]').checked,
@@ -509,14 +509,14 @@ test('v1.75 EDITOR: a move persists the FULL roster, which is what releases the 
     // only swaps it with the hidden Liked row, which correctly leaves the
     // VISIBLE bar unchanged and would prove nothing about the rendered order.
     const moveHomeDown = () => {
-      const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('.bottombar-editor-row'));
+      const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('#bottombar-editor .ui-reorder'));
       const row = rows.find((r) => r.querySelector('.bottombar-editor-label').textContent === 'Home');
-      row.querySelector('.drag-handle').dispatchEvent(
+      row.querySelector('.ui-reorder__handle').dispatchEvent(
         new dom.window.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true })
       );
     };
     assert.equal(
-      dom.window.document.querySelector('.bottombar-editor-row .bottombar-editor-label').textContent,
+      dom.window.document.querySelector('#bottombar-editor .ui-reorder .bottombar-editor-label').textContent,
       'Home', 'Home heads the panel before any move',
     );
     moveHomeDown();
@@ -541,14 +541,14 @@ test('v1.75 EDITOR: a move persists the FULL roster, which is what releases the 
 test('v1.76 EDITOR: every row has a drag handle and NO up/down buttons survive', () => {
   withEditor({}, (dom, signal) => {
     setup.renderBottomBarEditor(signal);
-    const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('.bottombar-editor-row'));
+    const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('#bottombar-editor .ui-reorder'));
     assert.ok(rows.length > 0, 'the panel rendered');
     assert.equal(
       dom.window.document.querySelectorAll('.bottombar-editor-btn').length, 0,
       'the up/down buttons Dean asked to be rid of are gone',
     );
     for (const row of rows) {
-      const handle = row.querySelector('.drag-handle');
+      const handle = row.querySelector('.ui-reorder__handle');
       assert.ok(handle, 'every row has a grip');
       // The grip carries the accessibility the deleted buttons used to.
       assert.equal(handle.getAttribute('tabindex'), '0');
@@ -564,7 +564,7 @@ test('v1.76 EDITOR: a POINTER drag reorders the bar and persists the full roster
   // panel writes a real config the real resolver then renders.
   withEditor({}, (dom, signal) => {
     setup.renderBottomBarEditor(signal);
-    const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('.bottombar-editor-row'));
+    const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('#bottombar-editor .ui-reorder'));
     // jsdom does no layout, so give the rows the geometry a browser would.
     rows.forEach((row, i) => { row.getBoundingClientRect = () => ({ top: i * 20, bottom: i * 20 + 20, height: 20 }); });
     const labelAt = (i) => rows[i].querySelector('.bottombar-editor-label').textContent;
@@ -598,7 +598,7 @@ test('v1.76 EDITOR: a drag that ends where it started persists nothing', () => {
   withEditor({}, (dom, signal) => {
     setup.renderBottomBarEditor(signal);
     const before = dom.window.localStorage.getItem('ft-bottomnav');
-    const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('.bottombar-editor-row'));
+    const rows = Array.prototype.slice.call(dom.window.document.querySelectorAll('#bottombar-editor .ui-reorder'));
     rows.forEach((row, i) => { row.getBoundingClientRect = () => ({ top: i * 20, bottom: i * 20 + 20, height: 20 }); });
     const pointerAt = (el, type, clientY) => el.dispatchEvent(new dom.window.PointerEvent(type, {
       bubbles: true, cancelable: true, pointerId: 1, pointerType: 'mouse', button: 0, clientX: 0, clientY,

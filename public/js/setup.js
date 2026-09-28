@@ -63,7 +63,7 @@ function escapeHtml(text) {
 }
 
 // v1.157 (P3, crispness): a shape-matched skeleton for the configured-folder
-// list -- N `.folder-item-row`-height shimmer rows (a title bar over a shorter
+// list -- N `.folder-item`-height shimmer cards (a title bar over a shorter
 // meta bar, mirroring renderFolders' real row) reserved BEFORE /api/config
 // resolves so the list does not paint empty then pop in on an in-app nav to
 // Settings. Reuses the shared `.skeleton-shimmer`/`.skeleton-line` primitives.
@@ -71,8 +71,8 @@ function buildSetupFolderSkeleton(n) {
   const count = Number.isInteger(n) && n > 0 ? n : 0;
   let html = '';
   for (let i = 0; i < count; i++) {
-    html += '<div class="folder-item-row" aria-hidden="true">'
-      + '<span class="drag-handle"></span>'
+    html += '<div class="folder-item" aria-hidden="true">'
+      + '<span class="ui-reorder__handle"></span>'
       + '<div class="folder-item-body">'
       + '<div class="skeleton-shimmer skeleton-line skeleton-line-title"></div>'
       + '<div class="skeleton-shimmer skeleton-line folder-item-skeleton-meta"></div>'
@@ -199,7 +199,9 @@ function renderFolders() {
   configuredFolders.forEach((folder, index) => {
     const s = folderSettings[folder] || {};
     const row = document.createElement('div');
-    row.className = 'folder-item-row';
+    // Retire R3: a configured folder is a .folder-item card wearing the ui-reorder primitive
+    // (its drag states and grip are ui.css's, shared with every reorder list).
+    row.className = 'folder-item ui-reorder';
     // v1.76: no `draggable` attribute and no up/down buttons. The row is
     // wired to the shared POINTER-event gesture layer below, which is what
     // makes it draggable on a touch screen at all - native HTML5 drag (here
@@ -211,7 +213,7 @@ function renderFolders() {
     // ui-switch checkboxes, a ui-btn icon Remove); no inline styles. Every class and
     // data-index hook the listeners below key off is unchanged.
     row.innerHTML = `
-      <span class="drag-handle" title="Drag to reorder"></span>
+      <span class="ui-reorder__handle" title="Drag to reorder"></span>
       <div class="folder-item-body">
         <div class="folder-path-text" title="${escapeHtml(folder)}">${escapeHtml(folder)}</div>
         <div class="folder-item-controls">
@@ -274,8 +276,8 @@ function renderFolders() {
     ? wireReorderable
     : (window.FileTube && window.FileTube.wireReorderable);
   wireRows(container, {
-    rowSelector: '.folder-item-row',
-    handleSelector: '.drag-handle',
+    rowSelector: '.ui-reorder',
+    handleSelector: '.ui-reorder__handle',
     focusKey: 'setup-folders',
     // The box scrolls (and got taller this wave), so a drag near its edge
     // needs the list to come to the pointer.
@@ -509,26 +511,40 @@ function pollScanStatus(statusText) {
     });
 }
 
+// Retire R3: the Appearance choice lists (era, icon set, Music skin) are grouped ui-lists of
+// button.ui-row radios (setup.html gives each host role=radiogroup). The picked row carries a
+// trailing check in ink (D4.6, F46) - no red border and no card - and aria-checked; the
+// option's name is the title and its blurb the meta line, which wraps in these lists
+// (style.css .setup-choice-list). `attrs` is the option's data-* hook; every string passed in
+// is a static registry literal (no user input), as the cards it replaces were.
+const CHOICE_CHECK_ICON = '<svg class="ui-icon ui-icon--md" aria-hidden="true"><use href="#i-check"/></svg>';
+function choiceRowHtml(o) {
+  return '<button type="button" class="ui-row ui-row--default setup-choice" role="radio" aria-checked="' + (o.on ? 'true' : 'false') + '" ' + o.attrs + '>'
+    + '<span class="ui-row__lead"></span>'
+    + '<span class="ui-row__media">' + (o.media || '') + '</span>'
+    + '<span class="ui-row__body"><span class="ui-row__title">' + o.title + '</span>'
+    + (o.meta ? '<span class="ui-row__meta">' + o.meta + '</span>' : '') + '</span>'
+    + '<span class="ui-row__aside"></span>'
+    + '<span class="ui-row__actions">' + (o.on ? CHOICE_CHECK_ICON : '') + '</span>'
+    + '</button>';
+}
+
 // Appearance (era theme) picker — THEME_REGISTRY/setTheme come from common.js
 function renderThemePicker() {
   const container = document.getElementById('theme-picker');
   if (!container) return;
   const active = document.documentElement.getAttribute('data-theme');
-  container.innerHTML = THEME_REGISTRY.map(t => `
-    <button type="button" class="theme-card${t.id === active ? ' active' : ''}"
-            data-era="${t.id}">
-      <span class="theme-swatch">
-        <span style="--swatch:${t.swatch[0]}"></span>
-        <span style="--swatch:${t.swatch[1]}"></span>
-      </span>
-      <span class="theme-card-name">${t.name}
-        <span class="theme-card-year">${t.year}</span></span>
-      <span class="theme-card-blurb">${t.blurb}</span>
-    </button>`).join('');
-  container.querySelectorAll('.theme-card').forEach(btn => {
+  container.innerHTML = THEME_REGISTRY.map(t => choiceRowHtml({
+    on: t.id === active,
+    attrs: `data-era="${t.id}"`,
+    media: `<span class="theme-swatch"><span style="--swatch:${t.swatch[0]}"></span><span style="--swatch:${t.swatch[1]}"></span></span>`,
+    title: `${t.name} <span class="theme-choice-year">${t.year}</span>`,
+    meta: t.blurb,
+  })).join('');
+  container.querySelectorAll('.setup-choice').forEach(btn => {
     btn.addEventListener('click', () => {
       setTheme(btn.dataset.era);   // applies + persists immediately, no Save step
-      renderThemePicker();          // re-highlight active card
+      renderThemePicker();          // re-check the active row
     }, { signal: controller.signal });
   });
 }
@@ -563,13 +579,10 @@ function renderIconPicker() {
   try { pref = localStorage.getItem('ft-icons'); } catch (_) { /* fall through to default */ }
   pref = migrateIconPref(pref); // a stored retired set (emoji) highlights its replacement (D2.6)
   const active = (pref === 'auto' || ICON_SETS.includes(pref)) ? pref : 'outlined';
-  container.innerHTML = ICON_SET_REGISTRY.map(s => `
-    <button type="button" class="theme-card${s.id === active ? ' active' : ''}"
-            data-icons-pref="${s.id}">
-      <span class="theme-card-name">${s.name}</span>
-      <span class="theme-card-blurb">${s.blurb}</span>
-    </button>`).join('');
-  container.querySelectorAll('.theme-card').forEach(btn => {
+  container.innerHTML = ICON_SET_REGISTRY.map(s => choiceRowHtml({
+    on: s.id === active, attrs: `data-icons-pref="${s.id}"`, title: s.name, meta: s.blurb,
+  })).join('');
+  container.querySelectorAll('.setup-choice').forEach(btn => {
     btn.addEventListener('click', () => {
       // Applies + persists immediately (no Save). setIconSet -> applyIconSet
       // already re-renders this picker (feature-detected), so the highlight
@@ -621,17 +634,15 @@ function renderMusicSkinPicker() {
   const active = skins.activeSkinId();
   container.innerHTML = (skins.IDS || []).map((id) => {
     const s = skins.skinById(id);
-    return `
-    <button type="button" class="theme-card${id === active ? ' active' : ''}"
-            data-skin-pref="${id}">
-      <span class="theme-card-name">${s && s.label ? s.label : id}</span>
-      <span class="theme-card-blurb">${MUSIC_SKIN_BLURB[id] || ''}</span>
-    </button>`;
+    return choiceRowHtml({
+      on: id === active, attrs: `data-skin-pref="${id}"`,
+      title: s && s.label ? s.label : id, meta: MUSIC_SKIN_BLURB[id] || '',
+    });
   }).join('');
-  container.querySelectorAll('.theme-card').forEach((btn) => {
+  container.querySelectorAll('.setup-choice').forEach((btn) => {
     btn.addEventListener('click', () => {
       skins.setActiveSkin(btn.dataset.skinPref); // persists ft-music-skin (per-device)
-      renderMusicSkinPicker();                   // re-highlight the active card
+      renderMusicSkinPicker();                   // re-check the active row
     }, { signal: controller.signal });
   });
 }
@@ -673,21 +684,23 @@ async function renderStickerPicker() {
   let hasCustom = false;
   try { hasCustom = (await fetch('/api/me/sticker', { method: 'GET' })).ok; } catch (_) { hasCustom = false; }
   const isActive = (kind, value) => pref.kind === kind && (kind !== 'emoji' || pref.value === value);
+  // Retire R3: every sticker option is a ui-chip filter (aria-pressed; the picked one wears the
+  // chip's selected fill, never a red border): the logo and your image carry a small preview
+  // before their name, an emoji preset is the emoji itself.
+  const chip = (pressed, attrs, inner, label) => `<button type="button" class="ui-chip ui-chip--filter sticker-card" aria-pressed="${pressed ? 'true' : 'false'}"${label ? ` aria-label="${label}"` : ''} ${attrs}>${inner}</button>`;
   const cards = [];
-  cards.push(`<button type="button" class="theme-card sticker-card${isActive('logo') ? ' active' : ''}" data-sticker-kind="logo">
-      <span class="sticker-card-ic"><img src="/favicon.svg" alt="" /></span>
-      <span class="theme-card-name">FileTube logo</span></button>`);
+  cards.push(chip(isActive('logo'), 'data-sticker-kind="logo"',
+    '<span class="sticker-card-ic"><img src="/favicon.svg" alt="" /></span><span>FileTube logo</span>'));
   STICKER_EMOJI_PRESETS.forEach((em) => {
-    cards.push(`<button type="button" class="theme-card sticker-card${isActive('emoji', em) ? ' active' : ''}" data-sticker-kind="emoji" data-sticker-emoji="${escStickerHtml(em)}">
-      <span class="sticker-card-ic sticker-card-emoji">${escStickerHtml(em)}</span></button>`);
+    cards.push(chip(isActive('emoji', em), `data-sticker-kind="emoji" data-sticker-emoji="${escStickerHtml(em)}"`,
+      `<span class="sticker-card-emoji">${escStickerHtml(em)}</span>`, 'Emoji ' + escStickerHtml(em)));
   });
   if (hasCustom) {
-    cards.push(`<button type="button" class="theme-card sticker-card${isActive('custom') ? ' active' : ''}" data-sticker-kind="custom">
-      <span class="sticker-card-ic"><img src="/api/me/sticker?v=${encodeURIComponent(pref.v || Date.now())}" alt="" /></span>
-      <span class="theme-card-name">Your image</span></button>`);
+    cards.push(chip(isActive('custom'), 'data-sticker-kind="custom"',
+      `<span class="sticker-card-ic"><img src="/api/me/sticker?v=${encodeURIComponent(pref.v || Date.now())}" alt="" /></span><span>Your image</span>`));
   }
-  container.innerHTML = `<div class="sticker-cards">${cards.join('')}</div>
-    <div class="sticker-emoji-row">
+  container.innerHTML = `<div class="sticker-cards" role="group" aria-label="Sticker">${cards.join('')}</div>
+    <div class="sticker-emoji-bar">
       <input type="text" id="sticker-emoji-input" class="ui-field__input sticker-emoji-input" maxlength="8" placeholder="Any emoji" aria-label="Custom emoji" />
       <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="sticker-emoji-set">Use emoji</button>
     </div>
@@ -695,8 +708,8 @@ async function renderStickerPicker() {
       <button type="button" class="ui-btn ui-btn--secondary ui-btn--md" id="sticker-upload-btn">Upload image…</button>
       <button type="button" class="ui-btn ui-btn--danger ui-btn--md" id="sticker-remove-custom"${hasCustom ? '' : ' hidden'}>Remove your image</button>
     </div>
-    <div class="sticker-opt-row"><span class="ui-field__label">Size</span><span data-sticker-seg="size"></span></div>
-    <div class="sticker-opt-row"><span class="ui-field__label">Tilt</span><span data-sticker-seg="tilt"></span></div>`;
+    <div class="sticker-opt"><span class="ui-field__label">Size</span><span data-sticker-seg="size"></span></div>
+    <div class="sticker-opt"><span class="ui-field__label">Tilt</span><span data-sticker-seg="tilt"></span></div>`;
   // Sweep S8: Size and Tilt are ui.segmented controls (were theme-card chips). Each item keeps
   // its data-sticker-size / data-sticker-tilt hook; a pick merges the pref and re-renders.
   const u = settingsUi();
@@ -1447,11 +1460,15 @@ async function renderLibraryGlyphEditor(signal) {
 
 function drawLibraryGlyphEditor(host, settings, signal) {
   host.innerHTML = '';
+  // Retire R3: the editor is a grouped ui-list; each slot is a ui-row (the Library entry's name
+  // as the title, its ui-select in the aside column the list sizes, style.css
+  // .library-glyph-editor).
   LIBRARY_GLYPH_SLOTS.forEach((slot, slotIndex) => {
     const row = document.createElement('div');
-    row.className = 'card-corner-editor-row';
+    row.className = 'ui-row ui-row--default';
+    row.setAttribute('role', 'listitem');
     const label = document.createElement('span');
-    label.className = 'card-corner-editor-label';
+    label.className = 'ui-row__title library-glyph-label';
     label.textContent = slot.name;
     // Sweep S8: a ui-select (the field styling + a chevron) trailing the label.
     const select = document.createElement('select');
@@ -1490,8 +1507,19 @@ function drawLibraryGlyphEditor(host, settings, signal) {
           renderLibraryGlyphEditor(signal);
         });
     }, { signal });
-    row.appendChild(label);
-    row.appendChild(box);
+    const lead = document.createElement('span');
+    lead.className = 'ui-row__lead';
+    const media = document.createElement('span');
+    media.className = 'ui-row__media';
+    const body = document.createElement('span');
+    body.className = 'ui-row__body';
+    body.appendChild(label);
+    const aside = document.createElement('span');
+    aside.className = 'ui-row__aside';
+    aside.appendChild(box);
+    const actions = document.createElement('span');
+    actions.className = 'ui-row__actions';
+    row.append(lead, media, body, aside, actions);
     host.appendChild(row);
   });
 }
@@ -1556,22 +1584,26 @@ function renderBottomBarEditor(signal) {
 
   host.innerHTML = '';
   items.forEach((id, index) => {
+    // Retire R3: each item is a ui-row of the grouped ui-list host wearing the ui-reorder
+    // primitive (the drag states and the grip are ui.css's): the grip in the media column the
+    // list sizes (style.css .bottombar-editor), the name as the title, the switch trailing.
     const row = document.createElement('div');
-    row.className = 'bottombar-editor-row';
+    row.className = 'ui-row ui-row--default ui-reorder';
+    row.setAttribute('role', 'listitem');
     // v1.76 (Dean: the up/down arrows "just suck"): the handle replaces both
     // buttons. It is the drag grip AND the keyboard control - wireReorderable
     // gives it tabindex/role/aria-label and arrow-key reorder below, so
     // deleting the buttons costs no accessibility.
     const handle = document.createElement('span');
-    handle.className = 'drag-handle';
+    handle.className = 'ui-reorder__handle';
     handle.title = 'Drag to reorder';
     const label = document.createElement('span');
-    label.className = 'bottombar-editor-label';
+    label.className = 'ui-row__title bottombar-editor-label';
     label.textContent = BOTTOMBAR_LABELS[id] || id;
     // Sweep S8: the Show control is a switch (a native checkbox wearing .ui-switch, so the
     // .checked/change wiring below is unchanged), named for its item; no inline style.
     const toggle = document.createElement('span');
-    toggle.className = 'bottombar-editor-toggle';
+    toggle.className = 'ui-row__actions';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
     cb.setAttribute('role', 'switch');
@@ -1602,7 +1634,17 @@ function renderBottomBarEditor(signal) {
       FT.writeBottomNavConfig(c);
       if (FT.applyBottomNavCustomization) FT.applyBottomNavCustomization();
     }, { signal });
-    row.appendChild(handle); row.appendChild(label); row.appendChild(toggle);
+    const lead = document.createElement('span');
+    lead.className = 'ui-row__lead';
+    const media = document.createElement('span');
+    media.className = 'ui-row__media';
+    media.appendChild(handle);
+    const body = document.createElement('span');
+    body.className = 'ui-row__body';
+    body.appendChild(label);
+    const aside = document.createElement('span');
+    aside.className = 'ui-row__aside';
+    row.append(lead, media, body, aside, toggle);
     host.appendChild(row);
   });
 
@@ -1621,8 +1663,8 @@ function renderBottomBarEditor(signal) {
   // reorderable while doing nothing. A missing helper should be loud.
   const wireRows = (typeof wireReorderable === 'function') ? wireReorderable : FT.wireReorderable;
   wireRows(host, {
-    rowSelector: '.bottombar-editor-row',
-    handleSelector: '.drag-handle',
+    rowSelector: '.ui-reorder',
+    handleSelector: '.ui-reorder__handle',
     focusKey: 'bottombar-editor',
     labelOf: (i) => BOTTOMBAR_LABELS[items[i]] || items[i],
     onReorder: (from, to) => moveBottomBarItem(items, from, to, signal),
@@ -1669,7 +1711,7 @@ function renderTranscriptAiPromptsEditor(signal) {
   // that HAS an id always goes, so blanking an existing prompt still
   // surfaces the server's 400 as designed.
   function readRows() {
-    return Array.from(host.querySelectorAll('.transcript-ai-prompt-row')).map((row) => ({
+    return Array.from(host.querySelectorAll('.transcript-ai-prompt')).map((row) => ({
       id: row.dataset.promptId || undefined,
       name: row.querySelector('.transcript-ai-prompt-name').value,
       text: row.querySelector('.transcript-ai-prompt-text').value,
@@ -1703,8 +1745,9 @@ function renderTranscriptAiPromptsEditor(signal) {
   function render() {
     host.replaceChildren();
     prompts.forEach((prompt) => {
+      // Retire R3: a prompt is a .transcript-ai-prompt card wearing the ui-reorder primitive.
       const row = document.createElement('div');
-      row.className = 'transcript-ai-prompt-row';
+      row.className = 'transcript-ai-prompt ui-reorder';
       if (prompt.id) row.dataset.promptId = prompt.id;
       const head = document.createElement('div');
       head.className = 'transcript-ai-prompt-head';
@@ -1713,7 +1756,7 @@ function renderTranscriptAiPromptsEditor(signal) {
       // pointer grip and the keyboard control (arrow keys), exactly the
       // bottom-bar editor's shape. The list order IS the saved order.
       const handle = document.createElement('span');
-      handle.className = 'drag-handle';
+      handle.className = 'ui-reorder__handle';
       handle.title = 'Drag to reorder';
       head.appendChild(handle);
       const name = document.createElement('input');
@@ -1774,16 +1817,16 @@ function renderTranscriptAiPromptsEditor(signal) {
     const wireSignal = wireCtl.signal;
     if (signal) signal.addEventListener('abort', () => wireCtl.abort(), { once: true, signal: wireSignal });
     wireReorderable(host, {
-      rowSelector: '.transcript-ai-prompt-row',
-      handleSelector: '.drag-handle',
+      rowSelector: '.ui-reorder',
+      handleSelector: '.ui-reorder__handle',
       labelOf: (index) => {
-        const row = host.querySelectorAll('.transcript-ai-prompt-row')[index];
+        const row = host.querySelectorAll('.transcript-ai-prompt')[index];
         const typed = row ? row.querySelector('.transcript-ai-prompt-name').value.trim() : '';
         return typed || 'prompt';
       },
       focusKey: 'transcript-ai-prompts',
       onReorder: (fromIndex, toIndex) => {
-        const rows = Array.from(host.querySelectorAll('.transcript-ai-prompt-row'));
+        const rows = Array.from(host.querySelectorAll('.transcript-ai-prompt'));
         const row = rows[fromIndex];
         const target = rows[toIndex];
         if (!row || !target || row === target) return;
@@ -2125,7 +2168,7 @@ function renderBookFolders() {
   }
   bookFolders.forEach((folder, index) => {
     const row = document.createElement('div');
-    row.className = 'folder-item-row';
+    row.className = 'folder-item';
     const pathWrap = document.createElement('div');
     pathWrap.className = 'folder-item-body';
     const pathText = document.createElement('div');
@@ -2250,7 +2293,7 @@ function renderMusicFolders() {
   }
   musicFolders.forEach((folder, index) => {
     const row = document.createElement('div');
-    row.className = 'folder-item-row';
+    row.className = 'folder-item';
     const pathWrap = document.createElement('div');
     pathWrap.className = 'folder-item-body';
     const pathText = document.createElement('div');
@@ -2372,7 +2415,7 @@ function renderTvFolders() {
   }
   tvFolders.forEach((folder, index) => {
     const row = document.createElement('div');
-    row.className = 'folder-item-row';
+    row.className = 'folder-item';
     const pathWrap = document.createElement('div');
     pathWrap.className = 'folder-item-body';
     const pathText = document.createElement('div');
@@ -3166,9 +3209,11 @@ async function loadUsersList(signal, me) {
   });
 }
 
-// The Role cell: the role word + small capability badges (subscriptions / edit).
+// The Role cell: the role word + the capability tags (subscriptions / edit). Retire R3: a tag
+// is a ui-chip meta (non-interactive text, F43), never a pill that reads as a button.
 function buildUserRoleCell(user) {
   const box = document.createElement('span');
+  box.className = 'users-role-cell';
   const role = document.createElement('span');
   role.textContent = user.role === 'admin' ? 'Admin' : 'Member';
   box.appendChild(role);
@@ -3177,7 +3222,7 @@ function buildUserRoleCell(user) {
   if (user.canModifyLibrary) caps.push('can edit'); // v1.81 write-RBAC
   caps.forEach((c) => {
     const b = document.createElement('span');
-    b.className = 'users-cap-badge';
+    b.className = 'ui-chip ui-chip--meta users-cap';
     b.textContent = c;
     box.appendChild(b);
   });
@@ -3425,23 +3470,26 @@ function formatTrashSize(bytes) {
   return Math.max(1, Math.round(n / 1024)) + ' KB';
 }
 
-// One trash row: thumbnail (the sidecar re-keyed with the move, so
-// /thumbnail/<trashId> resolves), title, meta line, Restore + two-tap Purge.
 // v1.159 (Dean): the Trash Title cell - thumbnail + title (textContent-escaped);
-// the title truncates, the thumb is fixed.
+// the title truncates, the thumb is fixed. The thumbnail is the sidecar re-keyed with the
+// move, so /thumbnail/<trashId> resolves. Retire R3: the thumbnail is a ui-thumb (the row
+// radius and the placeholder ground are the primitive's).
 function buildTrashTitleCell(item) {
   var box = document.createElement('div');
   box.className = 'trash-title-cell';
+  var thumb = document.createElement('span');
+  thumb.className = 'ui-thumb ui-thumb--16x9 ui-thumb--row trash-thumb';
   var img = document.createElement('img');
-  img.className = 'trash-thumb';
+  img.className = 'ui-thumb__img';
   img.src = '/thumbnail/' + encodeURIComponent(item.trashId || '');
   img.alt = '';
   img.loading = 'lazy';
+  thumb.appendChild(img);
   var t = document.createElement('span');
   t.className = 'trash-title';
   t.textContent = item.title || item.name || 'Untitled';
   t.title = t.textContent;
-  box.appendChild(img);
+  box.appendChild(thumb);
   box.appendChild(t);
   return box;
 }
@@ -3637,15 +3685,22 @@ function buildFeedHiddenRowHtml(item) {
   // the raw folderName (the enumerate-every-surface class; mirrors resolveChannelName).
   if (!chName && typeof folderDisplayName === 'function') { var mapped = folderDisplayName(item.folderName); if (mapped) chName = mapped; }
   var meta = chName ? escapeTrashHtml(chName) : '';
+  // Retire R3: one ui-row of the section's grouped ui-list (setup.html #feedhidden-list
+  // declares the thumbnail media column and a two-slot action column): the thumbnail is a
+  // ui-thumb, the title and channel are the row's title and meta, and Restore trails.
   return '' +
-    '<div class="feed-hidden-row" data-id="' + id + '">' +
-    '<img class="feed-hidden-thumb" src="/thumbnail/' + encodeURIComponent(item.id || '') + '" alt="" loading="lazy" />' +
-    '<div class="feed-hidden-info">' +
-    '<div class="feed-hidden-title" title="' + title + '">' + title + '</div>' +
-    (meta ? '<div class="feed-hidden-meta">' + meta + '</div>' : '') +
-    '</div>' +
+    '<div class="ui-row ui-row--media" role="listitem" data-id="' + id + '">' +
+    '<span class="ui-row__lead"></span>' +
+    '<span class="ui-row__media"><span class="ui-thumb ui-thumb--16x9 ui-thumb--row">' +
+    '<img class="ui-thumb__img" src="/thumbnail/' + encodeURIComponent(item.id || '') + '" alt="" loading="lazy" /></span></span>' +
+    '<span class="ui-row__body">' +
+    '<span class="ui-row__title" title="' + title + '">' + title + '</span>' +
+    (meta ? '<span class="ui-row__meta feed-hidden-meta">' + meta + '</span>' : '') +
+    '</span>' +
+    '<span class="ui-row__aside"></span>' +
+    '<span class="ui-row__actions">' +
     '<button type="button" class="ui-btn ui-btn--secondary ui-btn--sm feedhidden-restore-btn" data-id="' + id + '">Restore</button>' +
-    '</div>';
+    '</span></div>';
 }
 
 // Fetch + render the Hidden list; wires the single-tap Restore (DELETE
@@ -3703,7 +3758,7 @@ function pushSupportProblem() {
     if (typeof window !== 'undefined' && window.location && window.location.protocol === 'http:') {
       return 'Push needs HTTPS - this page was loaded over plain http.';
     }
-    return 'This browser does not support push here. On iPhone/iPad: Share → Add to Home Screen, then enable from the installed app.';
+    return 'This browser does not support push here. On iPhone/iPad: tap Share, then Add to Home Screen, then enable from the installed app.';
   }
   if (typeof window === 'undefined' || !('PushManager' in window) || !('Notification' in window)) {
     return 'This browser does not support Web Push notifications.';
@@ -3720,8 +3775,9 @@ function initPushControls(signal) {
   const errorEl = document.getElementById('push-error');
   if (!group || !userCheck || !enableBtn || !disableBtn || !statusEl) return;
 
-  // v1.67.1 ROOT-CAUSE FIX: .field-error is display:none by default (it is
-  // only revealed by toggling display, see setFieldError). The v1.66 setError
+  // v1.67.1 ROOT-CAUSE FIX: the push error line starts hidden (it is only
+  // revealed through setFieldError - the `hidden` attribute since sweep S8; the
+  // v1.67 .field-error class it wore is retired). The v1.66 setError
   // set textContent ONLY, so EVERY push error message - denied permission, a
   // subscribe() DOMException, a server refusal - was written to a hidden
   // element and never seen. Route through setFieldError so the message

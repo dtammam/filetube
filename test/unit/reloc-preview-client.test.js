@@ -19,7 +19,6 @@ const {
   summarizeRelocationPreview,
   renderRelocationPreview,
   triggerReheatPreview,
-  closeRelocationPreview,
 } = require('../../lib/ytdlp/client/subscriptions.js');
 
 // A minimal fake DOM mirroring ytdlp-subscriptions-client.test.js's harness --
@@ -183,7 +182,7 @@ test('render shows a hard-link category with NO warning when nothing is copied',
   assert.match(bodyEl.collectText(), /Hard-link into the channel folder/);
 });
 
-// ---- triggerReheatPreview / closeRelocationPreview -------------------------
+// ---- triggerReheatPreview --------------------------------------------------
 
 test('triggerReheatPreview fetches the preview, renders it, and opens the preview sheet', async () => {
   const button = new FakeElement('button');
@@ -231,10 +230,5 @@ test('triggerReheatPreview on a failed response shows an error and does NOT open
   assert.match(status.textContent, /Could not compute the preview/);
 });
 
-test('closeRelocationPreview closes the preview through the caller\'s close (a ui.sheet), and tolerates none', () => {
-  let closed = 0;
-  closeRelocationPreview({ close: () => { closed += 1; } });
-  assert.equal(closed, 1);
-  assert.doesNotThrow(() => closeRelocationPreview({}));
-  assert.doesNotThrow(() => closeRelocationPreview(null));
-});
+// Retire R3: closeRelocationPreview (orphaned when sweep S5 made the preview a ui.sheet the view
+// closes itself) is deleted with its test.
