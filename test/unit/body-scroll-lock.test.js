@@ -177,5 +177,22 @@ test('the fixed chrome at the right edge takes the gap (header, mini player, rea
   assert.match(css, /header \{[^}]*padding-right: calc\(var\(--space-8\) \+ var\(--scroll-lock-gap, 0px\)\);/);
   assert.match(css, /#player-dock \{[^}]*right: calc\(16px \+ var\(--scroll-lock-gap, 0px\)\);/);
   assert.match(css, /\.reader-nowplaying \{[^}]*right: var\(--scroll-lock-gap, 0px\);/);
+  // gate r1 W1: the <=768px header and dock rules override the base ones, so they carry the gap too
+  // (a 760px desktop window with a classic scrollbar shifted 12px without them).
+  assert.strictEqual((css.match(/padding-right: calc\(var\(--space-4\) \+ var\(--scroll-lock-gap, 0px\)\);/g) || []).length, 2, 'both narrow header rules');
+  assert.match(css, /#player-dock \{[^}]*right: calc\(8px \+ var\(--scroll-lock-gap, 0px\)\);/);
+  // ...and the narrow header's top-right slot is ABSOLUTE (padding cannot reach it).
+  assert.match(css, /header \.header-right \{[^}]*right: calc\(var\(--space-2\) \+ var\(--scroll-lock-gap, 0px\)\);/);
+  const ui = fs.readFileSync(path.join(REPO, 'public', 'css', 'ui.css'), 'utf8');
+  assert.match(ui, /\.ui-toast-host \{[^}]*right: var\(--scroll-lock-gap, 0px\);/);
   assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /scrollbar-gutter/, 'never the gutter (fullscreen band, undimmed dialog strip)');
+});
+
+test('an implausible gap (a zoomed or broken measure) never pads the page', () => {
+  for (const gap of [-5, 150]) {
+    const { doc, win } = pageWithScrollbar(gap);
+    BL.lock(doc, win, 'a');
+    assert.strictEqual(doc.body.style.paddingRight, '', 'gap ' + gap);
+    BL.release(doc, win, 'a');
+  }
 });

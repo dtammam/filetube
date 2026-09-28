@@ -4,6 +4,15 @@
 
 ### Bugs
 
+- [ ] **Bug: a corrected chapter start plays at the right moment on desktop but off on mobile** _(Dean,
+  2026-09-28)_: on a chaptered Music album, a start fixed in the time editor is perfect on desktop; on the
+  phone the list shows the same saved time, yet playback starts off. The value is saved (both show it),
+  so the gap is in how the phone PLAYS it: suspects the seek on a phone (iOS rounds or snaps to a
+  keyframe / seekable range until the media is ready, a MediaSession or background-audio path, the
+  listen-mode `chapterStartSec` offset), not the stored time. First: measure the requested start vs the
+  element's `currentTime` right after the seek on both devices, same track and chapter (the
+  `?debugLifecycle=1` log is the phone-side instrument), then fix the path whose number differs.
+
 - [ ] **HIGHEST PRIORITY (1 of 2). Bug: the fullscreen video goes BLACK after a pause / resume, pause /
   resume** (Dean, 2026-09-26: "a recent regression where if I'm watching a video in full screen, there's
   some way in which after I pause or resume, pause and resume again, the screen of the video goes black.

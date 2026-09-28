@@ -838,7 +838,7 @@ button.ui-row:focus-visible,
 .ui-toast-host {
   position: fixed;
   left: 0;
-  right: 0;
+  right: var(--scroll-lock-gap, 0px); /* v1.341.2: a centred toast holds still under a scroll lock */
   bottom: calc(var(--toast-offset) + env(safe-area-inset-bottom));
   z-index: var(--z-top);
   display: flex;
