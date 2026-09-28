@@ -741,8 +741,9 @@ function buildCardMenuItems(item, caps, opts) {
 // the card's Delete calls DELETE /api/videos/:id (the watch page's verb), which
 // MOVES the file to Trash for every item - yt-dlp-managed and local alike (the
 // route's v1.65 trash move; never a permanent unlink). A local file cannot be
-// re-downloaded once the Trash retention window empties it, so its copy says so
-// (the watch page's showHardDeleteModal wording).
+// re-downloaded once the Trash retention window empties it, so its copy says so.
+// The watch page's More menu and the Pocket extras ask this same copy (step 7 retired
+// the old checkbox-gated local-file dialog, showHardDeleteModal, which had no caller left).
 function cardDeleteConfirmCopy(item) {
   const title = item && typeof item.title === 'string' && item.title !== '' ? item.title : 'This file';
   const local = typeof isYtdlpManagedItem === 'function' ? !isYtdlpManagedItem(item) : false;

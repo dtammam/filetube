@@ -48,7 +48,7 @@ test('main.js: no card-level "Move to..." trigger -- no .card-move-btn markup, n
 
 // ---- watch.js: current-item trigger -----------------------------------------
 
-test('watch.js window-qualifies neither showMoveModal nor requestMoveItem -- reached the SAME bare-global way as showHardDeleteModal/nextArmState (common.js loads first as a classic script)', () => {
+test('watch.js window-qualifies neither showMoveModal nor requestMoveItem -- reached the SAME bare-global way as every other common.js helper (common.js loads first as a classic script)', () => {
   assert.ok(!/window\.showMoveModal/.test(watchJs));
   assert.ok(!/window\.requestMoveItem/.test(watchJs));
   assert.ok(/showMoveModal\(/.test(watchJs), 'watch.js should call showMoveModal');

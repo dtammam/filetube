@@ -8,9 +8,8 @@
 // choice half), v1262-sheet-modal-transitions (the F2 confirm half) and reheat-button-wiring's
 // CRITICAL 2 / 4 runtime locks - each old test's intent is named where it is kept.
 //
-// DESTRUCTIVE (full gate): the local-file delete (showHardDeleteModal) and every
-// showConfirmModal caller that deletes reach their request ONLY through the one enabled
-// confirm button of a live dialog - never through Cancel, Close, Esc, the scrim, a disabled
+// DESTRUCTIVE (full gate): every showConfirmModal caller that deletes reaches its request
+// ONLY through the one enabled confirm button of a live dialog - never through Cancel, Close, Esc, the scrim, a disabled
 // button, a second tap, or a dialog the caller already dismissed.
 
 const { test, mock, afterEach } = require('node:test');
@@ -263,135 +262,61 @@ test('showChoiceModal: a bottom sheet on a phone, a dialog on desktop', () => {
   assert.ok(top().classList.contains('ui-sheet--dialog'));
 });
 
-// ============================================================ showHardDeleteModal (F44)
+// ============================================================ the local-file delete (F44)
+// Step 7 (UI pass, DELIBERATE conversion): showHardDeleteModal, the checkbox-gated local-file
+// dialog, is DELETED - it had no caller left after S3/S7 moved the watch page and the Pocket
+// extras onto ONE danger ui.confirm with main.js cardDeleteConfirmCopy. Its dialog tests went
+// with it; what they bound is kept here: the copy says Trash (the route's truth), a local
+// file's copy says it cannot be re-downloaded, and no caller or export of the old dialog (or its
+// flow picker deleteFlowFor) can come back.
 const LOCAL_ITEM = { id: 'abc123', title: 'My Home Movie', filePath: '/media/downloads/home_movie.mp4' };
 
-// F44: the title and the button say what the route does. The delete a local file's dialog
-// gates is the callers' `onConfirm`: watch.js performMediaDelete / skin-surface.js doDelete,
-// both `DELETE /api/videos/:id`, whose handler moves the file to TRASH (trashItem - an atomic
+// F44: the title and the button say what the route does. The delete a local file's confirm
+// gates is the callers' request: watch.js performMediaDelete / skin-surface.js doDelete, both
+// `DELETE /api/videos/:id`, whose handler moves the file to TRASH (trashItem - an atomic
 // rename into the root's trash dir, restorable from Settings; the route never unlinks a
-// resolvable file). The copy is bound to that path: if the route ever deletes permanently,
-// this test names the copy that must change with it.
-test('F44: the dialog says "Move this local file to Trash?" and its button "Move to Trash" - agreeing with the route its callers run (a trash move)', () => {
-  const { showHardDeleteModal } = boot();
-  const m = showHardDeleteModal(LOCAL_ITEM, () => {}, doc());
-  assert.strictEqual(m.title.textContent, 'Move this local file to Trash?');
-  assert.strictEqual(m.deleteBtn.textContent, 'Move to Trash');
-  assert.doesNotMatch(m.sheet.textContent, /permanent/i, 'no word of a permanent delete: the file goes to Trash');
-  assert.ok(m.deleteBtn.classList.contains('ui-btn--destructive') && m.deleteBtn.classList.contains('ui-btn--primary'), 'the ONE danger fill');
-  assert.strictEqual(m.sheet.querySelectorAll('.ui-btn--destructive').length, 1, 'one danger treatment, not four');
+// resolvable file). If the route ever deletes permanently, this test names the copy that must
+// change with it.
+test('F44: a local file\'s delete confirm says "Move to Trash?" / "Move to Trash" and that it cannot be re-downloaded - agreeing with the route its callers run (a trash move)', () => {
+  const { cardDeleteConfirmCopy } = require('../../public/js/main.js');
+  const common = boot();
+  global.isYtdlpManagedItem = common.isYtdlpManagedItem; // main.js reads it as a page global
+  try {
+    const local = cardDeleteConfirmCopy(LOCAL_ITEM);
+    assert.strictEqual(local.title, 'Move to Trash?');
+    assert.strictEqual(local.confirmLabel, 'Move to Trash');
+    assert.strictEqual(local.danger, true, 'the ONE danger fill');
+    assert.match(local.body, /This local file cannot be re-downloaded\./);
+    assert.doesNotMatch(local.body + local.title, /permanent/i, 'no word of a permanent delete: the file goes to Trash');
+    const managed = cardDeleteConfirmCopy(Object.assign({ channelUrl: 'https://www.youtube.com/@x' }, LOCAL_ITEM));
+    assert.doesNotMatch(managed.body, /cannot be re-downloaded/, 'a yt-dlp file can be re-downloaded: no local-file line');
+  } finally { delete global.isYtdlpManagedItem; }
   // the code path the copy describes
   const watchJs = fs.readFileSync(path.join(ROOT, 'public/js/watch.js'), 'utf8');
   const skinJs = fs.readFileSync(path.join(ROOT, 'public/js/skin-surface.js'), 'utf8');
   const routes = fs.readFileSync(path.join(ROOT, 'lib/media/routes.js'), 'utf8');
-  // Merge note (S9 onto S3 + S7): the watch page and the Pocket extras no longer open this
-  // dialog - both ask ONE danger ui.confirm with main.js cardDeleteConfirmCopy (whose local-file
-  // copy is the same Trash truth), then run the same DELETE. showHardDeleteModal has no caller
-  // left; step 7 retires it. Bound here so a caller cannot quietly come back to a dead dialog.
   assert.match(watchJs, /ui\.confirm\(Object\.assign\(\{\}, cardDeleteConfirmCopy\(mediaData\)/);
   assert.match(watchJs, /async function performMediaDelete\(\) \{[\s\S]{0,600}?fetch\(`\/api\/videos\/\$\{mediaId\}`, \{ method: 'DELETE' \}\)/);
   assert.match(skinJs, /window\.cardDeleteConfirmCopy\(item\)/);
-  assert.doesNotMatch(watchJs + skinJs, /showHardDeleteModal\(/);
   const del = routes.slice(routes.indexOf("app.delete('/api/videos/:id'"), routes.indexOf("app.delete('/api/videos/:id'") + 12000);
   assert.match(del, /const tr = await trashItem\(/, 'DELETE /api/videos/:id moves a resolvable file to Trash');
   assert.doesNotMatch(del.slice(0, del.indexOf('const tr = await trashItem(')), /unlinkSync|fs\.promises\.unlink|await unlink\(/, 'no unlink before the trash move');
 });
 
-test('showHardDeleteModal: a ui.sheet dialog appended to the body at once (self-contained), Move to Trash starts DISABLED', () => {
-  const { showHardDeleteModal } = boot();
-  const m = showHardDeleteModal(LOCAL_ITEM, () => {}, doc());
-  assert.ok(m.sheet.classList.contains('ui-sheet') && m.sheet.classList.contains('ui-sheet--dialog'));
-  assert.strictEqual(m.sheet.parentNode, doc().body);
-  assert.ok(m.sheet.classList.contains('hard-delete-dialog'), 'its content-layout hook survives open() (set after it)');
-  assert.strictEqual(m.deleteBtn.disabled, true);
-  noLegacyModal();
-});
-
-test('showHardDeleteModal: ticking the checkbox enables the button; unticking disables it again', () => {
-  const { showHardDeleteModal } = boot();
-  const m = showHardDeleteModal(LOCAL_ITEM, () => {}, doc());
-  m.checkbox.checked = true;
-  m.checkbox.dispatchEvent(new dom.window.Event('change'));
-  assert.strictEqual(m.deleteBtn.disabled, false);
-  m.checkbox.checked = false;
-  m.checkbox.dispatchEvent(new dom.window.Event('change'));
-  assert.strictEqual(m.deleteBtn.disabled, true);
-});
-
-test('showHardDeleteModal: the button while still disabled never calls onConfirm and leaves the dialog open (even a scripted .click())', () => {
-  const { showHardDeleteModal } = boot();
-  let confirmed = 0;
-  const m = showHardDeleteModal(LOCAL_ITEM, () => { confirmed++; }, doc());
-  m.deleteBtn.click();
-  m.deleteBtn.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
-  assert.strictEqual(confirmed, 0);
-  assert.strictEqual(m.sheet.classList.contains('is-closing'), false, 'still open');
-});
-
-test('showHardDeleteModal: tick then Move to Trash calls onConfirm exactly ONCE (a double tap too) and closes the dialog', () => {
-  const t = clock();
-  const { showHardDeleteModal } = boot();
-  let confirmed = 0;
-  const m = showHardDeleteModal(LOCAL_ITEM, () => { confirmed++; }, doc());
-  m.checkbox.checked = true;
-  m.checkbox.dispatchEvent(new dom.window.Event('change'));
-  m.deleteBtn.click();
-  m.deleteBtn.click();
-  assert.strictEqual(confirmed, 1);
-  assert.ok(m.sheet.classList.contains('is-closing'));
-  t.tick(400);
-  assert.strictEqual(m.sheet.isConnected, false, 'fully detached, never a stuck overlay');
-});
-
-test('showHardDeleteModal: Cancel, Close, Esc and the scrim each close it WITHOUT onConfirm - even with the box ticked, and a late tap after', () => {
-  const t = clock();
-  const { showHardDeleteModal } = boot();
-  for (const how of ['cancel', 'close', 'esc', 'scrim', 'teardown']) {
-    let confirmed = 0;
-    const m = showHardDeleteModal(LOCAL_ITEM, () => { confirmed++; }, doc());
-    m.checkbox.checked = true;
-    m.checkbox.dispatchEvent(new dom.window.Event('change'));
-    if (how === 'cancel') m.cancelBtn.click();
-    else if (how === 'close') closeX(m.sheet);
-    else if (how === 'esc') esc();
-    else if (how === 'scrim') scrim();
-    else m.teardown();
-    assert.ok(m.sheet.classList.contains('is-closing'), how + ' closes it');
-    m.deleteBtn.click();
-    assert.strictEqual(confirmed, 0, how + ': never onConfirm');
-    t.tick(400);
-    assert.strictEqual(m.sheet.isConnected, false, how + ': fully detached');
+test('step 7: showHardDeleteModal and deleteFlowFor are gone - not exported, not defined, not called anywhere in public/ or lib/', () => {
+  const common = boot();
+  assert.strictEqual(common.showHardDeleteModal, undefined, 'not exported');
+  assert.strictEqual(common.deleteFlowFor, undefined, 'not exported');
+  const files = [];
+  const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) { if (e.name !== 'assets' && e.name !== 'fonts') walk(p); } else if (/\.(js|html)$/.test(e.name)) files.push(p); } };
+  walk(path.join(ROOT, 'public')); walk(path.join(ROOT, 'lib'));
+  assert.ok(files.length > 20, 'the scan reached the tree');
+  for (const f of files) {
+    const code = fs.readFileSync(f, 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/.*$/gm, '$1');
+    assert.doesNotMatch(code, /showHardDeleteModal|deleteFlowFor/, path.relative(ROOT, f) + ': no definition or call of the retired dialog');
   }
-});
-
-test('showHardDeleteModal: a click inside the dialog (its text, the file card) does not close it', () => {
-  const { showHardDeleteModal } = boot();
-  const m = showHardDeleteModal(LOCAL_ITEM, () => {}, doc());
-  m.nameEl.click();
-  m.warning.click();
-  assert.strictEqual(m.sheet.classList.contains('is-closing'), false);
-});
-
-test('showHardDeleteModal: a hostile title/filePath is inert text (textContent), never markup', () => {
-  const { showHardDeleteModal } = boot();
-  const hostileTitle = '<img src=x onerror=alert(1)>';
-  const hostilePath = '/media/"><script>window.__xss = true;</script>.mp4';
-  const m = showHardDeleteModal({ title: hostileTitle, filePath: hostilePath }, () => {}, doc());
-  assert.strictEqual(m.nameEl.textContent, hostileTitle);
-  assert.strictEqual(m.pathEl.textContent, hostilePath);
-  assert.strictEqual(m.sheet.querySelectorAll('img, script').length, 0);
-});
-
-test('showHardDeleteModal: a missing title reads "this file"; a malformed item never throws', () => {
-  const { showHardDeleteModal } = boot();
-  assert.strictEqual(showHardDeleteModal({ filePath: '/media/x.mp4' }, () => {}, doc()).nameEl.textContent, 'this file');
-  assert.doesNotThrow(() => showHardDeleteModal(null, () => {}, doc()));
-  assert.doesNotThrow(() => showHardDeleteModal(undefined, () => {}, doc()));
-});
-
-test('showHardDeleteModal source assigns no innerHTML (static regression guard, kept)', () => {
-  const { showHardDeleteModal } = boot();
-  assert.doesNotMatch(showHardDeleteModal.toString().replace(/\/\/.*$/gm, ''), /\.innerHTML\s*=/);
+  const css = fs.readFileSync(path.join(ROOT, 'public/css/style.css'), 'utf8');
+  assert.doesNotMatch(css, /\.hard-delete-dialog/, 'its content CSS went with it');
 });
 
 // ============================================================ showMoveModal

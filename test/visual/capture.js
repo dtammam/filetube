@@ -325,7 +325,8 @@ function S9_SCENES(FX) {
     { id: '83-trash-confirm', path: '/', run: async (p) => { await openOn(p, () => window.showConfirmModal('Move to Trash?',
       'Move <strong>Bench build, part 2</strong> to Trash?<br><br><span style="color:var(--yt-red); font-weight:bold;">The file leaves your library now and is permanently removed when the Trash retention window empties it:</span><br><code style="word-break:break-all; font-size:11px;">/media/Harbor Workshop/Bench build, part 2.mp4</code>',
       () => {}, { confirm: 'Move to Trash', danger: true }), null, SHEET); } },
-    { id: '84-local-delete', path: '/', run: async (p) => { await openOn(p, () => window.showHardDeleteModal({ title: 'Garden party 2019', filePath: '/media/Home Videos/Garden party 2019.mp4' }, () => {}), null, SHEET); } },
+    // step 7: the checkbox dialog (showHardDeleteModal) is retired; a local file's delete is the one danger ui.confirm with main.js's copy.
+    { id: '84-local-delete', path: '/', run: async (p) => { await openOn(p, () => window.ui.confirm(window.cardDeleteConfirmCopy({ title: 'Garden party 2019', filePath: '/media/Home Videos/Garden party 2019.mp4' })), null, SHEET); } },
     { id: '85-share-choice', path: '/', run: async (p) => { await openOn(p, () => window.showChoiceModal('Share', [{ label: 'Share video', onPick() {} }, { label: 'Share at current time (1:05)', onPick() {} }]), null, SHEET); } },
     { id: '86-move-dialog', path: '/', run: async (p) => { await openOn(p, () => window.showMoveModal({ title: 'Garden party 2019' }, ['/media/Home Videos', '/media/Harbor Workshop', '/media/Archive'], () => {}), null, SHEET); } },
     { id: '87-transcript-dialog', path: '/', vps: ['land', 'desktop'], run: async (p) => { await openOn(p, () => window.showTranscriptModal({

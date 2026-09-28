@@ -12759,15 +12759,14 @@ function showTranscriptModal(opts) {
   return dismiss;
 }
 
-// ---- FR-7 (v1.21.0, T6): extra-deliberate delete for local files ----------
-// See docs/exec-plans/completed/2026-07-08-v1.21-polish-release.md ("FR-7 --
-// extra-deliberate delete for local (non-yt-dlp) files") for the full
-// design/rationale. A yt-dlp-downloaded file is re-downloadable, so it keeps
-// today's lighter flow completely unchanged (the watch page's
-// `showConfirmModal` above / main.js's v1.17.0 two-tap card arm). A LOCAL
-// file is irreplaceable, so it gets ONE additional, more deliberate step --
-// this checkbox-gated hard-warning confirm -- before the SAME, unmodified
-// `DELETE /api/videos/:id` (+ its `removeAnyway`/409 read-only path) fires.
+// ---- FR-7 (v1.21.0, T6): which items are yt-dlp-managed ---------------------
+// See docs/exec-plans/completed/2026-07-08-v1.21-polish-release.md ("FR-7").
+// A yt-dlp-downloaded file is re-downloadable; a LOCAL file is not. Step 7 (UI pass):
+// the checkbox-gated local-file dialog (showHardDeleteModal) and its flow picker
+// (deleteFlowFor) are gone - sweeps S3/S7 moved every delete onto ONE danger
+// ui.confirm, whose copy (main.js cardDeleteConfirmCopy) reads this predicate to add
+// "This local file cannot be re-downloaded." for a local file. Every delete still
+// sends the same `DELETE /api/videos/:id` (a Trash move).
 
 // Pure, fail-safe (AC45/AC50/AC51 -- destructive-action two-reviewer gate).
 // Reuses the v1.20 FR-2 signal (never a new, divergent detection mechanism):
@@ -12779,8 +12778,8 @@ function showTranscriptModal(opts) {
 // absence/ambiguity -- a plain local file (every pre-v1.20 download has
 // none of these fields), a malformed/missing `item`, `null`/`undefined`
 // fields, or empty/whitespace-only strings -- resolves to `false`, meaning
-// "treat as LOCAL/irreplaceable" -> routes through the MORE deliberate
-// `showHardDeleteModal` below. There is no code path in this function that
+// "treat as LOCAL/irreplaceable" (the confirm then says it cannot be
+// re-downloaded). There is no code path in this function that
 // can turn a `false` into a `true` on ambiguous input, so it can only ever
 // ADD friction relative to today, never remove it. Never throws. Exported
 // for node:test.
@@ -12788,9 +12787,9 @@ function showTranscriptModal(opts) {
 // generally first-class experiences"): `sourceExtractor` is a fourth signal. A
 // download from another site carries no channelUrl/channelId, and when the
 // site reported no uploader it had no channelName either, so it got the
-// local-file modal. The scan sets `sourceExtractor` only on a file under the
+// local-file copy. The scan sets `sourceExtractor` only on a file under the
 // yt-dlp download root (lib/scan/orchestrator.js, the `ytdlpDownloadRoots`
-// gate), and the delete archives + tombstones it by (site, id). Both flows
+// gate), and the delete archives + tombstones it by (site, id). Both kinds
 // still send the same DELETE /api/videos/:id.
 function isYtdlpManagedItem(item) {
   if (!item || typeof item !== 'object') return false;
@@ -12799,119 +12798,13 @@ function isYtdlpManagedItem(item) {
     || hasSignal(item.sourceExtractor);
 }
 
-// Pure decision helper mirroring the predicate above into the two-word
-// vocabulary the two delete surfaces (watch.js/main.js) actually branch on:
-// `'normal'` = the existing, byte-unchanged confirm flow (AC47); `'hard'` =
-// the escalated `showHardDeleteModal` (AC46/AC49). A tiny separate function
-// (rather than inlining `isYtdlpManagedItem(item) ? 'normal' : 'hard'` at
-// each call site) so both surfaces share exactly ONE source of truth for
-// "which flow" and it stays directly node:test-covered. Exported for
-// node:test.
-function deleteFlowFor(item) {
-  return isYtdlpManagedItem(item) ? 'normal' : 'hard';
-}
-
-/**
- * The escalated, checkbox-gated confirm for deleting a LOCAL (non-yt-dlp) file (AC46).
- *
- * F44 (sweep S9): the copy says what the code does. `onConfirm` is the caller's delete - the
- * watch page's performMediaDelete and the Pocket extras' doDelete - and both send
- * `DELETE /api/videos/:id`, which since v1.65 moves the file to TRASH for every item
- * (lib/media/routes.js: trashItem(), an atomic rename into the root's trash dir; the file is
- * restorable from Settings until the retention window empties it; never an unlink here).
- * So the title is "Move this local file to Trash?" and the button is "Move to Trash" - the
- * old "Delete permanently" button contradicted both its own title and the route. The extra
- * deliberate step stays: the button starts DISABLED and only the "I understand" checkbox
- * enables it (a local file cannot be re-downloaded once the Trash empties it).
- *
- * A ui.sheet dialog (D4.8: one danger fill, no stacked red treatments). Cancel, Close, Esc
- * and the scrim all close it without calling `onConfirm`; `onConfirm` runs at most ONCE, only
- * from the enabled button of a LIVE dialog (a double tap, or a tap on a closing one, is a
- * no-op). Every dynamic string (the title, the path) is textContent - a hostile filename
- * can never become markup. `doc` is injectable for jsdom tests. Returns the parts a caller
- * or test needs, plus `teardown` (closes it; never confirms).
- */
-function showHardDeleteModal(item, onConfirm, doc) {
-  const d = doc || document;
-  const win = d.defaultView || (typeof window !== 'undefined' ? window : null);
-  const U = (win && win.ui) || dialogUi();
-  const it = item || {};
-  if (!U) return null;
-  const body = d.createDocumentFragment();
-
-  const warning = d.createElement('p');
-  warning.className = 'ui-confirm__body';
-  warning.textContent = 'This local file cannot be re-downloaded. It moves to Trash and can be restored from Settings until the retention window empties it.';
-  body.appendChild(warning);
-
-  const file = d.createElement('div');
-  file.className = 'hard-delete-dialog__file';
-  const nameEl = d.createElement('p');
-  nameEl.className = 'hard-delete-dialog__name';
-  nameEl.textContent = typeof it.title === 'string' && it.title !== '' ? it.title : 'this file';
-  const pathEl = d.createElement('p');
-  pathEl.className = 'hard-delete-dialog__path';
-  pathEl.textContent = typeof it.filePath === 'string' ? it.filePath : '';
-  file.appendChild(nameEl);
-  file.appendChild(pathEl);
-  body.appendChild(file);
-
-  const ack = d.createElement('label');
-  ack.className = 'hard-delete-dialog__ack';
-  const checkbox = d.createElement('input');
-  checkbox.type = 'checkbox';
-  checkbox.checked = false;
-  const ackText = d.createElement('span');
-  ackText.textContent = 'I understand it cannot be re-downloaded if the Trash empties it.';
-  ack.appendChild(checkbox);
-  ack.appendChild(ackText);
-  body.appendChild(ack);
-
-  const actions = d.createElement('div');
-  actions.className = 'ui-confirm__actions';
-  const cancelBtn = U.button({ variant: 'secondary', label: 'Cancel', doc: d });
-  // Starts disabled -- only the checkbox's 'change' handler can enable it (AC46).
-  const deleteBtn = U.button({ variant: 'primary', label: 'Move to Trash', disabled: true, doc: d });
-  deleteBtn.classList.add('ui-btn--destructive');
-  actions.appendChild(cancelBtn);
-  actions.appendChild(deleteBtn);
-  body.appendChild(actions);
-
-  const title = 'Move this local file to Trash?';
-  const ctrl = U.sheet({ variant: 'dialog', title, content: body, doc: d, win });
-  let confirmed = false;
-  function teardown() { ctrl.close(); }
-
-  cancelBtn.addEventListener('click', () => teardown());
-  deleteBtn.addEventListener('click', () => {
-    // Belt-and-suspenders: a disabled button should not fire, a closing dialog answers
-    // nothing, and a confirmed one never confirms twice.
-    if (deleteBtn.disabled || confirmed || !ctrl.isOpen()) return;
-    confirmed = true;
-    teardown();
-    if (typeof onConfirm === 'function') onConfirm();
-  });
-  checkbox.addEventListener('change', () => {
-    deleteBtn.disabled = !checkbox.checked;
-  });
-
-  ctrl.open();
-  // After open(): ui.sheet sets the sheet's variant classes on open, replacing any set before.
-  ctrl.el.classList.add('hard-delete-dialog');
-  return {
-    sheet: ctrl.el, modal: ctrl.el, title: ctrl.el.querySelector('.ui-sheet__title'),
-    warning, nameEl, pathEl, checkbox, cancelBtn, deleteBtn, teardown,
-  };
-}
-
 // ---- C1 (v1.24 UX Round, Wave 3): per-item "Move to..." picker -------------
 //
 // Client half of C1 (server.js's `POST /api/videos/:id/move` +
 // `moveItemToFolder`/`computeMoveTarget` -- see that file's own comment for
 // the full path-confinement + id re-key design). `showMoveModal` is a pure,
-// self-contained DOM builder (mirrors `showHardDeleteModal`'s pattern above:
-// it appends itself to `doc.body` and tears itself down, no caller
-// boilerplate) so a future per-card/per-watch-page trigger just calls
+// self-contained DOM builder (it appends itself to `doc.body` and tears
+// itself down, no caller boilerplate) so a future per-card/per-watch-page trigger just calls
 // `showMoveModal(item, folders, onMove)` with no other wiring. `folders` is
 // the SAME `data.folders` array `GET /api/config` already returns (the
 // existing "known folders" list `openPlaylistsSheet`/`renderPlaylistsSheet`
@@ -12922,8 +12815,7 @@ function showHardDeleteModal(item, onConfirm, doc) {
 // while the request is in flight, or auto-refresh on success).
 //
 // SECURITY: every dynamic string (the item's title, each folder path) is
-// rendered via `createElement`/`textContent` ONLY -- never `innerHTML` --
-// mirroring `showHardDeleteModal`'s discipline exactly.
+// rendered via `createElement`/`textContent` ONLY -- never `innerHTML`.
 //
 // Sweep S9: a ui.sheet dialog - a line naming the file, a ui-select of the folders, a status
 // line and Cancel / Move - not the old generic modal family.
@@ -17105,7 +16997,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.25 QoL (T5): cutoffDate <-> <input type="date"> converters.
     cutoffDateToDateInput, dateInputToCutoffDate,
     derivePinnedPlaylistEntries, renderPinnedSidebar, renderPinnedPlaylists, fetchAllPins,
-    isYtdlpManagedItem, deleteFlowFor, showHardDeleteModal,
+    isYtdlpManagedItem,
     // v1.24.0 (T9): C1 move-files client picker.
     showMoveModal, requestMoveItem,
     // pocket menus gate r1 K2: the library-changed seam + the chapters editor that raises it.

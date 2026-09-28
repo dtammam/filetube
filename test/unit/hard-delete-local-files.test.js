@@ -7,18 +7,18 @@
 // it must return `true` ONLY on a POSITIVE yt-dlp signal (a non-empty
 // channelUrl/channelId/channelName, v1.20 FR-2) -- ANY absence/ambiguity
 // (including every pre-v1.20 local file) must resolve to `false`, which
-// callers treat as LOCAL/irreplaceable and route through the MORE
-// deliberate `showHardDeleteModal`. This file exhaustively covers that
-// truth table (the adversarial-review focus: the predicate can only ever
-// ADD friction, never remove it -- AC51) plus `deleteFlowFor`'s mirror of
-// it. The dialog itself (showHardDeleteModal) is tested in
-// overlays-dialogs-s9.test.js since sweep S9.
+// callers treat as LOCAL/irreplaceable (the one delete confirm's copy,
+// main.js cardDeleteConfirmCopy, then says the file cannot be
+// re-downloaded). This file exhaustively covers that truth table (the
+// adversarial-review focus: the predicate can only ever ADD friction,
+// never remove it -- AC51). Step 7 (UI pass) DELETED the checkbox-gated
+// dialog (showHardDeleteModal) and its flow picker (deleteFlowFor): no
+// caller was left; overlays-dialogs-s9.test.js binds that they stay gone.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
 const {
   isYtdlpManagedItem,
-  deleteFlowFor,
 } = require('../../public/js/common.js');
 
 // ---- isYtdlpManagedItem: fail-safe truth table ------------------------------
@@ -94,7 +94,7 @@ test('isYtdlpManagedItem: no ambiguous/absent input can ever resolve to true (fa
 // another site whose site reported no uploader has none of the other three.
 test('v1.338 D8d isYtdlpManagedItem: true for a download from another site with no uploader (sourceExtractor alone)', () => {
   assert.strictEqual(isYtdlpManagedItem({ sourceExtractor: 'Reddit', sourceId: 'abc123', filePath: '/dl/Reddit/x [Reddit=abc123].mp4' }), true);
-  assert.strictEqual(deleteFlowFor({ sourceExtractor: 'Facebook', sourceId: '99' }), 'normal');
+  assert.strictEqual(isYtdlpManagedItem({ sourceExtractor: 'Facebook', sourceId: '99' }), true);
 });
 
 test('v1.338 D8d isYtdlpManagedItem: a blank / whitespace / non-string sourceExtractor is no signal (still fails safe to LOCAL)', () => {
@@ -103,24 +103,3 @@ test('v1.338 D8d isYtdlpManagedItem: a blank / whitespace / non-string sourceExt
   }
   assert.strictEqual(isYtdlpManagedItem({ sourceId: 'abc' }), false, 'a sourceId alone is no signal');
 });
-
-// ---- deleteFlowFor: mirrors the predicate into the caller vocabulary -------
-
-test('deleteFlowFor: "normal" for a yt-dlp-managed item', () => {
-  assert.strictEqual(deleteFlowFor({ channelUrl: 'https://www.youtube.com/@x' }), 'normal');
-});
-
-test('deleteFlowFor: "hard" for a local item (no signal at all)', () => {
-  assert.strictEqual(deleteFlowFor({ title: 'local.mp4' }), 'hard');
-});
-
-test('deleteFlowFor: "hard" for null/undefined/malformed input (fails safe toward MORE friction)', () => {
-  assert.strictEqual(deleteFlowFor(null), 'hard');
-  assert.strictEqual(deleteFlowFor(undefined), 'hard');
-});
-
-// ---- showHardDeleteModal ------------------------------------------------------
-// Sweep S9 (AC12): the dialog is a ui.sheet now; its DOM tests (disabled until the box is
-// ticked, one confirm, every dismissal path, textContent, the fallback title, no innerHTML)
-// moved to test/unit/overlays-dialogs-s9.test.js, driven in jsdom with the real ui.js, with the
-// F44 copy-agrees-with-the-route binding beside them.

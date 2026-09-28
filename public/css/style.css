@@ -6464,47 +6464,6 @@ html:has(> body.ft-audio-expanded),
    to the monogram - 20px in the desktop sidebar's rows, 36px in the phone sheet. The contract
    is ui.css's; pinned-avatar is only a hook class. */
 
-/* === v1.21 FR-7: the local-file delete confirm ==============================
-   common.js showHardDeleteModal: the extra-deliberate confirm for deleting a LOCAL (non-yt-dlp)
-   file. Sweep S9 (F44, D4.8): a ui.sheet dialog with ONE danger fill (the confirm button),
-   not four stacked red treatments; its copy says what the route does (the file moves to
-   Trash). Only the content layout lives here: the file card and the "I understand" row whose
-   checkbox enables the button. */
-.hard-delete-dialog__file {
-  margin: var(--space-6) var(--space-8) 0;
-  padding: var(--space-4) var(--space-6);
-  border-radius: var(--r-md);
-  background-color: var(--surface-2);
-}
-.hard-delete-dialog__name {
-  margin: 0;
-  font: var(--t-body);
-  font-weight: var(--fw-semibold);
-  color: var(--ink-1);
-  overflow-wrap: anywhere;
-}
-.hard-delete-dialog__path {
-  margin: var(--space-2) 0 0;
-  font: var(--t-footnote);
-  color: var(--ink-2);
-  word-break: break-all;
-}
-.hard-delete-dialog__ack {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  min-height: var(--hit);
-  margin: var(--space-4) var(--space-8) 0;
-  font: var(--t-body);
-  color: var(--ink-1);
-}
-.hard-delete-dialog__ack input {
-  flex: none;
-  width: var(--icon-md);
-  height: var(--icon-md);
-  margin: 0;
-}
-
 /* The Move dialog's status line (common.js showMoveModal) sits under the folder field. */
 .move-dialog__status:empty {
   display: none;
