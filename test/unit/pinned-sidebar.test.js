@@ -243,9 +243,13 @@ test('renderPinnedSidebar: renders a pin entry with a generated avatar glyph and
   assert.strictEqual(mono.className, 'ui-avatar__mono');
   assert.strictEqual(mono.getAttribute('data-tone'), String(UI.toneOf(PIN.label)), 'a deterministic tone');
   assert.strictEqual(mono.textContent, UI.initials(PIN.label), 'glyph matches the primitive initials contract');
-  const textNode = link.children.find((c) => c.nodeType === 3);
-  assert.ok(textNode, 'expected a createTextNode-built label, not a textContent assignment (which would also wipe the avatar)');
-  assert.match(textNode.textContent, /Real Creator/);
+  // v1.341.1 (DELIBERATE lock update): the label is its own <span class="sidebar-item__label">
+  // (so it can shrink and wrap and the pin keeps one column); still inert text via the SPAN's
+  // textContent, never the link's (which would wipe the avatar) and never innerHTML.
+  const label = link.children.find((c) => c.className === 'sidebar-item__label');
+  assert.ok(label, 'expected the label in its own .sidebar-item__label span');
+  assert.strictEqual(label.textContent, 'Real Creator');
+  assert.ok(link.children.indexOf(avatar) < link.children.indexOf(label), 'avatar, then label');
 });
 
 test('renderPinnedSidebar: a pin with a channelAvatarUrl renders an <img> instead of the generated glyph (F1 precedence)', () => {

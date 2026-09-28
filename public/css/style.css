@@ -6913,7 +6913,11 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
    unpin from - the control lives on the row itself. Sweep S1: a plain ui-btn icon toggle
    (the filled pin, F32) that asks through ui.confirm; in a desktop sidebar row it sits at the
    row's trailing edge (in the phone sheet it takes the row's reserved action column). */
-.sidebar-item .ui-btn.pinned-unpin-btn { margin-left: auto; }
+.sidebar-item .ui-btn.pinned-unpin-btn { margin-left: auto; flex-shrink: 0; }
+/* v1.341.1 (Dean): a pinned row's label takes the leftover width on ONE line, cut with an
+   ellipsis (his pick, like YouTube's sidebar), and the pin never shrinks: the pin sits in the same
+   column and every row is the same height. A long one-word name used to squeeze the pin right. */
+.sidebar-item__label { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---- v1.37.1: books page styles (moved from the page <head> -- the SPA
    router swaps only #view-root, so page-local styles were lost on in-app

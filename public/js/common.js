@@ -12017,7 +12017,13 @@ function renderPinnedSidebar(pins) {
     // link.textContent, which would also wipe the avatar appended above) so
     // both the avatar and the label survive, neither ever passed through
     // innerHTML. Same discipline as renderPinnedPlaylists above.
-    link.appendChild(document.createTextNode(' ' + entry.label));
+    // v1.341.1 (Dean): the label is its own element (.sidebar-item__label) so it can take the row's
+    // leftover width on one line (ellipsis); as a bare text node a long one-word name
+    // ("heavymachinegun") could not shrink and pushed the pin out of the column the others sit in.
+    const label = document.createElement('span');
+    label.className = 'sidebar-item__label';
+    label.textContent = entry.label;
+    link.appendChild(label);
     // v1.37.0 (Dean's orphaned-pin report): every pinned row carries its
     // own unpin control -- see buildUnpinButton's comment.
     if (sourcePin && typeof sourcePin.id === 'string') {
