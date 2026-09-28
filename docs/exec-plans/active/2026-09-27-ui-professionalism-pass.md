@@ -2597,3 +2597,19 @@ The primitives: these mutants are all killed: ui.confirm's onClosing settle, its
 The Stats delete names the item, closes over its id and sends one request per OK. Notifications requestDelete was read against its tests.
 Not duplicated from qa: the stale LESSONS lint:css lines and the dead eslint globals.
 Tree: I appended only this verdict. Every mutant ran in /tmp/adv-uiprof/work, which is IDENTICAL to its pristine twin. My fixture server is stopped. The qa and security-brief verdicts above were already uncommitted when I appended.
+
+Coordinator, r1 disposition (2026-09-28):
+- **Dean's ruling on adversary 2:** the plain confirm is enough for a local file (it moves to Trash, which is
+  recoverable; the double-tap fix makes the confirm deliberate). The v1.21 checkbox dialog stays retired.
+- **Fixing before r2** (three parallel builders, merged into this branch):
+  - fix/r1-delete: adversary 1 (the ui.confirm arming window, bound by a screen-position Playwright tap),
+    adversary 3 (the view signal on the four unbound confirms), adversary 5 (the backup-check mutants).
+  - fix/r1-layout: qa 1 (one no-motion mechanism with the width filter), adversary 4 (popover flip/clamp).
+  - fix/r1-tooling: qa 2 + qa 9 (docs), qa 3 + qa 7 (dead globals, the probe, the orphan token), qa 4 + the
+    `--update` subset (run.js guards), security-brief 2 (channelUrl on restore), adversary 6 (token-exempt
+    under the ratchet).
+- **Residuals (not blocking):** qa 5 (8c264963's message, disclosed), qa 6 (`.stable-body > [role="row"]`, the
+  icons rule does not read CSS `content`), qa 8 (the four *.check.js scripts have no runner), qa 10 (ui.sheet
+  keeps its abort listener), adversary 7 (no focus trap in dialogs), adversary 8 (pre-push geometry skips
+  lib/ytdlp changes; tv.js isPlainClick's Alt check survives), security-brief r1 3-6 (uiStateHtml's raw
+  sink, the notification Delete item for viewers, example.invalid seed URLs, the Playwright digest pin).
