@@ -137,3 +137,62 @@ test('no private body lock survives: only body-scroll-lock.js pins the body', ()
     .filter((f) => /body\.style\.position\s*=\s*['"`]fixed['"`]|body\.style\.setProperty\(\s*['"`]position['"`]/.test(fs.readFileSync(path.join(dir, f), 'utf8')));
   assert.deepStrictEqual(offenders, [], 'a hand-copied lock clobbers the shared one - route it through FileTubeBodyLock');
 });
+
+// v1.341.2 (Dean, desktop): pinning <body> removed a CLASSIC scrollbar and every locking panel
+// shifted the page by its width. The lock pads by exactly the width the scrollbar took (measured
+// headless with classic scrollbars at 1440x900: the header bell held 1296px on the tray, the account
+// menu, a card menu and a right-click menu; a dialog's scrim covered x=1436; fullscreen stayed 1440
+// wide), hands it to the fixed chrome as --scroll-lock-gap, and removes both on the last release.
+function pageWithScrollbar(gap) {
+  const p = page(0);
+  Object.defineProperty(p.win, 'innerWidth', { get: () => 1440, configurable: true });
+  Object.defineProperty(p.doc.documentElement, 'clientWidth', { get: () => (p.doc.body.style.position === 'fixed' ? 1440 : 1440 - gap), configurable: true });
+  return p;
+}
+
+test('a classic scrollbar: the lock pads by its width while it holds, and the last release removes the pad', () => {
+  const { doc, win } = pageWithScrollbar(12);
+  BL.lock(doc, win, 'a');
+  assert.strictEqual(doc.body.style.paddingRight, '12px');
+  assert.strictEqual(doc.documentElement.style.getPropertyValue('--scroll-lock-gap'), '12px');
+  BL.lock(doc, win, 'b'); // a second owner never re-measures (the scrollbar is already gone)
+  assert.strictEqual(doc.body.style.paddingRight, '12px');
+  BL.release(doc, win, 'b');
+  assert.strictEqual(doc.body.style.paddingRight, '12px', 'still held by a');
+  BL.release(doc, win, 'a');
+  assert.strictEqual(doc.body.style.paddingRight, '');
+  assert.strictEqual(doc.documentElement.style.getPropertyValue('--scroll-lock-gap'), '');
+});
+
+test('an overlay scrollbar (phones, macOS) takes no width: the lock adds no pad', () => {
+  const { doc, win } = pageWithScrollbar(0);
+  BL.lock(doc, win, 'a');
+  assert.strictEqual(doc.body.style.paddingRight, '');
+  assert.strictEqual(doc.documentElement.style.getPropertyValue('--scroll-lock-gap'), '');
+  BL.release(doc, win, 'a');
+});
+
+test('the fixed chrome at the right edge takes the gap (header, mini player, reader bar)', () => {
+  const css = fs.readFileSync(path.join(REPO, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /header \{[^}]*padding-right: calc\(var\(--space-8\) \+ var\(--scroll-lock-gap, 0px\)\);/);
+  assert.match(css, /#player-dock \{[^}]*right: calc\(16px \+ var\(--scroll-lock-gap, 0px\)\);/);
+  assert.match(css, /\.reader-nowplaying \{[^}]*right: var\(--scroll-lock-gap, 0px\);/);
+  // gate r1 W1: the <=768px header and dock rules override the base ones, so they carry the gap too
+  // (a 760px desktop window with a classic scrollbar shifted 12px without them).
+  assert.strictEqual((css.match(/padding-right: calc\(var\(--space-4\) \+ var\(--scroll-lock-gap, 0px\)\);/g) || []).length, 2, 'both narrow header rules');
+  assert.match(css, /#player-dock \{[^}]*right: calc\(8px \+ var\(--scroll-lock-gap, 0px\)\);/);
+  // ...and the narrow header's top-right slot is ABSOLUTE (padding cannot reach it).
+  assert.match(css, /header \.header-right \{[^}]*right: calc\(var\(--space-2\) \+ var\(--scroll-lock-gap, 0px\)\);/);
+  const ui = fs.readFileSync(path.join(REPO, 'public', 'css', 'ui.css'), 'utf8');
+  assert.match(ui, /\.ui-toast-host \{[^}]*right: var\(--scroll-lock-gap, 0px\);/);
+  assert.doesNotMatch(css.replace(/\/\*[\s\S]*?\*\//g, ''), /scrollbar-gutter/, 'never the gutter (fullscreen band, undimmed dialog strip)');
+});
+
+test('an implausible gap (a zoomed or broken measure) never pads the page', () => {
+  for (const gap of [-5, 150]) {
+    const { doc, win } = pageWithScrollbar(gap);
+    BL.lock(doc, win, 'a');
+    assert.strictEqual(doc.body.style.paddingRight, '', 'gap ' + gap);
+    BL.release(doc, win, 'a');
+  }
+});

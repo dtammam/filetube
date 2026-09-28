@@ -34,15 +34,32 @@
     var y = win ? (typeof win.pageYOffset === 'number' ? win.pageYOffset : win.scrollY) : 0;
     return (typeof y === 'number' && !isNaN(y)) ? y : 0;
   }
-  function pin(doc, y) {
+  // v1.341.2 (Dean, desktop): pinning <body> removes a CLASSIC scrollbar, so every panel that
+  // locks the page (notifications, the account menu, a card's menu, every dialog) shifted the page
+  // by its width. While the lock holds, the page is padded by exactly the width the scrollbar took
+  // (0 with overlay scrollbars: phones, macOS), and --scroll-lock-gap hands the same width to the
+  // fixed chrome anchored at the right edge (style.css). NOT scrollbar-gutter: stable, which kept a
+  // band beside fullscreen video and an undimmed strip beside dialogs (v1.341.1 gate).
+  function scrollbarGap(doc, win) {
+    var root = doc.documentElement;
+    var gap = (win && typeof win.innerWidth === 'number' && root) ? win.innerWidth - root.clientWidth : 0;
+    return gap > 0 && gap < 100 ? gap : 0;
+  }
+  function pin(doc, y, gap) {
     var s = doc.body.style;
     s.position = 'fixed';
     s.top = (-y) + 'px';
     s.left = '0'; s.right = '0';
+    if (gap) {
+      s.paddingRight = gap + 'px';
+      doc.documentElement.style.setProperty('--scroll-lock-gap', gap + 'px');
+    }
   }
   function unpin(doc) {
     var s = doc.body.style;
     s.position = ''; s.top = ''; s.left = ''; s.right = '';
+    s.paddingRight = '';
+    doc.documentElement.style.removeProperty('--scroll-lock-gap');
   }
 
   // Take the lock for `owner` (any string). Idempotent per owner.
@@ -54,7 +71,7 @@
       return true;
     }
     st = { owners: [owner], y: currentY(win), deferredY: null };
-    try { pin(doc, st.y); } catch (_) { return false; }
+    try { pin(doc, st.y, scrollbarGap(doc, win)); } catch (_) { return false; }
     states.set(doc, st);
     return true;
   }
