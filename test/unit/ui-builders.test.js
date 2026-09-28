@@ -616,6 +616,76 @@ test('ui.menu: an opened sheet of compact rows; the selected item is a trailing 
   assert.ok(plain.body.querySelector('.ui-list').classList.contains('ui-list--media-none'));
 });
 
+// Sweep S9 (primitive addition): a second tap on a menu row while the menu animates out
+// picks NOTHING (the choice modal it replaces settled once; a double tap on Share / Delete
+// must not run the pick twice). Tapping the SAME row again and tapping ANOTHER row both count.
+test('ui.menu: one pick per menu - a second tap (same row or another) while it closes runs no onSelect', () => {
+  clock();
+  const { doc, win } = page();
+  const picks = [];
+  const menuPicks = [];
+  const c = ui.menu({
+    items: [{ label: 'A', value: 'a', onSelect: (v) => picks.push(v) }, { label: 'B', value: 'b', onSelect: (v) => picks.push(v) }],
+    onSelect: (v) => menuPicks.push(v), doc, win,
+  });
+  const rows = kids(c.body.querySelector('.ui-list'));
+  rows[0].click();
+  rows[0].click();
+  rows[1].click();
+  assert.deepStrictEqual(picks, ['a'], 'one item pick');
+  assert.deepStrictEqual(menuPicks, ['a'], 'one menu-level pick');
+});
+
+// Sweep S9 (primitive addition): `canDismiss` - a sheet mid-request refuses a USER dismissal
+// (Esc, the scrim, Close, a drag down) and stays up; its owner's ctrl.close() and a signal
+// abort still close it.
+test('ui.sheet canDismiss: false keeps it up on Esc / scrim / Close; ctrl.close() and an abort still close; true lets them through', () => {
+  const t = clock();
+  const { doc, win } = page();
+  let allow = false;
+  const ac = new win.AbortController();
+  const c = ui.sheet({ title: 'T', canDismiss: () => allow, signal: ac.signal, doc, win });
+  c.open();
+  t.tick(16);
+  key(win, doc.body, 'Escape');
+  assert.strictEqual(c.isOpen(), true, 'Esc refused');
+  c.scrim.click();
+  assert.strictEqual(c.isOpen(), true, 'scrim refused');
+  c.el.querySelector('.ui-sheet__close').click();
+  assert.strictEqual(c.isOpen(), true, 'Close refused');
+  c.close();
+  assert.strictEqual(c.isOpen(), false, 'the owner closes it');
+  t.tick(400);
+  c.open();
+  t.tick(16);
+  ac.abort();
+  assert.strictEqual(c.isOpen(), false, 'an abort closes it');
+  t.tick(400);
+  const d = ui.sheet({ title: 'U', canDismiss: () => allow, doc, win });
+  d.open();
+  allow = true;
+  key(win, doc.body, 'Escape');
+  assert.strictEqual(d.isOpen(), false, 'allowed: Esc closes');
+});
+
+test('ui.sheet canDismiss: a refused drag-down snaps back (the sheet stays, --ui-drag cleared)', () => {
+  clock();
+  const { doc, win } = page({ phone: true });
+  const c = ui.sheet({ variant: 'bottom', title: 'T', canDismiss: () => false, doc, win }).open();
+  c.el.getBoundingClientRect = () => ({ height: 100, width: 390, top: 0, left: 0, right: 390, bottom: 100 });
+  const pe = (type, y, target) => {
+    const e = new win.Event(type, { bubbles: true });
+    e.clientY = y; e.pointerId = 1;
+    (target || doc).dispatchEvent(e);
+  };
+  pe('pointerdown', 0, c.el.querySelector('.ui-sheet__header'));
+  pe('pointermove', 80);
+  assert.strictEqual(c.el.style.getPropertyValue('--ui-drag'), '80px');
+  pe('pointerup', 80);
+  assert.strictEqual(c.isOpen(), true, 'a refused drag keeps it open');
+  assert.strictEqual(c.el.style.getPropertyValue('--ui-drag'), '', 'and snaps back');
+});
+
 // ------------------------------------------------------------------ toast
 test('ui.toast: one host (aria-live), DOM per kind, is-visible on the next frame', () => {
   const t = clock();

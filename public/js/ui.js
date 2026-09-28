@@ -422,7 +422,7 @@
       if (e.key !== 'Escape' && e.key !== 'Esc') return;
       if (openStack[openStack.length - 1] !== ctrl) return;
       e.preventDefault();
-      close();
+      dismiss();
     }
 
     function finish() {
@@ -505,14 +505,22 @@
       return ctrl;
     }
 
+    // A USER dismissal (Esc, the scrim, Close, a drag down) asks `canDismiss` first: a sheet
+    // mid-request (a Move in flight) says no and stays up. The owner's own ctrl.close() and a
+    // signal abort always close.
+    function dismiss() {
+      if (typeof o.canDismiss === 'function' && o.canDismiss() === false) return ctrl;
+      return close();
+    }
+
     function setContent(node) {
       while (body.firstChild) body.removeChild(body.firstChild);
       if (node) body.appendChild(node);
       return ctrl;
     }
 
-    closeBtn.addEventListener('click', function () { close(); });
-    scrim.addEventListener('click', function () { close(); });
+    closeBtn.addEventListener('click', function () { dismiss(); });
+    scrim.addEventListener('click', function () { dismiss(); });
     // `signal` (an AbortSignal, e.g. a view's): its abort closes the sheet, so an SPA nav away
     // never strands an overlay on <body> over the next view. A confirm/prompt resolves as a
     // dismissal (false / null) through onClosing.
@@ -545,7 +553,7 @@
       doc.removeEventListener('pointercancel', dragEnd);
       s.classList.remove('is-dragging');
       var hgt = s.getBoundingClientRect ? s.getBoundingClientRect().height : 0;
-      if (dy > 0 && dy > hgt * 0.3) { close(); return; }
+      if (dy > 0 && dy > hgt * 0.3) { dismiss(); if (state !== 'open') return; }
       s.style.removeProperty('--ui-drag');
     }
     [grab, header].forEach(function (n) { n.addEventListener('pointerdown', dragStart); });
@@ -577,6 +585,8 @@
         disabled: !!it.disabled,
         doc: doc,
         onClick: function () {
+          // One pick per menu: a second tap while it animates out picks nothing.
+          if (!ctrl.isOpen()) return;
           ctrl.close();
           if (typeof it.onSelect === 'function') it.onSelect(it.value);
           if (typeof o.onSelect === 'function') o.onSelect(it.value);
