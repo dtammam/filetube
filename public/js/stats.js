@@ -366,7 +366,7 @@ function renderDuplicates(root, report, canModify) {
 function statsUi() {
   return (typeof window !== 'undefined' && window.ui) || null;
 }
-function confirmStatsDelete(title) {
+function confirmStatsDelete(title, signal) {
   const u = statsUi();
   if (!u || typeof u.confirm !== 'function') return Promise.resolve(false);
   const name = title ? '"' + title + '"' : 'This item';
@@ -376,7 +376,7 @@ function confirmStatsDelete(title) {
     confirmLabel: 'Move to Trash',
     cancelLabel: 'Cancel',
     danger: true,
-    signal: statsController ? statsController.signal : undefined,
+    signal: signal || undefined,
   }).then((yes) => yes === true);
 }
 function buildStatsDeleteAction(mediaId, title, onDeleted) {
@@ -390,9 +390,13 @@ function buildStatsDeleteAction(mediaId, title, onDeleted) {
   btn.addEventListener('click', async () => {
     if (btn.disabled || asking) return;
     asking = true;
+    // The view's signal as it is NOW (gate r1, adversary 5): destroy() nulls statsController
+    // and a later init() makes a fresh one, so re-reading it after the await could never see
+    // this view's abort. The captured signal can.
+    const signal = statsController ? statsController.signal : null;
     let yes = false;
-    try { yes = await confirmStatsDelete(title); } finally { asking = false; }
-    if (!yes || (statsController && statsController.signal.aborted)) return;
+    try { yes = await confirmStatsDelete(title, signal); } finally { asking = false; }
+    if (!yes || (signal && signal.aborted)) return;
     btn.disabled = true;
     fetch('/api/videos/' + encodeURIComponent(mediaId), { method: 'DELETE' })
       .then((res) => (res.ok ? res.json().catch(() => ({})) : Promise.reject(new Error(`delete failed: ${res.status}`))))

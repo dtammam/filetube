@@ -203,6 +203,46 @@ test('DESTRUCTIVE: a view teardown with the confirm up sends nothing, and a stal
   } finally { await teardown(dom); }
 });
 
+// Gate r1 (adversary 5): the two backup checks after the confirm, each bound by the ONE input
+// only it refuses. The real ui.confirm answers only true/false and an abort closes it (false),
+// so it masks both; a stand-in confirm (window.ui.confirm replaced after loadUi) isolates them.
+test('DESTRUCTIVE: only an answer of exactly `true` deletes - a truthy non-true answer (1, "yes", {}) sends nothing', async () => {
+  for (const answerValue of [1, 'yes', {}, true]) { // `true`: the positive control
+    const { dom, calls } = mount();
+    try {
+      const doc = dom.window.document;
+      const host = doc.getElementById('host');
+      stats.renderAvTable(host, AV_ITEMS, true);
+      global.window.ui = { confirm: () => Promise.resolve(answerValue) };
+      click(host.querySelector('.stats-delete-btn')); await settle();
+      assert.deepStrictEqual(deletes(calls), answerValue === true ? ['/api/videos/vid-big'] : [], `an answer of ${JSON.stringify(answerValue)}`);
+    } finally { await teardown(dom); }
+  }
+});
+
+test('DESTRUCTIVE: a yes that lands after the view was torn down sends nothing (the signal captured at the tap, re-checked after the answer)', async () => {
+  for (const leave of ['stay', 'leave', 'leave-and-return']) { // 'stay': the positive control
+    const { dom, calls } = mount();
+    try {
+      const doc = dom.window.document;
+      doc.body.insertAdjacentHTML('beforeend', '<div id="stats-av-list"></div>');
+      stats.init(doc.body);
+      await settle();
+      const host = doc.getElementById('host');
+      stats.renderAvTable(host, AV_ITEMS, true);
+      let yes;
+      global.window.ui = { confirm: () => new Promise((r) => { yes = r; }) }; // ignores its signal
+      click(host.querySelector('.stats-delete-btn')); await settle();
+      assert.strictEqual(typeof yes, 'function', 'the confirm was asked');
+      if (leave !== 'stay') stats.destroy(); // the user leaves Stats with the dialog up
+      if (leave === 'leave-and-return') { stats.init(doc.body); await settle(); } // ... and comes back: a FRESH controller
+      yes(true);
+      await settle();
+      assert.deepStrictEqual(deletes(calls), leave === 'stay' ? ['/api/videos/vid-big'] : [], leave);
+    } finally { await teardown(dom); }
+  }
+});
+
 // ---- Duplicates per-copy expando -------------------------------------------
 
 const DUP_REPORT = () => ({

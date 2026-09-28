@@ -132,3 +132,69 @@ test('GATE: every dismissal of the Purge confirm deletes nothing, and a sort mea
     await drainSheets(dom.window);
   } finally { teardownTrash(dom); }
 });
+
+// Gate r1 (adversary 5): the two backup checks behind the Purge confirm (a PERMANENT delete),
+// each bound by the ONE input only it refuses. The real ui.confirm answers only true/false
+// and a view abort closes it (false), so it masks both; a stand-in window.ui.confirm
+// (installed after loadUi) isolates them.
+function trashFetch(calls) {
+  return (url, opts) => {
+    if (url === '/api/trash') return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: ITEMS, total: 3, totalSizeBytes: 15 * 1024 ** 3, retentionDays: 30 }) });
+    calls.push({ url, method: (opts && opts.method) || 'GET' });
+    return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
+  };
+}
+
+test('GATE: confirmDestructive takes only an answer of exactly `true` - a truthy non-true answer (1, "yes", {}) purges nothing', async () => {
+  for (const answerValue of [1, 'yes', {}, true]) { // `true`: the positive control
+    const dom = mountTrash();
+    const calls = [];
+    try {
+      global.fetch = trashFetch(calls);
+      setup.renderTrashSection(new dom.window.AbortController().signal);
+      await tick();
+      global.window.ui = { confirm: () => Promise.resolve(answerValue) };
+      global.document.querySelector('.trash-purge-btn[data-trash-id="t-a"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      await settle();
+      assert.deepStrictEqual(calls.filter((c) => c.method !== 'GET').map((c) => c.method + ' ' + c.url),
+        answerValue === true ? ['DELETE /api/trash/t-a'] : [], `an answer of ${JSON.stringify(answerValue)}`);
+    } finally { teardownTrash(dom); }
+  }
+});
+
+test('GATE: a Purge yes that lands after the Trash section was torn down (its signal aborted) purges nothing', async () => {
+  const dom = mountTrash();
+  const calls = [];
+  try {
+    global.fetch = trashFetch(calls);
+    const ac = new dom.window.AbortController();
+    setup.renderTrashSection(ac.signal);
+    await tick();
+    let yes;
+    global.window.ui = { confirm: () => new Promise((r) => { yes = r; }) }; // ignores its signal
+    global.document.querySelector('.trash-purge-btn[data-trash-id="t-a"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert.strictEqual(typeof yes, 'function', 'the confirm was asked');
+    ac.abort(); // the user leaves Settings with the dialog up
+    yes(true);
+    await settle();
+    assert.deepStrictEqual(calls.filter((c) => c.method !== 'GET'), [], 'nothing purged after the section went away');
+  } finally { teardownTrash(dom); }
+});
+
+test('GATE (positive control for the test above): the same stand-in yes on a LIVE section purges exactly that item', async () => {
+  const dom = mountTrash();
+  const calls = [];
+  try {
+    global.fetch = trashFetch(calls);
+    setup.renderTrashSection(new dom.window.AbortController().signal);
+    await tick();
+    let yes;
+    global.window.ui = { confirm: () => new Promise((r) => { yes = r; }) };
+    global.document.querySelector('.trash-purge-btn[data-trash-id="t-a"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    yes(true);
+    await settle();
+    assert.deepStrictEqual(calls.filter((c) => c.method !== 'GET').map((c) => c.method + ' ' + c.url), ['DELETE /api/trash/t-a']);
+  } finally { teardownTrash(dom); }
+});
