@@ -9760,6 +9760,11 @@ html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition
   width: var(--icon-sm);
   height: var(--icon-sm);
 }
+/* a drawn cap has no text baseline: its row centres the caps and the description instead */
+.shortcuts-keys:has(.shortcuts-kbd--icon),
+.shortcuts-keys:has(.shortcuts-kbd--icon) + .shortcuts-desc {
+  align-self: center;
+}
 
 .shortcuts-note {
   margin-top: var(--space-8);

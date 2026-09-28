@@ -272,6 +272,22 @@ function sceneKit(FX, BASE) {
       await tap(p, '#subscribe-btn-mock', vp); await p.waitForSelector('.oneoff-modal:not([hidden]), .ui-sheet.is-open .subscribe-form', { timeout: 8000 }); await sleep(600); } },
     { id: '74-chapter-snap', path: `/watch.html?v=${FX.video}`, run: async (p) => { await p.waitForSelector('#media-title', { timeout: 12000 }); await pausePlayback(p);
       await p.evaluate((id) => window.showChapterSnapEditor(id, {}), FX.video); await p.waitForSelector('.ui-sheet.is-open .chapter-snap-status', { timeout: 8000 }); await sleep(1200); } },
+    // 74b: the editor POPULATED (the fixture's video has no chapters): a scripted editor state
+    // - five chapters, two snap suggestions, one moved row, the Edited badge.
+    { id: '74b-chapter-snap-rows', path: `/watch.html?v=${FX.video}`, run: async (p) => {
+      const url = `/api/videos/${FX.video}/chapter-snap`;
+      const state = { id: FX.video, title: 'Evening mix', type: 'audio', duration: 300, version: 'v1', minGapSec: 0.1, chaptersSource: 'description', edited: true,
+        chapters: [['Intro', 0, 0], ['Harbor lights', 60, 60], ['Low tide', 120, 121.5], ['North wind', 180, 180], ['Home again', 240, 240]].map(([title, src, t], index) => ({ index, title, sourceStart: src, startTime: t })),
+        revert: { source: 'description', count: 5 }, leadInSec: 0.3, silence: { state: 'ready', gaps: 4 },
+        suggestions: [{ index: 0, status: 'first', time: 0 }, { index: 1, status: 'suggest', time: 61.8, reason: 'silence' }, { index: 2, status: 'no-gap', time: null }, { index: 3, status: 'suggest', time: 183.4, reason: 'end' }, { index: 4, status: 'fine', time: 240 }],
+        snapAll: [0, 61.8, 121.5, 183.4, 240] };
+      await p.addInitScript(({ u, b }) => {
+        const real = window.fetch.bind(window);
+        window.fetch = (input, init) => { const s = typeof input === 'string' ? input : (input && input.url) || ''; if (s === u) return Promise.resolve(new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } })); return real(input, init); };
+      }, { u: url, b: state });
+      await p.reload({ waitUntil: 'networkidle' });
+      await p.waitForSelector('#media-title', { timeout: 12000 }); await pausePlayback(p);
+      await p.evaluate((id) => window.showChapterSnapEditor(id, { focusIndex: 2 }), FX.video); await p.waitForSelector('.ui-sheet.is-open .chapter-snap-list li', { timeout: 8000 }); await sleep(1200); } },
     { id: '75-shortcuts', path: '/', vps: ['desktop'], run: async (p) => { await p.waitForLoadState('networkidle'); await p.keyboard.press('Shift+Slash'); await p.waitForSelector('.ui-sheet.is-open .shortcuts-body', { timeout: 8000 }); await sleep(600); } },
     // Books and the reader (sweep S10): the library, one shelf, the reader and its two sheets.
     { id: '50-books-library', path: '/books', run: async (p) => { await p.waitForSelector('#books-grid .book-card img', { timeout: 12000 }); await sleep(600); } },
@@ -335,7 +351,7 @@ function S9_SCENES(FX) {
       'Move <strong>Bench build, part 2</strong> to Trash?<br><br><span style="color:var(--yt-red); font-weight:bold;">The file leaves your library now and is permanently removed when the Trash retention window empties it:</span><br><code style="word-break:break-all; font-size:11px;">/media/Harbor Workshop/Bench build, part 2.mp4</code>',
       () => {}, { confirm: 'Move to Trash', danger: true }), null, SHEET); } },
     // step 7: the checkbox dialog (showHardDeleteModal) is retired; a local file's delete is the one danger ui.confirm with main.js's copy.
-    { id: '84-local-delete', path: '/', run: async (p) => { await openOn(p, () => window.ui.confirm(window.cardDeleteConfirmCopy({ title: 'Garden party 2019', filePath: '/media/Home Videos/Garden party 2019.mp4' })), null, SHEET); } },
+    { id: '84-local-delete', path: '/', run: async (p) => { await openOn(p, () => { window.ui.confirm(window.cardDeleteConfirmCopy({ title: 'Garden party 2019', filePath: '/media/Home Videos/Garden party 2019.mp4' })); }, null, SHEET); } }, // (not returned: evaluate would await the open confirm)
     { id: '85-share-choice', path: '/', run: async (p) => { await openOn(p, () => window.showChoiceModal('Share', [{ label: 'Share video', onPick() {} }, { label: 'Share at current time (1:05)', onPick() {} }]), null, SHEET); } },
     { id: '86-move-dialog', path: '/', run: async (p) => { await openOn(p, () => window.showMoveModal({ title: 'Garden party 2019' }, ['/media/Home Videos', '/media/Harbor Workshop', '/media/Archive'], () => {}), null, SHEET); } },
     { id: '87-transcript-dialog', path: '/', vps: ['land', 'desktop'], run: async (p) => { await openOn(p, () => window.showTranscriptModal({
