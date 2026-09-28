@@ -10645,6 +10645,25 @@ if (typeof window !== 'undefined') {
   // before the page "settles" on the correct one.
   let navGeneration = 0;
 
+  // Gate r1 (adversary 3): ONE AbortSignal per SHOWN view, aborted the moment the user leaves it.
+  // A view's own AbortController is not that: home (and its folder filters) is CACHED on
+  // nav-away and never aborted, so a destructive confirm opened from a home card stayed up over
+  // the next view and its OK still deleted. `viewSignal()` is read when a surface opens (never
+  // stored at init: a cached home would hold an already-aborted one after its restore), and
+  // leaveShownView() aborts it at every exit: a navigation or popstate that leaves the view
+  // (before its fetch, so no OK lands mid-swap), and every #view-root hand-over (swapToView,
+  // restoreHomeFromCache). An in-view pop (a drill collapsing) keeps it.
+  let shownViewController = null;
+  function viewSignal() {
+    if (!shownViewController) shownViewController = new AbortController();
+    return shownViewController.signal;
+  }
+  function leaveShownView() {
+    const c = shownViewController;
+    shownViewController = null;
+    if (c) c.abort();
+  }
+
   // `FileTube.registerView(name, { init, destroy })` -- called by each view
   // module (main.js/watch.js/setup.js, and lazily lib/ytdlp/client/
   // subscriptions.js) at its own top-level parse time, which happens before
@@ -10849,6 +10868,7 @@ if (typeof window !== 'undefined') {
   // the progressive-enhancement boot) funnels through -- exactly one code
   // path, matching the per-view `init`/`destroy` contract.
   function swapToView(view, root, title, scrollY, url) {
+    leaveShownView();
     applyPlayerTransition(currentViewName, view);
     const oldRoot = getViewRoot();
 
@@ -10946,6 +10966,7 @@ if (typeof window !== 'undefined') {
   // confirmed `cached.url === url`); `url`/`scrollY` are passed explicitly
   // rather than re-read off the (already-nulled) module cache.
   function restoreHomeFromCache(cached, url, scrollY) {
+    leaveShownView();
     homeViewCache = null; // consumed -- live again; the NEXT leave-home re-caches it fresh
 
     // v1.30.0 T8 (B1, AC5.2b): a one-shot may have completed while the user
@@ -11103,6 +11124,7 @@ if (typeof window !== 'undefined') {
     // BEFORE the (possible) fetch below, so any PRIOR still-in-flight
     // navigate()/popstate fetch immediately becomes stale.
     const gen = ++navGeneration;
+    leaveShownView(); // the user is leaving: close what the view had open (viewSignal)
 
     // v1.45.0 gate-fix (C1): a PUSH to the home ROOT ('/' with no query) is the
     // TOP of the walk — always depth 0, never current+1. Every go-home path
@@ -11324,6 +11346,7 @@ if (typeof window !== 'undefined') {
     // click-then-back sequence can otherwise let an earlier fetch resolve
     // after a later one and swap in the wrong view.
     const gen = ++navGeneration;
+    leaveShownView(); // the user is leaving: close what the view had open (viewSignal)
 
     if (state.view === 'home' && homeViewCache && homeViewCache.url === targetUrl) {
       const cached = homeViewCache;
@@ -11400,6 +11423,7 @@ if (typeof window !== 'undefined') {
   window.FileTube = window.FileTube || {};
   window.FileTube.registerView = registerView;
   window.FileTube.navigate = navigate;
+  window.FileTube.viewSignal = viewSignal; // gate r1: aborts when the user leaves the shown view
   window.FileTube.pushViewState = pushViewState; // v1.217 in-view back-stack
   window.FileTube.replaceViewState = replaceViewState;
   // v1.247 (F2): the skin's MENU/collapse asks to dock back on the launch-origin tab. The getter
@@ -11674,10 +11698,15 @@ function buildUnpinButton(pin, onDone, size, label) {
     if (!U || typeof U.confirm !== 'function') return; // ui.js ships on every shell
     asking = true;
     const name = typeof label === 'string' && label.trim() ? label.trim() : 'this playlist';
-    U.confirm({ title: 'Unpin ' + name + '?', body: 'It leaves your pinned playlists. You can pin it again from its page.', confirmLabel: 'Unpin' })
+    // Gate r1 (adversary 3): this button lives in the SHELL (the sidebar, the playlists sheet),
+    // which no view teardown reaches, so the confirm binds the router's shown-view signal:
+    // leaving the view dismisses it (resolves false) and its OK cannot act over the next one.
+    const ft = window.FileTube;
+    const shown = (ft && typeof ft.viewSignal === 'function') ? ft.viewSignal() : undefined;
+    U.confirm({ title: 'Unpin ' + name + '?', body: 'It leaves your pinned playlists. You can pin it again from its page.', confirmLabel: 'Unpin', signal: shown })
       .then((ok) => {
         asking = false;
-        if (!ok) return;
+        if (ok !== true || (shown && shown.aborted)) return;
         btn.disabled = true;
         return fetch(pinDeleteEndpoint(pin), { method: 'DELETE' })
           .catch(() => {})

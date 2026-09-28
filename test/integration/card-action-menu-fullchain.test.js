@@ -365,6 +365,36 @@ test('DELETE: a tap on Move to Trash AFTER Cancel (the dialog animating out) nev
   } finally { dom.window.close(); }
 });
 
+// Gate r1 (adversary 3): home (and its folder filters) is CACHED on nav-away and its own
+// AbortController never fires, so a confirm bound only to it stayed up over the next view and
+// its OK still sent DELETE. The confirm now carries the router's shown-view signal
+// (FileTube.viewSignal), which a navigation or a popstate aborts the moment it starts. The
+// stub never answers the next page's fetch, so the swap never happens: only the leave-start
+// abort can close the dialog here (swapToView's own abort is not what this binds).
+for (const [how, leave] of [
+  ['FileTube.navigate (a tap on a nav link)', (w) => { w.FileTube.navigate('/history'); }],
+  ['popstate (a Back swipe)', (w) => { w.dispatchEvent(new w.PopStateEvent('popstate', { state: { view: 'history', url: '/history', scrollY: 0, depth: 0 } })); }],
+]) {
+  test(`DELETE: leaving the view by ${how} with the confirm open dismisses it; its OK then sends nothing`, async () => {
+    const { fetchImpl, calls } = makeFetchStub({});
+    const dom = await loadIndex(fetchImpl);
+    try {
+      await settle();
+      const { document } = dom.window;
+      const dlg = await openDeleteConfirm(dom, 'yt1');
+      const ok = dlg.querySelector('.ui-confirm__actions .ui-btn--primary');
+      assert.strictEqual(typeof dom.window.FileTube.viewSignal, 'function', 'the router exposes viewSignal');
+      leave(dom.window);
+      await settle();
+      assert.strictEqual(confirmDialog(document), null, 'the confirm is no longer open after the user left');
+      click(dom, ok); // the OK a user reaches on the next view
+      await settle(); await sleep(400);
+      assert.strictEqual(deletes(calls).length, 0, 'no DELETE after the view was left');
+      assert.strictEqual(document.querySelector('.ui-sheet'), null, 'the dialog left the DOM');
+    } finally { dom.window.close(); }
+  });
+}
+
 test('DELETE by KEYBOARD: a detail-0 activation of the kebab and of Move to Trash still needs the confirm; Esc cancels', async () => {
   const { fetchImpl, calls } = makeFetchStub({});
   const dom = await loadIndex(fetchImpl);
@@ -446,7 +476,9 @@ test('source guard: the ONLY caller of the delete request is confirmAndDeleteCar
   const callers = src.match(/deleteCardById\(/g) || [];
   assert.strictEqual(callers.length, 2, 'the definition + ONE call');
   const fn = src.slice(src.indexOf('async function confirmAndDeleteCard(item) {'), src.indexOf('function runCardAction('));
-  assert.match(fn, /const ok = await u\.confirm\(cardDeleteConfirmCopy\(item\)\);\s*if \(ok !== true\) return;\s*if \(signal\.aborted\) return;\s*deleteCardById\(item\.id\);/);
+  // Gate r1 (adversary 3): the confirm carries the router's shown-view signal (this view is
+  // cached on nav-away), and both signals are re-checked after the answer.
+  assert.match(fn, /const ok = await u\.confirm\(Object\.assign\(\{\}, cardDeleteConfirmCopy\(item\), \{ signal: shown \}\)\);\s*if \(ok !== true\) return;\s*if \(shown\.aborted \|\| signal\.aborted\) return;\s*deleteCardById\(item\.id\);/);
   assert.match(src, /\} else if \(action === 'delete'\) \{\s*confirmAndDeleteCard\(item\);/, 'the menu entry routes through the confirm');
 });
 

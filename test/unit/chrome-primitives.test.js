@@ -186,6 +186,57 @@ test('unpin: a tap opens ui.confirm; Cancel, Esc, the scrim and Close never DELE
   assert.strictEqual(done, 1, 'the surfaces refresh once');
 });
 
+// Gate r1 (adversary 3): the unpin control lives in the SHELL (sidebar, playlists sheet), which
+// no view teardown reaches, so its confirm binds the router's shown-view signal
+// (FileTube.viewSignal, aborted the moment the user leaves the view; the router half is bound
+// in card-action-menu-fullchain). A stand-in router signal drives it here.
+test('unpin: the confirm is bound to FileTube.viewSignal - leaving the view dismisses it and its OK then deletes nothing', async () => {
+  const { c } = fresh();
+  const doc = dom.window.document;
+  const deletes = [];
+  global.fetch = async (url, init) => { if (init && init.method === 'DELETE') deletes.push(url); return { ok: true, json: async () => ({}) }; };
+  const ac = new dom.window.AbortController();
+  dom.window.FileTube = { viewSignal: () => ac.signal };
+  const btn = c.buildUnpinButton({ id: 'p9', pinSource: 'books' }, () => {}, 'md', 'Night Reading');
+  doc.body.appendChild(btn);
+  btn.click();
+  const dialog = doc.querySelector('.ui-sheet--dialog:not(.is-closing)');
+  assert.ok(dialog, 'the confirm opened');
+  const ok = [...dialog.querySelectorAll('button')].find((b) => b.textContent === 'Unpin');
+  ac.abort(); // the user navigates away
+  assert.strictEqual(doc.querySelector('.ui-sheet--dialog:not(.is-closing)'), null, 'the confirm closed with the view');
+  ok.click();
+  await tick(); await tick();
+  assert.deepStrictEqual(deletes, [], 'no unpin after the view was left');
+  await tick(400);
+});
+
+// The backup checks after the answer, each bound by the one input only it refuses: a stand-in
+// window.ui.confirm (the real one answers only true/false and closes on abort, masking both).
+test('unpin: only an answer of exactly `true` unpins, and a yes that lands after the view was left unpins nothing', async () => {
+  const { c } = fresh();
+  const doc = dom.window.document;
+  const deletes = [];
+  global.fetch = async (url, init) => { if (init && init.method === 'DELETE') deletes.push(url); return { ok: true, json: async () => ({}) }; };
+  const cases = [[1, 'stay', 0], ['yes', 'stay', 0], [{}, 'stay', 0], [true, 'leave', 0], [true, 'stay', 1]]; // the last: the positive control
+  for (const [answerValue, leave, want] of cases) {
+    deletes.length = 0;
+    const ac = new dom.window.AbortController();
+    dom.window.FileTube = { viewSignal: () => ac.signal };
+    let resolve;
+    dom.window.ui = { confirm: () => new Promise((r) => { resolve = r; }) }; // ignores its signal
+    const btn = c.buildUnpinButton({ id: 'p9', pinSource: 'books' }, () => {}, 'md', 'Night Reading');
+    doc.body.appendChild(btn);
+    btn.click();
+    assert.strictEqual(typeof resolve, 'function', 'the confirm was asked');
+    if (leave === 'leave') ac.abort();
+    resolve(answerValue);
+    await tick(); await tick();
+    assert.strictEqual(deletes.length, want, `answer ${JSON.stringify(answerValue)}, ${leave}`);
+    btn.remove();
+  }
+});
+
 // ---------------------------------------------------------------- 5. theme colour (F66)
 test('syncThemeColorMeta: the pre-paint light/dark pair collapses to the header ground of the app mode; junk is refused', () => {
   const { c } = fresh();
