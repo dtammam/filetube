@@ -80,6 +80,8 @@
   presentation (text presentation selector / a monochrome emoji font) or a grayscale filter on emoji
   runs only, never on the whole surface (LESSONS 7: filters over playing media). Check every place the
   Original draws text that can hold an emoji (menus, song and chapter titles, the status bar).
+  Dean: explicitly for that ONE skin. Cheap path: `filter: grayscale(1)` on the Original's text
+  surfaces only (colour emoji ignore `color`, but a filter greys them), never on album art or video.
 
 - [ ] **Bug: a corrected chapter start plays at the right moment on desktop but off on mobile** _(Dean,
   2026-09-28)_: on a chaptered Music album, a start fixed in the time editor is perfect on desktop; on the
@@ -93,8 +95,12 @@
 - [ ] **Bug: after rotating back to portrait the page bumps up and down (deterministic)** _(Dean,
   2026-09-28, screen recording
   `~/.claude/uploads/ef864c0d-24a7-4879-a566-0754c2cf820a/a05ca679-ScreenRecording_09-28-2026_18-17-56_1.mov`)_.
-  Break the recording down frame by frame (which surface, how many px, how many frames after the
-  rotation settles), then reproduce with `Emulation.setDeviceMetricsOverride` rotation in the geometry
+  Frame-by-frame (extracted 2026-09-28, 116 frames at ~54 fps, the WATCH page, Dark): frame 79 the
+  rotation back to portrait has settled correctly; frames 80-81 the fixed header ALONE drops ~40 CSS px
+  (about the top safe-area inset) over the video; frames 82-102 (~0.35 s) the header is back but the
+  whole page below it sits ~40 px HIGH (the header covers the video's top); frame 103 it snaps right.
+  Likely a stale env(safe-area-inset-top) after rotation, with the header and the page offset taking
+  the new value at different moments. Reproduce with `Emulation.setDeviceMetricsOverride` rotation in the geometry
   G4 sequences (the Pocket rotation F23 class) and fix the element whose top moves.
 
 - [x] **HIGHEST PRIORITY (2 of 2). Bug: a very thin white border around the whole screen in fullscreen, in
@@ -122,6 +128,14 @@
   and any other toggle in the same card (Subscribe / Subscribed) with the same shape.
 
 ### Features
+
+- [ ] **A better music player (skin) picker** _(Dean, 2026-09-28: "the list is just huge... I love all
+  the options, I want all the options, but just having all of them presented the way they are is kind
+  of annoying")_. Keep every skin and colourway; change how they are presented. Directions to weigh
+  (outcome first: pick a look quickly, find a known one fast, browse when curious): group by family
+  (iPod Click / Zune / Original / the modern players) with the colourways as swatches inside each, a
+  visual preview grid instead of a long text list, "recent" / "favourites" at the top, and a search or
+  filter for the long tail. Measure the current list (count, scroll length on a phone) first.
 
 - [ ] **Real battery level in the pocket skins' status bar** (Dean, 2026-09-24: "if it's possible for
   a PWA or a web app to query the device for battery and show that battery instead of just an
