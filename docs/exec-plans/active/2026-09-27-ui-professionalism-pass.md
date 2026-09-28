@@ -2205,3 +2205,133 @@ fix found by the render, the History confirm test, this log).
   `npx eslint .` 0 errors, 6 warnings (the existing common.js unused globals); `npm run lint:ui` OK
   (TOTAL 2216); `npm run lint:css` TOTAL 0; `npm run lint:overlay` clean (0 violations);
   `npm run test:geometry` 51 checks, 51 ok.
+
+### Sweep S4 - notifications and queue (2026-09-28, branch feat/ui-sweep-s4 from 585d88de)
+
+- **Commits:** 9632e96a (registry: `arrow_upward`, `arrow_downward` - the queue's Move up / Move down),
+  12fb282e (the ONE ui.css addition, its own commit: every `.ui-list > .ui-row` rule gets a
+  `.ui-list > .ui-swipe > .ui-row` twin - swipeRow's wrapper made a wrapped row lose the media padding,
+  the divider, the last-row divider drop and the lead hide; a CLOSED row's underlay is
+  `visibility:hidden` - the first render showed Dismiss / Delete through a row's translucent hover
+  tint; a swipe row in a sheet slides over `--surface-overlay`. tokens.css, ui.js and interaction.js
+  untouched - swipeRow's safety rules are unchanged), 61e150a4 (seed: a podcast episode, a
+  downloader-engine event and a READ media row join the six Harbor rows, older than them), 666493e6
+  (the sweep), then this log with the two bindings the mutation pass asked for.
+- **Notifications (D4.6, D8.3, F28):** ONE ui.sheet (`#notif-panel`: popover under the bell on
+  desktop, bottom sheet on the phone) holding ONE ui-list (`lead`, avatar media, thumb aside, one
+  action). Every row renders every column: the unread dot's lead column, the avatar (a channel's
+  photo; a podcast's show ART as a rounded ui-art - D4.4; else the monogram, never the logo), the
+  text, the thumbnail (ui.thumb, its one duration badge; a logo thumb is contained; a 404 thumb
+  becomes the contained logo and drops its badge - the v1.288 net kept) and ONE trailing kebab. The
+  v1.68 X and the v1.161 in-row "Sure?" delete are gone. The row menu (kebab, long-press, desktop
+  right-click through `FTInteraction.onActionMenu`) holds Open channel (`/?folder=`, the card byline's
+  href) / Open show (`/podcasts?show=`, read back from the API's `/podcastart/<subId>`), Dismiss and
+  Delete file (media rows only). A swipe left (`FTInteraction.swipeRow`) reveals Dismiss (neutral)
+  and Delete (danger, media rows only); a full swipe past 60% dismisses. Loading is three skeleton
+  rows in the real grid; empty and error (with Retry) are ui.state. Every menu and confirm the panel
+  opens takes a per-open AbortSignal that the panel's close aborts (Esc, scrim, a row tap, the bell,
+  a back navigation - `popstate` now closes the panel - and the badge poll's 404 stand-down).
+- **The destructive path (full gate, LESSONS 9):** every Delete path lands in ONE `requestDelete`:
+  media rows only; one confirm at a time for the panel; a row with a request in flight asks nothing;
+  `ui.confirm({ title: 'Move to Trash?', confirmLabel: 'Move to Trash', danger })` - the copy says what
+  `DELETE /api/videos/:id` does (lib/media/routes.js: a trash move, or the legacy removal of an entry
+  whose file is already gone; never "permanently"); only an answer of EXACTLY `true`, re-checked
+  against the signal and the row after the await, sends the SAME request as v1.161 (no body), then the
+  same best-effort dismiss, toast and non-optimistic row removal. Dismiss never asks (D4.8) and stays
+  non-optimistic. Clear all (a bulk dismiss) now asks (danger) and empties the list only on a 2xx.
+- **Queue (F48):** ONE ui.sheet (`#queue-panel`); F48 is fixed by construction - the old panel's
+  open class came only from `openOverlay`, which skips it under Reduce Motion, so the panel sat at
+  opacity 0; ui.sheet always applies `is-open` (22b now shows the panel). Rows: ui-art (the entry's
+  art, the monogram if none) and three reserved icon actions on every row - Move up, Move down
+  (disabled in place at the ends), Remove from queue (`DELETE /api/queue/items/:uid`, a queue edit).
+  Now playing is a `--fill-selected` row (never red); played rows dim their title to `--ink-2`. Clear
+  asks ui.confirm (the "Really clear?" arm is gone). **Deviation:** the brief said "drag reorder kept";
+  the queue never had drag (up/down buttons only; tech-debt #111 tracks drag) - the buttons are kept.
+- **Model:** `buildNotificationRowModel` gains a derived `channelHref` (from `folderName` / `artUrl`,
+  fields the API already sends). No API, data field or persistence change.
+- **Locks (AC12, replacements in 666493e6):** mobile-touch-targets-css (the retired controls' 44px
+  floors -> "no per-surface floor for them"; every row control is a ui-btn --icon, bound in the two
+  sheet tests; the primitive's `--hit` is card-kebab-hit's), notification-bell-client (the v1.208 and
+  v1.288 source locks on the old render loop -> the rendered DOM: badge only on a real thumb with a
+  length, logo contained, 404 thumb -> logo without badge, 404 avatar -> monogram), panel-chrome-mirror
+  (risky: the declaration mirror -> "no hand-built panel family is styled again, the Clear rows share
+  ONE rule"; the sticky-header z-index pair -> the ui.sheet header is OUTSIDE the one scroller and the
+  scroller clips; **the isolation assertion kept** on `.notif-sheet .ui-thumb`; the badge carries no
+  z-index anywhere; the empty-queue copy), notification-dismiss-client (the X -> the menu, the swipe
+  button and the full swipe, same non-optimistic contract and focus keep), app-look-l2 (the injectors
+  need `window.ui`: the harness binds it - DELIBERATE). notification-delete-client (the two-tap arm) is
+  deleted; notif-delete-confirm replaces it in the same commit. New: `test/unit/notif-delete-confirm`
+  (24), `notif-panel-sheet` (8), `queue-panel-sheet` (5), `test/helpers/notif-panel-harness.js` (the
+  REAL injector + ui.js + interaction.js on one jsdom window; the swipe's two measurements come from a
+  getBoundingClientRect stub: row 390px, 77px per action).
+- **Destructive-path evidence (notif-delete-confirm, all green):** menu Delete then Cancel / Esc / scrim
+  / Close: no DELETE, no dismiss, the row stays (4 tests); swipe, tap Delete, then each of the four: no
+  DELETE (4); a flick past 60% on a deletable media row: exactly one dismiss `{id:41}`, no DELETE, no
+  confirm; swipe then tap the row content: closes only (the link click is prevented), no mark-read;
+  double tap on the revealed Delete and on the menu item: one dialog; Enter / Space / a detail-0 click /
+  a tap on a CLOSED row's Delete: nothing (the underlay is inert + aria-hidden); Enter never answers a
+  confirm; two rows opened in sequence: the first closes and its Delete is inert, a press outside
+  closes the second, only a re-opened row's Delete asks, and the confirm names that row; a late OK
+  after Esc, after a back navigation (popstate) and after the panel closed: nothing; a stand-in
+  confirm answering 1 / "yes" / {}: nothing; a stand-in yes landing after the panel closed: nothing;
+  POSITIVE: OK (tapped twice) sends exactly one `DELETE /api/videos/V%C3%ADdeo-One` with no body, then
+  one dismiss `{id:41}`, no mark-read, only that row leaves; the swipe's Delete + OK deletes THAT row;
+  a failed DELETE keeps the row, dismisses nothing, and a retry asks again; kebab / long-press /
+  right-click open the menu and delete nothing; Clear all: Cancel posts nothing, OK posts once.
+- **Mutation (a scratchpad git-archive sandbox of 666493e6, a pristine copy diffed after each; 22
+  mutants):** 19 killed first pass - M1 the confirm await removed (16 red), M2 the answer check
+  inverted (14), M3a the full swipe set to Delete (31: swipeRow throws at setup), M3b the full swipe
+  firing the DELETE directly (2), M4a interaction.js's revealed button live while closed (3, one in
+  interaction-policy), M4b the underlay never inert (3), M5 the confirm's signal dropped (1), M6 the
+  panel close not aborting (1), M8 the one-confirm guard (1), M9 Delete file offered on podcast/engine
+  rows (2), M11 the menu Delete skipping the confirm (10), M12 popstate not closing (1), M13 the dismiss
+  busy guard (1), M14 an optimistic dismiss (1), M15 Clear all unconfirmed (1), M16 queue Clear
+  unconfirmed (1), M17 a queue row losing an action slot (1), M18 the kebab only on unread rows - the
+  F28 shape (4), M19 the closed-underlay rule deleted (1), M20 the thumb isolation dropped (1), M21 the
+  copy saying "Delete permanently" (2). Survivors: M2b (`ok !== true` -> `!ok`) and M7 (the
+  post-answer signal re-check) - both masked by ui.confirm itself (it resolves only true/false, and a
+  signal-bound confirm answers false on abort); bound in this commit with stand-in confirms (a truthy
+  non-true answer; a yes landing after the close), re-run: both KILLED. M10 (the `kind !== 'media'`
+  guard in requestDelete) SURVIVES, masked by design: no podcast/engine path offers Delete (M9 binds
+  the menu, the swipe action list is bound by DOM), so the guard is defense in depth, not reachable.
+- **Geometry:** the `notifications` surface is live (G1 + G2, 4 eras x 2 modes x phone/desktop, scoped
+  to `#notif-panel`, floors 1 list / 9 rows / 10 icon pairs) and takes the kit 2005 slot in the pre-push
+  set. Full run against the seeded server: 152 checks, 152 ok, 0 FAIL, 0 XFAIL, 0 XPASS; 56 scenes in
+  88s. `npm run test:geometry:fast`: 11 checks, 11 ok; 4 scenes in 22s. `--mutants`: 15 of 15 killed,
+  incl. the two new ones (g1-notif-aside-collapse: the engine row's thumb column collapsed, aside 338
+  != 234; g1-notif-dot-column: the lead column dropped on the podcast row). **G1 numbers** (probe, 2021
+  dark, all 9 rows): base (585d88de) phone - avatar 16, text 58, thumb **196 on media rows / 240 on the
+  podcast + engine rows** (the F28 44px shift), delete 302 / none, X 346; desktop thumb 1246 / 1282.
+  Branch phone - lead 16, media 32, body 80, thumb 234, kebab 338 on every row, every kind; desktop
+  1048 / 1064 / 1112 / 1276 / 1388 on every row.
+- **Renders (seeded, base :4031 / branch :4032, SEED_NOW pinned, the branch seed in both):** before
+  scenes 21 / 22 / 22b: 64 captured, 0 failed; after 21 / 21b-21d / 22 / 22b: 136 captured, 0 failed,
+  0 unexpected blocked; `compare.js`: "136 scenes, 136 with differences" (64 paired side-by-sides; the
+  72 new 21b-21d shots have no before). Looked at: phone / desktop x dark / light, 2005: columns hold
+  on every kind; the podcast row wears its show art; the menu (Open channel, Dismiss, Delete file in
+  danger); a swiped row (Dismiss grey, Delete red); the Move to Trash confirm over the panel; **22b under
+  Reduce Motion now shows the queue panel** (before: blank). Fixed by the render: the underlay showing
+  through a hovered row (the ui.css rule above), the queue art filling the gap column (now ui-art 40),
+  the lists flush with the sheet edge (the sheet-body list inset for the wrapped lists, style.css).
+- **Debt (ui-lint --shrink, 585d88de -> 666493e6):** TOTAL 1907 -> 1851 (56 items / 44 keys paid, no new
+  debt): no-raw-values 1004 -> 987, no-bespoke-controls 674 -> 644, icons 116 -> 112 (the ▴▾ and two ×),
+  z-ladder 11 -> 9 (the two sticky panel headers), colour-roles 24 -> 21; hover-gated 3, pressed-state
+  1, native-interaction 3, no-layout-transition 1, display-ownership 69, no-shell-style 1 unchanged.
+- **Findings:** closed F28 (columns, measured) and F48 (rendered + jsdom); the notification halves of
+  F14 (one avatar builder), F20 (the row link never underlines), F42 (podcast art, not a glyph), F47
+  (the X is gone), F18 (the queue's own title/meta styles are the row's). Not closed here: the seed's
+  rows all render READ in the capture (the fixture account postdates them, so `unread` is false for
+  every row - the dot column is measured empty; the jsdom tests drive unread rows).
+- **For the gate:** (1) Clear all and queue Clear were given danger confirms (bulk, irreversible); (2)
+  the desktop panel is a popover with a clear scrim, so a tap outside closes it (the old document
+  pointerdown handlers are gone) and the page body locks while it is open (every ui.sheet does); (3)
+  swipeRow swallows a click within 400ms of a drag, so a lightning-fast swipe-then-tap on Delete is
+  eaten (safe direction; the tests wait it out); (4) the queue's three 36px desktop buttons sit in
+  44px slots but pack right, so their 44px hit circles overlap 8px on desktop (none on the phone).
+- **Counts (Node 22.23.1):** `npm run test:unit` (666493e6's pre-commit run): tests 7884, pass 7883,
+  fail 0, skipped 1. Targeted integration (notification-dismiss-api, notifications-api,
+  push-client-gate, push-settings-enable, queue-api, rbac-queue-visibility, scan-notification-bridge,
+  shell-smoke, music-pocket-menus-r1 + unit capture-request-policy): tests 102, pass 102, fail 0;
+  capture-determinism 3 / 3. `npx eslint .` 0 errors, 7 warnings (the six common.js unused globals and
+  main.js `libraryNotice`, all pre-existing); `npm run lint:ui` OK TOTAL 1851; `npm run lint:css` TOTAL 0;
+  `npm run lint:overlay` clean (0 violations).

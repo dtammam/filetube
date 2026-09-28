@@ -359,6 +359,42 @@ test('Clear all asks first (danger); Cancel clears nothing, OK sends the same PO
   } finally { await h.teardown(); }
 });
 
+// The two guards ui.confirm itself masks (the mutation pass found both unbound): the wiring
+// sends only on EXACTLY true, and re-checks the panel's signal AFTER the answer. Each is
+// driven with a stand-in confirm that answers what the real one never would, so only that
+// guard stands between the answer and the request.
+test('only an answer of exactly `true` deletes: a truthy non-true answer (1, "yes", {}) sends nothing', async () => {
+  const h = await mountBell();
+  try {
+    await h.open();
+    for (const answer of [1, 'yes', {}]) {
+      h.w.ui.confirm = () => Promise.resolve(answer);
+      const items = await h.openMenu(41);
+      h.click(items['Delete file']);
+      await until(() => !h.menuItems(), 'the menu to close');
+      await wait(30);
+    }
+    assert.deepStrictEqual(h.deletes(), []);
+  } finally { await h.teardown(); }
+});
+
+test('a yes that lands after the panel closed sends nothing (the post-answer signal re-check)', async () => {
+  const h = await mountBell();
+  try {
+    await h.open();
+    let answer;
+    h.w.ui.confirm = () => new Promise((r) => { answer = r; });
+    const items = await h.openMenu(41);
+    h.click(items['Delete file']);
+    await until(() => typeof answer === 'function', 'the confirm to be asked');
+    h.bell.click(); // the panel closes (in a browser: Esc, a back navigation, the feature going off)
+    await until(() => !h.panel().classList.contains('is-open'), 'the panel to close');
+    answer(true); // a stand-in confirm that ignored the abort
+    await wait(40);
+    assert.deepStrictEqual(h.deletes(), [], 'the panel closed first: the late yes is refused');
+  } finally { await h.teardown(); }
+});
+
 test('the pure decisions: menu items per kind, the delete copy, the show link', () => {
   const media = common.buildNotificationRowModel({ id: 1, mediaId: 'a', title: 'T', createdAt: 1, folderName: 'Földer Ä' });
   assert.strictEqual(media.channelHref, '/?folder=' + encodeURIComponent('Földer Ä'));
