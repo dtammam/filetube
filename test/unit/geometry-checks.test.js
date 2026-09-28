@@ -6,7 +6,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { evalG1, evalG2, evalG3, evalG4, evalHeader, evalBottomBar, evalSheetHeader, TOL, G4_TOL } = require('../geometry/checks.js');
+const { evalG1, evalG2, evalG3, evalG4, evalHeader, evalBottomBar, evalSheetHeader, evalPopover, TOL, G4_TOL } = require('../geometry/checks.js');
 const { summarize, expectedFor, loadExpected } = require('../geometry/run.js');
 const { SURFACES, FAST_SCENES, G4_SEQUENCES } = require('../geometry/scenes.js');
 const { MUTATIONS } = require('../geometry/mutations.js');
@@ -150,8 +150,9 @@ test('every check has at least one mutation proof, each aimed at a live scene or
     if (m.check === 'G4') assert.ok(G4_SEQUENCES.find((q) => q.id === m.target.sequence), name);
     else assert.ok(SURFACES.find((s) => s.id === m.target.surface && !s.pending), name);
   }
-  // Sweep S1 adds HDR / NAV, the chrome's rendered contracts; sweep S9 SHD, the sheet header.
-  assert.deepStrictEqual(Object.keys(byCheck).sort(), ['G1', 'G2', 'G3', 'G4', 'HDR', 'NAV', 'SHD']);
+  // Sweep S1 adds HDR / NAV, the chrome's rendered contracts; sweep S9 SHD, the sheet header;
+  // gate r1 POP, an open menu's reach.
+  assert.deepStrictEqual(Object.keys(byCheck).sort(), ['G1', 'G2', 'G3', 'G4', 'HDR', 'NAV', 'POP', 'SHD']);
 });
 
 test('geometry files are not *.test.js (npm test must not try to boot Playwright)', () => {
@@ -265,4 +266,65 @@ test('SHD: each broken property fails on its own (Close on the leading edge, gly
     assert.ok(failures.some((f) => re.test(f)), `${re} in ${JSON.stringify(failures)}`);
   }
   assert.deepStrictEqual(evalSheetHeader([sheetHead({ icon: { x: 337.5, y: 217.5, w: 22, h: 22 } })]).failures, [], '0.5px is inside the tolerance');
+});
+
+// POP (gate r1, adversary 4): the r1 repro's own numbers - the 1280x800 page, the first card's
+// kebab at y496-528, a 328px menu of six 44px rows.
+function popData(over) {
+  const sheetY = over && over.sheetY != null ? over.sheetY : 168;
+  const rows = ['Add to queue', 'Like', 'Save to device', 'Transcript', 'Reheat metadata', 'Move to Trash']
+    .map((name, i) => ({ name, box: { x: 458, y: sheetY + 56 + i * 44, w: 380, h: 44 }, hitSelf: true }));
+  return {
+    vp: { x: 0, y: 0, w: 1280, h: 800 }, popover: true,
+    sheet: { x: 458, y: sheetY, w: 380, h: 328 },
+    body: { box: { x: 458, y: sheetY + 56, w: 380, h: 272 }, scrolls: false },
+    band: { gap: 8, safeTop: 0, safeBottom: 0 },
+    anchor: { x: 458, y: 496, w: 32, h: 32 },
+    rows, ...(over || {}),
+  };
+}
+
+test('POP: a menu flipped above its kebab, every row inside the viewport and hit-testable, passes', () => {
+  assert.deepStrictEqual(evalPopover(popData()), { measured: { rows: 6 }, failures: [] });
+  // below the anchor, when it fits there (a taller viewport)
+  assert.deepStrictEqual(evalPopover(popData({ sheetY: 528, vp: { x: 0, y: 0, w: 1440, h: 900 } })).failures, []);
+});
+
+test('POP: each broken property fails on its own (off the bottom, a row unreachable, a row covered, covering the anchor that it fits beside, no anchor, no sheet)', () => {
+  // the r1 placement: below the kebab at 1280x800
+  const r1 = evalPopover(popData({ sheetY: 528 })).failures;
+  assert.ok(r1.some((f) => /leaves the 1280x800 viewport/.test(f)), r1.join(' | '));
+  assert.ok(r1.some((f) => /Move to Trash .* unreachable/.test(f)), r1.join(' | '));
+  assert.ok(r1.some((f) => /Reheat metadata .* unreachable/.test(f)), r1.join(' | '));
+  // the same rows reached through a scrolling body inside the viewport are fine
+  const scrolled = popData({ sheetY: 16 });
+  scrolled.sheet = { x: 458, y: 16, w: 380, h: 200 };
+  scrolled.body = { box: { x: 458, y: 72, w: 380, h: 144 }, scrolls: true };
+  scrolled.anchor = { x: 458, y: 180, w: 32, h: 32 };
+  scrolled.band = { gap: 8, safeTop: 0, safeBottom: 0 };
+  scrolled.vp = { x: 0, y: 0, w: 1280, h: 230 };
+  assert.deepStrictEqual(evalPopover(scrolled).failures.filter((f) => /unreachable/.test(f)), [], 'a scrolling body reaches them');
+  // a row something else sits on
+  const covered = popData();
+  covered.rows[5].hitSelf = false;
+  assert.deepStrictEqual(evalPopover(covered).failures, ['Move to Trash (y444-488): something else is on top of it']);
+  // shifted over the kebab though it fits above it (the flip mutated away)
+  const shifted = evalPopover(popData({ sheetY: 464 })).failures;
+  assert.ok(shifted.some((f) => /covers its anchor y496-528 though it fits above it/.test(f)), shifted.join(' | '));
+  // covering the anchor is right when it fits on NEITHER side (the landscape phone)
+  const land = popData({ sheetY: 54, vp: { x: 0, y: 0, w: 844, h: 390 }, anchor: { x: 495, y: 179, w: 32, h: 32 } });
+  assert.deepStrictEqual(evalPopover(land).failures, [], 'fits neither side: shifting over it is the placement');
+  // the band's edge (gap 8 + safe-area top 8 = 16): an anchor at y344 leaves exactly 328 above,
+  // so the menu fits there and must not cover it; at y343 it does not fit above (nor below)
+  const edge = { vp: { x: 0, y: 0, w: 1280, h: 600 }, anchor: { x: 458, y: 344, w: 32, h: 32 }, band: { gap: 8, safeTop: 8, safeBottom: 0 } }; // 600 tall: never fits below
+  assert.deepStrictEqual(evalPopover(popData({ ...edge, sheetY: 16 })).failures, [], 'flipped, flush on the anchor top');
+  assert.ok(evalPopover(popData({ ...edge, sheetY: 17 })).failures.some((f) => /covers its anchor .* fits above/.test(f)), '1px over it');
+  assert.deepStrictEqual(evalPopover(popData({ ...edge, anchor: { x: 458, y: 343, w: 32, h: 32 }, sheetY: 17 })).failures, [], 'fits neither side: covering is allowed');
+  assert.ok(evalPopover(popData({ anchor: null })).failures.some((f) => /anchor was not found/.test(f)));
+  assert.deepStrictEqual(evalPopover({ vp: { x: 0, y: 0, w: 1, h: 1 }, sheet: null, rows: [] }), { measured: { rows: 0 }, failures: ['no open sheet'] });
+  // a bottom sheet is not held to the anchor rule
+  const bottom = popData({ popover: false, sheetY: 505, vp: { x: 0, y: 0, w: 390, h: 844 } });
+  bottom.sheet = { x: 0, y: 505, w: 390, h: 339 };
+  bottom.rows.forEach((r, i) => { r.box = { x: 0, y: 572 + i * 44, w: 390, h: 44 }; });
+  assert.deepStrictEqual(evalPopover(bottom).failures, []);
 });

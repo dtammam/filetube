@@ -38,7 +38,7 @@ function clock() { mock.timers.enable({ apis: ['setTimeout'] }); return mock.tim
 afterEach(() => { mock.timers.reset(); });
 
 // Every element under root carries no inline style except the listed custom properties.
-const ALLOWED_PROPS = new Set(['--p', '--ui-anchor-x', '--ui-anchor-y', '--ui-drag']);
+const ALLOWED_PROPS = new Set(['--p', '--ui-anchor-x', '--ui-anchor-y', '--ui-pop-top', '--ui-pop-max-h', '--ui-drag']);
 function assertNoInlineStyle(root) {
   const all = [root, ...root.querySelectorAll('*')];
   for (const n of all) {
@@ -517,6 +517,73 @@ test('ui.sheet: no title -> aria-label instead of aria-labelledby, and no title 
   assert.strictEqual(c.el.getAttribute('aria-label'), 'Actions');
   assert.strictEqual(c.el.hasAttribute('aria-labelledby'), false);
   assert.strictEqual(c.el.querySelector('.ui-sheet__title'), null);
+});
+
+// Gate r1 (adversary 4): a popover opened low ran off the bottom of a locked page. The pure
+// placement, every branch at its boundary (divergent inputs: each branch's answer differs from
+// the plain below-the-anchor one). The rendered proof is test/geometry (POP).
+test('placePopover: below if it fits, else flipped above, else shifted into the band, else capped and scrolling', () => {
+  const a = { top: 496, bottom: 528 };
+  // band [16, 784]: a 1280x800 page less the 8px gap on each side and 8px of safe area at the top
+  assert.deepStrictEqual(ui.placePopover(a, 256, 16, 784), { top: 528, maxH: null, side: 'below' }, 'fits below exactly (528 + 256 = 784)');
+  assert.deepStrictEqual(ui.placePopover(a, 257, 16, 784), { top: 239, maxH: null, side: 'above' }, 'one px too tall for below: flipped, its bottom on the anchor top');
+  assert.deepStrictEqual(ui.placePopover(a, 328, 16, 784), { top: 168, maxH: null, side: 'above' }, 'the r1 repro: the 328px card menu flips');
+  assert.deepStrictEqual(ui.placePopover(a, 480, 16, 784), { top: 16, maxH: null, side: 'above' }, 'fits above exactly (496 - 480 = 16)');
+  assert.deepStrictEqual(ui.placePopover(a, 481, 16, 784), { top: 303, maxH: null, side: 'shifted' }, 'fits neither side: shifted up so its bottom sits on the band');
+  assert.deepStrictEqual(ui.placePopover(a, 768, 16, 784), { top: 16, maxH: null, side: 'shifted' }, 'exactly the band');
+  assert.deepStrictEqual(ui.placePopover(a, 769, 16, 784), { top: 16, maxH: 768, side: 'scroll' }, 'taller than the band: capped at it, the body scrolls');
+  // phone landscape 844x390: the card kebab at y179-211, the menu 328px, band [8, 382]
+  assert.deepStrictEqual(ui.placePopover({ top: 179, bottom: 211 }, 328, 8, 382), { top: 54, maxH: null, side: 'shifted' });
+  assert.deepStrictEqual(ui.placePopover({ top: 179, bottom: 211 }, 400, 8, 382), { top: 8, maxH: 374, side: 'scroll' });
+  // unmeasurable (jsdom, a detached node): the plain placement
+  assert.deepStrictEqual(ui.placePopover(a, 0, 16, 784), { top: 528, maxH: null, side: 'below' });
+  assert.deepStrictEqual(ui.placePopover(a, 300, 0, 0), { top: 528, maxH: null, side: 'below' });
+});
+
+test('ui.sheet popover: placed at open from the live band (visualViewport, safe areas, gap); re-placed when its size changes; the observer ends with the sheet', () => {
+  clock();
+  const { doc, win } = page();
+  let natural = 328;
+  Object.defineProperty(win.HTMLElement.prototype, 'offsetHeight', { configurable: true,
+    get() { return this.classList && this.classList.contains('ui-sheet') ? natural : 0; } });
+  win.visualViewport = { offsetTop: 0, height: 800 };
+  const realGCS = win.getComputedStyle.bind(win);
+  win.getComputedStyle = (n) => {
+    const cs = realGCS(n);
+    const extra = { '--ui-pop-gap': '8px', '--ui-pop-safe-top': '12px', '--ui-pop-safe-bottom': '0px' };
+    return { getPropertyValue: (k) => (k in extra ? extra[k] : cs.getPropertyValue(k)) };
+  };
+  const observers = [];
+  win.ResizeObserver = class { constructor(cb) { this.cb = cb; this.on = false; observers.push(this); } observe() { this.on = true; } disconnect() { this.on = false; } };
+  const anchor = doc.getElementById('opener');
+  anchor.getBoundingClientRect = () => ({ left: 458, top: 496, right: 490, bottom: 528, width: 32, height: 32 });
+  const pop = ui.sheet({ variant: 'popover', title: 'P', anchor, doc, win }).open();
+  // band: [0 + 12 + 8, 800 - 0 - 8] = [20, 792]; 528 + 328 > 792, 496 - 328 >= 20 -> above
+  assert.strictEqual(pop.el.getAttribute('data-placement'), 'above');
+  assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-top'), '168px');
+  assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-max-h'), '', 'no cap when it fits');
+  assert.strictEqual(pop.el.style.getPropertyValue('--ui-anchor-y'), '528px', 'the anchor data is still handed over');
+  // the keyboard (or a zoom) shrinks the visual viewport, and the rows grow past both sides
+  assert.strictEqual(observers.length, 1);
+  assert.ok(observers[0].on, 'watching while open');
+  win.visualViewport = { offsetTop: 100, height: 600 }; // band [120, 692]
+  natural = 900;
+  observers[0].cb([]);
+  assert.strictEqual(pop.el.getAttribute('data-placement'), 'scroll');
+  assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-top'), '120px');
+  assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-max-h'), '572px');
+  natural = 100; // it shrinks again: the cap is lifted before measuring, so it goes back below
+  observers[0].cb([]);
+  assert.strictEqual(pop.el.getAttribute('data-placement'), 'below');
+  assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-top'), '528px');
+  assert.strictEqual(pop.el.style.getPropertyValue('--ui-pop-max-h'), '', 'the cap is gone');
+  assertNoInlineStyle(pop.el);
+  pop.close();
+  assert.strictEqual(observers[0].on, false, 'disconnected as it closes');
+  const dlg = ui.sheet({ variant: 'dialog', title: 'D', doc, win }).open();
+  assert.strictEqual(observers.length, 1, 'a dialog is never observed');
+  assert.strictEqual(dlg.el.hasAttribute('data-placement'), false);
+  delete win.HTMLElement.prototype.offsetHeight;
 });
 
 test('ui.sheet variants: bottom has the grab first; popover has a clear scrim and anchor custom properties; auto resolves at open', () => {
@@ -1053,7 +1120,7 @@ test('source lock: no inline visual style (only the listed custom properties) an
   const styleUses = code.match(/\.style\b[^;\n]*/g) || [];
   assert.ok(styleUses.length > 0, 'anti-vacuity: the file does write custom properties');
   for (const u of styleUses) {
-    assert.match(u, /^\.style\.(setProperty|removeProperty)\('--(p|ui-anchor-x|ui-anchor-y|ui-drag)'/, 'forbidden style use: ' + u);
+    assert.match(u, /^\.style\.(setProperty|removeProperty)\('--(p|ui-anchor-x|ui-anchor-y|ui-pop-top|ui-pop-max-h|ui-drag)'/, 'forbidden style use: ' + u);
   }
   assert.doesNotMatch(code, /cssText/);
   assert.doesNotMatch(code, /setAttribute\(\s*['"]style['"]/);

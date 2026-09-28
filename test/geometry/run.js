@@ -74,8 +74,8 @@ function planScenes(opts) {
 
 // Check id -> its in-page collector and pure evaluator. HDR / NAV (sweep S1) are the chrome's
 // rendered contracts (checks.js); G1-G3 take the surface's optional `scope` selector.
-const COLLECT = { G1: checks.collectG1, G2: checks.collectG2, G3: checks.collectG3, HDR: checks.collectHeader, NAV: checks.collectBottomBar, SHD: checks.collectSheetHeader };
-const EVALUATE = { G1: checks.evalG1, G2: checks.evalG2, G3: checks.evalG3, HDR: checks.evalHeader, NAV: checks.evalBottomBar, SHD: checks.evalSheetHeader };
+const COLLECT = { G1: checks.collectG1, G2: checks.collectG2, G3: checks.collectG3, HDR: checks.collectHeader, NAV: checks.collectBottomBar, SHD: checks.collectSheetHeader, POP: checks.collectPopover };
+const EVALUATE = { G1: checks.evalG1, G2: checks.evalG2, G3: checks.evalG3, HDR: checks.evalHeader, NAV: checks.evalBottomBar, SHD: checks.evalSheetHeader, POP: checks.evalPopover };
 
 async function measureScene(env, scene, mutationCss) {
   const surf = SURFACES.find((s) => s.id === scene.surface);
@@ -93,8 +93,10 @@ async function measureScene(env, scene, mutationCss) {
     const res = {};
     for (const c of surf.checks) {
       if (env.only && !env.only.includes(c)) continue;
-      // G1 takes the surface's `g1` options (group / actions, checks.js collectG1) with its scope.
-      const data = await page.evaluate(COLLECT[c], c === 'G1' && surf.g1 ? { scope: surf.scope || null, ...surf.g1 } : surf.scope || null);
+      // G1 takes the surface's `g1` options (group / actions, checks.js collectG1) with its scope;
+      // POP takes the surface's `anchor` (the control that opened the menu).
+      const arg = c === 'POP' ? { anchor: surf.anchor || null } : (c === 'G1' && surf.g1 ? { scope: surf.scope || null, ...surf.g1 } : surf.scope || null);
+      const data = await page.evaluate(COLLECT[c], arg);
       const ev = EVALUATE[c](data);
       const floor = (surf.min && surf.min[c]) || {};
       const vacuous = Object.entries(floor).filter(([k, v]) => !(ev.measured[k] >= v)).map(([k, v]) => `${k} ${ev.measured[k]} < ${v}`);
@@ -199,6 +201,7 @@ function describe(check, ev) {
   if (check === 'HDR') return `(${m.buttons} header buttons, ${m.sidebar} sidebar rows)`;
   if (check === 'NAV') return `(${m.tabs} tabs)`;
   if (check === 'SHD') return `(${m.headers} sheet headers, ${m.titleless} titleless)`;
+  if (check === 'POP') return `(${m.rows} menu rows)`;
   return `(${m.groups} groups)`;
 }
 

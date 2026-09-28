@@ -13,8 +13,9 @@
 //   scope: a selector - measure only that subtree (default: the whole page),
 //   path(FX, era, mode) -> the URL path, open(page, vp, helpers) -> drives it to the state,
 //   ready: a selector that exists once the surface rendered,
-//   checks: which of G1-G3 apply (plus HDR / NAV, the chrome's own rendered contracts, and SHD,
-//           the sheet header - sweep S9),
+//   checks: which of G1-G3 apply (plus HDR / NAV, the chrome's own rendered contracts, SHD,
+//           the sheet header - sweep S9, and POP, an open menu's reach - gate r1),
+//   anchor: POP only - a selector for the control that opened the menu,
 //   scope: a selector the G1-G3 collectors measure inside (default: the whole page),
 //   min: anti-vacuity floors - a check that measured fewer lists/rows/items/groups than this
 //        FAILS as vacuous (a renamed class must not turn a check into a silent pass),
@@ -166,6 +167,45 @@ const SURFACES = [
     // Measured at S9 (every era/mode, phone + desktop): the confirm's Close glyph (1 pair), its
     // Cancel / Move to Trash row (1 group), 2 open sheet headers of which 1 is titleless.
     min: { G2: { items: 1 }, G3: { groups: 1 }, SHD: { headers: 2, titleless: 1 } },
+  },
+  // Gate r1 (adversary 4): the card menu is reachable where its kebab sits. POP: the menu and
+  // every row inside the viewport (or the menu scrolls to it), and a popover that fits beside
+  // its kebab opens below it or flips above it. Desktop at 1280x800 is the r1 repro (the first
+  // card's kebab at y496-528: the menu ran y528-856 with the page locked, "Move to Trash"
+  // off-screen); the phone is 390x844 portrait, where the menu is a bottom sheet. `anchor` is
+  // the control POP measures the popover against. Measured at the fix (every era/mode): 6 rows.
+  {
+    id: 'card-menu', owner: 'gate r1',
+    path: () => '/',
+    anchor: '.video-card .card-kebab',
+    open: async (page, vp, { capture }) => {
+      if (vp === 'desktop') await page.setViewportSize({ width: 1280, height: 800 });
+      await page.waitForSelector('.video-card .card-kebab', { state: 'visible', timeout: 12000 });
+      await capture.tap(page, '.video-card .card-kebab', vp);
+      await page.waitForSelector('.ui-sheet.is-open .ui-row', { timeout: 8000 });
+      await page.waitForTimeout(450); // the sheet's open transition (--dur-sheet) settles
+    },
+    ready: '.ui-sheet.is-open .ui-row',
+    checks: ['POP'],
+    min: { POP: { rows: 6 } },
+  },
+  // The phone turned landscape (844x390, touch): wider than the 768px sheet breakpoint, so the
+  // same menu is a POPOVER with 390px of height - it fits on neither side of its kebab and
+  // shifts inside the viewport (or, taller still, scrolls).
+  {
+    id: 'card-menu-landscape', owner: 'gate r1', vps: ['phone'],
+    path: () => '/',
+    anchor: '.video-card .card-kebab',
+    open: async (page, vp, { capture }) => {
+      await page.setViewportSize({ width: 844, height: 390 });
+      await page.waitForSelector('.video-card .card-kebab', { state: 'visible', timeout: 12000 });
+      await capture.tap(page, '.video-card .card-kebab', vp);
+      await page.waitForSelector('.ui-sheet.is-open .ui-row', { timeout: 8000 });
+      await page.waitForTimeout(450);
+    },
+    ready: '.ui-sheet.is-open .ui-row',
+    checks: ['POP'],
+    min: { POP: { rows: 6 } },
   },
 ];
 

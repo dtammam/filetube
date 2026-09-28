@@ -131,6 +131,23 @@ const MUTATIONS = {
     check: 'SHD', target: { surface: 'sheet-header', era: '2005', mode: 'light', vp: 'desktop' },
     css: '.ui-sheet__close .ui-btn__icon{position:relative!important;left:1px!important}',
   },
+  // ---- gate r1 (adversary 4): an open menu's reach (POP) ----
+  // POP: the r1 placement - the popover's top is always the kebab's bottom and its cap 90dvh
+  // (ui.js placePopover's answer thrown away), so at 1280x800 the menu runs off the bottom.
+  'pop-below-only': {
+    check: 'POP', target: { surface: 'card-menu', era: '2021', mode: 'dark', vp: 'desktop' },
+    css: '.ui-sheet--popover{top:var(--ui-anchor-y)!important;max-height:90dvh!important}',
+  },
+  // POP: the same on the landscape phone, where the menu fits on neither side.
+  'pop-below-only-landscape': {
+    check: 'POP', target: { surface: 'card-menu-landscape', era: '2014', mode: 'light', vp: 'phone' },
+    css: '.ui-sheet--popover{top:var(--ui-anchor-y)!important;max-height:90dvh!important}',
+  },
+  // POP: the bottom sheet's rows past the viewport (a sheet pushed down 200px, not scrolling).
+  'pop-bottom-sheet-low': {
+    check: 'POP', target: { surface: 'card-menu', era: '2005', mode: 'light', vp: 'phone' },
+    css: '.ui-sheet--bottom.is-open{transform:translateY(200px)!important}',
+  },
   // G4: a layout property moves over time after a rotate (the F37 class): the kit's padding
   // slides for 400ms once the viewport turns landscape. (UI pass S7: an ANIMATION, not a
   // transition - since D7 every rotate holds html.no-motion, which zeroes transitions, so a
