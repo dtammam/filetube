@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/ui-professionalism
 anchor: spec
 status: Gate:APPROVED r3 @9cc44fa8
-next: the rebaseline (push rebaseline/ui-pass at 9cc44fa8's head, commit the baselines, baselines-only re-confirmation), then step 9 release v1.341.0
+next: released v1.341.0 from the approved code (Dean, 2026-09-28: release now, baselines as a follow-up PR); follow-up = the 21d capture wait + baselines; Dean's device pass (#289)
 design: Approved 2026-09-27 (Dean: D0-D13 as written, read against ab31cbdc; D10.4 amended by his middle-path ruling); the built design gate-approved @9cc44fa8
 gate: APPROVED r3 @9cc44fa8 (adversary + qa + security-brief); r1 CHANGES (adversary 1-6, qa 1-4) and r2 CHANGES (the card menu's view signal) fixed; residuals in the r1 disposition
 ---
@@ -2815,3 +2815,10 @@ Checks I could not complete: no Bash. I did not diff 82563a2e..9cc44fa8 and did 
 3. main.js shownViewSignal (3136-3139) falls back to the view's own signal. The sort menus (1727, 2796), the card action menu (3211) and the card delete confirm (3149-3151) bind it. This closes surfaces on leave and adds no authority. No security surface.
 4. The subscriptions.js head comment (22-26) is now accurate: validated at add time, scheme-checked on restore, re-checked client-side by subsSafeChannelHref. It no longer lies.
 No new findings. Residuals r1 3-6 stand as carried.
+
+Coordinator, release (2026-09-28): Dean ruled "release now": v1.341.0 ships from the gate-approved code
+(9cc44fa8), and the visual baselines land in a follow-up PR (nothing on main requires the visual check). The
+first rebaseline run (Visual 36439169028, rebaseline/ui-pass @9cc44fa8) captured 1877 shots with 19 capture
+failures, all scene 21d-notif-delete-confirm: the script taps the menu's Delete 400ms after the menu opens,
+inside the 450ms double-tap guard, so the guard ignores it (5 variants passed on timing jitter). The follow-up
+waits 700ms, re-runs the capture and commits the baselines (a test-only change, re-confirmed as its own delta).
