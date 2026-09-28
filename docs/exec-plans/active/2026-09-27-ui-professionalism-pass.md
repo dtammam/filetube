@@ -2625,3 +2625,115 @@ stricter validator still restores; only a non-http(s) scheme refuses the bundle.
   other paths share); caller-built sheets get the guard only via ctrl.guard/ctrl.accepts; a popover that fits
   neither side shifts over its anchor (the notifications panel at 844x390); 6ccf0492's message describes the
   stricter restore check that 3970cd05 narrowed.
+
+Gate: APPROVED r2 @f904469b - security-brief
+Checks I could not complete: no Bash, so no `git diff 101434b0..f904469b` and no test run. I reviewed the fix surfaces in the tree at f904469b (HEAD confirmed by reading .git/refs), not the full delta. The browser's handling of a javascript: URL in a noopener popup (the suspicion half of r1 2) stays unverified, and after this fix it no longer matters.
+1. r1 finding 2 (channelUrl from a restored backup) is FIXED, differently from my prescription and better: both of my alternatives were applied.
+   - Server, verified: backup.js:126-132 isHttpUrl uses `new URL(v)` with an exact `u.protocol === 'http:' || 'https:'`, and 234-239 applies it to every ytdlp.subscriptions record inside validateFeatureBundle, before any wipe.
+   - Quirks, reasoned against the WHATWG parser: case is safe (`HTTPS:` normalizes to `https:`, `JavaScript:` to `javascript:`, refused). Whitespace is safe: leading C0/space is stripped and inner tab/newline removed, so " javascript:x" and "java\tscript:x" parse as javascript: and are refused. Protocol-relative "//evil.com" throws with no base and is refused. A non-string (number, object) is refused. `data:`, `vbscript:` and `blob:` are refused.
+   - Client, verified: subsSafeChannelHref (subscriptions.js:2461) is `/^https?:\/\//i` anchored on the raw string. It gates the menu item (2482), the sheet link (2617-2623) and window.open (3532), and the sheet renders the raw value only as textContent. A string that starts with a literal `http(s)://` can only parse as http(s), because the scheme is read up to the first ":", so no javascript: can pass. It is stricter than the server: " https://x" passes restore but gets no link. That fails closed.
+   - The narrowing to the scheme (3970cd05) is right for this deployment: restore compatibility matters more than the host allowlist, and the scheme was the whole threat.
+2. INFO - no other restore namespace feeds an href or window.open sink with a stored raw URL. Swept every `.href =`, `setAttribute('href')`, `location.*` and `window.open` in public/js and lib/*/client. Every data-derived href is a fixed same-origin prefix plus an encodeURIComponent'd id, built on the client or the server. Sites checked: server.js 5072-5253 (presence/continue), 6945 (watchHref), books pins (routes.js:312), podcasts shows (index.js:959), notifShowHref (regex-gated to /podcastart/), notification/queue/history/audioOpenHref. The pins sheet (common.js:11790) takes p.href only if it starts with `/` and not `//`. A `/\host` form would be an off-site link, not script, and its source is server-built; noted, not a finding.
+3. INFO - the r1 edge: a restore with a subscription whose `channelUrl` is the empty string now refuses the WHOLE bundle (`''` fails isHttpUrl; only undefined/null skip). It is refused before the wipe, so no data is lost, but a real backup carrying `''` would not restore. I believe no writer stores `''` (the add route requires a validated URL, and idless records need a non-empty one), but that is reasoned, not verified. Consider skipping `''` like null.
+4. INFO - test/visual/run-fs.js prepareOutDir is sound for a dev tool.
+   - Traversal: `path.resolve` makes `../..` absolute, and the ancestor check refuses any dir that is or contains the repo or $HOME, plus the filesystem root.
+   - Symlinks: the ancestor check is lexical, so an `--out` symlink pointing at $HOME passes it. But the marker check reads the target (non-empty, no marker) and refuses. If the target were empty or marked, `rmSync(recursive)` on a symlink path unlinks the link, not the target, and never follows links inside the tree.
+   - Residual: a case-insensitive filesystem can dodge the lexical ancestor test. The marker check still stands behind it. Check-to-rm TOCTOU is negligible on a solo dev box.
+   - replaceBaselines only unlinks `*.png` names from readdir (no path input), so it cannot traverse.
+5. INFO - FileTube.viewSignal (common.js:10668-10677, exported at 11437) is fail-safe. An abort closes the sheet and ui.confirm settles false, and the callers (main.js:3141-3145, common.js:11716-11720) re-check `shown.aborted` after the await. A fresh controller is minted lazily after each leave, so a restored cached view never holds an already-aborted signal. No new security surface.
+
+Gate: CHANGES r2 @f904469b - qa
+Instruments run at f904469b (Node 22.23.1), verbatim:
+- `npm run lint:ui`: "ui-lint: OK - the live debt equals docs/ui-exceptions.json", TOTAL 1931 (token-exempt 204 in 2 keys), exit 0.
+- `npx eslint .`: "0 errors, 6 warnings", exit 0. `npm run lint:overlay`: clean.
+- `npm run test:geometry`: "389 checks - 389 ok, 0 FAIL, 0 XFAIL (expected), 0 XPASS; 176 scenes in 255s", exit 0. DBLTAP phone/desktop "60ms (real 61ms): nothing sent, dialog up ... 700ms (real 698ms): DELETE /api/videos/<id>"; POP card-menu 16/16 and card-menu-landscape 8/8 ok.
+- 22 targeted files (ui-activation-guard, chrome-primitives, visual-run-guard, ui-lint, ui-builders, geometry-checks, subs-channel-url-guard, stats-table-delete, trash-table, history-remove-confirm, notif-delete-confirm, pocket-phone-scope, token-scale-lock, overlays-dialogs-s9, the subs/watch/extras destructive-confirm files, subscribe-button, interaction-policy, card-action-menu, integration card-action-menu-fullchain and backup-restore): tests 403, pass 403, fail 0.
+- scripts/action-row-probe.js (ported) at 390 and 1280: exit 0, measures the five stacked ui-btns (88x45 each, rows 1 at 1280).
+- Sandbox mutants (a git archive of f904469b in the scratchpad; the tree was not touched): the width filter removed from installResizeStillness -> 2 red (the real-page test and pocket-phone-scope); ACTIVATION_GUARD_MS = 0 -> 11 red; the pressedEarly check removed -> 2 red.
+My r1 findings:
+1. W1 (two no-motion writers): FIXED as prescribed. There is one writer (installResizeStillness, width-filtered plus orientationchange) and one CSS rule (style.css:568-574). wireNoMotionOnResize is gone. chrome-primitives boots the real index.html through common.js and asserts that a same-width resize never touches the root class. My r1 probe on the real common.js now reads `no-motion = false`. The mutant above goes red.
+2. W2 (docs teach the retired system): FIXED.
+   - CONTRIBUTING names the roles, the three-file cascade, ui.js builders that exist (checked against the export list), the ten ladder names, the registry recipe, the Playwright prerequisite and a probe that measures again.
+   - LESSONS 73/76/199 and LESSONS-rules 84 are rewritten.
+   - RELEASING covers the visual job, the rebaseline/* procedure, the post-gate baselines re-bind and `visual` among the required checks.
+   - Every file and token the new text names exists (tokens.css, .harness/lib/check-markers.sh, tools/icons/*, ui.js options `shape: 'stack'` and `labels`). Residual: see NOTE 3.
+3. W3 (retired eslint globals): FIXED. The four globals are gone. A grep of every declared global against a definition finds none undefined. channel-row-probe.js is deleted, and the orphan `--size-touch-watch-action` token and its lock entry are removed.
+4. W4 (run.js wipe): FIXED differently and better. run-fs.js prepareOutDir refuses /, the repo, $HOME and any ancestor of them outright, and refuses any non-empty dir without its marker. The refusal also runs before seeding. A filtered --update replaces only its own scope (visual-run-guard.test.js).
+New in the delta:
+5. WARNING - the adversary-3 fix binds the delete CONFIRM to the shown view but not the MENU that opens it, so the same repro survives one step earlier.
+   - The code: main.js:3200 `openCardMenuCtrl = u.menu({...})` carries no signal. Home is cached on nav-away, so destroy() and closeCardMenu never run.
+   - Verified in a sandbox copy of card-action-menu-fullchain (the real index.html, real ui.js, real router):
+     - open card yt1's kebab menu;
+     - `FileTube.navigate('/history')` (a Back swipe or the browser Back does the same);
+     - the swap to History happens, and the menu is still open (1 open sheet, body lock held);
+     - tap its "Move to Trash": a confirm opens, bound to a FRESH viewSignal() that now belongs to History;
+     - OK sends `DELETE /api/videos/yt1`.
+   - The dialog names the item and it goes to Trash, so this is not an unconfirmed delete. But it is exactly the "a destructive surface from the old view stays up and acts over the next one" class r1 fixed. Also, a stale menu over History holds the page's scroll lock.
+   - Fix (one line): `signal: FileTube.viewSignal()` (or `signal`) on the card menu, and on the home sort menu for the lock. Add a fullchain test that leaves with the MENU open and asserts it closes and nothing is sent.
+6. NOTE - a lying comment: the header of lib/ytdlp/client/subscriptions.js (lines 21-26) says channelUrl is "validated server-side by `validateChannelUrl` at add time AND on a backup restore". Restore deliberately checks only the scheme (backup.js isHttpUrl: "Deliberately NOT the add route's full validateChannelUrl"). A reader would trust a YouTube-host guarantee that a restored row does not have. Reword to "http(s) scheme on restore". 6ccf0492's message has the same stale claim (disclosed).
+7. NOTE - docs/CONTRIBUTING.md:90 lists `--shadow*` as LEGACY. Taken literally that includes `--shadow-overlay`, the D2 overlay role (ui-lint does not count it: its legacy set holds only --shadow and --shadow-lg). Name those two instead of the glob.
+8. NOTE - instrument limits (disclosed or inherent, non-blocking):
+   - token-exempt counts per file, so swapping one annotation for another in the same file (the old value tokenized, a new raw value exempted) keeps the count and passes. #200's whole-line scope also still lets a second raw value ride an existing annotation.
+   - DBLTAP drives only the Stats delete. Caller-built sheet controls are unguarded unless they call ctrl.guard: the Subscribe dialog's Subscribe, Move's Move, chapter snap's Save. None of them is a delete.
+   - The guard swallows an Enter/Space pressed within 450ms of a dialog opening (a fast keyboard user re-presses). Acceptable.
+Carried residuals stand as the coordinator listed them. Security-brief (standing): the delta's new surfaces are backup.js isHttpUrl (runs before the wipe, scheme exact), subsSafeChannelHref on all three sinks, run-fs.js's path guard and the popover placement (CSS custom properties from numbers). I concur with the security-brief r2 seat, including its INFO 3 (an empty-string channelUrl refuses the whole restore; it is refused before the wipe, so no data is lost). There is no new injection, traversal or exposure.
+Tree: only this verdict appended. The security-brief r2 verdict above it was already uncommitted in the working tree. My sandbox, and the server the geometry run booted, live in the scratchpad or exited with the run.
+
+Gate: CHANGES r2 @f904469b - adversary
+Setup: all measurements at f904469b (code = 221ba132), Node 22.23.1. I built a fresh /tmp git-archive sandbox (/tmp/adv-uiprof2/work) and diffed it IDENTICAL against its pristine twin after every mutant. I ran my r1 probes unchanged, plus new ones in /tmp/adv-uiprof2/probe/, in headless Chromium against a freshly seeded fixture server. A browser route recorded every non-GET request and answered 200.
+My r1 findings:
+1. CRITICAL (a double-tap answers the confirm): FIXED as prescribed. Measured at the same coordinates as r1:
+   - Trash Purge on the phone: sends nothing.
+   - The swiped notification Delete (row 3) on the phone: sends nothing.
+   - The Stats delete on the phone, at gaps of 60, 180 and 300ms: sends nothing, and the dialog stays up.
+   - The desktop card menu at 1024 and 1100 wide, on the local file: sends nothing. The menu now flips, so its "Move to Trash" row sits over the OK button and the guard is what holds.
+
+   Attacks on the new guard (attack.js):
+   - A double-tap with the second finger held past the window (CDP touchStart at 180ms, touchEnd at 680ms): nothing sent.
+   - Triple taps at 150ms and at 250ms gaps: nothing sent.
+   - A mouse press on OK at 120ms, released at 620ms: nothing sent.
+   - Enter on the trigger, Tab x3 to OK, then Enter inside the window: nothing sent.
+   - Space pressed down inside the window and released after it: nothing sent.
+   - A held Enter auto-repeating on the trigger: nothing sent, and focus stays on the dialog.
+
+   Positive controls:
+   - A tap on OK at 700ms deletes.
+   - A late Enter deletes.
+
+   On the detail-0 exemption: `el.click()` on OK inside the window answers immediately (verified). This is by design (script and assistive tech). I could not produce a detail-0 click from any real accidental gesture: keys are gated at keydown, and every pointer click carries detail >= 1. NOTE, not a finding.
+2. Local-file confirm: ruled by Dean (the plain confirm is enough). Closed.
+3. WARNING (stranded confirms): the confirms are FIXED; the MENU that opens them is NOT. I concur with qa r2 W5, measured in the real browser (menustrand.js):
+   - Home, then the card kebab.
+   - `FileTube.navigate('/history')`: the view swaps to History with the card's popover still open.
+   - Tap its "Move to Trash", then OK: `DELETE /api/videos/cdf8eaced0ba8f9f2c42dd617851e60b`.
+
+   The cause is main.js:3200: the card menu carries no signal (0 signal mentions at the call). The watch page's More menu does close on navigation (verified). This is the class r1 finding 3 named, left one step early. Fix: `signal: FileTube.viewSignal()` on that ui.menu call, with a fullchain test that leaves with the menu open. The sort menus at main.js:1724 and 2793 carry only the cached view's signal or none: they are not destructive, but they hold the body lock over the next view.
+
+   What the confirm fix does hold (strand.js, strand2.js):
+   - A confirm open across `navigate()` closes, and OK can no longer act.
+   - Browser Back closes it; afterwards nothing is sent.
+   - Forward onto the restored (cached) home shows no dialog.
+   - A new confirm on that restored home still deletes (the fresh viewSignal is not born aborted).
+   - A folder navigation inside home closes it.
+4. WARNING (popover off-screen): FIXED.
+   - At 1280x800 (pop.js): the menu's placement is "above", it spans y168-496, and "Move to Trash" (y444-488) is the top element at its point.
+   - Short viewports: at height 300 the placement is "shifted" (y22-292); the body scrolls inside the sheet (272/214), so the last row is reachable by scrolling. At height 500 it is "shifted" and fully on screen.
+5. WARNING (surviving mutants): FIXED. My four r1 survivors are now all killed:
+   - stats, the post-answer signal check: red.
+   - stats, `!!yes` instead of `yes === true`: red.
+   - setup confirmDestructive, `!!yes`: red.
+   - setup purgeTrashItem, the signal check: red.
+
+   The fix also corrected a real latent bug: the signal is now captured at the tap, where re-reading `statsController` after the await could never see this view's abort.
+6. WARNING (token-exempt unratcheted): FIXED for new annotations. The r1 repro now fails `--enforce` with "[token-exempt] public/css/ui.css|token-exempt live 1 > allowed 0". Two residuals remain, both already disclosed (#200 and qa r2 NOTE 8):
+   - Riding an existing annotation still passes. `line-height: 1.4; color: #123456; padding: 13px; /* token-exempt: ... */` in style.css gives "ui-lint: OK".
+   - A same-file swap of one annotation for another keeps the count.
+7 and 8. Accepted residuals. Focus still escapes the dialogs (tab.js: after Close, Cancel and OK it reaches BODY and the header).
+Restore scheme check (3970cd05):
+- It binds. Mutating isHttpUrl to always true turns backup-restore test 6 red. Skipping the check turns the same test red.
+- It cannot refuse a legitimate backup with a scheme-less URL: validateChannelUrl has required a scheme since the module's first commit. `youtube.com/@x`, `@x` and `m.youtube.com/...` are all refused at add time, and `HTTPS://YOUTUBE.COM/@x` is stored as `https://youtube.com/@x`.
+- The refusal runs inside validation, before the wipe, so it cannot destroy data.
+- I concur with security-brief INFO 3 on `''`: skip it like null. I found no writer that stores it.
+New, NOTE (suspicion, not measured): two file-MOVING confirms still go through the showConfirmModal shim with no view binding. They are main.js:2174 (bulk attribute-and-move, on the cached folder view) and watch.js:3244 offerAttributionMove, whose returned dismiss is discarded. Reasoned scenario: navigate away with the dialog up, then press OK. It moves the previous page's file (the closure id, so the right item) and calls `FileTube.player.close()` on whatever now plays. Both are pre-existing on main (the old modal also lived on body). Bind them to viewSignal in the menu fix.
+Blocking: finding 3's menu half, one line plus its test. Everything else is closed or accepted.
+Tree: I appended only this verdict, after the uncommitted security-brief r2 and qa r2 verdicts. The sandbox is IDENTICAL to pristine, and my fixture server is stopped.
