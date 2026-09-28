@@ -2542,7 +2542,11 @@ select {
    truncating (it is the only description the option has), and the era's two-colour swatch
    fills the media column the list declares. */
 .setup-choice-list .ui-row__meta { white-space: normal; }
-.theme-swatch { display: flex; width: 100%; height: var(--icon-md); border-radius: var(--r-xs); overflow: hidden; }
+/* the Hidden list's thumbnails stay a phone-sized media column (the default media-thumb is
+   wider, and squeezed the title beside Restore) */
+.feed-hidden-list { --media-w: var(--av-2xl); }
+/* the hairline ring keeps a white half visible on a white group (the retro light eras) */
+.theme-swatch { display: flex; width: 100%; height: var(--icon-md); border-radius: var(--r-xs); overflow: hidden; outline: var(--hairline) solid var(--separator); outline-offset: calc(0px - var(--hairline)); }
 .theme-swatch span { flex: 1; background: var(--swatch, var(--thumb-ground)); } /* --swatch: the era's colour as data (setup.js) */
 .theme-choice-year { color: var(--ink-2); }
 /* v1.238 -> retire R3: the player-sticker picker (Settings > Appearance). Every option is
@@ -8152,7 +8156,8 @@ a.tv-continue-card { text-decoration: none; }
 /* v1.196: the Shows-home Continue-Watching shelf (horizontal poster strip). */
 .tv-continue { margin-bottom: var(--space-6); }
 .tv-continue-heading { font-size: var(--fs-lg); color: var(--ink-1); margin-bottom: var(--space-3); }
-.tv-continue-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(140px, 1fr); gap: var(--space-4); overflow-x: auto; padding-bottom: var(--space-2); }
+/* retire R3: capped tracks (a lone card was stretched to the whole strip) */
+.tv-continue-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(140px, 180px); justify-content: start; gap: var(--space-4); overflow-x: auto; padding-bottom: var(--space-2); }
 .tv-continue-card { min-width: 0; color: inherit; display: flex; flex-direction: column; gap: var(--space-1); }
 .tv-continue-poster-wrap { position: relative; display: block; }
 .tv-continue-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-lg); background: var(--thumbnail-bg); object-fit: cover; display: block; }

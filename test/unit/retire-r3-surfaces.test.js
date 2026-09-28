@@ -266,7 +266,7 @@ test('setup.html: the editor and picker hosts are ui-lists (grouped), the picker
   }
   assert.match(host('library-glyph-editor'), /class="ui-list [^"]*ui-list--grouped[^"]*library-glyph-editor" role="list"/);
   assert.match(host('bottombar-editor'), /class="ui-list [^"]*ui-list--grouped[^"]*bottombar-editor" role="list"/);
-  assert.match(host('feedhidden-list'), /class="ui-list ui-list--media ui-list--media-thumb ui-list--actions-2 [^"]*ui-list--grouped"/);
+  assert.match(host('feedhidden-list'), /class="ui-list ui-list--media ui-list--media-thumb ui-list--actions-2 [^"]*ui-list--grouped feed-hidden-list"/);
   assert.doesNotMatch(html, /class="(theme-picker|card-corner-editor|account-row|feed-hidden-list)\b/, 'no retired host class');
 });
 
@@ -364,6 +364,9 @@ test('the R3 lists declare their columns in style.css (by value), and the retire
   assert.match(body('.setup-choice-list .ui-row__meta'), /white-space:\s*normal/, 'a picker blurb wraps');
   assert.match(body('.dup-expand[aria-expanded="true"] .ui-icon'), /transform:\s*rotate\(180deg\)/, 'the open toggle turns its chevron');
   assert.match(body('.trash-title-cell > .ui-thumb'), /width:\s*var\(--av-2xl\)/, 'the trash thumbnail width');
+  assert.match(body('.feed-hidden-list'), /--media-w:\s*var\(--av-2xl\)/, 'the Hidden list keeps a phone-sized thumbnail column');
+  assert.match(body('.tv-continue-strip'), /grid-auto-columns:\s*minmax\(140px, 180px\);\s*justify-content:\s*start/, 'a lone Continue card is not stretched');
+  assert.match(body('.theme-swatch'), /outline:\s*var\(--hairline\) solid var\(--separator\)/, 'the swatch keeps its edge on a white group');
   const all = rules.map((r) => r.sel).join('\n');
   for (const gone of ['.theme-card.active', '.remove-folder-btn', '.drag-handle', '.folder-item-row', '.bottombar-editor-row', '.transcript-ai-prompt-row',
     '.card-corner-editor', '.stable-delete-btn', '.stable-expand-btn', '.feed-hidden-row', '.trash-row', '.users-row', '.users-cap-badge',
