@@ -279,6 +279,11 @@ test('v1.341.3 rotation bump: for a second after a rotation, a scroll or visual-
   assert.match(body, /visualViewport\.addEventListener\('resize', snapSoonAfterRotation\);/);
   const sched = src.slice(src.indexOf('function scheduleViewportCapNudge()'), src.indexOf('function scheduleViewportCapNudge()') + 400);
   assert.match(sched, /rotationSettleUntil = Date\.now\(\) \+ 1000;/, 'every rotation opens the window');
+  // Gate r1 W1: real user input closes the window (a user's scroll is never snapped back).
+  assert.match(src, /function endRotationSettle\(\) \{ rotationSettleUntil = 0; \}/);
+  assert.match(src, /\['touchstart', 'pointerdown', 'wheel', 'keydown'\]\.forEach\(function \(type\) \{\s*window\.addEventListener\(type, endRotationSettle, \{ passive: true, capture: true \}\);/);
+  // (These are source locks: a no-op snapSoonAfterRotation would still pass here. The behaviour is
+  // bound by the rotation probes, rotbump-inject.js and adv-userscroll.js, run for v1.341.3.)
   // The ?debugLifecycle=1 log: scroll lines near a rotation, and the faux keeper's plan.
   assert.match(src, /window\.addEventListener\('scroll', function \(\) \{ if \(Date\.now\(\) <= rotationSettleUntil\) logViewport\('scroll'\); \}/);
   assert.match(src, /recordLifecycleEvent\('fauxScroll'/);

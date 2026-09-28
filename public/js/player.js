@@ -2565,6 +2565,13 @@ if (typeof module !== 'undefined' && module.exports) {
     requestAnimationFrame(function () { rotationSnapQueued = false; snapRotationDeadZone(); });
   }
   window.addEventListener('scroll', snapSoonAfterRotation, { passive: true });
+  // Gate r1 (adversary W1): a scroll the USER starts in that second is theirs. A drag or a flick
+  // from the top passes through the dead zone, and re-snapping it every frame pinned the page at
+  // the top for ~700ms. iOS's stray scroll comes with no input, so any real input closes the window.
+  function endRotationSettle() { rotationSettleUntil = 0; }
+  ['touchstart', 'pointerdown', 'wheel', 'keydown'].forEach(function (type) {
+    window.addEventListener(type, endRotationSettle, { passive: true, capture: true });
+  });
   if (window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
     window.visualViewport.addEventListener('resize', snapSoonAfterRotation);
   }
