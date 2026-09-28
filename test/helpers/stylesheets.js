@@ -60,4 +60,14 @@ function cssRules(css) {
 // (`@media not ...` negates the whole query, so it is never a gate.)
 const isHoverGated = (at) => /@media(?![^{]*\bnot\b)[^{]*\(\s*hover\s*:\s*hover\s*\)/.test(at);
 
-module.exports = { eraBlock, cssRules, isHoverGated, TOKENS_CSS_PATH, UI_CSS_PATH, STYLE_CSS_PATH, readTokensCss, readUiCss, readStyleCss, readAllCss };
+// UI pass D7 (Dean: "Pocket is a phone mode, not a width mode"): the Pocket skin takeover was one
+// `@media (max-width: 768px)` block and is now keyed on the device class music-skins.js sets once
+// at load, as a zero-specificity scope on EVERY selector of the block. A lock written against the
+// takeover's own rules reads the sheet through unscopePocket(): the scope is dropped exactly the way
+// those locks dropped the @media wrapper they flattened before, so each keeps pinning the rule it
+// pinned. That the scope really sits on every rule of the block (and nothing Pocket is left on a
+// width query) is bound on its own by test/unit/pocket-phone-scope.test.js.
+const POCKET_SCOPE = ':where(html.is-phone, html.mms-popout)';
+const unscopePocket = (css) => String(css).split(POCKET_SCOPE + ' ').join('');
+
+module.exports = { eraBlock, cssRules, isHoverGated, TOKENS_CSS_PATH, UI_CSS_PATH, STYLE_CSS_PATH, readTokensCss, readUiCss, readStyleCss, readAllCss, POCKET_SCOPE, unscopePocket };

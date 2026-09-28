@@ -148,6 +148,7 @@
   function init(root) {
     controller = new AbortController();
     var signal = controller.signal;
+    var extrasEpisodeDeleteBusy = false; // UI pass S7: one Extras delete confirm (or its request) at a time
 
     var content = root.querySelector('#podcasts-content');
     var emptyNote = root.querySelector('#podcasts-empty');
@@ -298,19 +299,30 @@
             onQueue: function (item, pos) { if (typeof window.addToQueue === 'function') window.addToQueue(item.id, pos, 'podcast'); },
             likeRequest: function (item, nextOn) { return fetch('/api/podcasts/episodes/' + encodeURIComponent(item.id) + '/liked', { method: nextOn ? 'POST' : 'DELETE' }); },
             watchedRequest: function (item, nextOn) { return fetch('/api/podcasts/episodes/' + encodeURIComponent(item.id) + '/played', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ played: nextOn }) }); },
+            // UI pass S7 (the shared Extras delete, D4.8 F33): a danger ui.confirm (the episode
+            // list's own Move to Trash copy), then the SAME DELETE - only when it resolves exactly
+            // `true`; the view's signal closes it (answering false) on a teardown. One confirm at a
+            // time: a second tap while one is open or its request runs is ignored. The title is
+            // textContent inside ui.confirm (RSS titles are attacker-influenced: no markup string).
             onDelete: function (item, onSuccess, player) {
-              if (typeof window.showConfirmModal !== 'function') return;
-              // RSS titles are attacker-influenced - escape via textContent before the innerHTML body.
-              var esc = function (s) { var d = document.createElement('div'); d.textContent = String(s == null ? '' : s); return d.innerHTML; };
-              window.showConfirmModal('Move to Trash?', 'Move <strong>' + esc(item.title || 'this episode') + '</strong> to Trash? You can Restore it from the episode list.', function () {
+              var U = window.ui;
+              if (extrasEpisodeDeleteBusy || !U || typeof U.confirm !== 'function') return;
+              extrasEpisodeDeleteBusy = true;
+              var release = function () { extrasEpisodeDeleteBusy = false; };
+              U.confirm({
+                title: 'Move to Trash?',
+                body: '“' + (item.title || 'This episode') + '” moves to Trash. You can restore it from this episode list.', // the episode list's own copy (confirmTrashEpisode)
+                confirmLabel: 'Move to Trash', cancelLabel: 'Cancel', danger: true, signal: signal,
+              }).then(function (ok) {
+                if (ok !== true || signal.aborted) { release(); return; }
                 // v1.339 R1 (T-C4): the confirm outlives an auto-advance - stop playback only when
                 // the deleted episode is STILL what plays, never the episode that followed it.
                 var stillPlaying = !!(player && player.currentId === item.id);
                 if (stillPlaying && typeof player.close === 'function') player.close();
-                fetchJson('/api/podcasts/episodes/' + encodeURIComponent(item.id), { method: 'DELETE' })
-                  .then(function () { if (typeof onSuccess === 'function') onSuccess(stillPlaying); })
-                  .catch(function () { setStatus('Could not delete the episode.'); });
-              });
+                return fetchJson('/api/podcasts/episodes/' + encodeURIComponent(item.id), { method: 'DELETE' })
+                  .then(function () { release(); if (typeof onSuccess === 'function') onSuccess(stillPlaying); })
+                  .catch(function () { release(); setStatus('Could not delete the episode.'); });
+              }, release);
             },
           },
           // v1.273 (Dean): "podcasts just doesn't show up as an option even though it's
@@ -346,7 +358,7 @@
     // desktop viewport + a podcast episode current.
     var popoutBtn = root.querySelector('#podcast-popout-btn');
     function podcastPopoutSupported() {
-      try { if (SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()) return false; } catch (_) { /* treat as desktop */ }
+      try { if (SKINS && SKINS.isPhone && SKINS.isPhone()) return false; } catch (_) { /* treat as desktop */ }
       return !!(typeof window !== 'undefined' && (window.documentPictureInPicture || typeof window.open === 'function'));
     }
     function hasCurrentPodcastEpisode() {
@@ -370,21 +382,10 @@
       popoutBtn.setAttribute('aria-pressed', (popoutShell && popoutShell.isOpen()) ? 'true' : 'false');
     }
     if (popoutBtn && popoutShell) popoutBtn.addEventListener('click', function () { popoutShell.toggle(); }, { signal });
-    // the never-both-live split, enforced on resize (the music v1.235 gate finding, same shape).
-    if (popoutShell && typeof window !== 'undefined' && window.addEventListener) {
-      window.addEventListener('resize', function () {
-        var narrow = false;
-        try { narrow = !!(SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()); } catch (_) { /* desktop */ }
-        if (narrow && popoutShell.isOpen()) popoutShell.teardown();
-        else updatePopoutBtn();
-      }, { signal });
-    }
+    // The never-both-live split is structural (UI pass D7, music.js parity): the in-tab skin
+    // runs only on a phone, the pop-out only off one, and html.is-phone never changes after
+    // load - so no resize listener enforces it and a rotate never re-renders the skin (F23).
     activePodcastPopoutTeardown = popoutShell ? function () { popoutShell.teardown(); } : null; // destroy() closes it on a cross-view swap
-    // v1.311.3: re-run the panel update when the viewport crosses the mobile skin gate (a
-    // rotate), so the skin un-renders / re-paints - music.js parity, the same shared helper.
-    if (window.FileTubeSkinSurface && typeof window.FileTubeSkinSurface.watchSkinViewport === 'function') {
-      window.FileTubeSkinSurface.watchSkinViewport(window, function () { updateNowPlayingPanel(); }, signal);
-    }
 
     function setStatus(msg) {
       if (!statusEl) return;

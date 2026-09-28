@@ -368,6 +368,29 @@ function applyEraFlourish(era, doc) {
   d.documentElement.setAttribute('data-era-flourish', eraShowsFabricated(e) ? 'on' : 'off');
 }
 
+// UI pass D7 (AC9 stillness): a rotate or a window resize re-lays the page out in one step.
+// Every `resize` / `orientationchange` puts `html.no-motion` on for STILLNESS_MS (restarted by
+// each event) and style.css zeroes every transition under it, so nothing that transitions for
+// a user's action (the sidebar drawer, the content margin beside it) animates for a viewport
+// change. Registered once per document at common.js load; the resize event is dispatched in the
+// frame's resize steps, BEFORE that frame's style recalc, so the class is on when the new
+// layout's styles resolve. `win` for jsdom tests. Returns false when there is nothing to watch.
+const STILLNESS_MS = 300;
+function installResizeStillness(win) {
+  const w = win || (typeof window !== 'undefined' ? window : null);
+  const html = w && w.document && w.document.documentElement;
+  if (!html || typeof w.addEventListener !== 'function') return false;
+  let timer = null;
+  const hold = () => {
+    html.classList.add('no-motion');
+    if (timer) w.clearTimeout(timer);
+    timer = w.setTimeout(() => { timer = null; html.classList.remove('no-motion'); }, STILLNESS_MS);
+  };
+  w.addEventListener('resize', hold);
+  w.addEventListener('orientationchange', hold);
+  return true;
+}
+
 // Applies both attributes + persists both keys. Also flips the header
 // moon/sun icon to reflect the current mode.
 function applyTheme(era, mode) {
@@ -16830,6 +16853,9 @@ const handoffCard = (() => {
   return { init, __poll: poll, __hide: hide };
 })();
 
+// UI pass D7: no transition runs for a rotate / resize (html.no-motion, style.css).
+installResizeStillness();
+
 // UI pass D8.1: reflect the era's flourish NOW, from the data-theme the shell's
 // pre-paint bootstrap already set, so the first card render (this script runs
 // before any view's init) never shows a fabricated stat the era hides.
@@ -17234,6 +17260,7 @@ if (typeof module !== 'undefined' && module.exports) {
     showToast, nextArmState, deleteResultToast,
     // UI pass D8.1: the era flourish (fabricated stats) mechanism.
     ERA_FLOURISH_ERAS, eraShowsFabricated, applyEraFlourish, isFabricatedViewCount,
+    STILLNESS_MS, installResizeStillness, // UI pass D7: html.no-motion around a rotate / resize
     deriveRouteView, shouldInterceptLinkClick, buildHistoryState, parseHistoryState, popStateDelegate,
     // v1.47.4 item 2: the pure zoom-policy decision + the viewport contents it
     // selects between, exported so tests assert the reader carve-out against the

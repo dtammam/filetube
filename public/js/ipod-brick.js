@@ -57,6 +57,10 @@
 
     var ctx = canvas.getContext('2d');
     var W = 0, H = 0, dpr = 1;
+    // The canvas's CSS box is the LCD's (style.css `.ipod-brick canvas`: 100% x 100%); only
+    // the BACKING STORE is sized here, to the box times the device pixel ratio. UI pass D7
+    // (F59): measured once now and again after every settled change of the box (a rotate
+    // into the landscape layout, the iOS toolbar), never mid-layout - see observeSettled.
     function resize() {
       var r = wrap.getBoundingClientRect();
       W = Math.max(80, Math.round(r.width));
@@ -64,8 +68,6 @@
       dpr = Math.min(3, win.devicePixelRatio || 1);
       canvas.width = Math.round(W * dpr);
       canvas.height = Math.round(H * dpr);
-      canvas.style.width = W + 'px';
-      canvas.style.height = H + 'px';
       if (ctx) ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
     resize();
@@ -251,8 +253,17 @@
     }
     raf = win.requestAnimationFrame(loop);
 
-    var onResize = function () { resize(); };
-    try { win.addEventListener('resize', onResize); } catch (_) { /* no window events */ }
+    // Re-measure after the board SETTLES (the shared helper in music-skins.js, loaded first on
+    // every shell that loads this file). Without it (an engine lacking ResizeObserver, a bare
+    // fixture) the window's resize is the fallback trigger, as before.
+    var SK = win.FileTubeMusicSkins || (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
+    var stopSettle = null, onResize = null;
+    if (SK && typeof SK.observeSettled === 'function' && win.ResizeObserver) {
+      stopSettle = SK.observeSettled(wrap, win, function () { if (!dead) resize(); });
+    } else {
+      onResize = function () { resize(); };
+      try { win.addEventListener('resize', onResize); } catch (_) { /* no window events */ }
+    }
 
     return {
       onRotate: onRotate,
@@ -260,7 +271,8 @@
       destroy: function () {
         dead = true;
         try { win.cancelAnimationFrame(raf); } catch (_) { /* already stopped */ }
-        try { win.removeEventListener('resize', onResize); } catch (_) { /* ditto */ }
+        if (stopSettle) { stopSettle(); stopSettle = null; }
+        if (onResize) { try { win.removeEventListener('resize', onResize); } catch (_) { /* ditto */ } onResize = null; }
         if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
       },
     };

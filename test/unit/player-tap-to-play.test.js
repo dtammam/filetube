@@ -17,6 +17,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { unscopePocket } = require('../helpers/stylesheets.js'); // UI pass D7: the Pocket takeover's device-class scope
 const { JSDOM, VirtualConsole } = require('jsdom');
 
 const REPO = path.join(__dirname, '..', '..');
@@ -29,7 +30,7 @@ function realm({ url = 'http://localhost/music?play=t1&ao=1', outcome = 'refuse'
   const dom = new JSDOM(fs.readFileSync(path.join(REPO, 'public', 'music.html'), 'utf8'), { url, runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: vc });
   const w = dom.window;
   const ctl = { outcome, plays: 0 };
-  w.matchMedia = (q) => ({ matches: /max-width:\s*768px/.test(q) && mobile, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+  w.matchMedia = (q) => ({ matches: /max-width:\s*768px|pointer:\s*coarse/.test(q) && mobile, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   w.scrollTo = () => {};
   w.HTMLMediaElement.prototype.load = function () {};
   w.HTMLMediaElement.prototype.pause = function () {};
@@ -252,7 +253,7 @@ test('every auto-start branch of the load reports a refusal (music, podcast, TV,
 });
 
 test('the cue sits UNDER the sticker wrap (an open sticker menu stays on top and keeps its taps - gate r1 qa W1), over the skin chrome', () => {
-  const css = fs.readFileSync(path.join(REPO, 'public', 'css', 'style.css'), 'utf8');
+  const css = unscopePocket(fs.readFileSync(path.join(REPO, 'public', 'css', 'style.css'), 'utf8'));
   const z = (sel) => Number((new RegExp('\\n {2}' + sel.replace(/[.]/g, '\\.') + '\\{[^}]*?z-index:(\\d+)').exec(css) || [])[1]);
   const cue = z('.mms-tapplay'), wrap = z('.mms-sticker-wrap');
   assert.ok(cue > 0 && wrap > 0, 'both z-indexes found');

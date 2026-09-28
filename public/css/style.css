@@ -8673,6 +8673,10 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
    sort select (Home), the Artists view toggle, the pop-out and More, so the wrapped mobile
    toolbar never reflows when a tab or player state shows or hides one. */
 .music-toolbar-actions .music-slot-reserved { visibility: hidden; }
+/* UI pass D7 (F58): the docked mini player's footprint, reserved at the Music view's bottom so
+   its last rows (and an album's Play / Shuffle row) scroll clear of the dock. music.js
+   reserveDockSpace measures it (0 while no dock shows) and writes it as data. */
+#view-root[data-view="music"] { padding-bottom: var(--music-dock-reserve, 0); }
 /* v1.339 (L1b): a FIXED sort width. A select sizes to its widest option, and the drill's
    list ("Release date (newest)", 171px at the 12px btn-sm size) is wider than a tab's (133px),
    so entering a drill widened it and pushed the row over. 15em covers the widest label with
@@ -8680,11 +8684,10 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 #music-sort-select { width: 15em; }
 /* v1.339 (L1b): the toggle and the pop-out SHIP reserved in music.html (their first JS state
    on a cold load), so the first paint already has their slots - no reflow when init runs.
-   The pop-out is never supported at <=768px (music-skins.js isMobileViewport, the SAME
-   query popoutSupported() reads), so it has no box there even before music.js runs. */
-@media (max-width: 768px) {
-  #music-popout-btn { display: none !important; }
-}
+   The pop-out is never supported on a phone (UI pass D7: html.is-phone, the SAME class
+   popoutSupported() reads through music-skins.js isPhone), so it has no box there even
+   before music.js runs. The id + class + element selector outranks every button rule. */
+html.is-phone #music-popout-btn { display: none; }
 /* v1.215 (Dean's v1.214 device pass): the SAME class for the Artists grid/list
    view toggle. syncViewToggle sets .hidden = true on every surface but the
    Artists grid, yet `.btn { display: inline-flex }` beat the UA [hidden] rule,
@@ -9487,30 +9490,30 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   .mms-sticker-menu .mms-sm-title{ font-size:var(--fs-md); font-weight:var(--fw-semibold); }
   .mms-sticker-menu .mms-sm-lbl i, .mms-sticker-menu .mms-sm-act i{ width:18px; text-align:center; opacity:.7; flex:none; }
   .mms-sticker-menu .mms-sm-speed{ display:flex; flex-wrap:wrap; gap:var(--space-3); }
-  .mms-sticker-menu .mms-sm-opt{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; font-variant-numeric:tabular-nums; min-height:44px; display:inline-flex; align-items:center; justify-content:center; transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
-  .mms-sticker-menu .mms-sm-opt.is-on{ background:var(--yt-red); color:var(--on-accent); border-color:var(--yt-red-dark); }
-  .mms-sticker-menu .mms-sm-loop{ display:flex; align-items:center; justify-content:space-between; gap:var(--space-6); width:100%; border:0; background:transparent; color:inherit; cursor:pointer; padding:0; min-height:44px; }
+  .mms-sticker-menu .mms-sm-opt{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; font-variant-numeric:tabular-nums; min-height:var(--size-touch); display:inline-flex; align-items:center; justify-content:center; transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
+  .mms-sticker-menu .mms-sm-opt.is-on{ background:var(--overlay-border); color:inherit; border-color:currentColor; font-weight:var(--fw-semibold); }
+  .mms-sticker-menu .mms-sm-loop{ display:flex; align-items:center; justify-content:space-between; gap:var(--space-6); width:100%; border:0; background:transparent; color:inherit; cursor:pointer; padding:0; min-height:var(--size-touch); }
   .mms-sticker-menu .mms-sm-loop .mms-sm-state{ font-size:var(--fs-md); opacity:.7; }
-  .mms-sticker-menu .mms-sm-loop.is-on .mms-sm-state{ color:var(--yt-red); opacity:1; }
+  .mms-sticker-menu .mms-sm-loop.is-on .mms-sm-state{ opacity:1; font-weight:var(--fw-semibold); }
   .mms-sticker-menu .mms-sm-skins{ display:flex; flex-wrap:wrap; gap:var(--space-3); }
-  .mms-sticker-menu .mms-sm-chip{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; min-height:44px; display:inline-flex; align-items:center; justify-content:center; transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
-  .mms-sticker-menu .mms-sm-chip.is-on{ background:var(--yt-red); color:var(--on-accent); border-color:var(--yt-red-dark); }
+  .mms-sticker-menu .mms-sm-chip{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; min-height:var(--size-touch); display:inline-flex; align-items:center; justify-content:center; transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
+  .mms-sticker-menu .mms-sm-chip.is-on{ background:var(--overlay-border); color:inherit; border-color:currentColor; font-weight:var(--fw-semibold); }
   /* v1.255: interactive states, matching the app (.account-menu-item hover, .md-row focus). */
   @media (hover: hover){
   .mms-sticker-menu .mms-sm-opt:hover, .mms-sticker-menu .mms-sm-chip:hover, .mms-sticker-menu .mms-sm-act:hover{ background:var(--hover-bg, rgba(128,128,128,0.15)); /* token-exempt: theme-neutral fallback */ }
-  .mms-sticker-menu .mms-sm-opt.is-on:hover, .mms-sticker-menu .mms-sm-chip.is-on:hover{ background:var(--yt-red); }
+  .mms-sticker-menu .mms-sm-opt.is-on:hover, .mms-sticker-menu .mms-sm-chip.is-on:hover{ background:var(--overlay-border); }
   }
-  .mms-sticker-menu button:focus-visible, .mms-sticker-menu a:focus-visible{ outline:2px solid var(--yt-red); outline-offset:-2px; }
+  .mms-sticker-menu button:focus-visible, .mms-sticker-menu a:focus-visible{ outline:2px solid var(--focus-ring); outline-offset:-2px; }
   /* v1.249 (F-EXTRAS): the two-page menu. "Extras >" / "< Back" ride the loop
      row's full-width chassis; the action list is a single column of the same
      bordered rows as the speed/skin options, left-aligned for scanability. */
   .mms-sticker-menu .mms-sm-extras,
-  .mms-sticker-menu .mms-sm-back{ display:flex; align-items:center; justify-content:space-between; gap:var(--space-6); width:100%; border:0; background:transparent; color:inherit; cursor:pointer; padding:0; min-height:44px; }
+  .mms-sticker-menu .mms-sm-back{ display:flex; align-items:center; justify-content:space-between; gap:var(--space-6); width:100%; border:0; background:transparent; color:inherit; cursor:pointer; padding:0; min-height:var(--size-touch); }
   .mms-sticker-menu .mms-sm-back{ justify-content:flex-start; gap:var(--space-3); font-size:var(--fs-md); opacity:.8; }
   .mms-sticker-menu .mms-sm-extras .mms-sm-state{ font-size:var(--fs-lg); line-height:var(--lh-tight); opacity:.7; }
   .mms-sticker-menu .mms-sm-acts{ display:flex; flex-direction:column; gap:var(--space-3); }
-  .mms-sticker-menu .mms-sm-act{ display:flex; align-items:center; gap:var(--space-4); width:100%; text-align:left; text-decoration:none; border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; min-height:48px; transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
-  .mms-sticker-menu .mms-sm-act.is-on{ background:var(--yt-red); color:var(--on-accent); border-color:var(--yt-red-dark); }
+  .mms-sticker-menu .mms-sm-act{ display:flex; align-items:center; gap:var(--space-4); width:100%; text-align:left; text-decoration:none; border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; min-height:var(--size-touch); transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
+  .mms-sticker-menu .mms-sm-act.is-on{ background:var(--overlay-border); color:inherit; border-color:currentColor; font-weight:var(--fw-semibold); }
   .mms-sticker-menu .mms-sm-act[disabled]{ opacity:.5; cursor:default; }
   .mms-sticker-menu .mms-sm-danger{ color:var(--yt-red); border-color:var(--yt-red); }
   .mms-sticker-menu .mms-sm-note{ font-size:var(--fs-md); opacity:.7; }
@@ -9519,17 +9522,22 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   .music-actions-wrap{ position:relative; display:inline-flex; }
   #music-actions-menu{ position:absolute; right:0; top:calc(100% + var(--space-3)); left:auto; bottom:auto; /* token-exempt: positional geometry */ z-index:50; }
 
-@media (max-width: 768px){
+/* UI pass D7 (Dean: "Pocket is a phone mode, not a width mode"): this takeover was one
+   `@media (max-width: 768px)` block, so a rotate to landscape (every non-SE iPhone is wider than
+   768px there) switched it off and the rotate back rebuilt it (F23). Every rule is now keyed on the
+   device class music-skins.js sets ONCE at load - `html.is-phone` - or the desktop pop-out
+   window's `html.mms-popout` (skin-surface.js createPopoutShell). `:where()` adds no specificity,
+   so the cascade inside and around the block is exactly what the media query gave it. */
   /* hide the default host chrome (control bar + big art) and collapse the slot to
      zero so it just hosts the (still-playing) audio element; the skin panel is the
      visible now-playing. Audio is unaffected by the 0 box. */
   /* SCOPED to the music view's own #player-slot (gate CRITICAL): watch/podcasts/
      read share #player-slot, so a leaked body.mms-on must never collapse THEIR
      player. #view-root's data-view is 'music' only on this view. */
-  body.mms-on #view-root[data-view="music"] #player-slot { height:0; min-height:0; overflow:hidden; padding:0; margin:0; }
-  body.mms-on #view-root[data-view="music"] #player-slot .player-controls,
-  body.mms-on #view-root[data-view="music"] #player-slot #audio-bg-art,
-  body.mms-on #view-root[data-view="music"] #player-slot #audio-visualizer { display:none !important; }
+  :where(html.is-phone, html.mms-popout) body.mms-on #view-root[data-view="music"] #player-slot { height:0; min-height:0; overflow:hidden; padding:0; margin:0; }
+  :where(html.is-phone, html.mms-popout) body.mms-on #view-root[data-view="music"] #player-slot .player-controls,
+  :where(html.is-phone, html.mms-popout) body.mms-on #view-root[data-view="music"] #player-slot #audio-bg-art,
+  :where(html.is-phone, html.mms-popout) body.mms-on #view-root[data-view="music"] #player-slot #audio-visualizer { display:none !important; }
   /* v1.228 (Dean: "there's scroll behind this"): the skin is a fixed full-screen
      takeover; lock the page body so the underlying list can't scroll behind it.
      NOTE (adversarial gate): unlike the #player-slot hide rules, this lock CANNOT
@@ -9537,14 +9545,14 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      backstop - it depends entirely on mms-on being cleared when the music view is
      left (music.js destroy() + updateNowPlayingPanel's collapse/non-music clears,
      both test-bound). A leaked mms-on would freeze body scroll on the next view. */
-  body.mms-on{ overflow:hidden; }
+  :where(html.is-phone, html.mms-popout) body.mms-on{ overflow:hidden; }
   /* v1.281 (Dean): the immersive mobile skin is drag/wheel/touch-driven, so the app's
      globally-styled ::-webkit-scrollbar has no place in it - a transiently-overflowing
      child at launch (the layout settling) flashed a gutter on the right for a beat, which
      read as jarring. Hide every scrollbar while the skin is up (mms-on is mobile+music
      ONLY, per music.js). Scrollable regions inside still pan by touch (touch-action:pan-y);
      only the visual bar is gone. */
-  body.mms-on ::-webkit-scrollbar { display:none; } /* Firefox twin is in the one @supports guard (era-scrollbar partition) */
+  :where(html.is-phone, html.mms-popout) body.mms-on ::-webkit-scrollbar { display:none; } /* Firefox twin is in the one @supports guard (era-scrollbar partition) */
 
   /* ---------- the full-screen shell (shared frame; each skin fills it) ---------- */
   /* z-index: cover the app header (--z-header 1000) for a true full-screen player -
@@ -9556,12 +9564,12 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   /* v1.243 (Dean): a HOLD (fast-scan / spin) must never select the skin's glyph/label text -
      the blue highlight looked derpy. Since the UI pass (plan D6) the native-interaction
      base in ui.css no-selects the whole app (+ iOS touch-callout), this shell included. */
-  .mms-full{ position:fixed; inset:0; z-index:var(--z-player-max); margin:0; display:flex; flex-direction:column; overflow:hidden; touch-action:none; }
+  :where(html.is-phone, html.mms-popout) .mms-full{ --mms-g-size:var(--icon-sm); position:fixed; inset:0; z-index:var(--z-player-max); margin:0; display:flex; flex-direction:column; overflow:hidden; touch-action:none; }
   /* v1.256 WHEEL HAPTICS: touch-action ANYWHERE on the ghost switch's ancestor chain
      disables WebKit's switch pointer-tracking (probe-proven), so a haptic-capable
      device lifts it here and a body position:fixed lock (engine-managed, ghost-scoped)
      takes over the scroll-behind suppression that touch-action:none provided. */
-  .mms-full.mms-haptic{ touch-action:auto; }
+  :where(html.is-phone, html.mms-popout) .mms-full.mms-haptic{ touch-action:auto; }
   /* ===================== v1.257: the TRAY PLAYER (Nano) =====================
      The pop-out reshaped to a Nano-5g screen parked above the taskbar (Dean's
      reference images): the IPOD donor's LCD without the wheel - its status bar,
@@ -9571,22 +9579,22 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      FIRST occurrence of the base-scoped lcd/listview rules, and these earlier-in-file
      tray rules (and THIS comment - those locks are comment-porous, the v1.50 class)
      must not shadow them. body.mms-tray plus one class still outranks the originals. */
-  body.mms-tray{ background:var(--mms-black); }
-  body.mms-tray .music-nowplaying-panel{ position:fixed; inset:0; border-radius:var(--radius-lg); overflow:hidden; }
-  body.mms-tray .ip-wheelwrap, body.mms-tray .ip-listview{ display:none; }
-  body.mms-tray .ip-lcd{ flex:1; min-height:0; max-width:none; width:auto; margin:var(--pk-tray-inset); border-radius:var(--pk-tray-radius); box-sizing:border-box; }
-  body.mms-tray .ip-npmain{ display:flex; align-items:center; gap:var(--space-4); }
-  body.mms-tray .ip-cover{ width:var(--pk-tray-art); height:var(--pk-tray-art); flex:none; }
-  body.mms-tray .ip-ttl{ font-size:var(--pk-fs-tray-title); }
-  body.mms-tray .ip-artist, body.mms-tray .ip-album{ font-size:var(--pk-fs-tray-sub); }
-  body.mms-tray .ip-stars{ display:none; }
-  body.mms-tray .mms-sticker{ transform:scale(.55); transform-origin:bottom left; } /* QA S4: the BUTTON shrinks; the menu (a wrap sibling) keeps the v1.252 thumb sizes */
+  :where(html.is-phone, html.mms-popout) body.mms-tray{ background:var(--mms-black); }
+  :where(html.is-phone, html.mms-popout) body.mms-tray .music-nowplaying-panel{ position:fixed; inset:0; border-radius:var(--radius-lg); overflow:hidden; }
+  :where(html.is-phone, html.mms-popout) body.mms-tray .ip-wheelwrap, :where(html.is-phone, html.mms-popout) body.mms-tray .ip-listview{ display:none; }
+  :where(html.is-phone, html.mms-popout) body.mms-tray .ip-lcd{ flex:1; min-height:0; max-width:none; width:auto; margin:var(--pk-tray-inset); border-radius:var(--pk-tray-radius); box-sizing:border-box; }
+  :where(html.is-phone, html.mms-popout) body.mms-tray .ip-npmain{ display:flex; align-items:center; gap:var(--space-4); }
+  :where(html.is-phone, html.mms-popout) body.mms-tray .ip-cover{ width:var(--pk-tray-art); height:var(--pk-tray-art); flex:none; }
+  :where(html.is-phone, html.mms-popout) body.mms-tray .ip-ttl{ font-size:var(--pk-fs-tray-title); }
+  :where(html.is-phone, html.mms-popout) body.mms-tray .ip-artist, :where(html.is-phone, html.mms-popout) body.mms-tray .ip-album{ font-size:var(--pk-fs-tray-sub); }
+  :where(html.is-phone, html.mms-popout) body.mms-tray .ip-stars{ display:none; }
+  :where(html.is-phone, html.mms-popout) body.mms-tray .mms-sticker{ transform:scale(.55); transform-origin:bottom left; } /* QA S4: the BUTTON shrinks; the menu (a wrap sibling) keeps the v1.252 thumb sizes */
   /* v1.258.1 (Dean: the tray menu "way too small when clicked, not really usable"): the
      base menu opens UPWARD from the bottom-anchored sticker with a max-height taller
      than the whole 190px window - the pip edge clipped it to a sliver. In tray it is a
      full-window overlay instead. */
-  body.mms-tray .mms-sticker-menu{ position:fixed; inset:var(--space-3); max-height:none; min-width:0; max-width:none; }
-  .mms-haptic-ghost{ position:absolute; left:50%; top:50%; width:52px; height:32px; /* token-exempt: native switch box */
+  :where(html.is-phone, html.mms-popout) body.mms-tray .mms-sticker-menu{ position:fixed; inset:var(--space-3); max-height:none; min-width:0; max-width:none; }
+  :where(html.is-phone, html.mms-popout) .mms-haptic-ghost{ position:absolute; left:50%; top:50%; width:52px; height:32px; /* token-exempt: native switch box */
     margin:-16px 0 0 -26px; opacity:0.001; z-index:2; /* token-exempt: local stacking over the zones */
     border:0; padding:0; will-change:transform; }
   /* v1.232 (Dean): no mobile tap-highlight flash on skin buttons (the grey "area showing"
@@ -9594,133 +9602,142 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      the native-interaction base in ui.css since the UI pass (plan D6;
      -webkit-tap-highlight-color is inherited from body). */
   /* shared control primitives - identical hooks + reflect targets across skins */
-  .mms-full .mms-top{ display:flex; align-items:center; justify-content:space-between; }
-  .mms-full .mms-chev{ width:36px; height:36px; border:0; background:transparent; color:inherit; font-size:var(--fs-3xl); cursor:pointer; display:grid; place-items:center; opacity:.9; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-top{ display:flex; align-items:center; justify-content:space-between; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-chev{ --mms-g-size:var(--icon-lg); width:var(--size-touch); height:var(--size-touch); border:0; background:transparent; color:inherit; font-size:var(--fs-3xl); cursor:pointer; display:grid; place-items:center; opacity:.9; }
+  /* UI pass S7 (F60): the drawn marks (music-skins.js skGlyph) - currentColor, sized by the container's
+     --mms-g-size (the text role or icon size it replaces); the play indicator stacks both marks in one
+     cell (the reflect toggles is-paused), so the status bar never re-measures on a play / pause flip. */
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-g{ display:block; flex:none; width:var(--mms-g-size); height:var(--mms-g-size); fill:currentColor; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-playind{ display:inline-grid; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-playind > .mms-g{ grid-area:1 / 1; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-playind > .mms-g-pause, :where(html.is-phone, html.mms-popout) .mms-full .mms-playind.is-paused > .mms-g-play{ visibility:hidden; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-playind.is-paused > .mms-g-pause{ visibility:visible; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-rn > .mms-g{ margin-inline:auto; }
   /* v1.244 (Dean): non-square art (most YouTube covers) is shown WHOLE (object-fit:contain)
      with a blurred, scaled self-bleed of the same image filling the letterbox (the "accent
      from its own colors" - the --art var is set on the slot by the skin render; reuses the
      Apple bleed technique, no color-extraction). Square art fills the frame as before. */
   /* the ::before is source-ordered BEFORE the positioned img, so it paints behind with no
      z-index (the same no-z-ladder trick the .mms-bleed / .mms-z pair uses). */
-  .mms-full .mms-art{ position:relative; }
-  .mms-full .mms-art::before{ content:""; position:absolute; inset:0; background-image:var(--art, none); background-size:cover; background-position:center; filter:blur(24px) brightness(.72); transform:scale(1.35); }
-  .mms-full .mms-art img{ position:relative; width:100%; height:100%; object-fit:contain; display:block; }
-  .mms-full .mms-fill{ position:absolute; inset:0 auto 0 0; border-radius:var(--radius-full); }
-  .mms-full .mms-times{ display:flex; justify-content:space-between; font-size:var(--fs-2xs); font-variant-numeric:tabular-nums; }
-  .mms-full .mms-pos, .mms-full .mms-rem{ font-variant-numeric:tabular-nums; }
-  .mms-full .mms-skip{ border:0; background:transparent; color:inherit; cursor:pointer; display:grid; place-items:center; }
-  .mms-full .mms-play{ border:0; cursor:pointer; display:grid; place-items:center; padding:0; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-art{ position:relative; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-art::before{ content:""; position:absolute; inset:0; background-image:var(--art, none); background-size:cover; background-position:center; filter:blur(24px) brightness(.72); transform:scale(1.35); }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-art img{ position:relative; width:100%; height:100%; object-fit:contain; display:block; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-fill{ position:absolute; inset:0 auto 0 0; border-radius:var(--radius-full); }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-times{ display:flex; justify-content:space-between; font-size:var(--fs-2xs); font-variant-numeric:tabular-nums; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-pos, :where(html.is-phone, html.mms-popout) .mms-full .mms-rem{ font-variant-numeric:tabular-nums; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-skip{ border:0; background:transparent; color:inherit; cursor:pointer; display:grid; place-items:center; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-play{ border:0; cursor:pointer; display:grid; place-items:center; padding:0; }
 
   /* ===================== v1.238: the STICKER quick-menu =====================
      A small FileTube-logo (or emoji / custom image) sticker in the bottom-left
      corner of EVERY skin + the desktop pop-out; tapping it opens a compact
      popover = speed + loop + skin picker. Self-contained dark overlay surface so
      it reads on any skin's palette; positioned over the safe-area inset. */
-  .mms-sticker-wrap{ position:absolute; left:calc(env(safe-area-inset-left,0px) + var(--space-6)); bottom:calc(env(safe-area-inset-bottom,0px) + var(--space-6)); z-index:40; /* token-exempt: local stacking (above the skin chrome, below nothing else here) */ }
+  :where(html.is-phone, html.mms-popout) .mms-sticker-wrap{ --mms-sm-anchor-l:0; --mms-sm-anchor-r:auto; position:absolute; left:calc(env(safe-area-inset-left,0px) + var(--space-6)); bottom:calc(env(safe-area-inset-bottom,0px) + var(--space-6)); z-index:40; /* token-exempt: local stacking (above the skin chrome, below nothing else here) */ }
   /* v1.240 (Dean): a slight counter-clockwise tilt so it reads like a literal peel-and-stick
      sticker. On the BUTTON only - the pop-up menu (a sibling) stays upright. */
   /* v1.240/1.241 (Dean): a placed-sticker feel. --mms-sticker-px drives the size (bumped base
      52px; the size classes below scale it); the tilt classes rotate the BUTTON only, so the
      pop-up menu (a sibling) stays upright. Bottom-left over the safe-area inset. */
-  .mms-sticker{ --mms-sticker-px:52px; width:var(--mms-sticker-px); height:var(--mms-sticker-px); padding:var(--space-2); border:0; border-radius:var(--radius-full); background:var(--scrim-legacy); box-shadow:var(--shadow-lg); cursor:pointer; display:grid; place-items:center; -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
-  .mms-sticker .mms-sticker-ic{ width:100%; height:100%; object-fit:contain; border-radius:var(--radius-full); display:block; }
-  .mms-sticker .mms-sticker-emoji{ font-size:var(--fs-2xl); }
+  :where(html.is-phone, html.mms-popout) .mms-sticker{ --mms-sticker-px:52px; width:var(--mms-sticker-px); height:var(--mms-sticker-px); padding:var(--space-2); border:0; border-radius:var(--radius-full); background:var(--scrim-legacy); box-shadow:var(--shadow-lg); cursor:pointer; display:grid; place-items:center; -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
+  :where(html.is-phone, html.mms-popout) .mms-sticker .mms-sticker-ic{ width:100%; height:100%; object-fit:contain; border-radius:var(--radius-full); display:block; }
+  :where(html.is-phone, html.mms-popout) .mms-sticker .mms-sticker-emoji{ font-size:var(--fs-2xl); }
   /* v1.241: per-user SIZE (default = the 52px base) + TILT settings on ft-sticker. Image
      stickers scale via the .mms-sticker-ic width:100%; the emoji steps up the type scale so it
      fills the bigger spot too (font-size must be a bare --fs-* token, type-scale census). */
-  .mms-sticker-sz-2x{ --mms-sticker-px:104px; }
-  .mms-sticker-sz-3x{ --mms-sticker-px:156px; }
-  .mms-sticker-sz-2x .mms-sticker-emoji{ font-size:var(--fs-4xl); }
-  .mms-sticker-sz-3x .mms-sticker-emoji{ font-size:var(--fs-5xl); }
-  .mms-sticker-tilt-straight{ transform:rotate(0deg); }
-  .mms-sticker-tilt-left{ transform:rotate(-14deg); }
-  .mms-sticker-tilt-right{ transform:rotate(14deg); }
+  :where(html.is-phone, html.mms-popout) .mms-sticker-sz-2x{ --mms-sticker-px:104px; }
+  :where(html.is-phone, html.mms-popout) .mms-sticker-sz-3x{ --mms-sticker-px:156px; }
+  :where(html.is-phone, html.mms-popout) .mms-sticker-sz-2x .mms-sticker-emoji{ font-size:var(--fs-4xl); }
+  :where(html.is-phone, html.mms-popout) .mms-sticker-sz-3x .mms-sticker-emoji{ font-size:var(--fs-5xl); }
+  :where(html.is-phone, html.mms-popout) .mms-sticker-tilt-straight{ transform:rotate(0deg); }
+  :where(html.is-phone, html.mms-popout) .mms-sticker-tilt-left{ transform:rotate(-14deg); }
+  :where(html.is-phone, html.mms-popout) .mms-sticker-tilt-right{ transform:rotate(14deg); }
   /* v1.240 (Dean): an IMAGE sticker fills the spot SQUARE with no ring/clip - drop the
      circular chrome + the round image crop (emoji keeps the chip). */
-  .mms-sticker--img{ background:transparent; border-radius:0; box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none; padding:0; }
-  .mms-sticker--img .mms-sticker-ic{ border-radius:0; }
-  .mms-sticker-menu{ position:absolute; left:0; bottom:calc(100% + var(--space-3)); /* token-exempt: positional geometry */ }
+  :where(html.is-phone, html.mms-popout) .mms-sticker--img{ background:transparent; border-radius:0; box-shadow:none; -webkit-backdrop-filter:none; backdrop-filter:none; padding:0; }
+  :where(html.is-phone, html.mms-popout) .mms-sticker--img .mms-sticker-ic{ border-radius:0; }
+  :where(html.is-phone, html.mms-popout) .mms-sticker-menu{ position:absolute; left:var(--mms-sm-anchor-l); right:var(--mms-sm-anchor-r); bottom:calc(100% + var(--space-3)); /* token-exempt: positional geometry */ }
   /* v1.333 (Dean: "I can't scroll in the extras menu"; measured: with a 2x sticker the 86vh menu's TOP sat
      ~44px above the screen, so Home and Speed were out of reach - no scroll brings back what sits above
      scrollTop 0). The menu hangs above the sticker, so its cap is the space ABOVE the sticker: the
      viewport less both safe-area insets, the wrap's bottom offset, the sticker (the wrap carries its size
      class) and the gap - never more than the old 86vh. The tray's full-window menu keeps its own rule. */
-  .mms-sticker-wrap > .mms-sticker-menu{ max-height:min(86vh, calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - var(--space-6) - var(--mms-sticker-px,52px) - var(--space-3) - var(--space-3))); }
+  :where(html.is-phone, html.mms-popout) .mms-sticker-wrap > .mms-sticker-menu{ max-height:min(86vh, calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - var(--space-6) - var(--mms-sticker-px,52px) - var(--space-3) - var(--space-3))); }
   /* v1.334 TAP TO PLAY (Dean: a notification opens the song but iOS refuses to start it - "one tap plays"):
      one clear pill over the upper half of the skin (the art / the LCD, never the wheel or the sticker),
      shown only while player.js's autoStartRefused() holds (skin-surface.js syncTapPlay). No backdrop or
      filter: a lit Click panel sits under it. */
-  .mms-tapplay{ position:absolute; left:50%; top:30%; transform:translate(-50%, -50%); z-index:39; /* token-exempt: local stacking - over the skin chrome (z 5 at most), UNDER the sticker wrap (40) so an open sticker menu stays on top (gate r1 qa W1) */ display:inline-flex; align-items:center; gap:var(--space-4); min-height:48px; padding:var(--space-4) var(--space-8); border:0; border-radius:var(--radius-full); background:var(--yt-red); color:var(--on-accent); font-family:var(--font-family); font-size:var(--fs-lg); font-weight:var(--fw-bold); box-shadow:var(--shadow-lg); cursor:pointer; }
-  .mms-tapplay svg{ width:22px; height:22px; fill:currentColor; flex:none; }
-  .mms-tapplay:focus-visible{ outline:2px solid var(--on-accent); outline-offset:2px; }
+  :where(html.is-phone, html.mms-popout) .mms-tapplay{ position:absolute; left:50%; top:30%; transform:translate(-50%, -50%); z-index:39; /* token-exempt: local stacking - over the skin chrome (z 5 at most), UNDER the sticker wrap (40) so an open sticker menu stays on top (gate r1 qa W1) */ display:inline-flex; align-items:center; gap:var(--space-4); min-height:48px; padding:var(--space-4) var(--space-8); border:0; border-radius:var(--radius-full); background:var(--yt-red); color:var(--on-accent); font-family:var(--font-family); font-size:var(--fs-lg); font-weight:var(--fw-bold); box-shadow:var(--shadow-lg); cursor:pointer; }
+  :where(html.is-phone, html.mms-popout) .mms-tapplay svg{ width:22px; height:22px; fill:currentColor; flex:none; }
+  :where(html.is-phone, html.mms-popout) .mms-tapplay:focus-visible{ outline:2px solid var(--on-accent); outline-offset:2px; }
 
   /* ============================ APPLE MUSIC ============================
      A blurred cover bleed fills the screen; a large framed cover, oversized
      black-weight title + hot-pink artist, a thin scrubber, one big white play.
      A grab handle dismisses. No visible queue, no decorative buttons. */
-  .mms-apple{ background:var(--mms-apple-bg); color:var(--mms-apple-fg); }
-  .mms-apple .mms-bleed{ position:absolute; inset:0; background-size:cover; background-position:center; filter:blur(60px) saturate(1.7) brightness(.6); transform:scale(1.4); }
-  .mms-apple .mms-bleed::after{ content:""; position:absolute; inset:0; background:var(--mms-apple-veil); }
+  :where(html.is-phone, html.mms-popout) .mms-apple{ background:var(--mms-apple-bg); color:var(--mms-apple-fg); }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-bleed{ position:absolute; inset:0; background-size:cover; background-position:center; filter:blur(60px) saturate(1.7) brightness(.6); transform:scale(1.4); }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-bleed::after{ content:""; position:absolute; inset:0; background:var(--mms-apple-veil); }
   /* .mms-z is position:relative and LATER in the DOM than the absolute .mms-bleed,
      so it paints above without a z-index (the census governs z-index; no local rung). */
-  .mms-apple .mms-z{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column;
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-z{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column;
     padding:calc(env(safe-area-inset-top,0px) + var(--space-8)) var(--space-12) calc(env(safe-area-inset-bottom,0px) + var(--space-12)); }
-  .mms-apple .mms-top{ justify-content:center; }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-top{ justify-content:center; }
   /* the dismiss grab handle - a big transparent TAP TARGET (Dean couldn't find the exit)
      with the visible 38x5 pill centered inside via ::before. */
-  .mms-apple .mms-grab{ width:64px; height:26px; border:0; padding:0; cursor:pointer; background:transparent; position:relative; }
-  .mms-apple .mms-grab::before{ content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:38px; height:5px; border-radius:var(--radius-full); background:var(--mms-apple-grab); }
-  .mms-apple .mms-art{ width:82%; max-width:340px; aspect-ratio:1; margin:var(--space-16) auto var(--space-12); border-radius:var(--mms-r-art); overflow:hidden; box-shadow:var(--mms-art-shadow); }
-  .mms-apple .mms-head{ margin-top:auto; }
-  .mms-apple .mms-ttl{ font-size:var(--fs-5xl); font-weight:var(--fw-black); letter-spacing:var(--mms-ls-tight); line-height:var(--mms-lh-ttl); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mms-apple .mms-sub{ font-size:var(--fs-xl); font-weight:var(--fw-semibold); color:var(--mms-apple-accent); margin-top:var(--space-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mms-apple .mms-scrub{ margin-top:var(--space-10); }
-  .mms-apple .mms-bar{ height:6px; border-radius:var(--radius-full); position:relative; cursor:pointer; background:var(--mms-apple-track); }
-  .mms-apple .mms-fill{ background:var(--mms-white); }
-  .mms-apple .mms-times{ margin-top:var(--space-4); color:var(--mms-apple-dim); }
-  .mms-apple .mms-transport{ display:flex; align-items:center; justify-content:center; gap:var(--space-16); margin-top:var(--space-12); }
-  .mms-apple .mms-skip svg{ width:34px; height:34px; fill:currentColor; }
-  .mms-apple .mms-play{ width:76px; height:76px; border-radius:var(--radius-full); background:var(--mms-white); }
-  .mms-apple .mms-play svg{ width:32px; height:32px; fill:var(--mms-black); }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-grab{ width:64px; height:26px; border:0; padding:0; cursor:pointer; background:transparent; position:relative; }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-grab::before{ content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:38px; height:5px; border-radius:var(--radius-full); background:var(--mms-apple-grab); }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-art{ width:82%; max-width:340px; aspect-ratio:1; margin:var(--space-16) auto var(--space-12); border-radius:var(--mms-r-art); overflow:hidden; box-shadow:var(--mms-art-shadow); }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-head{ margin-top:auto; }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-ttl{ font-size:var(--fs-5xl); font-weight:var(--fw-black); letter-spacing:var(--mms-ls-tight); line-height:var(--mms-lh-ttl); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-sub{ font-size:var(--fs-xl); font-weight:var(--fw-semibold); color:var(--mms-apple-accent); margin-top:var(--space-2); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-scrub{ margin-top:var(--space-10); }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-bar{ height:6px; border-radius:var(--radius-full); position:relative; cursor:pointer; background:var(--mms-apple-track); }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-fill{ background:var(--mms-white); }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-times{ margin-top:var(--space-4); color:var(--mms-apple-dim); }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-transport{ display:flex; align-items:center; justify-content:center; gap:var(--space-16); margin-top:var(--space-12); }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-skip svg{ width:34px; height:34px; fill:currentColor; }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-play{ width:76px; height:76px; border-radius:var(--radius-full); background:var(--mms-white); }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-play svg{ width:32px; height:32px; fill:var(--mms-black); }
 
   /* ============================== SPOTIFY ==============================
      Purple-to-black canvas, fat title, a control row of REAL shuffle (green) +
      prev / play / next, and a raised "Next in queue" panel. No fake repeat/heart. */
-  .mms-spotify{ background:linear-gradient(var(--mms-sp-g1) 0%, var(--mms-sp-g2) 48%, var(--mms-sp-g3) 100%); color:var(--mms-sp-fg);
+  :where(html.is-phone, html.mms-popout) .mms-spotify{ background:linear-gradient(var(--mms-sp-g1) 0%, var(--mms-sp-g2) 48%, var(--mms-sp-g3) 100%); color:var(--mms-sp-fg);
     padding:calc(env(safe-area-inset-top,0px) + var(--space-8)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-8)); }
-  .mms-spotify .mms-chev{ opacity:.9; }
-  .mms-spotify .mms-ctx{ flex:1; text-align:center; font-size:var(--fs-2xs); letter-spacing:var(--mms-ls-caps); text-transform:uppercase; opacity:.7; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mms-spotify .mms-top-spacer{ width:36px; flex:none; }
-  .mms-spotify .mms-art{ width:74%; max-width:300px; aspect-ratio:1; margin:var(--space-10) auto var(--space-8); border-radius:var(--mms-r-art); overflow:hidden; box-shadow:var(--mms-art-shadow); }
-  .mms-spotify .mms-meta{ min-width:0; }
-  .mms-spotify .mms-ttl{ font-size:var(--fs-4xl); font-weight:var(--fw-black); letter-spacing:var(--mms-ls-tight); line-height:var(--mms-lh-ttl); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mms-spotify .mms-sub{ font-size:var(--fs-lg); color:var(--mms-sp-dim); margin-top:var(--space-1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mms-spotify .mms-scrub{ margin-top:var(--space-6); }
-  .mms-spotify .mms-bar{ height:4px; border-radius:var(--radius-full); position:relative; cursor:pointer; background:var(--mms-sp-track); }
-  .mms-spotify .mms-fill{ background:var(--mms-white); }
-  .mms-spotify .mms-times{ margin-top:var(--space-3); color:var(--mms-sp-dim); }
-  .mms-spotify .mms-transport{ display:flex; align-items:center; justify-content:space-between; margin-top:var(--space-6); }
-  .mms-spotify .mms-ic{ border:0; background:transparent; cursor:pointer; display:grid; place-items:center; color:var(--mms-sp-ic); }
-  .mms-spotify .mms-ic svg{ width:24px; height:24px; fill:currentColor; }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-chev{ opacity:.9; }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-ctx{ flex:1; text-align:center; font-size:var(--fs-2xs); letter-spacing:var(--mms-ls-caps); text-transform:uppercase; opacity:.7; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-top-spacer{ width:var(--size-touch); flex:none; }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-art{ width:74%; max-width:300px; aspect-ratio:1; margin:var(--space-10) auto var(--space-8); border-radius:var(--mms-r-art); overflow:hidden; box-shadow:var(--mms-art-shadow); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-meta{ min-width:0; }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-ttl{ font-size:var(--fs-4xl); font-weight:var(--fw-black); letter-spacing:var(--mms-ls-tight); line-height:var(--mms-lh-ttl); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-sub{ font-size:var(--fs-lg); color:var(--mms-sp-dim); margin-top:var(--space-1); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-scrub{ margin-top:var(--space-6); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-bar{ height:4px; border-radius:var(--radius-full); position:relative; cursor:pointer; background:var(--mms-sp-track); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-fill{ background:var(--mms-white); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-times{ margin-top:var(--space-3); color:var(--mms-sp-dim); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-transport{ display:flex; align-items:center; justify-content:space-between; margin-top:var(--space-6); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-ic{ border:0; background:transparent; cursor:pointer; display:grid; place-items:center; color:var(--mms-sp-ic); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-ic svg{ width:24px; height:24px; fill:currentColor; }
   /* an invisible right-hand spacer the width of the shuffle button, so prev/play/next
      stay symmetric and the play lands DEAD CENTER (v1.232.1, Dean: buttons offset). */
-  .mms-spotify .mms-tr-spacer{ width:24px; flex:none; }
-  .mms-spotify .mms-shuffle{ color:var(--mms-sp-accent); }
-  .mms-spotify .mms-skip svg{ width:36px; height:36px; fill:currentColor; }
-  .mms-spotify .mms-play{ width:64px; height:64px; border-radius:var(--radius-full); background:var(--mms-sp-accent); box-shadow:var(--mms-sp-play-shadow); }
-  .mms-spotify .mms-play svg{ width:28px; height:28px; fill:var(--mms-sp-on-accent); }
-  .mms-spotify .mms-queue{ margin-top:var(--space-8); flex:1; min-height:0; display:flex; flex-direction:column; background:var(--mms-sp-queue-bg); border-top:1px solid var(--mms-sp-qline); border-radius:var(--mms-r-queue) var(--mms-r-queue) 0 0; padding:var(--space-6) var(--space-6) 0; }
-  .mms-spotify .mms-qh{ margin:0 0 var(--space-4); font-size:var(--fs-sm); font-weight:var(--fw-bold); }
-  .mms-spotify .mms-qlist{ overflow-y:auto; flex:1; min-height:0; margin:0 calc(-1 * var(--space-3)); padding-bottom:var(--space-6); touch-action:pan-y; overscroll-behavior:contain; }
-  .mms-spotify .mms-row{ display:flex; align-items:center; gap:var(--space-6); width:100%; padding:var(--space-4) var(--space-3); border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; border-radius:var(--radius-lg); }
-  .mms-spotify .mms-th{ width:44px; height:44px; border-radius:var(--mms-r-th); overflow:hidden; flex:none; background:var(--mms-sp-queue-bg); }
-  .mms-spotify .mms-th img{ width:100%; height:100%; object-fit:cover; display:block; }
-  .mms-spotify .mms-rtext{ display:flex; flex-direction:column; min-width:0; flex:1; }
-  .mms-spotify .mms-rt{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-md); }
-  .mms-spotify .mms-ra{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-sm); color:var(--mms-sp-dim); margin-top:var(--space-1); }
-  .mms-spotify .mms-rd{ flex:none; font-size:var(--fs-sm); color:var(--mms-sp-dim); font-variant-numeric:tabular-nums; } /* v1.317 (M2): the thumb row's own length */
-  .mms-spotify .mms-row.is-played .mms-rt{ color:var(--mms-sp-dim); }
-  .mms-spotify .mms-row.is-current .mms-rt{ color:var(--mms-sp-accent); font-weight:var(--fw-bold); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-tr-spacer{ width:24px; flex:none; }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-shuffle{ color:var(--mms-sp-accent); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-skip svg{ width:36px; height:36px; fill:currentColor; }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-play{ width:64px; height:64px; border-radius:var(--radius-full); background:var(--mms-sp-accent); box-shadow:var(--mms-sp-play-shadow); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-play svg{ width:28px; height:28px; fill:var(--mms-sp-on-accent); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-queue{ margin-top:var(--space-8); flex:1; min-height:0; display:flex; flex-direction:column; background:var(--mms-sp-queue-bg); border-top:1px solid var(--mms-sp-qline); border-radius:var(--mms-r-queue) var(--mms-r-queue) 0 0; padding:var(--space-6) var(--space-6) 0; }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-qh{ margin:0 0 var(--space-4); font-size:var(--fs-sm); font-weight:var(--fw-bold); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-qlist{ overflow-y:auto; flex:1; min-height:0; margin:0 calc(-1 * var(--space-3)); padding-bottom:var(--space-6); touch-action:pan-y; overscroll-behavior:contain; }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-row{ display:flex; align-items:center; gap:var(--space-6); width:100%; padding:var(--space-4) var(--space-3); border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; border-radius:var(--radius-lg); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-th{ width:44px; height:44px; border-radius:var(--mms-r-th); overflow:hidden; flex:none; background:var(--mms-sp-queue-bg); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-th img{ width:100%; height:100%; object-fit:cover; display:block; }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-rtext{ display:flex; flex-direction:column; min-width:0; flex:1; }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-rt{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-md); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-ra{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-sm); color:var(--mms-sp-dim); margin-top:var(--space-1); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-rd{ flex:none; font-size:var(--fs-sm); color:var(--mms-sp-dim); font-variant-numeric:tabular-nums; } /* v1.317 (M2): the thumb row's own length */
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-row.is-played .mms-rt{ color:var(--mms-sp-dim); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-row.is-current .mms-rt{ color:var(--mms-sp-accent); font-weight:var(--fw-bold); }
 
   /* =============================== iPod ===============================
      The real Classic. A warm-white glossy body; a black-bezelled LCD showing the
@@ -9742,7 +9759,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      Geometry that reads the light (--lx / --ly / --lm, written on the panel by pocket-lighting.js)
      stays IN the rules; the roles hold only colors, stops and origins. The SCREEN palette (the LCD
      white, the blue selection bar, the Aqua scrubber, the greys) is shared - no colorway touches it. */
-  .mms-ipod{
+  :where(html.is-phone, html.mms-popout) .mms-ipod{
     /* 1. structure */
     --pk-lcd-ratio:4/3; --pk-status-pad:var(--space-3) var(--space-4);
     --pk-batt-w:22px; --pk-batt-h:11px; --pk-batt-level:82%;
@@ -9772,7 +9789,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      gloss like the black one): on a WHITE body a white-on-white sheen is invisible, so the gloss
      reads from a crisp top HIGHLIGHT band + a soft bottom-edge SHADOW (the domed, reflective look),
      over the soft diagonal sheen + body gradient. The center is the body's own white. */
-  .mms-ipod{
+  :where(html.is-phone, html.mms-popout) .mms-ipod{
     --pk-c-body:linear-gradient(180deg, var(--mms-ipod-gloss-hi) 0%, var(--mms-ipod-sheen-0) 15%),
       radial-gradient(135% 90% at 50% 122%, var(--mms-ipod-gloss-shadow) 0%, transparent 55%),
       linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
@@ -9786,7 +9803,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
     --pk-c-lits-band:var(--mms-lits-band); --pk-c-lits-band2:var(--mms-lits-band2); --pk-c-lits-core:var(--mms-lits-core);
     --pk-c-lita-glow:255,255,255; --pk-c-lita-core:255,255,255; }
   /* the body: the colorway's stack, over its 1px edge */
-  .mms-ipod{ background:var(--pk-c-body);
+  :where(html.is-phone, html.mms-popout) .mms-ipod{ background:var(--pk-c-body);
     color:var(--mms-black); box-shadow:inset 0 0 0 1px var(--pk-c-body-edge);
     padding:calc(env(safe-area-inset-top,0px) + var(--space-8)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-10)); }
   /* THE TEXT LINE (v1.332, D3: ONE overflow rule, not one per incident): every single-line text
@@ -9796,9 +9813,9 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      allowed). It sits BEFORE the rules that deliberately wrap (the Lighting note row) so they win.
      test/unit/pocket-design-system.test.js censuses every text element the renderers draw against
      this list, the wrap list and the glyph list: a new text element fails until it is classified. */
-  .mms-ipod .ip-np, .mms-ipod .ip-ttl, .mms-ipod .ip-artist, .mms-ipod .ip-album, .mms-ipod .ip-nof,
-  .mms-ipod .mms-pos, .mms-ipod .mms-rem, .mms-ipod .mms-rt, .mms-ipod .mms-rd,
-  .mms-ipod .ipm-lbl, .mms-ipod .ipm-val, .mms-ipod .ipm-about-name{ min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-np, :where(html.is-phone, html.mms-popout) .mms-ipod .ip-ttl, :where(html.is-phone, html.mms-popout) .mms-ipod .ip-artist, :where(html.is-phone, html.mms-popout) .mms-ipod .ip-album, :where(html.is-phone, html.mms-popout) .mms-ipod .ip-nof,
+  :where(html.is-phone, html.mms-popout) .mms-ipod .mms-pos, :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rem, :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rt, :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rd,
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-lbl, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-val, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-about-name{ min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   /* the LCD - a COMPACT ~4:3 screen at the top (not fill), the real iPod proportion;
      the body + wheel take the space below. */
   /* The LCD must NEVER resize from its content (Dean, v1.232.1: the song list made it
@@ -9809,9 +9826,9 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
          cause of the growth) even if contain were unsupported;
        - overflow:hidden -> anything larger is clipped, and the list scrolls in .ip-listview.
      The only thing that changes the LCD size is the viewport width (correct + responsive). */
-  .mms-ipod .ip-lcd{ flex:none; aspect-ratio:var(--pk-lcd-ratio); min-height:0; contain:size; overflow:hidden; display:flex; background:var(--mms-black); border-radius:var(--mms-r-art-ipod); padding:var(--space-1); box-shadow:var(--mms-ipod-lcd-shadow); }
-  .mms-ipod .ip-lcd-in{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column; background:var(--pk-s-paper); border-radius:var(--mms-ipod-r-sm); overflow:hidden; }
-  .mms-ipod .ip-status{ display:flex; align-items:center; justify-content:space-between; flex:none; padding:var(--pk-status-pad);
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-lcd{ flex:none; aspect-ratio:var(--pk-lcd-ratio); min-height:0; contain:size; overflow:hidden; display:flex; background:var(--mms-black); border-radius:var(--mms-r-art-ipod); padding:var(--space-1); box-shadow:var(--mms-ipod-lcd-shadow); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-lcd-in{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column; background:var(--pk-s-paper); border-radius:var(--mms-ipod-r-sm); overflow:hidden; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-status{ display:flex; align-items:center; justify-content:space-between; flex:none; padding:var(--pk-status-pad);
     background:linear-gradient(var(--pk-s-bar1), var(--pk-s-bar2)); border-bottom:1px solid var(--pk-s-hair); }
   /* The status bar is ONE line, whatever the title (Dean 2026-09-24: a long album or song
      name grew the bar by a row). The title is the flex child that gives: it may shrink below
@@ -9819,44 +9836,44 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      Classic's status title does. The play mark + battery cluster never shrinks or moves.
      Covers every screen that draws this bar: every Click colorway, the desktop pop-out
      and the Nano tray (scripts/skin-status-bar-probe.js measures them). */
-  .mms-ipod .ip-np{ font-size:var(--pk-fs-status); font-weight:var(--fw-bold); flex:1 1 auto; }
-  .mms-ipod .ip-status-rt{ display:flex; align-items:center; gap:var(--space-3); flex:none; margin-left:var(--space-4); }
-  .mms-ipod .mms-playind{ font-size:var(--pk-fs-status-mark); color:var(--pk-s-sub); }
-  .mms-ipod .ip-batt{ width:var(--pk-batt-w); height:var(--pk-batt-h); flex:none; overflow:hidden; background:var(--pk-s-paper); border:1px solid var(--pk-s-batt-line); border-radius:var(--mms-ipod-r-sm); }
-  .mms-ipod .ip-batt i{ display:block; height:100%; width:var(--pk-batt-level); background:linear-gradient(var(--pk-s-batt1), var(--pk-s-batt2)); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-np{ font-size:var(--pk-fs-status); font-weight:var(--fw-bold); flex:1 1 auto; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-status-rt{ display:flex; align-items:center; gap:var(--space-3); flex:none; margin-left:var(--space-4); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .mms-playind{ --mms-g-size:var(--pk-fs-status-mark); font-size:var(--pk-fs-status-mark); color:var(--pk-s-sub); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-batt{ width:var(--pk-batt-w); height:var(--pk-batt-h); flex:none; overflow:hidden; background:var(--pk-s-paper); border:1px solid var(--pk-s-batt-line); border-radius:var(--mms-ipod-r-sm); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-batt i{ display:block; height:100%; width:var(--pk-batt-level); background:linear-gradient(var(--pk-s-batt1), var(--pk-s-batt2)); }
   /* Now Playing view */
-  .mms-ipod .ip-npview{ flex:1; min-height:0; display:flex; flex-direction:column; padding:var(--space-6) var(--space-6) var(--space-4); }
-  .mms-ipod .ip-npmain{ display:flex; gap:var(--space-6); flex:1; min-height:0; }
-  .mms-ipod .ip-cover{ position:relative; width:var(--pk-cover-w); align-self:flex-start; aspect-ratio:1; overflow:hidden; border-radius:var(--mms-ipod-r-sm); background:var(--pk-s-groove); box-shadow:var(--pk-s-art-shadow); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-npview{ flex:1; min-height:0; display:flex; flex-direction:column; padding:var(--space-6) var(--space-6) var(--space-4); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-npmain{ display:flex; gap:var(--space-6); flex:1; min-height:0; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-cover{ position:relative; width:var(--pk-cover-w); align-self:flex-start; aspect-ratio:1; overflow:hidden; border-radius:var(--mms-ipod-r-sm); background:var(--pk-s-groove); box-shadow:var(--pk-s-art-shadow); }
   /* v1.244: same whole-art + blurred self-bleed as the other skins (the --art var is set by the render). */
-  .mms-ipod .ip-cover::before{ content:""; position:absolute; inset:0; background-image:var(--art, none); background-size:cover; background-position:center; filter:blur(18px) brightness(.72); transform:scale(1.35); }
-  .mms-ipod .ip-cover img{ position:relative; width:100%; height:100%; object-fit:contain; display:block; }
-  .mms-ipod .ip-meta{ flex:1; min-width:0; }
-  .mms-ipod .ip-ttl{ font-size:var(--pk-fs-np-title); font-weight:var(--fw-bold); line-height:var(--mms-lh-ttl); }
-  .mms-ipod .ip-artist{ font-size:var(--pk-fs-np-artist); margin-top:var(--space-3); }
-  .mms-ipod .ip-album{ font-size:var(--pk-fs-np-album); color:var(--pk-s-sub); margin-top:var(--space-1); }
-  .mms-ipod .ip-stars{ font-size:var(--pk-fs-np-meta); color:var(--pk-s-sub); letter-spacing:var(--mms-ls-caps2); margin-top:var(--space-3); }
-  .mms-ipod .ip-nof{ font-size:var(--pk-fs-np-meta); font-weight:var(--fw-bold); margin-top:var(--space-3); font-variant-numeric:tabular-nums; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-cover::before{ content:""; position:absolute; inset:0; background-image:var(--art, none); background-size:cover; background-position:center; filter:blur(18px) brightness(.72); transform:scale(1.35); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-cover img{ position:relative; width:100%; height:100%; object-fit:contain; display:block; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-meta{ flex:1; min-width:0; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-ttl{ font-size:var(--pk-fs-np-title); font-weight:var(--fw-bold); line-height:var(--mms-lh-ttl); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-artist{ font-size:var(--pk-fs-np-artist); margin-top:var(--space-3); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-album{ font-size:var(--pk-fs-np-album); color:var(--pk-s-sub); margin-top:var(--space-1); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-stars{ --mms-g-size:var(--pk-fs-np-meta); display:flex; gap:var(--space-1); font-size:var(--pk-fs-np-meta); color:var(--pk-s-sub); letter-spacing:var(--mms-ls-caps2); margin-top:var(--space-3); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-nof{ font-size:var(--pk-fs-np-meta); font-weight:var(--fw-bold); margin-top:var(--space-3); font-variant-numeric:tabular-nums; }
   /* Aqua scrubber */
-  .mms-ipod .ip-scrub{ display:flex; align-items:center; gap:var(--space-4); margin-top:var(--space-4); flex:none; }
-  .mms-ipod .mms-pos, .mms-ipod .mms-rem{ font-size:var(--pk-fs-time); font-weight:var(--fw-bold); flex:none; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-scrub{ display:flex; align-items:center; gap:var(--space-4); margin-top:var(--space-4); flex:none; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .mms-pos, :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rem{ font-size:var(--pk-fs-time); font-weight:var(--fw-bold); flex:none; }
   /* v1.255 (Dean): the AQUA scrubber. The groove gets a real inner shadow so the fill
      sits IN it; the fill is the v1.269 MEASURED tube - see the token block above. */
-  .mms-ipod .ip-track{ flex:1; height:var(--pk-track-h); border-radius:var(--radius-full); position:relative; overflow:hidden; background:var(--mms-aqua-track); box-shadow:var(--mms-aqua-groove-shadow); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-track{ flex:1; height:var(--pk-track-h); border-radius:var(--radius-full); position:relative; overflow:hidden; background:var(--mms-aqua-track); box-shadow:var(--mms-aqua-groove-shadow); }
   /* v1.269 (Dean, from the reference image he picked): a fine VERTICAL striation
      (7px period) over the glass-tube ramp. Replaced v1.260's 135deg candy stripe -
      which was Aqua's INDETERMINATE barber pole, the wrong control's costume. */
-  .mms-ipod .mms-fill{ background:repeating-linear-gradient(90deg, var(--mms-aqua-striate) 0 1px, var(--mms-aqua-striate-0) 1px 3px, var(--mms-aqua-striate-d) 3px 4px, var(--mms-aqua-striate-0) 4px 7px), linear-gradient(var(--mms-aqua-t0) 0%, var(--mms-aqua-t1) 12%, var(--mms-aqua-t2) 24%, var(--mms-aqua-t3) 38%, var(--mms-aqua-t4) 46%, var(--mms-aqua-t5) 56%, var(--mms-aqua-t6) 66%, var(--mms-aqua-t7) 76%, var(--mms-aqua-t8) 86%, var(--mms-aqua-t9) 100%); box-shadow:var(--mms-aqua-fill-shadow); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .mms-fill{ background:repeating-linear-gradient(90deg, var(--mms-aqua-striate) 0 1px, var(--mms-aqua-striate-0) 1px 3px, var(--mms-aqua-striate-d) 3px 4px, var(--mms-aqua-striate-0) 4px 7px), linear-gradient(var(--mms-aqua-t0) 0%, var(--mms-aqua-t1) 12%, var(--mms-aqua-t2) 24%, var(--mms-aqua-t3) 38%, var(--mms-aqua-t4) 46%, var(--mms-aqua-t5) 56%, var(--mms-aqua-t6) 66%, var(--mms-aqua-t7) 76%, var(--mms-aqua-t8) 86%, var(--mms-aqua-t9) 100%); box-shadow:var(--mms-aqua-fill-shadow); }
   /* v1.235's wheel-VOLUME bar, DORMANT since v1.250 (Dean retired wheel-volume - the wheel
      scrubs everywhere; nothing writes .mms-voladj/.ip-vol-fill any more). Rules kept
      unchurned this wave; removable with the markup whenever the skins are next edited. */
-  .mms-ipod .ip-vol{ display:none; align-items:center; gap:var(--space-4); margin-top:var(--space-4); flex:none; }
-  .mms-ipod .ip-vol-ico{ flex:none; display:grid; place-items:center; }
-  .mms-ipod .ip-vol-ico svg{ width:var(--pk-vol-glyph); height:var(--pk-vol-glyph); fill:var(--pk-s-sub); }
-  .mms-ipod .ip-vol-track{ flex:1; height:var(--pk-track-h); border-radius:var(--radius-full); position:relative; overflow:hidden; background:linear-gradient(var(--pk-s-groove), var(--pk-s-paper)); box-shadow:inset 0 0 0 1px var(--pk-s-hair); }
-  .mms-ipod .ip-vol-fill{ position:absolute; left:0; top:0; bottom:0; width:100%; background:linear-gradient(var(--pk-s-sel-hi), var(--pk-s-sel1) 45%, var(--pk-s-sel2)); box-shadow:var(--mms-ipod-fill-shadow); }
-  .mms-ipod.mms-voladj .ip-scrub{ display:none; }
-  .mms-ipod.mms-voladj .ip-vol{ display:flex; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol{ display:none; align-items:center; gap:var(--space-4); margin-top:var(--space-4); flex:none; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-ico{ flex:none; display:grid; place-items:center; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-ico svg{ width:var(--pk-vol-glyph); height:var(--pk-vol-glyph); fill:var(--pk-s-sub); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-track{ flex:1; height:var(--pk-track-h); border-radius:var(--radius-full); position:relative; overflow:hidden; background:linear-gradient(var(--pk-s-groove), var(--pk-s-paper)); box-shadow:inset 0 0 0 1px var(--pk-s-hair); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-fill{ position:absolute; left:0; top:0; bottom:0; width:100%; background:linear-gradient(var(--pk-s-sel-hi), var(--pk-s-sel1) 45%, var(--pk-s-sel2)); box-shadow:var(--mms-ipod-fill-shadow); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-voladj .ip-scrub{ display:none; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-voladj .ip-vol{ display:flex; }
   /* List view (Select flips to it) */
   /* v1.270 BRICK (Dean's easter egg): the canvas overlays the LCD's inner box.
      THAT REQUIRES .ip-lcd-in TO BE POSITIONED - the slim gate measured that neither
@@ -9870,26 +9887,26 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      and, in list mode, to the rows (playing a different song). An opaque layer should
      block what is under it. The geometry itself is guarded by a real containing-block
      test instead, which catches the regression outright rather than softening it. */
-  .ipod-brick{ position:absolute; inset:0; z-index:3; /* token-exempt: local stacking inside the LCD, over the npview and listview */ background:var(--pk-s-paper); }
-  .ipod-brick canvas{ display:block; width:100%; height:100%; }
-  .mms-ipod .ip-listview{ display:none; flex:1; min-height:0; overflow-y:auto; touch-action:pan-y; overscroll-behavior:contain; }
-  .mms-ipod.mms-listmode .ip-npview{ display:none; }
-  .mms-ipod.mms-listmode .ip-listview{ display:block; }
-  .mms-ipod .mms-row{ display:flex; align-items:center; gap:var(--space-4); width:100%; padding:var(--pk-list-row-pad); border:0; background:transparent; color:var(--pk-s-ink); text-align:left; cursor:pointer; border-bottom:1px solid var(--pk-s-line); font-size:var(--pk-fs-row); font-weight:var(--fw-semibold); }
-  .mms-ipod .mms-rn{ width:var(--pk-row-num-w); text-align:center; font-size:var(--pk-fs-row-meta); color:var(--pk-s-sub); flex:none; font-variant-numeric:tabular-nums; }
-  .mms-ipod .mms-rt{ flex:1; }
-  .mms-ipod .mms-rd{ font-size:var(--pk-fs-row-meta); color:var(--pk-s-sub); flex:none; font-variant-numeric:tabular-nums; }
-  .mms-ipod .mms-chev-r{ color:var(--pk-s-sub); flex:none; }
-  .mms-ipod .mms-row.is-played{ opacity:.55; }
+  :where(html.is-phone, html.mms-popout) .ipod-brick{ position:absolute; inset:0; z-index:3; /* token-exempt: local stacking inside the LCD, over the npview and listview */ background:var(--pk-s-paper); }
+  :where(html.is-phone, html.mms-popout) .ipod-brick canvas{ display:block; width:100%; height:100%; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-listview{ display:none; flex:1; min-height:0; overflow-y:auto; touch-action:pan-y; overscroll-behavior:contain; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-listmode .ip-npview{ display:none; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-listmode .ip-listview{ display:block; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .mms-row{ display:flex; align-items:center; gap:var(--space-4); width:100%; padding:var(--pk-list-row-pad); border:0; background:transparent; color:var(--pk-s-ink); text-align:left; cursor:pointer; border-bottom:1px solid var(--pk-s-line); font-size:var(--pk-fs-row); font-weight:var(--fw-semibold); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rn{ --mms-g-size:var(--pk-fs-row-meta); width:var(--pk-row-num-w); text-align:center; font-size:var(--pk-fs-row-meta); color:var(--pk-s-sub); flex:none; font-variant-numeric:tabular-nums; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rt{ flex:1; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rd{ font-size:var(--pk-fs-row-meta); color:var(--pk-s-sub); flex:none; font-variant-numeric:tabular-nums; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .mms-chev-r{ --mms-g-size:var(--pk-fs-row); color:var(--pk-s-sub); flex:none; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .mms-row.is-played{ opacity:.55; }
   /* v1.233: authentic iPod - the blue selection BAR follows the wheel CURSOR (the row
      you're scrolling to), not the playing track. The playing track keeps only its ▶
      marker (a blue mms-rn glyph) so you can still see what's playing while the cursor
      roams. On list-open the cursor starts on the current, so they coincide (blue bar +
      ▶). is-cursor is listed AFTER is-current so, when both land on one row, its white
      text wins at equal specificity. */
-  .mms-ipod .mms-row.is-current .mms-rn{ color:var(--pk-s-sel1); }
-  .mms-ipod .mms-row.is-cursor{ background:linear-gradient(var(--pk-s-sel1), var(--pk-s-sel2)); color:var(--pk-s-paper); border-bottom-color:transparent; }
-  .mms-ipod .mms-row.is-cursor .mms-rn, .mms-ipod .mms-row.is-cursor .mms-rd, .mms-ipod .mms-row.is-cursor .mms-chev-r{ color:var(--pk-s-paper); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .mms-row.is-current .mms-rn{ color:var(--pk-s-sel1); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .mms-row.is-cursor{ background:linear-gradient(var(--pk-s-sel1), var(--pk-s-sel2)); color:var(--pk-s-paper); border-bottom-color:transparent; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .mms-row.is-cursor .mms-rn, :where(html.is-phone, html.mms-popout) .mms-ipod .mms-row.is-cursor .mms-rd, :where(html.is-phone, html.mms-popout) .mms-ipod .mms-row.is-cursor .mms-chev-r{ color:var(--pk-s-paper); }
   /* POCKET MENUS (Dean 2026-09-24: "truly emulate. Show artists, albums, songs, etc. fully
      interactive"). The menu screen is the LCD's third view beside Now Playing and the
      queue list; the controller (skin-surface.js) toggles .mms-menumode. The Click look is
@@ -9897,90 +9914,90 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      easing in on the right. Every color is a SCREEN role (--pk-s-*): on the chassis each is the
      Classic palette this skin already carries (the blue selection bar, the status-bar greys, the
      screen white) - nothing guessed; the Original look re-points them inside its glass (v1.335). */
-  .mms-ipod .ip-menuview{ display:none; flex:1; min-height:0; position:relative; }
-  .mms-ipod.mms-menumode .ip-npview, .mms-ipod.mms-menumode .ip-listview{ display:none; }
-  .mms-ipod.mms-menumode .ip-menuview{ display:flex; flex-direction:column; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-menuview{ display:none; flex:1; min-height:0; position:relative; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-menumode .ip-npview, :where(html.is-phone, html.mms-popout) .mms-ipod.mms-menumode .ip-listview{ display:none; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-menumode .ip-menuview{ display:flex; flex-direction:column; }
   /* the scroller: no radius on it (the LCD clips - the overlay-containment split) */
-  .mms-ipod .ipm-list{ flex:1; min-height:0; overflow-y:auto; touch-action:pan-y; overscroll-behavior:contain; }
-  .mms-ipod .ipm-split{ flex:1; min-height:0; display:flex; }
-  .mms-ipod .ipm-click .ipm-lpane{ flex:0 0 var(--pk-split); max-width:var(--pk-split); min-width:0; min-height:0; display:flex; flex-direction:column; }
-  .mms-ipod .ipm-row{ display:flex; align-items:center; gap:var(--space-3); width:100%; height:var(--pk-row-h);
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-list{ flex:1; min-height:0; overflow-y:auto; touch-action:pan-y; overscroll-behavior:contain; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-split{ flex:1; min-height:0; display:flex; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-click .ipm-lpane{ flex:0 0 var(--pk-split); max-width:var(--pk-split); min-width:0; min-height:0; display:flex; flex-direction:column; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-row{ display:flex; align-items:center; gap:var(--space-3); width:100%; height:var(--pk-row-h);
     box-sizing:border-box; padding:0 var(--space-4); border:0; background:transparent; color:var(--pk-s-ink); text-align:left; cursor:pointer;
     font-family:inherit; font-size:var(--pk-fs-menu); font-weight:var(--fw-bold); }
-  .mms-ipod .ipm-lbl{ flex:1; }
-  .mms-ipod .ipm-chev{ flex:none; font-size:var(--pk-fs-chev); color:var(--pk-s-sub); }
-  .mms-ipod .ipm-now{ flex:none; display:grid; place-items:center; }
-  .mms-ipod .ipm-now svg{ width:var(--pk-speaker); height:var(--pk-speaker); fill:var(--pk-s-sel1); display:block; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-lbl{ flex:1; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-chev{ --mms-g-size:var(--pk-fs-chev); flex:none; font-size:var(--pk-fs-chev); color:var(--pk-s-sub); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-now{ flex:none; display:grid; place-items:center; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-now svg{ width:var(--pk-speaker); height:var(--pk-speaker); fill:var(--pk-s-sel1); display:block; }
   /* the selection BAR: the v1.233 list cursor's own gradient + white text */
-  .mms-ipod .ipm-row.is-cursor{ background:linear-gradient(var(--pk-s-sel1), var(--pk-s-sel2)); color:var(--pk-s-paper); }
-  .mms-ipod .ipm-row.is-cursor .ipm-chev{ color:var(--pk-s-paper); }
-  .mms-ipod .ipm-row.is-cursor .ipm-now svg{ fill:var(--pk-s-paper); }
-  .mms-ipod .ipm-skel{ cursor:default; }
-  .mms-ipod .ipm-skel-bar{ display:block; width:var(--pk-skel-w); height:var(--pk-skel-h); border-radius:var(--radius-full); }
-  .mms-ipod .ipm-note{ padding:var(--space-6); font-size:var(--pk-fs-note); color:var(--pk-s-sub); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-row.is-cursor{ background:linear-gradient(var(--pk-s-sel1), var(--pk-s-sel2)); color:var(--pk-s-paper); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-row.is-cursor .ipm-chev{ color:var(--pk-s-paper); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-row.is-cursor .ipm-now svg{ fill:var(--pk-s-paper); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-skel{ cursor:default; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-skel-bar{ display:block; width:var(--pk-skel-w); height:var(--pk-skel-h); border-radius:var(--radius-full); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-note{ padding:var(--space-6); font-size:var(--pk-fs-note); color:var(--pk-s-sub); }
   /* the right half: the art pane, a soft inner edge where it meets the list (the 6G seam) */
-  .mms-ipod .ipm-art{ position:relative; flex:1; min-width:0; overflow:hidden; background:var(--pk-s-groove); box-shadow:var(--pk-s-art-shadow); }
-  .mms-ipod .ipm-art-img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; opacity:0; transform:scale(1.08);
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-art{ position:relative; flex:1; min-width:0; overflow:hidden; background:var(--pk-s-groove); box-shadow:var(--pk-s-art-shadow); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-art-img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; opacity:0; transform:scale(1.08);
     transition:opacity var(--dur-slow) var(--ease-ui), transform 1.6s var(--ease-ui); /* token-exempt: the slow Ken Burns settle */ }
-  .mms-ipod .ipm-art-img.is-in{ opacity:1; transform:scale(1); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-art-img.is-in{ opacity:1; transform:scale(1); }
   /* Addendum E (Dean: "the art gently moves from right to left"): the menu levels' cover DRIFT.
      Only these image layers animate, only transform + opacity (the ambient-mode lesson: no
      filter/blur/mask/backdrop, nothing outside the pane - it clips them). Each cover pans right
      to left with a slight zoom while it shows, then crossfades to the next. */
-  .mms-ipod .ipm-slide{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; opacity:0;
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-slide{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; opacity:0;
     transform:translate3d(4%,0,0) scale(1.08); transition:opacity 1.2s var(--ease-ui); /* token-exempt: the slow crossfade */ }
-  .mms-ipod .ipm-slide.is-on{ opacity:1; }
-  .mms-ipod .ipm-slide.is-drift{ transform:translate3d(-4%,0,0) scale(1.14);
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-slide.is-on{ opacity:1; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-slide.is-drift{ transform:translate3d(-4%,0,0) scale(1.14);
     transition:opacity 1.2s var(--ease-ui), transform 11s linear; /* token-exempt: the Ken Burns drift outlasts the 9 s slot */ }
   /* QUICK SCROLL (Dean 2026-09-24): the letter overlay, the touch badge and the A-Z picker sit
      over the menu screen (absolute inside .ip-menuview, which clips nothing it does not own).
      A layer that is not showing is invisible AND untappable (visibility), faded by a class. */
-  .mms-ipod .ipm-letter, .mms-ipod .ipm-badge{ position:absolute; z-index:3; /* token-exempt: local stacking - over the menu rows and the art pane */ display:grid; place-items:center; border:0; padding:0;
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-letter, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-badge{ position:absolute; z-index:3; /* token-exempt: local stacking - over the menu rows and the art pane */ display:grid; place-items:center; border:0; padding:0;
     font-family:inherit; cursor:pointer; opacity:0; visibility:hidden;
     transition:opacity var(--dur-slow) var(--ease-ui), visibility 0s linear var(--dur-slow); /* token-exempt: visibility flips after the fade (0s = a switch, not a motion) */ }
-  .mms-ipod .ipm-letter.is-on, .mms-ipod .ipm-badge.is-on{ opacity:1; visibility:visible; transition:opacity var(--dur-fast) var(--ease-ui), visibility 0s; /* token-exempt: visibility turns on at once */ }
-  .mms-ipod .ipm-letter{ left:50%; top:50%; width:var(--pk-letter); height:var(--pk-letter); margin:calc(var(--pk-letter) / -2) 0 0 calc(var(--pk-letter) / -2);
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-letter.is-on, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-badge.is-on{ opacity:1; visibility:visible; transition:opacity var(--dur-fast) var(--ease-ui), visibility 0s; /* token-exempt: visibility turns on at once */ }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-letter{ left:50%; top:50%; width:var(--pk-letter); height:var(--pk-letter); margin:calc(var(--pk-letter) / -2) 0 0 calc(var(--pk-letter) / -2);
     border-radius:var(--radius-lg); background:var(--pk-s-jump-bg); color:var(--pk-s-paper); font-size:var(--pk-fs-jump); font-weight:var(--fw-bold); line-height:1; /* token-exempt: a single glyph centred in its square */ }
-  .mms-ipod .ipm-badge{ right:var(--space-2); top:var(--space-2); width:var(--pk-touch); height:var(--pk-touch);
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-badge{ right:var(--space-2); top:var(--space-2); width:var(--pk-touch); height:var(--pk-touch);
     border-radius:var(--radius-full); background:var(--pk-s-jump-bg); color:var(--pk-s-paper); font-size:var(--pk-fs-badge); font-weight:var(--fw-bold); }
-  .mms-ipod .ipm-grid{ position:absolute; inset:0; z-index:4; /* token-exempt: local stacking - the picker over the letter layers */ display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); grid-auto-rows:var(--pk-grid-row);
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-grid{ position:absolute; inset:0; z-index:4; /* token-exempt: local stacking - the picker over the letter layers */ display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); grid-auto-rows:var(--pk-grid-row);
     align-content:safe center; overflow-y:auto; background:var(--pk-s-paper); border-top:1px solid var(--mms-ipod-jump-line); }
   /* gate r1 Q3: `safe` - on an LCD shorter than the grid the rows start at the scroll origin (plain
      centring pushed the first rows above it, unreachable: qa measured # and A-D lost at 667x375). */
-  .mms-ipod .ipm-gl{ border:0; padding:0; background:transparent; color:var(--pk-s-ink); font-family:inherit; font-size:var(--pk-fs-picker); font-weight:var(--fw-bold); cursor:pointer; }
-  .mms-ipod .ipm-gl:active{ background:linear-gradient(var(--pk-s-sel1), var(--pk-s-sel2)); color:var(--pk-s-paper); }
-  .mms-ipod .ipm-gl.is-off{ color:var(--pk-s-hair); cursor:default; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-gl{ border:0; padding:0; background:transparent; color:var(--pk-s-ink); font-family:inherit; font-size:var(--pk-fs-picker); font-weight:var(--fw-bold); cursor:pointer; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-gl:active{ background:linear-gradient(var(--pk-s-sel1), var(--pk-s-sel2)); color:var(--pk-s-paper); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-gl.is-off{ color:var(--pk-s-hair); cursor:default; }
   /* About (addendum D): the device's About screen - the name large, read-only rows with values */
-  .mms-ipod .ipm-about-name{ flex:none; padding:var(--space-3) var(--space-4) var(--space-1); font-size:var(--pk-fs-about); font-weight:var(--fw-bold); color:var(--pk-s-ink); }
-  .mms-ipod .ipm-row.ipm-info{ cursor:default; }
-  .mms-ipod .ipm-val{ flex:none; font-weight:var(--fw-normal); color:var(--pk-s-sub); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-about-name{ flex:none; padding:var(--space-3) var(--space-4) var(--space-1); font-size:var(--pk-fs-about); font-weight:var(--fw-bold); color:var(--pk-s-ink); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-row.ipm-info{ cursor:default; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-val{ flex:none; font-weight:var(--fw-normal); color:var(--pk-s-sub); }
   /* the tray (the pop-out's Nano strip) has no wheel to reach a menu with - Now Playing only */
-  body.mms-tray .ip-menuview{ display:none; }
-  body.mms-tray .music-nowplaying-panel.mms-menumode .ip-npview{ display:flex; }
+  :where(html.is-phone, html.mms-popout) body.mms-tray .ip-menuview{ display:none; }
+  :where(html.is-phone, html.mms-popout) body.mms-tray .music-nowplaying-panel.mms-menumode .ip-npview{ display:flex; }
   /* the click wheel - centered in the body space below the LCD (flex:1 wrap) */
-  .mms-ipod .ip-wheelwrap{ flex:1; display:flex; align-items:center; justify-content:center; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-wheelwrap{ flex:1; display:flex; align-items:center; justify-content:center; }
   /* v1.239 (Dean): sized proportional to the REAL iPod Classic wheel (~70% of the body
      width) instead of a fixed 224px, capped so the desktop pop-out (~380px) stays sane.
      The zone buttons are all %-based so they scale with this automatically. */
   /* pocket lighting (2026-09-24): the sheen and the base ramp sit where the LIGHT is - `--lx` /
      `--ly` (each -1..1) are written on the panel by pocket-lighting.js while a Click skin is lit;
      unset (Off, no script) the calcs resolve to the old constants: 50% -8% / 50% 40%. */
-  .mms-ipod .ip-wheel{ width:var(--pk-wheel-d); height:var(--pk-wheel-d); border-radius:var(--radius-full); position:relative; display:grid; place-items:center;
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-wheel{ width:var(--pk-wheel-d); height:var(--pk-wheel-d); border-radius:var(--radius-full); position:relative; display:grid; place-items:center;
     background:radial-gradient(90% 55% at calc(50% + var(--lx,0) * 30%) calc(-8% + var(--ly,0) * 26%), var(--pk-c-wheel-sheen) 0%, var(--mms-ipod-sheen-0) 60%),
       radial-gradient(circle at calc(50% + var(--lx,0) * 10%) calc(var(--pk-c-wheel-oy) + var(--ly,0) * 10%), var(--pk-c-wheel-1), var(--pk-c-wheel-2) 100%); box-shadow:var(--mms-lit-wheel-shadow, var(--mms-ipod-wheel-shadow)); }
-  .mms-ipod .ip-zone{ position:absolute; border:0; background:transparent; color:var(--pk-c-wheel-label); cursor:pointer; display:grid; place-items:center; font-weight:var(--fw-bold); font-family:inherit; }
-  .mms-ipod .ip-zone svg{ width:var(--pk-zone-glyph); height:var(--pk-zone-glyph); fill:currentColor; display:block; }
-  .mms-ipod .ip-z-menu{ top:0; left:var(--pk-zone-inset); width:var(--pk-zone-long); height:var(--pk-zone-short); align-content:start; padding-top:var(--space-3); font-size:var(--pk-fs-zone-menu); letter-spacing:var(--mms-ls-caps2); }
-  .mms-ipod .ip-z-left{ top:var(--pk-zone-inset); left:0; width:var(--pk-zone-short); height:var(--pk-zone-long); justify-content:start; padding-left:var(--space-4); font-size:var(--pk-fs-zone-skip); }
-  .mms-ipod .ip-z-right{ top:var(--pk-zone-inset); right:0; width:var(--pk-zone-short); height:var(--pk-zone-long); justify-content:end; padding-right:var(--space-4); font-size:var(--pk-fs-zone-skip); }
-  .mms-ipod .ip-z-down{ bottom:0; left:var(--pk-zone-inset); width:var(--pk-zone-long); height:var(--pk-zone-short); align-content:end; padding-bottom:var(--space-3); font-size:var(--pk-fs-zone-play); }
-  .mms-ipod .ip-center{ width:var(--pk-center-d); height:var(--pk-center-d); border-radius:var(--radius-full); border:0; cursor:pointer;
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-zone{ position:absolute; border:0; background:transparent; color:var(--pk-c-wheel-label); cursor:pointer; display:grid; place-items:center; font-weight:var(--fw-bold); font-family:inherit; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-zone svg{ width:var(--pk-zone-glyph); height:var(--pk-zone-glyph); fill:currentColor; display:block; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-z-menu{ top:0; left:var(--pk-zone-inset); width:var(--pk-zone-long); height:var(--pk-zone-short); align-content:start; padding-top:var(--space-3); font-size:var(--pk-fs-zone-menu); letter-spacing:var(--mms-ls-caps2); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-z-left{ top:var(--pk-zone-inset); left:0; width:var(--pk-zone-short); height:var(--pk-zone-long); justify-content:start; padding-left:var(--space-4); font-size:var(--pk-fs-zone-skip); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-z-right{ top:var(--pk-zone-inset); right:0; width:var(--pk-zone-short); height:var(--pk-zone-long); justify-content:end; padding-right:var(--space-4); font-size:var(--pk-fs-zone-skip); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-z-down{ bottom:0; left:var(--pk-zone-inset); width:var(--pk-zone-long); height:var(--pk-zone-short); align-content:end; padding-bottom:var(--space-3); font-size:var(--pk-fs-zone-play); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-center{ width:var(--pk-center-d); height:var(--pk-center-d); border-radius:var(--radius-full); border:0; cursor:pointer;
     background:radial-gradient(circle at calc(50% + var(--lx,0) * 16%) calc(var(--pk-c-center-oy) + var(--ly,0) * 16%), var(--pk-c-center-1), var(--pk-c-center-2)); box-shadow:var(--mms-lit-dome-shadow, var(--mms-ipod-center-shadow)); }
 
   /* ---------------- the colorways: each is ONE block of role tokens (the chassis above reads them) ----------------
      Click (Black) (v1.232, Dean): the space-black body + dark wheel; v1.232.3 dropped the white body's
      bottom-right sweep, keeping just the soft top-left highlight. The center is the body's black. */
-  .mms-ipod-black{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-black{
     --pk-c-body:linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
       linear-gradient(158deg, #343436, #161618);
     --pk-c-body-edge:#0a0a0b;
@@ -9993,7 +10010,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   /* Click (Matte): matte graphite metal, top-lit, with a dark click wheel - photo-sampled from Dean's
      reference: the body ramp top to bottom, the top chamfer + side edges (the photo's directional
      light), a softer wheel sheen, a lighter graphite center. */
-  .mms-ipod-matte{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-matte{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.26) 0, var(--mms-ipod-sheen-0) 2.2%),
       linear-gradient(90deg, rgba(0,0,0,.30) 0%, rgba(0,0,0,.04) 15%, var(--mms-ipod-clear) 30%, var(--mms-ipod-clear) 70%, rgba(0,0,0,.04) 85%, rgba(0,0,0,.30) 100%),
       linear-gradient(180deg, #949497 0%, #86868a 7%, #7a7a7e 40%, #6a6a70 55%, #4a4a50 74%, #2d2d32 90%, #1c1c21 100%);
@@ -10009,7 +10026,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      clipped, so the ramp is its MID and LOW body values (#ea293a .. #c51323), the left edge darker and
      a soft band right of centre where the photo's sheen sits; a cool white wheel with its light grey
      labels (#c4cfcf, the glyphs' darkest tenth); the center is the body red, domed (#fc4d64 .. #fd3c56). */
-  .mms-ipod-red{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-red{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.22) 0, var(--mms-ipod-sheen-0) 1.8%),
       linear-gradient(90deg, rgba(0,0,0,.24) 0%, rgba(0,0,0,.06) 14%, var(--mms-ipod-clear) 30%, var(--mms-ipod-clear) 58%, rgba(255,255,255,.1) 78%, var(--mms-ipod-clear) 90%, rgba(0,0,0,.16) 100%),
       linear-gradient(180deg, #ee2b3e 0%, #e82639 30%, #e02031 60%, #d4192b 82%, #c41424 100%);
@@ -10024,7 +10041,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      front.jpg" (CC BY 3.0), white-balanced and exposed so its light grey wheel reads as Click (White)'s.
      Satin aluminum lit from the left (#dcdcdf at the lit edge .. #747477 across), darker at the top and
      bottom; the light grey wheel, dark grey labels (#7b7f82); an aluminum center, not the wheel's grey. */
-  .mms-ipod-silver{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-silver{
     --pk-c-body:linear-gradient(180deg, rgba(0,0,0,.2) 0%, var(--mms-ipod-clear) 10%, var(--mms-ipod-clear) 88%, rgba(0,0,0,.2) 100%),
       linear-gradient(98deg, #dcdcdf 0%, #c4c5c7 17%, #9d9da0 44%, #838386 66%, #747477 86%, #8a8a8d 100%);
     --pk-c-body-edge:#5a5a5d;
@@ -10039,7 +10056,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      so the black body matches Click (Black)'s (x0.8: #e85a70 -> #ba485a, ramped #c4505f .. #a63f4e around
      it for the wheel's top light); near-white labels;
      a black center. */
-  .mms-ipod-encore{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-encore{
     --pk-c-body:linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
       linear-gradient(158deg, #343436, #161618);
     --pk-c-body-edge:#0a0a0b;
@@ -10053,7 +10070,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      balanced on its light grey wheel (gain 1.21 / 1.20 / 1.23). Anodized teal-blue lit from the top
      (#62c1df .. #1d4654), the tube's darker sides; labels the body's blue (#5ca3b1); the center is the
      wheel's grey. */
-  .mms-ipod-blue{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-blue{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.3) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.3) 100%),
       linear-gradient(180deg, #62c1df 0%, #4fb0cb 18%, #45a7c0 40%, #3e96ab 50%, #2f7a90 68%, #245a6a 85%, #1d4654 100%);
@@ -10068,7 +10085,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      balanced on its wheel. Anodized green (p90 #5d8c4e .. p10 #3f703d); labels the body's green
      (#3e9557); the center is the wheel's grey. (The first mini's green, "Green ipodmini 1stgen.jpg",
      reads yellower - #72872f - the second one's is the reference.) */
-  .mms-ipod-green{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-green{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.26) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%),
       linear-gradient(180deg, #5d8c4e 0%, #568649 25%, #4d7c44 50%, #467541 75%, #3f703d 100%);
@@ -10083,7 +10100,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      (CC BY 2.0), under warm light, white-balanced on its wheel (gain 0.87 / 0.85 / 1.32). Anodized rose
      (p90 #9e5a73 .. p15 #652430); labels the body's pink (the glyph cores measure a muddier #997e6c
      under that light); the center is the wheel's grey. */
-  .mms-ipod-pink{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-pink{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.28) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%),
       linear-gradient(180deg, #9e5a73 0%, #8f4c64 25%, #824153 50%, #763849 75%, #652430 100%);
@@ -10098,7 +10115,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      center (so the center is the body's gold, as on the photo, not a mini's grey). White-balanced on the
      white wheel and exposed like Click (Red)'s white wheel. Anodized gold lit from the upper left
      (#b98629 .. #7b540c), light grey labels (#c0c7c0), the center a brighter gold (#c08d09 .. #c28b06). */
-  .mms-ipod-gold{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-gold{
     --pk-c-body:linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
       linear-gradient(158deg, #b98629 0%, #a8761f 38%, #a17118 55%, #8c6112 80%, #7b540c 100%);
     --pk-c-body-edge:#5a3a06;
@@ -10111,7 +10128,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   /* Click (Frost) (v1.335): the silver mini - Commons "Ipodminicroppedpng.png" (CC BY-SA 4.0), balanced on its
      grey wheel. Brushed aluminum (p95 #c7c8cc .. p05 #828387), cooler and flatter than Click (Silver); the mini grey
      wheel, grey labels (#9b9ba2) and a grey center. */
-  .mms-ipod-frost{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-frost{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.34) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.22) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.22) 100%),
       linear-gradient(180deg, #cfd0d4 0%, #c3c5c9 20%, #b2b4b9 45%, #9fa2a8 70%, #8a8b90 100%);
@@ -10125,7 +10142,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   /* Click (Sky) (v1.335): the first mini in blue - Commons "Apple iPod mini blue-2005-03-07.jpg" (CC BY 2.0; angled
      and its body clips, so white-balanced on the wheel only - the weakest reference). Pale anodized blue (p90
      #9fd5e5 .. p10 #80b3c2), paler than the second mini (Click (Blue)); grey labels (#82888a), the wheel grey center. */
-  .mms-ipod-sky{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-sky{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.28) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%),
       linear-gradient(180deg, #a6dbea 0%, #98cfe0 25%, #88bfd0 50%, #77aebf 75%, #6397a8 100%);
@@ -10139,7 +10156,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   /* Click (Olive) (v1.335): the first mini in green - Commons "Green ipodmini 1stgen.jpg" (public domain), balanced
      on its wheel. Yellow-green (p95 #879c46, p50 #798b39, p05 #424e0a), yellower than Click (Green); grey labels
      (#8b938d), the wheel grey center. */
-  .mms-ipod-olive{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-olive{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.28) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%),
       linear-gradient(180deg, #8ca24a 0%, #81963f 25%, #768a36 50%, #65782a 75%, #4d5c16 100%);
@@ -10153,7 +10170,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   /* Click (Blush) (v1.335): the first mini in pink - the in-box pink mini of the Commons Flickr photo by Trinity
      (CC BY-SA 2.0), balanced on its wheel. Pale dusty pink (p85 #cb99a3, p50 #a5737e, p15 #9e6d7b), paler than
      Click (Pink); grey labels (#969493), the wheel grey center. */
-  .mms-ipod-blush{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-blush{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.28) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%),
       linear-gradient(180deg, #d6a2ab 0%, #c5909b 25%, #b0808b 50%, #a27280 75%, #8a5d6c 100%);
@@ -10167,7 +10184,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   /* Click (2004) (v1.335): the fourth-generation white - Commons "Japanese Apple iPod 4G 20GB.jpg" (CC BY-SA 3.0),
      balanced on its white body (#fefeff). A cooler white than Click (White), a cool grey wheel (#c5c6cc) with LIGHT
      labels (#efeeee), a white center. */
-  .mms-ipod-2004{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-2004{
     --pk-c-body:linear-gradient(180deg, var(--mms-ipod-gloss-hi) 0%, var(--mms-ipod-sheen-0) 15%),
       radial-gradient(135% 90% at 50% 122%, var(--mms-ipod-gloss-shadow) 0%, transparent 55%),
       linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
@@ -10182,7 +10199,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   /* Click (Charcoal) (v1.335): the 2007 classic in black - Commons "IPod Classic 6th Generation Black.jpg" (CC BY-SA
      3.0), balanced on its wheel. Charcoal anodized metal, top-lit (p95 #666668 .. p05 #2e2e2f), a near-black wheel
      (#2c2c2c), a charcoal center (#49494b); the glyphs clip to white in the photo, so the labels are a near-white. */
-  .mms-ipod-charcoal{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-charcoal{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.2) 0, var(--mms-ipod-sheen-0) 2%),
       linear-gradient(90deg, rgba(0,0,0,.3) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.3) 100%),
       linear-gradient(180deg, #666668 0%, #5a5a5c 25%, #505052 50%, #414143 75%, #2e2e2f 100%);
@@ -10196,7 +10213,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   /* Click (Violet) (v1.335, D4 re-decided): the fourth nano in purple - Commons "Ipod rainbow (3178103957).jpg" (CC
      BY 2.0, an Apple Store wall), balanced on its white wheel: p50 #765edc (p90 #a879fb, p10 #5237a2); a blister
      shot reads bluer (#4453c2). A white wheel, grey labels, the center the body violet. */
-  .mms-ipod-violet{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-violet{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.26) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.26) 100%),
       linear-gradient(180deg, #8c70ea 0%, #7e63e0 30%, #7057d2 60%, #6049bc 85%, #503ca4 100%);
@@ -10209,7 +10226,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
     --pk-c-lita-glow:150,120,240; --pk-c-lita-core:210,195,250; }
   /* Click (Yellow) (v1.335, D4): the fourth nano in yellow - the same wall photo (CC BY 2.0; the top clips): p50
      #ebe434. A white wheel, grey labels, the center the body yellow. */
-  .mms-ipod-yellow{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-yellow{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.34) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.2) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.2) 100%),
       linear-gradient(180deg, #f2e852 0%, #ece23c 30%, #e2d632 60%, #d2c42a 85%, #bcad22 100%);
@@ -10223,7 +10240,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   /* Click (Lime) (v1.335, D4): the second nano in green - Commons "The nano free from its cardboard bonds
      (466409731).jpg" (CC BY 2.0), balanced on its white wheel: p95 #c0e473, p50 #bbde6f; the center #a9ca61; grey
      labels (#a9b2b8). */
-  .mms-ipod-lime{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-lime{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.22) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.22) 100%),
       linear-gradient(180deg, #c6e878 0%, #bddf70 30%, #b2d467 60%, #a2c35a 85%, #8fae4b 100%);
@@ -10236,7 +10253,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
     --pk-c-lita-glow:190,230,110; --pk-c-lita-core:225,245,185; }
   /* Click (Cobalt) (v1.335, D4): the second nano in blue - Commons "IPod Nano (2259010671).jpg" (CC BY 2.0, a light
      tent), balanced on its white wheel: p95 #0097fb, p50 #015eb1; the center #004fa5; grey labels (#929797). */
-  .mms-ipod-cobalt{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-cobalt{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.26) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.26) 100%),
       linear-gradient(180deg, #1a86dc 0%, #0e70c6 25%, #0862b4 50%, #0556a4 75%, #034890 100%);
@@ -10249,7 +10266,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
     --pk-c-lita-glow:60,150,240; --pk-c-lita-core:170,210,250; }
   /* Click (Magenta) (v1.335, D4): the second nano in pink - Commons "Ipod-nano-2g-rosa.jpg" (CC BY 2.5, flash),
      balanced on its white wheel: p85 #cd1e8c, p50 #c51682; the center #bc157f; grey labels. */
-  .mms-ipod-magenta{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-magenta{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.26) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.26) 100%),
       linear-gradient(180deg, #d8309a 0%, #cc1f8a 30%, #c21780 60%, #b01272 85%, #980d62 100%);
@@ -10263,7 +10280,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
   /* Click (Raspberry) (v1.335, D4): the third nano in pink - Commons "Ipod nano red.JPG" (CC BY-SA 3.0; the uploader
      says red, it reads raspberry beside a 2007 red), balanced on its white wheel: p85 #e3437b, p50 #b82a52; the
      center #d23870; grey labels (#b6b5b7). */
-  .mms-ipod-raspberry{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-raspberry{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.26) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.26) 100%),
       linear-gradient(180deg, #d8416f 0%, #c93563 25%, #b82a55 50%, #a02246 75%, #861b39 100%);
@@ -10279,7 +10296,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      4.0), balanced on its white body: a cool white (#f7f7f7 .. #cdcdcd), a near-white ring (#e0e0e0 on
      that photo; #feffff on the lit "IPod 1Gen.jpg", CC BY 4.0), pale labels (#adadad), a white center.
      Its STRUCTURE (the ring, the screen, the face, the turn) is the look section below. */
-  .mms-ipod-original{
+  :where(html.is-phone, html.mms-popout) .mms-ipod-original{
     --pk-c-body:linear-gradient(180deg, var(--mms-ipod-gloss-hi) 0%, var(--mms-ipod-sheen-0) 15%),
       radial-gradient(135% 90% at 50% 122%, var(--mms-ipod-gloss-shadow) 0%, transparent 55%),
       linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
@@ -10298,7 +10315,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      1. The look's own tokens: the LCD measured on Commons "IPod 1Gen.jpg" (CC BY 4.0, a lit screen,
         balanced on the white body): the glass #c2c5b1 .. #cfd1b9, the selection a dark taupe bar with
         light text, the ink a near-black (the photo reads it soft, #716c61). */
-  .mms-look-original{
+  :where(html.is-phone, html.mms-popout) .mms-look-original{
     --pk-o-lcd:#c8cbb6; --pk-o-ink:#34332c; --pk-o-sub:#4f4e45; --pk-o-sel:#4a473e;
     --pk-o-edge:inset 0 0 0 1px var(--pk-o-ink);
     --pk-o-disc-1:#fcfcfa; --pk-o-disc-2:#f0f0ec; --pk-o-disc-inset:15%;
@@ -10314,29 +10331,29 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
         value), so every level - Now Playing, the queue, each menu, Settings, About, the A-Z picker,
         Brick's backdrop - turns monochrome with no per-level rule. Paper is the glass (and the text on
         a selection bar); ink is the text; the selection bar is dark; the hairlines are ink or vanish. */
-  .mms-look-original .ip-lcd-in{ --pk-s-paper:var(--pk-o-lcd); --pk-s-ink:var(--pk-o-ink);
+  :where(html.is-phone, html.mms-popout) .mms-look-original .ip-lcd-in{ --pk-s-paper:var(--pk-o-lcd); --pk-s-ink:var(--pk-o-ink);
     --pk-s-sel1:var(--pk-o-sel); --pk-s-sel2:var(--pk-o-sel); --pk-s-sel-hi:var(--pk-o-sel);
     --pk-s-sub:var(--pk-o-sub); --pk-s-bar1:var(--pk-o-lcd); --pk-s-bar2:var(--pk-o-lcd);
     --pk-s-hair:var(--pk-o-ink); --pk-s-line:var(--pk-o-clear); --pk-s-groove:var(--pk-o-lcd); --pk-s-art-shadow:none;
     --pk-s-batt1:var(--pk-o-ink); --pk-s-batt2:var(--pk-o-ink); --pk-s-batt-line:var(--pk-o-ink); --pk-s-jump-bg:var(--pk-o-ink);
     color:var(--pk-s-ink); font-family:'Jersey 10', var(--font-family); font-size-adjust:var(--pk-o-xh); }
   /* no album art on the first iPod: the cover and the menus' art pane go, the list takes the glass */
-  .mms-look-original .ip-cover, .mms-look-original .ip-stars, .mms-look-original .ipm-art{ display:none; }
-  .mms-look-original .ip-meta{ text-align:center; }
+  :where(html.is-phone, html.mms-popout) .mms-look-original .ip-cover, :where(html.is-phone, html.mms-popout) .mms-look-original .ip-stars, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-art{ display:none; }
+  :where(html.is-phone, html.mms-popout) .mms-look-original .ip-meta{ text-align:center; }
   /* the screen's buttons: a button's UA font shorthand resets the family AND the size adjust - inherit both */
-  .mms-look-original .ip-artist, .mms-look-original .mms-row, .mms-look-original .ipm-row, .mms-look-original .ipm-gl, .mms-look-original .ipm-letter, .mms-look-original .ipm-badge{ font-family:inherit; font-size-adjust:inherit; }
-  .mms-look-original .ipm-click .ipm-lpane{ flex:1 1 auto; max-width:none; }
-  .mms-look-original .ip-np, .mms-look-original .ipm-row, .mms-look-original .mms-row, .mms-look-original .ip-ttl, .mms-look-original .ip-nof,
-    .mms-look-original .mms-pos, .mms-look-original .mms-rem{ font-weight:var(--fw-normal); }
+  :where(html.is-phone, html.mms-popout) .mms-look-original .ip-artist, :where(html.is-phone, html.mms-popout) .mms-look-original .mms-row, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-row, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-gl, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-letter, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-badge{ font-family:inherit; font-size-adjust:inherit; }
+  :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-click .ipm-lpane{ flex:1 1 auto; max-width:none; }
+  :where(html.is-phone, html.mms-popout) .mms-look-original .ip-np, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-row, :where(html.is-phone, html.mms-popout) .mms-look-original .mms-row, :where(html.is-phone, html.mms-popout) .mms-look-original .ip-ttl, :where(html.is-phone, html.mms-popout) .mms-look-original .ip-nof,
+    :where(html.is-phone, html.mms-popout) .mms-look-original .mms-pos, :where(html.is-phone, html.mms-popout) .mms-look-original .mms-rem{ font-weight:var(--fw-normal); }
   /* the progress bar: an outlined box with a solid ink fill */
-  .mms-look-original .ip-track{ background:var(--pk-s-paper); box-shadow:var(--pk-o-edge); border-radius:var(--mms-ipod-r-sm); }
-  .mms-look-original .mms-fill{ background:var(--pk-s-ink); box-shadow:none; border-radius:0; }
+  :where(html.is-phone, html.mms-popout) .mms-look-original .ip-track{ background:var(--pk-s-paper); box-shadow:var(--pk-o-edge); border-radius:var(--mms-ipod-r-sm); }
+  :where(html.is-phone, html.mms-popout) .mms-look-original .mms-fill{ background:var(--pk-s-ink); box-shadow:none; border-radius:0; }
   /* 3. The ring: the wheel's own background (the role gradient, lit as every Click wheel) is the RING of
         four buttons; ::before draws the four gaps (fixed); ::after is the inner scroll wheel, BELOW the
         zones and the center (the wheel isolates - a small container, LESSONS 6 - and both layers sit at
         z -1 inside it). The label reads "menu", lowercase. */
-  .mms-look-original .ip-wheel{ isolation:isolate; }
-  .mms-look-original .ip-wheel::before{ content:""; position:absolute; inset:0; z-index:-1; /* token-exempt: local stacking - under the scroll wheel, inside the isolated wheel */ border-radius:var(--radius-full);
+  :where(html.is-phone, html.mms-popout) .mms-look-original .ip-wheel{ isolation:isolate; }
+  :where(html.is-phone, html.mms-popout) .mms-look-original .ip-wheel::before{ content:""; position:absolute; inset:0; z-index:-1; /* token-exempt: local stacking - under the scroll wheel, inside the isolated wheel */ border-radius:var(--radius-full);
     background:linear-gradient(45deg, var(--pk-o-clear) calc(50% - 1px), var(--pk-o-gap) calc(50% - 1px), var(--pk-o-gap) calc(50% + 1px), var(--pk-o-clear) calc(50% + 1px)),
       linear-gradient(-45deg, var(--pk-o-clear) calc(50% - 1px), var(--pk-o-gap) calc(50% - 1px), var(--pk-o-gap) calc(50% + 1px), var(--pk-o-clear) calc(50% + 1px)); }
   /* 4. The scroll wheel: a PLAIN disc, as on the real one (v1.340, Dean: "it's a plain disc in the real one";
@@ -10344,13 +10361,13 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
         engine still writes the thumb's accumulated turn as --ip-turn on the WHEEL (re-applied to the fresh
         wheel on a repaint; gate r1 qa S3) and this layer still turns with it (a transform - no filter, blur or
         mask); on a plain radial disc the turn draws nothing, which is the real wheel's look. */
-  .mms-look-original .ip-wheel::after{ content:""; position:absolute; inset:var(--pk-o-disc-inset); z-index:-1; /* token-exempt: local stacking - over the gaps, under the zones and the center */ border-radius:var(--radius-full);
+  :where(html.is-phone, html.mms-popout) .mms-look-original .ip-wheel::after{ content:""; position:absolute; inset:var(--pk-o-disc-inset); z-index:-1; /* token-exempt: local stacking - over the gaps, under the zones and the center */ border-radius:var(--radius-full);
     background:radial-gradient(circle closest-side, var(--pk-o-disc-1) 0%, var(--pk-o-disc-2) 88%, var(--pk-o-clear) 88.5%),
       radial-gradient(circle closest-side, var(--pk-o-disc-2), var(--pk-o-disc-2));
     box-shadow:var(--pk-o-rim); transform:rotate(var(--ip-turn, 0deg)); }
   /* the center button's thin grey rim when unlit (a lit wheel keeps its moving dome shadow) */
-  .mms-look-original .ip-center{ box-shadow:var(--mms-lit-dome-shadow, var(--pk-o-center-rim)); }
-  .mms-look-original .ip-z-menu{ text-transform:lowercase; }
+  :where(html.is-phone, html.mms-popout) .mms-look-original .ip-center{ box-shadow:var(--mms-lit-dome-shadow, var(--pk-o-center-rim)); }
+  :where(html.is-phone, html.mms-popout) .mms-look-original .ip-z-menu{ text-transform:lowercase; }
   /* POCKET LIGHTING (Dean 2026-09-24, plan 2026-09-24-pocket-gyro-lighting): a fixed light in the
      room, read from the phone's tilt (or the mouse on a desktop) by pocket-lighting.js and written
      as `--lx` / `--ly` on the panel. Only while `.mms-lit` is on (a lit Click skin): the wheel and
@@ -10366,13 +10383,13 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      offset NEGATED (light on the right -> the right edge glows) and the RECESS takes it as is (the
      shadow side is the far side). The drop shadow falls away from the light (negated too). (The
      second swing found v1.327.0 had the two inset signs swapped: a 2px slip, invisible at neutral.) */
-  .mms-ipod.mms-lit{
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit{
     --mms-lit-wheel-shadow:calc(var(--lx,0) * -4px) calc(1px + var(--ly,0) * -4px) 2px var(--mms-lit-drop), inset calc(var(--lx,0) * -2px) calc(1px + var(--ly,0) * -2px) 1px var(--mms-lit-rim), inset calc(var(--lx,0) * 2px) calc(-2px + var(--ly,0) * 2px) 4px var(--mms-lit-recess);
     --mms-lit-dome-shadow:inset calc(var(--lx,0) * -2px) calc(1px + var(--ly,0) * -2px) 2px var(--mms-lit-dome-hi), calc(var(--lx,0) * -3px) calc(1px + var(--ly,0) * -3px) 2px var(--mms-lit-dome-drop); }
-  .mms-ipod.mms-lit::before{ content:""; position:absolute; inset:-25%; z-index:-1; /* token-exempt: local stacking - over the body ramp, under the LCD and wheel (the panel is its own context) */ pointer-events:none;
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit::before{ content:""; position:absolute; inset:-25%; z-index:-1; /* token-exempt: local stacking - over the body ramp, under the LCD and wheel (the panel is its own context) */ pointer-events:none;
     background:linear-gradient(112deg, var(--mms-ipod-sheen-0) 40%, var(--pk-c-lit-band) 47%, var(--pk-c-lit-band2) 50%, var(--mms-ipod-sheen-0) 60%);
     transform:translate3d(calc(var(--lx,0) * 12%), calc(var(--ly,0) * 10%), 0); will-change:transform; }
-  .mms-ipod.mms-lit .ip-lcd-in::after{ content:""; position:absolute; inset:0 -50%; z-index:5; /* token-exempt: local stacking - over the menu's letter layers, pointer-events none */ pointer-events:none;
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit .ip-lcd-in::after{ content:""; position:absolute; inset:0 -50%; z-index:5; /* token-exempt: local stacking - over the menu's letter layers, pointer-events none */ pointer-events:none;
     background:linear-gradient(100deg, var(--mms-ipod-sheen-0) 44%, var(--mms-lit-glass) 50%, var(--mms-ipod-sheen-0) 56%);
     transform:translate3d(calc(var(--lx,0) * 22%), 0, 0); will-change:transform; }
   /* PRONOUNCED = the STRONG profile (2026-09-24 second swing; Dean on the device: "a little subtle ...
@@ -10384,26 +10401,26 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      inset:-35% so the overhang is never exposed); a double GLASS streak with a hot line; longer,
      softer shadows. Subtle keeps the base profile byte-for-byte. Still only gradient positions and
      translated gradient layers - no filter / blur / mask / backdrop (the whole-rule lock covers these). */
-  .mms-ipod.mms-lit-strong{
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit-strong{
     --mms-lit-wheel-shadow:calc(var(--lx,0) * -7px) calc(2px + var(--ly,0) * -7px) 5px var(--mms-lit-drop-s), inset calc(var(--lx,0) * -9px) calc(2px + var(--ly,0) * -9px) 12px -3px var(--mms-lit-arc), inset calc(var(--lx,0) * 9px) calc(-2px + var(--ly,0) * 9px) 14px -4px var(--mms-lit-darc), inset calc(var(--lx,0) * -2px) calc(1px + var(--ly,0) * -2px) 1px var(--mms-lit-rim);
     --mms-lit-dome-shadow:inset calc(var(--lx,0) * -2px) calc(1px + var(--ly,0) * -2px) 2px var(--mms-lit-dome-hi), inset calc(var(--lx,0) * 4px) calc(-1px + var(--ly,0) * 4px) 6px -2px var(--mms-lit-far), calc(var(--lx,0) * -5px) calc(2px + var(--ly,0) * -5px) 4px var(--mms-lit-dome-drop);
     --mms-lit-glass:var(--mms-lits-glass); }
-  .mms-ipod.mms-lit-strong::before{ inset:-35%;
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit-strong::before{ inset:-35%;
     background:radial-gradient(120% 80% at calc(50% + var(--lx,0) * 35%) calc(10% + var(--ly,0) * 30%), var(--mms-lit-room) 0%, var(--mms-ipod-sheen-0) 60%),
       linear-gradient(112deg, var(--mms-ipod-sheen-0) 40%, var(--pk-c-lits-band) 46.5%, var(--pk-c-lits-core) 48.5%, var(--pk-c-lits-core) 49.5%, var(--pk-c-lits-band2) 51%, var(--mms-ipod-sheen-0) 60%);
     transform:translate3d(calc(var(--lx,0) * 20%), calc(var(--ly,0) * 16%), 0); }
-  .mms-ipod.mms-lit-strong .ip-lcd-in::after{ inset:0 -70%;
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit-strong .ip-lcd-in::after{ inset:0 -70%;
     background:linear-gradient(100deg, var(--mms-ipod-sheen-0) 44%, var(--mms-lit-glass) 49%, var(--mms-lits-glass-hot) 50%, var(--mms-lit-glass) 51%, var(--mms-ipod-sheen-0) 56%),
       linear-gradient(100deg, var(--mms-ipod-sheen-0) 52%, var(--mms-lits-glass2) 58%, var(--mms-ipod-sheen-0) 64%);
     transform:translate3d(calc(var(--lx,0) * 25%), 0, 0); }
-  .mms-ipod.mms-lit-strong .ip-wheel{ background:
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit-strong .ip-wheel{ background:
       radial-gradient(90% 55% at calc(50% + var(--lx,0) * 40%) calc(-8% + var(--ly,0) * 30%), var(--pk-c-wheel-sheen) 0%, var(--mms-ipod-sheen-0) 60%),
       radial-gradient(circle at calc(50% + var(--lx,0) * 14%) calc(var(--pk-c-wheel-oy) + var(--ly,0) * 14%), var(--pk-c-wheel-1), var(--pk-c-wheel-2) 100%); }
-  .mms-ipod.mms-lit-strong .ip-center{ position:relative; overflow:hidden; background:
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit-strong .ip-center{ position:relative; overflow:hidden; background:
       radial-gradient(circle at calc(50% - var(--lx,0) * 40%) calc(60% - var(--ly,0) * 40%), var(--mms-lit-far) 0%, var(--mms-ipod-clear) 55%),
       radial-gradient(circle at calc(50% + var(--lx,0) * 20%) calc(var(--pk-c-center-oy) + var(--ly,0) * 20%), var(--pk-c-center-1), var(--pk-c-center-2)); }
   /* the dome's specular hot spot: its own layer so its OPACITY can follow --lm (brightest straight on) */
-  .mms-ipod.mms-lit-strong .ip-center::after{ content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit-strong .ip-center::after{ content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
     background:radial-gradient(circle at calc(50% + var(--lx,0) * 34%) calc(32% + var(--ly,0) * 34%), var(--mms-lit-hot) 0%, var(--mms-lit-hot2) 18%, var(--mms-ipod-sheen-0) 40%);
     opacity:calc(1 - var(--lm,0) * .45); }
   /* AMBIENT (v1.333, plan 2026-09-25-pocket-lighting-ambient; Dean: "a copy of the pronounced, but ... the
@@ -10418,10 +10435,10 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      rasterised once and moved by the compositor; the room light keeps Pronounced's exact geometry on the
      panel's ::after. Keyed on .mms-lit too (gate r1 W1): the CSS cannot light a panel the driver has not lit.
      Still no filter / blur / mask / backdrop / blend / animation (the lock covers these). */
-  .mms-ipod.mms-lit.mms-lit-ambient{ background:var(--mms-lita-grain) 0 0 / 32px 32px repeat, var(--pk-c-body); }
-  .mms-ipod.mms-lit.mms-lit-ambient::before{ /* token-exempt: an alpha curve over the colorway's tint role, rgba(var(--pk-c-lita-*), a) - the color IS the token */ background:radial-gradient(1.7% 9% at 48.9% 41%, rgba(var(--pk-c-lita-core), .4) 0%, rgba(var(--pk-c-lita-core), .312) 18%, rgba(var(--pk-c-lita-core), .2) 36%, rgba(var(--pk-c-lita-core), .104) 54%, rgba(var(--pk-c-lita-core), .04) 72%, rgba(var(--pk-c-lita-core), .012) 88%, rgba(var(--pk-c-lita-core), 0) 100%), radial-gradient(1.3% 6% at 49.5% 60%, rgba(var(--pk-c-lita-core), .24) 0%, rgba(var(--pk-c-lita-core), .187) 18%, rgba(var(--pk-c-lita-core), .12) 36%, rgba(var(--pk-c-lita-core), .062) 54%, rgba(var(--pk-c-lita-core), .024) 72%, rgba(var(--pk-c-lita-core), .007) 88%, rgba(var(--pk-c-lita-core), 0) 100%), radial-gradient(3.4% 20% at 48.7% 40%, rgba(var(--pk-c-lita-glow), .4) 0%, rgba(var(--pk-c-lita-glow), .312) 18%, rgba(var(--pk-c-lita-glow), .2) 36%, rgba(var(--pk-c-lita-glow), .104) 54%, rgba(var(--pk-c-lita-glow), .04) 72%, rgba(var(--pk-c-lita-glow), .012) 88%, rgba(var(--pk-c-lita-glow), 0) 100%), radial-gradient(2.8% 15% at 49.6% 61%, rgba(var(--pk-c-lita-glow), .28) 0%, rgba(var(--pk-c-lita-glow), .218) 18%, rgba(var(--pk-c-lita-glow), .14) 36%, rgba(var(--pk-c-lita-glow), .073) 54%, rgba(var(--pk-c-lita-glow), .028) 72%, rgba(var(--pk-c-lita-glow), .008) 88%, rgba(var(--pk-c-lita-glow), 0) 100%), radial-gradient(6.5% 36% at 49.1% 47%, rgba(var(--pk-c-lita-glow), .3) 0%, rgba(var(--pk-c-lita-glow), .234) 18%, rgba(var(--pk-c-lita-glow), .15) 36%, rgba(var(--pk-c-lita-glow), .078) 54%, rgba(var(--pk-c-lita-glow), .03) 72%, rgba(var(--pk-c-lita-glow), .009) 88%, rgba(var(--pk-c-lita-glow), 0) 100%), radial-gradient(13% 46% at 49.6% 46%, rgba(var(--pk-c-lita-glow), .14) 0%, rgba(var(--pk-c-lita-glow), .109) 18%, rgba(var(--pk-c-lita-glow), .07) 36%, rgba(var(--pk-c-lita-glow), .036) 54%, rgba(var(--pk-c-lita-glow), .014) 72%, rgba(var(--pk-c-lita-glow), .004) 88%, rgba(var(--pk-c-lita-glow), 0) 100%);
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit.mms-lit-ambient{ background:var(--mms-lita-grain) 0 0 / 32px 32px repeat, var(--pk-c-body); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit.mms-lit-ambient::before{ /* token-exempt: an alpha curve over the colorway's tint role, rgba(var(--pk-c-lita-*), a) - the color IS the token */ background:radial-gradient(1.7% 9% at 48.9% 41%, rgba(var(--pk-c-lita-core), .4) 0%, rgba(var(--pk-c-lita-core), .312) 18%, rgba(var(--pk-c-lita-core), .2) 36%, rgba(var(--pk-c-lita-core), .104) 54%, rgba(var(--pk-c-lita-core), .04) 72%, rgba(var(--pk-c-lita-core), .012) 88%, rgba(var(--pk-c-lita-core), 0) 100%), radial-gradient(1.3% 6% at 49.5% 60%, rgba(var(--pk-c-lita-core), .24) 0%, rgba(var(--pk-c-lita-core), .187) 18%, rgba(var(--pk-c-lita-core), .12) 36%, rgba(var(--pk-c-lita-core), .062) 54%, rgba(var(--pk-c-lita-core), .024) 72%, rgba(var(--pk-c-lita-core), .007) 88%, rgba(var(--pk-c-lita-core), 0) 100%), radial-gradient(3.4% 20% at 48.7% 40%, rgba(var(--pk-c-lita-glow), .4) 0%, rgba(var(--pk-c-lita-glow), .312) 18%, rgba(var(--pk-c-lita-glow), .2) 36%, rgba(var(--pk-c-lita-glow), .104) 54%, rgba(var(--pk-c-lita-glow), .04) 72%, rgba(var(--pk-c-lita-glow), .012) 88%, rgba(var(--pk-c-lita-glow), 0) 100%), radial-gradient(2.8% 15% at 49.6% 61%, rgba(var(--pk-c-lita-glow), .28) 0%, rgba(var(--pk-c-lita-glow), .218) 18%, rgba(var(--pk-c-lita-glow), .14) 36%, rgba(var(--pk-c-lita-glow), .073) 54%, rgba(var(--pk-c-lita-glow), .028) 72%, rgba(var(--pk-c-lita-glow), .008) 88%, rgba(var(--pk-c-lita-glow), 0) 100%), radial-gradient(6.5% 36% at 49.1% 47%, rgba(var(--pk-c-lita-glow), .3) 0%, rgba(var(--pk-c-lita-glow), .234) 18%, rgba(var(--pk-c-lita-glow), .15) 36%, rgba(var(--pk-c-lita-glow), .078) 54%, rgba(var(--pk-c-lita-glow), .03) 72%, rgba(var(--pk-c-lita-glow), .009) 88%, rgba(var(--pk-c-lita-glow), 0) 100%), radial-gradient(13% 46% at 49.6% 46%, rgba(var(--pk-c-lita-glow), .14) 0%, rgba(var(--pk-c-lita-glow), .109) 18%, rgba(var(--pk-c-lita-glow), .07) 36%, rgba(var(--pk-c-lita-glow), .036) 54%, rgba(var(--pk-c-lita-glow), .014) 72%, rgba(var(--pk-c-lita-glow), .004) 88%, rgba(var(--pk-c-lita-glow), 0) 100%);
     transform:translate3d(calc(var(--lx,0) * 20%), calc(var(--ly,0) * 16%), 0) rotate(22deg); }
-  .mms-ipod.mms-lit.mms-lit-ambient::after{ content:""; position:absolute; inset:-35%; z-index:-1; /* token-exempt: local stacking - with the streak, over the body, under the LCD and wheel */ pointer-events:none;
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit.mms-lit-ambient::after{ content:""; position:absolute; inset:-35%; z-index:-1; /* token-exempt: local stacking - with the streak, over the body, under the LCD and wheel */ pointer-events:none;
     /* token-exempt: the same alpha curve over the tint role */ background:radial-gradient(120% 80% at calc(50% + var(--lx,0) * 35%) calc(10% + var(--ly,0) * 30%), rgba(var(--pk-c-lita-glow), .26) 0%, rgba(var(--pk-c-lita-glow), .235) 10%, rgba(var(--pk-c-lita-glow), .17) 22%, rgba(var(--pk-c-lita-glow), .095) 35%, rgba(var(--pk-c-lita-glow), .04) 47%, rgba(var(--pk-c-lita-glow), 0) 60%);
     transform:translate3d(calc(var(--lx,0) * 20%), calc(var(--ly,0) * 16%), 0); will-change:transform; }
   /* v1.334 THE STICKER CATCHES THE LIGHT (Dean: "It should have like sheen on it ... as if it's literally a
@@ -10433,35 +10450,101 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
      the tilt): the shadow falls away from the light on the SCREEN whatever the tilt. Everything scales with
      --mms-sticker-px (1x / 2x / 3x). Nothing here filters, blurs, masks, blends or animates (the lock scans these
      rules); the emoji chip's own backdrop blur stays on its BASE rule and never reads the light. */
-  .mms-ipod.mms-lit .mms-sticker-tilt-left{ --mms-stk-s:-.2419; --mms-stk-c:.9703; }
-  .mms-ipod.mms-lit .mms-sticker-tilt-right{ --mms-stk-s:.2419; --mms-stk-c:.9703; }
-  .mms-ipod.mms-lit .mms-sticker{ position:relative;
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit .mms-sticker-tilt-left{ --mms-stk-s:-.2419; --mms-stk-c:.9703; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit .mms-sticker-tilt-right{ --mms-stk-s:.2419; --mms-stk-c:.9703; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit .mms-sticker{ position:relative;
     --mms-stk-l1:calc(var(--lx,0) * var(--mms-stk-c,1) + var(--ly,0) * var(--mms-stk-s,0));
     --mms-stk-l2:calc(var(--ly,0) * var(--mms-stk-c,1) - var(--lx,0) * var(--mms-stk-s,0));
     --mms-stk-dx:calc(var(--mms-sticker-px,52px) * (var(--mms-stk-l1) * -.06 + var(--mms-stk-s,0) * .03));
     --mms-stk-dy:calc(var(--mms-sticker-px,52px) * (var(--mms-stk-l2) * -.06 + var(--mms-stk-c,1) * .03)); }
-  .mms-ipod.mms-lit .mms-sticker:not(.mms-sticker--img){ box-shadow:none; }
-  .mms-ipod.mms-lit .mms-sticker:not(.mms-sticker--img)::before{ content:""; position:absolute; inset:0; border-radius:inherit; z-index:-1; /* token-exempt: local stacking - under the chip's glyph and gloss */ pointer-events:none;
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit .mms-sticker:not(.mms-sticker--img){ box-shadow:none; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit .mms-sticker:not(.mms-sticker--img)::before{ content:""; position:absolute; inset:0; border-radius:inherit; z-index:-1; /* token-exempt: local stacking - under the chip's glyph and gloss */ pointer-events:none;
     --mms-stk-shadow:var(--mms-stk-dx) var(--mms-stk-dy) calc(var(--mms-sticker-px,52px) * .09) var(--mms-lit-stk-drop); box-shadow:var(--mms-stk-shadow); }
-  .mms-ipod.mms-lit .mms-sticker-shade{ position:absolute; inset:var(--pk-stk-shade-inset); width:var(--pk-stk-shade-size); height:var(--pk-stk-shade-size); z-index:-1; /* token-exempt: local stacking - under the sticker image */ pointer-events:none;
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit .mms-sticker-shade{ position:absolute; inset:var(--pk-stk-shade-inset); width:var(--pk-stk-shade-size); height:var(--pk-stk-shade-size); z-index:-1; /* token-exempt: local stacking - under the sticker image */ pointer-events:none;
     transform:translate3d(var(--mms-stk-dx), var(--mms-stk-dy), 0); }
-  .mms-ipod.mms-lit .mms-sticker-gloss{ position:absolute; inset:0; width:100%; height:100%; border-radius:inherit; pointer-events:none; opacity:calc(1 - var(--lm,0) * .3); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit .mms-sticker-gloss{ position:absolute; inset:0; width:100%; height:100%; border-radius:inherit; pointer-events:none; opacity:calc(1 - var(--lm,0) * .3); }
   /* Settings > Lighting: the iPod's check on the chosen strength; a wrapping note row (motion denied) */
-  .mms-ipod .ipm-check{ flex:none; font-size:var(--pk-fs-check); color:var(--pk-s-sel1); }
-  .mms-ipod .ipm-row.is-cursor .ipm-check{ color:var(--pk-s-paper); }
-  .mms-ipod .ipm-row.ipm-noterow{ height:auto; min-height:var(--pk-row-h); padding-top:var(--space-2); padding-bottom:var(--space-2); font-size:var(--pk-fs-note); font-weight:var(--fw-normal); color:var(--pk-s-sub); }
-  .mms-ipod .ipm-noterow .ipm-lbl{ white-space:normal; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-check{ --mms-g-size:var(--pk-fs-check); flex:none; font-size:var(--pk-fs-check); color:var(--pk-s-sel1); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-row.is-cursor .ipm-check{ color:var(--pk-s-paper); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-row.ipm-noterow{ height:auto; min-height:var(--pk-row-h); padding-top:var(--space-2); padding-bottom:var(--space-2); font-size:var(--pk-fs-note); font-weight:var(--fw-normal); color:var(--pk-s-sub); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-noterow .ipm-lbl{ white-space:normal; }
   /* gate r1 (qa S5): under ~340 px a 7-column Click picker drops below 44 px per cell - 6 columns */
-  @media (max-width: 340px){ .mms-ipod .ipm-grid{ grid-template-columns:repeat(6, minmax(0, 1fr)); } }
+  @media (max-width: 340px){ :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-grid{ grid-template-columns:repeat(6, minmax(0, 1fr)); } }
 
   /* v1.232 (Dean): iPod MARQUEE - long song/album/artist names slowly scroll to reveal
      the full text, like a real iPod. music.js wraps an overflowing line in .mms-mq and
      sets --mms-mq-shift (the overflow distance) + --mms-mq-dur (constant-speed); it only
      does so when motion is allowed (else the line keeps its ellipsis). */
   /* marquee for a long title/artist/album on ANY skin (v1.232.1: was iPod-only). */
-  .mms-full .mms-mq-on{ text-overflow:clip; }
-  .mms-full .mms-mq-on .mms-mq{ display:inline-block; animation:mms-marquee var(--mms-mq-dur) linear infinite alternate; will-change:transform; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-mq-on{ text-overflow:clip; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-mq-on .mms-mq{ display:inline-block; animation:mms-marquee var(--mms-mq-dur) linear infinite alternate; will-change:transform; }
+
+/* ===================== UI pass D7: POCKET IN LANDSCAPE (audit decision 9) =====================
+   Dean: "Pocket on rotation: STAY in Pocket". On a phone turned sideways the skin keeps running
+   (the gate above is the device class) and lays out SIDE BY SIDE: the screen on the left, fitted to
+   the height, the controls on the right. Phone only (html.is-phone): the pop-out window is portrait
+   by design and its tray is a separate layout. The safe-area insets pad the SIDES here (the notch
+   and the home indicator move to the left/right edges in landscape). Nothing animates between the
+   two layouts (AC9): the rotate is one relayout, no transition names a layout property. */
+@media (orientation: landscape) {
+  /* the Click family (every colorway and the Original look): the LCD left, height-fitted at its 4:3;
+     the wheel right, fitted to the SHORT side; the gap and padding from the space scale. */
+  :where(html.is-phone) .mms-full.mms-ipod{
+    --pkl-pad-y:var(--space-6); --pkl-pad-x:var(--space-10); --pkl-gap:var(--space-12);
+    --pkl-h:calc(100vh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 2 * var(--pkl-pad-y));
+    --pkl-h:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 2 * var(--pkl-pad-y));
+    --pkl-w:calc(100vw - env(safe-area-inset-left,0px) - env(safe-area-inset-right,0px) - 2 * var(--pkl-pad-x));
+    /* the chassis wheel (its --pk-wheel-d, capped as in portrait), no taller than the short side
+       and no wider than 40% of the row; the .ip-wheel / .ip-center rules below size to it */
+    --pkl-wheel:min(var(--pk-wheel-d), var(--pkl-h), calc(var(--pkl-w) * .4));
+    display:grid; grid-template-columns:minmax(0, 1fr) var(--pkl-wheel); grid-template-rows:minmax(0, 1fr);
+    align-items:center; column-gap:var(--pkl-gap);
+    padding:calc(env(safe-area-inset-top,0px) + var(--pkl-pad-y)) calc(env(safe-area-inset-right,0px) + var(--pkl-pad-x))
+      calc(env(safe-area-inset-bottom,0px) + var(--pkl-pad-y)) calc(env(safe-area-inset-left,0px) + var(--pkl-pad-x)); }
+  /* the LCD's height is the row, or less when the column is too narrow for a 4:3 at that height
+     (an SE sideways); its width follows from the ratio (contain:size keeps content out of it) */
+  :where(html.is-phone) .mms-full.mms-ipod .ip-lcd{ grid-column:1; grid-row:1; justify-self:center; width:auto; max-width:100%;
+    height:min(100%, calc((var(--pkl-w) - var(--pkl-gap) - var(--pkl-wheel)) * 3 / 4)); }
+  :where(html.is-phone) .mms-full.mms-ipod .ip-wheelwrap{ grid-column:2; grid-row:1; }
+  /* the landscape wheel, and its centre at the chassis's centre-to-wheel proportion (108 / 288) -
+     its own --pkl-* family, so the chassis stays the ONE authority for the portrait sizes */
+  :where(html.is-phone) .mms-full.mms-ipod .ip-wheel{ width:var(--pkl-wheel); height:var(--pkl-wheel); }
+  :where(html.is-phone) .mms-full.mms-ipod .ip-center{ width:calc(var(--pkl-wheel) * .375); height:calc(var(--pkl-wheel) * .375); }
+  /* Cider: the cover left, height-fitted; the handle, title, scrubber and transport stacked right */
+  :where(html.is-phone) .mms-full.mms-apple .mms-z{ display:grid; grid-template-columns:auto minmax(0, 1fr); grid-template-rows:auto minmax(0, 1fr) auto auto auto;
+    column-gap:var(--space-16); align-items:center;
+    padding:calc(env(safe-area-inset-top,0px) + var(--space-6)) calc(env(safe-area-inset-right,0px) + var(--space-12))
+      calc(env(safe-area-inset-bottom,0px) + var(--space-6)) calc(env(safe-area-inset-left,0px) + var(--space-12)); }
+  :where(html.is-phone) .mms-full.mms-apple .mms-art{ grid-column:1; grid-row:1 / -1; height:100%; width:auto; max-width:none; margin:0; }
+  :where(html.is-phone) .mms-full.mms-apple .mms-top, :where(html.is-phone) .mms-full.mms-apple .mms-head,
+  :where(html.is-phone) .mms-full.mms-apple .mms-scrub, :where(html.is-phone) .mms-full.mms-apple .mms-transport{ grid-column:2; }
+  :where(html.is-phone) .mms-full.mms-apple .mms-head{ grid-row:2; align-self:end; margin-top:0; }
+  :where(html.is-phone) .mms-full.mms-apple .mms-scrub{ margin-top:var(--space-6); }
+  :where(html.is-phone) .mms-full.mms-apple .mms-transport{ margin-top:var(--space-6); }
+  /* Nordic: the cover left; the context line, title, scrubber, transport and the queue (which takes
+     the rest of the height and scrolls) stacked right */
+  :where(html.is-phone) .mms-full.mms-spotify{ display:grid; grid-template-columns:auto minmax(0, 1fr); grid-template-rows:auto auto auto auto minmax(0, 1fr);
+    column-gap:var(--space-12);
+    padding:calc(env(safe-area-inset-top,0px) + var(--space-6)) calc(env(safe-area-inset-right,0px) + var(--space-10))
+      calc(env(safe-area-inset-bottom,0px) + var(--space-4)) calc(env(safe-area-inset-left,0px) + var(--space-10)); }
+  :where(html.is-phone) .mms-full.mms-spotify .mms-art{ grid-column:1; grid-row:1 / -1; align-self:center; height:100%; width:auto; max-width:none; margin:0; }
+  :where(html.is-phone) .mms-full.mms-spotify .mms-top, :where(html.is-phone) .mms-full.mms-spotify .mms-meta, :where(html.is-phone) .mms-full.mms-spotify .mms-scrub,
+  :where(html.is-phone) .mms-full.mms-spotify .mms-transport, :where(html.is-phone) .mms-full.mms-spotify .mms-queue{ grid-column:2; }
+  :where(html.is-phone) .mms-full.mms-spotify .mms-scrub{ margin-top:var(--space-4); }
+  :where(html.is-phone) .mms-full.mms-spotify .mms-transport{ margin-top:var(--space-4); }
+  :where(html.is-phone) .mms-full.mms-spotify .mms-queue{ margin-top:var(--space-4); }
+  /* the sticker moves to the RIGHT corner: bottom-left is the screen / the cover now; its menu opens
+     up from it, right-aligned so it stays on the screen */
+  :where(html.is-phone) .mms-full .mms-sticker-wrap{ left:auto; right:calc(env(safe-area-inset-right,0px) + var(--space-6));
+    --mms-sm-anchor-l:auto; --mms-sm-anchor-r:0; }
 }
+
+/* UI pass D7 (AC9): for STILLNESS_MS after every resize / orientationchange, common.js
+   installResizeStillness holds html.no-motion - a rotate is one relayout, so nothing that
+   transitions for a user's action (the sidebar drawer, the content margin beside it) animates
+   for it. Transitions only: animations (a spinner, the marquee) keep running. */
+html.no-motion *, html.no-motion *::before, html.no-motion *::after { transition: none !important; }
+
 /* the marquee keyframe (global; @keyframes are census-exempt) + a reduced-motion stop */
 @keyframes mms-marquee{ 0%, 12% { transform:translateX(0); } 88%, 100% { transform:translateX(var(--mms-mq-shift)); } }
 @media (prefers-reduced-motion: reduce){ .mms-full .mms-mq-on .mms-mq{ animation:none; } .mms-ipod .ipm-art-img{ transition:none; transform:none; } .mms-look-original .ip-wheel::after{ transform:none; }

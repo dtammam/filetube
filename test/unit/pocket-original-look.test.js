@@ -16,6 +16,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { unscopePocket } = require('../helpers/stylesheets.js'); // UI pass D7: the Pocket takeover's device-class scope
 const { JSDOM } = require('jsdom');
 
 const ROOT = path.join(__dirname, '..', '..');
@@ -59,7 +60,7 @@ function spin(dom, angles) {
 }
 
 // ---- the stylesheet, comments stripped ONCE (LESSONS 3), parsed into (selector, body) ----
-const CSS_RAW = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+const CSS_RAW = unscopePocket(fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8'));
 const CSS = CSS_RAW.replace(/\/\*[\s\S]*?\*\//g, '');
 // flat (selector, body) pairs: a rule inside an @media is matched on its own (its selector cannot hold a brace)
 // each rule carries its enclosing @media prelude ('' at the top level), brace-walked

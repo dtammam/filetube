@@ -11,6 +11,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const { unscopePocket } = require('../helpers/stylesheets.js'); // UI pass D7: the Pocket takeover's device-class scope
 const { JSDOM } = require('jsdom');
 
 const musicPath = require.resolve('../../public/js/music.js');
@@ -231,7 +232,7 @@ test('v1.240: an IMAGE sticker (logo default / custom) marks the button mms-stic
 
 test('v1.240 source-lock (CSS): an image sticker drops the circle/clip', () => {
   const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   assert.match(css, /\.mms-sticker--img\{[^}]*background:transparent[^}]*border-radius:0/, 'an image sticker drops the circular background + radius');
   assert.match(css, /\.mms-sticker--img \.mms-sticker-ic\{[^}]*border-radius:0/, 'the image itself is not round-clipped');
 });
@@ -260,7 +261,7 @@ test('v1.241: injectSticker applies the SIZE and TILT classes (defaults, and an 
 
 test('v1.241 source-lock (CSS): size classes scale via --mms-sticker-px; tilt classes rotate; base bumped to 52px', () => {
   const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   assert.match(css, /\.mms-sticker\{[^}]*--mms-sticker-px:52px/, 'base size var is 52px (bumped from 44)');
   assert.match(css, /\.mms-sticker-sz-2x\{[^}]*--mms-sticker-px:104px/, '2x doubles the size var');
   assert.match(css, /\.mms-sticker-sz-3x\{[^}]*--mms-sticker-px:156px/, '3x = 3 x base');
@@ -271,7 +272,10 @@ test('v1.241 source-lock (CSS): size classes scale via --mms-sticker-px; tilt cl
   assert.match(wrapRule, /bottom:calc\(env\(safe-area-inset-bottom,0px\) \+ var\(--space-6\)\)/, 'the wrap sits var(--space-6) over the bottom inset');
   const cap = (css.match(/\n {2}\.mms-sticker-wrap > \.mms-sticker-menu\{[^}]*\}/) || [''])[0];
   assert.match(cap, /max-height:min\(86vh, calc\(100dvh - env\(safe-area-inset-top,0px\) - env\(safe-area-inset-bottom,0px\) - var\(--space-6\) - var\(--mms-sticker-px,52px\) - var\(--space-3\) - var\(--space-3\)\)\);/, 'the cap subtracts both insets, the wrap offset, the sticker and the gap');
-  assert.match(css, /\n {2}\.mms-sticker-menu\{ position:absolute; left:0; bottom:calc\(100% \+ var\(--space-3\)\);/, 'the gap the cap subtracts is the menu\'s own');
+  // UI pass S7 (D7 landscape): the menu's side anchor is data its wrap sets (the wrap's left edge in
+  // portrait; its right edge in landscape, where the sticker moves to the right-hand corner).
+  assert.match(css, /\n {2}\.mms-sticker-menu\{ position:absolute; left:var\(--mms-sm-anchor-l\); right:var\(--mms-sm-anchor-r\); bottom:calc\(100% \+ var\(--space-3\)\);/, 'the gap the cap subtracts is the menu\'s own');
+  assert.match(wrapRule, /--mms-sm-anchor-l:0; --mms-sm-anchor-r:auto;/, 'portrait: the menu opens from the wrap\'s left edge');
   assert.match(css, /\.mms-sticker-tilt-straight\{[^}]*transform:rotate\(0deg\)/, 'straight = no rotation');
   assert.match(css, /\.mms-sticker-tilt-left\{[^}]*transform:rotate\(-14deg\)/, 'left tilt');
   assert.match(css, /\.mms-sticker-tilt-right\{[^}]*transform:rotate\(14deg\)/, 'right tilt');
@@ -292,13 +296,17 @@ test('v1.252 L1 (Dean: "the buttons are too small") source-lock: every sticker-m
   // pass floors every interactive row at 44px (48px for the action list) with fs-md text
   // and a wider menu. jsdom has no layout - lock the CSS floors (the v1.241 lock pattern).
   const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   assert.match(css, /\.mms-sticker-menu\{[^}]*min-width:min\(320px, 88vw\)/, 'the menu is wide enough for thumb rows');
-  assert.match(css, /\.mms-sm-opt\{[^}]*min-height:44px/, 'speed options >= 44px');
-  assert.match(css, /\.mms-sm-chip\{[^}]*min-height:44px/, 'skin chips >= 44px');
-  assert.match(css, /\.mms-sm-loop\{[^}]*min-height:44px/, 'the loop row >= 44px');
-  assert.match(css, /\.mms-sm-extras,\s*\.mms-sticker-menu \.mms-sm-back\{[^}]*min-height:44px/, 'Extras/Back rows >= 44px');
-  assert.match(css, /\.mms-sm-act\{[^}]*min-height:48px/, 'action rows >= 48px');
+  // UI pass S7 (F70): ONE row height - every row reads the touch token (44px), the action rows'
+  // 48px (taller than their 44px neighbours) is gone.
+  assert.match(css, /\.mms-sm-opt\{[^}]*min-height:var\(--size-touch\)/, 'speed options = the touch height');
+  assert.match(css, /\.mms-sm-chip\{[^}]*min-height:var\(--size-touch\)/, 'skin chips = the touch height');
+  assert.match(css, /\.mms-sm-loop\{[^}]*min-height:var\(--size-touch\)/, 'the loop row = the touch height');
+  assert.match(css, /\.mms-sm-extras,\s*\.mms-sticker-menu \.mms-sm-back\{[^}]*min-height:var\(--size-touch\)/, 'Extras/Back rows = the touch height');
+  assert.match(css, /\.mms-sm-act\{[^}]*min-height:var\(--size-touch\)/, 'action rows = the touch height (was 48px beside 44px rows)');
+  assert.doesNotMatch(css, /\.mms-sm-[a-z]+\{[^}]*min-height:4[48]px/, 'no row keeps a raw height');
+  assert.match(require('../helpers/stylesheets.js').readTokensCss(), /--size-touch: 44px;/, 'the touch token is 44px');
   assert.match(css, /\.mms-sm-act\{[^}]*font-size:var\(--fs-md\)/, 'action text bumped to fs-md');
   assert.match(css, /\.mms-sm-opt\{[^}]*font-size:var\(--fs-md\)/, 'speed text bumped to fs-md');
 });
@@ -312,21 +320,27 @@ test('v1.255 (Dean\'s parity pass) source-lock: the sticker menu speaks the APP\
   // not an 11px uppercase heading), the app-accent selected state, and the interactive
   // states every reference surface has.
   const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   assert.match(css, /\.mms-sticker-menu\{[^}]*font-family:var\(--font-family\)/, 'the menu container carries the app font');
   assert.match(css, /\.mms-sticker-menu button, \.mms-sticker-menu a\{ font-family:var\(--font-family\); \}/, 'buttons/anchors get it explicitly (they do not inherit)');
   assert.match(css, /\.mms-sm-h\{[^}]*letter-spacing:var\(--tracking-caps\)/, 'headings use the APP caps tracking token');
   assert.ok(!/\.mms-sm-h\{[^}]*--mms-ls-caps/.test(css), 'the over-wide mms tracking is gone from headings');
   assert.match(css, /\.mms-sm-lbl\{[^}]*font-weight:var\(--fw-semibold\)/, 'row labels are semibold (the settings-menu idiom)');
   assert.match(css, /\.mms-sm-title\{[^}]*font-weight:var\(--fw-semibold\)/, 'the Extras song title is a real title');
-  assert.match(css, /\.mms-sm-opt\.is-on\{ background:var\(--yt-red\); color:var\(--on-accent\); border-color:var\(--yt-red-dark\); \}/, 'selected speed = the app accent, not white inversion');
-  assert.match(css, /\.mms-sm-chip\.is-on\{ background:var\(--yt-red\);/, 'selected skin chip = the app accent');
-  assert.match(css, /\.mms-sm-act\.is-on\{ background:var\(--yt-red\);/, 'active action row = the app accent');
+  // UI pass S7 (F70, D8.8: red is brand / primary / progress / danger only; selected is ink or a
+  // tonal fill). Selected = the overlay's tonal fill (its lighter grey on the #222 surface) with an
+  // ink border and semibold text - NOT red, which now only means Delete (.mms-sm-danger).
+  const SEL = /\{ background:var\(--overlay-border\); color:inherit; border-color:currentColor; font-weight:var\(--fw-semibold\); \}/;
+  assert.match(css, new RegExp('\\.mms-sm-opt\\.is-on' + SEL.source), 'selected speed = tonal + ink, not red');
+  assert.match(css, new RegExp('\\.mms-sm-chip\\.is-on' + SEL.source), 'selected skin chip = tonal + ink');
+  assert.match(css, new RegExp('\\.mms-sm-act\\.is-on' + SEL.source), 'active action row = tonal + ink');
+  assert.doesNotMatch(css, /\.mms-sm-(?:opt|chip|act|loop)\.is-on[^{]*\{[^}]*--yt-red/, 'no selected / on state paints red');
+  assert.match(css, /\.mms-sm-danger\{ color:var\(--yt-red\); border-color:var\(--yt-red\); \}/, 'red stays the DANGER role (Delete)');
   assert.match(css, /\.mms-sm-act:hover\{ background:var\(--hover-bg, rgba\(128,128,128,0\.15\)\);/, 'rows hover like .account-menu-item');
-  assert.match(css, /\.mms-sticker-menu button:focus-visible, \.mms-sticker-menu a:focus-visible\{ outline:2px solid var\(--yt-red\)/, 'keyboard focus like .md-row');
+  assert.match(css, /\.mms-sticker-menu button:focus-visible, \.mms-sticker-menu a:focus-visible\{ outline:2px solid var\(--focus-ring\)/, 'keyboard focus = the focus ring role (red is not a focus colour)');
   // slim-gate S2: the two parity pillars the first lock missed
   assert.match(css, /\.mms-sm-h\{[^}]*font-weight:var\(--fw-bold\)/, 'headings carry the .md-group-title bold');
-  assert.match(css, /\.mms-sm-chip\.is-on:hover\{ background:var\(--yt-red\); \}/, 'a selected chip cannot grey out under hover');
+  assert.match(css, /\.mms-sm-chip\.is-on:hover\{ background:var\(--overlay-border\); \}/, 'a selected chip cannot grey out under hover');
   // slim-gate S3: hover is gated to hover-capable inputs (the pop-out mouse), so a
   // phone tap never sticks a grey row (the Like/Watched rows neither close nor rebuild).
   assert.match(css, /@media \(hover: hover\)\{\n {2}\.mms-sticker-menu \.mms-sm-opt:hover/, 'hover rules live behind (hover: hover)');
@@ -359,7 +373,7 @@ test('v1.269 source-lock: the wheel scrubber wears the MEASURED tube (vertical s
   // indeterminate barber pole, the wrong control's costume. All stops are var()
   // tokens, the census idiom this file's own iPod body gloss established.
   const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   // v1.269 slim W1: the previous regex used [^}]* between the striation head and
   // the 46% stop, which swallowed BOTH the second gradient's axis and the
   // striation's period - so `linear-gradient(0deg, ...)` (the lighting INVERTED,

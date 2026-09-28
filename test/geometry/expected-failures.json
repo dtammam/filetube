@@ -1,7 +1,4 @@
 {
   "comment": "Geometry checks that fail today for a known reason (test/geometry/run.js). A listed failure is XFAIL and does not fail the run; an entry that matches no failure is XPASS and DOES fail the run - delete it in the commit that fixes it. Shrink-only: the step or sweep named in owner empties its entries. id may end in * (a prefix); match narrows an entry to the failures whose text contains it.",
-  "entries": [
-    { "id": "G4/pocket-rotation/dark", "owner": "S7", "reason": "F23: Pocket tears down and rebuilds on rotate and the art reveal replays, so boxes move after the first frame (D7)" },
-    { "id": "G4/pocket-rotation/light", "owner": "S7", "reason": "F23: Pocket tears down and rebuilds on rotate and the art reveal replays, so boxes move after the first frame (D7)" }
-  ]
+  "entries": []
 }

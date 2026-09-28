@@ -104,8 +104,13 @@ function collectG3(scope) {
 // path (tag, id, nth-of-type). Frame 0 is taken synchronously at start (the state before
 // the step). Elements running a CSS animation when first seen (spinners) are skipped: an
 // endless animation is motion by design, and AC9 is about layout.
-function startG4Recorder(maxElements) {
-  const cap = maxElements || 2500;
+// `opts` is the element cap, or { max, ignore }: `ignore` is a selector a sequence names for
+// elements that move BY DESIGN on their own clock, the transition twin of the animation skip -
+// kept to one named selector per sequence (scenes.js G4_SEQUENCES), never a blanket exemption.
+function startG4Recorder(opts) {
+  const o = typeof opts === 'number' ? { max: opts } : (opts || {});
+  const cap = o.max || 2500;
+  const ignore = o.ignore || null;
   const keys = new WeakMap();
   const keyOf = (el) => {
     if (keys.has(el)) return keys.get(el);
@@ -131,6 +136,7 @@ function startG4Recorder(maxElements) {
       if (skip.has(el)) continue;
       if (el.namespaceURI === 'http://www.w3.org/2000/svg' && el.tagName.toLowerCase() !== 'svg') { skip.add(el); continue; }
       if (el.id === 'ft-icon-sprite' || el.closest('#ft-icon-sprite')) { skip.add(el); continue; }
+      if (ignore && el.matches(ignore)) { skip.add(el); continue; }
       if (!animated.has(el)) animated.set(el, getComputedStyle(el).animationName !== 'none');
       if (animated.get(el)) continue;
       const r = el.getBoundingClientRect();

@@ -111,8 +111,8 @@ async function setOrientation(page, cdp, portrait) {
     screenWidth: w, screenHeight: h, screenOrientation: portrait ? { type: 'portraitPrimary', angle: 0 } : { type: 'landscapePrimary', angle: 90 } });
 }
 
-async function recordStep(page, fn, settleMs = 1500) {
-  await page.evaluate(checks.startG4Recorder, 2500);
+async function recordStep(page, fn, settleMs = 1500, ignore = null) {
+  await page.evaluate(checks.startG4Recorder, { max: 2500, ignore });
   await capture.sleep(120); // a few unchanged frames before the step (frame 0 = before)
   const how = await fn();
   await capture.sleep(settleMs);
@@ -135,7 +135,7 @@ async function runSequence(env, seq, mode, mutationCss) {
       await capture.pausePlayback(page);
       if (mutationCss) await page.addStyleTag({ content: mutationCss });
       const seqSteps = capture.rotationSteps(page, 'spec', (portrait) => setOrientation(page, cdp, portrait));
-      for (const [name, fn] of seqSteps) steps.push({ step: name, ...(await recordStep(page, fn)) });
+      for (const [name, fn, prep] of seqSteps) { if (prep) await prep(); steps.push({ step: name, ...(await recordStep(page, fn, 1500, seq.ignore || null)) }); } // a step's prep runs before its recording (capture.js rotationSteps)
     } else {
       await page.goto(env.base + '/ui-kit.html?era=2021&mode=' + mode, { waitUntil: 'networkidle', timeout: 20000 });
       await page.waitForSelector('.ui-list .ui-row', { timeout: 10000 });

@@ -975,18 +975,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.mms-full .mms-chev|height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.mms-full .mms-chev|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.mms-ipod .ip-batt|border",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -2829,12 +2817,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.mms-spotify .mms-top-spacer|width",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.mms-spotify .mms-tr-spacer|width",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -2847,25 +2829,7 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-act|min-height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.mms-sticker-menu .mms-sm-chip|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-chip|min-height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-extras, .mms-sticker-menu .mms-sm-back|min-height",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -2877,19 +2841,7 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-loop|min-height",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.mms-sticker-menu .mms-sm-opt|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-opt|min-height",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -5751,18 +5703,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/js/skin-surface.js|js-template-style|font-size",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/skin-surface.js|js-template-style|font-weight",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/js/stats.js|js-style|border-bottom",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -7957,12 +7897,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|#music-popout-btn|display",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|#music-sort-select[hidden]|display",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -8170,18 +8104,6 @@
       },
       {
         "key": "public/css/style.css|.drag-handle:focus-visible|outline",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.mms-sticker-menu .mms-sm-opt.is-on:hover, .mms-sticker-menu .mms-sm-chip.is-on:hover|background",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|.mms-sticker-menu button:focus-visible, .mms-sticker-menu a:focus-visible|outline",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"

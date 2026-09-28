@@ -93,11 +93,21 @@ const MUTATIONS = {
     check: 'NAV', target: { surface: 'bottom-bar', era: '2005', mode: 'light', vp: 'phone' },
     css: '[data-theme="2005"] #bottom-nav a{text-decoration:underline!important}',
   },
-  // G4: a layout property transitions on rotate (the F37 class): the kit's padding slides
-  // for 400ms after the viewport changes.
+  // G4: a layout property moves over time after a rotate (the F37 class): the kit's padding
+  // slides for 400ms once the viewport turns landscape. (UI pass S7: an ANIMATION, not a
+  // transition - since D7 every rotate holds html.no-motion, which zeroes transitions, so a
+  // transition mutant would be masked by the fix itself; the recorder only skips elements that
+  // were animating when FIRST seen, and the kit is still in portrait then.)
   'g4-sliding-padding': {
     check: 'G4', target: { sequence: 'kit-rotation', mode: 'light' },
-    css: '.ui-kit{transition:padding-left .4s linear!important}@media (orientation:landscape){.ui-kit{padding-left:64px!important}}',
+    css: '@keyframes g4-slide{from{padding-left:0}to{padding-left:64px}}@media (orientation:landscape){.ui-kit{animation:g4-slide .4s linear both}}',
+  },
+  // G4 on Pocket (S7, D7): the rotation stillness itself - the sidebar drawer's transform
+  // transition re-enabled through html.no-motion slides the chrome behind the skin for 300ms
+  // on the rotate to landscape, which the pocket-rotation sequence must catch.
+  'g4-pocket-no-stillness': {
+    check: 'G4', target: { sequence: 'pocket-rotation', mode: 'dark' },
+    css: 'html.no-motion.no-motion #sidebar{transition:transform .3s linear!important}',
   },
 };
 

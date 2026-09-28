@@ -15,9 +15,10 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
+const { unscopePocket } = require('../helpers/stylesheets.js'); // UI pass D7: the Pocket takeover's device-class scope
 
 const ROOT = path.join(__dirname, '..', '..');
-const RAW = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+const RAW = unscopePocket(fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8'));
 const CSS = RAW.replace(/\/\*[\s\S]*?\*\//g, '');
 const SK = require('../../public/js/music-skins.js');
 

@@ -110,8 +110,12 @@ const FAST_SCENES = [
 // rotationSteps, variant 'spec': rotate to landscape, leave Pocket, rotate back). `kit-rotation`
 // is the control: a page with no layout transitions rotated there and back, which must pass
 // (and goes red under the g4 mutation) - it proves G4 can pass and can fail.
+// `ignore` (one selector, recorder-side): the Click Main Menu's cover DRIFT (skin-surface.js
+// Addendum E, Dean's ask: the art pane's covers pan and crossfade on their own 9s clock, a
+// transform/opacity transition) moves by design while the exit step's recording runs - its
+// images are skipped the way a running animation is; the pane box itself is still measured.
 const G4_SEQUENCES = [
-  { id: 'pocket-rotation', owner: 'S7', modes: ['dark', 'light'] },
+  { id: 'pocket-rotation', owner: 'S7', modes: ['dark', 'light'], ignore: '.ipm-art *' },
   { id: 'kit-rotation', owner: 'step 4', modes: ['light'] },
 ];
 

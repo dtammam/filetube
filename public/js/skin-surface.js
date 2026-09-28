@@ -476,7 +476,7 @@
         var stillPlaying = extrasStillPlaying(item);
         var pl = extrasPlayer();
         if (stillPlaying && pl && typeof pl.close === 'function') pl.close();
-        fetch('/api/videos/' + encodeURIComponent(item.id), { method: 'DELETE' })
+        return fetch('/api/videos/' + encodeURIComponent(item.id), { method: 'DELETE' })
           .then(function (res) {
             if (res.status === 403) { extrasToast("You don't have permission to delete library files."); return null; }
             return res.json();
@@ -492,20 +492,30 @@
           })
           .catch(function () { extrasToast('Network error occurred while trying to delete file.'); });
       };
-      // The same two-flow split as the watch page: a yt-dlp-managed item is re-downloadable
-      // -> the trash confirm; a local file is irreplaceable -> the escalated checkbox-gated
-      // hard-delete modal.
-      if (typeof window.isYtdlpManagedItem === 'function' && window.isYtdlpManagedItem(item)) {
-        if (typeof window.showConfirmModal !== 'function') return;
-        window.showConfirmModal(
-          'Move to Trash?',
-          'Move <strong>' + escapeHtml(item.title || '') + '</strong> to Trash?<br><br><span style="color:var(--yt-red); font-weight:bold;">The file leaves your library now and is permanently removed when the Trash retention window empties it:</span><br><code style="word-break:break-all; font-size:11px;">' + escapeHtml(item.filePath || '') + '</code>',
-          doDelete
-        );
-      } else if (typeof window.showHardDeleteModal === 'function') {
-        window.showHardDeleteModal(item, doDelete);
-      }
+      // UI pass S7 (D4.8 F33, the card menu's twin): ONE danger ui.confirm, then the SAME
+      // DELETE - and only when it resolves exactly `true` (Cancel, Esc, the scrim, Close and a
+      // view teardown all answer false). The copy is the card menu's (main.js
+      // cardDeleteConfirmCopy): DELETE /api/videos/:id moves the file to Trash for every item,
+      // and a LOCAL file's body adds that it cannot be re-downloaded - the words say what the one
+      // route does (F44). One confirm per menu at a time: a second tap while one is open (or its
+      // request is in flight) is ignored, so a double tap never sends two DELETEs. No ui.confirm
+      // on the page = no delete (never a confirm-less fallback).
+      if (extrasDeleteBusy) return;
+      var U = (typeof window !== 'undefined' && window.ui) || null;
+      if (!U || typeof U.confirm !== 'function') { extrasToast('Could not delete.'); return; }
+      var copy = (typeof window.cardDeleteConfirmCopy === 'function') ? window.cardDeleteConfirmCopy(item) : {
+        title: 'Move to Trash?', body: '"' + (item.title || 'This file') + '" leaves your library now. It stays in Trash, where you can restore it from Settings, until the Trash retention window empties it.',
+        confirmLabel: 'Move to Trash', cancelLabel: 'Cancel', danger: true,
+      };
+      var sig = extrasSignal();
+      extrasDeleteBusy = true;
+      var release = function () { extrasDeleteBusy = false; };
+      U.confirm(Object.assign({}, copy, { danger: true, signal: sig || undefined })).then(function (ok) {
+        if (ok !== true || (sig && sig.aborted)) { release(); return; }
+        return Promise.resolve(doDelete()).then(release, release);
+      }, release);
     }
+    var extrasDeleteBusy = false;
     function handleAction(act, el) {
       var item = extrasItem;
       if (!item || !item.id) return;
@@ -1436,7 +1446,7 @@
       // reset to 0 while a track is LOADING (dur==0) instead of leaving the old fill (music parity).
       var fill = panel.querySelector('.mms-fill'); if (fill) fill.style.width = (dur > 0 ? frac : 0) + '%';
       // the iPod status-bar play indicator (music parity).
-      var pind = panel.querySelector('.mms-playind'); if (pind) pind.textContent = mp.paused ? '❚❚' : '▶';
+      var pind = panel.querySelector('.mms-playind'); if (pind) pind.classList.toggle('is-paused', !!mp.paused); // UI pass S7 (F60): both drawn marks sit in one cell; the class picks which shows
       var posEl = panel.querySelector('.mms-pos'); if (posEl) posEl.textContent = fmtTime(pos);
       var remEl = panel.querySelector('.mms-rem'); if (remEl) remEl.textContent = dur > 0 ? ('-' + fmtTime(Math.max(0, dur - pos))) : '';
       syncTapPlay(); // v1.334: a play/pause the element reports settles the Tap to play cue too
@@ -1967,6 +1977,7 @@
     // the one seam that owns endings. The drag survives intact and the panel catches up
     // the instant the finger lifts.
     var paintPending = false;
+    var lastPaintArt = ''; // the cover URL the last paint drew (UI pass D7: a same-URL repaint never re-reveals it)
     function paint() {
       // Defer ONLY for a gesture that can still REACH endWheel. The early return jumped
       // over `wheelSpin = null` below - which WAS the engine's stale-spin self-heal - so a
@@ -2002,6 +2013,17 @@
       var ctx = getCtx() || {};
       panel.innerHTML = SKINS.renderFull(id, Object.assign({}, ctx, { artistTap: !!onArtist && ctx.artistTap !== false }));
       panel.hidden = false;
+      // UI pass D7 (F23 guard): a repaint whose cover is the SAME image the last paint showed is
+      // not a reveal - the image is on screen already (and cached), so it is born revealed: no
+      // art-shimmer on any <img> of that URL (the cover, the Nordic queue thumbs). Only a NEW
+      // cover shimmers in. (A rotate no longer repaints at all; this covers every other
+      // same-track repaint - an autoplay append, a chapter cross, a skin-change.)
+      var paintArt = (ctx.track && ctx.track.artUrl) || '';
+      if (paintArt && paintArt === lastPaintArt) {
+        var warmImgs = panel.querySelectorAll('img.art-shimmer');
+        for (var wi = 0; wi < warmImgs.length; wi++) { if (warmImgs[wi].getAttribute('src') === paintArt) warmImgs[wi].classList.remove('art-shimmer'); }
+      }
+      lastPaintArt = paintArt;
       if (wheelTurn) { var tw = panel.querySelector('.ip-wheel'); if (tw) tw.style.setProperty('--ip-turn', wheelTurn.toFixed(1) + 'deg'); } // the Original keeps its turn across a repaint
       // Adversarial gate W1 (v1.250): shimmerArt lives on the MAIN window - a pop-out is a
       // blank scriptless window, so win.FileTube is undefined there and the art-shimmer would
@@ -2213,8 +2235,24 @@
       var BL = bodyScrollLock; bodyScrollLock = null;
       BL.release(doc, win, bodyLockOwner);
     }
+    // UI pass D7 (F59): the ghost's scale is the wheel's height, and a rotate (the landscape
+    // layout fits the wheel to the SHORT side) or the iOS toolbar settling changes that height
+    // after mount. Re-measure after the wheel settles (two stable frames, SKINS.observeSettled)
+    // rather than trusting the one read at mount; never mid-gesture (the ghost rides the finger
+    // then, and endWheel restores the rest transform itself).
+    var ghostSettleStop = null;
+    function unwatchGhostSize() { if (ghostSettleStop) { ghostSettleStop(); ghostSettleStop = null; } }
+    function watchGhostSize(wheel, g) {
+      unwatchGhostSize();
+      if (!SKINS || typeof SKINS.observeSettled !== 'function') return;
+      ghostSettleStop = SKINS.observeSettled(wheel, win, function () {
+        if (wheelGhost !== g || !g.isConnected || wheelSpin) return;
+        g.style.transform = ghostRestTransform(wheel);
+      });
+    }
     function mountWheelGhost() {
       wheelGhost = null;
+      unwatchGhostSize();
       if (!hapticCapable()) return;
       var wheel = panel.querySelector('.ip-wheel');
       if (!wheel) { unlockBodyScroll(); unwatchGhost(); panel.classList.remove('mms-haptic'); return; }
@@ -2227,6 +2265,7 @@
       g.style.transform = ghostRestTransform(wheel);
       wheel.appendChild(g);
       wheelGhost = g;
+      watchGhostSize(wheel, g);
       panel.classList.add('mms-haptic'); // CSS lifts .mms-full's touch-action:none (rule 1)
       lockBodyScroll();                  // ...and the body lock takes over scroll suppression
       watchGhost();                      // QA gate CRITICAL (v1.256): the lock's structural release - see watchGhost's header
@@ -2238,15 +2277,17 @@
         unlockBodyScroll();
         wheelGhost = null;
         unwatchGhost();
+        unwatchGhostSize();
       }
     }
-    // v1.311.3 (Dean: rotating in music mode locked ALL scrolling). The full-screen skin is
-    // `position:fixed` only inside the `max-width:768px` block, so a rotate to landscape
-    // (~844px) turns the cover back into an in-page panel WITHOUT removing the ghost - the
-    // observer above never fires, and the body stayed pinned under a page that could no
-    // longer be covered. A viewport change re-asks the real question: does the panel still
-    // cover the page? If not, the lock (and the ghost that needs it) go. The view's own
-    // watchSkinViewport hook then re-renders; a rotate back re-paints and re-locks.
+    // v1.311.3 (Dean: rotating in music mode locked ALL scrolling). Then the full-screen
+    // skin was `position:fixed` only under a max-width:768px media query, so a rotate to
+    // landscape turned the cover back into an in-page panel WITHOUT removing the ghost, and the
+    // body stayed pinned under a page that could no longer be covered. Since the UI pass (D7)
+    // the takeover keys on html.is-phone (or the pop-out's html.mms-popout), which a rotate
+    // never changes, so the skin stays up and keeps its lock. This listener stays as the
+    // backstop for the invariant: a viewport change re-asks "does the panel still cover the
+    // page?" and, if something ever un-fixes it, drops the lock and the ghost that needs it.
     // Viewport-only on purpose: nothing else un-fixes the panel while its ghost stays
     // attached (every view reset clears innerHTML, which the observer catches), and a
     // computed-style read per timeupdate would cost a style recalc 4x a second.
@@ -2658,6 +2699,7 @@
       if (lighting) lighting.destroy(); // pocket lighting: unbind the sensor / pointer / visibility listeners, cancel the frame loop
       unlockBodyScroll();     // v1.256: the haptic body lock dies with the surface
       unwatchGhost();
+      unwatchGhostSize();
       wheelGhost = null;
       bound = false;
       // clear the full-screen body class this view may have set (the v1.227 leak lesson - a
@@ -2754,7 +2796,7 @@
   // the view-signal check for the mount TOCTOU; onStateChange() - button refresh, called on
   // every open/close edge; windowName; panelId (defaults to the shared panel identity).
   function createPopoutShell(cfg) {
-    var W = 380, H = 700; // ~phone width so the < 768px skin media query engages as-is
+    var W = 380, H = 700; // ~phone size; mount() marks the window html.mms-popout, which the skin takeover CSS keys on (D7)
     // v1.257 TRAY PLAYER (Dean, screenshot-validated): an optional Nano presentation
     // parked above the taskbar. Tray = the IPOD skin's LCD sans wheel, reshaped by CSS
     // (the engine is untouched); the marker class lives on the PIP BODY because engine.paint()
@@ -2792,6 +2834,9 @@
       // overrides are documentElement-scoped, so without the copy the pop-out's glyphs
       // always render the base masks (a design-language split on this wave's own axis).
       try { var ic = document.documentElement.getAttribute('data-icons'); if (ic) doc.documentElement.setAttribute('data-icons', ic); } catch (_) { /* best-effort */ }
+      // UI pass D7: the skin takeover CSS keys on the <html> class (html.is-phone in a tab, this
+      // one in the pop-out) instead of a max-width query, so the window must carry it.
+      try { doc.documentElement.classList.add('mms-popout'); } catch (_) { /* best-effort */ }
     }
     function mount(win) {
       pipPending = false; // the async grant resolved (or the sync fallback) - clear the open-in-flight guard
@@ -2844,7 +2889,7 @@
       onStateChange();
     }
     function open() {
-      if (!supported()) return; // re-check at CLICK time - a wide->narrow resize must not leave an openable button
+      if (!supported()) return; // re-check at CLICK time - the view's gate (off-phone + an item current) is the authority
       if (pipWin) { try { pipWin.focus(); } catch (_) { /* ignore */ } return; }
       if (pipPending) return; // the double-click-during-grant guard (v1.235 adversarial)
       if (window.documentPictureInPicture && typeof window.documentPictureInPicture.requestWindow === 'function') {
@@ -2892,33 +2937,7 @@
     };
   }
 
-  // v1.311.3 (Dean: a rotate in music mode locked all scrolling): call `onCross(narrow)`
-  // whenever the viewport crosses the mobile skin gate (music-skins.js isMobileViewport,
-  // max-width 768px), so the VIEW re-runs its panel update - the skin un-renders on a
-  // rotate to landscape and paints (and re-locks) again on the way back. Before this,
-  // nothing re-checked the gate after the first paint. ONE helper both views (music,
-  // podcasts) route through - never a hand copy. Listens to resize AND orientationchange
-  // (iOS can report the orientation before the new width), deduped by the tracked state.
-  function watchSkinViewport(win, onCross, signal) {
-    if (!win || typeof win.addEventListener !== 'function' || typeof onCross !== 'function') return false;
-    var SKINS = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
-    function narrowNow() {
-      try { return !!(SKINS && typeof SKINS.isMobileViewport === 'function' && SKINS.isMobileViewport()); } catch (_) { return false; }
-    }
-    var last = narrowNow();
-    function check() {
-      var now = narrowNow();
-      if (now === last) return;
-      last = now;
-      onCross(now);
-    }
-    var opts = signal ? { signal: signal } : undefined;
-    win.addEventListener('resize', check, opts);
-    win.addEventListener('orientationchange', check, opts);
-    return true;
-  }
-
-  var api = { create: create, buildPanelHtml: buildPanelHtml, createPopoutShell: createPopoutShell, createExtrasMenu: createExtrasMenu, watchSkinViewport: watchSkinViewport };
+  var api = { create: create, buildPanelHtml: buildPanelHtml, createPopoutShell: createPopoutShell, createExtrasMenu: createExtrasMenu };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.FileTubeSkinSurface = api;
 })();

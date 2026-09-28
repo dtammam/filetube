@@ -713,6 +713,41 @@ function buildMusicSkeletonRows(n) {
   return '<div class="music-song-list">' + rows + '</div>';
 }
 
+// UI pass D7 (F58): the docked mini player floats over the bottom of the page, so on the Music
+// view it covered the last rows and an album's Play / Shuffle row. The view reserves the dock's
+// footprint at its bottom: how far the dock's top sits above the viewport bottom, less the bottom
+// padding the page already keeps (the mobile bottom bar's), written as DATA on the view root
+// (--music-dock-reserve; style.css pads by it). A ResizeObserver on #player-dock reports its
+// show and hide (a size change to / from 0) and every size change; the view's signal disconnects
+// it and clears the value, so no other view inherits the padding. Returns false when there is
+// nothing to watch (no dock on the shell, no ResizeObserver, a fixture).
+function reserveDockSpace(root, signal, win) {
+  var w = win || (typeof window !== 'undefined' ? window : null);
+  var doc = w && w.document;
+  var dock = doc && doc.getElementById('player-dock');
+  if (!root || !dock || !w.ResizeObserver || !root.style) return false;
+  var main = doc.getElementById('main-content');
+  function measure() {
+    var h = 0;
+    if (!dock.hidden) {
+      var r = dock.getBoundingClientRect();
+      if (r.height > 0) {
+        var below = 0;
+        try { below = main ? (parseFloat(w.getComputedStyle(main).paddingBottom) || 0) : 0; } catch (_) { below = 0; }
+        h = Math.max(0, Math.ceil(w.innerHeight - r.top - below));
+      }
+    }
+    root.style.setProperty('--music-dock-reserve', h + 'px');
+  }
+  var ro = new w.ResizeObserver(measure);
+  ro.observe(dock);
+  measure();
+  if (signal && typeof signal.addEventListener === 'function') {
+    signal.addEventListener('abort', function () { ro.disconnect(); root.style.removeProperty('--music-dock-reserve'); }, { once: true });
+  }
+  return true;
+}
+
 // v1.339 (L1b): the ONE writer of a music-toolbar control's presence. The toolbar wraps on
 // a phone, so a control that APPEARS or VANISHES (display none <-> shown) reflows every
 // control after it - the Artists-only view toggle moved Autoplay from row 1 to row 2 (CLS
@@ -861,6 +896,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildMusicSkeletonCards, buildMusicSkeletonRows, buildMusicArtistSkeletonCards,
     MUSIC_JUMPBACK_COUNT_KEY, readJumpBackCount, writeJumpBackCount, buildJumpBackSkeletonHtml,
     setToolbarSlot, toolbarSlotLive,
+    reserveDockSpace, // UI pass D7 (F58): the mini player's footprint, reserved at the view's bottom
   };
 }
 
@@ -1048,6 +1084,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var loopBtn = root.querySelector('#music-loop-btn');       // v1.284: desktop playback-mode toggles
     var autoplayBtn = root.querySelector('#music-autoplay-btn');
     var jumpbackHost = root.querySelector('#music-jumpback');
+    reserveDockSpace(root, signal);
     if (!content) return;
 
     // v1.222 (Dean): desktop THEATRE toggle - lay the album / up-next panel BESIDE
@@ -1129,7 +1166,7 @@ if (typeof module !== 'undefined' && module.exports) {
       return A.ambientSameOriginUrl(musicAmbientArtUrl(id, entry && entry.artUrl, activeListenId));
     }
     function ambientEligible() {
-      if (SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()) return false; // desktop only
+      if (SKINS && SKINS.isPhone && SKINS.isPhone()) return false; // desktop only
       var curId = effectiveCurrentId();
       if (!nowPlaying || !curId || nowPlaying.id !== curId) return false; // a MUSIC track is current
       var media = document.getElementById('media-player');
@@ -1283,8 +1320,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // skin-surface.js now (the same engine podcasts run). music.js keeps only the VIEW:
     // ctx/queue/chapters/cover/pop-out lifecycle, supplied to the engine as hooks. A skin
     // can render on TWO surfaces - the in-tab mobile panel AND the desktop pop-out window -
-    // kept mutually exclusive by the viewport split (ENFORCED: open re-gates on
-    // popoutSupported(), a resize into the narrow range tears the pop-out down). Each
+    // kept mutually exclusive by the device split (html.is-phone, fixed at load: the in-tab
+    // skin needs a phone, popoutSupported() refuses one; open re-gates on it). Each
     // surface is its OWN engine instance; reflectEngines() fans a live-element update to
     // whichever exists (the engine no-ops unless its panel wears mms-full).
     var SkinSurface = (typeof window !== 'undefined' && window.FileTubeSkinSurface) || null;
@@ -2197,6 +2234,59 @@ if (typeof module !== 'undefined' && module.exports) {
     // shared engine's paint() now (skin-surface.js - the same code path podcasts run);
     // this view supplies the ctx/hooks via skinEngineConfig and keeps the mms-on body
     // class + the straight-to-player cover, which are VIEW state.
+    // UI pass D7 (A5 of the music audit, F23's second half): leaving Pocket restores the Music
+    // list by its ANCHOR ROW, not a raw scroll offset. While the skin is up the list behind it
+    // keeps its scrollY, but a rotate re-flows it at the new width, so the old offset lands on
+    // different rows. At entry the first row still on screen is recorded (its identity + its
+    // distance from the viewport top); at exit, if the width changed meanwhile, the page is put
+    // back so that row sits where it was. Rows are named by the ids the renderers already carry.
+    // Scrolls route through FileTubeBodyLock (LESSONS 4: a haptic ghost's body lock may hold).
+    var POCKET_ANCHOR_ATTRS = ['data-id', 'data-album-key', 'data-artist'];
+    var pocketAnchor = null;
+    function pocketRealScrollY() {
+      var BL = window.FileTubeBodyLock;
+      if (BL && typeof BL.scrollYOf === 'function') return BL.scrollYOf(document, window);
+      return window.pageYOffset || 0;
+    }
+    function captureListAnchor() {
+      var host = root.querySelector('#music-content');
+      if (!host || typeof host.querySelectorAll !== 'function') return null;
+      var rows = host.querySelectorAll('[' + POCKET_ANCHOR_ATTRS.join('], [') + ']');
+      for (var i = 0; i < rows.length; i++) {
+        var r = rows[i].getBoundingClientRect();
+        if (!(r.height > 0) || r.bottom <= 0) continue;
+        for (var k = 0; k < POCKET_ANCHOR_ATTRS.length; k++) {
+          var v = rows[i].getAttribute(POCKET_ANCHOR_ATTRS[k]);
+          if (v != null) return { attr: POCKET_ANCHOR_ATTRS[k], value: v, viewTop: r.top, width: window.innerWidth };
+        }
+      }
+      return null;
+    }
+    function notePocketEnter() {
+      if (document.body.classList.contains('mms-on')) return; // already up: the first entry's anchor stands
+      try { pocketAnchor = captureListAnchor(); } catch (_) { pocketAnchor = null; }
+    }
+    function restorePocketAnchor() {
+      var a = pocketAnchor;
+      pocketAnchor = null;
+      if (!a || a.width === window.innerWidth) return; // same width: the list kept its place
+      var run = function () {
+        if (signal.aborted) return;
+        var host = root.querySelector('#music-content');
+        if (!host) return;
+        var rows = host.querySelectorAll('[' + a.attr + ']');
+        for (var i = 0; i < rows.length; i++) {
+          if (rows[i].getAttribute(a.attr) !== a.value) continue;
+          var target = Math.max(0, pocketRealScrollY() + rows[i].getBoundingClientRect().top - a.viewTop);
+          var BL = window.FileTubeBodyLock;
+          if (BL && typeof BL.scrollTo === 'function') BL.scrollTo(document, window, target);
+          else if (typeof window.scrollTo === 'function') window.scrollTo(0, target);
+          return;
+        }
+      };
+      // after the exit's layout and the ghost lock's release (a microtask of the dock)
+      if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(run); else run();
+    }
     function renderNowPlayingSkin() {
       if (!SKINS || !skinIsActive()) { straightToPlayerPending = false; document.body.classList.remove('mms-on'); return false; }
       if (!inTabEngine && SkinSurface && nowPlayingPanel) {
@@ -2204,6 +2294,7 @@ if (typeof module !== 'undefined' && module.exports) {
         activeInTabEngine = inTabEngine; // module-scoped: destroy() tears it down on a view swap
       }
       if (!inTabEngine) { straightToPlayerPending = false; document.body.classList.remove('mms-on'); return false; }
+      notePocketEnter();
       document.body.classList.add('mms-on'); // CSS hides the default host chrome on mobile+music
       inTabEngine.paint();
       ensureSkinReflect();
@@ -2332,6 +2423,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // critter scatter was skipped/cleared while mms-on was up, so re-scatter now (only on the
         // actual transition out of the skin, not on every teardown call).
         if (wasSkin && window.FileTube && typeof window.FileTube.scheduleCritterScatter === 'function') window.FileTube.scheduleCritterScatter();
+        if (wasSkin) restorePocketAnchor(); // UI pass D7: the list returns to the row it showed, whatever the width now
         return;
       }
       var ci = -1;
@@ -2431,19 +2523,19 @@ if (typeof module !== 'undefined' && module.exports) {
     // ---- v1.234: DESKTOP pop-out player (Document PiP + independent-window fallback) ----
     // Float the player into a small window showing the picked skin. It is a SECOND skin
     // surface: its OWN shared-engine instance (paint/reflect/gesture, v1.250) over this view's ctx,
-    // so the audio engine is untouched (player.js byte-unchanged). Desktop-only: the button
-    // shows only where the pop-out is supported AND the viewport is NOT the narrow one that
-    // already gets the in-tab skin - a coherent split (narrow -> in-tab skin; wide desktop
-    // -> pop-out). Window size ~380px so the < 768px skin media query engages and every skin
-    // renders at its phone layout with no re-styling. Pointer events => the click wheel
-    // spins with a MOUSE click-drag here.
+    // so the audio engine is untouched (player.js byte-unchanged). Off-phone only: the button
+    // shows only where the pop-out is supported AND the device is NOT the phone that already
+    // gets the in-tab skin - a coherent split (phone -> in-tab skin; anything else ->
+    // pop-out). The shell marks the window's <html> with the skin-surface class, so the
+    // takeover CSS (keyed on html.is-phone / html.mms-popout) renders every skin at its phone
+    // layout with no re-styling. Pointer events => the click wheel spins with a MOUSE
+    // click-drag here.
     // v1.251 (R3): the window LIFECYCLE lives in the shared shell now (skin-surface.js
     // createPopoutShell - the same grant/mount/teardown/clock/guards, one implementation for
-    // music AND podcasts). This view keeps its GATE (viewport + a music track current), its
-    // button wiring, the resize enforcement of the never-both-live split, and the repaint
-    // trigger with the nothing-playing guard.
+    // music AND podcasts). This view keeps its GATE (not a phone + a music track current),
+    // its button wiring and the repaint trigger with the nothing-playing guard.
     function popoutSupported() {
-      try { if (SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()) return false; } catch (_) { /* treat as desktop */ }
+      try { if (SKINS && SKINS.isPhone && SKINS.isPhone()) return false; } catch (_) { /* treat as desktop */ }
       return !!(typeof window !== 'undefined' && (window.documentPictureInPicture || typeof window.open === 'function'));
     }
     // the current music track's queue index (buildSkinCtx's ci), or -1.
@@ -2497,28 +2589,12 @@ if (typeof module !== 'undefined' && module.exports) {
       popoutBtn.setAttribute('aria-pressed', (popoutShell && popoutShell.isOpen()) ? 'true' : 'false');
     }
     if (popoutBtn) popoutBtn.addEventListener('click', function () { if (toolbarSlotLive(popoutBtn)) togglePopout(); }, { signal }); // v1.339 L1b: a reserved slot never acts
-    // Gate finding (both seats): the ONLY thing keeping the in-tab and pop-out skins from
-    // being live at once is the viewport split, and nothing re-checked it on a RESIZE - so a
-    // wide->narrow shrink with the pop-out open left the button visible AND let the in-tab
-    // skin activate too, both sharing the wheel state. ENFORCE the split on resize: refresh
-    // the button, and if the viewport crossed into the narrow (in-tab-skin) range, close the
-    // pop-out. This makes "never both live" (the reflect/wheel comments) an actual invariant.
-    if (typeof window !== 'undefined' && window.addEventListener) {
-      window.addEventListener('resize', function () {
-        var narrow = false;
-        try { narrow = !!(SKINS && SKINS.isMobileViewport && SKINS.isMobileViewport()); } catch (_) { /* desktop */ }
-        if (narrow && popoutShell && popoutShell.isOpen()) teardownPopout(); // -> in-tab skin owns the surface; teardown is idempotent with the pagehide arm
-        else updatePopoutBtn();
-      }, { signal });
-    }
+    // "Never both live" (the reflect/wheel comments) is STRUCTURAL since the UI pass (D7):
+    // the in-tab skin runs only on a phone and the pop-out only off one, and html.is-phone
+    // is fixed when the page loads - no resize or rotate can move a surface across the split,
+    // so nothing listens for one (v1.235's resize enforcement and v1.311.3's gate-crossing
+    // re-render are gone with the width gate they guarded; a rotate keeps the skin up, F23).
     activePopoutTeardown = teardownPopout; // destroy() closes the pop-out on a cross-view swap
-    // v1.311.3 (Dean: a rotate in music mode locked all scrolling): a crossing of the
-    // mobile skin gate re-runs the panel update, so the full-screen skin un-renders on a
-    // rotate to landscape (its body lock goes with its ghost) and paints again on the way
-    // back. The shared helper - podcasts.js routes through the same one.
-    if (SkinSurface && typeof SkinSurface.watchSkinViewport === 'function') {
-      SkinSurface.watchSkinViewport(window, function () { updateNowPlayingPanel(); }, signal);
-    }
 
     // Tapping the line drills into the playing track's album.
     if (nowPlayingEl) {
@@ -4180,6 +4256,7 @@ if (typeof module !== 'undefined' && module.exports) {
       try { coverEarly = !!(SKINS && typeof SKINS.skinActiveFor === 'function' && SKINS.skinActiveFor({ isMusic: true })); } catch (_) { coverEarly = false; }
       if (coverEarly && nowPlayingPanel) {
         straightToPlayerPending = true; // hold the cover up through init's synchronous epilogue
+        notePocketEnter(); // UI pass D7: the list anchor to restore on the way out
         document.body.classList.add('mms-on');
         var _sid = (SKINS.activeSkinId && SKINS.activeSkinId()) || 'apple';
         // v1.335 gate r1 W1: the registry's ONE class builder (the skin's base and its look - the

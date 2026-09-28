@@ -1721,8 +1721,27 @@ function ensureTheaterButton(doc) {
   return d.getElementById('theater-btn');
 }
 
+// UI pass D7 (Dean's device instrument for rotation / Pocket): the ?debugLifecycle=1 log records
+// every resize, orientationchange and visualViewport resize with the sizes the page saw - the
+// layout viewport, the visual viewport, the screen orientation and whether the device class is a
+// phone - so a "visual resize" on device can be read back line by line. Pure: `win` is the window.
+function formatViewportDetail(win) {
+  try {
+    var w = win || {};
+    var parts = [Math.round(w.innerWidth) + 'x' + Math.round(w.innerHeight)];
+    var vv = w.visualViewport;
+    if (vv) parts.push('vv ' + Math.round(vv.width) + 'x' + Math.round(vv.height) + (vv.offsetTop ? ' +' + Math.round(vv.offsetTop) : ''));
+    var o = w.screen && w.screen.orientation && w.screen.orientation.type;
+    if (o) parts.push(String(o));
+    var html = w.document && w.document.documentElement;
+    parts.push(html && html.classList && html.classList.contains('is-phone') ? 'phone' : 'not-phone');
+    return parts.join(' · ');
+  } catch (_) { return '?'; }
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    formatViewportDetail, // UI pass D7: the viewport line of the ?debugLifecycle=1 log
     ensureTheaterButton, // v1.317 (T1): the one writer of #theater-btn (watch + music inject through it)
     resolveCssFsScrollPlan,
     // v1.68.2: the rotation dead-zone snap decision (see its header).
@@ -4545,6 +4564,21 @@ if (typeof module !== 'undefined' && module.exports) {
   // re-assert wired separately above) -- recorded for PART B visibility only.
   document.addEventListener('resume', function () { recordLifecycleEvent('resume', {}); });
   window.addEventListener('pageshow', function () { recordLifecycleEvent('pageshow', {}); });
+  // UI pass D7: the viewport events, with sizes (formatViewportDetail) - observational only, and a
+  // no-op unless the flag is on. Coalesced to one line per event type per animation frame, so a
+  // desktop drag-resize cannot flush the 30-line log.
+  var viewportLogPending = {};
+  function logViewport(type) {
+    if (!isDebugLifecycleEnabled() || viewportLogPending[type]) return;
+    viewportLogPending[type] = true;
+    var flush = function () { viewportLogPending[type] = false; recordLifecycleEvent(type, { detail: formatViewportDetail(window) }); };
+    if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(flush); else setTimeout(flush, 16);
+  }
+  window.addEventListener('resize', function () { logViewport('resize'); });
+  window.addEventListener('orientationchange', function () { logViewport('orientationchange'); });
+  if (window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
+    window.visualViewport.addEventListener('resize', function () { logViewport('visualViewport:resize'); });
+  }
 
   // ---- v1.47.4 item 5: gesture-latch safety net on backgrounding ------------
   //

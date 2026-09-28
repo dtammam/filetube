@@ -31,7 +31,7 @@ async function settleAll(n = 20) { for (let i = 0; i < n; i++) await settle(); a
 // An iPhone-shaped window: a phone-width viewport (the skins' breakpoint), a coarse pointer, the iOS
 // permission API (counted, answered by the test), reduced motion as asked.
 function phoneWindow(W, { mobile = true, fine = false, reduced = false, api = true } = {}) {
-  W.matchMedia = (q) => ({ matches: (/max-width:\s*768px/.test(q) && mobile) || (/pointer:\s*fine/.test(q) && fine) || (/reduced-motion/.test(q) && reduced), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+  W.matchMedia = (q) => ({ matches: (/max-width:\s*768px|pointer:\s*coarse/.test(q) && mobile) || (/pointer:\s*fine/.test(q) && fine) || (/reduced-motion/.test(q) && reduced), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   W.scrollTo = () => {};
   W.requestAnimationFrame = (cb) => setTimeout(cb, 0);
   const asks = { n: 0, answer: null, reject: null };

@@ -315,6 +315,19 @@ test('keys are file|selector|property (or a class), never a line number, and cou
   assert.deepStrictEqual([...keys], [['public/css/style.css|.a|width', 2]]);
 });
 
+// UI pass S7 (D7): the Pocket takeover's device-class scope replaced a @media wrapper, and at-rule
+// preludes were never part of a key - so the scope is not either (the same rule keeps its key, in
+// every part of a selector list). Only that exact scope: any other :where() stays in the key.
+test('keys drop the Pocket device-class scope exactly (it replaced an @media prelude), and nothing else', () => {
+  const S = ':where(html.is-phone, html.mms-popout) ';
+  const keys = lint('no-raw-values', [['public/css/style.css', S + '.m .x { width: 1px; }\n' + S + '.a, ' + S + '.b { height: 2px; }\n:where(html.is-phone) .m .x { width: 3px; }']]);
+  assert.deepStrictEqual([...keys].sort(), [
+    ['public/css/style.css|.a, .b|height', 1],
+    ['public/css/style.css|.m .x|width', 1],
+    ['public/css/style.css|:where(html.is-phone) .m .x|width', 1],
+  ]);
+});
+
 test('no-legacy-tokens: tokens.css\'s alias and legacy names are read from the file', () => {
   for (const n of ['--bg-color', '--text-primary', '--border-color', '--yt-red', '--text-link', '--btn-bg', '--star-gold', '--radius-lg', '--shadow-lg', '--scrim-legacy']) {
     assert.ok(INFO.legacy.has(n), `${n} is legacy`);

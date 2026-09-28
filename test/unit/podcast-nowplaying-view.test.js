@@ -423,7 +423,11 @@ test('W3b supported() gate: a NARROW viewport hides the button and a forced togg
   }, { meta, mm });
 });
 
-test('W3c resize enforcement: shrinking into the narrow range TEARS DOWN an open podcast pop-out', async () => {
+// UI pass D7 (converted from W3c "shrinking into the narrow range TEARS DOWN an open podcast
+// pop-out"): the in-tab / pop-out split is the device class (html.is-phone, fixed at load), so a
+// desktop window going narrow is not a phone: the open pop-out stays open and the window keeps its
+// takeover class (html.mms-popout).
+test('UI pass D7: a narrow resize on a desktop leaves an open podcast pop-out open (the split is the device class)', async () => {
   const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
   const mm = { narrow: false };
   const pipDom = new JSDOM('<body></body>', { url: 'http://localhost/pip' });
@@ -435,44 +439,51 @@ test('W3c resize enforcement: shrinking into the narrow range TEARS DOWN an open
       btn.click();
       await settle(); await settle(); await settle();
       assert.equal(btn.getAttribute('aria-pressed'), 'true', 'pop-out open (populated first - non-vacuous)');
-      const pipBody = pipDom.window.document.body;
-      mm.narrow = true; // the viewport crosses into the in-tab-skin range
+      assert.ok(pipDom.window.document.documentElement.classList.contains('mms-popout'), 'the pop-out window carries the takeover class');
+      mm.narrow = true; // every media query now says narrow AND coarse
       dom.window.dispatchEvent(new dom.window.Event('resize'));
+      dom.window.dispatchEvent(new dom.window.Event('orientationchange'));
       await settle(); await settle();
-      assert.equal(btn.getAttribute('aria-pressed'), 'false', 'the resize arm tore the pop-out down');
-      assert.ok(!pipBody.classList.contains('mms-on'), 'the pop-out surface was destroyed (mms-on cleared before close)');
+      assert.equal(dom.window.document.documentElement.classList.contains('is-phone'), false, 'the device class is never re-evaluated');
+      assert.equal(btn.getAttribute('aria-pressed'), 'true', 'the pop-out stays open');
+      assert.ok(pipDom.window.document.body.classList.contains('mms-on'), 'its surface is intact');
+      assert.doesNotMatch(panel(dom).className, /\bmms-full\b/, 'and the in-tab skin never paints beside it');
     }, { meta, mm });
   } finally {
-    // Runner hygiene (adversarial delta S2, the v1.250 wedge class): under the D7
-    // arm-deletion mutant the pop-out never tears down and its clock keeps the loop alive -
-    // close the window so a red run FAILS fast instead of wedging node:test.
-    try { pipDom.window.close(); } catch (_) { /* already closed by the resize arm */ }
+    try { pipDom.window.close(); } catch (_) { /* already closed */ }
   }
 });
 
-// v1.311.3 gate r1 W2 (adversary: the wiring was source-locked only - a dead call survived).
-// Dean: "rotating the phone locks all scrolling". A crossing of the 768px gate must RE-RENDER
-// the panel through the view: narrow -> wide drops the skin (panel classes + body.mms-on, which
-// hides scrollbars at every width and stops critters), wide -> narrow paints it again.
-test('v1.311.3: a rotate across the 768px gate un-renders the podcast skin and a rotate back re-paints it', async () => {
+// UI pass D7 (F23; converted from v1.311.3's "a rotate across the 768px gate un-renders the podcast
+// skin and a rotate back re-paints it"). Dean: Pocket STAYS on rotation. A rotate never replaces
+// the podcast skin's DOM and never drops mms-on (the old teardown + rebuild replayed every reveal).
+test('UI pass D7 (F23): a rotate to landscape and back never tears down or rebuilds the podcast skin', async () => {
   const meta = { id: 'e1', title: 'Ep One', artist: 'The Show', resumeMode: 'podcast', subId: 's1' };
   const mm = { narrow: true };
   await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
-    const body = dom.window.document.body;
+    const W = dom.window;
+    const body = W.document.body;
     await playEp(dom, 0);
-    assert.match(panel(dom).className, /\bmms-full\b/, 'precondition: narrow + podcast -> the full-screen skin');
+    const el = panel(dom);
+    assert.match(el.className, /\bmms-full\b/, 'precondition: phone + podcast -> the full-screen skin');
     assert.ok(body.classList.contains('mms-on'), 'precondition: mms-on is up');
-    mm.narrow = false;
-    dom.window.dispatchEvent(new dom.window.Event('resize'));
-    await settle();
-    assert.doesNotMatch(panel(dom).className, /\bmms\b|\bmms-full\b/, 'wide: the panel is the desktop panel, no skin classes');
-    assert.ok(panel(dom).querySelector('.mnp-queue'), 'wide: the desktop episode queue rendered');
-    assert.ok(!body.classList.contains('mms-on'), 'wide: mms-on is gone');
+    const first = el.firstElementChild;
+    let childMutations = 0;
+    const mo = new W.MutationObserver((recs) => { for (const r of recs) if (r.type === 'childList' && r.target === el) childMutations++; });
+    mo.observe(el, { childList: true });
+    mm.narrow = false; // sideways: every query now says "wide" (and fine)
+    W.dispatchEvent(new W.Event('orientationchange'));
+    W.dispatchEvent(new W.Event('resize'));
+    await settle(); await settle();
+    assert.match(el.className, /\bmms-full\b/, 'landscape: still the skin');
+    assert.ok(body.classList.contains('mms-on'), 'landscape: mms-on held');
     mm.narrow = true;
-    dom.window.dispatchEvent(new dom.window.Event('resize'));
-    await settle();
-    assert.match(panel(dom).className, /\bmms-full\b/, 'rotating back re-paints the skin');
-    assert.ok(body.classList.contains('mms-on'), 'and mms-on returns');
+    W.dispatchEvent(new W.Event('orientationchange'));
+    W.dispatchEvent(new W.Event('resize'));
+    await settle(); await settle();
+    mo.disconnect();
+    assert.equal(childMutations, 0, 'the skin DOM was never replaced');
+    assert.strictEqual(el.firstElementChild, first, 'the same nodes');
   }, { meta, mm });
 });
 

@@ -9,6 +9,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const { unscopePocket } = require('../helpers/stylesheets.js'); // UI pass D7: the Pocket takeover's device-class scope
 const { JSDOM, VirtualConsole } = require('jsdom');
 
 const musicPath = require.resolve('../../public/js/music.js');
@@ -71,7 +72,7 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
   global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
   global.Event = dom.window.Event; // so music.js's `new Event('change')` is same-realm as the jsdom element (browser: === window.Event)
   global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
-  dom.window.matchMedia = (q) => ({ matches: (/max-width:\s*768px/.test(q) ? !!mobile : (/prefers-reduced-motion/.test(q) ? !!reducedMotion : false)), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+  dom.window.matchMedia = (q) => ({ matches: (/max-width:\s*768px|pointer:\s*coarse/.test(q) ? !!mobile : (/prefers-reduced-motion/.test(q) ? !!reducedMotion : false)), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   dom.window.scrollTo = function () {};
   global.fetch = fetchImpl || (() => Promise.resolve({ ok: true, json: async () => ({ items: [] }) }));
   const spy = { pp: 0, prev: 0, next: 0, seek: 0, dock: 0, shuffle: 0 };
@@ -808,17 +809,28 @@ test('v1.234: on desktop with a music track current, the pop-out button IS shown
   } });
 });
 
-test('v1.234: a wide->narrow resize TEARS DOWN an open pop-out and hides the button (enforces never-both-live)', async () => {
+// UI pass D7 (converted from v1.234's "a wide->narrow resize TEARS DOWN an open pop-out"): the
+// split between the in-tab skin and the pop-out is the DEVICE class now (html.is-phone, fixed at
+// load), so a desktop window shrunk narrow (every media query now answering "narrow") and a
+// rotate event move nothing across it: the pop-out stays open, its button stays shown, and the
+// in-tab skin never paints beside it. The pop-out's own <html> carries mms-popout, the class the
+// takeover CSS keys on there.
+test('UI pass D7: a narrow resize / rotate on a desktop leaves the pop-out open and the in-tab skin off (the split is the device class)', async () => {
   await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
     const pip = makePipWindow();
     dom.window.documentPictureInPicture = { requestWindow: () => Promise.resolve(pip) };
     clickPopout(dom); await settle(); await settle();
-    assert.ok(!pip.closed, 'pop-out open on the wide viewport');
-    // now the window becomes narrow (mobile breakpoint) - the in-tab skin would take over
-    dom.window.matchMedia = (q) => ({ matches: /max-width:\s*768px/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+    assert.ok(!pip.closed, 'pop-out open on the desktop');
+    assert.ok(pip.document.documentElement.classList.contains('mms-popout'), 'the pop-out window is marked for the takeover CSS');
+    dom.window.matchMedia = (q) => ({ matches: /max-width:\s*768px|pointer:\s*coarse/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
     dom.window.dispatchEvent(new dom.window.Event('resize'));
-    assert.ok(pip._closeCalls >= 1 && pip.closed, 'the pop-out is closed when the viewport crosses into narrow');
-    assert.ok(dom.window.document.getElementById('music-popout-btn').hidden, 'the button hides on the narrow viewport');
+    dom.window.dispatchEvent(new dom.window.Event('orientationchange'));
+    await settle();
+    assert.strictEqual(dom.window.document.documentElement.classList.contains('is-phone'), false, 'the device class is never re-evaluated on a resize');
+    assert.strictEqual(pip._closeCalls, 0, 'the pop-out is not torn down');
+    assert.strictEqual(dom.window.document.getElementById('music-popout-btn').hidden, false, 'its button stays shown');
+    assert.ok(!dom.window.document.getElementById('music-nowplaying-panel').classList.contains('mms-full'), 'the in-tab skin never paints beside it');
+    assert.ok(!dom.window.document.body.classList.contains('mms-on'), 'no takeover in the tab');
   } });
 });
 
@@ -866,17 +878,18 @@ test('v1.234: teardown explicitly DROPS the surface from the reflect set (splice
   } });
 });
 
-test('v1.234: a Document-PiP grant that resolves after a wide->narrow resize is closed, not mounted (both-live async seal)', async () => {
+// The mount's async re-gate stays (a view gate may change while a grant is pending): forced here by
+// putting the phone class on mid-grant - a state no real device reaches after load since UI pass
+// D7, used only to make popoutSupported() answer no at mount time.
+test('v1.234: a Document-PiP grant that resolves after the gate turned to "phone" is closed, not mounted (both-live async seal)', async () => {
   await boot({ mobile: false, isMusic: true, skin: 'ipod', run: async (dom) => {
     const pip = makePipWindow();
     let resolveWin = null;
     dom.window.documentPictureInPicture = { requestWindow: () => new Promise((r) => { resolveWin = r; }) };
     clickPopout(dom); await settle();                 // grant pending, pipWin still null
-    // window shrinks below 768px DURING the grant - the resize can't teardown (pipWin null)
-    dom.window.matchMedia = (q) => ({ matches: /max-width:\s*768px/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
-    dom.window.dispatchEvent(new dom.window.Event('resize'));
-    resolveWin(pip); await settle(); await settle();  // grant resolves onto the now-narrow viewport
-    assert.ok(pip._closeCalls >= 1 && pip.closed, 'mountPopout re-gates on popoutSupported() and closes the late grant on a narrow viewport (never both live)');
+    dom.window.document.documentElement.classList.add('is-phone');
+    resolveWin(pip); await settle(); await settle();  // grant resolves onto a gate that now says phone
+    assert.ok(pip._closeCalls >= 1 && pip.closed, 'mountPopout re-gates on popoutSupported() and closes the late grant (never both live)');
   } });
 });
 
@@ -1942,7 +1955,7 @@ test('v1.257 (adversarial W-A) source-lock: the Nano reshape rules exist - witho
   // Lock the load-bearing reshapes; the selectors deliberately omit the skin-base class
   // (the v1.232 first-occurrence locks - see the block's own comment).
   const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   assert.match(css, /body\.mms-tray\{ background:var\(--mms-black\); \}/, 'the dark pip body behind the rounded shell (adversarial W3: white corners without it)');
   assert.match(css, /body\.mms-tray \.ip-wheelwrap, body\.mms-tray \.ip-listview\{ display:none; \}/, 'the wheel and list are hidden - the tray is the LCD alone');
   assert.match(css, /body\.mms-tray \.ip-lcd\{[^}]*margin:var\(--pk-tray-inset\)/, 'the LCD insets into the body frame (the v1.258 Nano feel)');
@@ -2059,56 +2072,60 @@ test('v1.260 (v1.332 onto Nordic): a non-Click pick does NOT become the tray don
   } });
 });
 
-// v1.311.3 gate r1 W2 (adversary: the music.js wiring was source-locked only - a dead call
-// survived). A crossing of the 768px gate re-runs updateNowPlayingPanel: narrow -> wide drops
-// the skin (and body.mms-on), wide -> narrow paints it again. Driven with the REAL window
-// resize and the REAL music-skins isMobileViewport (read live from matchMedia).
-test('v1.311.3: a rotate across the 768px gate un-renders the music skin and a rotate back re-paints it', async () => {
+// UI pass D7 (F23, Dean: "Pocket on rotation: STAY in Pocket. It is a phone mode, not a width
+// mode"). Converted from v1.311.3's "a rotate across the 768px gate un-renders the music skin and
+// a rotate back re-paints it": that teardown/rebuild WAS the "visual resize" (every reveal
+// replayed). A rotate now changes nothing the skin is built from - the device class is fixed at
+// load - so the panel's DOM is never replaced: the same nodes, zero child mutations, mms-on held.
+// Driven with the REAL window events and every width query flipping to "wide".
+test('UI pass D7 (F23): a rotate to landscape and back never tears down or rebuilds the music skin (no DOM swap, mms-on held)', async () => {
   await boot({ mobile: true, isMusic: true, run: async (dom) => {
-    const body = dom.window.document.body;
+    const W = dom.window;
+    const body = W.document.body;
     const el = panel(dom);
     assert.match(el.className, /\bmms-full\b/, 'precondition: the full-screen skin');
-    let narrow = true;
-    dom.window.matchMedia = (q) => ({ matches: /max-width:\s*768px/.test(q) ? narrow : false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
-    narrow = false;
-    dom.window.dispatchEvent(new dom.window.Event('resize'));
-    await settle();
-    assert.doesNotMatch(el.className, /\bmms-full\b/, 'wide: no skin classes on the panel');
-    assert.strictEqual(el.querySelector('[data-skin-play]'), null, 'wide: the skin transport is gone');
-    assert.ok(!body.classList.contains('mms-on'), 'wide: mms-on is gone');
+    assert.ok(W.document.documentElement.classList.contains('is-phone'), 'precondition: the device class is set');
+    const first = el.firstElementChild;
+    const play = el.querySelector('[data-skin-play]');
+    assert.ok(first && play, 'precondition: a painted skin');
+    let childMutations = 0;
+    const mo = new W.MutationObserver((recs) => { for (const r of recs) if (r.type === 'childList' && r.target === el) childMutations++; });
+    mo.observe(el, { childList: true });
+    let narrow = false; // landscape: every width query now says "wide"
+    W.matchMedia = (q) => ({ matches: /max-width:\s*768px/.test(q) ? narrow : /pointer:\s*coarse/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+    W.dispatchEvent(new W.Event('orientationchange'));
+    W.dispatchEvent(new W.Event('resize'));
+    await settle(); await settle();
+    assert.match(el.className, /\bmms-full\b/, 'landscape: still the full-screen skin');
+    assert.ok(body.classList.contains('mms-on'), 'landscape: mms-on held');
     narrow = true;
-    dom.window.dispatchEvent(new dom.window.Event('resize'));
-    await settle();
-    assert.match(el.className, /\bmms-full\b/, 'rotating back re-paints the skin');
-    assert.ok(el.querySelector('[data-skin-play]'), 'with its transport');
-    assert.ok(body.classList.contains('mms-on'), 'and mms-on');
+    W.dispatchEvent(new W.Event('orientationchange'));
+    W.dispatchEvent(new W.Event('resize'));
+    await settle(); await settle();
+    mo.disconnect();
+    assert.strictEqual(childMutations, 0, 'the panel\'s children were never replaced (no teardown, no rebuild, so no reveal replays)');
+    assert.strictEqual(el.firstElementChild, first, 'the same skin DOM');
+    assert.strictEqual(el.querySelector('[data-skin-play]'), play, 'the same transport node');
+    assert.ok(body.classList.contains('mms-on'), 'portrait again: mms-on held');
   } });
 });
 
-// v1.311.3 (Dean's device screenshot, "stuck skin"): a listen of a CHAPTERED album, rotate
-// sideways, rotate back -> the DESKTOP now-playing panel (title, subline, whole queue) filled
-// the phone on the skin's background, with no transport and no way out. Cause: while wide, a
-// re-render that is NOT a rotate (reflectChapter repaints the panel at every chapter boundary)
-// took the desktop branch, which kept the panel's `mms mms-full mms-<skin>` classes; rotating
-// back re-applied `.mms-full` (position:fixed; inset:0) around desktop content. The theatre
-// toggle stands in for the chapter boundary here (both call updateNowPlayingPanel).
-test('v1.311.3 Dean\'s stuck panel: a wide re-render outside a rotate never leaves the desktop panel wearing the skin cover', async () => {
+// v1.311.3 (Dean's device screenshot, "stuck skin"): then a re-render while wide (reflectChapter at
+// a chapter boundary) drew the DESKTOP panel inside the skin cover. Since D7 there is no "wide" on a
+// phone: a re-render in landscape paints the real skin - never the desktop panel, always a way out.
+// The theatre toggle stands in for the chapter boundary (both call updateNowPlayingPanel).
+test('v1.311.3 Dean\'s stuck panel, under D7: a re-render in landscape paints the skin, never the desktop panel', async () => {
   await boot({ mobile: true, isMusic: true, run: async (dom) => {
+    const W = dom.window;
     const el = panel(dom);
     assert.match(el.className, /\bmms-full\b/, 'precondition: the full-screen skin');
-    let narrow = true;
-    dom.window.matchMedia = (q) => ({ matches: /max-width:\s*768px/.test(q) ? narrow : false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
-    narrow = false; // turned sideways
-    dom.window.dispatchEvent(new dom.window.Event('resize'));
+    W.matchMedia = (q) => ({ matches: /pointer:\s*coarse/.test(q), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+    W.dispatchEvent(new W.Event('resize')); // turned sideways
     await settle();
-    dom.window.document.getElementById('theater-btn').click(); // a chapter boundary re-renders while wide (v1.317: the in-player theatre button)
+    W.document.getElementById('theater-btn').click(); // a re-render while sideways
     await settle();
-    assert.ok(el.querySelector('.mnp-title'), 'the wide re-render drew the desktop panel');
-    assert.doesNotMatch(el.className, /\bmms-full\b/, 'and it does NOT wear the full-screen skin cover (the stuck state needs both)');
-    narrow = true; // turned back
-    dom.window.dispatchEvent(new dom.window.Event('resize'));
-    await settle();
-    assert.match(el.className, /\bmms-full\b/, 'back in portrait: the real skin paints again');
+    assert.strictEqual(el.querySelector('.mnp-title'), null, 'no desktop panel content');
+    assert.match(el.className, /\bmms-full\b/, 'the full-screen skin');
     assert.ok(el.querySelector('[data-skin-play]'), 'with its transport - a way out');
   } });
 });

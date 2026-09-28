@@ -570,7 +570,14 @@ function classifyValue(prop, value, ladder) {
 // Detectors. Each takes (model, report) and calls report(key, where, detail).
 // ---------------------------------------------------------------------------------------
 
-const ruleKey = (r, prop) => `${r.file}|${r.selector}${prop ? '|' + prop : ''}`;
+// UI pass D7 (S7): the Pocket skin takeover was one `@media (max-width: 768px)` block; it is now
+// keyed on the device class, as a zero-specificity scope on EVERY selector of the block
+// (style.css). At-rule preludes were never part of a key, so the scope that replaced one is not
+// either: the same rules keep the same debt keys (renaming them would read as new debt + paid
+// debt for an unchanged rule). Only this exact scope is dropped.
+const KEY_SCOPE = ':where(html.is-phone, html.mms-popout) ';
+const keySelector = (sel) => String(sel).split(KEY_SCOPE).join('');
+const ruleKey = (r, prop) => `${r.file}|${keySelector(r.selector)}${prop ? '|' + prop : ''}`;
 const inlineKey = (d) => `${d.file}|${d.origin}|${d.prop}`;
 const inAt = (r, name) => r.at.some((f) => f.name === name || f.name.endsWith('-' + name));
 

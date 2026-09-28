@@ -352,7 +352,8 @@ async function rotation(browser, o, skin, variant) {
     await page.screenshot({ path: path.join(dir, '0-portrait-pocket.png') });
     log.push({ step: '0-start', state: await state() });
     const steps = rotationSteps(page, variant, setOrient);
-    for (const [name, fn] of steps) {
+    for (const [name, fn, prep] of steps) {
+      if (prep) await prep(); // before the screencast starts (see rotationSteps)
       const done = await burst(name); const how = await fn(); await done();
       log.push({ step: name + '-after', how: typeof how === 'string' ? how : undefined, state: await state() });
       await page.screenshot({ path: path.join(dir, `${name}-settled.png`) });
@@ -386,9 +387,24 @@ function rotationSteps(page, variant, setOrient) {
     for (let i = 0; i < 6; i++) { const s = await pocketState(page); if (!s.full) break; await page.locator('[data-skin-menu]').first().tap({ timeout: 2000 }).catch(() => {}); taps++; await sleep(150); }
     return 'menu x' + taps;
   };
+  // UI pass S7: leaving a Click skin from Now Playing is TWO user actions (MENU: Now Playing ->
+  // the Main Menu, then MENU: dock). A step records ONE action - a G4 step that also recorded the
+  // Main Menu tap 150ms before the dock would call the dock's relayout "a box moving after the
+  // first changed frame" on ANY correct UI. So the Main Menu tap is the step's PREP (run before the
+  // recording starts) and the recorded action is the exit itself. (Before D7 this step never
+  // reached here: the rotate had already torn Pocket down, so it recorded nothing - VACUOUS.)
+  const toMainMenu = async () => {
+    const s = await pocketState(page);
+    if (!s.full) return;
+    const col = page.locator('#music-nowplaying-panel [data-skin-collapse]').first();
+    if (await col.count() && await col.isVisible()) return; // a one-action exit
+    if (await page.locator('#music-nowplaying-panel .ip-menuview').count()) return; // already on a menu level
+    await page.locator('[data-skin-menu]').first().tap({ timeout: 2000 }).catch(() => {});
+    await sleep(400);
+  };
   return variant === 'spec'
-    ? [['1-to-landscape', () => setOrient(false)], ['2-exit-pocket', exitPocket], ['3-to-portrait', () => setOrient(true)]]
-    : [['1-exit-pocket', exitPocket], ['2-to-landscape', () => setOrient(false)], ['3-to-portrait', () => setOrient(true)]];
+    ? [['1-to-landscape', () => setOrient(false)], ['2-exit-pocket', exitPocket, toMainMenu], ['3-to-portrait', () => setOrient(true)]]
+    : [['1-exit-pocket', exitPocket, toMainMenu], ['2-to-landscape', () => setOrient(false)], ['3-to-portrait', () => setOrient(true)]];
 }
 
 // One era's matrix (+ optionally the rotation screencasts). A fresh browser process per

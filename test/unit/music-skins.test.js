@@ -7,6 +7,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const { unscopePocket } = require('../helpers/stylesheets.js'); // UI pass D7: the Pocket takeover's device-class scope
 const skins = require('../../public/js/music-skins.js');
 
 const CTX = {
@@ -53,7 +54,7 @@ test('Click (Matte): renders the shared iPod chassis (base ipod) and its palette
   assert.match(matte, /class="ip-wheel"/, 'the FULL click wheel');
   assert.match(matte, /data-skin-menu/, 'the wheel MENU/back zone (the wheel exit)');
   const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   const block = /\n {2}\.mms-ipod-matte\{([^}]*)\}/.exec(css);
   assert.ok(block, 'the matte role block exists');
   assert.match(block[1], /--pk-c-body:linear-gradient\(180deg, rgba\(255,255,255,\.26\) 0, var\(--mms-ipod-sheen-0\) 2\.2%\)[\s\S]*#949497 0%[\s\S]*#1c1c21 100%\);/, 'the matte body: the chamfer, the side edges, the photo ramp top to bottom');
@@ -68,7 +69,7 @@ test('v1.232.1: the iPod LCD is height-capped so a long song list scrolls INSIDE
   // box. A flex item's default min-height:auto lets tall content force growth; the cap
   // is min-height:0 + overflow:hidden on .ip-lcd (the list scrolls in .ip-listview).
   const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   const m = /\.mms-ipod \.ip-lcd\{([^}]*)\}/.exec(css);
   assert.ok(m, 'the .ip-lcd rule exists');
   assert.match(m[1], /min-height:\s*0/, 'min-height:0 caps the flex item at its 4:3 aspect');
@@ -81,7 +82,7 @@ test('v1.232.3: the full-screen skin LOCKS page scroll (touch-action) - only the
   // overflow:hidden does not stop iOS touch-scroll. touch-action:none on the fixed
   // panel does; the scrollable regions re-enable vertical panning with pan-y.
   const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   const full = /\.mms-full\{([^}]*)\}/.exec(css);
   assert.ok(full && /touch-action:\s*none/.test(full[1]), '.mms-full has touch-action:none (page cannot scroll behind the overlay)');
   const list = /\.mms-ipod \.ip-listview\{([^}]*)\}/.exec(css);
@@ -152,7 +153,7 @@ test('v1.244: the art SLOT carries --art (blurred self-bleed) when there is art,
 
 test('v1.244 source-lock (CSS): the skin art is object-fit:contain with a blurred ::before self-bleed from --art', () => {
   const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   assert.match(css, /\.mms-full \.mms-art img\{[^}]*object-fit:contain/, 'shared art img shows the WHOLE art (contain)');
   assert.match(css, /\.mms-full \.mms-art::before\{[^}]*background-image:var\(--art, none\)[^}]*filter:blur/, 'a blurred self-bleed backdrop from --art');
   assert.match(css, /\.mms-ipod \.ip-cover img\{[^}]*object-fit:contain/, 'ipod cover is contain too');
@@ -415,7 +416,7 @@ test('v1.233: center-select in the list PLAYS the cursor row (not the current), 
 
 test('v1.233: the wheel CURSOR bar is a distinct highlight - is-cursor gets the blue bar, is-current keeps only its ▶ marker', () => {
   const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   const cursor = /\.mms-ipod \.mms-row\.is-cursor\{([^}]*)\}/.exec(css);
   assert.ok(cursor, 'the is-cursor rule exists');
   // v1.335: the screen reads its SCREEN roles; on the chassis the selection role IS the blue token (the
@@ -446,7 +447,7 @@ test('v1.250 (Dean): wheel-volume is RETIRED - no volume mode, no adjustVolume, 
 
 test('v1.235 CSS is DORMANT since v1.250 (wheel-volume retired; .mms-voladj has no writer) - rules kept unchurned this wave', () => {
   const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   assert.match(css, /\.mms-ipod \.ip-vol\{[^}]*display:\s*none/, 'the volume bar is hidden by default');
   assert.match(css, /\.mms-ipod\.mms-voladj \.ip-scrub\{[^}]*display:\s*none/, 'adjusting hides the scrubber');
   assert.match(css, /\.mms-ipod\.mms-voladj \.ip-vol\{[^}]*display:\s*flex/, 'adjusting shows the volume bar');
@@ -498,7 +499,7 @@ test('v1.317 (M2): the Nordic (thumb) queue rows carry each row\'s length (.mms-
   const rd = [...html.matchAll(/<span class="mms-rd">([^<]*)<\/span>/g)].map((m) => m[1]);
   assert.deepStrictEqual(rd, ['0:42', '5:37', '4:51'], 'one length per row, in queue order');
   const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   assert.match(css, /\.mms-spotify \.mms-rd\{[^}]*flex:none;[^}]*font-variant-numeric:tabular-nums;/, 'a className with no rule behind it is a defect');
 });
 
@@ -530,7 +531,7 @@ test('v1.317 gate r2 (qa W3, Dean\'s ruling): a 0/unknown length is BLANK on the
 
 test('v1.317 (M1): the artist-line button reset is ZERO-specificity (:where) across every renderer, so each consumer\'s own line rules keep winning', () => {
   const fs = require('node:fs'); const path = require('node:path');
-  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   const m = /:where\(button\.mnp-sub, button\.mms-sub, button\.ip-artist, button\.music-drill-artist\) \{([^}]*)\}/.exec(css);
   assert.ok(m, 'ONE :where() reset names the four block artist-line buttons (desktop panel, Cider/Nordic, the LCD skins, the album drill)');
   for (const decl of ['display: block', 'width: 100%', 'appearance: none', 'border: 0', 'background: transparent', 'padding: 0', 'font: inherit', 'color: inherit', 'cursor: pointer']) {
