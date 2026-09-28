@@ -2,6 +2,8 @@
 
 ## Planned
 
+### Bugs
+
 - [ ] **HIGHEST PRIORITY (1 of 2). Bug: the fullscreen video goes BLACK after a pause / resume, pause /
   resume** (Dean, 2026-09-26: "a recent regression where if I'm watching a video in full screen, there's
   some way in which after I pause or resume, pause and resume again, the screen of the video goes black.
@@ -18,31 +20,6 @@
   and the ambient-mode lesson (a filter / blur / mask / backdrop over or around a playing video blacks it
   out on the iPhone).
 
-- [x] **HIGHEST PRIORITY (2 of 2). Bug: a very thin white border around the whole screen in fullscreen, in
-  every mode** (Dean, 2026-09-26: "in full screen, in all modes, I see a very thin white border around the
-  entire screen. It doesn't appear in the screenshots, but it totally appears for our faux overlay.").
-  Visible on the device, absent from screenshots, and it shows on the FAUX fullscreen overlay. First
-  questions: a 1 px edge the overlay does not cover (a sub-pixel inset, a rounding of 100vw / 100dvh vs
-  the visual viewport, the safe-area insets), the body or html background painting through at the edge,
-  or an outline / box-shadow on the overlay; why a screenshot misses it (a compositor-only edge, or the
-  screenshot's own crop). Measure the overlay's rect against the viewport on the device first.
-
-- [x] **UI professionalism pass: an audit, a component layer, guardrails that hold** - SHIPPED v1.341.0 (see Shipped) (Dean, 2026-09-27:
-  "Something about the full UI feels 'amateurish' ... flimsy and not premium ... make sure our design
-  system doesn't allow for anything imperfect when tweaking in the future"; plus native interactions:
-  "If I hold the screen to have it fast forward ... I see an iOS text magnifying glass ... It shouldn't
-  be so."). Audit and ranking across EVERY surface; candidate directions side by side before a north
-  star; then primitives + hard-fail guardrails (pre-push + CI, shrink-only exceptions), then per-surface
-  sweeps. Plan 2026-09-27-ui-professionalism-pass.
-- [ ] **Real battery level in the pocket skins' status bar** (Dean, 2026-09-24: "if it's possible for
-  a PWA or a web app to query the device for battery and show that battery instead of just an
-  arbitrary 80%"; deferred the same night: "I don't want to make this more complex right now").
-  Shape: where `navigator.getBattery()` exists (Chromium: desktop Chrome / Edge, Android) the
-  Click / Seattle / tray / pop-out battery shows the real level and a charging mark, live on
-  levelchange / chargingchange, one shared reader, listeners removed on every teardown; everywhere
-  else the static battery stays exactly as today. Limit: iPhone (every iOS browser is WebKit) and
-  Firefox do not implement the Battery Status API, so Dean's iPhone would keep the static look.
-
 - [ ] **Bug: a video opened from a subscription notification seems to loop with Loop off** (Dean,
   2026-09-25, captured mid-v1.333 and deferred: "if I tap a notification of a video for someone I'm
   subscribed to, it appears to loop even when I'm not looped ... I wonder if there's something to some
@@ -51,39 +28,6 @@
   saved resume point / the notification's deep link) replayed on `ended` or on a re-load, and is the
   element's `loop` or the player's loop state actually on at that moment.
 
-- [x] **Share for non-YouTube downloads** (SHIPPED v1.337.0; Dean, 2026-09-25: "I want us to make it so that we can share
-  content that is not YouTube downloads. So for example, I'm downloading some things supported by YTDLP,
-  like Facebook and Reddit ... it's watching them as like a 95% first class experience ... There's no
-  share button ... a share button that basically just shares the logged URL of whatever it is that we
-  captured. I'm not really asking for anything else"). Scope: a Share button on yt-dlp downloads from
-  any site, sharing the source URL recorded at download time. Nothing else.
-
-- [x] **Audit: TOCTOU / FOUC across the app** - SHIPPED in **v1.339.0** (see Shipped; residuals tech-debt #287) (Dean, 2026-09-25: "I'm noticing in um, the music player,
-  like I'll see the thumbnails all kind of loading somewhat individually. It just feels like odd. And
-  then there's like some slight page shifting. I just want an overall audit of all the potential places.
-  In some places we've solved it and it's pretty good. And here, maybe not"). An overall audit: every
-  surface where images pop in one by one, content shifts the layout, or a check-then-act races an await;
-  list where it is already solved and where it is not, then fix per surface.
-
-- [ ] **Lock-to-audio, phase 2** (found in the retired memory, idea-lock-to-audio-handoff.md): the PWA hands
-  a playing VIDEO over to audio / listen mode on screen lock or an app switch, and resumes the video position
-  on reopen. Phase 1 (the timing log) shipped in v1.319.0; tracker #251 waits on Dean's iPhone numbers.
-
-- [ ] **ntfy.sh notifications for the agent** (retired memory, followup-desktop-theatre-ambient-wave.md): when
-  Claude hits a core question mid-run, notify Dean through ntfy.sh; also on releases. Deferred by Dean;
-  tooling, not product.
-
-- [ ] **Up-next and discovery sequel** (retired memory, v1.79 record): a channel-aware up-next engine, search
-  autocomplete, SponsorBlock.
-
-- [ ] **Streaming tiers 1b / 2 / 3** (retired memory, v1.111 record): Tier 1b faststart for the EXISTING
-  library (v1.111 did new downloads only), Tier 2 a data-saver downscale, Tier 3 adaptive HLS.
-
-- [ ] **Critter rotation persistence, redesigned** (retired memory, v1.194 record): against visualViewport /
-  orientationchange.
-
-- [ ] **A mobile theatre behaviour for all media** (retired memory, v1.198 record; "theatre-on-mobile = Dean").
-
 - [ ] **Bug (unverified): a search on /music may also navigate away** (retired memory, v1.44.2 record).
   public/js/music.js binds click/keydown on the shell's #search-btn / #search-input with preventDefault, and
   common.js binds performGlobalSearch on the same elements at boot (navigates to /?search=); preventDefault
@@ -91,26 +35,6 @@
 
 - [ ] **Bug (unverified): the music row queue passes kind 'track' for projected ids and may 404** (retired
   memory, v1.249 record). Never investigated.
-
-- [ ] **Overlay lint nit** (retired memory, v1.310 record): add `overflow: overlay` to the
-  overlay-containment lint's scroll match, with a fixture.
-
-- [x] **Bug: the Notify button shifts the row when it toggles** - SHIPPED v1.340.0 (see Shipped) (Dean, 2026-09-26: "notify button shifts
-  unreasonably - should be stable", with two iPhone screenshots of a watch page's channel card). The
-  label flips between "Notify" (bell struck through) and "Notifying" (bell), so the button changes width
-  and "Pin channel" beside it jumps sideways on every tap. First questions when picked up: reserve the
-  wider label's width (the button sized to "Notifying" in both states) or a fixed-width button; check
-  every era/theme and the phone and desktop rows (rows wrap, buttons never shrink - the measure-UI norm),
-  and any other toggle in the same card (Subscribe / Subscribed) with the same shape.
-
-- [ ] **Idea: lock the hold-to-speed-up by dragging down** (Dean, 2026-09-26: "hold to speed up exists, I'd
-  like a hold to speed up lock option by dragging down. No need to do now please just add to roadmap").
-  Today a press-and-hold on the picture plays at 2x until the finger lifts (player.js hold-to-2x:
-  `HOLD_MS` 500, cancelled by a drag past `MOVE_TOL` 16px). The ask: while holding, drag DOWN to LOCK
-  the speed so it stays after the finger lifts. First questions when picked up (ours, not his words):
-  the lock's visible state and how to release it (a tap on a speed pill? holding again?); whether it
-  applies in faux fullscreen and inline alike; that the drag-down does not fight the drag-cancel, the
-  swipe-back (v1.337: off in fullscreen) or a vertical page scroll inline.
 
 - [ ] **Bug: the mobile bottom bar still slides up to the middle of the screen, in some edge case** (Dean,
   2026-09-27: "Weird edge case where bottom bar still slides upto middle on mobile. No bien."). "Still"
@@ -124,6 +48,95 @@
   keyboard), a body scroll-lock that pins `top` and is not released, and the safe-area inset changing
   while the bar is laid out. A `?debugLifecycle=1` capture of the bar's rect against `visualViewport`
   when it happens decides which one.
+
+- [ ] **Bug: the v1.341.1 desktop bugs** (next patch) _(Dean, 2026-09-28)_. (a) Opening a top-bar
+  panel shifts the page sideways: not only the notification tray - Account, Notifications, or anything
+  in the top bar that opens a panel makes the right-hand scrollbar disappear and the page shift. All of
+  them go through the one body scroll lock (`public/js/body-scroll-lock.js` pins body `position: fixed`),
+  which drops the page scrollbar on a desktop with classic scrollbars, measured 1428 -> 1440px client
+  width, so one fix covers every surface. Planned fix: `scrollbar-gutter: stable` on the root, measured
+  on every locking surface, plus a geometry check that the page width never changes when a panel opens.
+  (b) The chapter time editor ("Fix times" on a chaptered Music album) jumps the list back to the
+  top after a nudge: reproduced headless on Music (scrollTop 1200 -> 21, then 0); the trigger is the
+  focused nudge button being destroyed by the editor's full-list re-render (with focus suppressed there
+  is no jump); not reproduced from the watch page. (c) That editor "can't be closed without a refresh":
+  not reproduced yet; X after an edit shows the in-page "Discard your changes?" confirm, and Discard
+  closes; suspect the confirm is not noticed; reproduce on Dean's setup.
+
+- [ ] **Bug: pinned channels in the sidebar: a long one-line name pushes its pin further right than the
+  others** _(Dean, 2026-09-28)_ (desktop screenshot: "heavymachinegun" vs "Phantasia Records", which
+  wraps). The pin column should sit at one x for every row; the name column needs a fixed width (wrap or
+  truncate). Add a geometry check.
+
+- [ ] **Bug: Modern theme on a phone: a channel folder and the Downloads folder render wider than the
+  screen** _(Dean, 2026-09-28)_ (Dean's iPhone screenshots). The card grid shows two columns with the
+  right one cut off at the screen edge (durations read "21:0", "4:4"), a stray sliver of another card
+  (its "hours" text, a duration and progress bar) peeks in at the top right beside the header, and the
+  filter chip row is clipped under the sort button. Modern ONLY (Dean confirmed Flat is fine). Not
+  reproduced on the seeded fixture (430x932, Modern on: one 398px column, scrollWidth 430), so the
+  trigger is in the real data's shape (real view counts, channel avatars on cards, 2189 items, long
+  titles / channel names). First step: measure on Dean's data shape (which element is wider than the
+  viewport, and whether the 480px media query flips because the layout viewport grew), then a geometry
+  check that no Modern phone view has horizontal overflow.
+
+- [x] **HIGHEST PRIORITY (2 of 2). Bug: a very thin white border around the whole screen in fullscreen, in
+  every mode** (Dean, 2026-09-26: "in full screen, in all modes, I see a very thin white border around the
+  entire screen. It doesn't appear in the screenshots, but it totally appears for our faux overlay.").
+  Visible on the device, absent from screenshots, and it shows on the FAUX fullscreen overlay. First
+  questions: a 1 px edge the overlay does not cover (a sub-pixel inset, a rounding of 100vw / 100dvh vs
+  the visual viewport, the safe-area insets), the body or html background painting through at the edge,
+  or an outline / box-shadow on the overlay; why a screenshot misses it (a compositor-only edge, or the
+  screenshot's own crop). Measure the overlay's rect against the viewport on the device first.
+
+- [x] **Audit: TOCTOU / FOUC across the app** - SHIPPED in **v1.339.0** (see Shipped; residuals tech-debt #287) (Dean, 2026-09-25: "I'm noticing in um, the music player,
+  like I'll see the thumbnails all kind of loading somewhat individually. It just feels like odd. And
+  then there's like some slight page shifting. I just want an overall audit of all the potential places.
+  In some places we've solved it and it's pretty good. And here, maybe not"). An overall audit: every
+  surface where images pop in one by one, content shifts the layout, or a check-then-act races an await;
+  list where it is already solved and where it is not, then fix per surface.
+
+- [x] **Bug: the Notify button shifts the row when it toggles** - SHIPPED v1.340.0 (see Shipped) (Dean, 2026-09-26: "notify button shifts
+  unreasonably - should be stable", with two iPhone screenshots of a watch page's channel card). The
+  label flips between "Notify" (bell struck through) and "Notifying" (bell), so the button changes width
+  and "Pin channel" beside it jumps sideways on every tap. First questions when picked up: reserve the
+  wider label's width (the button sized to "Notifying" in both states) or a fixed-width button; check
+  every era/theme and the phone and desktop rows (rows wrap, buttons never shrink - the measure-UI norm),
+  and any other toggle in the same card (Subscribe / Subscribed) with the same shape.
+
+### Features
+
+- [ ] **Real battery level in the pocket skins' status bar** (Dean, 2026-09-24: "if it's possible for
+  a PWA or a web app to query the device for battery and show that battery instead of just an
+  arbitrary 80%"; deferred the same night: "I don't want to make this more complex right now").
+  Shape: where `navigator.getBattery()` exists (Chromium: desktop Chrome / Edge, Android) the
+  Click / Seattle / tray / pop-out battery shows the real level and a charging mark, live on
+  levelchange / chargingchange, one shared reader, listeners removed on every teardown; everywhere
+  else the static battery stays exactly as today. Limit: iPhone (every iOS browser is WebKit) and
+  Firefox do not implement the Battery Status API, so Dean's iPhone would keep the static look.
+
+- [ ] **Lock-to-audio, phase 2** (found in the retired memory, idea-lock-to-audio-handoff.md): the PWA hands
+  a playing VIDEO over to audio / listen mode on screen lock or an app switch, and resumes the video position
+  on reopen. Phase 1 (the timing log) shipped in v1.319.0; tracker #251 waits on Dean's iPhone numbers.
+
+- [ ] **Up-next and discovery sequel** (retired memory, v1.79 record): a channel-aware up-next engine, search
+  autocomplete, SponsorBlock.
+
+- [ ] **Streaming tiers 1b / 2 / 3** (retired memory, v1.111 record): Tier 1b faststart for the EXISTING
+  library (v1.111 did new downloads only), Tier 2 a data-saver downscale, Tier 3 adaptive HLS.
+
+- [ ] **Critter rotation persistence, redesigned** (retired memory, v1.194 record): against visualViewport /
+  orientationchange.
+
+- [ ] **A mobile theatre behaviour for all media** (retired memory, v1.198 record; "theatre-on-mobile = Dean").
+
+- [ ] **Idea: lock the hold-to-speed-up by dragging down** (Dean, 2026-09-26: "hold to speed up exists, I'd
+  like a hold to speed up lock option by dragging down. No need to do now please just add to roadmap").
+  Today a press-and-hold on the picture plays at 2x until the finger lifts (player.js hold-to-2x:
+  `HOLD_MS` 500, cancelled by a drag past `MOVE_TOL` 16px). The ask: while holding, drag DOWN to LOCK
+  the speed so it stays after the finger lifts. First questions when picked up (ours, not his words):
+  the lock's visible state and how to release it (a tap on a speed pill? holding again?); whether it
+  applies in faux fullscreen and inline alike; that the drag-down does not fight the drag-cancel, the
+  swipe-back (v1.337: off in fullscreen) or a vertical page scroll inline.
 
 - [ ] **VR / 360 video: look around inside 360 and 180 MP4s** (Dean, 2026-09-27: "Can we add support for
   vr enabled mp4s?"; scope from his answers: the phone and desktop watch page, drag or tilt to look
@@ -148,6 +161,49 @@
   backfill pass or a manual pick (the file-name rule works at once); (4) not verified yet: the shader's
   left/right sense, which needs one rendered frame of a labelled panorama. Out of scope: headset WebXR,
   cardboard, fisheye and cubemap files (YouTube's EAC), Roku / TV / thumbnails (they stay flat).
+
+- [ ] **Watch later: a living, saved list** _(Dean, 2026-09-28)_ (Dean: "Really high value. 'Watch
+  later' list. Basically a living queue. Maybe I just treat queue this way?"). Recommendation recorded:
+  keep it SEPARATE from the play queue (the queue is a transient play order an album replaces and
+  playback consumes; Watch later is a server-side list that follows you across devices and loses an item
+  when you finish it); "Play all" feeds it into the queue. Open question: how it relates to the existing
+  Pin feature.
+
+- [ ] **Suggestive delete: FileTube suggests what to clear, you confirm** _(Dean, 2026-09-28)_ (Dean:
+  "predictive/suggestive delete"; his pick of the outcome: "Suggest what to clear"). FileTube proposes
+  items worth deleting (watched to the end, old subscription downloads, big files never opened) and
+  NOTHING is deleted without the user's tap; deletes go through Trash like every other delete. Not auto-
+  clean rules and not a disk-space alarm (both considered, not picked). Order (Dean): after the v1.341.1
+  bugs and the #289 cleanup, alongside Watch later. A delete feature: the full gate, never slimmed, and the
+  Adversary briefed to destroy data (a suggestion must never widen into a delete of an unshown item).
+
+- [x] **UI professionalism pass: an audit, a component layer, guardrails that hold** - SHIPPED v1.341.0 (see Shipped) (Dean, 2026-09-27:
+  "Something about the full UI feels 'amateurish' ... flimsy and not premium ... make sure our design
+  system doesn't allow for anything imperfect when tweaking in the future"; plus native interactions:
+  "If I hold the screen to have it fast forward ... I see an iOS text magnifying glass ... It shouldn't
+  be so."). Audit and ranking across EVERY surface; candidate directions side by side before a north
+  star; then primitives + hard-fail guardrails (pre-push + CI, shrink-only exceptions), then per-surface
+  sweeps. Plan 2026-09-27-ui-professionalism-pass.
+
+- [x] **Share for non-YouTube downloads** (SHIPPED v1.337.0; Dean, 2026-09-25: "I want us to make it so that we can share
+  content that is not YouTube downloads. So for example, I'm downloading some things supported by YTDLP,
+  like Facebook and Reddit ... it's watching them as like a 95% first class experience ... There's no
+  share button ... a share button that basically just shares the logged URL of whatever it is that we
+  captured. I'm not really asking for anything else"). Scope: a Share button on yt-dlp downloads from
+  any site, sharing the source URL recorded at download time. Nothing else.
+
+### Chores
+
+- [ ] **ntfy.sh notifications for the agent** (retired memory, followup-desktop-theatre-ambient-wave.md): when
+  Claude hits a core question mid-run, notify Dean through ntfy.sh; also on releases. Deferred by Dean;
+  tooling, not product.
+
+- [ ] **Overlay lint nit** (retired memory, v1.310 record): add `overflow: overlay` to the
+  overlay-containment lint's scroll match, with a fixture.
+
+- [ ] **Restructure the whole roadmap by type** _(Dean, 2026-09-28)_: the Planned section is now sorted
+  Bugs / Features / Chores; later, bring the older entries (Resolved, and how Shipped entries are
+  labelled) into the same Bugs / Features / Chores shape.
 
 ## Resolved
 
