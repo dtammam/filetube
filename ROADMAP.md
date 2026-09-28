@@ -4,22 +4,6 @@
 
 ### Bugs
 
-- [ ] **Bug: the Click Original skin shows emoji in colour where everything else is black and white**
-  _(Dean, 2026-09-28)_: the Original is a monochrome skin, but emoji glyphs (colour emoji fonts ignore
-  `color`) render in full colour inside it. Fix inside the Original's scope: a monochrome emoji
-  presentation (text presentation selector / a monochrome emoji font) or a grayscale filter on emoji
-  runs only, never on the whole surface (LESSONS 7: filters over playing media). Check every place the
-  Original draws text that can hold an emoji (menus, song and chapter titles, the status bar).
-
-- [ ] **Bug: a corrected chapter start plays at the right moment on desktop but off on mobile** _(Dean,
-  2026-09-28)_: on a chaptered Music album, a start fixed in the time editor is perfect on desktop; on the
-  phone the list shows the same saved time, yet playback starts off. The value is saved (both show it),
-  so the gap is in how the phone PLAYS it: suspects the seek on a phone (iOS rounds or snaps to a
-  keyframe / seekable range until the media is ready, a MediaSession or background-audio path, the
-  listen-mode `chapterStartSec` offset), not the stored time. First: measure the requested start vs the
-  element's `currentTime` right after the seek on both devices, same track and chapter (the
-  `?debugLifecycle=1` log is the phone-side instrument), then fix the path whose number differs.
-
 - [ ] **HIGHEST PRIORITY (1 of 2). Bug: the fullscreen video goes BLACK after a pause / resume, pause /
   resume** (Dean, 2026-09-26: "a recent regression where if I'm watching a video in full screen, there's
   some way in which after I pause or resume, pause and resume again, the screen of the video goes black.
@@ -89,6 +73,34 @@
   than the screen (its fit-to-width, the v1.24.6 subscriptions-zoom class), which headless Chromium does
   not emulate. NEXT: one reading on Dean's phone in that folder (innerWidth, documentElement.clientWidth,
   and the widest element), then fix the element that overflows at load.
+
+- [ ] **Bug: the Click Original skin shows emoji in colour where everything else is black and white**
+  _(Dean, 2026-09-28)_: the Original is a monochrome skin, but emoji glyphs (colour emoji fonts ignore
+  `color`) render in full colour inside it. Fix inside the Original's scope: a monochrome emoji
+  presentation (text presentation selector / a monochrome emoji font) or a grayscale filter on emoji
+  runs only, never on the whole surface (LESSONS 7: filters over playing media). Check every place the
+  Original draws text that can hold an emoji (menus, song and chapter titles, the status bar).
+
+- [ ] **Bug: a corrected chapter start plays at the right moment on desktop but off on mobile** _(Dean,
+  2026-09-28)_: on a chaptered Music album, a start fixed in the time editor is perfect on desktop; on the
+  phone the list shows the same saved time, yet playback starts off. The value is saved (both show it),
+  so the gap is in how the phone PLAYS it: suspects the seek on a phone (iOS rounds or snaps to a
+  keyframe / seekable range until the media is ready, a MediaSession or background-audio path, the
+  listen-mode `chapterStartSec` offset), not the stored time. First: measure the requested start vs the
+  element's `currentTime` right after the seek on both devices, same track and chapter (the
+  `?debugLifecycle=1` log is the phone-side instrument), then fix the path whose number differs.
+
+- [ ] **Bug: after rotating back to portrait the page bumps up and down (deterministic)** _(Dean,
+  2026-09-28, screen recording
+  `~/.claude/uploads/ef864c0d-24a7-4879-a566-0754c2cf820a/a05ca679-ScreenRecording_09-28-2026_18-17-56_1.mov`)_.
+  Break the recording down frame by frame (which surface, how many px, how many frames after the
+  rotation settles), then reproduce with `Emulation.setDeviceMetricsOverride` rotation in the geometry
+  G4 sequences (the Pocket rotation F23 class) and fix the element whose top moves.
+
+- [ ] **Bug: sharing a Bandcamp ALBUM link downloads only the first song** _(Dean, 2026-09-28)_. An album
+  URL should download every track (a yt-dlp playlist), like a YouTube playlist does. Check the one-off
+  download path's playlist flags (`--no-playlist` or a first-item pick) for non-YouTube sites, and what
+  the Share target passes; then the album should land as one album (tags) in Music.
 
 - [x] **HIGHEST PRIORITY (2 of 2). Bug: a very thin white border around the whole screen in fullscreen, in
   every mode** (Dean, 2026-09-26: "in full screen, in all modes, I see a very thin white border around the
@@ -212,7 +224,9 @@
   `test/unit/ui-lint.test.js`'s MUTATION test sets NODE_PATH to `<repo>/node_modules`, so it fails in a
   git worktree (no node_modules of its own); resolve it by walking up, as the hooks do. (4) Gate r1
   notes: a test for keepPlace on `rerenderRow` (audition Play/Stop) and for its disabled-button guard, a
-  test for run.js removing shots after an unclean capture, a `title` on an ellipsised pinned name.
+  test for run.js removing shots after an unclean capture, a `title` on an ellipsised pinned name. (5) v1.341.2 gate notes: the -5 gap test should also assert `--scroll-lock-gap` stays unset (a
+  bare `> 0` guard removal survives), and `.bottom-nav` needs `right: var(--scroll-lock-gap, 0px)` (its
+  tabs spread ~6px under a lock in a narrow desktop window, pre-existing, cosmetic).
 
 - [ ] **ntfy.sh notifications for the agent** (retired memory, followup-desktop-theatre-ambient-wave.md): when
   Claude hits a core question mid-run, notify Dean through ntfy.sh; also on releases. Deferred by Dean;
