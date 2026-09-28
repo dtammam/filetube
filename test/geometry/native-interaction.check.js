@@ -25,7 +25,15 @@ const os = require('node:os');
 const path = require('node:path');
 
 const CAP = path.resolve(__dirname, '..', '..', 'tools', 'capture');
-const { chromium } = require(path.join(CAP, 'node_modules', 'playwright'));
+// Resolved the way test/visual/capture.js resolves it (#227): this checkout's tools/capture
+// first, then the same path in every ancestor, so a worktree uses the main checkout's install.
+const { chromium } = (() => {
+  for (let dir = path.resolve(__dirname, '..', '..'); ; dir = path.dirname(dir)) {
+    const p = path.join(dir, 'tools', 'capture', 'node_modules', 'playwright');
+    if (fs.existsSync(path.join(p, 'package.json'))) return require(p);
+    if (path.dirname(dir) === dir) throw new Error('Playwright not found; cd tools/capture && npm ci && npx playwright install chromium');
+  }
+})();
 const { newGuardedContext } = require(path.join(CAP, 'request-policy.js'));
 
 const args = process.argv.slice(2);
@@ -59,9 +67,12 @@ const PAGES = [
   ['/subscriptions', '.subs-more', [
     '.subs-more', '.ui-row[data-sub-id]', '#sub-repull-all-btn',
   ], ['#sub-search-input', '#search-input']],
-  ['/setup.html', '.setup-select', [
-    '.setup-subhead', '.setup-check-label', '.md-row',
-  ], ['.setup-select', '#search-input']],
+  // Step 7: sweep S8 / retire R3 moved Settings onto the primitives (.setup-select,
+  // .setup-subhead and .setup-check-label no longer render), so the page is sampled on the
+  // master-detail menu and the ui fields it renders now.
+  ['/setup.html', '.md-row', [
+    '.md-row', '.md-group-title', '.ui-row__title',
+  ], ['.ui-select__native', '.ui-field__input', '#search-input']],
 ];
 
 async function login(browser, record) {

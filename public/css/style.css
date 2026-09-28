@@ -2403,11 +2403,11 @@ select {
   margin-bottom: 0;
 }
 
-/* v1.76: the shared gesture layer's own two classes, applied by common.js's
-   `wireReorderable` to every row it wires (`.reorder-row`) and to <body> for
-   the duration of a drag (`.reorder-dragging`). Everything visual BEYOND this
-   -- which row dims, where the drop line is drawn -- stays in each surface's
-   own class family, so no shipped rule changes meaning.
+/* v1.76: the shared gesture layer's own two classes. Since step 7 of the UI pass the class it
+   stamps on every row it wires is the ui-reorder primitive (ui.css: the grab cursor, the dragged
+   row's dim, the drop line); <body> carries `.reorder-dragging` for the duration of a drag. The
+   old `.reorder-row` user-drag rule went with it: ui.css's D6 base already takes native drag off
+   every link and image (the QA gate C1 WebKit half), and a plain row is not draggable.
 
    The iOS half of the long-press story (the same press that arms a touch drag
    is the gesture iOS uses for the selection callout / link preview) is the
@@ -2415,20 +2415,8 @@ select {
    `-webkit-touch-callout: none` reaches every row. No scroll-affecting
    property is set here on purpose -- a row must stay scrollable by finger
    until a drag actually arms (common.js's D2). */
-
-/* QA gate C1, the WebKit half: several engines honour `-webkit-user-drag`
-   rather than the `draggable` attribute when deciding whether a link or an
-   image can start a native drag. Without this a WebKit browser can still
-   take the pointer mid-gesture (pointercancel) and leave the reorder dead,
-   which is what the attribute fix alone would have missed. */
-.reorder-row,
-.reorder-row a,
-.reorder-row img {
-  -webkit-user-drag: none;
-}
-
 .reorder-dragging,
-.reorder-dragging .reorder-row {
+.reorder-dragging .ui-reorder {
   cursor: grabbing;
 }
 
@@ -6706,11 +6694,16 @@ body:not([data-view="watch"]) #watch-loop-row { display: none; }
    This block only adds the grab-cursor affordance, scoped to THIS section so
    it never leaks onto the folder sidebar's own rows above it (those are
    wired independently by main.js/watch.js/setup.js and keep their existing,
-   unstyled cursor). v1.76: keyed on `.reorder-row` (stamped by
-   wireReorderable) rather than the retired `draggable="true"` attribute --
-   keyed on the attribute this rule had gone inert and pinned rows silently
-   lost their grab cursor. */
-#sidebar-pinned-section .sidebar-item.reorder-row {
+   unstyled cursor). v1.76: keyed on the class wireReorderable stamps rather
+   than the retired `draggable="true"` attribute -- keyed on the attribute this
+   rule had gone inert and pinned rows silently lost their grab cursor. Step 7:
+   that class is the ui-reorder primitive, whose own grab cursor would reach the
+   folder rows too, so a sidebar row keeps its link cursor and only the pinned
+   section's rows take the grab. */
+.sidebar-item.ui-reorder {
+  cursor: auto;
+}
+#sidebar-pinned-section .sidebar-item.ui-reorder {
   cursor: grab;
 }
 

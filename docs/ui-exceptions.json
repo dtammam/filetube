@@ -3153,12 +3153,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.subscribe-modal-identity|border",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.theme-card|border",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -5225,30 +5219,6 @@
         "added": "2026-09-28"
       },
       {
-        "key": "public/css/style.css|.btn-primary:hover|background-color",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.btn-primary|background-color",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.btn-primary|border-color",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.btn.liked|color",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
         "key": "public/css/style.css|.btn:hover|background-color",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
@@ -5550,24 +5520,6 @@
       },
       {
         "key": "public/css/style.css|.critter-pool-name|font-size",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.duration-badge|background-color",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.duration-badge|border-radius",
-        "count": 1,
-        "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
-        "added": "2026-09-28"
-      },
-      {
-        "key": "public/css/style.css|.duration-badge|font-size",
         "count": 1,
         "reason": "legacy token with no exact role (step 7, D10.4 amendment): same pixels; retire when the surface is next touched",
         "added": "2026-09-28"
@@ -7532,7 +7484,7 @@
       },
       {
         "key": ".btn",
-        "count": 26,
+        "count": 9,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -7580,18 +7532,6 @@
       },
       {
         "key": ".chapters-menu-share",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".duration-badge",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".expand-description-btn",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -7778,7 +7718,7 @@
       },
       {
         "key": ".pc-btn",
-        "count": 14,
+        "count": 13,
         "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },
@@ -7825,18 +7765,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".related-thumb",
-        "count": 2,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".reorder-row",
-        "count": 3,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".row",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -7873,12 +7801,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": ".sidebar-item",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
         "key": ".speed-badge",
         "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
@@ -7905,12 +7827,6 @@
       {
         "key": ".speed-sheet-backdrop",
         "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": ".subscribe-modal-checkbox-row",
-        "count": 2,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
@@ -7976,18 +7892,6 @@
       },
       {
         "key": "public/css/style.css|:where(button.mnp-sub, button.mms-sub, button.ip-artist, button.music-drill-artist)",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|[role=\"button\"]",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|button",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -8090,24 +7994,6 @@
       },
       {
         "key": "public/js/common.js|createElement(button)|backBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/common.js|createElement(button)|cancelBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/common.js|createElement(button)|closeBtn",
-        "count": 1,
-        "reason": "baseline: debt at step 4, before the sweeps",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/js/common.js|createElement(button)|confirmBtn",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
@@ -8687,13 +8573,13 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.ptr-indicator|z-index",
+        "key": "public/css/style.css|.resume-overlay|z-index",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.resume-overlay|z-index",
+        "key": "public/css/style.css|.sidebar|z-index",
         "count": 1,
         "reason": "baseline: debt at step 4, before the sweeps",
         "added": "2026-09-27"

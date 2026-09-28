@@ -232,7 +232,7 @@ test('renderPinnedSidebar: renders a pin entry with a generated avatar glyph and
   // v1.76: `reorder-row` is stamped by the shared gesture layer on every row
   // it wires, so its presence here is also the proof that this pin row IS
   // wired for drag-to-reorder.
-  assert.deepEqual(link.className.split(' ').sort(), ['reorder-row', 'sidebar-item']);
+  assert.deepEqual(link.className.split(' ').sort(), ['sidebar-item', 'ui-reorder']); // step 7: the ui-reorder primitive
   assert.strictEqual(link.href, '/?root=' + encodeURIComponent(PIN.channelDir));
   const avatar = link.children.find((c) => c.tagName === 'SPAN');
   assert.ok(avatar, 'expected an avatar <span> child');

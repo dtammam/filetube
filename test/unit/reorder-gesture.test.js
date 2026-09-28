@@ -786,13 +786,13 @@ test('wireReorderable: an empty container, a missing onReorder and a missing row
   // Rows present, no onReorder: must wire NOTHING rather than throw on drag.
   const f = buildList();
   assert.doesNotThrow(() => wireReorderable(f.container, { rowSelector: '.row', measure: f.measure }));
-  assert.equal(f.rows[0].classList.contains('reorder-row'), false, 'a surface with no handler is not wired at all');
+  assert.equal(f.rows[0].classList.contains('ui-reorder'), false, 'a surface with no handler is not wired at all');
   assert.doesNotThrow(() => mouseDrag(f, 0, 105), 'and dragging it is inert');
 
   // Rows present, no rowSelector.
   const g = buildList();
   assert.doesNotThrow(() => wireReorderable(g.container, { onReorder: () => {}, measure: g.measure }));
-  assert.equal(g.rows[0].classList.contains('reorder-row'), false);
+  assert.equal(g.rows[0].classList.contains('ui-reorder'), false);
 });
 
 // ---- keyboard parity (the up/down buttons this wave deletes) ---------------

@@ -85,7 +85,7 @@ test('the fixture renders one wired row per pin (a broken fixture would pass eve
     assert.equal(rows.length, 4);
     assert.deepEqual(rows.map((r) => r.getAttribute('data-pin-id')), ['c1', 'c2', 'b1', 'b2']);
     for (const row of rows) {
-      assert.ok(row.classList.contains('reorder-row'), 'stamped by the shared gesture layer');
+      assert.ok(row.classList.contains('ui-reorder'), 'stamped by the shared gesture layer (the ui-reorder primitive, step 7)');
       // QA gate C1: explicitly "false", not absent. These rows ARE <a>
       // elements, and an <a href> with no draggable attribute is draggable by
       // UA default - so "absent" would leave the browser free to start a

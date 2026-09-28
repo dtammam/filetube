@@ -2571,7 +2571,10 @@ async function persistSidebarMoveByPath(move, fetchImpl) {
 // swapped the gesture layer, never the ordering semantics.
 
 const REORDER_DEFAULT_CLASSES = { dragging: 'dragging', before: 'drag-over-before', after: 'drag-over-after' };
-const REORDER_ROW_CLASS = 'reorder-row';
+// Step 7 (UI pass): every wired row wears the ui-reorder primitive (ui.css: the grab cursor, the
+// dragged row's dim, the drop line) - the Settings lists put it in their markup, the sidebars
+// get it here. It was the bespoke `.reorder-row` hook.
+const REORDER_ROW_CLASS = 'ui-reorder';
 const REORDER_BODY_CLASS = 'reorder-dragging';
 // Mouse/pen: a few px of travel separates a drag from a click, so a click on
 // a sidebar link still navigates. Touch: a long press arms instead, and more
@@ -14266,24 +14269,6 @@ function showToast(msg, action, opts) {
   return U.toast(msg == null ? '' : String(msg), o);
 }
 
-// v1.17.0 FR-3(b): pure arm/disarm reducer for the home/library card
-// trash-can affordance (main.js's delegated #video-grid click listener). A
-// first tap on an IDLE card's delete control ARMS it (no network call --
-// just an inline "Sure?" re-confirm); a second tap on the SAME already-armed
-// control is what actually deletes; any 'disarm' action (a ~3s timeout, a
-// document scroll, or interacting with a different card/anywhere else)
-// resets to idle without ever deleting. No DOM/timers here on purpose -- the
-// DOM layer owns those and only fires `DELETE /api/videos/:id` when
-// `deleted` comes back `true`. Directly `node:test`-covered.
-function nextArmState(current, action) {
-  if (action === 'disarm') return { state: 'idle', deleted: false };
-  if (action === 'tap') {
-    if (current === 'armed') return { state: 'idle', deleted: true };
-    return { state: 'armed', deleted: false };
-  }
-  return { state: current === 'armed' ? 'armed' : 'idle', deleted: false };
-}
-
 // === v1.21.0 FR-8 (T7): app-wide active-download status chip ===============
 // See docs/exec-plans/completed/2026-07-08-v1.21-polish-release.md ("FR-8 --
 // download retry + status chip") and docs/references/ui-research-2026-07.md §5.
@@ -16766,7 +16751,7 @@ if (typeof module !== 'undefined' && module.exports) {
     ACTIVE_ENTRY_STALE_MS, isFreshlyActiveEntry, ONEOFF_STATUS_POLL_MAX_MS, nextOneOffPollDelayMs,
     decideOneOffTerminalAction, applyOneOffTerminalAction, triggerLibraryRescanAndRefresh,
     injectOneOffDownloadButtonIfEnabled,
-    showToast, nextArmState, deleteResultToast,
+    showToast, deleteResultToast,
     // UI pass D8.1: the era flourish (fabricated stats) mechanism.
     ERA_FLOURISH_ERAS, eraShowsFabricated, applyEraFlourish, isFabricatedViewCount,
     STILLNESS_MS, installResizeStillness, // UI pass D7: html.no-motion around a rotate / resize
