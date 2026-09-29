@@ -6101,7 +6101,8 @@ html:has(> body.ft-audio-expanded),
   --row-pad-start: var(--inset);
   --row-pad-end: var(--space-4);
 }
-.playlists-sheet-group .ui-row__media > i {
+.playlists-sheet-group .ui-row__media > i,
+.playlists-sheet-group .ui-row__media > .chrome-icon {
   width: var(--icon-md);
   height: var(--icon-md);
   color: var(--ink-2);

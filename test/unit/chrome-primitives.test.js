@@ -153,6 +153,19 @@ test('the playlists sheet is a bottom ui.sheet whose rows are ui-rows, each with
   delete global.resolveFolderGlyphClass;
 });
 
+test('toSheetRow keeps an SVG sprite glyph (the Watch later clock), not only a mask <i>', () => {
+  const { c } = fresh();
+  const doc = dom.window.document;
+  const a = doc.createElement('a');
+  a.className = 'sidebar-item sidebar-item-watchlater';
+  const icon = c.spriteIconEl('schedule', 'chrome-icon', doc);
+  a.appendChild(icon);
+  a.appendChild(doc.createTextNode(' Watch later'));
+  c.toSheetRow(a);
+  assert.strictEqual(a.querySelector(':scope > .ui-row__media > svg.chrome-icon use').getAttribute('href'), '#i-schedule', 'the clock rides the media slot');
+  assert.strictEqual(a.querySelector('.ui-row__title').textContent, 'Watch later');
+});
+
 // ---------------------------------------------------------------- 4. unpin asks first (D4.8)
 test('unpin: a tap opens ui.confirm; Cancel, Esc, the scrim and Close never DELETE; only OK does - once', async () => {
   const { c } = fresh();
