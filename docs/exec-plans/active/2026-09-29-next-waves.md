@@ -208,3 +208,4 @@ rotation.
   scrollbar geometry check): stay logged (Dean: not folded in).
 - Onboarding / SMB paths, the fullscreen black, chapter timing on mobile, the loop-with-Loop-off bug:
   roadmap entries, not these waves.
+Gate: APPROVED r1 @0c56b81376eb239357539aa3ed8231560ddfb423 — adversary
