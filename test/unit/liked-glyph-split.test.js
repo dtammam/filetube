@@ -45,7 +45,7 @@ test('every static Liked nav item wears the inline "liked" chrome-icon (not the 
   // v1.87.1 (Dean): the bottom-nav glyphs are inline <svg> (chrome-icon) now,
   // not `.icon-*` masks (a mask decode-lags -> pop-in on a mobile cold start).
   // The invariant this test holds is unchanged: the Liked item wears the LIKED
-  // glyph (star.svg via chromeIconMarkup('liked')), distinct from the Stats link
+  // glyph (favorite.svg, the heart, via chromeIconMarkup('liked')), distinct from the Stats link
   // which still uses `.icon-star`. Now bound to the exact inline-svg markup.
   const common = require('../../public/js/common.js');
   // Sweep S1 (DELIBERATE lock update): the tab's glyph is the ui.icon markup (F49).
@@ -97,4 +97,27 @@ test('v1.157: the Stats glyph is the inline chrome-icon star (no .icon-star mask
     }
   }
   assert.ok(statsSvgSites >= 2, `expected the inline Stats star on multiple shells, found ${statsSvgSites}`);
+});
+
+// v1.344.1 (Dean: "use the heart ... I want it unified"): every Liked surface is the heart the
+// account menu already used - the runtime sidebar/sheet mask, the sprite map, every bottom bar.
+test('Liked is the heart on every surface (masks in all three sets, sprite map, each bottom bar)', () => {
+  const css = fs.readFileSync(path.join(PUB, 'css', 'style.css'), 'utf8');
+  for (const [pre, dir] of [['', ''], ['[data-icons="rounded"] ', 'rounded/'], ['[data-icons="filled"] ', 'filled/']]) {
+    assert.ok(css.includes(`${pre}.icon-liked { -webkit-mask-image: url(/assets/icons/${dir}favorite.svg);`), `icon-liked wears favorite.svg (${dir || 'outlined'})`);
+    assert.ok(fs.existsSync(path.join(PUB, 'assets', 'icons', dir, 'favorite.svg')));
+  }
+  assert.match(fs.readFileSync(path.join(PUB, 'js', 'common.js'), 'utf8'), /liked: 'favorite'/);
+  const shells = [];
+  for (const root of [PUB, path.join(PUB, '..', 'lib', 'ytdlp', 'views')]) {
+    for (const f of fs.readdirSync(root)) if (f.endsWith('.html')) shells.push(path.join(root, f));
+  }
+  let bars = 0;
+  for (const f of shells) {
+    const m = /data-nav="liked"[^>]*>\s*<span class="ui-btn__icon"><svg[^>]*><use href="(#[^"]+)"/.exec(fs.readFileSync(f, 'utf8'));
+    if (!m) continue;
+    bars++;
+    assert.strictEqual(m[1], '#i-favorite', `${path.basename(f)} bottom-bar Liked is the heart`);
+  }
+  assert.ok(bars >= 11, `found the bottom bars (${bars})`);
 });

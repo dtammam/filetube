@@ -3033,8 +3033,8 @@ select {
    should be out of a set of four", from when an emoji set was the fourth; it
    was retired in the UI pass, D2.6). Filenames track the upstream Material glyph name, not the class
    name, matching the established convention (.icon-arrow-down ships as keyboard_arrow_down.svg).
-   `.icon-favorites` and `.icon-liked` deliberately share star.svg: different
-   intents, same picture, so the Liked lane can change later without silently
+   `.icon-favorites` wears star.svg; `.icon-liked` wears favorite.svg (the heart, v1.344.1,
+   matching the You menu) - separate classes so Liked can change without silently
    changing every folder that chose Favorites. */
 .icon-school { -webkit-mask-image: url(/assets/icons/school.svg); mask-image: url(/assets/icons/school.svg); }
 .icon-movies { -webkit-mask-image: url(/assets/icons/movie.svg); mask-image: url(/assets/icons/movie.svg); }
@@ -3058,7 +3058,7 @@ select {
 /* v1.77 (intake ruling 3): the Liked lane's own glyph, split off .icon-star so
    it can carry a full four-set treatment. See the deleted-comment note at the
    .icon-star rule below. */
-.icon-liked { -webkit-mask-image: url(/assets/icons/star.svg); mask-image: url(/assets/icons/star.svg); }
+.icon-liked { -webkit-mask-image: url(/assets/icons/favorite.svg); mask-image: url(/assets/icons/favorite.svg); }
 
 /* Paint the icon fill only where CSS masks are supported, so a browser without
    mask support (or a failed/404 mask) renders nothing instead of a solid
@@ -3123,7 +3123,7 @@ select {
 [data-icons="rounded"] .icon-archive { -webkit-mask-image: url(/assets/icons/rounded/archive.svg); mask-image: url(/assets/icons/rounded/archive.svg); }
 [data-icons="rounded"] .icon-radio { -webkit-mask-image: url(/assets/icons/rounded/radio.svg); mask-image: url(/assets/icons/rounded/radio.svg); }
 [data-icons="rounded"] .icon-favorites { -webkit-mask-image: url(/assets/icons/rounded/star.svg); mask-image: url(/assets/icons/rounded/star.svg); }
-[data-icons="rounded"] .icon-liked { -webkit-mask-image: url(/assets/icons/rounded/star.svg); mask-image: url(/assets/icons/rounded/star.svg); }
+[data-icons="rounded"] .icon-liked { -webkit-mask-image: url(/assets/icons/rounded/favorite.svg); mask-image: url(/assets/icons/rounded/favorite.svg); }
 
 /* Filled set: Material Icons Classic (2014) - see public/assets/icons/README.md. */
 [data-icons="filled"] .icon-home { -webkit-mask-image: url(/assets/icons/filled/home.svg); mask-image: url(/assets/icons/filled/home.svg); }
@@ -3156,7 +3156,7 @@ select {
 [data-icons="filled"] .icon-archive { -webkit-mask-image: url(/assets/icons/filled/archive.svg); mask-image: url(/assets/icons/filled/archive.svg); }
 [data-icons="filled"] .icon-radio { -webkit-mask-image: url(/assets/icons/filled/radio.svg); mask-image: url(/assets/icons/filled/radio.svg); }
 [data-icons="filled"] .icon-favorites { -webkit-mask-image: url(/assets/icons/filled/star.svg); mask-image: url(/assets/icons/filled/star.svg); }
-[data-icons="filled"] .icon-liked { -webkit-mask-image: url(/assets/icons/filled/star.svg); mask-image: url(/assets/icons/filled/star.svg); }
+[data-icons="filled"] .icon-liked { -webkit-mask-image: url(/assets/icons/filled/favorite.svg); mask-image: url(/assets/icons/filled/favorite.svg); }
 
 /* .icon-star is deliberately absent from every block above - but NOT for the
    reason this comment gave until v1.77 ("the gold ★ rating renders identically

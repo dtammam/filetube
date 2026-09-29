@@ -59,10 +59,9 @@ const GLYPH_POOL = [
   { id: 'cars', name: 'Cars', asset: 'directions_car' },
   { id: 'archive', name: 'Archive', asset: 'archive' },
   { id: 'radio', name: 'Radio', asset: 'radio' },
-  // Shares `star.svg` with `.icon-liked` below. Two classes, one asset: they
-  // are different intents that happen to want the same picture, and keeping
-  // them separate means the Liked lane's glyph can change later without
-  // silently changing every folder that chose "Favorites".
+  // `.icon-liked` (the heart since v1.344.1) is a separate class, so the Liked
+  // lane's glyph can change without silently changing every folder that chose
+  // "Favorites".
   { id: 'favorites', name: 'Favorites', asset: 'star' },
 ];
 
@@ -78,7 +77,7 @@ const DEFAULT_FOLDER_GLYPH = 'folder';
 // `.icon-star` was never what rendered the gold rating stars - those are
 // literal textContent characters in `.card-rating` and `#star-rating-control`.
 // style.css claimed otherwise in three places until v1.77 corrected them.
-const LIKED_GLYPH = { id: 'liked', name: 'Liked', asset: 'star' };
+const LIKED_GLYPH = { id: 'liked', name: 'Liked', asset: 'favorite' };
 
 // The one place a class name is derived from an id. Everything that renders a
 // glyph goes through this, so the `icon-` prefix exists in exactly one place.
