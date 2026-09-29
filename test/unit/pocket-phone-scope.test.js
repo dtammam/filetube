@@ -20,7 +20,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
-const { readStyleCss, cssRules, POCKET_SCOPE, unscopePocket } = require('../helpers/stylesheets.js');
+const { readStyleCss, cssRules, POCKET_SCOPE, GRID_SCOPE, unscopePocket } = require('../helpers/stylesheets.js');
 
 const skinsPath = require.resolve('../../public/js/music-skins.js');
 const SK = require(skinsPath);
@@ -122,7 +122,7 @@ test('D7 CSS: the takeover block - every selector of every rule carries the devi
   assert.ok(block.length > 200, 'precondition: the block holds the takeover (' + block.length + ' rules)');
   const bare = [];
   for (const r of block) {
-    for (const part of r.sel.split(/,(?![^(]*\))/)) if (part.trim().indexOf(POCKET_SCOPE + ' ') !== 0) bare.push(part.trim());
+    for (const part of r.sel.split(/,(?![^(]*\))/)) if (part.trim().indexOf(POCKET_SCOPE + ' ') !== 0 && part.trim().indexOf(GRID_SCOPE + ' ') !== 0) bare.push(part.trim());
   }
   assert.deepStrictEqual(bare, [], 'every selector is scoped (an unscoped one would apply on a desktop or an iPad)');
 });

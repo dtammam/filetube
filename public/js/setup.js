@@ -626,23 +626,33 @@ const MUSIC_SKIN_BLURB = {
   'ipod-raspberry': 'Deep anodized raspberry, a white wheel and a pink center.',
   'ipod-original': 'The first one: a button ring, a grey screen, a wheel that turns.',
 };
+// v1.344 (W5, Dean): the picker is a PREVIEW GRID - every skin/colorway is a small static thumbnail
+// (pure CSS on the colorway's own role tokens: no player, no image request), grouped by the registry's
+// families; a tap applies it. Every option is kept (the blurb rides on the tile's accessible name).
+function skinSwatchClasses(s) {
+  return 'skin-swatch mms-' + s.id + (s.base ? ' mms-' + s.base : '') + (s.look ? ' mms-look-' + s.look : '');
+}
 function renderMusicSkinPicker() {
   const container = document.getElementById('music-skin-picker');
   if (!container || !controller) return; // same premature-call guard as renderIconPicker
   const skins = (typeof window !== 'undefined') && window.FileTubeMusicSkins;
   if (!skins || typeof skins.activeSkinId !== 'function') { container.innerHTML = ''; return; }
   const active = skins.activeSkinId();
-  container.innerHTML = (skins.IDS || []).map((id) => {
-    const s = skins.skinById(id);
-    return choiceRowHtml({
-      on: id === active, attrs: `data-skin-pref="${id}"`,
-      title: s && s.label ? s.label : id, meta: MUSIC_SKIN_BLURB[id] || '',
-    });
+  container.innerHTML = skins.skinFamilies().map((fam) => {
+    const tiles = fam.ids.map((id) => {
+      const s = skins.skinById(id);
+      const name = fam.ids.length > 1 ? skins.colorwayLabel(id) : fam.label;
+      const blurb = MUSIC_SKIN_BLURB[id] || '';
+      const on = id === active;
+      return `<button type="button" class="ui-tile skin-tile${on ? ' is-on' : ''}" role="radio" aria-checked="${on ? 'true' : 'false'}" aria-label="${escStickerHtml((s && s.label ? s.label : id) + (blurb ? ': ' + blurb : ''))}" title="${escStickerHtml(blurb)}" data-skin-pref="${id}">`
+        + `<span class="${skinSwatchClasses(s || { id })}" aria-hidden="true"></span><span class="skin-tile-name">${escStickerHtml(name)}</span></button>`;
+    }).join('');
+    return `<div class="skin-family" role="group" aria-label="${escStickerHtml(fam.label)}"><h4 class="skin-family-name">${escStickerHtml(fam.label)}</h4><div class="skin-grid">${tiles}</div></div>`;
   }).join('');
-  container.querySelectorAll('.setup-choice').forEach((btn) => {
+  container.querySelectorAll('.skin-tile').forEach((btn) => {
     btn.addEventListener('click', () => {
       skins.setActiveSkin(btn.dataset.skinPref); // persists ft-music-skin (per-device)
-      renderMusicSkinPicker();                   // re-check the active row
+      renderMusicSkinPicker();                   // re-mark the active tile
     }, { signal: controller.signal });
   });
 }

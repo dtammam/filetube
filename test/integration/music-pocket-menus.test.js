@@ -78,7 +78,7 @@ test('Click: MENU climbs Now Playing -> Main Menu, every Music level renders the
     menu(h);
     assert.ok(inMenu(h), 'MENU from Now Playing climbs into the menu');
     assert.strictEqual(title(h), 'Click', 'status bar = the Main Menu name');
-    assert.deepStrictEqual(labels(h), ['Music', 'Settings', 'Shuffle Songs', 'Now Playing'], 'the device order (no Extras: this harness has no Brick hook)');
+    assert.deepStrictEqual(labels(h), ['Music', 'Extras', 'Settings', 'Shuffle Songs', 'Now Playing'], 'the device order (v1.344: Extras holds Skins here; this harness has no Brick hook, so no Games)');
     assert.strictEqual(cursorLabel(h), 'Music', 'the blue bar starts on the first row');
     select(h); // center = drill in
     assert.strictEqual(title(h), 'Music');

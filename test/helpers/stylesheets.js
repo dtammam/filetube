@@ -68,6 +68,9 @@ const isHoverGated = (at) => /@media(?![^{]*\bnot\b)[^{]*\(\s*hover\s*:\s*hover\
 // pinned. That the scope really sits on every rule of the block (and nothing Pocket is left on a
 // width query) is bound on its own by test/unit/pocket-phone-scope.test.js.
 const POCKET_SCOPE = ':where(html.is-phone, html.mms-popout)';
-const unscopePocket = (css) => String(css).split(POCKET_SCOPE + ' ').join('');
+// v1.344 (W5): the role-token blocks (the palette authority) ALSO reach the Settings skin grid's swatches,
+// so they carry this wider scope; nothing else does (test/unit/pocket-skins-menu.test.js binds that).
+const GRID_SCOPE = ':where(html.is-phone, html.mms-popout, .skin-grid)';
+const unscopePocket = (css) => String(css).split(GRID_SCOPE + ' ').join('').split(POCKET_SCOPE + ' ').join('');
 
-module.exports = { eraBlock, cssRules, isHoverGated, TOKENS_CSS_PATH, UI_CSS_PATH, STYLE_CSS_PATH, readTokensCss, readUiCss, readStyleCss, readAllCss, POCKET_SCOPE, unscopePocket };
+module.exports = { eraBlock, cssRules, isHoverGated, TOKENS_CSS_PATH, UI_CSS_PATH, STYLE_CSS_PATH, readTokensCss, readUiCss, readStyleCss, readAllCss, POCKET_SCOPE, GRID_SCOPE, unscopePocket };

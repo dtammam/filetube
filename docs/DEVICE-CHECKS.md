@@ -8,6 +8,9 @@ the checks.
 
 ## Pocket and the Click skins (Music)
 
+- [ ] v1.344 - Extras > Skins on the Click player: turn the wheel through Click's colours and watch the LCD
+  re-skin; Menu puts your old one back; Select keeps the new one (reload and rotate keep it too). A Cider
+  or Nordic row changes only on Select. Settings > Music skin: the preview grid scrolls smoothly and a tap applies.
 - [ ] v1.332 - Colour fidelity of the colorways against the real devices: Pink (warm-lit photo), Red
   (~7 degrees warmer in a browser), and whether the wheel labels on Red, Gold and Blue read well enough.
 - [ ] v1.332 - Hold MENU: does iOS tick on a still finger (the 600 ms hold)? Android's long-press, if you

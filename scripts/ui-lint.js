@@ -630,9 +630,11 @@ function classifyValue(prop, value, ladder) {
 // keyed on the device class, as a zero-specificity scope on EVERY selector of the block
 // (style.css). At-rule preludes were never part of a key, so the scope that replaced one is not
 // either: the same rules keep the same debt keys (renaming them would read as new debt + paid
-// debt for an unchanged rule). Only this exact scope is dropped.
-const KEY_SCOPE = ':where(html.is-phone, html.mms-popout) ';
-const keySelector = (sel) => String(sel).split(KEY_SCOPE).join('');
+// debt for an unchanged rule). Only these exact scopes are dropped. v1.344 (W5): the colorway role
+// blocks are ALSO scoped to the Settings preview grid (`.skin-grid`) so its static thumbnails read the
+// same tokens; that scope is dropped from the key for the same reason (same rule, same debt).
+const KEY_SCOPES = [':where(html.is-phone, html.mms-popout, .skin-grid) ', ':where(html.is-phone, html.mms-popout) '];
+const keySelector = (sel) => KEY_SCOPES.reduce((acc, sc) => acc.split(sc).join(''), String(sel));
 const ruleKey = (r, prop) => `${r.file}|${keySelector(r.selector)}${prop ? '|' + prop : ''}`;
 const inlineKey = (d) => `${d.file}|${d.origin}|${d.prop}`;
 const inAt = (r, name) => r.at.some((f) => f.name === name || f.name.endsWith('-' + name));

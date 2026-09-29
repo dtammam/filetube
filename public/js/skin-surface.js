@@ -572,6 +572,9 @@
     var getSkinId = o.getSkinId;
     var games = o.games || null; // the view's Brick hook {visible, onTap} - main document only (the engine decides)
     var lighting = o.lighting || null; // the engine's pocket-lighting driver (Settings > Lighting; null = no row)
+    var onPreview = typeof o.onPreview === 'function' ? o.onPreview : null; // Extras > Skins: the engine re-skins the panel live (null id = back to the saved skin)
+    var onSkinChosen = typeof o.onSkinChosen === 'function' ? o.onSkinChosen : null;
+    var previewShown = null;   // the skin id the LCD is previewing right now (null = the saved one)
     var destroyed = false;
     var stack = [];
     var builtFor = null;       // the menu style the stack was built for (a skin pick can change it)
@@ -592,6 +595,24 @@
     // OWN availability rule (ipod-brick.js visible(): the Click wheel skins with a wheel on this
     // surface), and only when the engine handed the hook over (main document only, the sticker
     // row's v1.270 posture). Never an entry that leads to nothing.
+    // v1.344 (W5): Extras > Skins exists wherever the engine can re-skin (main document and pop-out
+    // alike: the setting is the main window's) and this skin carries the Click menus.
+    function skinsVisible() { try { return !!onSkinChosen && (typeof o.skinsAvailable !== 'function' || !!o.skinsAvailable()) && style() === 'click'; } catch (_) { return false; } }
+    // The preview is DERIVED from what is on screen, never held as separate state a path can forget to
+    // clear: the highlighted Skins row (when it may preview) or nothing. Every way out of the level - MENU,
+    // Now Playing, a dock, destroy - reaches render() or destroy(), and both end here with null.
+    function syncPreview() {
+      if (!onPreview) return;
+      var want = null;
+      var pane = (!destroyed && screen === 'menu') ? curPane() : null;
+      if (pane && (pane.node.type === 'skins' || pane.node.type === 'skinFamily') && !trayUp()) {
+        var it = pane.items[pane.cursor];
+        if (it && it.action === 'skin' && it.preview) want = it.skinId;
+      }
+      if (want === previewShown) return;
+      previewShown = want;
+      try { onPreview(want); } catch (_) { /* view best-effort */ }
+    }
     function gamesVisible() {
       if (!games || typeof games.visible !== 'function' || typeof games.onTap !== 'function') return false;
       try { return !!games.visible(); } catch (_) { return false; }
@@ -660,7 +681,7 @@
       // The Main Menu re-derives every draw: its Now Playing row exists only while a track does,
       // and its Extras/Games row only while the game can run here.
       if (pane.node.type === 'main') {
-        pane.items = SK.menuStaticItems(pane.node, { hasCurrent: hasCurrent(), hasGames: gamesVisible(), style: style() }) || [];
+        pane.items = SK.menuStaticItems(pane.node, { hasCurrent: hasCurrent(), hasGames: gamesVisible(), hasSkins: skinsVisible(), style: style() }) || [];
         pane.state = 'ready';
         pane.cursor = Math.max(0, Math.min(pane.items.length - 1, pane.cursor));
         return;
@@ -673,9 +694,20 @@
         pane.cursor = Math.max(0, Math.min(pane.items.length - 1, pane.cursor));
         return;
       }
+      // Extras > Skins re-derives every draw: the check follows the SAVED skin (a pick, or a change from
+      // the sticker or Settings), never a copy.
+      if (pane.node.type === 'skins' || pane.node.type === 'skinFamily') {
+        pane.items = SK.menuSkinItems(pane.node, SK.activeSkinId()) || [];
+        if (pane.state !== 'ready') { // first draw: open on the saved skin, so entering never previews a stranger
+          for (var ci = 0; ci < pane.items.length; ci++) if (pane.items[ci].check) { pane.cursor = ci; break; }
+        }
+        pane.state = 'ready';
+        pane.cursor = Math.max(0, Math.min(pane.items.length - 1, pane.cursor));
+        return;
+      }
       if (pane.state !== 'idle') return;
       // gate r1 (adversary W2): the row only where the driver can light THIS skin - Click.
-      var st = SK.menuStaticItems(pane.node, { hasLighting: !!lighting && style() === 'click', style: style() });
+      var st = SK.menuStaticItems(pane.node, { hasLighting: !!lighting && style() === 'click', hasGames: gamesVisible(), hasSkins: skinsVisible(), style: style() });
       if (st) { pane.items = st; pane.state = 'ready'; return; }
       pane.state = 'loading';
       var tok = ++pane.token;
@@ -884,6 +916,7 @@
         if (old && old.parentNode) old.parentNode.removeChild(old);
         panel.classList.remove('mms-menumode');
         if (np && !panel.classList.contains('mms-listmode')) np.textContent = 'Now Playing';
+        syncPreview();
         return;
       }
       var pane = curPane();
@@ -926,6 +959,7 @@
       }
       applyJump();
       syncSlides();
+      syncPreview();
     }
 
     // ---- the split screen's art (Click): the highlighted item's own image, eased in ----
@@ -1117,6 +1151,7 @@
       pane.cursor = Math.max(0, Math.min(last, i));
       scrollCursorIntoView(pane, false);
       renderList();
+      syncPreview();
       scheduleArt();
     }
     function showNowPlaying() {
@@ -1157,6 +1192,15 @@
           var p2 = curPane();
           if (p2 && p2.node.type === 'lighting' && screen === 'menu') render();
         }, function () { /* the driver's promise never rejects; belt-and-braces */ });
+        return;
+      }
+      if (it.action === 'skin') {
+        // Extras > Skins: Select SAVES the highlighted skin (the same per-device ft-music-skin the sticker and
+        // Settings write). The preview and the saved skin are now one, so the LCD keeps what it shows.
+        if (!onSkinChosen || typeof SK.setActiveSkin !== 'function') { render(); return; }
+        previewShown = null; // the engine's onSkinChosen drops its preview in the same breath as the repaint (no flash of the old skin)
+        SK.setActiveSkin(it.skinId);
+        try { onSkinChosen(it.skinId); } catch (_) { /* view best-effort */ }
         return;
       }
       if (it.action === 'brick') {
@@ -1314,6 +1358,7 @@
       },
       destroy: function () {
         destroyed = true;
+        syncPreview(); // a level torn down mid-preview hands the panel back to the saved skin
         artTimer = cancel(artTimer);
         clearJump();
         stopSlides();
@@ -1331,7 +1376,21 @@
     var doc = panel.ownerDocument || document;
     var hostCtl = config.hostCtl || function (id) { return doc.getElementById(id); };
     var getCtx = config.getCtx || function () { return {}; };
-    var getSkinId = config.getSkinId || function () { return SKINS.activeSkinId(); };
+    var baseGetSkinId = config.getSkinId || function () { return SKINS.activeSkinId(); };
+    // v1.344 (W5): Extras > Skins previews a Click colorway on the LCD WITHOUT saving it. The preview is
+    // ONE variable read by every consumer of the skin id (paint, the lighting scope, the menu style), so a
+    // repaint mid-preview draws the previewed skin, never a mix; nothing is written to storage until Select.
+    var previewSkin = null;
+    var paintedSkinId = null;
+    function getSkinId() { return previewSkin || baseGetSkinId(); }
+    function swapSkinClasses(id) {
+      if (!panel.classList.contains('mms-full') || paintedSkinId === null || id === paintedSkinId) return;
+      var from = SKINS.panelClass(paintedSkinId).split(' ');
+      var to = SKINS.panelClass(id).split(' ');
+      from.forEach(function (c) { if (c && to.indexOf(c) < 0) panel.classList.remove(c); });
+      to.forEach(function (c) { if (c) panel.classList.add(c); });
+      paintedSkinId = id;
+    }
     var onSelectIndex = config.onSelectIndex || function () {};
     var onDock = config.onDock || function () {};
     // D7 (v1.332, Dean: "Right now I must press menu many times then the FileTube icon"): HOME from
@@ -1377,6 +1436,12 @@
       : null;
     var pocket = (config.menu && typeof config.menu.load === 'function')
       ? createPocketMenu({ cfg: config.menu, panel: panel, doc: doc, win: win, SKINS: SKINS, getSkinId: getSkinId, games: menuGames, lighting: lighting,
+        skinsAvailable: function () { return !!(stickerCfg && typeof stickerCfg.onSkinChange === 'function'); },
+        onPreview: function (id) { previewSkin = (id && SKINS.menuStyle(id) === 'click') ? id : null; swapSkinClasses(getSkinId()); },
+        onSkinChosen: function () {
+          previewSkin = null;
+          if (stickerCfg && typeof stickerCfg.onSkinChange === 'function') stickerCfg.onSkinChange(); // the view repaints with the saved skin
+        },
         takeoverLive: function () { return !!wheelTakeover; },
         onShowNowPlaying: function () { if (!marqueeOn) return; var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); }; raf(function () { applyMarquee(); }); } })
       : null;
@@ -2000,6 +2065,7 @@
       // v1.335: the classes come from the registry's ONE builder (a skin's base, and its LOOK - the
       // Original's structure class; music.js's launch cover calls the same builder, gate r1 W1).
       panel.className = SKINS.panelClass(id);
+      paintedSkinId = id;
       // a skin without a look starts the wheel at rest (the turn itself lives on the wheel, below)
       if (!skinLook()) wheelTurn = 0;
       // v1.271: no longer the normal heal (the guard at the top of paint() ends a stale spin

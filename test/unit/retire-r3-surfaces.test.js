@@ -260,7 +260,8 @@ test('Settings: a bottom bar editor item is a ui-row wearing ui-reorder - the gr
 test('setup.html: the editor and picker hosts are ui-lists (grouped), the pickers radiogroups; no bespoke host class is left', () => {
   const html = read('public/setup.html');
   const host = (id) => { const m = new RegExp(`<div [^>]*id="${id}"[^>]*>`).exec(html) || new RegExp(`<div id="${id}"[^>]*>`).exec(html); assert.ok(m, id); return m[0]; };
-  for (const id of ['theme-picker', 'icon-picker', 'music-skin-picker']) {
+  // v1.344 (W5, DELIBERATE): the music skin picker is a preview GRID now (setup-music-skin-picker.test.js)
+  for (const id of ['theme-picker', 'icon-picker']) {
     assert.match(host(id), /class="ui-list [^"]*ui-list--grouped[^"]*setup-choice-list"/, id + ' is a grouped choice list');
     assert.match(host(id), /role="radiogroup"/, id + ' is a radiogroup');
   }

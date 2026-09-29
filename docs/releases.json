@@ -3340,5 +3340,11 @@
     "date": "2026-09-29",
     "title": "Watch later shows its clock in the Playlists menu",
     "intent": "On the phone, the Watch later row in the Playlists menu was missing its icon. It now shows the same little clock as the card menu and the sidebar."
+  },
+  {
+    "version": "1.344.0",
+    "date": "2026-09-29",
+    "title": "Pick a skin from the Pocket, and see them all",
+    "intent": "On the Click player, Extras now has a Skins menu: families first, then that family's colours, and the screen re-skins live as you turn the wheel. Select keeps it; Menu puts your old skin back. Settings shows every skin and colour as a small preview you tap, instead of one long list. Nothing was removed."
   }
 ]
