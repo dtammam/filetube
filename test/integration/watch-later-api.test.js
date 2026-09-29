@@ -170,3 +170,16 @@ test('POST /api/queue/watch-later: list order, skips dead ids, reports added, an
   const empty = await fetch(`${base}/api/queue/watch-later`, { method: 'POST', headers: J }).then((x) => x.json());
   assert.strictEqual(empty.added, 0);
 });
+
+test('POST /api/queue/watch-later stops at the queue cap: adds what fits, reports full, never overfills', async () => {
+  const queueStore = require('../../lib/queue/store');
+  seed({ a: item('a'), b: item('b'), c: item('c') });
+  for (const id of ['a', 'b', 'c']) await add(id);
+  let state = { entries: [], pointerUid: null };
+  for (let i = 0; i < queueStore.QUEUE_CAP - 1; i += 1) state = queueStore.reduceAdd(state, `filler${i}`, 'end', 'media').state;
+  userStore.setQueue(uid, state.entries, state.pointerUid, Date.now());
+  const body = await fetch(`${base}/api/queue/watch-later`, { method: 'POST', headers: J }).then((r) => r.json());
+  assert.strictEqual(body.added, 1, 'only the one that fits');
+  assert.strictEqual(body.full, true);
+  assert.strictEqual(userStore.getQueue(uid).entries.length, queueStore.QUEUE_CAP);
+});
