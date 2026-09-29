@@ -405,7 +405,7 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 - **One Liked glyph.** The sidebar, the Playlists sheet and the bottom bars wore a star while the
   account menu and the Like action wore a heart. All Liked surfaces now use the heart (new
-  `favorite.svg` in the outlined, rounded and filled sets; the sprite map and the ten bottom-bar shells
+  `favorite.svg` in the outlined, rounded and filled sets; the sprite map and the eleven bottom-bar shells
   repointed). Folders that chose Favorites keep the star. Dean's ruling, 2026-09-29.
 
 ### v1.344.0 - Skins from the Pocket, and a preview grid (2026-09-29)
