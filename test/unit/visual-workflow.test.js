@@ -2,7 +2,8 @@
 // The visual job's contracts (plan D10.5) that need no browser: the CI container pins the
 // same Playwright as tools/capture's lockfile, the job refuses to pass without baselines, the
 // rebaseline job (dispatch, or a push to rebaseline/*) is the only one that writes baselines, and the fixture
-// clock is pinned on both the server (clock-shim.js) and the browser (installPinnedClock).
+// clock is pinned on both the server (clock-shim.js) and the browser (installPinnedClock). Visual is a
+// REPORT (PR comment with crops) and never a gate; a merge to main opens a baselines PR (2026-09-29).
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -31,7 +32,9 @@ test('visual runs the geometry checks and the diff; only the rebaseline job (dis
   // The rebaseline job also runs on a push to rebaseline/* (a workflow is dispatchable only
   // once it is on the default branch); the diff never runs there, so the two never overlap.
   assert.strictEqual(WF.jobs.visual.if, "github.event_name != 'workflow_dispatch' && !startsWith(github.ref, 'refs/heads/rebaseline/')");
-  assert.strictEqual(WF.jobs.rebaseline.if, "github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/rebaseline/'))");
+  // ...and on a push to main (the auto-refresh), except the merge of a baselines PR itself: a
+  // refresh must never trigger a refresh.
+  assert.strictEqual(WF.jobs.rebaseline.if, "github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/rebaseline/')) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '/chore/baselines-'))");
   assert.ok(WF.on && 'workflow_dispatch' in WF.on && 'push' in WF.on && 'pull_request' in WF.on);
   // A PR branch runs once (pull_request); push covers main and the rebaseline/* trigger only.
   assert.deepStrictEqual(WF.on.push.branches, ['main', 'rebaseline/**']);
@@ -41,8 +44,110 @@ test('visual runs the geometry checks and the diff; only the rebaseline job (dis
   assert.match(runs('rebaseline'), /node test\/visual\/run\.js --update/);
   const upload = WF.jobs.rebaseline.steps.find((s) => s.uses && s.uses.startsWith('actions/upload-artifact'));
   assert.ok(upload && /test\/visual\/baselines/.test(upload.with.path));
-  const report = WF.jobs.visual.steps.find((s) => s.uses && s.uses.startsWith('actions/upload-artifact'));
-  assert.strictEqual(report.if, 'failure()');
+});
+
+test('visual is a REPORT, never a gate: run.js --report in CI, and --report exits 0 on changed pixels but 1 on a crashed capture', () => {
+  assert.match(runs('visual'), /node test\/visual\/run\.js --report /, 'the CI diff runs in report mode');
+  assert.doesNotMatch(runs('rebaseline'), /--report/);
+  const src = fs.readFileSync(path.join(ROOT, 'test', 'visual', 'run.js'), 'utf8');
+  assert.match(src, /const REPORT = args\.includes\('--report'\);/);
+  // a changed/missing shot only fails the run when NOT in report mode; no shots at all always fails
+  assert.match(src, /if \(taken\.size === 0 \|\| \(!REPORT && \(changed\.length \|\| missing\.length\)\)\) process\.exitCode = 1;/);
+  // in report mode only a CRASHED era (no run record) fails the capture stage
+  assert.match(src, /crashed\.push\(f\)/);
+  assert.match(src, /if \(REPORT && !UPDATE \? crashed\.length : failures\.length \|\| blocked\.length\) process\.exitCode = 1;/);
+  // the unclean-capture shot removal stays
+  assert.match(src, /visual: capture not clean - its shots were removed/);
+});
+
+test('visual-comment: pull_request only, same-repo only, writes only the visual-reports branch, one updated comment', () => {
+  const job = WF.jobs['visual-comment'];
+  assert.strictEqual(job.needs, 'visual');
+  assert.match(job.if, /^\$\{\{ always\(\) && github\.event_name == 'pull_request' && github\.event\.pull_request\.head\.repo\.full_name == github\.repository/);
+  assert.deepStrictEqual(job.permissions, { 'pull-requests': 'write', contents: 'write' });
+  const body = runs('visual-comment');
+  assert.match(body, /git -C stage push --quiet origin HEAD:refs\/heads\/visual-reports/, 'the only push targets visual-reports');
+  assert.equal((body.match(/\bpush\b/g) || []).length, 1, 'exactly one push in the job');
+  assert.match(body, /checkout --quiet --orphan visual-reports/, 'the branch is an orphan');
+  assert.ok(body.includes('startswith("<!-- visual-report -->")'), 'the comment is found by its hidden marker');
+  assert.ok(body.includes('-X PATCH') && body.includes('-X POST'), 'update in place, create only when absent');
+  const dl = job.steps.find((s) => s.uses && s.uses.startsWith('actions/download-artifact'));
+  assert.strictEqual(dl.with.pattern, 'visual-report-*');
+});
+
+test('visual-comment: pinned literals, credentials and staging hygiene the comment depends on', () => {
+  const { MARKER } = require('../../scripts/visual-report-comment.js');
+  assert.strictEqual(MARKER, '<!-- visual-report -->', 'the marker the workflow greps for');
+  const job = WF.jobs['visual-comment'];
+  assert.ok(runs('visual-comment').includes(MARKER), 'the workflow finds the comment by the same literal');
+  assert.ok(job.if.includes("github.actor != 'dependabot[bot]'"));
+  assert.strictEqual(job.steps.find((s) => s.uses && s.uses.startsWith('actions/checkout')).with['persist-credentials'], false);
+  const body = runs('visual-comment');
+  assert.ok(body.includes('rm -rf "stage/pr-${PR}"'), 'only this PR\'s latest run stays');
+  assert.ok(body.includes('[ -d "stage/pr-${PR}" ]'), 'no push without staged crops');
+  assert.match(body, /\[ "\$ok" = 1 \] \|\| \{ echo .*exit 1; \}/, 'three failed pushes fail the step loudly');
+  assert.match(body, /if git -C stage push --quiet origin HEAD:refs\/heads\/visual-reports; then ok=1; break; fi/, 'a successful push sets ok=1, or every good push would fail the step');
+});
+
+test('visual-report-comment.js CLI: hostile report input stays inside --stage/pr-N/run, bad arguments exit 2', () => {
+  const { spawnSync: sp } = require('node:child_process');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-vrc-'));
+  try {
+    const leg = path.join(tmp, 'reports', 'visual-report-..%2f..');
+    fs.mkdirSync(leg, { recursive: true });
+    fs.mkdirSync(path.join(tmp, 'stage'));
+    fs.writeFileSync(path.join(leg, 'report.json'), JSON.stringify({ results: [{ scene: 's', changed: 5, pct: 1, crop: '../../../secret.png' }] }));
+    fs.writeFileSync(path.join(leg, 'secret.png'), 'x');
+    fs.writeFileSync(path.join(tmp, 'secret.png'), 'outside');
+    const run = (extra) => sp(process.execPath, [path.join(ROOT, 'scripts', 'visual-report-comment.js'), '--reports', path.join(tmp, 'reports'), '--stage', path.join(tmp, 'stage'), '--run', '9', '--repo', 'o/r', '--out', path.join(tmp, 'c.md'), ...extra], { encoding: 'utf8' });
+    const ok = run(['--pr', '5']);
+    assert.strictEqual(ok.status, 0, ok.stderr);
+    const copied = [];
+    const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else copied.push(p); } };
+    walk(path.join(tmp, 'stage'));
+    assert.strictEqual(copied.length, 1);
+    assert.ok(copied[0].startsWith(path.join(tmp, 'stage', 'pr-5', '9') + path.sep), copied[0]);
+    assert.doesNotMatch(path.basename(copied[0]), /[^\w.-]/, 'the crop name is sanitized');
+    assert.strictEqual(fs.readFileSync(copied[0], 'utf8'), 'x', 'the basename resolved INSIDE the leg dir, not ../../secret.png');
+    for (const bad of [['--pr', '5x'], ['--pr', '../5'], ['--pr', '']]) assert.strictEqual(run(bad).status, 2, bad.join(' '));
+    assert.strictEqual(sp(process.execPath, [path.join(ROOT, 'scripts', 'visual-report-comment.js'), '--pr', '5', '--run', '9;x', '--repo', 'o/r', '--reports', tmp, '--stage', tmp, '--out', path.join(tmp, 'd.md')], { encoding: 'utf8' }).status, 2, 'a non-numeric run id');
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
+test('baseline-refresh: only on a push to main, needs the merged fresh set, commits ONLY test/visual/baselines/, never merges', () => {
+  const job = WF.jobs['baseline-refresh'];
+  assert.strictEqual(job.needs, 'rebaseline-merge');
+  assert.strictEqual(job.if, "github.event_name == 'push' && github.ref == 'refs/heads/main'");
+  assert.deepStrictEqual(job.permissions, { contents: 'write', 'pull-requests': 'write' });
+  const body = runs('baseline-refresh');
+  assert.match(body, /git add -A -- test\/visual\/baselines/, 'only the baselines directory is staged');
+  assert.match(body, /git diff --cached --name-only \| grep -qv '\^test\/visual\/baselines\/'/, 'a non-baseline staged path aborts');
+  assert.match(body, /gh pr create /);
+  assert.doesNotMatch(body, /gh pr merge|--auto|--admin/, 'the bot never merges');
+  assert.ok(body.includes('"HEAD:refs/heads/${branch}"'), 'the push targets only the baselines branch, never main');
+  assert.doesNotMatch(body, /refs\/heads\/main/);
+  assert.match(body, /branch="chore\/baselines-\$\(git rev-parse --short HEAD\)"/);
+  const dl = job.steps.find((s) => s.uses && s.uses.startsWith('actions/download-artifact'));
+  assert.strictEqual(dl.with.name, 'visual-baselines');
+  // no other job may create a PR or push to a branch of the repo's own
+  for (const name of Object.keys(WF.jobs).filter((n) => n !== 'baseline-refresh')) assert.doesNotMatch(runs(name), /gh pr create/, name);
+});
+
+test('visual-report-comment.js: the comment lists changed scenes with crops (capped), says "No visual changes" otherwise, and flags a leg with no report', () => {
+  const { MARKER, MAX_CROPS, buildComment } = require('../../scripts/visual-report-comment.js');
+  const ctx = { repo: 'o/r', pr: '7', run: '99' };
+  const clean = buildComment([{ leg: '2021-phone', results: [{ scene: 'a', changed: 0 }] }], ctx);
+  assert.strictEqual(clean.changed, false);
+  assert.ok(clean.body.startsWith(MARKER + '\n'));
+  assert.match(clean.body, /No visual changes/);
+  const rows = Array.from({ length: 30 }, (_, i) => ({ scene: `s${i}`, changed: 10 + i, pct: i, crop: `s${i}.sbs.png` }));
+  const dirty = buildComment([{ leg: '2021-phone', results: rows }, { leg: '2014-land', results: null }], ctx);
+  assert.strictEqual(dirty.changed, true);
+  assert.strictEqual(dirty.crops.length, MAX_CROPS, 'no more than 12 crops are embedded');
+  assert.match(dirty.body, /30 scenes look different across 1 leg/);
+  assert.match(dirty.body, /No report from: 2014-land/);
+  assert.match(dirty.body, /https:\/\/raw\.githubusercontent\.com\/o\/r\/visual-reports\/pr-7\/99\/2021-phone--s29\.sbs\.png/, 'the largest change ranks first, so its crop is embedded');
+  assert.match(dirty.body, /This report never blocks a merge/);
 });
 
 test('both jobs run one leg per era x viewport, and the legs together cover every shot capture.js takes', () => {
@@ -61,17 +166,15 @@ test('both jobs run one leg per era x viewport, and the legs together cover ever
   assert.strictEqual(geo.if, "matrix.era == '2021' && matrix.vp == 'desktop'");
   const uploads = WF.jobs.visual.steps.filter((s) => s.uses && s.uses.startsWith('actions/upload-artifact'));
   for (const u of uploads) {
-    assert.strictEqual(u.if, 'failure()', 'the visual legs upload only on failure');
     assert.match(u.with.name, /\$\{\{ matrix\.era \}\}-\$\{\{ matrix\.vp \}\}$/, 'per-leg artifact names (they must not collide)');
   }
-  // One run for an intended change: a failing leg uploads the shots it took; visual-shots joins them.
+  // The report crops and the shots upload on EVERY run (the comment needs them); the run record and
+  // server log only on failure.
+  const rep = uploads.find((u) => /^visual-report-/.test(u.with.name));
+  assert.ok(rep && rep.with.path === 'test-results/visual/report/' && rep.if === '${{ !cancelled() }}');
   const shots = uploads.find((u) => /^visual-shots-/.test(u.with.name));
-  assert.ok(shots && shots.with.path === 'test-results/visual/shots/*.png');
-  const vs = WF.jobs['visual-shots'];
-  assert.strictEqual(vs.needs, 'visual');
-  assert.strictEqual(vs.if, "${{ always() && needs.visual.result == 'failure' }}");
-  const vm1 = vs.steps.find((s) => s.uses && s.uses.startsWith('actions/upload-artifact/merge'));
-  assert.deepStrictEqual([vm1.with.name, vm1.with.pattern, vm1.with['separate-directories']], ['visual-shots', 'visual-shots-*', undefined]);
+  assert.ok(shots && shots.with.path === 'test-results/visual/shots/*.png' && shots.if === '${{ !cancelled() }}');
+  assert.strictEqual(uploads.find((u) => /^visual-diag-/.test(u.with.name)).if, 'failure()');
   // A rebaseline leg uploads ONLY its own shots: the checkout's committed baselines go first.
   const cap = WF.jobs.rebaseline.steps.find((s) => /--update/.test(s.run || ''));
   assert.ok(cap.run.indexOf('rm -f test/visual/baselines/*.png') !== -1 && cap.run.indexOf('rm -f test/visual/baselines/*.png') < cap.run.indexOf('--update'));
@@ -177,5 +280,14 @@ test('capture.js installPinnedClock: the browser Date starts at the fixture cloc
   assert.deepStrictEqual(seq(), a, 'Math.random repeats per document');
   assert.ok(a.every((v) => v >= 0 && v < 1) && new Set(a).size === 3);
   assert.ok(MASK_CSS.includes('#file-path-text'), 'the watch page file path (the DATA_DIR) is masked');
+  // the app version prints in three places; a release must not move a baseline
+  for (const sel of ['.account-menu-version', '.ipm-volatile', '.stats-kv__value a[href*="/releases/tag/"]']) assert.ok(MASK_CSS.includes(sel), `${sel} (prints the app version) is masked`);
+  // ...and each selector still names live markup (a renamed class would unmask it silently)
+  const src = (f) => fs.readFileSync(path.join(ROOT, 'public', 'js', f), 'utf8');
+  assert.match(src('common.js'), /classList\.add\('account-menu-version'\)/);
+  assert.match(src('music-skins.js'), /ipm-val' \+ \(it\.volatile \? ' ipm-volatile' : ''\)/);
+  assert.match(src('music-skins.js'), /label: 'Version', value: f\.version, info: true, volatile: true/);
+  assert.match(src('stats.js'), /stats-kv__value/);
+  assert.match(src('stats.js'), /\/releases\/tag\/v\$\{sys\.version\}/);
   assert.deepStrictEqual(CONTEXT_PINS, { timezoneId: 'UTC', locale: 'en-US', colorScheme: 'light' });
 });

@@ -620,7 +620,7 @@
       { label: 'Albums', value: groupDigits(f.albums), info: true },
       { label: 'Artists', value: groupDigits(f.artists), info: true },
     ];
-    if (typeof f.version === 'string' && f.version) rows.push({ label: 'Version', value: f.version, info: true });
+    if (typeof f.version === 'string' && f.version) rows.push({ label: 'Version', value: f.version, info: true, volatile: true });
     rows.push({ label: 'Software', value: 'FileTube', info: true });
     return rows;
   }
@@ -768,7 +768,7 @@
       if (it.info) {
         // a NOTE row (Lighting's "motion denied" line) wraps; a value row (About) keeps one line.
         if (it.note) { html += '<div class="ipm-row ipm-info ipm-noterow" role="status"><span class="ipm-lbl">' + esc(it.label) + '</span></div>'; continue; }
-        html += '<div class="ipm-row ipm-info"><span class="ipm-lbl">' + esc(it.label) + '</span><span class="ipm-val">' + esc(it.value) + '</span></div>';
+        html += '<div class="ipm-row ipm-info"><span class="ipm-lbl">' + esc(it.label) + '</span><span class="ipm-val' + (it.volatile ? ' ipm-volatile' : '') + '">' + esc(it.value) + '</span></div>';
         continue;
       }
       var cls = 'ipm-row' + (i === v.cursor ? ' is-cursor' : '') + (it.node ? ' has-chev' : '') +

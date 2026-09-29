@@ -70,7 +70,10 @@ const FREEZE_CSS = '*,*::before,*::after{transition:none!important;animation-pla
 // watch page's added date) + the watch page's file path (it prints the DATA_DIR, which
 // differs per machine). Masked glyphs keep their box; the path is clamped to one line so
 // a longer DATA_DIR cannot wrap it to a different height.
-const MASK_CSS = VOLATILE_MASK_CSS
+// The app version changes every release, so every place that prints it is masked (the account
+// menu row, the Pocket About row, Stats' FileTube row): a release must not move a baseline.
+const VERSION_MASK_CSS = '.account-menu-version,.ipm-volatile,.stats-kv__value a[href*="/releases/tag/"]{visibility:hidden!important}';
+const MASK_CSS = VOLATILE_MASK_CSS + VERSION_MASK_CSS
   + '#file-path-text{visibility:hidden!important;display:block!important;white-space:nowrap!important;overflow:hidden!important}';
 // LESSONS 7 (the flag set scripts/pocket-render-probe.js measured at 0 px): one CPU raster
 // thread, no partial raster (a re-raster of only the invalidated tiles anti-aliased a circle's

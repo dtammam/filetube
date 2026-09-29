@@ -7,6 +7,7 @@
 //
 //   node test/visual/run.js [--update] [--data DIR] [--out DIR] [--era 2021,2005|all]
 //        [--only 04,18] [--vp phone,land,desktop] [--jobs N] [--dpr N] [--baselines DIR] [--idle SECONDS]
+//        [--report]
 //
 // --update writes the captured shots as the new baselines (the CI rebaseline job,
 // .github/workflows/visual.yml; D10.5: committed baselines come ONLY from the pinned CI
@@ -17,6 +18,10 @@
 // --out is emptied at the start of every run, so it must be absent, empty, or a dir an
 // earlier run made (it carries run-fs.js's OUT_MARKER); /, the repo root and $HOME (and
 // anything containing them) are refused outright (exit 2, nothing touched).
+//
+// --report: the PR mode. Changed, missing or extra pixels are REPORTED (same lines, same report
+// files) and the run exits 0; it exits 1 only when the capture itself crashed (an era left no run
+// record, or no shot was taken). A look change is information for the PR comment, never a gate.
 //
 // Exit: 0 = every shot identical to its baseline; 1 = a changed, missing or extra shot, or a
 // scene that failed to capture; 2 = no baselines / bad arguments.
@@ -34,6 +39,7 @@ const REPO = path.resolve(__dirname, '..', '..');
 const args = process.argv.slice(2);
 const arg = (n, d) => { const i = args.indexOf(n); return i === -1 ? d : args[i + 1]; };
 const UPDATE = args.includes('--update');
+const REPORT = args.includes('--report');
 const BASELINES = path.resolve(arg('--baselines', path.join(__dirname, 'baselines')));
 // A FIXED data dir by default: media ids hash the file path, and the CI baselines are shot
 // from this exact path.
@@ -104,6 +110,7 @@ function captureEra(era, base, shots) {
   if (IDLE_S) { console.log(`visual: server idle for ${IDLE_S}s before capturing`); await new Promise((r) => setTimeout(r, IDLE_S * 1000)); }
   const failures = [];
   const blocked = [];
+  const crashed = [];
   let captured = 0;
   try {
     const queue = [...eras];
@@ -113,7 +120,7 @@ function captureEra(era, base, shots) {
         const code = await captureEra(era, srv.base, shots);
         const dir = path.join(shots, `.era-${era}`);
         const recPath = path.join(dir, 'run-record.json');
-        if (!fs.existsSync(recPath)) { failures.push({ fname: `(era ${era})`, error: `capture exited ${code} without a run record` }); continue; }
+        if (!fs.existsSync(recPath)) { const f = { fname: `(era ${era})`, error: `capture exited ${code} without a run record` }; failures.push(f); crashed.push(f); continue; }
         const rec = JSON.parse(fs.readFileSync(recPath, 'utf8'));
         captured += rec.captured.length;
         failures.push(...rec.failed);
@@ -129,7 +136,7 @@ function captureEra(era, base, shots) {
   console.log(`visual: captured ${captured} shots in ${Math.round((Date.now() - t0) / 1000)}s; capture failures ${failures.length}; unexpected blocked requests ${blocked.length}`);
   for (const f of failures) console.log(`  CAPTURE FAIL ${f.fname}: ${f.error}`);
   for (const b of blocked) console.log(`  BLOCKED ${b.scene} ${b.method} ${b.url}`);
-  if (failures.length || blocked.length) process.exitCode = 1;
+  if (REPORT && !UPDATE ? crashed.length : failures.length || blocked.length) process.exitCode = 1;
 
   if (UPDATE) {
     if (failures.length || blocked.length) die(1, 'visual: --update refused: the capture was not clean (above); the baselines are unchanged.');
@@ -154,12 +161,14 @@ function captureEra(era, base, shots) {
   for (const r of missing.slice(0, 40)) console.log(`  MISSING ${r.scene}: ${r.note}`);
   if (taken.size === 0) console.log('  (no shots were captured)');
   console.log(`visual: report ${report}/report.md`);
-  if (changed.length || missing.length || taken.size === 0) process.exitCode = 1;
-  // A run that did not capture cleanly keeps its report but uploads NO shots: the visual-shots
-  // artifact is what an intended change commits as baselines, and a broken render must never be one.
+  if (taken.size === 0 || (!REPORT && (changed.length || missing.length))) process.exitCode = 1;
+  // A run that did not capture cleanly keeps its report but uploads NO shots: the uploaded
+  // shots are what a baselines refresh would commit, and a broken render must never be one.
   if (failures.length || blocked.length) {
     for (const f of pngs(shots)) fs.rmSync(path.join(shots, f), { force: true });
     console.log('visual: capture not clean - its shots were removed (nothing here to commit as baselines)');
   }
-  console.log(process.exitCode ? 'visual: FAIL' : 'visual: PASS (0 changed pixels)');
+  if (process.exitCode) console.log('visual: FAIL');
+  else if (REPORT && (changed.length || missing.length)) console.log(`visual: REPORT ONLY - ${changed.length} changed, ${missing.length} missing/extra (never a gate)`);
+  else console.log('visual: PASS (0 changed pixels)');
 })().catch((e) => { console.error(e); process.exit(1); });
