@@ -10313,6 +10313,26 @@ html[data-era-flourish="on"] .ft-unfabricated {
   padding: var(--space-8) 0;
 }
 
+/* ---- v1.342 clean up (/cleanup) ---------------------------------------------
+   Layout only: the rows are ui-rows in ui-lists, the days control a ui-segmented, the
+   selectors ui-switches, the empty state a ui-state. */
+.cleanup-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin-bottom: var(--space-4);
+}
+.cleanup-toolbar h2 { margin: 0; }
+.cleanup-toolbar-actions { display: flex; align-items: center; flex-wrap: wrap; gap: var(--space-4); }
+.cleanup-summary { font: var(--t-callout); color: var(--ink-2); }
+.cleanup-blurb { margin: 0 0 var(--space-5); color: var(--ink-2); }
+.cleanup-days { margin-bottom: var(--space-6); }
+.cleanup-group { margin-bottom: var(--space-8); }
+.cleanup-group-title { margin: 0 0 var(--space-2); }
+.cleanup-group-blurb { margin: 0 0 var(--space-3); color: var(--ink-2); font: var(--t-callout); }
+
 /* ---- v1.65 trash (Settings section) -------------------------------- */
 .trash-list {
   display: flex;

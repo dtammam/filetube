@@ -56,6 +56,7 @@ const READ = {
   '/api/channels': 'GATED',
   '/api/config': 'GATED',
   '/api/duplicates': 'GATED',
+  '/api/cleanup/suggestions': 'GATED', // v1.342: the Clean up shortlist (modify-library first, then visibility-scoped)
   '/api/duplicates.csv': 'GATED',
   '/api/critters': 'NO_CONTENT', // v1.166: decorative critter-folder listing (asset filenames only, no library/user data)
   '/api/critters/archive': 'ADMIN', // v1.171 (QA S1): requireAdmin-gated zip of the decorative asset pool; behavioral member-403 probe in critter-admin-gate.test.js

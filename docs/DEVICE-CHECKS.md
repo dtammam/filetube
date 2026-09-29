@@ -52,6 +52,8 @@ the checks.
   moves before anything is changed.
 - [ ] v1.341.4 - The watch page's More menu reads "Move to folder", "Assign channel" and (on YouTube
   links, while playing) "Share at 1:23" beside "Share video".
+- [ ] v1.342 - Clean up (account menu): nothing is ticked, the toolbar and rows fit the phone, Move to
+  Trash names the count and size, and the moved items come back from Settings > Trash.
 
 ## Subscriptions, channels and podcasts
 

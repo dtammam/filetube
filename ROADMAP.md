@@ -233,7 +233,7 @@
   when you finish it); "Play all" feeds it into the queue. Open question: how it relates to the existing
   Pin feature.
 
-- [ ] **Suggestive delete: FileTube suggests what to clear, you confirm** _(Dean, 2026-09-28)_ (Dean:
+- [x] **Suggestive delete: FileTube suggests what to clear, you confirm** - SHIPPED v1.342.0 (see Shipped) _(Dean, 2026-09-28)_ (Dean:
   "predictive/suggestive delete"; his pick of the outcome: "Suggest what to clear"). FileTube proposes
   items worth deleting (watched to the end, old subscription downloads, big files never opened) and
   NOTHING is deleted without the user's tap; deletes go through Trash like every other delete. Not auto-
@@ -396,6 +396,22 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.342.0 - Clean up: a shortlist of what to clear (2026-09-29)
+
+- **A Clean up page** (account menu; a link under Stats' Duplicates for library editors) lists four
+  kinds of suggestion, each with sizes and a total: videos you watched to the end, subscription
+  downloads nobody opened, the 20 biggest files nobody opened, and newer copies of a video you already
+  have (same source id, else same size and duration within 1 s; the OLDEST copy is kept). The age line
+  is 7/30/90/180 days (default 30, synced per user as `ft-cleanup-days`).
+- **It is a shortlist, never a verdict.** Nothing is pre-ticked. "Move to Trash" asks the one danger
+  confirm naming the count and size, re-reads the shortlist, and aborts with nothing deleted if any
+  ticked item dropped off it; then it sends one ordinary `DELETE /api/videos/<id>` per ticked id (the
+  card's delete, into Trash). There is no bulk-delete route and the client never sends criteria.
+  Anything liked by anyone, part-watched by anyone, or with no size is never listed; "never opened"
+  means no user has a progress row and the play count is 0; the shortlist needs library-edit rights.
+- Measured on the fixture (7-day line, real Chromium): 40 rows in three groups, 0 pre-ticked, no page
+  overflow at 1280 or 390 wide, the button 140x32 with its label unclipped, the switch 51x31.
 
 ### v1.341.4 - The Original shows emoji in black and white, and menu labels are short verb phrases (2026-09-29)
 

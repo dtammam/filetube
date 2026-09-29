@@ -163,6 +163,11 @@ shown (stale ids, a race where the list changed), deleting another user's or a p
 watched item, duplicates deleting the only copy, the double-tap guard on the confirm, a viewer role, a
 huge selection, restore after trash.
 
+Gate: APPROVED r1 @ae7586d5 — security-brief
+Gate: CHANGES r1 @ae7586d5 — qa
+Gate: APPROVED r3 @7a33e2b3 — adversary
+Gate: APPROVED r2 @e100986c — qa
+
 ## W4 - Watch later: a separate per-user list
 
 Branch `feat/watch-later`. Release **v1.343.0**.

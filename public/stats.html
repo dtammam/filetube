@@ -325,6 +325,10 @@
           after you confirm, so it can be restored from Settings.
           <a href="/api/duplicates.csv" id="stats-duplicates-export">Export CSV</a>
         </p>
+        <!-- v1.342: library editors get the Clean up shortlist (hidden until stats.js knows the role). -->
+        <p id="stats-cleanup-hint" hidden>
+          Want a shortlist of what to clear? <a href="/cleanup" id="stats-cleanup-link">Open Clean up</a>
+        </p>
         <div class="folder-list-builder stats-table-host" id="stats-duplicates-list">
           <!-- Populated dynamically by /js/stats.js -->
         </div>

@@ -228,7 +228,9 @@ test('source lock: the route surface never names the ytdlp tables or the dead do
   // module's own destructure), one net new crossing of the SAME store, so
   // 19 -> 20. The scan's per-request `ytdlpDb.holder(...)` read rode along into
   // the same surface, so the holder count below stays 12.
-  assert.strictEqual((surface.match(/\bytdlpDb,/g) || []).length, 20, 'every crossing carries the store, never the doc namespace');
+  // v1.342: the Clean up routes take ytdlpDb (server.js's deps entry + the module's destructure)
+  // to read the subscription holder, one more crossing of the SAME store: 20 -> 21.
+  assert.strictEqual((surface.match(/\bytdlpDb,/g) || []).length, 21, 'every crossing carries the store, never the doc namespace');
   assert.strictEqual((surface.match(/ytdlp\.consumeDownloadChannelMeta\(ytScan, /g) || []).length, 2, 'both YouTube consume sites run on the scan holder');
   assert.strictEqual((surface.match(/ytdlp\.consumeUniversalDownloadMeta\(ytScan, /g) || []).length, 1);
   assert.strictEqual((surface.match(/ytdlp\.backfillChannelIdentityFromFolder\(ytScan, /g) || []).length, 1);
