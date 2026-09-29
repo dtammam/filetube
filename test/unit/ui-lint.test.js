@@ -570,6 +570,9 @@ test('compareRatchet admits an added skin-palette key only with the skin-art rea
   const foo = 'public/css/style.css|.foo|color';
   assert.deepStrictEqual(L.compareRatchet(base, withEntry('no-raw-values', foo, R)), [`no-raw-values: key added: ${foo} (count 1)`], 'a non-skin key is refused even with the reason');
   assert.deepStrictEqual(L.compareRatchet(base, withEntry('z-ladder', 'public/css/style.css|.mms-ipod-x|--pk-c-body', R)), ['z-ladder: key added: public/css/style.css|.mms-ipod-x|--pk-c-body (count 1)'], 'another rule is refused');
+  for (const bad of ['public/css/style.css|.foo|--pk-c-body', 'public/css/style.css|.mms-ipod-x|color', 'public/css/style.css|.mms-ipod-x|--pk-c-body extra', 'public/css/style.css|.mms-ipod-x|--pk-c-body|x']) {
+    assert.deepStrictEqual(L.compareRatchet(base, withEntry('no-raw-values', bad, R)), [`no-raw-values: key added: ${bad} (count 1)`], 'each clause of the key shape is bound: ' + bad);
+  }
   const raised = JSON.parse(JSON.stringify(base)); raised.rules['no-raw-values'][0].count = 2;
   assert.deepStrictEqual(L.compareRatchet(base, raised), ['no-raw-values: count raised: public/css/style.css|.mms-ipod-nano3-blue|--pk-c-edge 1 -> 2'], 'a raised skin count is still refused');
 });

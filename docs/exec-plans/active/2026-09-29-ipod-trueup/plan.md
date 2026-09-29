@@ -263,6 +263,18 @@ by API (`gh api repos/dtammam/filetube/git/refs -f ref=refs/tags/v1.345.0 -f sha
 delete the branch remote (`gh api -X DELETE repos/dtammam/filetube/git/refs/heads/feat/ipod-trueup`)
 and local (`git branch -d`), and remove the worktree.
 
+## Gate
+
+Gate: APPROVED r1 @1d1a00ee — security-brief
+
+QA r1: WARNING setup.js 632/634/637 (+ payload/blurbs.json): "a orange center" x6 (user-visible Settings blurbs); fix to "an orange center". All ACs otherwise verified; 9 of 9 mutations red; lint:ui OK, eslint 0 errors, overlay-containment clean, 162 targeted tests pass.
+
+Gate: CHANGES r1 @1d1a00ee7a6edcea1dd8678a2d2dcc9f04d07cd7 — qa
+
+Adversary r1: no CRITICAL. WARNING 1: the skin-surface.js pane refresh for `skinLine` is unbound (dropping `pane.node.type === 'skinLine'` from the refresh at ~line 699 leaves all 185 targeted tests green; a Nano > 4G > Purple > Select > MENU test goes red on it: stale checks at the line level). Add that test. WARNING 2: SKIN_ART_KEY clauses are unbound by the new ui-lint test (loosening `\.mms-ipod-` to any class, `--pk-c-` to any property, or dropping the `$` anchor all stay green; test 3 only binds them jointly): add `.foo|--pk-c-x` and `.mms-ipod-x|color` cases. WARNING 3 = QA's "a orange" x6. Verified clean: all 25 saved ids normalize to themselves; 52/50; 17 groups; 50 role blocks carry all 17 tokens; Gold uses Sky's wheel tokens; ui-lint OK; 3 ratchet tests pass; 30+ mutants (reason/rule/key/count, menu checks, preview, NON_ITEM, cursor) red except the noted survivors.
+
+Gate: CHANGES r1 @1d1a00ee7a6edcea1dd8678a2d2dcc9f04d07cd7 — adversary
+
 ## Build record
 
 Measured 2026-09-29 on branch `feat/ipod-trueup` (head c53e5101 plus the release docs).

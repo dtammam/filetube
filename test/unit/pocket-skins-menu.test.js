@@ -176,6 +176,25 @@ test('Select saves the highlighted colorway once, repaints with it, and the chec
   } finally { b.restore(); }
 });
 
+test('Select in another line and generation moves the check at every level MENU returns to (the level refresh is bound)', () => {
+  const b = boot();
+  try {
+    tapLabel(b, 'Extras'); tapLabel(b, 'Skins'); tapLabel(b, 'Nano'); tapLabel(b, '4G (2008)');
+    wheelBy(b, 24);
+    tap(b, P(b).querySelector('[data-skin-select]'));
+    const id = stored(b);
+    const group = skins.skinFamilies().find((f) => f.label === 'Nano 4G (2008)');
+    assert.ok(group.ids.includes(id), 'Select saved a Nano 4G colorway: ' + id);
+    pressMenu(b);
+    assert.strictEqual(b.engine.menuState().title, 'Nano');
+    assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, '4G (2008)', 'the generation row carries the check after Select');
+    pressMenu(b);
+    assert.strictEqual(b.engine.menuState().title, 'Skins');
+    assert.strictEqual(P(b).querySelector('.ipm-row.is-checked .ipm-lbl').textContent, 'Nano', 'the line row carries the check, and the old Classic check is gone');
+    assert.strictEqual(cursorLabel(b), 'Nano', 'the cursor sits on the saved line');
+  } finally { b.restore(); }
+});
+
 test('MENU out of the flow and destroy also end a preview: nothing is left half-applied', () => {
   const b = boot();
   try {
