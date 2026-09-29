@@ -145,6 +145,22 @@
 
 ### Features
 
+- [ ] **Onboarding: just enough Docker to start, then a guided web setup** _(Dean, 2026-09-28: "I'm
+  getting a stronger sense of the value of this tool... there's a significant amount of friction in the
+  onboarding")_. Today setup is Docker-driven (compose volumes, env vars, paths as Linux mount points).
+  Goal: a minimal container start (one command, no config), then a first-run web wizard that walks
+  through everything else: the admin account, library locations, downloads, music/books/podcasts,
+  transcoding. Library locations must not be bound to Linux path conventions: a user can point at an
+  SMB/Samba share (e.g. `\\nas\media` or `smb://nas/media`), and the app translates in the background
+  (mounts or talks SMB itself, with credentials stored like other secrets). Outcome first: time from
+  `docker run` to a playing video, with no file edited by hand. Needs an architect pass before any
+  build (what stays in env/compose, how a path the container cannot see becomes one it can, the
+  security surface of stored share credentials, migrating existing installs untouched).
+
+- [ ] **Skin selection inside the Pocket (iPod) views** _(Dean, 2026-09-28)_: choose the player skin
+  from the Pocket itself (today it lives in Settings); pairs with the "better music player picker" entry
+  (the long list), so design them together.
+
 - [ ] **A better music player (skin) picker** _(Dean, 2026-09-28: "the list is just huge... I love all
   the options, I want all the options, but just having all of them presented the way they are is kind
   of annoying")_. Keep every skin and colourway; change how they are presented. Directions to weigh
@@ -241,6 +257,16 @@
   any site, sharing the source URL recorded at download time. Nothing else.
 
 ### Chores
+
+- [ ] **Semantic consistency of button labels across menus** _(Dean, 2026-09-28)_: in Music's Extras menu
+  one action is a single word ("Like") and the chapter one reads as a sentence; every menu should follow
+  one rule (a verb or a short verb phrase, sentence case, the same length class for sibling rows). Sweep
+  the menus (Extras, card menus, the chapters menu, Pocket menus), write the rule into the UI docs, and
+  add a ui-lint check if the rule can be mechanised.
+
+- [ ] **Rotation snap follow-up (v1.341.3 gate note)** _(2026-09-28)_: the 650ms pass in
+  `scheduleViewportCapNudge` still snaps once without checking for user input (main has the same);
+  gate it: `if (Date.now() <= rotationSettleUntil) snapRotationDeadZone();`, keeping the cap nudge.
 
 - [ ] **Visual CI follow-ups from v1.341.1** _(2026-09-28)_: (1) the visual job hides scrollbars, so a
   classic-scrollbar regression (the v1.341.1 gutter's fullscreen band) is invisible to it; add one leg or
