@@ -173,10 +173,12 @@ jobs:
             git -C stage config user.email '41898282+github-actions[bot]@users.noreply.github.com'
             git -C stage add -- "pr-${PR}"
             git -C stage commit --quiet -m "visual report for PR ${PR}, run ${{ github.run_id }}"
+            ok=0
             for i in 1 2 3; do
-              git -C stage push --quiet origin HEAD:refs/heads/visual-reports && break
+              if git -C stage push --quiet origin HEAD:refs/heads/visual-reports; then ok=1; break; fi
               git -C stage pull --quiet --rebase origin visual-reports
             done
+            [ "$ok" = 1 ] || { echo "the crops did not reach visual-reports"; exit 1; }
           fi
 
       - name: Post or update the PR comment

@@ -357,9 +357,8 @@ no-op, and the workflow does no harm - it just cannot complete the merge yet.)
    which needs squash enabled).
 2. Settings -> Branches -> add a **branch protection rule** for `main`:
    "Require status checks to pass before merging", and select the CI checks
-   (the `ci` matrix jobs, `secret-scan`, `audit`, and `visual` from
-   `visual.yml` once its baselines are committed - until then it is red on
-   every push and would hold every PR). This is what makes
+   (the `ci` matrix jobs, `secret-scan` and `audit`; never `visual`, which
+   is a report and never a gate). This is what makes
    auto-merge WAIT for green CI rather than merge immediately; it also
    protects `main` for human PRs.
 

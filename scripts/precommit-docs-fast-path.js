@@ -30,9 +30,11 @@ const { execFileSync } = require('child_process');
 // A docs path: Markdown anywhere, or anything under docs/ (ROADMAP.md, docs/releases.json, plans).
 const DOCS_MD = /\.md$|^docs\//;
 // A test reads docs/ when its source names the directory as a path
-// ("docs/..."), as a path segment ('docs' in a path.join), or names the
-// exec-plans tree. Over-inclusion is safe (a comment mention only costs time).
-const READS_DOCS = /docs\/|['"`]docs['"`]|exec-plans/;
+// ("docs/..."), as a path segment ('docs' in a path.join), names the exec-plans
+// tree, or names a Markdown file (a quoted '.md' name, README, ROADMAP, AGENTS:
+// any .md file now counts as docs, so the tests that read one must run).
+// Over-inclusion is safe (a comment mention only costs time).
+const READS_DOCS = /docs\/|['"`]docs['"`]|exec-plans|\.md['"`]|README|ROADMAP|AGENTS/;
 
 function isDocsOnly(paths) {
   const list = paths.filter(Boolean);

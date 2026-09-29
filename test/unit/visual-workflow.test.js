@@ -75,6 +75,44 @@ test('visual-comment: pull_request only, same-repo only, writes only the visual-
   assert.strictEqual(dl.with.pattern, 'visual-report-*');
 });
 
+test('visual-comment: pinned literals, credentials and staging hygiene the comment depends on', () => {
+  const { MARKER } = require('../../scripts/visual-report-comment.js');
+  assert.strictEqual(MARKER, '<!-- visual-report -->', 'the marker the workflow greps for');
+  const job = WF.jobs['visual-comment'];
+  assert.ok(runs('visual-comment').includes(MARKER), 'the workflow finds the comment by the same literal');
+  assert.ok(job.if.includes("github.actor != 'dependabot[bot]'"));
+  assert.strictEqual(job.steps.find((s) => s.uses && s.uses.startsWith('actions/checkout')).with['persist-credentials'], false);
+  const body = runs('visual-comment');
+  assert.ok(body.includes('rm -rf "stage/pr-${PR}"'), 'only this PR\'s latest run stays');
+  assert.ok(body.includes('[ -d "stage/pr-${PR}" ]'), 'no push without staged crops');
+  assert.match(body, /\[ "\$ok" = 1 \] \|\| \{ echo .*exit 1; \}/, 'three failed pushes fail the step loudly');
+});
+
+test('visual-report-comment.js CLI: hostile report input stays inside --stage/pr-N/run, bad arguments exit 2', () => {
+  const { spawnSync: sp } = require('node:child_process');
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-vrc-'));
+  try {
+    const leg = path.join(tmp, 'reports', 'visual-report-..%2f..');
+    fs.mkdirSync(leg, { recursive: true });
+    fs.mkdirSync(path.join(tmp, 'stage'));
+    fs.writeFileSync(path.join(leg, 'report.json'), JSON.stringify({ results: [{ scene: 's', changed: 5, pct: 1, crop: '../../../secret.png' }] }));
+    fs.writeFileSync(path.join(leg, 'secret.png'), 'x');
+    fs.writeFileSync(path.join(tmp, 'secret.png'), 'outside');
+    const run = (extra) => sp(process.execPath, [path.join(ROOT, 'scripts', 'visual-report-comment.js'), '--reports', path.join(tmp, 'reports'), '--stage', path.join(tmp, 'stage'), '--run', '9', '--repo', 'o/r', '--out', path.join(tmp, 'c.md'), ...extra], { encoding: 'utf8' });
+    const ok = run(['--pr', '5']);
+    assert.strictEqual(ok.status, 0, ok.stderr);
+    const copied = [];
+    const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else copied.push(p); } };
+    walk(path.join(tmp, 'stage'));
+    assert.strictEqual(copied.length, 1);
+    assert.ok(copied[0].startsWith(path.join(tmp, 'stage', 'pr-5', '9') + path.sep), copied[0]);
+    assert.doesNotMatch(path.basename(copied[0]), /[^\w.-]/, 'the crop name is sanitized');
+    assert.strictEqual(fs.readFileSync(copied[0], 'utf8'), 'x', 'the basename resolved INSIDE the leg dir, not ../../secret.png');
+    for (const bad of [['--pr', '5x'], ['--pr', '../5'], ['--pr', '']]) assert.strictEqual(run(bad).status, 2, bad.join(' '));
+    assert.strictEqual(sp(process.execPath, [path.join(ROOT, 'scripts', 'visual-report-comment.js'), '--pr', '5', '--run', '9;x', '--repo', 'o/r', '--reports', tmp, '--stage', tmp, '--out', path.join(tmp, 'd.md')], { encoding: 'utf8' }).status, 2, 'a non-numeric run id');
+  } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
+});
+
 test('baseline-refresh: only on a push to main, needs the merged fresh set, commits ONLY test/visual/baselines/, never merges', () => {
   const job = WF.jobs['baseline-refresh'];
   assert.strictEqual(job.needs, 'rebaseline-merge');
@@ -85,6 +123,8 @@ test('baseline-refresh: only on a push to main, needs the merged fresh set, comm
   assert.match(body, /git diff --cached --name-only \| grep -qv '\^test\/visual\/baselines\/'/, 'a non-baseline staged path aborts');
   assert.match(body, /gh pr create /);
   assert.doesNotMatch(body, /gh pr merge|--auto|--admin/, 'the bot never merges');
+  assert.ok(body.includes('"HEAD:refs/heads/${branch}"'), 'the push targets only the baselines branch, never main');
+  assert.doesNotMatch(body, /refs\/heads\/main/);
   assert.match(body, /branch="chore\/baselines-\$\(git rev-parse --short HEAD\)"/);
   const dl = job.steps.find((s) => s.uses && s.uses.startsWith('actions/download-artifact'));
   assert.strictEqual(dl.with.name, 'visual-baselines');

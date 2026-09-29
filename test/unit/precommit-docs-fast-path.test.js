@@ -78,6 +78,16 @@ test('docsReadingTests: the real selection carries every measured runtime docs r
   assert.ok(picked.length < fs.readdirSync(path.join(ROOT, 'test', 'unit')).length / 4, 'the fast path is a small slice');
 });
 
+test('docsReadingTests: every unit test that names a Markdown file is selected (any .md counts as docs)', () => {
+  // A README under public/ is docs to the fast path, so a test asserting on it must run on that commit.
+  const picked = new Set(docsReadingTests(ROOT));
+  const named = fs.readdirSync(path.join(ROOT, 'test', 'unit')).filter((n) => n.endsWith('.test.js'))
+    .filter((n) => /\.md['"`]/.test(fs.readFileSync(path.join(ROOT, 'test', 'unit', n), 'utf8')));
+  assert.ok(named.length > 5, 'the scan finds the Markdown-reading tests');
+  for (const n of named) assert.ok(picked.has(`test/unit/${n}`), `${n} names a .md file and must run on a docs-only commit`);
+  for (const n of ['icon-attribute-mask', 'icon-transcript-mask']) assert.ok(picked.has(`test/unit/${n}.test.js`), `${n} asserts on public/assets/icons/README.md`);
+});
+
 // A throwaway git repo. Cleanup is registered BEFORE any work so a throw never leaks the dir.
 function sandbox(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-precommit-fast-'));
