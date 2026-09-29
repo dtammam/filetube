@@ -3,9 +3,9 @@ plan: watch-listen-position
 harness: v2 · lean
 branch: fix/watch-listen-position
 anchor: outcome
-status: Gate:APPROVED r1 @148fcd03
-next: r3 re-bind of all three seats on the pause-ruling commit, then push, PR, merge on green CI, tag v1.344.2 by API
-gate: APPROVED r1 @148fcd03 (adversary, qa, security-brief); r1 follow-ups await the adversary delta
+status: Shipped v1.344.2
+next: push, PR, merge on green CI, tag v1.344.2 by API
+gate: APPROVED r3 @3ad55c27 (adversary, qa, security-brief)
 ---
 
 # Watch -> Listen keeps its place on a chaptered video
@@ -82,6 +82,7 @@ Gate: APPROVED r1 @148fcd03 - adversary (no CRITICAL/WARNING. Real app, headless
 - SUGGESTION (refutes qa's suggestion 4 by measurement): a Watch video left to its end is rewound to 0 by the player before Listen (POST 300.00 paused, then 0.00; element t=0), so Listen loads c0 at the head on head and base alike, not the last chapter at the file end.
 
 Gate: APPROVED r2 @731fc396 - adversary (delta re-confirm of the r1 follow-ups: music.js is comment-only (the one changed code line is identical before its //) and both comments are true; test 5 goes through verifyChapterFileThenPlay + playWaiter: 7 mutants vs the test file all killed (tap-time read: tests 3,5; waiter replays { skipVerify } only: 5; no verify wait: 5; pick treated as an advance: 5; waiter never replays: 5; no handoff seek: 4,5; always chapter 1: 4,5), unmutated 6/6; lab server.js listens on 127.0.0.1 only (/proc/net/tcp 0100007F:2261/2262; the box IP refused); the after rows re-measured on 731fc396 with the repro: chaptered 132.42 -> 136.35 -> 202.42 -> 206.31, plain 132.43 -> 136.5 -> 202.41 -> 206.43. Process: check-markers now flags the three r1 @148fcd03 approvals and the frontmatter as stale (music.js/test/server.js changed), so qa and security-brief must re-bind to 731fc396 before close)
+Gate: APPROVED r3 @3ad55c27 - security-brief (no CRITICAL/WARNING; r1 SUGGESTION fixed as prescribed: lab server.js listens on 127.0.0.1 for :8801 and :8802; handoffPaused / resolveBaseHandoff / startPaused / the loadBaseHandoff branch only read the in-page element's currentTime/paused and set it; no new request (the handoff branch returns before the existing progress fetch), URL, HTML or storage)
 
 ### r1 follow-ups (the seats' SUGGESTIONs, applied after the r1 approvals)
 
@@ -115,11 +116,28 @@ element to 200 s):
 | video | state | Watch | -> Listen | Listen at 200 | -> Watch |
 |---|---|---|---|---|---|
 | no chapters | paused | 132.43 P | 132.43 P | 200 P | 200 P |
-| 5 chapters | paused | 132.43 P | 132.43 P | 200 P | **200 P** (before: 136.29 playing) |
+| 5 chapters | paused | 132.43 P | 132.43 P | 200 P | **200 P** (the r2 tree 731fc396, same run: Listen 136.23 playing, Watch 206.25 playing) |
 | no chapters | playing | 132.43 | 136.49 | 202.42 | 206.44 |
 | 5 chapters | playing | 132.43 | 136.36 | 202.41 | 206.30 |
 
 Tests: `handoffPaused` pure + wiring (a paused / playing / other-video element), `resolveBaseHandoff`
 pure, and two player source locks (the load path has no behavioural harness, tracker #180). Mutant:
 `handoffPaused` always false fails two tests.
+
+Gate: APPROVED r3 @3ad55c27 - qa (delta 148fcd03..3ad55c27; no CRITICAL/WARNING. r1 1-3 fixed as prescribed, r1 4 withdrawn (refuted by the adversary's measurement). eslint 0 errors/6 pre-existing warnings, lint:ui OK, overlay clean; npm test Node 24.20.0 10358 pass/0 fail/12 skip of 10370; Node 22.23.1 10357 pass/1 fail/12 skip: the fail is the known critter-mode "v1.176 gate W closure" load flake, 3/3 green re-run alone (107/107). check-markers 13: 7 pre-existing next-waves, 6 this plan's r1/r2 approvals + frontmatter gone stale by design)
+- SUGGESTION: rebind this plan's frontmatter (status/gate still name r1 @148fcd03) at closeout; check-markers flags it until then.
+- SUGGESTION: the player half (resolveBaseHandoff wiring, the startPaused and handoff branches) is bound by source locks only (#180), with the real-app table as the behavioural evidence; the Dean device check is the only on-iOS proof that a paused seek before metadata lands (the same currentTime-then-no-play pattern resumeDirectly already relies on).
+- NOTE (not a finding): loadBaseHandoff fires on ANY fresh load of `<id>` while `<id>::c<n>` is loaded (a Home card, the /watch bounce), not only the Watch button; that matches what a same-id adopt already does for a plain video.
+Gate: APPROVED r3 @3ad55c27 - adversary (delta 731fc396..3ad55c27; no CRITICAL/WARNING. Real app, headless Chromium, head 3ad55c27 vs r2 731fc396, each on its own copy of wl/data. The repro2 table is reproduced on head: paused runs gave plain 132.45P/132.45P/200P/200P and chaptered 132.44P/132.44P/200P/200P; playing runs gave chaptered 132.44 -> 136.33 -> 202.41 -> 206.24. On r2 the paused chaptered run gave 132.43P -> 136.23 playing -> 206.25 playing. Player path attacks (head vs r2): pausing the docked Listen then opening Watch X gives 137.9 paused (r2: 141.65 playing, with the toast). Watch Y after a chaptered Listen, then Watch X from Y, is identical on both trees (65.63 then 139.17, no handoff). close() then Watch X is identical on both (139.2, no handoff). Listening to the file end rewinds to 0 (POST 300.00 paused, then 0.00), so Watch X starts at the head on both trees (3.87). Pressing play after a paused Listen goes 131.95P -> 133.88 playing in c2, and after a paused Watch 133.88P -> 135.8. A phone viewport gives the same numbers. mediaSession.playbackState is 'paused' after each paused handoff, not 'none'. No progress POST lands at 0 or at a chapter head in any of these runs. Stale capture: load() is setupForMedia's only caller and it recomputes loadBaseHandoff on every fresh load, the adopt and ensureHost returns never reach handleResumePlayback, and the transcode re-entry is gen-guarded to the same load. Media element before metadata: currentTime=130 set at readyState 0 with no play() lands at 130, paused, on mp4/m4a/mp3 in Chromium and in WebKit (Playwright webkit-2248, WebCore on GStreamer; iOS itself not measured, so the device check stands). Unit mutants (the new test file plus music-chapter*/player-* suites, 790 tests): 6 of 7 killed. Survivor: `loadBaseHandoff = null` at the top of teardownMediaState passes all 790. Run in the real app, that mutant turns the paused Listen -> Watch into 136.23 playing, so the repro2 PAUSE=1 run is the real binding (#180). Node 22 and Node 24: 876/876 on the related suites)
+- SUGGESTION: the player half's unit binding is text-only: the teardown-reset mutant above survives every unit test and only the real app catches it. Keep repro2 PAUSE=1 in the release evidence, or add the teardown call order to the source lock (capture BEFORE teardown, and teardownMediaState never writes loadBaseHandoff).
+- SUGGESTION: the Scope table's "(before: 136.29 playing)" is not the r2 tree. On r2 a paused Watch -> Listen auto-played, so the run ended at 206.25 playing. 136.29 matches the Listen half alone, the same shape as my teardown mutant (136.23). Label which tree "before" is.
+
+## Residuals (shipped disclosed)
+
+- The player half is bound by source locks only (tracker #180). The adversary's r3 mutant that resets
+  `loadBaseHandoff` inside `teardownMediaState` passes every unit test and is caught only by the real-app
+  run (`repro2.js`, `PAUSE=1`: the paused Listen -> Watch turns into 136.23 playing). That run is this
+  release's evidence; a teardown source lock is a follow-up if the load path gets a harness.
+- iOS is not measured: a paused seek set before metadata was measured in Chromium and Linux WebKit only.
+  Dean's device check (DEVICE-CHECKS v1.344.2) is the arbiter.
 
