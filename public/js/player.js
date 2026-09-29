@@ -1735,6 +1735,9 @@ function formatViewportDetail(win) {
     if (o) parts.push(String(o));
     var html = w.document && w.document.documentElement;
     parts.push(html && html.classList && html.classList.contains('is-phone') ? 'phone' : 'not-phone');
+    // v1.341.3: the document scroll too (the rotation bump was a stray scroll the size of the top
+    // safe-area inset; the log must show it).
+    if (typeof w.pageYOffset === 'number') parts.push('y ' + Math.round(w.pageYOffset));
     return parts.join(' · ');
   } catch (_) { return '?'; }
 }
@@ -2350,6 +2353,9 @@ if (typeof module !== 'undefined' && module.exports) {
     var restoreEligible = !!(opts && opts.restoreScroll) && state === STATE_FULL;
     var plan = resolveCssFsScrollPlan(wasOn, !!on, restoreEligible, cssFsSavedScrollY, currentY);
     cssFsSavedScrollY = plan.savedY;
+    // v1.341.3: the faux fullscreen scroll keeper in the ?debugLifecycle=1 log (is a stray
+    // scroll after rotating back ours, or iOS's?).
+    if (isDebugLifecycleEnabled()) recordLifecycleEvent('fauxScroll', { detail: (on ? 'on' : 'off') + ' · y ' + Math.round(currentY) + ' · saved ' + plan.savedY + ' · restore ' + plan.restoreTo });
     // v1.311.2 (Dean): `body.ft-css-fullscreen { overflow:hidden }` never held on
     // iOS - a swipe on the overlay scrolled the page behind it. The shared body lock
     // pins it for real. Taken AFTER the plan captured the entry scroll; released
@@ -2546,7 +2552,31 @@ if (typeof module !== 'undefined' && module.exports) {
   // snap outside the dead zone is a no-op). ORDER inside each pass: caps
   // first (the nudge changes layout heights, which moves the player's
   // document top), THEN the dead-zone snap against the settled geometry.
+  // v1.341.3 (Dean's recording: after rotating back to portrait the page sat one top-safe-area
+  // inset HIGH for ~0.35 s, frames 82-102, until the 650ms pass below snapped it): the stray
+  // scroll lands AFTER the double-rAF pass, so for a second after a rotation every scroll or
+  // visual-viewport resize re-runs the snap on its next frame. The snap itself is unchanged and
+  // capture-free (it only acts on a position strictly between the page top and the player).
+  var rotationSettleUntil = 0;
+  var rotationSnapQueued = false;
+  function snapSoonAfterRotation() {
+    if (Date.now() > rotationSettleUntil || rotationSnapQueued) return;
+    rotationSnapQueued = true;
+    requestAnimationFrame(function () { rotationSnapQueued = false; snapRotationDeadZone(); });
+  }
+  window.addEventListener('scroll', snapSoonAfterRotation, { passive: true });
+  // Gate r1 (adversary W1): a scroll the USER starts in that second is theirs. A drag or a flick
+  // from the top passes through the dead zone, and re-snapping it every frame pinned the page at
+  // the top for ~700ms. iOS's stray scroll comes with no input, so any real input closes the window.
+  function endRotationSettle() { rotationSettleUntil = 0; }
+  ['touchstart', 'pointerdown', 'wheel', 'keydown'].forEach(function (type) {
+    window.addEventListener(type, endRotationSettle, { passive: true, capture: true });
+  });
+  if (window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
+    window.visualViewport.addEventListener('resize', snapSoonAfterRotation);
+  }
   function scheduleViewportCapNudge() {
+    rotationSettleUntil = Date.now() + 1000;
     requestAnimationFrame(function () { requestAnimationFrame(function () {
       nudgeViewportHeightCaps();
       snapRotationDeadZone();
@@ -4576,6 +4606,9 @@ if (typeof module !== 'undefined' && module.exports) {
   }
   window.addEventListener('resize', function () { logViewport('resize'); });
   window.addEventListener('orientationchange', function () { logViewport('orientationchange'); });
+  // v1.341.3: scroll lines, only in the second after a rotation (rotationSettleUntil), coalesced
+  // like the rest, so ordinary scrolling never floods the 30-line log.
+  window.addEventListener('scroll', function () { if (Date.now() <= rotationSettleUntil) logViewport('scroll'); }, { passive: true });
   if (window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
     window.visualViewport.addEventListener('resize', function () { logViewport('visualViewport:resize'); });
   }

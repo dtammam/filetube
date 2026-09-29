@@ -15,13 +15,14 @@ const path = require('node:path');
 const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
 
 test('the flat grid: 3-up on desktop, 4-up on wide, 1-up on phones', () => {
-  assert.match(css, /\.modern-home-mode #video-grid \{[^}]*grid-template-columns:\s*repeat\(3,\s*1fr\)/,
+  // v1.341.3 (DELIBERATE lock update): shrinkable minmax(0, 1fr) tracks.
+  assert.match(css, /\.modern-home-mode #video-grid \{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/,
     'modern home is a 3-up grid');
-  assert.match(css, /@media \(min-width:\s*1500px\)\s*\{\s*\.modern-home-mode #video-grid \{\s*grid-template-columns:\s*repeat\(4,\s*1fr\)/,
+  assert.match(css, /@media \(min-width:\s*1500px\)\s*\{\s*\.modern-home-mode #video-grid \{\s*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/,
     'reflows to 4-up on wide desktops');
   // 1-up on phones lives in the 480px block.
   const phone = css.split('@media (max-width: 480px)').slice(1);
-  assert.ok(phone.some((b) => /\.modern-home-mode #video-grid \{[^}]*grid-template-columns:\s*1fr/.test(b)),
+  assert.ok(phone.some((b) => /\.modern-home-mode #video-grid \{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/.test(b)),
     'one full-width card per row on phones');
 });
 

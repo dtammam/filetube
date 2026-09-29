@@ -58,7 +58,7 @@
 - [x] **Bug: pinned channels in the sidebar: a long one-line name pushes its pin further right than the
   others** - SHIPPED v1.341.1 (see Shipped) _(Dean, 2026-09-28)_; his pick: one line with an ellipsis.
 
-- [ ] **Bug: Modern theme on a phone: a channel folder and the Downloads folder render wider than the
+- [x] **Bug: Modern theme on a phone: a channel folder and the Downloads folder render wider than the
   screen** _(Dean, 2026-09-28)_ (Dean's iPhone screenshots). The card grid shows two columns with the
   right one cut off at the screen edge (durations read "21:0", "4:4"), a stray sliver of another card
   (its "hours" text, a duration and progress bar) peeks in at the top right beside the header, and the
@@ -71,8 +71,15 @@
   toolbar fits (16-414px of 430; the chip strip scrolls inside it), and Dean's two ~235px columns match
   the tablet grid (auto-fill minmax(210px)) at a ~520px layout width, i.e. iOS laid the page out WIDER
   than the screen (its fit-to-width, the v1.24.6 subscriptions-zoom class), which headless Chromium does
-  not emulate. NEXT: one reading on Dean's phone in that folder (innerWidth, documentElement.clientWidth,
-  and the widest element), then fix the element that overflows at load.
+  not emulate. Dean's second recording (2026-09-28): the folder loads and FITS (two columns, 0.5-2.5 s);
+  at 3.0 s, while scrolling, the layout widens (a third column cut off at the right), i.e. a card
+  rendered later is too wide for Modern's card layout.
+  FIXED v1.341.3 (confirm on device): the mechanism is the grid, not the item: every phone
+  `.video-grid` track was a bare `1fr` (= minmax(auto, 1fr)), which cannot shrink below a card's longest
+  unbreakable word; Modern's channel avatar leaves each card ~36px less room, so titles that just fit
+  in the other themes overflowed in Modern. Measured at 430px with one long word injected: 556px wide
+  (classic), 628px (Modern); now `minmax(0, 1fr)` tracks + `overflow-wrap: anywhere` on the card text:
+  430px in both, two 194px columns.
 
 - [ ] **Bug: the Click Original skin shows emoji in colour where everything else is black and white**
   _(Dean, 2026-09-28)_: the Original is a monochrome skin, but emoji glyphs (colour emoji fonts ignore
@@ -92,7 +99,8 @@
   element's `currentTime` right after the seek on both devices, same track and chapter (the
   `?debugLifecycle=1` log is the phone-side instrument), then fix the path whose number differs.
 
-- [ ] **Bug: after rotating back to portrait the page bumps up and down (deterministic)** _(Dean,
+- [ ] **Bug: after rotating back to portrait the page bumps up and down (deterministic)** - MITIGATED
+  v1.341.3, confirm on device (one rotate with `?debugLifecycle=1`; the log now shows the scroll) _(Dean,
   2026-09-28, screen recording
   `~/.claude/uploads/ef864c0d-24a7-4879-a566-0754c2cf820a/a05ca679-ScreenRecording_09-28-2026_18-17-56_1.mov`)_.
   Frame-by-frame (extracted 2026-09-28, 116 frames at ~54 fps, the WATCH page, Dark): frame 79 the
@@ -102,6 +110,14 @@
   Likely a stale env(safe-area-inset-top) after rotation, with the header and the page offset taking
   the new value at different moments. Reproduce with `Emulation.setDeviceMetricsOverride` rotation in the geometry
   G4 sequences (the Pocket rotation F23 class) and fix the element whose top moves.
+  v1.341.3: headless could not reproduce the bump, but every frame fits a stray document scroll of
+  exactly the inset (~59) after the rotation back (the fixed header's layer lags it in 80-81; the
+  content sits high in 82-102), and frame 103 is our own dead-zone snap, whose double-rAF pass runs
+  BEFORE the scroll lands so only the 650ms pass caught it. Now any scroll or visual-viewport resize in
+  the second after a rotation re-runs the snap next frame (emulated: a stray 59px scroll corrected 16ms
+  later, was 434ms). The log names the source: `y` on every viewport line, scroll lines near a
+  rotation, and `fauxScroll` (on/off, y, saved, restore). If y reads ~59 after the rotation and the
+  saved value is 0, iOS deposited it; if saved is 59, the faux keeper's entry capture is the bug.
 
 - [x] **HIGHEST PRIORITY (2 of 2). Bug: a very thin white border around the whole screen in fullscreen, in
   every mode** (Dean, 2026-09-26: "in full screen, in all modes, I see a very thin white border around the
@@ -354,6 +370,16 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.341.3 - Rotating back no longer bumps the watch page, and Modern folders fit the phone (2026-09-28)
+
+- **The watch page settles in one step after you turn the phone back upright.** It used to sit a
+  notch-height too high for about a third of a second before snapping into place; the correction now
+  lands on the next frame.
+- For the next device check, `?debugLifecycle=1` now logs the page's scroll position around a rotation.
+- **Modern theme folders fit the phone screen again.** One long title or channel name could push the
+  whole page wider than the screen (Modern first, because its channel avatars leave each card a little
+  less room); long words now wrap inside their card. 
 
 ### v1.341.2 - Opening a panel no longer shifts the page on desktop (2026-09-28)
 

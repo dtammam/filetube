@@ -928,6 +928,10 @@ a.sidebar-item {
 .card-text {
   flex: 1;
   min-width: 0;
+  /* v1.341.3: a word longer than the card (a URL-like title, a long channel name) wraps inside it
+     instead of widening the card; with the shrinkable grid tracks nothing can push a phone page
+     wider than the screen. */
+  overflow-wrap: anywhere;
 }
 .video-info > .ui-avatar {
   margin-top: var(--space-1);
@@ -6066,7 +6070,10 @@ html:has(> body.ft-audio-expanded),
 /* breakpoint 480px - deliberate (audit amendment a): small-phone card grid (AC40/AC43). */
 @media (max-width: 480px) {
   .video-grid {
-    grid-template-columns: repeat(2, 1fr);
+    /* v1.341.3: minmax(0, 1fr), never a bare 1fr: a bare 1fr track cannot shrink below its card's
+       longest unbreakable word, so one long title or channel name widened the grid past the
+       screen (Modern hit it first: its avatar leaves each card ~36px less room). */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-5);
   }
 }
@@ -6769,15 +6776,15 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 
 /* the flat big-tile grid: 3-up, reflowing to 4 on wide desktops, 1 on phones */
 .modern-home-mode #video-grid {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr)); /* v1.341.3: shrinkable tracks (see the phone grid) */
   gap: var(--space-10);
 }
 @media (min-width: 1500px) {
-  .modern-home-mode #video-grid { grid-template-columns: repeat(4, 1fr); }
+  .modern-home-mode #video-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 @media (max-width: 480px) {
   .modern-home-mode #video-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--space-8);
   }
 }
