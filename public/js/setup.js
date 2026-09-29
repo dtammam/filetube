@@ -611,7 +611,7 @@ const MUSIC_SKIN_BLURB = {
   'ipod-blue': 'Anodized teal-blue with blue lettering on the wheel.',
   'ipod-green': 'Anodized green with green lettering on the wheel.',
   'ipod-pink': 'Anodized rose pink with pink lettering on the wheel.',
-  'ipod-gold': 'Warm anodized gold, a white wheel and a gold center.',
+  'ipod-gold': 'Pale anodized champagne gold with grey lettering on the wheel.',
   'ipod-frost': 'Cool brushed silver with grey lettering and a grey center.',
   'ipod-sky': 'Pale anodized sky blue with grey lettering on the wheel.',
   'ipod-olive': 'Anodized yellow-green with grey lettering on the wheel.',
@@ -624,6 +624,33 @@ const MUSIC_SKIN_BLURB = {
   'ipod-cobalt': 'Vivid anodized cobalt blue, a white wheel and a blue center.',
   'ipod-magenta': 'Hot anodized magenta, a white wheel and a magenta center.',
   'ipod-raspberry': 'Deep anodized raspberry, a white wheel and a pink center.',
+  'ipod-nano3-silver': 'Anodized silver, a white wheel and a silver center.',
+  'ipod-nano3-blue': 'Anodized blue, a white wheel and a blue center.',
+  'ipod-nano3-green': 'Anodized green, a white wheel and a green center.',
+  'ipod-nano3-red': 'Anodized red, a white wheel and a red center.',
+  'ipod-nano4-blue': 'Anodized blue, a white wheel and a blue center.',
+  'ipod-nano4-orange': 'Anodized orange, a white wheel and a orange center.',
+  'ipod-nano5-green': 'Anodized green, a white wheel and a green center.',
+  'ipod-nano5-orange': 'Anodized orange, a white wheel and a orange center.',
+  'ipod-nano5-pink': 'Anodized pink, a white wheel and a pink center.',
+  'ipod-nano6-green': 'Anodized green, a dark wheel and a green center.',
+  'ipod-nano6-orange': 'Anodized orange, a dark wheel and a orange center.',
+  'ipod-nano6-pink': 'Anodized pink, a dark wheel and a pink center.',
+  'ipod-nano7-pink': 'Anodized pink, a white wheel and a pink center.',
+  'ipod-nano7-yellow': 'Anodized yellow, a white wheel and a yellow center.',
+  'ipod-nano7-green': 'Anodized green, a white wheel and a green center.',
+  'ipod-nano7-purple': 'Anodized purple, a white wheel and a purple center.',
+  'ipod-nano7-slate': 'Anodized slate, a dark wheel and a slate center.',
+  'ipod-nano7-red': 'Anodized red, a white wheel and a red center.',
+  'ipod-nano7-spacegray': 'Anodized space gray, a dark wheel and a space gray center.',
+  'ipod-nano7-blue': 'Anodized blue, a white wheel and a blue center.',
+  'ipod-nano7-gold': 'Anodized gold, a white wheel and a gold center.',
+  'ipod-shuffle2-purple': 'Anodized purple, a tonal purple wheel with pale lettering.',
+  'ipod-shuffle2-green': 'Anodized green, a tonal green wheel with pale lettering.',
+  'ipod-shuffle2-gold': 'Anodized gold, a tonal gold wheel with pale lettering.',
+  'ipod-shuffle3-pink': 'Anodized pink, a tonal pink wheel with pale lettering.',
+  'ipod-shuffle3-blue': 'Anodized blue, a tonal blue wheel with pale lettering.',
+  'ipod-shuffle4-blue': 'Anodized blue, a tonal blue wheel with pale lettering.',
   'ipod-original': 'The first one: a button ring, a grey screen, a wheel that turns.',
 };
 // v1.344 (W5, Dean): the picker is a PREVIEW GRID - every skin/colorway is a small static thumbnail
@@ -641,7 +668,7 @@ function renderMusicSkinPicker() {
   container.innerHTML = skins.skinFamilies().map((fam) => {
     const tiles = fam.ids.map((id) => {
       const s = skins.skinById(id);
-      const name = fam.ids.length > 1 ? skins.colorwayLabel(id) : fam.label;
+      const name = (s && s.line) ? skins.colorwayLabel(id) : fam.label;
       const blurb = MUSIC_SKIN_BLURB[id] || '';
       const on = id === active;
       return `<button type="button" class="ui-tile skin-tile${on ? ' is-on' : ''}" role="radio" aria-checked="${on ? 'true' : 'false'}" aria-label="${escStickerHtml((s && s.label ? s.label : id) + (blurb ? ': ' + blurb : ''))}" title="${escStickerHtml(blurb)}" data-skin-pref="${id}">`

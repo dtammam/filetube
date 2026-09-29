@@ -230,10 +230,9 @@
       '</div></div>';
   }
 
-  // Labels are CHEEKY riffs, deliberately NOT the real product/company names (Dean):
-  // Cider (Apple Music - apple->cider), Nordic (Spotify - its Swedish roots),
-  // Click (iPod - the click wheel; the parenthesized names are its body colorways). The ids
-  // stay literal for CSS/storage.
+  // Labels: the iPod colorways use real model names ("Nano 4G Orange (2008)", Dean 2026-09-29);
+  // Cider (Apple Music - apple->cider) and Nordic (Spotify - its Swedish roots) stay CHEEKY riffs,
+  // deliberately NOT the real product/company names. The ids stay literal for CSS/storage.
   // Pocket menus (2026-09-24): `menus` names the POCKET MENU style a skin carries ('click' =
   // the 6G split screen). It lives ON the registry entry - the
   // one list a new skin is added to - so a new Click colorway that copies an entry carries its
@@ -242,47 +241,55 @@
   var SKINS = [
     { id: 'apple', label: 'Cider', renderFull: renderApple },
     { id: 'spotify', label: 'Nordic', renderFull: renderSpotify },
-    { id: 'ipod', label: 'Click', menus: 'click', renderFull: renderIpod },
-    // v1.232 (Dean): the black iPod - identical structure (renderIpod), a `base` so the
-    // panel also carries `.mms-ipod` (all the shared iPod CSS) while `.mms-ipod-black`
-    // overrides only the body/wheel palette. One render, two looks.
-    { id: 'ipod-black', label: 'Click (Black)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    // the matte graphite variant, sampled from Dean's reference photo - the ipod-black
-    // pattern exactly: one render (renderIpod), a `base` for the shared .mms-ipod CSS,
-    // and the .mms-ipod-matte palette-only override.
-    { id: 'ipod-matte', label: 'Click (Matte)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    // v1.332 (Dean D2): the charity-red colorway - a registry entry, ONE role block in style.css and a
-    // Settings blurb; every Click list (menus, Brick, lighting, the tray and its chips) derives from here.
-    { id: 'ipod-red', label: 'Click (Red)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    // v1.332 (Dean D8): the iconic colorways, each a registry entry + ONE role block + a blurb - the
-    // aluminum classic, the black special edition with the red wheel (a cheeky name, never the band's),
-    // the second mini's blue, green and pink, and the gold (Dean's own photo).
-    { id: 'ipod-silver', label: 'Click (Silver)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-encore', label: 'Click (Encore)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-blue', label: 'Click (Blue)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-green', label: 'Click (Green)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-pink', label: 'Click (Pink)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-gold', label: 'Click (Gold)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    // v1.335 (Dean: "7 more click skins. Additional iconic ones" - he picked all 13 of the researched pool):
-    // the first minis (silver, blue, green, pink), the 2004 white, the 2007 black classic, and the Nano colors
-    // (re-decided D4: the second nano's green, blue and pink, the third's pink, the fourth's purple and yellow).
-    // Each is a registry entry + ONE role block + a blurb, like v1.332's.
-    { id: 'ipod-frost', label: 'Click (Frost)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-sky', label: 'Click (Sky)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-olive', label: 'Click (Olive)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-blush', label: 'Click (Blush)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-2004', label: 'Click (2004)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-charcoal', label: 'Click (Charcoal)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-violet', label: 'Click (Violet)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-yellow', label: 'Click (Yellow)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-lime', label: 'Click (Lime)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-cobalt', label: 'Click (Cobalt)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-magenta', label: 'Click (Magenta)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    { id: 'ipod-raspberry', label: 'Click (Raspberry)', base: 'ipod', menus: 'click', renderFull: renderIpod },
-    // v1.335 (Dean: "one special Original skin which includes the entire vibe of the first"): the 2001
-    // original. Its colors are ONE role block like any colorway; `look` names the structural LOOK the
-    // engine adds as ONE panel class (mms-look-original) - the button ring, the monochrome screen, the
-    // bitmap face, the wheel that turns. The markup is renderIpod's; the look is CSS keyed on that class.
+    { id: 'ipod-2004', label: 'Classic 4G White (2004)', line: 'classic', gen: 4, year: '2004', color: 'White', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-encore', label: 'Classic 4G Special Edition (2004)', line: 'classic', gen: 4, year: '2004', color: 'Special Edition', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod', label: 'Classic 5G White (2005)', line: 'classic', gen: 5, year: '2005', color: 'White', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-black', label: 'Classic 5G Black (2005)', line: 'classic', gen: 5, year: '2005', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-silver', label: 'Classic 6G Silver (2007)', line: 'classic', gen: 6, year: '2007', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-charcoal', label: 'Classic 6G Black (2007)', line: 'classic', gen: 6, year: '2007', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-matte', label: 'Classic 6G Black (2008)', line: 'classic', gen: 6, year: '2008', color: 'Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-frost', label: 'Mini 1G Silver (2004)', line: 'mini', gen: 1, year: '2004', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-gold', label: 'Mini 1G Gold (2004)', line: 'mini', gen: 1, year: '2004', color: 'Gold', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-sky', label: 'Mini 1G Blue (2004)', line: 'mini', gen: 1, year: '2004', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-blush', label: 'Mini 1G Pink (2004)', line: 'mini', gen: 1, year: '2004', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-olive', label: 'Mini 1G Green (2004)', line: 'mini', gen: 1, year: '2004', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-blue', label: 'Mini 2G Blue (2005)', line: 'mini', gen: 2, year: '2005', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-green', label: 'Mini 2G Green (2005)', line: 'mini', gen: 2, year: '2005', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-pink', label: 'Mini 2G Pink (2005)', line: 'mini', gen: 2, year: '2005', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-lime', label: 'Nano 2G Green (2006)', line: 'nano', gen: 2, year: '2006', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-cobalt', label: 'Nano 2G Blue (2006)', line: 'nano', gen: 2, year: '2006', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-magenta', label: 'Nano 2G Pink (2006)', line: 'nano', gen: 2, year: '2006', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-red', label: 'Nano 2G Red (2006)', line: 'nano', gen: 2, year: '2006', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano3-silver', label: 'Nano 3G Silver (2007)', line: 'nano', gen: 3, year: '2007', color: 'Silver', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano3-blue', label: 'Nano 3G Blue (2007)', line: 'nano', gen: 3, year: '2007', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano3-green', label: 'Nano 3G Green (2007)', line: 'nano', gen: 3, year: '2007', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano3-red', label: 'Nano 3G Red (2007)', line: 'nano', gen: 3, year: '2007', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-raspberry', label: 'Nano 3G Pink (2008)', line: 'nano', gen: 3, year: '2008', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano4-blue', label: 'Nano 4G Blue (2008)', line: 'nano', gen: 4, year: '2008', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-violet', label: 'Nano 4G Purple (2008)', line: 'nano', gen: 4, year: '2008', color: 'Purple', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano4-orange', label: 'Nano 4G Orange (2008)', line: 'nano', gen: 4, year: '2008', color: 'Orange', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-yellow', label: 'Nano 4G Yellow (2008)', line: 'nano', gen: 4, year: '2008', color: 'Yellow', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano5-green', label: 'Nano 5G Green (2009)', line: 'nano', gen: 5, year: '2009', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano5-orange', label: 'Nano 5G Orange (2009)', line: 'nano', gen: 5, year: '2009', color: 'Orange', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano5-pink', label: 'Nano 5G Pink (2009)', line: 'nano', gen: 5, year: '2009', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano6-green', label: 'Nano 6G Green (2010)', line: 'nano', gen: 6, year: '2010', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano6-orange', label: 'Nano 6G Orange (2010)', line: 'nano', gen: 6, year: '2010', color: 'Orange', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano6-pink', label: 'Nano 6G Pink (2010)', line: 'nano', gen: 6, year: '2010', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-pink', label: 'Nano 7G Pink (2012)', line: 'nano', gen: 7, year: '2012', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-yellow', label: 'Nano 7G Yellow (2012)', line: 'nano', gen: 7, year: '2012', color: 'Yellow', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-blue', label: 'Nano 7G Blue (2015)', line: 'nano', gen: 7, year: '2015', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-green', label: 'Nano 7G Green (2012)', line: 'nano', gen: 7, year: '2012', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-purple', label: 'Nano 7G Purple (2012)', line: 'nano', gen: 7, year: '2012', color: 'Purple', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-slate', label: 'Nano 7G Slate (2012)', line: 'nano', gen: 7, year: '2012', color: 'Slate', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-red', label: 'Nano 7G Red (2012)', line: 'nano', gen: 7, year: '2012', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-spacegray', label: 'Nano 7G Space Gray (2013)', line: 'nano', gen: 7, year: '2013', color: 'Space Gray', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-nano7-gold', label: 'Nano 7G Gold (2015)', line: 'nano', gen: 7, year: '2015', color: 'Gold', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-purple', label: 'Shuffle 2G Purple (2007)', line: 'shuffle', gen: 2, year: '2007', color: 'Purple', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-green', label: 'Shuffle 2G Green (2008)', line: 'shuffle', gen: 2, year: '2008', color: 'Green', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle2-gold', label: 'Shuffle 2G Gold (2009)', line: 'shuffle', gen: 2, year: '2009', color: 'Gold', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle3-pink', label: 'Shuffle 3G Pink (2009)', line: 'shuffle', gen: 3, year: '2009', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle3-blue', label: 'Shuffle 3G Blue (2009)', line: 'shuffle', gen: 3, year: '2009', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-shuffle4-blue', label: 'Shuffle 4G Blue (2010)', line: 'shuffle', gen: 4, year: '2010', color: 'Blue', base: 'ipod', menus: 'click', renderFull: renderIpod },
     { id: 'ipod-original', label: 'Click (Original)', base: 'ipod', look: 'original', menus: 'click', renderFull: renderIpod },
   ];
   var BY_ID = SKINS.reduce(function (m, s) { m[s.id] = s; return m; }, Object.create(null));
@@ -293,26 +300,46 @@
   var IDS = SKINS.map(function (s) { return s.id; });
   function clickColorways() { return SKINS.filter(function (s) { return s.menus === 'click'; }).map(function (s) { return s.id; }); }
   function isClickColorway(id) { return typeof id === 'string' && !!BY_ID[id] && BY_ID[id].menus === 'click'; }
-  // v1.344 (W5, Dean): the skin FAMILIES, DERIVED from the registry (never a second list): a LOOK is
-  // its own family (Original), the other Click colorways are "Click", and a menu-less skin (Cider,
-  // Nordic) is a family of one. A family of one applies from its row; a bigger one opens its colorways.
-  var FAMILY_LABEL = { click: 'Click', original: 'Original' };
-  function familyKeyOf(s) { return s.look ? s.look : (s.menus === 'click' ? 'click' : s.id); }
+  // v1.345 (Dean): the skin GROUPS, DERIVED from the registry (never a second list), in the Settings
+  // grid's order: the Original, then one group per iPod line and generation ("Nano 4G (2008)"), then
+  // Cider and Nordic. A skin with a `line` belongs to its line-generation group.
+  var SKIN_LINES = [{ key: 'classic', label: 'Classic' }, { key: 'mini', label: 'Mini' }, { key: 'nano', label: 'Nano' }, { key: 'shuffle', label: 'Shuffle' }];
+  var GEN_YEAR = { classic: { 4: '2004', 5: '2005', 6: '2007' }, mini: { 1: '2004', 2: '2005' },
+    nano: { 2: '2006', 3: '2007', 4: '2008', 5: '2009', 6: '2010', 7: '2012' }, shuffle: { 2: '2006', 3: '2009', 4: '2010' } };
   function skinFamilies() {
-    var out = [];
-    var at = Object.create(null);
-    SKINS.forEach(function (s) {
-      var k = familyKeyOf(s);
-      if (at[k] === undefined) { at[k] = out.length; out.push({ key: k, label: FAMILY_LABEL[k] || s.label, ids: [] }); }
-      out[at[k]].ids.push(s.id);
+    var out = [{ key: 'original', label: 'Original', ids: ['ipod-original'] }];
+    SKIN_LINES.forEach(function (ln) {
+      var gens = [];
+      SKINS.forEach(function (s) { if (s.line === ln.key && gens.indexOf(s.gen) < 0) gens.push(s.gen); });
+      gens.sort(function (x, y) { return x - y; });
+      gens.forEach(function (g) {
+        out.push({
+          key: ln.key + '-' + g, label: ln.label + ' ' + g + 'G (' + GEN_YEAR[ln.key][g] + ')', line: ln.key, gen: g,
+          ids: SKINS.filter(function (s) { return s.line === ln.key && s.gen === g; }).map(function (s) { return s.id; })
+        });
+      });
     });
+    out.push({ key: 'apple', label: 'Cider', ids: ['apple'] });
+    out.push({ key: 'spotify', label: 'Nordic', ids: ['spotify'] });
     return out;
   }
-  // "Click (Red)" -> "Red"; the bare base entry is the classic white one.
+  // The Extras > Skins lines (Classic, Mini, Nano, Shuffle), each with its generations' group keys.
+  function skinLines() {
+    var fams = skinFamilies();
+    return SKIN_LINES.map(function (ln) {
+      return { key: ln.key, label: ln.label, gens: fams.filter(function (f) { return f.line === ln.key; }).map(function (f) { return f.key; }) };
+    }).filter(function (ln) { return ln.gens.length; });
+  }
+  // A line colorway's row is its color ("Red"); the year joins it ("Black (2007)") only when another
+  // colorway of the SAME line and generation shares the color. The Original reads its parenthesized name; Cider and Nordic their labels.
   function colorwayLabel(id) {
     var s = BY_ID[id];
+    if (s && s.line) {
+      var twin = SKINS.some(function (o) { return o !== s && o.line === s.line && o.gen === s.gen && o.color === s.color; });
+      return twin ? s.color + ' (' + s.year + ')' : s.color;
+    }
     var m = s && /\(([^)]*)\)\s*$/.exec(s.label);
-    return m ? m[1] : (s && id === 'ipod' ? 'Classic' : (s ? s.label : id));
+    return m ? m[1] : (s ? s.label : id);
   }
 
   function isLegacyId(id) { return typeof id === 'string' && Object.prototype.hasOwnProperty.call(LEGACY_IDS, id); }
@@ -508,7 +535,7 @@
       if (o.hasSkins) ex.push({ label: 'Skins', node: { type: 'skins' } });
       return ex;
     }
-    if (t === 'skins' || t === 'skinFamily') return menuSkinItems(node, o.activeSkin);
+    if (t === 'skins' || t === 'skinLine' || t === 'skinGen') return menuSkinItems(node, o.activeSkin);
     if (t === 'games') return [{ label: 'Brick', action: 'brick' }];
     // Lighting (2026-09-24, plan pocket-gyro-lighting): only where the controller says the driver
     // can light THIS skin (opts.hasLighting: a Click skin with pocket-lighting.js loaded) - never
@@ -516,22 +543,33 @@
     if (t === 'settings') return (o.hasLighting ? [{ label: 'Lighting', node: { type: 'lighting' } }] : []).concat([{ label: 'About', node: { type: 'about' } }]);
     return null;
   }
-  // Extras > Skins (v1.344): families first; a family with colorways opens its own level, a family of
-  // one is a row that applies. A row carries `skinId`; `preview` says the wheel may re-skin the LCD live
-  // as the highlight lands on it (only skins that keep these menus: a Cider/Nordic preview would end the
-  // menu under the user's finger, so those apply on Select only). The check follows the ACTIVE skin.
+  // Extras > Skins (v1.345): Original, then a row per iPod line (Classic, Mini, Nano, Shuffle), then Cider and
+  // Nordic. A line opens its generations ("4G (2004)"); a generation opens its colors. A row carries `skinId`;
+  // `preview` says the wheel may re-skin the LCD live as the highlight lands on it (only skins that keep these
+  // menus: a Cider/Nordic preview would end the menu under the user's finger, so those apply on Select only).
+  // The check follows the ACTIVE skin, and a line or generation row is checked when the active skin is inside it.
   function menuSkinItems(node, active) {
     var cur = normalizeSkinId(active);
     var fams = skinFamilies();
     function row(id, label) { return { label: label, action: 'skin', skinId: id, check: id === cur, preview: menuStyle(id) === 'click' }; }
-    if (node && node.type === 'skinFamily') {
-      var f = fams.filter(function (x) { return x.key === node.key; })[0];
-      return f ? f.ids.map(function (id) { return row(id, colorwayLabel(id)); }) : [];
+    function holdsActive(f) { return f.ids.indexOf(cur) >= 0; }
+    if (node && node.type === 'skinGen') {
+      var g = fams.filter(function (x) { return x.key === node.key; })[0];
+      return g ? g.ids.map(function (id) { return row(id, colorwayLabel(id)); }) : [];
     }
-    return fams.map(function (f) {
-      if (f.ids.length === 1) return row(f.ids[0], f.label);
-      return { label: f.label, node: { type: 'skinFamily', key: f.key, label: f.label }, check: f.ids.indexOf(cur) >= 0 };
+    if (node && node.type === 'skinLine') {
+      return fams.filter(function (f) { return f.line === node.key; }).map(function (f) {
+        return { label: f.gen + 'G (' + GEN_YEAR[f.line][f.gen] + ')', node: { type: 'skinGen', key: f.key, label: SKIN_LINES.filter(function (l) { return l.key === f.line; })[0].label + ' ' + f.gen + 'G' }, check: holdsActive(f) };
+      });
+    }
+    var rows = [row('ipod-original', 'Original')];
+    skinLines().forEach(function (ln) {
+      var held = fams.some(function (f) { return f.line === ln.key && holdsActive(f); });
+      rows.push({ label: ln.label, node: { type: 'skinLine', key: ln.key, label: ln.label }, check: held });
     });
+    rows.push(row('apple', 'Cider'));
+    rows.push(row('spotify', 'Nordic'));
+    return rows;
   }
   // Settings > Lighting: the four strengths (v1.333: + Ambient) with a check on the active one, plus a read-only
   // note row (motion denied / no sensor / Reduce Motion) when the driver has one. Re-derived on
@@ -549,7 +587,7 @@
   // not library items. On Click their right pane plays the slow cover drift (the 6G/7G main-menu
   // slideshow); every other level shows the highlighted item's own art. One list, read by the
   // controller - never a second copy.
-  var NON_ITEM_LEVELS = ['main', 'music', 'playlists', 'genres', 'extras', 'games', 'skins', 'skinFamily', 'settings', 'about', 'lighting'];
+  var NON_ITEM_LEVELS = ['main', 'music', 'playlists', 'genres', 'extras', 'games', 'skins', 'skinLine', 'skinGen', 'settings', 'about', 'lighting'];
   function menuIsItemLevel(node) { return NON_ITEM_LEVELS.indexOf(node && node.type) < 0; }
   // The builders take the VIEW's art rule (`artFor(id, explicitArtUrl)` - music.js passes its one
   // musicArtUrl) so the menus can never drift from the art the rest of Music shows. v1.339 (L1):
@@ -862,7 +900,7 @@
   var api = {
     SKIN_KEY: SKIN_KEY, IDS: IDS, DEFAULT_ID: DEFAULT_ID, SKINS: SKINS,
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
-    skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, skinFamilies: skinFamilies, colorwayLabel: colorwayLabel, menuSkinItems: menuSkinItems, isClickColorway: isClickColorway,
+    skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, skinFamilies: skinFamilies, skinLines: skinLines, colorwayLabel: colorwayLabel, menuSkinItems: menuSkinItems, isClickColorway: isClickColorway,
     renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
     skinActiveFor: skinActiveFor, isPhone: isPhone, phoneFrom: phoneFrom, markPhoneClass: markPhoneClass,
     PHONE_CLASS: PHONE_CLASS, PHONE_SHORT_SIDE_MAX: PHONE_SHORT_SIDE_MAX, observeSettled: observeSettled,

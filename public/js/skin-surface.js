@@ -605,7 +605,7 @@
       if (!onPreview) return;
       var want = null;
       var pane = (!destroyed && screen === 'menu') ? curPane() : null;
-      if (pane && (pane.node.type === 'skins' || pane.node.type === 'skinFamily') && !trayUp()) {
+      if (pane && (pane.node.type === 'skins' || pane.node.type === 'skinLine' || pane.node.type === 'skinGen') && !trayUp()) {
         var it = pane.items[pane.cursor];
         if (it && it.action === 'skin' && it.preview) want = it.skinId;
       }
@@ -696,7 +696,7 @@
       }
       // Extras > Skins re-derives every draw: the check follows the SAVED skin (a pick, or a change from
       // the sticker or Settings), never a copy.
-      if (pane.node.type === 'skins' || pane.node.type === 'skinFamily') {
+      if (pane.node.type === 'skins' || pane.node.type === 'skinLine' || pane.node.type === 'skinGen') {
         pane.items = SK.menuSkinItems(pane.node, SK.activeSkinId()) || [];
         if (pane.state !== 'ready') { // first draw: open on the saved skin, so entering never previews a stranger
           for (var ci = 0; ci < pane.items.length; ci++) if (pane.items[ci].check) { pane.cursor = ci; break; }

@@ -21,7 +21,7 @@ const CTX = {
 };
 
 test('registry exposes the skins with render funcs (incl. the Click (Matte) colorway on the wheel chassis)', () => {
-  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'ipod-matte', 'ipod-red', 'ipod-silver', 'ipod-encore', 'ipod-blue', 'ipod-green', 'ipod-pink', 'ipod-gold', 'ipod-frost', 'ipod-sky', 'ipod-olive', 'ipod-blush', 'ipod-2004', 'ipod-charcoal', 'ipod-violet', 'ipod-yellow', 'ipod-lime', 'ipod-cobalt', 'ipod-magenta', 'ipod-raspberry', 'ipod-original']);
+  assert.deepStrictEqual(skins.IDS, ['apple','spotify','ipod-2004','ipod-encore','ipod','ipod-black','ipod-silver','ipod-charcoal','ipod-matte','ipod-frost','ipod-gold','ipod-sky','ipod-blush','ipod-olive','ipod-blue','ipod-green','ipod-pink','ipod-lime','ipod-cobalt','ipod-magenta','ipod-red','ipod-nano3-silver','ipod-nano3-blue','ipod-nano3-green','ipod-nano3-red','ipod-raspberry','ipod-nano4-blue','ipod-violet','ipod-nano4-orange','ipod-yellow','ipod-nano5-green','ipod-nano5-orange','ipod-nano5-pink','ipod-nano6-green','ipod-nano6-orange','ipod-nano6-pink','ipod-nano7-pink','ipod-nano7-yellow','ipod-nano7-blue','ipod-nano7-green','ipod-nano7-purple','ipod-nano7-slate','ipod-nano7-red','ipod-nano7-spacegray','ipod-nano7-gold','ipod-shuffle2-purple','ipod-shuffle2-green','ipod-shuffle2-gold','ipod-shuffle3-pink','ipod-shuffle3-blue','ipod-shuffle4-blue','ipod-original']);
   assert.strictEqual(skins.DEFAULT_ID, 'apple');
   for (const id of skins.IDS) {
     const s = skins.skinById(id);
@@ -36,10 +36,11 @@ test('registry exposes the skins with render funcs (incl. the Click (Matte) colo
   assert.strictEqual(skins.skinById('ipod-matte').base, 'ipod', 'matte Click bases on the silver iPod CSS too');
   assert.strictEqual(skins.skinById('ipod-matte').renderFull, skins.skinById('ipod').renderFull, 'matte is the same render as silver/black - only the palette differs');
   assert.strictEqual(skins.skinById('ipod-black').renderFull, skins.skinById('ipod').renderFull, 'same render, different palette');
-  // v1.232.1 (Dean): the labels are CHEEKY riffs, deliberately NOT the real product /
-  // company names (the IDS stay literal for CSS/storage).
+  // v1.232.1 (Dean): Cider and Nordic are CHEEKY riffs, deliberately NOT the real product /
+  // company names; v1.345: the iPod colorways use real model names (Nano, Classic, Mini, Shuffle),
+  // never the word iPod (the IDS stay literal for CSS/storage).
   const labels = skins.IDS.map((id) => skins.skinById(id).label);
-  assert.deepStrictEqual(labels, ['Cider', 'Nordic', 'Click', 'Click (Black)', 'Click (Matte)', 'Click (Red)', 'Click (Silver)', 'Click (Encore)', 'Click (Blue)', 'Click (Green)', 'Click (Pink)', 'Click (Gold)', 'Click (Frost)', 'Click (Sky)', 'Click (Olive)', 'Click (Blush)', 'Click (2004)', 'Click (Charcoal)', 'Click (Violet)', 'Click (Yellow)', 'Click (Lime)', 'Click (Cobalt)', 'Click (Magenta)', 'Click (Raspberry)', 'Click (Original)']);
+  assert.deepStrictEqual(labels, ['Cider', 'Nordic', 'Classic 4G White (2004)', 'Classic 4G Special Edition (2004)', 'Classic 5G White (2005)', 'Classic 5G Black (2005)', 'Classic 6G Silver (2007)', 'Classic 6G Black (2007)', 'Classic 6G Black (2008)', 'Mini 1G Silver (2004)', 'Mini 1G Gold (2004)', 'Mini 1G Blue (2004)', 'Mini 1G Pink (2004)', 'Mini 1G Green (2004)', 'Mini 2G Blue (2005)', 'Mini 2G Green (2005)', 'Mini 2G Pink (2005)', 'Nano 2G Green (2006)', 'Nano 2G Blue (2006)', 'Nano 2G Pink (2006)', 'Nano 2G Red (2006)', 'Nano 3G Silver (2007)', 'Nano 3G Blue (2007)', 'Nano 3G Green (2007)', 'Nano 3G Red (2007)', 'Nano 3G Pink (2008)', 'Nano 4G Blue (2008)', 'Nano 4G Purple (2008)', 'Nano 4G Orange (2008)', 'Nano 4G Yellow (2008)', 'Nano 5G Green (2009)', 'Nano 5G Orange (2009)', 'Nano 5G Pink (2009)', 'Nano 6G Green (2010)', 'Nano 6G Orange (2010)', 'Nano 6G Pink (2010)', 'Nano 7G Pink (2012)', 'Nano 7G Yellow (2012)', 'Nano 7G Blue (2015)', 'Nano 7G Green (2012)', 'Nano 7G Purple (2012)', 'Nano 7G Slate (2012)', 'Nano 7G Red (2012)', 'Nano 7G Space Gray (2013)', 'Nano 7G Gold (2015)', 'Shuffle 2G Purple (2007)', 'Shuffle 2G Green (2008)', 'Shuffle 2G Gold (2009)', 'Shuffle 3G Pink (2009)', 'Shuffle 3G Blue (2009)', 'Shuffle 4G Blue (2010)', 'Click (Original)']);
   for (const l of labels) {
     assert.ok(!/apple|spotify|ipod|zune|microsoft/i.test(l), 'label "' + l + '" avoids the real product/company names');
   }
@@ -275,9 +276,9 @@ test('v1.229: NO in-player skin switcher - picking lives in the account menu now
     assert.ok(!/mms-skinsw|mms-sw\b/.test(html), id + ': no switcher markup');
   }
   // The registry the Settings picker reads is still exported.
-  assert.deepStrictEqual(skins.IDS, ['apple', 'spotify', 'ipod', 'ipod-black', 'ipod-matte', 'ipod-red', 'ipod-silver', 'ipod-encore', 'ipod-blue', 'ipod-green', 'ipod-pink', 'ipod-gold', 'ipod-frost', 'ipod-sky', 'ipod-olive', 'ipod-blush', 'ipod-2004', 'ipod-charcoal', 'ipod-violet', 'ipod-yellow', 'ipod-lime', 'ipod-cobalt', 'ipod-magenta', 'ipod-raspberry', 'ipod-original']);
+  assert.deepStrictEqual(skins.IDS, ['apple','spotify','ipod-2004','ipod-encore','ipod','ipod-black','ipod-silver','ipod-charcoal','ipod-matte','ipod-frost','ipod-gold','ipod-sky','ipod-blush','ipod-olive','ipod-blue','ipod-green','ipod-pink','ipod-lime','ipod-cobalt','ipod-magenta','ipod-red','ipod-nano3-silver','ipod-nano3-blue','ipod-nano3-green','ipod-nano3-red','ipod-raspberry','ipod-nano4-blue','ipod-violet','ipod-nano4-orange','ipod-yellow','ipod-nano5-green','ipod-nano5-orange','ipod-nano5-pink','ipod-nano6-green','ipod-nano6-orange','ipod-nano6-pink','ipod-nano7-pink','ipod-nano7-yellow','ipod-nano7-blue','ipod-nano7-green','ipod-nano7-purple','ipod-nano7-slate','ipod-nano7-red','ipod-nano7-spacegray','ipod-nano7-gold','ipod-shuffle2-purple','ipod-shuffle2-green','ipod-shuffle2-gold','ipod-shuffle3-pink','ipod-shuffle3-blue','ipod-shuffle4-blue','ipod-original']);
   assert.strictEqual(typeof skins.setActiveSkin, 'function');
-  assert.strictEqual(skins.skinById('ipod').label, 'Click', 'cheeky label (not the real product name) for the picker');
+  assert.strictEqual(skins.skinById('ipod').label, 'Classic 5G White (2005)', 'the real model name for the picker');
 });
 
 test('the pause glyph shows only when playing; play glyph when paused', () => {
