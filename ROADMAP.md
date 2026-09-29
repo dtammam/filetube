@@ -146,6 +146,13 @@
 
 ### Features
 
+- [ ] **iPod skin true-up: 27 new colorways, real model names, Extras by line and generation** _(Dean,
+  2026-09-29)_ - PLAN READY for a Sonnet builder: `docs/exec-plans/active/2026-09-29-ipod-trueup/plan.md`
+  (every color, id, name and CSS value precomputed and proven in `payload/`). From nanochromatic.com's
+  reference cards: 50 iPod skins (22 existing relabeled `Nano 4G Orange (2008)` style, 27 new, the Gold
+  retuned to the real Mini 1G), Extras > Skins > line > generation > color, a narrow skin-art exemption
+  in the UI lint ratchet. Target v1.345.0.
+
 - [ ] **Onboarding: just enough Docker to start, then a guided web setup** _(Dean, 2026-09-28: "I'm
   getting a stronger sense of the value of this tool... there's a significant amount of friction in the
   onboarding")_. Today setup is Docker-driven (compose volumes, env vars, paths as Linux mount points).
