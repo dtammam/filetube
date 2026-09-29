@@ -258,6 +258,10 @@
 
 ### Chores
 
+- [ ] **Rebaseline the visual CI baselines** _(Dean, 2026-09-29)_ - visual CI now comments failures on PRs (report-only, never
+  blocking) because the committed baselines have drifted from the shipped UI since W1. Regenerate them in one
+  reviewed pass (diff each changed scene by eye first, no blind accept) so the comments mean something again.
+
 - [x] **Semantic consistency of button labels across menus** - SHIPPED v1.341.4 (see Shipped) _(Dean, 2026-09-28)_: in Music's Extras menu
   one action is a single word ("Like") and the chapter one reads as a sentence; every menu should follow
   one rule (a verb or a short verb phrase, sentence case, the same length class for sibling rows). Sweep
@@ -396,6 +400,13 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.343.1 - Watch later's clock in the Playlists menu (2026-09-29)
+
+- **The phone Playlists sheet's Watch later row was glyphless.** `toSheetRow` moved only an `<i>` glyph
+  into the row's media slot, and Watch later's clock is an SVG sprite. It now takes either, sized like
+  Liked's (22px, measured before and after in Chromium). Open (Dean, 2026-09-29): Liked is a star in
+  the sidebar and Playlists sheet but a heart in the account menu; not changed, awaiting a ruling.
 
 ### v1.343.0 - Watch later: a list that follows you (2026-09-29)
 

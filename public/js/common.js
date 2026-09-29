@@ -11608,7 +11608,7 @@ const PLAYLISTS_SHEET_LIST_CLASS = 'ui-list ui-list--default ui-list--media-avat
 function toSheetRow(a) {
   if (!a || !a.classList || a.classList.contains('ui-row') || a.tagName !== 'A') return a;
   const d = a.ownerDocument;
-  const glyph = a.querySelector('i');
+  const glyph = a.querySelector('i, svg');
   const label = (a.textContent || '').trim();
   const liked = a.classList.contains('sidebar-item-liked');
   const active = a.classList.contains('active');

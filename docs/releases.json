@@ -3334,5 +3334,11 @@
     "date": "2026-09-29",
     "title": "Watch later: a list that follows you",
     "intent": "A new Watch later list, separate from Pin and from the play queue. Add a video from any card's menu or from the More menu on the watch page, and it shows under Liked in the sidebar and in your account menu on every device you sign in on. Play all sends the whole list to your queue, and Move to top puts one first. A video leaves the list when you finish it (watched to the end, or marked watched), never before."
+  },
+  {
+    "version": "1.343.1",
+    "date": "2026-09-29",
+    "title": "Watch later shows its clock in the Playlists menu",
+    "intent": "On the phone, the Watch later row in the Playlists menu was missing its icon. It now shows the same little clock as the card menu and the sidebar."
   }
 ]
