@@ -155,3 +155,59 @@ test('items carry no file path; reasons are plain language', () => {
   assert.strictEqual(r.watched[0].reason, 'Watched to the end');
   assert.strictEqual(typeof r.watched[0].size, 'number');
 });
+
+test('(d) the kept copy is never listed in ANY group: a watched, stale or big keeper leaves only the newer copy', () => {
+  const m = lib(
+    item('a', { youtubeId: 'FFFFFFFFFFF', addedAt: ago(200), filePath: '/lib/a/x.mp4' }),
+    item('b', { youtubeId: 'FFFFFFFFFFF', addedAt: ago(100), filePath: '/lib/b/x.mp4' }),
+  );
+  const u = user({ watched: { a: isoAgo(100) } });
+  const r = run(m, [u]);
+  assert.deepStrictEqual(ids(r.duplicates), ['b']);
+  const all = [...r.watched, ...r.stale_subscriptions, ...r.largest, ...r.duplicates].map((x) => x.id);
+  assert.ok(!all.includes('a'), 'the keeper is in no group');
+  const big = run(m, [user()], { isSubscriptionItem: () => true });
+  const listed = [...big.watched, ...big.stale_subscriptions, ...big.largest, ...big.duplicates].map((x) => x.id);
+  assert.deepStrictEqual(listed, ['b'], 'a never-opened old keeper is not a stale or big suggestion either');
+});
+
+test('(d) a bracketed release tag in a file name is not a source id: two episodes are not duplicates', () => {
+  const m = lib(
+    item('e1', { filePath: '/lib/Show - S01E01 - Pilot [WEBDL-1080p].mkv', size: 111, duration: 1000 }),
+    item('e2', { filePath: '/lib/Show - S01E02 - Next [WEBDL-1080p].mkv', size: 222, duration: 2000 }),
+  );
+  assert.deepStrictEqual(run(m).duplicates, []);
+});
+
+test('(d) an audio file beside its video with the same source id is not a copy of it', () => {
+  const m = lib(
+    item('v', { youtubeId: 'GGGGGGGGGGG', addedAt: ago(200), filePath: '/lib/Clip.mp4' }),
+    item('m', { youtubeId: 'GGGGGGGGGGG', addedAt: ago(100), filePath: '/lib/Clip.m4a', size: 50 }),
+  );
+  assert.deepStrictEqual(run(m).duplicates, []);
+});
+
+test('(d) a kept copy the viewer cannot see is not named in the row', () => {
+  const m = lib(
+    item('old', { youtubeId: 'HHHHHHHHHHH', addedAt: ago(300), title: 'Secret title' }),
+    item('new', { youtubeId: 'HHHHHHHHHHH', addedAt: ago(100) }),
+  );
+  const d = run(m, [user()], { isVisible: (i) => i.id !== 'old' }).duplicates;
+  assert.deepStrictEqual(ids(d), ['new']);
+  assert.ok(!('keepId' in d[0]) && !('keepTitle' in d[0]));
+  assert.ok(!JSON.stringify(d).includes('Secret'));
+});
+
+test('never opened means NO account has a progress row: another user\'s row keeps it out of (b) and (c)', () => {
+  const m = lib(item('sub'), item('big'));
+  const other = user({ userId: 'u2', progress: { sub: { timestamp: 0, duration: 100, updatedAt: isoAgo(50) }, big: { timestamp: 0, duration: 100, updatedAt: isoAgo(50) } } });
+  const r = run(m, [user(), other], { isSubscriptionItem: () => true });
+  assert.deepStrictEqual(r.stale_subscriptions, []);
+  assert.deepStrictEqual(r.largest, []);
+});
+
+test('a finished item with an old half-position row is still finished, not "in progress"', () => {
+  const m = lib(item('x'));
+  const u = user({ watched: { x: isoAgo(60) }, progress: { x: { timestamp: 50, duration: 100, updatedAt: isoAgo(60) } } });
+  assert.deepStrictEqual(ids(run(m, [u]).watched), ['x']);
+});

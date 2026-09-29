@@ -145,6 +145,12 @@ test('helpers: byte labels, days choices, still-suggested, the delete runner sto
   assert.strictEqual(helpers.cleanupNormalizeDays(null), 30);
   const s = helpers.cleanupStillSuggested(['w1', 'gone'], SHORTLIST());
   assert.deepStrictEqual(s, { keep: ['w1'], dropped: 1 });
+  const moved = helpers.cleanupStillSuggested(['d1'], { duplicates: [{ id: 'd1', reason: 'r', keepId: 'k2' }] },
+    { d1: { id: 'd1', reason: 'r', keepId: 'k1' } });
+  assert.deepStrictEqual(moved, { keep: [], dropped: 1 }, 'a changed keeper is a different decision');
+  const urls = [];
+  await helpers.cleanupRunDeletes(['a/b?c'], (url) => { urls.push(url); return Promise.resolve({ ok: true, status: 200 }); });
+  assert.deepStrictEqual(urls, ['/api/videos/a%2Fb%3Fc'], 'ids are encoded, never spliced into the path');
   const seen = [];
   const statuses = { a: 200, b: 404, c: 403, d: 200 };
   const res = await helpers.cleanupRunDeletes(['a', 'b', 'c', 'd'], (url) => {

@@ -61,11 +61,17 @@ function cleanupConfirmBody(count, bytes) {
 
 // The selected ids that are STILL on a fresh shortlist. Anything that dropped off (it was liked,
 // started, or moved since the page loaded) is never sent.
-function cleanupStillSuggested(selectedIds, freshBody) {
+// It must also be suggested for the SAME reason and keeper it was shown with: a duplicate whose
+// kept copy changed is a different decision.
+function cleanupStillSuggested(selectedIds, freshBody, shownById) {
   var fresh = cleanupItemsById(freshBody);
   var keep = [];
   var dropped = 0;
-  selectedIds.forEach(function (id) { if (id in fresh) keep.push(id); else dropped += 1; });
+  selectedIds.forEach(function (id) {
+    var shown = shownById && shownById[id];
+    var same = id in fresh && (!shown || (shown.reason === fresh[id].reason && shown.keepId === fresh[id].keepId));
+    if (same) keep.push(id); else dropped += 1;
+  });
   return { keep: keep, dropped: dropped };
 }
 
@@ -254,7 +260,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // Re-read the shortlist: only ids that are STILL suggested go to the delete route.
         return fetchSuggestions().then(function (fresh) {
           if (signal.aborted) return;
-          var check = cleanupStillSuggested(ids, fresh);
+          var check = cleanupStillSuggested(ids, fresh, itemsById);
           if (check.dropped > 0) {
             busy = false;
             toast('The list changed, so nothing was moved. Review it and try again.');
