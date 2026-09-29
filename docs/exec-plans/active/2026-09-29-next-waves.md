@@ -165,7 +165,8 @@ huge selection, restore after trash.
 
 Gate: APPROVED r1 @ae7586d5 — security-brief
 Gate: CHANGES r1 @ae7586d5 — qa
-Gate: CHANGES r1 @ae7586d5 — adversary
+Gate: CHANGES r2 @e100986c — adversary
+Gate: APPROVED r2 @e100986c — qa
 
 ## W4 - Watch later: a separate per-user list
 

@@ -125,6 +125,19 @@ test('a shortlist that changed under the user deletes NOTHING (the ticked id dro
   } finally { dom.window.close(); }
 });
 
+test('a duplicate whose kept copy changed under the user deletes NOTHING (same reason and keeper are re-checked)', async () => {
+  const { dom, w, calls, doc } = boot({ fresh: () => Object.assign(SHORTLIST(), { duplicates: [item('d1', 500, { keepId: 'k2', keepTitle: 'Other' })] }) });
+  try {
+    await sleep(50);
+    tick(doc, w, 'd1');
+    click(w, doc.getElementById('cleanup-trash-btn'));
+    await sleep(40);
+    click(w, confirmOpen(doc).querySelector('.ui-confirm__actions .ui-btn--primary'));
+    await sleep(150);
+    assert.strictEqual(deletes(calls).length, 0, 'd1 is still listed, but for a different keeper: not sent');
+  } finally { dom.window.close(); }
+});
+
 test('a double tap on Move to Trash opens ONE confirm', async () => {
   const { dom, w, doc } = boot();
   try {
