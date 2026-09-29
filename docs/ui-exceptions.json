@@ -1,5 +1,5 @@
 {
-  "comment": "Shrink-only ui-lint debt (plan D10.3). Keys are file|selector|property, file|<what> or a class; never line numbers. npm run lint:ui -- --enforce fails on a key or count above its entry AND on one below it: when you pay debt, lower or delete its entry in the same commit. test/unit/ui-exceptions-ratchet.test.js fails on a key added or a count raised against the merge-base. The end state is plan D10.4.",
+  "comment": "Shrink-only ui-lint debt (plan D10.3). Keys are file|selector|property, file|<what> or a class; never line numbers. npm run lint:ui -- --enforce fails on a key or count above its entry AND on one below it: when you pay debt, lower or delete its entry in the same commit. test/unit/ui-exceptions-ratchet.test.js fails on a key added or a count raised against the merge-base. The end state is plan D10.4. Added skin-palette keys (.mms-ipod-* | --pk-c-*) carrying the D10.4 skin-art reason are allowed (the permanent carve-out).",
   "rules": {
     "no-raw-values": [
       {

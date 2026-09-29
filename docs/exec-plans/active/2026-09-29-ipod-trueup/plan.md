@@ -3,7 +3,7 @@ plan: ipod-trueup
 harness: v2 · lean
 branch: feat/ipod-trueup
 anchor: spec
-status: Draft
+status: Building
 next: Dean says go; then Step 0 (read this whole plan once, top to bottom, before touching anything)
 gate: pending
 ---

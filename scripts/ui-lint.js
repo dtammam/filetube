@@ -1110,6 +1110,9 @@ function compareDebt(results, data) {
   return { over, under };
 }
 
+const SKIN_ART_REASON = 'Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it';
+const SKIN_ART_KEY = /^public\/css\/style\.css\|\.mms-ipod-[a-z0-9-]+\|--pk-c-[a-z0-9-]+$/;
+
 /**
  * The shrink-only ratchet (test/unit/ui-exceptions-ratchet.test.js): the current file
  * against the merge-base's. A key added, or a count raised, is a problem.
@@ -1118,14 +1121,16 @@ function compareRatchet(base, current) {
   const problems = [];
   const idx = (d) => {
     const m = new Map();
-    for (const [rule, entries] of Object.entries((d && d.rules) || {})) for (const e of entries || []) m.set(rule + '\u0000' + e.key, e.count);
+    for (const [rule, entries] of Object.entries((d && d.rules) || {})) for (const e of entries || []) m.set(rule + '\u0000' + e.key, { count: e.count, reason: e.reason });
     return m;
   };
   const b = idx(base), c = idx(current);
-  for (const [k, n] of c) {
+  for (const [k, e] of c) {
     const [rule, key] = k.split('\u0000');
-    if (!b.has(k)) problems.push(`${rule}: key added: ${key} (count ${n})`);
-    else if (n > b.get(k)) problems.push(`${rule}: count raised: ${key} ${b.get(k)} -> ${n}`);
+    if (!b.has(k)) {
+      if (rule === 'no-raw-values' && SKIN_ART_KEY.test(key) && e.reason === SKIN_ART_REASON) continue;
+      problems.push(`${rule}: key added: ${key} (count ${e.count})`);
+    } else if (e.count > b.get(k).count) problems.push(`${rule}: count raised: ${key} ${b.get(k).count} -> ${e.count}`);
   }
   return problems;
 }
@@ -1140,7 +1145,8 @@ function baselineData(results, today) {
   return {
     comment: 'Shrink-only ui-lint debt (plan D10.3). Keys are file|selector|property, file|<what> or a class; never line numbers. '
       + 'npm run lint:ui -- --enforce fails on a key or count above its entry AND on one below it: when you pay debt, lower or delete its entry in the same commit. '
-      + 'test/unit/ui-exceptions-ratchet.test.js fails on a key added or a count raised against the merge-base. The end state is plan D10.4.',
+      + 'test/unit/ui-exceptions-ratchet.test.js fails on a key added or a count raised against the merge-base. The end state is plan D10.4. '
+      + 'Added skin-palette keys (.mms-ipod-* | --pk-c-*) carrying the D10.4 skin-art reason are allowed (the permanent carve-out).',
     rules,
   };
 }
@@ -1289,7 +1295,7 @@ function main(argv) {
 module.exports = {
   RULES, RULE_IDS, classifyValue, transitionProps, subjectOf, compoundParts, splitTop,
   tokensInfo, collectSources, buildModel, runRule, lintTree, runCanaries,
-  validateExceptions, compareDebt, compareRatchet, baselineData, main,
+  validateExceptions, compareDebt, compareRatchet, SKIN_ART_REASON, baselineData, main,
 };
 
 if (require.main === module) process.exitCode = main(process.argv.slice(2));

@@ -559,3 +559,17 @@ test('JS is read through tokens: comments never count, template literals read wh
   const keys = lint('no-bespoke-controls', [['public/js/a.js', "// '<button class=\"x\">'\n/* document.createElement('button') */\nh = `<button class=\"${c}\">`;\n"]]);
   assert.deepStrictEqual([...keys], [['public/js/a.js|<button>|${}', 1]]);
 });
+
+test('compareRatchet admits an added skin-palette key only with the skin-art reason, under no-raw-values', () => {
+  const R = L.SKIN_ART_REASON;
+  const KEY = 'public/css/style.css|.mms-ipod-nano3-blue|--pk-c-body';
+  const base = { rules: { 'no-raw-values': [{ key: 'public/css/style.css|.mms-ipod-nano3-blue|--pk-c-edge', count: 1, reason: R }] } };
+  const withEntry = (rule, key, reason, count = 1) => ({ rules: { ...base.rules, [rule]: [...(base.rules[rule] || []), { key, count, reason }] } });
+  assert.deepStrictEqual(L.compareRatchet(base, withEntry('no-raw-values', KEY, R)), [], 'a skin key with the skin-art reason is admitted');
+  assert.deepStrictEqual(L.compareRatchet(base, withEntry('no-raw-values', KEY, 'x')), [`no-raw-values: key added: ${KEY} (count 1)`], 'the wrong reason is refused');
+  const foo = 'public/css/style.css|.foo|color';
+  assert.deepStrictEqual(L.compareRatchet(base, withEntry('no-raw-values', foo, R)), [`no-raw-values: key added: ${foo} (count 1)`], 'a non-skin key is refused even with the reason');
+  assert.deepStrictEqual(L.compareRatchet(base, withEntry('z-ladder', 'public/css/style.css|.mms-ipod-x|--pk-c-body', R)), ['z-ladder: key added: public/css/style.css|.mms-ipod-x|--pk-c-body (count 1)'], 'another rule is refused');
+  const raised = JSON.parse(JSON.stringify(base)); raised.rules['no-raw-values'][0].count = 2;
+  assert.deepStrictEqual(L.compareRatchet(base, raised), ['no-raw-values: count raised: public/css/style.css|.mms-ipod-nano3-blue|--pk-c-edge 1 -> 2'], 'a raised skin count is still refused');
+});
