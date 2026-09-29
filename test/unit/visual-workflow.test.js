@@ -86,6 +86,7 @@ test('visual-comment: pinned literals, credentials and staging hygiene the comme
   assert.ok(body.includes('rm -rf "stage/pr-${PR}"'), 'only this PR\'s latest run stays');
   assert.ok(body.includes('[ -d "stage/pr-${PR}" ]'), 'no push without staged crops');
   assert.match(body, /\[ "\$ok" = 1 \] \|\| \{ echo .*exit 1; \}/, 'three failed pushes fail the step loudly');
+  assert.match(body, /if git -C stage push --quiet origin HEAD:refs\/heads\/visual-reports; then ok=1; break; fi/, 'a successful push sets ok=1, or every good push would fail the step');
 });
 
 test('visual-report-comment.js CLI: hostile report input stays inside --stage/pr-N/run, bad arguments exit 2', () => {
