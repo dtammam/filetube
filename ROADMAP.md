@@ -422,7 +422,7 @@ Kept verbatim for the record - the full release story lives in Shipped below.
   batch-1 formula (not photo-sampled); "Light Green" and "Teal" are disambiguating names.
 - **A Custom section** in Extras > Skins and Settings, opening with a hand-authored Transparent iPod
   (a clear shell, the board and battery showing through). Touch 1G-3G and 6G-7G read as spans.
-- Plan: `docs/exec-plans/active/2026-09-29-ipod-more/plan.md`.
+- Plan: `docs/exec-plans/completed/2026-09-29-ipod-more/plan.md`.
 
 ### v1.345.0 - Every iPod colour, with its real name (2026-09-29)
 

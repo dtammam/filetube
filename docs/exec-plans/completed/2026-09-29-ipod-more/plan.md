@@ -3,7 +3,7 @@ plan: ipod-more
 harness: v2 · lean
 branch: feat/ipod-more-colors
 anchor: spec
-status: In review
+status: Shipped v1.346.0
 next: gate (adversary floor + qa + security-brief; package.json forces the full gate)
 gate: pending
 ---
@@ -41,10 +41,18 @@ then "add a custom section. Custom iPods. And add a transparent one" (eoe.works 
 
 ## 3. Payload
 
-`payload/gen-more.py` (run once: `python3 docs/exec-plans/active/2026-09-29-ipod-more/payload/gen-more.py 2026-09-29`),
+`payload/gen-more.py` (run once: `python3 docs/exec-plans/completed/2026-09-29-ipod-more/payload/gen-more.py 2026-09-29`),
 `site-cards.json`, `batch2-table.md` (every id, label, hex, wheel style).
 
 ## Gate
+
+Gate: APPROVED r1 @95ebd0ed — security-brief
+Evidence: static registry data only; picker escapes label/blurb (escStickerHtml) and ids are static literals; no new network/auth/secret surface; lock shows only the 1.346.0 version fields; no node_modules/.env/credential files in tree (git diff not runnable: no Bash, reviewed by direct reads).
+
+QA r1: AC1-AC3 verified (129 skins, unique ids/labels, 77 new each with one CSS block, blurb, pin, exceptions; labels match batch2-table.md; lint:ui OK; eslint 0 errors; 6 targeted test files 100/100). No security surface (static data). NOTE only: ROADMAP has a stray double blank line before v1.344.2; AC4 dual-Node full suite not re-run by QA.
+Gate: APPROVED r1 @95ebd0ed — qa
+Adversary r1: 100/100 targeted tests, lint:ui OK. Mutants in a /tmp sandbox all red (palette hex 1, transparent glow/board 1 each, GEN_SPAN 2, custom line 5, touch/custom year 2, blurb drop 1, mis-set year/gen 1 each, id rename 7, previewAll 1, css rename 4). NOTE: blurb TEXT is unbound (swap 'slate' blurb to 'red' stays green; only presence pinned); palette pins are CSS-generated, so only the pin binds design drift, not intent. Cider never-preview stays bound (preview:true mutant red). No sibling ignores touch/custom; ratchet: 936 new keys, 0 removed/changed, all skin-art. No labels collide.
+Gate: APPROVED r1 @95ebd0ed — adversary
 
 ## Build record
 
