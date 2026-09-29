@@ -259,7 +259,7 @@
 
 ### Chores
 
-- [ ] **Rebaseline the visual CI baselines** _(Dean, 2026-09-29)_ - visual CI now comments failures on PRs (report-only, never
+- [x] **Rebaseline the visual CI baselines** - DONE 2026-09-29 (PR #49, after v1.344.1) _(Dean, 2026-09-29)_ - visual CI now comments failures on PRs (report-only, never
   blocking) because the committed baselines have drifted from the shipped UI since W1. Regenerate them in one
   reviewed pass (diff each changed scene by eye first, no blind accept) so the comments mean something again.
 
@@ -401,6 +401,16 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.344.2 - Watch to Listen keeps its place (2026-09-29)
+
+- **A chaptered video no longer restarts on Listen.** Watch -> Listen on a video with chapters loaded
+  its first chapter row (`<id>::c0`), a fresh load rather than the same-id adopt a plain video gets, so
+  playback jumped back to chapter 1 (measured in headless Chromium: Watch at 132.4 s, Listen at 3.8 s).
+  Listen now starts on the chapter holding the live playhead and seeks to the second read when that row
+  loads (after: 132.4 s -> 136.3 s, still playing). No live position (another item, a desktop live
+  transcode) still starts at chapter 1. Plain videos and Listen -> Watch were already keeping their place
+  and are unchanged. Dean's report, 2026-09-29.
 
 ### v1.344.1 - Liked is a heart everywhere (2026-09-29)
 
