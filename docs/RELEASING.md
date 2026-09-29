@@ -118,6 +118,10 @@ reusable lesson (a bug class and its guard), add or update it in
 existing entry. Never write a per-release file into an agent's memory (retired
 2026-09-25: 276 such files had become a duplicate of the ROADMAP).
 
+What Dean should tap on a device to confirm a release is appended to
+[`docs/DEVICE-CHECKS.md`](DEVICE-CHECKS.md), one line per check tagged with the version; a release
+never adds a tech-debt tracker row for its device checks.
+
 ## The visual job and baselines (a report, never a gate)
 
 `.github/workflows/visual.yml` splits into 12 parallel legs, one per era (2021,

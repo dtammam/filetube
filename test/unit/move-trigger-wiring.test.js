@@ -63,7 +63,7 @@ test('watch.js window-qualifies neither showMoveModal nor requestMoveItem -- rea
 test('watch.js: Move is a More-menu entry (registry folder glyph, descriptive label) gated on the write capability, routed to handleMoveClick', () => {
   const { buildWatchMoreItems } = require('../../public/js/watch.js');
   assert.strictEqual(buildWatchMoreItems({ canModifyLibrary: false }).some((i) => i.id === 'move'), false, 'no capability, no Move');
-  assert.deepStrictEqual(buildWatchMoreItems({ canModifyLibrary: true }).find((i) => i.id === 'move'), { id: 'move', icon: 'folder', label: 'Move to another folder' });
+  assert.deepStrictEqual(buildWatchMoreItems({ canModifyLibrary: true }).find((i) => i.id === 'move'), { id: 'move', icon: 'folder', label: 'Move to folder' });
   assert.match(watchJs, /else if \(id === 'move'\) handleMoveClick\(\);/, 'the pick runs the move flow');
   assert.ok(!/moveBtn|setupMoveButton/.test(watchJs), 'no runtime Move button remains');
 });

@@ -81,8 +81,8 @@
   (classic), 628px (Modern); now `minmax(0, 1fr)` tracks + `overflow-wrap: anywhere` on the card text:
   430px in both, two 194px columns.
 
-- [ ] **Bug: the Click Original skin shows emoji in colour where everything else is black and white**
-  _(Dean, 2026-09-28)_: the Original is a monochrome skin, but emoji glyphs (colour emoji fonts ignore
+- [x] **Bug: the Click Original skin shows emoji in colour where everything else is black and white**
+  - SHIPPED v1.341.4 (see Shipped) _(Dean, 2026-09-28)_: the Original is a monochrome skin, but emoji glyphs (colour emoji fonts ignore
   `color`) render in full colour inside it. Fix inside the Original's scope: a monochrome emoji
   presentation (text presentation selector / a monochrome emoji font) or a grayscale filter on emoji
   runs only, never on the whole surface (LESSONS 7: filters over playing media). Check every place the
@@ -258,7 +258,7 @@
 
 ### Chores
 
-- [ ] **Semantic consistency of button labels across menus** _(Dean, 2026-09-28)_: in Music's Extras menu
+- [x] **Semantic consistency of button labels across menus** - SHIPPED v1.341.4 (see Shipped) _(Dean, 2026-09-28)_: in Music's Extras menu
   one action is a single word ("Like") and the chapter one reads as a sentence; every menu should follow
   one rule (a verb or a short verb phrase, sentence case, the same length class for sibling rows). Sweep
   the menus (Extras, card menus, the chapters menu, Pocket menus), write the rule into the UI docs, and
@@ -396,6 +396,25 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.341.4 - The Original shows emoji in black and white, and menu labels are short verb phrases (2026-09-29)
+
+- **Click (Original) draws emoji in black and white.** A colour emoji in a song title, a menu row, a
+  chapter title or the status bar is greyed with a filter on the Original's text only; the glass, the
+  panel and any media are never filtered, and every other skin keeps its colour. Measured on the fixture
+  at 390x844 with an emoji title: 0 coloured pixels in the title, status bar and a menu row (the same row
+  had 2931 with the rule off); Click (White) unchanged (3688 / 681 / 22807), and the computed filter on
+  the panel and the video stays `none`.
+- **One label rule: a menu row or action button is a verb phrase of 1-3 words, no trailing punctuation.**
+  Music's Extras chapter row "This chapter starts wrong" is now "Fix chapter times", "Move to..." is
+  "Move to folder", the chapters menu and the editor button lose their ellipsis, and the watch page's
+  menu says "Move to folder", "Assign channel" and "Share at 1:23" (was "...at current time (1:23)").
+  Same actions, same order. `test/unit/button-label-rule.test.js` scans the static labels and fails on a
+  sentence or a fourth word; the rule is in `docs/CONTRIBUTING.md`. The Pocket iPod menus keep their
+  Title Case names on purpose.
+- **A rolling device checklist.** `docs/DEVICE-CHECKS.md` is now the one list of what to tap on a
+  device, grouped by area and tagged with the version; the open checks from tracker rows #280-#289 and
+  v1.341.1-3 moved into it, and a release appends there instead of adding a tracker row.
 
 ### v1.341.3 - Rotating back no longer bumps the watch page, and Modern folders fit the phone (2026-09-28)
 

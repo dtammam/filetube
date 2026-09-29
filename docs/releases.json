@@ -3316,5 +3316,11 @@
     "date": "2026-09-28",
     "title": "Rotating back no longer bumps the watch page, and Modern folders fit the phone",
     "intent": "When you turn your phone back upright while watching, the page settles straight into place instead of sitting a little too high for a moment and then jumping. In the Modern theme, a folder with a long video title or channel name no longer spreads wider than your phone's screen."
+  },
+  {
+    "version": "1.341.4",
+    "date": "2026-09-29",
+    "title": "Original shows emoji in black and white, and menu labels say what they do",
+    "intent": "In the Click Original skin, an emoji in a song title, a menu row or the status bar now draws in black and white like the rest of its screen; every other skin keeps its colour. Menu buttons now follow one rule, a short verb phrase: the chapter row in Music's Extras reads \"Fix chapter times\", Move reads \"Move to folder\", and the watch page's menu says \"Assign channel\" and \"Share at 1:23\"."
   }
 ]

@@ -233,3 +233,14 @@ test('AC6 (d): the bitmap face is bundled, declared once, named only by the look
   const readme = fs.readFileSync(path.join(ROOT, 'public', 'fonts', 'README.md'), 'utf8');
   assert.match(readme, /## Jersey 10 \(`jersey10\.woff2`\)[\s\S]*SIL Open Font License 1\.1/, 'the README cites its license');
 });
+
+test('v1.341.4 (Dean): the Original\'s TEXT surfaces draw in black and white - the filter never reaches the glass, the panel or media', () => {
+  const gray = ALL.filter((r) => /filter:\s*grayscale\(1\)/.test(r.body));
+  assert.strictEqual(gray.length, 1, 'ONE grayscale rule in the whole stylesheet');
+  const sels = gray[0].sel.split(',').map((s) => s.trim());
+  const start = CSS.indexOf('.mms-look-original{'); const end = CSS.indexOf('.mms-look-original .ip-z-menu{');
+  assert.ok(gray[0].at > start && gray[0].at < end, 'it sits in the look section');
+  for (const s of sels) assert.match(s, /^\.mms-look-original \.(ip-np|ip-ttl|ip-artist|ip-album|ip-nof|mms-pos|mms-rem|mms-rt|mms-ra|ipm-lbl|ipm-val|ipm-gl|ipm-letter)$/, 'a text surface of the look: ' + s);
+  for (const need of ['.ip-ttl', '.ip-np', '.mms-rt', '.ipm-lbl']) assert.ok(sels.includes('.mms-look-original ' + need), 'covers ' + need);
+  // a filter beside a playing video blacks it out on iPhone (LESSONS 7): the closed list above names no media, art or container
+});

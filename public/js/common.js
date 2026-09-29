@@ -12885,7 +12885,7 @@ function showChaptersEditor(mediaId, initialText, onSaved, doc, opts) {
   let snapBtn = null;
   const initialLines = (typeof initialText === 'string' ? initialText : '').split(/\r?\n/).filter((l) => l.trim() !== '');
   if (initialLines.length >= 2 && typeof showChapterSnapEditor === 'function') {
-    snapBtn = U.button({ variant: 'tonal', label: 'Fix times…', ariaLabel: 'Fix chapter start times in the visual editor', doc: d });
+    snapBtn = U.button({ variant: 'tonal', label: 'Fix times', ariaLabel: 'Fix chapter start times in the visual editor', doc: d });
     snapBtn.classList.add('chapters-editor-snap');
     snapBtn.addEventListener('click', () => {
       if (busy) return;

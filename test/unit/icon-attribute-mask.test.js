@@ -44,7 +44,7 @@ test('icon-attribute: watch.js (Attribute button) emits icon-attribute; main.js 
   // UI pass sweep S3: the watch page's Attribute is a More-menu entry drawing the registry's
   // `edit` glyph (no mask).
   const watch = stripJs(fs.readFileSync(path.join(PUB, 'js', 'watch.js'), 'utf8'));
-  assert.match(watch, /id: 'attribute', icon: 'edit', label: 'Attribute to a channel'/, 'watch.js');
+  assert.match(watch, /id: 'attribute', icon: 'edit', label: 'Assign channel'/, 'watch.js');
   const main = stripJs(fs.readFileSync(path.join(PUB, 'js', 'main.js'), 'utf8'));
   assert.match(main, /cardUi\(\)\.button\(\{ variant: 'tonal', size: 'sm', pill: true, label: 'Attribute folder',/, 'main.js: a labelled ui-btn');
   for (const js of [watch, main]) assert.ok(!/icon-user/.test(js), 'no icon-user left');
