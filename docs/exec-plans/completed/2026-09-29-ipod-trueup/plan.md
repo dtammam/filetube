@@ -3,7 +3,7 @@ plan: ipod-trueup
 harness: v2 · lean
 branch: feat/ipod-trueup
 anchor: spec
-status: Building
+status: Shipped v1.345.0
 next: Dean says go; then Step 0 (read this whole plan once, top to bottom, before touching anything)
 gate: pending
 ---
@@ -275,7 +275,15 @@ Adversary r1: no CRITICAL. WARNING 1: the skin-surface.js pane refresh for `skin
 
 Gate: CHANGES r1 @1d1a00ee7a6edcea1dd8678a2d2dcc9f04d07cd7 — adversary
 
+Adversary r2: W1 fixed (dropping 'skinLine' from the refresh: 1 fail of 11), W2 fixed (drop `$`, any class, any property: each 1 fail of 32); base 43 pass 0 fail. W3 accepted per Dean. NOTE: the `^public/css/style.css|` file prefix is still unbound (mutant stays green); non-blocking.
+
+Gate: APPROVED r2 @611c9210718eb9a7db2fda5d8fef3d50f83c1dc3 — adversary
+
 Builder r1 response (2026-09-29): Dean RULED to leave the six "a orange center" blurbs as the payload has them (QA and adversary WARNING accepted, not fixed). Adversary WARNING 1 fixed in 3c571204: new test "Select in another line and generation moves the check at every level MENU returns to" in `pocket-skins-menu.test.js`; mutation (drop `'skinLine'` from the pane refresh, `skin-surface.js` ~699) went red (pass 42, fail 1), restored. Adversary WARNING 2 fixed: `ui-lint.test.js` now covers four bad key shapes (`.foo|--pk-c-body`, `.mms-ipod-x|color`, trailing junk, an extra segment); mutants "drop the `$` anchor", "any class", "any property" each went red (pass 42, fail 1), restored. Targeted run after: pass 43, fail 0.
+
+QA r2: delta 3c571204 adds two binding tests, no regression (163/163 targeted pass, lint:ui OK, eslint 0 errors). The "a orange center" WARNING is accepted per Dean's ruling, disclosed, not fixed.
+
+Gate: APPROVED r2 @611c9210718eb9a7db2fda5d8fef3d50f83c1dc3 — qa
 
 ## Build record
 

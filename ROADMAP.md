@@ -146,8 +146,8 @@
 
 ### Features
 
-- [ ] **iPod skin true-up: 27 new colorways, real model names, Extras by line and generation** _(Dean,
-  2026-09-29)_ - PLAN READY for a Sonnet builder: `docs/exec-plans/active/2026-09-29-ipod-trueup/plan.md`
+- [x] **iPod skin true-up: 27 new colorways, real model names, Extras by line and generation** - SHIPPED v1.345.0 (see Shipped) _(Dean,
+  2026-09-29)_ - plan: `docs/exec-plans/completed/2026-09-29-ipod-trueup/plan.md`
   (every color, id, name and CSS value precomputed and proven in `payload/`). From nanochromatic.com's
   reference cards: 50 iPod skins (22 existing relabeled `Nano 4G Orange (2008)` style, 27 new, the Gold
   retuned to the real Mini 1G), Extras > Skins > line > generation > color, a narrow skin-art exemption
@@ -424,7 +424,7 @@ Kept verbatim for the record - the full release story lives in Shipped below.
   groups its tiles by generation.
 - **Gold is the real Mini 1G Gold (2004)**: champagne body, the grey Mini 1G wheel, lettering and center.
 - **The UI-lint ratchet admits added skin-palette keys** (and only those, under `no-raw-values`, with the
-  skin-art reason); it stays shrink-only for everything else. Plan: `docs/exec-plans/active/2026-09-29-ipod-trueup/plan.md`.
+  skin-art reason); it stays shrink-only for everything else. Plan: `docs/exec-plans/completed/2026-09-29-ipod-trueup/plan.md`.
 
 ### v1.344.2 - Watch and Listen keep your place, and a pause (2026-09-29)
 
