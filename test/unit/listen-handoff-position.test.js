@@ -71,7 +71,8 @@ const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 // Boots the listen arm against `player` and returns the load() calls. `player.getCurrentTime` is the
 // probe: the watch page's playhead as the music view reads it.
-async function listenWith(player) {
+async function listenWith(player, hooks) {
+  hooks = hooks || {};
   const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController };
   const loads = [];
   const realLoad = player.load;
@@ -82,13 +83,14 @@ async function listenWith(player) {
     const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music?play=vidX&listen=1' });
     global.window = dom.window; global.document = dom.window.document;
     global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
-    global.fetch = (u) => (String(u).indexOf('/api/videos/') === 0
+    global.fetch = hooks.fetch || ((u) => (String(u).indexOf('/api/videos/') === 0
       ? Promise.resolve({ ok: true, json: () => Promise.resolve(CHAPTERED_VIDEO) })
-      : Promise.resolve({ ok: true, json: () => Promise.resolve({ items: [] }) }));
+      : Promise.resolve({ ok: true, json: () => Promise.resolve({ items: [] }) })));
     dom.window.FileTube = { registerView: (n, m) => { registered = m; }, player, shimmerArt: () => {}, pushViewState: () => {}, replaceViewState: () => {}, navigate: () => {} };
     require(musicPath);
     registered.init(dom.window.document.getElementById('view-root'));
     for (let k = 0; k < 8; k++) await settle();
+    if (hooks.afterBoot) { await hooks.afterBoot(dom); for (let k = 0; k < 8; k++) await settle(); }
     registered.destroy();
   } finally {
     delete require.cache[musicPath];
@@ -105,14 +107,49 @@ const basePlayer = (currentId, times) => {
   };
 };
 
-test('Watch -> Listen on a chaptered video starts in the playhead chapter, at the second read AT LOAD', async () => {
-  // 130 s at the tap, 131.5 s by the time the row loads (the audio played on through the fetches):
-  // the load must seek to the LATER reading, or the handoff rewinds by the wait.
-  const loads = await listenWith(basePlayer('vidX', [130, 131.5]));
+test('Watch -> Listen on a chaptered video starts in the playhead chapter, at the playhead', async () => {
+  // The normal path: the chapter pick and the load run back to back after the /api/videos fetch,
+  // so both reads see the same second.
+  const loads = await listenWith(basePlayer('vidX', [130]));
   assert.strictEqual(loads.length, 1, 'exactly one load');
   assert.strictEqual(loads[0].id, 'vidX::c1', '130 s is in chapter 2 (120-240), not chapter 1');
   assert.strictEqual(loads[0].data.chapterStartSec, 120);
-  assert.strictEqual(loads[0].data.chapterResumeSec, 131.5, 'seeks to the load-time playhead');
+  assert.strictEqual(loads[0].data.chapterResumeSec, 130, 'seeks to the playhead, not the chapter head');
+});
+
+test('a handoff that WAITS on the chapter file check seeks to the second read at load, not at the pick', async () => {
+  // The waiting path (measured by the gate on a real server: a tap-time read rewound 3.5 s here).
+  // Returning to the app during the listen fetch arms the file check (returnEpoch > 0), so the pick
+  // parks in verifyChapterFileThenPlay while its own /api/videos check runs and the watch audio plays
+  // on; the waiter's replay must carry handoffFrom and read the playhead again.
+  let now = 130;
+  const player = basePlayer('vidX', []);
+  player.getCurrentTime = () => now;
+  let videoCalls = 0;
+  let releaseListen;
+  let releaseCheck;
+  const reply = () => ({ ok: true, json: () => Promise.resolve(CHAPTERED_VIDEO) });
+  const loads = await listenWith(player, {
+    fetch: (u) => {
+      if (String(u).indexOf('/api/videos/') !== 0) return Promise.resolve({ ok: true, json: () => Promise.resolve({ items: [] }) });
+      videoCalls += 1;
+      if (videoCalls === 1) return new Promise((r) => { releaseListen = () => r(reply()); });
+      if (videoCalls === 2) return new Promise((r) => { releaseCheck = () => r(reply()); });
+      return Promise.resolve(reply());
+    },
+    afterBoot: async (dom) => {
+      Object.defineProperty(dom.window.document, 'visibilityState', { configurable: true, get: () => 'visible' });
+      dom.window.document.dispatchEvent(new dom.window.Event('visibilitychange')); // the app comes back
+      releaseListen();
+      for (let k = 0; k < 8; k++) await settle();
+      assert.strictEqual(typeof releaseCheck, 'function', 'the pick is parked on the chapter file check');
+      now = 133.5; // the watch audio played on through the check
+      releaseCheck();
+    },
+  });
+  assert.strictEqual(loads.length, 1, 'exactly one load, after the check');
+  assert.strictEqual(loads[0].id, 'vidX::c1', 'the chapter picked at 130 s');
+  assert.strictEqual(loads[0].data.chapterResumeSec, 133.5, 'seeks to the playhead read at load');
 });
 
 test('Listen with no live position for that video starts at chapter 1, as before', async () => {

@@ -3541,10 +3541,11 @@ if (typeof module !== 'undefined' && module.exports) {
         // RECORDS to the MEDIA store under the BASE file id (a real media id) so it
         // lands in Recently played + resumes. baseMediaId is the save id;
         // chapterResumeSec (the saved absolute file position, if any) is where a
-        // resume-tap seeks instead of the chapter head.
+        // resume-tap seeks instead of the chapter head; a Watch -> Listen handoff
+        // (opts.handoffFrom) seeks to the live playhead instead (chapterStartFor).
         chapterStartSec: isChapter ? (Number(item.chapterStartSec) || 0) : undefined,
         baseMediaId: isChapter ? String(item.id).replace(/::c\d+$/, '') : undefined,
-        chapterResumeSec: isChapter ? chapterStartFor(item, opts, window.FileTube && window.FileTube.player) : undefined, // v1.311.3: near its end -> the chapter head
+        chapterResumeSec: isChapter ? chapterStartFor(item, opts, window.FileTube && window.FileTube.player) : undefined, // v1.311.3: a saved place near its end -> the chapter head
         resumeMode: 'music',
         autoAdvanceViaTrackNav: true,
         browseCtx: queueCtxEncoded,
