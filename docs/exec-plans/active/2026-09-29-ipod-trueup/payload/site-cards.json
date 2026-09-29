@@ -1,0 +1,1040 @@
+[
+ {
+  "line": "iPod classic",
+  "gen": "1st generation, 2nd generation, and 3rd generation",
+  "date": "October 23, 2001 \u2013 July 17, 2002 \u2013 April 23, 2003",
+  "color": "White",
+  "hex": "#EFF2F1",
+  "id": "ipod-original"
+ },
+ {
+  "line": "iPod classic",
+  "gen": "4th generation",
+  "date": "July 19, 2004",
+  "color": "White",
+  "hex": "#EFF2F1",
+  "id": "ipod-2004"
+ },
+ {
+  "line": "iPod classic",
+  "gen": "4th generation",
+  "date": "October 26, 2004",
+  "color": "U2 Special Edition",
+  "hex": "#C92E2C",
+  "id": "ipod-encore"
+ },
+ {
+  "line": "iPod classic",
+  "gen": "iPod photo / iPod with color display",
+  "date": "October 26, 2004",
+  "color": "White",
+  "hex": "#EFF2F1"
+ },
+ {
+  "line": "iPod classic",
+  "gen": "iPod photo / iPod with color display",
+  "date": "June 28, 2005",
+  "color": "U2 Special Edition",
+  "hex": "#C92E2C"
+ },
+ {
+  "line": "iPod classic",
+  "gen": "5th generation",
+  "date": "October 12, 2005",
+  "color": "White",
+  "hex": "#FDFDFD",
+  "id": "ipod"
+ },
+ {
+  "line": "iPod classic",
+  "gen": "5th generation",
+  "date": "October 12, 2005",
+  "color": "Black",
+  "hex": "#000201",
+  "id": "ipod-black"
+ },
+ {
+  "line": "iPod classic",
+  "gen": "5th generation",
+  "date": "June 6, 2006",
+  "color": "U2 Special Edition",
+  "hex": "#EA332C"
+ },
+ {
+  "line": "iPod classic",
+  "gen": "6th generation \u201cclassic\u201d",
+  "date": "September 5, 2007",
+  "color": "Silver",
+  "hex": "#E4E4E4",
+  "id": "ipod-silver"
+ },
+ {
+  "line": "iPod classic",
+  "gen": "6th generation \u201cclassic\u201d",
+  "date": "September 5, 2007",
+  "color": "Black",
+  "hex": "#33343A",
+  "id": "ipod-charcoal"
+ },
+ {
+  "line": "iPod classic",
+  "gen": "6th generation \u201cclassic\u201d",
+  "date": "September 9, 2008",
+  "color": "Silver",
+  "hex": "#E4E4E4"
+ },
+ {
+  "line": "iPod classic",
+  "gen": "6th generation \u201cclassic\u201d",
+  "date": "September 9, 2008",
+  "color": "Black",
+  "hex": "#7A777A",
+  "id": "ipod-matte"
+ },
+ {
+  "line": "iPod mini",
+  "gen": "1st generation",
+  "date": "January 6, 2004",
+  "color": "Silver",
+  "hex": "#D6D6D6",
+  "id": "ipod-frost"
+ },
+ {
+  "line": "iPod mini",
+  "gen": "1st generation",
+  "date": "January 6, 2004",
+  "color": "Gold",
+  "hex": "#E2D6A3",
+  "id": "ipod-gold"
+ },
+ {
+  "line": "iPod mini",
+  "gen": "1st generation",
+  "date": "January 6, 2004",
+  "color": "Blue",
+  "hex": "#C1DEE6",
+  "id": "ipod-sky"
+ },
+ {
+  "line": "iPod mini",
+  "gen": "1st generation",
+  "date": "January 6, 2004",
+  "color": "Pink",
+  "hex": "#E8C7D9",
+  "id": "ipod-blush"
+ },
+ {
+  "line": "iPod mini",
+  "gen": "1st generation",
+  "date": "January 6, 2004",
+  "color": "Green",
+  "hex": "#DFE4AC",
+  "id": "ipod-olive"
+ },
+ {
+  "line": "iPod mini",
+  "gen": "2nd generation",
+  "date": "February 23, 2005",
+  "color": "Silver",
+  "hex": "#CCD0D1"
+ },
+ {
+  "line": "iPod mini",
+  "gen": "2nd generation",
+  "date": "February 23, 2005",
+  "color": "Blue",
+  "hex": "#6AC2E2",
+  "id": "ipod-blue"
+ },
+ {
+  "line": "iPod mini",
+  "gen": "2nd generation",
+  "date": "February 23, 2005",
+  "color": "Green",
+  "hex": "#B0C36B",
+  "id": "ipod-green"
+ },
+ {
+  "line": "iPod mini",
+  "gen": "2nd generation",
+  "date": "February 23, 2005",
+  "color": "Pink",
+  "hex": "#DCA6C1",
+  "id": "ipod-pink"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "1st generation",
+  "date": "January 11, 2005",
+  "color": "White",
+  "hex": "#F4F1F2"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "January 11, 2005",
+  "color": "Silver",
+  "hex": "#CBD0CE"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "January 30, 2007",
+  "color": "Silver",
+  "hex": "#CBD0CE"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "January 30, 2007",
+  "color": "Pink",
+  "hex": "#C33A83"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "January 30, 2007",
+  "color": "Green",
+  "hex": "#7EB14A"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "January 30, 2007",
+  "color": "Blue",
+  "hex": "#3F8CB9"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "January 30, 2007",
+  "color": "Orange",
+  "hex": "#D08330"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "September 5, 2007",
+  "color": "Silver",
+  "hex": "#CBD0CE"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "September 5, 2007",
+  "color": "Blue (yes, it looks teal)",
+  "hex": "#75B7B7"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "September 5, 2007",
+  "color": "PRODUCT(RED) (yes, it looks kinda pink)",
+  "hex": "#932D3B"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "September 5, 2007",
+  "color": "Green",
+  "hex": "#89BB93"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "September 5, 2007",
+  "color": "Purple",
+  "hex": "#7978A8"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "September 9, 2008",
+  "color": "Silver",
+  "hex": "#CBD0CE"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "September 9, 2008",
+  "color": "Blue",
+  "hex": "#377DB9"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "September 9, 2008",
+  "color": "Green",
+  "hex": "#7DB048"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "September 9, 2008",
+  "color": "PRODUCT(RED)",
+  "hex": "#B63628"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "September 9, 2008",
+  "color": "Pink",
+  "hex": "#AF437E"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "2nd generation",
+  "date": "Mid-2009 AVON Special Edition",
+  "color": "Gold",
+  "hex": "#E1C581"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "3rd generation",
+  "date": "March 11, 2009",
+  "color": "Silver",
+  "hex": "#C4C2C0"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "3rd generation",
+  "date": "March 11, 2009",
+  "color": "Black",
+  "hex": "#5F5C5D"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "3rd generation",
+  "date": "September 9, 2009",
+  "color": "Silver",
+  "hex": "#C4C2C0"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "3rd generation",
+  "date": "September 9, 2009",
+  "color": "Black",
+  "hex": "#5F5C5D"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "3rd generation",
+  "date": "September 9, 2009",
+  "color": "Pink",
+  "hex": "#D25B86"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "3rd generation",
+  "date": "September 9, 2009",
+  "color": "Blue",
+  "hex": "#48A0B7"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "3rd generation",
+  "date": "September 9, 2009",
+  "color": "Green",
+  "hex": "#9EBD51"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "3rd generation",
+  "date": "September 9, 2009",
+  "color": "Special Edition (Stainless Steel)",
+  "hex": "#9D9EA2"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "September 1, 2010",
+  "color": "Silver",
+  "hex": "#BABCBD"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "September 1, 2010",
+  "color": "Blue",
+  "hex": "#8FB4DC"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "September 1, 2010",
+  "color": "Green",
+  "hex": "#B6CF6E"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "September 1, 2010",
+  "color": "Orange",
+  "hex": "#E9B74F"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "September 1, 2010",
+  "color": "Pink",
+  "hex": "#E286B5"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "September 12, 2012",
+  "color": "Pink",
+  "hex": "#E9807F"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "September 12, 2012",
+  "color": "Yellow",
+  "hex": "#E3E064"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "September 12, 2012",
+  "color": "Blue",
+  "hex": "#69C6E4"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "September 12, 2012",
+  "color": "Green",
+  "hex": "#88CDA1"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "September 12, 2012",
+  "color": "Purple",
+  "hex": "#D196CA"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "September 12, 2012",
+  "color": "Silver",
+  "hex": "#D8DBDA"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "September 12, 2012",
+  "color": "Slate",
+  "hex": "#4E535D"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "September 12, 2012",
+  "color": "PRODUCT(RED)",
+  "hex": "#E95555"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "September 10, 2013",
+  "color": "Space Gray",
+  "hex": "#9A999C"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "July 15, 2015",
+  "color": "Silver",
+  "hex": "#D8DBDA"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "July 15, 2015",
+  "color": "Gold",
+  "hex": "#EEE2CB"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "July 15, 2015",
+  "color": "Space Gray",
+  "hex": "#505054"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "July 15, 2015",
+  "color": "Blue",
+  "hex": "#3C67AA"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "July 15, 2015",
+  "color": "Pink",
+  "hex": "#D85288"
+ },
+ {
+  "line": "iPod shuffle",
+  "gen": "4th generation",
+  "date": "July 15, 2015",
+  "color": "PRODUCT(RED)",
+  "hex": "#C8433E"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "1st generation",
+  "date": "September 7, 2005",
+  "color": "Black",
+  "hex": "#121617"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "1st generation",
+  "date": "September 7, 2005",
+  "color": "White",
+  "hex": "#FEFEFE"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "2nd generation",
+  "date": "September 12, 2006",
+  "color": "Silver",
+  "hex": "#E3E5E4"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "2nd generation",
+  "date": "September 12, 2006",
+  "color": "Green",
+  "hex": "#A0C15A",
+  "id": "ipod-lime"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "2nd generation",
+  "date": "September 12, 2006",
+  "color": "Blue",
+  "hex": "#4193BB",
+  "id": "ipod-cobalt"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "2nd generation",
+  "date": "September 12, 2006",
+  "color": "Pink",
+  "hex": "#C1518B",
+  "id": "ipod-magenta"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "2nd generation",
+  "date": "September 12, 2006",
+  "color": "Black",
+  "hex": "#1C212B"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "2nd generation",
+  "date": "October 13, 2006",
+  "color": "PRODUCT(RED)",
+  "hex": "#C83A43",
+  "id": "ipod-red"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "3rd generation",
+  "date": "September 5, 2007",
+  "color": "Silver",
+  "hex": "#B6BABD"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "3rd generation",
+  "date": "September 5, 2007",
+  "color": "Black",
+  "hex": "#2D3134"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "3rd generation",
+  "date": "September 5, 2007",
+  "color": "Blue",
+  "hex": "#78B0B4"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "3rd generation",
+  "date": "September 5, 2007",
+  "color": "Green",
+  "hex": "#80B28A"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "3rd generation",
+  "date": "September 5, 2007",
+  "color": "(PRODUCT)RED (yes, it looks kinda pink)",
+  "hex": "#86273C"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "3rd generation",
+  "date": "January 22, 2008",
+  "color": "Pink",
+  "hex": "#BF5E91",
+  "id": "ipod-raspberry"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "4th generation",
+  "date": "September 9, 2008",
+  "color": "Silver",
+  "hex": "#E1E1E1"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "4th generation",
+  "date": "September 9, 2008",
+  "color": "Blue",
+  "hex": "#3A83B8"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "4th generation",
+  "date": "September 9, 2008",
+  "color": "Purple",
+  "hex": "#6858A0",
+  "id": "ipod-violet"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "4th generation",
+  "date": "September 9, 2008",
+  "color": "Green",
+  "hex": "#A0C15A"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "4th generation",
+  "date": "September 9, 2008",
+  "color": "Orange",
+  "hex": "#E7A452"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "4th generation",
+  "date": "September 9, 2008",
+  "color": "Yellow",
+  "hex": "#E2CC47",
+  "id": "ipod-yellow"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "4th generation",
+  "date": "September 9, 2008",
+  "color": "Pink",
+  "hex": "#C85796"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "4th generation",
+  "date": "September 9, 2008",
+  "color": "Black",
+  "hex": "#666668"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "4th generation",
+  "date": "September 9, 2008",
+  "color": "PRODUCT(RED)",
+  "hex": "#D6534D"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "5th generation",
+  "date": "September 9, 2009",
+  "color": "Silver",
+  "hex": "#CFCFCF"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "5th generation",
+  "date": "September 9, 2009",
+  "color": "Blue",
+  "hex": "#3E8BC5"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "5th generation",
+  "date": "September 9, 2009",
+  "color": "Purple",
+  "hex": "#69579B"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "5th generation",
+  "date": "September 9, 2009",
+  "color": "Green",
+  "hex": "#408E52"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "5th generation",
+  "date": "September 9, 2009",
+  "color": "Orange",
+  "hex": "#E58D3E"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "5th generation",
+  "date": "September 9, 2009",
+  "color": "Yellow",
+  "hex": "#F6D452"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "5th generation",
+  "date": "September 9, 2009",
+  "color": "Pink",
+  "hex": "#D54487"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "5th generation",
+  "date": "September 9, 2009",
+  "color": "Black",
+  "hex": "#7E7B7F"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "5th generation",
+  "date": "September 9, 2009",
+  "color": "PRODUCT(RED)",
+  "hex": "#C93D3C"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "6th generation",
+  "date": "September 1, 2010",
+  "color": "Silver",
+  "hex": "#9EA0A4"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "6th generation",
+  "date": "September 1, 2010",
+  "color": "Graphite",
+  "hex": "#464646"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "6th generation",
+  "date": "September 1, 2010",
+  "color": "Blue",
+  "hex": "#5D86BD"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "6th generation",
+  "date": "September 1, 2010",
+  "color": "Green",
+  "hex": "#C7DB6D"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "6th generation",
+  "date": "September 1, 2010",
+  "color": "Orange",
+  "hex": "#E3B44E"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "6th generation",
+  "date": "September 1, 2010",
+  "color": "Pink",
+  "hex": "#E581C3"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "6th generation",
+  "date": "September 1, 2010",
+  "color": "(PRODUCT)RED",
+  "hex": "#DF4744"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "7th generation",
+  "date": "September 12, 2012",
+  "color": "Pink",
+  "hex": "#E9807F"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "7th generation",
+  "date": "September 12, 2012",
+  "color": "Yellow",
+  "hex": "#E3E064"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "7th generation",
+  "date": "September 12, 2012",
+  "color": "Blue",
+  "hex": "#69C6E4"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "7th generation",
+  "date": "September 12, 2012",
+  "color": "Green",
+  "hex": "#88CDA1"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "7th generation",
+  "date": "September 12, 2012",
+  "color": "Purple",
+  "hex": "#D196CA"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "7th generation",
+  "date": "September 12, 2012",
+  "color": "Silver",
+  "hex": "#D8DBDA"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "7th generation",
+  "date": "September 12, 2012",
+  "color": "Slate",
+  "hex": "#4E535D"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "7th generation",
+  "date": "September 12, 2012",
+  "color": "PRODUCT(RED)",
+  "hex": "#E95555"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "7th generation",
+  "date": "September 10, 2013",
+  "color": "Space Gray",
+  "hex": "#9A999C"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "7th generation",
+  "date": "July 15, 2015",
+  "color": "Blue",
+  "hex": "#3C67AA"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "7th generation",
+  "date": "July 15, 2015",
+  "color": "Silver",
+  "hex": "#D8DBDA"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "7th generation",
+  "date": "July 15, 2015",
+  "color": "Gold",
+  "hex": "#EEE2CB"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "7th generation",
+  "date": "July 15, 2015",
+  "color": "Space Gray",
+  "hex": "#505054"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "7th generation",
+  "date": "July 15, 2015",
+  "color": "Pink",
+  "hex": "#D85288"
+ },
+ {
+  "line": "iPod nano",
+  "gen": "7th generation",
+  "date": "July 15, 2015",
+  "color": "PRODUCT(RED)",
+  "hex": "#C8433E"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "1st generation, 2nd generation, and 3rd generation",
+  "date": "September 5, 2007 \u2013 September 9, 2008 - September 9, 2009",
+  "color": "Black",
+  "hex": "#000000"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "4th generation",
+  "date": "September 1, 2010",
+  "color": "Black",
+  "hex": "#000000"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "4th generation",
+  "date": "October 12, 2011",
+  "color": "Black",
+  "hex": "#000000"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "4th generation",
+  "date": "October 12, 2011",
+  "color": "White",
+  "hex": "#F8F6F5"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "5th generation",
+  "date": "September 12, 2012",
+  "color": "Black and Slate",
+  "hex": "#4E535D"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "5th generation",
+  "date": "September 12, 2012",
+  "color": "White and Silver",
+  "hex": "#D8DBDA"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "5th generation",
+  "date": "September 12, 2012",
+  "color": "Pink",
+  "hex": "#E9807F"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "5th generation",
+  "date": "September 12, 2012",
+  "color": "Yellow",
+  "hex": "#E3E064"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "5th generation",
+  "date": "September 12, 2012",
+  "color": "Blue",
+  "hex": "#69C6E4"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "5th generation",
+  "date": "September 12, 2012",
+  "color": "PRODUCT(RED)",
+  "hex": "#E95555"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "5th generation",
+  "date": "May 30, 2013",
+  "color": "Black/Silver",
+  "hex": "#D8DBDA"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "5th generation",
+  "date": "September 10, 2013",
+  "color": "Space Gray",
+  "hex": "#9A999C"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "5th generation",
+  "date": "June 26, 2014",
+  "color": "Space Gray",
+  "hex": "#9A999C"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "5th generation",
+  "date": "June 26, 2014",
+  "color": "Silver",
+  "hex": "#D8DBDA"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "5th generation",
+  "date": "June 26, 2014",
+  "color": "Pink",
+  "hex": "#E9807F"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "5th generation",
+  "date": "June 26, 2014",
+  "color": "Yellow",
+  "hex": "#E3E064"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "5th generation",
+  "date": "June 26, 2014",
+  "color": "Blue",
+  "hex": "#69C6E4"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "5th generation",
+  "date": "June 26, 2014",
+  "color": "PRODUCT(RED)",
+  "hex": "#E95555"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "6th generation and 7th generation",
+  "date": "July 15, 2015 \u2013 May 28, 2019",
+  "color": "Blue",
+  "hex": "#3C67AA"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "6th generation and 7th generation",
+  "date": "July 15, 2015 \u2013 May 28, 2019",
+  "color": "Silver",
+  "hex": "#D8DBDA"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "6th generation and 7th generation",
+  "date": "July 15, 2015 \u2013 May 28, 2019",
+  "color": "Gold",
+  "hex": "#EEE2CB"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "6th generation and 7th generation",
+  "date": "July 15, 2015 \u2013 May 28, 2019",
+  "color": "Space Gray",
+  "hex": "#505054"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "6th generation and 7th generation",
+  "date": "July 15, 2015 \u2013 May 28, 2019",
+  "color": "Pink",
+  "hex": "#D85288"
+ },
+ {
+  "line": "iPod touch",
+  "gen": "6th generation and 7th generation",
+  "date": "July 15, 2015 \u2013 May 28, 2019",
+  "color": "PRODUCT(RED)",
+  "hex": "#C8433E"
+ }
+]

@@ -3352,5 +3352,11 @@
     "date": "2026-09-29",
     "title": "Liked is a heart everywhere",
     "intent": "Liked used a star in the sidebar, the Playlists menu and the bottom bar but a heart in your account menu. It is now the heart everywhere, next to Watch later's clock."
+  },
+  {
+    "version": "1.344.2",
+    "date": "2026-09-29",
+    "title": "Watch and Listen keep your place",
+    "intent": "Switching between watching and listening on a video with chapters used to start again from the first chapter, and could start playing when you had paused. It now carries on from the exact spot, in the right chapter, and a paused video stays paused, in both directions."
   }
 ]

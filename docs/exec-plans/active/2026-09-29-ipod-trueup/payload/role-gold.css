@@ -1,0 +1,13 @@
+  /* Mini 1G Gold (2004) (iPod true-up, 2026-09-29, Dean: retuned from the antique-gold photo to the real Mini 1G):
+     nanochromatic.com reference #e2d6a3; the Mini 1G wheel exactly as Click (Sky)'s (grey wheel, grey labels, grey center). */
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-gold{
+    --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.28) 0, var(--mms-ipod-sheen-0) 1.6%),
+      linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%),
+      linear-gradient(180deg, #e8dfb6 0%, #e2d6a3 25%, #dccd90 50%, #d5c378 75%, #cdb961 100%);
+    --pk-c-body-edge:#a48f34;
+    --pk-c-wheel-1:#d3d3d2; --pk-c-wheel-2:#c4c4c2; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#86898c;
+    --pk-c-center-1:#d3d3d2; --pk-c-center-2:#c4c4c2; --pk-c-center-oy:38%;
+    --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
+    --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
+    --pk-c-lita-glow:236,228,194; --pk-c-lita-core:247,244,231; }

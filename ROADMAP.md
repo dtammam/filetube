@@ -90,14 +90,15 @@
   Dean: explicitly for that ONE skin. Cheap path: `filter: grayscale(1)` on the Original's text
   surfaces only (colour emoji ignore `color`, but a filter greys them), never on album art or video.
 
-- [ ] **Bug: a corrected chapter start plays at the right moment on desktop but off on mobile** _(Dean,
-  2026-09-28)_: on a chaptered Music album, a start fixed in the time editor is perfect on desktop; on the
-  phone the list shows the same saved time, yet playback starts off. The value is saved (both show it),
-  so the gap is in how the phone PLAYS it: suspects the seek on a phone (iOS rounds or snaps to a
-  keyframe / seekable range until the media is ready, a MediaSession or background-audio path, the
-  listen-mode `chapterStartSec` offset), not the stored time. First: measure the requested start vs the
-  element's `currentTime` right after the seek on both devices, same track and chapter (the
-  `?debugLifecycle=1` log is the phone-side instrument), then fix the path whose number differs.
+- [ ] **Bug (PARKED 2026-09-29): a corrected chapter start plays at the right moment on desktop but off on
+  mobile** _(Dean, 2026-09-28)_: on a yt-dlp `.mp3`, a start fixed in the time editor (1:29 -> 1:35) is
+  aligned on desktop; on the iPhone the clock reads 1:35 after the tap but the audio is early or late.
+  Investigated, not fixed (tracker #290, write-up + re-runnable lab in
+  `docs/references/mp3-seek-accuracy.md`): no mobile-only code path (same bytes, same `currentTime`);
+  measured in headless Chromium, desktop Chrome ALSO mis-seeks a yt-dlp-shaped VBR MP3 (1.7 s early to
+  1.5 s late, deterministic) while m4a lands exactly, so the desktop-tuned edit likely bakes in Chrome's
+  error. iOS not measured. Resume with Dean's no-seek play-through on phone + desktop (note the clock at
+  the song change), then an m4a re-download on the device; only then the m4a-default fix.
 
 - [ ] **Bug: after rotating back to portrait the page bumps up and down (deterministic)** - MITIGATED
   v1.341.3, confirm on device (one rotate with `?debugLifecycle=1`; the log now shows the scroll) _(Dean,
@@ -144,6 +145,13 @@
   and any other toggle in the same card (Subscribe / Subscribed) with the same shape.
 
 ### Features
+
+- [ ] **iPod skin true-up: 27 new colorways, real model names, Extras by line and generation** _(Dean,
+  2026-09-29)_ - PLAN READY for a Sonnet builder: `docs/exec-plans/active/2026-09-29-ipod-trueup/plan.md`
+  (every color, id, name and CSS value precomputed and proven in `payload/`). From nanochromatic.com's
+  reference cards: 50 iPod skins (22 existing relabeled `Nano 4G Orange (2008)` style, 27 new, the Gold
+  retuned to the real Mini 1G), Extras > Skins > line > generation > color, a narrow skin-art exemption
+  in the UI lint ratchet. Target v1.345.0.
 
 - [ ] **Onboarding: just enough Docker to start, then a guided web setup** _(Dean, 2026-09-28: "I'm
   getting a stronger sense of the value of this tool... there's a significant amount of friction in the
@@ -258,7 +266,7 @@
 
 ### Chores
 
-- [ ] **Rebaseline the visual CI baselines** _(Dean, 2026-09-29)_ - visual CI now comments failures on PRs (report-only, never
+- [x] **Rebaseline the visual CI baselines** - DONE 2026-09-29 (PR #49, after v1.344.1) _(Dean, 2026-09-29)_ - visual CI now comments failures on PRs (report-only, never
   blocking) because the committed baselines have drifted from the shipped UI since W1. Regenerate them in one
   reviewed pass (diff each changed scene by eye first, no blind accept) so the comments mean something again.
 
@@ -400,6 +408,22 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.344.2 - Watch and Listen keep your place, and a pause (2026-09-29)
+
+- **A chaptered video no longer restarts on Listen.** Watch -> Listen on a video with chapters loaded
+  its first chapter row (`<id>::c0`), a fresh load rather than the same-id adopt a plain video gets, so
+  playback jumped back to chapter 1 (measured in headless Chromium: Watch at 132.4 s, Listen at 3.8 s).
+  Listen now starts on the chapter holding the live playhead and seeks to the second read when that row
+  loads (after: 132.4 s -> 136.3 s, still playing). No live position (another item, a desktop live
+  transcode) still starts at chapter 1. Dean's report, 2026-09-29.
+- **A paused video stays paused across the switch, both ways** (Dean's ruling, 2026-09-29). Watch paused
+  -> Listen on a chaptered video used to start playing; it now loads paused at the same second. The
+  mirror, Listen -> Watch on a chaptered video, was a fresh load that resumed from saved progress and
+  always auto-played: the player now carries the chapter row's live second and its pause into the watch
+  load (`resolveBaseHandoff`), so a paused Listen comes back paused on Watch at the same spot. Measured in
+  the real app: every Watch/Listen switch, plain and chaptered, playing and paused, keeps its place and
+  its state. Plain videos were already right (a same-id adopt) and are unchanged.
 
 ### v1.344.1 - Liked is a heart everywhere (2026-09-29)
 

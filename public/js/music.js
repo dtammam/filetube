@@ -889,6 +889,41 @@ function chapterResumeSecFor(item) {
   return p.resumeSec;
 }
 
+// Watch -> Listen keeps its place (Dean, 2026-09-29: "it like loses its place and starts from the
+// beginning"). The live playhead of `mediaId` when the player holds exactly that item and reports a
+// seekable time; null otherwise (another item, nothing loaded, a live transcode, position 0).
+function liveListenPosition(player, mediaId) {
+  if (!player || mediaId == null || player.currentId !== mediaId || typeof player.getCurrentTime !== 'function') return null;
+  var t = player.getCurrentTime();
+  return (typeof t === 'number' && isFinite(t) && t > 0) ? t : null;
+}
+// The listen-chapter row (buildListenChapterTracks) a handoff at file second `t` starts on: the last
+// chapter that has begun by `t` (currentChapterIndex's rule), else the first.
+function listenHandoffChapterIndex(tracks, t) {
+  var idx = 0;
+  if (!Array.isArray(tracks)) return idx;
+  for (var i = 0; i < tracks.length; i++) {
+    var s = Number(tracks[i] && tracks[i].chapterStartSec);
+    if (isFinite(s) && s <= t) idx = i;
+  }
+  return idx;
+}
+// Where a chapter row's load seeks: a handoff's live second, read AT LOAD (a pick can wait up to
+// CHAPTER_VERIFY.timeoutMs on the file check while the old audio plays on, so the tap's reading would
+// rewind by that wait), else the saved place. The saved place's tail rule is for a chapter heard to its
+// end, not for a live handoff, so the handoff bypasses it.
+function chapterStartFor(item, opts, player) {
+  var live = (opts && opts.handoffFrom != null) ? liveListenPosition(player, opts.handoffFrom) : null;
+  return live !== null ? live : chapterResumeSecFor(item);
+}
+// Dean's ruling (2026-09-29): Listen keeps a PAUSED video paused. True when the handoff's video is
+// still the loaded item with a live position and its element `el` is paused, read AT LOAD like the
+// second itself; the player then seeks without auto-starting (player.js startPaused).
+function handoffPaused(opts, player, el) {
+  if (!opts || opts.handoffFrom == null || liveListenPosition(player, opts.handoffFrom) === null) return false;
+  return !!(el && el.paused === true);
+}
+
 // Tracker #268 (Chapter Snap persist, 2026-09-24): a tap on the chapter that is ALREADY loaded is
 // a same-id player.load, which the player ADOPTS (keeps the media, never re-seeks). That is right
 // while the playhead is inside the tapped chapter (tapping the playing song does not restart it),
@@ -936,6 +971,7 @@ function queuedChaptersDiffer(rows, baseId, chapters) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC, CHAPTER_VERIFY, chapterAdoptSeekFor, queuedChaptersDiffer,
+    liveListenPosition, listenHandoffChapterIndex, chapterStartFor, handoffPaused,
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml, musicArtUrl, musicAmbientArtUrl,
     MUSIC_ART_SIZES, MUSIC_ART_DPR_CAP, MUSIC_ART_ROW_PX, MUSIC_ART_DRILL_PX, musicArtCardPx, musicArtSize, albumArtSrc, musicArtId,
@@ -3512,10 +3548,12 @@ if (typeof module !== 'undefined' && module.exports) {
         // RECORDS to the MEDIA store under the BASE file id (a real media id) so it
         // lands in Recently played + resumes. baseMediaId is the save id;
         // chapterResumeSec (the saved absolute file position, if any) is where a
-        // resume-tap seeks instead of the chapter head.
+        // resume-tap seeks instead of the chapter head; a Watch -> Listen handoff
+        // (opts.handoffFrom) seeks to the live playhead instead (chapterStartFor).
         chapterStartSec: isChapter ? (Number(item.chapterStartSec) || 0) : undefined,
         baseMediaId: isChapter ? String(item.id).replace(/::c\d+$/, '') : undefined,
-        chapterResumeSec: isChapter ? chapterResumeSecFor(item) : undefined, // v1.311.3: near its end -> the chapter head
+        chapterResumeSec: isChapter ? chapterStartFor(item, opts, window.FileTube && window.FileTube.player) : undefined, // v1.311.3: a saved place near its end -> the chapter head
+        startPaused: isChapter ? handoffPaused(opts, window.FileTube && window.FileTube.player, hostCtl('media-player')) : undefined, // Dean: a paused Watch stays paused on Listen
         resumeMode: 'music',
         autoAdvanceViaTrackNav: true,
         browseCtx: queueCtxEncoded,
@@ -4374,8 +4412,14 @@ if (typeof module !== 'undefined' && module.exports) {
           queueCtxEncoded = '';
           queue = chapterTracks || [t];
           activeListenChapters = chapterTracks; // #222: stash for the dock-return restore (null for a single track)
-          activeListenId = queue[0].id; // W1: survives the dock-return re-init (module scope)
-          playAt(0);
+          // Watch -> Listen keeps its place (Dean, 2026-09-29): a plain video is a same-id ADOPT and
+          // never moves, but a chaptered one loads a `::c` row - a fresh load that used to seek to
+          // chapter 1. Start on the chapter holding the live playhead; loadTrack re-reads the exact
+          // second at load time (handoffFrom). No live position = chapter 1, as before.
+          const handoffT = chapterTracks ? liveListenPosition(window.FileTube.player, v.id) : null;
+          const startIdx = handoffT === null ? 0 : listenHandoffChapterIndex(chapterTracks, handoffT);
+          activeListenId = queue[startIdx].id; // W1: survives the dock-return re-init (module scope)
+          playAt(startIdx, handoffT === null ? undefined : { handoffFrom: v.id });
           // S5 (QA): build the ALBUMS grid behind the skin (a grid tab - render() leaves
           // `queue` untouched, per rebuildPlayingQueue's contract) so a refresh/deep-link
           // dock lands on real content, never an empty #music-content.
