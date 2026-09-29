@@ -185,6 +185,8 @@ on finish (the same "finished" rule as History), Play all. Tests for each. Adver
 user's list, removal on finish never removes an unfinished item, reorder races, a deleted/trashed video
 in the list.
 
+Gate: APPROVED r1 @be7f2164a5e66ce153152e6baa174954fff9da36 — adversary
+
 ## W5 - Pocket skin menu and the preview-grid picker
 
 Branch `feat/skin-picker`. Release **v1.344.0**.

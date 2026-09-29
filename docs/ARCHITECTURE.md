@@ -75,7 +75,7 @@ one namespace per wave, then dropped by schema v33):
    be silently dropped - a new one is a store module + a migration + a test.
 2. **Relational per-user tables** - everything user-scoped: `users`,
    `user_progress`, `user_liked`, `user_watched`, `user_queue`,
-   `user_restrictions`, `user_search_history`, `user_feed_hidden`,
+   `user_restrictions`, `user_search_history`, `user_feed_hidden`, `user_watch_later`,
    notifications/push tables, and the per-place progress/liked/pins tables for
    books, music, and podcasts. The accessor layer is `lib/auth/store.js`.
 

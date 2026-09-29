@@ -53,7 +53,7 @@ function rewindToV32(plant = () => {}) {
 }
 
 test('migration v33: a v1.295-shaped file (v32, both doc tables empty) loses both tables and stamps 33; a fresh file has none; a re-run is a no-op', () => {
-  assert.strictEqual(SCHEMA_VERSION, 33, 'Wave 7 is the fourteenth floor');
+  assert.ok(SCHEMA_VERSION >= 33, 'Wave 7 is the fourteenth floor (v33); later floors only add');
   assert.strictEqual(countLegacyDocTables(adapter.sql), 0, 'a fresh file has no document tables');
   adapter.save({ metadata: { kept: { id: 'kept', title: 'Kept' } } });
   rewindToV32();
@@ -61,7 +61,7 @@ test('migration v33: a v1.295-shaped file (v32, both doc tables empty) loses bot
   assert.strictEqual(countLegacyDocTables(raw), 2, 'the rewind models a v1.295 file: both tables present');
   raw.close();
   reopen();
-  assert.strictEqual(version(adapter.sql), 33);
+  assert.strictEqual(version(adapter.sql), SCHEMA_VERSION);
   assert.strictEqual(countLegacyDocTables(adapter.sql), 0, 'both tables dropped');
   assert.deepStrictEqual(adapter.load(), { metadata: { kept: { id: 'kept', title: 'Kept' } } }, 'the relational rows are untouched');
   // re-run: stamp back to 32 WITHOUT the tables (a file that already ran v33
@@ -71,7 +71,7 @@ test('migration v33: a v1.295-shaped file (v32, both doc tables empty) loses bot
   raw.exec('PRAGMA user_version = 32');
   raw.close();
   reopen();
-  assert.strictEqual(version(adapter.sql), 33);
+  assert.strictEqual(version(adapter.sql), SCHEMA_VERSION);
   assert.strictEqual(countLegacyDocTables(adapter.sql), 0);
   assert.deepStrictEqual(readPersistedDatabase(dir).metadata.kept.title, 'Kept');
 });
@@ -100,7 +100,7 @@ test('migration v33: REFUSES to drop a table that still holds a row - names ever
     raw.close();
   }
   reopen();
-  assert.strictEqual(version(adapter.sql), 33);
+  assert.strictEqual(version(adapter.sql), SCHEMA_VERSION);
   assert.strictEqual(countLegacyDocTables(adapter.sql), 0);
   assert.deepStrictEqual(Object.keys(adapter.load().metadata), ['kept']);
 });
@@ -176,7 +176,7 @@ test('the whole chain from v20 with real legacy rows: every drain runs against t
   raw.prepare('INSERT INTO doc_single(name, json) VALUES(?, ?)').run('settings', JSON.stringify({ scanIntervalMinutes: 45 }));
   raw.close();
   reopen();
-  assert.strictEqual(version(adapter.sql), 33);
+  assert.strictEqual(version(adapter.sql), SCHEMA_VERSION);
   assert.strictEqual(countLegacyDocTables(adapter.sql), 0, 'dropped at the end of the chain');
   const persisted = readPersistedDatabase(dir);
   assert.deepStrictEqual(persisted.viewCounts, { vid1: 7 }, 'v21 drained the count');
@@ -190,7 +190,7 @@ test('the below-v33 guard: a file stamped below v33 that LOST its doc tables (a 
   raw.exec('PRAGMA user_version = 20'); // no ensureLegacyDocTables: the tables are absent
   raw.close();
   assert.doesNotThrow(() => reopen(), 'every drain ran against re-created (empty) tables');
-  assert.strictEqual(version(adapter.sql), 33);
+  assert.strictEqual(version(adapter.sql), SCHEMA_VERSION);
   assert.strictEqual(countLegacyDocTables(adapter.sql), 0);
 });
 

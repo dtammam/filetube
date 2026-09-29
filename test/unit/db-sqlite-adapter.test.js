@@ -141,7 +141,9 @@ test('fresh open creates the full v1 schema with empty user tables', () => {
       // v1.85 schema v16: per-user search history, born empty.
       'user_search_history',
       // v1.97 schema v17: per-user "Hide from feed" prune, born empty.
-      'user_feed_hidden']) {
+      'user_feed_hidden',
+      // v1.343 schema v34: per-user Watch later list, born empty.
+      'user_watch_later']) {
       const { c } = a.sql.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get();
       assert.strictEqual(c, 0, `${table} exists and is empty (born-complete schema, exec plan)`);
     }
@@ -245,6 +247,26 @@ test('v16 -> v17 upgrade: an existing populated db gains the empty user_feed_hid
     // its shape: (user_id, media_id, hidden_at, PK(user_id, media_id)) -- mirrors user_liked
     const cols = b.sql.prepare("SELECT name FROM pragma_table_info('user_feed_hidden') ORDER BY name").all().map((r) => r.name);
     assert.deepStrictEqual(cols, ['hidden_at', 'media_id', 'user_id']);
+    assert.deepStrictEqual(b.load(), fullFixtureForUpgrade(), 'every pre-existing namespace survives untouched');
+  } finally {
+    b.close();
+  }
+});
+
+test('v33 -> v34 upgrade: an existing populated db gains the empty user_watch_later table, losing no rows', () => {
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  a.save(fullFixtureForUpgrade());
+  a.sql.exec('DROP TABLE user_watch_later');
+  a.sql.exec('PRAGMA user_version = 33');
+  a.close();
+
+  const b = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION, 'forward-only migration ran');
+    assert.ok(SCHEMA_VERSION >= 34);
+    assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_watch_later').get().c, 0, 'watch-later table born empty');
+    const cols = b.sql.prepare("SELECT name FROM pragma_table_info('user_watch_later') ORDER BY name").all().map((r) => r.name);
+    assert.deepStrictEqual(cols, ['added_at', 'media_id', 'position', 'user_id']);
     assert.deepStrictEqual(b.load(), fullFixtureForUpgrade(), 'every pre-existing namespace survives untouched');
   } finally {
     b.close();

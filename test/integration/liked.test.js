@@ -373,7 +373,7 @@ const fs32 = require('node:fs');
 t32l('v1.32: main.js routes ?liked=1 to GET /api/liked and renders the built-in sidebar/sheet entries (static-scan locks)', () => {
   const mainSrc = fs32.readFileSync(require('node:path').join(__dirname, '../../public/js/main.js'), 'utf8');
   a32l.ok(mainSrc.includes("urlParams.get('liked') === '1'"), 'main.js must parse the ?liked=1 scope param');
-  a32l.ok(mainSrc.includes("likedFilter ? '/api/liked' : '/api/videos'"), 'buildVideosApiUrl must swap the endpoint for the liked view');
+  a32l.ok(mainSrc.includes("likedFilter ? '/api/liked' : (watchLaterFilter ? '/api/watch-later' : '/api/videos')"), 'buildVideosApiUrl must swap the endpoint for the liked view (v1.343: and for Watch later)');
   // v1.33.1: the entry itself moved into common.js's shared, count-gated
   // applyLikedSidebarEntry helper -- main.js must APPLY it, common.js must
   // OWN it (and the sheet renderer must route through the same helper).

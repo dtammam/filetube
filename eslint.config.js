@@ -330,6 +330,11 @@ module.exports = [
         // v1.33.1: common.js's count-gated Liked sidebar entry, applied by
         // every surface that (re-)renders #sidebar-folders-list.
         applyLikedSidebarEntry: 'readonly',
+        fetchWatchLaterIds: 'readonly',
+        watchLaterSnapshot: 'readonly',
+        setWatchLater: 'readonly',
+        playAllWatchLater: 'readonly',
+        applyWatchLaterSidebarEntry: 'readonly',
         // v1.77: common.js's Library-glyph repainter, called by setup.js's
         // Library-icon picker so a change is visible on this page immediately.
         applyLibraryGlyphs: 'readonly',

@@ -54,6 +54,9 @@ the checks.
   links, while playing) "Share at 1:23" beside "Share video".
 - [ ] v1.342 - Clean up (account menu): nothing is ticked, the toolbar and rows fit the phone, Move to
   Trash names the count and size, and the moved items come back from Settings > Trash.
+- [ ] v1.343 - Watch later: add from a card menu and from the watch page's More menu, the sidebar row
+  and account menu row appear, Play all starts the queue, a video you finish leaves the list, and going
+  back to Watch later from the watch page does not still show a video you just finished.
 
 ## Subscriptions, channels and podcasts
 

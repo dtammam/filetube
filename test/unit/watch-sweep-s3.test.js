@@ -97,7 +97,7 @@ test('D4.9 / F45: More opens ONE ui.menu of every other verb (a sheet, not the o
     r.$('#more-actions-btn').click();
     await r.settle(4);
     const labels = Array.from(r.doc.querySelectorAll('.ui-sheet .ui-row')).map((x) => x.textContent.trim());
-    assert.deepStrictEqual(labels, ['Play next', 'Add to queue', 'Save to device', 'Mark as watched', 'Copy description', 'Reheat metadata', 'Move to folder', 'Move to Trash']);
+    assert.deepStrictEqual(labels, ['Play next', 'Add to queue', 'Watch later', 'Save to device', 'Mark as watched', 'Copy description', 'Reheat metadata', 'Move to folder', 'Move to Trash']);
     assert.strictEqual(r.doc.querySelector('.modal-backdrop'), null, 'no choice modal');
     for (const row of r.doc.querySelectorAll('.ui-sheet .ui-row')) assert.ok(row.querySelector('.ui-row__media svg.ui-icon'), 'every entry has its glyph');
     // Mark as watched POSTs, and the NEXT open reads the new state
@@ -112,9 +112,11 @@ test('D4.9 / F45: More opens ONE ui.menu of every other verb (a sheet, not the o
 
 test('buildWatchMoreItems: every entry is gated on its own input (capability, flag, link, module, busy)', () => {
   const ids = (s) => W.buildWatchMoreItems(s).map((i) => i.id);
-  assert.deepStrictEqual(ids({}), ['queue-next', 'queue-add', 'watched']);
+  assert.deepStrictEqual(ids({}), ['queue-next', 'queue-add', 'watch-later', 'watched']);
   assert.deepStrictEqual(ids({ downloadHref: '/video/x?download=1', hasDescription: true, reheatEnabled: true, canModifyLibrary: true, canAttribute: true }),
-    ['queue-next', 'queue-add', 'download', 'watched', 'copy-description', 'reheat', 'move', 'attribute', 'delete']);
+    ['queue-next', 'queue-add', 'watch-later', 'download', 'watched', 'copy-description', 'reheat', 'move', 'attribute', 'delete']);
+  assert.strictEqual(W.buildWatchMoreItems({ watchLater: true }).find((i) => i.id === 'watch-later').label, 'Remove from Watch later');
+  assert.strictEqual(W.buildWatchMoreItems({}).find((i) => i.id === 'watch-later').label, 'Watch later');
   assert.ok(!ids({ canAttribute: true }).includes('attribute'), 'attribute needs the write capability too');
   assert.strictEqual(W.buildWatchMoreItems({ canModifyLibrary: true }).find((i) => i.id === 'delete').danger, true);
 });

@@ -32,6 +32,12 @@ test('encodeListContext: round-trips a full videos context through decode', () =
   assert.ok(!('folder' in back), 'empty fields are dropped');
 });
 
+test('v1.343 watchlater: the ctx round-trips src and buildContextListUrl targets /api/watch-later', () => {
+  const back = decodeListContext(encodeListContext({ src: 'watchlater', sort: 'newest' }));
+  assert.strictEqual(back.src, 'watchlater');
+  assert.ok(buildContextListUrl(back, 500).startsWith('/api/watch-later?'));
+});
+
 test('v1.44 music: encodeListContext preserves src="music" + album/artist/filter; buildContextListUrl hits /api/music in order', () => {
   const ctx = { src: 'music', album: 'k1', sort: 'album-order', seed: 7 };
   const back = decodeListContext(encodeListContext(ctx));

@@ -226,7 +226,7 @@
   left/right sense, which needs one rendered frame of a labelled panorama. Out of scope: headset WebXR,
   cardboard, fisheye and cubemap files (YouTube's EAC), Roku / TV / thumbnails (they stay flat).
 
-- [ ] **Watch later: a living, saved list** _(Dean, 2026-09-28)_ (Dean: "Really high value. 'Watch
+- [x] **Watch later: a living, saved list** - SHIPPED v1.343.0 (see Shipped) _(Dean, 2026-09-28)_ (Dean: "Really high value. 'Watch
   later' list. Basically a living queue. Maybe I just treat queue this way?"). Recommendation recorded:
   keep it SEPARATE from the play queue (the queue is a transient play order an album replaces and
   playback consumes; Watch later is a server-side list that follows you across devices and loses an item
@@ -396,6 +396,23 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.343.0 - Watch later: a list that follows you (2026-09-29)
+
+- **Watch later is its own list** (table `user_watch_later`, schema v34), separate from Pin and from the
+  play queue. "Watch later" / "Remove from Watch later" is in every video card's menu and in the watch
+  page's More menu (the icon bar cannot fit the longer label). It opens at `/?watchlater=1` (Library >
+  Watch later under Liked once the list is non-empty, and the account menu row after Liked), in the
+  order you added, with the usual format and watch filters; sort and Shuffle are hidden there.
+- **It empties itself by finishing.** A progress ping at or above the watched line (90%), or Mark as
+  watched, removes the item; a ping below it never does. "Play all" feeds the list to the queue on the
+  server (deleted or restricted items skipped, the queue cap respected). "Move to top" reorders; a stale
+  reorder from another device never drops a new item or brings back a removed one.
+- **Lifecycle:** purge, move/trash/restore re-key, backup export and restore (in list order) and account
+  delete are all covered. The list is per user; a restricted member cannot add or see a hidden video.
+- Measured on the fixture (real Chromium, 3 items): the Play all icon button 32x32 (aria-label "Play all", desktop and phone), the
+  sidebar row 229x34 directly under Liked, no page overflow at 1280 or 390 wide, the card menu reads
+  Add to queue, Remove from Watch later, Like, Save to device, Transcript, Move to Trash.
 
 ### v1.342.0 - Clean up: a shortlist of what to clear (2026-09-29)
 

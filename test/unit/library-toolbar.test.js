@@ -545,7 +545,7 @@ test('v1.149 main.js source locks: the scope rides the query only under a search
     'buildVideosApiUrl sends searchIn only for a non-default scope during a search');
   const mount = src.slice(src.indexOf('function mountLibraryChips() {'), src.indexOf('function updateShuffleButtonVisibility() {'));
   assert.match(mount, /if \(isUnifiedSearch\) \{\s*groups\.push\(\{ key: 'type'/, 'a global search shows the type dimension only');
-  assert.match(mount, /if \(searchQuery && !likedFilter\) \{\s*groups\.push\(\{ key: 'scope'/, 'the scope dimension: a folder/root search, never over Liked');
+  assert.match(mount, /if \(searchQuery && !likedFilter && !watchLaterFilter\) \{\s*groups\.push\(\{ key: 'scope'/, 'the scope dimension: a folder/root search, never over Liked');
   assert.strictEqual((src.match(/ensureLibraryChips\(\);/g) || []).length, 2, 'mounted (guarded) at the two toolbar sites');
 });
 

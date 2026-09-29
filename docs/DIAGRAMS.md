@@ -100,13 +100,13 @@ the media index in Wave 6 - the MEDIA box). The doc-object key list in
 `lib/db/sqlite.js` (`DOC_OBJECT_KEYS`, just `metadata`) is a LOCK
 (`assertNoUnknownKeys()` throws on strangers). Measured at v1.296.0 (Wave 7):
 no document tables (`doc_kv` and `doc_single` were dropped in schema v33),
-61 relational tables, schema version 33. (The arc's plan:
+62 relational tables, schema version 34. (The arc's plan:
 `docs/exec-plans/completed/2026-09-13-sqlite-relational-migration.md`.)
 
 ```mermaid
 flowchart LR
     subgraph REL["Relational per-user tables (accessors: lib/auth/store.js)"]
-        CORE["identity + core media<br/>users · user_restrictions ·<br/>user_progress · user_liked · user_watched ·<br/>user_queue · user_queue_state ·<br/>user_search_history · user_feed_hidden ·<br/>user_channel_pins · user_prefs"]
+        CORE["identity + core media<br/>users · user_restrictions ·<br/>user_progress · user_liked · user_watched ·<br/>user_queue · user_queue_state ·<br/>user_search_history · user_feed_hidden ·<br/>user_watch_later · user_channel_pins · user_prefs"]
         PLACEST["per-place<br/>user_book_progress · user_book_pins ·<br/>user_book_liked · user_book_finished ·<br/>user_music_progress · user_music_liked ·<br/>user_music_state · user_podcast_progress ·<br/>user_podcast_liked · user_podcast_pins ·<br/>user_podcast_played ·<br/>user_tv_progress · user_tv_played · user_tv_liked"]
         NOTIF["notifications + push<br/>notifications · user_notification_reads ·<br/>user_notification_dismissals ·<br/>user_notification_state · push_subscriptions"]
     end

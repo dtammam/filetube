@@ -74,6 +74,8 @@ const READ = {
   '/api/history': 'GATED',
   '/api/home': 'GATED',
   '/api/liked': 'GATED',
+  '/api/watch-later': 'GATED', // v1.343: the caller's own list, filtered through mediaVisibleTo
+  '/api/watch-later/ids': 'OWN_STATE', // v1.343: echoes only the caller's own stored ids
   '/api/library-items': 'GATED', // v1.159: visibility-scoped A/V list for the Stats table (titles/sizes)
   '/api/me/sticker': 'NO_CONTENT', // v1.238: the caller's OWN custom player-sticker image bytes (self-only serve; no library content, same class as avatar/logo bytes)
   '/api/search': 'GATED', // v1.205 Wave B: unified cross-content search - aggregates every provider, each routed through its per-kind *VisibleTo gate
