@@ -90,14 +90,15 @@
   Dean: explicitly for that ONE skin. Cheap path: `filter: grayscale(1)` on the Original's text
   surfaces only (colour emoji ignore `color`, but a filter greys them), never on album art or video.
 
-- [ ] **Bug: a corrected chapter start plays at the right moment on desktop but off on mobile** _(Dean,
-  2026-09-28)_: on a chaptered Music album, a start fixed in the time editor is perfect on desktop; on the
-  phone the list shows the same saved time, yet playback starts off. The value is saved (both show it),
-  so the gap is in how the phone PLAYS it: suspects the seek on a phone (iOS rounds or snaps to a
-  keyframe / seekable range until the media is ready, a MediaSession or background-audio path, the
-  listen-mode `chapterStartSec` offset), not the stored time. First: measure the requested start vs the
-  element's `currentTime` right after the seek on both devices, same track and chapter (the
-  `?debugLifecycle=1` log is the phone-side instrument), then fix the path whose number differs.
+- [ ] **Bug (PARKED 2026-09-29): a corrected chapter start plays at the right moment on desktop but off on
+  mobile** _(Dean, 2026-09-28)_: on a yt-dlp `.mp3`, a start fixed in the time editor (1:29 -> 1:35) is
+  aligned on desktop; on the iPhone the clock reads 1:35 after the tap but the audio is early or late.
+  Investigated, not fixed (tracker #290, write-up + re-runnable lab in
+  `docs/references/mp3-seek-accuracy.md`): no mobile-only code path (same bytes, same `currentTime`);
+  measured in headless Chromium, desktop Chrome ALSO mis-seeks a yt-dlp-shaped VBR MP3 (1.7 s early to
+  1.5 s late, deterministic) while m4a lands exactly, so the desktop-tuned edit likely bakes in Chrome's
+  error. iOS not measured. Resume with Dean's no-seek play-through on phone + desktop (note the clock at
+  the song change), then an m4a re-download on the device; only then the m4a-default fix.
 
 - [ ] **Bug: after rotating back to portrait the page bumps up and down (deterministic)** - MITIGATED
   v1.341.3, confirm on device (one rotate with `?debugLifecycle=1`; the log now shows the scroll) _(Dean,

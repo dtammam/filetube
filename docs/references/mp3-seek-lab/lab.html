@@ -1,0 +1,47 @@
+<!doctype html><meta charset="utf-8"><title>seek lab</title><body><script>
+const SR = 44100, refs = {};
+let ctx;
+async function ref(name) {
+  if (refs[name]) return refs[name];
+  const ab = await (await fetch('/f/' + name + '?ref=' + Math.random())).arrayBuffer();
+  const b = await ctx.decodeAudioData(ab);
+  return (refs[name] = b.getChannelData(0));
+}
+function decim(a, k) { const o = new Float32Array(Math.floor(a.length / k)); for (let i = 0; i < o.length; i++) { let s = 0; for (let j = 0; j < k; j++) s += a[i * k + j]; o[i] = s / k; } return o; }
+function bestLag(r, s, lo, hi) { // normalized cross-correlation, lag in [lo,hi)
+  let best = -2, bl = lo, se = 0; for (const v of s) se += v * v;
+  for (let L = Math.max(0, lo); L < Math.min(hi, r.length - s.length); L++) {
+    let d = 0, e = 0; for (let i = 0; i < s.length; i++) { const x = r[L + i]; d += x * s[i]; e += x * x; }
+    const c = d / Math.sqrt(e * se + 1e-20); if (c > best) { best = c; bl = L; }
+  }
+  return [bl, best];
+}
+const wait = ms => new Promise(r => setTimeout(r, ms));
+async function until(fn, ms = 60000) { const t0 = Date.now(); while (!fn()) { if (Date.now() - t0 > ms) throw new Error('timeout'); await wait(20); } }
+window.runCase = async function ({ base, name, T, mode }) {
+  ctx = ctx || new AudioContext({ sampleRate: SR });
+  await ctx.resume();
+  const R = await ref(name);
+  const el = new Audio(); el.preload = 'auto';
+  const node = ctx.createMediaElementSource(el), sp = ctx.createScriptProcessor(1024, 2, 1);
+  node.connect(sp); sp.connect(ctx.destination);
+  let rec = null, ct0 = null;
+  sp.onaudioprocess = e => { if (rec && rec.length < 16) { if (ct0 === null) ct0 = el.currentTime; rec.push(new Float32Array(e.inputBuffer.getChannelData(0))); } };
+  const url = base + '/f/' + name + '?n=' + Math.random();
+  const t0 = performance.now();
+  el.src = url;
+  if (mode === 'fresh') { el.currentTime = T; el.play(); }             // resumeDirectly: src, then currentTime, then play
+  else { el.play(); await until(() => el.currentTime > 2); if (mode === 'inplay') el.currentTime = T; }
+  const target = mode === 'control' ? 4 : T;
+  await until(() => !el.seeking && el.currentTime > target + 0.3 && el.currentTime < target + 30);
+  const seekMs = Math.round(performance.now() - t0);
+  rec = []; await until(() => rec.length >= 16);
+  el.pause(); sp.disconnect(); node.disconnect(); el.removeAttribute('src'); el.load();
+  const snip = new Float32Array(16 * 1024); rec.forEach((b, i) => snip.set(b, i * 1024));
+  const K = 32, rd = decim(R, K), sd = decim(snip.subarray(0, 12000), K);
+  const c = Math.round(ct0 * SR / K), W = Math.round(40 * SR / K);
+  const [coarse, cc] = bestLag(rd, sd, c - W, c + W);
+  const [fine, fc] = bestLag(R, snip.subarray(0, 8000), coarse * K - 2 * K, coarse * K + 2 * K);
+  return { mode, T, clock: +ct0.toFixed(3), heard: +(fine / SR).toFixed(3), err: +((fine / SR) - ct0).toFixed(3), corr: +fc.toFixed(3), seekMs };
+};
+</script>
