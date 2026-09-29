@@ -49,6 +49,11 @@ const CLASSIFICATION = {
   // v1.97 "Hide from feed" - the member's OWN modern-feed prune (never gated).
   'POST /api/feed-hidden/:id': 'personal',
   'DELETE /api/feed-hidden/:id': 'personal',
+  // v1.343 Watch later - the member's OWN ordered list (POST also enforces visibility, see VISIBILITY below).
+  'POST /api/watch-later/:id': 'personal',
+  'DELETE /api/watch-later/:id': 'personal',
+  'PUT /api/watch-later/order': 'personal',
+  'POST /api/queue/watch-later': 'personal',
   'DELETE /api/history': 'personal',
   'DELETE /api/history/:id': 'personal',
   // v1.85 #1: per-user search history - the member's OWN state, never gated.
@@ -257,6 +262,7 @@ const VISIBILITY = {
   'POST /api/liked/:id': 'enforced',
   'POST /api/watched/:id': 'enforced',
   'POST /api/feed-hidden/:id': 'enforced',
+  'POST /api/watch-later/:id': 'enforced',
   'DELETE /api/videos/:id': 'enforced',
   'POST /api/videos/:id/move': 'enforced',
   'POST /api/videos/:id/chapters': 'enforced',
@@ -301,6 +307,9 @@ const VISIBILITY = {
   'DELETE /api/liked/:id': 'personal',
   'DELETE /api/watched/:id': 'personal',
   'DELETE /api/feed-hidden/:id': 'personal',
+  'DELETE /api/watch-later/:id': 'personal',
+  'PUT /api/watch-later/order': 'personal',
+  'POST /api/queue/watch-later': 'personal',
   'DELETE /api/history': 'personal',
   'DELETE /api/history/:id': 'personal',
   'POST /api/search-history': 'personal',

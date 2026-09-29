@@ -691,6 +691,8 @@ function buildWatchMoreItems(s) {
   const out = [
     { id: 'queue-next', icon: 'playlist_play', label: 'Play next' },
     { id: 'queue-add', icon: 'playlist_add', label: 'Add to queue' },
+    // v1.343 Watch later: the bar is a fixed row of icon-over-caption cells that "Remove from Watch later" cannot fit.
+    { id: 'watch-later', icon: 'schedule', label: st.watchLater === true ? 'Remove from Watch later' : 'Watch later' },
   ];
   if (typeof st.downloadHref === 'string' && st.downloadHref !== '') out.push({ id: 'download', icon: 'download', label: 'Save to device' });
   out.push({ id: 'watched', icon: 'history', label: st.watched === true ? 'Mark as unwatched' : 'Mark as watched' });
@@ -1302,6 +1304,7 @@ if (typeof module !== 'undefined' && module.exports) {
       return {
         downloadHref: mediaData ? '/video/' + encodeURIComponent(mediaData.id) + '?download=1' : '',
         watched: currentWatchedState.watched,
+        watchLater: !!(mediaData && watchLaterSnapshot() && watchLaterSnapshot().has(String(mediaData.id))),
         hasDescription: !!(descriptionParagraph && descriptionParagraph.textContent !== ''),
         reheatEnabled: reheatAvailable || (reheatModuleEnabled === null && !!(cap && cap.moduleEnabled === true)),
         reheatBusy,
@@ -1318,6 +1321,10 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!mediaData || signal.aborted) return;
       if (id === 'queue-next') addToQueue(mediaData.id, 'next');
       else if (id === 'queue-add') addToQueue(mediaData.id, 'end');
+      else if (id === 'watch-later') {
+        const snap = watchLaterSnapshot();
+        setWatchLater(mediaData.id, !(snap && snap.has(String(mediaData.id))));
+      }
       else if (id === 'download') saveToDevice();
       else if (id === 'watched') handleToggleWatched();
       else if (id === 'copy-description') ui.copy(descriptionParagraph ? descriptionParagraph.textContent : '', { label: 'Description copied' });
@@ -1565,6 +1572,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // "Like" toggle now that `mediaData` (carrying the server-derived
         // `liked` field) is resolved.
         setupLikeButton();
+        fetchWatchLaterIds(true); // v1.343: re-read the membership per view mount (a finish removes server side) for the More menu's Watch later entry reads
 
         // 3c-bis. v1.72 (cap 6): the manual "Watched" toggle's state (a More-menu
         // entry, UI pass S3) from `mediaData`'s server-derived `watchState`.

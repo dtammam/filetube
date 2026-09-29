@@ -27,6 +27,8 @@ const NAMES = [
   // media
   'play_arrow', 'pause', 'skip_next', 'skip_previous', 'fast_forward', 'fullscreen', 'fullscreen_exit',
   'picture_in_picture_alt', 'closed_caption', 'speed', 'volume_up', 'volume_off',
+  // Watch later (v1.343): the clock
+  'schedule',
 ];
 
 const FILL = ['notifications', 'notifications_active', 'push_pin', 'keep', 'thumb_up', 'favorite', 'star',

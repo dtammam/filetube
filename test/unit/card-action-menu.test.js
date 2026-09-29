@@ -49,7 +49,7 @@ const ids = (items) => items.map((x) => x.id);
 // ---- buildCardMenuItems: the corners' C4 applicability, as menu entries -------
 
 test('media item, no capability: queue, like, save - never delete/reheat/share/transcript/feedhide', () => {
-  assert.deepStrictEqual(ids(buildCardMenuItems(ITEM, {})), ['queue', 'like', 'download']);
+  assert.deepStrictEqual(ids(buildCardMenuItems(ITEM, {})), ['queue', 'watchlater', 'like', 'download']);
   for (const caps of [null, undefined, { canModifyLibrary: false }, { canModifyLibrary: 'yes' }, { reheatEnabled: 'true' }]) {
     const got = ids(buildCardMenuItems(ITEM, caps));
     assert.ok(!got.includes('delete'), `no delete for caps=${JSON.stringify(caps)}`);
@@ -91,8 +91,19 @@ test('v1.97 Hide from feed: only when the caller passes feedHideable, media only
 });
 
 test('Like reads the item: Like / Unlike with the filled heart when liked', () => {
-  assert.deepStrictEqual(buildCardMenuItems(ITEM, {})[1], { id: 'like', icon: 'favorite', label: 'Like' });
-  assert.deepStrictEqual(buildCardMenuItems({ ...ITEM, liked: true }, {})[1], { id: 'like', icon: 'favorite.fill', label: 'Unlike' });
+  assert.deepStrictEqual(buildCardMenuItems(ITEM, {})[2], { id: 'like', icon: 'favorite', label: 'Like' });
+  assert.deepStrictEqual(buildCardMenuItems({ ...ITEM, liked: true }, {})[2], { id: 'like', icon: 'favorite.fill', label: 'Unlike' });
+});
+
+test('v1.343 Watch later: media only; label follows opts.watchLater; Move to top only when asked', () => {
+  const wl = (it, opts) => buildCardMenuItems(it, {}, opts).filter((x) => x.id.startsWith('watchlater'));
+  assert.deepStrictEqual(wl(ITEM, {}), [{ id: 'watchlater', icon: 'schedule', label: 'Watch later' }]);
+  assert.deepStrictEqual(wl(ITEM, { watchLater: true }), [{ id: 'watchlater', icon: 'schedule', label: 'Remove from Watch later' }]);
+  assert.deepStrictEqual(ids(wl(ITEM, { watchLater: true, watchLaterTop: true })), ['watchlater', 'watchlater-top']);
+  assert.strictEqual(wl(ITEM, { watchLater: true, watchLaterTop: true })[1].label, 'Move to top');
+  for (const k of [{ id: 'e', kind: 'podcast', subId: 's' }, { id: 't', kind: 'track' }, { id: 'b', kind: 'book' }]) {
+    assert.deepStrictEqual(wl(k, { watchLater: true, watchLaterTop: true }), [], `no Watch later for kind ${k.kind}`);
+  }
 });
 
 test('v1.72 kinds: podcast - kind download, queue, like; NEVER the media delete even with the capability', () => {

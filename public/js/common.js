@@ -2006,6 +2006,7 @@ function pageSortKey(params) {
   const p = params || {};
   if (p.root) return 'root:' + String(p.root);
   if (p.liked) return 'liked';
+  if (p.watchLater) return 'watchlater';
   return 'home';
 }
 function getPerPageSort(key) {
@@ -2272,6 +2273,7 @@ function encodeListContext(ctx) {
   if (!ctx || typeof ctx !== 'object') return '';
   var out = {};
   if (ctx.src === 'liked') out.src = 'liked';
+  if (ctx.src === 'watchlater') out.src = 'watchlater';
   // v1.44 music: a music queue carries src:'music' plus the music-only scope
   // keys (album/artist/filter) so next/prev/autoplay re-fetch the same list.
   if (ctx.src === 'music') {
@@ -2353,7 +2355,7 @@ function buildContextListUrl(ctx, fullLimit) {
   if (c.src === 'home-grid') {
     return '/api/home?view=grid&filter=' + encodeURIComponent(c.filter || 'all') + '&' + params.join('&');
   }
-  var endpoint = c.src === 'liked' ? '/api/liked' : '/api/videos';
+  var endpoint = c.src === 'liked' ? '/api/liked' : (c.src === 'watchlater' ? '/api/watch-later' : '/api/videos');
   return endpoint + '?' + params.join('&');
 }
 
@@ -7059,6 +7061,7 @@ function injectAccountMenu() {
       links.classList.add('account-menu-links');
       accountMenuLinksEl = links;
       links.appendChild(accountMenuRow(U, { href: '/?liked=1', icon: 'favorite', label: 'Liked' }));
+      links.appendChild(accountMenuRow(U, { href: '/?watchlater=1', icon: 'schedule', label: 'Watch later' }));
       links.appendChild(accountMenuRow(U, { href: '/history', icon: 'history', label: 'History' }));
       links.appendChild(accountMenuRow(U, { href: '/stats.html', icon: 'bar_chart', label: 'Stats' }));
       // v1.342: Clean up moves things to Trash, so it is offered only to accounts that can edit the library.
@@ -14067,6 +14070,93 @@ function fetchLikedTotal(force) {
   return likedTotalPromise;
 }
 
+// ---- v1.343 Watch later ------------------------------------------------------
+// The signed-in user's Watch later membership, fetched once per page load (a cached
+// promise) and kept in step by setWatchLater. Card menus read the SYNC snapshot (null
+// until the first fetch lands: the menu then offers "Watch later", an idempotent add).
+let watchLaterIdsPromise = null;
+let watchLaterIdsSet = null;
+function fetchWatchLaterIds(force) {
+  if (force) watchLaterIdsPromise = null;
+  if (!watchLaterIdsPromise) {
+    watchLaterIdsPromise = fetch('/api/watch-later/ids')
+      .then((r) => (r && r.ok ? r.json() : Promise.reject(new Error('watch later fetch failed'))))
+      .then((body) => {
+        watchLaterIdsSet = new Set(body && Array.isArray(body.ids) ? body.ids : []);
+        return watchLaterIdsSet;
+      })
+      .catch(() => {
+        watchLaterIdsPromise = null; // a transient failure is retried on the next ask, never cached as "empty"
+        return watchLaterIdsSet || new Set();
+      });
+  }
+  return watchLaterIdsPromise;
+}
+function watchLaterSnapshot() { return watchLaterIdsSet; }
+
+// THE one Watch later verb: on=true adds, false removes. NON-optimistic (the set flips only after
+// the server says so). Toasts the outcome; resolves true/false = the new membership, or null on
+// failure (callers keep their previous state). Refreshes the sidebar entry's count gate.
+function setWatchLater(mediaId, on) {
+  return fetch('/api/watch-later/' + encodeURIComponent(mediaId), { method: on ? 'POST' : 'DELETE' })
+    .then((res) => (res.ok ? res.json() : Promise.reject(new Error('watch later request failed: ' + res.status))))
+    .then((body) => {
+      const now = body && typeof body.watchLater === 'boolean' ? body.watchLater : on;
+      if (!watchLaterIdsSet) watchLaterIdsSet = new Set();
+      if (now) watchLaterIdsSet.add(String(mediaId)); else watchLaterIdsSet.delete(String(mediaId));
+      showToast(now ? 'Added to Watch later' : 'Removed from Watch later');
+      const list = document.getElementById('sidebar-folders-list');
+      if (list) applyWatchLaterSidebarEntry(list, { force: true });
+      return now;
+    })
+    .catch(() => { showToast('Could not update Watch later.'); return null; }); // never fake success
+}
+
+// Play all: feed the list to the play queue (server side, in list order) and start the first one.
+function playAllWatchLater() {
+  return fetch('/api/queue/watch-later', { method: 'POST' })
+    .then((res) => (res.ok ? res.json() : Promise.reject(new Error('play all failed: ' + res.status))))
+    .then((body) => {
+      if (!body || !body.first) { showToast(body && body.full ? 'The queue is full.' : 'Nothing to play.'); return null; }
+      showToast(body.added === 1 ? 'Queued 1 video' : 'Queued ' + body.added + ' videos');
+      if (typeof refreshQueueChrome === 'function') refreshQueueChrome();
+      const entry = (body.queue && Array.isArray(body.queue.entries) ? body.queue.entries : []).find((e) => e && e.uid === body.first.uid);
+      const href = entry ? queueEntryHref(entry) : null;
+      if (href && window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(href);
+      else if (href) window.location.href = href;
+      return body;
+    })
+    .catch(() => { showToast('Could not start Play all.'); return null; });
+}
+
+// The sidebar's Watch later entry: right under Liked in the Library list, shown iff the list
+// is non-empty (the Liked rule). Static markup only.
+function applyWatchLaterSidebarEntry(listEl, opts) {
+  if (!listEl || typeof fetch !== 'function') return Promise.resolve();
+  const options = opts || {};
+  return fetchWatchLaterIds(options.force === true).then((ids) => {
+    const existing = listEl.querySelector('.sidebar-item-watchlater');
+    if (ids.size > 0) {
+      if (existing) {
+        if (options.watchLaterActive !== undefined) existing.classList.toggle('active', options.watchLaterActive === true);
+        return;
+      }
+      const entry = document.createElement('a');
+      entry.href = '/?watchlater=1';
+      entry.className = 'sidebar-item sidebar-item-watchlater' + (options.watchLaterActive === true ? ' active' : '');
+      entry.title = 'Watch later';
+      const icon = spriteIconEl('schedule', 'chrome-icon');
+      if (icon) entry.appendChild(icon);
+      entry.appendChild(document.createTextNode(' Watch later'));
+      if (typeof options.decorate === 'function') options.decorate(entry);
+      const liked = listEl.querySelector('.sidebar-item-liked');
+      listEl.insertBefore(entry, liked ? liked.nextSibling : listEl.firstChild);
+    } else if (existing) {
+      existing.remove();
+    }
+  });
+}
+
 // Prepends (or removes) the Liked entry on `listEl`. Idempotent and safe to
 // call after any innerHTML re-render -- it never touches the other children,
 // so per-item wiring (the home sidebar's [data-index] drag handlers, etc.)
@@ -14102,7 +14192,7 @@ function applyLikedSidebarEntry(listEl, opts) {
     } else if (existing) {
       existing.remove();
     }
-  });
+  }).then(() => applyWatchLaterSidebarEntry(listEl, options));
 }
 
 /**
@@ -16681,6 +16771,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatSnapShift, snapShiftBlock, snapShiftSuggestion, snapGapBreak,
     // v1.286 (Dean, everything shareable): universal file-share + its pure strategy decision.
     shareMediaFile, chooseShareStrategy,
+    fetchWatchLaterIds, watchLaterSnapshot, setWatchLater, playAllWatchLater, applyWatchLaterSidebarEntry,
     showChoiceModal,
     // Sweep S9: the dialogs on ui.sheet (jsdom-tested with the real ui.js).
     confirmHtmlToText, isLiveDialogOpen, showTranscriptModal,

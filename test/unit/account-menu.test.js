@@ -102,11 +102,11 @@ test('injectAccountMenu: builds the trigger + full dropdown, once, with account 
   // (the enabled-module gate) - covered by its own test below.
   // v1.305 (Dean): "Change photo" ROW retired - the avatar is now edited via a
   // pencil badge on the disc (asserted below), so it is no longer a menu item.
-  assert.deepStrictEqual(labels, ['Liked', 'History', 'Stats', 'Clean up', 'Settings', 'Theme', 'Sign out'], 'all items present, in order (Clean up: an admin can edit the library)');
+  assert.deepStrictEqual(labels, ['Liked', 'Watch later', 'History', 'Stats', 'Clean up', 'Settings', 'Theme', 'Sign out'], 'all items present, in order (Clean up: an admin can edit the library)');
   assert.strictEqual(global.document.querySelector('.account-menu-name').textContent, 'Dean');
   assert.strictEqual(global.document.querySelector('.account-menu-role').textContent, 'Admin');
   const links = [...global.document.querySelectorAll('a.account-menu-item')].map((a) => a.getAttribute('href'));
-  assert.deepStrictEqual(links, ['/?liked=1', '/history', '/stats.html', '/cleanup', '/setup.html']);
+  assert.deepStrictEqual(links, ['/?liked=1', '/?watchlater=1', '/history', '/stats.html', '/cleanup', '/setup.html']);
 
   injectAccountMenu();
   await tick();
@@ -123,7 +123,7 @@ test('injectAccountMenu: the Subscriptions quick link appears only when the modu
   await tick();
   openMenu();
   const labels = itemLabels();
-  assert.deepStrictEqual(labels, ['Liked', 'History', 'Stats', 'Subscriptions', 'Settings', 'Theme', 'Sign out'],
+  assert.deepStrictEqual(labels, ['Liked', 'Watch later', 'History', 'Stats', 'Subscriptions', 'Settings', 'Theme', 'Sign out'],
     'Subscriptions joins the quick links when enabled');
   const subs = [...global.document.querySelectorAll('a.account-menu-item')].find((a) => a.textContent.includes('Subscriptions'));
   assert.strictEqual(subs.getAttribute('href'), '/subscriptions');
@@ -161,7 +161,7 @@ test('v1.153.1: Subscriptions is added to an ALREADY-BUILT menu when the module 
   assert.ok(labelsOf().length >= 6 && !labelsOf().includes('Subscriptions'), 'not present at build time (cold cache)');
   // the /health probe resolves later -> injectSubscriptionsNavNodes patches the menu
   ensureAccountMenuSubscriptionsRow();
-  assert.deepStrictEqual(labelsOf(), ['Liked', 'History', 'Stats', 'Subscriptions', 'Settings', 'Theme', 'Sign out'],
+  assert.deepStrictEqual(labelsOf(), ['Liked', 'Watch later', 'History', 'Stats', 'Subscriptions', 'Settings', 'Theme', 'Sign out'],
     'Subscriptions inserted after Stats, before Settings');
   assert.strictEqual([...global.document.querySelectorAll('a.account-menu-item[href="/subscriptions"]')].length, 1);
   // idempotent: a second call never duplicates

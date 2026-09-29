@@ -80,6 +80,7 @@ test('index.html: the tools are icon-only ui-btns whose accessible name is their
   assert.match(html, /id="shuffle-again-btn"[^>]*aria-label="Shuffle again"/);
   assert.match(html, /id="rescan-library-btn"[^>]*aria-label="Rescan files"/);
   assert.match(html, /id="sort-select-btn"[^>]*aria-label="Sort"/);
+  assert.match(html, /id="play-all-btn"[^>]*aria-label="Play all"/);
   const bar = html.slice(html.indexOf('<div class="library-tools">'), html.indexOf('<div class="video-grid"'));
   assert.doesNotMatch(bar, /btn-label|ui-btn__label/, 'no visible word labels in the tool group');
 });

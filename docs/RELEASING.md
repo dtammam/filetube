@@ -285,6 +285,13 @@ v1.296+ boot already created an empty `filetube.db` beside the `db.json`,
 that file (plus its `-wal`/`-shm` sidecars) must be deleted before the
 older build runs - it would otherwise refuse the v33 schema (CONFIGURATION.md).
 
+**Fifteenth floor - schema v34 (v1.343, Watch later).** One new table,
+`user_watch_later` (`user_id`, `media_id`, `added_at`, `position`, PK
+`(user_id, media_id)`, FK cascade on the user), born empty by an additive
+migration. A v1.342-or-earlier build refuses a v34 database at boot; bundles
+gain a per-user `watchLater` array (an older bundle without it restores as an
+empty list, and an older build ignores the key it does not know).
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

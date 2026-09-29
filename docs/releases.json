@@ -3328,5 +3328,11 @@
     "date": "2026-09-29",
     "title": "Clean up: a shortlist of what to clear",
     "intent": "A new Clean up page (in the account menu, and linked from Stats if you can edit the library) suggests what you could clear to free space: videos you watched to the end, subscription downloads nobody opened, the biggest files nobody opened, and newer copies of a video you already have. Nothing is ticked for you and nothing is removed until you pick it and confirm; everything goes to Trash first, where you can restore it. Anything liked, half-watched or still new is never suggested, and you can set how old something must be (7 to 180 days)."
+  },
+  {
+    "version": "1.343.0",
+    "date": "2026-09-29",
+    "title": "Watch later: a list that follows you",
+    "intent": "A new Watch later list, separate from Pin and from the play queue. Add a video from any card's menu or from the More menu on the watch page, and it shows under Liked in the sidebar and in your account menu on every device you sign in on. Play all sends the whole list to your queue, and Move to top puts one first. A video leaves the list when you finish it (watched to the end, or marked watched), never before."
   }
 ]

@@ -180,7 +180,7 @@ test('v1.161 lock: fetchLibraryPage0 clears the box on a search that returned re
 test('v1.150 locks (converted): a reused view never keeps a chip row of another kind', () => {
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'main.js'), 'utf8');
   assert.ok(!src.includes('search-scoped-toolbar'), 'the strip class is gone');
-  assert.match(src, /function chipRowKind\(\) \{ return isUnifiedSearch \? 'search' : \(\(searchQuery && !likedFilter\) \? 'scoped-search' : 'library'\); \}/);
+  assert.match(src, /function chipRowKind\(\) \{ return isUnifiedSearch \? 'search' : \(\(searchQuery && !likedFilter && !watchLaterFilter\) \? 'scoped-search' : 'library'\); \}/);
   assert.match(src, /if \(cur && cur\.getAttribute\('data-kind'\) === chipRowKind\(\)\) return;\s*mountLibraryChips\(\);/, 'a different kind rebuilds the row');
   assert.match(src, /row\.setAttribute\('data-kind', chipRowKind\(\)\);/);
 });

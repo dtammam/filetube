@@ -713,6 +713,11 @@ function buildCardMenuItems(item, caps, opts) {
   const kp = cardKindPresentation(it);
   const out = [];
   if (!kp || kp.canQueue) out.push({ id: 'queue', icon: 'playlist_add', label: 'Add to queue' });
+  // v1.343 Watch later: media (video/audio) only. opts.watchLater = already on the list.
+  if (!kp) {
+    out.push({ id: 'watchlater', icon: 'schedule', label: opts && opts.watchLater ? 'Remove from Watch later' : 'Watch later' });
+    if (opts && opts.watchLaterTop) out.push({ id: 'watchlater-top', icon: 'arrow_upward', label: 'Move to top' });
+  }
   if (!(kp && kp.likeable === false)) {
     out.push(it.liked === true
       ? { id: 'like', icon: 'favorite.fill', label: 'Unlike' }
@@ -1265,6 +1270,7 @@ const PreviewCards = (function () {
     const sortBtn = root.querySelector('#sort-select-btn');
     const chipHost = root.querySelector('#library-chip-host'); // the ONE filter chip row (F19)
     const shuffleAgainBtn = root.querySelector('#shuffle-again-btn');
+    const playAllBtn = root.querySelector('#play-all-btn'); // v1.343: Watch later's Play all (shown on that scope only)
     const viewModeBtn = root.querySelector('#view-mode-btn'); // v1.45.6: card/list toggle
     // The toolbar row: the filter chip host + the trailing icon tools (sort,
     // shuffle, rescan, view); the bulk-attribution control joins it on an
@@ -1369,6 +1375,9 @@ const PreviewCards = (function () {
     // consumer). Mutually exclusive with the other scope filters by
     // construction (a liked view ignores folder/root/search server-side).
     const likedFilter = urlParams.get('liked') === '1';
+    // v1.343 Watch later: `?watchlater=1` is a scope exactly like `?liked=1`, served by GET /api/watch-later
+    // (the user's own ordered list; same item shape as Liked, so the same cards).
+    const watchLaterFilter = urlParams.get('watchlater') === '1';
 
     // v1.79 home feed: the feed replaces the BARE home landing only. Drilling
     // into a folder / channel / search / liked view is always the classic list
@@ -1385,13 +1394,13 @@ const PreviewCards = (function () {
     // re-show the feed for a feed-enabled user.
     const subsFilter = urlParams.get('subs') === '1';
     const forceGrid = urlParams.get('browse') === '1';
-    const isBareHome = !searchQuery && !folderFilter && !rootFilter && !likedFilter && !subsFilter;
+    const isBareHome = !searchQuery && !folderFilter && !rootFilter && !likedFilter && !watchLaterFilter && !subsFilter;
     // v1.205 Wave B: a GLOBAL header search (a query with no folder/root/liked/
     // subs scope) is the UNIFIED cross-content search - it hits /api/search and
     // shows the content-type chip row. A search WITHIN a folder/root/liked scope
     // keeps the classic video-only /api/videos path + its searchIn toggle, so
     // nothing about the existing scoped-search behaviour changes.
-    const isUnifiedSearch = !!searchQuery && !folderFilter && !rootFilter && !likedFilter && !subsFilter;
+    const isUnifiedSearch = !!searchQuery && !folderFilter && !rootFilter && !likedFilter && !watchLaterFilter && !subsFilter;
     // v1.84 Modern Mode wins the bare-home layout race: precedence modern > feed
     // > classic (resolveHomeLayout is the pure, unit-bound decision). Modern
     // renders a FLAT chip-filtered grid of rich cards into the SAME #video-grid
@@ -1440,7 +1449,7 @@ const PreviewCards = (function () {
     // resolves a defaultView folder uses the 'home' key — acceptable). Off by
     // default → this whole block is inert and the global path is byte-unchanged.
     const perPageSortActive = isPerPageSortEnabled();
-    const sortPageKeyValue = pageSortKey({ root: rootFilter, liked: likedFilter });
+    const sortPageKeyValue = pageSortKey({ root: rootFilter, liked: likedFilter, watchLater: watchLaterFilter });
     let sortPinnedByPage = false;
     if (perPageSortActive) {
       const pageSort = getPerPageSort(sortPageKeyValue);
@@ -1479,6 +1488,8 @@ const PreviewCards = (function () {
       videosHeader.textContent = `Search results for "${searchQuery}"`;
     } else if (likedFilter) {
       videosHeader.textContent = 'Playlist: Liked';
+    } else if (watchLaterFilter) {
+      videosHeader.textContent = 'Playlist: Watch later';
     } else if (folderFilter) {
       // v1.126: the display map beats the raw folder name on FIRST paint - the
       // v1.122 heal only covered `?root=` views, but the surfaces users tap
@@ -1603,7 +1614,7 @@ const PreviewCards = (function () {
         // Most recent, sort keeps the provisional 'release-date').
         // v1.79.1: the subs-scoped + force-grid See-all views are NOT bare
         // loads - a configured defaultView must not clobber them.
-        const bareLoad = !searchQuery && !folderFilter && !rootFilter && !likedFilter && !subsFilter && !forceGrid;
+        const bareLoad = !searchQuery && !folderFilter && !rootFilter && !likedFilter && !watchLaterFilter && !subsFilter && !forceGrid;
         if (bareLoad || !storedSortPick) {
           try {
             const settingsRes = await fetch('/api/settings');
@@ -1935,7 +1946,7 @@ const PreviewCards = (function () {
       // v1.32: the Liked view swaps the ENDPOINT, not the shape --
       // GET /api/liked returns the identical {items,total,offset,limit}
       // contract (v1.30), so pagination/sort/format/seed all just work.
-      const endpoint = likedFilter ? '/api/liked' : '/api/videos';
+      const endpoint = likedFilter ? '/api/liked' : (watchLaterFilter ? '/api/watch-later' : '/api/videos');
       return `${endpoint}?${queryParams.join('&')}`;
     }
 
@@ -2388,7 +2399,7 @@ const PreviewCards = (function () {
         });
       }
       return encodeListContext({
-        src: likedFilter ? 'liked' : 'videos',
+        src: likedFilter ? 'liked' : (watchLaterFilter ? 'watchlater' : 'videos'),
         sort: currentSort,
         seed: currentSeed,
         search: searchQuery,
@@ -2498,7 +2509,7 @@ const PreviewCards = (function () {
       if (visibleFolders.length === 0) {
         sidebarFoldersList.innerHTML =
           '<div style="padding: 6px 24px; font-style: italic; color: var(--ink-2);">None</div>';
-        applyLikedSidebarEntry(sidebarFoldersList, { active: likedFilter });
+        applyLikedSidebarEntry(sidebarFoldersList, { active: likedFilter, watchLaterActive: watchLaterFilter });
         return;
       }
       sidebarFoldersList.innerHTML = visibleFolders.map((f, index) => {
@@ -2518,7 +2529,7 @@ const PreviewCards = (function () {
           </a>
         `;
       }).join('');
-      applyLikedSidebarEntry(sidebarFoldersList, { active: likedFilter });
+      applyLikedSidebarEntry(sidebarFoldersList, { active: likedFilter, watchLaterActive: watchLaterFilter });
 
       // v1.76: the shared POINTER gesture layer replaces this surface's own
       // copy of the native HTML5 DnD wiring -- which is why the sidebar can
@@ -2580,7 +2591,7 @@ const PreviewCards = (function () {
     // The row's KIND - which dimensions it carries. v1.150's belt, kept: a
     // reused view DOM (the homeViewCache posture) must never keep a row of a
     // different kind (a search's type chips on a library view, or the reverse).
-    function chipRowKind() { return isUnifiedSearch ? 'search' : ((searchQuery && !likedFilter) ? 'scoped-search' : 'library'); }
+    function chipRowKind() { return isUnifiedSearch ? 'search' : ((searchQuery && !likedFilter && !watchLaterFilter) ? 'scoped-search' : 'library'); }
     function ensureLibraryChips() {
       if (!chipHost) return;
       const cur = chipHost.firstElementChild;
@@ -2598,7 +2609,7 @@ const PreviewCards = (function () {
           options: FORMAT_TOGGLE_OPTIONS.map((o) => ({ value: o.mode, label: o.label })) });
         groups.push({ key: 'watch', value: getStoredWatchFilter(), all: 'all',
           options: WATCH_TOGGLE_OPTIONS.map((o) => ({ value: o.mode, label: o.label })) });
-        if (searchQuery && !likedFilter) {
+        if (searchQuery && !likedFilter && !watchLaterFilter) {
           groups.push({ key: 'scope', value: activeSearchScope, all: 'all',
             options: SEARCH_SCOPE_OPTIONS.map((o) => ({ value: o.mode, label: o.label })) });
         }
@@ -2624,7 +2635,8 @@ const PreviewCards = (function () {
       }, { id: 'library-filter-chips', label: 'Filter the library' });
       row.setAttribute('data-kind', chipRowKind());
       chipHost.replaceChildren(row);
-      if (sortBtn) sortBtn.hidden = isUnifiedSearch;
+      if (sortBtn) sortBtn.hidden = isUnifiedSearch || watchLaterFilter; // the Watch later list keeps the user's own order
+      if (playAllBtn) playAllBtn.hidden = !watchLaterFilter;
       if (isUnifiedSearch && shuffleAgainBtn) shuffleAgainBtn.hidden = true;
     }
 
@@ -2632,7 +2644,7 @@ const PreviewCards = (function () {
     // the current sort selection (visible only for `random`; never on a global
     // search, where sort does not apply).
     function updateShuffleButtonVisibility() {
-      if (shuffleAgainBtn) shuffleAgainBtn.hidden = isUnifiedSearch || !shouldShowShuffleButton(currentSort);
+      if (shuffleAgainBtn) shuffleAgainBtn.hidden = isUnifiedSearch || watchLaterFilter || !shouldShowShuffleButton(currentSort);
     }
 
     // Closes the open card menu (if any). Safe to call unconditionally: from a
@@ -2807,6 +2819,12 @@ const PreviewCards = (function () {
     if (shuffleAgainBtn) {
       shuffleAgainBtn.addEventListener('click', () => {
         resetAndReload();
+      }, { signal });
+    }
+    if (playAllBtn) {
+      playAllBtn.addEventListener('click', () => {
+        playAllBtn.disabled = true;
+        Promise.resolve(playAllWatchLater()).finally(() => { playAllBtn.disabled = false; }); // common.js: the server feeds the queue in list order
       }, { signal });
     }
 
@@ -3055,6 +3073,42 @@ const PreviewCards = (function () {
         showToast('Could not update Liked.'); // never fake success
       }
     }
+    // v1.343 Watch later. On the list's own scope a removal also pulls the card (and the window
+    // shrinks by one, the hide-from-feed bookkeeping); elsewhere it only flips the menu label.
+    async function toggleCardWatchLater(card, item) {
+      if (!item || !item.id) return;
+      const snap = watchLaterSnapshot();
+      const inList = watchLaterFilter || !!(snap && snap.has(String(item.id)));
+      const now = await setWatchLater(item.id, !inList); // common.js: THE one verb, toasts the outcome
+      if (now !== false || !watchLaterFilter) return;
+      if (signal.aborted) return; // the view was left while the request ran
+      if (card && card.isConnected) card.remove();
+      if (currentItems.some((it) => String(it.id) === String(item.id))) {
+        currentItems = currentItems.filter((it) => String(it.id) !== String(item.id));
+        currentOffset -= 1;
+        currentTotal -= 1;
+      }
+    }
+    // Move to top: PUT the loaded window's ids with this one first. The server keeps any row the
+    // window did not list (unloaded pages, another device's add) after them, so it never drops one.
+    async function moveCardToTop(card, item) {
+      if (!item || !item.id) return;
+      const ids = [String(item.id), ...currentItems.map((it) => String(it.id)).filter((x) => x !== String(item.id))];
+      try {
+        const res = await fetch('/api/watch-later/order', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        });
+        if (!res.ok) throw new Error('reorder failed: ' + res.status);
+        if (signal.aborted) return;
+        currentItems = [item, ...currentItems.filter((it) => it !== item)];
+        if (card && card.isConnected && card.parentNode) card.parentNode.insertBefore(card, card.parentNode.firstElementChild);
+        showToast('Moved to top');
+      } catch (_) {
+        showToast('Could not reorder Watch later.');
+      }
+    }
     // v1.67: Reheat fires the SAME per-item endpoint as the watch page's flame
     // button, with the same status->toast vocabulary; progress surfaces in the
     // existing download status chip (no second progress mechanism).
@@ -3155,6 +3209,7 @@ const PreviewCards = (function () {
 
     // Items whose transcript is loading (see runCardAction's transcript arm).
     const transcriptBusy = new Set();
+    fetchWatchLaterIds(true); // v1.343: re-read the membership per view mount (a finish removes server side) so the card menu's first open shows the right label
 
     // Runs one menu action for one card's item.
     function runCardAction(action, card, item) {
@@ -3187,6 +3242,10 @@ const PreviewCards = (function () {
         });
       } else if (action === 'reheat') {
         triggerCardReheat(item);
+      } else if (action === 'watchlater') {
+        toggleCardWatchLater(card, item);
+      } else if (action === 'watchlater-top') {
+        moveCardToTop(card, item);
       } else if (action === 'feedhide') {
         hideCardFromFeed(card, item.id);
       } else if (action === 'delete') {
@@ -3200,7 +3259,12 @@ const PreviewCards = (function () {
       const item = cardItemOf(card);
       const u = cardUi();
       if (!item || !u || typeof u.menu !== 'function') return;
-      const entries = buildCardMenuItems(item, cardCaps, { feedHideable: modernMode });
+      const wlSnap = watchLaterSnapshot();
+      const entries = buildCardMenuItems(item, cardCaps, {
+        feedHideable: modernMode,
+        watchLater: watchLaterFilter || !!(wlSnap && wlSnap.has(String(item.id))),
+        watchLaterTop: watchLaterFilter && currentItems.length > 1 && currentItems[0] !== item,
+      });
       if (!entries.length) return;
       closeCardMenu();
       const anchorEl = anchor && anchor.nodeType ? anchor
@@ -3258,7 +3322,7 @@ const PreviewCards = (function () {
     // resume), so its home skips the injected continue rows too.
     if (videoGrid && videoGrid.parentElement && !feedMode && !modernMode) {
       videoGrid.insertAdjacentElement('beforebegin', booksRowHost);
-      const bareHome = !searchQuery && !folderFilter && !rootFilter && !likedFilter;
+      const bareHome = !searchQuery && !folderFilter && !rootFilter && !likedFilter && !watchLaterFilter;
       if (bareHome) {
         // v1.72 (cap 5): the videos "Continue watching" row sits FIRST -
         // videos are the reference kind, and their in-progress items now get
