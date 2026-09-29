@@ -146,8 +146,8 @@
 
 ### Features
 
-- [ ] **iPod skin true-up: 27 new colorways, real model names, Extras by line and generation** _(Dean,
-  2026-09-29)_ - PLAN READY for a Sonnet builder: `docs/exec-plans/active/2026-09-29-ipod-trueup/plan.md`
+- [x] **iPod skin true-up: 27 new colorways, real model names, Extras by line and generation** - SHIPPED v1.345.0 (see Shipped) _(Dean,
+  2026-09-29)_ - plan: `docs/exec-plans/completed/2026-09-29-ipod-trueup/plan.md`
   (every color, id, name and CSS value precomputed and proven in `payload/`). From nanochromatic.com's
   reference cards: 50 iPod skins (22 existing relabeled `Nano 4G Orange (2008)` style, 27 new, the Gold
   retuned to the real Mini 1G), Extras > Skins > line > generation > color, a narrow skin-art exemption
@@ -265,6 +265,11 @@
   any site, sharing the source URL recorded at download time. Nothing else.
 
 ### Chores
+
+- [ ] **Refresh the README screenshots** _(Dean, 2026-09-29)_: the README's images (`assets/images/`:
+  the desktop Home, Library and Watch shots, and the four mobile shots) predate the skins, the Pocket
+  and the one consistent look. Retake them from the current UI (light and dark, desktop and phone), add
+  one of the Pocket with a skin, replace the files, and check every `<img>` in README.md still resolves.
 
 - [x] **Rebaseline the visual CI baselines** - DONE 2026-09-29 (PR #49, after v1.344.1) _(Dean, 2026-09-29)_ - visual CI now comments failures on PRs (report-only, never
   blocking) because the committed baselines have drifted from the shipped UI since W1. Regenerate them in one
@@ -408,6 +413,18 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.345.0 - Every iPod colour, with its real name (2026-09-29)
+
+- **27 new colourways and real model names.** The Click skins grow from 22 to 49 line colourways
+  (Nano 3G-7G, Shuffle 2G-4G, Mini) plus Original, Cider and Nordic: 52 skins. Every label reads
+  `<Line> <n>G <Colour> (<year>)`; no existing id was renamed or removed, so saved picks survive.
+- **Extras > Skins is by line, generation, then colour** (Original, Classic, Mini, Nano, Shuffle, Cider,
+  Nordic), with the same checks, live preview, Select and MENU at every level. Settings > Music skin
+  groups its tiles by generation.
+- **Gold is the real Mini 1G Gold (2004)**: champagne body, the grey Mini 1G wheel, lettering and center.
+- **The UI-lint ratchet admits added skin-palette keys** (and only those, under `no-raw-values`, with the
+  skin-art reason); it stays shrink-only for everything else. Plan: `docs/exec-plans/completed/2026-09-29-ipod-trueup/plan.md`.
 
 ### v1.344.2 - Watch and Listen keep your place, and a pause (2026-09-29)
 

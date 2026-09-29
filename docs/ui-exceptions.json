@@ -1,5 +1,5 @@
 {
-  "comment": "Shrink-only ui-lint debt (plan D10.3). Keys are file|selector|property, file|<what> or a class; never line numbers. npm run lint:ui -- --enforce fails on a key or count above its entry AND on one below it: when you pay debt, lower or delete its entry in the same commit. test/unit/ui-exceptions-ratchet.test.js fails on a key added or a count raised against the merge-base. The end state is plan D10.4.",
+  "comment": "Shrink-only ui-lint debt (plan D10.3). Keys are file|selector|property, file|<what> or a class; never line numbers. npm run lint:ui -- --enforce fails on a key or count above its entry AND on one below it: when you pay debt, lower or delete its entry in the same commit. test/unit/ui-exceptions-ratchet.test.js fails on a key added or a count raised against the merge-base. The end state is plan D10.4. Added skin-palette keys (.mms-ipod-* | --pk-c-*) carrying the D10.4 skin-art reason are allowed (the permanent carve-out).",
   "rules": {
     "no-raw-values": [
       {
@@ -1665,6 +1665,1548 @@
         "added": "2026-09-27"
       },
       {
+        "key": "public/css/style.css|.mms-ipod-nano3-blue|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-blue|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-blue|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-blue|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-blue|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-blue|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-blue|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-blue|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-blue|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-blue|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-blue|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-blue|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-green|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-green|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-green|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-green|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-green|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-green|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-green|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-green|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-green|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-green|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-green|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-green|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-red|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-red|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-red|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-red|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-red|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-red|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-red|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-red|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-red|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-red|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-red|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-red|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-silver|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-silver|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-silver|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-silver|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-silver|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-silver|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-silver|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-silver|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-silver|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-silver|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-silver|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano3-silver|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-blue|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-blue|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-blue|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-blue|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-blue|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-blue|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-blue|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-blue|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-blue|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-blue|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-blue|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-blue|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-orange|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-orange|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-orange|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-orange|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-orange|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-orange|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-orange|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-orange|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-orange|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-orange|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-orange|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano4-orange|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-green|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-green|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-green|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-green|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-green|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-green|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-green|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-green|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-green|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-green|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-green|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-green|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-orange|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-orange|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-orange|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-orange|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-orange|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-orange|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-orange|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-orange|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-orange|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-orange|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-orange|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-orange|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-pink|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-pink|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-pink|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-pink|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-pink|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-pink|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-pink|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-pink|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-pink|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-pink|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-pink|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano5-pink|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-green|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-green|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-green|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-green|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-green|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-green|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-green|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-green|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-green|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-green|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-green|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-green|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-green|--pk-c-wheel-sheen",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-orange|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-orange|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-orange|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-orange|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-orange|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-orange|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-orange|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-orange|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-orange|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-orange|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-orange|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-orange|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-orange|--pk-c-wheel-sheen",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-pink|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-pink|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-pink|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-pink|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-pink|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-pink|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-pink|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-pink|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-pink|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-pink|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-pink|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-pink|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano6-pink|--pk-c-wheel-sheen",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-blue|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-blue|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-blue|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-blue|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-blue|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-blue|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-blue|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-blue|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-blue|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-blue|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-blue|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-blue|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-gold|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-gold|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-gold|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-gold|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-gold|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-gold|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-gold|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-gold|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-gold|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-gold|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-gold|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-gold|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-green|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-green|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-green|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-green|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-green|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-green|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-green|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-green|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-green|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-green|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-green|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-green|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-pink|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-pink|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-pink|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-pink|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-pink|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-pink|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-pink|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-pink|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-pink|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-pink|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-pink|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-pink|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-purple|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-purple|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-purple|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-purple|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-purple|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-purple|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-purple|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-purple|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-purple|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-purple|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-purple|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-purple|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-red|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-red|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-red|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-red|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-red|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-red|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-red|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-red|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-red|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-red|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-red|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-red|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-slate|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-slate|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-slate|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-slate|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-slate|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-slate|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-slate|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-slate|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-slate|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-slate|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-slate|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-slate|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-slate|--pk-c-wheel-sheen",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-spacegray|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-spacegray|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-spacegray|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-spacegray|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-spacegray|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-spacegray|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-spacegray|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-spacegray|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-spacegray|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-spacegray|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-spacegray|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-spacegray|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-spacegray|--pk-c-wheel-sheen",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-yellow|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-yellow|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-yellow|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-yellow|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-yellow|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-yellow|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-yellow|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-yellow|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-yellow|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-yellow|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-yellow|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-nano7-yellow|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
         "key": "public/css/style.css|.mms-ipod-olive|--pk-c-body",
         "count": 1,
         "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
@@ -1993,6 +3535,438 @@
         "count": 1,
         "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-gold|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-gold|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-gold|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-gold|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-gold|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-gold|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-gold|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-gold|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-gold|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-gold|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-gold|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-gold|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-green|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-green|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-green|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-green|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-green|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-green|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-green|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-green|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-green|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-green|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-green|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-green|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-purple|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-purple|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-purple|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-purple|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-purple|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-purple|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-purple|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-purple|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-purple|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-purple|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-purple|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle2-purple|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-blue|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-blue|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-blue|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-blue|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-blue|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-blue|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-blue|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-blue|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-blue|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-blue|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-blue|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-blue|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-pink|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-pink|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-pink|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-pink|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-pink|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-pink|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-pink|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-pink|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-pink|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-pink|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-pink|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle3-pink|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle4-blue|--pk-c-body",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle4-blue|--pk-c-body-edge",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle4-blue|--pk-c-center-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle4-blue|--pk-c-center-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle4-blue|--pk-c-lit-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle4-blue|--pk-c-lit-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle4-blue|--pk-c-lits-band",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle4-blue|--pk-c-lits-band2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle4-blue|--pk-c-lits-core",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle4-blue|--pk-c-wheel-1",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle4-blue|--pk-c-wheel-2",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
+      },
+      {
+        "key": "public/css/style.css|.mms-ipod-shuffle4-blue|--pk-c-wheel-label",
+        "count": 1,
+        "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
+        "added": "2026-09-29"
       },
       {
         "key": "public/css/style.css|.mms-ipod-silver|--pk-c-body",

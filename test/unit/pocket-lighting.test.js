@@ -615,7 +615,7 @@ test('AC6 sticker: the four Lighting chips (the stored one checked) ask iOS from
     assert.deepStrictEqual(chips().filter((c) => c.getAttribute('aria-checked') === 'true').map((c) => c.getAttribute('data-skin-lighting')), ['off'], 'the stored strength is checked');
     assert.ok(!m.querySelector('[data-skin-brick]') && !/Brick/.test(m.textContent), 'no Brick row, even with the view\'s hook saying yes (D4)');
     assert.strictEqual(m.querySelectorAll('[data-skin-pick]').length, 0, 'no skin chips on page 1 (D6)');
-    assert.match(m.querySelector('[data-skin-skins]').textContent, /Skin.*Click/, 'the Skin row names the active skin');
+    assert.match(m.querySelector('[data-skin-skins]').textContent, /Skin.*Classic 5G White \(2005\)/, 'the Skin row names the active skin');
     // the pick: the motion ask runs INSIDE the tap (user activation), the pick is stored and checked
     tap(b, chips().find((c) => c.getAttribute('data-skin-lighting') === 'ambient'));
     assert.strictEqual(asks, 1, 'requestPermission ran synchronously inside the chip tap');

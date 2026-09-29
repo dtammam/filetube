@@ -97,3 +97,36 @@ test('every app shell that loads setup.js ALSO loads music-skins.js (so the pick
   assert.deepStrictEqual(offenders, [],
     'these shells run setup.js (which renders the Music-skin picker) but never load music-skins.js, so FileTubeMusicSkins is undefined and the picker would silently render empty - the exact v1.229 bug');
 });
+
+// ---- the rendered grid, EXECUTED (v1.345): one group per generation, a tile named by its color ----
+
+test('v1.345: the rendered grid has 17 groups (Original, 15 line generations, Cider, Nordic) and a line tile is named by its color', () => {
+  const vm = require('node:vm');
+  const { JSDOM } = require('jsdom');
+  const dom = new JSDOM('<div id="music-skin-picker"></div>');
+  const skins = require(path.join(PUB, 'js', 'music-skins.js'));
+  const grab = (re) => { const m = re.exec(SETUP_JS); assert.ok(m, 'source found: ' + re); return m[0]; };
+  const src = [
+    grab(/function escStickerHtml\(s\) \{[\s\S]*?\n\}/),
+    grab(/function skinSwatchClasses\(s\) \{[\s\S]*?\n\}/),
+    grab(/function renderMusicSkinPicker\(\) \{[\s\S]*?\n\}/),
+  ].join('\n');
+  const ctx = vm.createContext({
+    document: dom.window.document,
+    window: { FileTubeMusicSkins: Object.assign({}, skins, { activeSkinId: () => 'ipod-charcoal', setActiveSkin() {} }) },
+    controller: new dom.window.AbortController(), MUSIC_SKIN_BLURB: {},
+  });
+  vm.runInContext(src + '\nrenderMusicSkinPicker();', ctx);
+  const doc = dom.window.document;
+  const heads = [...doc.querySelectorAll('.skin-family')].map((g) => g.querySelector('.skin-family-name').textContent);
+  assert.deepStrictEqual(heads, ['Original', 'Classic 4G (2004)', 'Classic 5G (2005)', 'Classic 6G (2007)', 'Mini 1G (2004)', 'Mini 2G (2005)',
+    'Nano 2G (2006)', 'Nano 3G (2007)', 'Nano 4G (2008)', 'Nano 5G (2009)', 'Nano 6G (2010)', 'Nano 7G (2012)',
+    'Shuffle 2G (2006)', 'Shuffle 3G (2009)', 'Shuffle 4G (2010)', 'Cider', 'Nordic']);
+  const tile = (id) => doc.querySelector(`[data-skin-pref="${id}"] .skin-tile-name`).textContent;
+  assert.strictEqual(tile('ipod-charcoal'), 'Black (2007)');
+  assert.strictEqual(tile('ipod-matte'), 'Black (2008)');
+  assert.strictEqual(tile('ipod-red'), 'Red');
+  assert.strictEqual(tile('apple'), 'Cider');
+  assert.strictEqual(tile('ipod-original'), 'Original');
+  assert.strictEqual(doc.querySelectorAll('.skin-tile').length, 52);
+});

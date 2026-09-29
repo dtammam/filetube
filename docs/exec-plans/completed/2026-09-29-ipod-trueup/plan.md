@@ -3,7 +3,7 @@ plan: ipod-trueup
 harness: v2 · lean
 branch: feat/ipod-trueup
 anchor: spec
-status: Draft
+status: Shipped v1.345.0
 next: Dean says go; then Step 0 (read this whole plan once, top to bottom, before touching anything)
 gate: pending
 ---
@@ -262,6 +262,50 @@ push, `gh pr create`, green unit CI (`ci (22)`, `ci (24)`, `audit`, `secret-scan
 by API (`gh api repos/dtammam/filetube/git/refs -f ref=refs/tags/v1.345.0 -f sha=<merge sha>`), then
 delete the branch remote (`gh api -X DELETE repos/dtammam/filetube/git/refs/heads/feat/ipod-trueup`)
 and local (`git branch -d`), and remove the worktree.
+
+## Gate
+
+Gate: APPROVED r1 @1d1a00ee — security-brief
+
+QA r1: WARNING setup.js 632/634/637 (+ payload/blurbs.json): "a orange center" x6 (user-visible Settings blurbs); fix to "an orange center". All ACs otherwise verified; 9 of 9 mutations red; lint:ui OK, eslint 0 errors, overlay-containment clean, 162 targeted tests pass.
+
+Gate: CHANGES r1 @1d1a00ee7a6edcea1dd8678a2d2dcc9f04d07cd7 — qa
+
+Adversary r1: no CRITICAL. WARNING 1: the skin-surface.js pane refresh for `skinLine` is unbound (dropping `pane.node.type === 'skinLine'` from the refresh at ~line 699 leaves all 185 targeted tests green; a Nano > 4G > Purple > Select > MENU test goes red on it: stale checks at the line level). Add that test. WARNING 2: SKIN_ART_KEY clauses are unbound by the new ui-lint test (loosening `\.mms-ipod-` to any class, `--pk-c-` to any property, or dropping the `$` anchor all stay green; test 3 only binds them jointly): add `.foo|--pk-c-x` and `.mms-ipod-x|color` cases. WARNING 3 = QA's "a orange" x6. Verified clean: all 25 saved ids normalize to themselves; 52/50; 17 groups; 50 role blocks carry all 17 tokens; Gold uses Sky's wheel tokens; ui-lint OK; 3 ratchet tests pass; 30+ mutants (reason/rule/key/count, menu checks, preview, NON_ITEM, cursor) red except the noted survivors.
+
+Gate: CHANGES r1 @1d1a00ee7a6edcea1dd8678a2d2dcc9f04d07cd7 — adversary
+
+Adversary r2: W1 fixed (dropping 'skinLine' from the refresh: 1 fail of 11), W2 fixed (drop `$`, any class, any property: each 1 fail of 32); base 43 pass 0 fail. W3 accepted per Dean. NOTE: the `^public/css/style.css|` file prefix is still unbound (mutant stays green); non-blocking.
+
+Gate: APPROVED r2 @611c9210718eb9a7db2fda5d8fef3d50f83c1dc3 — adversary
+
+Builder r1 response (2026-09-29): Dean RULED to leave the six "a orange center" blurbs as the payload has them (QA and adversary WARNING accepted, not fixed). Adversary WARNING 1 fixed in 3c571204: new test "Select in another line and generation moves the check at every level MENU returns to" in `pocket-skins-menu.test.js`; mutation (drop `'skinLine'` from the pane refresh, `skin-surface.js` ~699) went red (pass 42, fail 1), restored. Adversary WARNING 2 fixed: `ui-lint.test.js` now covers four bad key shapes (`.foo|--pk-c-body`, `.mms-ipod-x|color`, trailing junk, an extra segment); mutants "drop the `$` anchor", "any class", "any property" each went red (pass 42, fail 1), restored. Targeted run after: pass 43, fail 0.
+
+QA r2: delta 3c571204 adds two binding tests, no regression (163/163 targeted pass, lint:ui OK, eslint 0 errors). The "a orange center" WARNING is accepted per Dean's ruling, disclosed, not fixed.
+
+Gate: APPROVED r2 @611c9210718eb9a7db2fda5d8fef3d50f83c1dc3 — qa
+
+## Build record
+
+Measured 2026-09-29 on branch `feat/ipod-trueup` (head c53e5101 plus the release docs).
+
+- **AC1** 52 registry entries, `clickColorways().length` = 50 (measured).
+- **AC6** `npm run lint:ui`: `ui-lint: OK - the live debt equals docs/ui-exceptions.json` (TOTAL 2260).
+- **AC7** `npm test`, Node 22.23.1: tests 10373, pass 10361, fail 0, cancelled 0, skipped 12. Node 24.20.0:
+  identical counts (10373 / 10361 / 0 / 0 / 12). `npx eslint .`: 6 problems (0 errors, 6 warnings, all
+  pre-existing unused-var warnings in `public/js/common.js`). `overlay-containment-lint --enforce`: clean (0 violations).
+- **AC8** Dean saw the real Settings grid screenshot (52 tiles, 17 groups) and approved, with the condition that the
+  titles are accurate; the tile titles were checked against `payload/table.md`.
+- `bash .harness/lib/check-markers.sh`: exit 1, 7 issues, ALL in `docs/exec-plans/active/2026-09-29-next-waves.md`
+  (invalid anchor 'this plan'; stale approvals @ae7586d5, @7a33e2b3, @e100986c, @be7f2164a5e66ce153152e6baa174954fff9da36,
+  @0c56b81376eb239357539aa3ed8231560ddfb423; an approval marker with no @sha). Identical on main, so
+  pre-existing and not from this branch; none in this plan.
+- **Deviations:** (1) Steps 2-4 were committed together (c53e5101) because the pre-commit hook refuses a red
+  suite and Step 2 alone turns four tests red. (2) Six tests not listed in Step 4 also failed on the new
+  registry and were updated with Dean's approval: `setup-music-skin-picker`, `music-pocket-menus`,
+  `music-skins`, `pocket-design-system` (28 pinned blocks), `pocket-lighting`, `seattle-removed-census`.
+  Each changed test was mutation-checked (broken, seen red, restored).
+- The ROADMAP chore "Refresh the README screenshots" (Dean, 2026-09-29) was added to Planned in the release-docs commit.
 
 ## Research record (why the payload is what it is)
 

@@ -8,6 +8,7 @@ the checks.
 
 ## Pocket and the Click skins (Music)
 
+- [ ] v1.345.0 - On the phone: Extras > Skins > Nano > 7G (2012) > Purple previews live and Select keeps it; Settings shows the groups; the Gold skin is champagne.
 - [ ] v1.344 - Extras > Skins on the Click player: turn the wheel through Click's colours and watch the LCD
   re-skin; Menu puts your old one back; Select keeps the new one (reload and rotate keep it too). A Cider
   or Nordic row changes only on Select. Settings > Music skin: the preview grid scrolls smoothly and a tap applies.

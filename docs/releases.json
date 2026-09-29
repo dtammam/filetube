@@ -3358,5 +3358,11 @@
     "date": "2026-09-29",
     "title": "Watch and Listen keep your place",
     "intent": "Switching between watching and listening on a video with chapters used to start again from the first chapter, and could start playing when you had paused. It now carries on from the exact spot, in the right chapter, and a paused video stays paused, in both directions."
+  },
+  {
+    "version": "1.345.0",
+    "date": "2026-09-29",
+    "title": "Every iPod colour, with its real name",
+    "intent": "The Click skins now cover the iPod line properly: 27 new colours across Nano, Shuffle and Mini, each named for its real model and year. Extras > Skins groups them by line, then generation, then colour, Settings shows them in generation groups, and the Gold skin is now the champagne Mini."
   }
 ]
