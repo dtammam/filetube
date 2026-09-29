@@ -3364,5 +3364,11 @@
     "date": "2026-09-29",
     "title": "Every iPod colour, with its real name",
     "intent": "The Click skins now cover the iPod line properly: 27 new colours across Nano, Shuffle and Mini, each named for its real model and year. Extras > Skins groups them by line, then generation, then colour, Settings shows them in generation groups, and the Gold skin is now the champagne Mini."
+  },
+  {
+    "version": "1.346.0",
+    "date": "2026-09-29",
+    "title": "Every iPod colour, and a Custom section",
+    "intent": "Dozens more iPod colours: the Shuffle 1G-4G lineup is now complete, Nano 1G and the rest of the Nano, Mini and a whole new Touch line are in, and a new Custom section starts with a see-through clear iPod. Pick them in Extras > Skins or Settings."
   }
 ]
