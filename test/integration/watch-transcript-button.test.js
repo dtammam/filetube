@@ -555,7 +555,7 @@ test('watch page: More lists the live entries in order (no capability -> no Move
     // canModifyLibrary -> no Move / Move to Trash); Reheat's yt-dlp health probe never
     // resolves; Attribute is behind the v1.202 flag.
     const labels = menuLabels(document);
-    assert.deepStrictEqual(labels.slice(0, 4), ['Play next', 'Add to queue', 'Save to device', 'Mark as watched']);
+    assert.deepStrictEqual(labels.slice(0, 5), ['Play next', 'Add to queue', 'Watch later', 'Save to device', 'Mark as watched']);
     for (const gone of ['Move to folder', 'Move to Trash', 'Reheat metadata', 'Assign channel']) assert.ok(!labels.includes(gone), gone + ' is not offered');
     const row = Array.from(document.querySelectorAll('.ui-sheet.is-open .ui-row')).find((r) => r.textContent.trim() === 'Mark as watched');
     click(dom, row);

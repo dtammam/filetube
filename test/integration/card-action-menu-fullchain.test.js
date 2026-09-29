@@ -202,14 +202,14 @@ test('the kebab opens ONE menu with what applies to THAT item (C4): Share only w
     await settle();
     const { document } = dom.window;
     await openMenuByKebab(dom, 'yt1');
-    assert.deepStrictEqual(menuLabels(document), ['Add to queue', 'Like', 'Share', 'Save to device', 'Move to Trash']);
+    assert.deepStrictEqual(menuLabels(document), ['Add to queue', 'Watch later', 'Like', 'Share', 'Save to device', 'Move to Trash']);
     assert.strictEqual(openSheets(document).length, 1, 'one sheet');
     const trash = menuRow(document, 'Move to Trash');
     assert.ok(trash.classList.contains('ui-row--danger'), 'the destructive entry reads as danger');
     click(dom, document.querySelector('.ui-sheet.is-open .ui-sheet__close'));
     await settle(); await frame();
     await openMenuByKebab(dom, 'local1');
-    assert.deepStrictEqual(menuLabels(document), ['Add to queue', 'Like', 'Save to device', 'Move to Trash'], 'no Share without a server-derived link (never a substitute)');
+    assert.deepStrictEqual(menuLabels(document), ['Add to queue', 'Watch later', 'Like', 'Save to device', 'Move to Trash'], 'no Share without a server-derived link (never a substitute)');
   } finally { dom.window.close(); }
 });
 
