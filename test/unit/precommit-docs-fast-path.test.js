@@ -41,18 +41,23 @@ test('CLEAN_ENV is its own GIT_* filter (the second layer): the hook\'s repo var
   assert.deepEqual(Object.keys(CLEAN_ENV).filter((k) => k.startsWith('GIT_') || k === 'NODE_TEST_CONTEXT'), [], 'the live CLEAN_ENV carries none');
 });
 
-test('isDocsOnly: only a non-empty set of docs/**/*.md paths qualifies', () => {
+test('isDocsOnly: a non-empty set of .md files anywhere and paths under docs/ qualifies', () => {
   assert.equal(isDocsOnly(['docs/exec-plans/active/2026-09-24-x.md']), true);
   assert.equal(isDocsOnly(['docs/exec-plans/active/a.md', 'docs/exec-plans/tech-debt-tracker.md']), true);
   // a plan close-out: the rename seen on both sides, both under docs/
   assert.equal(isDocsOnly(['docs/exec-plans/active/a.md', 'docs/exec-plans/completed/a.md']), true);
+  // Dean, 2026-09-29: ANY Markdown file, and anything under docs/ (the release ledger, a diagram)
+  assert.equal(isDocsOnly(['ROADMAP.md']), true, 'root Markdown is docs');
+  assert.equal(isDocsOnly(['AGENTS.md', 'lib/notes/README.md']), true, 'Markdown anywhere is docs');
+  assert.equal(isDocsOnly(['docs/releases.json']), true, 'the ledger is under docs/');
+  assert.equal(isDocsOnly(['docs/diagram.svg']), true, 'non-Markdown under docs/ is docs');
+  assert.equal(isDocsOnly(['ROADMAP.md', 'docs/releases.json']), true);
   assert.equal(isDocsOnly([]), false, 'nothing staged is not docs-only');
   assert.equal(isDocsOnly(['docs/a.md', 'lib/x.js']), false, 'one code path spoils it');
-  assert.equal(isDocsOnly(['docs/releases.json']), false, 'the ledger is JSON with its own checker test');
-  assert.equal(isDocsOnly(['ROADMAP.md']), false, 'root Markdown is outside docs/');
-  assert.equal(isDocsOnly(['docs/a.md.js']), false, 'the extension is anchored');
-  assert.equal(isDocsOnly(['public/docs/a.md']), false, 'docs/ is anchored at the root');
-  assert.equal(isDocsOnly(['docs/diagram.svg']), false, 'non-Markdown under docs/ is not fast');
+  assert.equal(isDocsOnly(['ROADMAP.md', 'package.json']), false, 'one non-docs path spoils it');
+  assert.equal(isDocsOnly(['lib/a.md.js']), false, 'the .md extension is anchored to the end');
+  assert.equal(isDocsOnly(['public/docs/a.js']), false, 'docs/ is anchored at the root');
+  assert.equal(isDocsOnly(['mydocs/a.js']), false, 'docs/ must be the whole first segment');
 });
 
 // Every unit test measured to touch docs/ AT RUNTIME (gate r1: a file-access

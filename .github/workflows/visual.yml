@@ -2,21 +2,28 @@ name: Visual
 
 # UI professionalism pass, plan D10.5 (visual diff) + D10.2 (geometry checks G1-G4).
 #
+# VISUAL IS A REPORT, NEVER A GATE (Dean, 2026-09-29: ceremony, not friction). `visual` runs
+# `run.js --report`: a changed look exits 0, and `visual-comment` posts the side-by-side crops as ONE
+# PR comment (updated in place). After a merge to main, `rebaseline` + `baseline-refresh` retake the
+# baselines and a bot opens a `chore/baselines-<sha>` PR (it never merges itself). Only a capture
+# that CRASHED fails a leg.
+#
 # `visual` runs on every pull request and every push to main (except docs-only ones, below), one
 # parallel leg per era x viewport:
 # in the pinned Playwright container each leg seeds the
 # synthetic fixture (test/visual/seed.js), boots a FRESH read-only server on it
 # (test/visual/start-server.sh sets FILETUBE_READONLY=1 and FILETUBE_READ_ONLY_MEDIA=1 and
 # turns every background poller off), runs the geometry checks, then captures the scene
-# matrix and diffs it against test/visual/baselines/ at 0 changed pixels. With no committed
+# matrix and diffs it against test/visual/baselines/. With no committed
 # baselines it FAILS ("no baselines - run the rebaseline job") instead of passing vacuously.
 #
-# `rebaseline` runs only from "Run workflow" (workflow_dispatch), or on a push to a
-# `rebaseline/*` branch (GitHub dispatches a workflow only once it exists on the default
+# `rebaseline` runs from "Run workflow" (workflow_dispatch), on a push to main (the auto-refresh),
+# or on a push to a `rebaseline/*` branch (GitHub dispatches a workflow only once it exists on the default
 # branch, so the FIRST baselines, and any taken before a merge, come from a pushed
 # rebaseline/<step> branch at the reviewed sha), in the SAME container, one leg per era x
-# viewport, and `rebaseline-merge` joins the 12 into ONE `visual-baselines` artifact. The visual diff skips those branches (they have no baselines yet). Committing them is a human/Architect step: download
-# the artifact into test/visual/baselines/ and commit it as its own commit, named for the step.
+# viewport, and `rebaseline-merge` joins the 12 into ONE `visual-baselines` artifact. The visual diff skips those branches (they have no baselines yet). On main, `baseline-refresh` commits
+# the artifact (test/visual/baselines/ ONLY) to a branch and opens the PR; for a rebaseline/* branch or
+# a dispatch, download the artifact into test/visual/baselines/ and commit it as its own commit.
 # Baselines are never generated on a dev box (fonts and raster differ outside the container).
 #
 # The container tag must equal the Playwright version tools/capture/package-lock.json pins
@@ -42,9 +49,8 @@ jobs:
   # One leg per era x viewport, 12 in parallel (it was ONE job, ~50 min; an era alone takes
   # ~23 min, so the viewport split is what brings a run near 10). Each leg diffs only its own
   # baselines (run.js --era/--vp scope the compare); together the 12 cover the whole set. The
-  # geometry checks ride the 2021 desktop leg. A failing leg uploads the shots it took, and
-  # `visual-shots` joins them: for an INTENDED change, check the report crops, then commit those
-  # shots as the new baselines (no separate rebaseline run).
+  # geometry checks ride the 2021 desktop leg. Every leg uploads its report crops and the shots it
+  # took (always); a changed look is reported by `visual-comment`, never a failure.
   visual:
     if: github.event_name != 'workflow_dispatch' && !startsWith(github.ref, 'refs/heads/rebaseline/')
     runs-on: ubuntu-latest
@@ -84,24 +90,33 @@ jobs:
         if: matrix.era == '2021' && matrix.vp == 'desktop'
         run: npm run test:geometry
 
-      - name: Visual diff (0 changed pixels)
+      # --report: a changed look exits 0 (the PR comment shows it); only a crashed capture fails.
+      - name: Visual diff (report only)
         if: ${{ !cancelled() }}
-        run: node test/visual/run.js --era ${{ matrix.era }} --vp ${{ matrix.vp }} --data /tmp/filetube-visual-data --out test-results/visual
+        run: node test/visual/run.js --report --era ${{ matrix.era }} --vp ${{ matrix.vp }} --data /tmp/filetube-visual-data --out test-results/visual
 
-      - name: Upload the report and crops (on failure)
-        if: failure()
+      - name: Upload the report and crops
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: visual-report-${{ matrix.era }}-${{ matrix.vp }}
+          path: test-results/visual/report/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload the run record and server log (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diag-${{ matrix.era }}-${{ matrix.vp }}
           path: |
-            test-results/visual/report/
             test-results/visual/run-record-*.json
             test-results/visual/server.log
           if-no-files-found: ignore
           retention-days: 14
 
-      - name: Upload the shots this leg took (on failure; the new baselines if the change is intended)
-        if: failure()
+      - name: Upload the shots this leg took
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
           name: visual-shots-${{ matrix.era }}-${{ matrix.vp }}
@@ -109,23 +124,82 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
-  visual-shots:
+  # One PR comment, updated in place (found by its hidden marker). Same-repo PRs only: a fork's
+  # token is read-only, and the job pushes crops to the orphan branch `visual-reports` (the ONLY
+  # ref it writes) so the raw URLs render in the public repo.
+  visual-comment:
     needs: visual
-    if: ${{ always() && needs.visual.result == 'failure' }}
+    if: ${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]' }}
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
     steps:
-      - name: Join the failing legs' shots into one artifact
-        uses: actions/upload-artifact/merge@v4
+      - uses: actions/checkout@v5
         with:
-          name: visual-shots
-          pattern: visual-shots-*
-          retention-days: 14
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22'
+
+      - name: Download the 12 legs' reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: visual-report-*
+          path: reports
+
+      - name: Stage the crops on the visual-reports branch
+        id: stage
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          url="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          if git ls-remote --exit-code --heads "$url" visual-reports >/dev/null 2>&1; then
+            git clone --quiet --depth 1 --branch visual-reports "$url" stage
+          else
+            git init --quiet stage
+            git -C stage checkout --quiet --orphan visual-reports
+            git -C stage remote add origin "$url"
+          fi
+          # Only this PR's latest run stays on the branch.
+          rm -rf "stage/pr-${PR}"
+          node scripts/visual-report-comment.js --reports reports --stage stage --pr "$PR" --run "${{ github.run_id }}" --repo "$REPO" --out comment.md | tee out.txt
+          if grep -q '^changed=true' out.txt && [ -d "stage/pr-${PR}" ]; then
+            git -C stage config user.name 'github-actions[bot]'
+            git -C stage config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git -C stage add -- "pr-${PR}"
+            git -C stage commit --quiet -m "visual report for PR ${PR}, run ${{ github.run_id }}"
+            for i in 1 2 3; do
+              git -C stage push --quiet origin HEAD:refs/heads/visual-reports && break
+              git -C stage pull --quiet --rebase origin visual-reports
+            done
+          fi
+
+      - name: Post or update the PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          id=$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- visual-report -->"))) | .id' | head -n 1)
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/${REPO}/issues/comments/${id}" -F body=@comment.md >/dev/null
+          else
+            gh api -X POST "repos/${REPO}/issues/${PR}/comments" -F body=@comment.md >/dev/null
+          fi
 
   # The same 12 legs; `rebaseline-merge` joins them into the ONE `visual-baselines` artifact
   # (flat, and only when EVERY leg passed: a plain `needs`, no `if`), so the download-and-commit
   # step is unchanged.
+  # On a push to main it also retakes the set for `baseline-refresh`; the merge of a baselines PR
+  # itself (its message names chore/baselines-) skips it, so a refresh never triggers a refresh.
   rebaseline:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/rebaseline/'))
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/rebaseline/')) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '/chore/baselines-'))
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -183,3 +257,58 @@ jobs:
           name: visual-baselines
           pattern: visual-baselines-*
           retention-days: 30
+
+  # After a merge to main: if the fresh set differs from the committed one, a bot opens a PR with
+  # ONLY test/visual/baselines/ changed. It never merges itself. Needs the repo setting Settings >
+  # Actions > General > "Allow GitHub Actions to create and approve pull requests".
+  baseline-refresh:
+    needs: rebaseline-merge
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Download the fresh baselines
+        uses: actions/download-artifact@v4
+        with:
+          name: visual-baselines
+          path: fresh-baselines
+
+      - name: Open a PR if the baselines changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          n=$(find fresh-baselines -name '*.png' | wc -l)
+          if [ "$n" -lt 1 ]; then echo "no fresh baselines downloaded"; exit 1; fi
+          rm -f test/visual/baselines/*.png
+          cp fresh-baselines/*.png test/visual/baselines/
+          if [ -z "$(git status --porcelain -- test/visual/baselines)" ]; then
+            echo "baselines unchanged"
+            exit 0
+          fi
+          branch="chore/baselines-$(git rev-parse --short HEAD)"
+          git checkout -b "$branch"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A -- test/visual/baselines
+          if git diff --cached --name-only | grep -qv '^test/visual/baselines/'; then echo "a non-baseline path is staged"; exit 1; fi
+          git commit --quiet -m "chore(visual): refresh baselines after $(git rev-parse --short HEAD)"
+          git push --quiet "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/${branch}"
+          {
+            echo "The pages look different after the last merge to main. Only test/visual/baselines/ changed; review the crops in the PR comment of the change that caused it, then merge."
+            echo
+            echo '```'
+            git diff --stat=200 HEAD~1 HEAD -- test/visual/baselines | head -n 100
+            echo '```'
+          } > body.md
+          for old in $(gh pr list --repo "$REPO" --state open --json number,headRefName --jq '.[] | select(.headRefName | startswith("chore/baselines-")) | .number'); do
+            gh pr close "$old" --repo "$REPO" --delete-branch --comment "Superseded by ${branch}."
+          done
+          gh pr create --repo "$REPO" --base main --head "$branch" --title "chore(visual): refresh baselines" --body-file body.md

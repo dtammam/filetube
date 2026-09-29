@@ -115,6 +115,15 @@ blood more than once. The full guards are in `docs/LESSONS.md` (sections noted):
   scoped to row/badge containers, never a large ancestor (#173). Full rule:
   `docs/CONTRIBUTING.md`.
 
+### Ceremony, not friction
+Every step between a commit and a release must earn its time (Dean's standing rule, 2026-09-28).
+The **screenshot shuffle** is a named anti-pattern: a check that fails on an INTENDED change and is
+only satisfied by push, wait, fail, download artifacts, commit them, push, wait again. Never create
+one, and never treat a non-required check as a merge gate. Merge on green unit CI (`ci (22)`,
+`ci (24)`, `audit`, `secret-scan`) plus the review gate. **Visual reports, never blocks:** a PR shows
+a look change as one comment with crops, and after a merge to main a bot opens the baselines PR
+(`docs/RELEASING.md`). A commit that touches only `.md` files or `docs/` takes the fast pre-commit path.
+
 ### Lessons / standing decisions
 - **The review gate is the floor and uses the harness seats.** Spawn the harness
   trio in `.claude/agents/` — `adversary` (always, the floor), plus `qa` and

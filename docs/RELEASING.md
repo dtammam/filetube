@@ -118,55 +118,49 @@ reusable lesson (a bug class and its guard), add or update it in
 existing entry. Never write a per-release file into an agent's memory (retired
 2026-09-25: 276 such files had become a duplicate of the ROADMAP).
 
-## The visual job and baselines (UI professionalism pass)
+## The visual job and baselines (a report, never a gate)
 
-`.github/workflows/visual.yml` has two jobs, each split into 12 parallel legs,
-one per era (2021, 2014, 2009, 2005) x viewport (phone, land, desktop); a run
-takes about 10 minutes (it was one ~50 minute job). A change that touches ONLY
-`.md` files or `docs/` skips the workflow: the app renders nothing from those
-paths.
+`.github/workflows/visual.yml` splits into 12 parallel legs, one per era (2021,
+2014, 2009, 2005) x viewport (phone, land, desktop); a run takes about 10
+minutes. A change that touches ONLY `.md` files or `docs/` skips the workflow:
+the app renders nothing from those paths. **Visual never blocks a merge** (Dean,
+2026-09-29: ceremony, not friction); merge on green unit CI plus the review.
 
-- **`visual`** runs on every pull request and every push to `main` (a PR
-  branch runs once, through its pull request). In
-  the pinned Playwright container each leg seeds the synthetic fixture
-  (`test/visual/seed.js`), boots a fresh read-only server, runs the full
-  geometry set (`npm run test:geometry`, on the 2021 desktop leg only), then
-  captures its own era and viewport and diffs them against those
-  `test/visual/baselines/` at 0 changed pixels (`test/visual/run.js --era
-  --vp`). With no committed baselines it FAILS ("no baselines - run the
-  rebaseline job") instead of passing vacuously. A failing leg uploads its
-  report (`visual-report-<era>-<vp>`) and the shots it took; the
-  `visual-shots` job joins those shots into one artifact.
-- **`rebaseline`** takes a full new set, in the SAME container: from "Run
-  workflow" (workflow_dispatch), or on a push to a `rebaseline/*` branch
-  (GitHub dispatches a workflow only once it exists on the default branch).
-  The same 12 legs; `rebaseline-merge` joins them into ONE flat
-  `visual-baselines` artifact, and only when every leg passed. Nothing is
-  committed by CI.
+- **`visual`** runs on every pull request and every push to `main`. In the
+  pinned Playwright container each leg seeds the synthetic fixture
+  (`test/visual/seed.js`), boots a fresh read-only server, runs the geometry set
+  (`npm run test:geometry`, 2021 desktop leg only), captures its era and
+  viewport, and diffs against `test/visual/baselines/` with `run.js --report`:
+  a changed look exits 0, only a CRASHED capture fails the leg. Each leg uploads
+  its report crops (`visual-report-<era>-<vp>`) and shots (`visual-shots-...`)
+  every run. With no committed baselines it still fails ("no baselines"), so it
+  never passes vacuously.
+- **`visual-comment`** (pull requests from this repo only) posts ONE comment,
+  updated in place (hidden marker `<!-- visual-report -->`): per leg the changed
+  scenes, and up to 12 side-by-side crops. The crops live on the orphan branch
+  `visual-reports` under `pr-<number>/<run id>/` (the only ref it writes). No
+  change: "No visual changes".
+- **`rebaseline`** retakes a full set in the same container: on a push to
+  `main`, from "Run workflow", or on a push to a `rebaseline/*` branch.
+  `rebaseline-merge` joins the 12 into ONE flat `visual-baselines` artifact,
+  only when every leg passed.
+- **`baseline-refresh`** (push to `main` only) compares that set to the committed
+  one and, if it differs, opens a `chore/baselines-<short sha>` PR that changes
+  ONLY `test/visual/baselines/`. It never merges itself; you review and merge it.
+  An older open baselines PR is closed as superseded. Merging a baselines PR does
+  not start another refresh (its merge message names `chore/baselines-`). It needs
+  the repo setting Settings > Actions > General > "Allow GitHub Actions to create
+  and approve pull requests".
 
-**An intended look change (the usual case): one run.** Push the change; the
-`visual` legs whose pages changed fail. Read their report crops (the
-`visual-report-*` artifacts). If every change is intended and the log says
-`capture failures 0; unexpected blocked requests 0`, download the
-`visual-shots` artifact into `test/visual/baselines/` (it holds only the failing
-legs' shots; the passing legs' baselines already match), commit it as its own
-baselines-only commit, and push: the next run is green. Use the rebaseline job
-instead when scenes were added, renamed or removed (a joined `visual-shots`
-never deletes a stale baseline), or for a full fresh set: cut
+**An intended look change: do nothing.** Read the PR comment, merge on green unit
+CI, then merge the baselines PR the bot opens. Baselines are never taken on a dev
+box: fonts and raster differ outside the container.
+
+**Fallback (scenes added, renamed or removed, or the bot is unavailable):** cut
 `rebaseline/<step>` at the reviewed sha, push it, download the merge job's
-`visual-baselines` artifact (never a single `visual-baselines-<era>-<vp>`
-leg) into `test/visual/baselines/`, commit it, and delete the branch
-afterwards (remote and local). Never take baselines on a dev box: fonts and
-raster differ outside the container (a local `run.js --update` is for
-experiments; with `--era`/`--vp`/`--only` it replaces only that subset).
-
-**Committing baselines changes the sha the seats signed.** The baselines
-commit lands AFTER the gate, so the approvals are bound to its parent and
-are stale at the new head until re-confirmed there
-(`.harness/lib/harness-markers.md`). Keep the commit to
-`test/visual/baselines/` only, so the re-confirmation is a baselines-only
-delta, and run `bash .harness/lib/check-markers.sh` before the merge. A code
-change after the baselines means new baselines.
+`visual-baselines` artifact (never a single per-leg one) into
+`test/visual/baselines/`, commit it as its own baselines-only commit, and delete
+the branch (remote and local).
 
 ## Schema versions and the rollback floor
 

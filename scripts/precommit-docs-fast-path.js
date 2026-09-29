@@ -17,7 +17,7 @@
  * Why (Dean, 2026-09-24): every commit ran the whole unit suite (~7000 tests,
  * 10-15 minutes with several builders on the box), including the many commits
  * that only touch a plan doc (gate verdicts, fix records, close-outs). A
- * commit whose every staged path is Markdown under docs/ cannot change code,
+ * commit whose every staged path is a .md file or under docs/ cannot change code,
  * so it runs only the unit tests that READ docs/ (the docs-link, docs-status,
  * exec-plans and tech-debt censuses and their kin). The selection is DYNAMIC
  * (grep of test/unit each run, never a hardcoded list) so a new docs-reading
@@ -27,7 +27,8 @@ const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
 
-const DOCS_MD = /^docs\/.+\.md$/;
+// A docs path: Markdown anywhere, or anything under docs/ (ROADMAP.md, docs/releases.json, plans).
+const DOCS_MD = /\.md$|^docs\//;
 // A test reads docs/ when its source names the directory as a path
 // ("docs/..."), as a path segment ('docs' in a path.join), or names the
 // exec-plans tree. Over-inclusion is safe (a comment mention only costs time).
