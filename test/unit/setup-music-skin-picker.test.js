@@ -25,9 +25,9 @@ const COMMON_JS = fs.readFileSync(path.join(PUB, 'js', 'common.js'), 'utf8');
 
 test('setup.html: an Appearance "Music skin" heading + #music-skin-picker container exist', () => {
   assert.match(SETUP_HTML, /<h3[^>]*>Music skin<\/h3>/, 'a "Music skin" subheading in Appearance');
-  // Retire R3 (DELIBERATE conversion): the container is a grouped ui-list radiogroup (the
-  // Appearance choice lists), no longer the shared theme-picker card grid.
-  assert.match(SETUP_HTML, /<div class="ui-list [^"]*\bui-list--grouped\b[^"]*\bsetup-choice-list\b[^"]*" id="music-skin-picker" role="radiogroup"/, 'the picker container (a grouped radio list)');
+  // v1.344 (W5, DELIBERATE conversion): the container is a preview GRID (a radiogroup of tiles), no
+  // longer the grouped ui-list of text rows.
+  assert.match(SETUP_HTML, /<div class="skin-picker" id="music-skin-picker" role="radiogroup"/, 'the picker container (a tile grid radiogroup)');
   // the copy tells the user it is phone-only (so a desktop change that does nothing
   // visible is not confusing).
   assert.match(SETUP_HTML, /on your phone/i, 'the hint says the skin applies to the phone player');
@@ -43,7 +43,9 @@ test('setup.js: renderMusicSkinPicker builds cards from FileTubeMusicSkins and p
   assert.match(body, /if \(!container \|\| !controller\) return;/, 'same premature-call guard as renderIconPicker');
   assert.match(body, /window\.FileTubeMusicSkins/, 'reads the skins registry');
   assert.match(body, /skins\.activeSkinId\(\)/, 'highlights the active skin from the stored pref');
-  assert.match(body, /skins\.IDS/, 'iterates the three skin ids');
+  assert.match(body, /skins\.skinFamilies\(\)/, 'iterates the registry-derived families (every skin, none forgotten)');
+  assert.match(body, /class="ui-tile skin-tile/, 'each skin is a tile');
+  assert.ok(!/<img|<canvas|<video|<iframe/.test(body), 'a tile is static CSS: never an image request or a live player');
   assert.match(body, /data-skin-pref=/, 'each card carries its skin id');
   assert.match(body, /skins\.setActiveSkin\(btn\.dataset\.skinPref\)/, 'a click persists the pick (ft-music-skin)');
   assert.match(body, /renderMusicSkinPicker\(\);/, 're-highlights on click');

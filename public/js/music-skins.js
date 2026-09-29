@@ -293,6 +293,27 @@
   var IDS = SKINS.map(function (s) { return s.id; });
   function clickColorways() { return SKINS.filter(function (s) { return s.menus === 'click'; }).map(function (s) { return s.id; }); }
   function isClickColorway(id) { return typeof id === 'string' && !!BY_ID[id] && BY_ID[id].menus === 'click'; }
+  // v1.344 (W5, Dean): the skin FAMILIES, DERIVED from the registry (never a second list): a LOOK is
+  // its own family (Original), the other Click colorways are "Click", and a menu-less skin (Cider,
+  // Nordic) is a family of one. A family of one applies from its row; a bigger one opens its colorways.
+  var FAMILY_LABEL = { click: 'Click', original: 'Original' };
+  function familyKeyOf(s) { return s.look ? s.look : (s.menus === 'click' ? 'click' : s.id); }
+  function skinFamilies() {
+    var out = [];
+    var at = Object.create(null);
+    SKINS.forEach(function (s) {
+      var k = familyKeyOf(s);
+      if (at[k] === undefined) { at[k] = out.length; out.push({ key: k, label: FAMILY_LABEL[k] || s.label, ids: [] }); }
+      out[at[k]].ids.push(s.id);
+    });
+    return out;
+  }
+  // "Click (Red)" -> "Red"; the bare base entry is the classic white one.
+  function colorwayLabel(id) {
+    var s = BY_ID[id];
+    var m = s && /\(([^)]*)\)\s*$/.exec(s.label);
+    return m ? m[1] : (s && id === 'ipod' ? 'Classic' : (s ? s.label : id));
+  }
 
   function isLegacyId(id) { return typeof id === 'string' && Object.prototype.hasOwnProperty.call(LEGACY_IDS, id); }
   function normalizeSkinId(id) {
@@ -455,7 +476,7 @@
   ];
   var ROOT_TITLE = { click: 'Click' }; // the cheeky name, never the product's (Dean)
   var TYPE_TITLE = { music: 'Music', playlists: 'Playlists', artists: 'Artists', albums: 'Albums', songs: 'Songs', genres: 'Genres',
-    recentArtists: 'Recent Artists', extras: 'Extras', games: 'Games', settings: 'Settings', about: 'About', lighting: 'Lighting' };
+    recentArtists: 'Recent Artists', extras: 'Extras', skins: 'Skins', games: 'Games', settings: 'Settings', about: 'About', lighting: 'Lighting' };
   function menuTitle(node, style) {
     var n = node || {};
     if (n.type === 'main') return ROOT_TITLE[style] || 'Menu';
@@ -473,7 +494,7 @@
     var o = opts || {};
     if (t === 'main') {
       var rows = [{ label: 'Music', node: { type: 'music' } }];
-      if (o.hasGames) rows.push({ label: 'Extras', node: { type: 'extras' } });
+      if (o.hasGames || o.hasSkins) rows.push({ label: 'Extras', node: { type: 'extras' } });
       rows.push({ label: 'Settings', node: { type: 'settings' } });
       rows.push({ label: 'Shuffle Songs', action: 'shuffle' });
       if (o.hasCurrent) rows.push({ label: 'Now Playing', action: 'nowplaying' });
@@ -481,13 +502,36 @@
     }
     if (t === 'music') return MUSIC_MENU.map(function (m) { return { label: m.label, node: { type: m.type } }; });
     if (t === 'playlists') return PLAYLISTS.map(function (p) { return { label: p.label, node: { type: 'playlist', key: p.key, label: p.label } }; });
-    if (t === 'extras') return [{ label: 'Games', node: { type: 'games' } }];
+    if (t === 'extras') {
+      var ex = [];
+      if (o.hasGames !== false) ex.push({ label: 'Games', node: { type: 'games' } });
+      if (o.hasSkins) ex.push({ label: 'Skins', node: { type: 'skins' } });
+      return ex;
+    }
+    if (t === 'skins' || t === 'skinFamily') return menuSkinItems(node, o.activeSkin);
     if (t === 'games') return [{ label: 'Brick', action: 'brick' }];
     // Lighting (2026-09-24, plan pocket-gyro-lighting): only where the controller says the driver
     // can light THIS skin (opts.hasLighting: a Click skin with pocket-lighting.js loaded) - never
     // a row that leads to nothing.
     if (t === 'settings') return (o.hasLighting ? [{ label: 'Lighting', node: { type: 'lighting' } }] : []).concat([{ label: 'About', node: { type: 'about' } }]);
     return null;
+  }
+  // Extras > Skins (v1.344): families first; a family with colorways opens its own level, a family of
+  // one is a row that applies. A row carries `skinId`; `preview` says the wheel may re-skin the LCD live
+  // as the highlight lands on it (only skins that keep these menus: a Cider/Nordic preview would end the
+  // menu under the user's finger, so those apply on Select only). The check follows the ACTIVE skin.
+  function menuSkinItems(node, active) {
+    var cur = normalizeSkinId(active);
+    var fams = skinFamilies();
+    function row(id, label) { return { label: label, action: 'skin', skinId: id, check: id === cur, preview: menuStyle(id) === 'click' }; }
+    if (node && node.type === 'skinFamily') {
+      var f = fams.filter(function (x) { return x.key === node.key; })[0];
+      return f ? f.ids.map(function (id) { return row(id, colorwayLabel(id)); }) : [];
+    }
+    return fams.map(function (f) {
+      if (f.ids.length === 1) return row(f.ids[0], f.label);
+      return { label: f.label, node: { type: 'skinFamily', key: f.key, label: f.label }, check: f.ids.indexOf(cur) >= 0 };
+    });
   }
   // Settings > Lighting: the four strengths (v1.333: + Ambient) with a check on the active one, plus a read-only
   // note row (motion denied / no sensor / Reduce Motion) when the driver has one. Re-derived on
@@ -505,7 +549,7 @@
   // not library items. On Click their right pane plays the slow cover drift (the 6G/7G main-menu
   // slideshow); every other level shows the highlighted item's own art. One list, read by the
   // controller - never a second copy.
-  var NON_ITEM_LEVELS = ['main', 'music', 'playlists', 'genres', 'extras', 'games', 'settings', 'about', 'lighting'];
+  var NON_ITEM_LEVELS = ['main', 'music', 'playlists', 'genres', 'extras', 'games', 'skins', 'skinFamily', 'settings', 'about', 'lighting'];
   function menuIsItemLevel(node) { return NON_ITEM_LEVELS.indexOf(node && node.type) < 0; }
   // The builders take the VIEW's art rule (`artFor(id, explicitArtUrl)` - music.js passes its one
   // musicArtUrl) so the menus can never drift from the art the rest of Music shows. v1.339 (L1):
@@ -818,7 +862,7 @@
   var api = {
     SKIN_KEY: SKIN_KEY, IDS: IDS, DEFAULT_ID: DEFAULT_ID, SKINS: SKINS,
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
-    skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, isClickColorway: isClickColorway,
+    skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, skinFamilies: skinFamilies, colorwayLabel: colorwayLabel, menuSkinItems: menuSkinItems, isClickColorway: isClickColorway,
     renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
     skinActiveFor: skinActiveFor, isPhone: isPhone, phoneFrom: phoneFrom, markPhoneClass: markPhoneClass,
     PHONE_CLASS: PHONE_CLASS, PHONE_SHORT_SIDE_MAX: PHONE_SHORT_SIDE_MAX, observeSettled: observeSettled,

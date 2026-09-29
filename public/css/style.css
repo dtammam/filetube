@@ -2492,6 +2492,30 @@ select {
 .sticker-emoji-bar > .ui-field__input { flex: 1 1 0; min-width: 0; }
 .sticker-emoji-bar > .ui-btn { flex: none; }
 .sticker-opt { display: flex; align-items: center; justify-content: space-between; gap: var(--space-6); padding: 0 var(--inset); }
+/* v1.344 (W5): the Music skin PREVIEW GRID (Settings > Appearance). Each tile is a static CSS thumbnail
+   painted from the colorway's own role tokens (the colorway blocks are scoped to .skin-grid as well as the
+   phone player, so one block serves both) - no player, no image, 25 tiles cost 25 spans. The body, the LCD
+   and the wheel are the whole picture. The tile itself is the ui-tile card (press + focus ring). */
+.skin-picker { display: grid; gap: var(--space-8); padding: var(--space-4) var(--inset); }
+.skin-family { display: grid; gap: var(--space-4); }
+.skin-family-name { margin: 0; font: var(--t-caption); color: var(--ink-2); }
+.skin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(calc(var(--size-touch) * 1.5), 1fr)); gap: var(--space-6) var(--space-4); }
+.skin-tile { align-items: center; }
+.skin-tile.is-on .skin-swatch { outline: var(--ring-w) solid var(--accent); outline-offset: var(--ring-w); }
+.skin-tile-name { font: var(--t-caption); text-align: center; overflow-wrap: anywhere; }
+.skin-swatch { position: relative; display: block; width: 100%; aspect-ratio: 5 / 8; border-radius: var(--r-lg); overflow: hidden;
+  background: var(--pk-c-body, var(--surface-2)); box-shadow: inset 0 0 0 var(--hairline) var(--pk-c-body-edge, var(--separator)); }
+.skin-swatch::before { content: ""; position: absolute; inset: 9% 12% auto 12%; height: 32%; border-radius: var(--r-xs);
+  background: var(--pk-o-lcd, var(--mms-white)); box-shadow: inset 0 0 0 var(--hairline) var(--pk-c-body-edge, var(--separator)); }
+.skin-swatch::after { content: ""; position: absolute; left: 50%; bottom: 8%; width: 66%; aspect-ratio: 1; transform: translateX(-50%); border-radius: var(--radius-full);
+  background: radial-gradient(circle closest-side, var(--pk-c-center-2) 0 24%, transparent 25%),
+    radial-gradient(circle at 50% 40%, var(--pk-c-wheel-1), var(--pk-c-wheel-2)); }
+.skin-swatch.mms-apple { background: var(--mms-apple-bg); }
+.skin-swatch.mms-apple::before { background: linear-gradient(135deg, var(--mms-apple-accent), var(--mms-apple-bg)); inset: 12% 14% auto 14%; height: auto; aspect-ratio: 1; }
+.skin-swatch.mms-apple::after { background: var(--mms-apple-fg); width: 22%; bottom: 14%; }
+.skin-swatch.mms-spotify { background: linear-gradient(var(--mms-sp-g1), var(--mms-sp-g2) 55%, var(--mms-sp-g3)); }
+.skin-swatch.mms-spotify::before { background: var(--mms-sp-fg); opacity: 0.85; inset: 12% 14% auto 14%; height: auto; aspect-ratio: 1; }
+.skin-swatch.mms-spotify::after { background: var(--mms-sp-accent); width: 26%; bottom: 12%; }
 /* Tokens Phase 1 Tier 1: the stats glance-tile value, moved out of
    JS-applied styles (buildStatTile). 22px == var(--fs-4xl). */
 .stat-tile-value { font-size: var(--fs-4xl); }
@@ -8419,7 +8443,7 @@ a.tv-continue-card { text-decoration: none; }
      gloss like the black one): on a WHITE body a white-on-white sheen is invisible, so the gloss
      reads from a crisp top HIGHLIGHT band + a soft bottom-edge SHADOW (the domed, reflective look),
      over the soft diagonal sheen + body gradient. The center is the body's own white. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod{
     --pk-c-body:linear-gradient(180deg, var(--mms-ipod-gloss-hi) 0%, var(--mms-ipod-sheen-0) 15%),
       radial-gradient(135% 90% at 50% 122%, var(--mms-ipod-gloss-shadow) 0%, transparent 55%),
       linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
@@ -8627,7 +8651,7 @@ a.tv-continue-card { text-decoration: none; }
   /* ---------------- the colorways: each is ONE block of role tokens (the chassis above reads them) ----------------
      Click (Black) (v1.232, Dean): the space-black body + dark wheel; v1.232.3 dropped the white body's
      bottom-right sweep, keeping just the soft top-left highlight. The center is the body's black. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-black{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-black{
     --pk-c-body:linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
       linear-gradient(158deg, #343436, #161618);
     --pk-c-body-edge:#0a0a0b;
@@ -8640,7 +8664,7 @@ a.tv-continue-card { text-decoration: none; }
   /* Click (Matte): matte graphite metal, top-lit, with a dark click wheel - photo-sampled from Dean's
      reference: the body ramp top to bottom, the top chamfer + side edges (the photo's directional
      light), a softer wheel sheen, a lighter graphite center. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-matte{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-matte{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.26) 0, var(--mms-ipod-sheen-0) 2.2%),
       linear-gradient(90deg, rgba(0,0,0,.30) 0%, rgba(0,0,0,.04) 15%, var(--mms-ipod-clear) 30%, var(--mms-ipod-clear) 70%, rgba(0,0,0,.04) 85%, rgba(0,0,0,.30) 100%),
       linear-gradient(180deg, #949497 0%, #86868a 7%, #7a7a7e 40%, #6a6a70 55%, #4a4a50 74%, #2d2d32 90%, #1c1c21 100%);
@@ -8656,7 +8680,7 @@ a.tv-continue-card { text-decoration: none; }
      clipped, so the ramp is its MID and LOW body values (#ea293a .. #c51323), the left edge darker and
      a soft band right of centre where the photo's sheen sits; a cool white wheel with its light grey
      labels (#c4cfcf, the glyphs' darkest tenth); the center is the body red, domed (#fc4d64 .. #fd3c56). */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-red{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-red{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.22) 0, var(--mms-ipod-sheen-0) 1.8%),
       linear-gradient(90deg, rgba(0,0,0,.24) 0%, rgba(0,0,0,.06) 14%, var(--mms-ipod-clear) 30%, var(--mms-ipod-clear) 58%, rgba(255,255,255,.1) 78%, var(--mms-ipod-clear) 90%, rgba(0,0,0,.16) 100%),
       linear-gradient(180deg, #ee2b3e 0%, #e82639 30%, #e02031 60%, #d4192b 82%, #c41424 100%);
@@ -8671,7 +8695,7 @@ a.tv-continue-card { text-decoration: none; }
      front.jpg" (CC BY 3.0), white-balanced and exposed so its light grey wheel reads as Click (White)'s.
      Satin aluminum lit from the left (#dcdcdf at the lit edge .. #747477 across), darker at the top and
      bottom; the light grey wheel, dark grey labels (#7b7f82); an aluminum center, not the wheel's grey. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-silver{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-silver{
     --pk-c-body:linear-gradient(180deg, rgba(0,0,0,.2) 0%, var(--mms-ipod-clear) 10%, var(--mms-ipod-clear) 88%, rgba(0,0,0,.2) 100%),
       linear-gradient(98deg, #dcdcdf 0%, #c4c5c7 17%, #9d9da0 44%, #838386 66%, #747477 86%, #8a8a8d 100%);
     --pk-c-body-edge:#5a5a5d;
@@ -8686,7 +8710,7 @@ a.tv-continue-card { text-decoration: none; }
      so the black body matches Click (Black)'s (x0.8: #e85a70 -> #ba485a, ramped #c4505f .. #a63f4e around
      it for the wheel's top light); near-white labels;
      a black center. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-encore{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-encore{
     --pk-c-body:linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
       linear-gradient(158deg, #343436, #161618);
     --pk-c-body-edge:#0a0a0b;
@@ -8700,7 +8724,7 @@ a.tv-continue-card { text-decoration: none; }
      balanced on its light grey wheel (gain 1.21 / 1.20 / 1.23). Anodized teal-blue lit from the top
      (#62c1df .. #1d4654), the tube's darker sides; labels the body's blue (#5ca3b1); the center is the
      wheel's grey. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-blue{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-blue{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.3) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.3) 100%),
       linear-gradient(180deg, #62c1df 0%, #4fb0cb 18%, #45a7c0 40%, #3e96ab 50%, #2f7a90 68%, #245a6a 85%, #1d4654 100%);
@@ -8715,7 +8739,7 @@ a.tv-continue-card { text-decoration: none; }
      balanced on its wheel. Anodized green (p90 #5d8c4e .. p10 #3f703d); labels the body's green
      (#3e9557); the center is the wheel's grey. (The first mini's green, "Green ipodmini 1stgen.jpg",
      reads yellower - #72872f - the second one's is the reference.) */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-green{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-green{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.26) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%),
       linear-gradient(180deg, #5d8c4e 0%, #568649 25%, #4d7c44 50%, #467541 75%, #3f703d 100%);
@@ -8730,7 +8754,7 @@ a.tv-continue-card { text-decoration: none; }
      (CC BY 2.0), under warm light, white-balanced on its wheel (gain 0.87 / 0.85 / 1.32). Anodized rose
      (p90 #9e5a73 .. p15 #652430); labels the body's pink (the glyph cores measure a muddier #997e6c
      under that light); the center is the wheel's grey. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-pink{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-pink{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.28) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%),
       linear-gradient(180deg, #9e5a73 0%, #8f4c64 25%, #824153 50%, #763849 75%, #652430 100%);
@@ -8745,7 +8769,7 @@ a.tv-continue-card { text-decoration: none; }
      center (so the center is the body's gold, as on the photo, not a mini's grey). White-balanced on the
      white wheel and exposed like Click (Red)'s white wheel. Anodized gold lit from the upper left
      (#b98629 .. #7b540c), light grey labels (#c0c7c0), the center a brighter gold (#c08d09 .. #c28b06). */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-gold{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-gold{
     --pk-c-body:linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
       linear-gradient(158deg, #b98629 0%, #a8761f 38%, #a17118 55%, #8c6112 80%, #7b540c 100%);
     --pk-c-body-edge:#5a3a06;
@@ -8758,7 +8782,7 @@ a.tv-continue-card { text-decoration: none; }
   /* Click (Frost) (v1.335): the silver mini - Commons "Ipodminicroppedpng.png" (CC BY-SA 4.0), balanced on its
      grey wheel. Brushed aluminum (p95 #c7c8cc .. p05 #828387), cooler and flatter than Click (Silver); the mini grey
      wheel, grey labels (#9b9ba2) and a grey center. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-frost{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-frost{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.34) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.22) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.22) 100%),
       linear-gradient(180deg, #cfd0d4 0%, #c3c5c9 20%, #b2b4b9 45%, #9fa2a8 70%, #8a8b90 100%);
@@ -8772,7 +8796,7 @@ a.tv-continue-card { text-decoration: none; }
   /* Click (Sky) (v1.335): the first mini in blue - Commons "Apple iPod mini blue-2005-03-07.jpg" (CC BY 2.0; angled
      and its body clips, so white-balanced on the wheel only - the weakest reference). Pale anodized blue (p90
      #9fd5e5 .. p10 #80b3c2), paler than the second mini (Click (Blue)); grey labels (#82888a), the wheel grey center. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-sky{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-sky{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.28) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%),
       linear-gradient(180deg, #a6dbea 0%, #98cfe0 25%, #88bfd0 50%, #77aebf 75%, #6397a8 100%);
@@ -8786,7 +8810,7 @@ a.tv-continue-card { text-decoration: none; }
   /* Click (Olive) (v1.335): the first mini in green - Commons "Green ipodmini 1stgen.jpg" (public domain), balanced
      on its wheel. Yellow-green (p95 #879c46, p50 #798b39, p05 #424e0a), yellower than Click (Green); grey labels
      (#8b938d), the wheel grey center. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-olive{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-olive{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.28) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%),
       linear-gradient(180deg, #8ca24a 0%, #81963f 25%, #768a36 50%, #65782a 75%, #4d5c16 100%);
@@ -8800,7 +8824,7 @@ a.tv-continue-card { text-decoration: none; }
   /* Click (Blush) (v1.335): the first mini in pink - the in-box pink mini of the Commons Flickr photo by Trinity
      (CC BY-SA 2.0), balanced on its wheel. Pale dusty pink (p85 #cb99a3, p50 #a5737e, p15 #9e6d7b), paler than
      Click (Pink); grey labels (#969493), the wheel grey center. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-blush{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-blush{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.28) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.28) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.28) 100%),
       linear-gradient(180deg, #d6a2ab 0%, #c5909b 25%, #b0808b 50%, #a27280 75%, #8a5d6c 100%);
@@ -8814,7 +8838,7 @@ a.tv-continue-card { text-decoration: none; }
   /* Click (2004) (v1.335): the fourth-generation white - Commons "Japanese Apple iPod 4G 20GB.jpg" (CC BY-SA 3.0),
      balanced on its white body (#fefeff). A cooler white than Click (White), a cool grey wheel (#c5c6cc) with LIGHT
      labels (#efeeee), a white center. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-2004{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-2004{
     --pk-c-body:linear-gradient(180deg, var(--mms-ipod-gloss-hi) 0%, var(--mms-ipod-sheen-0) 15%),
       radial-gradient(135% 90% at 50% 122%, var(--mms-ipod-gloss-shadow) 0%, transparent 55%),
       linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
@@ -8829,7 +8853,7 @@ a.tv-continue-card { text-decoration: none; }
   /* Click (Charcoal) (v1.335): the 2007 classic in black - Commons "IPod Classic 6th Generation Black.jpg" (CC BY-SA
      3.0), balanced on its wheel. Charcoal anodized metal, top-lit (p95 #666668 .. p05 #2e2e2f), a near-black wheel
      (#2c2c2c), a charcoal center (#49494b); the glyphs clip to white in the photo, so the labels are a near-white. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-charcoal{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-charcoal{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.2) 0, var(--mms-ipod-sheen-0) 2%),
       linear-gradient(90deg, rgba(0,0,0,.3) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.3) 100%),
       linear-gradient(180deg, #666668 0%, #5a5a5c 25%, #505052 50%, #414143 75%, #2e2e2f 100%);
@@ -8843,7 +8867,7 @@ a.tv-continue-card { text-decoration: none; }
   /* Click (Violet) (v1.335, D4 re-decided): the fourth nano in purple - Commons "Ipod rainbow (3178103957).jpg" (CC
      BY 2.0, an Apple Store wall), balanced on its white wheel: p50 #765edc (p90 #a879fb, p10 #5237a2); a blister
      shot reads bluer (#4453c2). A white wheel, grey labels, the center the body violet. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-violet{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-violet{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.26) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.26) 100%),
       linear-gradient(180deg, #8c70ea 0%, #7e63e0 30%, #7057d2 60%, #6049bc 85%, #503ca4 100%);
@@ -8856,7 +8880,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lita-glow:150,120,240; --pk-c-lita-core:210,195,250; }
   /* Click (Yellow) (v1.335, D4): the fourth nano in yellow - the same wall photo (CC BY 2.0; the top clips): p50
      #ebe434. A white wheel, grey labels, the center the body yellow. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-yellow{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-yellow{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.34) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.2) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.2) 100%),
       linear-gradient(180deg, #f2e852 0%, #ece23c 30%, #e2d632 60%, #d2c42a 85%, #bcad22 100%);
@@ -8870,7 +8894,7 @@ a.tv-continue-card { text-decoration: none; }
   /* Click (Lime) (v1.335, D4): the second nano in green - Commons "The nano free from its cardboard bonds
      (466409731).jpg" (CC BY 2.0), balanced on its white wheel: p95 #c0e473, p50 #bbde6f; the center #a9ca61; grey
      labels (#a9b2b8). */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-lime{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-lime{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.22) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.22) 100%),
       linear-gradient(180deg, #c6e878 0%, #bddf70 30%, #b2d467 60%, #a2c35a 85%, #8fae4b 100%);
@@ -8883,7 +8907,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lita-glow:190,230,110; --pk-c-lita-core:225,245,185; }
   /* Click (Cobalt) (v1.335, D4): the second nano in blue - Commons "IPod Nano (2259010671).jpg" (CC BY 2.0, a light
      tent), balanced on its white wheel: p95 #0097fb, p50 #015eb1; the center #004fa5; grey labels (#929797). */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-cobalt{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-cobalt{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.26) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.26) 100%),
       linear-gradient(180deg, #1a86dc 0%, #0e70c6 25%, #0862b4 50%, #0556a4 75%, #034890 100%);
@@ -8896,7 +8920,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lita-glow:60,150,240; --pk-c-lita-core:170,210,250; }
   /* Click (Magenta) (v1.335, D4): the second nano in pink - Commons "Ipod-nano-2g-rosa.jpg" (CC BY 2.5, flash),
      balanced on its white wheel: p85 #cd1e8c, p50 #c51682; the center #bc157f; grey labels. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-magenta{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-magenta{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.26) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.26) 100%),
       linear-gradient(180deg, #d8309a 0%, #cc1f8a 30%, #c21780 60%, #b01272 85%, #980d62 100%);
@@ -8910,7 +8934,7 @@ a.tv-continue-card { text-decoration: none; }
   /* Click (Raspberry) (v1.335, D4): the third nano in pink - Commons "Ipod nano red.JPG" (CC BY-SA 3.0; the uploader
      says red, it reads raspberry beside a 2007 red), balanced on its white wheel: p85 #e3437b, p50 #b82a52; the
      center #d23870; grey labels (#b6b5b7). */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-raspberry{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-raspberry{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.3) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.26) 0%, rgba(0,0,0,.06) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.06) 88%, rgba(0,0,0,.26) 100%),
       linear-gradient(180deg, #d8416f 0%, #c93563 25%, #b82a55 50%, #a02246 75%, #861b39 100%);
@@ -8926,7 +8950,7 @@ a.tv-continue-card { text-decoration: none; }
      4.0), balanced on its white body: a cool white (#f7f7f7 .. #cdcdcd), a near-white ring (#e0e0e0 on
      that photo; #feffff on the lit "IPod 1Gen.jpg", CC BY 4.0), pale labels (#adadad), a white center.
      Its STRUCTURE (the ring, the screen, the face, the turn) is the look section below. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod-original{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-original{
     --pk-c-body:linear-gradient(180deg, var(--mms-ipod-gloss-hi) 0%, var(--mms-ipod-sheen-0) 15%),
       radial-gradient(135% 90% at 50% 122%, var(--mms-ipod-gloss-shadow) 0%, transparent 55%),
       linear-gradient(146deg, var(--mms-ipod-sheen-a) 0%, var(--mms-ipod-sheen-b) 12%, var(--mms-ipod-sheen-0) 34%),
@@ -8945,7 +8969,7 @@ a.tv-continue-card { text-decoration: none; }
      1. The look's own tokens: the LCD measured on Commons "IPod 1Gen.jpg" (CC BY 4.0, a lit screen,
         balanced on the white body): the glass #c2c5b1 .. #cfd1b9, the selection a dark taupe bar with
         light text, the ink a near-black (the photo reads it soft, #716c61). */
-  :where(html.is-phone, html.mms-popout) .mms-look-original{
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-look-original{
     --pk-o-lcd:#c8cbb6; --pk-o-ink:#34332c; --pk-o-sub:#4f4e45; --pk-o-sel:#4a473e;
     --pk-o-edge:inset 0 0 0 1px var(--pk-o-ink);
     --pk-o-disc-1:#fcfcfa; --pk-o-disc-2:#f0f0ec; --pk-o-disc-inset:15%;

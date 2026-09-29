@@ -157,11 +157,11 @@
   build (what stays in env/compose, how a path the container cannot see becomes one it can, the
   security surface of stored share credentials, migrating existing installs untouched).
 
-- [ ] **Skin selection inside the Pocket (iPod) views** _(Dean, 2026-09-28)_: choose the player skin
+- [x] **Skin selection inside the Pocket (iPod) views** - SHIPPED v1.344.0 (see Shipped) _(Dean, 2026-09-28)_: choose the player skin
   from the Pocket itself (today it lives in Settings); pairs with the "better music player picker" entry
   (the long list), so design them together.
 
-- [ ] **A better music player (skin) picker** _(Dean, 2026-09-28: "the list is just huge... I love all
+- [x] **A better music player (skin) picker** - SHIPPED v1.344.0 (see Shipped) _(Dean, 2026-09-28: "the list is just huge... I love all
   the options, I want all the options, but just having all of them presented the way they are is kind
   of annoying")_. Keep every skin and colourway; change how they are presented. Directions to weigh
   (outcome first: pick a look quickly, find a known one fast, browse when curious): group by family
@@ -400,6 +400,19 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.344.0 - Skins from the Pocket, and a preview grid (2026-09-29)
+
+- **Extras > Skins on the Click player's own menu.** Families first (Cider, Nordic, Click, Original), then
+  a family's colourways; the wheel re-skins the LCD live as the highlight moves. Select saves it, Menu
+  or leaving the menu puts the saved skin back (a preview is never stored, so a reload or rotation
+  never sees a half-applied skin). Cider and Nordic apply on Select only: a preview would end the menu.
+  The menu opens on the skin you already have.
+- **Settings > Music skin is a preview grid.** Every skin and colourway as a small static swatch
+  (drawn from the colourway's own colour tokens, no player and no image), grouped by family, tap to
+  apply. Measured at 390x844: the old list was 25 rows of 66 px = 1650 px (1.95 screens); the grid is
+  4 columns of 138 px tiles = 1448 px (1.72 screens), no sideways scroll.
+- Families are derived from the registry (look and menu style), never a second list.
 
 ### v1.343.1 - Watch later's clock in the Playlists menu (2026-09-29)
 
