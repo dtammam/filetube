@@ -556,7 +556,7 @@ test('watch page: More lists the live entries in order (no capability -> no Move
     // resolves; Attribute is behind the v1.202 flag.
     const labels = menuLabels(document);
     assert.deepStrictEqual(labels.slice(0, 4), ['Play next', 'Add to queue', 'Save to device', 'Mark as watched']);
-    for (const gone of ['Move to another folder', 'Move to Trash', 'Reheat metadata', 'Attribute to a channel']) assert.ok(!labels.includes(gone), gone + ' is not offered');
+    for (const gone of ['Move to folder', 'Move to Trash', 'Reheat metadata', 'Assign channel']) assert.ok(!labels.includes(gone), gone + ' is not offered');
     const row = Array.from(document.querySelectorAll('.ui-sheet.is-open .ui-row')).find((r) => r.textContent.trim() === 'Mark as watched');
     click(dom, row);
     await settle();
@@ -614,7 +614,7 @@ function adminStub(flag, opts) {
 // UI pass S3: Attribute is a More-menu entry; "mounted" = offered when More opens.
 async function attrOffered(dom) {
   await openMore(dom);
-  const on = menuLabels(dom.window.document).includes('Attribute to a channel');
+  const on = menuLabels(dom.window.document).includes('Assign channel');
   const x = dom.window.document.querySelector('.ui-sheet.is-open [aria-label="Close"]');
   if (x) click(dom, x);
   await settle();
@@ -628,7 +628,7 @@ test('watch page: admin + flag ON -> More offers Attribute (the registry edit gl
   try {
     await settle(20);
     await openMore(dom);
-    const row = Array.from(dom.window.document.querySelectorAll('.ui-sheet.is-open .ui-row')).find((r) => r.textContent.trim() === 'Attribute to a channel');
+    const row = Array.from(dom.window.document.querySelectorAll('.ui-sheet.is-open .ui-row')).find((r) => r.textContent.trim() === 'Assign channel');
     assert.ok(row, 'offered to an admin with the opt-in on');
     assert.ok(row.querySelector('use[href="#i-edit"]'), 'the registry glyph');
   } finally { dom.window.close(); }
@@ -687,8 +687,8 @@ test('watch page: More lists the admin verbs in order - Move, Attribute (flag on
     const d = dom.window.document;
     await openMore(dom);
     const labels = menuLabels(d);
-    const tail = labels.slice(labels.indexOf('Move to another folder'));
-    assert.deepStrictEqual(tail, ['Move to another folder', 'Attribute to a channel', 'Move to Trash'], labels.join(', '));
+    const tail = labels.slice(labels.indexOf('Move to folder'));
+    assert.deepStrictEqual(tail, ['Move to folder', 'Assign channel', 'Move to Trash'], labels.join(', '));
     const trash = Array.from(d.querySelectorAll('.ui-sheet.is-open .ui-row')).find((r) => r.textContent.trim() === 'Move to Trash');
     assert.ok(trash.classList.contains('ui-row--danger'), 'the danger row');
   } finally { dom.window.close(); }

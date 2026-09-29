@@ -71,7 +71,7 @@ test('Move to Trash: the More menu offers it (danger) only with the write capabi
   try {
     await openMore(member);
     assert.strictEqual(menuRow(member, 'Move to Trash'), null, 'a capability-less member never sees it');
-    assert.strictEqual(menuRow(member, 'Move to another folder'), null, 'nor Move');
+    assert.strictEqual(menuRow(member, 'Move to folder'), null, 'nor Move');
   } finally { member.close(); }
 });
 

@@ -6,7 +6,7 @@
 //   (1) the album drill's "Fix times" - only on a chaptered album, only for a
 //       viewer who may modify the library, and it opens the editor on the backing
 //       FILE (never a row id, never a row list - the editor seeds from storage);
-//   (2) now playing's "This chapter starts wrong" - through BOTH writers of the
+//   (2) now playing's "Fix chapter times" - through BOTH writers of the
 //       Extras cfg (the mobile sticker page and the desktop actions menu), on the
 //       PLAYING chapter's index, hidden for a non-modifier and for a plain file;
 //   the RE-REGISTER seam: a save's new start times patch the live queue in place,
@@ -155,13 +155,13 @@ async function openDesktopActions(dom) {
 const snapRow = (menu) => menu.querySelector('[data-skin-x="chapter-snap"]');
 
 for (const [label, open, desktop] of [['sticker Extras page', openStickerExtras, false], ['desktop actions menu', openDesktopActions, true]]) {
-  test(`${label}: "This chapter starts wrong" opens the ONE editor on the backing file at the PLAYING chapter`, async () => {
+  test(`${label}: "Fix chapter times" opens the ONE editor on the backing file at the PLAYING chapter`, async () => {
     await boot(async (dom, ctx) => {
       const menu = await open(dom);
       assert.ok(menu.querySelector('[data-skin-x="like"]'), 'the Extras page rendered (non-vacuous)');
       const row = snapRow(menu);
       assert.ok(row, 'the row is offered on a playing chapter');
-      assert.match(row.textContent, /This chapter starts wrong/);
+      assert.match(row.textContent, /Fix chapter times/);
       click(dom, row);
       await settleN(2);
       assert.strictEqual(ctx.editor.length, 1, 'the editor opened once');
@@ -410,7 +410,7 @@ test('Listen mode (qa S5): a chapter dropped by a count change does NOT come bac
     await settleN(8);
     const menu = await openDesktopActions(dom);
     const row = snapRow(menu);
-    assert.ok(row, 'the listen chapter offers "This chapter starts wrong"');
+    assert.ok(row, 'the listen chapter offers "Fix chapter times"');
     click(dom, row);
     await settleN(2);
     assert.match(doc(dom).getElementById('music-nowplaying-panel').textContent, /Outro Ghost/, 'precondition: three listen chapters queued');

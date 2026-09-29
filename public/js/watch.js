@@ -696,8 +696,8 @@ function buildWatchMoreItems(s) {
   out.push({ id: 'watched', icon: 'history', label: st.watched === true ? 'Mark as unwatched' : 'Mark as watched' });
   if (st.hasDescription === true) out.push({ id: 'copy-description', icon: 'content_copy', label: 'Copy description' });
   if (st.reheatEnabled === true) out.push({ id: 'reheat', icon: 'local_fire_department', label: st.reheatBusy === true ? 'Reheating…' : 'Reheat metadata', disabled: st.reheatBusy === true });
-  if (st.canModifyLibrary === true) out.push({ id: 'move', icon: 'folder', label: 'Move to another folder' });
-  if (st.canModifyLibrary === true && st.canAttribute === true) out.push({ id: 'attribute', icon: 'edit', label: 'Attribute to a channel' });
+  if (st.canModifyLibrary === true) out.push({ id: 'move', icon: 'folder', label: 'Move to folder' });
+  if (st.canModifyLibrary === true && st.canAttribute === true) out.push({ id: 'attribute', icon: 'edit', label: 'Assign channel' });
   if (st.canModifyLibrary === true) out.push({ id: 'delete', icon: 'delete', label: 'Move to Trash', danger: true });
   return out;
 }
@@ -1232,7 +1232,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // C1 follow-up (v1.24 UX Round, Wave 3): the FULL folders array from the
     // SAME `GET /api/config` fetch initWatch() already makes for the sidebar
     // (step 1 below) -- no new network call. Feeds `showMoveModal`'s
-    // `folders` argument for this page's "Move to another folder" (a More-menu
+    // `folders` argument for this page's "Move to folder" (a More-menu
     // entry, handleMoveClick below).
     let currentFolders = [];
     // v1.30 C2 (Visual polish cluster): watch-page "Like" toggle -- the
@@ -3406,7 +3406,7 @@ if (typeof module !== 'undefined' && module.exports) {
           title: 'Share', anchor: shareBtn, signal,
           items: [
             { icon: 'share', label: 'Share video', value: 'video' },
-            { icon: 'history', label: 'Share at current time (' + formatDuration(t) + ')', value: 'at' },
+            { icon: 'history', label: 'Share at ' + formatDuration(t), value: 'at' },
           ],
           onSelect: (v) => runShare(v === 'at' ? withShareStartTime(base, t) : base),
         });

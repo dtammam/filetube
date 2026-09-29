@@ -328,7 +328,7 @@ test('v1.337 watch page: a YouTube item mid-video STILL offers the "at current t
     await settle();
     const list = Array.from(dom.window.document.querySelectorAll('.ui-sheet')).filter((s) => !s.classList.contains('is-closing') && s.querySelector('.ui-list'))[0];
     assert.ok(list, 'the choice menu opened');
-    assert.match(list.textContent, /Share at current time \(0:42\)/);
+    assert.match(list.textContent, /Share at 0:42/);
     assert.strictEqual(calls.length, 0, 'nothing shared until a pick');
   } finally {
     dom.window.close();

@@ -142,7 +142,7 @@ async function moveOffered(dom) {
   const x = d.querySelector('.ui-sheet.is-open [aria-label="Close"]');
   if (x) x.dispatchEvent(new dom.window.Event('click', { bubbles: true }));
   await new Promise((r) => setTimeout(r, 40));
-  return labels.includes('Move to another folder');
+  return labels.includes('Move to folder');
 }
 
 test('reveal-once: the row ships data-loading and stays hidden until BOTH media and capability settle', async () => {

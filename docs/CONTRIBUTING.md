@@ -148,6 +148,15 @@ control-size value ANYWHERE (a stylesheet, `<style>` blocks, `style=""`,
   `node scripts/ui-lint.js --verbose` is the report view. (It replaced
   the v1.62.0 token ratchet, `css-token-lint.js`, retired at the UI
   pass's step 7.)
+- **Button and menu-row labels are short verb phrases.** Every menu row and action button is an action in
+  1-3 words, sentence case, no full sentence, no trailing punctuation or ellipsis: "Like", "Share",
+  "Add to queue", "Fix chapter times", "Move to folder". Sibling rows are the same length class. Proper
+  nouns and acronyms ("Move to Trash", "Share with AI") go on the allowed list in
+  `test/unit/button-label-rule.test.js`, which scans the static labels of every menu-item and
+  action-button shape in `public/js` against `^[A-Z][a-z]*( [a-z0-9]+){0,2}$`. A label built at runtime
+  (a time, a count) follows the rule by hand. The Pocket iPod menus keep the device's own Title Case
+  names ("Shuffle Songs", "Now Playing"); they name places, and the Original is meant to look like the
+  real one.
 - **Never define a new token casually:** a new name joins the contract doc,
   the `:root` layer, AND `test/unit/token-scale-lock.test.js` (the byte-exact
   value authority) together - see `--thumbnail-bg` (Tier 4) for the pattern.

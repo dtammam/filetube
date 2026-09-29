@@ -218,10 +218,10 @@
       // captured at OPEN so a chapter roll cannot retarget the tap), and the viewer may
       // modify the library (the server enforces regardless).
       if (canModify && typeof cfg.onChapterSnap === 'function' && typeof item.chapterSnapIndex === 'number') {
-        acts.push('<button type="button" class="mms-sm-act" data-skin-x="chapter-snap"><i class="icon-list"></i>This chapter starts wrong</button>');
+        acts.push('<button type="button" class="mms-sm-act" data-skin-x="chapter-snap"><i class="icon-list"></i>Fix chapter times</button>');
       }
       if (extrasCap('move') && canModify) {
-        acts.push('<button type="button" class="mms-sm-act" data-skin-x="move"><i class="icon-folder"></i>Move to...</button>');
+        acts.push('<button type="button" class="mms-sm-act" data-skin-x="move"><i class="icon-folder"></i>Move to folder</button>');
       }
       if (extrasCap('delete') && (canModify || cfg.deleteNeedsModify === false)) {
         acts.push('<button type="button" class="mms-sm-act mms-sm-danger" data-skin-x="delete"><i class="icon-delete"></i>Delete</button>');

@@ -614,7 +614,7 @@ test('Chapter Snap: the Music-side seam (applySnappedChapterTimes, the snap edit
   } });
 });
 
-test('Chapter Snap x K4: a snap save through Music\'s "This chapter starts wrong" while a FLAT list plays keeps the queue flat - the segment end still hands on to the list\'s next row', async () => {
+test('Chapter Snap x K4: a snap save through Music\'s "Fix chapter times" while a FLAT list plays keeps the queue flat - the segment end still hands on to the list\'s next row', async () => {
   const songs = (await realApi('/api/music?sort=title-asc&limit=10000')).items;
   const nextOfIntro = songs[songs.findIndex((t) => t.title === 'Intro') + 1];
   let opened = null;
@@ -633,7 +633,7 @@ test('Chapter Snap x K4: a snap save through Music\'s "This chapter starts wrong
       click(h.dom, h.panel.querySelector('[data-skin-extras]'));
       await settleNet();
       const act = h.panel.querySelector('[data-skin-x="chapter-snap"]');
-      assert.ok(act, 'Extras offers "This chapter starts wrong" on the playing chapter');
+      assert.ok(act, 'Extras offers "Fix chapter times" on the playing chapter');
       click(h.dom, act); await settleNet();
       assert.ok(opened && opened.id === 'djmix1', 'the snap editor opened on the mix');
       // the editor saved (the same starts): Music's seam patches the queue (a NEW array)
@@ -664,7 +664,7 @@ test('v1.331 gate r1: a chapter ADDED while a menu-picked album level plays re-l
         click(h.dom, h.panel.querySelector('[data-skin-extras]'));
         await settleNet();
         const act = h.panel.querySelector('[data-skin-x="chapter-snap"]');
-        assert.ok(act, 'Extras offers "This chapter starts wrong" on the playing chapter');
+        assert.ok(act, 'Extras offers "Fix chapter times" on the playing chapter');
         click(h.dom, act); await settleNet();
         assert.ok(opened && opened.id === 'djmix1', 'the snap editor opened on the mix');
         // the server now holds FOUR chapters, and the editor reports them (a count change)
