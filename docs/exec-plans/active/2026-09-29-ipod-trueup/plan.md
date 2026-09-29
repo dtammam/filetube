@@ -263,6 +263,28 @@ by API (`gh api repos/dtammam/filetube/git/refs -f ref=refs/tags/v1.345.0 -f sha
 delete the branch remote (`gh api -X DELETE repos/dtammam/filetube/git/refs/heads/feat/ipod-trueup`)
 and local (`git branch -d`), and remove the worktree.
 
+## Build record
+
+Measured 2026-09-29 on branch `feat/ipod-trueup` (head c53e5101 plus the release docs).
+
+- **AC1** 52 registry entries, `clickColorways().length` = 50 (measured).
+- **AC6** `npm run lint:ui`: `ui-lint: OK - the live debt equals docs/ui-exceptions.json` (TOTAL 2260).
+- **AC7** `npm test`, Node 22.23.1: tests 10373, pass 10361, fail 0, cancelled 0, skipped 12. Node 24.20.0:
+  identical counts (10373 / 10361 / 0 / 0 / 12). `npx eslint .`: 6 problems (0 errors, 6 warnings, all
+  pre-existing unused-var warnings in `public/js/common.js`). `overlay-containment-lint --enforce`: clean (0 violations).
+- **AC8** Dean saw the real Settings grid screenshot (52 tiles, 17 groups) and approved, with the condition that the
+  titles are accurate; the tile titles were checked against `payload/table.md`.
+- `bash .harness/lib/check-markers.sh`: exit 1, 7 issues, ALL in `docs/exec-plans/active/2026-09-29-next-waves.md`
+  (invalid anchor 'this plan'; stale approvals @ae7586d5, @7a33e2b3, @e100986c, @be7f2164a5e66ce153152e6baa174954fff9da36,
+  @0c56b81376eb239357539aa3ed8231560ddfb423; an approval marker with no @sha). Identical on main, so
+  pre-existing and not from this branch; none in this plan.
+- **Deviations:** (1) Steps 2-4 were committed together (c53e5101) because the pre-commit hook refuses a red
+  suite and Step 2 alone turns four tests red. (2) Six tests not listed in Step 4 also failed on the new
+  registry and were updated with Dean's approval: `setup-music-skin-picker`, `music-pocket-menus`,
+  `music-skins`, `pocket-design-system` (28 pinned blocks), `pocket-lighting`, `seattle-removed-census`.
+  Each changed test was mutation-checked (broken, seen red, restored).
+- The ROADMAP chore "Refresh the README screenshots" (Dean, 2026-09-29) was added to Planned in the release-docs commit.
+
 ## Research record (why the payload is what it is)
 
 - **Existing mapping:** each of the 22 existing line colorways was photo-sampled from a real model
