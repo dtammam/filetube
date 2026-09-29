@@ -193,8 +193,9 @@ const REGISTER_VIEW_SPY_SNIPPET = `
 // so a hung/never-settling load can never wedge the whole suite -- though
 // nothing here should ever legitimately hit it, since the fetch stub never
 // blocks synchronous script evaluation).
-function loadShell({ htmlPath, url }) {
-  const html = fs.readFileSync(htmlPath, 'utf8');
+function loadShell({ htmlPath, url, transform }) {
+  const raw = fs.readFileSync(htmlPath, 'utf8');
+  const html = typeof transform === 'function' ? transform(raw) : raw;
   const virtualConsole = new VirtualConsole();
   const jsdomErrors = [];
   virtualConsole.on('jsdomError', (err) => {
@@ -449,6 +450,25 @@ test('shell smoke: lib/ytdlp/views/subscriptions.html loads with zero uncaught e
     assert.ok(
       result.dom.window.__ftFetchLog.includes('/api/subscriptions/settings'),
       'expected initSubscriptionsView() to have reached loadMembersOnlySetting()\'s fetch(\'/api/subscriptions/settings\')'
+    );
+  } finally {
+    result.dom.window.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// /cleanup (v1.342)
+// ---------------------------------------------------------------------------
+
+test('shell smoke: /cleanup (the History shell rendered by lib/cleanup/shell.js) loads with zero uncaught errors and the cleanup view registers/boots', async () => {
+  const { renderCleanupShell } = require('../../lib/cleanup/shell');
+  const result = await loadShell({ htmlPath: path.join(PUBLIC_DIR, 'history.html'), url: 'http://localhost/cleanup', transform: renderCleanupShell });
+  try {
+    assertNoLoadErrors(result, '/cleanup');
+    assert.ok(result.dom.window.__ftRegisteredViews.includes('cleanup'), 'expected cleanup.js to have registered the "cleanup" view');
+    assert.ok(
+      result.dom.window.__ftFetchLog.some((u) => u.indexOf('/api/cleanup/suggestions?days=') === 0),
+      'expected cleanup.js init() to have fetched the shortlist (bootRouter derived "cleanup" for /cleanup)'
     );
   } finally {
     result.dom.window.close();

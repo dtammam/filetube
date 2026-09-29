@@ -7061,6 +7061,10 @@ function injectAccountMenu() {
       links.appendChild(accountMenuRow(U, { href: '/?liked=1', icon: 'favorite', label: 'Liked' }));
       links.appendChild(accountMenuRow(U, { href: '/history', icon: 'history', label: 'History' }));
       links.appendChild(accountMenuRow(U, { href: '/stats.html', icon: 'bar_chart', label: 'Stats' }));
+      // v1.342: Clean up moves things to Trash, so it is offered only to accounts that can edit the library.
+      if (user.role === 'admin' || user.canModifyLibrary) {
+        links.appendChild(accountMenuRow(U, { href: '/cleanup', icon: 'delete', label: 'Clean up' }));
+      }
       if (document.querySelector('[data-nav="subscriptions"], [data-nav-sidebar="subscriptions"]')) {
         links.appendChild(accountMenuRow(U, { href: '/subscriptions', icon: 'subscriptions', label: 'Subscriptions' }));
       }
@@ -7489,6 +7493,8 @@ function deriveRouteView(pathname) {
   if (pathname === '/podcasts' || pathname === '/podcasts.html') return 'podcasts';
   // v1.64 history: same posture (the entry is count-gated like Liked).
   if (pathname === '/history' || pathname === '/history.html') return 'history';
+  // v1.342 clean up: reached from the account menu + Stats, so no nav item of its own.
+  if (pathname === '/cleanup') return 'cleanup';
   return null;
 }
 
@@ -10862,6 +10868,7 @@ if (typeof window !== 'undefined') {
     music: '/js/music.js',
     podcasts: '/js/podcasts.js',
     history: '/js/history.js',
+    cleanup: '/js/cleanup.js',
     // v1.151: lazy-load the Stats view script on first in-app navigation
     // (same posture as the other secondary views above). stats.js registers
     // { init, destroy } at parse time and has NO DOMContentLoaded self-boot,

@@ -124,6 +124,8 @@ const queueRoutes = require('./lib/queue/routes');
 const notificationsRoutes = require('./lib/notifications/routes');
 const pushRoutes = require('./lib/push/routes');
 const userRoutes = require('./lib/user/routes');
+const cleanupShell = require('./lib/cleanup/shell');
+const cleanupRoutes = require('./lib/cleanup/routes'); // v1.342: the read-only Clean up shortlist (the delete is the existing trash route)
 // Wave 7b, slice S1b: the identity routes (/api/auth, /api/users, /api/me)
 // and the pre-auth-era per-user media state routes (/api/liked,
 // /api/progress), same pattern - each registers at the call site below that
@@ -3432,10 +3434,11 @@ function injectVersionMeta(html) {
 // be read, so callers can fall through. Shared by the static-shell middleware
 // below AND the yt-dlp module's gated /subscriptions route (dep-injected), so
 // EVERY header-bearing page gets the identical zero-flash treatment.
-function sendShellHtml(res, absFilePath) {
+function sendShellHtml(res, absFilePath, transform) {
   let html;
   try {
     html = fs.readFileSync(absFilePath, 'utf8');
+    if (typeof transform === 'function') html = transform(html);
   } catch (_) {
     return false;
   }
@@ -3478,6 +3481,12 @@ function sendShellHtml(res, absFilePath) {
   });
 }
 app.get('*', (req, res, next) => {
+  // v1.342: /cleanup is the History shell with its #view-root swapped (lib/cleanup/shell.js), so the
+  // page adds no second copy of the shell markup (the ui-lint debt ratchet counts every copy).
+  if (req.path === '/cleanup') {
+    if (!sendShellHtml(res, path.join(__dirname, 'public', 'history.html'), cleanupShell.renderCleanupShell)) return next();
+    return;
+  }
   const shell = shellHtmlForRequestPath(req.path);
   if (!shell) return next();
   if (!sendShellHtml(res, path.join(__dirname, 'public', shell))) return next();
@@ -4314,6 +4323,18 @@ userRoutes.registerRoutes(app, {
   userStore,
   videoQuery, // normalizeLimit/normalizeOffset/deriveWatchState for the history page
   ytdlp, // resolveItemChannelAvatarUrl for the history cards
+  ytdlpDb,
+});
+
+cleanupRoutes.registerRoutes(app, {
+  extractYtdlpVideoId,
+  getCachedDatabase,
+  mediaVisibleTo,
+  pendingProgress,
+  requireModifyLibrary,
+  userStore,
+  viewCountStore,
+  ytdlp,
   ytdlpDb,
 });
 

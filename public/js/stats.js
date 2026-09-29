@@ -886,6 +886,8 @@ function init(viewRoot) {
     .then((report) => capPromise.then((canModify) => {
       const dupRoot = document.getElementById('stats-duplicates-list');
       if (dupRoot) renderDuplicates(dupRoot, report, canModify);
+      const cleanupHint = document.getElementById('stats-cleanup-hint');
+      if (cleanupHint) cleanupHint.hidden = !canModify;
     }))
     .catch((err) => {
       if (err && err.name === 'AbortError') return; // navigated away before it resolved -- expected

@@ -102,11 +102,11 @@ test('injectAccountMenu: builds the trigger + full dropdown, once, with account 
   // (the enabled-module gate) - covered by its own test below.
   // v1.305 (Dean): "Change photo" ROW retired - the avatar is now edited via a
   // pencil badge on the disc (asserted below), so it is no longer a menu item.
-  assert.deepStrictEqual(labels, ['Liked', 'History', 'Stats', 'Settings', 'Theme', 'Sign out'], 'all items present, in order');
+  assert.deepStrictEqual(labels, ['Liked', 'History', 'Stats', 'Clean up', 'Settings', 'Theme', 'Sign out'], 'all items present, in order (Clean up: an admin can edit the library)');
   assert.strictEqual(global.document.querySelector('.account-menu-name').textContent, 'Dean');
   assert.strictEqual(global.document.querySelector('.account-menu-role').textContent, 'Admin');
   const links = [...global.document.querySelectorAll('a.account-menu-item')].map((a) => a.getAttribute('href'));
-  assert.deepStrictEqual(links, ['/?liked=1', '/history', '/stats.html', '/setup.html']);
+  assert.deepStrictEqual(links, ['/?liked=1', '/history', '/stats.html', '/cleanup', '/setup.html']);
 
   injectAccountMenu();
   await tick();
@@ -635,4 +635,12 @@ test('v1.305: refreshAvatars swaps the disc WITHIN the wrapper (source lock - th
   assert.ok(refreshBody, 'refreshAvatars found');
   assert.match(refreshBody[0], /avatarWrap\.replaceChild\(/, 'the head-avatar refresh swaps the disc INSIDE the wrapper');
   assert.doesNotMatch(refreshBody[0], /head\.replaceChild\(/, 'never on .head (that would throw and strand/duplicate the badge)');
+});
+
+test('injectAccountMenu: Clean up shows for a member who can edit the library, never for one who cannot (v1.342)', async () => {
+  const { injectAccountMenu } = fresh({ user: { id: 1, displayName: 'Dean', role: 'member', canModifyLibrary: true, avatar: { present: false } } });
+  injectAccountMenu();
+  await tick();
+  openMenu();
+  assert.ok(itemLabels().includes('Clean up'), 'an editor sees Clean up');
 });

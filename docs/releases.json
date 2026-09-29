@@ -3322,5 +3322,11 @@
     "date": "2026-09-29",
     "title": "Original shows emoji in black and white, and menu labels say what they do",
     "intent": "In the Click Original skin, an emoji in a song title, a menu row or the status bar now draws in black and white like the rest of its screen; every other skin keeps its colour. Menu buttons now follow one rule, a short verb phrase: the chapter row in Music's Extras reads \"Fix chapter times\", Move reads \"Move to folder\", and the watch page's menu says \"Assign channel\" and \"Share at 1:23\"."
+  },
+  {
+    "version": "1.342.0",
+    "date": "2026-09-29",
+    "title": "Clean up: a shortlist of what to clear",
+    "intent": "A new Clean up page (in the account menu, and linked from Stats if you can edit the library) suggests what you could clear to free space: videos you watched to the end, subscription downloads nobody opened, the biggest files nobody opened, and newer copies of a video you already have. Nothing is ticked for you and nothing is removed until you pick it and confirm; everything goes to Trash first, where you can restore it. Anything liked, half-watched or still new is never suggested, and you can set how old something must be (7 to 180 days)."
   }
 ]
