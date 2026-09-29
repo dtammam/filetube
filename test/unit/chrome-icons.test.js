@@ -51,7 +51,7 @@ const FTIcons = require('../../public/js/icons.js');
 // kept 1 of its asset's 3 paths, F29), books -> menu_book, downloads -> smart_display, caret keyboard_arrow_down -> expand_more,
 // queue -> playlist_play, heart -> favorite.)
 const EXPECTED = {
-  home: 'home', liked: 'star', folder: 'folder', history: 'history', podcast: 'podcasts',
+  home: 'home', liked: 'favorite', folder: 'folder', history: 'history', podcast: 'podcasts',
   music: 'music_note', books: 'menu_book', downloads: 'smart_display', moon: 'dark_mode',
   sun: 'light_mode', cog: 'settings', search: 'search', download: 'download', caret: 'expand_more',
   queue: 'playlist_play', heart: 'favorite', delete: 'delete', menu: 'menu', star: 'star',

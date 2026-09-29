@@ -22,7 +22,7 @@ const DEFAULT_MODE = 'light';
 // CHROME_ICON maps the chrome's historical glyph names to registry names; new code
 // names registry icons directly (ui.icon, step 3).
 const CHROME_ICON = {
-  home: 'home', liked: 'star', folder: 'folder', history: 'history', podcast: 'podcasts',
+  home: 'home', liked: 'favorite', folder: 'folder', history: 'history', podcast: 'podcasts',
   music: 'music_note', books: 'menu_book', downloads: 'smart_display', moon: 'dark_mode',
   sun: 'light_mode', cog: 'settings', search: 'search', download: 'download', caret: 'expand_more',
   queue: 'playlist_play', heart: 'favorite', delete: 'delete', menu: 'menu', star: 'star',

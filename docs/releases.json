@@ -3346,5 +3346,11 @@
     "date": "2026-09-29",
     "title": "Pick a skin from the Pocket, and see them all",
     "intent": "On the Click player, Extras now has a Skins menu: families first, then that family's colours, and the screen re-skins live as you turn the wheel. Select keeps it; Menu puts your old skin back. Settings shows every skin and colour as a small preview you tap, instead of one long list. Nothing was removed."
+  },
+  {
+    "version": "1.344.1",
+    "date": "2026-09-29",
+    "title": "Liked is a heart everywhere",
+    "intent": "Liked used a star in the sidebar, the Playlists menu and the bottom bar but a heart in your account menu. It is now the heart everywhere, next to Watch later's clock."
   }
 ]

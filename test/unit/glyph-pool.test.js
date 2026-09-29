@@ -215,10 +215,6 @@ test('the registry carries no literal emoji (icon-assets rule)', () => {
 // the registry on purpose: `.icon-downloads` is NOT a pool member, and it was half
 // of the collision.
 const PICTURE_TWINS_ALLOWED = [
-  // Deliberate: same picture, different intents, kept as separate classes so
-  // the Liked lane's glyph can change later without dragging every folder that
-  // chose "Favorites" along with it. Documented in glyph-pool.js.
-  ['icon-favorites', 'icon-liked'],
   // One intent: `.icon-tv` is the Shows library's own nav glyph (v1.195) and
   // `.icon-shows` the Shows pool glyph a folder can wear. Both are the TV.
   ['icon-shows', 'icon-tv'],

@@ -57,6 +57,7 @@ the checks.
   links, while playing) "Share at 1:23" beside "Share video".
 - [ ] v1.342 - Clean up (account menu): nothing is ticked, the toolbar and rows fit the phone, Move to
   Trash names the count and size, and the moved items come back from Settings > Trash.
+- [ ] v1.344.1 - Liked is a heart in the sidebar, the Playlists sheet and the bottom bar, in all three icon sets.
 - [ ] v1.343.1 - Phone: open Playlists; the Watch later row shows the clock glyph beside Liked's star.
 - [ ] v1.343 - Watch later: add from a card menu and from the watch page's More menu, the sidebar row
   and account menu row appear, Play all starts the queue, a video you finish leaves the list, and going
