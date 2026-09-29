@@ -93,3 +93,4 @@ the checks.
   `video:check` line), with Ambient off too, and once with only the bar's play button.
 - [ ] v1.344.2 - On the phone, a video with chapters: watch to the middle of a later chapter, tap Listen;
   it carries on from that spot in that chapter (not chapter 1). Then Watch again: still the same spot.
+  Repeat PAUSED: pause on Watch, tap Listen (still paused, same spot), then Watch (still paused).

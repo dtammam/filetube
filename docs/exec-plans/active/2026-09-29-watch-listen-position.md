@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: fix/watch-listen-position
 anchor: outcome
 status: Gate:APPROVED r1 @148fcd03
-next: adversary delta re-confirm of the r1 follow-ups commit, then push, PR, merge on green CI, tag v1.344.2 by API
+next: r3 re-bind of all three seats on the pause-ruling commit, then push, PR, merge on green CI, tag v1.344.2 by API
 gate: APPROVED r1 @148fcd03 (adversary, qa, security-brief); r1 follow-ups await the adversary delta
 ---
 
@@ -81,6 +81,8 @@ Gate: APPROVED r1 @148fcd03 - adversary (no CRITICAL/WARNING. Real app, headless
 - SUGGESTION: the unit test's fixture ([130, 131.5]: "the audio played on through the fetches") does not match the default real flow. There, both reads happen in the same synchronous turn after the fetch, and the tap-time mutant is equivalent (132.43 -> 132.86 on the mutant). The load-time read only matters on the verify-wait path I measured above. Reword the comment; a waiter-path unit (returnEpoch > 0) would bind it directly (qa's suggestion 3 holds).
 - SUGGESTION (refutes qa's suggestion 4 by measurement): a Watch video left to its end is rewound to 0 by the player before Listen (POST 300.00 paused, then 0.00; element t=0), so Listen loads c0 at the head on head and base alike, not the last chapter at the file end.
 
+Gate: APPROVED r2 @731fc396 - adversary (delta re-confirm of the r1 follow-ups: music.js is comment-only (the one changed code line is identical before its //) and both comments are true; test 5 goes through verifyChapterFileThenPlay + playWaiter: 7 mutants vs the test file all killed (tap-time read: tests 3,5; waiter replays { skipVerify } only: 5; no verify wait: 5; pick treated as an advance: 5; waiter never replays: 5; no handoff seek: 4,5; always chapter 1: 4,5), unmutated 6/6; lab server.js listens on 127.0.0.1 only (/proc/net/tcp 0100007F:2261/2262; the box IP refused); the after rows re-measured on 731fc396 with the repro: chaptered 132.42 -> 136.35 -> 202.42 -> 206.31, plain 132.43 -> 136.5 -> 202.41 -> 206.43. Process: check-markers now flags the three r1 @148fcd03 approvals and the frontmatter as stale (music.js/test/server.js changed), so qa and security-brief must re-bind to 731fc396 before close)
+
 ### r1 follow-ups (the seats' SUGGESTIONs, applied after the r1 approvals)
 
 - Comments: loadTrack's `chapterResumeSec` comments now name the handoff (qa 1).
@@ -94,3 +96,30 @@ Gate: APPROVED r1 @148fcd03 - adversary (no CRITICAL/WARNING. Real app, headless
 - For Dean, not changed: Watch PAUSED -> Listen on a chaptered video starts playing (it did before too,
   from chapter 1); a plain video stays paused (adversary 1). qa 4 was refuted by measurement (a finished
   video is rewound to 0 before Listen).
+
+## Scope added after r2: a paused video stays paused, both ways (Dean's rulings, 2026-09-29)
+
+Dean, on the adversary's r1 suggestion: "Listen should keep a paused video paused." Measuring that fix
+showed the mirror (a paused chaptered Listen -> Watch auto-played, from saved progress); Dean chose to
+include it in this release (AskUserQuestion, "Yes, in this release").
+
+- Watch -> Listen: `handoffPaused` (music.js) reads the loaded element's pause AT LOAD and stamps
+  `startPaused`; the player's chapter branch then seeks without auto-starting.
+- Listen -> Watch: `load()` captures `resolveBaseHandoff(currentId, id, t, paused, liveMode)` before the
+  teardown (a `<id>::c<n>` row re-opened as `<id>`); `handleResumePlayback` applies it ahead of every
+  saved-progress branch: paused = seek only, playing = the usual auto-starting seek, no toast.
+
+Measured in the real app (the repro, the worktree server, pause variant `PAUSE=1`; Listen then moves the
+element to 200 s):
+
+| video | state | Watch | -> Listen | Listen at 200 | -> Watch |
+|---|---|---|---|---|---|
+| no chapters | paused | 132.43 P | 132.43 P | 200 P | 200 P |
+| 5 chapters | paused | 132.43 P | 132.43 P | 200 P | **200 P** (before: 136.29 playing) |
+| no chapters | playing | 132.43 | 136.49 | 202.42 | 206.44 |
+| 5 chapters | playing | 132.43 | 136.36 | 202.41 | 206.30 |
+
+Tests: `handoffPaused` pure + wiring (a paused / playing / other-video element), `resolveBaseHandoff`
+pure, and two player source locks (the load path has no behavioural harness, tracker #180). Mutant:
+`handoffPaused` always false fails two tests.
+

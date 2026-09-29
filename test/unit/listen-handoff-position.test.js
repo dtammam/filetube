@@ -12,7 +12,9 @@ const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
 
 const musicPath = require.resolve('../../public/js/music.js');
-const { liveListenPosition, listenHandoffChapterIndex, chapterStartFor, CHAPTER_RESUME_TAIL_SEC } = require(musicPath);
+const fs = require('node:fs');
+const path = require('node:path');
+const { liveListenPosition, listenHandoffChapterIndex, chapterStartFor, handoffPaused, CHAPTER_RESUME_TAIL_SEC } = require(musicPath);
 
 const rows = (starts) => starts.map((s, i) => ({ id: 'v::c' + i, chapterStartSec: s }));
 
@@ -83,6 +85,10 @@ async function listenWith(player, hooks) {
     const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music?play=vidX&listen=1' });
     global.window = dom.window; global.document = dom.window.document;
     global.localStorage = dom.window.localStorage; global.AbortController = dom.window.AbortController;
+    if (typeof hooks.mediaPaused === 'boolean') { // the shared player's element, as the watch page left it
+      dom.window.document.body.insertAdjacentHTML('beforeend', '<audio id="media-player"></audio>');
+      Object.defineProperty(dom.window.document.getElementById('media-player'), 'paused', { configurable: true, get: () => hooks.mediaPaused });
+    }
     global.fetch = hooks.fetch || ((u) => (String(u).indexOf('/api/videos/') === 0
       ? Promise.resolve({ ok: true, json: () => Promise.resolve(CHAPTERED_VIDEO) })
       : Promise.resolve({ ok: true, json: () => Promise.resolve({ items: [] }) })));
@@ -161,4 +167,71 @@ test('Listen with no live position for that video starts at chapter 1, as before
   assert.strictEqual(live[0].data.chapterResumeSec, undefined);
   const none = await listenWith(basePlayer(null, [130]));
   assert.strictEqual(none[0].id, 'vidX::c0', 'nothing loaded: chapter 1');
+});
+
+// ---- Dean's ruling (2026-09-29): Listen keeps a PAUSED video paused ---------------------------------
+test('handoffPaused: only a live handoff whose element is paused', () => {
+  const pl = { currentId: 'vid', getCurrentTime: () => 130 };
+  assert.strictEqual(handoffPaused({ handoffFrom: 'vid' }, pl, { paused: true }), true);
+  assert.strictEqual(handoffPaused({ handoffFrom: 'vid' }, pl, { paused: false }), false, 'playing stays playing');
+  assert.strictEqual(handoffPaused({}, pl, { paused: true }), false, 'not a handoff (a row tap) = the usual auto-start');
+  assert.strictEqual(handoffPaused(undefined, pl, { paused: true }), false);
+  assert.strictEqual(handoffPaused({ handoffFrom: 'vid' }, { currentId: 'other', getCurrentTime: () => 130 }, { paused: true }), false, 'the video is no longer loaded');
+  assert.strictEqual(handoffPaused({ handoffFrom: 'vid' }, pl, null), false, 'no element');
+});
+
+test('Watch PAUSED -> Listen: the chapter row loads with startPaused; a playing Watch loads without it', async () => {
+  const paused = await listenWith(basePlayer('vidX', [130]), { mediaPaused: true });
+  assert.strictEqual(paused[0].id, 'vidX::c1');
+  assert.strictEqual(paused[0].data.chapterResumeSec, 130);
+  assert.strictEqual(paused[0].data.startPaused, true, 'a paused watch video stays paused on Listen');
+  const playing = await listenWith(basePlayer('vidX', [130]), { mediaPaused: false });
+  assert.strictEqual(playing[0].data.startPaused, false, 'a playing watch video keeps playing');
+  const other = await listenWith(basePlayer('someOtherVideo', [130]), { mediaPaused: true });
+  assert.strictEqual(other[0].data.startPaused, false, 'no handoff: the usual auto-start, whatever the old element says');
+});
+
+test('player.js SOURCE-LOCK: a startPaused chapter load seeks WITHOUT auto-starting, before resumeDirectly', () => {
+  // The player's load path has no behavioural harness (tech-debt #180; music-chapter-playback.test.js
+  // locks the same function the same way). Measured in the real app: see the plan's Research table.
+  const src = fs.readFileSync(path.join(__dirname, '../../public/js/player.js'), 'utf8');
+  const start = src.indexOf('  function handleResumePlayback(gen, id) {');
+  assert.ok(start > 0, 'handleResumePlayback found');
+  const fn = src.slice(start, src.indexOf("resumeMode === 'music'", start));
+  const m = /if \(currentData\.startPaused === true && !liveMode\) \{ ([^}]*) \}/.exec(fn);
+  assert.ok(m, 'the startPaused branch sits in the chapter branch');
+  assert.strictEqual(m[1].trim(), 'mediaPlayer.currentTime = chapterSeek; return;', 'it only seeks, then returns');
+  assert.ok(fn.indexOf('currentData.startPaused') < fn.indexOf('resumeDirectly(chapterSeek)'), 'checked before the auto-starting seek');
+});
+
+// ---- the mirror (Dean, 2026-09-29): Listen -> Watch keeps the place, and a pause ---------------------
+test('player resolveBaseHandoff: only the chapter row of THE SAME file, with a real position, not live', () => {
+  const { resolveBaseHandoff } = require('../../public/js/player.js');
+  assert.deepStrictEqual(resolveBaseHandoff('vid::c2', 'vid', 133.5, true, false), { t: 133.5, paused: true });
+  assert.deepStrictEqual(resolveBaseHandoff('vid::c2', 'vid', 133.5, false, false), { t: 133.5, paused: false });
+  assert.strictEqual(resolveBaseHandoff('vid', 'vid::c1', 133.5, false, false), null, 'Watch -> Listen is music.js handoffFrom, not this');
+  assert.strictEqual(resolveBaseHandoff('vid::c1', 'vid::c2', 133.5, false, false), null, 'a chapter-to-chapter load');
+  assert.strictEqual(resolveBaseHandoff('vid::c2', 'other', 133.5, false, false), null, 'another file');
+  assert.strictEqual(resolveBaseHandoff('vidX::c2', 'vid', 133.5, false, false), null, 'a prefix is not the base');
+  assert.strictEqual(resolveBaseHandoff('vid::c2', 'vid', 0, false, false), null, 'no real position');
+  assert.strictEqual(resolveBaseHandoff('vid::c2', 'vid', NaN, false, false), null);
+  assert.strictEqual(resolveBaseHandoff('vid::c2', 'vid', 133.5, false, true), null, 'a live source');
+  assert.strictEqual(resolveBaseHandoff(null, 'vid', 133.5, false, false), null, 'nothing loaded');
+});
+
+test('player.js SOURCE-LOCK: load() captures the handoff BEFORE the teardown; the resume applies it ahead of saved progress', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../../public/js/player.js'), 'utf8');
+  const load = src.slice(src.indexOf('  function load(id, data, opts) {'), src.indexOf('  var api = {'));
+  const cap = load.indexOf('loadBaseHandoff = resolveBaseHandoff(currentId, id, mediaPlayer ? mediaPlayer.currentTime : null, mediaPlayer ? mediaPlayer.paused : true, liveMode);');
+  assert.ok(cap > 0, 'load() captures from the outgoing element');
+  const teardown = load.indexOf('    teardownMediaState({ preserveImmersive: loadImmersiveCarry });');
+  assert.ok(teardown > 0 && cap < teardown, 'before the teardown call resets it');
+  assert.ok(cap > load.indexOf('if (adopt) {'), 'after the adopt early return (an adopt keeps the element as is)');
+  const start = src.indexOf('  function handleResumePlayback(gen, id) {');
+  const fn = src.slice(start, src.indexOf("fetch('/api/progress/' + id)", start));
+  const m = /if \(loadBaseHandoff && !liveMode\) \{([\s\S]*?)\n {4}\}/.exec(fn);
+  assert.ok(m, 'the handoff branch is in handleResumePlayback');
+  assert.match(m[1], /if \(loadBaseHandoff\.paused\) mediaPlayer\.currentTime = loadBaseHandoff\.t;\s*else resumeDirectly\(loadBaseHandoff\.t\);\s*return;/,
+    'paused: seek only; playing: the auto-starting seek; then return (no saved-progress ladder, no toast)');
+  assert.ok(fn.indexOf('loadBaseHandoff && !liveMode') < fn.indexOf("resumeMode === 'music'"), 'ahead of every saved-progress branch');
 });

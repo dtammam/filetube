@@ -916,6 +916,13 @@ function chapterStartFor(item, opts, player) {
   var live = (opts && opts.handoffFrom != null) ? liveListenPosition(player, opts.handoffFrom) : null;
   return live !== null ? live : chapterResumeSecFor(item);
 }
+// Dean's ruling (2026-09-29): Listen keeps a PAUSED video paused. True when the handoff's video is
+// still the loaded item with a live position and its element `el` is paused, read AT LOAD like the
+// second itself; the player then seeks without auto-starting (player.js startPaused).
+function handoffPaused(opts, player, el) {
+  if (!opts || opts.handoffFrom == null || liveListenPosition(player, opts.handoffFrom) === null) return false;
+  return !!(el && el.paused === true);
+}
 
 // Tracker #268 (Chapter Snap persist, 2026-09-24): a tap on the chapter that is ALREADY loaded is
 // a same-id player.load, which the player ADOPTS (keeps the media, never re-seeks). That is right
@@ -964,7 +971,7 @@ function queuedChaptersDiffer(rows, baseId, chapters) {
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC, CHAPTER_VERIFY, chapterAdoptSeekFor, queuedChaptersDiffer,
-    liveListenPosition, listenHandoffChapterIndex, chapterStartFor,
+    liveListenPosition, listenHandoffChapterIndex, chapterStartFor, handoffPaused,
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
     buildNowPlayingPanelHtml, musicArtUrl, musicAmbientArtUrl,
     MUSIC_ART_SIZES, MUSIC_ART_DPR_CAP, MUSIC_ART_ROW_PX, MUSIC_ART_DRILL_PX, musicArtCardPx, musicArtSize, albumArtSrc, musicArtId,
@@ -3546,6 +3553,7 @@ if (typeof module !== 'undefined' && module.exports) {
         chapterStartSec: isChapter ? (Number(item.chapterStartSec) || 0) : undefined,
         baseMediaId: isChapter ? String(item.id).replace(/::c\d+$/, '') : undefined,
         chapterResumeSec: isChapter ? chapterStartFor(item, opts, window.FileTube && window.FileTube.player) : undefined, // v1.311.3: a saved place near its end -> the chapter head
+        startPaused: isChapter ? handoffPaused(opts, window.FileTube && window.FileTube.player, hostCtl('media-player')) : undefined, // Dean: a paused Watch stays paused on Listen
         resumeMode: 'music',
         autoAdvanceViaTrackNav: true,
         browseCtx: queueCtxEncoded,

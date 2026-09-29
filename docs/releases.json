@@ -3356,7 +3356,7 @@
   {
     "version": "1.344.2",
     "date": "2026-09-29",
-    "title": "Listen keeps your place in a chaptered video",
-    "intent": "Switching from watching to listening on a video with chapters used to start again from the first chapter. It now carries on from the exact spot you were watching, in the right chapter."
+    "title": "Watch and Listen keep your place",
+    "intent": "Switching between watching and listening on a video with chapters used to start again from the first chapter, and could start playing when you had paused. It now carries on from the exact spot, in the right chapter, and a paused video stays paused, in both directions."
   }
 ]

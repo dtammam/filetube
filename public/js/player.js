@@ -117,6 +117,19 @@ function isAdoptLoad(currentId, requestedId, state) {
   return currentId != null && currentId === requestedId && state !== 'closed';
 }
 
+// v1.344.2 (Dean, 2026-09-29: keep "the fidelity of the time, the position" between Watch and Listen,
+// and a paused one stays paused): loading a chaptered file's BASE id while the player holds one of its
+// `<id>::c<n>` rows (Listen -> Watch) re-opens the same media under another name, so it is a fresh load,
+// never an adopt. Returns the place to carry, { t, paused }, or null (not that file, a live source, or
+// no real position). The Watch -> Listen direction is music.js's handoffFrom.
+function resolveBaseHandoff(prevId, nextId, t, paused, live) {
+  if (live || typeof prevId !== 'string' || nextId == null) return null;
+  var m = /^(.+)::c\d+$/.exec(prevId);
+  if (!m || m[1] !== String(nextId)) return null;
+  if (typeof t !== 'number' || !isFinite(t) || t <= 0) return null;
+  return { t: t, paused: paused === true };
+}
+
 // v1.253 (Dean's listen<->watch mapping): an adopt reuses the loaded media
 // untouched, but the SURFACE FLAVOR legitimately changes when the SAME media
 // re-opens on a different surface - a Listen play stamps readerHref
@@ -1760,6 +1773,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // video's `::c` current id must match its base-id queue entry, or it never advances.
     queuePointerMatchesPlaying,
     isAdoptLoad,
+    resolveBaseHandoff, // v1.344.2: Listen -> Watch carries the chapter row's place (and pause)
     applyAdoptFlavor,
     presenceSurfaceForResumeMode, // v1.304 handoff modality: the ping's watch/listen flavor
     shouldDockOnTransition,
@@ -2159,6 +2173,9 @@ if (typeof module !== 'undefined' && module.exports) {
   // top of `handleResumePlayback`/`pollTranscodeUntilReady` already ensures a
   // STALE gen's poll chain can never read a since-overwritten value here.
   var loadAutoplayAdvance = false;
+  // v1.344.2: this load's Listen -> Watch handoff ({ t, paused } or null), captured in load() before
+  // the teardown loses the chapter row's element state - see resolveBaseHandoff.
+  var loadBaseHandoff = null;
 
   // v1.130 immersive carry-on-advance: one-shot arm + per-load snapshot,
   // exactly the `autoplayAdvancePending`/`loadAutoplayAdvance` pattern above
@@ -5074,7 +5091,18 @@ if (typeof module !== 'undefined' && module.exports) {
       var chapterSeek = (typeof currentData.chapterResumeSec === 'number')
         ? currentData.chapterResumeSec
         : currentData.chapterStartSec;
+      // v1.344.2 (Dean's ruling): a Watch -> Listen handoff from a PAUSED video stays paused -
+      // seek only, no auto-start (music.js handoffPaused sets startPaused; liveMode never hands off).
+      if (currentData.startPaused === true && !liveMode) { mediaPlayer.currentTime = chapterSeek; return; }
       resumeDirectly(chapterSeek);
+      return;
+    }
+    // v1.344.2: Listen -> Watch on a chaptered file carries the chapter row's live place, and a pause,
+    // instead of the saved-progress ladder (a handoff is not a resume: no toast).
+    if (loadBaseHandoff && !liveMode) {
+      savedProgress = loadBaseHandoff.t;
+      if (loadBaseHandoff.paused) mediaPlayer.currentTime = loadBaseHandoff.t;
+      else resumeDirectly(loadBaseHandoff.t);
       return;
     }
     // v1.44 music: read from the music coalescer and apply the SMART-RESUME
@@ -9233,6 +9261,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var capturedImmersiveCarry = captureImmersiveCarryForLoad(immersiveCarryPending, currentImmersiveKind());
     loadImmersiveCarry = options.dock ? null : capturedImmersiveCarry.value;
     immersiveCarryPending = capturedImmersiveCarry.nextPending;
+    loadBaseHandoff = resolveBaseHandoff(currentId, id, mediaPlayer ? mediaPlayer.currentTime : null, mediaPlayer ? mediaPlayer.paused : true, liveMode);
     teardownMediaState({ preserveImmersive: loadImmersiveCarry });
     currentId = id;
     currentData = data || {};

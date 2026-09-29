@@ -402,15 +402,21 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
-### v1.344.2 - Watch to Listen keeps its place (2026-09-29)
+### v1.344.2 - Watch and Listen keep your place, and a pause (2026-09-29)
 
 - **A chaptered video no longer restarts on Listen.** Watch -> Listen on a video with chapters loaded
   its first chapter row (`<id>::c0`), a fresh load rather than the same-id adopt a plain video gets, so
   playback jumped back to chapter 1 (measured in headless Chromium: Watch at 132.4 s, Listen at 3.8 s).
   Listen now starts on the chapter holding the live playhead and seeks to the second read when that row
   loads (after: 132.4 s -> 136.3 s, still playing). No live position (another item, a desktop live
-  transcode) still starts at chapter 1. Plain videos and Listen -> Watch were already keeping their place
-  and are unchanged. Dean's report, 2026-09-29.
+  transcode) still starts at chapter 1. Dean's report, 2026-09-29.
+- **A paused video stays paused across the switch, both ways** (Dean's ruling, 2026-09-29). Watch paused
+  -> Listen on a chaptered video used to start playing; it now loads paused at the same second. The
+  mirror, Listen -> Watch on a chaptered video, was a fresh load that resumed from saved progress and
+  always auto-played: the player now carries the chapter row's live second and its pause into the watch
+  load (`resolveBaseHandoff`), so a paused Listen comes back paused on Watch at the same spot. Measured in
+  the real app: every Watch/Listen switch, plain and chaptered, playing and paused, keeps its place and
+  its state. Plain videos were already right (a same-id adopt) and are unchanged.
 
 ### v1.344.1 - Liked is a heart everywhere (2026-09-29)
 
