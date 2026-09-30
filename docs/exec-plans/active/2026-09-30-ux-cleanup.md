@@ -339,4 +339,9 @@ looks or acts different is a regression".
 
 ### Results per wave
 
-(filled as waves land)
+- **A/B oracle:** noise run base1 vs base2 = 1896 scenes, 0 with differences; base1 vs branch1 (head after W1-W4) = 1896 scenes, 0 with differences. No pixel moved, so nothing was reverted.
+- **W1 (dead CSS):** only `.audio-artwork` was dead; deleted (style.css 12224 -> 12214 lines).
+- **W2 (raw values):** 13 role-correct sites moved to `--ring-w`, `--progress-h`, `--grab-h`, `--icon-sm/md/lg`; 19 `--radius-lg` and 2 `--star-gold` uses re-spelled. The other ~350 entries kept with a measured reason (equal-value tokens are the wrong role; `--hairline` is 0.5px at 2x so it cannot do 1px).
+- **W3 (legacy tokens):** `--radius-lg`, `--star-gold`, `--yt-red-dark` retired (added to RETIRED_ALIASES so the ban stays); every other legacy token varies per era and was kept. `lint:ui` TOTAL 3225 -> 3183.
+- **W4 (docs):** live docs already accurate; tracker #289 (d) marked done.
+- **W5 (README):** 8 new screenshots (Dean's pick, synthetic seeded library), 11 old images removed, copy freshened; all README paths resolve.

@@ -278,7 +278,7 @@
 
 ### Chores
 
-- [ ] **Refresh the README screenshots** _(Dean, 2026-09-29)_: the README's images (`assets/images/`:
+- [x] **Refresh the README screenshots** - DONE in v1.347.3 _(Dean, 2026-09-29)_: the README's images (`assets/images/`:
   the desktop Home, Library and Watch shots, and the four mobile shots) predate the skins, the Pocket
   and the one consistent look. Retake them from the current UI (light and dark, desktop and phone), add
   one of the Pocket with a skin, replace the files, and check every `<img>` in README.md still resolves.
