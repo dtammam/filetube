@@ -3,7 +3,7 @@ plan: ux-cleanup
 harness: v2 · lean
 branch: chore/ux-cleanup
 anchor: spec
-status: Planned
+status: Shipped v1.347.3
 next: Step 0 (read this whole plan once, top to bottom, before touching anything)
 design: Approved 2026-09-30 (Dean: "handle the UX overhaul code cleanup ... I've tested the new system and just love it"; scope and rulings below are the architect's, taken on his word "I will take your advice")
 gate: pending (full: adversary + qa + security-brief; scrutiny.toml forces it for tokens.css and package.json)

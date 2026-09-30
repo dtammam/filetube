@@ -426,6 +426,14 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.347.3 - A tidier app under the hood (2026-09-30)
+
+- UX overhaul cleanup, no visual change: 13 raw sizes moved to role-correct design tokens (focus ring width,
+  progress and grab heights, icon sizes), 3 legacy tokens retired (`--radius-lg`, `--star-gold`, `--yt-red-dark`;
+  the ban stays in RETIRED_ALIASES), 1 dead rule deleted. `lint:ui` 3225 -> 3183; the rest of the ratchet was
+  re-audited and kept with a measured reason. Pixel A/B: 1896 scenes, 0 with differences (noise run also 0).
+- README: 8 new screenshots (desktop 2021 and 2005, phone, Pocket iPod) from a synthetic library, 11 old images removed.
+
 ### v1.347.2 - A calmer light on the Coil wheel (2026-09-30)
 
 - The Transparent Coil wheel's highlight was too bright (peak white .78 to .28, wheel sheen .4 to .18, glass dome
