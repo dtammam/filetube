@@ -727,7 +727,9 @@ const MUSIC_SKIN_BLURB = {
   'ipod-touch6-spacegray': 'Anodized space gray, a dark wheel and a space gray center.',
   'ipod-touch6-pink': 'Anodized pink, a white wheel and a pink center.',
   'ipod-touch6-red': 'Anodized red, a white wheel and a red center.',
-  'ipod-custom5-transparent': 'A clear shell: frosted plastic with the dark board and battery showing through, a white wheel.',
+  'ipod-custom5-transparent': 'A clear shell: frosted plastic over a real circuit board, a white wheel.',
+  'ipod-custom5-transparent-black': 'The same clear shell over the same board, with a black wheel.',
+  'ipod-custom5-transparent-coil': 'The same clear shell with the wheel taken off, so its flex ring and a glass dome show.',
   'ipod-original': 'The first one: a button ring, a grey screen, a wheel that turns.',
 };
 // v1.344 (W5, Dean): the picker is a PREVIEW GRID - every skin/colorway is a small static thumbnail

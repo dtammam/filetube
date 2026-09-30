@@ -367,6 +367,8 @@
     { id: 'ipod-touch6-pink', label: 'Touch 6G-7G Pink (2015)', line: 'touch', gen: 6, year: '2015', color: 'Pink', base: 'ipod', menus: 'click', renderFull: renderIpod },
     { id: 'ipod-touch6-red', label: 'Touch 6G-7G Red (2015)', line: 'touch', gen: 6, year: '2015', color: 'Red', base: 'ipod', menus: 'click', renderFull: renderIpod },
     { id: 'ipod-custom5-transparent', label: 'Custom 5G Transparent (2005)', line: 'custom', gen: 5, year: '2005', color: 'Transparent', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-custom5-transparent-black', label: 'Custom 5G Transparent Black (2005)', line: 'custom', gen: 5, year: '2005', color: 'Transparent Black', base: 'ipod', menus: 'click', renderFull: renderIpod },
+    { id: 'ipod-custom5-transparent-coil', label: 'Custom 5G Transparent Coil (2005)', line: 'custom', gen: 5, year: '2005', color: 'Transparent Coil', base: 'ipod', menus: 'click', renderFull: renderIpod },
     { id: 'ipod-original', label: 'Click (Original)', base: 'ipod', look: 'original', menus: 'click', renderFull: renderIpod },
   ];
   var BY_ID = SKINS.reduce(function (m, s) { m[s.id] = s; return m; }, Object.create(null));

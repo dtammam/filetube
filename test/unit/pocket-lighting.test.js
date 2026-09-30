@@ -943,7 +943,7 @@ test('AC6 CSS lock: the ONE Click wheel and dome rule reads the light (unset = t
     assert.match(r, /circle at calc\(50% \+ var\(--lx,0\) \* 10%\) calc\(var\(--pk-c-wheel-oy\) \+ var\(--ly,0\) \* 10%\)/, sel + ': the base ramp follows');
   }
   assert.ok(!/\n {2}\.mms-ipod-[a-z]+[^{]*\.ip-(wheel|center)/.test(CSS), 'no colorway-specific wheel or dome rule exists');
-  assert.match(rule('.mms-ipod .ip-wheel'), /box-shadow:var\(--mms-lit-wheel-shadow, var\(--mms-ipod-wheel-shadow\)\)/, 'the rim / recess / drop turn directional only when lit (the static token is the fallback)');
+  assert.match(rule('.mms-ipod .ip-wheel'), /box-shadow:var\(--pk-c-wheel-drop, 0 0 0 transparent\), var\(--mms-lit-wheel-shadow, var\(--mms-ipod-wheel-shadow\)\)/, 'the rim / recess / drop turn directional only when lit (the static token is the fallback); the optional wheel-drop role is a no-op transparent shadow unless a skin sets it');
   assert.match(rule('.mms-ipod .ip-center'), /circle at calc\(50% \+ var\(--lx,0\) \* 16%\) calc\(var\(--pk-c-center-oy\) \+ var\(--ly,0\) \* 16%\)/);
   assert.match(rule('.mms-ipod .ip-center'), /box-shadow:var\(--mms-lit-dome-shadow, var\(--mms-ipod-center-shadow\)\)/);
   // the lit-only tokens: defined ONCE, on the lit panel; the band + glass are pseudo-elements gated by .mms-lit

@@ -96,3 +96,4 @@ the checks.
   it carries on from that spot in that chapter (not chapter 1). Then Watch again: still the same spot.
   Repeat PAUSED: pause on Watch, tap Listen (still paused, same spot), then Watch (still paused).
 - [ ] v1.346.0 - On the phone: Extras > Skins > Shuffle > 4G (2010/2012/2013/2015) lists its colours and one previews live; Touch and Custom > Transparent show; Settings shows the new groups.
+- [ ] v1.347.0 - On the phone: Extras > Skins > Custom shows Transparent, Transparent Black and Transparent Coil; each looks like a frosted clear case over a circuit board, the wheel still turns and taps, and on Coil the ring and dome show while the wheel taps still work. With Ambient on, tilt the phone: Coil's ring shine and shadow follow the light.
