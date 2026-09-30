@@ -38,7 +38,7 @@ function buildComment(legs, { repo, pr, run }) {
   if (changedLegs.length) {
     const total = changedLegs.reduce((n, l) => n + l.rows.length, 0);
     lines.push(`${total} scene${total === 1 ? ' looks' : 's look'} different across ${changedLegs.length} leg${changedLegs.length === 1 ? '' : 's'}. `
-      + 'If that is intended, nothing to do: a bot opens a baselines PR after the merge. This report never blocks a merge.', '');
+      + 'If that is intended, nothing to do: after the merge a bot makes this look the new baselines. This report never blocks a merge.', '');
     let listed = 0;
     for (const l of changedLegs) {
       lines.push(`**${l.leg}** (${l.rows.length})`);

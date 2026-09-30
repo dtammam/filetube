@@ -3,7 +3,8 @@
 // same Playwright as tools/capture's lockfile, the job refuses to pass without baselines, the
 // rebaseline job (dispatch, or a push to rebaseline/*) is the only one that writes baselines, and the fixture
 // clock is pinned on both the server (clock-shim.js) and the browser (installPinnedClock). Visual is a
-// REPORT (PR comment with crops) and never a gate; a merge to main opens a baselines PR (2026-09-29).
+// REPORT (PR comment with crops) and never a gate; a merge to main refreshes the baselines through a
+// baselines-only PR the bot merges itself, reusing the PR run's shots when it shot the same tree (2026-09-30).
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -29,12 +30,15 @@ test('both jobs run in the Playwright container that matches tools/capture\'s pi
 });
 
 test('visual runs the geometry checks and the diff; only the rebaseline job (dispatch or rebaseline/*) writes baselines', () => {
-  // The rebaseline job also runs on a push to rebaseline/* (a workflow is dispatchable only
-  // once it is on the default branch); the diff never runs there, so the two never overlap.
-  assert.strictEqual(WF.jobs.visual.if, "github.event_name != 'workflow_dispatch' && !startsWith(github.ref, 'refs/heads/rebaseline/')");
-  // ...and on a push to main (the auto-refresh), except the merge of a baselines PR itself: a
-  // refresh must never trigger a refresh.
-  assert.strictEqual(WF.jobs.rebaseline.if, "github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/rebaseline/')) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '/chore/baselines-'))");
+  // The diff runs on pull requests ONLY: the push to main would diff the tree the PR run already
+  // diffed (12 legs for nothing), and it never overlaps the rebaseline/* or dispatch trigger.
+  assert.strictEqual(WF.jobs.visual.if, "github.event_name == 'pull_request'");
+  // The rebaseline job runs on dispatch, a push to rebaseline/* (a workflow is dispatchable only once
+  // it is on the default branch), and on a push to main only when refresh-source found no PR run to
+  // reuse; refresh-source is skipped for the merge of a baselines PR, so a refresh never triggers one.
+  assert.strictEqual(WF.jobs.rebaseline.needs, 'refresh-source');
+  assert.strictEqual(WF.jobs.rebaseline.if, "${{ !cancelled() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/rebaseline/')) || (needs.refresh-source.result != 'skipped' && needs.refresh-source.outputs.run == '')) }}");
+  assert.strictEqual(WF.jobs['refresh-source'].if, "github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '/chore/baselines-')");
   assert.ok(WF.on && 'workflow_dispatch' in WF.on && 'push' in WF.on && 'pull_request' in WF.on);
   // A PR branch runs once (pull_request); push covers main and the rebaseline/* trigger only.
   assert.deepStrictEqual(WF.on.push.branches, ['main', 'rebaseline/**']);
@@ -114,23 +118,49 @@ test('visual-report-comment.js CLI: hostile report input stays inside --stage/pr
   } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
 });
 
-test('baseline-refresh: only on a push to main, needs the merged fresh set, commits ONLY test/visual/baselines/, never merges', () => {
+test('refresh-source: reuses a PR run only when it shot the exact merged tree and every leg uploaded shots', () => {
+  const job = WF.jobs['refresh-source'];
+  assert.deepStrictEqual(job.permissions, { contents: 'read', actions: 'read' }, 'read-only');
+  assert.strictEqual(job.outputs.run, '${{ steps.find.outputs.run }}');
+  assert.strictEqual(job.steps.find((s) => s.uses && s.uses.startsWith('actions/checkout')).with['fetch-depth'], 2, 'both parents of the merge');
+  const body = runs('refresh-source');
+  assert.ok(body.includes("head=$(git rev-parse -q --verify 'HEAD^2')"), 'a merge commit\'s PR head');
+  assert.ok(body.includes('[ "$behind" = 0 ]'), 'main before the merge is an ancestor of the PR head');
+  assert.ok(body.includes(`[ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse "\${head}^{tree}")" ]`), 'the merged tree IS the PR head tree');
+  assert.match(body, /gh run list --repo "\$REPO" --workflow visual\.yml --event pull_request --commit "\$head" --status success /, 'a passed PR run of that head');
+  // A leg that did not capture cleanly uploads no shots, so fewer than every leg means a partial set.
+  const { ERAS, viewports } = require('../visual/capture.js');
+  const legs = ERAS.length * Object.keys(viewports(1)).length;
+  assert.ok(body.includes(`if [ "$n" = ${legs} ]; then run="$id"; break; fi`), `all ${legs} legs' shots, or no reuse`);
+  assert.ok(body.includes('select((.name | startswith("visual-shots-")) and (.expired | not))'));
+  assert.ok(body.includes('echo "run=${run}" >> "$GITHUB_OUTPUT"'));
+});
+
+test('baseline-refresh: only on a push to main, takes the reused or re-shot set, commits ONLY test/visual/baselines/, merges only its own PR', () => {
   const job = WF.jobs['baseline-refresh'];
-  assert.strictEqual(job.needs, 'rebaseline-merge');
-  assert.strictEqual(job.if, "github.event_name == 'push' && github.ref == 'refs/heads/main'");
-  assert.deepStrictEqual(job.permissions, { contents: 'write', 'pull-requests': 'write' });
+  assert.deepStrictEqual(job.needs, ['refresh-source', 'rebaseline-merge']);
+  assert.strictEqual(job.if, "${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.refresh-source.outputs.run != '' || needs.rebaseline-merge.result == 'success') }}");
+  assert.deepStrictEqual(job.permissions, { contents: 'write', 'pull-requests': 'write', actions: 'read' });
+  assert.deepStrictEqual(job.concurrency, { group: 'baseline-refresh', 'cancel-in-progress': false }, 'one refresh at a time');
   const body = runs('baseline-refresh');
   assert.match(body, /git add -A -- test\/visual\/baselines/, 'only the baselines directory is staged');
   assert.match(body, /git diff --cached --name-only \| grep -qv '\^test\/visual\/baselines\/'/, 'a non-baseline staged path aborts');
   assert.match(body, /gh pr create /);
-  assert.doesNotMatch(body, /gh pr merge|--auto|--admin/, 'the bot never merges');
+  // It merges ONLY the baselines PR it just opened (after the staged-path check), never with --admin.
+  assert.deepStrictEqual(body.match(/gh pr merge[^\n]*/g), ['gh pr merge "$branch" --repo "$REPO" --merge']);
+  assert.ok(body.indexOf("grep -qv '^test/visual/baselines/'") < body.indexOf('gh pr merge'), 'the path check runs before the merge');
+  assert.doesNotMatch(body, /--auto|--admin/);
   assert.ok(body.includes('"HEAD:refs/heads/${branch}"'), 'the push targets only the baselines branch, never main');
   assert.doesNotMatch(body, /refs\/heads\/main/);
   assert.match(body, /branch="chore\/baselines-\$\(git rev-parse --short HEAD\)"/);
-  const dl = job.steps.find((s) => s.uses && s.uses.startsWith('actions/download-artifact'));
-  assert.strictEqual(dl.with.name, 'visual-baselines');
-  // no other job may create a PR or push to a branch of the repo's own
-  for (const name of Object.keys(WF.jobs).filter((n) => n !== 'baseline-refresh')) assert.doesNotMatch(runs(name), /gh pr create/, name);
+  const dls = job.steps.filter((s) => s.uses && s.uses.startsWith('actions/download-artifact'));
+  const reuse = dls.find((s) => s.if === "needs.refresh-source.outputs.run != ''");
+  const reshot = dls.find((s) => s.if === "needs.refresh-source.outputs.run == ''");
+  assert.ok(reuse && reshot && dls.length === 2, 'exactly one download runs: the PR run\'s shots or the re-shot set');
+  assert.deepStrictEqual([reuse.with.pattern, reuse.with['merge-multiple'], reuse.with['run-id'], reuse.with.path], ['visual-shots-*', true, '${{ needs.refresh-source.outputs.run }}', 'fresh-baselines']);
+  assert.deepStrictEqual([reshot.with.name, reshot.with.path], ['visual-baselines', 'fresh-baselines']);
+  // no other job may create or merge a PR
+  for (const name of Object.keys(WF.jobs).filter((n) => n !== 'baseline-refresh')) assert.doesNotMatch(runs(name), /gh pr (create|merge)/, name);
 });
 
 test('visual-report-comment.js: the comment lists changed scenes with crops (capped), says "No visual changes" otherwise, and flags a leg with no report', () => {
