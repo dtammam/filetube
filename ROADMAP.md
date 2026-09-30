@@ -158,6 +158,14 @@
 
 ### Features
 
+- [ ] **Listen Control: the phone plays music on the PC** _(Dean, 2026-09-30: "I want the ability to have a
+  device control playback on another device as an optional opt-in thing ... pick things on the phone and
+  explicitly have them be played on the computer's web browser instance")_ - plan:
+  `docs/exec-plans/active/2026-09-30-listen-control.md` (Sonnet builds it). Music only, full remote: the
+  PC opts in on its Music page, the phone picks Play on... in the iPod menu, stays silent and mirrors the
+  PC's Now Playing (play/pause/next/prev/scrub). Server-Sent Events behind nginx with a polling fallback,
+  no new dependency, same user only. FULL gate. Target v1.348.0.
+
 - [x] **iPod skin true-up: 27 new colorways, real model names, Extras by line and generation** - SHIPPED v1.345.0 (see Shipped) _(Dean,
   2026-09-29)_ - plan: `docs/exec-plans/completed/2026-09-29-ipod-trueup/plan.md`
   (every color, id, name and CSS value precomputed and proven in `payload/`). From nanochromatic.com's
