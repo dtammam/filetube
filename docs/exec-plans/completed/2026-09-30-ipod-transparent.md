@@ -3,9 +3,9 @@ plan: ipod-transparent
 harness: v2 · lean
 branch: feat/v1.347-transparent-ipods
 anchor: outcome
-status: Building
+status: Shipped v1.347.0
 next: dual-Node suites, gate, PR
-gate: pending (adversary, qa, security-brief)
+gate: APPROVED r1 @5f7c12ac (adversary, qa, security-brief); fallback pins + Commons links added after
 ---
 
 # Three Transparent iPods (v1.347.0)

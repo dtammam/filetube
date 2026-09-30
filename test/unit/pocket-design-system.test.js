@@ -80,6 +80,11 @@ test('AC4: every registry colorway has EXACTLY ONE block that sets every role, a
     assert.ok(read.has(r), r + ' is set but never read (a dead role)');
     assert.ok(roleRules.some((b) => decls(b.body).some(([p]) => p === r)), r + ' is read but no block sets it');
   }
+  // the fallbacks reproduce the pre-v1.347 paint exactly, so a skin that sets none of the roles is unchanged
+  assert.match(CSS, /padding:var\(--pk-c-bezel, var\(--space-1\)\)/, 'the LCD bezel falls back to the old var(--space-1)');
+  assert.match(CSS, /opacity:var\(--pk-c-zone-op, 1\)/, 'the tap zones fall back to fully drawn');
+  assert.match(CSS, /box-shadow:var\(--pk-c-wheel-drop, 0 0 0 transparent\), var\(--mms-lit-wheel-shadow, var\(--mms-ipod-wheel-shadow\)\)/, 'the wheel drop falls back to a transparent no-op layer');
+  assert.strictEqual((CSS.match(/background:var\(--pk-c-wheel-art, radial-gradient\(90% 55% at calc\(50% \+ var\(--lx,0\) \* 30%\)/g) || []).length, 1, 'the wheel art falls back to the original sheen + base ramp');
 });
 
 // Gate r1 W2 (adversary, measured): the lock counted only rules that SET a role, so a second,
