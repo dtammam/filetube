@@ -9,7 +9,7 @@ design: Approved 2026-09-30 (Dean: "handle the UX overhaul code cleanup ... I've
 gate: pending (full: adversary + qa + security-brief; scrutiny.toml forces it for tokens.css and package.json)
 ---
 
-# UX overhaul cleanup: retire the leftovers of the v1.341 UI pass, change no pixel
+# UX overhaul cleanup: retire the leftovers of the v1.341 UI pass, change no pixel, then a fresh README
 
 Written 2026-09-30 by an Opus session for a **Sonnet** builder in a fresh session. Every scope decision
 is already made. **Your job is to remove and re-spell, never to redesign.** If something here does not
@@ -21,7 +21,9 @@ v1.341.0 ("One consistent look", plan `docs/exec-plans/completed/2026-09-27-ui-p
 built the new design system (tokens.css roles, ui.css / ui.js primitives, ui-lint) and swept every
 surface onto it. It deliberately left debt on a shrink-only ratchet (`docs/ui-exceptions.json`, plan
 D10.3 / D10.4 amendment) and promised "one true-up wave to clear them ... opened only if Dean signs the
-pass off on device" (tech-debt #289 (d)). Dean signed it off on 2026-09-30. This is that wave.
+pass off on device" (tech-debt #289 (d)). Dean signed it off on 2026-09-30. This is that wave. It closes with W5 (added by Dean, 2026-09-30):
+the README's screenshots are retaken from the cleaned-up UI and the README is freshened, which also
+closes the ROADMAP chore "Refresh the README screenshots" (Dean, 2026-09-29).
 
 **The one rule that defines success: the app looks exactly the same.** Dean loves the current look. A
 cleanup that moves one pixel is a regression. Every wave is proven pixel-identical against `origin/main`
@@ -37,6 +39,7 @@ across all four eras, both modes and every viewport (Step 0.3).
 | `no-legacy-tokens`, reason "legacy token with no exact role (step 7 ...)" | 354 | style.css 349, watch.js 2, ui.css 1, common.js 1, main.js 1 | W3 |
 | Dead CSS rules / JS functions the sweeps replaced but did not delete | unknown (census in W0) | public/ | W1 |
 | Docs that still teach the retired system | unknown (census in W0) | docs/, AGENTS.md | W4 |
+| README screenshots from before the skins, the Pocket and the one look; README copy behind the features | 7 shots + copy | README.md, assets/images/ | W5 |
 
 A rough scan (not proof) found 173 style.css classes with no literal reference in public/, lib/ or
 server.js. Most are skin classes built at runtime (`mms-ipod-*`, `mms-look-*`, `icon-*`), so they are
@@ -89,7 +92,7 @@ Anything else you notice: add one line to ROADMAP.md (Chores) or the tech-debt t
    - A test fails after a deletion: if the test pins ONLY the deleted dead item, delete or trim that test
      in the same commit and name it in the commit message; if it pins anything live, you deleted
      something live: restore it.
-   - Ask Dean (AskUserQuestion) only for: the noise run in 0.3 is not 0 changed pixels; a step's command
+   - Ask Dean (AskUserQuestion) for the W5 screenshot pick (planned), and otherwise only for: the noise run in 0.3 is not 0 changed pixels; a step's command
      does not exist or behaves unlike this plan says; the gate reaches a 3rd CHANGES round.
 9. No em dashes in docs, commit messages or the ledger (plain hyphens). Do not narrate ceremony to Dean.
 
@@ -203,6 +206,68 @@ For each of the 377 entries:
   with its new reason; do not close #289 (its device checks and the out-of-scope items stay).
 - Docs-only commit: the fast pre-commit path; no suite run needed.
 
+## W5. Fresh README screenshots and copy (commit "docs(readme): W5 new screenshots and a fresher README")
+
+Added by Dean (2026-09-30): "as part of the finished cleanup/snapshots ... replace snapshots in the
+README and generally freshen up the readme". Do this AFTER W4, from the cleaned-up head, so the shots
+show exactly what ships.
+
+**5a. The shots come from the seeded fixture, never a real library.** `test/visual/seed.js` data is
+synthetic (fictional channels, drawn thumbnails and art): safe to publish. Never photograph Dean's
+server, a real channel, a real thumbnail or a creator's art.
+
+**5b. Pick the set** (today's README: 3 desktop shots in the old light era, 4 phone shots in the dark
+Modern era; ROADMAP chore: light and dark, desktop and phone, plus one of the Pocket with a skin).
+Proposed set, 8 shots, scene ids from `test/visual/capture.js`:
+- Desktop, large hero: `01-home` (2021 Modern, light).
+- Desktop pair: `17-watch-top` (2021, dark) and `01-home` or `03-channel-page` in the 2005 Original
+  era (light), to show the eras.
+- Phone row of four: `01-home` (dark), `17-watch-top` or `18-watch-action-row-channel` (dark),
+  `10-music-home` or `14-music-album-drill` (dark), and one `41-pocket-*` scene with a skin (Click or
+  one of the iPod colorways; lighting off, as the scene already sets it).
+- Optional fifth phone shot if it reads well: `50-books-library` or `08-podcasts-list`.
+Capture them from the W4 head with `--only <ids> --era <era> --vp <vp> --dpr 2` into a scratch dir
+(the seeded server as in 0.3). Leave out any shot with a toast, a spinner, a half-open sheet or a clipped
+edge; pick a different scene instead.
+
+**5c. Dean picks before anything is committed.** Build one contact sheet (a simple HTML page or a
+stitched PNG: every candidate labeled with scene, era, mode, viewport), send it to Dean with
+SendUserFile, and ask with AskUserQuestion: approve the set, or name swaps. This is the plan's only
+planned Dean checkpoint besides the stop rules; wait for his answer.
+
+**5d. Files.**
+- New names describe the content, not the era word: e.g. `desktop-home-light.png`,
+  `desktop-watch-dark.png`, `desktop-home-2005.png`, `phone-home-dark.png`, `phone-watch-dark.png`,
+  `phone-music-dark.png`, `phone-pocket-<skin>.png`.
+- Size budget: each file at most 1 MB, the new set at most 6 MB in total. No compressor is installed
+  (pngquant/cwebp/ImageMagick are absent); if a PNG is over budget, re-encode it as JPEG quality 85
+  with Playwright (open the PNG in a page, `page.screenshot({ type: 'jpeg', quality: 85 })` at its
+  size), and use the `.jpg` name. Do not add a dependency for this.
+- Delete the replaced images and the unreferenced old ones (`desktop1.png`, `mobile1.jpg`,
+  `mobile2.jpg`, `mobilecomments.png`, the three `lightExampleOldEra-*`, the four `darkExampleEra-*`)
+  only after `grep -rn "<name>" --exclude-dir=node_modules --exclude-dir=.git .` shows README.md as the
+  sole reference (it did on 2026-09-30). Keep the banners, the logo and the icon.
+- Stage images by name (`git add assets/images/<file>` each; `git rm` each deleted file).
+
+**5e. Freshen the README copy.**
+- Keep its skeleton (banner, badges, Screenshots, Features, Roku, extension, Quick Start, Configuration,
+  Local development, Roadmap, License) and everything in Quick Start / Configuration / Local development
+  that is still true. Check every command, env var, port and path against `docs/CONFIGURATION.md`,
+  `docker-compose*.yml`, `Dockerfile` and `package.json` before keeping it; fix any that drifted.
+- Update Features so it describes what ships today, in plain user language, one short line per
+  feature. Source every claim from a ROADMAP.md Shipped entry (skins and the Pocket, the four eras, Watch
+  later, Clean up suggestions, Share for any download, chapters, Liked, Listen/Watch keeping your place,
+  and so on). Do not invent or oversell a feature; do not mention anything planned, parked or in a
+  branch.
+- Rewrite the Screenshots captions for the new set (alt text says what the shot shows).
+- No em dashes; plain hyphens. Leave the existing emoji headings as they are unless Dean says otherwise.
+  Keep the README shorter than or about as long as today (197 lines).
+- Tick the ROADMAP chore "Refresh the README screenshots" with "DONE in v1.347.3".
+- Acceptance: every `<img>`/`![]` path in README.md resolves to a file in the tree (script it:
+  extract the paths, `test -f` each, count 0 missing); every link to a repo file resolves; Dean approved
+  the shots in 5c. Docs/assets only: no suite run needed for this commit, and it cannot move the pixel
+  A/B (it touches nothing under `public/`).
+
 ## Step 5. Verify, gate, release
 
 **5.1 Full verification** (sequential, nothing else running, reviewers idle): `npm run lint:ui`,
@@ -222,6 +287,8 @@ sha 39707089, head sha, this plan}. Attack surfaces to name in the brief:
   to dodge a count; reasons changed only as this plan allows.
 - **Test weakening:** every deleted or re-spelled test pinned only dead code, and each re-spelled lock
   still fails on the break.
+- **README truth (W5):** every feature claim traces to a Shipped entry; every command/env var/path in
+  Quick Start and Configuration exists in the tree; every image resolves; no shot shows real content.
 - **Out-of-scope drift:** nothing from the OUT list changed (`git diff 39707089 -- lib/ server.js`
   must be empty; no player-carve-out, skin, md-nav or showConfirmModal edits).
 CHANGES: fix, re-engage the SAME seat for a delta re-confirm. After 2 CHANGES rounds, ask Dean before
@@ -230,7 +297,7 @@ round 3. Verdicts are written into this plan; commit them.
 **5.3 Release v1.347.3** per `docs/RELEASING.md` and the protected-main flow in memory: `npm version
 1.347.3 --no-git-tag-version`; ROADMAP.md Shipped entry above v1.347.2 (what was retired, the counts,
 style.css lines before/after, "0 changed pixels across N shots", gate result, what stays and why); tick
-tech-debt #289 (d) partially as in W4; a `docs/releases.json` entry in plain user language (suggested:
+tech-debt #289 (d) partially as in W4; the ROADMAP README chore ticked in W5; a `docs/releases.json` entry in plain user language (suggested:
 title "A tidier app under the hood", body along the lines of "Old code left behind by the new look is
 gone. Nothing looks or works differently."); a LESSONS.md entry only if the wave taught a reusable
 lesson; `node scripts/plan-complete.js docs/exec-plans/active/2026-09-30-ux-cleanup.md "Shipped v1.347.3" --apply`.
@@ -251,6 +318,9 @@ looks or acts different is a regression".
   verbatim.
 - **AC5** `git diff 39707089 -- lib/ server.js` is empty; nothing in the OUT list changed.
 - **AC6** Gate APPROVED by adversary, qa and security-brief, bound to the head sha.
+- **AC7** README: the new shots are the set Dean approved in W5 (from the seeded fixture), 0 missing
+  image paths, the old replaced images removed, each image at most 1 MB and the set at most 6 MB, and
+  Features matches the Shipped entries.
 
 ## Build log
 
