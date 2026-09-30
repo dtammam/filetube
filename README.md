@@ -36,7 +36,7 @@ Web Push notifications).
 
 ## Screenshots
 
-**Desktop - the 2021 era in light mode, the 2005 era below it:**
+**Desktop - the 2021 era in light mode, then the 2005 era and the watch page:**
 
 <p align="center">
   <img src="assets/images/desktop-home-light.png" alt="Home in the 2021 era, light mode, on desktop" width="840">

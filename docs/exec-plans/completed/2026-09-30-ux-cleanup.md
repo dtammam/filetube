@@ -6,7 +6,7 @@ anchor: spec
 status: Shipped v1.347.3
 next: Step 0 (read this whole plan once, top to bottom, before touching anything)
 design: Approved 2026-09-30 (Dean: "handle the UX overhaul code cleanup ... I've tested the new system and just love it"; scope and rulings below are the architect's, taken on his word "I will take your advice")
-gate: pending (full: adversary + qa + security-brief; scrutiny.toml forces it for tokens.css and package.json)
+gate: APPROVED r1 @3b134503 (adversary + qa + security-brief)
 ---
 
 # UX overhaul cleanup: retire the leftovers of the v1.341 UI pass, change no pixel, then a fresh README
@@ -345,3 +345,7 @@ looks or acts different is a regression".
 - **W3 (legacy tokens):** `--radius-lg`, `--star-gold`, `--yt-red-dark` retired (added to RETIRED_ALIASES so the ban stays); every other legacy token varies per era and was kept. `lint:ui` TOTAL 3225 -> 3183.
 - **W4 (docs):** live docs already accurate; tracker #289 (d) marked done.
 - **W5 (README):** 8 new screenshots (Dean's pick, synthetic seeded library), 11 old images removed, copy freshened; all README paths resolve.
+
+Gate: APPROVED r1 @3b134503 — security-brief
+Gate: APPROVED r1 @3b134503 — qa
+Gate: APPROVED r1 @3b1345034ba82e38834cb0a2a7655858da309ae1 — adversary
