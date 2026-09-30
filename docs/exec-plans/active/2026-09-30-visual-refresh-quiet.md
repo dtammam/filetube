@@ -3,7 +3,7 @@ plan: visual-refresh-quiet
 harness: v2 · lean
 branch: ci/visual-refresh-quiet
 anchor: outcome
-status: Building
+status: Gate passed
 design: Approved 2026-09-30 (Dean, Q&A: bot PR auto-merged; drop the main diff and reuse the PR shots)
 gate: adversary + security-brief (the bot now merges to main with the workflow token)
 ---
@@ -86,3 +86,23 @@ Gate: CHANGES r1 @c13116fb - adversary
 - Adversary 6: setting flipped 2026-09-30 (`can_approve_pull_request_reviews: true`, measured). Adversary 7: AGENTS.md claim removed; next-waves line marked superseded.
 - Not taken: Adversary 4 (ordering, self-heals next merge), Security NOTE-4 (content check; same trust as the re-shoot path), NOTE-5.
 - Live dry run of the r2 script: e15e645e reuses 36779173824; a5dfec5e and 3fa48a32 re-shoot.
+
+### Adversary r2 @56e2124c: PASS
+
+- 1 fixed as prescribed: the three mutants (no `if`, `!= 'skipped'`, bare `!cancelled()`) all go red. The live `rebaseline/*` proof is still owed after the merge.
+- 2 fixed as prescribed: `behind=0`, the reversed compare and `.ahead_by` all go red. Dropping `github-token` now goes red too.
+- New fork filter: dropping it, hardcoding `from`, or reading `.repository` instead all go red. Run live, the script still reuses 36779173824 (e15e645e) and 36750264978 (774d6901) and re-shoots a5dfec5e and 3fa48a32. With `gh` stubbed to return a fork or `null` head repo, it prints "not this repo" and reuses nothing. `--match-head-commit` exists in gh 2.101.0, and dropping it or pointing it at HEAD~1 goes red.
+- Setting measured: `can_approve_pull_request_reviews: true`. Tests 16/16 pass, eslint exit 0.
+- Accepted as disclosed: 4 (ordering self-heals), and 5 only for a same-repo PR into another base.
+
+Gate: APPROVED r2 @56e2124c - adversary
+
+### Security r2 @56e2124c
+Gaps: still no shell. I re-read visual.yml at the working tree, which I did not confirm is 56e2124c. I have not seen the `git diff` output or the repo settings myself.
+- NOTE-1 fixed as prescribed (line 395). `git rev-parse HEAD` runs after `git commit`, so it binds the merge to the checked bot commit.
+- NOTE-3 fixed differently, and the change is acceptable. The head-repo filter (lines 237-238) drops fork runs, including a `null` head repo, which prints "null" and does not match. It also means fork-made artifacts can no longer reach the reuse download, which narrows NOTE-4. A `gh api` failure stops the job under `set -e`, and `rebaseline` then re-shoots, so a failure is safe. `${from}` is only echoed inside quotes, so nothing is injected. What remains: a PR from a branch in this repo, at the same head sha but into a different base. Only people with write access can make one, so this is accepted as a NOTE.
+- NOTE-2 settled by the Architect's measurement (`default_workflow_permissions: read`), which I have not checked myself. A read default means docker-publish.yml gets a read-only token, so the flip does not widen its exposure.
+- NOTE-4 and NOTE-5 not taken; accepted on the stated reasoning.
+- New in the delta: the `rebaseline-merge` `if` changes no security surface, because its token is contents: read and it only merges this run's own artifacts. Nothing new found.
+
+Gate: APPROVED r2 @56e2124c — security-brief
