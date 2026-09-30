@@ -195,6 +195,10 @@
                  (slot kept, inert) so the first play never reflows the toolbar, and has no box
                  on a phone (style.css html.is-phone), where the in-tab skin is used instead. -->
             <button class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-slot-reserved" id="music-popout-btn" type="button" aria-hidden="true" tabindex="-1" inert title="Pop the player out into a floating window" aria-label="Pop out player" aria-pressed="false"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-open_in_new"/></svg></span><span class="ui-btn__label">Pop out</span></button>
+            <!-- v1.348 Listen Control: the PC opt-in. Static markup (always shown on a desktop, so it
+                 never reflows the toolbar); music.js binds it to FileTube.remote. No box on a phone,
+                 which is a controller, never a target (style.css html.is-phone). -->
+            <button class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill" id="music-remote-btn" type="button" title="Let your other devices play music in this tab" aria-label="Remote control" aria-pressed="false"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-tv"/></svg></span><span class="ui-btn__label">Remote control</span></button>
             <!-- v1.278 (Dean): desktop actions menu - the video-parity Extras
                  (Share/Transcript/Watch/Reheat/Like/Watched/queue/Move/Delete, "if
                  relevant") for the now-playing track, via the SHARED createExtrasMenu
@@ -510,6 +514,8 @@
   <script src="/js/ui.js"></script>
   <script src="/js/interaction.js"></script>
   <script src="/js/common.js"></script>
+  <!-- v1.348 Listen Control: the target stream lives in the persistent shell, so every shell that loads common.js loads it (test/unit/remote-shell-inclusion.test.js). -->
+  <script src="/js/remote.js"></script>
   <script src="/js/main.js"></script>
   <script src="/js/ambient.js"></script>
   <script src="/js/watch.js"></script>

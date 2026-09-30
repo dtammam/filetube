@@ -1380,9 +1380,101 @@ if (typeof module !== 'undefined' && module.exports) {
     // all non-music render the default panel/chrome unchanged.
     var SKINS = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
     function mmssMusic(s) { s = Math.max(0, Math.floor(Number(s) || 0)); var m = Math.floor(s / 60), r = s % 60; return m + ':' + (r < 10 ? '0' : '') + r; }
-    function hostCtl(id) { return document.getElementById(id); }
+    // ---- v1.348 LISTEN CONTROL (phone side): while this device controls another, the skin engine runs
+    // UNCHANGED over virtual host controls (hostCtl) that send commands and read the target's state, so
+    // the wheel, scrub, fast-scan and the |<< >>| buttons all work without the engine knowing. Local
+    // mode (RC off) returns the real elements, byte-for-byte.
+    var RC = (window.FileTube && window.FileTube.remoteControl) || null;
+    var remoteDocked = false;
+    function remoteOn() { return !!(RC && RC.isRemote()); }
+    function remoteDur() { var st = RC && RC.state(); return (st && Number(st.duration) > 0) ? Number(st.duration) : 0; }
+    var remoteCtls = null;
+    function remoteCtl(id) {
+      if (!remoteCtls) {
+        remoteCtls = {
+          'media-player': {
+            get paused() { var st = RC.state(); return !(st && st.state === 'playing'); },
+            get duration() { return remoteDur(); },
+            get currentTime() { return RC.position(); },
+            set currentTime(v) { RC.seek(Number(v) || 0); },
+            playbackRate: 1,
+            addEventListener: function () {}, removeEventListener: function () {},
+          },
+          'pp-btn': { click: function () { RC.toggle(); } },
+          'track-prev-btn': { click: function () { RC.prev(); } },
+          'track-next-btn': { click: function () { RC.next(); } },
+          'seek-bar': {
+            value: '0',
+            dispatchEvent: function (ev) {
+              var d = remoteDur();
+              if (ev && ev.type === 'change' && d > 0) RC.seek(Math.min(1, Math.max(0, Number(this.value) || 0)) * d);
+              return true;
+            },
+          },
+        };
+      }
+      return remoteCtls[id] || null;
+    }
+    function hostCtl(id) {
+      if (remoteOn()) { var v = remoteCtl(id); if (v) return v; }
+      return document.getElementById(id);
+    }
+    function remoteSkinCtx() {
+      var st = RC.state() || {};
+      var tr = st.track || null;
+      var dur = remoteDur();
+      var pos = Math.min(dur || Infinity, Math.max(0, RC.position()));
+      var blocked = st.state === 'blocked';
+      return {
+        track: { title: tr ? tr.title : 'Nothing playing', artist: blocked ? "Click the PC's tab once to let it play" : (tr ? tr.artist : ''),
+          album: tr ? tr.album : '', artUrl: (tr && tr.artUrl) || '' },
+        remote: { label: RC.label() },
+        artistTap: false, artistTitle: '',
+        upNext: [], fullList: [], playing: st.state === 'playing', posSec: pos, durSec: dur,
+        posLabel: mmssMusic(pos), remLabel: dur > 0 ? ('-' + mmssMusic(dur - pos)) : '',
+        curNum: 0, total: 0, // no "N of M": the PC's queue is not this device's
+      };
+    }
+    function remotePlayAt(i) {
+      var item = queue[i];
+      if (!item || item.listen || typeof item.id !== 'string') {
+        if (typeof window.showToast === 'function') window.showToast('Only music can play on ' + RC.label());
+        return;
+      }
+      var ids = [], idx = 0;
+      for (var j = 0; j < queue.length; j++) {
+        var q = queue[j];
+        if (q && !q.listen && typeof q.id === 'string') { if (j === i) idx = ids.length; ids.push(q.id); }
+      }
+      remoteDocked = false;
+      RC.play(ids, idx);
+    }
+    function playOnItems() {
+      var here = (window.FileTube && typeof window.FileTube.getDeviceLabel === 'function' && window.FileTube.getDeviceLabel()) || 'device';
+      return RC.fetchTargets().then(function (list) {
+        var items = [{ label: 'This ' + here, check: !RC.isRemote(), action: 'playon', target: null }];
+        list.forEach(function (t) {
+          var tt = t.state && t.state.track && t.state.track.title;
+          items.push({ label: t.label, detail: tt || '', check: RC.targetId() === t.deviceId, action: 'playon', target: t });
+        });
+        if (!list.length) items.push({ label: "No PC is listening. Turn on Remote control on the PC's Music page.", info: true, note: true });
+        return { items: items };
+      });
+    }
+    function remoteChoose(t) {
+      var pl = window.FileTube && window.FileTube.player;
+      if (t) {
+        if (pl && typeof pl.pause === 'function') { try { pl.pause(); } catch (_) { /* best effort */ } }
+        remoteDocked = false;
+        RC.select(t);
+      } else {
+        RC.leave();
+      }
+      updateNowPlayingPanel();
+    }
     function skinIsActive() {
       if (!SKINS) return false;
+      if (remoteOn()) return SKINS.skinActiveFor({ isMusic: true });
       var pl = window.FileTube && window.FileTube.player;
       var meta = (pl && typeof pl.getCurrentMeta === 'function') ? pl.getCurrentMeta() : null;
       return SKINS.skinActiveFor(meta);
@@ -1390,6 +1482,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // `popout` = the ctx is for the desktop pop-out window's engine (the artist line's mode
     // differs there - see artistTapMode).
     function buildSkinCtx(ci, popout) {
+      if (remoteOn()) return remoteSkinCtx();
       var mp = hostCtl('media-player');
       var dur = (mp && isFinite(mp.duration) && mp.duration > 0) ? mp.duration : ((queue[ci] && Number(queue[ci].durationSec)) || 0);
       var pos = mp ? (Number(mp.currentTime) || 0) : 0;
@@ -1446,6 +1539,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var SkinSurface = (typeof window !== 'undefined' && window.FileTubeSkinSurface) || null;
     var inTabEngine = null;  // created lazily at first skin render (mobile); the pop-out rides the shared shell below
     function dockToOrigin() {
+      if (remoteOn()) { remoteDocked = true; updateNowPlayingPanel(); return; } // v1.348: a remote mirror just steps aside
       // v1.247 (F2): dock to the mini on the ORIGIN tab - the engine's MENU/collapse hook.
       var pl = window.FileTube && window.FileTube.player;
       if (pl && typeof pl.dock === 'function') {
@@ -1485,6 +1579,7 @@ if (typeof module !== 'undefined' && module.exports) {
         hostCtl: hostCtl, // MAIN-document controls - a pop-out click still drives the real player
         onSelectIndex: function (i) { playAt(i, { soloChapter: true, pick: true }); }, // v1.311: a skin track tap is a single-chapter SELECT (exit after that segment)
         onDock: dockToOrigin,
+        onPlayOnBadge: function () { if (RC) { RC.leave(); updateNowPlayingPanel(); } }, // skins without menus: the badge ends remote control
         // v1.332 (D7): Home from the player - the sticker's Home row and a held MENU (the engine
         // offers both in the main document only); common.js docks quietly and routes to /.
         onHome: function () { if (window.FileTube && typeof window.FileTube.goHomeFromPlayer === 'function') window.FileTube.goHomeFromPlayer(updateNowPlayingPanel); },
@@ -1497,7 +1592,9 @@ if (typeof module !== 'undefined' && module.exports) {
           load: menuLoad,
           onPlay: function (req) { playFromMenu(req); },
           onShuffleAll: shuffleAllFromMenu,
-          hasCurrent: hasCurrentMusicTrack,
+          hasCurrent: function () { return remoteOn() || hasCurrentMusicTrack(); },
+          hasPlayOn: function () { return !!RC; },
+          onPlayOn: remoteChoose,
           currentId: effectiveCurrentId,
           dataVersion: function () { return menuDataGen; },
           likedVersion: function () { return menuLikedGen; },
@@ -2498,6 +2595,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // about reaching it on every call.
       syncAmbient();
       if (!nowPlayingPanel) return;
+      if (remoteOn() && !remoteDocked && skinIsActive() && renderNowPlayingSkin()) return; // v1.348: mirror the PC on the skin
       // v1.234: keep the desktop pop-out in step with the track/skin (this is the seam every
       // track change routes through, via playAt) and refresh the pop-out button's visibility.
       // Independent of the in-tab expanded/docked branch below, so a docked pop-out still updates.
@@ -2695,6 +2793,37 @@ if (typeof module !== 'undefined' && module.exports) {
       popoutBtn.setAttribute('aria-pressed', (popoutShell && popoutShell.isOpen()) ? 'true' : 'false');
     }
     if (popoutBtn) popoutBtn.addEventListener('click', function () { if (toolbarSlotLive(popoutBtn)) togglePopout(); }, { signal }); // v1.339 L1b: a reserved slot never acts
+
+    // v1.348 Listen Control: the PC opt-in switch, and the hook a remote "play" runs through. The
+    // handler is registered for this view's life only (the abort clears it - never a call into a dead
+    // closure); the switch mirrors FileTube.remote's state, which outlives the view in the shell.
+    var remoteBtn = root.querySelector('#music-remote-btn');
+    // v1.348: the mirror follows the PC - repaint when the track/device/state changes, tick the bar while it plays.
+    if (RC) {
+      var mirrorSig = '';
+      var sigOf = function () { var st = RC.state() || {}; return [RC.targetId(), st.track && st.track.id, st.state].join('|'); };
+      var offMirror = RC.onChange(function () {
+        var sig = sigOf();
+        if (sig !== mirrorSig) { mirrorSig = sig; updateNowPlayingPanel(); } else reflectEngines();
+      });
+      var mirrorTick = window.setInterval(function () { if (remoteOn() && !remoteDocked) reflectEngines(); }, 500);
+      signal.addEventListener('abort', function () { offMirror(); window.clearInterval(mirrorTick); });
+    }
+    var REMOTE = window.FileTube && window.FileTube.remote;
+    if (REMOTE && typeof REMOTE.setMusicPlayHandler === 'function') {
+      var remotePlay = function (req) {
+        playFromMenu({ tracks: req.tracks, index: req.index, play: { flat: true, label: 'From ' + (req.label || 'another device') } });
+      };
+      REMOTE.setMusicPlayHandler(remotePlay);
+      signal.addEventListener('abort', function () { REMOTE.setMusicPlayHandler(null); });
+      if (remoteBtn) {
+        var paintRemote = function () { remoteBtn.setAttribute('aria-pressed', REMOTE.isOn() ? 'true' : 'false'); };
+        paintRemote();
+        remoteBtn.addEventListener('click', function () { REMOTE.toggle(); paintRemote(); }, { signal });
+        var offRemote = REMOTE.onChange(paintRemote);
+        signal.addEventListener('abort', offRemote);
+      }
+    }
     // "Never both live" (the reflect/wheel comments) is STRUCTURAL since the UI pass (D7):
     // the in-tab skin runs only on a phone and the pop-out only off one, and html.is-phone
     // is fixed when the page loads - no resize or rotate can move a surface across the split,
@@ -3975,6 +4104,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     function playAt(i, opts) {
       if (i < 0 || i >= queue.length || !window.FileTube || !window.FileTube.player) return;
+      if (remoteOn()) { remotePlayAt(i); return; } // v1.348: the ONE play seam - controlling a PC never loads here
       askLightingForOpen();
       var item = queue[i];
       playGen += 1;
@@ -4127,6 +4257,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function menuLoad(node) {
       var n = node || {};
       if (!SKINS) return Promise.resolve({ items: [] });
+      if (n.type === 'playon') return RC ? playOnItems() : Promise.resolve({ items: [] });
       if (n.type === 'artists') {
         return fetchJson('/api/music/artists?limit=10000&sort=title-asc').then(function (d) { return { items: SKINS.menuArtistItems(menuItemsOf(d), musicArtUrl), letters: true }; });
       }

@@ -1,0 +1,102 @@
+{
+  "direct": {
+    "a_listed_ms": 321,
+    "a_phone_local_paused_after_pick": true,
+    "a_badge": "on Linux PC",
+    "b_pc_playing_ms": 1065,
+    "b_phone_local_loaded_song2": false,
+    "b_phone_local_paused": true,
+    "b_mirror_title": "Proof Song 2",
+    "c_pause_ms": 37,
+    "c_pause_mirror_ms": 39,
+    "c_resume_ms": 44,
+    "c_next_ms": 67,
+    "c_next_id": "song2 -> song3",
+    "c_next_mirror_ms": 399,
+    "c_mirror_title_after_next": "Proof Song 3",
+    "c_prev_ms": 73,
+    "c_prev_id": "song2",
+    "c_seek_bar": {
+      "x": 70,
+      "y": 254.09375,
+      "width": 245,
+      "height": 12
+    },
+    "c_snap_before_seek": {
+      "id": "song2",
+      "position": 0.017856,
+      "duration": 120,
+      "playing": true,
+      "hasPrev": true,
+      "hasNext": true
+    },
+    "c_seek_ms": 6,
+    "c_seek_position": 60,
+    "c_seek_mirror_ms": 261,
+    "c_phone_pos_label": "0:59",
+    "c_phone_local_loaded_anything_new": 0,
+    "d_pc_path": "/",
+    "d_still_playing": true,
+    "d_pill_visible": true,
+    "d_next_on_home_ms": 56,
+    "e_play_from_home_ms": 1325,
+    "e_pc_path": "/music",
+    "f_phone_controlling_after_reload": null,
+    "f_pc_snapshot": {
+      "id": "song3",
+      "position": 0,
+      "duration": 120,
+      "playing": false,
+      "hasPrev": true,
+      "hasNext": false
+    },
+    "f_phone_text": "Click the PC's tab once to let it play Proof Album 0:00 -2:00 MENU Home Albums Artists Songs Songs Playing from Proof Album Proof Song 1 Proof Band · Proof Album 2:00 Proof Song 2 Proof Band · Proof Album 2:00 Proof Song 3 Proof Band · Proof Album 2:00 Home Playlists History P You",
+    "f_pc_reported_state": [
+      "blocked"
+    ],
+    "g_controlling_before_close": "{\"deviceId\":\"34ad0b0e-b88d-411e-8537-28525b152687\",\"label\":\"Linux PC\"}",
+    "g_phone_back_to_local_ms": 19,
+    "g_toast_seen": true,
+    "g_phone_local_paused": true,
+    "g_controlling_key": null,
+    "errors": []
+  },
+  "buffering_proxy": {
+    "a_listed_ms": 314,
+    "a_phone_local_paused_after_pick": true,
+    "a_badge": "on Linux PC",
+    "b_pc_playing_ms": 4765,
+    "b_phone_local_loaded_song2": false,
+    "b_phone_local_paused": true,
+    "b_mirror_title": "Nothing playing",
+    "c_pause_ms": 1475,
+    "c_pause_mirror_ms": 1477,
+    "c_resume_ms": 1506,
+    "c_next_ms": 1511,
+    "c_next_id": "song2 -> song3",
+    "c_next_mirror_ms": 3276,
+    "c_mirror_title_after_next": "Proof Song 3",
+    "c_prev_ms": 1228,
+    "c_prev_id": "song2",
+    "c_seek_bar": {
+      "x": 70,
+      "y": 254.09375,
+      "width": 245,
+      "height": 12
+    },
+    "c_snap_before_seek": {
+      "id": "song2",
+      "position": 0.020267,
+      "duration": 120,
+      "playing": true,
+      "hasPrev": true,
+      "hasNext": true
+    },
+    "c_seek_ms": 1439,
+    "c_seek_position": 60,
+    "c_seek_mirror_ms": 2722,
+    "c_phone_pos_label": "1:00",
+    "c_phone_local_loaded_anything_new": 0,
+    "errors": []
+  }
+}

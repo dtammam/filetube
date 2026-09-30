@@ -155,6 +155,8 @@ Depth: `docs/references/ios-background-audio-behavior-map.md`, `docs/references/
 - **iOS force-renders some codepoints as COLOR emoji and ignores `color:`** (U+23xx/25xx transport, U+2190-2193 arrows, U+2665). Guard: CSS/SVG glyphs with `currentColor` and a test that no such chars ship, or U+FE0E + `font-variant-emoji:text`; `«»` and `∞` are safe. (v1.38-v1.232; x4)
 - **iOS background PWA audio:** an audio-less backgrounded process is suspended (a paused sidecar cannot resume). Guard: keep-alive loops a LONG (~3s) silent clip, auto-stops when idle, re-asserts MediaSession position, stops at EVERY teardown writer (exact-count lock); set `playbackState` from the `play()` promise (iOS derives the remote command from it, so a stale 'paused' turns an AirPods squeeze into a no-op); time out and retry a hung `play()`; storage-isolated sibling PWAs still couple audio; only native (Capacitor/AVPlayer) fixes it. (v1.121, v1.136, v1.161; x3)
 
+- **SSE behind a reverse proxy: a buffering proxy holds every byte, including `hello`, so a client can NEVER learn server state (a seq counter) from the stream before its fallback starts.** Guard: a cursor the server keeps must be sent from a known start (`since=0`), never "omitted until learned"; plain `res.write` + `X-Accel-Buffering: no` + a 20 s ping; prove BOTH transports in a real-browser run (`tools/listen-control-proof`, a 16 KB-holding proxy). Two seats approved an omit-since fix that lost every command queued before the first poll; only the browser proof caught it. (v1.348.0)
+
 Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#8-platform-facts-ios-webkit-pwa-browsers).
 
 ## 9. Data integrity and persistence (the data-loss core: full gate, never slimmed)

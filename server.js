@@ -110,6 +110,8 @@ const booksScan = require('./lib/books/scan');
 // v1.78 device handoff: the ephemeral presence store. Same pure-leaf posture
 // as the queue reducers - it owns liveness semantics and nothing else.
 const presenceStore = require('./lib/presence/store');
+// v1.348 Listen Control: the ephemeral remote-control store (pure; the routes own the sockets).
+const remoteStoreLib = require('./lib/remote/store');
 // v1.44 music library: same direct-require namespace-owner posture as books.
 const musicStore = require('./lib/music/store');
 const homeFeed = require('./lib/home/feed'); // v1.79: pure home-feed row assembler
@@ -5354,6 +5356,69 @@ mediaRoutes.registerHandoffAndDeleteRoutes(app, {
   ytdlp,
 });
 
+// v1.348 Listen Control: a phone plays music ON another device of the same user.
+// The store is pure (lib/remote/store.js); lib/remote/routes.js owns the SSE
+// sockets. Both resolvers below run the CALLER's own visibility, so a member can
+// never push, or learn the title of, a track they cannot see.
+//
+// resolveRemoteTracks returns an array parallel to `ids`: the SAME row shape
+// GET /api/music serves (native tracks + projected library audio, filtered by
+// trackVisibleTo / mediaVisibleTo), or null for an id the caller cannot see.
+function resolveRemoteTracks(req, ids) {
+  const userId = req.user.id;
+  const ns = musicDb.read();
+  let list = Object.values(ns.tracks).filter((t) => trackVisibleTo(req, t));
+  const byId = new Map(list.map((t) => [t.id, t]));
+  if (ids.some((id) => !byId.has(id))) {
+    for (const t of projectedLibraryTracks(req, list)) if (!byId.has(t.id)) byId.set(t.id, t);
+    list = Array.from(byId.values());
+  }
+  const artReps = musicQuery.artRepresentatives(list);
+  const likedSets = musicLikedSets(userId);
+  const wanted = Array.from(new Set(ids)).map((id) => byId.get(id)).filter(Boolean);
+  const progressMap = musicListProgressMap(userId, wanted);
+  const rows = new Map();
+  for (const t of wanted) rows.set(t.id, publicTrackListItem(t, userId, likedSets, progressMap, artReps));
+  return ids.map((id) => rows.get(id) || null);
+}
+
+// The phone's "now playing" card for a track id: title, artist, album, art. Light on
+// purpose (the PC reports state every few seconds): one native lookup, or one chapter
+// expansion of the single media item the id names.
+function resolveRemoteTrackCard(req, id) {
+  let track = null;
+  const native = ownTrack(musicDb.read().tracks, id);
+  if (native) {
+    if (trackVisibleTo(req, native)) track = native;
+  } else {
+    const baseId = String(id).split('::c')[0];
+    const db = getCachedDatabase();
+    const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, baseId) ? db.metadata[baseId] : null;
+    if (item && item.type === 'audio' && mediaVisibleTo(req, item) && libraryAudio.isEligibleAudioUniversal(item, musicDb.readPart('channels'))) {
+      track = itemChapterTracks(item).find((t) => t.id === id) || null;
+    }
+  }
+  if (!track) return null;
+  return {
+    id: track.id,
+    title: track.title || 'Track',
+    artist: track.artist || '',
+    album: track.album || '',
+    artUrl: track.artUrl || `/albumart/${encodeURIComponent(track.id)}`,
+  };
+}
+
+let remoteClock = Date.now;
+const remoteStore = remoteStoreLib.createRemoteStore({ now: () => remoteClock() });
+const remoteRoutes = require('./lib/remote/routes').registerRoutes(app, {
+  remote: remoteStore,
+  resolveTracks: resolveRemoteTracks,
+  resolveTrackCard: resolveRemoteTrackCard,
+  createRateLimiter: authGateLib.createRateLimiter,
+  normalizeLabel: presenceStore.normalizeLabel,
+  DEVICE_ID_RE: presenceStore.DEVICE_ID_RE,
+});
+
 // v1.36.2 (Dean: "sticky post-deletion" -- the "doesn't delete" half): the
 // errno classes the DELETE route treats as RECOVERABLE -- the actionable
 // 409 with the "remove from library anyway?" follow-up, instead of an
@@ -7250,6 +7315,8 @@ module.exports = {
   isFinishedPresence,
   HANDOFF_FINISHED_PCT,
   __presenceForTests: presence,
+  // v1.348: the remote-control store + its routes' handle; a test drives the clock and ends every stream.
+  __remoteForTests: Object.assign(remoteRoutes, { store: remoteStore, setNow(fn) { remoteClock = fn || Date.now; } }),
   // v1.37.0 books: scanner + state accessor + cover dir, exported for the
   // books integration tests (same posture as scanDirectories/THUMBNAIL_DIR).
   scanBooks,

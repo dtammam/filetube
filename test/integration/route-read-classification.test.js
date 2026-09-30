@@ -71,6 +71,9 @@ const READ = {
   '/api/feed-hidden': 'GATED',
   '/api/folders/music-flag': 'GATED', // Wave G: per-folder "show in Music" state, scoped to the user's VISIBLE audio (mediaVisibleTo)
   '/api/handoff': 'GATED',
+  '/api/remote/poll': 'GATED', // v1.348 Listen Control: the caller's own devices; a now-playing title resolves through trackVisibleTo
+  '/api/remote/stream': 'GATED', // v1.348: the SSE stream; every title it carries resolves through the viewer's own visibility
+  '/api/remote/targets': 'GATED', // v1.348: the caller's own live targets, titles visibility-resolved
   '/api/history': 'GATED',
   '/api/home': 'GATED',
   '/api/liked': 'GATED',

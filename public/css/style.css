@@ -2749,6 +2749,37 @@ select {
   }
 }
 
+/* v1.348 Listen Control: the PC's "Controlled by <device>" pill (remote.js mountPill). A persistent-shell
+   sibling of #handoff-card: bottom-LEFT, tokens only (so all four eras skin it), clearing the mobile
+   bottom bar the same way. It is shown on every in-app page while a controller is attached (R7). */
+#remote-pill {
+  position: fixed;
+  left: var(--inset);
+  bottom: var(--inset);
+  max-width: calc(100vw - var(--inset) * 2);
+  z-index: var(--z-dock);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-6);
+  box-sizing: border-box;
+  background-color: var(--surface-overlay);
+  color: var(--ink-1);
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-overlay);
+  font: var(--t-callout);
+}
+#remote-pill[hidden] { display: none; }
+.remote-pill-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (max-width: 768px) {
+  #remote-pill { bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4)); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   #handoff-card {
     transform: none;
@@ -7546,6 +7577,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
    popoutSupported() reads through music-skins.js isPhone), so it has no box there even
    before music.js runs. The id + class + element selector outranks every button rule. */
 html.is-phone #music-popout-btn { display: none; }
+html.is-phone #music-remote-btn { display: none; }
 
 
 /* UI pass S7: the Music surfaces are ONE ui-segmented control (its own look); only its place
@@ -12212,3 +12244,9 @@ html[data-era-flourish="on"] .ft-unfabricated {
 .whcal-grid { position: absolute; inset: 0; border-radius: 50%; overflow: hidden; display: grid; grid-template-columns: repeat(12, 1fr); grid-template-rows: repeat(12, 1fr); }
 .whcal-grid[hidden] { display: none !important; }
 .whcal-grid-sw { width: 100%; height: 100%; min-width: 0; min-height: 0; margin: 0; padding: 0; opacity: 0.22; }
+
+/* v1.348 Listen Control: the "on <device>" badge every skin wears while another device plays, and a
+   Play on... row's second line (what that PC is playing). */
+:where(html.is-phone, html.mms-popout) .mms-remote{ flex:none; max-width:45%; min-height:var(--size-touch); padding:0 var(--space-3); border:0; background:transparent; color:inherit; font:var(--t-caption); letter-spacing:var(--mms-ls-caps); text-transform:uppercase; opacity:.8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+:where(html.is-phone, html.mms-popout) .mms-ipod .mms-remote{ min-height:0; padding:0 var(--space-2); }
+:where(html.is-phone, html.mms-popout) .ipm-detail{ display:block; font-size:var(--pk-fs-note); opacity:.7; }
