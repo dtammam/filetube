@@ -405,5 +405,41 @@ Roku/TV as a target.
 
 ## 9. Evidence and gate verdicts
 
-(The builder fills this: W4 measurements, suite counts per Node, lint numbers, seat verdicts bound
-to sha.)
+### W4 two-browser proof (measured)
+
+`node tools/listen-control-proof/proof.js` (real server, two Chromium contexts, same user; PC 1280x800 with
+`--autoplay-policy=user-gesture-required`; phone iPhone 13 at 390x844 on the ipod-2004 skin). Raw numbers:
+`tools/listen-control-proof/proof-out.json`. Times in ms, measured from the phone's action.
+
+| Step | Direct (SSE) | Buffering proxy (poll fallback) |
+|---|---|---|
+| a. PC opts in, phone's Play on... lists it | 318 | 302 |
+| b. phone picks a song, PC playing it | 1060 | 4765 (includes the 5 s no-hello wait that establishes the fallback) |
+| b. phone's own player loaded the song | no (no /video/song2 request, paused) | no |
+| c. pause on PC / phone mirror | 59 / 61 | 1472 / 1474 |
+| c. resume on PC | 55 | 1517 |
+| c. next on PC / phone mirror title | 65 / 369 | 1515 / 3255 |
+| c. prev on PC | 71 | 1246 |
+| c. seek (tap mid-bar) PC at 60 s / phone label | 9 / 37 | 1465 / 2749 |
+| d. PC navigates Home: keeps playing, pill visible, phone next works | yes, yes, 67 | not run |
+| e. phone plays while PC on Home: PC moves to /music and plays | 1319 | not run |
+| f. PC reloaded, no click, phone plays | PC state blocked; phone shows "Click the PC's tab once to let it play" | not run |
+| g. PC tab closes: phone drops to local mode, toast "Lost Linux PC", silent | 11 (pagehide /off) | not run |
+
+Poll-fallback honesty: commands cost up to the 1.5 s target poll; the mirror adds the 2 s controller poll, so
+the worst measured mirror lag is 3.3 s (plan target for the mirror was 2.5 s; the PC side is inside it).
+
+Findings recorded: (1) a PC reload sends `/off` on pagehide (plan section 4), so the phone drops to local mode
+with "Lost Linux PC" and must pick the PC again; after that the no-click play reports `blocked` as planned.
+(2) Chromium with autoplay blocked did refuse the play, so `blocked` is observed, not assumed.
+
+### Suites and lints (at commit of W4)
+
+- Node 22.23.1: `npm test` tests 10476, pass 10464, fail 0, skipped 12.
+- Node 24.20.0: `npm test` tests 10476, pass 10464, fail 0, skipped 12.
+- `npm run lint`: 0 errors, 6 warnings (all pre-existing `no-unused-vars`).
+- `npm run lint:ui`: OK (live debt equals docs/ui-exceptions.json, total 3183). Overlay census: 0 violations.
+
+### Gate verdicts
+
+(Filled by each seat, bound to the sha it reviewed.)

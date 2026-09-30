@@ -1432,7 +1432,7 @@ if (typeof module !== 'undefined' && module.exports) {
         artistTap: false, artistTitle: '',
         upNext: [], fullList: [], playing: st.state === 'playing', posSec: pos, durSec: dur,
         posLabel: mmssMusic(pos), remLabel: dur > 0 ? ('-' + mmssMusic(dur - pos)) : '',
-        curNum: 1, total: 1,
+        curNum: 0, total: 0, // no "N of M": the PC's queue is not this device's
       };
     }
     function remotePlayAt(i) {
