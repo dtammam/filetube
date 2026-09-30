@@ -3,10 +3,10 @@ plan: listen-control
 harness: v2 · lean
 branch: feat/v1.348-listen-control
 anchor: spec
-status: Designed
+status: Shipped v1.348.0
 next: Step 0 (read this whole plan once, top to bottom, before touching anything)
 design: Approved 2026-09-30 (Dean, two rounds of Q&A; every ruling in section 2 is his answer or an architect default he did not overrule)
-gate: FULL (adversary + qa + security-brief) - a new network boundary and a new per-user command channel
+gate: FULL, APPROVED r4 (adversary + qa at 8ea19856, security-brief at 45686e34) - a new network boundary and a new per-user command channel
 ---
 
 # Listen Control: drive the PC's music from the phone
@@ -483,3 +483,12 @@ Gate: CHANGES r3 @c147cdf8 — adversary
   sleep) within the 10 s grace may re-run the commands queued in that window (the stream's Last-Event-ID replay has the
   same shape). A normal reload sends /off and drops the target. Kept: hello/poll seq below lastSeq resets it (server
   restart, QA r1).
+QA r4 @8ea19856: pollOnce always sends since=lastSeq (net diff vs 45686e34 in remote.js is only the hello/poll seq reset); 89/89 remote tests pass. No new findings.
+Gate: APPROVED r4 @8ea19856 - qa
+
+Adversary r4 @8ea19856: real server + the real createTarget (SSE off, polling). (a) A target registered by a raw stream, phone sends pause,next,next, stream dropped, client polls with since=0: delivered ["pause","next","next"], then since=3; a later batch delivered. Seq-reset restart: read, not run (a restart empties the target table, so the first poll re-registers and its reply seq < lastSeq lowers the cursor before any command can be queued; no loss path found). (b) The stale-replay limitation (r1 WARNING 1) is ACCEPTED: any fix that needs the counter before the first poll loses commands behind a buffering proxy (I found no cheaper fix; the exposure is a no-/off reload inside 10 s AND a buffering proxy).
+Gate: APPROVED r4 @8ea19856 — adversary
+
+Final gate state: adversary APPROVED r4 @8ea19856, QA APPROVED r4 @8ea19856, security-brief APPROVED r1 @45686e34 (the
+later commits change only the target's client-side seq cursor; no route, auth or input-handling code moved).
+Release-commit suites: Node 22.23.1 via the pre-commit hook and Node 24.20.0 by hand, both recorded in the PR.
