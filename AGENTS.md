@@ -122,7 +122,7 @@ only satisfied by push, wait, fail, download artifacts, commit them, push, wait 
 one, and never treat a non-required check as a merge gate. Merge on green unit CI (`ci (22)`,
 `ci (24)`, `audit`, `secret-scan`) plus the review gate. **Visual reports, never blocks:** a PR shows
 a look change as one comment with crops, and after a merge to main a bot opens and merges a
-baselines-only PR (`docs/RELEASING.md`; Dean's ruling 2026-09-30, the one bot merge this repo allows). A commit that touches only `.md` files or `docs/` takes the fast pre-commit path.
+baselines-only PR (`docs/RELEASING.md`; Dean's ruling 2026-09-30). A commit that touches only `.md` files or `docs/` takes the fast pre-commit path.
 
 ### Lessons / standing decisions
 - **The review gate is the floor and uses the harness seats.** Spawn the harness

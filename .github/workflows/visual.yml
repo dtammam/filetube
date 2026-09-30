@@ -232,6 +232,10 @@ jobs:
             behind=$(gh api "repos/${REPO}/compare/$(git rev-parse 'HEAD^1')...${head}" --jq '.behind_by')
             if [ "$behind" = 0 ] && [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse "${head}^{tree}")" ]; then
               for id in $(gh run list --repo "$REPO" --workflow visual.yml --event pull_request --commit "$head" --status success --limit 5 --json databaseId --jq '.[].databaseId'); do
+                # A run of a same-repo PR only (a fork can open its own PR at the same public sha).
+                # Its .pull_requests is empty once the PR merged, so the head repository is the test.
+                from=$(gh api "repos/${REPO}/actions/runs/${id}" --jq '.head_repository.full_name')
+                if [ "$from" != "$REPO" ]; then echo "PR run ${id}: from ${from}, not this repo"; continue; fi
                 n=$(gh api "repos/${REPO}/actions/runs/${id}/artifacts?per_page=100" --jq '[.artifacts[] | select((.name | startswith("visual-shots-")) and (.expired | not))] | length')
                 if [ "$n" = 12 ]; then run="$id"; break; fi
                 echo "PR run ${id}: ${n} of 12 legs uploaded shots"
@@ -246,7 +250,7 @@ jobs:
           echo "run=${run}" >> "$GITHUB_OUTPUT"
 
   # The same 12 legs; `rebaseline-merge` joins them into the ONE `visual-baselines` artifact
-  # (flat, and only when EVERY leg passed: a plain `needs`, no `if`), so the download-and-commit
+  # (flat, and only when EVERY leg passed: `rebaseline` succeeded), so the download-and-commit
   # step is unchanged.
   # On a push to main it retakes the set for `baseline-refresh` only when `refresh-source` found no
   # PR run to reuse (it is skipped for the merge of a baselines PR, and so is this).
@@ -302,6 +306,10 @@ jobs:
 
   rebaseline-merge:
     needs: rebaseline
+    # Explicit: a skipped `refresh-source` (dispatch, rebaseline/*) would otherwise skip this job
+    # through the chain even though `rebaseline` ran. A matrix job is `success` only when every leg
+    # passed, so a partial set is still never published.
+    if: ${{ !cancelled() && needs.rebaseline.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Join the four eras into one artifact (commit it into test/visual/baselines/ yourself)
@@ -384,4 +392,4 @@ jobs:
           gh pr create --repo "$REPO" --base main --head "$branch" --title "chore(visual): refresh baselines" --body-file body.md
           # Baselines only (checked above), so it merges itself: the look was reviewed in the PR
           # comment of the change that caused it. GitHub deletes the merged branch.
-          gh pr merge "$branch" --repo "$REPO" --merge
+          gh pr merge "$branch" --repo "$REPO" --merge --match-head-commit "$(git rev-parse HEAD)"

@@ -54,3 +54,35 @@ branch's own merge; it should refresh the stale baselines and merge the baseline
 ## Gate
 
 (verdicts below, bound to the sha reviewed)
+
+Gate: APPROVED r1 @c13116fb — security-brief
+
+Security r1 findings (no CRITICAL, no WARNING). Gaps: no shell, so no `git diff`; I read visual.yml whole at the working tree (clean, on c13116fb per session status) and could not query repo settings or remote branches.
+- NOTE-1 (LOW, fix recommended): `gh pr merge "$branch"` merges whatever head the branch has at merge time; the path check ran on the local commit. Only write-access actors can move the branch in that window, so no outside attacker. Fix: `gh pr merge "$branch" --merge --match-head-commit "$(git rev-parse HEAD)"`.
+- NOTE-2 (MEDIUM suspicion, verify): docker-publish.yml has no `permissions:` block, so it gets the repo default token. If the default is write, turning on "create and approve PRs" lets code run by `npm ci`/`npm test` on main (dev deps, which Dependabot auto-merges at patch/minor) open AND merge its own non-workflow PR to main. Most of this path existed before (push to an open same-repo PR branch, then merge it), so the flip widens it only a little. Verify `default_workflow_permissions` is `read` in the same `gh api` call that flips the setting, or add `permissions: contents: read` to docker-publish.yml.
+- NOTE-3 (LOW suspicion): refresh-source picks any successful pull_request run whose head_sha is HEAD^2, newest first. A fork can open its own PR at that public sha. Against main it runs the same tree, so no harm. Against another existing repo branch it runs a different merged tree, and the refresh could commit baselines from it: wrong pixels, no code. Fix: also require the run's pull_requests[] to include the merged PR number and base.ref == main.
+- NOTE-4 (LOW): baselines are checked by path only, not by content. Any bytes named *.png can land. This is reachable only through code Dean already merged (the same trust the rebaseline path had before). Fix: check the PNG magic bytes and a size cap before `cp`.
+- NOTE-5 (INFO): the close loop matches any open PR whose head is `chore/baselines-*`, so a same-repo PR with that name gets closed and its branch deleted. Fork heads are skipped by gh (not verified).
+Checked and safe: in each `run:` block the `${{ }}` values are only matrix, run_id and env-routed (verified). head_commit.message is used only in an `if:`, where a crafted title can skip a refresh but cannot inject. baseline-refresh runs no repo code (no npm, no hooks, persist-credentials false). `git add -A -- test/visual/baselines` limits what gets staged. The job permissions are the minimum. download-artifact v4 (4.1.3 and later) rejects zip path traversal (should be safe, not re-read).
+
+### Adversary r1 @c13116fb: FAIL (CHANGES)
+
+1. WARNING: `rebaseline-merge` (plain `needs: rebaseline`, no `if`) is SKIPPED whenever `refresh-source` was skipped or failed: GitHub docs ("a failure or skip applies to all jobs in the dependency chain from the point of failure or skip onwards") and actions/runner#2205 (open, same shape). So workflow_dispatch and a push to `rebaseline/*` run 12 legs and publish NO `visual-baselines` (the RELEASING.md fallback is dead), and a `refresh-source` failure burns 12 legs for nothing. The test binds the bug (`merge.if === undefined`). Fix: `if: ${{ !cancelled() && needs.rebaseline.result == 'success' }}`, update the test and the "plain needs, no if" comments; prove it with one `rebaseline/*` push after merge.
+2. WARNING: the ancestry check is presence-bound only: `behind=0` hardcoded, the compare reversed, or `.ahead_by` all stay 16/16 green. a5dfec5e is a real merge with equal trees and behind_by 1, so the tree check alone would reuse a wrong-tree run. Bind the exact compare line.
+3. NOTE: surviving mutants also: no `set -euo pipefail` in refresh-source (fail-safe), no `github-token` on the reuse download (loud), `--limit 1`, no `persist-credentials: false`.
+4. NOTE: the concurrency group serializes but does not order: merge X (re-shoot, ~10 min) then Y (reuse) lets X's refresh land after Y's (conflict and red, or a stale scene). Self-heals on the next merge.
+5. NOTE (suspicion): the reuse matches a run by head sha only; a PR run against a non-main base (stacked or retargeted PR) shot merge(other base, head), not head.
+6. NOTE: RELEASING.md "(on since 2026-09-30)" is false today (`can_approve_pull_request_reviews: false`, measured); flip before merge. The ruleset's `require_extra_approval_for_unattributed_changes: true` has unknown effect on a bot merge; `gh pr merge` is first reached live on this merge.
+7. NOTE: AGENTS.md "the one bot merge this repo allows" contradicts dependabot-auto-merge.yml; docs/exec-plans/active/2026-09-29-next-waves.md:84 still says "It never merges itself".
+
+Gate: CHANGES r1 @c13116fb - adversary
+
+### Architect r1 response
+- Adversary 1: `rebaseline-merge` gets `if: ${{ !cancelled() && needs.rebaseline.result == 'success' }}`, test and comments updated. Live proof owed: one `rebaseline/*` push after merge.
+- Adversary 2: the exact compare line is bound, plus `github-token` on the reuse download (3).
+- Security NOTE-1: `gh pr merge ... --match-head-commit "$(git rev-parse HEAD)"`, bound.
+- Security NOTE-2: measured `default_workflow_permissions: read` (unchanged by the flip).
+- Security NOTE-3 / Adversary 5: a run's `.pull_requests` is EMPTY once its PR merged (measured on runs 36779173824, 36750264978, 36712253603), so a base filter would disable reuse; instead the run's `head_repository.full_name` must be this repo (forks excluded). A same-repo PR into another base at the same head sha stays a known NOTE.
+- Adversary 6: setting flipped 2026-09-30 (`can_approve_pull_request_reviews: true`, measured). Adversary 7: AGENTS.md claim removed; next-waves line marked superseded.
+- Not taken: Adversary 4 (ordering, self-heals next merge), Security NOTE-4 (content check; same trust as the re-shoot path), NOTE-5.
+- Live dry run of the r2 script: e15e645e reuses 36779173824; a5dfec5e and 3fa48a32 re-shoot.

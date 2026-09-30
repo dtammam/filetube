@@ -125,7 +125,12 @@ test('refresh-source: reuses a PR run only when it shot the exact merged tree an
   assert.strictEqual(job.steps.find((s) => s.uses && s.uses.startsWith('actions/checkout')).with['fetch-depth'], 2, 'both parents of the merge');
   const body = runs('refresh-source');
   assert.ok(body.includes("head=$(git rev-parse -q --verify 'HEAD^2')"), 'a merge commit\'s PR head');
-  assert.ok(body.includes('[ "$behind" = 0 ]'), 'main before the merge is an ancestor of the PR head');
+  // behind_by of HEAD^1...head is 0 exactly when main before the merge is an ancestor of the PR head
+  // (a5dfec5e: equal trees, behind by 1, so the tree check alone is not enough).
+  assert.ok(body.includes(`behind=$(gh api "repos/\${REPO}/compare/$(git rev-parse 'HEAD^1')...\${head}" --jq '.behind_by')`), 'the ancestry measure');
+  assert.ok(body.includes('if [ "$behind" = 0 ] && '), 'main before the merge is an ancestor of the PR head');
+  assert.ok(body.includes(`from=$(gh api "repos/\${REPO}/actions/runs/\${id}" --jq '.head_repository.full_name')`), 'a same-repo PR run, never a fork\'s');
+  assert.ok(body.includes('if [ "$from" != "$REPO" ]; then echo "PR run ${id}: from ${from}, not this repo"; continue; fi'));
   assert.ok(body.includes(`[ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse "\${head}^{tree}")" ]`), 'the merged tree IS the PR head tree');
   assert.match(body, /gh run list --repo "\$REPO" --workflow visual\.yml --event pull_request --commit "\$head" --status success /, 'a passed PR run of that head');
   // A leg that did not capture cleanly uploads no shots, so fewer than every leg means a partial set.
@@ -147,7 +152,8 @@ test('baseline-refresh: only on a push to main, takes the reused or re-shot set,
   assert.match(body, /git diff --cached --name-only \| grep -qv '\^test\/visual\/baselines\/'/, 'a non-baseline staged path aborts');
   assert.match(body, /gh pr create /);
   // It merges ONLY the baselines PR it just opened (after the staged-path check), never with --admin.
-  assert.deepStrictEqual(body.match(/gh pr merge[^\n]*/g), ['gh pr merge "$branch" --repo "$REPO" --merge']);
+  // --match-head-commit: the merge lands exactly the commit the path check passed.
+  assert.deepStrictEqual(body.match(/gh pr merge[^\n]*/g), ['gh pr merge "$branch" --repo "$REPO" --merge --match-head-commit "$(git rev-parse HEAD)"']);
   assert.ok(body.indexOf("grep -qv '^test/visual/baselines/'") < body.indexOf('gh pr merge'), 'the path check runs before the merge');
   assert.doesNotMatch(body, /--auto|--admin/);
   assert.ok(body.includes('"HEAD:refs/heads/${branch}"'), 'the push targets only the baselines branch, never main');
@@ -157,7 +163,7 @@ test('baseline-refresh: only on a push to main, takes the reused or re-shot set,
   const reuse = dls.find((s) => s.if === "needs.refresh-source.outputs.run != ''");
   const reshot = dls.find((s) => s.if === "needs.refresh-source.outputs.run == ''");
   assert.ok(reuse && reshot && dls.length === 2, 'exactly one download runs: the PR run\'s shots or the re-shot set');
-  assert.deepStrictEqual([reuse.with.pattern, reuse.with['merge-multiple'], reuse.with['run-id'], reuse.with.path], ['visual-shots-*', true, '${{ needs.refresh-source.outputs.run }}', 'fresh-baselines']);
+  assert.deepStrictEqual([reuse.with.pattern, reuse.with['merge-multiple'], reuse.with['run-id'], reuse.with['github-token'], reuse.with.path], ['visual-shots-*', true, '${{ needs.refresh-source.outputs.run }}', '${{ github.token }}', 'fresh-baselines']);
   assert.deepStrictEqual([reshot.with.name, reshot.with.path], ['visual-baselines', 'fresh-baselines']);
   // no other job may create or merge a PR
   for (const name of Object.keys(WF.jobs).filter((n) => n !== 'baseline-refresh')) assert.doesNotMatch(runs(name), /gh pr (create|merge)/, name);
@@ -210,11 +216,13 @@ test('both jobs run one leg per era x viewport, and the legs together cover ever
   assert.ok(cap.run.indexOf('rm -f test/visual/baselines/*.png') !== -1 && cap.run.indexOf('rm -f test/visual/baselines/*.png') < cap.run.indexOf('--update'));
   const up = WF.jobs.rebaseline.steps.find((s) => s.uses && s.uses.startsWith('actions/upload-artifact'));
   assert.strictEqual(up.with.name, 'visual-baselines-${{ matrix.era }}-${{ matrix.vp }}');
-  // ...and the merge joins the 12 into ONE flat `visual-baselines`, only when EVERY leg passed:
-  // a plain `needs` with no `if` (an `always()` would publish a partial set), no per-leg folders.
+  // ...and the merge joins the 12 into ONE flat `visual-baselines`, only when EVERY leg passed (a
+  // matrix job is `success` only then; an `always()` would publish a partial set), no per-leg folders.
+  // The `if` is required: with a skipped `refresh-source` upstream (dispatch, rebaseline/*) a plain
+  // `needs` skips this job through the chain, and the fallback's artifact never exists.
   const merge = WF.jobs['rebaseline-merge'];
   assert.strictEqual(merge.needs, 'rebaseline');
-  assert.strictEqual(merge.if, undefined, 'rebaseline-merge must not run when a leg failed');
+  assert.strictEqual(merge.if, "${{ !cancelled() && needs.rebaseline.result == 'success' }}");
   const m = merge.steps.find((s) => s.uses && s.uses.startsWith('actions/upload-artifact/merge'));
   assert.deepStrictEqual([m.with.name, m.with.pattern, m.with['separate-directories']], ['visual-baselines', 'visual-baselines-*', undefined]);
 });
