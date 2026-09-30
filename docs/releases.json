@@ -3376,5 +3376,11 @@
     "date": "2026-09-30",
     "title": "Three see-through iPods",
     "intent": "The clear iPod is now a real one: frosted plastic over a genuine circuit board photo, with the wheel drawn as the clear shell would show it. Pick a white wheel, a black wheel, or Transparent Coil, where the wheel is taken off so its flex ring and a glass dome show, and the light follows your phone. Find them in Extras > Skins > Custom."
+  },
+  {
+    "version": "1.347.1",
+    "date": "2026-09-30",
+    "title": "Three see-through iPods, now published",
+    "intent": "The three Transparent iPod skins (white wheel, black wheel and Coil) from 1.347.0 now reach the Docker image; the first publish was held back by a security check on a build tool, which is fixed. No change to the skins themselves."
   }
 ]
