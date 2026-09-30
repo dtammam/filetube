@@ -144,6 +144,18 @@
   every era/theme and the phone and desktop rows (rows wrap, buttons never shrink - the measure-UI norm),
   and any other toggle in the same card (Subscribe / Subscribed) with the same shape.
 
+- [ ] **Bug (investigate): a one-off download sometimes looks stuck until the container restarts** (Dean,
+  2026-09-30: "sometimes I see one-off downloads getting stuck. I don't know if they're actually stuck or if
+  they're just a graphical thing, but then I will restart my file tube container and I'll see it either
+  failed or completed ... maybe I'm just perceiving it differently since the UI rewrite."). Not yet
+  reproduced; may be a display-only problem (the row never refreshes) rather than a real hang. First
+  question (LESSONS 1: name the falsifying observation before editing): when a row looks stuck, does the
+  server still know its true state (the queue API or the yt-dlp process) while the page shows the old
+  one? Ask for the next occurrence before a reload: the row's text, whether a manual refresh changes it,
+  and `?debugLifecycle=1` output. Then decide between a UI staleness fix and a server-side trace (log the
+  state change and finish or fail of each one-off download so a hang shows up after the fact). Outcome
+  wanted: Dean can tell "stuck" from "stale" without restarting the container.
+
 ### Features
 
 - [x] **iPod skin true-up: 27 new colorways, real model names, Extras by line and generation** - SHIPPED v1.345.0 (see Shipped) _(Dean,
