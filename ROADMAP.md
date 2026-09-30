@@ -426,6 +426,11 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.347.2 - A calmer light on the Coil wheel (2026-09-30)
+
+- The Transparent Coil wheel's highlight was too bright (peak white .78 to .28, wheel sheen .4 to .18, glass dome
+  .85 to .5). Roles only; the light still follows Ambient. PR #58.
+
 ### v1.347.1 - Publish fix for v1.347.0 (2026-09-30)
 
 - The v1.347.0 Docker publish was blocked by the dependency audit gate (two high `brace-expansion` advisories in
