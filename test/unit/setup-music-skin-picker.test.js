@@ -129,5 +129,5 @@ test('v1.345: the rendered grid has 24 groups (Original, 22 line generations, Ci
   assert.strictEqual(tile('ipod-red'), 'Red');
   assert.strictEqual(tile('apple'), 'Cider');
   assert.strictEqual(tile('ipod-original'), 'Original');
-  assert.strictEqual(doc.querySelectorAll('.skin-tile').length, 129);
+  assert.strictEqual(doc.querySelectorAll('.skin-tile').length, 131);
 });

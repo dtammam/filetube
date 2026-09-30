@@ -50,6 +50,9 @@ const ROLES = ['--pk-c-body', '--pk-c-body-edge', '--pk-c-wheel-1', '--pk-c-whee
   '--pk-c-wheel-label', '--pk-c-center-1', '--pk-c-center-2', '--pk-c-center-oy',
   '--pk-c-lit-band', '--pk-c-lit-band2', '--pk-c-lits-band', '--pk-c-lits-band2', '--pk-c-lits-core',
   '--pk-c-lita-glow', '--pk-c-lita-core']; // v1.333 Ambient: the reflection's tint (an r,g,b triple read as rgba(var(role), a))
+// v1.347 OPTIONAL roles: a colorway MAY set these (the clear-shell Custom skins); every shared rule that reads one carries a
+// var() fallback that reproduces the pre-v1.347 paint, so a colorway that omits them draws exactly as it always did.
+const OPTIONAL_ROLES = ['--pk-c-bezel', '--pk-c-wheel-drop', '--pk-c-wheel-art', '--pk-c-zone-op'];
 const clickIds = () => SK.SKINS.filter((s) => s.menus === 'click').map((s) => s.id);
 const classOf = (id) => 'mms-' + id;
 
@@ -62,14 +65,26 @@ test('AC4: every registry colorway has EXACTLY ONE block that sets every role, a
     assert.strictEqual(blocks.length, 1, id + ': exactly one role block (.' + classOf(id) + ')');
     const set = new Set(decls(blocks[0].body).map(([p]) => p));
     for (const role of ROLES) assert.ok(set.has(role), id + ' sets ' + role);
-    for (const p of set) assert.ok(ROLES.includes(p), id + ': ' + p + ' is not a colorway role (a block holds roles only)');
+    for (const p of set) assert.ok(ROLES.includes(p) || OPTIONAL_ROLES.includes(p), id + ': ' + p + ' is not a colorway role (a block holds roles only)');
   }
   const stray = roleRules.filter((r) => !ids.some((id) => r.sel === '.' + classOf(id)));
   assert.deepStrictEqual(stray.map((r) => r.sel), [], 'a role set outside a colorway block');
   // every role the chassis reads is one the blocks set (no dangling role)
   const read = new Set([...CSS.matchAll(/var\((--pk-c-[\w-]+)/g)].map((m) => m[1]));
-  for (const r of read) assert.ok(ROLES.includes(r), 'the chassis reads ' + r + ', which no block sets');
+  for (const r of read) assert.ok(ROLES.includes(r) || OPTIONAL_ROLES.includes(r), 'the chassis reads ' + r + ', which no block sets');
   for (const r of ROLES) assert.ok(read.has(r), r + ' is set but never read (a dead role)');
+  // an optional role: read ONLY with a fallback (never bare), read somewhere, and set by at least one block
+  for (const r of OPTIONAL_ROLES) {
+    const bare = [...CSS.matchAll(new RegExp('var\\(' + r + '\\s*\\)', 'g'))];
+    assert.strictEqual(bare.length, 0, r + ' is optional: every read carries a fallback');
+    assert.ok(read.has(r), r + ' is set but never read (a dead role)');
+    assert.ok(roleRules.some((b) => decls(b.body).some(([p]) => p === r)), r + ' is read but no block sets it');
+  }
+  // the fallbacks reproduce the pre-v1.347 paint exactly, so a skin that sets none of the roles is unchanged
+  assert.match(CSS, /padding:var\(--pk-c-bezel, var\(--space-1\)\)/, 'the LCD bezel falls back to the old var(--space-1)');
+  assert.match(CSS, /opacity:var\(--pk-c-zone-op, 1\)/, 'the tap zones fall back to fully drawn');
+  assert.match(CSS, /box-shadow:var\(--pk-c-wheel-drop, 0 0 0 transparent\), var\(--mms-lit-wheel-shadow, var\(--mms-ipod-wheel-shadow\)\)/, 'the wheel drop falls back to a transparent no-op layer');
+  assert.strictEqual((CSS.match(/background:var\(--pk-c-wheel-art, radial-gradient\(90% 55% at calc\(50% \+ var\(--lx,0\) \* 30%\)/g) || []).length, 1, 'the wheel art falls back to the original sheen + base ramp');
 });
 
 // Gate r1 W2 (adversary, measured): the lock counted only rules that SET a role, so a second,
@@ -2308,23 +2323,69 @@ const COLORWAYS = {
     '--pk-c-lita-core': '239,198,197',
   },
   'ipod-custom5-transparent': {
-    '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.34) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.2) 0%, rgba(0,0,0,.05) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.05) 88%, rgba(0,0,0,.2) 100%), radial-gradient(ellipse 34% 20% at 50% 22%, rgba(38,44,52,.5) 0, rgba(38,44,52,0) 100%), radial-gradient(ellipse 46% 26% at 50% 78%, rgba(70,78,88,.38) 0, rgba(70,78,88,0) 100%), linear-gradient(180deg, #e6ecef 0%, #cfd8dd 35%, #bcc7cd 65%, #a9b6bd 100%)',
-    '--pk-c-body-edge': '#7d8a91',
-    '--pk-c-wheel-1': '#f3f4f3',
-    '--pk-c-wheel-2': '#e3e5e4',
+    '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.34) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.2) 0%, rgba(0,0,0,.05) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.05) 88%, rgba(0,0,0,.2) 100%), linear-gradient(90deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 0 / 19px 100% no-repeat, linear-gradient(270deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 100% 0 / 19px 100% no-repeat, linear-gradient(180deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 0 / 100% 19px no-repeat, linear-gradient(0deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 100% / 100% 19px no-repeat, linear-gradient(90deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 0 / 18px 100% no-repeat, linear-gradient(270deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 100% 0 / 18px 100% no-repeat, linear-gradient(180deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 0 / 100% 18px no-repeat, linear-gradient(0deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 100% / 100% 18px no-repeat, linear-gradient(118deg, rgba(255,255,255,.3) 0%, rgba(255,255,255,0) 38%), repeating-linear-gradient(45deg, rgba(255,255,255,.06) 0 1px, rgba(255,255,255,0) 1px 3px), linear-gradient(rgba(229,238,234,.25), rgba(229,238,234,.25)), url(../assets/skins/transparent-board.webp) 50% 100% / 121% auto no-repeat, #2c4238',
+    '--pk-c-bezel': 'var(--space-4)',
+    '--pk-c-wheel-drop': '0 7px 14px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.7)',
+    '--pk-c-body-edge': '#8f9a97',
+    '--pk-c-wheel-1': '#f6f6f4',
+    '--pk-c-wheel-2': '#dcdcd9',
     '--pk-c-wheel-sheen': 'var(--mms-ipod-sheen-d)',
     '--pk-c-wheel-oy': '40%',
-    '--pk-c-wheel-label': '#a8b1b7',
-    '--pk-c-center-1': '#dbe3e7',
-    '--pk-c-center-2': '#b9c5cb',
+    '--pk-c-wheel-label': '#9a9d9f',
+    '--pk-c-center-1': '#ffffff',
+    '--pk-c-center-2': '#e9e9e6',
     '--pk-c-center-oy': '38%',
     '--pk-c-lit-band': 'rgba(255,255,255,.16)',
     '--pk-c-lit-band2': 'rgba(255,255,255,.09)',
     '--pk-c-lits-band': 'rgba(255,255,255,.24)',
     '--pk-c-lits-band2': 'rgba(255,255,255,.13)',
     '--pk-c-lits-core': 'rgba(255,255,255,.36)',
-    '--pk-c-lita-glow': '150,190,220',
-    '--pk-c-lita-core': '220,238,250',
+    '--pk-c-lita-glow': '235,241,239',
+    '--pk-c-lita-core': '250,252,251',
+  },
+  'ipod-custom5-transparent-black': {
+    '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.34) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.2) 0%, rgba(0,0,0,.05) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.05) 88%, rgba(0,0,0,.2) 100%), linear-gradient(90deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 0 / 19px 100% no-repeat, linear-gradient(270deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 100% 0 / 19px 100% no-repeat, linear-gradient(180deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 0 / 100% 19px no-repeat, linear-gradient(0deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 100% / 100% 19px no-repeat, linear-gradient(90deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 0 / 18px 100% no-repeat, linear-gradient(270deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 100% 0 / 18px 100% no-repeat, linear-gradient(180deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 0 / 100% 18px no-repeat, linear-gradient(0deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 100% / 100% 18px no-repeat, linear-gradient(118deg, rgba(255,255,255,.3) 0%, rgba(255,255,255,0) 38%), repeating-linear-gradient(45deg, rgba(255,255,255,.06) 0 1px, rgba(255,255,255,0) 1px 3px), linear-gradient(rgba(229,238,234,.25), rgba(229,238,234,.25)), url(../assets/skins/transparent-board.webp) 50% 100% / 121% auto no-repeat, #2c4238',
+    '--pk-c-bezel': 'var(--space-4)',
+    '--pk-c-wheel-drop': '0 7px 14px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.7)',
+    '--pk-c-body-edge': '#8f9a97',
+    '--pk-c-wheel-1': '#3d3d3f',
+    '--pk-c-wheel-2': '#222224',
+    '--pk-c-wheel-sheen': 'var(--mms-ipod-sheen-d)',
+    '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#b9babd',
+    '--pk-c-center-1': '#343436',
+    '--pk-c-center-2': '#161618',
+    '--pk-c-center-oy': '38%',
+    '--pk-c-lit-band': 'rgba(255,255,255,.16)',
+    '--pk-c-lit-band2': 'rgba(255,255,255,.09)',
+    '--pk-c-lits-band': 'rgba(255,255,255,.24)',
+    '--pk-c-lits-band2': 'rgba(255,255,255,.13)',
+    '--pk-c-lits-core': 'rgba(255,255,255,.36)',
+    '--pk-c-lita-glow': '235,241,239',
+    '--pk-c-lita-core': '250,252,251',
+  },
+  'ipod-custom5-transparent-coil': {
+    '--pk-c-body': 'linear-gradient(180deg, rgba(255,255,255,.34) 0, var(--mms-ipod-sheen-0) 1.6%), linear-gradient(90deg, rgba(0,0,0,.2) 0%, rgba(0,0,0,.05) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.05) 88%, rgba(0,0,0,.2) 100%), linear-gradient(90deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 0 / 19px 100% no-repeat, linear-gradient(270deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 100% 0 / 19px 100% no-repeat, linear-gradient(180deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 0 / 100% 19px no-repeat, linear-gradient(0deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 100% / 100% 19px no-repeat, linear-gradient(90deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 0 / 18px 100% no-repeat, linear-gradient(270deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 100% 0 / 18px 100% no-repeat, linear-gradient(180deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 0 / 100% 18px no-repeat, linear-gradient(0deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 100% / 100% 18px no-repeat, linear-gradient(118deg, rgba(255,255,255,.3) 0%, rgba(255,255,255,0) 38%), repeating-linear-gradient(45deg, rgba(255,255,255,.06) 0 1px, rgba(255,255,255,0) 1px 3px), linear-gradient(rgba(229,238,234,.25), rgba(229,238,234,.25)), url(../assets/skins/transparent-board.webp) 50% 100% / 121% auto no-repeat, #2c4238',
+    '--pk-c-bezel': 'var(--space-4)',
+    '--pk-c-wheel-art': 'radial-gradient(70% 50% at calc(50% + var(--lx,0) * 50%) calc(30% + var(--ly,0) * 45%), rgba(255,255,255,.78), rgba(255,255,255,.22) 45%, rgba(255,255,255,0) 72%), radial-gradient(circle at calc(50% - var(--lx,0) * 30%) calc(50% - var(--ly,0) * 30%), rgba(255,255,255,.1), rgba(0,0,0,.4) 100%), url(../assets/skins/transparent-ring.webp) center / 100% 100% no-repeat',
+    '--pk-c-zone-op': '0',
+    '--pk-c-wheel-drop': 'calc(var(--lx,0) * -6px) calc(7px + var(--ly,0) * -4px) 14px rgba(0,0,0,.55)',
+    '--pk-c-body-edge': '#8f9a97',
+    '--pk-c-wheel-1': '#2b2b2d',
+    '--pk-c-wheel-2': '#151517',
+    '--pk-c-wheel-sheen': 'rgba(255,255,255,.4)',
+    '--pk-c-wheel-oy': '40%',
+    '--pk-c-wheel-label': '#b9babd',
+    '--pk-c-center-1': 'rgba(255,255,255,.85)',
+    '--pk-c-center-2': 'rgba(190,210,208,.5)',
+    '--pk-c-center-oy': '36%',
+    '--pk-c-lit-band': 'rgba(255,255,255,.16)',
+    '--pk-c-lit-band2': 'rgba(255,255,255,.09)',
+    '--pk-c-lits-band': 'rgba(255,255,255,.24)',
+    '--pk-c-lits-band2': 'rgba(255,255,255,.13)',
+    '--pk-c-lits-core': 'rgba(255,255,255,.36)',
+    '--pk-c-lita-glow': '235,241,239',
+    '--pk-c-lita-core': '250,252,251',
   },
 };
 

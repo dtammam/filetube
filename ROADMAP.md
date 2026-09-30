@@ -426,6 +426,18 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.347.0 - Three see-through iPods (2026-09-30)
+
+- **Custom > Transparent is now a real clear-case iPod, in three looks.** `ipod-custom5-transparent`
+  (white wheel, replaces the v1.346 all-silver skin under the same id), `-black` (black wheel) and
+  `-coil` (wheel taken off: the real click-wheel flex ring, cut from a photo and squared up 3.4 degrees,
+  with a glass dome; its light and shadow follow the Ambient light). Registry 129 to 131.
+- **Real board photo** (Wikimedia Commons, Raimond Spekking, CC BY-SA 4.0), attributed in
+  `public/assets/skins/README.md`; the derived images stay CC BY-SA 4.0, the repo stays MIT.
+- **Four optional Pocket roles** (`--pk-c-bezel`, `--pk-c-wheel-drop`, `--pk-c-wheel-art`,
+  `--pk-c-zone-op`), each read only with a fallback that reproduces the old paint, so no other skin moves.
+- Plan: `docs/exec-plans/completed/2026-09-30-ipod-transparent.md`.
+
 ### v1.346.0 - Every iPod colour, and a Custom section (2026-09-29)
 
 - **76 more colourways from every generation.** Shuffle 1G-4G complete (34), Nano 1G and the rest of

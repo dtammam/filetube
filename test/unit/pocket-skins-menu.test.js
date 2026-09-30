@@ -56,7 +56,7 @@ test('Extras > Skins rows: Skins appears only where hasSkins; Games only unless 
 test('registry: every line skin is labelled "<Line> <n>G <Color> (<year>)", every generation has a year, no saved id was removed', () => {
   const lineLabel = { classic: 'Classic', mini: 'Mini', nano: 'Nano', shuffle: 'Shuffle', touch: 'Touch', custom: 'Custom' };
   const line = skins.SKINS.filter((x) => x.line);
-  assert.strictEqual(line.length, 126);
+  assert.strictEqual(line.length, 128);
   for (const x of line) {
     const gen = (x.line === 'touch' && { 1: '1G-3G', 6: '6G-7G' }[x.gen]) || x.gen + 'G';
     assert.strictEqual(x.label, `${lineLabel[x.line]} ${gen} ${x.color} (${x.year})`, x.id);
@@ -64,8 +64,8 @@ test('registry: every line skin is labelled "<Line> <n>G <Color> (<year>)", ever
   }
   const saved = 'ipod ipod-black ipod-matte ipod-red ipod-silver ipod-encore ipod-blue ipod-green ipod-pink ipod-gold ipod-frost ipod-sky ipod-olive ipod-blush ipod-2004 ipod-charcoal ipod-violet ipod-yellow ipod-lime ipod-cobalt ipod-magenta ipod-raspberry ipod-original apple spotify'.split(' ');
   for (const id of saved) assert.ok(skins.IDS.includes(id), 'saved id kept: ' + id);
-  assert.strictEqual(skins.IDS.length, 129);
-  assert.strictEqual(skins.clickColorways().length, 127);
+  assert.strictEqual(skins.IDS.length, 131);
+  assert.strictEqual(skins.clickColorways().length, 129);
 });
 
 // ---------------------------------------------------------------- the controller (REAL engine)

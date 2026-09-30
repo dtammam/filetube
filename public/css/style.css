@@ -8480,7 +8480,7 @@ a.tv-continue-card { text-decoration: none; }
          cause of the growth) even if contain were unsupported;
        - overflow:hidden -> anything larger is clipped, and the list scrolls in .ip-listview.
      The only thing that changes the LCD size is the viewport width (correct + responsive). */
-  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-lcd{ flex:none; aspect-ratio:var(--pk-lcd-ratio); min-height:0; contain:size; overflow:hidden; display:flex; background:var(--mms-black); border-radius:var(--mms-r-art-ipod); padding:var(--space-1); box-shadow:var(--mms-ipod-lcd-shadow); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-lcd{ flex:none; aspect-ratio:var(--pk-lcd-ratio); min-height:0; contain:size; overflow:hidden; display:flex; background:var(--mms-black); border-radius:var(--mms-r-art-ipod); padding:var(--pk-c-bezel, var(--space-1)); box-shadow:var(--mms-ipod-lcd-shadow); }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-lcd-in{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column; background:var(--pk-s-paper); border-radius:var(--mms-ipod-r-sm); overflow:hidden; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-status{ display:flex; align-items:center; justify-content:space-between; flex:none; padding:var(--pk-status-pad);
     background:linear-gradient(var(--pk-s-bar1), var(--pk-s-bar2)); border-bottom:1px solid var(--pk-s-hair); }
@@ -8637,9 +8637,9 @@ a.tv-continue-card { text-decoration: none; }
      `--ly` (each -1..1) are written on the panel by pocket-lighting.js while a Click skin is lit;
      unset (Off, no script) the calcs resolve to the old constants: 50% -8% / 50% 40%. */
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-wheel{ width:var(--pk-wheel-d); height:var(--pk-wheel-d); border-radius:var(--radius-full); position:relative; display:grid; place-items:center;
-    background:radial-gradient(90% 55% at calc(50% + var(--lx,0) * 30%) calc(-8% + var(--ly,0) * 26%), var(--pk-c-wheel-sheen) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 10%) calc(var(--pk-c-wheel-oy) + var(--ly,0) * 10%), var(--pk-c-wheel-1), var(--pk-c-wheel-2) 100%); box-shadow:var(--mms-lit-wheel-shadow, var(--mms-ipod-wheel-shadow)); }
-  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-zone{ position:absolute; border:0; background:transparent; color:var(--pk-c-wheel-label); cursor:pointer; display:grid; place-items:center; font-weight:var(--fw-bold); font-family:inherit; }
+    background:var(--pk-c-wheel-art, radial-gradient(90% 55% at calc(50% + var(--lx,0) * 30%) calc(-8% + var(--ly,0) * 26%), var(--pk-c-wheel-sheen) 0%, var(--mms-ipod-sheen-0) 60%),
+        radial-gradient(circle at calc(50% + var(--lx,0) * 10%) calc(var(--pk-c-wheel-oy) + var(--ly,0) * 10%), var(--pk-c-wheel-1), var(--pk-c-wheel-2) 100%)); box-shadow:var(--pk-c-wheel-drop, 0 0 0 transparent), var(--mms-lit-wheel-shadow, var(--mms-ipod-wheel-shadow)); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-zone{ position:absolute; border:0; background:transparent; color:var(--pk-c-wheel-label); opacity:var(--pk-c-zone-op, 1); cursor:pointer; display:grid; place-items:center; font-weight:var(--fw-bold); font-family:inherit; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-zone svg{ width:var(--pk-zone-glyph); height:var(--pk-zone-glyph); fill:currentColor; display:block; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-z-menu{ top:0; left:var(--pk-zone-inset); width:var(--pk-zone-long); height:var(--pk-zone-short); align-content:start; padding-top:var(--space-3); font-size:var(--pk-fs-zone-menu); letter-spacing:var(--mms-ls-caps2); }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-z-left{ top:var(--pk-zone-inset); left:0; width:var(--pk-zone-short); height:var(--pk-zone-long); justify-content:start; padding-left:var(--space-4); font-size:var(--pk-fs-zone-skip); }
@@ -10283,21 +10283,94 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:214,113,110; --pk-c-lita-core:239,198,197; }
-  /* Custom 5G Transparent (2005) (v1.346, 2026-09-29): a clear-shell modded iPod Video; the case reads as frosted plastic
-     with the dark board and the silver battery showing through. Hand-authored, not photo-sampled. */
+  /* Custom 5G Transparent (2005) (v1.347, Dean: the v1.346 one "is completely silver"): a clear-shell modded iPod
+     Video. The board is a real photo (Wikimedia Commons "IPod classic 80 GB (A1238, YMV) - board-0020.jpg", CC BY-SA
+     4.0, cropped and faded at the top: assets/skins/transparent-board.webp) under a clear frame; the wheel is a
+     white click wheel drawn in CSS. The Black variant below is identical with a black wheel. */
   :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-custom5-transparent{
     --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.34) 0, var(--mms-ipod-sheen-0) 1.6%),
       linear-gradient(90deg, rgba(0,0,0,.2) 0%, rgba(0,0,0,.05) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.05) 88%, rgba(0,0,0,.2) 100%),
-      radial-gradient(ellipse 34% 20% at 50% 22%, rgba(38,44,52,.5) 0, rgba(38,44,52,0) 100%),
-      radial-gradient(ellipse 46% 26% at 50% 78%, rgba(70,78,88,.38) 0, rgba(70,78,88,0) 100%),
-      linear-gradient(180deg, #e6ecef 0%, #cfd8dd 35%, #bcc7cd 65%, #a9b6bd 100%);
-    --pk-c-body-edge:#7d8a91;
-    --pk-c-wheel-1:#f3f4f3; --pk-c-wheel-2:#e3e5e4; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
-    --pk-c-wheel-label:#a8b1b7;
-    --pk-c-center-1:#dbe3e7; --pk-c-center-2:#b9c5cb; --pk-c-center-oy:38%;
+      linear-gradient(90deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 0 / 19px 100% no-repeat,
+      linear-gradient(270deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 100% 0 / 19px 100% no-repeat,
+      linear-gradient(180deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 0 / 100% 19px no-repeat,
+      linear-gradient(0deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 100% / 100% 19px no-repeat,
+      linear-gradient(90deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 0 / 18px 100% no-repeat,
+      linear-gradient(270deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 100% 0 / 18px 100% no-repeat,
+      linear-gradient(180deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 0 / 100% 18px no-repeat,
+      linear-gradient(0deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 100% / 100% 18px no-repeat,
+      linear-gradient(118deg, rgba(255,255,255,.3) 0%, rgba(255,255,255,0) 38%),
+      repeating-linear-gradient(45deg, rgba(255,255,255,.06) 0 1px, rgba(255,255,255,0) 1px 3px),
+      linear-gradient(rgba(229,238,234,.25), rgba(229,238,234,.25)),
+      url(../assets/skins/transparent-board.webp) 50% 100% / 121% auto no-repeat,
+      #2c4238;
+    --pk-c-bezel:var(--space-4);
+    --pk-c-wheel-drop:0 7px 14px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.7);
+    --pk-c-body-edge:#8f9a97;
+    --pk-c-wheel-1:#f6f6f4; --pk-c-wheel-2:#dcdcd9; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#9a9d9f;
+    --pk-c-center-1:#ffffff; --pk-c-center-2:#e9e9e6; --pk-c-center-oy:38%;
     --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
-    --pk-c-lita-glow:150,190,220; --pk-c-lita-core:220,238,250; }
+    --pk-c-lita-glow:235,241,239; --pk-c-lita-core:250,252,251; }
+  /* Custom 5G Transparent Black (2005) (v1.347): the same clear shell over the same board, with a black click wheel. */
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-custom5-transparent-black{
+    --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.34) 0, var(--mms-ipod-sheen-0) 1.6%),
+      linear-gradient(90deg, rgba(0,0,0,.2) 0%, rgba(0,0,0,.05) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.05) 88%, rgba(0,0,0,.2) 100%),
+      linear-gradient(90deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 0 / 19px 100% no-repeat,
+      linear-gradient(270deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 100% 0 / 19px 100% no-repeat,
+      linear-gradient(180deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 0 / 100% 19px no-repeat,
+      linear-gradient(0deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 100% / 100% 19px no-repeat,
+      linear-gradient(90deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 0 / 18px 100% no-repeat,
+      linear-gradient(270deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 100% 0 / 18px 100% no-repeat,
+      linear-gradient(180deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 0 / 100% 18px no-repeat,
+      linear-gradient(0deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 100% / 100% 18px no-repeat,
+      linear-gradient(118deg, rgba(255,255,255,.3) 0%, rgba(255,255,255,0) 38%),
+      repeating-linear-gradient(45deg, rgba(255,255,255,.06) 0 1px, rgba(255,255,255,0) 1px 3px),
+      linear-gradient(rgba(229,238,234,.25), rgba(229,238,234,.25)),
+      url(../assets/skins/transparent-board.webp) 50% 100% / 121% auto no-repeat,
+      #2c4238;
+    --pk-c-bezel:var(--space-4);
+    --pk-c-wheel-drop:0 7px 14px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.7);
+    --pk-c-body-edge:#8f9a97;
+    --pk-c-wheel-1:#3d3d3f; --pk-c-wheel-2:#222224; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#b9babd;
+    --pk-c-center-1:#343436; --pk-c-center-2:#161618; --pk-c-center-oy:38%;
+    --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
+    --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
+    --pk-c-lita-glow:235,241,239; --pk-c-lita-core:250,252,251; }
+  /* Custom 5G Transparent Coil (2005) (v1.347, Dean: "I actually really, really, really like it"): the same clear shell
+     with the click wheel taken OFF, so the wheel's flex ring shows - the black ring with gold pads, cut out of Commons
+     "IPod classic 80 GB (A1238, YMV) - board with keypad-0019.jpg" (CC BY-SA 4.0), turned 3.4 degrees to sit square: assets/skins/transparent-ring.webp.
+     The ring's light and shadow follow the light like every wheel; the tap zones stay live but draw nothing; the center is a clear glass dome. */
+  :where(html.is-phone, html.mms-popout, .skin-grid) .mms-ipod-custom5-transparent-coil{
+    --pk-c-body:linear-gradient(180deg, rgba(255,255,255,.34) 0, var(--mms-ipod-sheen-0) 1.6%),
+      linear-gradient(90deg, rgba(0,0,0,.2) 0%, rgba(0,0,0,.05) 12%, var(--mms-ipod-clear) 26%, var(--mms-ipod-clear) 74%, rgba(0,0,0,.05) 88%, rgba(0,0,0,.2) 100%),
+      linear-gradient(90deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 0 / 19px 100% no-repeat,
+      linear-gradient(270deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 100% 0 / 19px 100% no-repeat,
+      linear-gradient(180deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 0 / 100% 19px no-repeat,
+      linear-gradient(0deg, rgba(0,0,0,.14) 17px, rgba(0,0,0,0) 18px) 0 100% / 100% 19px no-repeat,
+      linear-gradient(90deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 0 / 18px 100% no-repeat,
+      linear-gradient(270deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 100% 0 / 18px 100% no-repeat,
+      linear-gradient(180deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 0 / 100% 18px no-repeat,
+      linear-gradient(0deg, rgba(249,252,250,.95), rgba(245,249,247,.66)) 0 100% / 100% 18px no-repeat,
+      linear-gradient(118deg, rgba(255,255,255,.3) 0%, rgba(255,255,255,0) 38%),
+      repeating-linear-gradient(45deg, rgba(255,255,255,.06) 0 1px, rgba(255,255,255,0) 1px 3px),
+      linear-gradient(rgba(229,238,234,.25), rgba(229,238,234,.25)),
+      url(../assets/skins/transparent-board.webp) 50% 100% / 121% auto no-repeat,
+      #2c4238;
+    --pk-c-bezel:var(--space-4);
+    --pk-c-wheel-art:radial-gradient(70% 50% at calc(50% + var(--lx,0) * 50%) calc(30% + var(--ly,0) * 45%), rgba(255,255,255,.78), rgba(255,255,255,.22) 45%, rgba(255,255,255,0) 72%),
+      radial-gradient(circle at calc(50% - var(--lx,0) * 30%) calc(50% - var(--ly,0) * 30%), rgba(255,255,255,.1), rgba(0,0,0,.4) 100%),
+      url(../assets/skins/transparent-ring.webp) center / 100% 100% no-repeat;
+    --pk-c-zone-op:0;
+    --pk-c-wheel-drop:calc(var(--lx,0) * -6px) calc(7px + var(--ly,0) * -4px) 14px rgba(0,0,0,.55);
+    --pk-c-body-edge:#8f9a97;
+    --pk-c-wheel-1:#2b2b2d; --pk-c-wheel-2:#151517; --pk-c-wheel-sheen:rgba(255,255,255,.4); --pk-c-wheel-oy:40%;
+    --pk-c-wheel-label:#b9babd;
+    --pk-c-center-1:rgba(255,255,255,.85); --pk-c-center-2:rgba(190,210,208,.5); --pk-c-center-oy:36%;
+    --pk-c-lit-band:rgba(255,255,255,.16); --pk-c-lit-band2:rgba(255,255,255,.09);
+    --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
+    --pk-c-lita-glow:235,241,239; --pk-c-lita-core:250,252,251; }
 
   /* Click (Original) (v1.335, Dean: "one special Original skin which includes the entire vibe of the
      first") - its COLORS, one role block like every colorway. Commons "IPod1stWIKIPEDIA.png" (CC BY-SA
@@ -10425,9 +10498,9 @@ a.tv-continue-card { text-decoration: none; }
     background:linear-gradient(100deg, var(--mms-ipod-sheen-0) 44%, var(--mms-lit-glass) 49%, var(--mms-lits-glass-hot) 50%, var(--mms-lit-glass) 51%, var(--mms-ipod-sheen-0) 56%),
       linear-gradient(100deg, var(--mms-ipod-sheen-0) 52%, var(--mms-lits-glass2) 58%, var(--mms-ipod-sheen-0) 64%);
     transform:translate3d(calc(var(--lx,0) * 25%), 0, 0); }
-  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit-strong .ip-wheel{ background:
+  :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit-strong .ip-wheel{ background:var(--pk-c-wheel-art,
       radial-gradient(90% 55% at calc(50% + var(--lx,0) * 40%) calc(-8% + var(--ly,0) * 30%), var(--pk-c-wheel-sheen) 0%, var(--mms-ipod-sheen-0) 60%),
-      radial-gradient(circle at calc(50% + var(--lx,0) * 14%) calc(var(--pk-c-wheel-oy) + var(--ly,0) * 14%), var(--pk-c-wheel-1), var(--pk-c-wheel-2) 100%); }
+        radial-gradient(circle at calc(50% + var(--lx,0) * 14%) calc(var(--pk-c-wheel-oy) + var(--ly,0) * 14%), var(--pk-c-wheel-1), var(--pk-c-wheel-2) 100%)); }
   :where(html.is-phone, html.mms-popout) .mms-ipod.mms-lit-strong .ip-center{ position:relative; overflow:hidden; background:
       radial-gradient(circle at calc(50% - var(--lx,0) * 40%) calc(60% - var(--ly,0) * 40%), var(--mms-lit-far) 0%, var(--mms-ipod-clear) 55%),
       radial-gradient(circle at calc(50% + var(--lx,0) * 20%) calc(var(--pk-c-center-oy) + var(--ly,0) * 20%), var(--pk-c-center-1), var(--pk-c-center-2)); }
