@@ -95,3 +95,4 @@ the checks.
 - [ ] v1.344.2 - On the phone, a video with chapters: watch to the middle of a later chapter, tap Listen;
   it carries on from that spot in that chapter (not chapter 1). Then Watch again: still the same spot.
   Repeat PAUSED: pause on Watch, tap Listen (still paused, same spot), then Watch (still paused).
+- [ ] v1.346.0 - On the phone: Extras > Skins > Shuffle > 4G (2010/2012/2013/2015) lists its colours and one previews live; Touch and Custom > Transparent show; Settings shows the new groups.

@@ -1,0 +1,686 @@
+[
+ {
+  "line": "mini",
+  "gen": 2,
+  "year": "2005",
+  "color": "Silver",
+  "hex": "#ccd0d1",
+  "id": "ipod-mini2-silver",
+  "style": "mini"
+ },
+ {
+  "line": "shuffle",
+  "gen": 1,
+  "year": "2005",
+  "color": "White",
+  "hex": "#f4f1f2",
+  "id": "ipod-shuffle1-white",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 2,
+  "year": "2005",
+  "color": "Silver",
+  "hex": "#cbd0ce",
+  "id": "ipod-shuffle2-silver",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 2,
+  "year": "2007",
+  "color": "Pink",
+  "hex": "#c33a83",
+  "id": "ipod-shuffle2-pink",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 2,
+  "year": "2007",
+  "color": "Green",
+  "hex": "#7eb14a",
+  "id": "ipod-shuffle2-green-2007",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 2,
+  "year": "2007",
+  "color": "Blue",
+  "hex": "#3f8cb9",
+  "id": "ipod-shuffle2-blue",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 2,
+  "year": "2007",
+  "color": "Orange",
+  "hex": "#d08330",
+  "id": "ipod-shuffle2-orange",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 2,
+  "year": "2007",
+  "color": "Teal",
+  "hex": "#75b7b7",
+  "id": "ipod-shuffle2-teal",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 2,
+  "year": "2007",
+  "color": "Red",
+  "hex": "#932d3b",
+  "id": "ipod-shuffle2-red",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 2,
+  "year": "2007",
+  "color": "Light Green",
+  "hex": "#89bb93",
+  "id": "ipod-shuffle2-lightgreen",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 2,
+  "year": "2008",
+  "color": "Blue",
+  "hex": "#377db9",
+  "id": "ipod-shuffle2-blue-2008",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 2,
+  "year": "2008",
+  "color": "Red",
+  "hex": "#b63628",
+  "id": "ipod-shuffle2-red-2008",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 2,
+  "year": "2008",
+  "color": "Pink",
+  "hex": "#af437e",
+  "id": "ipod-shuffle2-pink-2008",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 3,
+  "year": "2009",
+  "color": "Silver",
+  "hex": "#c4c2c0",
+  "id": "ipod-shuffle3-silver",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 3,
+  "year": "2009",
+  "color": "Black",
+  "hex": "#5f5c5d",
+  "id": "ipod-shuffle3-black",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 3,
+  "year": "2009",
+  "color": "Green",
+  "hex": "#9ebd51",
+  "id": "ipod-shuffle3-green",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 3,
+  "year": "2009",
+  "color": "Stainless Steel",
+  "hex": "#9d9ea2",
+  "id": "ipod-shuffle3-stainlesssteel",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2010",
+  "color": "Silver",
+  "hex": "#babcbd",
+  "id": "ipod-shuffle4-silver",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2010",
+  "color": "Green",
+  "hex": "#b6cf6e",
+  "id": "ipod-shuffle4-green",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2010",
+  "color": "Orange",
+  "hex": "#e9b74f",
+  "id": "ipod-shuffle4-orange",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2010",
+  "color": "Pink",
+  "hex": "#e286b5",
+  "id": "ipod-shuffle4-pink",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2012",
+  "color": "Pink",
+  "hex": "#e9807f",
+  "id": "ipod-shuffle4-pink-2012",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2012",
+  "color": "Yellow",
+  "hex": "#e3e064",
+  "id": "ipod-shuffle4-yellow",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2012",
+  "color": "Blue",
+  "hex": "#69c6e4",
+  "id": "ipod-shuffle4-blue-2012",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2012",
+  "color": "Green",
+  "hex": "#88cda1",
+  "id": "ipod-shuffle4-green-2012",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2012",
+  "color": "Purple",
+  "hex": "#d196ca",
+  "id": "ipod-shuffle4-purple",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2012",
+  "color": "Silver",
+  "hex": "#d8dbda",
+  "id": "ipod-shuffle4-silver-2012",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2012",
+  "color": "Slate",
+  "hex": "#4e535d",
+  "id": "ipod-shuffle4-slate",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2012",
+  "color": "Red",
+  "hex": "#e95555",
+  "id": "ipod-shuffle4-red",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2013",
+  "color": "Space Gray",
+  "hex": "#9a999c",
+  "id": "ipod-shuffle4-spacegray",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2015",
+  "color": "Gold",
+  "hex": "#eee2cb",
+  "id": "ipod-shuffle4-gold",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2015",
+  "color": "Space Gray",
+  "hex": "#505054",
+  "id": "ipod-shuffle4-spacegray-2015",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2015",
+  "color": "Blue",
+  "hex": "#3c67aa",
+  "id": "ipod-shuffle4-blue-2015",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2015",
+  "color": "Pink",
+  "hex": "#d85288",
+  "id": "ipod-shuffle4-pink-2015",
+  "style": "tonal"
+ },
+ {
+  "line": "shuffle",
+  "gen": 4,
+  "year": "2015",
+  "color": "Red",
+  "hex": "#c8433e",
+  "id": "ipod-shuffle4-red-2015",
+  "style": "tonal"
+ },
+ {
+  "line": "nano",
+  "gen": 1,
+  "year": "2005",
+  "color": "Black",
+  "hex": "#121617",
+  "id": "ipod-nano1-black",
+  "style": "dark"
+ },
+ {
+  "line": "nano",
+  "gen": 1,
+  "year": "2005",
+  "color": "White",
+  "hex": "#fefefe",
+  "id": "ipod-nano1-white",
+  "style": "white"
+ },
+ {
+  "line": "nano",
+  "gen": 2,
+  "year": "2006",
+  "color": "Silver",
+  "hex": "#e3e5e4",
+  "id": "ipod-nano2-silver",
+  "style": "white"
+ },
+ {
+  "line": "nano",
+  "gen": 2,
+  "year": "2006",
+  "color": "Black",
+  "hex": "#1c212b",
+  "id": "ipod-nano2-black",
+  "style": "dark"
+ },
+ {
+  "line": "nano",
+  "gen": 3,
+  "year": "2007",
+  "color": "Black",
+  "hex": "#2d3134",
+  "id": "ipod-nano3-black",
+  "style": "dark"
+ },
+ {
+  "line": "nano",
+  "gen": 4,
+  "year": "2008",
+  "color": "Silver",
+  "hex": "#e1e1e1",
+  "id": "ipod-nano4-silver",
+  "style": "white"
+ },
+ {
+  "line": "nano",
+  "gen": 4,
+  "year": "2008",
+  "color": "Green",
+  "hex": "#a0c15a",
+  "id": "ipod-nano4-green",
+  "style": "white"
+ },
+ {
+  "line": "nano",
+  "gen": 4,
+  "year": "2008",
+  "color": "Pink",
+  "hex": "#c85796",
+  "id": "ipod-nano4-pink",
+  "style": "white"
+ },
+ {
+  "line": "nano",
+  "gen": 4,
+  "year": "2008",
+  "color": "Black",
+  "hex": "#666668",
+  "id": "ipod-nano4-black",
+  "style": "white"
+ },
+ {
+  "line": "nano",
+  "gen": 4,
+  "year": "2008",
+  "color": "Red",
+  "hex": "#d6534d",
+  "id": "ipod-nano4-red",
+  "style": "white"
+ },
+ {
+  "line": "nano",
+  "gen": 5,
+  "year": "2009",
+  "color": "Silver",
+  "hex": "#cfcfcf",
+  "id": "ipod-nano5-silver",
+  "style": "white"
+ },
+ {
+  "line": "nano",
+  "gen": 5,
+  "year": "2009",
+  "color": "Blue",
+  "hex": "#3e8bc5",
+  "id": "ipod-nano5-blue",
+  "style": "white"
+ },
+ {
+  "line": "nano",
+  "gen": 5,
+  "year": "2009",
+  "color": "Purple",
+  "hex": "#69579b",
+  "id": "ipod-nano5-purple",
+  "style": "white"
+ },
+ {
+  "line": "nano",
+  "gen": 5,
+  "year": "2009",
+  "color": "Yellow",
+  "hex": "#f6d452",
+  "id": "ipod-nano5-yellow",
+  "style": "white"
+ },
+ {
+  "line": "nano",
+  "gen": 5,
+  "year": "2009",
+  "color": "Black",
+  "hex": "#7e7b7f",
+  "id": "ipod-nano5-black",
+  "style": "white"
+ },
+ {
+  "line": "nano",
+  "gen": 5,
+  "year": "2009",
+  "color": "Red",
+  "hex": "#c93d3c",
+  "id": "ipod-nano5-red",
+  "style": "white"
+ },
+ {
+  "line": "nano",
+  "gen": 6,
+  "year": "2010",
+  "color": "Silver",
+  "hex": "#9ea0a4",
+  "id": "ipod-nano6-silver",
+  "style": "dark"
+ },
+ {
+  "line": "nano",
+  "gen": 6,
+  "year": "2010",
+  "color": "Graphite",
+  "hex": "#464646",
+  "id": "ipod-nano6-graphite",
+  "style": "dark"
+ },
+ {
+  "line": "nano",
+  "gen": 6,
+  "year": "2010",
+  "color": "Blue",
+  "hex": "#5d86bd",
+  "id": "ipod-nano6-blue",
+  "style": "dark"
+ },
+ {
+  "line": "nano",
+  "gen": 6,
+  "year": "2010",
+  "color": "Red",
+  "hex": "#df4744",
+  "id": "ipod-nano6-red",
+  "style": "dark"
+ },
+ {
+  "line": "nano",
+  "gen": 7,
+  "year": "2012",
+  "color": "Blue",
+  "hex": "#69c6e4",
+  "id": "ipod-nano7-blue-2012",
+  "style": "white"
+ },
+ {
+  "line": "nano",
+  "gen": 7,
+  "year": "2012",
+  "color": "Silver",
+  "hex": "#d8dbda",
+  "id": "ipod-nano7-silver",
+  "style": "white"
+ },
+ {
+  "line": "nano",
+  "gen": 7,
+  "year": "2015",
+  "color": "Space Gray",
+  "hex": "#505054",
+  "id": "ipod-nano7-spacegray-2015",
+  "style": "dark"
+ },
+ {
+  "line": "nano",
+  "gen": 7,
+  "year": "2015",
+  "color": "Pink",
+  "hex": "#d85288",
+  "id": "ipod-nano7-pink-2015",
+  "style": "white"
+ },
+ {
+  "line": "nano",
+  "gen": 7,
+  "year": "2015",
+  "color": "Red",
+  "hex": "#c8433e",
+  "id": "ipod-nano7-red-2015",
+  "style": "white"
+ },
+ {
+  "line": "touch",
+  "gen": 1,
+  "year": "2007",
+  "color": "Black",
+  "hex": "#000000",
+  "id": "ipod-touch1-black",
+  "style": "dark"
+ },
+ {
+  "line": "touch",
+  "gen": 4,
+  "year": "2010",
+  "color": "Black",
+  "hex": "#000000",
+  "id": "ipod-touch4-black",
+  "style": "dark"
+ },
+ {
+  "line": "touch",
+  "gen": 4,
+  "year": "2011",
+  "color": "White",
+  "hex": "#f8f6f5",
+  "id": "ipod-touch4-white",
+  "style": "white"
+ },
+ {
+  "line": "touch",
+  "gen": 5,
+  "year": "2012",
+  "color": "Black and Slate",
+  "hex": "#4e535d",
+  "id": "ipod-touch5-blackandslate",
+  "style": "dark"
+ },
+ {
+  "line": "touch",
+  "gen": 5,
+  "year": "2012",
+  "color": "White and Silver",
+  "hex": "#d8dbda",
+  "id": "ipod-touch5-whiteandsilver",
+  "style": "white"
+ },
+ {
+  "line": "touch",
+  "gen": 5,
+  "year": "2012",
+  "color": "Pink",
+  "hex": "#e9807f",
+  "id": "ipod-touch5-pink",
+  "style": "white"
+ },
+ {
+  "line": "touch",
+  "gen": 5,
+  "year": "2012",
+  "color": "Yellow",
+  "hex": "#e3e064",
+  "id": "ipod-touch5-yellow",
+  "style": "white"
+ },
+ {
+  "line": "touch",
+  "gen": 5,
+  "year": "2012",
+  "color": "Blue",
+  "hex": "#69c6e4",
+  "id": "ipod-touch5-blue",
+  "style": "white"
+ },
+ {
+  "line": "touch",
+  "gen": 5,
+  "year": "2012",
+  "color": "Red",
+  "hex": "#e95555",
+  "id": "ipod-touch5-red",
+  "style": "white"
+ },
+ {
+  "line": "touch",
+  "gen": 5,
+  "year": "2013",
+  "color": "Space Gray",
+  "hex": "#9a999c",
+  "id": "ipod-touch5-spacegray",
+  "style": "white"
+ },
+ {
+  "line": "touch",
+  "gen": 6,
+  "year": "2015",
+  "color": "Blue",
+  "hex": "#3c67aa",
+  "id": "ipod-touch6-blue",
+  "style": "white"
+ },
+ {
+  "line": "touch",
+  "gen": 6,
+  "year": "2015",
+  "color": "Silver",
+  "hex": "#d8dbda",
+  "id": "ipod-touch6-silver",
+  "style": "white"
+ },
+ {
+  "line": "touch",
+  "gen": 6,
+  "year": "2015",
+  "color": "Gold",
+  "hex": "#eee2cb",
+  "id": "ipod-touch6-gold",
+  "style": "white"
+ },
+ {
+  "line": "touch",
+  "gen": 6,
+  "year": "2015",
+  "color": "Space Gray",
+  "hex": "#505054",
+  "id": "ipod-touch6-spacegray",
+  "style": "dark"
+ },
+ {
+  "line": "touch",
+  "gen": 6,
+  "year": "2015",
+  "color": "Pink",
+  "hex": "#d85288",
+  "id": "ipod-touch6-pink",
+  "style": "white"
+ },
+ {
+  "line": "touch",
+  "gen": 6,
+  "year": "2015",
+  "color": "Red",
+  "hex": "#c8433e",
+  "id": "ipod-touch6-red",
+  "style": "white"
+ }
+]

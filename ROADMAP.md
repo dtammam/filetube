@@ -414,6 +414,16 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.346.0 - Every iPod colour, and a Custom section (2026-09-29)
+
+- **76 more colourways from every generation.** Shuffle 1G-4G complete (34), Nano 1G and the rest of
+  the Nano (25), Mini 2G Silver, and a new Touch line (16); registry 52 to 129. Classic cards are
+  skipped as exact duplicates of shipped skins. Colours are the reference site's, run through the
+  batch-1 formula (not photo-sampled); "Light Green" and "Teal" are disambiguating names.
+- **A Custom section** in Extras > Skins and Settings, opening with a hand-authored Transparent iPod
+  (a clear shell, the board and battery showing through). Touch 1G-3G and 6G-7G read as spans.
+- Plan: `docs/exec-plans/completed/2026-09-29-ipod-more/plan.md`.
+
 ### v1.345.0 - Every iPod colour, with its real name (2026-09-29)
 
 - **27 new colourways and real model names.** The Click skins grow from 22 to 49 line colourways
@@ -425,6 +435,7 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - **Gold is the real Mini 1G Gold (2004)**: champagne body, the grey Mini 1G wheel, lettering and center.
 - **The UI-lint ratchet admits added skin-palette keys** (and only those, under `no-raw-values`, with the
   skin-art reason); it stays shrink-only for everything else. Plan: `docs/exec-plans/completed/2026-09-29-ipod-trueup/plan.md`.
+
 
 ### v1.344.2 - Watch and Listen keep your place, and a pause (2026-09-29)
 
