@@ -324,4 +324,19 @@ looks or acts different is a regression".
 
 ## Build log
 
-(builder: census, instrument counts, A/B results per wave, kept items, gate verdicts)
+### Step 0 baselines (untouched base 39707089, Node 22.23.1)
+
+- `lint:ui` TOTAL 3225; `lint` 0 errors, 6 warnings; `lint:overlay` clean (0 violations); `test:unit` 8012 tests, 8012 pass, 0 fail.
+- Pixel oracle: seeded fixture /tmp/ft-ab-data (SEED_NOW=1788264000000, TZ=UTC), base worktree ux-cleanup-base, captures /tmp/ft-ab/base1 and base2.
+
+### Census
+
+- **Dead CSS (W1):** the class scan flagged 173 names, but nearly all are built at runtime (mms-*, icon-*, ui modifiers, skin classes). One rule is dead with no static or dynamic reference: `.audio-artwork` (deleted, 3 ratchet entries and 1 token-exempt annotation paid). No dead keyframes.
+- **Dead JS (W1):** none outside the OUT list.
+- **Raw values (W2):** 368 keyed entries (375 hits) carried the "same pixels as a token" reason. Era-invariant tokens with an equal value exist for many sizes, but most are the wrong role (font-size tokens as widths, avatar sizes as icon sizes), and `--hairline` is 0.5px at 2dppx so 1px borders cannot use it. 13 role-correct sites were re-spelled: `--ring-w` (focus outline and offset, spinner borders, sidebar drag indicators), `--progress-h`, `--grab-h`, `--icon-sm/md/lg`. The rest are kept with the "kept" reason.
+- **Legacy tokens (W3):** computed table of all 185 tokens over 4 eras x 2 modes. Exact role matches: `--radius-lg` = `--r-md`, `--star-gold` = `--star`; `--yt-red-dark` had no consumers. All three definitions deleted and added to RETIRED_ALIASES (ban kept). Every other legacy token varies per era with no equal role: kept with the "kept" reason.
+- **Stale docs (W4):** see W4 result below.
+
+### Results per wave
+
+(filled as waves land)
