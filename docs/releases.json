@@ -3382,5 +3382,11 @@
     "date": "2026-09-30",
     "title": "Three see-through iPods, now published",
     "intent": "The three Transparent iPod skins (white wheel, black wheel and Coil) from 1.347.0 now reach the Docker image; the first publish was held back by a security check on a build tool, which is fixed. No change to the skins themselves."
+  },
+  {
+    "version": "1.347.2",
+    "date": "2026-09-30",
+    "title": "A calmer light on the Coil wheel",
+    "intent": "The Transparent Coil skin's wheel was catching too much light and looked like glare. The highlight is now much softer and still follows the light, so the ring and its gold pads read like the real thing."
   }
 ]
