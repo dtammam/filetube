@@ -1966,7 +1966,7 @@ test('v1.257 (adversarial W-A) source-lock: the Nano reshape rules exist - witho
   assert.match(css, /\.mms-ipod \.ip-ttl,[^{]*\{ min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; \}/, 'the title ellipsizes in the strip (the one pocket text-line rule - the tray panel carries .mms-ipod, v1.332)');
   assert.match(css, /body\.mms-tray \.mms-sticker\{ transform:scale\(\.55\)/, 'only the sticker BUTTON shrinks (the menu keeps thumb sizes - QA S4)');
   assert.match(css, /body\.mms-tray \.mms-sticker-menu\{ position:fixed; inset:var\(--space-3\)/, 'the tray menu is a FULL-WINDOW overlay (the upward-opening base menu clipped to a sliver at 190px - v1.258.1)');
-  assert.match(css, /body\.mms-tray \.music-nowplaying-panel\{ position:fixed; inset:0; border-radius:var\(--radius-lg\)/, 'the panel fills the pip viewport, rounded like the shell');
+  assert.match(css, /body\.mms-tray \.music-nowplaying-panel\{ position:fixed; inset:0; border-radius:var\(--r-md\)/, 'the panel fills the pip viewport, rounded like the shell');
 });
 
 

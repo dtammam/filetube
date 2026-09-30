@@ -90,10 +90,10 @@ test('base ::-webkit-scrollbar family exists with explicit bar sizing', () => {
   assert.ok(corner, 'expected a base ::-webkit-scrollbar-corner rule (two-axis scrollers)');
 });
 
-test('base thumb takes its corner shape from --radius-lg, so every era skins the SHAPE without an override (2021 pill / 2005 square / 2009+2014 2px)', () => {
+test('base thumb takes its corner shape from --r-md, so every era skins the SHAPE without an override (2021 pill / 2005 square / 2009+2014 2px)', () => {
   const thumb = findRule('::-webkit-scrollbar-thumb');
   assert.ok(thumb);
-  assert.match(thumb[1], /border-radius:\s*var\(--radius-lg\)/);
+  assert.match(thumb[1], /border-radius:\s*var\(--r-md\)/);
 });
 
 test('base thumb floats via transparent border + padding-box clip (the modern-2021 gutter)', () => {

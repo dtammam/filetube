@@ -278,7 +278,7 @@
 
 ### Chores
 
-- [ ] **Refresh the README screenshots** _(Dean, 2026-09-29)_: the README's images (`assets/images/`:
+- [x] **Refresh the README screenshots** - DONE in v1.347.3 _(Dean, 2026-09-29)_: the README's images (`assets/images/`:
   the desktop Home, Library and Watch shots, and the four mobile shots) predate the skins, the Pocket
   and the one consistent look. Retake them from the current UI (light and dark, desktop and phone), add
   one of the Pocket with a skin, replace the files, and check every `<img>` in README.md still resolves.
@@ -425,6 +425,14 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.347.3 - A tidier app under the hood (2026-09-30)
+
+- UX overhaul cleanup, no visual change: 13 raw sizes moved to role-correct design tokens (focus ring width,
+  progress and grab heights, icon sizes), 3 legacy tokens retired (`--radius-lg`, `--star-gold`, `--yt-red-dark`;
+  the ban stays in RETIRED_ALIASES), 1 dead rule deleted. `lint:ui` 3225 -> 3183; the rest of the ratchet was
+  re-audited and kept with a measured reason. Pixel A/B: 1896 scenes, 0 with differences (noise run also 0).
+- README: 8 new screenshots (desktop 2021 and 2005, phone, Pocket iPod) from a synthetic library, 11 old images removed.
 
 ### v1.347.2 - A calmer light on the Coil wheel (2026-09-30)
 
