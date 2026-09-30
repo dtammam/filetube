@@ -158,13 +158,21 @@
 
 ### Features
 
-- [ ] **Listen Control: the phone plays music on the PC** _(Dean, 2026-09-30: "I want the ability to have a
+- [x] **Listen Control: the phone plays music on the PC** - SHIPPED v1.348.0 (see Shipped) _(Dean, 2026-09-30: "I want the ability to have a
   device control playback on another device as an optional opt-in thing ... pick things on the phone and
   explicitly have them be played on the computer's web browser instance")_ - plan:
-  `docs/exec-plans/active/2026-09-30-listen-control.md` (Sonnet builds it). Music only, full remote: the
+  `docs/exec-plans/completed/2026-09-30-listen-control.md` (Sonnet builds it). Music only, full remote: the
   PC opts in on its Music page, the phone picks Play on... in the iPod menu, stays silent and mirrors the
   PC's Now Playing (play/pause/next/prev/scrub). Server-Sent Events behind nginx with a polling fallback,
   no new dependency, same user only. FULL gate. Target v1.348.0.
+
+- [ ] **Listen Control follow-ups** _(logged by the v1.348.0 build, not built)_ - the Play on... menu is reachable only
+  from the phone's skin panel (a local track must have been played once; no entry point in the browse view); Cider and
+  Nordic have no menu, so their badge tap just ends remote control; a remote mini-bar to reopen a docked remote mirror
+  (docking in remote mode hides the panel until the next remote play); podcast and video pages on the phone are not
+  refused while remote (only Listen queue items are); `getRemoteSnapshot` reports whole-file duration and absolute
+  position for `::c` chapter tracks (check on device); a PC tab reloaded without sending /off (crash, sleep) inside the
+  10 s grace can re-run the commands queued in that window.
 
 - [x] **iPod skin true-up: 27 new colorways, real model names, Extras by line and generation** - SHIPPED v1.345.0 (see Shipped) _(Dean,
   2026-09-29)_ - plan: `docs/exec-plans/completed/2026-09-29-ipod-trueup/plan.md`
@@ -433,6 +441,15 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.348.0 - Play music on your computer from your phone (2026-09-30)
+
+- Listen Control: turn on Remote control on the computer's Music page, then on the phone pick Play on... in the iPod
+  menu. The phone stays silent and mirrors the computer's Now Playing; play/pause, next, previous and scrub on the
+  phone drive the computer. Same user only, music only, no new dependency. Server-Sent Events with a polling fallback
+  for a buffering proxy (measured: direct 37-1325 ms per step, poll fallback about 1.5 s per command).
+- Gate: security APPROVED, QA APPROVED r4, adversary APPROVED r4 (4 rounds; the real-browser proof caught a regression
+  two seats had approved). Suites: 10476+ tests on Node 22.23.1 and 24.20.0; `lint:ui` unchanged at 3183, overlay 0.
 
 ### v1.347.3 - A tidier app under the hood (2026-09-30)
 

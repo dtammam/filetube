@@ -3394,5 +3394,11 @@
     "date": "2026-09-30",
     "title": "A tidier app under the hood",
     "intent": "A housekeeping release: a few hard-coded sizes now use the app's shared design values, three unused style names are gone, and the README has fresh screenshots. Nothing should look or act any different; a pixel comparison over 1896 screens found no change."
+  },
+  {
+    "version": "1.348.0",
+    "date": "2026-09-30",
+    "title": "Play music on your computer from your phone",
+    "intent": "Turn on Remote control on your computer's Music page, then pick Play on... in your phone's iPod menu. The phone becomes a remote: what you pick plays on the computer, and the phone shows what is playing and lets you pause, skip and scrub."
   }
 ]

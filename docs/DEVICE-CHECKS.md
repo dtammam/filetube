@@ -35,6 +35,17 @@ the checks.
 
 ## Music page
 
+- [ ] v1.348 - Through https://filetube.tamm.am: PC Music page, Remote control On. iPhone PWA (play a song once so the
+  iPod panel shows): MENU > Play on... lists the PC.
+- [ ] v1.348 - Pick an album on the phone: it plays on the PC within about a second; the iPhone is silent; its screen
+  shows the PC's track and the "on PC" badge.
+- [ ] v1.348 - Wheel: play/pause, next, previous, scrub. The PC follows.
+- [ ] v1.348 - Browse to Home on the PC: it keeps playing and still obeys the phone.
+- [ ] v1.348 - Lock the phone for a minute, unlock: it reconnects and still shows the PC's track.
+- [ ] v1.348 - Close the PC tab: the phone says "Lost PC" within about 12 s and stays quiet.
+- [ ] v1.348 - If a step lags by more than about 3 s, note it: nginx buffered and the fallback kicked in.
+- [ ] v1.348 - Reload the PC tab while controlling: the phone says it lost the PC; pick it again and a play shows
+  "Click the PC's tab once to let it play" until you click the PC page.
 - [ ] v1.339 - Music tabs, an album page and Now playing hold still on the phone, cold and returning.
 - [ ] v1.339 - The music toolbar's reserved slots: Autoplay sits on row 2 on every phone tab, a 38 px
   toggle slot, the desktop pop-out slot held while idle.
