@@ -213,25 +213,12 @@ test('no hello in 5s falls back to polling (with since), and polled commands ded
   h.advance(5100);
   assert.strictEqual(h.sources[0].closed, true, 'the buffered stream is abandoned');
   await new Promise((r) => setImmediate(r));
-  assert.match(h.fetches.find((f) => f.u.startsWith('/api/remote/poll')).u, /role=target&deviceId=dev-pc&label=Desk$/, 'a first poll sends no since: a stale backlog is never replayed');
+  assert.match(h.fetches.find((f) => f.u.startsWith('/api/remote/poll')).u, /role=target&deviceId=dev-pc&label=Desk&since=0/, 'a first poll sends since=0: commands queued before the fallback began are delivered');
   assert.deepStrictEqual(h.calls, ['pause', 'next']);
   h.advance(1600);
   await new Promise((r) => setImmediate(r));
   assert.deepStrictEqual(h.calls, ['pause', 'next'], 'the same commands polled again do not re-run');
   assert.ok(h.fetches.filter((f) => f.u.startsWith('/api/remote/poll')).some((f) => /since=2/.test(f.u)));
-});
-
-test('a first poll with nothing pending adopts the server seq, so every later poll sends since and gets new commands', async () => {
-  const h = harness({ pollBody: { seq: 3, controller: { attached: true, label: 'Phone' }, commands: [] } });
-  h.t.setOn(true);
-  h.advance(5100);
-  await new Promise((r) => setImmediate(r));
-  h.advance(1600);
-  await new Promise((r) => setImmediate(r));
-  const polls = h.fetches.filter((f) => f.u.startsWith('/api/remote/poll')).map((f) => f.u);
-  assert.ok(polls.length >= 2);
-  assert.doesNotMatch(polls[0], /since=/);
-  assert.match(polls[1], /since=3/, 'the second poll carries the cursor');
 });
 
 test('a server restart (seq counter back to 0) does not leave the target dropping every new command', () => {

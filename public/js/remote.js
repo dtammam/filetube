@@ -190,7 +190,7 @@
     function pollOnce() {
       if (!on || !polling) return;
       var url = '/api/remote/poll?role=target&deviceId=' + encodeURIComponent(env.deviceId())
-        + '&label=' + encodeURIComponent(env.label()) + (lastSeq > 0 ? '&since=' + lastSeq : '');
+        + '&label=' + encodeURIComponent(env.label()) + '&since=' + lastSeq;
       var p;
       try { p = env.fetch(url, { credentials: 'same-origin' }); } catch (_) { p = null; }
       var next = function () { if (on && polling) pollTimer = env.setTimeout(pollOnce, POLL_MS); };
@@ -202,7 +202,6 @@
           if (typeof d.seq === 'number' && d.seq < lastSeq) lastSeq = d.seq;
           if (d.controller) handleController(d.controller);
           (d.commands || []).forEach(handleCommand);
-          if (!(d.commands || []).length && typeof d.seq === 'number' && d.seq > lastSeq) lastSeq = d.seq;
         } else armGrace();
         next();
       }).catch(function () { armGrace(); next(); });

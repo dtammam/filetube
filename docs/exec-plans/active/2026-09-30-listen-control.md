@@ -466,3 +466,20 @@ Gate: APPROVED r2 @ac65092f - qa
 Adversary r2 @ac65092f: warnings 2 (native guards bound) and 3 (HEARTBEAT_MS test) accepted from the diff; warning 1's fix introduced a NEW defect.
 1. CRITICAL public/js/remote.js pollOnce: `since` is omitted while lastSeq is 0, and lastSeq is only ever LOWERED from a poll reply (`d.seq < lastSeq`), never adopted. So a poll-fallback target that has handled no command omits `since` on EVERY poll; the server then uses t.lastSeq as the cursor and returns nothing. Repro (measured, real server): target polls once, phone sends pause,next,next, target polls with no `since` -> `{"seq":3,"commands":[]}`. The polling fallback (buffering proxy, R4) delivers no command at all, ever. Fix: adopt `if (typeof d.seq === 'number' && lastSeq === 0) lastSeq = d.seq` from the FIRST poll reply (and the hello), then send since always; add a two-poll test (poll, command, poll -> command delivered).
 Gate: CHANGES r2 @ac65092f — adversary
+QA r3 @c147cdf8: empty poll reply adopts d.seq; later commands have seq above it, none skipped; 90/90 remote tests pass. No new findings.
+Gate: APPROVED r3 @c147cdf8 - qa
+
+Adversary r3 @c147cdf8 (real server + the real createTarget from public/js/remote.js, SSE forced off so it polls):
+1. WARNING public/js/remote.js pollOnce: the r2 fix adopts only `d.seq > lastSeq`, so a first reply of `seq: 0` (fresh server, nothing enqueued process-wide yet) leaves lastSeq 0 and `since` omitted again. Repro (measured): fresh server, target polls, phone sends pause,next,next, target keeps polling -> delivered `[]`; the commands are skipped for good and the later polls carry since=3. The FIRST commands after every server start are lost on the poll fallback. A later batch was delivered (`["pause","next"]`), so it is a one-time-per-boot loss, not a dead channel. Fix: track "seq known" separately from its value (adopt d.seq including 0, send `since=0` only once known), plus a test with a seq-0 first reply.
+Verified: reload/first-poll with since omitted no longer replays a backlog (server uses t.lastSeq); not re-measured on a real restart (read the `d.seq < lastSeq` line only).
+Gate: CHANGES r3 @c147cdf8 — adversary
+
+### Gate round notes (builder)
+
+- r1 adversary WARNING 1 (stale replay on a first poll with since=0) was "fixed" by omitting since (ac65092f, c147cdf8).
+  The real-browser proof (buffering proxy, step b) showed that loses every command queued before the target's first
+  poll: behind a buffering proxy the `hello` seq never arrives, so a target cannot know the server counter. Reverted to
+  always sending `since` (the plan's design). Accepted limitation: a target that reloads WITHOUT sending /off (crash,
+  sleep) within the 10 s grace may re-run the commands queued in that window (the stream's Last-Event-ID replay has the
+  same shape). A normal reload sends /off and drops the target. Kept: hello/poll seq below lastSeq resets it (server
+  restart, QA r1).
