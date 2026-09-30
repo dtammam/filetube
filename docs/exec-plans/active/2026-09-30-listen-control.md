@@ -443,3 +443,20 @@ with "Lost Linux PC" and must pick the PC again; after that the no-click play re
 ### Gate verdicts
 
 (Filled by each seat, bound to the sha it reviewed.)
+
+QA r1 @45686e34: 270/270 targeted tests pass (Node 22), lint:ui OK (3183), overlay census 0, eslint clean on new files, 0 em dashes added.
+1. WARNING public/js/remote.js handleCommand + lib/remote/store.js: seqCounter is process-wide and resets to 0 on a server restart, but the target's client lastSeq (and poll `since`) survives the EventSource reconnect and the hello `{seq}` is ignored; after a restart every command with seq <= the old lastSeq is silently dropped until the counter passes it. Fix: on hello (and poll reply) if seq < lastSeq set lastSeq = seq, plus a test.
+2. SUGGESTION: GET /stream?role=target and /poll?role=target register a target on a cross-site top-level GET (SameSite=Lax); low impact (bogus picker row for 10s).
+3. SUGGESTION: getRemoteSnapshot reports whole-file duration/absolute position for ::c chapter tracks; fine for seek symmetry, verify on device.
+Gate: CHANGES r1 @45686e34 - qa
+
+Gate: APPROVED r1 @45686e34 — security-brief
+
+Adversary r1 @45686e34 (measured on a /tmp git-archive sandbox; 34 mutants, caps/exhaustion script, poll replay repro). Full suite in sandbox: 10476 tests, 10455 pass, 8 fail, all 8 are `git ls-files` tests that cannot run without .git; those 5 files re-run in the worktree: 69/69 pass.
+Held (mutant went red): cross-user scoping (targetOf, listTargets), 415, cmd allowlist, ids cap, index re-point, last-play-wins, grace, per-user cap, rate limit, close cleanup, X-Accel header, Cache-Control, Last-Event-ID replay, local-mode hostCtl, remotePlayAt seam, badge on all 3 renderers, D8 handoff, Listen refusal. Exhaustion: 1000 streams from one user hold at 8 conns/8 timers; 40 users hit the 200 cap, 120 get 503, no growth.
+1. WARNING lib/remote/routes.js poll + public/js/remote.js pollOnce: the client's first poll sends `since=0` (lastSeq reset), and the server treats a finite 0 as a real cursor. Repro: target polls, phone sends pause,next,next, target polls again with since=0 inside the 10s liveness window (reload/sleep/crash with no /off, buffering proxy) -> all 3 stale commands replayed (measured: commands seq 1,2,3 returned; up to 50). Fix: client omits `since` until it has a hello/poll seq, or server ignores since=0 on a target's first poll.
+2. WARNING presence-not-binding: the NATIVE-track visibility guards in server.js resolveRemoteTracks (`filter(trackVisibleTo)`) and resolveRemoteTrackCard (`trackVisibleTo(req, native)`) can be deleted with all tests green (mutants M2, M2c survive: the tests seed only projected library audio, blk1). A member restricted from a native track would read its title via state / get it pushed via play. Fix: seed a path-restricted native track in remote-api.test.js and assert both the play drop and the state card null.
+3. WARNING: the nginx claim "heartbeat < 60s" is unbound: default heartbeat 20000 -> 70000 is green (M8). Add a test asserting the default stays under 60000.
+4. SUGGESTION: the mirror's skinIsActive remote branch (music.js) is covered only by the W4 browser proof (mutant Y7 green in npm test); global 200-conn 503 path untested (X7 green); a query `user` is not shown ignored (X3).
+5. Agree with QA W1 (server-restart seq reset drops commands) - not re-measured. Suspicions, not findings: bfcache restore after pagehide /off re-heals only via EventSource error; R2 podcasts/videos on phone pages are not refused while remote (only Listen queue items are).
+Gate: CHANGES r1 @45686e34 — adversary

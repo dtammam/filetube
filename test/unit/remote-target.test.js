@@ -213,12 +213,22 @@ test('no hello in 5s falls back to polling (with since), and polled commands ded
   h.advance(5100);
   assert.strictEqual(h.sources[0].closed, true, 'the buffered stream is abandoned');
   await new Promise((r) => setImmediate(r));
-  assert.match(h.fetches.find((f) => f.u.startsWith('/api/remote/poll')).u, /role=target&deviceId=dev-pc&label=Desk&since=0/);
+  assert.match(h.fetches.find((f) => f.u.startsWith('/api/remote/poll')).u, /role=target&deviceId=dev-pc&label=Desk$/, 'a first poll sends no since: a stale backlog is never replayed');
   assert.deepStrictEqual(h.calls, ['pause', 'next']);
   h.advance(1600);
   await new Promise((r) => setImmediate(r));
   assert.deepStrictEqual(h.calls, ['pause', 'next'], 'the same commands polled again do not re-run');
   assert.ok(h.fetches.filter((f) => f.u.startsWith('/api/remote/poll')).some((f) => /since=2/.test(f.u)));
+});
+
+test('a server restart (seq counter back to 0) does not leave the target dropping every new command', () => {
+  const h = harness();
+  h.t.setOn(true);
+  h.sources[0].emit('hello', { seq: 0 });
+  h.sources[0].emit('command', { seq: 40, cmd: 'pause', args: {} });
+  h.sources[0].emit('hello', { seq: 0 });
+  h.sources[0].emit('command', { seq: 1, cmd: 'next', args: {} });
+  assert.deepStrictEqual(h.calls, ['pause', 'next']);
 });
 
 test('a stream that never recovers past the 10s grace switches off with a toast; a hello cancels the grace', () => {

@@ -190,7 +190,7 @@
     function pollOnce() {
       if (!on || !polling) return;
       var url = '/api/remote/poll?role=target&deviceId=' + encodeURIComponent(env.deviceId())
-        + '&label=' + encodeURIComponent(env.label()) + '&since=' + lastSeq;
+        + '&label=' + encodeURIComponent(env.label()) + (lastSeq > 0 ? '&since=' + lastSeq : '');
       var p;
       try { p = env.fetch(url, { credentials: 'same-origin' }); } catch (_) { p = null; }
       var next = function () { if (on && polling) pollTimer = env.setTimeout(pollOnce, POLL_MS); };
@@ -199,6 +199,7 @@
         if (!on) return;
         if (graceTimer) { env.clearTimeout(graceTimer); graceTimer = null; }
         if (d) {
+          if (typeof d.seq === 'number' && d.seq < lastSeq) lastSeq = d.seq;
           if (d.controller) handleController(d.controller);
           (d.commands || []).forEach(handleCommand);
         } else armGrace();
@@ -223,8 +224,9 @@
         + '&label=' + encodeURIComponent(env.label());
       try { es = new env.EventSource(url); } catch (_) { startPolling(); return; }
       helloTimer = env.setTimeout(function () { helloTimer = null; startPolling(); }, HELLO_TIMEOUT_MS);
-      es.addEventListener('hello', function () {
+      es.addEventListener('hello', function (ev) {
         if (helloTimer) { env.clearTimeout(helloTimer); helloTimer = null; }
+        try { var h = JSON.parse(ev.data); if (h && typeof h.seq === 'number' && h.seq < lastSeq) lastSeq = h.seq; } catch (_) { /* no seq */ }
         if (graceTimer) { env.clearTimeout(graceTimer); graceTimer = null; }
       });
       es.addEventListener('command', function (ev) {

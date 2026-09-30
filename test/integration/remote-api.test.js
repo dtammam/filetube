@@ -12,6 +12,7 @@ const path = require('node:path');
 process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-remote-'));
 const DATA_DIR = process.env.DATA_DIR;
 
+const { HEARTBEAT_MS } = require('../../lib/remote/routes');
 const { test, before, after, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert');
 const { app, updateDatabase, userStore, __mintTestSession, __remoteForTests, musicDb } = require('../../server');
@@ -44,7 +45,14 @@ before(async () => {
       tonzak2: audioItem('tonzak2', 'Tonzak'),
       blk1: audioItem('blk1', 'blockedchan', path.join(blockedRoot, 'blk1.mp3')),
     };
-    musicDb.mutate((h) => { musicStore.ensureMusic(h).folders = [ROOT]; return true; });
+    musicDb.mutate((h) => {
+      const ns = musicStore.ensureMusic(h);
+      ns.folders = [ROOT];
+      const native = (id, filePath) => ({ id, filePath, rootFolder: ROOT, ext: '.mp3', title: `${id} title`, artist: 'Native', album: 'Native', durationSec: 100, addedAt: '2026-01-01T00:00:00Z' });
+      ns.tracks.nvis = native('nvis', path.join(ROOT, 'Tonzak', 'nvis.mp3'));
+      ns.tracks.nblk = native('nblk', path.join(blockedRoot, 'nblk.mp3'));
+      return true;
+    });
     return true;
   });
   member = __mintTestSession({ username: 'remotemember', role: 'member' });
@@ -275,6 +283,26 @@ test('state posted by the target fans out to its controller stream, with the res
   assert.strictEqual(f.data.track.title, 'tonzak1 title');
   assert.ok(f.data.track.artUrl, 'art url present');
   assert.strictEqual(typeof f.data.ageMs, 'number');
+});
+
+test('native (music-db) tracks: a hidden one is dropped from play and never resolves to a title', async () => {
+  const t = await asTarget(member.cookie);
+  await t.next('hello');
+  const ok = await cmd(PC, 'play', { ids: ['nblk', 'nvis'], index: 1 }, member.cookie);
+  assert.strictEqual(ok.status, 202);
+  const f = await t.next('command');
+  assert.deepStrictEqual(f.data.args.tracks.map((x) => x.id), ['nvis']);
+  assert.strictEqual((await cmd(PC, 'play', { ids: ['nvis', 'nblk'], index: 1 }, member.cookie)).status, 404);
+  const c = await asController(member.cookie);
+  await c.next('hello');
+  await post('/api/remote/state', { deviceId: PC, trackId: 'nblk', position: 1, duration: 100, state: 'playing' }, member.cookie);
+  assert.strictEqual((await c.next('state')).data.track, null);
+  await post('/api/remote/state', { deviceId: PC, trackId: 'nvis', position: 1, duration: 100, state: 'playing' }, member.cookie);
+  assert.strictEqual((await c.next('state')).data.track.title, 'nvis title');
+});
+
+test('the SSE heartbeat stays well inside a reverse proxy read timeout (nginx default 60 s)', () => {
+  assert.ok(HEARTBEAT_MS > 0 && HEARTBEAT_MS <= 30000, 'heartbeat ' + HEARTBEAT_MS);
 });
 
 test('state: a hidden track id never resolves to a title for a restricted member', async () => {
