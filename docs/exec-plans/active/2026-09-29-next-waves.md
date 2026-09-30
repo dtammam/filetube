@@ -81,7 +81,7 @@ Steps:
 3. Auto-baselines: a `baseline-refresh` job on `push` to `main` only: run the 12 legs in `--update` mode
    (the existing rebaseline steps), merge to one artifact, and if `test/visual/baselines/` differs from the
    committed set, create branch `chore/baselines-<short sha>`, commit ONLY `test/visual/baselines/`, and
-   `gh pr create` with the list of changed files. It never merges itself. If the repo setting blocks
+   `gh pr create` with the list of changed files. It never merges itself (superseded 2026-09-30: it merges its own baselines-only PR, see 2026-09-30-visual-refresh-quiet.md). If the repo setting blocks
    Actions from creating PRs ("Allow GitHub Actions to create and approve pull requests"), STOP and ask
    Dean to enable it (Settings > Actions > General); do not work around it with a personal token.
 4. Mask the app version in screenshots: find every element that renders `appVersionString()` (the

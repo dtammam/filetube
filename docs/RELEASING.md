@@ -130,7 +130,8 @@ minutes. A change that touches ONLY `.md` files or `docs/` skips the workflow:
 the app renders nothing from those paths. **Visual never blocks a merge** (Dean,
 2026-09-29: ceremony, not friction); merge on green unit CI plus the review.
 
-- **`visual`** runs on every pull request and every push to `main`. In the
+- **`visual`** runs on every pull request (not on the push to `main`: the PR run
+  already diffed the tree `main` receives). In the
   pinned Playwright container each leg seeds the synthetic fixture
   (`test/visual/seed.js`), boots a fresh read-only server, runs the geometry set
   (`npm run test:geometry`, 2021 desktop leg only), captures its era and
@@ -144,21 +145,29 @@ the app renders nothing from those paths. **Visual never blocks a merge** (Dean,
   scenes, and up to 12 side-by-side crops. The crops live on the orphan branch
   `visual-reports` under `pr-<number>/<run id>/` (the only ref it writes). No
   change: "No visual changes".
-- **`rebaseline`** retakes a full set in the same container: on a push to
-  `main`, from "Run workflow", or on a push to a `rebaseline/*` branch.
-  `rebaseline-merge` joins the 12 into ONE flat `visual-baselines` artifact,
-  only when every leg passed.
-- **`baseline-refresh`** (push to `main` only) compares that set to the committed
-  one and, if it differs, opens a `chore/baselines-<short sha>` PR that changes
-  ONLY `test/visual/baselines/`. It never merges itself; you review and merge it.
-  An older open baselines PR is closed as superseded. Merging a baselines PR does
-  not start another refresh (its merge message names `chore/baselines-`). It needs
-  the repo setting Settings > Actions > General > "Allow GitHub Actions to create
-  and approve pull requests".
+- **`refresh-source`** (push to `main`) looks for the PR run that already shot
+  the merged tree: `main` before the merge is an ancestor of the PR head, the
+  merge commit's tree equals the head's, and that run passed with all 12 legs'
+  `visual-shots-*` uploaded (a leg that did not capture cleanly uploads none).
+  Found: the refresh reuses those shots and nothing is re-shot.
+- **`rebaseline`** retakes a full set in the same container: from "Run
+  workflow", on a push to a `rebaseline/*` branch, or on a push to `main` when
+  `refresh-source` found no PR run to reuse. `rebaseline-merge` joins the 12 into
+  ONE flat `visual-baselines` artifact, only when every leg passed.
+- **`baseline-refresh`** (push to `main` only) compares the fresh set to the
+  committed one and, if it differs, opens a `chore/baselines-<short sha>` PR that
+  changes ONLY `test/visual/baselines/` and merges it itself (Dean, 2026-09-30:
+  the look was already shown in the PR comment of the change that caused it). A
+  merge made with the workflow token starts no workflow, so it costs no run. An
+  older open baselines PR is closed as superseded, and one refresh runs at a
+  time. It needs the repo setting Settings > Actions > General > "Allow GitHub
+  Actions to create and approve pull requests" (on since 2026-09-30); with it
+  off, every merge to `main` went red and the baselines went stale.
 
-**An intended look change: do nothing.** Read the PR comment, merge on green unit
-CI, then merge the baselines PR the bot opens. Baselines are never taken on a dev
-box: fonts and raster differ outside the container.
+**An intended look change: do nothing.** Read the PR comment and merge on green
+unit CI; the baselines follow on their own. A red `Visual` run on `main` is now
+signal (a crashed capture or a failed refresh), never a look change. Baselines
+are never taken on a dev box: fonts and raster differ outside the container.
 
 **Fallback (scenes added, renamed or removed, or the bot is unavailable):** cut
 `rebaseline/<step>` at the reviewed sha, push it, download the merge job's

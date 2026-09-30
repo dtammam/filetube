@@ -4,12 +4,14 @@ name: Visual
 #
 # VISUAL IS A REPORT, NEVER A GATE (Dean, 2026-09-29: ceremony, not friction). `visual` runs
 # `run.js --report`: a changed look exits 0, and `visual-comment` posts the side-by-side crops as ONE
-# PR comment (updated in place). After a merge to main, `rebaseline` + `baseline-refresh` retake the
-# baselines and a bot opens a `chore/baselines-<sha>` PR (it never merges itself). Only a capture
-# that CRASHED fails a leg.
+# PR comment (updated in place). After a merge to main, `baseline-refresh` commits the new look as
+# the baselines: a bot opens a `chore/baselines-<sha>` PR touching ONLY test/visual/baselines/ and
+# merges it itself (Dean, 2026-09-30: the refresh had failed on every merge since v1.344.1, so the
+# baselines went stale, every PR comment re-reported old drift and the red emails were noise). Only a
+# capture that CRASHED fails a leg.
 #
-# `visual` runs on every pull request and every push to main (except docs-only ones, below), one
-# parallel leg per era x viewport:
+# `visual` runs on every pull request (except docs-only ones, below), NOT on the push to main: the
+# PR run already diffed the tree main receives. One parallel leg per era x viewport:
 # in the pinned Playwright container each leg seeds the
 # synthetic fixture (test/visual/seed.js), boots a FRESH read-only server on it
 # (test/visual/start-server.sh sets FILETUBE_READONLY=1 and FILETUBE_READ_ONLY_MEDIA=1 and
@@ -17,8 +19,11 @@ name: Visual
 # matrix and diffs it against test/visual/baselines/. With no committed
 # baselines it FAILS ("no baselines - run the rebaseline job") instead of passing vacuously.
 #
-# `rebaseline` runs from "Run workflow" (workflow_dispatch), on a push to main (the auto-refresh),
-# or on a push to a `rebaseline/*` branch (GitHub dispatches a workflow only once it exists on the default
+# On a push to main, `refresh-source` first looks for the PR run that already shot the merged tree
+# (the merge commit's tree equals its PR head's, and that run passed with all 12 legs' shots); the
+# refresh reuses those shots, and `rebaseline` re-shoots on main only when there is none.
+# `rebaseline` runs from "Run workflow" (workflow_dispatch), on a push to main without a reusable PR
+# run (the auto-refresh), or on a push to a `rebaseline/*` branch (GitHub dispatches a workflow only once it exists on the default
 # branch, so the FIRST baselines, and any taken before a merge, come from a pushed
 # rebaseline/<step> branch at the reviewed sha), in the SAME container, one leg per era x
 # viewport, and `rebaseline-merge` joins the 12 into ONE `visual-baselines` artifact. The visual diff skips those branches (they have no baselines yet). On main, `baseline-refresh` commits
@@ -52,7 +57,7 @@ jobs:
   # geometry checks ride the 2021 desktop leg. Every leg uploads its report crops and the shots it
   # took (always); a changed look is reported by `visual-comment`, never a failure.
   visual:
-    if: github.event_name != 'workflow_dispatch' && !startsWith(github.ref, 'refs/heads/rebaseline/')
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -195,13 +200,63 @@ jobs:
             gh api -X POST "repos/${REPO}/issues/${PR}/comments" -F body=@comment.md >/dev/null
           fi
 
+  # After a merge to main: can the refresh reuse the shots the PR's own `visual` run took? Only when
+  # that run rendered exactly what main now holds: main before the merge is an ancestor of the PR
+  # head (the PR run's merge ref then equals the head) and the merge commit's tree equals the head's.
+  # The run must have passed and uploaded all 12 legs' shots (a leg that did not capture cleanly
+  # uploads none, so a short count means a partial set). Otherwise `run` is empty and `rebaseline`
+  # re-shoots. The merge of a baselines PR itself skips it, so a refresh never triggers a refresh.
+  refresh-source:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '/chore/baselines-')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      run: ${{ steps.find.outputs.run }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Find the PR run that shot this exact tree
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          run=""
+          if head=$(git rev-parse -q --verify 'HEAD^2'); then
+            behind=$(gh api "repos/${REPO}/compare/$(git rev-parse 'HEAD^1')...${head}" --jq '.behind_by')
+            if [ "$behind" = 0 ] && [ "$(git rev-parse 'HEAD^{tree}')" = "$(git rev-parse "${head}^{tree}")" ]; then
+              for id in $(gh run list --repo "$REPO" --workflow visual.yml --event pull_request --commit "$head" --status success --limit 5 --json databaseId --jq '.[].databaseId'); do
+                # A run of a same-repo PR only (a fork can open its own PR at the same public sha).
+                # Its .pull_requests is empty once the PR merged, so the head repository is the test.
+                from=$(gh api "repos/${REPO}/actions/runs/${id}" --jq '.head_repository.full_name')
+                if [ "$from" != "$REPO" ]; then echo "PR run ${id}: from ${from}, not this repo"; continue; fi
+                n=$(gh api "repos/${REPO}/actions/runs/${id}/artifacts?per_page=100" --jq '[.artifacts[] | select((.name | startswith("visual-shots-")) and (.expired | not))] | length')
+                if [ "$n" = 12 ]; then run="$id"; break; fi
+                echo "PR run ${id}: ${n} of 12 legs uploaded shots"
+              done
+            else
+              echo "the merged tree is not the PR head's (behind by ${behind}); re-shooting on main"
+            fi
+          else
+            echo "not a merge commit; re-shooting on main"
+          fi
+          echo "reuse: ${run:-none}"
+          echo "run=${run}" >> "$GITHUB_OUTPUT"
+
   # The same 12 legs; `rebaseline-merge` joins them into the ONE `visual-baselines` artifact
-  # (flat, and only when EVERY leg passed: a plain `needs`, no `if`), so the download-and-commit
+  # (flat, and only when EVERY leg passed: `rebaseline` succeeded), so the download-and-commit
   # step is unchanged.
-  # On a push to main it also retakes the set for `baseline-refresh`; the merge of a baselines PR
-  # itself (its message names chore/baselines-) skips it, so a refresh never triggers a refresh.
+  # On a push to main it retakes the set for `baseline-refresh` only when `refresh-source` found no
+  # PR run to reuse (it is skipped for the merge of a baselines PR, and so is this).
   rebaseline:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/rebaseline/')) || (github.event_name == 'push' && github.ref == 'refs/heads/main' && !contains(github.event.head_commit.message, '/chore/baselines-'))
+    needs: refresh-source
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/heads/rebaseline/')) || (needs.refresh-source.result != 'skipped' && needs.refresh-source.outputs.run == '')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
@@ -251,6 +306,10 @@ jobs:
 
   rebaseline-merge:
     needs: rebaseline
+    # Explicit: a skipped `refresh-source` (dispatch, rebaseline/*) would otherwise skip this job
+    # through the chain even though `rebaseline` ran. A matrix job is `success` only when every leg
+    # passed, so a partial set is still never published.
+    if: ${{ !cancelled() && needs.rebaseline.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Join the four eras into one artifact (commit it into test/visual/baselines/ yourself)
@@ -260,22 +319,39 @@ jobs:
           pattern: visual-baselines-*
           retention-days: 30
 
-  # After a merge to main: if the fresh set differs from the committed one, a bot opens a PR with
-  # ONLY test/visual/baselines/ changed. It never merges itself. Needs the repo setting Settings >
-  # Actions > General > "Allow GitHub Actions to create and approve pull requests".
+  # After a merge to main: if the fresh set (the PR run's shots, or the re-shot set) differs from the
+  # committed one, a bot opens a PR with ONLY test/visual/baselines/ changed and merges it (a merge
+  # made with the workflow token starts no workflow, so it costs no run). Needs the repo setting
+  # Settings > Actions > General > "Allow GitHub Actions to create and approve pull requests".
+  # One refresh at a time: two quick merges must not race on the baselines PR.
   baseline-refresh:
-    needs: rebaseline-merge
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [refresh-source, rebaseline-merge]
+    if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && (needs.refresh-source.outputs.run != '' || needs.rebaseline-merge.result == 'success') }}
     runs-on: ubuntu-latest
+    concurrency:
+      group: baseline-refresh
+      cancel-in-progress: false
     permissions:
       contents: write
       pull-requests: write
+      actions: read
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
 
-      - name: Download the fresh baselines
+      - name: Download the PR run's shots (the same tree, already shot)
+        if: needs.refresh-source.outputs.run != ''
+        uses: actions/download-artifact@v4
+        with:
+          pattern: visual-shots-*
+          merge-multiple: true
+          run-id: ${{ needs.refresh-source.outputs.run }}
+          github-token: ${{ github.token }}
+          path: fresh-baselines
+
+      - name: Download the fresh baselines (re-shot on main)
+        if: needs.refresh-source.outputs.run == ''
         uses: actions/download-artifact@v4
         with:
           name: visual-baselines
@@ -304,7 +380,7 @@ jobs:
           git commit --quiet -m "chore(visual): refresh baselines after $(git rev-parse --short HEAD)"
           git push --quiet "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/${branch}"
           {
-            echo "The pages look different after the last merge to main. Only test/visual/baselines/ changed; review the crops in the PR comment of the change that caused it, then merge."
+            echo "The pages look different after the last merge to main. Only test/visual/baselines/ changed; the crops are in the PR comment of the change that caused it. The bot merges this PR itself."
             echo
             echo '```'
             git diff --stat=200 HEAD~1 HEAD -- test/visual/baselines | head -n 100
@@ -314,3 +390,6 @@ jobs:
             gh pr close "$old" --repo "$REPO" --delete-branch --comment "Superseded by ${branch}."
           done
           gh pr create --repo "$REPO" --base main --head "$branch" --title "chore(visual): refresh baselines" --body-file body.md
+          # Baselines only (checked above), so it merges itself: the look was reviewed in the PR
+          # comment of the change that caused it. GitHub deletes the merged branch.
+          gh pr merge "$branch" --repo "$REPO" --merge --match-head-commit "$(git rev-parse HEAD)"
