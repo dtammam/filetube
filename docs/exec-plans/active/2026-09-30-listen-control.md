@@ -460,3 +460,9 @@ Held (mutant went red): cross-user scoping (targetOf, listTargets), 415, cmd all
 4. SUGGESTION: the mirror's skinIsActive remote branch (music.js) is covered only by the W4 browser proof (mutant Y7 green in npm test); global 200-conn 503 path untested (X7 green); a query `user` is not shown ignored (X3).
 5. Agree with QA W1 (server-restart seq reset drops commands) - not re-measured. Suspicions, not findings: bfcache restore after pagehide /off re-heals only via EventSource error; R2 podcasts/videos on phone pages are not refused while remote (only Listen queue items are).
 Gate: CHANGES r1 @45686e34 — adversary
+QA r2 @ac65092f: WARNING 1 fixed as prescribed (hello and poll seq below lastSeq reset it; 89/89 remote tests pass). No new findings.
+Gate: APPROVED r2 @ac65092f - qa
+
+Adversary r2 @ac65092f: warnings 2 (native guards bound) and 3 (HEARTBEAT_MS test) accepted from the diff; warning 1's fix introduced a NEW defect.
+1. CRITICAL public/js/remote.js pollOnce: `since` is omitted while lastSeq is 0, and lastSeq is only ever LOWERED from a poll reply (`d.seq < lastSeq`), never adopted. So a poll-fallback target that has handled no command omits `since` on EVERY poll; the server then uses t.lastSeq as the cursor and returns nothing. Repro (measured, real server): target polls once, phone sends pause,next,next, target polls with no `since` -> `{"seq":3,"commands":[]}`. The polling fallback (buffering proxy, R4) delivers no command at all, ever. Fix: adopt `if (typeof d.seq === 'number' && lastSeq === 0) lastSeq = d.seq` from the FIRST poll reply (and the hello), then send since always; add a two-poll test (poll, command, poll -> command delivered).
+Gate: CHANGES r2 @ac65092f — adversary

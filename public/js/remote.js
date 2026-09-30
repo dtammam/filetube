@@ -202,6 +202,7 @@
           if (typeof d.seq === 'number' && d.seq < lastSeq) lastSeq = d.seq;
           if (d.controller) handleController(d.controller);
           (d.commands || []).forEach(handleCommand);
+          if (!(d.commands || []).length && typeof d.seq === 'number' && d.seq > lastSeq) lastSeq = d.seq;
         } else armGrace();
         next();
       }).catch(function () { armGrace(); next(); });
