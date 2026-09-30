@@ -426,6 +426,12 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.347.1 - Publish fix for v1.347.0 (2026-09-30)
+
+- The v1.347.0 Docker publish was blocked by the dependency audit gate (two high `brace-expansion` advisories in
+  the dev-only eslint chain). PR #56 bumped it to 1.1.21; this release re-cuts the version so the image publishes.
+  No code change to the skins.
+
 ### v1.347.0 - Three see-through iPods (2026-09-30)
 
 - **Custom > Transparent is now a real clear-case iPod, in three looks.** `ipod-custom5-transparent`
