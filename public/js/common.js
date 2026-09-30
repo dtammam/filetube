@@ -10564,6 +10564,9 @@ function shouldShowHandoffCard(presence, ctx) {
   // Never offer what this very page is already playing (the UI spec's
   // "nothing shown on a surface that is itself mid-playback of that item").
   if (c.localPlayingId && c.localPlayingId === presence.mediaId) return false;
+  // v1.348 (D8): a device that is controlling another PC plays nothing itself, so "continue on this
+  // device" would fight the remote session it is steering.
+  if (c.controllingRemote) return false;
   if (c.dismissedToken && c.dismissedToken === handoffSuppressionToken(presence)) return false;
   return true;
 }
@@ -16474,6 +16477,7 @@ const handoffCard = (() => {
         pathname: window.location.pathname,
         localPlayingId: localPlayingId(),
         dismissedToken: readDismissed(),
+        controllingRemote: !!(window.FileTube.remoteControl && window.FileTube.remoteControl.isRemote()),
       });
       if (show) render(presence); else hide();
     } catch (_) {

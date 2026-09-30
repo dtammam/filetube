@@ -681,7 +681,7 @@
       // The Main Menu re-derives every draw: its Now Playing row exists only while a track does,
       // and its Extras/Games row only while the game can run here.
       if (pane.node.type === 'main') {
-        pane.items = SK.menuStaticItems(pane.node, { hasCurrent: hasCurrent(), hasGames: gamesVisible(), hasSkins: skinsVisible(), style: style() }) || [];
+        pane.items = SK.menuStaticItems(pane.node, { hasCurrent: hasCurrent(), hasPlayOn: !!readVer(cfg.hasPlayOn), hasGames: gamesVisible(), hasSkins: skinsVisible(), style: style() }) || [];
         pane.state = 'ready';
         pane.cursor = Math.max(0, Math.min(pane.items.length - 1, pane.cursor));
         return;
@@ -1174,6 +1174,12 @@
       clearJump();
       if (it.node) { stack.push(makeLevel(it.node)); render(); return; }
       if (it.action === 'nowplaying') { showNowPlaying(); return; }
+      if (it.action === 'playon') {
+        // v1.348 Listen Control: pick where the music plays (this device, or a PC that is listening).
+        try { if (typeof cfg.onPlayOn === 'function') cfg.onPlayOn(it.target || null); } catch (_) { /* view best-effort */ }
+        showNowPlaying();
+        return;
+      }
       if (it.action === 'shuffle') {
         try { if (typeof cfg.onShuffleAll === 'function') cfg.onShuffleAll(); } catch (_) { /* view best-effort */ }
         showNowPlaying();
@@ -1324,6 +1330,13 @@
         }
         setCursor(p.cursor + delta);
         return 0;
+      },
+      // the "on <device>" badge: open Main > Play on... (the same level the menu row opens)
+      openPlayOn: function () {
+        stack = stack.slice(0, 1);
+        stack.push(makeLevel({ type: 'playon' }));
+        screen = 'menu';
+        render();
       },
       onItemTap: function (i) { if (screen !== 'menu') return; if (checkData()) { render(); return; } activate(i); },
       // quick scroll's taps (the overlay/badge open the picker, a letter jumps, a tap outside
@@ -2151,6 +2164,11 @@
         // tracks, as the device's did.
         var mi = e.target.closest('[data-skin-mi]');
         if (mi) { pocket.onItemTap(parseInt(mi.getAttribute('data-skin-mi'), 10)); return; }
+      }
+      if (e.target.closest('[data-skin-playon]')) {
+        if (pocket && pocket.active() && pocket.openPlayOn) pocket.openPlayOn();
+        else if (typeof config.onPlayOnBadge === 'function') { try { config.onPlayOnBadge(); } catch (_) { /* view best-effort */ } }
+        return;
       }
       if (e.target.closest('[data-skin-play]')) { var pb = hostCtl('pp-btn'); if (pb) pb.click(); return; }
       if (e.target.closest('[data-skin-prev]')) { var pv = hostCtl('track-prev-btn'); if (pv) pv.click(); return; }

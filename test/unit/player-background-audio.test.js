@@ -278,9 +278,13 @@ test('activeMediaElement() returns bgAudioEl during HANDING_OFF/BACKGROUND_AUDIO
 });
 
 test('the Media Session play/pause/seekto action handlers are retargeted to activeMediaElement(), not a hardcoded mediaPlayer', () => {
-  assert.match(PLAYER_JS, /setMediaSessionAction\('play', function \(\) \{\s*\n\s*var el = activeMediaElement\(\);/);
-  assert.match(PLAYER_JS, /setMediaSessionAction\('pause', function \(\) \{\s*\n\s*var el = activeMediaElement\(\);/);
-  assert.match(PLAYER_JS, /setMediaSessionAction\('seekto', function \(details\) \{\s*\n\s*var el = activeMediaElement\(\);/);
+  // v1.348: the handler bodies moved into playActiveMedia/pauseActiveMedia/seekActiveMedia (shared with the remote wrappers)
+  assert.match(PLAYER_JS, /function playActiveMedia\(\) \{\s*\n\s*var el = activeMediaElement\(\);/);
+  assert.match(PLAYER_JS, /function pauseActiveMedia\(\) \{\s*\n\s*var el = activeMediaElement\(\);/);
+  assert.match(PLAYER_JS, /function seekActiveMedia\(seekTime, fast\) \{\s*\n\s*var el = activeMediaElement\(\);/);
+  assert.match(PLAYER_JS, /setMediaSessionAction\('play', function \(\) \{ playActiveMedia\(\); \}\);/);
+  assert.match(PLAYER_JS, /setMediaSessionAction\('pause', function \(\) \{ pauseActiveMedia\(\); \}\);/);
+  assert.match(PLAYER_JS, /seekActiveMedia\(details\.seekTime, details\.fastSeek\)/);
 });
 
 // ---- F1 (two-reviewer gate, v1.27.1 post-release): the MediaSession -------
@@ -296,7 +300,7 @@ test('the Media Session play/pause/seekto action handlers are retargeted to acti
 // so its pause is deliberately left bare.
 
 test("F1 source-lock: the MediaSession 'pause' action handler routes mediaPlayer's pause through pauseSuppressingHandoff, but leaves any OTHER active element (bgAudioEl) with a bare .pause()", () => {
-  const match = /setMediaSessionAction\('pause', function \(\) \{([\s\S]*?)\n {2}\}\);/.exec(PLAYER_JS);
+  const match = /function pauseActiveMedia\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(match, 'expected to find the MediaSession \'pause\' action handler\'s source body');
   const body = match[1];
   assert.match(body, /if \(el === mediaPlayer\) pauseSuppressingHandoff\(mediaPlayer\);/);
@@ -307,7 +311,7 @@ test("F1 source-lock: the MediaSession 'pause' action handler routes mediaPlayer
 });
 
 test("F1 source-lock: the MediaSession 'play' action handler never routes through the pause-suppression wrapper (a lock-screen Play can never be misread as the iOS pre-pause-ordering signal). v1.161.3: it now promise-gates the playbackState set (honest glyph), but still just plays the active element.", () => {
-  const match = /setMediaSessionAction\('play', function \(\) \{([\s\S]*?)\n {2}\}\);/.exec(PLAYER_JS);
+  const match = /function playActiveMedia\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(match, 'expected to find the MediaSession \'play\' action handler\'s source body');
   assert.match(match[1], /var attempt = el\.play\(\);/, 'still just plays the active element (no suppression, no per-element branch)');
   assert.ok(!/pauseSuppressingHandoff/.test(match[1]), 'the play handler must never reference the pause-suppression wrapper');
@@ -1442,7 +1446,7 @@ test("v1.161.3: the msAction 'play' handler claims playbackState='playing' ONLY 
   // the OLD code set 'playing' unconditionally, so the lock screen flipped to
   // Pause while nothing resumed. Bind the promise-gated form: success -> 'playing',
   // rejection -> 'paused', and the no-promise fallback stays best-effort.
-  const m = /setMediaSessionAction\('play', function \(\) \{([\s\S]*?)\n {2}\}\);/.exec(PLAYER_JS);
+  const m = /function playActiveMedia\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(m, "the 'play' action handler body");
   assert.match(m[1], /var attempt = el\.play\(\);/, 'captures the play() promise');
   assert.match(m[1], /attempt\.then\(function \(\) \{ setPlaybackState\('playing'\); \}, function \(\) \{ setPlaybackState\('paused'\); \}\)/,

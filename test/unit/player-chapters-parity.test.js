@@ -637,7 +637,7 @@ test('gate W3: every explicit-seek commit point disarms an out-of-bounds chapter
   const src = fs.readFileSync(path.join(ROOT, 'public', 'js', 'player.js'), 'utf8');
   const calls = src.match(/disarmChapterLoopIfSeekOutside\(/g) || [];
   assert.ok(calls.length >= 7, `helper + 6 call sites expected (incl. the MediaSession seekto lock-screen scrubber -- delta R2), found ${calls.length} references`);
-  assert.match(src, /setMediaSessionAction\('seekto', function \(details\) \{[\s\S]*?disarmChapterLoopIfSeekOutside\(details\.seekTime\);/,
+  assert.match(src, /function seekActiveMedia\(seekTime, fast\) \{[\s\S]*?disarmChapterLoopIfSeekOutside\(seekTime\);/,
     'the lock-screen scrubber disarms before it seeks');
   const helper = src.slice(src.indexOf('function disarmChapterLoopIfSeekOutside('), src.indexOf('function disarmChapterLoopIfSeekOutside(') + 900);
   assert.match(helper, /targetAbs < chapterLoop\.start \|\| targetAbs >= chapterLoop\.end/, 'outside = strictly outside [start, end)');

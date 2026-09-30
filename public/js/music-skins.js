@@ -155,11 +155,19 @@
 
   // APPLE MUSIC - art-dominant, a blurred color-bleed of the cover fills the screen,
   // oversized title, a grab handle to dismiss, one big white play.
+  // v1.348 Listen Control: while another device plays, every renderer wears the same small "on <device>"
+  // badge (ctx.remote = {label}); its tap opens Play on... (the engine's [data-skin-playon] arm). ONE
+  // writer for all skins, so a renderer can never ship without it (the inert-sibling class).
+  function remoteBadge(ctx) {
+    var r = ctx && ctx.remote;
+    if (!r || typeof r.label !== 'string') return '';
+    return '<span class="mms-remote" role="button" tabindex="0" data-skin-playon aria-label="Playing on ' + esc(r.label) + '. Choose a device">on ' + esc(r.label) + '</span>';
+  }
   function renderApple(ctx) {
     var a = ctx.track || {}; var u = artUrl(ctx);
     return (u ? '<div class="mms-bleed" style="background-image:url(&quot;' + esc(u) + '&quot;)"></div>' : '') +
       '<div class="mms-z">' +
-      '<div class="mms-top"><button type="button" class="mms-grab" data-skin-collapse aria-label="Close player"></button></div>' +
+      '<div class="mms-top"><button type="button" class="mms-grab" data-skin-collapse aria-label="Close player"></button>' + remoteBadge(ctx) + '</div>' +
       '<div class="mms-art"' + artVar(ctx) + '>' + artImg(ctx) + '</div>' +
       '<div class="mms-head"><div class="mms-ttl" title="' + esc(a.title) + '">' + esc(a.title || 'Unknown track') + '</div>' + artistLine('mms-sub', a.artist, ctx.artistTap, ctx.artistTitle) + '</div>' +
       '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
@@ -170,7 +178,7 @@
   // and the QUEUE right there. (No fake repeat/heart.)
   function renderSpotify(ctx) {
     var a = ctx.track || {};
-    return '<div class="mms-top">' + collapseBtn() + '<span class="mms-ctx">' + esc('Playing from ' + (a.album || 'album')) + '</span><span class="mms-top-spacer" aria-hidden="true"></span></div>' +
+    return '<div class="mms-top">' + collapseBtn() + '<span class="mms-ctx">' + esc('Playing from ' + (a.album || 'album')) + '</span>' + (remoteBadge(ctx) || '<span class="mms-top-spacer" aria-hidden="true"></span>') + '</div>' +
       '<div class="mms-art"' + artVar(ctx) + '>' + artImg(ctx) + '</div>' +
       '<div class="mms-meta"><div class="mms-ttl">' + esc(a.title || 'Unknown track') + '</div>' + artistLine('mms-sub', a.artist, ctx.artistTap, ctx.artistTitle) + '</div>' +
       '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
@@ -193,7 +201,7 @@
     var a = ctx.track || {}; var u = artUrl(ctx);
     var nof = (Number(ctx.curNum) || 0) > 0 ? (ctx.curNum + ' of ' + (ctx.total || ctx.curNum)) : '';
     return '<div class="ip-lcd"><div class="ip-lcd-in">' +
-      '<div class="ip-status"><span class="ip-np">Now Playing</span>' +
+      '<div class="ip-status"><span class="ip-np">Now Playing</span>' + remoteBadge(ctx) +
       '<span class="ip-status-rt">' + playIndHtml(ctx.playing === false) + '<span class="ip-batt" aria-hidden="true"><i></i></span></span></div>' +
       // --- Now Playing view ---
       '<div class="ip-npview">' +
@@ -585,7 +593,7 @@
     { key: 'recent-played', label: 'Recently Played' },
   ];
   var ROOT_TITLE = { click: 'Click' }; // the cheeky name, never the product's (Dean)
-  var TYPE_TITLE = { music: 'Music', playlists: 'Playlists', artists: 'Artists', albums: 'Albums', songs: 'Songs', genres: 'Genres',
+  var TYPE_TITLE = { playon: 'Play on...', music: 'Music', playlists: 'Playlists', artists: 'Artists', albums: 'Albums', songs: 'Songs', genres: 'Genres',
     recentArtists: 'Recent Artists', extras: 'Extras', skins: 'Skins', games: 'Games', settings: 'Settings', about: 'About', lighting: 'Lighting' };
   function menuTitle(node, style) {
     var n = node || {};
@@ -607,6 +615,7 @@
       if (o.hasGames || o.hasSkins) rows.push({ label: 'Extras', node: { type: 'extras' } });
       rows.push({ label: 'Settings', node: { type: 'settings' } });
       rows.push({ label: 'Shuffle Songs', action: 'shuffle' });
+      if (o.hasPlayOn) rows.push({ label: 'Play on...', node: { type: 'playon' } });
       if (o.hasCurrent) rows.push({ label: 'Now Playing', action: 'nowplaying' });
       return rows;
     }
@@ -670,7 +679,7 @@
   // not library items. On Click their right pane plays the slow cover drift (the 6G/7G main-menu
   // slideshow); every other level shows the highlighted item's own art. One list, read by the
   // controller - never a second copy.
-  var NON_ITEM_LEVELS = ['main', 'music', 'playlists', 'genres', 'extras', 'games', 'skins', 'skinLine', 'skinGen', 'settings', 'about', 'lighting'];
+  var NON_ITEM_LEVELS = ['main', 'playon', 'music', 'playlists', 'genres', 'extras', 'games', 'skins', 'skinLine', 'skinGen', 'settings', 'about', 'lighting'];
   function menuIsItemLevel(node) { return NON_ITEM_LEVELS.indexOf(node && node.type) < 0; }
   // The builders take the VIEW's art rule (`artFor(id, explicitArtUrl)` - music.js passes its one
   // musicArtUrl) so the menus can never drift from the art the rest of Music shows. v1.339 (L1):
@@ -939,7 +948,7 @@
       var cls = 'ipm-row' + (i === v.cursor ? ' is-cursor' : '') + (it.node ? ' has-chev' : '') +
         (v.currentId && it.id === v.currentId ? ' is-current' : '') + (it.check ? ' is-checked' : '');
       html += '<button type="button" class="' + cls + '" data-skin-mi="' + i + '" role="option" aria-selected="' + (i === v.cursor ? 'true' : 'false') + '">' +
-        '<span class="ipm-lbl">' + esc(it.label) + '</span>' +
+        '<span class="ipm-lbl">' + esc(it.label) + (it.detail ? '<span class="ipm-detail">' + esc(it.detail) + '</span>' : '') + '</span>' +
         (it.check ? '<span class="ipm-check" aria-label="Selected">' + skGlyph('check') + '</span>' : '') +
         (v.currentId && it.id === v.currentId ? '<span class="ipm-now" aria-label="Now playing">' + ipVolGlyph() + '</span>' : '') +
         (it.node ? '<span class="ipm-chev" aria-hidden="true">' + skGlyph('chevRight') + '</span>' : '') +
@@ -985,7 +994,7 @@
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
     skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, skinFamilies: skinFamilies, skinLines: skinLines, colorwayLabel: colorwayLabel, menuSkinItems: menuSkinItems, isClickColorway: isClickColorway,
     renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
-    skinActiveFor: skinActiveFor, isPhone: isPhone, phoneFrom: phoneFrom, markPhoneClass: markPhoneClass,
+    remoteBadge: remoteBadge, skinActiveFor: skinActiveFor, isPhone: isPhone, phoneFrom: phoneFrom, markPhoneClass: markPhoneClass,
     PHONE_CLASS: PHONE_CLASS, PHONE_SHORT_SIDE_MAX: PHONE_SHORT_SIDE_MAX, observeSettled: observeSettled,
     // the pocket menus (the pure half - see the block above).
     menuStyle: menuStyle, menuTitle: menuTitle, menuStaticItems: menuStaticItems,

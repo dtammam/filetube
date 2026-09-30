@@ -3068,7 +3068,9 @@ if (typeof module !== 'undefined' && module.exports) {
   // `bgAudioEl` once a handoff has succeeded, so a lock-screen/Control-Center
   // Play/Pause/seek while backgrounded acts on whichever element is actually
   // playing right now.
-  setMediaSessionAction('play', function () {
+  // v1.348: the lock-screen handlers and the remote-control wrappers (api.play/pause/seek) share ONE
+  // behavior - these three functions are the bodies the handlers used to hold inline.
+  function playActiveMedia() {
     var el = activeMediaElement();
     if (!el) return;
     // The lock-screen tap IS the user gesture iOS needs to resume audio
@@ -3085,8 +3087,9 @@ if (typeof module !== 'undefined' && module.exports) {
     } else {
       setPlaybackState('playing'); // no-promise browsers: best-effort, unchanged
     }
-  });
-  setMediaSessionAction('pause', function () {
+    return attempt;
+  }
+  function pauseActiveMedia() {
     var el = activeMediaElement();
     if (!el) return;
     // F1 (two-reviewer gate, v1.27.1 post-release): a lock-screen/Control-
@@ -3109,21 +3112,27 @@ if (typeof module !== 'undefined' && module.exports) {
     if (el === mediaPlayer) pauseSuppressingHandoff(mediaPlayer);
     else el.pause();
     setPlaybackState('paused');
-  });
-  setMediaSessionAction('seekto', function (details) {
+  }
+  function seekActiveMedia(seekTime, fast) {
     var el = activeMediaElement();
-    if (!el || details == null || details.seekTime == null) return;
+    if (!el || seekTime == null) return;
     // v1.41.12 gate delta (adversarial R2): the lock-screen scrubber is the
     // SIXTH explicit-seek surface -- and the one with no menu, no seek bar,
     // no dock-expand. Dragging past the loop end there must disarm exactly
     // like the in-app seeks (element time is absolute here; background audio
     // is never liveMode).
-    disarmChapterLoopIfSeekOutside(details.seekTime);
-    if (details.fastSeek && 'fastSeek' in el) {
-      el.fastSeek(details.seekTime);
+    disarmChapterLoopIfSeekOutside(seekTime);
+    if (fast && 'fastSeek' in el) {
+      el.fastSeek(seekTime);
     } else {
-      el.currentTime = details.seekTime;
+      el.currentTime = seekTime;
     }
+  }
+  setMediaSessionAction('play', function () { playActiveMedia(); });
+  setMediaSessionAction('pause', function () { pauseActiveMedia(); });
+  setMediaSessionAction('seekto', function (details) {
+    if (details == null) return;
+    seekActiveMedia(details.seekTime, details.fastSeek);
   });
   // Reuse the EXISTING skip() (below) rather than duplicating its
   // liveMode/clamping/progress-save behavior here. skip() itself is
@@ -9286,6 +9295,27 @@ if (typeof module !== 'undefined' && module.exports) {
     close: close,
     setTrackNav: setTrackNav, // v1.39.0: register/clear lock-screen prev/next (book chapters)
     getState: function () { return state; },
+    // v1.348 Listen Control: the transport a remote controller drives. Each is a thin wrapper over
+    // the SAME internal the lock screen / control bar uses (one behavior, two callers).
+    play: function () { return playActiveMedia(); },
+    pause: function () { pauseActiveMedia(); },
+    togglePlay: function () { togglePlayPause(); },
+    next: function () { manualTrackStep('next'); },
+    prev: function () { manualTrackStep('prev'); },
+    seek: function (sec) { if (typeof sec === 'number' && isFinite(sec) && sec >= 0) seekActiveMedia(sec, false); },
+    // v1.348: what a remote controller mirrors - the loaded id, the live position and the prev/next reach.
+    getRemoteSnapshot: function () {
+      var el = activeMediaElement();
+      var dur = el && isFinite(el.duration) ? el.duration : 0;
+      return {
+        id: currentId || null,
+        position: el ? Math.max(0, currentAbsTime() || 0) : 0,
+        duration: dur,
+        playing: !!(el && !el.paused && !el.ended),
+        hasPrev: !!(trackNavHandlers && typeof trackNavHandlers.onPrev === 'function'),
+        hasNext: !!(trackNavHandlers && typeof trackNavHandlers.onNext === 'function')
+      };
+    },
     // v1.334: iOS refused this load's auto-start (no user gesture: a notification's page) and it has not
     // played since - the skin shows its "Tap to play" cue while this is true (skin-surface.js)
     autoStartRefused: function () { return autoStartRefused; },
