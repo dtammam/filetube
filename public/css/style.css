@@ -115,7 +115,7 @@
    hit both already.
 
    Base == 2021 Modern (the :root safe-default contract, same as the token
-   layer): near-flush bar, floating pill thumb (--radius-lg = 12px clamps to
+   layer): near-flush bar, floating pill thumb (--r-md = 12px clamps to
    a pill at this width), gutterless track in the page background - the
    modern-YouTube look. The thumb's transparent border + padding-box clip is
    what floats it off the track edges; retro eras override the clip back to
@@ -134,7 +134,7 @@
 }
 ::-webkit-scrollbar-thumb {
   background: var(--border-dark);
-  border-radius: var(--radius-lg); /* era shape for free: 2021 pill, 2005 square, 2009/2014 2px */
+  border-radius: var(--r-md); /* era shape for free: 2021 pill, 2005 square, 2009/2014 2px */
   border: 3px solid transparent;
   background-clip: padding-box;
 }
@@ -176,7 +176,7 @@
 }
 
 /* 2009 Classic: same button-face construction, slightly slimmer, warm grays
-   and the era's 2px corner via the inherited --radius-lg. */
+   and the era's 2px corner via the inherited --r-md. */
 [data-theme="2009"]::-webkit-scrollbar,
 [data-theme="2009"] ::-webkit-scrollbar {
   width: 14px;
@@ -669,7 +669,7 @@ a.sidebar-item {
 }
 
 .sidebar-item.drag-over-before {
-  box-shadow: inset 0 2px 0 0 var(--yt-red);
+  box-shadow: inset 0 var(--ring-w) 0 0 var(--yt-red);
 }
 
 /* v1.45.2 (#4): name + count are one shrinkable flex item so the count sits
@@ -737,7 +737,7 @@ a.sidebar-item {
 
 
 .sidebar-item.drag-over-after {
-  box-shadow: inset 0 -2px 0 0 var(--yt-red);
+  box-shadow: inset 0 calc(0px - var(--ring-w)) 0 0 var(--yt-red);
 }
 
 /* Main Content Area */
@@ -1268,7 +1268,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   background-color: #000; /* token-exempt: letterbox black */
   margin-bottom: var(--space-8);
   border: 1px solid var(--separator);
-  border-radius: var(--radius-lg);
+  border-radius: var(--r-md);
   overflow: hidden;
   position: relative;
 }
@@ -1498,16 +1498,6 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   color: var(--on-overlay);
   text-align: center;
   padding: var(--space-12);
-}
-
-.audio-artwork {
-  width: 160px;
-  height: 160px;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-modal);
-  margin-bottom: var(--space-8);
-  object-fit: cover;
-  border: 2px solid rgba(255,255,255,0.2); /* token-exempt: art-frame hairline over the audio canvas (F.5 ruling 5) */
 }
 
 .audio-vinyl {
@@ -1757,8 +1747,8 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 }
 
 .watch-autoplay-switch input:focus-visible ~ .watch-autoplay-track {
-  outline: 2px solid var(--yt-red);
-  outline-offset: 2px;
+  outline: var(--ring-w) solid var(--yt-red);
+  outline-offset: var(--ring-w);
 }
 
 /* Video Information Layout. UI pass sweep S3 (direction C: D4.9, D8.1, D8.4). The title,
@@ -1792,7 +1782,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   display: inline-flex;
   gap: var(--space-1);
 }
-.watch-rating .on { color: var(--star-gold); }
+.watch-rating .on { color: var(--star); }
 .watch-rating .off { color: var(--star-gray); }
 
 /* D4.9 the action bar: stacked ui-btns (icon over a caption) in EQUAL columns - across
@@ -1882,7 +1872,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   width: fit-content;
   margin-top: var(--space-2);
 }
-.card-rating .on { color: var(--star-gold); }
+.card-rating .on { color: var(--star); }
 .card-rating .off { color: var(--star-gray); }
 
 /* Description box: the description (clamped, Show more) and D8.4 "About this file". */
@@ -2188,7 +2178,7 @@ select {
   height: 10px;
   margin-right: var(--space-3);
   vertical-align: -1px;
-  border: 2px solid var(--separator);
+  border: var(--ring-w) solid var(--separator);
   border-top-color: var(--ink-2);
   border-radius: 50%;
   animation: spin 0.9s linear infinite; /* token-exempt: choreography */
@@ -2208,7 +2198,7 @@ select {
   height: 10px;
   margin-left: var(--space-3);
   vertical-align: -1px;
-  border: 2px solid var(--separator);
+  border: var(--ring-w) solid var(--separator);
   border-top-color: currentColor;
   border-radius: 50%;
   animation: spin 0.9s linear infinite; /* token-exempt: choreography */
@@ -5927,7 +5917,7 @@ html:has(> body.ft-audio-expanded),
 }
 .md-group-card {
   background: var(--surface-1); border: 1px solid var(--separator);
-  border-radius: var(--radius-lg); overflow: hidden;
+  border-radius: var(--r-md); overflow: hidden;
 }
 .md-row {
   display: flex; align-items: center; gap: var(--space-6); width: 100%;
@@ -6002,10 +5992,10 @@ html:has(> body.ft-audio-expanded),
    2-line clamp on the description. */
 .md-hero {
   display: flex; align-items: center; gap: var(--space-6);
-  background: var(--surface-1); border: 1px solid var(--separator); border-radius: var(--radius-lg);
+  background: var(--surface-1); border: 1px solid var(--separator); border-radius: var(--r-md);
   margin: var(--space-8) 0; padding: var(--space-8); min-height: 96px;
 }
-.md-hero .md-tile--hero { width: 60px; height: 60px; border-radius: var(--radius-lg); }
+.md-hero .md-tile--hero { width: 60px; height: 60px; border-radius: var(--r-md); }
 .md-hero .md-tile--hero svg { width: 54%; height: 54%; }
 .md-hero-text { min-width: 0; }
 .md-hero-text h2 { margin: 0; font-size: var(--fs-4xl); font-weight: var(--fw-bold); }
@@ -6923,7 +6913,7 @@ body[data-view="home"] .modern-view-toggle { display: inline-flex; }
 .book-row-progress {
   position: absolute;
   left: 0; right: 0; bottom: 0;
-  height: 3px;
+  height: var(--progress-h);
   background: rgba(0, 0, 0, 0.5); /* token-exempt: progress-track component art, not a scrim (OQ5c) */
 }
 .book-row-progress-fill { height: 100%; background: var(--yt-red); }
@@ -7592,7 +7582,7 @@ html.is-phone #music-popout-btn { display: none; }
 .music-jump-art {
   width: 116px;
   height: 116px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--r-md);
   object-fit: cover;
   background: var(--thumbnail-bg);
   box-shadow: var(--shadow);
@@ -7659,7 +7649,7 @@ html.is-phone #music-popout-btn { display: none; }
 .music-drill-art {
   width: 180px;
   height: 180px;
-  border-radius: var(--radius-lg);
+  border-radius: var(--r-md);
   object-fit: cover;
   background: var(--thumbnail-bg);
   box-shadow: var(--shadow-lg);
@@ -7805,7 +7795,7 @@ html.is-phone #music-popout-btn { display: none; }
 [data-theme] a.tv-continue-card,
 a.show-card,
 a.tv-continue-card { text-decoration: none; }
-.show-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-lg); background: var(--thumbnail-bg); object-fit: cover; display: block; box-shadow: var(--shadow); transition: box-shadow var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui); }
+.show-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: var(--r-md); background: var(--thumbnail-bg); object-fit: cover; display: block; box-shadow: var(--shadow); transition: box-shadow var(--dur-fast) var(--ease-ui), transform var(--dur-fast) var(--ease-ui); }
 @media (hover: hover) {
   .show-card:hover .show-poster { box-shadow: var(--shadow-lg); transform: translateY(-2px); }
 }
@@ -7818,7 +7808,7 @@ a.tv-continue-card { text-decoration: none; }
 .tv-continue-strip { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(140px, 180px); justify-content: start; gap: var(--space-4); overflow-x: auto; padding-bottom: var(--space-2); }
 .tv-continue-card { min-width: 0; color: inherit; display: flex; flex-direction: column; gap: var(--space-1); }
 .tv-continue-poster-wrap { position: relative; display: block; }
-.tv-continue-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-lg); background: var(--thumbnail-bg); object-fit: cover; display: block; }
+.tv-continue-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: var(--r-md); background: var(--thumbnail-bg); object-fit: cover; display: block; }
 .tv-continue-bar { position: absolute; left: 0; right: 0; bottom: 0; height: var(--space-1); background: var(--separator); }
 .tv-continue-fill { display: block; height: 100%; background: var(--progress); }
 .tv-continue-show { font-size: var(--fs-sm); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -7827,7 +7817,7 @@ a.tv-continue-card { text-decoration: none; }
 /* v1.196: the show-detail hero (poster + name + admin poster control). The poster
    column uses the grid minmax idiom so no bare width is needed (census-safe). */
 .tv-detail-hero { display: grid; grid-template-columns: minmax(0, 120px) 1fr; gap: var(--space-4); align-items: start; margin-bottom: var(--space-4); }
-.tv-detail-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: var(--radius-lg); object-fit: cover; background: var(--thumbnail-bg); display: block; }
+.tv-detail-poster { width: 100%; aspect-ratio: 2 / 3; border-radius: var(--r-md); object-fit: cover; background: var(--thumbnail-bg); display: block; }
 .tv-detail-hero-main { min-width: 0; display: flex; flex-direction: column; gap: var(--space-2); }
 .tv-detail-hero-main .tv-detail-title { margin-bottom: 0; }
 .tv-season { margin-bottom: var(--space-6); }
@@ -8142,7 +8132,7 @@ a.tv-continue-card { text-decoration: none; }
      the Extras page's song title (was wrongly the 11px uppercase heading class). */
   .mms-sticker-menu .mms-sm-lbl{ display:inline-flex; align-items:center; gap:var(--space-3); font-size:var(--fs-md); font-weight:var(--fw-semibold); }
   .mms-sticker-menu .mms-sm-title{ font-size:var(--fs-md); font-weight:var(--fw-semibold); }
-  .mms-sticker-menu .mms-sm-lbl i, .mms-sticker-menu .mms-sm-act i{ width:18px; text-align:center; opacity:.7; flex:none; }
+  .mms-sticker-menu .mms-sm-lbl i, .mms-sticker-menu .mms-sm-act i{ width:var(--icon-sm); text-align:center; opacity:.7; flex:none; }
   .mms-sticker-menu .mms-sm-speed{ display:flex; flex-wrap:wrap; gap:var(--space-3); }
   .mms-sticker-menu .mms-sm-opt{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; font-variant-numeric:tabular-nums; min-height:var(--size-touch); display:inline-flex; align-items:center; justify-content:center; transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
   .mms-sticker-menu .mms-sm-opt.is-on{ background:var(--overlay-border); color:inherit; border-color:currentColor; font-weight:var(--fw-semibold); }
@@ -8157,7 +8147,7 @@ a.tv-continue-card { text-decoration: none; }
   .mms-sticker-menu .mms-sm-opt:hover, .mms-sticker-menu .mms-sm-chip:hover, .mms-sticker-menu .mms-sm-act:hover{ background:var(--hover-bg, rgba(128,128,128,0.15)); /* token-exempt: theme-neutral fallback */ }
   .mms-sticker-menu .mms-sm-opt.is-on:hover, .mms-sticker-menu .mms-sm-chip.is-on:hover{ background:var(--overlay-border); }
   }
-  .mms-sticker-menu button:focus-visible, .mms-sticker-menu a:focus-visible{ outline:2px solid var(--focus-ring); outline-offset:-2px; }
+  .mms-sticker-menu button:focus-visible, .mms-sticker-menu a:focus-visible{ outline:var(--ring-w) solid var(--focus-ring); outline-offset:calc(-1 * var(--ring-w)); }
   /* v1.249 (F-EXTRAS): the two-page menu. "Extras >" / "< Back" ride the loop
      row's full-width chassis; the action list is a single column of the same
      bordered rows as the speed/skin options, left-aligned for scanability. */
@@ -8234,7 +8224,7 @@ a.tv-continue-card { text-decoration: none; }
      tray rules (and THIS comment - those locks are comment-porous, the v1.50 class)
      must not shadow them. body.mms-tray plus one class still outranks the originals. */
   :where(html.is-phone, html.mms-popout) body.mms-tray{ background:var(--mms-black); }
-  :where(html.is-phone, html.mms-popout) body.mms-tray .music-nowplaying-panel{ position:fixed; inset:0; border-radius:var(--radius-lg); overflow:hidden; }
+  :where(html.is-phone, html.mms-popout) body.mms-tray .music-nowplaying-panel{ position:fixed; inset:0; border-radius:var(--r-md); overflow:hidden; }
   :where(html.is-phone, html.mms-popout) body.mms-tray .ip-wheelwrap, :where(html.is-phone, html.mms-popout) body.mms-tray .ip-listview{ display:none; }
   :where(html.is-phone, html.mms-popout) body.mms-tray .ip-lcd{ flex:1; min-height:0; max-width:none; width:auto; margin:var(--pk-tray-inset); border-radius:var(--pk-tray-radius); box-sizing:border-box; }
   :where(html.is-phone, html.mms-popout) body.mms-tray .ip-npmain{ display:flex; align-items:center; gap:var(--space-4); }
@@ -8322,8 +8312,8 @@ a.tv-continue-card { text-decoration: none; }
      shown only while player.js's autoStartRefused() holds (skin-surface.js syncTapPlay). No backdrop or
      filter: a lit Click panel sits under it. */
   :where(html.is-phone, html.mms-popout) .mms-tapplay{ position:absolute; left:50%; top:30%; transform:translate(-50%, -50%); z-index:39; /* token-exempt: local stacking - over the skin chrome (z 5 at most), UNDER the sticker wrap (40) so an open sticker menu stays on top (gate r1 qa W1) */ display:inline-flex; align-items:center; gap:var(--space-4); min-height:48px; padding:var(--space-4) var(--space-8); border:0; border-radius:var(--radius-full); background:var(--yt-red); color:var(--on-accent); font-family:var(--font-ui); font-size:var(--fs-lg); font-weight:var(--fw-bold); box-shadow:var(--shadow-lg); cursor:pointer; }
-  :where(html.is-phone, html.mms-popout) .mms-tapplay svg{ width:22px; height:22px; fill:currentColor; flex:none; }
-  :where(html.is-phone, html.mms-popout) .mms-tapplay:focus-visible{ outline:2px solid var(--on-accent); outline-offset:2px; }
+  :where(html.is-phone, html.mms-popout) .mms-tapplay svg{ width:var(--icon-md); height:var(--icon-md); fill:currentColor; flex:none; }
+  :where(html.is-phone, html.mms-popout) .mms-tapplay:focus-visible{ outline:var(--ring-w) solid var(--on-accent); outline-offset:var(--ring-w); }
 
   /* ============================ APPLE MUSIC ============================
      A blurred cover bleed fills the screen; a large framed cover, oversized
@@ -8340,7 +8330,7 @@ a.tv-continue-card { text-decoration: none; }
   /* the dismiss grab handle - a big transparent TAP TARGET (Dean couldn't find the exit)
      with the visible 38x5 pill centered inside via ::before. */
   :where(html.is-phone, html.mms-popout) .mms-apple .mms-grab{ width:64px; height:var(--size-touch); border:0; padding:0; cursor:pointer; background:transparent; position:relative; }
-  :where(html.is-phone, html.mms-popout) .mms-apple .mms-grab::before{ content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:38px; height:5px; border-radius:var(--radius-full); background:var(--mms-apple-grab); }
+  :where(html.is-phone, html.mms-popout) .mms-apple .mms-grab::before{ content:""; position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:38px; height:var(--grab-h); border-radius:var(--radius-full); background:var(--mms-apple-grab); }
   :where(html.is-phone, html.mms-popout) .mms-apple .mms-art{ width:82%; max-width:340px; aspect-ratio:1; margin:var(--space-16) auto var(--space-12); border-radius:var(--mms-r-art); overflow:hidden; box-shadow:var(--mms-art-shadow); }
   :where(html.is-phone, html.mms-popout) .mms-apple .mms-head{ margin-top:auto; }
   :where(html.is-phone, html.mms-popout) .mms-apple .mms-ttl{ font-size:var(--fs-5xl); font-weight:var(--fw-black); letter-spacing:var(--mms-ls-tight); line-height:var(--mms-lh-ttl); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -8372,7 +8362,7 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-times{ margin-top:var(--space-3); color:var(--mms-sp-dim); }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-transport{ display:flex; align-items:center; justify-content:space-between; margin-top:var(--space-6); }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-ic{ border:0; background:transparent; cursor:pointer; display:grid; place-items:center; color:var(--mms-sp-ic); }
-  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-ic svg{ width:24px; height:24px; fill:currentColor; }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-ic svg{ width:var(--icon-lg); height:var(--icon-lg); fill:currentColor; }
   /* an invisible right-hand spacer the width of the shuffle button, so prev/play/next
      stay symmetric and the play lands DEAD CENTER (v1.232.1, Dean: buttons offset). */
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-tr-spacer{ width:24px; flex:none; }
@@ -8383,7 +8373,7 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-queue{ margin-top:var(--space-8); flex:1; min-height:0; display:flex; flex-direction:column; background:var(--mms-sp-queue-bg); border-top:1px solid var(--mms-sp-qline); border-radius:var(--mms-r-queue) var(--mms-r-queue) 0 0; padding:var(--space-6) var(--space-6) 0; }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-qh{ margin:0 0 var(--space-4); font-size:var(--fs-sm); font-weight:var(--fw-bold); }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-qlist{ overflow-y:auto; flex:1; min-height:0; margin:0 calc(-1 * var(--space-3)); padding-bottom:var(--space-6); touch-action:pan-y; overscroll-behavior:contain; }
-  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-row{ display:flex; align-items:center; gap:var(--space-6); width:100%; padding:var(--space-4) var(--space-3); border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; border-radius:var(--radius-lg); }
+  :where(html.is-phone, html.mms-popout) .mms-spotify .mms-row{ display:flex; align-items:center; gap:var(--space-6); width:100%; padding:var(--space-4) var(--space-3); border:0; background:transparent; color:inherit; text-align:left; cursor:pointer; border-radius:var(--r-md); }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-th{ width:44px; height:44px; border-radius:var(--mms-r-th); overflow:hidden; flex:none; background:var(--mms-sp-queue-bg); }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-th img{ width:100%; height:100%; object-fit:cover; display:block; }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-rtext{ display:flex; flex-direction:column; min-width:0; flex:1; }
@@ -8611,7 +8601,7 @@ a.tv-continue-card { text-decoration: none; }
     transition:opacity var(--dur-slow) var(--ease-ui), visibility 0s linear var(--dur-slow); /* token-exempt: visibility flips after the fade (0s = a switch, not a motion) */ }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-letter.is-on, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-badge.is-on{ opacity:1; visibility:visible; transition:opacity var(--dur-fast) var(--ease-ui), visibility 0s; /* token-exempt: visibility turns on at once */ }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-letter{ left:50%; top:50%; width:var(--pk-letter); height:var(--pk-letter); margin:calc(var(--pk-letter) / -2) 0 0 calc(var(--pk-letter) / -2);
-    border-radius:var(--radius-lg); background:var(--pk-s-jump-bg); color:var(--pk-s-paper); font-size:var(--pk-fs-jump); font-weight:var(--fw-bold); line-height:1; /* token-exempt: a single glyph centred in its square */ }
+    border-radius:var(--r-md); background:var(--pk-s-jump-bg); color:var(--pk-s-paper); font-size:var(--pk-fs-jump); font-weight:var(--fw-bold); line-height:1; /* token-exempt: a single glyph centred in its square */ }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-badge{ right:var(--space-2); top:var(--space-2); width:var(--pk-touch); height:var(--pk-touch);
     border-radius:var(--radius-full); background:var(--pk-s-jump-bg); color:var(--pk-s-paper); font-size:var(--pk-fs-badge); font-weight:var(--fw-bold); }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-grid{ position:absolute; inset:0; z-index:4; /* token-exempt: local stacking - the picker over the letter layers */ display:grid; grid-template-columns:repeat(7, minmax(0, 1fr)); grid-auto-rows:var(--pk-grid-row);
@@ -11310,7 +11300,7 @@ a.tv-continue-card { text-decoration: none; }
   aspect-ratio: 16 / 9;
   background: #000; /* token-exempt: letterbox black */
   border: 1px solid var(--separator);
-  border-radius: var(--radius-lg);
+  border-radius: var(--r-md);
   margin-bottom: var(--space-8);
 }
 
@@ -11577,7 +11567,7 @@ a.tv-continue-card { text-decoration: none; }
   margin-bottom: var(--space-6);
   background: var(--bg-sidebar);
   border: 1px solid var(--separator);
-  border-radius: var(--radius-lg);
+  border-radius: var(--r-md);
 }
 
 .queue-upnext-box[hidden] {
@@ -12142,7 +12132,7 @@ html[data-era-flourish="on"] .ft-unfabricated {
 .whcal-seg {
   display: flex; gap: var(--space-1); flex: 1 1 auto;
   background: var(--whcal-panel); border: 1px solid var(--whcal-hair);
-  border-radius: var(--radius-lg); padding: var(--space-1);
+  border-radius: var(--r-md); padding: var(--space-1);
 }
 .whcal-seg button {
   flex: 1 1 0; border: 0; background: none; cursor: pointer;
@@ -12194,13 +12184,13 @@ html[data-era-flourish="on"] .ft-unfabricated {
 .whcal-hud { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
 .whcal-tile {
   background: var(--whcal-panel); border: 1px solid var(--whcal-hair);
-  border-radius: var(--radius-lg); padding: var(--space-3) var(--space-4);
+  border-radius: var(--r-md); padding: var(--space-3) var(--space-4);
 }
 .whcal-hero { grid-column: 1 / -1; background: var(--whcal-panel-2); }
 .whcal-k { display: block; font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--whcal-dim); }
 .whcal-v { display: block; font-family: var(--mono-font); font-size: var(--fs-3xl); font-variant-numeric: tabular-nums; margin-top: var(--space-1); }
 .whcal-hero .whcal-v { font-size: var(--fs-5xl); }
-.whcal-bands { background: var(--whcal-panel); border: 1px solid var(--whcal-hair); border-radius: var(--radius-lg); padding: var(--space-4); }
+.whcal-bands { background: var(--whcal-panel); border: 1px solid var(--whcal-hair); border-radius: var(--r-md); padding: var(--space-4); }
 .whcal-bands-cap { display: flex; justify-content: space-between; gap: var(--space-3); font-size: var(--fs-2xs); text-transform: uppercase; letter-spacing: var(--tracking-caps); color: var(--whcal-dim); margin-bottom: var(--space-4); }
 .whcal-bar { display: flex; align-items: center; gap: var(--space-4); margin: var(--space-2) 0; }
 .whcal-bar-name { font-family: var(--mono-font); font-size: var(--fs-xs); min-width: 52px; }
@@ -12210,7 +12200,7 @@ html[data-era-flourish="on"] .ft-unfabricated {
 .whcal-bar-inner .whcal-fill { background: var(--whcal-inner); } .whcal-bar-inner .whcal-bar-name { color: var(--whcal-inner); }
 .whcal-bar-mid .whcal-fill { background: var(--whcal-mid); } .whcal-bar-mid .whcal-bar-name { color: var(--whcal-mid); }
 .whcal-bar-outer .whcal-fill { background: var(--whcal-outer); } .whcal-bar-outer .whcal-bar-name { color: var(--whcal-outer); }
-.whcal-guide { background: var(--whcal-panel); border: 1px solid var(--whcal-hair); border-left: 3px solid var(--whcal-accent); border-radius: var(--radius-lg); padding: var(--space-4) var(--space-5); font-size: var(--fs-base); }
+.whcal-guide { background: var(--whcal-panel); border: 1px solid var(--whcal-hair); border-left: 3px solid var(--whcal-accent); border-radius: var(--r-md); padding: var(--space-4) var(--space-5); font-size: var(--fs-base); }
 .whcal-guide p { margin: 0 0 var(--space-3); }
 .whcal-guide b { color: var(--whcal-flash); }
 .whcal-guide[hidden] { display: none !important; }
