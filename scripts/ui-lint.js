@@ -132,8 +132,8 @@ function collectSources(root) {
 // tokens.css facts (read from the scanned tree: the legacy names and the z ladder)
 // ---------------------------------------------------------------------------------------
 
-// The eight old palette names the alias block pointed at their exact role (plan step 7).
-const RETIRED_ALIASES = ['--font-family', '--heading-font', '--bg-color', '--card-bg', '--bg-secondary', '--text-primary', '--text-secondary', '--border-color'];
+// Old names retired because a role holds the same value in every era x mode (step 7; 2026-09-30 W3 added the first three).
+const RETIRED_ALIASES = ['--radius-lg', '--star-gold', '--yt-red-dark', '--font-family', '--heading-font', '--bg-color', '--card-bg', '--bg-secondary', '--text-primary', '--text-secondary', '--border-color'];
 
 function tokensInfo(root) {
   const text = fs.readFileSync(path.join(root, 'public/css/tokens.css'), 'utf8');

@@ -337,7 +337,7 @@ test('v1.255 (Dean\'s parity pass) source-lock: the sticker menu speaks the APP\
   assert.doesNotMatch(css, /\.mms-sm-(?:opt|chip|act|loop)\.is-on[^{]*\{[^}]*--yt-red/, 'no selected / on state paints red');
   assert.match(css, /\.mms-sm-danger\{ color:var\(--yt-red\); border-color:var\(--yt-red\); \}/, 'red stays the DANGER role (Delete)');
   assert.match(css, /\.mms-sm-act:hover\{ background:var\(--hover-bg, rgba\(128,128,128,0\.15\)\);/, 'rows hover like .account-menu-item');
-  assert.match(css, /\.mms-sticker-menu button:focus-visible, \.mms-sticker-menu a:focus-visible\{ outline:2px solid var\(--focus-ring\)/, 'keyboard focus = the focus ring role (red is not a focus colour)');
+  assert.match(css, /\.mms-sticker-menu button:focus-visible, \.mms-sticker-menu a:focus-visible\{ outline:var\(--ring-w\) solid var\(--focus-ring\)/, 'keyboard focus = the focus ring role (red is not a focus colour)');
   // slim-gate S2: the two parity pillars the first lock missed
   assert.match(css, /\.mms-sm-h\{[^}]*font-weight:var\(--fw-bold\)/, 'headings carry the .md-group-title bold');
   assert.match(css, /\.mms-sm-chip\.is-on:hover\{ background:var\(--overlay-border\); \}/, 'a selected chip cannot grey out under hover');

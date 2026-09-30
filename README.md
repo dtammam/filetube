@@ -36,29 +36,33 @@ Web Push notifications).
 
 ## Screenshots
 
-**Old-era light theme on desktop:**
+**Desktop - the 2021 era in light mode, then the 2005 era and the watch page:**
 
 <p align="center">
-  <img src="assets/images/lightExampleOldEra-HomeView-Desktop.png" alt="Home view - classic light theme on desktop" width="840">
+  <img src="assets/images/desktop-home-light.png" alt="Home in the 2021 era, light mode, on desktop" width="840">
 </p>
 
 <p align="center">
-  <img src="assets/images/lightExampleOldEra-ShowsView-Desktop.png" alt="Library view" width="410">
+  <img src="assets/images/desktop-home-2005.png" alt="Home in the 2005 era, light mode, on desktop" width="410">
   &nbsp;
-  <img src="assets/images/lightExampleOldEra-WatchingVideo-Desktop.png" alt="Watch page" width="410">
+  <img src="assets/images/desktop-watch-dark.png" alt="The watch page in dark mode on desktop, with related files" width="410">
 </p>
 
-**Modern-era dark theme on mobile:**
+**Phone - the installed PWA, dark mode:**
 
 <p align="center">
-  <img src="assets/images/darkExampleEra-HomeView-Mobile.png" alt="Home on mobile, dark" width="196">
+  <img src="assets/images/phone-home-dark.png" alt="Home on a phone, with Continue reading" width="156">
   &nbsp;
-  <img src="assets/images/darkExampleEra-VideoPlayback-Mobile.png" alt="Video playback on mobile" width="196">
+  <img src="assets/images/phone-watch-dark.png" alt="The watch page on a phone" width="156">
   &nbsp;
-  <img src="assets/images/darkExampleEra-ChannelWithMiniplayer-Mobile.png" alt="Channel view with mini-player" width="196">
+  <img src="assets/images/phone-music-dark.png" alt="An album in the Music library on a phone" width="156">
   &nbsp;
-  <img src="assets/images/darkExampleEra-ResumePlayback-Mobile.png" alt="Resume playback prompt" width="196">
+  <img src="assets/images/phone-books-dark.png" alt="The Books library on a phone" width="156">
+  &nbsp;
+  <img src="assets/images/phone-pocket-ipod.png" alt="The Pocket player in an iPod Click skin, showing its menu" width="156">
 </p>
+
+The screenshots use a synthetic demo library, not real media.
 
 ## Features
 
@@ -68,11 +72,13 @@ Web Push notifications).
 - **A real player, not a `<video>` tag** - app-owned blocky controls, keyboard shortcuts (J/K/L, 0–9, speed, loop, and more), press-and-hold 2×, chapters, and inline playback on iOS.
 - **Keep browsing while you watch** - the player docks to a mini-player as you navigate; theatre mode, Picture-in-Picture, prev/next, and optional autoplay.
 - **Smart resume, synced everywhere** - progress saves continuously and follows you across desktop, phone, and TV.
+- **Watch later and Share** - a per-account Watch later list that empties itself as you finish things, and a Share button on downloads from any site.
 - **Plays what browsers won't** - AVI, HEVC, VP9, AC-3 and friends transcode on demand to H.264/AAC MP4, so everything plays on an iPhone too.
 
 ### Listen & read
 
 - **First-class music library** - Albums / Artists / Songs / Liked with album art, shuffle, search and sort, and an art-forward phone-first now-playing view. ALAC transcodes on demand.
+- **The Pocket, with skins** - a phone-first music player you can dress as an iPod (Click or Original, in dozens of real colourways) or one of the modern players (Cider, Nordic); pick a skin from Settings or from inside the Pocket's own menu.
 - **Downloaded music channels in the Music library** (optional, off by default) - if you download MP3s from music channels (game-music remixes, album mixes, and the like), turn this on to have them appear in the Music library too - grouped by channel, played through the music mini-player - without duplicating anything or removing them from your feed. Channels whose uploads are tagged "Music" appear automatically; a per-channel "♪" toggle includes the ones YouTube tags differently. Turn it on in Settings; it's per-account.
 - **Books library + reader** - EPUB and PDF in the browser: paginated reader, table of contents, paper/sepia/night themes, per-account positions.
 - **"Listen from Here" (TTS)** - have book chapters read aloud (lock-screen friendly); works out of the box, upgradeable to a natural [Piper](https://github.com/OHF-Voice/piper1-gpl) voice.

@@ -67,7 +67,7 @@ test('D2: the INLINE player keeps its 1px border (only fullscreen changed)', () 
   const body = ruleBody('.player-container');
   assert.ok(body, 'the base rule exists');
   assert.match(body, /border:\s*1px solid var\(--separator\);/);
-  assert.match(body, /border-radius:\s*var\(--radius-lg\);/);
+  assert.match(body, /border-radius:\s*var\(--r-md\);/);
 });
 
 // ---- D1: the instrument's detail line (pure) ---------------------------------

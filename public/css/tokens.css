@@ -159,19 +159,16 @@
   --heading-weight: 500;
   --heading-tracking: -0.01em;
   --radius: 4px;
-  --radius-lg: 12px;
   --density: 8px;
   --shadow: 0 1px 2px rgba(0,0,0,0.1);
   --shadow-lg: 0 4px 12px rgba(0,0,0,0.25);
   --yt-red: #cc0000;
-  --yt-red-dark: #990000;
   --bg-sidebar: var(--surface-0);
   --header-bg: var(--surface-0);
   --text-link: #03c;
   --border-dark: #cccccc;
   --btn-bg: var(--surface-2);
   --btn-hover: #d1d1d6;
-  --star-gold: #ffcc00;
   --star-gray: #e0e0e0;
   /* v1.45.0 T1: the offset the sticky home filter bar pins at - the fixed
      header height (--header-h on desktop); overridden to --mobile-header-h
@@ -304,12 +301,10 @@
   --heading-weight: bold;
   --heading-tracking: normal;
   --radius: 0;
-  --radius-lg: 0;
   --density: 4px;               /* dense */
   --shadow: none;
   --shadow-lg: 0 2px 6px rgba(0,0,0,0.35);  /* minimal, keeps modals usable */
   --yt-red: #cc0000;
-  --yt-red-dark: #990000;
   --bg-sidebar: #f5f5f5;
   --header-bg: #ffffff;
   --text-link: #0000cc;
@@ -318,7 +313,6 @@
      #f5f5f5 the old value read as near-invisible chrome (contrast ~1.2). */
   --btn-bg: #d2d2d2;
   --btn-hover: #c6c6c6;
-  --star-gold: #ffcc00;
   --star-gray: #cccccc;
 }
 [data-theme="2005"][data-mode="dark"] {
@@ -414,12 +408,10 @@
   --heading-weight: bold;
   --heading-tracking: normal;
   --radius: 2px;
-  --radius-lg: 2px;
   --density: 6px;
   --shadow: 0 1px 2px rgba(0,0,0,0.15);
   --shadow-lg: 0 2px 6px rgba(0,0,0,0.30);
   --yt-red: #cc0000;
-  --yt-red-dark: #990000;
   --bg-sidebar: #f0f0f0;
   --header-bg: #f5f5f5;
   --text-link: #2b587a;
@@ -428,7 +420,6 @@
      --bg-sidebar #f0f0f0); the glossy .btn gradient in style.css matches. */
   --btn-bg: #d0d0d0;
   --btn-hover: #c4c4c4;
-  --star-gold: #ffcc00;
   --star-gray: #d0d0d0;
 }
 [data-theme="2009"][data-mode="dark"] {
@@ -525,12 +516,10 @@
   --heading-weight: bold;
   --heading-tracking: normal;
   --radius: 2px;
-  --radius-lg: 2px;
   --density: 10px;             /* airier */
   --shadow: none;             /* flat design */
   --shadow-lg: 0 1px 4px rgba(0,0,0,0.12);
   --yt-red: #e62117;
-  --yt-red-dark: #c1160f;
   --bg-sidebar: #fafafa;
   --header-bg: #ffffff;
   --text-link: #167ac6;
@@ -539,7 +528,6 @@
      --bg-sidebar #fafafa, essentially invisible chrome). */
   --btn-bg: #e2e2e2;
   --btn-hover: #d6d6d6;
-  --star-gold: #ffc107;
   --star-gray: #e0e0e0;
 }
 [data-theme="2014"][data-mode="dark"] {
@@ -708,7 +696,7 @@
   --lh-relaxed: 1.5;
 
   /* Radius - pills only. Circles stay 50% (geometry, not style); the
-     era-varying corner radii remain --radius/--radius-lg above. NOTE:
+     era-varying corner radii remain --radius/--r-md. NOTE:
      audit R7 (raw px radii -> var(--radius)) EXECUTED in Tier 4 batch 4e
      (2026-07-31) at the 11 drift sites; per-surface approval against the
      era screenshots is pending at the Tier 4 Stop per amendment (b), with

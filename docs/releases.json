@@ -3388,5 +3388,11 @@
     "date": "2026-09-30",
     "title": "A calmer light on the Coil wheel",
     "intent": "The Transparent Coil skin's wheel was catching too much light and looked like glare. The highlight is now much softer and still follows the light, so the ring and its gold pads read like the real thing."
+  },
+  {
+    "version": "1.347.3",
+    "date": "2026-09-30",
+    "title": "A tidier app under the hood",
+    "intent": "A housekeeping release: a few hard-coded sizes now use the app's shared design values, three unused style names are gone, and the README has fresh screenshots. Nothing should look or act any different; a pixel comparison over 1896 screens found no change."
   }
 ]
