@@ -418,6 +418,62 @@ test('v1.233 iPod: spinning COUNTER-clockwise moves the cursor UP, clamped at th
   } });
 });
 
+// ---- v1.351 W3: the song-list cursor row scrolls; the row it leaves is restored ------
+const tick = () => new Promise((r) => setTimeout(r, 20)); // the marquee runs in a timer-backed rAF
+const LONG_ROW = 'Sodium Lamp Over The Northbound Platform And Every Other Song We Played Until The Last Train Left';
+function seedTextRows(p, dom, longIdx, currentIdx) {
+  const lv = p.querySelector('.ip-listview');
+  for (let i = 0; i < 4; i++) {
+    const row = dom.window.document.createElement('button');
+    row.className = 'mms-row' + (i === currentIdx ? ' is-current' : '');
+    row.setAttribute('data-skin-go', String(i));
+    row.innerHTML = '<span class="mms-rt">' + (longIdx.includes(i) ? LONG_ROW : 'Short ' + i) + '</span><span class="mms-rd">3:00</span>';
+    lv.appendChild(row);
+  }
+  return lv;
+}
+const rowRt = (p, i) => p.querySelector('.ip-listview .mms-row[data-skin-go="' + i + '"] .mms-rt');
+const longRt = (el) => el.classList && el.classList.contains('mms-rt') && el.textContent.length > 40;
+
+test('v1.351 W3 iPod: the highlighted long song row scrolls; spinning off restores its ellipsis, spinning back scrolls it again', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', mockOverflow: true, overflowIf: longRt, run: async (dom) => {
+    const p = panel(dom); seedTextRows(p, dom, [0, 3], 0); openList(p, dom); await tick();
+    assert.ok(rowRt(p, 0).querySelector('.mms-mq'), 'the highlighted long row scrolls');
+    assert.ok(!rowRt(p, 3).querySelector('.mms-mq'), 'a long row that is NOT highlighted stays clipped');
+    spin(p.querySelector('.ip-wheel'), dom, [40, 80, 120, 160]); await tick();
+    assert.strictEqual(cursorIdx(p), 3);
+    assert.ok(!rowRt(p, 0).querySelector('.mms-mq') && !rowRt(p, 0).classList.contains('mms-mq-on'), 'the row the cursor left is back to plain text');
+    assert.strictEqual(rowRt(p, 0).textContent, LONG_ROW, 'and its text is intact');
+    assert.ok(rowRt(p, 3).querySelector('.mms-mq'), 'the new highlighted long row scrolls');
+    spin(p.querySelector('.ip-wheel'), dom, [-40, -80, -120, -160]); await tick();
+    assert.strictEqual(cursorIdx(p), 0);
+    assert.ok(!rowRt(p, 3).querySelector('.mms-mq'), 'row 3 unwound');
+    assert.ok(rowRt(p, 0).querySelector('.mms-mq'), 'row 0 scrolls again');
+  } });
+});
+
+test('v1.351 W3 iPod: a short highlighted row never moves; Reduce Motion never moves a long one', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', mockOverflow: true, overflowIf: longRt, run: async (dom) => {
+    const p = panel(dom); seedTextRows(p, dom, [3], 0); openList(p, dom); await tick();
+    assert.ok(!p.querySelector('.ip-listview .mms-mq'), 'short highlighted row: nothing wrapped');
+  } });
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', mockOverflow: true, overflowIf: longRt, reducedMotion: true, run: async (dom) => {
+    const p = panel(dom); seedTextRows(p, dom, [0], 0); openList(p, dom); await tick();
+    assert.ok(!p.querySelector('.ip-listview .mms-mq'), 'Reduce Motion: nothing wrapped');
+  } });
+});
+
+test('v1.351 W3 iPod: leaving the list (MENU) restores the highlighted row', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', mockOverflow: true, overflowIf: longRt, run: async (dom) => {
+    const p = panel(dom); seedTextRows(p, dom, [0], 0); openList(p, dom); await tick();
+    assert.ok(rowRt(p, 0).querySelector('.mms-mq'));
+    p.querySelector('[data-skin-menu]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await tick();
+    assert.ok(!rowRt(p, 0).querySelector('.mms-mq'), 'the list closed: the row is plain again');
+    assert.strictEqual(rowRt(p, 0).textContent, LONG_ROW);
+  } });
+});
+
 // ---- v1.239 (Dean): mobile Now-Playing wheel spin SCRUBS the timeline -----------------
 // iOS makes media.volume read-only, so on the in-tab iPhone skin a Now-Playing spin (which
 // used to be a no-op) now scrubs the playhead - the mobile analog of the pop-out's

@@ -2015,16 +2015,33 @@
       for (var i = 0; i < els.length; i++) marqueeEl(els[i]);
     }
 
+    // song-list rows are toggled in place (not re-rendered): the row that loses the cursor is unwound, the one that gains it scrolls.
+    var ROW_TEXT = '.mms-rt, .mms-ra, .mms-rd';
+    function unwindRow(row) {
+      var els = row.querySelectorAll(ROW_TEXT);
+      for (var i = 0; i < els.length; i++) unmarqueeEl(els[i]);
+    }
+    function marqueeRow(row) {
+      if (!motionOk()) return;
+      var els = row.querySelectorAll(ROW_TEXT);
+      for (var i = 0; i < els.length; i++) marqueeEl(els[i]);
+    }
+
     // ---- move the list cursor to position `pos` (clamped); edge-follow scroll like an iPod ----
     function setWheelCursor(pos, center) {
       var lv = panel && panel.querySelector('.ip-listview'); if (!lv) return;
       var rows = lv.querySelectorAll('.mms-row'); if (!rows.length) return;
       pos = Math.max(0, Math.min(rows.length - 1, pos));
       wheelCursorRow = pos;
-      for (var i = 0; i < rows.length; i++) rows[i].classList.toggle('is-cursor', i === pos);
+      for (var i = 0; i < rows.length; i++) {
+        var was = rows[i].classList.contains('is-cursor');
+        rows[i].classList.toggle('is-cursor', i === pos);
+        if (was && i !== pos) unwindRow(rows[i]);
+      }
       var el = rows[pos];
       var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); };
       raf(function () {
+        if (el.classList.contains('is-cursor')) marqueeRow(el);
         var top = el.offsetTop - lv.offsetTop;
         if (center) lv.scrollTop = Math.max(0, top - (lv.clientHeight / 2) + (el.offsetHeight / 2));
         else if (top < lv.scrollTop) lv.scrollTop = top;
@@ -2044,7 +2061,7 @@
         setWheelCursor(startPos, true);
       } else {
         var cr = panel.querySelector('.ip-listview .mms-row.is-cursor');
-        if (cr) cr.classList.remove('is-cursor');
+        if (cr) { cr.classList.remove('is-cursor'); unwindRow(cr); }
         wheelCursorRow = -1;
       }
     }
