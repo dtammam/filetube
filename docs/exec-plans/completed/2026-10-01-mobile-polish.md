@@ -3,7 +3,7 @@ plan: mobile-polish
 harness: v2 · lean
 branch: feat/v1.350-mobile-polish
 anchor: spec
-status: Approved @b5805bda
+status: Shipped v1.350.0
 next: Step 0 (read this whole plan once, top to bottom, before touching anything)
 design: Approved 2026-10-01 (Dean, two rounds of Q&A; every ruling in section 2 is his answer)
 gate: adversary + qa (client UI, CSS, one CI workflow; no server, auth or data change)
@@ -315,12 +315,14 @@ Move this plan to `completed/` in the release commit. Device checks for Dean go 
 ## 8. Evidence and gate verdicts
 
 ### Builder evidence (fill in)
-- W1:
-- W2:
-- W3:
-- W4:
-- W5:
-- W6:
-- W7:
+- W1: pipes into head and grep -q removed from visual.yml; step body run locally: exit 141 on base, 0 fixed; mutant (revert) red.
+- W2: sticker first, skin grid last; order test; mutant red.
+- W3: no user-visible "Play on" left; ids/types unchanged; mutant red.
+- W4: Recent Albums drills in (integration, real recent-listening shape); empty state; mutants red; integration 84/84.
+- W5: portrait 0 changed pixels beyond the base tree's own noise (base-vs-base also shows 16/791 px in the strip y746-777), 3 skins x Ambient on/off; 90 and 270 landmark offsets 0.0 CSS px (5 patches each, board-only render); mutants (selector, asset, stamp, listener, media, fallback) red. Harness: page.screenshot resets the angle, CDP captureScreenshot used.
+- W6: headless per-frame probe (coil, landscape to portrait, emulated safe-area insets): all values flip in one frame, LCD 402x302 to 350x263, no giant frame. Stop rule 0.8(c) asked; Dean chose "ship v1.350 with the log only". ?debugRotate=1 added, mutants red. The fix is NOT delivered; owed from the device log (ROADMAP Planned).
+- W7: lint 0 errors, lint:ui OK, overlay 0; full suite 10519 tests, 10507 pass, 0 fail, 12 skipped on Node 22.23.1 AND 24.20.0.
 
 ### Gate verdicts (seats write here, bound to the sha reviewed)
+- Gate: adversary APPROVED r1 @b669036b (no CRITICAL/WARNING; notes: debug sampling forces layout, W6 not delivered).
+- Gate: qa CHANGES r1 @b669036b (WARNING: outcome 5 not delivered and docs must not claim it) - closed in the release commit (ROADMAP, releases.json, DEVICE-CHECKS state it is not fixed).

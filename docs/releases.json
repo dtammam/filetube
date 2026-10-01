@@ -3406,5 +3406,11 @@
     "date": "2026-10-01",
     "title": "Remote control shows when it's on, and every device gets a name",
     "intent": "The Remote control button now reads \"Remote control: On\" when it is on. Each device gets a short name like Mac · Otter, so three Macs no longer look the same in Play on..., and you can type your own name for a device in Settings > Account. The phone player's skins and stickers now have their own Settings page, Mobile player."
+  },
+  {
+    "version": "1.350.0",
+    "date": "2026-10-01",
+    "title": "Skins last, Speakers, Recent Albums, and a steadier board",
+    "intent": "In Settings > Mobile player the sticker comes first and the skins come last. Play on... is now called Speakers. The iPod menu has Recent Albums. On the clear iPods the circuit board photo now stays put when you turn the phone sideways, in both directions. If the screen still flickers when you turn back to upright, add ?debugRotate=1 to the address, turn the phone, and tap the log to copy it."
   }
 ]
