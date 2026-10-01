@@ -13,6 +13,9 @@ const pw = require(require.resolve('playwright', { paths: [path.join(__dirname, 
 
 async function speakerPage(ctx) {
   const page = await ctx.newPage();
+  // measured (first full run): the handoff card ("Continue here") sits over the pill's text once this user
+  // has played elsewhere, and a click there PLAYS; the proof's click is meant for the pill alone
+  await page.addInitScript(() => { document.addEventListener('DOMContentLoaded', () => { const st = document.createElement('style'); st.textContent = '#handoff-card{display:none!important}'; document.head.appendChild(st); }); });
   const cdp = await ctx.newCDPSession(page);
   const ev = async (fn, arg) => {
     const expr = '(' + fn.toString() + ')(' + JSON.stringify(arg === undefined ? null : arg) + ')';

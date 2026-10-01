@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.353-remote-volume
 anchor: spec
 status: Building
-next: V2 mutants in a /tmp sandbox, then V3 (real-browser W-rows a-d + c2)
+next: full dual-Node npm test (22.23.1 then 24.20.0), then the FULL gate (section 6)
 design: Dean 2026-10-01 ("I like this. Yes. Let's do it.") on option A, then "As long as the volume screen is low friction and looks like iPod volume I am good" (R1, R2 below are binding); R3, R4 are architect defaults he did not overrule
 gate: FULL (adversary + qa + security-brief; a new command and state field on the remote channel, lib/remote/**)
 ---
@@ -194,6 +194,33 @@ the navigate-timeout idle report without volume). Unit hook on the commit: 8210 
   scrubber row becomes the volume bar, its groove and fill are the scrubber's own rules (the Aqua tube; the Original's monochrome).
 - **R2 reach ruling: "Tap the time labels"** (a tap on the bar seeks, the plan's stop). Also Speakers > Volume (R2) and a tap on
   the shown bar sets the level there (a shown control must act, LESSONS 4).
+
+**V2 mutants @0a1c0d01: 33/36 RED** (the first run @afb4c63b also exposed two survivors, bound by a stale-tap test in 0a1c0d01:
+the bar needs the view's available() AND a level). Survivors @0a1c0d01, each a real gap, bound in 57d6b9d4 and re-run there
+**3/3 RED**: a turn not re-arming the idle timer; the renderers taking a string level; and a level still waiting out the
+throttle when the phone leaves, which would have reached the NEXT speaker picked. One mutant (the step sign inverted) hung its
+file; the runner now has a per-test timeout and restores in `finally`. Hook on 57d6b9d4: 8233 tests, 8233 pass, 0 fail.
+Two old locks pinned the retired 09-02 shape ("no volume mode in the engine") and the dormant bar's tokens; updated with their
+intent kept (local play never touches volume; the engine never writes an element volume); the dead `--pk-s-sel-hi` /
+`--mms-ipod-blue-hi` went with their only reader (the screen-role floor and the token count -1 each, the UI ledger shrank 2).
+
+**V3 (tools/listen-control-proof/volume-proof.js on 57d6b9d4 + the proof's own fix, real server, real login; raw:
+volume-proof-out.json), all rows pass, 0 page errors:**
+- a: phone 30% -> PC element 0.3 in 5 ms, `ft-volume` "0.3"; after a PC reload `ft-volume` "0.3", snapshot 0.3, the next
+  song's element 0.3, the phone reads 0.3.
+- b: the PC's own slider to 80% -> the phone's state 0.8 in 407 ms; the targets list 0.8.
+- c (kiosk, `hasBeenActive` false before and after): volume 0 then 50%, 9 samples 400 ms apart: never a click hint
+  (`needsClick` false, the pill never asking), playing in every sample.
+- d (iPhone 13, the iPod skin, the bar down): a real mouse spin on the wheel moved the PC 0.7 s -> 9.2 s, volume 0.5 -> 0.5.
+- e (the whole phone chain): a tap on -1:58 put the bar up; a 180 deg clockwise spin took the PC 0.5 -> 0.9 (the phone's bar
+  90%), 90 deg back -> 0.7; MENU put the scrubber back; a tap then 2012 ms of nothing put it back by itself.
+- f: the badge -> Speakers -> Volume landed on Now Playing with the bar up; after leaving the speaker no bar or tap target.
+- c2 (`user-gesture-required`, a never-clicked tab, `ft-muted` "1"): the phone's play plays MUTED; raising to 0.5 un-mutes and
+  Chromium PAUSES it (`paused:true`); the phone reads `paused`, `needsClick` true, the click hint shows; one real click on the
+  pill's text, then the phone's play -> `playing`, the PC `paused:false` at 0.5, `needsClick` false.
+- The proof's own click was wrong twice and was fixed in the proof, not the product: (640,700) is the player's click-to-toggle
+  art; and in the full run the handoff card ("Continue here") covered the pill's text (a pre-existing overlap, logged in ROADMAP
+  Planned > Bugs). The speaker context now hides the handoff card, as the phone context always did.
 
 ## 8. Device checks Dean would owe (into DEVICE-CHECKS.md at release, one line each)
 

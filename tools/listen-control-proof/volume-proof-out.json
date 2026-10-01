@@ -1,0 +1,202 @@
+{
+  "a_pc_volume": 0.3,
+  "a_ms": 5,
+  "a_pc": {
+    "el": {
+      "volume": 0.3,
+      "muted": false,
+      "paused": false
+    },
+    "snap": {
+      "volume": 0.3,
+      "muted": false,
+      "playing": true
+    },
+    "ftVolume": "0.3",
+    "ftMuted": "0",
+    "hasBeenActive": false,
+    "pill": "Controlled by Linux PC · BasilStop"
+  },
+  "a_after_reload_ft_volume": "0.3",
+  "a_after_reload_snapshot_volume": 0.3,
+  "a_after_reload_element_volume": 0.3,
+  "a_after_reload_phone_volume": 0.3,
+  "b_phone": 0.8,
+  "b_ms": 407,
+  "b_targets_list_volume": 0.8,
+  "c_has_been_active": false,
+  "c_samples": [
+    {
+      "label": "before",
+      "state": "playing",
+      "needsClick": false,
+      "volume": 0.8,
+      "pill": "Controlled by Linux PC · BasilStop",
+      "playing": true,
+      "el": {
+        "volume": 0.8,
+        "muted": false,
+        "paused": false
+      }
+    },
+    {
+      "label": "at0-0",
+      "state": "playing",
+      "needsClick": false,
+      "volume": 0,
+      "pill": "Controlled by Linux PC · BasilStop",
+      "playing": true,
+      "el": {
+        "volume": 0,
+        "muted": false,
+        "paused": false
+      }
+    },
+    {
+      "label": "at0-1",
+      "state": "playing",
+      "needsClick": false,
+      "volume": 0,
+      "pill": "Controlled by Linux PC · BasilStop",
+      "playing": true,
+      "el": {
+        "volume": 0,
+        "muted": false,
+        "paused": false
+      }
+    },
+    {
+      "label": "at0-2",
+      "state": "playing",
+      "needsClick": false,
+      "volume": 0,
+      "pill": "Controlled by Linux PC · BasilStop",
+      "playing": true,
+      "el": {
+        "volume": 0,
+        "muted": false,
+        "paused": false
+      }
+    },
+    {
+      "label": "at0-3",
+      "state": "playing",
+      "needsClick": false,
+      "volume": 0,
+      "pill": "Controlled by Linux PC · BasilStop",
+      "playing": true,
+      "el": {
+        "volume": 0,
+        "muted": false,
+        "paused": false
+      }
+    },
+    {
+      "label": "at50-0",
+      "state": "playing",
+      "needsClick": false,
+      "volume": 0.5,
+      "pill": "Controlled by Linux PC · BasilStop",
+      "playing": true,
+      "el": {
+        "volume": 0.5,
+        "muted": false,
+        "paused": false
+      }
+    },
+    {
+      "label": "at50-1",
+      "state": "playing",
+      "needsClick": false,
+      "volume": 0.5,
+      "pill": "Controlled by Linux PC · BasilStop",
+      "playing": true,
+      "el": {
+        "volume": 0.5,
+        "muted": false,
+        "paused": false
+      }
+    },
+    {
+      "label": "at50-2",
+      "state": "playing",
+      "needsClick": false,
+      "volume": 0.5,
+      "pill": "Controlled by Linux PC · BasilStop",
+      "playing": true,
+      "el": {
+        "volume": 0.5,
+        "muted": false,
+        "paused": false
+      }
+    },
+    {
+      "label": "at50-3",
+      "state": "playing",
+      "needsClick": false,
+      "volume": 0.5,
+      "pill": "Controlled by Linux PC · BasilStop",
+      "playing": true,
+      "el": {
+        "volume": 0.5,
+        "muted": false,
+        "paused": false
+      }
+    }
+  ],
+  "c_any_hint": false,
+  "c_all_playing": true,
+  "c_has_been_active_after": false,
+  "d_position_before": 0.7,
+  "d_position_after": 9.2,
+  "d_volume_before": 0.5,
+  "d_volume_after": 0.5,
+  "d_voladj": false,
+  "e_voladj_after_tap": true,
+  "e_pc_volume_before": 0.5,
+  "e_pc_volume_after": 0.9,
+  "e_phone_bar_width": "90%",
+  "e_position_drift": 1.8,
+  "e_pc_volume_after_back": 0.7,
+  "e_voladj_after_menu": false,
+  "e_idle_closed": true,
+  "e_idle_ms": 2012,
+  "f_np": "Now Playing",
+  "f_voladj": true,
+  "f_local_has_bar": false,
+  "c2_muted_playing": "muted+playing",
+  "c2_phone_before": {
+    "state": "playing",
+    "needsClick": true,
+    "muted": true
+  },
+  "c2_pc_after_raise": {
+    "paused": true,
+    "muted": false,
+    "volume": 0.5
+  },
+  "c2_phone_after_raise": {
+    "state": "paused",
+    "needsClick": true
+  },
+  "c2_phone_hint_shown": true,
+  "c2_click_target": "SPAN.remote-pill-text \"Click anywhere so your phone can play music here\"",
+  "c2_after_click": {
+    "volume": 0.5,
+    "muted": false,
+    "paused": true,
+    "hasBeenActive": true
+  },
+  "c2_after_click_and_play": "playing",
+  "c2_pc_after": {
+    "volume": 0.5,
+    "muted": false,
+    "paused": false
+  },
+  "c2_phone_after": {
+    "state": "playing",
+    "needsClick": false,
+    "volume": 0.5
+  },
+  "errors": []
+}

@@ -4,6 +4,11 @@
 
 ### Bugs
 
+- [ ] **Speakers: on the PC, the handoff card ("Continue here") can sit over the remote pill's "Click anywhere" text**
+  _(measured during the v1.353 build, headless Chromium)_ - once the same user has played on another device, the PC's handoff
+  card covers the centre of the pill's text, and a click there presses "Continue here", which PLAYS (the pill asks for a click
+  anywhere, so a user aiming at the text starts the song the card offers). Pre-existing since v1.352's pill; out of v1.353's
+  scope. Fix shape: hide the handoff card while Remote control is On (the tab is a speaker), or stack the pill above it.
 - [ ] **Speakers: the chapter name on the phone falls back to the picked chapter when the PC leaves Music, or re-opens it
   mid-file** _(gate r3 of v1.352, adversary + QA, measured)_ - v1.352 reports the chapter the PC's Music view shows; on Home
   (the view torn down) or after a re-opened Music view (its chapter tracking starts empty) the phone shows the loaded
