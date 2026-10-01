@@ -114,6 +114,22 @@ the checks.
   screen-recording, then tap the green panel to copy the rows and send them. The giant-LCD flash and the 20 px dip are NOT fixed
   in this release; the log names the cause.
 
+## Speakers and links (v1.352.0)
+
+- [ ] v1.352.0 - On the speaker machine, open the bookmark `/music?remote=on` in a fresh tab and don't click: Remote control shows On, the address bar shows `/music`, a toast says it is on, and the pill says "Click anywhere so your phone can play music here".
+- [ ] v1.352.0 - Same untouched tab: on the phone, Speakers shows the machine. Pick it, and BEFORE you pick a song the phone says "Click the PC's tab once to let it play". Press play/pause on the phone: it shows the same hint instead of doing nothing. Click once anywhere on the PC tab: both hints go away, and songs from the phone play.
+- [ ] v1.352.0 - Close the speaker tab (or quit the browser) and open the bookmark again: still listed on the phone. (Chrome keeps the click across a plain reload, so a reload alone may not need a new click.)
+- [ ] v1.352.0 - Signed out on the speaker machine, open the bookmark and sign in: you land on Music with Remote control On.
+- [ ] v1.352.0 - (slow) Leave the speaker machine signed in and use it at least every couple of weeks: after 30+ days it is still signed in (it asks again 180 to 210 days after the password was last typed).
+- [ ] v1.352.0 - Open the speaker bookmark on the phone: the address bar drops `?remote=on`, and the phone does not show up under Speakers on another device.
+- [ ] v1.352.0 - (Optional, kiosk) Launch Chrome with `--kiosk --autoplay-policy=no-user-gesture-required <bookmark>`: a phone play plays with no click, and once it plays neither the phone nor the PC asks for a click.
+- [ ] v1.352.0 - (Optional) Chrome with "Continue where you left off": quit and reopen the browser on the speaker tab; note whether it comes back On by itself.
+- [ ] v1.352.0 - Phone controlling the speaker, a chaptered album: pick the first chapter and let it play past it: the phone's song name changes to the next chapter by itself (within a couple of seconds), no skip needed.
+- [ ] v1.352.0 - Open a library video as `/watch.html?v=<id>&t=1m30s`: it starts at 1:30 even if you had watched further.
+- [ ] v1.352.0 - On an Android phone or a desktop Chrome/Edge install: long-press (or right-click) the FileTube icon: Music, Now Playing, Shuffle Songs and Podcasts are listed and each opens the right place (a reinstall may be needed first). On the iPhone nothing shows, as the README says.
+- [ ] v1.352.0 - Desktop Music page: open an album, press Copy link, paste it in a new tab: the album opens; add `&mode=shuffle`: it plays the album shuffled.
+- [ ] v1.352.0 - Bookmark `/music?playlist=liked&mode=shuffle`: your Liked songs play shuffled, and a reload does not restart them.
+
 ## Only if it comes back
 
 - [ ] v1.336 - The black picture on resume from the background: capture `?debugLifecycle=1` (the

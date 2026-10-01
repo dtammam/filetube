@@ -94,3 +94,28 @@ test('v1.350: the user-visible name is Speakers everywhere, the Account note inc
   }
   assert.strictEqual(SK.menuStaticItems({ type: 'main' }, { hasPlayOn: true }).find((r) => r.node && r.node.type === 'playon').label, 'Speakers');
 });
+
+test('v1.352 W0: the phone says to click the PC when it is blocked OR has had no click yet, on Now Playing and the Speakers row', () => {
+  const M = require('../../public/js/music.js');
+  assert.strictEqual(M.REMOTE_CLICK_HINT, "Click the PC's tab once to let it play");
+  assert.strictEqual(M.remoteNeedsClick({ state: 'blocked' }), true);
+  assert.strictEqual(M.remoteNeedsClick({ state: 'idle', needsClick: true }), true, 'before any song');
+  assert.strictEqual(M.remoteNeedsClick({ state: 'playing', needsClick: false }), false);
+  assert.strictEqual(M.remoteNeedsClick({ state: 'paused', needsClick: 'true' }), false, 'only a real true');
+  assert.strictEqual(M.remoteNeedsClick(null), false);
+  assert.strictEqual(M.remoteNeedsClick({ state: 'playing', needsClick: true }), false, 'gate r1: never while it plays (a kiosk that plays unclicked)');
+  // the two surfaces use it (the wire, not just the decision)
+  const ctx = MUSIC.slice(MUSIC.indexOf('function remoteSkinCtx() {'), MUSIC.indexOf('function remotePlayAt('));
+  assert.match(ctx, /artist: remoteNeedsClick\(st\) \? REMOTE_CLICK_HINT :/);
+  const rows = MUSIC.slice(MUSIC.indexOf('function playOnItems() {'), MUSIC.indexOf('function remoteChoose('));
+  assert.match(rows, /detail: remoteNeedsClick\(t\.state\) \? REMOTE_CLICK_HINT :/);
+});
+
+test('v1.352 (Dean): the Music view registers its chapter reader with the target, clears it on teardown, and pings on every chapter rollover', () => {
+  assert.match(MUSIC, /REMOTE\.setNowPlayingResolver\(function \(\) \{ return chapterViewId; \}\);/);
+  assert.match(MUSIC, /signal\.addEventListener\('abort', function \(\) \{\s*REMOTE\.setMusicPlayHandler\(null\);\s*if \(typeof REMOTE\.setNowPlayingResolver === 'function'\) REMOTE\.setNowPlayingResolver\(null\);/);
+  const rc = MUSIC.slice(MUSIC.indexOf('function reflectChapter() {'), MUSIC.indexOf('var lastLoopTime = -1;'));
+  const roll = rc.indexOf('chapterViewId = id;');
+  const ping = rc.indexOf('remoteTarget.trackChanged()');
+  assert.ok(roll > 0 && ping > roll, 'the ping comes after the chapter on screen changed');
+});

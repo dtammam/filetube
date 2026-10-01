@@ -419,6 +419,18 @@ module.exports = [
     },
   },
 
+  // v1.352 L3: music.js's Copy link pill and the recent-list shuffle of a music link use two
+  // common.js globals (declared only where consumed).
+  {
+    files: ['public/js/music.js'],
+    languageOptions: {
+      globals: {
+        copyTextToClipboard: 'readonly',
+        fisherYatesShuffle: 'readonly',
+      },
+    },
+  },
+
   // `renderIconPicker` is DEFINED in public/js/setup.js (a real global
   // function, deliberately not IIFE-wrapped -- see that file's module
   // comment) and feature-detected/called from common.js's `applyIconSet()`.

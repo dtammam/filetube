@@ -74,6 +74,26 @@ test('togglePlay() flips: paused -> plays, playing -> pauses (the control bar\'s
   } finally { r.close(); }
 });
 
+test('v1.352 W0: a play/pause the browser refuses (NotAllowedError) raises the refused flag and its event; any other error does not', async () => {
+  const r = realm();
+  try {
+    const events = [];
+    r.w.document.addEventListener('filetube:autostart', (e) => events.push(e.detail.refused));
+    let reject = 'NotAllowedError';
+    r.w.HTMLMediaElement.prototype.play = function () { const e = new Error('no gesture'); e.name = reject; return Promise.reject(e); };
+    Object.defineProperty(r.el, 'paused', { value: true, configurable: true });
+    reject = 'AbortError';
+    r.player.togglePlay();
+    await settle();
+    assert.strictEqual(r.player.autoStartRefused(), false, 'an AbortError is a newer load, not a refusal');
+    reject = 'NotAllowedError';
+    r.player.togglePlay();
+    await settle();
+    assert.strictEqual(r.player.autoStartRefused(), true);
+    assert.deepStrictEqual(events, [true], 'the event the PC reports from');
+  } finally { r.close(); }
+});
+
 test('next() and prev() are the track-nav step: each reaches ITS OWN registered handler (never the other)', async () => {
   const r = realm();
   try {

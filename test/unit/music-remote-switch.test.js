@@ -22,7 +22,7 @@ test('music.html ships the switch as static, visible markup with the tooltip and
   assert.strictEqual(el.hidden, false, 'never [hidden]: the first paint has its box');
   assert.ok(!el.classList.contains('music-slot-reserved') && !el.hasAttribute('inert'), 'a live control, not a reserved slot');
   assert.strictEqual(el.getAttribute('aria-pressed'), 'false');
-  assert.strictEqual(el.getAttribute('title'), 'Let your other devices play music in this tab');
+  assert.strictEqual(el.getAttribute('title'), 'Let your other devices play music in this tab. Bookmark /music?remote=on to open it this way', 'v1.352 R3: the tooltip names the speaker bookmark');
   assert.strictEqual(el.getAttribute('aria-label'), 'Remote control');
   assert.strictEqual(el.querySelector('.ui-btn__swap-off').textContent, 'Remote control');
   assert.strictEqual(el.querySelector('.ui-btn__swap-on').textContent, 'Remote control: On');
@@ -37,7 +37,8 @@ test('a phone is a controller, never a target: the switch has no box under html.
 
 test('music.js registers the play handler per view, routes it through playFromMenu flat, and clears it on abort', () => {
   assert.match(MUSIC, /REMOTE\.setMusicPlayHandler\(remotePlay\);/);
-  assert.match(MUSIC, /signal\.addEventListener\('abort', function \(\) \{ REMOTE\.setMusicPlayHandler\(null\); \}\);/);
+  // v1.352: the same abort also clears the chapter reader (music-remote-controller-wiring binds that half)
+  assert.match(MUSIC, /signal\.addEventListener\('abort', function \(\) \{\s*REMOTE\.setMusicPlayHandler\(null\);/);
   assert.match(MUSIC, /playFromMenu\(\{ tracks: req\.tracks, index: req\.index, play: \{ flat: true, label: 'From ' \+ /);
   assert.match(MUSIC, /remoteBtn\.addEventListener\('click', function \(\) \{ REMOTE\.toggle\(\); paintRemote\(\); \}, \{ signal \}\);/);
   assert.match(MUSIC, /var offRemote = REMOTE\.onChange\(paintRemote\);\s*signal\.addEventListener\('abort', offRemote\);/);
