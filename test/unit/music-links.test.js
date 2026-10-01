@@ -80,6 +80,7 @@ test('the drill header carries a Copy link pill with the escaped link, and none 
   assert.ok(m, 'the pill');
   assert.strictEqual(m[1].replace(/&amp;/g, '&'), M.musicDrillLink({ type: 'album', key }), 'the attribute holds the link, escaped');
   assert.ok(!/<c>/.test(m[1]));
+  assert.match(m[1], /&amp;album=/, 'the attribute is HTML-escaped (the & between params included)');
   assert.match(M.buildDrillHeaderHtml({ type: 'artist', key: 'Queen', label: 'Queen' }, []), /music-drill-copylink" data-link="\/music\?artist=Queen"/);
   assert.doesNotMatch(M.buildDrillHeaderHtml({ type: 'album', key: 'vid1', label: 'Talk' }, []), /music-drill-copylink/);
 });
@@ -91,6 +92,7 @@ test('init reads the link once, strips mode, and acts only after the play branch
   const np = SRC.indexOf('} else if (wantNowPlaying && isListenChapterActive()) {');
   assert.ok(play > 0 && link > play && np > link, 'the link branch sits after both play branches');
   assert.match(SRC.slice(link, np), /return applyMusicLink\(linkIntent\);/);
+  assert.strictEqual((SRC.match(/applyMusicLink\(/g) || []).length, 2, 'one definition, one call: the link acts from that branch only');
   const click = SRC.slice(SRC.indexOf("var copyLink = e.target.closest('.music-drill-copylink');"));
   assert.match(click.slice(0, 500), /copyTextToClipboard\(window\.location\.origin \+ linkPath\)/);
 });

@@ -4,6 +4,17 @@
 
 ### Bugs
 
+- [ ] **Speakers: a chaptered album playing on the PC keeps the first chapter's name on the phone** _(Dean, 2026-10-01: "when
+  remotely controlling a computer speaker from phone the named chapter doesn't change. unless i skip track. if i pick intro,
+  it keeps playing all through all the way. and the music goes. and the scrubber shows. but it stays with the same name.
+  unless i explicitly fast forward")_ - The sound, the scrubber and Next all work; only the name on the phone is stuck.
+  Unverified hypothesis (read in code, not measured): a chaptered file plays as ONE load whose id is the picked
+  `<id>::c<n>`; the PC's music view advances the chapter in place (reflectChapter, no reload), but the remote state the PC
+  reports (public/js/player.js `getRemoteSnapshot().id` -> public/js/remote.js `buildStatePayload` trackId) keeps the picked
+  chapter's id, so the phone's track card never changes until a skip forces a real load. Falsifier: in a two-browser run,
+  log the PC's reported trackId across a chapter boundary; if it already changes, the stale name is on the phone side
+  (music.js remoteSkinCtx). Fix shape to plan: report the playing chapter's id (the view's chapterViewId), and bind it
+  with a real-browser row across a boundary.
 - [ ] **Bug: the turn back to portrait flashes a giant LCD for ~5 frames, then sits ~20 px low** (Dean, 2026-10-01, from a screen
   recording). **INSTRUMENTED in v1.350.0, not fixed**: headless does not reproduce it (all values flip in one frame). Next step:
   Dean records the turn back with `?debugRotate=1` (tap the panel to copy the rows); name the stale value from the log, then fix
@@ -163,6 +174,14 @@
 
 ### Features
 
+- [ ] **Speakers: a phone that closes the app comes back still connected** _(Dean, 2026-10-01: "if connected to a
+  speaker on mobile and you close out of app it should resume from that position/connection if still valid")_ -
+  Next swing. Today the phone remembers its speaker in `sessionStorage['ft-remote-controlling']`
+  (public/js/remote.js `createController`), which a closed app or killed PWA loses, so it reopens in local mode.
+  Shape to plan: remember the pick per device (localStorage), and on open re-check it against
+  `GET /api/remote/targets` (the `restore()` path already does this) before trusting it; reattach and show the
+  speaker's current song and position, or drop back to local quietly if the speaker is gone. Needs a plan
+  (intake: what "still valid" means, e.g. how long after closing, and whether it reattaches silently or asks).
 - [ ] **Search for the mobile player skins, and the iPod-style search for future things** _(Dean, 2026-10-01)_ - Scope: a
   search for the Music skins (Settings > Mobile player, and the Pocket Extras > Skins menu), in the iPod style
   (the click-wheel search). Build it on the existing search capabilities rather than a new engine, so the same

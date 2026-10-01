@@ -2891,7 +2891,7 @@ if (typeof module !== 'undefined' && module.exports) {
         var paintRemote = function () {
           remoteBtn.setAttribute('aria-pressed', REMOTE.isOn() ? 'true' : 'false'); // the CSS swaps the label on this
           var who = window.FileTube && window.FileTube.getDeviceLabel && window.FileTube.getDeviceLabel();
-          remoteBtn.title = 'Let your other devices play music in this tab' + (who ? '. This device: ' + who : '');
+          remoteBtn.title = 'Let your other devices play music in this tab. Bookmark /music?remote=on to open it this way' + (who ? '. This device: ' + who : '');
         };
         paintRemote();
         remoteBtn.addEventListener('click', function () { REMOTE.toggle(); paintRemote(); }, { signal });

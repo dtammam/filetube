@@ -3,8 +3,8 @@ plan: speaker-bookmark
 harness: v2 · lean
 branch: feat/v1.352-speaker-bookmark
 anchor: spec
-status: Draft
-next: W0 (build not started; read the whole plan first, every section)
+status: Building
+next: gate r1 (W0-W3 built)
 design: Rulings 2026-10-01 (Dean: R2 yes, R3 tooltip + README, R5 sliding renewal, L1-L3 in the same release; W0 from his autoplay report; R1, R4, W0 and the L defaults are architect defaults he did not overrule)
 gate: FULL (adversary + qa + security-brief; forced by lib/auth/** via R2 and R5)
 ---
@@ -362,7 +362,69 @@ branch remote + local.
 
 ## 7. Evidence and gate verdicts (all waves, W and L)
 
-(empty until W1)
+Commits: W0 32e8f02d, W1 1d1cd8ef + 6153d42e, W2 6fac5c29, L1-L3 96453ed9, W3 docs (this commit). Numbers below are
+copied from the instrument runs named; raw JSON for the browser rows is committed beside the proofs
+(tools/listen-control-proof/speaker-proof-out.json, links-proof-out.json).
+
+**W0 falsifier (headless Chromium, `--autoplay-policy=user-gesture-required`, `?debugLifecycle=1`).** A restored tab (the flag
+pre-set, never clicked): the log read `autostart:refused NotAllowedError · tap never · page 3890ms`, so the diagnosis held (stop
+rule g not triggered). Old code, `/api/progress` delayed 2 s: the phone saw `paused` with no hint, and a phone toggle reported
+`paused` (the 900 ms race and the swallowed toggle, both measured). Fixed tree, same run: `blocked` in both. Two corrections to
+the plan, both measured: (1) Chromium KEEPS the activation across a same-origin reload (`tap had` after click + reload), so the
+failing case is a fresh or restored tab, not a reload (device check reworded); (2) Playwright's page.evaluate grants a user
+gesture, so every speaker-side read goes through CDP `Runtime.evaluate {userGesture:false}` (LESSONS 2).
+
+**Mutants (each in a /tmp `git archive` sandbox of the committed sha, the named test file run, restored after):**
+- W0 @32e8f02d: 15/15 RED (autostart listener, blocked flag read, toggle NotAllowedError raise and its error-name filter,
+  needsClick in the payload / needsClickNow / the activation clear / the activation listeners / the stale lower / the pill,
+  routes resolvedState / POST / truthy coercion, the phone hint and the Speakers row).
+- W1 @1d1cd8ef: 20/21 RED. Survivor: safeNext without its origin check; the fixtures had no off-origin URL with a path. New
+  fixtures plus an invariant test then found a real hole in the plan's prescribed fix (`/.//evil` -> the path `//evil`), fixed in
+  6153d42e; re-run @6153d42e 3/3 RED (origin check, re-resolve, the old prefix check).
+- L1-L3 @96453ed9: 17/20 RED. Survivors: (a) the link branch moved before the play branches: equivalent, the precedence lives in
+  musicLinkIntent (null whenever play= is present); a call-site count lock was added anyway; (b) the Copy link attribute
+  unescaped: the link is URL-encoded except the `&`, now asserted as `&amp;`; (c) musicDrillLink without its separator check:
+  MASKED by musicLinkName (redundant guards, LESSONS 2), documented, not faked.
+- The typo'd shortcut URL (`/podcast`) reds both manifest tests (also run as a mutant above).
+
+**W2 (tools/listen-control-proof/speaker-proof.js, real server, real login, two contexts as one user), all rows pass, 0 page errors:**
+- a: `/music?remote=on` in a fresh tab: listed on the phone in 295 ms; URL `/music`, history.state.url `/music`, On, toast shown,
+  `hasBeenActive` false; after a reload still On, still listed, URL `/music`.
+- c (`user-gesture-required`, a fresh never-clicked tab): pill "Click anywhere so your phone can play music here"; the phone's
+  targets list has `needsClick: true` before any song; play -> `blocked`, the speaker not playing; one CDP mouse click ->
+  `needsClick: false`, the pill "Controlled by Linux PC · Robin"; the phone's play/pause -> `playing`, the speaker playing.
+- d (`no-user-gesture-required`): a phone play -> `playing` with no click.
+- b: `/?remote=on` (Home): URL `/`, listed; a phone play moved it to `/music` and played song3.
+- e: logged out, the bookmark lands on `/login?next=%2Fmusic%3Fremote%3Don`; signing in ends on `/music`, On, listed. Through
+  the real login page, `next=/%5Cevil.example`, `/%09/evil.example` and `/.//evil.example` all land on the same origin `/`.
+- f: a cookie signed 16 days ago (jar expiry 14 days): the bookmark's first response (`/music`) renewed it once; jar expiry
+  30 days after, token changed.
+- g: a second tab opening the bookmark takes over; the first goes Off with "Remote control moved to another tab"; listed once.
+- The first run of row e FAILED: `net::ERR_TOO_MANY_REDIRECTS` (the allowlist's traversal regex scanned the query, so
+  `/login?next=%2F...` was not /login). Stop rule (a); Dean ruled "Path-only check" (2026-10-01); fixed in 6fac5c29.
+
+**L (tools/listen-control-proof/links-proof.js, real server, seeded library), all rows pass, 0 page errors:**
+- L1: saved position 300 s; `/watch.html?v=vid1&t=30` -> 30.4 s, no "Resumed at" toast, the URL keeps `t`; without `t` (300 s
+  re-saved) -> 300.4 s; an in-app nav to `&t=1m30s` while it plays (adopt) -> 91.4 s. (The plan's `/watch?v=` 404s here.)
+- L3: the album link opens "Proof Album" (3 rows) and plays nothing; `&mode=play` plays song1 (track 1); `&mode=shuffle` plays an
+  album track; `?mode=shuffle` alone plays and a reload does not restart it; `mode` is gone from the URL and history.state.url
+  every time; `?playlist=liked&mode=shuffle` with nothing liked toasts "Could not find Liked in your music"; after a like,
+  `?playlist=liked&mode=play` plays song2; `?artist=Nobody%20Here` toasts "Could not find Nobody Here in your music";
+  `play=song3` + an album link with a mode plays song3 (play wins); Copy link puts `<origin>/music?artist=Proof%20Band&album=Proof%20Album`
+  on the clipboard with a "Link copied" toast.
+- L2 platform truth, read at primary source (MDN browser-compat-data manifests/webapp/shortcuts.json): chrome 96, chrome_android
+  84, safari 17.4, safari_ios false, firefox false. The README says so.
+
+**Suites (`npm test`, after L3, before W3): Node 22.23.1: 10577 tests, 10565 pass, 0 fail, 12 skipped. Node 24.20.0: 10577 tests,
+10565 pass, 0 fail, 12 skipped.** `npm run lint:ui` OK (live debt equals docs/ui-exceptions.json); overlay census 0.
+Two older locks on the watch loads' exact data shape (watch-init-behavioral, watch-prev-next-flash) went red on startAt and were
+updated with their intent unchanged (LESSONS 3).
+
+**Dean's rulings during the build (2026-10-01):** the allowlist traversal check reads the path only; Copy link is a pill in the drill
+row. Logged to ROADMAP Planned at his request: Speakers resume after the phone closes the app; a chaptered album on the PC keeps
+the first chapter's name on the phone.
+
+### Gate
 
 ## 8. Device checks Dean would owe (go into DEVICE-CHECKS.md, one line each, at release)
 
