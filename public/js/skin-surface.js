@@ -879,6 +879,7 @@
       var list = listEl();
       if (!pane || !list) return;
       list.innerHTML = SK.renderMenuList(listModel(pane, list));
+      if (typeof o.marquee === 'function') o.marquee();
     }
     function measure() {
       var list = listEl();
@@ -961,6 +962,7 @@
       applyJump();
       syncSlides();
       syncPreview();
+      if (typeof o.marquee === 'function') o.marquee();
     }
 
     // ---- the split screen's art (Click): the highlighted item's own image, eased in ----
@@ -1155,6 +1157,18 @@
       syncPreview();
       scheduleArt();
     }
+    // v1.351: a speaker with nothing loaded has nothing to show on Now Playing - land on the Main menu, cursor on Music.
+    function landOnMusic() {
+      resetStack();
+      screen = 'menu';
+      clearJump();
+      var pane = curPane();
+      ensureLoaded(pane);
+      for (var k = 0; k < pane.items.length; k++) {
+        if (pane.items[k] && pane.items[k].node && pane.items[k].node.type === 'music') { pane.cursor = k; break; }
+      }
+      render();
+    }
     function showNowPlaying() {
       screen = 'np';
       clearJump();
@@ -1177,7 +1191,9 @@
       if (it.action === 'nowplaying') { showNowPlaying(); return; }
       if (it.action === 'playon') {
         // v1.348 Listen Control: pick where the music plays (this device, or a PC that is listening).
-        try { if (typeof cfg.onPlayOn === 'function') cfg.onPlayOn(it.target || null); } catch (_) { /* view best-effort */ }
+        var landed = true;
+        try { if (typeof cfg.onPlayOn === 'function') landed = cfg.onPlayOn(it.target || null); } catch (_) { /* view best-effort */ }
+        if (landed === false) { landOnMusic(); return; }
         showNowPlaying();
         return;
       }
@@ -1457,6 +1473,7 @@
           if (stickerCfg && typeof stickerCfg.onSkinChange === 'function') stickerCfg.onSkinChange(); // the view repaints with the saved skin
         },
         takeoverLive: function () { return !!wheelTakeover; },
+        marquee: marqueeOn ? function () { var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); }; raf(function () { applyMenuMarquee(); }); } : null,
         onShowNowPlaying: function () { if (!marqueeOn) return; var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); }; raf(function () { applyMarquee(); }); } })
       : null;
     function stickerPlayer() {
@@ -1972,24 +1989,56 @@
     // Only when motion is allowed (else the line keeps its ellipsis). Wraps the text in a
     // .mms-mq span + sets the shift distance + a constant-speed duration as CSS vars; the
     // .mms-marquee keyframe animates it. textContent both ways -> no injection.
-    function applyMarquee() {
-      if (!panel) return;
-      try { if (win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (_) { /* keep going */ }
-      var els = panel.querySelectorAll('.ip-ttl, .ip-artist, .ip-album, .mms-ttl, .mms-sub, .mms-ctx');
-      for (var i = 0; i < els.length; i++) {
-        var el = els[i];
-        var over = el.scrollWidth - el.clientWidth;
-        if (over > 2 && !el.querySelector('.mms-mq')) {
-          var span = doc.createElement('span');
-          span.className = 'mms-mq';
-          span.textContent = el.textContent;
-          el.textContent = '';
-          el.appendChild(span);
-          el.classList.add('mms-mq-on');
-          el.style.setProperty('--mms-mq-shift', (-over) + 'px');
-          el.style.setProperty('--mms-mq-dur', Math.max(4, over / 24).toFixed(1) + 's');
-        }
+    // v1.351: the per-element body is marqueeEl, with unmarqueeEl as its exact inverse (a row
+    // that LOSES the cursor is toggled, not re-rendered, so it must be put back by hand).
+    function motionOk() {
+      try { if (win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches) return false; } catch (_) { /* keep going */ }
+      return true;
+    }
+    function marqueeEl(el) {
+      var over = el.scrollWidth - el.clientWidth;
+      if (over > 2 && !el.querySelector('.mms-mq')) {
+        var span = doc.createElement('span');
+        span.className = 'mms-mq';
+        span.textContent = el.textContent;
+        el.textContent = '';
+        el.appendChild(span);
+        el.classList.add('mms-mq-on');
+        el.style.setProperty('--mms-mq-shift', (-over) + 'px');
+        el.style.setProperty('--mms-mq-dur', Math.max(4, over / 24).toFixed(1) + 's');
       }
+    }
+    function unmarqueeEl(el) {
+      var span = null;
+      for (var c = el.firstChild; c; c = c.nextSibling) { if (c.nodeType === 1 && c.classList.contains('mms-mq')) { span = c; break; } }
+      if (!span) return;
+      el.textContent = span.textContent;
+      el.classList.remove('mms-mq-on');
+      el.style.removeProperty('--mms-mq-shift');
+      el.style.removeProperty('--mms-mq-dur');
+    }
+    // the highlighted menu row only: the row the cursor leaves is re-rendered plain (renderList), so it needs no unwind.
+    function applyMenuMarquee() {
+      if (!panel || !motionOk()) return;
+      var els = panel.querySelectorAll('.ipm-row.is-cursor .ipm-name, .ipm-row.is-cursor .ipm-detail');
+      for (var i = 0; i < els.length; i++) marqueeEl(els[i]);
+    }
+    function applyMarquee() {
+      if (!panel || !motionOk()) return;
+      var els = panel.querySelectorAll('.ip-ttl, .ip-artist, .ip-album, .mms-ttl, .mms-sub, .mms-ctx, .mms-remote');
+      for (var i = 0; i < els.length; i++) marqueeEl(els[i]);
+    }
+
+    // song-list rows are toggled in place (not re-rendered): the row that loses the cursor is unwound, the one that gains it scrolls.
+    var ROW_TEXT = '.mms-rt, .mms-ra, .mms-rd';
+    function unwindRow(row) {
+      var els = row.querySelectorAll(ROW_TEXT);
+      for (var i = 0; i < els.length; i++) unmarqueeEl(els[i]);
+    }
+    function marqueeRow(row) {
+      if (!motionOk()) return;
+      var els = row.querySelectorAll(ROW_TEXT);
+      for (var i = 0; i < els.length; i++) marqueeEl(els[i]);
     }
 
     // ---- move the list cursor to position `pos` (clamped); edge-follow scroll like an iPod ----
@@ -1998,10 +2047,15 @@
       var rows = lv.querySelectorAll('.mms-row'); if (!rows.length) return;
       pos = Math.max(0, Math.min(rows.length - 1, pos));
       wheelCursorRow = pos;
-      for (var i = 0; i < rows.length; i++) rows[i].classList.toggle('is-cursor', i === pos);
+      for (var i = 0; i < rows.length; i++) {
+        var was = rows[i].classList.contains('is-cursor');
+        rows[i].classList.toggle('is-cursor', i === pos);
+        if (was && i !== pos) unwindRow(rows[i]);
+      }
       var el = rows[pos];
       var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); };
       raf(function () {
+        if (el.classList.contains('is-cursor')) marqueeRow(el);
         var top = el.offsetTop - lv.offsetTop;
         if (center) lv.scrollTop = Math.max(0, top - (lv.clientHeight / 2) + (el.offsetHeight / 2));
         else if (top < lv.scrollTop) lv.scrollTop = top;
@@ -2021,7 +2075,7 @@
         setWheelCursor(startPos, true);
       } else {
         var cr = panel.querySelector('.ip-listview .mms-row.is-cursor');
-        if (cr) cr.classList.remove('is-cursor');
+        if (cr) { cr.classList.remove('is-cursor'); unwindRow(cr); }
         wheelCursorRow = -1;
       }
     }

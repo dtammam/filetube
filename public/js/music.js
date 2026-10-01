@@ -1461,6 +1461,8 @@ if (typeof module !== 'undefined' && module.exports) {
         return { items: items };
       });
     }
+    // Returns whether the chosen speaker has a track loaded (paused counts): the menu goes to Now Playing
+    // for one, and to the Main menu for an idle one (nothing to show there).
     function remoteChoose(t) {
       var pl = window.FileTube && window.FileTube.player;
       if (t) {
@@ -1471,6 +1473,7 @@ if (typeof module !== 'undefined' && module.exports) {
         RC.leave();
       }
       updateNowPlayingPanel();
+      return t ? !!(t.state && t.state.track) : hasCurrentMusicTrack();
     }
     function skinIsActive() {
       if (!SKINS) return false;

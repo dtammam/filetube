@@ -14,6 +14,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 const musicPath = require.resolve('../../public/js/music.js');
 const skinsPath = require.resolve('../../public/js/music-skins.js');
+const remotePath = require.resolve('../../public/js/remote.js');
 const surfacePath = require.resolve('../../public/js/skin-surface.js');
 // v1.317 (T1): the theatre control is the player's own #theater-btn, injected through
 // player.js's one writer; the default player stub exposes it like the real api does.
@@ -46,7 +47,10 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
 
 const settle = () => new Promise((r) => setImmediate(r));
 
-async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog, playerOverride, runSync, skinsSrc }) {
+// v1.351: `overflowIf(el)` picks WHICH elements the layout-less jsdom reports as overflowing (default: the
+// Now Playing title lines); `remote` boots the REAL controller from remote.js (a fake EventSource, a fetch
+// that answers /api/remote/targets with `remote.targets`) and, with `remote.select`, controls that device.
+async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog, playerOverride, runSync, skinsSrc, overflowIf, remote }) {
   // jsdom won't let location.replace be overridden - it hard-navigates and emits a jsdomError.
   // Capture that so a test can assert a /watch bounce was ATTEMPTED (reachability); the exact
   // URL + ::c strip are source-locked in audio-opens-in-music.test.js.
@@ -63,7 +67,7 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
     // gives a 24px overrun (raw dur 1.0s) to bind the 4s constant-speed floor.
     const scroll = smallOverflow ? 124 : 300;
     // any skin's title line: iPod .ip-ttl, Apple/Spotify .mms-ttl (v1.232.1 marquee-all).
-    const isTitle = (el) => el.classList && (el.classList.contains('ip-ttl') || el.classList.contains('mms-ttl'));
+    const isTitle = overflowIf || ((el) => el.classList && (el.classList.contains('ip-ttl') || el.classList.contains('mms-ttl')));
     Object.defineProperty(dom.window.Element.prototype, 'scrollWidth', { configurable: true, get() { return isTitle(this) ? scroll : 0; } });
     Object.defineProperty(dom.window.Element.prototype, 'clientWidth', { configurable: true, get() { return isTitle(this) ? 100 : 0; } });
   }
@@ -74,14 +78,26 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
   global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
   dom.window.matchMedia = (q) => ({ matches: (/max-width:\s*768px|pointer:\s*coarse/.test(q) ? !!mobile : (/prefers-reduced-motion/.test(q) ? !!reducedMotion : false)), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   dom.window.scrollTo = function () {};
-  global.fetch = fetchImpl || (() => Promise.resolve({ ok: true, json: async () => ({ items: [] }) }));
-  const spy = { pp: 0, prev: 0, next: 0, seek: 0, dock: 0, shuffle: 0 };
+  const baseFetch = fetchImpl || (() => Promise.resolve({ ok: true, json: async () => ({ items: [] }) }));
+  global.fetch = remote ? ((u, o) => (/\/api\/remote\/targets/.test(String(u)) ? Promise.resolve({ ok: true, status: 200, json: async () => remote.targets }) : baseFetch(u, o))) : baseFetch;
+  const spy = { pp: 0, prev: 0, next: 0, seek: 0, dock: 0, shuffle: 0, rc: null, es: null, played: [] };
   const meta = isMusic ? { isMusic: true, id: 't1', title: 'Track A', artist: 'NESTALGIA', album: 'Retro Mix', albumKey: 'k' } : { isMusic: false, id: 'v1', title: 'A Video' };
   let mod = null;
   dom.window.FileTube = {
     registerView: (n, m) => { mod = m; }, encodeListContext: () => '', decodeListContext: () => null, shimmerArt: () => {},
     player: playerOverride || { currentId: meta.id, getState: () => 'full', getCurrentMeta: () => meta, expand() {}, setTrackNav() {}, load() {}, dock() { spy.dock += 1; }, ensureTheaterButton: () => ensureTheaterButton(dom.window.document) },
   };
+  if (remote) {
+    delete require.cache[remotePath]; global.module = undefined;
+    const api = require(remotePath);
+    dom.window.fetch = (u, o) => global.fetch(u, o);
+    dom.window.EventSource = function () { spy.es = this; this.listeners = {}; this.addEventListener = (t, f) => { this.listeners[t] = f; }; this.close = () => {}; };
+    dom.window.FileTube.getDeviceId = () => 'phone-1';
+    dom.window.FileTube.getDeviceLabel = () => 'Pixel';
+    const env = api.browserEnv(dom.window); env.storage = dom.window.sessionStorage;
+    spy.rc = dom.window.FileTube.remoteControl = api.createController(env);
+    if (remote.select) spy.rc.select(remote.targets.find((t) => t.deviceId === remote.select));
+  }
   // load the skins module into this window (sets window.FileTubeMusicSkins)
   delete require.cache[skinsPath]; global.module = undefined;
   require(skinsPath);
@@ -113,7 +129,7 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
     if (runSync) await runSync(dom, spy, mod);   // inspect the SYNCHRONOUS post-init state (fetch still pending)
     for (let i = 0; i < 10; i++) await settle();
     if (run) await run(dom, spy, mod);
-  } finally { delete require.cache[musicPath]; delete require.cache[skinsPath]; Object.assign(global, saved); }
+  } finally { try { if (spy.rc) { spy.rc.leave(); dom.window.close(); } } catch (_) {} delete require.cache[musicPath]; delete require.cache[skinsPath]; Object.assign(global, saved); }
 }
 
 const panel = (dom) => dom.window.document.getElementById('music-nowplaying-panel');
@@ -268,6 +284,66 @@ test('v1.232 iPod: reduced-motion keeps the ellipsis (no marquee wrap)', async (
   } });
 });
 
+// ---- v1.351: the "On <device>" label marquees on every skin ----
+// The targets list is the REAL server shape (lib/remote/routes.js resolvedState: state.track is the resolved card).
+const LONG_NAME = 'Surface Laptop Studio 2 Upstairs';
+const targetsFor = (label) => [{ deviceId: 'pc-1', label, controlled: false, state: { deviceId: 'pc-1', label, state: 'playing', position: 10, duration: 200, hasPrev: false, hasNext: false, at: 1, ageMs: 0, track: { id: 'x1', title: 'File Select - Super Mario 64', artist: 'Koji', album: 'OST', artUrl: '' } } }];
+const longBadge = (el) => !!(el.classList && el.classList.contains('mms-remote') && el.textContent.length > 20);
+
+for (const skin of ['ipod', 'apple', 'spotify']) {
+  test(`v1.351 ${skin}: a long "On <device>" label MARQUEES (wrapped in .mms-mq, same vars as the title); a short one never moves`, async () => {
+    await boot({ mobile: true, isMusic: true, skin, mockOverflow: true, overflowIf: longBadge, remote: { targets: targetsFor(LONG_NAME), select: 'pc-1' }, run: async (dom) => {
+      const badge = panel(dom).querySelector('.mms-remote');
+      assert.ok(badge, `${skin} wears the label`);
+      assert.ok(badge.classList.contains('mms-mq-on'), 'the overflowing label marquees');
+      const mq = badge.querySelector(':scope > .mms-mq');
+      assert.ok(mq, 'its text sits in the marquee span');
+      assert.strictEqual(mq.textContent, 'on ' + LONG_NAME, 'the full name, untouched');
+      assert.match(badge.style.getPropertyValue('--mms-mq-shift'), /^-\d+px$/);
+      assert.ok(parseFloat(badge.style.getPropertyValue('--mms-mq-dur')) >= 4);
+      assert.ok(badge.hasAttribute('data-skin-playon') && badge.getAttribute('role') === 'button', 'the label is still the Speakers control');
+    } });
+    await boot({ mobile: true, isMusic: true, skin, mockOverflow: true, overflowIf: longBadge, remote: { targets: targetsFor('Desk'), select: 'pc-1' }, run: async (dom) => {
+      const badge = panel(dom).querySelector('.mms-remote');
+      assert.ok(badge && !badge.classList.contains('mms-mq-on') && !badge.querySelector('.mms-mq'), 'a short name does not move');
+      assert.strictEqual(badge.textContent, 'on Desk');
+    } });
+  });
+}
+
+test('v1.351: Reduce Motion keeps the label\'s ellipsis (no marquee wrap)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', mockOverflow: true, overflowIf: longBadge, reducedMotion: true, remote: { targets: targetsFor(LONG_NAME), select: 'pc-1' }, run: async (dom) => {
+    const badge = panel(dom).querySelector('.mms-remote');
+    assert.ok(badge && !badge.classList.contains('mms-mq-on') && !badge.querySelector('.mms-mq'));
+  } });
+});
+
+test('v1.351: a tap ON the moving label text still opens Speakers (iPod pocket menu) or ends control (Cider: no menus)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', mockOverflow: true, overflowIf: longBadge, remote: { targets: targetsFor(LONG_NAME), select: 'pc-1' }, run: async (dom) => {
+    const inner = panel(dom).querySelector('.mms-remote .mms-mq');
+    assert.ok(inner, 'the label is moving');
+    inner.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert.strictEqual(panel(dom).querySelector('.ip-np').textContent, 'Speakers', 'the tap reached the badge arm through the wrapper');
+  } });
+  await boot({ mobile: true, isMusic: true, skin: 'apple', mockOverflow: true, overflowIf: longBadge, remote: { targets: targetsFor(LONG_NAME), select: 'pc-1' }, run: async (dom, spy) => {
+    const inner = panel(dom).querySelector('.mms-remote .mms-mq');
+    assert.ok(inner, 'the label is moving');
+    assert.ok(spy.rc.isRemote());
+    inner.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert.ok(!spy.rc.isRemote(), 'a skin without menus: the badge tap ends remote control');
+  } });
+});
+
+test('v1.351: the label keeps its v1.350 width cap (max-width:45%) and the marquee rules never touch width', () => {
+  const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.mms-remote\{ flex:none; max-width:45%;/, 'the cap is still 45%');
+  const mqRules = css.match(/[^\n}]*\.mms-mq-on[^\n{]*\{[^}]*\}/g) || [];
+  assert.ok(mqRules.length >= 2, 'the marquee rules are found');
+  for (const r of mqRules) assert.ok(!/(^|[;{ ])(max-)?width\s*:/.test(r.slice(r.indexOf('{'))), 'a marquee rule sets no width: ' + r);
+});
+
 test('DESKTOP + music: NO skin - the default panel renders, no mms-on', async () => {
   await boot({ mobile: false, isMusic: true, run: async (dom) => {
     const el = panel(dom);
@@ -339,6 +415,113 @@ test('v1.233 iPod: spinning COUNTER-clockwise moves the cursor UP, clamped at th
     spin(p.querySelector('.ip-wheel'), dom, [-40, -80, -120, -160]);
     assert.ok(cursorIdx(p) < 5, 'counter-clockwise moved the cursor back (up the list)');
     assert.strictEqual(cursorIdx(p), 0, 'clamped at the first row (never negative)');
+  } });
+});
+
+// ---- v1.351 W3: the song-list cursor row scrolls; the row it leaves is restored ------
+const tick = () => new Promise((r) => setTimeout(r, 20)); // the marquee runs in a timer-backed rAF
+const LONG_ROW = 'Sodium Lamp Over The Northbound Platform And Every Other Song We Played Until The Last Train Left';
+function seedTextRows(p, dom, longIdx, currentIdx) {
+  const lv = p.querySelector('.ip-listview');
+  for (let i = 0; i < 4; i++) {
+    const row = dom.window.document.createElement('button');
+    row.className = 'mms-row' + (i === currentIdx ? ' is-current' : '');
+    row.setAttribute('data-skin-go', String(i));
+    row.innerHTML = '<span class="mms-rt">' + (longIdx.includes(i) ? LONG_ROW : 'Short ' + i) + '</span><span class="mms-rd">3:00</span>';
+    lv.appendChild(row);
+  }
+  return lv;
+}
+const rowRt = (p, i) => p.querySelector('.ip-listview .mms-row[data-skin-go="' + i + '"] .mms-rt');
+const longRt = (el) => el.classList && el.classList.contains('mms-rt') && el.textContent.length > 40;
+
+test('v1.351 W3 iPod: the highlighted long song row scrolls; spinning off restores its ellipsis, spinning back scrolls it again', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', mockOverflow: true, overflowIf: longRt, run: async (dom) => {
+    const p = panel(dom); seedTextRows(p, dom, [0, 3], 0); openList(p, dom); await tick();
+    assert.ok(rowRt(p, 0).querySelector('.mms-mq'), 'the highlighted long row scrolls');
+    assert.ok(!rowRt(p, 3).querySelector('.mms-mq'), 'a long row that is NOT highlighted stays clipped');
+    spin(p.querySelector('.ip-wheel'), dom, [40, 80, 120, 160]); await tick();
+    assert.strictEqual(cursorIdx(p), 3);
+    assert.ok(!rowRt(p, 0).querySelector('.mms-mq') && !rowRt(p, 0).classList.contains('mms-mq-on'), 'the row the cursor left is back to plain text');
+    assert.strictEqual(rowRt(p, 0).textContent, LONG_ROW, 'and its text is intact');
+    assert.ok(rowRt(p, 3).querySelector('.mms-mq'), 'the new highlighted long row scrolls');
+    spin(p.querySelector('.ip-wheel'), dom, [-40, -80, -120, -160]); await tick();
+    assert.strictEqual(cursorIdx(p), 0);
+    assert.ok(!rowRt(p, 3).querySelector('.mms-mq'), 'row 3 unwound');
+    assert.ok(rowRt(p, 0).querySelector('.mms-mq'), 'row 0 scrolls again');
+  } });
+});
+
+test('v1.351 W3 iPod: a short highlighted row never moves; Reduce Motion never moves a long one', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', mockOverflow: true, overflowIf: longRt, run: async (dom) => {
+    const p = panel(dom); seedTextRows(p, dom, [3], 0); openList(p, dom); await tick();
+    assert.ok(!p.querySelector('.ip-listview .mms-mq'), 'short highlighted row: nothing wrapped');
+  } });
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', mockOverflow: true, overflowIf: longRt, reducedMotion: true, run: async (dom) => {
+    const p = panel(dom); seedTextRows(p, dom, [0], 0); openList(p, dom); await tick();
+    assert.ok(!p.querySelector('.ip-listview .mms-mq'), 'Reduce Motion: nothing wrapped');
+  } });
+});
+
+test('v1.351 W3 iPod: leaving the list (MENU) restores the highlighted row', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', mockOverflow: true, overflowIf: longRt, run: async (dom) => {
+    const p = panel(dom); seedTextRows(p, dom, [0], 0); openList(p, dom); await tick();
+    assert.ok(rowRt(p, 0).querySelector('.mms-mq'));
+    p.querySelector('[data-skin-menu]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await tick();
+    assert.ok(!rowRt(p, 0).querySelector('.mms-mq'), 'the list closed: the row is plain again');
+    assert.strictEqual(rowRt(p, 0).textContent, LONG_ROW);
+  } });
+});
+
+// ---- v1.351 W4: an idle speaker lands on the Main menu (cursor on Music); one with a track goes to Now Playing ----
+const trackCard = { id: 'x1', title: 'File Select - Super Mario 64', artist: 'Koji', album: 'OST', artUrl: '' };
+const target = (id, label, state, track) => ({ deviceId: id, label, controlled: false, state: { deviceId: id, label, state, position: track ? 10 : 0, duration: track ? 200 : 0, hasPrev: false, hasNext: false, at: 1, ageMs: 0, track } });
+const SPEAKERS = [target('pc-play', 'Playing PC', 'playing', trackCard), target('pc-idle', 'Idle PC', 'idle', null), target('pc-pause', 'Paused PC', 'paused', trackCard)];
+const NO_PLAYER = { currentId: null, getState: () => 'docked', getCurrentMeta: () => null, expand() {}, setTrackNav() {}, load() {}, dock() {} };
+async function pickSpeaker(dom, label) {
+  const p = panel(dom);
+  p.querySelector('.mms-remote').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick(); await tick();
+  const row = [...p.querySelectorAll('.ipm-row')].find((r) => { const n = r.querySelector('.ipm-name'); return n && n.textContent === label; });
+  assert.ok(row, 'the Speakers menu lists ' + label);
+  row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick();
+  return p;
+}
+const cursorName = (p) => { const n = p.querySelector('.ipm-row.is-cursor .ipm-name'); return n ? n.textContent : null; };
+const onMainMusic = (p) => p.querySelector('.ip-np').textContent !== 'Now Playing' && cursorName(p) === 'Music';
+
+test('v1.351 W4 (real controller + real target shape): an IDLE speaker lands on Main with the cursor on Music, and stays selected', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', remote: { targets: SPEAKERS, select: 'pc-play' }, run: async (dom, spy) => {
+    const p = await pickSpeaker(dom, 'Idle PC');
+    assert.strictEqual(spy.rc.targetId(), 'pc-idle', 'the idle speaker is the selected one');
+    assert.ok(onMainMusic(p), 'Main menu, cursor on Music (np=' + p.querySelector('.ip-np').textContent + ', cursor=' + cursorName(p) + ')');
+  } });
+});
+
+test('v1.351 W4: a PLAYING and a PAUSED-with-a-track speaker still go to Now Playing', async () => {
+  for (const [label, id] of [['Playing PC', 'pc-play'], ['Paused PC', 'pc-pause']]) {
+    await boot({ mobile: true, isMusic: true, skin: 'ipod', remote: { targets: SPEAKERS, select: 'pc-idle' }, run: async (dom, spy) => {
+      const p = await pickSpeaker(dom, label);
+      assert.strictEqual(spy.rc.targetId(), id);
+      assert.strictEqual(p.querySelector('.ip-np').textContent, 'Now Playing', label + ' goes to Now Playing');
+    } });
+  }
+});
+
+test('v1.351 W4: "This <device>" goes to Now Playing with a local track and to Main/Music with nothing loaded', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', remote: { targets: SPEAKERS, select: 'pc-play' }, run: async (dom, spy) => {
+    const p = await pickSpeaker(dom, 'This Pixel');
+    assert.ok(!spy.rc.isRemote(), 'back on this device');
+    assert.strictEqual(p.querySelector('.ip-np').textContent, 'Now Playing');
+  } });
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', playerOverride: NO_PLAYER, remote: { targets: SPEAKERS, select: 'pc-play' }, run: async (dom, spy) => {
+    const p = await pickSpeaker(dom, 'This Pixel');
+    assert.ok(!spy.rc.isRemote(), 'back on this device');
+    // with nothing loaded the pocket skin itself steps aside (skinIsActive), so there is no Now Playing to land on
+    const np = p.querySelector('.ip-np');
+    assert.ok(!np || np.textContent !== 'Now Playing', 'nothing loaded: never Now Playing');
   } });
 });
 
