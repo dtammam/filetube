@@ -511,7 +511,7 @@ function pollScanStatus(statusText) {
     });
 }
 
-// Retire R3: the Appearance choice lists (era, icon set, Music skin) are grouped ui-lists of
+// Retire R3: the Settings choice lists (era and icon set in Appearance, Music skin in Mobile player) are grouped ui-lists of
 // button.ui-row radios (setup.html gives each host role=radiogroup). The picked row carries a
 // trailing check in ink (D4.6, F46) - no red border and no card - and aria-checked; the
 // option's name is the title and its blurb the meta line, which wraps in these lists

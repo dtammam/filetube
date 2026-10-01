@@ -158,6 +158,11 @@
 
 ### Features
 
+- [ ] **Search for the mobile player skins, and the iPod-style search for future things** _(Dean, 2026-10-01)_ - Scope: a
+  search for the Music skins (Settings > Mobile player, and the Pocket Extras > Skins menu), in the iPod style
+  (the click-wheel search). Build it on the existing search capabilities rather than a new engine, so the same
+  iPod-style search can be reused later for other lists. Not started; needs a plan (intake: what the iPod search
+  looks like today, and which existing search function it can lean on).
 - [x] **Listen Control: the phone plays music on the PC** - SHIPPED v1.348.0 (see Shipped) _(Dean, 2026-09-30: "I want the ability to have a
   device control playback on another device as an optional opt-in thing ... pick things on the phone and
   explicitly have them be played on the computer's web browser instance")_ - plan:
