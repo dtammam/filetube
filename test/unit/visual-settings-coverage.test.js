@@ -72,3 +72,7 @@ test('the coverage reader can fail: a section no scene opens is reported', () =>
   const noScene = CAPTURE_JS.replace("await section(p, 'account')", "await section(p, 'nothing')");
   assert.ok(uncoveredIn(SETUP_HTML, noScene).includes('account'), 'a section() scene that stops opening a key must be reported');
 });
+
+test('UNCOVERED never grows: it is exactly the four sections that had no scene at v1.348.0', () => {
+  assert.deepStrictEqual(UNCOVERED.map((u) => u[0]).sort(), ['music-folders', 'podcasts-place', 'troubleshooting', 'tv-folders']);
+});

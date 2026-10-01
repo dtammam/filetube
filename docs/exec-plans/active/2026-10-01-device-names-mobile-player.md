@@ -323,7 +323,15 @@ commit (the latter's last owed item, the `rebaseline` dispatch proof, passed 202
   `window.__pwn` undefined in both browsers, 0 injected `<img>` in note/status/pill.
 - **Known limits:** a controller's own rename while attached shows on the PC pill only after it re-attaches (controller
   label rides the attach URL); not built (scope). No server change.
+- **Gate R1 fixes (builder):** Adversary W1 (cross-tab `storage` listener unbound): new `bootWhenReady` test, mutant (listener condition deleted) red.
+  W2 (UNCOVERED could grow): test pins the exact four keys. W3 (2014 Pop out grew 96.27 -> 100.11px when pressed): the pressed rule
+  no longer changes font-weight (the fill carries the state; also fixes N1's false "heavier"); measured pressed vs unpressed width
+  on Remote control + Pop out across 4 eras x 2 modes at 1440: 16 checked, 0 differ. N2 comment reworded.
 - **Lint:** `npm run lint` 0 errors (6 pre-existing warnings); `lint:ui` OK (debt equals exceptions); overlay-containment 0.
 
 (the builder fills this: W1 red/green outputs, W3 width numbers, W5 proof, suite tallies, verdicts bound
 to the reviewed sha)
+
+QA R1 @311da9dd: APPROVED
+
+Adversary R1 @311da9dd: CHANGES REQUESTED (W1 storage-listener unbound by any test; W2 UNCOVERED can grow; W3 2014 Pop out width shifts 3.8px when open; rest NOTE)

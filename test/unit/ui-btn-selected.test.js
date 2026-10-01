@@ -46,12 +46,12 @@ function groundsOf(era, mode) {
 
 const rules = () => cssRules(readUiCss()).concat(cssRules(readStyleCss()));
 
-test('the pressed tonal button layers --fill-selected (over the 2009 gloss), is heavier, and is never red', () => {
+test('the pressed tonal button layers --fill-selected (over the 2009 gloss), keeps its weight, and is never red', () => {
   const all = cssRules(readUiCss());
   const on = all.find((r) => r.sel === '.ui-btn--tonal[aria-pressed="true"]');
   assert.ok(on, 'the pressed tonal rule');
   assert.match(on.body, /background-image:\s*linear-gradient\(var\(--fill-selected\), var\(--fill-selected\)\)/, 'layered');
-  assert.match(on.body, /font-weight:\s*var\(--fw-semibold\)/, 'heavier');
+  assert.doesNotMatch(on.body, /font-weight/, 'pressing must not change the weight (the button would grow: 2014 Pop out shifted 3.8px)');
   const gloss = all.find((r) => r.sel === '[data-theme="2009"] .ui-btn--tonal[aria-pressed="true"]');
   assert.ok(gloss, 'the 2009 rule exists');
   assert.match(gloss.body, /background-image:\s*linear-gradient\(var\(--fill-selected\), var\(--fill-selected\)\),\s*var\(--btn-fill\)/, 'selected layer FIRST (on top), gloss under it');

@@ -6478,7 +6478,7 @@ function accountMenuRow(U, o) {
 // v1.230 (Dean): the "Music skin" picker was briefly here (v1.229), but the account
 // menu builds ONCE at boot and only some shells loaded the skins module, so the row
 // often never appeared. It moved to the Settings page (setup.js renderMusicSkinPicker,
-// where the app's other appearance pickers live and the skins module is loaded on
+// where the app's Settings pickers live and the skins module is loaded on
 // every shell). Nothing account-menu remains for it.
 
 // ---- v1.83: avatar crop geometry (pure, DOM-free, unit-tested) --------------
