@@ -82,11 +82,11 @@ test('Click: MENU climbs Now Playing -> Main Menu, every Music level renders the
     assert.strictEqual(cursorLabel(h), 'Music', 'the blue bar starts on the first row');
     select(h); // center = drill in
     assert.strictEqual(title(h), 'Music');
-    assert.deepStrictEqual(labels(h), ['Recent Artists', 'Playlists', 'Artists', 'Albums', 'Songs', 'Genres']);
+    assert.deepStrictEqual(labels(h), ['Recent Artists', 'Recent Albums', 'Playlists', 'Artists', 'Albums', 'Songs', 'Genres']);
     assert.ok(rows(h).every((r) => r.querySelector('.ipm-chev')), 'drill-in rows carry the chevron');
-    // the wheel: three detents down -> Albums, then the center drills in
-    await stepDown(h); await stepDown(h); await stepDown(h);
-    assert.strictEqual(cursorLabel(h), 'Albums', 'rotation moved the highlight three rows (the shared cursor engine)');
+    // the wheel: four detents down -> Albums (Recent Albums sits above Playlists), then the center drills in
+    await stepDown(h); await stepDown(h); await stepDown(h); await stepDown(h);
+    assert.strictEqual(cursorLabel(h), 'Albums', 'rotation moved the highlight four rows (the shared cursor engine)');
     select(h);
     assert.strictEqual(title(h), 'Albums');
     await settleNet();

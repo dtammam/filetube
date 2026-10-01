@@ -582,6 +582,7 @@
   // Quick scroll (Dean 2026-09-24): Recent Artists leads it.
   var MUSIC_MENU = [
     { type: 'recentArtists', label: 'Recent Artists' },
+    { type: 'recentAlbums', label: 'Recent Albums' },
     { type: 'playlists', label: 'Playlists' }, { type: 'artists', label: 'Artists' },
     { type: 'albums', label: 'Albums' }, { type: 'songs', label: 'Songs' }, { type: 'genres', label: 'Genres' },
   ];
@@ -594,7 +595,7 @@
   ];
   var ROOT_TITLE = { click: 'Click' }; // the cheeky name, never the product's (Dean)
   var TYPE_TITLE = { playon: 'Speakers', music: 'Music', playlists: 'Playlists', artists: 'Artists', albums: 'Albums', songs: 'Songs', genres: 'Genres',
-    recentArtists: 'Recent Artists', extras: 'Extras', skins: 'Skins', games: 'Games', settings: 'Settings', about: 'About', lighting: 'Lighting' };
+    recentArtists: 'Recent Artists', recentAlbums: 'Recent Albums', extras: 'Extras', skins: 'Skins', games: 'Games', settings: 'Settings', about: 'About', lighting: 'Lighting' };
   function menuTitle(node, style) {
     var n = node || {};
     if (n.type === 'main') return ROOT_TITLE[style] || 'Menu';
@@ -776,6 +777,28 @@
         art: (typeof t.avatarUrl === 'string' && t.avatarUrl) ? t.avatarUrl : artVia(artFor, t.artId || t.id, t.artUrl),
       });
       return out.length >= RECENT_ARTISTS_MAX;
+    });
+    return out;
+  }
+  // Recent Albums (v1.350): the albums of the same Recently Played source, unique on the track's albumKey
+  // in recency order, at most 25. A row is shaped exactly like an Albums row (node type 'album'), so it
+  // drills in through the same branch as Albums > album. A track with no albumKey is skipped: an empty
+  // key would match EVERY track on the album route.
+  var RECENT_ALBUMS_MAX = 25;
+  function menuRecentAlbumItems(tracks, artFor) {
+    var seen = Object.create(null);
+    var out = [];
+    (Array.isArray(tracks) ? tracks : []).some(function (t) {
+      if (!t || typeof t.albumKey !== 'string' || !t.albumKey) return false;
+      if (seen['k' + t.albumKey]) return false;
+      seen['k' + t.albumKey] = true;
+      var name = (typeof t.album === 'string' && t.album) ? t.album : 'Unknown Album';
+      out.push({
+        label: name, sub: (typeof t.artist === 'string') ? t.artist : '',
+        node: { type: 'album', key: t.albumKey, label: name },
+        art: artVia(artFor, t.artId || t.id, t.artUrl),
+      });
+      return out.length >= RECENT_ALBUMS_MAX;
     });
     return out;
   }
@@ -1003,12 +1026,12 @@
     tracksOfGenre: tracksOfGenre, tracksOfAlbum: tracksOfAlbum,
     menuWindow: menuWindow, renderMenuList: renderMenuList, renderMenuView: renderMenuView,
     // quick scroll + Recent Artists + Extras/Settings/About + the cover drift (2026-09-24)
-    menuRecentArtistItems: menuRecentArtistItems, menuAboutItems: menuAboutItems, menuCoverPool: menuCoverPool,
+    menuRecentArtistItems: menuRecentArtistItems, menuRecentAlbumItems: menuRecentAlbumItems, menuAboutItems: menuAboutItems, menuCoverPool: menuCoverPool,
     menuLightingItems: menuLightingItems, LIGHTING_STRENGTHS: LIGHTING_STRENGTHS, // Settings > Lighting (2026-09-24)
     menuIsItemLevel: menuIsItemLevel, menuLetterOf: menuLetterOf, menuLetterRuns: menuLetterRuns,
     menuLetterAt: menuLetterAt, menuLetterJump: menuLetterJump, menuLetterTargets: menuLetterTargets,
     menuLetterable: menuLetterable, menuSortIsAlpha: menuSortIsAlpha, renderMenuJump: renderJumpLayers,
-    MENU_LETTERS: MENU_LETTERS, MENU_LETTER_MIN: MENU_LETTER_MIN, RECENT_ARTISTS_MAX: RECENT_ARTISTS_MAX,
+    MENU_LETTERS: MENU_LETTERS, MENU_LETTER_MIN: MENU_LETTER_MIN, RECENT_ARTISTS_MAX: RECENT_ARTISTS_MAX, RECENT_ALBUMS_MAX: RECENT_ALBUMS_MAX,
     _esc: esc, _pct: pct,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
