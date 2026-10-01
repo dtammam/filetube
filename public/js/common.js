@@ -402,6 +402,103 @@ function installResizeStillness(win) {
   return true;
 }
 
+// v1.350 (W6): the ?debugRotate=1 ring buffer for the Pocket turn back to portrait. iOS shows a
+// frame or two of a wrong layout (a giant LCD, then everything ~20 px low) that headless Chromium
+// never paints, so Dean's phone has to say which value was stale. From each orientationchange,
+// resize, screen.orientation change and visualViewport resize it samples EVERY animation frame for
+// 1 s (a RING of ROTATE_LOG_CAP rows): t, the layout and visual viewport, the orientation media
+// query, the screen angle, the Pocket's --pkl-h, the top safe-area inset and the LCD's rect. A sample
+// changes no layout (one read pass, a hidden probe element). `?debugRotate=1` turns it on and keeps
+// it on (localStorage ft-debug-rotate), `=0` turns it off; while on, a small panel shows the rows
+// (tap it to copy them). Off by default: nothing is installed and nothing is read.
+const ROTATE_LOG_KEY = 'ft-debug-rotate';
+const ROTATE_LOG_CAP = 240;
+const ROTATE_LOG_MS = 1000;
+function rotateSample(win, t) {
+  const w = win || window;
+  const d = w.document;
+  const q = (sel) => d.querySelector(sel);
+  const vv = w.visualViewport;
+  const pnl = q('#music-nowplaying-panel');
+  const lcd = q('.mms-full .ip-lcd');
+  const r = lcd ? lcd.getBoundingClientRect() : null;
+  let sat = '';
+  const probe = d.getElementById('ft-rotate-probe');
+  if (probe) sat = w.getComputedStyle(probe).paddingTop;
+  return {
+    t: Math.round(t),
+    iw: Math.round(w.innerWidth), ih: Math.round(w.innerHeight),
+    vv: vv ? [Math.round(vv.width), Math.round(vv.height)] : null,
+    land: !!(w.matchMedia && w.matchMedia('(orientation: landscape)').matches),
+    ang: w.screen && w.screen.orientation ? w.screen.orientation.angle : null,
+    pklh: pnl ? w.getComputedStyle(pnl).getPropertyValue('--pkl-h').trim() : '',
+    sat,
+    lcd: r ? [r.x, r.y, r.width, r.height].map(Math.round) : null,
+  };
+}
+function installRotateDebug(win) {
+  const w = win || (typeof window !== 'undefined' ? window : null);
+  if (!w || !w.document || typeof w.addEventListener !== 'function') return false;
+  let on = false;
+  try {
+    const ls = w.localStorage;
+    const q = new URLSearchParams(w.location.search).get('debugRotate');
+    if (q === '1') ls.setItem(ROTATE_LOG_KEY, '1'); else if (q === '0') ls.removeItem(ROTATE_LOG_KEY);
+    on = ls.getItem(ROTATE_LOG_KEY) === '1';
+  } catch (_) { on = false; }
+  if (!on) return false;
+  const log = [];
+  w.__ftRotateLog = log;
+  let seq = 0; let panel = null; let pre = null;
+  const render = () => {
+    if (!pre) return;
+    pre.textContent = '[tap to copy]\n' + log.map((e) => JSON.stringify(e)).join('\n');
+  };
+  const ensurePanel = () => {
+    const d = w.document;
+    if (!d.body) return;
+    if (!d.getElementById('ft-rotate-probe')) {
+      const p = d.createElement('div');
+      p.id = 'ft-rotate-probe';
+      p.setAttribute('aria-hidden', 'true');
+      p.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top,0px)';
+      d.body.appendChild(p);
+    }
+    if (panel) return;
+    panel = d.createElement('div');
+    panel.id = 'ft-rotate-panel';
+    panel.style.cssText = [
+      'position:fixed', 'left:0', 'right:0', 'bottom:0', 'z-index:999999',
+      'max-height:35vh', 'overflow-y:auto', 'background:rgba(0,0,0,0.75)',
+      'color:#0f0', 'font:10px/1.3 monospace', 'padding:4px 6px',
+      'pointer-events:auto', 'white-space:pre-wrap',
+    ].join(';');
+    panel.title = 'Tap to copy';
+    pre = panel;
+    panel.addEventListener('click', () => { try { w.navigator.clipboard.writeText(log.map((e) => JSON.stringify(e)).join('\n')); } catch (_) { /* no clipboard */ } });
+    d.body.appendChild(panel);
+  };
+  const run = (why) => {
+    ensurePanel();
+    const id = ++seq;
+    const t0 = w.performance.now();
+    log.push({ why, at: Math.round(t0) });
+    const tick = () => {
+      if (id !== seq) return;
+      const t = w.performance.now() - t0;
+      log.push(rotateSample(w, t));
+      while (log.length > ROTATE_LOG_CAP) log.shift();
+      if (t < ROTATE_LOG_MS) w.requestAnimationFrame(tick); else render();
+    };
+    w.requestAnimationFrame(tick);
+  };
+  w.addEventListener('orientationchange', () => run('orientationchange'));
+  w.addEventListener('resize', () => run('resize'));
+  try { if (w.screen && w.screen.orientation && w.screen.orientation.addEventListener) w.screen.orientation.addEventListener('change', () => run('so-change')); } catch (_) { /* no screen.orientation */ }
+  try { if (w.visualViewport) w.visualViewport.addEventListener('resize', () => run('vv-resize')); } catch (_) { /* no visualViewport */ }
+  return true;
+}
+
 // Applies both attributes + persists both keys. Also flips the header
 // moon/sun icon to reflect the current mode.
 function applyTheme(era, mode) {
@@ -16580,6 +16677,7 @@ const handoffCard = (() => {
 
 // UI pass D7: no transition runs for a rotate / width change (html.no-motion, style.css).
 installResizeStillness();
+installRotateDebug();
 
 // UI pass D8.1: reflect the era's flourish NOW, from the data-theme the shell's
 // pre-paint bootstrap already set, so the first card render (this script runs
@@ -16989,6 +17087,7 @@ if (typeof module !== 'undefined' && module.exports) {
     showToast, deleteResultToast,
     // UI pass D8.1: the era flourish (fabricated stats) mechanism.
     ERA_FLOURISH_ERAS, eraShowsFabricated, applyEraFlourish, isFabricatedViewCount,
+    ROTATE_LOG_KEY, ROTATE_LOG_CAP, ROTATE_LOG_MS, rotateSample, installRotateDebug, // v1.350: the ?debugRotate=1 ring buffer
     STILLNESS_MS, installResizeStillness, // UI pass D7: html.no-motion around a rotate / resize
     deriveRouteView, shouldInterceptLinkClick, buildHistoryState, parseHistoryState, popStateDelegate,
     // v1.47.4 item 2: the pure zoom-policy decision + the viewport contents it
