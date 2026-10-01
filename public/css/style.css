@@ -8491,7 +8491,7 @@ a.tv-continue-card { text-decoration: none; }
      this list, the wrap list and the glyph list: a new text element fails until it is classified. */
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-np, :where(html.is-phone, html.mms-popout) .mms-ipod .ip-ttl, :where(html.is-phone, html.mms-popout) .mms-ipod .ip-artist, :where(html.is-phone, html.mms-popout) .mms-ipod .ip-album, :where(html.is-phone, html.mms-popout) .mms-ipod .ip-nof,
   :where(html.is-phone, html.mms-popout) .mms-ipod .mms-pos, :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rem, :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rt, :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rd,
-  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-lbl, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-val, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-about-name{ min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-lbl, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-name, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-detail, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-val, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-about-name{ min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   /* the LCD - a COMPACT ~4:3 screen at the top (not fill), the real iPod proportion;
      the body + wheel take the space below. */
   /* The LCD must NEVER resize from its content (Dean, v1.232.1: the song list made it
@@ -10595,10 +10595,13 @@ a.tv-continue-card { text-decoration: none; }
   /* gate r1 (qa S5): under ~340 px a 7-column Click picker drops below 44 px per cell - 6 columns */
   @media (max-width: 340px){ :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-grid{ grid-template-columns:repeat(6, minmax(0, 1fr)); } }
 
-  /* v1.232 (Dean): iPod MARQUEE - long song/album/artist names slowly scroll to reveal
-     the full text, like a real iPod. music.js wraps an overflowing line in .mms-mq and
-     sets --mms-mq-shift (the overflow distance) + --mms-mq-dur (constant-speed); it only
-     does so when motion is allowed (else the line keeps its ellipsis). */
+  /* v1.232 (Dean): iPod MARQUEE - long names slowly scroll to reveal the full text, like a
+     real iPod. skin-surface.js (marqueeEl) wraps an overflowing line in .mms-mq and sets
+     --mms-mq-shift (the overflow distance) + --mms-mq-dur (constant-speed); it only does so
+     when motion is allowed (else the line keeps its ellipsis). The lines: the Now Playing
+     title/artist/album, the Apple/Spotify title/sub/context, the "On <device>" label
+     (.mms-remote, v1.351), and the highlighted menu row's name + detail and the highlighted
+     song-list row (v1.351). */
   /* marquee for a long title/artist/album on ANY skin (v1.232.1: was iPod-only). */
   :where(html.is-phone, html.mms-popout) .mms-full .mms-mq-on{ text-overflow:clip; }
   :where(html.is-phone, html.mms-popout) .mms-full .mms-mq-on .mms-mq{ display:inline-block; animation:mms-marquee var(--mms-mq-dur) linear infinite alternate; will-change:transform; }
@@ -12266,4 +12269,5 @@ html[data-era-flourish="on"] .ft-unfabricated {
    Speakers row's second line (what that PC is playing). */
 :where(html.is-phone, html.mms-popout) .mms-remote{ flex:none; max-width:45%; min-height:var(--size-touch); padding:0 var(--space-3); border:0; background:transparent; color:inherit; font:var(--t-caption); letter-spacing:var(--mms-ls-caps); text-transform:uppercase; opacity:.8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 :where(html.is-phone, html.mms-popout) .mms-ipod .mms-remote{ min-height:0; padding:0 var(--space-2); }
+:where(html.is-phone, html.mms-popout) .ipm-name{ display:block; }
 :where(html.is-phone, html.mms-popout) .ipm-detail{ display:block; font-size:var(--pk-fs-note); opacity:.7; }

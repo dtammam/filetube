@@ -127,7 +127,7 @@ const HTML = `<body>
   <div id="panel" class="music-nowplaying-panel" hidden></div>
 </body>`;
 
-function bootEngine({ skin, hasCurrent = true, load, noMenu, currentId, dataVersion, likedVersion, fastScan, trackListeners, beforeCreate } = {}) {
+function bootEngine({ skin, hasCurrent = true, load, noMenu, currentId, dataVersion, likedVersion, fastScan, trackListeners, beforeCreate, overflowIf, reducedMotion, engineExtra, menuExtra } = {}) {
   const dom = new JSDOM(HTML, { url: 'http://localhost/music' });
   const saved = { window: global.window, document: global.document, Event: global.Event };
   global.window = dom.window; global.document = dom.window.document; global.Event = dom.window.Event;
@@ -156,6 +156,11 @@ function bootEngine({ skin, hasCurrent = true, load, noMenu, currentId, dataVers
     pnl.addEventListener = function (t, f, o) { bal.add += 1; return a0(t, f, o); };
     pnl.removeEventListener = function (t, f, o) { bal.remove += 1; return r0(t, f, o); };
   }
+  if (overflowIf) {
+    Object.defineProperty(dom.window.Element.prototype, 'scrollWidth', { configurable: true, get() { return overflowIf(this) ? 300 : 0; } });
+    Object.defineProperty(dom.window.Element.prototype, 'clientWidth', { configurable: true, get() { return overflowIf(this) ? 100 : 0; } });
+  }
+  if (reducedMotion) dom.window.matchMedia = (q) => ({ matches: /reduce/.test(q), addListener() {}, removeListener() {} });
   if (beforeCreate) beforeCreate(dom);
   dom.window.document.getElementById('track-next-btn').addEventListener('click', () => { spy.next += 1; });
   dom.window.document.getElementById('track-prev-btn').addEventListener('click', () => { spy.prev += 1; });
@@ -168,7 +173,7 @@ function bootEngine({ skin, hasCurrent = true, load, noMenu, currentId, dataVers
     onDock: () => { spy.dock += 1; },
     win: dom.window,
     fastScan: !!fastScan,
-  }, noMenu ? {} : { menu: menuCfg }));
+  }, engineExtra || {}, noMenu ? {} : { menu: Object.assign(menuCfg, menuExtra || {}) }));
   return { dom, engine, spy, state, bal, restore: () => Object.assign(global, saved) };
 }
 const P = (b) => b.dom.window.document.getElementById('panel');
@@ -591,5 +596,119 @@ test('gate r1 K2: the chapters editor raises the ONE library-changed event on a 
     dom.window.document.querySelectorAll('.ui-sheet .ui-sheet__close').forEach((c) => c.click());
     await drainSheets(dom.window);
     delete require.cache[COMMON]; Object.assign(global, saved);
+  }
+});
+
+// ---------------------------------------------------------------- v1.351: the highlighted row's name + detail scroll
+const wheelDown = (b) => {
+  const wheel = P(b).querySelector('.ip-wheel');
+  wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+  [8, 16, 24].forEach((d) => wheel.dispatchEvent(new b.dom.window.MouseEvent('pointermove', { bubbles: true, clientX: 100 * Math.cos(d * Math.PI / 180), clientY: 100 * Math.sin(d * Math.PI / 180) })));
+  wheel.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true }));
+};
+const LONGN = 'Surface Laptop Studio 2 Upstairs';
+const LONGD = 'File Select - Super Mario 64 (Original Soundtrack)';
+const speakerRows = () => ({ items: [{ label: LONGN, detail: LONGD }, { label: 'Pixel' }, { label: 'Desk', detail: 'Short' }] });
+const isLong = (el) => !!(el.classList && (el.classList.contains('ipm-name') || el.classList.contains('ipm-detail')) && el.textContent.length > 12);
+async function openList(b) {
+  b.engine.paint(); pressMenu(b); pressSelect(b); tapLabel(b, 'Albums'); await tick(); await tick();
+}
+const row = (b, i) => P(b).querySelector('[data-skin-mi="' + i + '"]');
+
+test('v1.351 W2: a menu row is name + detail in their own boxes; the text of each survives', async () => {
+  const b = bootEngine({ load: () => Promise.resolve(speakerRows()) });
+  try {
+    await openList(b);
+    const r = row(b, 0);
+    assert.strictEqual(r.querySelector('.ipm-lbl > .ipm-name').textContent, LONGN);
+    assert.strictEqual(r.querySelector('.ipm-lbl > .ipm-detail').textContent, LONGD);
+    assert.strictEqual(r.querySelector('.ipm-lbl').textContent, LONGN + LONGD);
+    assert.ok(!row(b, 1).querySelector('.ipm-detail'), 'no detail, no detail box');
+  } finally { b.restore(); }
+});
+
+test('v1.351 W2: the highlighted long row scrolls BOTH lines; a short row, never; the cursor moving moves the marquee', async () => {
+  const b = bootEngine({ overflowIf: isLong, load: () => Promise.resolve(speakerRows()) });
+  try {
+    await openList(b); await tick(); await tick();
+    const r0 = row(b, 0);
+    assert.ok(r0.classList.contains('is-cursor'));
+    for (const sel of ['.ipm-name', '.ipm-detail']) {
+      const el = r0.querySelector(sel);
+      assert.ok(el.classList.contains('mms-mq-on'), sel + ' marquees on the cursor row');
+      assert.ok(el.querySelector(':scope > .mms-mq'));
+      assert.match(el.style.getPropertyValue('--mms-mq-shift'), /^-\d+px$/);
+    }
+    assert.strictEqual(r0.querySelector('.ipm-name .mms-mq').textContent, LONGN);
+    assert.strictEqual(r0.querySelector('.ipm-detail .mms-mq').textContent, LONGD);
+    wheelDown(b); await tick(); await tick();
+    assert.ok(b.engine.menuState().cursor > 0, 'the wheel moved');
+    assert.strictEqual(P(b).querySelectorAll('.mms-mq-on').length, 0, 'the row the cursor left is plain again, nothing else moves');
+    assert.strictEqual(row(b, 0).querySelector('.ipm-name').textContent, LONGN, 'the left row is back to its text (ellipsis)');
+    assert.ok(!P(b).querySelector('.is-cursor .mms-mq'), 'a short name on the cursor row never moves');
+  } finally { b.restore(); }
+});
+
+test('v1.351 W2: marquee:false and Reduce Motion keep the ellipsis', async () => {
+  for (const o of [{ engineExtra: { marquee: false } }, { reducedMotion: true }]) {
+    const b = bootEngine(Object.assign({ overflowIf: isLong, load: () => Promise.resolve(speakerRows()) }, o));
+    try {
+      await openList(b); await tick(); await tick();
+      assert.ok(row(b, 0).classList.contains('is-cursor'));
+      assert.strictEqual(P(b).querySelectorAll('.mms-mq').length, 0, JSON.stringify(Object.keys(o)));
+    } finally { b.restore(); }
+  }
+});
+
+test('v1.351 W2: info and note rows never marquee', async () => {
+  const b = bootEngine({ overflowIf: (el) => el.classList && el.classList.contains('ipm-lbl'), load: () => Promise.resolve({ items: [{ label: LONGN, info: true, value: 'x' }, { label: LONGD, info: true, note: true }, { label: 'Real' }] }) });
+  try {
+    await openList(b); await tick(); await tick();
+    assert.strictEqual(P(b).querySelectorAll('.ipm-info .mms-mq').length, 0);
+  } finally { b.restore(); }
+});
+
+test('v1.351 W2: a cursor step hands the marquee to the NEW row (one row moves at a time)', async () => {
+  const b = bootEngine({ overflowIf: isLong, load: () => Promise.resolve({ items: [0, 1, 2, 3, 4, 5].map((i) => ({ label: LONGN + ' ' + i, detail: LONGD })) }) });
+  try {
+    await openList(b); await tick(); await tick();
+    wheelDown(b); await tick(); await tick();
+    const c = b.engine.menuState().cursor;
+    assert.ok(c > 0);
+    assert.ok(row(b, c).classList.contains('is-cursor'));
+    assert.ok(row(b, c).querySelector('.ipm-name.mms-mq-on') && row(b, c).querySelector('.ipm-detail.mms-mq-on'), 'the new cursor row scrolls');
+    assert.strictEqual(P(b).querySelectorAll('.mms-mq-on').length, 2, 'only that row: name + detail');
+    assert.ok(!row(b, 0).querySelector('.mms-mq'), 'the old row is plain');
+  } finally { b.restore(); }
+});
+
+// ---- v1.351 W4: the engine's half of "an idle speaker lands on Main / Music" ----
+async function pickPlayOn(ret) {
+  const picked = [];
+  const b = bootEngine({ hasCurrent: true, menuExtra: {
+    hasPlayOn: () => 1,
+    onPlayOn: (t) => { picked.push(t); return typeof ret === 'function' ? ret() : ret; },
+  }, load: (node) => Promise.resolve(node.type === 'playon' ? { items: [{ label: 'Idle PC', action: 'playon', target: { deviceId: 'pc-idle' } }] } : { items: [] }) });
+  b.engine.paint();
+  pressMenu(b); // Now Playing -> Main
+  tapLabel(b, 'Speakers');
+  await tick(); await tick();
+  tapLabel(b, 'Idle PC');
+  return { b, picked };
+}
+const npText = (b) => P(b).querySelector('.ip-np').textContent;
+const cursorLbl = (b) => { const n = P(b).querySelector('.ipm-row.is-cursor .ipm-name'); return n ? n.textContent : null; };
+
+test('v1.351 W4: onPlayOn returning false lands on the Main menu with the cursor on Music; true or nothing goes to Now Playing', async () => {
+  const f = await pickPlayOn(false);
+  try {
+    assert.deepStrictEqual(f.picked, [{ deviceId: 'pc-idle' }], 'the pick still reached the view');
+    assert.notStrictEqual(npText(f.b), 'Now Playing');
+    assert.strictEqual(cursorLbl(f.b), 'Music', 'cursor on Music');
+    assert.ok(!P(f.b).querySelector('.ipm-row.is-cursor .ipm-chev') === false, 'Music is the drill-in row');
+  } finally { f.b.engine.destroy && f.b.engine.destroy(); f.b.restore(); }
+  for (const ret of [true, undefined]) {
+    const g = await pickPlayOn(ret);
+    try { assert.strictEqual(npText(g.b), 'Now Playing', 'return ' + ret + ' -> Now Playing'); } finally { g.b.engine.destroy && g.b.engine.destroy(); g.b.restore(); }
   }
 });

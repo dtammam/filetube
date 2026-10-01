@@ -452,6 +452,21 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.351.0 - Long names scroll, an idle speaker lands on the menu (2026-10-01)
+
+- A highlighted name that is clipped with an ellipsis now scrolls, reusing the Now Playing `mms-marquee` keyframe and speed (no new
+  animation): the "On <device>" top-bar label on every skin, every pocket menu row (name and detail on their own lines, so Speakers
+  scrolls both), and the song-list rows. The row the cursor leaves goes back to its ellipsis at once. Widths are unchanged
+  (the label keeps `max-width:45%`); short names never move; Reduce Motion means no movement.
+- Picking a speaker with nothing loaded (an idle remote, or This device with no track) lands on the Main menu with the cursor on
+  Music, the speaker stays selected; a paused-with-track speaker still goes to Now Playing. `remoteChoose` now returns whether a
+  track is loaded (read from the real `/api/remote/targets` shape).
+- Measured: repaints are event-driven (0 `paint()` and 0 menu-list rewrites in 30 s across 4 scenarios); non-overflowing menu rows are
+  pixel-identical to v1.350 (Main, Music, Albums: 3 of 3 screenshots byte-identical, all row rects equal). Suites: 10537 tests, 10525
+  pass, 0 fail, 12 skipped on Node 22.23.1 and 24.20.0; `lint:ui` unchanged, overlay 0.
+- Gate: adversary APPROVED r1, QA APPROVED r1 (no CRITICAL/WARNING). Disclosed: marqueeEl's idempotence guard and the Music cursor
+  assignment in the idle landing have no binding test. Real-browser shots of a long remote name are owed as device checks.
+
 ### v1.350.0 - Skins last, Speakers, Recent Albums, a pinned board (2026-10-01)
 
 - Settings > Mobile player: Player sticker first, the whole Music skin grid last. "Play on..." is now "Speakers" everywhere the
