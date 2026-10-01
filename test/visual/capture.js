@@ -483,7 +483,7 @@ async function newScenePage(browser, o) {
     await ctx.addInitScript(installPinnedClock, clockMs);
     await ctx.addInitScript(installSeededRandom, RANDOM_SEED);
   }
-  await ctx.addInitScript(([m, e]) => { try { localStorage.setItem('ft-era', e); localStorage.setItem('ft-mode', m); } catch (_) { /* storage off */ } }, [mode, era]);
+  await ctx.addInitScript(([m, e]) => { try { localStorage.setItem('ft-era', e); localStorage.setItem('ft-mode', m); localStorage.setItem('ft-device-id', 'visual-fixture-device'); } catch (_) { /* storage off */ } }, [mode, era]);
   return { ctx, page: await ctx.newPage() };
 }
 
