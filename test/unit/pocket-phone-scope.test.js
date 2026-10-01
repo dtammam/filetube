@@ -188,6 +188,63 @@ test('D7 installResizeStillness: a rotate or a width-changing resize holds html.
   assert.strictEqual(STILLNESS_MS, 300);
 });
 
+// ---- v1.350 W6: the ?debugRotate=1 ring buffer (common.js installRotateDebug) --------------------
+function rotateWin(url) {
+  const dom = new JSDOM('<body></body>', { url, pretendToBeVisual: true });
+  const w = dom.window;
+  let now = 0; const q = [];
+  w.performance.now = () => now;
+  w.requestAnimationFrame = (cb) => { q.push(cb); return q.length; };
+  const frames = (n, dt) => { for (let i = 0; i < n; i++) { now += dt; const cb = q.shift(); if (cb) cb(now); } };
+  return { w, frames };
+}
+
+test('v1.350 debugRotate: off by default (nothing installed, nothing sampled); ?debugRotate=1 turns it on and persists, =0 turns it off', () => {
+  const { installRotateDebug, ROTATE_LOG_KEY } = require('../../public/js/common.js');
+  const off = rotateWin('http://localhost/music');
+  assert.strictEqual(installRotateDebug(off.w), false);
+  assert.strictEqual(off.w.__ftRotateLog, undefined);
+  assert.strictEqual(off.w.document.getElementById('ft-rotate-panel'), null);
+  const on = rotateWin('http://localhost/music?debugRotate=1');
+  assert.strictEqual(installRotateDebug(on.w), true);
+  assert.strictEqual(on.w.localStorage.getItem(ROTATE_LOG_KEY), '1', 'sticky');
+  const gone = rotateWin('http://localhost/music?debugRotate=0');
+  gone.w.localStorage.setItem(ROTATE_LOG_KEY, '1');
+  assert.strictEqual(installRotateDebug(gone.w), false, '=0 turns it off');
+  assert.strictEqual(gone.w.localStorage.getItem(ROTATE_LOG_KEY), null);
+});
+
+test('v1.350 debugRotate: an orientationchange samples every frame for 1 s with the fields the turn back needs, in a bounded ring', () => {
+  const { installRotateDebug, ROTATE_LOG_CAP, ROTATE_LOG_MS } = require('../../public/js/common.js');
+  const { w, frames } = rotateWin('http://localhost/music?debugRotate=1');
+  assert.strictEqual(installRotateDebug(w), true);
+  w.dispatchEvent(new w.Event('orientationchange'));
+  frames(80, 20); // 1.6 s of frames: sampling stops at 1 s
+  const log = w.__ftRotateLog;
+  const rows = log.filter((e) => 'iw' in e);
+  assert.ok(rows.length >= 45 && rows.length <= 52, 'about one row per 20 ms frame for 1 s, not beyond: ' + rows.length);
+  assert.strictEqual(log[0].why, 'orientationchange');
+  for (const k of ['t', 'iw', 'ih', 'vv', 'land', 'ang', 'pklh', 'sat', 'lcd']) assert.ok(k in rows[0], 'row has ' + k);
+  assert.ok(w.document.getElementById('ft-rotate-probe'), 'the safe-area probe element');
+  assert.ok(/orientationchange/.test(w.document.getElementById('ft-rotate-panel').textContent), 'rendered for copy once the second is up');
+  for (let i = 0; i < 12; i++) { w.dispatchEvent(new w.Event('resize')); frames(60, 20); }
+  assert.ok(w.__ftRotateLog.length <= ROTATE_LOG_CAP, 'a ring: ' + w.__ftRotateLog.length);
+  assert.strictEqual(ROTATE_LOG_MS, 1000);
+});
+
+test('v1.350 debugRotate: rotateSample reads the LCD rect, the --pkl-h of the panel and the orientation query', () => {
+  const { rotateSample } = require('../../public/js/common.js');
+  const dom = new JSDOM('<body><div id="music-nowplaying-panel" style="--pkl-h:300px"><div class="mms-full"><div class="ip-lcd"></div></div></div></body>', { url: 'http://localhost/' });
+  const w = dom.window;
+  w.matchMedia = () => ({ matches: true });
+  w.document.querySelector('.ip-lcd').getBoundingClientRect = () => ({ x: 67, y: 34, width: 402, height: 302 });
+  const s = rotateSample(w, 12.4);
+  assert.strictEqual(s.t, 12);
+  assert.deepStrictEqual(s.lcd, [67, 34, 402, 302]);
+  assert.strictEqual(s.land, true);
+  assert.strictEqual(s.pklh, '300px');
+});
+
 // ---- the same-art guard (skin-surface.js paint) -----------------------------------------------
 test('D7 same-art guard: a repaint whose cover is the SAME image is born revealed (no art-shimmer); a NEW cover shimmers in', () => {
   const dom = new JSDOM('<body><div id="panel"></div><video id="media-player"></video></body>', { url: 'http://localhost/music' });

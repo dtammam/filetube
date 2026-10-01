@@ -740,6 +740,7 @@
       var t = node && node.type;
       if (t === 'artists') return 'No artists yet.';
       if (t === 'recentArtists') return 'No recent artists';
+      if (t === 'recentAlbums') return 'No recent albums';
       if (t === 'albums') return 'No albums yet.';
       if (t === 'genres') return 'No genres yet.';
       if (node && node.key === 'liked') return 'Songs you like show up here.';
@@ -1246,7 +1247,7 @@
       // when next shown (the one on screen keeps its rows under your finger), their highlight put
       // back by identity (gate r2). The list being PLAYED FROM is never re-loaded here: it mirrors
       // the queue, and the follow below moves its highlight onto what plays (the K1 rule).
-      markStale(function (p) { return !isVisible(p) && !p.playing && (p.node.type === 'recentArtists' || (p.node.type === 'playlist' && p.node.key === 'recent-played')); });
+      markStale(function (p) { return !isVisible(p) && !p.playing && (p.node.type === 'recentArtists' || p.node.type === 'recentAlbums' || (p.node.type === 'playlist' && p.node.key === 'recent-played')); });
       if (!cur) return;
       stack.forEach(function (l) {
         l.panes.forEach(function (p) {
@@ -1331,7 +1332,7 @@
         setCursor(p.cursor + delta);
         return 0;
       },
-      // the "on <device>" badge: open Main > Play on... (the same level the menu row opens)
+      // the "on <device>" badge: open Main > Speakers (the same level the menu row opens)
       openPlayOn: function () {
         stack = stack.slice(0, 1);
         stack.push(makeLevel({ type: 'playon' }));

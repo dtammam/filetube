@@ -117,6 +117,35 @@ test('Recent Artists: from REAL plays (the player\'s progress route), most recen
   } });
 });
 
+test('v1.350 Recent Albums: from REAL plays, most recent first, one row per album, and a row drills in EXACTLY like Albums > album (empty state first)', async () => {
+  await HM.boot({ skin: 'ipod', play: 'q00', run: async (h) => {
+    menu(h); select(h); tapRow(h, 'Recent Albums'); await settleNet();
+    assert.strictEqual(title(h), 'Recent Albums');
+    assert.strictEqual(h.panel.querySelector('.ipm-note').textContent, 'No recent albums', 'a member with no plays sees the empty state');
+  } });
+  const songs = (await realApi('/api/music?sort=title-asc&limit=10000')).items;
+  const byTitle = (t) => songs.find((s) => s.title === t);
+  for (const t of ['Amber', 'Arcade', 'Circuit', 'Bloom']) await played(byTitle(t).id);
+  const recent = (await realApi('/api/music?filter=recent-listening&include=finished&limit=200')).items;
+  assert.ok(recent.length >= 4 && recent.every((r) => typeof r.albumKey === 'string' && r.albumKey), 'precondition: the real route carries albumKey on every row');
+  const expected = [];
+  recent.forEach((r) => { if (!expected.some((e) => e.albumKey === r.albumKey)) expected.push({ albumKey: r.albumKey, album: r.album }); });
+  assert.ok(expected.length < recent.length, 'precondition: an album with two played songs exists to collapse');
+  await H.boot({ skin: 'ipod', play: byTitle('Amber').id, run: async (h) => {
+    menu(h); select(h);
+    assert.deepStrictEqual(labels(h).slice(0, 3), ['Recent Artists', 'Recent Albums', 'Playlists']);
+    tapRow(h, 'Recent Albums'); await settleNet();
+    assert.strictEqual(title(h), 'Recent Albums');
+    assert.deepStrictEqual(labels(h), expected.map((e) => e.album), 'unique albums in recency order');
+    tapRow(h, expected[0].album); await settleNet();
+    const viaRecent = { title: title(h), rows: labels(h) };
+    assert.ok(viaRecent.rows.length >= 1, 'the drill shows songs');
+    menu(h); menu(h); tapRow(h, 'Albums'); await settleNet();
+    tapRow(h, expected[0].album); await settleNet();
+    assert.deepStrictEqual({ title: title(h), rows: labels(h) }, viaRecent, 'identical to Albums > ' + expected[0].album);
+  } });
+});
+
 test('Recent Artists is the SAME visibility-gated route: a restricted member never sees an artist they played before the restriction; no history = the device\'s empty state', async () => {
   // fresh member: no plays yet -> the empty state
   await HM.boot({ skin: 'ipod', play: 'q00', run: async (h) => {

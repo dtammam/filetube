@@ -3153,7 +3153,7 @@ function wireStaticControls(signal) {
 
 // v1.349: "This device's name" (Settings > Account). Per browser (localStorage ft-device-name, via
 // common.js setDeviceName); every consumer reads getDeviceLabel() per request, so a save reaches
-// Play on..., the "Controlled by" pill and the handoff card with no reload. Text only: the label is
+// Speakers, the "Controlled by" pill and the handoff card with no reload. Text only: the label is
 // set through value / placeholder / textContent, never innerHTML.
 function wireDeviceName(signal) {
   const input = document.getElementById('device-name-input');
@@ -3163,7 +3163,7 @@ function wireDeviceName(signal) {
   const auto = getAutoDeviceLabel();
   input.placeholder = auto;
   input.value = getDeviceName();
-  if (note) note.textContent = 'Only this browser. Shown in Play on... and when this device controls another. Leave blank to use ' + auto + '.';
+  if (note) note.textContent = 'Only this browser. Shown in Speakers and when this device controls another. Leave blank to use ' + auto + '.';
   const save = () => {
     const name = setDeviceName(input.value);
     input.value = name;

@@ -105,6 +105,15 @@ the checks.
 - [ ] v1.341.3 - Modern theme on the phone: a folder with a long video title or channel name fits the
   screen.
 
+- [ ] v1.350.0 - On the phone, Custom > Transparent (and Black, Coil) in Pocket: turn the phone to landscape left, then right. The
+  circuit board photo stays where it was on the glass (it does not rotate with the page), in both directions; turn upright: it
+  is exactly as before. The other skins look as before.
+- [ ] v1.350.0 - Settings > Mobile player shows Player sticker first and the skin grid last; the iPod menu says Speakers and
+  has Recent Albums (tap one: its tracks open).
+- [ ] v1.350.0 - THE TURN BACK (still open): open `?debugRotate=1`, play in Pocket, turn to landscape and back to upright while
+  screen-recording, then tap the green panel to copy the rows and send them. The giant-LCD flash and the 20 px dip are NOT fixed
+  in this release; the log names the cause.
+
 ## Only if it comes back
 
 - [ ] v1.336 - The black picture on resume from the background: capture `?debugLifecycle=1` (the

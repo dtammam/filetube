@@ -4,6 +4,11 @@
 
 ### Bugs
 
+- [ ] **Bug: the turn back to portrait flashes a giant LCD for ~5 frames, then sits ~20 px low** (Dean, 2026-10-01, from a screen
+  recording). **INSTRUMENTED in v1.350.0, not fixed**: headless does not reproduce it (all values flip in one frame). Next step:
+  Dean records the turn back with `?debugRotate=1` (tap the panel to copy the rows); name the stale value from the log, then fix
+  the cause (never a timeout). Rows: t, innerWidth/Height, visualViewport, orientation query, angle, `--pkl-h`, top safe-area, LCD rect.
+
 - [ ] **HIGHEST PRIORITY (1 of 2). Bug: the fullscreen video goes BLACK after a pause / resume, pause /
   resume** (Dean, 2026-09-26: "a recent regression where if I'm watching a video in full screen, there's
   some way in which after I pause or resume, pause and resume again, the screen of the video goes black.
@@ -446,6 +451,24 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.350.0 - Skins last, Speakers, Recent Albums, a pinned board (2026-10-01)
+
+- Settings > Mobile player: Player sticker first, the whole Music skin grid last. "Play on..." is now "Speakers" everywhere the
+  user sees it (the node type, `hasPlayOn` and ids are unchanged, past history untouched). The iPod Music menu gains Recent
+  Albums (same recent-listening source as Recent Artists, unique by album, capped at 25, hidden-visibility albums never appear).
+- The three Transparent iPods keep the board photo fixed to the phone on a rotate: pre-rotated copies (r90, r270) swap in under
+  `html[data-ft-rot]`, stamped by `pocket-lighting.js` from `screen.orientation` (legacy `window.orientation` as fallback).
+  Measured: portrait unchanged (0 pixels beyond the base tree's own run-to-run noise, 3 skins x Ambient on/off); landmark offsets
+  0.0 CSS px against the portrait shot at both 90 and 270.
+- The baselines bot no longer dies with exit 141 (two `| head` / `| grep -q` pipes under `pipefail` removed from `visual.yml`).
+- NOT delivered: the clean turn back to portrait. Headless Chromium reproduces neither artifact (viewport, orientation query,
+  `--pkl-h`, safe-area inset and LCD rect all flip in one frame; LCD 402x302 landscape to 350x263 portrait), so no fix was
+  guessed (stop rule 0.8(c), Dean chose to ship the instrument). `?debugRotate=1` records every frame for 1 s after a rotate
+  into a 240-row ring (tap the panel to copy). The fix is owed from that device log.
+- Gate: adversary APPROVED r1; QA r1 CHANGES (docs only: do not claim the turn back), closed here. Suites: 10519 tests, 10507
+  pass, 0 fail, 12 skipped on Node 22.23.1 and 24.20.0; `lint:ui` unchanged, overlay 0. Shipped without baseline photo updates; the
+  baselines follow on their own branch.
 
 ### v1.349.0 - Remote control shows On, device names, a Mobile player page (2026-10-01)
 

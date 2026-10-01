@@ -300,7 +300,7 @@
     };
   }
 
-  // ---- the CONTROLLER side (the phone): Play on... ------------------------
+  // ---- the CONTROLLER side (the phone): Speakers ------------------------
 
   var CONTROL_KEY = 'ft-remote-controlling';
   var CONTROL_POLL_MS = 2000;

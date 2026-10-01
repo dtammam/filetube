@@ -116,7 +116,7 @@ test('the label always passes the server normalizeLabel unchanged', () => {
   }
 });
 
-test('saving a name tells the Remote control target to relabel (so Play on... updates without a reload)', () => {
+test('saving a name tells the Remote control target to relabel (so Speakers updates without a reload)', () => {
   useStorage();
   let relabels = 0;
   const had = Object.getOwnPropertyDescriptor(global, 'window');
