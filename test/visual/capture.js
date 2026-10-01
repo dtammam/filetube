@@ -517,13 +517,13 @@ async function rotation(browser, o, skin, variant) {
   const { ctx, page } = await newScenePage(browser, { ...o, vp: 'phone', dpr: 3, tag: { scene: 'rotation', rotation: true, mode } });
   const cdp = await ctx.newCDPSession(page);
   const log = [];
-  const setOrient = async (portrait) => {
+  const setOrient = async (portrait, angle = 90) => {
     const [w, h] = portrait ? [390, 844] : [844, 390];
     // setViewportSize keeps Playwright's own view in sync; the CDP override adds the
     // screen orientation so orientationchange + matchMedia(orientation) fire like a real rotate.
     await page.setViewportSize({ width: w, height: h });
     await cdp.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 3, mobile: true,
-      screenWidth: w, screenHeight: h, screenOrientation: portrait ? { type: 'portraitPrimary', angle: 0 } : { type: 'landscapePrimary', angle: 90 } });
+      screenWidth: w, screenHeight: h, screenOrientation: portrait ? { type: 'portraitPrimary', angle: 0 } : (angle === 270 ? { type: 'landscapeSecondary', angle: 270 } : { type: 'landscapePrimary', angle: 90 }) });
   };
   // Every ~50ms for 1s after a step: CDP screencast delivers each painted frame with a
   // timestamp (a screenshot loop at DPR 3 cannot keep a 50ms cadence).
@@ -566,7 +566,7 @@ function pocketState(page) {
   return page.evaluate(() => {
     const pnl = document.getElementById('music-nowplaying-panel');
     const r = pnl ? pnl.getBoundingClientRect() : null;
-    return { vw: innerWidth, vh: innerHeight, orient: screen.orientation && screen.orientation.type, full: !!(pnl && pnl.classList.contains('mms-full')),
+    return { vw: innerWidth, vh: innerHeight, orient: screen.orientation && screen.orientation.type, rot: document.documentElement.getAttribute('data-ft-rot'), full: !!(pnl && pnl.classList.contains('mms-full')),
       panelVisible: !!(r && r.width > 0 && r.height > 0 && getComputedStyle(pnl).display !== 'none'), panelRect: r ? [r.x, r.y, r.width, r.height].map(Math.round) : null };
   });
 }
@@ -599,6 +599,8 @@ function rotationSteps(page, variant, setOrient) {
     await page.locator('[data-skin-menu]').first().tap({ timeout: 2000 }).catch(() => {});
     await sleep(400);
   };
+  // v1.350 (W5): 'a270' turns the other way (screen angle 270) and back, staying in Pocket - the board must sit on the same glass pixels at 90 AND 270.
+  if (variant === 'a270') return [['1-to-landscape-270', () => setOrient(false, 270)], ['2-to-portrait', () => setOrient(true)]];
   return variant === 'spec'
     ? [['1-to-landscape', () => setOrient(false)], ['2-exit-pocket', exitPocket, toMainMenu], ['3-to-portrait', () => setOrient(true)]]
     : [['1-exit-pocket', exitPocket, toMainMenu], ['2-to-landscape', () => setOrient(false)], ['3-to-portrait', () => setOrient(true)]];
@@ -645,7 +647,7 @@ function readFixtures(dataDir) {
 
 module.exports = {
   ERAS, MODES, viewports, FREEZE_CSS, MASK_CSS, LAUNCH_ARGS, CONTEXT_PINS, installPinnedClock, installSeededRandom,
-  sceneKit, shotName, newRecord, login, newScenePage, captureEra, rotationSteps, pocketState,
+  sceneKit, shotName, newRecord, login, newScenePage, captureEra, rotation, rotationSteps, pocketState,
   pausePlayback, readFixtures, playwright, tap, sleep,
 };
 
