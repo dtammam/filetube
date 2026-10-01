@@ -3,7 +3,7 @@ plan: device-names-mobile-player
 harness: v2 · lean
 branch: feat/v1.349-device-names
 anchor: spec
-status: Approved, not started
+status: Shipped v1.349.0
 next: Step 0 (read this whole plan once, top to bottom, before touching anything)
 design: Approved 2026-10-01 (Dean, three rounds of Q&A; every ruling in section 2 is his answer)
 gate: adversary + qa (client UI and Settings; no server, auth or data change)
