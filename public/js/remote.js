@@ -270,6 +270,14 @@
         runPlay(a);
       }
     }
+    // The server learns this device's label when the stream opens (and on each poll), so a renamed
+    // device reopens its stream to tell it; polling already sends the current label every beat.
+    function relabel() {
+      if (!on || polling || !es) return;
+      if (helloTimer) { env.clearTimeout(helloTimer); helloTimer = null; }
+      closeStream();
+      openStream();
+    }
     function pagehide() {
       if (on) post('/api/remote/off', { deviceId: env.deviceId() }, { keepalive: true });
     }
@@ -287,6 +295,7 @@
         return function () { var i = changeFns.indexOf(fn); if (i >= 0) changeFns.splice(i, 1); };
       },
       pagehide: pagehide,
+      relabel: relabel,
       _handleCommand: handleCommand
     };
   }
@@ -561,6 +570,8 @@
         if (w.sessionStorage.getItem(STORAGE_KEY) === '1') remote.setOn(true);
       } catch (_) { /* sessionStorage blocked: the switch still works for this page */ }
       w.addEventListener('pagehide', function () { remote.pagehide(); });
+      // Another tab of this browser renamed the device (Settings > Account): tell the server.
+      w.addEventListener('storage', function (e) { if (e && e.key === 'ft-device-name') remote.relabel(); });
       if (control) {
         try { control.restore(); } catch (_) { /* storage blocked */ }
         w.document.addEventListener('visibilitychange', function () { control.visibility(w.document.visibilityState === 'hidden'); });

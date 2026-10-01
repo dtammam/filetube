@@ -5564,6 +5564,7 @@ const MD_ICON_PATHS = {
   eye: '<path d="M2.5 12s3.6-6.8 9.5-6.8S21.5 12 21.5 12s-3.6 6.8-9.5 6.8S2.5 12 2.5 12z"/><circle cx="12" cy="12" r="2.7"/>',
   copy: '<rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5"/>',
   wrench: '<path d="M14.5 6.5a4 4 0 0 0-5.3 5.1l-5.4 5.4 2.2 2.2 5.4-5.4a4 4 0 0 0 5.1-5.3l-2.4 2.4-2.1-.5-.5-2.1z"/>',
+  phone: '<rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M10.5 5.5h3"/>',
   info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5.5M12 7.8h.01"/>',
   bell: '<path d="M6.5 9.5a5.5 5.5 0 0 1 11 0c0 4.5 2 5.5 2 5.5H4.5s2-1 2-5.5zM10 19a2 2 0 0 0 4 0"/>',
   plus: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
@@ -6477,7 +6478,7 @@ function accountMenuRow(U, o) {
 // v1.230 (Dean): the "Music skin" picker was briefly here (v1.229), but the account
 // menu builds ONCE at boot and only some shells loaded the skins module, so the row
 // often never appeared. It moved to the Settings page (setup.js renderMusicSkinPicker,
-// where the app's other appearance pickers live and the skins module is loaded on
+// where the app's Settings pickers live and the skins module is loaded on
 // every shell). Nothing account-menu remains for it.
 
 // ---- v1.83: avatar crop geometry (pure, DOM-free, unit-tested) --------------
@@ -10394,7 +10395,7 @@ function isHomeRootTarget(pathname, search) {
 
 const DEVICE_ID_KEY = 'ft-device-id';
 
-// The label roster (Dean's ruling 3: auto labels, rename deferred). ORDER IS
+// The label roster (the device TYPE; v1.349 adds the per-browser word and the typed name below). ORDER IS
 // LOAD-BEARING and every entry below is here because a naive check gets it
 // wrong:
 //   - iPod must precede iPhone: an iPod touch reports "iPod touch; CPU iPhone
@@ -10462,12 +10463,68 @@ function getDeviceId() {
   }
 }
 
-function getDeviceLabel() {
-  try {
-    return resolveDeviceLabel(navigator.userAgent, { maxTouchPoints: navigator.maxTouchPoints });
-  } catch (_) {
-    return 'Another device';
+// v1.349: a short friendly word per browser, derived from its device id, so three Macs read as
+// "Mac · Otter", "Mac · Pebble"... A browser cannot read its hostname (no API; WebRTC local
+// addresses are mDNS-obfuscated), so the word stands in for it. 3-7 ASCII letters, capitalized, no
+// two sharing their first 4 letters (test/unit/device-name.test.js pins all of it).
+const DEVICE_WORDS = Object.freeze([
+    'Otter', 'Maple', 'Pebble', 'Willow', 'Badger', 'Cedar', 'Comet', 'Meadow', 'Falcon', 'Ginger', 'Harbor',
+    'Juniper', 'Kettle', 'Lantern', 'Marble', 'Nutmeg', 'Orchid', 'Pepper', 'Quill', 'Raven', 'Sorrel',
+    'Thistle', 'Umber', 'Velvet', 'Walnut', 'Yarrow', 'Zephyr', 'Acorn', 'Birch', 'Cobalt', 'Daisy', 'Ember',
+    'Fennel', 'Garnet', 'Heron', 'Indigo', 'Jasper', 'Kiwi', 'Lemon', 'Mango', 'Nectar', 'Olive', 'Peach',
+    'Quartz', 'Robin', 'Saffron', 'Tulip', 'Violet', 'Wombat', 'Almond', 'Beacon', 'Cactus', 'Dune', 'Elm',
+    'Fjord', 'Gecko', 'Hazel', 'Iris', 'Jelly', 'Koala', 'Lotus', 'Mint', 'Nutria', 'Oasis', 'Panda',
+    'Quince', 'Reed', 'Spruce', 'Tiger', 'Urchin', 'Vine', 'Wren', 'Yucca', 'Zinnia', 'Apricot', 'Biscuit',
+    'Clover', 'Dolphin', 'Eagle', 'Finch', 'Glacier', 'Honey', 'Ivy', 'Jackal', 'Kelp', 'Lilac', 'Moss',
+    'Newt', 'Oak', 'Plum', 'Quokka', 'Rowan', 'Sparrow', 'Toffee', 'Umbra', 'Waffle', 'Aspen', 'Bramble',
+    'Coral', 'Dahlia', 'Fig', 'Gull', 'Hickory', 'Ibis', 'Lark', 'Mole', 'Nettle', 'Ocelot', 'Poppy',
+    'Radish', 'Sage', 'Teal', 'Basil', 'Cinder', 'Pine', 'Rye', 'Tern', 'Yam',
+]);
+
+// FNV-1a 32-bit over the id, mod the list: stable for an id, spread across ids.
+function deviceWord(id) {
+  const s = String(id == null ? '' : id);
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
   }
+  return DEVICE_WORDS[h % DEVICE_WORDS.length];
+}
+
+// The typed name (Settings > Account > "This device's name"): per browser, replaces the whole
+// label. Stripped like lib/presence/store.js normalizeLabel (control + bidi chars; the isolates
+// U+2066-2069 too) and capped at its LABEL_MAX, so what is stored is what the server keeps.
+const DEVICE_NAME_KEY = 'ft-device-name';
+const DEVICE_NAME_MAX = 32;
+function cleanDeviceName(raw) {
+  // eslint-disable-next-line no-control-regex
+  const cleaned = String(raw == null ? '' : raw).replace(/[\u0000-\u001F\u007F\u200B-\u200F\u2028\u2029\u202A-\u202E\u2066-\u2069]/g, '').trim();
+  return cleaned.length > DEVICE_NAME_MAX ? cleaned.slice(0, DEVICE_NAME_MAX).trim() : cleaned;
+}
+function getDeviceName() {
+  try { return cleanDeviceName(localStorage.getItem(DEVICE_NAME_KEY)); } catch (_) { return ''; }
+}
+// Returns the stored name ('' when cleared). Empty (after cleaning) removes the key.
+function setDeviceName(v) {
+  const name = cleanDeviceName(v);
+  try {
+    if (name) localStorage.setItem(DEVICE_NAME_KEY, name); else localStorage.removeItem(DEVICE_NAME_KEY);
+  } catch (_) { /* private mode: the name lasts only until reload */ }
+  try { if (typeof window !== 'undefined' && window.FileTube && window.FileTube.remote) window.FileTube.remote.relabel(); } catch (_) { /* best effort */ }
+  return name;
+}
+
+// The automatic label: the type plus this browser's word ("Mac · Otter").
+function getAutoDeviceLabel() {
+  let type = 'Another device';
+  try { type = resolveDeviceLabel(navigator.userAgent, { maxTouchPoints: navigator.maxTouchPoints }); } catch (_) { /* keep the fallback */ }
+  return type + ' \u00B7 ' + deviceWord(getDeviceId());
+}
+
+// What every presence ping, Play on... row and "Controlled by" pill shows: the typed name when set.
+function getDeviceLabel() {
+  return getDeviceName() || getAutoDeviceLabel();
 }
 
 // ---- v1.78 device handoff: the card's PURE decisions ----------------------
@@ -11467,6 +11524,9 @@ if (typeof window !== 'undefined') {
   // on every page that mounts a player, so the binding is always in place.
   window.FileTube.getDeviceId = getDeviceId;
   window.FileTube.getDeviceLabel = getDeviceLabel;
+  window.FileTube.getAutoDeviceLabel = getAutoDeviceLabel;
+  window.FileTube.getDeviceName = getDeviceName;
+  window.FileTube.setDeviceName = setDeviceName;
   // v1.186.1 (Dean, device): an in-view layout change (theatre toggle) must
   // re-place the critters against the new furniture; exposed so watch.js can
   // trigger the same wait-then-place scatter the router hooks use.
@@ -16842,6 +16902,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.78 device handoff: the UA label table. Pure, and exactly the kind of
     // roster that rots silently - every arm is pinned by node:test.
     resolveDeviceLabel,
+    // v1.349: the per-browser word, the typed name and the labels built from them.
+    DEVICE_WORDS, DEVICE_NAME_KEY, DEVICE_NAME_MAX, deviceWord, cleanDeviceName, getDeviceName, setDeviceName, getAutoDeviceLabel, getDeviceLabel,
     // v1.78: the card's pure decisions. The runtime around them is a thin
     // fetch/render shell on purpose - everything that can be WRONG is here,
     // where node:test can hold it without a browser.

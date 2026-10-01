@@ -77,3 +77,4 @@ The fixture (`<DIR>/fixtures.json` lists the ids):
 Scene ids follow the 2026-09-27 audit's baseline index (01-30 surfaces, 40-42
 Pocket skins, plus the Pocket rotation screencast, which `run.js` does not diff;
 geometry check G4 measures that sequence instead); 50-54 are Books and the reader.
+Settings sections are `6<digit>-settings-<name>` (from `SETTINGS_SECTIONS` in `capture.js`); `60b` is Mobile player (v1.349).

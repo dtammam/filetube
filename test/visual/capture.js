@@ -439,7 +439,7 @@ function R3_SCENES(FX) {
 // [id digit, scene name, #collapse-key, scrolled half-way (phone only)] - the Settings sections sweep S8
 // migrated; a scene per section so each one's before/after pair is reviewable on its own.
 const SETTINGS_SECTIONS = [
-  ['0', 'appearance', 'appearance'], ['1', 'critters', 'critters'], ['2', 'folders', 'video-folders'],
+  ['0', 'appearance', 'appearance'], ['0b', 'mobile-player', 'mobile-player'], ['1', 'critters', 'critters'], ['2', 'folders', 'video-folders'],
   ['3', 'automation', 'automation-storage'], ['4', 'automation-mid', 'automation-storage', true],
   ['5', 'downloads', 'downloads'], ['6', 'trash', 'trash'], ['7', 'users', 'users'],
   ['8', 'backup', 'backup-restore'], ['9', 'experimental', 'experimental'],
@@ -483,7 +483,7 @@ async function newScenePage(browser, o) {
     await ctx.addInitScript(installPinnedClock, clockMs);
     await ctx.addInitScript(installSeededRandom, RANDOM_SEED);
   }
-  await ctx.addInitScript(([m, e]) => { try { localStorage.setItem('ft-era', e); localStorage.setItem('ft-mode', m); } catch (_) { /* storage off */ } }, [mode, era]);
+  await ctx.addInitScript(([m, e]) => { try { localStorage.setItem('ft-era', e); localStorage.setItem('ft-mode', m); localStorage.setItem('ft-device-id', 'visual-fixture-device'); } catch (_) { /* storage off */ } }, [mode, era]);
   return { ctx, page: await ctx.newPage() };
 }
 

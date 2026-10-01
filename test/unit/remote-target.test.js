@@ -302,3 +302,40 @@ test('a report already scheduled when the controller detaches is NOT sent (the g
   h.advance(2000);
   assert.strictEqual(h.states().length, n, 'nothing posted after the detach');
 });
+
+test('v1.349 relabel: a renamed device reopens its stream so the server learns the new label', () => {
+  const h = harness();
+  let label = 'Desk';
+  h.env.label = () => label;
+  h.t.setOn(true);
+  h.attach('Phone');
+  assert.match(h.sources[0].url, /label=Desk$/);
+  label = 'Snowy Table';
+  h.t.relabel();
+  assert.strictEqual(h.sources[0].closed, true, 'the stale-label stream is closed');
+  assert.strictEqual(h.sources.length, 2);
+  assert.match(h.sources[1].url, /label=Snowy%20Table$/);
+  h.t.setOn(false);
+  const n = h.sources.length;
+  h.t.relabel();
+  assert.strictEqual(h.sources.length, n, 'relabel while off opens nothing');
+});
+
+test('v1.349 relabel across tabs: a storage event for ft-device-name reopens the stream, other keys do not', () => {
+  const h = harness();
+  const winListeners = {};
+  const w = {
+    document: { readyState: 'complete', body: null, addEventListener() {} },
+    sessionStorage: { getItem: () => null },
+    addEventListener(t, f) { (winListeners[t] = winListeners[t] || []).push(f); },
+  };
+  R.bootWhenReady(w, h.t, null);
+  h.t.setOn(true);
+  assert.strictEqual(h.sources.length, 1);
+  (winListeners.storage || []).forEach((f) => f({ key: 'ft-something-else' }));
+  assert.strictEqual(h.sources.length, 1, 'an unrelated key changes nothing');
+  assert.ok(winListeners.storage && winListeners.storage.length, 'a storage listener is registered');
+  winListeners.storage.forEach((f) => f({ key: 'ft-device-name' }));
+  assert.strictEqual(h.sources.length, 2, 'the device name key reopens the stream');
+  assert.strictEqual(h.sources[0].closed, true);
+});

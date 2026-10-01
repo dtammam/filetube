@@ -24,7 +24,8 @@ test('music.html ships the switch as static, visible markup with the tooltip and
   assert.strictEqual(el.getAttribute('aria-pressed'), 'false');
   assert.strictEqual(el.getAttribute('title'), 'Let your other devices play music in this tab');
   assert.strictEqual(el.getAttribute('aria-label'), 'Remote control');
-  assert.strictEqual(el.querySelector('.ui-btn__label').textContent, 'Remote control');
+  assert.strictEqual(el.querySelector('.ui-btn__swap-off').textContent, 'Remote control');
+  assert.strictEqual(el.querySelector('.ui-btn__swap-on').textContent, 'Remote control: On');
   const icon = /#i-([a-z_.]+)/.exec(el.innerHTML)[1];
   assert.match(read('public/js/icons.js'), new RegExp('"' + icon.replace('.', '\\.') + '":'), 'the glyph is in the registry');
   assert.ok(el.closest('.music-toolbar-actions'), 'it lives in the toolbar');

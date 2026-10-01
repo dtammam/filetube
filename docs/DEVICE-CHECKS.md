@@ -35,6 +35,12 @@ the checks.
 
 ## Music page
 
+- [ ] v1.349 - Desktop Music page: the Remote control button reads "Remote control: On" with a visible grey fill when on, and the
+  toolbar does not jump when you press it.
+- [ ] v1.349 - Phone Settings > Mobile player: Music skin and Player sticker work there (pick a skin, add and reset a sticker);
+  Settings > Appearance no longer has them.
+- [ ] v1.349 - Device names: the phone's Play on... shows the PC as "Mac · Word"; type a name in Settings > Account on the PC
+  (with Remote control on) and the phone's Play on... shows it on the next open, no reload.
 - [ ] v1.348 - Through https://filetube.tamm.am: PC Music page, Remote control On. iPhone PWA (play a song once so the
   iPod panel shows): MENU > Play on... lists the PC.
 - [ ] v1.348 - Pick an album on the phone: it plays on the PC within about a second; the iPhone is silent; its screen

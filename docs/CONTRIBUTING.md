@@ -386,6 +386,22 @@ Standing rules that ride this list:
   moment; every new per-user route family gets second-session
   wrong-user assertions the day it is born.
 
+## Visual changes and baselines (v1.349)
+
+The screenshot job compares every scene in `test/visual/capture.js` against its baseline. What that
+means for a change:
+
+- **A changed look: do nothing special.** The PR's visual comment shows every changed look with
+  crops; review it there. After the merge the baselines refresh themselves (`docs/RELEASING.md`,
+  "The visual job and baselines"). Never commit baselines by hand and never take them on a dev box.
+- **A NEW surface** (a Settings section, a page, a sheet, a menu level): add its scene to
+  `test/visual/capture.js` in the SAME PR. The PR comment lists it as new and the refresh adds its
+  baseline after the merge. A surface with no scene is never checked.
+  `test/unit/visual-settings-coverage.test.js` fails a Settings section that has no scene; a new
+  section gets a scene, never an entry in that test's `UNCOVERED` list (which may only shrink).
+- **A removed or renamed surface:** remove or rename its scene in the same PR.
+- **A button's label, icon or count changing** is also a measured change (the geometry rules below).
+
 ## Action rows: a button NEVER deforms - measure every button change (MANDATORY, Dean's ruling 2026-08-28)
 
 Dean: "I've burned so much time adding a button and all of a sudden
