@@ -20,7 +20,8 @@ const MUSIC_DATA = {
 };
 const settle = () => new Promise((r) => setTimeout(r, 20));
 
-function realm() {
+function realm(opts) {
+  const o = opts || {};
   const dom = new JSDOM(fs.readFileSync(path.join(REPO, 'public', 'music.html'), 'utf8'), {
     url: 'http://localhost/music', runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: new VirtualConsole(),
   });
@@ -42,6 +43,7 @@ function realm() {
   };
   w.eval(fs.readFileSync(path.join(REPO, 'public', 'js', 'player.js'), 'utf8'));
   const player = w.FileTube.player;
+  if (o.noLoad) return { w, player, calls, close: () => w.close() };
   assert.strictEqual(player.load('a1', { ...MUSIC_DATA }, { slot: w.document.getElementById('player-slot') }), true);
   calls.play = 0; calls.pause = 0;
   return { w, player, calls, handlers, fetches, el: w.document.getElementById('media-player'), close: () => w.close() };
@@ -149,5 +151,84 @@ test('getRemoteSnapshot reports the loaded id, position, duration, playing and t
     snap = r.player.getRemoteSnapshot();
     assert.strictEqual(snap.hasPrev, false, 'prev follows the registration, not next');
     assert.strictEqual(snap.hasNext, true);
+  } finally { r.close(); }
+});
+
+// ---- v1.353: the phone sets this PC's player volume ----------------------------------------------
+
+test('v1.353 setVolume sets the element, persists ft-volume through the volumechange listener, and moves the PC\'s own slider', async () => {
+  const r = realm();
+  try {
+    assert.strictEqual(r.player.setVolume(0.3), true);
+    assert.strictEqual(r.el.volume, 0.3);
+    await settle();
+    assert.strictEqual(r.w.localStorage.getItem('ft-volume'), '0.3', 'stored by the existing volumechange listener');
+    assert.strictEqual(r.w.localStorage.getItem('ft-muted'), '0');
+    const bar = r.w.document.getElementById('vol-bar');
+    assert.strictEqual(bar.value, '0.3', 'the PC\'s slider follows');
+    assert.strictEqual(bar.style.getPropertyValue('--vol-fill'), '30%');
+    assert.strictEqual(r.player.setVolume(0.333), true);
+    assert.strictEqual(r.el.volume, 0.33, 'rounded to the 5% grid\'s 2 places');
+    assert.strictEqual(r.player.setVolume(1.7), true);
+    assert.strictEqual(r.el.volume, 1, 'clamped');
+  } finally { r.close(); }
+});
+
+test('v1.353 setVolume: raising off 0 un-mutes (the slider\'s rule); 0 leaves a mute as it is', async () => {
+  const r = realm();
+  try {
+    r.el.muted = true;
+    r.player.setVolume(0);
+    assert.strictEqual(r.el.volume, 0);
+    assert.strictEqual(r.el.muted, true, '0 does not un-mute');
+    r.player.setVolume(0.5);
+    assert.strictEqual(r.el.muted, false, 'raising off 0 un-mutes');
+    await settle();
+    assert.strictEqual(r.w.localStorage.getItem('ft-muted'), '0');
+  } finally { r.close(); }
+});
+
+test('v1.353 setVolume ignores a non-number or non-finite level', () => {
+  const r = realm();
+  try {
+    r.player.setVolume(0.6);
+    for (const bad of ['0.5', NaN, Infinity, -Infinity, null, undefined, true, {}]) {
+      assert.strictEqual(r.player.setVolume(bad), false, `setVolume(${String(bad)})`);
+      assert.strictEqual(r.el.volume, 0.6);
+    }
+  } finally { r.close(); }
+});
+
+test('v1.353 the PC\'s own slider and keys are untouched: the slider input still sets the element', () => {
+  const r = realm();
+  try {
+    const bar = r.w.document.getElementById('vol-bar');
+    bar.value = '0.6';
+    bar.dispatchEvent(new r.w.Event('input', { bubbles: true }));
+    assert.strictEqual(r.el.volume, 0.6);
+  } finally { r.close(); }
+});
+
+test('v1.353 getRemoteSnapshot carries the volume and the mute', () => {
+  const r = realm();
+  try {
+    r.player.setVolume(0.45);
+    r.el.muted = true;
+    const snap = r.player.getRemoteSnapshot();
+    assert.strictEqual(snap.volume, 0.45);
+    assert.strictEqual(snap.muted, true);
+  } finally { r.close(); }
+});
+
+test('v1.353 before the first load (no element yet) setVolume stores the level and the snapshot reads it back', () => {
+  const r = realm({ noLoad: true });
+  try {
+    assert.strictEqual(r.w.document.getElementById('media-player'), null, 'no element yet');
+    assert.strictEqual(r.player.setVolume(0.25), true);
+    assert.strictEqual(r.w.localStorage.getItem('ft-volume'), '0.25');
+    assert.strictEqual(r.w.localStorage.getItem('ft-muted'), '0');
+    const snap = r.player.getRemoteSnapshot();
+    assert.strictEqual(snap.volume, 0.25);
+    assert.strictEqual(snap.muted, false);
   } finally { r.close(); }
 });

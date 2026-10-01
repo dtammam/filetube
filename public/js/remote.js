@@ -35,6 +35,8 @@
 
   // What the PC reports: idle when nothing is loaded, else playing/paused (or blocked). needsClick
   // (v1.352 W0): this tab has had no click or key yet, so the browser will refuse to start sound.
+  // volume/muted (v1.353): the player volume the phone's Volume bar shows, rounded to 2 places; a
+  // player that cannot say reports no volume (null), never a made-up one.
   function buildStatePayload(deviceId, snap, blocked, needsClick) {
     var s = snap || {};
     var id = typeof s.id === 'string' && s.id ? s.id : null;
@@ -47,7 +49,9 @@
       state: state,
       hasPrev: !!s.hasPrev,
       hasNext: !!s.hasNext,
-      needsClick: !!needsClick
+      needsClick: !!needsClick,
+      volume: Number.isFinite(s.volume) ? Math.round(Math.min(1, Math.max(0, s.volume)) * 100) / 100 : null,
+      muted: s.muted === true
     };
   }
 
@@ -101,6 +105,10 @@
     var wait = lastAt + REPORT_THROTTLE_MS - now;
     return wait > 0 ? wait : 0;
   }
+
+  // The element events that change what the PC reports (v1.353: volumechange, so a change made AT the PC,
+  // its own slider or keys, reaches the phone's Volume bar).
+  var MEDIA_EVENTS = ['play', 'pause', 'seeked', 'ended', 'loadedmetadata', 'emptied', 'volumechange'];
 
   // ---- runtime ------------------------------------------------------------
 
@@ -200,6 +208,13 @@
       sendState();
       notify();
     }
+    // v1.353: a volume change that makes PLAYING sound audible is the same proof as onPlaying (a kiosk
+    // that started at volume 0, or muted, and the phone turns it up): the click hint goes.
+    function onVolume(e) {
+      onMedia();
+      var el = e && e.target;
+      if (el && el.paused === false) onPlaying(e);
+    }
     // The first click or key since load: the browser now lets this tab start sound.
     function onActivation() {
       if (!needsClick) return;
@@ -214,8 +229,8 @@
     function bindMedia() {
       if (mediaBound || !env.document) return;
       mediaBound = true;
-      ['play', 'pause', 'seeked', 'ended', 'loadedmetadata', 'emptied'].forEach(function (t) {
-        env.document.addEventListener(t, onMedia, true);
+      MEDIA_EVENTS.forEach(function (t) {
+        env.document.addEventListener(t, t === 'volumechange' ? onVolume : onMedia, true);
       });
       env.document.addEventListener('filetube:autostart', onAutostart);
       env.document.addEventListener('playing', onPlaying, true);
@@ -224,8 +239,8 @@
     function unbindMedia() {
       if (!mediaBound || !env.document) return;
       mediaBound = false;
-      ['play', 'pause', 'seeked', 'ended', 'loadedmetadata', 'emptied'].forEach(function (t) {
-        env.document.removeEventListener(t, onMedia, true);
+      MEDIA_EVENTS.forEach(function (t) {
+        env.document.removeEventListener(t, t === 'volumechange' ? onVolume : onMedia, true);
       });
       env.document.removeEventListener('filetube:autostart', onAutostart);
       env.document.removeEventListener('playing', onPlaying, true);
@@ -250,7 +265,12 @@
         if (navTimer) env.clearTimeout(navTimer);
         navTimer = env.setTimeout(function () {
           navTimer = null;
-          if (pendingPlay) { pendingPlay = null; attached && post('/api/remote/state', buildStatePayload(env.deviceId(), null, false, needsClick)); }
+          if (!pendingPlay) return;
+          pendingPlay = null;
+          // idle (the Music view never came), but the volume is still this PC's (v1.353: every carrier)
+          var ps = null;
+          try { var p2 = player(); ps = p2 && p2.getRemoteSnapshot ? p2.getRemoteSnapshot() : null; } catch (_) { ps = null; }
+          if (attached) post('/api/remote/state', buildStatePayload(env.deviceId(), ps ? { volume: ps.volume, muted: ps.muted } : null, false, needsClick));
         }, NAVIGATE_TIMEOUT_MS);
         try { env.navigate('/music'); } catch (_) { /* the timeout reports idle */ }
         return;
@@ -261,6 +281,7 @@
       else if (c.cmd === 'next') pl.next();
       else if (c.cmd === 'prev') pl.prev();
       else if (c.cmd === 'seek') pl.seek(a.position);
+      else if (c.cmd === 'volume') { if (typeof pl.setVolume === 'function') pl.setVolume(a.level); }
       else return;
       scheduleReport();
     }

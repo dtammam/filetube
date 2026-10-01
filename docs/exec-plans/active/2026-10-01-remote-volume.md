@@ -3,8 +3,8 @@ plan: remote-volume
 harness: v2 · lean
 branch: feat/v1.353-remote-volume
 anchor: spec
-status: Draft
-next: V0 (build not started; read the whole plan first, every section)
+status: Building
+next: V1 mutants in a /tmp sandbox, then V2 (the look first: reference photos vs build to Dean)
 design: Dean 2026-10-01 ("I like this. Yes. Let's do it.") on option A, then "As long as the volume screen is low friction and looks like iPod volume I am good" (R1, R2 below are binding); R3, R4 are architect defaults he did not overrule
 gate: FULL (adversary + qa + security-brief; a new command and state field on the remote channel, lib/remote/**)
 ---
@@ -162,7 +162,20 @@ user cannot set my speaker's volume), the rate limiter. Brief each seat with the
 
 ## 7. Evidence and gate verdicts
 
-(empty until V0)
+Numbers below are copied from the instrument runs named; raw JSON is committed beside the proofs.
+
+**V0 falsifier (tools/listen-control-proof/volume-v0.js, real server, headless Chromium, every speaker read through CDP
+`Runtime.evaluate {userGesture:false}`; raw: volume-v0-out.json).** Before any edit:
+- Kiosk (`--autoplay-policy=no-user-gesture-required`), a never-clicked tab playing song1 (`hasBeenActive` false): `media.volume`
+  read 1, set to 0.3 read back 0.3, `ft-volume` "0.3" (the existing volumechange listener), still playing, `hasBeenActive` still
+  false. The PC's volume IS settable with no click.
+- Today's phone: `POST /api/remote/command {cmd:'volume', args:{level:0.5}}` -> `400 {"error":"unknown cmd"}` (both browsers);
+  `typeof remoteControl.volume` "undefined".
+- Measured, not in the plan: `--autoplay-policy=user-gesture-required`, a never-clicked tab whose stored pref is MUTED
+  (`ft-muted` "1"): a phone play plays MUTED (`muted:true, paused:false`); un-muting it with no click PAUSES it
+  (`muted:false, paused:true, vol:0.5`, Chromium's rule for un-muting without a gesture). So a phone raising a muted speaker's
+  volume can stop it; no page code can lift that. Handling: the honest path that exists (needsClick stays true while only muted
+  sound played, so the phone shows "Click the PC's tab once to let it play" once it pauses); bound as proof row c2 in V3.
 
 ## 8. Device checks Dean would owe (into DEVICE-CHECKS.md at release, one line each)
 
