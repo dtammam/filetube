@@ -21,9 +21,12 @@ async function speakerPage(ctx) {
     return r.result.value;
   };
   const until = async (fn, arg, ms) => { const end = Date.now() + (ms || 8000); for (;;) { const v = await ev(fn, arg); if (v) return v; if (Date.now() > end) return v; await new Promise((r) => setTimeout(r, 100)); } };
-  const realClick = async () => {
-    await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: 640, y: 700, button: 'left', clickCount: 1 });
-    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 640, y: 700, button: 'left', clickCount: 1 });
+  // a real mouse click (Input.dispatchMouseEvent, not el.click()) at a point; default: the pill's own text,
+  // the spot it asks the user to click (measured: (640,700) is the player's click-to-toggle art)
+  const realClick = async (pt) => {
+    const p = pt || await ev(() => { const r = document.querySelector('#remote-pill .remote-pill-text').getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: p.x, y: p.y, button: 'left', clickCount: 1 });
+    await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: p.x, y: p.y, button: 'left', clickCount: 1 });
   };
   return { page, ev, until, realClick };
 }
@@ -50,7 +53,7 @@ async function main() {
 
   // ---- the kiosk (--autoplay-policy=no-user-gesture-required): rows a, b, c, d, e, f ----
   const kiosk = await pw.chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
-  {
+  if (!process.env.ONLY_C2) {
     const spCtx = await kiosk.newContext({ viewport: { width: 1280, height: 800 } }); await spCtx.addCookies([srv.cookie]);
     const phCtx = await kiosk.newContext({ viewport: { width: 1280, height: 800 } }); await phCtx.addCookies([srv.cookie]);
     const sp = await speakerPage(spCtx); watch(sp.page, 'SPEAKER');
@@ -181,10 +184,15 @@ async function main() {
     out.c2_pc_after_raise = await sp.until(() => { const m = document.getElementById('media-player'); return m && !m.muted && { paused: m.paused, muted: m.muted, volume: m.volume }; }, null, 4000);
     out.c2_phone_after_raise = await ph.until(async () => { const s = await ph.state(); return s && s.state !== 'playing' && { state: s.state, needsClick: s.needsClick }; }, 6000);
     out.c2_phone_hint_shown = await ph.p.evaluate(() => { const s = window.FileTube.remoteControl.state(); return !!(s && s.state !== 'playing' && (s.state === 'blocked' || s.needsClick === true)); });
+    out.c2_click_target = await sp.ev(() => { const r = document.querySelector('#remote-pill .remote-pill-text').getBoundingClientRect(); const e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return e ? (e.tagName + '.' + String(e.className).slice(0, 60) + ' "' + e.textContent.slice(0, 60) + '"') : null; });
     await sp.realClick();
+    await new Promise((r) => setTimeout(r, 600));
+    out.c2_after_click = Object.assign({}, (await snap(sp)).el, { hasBeenActive: await sp.ev(() => navigator.userActivation.hasBeenActive) });
     await ph.rc(() => window.FileTube.remoteControl.toggle());
     out.c2_after_click_and_play = await ph.until(async () => { const s = await ph.state(); return s && s.state === 'playing' && s.state; }, 8000);
+    await new Promise((r) => setTimeout(r, 1500));
     out.c2_pc_after = (await snap(sp)).el;
+    out.c2_phone_after = await ph.p.evaluate(() => { const s = window.FileTube.remoteControl.state(); return { state: s.state, needsClick: s.needsClick, volume: s.volume }; });
     await spCtx.close(); await phCtx.close();
   }
   await gesture.close();

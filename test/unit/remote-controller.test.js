@@ -227,3 +227,14 @@ test('v1.353 volume: leave drops a pending level (nothing is sent to a PC this p
   h.advance(1000);
   assert.deepStrictEqual(h.cmds().map((x) => x.args.level), [0.5], 'the pending 0.6 died with the session');
 });
+
+test('v1.353 volume: a level still waiting when this phone leaves never reaches the NEXT speaker it picks', () => {
+  const h = harness();
+  h.c.select(PC);
+  h.c.volume(0.5); h.c.volume(0.6); // 0.6 waits out the throttle
+  h.c.leave();
+  h.c.select({ deviceId: 'pc2', label: 'Den', state: PC.state });
+  h.advance(1000);
+  const sent = h.cmds().map((x) => [x.targetDeviceId, x.args.level]);
+  assert.deepStrictEqual(sent, [['pc', 0.5]], 'nothing went to pc2');
+});

@@ -297,3 +297,23 @@ test('v1.353 a stale tap target never opens the bar: the speaker left (no repain
     assert.deepStrictEqual(b.st.sets, []);
   } finally { b.restore(); }
 });
+
+test('v1.353 each turn restarts the 2 s idle timer (the one armed at the tap is cancelled by the turn)', () => {
+  const b = boot();
+  try {
+    b.engine.paint(); openByTap(b);
+    const armed = b.timers.filter((t) => t.live && t.ms === 2000);
+    assert.strictEqual(armed.length, 1, 'one timer at the tap');
+    spin(b, [0, 30, 60]);
+    assert.strictEqual(armed[0].live, false, 'the turn cancelled the tap\'s timer');
+    assert.strictEqual(b.timers.filter((t) => t.live && t.ms === 2000).length, 1, 'and armed a fresh one');
+  } finally { b.restore(); }
+});
+
+test('v1.353 the renderers take only a NUMBER level: a string draws nothing, 0 draws an empty bar', () => {
+  assert.ok(!/ip-vol"|data-skin-voltap|mms-volrow/.test(SK.renderFull('ipod', { track: {}, volume: '0.4' })), 'a string level');
+  assert.ok(!/mms-volrow/.test(SK.renderFull('apple', { track: {}, volume: '0.4' })), 'a string level (Cider)');
+  const zero = SK.renderFull('ipod', { track: {}, volume: 0 });
+  assert.match(zero, /<div class="ip-vol-fill" style="width:0%">/, 'muted to 0 is still a bar');
+  assert.match(SK.renderFull('spotify', { track: {}, volume: 0 }), /<div class="mms-volfill" style="width:0%">/);
+});
