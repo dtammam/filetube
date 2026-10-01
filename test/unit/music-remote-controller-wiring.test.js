@@ -2,7 +2,7 @@
 
 // [UNIT] v1.348 Listen Control, the phone's wiring in the music view and the skin engine. Binds:
 // every skin renderer wears the "on <device>" badge (the inert-sibling class: one test renders EVERY
-// skin), the Play on... row exists only on request, the one play seam short-circuits before anything
+// skin), the Speakers row exists only on request, the one play seam short-circuits before anything
 // loads here, and the local-mode host controls are still the real elements (mutate and watch red).
 
 const { test } = require('node:test');
@@ -31,14 +31,14 @@ test('every skin renders the on-device badge with the label escaped, and none wi
   }
 });
 
-test('the main menu offers Play on... only when asked, between Shuffle Songs and Now Playing', () => {
+test('the main menu offers Speakers only when asked, between Shuffle Songs and Now Playing', () => {
   const labels = (o) => SK.menuStaticItems({ type: 'main' }, o).map((r) => r.label);
-  assert.ok(!labels({ hasCurrent: true }).includes('Play on...'));
+  assert.ok(!labels({ hasCurrent: true }).includes('Speakers'));
   const l = labels({ hasCurrent: true, hasPlayOn: true });
-  assert.ok(l.indexOf('Play on...') === l.indexOf('Shuffle Songs') + 1);
-  assert.ok(l.indexOf('Now Playing') > l.indexOf('Play on...'));
+  assert.ok(l.indexOf('Speakers') === l.indexOf('Shuffle Songs') + 1);
+  assert.ok(l.indexOf('Now Playing') > l.indexOf('Speakers'));
   assert.deepStrictEqual(SK.menuStaticItems({ type: 'playon' }, {}), null, 'its rows come from the view (cfg.load)');
-  assert.strictEqual(SK.menuTitle({ type: 'playon' }), 'Play on...');
+  assert.strictEqual(SK.menuTitle({ type: 'playon' }), 'Speakers');
 });
 
 test('the one play seam: playAt sends to the PC before it asks, verifies or loads anything here', () => {
@@ -67,7 +67,7 @@ test('local mode keeps the REAL host controls byte-for-byte; remote swaps only t
   assert.match(SURFACE, /hostCtl\('pp-btn'\)[\s\S]{0,40}pb\.click\(\)/, 'the engine still presses the control it is handed');
 });
 
-test('the badge tap and Play on... pick reach the view: pocket menu where there is one, else end remote control', () => {
+test('the badge tap and Speakers pick reach the view: pocket menu where there is one, else end remote control', () => {
   assert.match(SURFACE, /closest\('\[data-skin-playon\]'\)\) \{\s*if \(pocket && pocket\.active\(\) && pocket\.openPlayOn\) pocket\.openPlayOn\(\);\s*else if \(typeof config\.onPlayOnBadge === 'function'\)/);
   assert.match(SURFACE, /it\.action === 'playon'[\s\S]{0,200}cfg\.onPlayOn\(it\.target \|\| null\)/);
   assert.match(MUSIC, /onPlayOn: remoteChoose,/);
@@ -82,4 +82,15 @@ test('a device controlling a PC is never offered the handoff card (D8)', () => {
   assert.strictEqual(typeof fn, 'function');
   assert.strictEqual(fn(presence, Object.assign({}, base, { controllingRemote: true })), false);
   assert.strictEqual(fn(presence, Object.assign({}, base, { controllingRemote: false })), true);
+});
+
+test('v1.350: the user-visible name is Speakers everywhere, the Account note included (types and ids unchanged)', () => {
+  const setupHtml = read('public/setup.html');
+  const setupJs = read('public/js/setup.js');
+  assert.match(setupHtml, /id="device-name-note">Only this browser\. Shown in Speakers and when this device controls another\./);
+  assert.match(setupJs, /'Only this browser\. Shown in Speakers and when this device controls another\. Leave blank to use '/);
+  for (const [name, src] of [['setup.html', setupHtml], ['setup.js', setupJs], ['music-skins.js', read('public/js/music-skins.js')], ['skin-surface.js', SURFACE], ['music.js', MUSIC]]) {
+    assert.ok(!/Play on\.\.\./.test(src), name + ' never says "Play on..." again');
+  }
+  assert.strictEqual(SK.menuStaticItems({ type: 'main' }, { hasPlayOn: true }).find((r) => r.node && r.node.type === 'playon').label, 'Speakers');
 });

@@ -10522,7 +10522,7 @@ function getAutoDeviceLabel() {
   return type + ' \u00B7 ' + deviceWord(getDeviceId());
 }
 
-// What every presence ping, Play on... row and "Controlled by" pill shows: the typed name when set.
+// What every presence ping, Speakers row and "Controlled by" pill shows: the typed name when set.
 function getDeviceLabel() {
   return getDeviceName() || getAutoDeviceLabel();
 }

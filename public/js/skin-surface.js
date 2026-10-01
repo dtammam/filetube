@@ -1331,7 +1331,7 @@
         setCursor(p.cursor + delta);
         return 0;
       },
-      // the "on <device>" badge: open Main > Play on... (the same level the menu row opens)
+      // the "on <device>" badge: open Main > Speakers (the same level the menu row opens)
       openPlayOn: function () {
         stack = stack.slice(0, 1);
         stack.push(makeLevel({ type: 'playon' }));

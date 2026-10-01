@@ -156,7 +156,7 @@
   // APPLE MUSIC - art-dominant, a blurred color-bleed of the cover fills the screen,
   // oversized title, a grab handle to dismiss, one big white play.
   // v1.348 Listen Control: while another device plays, every renderer wears the same small "on <device>"
-  // badge (ctx.remote = {label}); its tap opens Play on... (the engine's [data-skin-playon] arm). ONE
+  // badge (ctx.remote = {label}); its tap opens Speakers (the engine's [data-skin-playon] arm). ONE
   // writer for all skins, so a renderer can never ship without it (the inert-sibling class).
   function remoteBadge(ctx) {
     var r = ctx && ctx.remote;
@@ -593,7 +593,7 @@
     { key: 'recent-played', label: 'Recently Played' },
   ];
   var ROOT_TITLE = { click: 'Click' }; // the cheeky name, never the product's (Dean)
-  var TYPE_TITLE = { playon: 'Play on...', music: 'Music', playlists: 'Playlists', artists: 'Artists', albums: 'Albums', songs: 'Songs', genres: 'Genres',
+  var TYPE_TITLE = { playon: 'Speakers', music: 'Music', playlists: 'Playlists', artists: 'Artists', albums: 'Albums', songs: 'Songs', genres: 'Genres',
     recentArtists: 'Recent Artists', extras: 'Extras', skins: 'Skins', games: 'Games', settings: 'Settings', about: 'About', lighting: 'Lighting' };
   function menuTitle(node, style) {
     var n = node || {};
@@ -615,7 +615,7 @@
       if (o.hasGames || o.hasSkins) rows.push({ label: 'Extras', node: { type: 'extras' } });
       rows.push({ label: 'Settings', node: { type: 'settings' } });
       rows.push({ label: 'Shuffle Songs', action: 'shuffle' });
-      if (o.hasPlayOn) rows.push({ label: 'Play on...', node: { type: 'playon' } });
+      if (o.hasPlayOn) rows.push({ label: 'Speakers', node: { type: 'playon' } });
       if (o.hasCurrent) rows.push({ label: 'Now Playing', action: 'nowplaying' });
       return rows;
     }
