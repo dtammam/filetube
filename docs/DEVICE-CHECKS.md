@@ -120,8 +120,9 @@ the checks.
 - [ ] v1.352.0 - Same untouched tab: on the phone, Speakers shows the machine. Pick it, and BEFORE you pick a song the phone says "Click the PC's tab once to let it play". Press play/pause on the phone: it shows the same hint instead of doing nothing. Click once anywhere on the PC tab: both hints go away, and songs from the phone play.
 - [ ] v1.352.0 - Close the speaker tab (or quit the browser) and open the bookmark again: still listed on the phone. (Chrome keeps the click across a plain reload, so a reload alone may not need a new click.)
 - [ ] v1.352.0 - Signed out on the speaker machine, open the bookmark and sign in: you land on Music with Remote control On.
-- [ ] v1.352.0 - (slow) Leave the speaker machine signed in and use it at least every couple of weeks: after 30+ days it is still signed in.
-- [ ] v1.352.0 - (Optional, kiosk) Launch Chrome with `--kiosk --autoplay-policy=no-user-gesture-required <bookmark>`: a phone play plays with no click.
+- [ ] v1.352.0 - (slow) Leave the speaker machine signed in and use it at least every couple of weeks: after 30+ days it is still signed in (it asks again about six months after the password was last typed).
+- [ ] v1.352.0 - Open the speaker bookmark on the phone: the address bar drops `?remote=on`, and the phone does not show up under Speakers on another device.
+- [ ] v1.352.0 - (Optional, kiosk) Launch Chrome with `--kiosk --autoplay-policy=no-user-gesture-required <bookmark>`: a phone play plays with no click, and once it plays neither the phone nor the PC asks for a click.
 - [ ] v1.352.0 - (Optional) Chrome with "Continue where you left off": quit and reopen the browser on the speaker tab; note whether it comes back On by itself.
 - [ ] v1.352.0 - Open a library video as `/watch.html?v=<id>&t=1m30s`: it starts at 1:30 even if you had watched further.
 - [ ] v1.352.0 - On an Android phone or a desktop Chrome/Edge install: long-press (or right-click) the FileTube icon: Music, Now Playing, Shuffle Songs and Podcasts are listed and each opens the right place (a reinstall may be needed first). On the iPhone nothing shows, as the README says.

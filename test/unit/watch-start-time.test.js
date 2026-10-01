@@ -69,6 +69,9 @@ test('a start at or past the end plays from 0 (known duration, and one learned a
     r.player.load('v1', { ...VIDEO, startAt: 900 }, { slot: r.w.document.getElementById('player-slot') });
     await settle();
     assert.strictEqual(r.el.currentTime, 0, 'duration 600 known up front');
+    const P = require('../../public/js/player.js').resolveExplicitStart;
+    assert.strictEqual(P(600, 600), 0, 'exactly the end is the end');
+    assert.strictEqual(P(599, 600), 599);
   } finally { r.close(); }
   const u = realm(0);
   try {

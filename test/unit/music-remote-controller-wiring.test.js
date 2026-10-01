@@ -103,6 +103,7 @@ test('v1.352 W0: the phone says to click the PC when it is blocked OR has had no
   assert.strictEqual(M.remoteNeedsClick({ state: 'playing', needsClick: false }), false);
   assert.strictEqual(M.remoteNeedsClick({ state: 'paused', needsClick: 'true' }), false, 'only a real true');
   assert.strictEqual(M.remoteNeedsClick(null), false);
+  assert.strictEqual(M.remoteNeedsClick({ state: 'playing', needsClick: true }), false, 'gate r1: never while it plays (a kiosk that plays unclicked)');
   // the two surfaces use it (the wire, not just the decision)
   const ctx = MUSIC.slice(MUSIC.indexOf('function remoteSkinCtx() {'), MUSIC.indexOf('function remotePlayAt('));
   assert.match(ctx, /artist: remoteNeedsClick\(st\) \? REMOTE_CLICK_HINT :/);

@@ -982,8 +982,17 @@ function queuedChaptersDiffer(rows, baseId, chapters) {
 // the key is rebuilt here, the same way lib/music/store.js albumKeyFor builds it.
 var MUSIC_ALBUM_KEY_SEP = '\u241F';
 var MUSIC_LINK_PLAYLISTS = ['liked', 'recent-played', 'recent-added'];
+// trimmed, as albumKeyFor trims the tags it builds the key from (gate r1 qa S3)
 function musicLinkName(v) {
-  return (typeof v === 'string' && v.trim() && v.indexOf(MUSIC_ALBUM_KEY_SEP) < 0 && v.indexOf('\u0000') < 0) ? v : null;
+  var t = typeof v === 'string' ? v.trim() : '';
+  return (t && t.indexOf(MUSIC_ALBUM_KEY_SEP) < 0 && t.indexOf('\u0000') < 0) ? t : null;
+}
+// A name from a link, echoed in a toast: text only (never markup), and capped so a crafted link cannot
+// put a long message on screen (gate r1, security S2).
+var MUSIC_LINK_TOAST_NAME_MAX = 40;
+function musicLinkToastName(name) {
+  var n = String(name || '');
+  return n.length > MUSIC_LINK_TOAST_NAME_MAX ? n.slice(0, MUSIC_LINK_TOAST_NAME_MAX - 1) + '\u2026' : n;
 }
 // -> { open: {type:'artist',artist} | {type:'album',artist,album} | {type:'playlist',key} | null,
 //      mode: 'play' | 'shuffle' | null } or null (nothing to do). A link that NAMES something it
@@ -1030,15 +1039,16 @@ function musicDrillLink(drill) {
 }
 
 // v1.352 W0 (Listen Control, phone side): the PC refused to start sound (blocked), or its tab has had
-// no click yet (needsClick, known as soon as this device picks it, before any song).
+// no click yet (needsClick, known as soon as this device picks it, before any song). Never while the PC
+// is playing: sound is the proof it may (gate r1, a kiosk false alarm).
 var REMOTE_CLICK_HINT = "Click the PC's tab once to let it play";
-function remoteNeedsClick(st) { return !!(st && (st.state === 'blocked' || st.needsClick === true)); }
+function remoteNeedsClick(st) { return !!(st && st.state !== 'playing' && (st.state === 'blocked' || st.needsClick === true)); }
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     REMOTE_CLICK_HINT,
     remoteNeedsClick,
-    MUSIC_ALBUM_KEY_SEP, musicLinkIntent, musicLinkFor, musicAlbumKeyFor, musicDrillLink, // v1.352 L3
+    MUSIC_ALBUM_KEY_SEP, musicLinkIntent, musicLinkFor, musicAlbumKeyFor, musicDrillLink, musicLinkToastName, // v1.352 L3
     chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC, CHAPTER_VERIFY, chapterAdoptSeekFor, queuedChaptersDiffer,
     liveListenPosition, listenHandoffChapterIndex, chapterStartFor, handoffPaused,
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
@@ -4607,7 +4617,9 @@ if (typeof module !== 'undefined' && module.exports) {
         if (signal.aborted || gen !== playSelectGen) return; // a newer pick or a torn-down view owns the page
         var tracks = menuItemsOf(d);
         if (!tracks.length) {
-          if (typeof window.showToast === 'function') window.showToast('Could not find ' + src.name + ' in your music');
+          if (typeof window.showToast === 'function') {
+            window.showToast(o.type === 'playlist' ? 'No songs in ' + src.name + ' yet' : 'Could not find ' + musicLinkToastName(src.name) + ' in your music');
+          }
           return;
         }
         if (src.clientShuffle) tracks = fisherYatesShuffle(tracks);
@@ -4852,6 +4864,9 @@ if (typeof module !== 'undefined' && module.exports) {
       render().then(function () {
         if (signal.aborted) return;
         return applyMusicLink(linkIntent);
+      }, function (err) {
+        console.error('Music: initial render failed', err);
+        showLoadError(); // the page never loaded: the same error view as every other branch (gate r1 qa S5)
       }).catch(function (err) {
         console.error('Music: link failed', err);
         if (typeof window.showToast === 'function') window.showToast('Could not open that music link.');

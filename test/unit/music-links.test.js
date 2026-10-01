@@ -96,3 +96,19 @@ test('init reads the link once, strips mode, and acts only after the play branch
   const click = SRC.slice(SRC.indexOf("var copyLink = e.target.closest('.music-drill-copylink');"));
   assert.match(click.slice(0, 500), /copyTextToClipboard\(window\.location\.origin \+ linkPath\)/);
 });
+
+test('v1.352 gate r1: names are trimmed like the server trims tags, and a toast echoes at most 40 characters', () => {
+  assert.deepStrictEqual(I('?artist=Queen%20&album=%20Jazz'), { open: { type: 'album', artist: 'Queen', album: 'Jazz' }, mode: null });
+  assert.strictEqual(M.musicLinkToastName('Queen'), 'Queen');
+  const long = 'Session expired. Sign in again at evil.example to keep listening';
+  const t = M.musicLinkToastName(long);
+  assert.strictEqual(t.length, 40);
+  assert.ok(t.endsWith('\u2026'));
+  assert.match(SRC, /'Could not find ' \+ musicLinkToastName\(src\.name\) \+ ' in your music'/, 'the not-found toast uses the cap');
+  assert.match(SRC, /'No songs in ' \+ src\.name \+ ' yet'/, 'an empty playlist is not "not found"');
+});
+
+test('v1.352 gate r1: playFromMenu plays only a list adoptMenuList accepted (never the old queue: the wrong-track class)', () => {
+  const body = SRC.slice(SRC.indexOf('    function playFromMenu(req) {'), SRC.indexOf('    function adoptMenuList(req) {'));
+  assert.match(body, /^\s*function playFromMenu\(req\) \{\s*if \(!adoptMenuList\(req\)\) return;\s*playAt\(Number\(req\.index\)/);
+});

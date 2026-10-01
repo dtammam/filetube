@@ -52,7 +52,8 @@
   }
 
   // v1.352 W0: true only when the browser says the page has never been clicked or typed in. A browser
-  // without navigator.userActivation reports false, so it never raises a false alarm.
+  // without navigator.userActivation reports false. A tab allowed to play without a click is cleared
+  // when its sound starts (onPlaying); until then it may show the hint once.
   function needsClickNow(ua) {
     return !!(ua && ua.hasBeenActive === false);
   }
@@ -169,6 +170,15 @@
       sendState();
       syncHeartbeat();
     }
+    // v1.352 gate r1 (qa W1 = adversary W1, measured): sound that actually started proves the browser
+    // lets this tab play (a kiosk flag, an allow-autoplay site setting, Chrome's engagement allowance),
+    // so the click hint goes even though the page was never clicked.
+    function onPlaying() {
+      if (!on || !needsClick) return;
+      needsClick = false;
+      sendState();
+      notify();
+    }
     // The first click or key since load: the browser now lets this tab start sound.
     function onActivation() {
       if (!needsClick) return;
@@ -187,6 +197,7 @@
         env.document.addEventListener(t, onMedia, true);
       });
       env.document.addEventListener('filetube:autostart', onAutostart);
+      env.document.addEventListener('playing', onPlaying, true);
       ACTIVATION_EVENTS.forEach(function (t) { env.document.addEventListener(t, onActivation, true); });
     }
     function unbindMedia() {
@@ -196,6 +207,7 @@
         env.document.removeEventListener(t, onMedia, true);
       });
       env.document.removeEventListener('filetube:autostart', onAutostart);
+      env.document.removeEventListener('playing', onPlaying, true);
       ACTIVATION_EVENTS.forEach(function (t) { env.document.removeEventListener(t, onActivation, true); });
     }
 
@@ -639,17 +651,22 @@
   }
 
   var LINK_TOAST = 'Remote control is on: your other devices can play music here';
+  // The device class music-skins.js sets once at load (it loads before this script on every shell).
+  function isPhoneDoc(doc) {
+    try { return !!(doc && doc.documentElement && doc.documentElement.classList.contains('is-phone')); } catch (_) { return false; }
+  }
 
   function bootWhenReady(w, remote, control, fromLink) {
     function boot() {
       try {
         if (w.ui && w.document.body) mountPill(w.document, remote, w.ui);
       } catch (_) { /* no pill: the switch still works */ }
-      if (fromLink) {
+      // v1.352 gate r1 (qa W2, Dean's ruling): a phone is a controller, never a target (it has no Remote
+      // control button to turn it off), so on a phone the link is stripped and does nothing.
+      if (fromLink && !isPhoneDoc(w.document)) {
         // setOn writes the per-tab flag (a reload keeps it On) and swallows a blocked sessionStorage
-        var was = remote.isOn();
         remote.setOn(true);
-        if (!was && remote.isOn() && typeof w.showToast === 'function') w.showToast(LINK_TOAST);
+        if (remote.isOn() && typeof w.showToast === 'function') w.showToast(LINK_TOAST);
       }
       try {
         if (w.sessionStorage.getItem(STORAGE_KEY) === '1') remote.setOn(true);

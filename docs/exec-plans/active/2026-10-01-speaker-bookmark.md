@@ -163,7 +163,7 @@ Options:
 
 | Option | Verdict |
 |---|---|
-| **Sliding renewal:** the gate re-issues the cookie (same uid, same tv, fresh 30 days) on an authenticated request once the current one is past half its life (15+ days old). | **Recommended.** A speaker tab left open renews itself through its own state reports and polls; a machine opened at least once a month never logs in again. Every device benefits (the phone PWA too). Revocation is unchanged: disable, delete and token-version bump are still checked on every request. At most one Set-Cookie per 15 days per device. |
+| **Sliding renewal:** the gate re-issues the cookie (same uid, same tv, fresh 30 days) on an authenticated request once the current one is past half its life (15+ days old). | **Recommended.** A speaker tab left open renews itself through its own state reports and polls; a machine opened at least once every 15 days stays signed in (gate r1 correction: not "once a month"; renewal is at half of a 30-day life), up to the 180-day ceiling Dean ruled at gate r1. Every device benefits (the phone PWA too). Revocation is unchanged: disable, delete and token-version bump are still checked on every request. At most one Set-Cookie per 15 days per device. |
 | A longer fixed TTL (env, e.g. 365 days) | Weakens every session to fix one machine; still expires on a schedule. |
 | A separate speaker token / pairing code | A second credential type, its own storage, revocation and UI. The channel needs the SAME user as the phone anyway, so it buys nothing over a renewed session. |
 | A dedicated "speaker" user account | Does not work: Listen Control only pairs devices of one user. |
@@ -425,6 +425,33 @@ row. Logged to ROADMAP Planned at his request: Speakers resume after the phone c
 the first chapter's name on the phone.
 
 ### Gate
+
+Gate: CHANGES r1 @7599db7e - adversary
+Gate: CHANGES r1 @7599db7e - qa
+Gate: APPROVED r1 @7599db7e - security-brief
+
+r1 findings and what the fix round did (all measured by the seats unless marked):
+- adversary W1 = qa W1 (measured, kiosk Chromium): needsClick stayed true while playing; the PC nagged and the phone's artist line
+  read the click hint. FIXED: the media element's `playing` event clears needsClick (remote.js onPlaying), and the phone never
+  shows the hint while the PC plays (music.js remoteNeedsClick). Row d now asserts needsClick false and the pill not asking,
+  measured: d_needsClick_after_play false, pill "Controlled by ...", hasBeenActive still false. Known and accepted: before the
+  first song, a kiosk shows the hint once when picked.
+- qa W2 (measured, iPhone context): ?remote=on made a phone a hidden target. Dean ruled 2026-10-01: ignore on a phone. FIXED: on
+  html.is-phone the param is stripped and does nothing; unit test + proof row (phone_on false, not listed).
+- adversary W2 = security S1 (measured: a 16-day cookie renewed after logout): no ceiling on a copied cookie. Dean ruled
+  2026-10-01: a hard cap of 180 days. FIXED: tokens carry oat (the password time), renewal carries it and stops at 180 days; a
+  pre-v1.352 token uses its iat (nobody is logged out). Unit tests drive 11 renewals to the ceiling and a legacy token.
+- security S2: the not-found toast echoed link text at any length. FIXED: capped at 40 characters; an empty playlist says
+  "No songs in Liked yet" (qa S2).
+- security S3: comment "PATH too" -> "PATH only". FIXED. qa S3: names are now trimmed like albumKeyFor. qa S4: Q7 prose fixed.
+  qa S5: a failed first render on a link shows the load error view. adversary S1: README names the pages that carry remote.js.
+- adversary S2 survivors: bound now: playFromMenu ignoring adoptMenuList (lock), the login success path (lock), the NEXT_MAX
+  and resolveExplicitStart boundaries. DISCLOSED, not bound in CI (covered only by tools/listen-control-proof/links-proof.js):
+  applyMusicLink's six branches; the togglePlayPause gen/paused checks; the clampStart gen check; the adopt liveMode seek; the
+  navigate-timeout idle report's needsClick; the pre-decode traversal check (equivalent in effect, the decoded check follows).
+- DISCLOSED, not fixed: adversary S3 (reasoned): a renewal on a request in flight during a password change can overwrite the new
+  cookie with the old tv, signing that browser out (fails closed). qa S1 (reasoned): opening the same `&t=` again in-app while
+  that video plays does not seek (no surface builds such a link today).
 
 ## 8. Device checks Dean would owe (go into DEVICE-CHECKS.md, one line each, at release)
 

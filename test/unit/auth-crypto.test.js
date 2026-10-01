@@ -161,3 +161,14 @@ test('tokensEqual: exact match only; empty/absent never match (the Shortcut head
   assert.equal(tokensEqual('', ''), false, 'empty never matches — an unset env must not equal an empty header');
   assert.equal(tokensEqual('abc', undefined), false);
 });
+
+test('v1.352: signSession stamps oat (now by default, or the one carried in) and verifySession returns it', () => {
+  const secret = generateSecretForOat();
+  const now = 1_800_000_000;
+  const a = verifySession(signSession({ uid: 1, tv: 0 }, secret, { nowSeconds: now }), secret, { nowSeconds: now });
+  assert.equal(a.oat, now);
+  const b = verifySession(signSession({ uid: 1, tv: 0, oat: now - 500 }, secret, { nowSeconds: now }), secret, { nowSeconds: now });
+  assert.equal(b.oat, now - 500);
+  assert.equal(b.iat, now);
+});
+function generateSecretForOat() { return require('../../lib/auth/crypto').generateSecret(); }

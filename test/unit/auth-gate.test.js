@@ -368,3 +368,60 @@ test('v1.352 W1: sessionWantsRenewal is half the life, inclusive', () => {
   assert.equal(gate.sessionWantsRenewal({ iat: 'x' }, ttl, ttl), false);
   assert.equal(gate.sessionWantsRenewal(null, ttl, ttl), false);
 });
+
+// ---- v1.352 gate r1 (adversary W2 = security S1, Dean's ruling): a 180-day ceiling on renewal ----
+
+function legacyToken(payload, secret) { // a pre-v1.352 token: no oat field
+  const crypto = require('node:crypto');
+  const b = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  return b + '.' + crypto.createHmac('sha256', secret).update(b).digest('base64url');
+}
+
+test('v1.352 gate r1: renewal carries the sign-in time (oat) and stops 180 days after it', () => {
+  const secret = authCrypto.generateSecret();
+  const DAY = 86400;
+  const login = 1_800_000_000;
+  let now = login;
+  const user = { id: 5, tokenVersion: 3, disabled: false };
+  const g = gate.createAuthGate({ store: fakeStore({ count: 1, user }), secret, cookieName: 'c', nowSeconds: () => now });
+  const hit = (tok) => { const res = fakeRes(); let ok = false; g(fakeReq({ path: '/api/x', accept: 'application/json', cookie: 'c=' + encodeURIComponent(tok) }), res, () => { ok = true; }); const sc = res._headers['set-cookie']; return { ok, tok: sc ? decodeURIComponent(/^c=([^;]+)/.exec(sc)[1]) : null }; };
+  let tok = authCrypto.signSession({ uid: 5, tv: 3 }, secret, { nowSeconds: login });
+  assert.equal(authCrypto.verifySession(tok, secret, { nowSeconds: login }).oat, login, 'a login stamps oat = now');
+  // renew every 16 days: oat never moves
+  let renewals = 0;
+  for (now = login + 16 * DAY; now - login < 180 * DAY; now += 16 * DAY) {
+    const r = hit(tok);
+    assert.equal(r.ok, true);
+    if (r.tok) { renewals += 1; tok = r.tok; assert.equal(authCrypto.verifySession(tok, secret, { nowSeconds: now }).oat, login, 'oat carried, day ' + (now - login) / DAY); }
+  }
+  assert.ok(renewals >= 10, 'renewed on the way: ' + renewals);
+  // now is past 180 days after the sign-in: still valid (its last renewal is < 30 days old), never renewed again
+  const late = hit(tok);
+  assert.equal(late.ok, true, 'the current cookie still works until its own expiry');
+  assert.equal(late.tok, null, 'no renewal past the 180-day ceiling');
+  now += 30 * DAY;
+  assert.equal(hit(tok).ok, false, 'and then it expires: sign in again');
+});
+
+test('v1.352 gate r1: a pre-v1.352 token (no oat) uses its iat as the sign-in time; a bad oat is refused', () => {
+  const secret = authCrypto.generateSecret();
+  const DAY = 86400;
+  const iat = 1_800_000_000;
+  const legacy = legacyToken({ uid: 5, tv: 3, iat, exp: iat + 30 * DAY }, secret);
+  const p = authCrypto.verifySession(legacy, secret, { nowSeconds: iat + 1 });
+  assert.ok(p, 'an existing session is not logged out');
+  assert.equal(p.oat, undefined);
+  assert.equal(gate.sessionWantsRenewal(p, iat + 16 * DAY, 30 * DAY), true);
+  assert.equal(gate.sessionWantsRenewal({ iat, oat: iat - 170 * DAY }, iat + 16 * DAY, 30 * DAY), false, '186 days after the password: no renewal');
+  assert.equal(gate.sessionWantsRenewal({ iat, oat: iat - 160 * DAY }, iat + 16 * DAY, 30 * DAY), true, '176 days: still renews');
+  assert.equal(authCrypto.verifySession(legacyToken({ uid: 5, tv: 3, iat, exp: iat + 30 * DAY, oat: 'x' }, secret), secret, { nowSeconds: iat + 1 }), null, 'a non-integer oat is a structural surprise');
+  assert.throws(() => authCrypto.signSession({ uid: 5, tv: 3, oat: iat + 10 }, secret, { nowSeconds: iat }), /oat/);
+  assert.equal(gate.SESSION_MAX_AGE_SECONDS, 180 * DAY);
+});
+
+test('v1.352 gate r1: the next cap is inclusive at exactly NEXT_MAX encoded chars', () => {
+  const pad = (n) => '/m?x=' + 'a'.repeat(n - '%2Fm%3Fx%3D'.length);
+  assert.equal(encodeURIComponent(pad(gate.NEXT_MAX)).length, gate.NEXT_MAX);
+  assert.ok(gate.loginTarget(pad(gate.NEXT_MAX)).startsWith('/login?next='), 'exactly the cap: kept');
+  assert.equal(gate.loginTarget(pad(gate.NEXT_MAX + 1)), '/login', 'one over: dropped');
+});

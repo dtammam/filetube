@@ -48,3 +48,9 @@ test('nothing it returns can leave the origin when assigned (no // or /\\ start,
     assert.strictEqual(new URL(out, ORIGIN + '/login').origin, ORIGIN, raw + ' -> ' + out);
   }
 });
+
+test('v1.352 gate r1: the sign-in success path goes through safeNextFrom with the page\'s own search and origin', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public', 'js', 'login.js'), 'utf8');
+  assert.match(src, /function safeNext\(\) \{\s*return safeNextFrom\(window\.location\.search, window\.location\.origin\);\s*\}/);
+  assert.match(src, /window\.location\.assign\(safeNext\(\)\);/);
+});

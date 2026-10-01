@@ -499,3 +499,41 @@ test('v1.352 W1: a blocked sessionStorage still turns the page On', async () => 
     assert.strictEqual(r.sources.length, 1);
   } finally { r.close(); }
 });
+
+// ---- v1.352 gate r1 -------------------------------------------------------
+
+test('v1.352 gate r1: sound that starts clears needsClick (a kiosk or allow-autoplay tab never clicked), posted at once', () => {
+  const ua = { hasBeenActive: false }; // stays false: the browser allowed sound without a click
+  const h = harness({ userActivation: ua });
+  const seen = [];
+  h.t.onChange((on, attached, label, nc) => seen.push(nc));
+  h.t.setOn(true); h.attach();
+  assert.strictEqual(h.states()[0].needsClick, true);
+  const n = h.states().length;
+  (h.listeners.playing || []).forEach((f) => f({ type: 'playing' }));
+  assert.strictEqual(h.states().length, n + 1, 'posted at once');
+  assert.strictEqual(h.states()[n].needsClick, false);
+  assert.strictEqual(h.t.needsClick(), false);
+  assert.strictEqual(seen[seen.length - 1], false, 'the pill hears it');
+  h.media('seeked'); h.advance(600);
+  const s = h.states();
+  assert.strictEqual(s[s.length - 1].needsClick, false, 'and it stays down although hasBeenActive is still false');
+});
+
+test('v1.352 gate r1 (Dean): on a phone ?remote=on is stripped but turns nothing on', async () => {
+  const dom = new JSDOM('<!doctype html><html class="is-phone"><body></body></html>', { url: 'http://localhost/music?remote=on&mode=shuffle', runScripts: 'outside-only' });
+  const w = dom.window;
+  const toasts = [];
+  w.showToast = (m) => toasts.push(m);
+  w.fetch = () => Promise.resolve({ ok: true, json: async () => [] });
+  w.EventSource = class { addEventListener() {} close() {} };
+  w.FileTube = { getDeviceId: () => 'dev-1', getDeviceLabel: () => 'Phone', player: null, navigate() {} };
+  w.eval(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'remote.js'), 'utf8'));
+  await new Promise((res) => { if (w.document.readyState === 'loading') w.document.addEventListener('DOMContentLoaded', () => res()); else res(); });
+  try {
+    assert.strictEqual(w.location.search, '?mode=shuffle', 'the param leaves the address bar, the rest stays');
+    assert.strictEqual(w.FileTube.remote.isOn(), false, 'a phone is never a target');
+    assert.strictEqual(w.sessionStorage.getItem('ft-remote-target-on'), null);
+    assert.deepStrictEqual(toasts, []);
+  } finally { w.close(); }
+});

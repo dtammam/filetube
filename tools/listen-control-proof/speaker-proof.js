@@ -189,6 +189,10 @@ async function main() {
     await ph.p.evaluate(() => window.FileTube.remoteControl.play(['song2'], 0));
     out.d_state = await ph.until(async () => { const st = await ph.targetState(id); return st && st.state === 'playing' && st.state; }, 8000) || (await ph.targetState(id)).state;
     out.d_speaker_playing = await sp.ev(() => window.FileTube.player.getRemoteSnapshot().playing);
+    // gate r1: a kiosk plays unclicked, so the click hint must go (it never clicks: hasBeenActive stays false)
+    out.d_needsClick_after_play = await ph.until(async () => { const st = await ph.targetState(id); return st && st.needsClick === false ? 'false' : null; }, 5000) || String((await ph.targetState(id)).needsClick);
+    out.d_pill_after_play = await sp.ev(() => { const e = document.getElementById('remote-pill'); return e ? (e.hidden ? 'hidden' : e.textContent) : 'none'; });
+    out.d_has_been_active_after_play = await sp.ev(() => navigator.userActivation.hasBeenActive);
     await sp.page.close();
     // b. /?remote=on (Home): listed; a phone play navigates it to /music and plays
     const sb = await speakerPage(spCtx);
@@ -201,6 +205,18 @@ async function main() {
     await ph.p.evaluate(() => window.FileTube.remoteControl.play(['song3'], 0));
     out.b_state = await ph.until(async () => { const st = await ph.targetState(bid); return st && st.state === 'playing' && st.track && st.track.id; }, 12000);
     out.b_speaker_path = await sb.ev(() => window.location.pathname);
+    // gate r1 (Dean): a phone opening the bookmark strips it and stays a controller
+    const mobile = await kiosk.newContext(Object.assign({}, pw.devices['iPhone 13']));
+    await mobile.addCookies([cookie]);
+    const mp = await mobile.newPage();
+    await mp.goto(srv.base + '/music?remote=on&playlist=liked', { waitUntil: 'load' });
+    await mp.waitForTimeout(1500);
+    out.phone_is_phone = await mp.evaluate(() => document.documentElement.classList.contains('is-phone'));
+    out.phone_url = mp.url().replace(srv.base, '');
+    out.phone_on = await mp.evaluate(() => window.FileTube.remote.isOn());
+    const mid = await mp.evaluate(() => window.FileTube.getDeviceId());
+    out.phone_listed_as_speaker = (await ph.targets()).some((t) => t.deviceId === mid);
+    await mobile.close();
     await spCtx.close(); await phCtx.close();
   }
   await kiosk.close();

@@ -1,6 +1,6 @@
 {
   "a_listed": true,
-  "a_listed_ms": 295,
+  "a_listed_ms": 183,
   "a_speaker_url": "/music",
   "a_history_state_url": "/music",
   "a_on": true,
@@ -16,7 +16,7 @@
   "c_state_after_play": "blocked",
   "c_speaker_playing_after_play": false,
   "c_needsClick_after_click": "false",
-  "c_pill_after_click": "Controlled by Linux PC \u00b7 RobinStop",
+  "c_pill_after_click": "Controlled by Linux PC · PineStop",
   "c_state_after_toggle": "playing",
   "c_speaker_playing_after_toggle": true,
   "g_second_on": true,
@@ -40,9 +40,16 @@
   "d_has_been_active": false,
   "d_state": "playing",
   "d_speaker_playing": true,
+  "d_needsClick_after_play": "false",
+  "d_pill_after_play": "Controlled by Linux PC · MapleStop",
+  "d_has_been_active_after_play": false,
   "b_url": "/",
   "b_listed": true,
   "b_state": "song3",
   "b_speaker_path": "/music",
+  "phone_is_phone": true,
+  "phone_url": "/music?playlist=liked",
+  "phone_on": false,
+  "phone_listed_as_speaker": false,
   "errors": []
 }
