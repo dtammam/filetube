@@ -294,5 +294,36 @@ commit (the latter's last owed item, the `rebaseline` dispatch proof, passed 202
 
 ## 8. Evidence and gate verdicts
 
+### Builder evidence (Sonnet, 2026-10-01; branch tip f4f88235)
+
+- **W1:** `visual-settings-coverage.test.js` reads SETTINGS_SECTIONS plus `section(...)`/`openSettingsSection` scenes;
+  three tests, including one that proves the reader can fail (fake section, dropped row, changed key). UNCOVERED
+  = music-folders, tv-folders, podcasts-place, troubleshooting (each with a reason); it can only shrink.
+- **W2:** new `mobile-player` section (open, ungrouped, after Appearance) holds Music skin + Player sticker; scene
+  `['0b','mobile-player','mobile-player']` added; setup-master-detail now expects 15 sections; the two picker tests
+  assert the pickers are in mobile-player and NOT in appearance.
+- **W3:** `.ui-btn--tonal[aria-pressed="true"]` layers `--fill-selected` over the ground (never red, no new token); 2009
+  keeps its gloss. Measured button width, all 16 era x mode combos: identical on and off (2021 light/dark 175px;
+  2014 was 169.39 -> 178.67 before the fix, equal after sizing the On wording semibold in both states).
+  **Disclosed side effect:** the button is wider even when OFF (149px -> 175px in 2021, +26px); toolbar row count and bar height
+  unchanged vs main (1 row / 32px at 1440; the same 2-row wrap / 72px at 900).
+- **W4:** 118 words (Violin dropped for the Violet/Violin 4-letter collision), FNV-1a pinned (`deviceWord('a')` =
+  0xe40c292c mod list). Mutants killed: deviceWord constant (fail 1), getDeviceLabel ignoring the name (fail 2), bidi
+  isolates un-stripped (fail 1), cap 32->64 (fail 2).
+- **W4 deviation:** no new `67b` scene: `9a-settings-account` already shows Account; `capture.js` now seeds
+  `ft-device-id` so its placeholder is deterministic. No UNCOVERED entry existed for account, so nothing to drop.
+- **W5 two-browser proof** (headless Chromium, fresh seeded data dir, writable server, A = Mac UA 1440, B = iPhone UA 390):
+  A button `aria-pressed` false -> true, background-image none -> `linear-gradient(rgba(120,120,128,0.16)...)`, width 175 both,
+  visible wording "Remote control" -> "Remote control: On". B's Play on... targets: `["Mac · Cobalt"]`; B's own label
+  `iPhone · Peach`; Settings placeholder = A's auto label. **FIRST RUN FAILED:** after naming A "Snowy Table" in Settings, B's
+  targets stayed `["Mac · Sorrel"]` for 10s (A's tab already reported the new label; the server only learns a label when the
+  stream opens). Fixed in f4f88235 (target reopens its stream on rename; other tabs via the `storage` event; two
+  mutants red). Re-run: B's targets `["Snowy Table"]` at t+0s with no reload of A. A's pill read
+  "Controlled by iPhone · Peach". Hostile name (`<img onerror>` + RLO + 200 chars): B saw it capped at 32 chars as text,
+  `window.__pwn` undefined in both browsers, 0 injected `<img>` in note/status/pill.
+- **Known limits:** a controller's own rename while attached shows on the PC pill only after it re-attaches (controller
+  label rides the attach URL); not built (scope). No server change.
+- **Lint:** `npm run lint` 0 errors (6 pre-existing warnings); `lint:ui` OK (debt equals exceptions); overlay-containment 0.
+
 (the builder fills this: W1 red/green outputs, W3 width numbers, W5 proof, suite tallies, verdicts bound
 to the reviewed sha)
