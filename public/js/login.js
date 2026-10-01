@@ -8,13 +8,18 @@
 // v1.352 W1: where a successful sign-in goes. `next` (the page the gate bounced) is resolved by the
 // real URL parser and kept only when it lands on THIS origin: a prefix check let `/\evil.example` and
 // `/<TAB>/evil.example` through, which a browser reads as //evil.example (an open redirect).
+// The returned path is resolved again before it is trusted (see below).
 function safeNextFrom(search, origin) {
   try {
     var next = new URLSearchParams(search || '').get('next');
     if (!next || next.charAt(0) !== '/') return '/';
     var u = new URL(next, origin);
     if (u.origin !== origin) return '/';
-    return u.pathname + u.search + u.hash;
+    var out = u.pathname + u.search + u.hash;
+    // a same-origin URL can still have a path that STARTS with // (/.//evil resolves to the path
+    // //evil), which leaves the origin when assigned: the value handed to location must resolve here too
+    if (new URL(out, origin).origin !== origin) return '/';
+    return out;
   } catch (_) { return '/'; }
 }
 if (typeof module === 'object' && module.exports) module.exports = { safeNextFrom: safeNextFrom };

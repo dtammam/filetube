@@ -29,9 +29,22 @@ test('every off-origin or non-path shape lands on /', () => {
     '%2F%2Fevil', '//evil', '%5C%5Cevil', '%5Cevil',
     'https://evil', 'https%3A%2F%2Fevil', 'javascript:alert(1)', 'javascript%3Aalert(1)', 'data:text/html,x',
     '%2F%2F%2Fevil', 'evil.example', '', '%20%2F%2Fevil',
+    '%2F%5Cevil.example%2F%2Fx', // off-origin with a path: its pathname //x would leave again
+    '%2F%5Cevil.example%2Fphish',
+    '%2F.%2F%2Fevil', // same origin, but its path //evil leaves again when assigned
+    '%2Fx%2F..%2F%2Fevil',
   ]) {
     assert.strictEqual(nx(raw), '/', raw);
   }
   assert.strictEqual(safeNextFrom('', ORIGIN), '/');
   assert.strictEqual(safeNextFrom(null, ORIGIN), '/');
+});
+
+test('nothing it returns can leave the origin when assigned (no // or /\\ start, resolves here)', () => {
+  const shapes = ['/a', '//b', '/\\c', '/\t/d', '/%2F/e', '/\\f//g', '/.//h', '/..//i', '/?//j', '/#//k'];
+  for (const raw of shapes) {
+    const out = safeNextFrom('?next=' + encodeURIComponent(raw), ORIGIN);
+    assert.ok(out.charAt(0) === '/' && !/^[/\\]{2}/.test(out), raw + ' -> ' + out);
+    assert.strictEqual(new URL(out, ORIGIN + '/login').origin, ORIGIN, raw + ' -> ' + out);
+  }
 });
