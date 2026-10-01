@@ -879,6 +879,7 @@
       var list = listEl();
       if (!pane || !list) return;
       list.innerHTML = SK.renderMenuList(listModel(pane, list));
+      if (typeof o.marquee === 'function') o.marquee();
     }
     function measure() {
       var list = listEl();
@@ -961,6 +962,7 @@
       applyJump();
       syncSlides();
       syncPreview();
+      if (typeof o.marquee === 'function') o.marquee();
     }
 
     // ---- the split screen's art (Click): the highlighted item's own image, eased in ----
@@ -1457,6 +1459,7 @@
           if (stickerCfg && typeof stickerCfg.onSkinChange === 'function') stickerCfg.onSkinChange(); // the view repaints with the saved skin
         },
         takeoverLive: function () { return !!wheelTakeover; },
+        marquee: marqueeOn ? function () { var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); }; raf(function () { applyMenuMarquee(); }); } : null,
         onShowNowPlaying: function () { if (!marqueeOn) return; var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); }; raf(function () { applyMarquee(); }); } })
       : null;
     function stickerPlayer() {
@@ -1999,6 +2002,12 @@
       el.classList.remove('mms-mq-on');
       el.style.removeProperty('--mms-mq-shift');
       el.style.removeProperty('--mms-mq-dur');
+    }
+    // the highlighted menu row only: the row the cursor leaves is re-rendered plain (renderList), so it needs no unwind.
+    function applyMenuMarquee() {
+      if (!panel || !motionOk()) return;
+      var els = panel.querySelectorAll('.ipm-row.is-cursor .ipm-name, .ipm-row.is-cursor .ipm-detail');
+      for (var i = 0; i < els.length; i++) marqueeEl(els[i]);
     }
     function applyMarquee() {
       if (!panel || !motionOk()) return;

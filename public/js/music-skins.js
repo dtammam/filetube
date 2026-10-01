@@ -971,7 +971,7 @@
       var cls = 'ipm-row' + (i === v.cursor ? ' is-cursor' : '') + (it.node ? ' has-chev' : '') +
         (v.currentId && it.id === v.currentId ? ' is-current' : '') + (it.check ? ' is-checked' : '');
       html += '<button type="button" class="' + cls + '" data-skin-mi="' + i + '" role="option" aria-selected="' + (i === v.cursor ? 'true' : 'false') + '">' +
-        '<span class="ipm-lbl">' + esc(it.label) + (it.detail ? '<span class="ipm-detail">' + esc(it.detail) + '</span>' : '') + '</span>' +
+        '<span class="ipm-lbl"><span class="ipm-name">' + esc(it.label) + '</span>' + (it.detail ? '<span class="ipm-detail">' + esc(it.detail) + '</span>' : '') + '</span>' +
         (it.check ? '<span class="ipm-check" aria-label="Selected">' + skGlyph('check') + '</span>' : '') +
         (v.currentId && it.id === v.currentId ? '<span class="ipm-now" aria-label="Now playing">' + ipVolGlyph() + '</span>' : '') +
         (it.node ? '<span class="ipm-chev" aria-hidden="true">' + skGlyph('chevRight') + '</span>' : '') +
