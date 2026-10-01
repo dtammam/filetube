@@ -1972,24 +1972,38 @@
     // Only when motion is allowed (else the line keeps its ellipsis). Wraps the text in a
     // .mms-mq span + sets the shift distance + a constant-speed duration as CSS vars; the
     // .mms-marquee keyframe animates it. textContent both ways -> no injection.
-    function applyMarquee() {
-      if (!panel) return;
-      try { if (win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches) return; } catch (_) { /* keep going */ }
-      var els = panel.querySelectorAll('.ip-ttl, .ip-artist, .ip-album, .mms-ttl, .mms-sub, .mms-ctx');
-      for (var i = 0; i < els.length; i++) {
-        var el = els[i];
-        var over = el.scrollWidth - el.clientWidth;
-        if (over > 2 && !el.querySelector('.mms-mq')) {
-          var span = doc.createElement('span');
-          span.className = 'mms-mq';
-          span.textContent = el.textContent;
-          el.textContent = '';
-          el.appendChild(span);
-          el.classList.add('mms-mq-on');
-          el.style.setProperty('--mms-mq-shift', (-over) + 'px');
-          el.style.setProperty('--mms-mq-dur', Math.max(4, over / 24).toFixed(1) + 's');
-        }
+    // v1.351: the per-element body is marqueeEl, with unmarqueeEl as its exact inverse (a row
+    // that LOSES the cursor is toggled, not re-rendered, so it must be put back by hand).
+    function motionOk() {
+      try { if (win.matchMedia && win.matchMedia('(prefers-reduced-motion: reduce)').matches) return false; } catch (_) { /* keep going */ }
+      return true;
+    }
+    function marqueeEl(el) {
+      var over = el.scrollWidth - el.clientWidth;
+      if (over > 2 && !el.querySelector('.mms-mq')) {
+        var span = doc.createElement('span');
+        span.className = 'mms-mq';
+        span.textContent = el.textContent;
+        el.textContent = '';
+        el.appendChild(span);
+        el.classList.add('mms-mq-on');
+        el.style.setProperty('--mms-mq-shift', (-over) + 'px');
+        el.style.setProperty('--mms-mq-dur', Math.max(4, over / 24).toFixed(1) + 's');
       }
+    }
+    function unmarqueeEl(el) {
+      var span = null;
+      for (var c = el.firstChild; c; c = c.nextSibling) { if (c.nodeType === 1 && c.classList.contains('mms-mq')) { span = c; break; } }
+      if (!span) return;
+      el.textContent = span.textContent;
+      el.classList.remove('mms-mq-on');
+      el.style.removeProperty('--mms-mq-shift');
+      el.style.removeProperty('--mms-mq-dur');
+    }
+    function applyMarquee() {
+      if (!panel || !motionOk()) return;
+      var els = panel.querySelectorAll('.ip-ttl, .ip-artist, .ip-album, .mms-ttl, .mms-sub, .mms-ctx, .mms-remote');
+      for (var i = 0; i < els.length; i++) marqueeEl(els[i]);
     }
 
     // ---- move the list cursor to position `pos` (clamped); edge-follow scroll like an iPod ----

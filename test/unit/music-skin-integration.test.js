@@ -14,6 +14,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 
 const musicPath = require.resolve('../../public/js/music.js');
 const skinsPath = require.resolve('../../public/js/music-skins.js');
+const remotePath = require.resolve('../../public/js/remote.js');
 const surfacePath = require.resolve('../../public/js/skin-surface.js');
 // v1.317 (T1): the theatre control is the player's own #theater-btn, injected through
 // player.js's one writer; the default player stub exposes it like the real api does.
@@ -46,7 +47,10 @@ const VIEW_HTML = `<body><div id="view-root" data-view="music">
 
 const settle = () => new Promise((r) => setImmediate(r));
 
-async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog, playerOverride, runSync, skinsSrc }) {
+// v1.351: `overflowIf(el)` picks WHICH elements the layout-less jsdom reports as overflowing (default: the
+// Now Playing title lines); `remote` boots the REAL controller from remote.js (a fake EventSource, a fetch
+// that answers /api/remote/targets with `remote.targets`) and, with `remote.select`, controls that device.
+async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog, playerOverride, runSync, skinsSrc, overflowIf, remote }) {
   // jsdom won't let location.replace be overridden - it hard-navigates and emits a jsdomError.
   // Capture that so a test can assert a /watch bounce was ATTEMPTED (reachability); the exact
   // URL + ::c strip are source-locked in audio-opens-in-music.test.js.
@@ -63,7 +67,7 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
     // gives a 24px overrun (raw dur 1.0s) to bind the 4s constant-speed floor.
     const scroll = smallOverflow ? 124 : 300;
     // any skin's title line: iPod .ip-ttl, Apple/Spotify .mms-ttl (v1.232.1 marquee-all).
-    const isTitle = (el) => el.classList && (el.classList.contains('ip-ttl') || el.classList.contains('mms-ttl'));
+    const isTitle = overflowIf || ((el) => el.classList && (el.classList.contains('ip-ttl') || el.classList.contains('mms-ttl')));
     Object.defineProperty(dom.window.Element.prototype, 'scrollWidth', { configurable: true, get() { return isTitle(this) ? scroll : 0; } });
     Object.defineProperty(dom.window.Element.prototype, 'clientWidth', { configurable: true, get() { return isTitle(this) ? 100 : 0; } });
   }
@@ -74,14 +78,26 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
   global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
   dom.window.matchMedia = (q) => ({ matches: (/max-width:\s*768px|pointer:\s*coarse/.test(q) ? !!mobile : (/prefers-reduced-motion/.test(q) ? !!reducedMotion : false)), media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   dom.window.scrollTo = function () {};
-  global.fetch = fetchImpl || (() => Promise.resolve({ ok: true, json: async () => ({ items: [] }) }));
-  const spy = { pp: 0, prev: 0, next: 0, seek: 0, dock: 0, shuffle: 0 };
+  const baseFetch = fetchImpl || (() => Promise.resolve({ ok: true, json: async () => ({ items: [] }) }));
+  global.fetch = remote ? ((u, o) => (/\/api\/remote\/targets/.test(String(u)) ? Promise.resolve({ ok: true, status: 200, json: async () => remote.targets }) : baseFetch(u, o))) : baseFetch;
+  const spy = { pp: 0, prev: 0, next: 0, seek: 0, dock: 0, shuffle: 0, rc: null, es: null, played: [] };
   const meta = isMusic ? { isMusic: true, id: 't1', title: 'Track A', artist: 'NESTALGIA', album: 'Retro Mix', albumKey: 'k' } : { isMusic: false, id: 'v1', title: 'A Video' };
   let mod = null;
   dom.window.FileTube = {
     registerView: (n, m) => { mod = m; }, encodeListContext: () => '', decodeListContext: () => null, shimmerArt: () => {},
     player: playerOverride || { currentId: meta.id, getState: () => 'full', getCurrentMeta: () => meta, expand() {}, setTrackNav() {}, load() {}, dock() { spy.dock += 1; }, ensureTheaterButton: () => ensureTheaterButton(dom.window.document) },
   };
+  if (remote) {
+    delete require.cache[remotePath]; global.module = undefined;
+    const api = require(remotePath);
+    dom.window.fetch = (u, o) => global.fetch(u, o);
+    dom.window.EventSource = function () { spy.es = this; this.listeners = {}; this.addEventListener = (t, f) => { this.listeners[t] = f; }; this.close = () => {}; };
+    dom.window.FileTube.getDeviceId = () => 'phone-1';
+    dom.window.FileTube.getDeviceLabel = () => 'Pixel';
+    const env = api.browserEnv(dom.window); env.storage = dom.window.sessionStorage;
+    spy.rc = dom.window.FileTube.remoteControl = api.createController(env);
+    if (remote.select) spy.rc.select(remote.targets.find((t) => t.deviceId === remote.select));
+  }
   // load the skins module into this window (sets window.FileTubeMusicSkins)
   delete require.cache[skinsPath]; global.module = undefined;
   require(skinsPath);
@@ -113,7 +129,7 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
     if (runSync) await runSync(dom, spy, mod);   // inspect the SYNCHRONOUS post-init state (fetch still pending)
     for (let i = 0; i < 10; i++) await settle();
     if (run) await run(dom, spy, mod);
-  } finally { delete require.cache[musicPath]; delete require.cache[skinsPath]; Object.assign(global, saved); }
+  } finally { try { if (spy.rc) { spy.rc.leave(); dom.window.close(); } } catch (_) {} delete require.cache[musicPath]; delete require.cache[skinsPath]; Object.assign(global, saved); }
 }
 
 const panel = (dom) => dom.window.document.getElementById('music-nowplaying-panel');
@@ -266,6 +282,66 @@ test('v1.232 iPod: reduced-motion keeps the ellipsis (no marquee wrap)', async (
     assert.ok(!ttl.classList.contains('mms-mq-on'), 'no marquee under prefers-reduced-motion');
     assert.ok(!ttl.querySelector('.mms-mq'), 'text left as-is (keeps its ellipsis)');
   } });
+});
+
+// ---- v1.351: the "On <device>" label marquees on every skin ----
+// The targets list is the REAL server shape (lib/remote/routes.js resolvedState: state.track is the resolved card).
+const LONG_NAME = 'Surface Laptop Studio 2 Upstairs';
+const targetsFor = (label) => [{ deviceId: 'pc-1', label, controlled: false, state: { deviceId: 'pc-1', label, state: 'playing', position: 10, duration: 200, hasPrev: false, hasNext: false, at: 1, ageMs: 0, track: { id: 'x1', title: 'File Select - Super Mario 64', artist: 'Koji', album: 'OST', artUrl: '' } } }];
+const longBadge = (el) => !!(el.classList && el.classList.contains('mms-remote') && el.textContent.length > 20);
+
+for (const skin of ['ipod', 'apple', 'spotify']) {
+  test(`v1.351 ${skin}: a long "On <device>" label MARQUEES (wrapped in .mms-mq, same vars as the title); a short one never moves`, async () => {
+    await boot({ mobile: true, isMusic: true, skin, mockOverflow: true, overflowIf: longBadge, remote: { targets: targetsFor(LONG_NAME), select: 'pc-1' }, run: async (dom) => {
+      const badge = panel(dom).querySelector('.mms-remote');
+      assert.ok(badge, `${skin} wears the label`);
+      assert.ok(badge.classList.contains('mms-mq-on'), 'the overflowing label marquees');
+      const mq = badge.querySelector(':scope > .mms-mq');
+      assert.ok(mq, 'its text sits in the marquee span');
+      assert.strictEqual(mq.textContent, 'on ' + LONG_NAME, 'the full name, untouched');
+      assert.match(badge.style.getPropertyValue('--mms-mq-shift'), /^-\d+px$/);
+      assert.ok(parseFloat(badge.style.getPropertyValue('--mms-mq-dur')) >= 4);
+      assert.ok(badge.hasAttribute('data-skin-playon') && badge.getAttribute('role') === 'button', 'the label is still the Speakers control');
+    } });
+    await boot({ mobile: true, isMusic: true, skin, mockOverflow: true, overflowIf: longBadge, remote: { targets: targetsFor('Desk'), select: 'pc-1' }, run: async (dom) => {
+      const badge = panel(dom).querySelector('.mms-remote');
+      assert.ok(badge && !badge.classList.contains('mms-mq-on') && !badge.querySelector('.mms-mq'), 'a short name does not move');
+      assert.strictEqual(badge.textContent, 'on Desk');
+    } });
+  });
+}
+
+test('v1.351: Reduce Motion keeps the label\'s ellipsis (no marquee wrap)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', mockOverflow: true, overflowIf: longBadge, reducedMotion: true, remote: { targets: targetsFor(LONG_NAME), select: 'pc-1' }, run: async (dom) => {
+    const badge = panel(dom).querySelector('.mms-remote');
+    assert.ok(badge && !badge.classList.contains('mms-mq-on') && !badge.querySelector('.mms-mq'));
+  } });
+});
+
+test('v1.351: a tap ON the moving label text still opens Speakers (iPod pocket menu) or ends control (Cider: no menus)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', mockOverflow: true, overflowIf: longBadge, remote: { targets: targetsFor(LONG_NAME), select: 'pc-1' }, run: async (dom) => {
+    const inner = panel(dom).querySelector('.mms-remote .mms-mq');
+    assert.ok(inner, 'the label is moving');
+    inner.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert.strictEqual(panel(dom).querySelector('.ip-np').textContent, 'Speakers', 'the tap reached the badge arm through the wrapper');
+  } });
+  await boot({ mobile: true, isMusic: true, skin: 'apple', mockOverflow: true, overflowIf: longBadge, remote: { targets: targetsFor(LONG_NAME), select: 'pc-1' }, run: async (dom, spy) => {
+    const inner = panel(dom).querySelector('.mms-remote .mms-mq');
+    assert.ok(inner, 'the label is moving');
+    assert.ok(spy.rc.isRemote());
+    inner.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    await settle();
+    assert.ok(!spy.rc.isRemote(), 'a skin without menus: the badge tap ends remote control');
+  } });
+});
+
+test('v1.351: the label keeps its v1.350 width cap (max-width:45%) and the marquee rules never touch width', () => {
+  const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.mms-remote\{ flex:none; max-width:45%;/, 'the cap is still 45%');
+  const mqRules = css.match(/[^\n}]*\.mms-mq-on[^\n{]*\{[^}]*\}/g) || [];
+  assert.ok(mqRules.length >= 2, 'the marquee rules are found');
+  for (const r of mqRules) assert.ok(!/(^|[;{ ])(max-)?width\s*:/.test(r.slice(r.indexOf('{'))), 'a marquee rule sets no width: ' + r);
 });
 
 test('DESKTOP + music: NO skin - the default panel renders, no mms-on', async () => {

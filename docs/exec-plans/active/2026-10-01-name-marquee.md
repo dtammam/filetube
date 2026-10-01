@@ -246,8 +246,8 @@ Move this plan to `completed/` in the release commit. Device checks for Dean go 
 ## 8. Evidence and gate verdicts
 
 ### Builder evidence (fill in)
-- W0:
-- W1:
+- W0: measured 30 s per scenario (jsdom, real remote.js controller, PC reporting every 5 s): local Now Playing, Speakers open and idle, remote playing with 6 same-track state events, remote playing + Speakers open. paint() = 0 and .ipm-list rewrites = 0 in all four; the 500 ms reflect tick touches only .mms-pos/.mms-rem (13 each in 6 s), never .ip-ttl or .mms-remote. Repaints are event-driven (track/device/state change), the Speakers list loads once, nothing polls. A marquee is not restarted, so stop rule 0.8(b) is not triggered and no guard is added.
+- W1: skin-surface.js applyMarquee split into marqueeEl/unmarqueeEl + .mms-remote in the target list (all skins); the lying CSS comment rewritten. 6 new tests in music-skin-integration.test.js (long label marquees on ipod/apple/spotify with the REAL remote.js controller and the real /api/remote/targets shape; short label never moves; Reduce Motion; a tap on the moving text still reaches the badge arm; 45% cap and no width in marquee rules). File: 127 pass, 0 fail (was 121). Mutant (drop .mms-remote from the list): 4 red, restored.
 - W2:
 - W3:
 - W4:

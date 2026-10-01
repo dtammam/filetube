@@ -10595,10 +10595,13 @@ a.tv-continue-card { text-decoration: none; }
   /* gate r1 (qa S5): under ~340 px a 7-column Click picker drops below 44 px per cell - 6 columns */
   @media (max-width: 340px){ :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-grid{ grid-template-columns:repeat(6, minmax(0, 1fr)); } }
 
-  /* v1.232 (Dean): iPod MARQUEE - long song/album/artist names slowly scroll to reveal
-     the full text, like a real iPod. music.js wraps an overflowing line in .mms-mq and
-     sets --mms-mq-shift (the overflow distance) + --mms-mq-dur (constant-speed); it only
-     does so when motion is allowed (else the line keeps its ellipsis). */
+  /* v1.232 (Dean): iPod MARQUEE - long names slowly scroll to reveal the full text, like a
+     real iPod. skin-surface.js (marqueeEl) wraps an overflowing line in .mms-mq and sets
+     --mms-mq-shift (the overflow distance) + --mms-mq-dur (constant-speed); it only does so
+     when motion is allowed (else the line keeps its ellipsis). The lines: the Now Playing
+     title/artist/album, the Apple/Spotify title/sub/context, the "On <device>" label
+     (.mms-remote, v1.351), and the highlighted menu row's name + detail and the highlighted
+     song-list row (v1.351). */
   /* marquee for a long title/artist/album on ANY skin (v1.232.1: was iPod-only). */
   :where(html.is-phone, html.mms-popout) .mms-full .mms-mq-on{ text-overflow:clip; }
   :where(html.is-phone, html.mms-popout) .mms-full .mms-mq-on .mms-mq{ display:inline-block; animation:mms-marquee var(--mms-mq-dur) linear infinite alternate; will-change:transform; }
