@@ -91,8 +91,9 @@
 //                        onSuccess(playingRemoved) (T-C4).
 // NOTE (Dean, 2026-09-02): music.js's v1.235 wheel-VOLUME mode is deliberately NOT ported -
 // Dean ruled the Now-Playing wheel SCRUBS everywhere ("like it does on mobile - consistent
-// UI and useful"), so the engine has exactly one Now-Playing wheel behavior. The iPod skin's
-// volume-bar markup (.ip-vol-fill) stays dormant in music-skins.js (untouched, zero-risk).
+// UI and useful"). v1.353 (Dean, 2026-10-01): the one exception is a CONTROLLED SPEAKER's
+// volume bar (a tap on the time labels brings it up; see VOLUME below); local play never
+// shows it and the engine never sets a local element's volume.
 //
 // api: paint() render+bind the skin; reflect() sync from the live element; setListMode(on);
 //   destroy() unbind + clear body.mms-on. Returns null if music-skins.js isn't present.
@@ -1189,6 +1190,11 @@
       clearJump();
       if (it.node) { stack.push(makeLevel(it.node)); render(); return; }
       if (it.action === 'nowplaying') { showNowPlaying(); return; }
+      if (it.action === 'volume') { // v1.353: Speakers > Volume - Now Playing with the volume bar up
+        showNowPlaying();
+        if (typeof o.onVolume === 'function') { try { o.onVolume(); } catch (_) { /* best-effort */ } }
+        return;
+      }
       if (it.action === 'playon') {
         // v1.348 Listen Control: pick where the music plays (this device, or a PC that is listening).
         var landed = true;
@@ -1473,6 +1479,7 @@
           if (stickerCfg && typeof stickerCfg.onSkinChange === 'function') stickerCfg.onSkinChange(); // the view repaints with the saved skin
         },
         takeoverLive: function () { return !!wheelTakeover; },
+        onVolume: function () { openVolume(); }, // v1.353: the Speakers menu's Volume row
         marquee: marqueeOn ? function () { var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); }; raf(function () { applyMenuMarquee(); }); } : null,
         onShowNowPlaying: function () { if (!marqueeOn) return; var raf = (win && win.requestAnimationFrame) || function (cb) { return setTimeout(cb, 0); }; raf(function () { applyMarquee(); }); } })
       : null;
@@ -1518,6 +1525,74 @@
     }
     var bound = false;
 
+    // ---- v1.353 VOLUME (Speakers): while this device controls a speaker, a tap on the Now Playing time
+    // labels (or the Speakers menu's Volume row) swaps the scrubber for the volume bar, and the wheel
+    // turns the SPEAKER's player volume, 5% a detent, while it shows. ~2 s with no turn, MENU or Select
+    // puts the scrubbing wheel back (the iPod's own way back). The view supplies config.volume, an
+    // {available, level, set} hook; without it (local play, podcasts) nothing here ever shows and the Now
+    // Playing wheel scrubs, as Dean ruled on 2026-09-02.
+    var volumeCfg = (config.volume && typeof config.volume.available === 'function') ? config.volume : null;
+    var VOLUME_STEP = 0.05;
+    var VOLUME_IDLE_MS = 2000;
+    var volOpen = false;
+    var volTimer = null;
+    function volumeLevel() {
+      if (!volumeCfg) return null;
+      var v = null;
+      try { if (volumeCfg.available()) v = volumeCfg.level(); } catch (_) { v = null; }
+      return (typeof v === 'number' && isFinite(v)) ? Math.min(1, Math.max(0, v)) : null;
+    }
+    // The bar can show: a speaker with a reported volume, a painted Click skin (it renders the bar),
+    // Now Playing on screen (not the song list, not a menu level).
+    function volumeShowable() {
+      return volumeLevel() !== null && panel.classList.contains('mms-full') && !!panel.querySelector('.ip-vol') &&
+        !panel.classList.contains('mms-listmode') && !(pocket && pocket.isMenuMode());
+    }
+    function armVolumeIdle() {
+      if (volTimer) { try { win.clearTimeout(volTimer); } catch (_) { /* ignore */ } }
+      volTimer = win.setTimeout(function () {
+        volTimer = null;
+        if (wheelSpin && wheelSpin.mode === 'volume') { armVolumeIdle(); return; } // a thumb still on the wheel
+        closeVolume();
+      }, VOLUME_IDLE_MS);
+    }
+    function openVolume() {
+      if (!volumeShowable()) return false;
+      volOpen = true;
+      panel.classList.add('mms-voladj');
+      reflectVolume();
+      armVolumeIdle();
+      return true;
+    }
+    function closeVolume() {
+      volOpen = false;
+      if (volTimer) { try { win.clearTimeout(volTimer); } catch (_) { /* ignore */ } volTimer = null; }
+      if (panel) panel.classList.remove('mms-voladj');
+    }
+    function setVolumeLevel(v) {
+      var lv = Math.round(Math.min(1, Math.max(0, v)) * 100) / 100;
+      try { volumeCfg.set(lv); } catch (_) { /* the view's send is best-effort */ }
+      reflectVolume();
+    }
+    function stepVolume(sign) {
+      var cur = volumeLevel();
+      if (cur === null) return;
+      var next = Math.round(Math.min(1, Math.max(0, cur + sign * VOLUME_STEP)) * 100) / 100;
+      if (next !== cur) setVolumeLevel(next);
+    }
+    // Paint the level into every volume control on the panel: the iPod bar's fill, the Cider/Nordic row's. A level the speaker has not reported leaves them as rendered.
+    function reflectVolume() {
+      var v = volumeLevel();
+      if (v === null || !panel) return;
+      var els = panel.querySelectorAll('[data-skin-vol]');
+      for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        el.setAttribute('aria-valuenow', String(Math.round(v * 100)));
+        var fill = el.querySelector('.ip-vol-fill, .mms-volfill');
+        if (fill) fill.style.width = Math.round(v * 100) + '%';
+      }
+    }
+
     function wheelShortAngle(a) { while (a > 180) a -= 360; while (a < -180) a += 360; return a; }
 
     // ---- reflect the live #media-player into the skin (play glyph + progress fill + times) ----
@@ -1546,6 +1621,7 @@
       var posEl = panel.querySelector('.mms-pos'); if (posEl) posEl.textContent = fmtTime(pos);
       var remEl = panel.querySelector('.mms-rem'); if (remEl) remEl.textContent = dur > 0 ? ('-' + fmtTime(Math.max(0, dur - pos))) : '';
       syncTapPlay(); // v1.334: a play/pause the element reports settles the Tap to play cue too
+      reflectVolume(); // v1.353: the speaker's reported level
     }
     // ---- v1.334 TAP TO PLAY (Dean's ruling D9, plan 2026-09-25-pocket-open-ask-sticker-light item 3) ----
     // "tapping an iOS PWA notification and having it launch the app, go to the music page, but not actually
@@ -2064,6 +2140,7 @@
     }
     function setListMode(on) {
       if (!panel) return;
+      if (on) closeVolume(); // v1.353: the song list is not Now Playing
       panel.classList.toggle('mms-listmode', !!on);
       var npEl = panel.querySelector('.ip-np');
       if (npEl) npEl.textContent = on ? 'Songs' : 'Now Playing';
@@ -2168,6 +2245,9 @@
       syncTapPlay(); // v1.334: the Tap to play cue survives a repaint while iOS's refusal stands
       mountWheelGhost(); // v1.256: the haptic ghost (capable devices + a wheel skin only)
       if (pocket) pocket.afterPaint(ctx); // pocket menus: re-draw the menu level this repaint just replaced
+      // v1.353: the class list was rebuilt above; a volume bar that was up stays up (a state report, a
+      // track change), unless the speaker, the skin or the screen no longer offer it
+      if (volOpen) { if (volumeShowable()) panel.classList.add('mms-voladj'); else closeVolume(); }
       if (lighting) lighting.sync();     // pocket lighting: re-apply the lit class (className was rebuilt) or stop on a non-Click skin
       if (marqueeOn) {
         // measure + start the marquee AFTER layout (rAF), so scrollWidth is real (music parity).
@@ -2225,6 +2305,18 @@
         else if (typeof config.onPlayOnBadge === 'function') { try { config.onPlayOnBadge(); } catch (_) { /* view best-effort */ } }
         return;
       }
+      // v1.353: the time labels bring up the volume bar; a tap on a volume control sets the level there
+      if (e.target.closest('[data-skin-voltap]')) { openVolume(); return; }
+      var volEl = e.target.closest('[data-skin-vol]');
+      if (volEl) {
+        if (volumeLevel() !== null) {
+          var vr = volEl.getBoundingClientRect();
+          var vf = Math.min(1, Math.max(0, (e.clientX - vr.left) / (vr.width || 1)));
+          setVolumeLevel(Math.round(vf / VOLUME_STEP) * VOLUME_STEP);
+          if (volOpen) armVolumeIdle();
+        }
+        return;
+      }
       if (e.target.closest('[data-skin-play]')) { var pb = hostCtl('pp-btn'); if (pb) pb.click(); return; }
       if (e.target.closest('[data-skin-prev]')) { var pv = hostCtl('track-prev-btn'); if (pv) pv.click(); return; }
       if (e.target.closest('[data-skin-next]')) { var nx = hostCtl('track-next-btn'); if (nx) nx.click(); return; }
@@ -2246,6 +2338,7 @@
         // seat's m9: deleting music's setWheelTakeover(null) left a stale pointer and
         // a dead wheel). One owner for one invariant.
         if (wheelTakeover) { releaseWheelTakeover(); return; }
+        if (volOpen) { closeVolume(); return; } // v1.353: MENU puts the scrubber back at once
         if (panel.classList.contains('mms-listmode')) { setListMode(false); }
         else if (pocket && pocket.onMenu()) { /* pocket menus: climbed one menu level */ }
         else { onDock(); }
@@ -2256,6 +2349,7 @@
           if (typeof wheelTakeover.onSelect === 'function') { try { wheelTakeover.onSelect(); } catch (_) { /* best effort */ } }
           return;
         }
+        if (volOpen) { closeVolume(); return; } // v1.353: the center goes back to the scrubber, as on the iPod
         if (panel.classList.contains('mms-listmode')) {
           var cur = panel.querySelector('.ip-listview .mms-row.is-cursor');
           var cgi = cur && parseInt(cur.getAttribute('data-skin-go'), 10);
@@ -2631,7 +2725,9 @@
         wheel: wheel, id: e.pointerId, captured: false, moved: false,
         // Now Playing is never idle: the wheel SCRUBS the timeline on EVERY surface
         // (Dean 2026-09-02 - the pop-out's old wheel-volume gave way to a consistent scrub).
-        mode: (listMode || menuMode) ? 'cursor' : 'scrub', scrubRatio: null, menu: menuMode,
+        // v1.353: the ONE exception - the volume bar is up (a speaker is being controlled): the wheel
+        // turns that speaker's volume until the bar goes.
+        mode: (listMode || menuMode) ? 'cursor' : ((volOpen && volumeShowable()) ? 'volume' : 'scrub'), scrubRatio: null, menu: menuMode,
         lastAngle: Math.atan2(e.clientY - cy, e.clientX - cx) * 180 / Math.PI,
         lastT: nowMs(), lastEvT: evTime(e), accum: 0, x0: e.clientX, y0: e.clientY, onMove: null, onUp: null,
         win: win, scanTimer: null, scanInterval: null, scanning: false, scanDir: 0, homeTimer: null,
@@ -2735,6 +2831,16 @@
           // rotation is confirmed; 'press' already grabbed on down; 'off' never grabs.
           if (st.capture !== 'press' && st.capture !== 'off') { try { st.wheel.setPointerCapture(st.id); st.captured = true; } catch (_) { /* best effort */ } }
         }
+        if (st.mode === 'volume') {
+          while (Math.abs(st.accum) >= WHEEL_STEP_DEG) {
+            var vsign = st.accum > 0 ? 1 : -1; // clockwise = louder
+            st.moved = true;
+            stepVolume(vsign);
+            st.accum -= vsign * WHEEL_STEP_DEG;
+          }
+          armVolumeIdle();
+          return;
+        }
         if (st.mode === 'scrub') {
           var mps = hostCtl('media-player');
           var durS = (mps && isFinite(mps.duration) && mps.duration > 0) ? mps.duration : 0;
@@ -2818,6 +2924,7 @@
 
     function destroy() {
       releaseWheelTakeover(); // v1.270: the surface dying takes its takeover with it
+      closeVolume();          // v1.353: and its volume bar's idle timer
       paintPending = false;   // v1.271: a deferred repaint must not outlive the surface
       if (bound) {
         panel.removeEventListener('click', onClick);
@@ -2865,6 +2972,9 @@
       // chapter-loop enforcement reads this so a deliberate scrub past a chapter boundary is
       // not yanked back mid-drag (music.js's v1.240 carried interaction).
       isScrubbing: function () { return !!(wheelSpin && wheelSpin.mode === 'scrub'); },
+      // v1.353: the volume bar (a phone controlling a speaker) - the Speakers menu's Volume row opens it
+      openVolume: openVolume,
+      isVolumeOpen: function () { return volOpen; },
     };
   }
 

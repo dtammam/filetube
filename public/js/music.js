@@ -1498,6 +1498,12 @@ if (typeof module !== 'undefined' && module.exports) {
       if (remoteOn()) { var v = remoteCtl(id); if (v) return v; }
       return document.getElementById(id);
     }
+    // v1.353: the speaker's player volume as this device shows it (the controller holds a level the
+    // wheel just set until the PC reports it back); null when the PC never reported one.
+    function remoteVolume() {
+      var st = RC && RC.state();
+      return (st && typeof st.volume === 'number' && isFinite(st.volume)) ? st.volume : null;
+    }
     function remoteSkinCtx() {
       var st = RC.state() || {};
       var tr = st.track || null;
@@ -1511,6 +1517,7 @@ if (typeof module !== 'undefined' && module.exports) {
         upNext: [], fullList: [], playing: st.state === 'playing', posSec: pos, durSec: dur,
         posLabel: mmssMusic(pos), remLabel: dur > 0 ? ('-' + mmssMusic(dur - pos)) : '',
         curNum: 0, total: 0, // no "N of M": the PC's queue is not this device's
+        volume: remoteVolume(), // v1.353: the speaker's player volume (null: it has not said)
       };
     }
     function remotePlayAt(i) {
@@ -1535,6 +1542,8 @@ if (typeof module !== 'undefined' && module.exports) {
           var tt = t.state && t.state.track && t.state.track.title;
           items.push({ label: t.label, detail: remoteNeedsClick(t.state) ? REMOTE_CLICK_HINT : (tt || ''), check: RC.targetId() === t.deviceId, action: 'playon', target: t });
         });
+        // v1.353 (R2): while a speaker is chosen, its volume is one row away (Now Playing, the volume bar up)
+        if (RC.isRemote() && remoteVolume() !== null) items.push({ label: 'Volume', action: 'volume' });
         if (!list.length) items.push({ label: "No PC is listening. Turn on Remote control on the PC's Music page.", info: true, note: true });
         return { items: items };
       });
@@ -1661,6 +1670,12 @@ if (typeof module !== 'undefined' && module.exports) {
         onSelectIndex: function (i) { playAt(i, { soloChapter: true, pick: true }); }, // v1.311: a skin track tap is a single-chapter SELECT (exit after that segment)
         onDock: dockToOrigin,
         onPlayOnBadge: function () { if (RC) { RC.leave(); updateNowPlayingPanel(); } }, // skins without menus: the badge ends remote control
+        // v1.353: the speaker's volume - offered only while this device controls one that reported it
+        volume: {
+          available: function () { return remoteOn() && !remoteDocked; },
+          level: remoteVolume,
+          set: function (v) { if (remoteOn()) RC.volume(v); },
+        },
         // v1.332 (D7): Home from the player - the sticker's Home row and a held MENU (the engine
         // offers both in the main document only); common.js docks quietly and routes to /.
         onHome: function () { if (window.FileTube && typeof window.FileTube.goHomeFromPlayer === 'function') window.FileTube.goHomeFromPlayer(updateNowPlayingPanel); },
@@ -2885,7 +2900,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.348: the mirror follows the PC - repaint when the track/device/state changes, tick the bar while it plays.
     if (RC) {
       var mirrorSig = '';
-      var sigOf = function () { var st = RC.state() || {}; return [RC.targetId(), st.track && st.track.id, st.state].join('|'); };
+      // v1.353: a speaker's first volume report repaints too (the bar / row render only with a level)
+      var sigOf = function () { var st = RC.state() || {}; return [RC.targetId(), st.track && st.track.id, st.state, remoteVolume() === null ? 'nv' : 'v'].join('|'); };
       var offMirror = RC.onChange(function () {
         var sig = sigOf();
         if (sig !== mirrorSig) { mirrorSig = sig; updateNowPlayingPanel(); } else reflectEngines();

@@ -428,6 +428,10 @@
   var CONTROL_KEY = 'ft-remote-controlling';
   var CONTROL_POLL_MS = 2000;
   var SEEK_THROTTLE_MS = 250;
+  var VOLUME_THROTTLE_MS = 250; // v1.353 (R4): at most one volume command per 250 ms, the last level always sent
+  // A level this device just set holds on screen this long, so a PC report sent BEFORE the command
+  // landed (the 500 ms report throttle) cannot snap the bar back mid-turn.
+  var VOLUME_HOLD_MS = 1500;
   var PLAY_MAX_IDS = 2000;
 
   // D6: a play command carries at most PLAY_MAX_IDS ids; a longer list sends the slice that starts at the
@@ -463,6 +467,10 @@
     var seekTimer = null;
     var seekLastAt = -Infinity;
     var seekPending = null;
+    var volTimer = null;
+    var volLastAt = -Infinity;
+    var volPending = null;
+    var volHeld = null;   // {level, at}: the level the wheel set, shown until the PC reports it or the hold ends
     var streamWanted = false;
 
     function notify() {
@@ -480,8 +488,15 @@
       if (pollTimer) { env.clearTimeout(pollTimer); pollTimer = null; }
       polling = false;
     }
+    // The PC's report, with a level this device set in the last VOLUME_HOLD_MS kept on top of it.
+    function withHeldVolume(s) {
+      if (!volHeld) return s;
+      if (env.now() - volHeld.at > VOLUME_HOLD_MS || s.volume === volHeld.level) { volHeld = null; return s; }
+      return Object.assign({}, s, { volume: volHeld.level });
+    }
     function setState(s) {
       if (!s || typeof s !== 'object') return;
+      s = withHeldVolume(s);
       last = s;
       receivedAt = env.now();
       notify();
@@ -546,6 +561,8 @@
       closeStream();
       if (seekTimer) { env.clearTimeout(seekTimer); seekTimer = null; }
       seekPending = null;
+      if (volTimer) { env.clearTimeout(volTimer); volTimer = null; }
+      volPending = null; volHeld = null;
       streamWanted = false;
       var was = !!targetId;
       targetId = ''; label = ''; last = null;
@@ -608,6 +625,27 @@
       seekLastAt = env.now();
       send('seek', { position: pos });
     }
+    // v1.353 (R4, the seek throttle's twin): the wheel sends at most one volume per VOLUME_THROTTLE_MS and
+    // the last level always goes out; the shown level is this one until the PC reports it.
+    function volume(level) {
+      if (!targetId || typeof level !== 'number' || !isFinite(level)) return;
+      var lv = Math.round(Math.min(1, Math.max(0, level)) * 100) / 100;
+      volPending = lv;
+      volHeld = { level: lv, at: env.now() };
+      if (last) last = Object.assign({}, last, { volume: lv });
+      notify();
+      var wait = volLastAt + VOLUME_THROTTLE_MS - env.now();
+      if (wait <= 0 && !volTimer) { flushVolume(); return; }
+      if (!volTimer) volTimer = env.setTimeout(function () { volTimer = null; flushVolume(); }, wait > 0 ? wait : 0);
+    }
+    function flushVolume() {
+      if (volPending === null || !targetId) return;
+      var lv = volPending;
+      volPending = null;
+      volLastAt = env.now();
+      if (volHeld) volHeld.at = env.now(); // the hold runs from the SEND, not the turn
+      send('volume', { level: lv });
+    }
     function visibility(hidden) {
       if (!targetId) return;
       if (hidden) { closeStream(); return; }
@@ -637,6 +675,7 @@
       next: function () { return send('next'); },
       prev: function () { return send('prev'); },
       seek: seek,
+      volume: volume,
       visibility: visibility,
       onChange: function (fn) {
         if (typeof fn !== 'function') return function () {};

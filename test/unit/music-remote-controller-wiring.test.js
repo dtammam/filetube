@@ -119,3 +119,19 @@ test('v1.352 (Dean): the Music view registers its chapter reader with the target
   const ping = rc.indexOf('remoteTarget.trackChanged()');
   assert.ok(roll > 0 && ping > roll, 'the ping comes after the chapter on screen changed');
 });
+
+test('v1.353 the Speakers menu offers Volume only while this device controls a speaker that reported a level', () => {
+  const rows = MUSIC.slice(MUSIC.indexOf('function playOnItems() {'), MUSIC.indexOf('function remoteChoose('));
+  assert.match(rows, /if \(RC\.isRemote\(\) && remoteVolume\(\) !== null\) items\.push\(\{ label: 'Volume', action: 'volume' \}\);/);
+  const vol = MUSIC.slice(MUSIC.indexOf('function remoteVolume() {'), MUSIC.indexOf('function remoteSkinCtx() {'));
+  assert.match(vol, /typeof st\.volume === 'number' && isFinite\(st\.volume\)\) \? st\.volume : null/, 'an unreported volume is null');
+});
+
+test('v1.353 the view hands the engine the speaker volume: offered only while remote and not stepped aside; set sends RC.volume', () => {
+  assert.match(MUSIC, /volume: \{\s*available: function \(\) \{ return remoteOn\(\) && !remoteDocked; \},\s*level: remoteVolume,\s*set: function \(v\) \{ if \(remoteOn\(\)\) RC\.volume\(v\); \},\s*\},/);
+  const ctx = MUSIC.slice(MUSIC.indexOf('function remoteSkinCtx() {'), MUSIC.indexOf('function remotePlayAt('));
+  assert.match(ctx, /volume: remoteVolume\(\),/, 'the remote ctx carries it (the renderers draw the bar from it)');
+  const local = MUSIC.slice(MUSIC.indexOf('function buildSkinCtx(ci, popout) {'), MUSIC.indexOf('var SkinSurface ='));
+  assert.ok(!/volume:/.test(local), 'the LOCAL ctx never carries a volume (no bar on local play)');
+  assert.match(MUSIC, /remoteVolume\(\) === null \? 'nv' : 'v'\]\.join\('\|'\)/, 'a first volume report repaints');
+});

@@ -693,12 +693,6 @@
         "added": "2026-09-27"
       },
       {
-        "key": "public/css/style.css|.mms-ipod .ip-vol-track|box-shadow",
-        "count": 1,
-        "reason": "raw value, no era-invariant token of the same value (true-up 2026-09-30): kept",
-        "added": "2026-09-27"
-      },
-      {
         "key": "public/css/style.css|.mms-ipod .ipm-grid|border-top",
         "count": 1,
         "reason": "raw value, no era-invariant token of the same value (true-up 2026-09-30): kept",
@@ -11338,12 +11332,6 @@
       },
       {
         "key": "public/css/style.css|:root|--mms-ipod-batt2",
-        "count": 1,
-        "reason": "raw value, no era-invariant token of the same value (true-up 2026-09-30): kept",
-        "added": "2026-09-27"
-      },
-      {
-        "key": "public/css/style.css|:root|--mms-ipod-blue-hi",
         "count": 1,
         "reason": "raw value, no era-invariant token of the same value (true-up 2026-09-30): kept",
         "added": "2026-09-27"

@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.353-remote-volume
 anchor: spec
 status: Building
-next: V1 mutants in a /tmp sandbox, then V2 (the look first: reference photos vs build to Dean)
+next: V2 mutants in a /tmp sandbox, then V3 (real-browser W-rows a-d + c2)
 design: Dean 2026-10-01 ("I like this. Yes. Let's do it.") on option A, then "As long as the volume screen is low friction and looks like iPod volume I am good" (R1, R2 below are binding); R3, R4 are architect defaults he did not overrule
 gate: FULL (adversary + qa + security-brief; a new command and state field on the remote channel, lib/remote/**)
 ---
@@ -176,6 +176,24 @@ Numbers below are copied from the instrument runs named; raw JSON is committed b
   (`muted:false, paused:true, vol:0.5`, Chromium's rule for un-muting without a gesture). So a phone raising a muted speaker's
   volume can stop it; no page code can lift that. Handling: the honest path that exists (needsClick stays true while only muted
   sound played, so the phone shows "Click the PC's tab once to let it play" once it pauses); bound as proof row c2 in V3.
+
+**V1 mutants @3588e6b8 (tools: a /tmp `git archive` sandbox of the sha, exact-once replace, the named file run, restored; the
+sandbox diffed pristine after): 25/25 RED.** routes (CMDS entry, the clamp, a string level, Infinity, resolvedState volume /
+muted, the POST store, the in-range check, muted truthy, the idle default), store (the volume supersede), player (no un-mute,
+strings accepted, no rounding, no store before the first load, the snapshot's volume / muted), target (the command ignored, the
+payload's volume / clamp / muted, volumechange missing from the event list, onVolume never clearing / clearing while paused,
+the navigate-timeout idle report without volume). Unit hook on the commit: 8210 tests, 8210 pass, 0 fail.
+
+**V2 the look, Dean's rulings (2026-10-01, AskUserQuestion, with real-browser shots each time):**
+- Reference: no freely licensed photo of the iPod's own volume screen was found (Wikimedia Commons, Openverse, Apple's iPod
+  classic / nano user guides describe the bar but do not draw it); the 5G Now Playing photo (Commons, CC BY-SA 2.0) shows the
+  progress bar the volume bar shares. Dean sent his own reference (the Mac OS X volume HUD: a rounded tile, 16 squares).
+- Built the tile; Dean: "I want it to fit the iPOd aesthetic. What do you think?", then asked whether iPods drew a box. Answer
+  given: no; the click-wheel iPods swapped the progress bar in place for a volume bar (a quiet speaker, the same bar, a loud
+  speaker); the boxed tile is the Mac OS X / early iPhone OS overlay. **Ruling: "The iPod's own bar, in place."** Built: the
+  scrubber row becomes the volume bar, its groove and fill are the scrubber's own rules (the Aqua tube; the Original's monochrome).
+- **R2 reach ruling: "Tap the time labels"** (a tap on the bar seeks, the plan's stop). Also Speakers > Volume (R2) and a tap on
+  the shown bar sets the level there (a shown control must act, LESSONS 4).
 
 ## 8. Device checks Dean would owe (into DEVICE-CHECKS.md at release, one line each)
 
