@@ -1,0 +1,71 @@
+{
+  "l1_saved": 200,
+  "l1_landed": "/watch.html?v=vid1&t=30",
+  "l1_with_t": {
+    "id": "vid1",
+    "playing": true,
+    "t": 30.4
+  },
+  "l1_with_t_toast": false,
+  "l1_url_keeps_t": "/watch.html?v=vid1&t=30",
+  "l1_resaved": 200,
+  "l1_without_t": {
+    "id": "vid1",
+    "playing": true,
+    "t": 300.4
+  },
+  "l1_adopt_1m30s": {
+    "id": "vid1",
+    "playing": true,
+    "t": 91.4
+  },
+  "l3_open_album_title": "Proof Album",
+  "l3_open_album_rows": 3,
+  "l3_open_album_plays": false,
+  "l3_open_album_url": "/music?artist=Proof%20Band&album=Proof%20Album",
+  "l3_copy_pill": "/music?artist=Proof%20Band&album=Proof%20Album",
+  "l3_clipboard": "<origin>/music?artist=Proof%20Band&album=Proof%20Album",
+  "l3_copy_toast": true,
+  "l3_play": {
+    "played": true,
+    "id": "song1",
+    "url": "/music?artist=Proof+Band&album=Proof+Album",
+    "stateUrl": "/music?artist=Proof+Band&album=Proof+Album",
+    "toast": null
+  },
+  "l3_shuffle": {
+    "played": true,
+    "id": "song3",
+    "url": "/music?artist=Proof+Band&album=Proof+Album",
+    "stateUrl": "/music?artist=Proof+Band&album=Proof+Album",
+    "toast": null
+  },
+  "l3_shuffle_all": {
+    "played": true,
+    "id": "song3",
+    "url": "/music",
+    "stateUrl": "/music",
+    "toast": null
+  },
+  "l3_shuffle_all_after_reload": {
+    "url": "/music",
+    "playing": false
+  },
+  "l3_liked_shuffle_empty": {
+    "played": false,
+    "id": null,
+    "url": "/music?playlist=liked",
+    "stateUrl": "/music?playlist=liked",
+    "toast": "Could not find Liked in your music"
+  },
+  "l3_like": 200,
+  "l3_liked_play": {
+    "id": "song2",
+    "playing": true,
+    "t": 0
+  },
+  "l3_not_found_toast": "Could not find Nobody Here in your music",
+  "l3_not_found_drill": false,
+  "l3_precedence_play": "song3",
+  "errors": []
+}

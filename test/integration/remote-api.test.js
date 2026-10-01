@@ -326,6 +326,20 @@ test('state validation: 400 on bad state, NaN/negative position, bad trackId; 41
   assert.strictEqual((await post('/api/remote/state', { ...base0, trackId: null, state: 'idle' })).status, 202);
 });
 
+test('v1.352 W0: needsClick survives POST -> GET targets -> the controller stream state frame (only a literal true)', async () => {
+  const t = await asTarget();
+  await t.next('hello');
+  const c = await asController();
+  await c.next('hello');
+  assert.strictEqual((await post('/api/remote/state', { deviceId: PC, trackId: null, position: 0, duration: 0, state: 'idle', needsClick: true })).status, 202);
+  const f = await c.next('state');
+  assert.strictEqual(f.data.needsClick, true, 'the stream frame carries it');
+  const list = await (await fetch(`${base}/api/remote/targets?deviceId=${PHONE}`)).json();
+  assert.strictEqual(list.find((x) => x.deviceId === PC).state.needsClick, true, 'the targets list carries it');
+  await post('/api/remote/state', { deviceId: PC, trackId: null, position: 0, duration: 0, state: 'idle', needsClick: 'yes' });
+  assert.strictEqual((await c.next('state')).data.needsClick, false, 'a non-boolean is not a request for a click');
+});
+
 test('a controller that attaches late is sent the last known state in its first frames', async () => {
   const t = await asTarget();
   await t.next('hello');

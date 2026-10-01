@@ -84,6 +84,20 @@ The screenshots use a synthetic demo library, not real media.
 - **"Listen from Here" (TTS)** - have book chapters read aloud (lock-screen friendly); works out of the box, upgradeable to a natural [Piper](https://github.com/OHF-Voice/piper1-gpl) voice.
 - **Podcasts, self-hosted** - subscribe to RSS feeds (private/paid feed URLs stay in a secrets file outside the database), auto-download new episodes for offline playback, with show art, per-user progress/played state, pins, and a recoverable trash - background playback and lock-screen controls included.
 
+### Speakers and links
+
+- **Play music on another computer from your phone** - turn on Remote control on a computer's Music page, then pick it under Speakers on your phone. Both have to be signed in to the same account.
+- **A speaker computer that opens ready** - bookmark `https://<your FileTube>/music?remote=on` on the computer wired to your speakers (or launch it in kiosk mode). It opens with Remote control on and shows up under Speakers. It works on Home, Music, Podcasts, TV, Books, History, Stats and a watch page (not Settings), and the address bar drops the `?remote=on`. On a phone the link does nothing: a phone controls, it is never a speaker. If the computer is signed out, it signs in and comes back to the same page. A sign-in that is used at least every couple of weeks stays signed in. It renews for 180 days after you last typed your password, and the last renewal lasts up to 30 days more.
+- **The one click** - a browser won't start sound on a page nobody has clicked or typed in since it opened. Until someone does (or the computer starts playing anyway), your phone says "Click the PC's tab once to let it play" and the computer asks for a click. Click anywhere on that tab once and every song after that plays. To skip the click on a dedicated speaker machine:
+  - Chrome, Chromium or Edge: launch with `--autoplay-policy=no-user-gesture-required` (for example `--kiosk --autoplay-policy=no-user-gesture-required https://<your FileTube>/music?remote=on`), or allow your FileTube address in the `AutoplayAllowlist` policy.
+  - Firefox: Site settings > Autoplay > Allow Audio and Video for your FileTube address.
+  - Safari: Settings for this website > Auto-Play > Allow All Auto-Play.
+- **Links you can bookmark**
+  - A video at a moment: `/watch.html?v=<id>&t=1m30s` (or `&t=90`). It starts there even if you had watched further.
+  - Music: `/music?artist=<name>`, `/music?artist=<name>&album=<title>`, and `/music?playlist=liked` (or `recent-played`, `recent-added`). Add `&mode=play` to play the list or `&mode=shuffle` to shuffle it. `/music?mode=shuffle` shuffles your whole library. An album or artist page has a Copy link button.
+  - These combine with the speaker link: `/music?remote=on&playlist=liked&mode=shuffle`.
+- **App-icon shortcuts** - an installed FileTube offers Music, Now Playing, Shuffle Songs and Podcasts when you long-press its icon on Android, or right-click it in the dock or taskbar with desktop Chrome or Edge (Safari on a Mac, 17.4 and later). iPhone and iPad home-screen apps don't support shortcuts (MDN browser compatibility data lists iOS Safari as unsupported), so nothing shows there. An app that's already installed may need a reinstall before the shortcuts appear.
+
 ### Run your library
 
 - **Multi-account** - an auth wall with per-user progress, likes, pins, and reading positions; admin user management; **per-user library access control** (block-list or a fail-closed allow-list for a kid-safe account - scoped across video, music, podcasts, and books, on both listings and direct file access); one-click app-state backup/restore (settings, accounts, watch state, library metadata - your media files themselves stay wherever you keep them and are not in the bundle).

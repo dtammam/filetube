@@ -3418,5 +3418,11 @@
     "date": "2026-10-01",
     "title": "Long names scroll, and an idle speaker lands on the menu",
     "intent": "A long name that is cut off with dots now slides into view when it is highlighted: the Remote control label at the top, the rows in the iPod menus and Speakers, and the song list. Short names never move, and nothing moves if you use Reduce Motion. Picking a speaker that is not playing anything now takes you to the Main menu with Music selected, instead of an empty Now Playing."
+  },
+  {
+    "version": "1.352.0",
+    "date": "2026-10-01",
+    "title": "A speaker computer from a bookmark, the one click, and links you can keep",
+    "intent": "When a computer needs one click before it can play, your phone and the computer now both say so. Open FileTube on a speaker computer from a bookmark ending in ?remote=on and it is ready for your phone to play music on, even after it signs in again. Sign-ins now stay active while you use them. Links can start a video at a moment, open an album, artist or playlist, or shuffle everything, albums and artists have a Copy link button, and the installed app has shortcuts on Android and desktop. When a phone plays a chaptered album on a speaker computer, the song name now follows the chapter that is playing."
   }
 ]

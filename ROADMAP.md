@@ -4,6 +4,31 @@
 
 ### Bugs
 
+- [ ] **Speakers: the chapter name on the phone falls back to the picked chapter when the PC leaves Music, or re-opens it
+  mid-file** _(gate r3 of v1.352, adversary + QA, measured)_ - v1.352 reports the chapter the PC's Music view shows; on Home
+  (the view torn down) or after a re-opened Music view (its chapter tracking starts empty) the phone shows the loaded
+  chapter again (the pre-v1.352 behaviour). A phone play always moves the speaker to Music, so the common case works. Fix
+  shape: derive the playing chapter in the player itself (its chapters and its absolute time). Related, measured on the PC
+  itself by QA: after a re-open the PC's own Music page shows no playing row either.
+- [ ] **Speakers: a tab that starts muted keeps the click hint after it is unmuted** _(gate r3 of v1.352, QA, reasoned)_ - the
+  hint clears on an AUDIBLE playing event; an unmute mid-play fires none. Kiosk + stored mute only; the phone hides the hint
+  while the PC plays. Fix shape: also clear on volumechange to audible while playing.
+- [ ] **Speakers: a small touchscreen speaker machine counts as a phone** _(gate r2 of v1.352, adversary, measured)_ - An
+  800x480 touch screen (a Raspberry Pi 7-inch kiosk) gets `html.is-phone` (music-skins.js `phoneFrom`: coarse pointer and
+  a short side of 500 px or less), so its `?remote=on` bookmark does nothing (Dean's v1.352 ruling: a phone is never a
+  speaker). An iPad and a desktop are fine. Fix shape: an explicit opt-in for such a machine (for example `?remote=on&kiosk=1`
+  or a per-browser setting), decided with Dean.
+- [x] **Speakers: a chaptered album playing on the PC keeps the first chapter's name on the phone** - FIXED in v1.352.0 (Dean asked to bundle it) _(Dean, 2026-10-01: "when
+  remotely controlling a computer speaker from phone the named chapter doesn't change. unless i skip track. if i pick intro,
+  it keeps playing all through all the way. and the music goes. and the scrubber shows. but it stays with the same name.
+  unless i explicitly fast forward")_ - The sound, the scrubber and Next all work; only the name on the phone is stuck.
+  Unverified hypothesis (read in code, not measured): a chaptered file plays as ONE load whose id is the picked
+  `<id>::c<n>`; the PC's music view advances the chapter in place (reflectChapter, no reload), but the remote state the PC
+  reports (public/js/player.js `getRemoteSnapshot().id` -> public/js/remote.js `buildStatePayload` trackId) keeps the picked
+  chapter's id, so the phone's track card never changes until a skip forces a real load. Falsifier: in a two-browser run,
+  log the PC's reported trackId across a chapter boundary; if it already changes, the stale name is on the phone side
+  (music.js remoteSkinCtx). Fix shape to plan: report the playing chapter's id (the view's chapterViewId), and bind it
+  with a real-browser row across a boundary.
 - [ ] **Bug: the turn back to portrait flashes a giant LCD for ~5 frames, then sits ~20 px low** (Dean, 2026-10-01, from a screen
   recording). **INSTRUMENTED in v1.350.0, not fixed**: headless does not reproduce it (all values flip in one frame). Next step:
   Dean records the turn back with `?debugRotate=1` (tap the panel to copy the rows); name the stale value from the log, then fix
@@ -163,6 +188,14 @@
 
 ### Features
 
+- [ ] **Speakers: a phone that closes the app comes back still connected** _(Dean, 2026-10-01: "if connected to a
+  speaker on mobile and you close out of app it should resume from that position/connection if still valid")_ -
+  Next swing. Today the phone remembers its speaker in `sessionStorage['ft-remote-controlling']`
+  (public/js/remote.js `createController`), which a closed app or killed PWA loses, so it reopens in local mode.
+  Shape to plan: remember the pick per device (localStorage), and on open re-check it against
+  `GET /api/remote/targets` (the `restore()` path already does this) before trusting it; reattach and show the
+  speaker's current song and position, or drop back to local quietly if the speaker is gone. Needs a plan
+  (intake: what "still valid" means, e.g. how long after closing, and whether it reattaches silently or asks).
 - [ ] **Search for the mobile player skins, and the iPod-style search for future things** _(Dean, 2026-10-01)_ - Scope: a
   search for the Music skins (Settings > Mobile player, and the Pocket Extras > Skins menu), in the iPod style
   (the click-wheel search). Build it on the existing search capabilities rather than a new engine, so the same
@@ -451,6 +484,33 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.352.0 - A speaker computer from a bookmark, the one click, links you can keep (2026-10-01)
+
+- Speaker bookmark: `?remote=on` on Home, Music, Podcasts, TV, Books, History, Stats or a watch page turns that tab into a
+  speaker (read and stripped while remote.js runs, before the router records the URL; one toast). A phone ignores it (Dean's
+  ruling: a phone is never a speaker). A logged-out bookmark returns to its page after sign-in (the gate sends `next=`).
+- The one click, said out loud: the PC reports `blocked` from the player's own refused-autostart event (the 900 ms timer that
+  a slow saved-position fetch outran is gone), a refused play/pause from the phone reports it too, and a new `needsClick`
+  field lets the phone say "Click the PC's tab once" as soon as it picks the speaker; the PC's pill asks for the click. Sound
+  that actually starts (a kiosk flag, an allow-autoplay setting) clears it.
+- Sign-in renewal: a session at least 15 days old is re-issued on use, carrying the time the password was typed; renewal
+  stops 180 days after that (Dean's ruling), so a copied cookie cannot be kept alive for ever.
+- Security: an open redirect in the login page's `next` is closed (`/\evil`, `/<TAB>/evil` and `/.//evil` all left the origin
+  before); the allowlist's traversal check reads the path only (the query of `/login?next=%2F...` used to loop the redirect).
+- Links: `/watch.html?v=<id>&t=1m30s` starts a video at a moment (over the saved position); `/music?artist=`, `&album=`,
+  `?playlist=liked|recent-played|recent-added`, `&mode=play|shuffle`, `?mode=shuffle`; a Copy link pill on album and artist
+  pages (Dean's ruling); app-icon shortcuts (Music, Now Playing, Shuffle Songs, Podcasts). Platform truth from MDN compat data:
+  not on iOS home-screen apps.
+- Speakers: a chaptered album playing on the PC now shows the playing chapter's name on the phone (Dean, bundled after gate r2;
+  measured: "Part Two" 1668 ms after the boundary, the old code kept "Intro").
+- Measured in real browsers against the real server (tools/listen-control-proof/speaker-proof.js and links-proof.js, out json
+  beside them): every plan row passes, 0 page errors. Suites on 6b461ab6: Node 22.23.1 and 24.20.0, each 10592 tests, 10580 pass, 0 fail, 12 skipped. `lint:ui` unchanged, overlay 0.
+- Gate: adversary, QA and security-brief, three rounds; all three APPROVED r3 @6b461ab6. Disclosed: the chapter name falls back
+  to the picked chapter when the PC leaves Music or re-opens it mid-file; a tab that starts muted keeps the click hint after an
+  unmute; a small touchscreen speaker (800x480) counts as a phone; a renewal racing a password change can sign that browser out
+  (fails closed); the same `&t=` opened again while that video plays does not seek; applyMusicLink's branches are bound only by
+  the browser proof; an admin backup restore re-stamps the 180 days.
 
 ### v1.351.0 - Long names scroll, an idle speaker lands on the menu (2026-10-01)
 

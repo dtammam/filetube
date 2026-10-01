@@ -791,7 +791,9 @@ test('gate r1 F3: both watch player.load calls claim the plain-video end: autoAd
   root.querySelector = (sel) => { if (!realm.els.has(sel)) realm.els.set(sel, makeEl('div')); return realm.els.get(sel); };
   realm.init(root);
   assert.equal(realm.loadCalls.length, 1, 'precondition: the early adopt ran synchronously');
-  assert.deepStrictEqual(Object.keys(realm.loadCalls[0].data).sort(), ['autoAdvanceViaTrackNav', 'browseCtx', 'readerHref', 'resumeMode'], 'precondition: that is the mountedEarly call (flavor-only data)');
+  // v1.352 L1: startAt (the `&t=` start, null without one) rides every watch load
+  assert.deepStrictEqual(Object.keys(realm.loadCalls[0].data).sort(), ['autoAdvanceViaTrackNav', 'browseCtx', 'readerHref', 'resumeMode', 'startAt'], 'precondition: that is the mountedEarly call (flavor-only data)');
+  assert.strictEqual(realm.loadCalls[0].data.startAt, null, 'no &t= in the URL: no explicit start');
   for (let i = 0; i < 40 && realm.theaterCalls.length === 0; i++) await settle();
   for (let i = 0; i < 12; i++) await settle();
   assert.equal(realm.loadCalls.length, 2, 'precondition: the early adopt + step 4 both ran');

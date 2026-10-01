@@ -3298,7 +3298,8 @@ function __mintTestSession(opts = {}) {
       );
     }
   }
-  const token = authCrypto.signSession({ uid: user.id, tv: user.tokenVersion }, SESSION_SECRET);
+  // opts.issuedAt (seconds): a session signed in the past (v1.352 sliding-renewal proofs)
+  const token = authCrypto.signSession({ uid: user.id, tv: user.tokenVersion }, SESSION_SECRET, Number.isInteger(opts.issuedAt) ? { nowSeconds: opts.issuedAt } : undefined);
   return { cookie: `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`, user: publicUser(user), cookieName: AUTH_COOKIE_NAME, token };
 }
 

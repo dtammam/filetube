@@ -48,6 +48,7 @@ function harness(opts) {
     setInterval: (f, ms) => { tid += 1; timers.set(tid, { f, at: clock + ms, rep: ms }); return tid; },
     clearInterval: (t) => timers.delete(t),
     deviceId: () => 'dev-pc', label: () => 'Desk', player: () => player,
+    userActivation: o.userActivation ? () => o.userActivation : undefined,
     navigate: (u) => navs.push(u), toast: (m) => toasts.push(m),
   };
   function advance(ms) {
@@ -70,6 +71,8 @@ function harness(opts) {
     offs: () => fetches.filter((f) => f.u === '/api/remote/off'),
     attach: (label) => { sources[0].emit('hello', { seq: 0 }); sources[0].emit('controller', { attached: true, label: label || 'Phone' }); },
     media: (type) => (listeners[type] || []).forEach((f) => f({ type })),
+    // the player raising/lowering its refused flag (player.js setAutoStartRefused dispatches this)
+    autostart: (on) => { refused = on; (listeners['filetube:autostart'] || []).forEach((f) => f({ type: 'filetube:autostart', detail: { refused: on } })); },
   };
 }
 
@@ -79,6 +82,12 @@ test('pure: the state payload maps snapshot to idle / paused / playing / blocked
   assert.strictEqual(R.buildStatePayload('d', { ...base, playing: true }, false).state, 'playing');
   assert.strictEqual(R.buildStatePayload('d', { ...base, playing: false }, false).state, 'paused');
   assert.strictEqual(R.buildStatePayload('d', { ...base, playing: false }, true).state, 'blocked');
+  assert.strictEqual(R.buildStatePayload('d', null, false, true).needsClick, true, 'idle still carries needsClick');
+  assert.strictEqual(R.buildStatePayload('d', base, false).needsClick, false);
+  assert.strictEqual(R.needsClickNow({ hasBeenActive: false }), true);
+  assert.strictEqual(R.needsClickNow({ hasBeenActive: true }), false);
+  assert.strictEqual(R.needsClickNow(null), false);
+  assert.strictEqual(R.needsClickNow({}), false, 'an object without the field is not a refusal');
   const p = R.buildStatePayload('d', { id: 't1', position: NaN, duration: -3, playing: true }, false);
   assert.strictEqual(p.position, 0);
   assert.strictEqual(p.duration, 0);
@@ -157,22 +166,92 @@ test('play whose Music view never mounts reports idle after 8s', () => {
   assert.strictEqual(s[s.length - 1].state, 'idle');
 });
 
-test('a refused auto-start after play is reported as blocked', () => {
+test('v1.352 W0: a refusal that lands 3s after the play (a slow saved-position fetch) is still reported as blocked', () => {
   const h = harness();
   h.t.setMusicPlayHandler(() => {});
   h.t.setOn(true); h.attach();
-  h.refuse(true);
   h.setSnap({ id: 't1', position: 0, duration: 200, playing: false, hasPrev: false, hasNext: false });
   h.sources[0].emit('command', { seq: 1, cmd: 'play', args: { tracks: [{ id: 't1' }], index: 0 } });
-  h.advance(1000);
-  const s = h.states();
-  assert.strictEqual(s[s.length - 1].state, 'blocked');
-  h.refuse(false);
+  h.advance(3000);
+  assert.ok(h.states().every((x) => x.state !== 'blocked'), 'nothing refused yet');
+  const n = h.states().length;
+  h.autostart(true);
+  assert.strictEqual(h.states().length, n + 1, 'the refusal is posted at once, not on a timer');
+  assert.strictEqual(h.states()[n].state, 'blocked');
   h.setSnap({ id: 't1', position: 1, duration: 200, playing: true, hasPrev: false, hasNext: false });
-  h.media('play');
-  h.advance(600);
+  h.autostart(false);
   const s2 = h.states();
-  assert.strictEqual(s2[s2.length - 1].state, 'playing', 'the next play clears blocked');
+  assert.strictEqual(s2[s2.length - 1].state, 'playing', 'the element playing lowers the flag and is posted at once');
+});
+
+test('v1.352 W0: blocked is the player flag read at each report (a refused play/pause from the phone, a controller attaching late)', () => {
+  const h = harness();
+  h.setSnap({ id: 't1', position: 0, duration: 200, playing: false, hasPrev: false, hasNext: false });
+  h.refuse(true);
+  h.t.setOn(true); h.attach();
+  assert.strictEqual(h.states()[0].state, 'blocked', 'a refusal from before the phone attached is reported on attach');
+  h.refuse(false);
+  h.sources[0].emit('command', { seq: 1, cmd: 'toggle', args: {} });
+  h.advance(600);
+  const n = h.states().length;
+  h.autostart(true); // player.js togglePlayPause: the element refused the play
+  assert.strictEqual(h.states().length, n + 1);
+  assert.strictEqual(h.states()[n].state, 'blocked');
+  h.t.setOn(false);
+  assert.ok(!h.listeners['filetube:autostart'] || h.listeners['filetube:autostart'].length === 0, 'switching off unbinds the listener');
+});
+
+test('v1.352 W0: needsClick is true while the tab has had no click, posted on attach, and cleared by the first input', () => {
+  const ua = { hasBeenActive: false };
+  const h = harness({ userActivation: ua });
+  const seen = [];
+  h.t.onChange((on, attached, label, nc) => seen.push(nc));
+  h.t.setOn(true);
+  assert.strictEqual(h.t.needsClick(), true);
+  assert.strictEqual(seen[seen.length - 1], true, 'the pill hears it before any phone attaches');
+  h.attach();
+  assert.strictEqual(h.states()[0].needsClick, true, 'reported on attach, before any song');
+  const n = h.states().length;
+  (h.listeners.keydown || []).forEach((f) => f({ type: 'keydown' }));
+  h.advance(1);
+  assert.strictEqual(h.states().length, n, 'an input the browser did not count changes nothing');
+  ua.hasBeenActive = true;
+  (h.listeners.pointerdown || []).forEach((f) => f({ type: 'pointerdown' }));
+  h.advance(1);
+  assert.strictEqual(h.states().length, n + 1, 'the first counted input posts at once');
+  assert.strictEqual(h.states()[n].needsClick, false);
+  assert.strictEqual(h.t.needsClick(), false);
+  assert.strictEqual(seen[seen.length - 1], false, 'and the pill hears it');
+});
+
+test('v1.352 W0: needsClick is false without navigator.userActivation, and a stale true is lowered at the next report', () => {
+  const h = harness();
+  h.t.setOn(true); h.attach();
+  assert.strictEqual(h.states()[0].needsClick, false, 'no userActivation: never a false alarm');
+  const ua = { hasBeenActive: false };
+  const h2 = harness({ userActivation: ua });
+  h2.t.setOn(true); h2.attach();
+  assert.strictEqual(h2.states()[0].needsClick, true);
+  ua.hasBeenActive = true; // activated by an input the listeners do not see (a touchend)
+  h2.media('seeked'); h2.advance(600);
+  const s = h2.states();
+  assert.strictEqual(s[s.length - 1].needsClick, false);
+});
+
+test('v1.352 W0: the pill asks for a click on the PC while On and unclicked, and the click hides it', () => {
+  const dom = new JSDOM('<!doctype html><body></body>');
+  const doc = dom.window.document;
+  const ua = { hasBeenActive: false };
+  const h = harness({ userActivation: ua });
+  const ui = { button: (o) => { const b = doc.createElement('button'); b.textContent = o.label; return b; } };
+  const pill = R.mountPill(doc, h.t, ui);
+  h.t.setOn(true);
+  assert.strictEqual(pill.hidden, false, 'shown with no phone attached');
+  assert.strictEqual(pill.querySelector('.remote-pill-text').textContent, 'Click anywhere so your phone can play music here');
+  ua.hasBeenActive = true;
+  (h.listeners.click || []).forEach((f) => f({ type: 'click' }));
+  h.advance(1);
+  assert.strictEqual(pill.hidden, true, 'hidden on the first click (no phone attached)');
 });
 
 test('state is reported only while a controller is attached: one on attach, throttled on media events, every 5s while playing', () => {
@@ -338,4 +417,175 @@ test('v1.349 relabel across tabs: a storage event for ft-device-name reopens the
   winListeners.storage.forEach((f) => f({ key: 'ft-device-name' }));
   assert.strictEqual(h.sources.length, 2, 'the device name key reopens the stream');
   assert.strictEqual(h.sources[0].closed, true);
+});
+
+// ---- v1.352 W1: ?remote=on ------------------------------------------------
+
+test('v1.352 W1: wantsRemoteOn acts only on remote=on exactly', () => {
+  assert.strictEqual(R.wantsRemoteOn('?remote=on'), true);
+  assert.strictEqual(R.wantsRemoteOn('?a=1&remote=on&b=2'), true);
+  for (const s of ['?remote=On', '?remote=1', '?remote=', '?remote=off', '', '?x=remote=on', '?remote', '?remote=on%20', null, undefined]) {
+    assert.strictEqual(R.wantsRemoteOn(s), false, String(s));
+  }
+});
+
+function realRemote(url, opts) {
+  const o = opts || {};
+  const dom = new JSDOM('<!doctype html><body></body>', { url, runScripts: 'outside-only' });
+  const w = dom.window;
+  const replaces = [];
+  if (o.state) w.history.replaceState(o.state, '', url);
+  const realReplace = w.history.replaceState.bind(w.history);
+  w.history.replaceState = (st, t, u) => { replaces.push({ st, u }); return realReplace(st, t, u); };
+  const toasts = [];
+  const sources = [];
+  w.showToast = (m) => toasts.push(m);
+  w.fetch = () => Promise.resolve({ ok: true, json: async () => [] });
+  w.EventSource = class { constructor(u) { this.url = u; sources.push(u); } addEventListener() {} close() {} };
+  w.FileTube = { getDeviceId: () => 'dev-1', getDeviceLabel: () => 'Desk', player: null, navigate() {} };
+  if (o.blockStorage) Object.defineProperty(w, 'sessionStorage', { get() { throw new Error('blocked'); } });
+  w.eval(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'remote.js'), 'utf8'));
+  const atEval = { url: w.location.pathname + w.location.search, on: w.FileTube.remote.isOn() };
+  const booted = new Promise((res) => { if (w.document.readyState === 'loading') w.document.addEventListener('DOMContentLoaded', () => res()); else res(); });
+  return { w, replaces, toasts, sources, atEval, booted, close: () => w.close() };
+}
+
+test('v1.352 W1: the real script at /music?remote=on&nowplaying=1 turns On once, strips only remote (URL and history.state.url), and toasts once', async () => {
+  const r = realRemote('http://localhost/music?remote=on&nowplaying=1#x', { state: { view: 'music', url: '/music?remote=on&nowplaying=1', depth: 3, scrollY: 40 } });
+  try {
+    assert.deepStrictEqual(r.atEval, { url: '/music?nowplaying=1', on: false }, 'stripped while the script runs, before DOMContentLoaded (the router boots then)');
+    await r.booted;
+    assert.strictEqual(r.w.FileTube.remote.isOn(), true);
+    assert.strictEqual(r.sources.length, 1, 'one stream: setOn ran once');
+    assert.strictEqual(r.w.sessionStorage.getItem('ft-remote-target-on'), '1', 'the per-tab flag: a reload stays On');
+    assert.strictEqual(r.w.location.pathname + r.w.location.search + r.w.location.hash, '/music?nowplaying=1#x');
+    assert.strictEqual(r.replaces.length, 1);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(r.w.history.state)), { view: 'music', url: '/music?nowplaying=1', depth: 3, scrollY: 40 }, 'state.url rewritten, every other key kept');
+    assert.deepStrictEqual(r.toasts, [R.LINK_TOAST]);
+  } finally { r.close(); }
+});
+
+test('v1.352 W1: a fresh load (no history.state yet) strips too and leaves the state for the router to seed', async () => {
+  const r = realRemote('http://localhost/?remote=on');
+  try {
+    await r.booted;
+    assert.strictEqual(r.w.location.search, '');
+    assert.strictEqual(r.w.history.state, null);
+    assert.strictEqual(r.w.FileTube.remote.isOn(), true);
+  } finally { r.close(); }
+});
+
+test('v1.352 W1: any other remote value is stripped but acts on nothing; no param touches nothing', async () => {
+  const off = realRemote('http://localhost/music?remote=off&a=1');
+  try {
+    await off.booted;
+    assert.strictEqual(off.w.FileTube.remote.isOn(), false, '?remote=off cannot switch anything');
+    assert.strictEqual(off.w.location.search, '?a=1');
+    assert.deepStrictEqual(off.toasts, []);
+  } finally { off.close(); }
+  const none = realRemote('http://localhost/music?a=1');
+  try {
+    await none.booted;
+    assert.strictEqual(none.replaces.length, 0, 'no history write without the param');
+    assert.strictEqual(none.w.FileTube.remote.isOn(), false);
+  } finally { none.close(); }
+});
+
+test('v1.352 W1: a blocked sessionStorage still turns the page On', async () => {
+  const r = realRemote('http://localhost/music?remote=on', { blockStorage: true });
+  try {
+    await r.booted;
+    assert.strictEqual(r.w.FileTube.remote.isOn(), true);
+    assert.strictEqual(r.sources.length, 1);
+  } finally { r.close(); }
+});
+
+// ---- v1.352 gate r1 -------------------------------------------------------
+
+test('v1.352 gate r1: sound that starts clears needsClick (a kiosk or allow-autoplay tab never clicked), posted at once', () => {
+  const ua = { hasBeenActive: false }; // stays false: the browser allowed sound without a click
+  const h = harness({ userActivation: ua });
+  const seen = [];
+  h.t.onChange((on, attached, label, nc) => seen.push(nc));
+  h.t.setOn(true); h.attach();
+  assert.strictEqual(h.states()[0].needsClick, true);
+  const n = h.states().length;
+  (h.listeners.playing || []).forEach((f) => f({ type: 'playing' }));
+  assert.strictEqual(h.states().length, n + 1, 'posted at once');
+  assert.strictEqual(h.states()[n].needsClick, false);
+  assert.strictEqual(h.t.needsClick(), false);
+  assert.strictEqual(seen[seen.length - 1], false, 'the pill hears it');
+  h.media('seeked'); h.advance(600);
+  const s = h.states();
+  assert.strictEqual(s[s.length - 1].needsClick, false, 'and it stays down although hasBeenActive is still false');
+});
+
+test('v1.352 gate r1 (Dean): on a phone ?remote=on is stripped but turns nothing on', async () => {
+  const dom = new JSDOM('<!doctype html><html class="is-phone"><body></body></html>', { url: 'http://localhost/music?remote=on&mode=shuffle', runScripts: 'outside-only' });
+  const w = dom.window;
+  const toasts = [];
+  w.showToast = (m) => toasts.push(m);
+  w.fetch = () => Promise.resolve({ ok: true, json: async () => [] });
+  w.EventSource = class { addEventListener() {} close() {} };
+  w.FileTube = { getDeviceId: () => 'dev-1', getDeviceLabel: () => 'Phone', player: null, navigate() {} };
+  w.eval(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'remote.js'), 'utf8'));
+  await new Promise((res) => { if (w.document.readyState === 'loading') w.document.addEventListener('DOMContentLoaded', () => res()); else res(); });
+  try {
+    assert.strictEqual(w.location.search, '?mode=shuffle', 'the param leaves the address bar, the rest stays');
+    assert.strictEqual(w.FileTube.remote.isOn(), false, 'a phone is never a target');
+    assert.strictEqual(w.sessionStorage.getItem('ft-remote-target-on'), null);
+    assert.deepStrictEqual(toasts, []);
+  } finally { w.close(); }
+});
+
+// ---- v1.352 (Dean): the chapter playing on the PC is the one the phone hears ----
+
+test('v1.352 reportedTrackId: the view\'s chapter wins only when it is a chapter of the LOADED file', () => {
+  assert.strictEqual(R.reportedTrackId('f1::c0', 'f1::c2'), 'f1::c2');
+  assert.strictEqual(R.reportedTrackId('f1', 'f1::c1'), 'f1::c1', 'a file loaded by its base id');
+  assert.strictEqual(R.reportedTrackId('f1::c0', 'f2::c1'), 'f1::c0', 'another file: the player wins');
+  assert.strictEqual(R.reportedTrackId('f1::c0', 'f1'), 'f1::c0', 'not a chapter id');
+  assert.strictEqual(R.reportedTrackId('f1::c0', null), 'f1::c0');
+  assert.strictEqual(R.reportedTrackId(null, 'f1::c1'), null, 'nothing loaded: idle stays idle');
+  assert.strictEqual(R.reportedTrackId('f1::c0', 'f1::c1x'), 'f1::c0');
+});
+
+test('v1.352: the Music view\'s chapter is reported, and a rollover posts at once (trackChanged)', () => {
+  const h = harness();
+  h.setSnap({ id: 'f1::c0', position: 24, duration: 60, playing: true, hasPrev: true, hasNext: true });
+  let view = 'f1::c0';
+  h.t.setNowPlayingResolver(() => view);
+  h.t.setOn(true); h.attach();
+  assert.strictEqual(h.states()[0].trackId, 'f1::c0');
+  h.advance(600);
+  const n = h.states().length;
+  view = 'f1::c1'; // reflectChapter rolled the chapter on screen
+  h.t.trackChanged();
+  h.advance(600);
+  assert.ok(h.states().length > n, 'the rollover is reported without waiting for the 5 s beat');
+  assert.strictEqual(h.states()[h.states().length - 1].trackId, 'f1::c1');
+  view = 'f9::c3'; // a stale view of another file
+  h.t.trackChanged(); h.advance(600);
+  assert.strictEqual(h.states()[h.states().length - 1].trackId, 'f1::c0', 'never another file\'s chapter');
+  h.t.setNowPlayingResolver(null);
+  h.t.trackChanged(); h.advance(600);
+  assert.strictEqual(h.states()[h.states().length - 1].trackId, 'f1::c0', 'no view: the player\'s own id');
+});
+
+test('v1.352 gate r2: a MUTED element playing does not clear needsClick (only audible sound proves the browser allows it)', () => {
+  const ua = { hasBeenActive: false };
+  const h = harness({ userActivation: ua });
+  h.t.setOn(true); h.attach();
+  (h.listeners.playing || []).forEach((f) => f({ type: 'playing', target: { muted: true, volume: 1 } }));
+  assert.strictEqual(h.t.needsClick(), true, 'a muted hover preview');
+  (h.listeners.playing || []).forEach((f) => f({ type: 'playing', target: { muted: false, volume: 0 } }));
+  assert.strictEqual(h.t.needsClick(), true, 'volume 0');
+  (h.listeners.playing || []).forEach((f) => f({ type: 'playing', target: { muted: false, volume: 1 } }));
+  assert.strictEqual(h.t.needsClick(), false);
+});
+
+test('v1.352 gate r2: the playing listener is a CAPTURE listener (media events do not bubble to document)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'remote.js'), 'utf8');
+  assert.match(src, /env\.document\.addEventListener\('playing', onPlaying, true\);/);
+  assert.match(src, /env\.document\.removeEventListener\('playing', onPlaying, true\);/);
 });

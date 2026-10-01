@@ -49,6 +49,23 @@ test('allowlist: traversal (raw AND percent-encoded) is refused OUTRIGHT — nev
   assert.equal(gate.isAllowlisted('GET', '/css/style.css?v=2'), true);
 });
 
+test('v1.352: the traversal check reads the path, never the query (/login?next=%2F... stays /login, no redirect loop)', () => {
+  assert.equal(gate.isAllowlisted('GET', '/login?next=%2Fmusic%3Fremote%3Don'), true);
+  assert.equal(gate.isAllowlisted('GET', '/login?next=%2F..%2Fx%5C'), true, 'markers in the query do not matter');
+  for (const p of ['/fonts/%2e%2e/server.js?x=1', '/fonts/../server.js?next=%2F', '/icons/%2f/etc/passwd?a', '/assets/icons/..%5cwin?q']) {
+    assert.equal(gate.isAllowlisted('GET', p), false, 'a traversal PATH is still refused with a query: ' + p);
+  }
+  // the gate end to end: a logged-out bookmark is bounced ONCE; the login page it lands on is served
+  const g = gate.createAuthGate({ store: fakeStore({ count: 1, user: null }), secret: 's'.repeat(40), cookieName: 'c' });
+  const first = fakeRes(); g(fakeReq({ path: '/music?remote=on' }), first, () => {});
+  const loginReq = fakeReq({ path: first._redirect.to });
+  loginReq.path = '/login';
+  let served = false;
+  const second = fakeRes(); g(loginReq, second, () => { served = true; });
+  assert.equal(served, true, 'the redirect target itself is allowed: one bounce, no loop');
+  assert.equal(second._redirect, null);
+});
+
 // ---- rate limiter (CRITICAL-1 defense-in-depth) -----------------------------
 
 test('rate limiter: allows a burst up to capacity, then 429s with a retry-after, and refunds on success', () => {
@@ -135,6 +152,8 @@ function fakeRes() {
     status(c) { this._status = c; return this; },
     json(o) { this._json = o; return this; },
     redirect(c, to) { this._redirect = { code: c, to }; return this; },
+    _headers: {},
+    setHeader(k, v) { this._headers[k.toLowerCase()] = v; },
   };
 }
 function fakeStore({ count, user }) {
@@ -250,4 +269,165 @@ test('gate: a request carrying a malformed cookie is DENIED cleanly (401/redirec
   const pageRes = fakeRes();
   assert.doesNotThrow(() => g(fakeReq({ path: '/', accept: 'text/html', cookie: 'x=%E0%A4%A; ft_session_abc=%zz' }), pageRes, () => { throw new Error('must not authenticate'); }));
   assert.ok(pageRes._redirect && /\/login/.test(pageRes._redirect.to), 'fail-closed to /login, not a raw 500');
+});
+
+// ---- v1.352 W1: login returns to the page asked for; sliding renewal --------
+
+test('v1.352 W1: a logged-out page carries next=<the original URL> to /login; an API stays a 401; zero users stays /welcome', () => {
+  const g = gate.createAuthGate({ store: fakeStore({ count: 1, user: null }), secret: 's'.repeat(40), cookieName: 'c' });
+  const page = fakeRes(); g(fakeReq({ path: '/music?remote=on' }), page, () => {});
+  assert.deepEqual(page._redirect, { code: 302, to: '/login?next=%2Fmusic%3Fremote%3Don' });
+  const api = fakeRes(); g(fakeReq({ path: '/music?remote=on', accept: 'application/json' }), api, () => {});
+  assert.equal(api._redirect, null);
+  assert.equal(api._status, 401);
+  assert.deepEqual(api._json, { error: 'authentication required', authRequired: true }, 'the 401 body is unchanged');
+  const none = gate.createAuthGate({ store: fakeStore({ count: 0 }), secret: 's'.repeat(40), cookieName: 'c' });
+  const w = fakeRes(); none(fakeReq({ path: '/music?remote=on' }), w, () => {});
+  assert.deepEqual(w._redirect, { code: 302, to: '/welcome' }, 'the setup funnel never carries next');
+  // a revoked session on a page is bounced with next too (the same deny)
+  const secret = authCrypto.generateSecret();
+  const tv = gate.createAuthGate({ store: fakeStore({ count: 1, user: { id: 5, tokenVersion: 4, disabled: false } }), secret, cookieName: 'c' });
+  const stale = authCrypto.signSession({ uid: 5, tv: 3 }, secret);
+  const r = fakeRes(); tv(fakeReq({ path: '/setup', cookie: 'c=' + encodeURIComponent(stale) }), r, () => {});
+  assert.deepEqual(r._redirect, { code: 302, to: '/login?next=%2Fsetup' });
+});
+
+test('v1.352 W1: loginTarget drops next for / and for a URL over the cap, and never builds an absolute one', () => {
+  assert.equal(gate.loginTarget('/'), '/login');
+  assert.equal(gate.loginTarget(undefined), '/login');
+  assert.equal(gate.loginTarget('http://evil/x'), '/login', 'only a path is carried');
+  const long = '/music?x=' + 'a'.repeat(gate.NEXT_MAX);
+  assert.equal(gate.loginTarget(long), '/login');
+  const fits = '/music?x=' + 'a'.repeat(gate.NEXT_MAX - 30);
+  assert.ok(gate.loginTarget(fits).startsWith('/login?next=%2Fmusic'));
+});
+
+test('v1.352 W1: a session 15+ days old is re-issued with a fresh 30 days; a younger one is not', () => {
+  const secret = authCrypto.generateSecret();
+  const DAY = 86400;
+  let now = 1_800_000_000;
+  const user = { id: 5, username: 'dean', tokenVersion: 3, disabled: false };
+  const g = gate.createAuthGate({ store: fakeStore({ count: 1, user }), secret, cookieName: 'c', nowSeconds: () => now });
+  const issuedAt = now;
+  const tok = authCrypto.signSession({ uid: 5, tv: 3 }, secret, { nowSeconds: issuedAt });
+  const hit = (accept) => { const res = fakeRes(); let ok = false; g(fakeReq({ path: '/api/remote/state', accept, cookie: 'c=' + encodeURIComponent(tok) }), res, () => { ok = true; }); return { res, ok }; };
+  now = issuedAt + 14 * DAY;
+  const young = hit('application/json');
+  assert.equal(young.ok, true);
+  assert.equal(young.res._headers['set-cookie'], undefined, '14 days old: no Set-Cookie');
+  now = issuedAt + 15 * DAY - 1;
+  assert.equal(hit('application/json').res._headers['set-cookie'], undefined, 'one second short of half its life');
+  now = issuedAt + 16 * DAY;
+  const old = hit('application/json'); // an API call (a fetch, the speaker's state report, the SSE) renews too
+  assert.equal(old.ok, true);
+  const sc = old.res._headers['set-cookie'];
+  assert.match(sc, /^c=[^;]+; Path=\/; HttpOnly; SameSite=Lax; Max-Age=2592000$/, 'the login cookie: same name, flags and Max-Age');
+  const fresh = authCrypto.verifySession(decodeURIComponent(/^c=([^;]+)/.exec(sc)[1]), secret, { nowSeconds: now });
+  assert.deepEqual({ uid: fresh.uid, tv: fresh.tv, iat: fresh.iat, exp: fresh.exp }, { uid: 5, tv: 3, iat: now, exp: now + 30 * DAY });
+  assert.equal(authCrypto.verifySession(decodeURIComponent(/^c=([^;]+)/.exec(sc)[1]), secret, { nowSeconds: now + 29 * DAY }) !== null, true, 'alive for 30 days from the renewal');
+});
+
+test('v1.352 W1: renewal never happens on a denied request (tv bumped, disabled, expired) and keeps the Secure flag', () => {
+  const secret = authCrypto.generateSecret();
+  const DAY = 86400;
+  const t0 = 1_800_000_000;
+  const now = t0 + 20 * DAY;
+  const tok = authCrypto.signSession({ uid: 5, tv: 3 }, secret, { nowSeconds: t0 });
+  const run = (user, token, extra) => {
+    const g = gate.createAuthGate(Object.assign({ store: fakeStore({ count: 1, user }), secret, cookieName: 'c', nowSeconds: () => now }, extra || {}));
+    const res = fakeRes(); let ok = false;
+    const req = fakeReq({ path: '/api/x', accept: 'application/json', cookie: 'c=' + encodeURIComponent(token) });
+    req.headers['x-forwarded-proto'] = 'https';
+    g(req, res, () => { ok = true; });
+    return { res, ok };
+  };
+  const bumped = run({ id: 5, tokenVersion: 4, disabled: false }, tok);
+  assert.equal(bumped.ok, false); assert.equal(bumped.res._headers['set-cookie'], undefined, 'a bumped tv is denied, never renewed');
+  const disabled = run({ id: 5, tokenVersion: 3, disabled: true }, tok);
+  assert.equal(disabled.ok, false); assert.equal(disabled.res._headers['set-cookie'], undefined);
+  const expiredTok = authCrypto.signSession({ uid: 5, tv: 3 }, secret, { nowSeconds: now - 31 * DAY });
+  const expired = run({ id: 5, tokenVersion: 3, disabled: false }, expiredTok);
+  assert.equal(expired.ok, false); assert.equal(expired.res._headers['set-cookie'], undefined, 'an expired token is denied');
+  const secure = run({ id: 5, tokenVersion: 3, disabled: false }, tok, { trustProxy: true });
+  assert.equal(secure.ok, true);
+  assert.match(secure.res._headers['set-cookie'], /; Secure$/, 'behind a trusted https proxy the renewed cookie is Secure, like login');
+});
+
+test('v1.352 W1: the API-token path never mints a session cookie', () => {
+  const g = gate.createAuthGate({ store: fakeStore({ count: 1, user: null }), secret: 's'.repeat(40), cookieName: 'c', apiToken: 'tok', nowSeconds: () => 1_900_000_000 });
+  const res = fakeRes(); let ok = false;
+  g({ method: 'POST', path: '/api/ytdlp/download', url: '/api/ytdlp/download', originalUrl: '/api/ytdlp/download', headers: { 'x-filetube-token': 'tok' } }, res, () => { ok = true; });
+  assert.equal(ok, true);
+  assert.equal(res._headers['set-cookie'], undefined);
+});
+
+test('v1.352 W1: sessionWantsRenewal is half the life, inclusive', () => {
+  const ttl = 30 * 86400;
+  assert.equal(gate.sessionWantsRenewal({ iat: 0 }, ttl / 2, ttl), true);
+  assert.equal(gate.sessionWantsRenewal({ iat: 0 }, ttl / 2 - 1, ttl), false);
+  assert.equal(gate.sessionWantsRenewal({ iat: 'x' }, ttl, ttl), false);
+  assert.equal(gate.sessionWantsRenewal(null, ttl, ttl), false);
+});
+
+// ---- v1.352 gate r1 (adversary W2 = security S1, Dean's ruling): a 180-day ceiling on renewal ----
+
+function legacyToken(payload, secret) { // a pre-v1.352 token: no oat field
+  const crypto = require('node:crypto');
+  const b = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+  return b + '.' + crypto.createHmac('sha256', secret).update(b).digest('base64url');
+}
+
+test('v1.352 gate r1: renewal carries the sign-in time (oat) and stops 180 days after it', () => {
+  const secret = authCrypto.generateSecret();
+  const DAY = 86400;
+  const login = 1_800_000_000;
+  let now = login;
+  const user = { id: 5, tokenVersion: 3, disabled: false };
+  const g = gate.createAuthGate({ store: fakeStore({ count: 1, user }), secret, cookieName: 'c', nowSeconds: () => now });
+  const hit = (tok) => { const res = fakeRes(); let ok = false; g(fakeReq({ path: '/api/x', accept: 'application/json', cookie: 'c=' + encodeURIComponent(tok) }), res, () => { ok = true; }); const sc = res._headers['set-cookie']; return { ok, tok: sc ? decodeURIComponent(/^c=([^;]+)/.exec(sc)[1]) : null }; };
+  let tok = authCrypto.signSession({ uid: 5, tv: 3 }, secret, { nowSeconds: login });
+  assert.equal(authCrypto.verifySession(tok, secret, { nowSeconds: login }).oat, login, 'a login stamps oat = now');
+  // renew every 16 days: oat never moves
+  let renewals = 0;
+  for (now = login + 16 * DAY; now - login < 180 * DAY; now += 16 * DAY) {
+    const r = hit(tok);
+    assert.equal(r.ok, true);
+    if (r.tok) { renewals += 1; tok = r.tok; assert.equal(authCrypto.verifySession(tok, secret, { nowSeconds: now }).oat, login, 'oat carried, day ' + (now - login) / DAY); }
+  }
+  assert.ok(renewals >= 10, 'renewed on the way: ' + renewals);
+  // now is past 180 days after the sign-in: still valid (its last renewal is < 30 days old), never renewed again
+  const late = hit(tok);
+  assert.equal(late.ok, true, 'the current cookie still works until its own expiry');
+  assert.equal(late.tok, null, 'no renewal past the 180-day ceiling');
+  now += 30 * DAY;
+  assert.equal(hit(tok).ok, false, 'and then it expires: sign in again');
+});
+
+test('v1.352 gate r1: a pre-v1.352 token (no oat) uses its iat as the sign-in time; a bad oat is refused', () => {
+  const secret = authCrypto.generateSecret();
+  const DAY = 86400;
+  const iat = 1_800_000_000;
+  const legacy = legacyToken({ uid: 5, tv: 3, iat, exp: iat + 30 * DAY }, secret);
+  const p = authCrypto.verifySession(legacy, secret, { nowSeconds: iat + 1 });
+  assert.ok(p, 'an existing session is not logged out');
+  assert.equal(p.oat, undefined);
+  assert.equal(gate.sessionWantsRenewal(p, iat + 16 * DAY, 30 * DAY), true);
+  // renewing it carries its iat forward as the sign-in time (never "now": that would restart the 180 days)
+  const g = gate.createAuthGate({ store: fakeStore({ count: 1, user: { id: 5, tokenVersion: 3, disabled: false } }), secret, cookieName: 'c', nowSeconds: () => iat + 16 * DAY });
+  const res = fakeRes();
+  g(fakeReq({ path: '/api/x', accept: 'application/json', cookie: 'c=' + encodeURIComponent(legacy) }), res, () => {});
+  const renewed = authCrypto.verifySession(decodeURIComponent(/^c=([^;]+)/.exec(res._headers['set-cookie'])[1]), secret, { nowSeconds: iat + 16 * DAY });
+  assert.equal(renewed.oat, iat, 'a legacy session counts from its iat');
+  assert.equal(gate.sessionWantsRenewal({ iat, oat: iat - 170 * DAY }, iat + 16 * DAY, 30 * DAY), false, '186 days after the password: no renewal');
+  assert.equal(gate.sessionWantsRenewal({ iat, oat: iat - 160 * DAY }, iat + 16 * DAY, 30 * DAY), true, '176 days: still renews');
+  assert.equal(authCrypto.verifySession(legacyToken({ uid: 5, tv: 3, iat, exp: iat + 30 * DAY, oat: 'x' }, secret), secret, { nowSeconds: iat + 1 }), null, 'a non-integer oat is a structural surprise');
+  assert.throws(() => authCrypto.signSession({ uid: 5, tv: 3, oat: iat + 10 }, secret, { nowSeconds: iat }), /oat/);
+  assert.equal(gate.SESSION_MAX_AGE_SECONDS, 180 * DAY);
+});
+
+test('v1.352 gate r1: the next cap is inclusive at exactly NEXT_MAX encoded chars', () => {
+  const pad = (n) => '/m?x=' + 'a'.repeat(n - '%2Fm%3Fx%3D'.length);
+  assert.equal(encodeURIComponent(pad(gate.NEXT_MAX)).length, gate.NEXT_MAX);
+  assert.ok(gate.loginTarget(pad(gate.NEXT_MAX)).startsWith('/login?next='), 'exactly the cap: kept');
+  assert.equal(gate.loginTarget(pad(gate.NEXT_MAX + 1)), '/login', 'one over: dropped');
 });
