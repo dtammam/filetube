@@ -3,10 +3,10 @@ plan: speaker-bookmark
 harness: v2 · lean
 branch: feat/v1.352-speaker-bookmark
 anchor: spec
-status: Building
-next: gate r1 (W0-W3 built)
+status: Shipped v1.352.0
+next: shipped (device checks owed, see docs/DEVICE-CHECKS.md)
 design: Rulings 2026-10-01 (Dean: R2 yes, R3 tooltip + README, R5 sliding renewal, L1-L3 in the same release; W0 from his autoplay report; R1, R4, W0 and the L defaults are architect defaults he did not overrule)
-gate: FULL (adversary + qa + security-brief; forced by lib/auth/** via R2 and R5)
+gate: APPROVED r3 @6b461ab6 (FULL: adversary + qa + security-brief; forced by lib/auth/** via R2 and R5)
 ---
 
 # Speaker bookmark, and bookmarkable links: a speaker machine that opens listening, a video at a time,
@@ -476,6 +476,19 @@ lives up to 30 more); adversary S3 bound: the playing listener's capture phase (
 DISCLOSED, logged in ROADMAP Planned: adversary S2 (measured) an 800x480 touch screen counts as a phone, so its bookmark does
 nothing; DISCLOSED as acceptable: the security r2 note that an admin backup restore re-stamps oat (an admin cookie can already
 change its own password, so the ceiling limits a copied member cookie, not a copied admin cookie).
+
+Gate: APPROVED r3 @6b461ab6 - adversary
+Gate: APPROVED r3 @6b461ab6 - qa
+Gate: APPROVED r3 @6b461ab6 - security-brief
+
+r3 (the one-commit chapter delta 2beb8eaf..6b461ab6): all three APPROVED, no CRITICAL or WARNING. Measured by the seats: forward,
+backward, Next and re-init rows all follow the playing chapter; the server re-resolves the reported id through the caller's
+visibility (no hidden title); trackChanged rides the 500 ms throttle. Disclosed and logged in ROADMAP Planned: the name falls back
+when the PC leaves Music or re-opens it mid-file (adversary + QA, measured); a tab that starts muted keeps the hint after an
+unmute (QA, reasoned). One equivalent survivor: the try/catch around the resolver call (the resolver cannot throw).
+
+Final suites on 6b461ab6 (`npm test`): Node 22.23.1: 10592 tests, 10580 pass, 0 fail, 12 skipped. Node 24.20.0: 10592 tests,
+10580 pass, 0 fail, 12 skipped.
 
 ## 8. Device checks Dean would owe (go into DEVICE-CHECKS.md, one line each, at release)
 
