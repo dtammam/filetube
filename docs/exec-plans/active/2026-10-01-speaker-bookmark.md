@@ -4,8 +4,8 @@ harness: v2 · lean
 branch: feat/v1.352-speaker-bookmark
 anchor: spec
 status: Draft
-next: W1 (build not started; read the whole plan first, sections 1-10)
-design: Rulings 2026-10-01 (Dean: R2 yes, R3 tooltip + README, R5 sliding renewal, L1-L3 in the same release; R1, R4 and the L defaults are architect defaults he did not overrule)
+next: W0 (build not started; read the whole plan first, every section)
+design: Rulings 2026-10-01 (Dean: R2 yes, R3 tooltip + README, R5 sliding renewal, L1-L3 in the same release; W0 from his autoplay report; R1, R4, W0 and the L defaults are architect defaults he did not overrule)
 gate: FULL (adversary + qa + security-brief; forced by lib/auth/** via R2 and R5)
 ---
 
@@ -27,7 +27,7 @@ needs no click at all.
 ## 0. Step 0 - read, set up, and the stop rules
 
 0.1 Read `AGENTS.md`, then `docs/LESSONS.md` sections **0, 1, 2, 4, 5, 8, 10, 13**. Read this plan once
-fully before editing. Order of work: W1, W2, L1, L2, L3, W3 (section 10 says why).
+fully before editing. Order of work: W0, W1, W2, L1, L2, L3, W3 (W0 first: the speaker bookmark makes a never-clicked tab the normal case).
 
 0.2 Environment, every shell: `export PATH="$HOME/.local/share/fnm/node-versions/v22.23.1/installation/bin:$PATH"`.
 Dual-Node for the final suite: 22.23.1 and 24.20.0 (Node 24 prints `ℹ`, not `#`; an empty grep is not green).
@@ -55,7 +55,8 @@ or behaves differently and the fix is not a like-for-like rename; (b) the router
 parameter back and the strip cannot be moved to run last (section 4); (c) the session token has no
 issue time and deriving one would log existing sessions out (Q7); (d) the L3 drills have no menu to hold
 "Copy link"; (e) any step needs a new npm dependency (none is planned); (f) a gate seat asks for a scope
-change. Never widen scope: log extras in ROADMAP.md Planned.
+change; (g) the W0 falsifier contradicts the diagnosis (the log does not show the refusal). Never widen
+scope: log extras in ROADMAP.md Planned.
 
 ## 2. Architect challenge, answers to Dean's questions, and his rulings
 
@@ -215,6 +216,69 @@ and return `pathname + search + hash` of the resolved URL.
 
 ## 5. Waves (one branch, one gate, one release)
 
+### W0 - Autoplay honesty: the phone and the PC say when a click is needed (Dean, 2026-10-01)
+
+Dean's report (v1.348-v1.351, on device): "if I play on a machine that's remote sometimes I need to
+interact with it once to get it to play. I can pick songs, see it on the machine... but it won't
+literally play. But if I press play on the machine then the remote control from Speakers works."
+
+**Diagnosis (read in code at v1.351.0; device evidence still owed, see the falsifier).**
+- Cause, a platform rule: a browser refuses audible `play()` on a page the user has not clicked or
+  tapped since it loaded (sticky user activation, per page load). The click on Remote control: On
+  counts, but a reload or a restored tab keeps On (sessionStorage) and loses the activation. Chrome
+  sometimes lets a site autoplay anyway on its Media Engagement score, which is why it is "sometimes":
+  a machine that plays FileTube often may pass, a rarely used speaker machine will not. One press of
+  play on the PC gives the page activation, and every play after that works. No page code can lift
+  this; only a click, the kiosk flag or a per-site browser setting (Q4).
+- Our part, why it LOOKS broken instead of saying so:
+  1. **The 900 ms race.** After a remote `play`, remote.js `runPlay` checks `autoStartRefused()` once,
+     900 ms later (`BLOCKED_CHECK_MS`). The player only calls `autoStart()` AFTER fetching the track's
+     saved progress (player.js, the `resumeMode === 'music'` branch) and then `play()`. When that
+     takes longer than 900 ms, the check reads false, the PC reports `paused`, and the phone shows a
+     paused song with no hint. The refusal lands later and nobody tells the phone.
+  2. **Play/pause, next and previous never report it.** `handleCommand` routes them to
+     `pl.togglePlay()` / `next()` / `prev()`; `togglePlayPause` calls `mediaPlayer.play().catch(function () {})`,
+     which swallows the refusal, and `blocked` is only ever set inside `runPlay`. Pressing play on the
+     phone silently does nothing.
+  3. **The PC shows nothing on desktop.** The "Tap to play" cue lives in skin-surface.js (phone skins).
+- **Falsifier (gather before editing, LESSONS 1):** open the speaker tab with `?debugLifecycle=1`,
+  reload it (On survives), play from the phone, and read the log. The diagnosis predicts
+  `autostart:refused NotAllowedError · tap never`. If it shows `autostart:ok`, or no autostart line,
+  while the PC stays silent, the diagnosis is WRONG: stop and ask Dean (stop rule g). Reproduce it in
+  headless Chromium with `--autoplay-policy=user-gesture-required` too (W2 row c is the same setup).
+
+**Fix.**
+1. remote.js target: report `blocked` from the player's own `filetube:autostart` event (player.js
+   `setAutoStartRefused` dispatches it) instead of the one-shot 900 ms timer: refused -> send state at
+   once; cleared (the element's `play`) -> send state at once. Keep `BLOCKED_CHECK_MS` only if a test
+   proves something still needs it; otherwise delete it (no inert sibling path).
+2. player.js `togglePlayPause` (and the next/prev load path, which already goes through `autoStart`):
+   a `NotAllowedError` from `play()` raises the same refused flag, so play/pause from the phone reports
+   `blocked` too. Only on `NotAllowedError`, only while still paused (the v1.334 rule).
+3. A new state field `needsClick` (boolean): the target sets it while On when
+   `navigator.userActivation` exists and `hasBeenActive` is false. It goes in `buildStatePayload`, the
+   POST `/api/remote/state` validation and `resolvedState` in lib/remote/routes.js (the field list
+   there is explicit; a field not added there never reaches the phone). The target reports once on
+   attach and again on its first `pointerdown`/`keydown`. A browser without `navigator.userActivation`
+   reports false (never a false alarm).
+4. Phone: when `needsClick` or `blocked`, the existing hint "Click the PC's tab once to let it play"
+   shows (music.js `remoteSkinCtx`), now as soon as the speaker is picked, before any song, and on the
+   Speakers row's detail line.
+5. PC: while On and `needsClick`, the shell pill (remote.js `mountPill`, already in every shell) shows
+   "Click anywhere so your phone can play music here", and hides on the first click. Reuse the pill;
+   no new component.
+
+Tests (binding, each mutated and watched red; record in section 7):
+- Target: a fake player fires `filetube:autostart {refused:true}` 3 s after a play (past the old 900 ms):
+  state `blocked` is posted. Mutant: remove the listener -> red.
+- Toggle while refused: `play()` rejects NotAllowedError -> flag raised -> `blocked` posted. Mutant:
+  restore the swallowing catch -> red.
+- `needsClick`: userActivation.hasBeenActive false -> true in the payload; after a pointerdown -> false;
+  no userActivation -> false. routes.js: the field survives POST -> GET targets -> stream `state`
+  (test/integration/remote-api.test.js). Mutant: drop it from `resolvedState` -> red.
+- Real browser (W2 row c extended): a reloaded On tab, no click: the phone context sees `needsClick`
+  true before any play; after one CDP click, false; a phone play then plays.
+
 ### W1 - The parameter, the strip, the toast; safeNext hardened; the gate sends next
 
 1. remote.js: a pure `wantsRemoteOn(search)` (exported) returns true only for `remote=on` exactly.
@@ -286,7 +350,8 @@ Briefs (LESSONS sections the diff touches: 2 test binding, 4 SPA shell, 8 platfo
 ## 6a. Release (docs/RELEASING.md is the authority)
 
 `npm version 1.352.0 --no-git-tag-version`; ROADMAP.md Shipped entry; `docs/releases.json` entry in pure
-user language (e.g. "Open FileTube on a speaker computer from a bookmark and it is ready for your phone
+user language (e.g. "When a computer needs one click before it can play, your phone and the computer
+now both say so. Open FileTube on a speaker computer from a bookmark and it is ready for your phone
 to play music on. Sign-ins now stay active while you use them. Links can start a video at a time, open
 an album, artist or playlist, or shuffle everything, and the installed app has shortcuts."); the
 DEVICE-CHECKS.md lines from sections 8 and 10; README Listen Control + links sections; a LESSONS.md entry
@@ -300,6 +365,9 @@ branch remote + local.
 (empty until W1)
 
 ## 8. Device checks Dean would owe (go into DEVICE-CHECKS.md, one line each, at release)
+
+- [ ] v1.352.0 - Speaker tab On, then reload it and do not touch it. On the phone pick it in Speakers: it says to click the PC's tab once BEFORE you pick a song, and the PC shows "Click anywhere so your phone can play music here". Click once: both go away, and songs from the phone play.
+- [ ] v1.352.0 - Same reloaded tab, no click, press play/pause on the phone: the phone shows the click hint instead of silently doing nothing.
 
 - [ ] v1.352.0 - On the speaker machine, open the bookmark `/music?remote=on`: Remote control shows On, the address bar shows `/music`, and a toast says it is on.
 - [ ] v1.352.0 - On the phone, Speakers lists the speaker machine; pick it, play a song: either it plays, or the phone says to click the PC's tab once; click once anywhere on it, press play on the phone, it plays.
