@@ -5,11 +5,11 @@ branch: feat/v1.351-name-marquee
 anchor: spec
 status: Planned
 next: Step 0 (read this whole plan once, top to bottom, before touching anything)
-design: Approved 2026-10-01 (Dean, one round of Q&A; every ruling in section 2 is his answer)
+design: Approved 2026-10-01 (Dean, two rounds of Q&A; every ruling in section 2 is his answer)
 gate: adversary + qa (client UI and CSS only; no server, auth or data change)
 ---
 
-# v1.351: long names scroll - the highlighted iPod row and the "On <device>" label
+# v1.351: long names scroll (the highlighted iPod row and the "On <device>" label), and an idle speaker lands on the Main menu
 
 Written 2026-10-01 by an Opus session for a **Sonnet** builder in a fresh session. Every scope decision
 is made. Build exactly this. If the code you find does not match what this plan says, follow the stop
@@ -35,6 +35,16 @@ characters there are now but have it slowly rotate if beyond a certain character
 4. Spin to any other long row in any iPod menu (Songs, Albums, Artists, Playlists, the song list): the
    highlighted row scrolls; the row it left goes back to its "..." at once.
 5. Short names never move. With Reduce Motion on, nothing moves and the "..." stays.
+6. In Speakers, pick a device that has NO song loaded (a PC listening but idle). Instead of a blank
+   "Nothing playing" screen he has to back out of, the iPod lands on the **Main menu** with **Music**
+   highlighted and the speaker still chosen ("On <device>" in the top bar). One center press and he is
+   browsing; a song he picks plays on that speaker. A device with a song loaded (playing OR paused)
+   still goes to Now Playing, as today.
+
+Dean's words for 6: "When we go to select a speaker without anything playing it shows nothing playing
+and you have to tap out and then go pick music. Once one selects a speaker that isn't playing anything
+can it remove that friction, basically put them back to the home page of Click skin with the device
+selected?"
 
 ## 2. Rulings (Dean, 2026-10-01)
 
@@ -44,6 +54,9 @@ characters there are now but have it slowly rotate if beyond a certain character
 | R2 | How does it move? | **Same as Now Playing**: the existing `mms-marquee` keyframe and speed (pause, slide to the end, pause, slide back). No second animation. |
 | R3 | The "On <device>" label on other skins? | **All skins** (iPod, Cider, Nordic): it is one writer, `remoteBadge()`. |
 | R4 | The Speakers sub-line? | **Yes, both lines** scroll when the row is highlighted and each overflows. |
+| R6 | Idle speaker: where does it land? | **Main menu, cursor on Music**, speaker stays selected. Only when the chosen device has NO track loaded. |
+| R7 | A speaker with a PAUSED song? | **Now Playing** (as today): he can see the song and press play. |
+| R8 | "This <device>" with nothing loaded (Opus default, same rule) | Same as R6: Main menu, cursor on Music. |
 | R5 | Width | "Max out in the amount of characters there are now": the label keeps `max-width:45%`; rows keep their width. Only the text inside moves. |
 
 ## 0. Step 0 - read, set up, and the stop rules
@@ -62,7 +75,7 @@ worktree: `ln -s /home/coder/projects/filetube/node_modules node_modules` before
 commit or push; verify with `git log` / `git ls-remote`. One commit per wave.
 
 0.5 Tests while building: the targeted files named in each wave. The full dual-Node suite once at the end
-(W4), and again only if a gate round changes code.
+(W5), and again only if a gate round changes code.
 
 0.6 Report every failure verbatim with counts. "Verified" means you ran it and saw it.
 
@@ -119,6 +132,19 @@ asks for a scope change. Never widen scope: log extras in ROADMAP.md Planned.
 - `public/js/skin-surface.js` `setWheelCursor(pos)` (~L1996) only TOGGLES `is-cursor` (no re-render), and
   ~L2023 removes it. So the row the cursor LEAVES must be un-marqueed explicitly (R1 outcome 4).
 
+### 3.5 Picking a speaker (R6-R8)
+- `public/js/skin-surface.js` `activate(i)` (~L1166) in `createPocketMenu`: `if (it.action === 'playon') { cfg.onPlayOn(it.target || null); showNowPlaying(); return; }` (~L1178).
+  `showNowPlaying()` ~L1158. The Main level: `resetStack()` ~L630 (`stack = [makeLevel({ type: 'main' })]`),
+  `makeLevel` ~L627; `openPlayOn` (~L1335) shows how to rebuild the stack and `render()` the menu screen.
+- `public/js/music.js` `playOnItems()` (~L1453): each remote row's `target` is the device from
+  `RC.fetchTargets()`; its loaded track is `t.state && t.state.track` (the same field the row's detail
+  line reads). "This <device>" is `target: null`.
+- `public/js/music.js` `remoteChoose(t)` (~L1464) is `onPlayOn` (wired ~L1597): it pauses local play,
+  `RC.select(t)` or `RC.leave()`, then `updateNowPlayingPanel()`. Local "has a track" is the menu's
+  existing `cfg.hasCurrent()` (skin-surface ~L592; find its music.js source and confirm what it reads).
+- Main menu rows: `music-skins.js` `menuStaticItems` (~L611): Music is row 0 today. Find the Music row by
+  its node type (`music`), not by index.
+
 ## 4. Waves (one branch, a commit per wave, one gate, one release)
 
 ### W0 - Measure the repaint rate (no code change)
@@ -161,7 +187,21 @@ restart before finishing: apply the minimal guard (skip re-wrapping when the ele
 2. Tests: spin from a long row to a short row and back; the left row is restored to plain text with its
    ellipsis; mutate the unwind out and watch red.
 
-### W4 - Proof, then release
+### W4 - An idle speaker lands on the Main menu (R6-R8)
+1. Decide "has a track" where the target's shape is known: `onPlayOn` (music.js `remoteChoose`) returns
+   `true` when the chosen device has a track loaded (remote: `t.state.track` present; this device: the
+   local current track, read BEFORE the switch changes it), else `false`. Paused counts as loaded (R7).
+2. `activate()`: on `true` (or a non-boolean return, so an older caller keeps today's behavior) ->
+   `showNowPlaying()`. On `false` -> reset to the Main level, put its cursor on the Music row, `screen = 'menu'`,
+   `render()`. The speaker selection itself is untouched (RC still targets it; the top bar shows the label).
+3. Prove REACHABILITY with the REAL target shape (LESSONS: inert feature): a test that drives `playOnItems()`
+   output (built from a `fetchTargets` fixture copied from the real server response for remote targets)
+   through `activate()`, for: idle remote -> Main/Music; remote playing -> Now Playing; remote paused with a
+   track -> Now Playing; This device with nothing -> Main/Music; This device with a track -> Now Playing.
+   Mutants: always return true (red); check `t.state.playing` instead of the track (red on paused).
+4. Then pick a song from Music on the idle speaker in the test: it goes to RC (plays there), not locally.
+
+### W5 - Proof, then release
 1. `npm run lint`, `npm run lint:ui`, `node scripts/overlay-containment-lint.js --enforce`, the full suite
    on Node 22.23.1 and 24.20.0. Paste the tallies.
 2. A headless phone screenshot pair (base vs branch) of: the iPod top bar with a long remote name, the
@@ -181,16 +221,20 @@ attack surfaces below. Ship on CRITICAL/WARNING closure; after 2 rounds, ask Dea
 - Inert feature (LESSONS): prove the Speakers rows really marquee with the REAL Speakers item shape
   (label + detail from the playon loader), not a hand-made fixture only.
 - Reduced motion, `marquee:false`, and the pop-out (`html.mms-popout`) all behave.
+- W4: the idle check uses the REAL target shape; a stale list (the device started playing after the
+  Speakers list loaded) degrades to today's behavior at worst, never a wrong local play; the selection
+  survives the jump to Main; the badge-opened Speakers path behaves the same.
 - Lying comments (LESSONS 12): the v1.232 comments that list the marquee targets.
 
 ## 6. Release (docs/RELEASING.md is the authority)
 
 v1.351.0 via the protected-main PR flow. ROADMAP.md Shipped entry; a `docs/releases.json` entry in plain
 user language (e.g. "Long names now scroll instead of being cut off: the highlighted row in every iPod
-menu, and the 'On <device>' label at the top of the player."). LESSONS.md: add or update a lesson only if
+menu, and the 'On <device>' label at the top of the player. Choosing a speaker that isn't playing
+anything takes you to the Main menu so you can pick music right away."). LESSONS.md: add or update a lesson only if
 the build names a new class (e.g. a marquee needs an unwind when its row is toggled, not re-rendered).
 Move this plan to `completed/` in the release commit. Device checks for Dean go in DEVICE-CHECKS.md
-(outcome 1-5 above, one line each).
+(outcome 1-6 above, one line each).
 
 ## 7. Out of scope (log, do not build)
 
@@ -207,5 +251,6 @@ Move this plan to `completed/` in the release commit. Device checks for Dean go 
 - W2:
 - W3:
 - W4:
+- W5:
 
 ### Gate verdicts (seats write here, bound to the sha reviewed)
