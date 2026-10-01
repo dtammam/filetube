@@ -10323,9 +10323,12 @@ a.tv-continue-card { text-decoration: none; }
       linear-gradient(118deg, rgba(255,255,255,.3) 0%, rgba(255,255,255,0) 38%),
       repeating-linear-gradient(45deg, rgba(255,255,255,.06) 0 1px, rgba(255,255,255,0) 1px 3px),
       linear-gradient(rgba(229,238,234,.25), rgba(229,238,234,.25)),
-      url(../assets/skins/transparent-board.webp) 50% 100% / 121% auto no-repeat,
+      var(--mms-ipod-board-turn, var(--pk-c-board, none)),
       #2c4238;
     --pk-c-bezel:var(--space-4);
+    --pk-c-board:url(../assets/skins/transparent-board.webp) 50% 100% / 121% auto no-repeat;
+    --pk-c-board-r90:url(../assets/skins/transparent-board-r90.webp) 100% 50% / auto 121% no-repeat;
+    --pk-c-board-r270:url(../assets/skins/transparent-board-r270.webp) 0% 50% / auto 121% no-repeat;
     --pk-c-wheel-drop:0 7px 14px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.7);
     --pk-c-body-edge:#8f9a97;
     --pk-c-wheel-1:#f6f6f4; --pk-c-wheel-2:#dcdcd9; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
@@ -10349,9 +10352,12 @@ a.tv-continue-card { text-decoration: none; }
       linear-gradient(118deg, rgba(255,255,255,.3) 0%, rgba(255,255,255,0) 38%),
       repeating-linear-gradient(45deg, rgba(255,255,255,.06) 0 1px, rgba(255,255,255,0) 1px 3px),
       linear-gradient(rgba(229,238,234,.25), rgba(229,238,234,.25)),
-      url(../assets/skins/transparent-board.webp) 50% 100% / 121% auto no-repeat,
+      var(--mms-ipod-board-turn, var(--pk-c-board, none)),
       #2c4238;
     --pk-c-bezel:var(--space-4);
+    --pk-c-board:url(../assets/skins/transparent-board.webp) 50% 100% / 121% auto no-repeat;
+    --pk-c-board-r90:url(../assets/skins/transparent-board-r90.webp) 100% 50% / auto 121% no-repeat;
+    --pk-c-board-r270:url(../assets/skins/transparent-board-r270.webp) 0% 50% / auto 121% no-repeat;
     --pk-c-wheel-drop:0 7px 14px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.7);
     --pk-c-body-edge:#8f9a97;
     --pk-c-wheel-1:#3d3d3f; --pk-c-wheel-2:#222224; --pk-c-wheel-sheen:var(--mms-ipod-sheen-d); --pk-c-wheel-oy:40%;
@@ -10378,9 +10384,12 @@ a.tv-continue-card { text-decoration: none; }
       linear-gradient(118deg, rgba(255,255,255,.3) 0%, rgba(255,255,255,0) 38%),
       repeating-linear-gradient(45deg, rgba(255,255,255,.06) 0 1px, rgba(255,255,255,0) 1px 3px),
       linear-gradient(rgba(229,238,234,.25), rgba(229,238,234,.25)),
-      url(../assets/skins/transparent-board.webp) 50% 100% / 121% auto no-repeat,
+      var(--mms-ipod-board-turn, var(--pk-c-board, none)),
       #2c4238;
     --pk-c-bezel:var(--space-4);
+    --pk-c-board:url(../assets/skins/transparent-board.webp) 50% 100% / 121% auto no-repeat;
+    --pk-c-board-r90:url(../assets/skins/transparent-board-r90.webp) 100% 50% / auto 121% no-repeat;
+    --pk-c-board-r270:url(../assets/skins/transparent-board-r270.webp) 0% 50% / auto 121% no-repeat;
     --pk-c-wheel-art:radial-gradient(70% 50% at calc(50% + var(--lx,0) * 50%) calc(30% + var(--ly,0) * 45%), rgba(255,255,255,.28), rgba(255,255,255,.08) 45%, rgba(255,255,255,0) 72%),
       radial-gradient(circle at calc(50% - var(--lx,0) * 30%) calc(50% - var(--ly,0) * 30%), rgba(255,255,255,.04), rgba(0,0,0,.4) 100%),
       url(../assets/skins/transparent-ring.webp) center / 100% 100% no-repeat;
@@ -10394,6 +10403,14 @@ a.tv-continue-card { text-decoration: none; }
     --pk-c-lits-band:rgba(255,255,255,.24); --pk-c-lits-band2:rgba(255,255,255,.13); --pk-c-lits-core:rgba(255,255,255,.36);
     --pk-c-lita-glow:235,241,239; --pk-c-lita-core:250,252,251; }
 
+  /* The Transparent board photo stays on the glass (v1.350): in a phone turned sideways the full player swaps in the
+     colorway's photo turned back by the screen's angle, so each board pixel stays on the glass pixel it had in
+     portrait (the board is part of the phone; it does not rotate with the page). html[data-ft-rot] is stamped by
+     pocket-lighting.js; a skin with no --pk-c-board-r* roles never reads --mms-ipod-board-turn. */
+  @media (orientation: landscape){
+    html.is-phone[data-ft-rot="90"] .mms-full.mms-ipod{ --mms-ipod-board-turn:var(--pk-c-board-r90, none); }
+    html.is-phone[data-ft-rot="270"] .mms-full.mms-ipod{ --mms-ipod-board-turn:var(--pk-c-board-r270, none); }
+  }
   /* Click (Original) (v1.335, Dean: "one special Original skin which includes the entire vibe of the
      first") - its COLORS, one role block like every colorway. Commons "IPod1stWIKIPEDIA.png" (CC BY-SA
      4.0), balanced on its white body: a cool white (#f7f7f7 .. #cdcdcd), a near-white ring (#e0e0e0 on
@@ -12246,7 +12263,7 @@ html[data-era-flourish="on"] .ft-unfabricated {
 .whcal-grid-sw { width: 100%; height: 100%; min-width: 0; min-height: 0; margin: 0; padding: 0; opacity: 0.22; }
 
 /* v1.348 Listen Control: the "on <device>" badge every skin wears while another device plays, and a
-   Play on... row's second line (what that PC is playing). */
+   Speakers row's second line (what that PC is playing). */
 :where(html.is-phone, html.mms-popout) .mms-remote{ flex:none; max-width:45%; min-height:var(--size-touch); padding:0 var(--space-3); border:0; background:transparent; color:inherit; font:var(--t-caption); letter-spacing:var(--mms-ls-caps); text-transform:uppercase; opacity:.8; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 :where(html.is-phone, html.mms-popout) .mms-ipod .mms-remote{ min-height:0; padding:0 var(--space-2); }
 :where(html.is-phone, html.mms-popout) .ipm-detail{ display:block; font-size:var(--pk-fs-note); opacity:.7; }

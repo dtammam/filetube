@@ -96,6 +96,16 @@
     try { if (typeof win.orientation === 'number') return win.orientation; } catch (_) { /* fall through */ }
     return 0;
   }
+  // v1.350: the screen's angle as html[data-ft-rot="0|90|180|270"], so CSS can keep a part of the phone (the Transparent
+  // skins' board photo) fixed to the glass while the page turns. The legacy window.orientation reports -90 for 270.
+  function rotationOf(win) { return ((Math.round(orientationAngle(win) / 90) * 90) % 360 + 360) % 360; }
+  function stampRotation(win) {
+    try {
+      var el = win.document && win.document.documentElement;
+      var a = String(rotationOf(win));
+      if (el && el.getAttribute('data-ft-rot') !== a) el.setAttribute('data-ft-rot', a);
+    } catch (_) { /* no document (the unit harness) */ }
+  }
   function k(dt, tau) { return dt > 0 ? 1 - Math.exp(-dt / tau) : 0; }
   // Gate r2 (qa W5): the pitch (beta) wraps at +-180 - lying on your back with the phone overhead
   // (Dean's G5 pose) the sensor jitters between +179 and -179, and a plain difference read that as a
@@ -573,10 +583,18 @@
     SMOOTH_TAU_MS: SMOOTH_TAU_MS, RECENTER_TAU_MS: RECENTER_TAU_MS, WRITE_EPS: WRITE_EPS, PARK_MS: PARK_MS, SENSOR_WAIT_MS: SENSOR_WAIT_MS,
     NOTE_DENIED: NOTE_DENIED, NOTE_NO_SENSOR: NOTE_NO_SENSOR, NOTE_REDUCED: NOTE_REDUCED,
     normalizeStrength: normalizeStrength, readStrength: readStrength, setStrength: setStrength,
+    rotationOf: rotationOf, stampRotation: stampRotation,
     mapTilt: mapTilt, orientationAngle: orientationAngle, recentre: recentre, ease: ease, pointerLight: pointerLight, newFilter: newFilter, wrapDiff: wrapDiff,
     create: create, askForOpen: askForOpen, paintSticker: paintSticker,
     STK_TILT_SIN: STK_TILT_SIN, STK_TILT_COS: STK_TILT_COS, STK_SHADE_PAD: STK_SHADE_PAD, STK_SHADE_ALPHA: STK_SHADE_ALPHA, STK_GLOSS_STEP: STK_GLOSS_STEP,
   };
+  if (typeof window !== 'undefined' && window.document) {
+    stampRotation(window);
+    var stamp = function () { stampRotation(window); };
+    window.addEventListener('orientationchange', stamp);
+    window.addEventListener('resize', stamp); // some engines report the new angle only once the new size lands
+    try { if (window.screen && window.screen.orientation && window.screen.orientation.addEventListener) window.screen.orientation.addEventListener('change', stamp); } catch (_) { /* no screen.orientation */ }
+  }
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.FileTubePocketLighting = api;
 })();

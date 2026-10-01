@@ -1240,3 +1240,40 @@ test('v1.334 a late-loading sticker image: unlit meanwhile = nothing drawn; lit 
     assert.strictEqual(q.grads().at(-1)[3].stops[0][1], 'rgba(255,255,255,0.3)', 'at the LATEST strength (Subtle), not the one it waited under');
   } finally { q.restore(); c.restore(); }
 });
+
+// ---------------------------------------------------------------- v1.350: the board stays on the glass
+test('v1.350: rotationOf reads screen.orientation, then the legacy window.orientation (-90 is 270), and stampRotation writes html[data-ft-rot]', () => {
+  assert.strictEqual(L.rotationOf({ screen: { orientation: { angle: 90 } } }), 90);
+  assert.strictEqual(L.rotationOf({ screen: { orientation: { angle: 270 } } }), 270);
+  assert.strictEqual(L.rotationOf({ orientation: -90 }), 270, 'the legacy iOS value for the other landscape');
+  assert.strictEqual(L.rotationOf({ orientation: 90 }), 90);
+  assert.strictEqual(L.rotationOf({}), 0, 'no sensor, portrait');
+  const doc = { documentElement: { attrs: {}, getAttribute(k) { return this.attrs[k] === undefined ? null : this.attrs[k]; }, setAttribute(k, v) { this.attrs[k] = v; } } };
+  L.stampRotation({ document: doc, screen: { orientation: { angle: 270 } } });
+  assert.strictEqual(doc.documentElement.attrs['data-ft-rot'], '270');
+  L.stampRotation({ document: doc, screen: { orientation: { angle: 0 } } });
+  assert.strictEqual(doc.documentElement.attrs['data-ft-rot'], '0', 'turning back restamps portrait');
+});
+
+test('v1.350: the real script stamps on load and again on orientationchange and screen.orientation change', () => {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', { runScripts: 'outside-only' });
+  const w = dom.window;
+  const orient = { angle: 90, _l: [], addEventListener(t, f) { this._l.push(f); } };
+  Object.defineProperty(w.screen, 'orientation', { value: orient, configurable: true });
+  w.eval(fs.readFileSync(lightPath, 'utf8'));
+  const rot = () => w.document.documentElement.getAttribute('data-ft-rot');
+  assert.strictEqual(rot(), '90', 'stamped at load');
+  orient.angle = 270; w.dispatchEvent(new w.Event('orientationchange'));
+  assert.strictEqual(rot(), '270', 'orientationchange restamps');
+  orient.angle = 0; orient._l.forEach((f) => f());
+  assert.strictEqual(rot(), '0', 'screen.orientation change restamps');
+});
+
+test('v1.350: the Transparent board photo is a role with turned-back copies; landscape on a phone swaps one in, gated on the full player and the angle', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.strictEqual((css.match(/var\(--mms-ipod-board-turn, var\(--pk-c-board, none\)\),\s*#2c4238;/g) || []).length, 3, 'all three Transparent skins read the board through the swap');
+  assert.strictEqual((css.match(/--pk-c-board-r90:url\(\.\.\/assets\/skins\/transparent-board-r90\.webp\) 100% 50% \/ auto 121% no-repeat;/g) || []).length, 3, 'angle 90 copy anchored where the portrait bottom lands');
+  assert.strictEqual((css.match(/--pk-c-board-r270:url\(\.\.\/assets\/skins\/transparent-board-r270\.webp\) 0% 50% \/ auto 121% no-repeat;/g) || []).length, 3, 'angle 270 copy, the other side');
+  assert.match(css, /@media \(orientation: landscape\)\{\s*html\.is-phone\[data-ft-rot="90"\] \.mms-full\.mms-ipod\{ --mms-ipod-board-turn:var\(--pk-c-board-r90, none\); \}\s*html\.is-phone\[data-ft-rot="270"\] \.mms-full\.mms-ipod\{ --mms-ipod-board-turn:var\(--pk-c-board-r270, none\); \}/, 'the swap is landscape + phone + full player + angle');
+  for (const f of ['transparent-board-r90.webp', 'transparent-board-r270.webp']) assert.ok(fs.existsSync(path.join(ROOT, 'public', 'assets', 'skins', f)), f + ' ships');
+});

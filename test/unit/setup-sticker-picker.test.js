@@ -38,6 +38,17 @@ test('setup.html (v1.349): the sticker picker and its file input live in mobile-
   assert.doesNotMatch(sectionHtml('appearance'), /sticker-picker|sticker-file-input/, 'neither inside appearance');
 });
 
+test('setup.html (v1.350): Player sticker comes first in Mobile player and the whole Music skin grid comes last', () => {
+  const mobile = sectionHtml('mobile-player');
+  const sticker = mobile.indexOf('id="sticker-picker"');
+  const skin = mobile.indexOf('id="music-skin-picker"');
+  assert.ok(sticker > 0 && skin > 0, 'both pickers are in the section');
+  assert.ok(sticker < skin, 'sticker first, skins last');
+  assert.ok(mobile.indexOf('id="sticker-file-input"') < skin, 'the sticker file input is above the skin grid too');
+  assert.ok(/<\/div>\s*$/.test(mobile.slice(skin, mobile.lastIndexOf('</details>')).trim()) , 'the skin group is the last block');
+  assert.strictEqual((mobile.slice(skin).match(/class="setup-group"/g) || []).length, 0, 'no setup-group follows the skin grid');
+});
+
 // ---- setup.js: renderStickerPicker reads ft-sticker + wires the three kinds ------------
 
 test('setup.js: renderStickerPicker builds the cards, reads/writes ft-sticker, and guards like the skin picker', () => {

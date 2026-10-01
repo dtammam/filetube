@@ -97,6 +97,47 @@ test('menuRecentArtistItems: recency order, duplicates collapsed on the Artists 
   assert.deepStrictEqual(skins.menuRecentArtistItems([], artFor), []);
 });
 
+test('menuRecentAlbumItems (v1.350): recency order, duplicates collapsed on albumKey, at most 25, no-albumKey skipped, rows identical in shape to an Albums row', () => {
+  const t = [
+    { id: 'a1', albumKey: 'Tonzak\u0001Rec', album: 'Rec', artist: 'Tonzak', artId: 'rep1' }, { id: 'b1', albumKey: 'NESTALGIA\u0001Ner', album: 'Ner', artist: 'NESTALGIA' },
+    { id: 'a2', albumKey: 'Tonzak\u0001Rec', album: 'Rec', artist: 'Tonzak' }, { id: 'n1', album: 'No key', artist: 'Nobody' },
+    { id: 'e1', albumKey: '', album: 'Empty key', artist: 'Nobody' }, { id: 'u1', albumKey: 'Solo\u0001', artist: 'Solo' },
+  ];
+  const rows = skins.menuRecentAlbumItems(t, artFor);
+  assert.deepStrictEqual(rows.map((r) => r.label), ['Rec', 'Ner', 'Unknown Album'], 'recency order, the duplicate collapsed, keyless tracks skipped');
+  assert.deepStrictEqual(rows.map((r) => r.sub), ['Tonzak', 'NESTALGIA', 'Solo']);
+  assert.deepStrictEqual(rows[0].node, { type: 'album', key: 'Tonzak\u0001Rec', label: 'Rec' }, 'drills like Albums > album');
+  const albumsRow = skins.menuAlbumItems([{ album: 'Rec', artist: 'Tonzak', albumKey: 'Tonzak\u0001Rec', artId: 'rep1' }], artFor)[0];
+  assert.deepStrictEqual(rows[0], albumsRow, 'the row equals the Albums row for the same album');
+  const many = Array.from({ length: 40 }, (_, i) => ({ id: 'x' + i, albumKey: 'k' + i, album: 'Album ' + i, artist: 'A' }));
+  assert.strictEqual(skins.menuRecentAlbumItems(many, artFor).length, skins.RECENT_ALBUMS_MAX);
+  assert.strictEqual(skins.RECENT_ALBUMS_MAX, 25);
+  assert.deepStrictEqual(skins.menuRecentAlbumItems([], artFor), []);
+  assert.deepStrictEqual(skins.menuStaticItems({ type: 'music' }).map((r) => r.label).slice(0, 3), ['Recent Artists', 'Recent Albums', 'Playlists']);
+  assert.strictEqual(skins.menuTitle({ type: 'recentAlbums' }, 'click'), 'Recent Albums');
+  assert.strictEqual(skins.menuIsItemLevel({ type: 'recentAlbums' }), true, 'an item level: the highlighted row\'s art shows');
+});
+
+test('v1.350: Recent Albums shows its own empty text, and re-loads off screen after a new listen like Recent Artists', async () => {
+  const b = bootEngine({ load: (n) => Promise.resolve(n.type === 'recentAlbums' && b.state.empty ? { items: [] } : { items: [{ label: n.type + ' row', node: { type: 'album', key: 'x', label: 'x' } }] }) });
+  try {
+    b.state.empty = true;
+    b.engine.paint(); pressMenu(b); pressSelect(b); await flush();
+    tapLabel(b, 'Recent Albums'); await flush();
+    assert.strictEqual(P(b).querySelector('.ipm-note').textContent, 'No recent albums');
+    pressMenu(b); await flush();
+    b.state.empty = false;
+    tapLabel(b, 'Recent Albums'); await flush();
+    const loads = () => b.spy.loads.filter((x) => x.type === 'recentAlbums').length;
+    const before = loads();
+    tapLabel(b, 'recentAlbums row'); await flush(); // drill in: the list is off screen
+    b.state.current = 'c'; b.engine.paint(); await flush();
+    pressMenu(b); await flush();
+    assert.strictEqual(b.engine.menuState().title, 'Recent Albums');
+    assert.strictEqual(loads(), before + 1, 'off screen during a new listen: re-loaded when shown again');
+  } finally { b.restore(); }
+});
+
 test('menuAboutItems: read-only rows with grouped counts, the version and the software line; menuCoverPool: one art-bearing same-origin cover per album', () => {
   const rows = skins.menuAboutItems({ songs: 3008, albums: 600, artists: 150, version: '1.323.0' });
   assert.deepStrictEqual(rows.map((r) => [r.label, r.value, r.info]), [['Songs', '3,008', true], ['Albums', '600', true], ['Artists', '150', true], ['Version', '1.323.0', true], ['Software', 'FileTube', true]]);

@@ -4273,6 +4273,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // recency order - a row is an Artists row (node type 'artist'), so it drills in the same way.
         return fetchJson(MENU_RECENT_URL).then(function (d) { return { items: SKINS.menuRecentArtistItems(menuItemsOf(d), musicArtUrl) }; });
       }
+      if (n.type === 'recentAlbums') {
+        // Recent Albums (v1.350): the same source, its albums in recency order; a row is an Albums row.
+        return fetchJson(MENU_RECENT_URL).then(function (d) { return { items: SKINS.menuRecentAlbumItems(menuItemsOf(d), musicArtUrl) }; });
+      }
       if (n.type === 'about') return menuAbout();
       if (n.type === 'songs') {
         return menuAllSongs().then(function (t) { return menuSongLevel(t, { ctx: { src: 'music', sort: 'title-asc' }, label: 'Songs' }); });
