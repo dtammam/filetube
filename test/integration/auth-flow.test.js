@@ -117,3 +117,30 @@ test('instant revocation: changing the password invalidates the existing session
   // The old cookie is dead on its very next request (tv mismatch).
   assert.equal((await raw('/api/auth/me', { headers: { Cookie: cookie, Accept: 'application/json' } })).status, 401, 'old session revoked instantly');
 });
+
+test('v1.352 W1: a logged-out page is bounced to /login?next=<the page>; an API is still a bare 401', async () => {
+  await jsonPost('/api/auth/setup', { username: 'dean', displayName: 'Dean', password: 'a-good-password' });
+  const page = await raw('/music?remote=on', { headers: { Accept: 'text/html' } });
+  assert.equal(page.status, 302);
+  assert.equal(page.location, '/login?next=%2Fmusic%3Fremote%3Don');
+  const api = await raw('/api/videos', { headers: { Accept: 'application/json' } });
+  assert.equal(api.status, 401);
+  assert.equal(api.location, null);
+  const home = await raw('/', { headers: { Accept: 'text/html' } });
+  assert.equal(home.location, '/login', 'the home page needs no next');
+});
+
+test('v1.352 W1: a 16-day-old session is renewed on the real server; logout still clears it', async () => {
+  const { __mintTestSession } = require('../../server');
+  const DAY = 86400;
+  const old = __mintTestSession({ username: 'dean', issuedAt: Math.floor(Date.now() / 1000) - 16 * DAY });
+  const me = await raw('/api/auth/me', { headers: { Cookie: old.cookie, Accept: 'application/json' } });
+  assert.equal(me.status, 200);
+  assert.match(me.setCookie || '', new RegExp('^' + old.cookieName + '=[^;]+; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000'));
+  const young = __mintTestSession({ username: 'dean' });
+  assert.equal((await raw('/api/auth/me', { headers: { Cookie: young.cookie, Accept: 'application/json' } })).setCookie, null, 'a fresh session is not re-issued');
+  const out = await raw('/api/auth/logout', { method: 'POST', headers: { Cookie: old.cookie } });
+  assert.equal(out.status, 200);
+  assert.match(out.setCookie || '', /Max-Age=0/, 'the route runs after the gate: logout wins over a renewal');
+  assert.doesNotMatch(out.setCookie || '', /Max-Age=2592000/);
+});

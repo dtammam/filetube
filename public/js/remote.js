@@ -13,7 +13,10 @@
     root.FileTube.remoteLib = api;
     root.FileTube.remote = api.createTarget(api.browserEnv(root));
     root.FileTube.remoteControl = api.createController(api.browserEnv(root));
-    api.bootWhenReady(root, root.FileTube.remote, root.FileTube.remoteControl);
+    // v1.352 W1: read and strip ?remote=on NOW, while this script runs and before the router's boot
+    // (common.js, on DOMContentLoaded) records the URL in history.state and its current-view url.
+    var fromLink = api.consumeRemoteParam(root);
+    api.bootWhenReady(root, root.FileTube.remote, root.FileTube.remoteControl, fromLink);
   }
 })(typeof window !== 'undefined' ? window : globalThis, function () {
   'use strict';
@@ -52,6 +55,30 @@
   // without navigator.userActivation reports false, so it never raises a false alarm.
   function needsClickNow(ua) {
     return !!(ua && ua.hasBeenActive === false);
+  }
+
+  // v1.352 W1: a bookmark (or kiosk launch) of any in-app page with ?remote=on turns this tab into a
+  // speaker. Only the exact value 'on' acts; there is no ?remote=off (no link may stop a speaker).
+  function wantsRemoteOn(search) {
+    try { return new URLSearchParams(typeof search === 'string' ? search : '').get('remote') === 'on'; } catch (_) { return false; }
+  }
+
+  // The remote param leaves the address bar (and history.state.url, which the router replays), every
+  // other param and state key kept. Returns whether the link asked for On.
+  function consumeRemoteParam(w) {
+    var on = false;
+    try {
+      var loc = w.location;
+      on = wantsRemoteOn(loc.search);
+      var params = new URLSearchParams(loc.search);
+      if (!params.has('remote')) return on;
+      params.delete('remote');
+      var qs = params.toString();
+      var url = loc.pathname + (qs ? '?' + qs : '') + (loc.hash || '');
+      var prev = w.history.state;
+      w.history.replaceState(prev ? Object.assign({}, prev, { url: loc.pathname + (qs ? '?' + qs : '') }) : prev, '', url);
+    } catch (_) { /* history unavailable: the URL keeps the param, the link still acts */ }
+    return on;
   }
 
   // A play command needs the Music view's handler; where to get it.
@@ -584,12 +611,19 @@
     return pill;
   }
 
+  // A browser that blocks site storage throws on the sessionStorage getter itself: the switch then
+  // lives for this page only (v1.352 W1: a ?remote=on link still turns it on).
+  function safeSessionStorage(w) {
+    try { if (w.sessionStorage) return w.sessionStorage; } catch (_) { /* blocked */ }
+    return { getItem: function () { return null; }, setItem: function () {}, removeItem: function () {} };
+  }
+
   function browserEnv(w) {
     return {
       fetch: function (u, i) { return w.fetch(u, i); },
       EventSource: w.EventSource,
       document: w.document,
-      storage: w.sessionStorage,
+      storage: safeSessionStorage(w),
       now: function () { return Date.now(); },
       setTimeout: function (f, ms) { return w.setTimeout(f, ms); },
       clearTimeout: function (t) { return w.clearTimeout(t); },
@@ -604,10 +638,20 @@
     };
   }
 
-  function bootWhenReady(w, remote, control) {
+  var LINK_TOAST = 'Remote control is on: your other devices can play music here';
+
+  function bootWhenReady(w, remote, control, fromLink) {
     function boot() {
       try {
         if (w.ui && w.document.body) mountPill(w.document, remote, w.ui);
+      } catch (_) { /* no pill: the switch still works */ }
+      if (fromLink) {
+        // setOn writes the per-tab flag (a reload keeps it On) and swallows a blocked sessionStorage
+        var was = remote.isOn();
+        remote.setOn(true);
+        if (!was && remote.isOn() && typeof w.showToast === 'function') w.showToast(LINK_TOAST);
+      }
+      try {
         if (w.sessionStorage.getItem(STORAGE_KEY) === '1') remote.setOn(true);
       } catch (_) { /* sessionStorage blocked: the switch still works for this page */ }
       w.addEventListener('pagehide', function () { remote.pagehide(); });
@@ -625,6 +669,9 @@
   return {
     STORAGE_KEY: STORAGE_KEY,
     buildStatePayload: buildStatePayload,
+    wantsRemoteOn: wantsRemoteOn,
+    consumeRemoteParam: consumeRemoteParam,
+    LINK_TOAST: LINK_TOAST,
     needsClickNow: needsClickNow,
     playRoute: playRoute,
     throttleDelay: throttleDelay,

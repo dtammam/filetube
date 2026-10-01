@@ -418,3 +418,84 @@ test('v1.349 relabel across tabs: a storage event for ft-device-name reopens the
   assert.strictEqual(h.sources.length, 2, 'the device name key reopens the stream');
   assert.strictEqual(h.sources[0].closed, true);
 });
+
+// ---- v1.352 W1: ?remote=on ------------------------------------------------
+
+test('v1.352 W1: wantsRemoteOn acts only on remote=on exactly', () => {
+  assert.strictEqual(R.wantsRemoteOn('?remote=on'), true);
+  assert.strictEqual(R.wantsRemoteOn('?a=1&remote=on&b=2'), true);
+  for (const s of ['?remote=On', '?remote=1', '?remote=', '?remote=off', '', '?x=remote=on', '?remote', '?remote=on%20', null, undefined]) {
+    assert.strictEqual(R.wantsRemoteOn(s), false, String(s));
+  }
+});
+
+function realRemote(url, opts) {
+  const o = opts || {};
+  const dom = new JSDOM('<!doctype html><body></body>', { url, runScripts: 'outside-only' });
+  const w = dom.window;
+  const replaces = [];
+  if (o.state) w.history.replaceState(o.state, '', url);
+  const realReplace = w.history.replaceState.bind(w.history);
+  w.history.replaceState = (st, t, u) => { replaces.push({ st, u }); return realReplace(st, t, u); };
+  const toasts = [];
+  const sources = [];
+  w.showToast = (m) => toasts.push(m);
+  w.fetch = () => Promise.resolve({ ok: true, json: async () => [] });
+  w.EventSource = class { constructor(u) { this.url = u; sources.push(u); } addEventListener() {} close() {} };
+  w.FileTube = { getDeviceId: () => 'dev-1', getDeviceLabel: () => 'Desk', player: null, navigate() {} };
+  if (o.blockStorage) Object.defineProperty(w, 'sessionStorage', { get() { throw new Error('blocked'); } });
+  w.eval(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'remote.js'), 'utf8'));
+  const atEval = { url: w.location.pathname + w.location.search, on: w.FileTube.remote.isOn() };
+  const booted = new Promise((res) => { if (w.document.readyState === 'loading') w.document.addEventListener('DOMContentLoaded', () => res()); else res(); });
+  return { w, replaces, toasts, sources, atEval, booted, close: () => w.close() };
+}
+
+test('v1.352 W1: the real script at /music?remote=on&nowplaying=1 turns On once, strips only remote (URL and history.state.url), and toasts once', async () => {
+  const r = realRemote('http://localhost/music?remote=on&nowplaying=1#x', { state: { view: 'music', url: '/music?remote=on&nowplaying=1', depth: 3, scrollY: 40 } });
+  try {
+    assert.deepStrictEqual(r.atEval, { url: '/music?nowplaying=1', on: false }, 'stripped while the script runs, before DOMContentLoaded (the router boots then)');
+    await r.booted;
+    assert.strictEqual(r.w.FileTube.remote.isOn(), true);
+    assert.strictEqual(r.sources.length, 1, 'one stream: setOn ran once');
+    assert.strictEqual(r.w.sessionStorage.getItem('ft-remote-target-on'), '1', 'the per-tab flag: a reload stays On');
+    assert.strictEqual(r.w.location.pathname + r.w.location.search + r.w.location.hash, '/music?nowplaying=1#x');
+    assert.strictEqual(r.replaces.length, 1);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(r.w.history.state)), { view: 'music', url: '/music?nowplaying=1', depth: 3, scrollY: 40 }, 'state.url rewritten, every other key kept');
+    assert.deepStrictEqual(r.toasts, [R.LINK_TOAST]);
+  } finally { r.close(); }
+});
+
+test('v1.352 W1: a fresh load (no history.state yet) strips too and leaves the state for the router to seed', async () => {
+  const r = realRemote('http://localhost/?remote=on');
+  try {
+    await r.booted;
+    assert.strictEqual(r.w.location.search, '');
+    assert.strictEqual(r.w.history.state, null);
+    assert.strictEqual(r.w.FileTube.remote.isOn(), true);
+  } finally { r.close(); }
+});
+
+test('v1.352 W1: any other remote value is stripped but acts on nothing; no param touches nothing', async () => {
+  const off = realRemote('http://localhost/music?remote=off&a=1');
+  try {
+    await off.booted;
+    assert.strictEqual(off.w.FileTube.remote.isOn(), false, '?remote=off cannot switch anything');
+    assert.strictEqual(off.w.location.search, '?a=1');
+    assert.deepStrictEqual(off.toasts, []);
+  } finally { off.close(); }
+  const none = realRemote('http://localhost/music?a=1');
+  try {
+    await none.booted;
+    assert.strictEqual(none.replaces.length, 0, 'no history write without the param');
+    assert.strictEqual(none.w.FileTube.remote.isOn(), false);
+  } finally { none.close(); }
+});
+
+test('v1.352 W1: a blocked sessionStorage still turns the page On', async () => {
+  const r = realRemote('http://localhost/music?remote=on', { blockStorage: true });
+  try {
+    await r.booted;
+    assert.strictEqual(r.w.FileTube.remote.isOn(), true);
+    assert.strictEqual(r.sources.length, 1);
+  } finally { r.close(); }
+});
