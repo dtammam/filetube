@@ -115,3 +115,17 @@ test('the label always passes the server normalizeLabel unchanged', () => {
     assert.ok(label.length <= 32, label + ' fits the cap');
   }
 });
+
+test('saving a name tells the Remote control target to relabel (so Play on... updates without a reload)', () => {
+  useStorage();
+  let relabels = 0;
+  const had = Object.getOwnPropertyDescriptor(global, 'window');
+  Object.defineProperty(global, 'window', { value: { FileTube: { remote: { relabel: () => { relabels += 1; } } } }, configurable: true, writable: true });
+  try {
+    c.setDeviceName('Snowy Table');
+    c.setDeviceName('');
+    assert.strictEqual(relabels, 2, 'a save and a clear both relabel');
+  } finally {
+    if (had) Object.defineProperty(global, 'window', had); else delete global.window;
+  }
+});

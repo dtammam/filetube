@@ -302,3 +302,21 @@ test('a report already scheduled when the controller detaches is NOT sent (the g
   h.advance(2000);
   assert.strictEqual(h.states().length, n, 'nothing posted after the detach');
 });
+
+test('v1.349 relabel: a renamed device reopens its stream so the server learns the new label', () => {
+  const h = harness();
+  let label = 'Desk';
+  h.env.label = () => label;
+  h.t.setOn(true);
+  h.attach('Phone');
+  assert.match(h.sources[0].url, /label=Desk$/);
+  label = 'Snowy Table';
+  h.t.relabel();
+  assert.strictEqual(h.sources[0].closed, true, 'the stale-label stream is closed');
+  assert.strictEqual(h.sources.length, 2);
+  assert.match(h.sources[1].url, /label=Snowy%20Table$/);
+  h.t.setOn(false);
+  const n = h.sources.length;
+  h.t.relabel();
+  assert.strictEqual(h.sources.length, n, 'relabel while off opens nothing');
+});

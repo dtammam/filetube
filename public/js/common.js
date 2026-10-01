@@ -10511,6 +10511,7 @@ function setDeviceName(v) {
   try {
     if (name) localStorage.setItem(DEVICE_NAME_KEY, name); else localStorage.removeItem(DEVICE_NAME_KEY);
   } catch (_) { /* private mode: the name lasts only until reload */ }
+  try { if (typeof window !== 'undefined' && window.FileTube && window.FileTube.remote) window.FileTube.remote.relabel(); } catch (_) { /* best effort */ }
   return name;
 }
 
