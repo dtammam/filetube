@@ -39,7 +39,7 @@ function boot(opts) {
   require(surfacePath);
   const st = { skin: o.skin || 'ipod', speaker: o.speaker === undefined ? { level: 0.5 } : o.speaker, sets: [], dock: 0 };
   const volume = {
-    available: () => !!st.speaker,
+    available: () => !!st.speaker && !st.docked,
     level: () => (st.speaker && typeof st.speaker.level === 'number' ? st.speaker.level : null),
     set: (v) => { st.sets.push(v); if (st.speaker) st.speaker.level = v; },
   };
@@ -277,5 +277,23 @@ test('v1.353 Speakers > Volume (the menu row) lands on Now Playing with the bar 
     click(b, row);
     assert.strictEqual(P(b).querySelector('.ip-np').textContent, 'Now Playing');
     assert.strictEqual(voladj(b), true, 'the bar is up');
+  } finally { b.restore(); }
+});
+
+test('v1.353 a stale tap target never opens the bar: the speaker left (no repaint yet), or the view stepped aside with a level still known', () => {
+  const b = boot({ speaker: { level: 0.5 } });
+  try {
+    b.engine.paint();
+    b.st.docked = true; // the view says no (remoteDocked) while the PC's level is still known
+    openByTap(b);
+    assert.strictEqual(voladj(b), false, 'not available: no bar');
+    b.st.docked = false;
+    b.st.speaker = null; // RC.leave(), the repaint not run yet
+    openByTap(b);
+    assert.strictEqual(voladj(b), false, 'no speaker: no bar');
+    const m = liveMedia(b);
+    spin(b, [0, 40, 80, 120]);
+    assert.ok(m.ct > 150, 'and the wheel scrubs');
+    assert.deepStrictEqual(b.st.sets, []);
   } finally { b.restore(); }
 });
