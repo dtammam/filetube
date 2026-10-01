@@ -326,3 +326,4 @@ Move this plan to `completed/` in the release commit. Device checks for Dean go 
 ### Gate verdicts (seats write here, bound to the sha reviewed)
 - Gate: adversary APPROVED r1 @b669036b (no CRITICAL/WARNING; notes: debug sampling forces layout, W6 not delivered).
 - Gate: qa CHANGES r1 @b669036b (WARNING: outcome 5 not delivered and docs must not claim it) - closed in the release commit (ROADMAP, releases.json, DEVICE-CHECKS state it is not fixed).
+- Gate: qa APPROVED r2 @247c3477 (docs-only delta; the turn-back claim is gone from ROADMAP, releases.json and DEVICE-CHECKS).
