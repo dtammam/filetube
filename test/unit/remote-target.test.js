@@ -48,6 +48,7 @@ function harness(opts) {
     setInterval: (f, ms) => { tid += 1; timers.set(tid, { f, at: clock + ms, rep: ms }); return tid; },
     clearInterval: (t) => timers.delete(t),
     deviceId: () => 'dev-pc', label: () => 'Desk', player: () => player,
+    userActivation: o.userActivation ? () => o.userActivation : undefined,
     navigate: (u) => navs.push(u), toast: (m) => toasts.push(m),
   };
   function advance(ms) {
@@ -70,6 +71,8 @@ function harness(opts) {
     offs: () => fetches.filter((f) => f.u === '/api/remote/off'),
     attach: (label) => { sources[0].emit('hello', { seq: 0 }); sources[0].emit('controller', { attached: true, label: label || 'Phone' }); },
     media: (type) => (listeners[type] || []).forEach((f) => f({ type })),
+    // the player raising/lowering its refused flag (player.js setAutoStartRefused dispatches this)
+    autostart: (on) => { refused = on; (listeners['filetube:autostart'] || []).forEach((f) => f({ type: 'filetube:autostart', detail: { refused: on } })); },
   };
 }
 
@@ -79,6 +82,12 @@ test('pure: the state payload maps snapshot to idle / paused / playing / blocked
   assert.strictEqual(R.buildStatePayload('d', { ...base, playing: true }, false).state, 'playing');
   assert.strictEqual(R.buildStatePayload('d', { ...base, playing: false }, false).state, 'paused');
   assert.strictEqual(R.buildStatePayload('d', { ...base, playing: false }, true).state, 'blocked');
+  assert.strictEqual(R.buildStatePayload('d', null, false, true).needsClick, true, 'idle still carries needsClick');
+  assert.strictEqual(R.buildStatePayload('d', base, false).needsClick, false);
+  assert.strictEqual(R.needsClickNow({ hasBeenActive: false }), true);
+  assert.strictEqual(R.needsClickNow({ hasBeenActive: true }), false);
+  assert.strictEqual(R.needsClickNow(null), false);
+  assert.strictEqual(R.needsClickNow({}), false, 'an object without the field is not a refusal');
   const p = R.buildStatePayload('d', { id: 't1', position: NaN, duration: -3, playing: true }, false);
   assert.strictEqual(p.position, 0);
   assert.strictEqual(p.duration, 0);
@@ -157,22 +166,92 @@ test('play whose Music view never mounts reports idle after 8s', () => {
   assert.strictEqual(s[s.length - 1].state, 'idle');
 });
 
-test('a refused auto-start after play is reported as blocked', () => {
+test('v1.352 W0: a refusal that lands 3s after the play (a slow saved-position fetch) is still reported as blocked', () => {
   const h = harness();
   h.t.setMusicPlayHandler(() => {});
   h.t.setOn(true); h.attach();
-  h.refuse(true);
   h.setSnap({ id: 't1', position: 0, duration: 200, playing: false, hasPrev: false, hasNext: false });
   h.sources[0].emit('command', { seq: 1, cmd: 'play', args: { tracks: [{ id: 't1' }], index: 0 } });
-  h.advance(1000);
-  const s = h.states();
-  assert.strictEqual(s[s.length - 1].state, 'blocked');
-  h.refuse(false);
+  h.advance(3000);
+  assert.ok(h.states().every((x) => x.state !== 'blocked'), 'nothing refused yet');
+  const n = h.states().length;
+  h.autostart(true);
+  assert.strictEqual(h.states().length, n + 1, 'the refusal is posted at once, not on a timer');
+  assert.strictEqual(h.states()[n].state, 'blocked');
   h.setSnap({ id: 't1', position: 1, duration: 200, playing: true, hasPrev: false, hasNext: false });
-  h.media('play');
-  h.advance(600);
+  h.autostart(false);
   const s2 = h.states();
-  assert.strictEqual(s2[s2.length - 1].state, 'playing', 'the next play clears blocked');
+  assert.strictEqual(s2[s2.length - 1].state, 'playing', 'the element playing lowers the flag and is posted at once');
+});
+
+test('v1.352 W0: blocked is the player flag read at each report (a refused play/pause from the phone, a controller attaching late)', () => {
+  const h = harness();
+  h.setSnap({ id: 't1', position: 0, duration: 200, playing: false, hasPrev: false, hasNext: false });
+  h.refuse(true);
+  h.t.setOn(true); h.attach();
+  assert.strictEqual(h.states()[0].state, 'blocked', 'a refusal from before the phone attached is reported on attach');
+  h.refuse(false);
+  h.sources[0].emit('command', { seq: 1, cmd: 'toggle', args: {} });
+  h.advance(600);
+  const n = h.states().length;
+  h.autostart(true); // player.js togglePlayPause: the element refused the play
+  assert.strictEqual(h.states().length, n + 1);
+  assert.strictEqual(h.states()[n].state, 'blocked');
+  h.t.setOn(false);
+  assert.ok(!h.listeners['filetube:autostart'] || h.listeners['filetube:autostart'].length === 0, 'switching off unbinds the listener');
+});
+
+test('v1.352 W0: needsClick is true while the tab has had no click, posted on attach, and cleared by the first input', () => {
+  const ua = { hasBeenActive: false };
+  const h = harness({ userActivation: ua });
+  const seen = [];
+  h.t.onChange((on, attached, label, nc) => seen.push(nc));
+  h.t.setOn(true);
+  assert.strictEqual(h.t.needsClick(), true);
+  assert.strictEqual(seen[seen.length - 1], true, 'the pill hears it before any phone attaches');
+  h.attach();
+  assert.strictEqual(h.states()[0].needsClick, true, 'reported on attach, before any song');
+  const n = h.states().length;
+  (h.listeners.keydown || []).forEach((f) => f({ type: 'keydown' }));
+  h.advance(1);
+  assert.strictEqual(h.states().length, n, 'an input the browser did not count changes nothing');
+  ua.hasBeenActive = true;
+  (h.listeners.pointerdown || []).forEach((f) => f({ type: 'pointerdown' }));
+  h.advance(1);
+  assert.strictEqual(h.states().length, n + 1, 'the first counted input posts at once');
+  assert.strictEqual(h.states()[n].needsClick, false);
+  assert.strictEqual(h.t.needsClick(), false);
+  assert.strictEqual(seen[seen.length - 1], false, 'and the pill hears it');
+});
+
+test('v1.352 W0: needsClick is false without navigator.userActivation, and a stale true is lowered at the next report', () => {
+  const h = harness();
+  h.t.setOn(true); h.attach();
+  assert.strictEqual(h.states()[0].needsClick, false, 'no userActivation: never a false alarm');
+  const ua = { hasBeenActive: false };
+  const h2 = harness({ userActivation: ua });
+  h2.t.setOn(true); h2.attach();
+  assert.strictEqual(h2.states()[0].needsClick, true);
+  ua.hasBeenActive = true; // activated by an input the listeners do not see (a touchend)
+  h2.media('seeked'); h2.advance(600);
+  const s = h2.states();
+  assert.strictEqual(s[s.length - 1].needsClick, false);
+});
+
+test('v1.352 W0: the pill asks for a click on the PC while On and unclicked, and the click hides it', () => {
+  const dom = new JSDOM('<!doctype html><body></body>');
+  const doc = dom.window.document;
+  const ua = { hasBeenActive: false };
+  const h = harness({ userActivation: ua });
+  const ui = { button: (o) => { const b = doc.createElement('button'); b.textContent = o.label; return b; } };
+  const pill = R.mountPill(doc, h.t, ui);
+  h.t.setOn(true);
+  assert.strictEqual(pill.hidden, false, 'shown with no phone attached');
+  assert.strictEqual(pill.querySelector('.remote-pill-text').textContent, 'Click anywhere so your phone can play music here');
+  ua.hasBeenActive = true;
+  (h.listeners.click || []).forEach((f) => f({ type: 'click' }));
+  h.advance(1);
+  assert.strictEqual(pill.hidden, true, 'hidden on the first click (no phone attached)');
 });
 
 test('state is reported only while a controller is attached: one on attach, throttled on media events, every 5s while playing', () => {

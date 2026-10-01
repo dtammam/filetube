@@ -968,8 +968,15 @@ function queuedChaptersDiffer(rows, baseId, chapters) {
   return false;
 }
 
+// v1.352 W0 (Listen Control, phone side): the PC refused to start sound (blocked), or its tab has had
+// no click yet (needsClick, known as soon as this device picks it, before any song).
+var REMOTE_CLICK_HINT = "Click the PC's tab once to let it play";
+function remoteNeedsClick(st) { return !!(st && (st.state === 'blocked' || st.needsClick === true)); }
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    REMOTE_CLICK_HINT,
+    remoteNeedsClick,
     chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC, CHAPTER_VERIFY, chapterAdoptSeekFor, queuedChaptersDiffer,
     liveListenPosition, listenHandoffChapterIndex, chapterStartFor, handoffPaused,
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
@@ -1424,9 +1431,8 @@ if (typeof module !== 'undefined' && module.exports) {
       var tr = st.track || null;
       var dur = remoteDur();
       var pos = Math.min(dur || Infinity, Math.max(0, RC.position()));
-      var blocked = st.state === 'blocked';
       return {
-        track: { title: tr ? tr.title : 'Nothing playing', artist: blocked ? "Click the PC's tab once to let it play" : (tr ? tr.artist : ''),
+        track: { title: tr ? tr.title : 'Nothing playing', artist: remoteNeedsClick(st) ? REMOTE_CLICK_HINT : (tr ? tr.artist : ''),
           album: tr ? tr.album : '', artUrl: (tr && tr.artUrl) || '' },
         remote: { label: RC.label() },
         artistTap: false, artistTitle: '',
@@ -1455,7 +1461,7 @@ if (typeof module !== 'undefined' && module.exports) {
         var items = [{ label: 'This ' + here, check: !RC.isRemote(), action: 'playon', target: null }];
         list.forEach(function (t) {
           var tt = t.state && t.state.track && t.state.track.title;
-          items.push({ label: t.label, detail: tt || '', check: RC.targetId() === t.deviceId, action: 'playon', target: t });
+          items.push({ label: t.label, detail: remoteNeedsClick(t.state) ? REMOTE_CLICK_HINT : (tt || ''), check: RC.targetId() === t.deviceId, action: 'playon', target: t });
         });
         if (!list.length) items.push({ label: "No PC is listening. Turn on Remote control on the PC's Music page.", info: true, note: true });
         return { items: items };

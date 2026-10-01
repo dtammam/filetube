@@ -5811,8 +5811,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // stamp it so handlePossibleIOSPrePauseHandoff never arms a pre-pause
     // candidate for the pause it causes.
     lastUserGestureAt = Date.now();
-    if (mediaPlayer.paused) mediaPlayer.play().catch(function () {});
-    else mediaPlayer.pause();
+    if (mediaPlayer.paused) {
+      var gen = loadGeneration;
+      mediaPlayer.play().catch(function (err) {
+        // v1.352 W0: a play the browser refuses for want of a click raises the same flag a load's
+        // refused autoStart does (the v1.334 rule: NotAllowedError only, this load only, still paused),
+        // so a play/pause sent from a phone reports blocked instead of silently doing nothing.
+        if (err && err.name === 'NotAllowedError' && gen === loadGeneration && mediaPlayer.paused) setAutoStartRefused(true);
+      });
+    } else mediaPlayer.pause();
   }
 
   // v1.21 FIX 1 (post-gate hardening): the audio cover-art surface's actual

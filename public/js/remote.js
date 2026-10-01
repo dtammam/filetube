@@ -25,12 +25,14 @@
   var REPORT_EVERY_MS = 5000;
   var GRACE_MS = 10000;
   var NAVIGATE_TIMEOUT_MS = 8000;
-  var BLOCKED_CHECK_MS = 900;
+  // v1.352 W0: the first input that can give a page user activation (a browser lifts its no-sound rule then)
+  var ACTIVATION_EVENTS = ['pointerdown', 'pointerup', 'keydown', 'click'];
 
   // ---- pure decisions -----------------------------------------------------
 
-  // What the PC reports: idle when nothing is loaded, else playing/paused (or blocked).
-  function buildStatePayload(deviceId, snap, blocked) {
+  // What the PC reports: idle when nothing is loaded, else playing/paused (or blocked). needsClick
+  // (v1.352 W0): this tab has had no click or key yet, so the browser will refuse to start sound.
+  function buildStatePayload(deviceId, snap, blocked, needsClick) {
     var s = snap || {};
     var id = typeof s.id === 'string' && s.id ? s.id : null;
     var state = !id ? 'idle' : (blocked ? 'blocked' : (s.playing ? 'playing' : 'paused'));
@@ -41,8 +43,15 @@
       duration: Number.isFinite(s.duration) && s.duration >= 0 ? s.duration : 0,
       state: state,
       hasPrev: !!s.hasPrev,
-      hasNext: !!s.hasNext
+      hasNext: !!s.hasNext,
+      needsClick: !!needsClick
     };
+  }
+
+  // v1.352 W0: true only when the browser says the page has never been clicked or typed in. A browser
+  // without navigator.userActivation reports false, so it never raises a false alarm.
+  function needsClickNow(ua) {
+    return !!(ua && ua.hasBeenActive === false);
   }
 
   // A play command needs the Music view's handler; where to get it.
@@ -70,17 +79,27 @@
     var attached = false;
     var controllerLabel = '';
     var lastReportAt = -Infinity;
-    var blocked = false;
+    var needsClick = false;
     var musicHandler = null;
     var pendingPlay = null;
     var changeFns = [];
     var mediaBound = false;
 
     function notify() {
-      for (var i = 0; i < changeFns.length; i++) { try { changeFns[i](on, attached, controllerLabel); } catch (_) { /* a listener must not break the channel */ } }
+      for (var i = 0; i < changeFns.length; i++) { try { changeFns[i](on, attached, controllerLabel, needsClick); } catch (_) { /* a listener must not break the channel */ } }
     }
 
     function player() { return env.player && env.player(); }
+    function readNeedsClick() {
+      var ua = null;
+      try { ua = env.userActivation ? env.userActivation() : null; } catch (_) { ua = null; }
+      return needsClickNow(ua);
+    }
+    // blocked is the player's own refused-autostart flag, read at every report: it is raised on a
+    // NotAllowedError and lowered by the element's play and by the next load (player.js).
+    function isBlocked(pl) {
+      return !!(pl && pl.autoStartRefused && pl.autoStartRefused());
+    }
 
     function post(path, body, extra) {
       try {
@@ -97,7 +116,10 @@
       var pl = player();
       if (!pl || !pl.getRemoteSnapshot) return;
       lastReportAt = env.now();
-      post('/api/remote/state', buildStatePayload(env.deviceId(), pl.getRemoteSnapshot(), blocked));
+      var cleared = needsClick && !readNeedsClick(); // an input type the listeners do not see still counts
+      if (cleared) needsClick = false;
+      post('/api/remote/state', buildStatePayload(env.deviceId(), pl.getRemoteSnapshot(), isBlocked(pl), needsClick));
+      if (cleared) notify();
     }
     function scheduleReport() {
       if (!on || !attached || reportTimer) return;
@@ -110,10 +132,26 @@
       if (playing && !heartbeat) heartbeat = env.setInterval(function () { sendState(); }, REPORT_EVERY_MS);
       else if (!playing && heartbeat) { env.clearInterval(heartbeat); heartbeat = null; }
     }
-    function onMedia(e) {
-      if (e && e.type === 'play') blocked = false;
+    function onMedia() {
       scheduleReport();
       syncHeartbeat();
+    }
+    // v1.352 W0: the player raised or lowered its refused-autostart flag (player.js setAutoStartRefused).
+    // Reported at once, however long the load took to reach its play().
+    function onAutostart() {
+      sendState();
+      syncHeartbeat();
+    }
+    // The first click or key since load: the browser now lets this tab start sound.
+    function onActivation() {
+      if (!needsClick) return;
+      // the activation is granted while this input dispatches; read it once the dispatch is over
+      env.setTimeout(function () {
+        if (!on || !needsClick || readNeedsClick()) return;
+        needsClick = false;
+        sendState();
+        notify();
+      }, 0);
     }
     function bindMedia() {
       if (mediaBound || !env.document) return;
@@ -121,6 +159,8 @@
       ['play', 'pause', 'seeked', 'ended', 'loadedmetadata', 'emptied'].forEach(function (t) {
         env.document.addEventListener(t, onMedia, true);
       });
+      env.document.addEventListener('filetube:autostart', onAutostart);
+      ACTIVATION_EVENTS.forEach(function (t) { env.document.addEventListener(t, onActivation, true); });
     }
     function unbindMedia() {
       if (!mediaBound || !env.document) return;
@@ -128,20 +168,15 @@
       ['play', 'pause', 'seeked', 'ended', 'loadedmetadata', 'emptied'].forEach(function (t) {
         env.document.removeEventListener(t, onMedia, true);
       });
+      env.document.removeEventListener('filetube:autostart', onAutostart);
+      ACTIVATION_EVENTS.forEach(function (t) { env.document.removeEventListener(t, onActivation, true); });
     }
 
     // ---- commands ----
+    // A refused start is reported by onAutostart when the player raises its flag, not by a timer here.
     function runPlay(args) {
-      var pl = player();
       if (!musicHandler) return;
-      blocked = false;
       musicHandler({ tracks: args.tracks, index: args.index, label: controllerLabel });
-      env.setTimeout(function () {
-        if (!on) return;
-        blocked = !!(pl && pl.autoStartRefused && pl.autoStartRefused());
-        sendState();
-        syncHeartbeat();
-      }, BLOCKED_CHECK_MS);
     }
     function handleCommand(c) {
       if (!c || typeof c.seq !== 'number' || c.seq <= lastSeq) return;
@@ -155,7 +190,7 @@
         if (navTimer) env.clearTimeout(navTimer);
         navTimer = env.setTimeout(function () {
           navTimer = null;
-          if (pendingPlay) { pendingPlay = null; attached && post('/api/remote/state', buildStatePayload(env.deviceId(), null, false)); }
+          if (pendingPlay) { pendingPlay = null; attached && post('/api/remote/state', buildStatePayload(env.deviceId(), null, false, needsClick)); }
         }, NAVIGATE_TIMEOUT_MS);
         try { env.navigate('/music'); } catch (_) { /* the timeout reports idle */ }
         return;
@@ -252,12 +287,13 @@
       try { if (on) env.storage.setItem(STORAGE_KEY, '1'); else env.storage.removeItem(STORAGE_KEY); } catch (_) { /* private mode */ }
       if (on) {
         lastSeq = 0; polling = false; attached = false;
+        needsClick = readNeedsClick();
         bindMedia();
         openStream();
       } else {
         if (!silent) post('/api/remote/off', { deviceId: env.deviceId() });
         closeStream(); clearTimers(); unbindMedia();
-        polling = false; attached = false; controllerLabel = ''; pendingPlay = null; blocked = false;
+        polling = false; attached = false; controllerLabel = ''; pendingPlay = null; needsClick = false;
       }
       notify();
     }
@@ -285,6 +321,7 @@
     return {
       isOn: function () { return on; },
       isControlled: function () { return on && attached; },
+      needsClick: function () { return on && needsClick; },
       controllerLabel: function () { return controllerLabel; },
       setOn: function (v) { setOn(v, false); },
       toggle: function () { setOn(!on, false); },
@@ -536,10 +573,13 @@
     stop.addEventListener('click', function () { remote.setOn(false); });
     pill.append(text, stop);
     doc.body.appendChild(pill);
-    remote.onChange(function (on, attached, label) {
-      var show = !!(on && attached);
+    remote.onChange(function (on, attached, label, needsClick) {
+      // v1.352 W0: a tab that has never been clicked cannot start sound; say so on the PC itself.
+      var click = !!(on && needsClick);
+      var show = click || !!(on && attached);
       pill.hidden = !show;
-      text.textContent = show ? 'Controlled by ' + (label || 'another device') : '';
+      text.textContent = click ? 'Click anywhere so your phone can play music here'
+        : (show ? 'Controlled by ' + (label || 'another device') : '');
     });
     return pill;
   }
@@ -558,6 +598,7 @@
       deviceId: function () { return w.FileTube.getDeviceId(); },
       label: function () { return w.FileTube.getDeviceLabel(); },
       player: function () { return w.FileTube.player; },
+      userActivation: function () { return (w.navigator && w.navigator.userActivation) || null; },
       navigate: function (u) { return w.FileTube.navigate(u); },
       toast: function (m) { if (typeof w.showToast === 'function') w.showToast(m); }
     };
@@ -584,6 +625,7 @@
   return {
     STORAGE_KEY: STORAGE_KEY,
     buildStatePayload: buildStatePayload,
+    needsClickNow: needsClickNow,
     playRoute: playRoute,
     throttleDelay: throttleDelay,
     createTarget: createTarget,
