@@ -123,3 +123,9 @@ the checks.
   Repeat PAUSED: pause on Watch, tap Listen (still paused, same spot), then Watch (still paused).
 - [ ] v1.346.0 - On the phone: Extras > Skins > Shuffle > 4G (2010/2012/2013/2015) lists its colours and one previews live; Touch and Custom > Transparent show; Settings shows the new groups.
 - [ ] v1.347.0 - On the phone: Extras > Skins > Custom shows Transparent, Transparent Black and Transparent Coil; each looks like a frosted clear case over a circuit board, the wheel still turns and taps, and on Coil the ring and dome show while the wheel taps still work. With Ambient on, tilt the phone: Coil's ring shine and shadow follow the light.
+- [ ] v1.351.0 - On the phone with a PC listening and a long device name: the top-bar "On <name>" label slides to show the end, on iPod, Cider and Nordic, and stays no wider than before; a short name never moves.
+- [ ] v1.351.0 - iPod menus: roll the wheel onto a long row (Albums, Artists, Speakers): it slides; roll off and it goes back to its dots at once. In Speakers both the device name and its song line slide.
+- [ ] v1.351.0 - iPod song list: the highlighted long song title slides, the one you leave goes back to dots; Reduce Motion on: nothing moves.
+- [ ] v1.351.0 - Speakers: pick a PC that is playing nothing: you land on the Main menu with Music selected and the top bar still says On <PC>; pick a song and it plays on the PC.
+- [ ] v1.351.0 - Speakers: pick a PC that is paused on a song (or playing): you land on Now Playing as before.
+- [ ] v1.351.0 - Desktop pop-out: the same long rows and label slide.

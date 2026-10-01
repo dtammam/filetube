@@ -3412,5 +3412,11 @@
     "date": "2026-10-01",
     "title": "Skins last, Speakers, Recent Albums, and a steadier board",
     "intent": "In Settings > Mobile player the sticker comes first and the skins come last. Play on... is now called Speakers. The iPod menu has Recent Albums. On the clear iPods the circuit board photo now stays put when you turn the phone sideways, in both directions. If the screen still flickers when you turn back to upright, add ?debugRotate=1 to the address, turn the phone, and tap the log to copy it."
+  },
+  {
+    "version": "1.351.0",
+    "date": "2026-10-01",
+    "title": "Long names scroll, and an idle speaker lands on the menu",
+    "intent": "A long name that is cut off with dots now slides into view when it is highlighted: the Remote control label at the top, the rows in the iPod menus and Speakers, and the song list. Short names never move, and nothing moves if you use Reduce Motion. Picking a speaker that is not playing anything now takes you to the Main menu with Music selected, instead of an empty Now Playing."
   }
 ]

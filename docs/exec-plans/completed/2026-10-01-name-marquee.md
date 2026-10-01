@@ -3,7 +3,7 @@ plan: name-marquee
 harness: v2 · lean
 branch: feat/v1.351-name-marquee
 anchor: spec
-status: Planned
+status: Shipped v1.351.0
 next: Step 0 (read this whole plan once, top to bottom, before touching anything)
 design: Approved 2026-10-01 (Dean, two rounds of Q&A; every ruling in section 2 is his answer)
 gate: adversary + qa (client UI and CSS only; no server, auth or data change)
@@ -254,3 +254,6 @@ Move this plan to `completed/` in the release commit. Device checks for Dean go 
 - W5: npm run lint 0 errors / 6 warnings (all existing); lint:ui OK (debt equals docs/ui-exceptions.json); overlay-containment 0 violations. Full suite Node 22.23.1: 10537 tests, 10525 pass, 0 fail, 12 skipped, 0 cancelled. Node 24.20.0: 10537 tests, 10525 pass, 0 fail, 12 skipped. Pixels: the W2 base-vs-branch screenshots (Main, Music, Albums menus) are byte-identical. scripts/skin-status-bar-probe.js did NOT give a usable pair (base run did not reach the menus, branch run was cut short, PNGs all differ by noise), so it is not evidence; the long-remote-name top bar and a highlighted long Speakers row in a real browser need a second device and are owed as device checks. The label width cap (max-width:45%) is locked by a CSS test.
 
 ### Gate verdicts (seats write here, bound to the sha reviewed)
+
+Gate: APPROVED r1 @a0d0ce86382f884db2307e780a591622f2f9557e — adversary
+Gate: APPROVED r1 @a0d0ce86382f884db2307e780a591622f2f9557e — qa (no CRITICAL/WARNING; NOTEs: re-render restarts a scroll, nothing repaints idle; real-browser long-name shots owed as device checks; W4 'This device, nothing loaded' asserts never-Now-Playing only). Adversary NOTEs shipped disclosed: marqueeEl's idempotence guard and landOnMusic's Music cursor assignment have no binding test (two attempts to bind the guard did not turn red; Music is already row 0).
