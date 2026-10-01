@@ -412,6 +412,12 @@ test('v1.352 gate r1: a pre-v1.352 token (no oat) uses its iat as the sign-in ti
   assert.ok(p, 'an existing session is not logged out');
   assert.equal(p.oat, undefined);
   assert.equal(gate.sessionWantsRenewal(p, iat + 16 * DAY, 30 * DAY), true);
+  // renewing it carries its iat forward as the sign-in time (never "now": that would restart the 180 days)
+  const g = gate.createAuthGate({ store: fakeStore({ count: 1, user: { id: 5, tokenVersion: 3, disabled: false } }), secret, cookieName: 'c', nowSeconds: () => iat + 16 * DAY });
+  const res = fakeRes();
+  g(fakeReq({ path: '/api/x', accept: 'application/json', cookie: 'c=' + encodeURIComponent(legacy) }), res, () => {});
+  const renewed = authCrypto.verifySession(decodeURIComponent(/^c=([^;]+)/.exec(res._headers['set-cookie'])[1]), secret, { nowSeconds: iat + 16 * DAY });
+  assert.equal(renewed.oat, iat, 'a legacy session counts from its iat');
   assert.equal(gate.sessionWantsRenewal({ iat, oat: iat - 170 * DAY }, iat + 16 * DAY, 30 * DAY), false, '186 days after the password: no renewal');
   assert.equal(gate.sessionWantsRenewal({ iat, oat: iat - 160 * DAY }, iat + 16 * DAY, 30 * DAY), true, '176 days: still renews');
   assert.equal(authCrypto.verifySession(legacyToken({ uid: 5, tv: 3, iat, exp: iat + 30 * DAY, oat: 'x' }, secret), secret, { nowSeconds: iat + 1 }), null, 'a non-integer oat is a structural surprise');
