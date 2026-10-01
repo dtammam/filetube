@@ -127,7 +127,7 @@ const HTML = `<body>
   <div id="panel" class="music-nowplaying-panel" hidden></div>
 </body>`;
 
-function bootEngine({ skin, hasCurrent = true, load, noMenu, currentId, dataVersion, likedVersion, fastScan, trackListeners, beforeCreate, overflowIf, reducedMotion, engineExtra } = {}) {
+function bootEngine({ skin, hasCurrent = true, load, noMenu, currentId, dataVersion, likedVersion, fastScan, trackListeners, beforeCreate, overflowIf, reducedMotion, engineExtra, menuExtra } = {}) {
   const dom = new JSDOM(HTML, { url: 'http://localhost/music' });
   const saved = { window: global.window, document: global.document, Event: global.Event };
   global.window = dom.window; global.document = dom.window.document; global.Event = dom.window.Event;
@@ -173,7 +173,7 @@ function bootEngine({ skin, hasCurrent = true, load, noMenu, currentId, dataVers
     onDock: () => { spy.dock += 1; },
     win: dom.window,
     fastScan: !!fastScan,
-  }, engineExtra || {}, noMenu ? {} : { menu: menuCfg }));
+  }, engineExtra || {}, noMenu ? {} : { menu: Object.assign(menuCfg, menuExtra || {}) }));
   return { dom, engine, spy, state, bal, restore: () => Object.assign(global, saved) };
 }
 const P = (b) => b.dom.window.document.getElementById('panel');
@@ -680,4 +680,35 @@ test('v1.351 W2: a cursor step hands the marquee to the NEW row (one row moves a
     assert.strictEqual(P(b).querySelectorAll('.mms-mq-on').length, 2, 'only that row: name + detail');
     assert.ok(!row(b, 0).querySelector('.mms-mq'), 'the old row is plain');
   } finally { b.restore(); }
+});
+
+// ---- v1.351 W4: the engine's half of "an idle speaker lands on Main / Music" ----
+async function pickPlayOn(ret) {
+  const picked = [];
+  const b = bootEngine({ hasCurrent: true, menuExtra: {
+    hasPlayOn: () => 1,
+    onPlayOn: (t) => { picked.push(t); return typeof ret === 'function' ? ret() : ret; },
+  }, load: (node) => Promise.resolve(node.type === 'playon' ? { items: [{ label: 'Idle PC', action: 'playon', target: { deviceId: 'pc-idle' } }] } : { items: [] }) });
+  b.engine.paint();
+  pressMenu(b); // Now Playing -> Main
+  tapLabel(b, 'Speakers');
+  await tick(); await tick();
+  tapLabel(b, 'Idle PC');
+  return { b, picked };
+}
+const npText = (b) => P(b).querySelector('.ip-np').textContent;
+const cursorLbl = (b) => { const n = P(b).querySelector('.ipm-row.is-cursor .ipm-name'); return n ? n.textContent : null; };
+
+test('v1.351 W4: onPlayOn returning false lands on the Main menu with the cursor on Music; true or nothing goes to Now Playing', async () => {
+  const f = await pickPlayOn(false);
+  try {
+    assert.deepStrictEqual(f.picked, [{ deviceId: 'pc-idle' }], 'the pick still reached the view');
+    assert.notStrictEqual(npText(f.b), 'Now Playing');
+    assert.strictEqual(cursorLbl(f.b), 'Music', 'cursor on Music');
+    assert.ok(!P(f.b).querySelector('.ipm-row.is-cursor .ipm-chev') === false, 'Music is the drill-in row');
+  } finally { f.b.engine.destroy && f.b.engine.destroy(); f.b.restore(); }
+  for (const ret of [true, undefined]) {
+    const g = await pickPlayOn(ret);
+    try { assert.strictEqual(npText(g.b), 'Now Playing', 'return ' + ret + ' -> Now Playing'); } finally { g.b.engine.destroy && g.b.engine.destroy(); g.b.restore(); }
+  }
 });

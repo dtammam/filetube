@@ -1157,6 +1157,18 @@
       syncPreview();
       scheduleArt();
     }
+    // v1.351: a speaker with nothing loaded has nothing to show on Now Playing - land on the Main menu, cursor on Music.
+    function landOnMusic() {
+      resetStack();
+      screen = 'menu';
+      clearJump();
+      var pane = curPane();
+      ensureLoaded(pane);
+      for (var k = 0; k < pane.items.length; k++) {
+        if (pane.items[k] && pane.items[k].node && pane.items[k].node.type === 'music') { pane.cursor = k; break; }
+      }
+      render();
+    }
     function showNowPlaying() {
       screen = 'np';
       clearJump();
@@ -1179,7 +1191,9 @@
       if (it.action === 'nowplaying') { showNowPlaying(); return; }
       if (it.action === 'playon') {
         // v1.348 Listen Control: pick where the music plays (this device, or a PC that is listening).
-        try { if (typeof cfg.onPlayOn === 'function') cfg.onPlayOn(it.target || null); } catch (_) { /* view best-effort */ }
+        var landed = true;
+        try { if (typeof cfg.onPlayOn === 'function') landed = cfg.onPlayOn(it.target || null); } catch (_) { /* view best-effort */ }
+        if (landed === false) { landOnMusic(); return; }
         showNowPlaying();
         return;
       }

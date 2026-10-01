@@ -474,6 +474,57 @@ test('v1.351 W3 iPod: leaving the list (MENU) restores the highlighted row', asy
   } });
 });
 
+// ---- v1.351 W4: an idle speaker lands on the Main menu (cursor on Music); one with a track goes to Now Playing ----
+const trackCard = { id: 'x1', title: 'File Select - Super Mario 64', artist: 'Koji', album: 'OST', artUrl: '' };
+const target = (id, label, state, track) => ({ deviceId: id, label, controlled: false, state: { deviceId: id, label, state, position: track ? 10 : 0, duration: track ? 200 : 0, hasPrev: false, hasNext: false, at: 1, ageMs: 0, track } });
+const SPEAKERS = [target('pc-play', 'Playing PC', 'playing', trackCard), target('pc-idle', 'Idle PC', 'idle', null), target('pc-pause', 'Paused PC', 'paused', trackCard)];
+const NO_PLAYER = { currentId: null, getState: () => 'docked', getCurrentMeta: () => null, expand() {}, setTrackNav() {}, load() {}, dock() {} };
+async function pickSpeaker(dom, label) {
+  const p = panel(dom);
+  p.querySelector('.mms-remote').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick(); await tick();
+  const row = [...p.querySelectorAll('.ipm-row')].find((r) => { const n = r.querySelector('.ipm-name'); return n && n.textContent === label; });
+  assert.ok(row, 'the Speakers menu lists ' + label);
+  row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+  await tick();
+  return p;
+}
+const cursorName = (p) => { const n = p.querySelector('.ipm-row.is-cursor .ipm-name'); return n ? n.textContent : null; };
+const onMainMusic = (p) => p.querySelector('.ip-np').textContent !== 'Now Playing' && cursorName(p) === 'Music';
+
+test('v1.351 W4 (real controller + real target shape): an IDLE speaker lands on Main with the cursor on Music, and stays selected', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', remote: { targets: SPEAKERS, select: 'pc-play' }, run: async (dom, spy) => {
+    const p = await pickSpeaker(dom, 'Idle PC');
+    assert.strictEqual(spy.rc.targetId(), 'pc-idle', 'the idle speaker is the selected one');
+    assert.ok(onMainMusic(p), 'Main menu, cursor on Music (np=' + p.querySelector('.ip-np').textContent + ', cursor=' + cursorName(p) + ')');
+  } });
+});
+
+test('v1.351 W4: a PLAYING and a PAUSED-with-a-track speaker still go to Now Playing', async () => {
+  for (const [label, id] of [['Playing PC', 'pc-play'], ['Paused PC', 'pc-pause']]) {
+    await boot({ mobile: true, isMusic: true, skin: 'ipod', remote: { targets: SPEAKERS, select: 'pc-idle' }, run: async (dom, spy) => {
+      const p = await pickSpeaker(dom, label);
+      assert.strictEqual(spy.rc.targetId(), id);
+      assert.strictEqual(p.querySelector('.ip-np').textContent, 'Now Playing', label + ' goes to Now Playing');
+    } });
+  }
+});
+
+test('v1.351 W4: "This <device>" goes to Now Playing with a local track and to Main/Music with nothing loaded', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', remote: { targets: SPEAKERS, select: 'pc-play' }, run: async (dom, spy) => {
+    const p = await pickSpeaker(dom, 'This Pixel');
+    assert.ok(!spy.rc.isRemote(), 'back on this device');
+    assert.strictEqual(p.querySelector('.ip-np').textContent, 'Now Playing');
+  } });
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', playerOverride: NO_PLAYER, remote: { targets: SPEAKERS, select: 'pc-play' }, run: async (dom, spy) => {
+    const p = await pickSpeaker(dom, 'This Pixel');
+    assert.ok(!spy.rc.isRemote(), 'back on this device');
+    // with nothing loaded the pocket skin itself steps aside (skinIsActive), so there is no Now Playing to land on
+    const np = p.querySelector('.ip-np');
+    assert.ok(!np || np.textContent !== 'Now Playing', 'nothing loaded: never Now Playing');
+  } });
+});
+
 // ---- v1.239 (Dean): mobile Now-Playing wheel spin SCRUBS the timeline -----------------
 // iOS makes media.volume read-only, so on the in-tab iPhone skin a Now-Playing spin (which
 // used to be a no-op) now scrubs the playhead - the mobile analog of the pop-out's
