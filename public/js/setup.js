@@ -511,7 +511,7 @@ function pollScanStatus(statusText) {
     });
 }
 
-// Retire R3: the Appearance choice lists (era, icon set, Music skin) are grouped ui-lists of
+// Retire R3: the Settings choice lists (era and icon set in Appearance, Music skin in Mobile player) are grouped ui-lists of
 // button.ui-row radios (setup.html gives each host role=radiogroup). The picked row carries a
 // trailing check in ink (D4.6, F46) - no red border and no card - and aria-checked; the
 // option's name is the title and its blurb the meta line, which wraps in these lists
@@ -3151,6 +3151,28 @@ function wireStaticControls(signal) {
   }
 }
 
+// v1.349: "This device's name" (Settings > Account). Per browser (localStorage ft-device-name, via
+// common.js setDeviceName); every consumer reads getDeviceLabel() per request, so a save reaches
+// Play on..., the "Controlled by" pill and the handoff card with no reload. Text only: the label is
+// set through value / placeholder / textContent, never innerHTML.
+function wireDeviceName(signal) {
+  const input = document.getElementById('device-name-input');
+  if (!input) return;
+  const note = document.getElementById('device-name-note');
+  const statusEl = document.getElementById('device-name-status');
+  const auto = getAutoDeviceLabel();
+  input.placeholder = auto;
+  input.value = getDeviceName();
+  if (note) note.textContent = 'Only this browser. Shown in Play on... and when this device controls another. Leave blank to use ' + auto + '.';
+  const save = () => {
+    const name = setDeviceName(input.value);
+    input.value = name;
+    setActionStatus(statusEl, name ? 'Saved. This device shows as ' + name + '.' : 'Cleared. This device shows as ' + auto + '.');
+  };
+  input.addEventListener('change', save, { signal });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } }, { signal });
+}
+
 // ---- v1.43: Account + admin user management -------------------------------
 // Server-enforced (every /api/users route 403s for non-admins); the client
 // role check below only decides what to RENDER. All display text uses
@@ -4741,6 +4763,7 @@ function init(root) {
   wireLogoControls();
   // v1.43: Account chip + sign out + (admin) user management.
   initAccountSection(controller.signal);
+  wireDeviceName(controller.signal); // v1.349: this browser's name
 
   // v1.117 (Dean bug, slim-gate WARNING): the desktop-sidebar pin BOOT render
   // moved to common.js's shell-level DOMContentLoaded (the single owner, running

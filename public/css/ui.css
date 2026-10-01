@@ -661,6 +661,33 @@ button.ui-row:focus-visible,
   background-image: linear-gradient(var(--fill-selected), var(--fill-selected));
   font-weight: var(--fw-semibold);
 }
+/* v1.349: a pressed tonal button (Remote control, the Pop out buttons) is selected the same way:
+   ink on --fill-selected layered over the button's own ground, never red. The weight does not change
+   (a heavier pressed weight made a button grow when it opened: the 2014 Pop out shifted 3.8px). In 2009 the
+   ground is the gloss (--btn-fill, a gradient), so the era rule below layers over it. The
+   test is test/unit/ui-btn-selected.test.js. */
+.ui-btn--tonal[aria-pressed="true"] {
+  background-image: linear-gradient(var(--fill-selected), var(--fill-selected));
+}
+/* A label with an On wording: both strings sit in ONE grid cell, so the button is as wide as the
+   longer one in both states; aria-pressed picks which shows (the other keeps its size, unseen). */
+.ui-btn__label--swap {
+  display: inline-grid;
+}
+.ui-btn__label--swap > span {
+  grid-area: 1 / 1;
+}
+/* The On wording is semibold on its own and is sized at that weight in BOTH states, so the swap cell
+   is as wide as the visible On text and the button never changes width when pressed (measured:
+   2014 grew 169.4px -> 178.7px when the cell was sized with the On wording at regular weight).
+   Pressing itself changes no weight. */
+.ui-btn__swap-on {
+  font-weight: var(--fw-semibold);
+}
+.ui-btn[aria-pressed="false"] > .ui-btn__label--swap > .ui-btn__swap-on,
+.ui-btn[aria-pressed="true"] > .ui-btn__label--swap > .ui-btn__swap-off {
+  visibility: hidden;
+}
 .ui-chip--filter:active { background-color: var(--tint-press); }
 @media (hover: hover) {
   .ui-chip--filter:hover { background-color: var(--tint-hover); }
@@ -1109,6 +1136,9 @@ input.ui-switch { -webkit-appearance: none; appearance: none; }
 [data-theme="2009"] .ui-btn--secondary,
 [data-theme="2009"] .ui-btn--tonal {
   background: var(--btn-fill);
+}
+[data-theme="2009"] .ui-btn--tonal[aria-pressed="true"] {
+  background-image: linear-gradient(var(--fill-selected), var(--fill-selected)), var(--btn-fill);
 }
 /* 2005: square corners everywhere, pills and icon buttons included */
 [data-theme="2005"] .ui-btn--pill,

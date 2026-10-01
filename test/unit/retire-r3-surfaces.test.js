@@ -8,7 +8,7 @@
 //      modified click opens a new tab); a plain click is handled in the view and CLAIMED
 //      (preventDefault + stopPropagation), so the router's document link handler never
 //      navigates it a second time; the back control and Scan are ui-btns with registry glyphs.
-//   2. Settings Appearance: the era / icon-set / Music-skin pickers are radio rows (aria-checked
+//   2. Settings Appearance + Mobile player: the era / icon-set / Music-skin pickers are radio rows (aria-checked
 //      + ONE trailing check), a pick moves the check; the sticker options are ui-chip filters.
 //   3. Settings editors: the Library-icon and bottom-bar editors are ui-rows of a grouped
 //      ui-list; the three reorder lists wear ui-reorder with the ui-reorder__handle grip; only

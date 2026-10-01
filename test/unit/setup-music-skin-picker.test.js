@@ -1,7 +1,7 @@
 'use strict';
 
 // [UNIT] v1.230 (Dean, on-device): the mobile Music-player SKIN picker lives on the
-// Settings page (Appearance), beside the Theme/Icon pickers. It moved here after two
+// Settings page (the Mobile player section, v1.349; Appearance before that). It moved to Settings after two
 // misfires: the in-player switcher chips (v1.227/8) vanished against some skins, and
 // a v1.229 account-menu picker often never appeared because the menu builds ONCE at
 // boot and only some shells loaded the skins module. The root-cause guard is the
@@ -21,16 +21,28 @@ const SETUP_HTML = fs.readFileSync(path.join(PUB, 'setup.html'), 'utf8');
 const SETUP_JS = fs.readFileSync(path.join(PUB, 'js', 'setup.js'), 'utf8');
 const COMMON_JS = fs.readFileSync(path.join(PUB, 'js', 'common.js'), 'utf8');
 
-// ---- setup.html: the Appearance section carries the picker container -------------
+// ---- setup.html: the Mobile player section carries the picker container -------------
 
-test('setup.html: an Appearance "Music skin" heading + #music-skin-picker container exist', () => {
-  assert.match(SETUP_HTML, /<h3[^>]*>Music skin<\/h3>/, 'a "Music skin" subheading in Appearance');
+// the <details> of one Settings section, by its data-collapse-key
+function sectionHtml(key) {
+  const m = new RegExp('<details[^>]*data-collapse-key="' + key + '"[\\s\\S]*?</details>').exec(SETUP_HTML);
+  assert.ok(m, 'the ' + key + ' section exists in setup.html');
+  return m[0];
+}
+
+test('setup.html: a "Music skin" heading + #music-skin-picker container exist', () => {
+  assert.match(SETUP_HTML, /<h3[^>]*>Music skin<\/h3>/, 'a "Music skin" subheading');
   // v1.344 (W5, DELIBERATE conversion): the container is a preview GRID (a radiogroup of tiles), no
   // longer the grouped ui-list of text rows.
   assert.match(SETUP_HTML, /<div class="skin-picker" id="music-skin-picker" role="radiogroup"/, 'the picker container (a tile grid radiogroup)');
   // the copy tells the user it is phone-only (so a desktop change that does nothing
   // visible is not confusing).
   assert.match(SETUP_HTML, /on your phone/i, 'the hint says the skin applies to the phone player');
+});
+
+test('setup.html (v1.349): the skin grid lives in the mobile-player section and NOT in appearance', () => {
+  assert.match(sectionHtml('mobile-player'), /id="music-skin-picker"/, 'inside mobile-player');
+  assert.doesNotMatch(sectionHtml('appearance'), /music-skin-picker/, 'not inside appearance');
 });
 
 // ---- setup.js: renderMusicSkinPicker reads the registry + persists the pick -------

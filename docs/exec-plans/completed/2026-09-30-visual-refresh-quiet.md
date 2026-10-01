@@ -3,7 +3,7 @@ plan: visual-refresh-quiet
 harness: v2 · lean
 branch: ci/visual-refresh-quiet
 anchor: outcome
-status: Gate passed
+status: Shipped v1.349.0
 design: Approved 2026-09-30 (Dean, Q&A: bot PR auto-merged; drop the main diff and reuse the PR shots)
 gate: adversary + security-brief (the bot now merges to main with the workflow token)
 ---

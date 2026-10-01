@@ -1,7 +1,7 @@
 'use strict';
 
 // [UNIT] v1.238 (Dean): the player-STICKER icon picker lives on the Settings page
-// (Appearance), beside the Music-skin picker. Three kinds mirroring the music.js resolver:
+// (the Mobile player section since v1.349), beside the Music-skin picker. Three kinds mirroring the music.js resolver:
 // 'logo' (the FileTube favicon, default), 'emoji' (a preset gallery OR any typed emoji),
 // and 'custom' (an uploaded image, per-user via /api/me/sticker, the T1 endpoint). Setup.js
 // has no jsdom harness in this repo (CONTRIBUTING.md), so these are source locks, mirroring
@@ -16,12 +16,26 @@ const PUB = path.join(__dirname, '..', '..', 'public');
 const SETUP_HTML = fs.readFileSync(path.join(PUB, 'setup.html'), 'utf8');
 const SETUP_JS = fs.readFileSync(path.join(PUB, 'js', 'setup.js'), 'utf8');
 
-// ---- setup.html: the Appearance section carries the picker + hidden file input --------
+// ---- setup.html: the Mobile player section carries the picker + hidden file input --------
 
-test('setup.html: an Appearance "Player sticker" heading + #sticker-picker + a hidden file input exist', () => {
-  assert.match(SETUP_HTML, /<h3[^>]*>Player sticker<\/h3>/, 'a "Player sticker" subheading in Appearance');
+// the <details> of one Settings section, by its data-collapse-key
+function sectionHtml(key) {
+  const m = new RegExp('<details[^>]*data-collapse-key="' + key + '"[\\s\\S]*?</details>').exec(SETUP_HTML);
+  assert.ok(m, 'the ' + key + ' section exists in setup.html');
+  return m[0];
+}
+
+test('setup.html: a "Player sticker" heading + #sticker-picker + a hidden file input exist', () => {
+  assert.match(SETUP_HTML, /<h3[^>]*>Player sticker<\/h3>/, 'a "Player sticker" subheading');
   assert.match(SETUP_HTML, /<div id="sticker-picker" class="sticker-picker">/, 'the picker container');
   assert.match(SETUP_HTML, /<input type="file" id="sticker-file-input"[^>]*accept="image\/png,image\/jpeg,image\/webp"[^>]*hidden/, 'a hidden image file input for the custom upload');
+});
+
+test('setup.html (v1.349): the sticker picker and its file input live in mobile-player and NOT in appearance', () => {
+  const mobile = sectionHtml('mobile-player');
+  assert.match(mobile, /id="sticker-picker"/, 'picker inside mobile-player');
+  assert.match(mobile, /id="sticker-file-input"/, 'file input inside mobile-player');
+  assert.doesNotMatch(sectionHtml('appearance'), /sticker-picker|sticker-file-input/, 'neither inside appearance');
 });
 
 // ---- setup.js: renderStickerPicker reads ft-sticker + wires the three kinds ------------

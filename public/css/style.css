@@ -2467,7 +2467,7 @@ select {
 .theme-swatch { display: flex; width: 100%; height: var(--icon-md); border-radius: var(--r-xs); overflow: hidden; outline: var(--hairline) solid var(--separator); outline-offset: calc(0px - var(--hairline)); }
 .theme-swatch span { flex: 1; background: var(--swatch, var(--thumb-ground)); } /* --swatch: the era's colour as data (setup.js) */
 .theme-choice-year { color: var(--ink-2); }
-/* v1.238 -> retire R3: the player-sticker picker (Settings > Appearance). Every option is
+/* v1.238 -> retire R3: the player-sticker picker (Settings > Mobile player). Every option is
    a ui-chip filter (the picked one wears the chip's selected fill); the logo and your image
    show a small preview before their name, an emoji preset is the emoji. */
 .sticker-cards { display: flex; flex-wrap: wrap; gap: var(--space-4); }
@@ -2482,7 +2482,7 @@ select {
 .sticker-emoji-bar > .ui-field__input { flex: 1 1 0; min-width: 0; }
 .sticker-emoji-bar > .ui-btn { flex: none; }
 .sticker-opt { display: flex; align-items: center; justify-content: space-between; gap: var(--space-6); padding: 0 var(--inset); }
-/* v1.344 (W5): the Music skin PREVIEW GRID (Settings > Appearance). Each tile is a static CSS thumbnail
+/* v1.344 (W5): the Music skin PREVIEW GRID (Settings > Mobile player). Each tile is a static CSS thumbnail
    painted from the colorway's own role tokens (the colorway blocks are scoped to .skin-grid as well as the
    phone player, so one block serves both) - no player, no image, 25 tiles cost 25 spans. The body, the LCD
    and the wheel are the whole picture. The tile itself is the ui-tile card (press + focus ring). */
