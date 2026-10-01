@@ -447,6 +447,22 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.349.0 - Remote control shows On, device names, a Mobile player page (2026-10-01)
+
+- The Remote control button reads "Remote control: On" in the system selected look (a fill layer, never red; the 2009 gloss
+  stays under it). Its width is identical on and off in all 4 eras x 2 modes (measured); it is 26px wider than before even when
+  off (149px to 175px in 2021) because both wordings share one cell. Toolbar rows and height are unchanged.
+- Device names: every browser is "Type · Word" (118 words, FNV-1a of its device id, e.g. Mac · Otter), and Settings > Account has
+  "This device's name" to type your own (per browser, cleaned and capped at 32 like the server). A rename reaches the phone's
+  Play on... at once: the target reopens its stream (the two-browser proof found the stale name; fixed, mutants red).
+  Known limit: a phone's own rename shows on the PC's "Controlled by" pill only after it re-attaches.
+- Settings: a new Mobile player section holds Music skin and Player sticker (Appearance is shorter; `#mobile-player` deep link).
+- The visual rule: `docs/CONTRIBUTING.md` section plus `visual-settings-coverage.test.js` (every Settings section needs a screenshot
+  scene or an UNCOVERED entry; UNCOVERED is pinned at 4 and can only shrink).
+- Gate: adversary APPROVED r3, QA APPROVED r3 (R1 found an unbound cross-tab path, a growable UNCOVERED list and a 3.8px Pop out
+  width shift in 2014; all closed). Suites: 10507 tests, 10495 pass, 0 fail, 12 skipped on Node 22.23.1 and 24.20.0; `lint:ui`
+  unchanged at 3183, overlay 0.
+
 ### v1.348.0 - Play music on your computer from your phone (2026-09-30)
 
 - Listen Control: turn on Remote control on the computer's Music page, then on the phone pick Play on... in the iPod

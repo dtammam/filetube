@@ -100,6 +100,8 @@ Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#3-locks-censuses-and
 
 - **A surface opened from a CACHED view outlives the view: bind it to the router's SHOWN-view signal, not the view's own.** Home is cached on nav-away and its AbortController never fires, so a delete confirm, then (one round later) the card menu that opens it, stayed up over History and its OK still sent DELETE. Guard: every menu, confirm or sheet a view opens passes `FileTube.viewSignal()` read at OPEN (never stored at init), and re-checks it after the answer; a source lock requires it on every home menu; a real-page test leaves by navigate AND popstate with the surface open. Bind the OPENER too, not just the dialog it opens. (v1.341; x2)
 
+- **A value baked into a LONG-LIVED connection (an SSE URL) is frozen at connect: a rename/relabel must reopen it.** The label reached the server only when the stream opened, so a Settings rename left the phone's Play on... on the old name while the tab's own label was already new. Guard: a two-browser proof that changes the value MID-SESSION and reads the OTHER side; a test per path (same tab, `storage` event from another tab), each mutated red.
+
 Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#4-spa-shell-client-lifecycle-and-async-ui-state).
 
 ## 5. Media playback, queue and chapters

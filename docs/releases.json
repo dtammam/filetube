@@ -3400,5 +3400,11 @@
     "date": "2026-09-30",
     "title": "Play music on your computer from your phone",
     "intent": "Turn on Remote control on your computer's Music page, then pick Play on... in your phone's iPod menu. The phone becomes a remote: what you pick plays on the computer, and the phone shows what is playing and lets you pause, skip and scrub."
+  },
+  {
+    "version": "1.349.0",
+    "date": "2026-10-01",
+    "title": "Remote control shows when it's on, and every device gets a name",
+    "intent": "The Remote control button now reads \"Remote control: On\" when it is on. Each device gets a short name like Mac · Otter, so three Macs no longer look the same in Play on..., and you can type your own name for a device in Settings > Account. The phone player's skins and stickers now have their own Settings page, Mobile player."
   }
 ]
