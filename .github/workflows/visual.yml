@@ -193,7 +193,9 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          id=$(gh api "repos/${REPO}/issues/${PR}/comments" --paginate --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- visual-report -->"))) | .id' | head -n 1)
+          # No pipe into head: under pipefail a reader that quits early kills the writer with SIGPIPE (exit 141).
+          gh api "repos/${REPO}/issues/${PR}/comments" --paginate --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | startswith("<!-- visual-report -->"))) | .id' > comment-ids.txt
+          id=$(head -n 1 comment-ids.txt)
           if [ -n "$id" ]; then
             gh api -X PATCH "repos/${REPO}/issues/comments/${id}" -F body=@comment.md >/dev/null
           else
@@ -376,14 +378,16 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A -- test/visual/baselines
-          if git diff --cached --name-only | grep -qv '^test/visual/baselines/'; then echo "a non-baseline path is staged"; exit 1; fi
+          git diff --cached --name-only > staged.txt
+          if grep -qv '^test/visual/baselines/' staged.txt; then echo "a non-baseline path is staged"; exit 1; fi
           git commit --quiet -m "chore(visual): refresh baselines after $(git rev-parse --short HEAD)"
           git push --quiet "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "HEAD:refs/heads/${branch}"
+          git diff --stat=200 HEAD~1 HEAD -- test/visual/baselines > stat.txt
           {
             echo "The pages look different after the last merge to main. Only test/visual/baselines/ changed; the crops are in the PR comment of the change that caused it. The bot merges this PR itself."
             echo
             echo '```'
-            git diff --stat=200 HEAD~1 HEAD -- test/visual/baselines | head -n 100
+            head -n 100 stat.txt
             echo '```'
           } > body.md
           for old in $(gh pr list --repo "$REPO" --state open --json number,headRefName --jq '.[] | select(.headRefName | startswith("chore/baselines-")) | .number'); do

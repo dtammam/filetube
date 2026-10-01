@@ -149,7 +149,7 @@ test('baseline-refresh: only on a push to main, takes the reused or re-shot set,
   assert.deepStrictEqual(job.concurrency, { group: 'baseline-refresh', 'cancel-in-progress': false }, 'one refresh at a time');
   const body = runs('baseline-refresh');
   assert.match(body, /git add -A -- test\/visual\/baselines/, 'only the baselines directory is staged');
-  assert.match(body, /git diff --cached --name-only \| grep -qv '\^test\/visual\/baselines\/'/, 'a non-baseline staged path aborts');
+  assert.match(body, /git diff --cached --name-only > staged\.txt\n\s*if grep -qv '\^test\/visual\/baselines\/' staged\.txt/, 'a non-baseline staged path aborts');
   assert.match(body, /gh pr create /);
   // It merges ONLY the baselines PR it just opened (after the staged-path check), never with --admin.
   // --match-head-commit: the merge lands exactly the commit the path check passed.
@@ -167,6 +167,22 @@ test('baseline-refresh: only on a push to main, takes the reused or re-shot set,
   assert.deepStrictEqual([reshot.with.name, reshot.with.path], ['visual-baselines', 'fresh-baselines']);
   // no other job may create or merge a PR
   for (const name of Object.keys(WF.jobs).filter((n) => n !== 'baseline-refresh')) assert.doesNotMatch(runs(name), /gh pr (create|merge)/, name);
+});
+
+// A pipe into a reader that quits early (head, grep -q) makes the writer take SIGPIPE; under pipefail that
+// is exit 141 and the step dies. It killed the post-merge baseline PR for v1.349 (300+ changed baselines).
+test('no pipefail step pipes into head or grep -q (an early-quitting reader SIGPIPEs its writer, exit 141)', () => {
+  let pipefailSteps = 0;
+  for (const [name, job] of Object.entries(WF.jobs)) {
+    for (const step of job.steps) {
+      if (!step.run || !/pipefail/.test(step.run)) continue;
+      pipefailSteps++;
+      const code = step.run.split('\n').filter((l) => !/^\s*#/.test(l)).join('\n');
+      assert.doesNotMatch(code, /\|\s*head\b/, `${name} / ${step.name}: a pipe into head`);
+      assert.doesNotMatch(code, /\|\s*grep\s+-[a-zA-Z]*q/, `${name} / ${step.name}: a pipe into grep -q`);
+    }
+  }
+  assert.ok(pipefailSteps >= 4, 'the scan reached the pipefail steps (anti-vacuity)');
 });
 
 test('visual-report-comment.js: the comment lists changed scenes with crops (capped), says "No visual changes" otherwise, and flags a leg with no report', () => {

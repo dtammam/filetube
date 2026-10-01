@@ -163,6 +163,9 @@ the app renders nothing from those paths. **Visual never blocks a merge** (Dean,
   time. It needs the repo setting Settings > Actions > General > "Allow GitHub
   Actions to create and approve pull requests" (on since 2026-09-30); with it
   off, every merge to `main` went red and the baselines went stale.
+  After every merge, check that its `baseline-refresh` went green or that a
+  `chore/baselines-*` PR merged; a red one is a real failure to fix (v1.349's
+  died with exit 141 when a pipe into `head` took SIGPIPE under `pipefail`).
 
 **An intended look change: do nothing.** Read the PR comment and merge on green
 unit CI; the baselines follow on their own. A red `Visual` run on `main` is now
