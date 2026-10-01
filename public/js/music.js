@@ -519,6 +519,10 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
     '<div class="music-drill-actions">' +
     '<button type="button" class="ui-btn ui-btn--primary ui-btn--sm ui-btn--pill music-drill-play">' + songIconHtml('play_arrow') + '<span class="ui-btn__label">Play</span></button>' +
     '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-shuffle">' + songIconHtml('shuffle') + '<span class="ui-btn__label">Shuffle</span></button>' +
+    // v1.352 L3 (Dean's ruling: a pill in this row): copy this album's or artist's music link
+    (musicDrillLink(drill)
+      ? '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-copylink" data-link="' + escapeMusicHtml(musicDrillLink(drill)) + '">' + songIconHtml('content_copy') + '<span class="ui-btn__label">Copy link</span></button>'
+      : '') +
     // v1.273 (Dean): "the ability to rename chapters as if they were the song names...
     // it's just a string in a text block effectively". A chaptered album's "tracks" are
     // the `::c` chapters of ONE file, so their names come from that file's chapter list -
@@ -968,6 +972,63 @@ function queuedChaptersDiffer(rows, baseId, chapters) {
   return false;
 }
 
+// ---- v1.352 L3: music links --------------------------------------------------------------
+// `/music?artist=<name>` opens an artist, `&album=<title>` that artist's album, `?playlist=liked`
+// (or recent-played / recent-added) a playlist; `&mode=play` plays the list from its first song,
+// `&mode=shuffle` shuffled; `?mode=shuffle` alone is Shuffle Songs (the whole library). `play=<id>`
+// (the older contract) wins over all of it. Names are only ever MATCHED against the library, never
+// rendered as markup.
+// An album is named by artist + title, never by its raw key (which carries a separator character):
+// the key is rebuilt here, the same way lib/music/store.js albumKeyFor builds it.
+var MUSIC_ALBUM_KEY_SEP = '\u241F';
+var MUSIC_LINK_PLAYLISTS = ['liked', 'recent-played', 'recent-added'];
+function musicLinkName(v) {
+  return (typeof v === 'string' && v.trim() && v.indexOf(MUSIC_ALBUM_KEY_SEP) < 0 && v.indexOf('\u0000') < 0) ? v : null;
+}
+// -> { open: {type:'artist',artist} | {type:'album',artist,album} | {type:'playlist',key} | null,
+//      mode: 'play' | 'shuffle' | null } or null (nothing to do). A link that NAMES something it
+// cannot use (an album with no artist, an unknown playlist) does nothing at all, so its mode can
+// never fall back to shuffling the whole library. An unknown mode is ignored.
+function musicLinkIntent(search) {
+  var p;
+  try { p = new URLSearchParams(search || ''); } catch (_) { return null; }
+  if (p.get('play')) return null;
+  var mode = p.get('mode');
+  if (mode !== 'play' && mode !== 'shuffle') mode = null;
+  var named = p.has('artist') || p.has('album') || p.has('playlist');
+  var artist = musicLinkName(p.get('artist'));
+  var album = musicLinkName(p.get('album'));
+  var pl = p.get('playlist');
+  var open = null;
+  if (artist && album) open = { type: 'album', artist: artist, album: album };
+  else if (artist && !p.has('album')) open = { type: 'artist', artist: artist };
+  else if (!p.has('artist') && !p.has('album') && MUSIC_LINK_PLAYLISTS.indexOf(pl) >= 0) open = { type: 'playlist', key: pl };
+  if (named && !open) return null;
+  if (!open && mode !== 'shuffle') return null;
+  return { open: open, mode: mode };
+}
+// The link for an intent (round-trips through musicLinkIntent). '' when there is nothing to link.
+function musicLinkFor(intent) {
+  var o = intent && intent.open;
+  var q = [];
+  if (o && o.type === 'artist' && musicLinkName(o.artist)) q.push('artist=' + encodeURIComponent(o.artist));
+  else if (o && o.type === 'album' && musicLinkName(o.artist) && musicLinkName(o.album)) q.push('artist=' + encodeURIComponent(o.artist), 'album=' + encodeURIComponent(o.album));
+  else if (o && o.type === 'playlist' && MUSIC_LINK_PLAYLISTS.indexOf(o.key) >= 0) q.push('playlist=' + o.key);
+  else if (o) return '';
+  if (intent && (intent.mode === 'play' || intent.mode === 'shuffle')) q.push('mode=' + intent.mode);
+  return q.length ? '/music?' + q.join('&') : '';
+}
+function musicAlbumKeyFor(artist, album) { return artist + MUSIC_ALBUM_KEY_SEP + album; }
+// The link for an open drill ({type:'artist'|'album', key}); '' for a key that is not artist + album.
+function musicDrillLink(drill) {
+  if (!drill || typeof drill.key !== 'string') return '';
+  if (drill.type === 'artist') return musicLinkFor({ open: { type: 'artist', artist: drill.key }, mode: null });
+  if (drill.type !== 'album') return '';
+  var at = drill.key.indexOf(MUSIC_ALBUM_KEY_SEP);
+  if (at <= 0 || drill.key.indexOf(MUSIC_ALBUM_KEY_SEP, at + 1) >= 0) return '';
+  return musicLinkFor({ open: { type: 'album', artist: drill.key.slice(0, at), album: drill.key.slice(at + 1) }, mode: null });
+}
+
 // v1.352 W0 (Listen Control, phone side): the PC refused to start sound (blocked), or its tab has had
 // no click yet (needsClick, known as soon as this device picks it, before any song).
 var REMOTE_CLICK_HINT = "Click the PC's tab once to let it play";
@@ -977,6 +1038,7 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     REMOTE_CLICK_HINT,
     remoteNeedsClick,
+    MUSIC_ALBUM_KEY_SEP, musicLinkIntent, musicLinkFor, musicAlbumKeyFor, musicDrillLink, // v1.352 L3
     chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC, CHAPTER_VERIFY, chapterAdoptSeekFor, queuedChaptersDiffer,
     liveListenPosition, listenHandoffChapterIndex, chapterStartFor, handoffPaused,
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
@@ -3494,6 +3556,15 @@ if (typeof module !== 'undefined' && module.exports) {
         });
         return;
       }
+      var copyLink = e.target.closest('.music-drill-copylink');
+      if (copyLink) {
+        var linkPath = copyLink.getAttribute('data-link') || '';
+        if (!linkPath) return;
+        copyTextToClipboard(window.location.origin + linkPath).then(function (r) {
+          if (typeof window.showToast === 'function') window.showToast(r === 'copied' ? 'Link copied' : 'Could not copy the link');
+        });
+        return;
+      }
       if (e.target.closest('.music-drill-shuffle')) {
         // Shuffle within the drill scope, re-render the (now reordered) list,
         // and play from the top — the seed makes next/prev walk it verbatim.
@@ -4319,14 +4390,18 @@ if (typeof module !== 'undefined' && module.exports) {
         });
       }
       if (n.type === 'playlist') {
-        var pl = n.key === 'liked'
-          ? { url: '/api/music?filter=liked&sort=title-asc&limit=10000', ctx: { src: 'music', filter: 'liked', sort: 'title-asc' } }
-          : n.key === 'recent-played'
-            ? { url: MENU_RECENT_URL, ctx: { src: 'music', filter: 'recent-listening' } }
-            : { url: '/api/music?sort=newest&limit=100', ctx: { src: 'music', sort: 'newest' } };
+        var pl = playlistSource(n.key);
         return fetchJson(pl.url).then(function (d) { return menuSongLevel(menuItemsOf(d), { ctx: pl.ctx, label: n.label }); });
       }
       return Promise.resolve({ items: [] });
+    }
+    // The iPod menu's playlists (and the v1.352 L3 `?playlist=` links): where each one's songs come from.
+    function playlistSource(key) {
+      return key === 'liked'
+        ? { url: '/api/music?filter=liked&sort=title-asc&limit=10000', ctx: { src: 'music', filter: 'liked', sort: 'title-asc' }, label: 'Liked' }
+        : key === 'recent-played'
+          ? { url: MENU_RECENT_URL, ctx: { src: 'music', filter: 'recent-listening' }, label: 'Recently Played' }
+          : { url: '/api/music?sort=newest&limit=100', ctx: { src: 'music', sort: 'newest' }, label: 'Recently Added' };
     }
     // Play the song at `index` of a menu list, IN that list (Dean: "in the context of the list it
     // came from"). The list BECOMES the queue, and the browse view behind the skin is re-drawn
@@ -4354,9 +4429,15 @@ if (typeof module !== 'undefined' && module.exports) {
     //    the skin's track list) is Dean's v1.311 rule again: playAt drops the album's list mode
     //    (flatAlbum) for it.
     function playFromMenu(req) {
+      if (!adoptMenuList(req)) return;
+      playAt(Number(req.index), { soloChapter: false, pick: true }); // v1.331: never a solo select (see above)
+    }
+    // The list becomes the queue and the browse view is drawn from it (playFromMenu's first half; a
+    // v1.352 `?playlist=` link without a mode shows the list and plays nothing).
+    function adoptMenuList(req) {
       var tracks = (req && Array.isArray(req.tracks)) ? req.tracks : [];
       var i = Number(req && req.index);
-      if (!tracks.length || !(i >= 0 && i < tracks.length) || !content) return;
+      if (!tracks.length || !(i >= 0 && i < tracks.length) || !content) return false;
       var play = (req && req.play) || {};
       playSelectGen += 1; // an in-flight album select (playTrackInAlbum) must not play over this pick
       loadSongsGen += 1;  // ...nor an in-flight list load land over this queue
@@ -4381,7 +4462,7 @@ if (typeof module !== 'undefined' && module.exports) {
         if (crumb) { crumb.hidden = false; crumb.textContent = play.label || 'Songs'; }
         renderSongListProgressive();
       }
-      playAt(i, { soloChapter: false, pick: true }); // v1.331: never a solo select (see above)
+      return true;
     }
     // Gate r1 K3 (qa W2 + adversary W3, measured: a pick from a 3,008-song list blocked the main
     // thread 1.8 s at CPU x1 and 6.5 s at x4, building every browse row inside the tap). The rows
@@ -4491,6 +4572,51 @@ if (typeof module !== 'undefined' && module.exports) {
         playFromMenu({ tracks: menuItemsOf(d), index: 0, play: { ctx: { src: 'music', sort: 'random', seed: seed }, label: 'Shuffle Songs' } });
       }).catch(function () {
         if (typeof window.showToast === 'function') window.showToast('Could not shuffle your songs.');
+      });
+    }
+
+    // v1.352 L3: act on a music link (musicLinkIntent). The list is fetched once: an empty result is a
+    // "could not find" toast over the normal page. Shuffle goes through the server's seeded shuffle
+    // where the list is a plain query (an album, an artist, Liked); the two recent lists are cut and
+    // ordered by the server (the newest 100, the most recently played), so those are shuffled here.
+    function applyMusicLink(intent) {
+      var o = intent.open;
+      var mode = intent.mode;
+      if (!o) { if (mode === 'shuffle') shuffleAllFromMenu(); return Promise.resolve(); }
+      var seed = String(Math.floor(Math.random() * 1e9));
+      var gen = playSelectGen;
+      var src;
+      if (o.type === 'playlist') {
+        var pl = playlistSource(o.key);
+        var serverShuffle = o.key === 'liked' && mode === 'shuffle';
+        src = { url: serverShuffle ? '/api/music?filter=liked&sort=random&seed=' + seed + '&limit=10000' : pl.url,
+          ctx: serverShuffle ? { src: 'music', filter: 'liked', sort: 'random', seed: seed } : pl.ctx,
+          clientShuffle: mode === 'shuffle' && !serverShuffle, label: pl.label, name: pl.label, drill: null };
+      } else {
+        var isAlbum = o.type === 'album';
+        var key = isAlbum ? musicAlbumKeyFor(o.artist, o.album) : o.artist;
+        var sort = mode === 'shuffle' ? 'random' : sortForTab(isAlbum ? 'drill-album' : 'drill-artist');
+        var q = (isAlbum ? 'album=' : 'artist=') + encodeURIComponent(key) + '&sort=' + sort + (mode === 'shuffle' ? '&seed=' + seed : '') + '&limit=10000';
+        var ctx = { src: 'music', sort: sort };
+        ctx[isAlbum ? 'album' : 'artist'] = key;
+        if (mode === 'shuffle') ctx.seed = seed;
+        src = { url: '/api/music?' + q, ctx: ctx, clientShuffle: false, label: isAlbum ? o.album : o.artist,
+          name: isAlbum ? o.album : o.artist, drill: { type: o.type, key: key, label: isAlbum ? o.album : o.artist } };
+      }
+      return fetchJson(src.url).then(function (d) {
+        if (signal.aborted || gen !== playSelectGen) return; // a newer pick or a torn-down view owns the page
+        var tracks = menuItemsOf(d);
+        if (!tracks.length) {
+          if (typeof window.showToast === 'function') window.showToast('Could not find ' + src.name + ' in your music');
+          return;
+        }
+        if (src.clientShuffle) tracks = fisherYatesShuffle(tracks);
+        if (!mode) {
+          if (src.drill) return openDrill(src.drill);
+          adoptMenuList({ tracks: tracks, index: 0, play: { ctx: src.ctx, label: src.label } });
+          return;
+        }
+        playFromMenu({ tracks: tracks, index: 0, play: { ctx: src.ctx, drill: src.drill, flat: o.type === 'artist', label: src.label } });
       });
     }
 
@@ -4700,6 +4826,10 @@ if (typeof module !== 'undefined' && module.exports) {
 
     const playParam = urlParams.get('play');
     var wantNowPlaying = urlParams.get('nowplaying') === '1';
+    // v1.352 L3: a music link; its `mode` leaves the URL now (a reload must not restart the list),
+    // the artist/album/playlist stay (they describe what is on screen).
+    var linkIntent = musicLinkIntent(window.location.search);
+    stripMusicParam('mode');
     if (playParam && urlParams.get('listen') === '1') {
       // v1.252 (Dean, LISTEN-MODE): a VIDEO played as audio in this presentation. The id is a
       // media id (never a music-surface id) - resolve it against /api/videos and play it as a
@@ -4717,6 +4847,14 @@ if (typeof module !== 'undefined' && module.exports) {
         console.error('Music: continue-listening play failed', err);
         straightToPlayerPending = false; // a rejected load must not strand the cover
         render().catch(() => {});
+      });
+    } else if (linkIntent) {
+      render().then(function () {
+        if (signal.aborted) return;
+        return applyMusicLink(linkIntent);
+      }).catch(function (err) {
+        console.error('Music: link failed', err);
+        if (typeof window.showToast === 'function') window.showToast('Could not open that music link.');
       });
     } else if (wantNowPlaying && isListenChapterActive()) {
       // v1.282 (Dean, #222): a chaptered LISTEN video has no real album, so the v1.207
@@ -4795,12 +4933,14 @@ if (typeof module !== 'undefined' && module.exports) {
     rebuildPlayingQueue().catch(function () {});
   }
 
-  function stripNowPlayingParam() {
+  function stripNowPlayingParam() { stripMusicParam('nowplaying'); }
+  // replaceState without `name`, carrying the router's history.state forward with the corrected url.
+  function stripMusicParam(name) {
     try {
       var loc = window.location;
       var params = new URLSearchParams(loc.search);
-      if (!params.has('nowplaying')) return;
-      params.delete('nowplaying');
+      if (!params.has(name)) return;
+      params.delete(name);
       var qs = params.toString();
       var newUrl = loc.pathname + (qs ? '?' + qs : '');
       var prev = window.history.state;

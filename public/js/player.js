@@ -117,6 +117,15 @@ function isAdoptLoad(currentId, requestedId, state) {
   return currentId != null && currentId === requestedId && state !== 'closed';
 }
 
+// v1.352 L1: an explicit start (`/watch?v=<id>&t=90`): the seconds to start at, 0 when it is at or
+// past the end (never seek past the duration), null when there is none. `duration` may be unknown yet.
+function resolveExplicitStart(t, duration) {
+  if (typeof t !== 'number' || !isFinite(t) || t < 0) return null;
+  var d = Number(duration);
+  if (isFinite(d) && d > 0 && t >= d) return 0;
+  return t;
+}
+
 // v1.344.2 (Dean, 2026-09-29: keep "the fidelity of the time, the position" between Watch and Listen,
 // and a paused one stays paused): loading a chaptered file's BASE id while the player holds one of its
 // `<id>::c<n>` rows (Listen -> Watch) re-opens the same media under another name, so it is a fresh load,
@@ -1774,6 +1783,7 @@ if (typeof module !== 'undefined' && module.exports) {
     queuePointerMatchesPlaying,
     isAdoptLoad,
     resolveBaseHandoff, // v1.344.2: Listen -> Watch carries the chapter row's place (and pause)
+    resolveExplicitStart, // v1.352 L1: &t= on a watch link
     applyAdoptFlavor,
     presenceSurfaceForResumeMode, // v1.304 handoff modality: the ping's watch/listen flavor
     shouldDockOnTransition,
@@ -2176,6 +2186,10 @@ if (typeof module !== 'undefined' && module.exports) {
   // v1.344.2: this load's Listen -> Watch handoff ({ t, paused } or null), captured in load() before
   // the teardown loses the chapter row's element state - see resolveBaseHandoff.
   var loadBaseHandoff = null;
+  // v1.352 L1: this load's explicit start (data.startAt, from a `&t=` link) and the last one applied, so
+  // the watch page's later same-id loads (adopts carrying the same value) never seek twice.
+  var loadStartAt = null;
+  var appliedStartAt = null;
 
   // v1.130 immersive carry-on-advance: one-shot arm + per-load snapshot,
   // exactly the `autoplayAdvancePending`/`loadAutoplayAdvance` pattern above
@@ -5112,6 +5126,23 @@ if (typeof module !== 'undefined' && module.exports) {
       savedProgress = loadBaseHandoff.t;
       if (loadBaseHandoff.paused) mediaPlayer.currentTime = loadBaseHandoff.t;
       else resumeDirectly(loadBaseHandoff.t);
+      return;
+    }
+    // v1.352 L1: an explicit start (`&t=`) OVERRIDES the saved position: no progress read, no
+    // "Resumed at" toast. At or past the end starts at 0; an end only known once the metadata loads is
+    // checked then.
+    if (loadStartAt !== null) {
+      savedProgress = 0;
+      var explicitStart = resolveExplicitStart(loadStartAt, currentData && currentData.duration);
+      resumeDirectly(explicitStart);
+      if (explicitStart > 0 && !liveMode) {
+        var clampStart = function () {
+          mediaPlayer.removeEventListener('loadedmetadata', clampStart);
+          if (gen !== loadGeneration) return;
+          if (resolveExplicitStart(explicitStart, mediaPlayer.duration) === 0) mediaPlayer.currentTime = 0;
+        };
+        mediaPlayer.addEventListener('loadedmetadata', clampStart);
+      }
       return;
     }
     // v1.44 music: read from the music coalescer and apply the SMART-RESUME
@@ -9236,6 +9267,16 @@ if (typeof module !== 'undefined' && module.exports) {
       // current navigation: a context-less re-open clears it to the folder
       // fallback. Skipped only when data carries no browseCtx field at all.
       if (data && typeof data.browseCtx === 'string' && currentData) currentData.browseCtx = data.browseCtx;
+      // v1.352 L1: a `&t=` link to the video already playing seeks it (once per value: the watch page's
+      // own follow-up loads carry the same startAt and must not jump back).
+      if (data && typeof data.startAt === 'number' && data.startAt !== appliedStartAt) {
+        appliedStartAt = data.startAt;
+        var adoptStart = resolveExplicitStart(data.startAt, mediaPlayer ? mediaPlayer.duration : NaN);
+        if (adoptStart !== null && mediaPlayer) {
+          if (liveMode) startLiveStream(adoptStart, !mediaPlayer.paused);
+          else mediaPlayer.currentTime = adoptStart;
+        }
+      }
       // v1.253: the same carried-field refresh for the surface-flavor fields
       // (readerHref/resumeMode) - see applyAdoptFlavor's header. Without it the
       // mini-bar's return target stayed with the PREVIOUS surface across a
@@ -9278,6 +9319,8 @@ if (typeof module !== 'undefined' && module.exports) {
     loadImmersiveCarry = options.dock ? null : capturedImmersiveCarry.value;
     immersiveCarryPending = capturedImmersiveCarry.nextPending;
     loadBaseHandoff = resolveBaseHandoff(currentId, id, mediaPlayer ? mediaPlayer.currentTime : null, mediaPlayer ? mediaPlayer.paused : true, liveMode);
+    loadStartAt = (data && typeof data.startAt === 'number') ? data.startAt : null;
+    appliedStartAt = loadStartAt;
     teardownMediaState({ preserveImmersive: loadImmersiveCarry });
     currentId = id;
     currentData = data || {};

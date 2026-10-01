@@ -729,6 +729,23 @@ function resolveWatchMediaId(search) {
   return params.get('v') || params.get('id') || null;
 }
 
+// v1.352 L1: `&t=` starts a library video at a moment (a bookmark of it). Whole seconds (`90`) or the
+// YouTube form (`1h2m3s`, `2m`, `45s`); null for empty, negative, junk or over 24 h. The URL keeps it,
+// so a reload restarts at the same moment, as YouTube does.
+var START_TIME_MAX_SEC = 24 * 60 * 60;
+function parseStartTime(str) {
+  if (typeof str !== 'string') return null;
+  var v = str.trim().toLowerCase();
+  var sec = null;
+  if (/^\d{1,6}$/.test(v)) sec = Number(v);
+  else {
+    var m = /^(?:(\d{1,3})h)?(?:(\d{1,5})m)?(?:(\d{1,6})s)?$/.exec(v);
+    if (m && (m[1] || m[2] || m[3])) sec = Number(m[1] || 0) * 3600 + Number(m[2] || 0) * 60 + Number(m[3] || 0);
+  }
+  if (sec === null || !isFinite(sec) || sec < 0 || sec > START_TIME_MAX_SEC) return null;
+  return sec;
+}
+
 // The ui builders: the page's window.ui, else (node:test) the sibling module.
 function relatedUi() {
   if (typeof window !== 'undefined' && window.ui) return window.ui;
@@ -824,6 +841,7 @@ function buildRelatedSkeletonCards(n, doc) {
 if (typeof module !== 'undefined' && module.exports) {
   const ambientExports = module.require('./ambient.js'); // module.require: the player.js / skin-surface.js convention (browser-env lint)
   module.exports = {
+    parseStartTime, // v1.352 L1
     resolveDisplayDescription,
     // UI pass sweep S3: the action bar's order, the More menu, About this file, real comments.
     WATCH_BAR_ORDER,
@@ -1182,6 +1200,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // resolveWatchMediaId's own comment above).
     const urlParams = new URLSearchParams(window.location.search);
     const mediaId = resolveWatchMediaId(window.location.search);
+    // v1.352 L1: ride EVERY load below (the first one decides where playback starts; the rest adopt)
+    const startAt = parseStartTime(new URLSearchParams(window.location.search).get('t'));
     // v1.196: a TV episode (?tv=<id>) drives the shared player via a dedicated
     // path (initTvWatch, a hoisted sibling defined below). It MUST be checked
     // before the !mediaId bail - a tv load has no /api/videos media id - and it
@@ -1444,7 +1464,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // Gate r1 (music follow-ups, qa W2 = adversary W3): autoAdvanceViaTrackNav false is part of
       // the same claim - a Listen play left music's `true`, and the adopted video's natural end
       // then advanced through this page's track nav even with Autoplay off.
-      const mountedEarly = window.FileTube.player.load(mediaId, { browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false }, { slot: playerSlot });
+      const mountedEarly = window.FileTube.player.load(mediaId, { browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, startAt }, { slot: playerSlot });
       if (!mountedEarly) showFatalViewError(root);
     } else if (entryReparentAction === 'reparent' && !canSeedPreload) {
       // Eagerly reparent the STILL-loaded previous video's host into THIS
@@ -1488,7 +1508,7 @@ if (typeof module !== 'undefined' && module.exports) {
       delete seedItemForLoad.chaptersManual;
       seedPreloaded = window.FileTube.player.load(
         mediaId,
-        { ...seedItemForLoad, channelName: currentChannelName, browseCtx: rawBrowseCtx },
+        { ...seedItemForLoad, channelName: currentChannelName, browseCtx: rawBrowseCtx, startAt },
         { slot: playerSlot }
       ) === true;
     }
@@ -1623,7 +1643,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // adopt path (see the early-adopt call's comment) - AFTER the spread,
         // so a hypothetical readerHref/resumeMode on the fetched media payload
         // can never smuggle a stale surface flavor through.
-        const mounted = window.FileTube.player.load(mediaId, { ...mediaData, channelName, browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false }, { slot: playerSlot });
+        const mounted = window.FileTube.player.load(mediaId, { ...mediaData, channelName, browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, startAt }, { slot: playerSlot });
         if (!mounted) {
           showFatalViewError(root);
         }
