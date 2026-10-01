@@ -335,3 +335,5 @@ to the reviewed sha)
 QA R1 @311da9dd: APPROVED
 
 Adversary R1 @311da9dd: CHANGES REQUESTED (W1 storage-listener unbound by any test; W2 UNCOVERED can grow; W3 2014 Pop out width shifts 3.8px when open; rest NOTE)
+QA R2 @666f0260: CHANGES REQUESTED (one stale comment, ui.css ~680)
+Adversary R2 @666f0260: CHANGES REQUESTED (comment-only: ui.css ~680 still says "pressing makes the button semibold"; W1/W2/W3 verified fixed)
