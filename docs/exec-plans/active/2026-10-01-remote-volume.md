@@ -5,7 +5,7 @@ branch: feat/v1.353-remote-volume
 anchor: spec
 status: Draft
 next: V0 (build not started; read the whole plan first, every section)
-design: Dean 2026-10-01 ("I like this. Yes. Let's do it.") on option A of the intake below (a Volume screen while controlling a speaker); R1-R4 are architect defaults he did not overrule
+design: Dean 2026-10-01 ("I like this. Yes. Let's do it.") on option A, then "As long as the volume screen is low friction and looks like iPod volume I am good" (R1, R2 below are binding); R3, R4 are architect defaults he did not overrule
 gate: FULL (adversary + qa + security-brief; a new command and state field on the remote channel, lib/remote/**)
 ---
 
@@ -70,8 +70,8 @@ Never widen scope: log extras in ROADMAP.md Planned.
 
 | # | Question | Ruling |
 |---|---|---|
-| R1 | Surface | **Option A (Dean, 2026-10-01):** a Volume screen, only while controlling a speaker. Now Playing keeps scrubbing (the 09-02 rule holds). |
-| R2 | Reach | A "Volume" row in the Speakers menu (shown only while a speaker is chosen), and a tap on the "on <PC>" badge from Now Playing opens Speakers with Volume on top. Architect default. |
+| R1 | Surface and look | **Option A (Dean, 2026-10-01), with his constraint: "low friction and looks like iPod volume".** The Volume screen IS the Now Playing LCD with the iPod volume bar (the speaker glyph at each end, the segmented fill) in place of the scrubber, exactly as a real iPod shows it, only while controlling a speaker. The wheel turns the volume while it shows; after ~2 s with no turn it returns to the scrubber by itself (the iPod behaviour), and MENU returns at once. Outside it the Now Playing wheel keeps scrubbing (the 09-02 rule holds). The look is matched to reference photos of the real iPod volume bar (the skin's own era), shown to Dean side by side with the build BEFORE the gate (LESSONS look rule: research first, "look like X" = X's real look). |
+| R2 | Reach (low friction) | ONE tap from Now Playing: tapping the volume area of the Now Playing LCD (the scrubber row) while controlling a speaker brings the volume bar up in place; no menu trip. Also a "Volume" row in the Speakers menu while a speaker is chosen (it opens Now Playing with the bar up). The "on <PC>" badge keeps opening Speakers, unchanged. If a tap on the scrubber row conflicts with seeking (it does today: a tap on the track seeks), use the tap on the time labels / an icon at the row end instead, and stop and show Dean the choice (stop rule b). |
 | R3 | Skins without menus (Cider, Nordic: `onPlayOnBadge` ends remote control today) | A plain `ui` slider row on their remote Now Playing, visible only while remote. If that needs layout work beyond one row, stop rule (c). Architect default. |
 | R4 | Step and rate | The wheel moves 5% per detent (the existing `VOLUME_STEP`); at most one command per 250 ms, the last level always sent (copy the controller's `seek` throttle). Architect default. |
 
@@ -93,9 +93,10 @@ Caution (v1.352 gate r2): remote.js `onPlaying` treats `volume === 0` as not aud
 not raise the click hint, and coming back up must not need a click. Bind both.
 
 **Phone (public/js/remote.js controller, music.js, music-skins.js, skin-surface.js):** `RC.volume(level)` (throttled like
-`seek`; the shown level holds where it was dragged until the PC reports). A new menu level `volume` (Speakers > Volume, and the
-badge path), rendered from the dormant `.ip-vol` bar; on that level the wheel's spin adjusts the level (a NEW wheel mode for
-that level only; the Now Playing scrub mode is unchanged); MENU goes back. Cider/Nordic per R3.
+`seek`; the shown level holds where it was dragged until the PC reports). A volume STATE of the Now Playing view (not a new
+menu level): the dormant `.ip-vol` bar swaps in for the scrubber, the wheel's spin adjusts the level while it shows (a wheel
+mode that exists ONLY while the bar is up; the scrub mode is unchanged otherwise), ~2 s idle or MENU puts the scrubber back.
+Reached per R2. Cider/Nordic per R3.
 
 ## 4. The seams (read at v1.352.0; line numbers drift, names do not)
 
@@ -128,7 +129,9 @@ the delivered frame; state round-trip POST -> GET targets -> stream frame (drop 
 a remote volume of 0 then 0.5 never raises needsClick (unit) and never needs a click (W-row below).
 
 ### V2 - The phone's Volume screen (iPod skins) + Cider/Nordic row
-`RC.volume` + throttle; the `volume` menu level; the wheel mode on that level only; the badge path; R3's slider.
+FIRST the look (R1): pull reference photos of the real iPod volume bar for the skin eras that ship, build the bar, and send Dean
+the reference and the build side by side (SendUserFile) before going further; he answers fast. Then `RC.volume` + throttle;
+the volume state of Now Playing (R1), the one-tap reach and the Speakers row (R2), the 2 s idle return, R3's slider.
 Tests: the throttle (one per 250 ms, the last level sent); the level renders the PC's reported volume (from a POPULATED state, and
 the clear when the speaker is left); the wheel on Now Playing still scrubs (the 09-02 rule, a lock that goes red if the volume
 mode leaks); the Volume row is absent when not controlling a speaker.
@@ -163,7 +166,8 @@ user cannot set my speaker's volume), the rate limiter. Brief each seat with the
 
 ## 8. Device checks Dean would owe (into DEVICE-CHECKS.md at release, one line each)
 
-- [ ] v1.353.0 - Phone controlling the speaker: Speakers > Volume (or tap "on <PC>"), turn the wheel: the PC gets louder and quieter; the bar matches.
+- [ ] v1.353.0 - Phone controlling the speaker, Now Playing: one tap brings up the iPod volume bar in place of the scrubber; turn the wheel: the PC gets louder and quieter and the bar matches; stop turning and it goes back to the scrubber by itself.
+- [ ] v1.353.0 - It looks like the iPod's own volume bar (speaker glyphs, the fill) on each iPod skin you use.
 - [ ] v1.353.0 - Move the volume on the PC itself: the phone's Volume bar follows within a couple of seconds.
 - [ ] v1.353.0 - Turn it all the way down and back up from the phone: it plays again with no click on the PC.
 - [ ] v1.353.0 - On Now Playing the wheel still scrubs the song (it never changes volume there).
