@@ -112,3 +112,13 @@ test('v1.352 gate r1: playFromMenu plays only a list adoptMenuList accepted (nev
   const body = SRC.slice(SRC.indexOf('    function playFromMenu(req) {'), SRC.indexOf('    function adoptMenuList(req) {'));
   assert.match(body, /^\s*function playFromMenu\(req\) \{\s*if \(!adoptMenuList\(req\)\) return;\s*playAt\(Number\(req\.index\)/);
 });
+
+test('v1.352 gate r2: the toast cap counts characters (an emoji is never cut in half), and a failed first render shows the load error', () => {
+  const name = 'a'.repeat(38) + '\u{1F3B5}' + 'xyz';
+  const t = M.musicLinkToastName(name);
+  assert.strictEqual(Array.from(t).length, 40);
+  assert.ok(!/[\uD800-\uDBFF]$/.test(t.slice(0, -1)), 'no lone high surrogate before the ellipsis');
+  assert.strictEqual(Array.from(t)[38], '\u{1F3B5}');
+  const link = SRC.slice(SRC.indexOf('} else if (linkIntent) {'), SRC.indexOf('} else if (wantNowPlaying && isListenChapterActive()) {'));
+  assert.match(link, /\}, function \(err\) \{\s*console\.error\('Music: initial render failed', err\);\s*showLoadError\(\);/);
+});

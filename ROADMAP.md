@@ -4,7 +4,12 @@
 
 ### Bugs
 
-- [ ] **Speakers: a chaptered album playing on the PC keeps the first chapter's name on the phone** _(Dean, 2026-10-01: "when
+- [ ] **Speakers: a small touchscreen speaker machine counts as a phone** _(gate r2 of v1.352, adversary, measured)_ - An
+  800x480 touch screen (a Raspberry Pi 7-inch kiosk) gets `html.is-phone` (music-skins.js `phoneFrom`: coarse pointer and
+  a short side of 500 px or less), so its `?remote=on` bookmark does nothing (Dean's v1.352 ruling: a phone is never a
+  speaker). An iPad and a desktop are fine. Fix shape: an explicit opt-in for such a machine (for example `?remote=on&kiosk=1`
+  or a per-browser setting), decided with Dean.
+- [x] **Speakers: a chaptered album playing on the PC keeps the first chapter's name on the phone** - FIXED in v1.352.0 (Dean asked to bundle it) _(Dean, 2026-10-01: "when
   remotely controlling a computer speaker from phone the named chapter doesn't change. unless i skip track. if i pick intro,
   it keeps playing all through all the way. and the music goes. and the scrubber shows. but it stays with the same name.
   unless i explicitly fast forward")_ - The sound, the scrubber and Next all work; only the name on the phone is stuck.

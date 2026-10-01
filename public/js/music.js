@@ -991,8 +991,8 @@ function musicLinkName(v) {
 // put a long message on screen (gate r1, security S2).
 var MUSIC_LINK_TOAST_NAME_MAX = 40;
 function musicLinkToastName(name) {
-  var n = String(name || '');
-  return n.length > MUSIC_LINK_TOAST_NAME_MAX ? n.slice(0, MUSIC_LINK_TOAST_NAME_MAX - 1) + '\u2026' : n;
+  var n = Array.from(String(name || '')); // by character, so an emoji is never cut in half (gate r2)
+  return n.length > MUSIC_LINK_TOAST_NAME_MAX ? n.slice(0, MUSIC_LINK_TOAST_NAME_MAX - 1).join('') + '\u2026' : n.join('');
 }
 // -> { open: {type:'artist',artist} | {type:'album',artist,album} | {type:'playlist',key} | null,
 //      mode: 'play' | 'shuffle' | null } or null (nothing to do). A link that NAMES something it
@@ -1852,6 +1852,9 @@ if (typeof module !== 'undefined' && module.exports) {
       applyPlayingHighlight();
       updateNowPlayingPanel();
       updateNowPlaying(); // v1.237: keep the "Playing from <Album>" line in step (it keys off the current id too)
+      // v1.352 (Dean): a phone controlling this PC hears the new chapter's name now, not at the next beat
+      var remoteTarget = window.FileTube && window.FileTube.remote;
+      if (remoteTarget && typeof remoteTarget.trackChanged === 'function') remoteTarget.trackChanged();
     }
     // v1.240 (Dean's loop bug): loop the CURRENT chapter's segment when Loop is on and a
     // chaptered `::c` track is playing. The file-level loop (player 'ended' -> replay from 0)
@@ -2896,7 +2899,12 @@ if (typeof module !== 'undefined' && module.exports) {
         playFromMenu({ tracks: req.tracks, index: req.index, play: { flat: true, label: 'From ' + (req.label || 'another device') } });
       };
       REMOTE.setMusicPlayHandler(remotePlay);
-      signal.addEventListener('abort', function () { REMOTE.setMusicPlayHandler(null); });
+      // v1.352: the chapter on screen is the one this PC reports to the phone (reflectChapter rolls it)
+      if (typeof REMOTE.setNowPlayingResolver === 'function') REMOTE.setNowPlayingResolver(function () { return chapterViewId; });
+      signal.addEventListener('abort', function () {
+        REMOTE.setMusicPlayHandler(null);
+        if (typeof REMOTE.setNowPlayingResolver === 'function') REMOTE.setNowPlayingResolver(null);
+      });
       if (remoteBtn) {
         var paintRemote = function () {
           remoteBtn.setAttribute('aria-pressed', REMOTE.isOn() ? 'true' : 'false'); // the CSS swaps the label on this

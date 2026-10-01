@@ -110,3 +110,12 @@ test('v1.352 W0: the phone says to click the PC when it is blocked OR has had no
   const rows = MUSIC.slice(MUSIC.indexOf('function playOnItems() {'), MUSIC.indexOf('function remoteChoose('));
   assert.match(rows, /detail: remoteNeedsClick\(t\.state\) \? REMOTE_CLICK_HINT :/);
 });
+
+test('v1.352 (Dean): the Music view registers its chapter reader with the target, clears it on teardown, and pings on every chapter rollover', () => {
+  assert.match(MUSIC, /REMOTE\.setNowPlayingResolver\(function \(\) \{ return chapterViewId; \}\);/);
+  assert.match(MUSIC, /signal\.addEventListener\('abort', function \(\) \{\s*REMOTE\.setMusicPlayHandler\(null\);\s*if \(typeof REMOTE\.setNowPlayingResolver === 'function'\) REMOTE\.setNowPlayingResolver\(null\);/);
+  const rc = MUSIC.slice(MUSIC.indexOf('function reflectChapter() {'), MUSIC.indexOf('var lastLoopTime = -1;'));
+  const roll = rc.indexOf('chapterViewId = id;');
+  const ping = rc.indexOf('remoteTarget.trackChanged()');
+  assert.ok(roll > 0 && ping > roll, 'the ping comes after the chapter on screen changed');
+});

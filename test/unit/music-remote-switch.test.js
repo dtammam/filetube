@@ -37,7 +37,8 @@ test('a phone is a controller, never a target: the switch has no box under html.
 
 test('music.js registers the play handler per view, routes it through playFromMenu flat, and clears it on abort', () => {
   assert.match(MUSIC, /REMOTE\.setMusicPlayHandler\(remotePlay\);/);
-  assert.match(MUSIC, /signal\.addEventListener\('abort', function \(\) \{ REMOTE\.setMusicPlayHandler\(null\); \}\);/);
+  // v1.352: the same abort also clears the chapter reader (music-remote-controller-wiring binds that half)
+  assert.match(MUSIC, /signal\.addEventListener\('abort', function \(\) \{\s*REMOTE\.setMusicPlayHandler\(null\);/);
   assert.match(MUSIC, /playFromMenu\(\{ tracks: req\.tracks, index: req\.index, play: \{ flat: true, label: 'From ' \+ /);
   assert.match(MUSIC, /remoteBtn\.addEventListener\('click', function \(\) \{ REMOTE\.toggle\(\); paintRemote\(\); \}, \{ signal \}\);/);
   assert.match(MUSIC, /var offRemote = REMOTE\.onChange\(paintRemote\);\s*signal\.addEventListener\('abort', offRemote\);/);

@@ -453,6 +453,30 @@ r1 findings and what the fix round did (all measured by the seats unless marked)
   cookie with the old tv, signing that browser out (fails closed). qa S1 (reasoned): opening the same `&t=` again in-app while
   that video plays does not seek (no surface builds such a link today).
 
+Gate: APPROVED r2 @2beb8eaf - adversary
+Gate: APPROVED r2 @2beb8eaf - qa
+Gate: APPROVED r2 @2beb8eaf - security-brief
+
+Suites on 2beb8eaf (`npm test`): Node 22.23.1: 10586 tests, 10574 pass, 0 fail, 12 skipped. Node 24.20.0: 10586 tests, 10574
+pass, 0 fail, 12 skipped.
+
+**Added after r2 at Dean's request (2026-10-01: "is there ANYWAY we can bundle one more thing in here which is the chapter not
+changing on device when controlling on mobile"):** the ROADMAP bug he raised mid-build. Falsifier first (LESSONS 1), headless
+Chromium against the real server, a 3-chapter file playing on a speaker: at 24 s (inside "Part Two") the PC reported
+`song1::c0` and the phone's targets list and stream both read "Intro". Cause confirmed: the PC reports the player's LOAD id
+(the picked chapter), while the Music view rolls the chapter in place (reflectChapter, no reload). Fix: the Music view
+registers its chapter-on-screen reader with the target (setNowPlayingResolver, cleared on teardown) and pings on every
+rollover (trackChanged); remote.js reports that chapter only when it is a chapter of the loaded file (reportedTrackId).
+Proof row h (speaker-proof.js): after a seek across the boundary the phone's stream read "Part Two" 1668 ms later and the
+targets list "Part Two", while the player's own id stayed `song4::c0`.
+
+r2 suggestions folded in with it: qa S-A (measured) a MUTED element's playing no longer clears needsClick; adversary S4 the
+toast cap counts characters (no half emoji); adversary S1 / qa S-B the ceiling wording (renewal for 180 days, the last one
+lives up to 30 more); adversary S3 bound: the playing listener's capture phase (lock) and the load-error branch (lock).
+DISCLOSED, logged in ROADMAP Planned: adversary S2 (measured) an 800x480 touch screen counts as a phone, so its bookmark does
+nothing; DISCLOSED as acceptable: the security r2 note that an admin backup restore re-stamps oat (an admin cookie can already
+change its own password, so the ceiling limits a copied member cookie, not a copied admin cookie).
+
 ## 8. Device checks Dean would owe (go into DEVICE-CHECKS.md, one line each, at release)
 
 - [ ] v1.352.0 - Speaker tab On, then reload it and do not touch it. On the phone pick it in Speakers: it says to click the PC's tab once BEFORE you pick a song, and the PC shows "Click anywhere so your phone can play music here". Click once: both go away, and songs from the phone play.

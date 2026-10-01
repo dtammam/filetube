@@ -82,6 +82,17 @@
     return on;
   }
 
+  // v1.352 (Dean: "the named chapter doesn't change on device when controlling on mobile"): a chaptered
+  // file plays as ONE load whose id is the PICKED chapter (`<file>::c<n>`), and the Music view rolls the
+  // chapter on screen as the playhead crosses a boundary (music.js reflectChapter, no reload). The id
+  // this PC reports is the chapter the view says is playing, but only a chapter OF THE LOADED FILE:
+  // anything else (a stale view, another file) keeps the player's own id.
+  function reportedTrackId(loadedId, viewId) {
+    if (typeof loadedId !== 'string' || !loadedId) return loadedId || null;
+    if (typeof viewId !== 'string' || !/::c\d+$/.test(viewId)) return loadedId;
+    return viewId.replace(/::c\d+$/, '') === loadedId.replace(/::c\d+$/, '') ? viewId : loadedId;
+  }
+
   // A play command needs the Music view's handler; where to get it.
   function playRoute(handlerReady) { return handlerReady ? 'now' : 'navigate'; }
 
@@ -109,6 +120,7 @@
     var lastReportAt = -Infinity;
     var needsClick = false;
     var musicHandler = null;
+    var nowPlayingId = null; // the Music view's chapter-on-screen reader (setNowPlayingResolver)
     var pendingPlay = null;
     var changeFns = [];
     var mediaBound = false;
@@ -146,7 +158,12 @@
       lastReportAt = env.now();
       var cleared = needsClick && !readNeedsClick(); // an input type the listeners do not see still counts
       if (cleared) needsClick = false;
-      post('/api/remote/state', buildStatePayload(env.deviceId(), pl.getRemoteSnapshot(), isBlocked(pl), needsClick));
+      var snap = pl.getRemoteSnapshot() || {};
+      var viewId = null;
+      try { viewId = nowPlayingId ? nowPlayingId() : null; } catch (_) { viewId = null; }
+      var id = reportedTrackId(snap.id, viewId);
+      if (id !== snap.id) snap = Object.assign({}, snap, { id: id });
+      post('/api/remote/state', buildStatePayload(env.deviceId(), snap, isBlocked(pl), needsClick));
       if (cleared) notify();
     }
     function scheduleReport() {
@@ -173,8 +190,12 @@
     // v1.352 gate r1 (qa W1 = adversary W1, measured): sound that actually started proves the browser
     // lets this tab play (a kiosk flag, an allow-autoplay site setting, Chrome's engagement allowance),
     // so the click hint goes even though the page was never clicked.
-    function onPlaying() {
+    // gate r2 (qa S-A, measured): only AUDIBLE sound counts; a muted element (Home's hover previews) may
+    // play with no click under Chrome's default policy and proves nothing about sound.
+    function onPlaying(e) {
       if (!on || !needsClick) return;
+      var el = e && e.target;
+      if (el && (el.muted || el.volume === 0)) return;
       needsClick = false;
       sendState();
       notify();
@@ -336,6 +357,9 @@
       }
       notify();
     }
+    // The Music view registers its chapter-on-screen reader, and pings when the chapter rolls over.
+    function setNowPlayingResolver(fn) { nowPlayingId = typeof fn === 'function' ? fn : null; }
+    function trackChanged() { scheduleReport(); }
     function setMusicPlayHandler(fn) {
       musicHandler = typeof fn === 'function' ? fn : null;
       if (musicHandler && pendingPlay) {
@@ -365,6 +389,8 @@
       setOn: function (v) { setOn(v, false); },
       toggle: function () { setOn(!on, false); },
       setMusicPlayHandler: setMusicPlayHandler,
+      setNowPlayingResolver: setNowPlayingResolver,
+      trackChanged: trackChanged,
       onChange: function (fn) {
         if (typeof fn !== 'function') return function () {};
         changeFns.push(fn);
@@ -686,6 +712,7 @@
   return {
     STORAGE_KEY: STORAGE_KEY,
     buildStatePayload: buildStatePayload,
+    reportedTrackId: reportedTrackId,
     wantsRemoteOn: wantsRemoteOn,
     consumeRemoteParam: consumeRemoteParam,
     LINK_TOAST: LINK_TOAST,

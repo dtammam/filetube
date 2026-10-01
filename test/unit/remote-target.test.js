@@ -537,3 +537,55 @@ test('v1.352 gate r1 (Dean): on a phone ?remote=on is stripped but turns nothing
     assert.deepStrictEqual(toasts, []);
   } finally { w.close(); }
 });
+
+// ---- v1.352 (Dean): the chapter playing on the PC is the one the phone hears ----
+
+test('v1.352 reportedTrackId: the view\'s chapter wins only when it is a chapter of the LOADED file', () => {
+  assert.strictEqual(R.reportedTrackId('f1::c0', 'f1::c2'), 'f1::c2');
+  assert.strictEqual(R.reportedTrackId('f1', 'f1::c1'), 'f1::c1', 'a file loaded by its base id');
+  assert.strictEqual(R.reportedTrackId('f1::c0', 'f2::c1'), 'f1::c0', 'another file: the player wins');
+  assert.strictEqual(R.reportedTrackId('f1::c0', 'f1'), 'f1::c0', 'not a chapter id');
+  assert.strictEqual(R.reportedTrackId('f1::c0', null), 'f1::c0');
+  assert.strictEqual(R.reportedTrackId(null, 'f1::c1'), null, 'nothing loaded: idle stays idle');
+  assert.strictEqual(R.reportedTrackId('f1::c0', 'f1::c1x'), 'f1::c0');
+});
+
+test('v1.352: the Music view\'s chapter is reported, and a rollover posts at once (trackChanged)', () => {
+  const h = harness();
+  h.setSnap({ id: 'f1::c0', position: 24, duration: 60, playing: true, hasPrev: true, hasNext: true });
+  let view = 'f1::c0';
+  h.t.setNowPlayingResolver(() => view);
+  h.t.setOn(true); h.attach();
+  assert.strictEqual(h.states()[0].trackId, 'f1::c0');
+  h.advance(600);
+  const n = h.states().length;
+  view = 'f1::c1'; // reflectChapter rolled the chapter on screen
+  h.t.trackChanged();
+  h.advance(600);
+  assert.ok(h.states().length > n, 'the rollover is reported without waiting for the 5 s beat');
+  assert.strictEqual(h.states()[h.states().length - 1].trackId, 'f1::c1');
+  view = 'f9::c3'; // a stale view of another file
+  h.t.trackChanged(); h.advance(600);
+  assert.strictEqual(h.states()[h.states().length - 1].trackId, 'f1::c0', 'never another file\'s chapter');
+  h.t.setNowPlayingResolver(null);
+  h.t.trackChanged(); h.advance(600);
+  assert.strictEqual(h.states()[h.states().length - 1].trackId, 'f1::c0', 'no view: the player\'s own id');
+});
+
+test('v1.352 gate r2: a MUTED element playing does not clear needsClick (only audible sound proves the browser allows it)', () => {
+  const ua = { hasBeenActive: false };
+  const h = harness({ userActivation: ua });
+  h.t.setOn(true); h.attach();
+  (h.listeners.playing || []).forEach((f) => f({ type: 'playing', target: { muted: true, volume: 1 } }));
+  assert.strictEqual(h.t.needsClick(), true, 'a muted hover preview');
+  (h.listeners.playing || []).forEach((f) => f({ type: 'playing', target: { muted: false, volume: 0 } }));
+  assert.strictEqual(h.t.needsClick(), true, 'volume 0');
+  (h.listeners.playing || []).forEach((f) => f({ type: 'playing', target: { muted: false, volume: 1 } }));
+  assert.strictEqual(h.t.needsClick(), false);
+});
+
+test('v1.352 gate r2: the playing listener is a CAPTURE listener (media events do not bubble to document)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'remote.js'), 'utf8');
+  assert.match(src, /env\.document\.addEventListener\('playing', onPlaying, true\);/);
+  assert.match(src, /env\.document\.removeEventListener\('playing', onPlaying, true\);/);
+});

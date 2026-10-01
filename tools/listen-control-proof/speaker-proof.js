@@ -58,6 +58,18 @@ async function main() {
   server.userStore.updatePassword(u.id, await authCrypto.hashPassword(PASSWORD));
   const fresh = server.__mintTestSession({ username: 'proofadmin' });
   const cookie = { name: fresh.cookieName, value: encodeURIComponent(fresh.token), url: srv.base };
+  // row h: a chaptered file (Intro / Part Two / Part Three), its own copy so the other rows' ids are unchanged
+  const pathMod = require('node:path');
+  const fsMod = require('node:fs');
+  const ch = pathMod.join(srv.dataDir, 'ytdlp', 'Proof Band', 'song4.wav');
+  fsMod.copyFileSync(pathMod.join(srv.dataDir, 'ytdlp', 'Proof Band', 'song1.wav'), ch);
+  await server.updateDatabase((db) => {
+    db.metadata.song4 = { id: 'song4', type: 'audio', title: 'Proof Mix', name: 'song4.wav', filePath: ch, rootFolder: pathMod.join(srv.dataDir, 'ytdlp'),
+      folderName: 'Proof Band', channelName: 'Proof Band', duration: 60, hasThumbnail: false, ext: '.wav', addedAt: 1788000000200,
+      tags: { title: 'Proof Mix', artist: 'Proof Band', album: 'Proof Mix', date: '2026', genre: 'Music' },
+      chapters: [{ startTime: 0, title: 'Intro' }, { startTime: 20, title: 'Part Two' }, { startTime: 40, title: 'Part Three' }] };
+    return true;
+  });
   const out = {};
   const errs = [];
 
@@ -205,6 +217,28 @@ async function main() {
     await ph.p.evaluate(() => window.FileTube.remoteControl.play(['song3'], 0));
     out.b_state = await ph.until(async () => { const st = await ph.targetState(bid); return st && st.state === 'playing' && st.track && st.track.id; }, 12000);
     out.b_speaker_path = await sb.ev(() => window.location.pathname);
+    // h (Dean): a chaptered file playing on the speaker: the phone hears the chapter that is playing, not the picked one
+    const sh = await speakerPage(spCtx);
+    await sh.page.goto(srv.base + '/music?remote=on', { waitUntil: 'load' });
+    await sh.page.waitForTimeout(1500);
+    const hid = await deviceIdOf(sh);
+    await ph.p.evaluate((tid) => window.FileTube.remoteControl.select({ deviceId: tid, label: 'Speaker' }), hid);
+    await ph.until(async () => !!(await ph.targetState(hid)), 5000);
+    await ph.p.evaluate(() => window.FileTube.remoteControl.play(['song4::c0', 'song4::c1', 'song4::c2'], 0));
+    await ph.until(async () => { const st = await ph.targetState(hid); return st && st.state === 'playing'; }, 10000);
+    const titles = async () => ({ list: ((await ph.targetState(hid)) || {}).track, stream: await ph.p.evaluate(() => { const st = window.FileTube.remoteControl.state(); return st && st.track && st.track.title; }) });
+    out.h_before = await titles();
+    out.h_before = { list: out.h_before.list && out.h_before.list.title, stream: out.h_before.stream };
+    await sh.ev(() => { window.FileTube.player.seek(18.5); return true; });
+    const tCross = Date.now();
+    out.h_stream_after = await ph.until(async () => { const v = await ph.p.evaluate(() => { const st = window.FileTube.remoteControl.state(); return st && st.track && st.track.title; }); return v === 'Part Two' ? v : null; }, 6000);
+    out.h_stream_after_ms = Date.now() - tCross;
+    const lt = await ph.targetState(hid);
+    out.h_list_after = lt && lt.track && lt.track.title;
+    out.h_speaker_snapshot_id = await sh.ev(() => window.FileTube.player.getRemoteSnapshot().id);
+    out.h_speaker_position = Math.round(await sh.ev(() => window.FileTube.player.getRemoteSnapshot().position));
+    await sh.page.close();
+
     // gate r1 (Dean): a phone opening the bookmark strips it and stays a controller
     const mobile = await kiosk.newContext(Object.assign({}, pw.devices['iPhone 13']));
     await mobile.addCookies([cookie]);
