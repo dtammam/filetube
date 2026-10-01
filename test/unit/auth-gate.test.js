@@ -49,6 +49,23 @@ test('allowlist: traversal (raw AND percent-encoded) is refused OUTRIGHT — nev
   assert.equal(gate.isAllowlisted('GET', '/css/style.css?v=2'), true);
 });
 
+test('v1.352: the traversal check reads the path, never the query (/login?next=%2F... stays /login, no redirect loop)', () => {
+  assert.equal(gate.isAllowlisted('GET', '/login?next=%2Fmusic%3Fremote%3Don'), true);
+  assert.equal(gate.isAllowlisted('GET', '/login?next=%2F..%2Fx%5C'), true, 'markers in the query do not matter');
+  for (const p of ['/fonts/%2e%2e/server.js?x=1', '/fonts/../server.js?next=%2F', '/icons/%2f/etc/passwd?a', '/assets/icons/..%5cwin?q']) {
+    assert.equal(gate.isAllowlisted('GET', p), false, 'a traversal PATH is still refused with a query: ' + p);
+  }
+  // the gate end to end: a logged-out bookmark is bounced ONCE; the login page it lands on is served
+  const g = gate.createAuthGate({ store: fakeStore({ count: 1, user: null }), secret: 's'.repeat(40), cookieName: 'c' });
+  const first = fakeRes(); g(fakeReq({ path: '/music?remote=on' }), first, () => {});
+  const loginReq = fakeReq({ path: first._redirect.to });
+  loginReq.path = '/login';
+  let served = false;
+  const second = fakeRes(); g(loginReq, second, () => { served = true; });
+  assert.equal(served, true, 'the redirect target itself is allowed: one bounce, no loop');
+  assert.equal(second._redirect, null);
+});
+
 // ---- rate limiter (CRITICAL-1 defense-in-depth) -----------------------------
 
 test('rate limiter: allows a burst up to capacity, then 429s with a retry-after, and refunds on success', () => {

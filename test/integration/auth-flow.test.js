@@ -123,6 +123,8 @@ test('v1.352 W1: a logged-out page is bounced to /login?next=<the page>; an API 
   const page = await raw('/music?remote=on', { headers: { Accept: 'text/html' } });
   assert.equal(page.status, 302);
   assert.equal(page.location, '/login?next=%2Fmusic%3Fremote%3Don');
+  const landed = await raw(page.location, { headers: { Accept: 'text/html' } });
+  assert.equal(landed.status, 200, 'the login page it bounces to is served, not bounced again (a loop)');
   const api = await raw('/api/videos', { headers: { Accept: 'application/json' } });
   assert.equal(api.status, 401);
   assert.equal(api.location, null);
