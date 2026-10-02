@@ -347,8 +347,10 @@ test('AC5: a desktop (no is-phone) never writes or reads the record', async () =
   assert.strictEqual(h.c.isRemote(), false, 'a desktop tab never inherits a speaker');
   assert.strictEqual(h.fetches.length, 0);
   h.c.select({ deviceId: 'pc', label: 'Desk' });
+  await h.settle(); // the owner lookup resolves: a phone would write now
   h.c.visibility(true);
   h.c.pagehide();
+  await h.settle();
   h.c.leave();
   await h.settle();
   assert.deepStrictEqual(h.localSpy, [], 'not one localStorage call on a desktop');
@@ -427,4 +429,52 @@ test('the browser env reads the phone class, a blocked localStorage, and the use
   const desk = R.browserEnv({ document: { documentElement: { classList: { contains: () => false } } }, localStorage: null, FileTube: {} });
   assert.strictEqual(desk.isPhone(), false);
   assert.strictEqual(desk.currentUser(), null, 'no shared fetch: cannot tell');
+});
+
+test('a pick of the SAME speaker during the check is the pick: the late answer attaches nothing more (no second toast, no landing)', async () => {
+  const gate = deferred();
+  const h = harness({ targets: () => gate });
+  h.remember(rec());
+  h.c.restore(); await h.settle();
+  h.c.select({ deviceId: 'pc', label: 'Desk', state: null }); // Speakers > Desk, by hand
+  await h.settle();
+  const streams = h.sources.length;
+  gate.resolve([speaker('playing')]);
+  await h.settle();
+  assert.strictEqual(h.c.targetId(), 'pc');
+  assert.deepStrictEqual(h.toasts, [], 'no "Playing on" toast for a pick');
+  assert.strictEqual(h.sources.length, streams, 'the stream is not reopened');
+  assert.strictEqual(h.c.consumeResume(), null, 'and nothing to land');
+  assert.strictEqual(h.pauses.length, 0);
+});
+
+test('a record REPLACED while the check was in flight (another tab picked another speaker) is not acted on here', async () => {
+  const gate = deferred();
+  const h = harness({ targets: () => gate });
+  h.remember(rec());
+  h.c.restore(); await h.settle();
+  h.remember(rec({ deviceId: 'pc2', label: 'Den' }));
+  gate.resolve([speaker('playing'), Object.assign(speaker('playing'), { deviceId: 'pc2', label: 'Den' })]);
+  await h.settle();
+  assert.strictEqual(h.c.isRemote(), false);
+  assert.deepStrictEqual(h.toasts, []);
+  assert.strictEqual(h.record().deviceId, 'pc2', 'the other tab\'s record is left alone');
+});
+
+test('bootWhenReady wires the controller: pagehide stamps (beside the target\'s /off), visibilitychange reaches visibility, boot restores', () => {
+  const handlers = {}; const docHandlers = {}; const calls = [];
+  const w = {
+    document: { readyState: 'complete', visibilityState: 'visible', body: null, addEventListener: (n, f) => { docHandlers[n] = f; } },
+    addEventListener: (n, f) => { handlers[n] = f; },
+    sessionStorage: { getItem: () => null },
+  };
+  const remote = { pagehide: () => calls.push('remote.pagehide'), setOn: () => {}, isOn: () => false, relabel: () => {} };
+  const control = { restore: () => calls.push('control.restore'), pagehide: () => calls.push('control.pagehide'), visibility: (h) => calls.push('control.visibility:' + h) };
+  R.bootWhenReady(w, remote, control, false);
+  assert.deepStrictEqual(calls, ['control.restore']);
+  handlers.pagehide();
+  assert.deepStrictEqual(calls.slice(1), ['remote.pagehide', 'control.pagehide']);
+  w.document.visibilityState = 'hidden'; docHandlers.visibilitychange();
+  w.document.visibilityState = 'visible'; docHandlers.visibilitychange();
+  assert.deepStrictEqual(calls.slice(3), ['control.visibility:true', 'control.visibility:false']);
 });
