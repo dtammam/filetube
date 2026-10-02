@@ -1720,7 +1720,7 @@ if (typeof module !== 'undefined' && module.exports) {
           hasCurrent: function () { return remoteOn() || hasCurrentMusicTrack(); },
           hasPlayOn: function () { return !!RC; },
           onPlayOn: remoteChoose,
-          currentId: effectiveCurrentId,
+          currentId: menuCurrentId,
           dataVersion: function () { return menuDataGen; },
           likedVersion: function () { return menuLikedGen; },
           coverPool: menuCoverPool, // addendum E: the covers the Click menu levels drift through
@@ -1813,6 +1813,15 @@ if (typeof module !== 'undefined' && module.exports) {
       // `::c`) - which shares the base id but must NOT show stale music over it (adversarial W2).
       if (chapterViewId && live && /::c\d+$/.test(String(live)) && String(chapterViewId).replace(/::c\d+$/, '') === String(live).replace(/::c\d+$/, '')) return chapterViewId;
       return live;
+    }
+    // v1.357 (R5): the id the iPod's LISTS mark as playing (the engine's cfg.currentId, its `followCurrent`
+    // and the open-on-the-playing-row follow). While this phone controls a speaker the song that plays is the
+    // SPEAKER's (its report, chapter ids included), never the phone's own idle player; an idle speaker marks
+    // nothing. Local play is effectiveCurrentId() exactly as before. Only the lists read this: the Extras /
+    // Now Playing readers keep effectiveCurrentId (they act on the phone's own queue).
+    function menuCurrentId() {
+      if (remoteOn()) { var st = RC.state(); return (st && st.track && st.track.id) || null; }
+      return effectiveCurrentId();
     }
     // v1.237 chapter watcher: which chapter of the loaded chaptered file `currentTime` is IN.
     // Sorts the file's `::c` tracks by chapterStartSec FIRST (the album drill can be sorted/

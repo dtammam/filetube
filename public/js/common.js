@@ -417,6 +417,8 @@ function installResizeStillness(win) {
 // probe. Each row also carries the page scroll (sy), the visual viewport's offset (vvo) and scale (vs)
 // and the focused element (ae), so a keyboard coming up (the Pocket's keyboard search) shows whether
 // anything moved: the iPhone keyboard shrinks the visual viewport, which fires its resize.
+// v1.357 adds sh (the screen size), cvw/cvh (what CSS 100vw / 100dvh resolve to, read off a second hidden probe) and pti
+// (the in-turn top inset the Pocket applied, pocket-lighting.js installTurnInset; '' = none).
 const ROTATE_LOG_KEY = 'ft-debug-rotate';
 const ROTATE_LOG_CAP = 240;
 const ROTATE_LOG_MS = 1000;
@@ -430,14 +432,25 @@ function rotateSample(win, t) {
   const lcd = q('.mms-full .ip-lcd');
   const r = lcd ? lcd.getBoundingClientRect() : null;
   let sat = '';
+  let cvw = null; let cvh = null;
   const probe = d.getElementById('ft-rotate-probe');
   if (probe) sat = w.getComputedStyle(probe).paddingTop;
+  // v1.357: what CSS `100vw` / `100dvh` resolve to right now (the giant LCD of the 2026-10-02 capture was ~2.3x too wide
+  // while innerWidth already said 393: this says whether the viewport UNITS were stale or only the fixed box)
+  const vprobe = d.getElementById('ft-rotate-vprobe');
+  if (vprobe) {
+    const cs = w.getComputedStyle(vprobe);
+    const pw = parseFloat(cs.width); const ph = parseFloat(cs.height);
+    cvw = Number.isFinite(pw) ? Math.round(pw) : null; cvh = Number.isFinite(ph) ? Math.round(ph) : null;
+  }
   const act = d.activeElement;
   const ae = (act && act !== d.body && act !== d.documentElement && act.tagName)
     ? String(act.tagName).toLowerCase() + (act.id ? '#' + act.id : '') : '';
   return {
     t: Math.round(t),
     iw: Math.round(w.innerWidth), ih: Math.round(w.innerHeight),
+    sh: w.screen ? [Math.round(w.screen.width), Math.round(w.screen.height)] : null, // v1.357: the screen the safe-area arithmetic subtracts from
+    cvw, cvh,
     vv: vv ? [Math.round(vv.width), Math.round(vv.height)] : null,
     vvo: vv ? [Math.round(vv.offsetLeft || 0), Math.round(vv.offsetTop || 0)] : null, // v1.355: did the visual viewport pan?
     vs: vv && typeof vv.scale === 'number' ? Math.round(vv.scale * 1000) / 1000 : null, // v1.355: ...or zoom?
@@ -447,6 +460,7 @@ function rotateSample(win, t) {
     ang: w.screen && w.screen.orientation ? w.screen.orientation.angle : null,
     pklh: pnl ? w.getComputedStyle(pnl).getPropertyValue('--pkl-h').trim() : '',
     sat,
+    pti: d.documentElement.style.getPropertyValue('--pk-top-inset'), // v1.357: the in-turn inset the Pocket applied ('' = none)
     rot: d.documentElement.getAttribute('data-ft-rot'), // v1.354: the stamp the board's turn keys on
     lcd: r ? [r.x, r.y, r.width, r.height].map(Math.round) : null,
   };
@@ -483,6 +497,13 @@ function installRotateDebug(win) {
       p.setAttribute('aria-hidden', 'true');
       p.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top,0px)';
       d.body.appendChild(p);
+    }
+    if (!d.getElementById('ft-rotate-vprobe')) {
+      const v = d.createElement('div');
+      v.id = 'ft-rotate-vprobe';
+      v.setAttribute('aria-hidden', 'true');
+      v.style.cssText = 'position:fixed;left:0;top:0;width:100vw;height:100dvh;visibility:hidden;pointer-events:none';
+      d.body.appendChild(v);
     }
     if (panel) return;
     panel = d.createElement('div');
@@ -544,8 +565,10 @@ function installRotateDebug(win) {
     h.preRaf = null; h.runRaf = null;
     if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
     panel = null; pre = null;
-    const probe = w.document.getElementById('ft-rotate-probe');
-    if (probe && probe.parentNode) probe.parentNode.removeChild(probe);
+    ['ft-rotate-probe', 'ft-rotate-vprobe'].forEach((pid) => {
+      const pe = w.document.getElementById(pid);
+      if (pe && pe.parentNode) pe.parentNode.removeChild(pe);
+    });
   };
   return true;
 }
@@ -10780,12 +10803,6 @@ function handoffSuppressionToken(presence) {
   return `${presence.mediaId}|${presence.deviceId}|${presence.state}`;
 }
 
-/**
- * The one show/hide decision. `ctx` carries what only the browser knows:
- *   pathname       - the current page
- *   localPlayingId - the id THIS page's player currently has loaded (or null)
- *   dismissedToken - the token the user last dismissed (or '')
- */
 // v1.356 gate r1 (Q2 = A3): the card follows the remote control LIVE, not only at its 30 s poll. A phone that
 // attaches to a speaker (a resume on launch decided the card while still local) hides it at once; one that
 // lets go asks again under the normal rule. `card` = {hide, poll}. Returns the unsubscribe.
@@ -10801,6 +10818,12 @@ function bindHandoffToRemote(rc, card) {
   });
 }
 
+/**
+ * The one show/hide decision. `ctx` carries what only the browser knows:
+ *   pathname       - the current page
+ *   localPlayingId - the id THIS page's player currently has loaded (or null)
+ *   dismissedToken - the token the user last dismissed (or '')
+ */
 function shouldShowHandoffCard(presence, ctx) {
   if (!presence || !presence.mediaId) return false;
   const c = ctx || {};

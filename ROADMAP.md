@@ -16,13 +16,18 @@
   that size is the suspect (the view below the pills sized to zero or pushed off-screen, or a covering layer that is not
   the player). Measure at 320x568 (1st-gen SE) and 375x667 (2nd/3rd gen): `document.elementFromPoint` at the bottom buttons and the tile area, the #view-root rect, and
   any fixed layer covering the viewport. Ask Dean for one screenshot and `?debugLifecycle=1` if the probe cannot reproduce it.
-- [ ] **Pocket turn back upright: the skin sits ~58 px low for a few frames (hypothesis b)** _(Dean's v1.350 device check,
-  2026-10-02, measured from his screen recording)_ - v1.354 fixed the landscape half (the board's turn is stamped in the same
-  frame the layout flips); this half is PARKED, not fixed: 3 frames with the LCD under the status bar, then 2-4 frames with the
-  whole skin ~58 CSS px too low (this iPhone's top safe-area inset is 59), then it rises. Dean's `?debugRotate=1` capture read
-  `sat` 0 px in every row, so the double-counted-inset hypothesis was NOT confirmed. Next: Dean records the turn back on v1.354
-  with `?debugRotate=1` (now including the frames before the event); name the stale value from the rows, then fix the cause
-  (never a timeout). The v1.341.3 watch-page "settles in one step" check is the same class.
+- [ ] **Pocket turn back upright: the skin sits ~58 px low for a few frames** _(Dean's v1.350 device check, 2026-10-02; v1.357.0
+  built, device check owed)_ - Dean's `?debugRotate=1` capture (test/fixtures/rotate-capture-2026-10-02.jsonl, 393x852) named
+  the cause: for ~200 ms after the turn `innerHeight` is already 793 (the app area excludes the status bar) while
+  `env(safe-area-inset-top)` still reads the stale 59, so the Pocket's top padding counts the status bar twice (LCD y 75, not 16);
+  `env()` corrects only at the window `resize`. v1.357.0: for the turn window only (first orientation flip to resize + one frame,
+  capped at 1 s, home-screen phone only) the three portrait paddings read `--pk-top-inset` on `<html>`, `sat - max(0, screen long
+  side - innerHeight)`; outside the window the CSS is today's `env()`. NOT fixed, instrument only: the 2 "giant" frames (LCD
+  [20,75,812,609] at innerHeight 852, a fixed box against a stale layout viewport; no declaration explains it) and the 1
+  "scrolled" frame (scrollY 59, LCD y -43; the existing scroll keeper owns it). The log rows now carry sh, cvw, cvh, pti; if the
+  device check still shows a giant frame, the rows say what 100vw / 100dvh resolve to. The v1.341.3 watch-page check is the
+  same class.
+- [ ] **Pocket turn (v1.357 gate suggestions)** _(adversary, measured)_ - (a) a two-back-to-back-turns test: dropping `lastWritten = null` in `close()` survived (a second turn whose first value equals the first turn's last value skips the write, so `env()` applies and the status bar counts twice; rare); (b) the sticker menu's `max-height` (style.css, near line 8341) still reads raw `env(safe-area-inset-top)`, off only for the ~200 ms window.
 - [ ] **Pocket music (v1.354 gate notes and edges)** _(adversary + QA, measured)_ - (a) a queue edit on the PC with the SAME
   current song is not pushed: the plan said a queue change pings `trackChanged`, it was not built, so the edit rides the next
   state report (at most 5 s; while paused, not until the next report); (b) Cider and Nordic read `upNext`, which `remoteSkinCtx`
@@ -233,9 +238,9 @@
   is missing from `GET /api/remote/targets`; a remembered speaker older than the hour can then reattach to a PC paused by
   hand (shown paused, never commanded). Fix: the target posts on play / pause / track change / end even with no controller
   (rate-limited; mind the per-user state bucket, v1.354 lesson). Needs its own gate (it changes what every speaker tab sends).
-- [ ] **Chore: `bindHandoffToRemote` sits between `shouldShowHandoffCard` and its JSDoc** _(v1.356 gate r2, qa + adversary
+- [x] **Chore: `bindHandoffToRemote` sits between `shouldShowHandoffCard` and its JSDoc** _(v1.356 gate r2, qa + adversary
   suggestion)_ - public/js/common.js: move the new function above the JSDoc so the comment documents its own function.
-  Comment-only; fold into the next change that touches common.js (v1.357).
+  Comment-only; done in v1.357.0.
 - [ ] **Keyboard search for the skins list** _(v1.355 plan, R5)_ - v1.355 gave Music > Search the phone's own keyboard
   (Settings > Mobile player > Keyboard search, experimental, off by default). The skins search (Pocket Extras > Skins >
   Search) stays on the wheel's letter strip on purpose ("nothing else changes"). If Dean likes the keyboard on device,
@@ -329,6 +334,7 @@
   the lock's visible state and how to release it (a tap on a speed pill? holding again?); whether it
   applies in faux fullscreen and inline alike; that the drag-down does not fight the drag-cancel, the
   swipe-back (v1.337: off in fullscreen) or a vertical page scroll inline.
+  Dean confirmed 2026-10-02 this is the lock he wants, queued for the next wave after v1.357.
 
 - [ ] **VR / 360 video: look around inside 360 and 180 MP4s** (Dean, 2026-09-27: "Can we add support for
   vr enabled mp4s?"; scope from his answers: the phone and desktop watch page, drag or tilt to look
@@ -533,6 +539,22 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.357.0 - The turn back upright lands in one step, and the speaker's song is marked (2026-10-02)
+
+- Turn: Dean's rotate log (393x852) showed the cause: for ~200 ms after the turn `innerHeight` is already 793 while `env(safe-area-inset-top)`
+  still reads the stale 59, so the Pocket's top padding counted the status bar twice (LCD y 75, not 16). For the turn window only (first
+  orientation flip to resize + one frame, capped at 1 s, home-screen phone only) the three portrait paddings read `--pk-top-inset` on
+  `<html>`: `max(0, sat - max(0, screen long side - innerHeight))`; outside it the CSS is today's `env()`. The replay of every captured row
+  matches; the log rows now carry sh, cvw, cvh and pti. NOT fixed, instrument only: the 2 giant-LCD frames and the 1 scrolled frame.
+- Highlight: while a speaker is on, the iPod lists mark the speaker's song (`menuCurrentId()`, chapter ids included), not the phone's idle
+  player; the mark follows the PC's advance and clears on leaving the speaker. Proof (real server, two browsers): before, 0 rows marked;
+  after, song 2 marked on MENU back, song 3 marked 2 ms after the PC advanced, nothing marked after leaving.
+- Chore: the handoff JSDoc sits on `shouldShowHandoffCard` again.
+- Steady screens: base vs branch 0 changed pixels (portrait, landscape, portrait after; base vs base 0); the probe shows a difference
+  (inset 0 vs 47: 582,723 / 1,055,108 / 582,723). 24 mutants killed (M09 survived once, then a vacuous jsdom selector was fixed).
+- Suites on 240e4263: Node 22.23.1 and 24.20.0, each 10807 tests, 10795 pass, 0 fail, 12 skipped. `lint:ui` unchanged (3181), overlay 0.
+- Gate: adversary + QA (security-brief applied); both APPROVED r1 @c47b4768, no CRITICAL or WARNING. Two device checks owed (DEVICE-CHECKS.md).
 
 ### v1.356.0 - Close the app, come back still on your speaker (2026-10-02)
 
