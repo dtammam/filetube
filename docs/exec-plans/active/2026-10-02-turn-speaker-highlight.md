@@ -4,15 +4,15 @@ harness: v2 · lean
 branch: feat/v1.357-turn-speaker-highlight
 anchor: spec
 status: Draft
-next: build AFTER v1.356.0 ships (rebase onto main first: both touch public/js/music.js); Step 0, then W0, W1, W2, W3; read the whole plan first, every section
+next: UNBLOCKED (v1.356.0 shipped 2026-10-02; branch rebased onto main 01e56dee); Step 0, then W0, W1, W2, W3; read the whole plan first, every section
 design: Dean 2026-10-02 - both items in ONE branch and ONE release v1.357.0, built by Sonnet; (1) the Pocket turn back upright, from his on-device rotate log; (2) "when I am listening to a song with a speaker selected and go back to see the album I picked from, the playing song isn't highlighted"; R1-R6 are architect defaults
 gate: adversary + qa (UI/layout on the device's hardest path, and the remote mirror); security-brief applied as a section by both
 ---
 
 # v1.357: the turn back upright lands in one step, and the speaker's song is highlighted in the iPod lists
 
-Written 2026-10-02 by the Opus Architect at main d6abd4e3 (v1.355.0), while v1.356 (speaker resume) was being built. Seams
-were read on main. **Build only after v1.356.0 has shipped:** rebase onto main first (both change `public/js/music.js`).
+Written 2026-10-02 by the Opus Architect at main d6abd4e3 (v1.355.0); rebased onto main 01e56dee (v1.356.0, shipped) and the
+seams re-read there (names unchanged; `effectiveCurrentId` ~1807 still reads the phone's own player).
 
 ## 1. The outcome (what Dean will do on device)
 
@@ -33,7 +33,7 @@ Read this plan fully before editing. Order of work: W0, W1, W2, W3.
 Dual-Node for the final suite: 22.23.1 and 24.20.0 (Node 24 prints `ℹ`, not `#`; an empty grep is not green).
 
 0.3 Worktree: `.claude/worktrees/v1357` on branch `feat/v1.357-turn-speaker-highlight` (it exists and carries this plan).
-First: `git rebase main` (after v1.356.0 is on main; if it is not, STOP and ask). In the worktree:
+First: `git rebase main` (v1.356.0 is already on main; the branch was rebased at 01e56dee, so this is a no-op unless main moved). In the worktree:
 `ln -s /home/coder/projects/filetube/node_modules node_modules` before any commit, `rm node_modules` after, never stage it.
 
 0.4 Git: stage files BY NAME; `git commit -F <file>` (message via a QUOTED heredoc, `<<'EOF'`); never `--no-verify`, never
@@ -170,6 +170,9 @@ What this establishes (LESSONS 1: a discriminating measurement taken ON the devi
   v1.354 turn checks to point at it.
 - ROADMAP.md Planned > Bugs "Pocket turn back upright": add the capture's numbers and what v1.357 changed (or, under R3, what it
   instrumented and why).
+- Chore (ROADMAP Planned, from the v1.356 gate): in `public/js/common.js` move `bindHandoffToRemote` (and its v1.356 comment)
+  ABOVE the JSDoc block "The one show/hide decision..." so that JSDoc sits directly on `shouldShowHandoffCard` again. Comment and
+  placement only, no behaviour change; mark that ROADMAP Planned line done.
 
 ### Gate and release
 - **Gate:** commit first, then spawn the harness seats `adversary` and `qa` (`.claude/agents/`) in parallel on HEAD, each in its
@@ -189,7 +192,8 @@ What this establishes (LESSONS 1: a discriminating measurement taken ON the devi
   publish and the baseline refresh, delete the branch locally with `-d` (GitHub deletes the remote), remove the worktree.
 
 ### Out of scope
-The small-phone (iPhone SE) bug, keyboard search for the skins list, VR/360, and anything else: ROADMAP.md Planned only.
+The small-phone (iPhone SE) bug, keyboard search for the skins list, the speaker posting its state with no phone attached
+(v1.356 R9), VR/360, and anything else: ROADMAP.md Planned only.
 
 ## 6. Build log (the builder fills this in: W0 numbers, deviations, mutants per wave, suite results verbatim)
 
