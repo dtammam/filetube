@@ -38,7 +38,7 @@ First: `git rebase main` (after v1.356.0 is on main; if it is not, STOP and ask)
 
 0.4 Git: stage files BY NAME; `git commit -F <file>` (message via a QUOTED heredoc, `<<'EOF'`); never `--no-verify`, never
 force-push, never pipe a commit or push; verify with `git log`. The pre-commit hook runs the unit suite (~3-5 min): run
-commits in the background and wait. Do NOT push: the Architect pushes after the gate.
+commits in the background and wait. Push only in the release step (section 5, Gate and release).
 
 0.5 Tests while building: the targeted files each wave names. Full dual-Node `npm test` once after W2, again only if a gate
 round changes code, never while a gate seat is running.
@@ -165,11 +165,31 @@ What this establishes (LESSONS 1: a discriminating measurement taken ON the devi
 4. Real browser: re-run W0.3 on the branch: song 2 marked; the PC goes to the next song: song 3 marked within one mirror update;
    JSON output committed beside the proof script.
 
-### W3 - Docs (the Architect does the release)
+### W3 - Docs
 - `docs/DEVICE-CHECKS.md`: a "Turn and speaker highlight (v1.357.0)" group with section 7's lines; update the open v1.350 and
   v1.354 turn checks to point at it.
 - ROADMAP.md Planned > Bugs "Pocket turn back upright": add the capture's numbers and what v1.357 changed (or, under R3, what it
-  instrumented and why). Do not bump the version, write the ledger, or close the plan.
+  instrumented and why).
+
+### Gate and release
+- **Gate:** commit first, then spawn the harness seats `adversary` and `qa` (`.claude/agents/`) in parallel on HEAD, each in its
+  own /tmp `git archive` sandbox, with a brief: branch, base sha, this plan, LESSONS sections 1, 2, 4, 6, 8, 12, and the attack
+  surfaces (a steady screen moving by a pixel; the turn window never closing or leaking a listener; the replay test's binding;
+  the highlight under local play vs a speaker, chapter ids, the mark moving, leaving the speaker). Each writes `Gate: <verdict>
+  r<n> @<sha> - <seat>` into section 8. Fix CRITICAL/WARNING findings in a new commit, re-engage the SAME seats for a delta
+  round. After 2 rounds, ask Dean before a 3rd (AskUserQuestion).
+- **Release** (`docs/RELEASING.md` + AGENTS.md "Release ceremony"): `npm version 1.357.0 --no-git-tag-version`; ROADMAP.md
+  Shipped entry (numbers copied from instruments); `docs/releases.json` entry in plain user language (the ledger test enforces
+  it); a LESSONS update if the wave taught one; `node scripts/plan-complete.js <this plan> "Shipped v1.357.0" --apply`; one
+  release commit. Then main is PROTECTED: from the primary checkout on an up-to-date main, `git merge --no-ff -F <file>` the
+  branch, tag `v1.357.0` on that local merge, push the release branch AND the tag in ONE push (with
+  `GIT_SSH_COMMAND="ssh -o ServerAliveInterval=20 -o ServerAliveCountMax=60"`, never piped), `~/.local/bin/gh pr create`,
+  wait for `ci (22)`, `ci (24)`, `audit`, `secret-scan` green, then **ASK DEAN before `gh pr merge --merge`** (never
+  self-merge). After the merge: `git reset --keep origin/main` on main (the tag keeps the local merge), check the tag's Docker
+  publish and the baseline refresh, delete the branch locally with `-d` (GitHub deletes the remote), remove the worktree.
+
+### Out of scope
+The small-phone (iPhone SE) bug, keyboard search for the skins list, VR/360, and anything else: ROADMAP.md Planned only.
 
 ## 6. Build log (the builder fills this in: W0 numbers, deviations, mutants per wave, suite results verbatim)
 
