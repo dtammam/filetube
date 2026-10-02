@@ -3424,5 +3424,11 @@
     "date": "2026-10-01",
     "title": "A speaker computer from a bookmark, the one click, and links you can keep",
     "intent": "When a computer needs one click before it can play, your phone and the computer now both say so. Open FileTube on a speaker computer from a bookmark ending in ?remote=on and it is ready for your phone to play music on, even after it signs in again. Sign-ins now stay active while you use them. Links can start a video at a moment, open an album, artist or playlist, or shuffle everything, albums and artists have a Copy link button, and the installed app has shortcuts on Android and desktop. When a phone plays a chaptered album on a speaker computer, the song name now follows the chapter that is playing."
+  },
+  {
+    "version": "1.353.0",
+    "date": "2026-10-02",
+    "title": "Turn the speaker computer up or down from your phone",
+    "intent": "While your phone plays music on a speaker computer, tap the time on Now Playing and the iPod's own volume bar appears: turn the wheel to make the computer louder or quieter, and it goes back to the song by itself. If someone changes the volume at the computer, your phone follows, and a muted computer shows an empty bar that turning up brings back. Your phone's own volume buttons still change only the phone."
   }
 ]

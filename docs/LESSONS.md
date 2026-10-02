@@ -162,6 +162,8 @@ Depth: `docs/references/ios-background-audio-behavior-map.md`, `docs/references/
 
 - **SSE behind a reverse proxy: a buffering proxy holds every byte, including `hello`, so a client can NEVER learn server state (a seq counter) from the stream before its fallback starts.** Guard: a cursor the server keeps must be sent from a known start (`since=0`), never "omitted until learned"; plain `res.write` + `X-Accel-Buffering: no` + a 20 s ping; prove BOTH transports in a real-browser run (`tools/listen-control-proof`, a 16 KB-holding proxy). Two seats approved an omit-since fix that lost every command queued before the first poll; only the browser proof caught it. (v1.348.0)
 
+- **Un-muting a muted media element on a never-clicked page PAUSES it in Chromium** (a muted autoplay is allowed; the un-mute without a gesture is not, so the browser stops the element). A remote control that raises a muted speaker's volume can stop it; no page code lifts this. Guard: the existing click-hint path (sound that played only muted never clears it), and a real-browser row with `--autoplay-policy=user-gesture-required` and `ft-muted` set (tools/listen-control-proof/volume-proof.js row c2). (v1.353; x1)
+
 Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#8-platform-facts-ios-webkit-pwa-browsers).
 
 ## 9. Data integrity and persistence (the data-loss core: full gate, never slimmed)

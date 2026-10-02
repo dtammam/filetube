@@ -8065,7 +8065,7 @@ a.tv-continue-card { text-decoration: none; }
   --mms-ipod-bar1:#ededf0; --mms-ipod-bar2:#cbccd0; --mms-ipod-hair:#a9abb0;
   --mms-ipod-batt-line:#4a4b4d; --mms-ipod-batt1:#8fe06a; --mms-ipod-batt2:#4fb62e;
   --mms-ipod-groove:#eceef2;
-  --mms-ipod-blue-hi:#7fc0ff; --mms-ipod-blue1:#3d97f2; --mms-ipod-blue2:#1667d6;
+  --mms-ipod-blue1:#3d97f2; --mms-ipod-blue2:#1667d6;
   /* v1.255 (Dean): old-school macOS AQUA progress fill - the real Aqua recipe is a
      bright glassy upper band with a HARD cut near the middle, a deeper lower band
      re-lightening into a bottom glow, a white top edge and a shaded bottom edge. */
@@ -8298,7 +8298,7 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) .mms-full .mms-art{ position:relative; }
   :where(html.is-phone, html.mms-popout) .mms-full .mms-art::before{ content:""; position:absolute; inset:0; background-image:var(--art, none); background-size:cover; background-position:center; filter:blur(24px) brightness(.72); transform:scale(1.35); }
   :where(html.is-phone, html.mms-popout) .mms-full .mms-art img{ position:relative; width:100%; height:100%; object-fit:contain; display:block; }
-  :where(html.is-phone, html.mms-popout) .mms-full .mms-fill{ position:absolute; inset:0 auto 0 0; border-radius:var(--radius-full); }
+  :where(html.is-phone, html.mms-popout) .mms-full :is(.mms-fill, .ip-vol-fill){ position:absolute; inset:0 auto 0 0; border-radius:var(--radius-full); }
   :where(html.is-phone, html.mms-popout) .mms-full .mms-times{ display:flex; justify-content:space-between; font-size:var(--fs-2xs); font-variant-numeric:tabular-nums; }
   :where(html.is-phone, html.mms-popout) .mms-full .mms-pos, :where(html.is-phone, html.mms-popout) .mms-full .mms-rem{ font-variant-numeric:tabular-nums; }
   :where(html.is-phone, html.mms-popout) .mms-full .mms-skip{ border:0; background:transparent; color:inherit; cursor:pointer; display:grid; place-items:center; }
@@ -8392,6 +8392,19 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-bar{ height:4px; border-radius:var(--radius-full); position:relative; cursor:pointer; background:var(--mms-sp-track); }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-fill{ background:var(--mms-white); }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-times{ margin-top:var(--space-3); color:var(--mms-sp-dim); }
+  /* v1.353 (R3): Cider and Nordic have no wheel: while this phone controls a speaker, one volume row
+     under the scrubber (a quiet speaker, the bar, a loud one); a tap on the bar sets the speaker's level.
+     The bar wears each skin's own .mms-bar look above; the fill is its own class (reflect owns .mms-fill). */
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-volrow{ display:flex; align-items:center; gap:var(--space-4); margin-top:var(--space-6); }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-volbar{ flex:1; }
+  /* gate r1 (adversary S1): the bar is 4-6px tall; the tap area reaches a finger's height around it */
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-volbar::before{ content:''; position:absolute; inset:calc(var(--space-6) * -1) 0; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-volfill{ position:absolute; left:0; top:0; bottom:0; border-radius:inherit; background:currentColor; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-volic{ flex:none; display:grid; place-items:center; opacity:.7; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-volic svg{ width:var(--icon-md); height:var(--icon-md); }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-volic .ip-vol-cone{ fill:currentColor; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-volic .ip-vol-w{ fill:none; stroke:currentColor; stroke-width:3.5; stroke-linecap:round; }
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-volic-lo .ip-vol-w{ visibility:hidden; }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-transport{ display:flex; align-items:center; justify-content:space-between; margin-top:var(--space-6); }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-ic{ border:0; background:transparent; cursor:pointer; display:grid; place-items:center; color:var(--mms-sp-ic); }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-ic svg{ width:var(--icon-lg); height:var(--icon-lg); fill:currentColor; }
@@ -8439,7 +8452,7 @@ a.tv-continue-card { text-decoration: none; }
     /* 1. structure */
     --pk-lcd-ratio:4/3; --pk-status-pad:var(--space-3) var(--space-4);
     --pk-batt-w:22px; --pk-batt-h:11px; --pk-batt-level:82%;
-    --pk-cover-w:44%; --pk-track-h:12px; --pk-vol-glyph:16px;
+    --pk-cover-w:44%; --pk-track-h:12px; --pk-vol-glyph:20px;
     --pk-list-row-pad:var(--space-4) var(--space-6); --pk-row-num-w:18px;
     --pk-row-h:34px; /* the menu row pitch: 6-7 rows on a phone LCD, the device's density */
     --pk-stk-shade-inset:-12%; --pk-stk-shade-size:124%; /* v1.334: the lit sticker's baked shadow + its blur margin (pocket-lighting.js STK_SHADE_PAD) */
@@ -8459,7 +8472,7 @@ a.tv-continue-card { text-decoration: none; }
     /* 4. the SCREEN roles (v1.335): every rule inside the LCD glass reads these, never a palette token
        directly; each IS its palette token here, so every skin paints the shared screen - only a LOOK (the
        Original) re-points them, inside the glass. */
-    --pk-s-paper:var(--mms-white); --pk-s-ink:var(--mms-black); --pk-s-sel1:var(--mms-ipod-blue1); --pk-s-sel2:var(--mms-ipod-blue2); --pk-s-sel-hi:var(--mms-ipod-blue-hi); --pk-s-sub:var(--mms-ipod-scr-sub); --pk-s-bar1:var(--mms-ipod-bar1); --pk-s-bar2:var(--mms-ipod-bar2); --pk-s-hair:var(--mms-ipod-hair); --pk-s-line:var(--mms-ipod-line); --pk-s-groove:var(--mms-ipod-groove); --pk-s-art-shadow:var(--mms-ipod-art-shadow); --pk-s-batt1:var(--mms-ipod-batt1); --pk-s-batt2:var(--mms-ipod-batt2); --pk-s-batt-line:var(--mms-ipod-batt-line); --pk-s-jump-bg:var(--mms-ipod-jump-bg); }
+    --pk-s-paper:var(--mms-white); --pk-s-ink:var(--mms-black); --pk-s-sel1:var(--mms-ipod-blue1); --pk-s-sel2:var(--mms-ipod-blue2); --pk-s-sub:var(--mms-ipod-scr-sub); --pk-s-bar1:var(--mms-ipod-bar1); --pk-s-bar2:var(--mms-ipod-bar2); --pk-s-hair:var(--mms-ipod-hair); --pk-s-line:var(--mms-ipod-line); --pk-s-groove:var(--mms-ipod-groove); --pk-s-art-shadow:var(--mms-ipod-art-shadow); --pk-s-batt1:var(--mms-ipod-batt1); --pk-s-batt2:var(--mms-ipod-batt2); --pk-s-batt-line:var(--mms-ipod-batt-line); --pk-s-jump-bg:var(--mms-ipod-jump-bg); }
   /* 3. Click (White)'s roles - the default every colorway overrides. The warm-white body carries the
      glossy SHEEN (in the background so it needs no z-index). v1.232.2 (Dean: give the silver Click
      gloss like the black one): on a WHITE body a white-on-white sheen is invisible, so the gloss
@@ -8535,21 +8548,23 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .mms-pos, :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rem{ font-size:var(--pk-fs-time); font-weight:var(--fw-bold); flex:none; }
   /* v1.255 (Dean): the AQUA scrubber. The groove gets a real inner shadow so the fill
      sits IN it; the fill is the v1.269 MEASURED tube - see the token block above. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-track{ flex:1; height:var(--pk-track-h); border-radius:var(--radius-full); position:relative; overflow:hidden; background:var(--mms-aqua-track); box-shadow:var(--mms-aqua-groove-shadow); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod :is(.ip-track, .ip-vol-track){ flex:1; height:var(--pk-track-h); border-radius:var(--radius-full); position:relative; overflow:hidden; background:var(--mms-aqua-track); box-shadow:var(--mms-aqua-groove-shadow); }
   /* v1.269 (Dean, from the reference image he picked): a fine VERTICAL striation
      (7px period) over the glass-tube ramp. Replaced v1.260's 135deg candy stripe -
      which was Aqua's INDETERMINATE barber pole, the wrong control's costume. */
-  :where(html.is-phone, html.mms-popout) .mms-ipod .mms-fill{ background:repeating-linear-gradient(90deg, var(--mms-aqua-striate) 0 1px, var(--mms-aqua-striate-0) 1px 3px, var(--mms-aqua-striate-d) 3px 4px, var(--mms-aqua-striate-0) 4px 7px), linear-gradient(var(--mms-aqua-t0) 0%, var(--mms-aqua-t1) 12%, var(--mms-aqua-t2) 24%, var(--mms-aqua-t3) 38%, var(--mms-aqua-t4) 46%, var(--mms-aqua-t5) 56%, var(--mms-aqua-t6) 66%, var(--mms-aqua-t7) 76%, var(--mms-aqua-t8) 86%, var(--mms-aqua-t9) 100%); box-shadow:var(--mms-aqua-fill-shadow); }
-  /* v1.235's wheel-VOLUME bar, DORMANT since v1.250 (Dean retired wheel-volume - the wheel
-     scrubs everywhere; nothing writes .mms-voladj/.ip-vol-fill any more). Rules kept
-     unchurned this wave; removable with the markup whenever the skins are next edited. */
+  :where(html.is-phone, html.mms-popout) .mms-ipod :is(.mms-fill, .ip-vol-fill){ background:repeating-linear-gradient(90deg, var(--mms-aqua-striate) 0 1px, var(--mms-aqua-striate-0) 1px 3px, var(--mms-aqua-striate-d) 3px 4px, var(--mms-aqua-striate-0) 4px 7px), linear-gradient(var(--mms-aqua-t0) 0%, var(--mms-aqua-t1) 12%, var(--mms-aqua-t2) 24%, var(--mms-aqua-t3) 38%, var(--mms-aqua-t4) 46%, var(--mms-aqua-t5) 56%, var(--mms-aqua-t6) 66%, var(--mms-aqua-t7) 76%, var(--mms-aqua-t8) 86%, var(--mms-aqua-t9) 100%); box-shadow:var(--mms-aqua-fill-shadow); }
+  /* v1.353 the VOLUME BAR, as the real iPod drew it (Dean: "fit the iPod aesthetic"; the iPods never
+     showed a box): while .mms-voladj is up (a phone controlling a speaker; the engine owns the class)
+     it takes the scrubber's row - a quiet speaker, the scrubber's own Aqua groove and fill, a loud
+     speaker. The groove and fill ride the scrubber's rules (.ip-track / .mms-fill selector lists). */
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol{ display:none; align-items:center; gap:var(--space-4); margin-top:var(--space-4); flex:none; }
-  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-ico{ flex:none; display:grid; place-items:center; }
-  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-ico svg{ width:var(--pk-vol-glyph); height:var(--pk-vol-glyph); fill:var(--pk-s-sub); }
-  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-track{ flex:1; height:var(--pk-track-h); border-radius:var(--radius-full); position:relative; overflow:hidden; background:linear-gradient(var(--pk-s-groove), var(--pk-s-paper)); box-shadow:inset 0 0 0 1px var(--pk-s-hair); }
-  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-fill{ position:absolute; left:0; top:0; bottom:0; width:100%; background:linear-gradient(var(--pk-s-sel-hi), var(--pk-s-sel1) 45%, var(--pk-s-sel2)); box-shadow:var(--mms-ipod-fill-shadow); }
   :where(html.is-phone, html.mms-popout) .mms-ipod.mms-voladj .ip-scrub{ display:none; }
   :where(html.is-phone, html.mms-popout) .mms-ipod.mms-voladj .ip-vol{ display:flex; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-ico{ flex:none; display:grid; place-items:center; color:var(--pk-s-ink); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-ico svg{ width:var(--pk-vol-glyph); height:var(--pk-vol-glyph); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-cone{ fill:currentColor; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-w{ fill:none; stroke:currentColor; stroke-width:3.5; stroke-linecap:round; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-lo .ip-vol-w{ visibility:hidden; }
   /* List view (Select flips to it) */
   /* v1.270 BRICK (Dean's easter egg): the canvas overlays the LCD's inner box.
      THAT REQUIRES .ip-lcd-in TO BE POSITIONED - the slim gate measured that neither
@@ -10452,7 +10467,7 @@ a.tv-continue-card { text-decoration: none; }
         Brick's backdrop - turns monochrome with no per-level rule. Paper is the glass (and the text on
         a selection bar); ink is the text; the selection bar is dark; the hairlines are ink or vanish. */
   :where(html.is-phone, html.mms-popout) .mms-look-original .ip-lcd-in{ --pk-s-paper:var(--pk-o-lcd); --pk-s-ink:var(--pk-o-ink);
-    --pk-s-sel1:var(--pk-o-sel); --pk-s-sel2:var(--pk-o-sel); --pk-s-sel-hi:var(--pk-o-sel);
+    --pk-s-sel1:var(--pk-o-sel); --pk-s-sel2:var(--pk-o-sel);
     --pk-s-sub:var(--pk-o-sub); --pk-s-bar1:var(--pk-o-lcd); --pk-s-bar2:var(--pk-o-lcd);
     --pk-s-hair:var(--pk-o-ink); --pk-s-line:var(--pk-o-clear); --pk-s-groove:var(--pk-o-lcd); --pk-s-art-shadow:none;
     --pk-s-batt1:var(--pk-o-ink); --pk-s-batt2:var(--pk-o-ink); --pk-s-batt-line:var(--pk-o-ink); --pk-s-jump-bg:var(--pk-o-ink);
@@ -10470,8 +10485,8 @@ a.tv-continue-card { text-decoration: none; }
      out on iPhone, LESSONS 7); the art is already display:none here. */
   :where(html.is-phone, html.mms-popout) .mms-look-original .ip-np, :where(html.is-phone, html.mms-popout) .mms-look-original .ip-ttl, :where(html.is-phone, html.mms-popout) .mms-look-original .ip-artist, :where(html.is-phone, html.mms-popout) .mms-look-original .ip-album, :where(html.is-phone, html.mms-popout) .mms-look-original .ip-nof, :where(html.is-phone, html.mms-popout) .mms-look-original .mms-pos, :where(html.is-phone, html.mms-popout) .mms-look-original .mms-rem, :where(html.is-phone, html.mms-popout) .mms-look-original .mms-rt, :where(html.is-phone, html.mms-popout) .mms-look-original .mms-ra, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-lbl, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-val, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-gl, :where(html.is-phone, html.mms-popout) .mms-look-original .ipm-letter{ filter:grayscale(1); }
   /* the progress bar: an outlined box with a solid ink fill */
-  :where(html.is-phone, html.mms-popout) .mms-look-original .ip-track{ background:var(--pk-s-paper); box-shadow:var(--pk-o-edge); border-radius:var(--mms-ipod-r-sm); }
-  :where(html.is-phone, html.mms-popout) .mms-look-original .mms-fill{ background:var(--pk-s-ink); box-shadow:none; border-radius:0; }
+  :where(html.is-phone, html.mms-popout) .mms-look-original :is(.ip-track, .ip-vol-track){ background:var(--pk-s-paper); box-shadow:var(--pk-o-edge); border-radius:var(--mms-ipod-r-sm); }
+  :where(html.is-phone, html.mms-popout) .mms-look-original :is(.mms-fill, .ip-vol-fill){ background:var(--pk-s-ink); box-shadow:none; border-radius:0; }
   /* 3. The ring: the wheel's own background (the role gradient, lit as every Click wheel) is the RING of
         four buttons; ::before draws the four gaps (fixed); ::after is the inner scroll wheel, BELOW the
         zones and the center (the wheel isolates - a small container, LESSONS 6 - and both layers sit at

@@ -130,6 +130,18 @@ the checks.
 - [ ] v1.352.0 - Desktop Music page: open an album, press Copy link, paste it in a new tab: the album opens; add `&mode=shuffle`: it plays the album shuffled.
 - [ ] v1.352.0 - Bookmark `/music?playlist=liked&mode=shuffle`: your Liked songs play shuffled, and a reload does not restart them.
 
+## Speakers volume (v1.353.0)
+
+- [ ] v1.353.0 - Phone controlling the speaker, Now Playing: tap the time at either end of the bar: the iPod volume bar takes the scrubber's place; turn the wheel: the PC gets louder and quieter and the bar matches; stop turning and it goes back to the scrubber by itself (about 2 seconds), or press MENU.
+- [ ] v1.353.0 - It looks like the iPod's own volume bar (a small speaker, the same blue bar, a louder speaker) on each iPod skin you use, the Original included.
+- [ ] v1.353.0 - Speakers > Volume (the badge, then the Volume row) opens Now Playing with the bar up.
+- [ ] v1.353.0 - Move the volume on the PC itself: the phone's bar follows within a couple of seconds.
+- [ ] v1.353.0 - Turn it all the way down and back up from the phone: it plays again with no click on the PC.
+- [ ] v1.353.0 - Press the PC's own mute button: the phone's bar shows empty; turning down does nothing; one turn up un-mutes the PC quietly (5%).
+- [ ] v1.353.0 - With the bar down, the wheel on Now Playing still scrubs the song (it never changes volume there), and on this phone's own music (no speaker) there is never a volume bar.
+- [ ] v1.353.0 - Cider or Nordic skin while controlling the speaker: the volume row under the bar sets the level where you tap.
+- [ ] v1.353.0 - The phone's own volume buttons still change only the phone (expected).
+
 ## Only if it comes back
 
 - [ ] v1.336 - The black picture on resume from the background: capture `?debugLifecycle=1` (the

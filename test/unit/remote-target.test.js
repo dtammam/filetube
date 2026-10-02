@@ -31,6 +31,7 @@ function harness(opts) {
     autoStartRefused: () => refused,
     play: () => calls.push('play'), pause: () => calls.push('pause'), togglePlay: () => calls.push('toggle'),
     next: () => calls.push('next'), prev: () => calls.push('prev'), seek: (s) => calls.push('seek:' + s),
+    setVolume: (v) => calls.push('volume:' + v),
   };
   class ES {
     constructor(url) { this.url = url; this.handlers = {}; this.closed = false; sources.push(this); }
@@ -588,4 +589,105 @@ test('v1.352 gate r2: the playing listener is a CAPTURE listener (media events d
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'remote.js'), 'utf8');
   assert.match(src, /env\.document\.addEventListener\('playing', onPlaying, true\);/);
   assert.match(src, /env\.document\.removeEventListener\('playing', onPlaying, true\);/);
+});
+
+// ---- v1.353: the phone sets this PC's player volume ----------------------------------------------
+
+test('v1.353 the volume command reaches player.setVolume with its level, then reports', () => {
+  const h = harness();
+  h.t.setOn(true); h.attach();
+  const n = h.states().length;
+  h.sources[0].emit('command', { seq: 1, cmd: 'volume', args: { level: 0.37 } });
+  assert.deepStrictEqual(h.calls, ['volume:0.37']);
+  h.advance(600);
+  assert.strictEqual(h.states().length, n + 1, 'a report follows the command');
+  h.sources[0].emit('command', { seq: 1, cmd: 'volume', args: { level: 0.9 } });
+  assert.deepStrictEqual(h.calls, ['volume:0.37'], 'a replayed seq is dropped');
+});
+
+test('v1.353 pure: the payload carries volume (rounded, clamped, null when unknown) and muted (only a literal true)', () => {
+  const base = { id: 't1', position: 5, duration: 90, playing: true };
+  assert.strictEqual(R.buildStatePayload('d', { ...base, volume: 0.333333 }, false).volume, 0.33);
+  assert.strictEqual(R.buildStatePayload('d', { ...base, volume: 0 }, false).volume, 0);
+  assert.strictEqual(R.buildStatePayload('d', { ...base, volume: 1 }, false).volume, 1);
+  assert.strictEqual(R.buildStatePayload('d', { ...base, volume: 1.4 }, false).volume, 1);
+  assert.strictEqual(R.buildStatePayload('d', { ...base, volume: -0.2 }, false).volume, 0);
+  assert.strictEqual(R.buildStatePayload('d', { ...base, volume: NaN }, false).volume, null);
+  assert.strictEqual(R.buildStatePayload('d', { ...base, volume: '0.5' }, false).volume, null);
+  assert.strictEqual(R.buildStatePayload('d', base, false).volume, null, 'a player that cannot say reports null');
+  assert.strictEqual(R.buildStatePayload('d', null, false).volume, null, 'idle with no snapshot');
+  assert.strictEqual(R.buildStatePayload('d', { volume: 0.4, muted: true }, false).volume, 0.4, 'idle still carries a volume');
+  assert.strictEqual(R.buildStatePayload('d', { ...base, muted: true }, false).muted, true);
+  assert.strictEqual(R.buildStatePayload('d', { ...base, muted: 'yes' }, false).muted, false);
+  assert.strictEqual(R.buildStatePayload('d', base, false).muted, false);
+});
+
+test('v1.353 a volume change made AT the PC (its slider, its keys) is reported to the phone', () => {
+  const h = harness();
+  h.t.setOn(true); h.attach();
+  h.advance(600);
+  const n = h.states().length;
+  h.setSnap({ id: 't1', position: 12, duration: 200, playing: false, volume: 0.8, muted: false });
+  h.media('volumechange');
+  h.advance(600);
+  assert.strictEqual(h.states().length, n + 1);
+  assert.strictEqual(h.states()[n].volume, 0.8);
+});
+
+test('v1.353 volumechange is a CAPTURE listener, bound and unbound with the other media events', () => {
+  const h = harness();
+  h.t.setOn(true);
+  assert.strictEqual((h.listeners.volumechange || []).length, 1, 'bound while On');
+  h.t.setOn(false);
+  assert.strictEqual((h.listeners.volumechange || []).length, 0, 'unbound when Off');
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'remote.js'), 'utf8');
+  assert.match(src, /env\.document\.addEventListener\(t, t === 'volumechange' \? onVolume : onMedia, true\);/);
+});
+
+test('v1.353 a remote volume of 0 then 0.5 on an activated tab never raises needsClick', () => {
+  const h = harness({ userActivation: { hasBeenActive: true } });
+  h.t.setOn(true); h.attach();
+  for (const [seq, level, vol] of [[1, 0, 0], [2, 0.5, 0.5]]) {
+    h.sources[0].emit('command', { seq, cmd: 'volume', args: { level } });
+    h.setSnap({ id: 't1', position: 12, duration: 200, playing: true, volume: vol, muted: false });
+    (h.listeners.volumechange || []).forEach((f) => f({ type: 'volumechange', target: { paused: false, muted: false, volume: vol } }));
+    h.advance(600);
+  }
+  assert.ok(h.states().length >= 3);
+  assert.ok(h.states().every((x) => x.needsClick === false), JSON.stringify(h.states().map((x) => x.needsClick)));
+  assert.strictEqual(h.t.needsClick(), false);
+});
+
+test('v1.353 an unclicked tab playing at volume 0 keeps the hint until the phone turns it up; then it clears at once', () => {
+  const ua = { hasBeenActive: false }; // a kiosk: allowed to play, never clicked
+  const h = harness({ userActivation: ua });
+  const fire = (target) => (h.listeners.volumechange || []).forEach((f) => f({ type: 'volumechange', target }));
+  h.t.setOn(true); h.attach();
+  (h.listeners.playing || []).forEach((f) => f({ type: 'playing', target: { muted: false, volume: 0 } }));
+  assert.strictEqual(h.t.needsClick(), true, 'silent sound proves nothing');
+  fire({ paused: false, muted: false, volume: 0 });
+  assert.strictEqual(h.t.needsClick(), true, 'still silent');
+  fire({ paused: true, muted: false, volume: 0.5 });
+  assert.strictEqual(h.t.needsClick(), true, 'a PAUSED element turned up proves nothing');
+  fire({ paused: false, muted: true, volume: 0.5 });
+  assert.strictEqual(h.t.needsClick(), true, 'muted proves nothing');
+  const n = h.states().length;
+  fire({ paused: false, muted: false, volume: 0.5 });
+  assert.strictEqual(h.t.needsClick(), false, 'audible playing sound: the browser allows it');
+  assert.strictEqual(h.states().length, n + 1, 'posted at once');
+  assert.strictEqual(h.states()[n].needsClick, false);
+});
+
+test('v1.353 the idle report after a play whose Music view never mounts still carries the volume', () => {
+  const h = harness();
+  h.setSnap({ id: null, position: 0, duration: 0, playing: false, volume: 0.6, muted: true });
+  h.t.setOn(true); h.attach();
+  h.sources[0].emit('command', { seq: 1, cmd: 'play', args: { tracks: [{ id: 'a' }], index: 0 } });
+  const n = h.states().length;
+  h.advance(8100);
+  const after = h.states().slice(n);
+  const idle = after[after.length - 1];
+  assert.strictEqual(idle.state, 'idle');
+  assert.strictEqual(idle.volume, 0.6);
+  assert.strictEqual(idle.muted, true);
 });

@@ -2537,7 +2537,7 @@ const OTHER_SKIN = /\.mms-(apple|spotify)\b/;
 test('the screen census: no rule on or inside the LCD glass reads a WRAPPED palette token (it reads --pk-s-*)', () => {
   const chassis = ALL.find((r) => r.sel === '.mms-ipod' && /--pk-s-/.test(r.body));
   const wrapped = decls(chassis.body).filter(([p]) => /^--pk-s-/.test(p)).map(([, v]) => /^var\((--[a-z0-9-]+)\)$/.exec(v)[1]);
-  assert.ok(wrapped.length >= 16, 'the screen roles wrap the palette (' + wrapped.length + ')');
+  assert.ok(wrapped.length >= 15, 'the screen roles wrap the palette (' + wrapped.length + '; v1.353: -1 --pk-s-sel-hi, its one reader the dormant volume fill went)');
   const inGlass = glassClasses();
   assert.ok(inGlass.has('ip-lcd-in') && inGlass.has('ipm-row') && inGlass.has('mms-row') && inGlass.has('ip-status'), 'the derived glass classes, the glass itself included (' + inGlass.size + ')');
   const reads = (body, t) => new RegExp('var\\(\\s*' + t + '\\s*[,)]').test(body);

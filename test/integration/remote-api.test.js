@@ -20,7 +20,7 @@ const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const { authenticateFetch } = require('../helpers/auth');
 
-let server, base, auth, member, rateUser, other, valUser;
+let server, base, auth, member, rateUser, other, valUser, volUser, volQueueUser;
 const ROOT = path.join(DATA_DIR, 'ytdlp');
 const blockedRoot = path.join(ROOT, 'blockedchan');
 const PC = 'pc-device-1';
@@ -60,6 +60,8 @@ before(async () => {
   rateUser = __mintTestSession({ username: 'remoterate', role: 'member' });
   other = __mintTestSession({ username: 'remoteother', role: 'member' });
   valUser = __mintTestSession({ username: 'remoteval', role: 'member' });
+  volUser = __mintTestSession({ username: 'remotevol', role: 'member' });
+  volQueueUser = __mintTestSession({ username: 'remotevolq', role: 'member' });
 });
 
 after(async () => {
@@ -508,4 +510,91 @@ test('closing every stream leaves no socket or timer behind', async () => {
   assert.strictEqual(__remoteForTests._socketCount(), 0);
   __remoteForTests.closeAll();
   assert.strictEqual(__remoteForTests._timerCount(), 0);
+});
+
+// ---- v1.353: the phone sets the speaker's player volume -------------------------------------------
+
+test('v1.353 volume validation: a finite number is clamped to 0..1; anything else is 400 (NaN, Infinity, a string, missing)', async () => {
+  const t = await asTarget(volUser.cookie);
+  await t.next('hello');
+  const cases = [[0, 0], [1, 1], [0.37, 0.37], [-0.1, 0], [1.2, 1]];
+  for (const [level, delivered] of cases) {
+    const r = await cmd(PC, 'volume', { level }, volUser.cookie);
+    assert.strictEqual(r.status, 202, `level ${level}`);
+    const f = await t.next('command');
+    assert.deepStrictEqual(f.data.args, { level: delivered }, `level ${level} is delivered as ${delivered}`);
+  }
+  for (const args of [{ level: NaN }, { level: '0.5' }, {}, { level: null }, { level: true }, { level: [0.5] }, { level: { valueOf: 0.5 } }]) {
+    const r = await cmd(PC, 'volume', args, volUser.cookie);
+    assert.strictEqual(r.status, 400, JSON.stringify(args));
+    assert.deepStrictEqual(await r.json(), { error: 'bad level' });
+  }
+  // JSON cannot spell Infinity, but 1e999 parses to it
+  const raw = await fetch(`${base}/api/remote/command`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: volUser.cookie },
+    body: `{"fromDeviceId":"${PHONE}","targetDeviceId":"${PC}","cmd":"volume","args":{"level":1e999}}` });
+  assert.strictEqual(raw.status, 400, 'Infinity');
+  await assert.rejects(t.next('command', 200), /no "command"/, 'no refused level ever reached the PC');
+});
+
+test('v1.353 the volume command frame on the target stream is {seq, cmd, args:{level}}', async () => {
+  const t = await asTarget();
+  await t.next('hello');
+  const r = await cmd(PC, 'volume', { level: 0.55 });
+  const { seq } = await r.json();
+  const f = await t.next('command', 500);
+  assert.deepStrictEqual(f.data, { seq, cmd: 'volume', args: { level: 0.55 } });
+});
+
+test('v1.353 volume and muted survive POST state -> GET targets -> stream frame -> controller poll (only an in-range number, only a literal true)', async () => {
+  const t = await asTarget();
+  await t.next('hello');
+  const c = await asController();
+  await c.next('hello');
+  const st = (extra) => post('/api/remote/state', Object.assign({ deviceId: PC, trackId: 'tonzak1', position: 3, duration: 100, state: 'playing' }, extra));
+  assert.strictEqual((await st({ volume: 0.42, muted: true })).status, 202);
+  const f = await c.next('state');
+  assert.strictEqual(f.data.volume, 0.42, 'the stream frame');
+  assert.strictEqual(f.data.muted, true);
+  const list = await (await fetch(`${base}/api/remote/targets?deviceId=${PHONE}`)).json();
+  assert.strictEqual(list.find((x) => x.deviceId === PC).state.volume, 0.42, 'the targets list');
+  assert.strictEqual(list.find((x) => x.deviceId === PC).state.muted, true);
+  const cp = await (await fetch(`${base}/api/remote/poll?deviceId=${PHONE}&role=controller&target=${PC}`)).json();
+  assert.strictEqual(cp.state.volume, 0.42, 'the controller poll');
+  assert.strictEqual(cp.state.muted, true);
+  for (const [extra, vol, muted] of [[{ volume: 1.5 }, null, false], [{ volume: -0.1 }, null, false], [{ volume: '0.5', muted: 'yes' }, null, false], [{}, null, false], [{ volume: 0, muted: 1 }, 0, false]]) {
+    assert.strictEqual((await st(extra)).status, 202, JSON.stringify(extra));
+    const g = await c.next('state');
+    assert.strictEqual(g.data.volume, vol, JSON.stringify(extra));
+    assert.strictEqual(g.data.muted, muted, JSON.stringify(extra));
+  }
+});
+
+test('v1.353 a target with no state yet lists volume null and muted false (the idle default)', async () => {
+  const t = await asTarget();
+  await t.next('hello');
+  const list = await (await fetch(`${base}/api/remote/targets?deviceId=${PHONE}`)).json();
+  const s = list.find((x) => x.deviceId === PC).state;
+  assert.strictEqual(s.state, 'idle');
+  assert.strictEqual(s.volume, null);
+  assert.strictEqual(s.muted, false);
+});
+
+test('v1.353 a newer volume supersedes any volume still waiting (a turning wheel never fills the outbox and pushes a play out)', async () => {
+  const ck = volQueueUser.cookie;
+  const p0 = await (await fetch(`${base}/api/remote/poll?deviceId=${PC}&role=target&label=PC`, { headers: { Cookie: ck } })).json();
+  const play = await (await cmd(PC, 'play', { ids: ['tonzak1'], index: 0 }, ck)).json();
+  const nxt = await (await cmd(PC, 'next', {}, ck)).json();
+  let last = null;
+  for (let i = 0; i < 25; i++) { const r = await cmd(PC, 'volume', { level: i / 100 }, ck); assert.strictEqual(r.status, 202); last = await r.json(); }
+  const all = await (await fetch(`${base}/api/remote/poll?deviceId=${PC}&role=target&since=${p0.seq}`, { headers: { Cookie: ck } })).json();
+  assert.deepStrictEqual(all.commands.map((c) => c.seq), [play.seq, nxt.seq, last.seq], 'one volume waits, the others keep their place');
+  assert.deepStrictEqual(all.commands[2].args, { level: 0.24 });
+});
+
+test('v1.353 another user cannot set my speaker\'s volume', async () => {
+  const t = await asTarget();
+  await t.next('hello');
+  const r = await cmd(PC, 'volume', { level: 0 }, other.cookie);
+  assert.strictEqual(r.status, 410);
+  await assert.rejects(t.next('command', 200), /no "command"/);
 });
