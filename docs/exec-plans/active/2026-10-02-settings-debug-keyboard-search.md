@@ -205,7 +205,67 @@ that the design cannot remove; (e) scope grows: log extras in ROADMAP.md Planned
 
 ## 7. Build log (the builder fills this in: W0 numbers, deviations, mutants per wave, suite results verbatim)
 
-(empty)
+### W0 evidence (at 777a1ec9, before any product edit)
+
+**W0.1 container survival.** Probe: the real server (`tools/listen-control-proof/serve.js`, 3 seeded songs), headless
+Chromium, 393x852 at DPR 3, `isMobile`, `hasTouch`, an iPhone UA, `--autoplay-policy=no-user-gesture-required`. Path: `/music?play=song1`
+-> MENU -> Music -> Songs -> Proof Song 1 (a queue of 3) -> MENU -> MENU -> Music > Search. For each candidate a fresh page,
+a 16px test input appended to the candidate and focused (`preventScroll`), then the drivers in order, each followed by "is
+`document.activeElement` still the input, and is it connected": a typed letter through the strip (`render()`), the
+debounced results (5 rows rendered), a list scroll (`renderList()` on the next frame), 1.5 s of play (the time tick /
+`reflect`), a track change through the wheel's next zone (`paint()` -> `afterPaint` -> `render()`, i.e.
+`updateNowPlayingPanel`), a resize (393x852 -> 393x800 -> back). Driven by synthetic `click` events (a real click would
+move focus itself). Results, identical on `ipod-charcoal` (Classic 6G) and `ipod-original` (the Original look):
+
+| candidate | type: render | results | renderList | time tick | track change (paint) | resize |
+|---|---|---|---|---|---|---|
+| `.ip-menuview` | lost | lost | lost | lost | lost | lost |
+| `.ip-lcd-in` (`lcd()`) | kept | kept | kept | kept | **lost** | lost |
+| `#music-nowplaying-panel` | kept | kept | kept | kept | **lost** | lost |
+| `document.body` | kept | kept | kept | kept | kept | kept |
+
+The Click render patches `.ip-menuview` in place but removes every child except the split and the two jump layers, so a
+child input dies on the first render; `paint()` rebuilds the panel with `panel.innerHTML = ...`, so anything inside the
+panel (the LCD included) dies on every track change. **Chosen: `document.body`** of the panel's own document (the only one
+that survives all), `position:fixed`, laid over the `.ipm-q` rect after every render. Not stop rule (b). Side benefit: no
+ancestor transform scales it, so its 16px font is 16 effective px.
+
+**W0.2 keydown census** (every keydown/keypress/keyup listener a shell that hosts the pocket can have live; lines at
+534f4a70). Element-scoped listeners (common.js 3008 sortable handle, 16809 header search input; ui.js 657, 891, 947;
+podcasts.js 1192; setup.js 2368, 2493, 2615, 2727, 3190; music.js 3095) listen on their own element and never see a key
+typed into another input. The document/window ones:
+
+| listener | phase | acts on | ignores an `<input>` target? |
+|---|---|---|---|
+| music.js:2234 | bubble | Escape hides the desktop actions menu | **no** |
+| player.js:8179 | bubble | the desktop shortcuts | yes (activeElement INPUT/TEXTAREA/BUTTON/SELECT/A) |
+| player.js:8327 | bubble | Escape leaves the expanded audio view | **no** |
+| player.js:8338 | bubble | R/S on the resume toast | yes (`isTypingContext`) |
+| player.js:2603 | window capture, passive | any key ends the rotation scroll-snap window | no, but takes no key action |
+| common.js:3064 | bubble | Escape abandons a sortable-row drag (only during a press) | **no** |
+| common.js:6800 | bubble | Tab trap of the avatar crop sheet (only while it is open) | **no** |
+| common.js:6963 | bubble | Escape closes the header search | **no** |
+| common.js:10068 | capture | the DDR arrows, only while the shortcuts dialog is open (it takes focus) | **no** |
+| common.js:10116 | capture | Escape closes the shortcuts dialog when open; D and ? on desktop | yes for D and ? (INPUT tag); Escape only with the dialog open |
+| ui.js:557/582 | bubble | Escape dismisses the top sheet (only while a sheet is open; a sheet takes focus on open) | **no** |
+| ipod-brick.js:356 | capture | Escape stops Brick (only while the game runs) | **no** |
+| read.js:1071 | bubble | arrows flip the book (reader view only, signal-scoped) | yes (INPUT/TEXTAREA/SELECT) |
+| remote.js:260 | capture | marks user activation on a speaker (observes only) | no, but takes no key action |
+
+W2 fix (one seam, a deviation from "a guard per handler", see Deviations): the keyboard-search input stops the propagation of
+keydown/keypress/keyup at itself, so NO bubble listener on document or window ever sees a key typed into it (music.js:2234,
+player.js:8327, common.js:3064/6800/6963, ui.js's sheet keys, and every future bubble listener). The capture listeners run
+before the target: common.js:10068 and ui.js need a dialog/sheet that takes the focus away first, ipod-brick.js:356 needs the
+game, which starts only from Extras (leaving Search removes the input), common.js:10116 already ignores inputs for D and ?,
+and player.js:2603 / remote.js:260 take no key action. W2's census test fails on any NEW capture-phase key listener until it
+is classified.
+
+**W0.3 the flag-off baseline** (`renderSearchBar` on 534f4a70 for three fixed models, frozen as literals in
+`test/unit/pocket-kb-search.test.js`): `{q:'', sc:0, focus:'strip'}`, `{q:'NIG', sc:13, focus:'strip'}`,
+`{q:'PRO', sc:38, focus:'list'}`.
+
+### W1 evidence
+
 
 ## 8. Device checks owed (to DEVICE-CHECKS.md at release)
 

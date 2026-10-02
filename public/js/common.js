@@ -411,6 +411,12 @@ function installResizeStillness(win) {
 // changes no layout (one read pass, a hidden probe element). `?debugRotate=1` turns it on and keeps
 // it on (localStorage ft-debug-rotate), `=0` turns it off; while on, a small panel shows the rows
 // (tap it to copy them). Off by default: nothing is installed and nothing is read.
+// v1.355: Settings > Troubleshooting > "Show rotate debug log" switches it too (the home-screen app has
+// no URL bar), at once both ways: ON installs it in this window (a second install is a no-op), OFF
+// uninstallRotateDebug() removes every listener, the free-running pre-frame ring, the panel and the
+// probe. Each row also carries the page scroll (sy), the visual viewport's offset (vvo) and scale (vs)
+// and the focused element (ae), so a keyboard coming up (the Pocket's keyboard search) shows whether
+// anything moved: the iPhone keyboard shrinks the visual viewport, which fires its resize.
 const ROTATE_LOG_KEY = 'ft-debug-rotate';
 const ROTATE_LOG_CAP = 240;
 const ROTATE_LOG_MS = 1000;
@@ -426,10 +432,17 @@ function rotateSample(win, t) {
   let sat = '';
   const probe = d.getElementById('ft-rotate-probe');
   if (probe) sat = w.getComputedStyle(probe).paddingTop;
+  const act = d.activeElement;
+  const ae = (act && act !== d.body && act !== d.documentElement && act.tagName)
+    ? String(act.tagName).toLowerCase() + (act.id ? '#' + act.id : '') : '';
   return {
     t: Math.round(t),
     iw: Math.round(w.innerWidth), ih: Math.round(w.innerHeight),
     vv: vv ? [Math.round(vv.width), Math.round(vv.height)] : null,
+    vvo: vv ? [Math.round(vv.offsetLeft || 0), Math.round(vv.offsetTop || 0)] : null, // v1.355: did the visual viewport pan?
+    vs: vv && typeof vv.scale === 'number' ? Math.round(vv.scale * 1000) / 1000 : null, // v1.355: ...or zoom?
+    sy: Math.round(w.scrollY || w.pageYOffset || 0), // v1.355: ...or the page scroll?
+    ae, // v1.355: what has focus ('' = nothing, e.g. 'input#ipm-kb' while the keyboard search is up)
     land: !!(w.matchMedia && w.matchMedia('(orientation: landscape)').matches),
     ang: w.screen && w.screen.orientation ? w.screen.orientation.angle : null,
     pklh: pnl ? w.getComputedStyle(pnl).getPropertyValue('--pkl-h').trim() : '',
@@ -438,6 +451,8 @@ function rotateSample(win, t) {
     lcd: r ? [r.x, r.y, r.width, r.height].map(Math.round) : null,
   };
 }
+// The live install, per window (null = off): everything uninstallRotateDebug must take back.
+const ROTATE_DEBUG_HANDLE = '__ftRotateDebug';
 function installRotateDebug(win) {
   const w = win || (typeof window !== 'undefined' ? window : null);
   if (!w || !w.document || typeof w.addEventListener !== 'function') return false;
@@ -449,8 +464,11 @@ function installRotateDebug(win) {
     on = ls.getItem(ROTATE_LOG_KEY) === '1';
   } catch (_) { on = false; }
   if (!on) return false;
+  if (w[ROTATE_DEBUG_HANDLE]) return true; // v1.355: already live in this window - install nothing twice
   const log = [];
   w.__ftRotateLog = log;
+  const h = { stopped: false, preRaf: null, runRaf: null, off: [] };
+  w[ROTATE_DEBUG_HANDLE] = h;
   let seq = 0; let panel = null; let pre = null;
   const render = () => {
     if (!pre) return;
@@ -484,32 +502,63 @@ function installRotateDebug(win) {
   // in the log too (the 2026-10-02 capture started at the event, after the wrong frame had been painted).
   const preRing = [];
   const preTick = () => {
+    h.preRaf = null;
+    if (h.stopped) return; // v1.355: switched off - the ring stops here
     const t = w.performance.now();
     preRing.push(rotateSample(w, t));
     while (preRing.length > ROTATE_PRE_FRAMES) preRing.shift();
-    w.requestAnimationFrame(preTick);
+    h.preRaf = w.requestAnimationFrame(preTick);
   };
-  w.requestAnimationFrame(preTick);
+  h.preRaf = w.requestAnimationFrame(preTick);
   const run = (why) => {
+    if (h.stopped) return;
     ensurePanel();
     const id = ++seq;
     const t0 = w.performance.now();
     log.push({ why, at: Math.round(t0) });
     preRing.forEach((row) => log.push(Object.assign({ pre: true }, row, { t: Math.round(row.t - t0) })));
     const tick = () => {
-      if (id !== seq) return;
+      h.runRaf = null;
+      if (h.stopped || id !== seq) return;
       const t = w.performance.now() - t0;
       log.push(rotateSample(w, t));
       while (log.length > ROTATE_LOG_CAP) log.shift();
-      if (t < ROTATE_LOG_MS) w.requestAnimationFrame(tick); else render();
+      if (t < ROTATE_LOG_MS) h.runRaf = w.requestAnimationFrame(tick); else render();
     };
-    w.requestAnimationFrame(tick);
+    h.runRaf = w.requestAnimationFrame(tick);
   };
-  w.addEventListener('orientationchange', () => run('orientationchange'));
-  w.addEventListener('resize', () => run('resize'));
-  try { if (w.screen && w.screen.orientation && w.screen.orientation.addEventListener) w.screen.orientation.addEventListener('change', () => run('so-change')); } catch (_) { /* no screen.orientation */ }
-  try { if (w.matchMedia) w.matchMedia('(orientation: landscape)').addEventListener('change', () => run('mq-change')); } catch (_) { /* no matchMedia events */ }
-  try { if (w.visualViewport) w.visualViewport.addEventListener('resize', () => run('vv-resize')); } catch (_) { /* no visualViewport */ }
+  // every listener is recorded with its target so the uninstall takes back exactly these
+  const listen = (target, type, fn) => {
+    try { target.addEventListener(type, fn); h.off.push(() => target.removeEventListener(type, fn)); } catch (_) { /* this target has no events */ }
+  };
+  listen(w, 'orientationchange', () => run('orientationchange'));
+  listen(w, 'resize', () => run('resize'));
+  try { if (w.screen && w.screen.orientation && w.screen.orientation.addEventListener) listen(w.screen.orientation, 'change', () => run('so-change')); } catch (_) { /* no screen.orientation */ }
+  try { if (w.matchMedia) { const mq = w.matchMedia('(orientation: landscape)'); if (mq && mq.addEventListener) listen(mq, 'change', () => run('mq-change')); } } catch (_) { /* no matchMedia events */ }
+  try { if (w.visualViewport) listen(w.visualViewport, 'resize', () => run('vv-resize')); } catch (_) { /* no visualViewport */ }
+  h.dispose = () => {
+    h.stopped = true;
+    h.off.splice(0).forEach((f) => { try { f(); } catch (_) { /* already gone */ } });
+    const cancel = typeof w.cancelAnimationFrame === 'function' ? w.cancelAnimationFrame.bind(w) : null;
+    [h.preRaf, h.runRaf].forEach((id) => { if (id != null && cancel) { try { cancel(id); } catch (_) { /* ignore */ } } });
+    h.preRaf = null; h.runRaf = null;
+    if (panel && panel.parentNode) panel.parentNode.removeChild(panel);
+    panel = null; pre = null;
+    const probe = w.document.getElementById('ft-rotate-probe');
+    if (probe && probe.parentNode) probe.parentNode.removeChild(probe);
+  };
+  return true;
+}
+// v1.355: the Settings switch's OFF - the log stops in this window at once (no reload). True when a live
+// install was taken down. The stored key is the caller's (Settings removes it first).
+function uninstallRotateDebug(win) {
+  const w = win || (typeof window !== 'undefined' ? window : null);
+  if (!w) return false;
+  const h = w[ROTATE_DEBUG_HANDLE];
+  if (!h) return false;
+  w[ROTATE_DEBUG_HANDLE] = null;
+  h.dispose();
+  try { delete w.__ftRotateLog; } catch (_) { w.__ftRotateLog = undefined; }
   return true;
 }
 
@@ -17101,7 +17150,7 @@ if (typeof module !== 'undefined' && module.exports) {
     showToast, deleteResultToast,
     // UI pass D8.1: the era flourish (fabricated stats) mechanism.
     ERA_FLOURISH_ERAS, eraShowsFabricated, applyEraFlourish, isFabricatedViewCount,
-    ROTATE_LOG_KEY, ROTATE_LOG_CAP, ROTATE_LOG_MS, rotateSample, installRotateDebug, // v1.350: the ?debugRotate=1 ring buffer
+    ROTATE_LOG_KEY, ROTATE_LOG_CAP, ROTATE_LOG_MS, rotateSample, installRotateDebug, uninstallRotateDebug, // v1.350: the ?debugRotate=1 ring buffer (v1.355: + the Settings switch's OFF)
     STILLNESS_MS, installResizeStillness, // UI pass D7: html.no-motion around a rotate / resize
     deriveRouteView, shouldInterceptLinkClick, buildHistoryState, parseHistoryState, popStateDelegate,
     // v1.47.4 item 2: the pure zoom-policy decision + the viewport contents it

@@ -40,7 +40,9 @@ test('setup.html: a "Show lifecycle debug log" checkbox exists (#debug-lifecycle
 
 test('setup.html: the checkbox has an explanatory hint mentioning force-quit survival (matches player.js\'s own documented rationale)', () => {
   // Sweep S8: the hint is the .setup-note footer directly under the switch's grouped list.
-  const match = /id="debug-lifecycle-check" \/><\/span><\/div>\s*<\/div>\s*<p class="setup-note">([\s\S]*?)<\/p>/.exec(SETUP_HTML);
+  // v1.355: the rotate-log switch row now follows this one in the same list, so the hint is the FIRST
+  // note after the list closes (the rotate log's own note follows it).
+  const match = /id="debug-lifecycle-check" \/><\/span><\/div>\s*<div class="ui-row[^\n]*id="debug-rotate-check" \/><\/span><\/div>\s*<\/div>\s*<p class="setup-note">([\s\S]*?)<\/p>/.exec(SETUP_HTML);
   assert.ok(match, 'expected a .setup-note hint immediately following the switch row');
   assert.match(match[1], /diagnosing player lifecycle issues/);
   assert.match(match[1], /survives a force-quit/);
