@@ -14,6 +14,14 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
   in this release; the log names the cause. (2026-10-02: Dean's screen recording measured the turn frame by frame; see
   ROADMAP Planned > Bugs, "Pocket turn". The log is still wanted for the fix.)
 
+## Pocket music (v1.354.0)
+
+- [ ] v1.354.0 - iPod Songs: scroll and letter-jump to the last songs (past H, to Z); Genres shows every genre; Shuffle Songs plays songs from the whole library; Liked lists every liked song.
+- [ ] v1.354.0 - Controlling the speaker, Now Playing: the center button shows the PC's up-next list with the playing song marked; tap a song: the PC plays it. Before the PC has said its queue, the button does nothing (never a blank page).
+- [ ] v1.354.0 - A Transparent skin: turn to landscape and back: the board lands in place in one step, and the skin lands in one step coming back upright (screen-record it with `?debugRotate=1` and send the rows if not).
+- [ ] v1.354.0 - Music > Search on the iPod: the wheel picks letters on the strip, center adds, MENU deletes; results narrow live; it looks like the iPod's own search on each iPod skin you use, the Original included.
+- [ ] v1.354.0 - Search the skins list (Pocket Extras > Skins, Settings > Mobile player): typing a name narrows it.
+
 ## Only if it comes back
 
 - [ ] v1.336 - The black picture on resume from the background: capture `?debugLifecycle=1` (the

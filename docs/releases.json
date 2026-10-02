@@ -3430,5 +3430,11 @@
     "date": "2026-10-02",
     "title": "Turn the speaker computer up or down from your phone",
     "intent": "While your phone plays music on a speaker computer, tap the time on Now Playing and the iPod's own volume bar appears: turn the wheel to make the computer louder or quieter, and it goes back to the song by itself. If someone changes the volume at the computer, your phone follows, and a muted computer shows an empty bar that turning up brings back. Your phone's own volume buttons still change only the phone."
+  },
+  {
+    "version": "1.354.0",
+    "date": "2026-10-02",
+    "title": "Your whole library, the computer's queue and search on the phone's iPod",
+    "intent": "The iPod menus on your phone now list every song, genre, album and artist you own, however big the library, instead of stopping around the letter H. While your phone plays music on a speaker computer, the center button on Now Playing shows that computer's up-next list and a tap plays a song there. Music has a Search that works like the iPod's own, with a letter strip you turn the wheel along, and the skins list can be searched by name too. Turning the phone sideways now draws the see-through iPod's board in place right away."
   }
 ]

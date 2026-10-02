@@ -3,7 +3,7 @@ plan: pocket-music
 harness: v2 · lean
 branch: feat/v1.354-pocket-music
 anchor: spec
-status: Draft
+status: Shipped v1.354.0
 next: Step 0, then W0 (falsifiers and Dean's one capture); read the whole plan first, every section
 design: Dean 2026-10-02 - all four items in ONE branch and ONE release, built by Sonnet; the PC's queue on the phone ("We are remotely playing on that PC, after all"); search for the library AND the skins list in one plan ("Both in one plan"); R1-R6 below are architect defaults he did not overrule
 gate: FULL (adversary + qa + security-brief; a new field on the remote channel, lib/remote/**)
@@ -144,7 +144,7 @@ carried). `resolvedState` resolves the ids through the CALLER's visibility (`res
 the index, and sends `{tracks:[{id,title,artist}], index}`; the idle default carries none. Every carrier: the stream frame,
 GET targets, the controller poll, the idle default (the v1.352/v1.353 lesson: `resolvedState`'s field list is explicit).
 PC: music.js registers a queue reader with the target (like `setNowPlayingResolver`, cleared on teardown); a queue change
-pings `trackChanged`. Phone: `remoteSkinCtx` fills `fullList` from the state's queue (the current row `is-current`); the
+was to ping `trackChanged` (NOT built: logged in ROADMAP Planned, Pocket music edges (a)). Phone: `remoteSkinCtx` fills `fullList` from the state's queue (the current row `is-current`); the
 center button with no queue does nothing (R4); a row tap sends `play` with that list from that row (`RC.play`, the
 PLAY_MAX_IDS slice). The mirror signature repaints when the queue arrives.
 Tests (binding, each mutated red): validation table (non-array, a bad id, over the cap, a bad index); a hidden id never
@@ -246,6 +246,8 @@ W4 mutants (committed sha 5dfdbf9f, /tmp sandbox, pocket-search): S1 strip does 
 
 Findings at 0f2728c1: no CRITICAL/HIGH. NOTE: a queue of 201 unknown or chapter ids makes resolveRemoteTracks project the whole library per state POST (self-inflicted, 5/s per user limiter). NOTE: the stored queue is not re-resolved at store time, only at read time, so a track hidden after a report is filtered at the next read (verified). The remote store is keyed by req.user.id, so no cross-user title path exists.
 
+Gate: APPROVED r2 @87160e9a - security-brief (delta: per-id visibility still applied at read time to native ids, chapter ids and the now-playing card; the stored queue is never trusted; the 201-unknown-ids whole-library NOTE is resolved by the point query. Point query is a parameterized SQL lookup and hasOwnProperty-guarded for metadata; ids are validated string, bounded length, no NUL, queue bounded by QUEUE_MAX. No new findings.)
+
 Gate: APPROVED r1 @0f2728c1 — security-brief
 
 ### Gate r1 - qa
@@ -265,11 +267,25 @@ Comment/marker accuracy: no lying comment found in the diff; no em dashes added 
 
 Gate: CHANGES r1 @0f2728c1 — qa
 
+#### qa r2 delta @87160e9a
+
+W-1 fixed as prescribed: music-skin-integration.test.js now boots the real controller and asserts rows (played/current/next boundary), the tap's ids and index, a past-the-end tap sending nothing, leave clearing the rows, R4 for undefined/null/empty queues, a late-arriving queue, and the PC reader register/clear. W-2 closed: Dean's answer is recorded in W4 evidence. N-3 fixed (point-query resolveRemoteQueueTracks, hidden = null, same contract); N-2 deferred to ROADMAP/plan wording and N-1/N-4/N-5 to W5 ROADMAP (accepted as notes); setup.html indentation fixed. Re-measured: 9 targeted files, 300 tests, 300 pass, 0 fail (Node 22.23.1); lint:ui OK; overlay-containment 0. Nothing new introduced found (point query matches the existing resolveRemoteTrackCard pattern; per-id visibility retained).
+
+Gate: APPROVED r2 @87160e9a — qa
+
 ### Gate r1 - adversary
 
 W2 queue: 32 mutants, 11 survive (R4 Select arm, the 201 boundary, C7, C13, C14). W1 paging: 13 mutants, 11 survive (Artists, Albums, drills, Liked, untagged, empty-page guard, error retry unbound). W4: 32 mutants, 12 survive (menu.search wiring and search ctx unbound, destroy guards, empty-query clear, library-changed rerun). W3: 8 of 8 killed (CSS by regex only). Per-state-frame resolve cost at 23k songs is a WARNING.
 
 Gate: CHANGES r1 @0f2728c1 — adversary
+
+Delta r2 (87160e9a): WARNING 1 fixed (point-query queue resolve; visibility per id kept; mutants on the point-query visibility, chapter mediaVisibleTo, resolveQueue drop/re-point, QUEUE_MAX and the routes fallback all red; the chapter eligibility check survives, NOTE). WARNING 2 fixed (offset, extra page, abort, drill unpaged red; the empty-page guard survives: if the library shrinks mid-read, total stays above rows and the loop re-asks until the view tears down, NOTE disclosed). WARNING 3 fixed (R4, boundary, index re-point red). WARNING 4 fixed (X1-X3, X7-X9, X14, X17-X20, X24, X25, X32 red; X4/X5/X6 each survive alone but all three removed together goes red, so the equivalence claim holds; X12 survives, NOTE).
+
+Gate: APPROVED r2 @87160e9a — adversary
+
+### Final
+
+W0 cap falsifier at 10,503 songs (Songs 10,000 -> 10,503 rows, Genres gained Zydeco, Shuffle 5000 + 5000 + 503); W1 paged reads (mutants M1-M4, then 16 more in `pocket-library-paging-paths` at gate r2, all red); W2 the PC's queue (mutants M1-M9, then 22 at gate r2, 20 red and 2 equivalent; per-frame cost at 23,000 songs 283 -> 9.8 ms); W3 the turn (M1-M6 red, adversary 8 of 8 red); W4 search (S1-S13 red but S10 equivalent by design; gate r2 added X1-X3, X7-X9, X14, X17-X20, X24, X25, X32 red and six equivalents with reasons); W5 docs and release. Full dual-Node suite at 87160e9a: Node 22.23.1 and 24.20.0, each 10714 tests, 10702 pass, 0 fail, 12 skipped. Gate: r1 CHANGES by adversary and QA (binding gaps in W1, W2 and W4, the per-frame queue cost, the look answer unrecorded), r2 APPROVED by adversary, QA and security-brief at 87160e9a. Device checks owed: section 8 below (five lines, in DEVICE-CHECKS.md).
 
 ## 8. Device checks Dean would owe (into DEVICE-CHECKS.md at release, one line each)
 
