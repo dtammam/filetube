@@ -20,7 +20,7 @@ const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const { authenticateFetch } = require('../helpers/auth');
 
-let server, base, auth, member, rateUser, other, valUser, volUser, volQueueUser;
+let server, base, auth, member, rateUser, other, valUser, volUser, volQueueUser, perfUser;
 const ROOT = path.join(DATA_DIR, 'ytdlp');
 const blockedRoot = path.join(ROOT, 'blockedchan');
 const PC = 'pc-device-1';
@@ -62,6 +62,7 @@ before(async () => {
   valUser = __mintTestSession({ username: 'remoteval', role: 'member' });
   volUser = __mintTestSession({ username: 'remotevol', role: 'member' });
   volQueueUser = __mintTestSession({ username: 'remotevolq', role: 'member' });
+  perfUser = __mintTestSession({ username: 'remoteperf', role: 'member' });
 });
 
 after(async () => {
@@ -649,14 +650,14 @@ test('v1.354 gate r1: a native track and a library chapter id resolve in the que
 });
 
 test('v1.354 gate r1 (perf): a state frame with a queue never loads the whole track table (point queries only: musicDb.read() is O(library))', async () => {
-  const t = await asTarget();
+  const t = await asTarget(perfUser.cookie, 'perf-pc', 'PC');
   await t.next('hello');
-  assert.strictEqual((await post('/api/remote/state', { deviceId: PC, trackId: 'nvis', position: 3, duration: 100, state: 'playing', queue: { ids: ['nvis', 'tonzak1', 'nblk'], index: 0 } })).status, 202);
+  assert.strictEqual((await post('/api/remote/state', { deviceId: 'perf-pc', trackId: 'nvis', position: 3, duration: 100, state: 'playing', queue: { ids: ['nvis', 'tonzak1', 'nblk'], index: 0 } }, perfUser.cookie)).status, 202);
   const real = musicDb.read;
   let reads = 0;
   musicDb.read = function () { reads += 1; return real.apply(this, arguments); };
   try {
-    const cp = await (await fetch(`${base}/api/remote/poll?deviceId=${PHONE}&role=controller&target=${PC}`)).json();
+    const cp = await (await fetch(`${base}/api/remote/poll?deviceId=${PHONE}&role=controller&target=perf-pc`, { headers: { Cookie: perfUser.cookie } })).json();
     assert.strictEqual(cp.state.queue.tracks.length, 3, 'precondition: the queue resolved');
     assert.strictEqual(cp.state.track.id, 'nvis', 'precondition: the now-playing card resolved (a native track)');
   } finally { musicDb.read = real; }
