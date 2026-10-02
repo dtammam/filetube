@@ -276,3 +276,112 @@ The first pass (on d090a6a1, 90 tests) left M9, M11, M19 and M32 green; 5b59e6d0
 ## 8. Gate record
 
 (seats write their verdict lines here, bound to the sha they reviewed)
+
+Gate: CHANGES r1 @53a36548 - security-brief
+- Gap: no Bash in this seat, so `git diff` was not run; HEAD 53a36548 was confirmed from the branch ref file, and the
+  changed code was read in place (remote.js controller + browserEnv + bootWhenReady, common.js fetchCurrentUser +
+  accountSignOut, the music.js consumeResume hook, routes.js bucketing, the resume tests). Nothing was executed.
+- WARNING S1 (traced in code, not run): sign-out while the phone is attached writes the record straight back, so R7's
+  "sign-out forgets it" is false in exactly the case it is for. `accountSignOut` deletes `ft-remote-resume` and then
+  sets `location.href = '/login'`. Nothing detaches the controller, so `targetId` is still set when the page unloads.
+  The unload fires visibilitychange hidden (`visibility(true)` -> `writeResume()`) and pagehide (`control.pagehide()`
+  -> `writeResume()`). `meUser` was memoized at attach, so `put` runs synchronously and `setItem` puts back
+  `{deviceId, label, user: <A's id>, at}`. Result on a shared phone: A's speaker label and user id stay in localStorage
+  after A signs out, and A's next sign-in auto-attaches. Not cross-account: B is dropped by the user check (no request),
+  and the server buckets every route by req.user.id. Impact is low, but a stated security ruling is not upheld, and the
+  R7 test (remote-resume.test.js "sign-out forgets...") runs with no attached controller, so it cannot see this.
+  Fix: in accountSignOut, call `window.FileTube.remoteControl.leave()` (guarded) before the removals. leave() sends no
+  POST, and it clears targetId so the unload writes nothing. Bind it with a test: attached controller, accountSignOut,
+  then fire hide + pagehide, assert the record is null.
+- Verified clean: (1) no command, poll, stream or label can come from the record before the check. `send`/`seek`/`volume`
+  /`openStream`/`pollOnce` all require `targetId`, which a resume sets only in `attach(hit)` with `hit` taken from the
+  server's own per-user list. The deviceId, label and state all come from the listed entry, and the toast uses the
+  listed label; the record's label is never rendered. (2) user binding: /api/auth/me failing or slow = keep, no
+  request. A mismatch = drop before any targets request. A planted record needs same-origin script, which already
+  holds the session. A forged same-user record with a foreign deviceId is never listed, so it is dropped, and the
+  server returns 410 anyway. Switching accounts without sign-out is a new page load, so the user is re-fetched; an old
+  tab still holding A's id talks to the server as B and gets nothing of A's. (3) untrusted input: try/catch JSON.parse,
+  shape checked before any field is read, deviceId limited to `^[A-Za-z0-9_-]{1,64}$` (no NUL, no separators), lengths
+  capped, JSON.parse `__proto__` is an own key (no pollution), URL ids are encodeURIComponent'd. (4) nothing new on the
+  wire: only the existing GET /api/remote/targets and /api/auth/me, both per-user. (5) see S1.
+- NOTE: ids are numeric, which is fine. Even if a deleted user's id were reused, the record could only reach devices
+  the server lists for the signed-in user.
+
+Gate: CHANGES r1 @53a36548 - qa
+- Instruments (sandbox `git archive 53a36548`, node_modules symlinked; verbatim): Node 22.23.1, 10 remote/skin files:
+  `# tests 256`, `# pass 256`, `# fail 0`. remote-resume + music-pocket-menus + music-remote-controller-wiring +
+  remote-controller: Node 22 `# tests 93` `# pass 93` `# fail 0`; Node 24.20.0 `ℹ tests 93` `ℹ pass 93` `ℹ fail 0`.
+  remote-resume alone: `# tests 25` (matches section 6). The 4 accountSignOut test files: `# tests 44` `# pass 44`
+  `# fail 0`. `npm run lint:ui`: `ui-lint: OK - the live debt equals docs/ui-exceptions.json` (TOTAL 3181).
+  `node scripts/overlay-containment-lint.js --enforce`: `overlay-containment: clean (0 violations)`. eslint on the
+  changed files: `✖ 6 problems (0 errors, 6 warnings)` (pre-existing common.js no-unused-vars). Em dashes added: 0.
+  Proof JSON numbers vs the section 6 table: every row checked, all match.
+- WARNING Q1 (= security-brief S1, VERIFIED in a real browser): sign-out while attached writes the record back.
+  Probe (real server, iPhone 13 context): pick the speaker, `accountSignOut()`, land on `/login`; localStorage
+  `ft-remote-resume` before `{"...","user":"1","at":1790968335010}`, after `{"...","user":"1","at":1790968335096}`
+  (re-stamped by the unload's hide/pagehide -> writeResume, meUser memoized). R7 "sign-out" is false in the one case
+  it exists for; A's next sign-in on that phone auto-attaches. The test "R7: sign-out forgets the remembered speaker"
+  runs with no attached controller, so its title over-claims. Fix as S1 prescribes (detach the controller in
+  accountSignOut before the removals, guarded), bound by a test with an ATTACHED controller + hide + pagehide.
+- WARNING Q2 (VERIFIED, probe in the sandbox): the v1.348 D8 rule ("a device that is controlling another PC never
+  shows the handoff card", common.js shouldShowHandoffCard) breaks in exactly AC1. On a resume launch the handoff
+  poll runs at boot while the resume is PENDING (controllingRemote false), shows "Listening on <PC> ... Continue
+  here", and nothing clears it on attach: measured on `/` and `/music`, `remote: true` AND the card up at 0.5 s, 3 s,
+  10 s and 20 s after attach (it waits for the 30 s HANDOFF_POLL_MS). On Home it is tappable (elementFromPoint hits
+  the link, mms-on false); the tap navigates to `/music?play=song1&listen=1` and does nothing (0 command POSTs, no
+  local media element, the PC undisturbed: 9.23 s -> 14.24 s same song). So Dean's step 1 shows "Playing on Otter"
+  AND "Listening on Otter - Continue here" with a dead button. Reveal/clear: the resume reveals remote mode but never
+  clears the local-mode card. Fix: let the handoff module hide (or re-poll) when the controller attaches (e.g. an
+  RC.onChange hook calling hide() when isRemote()), bound by a test that attaches with the card shown.
+- WARNING Q3 (LESSONS 2: a survivor on correct code is a WARNING): three of my five mutants survived the 5 target
+  files (remote-resume, music-pocket-menus, music-remote-controller-wiring, remote-controller, skin-surface; 164
+  tests). Sandbox diffed pristine after. (A) drop `|| still.user !== rec.user` in the post-await re-read: 164 pass
+  (a record replaced by another user's same-device record mid-check is acted on). (C) toast `label` -> `still.label`
+  (the RECORD's label): 164 pass, so section 6's "the toast with the LISTED label" is unbound (fixtures use 'Desk'
+  for both; give the listed entry a different label). (F) writeResume's `targetId !== id` guard removed: 164 pass
+  (pick, then This device before /api/auth/me answers = a record of a speaker the user left; R7). Killed: (B) strict
+  getTargets returning [] for a non-array 200 (red: "a failed targets check..."), (D) landResume without
+  `remoteDocked = false` (red only by the source lock).
+- SUGGESTION: the music.js landing (landResume) is bound by a source regex only (presence); the proof's
+  idle_screen/paused_20min rows are the behavioural evidence. An executed test of the mount-time landing would close it.
+- Security (standing brief): no new wire, no command before the check, ids validated and encodeURIComponent'd, the
+  toast text is the server-listed label through ui.toast; no shell surface (the proof tool is dev-only). Q1 is the one
+  exposure (a device label + numeric user id left in localStorage after sign-out).
+
+Gate: CHANGES r1 @53a36548 - adversary
+- Instruments (sandbox `git archive 53a36548` under the session scratchpad, node_modules symlinked, diffed against a
+  pristine copy after every mutant and probe: identical). Node 22.23.1: the 4 plan files `# tests 93` `# pass 93`
+  `# fail 0`; every remote/pocket/skin-surface/music-* unit file (65 files) `# tests 1181` `# pass 1181` `# fail 0`.
+  eslint on the 4 changed sources + the new test + the proof tool: `0 errors, 6 warnings` (the pre-existing six).
+  Em dashes added: 0. The proof JSON matches every section 6 row I spot-checked. 5b59e6d0..53a36548 is docs only.
+- WARNING A1 (VERIFIED, real browser; = S1 / Q1): sign-out while attached writes the record straight back. Probe:
+  iPhone 13 context picks the speaker, `accountSignOut()`, lands on /login: `ft-remote-resume` after sign-out =
+  `{"...","user":"1","at":1790968197898}` (stamped after the logout POST, by the unload's hide/pagehide ->
+  writeResume). The R7 unit test passes only because it runs with no attached controller (divergent fixture).
+- WARNING A2 (VERIFIED, real browser, PRE-EXISTING since v1.348, same fix): the per-tab pick also survives
+  sign-out. Same probe, then user 2 (`otheruser`) signs in in that tab and opens /music: the controller goes
+  `false|` -> `true|Linux PC · Tiger` -> `false|`, and user 2 sees the toast `Lost Linux PC · Tiger` (user 1's
+  speaker name; the server's per-user bucket refused it). Reproduced identically on base d6abd4e3. AC4 says
+  "never attaches"; the diff's sign-out handling cleared one of the two sibling keys. FIX VERIFIED in the sandbox:
+  one guarded `window.FileTube.remoteControl.leave()` at the top of accountSignOut's `done()` -> after sign-out
+  record null AND per-tab pick null; user 2: states `["false|"]`, toasts `[]`, zero remote requests. Bind it with
+  a test that signs out with an ATTACHED controller and then fires hide + pagehide. (Suggestion: login.js's
+  catch-all could also drop `ft-remote-controlling`, for the session-expiry path that never runs accountSignOut.)
+- WARNING A3 (VERIFIED, real browser; = Q2): the v1.78 handoff card survives the resume. The PC played 12 s, the
+  phone closed, relaunch on `/`: 1 s after attach `remote: true, cardVisible: true, "Continue here"`; 8 s after,
+  still both. (With only 3 s of PC play the card never showed: the presence needs a progress report.) The card is
+  decided by the boot poll while the resume is PENDING and nothing hides it on attach; the next poll is 30 s
+  later. So the brief's question is answered: it is in scope; Dean's step 1 shows it. Hide on attach.
+- SUGGESTION A4 (binding; mutants against the 4 plan files, each restored): survivors on correct code:
+  toast `label` -> `still.label`, and `attach(hit)` -> attach with the RECORD's label (the "LISTED label" claim is
+  unbound: every fixture names record and listing 'Desk'); writeResume's `targetId !== id` guard dropped (R7: a
+  This device made before /api/auth/me answers would leave a record); restore()'s new `writeResume()` dropped;
+  the retry-once flag ignored. Equivalent / masked, no action: the first stale() check, `still.user` re-check,
+  `resumeBusy` guard, the stale() guards inside keep/drop, the `Array.isArray` check, leave's resume resets, and
+  M12 (confirmed masked: green). Builder mutants re-run, all red as tabled: M1, M3, M13, M17, M27, M30, M32.
+- Verified clean: AC3 in a real browser with the targets answer held across an SPA nav Home -> /music (pending
+  true, isRemote false, mms off during; after release Now Playing, one toast, 0 command POSTs); R1 boundaries,
+  malformed records and AC5's desktop gate bound by unit tests that went red under mutation.
+- NOTE: a song the user starts locally DURING the check is paused by the attach (deviation 1's remoteChoose rule).
+  Rare (one targets round trip) but it is the phone overriding a fresh local tap; Dean's call, not a finding.
+- R9 (stale listed state) is Dean's disclosed limit and not counted.
