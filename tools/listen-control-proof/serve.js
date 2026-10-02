@@ -3,6 +3,9 @@
 // few playable WAV "songs" (no ffmpeg needed), and mints one admin session. Used by the v1.348
 // Listen Control proof and the toolbar measurement. Not part of the shipped app.
 //   const { start } = require('./serve'); const s = await start(); ... await s.stop();
+// Options: seconds (clip length), port, count (v1.354: seed that many EXTRA songs beside the three, all
+// hardlinks to one tiny WAV; titles span A-Z in title order, the last 500 are "Z Bulk" songs by the
+// artist "Zed Band" in the genre "Zydeco", so anything past a 10,000 cut reads as missing).
 const os = require('node:os');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -26,6 +29,23 @@ async function start(opts) {
   const ids = ['song1', 'song2', 'song3'];
   fs.mkdirSync(path.join(root, 'Proof Band'), { recursive: true });
   ids.forEach((id, i) => fs.writeFileSync(path.join(root, 'Proof Band', id + '.wav'), wav(o.seconds || 90, 330 + i * 110)));
+  const count = Math.max(0, Math.floor(Number(o.count) || 0));
+  const bulk = [];
+  if (count) {
+    const dir = path.join(root, 'Bulk Band');
+    fs.mkdirSync(dir, { recursive: true });
+    const base = path.join(dir, 'bulk-base.wav');
+    fs.writeFileSync(base, wav(1, 440));
+    const zFrom = Math.max(0, count - 500);
+    for (let i = 0; i < count; i++) {
+      const id = 'bulk' + String(i).padStart(6, '0');
+      const file = path.join(dir, id + '.wav');
+      fs.linkSync(base, file);
+      const z = i >= zFrom;
+      const letter = z ? 'Z' : String.fromCharCode(65 + Math.floor((i * 25) / Math.max(1, zFrom)));
+      bulk.push({ id, file, z, title: letter + ' Bulk ' + String(i).padStart(6, '0') });
+    }
+  }
   const server = require('../../server');
   const { seedState } = require('../../test/helpers/seed-state');
   const musicStore = require('../../lib/music/store');
@@ -37,6 +57,13 @@ async function start(opts) {
         id, type: 'audio', title: 'Proof Song ' + (i + 1), name: id + '.wav', filePath: path.join(root, 'Proof Band', id + '.wav'),
         rootFolder: root, folderName: 'Proof Band', channelName: 'Proof Band', duration: o.seconds || 90, hasThumbnail: false, ext: '.wav',
         addedAt: 1788000000000 + i, tags: { title: 'Proof Song ' + (i + 1), artist: 'Proof Band', album: 'Proof Album', track: i + 1, date: '2026', genre: 'Music' },
+      };
+    });
+    bulk.forEach((b, i) => {
+      db.metadata[b.id] = {
+        id: b.id, type: 'audio', title: b.title, name: b.id + '.wav', filePath: b.file,
+        rootFolder: root, folderName: 'Bulk Band', channelName: 'Bulk Band', duration: 1, hasThumbnail: false, ext: '.wav',
+        addedAt: 1787000000000 + i, tags: { title: b.title, artist: b.z ? 'Zed Band' : 'Bulk Band', album: b.z ? 'Zed Album' : 'Bulk Album', track: (i % 20) + 1, date: '2026', genre: b.z ? 'Zydeco' : 'Music' },
       };
     });
     server.musicDb.mutate((h) => { musicStore.ensureMusic(h).folders = [root]; return true; });

@@ -203,7 +203,16 @@ expected: confirm), the rate limiters. Brief each seat: page.evaluate grants a g
 
 ## 7. Evidence and gate verdicts
 
-(empty until W0)
+### W0 evidence
+
+**Cap falsifier** (`tools/listen-control-proof/cap-v0.js`, 10,503 songs seeded, iPhone 13, iPod skin, base 102fca76 + serve.js `count`):
+`{"songsRows":10000,"songsLastRow":"Y Bulk 009996","genres":["Music"],"genresHasZydeco":false,"shuffleFetches":[...,{"n":10000,"total":10503}]}`
+- Songs: 10,000 rows (340,000 px / 34 px); the last row is "Y Bulk 009996", the 500 "Z Bulk" songs are missing.
+- Genres: only "Music"; "Zydeco" (the genre of the last 500 titles) is missing.
+- Shuffle Songs: the random fetch returns 10,000 of 10,503 (the queue is cut at 10,000).
+- One 10,000-row request took 317 ms on this box (server side, 10,500 songs).
+
+**Turn capture (Dean, `?debugRotate=1`):** rows analysed at W3 (see W3 notes below once written).
 
 ## 8. Device checks Dean would owe (into DEVICE-CHECKS.md at release, one line each)
 
