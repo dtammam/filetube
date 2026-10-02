@@ -393,7 +393,7 @@ test('R7: the record is forgotten on This device, on lost() (target-gone, a 410)
   assert.strictEqual(k.record(), null, 'This device');
 });
 
-test('R7: sign-out removes the stored record (accountSignOut, executed, no controller on the page)', async () => {
+test('R7: sign-out removes the stored record and the per-tab pick with no controller on the page (Settings: setup.html loads no remote.js)', async () => {
   const { JSDOM } = require('jsdom');
   const COMMON = require.resolve('../../public/js/common.js');
   const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/music' });
@@ -408,9 +408,11 @@ test('R7: sign-out removes the stored record (accountSignOut, executed, no contr
     global.fetch = async () => ({ ok: true, status: 200, json: async () => ({}) });
     dom.window.localStorage.setItem(R.RESUME_KEY, JSON.stringify(rec()));
     dom.window.localStorage.setItem('ft-device-id', 'keep-me');
+    dom.window.sessionStorage.setItem(R.CONTROL_KEY, JSON.stringify({ deviceId: 'pc', label: 'Desk' }));
     C.accountSignOut();
     for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
     assert.strictEqual(dom.window.localStorage.getItem(R.RESUME_KEY), null);
+    assert.strictEqual(dom.window.sessionStorage.getItem(R.CONTROL_KEY), null, 'the per-tab pick (gate r1 A2)');
     assert.strictEqual(dom.window.localStorage.getItem('ft-device-id'), 'keep-me', 'the device id itself stays');
   } finally {
     delete require.cache[COMMON];
@@ -627,6 +629,8 @@ test('gate r1 (Q2 = A3): the handoff card hides the moment the phone attaches an
   assert.strictEqual(card.polls, 0);
   h.c.leave();
   assert.strictEqual(card.polls, 1, 'This device: the normal rule again (one poll)');
+  h.c.leave(); // a second notify while already local is not a transition (no /api/handoff per change)
+  assert.strictEqual(card.polls, 1);
   off();
   h.c.select({ deviceId: 'pc', label: 'Desk' });
   assert.strictEqual(card.polls, 1, 'unsubscribed');
