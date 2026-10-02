@@ -212,6 +212,12 @@ expected: confirm), the rate limiters. Brief each seat: page.evaluate grants a g
 - Shuffle Songs: the random fetch returns 10,000 of 10,503 (the queue is cut at 10,000).
 - One 10,000-row request took 317 ms on this box (server side, 10,500 songs).
 
+### W1 evidence
+
+**Paging decision:** sequential pages of 5,000 via `offset`/`limit` (`fetchAllRows` in music.js), joined and resolved once; no page-1-first render (the menus need the whole list for Genres, letters and Shuffle, and one 10,000-row request measured 317 ms server side, so a 23,000-song library is five requests). Menu paths paged: Songs, Genres, the untagged-artist bucket, the cover pool, Artists, Albums, an album's songs, an artist's songs, Liked, Shuffle Songs, and the `?playlist=`/artist/album music links. The browse-view Albums/Artists tabs (limit=10000) are left as they are (not an iPod menu; ROADMAP Planned).
+**After (same script, `cap-v0.js`, 10,503 songs):** Songs 10,503 rows, last row "Z Bulk 010499"; Genres ["Music","Zydeco"]; Shuffle fetches 5000 + 5000 + 503 of 10,503.
+Tests: `test/integration/pocket-library-paging.test.js` (4); suites music-pocket-menus, -r1, pocket-quick-scroll, music-view: 107/107 pass. Mutants: recorded below once run.
+
 **Turn capture (Dean, `?debugRotate=1`):** rows analysed at W3 (see W3 notes below once written).
 
 ## 8. Device checks Dean would owe (into DEVICE-CHECKS.md at release, one line each)

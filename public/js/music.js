@@ -4320,10 +4320,30 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     function noteLikedChanged() { menuLikedGen += 1; }
     try { document.addEventListener('filetube:library-changed', function () { invalidateMenuData(); }, { signal: signal }); } catch (_) { /* no document */ }
+    // v1.354 W1: the server clamps one request to 10,000 rows (MAX_LIMIT), so a bigger library came back
+    // cut. Every menu list that must hold ALL of its rows reads sequential pages of MENU_PAGE and joins
+    // them. `url` carries no limit/offset. The seeded random order is stable across pages, so a shuffle
+    // pages like any sort. A torn-down view stops after the page in flight (signal), and a page that
+    // comes back empty ends the loop (a library that shrank mid-read must not spin).
+    var MENU_PAGE = 5000;
+    function fetchAllRows(url) {
+      var rows = [];
+      function page() {
+        if (signal.aborted) return Promise.reject(new Error('aborted'));
+        return fetchJson(url + (url.indexOf('?') < 0 ? '?' : '&') + 'limit=' + MENU_PAGE + '&offset=' + rows.length).then(function (d) {
+          var items = menuItemsOf(d);
+          rows = rows.concat(items);
+          var total = Number(d && d.total);
+          if (!items.length || !(total > rows.length)) return { items: rows, total: rows.length };
+          return page();
+        });
+      }
+      return page();
+    }
     function menuAllSongs() {
       if (!menuSongsPromise) {
-        var pr = fetchJson('/api/music?sort=title-asc&limit=10000')
-          .then(function (d) { return Array.isArray(d && d.items) ? d.items : []; });
+        var pr = fetchAllRows('/api/music?sort=title-asc')
+          .then(function (d) { return d.items; });
         menuSongsPromise = pr;
         pr.catch(function () { if (menuSongsPromise === pr) menuSongsPromise = null; }); // a failure retries on the next open
       }
@@ -4337,8 +4357,8 @@ if (typeof module !== 'undefined' && module.exports) {
         return menuAllSongs().then(function (t) { return t.filter(function (x) { return !((x && (x.albumArtist || x.artist)) || ''); }); });
       }
       if (!menuArtistCache[key]) {
-        var pr = fetchJson('/api/music?artist=' + encodeURIComponent(key) + '&sort=' + encodeURIComponent(sortForTab('drill-artist')) + '&limit=10000')
-          .then(function (d) { return Array.isArray(d && d.items) ? d.items : []; });
+        var pr = fetchAllRows('/api/music?artist=' + encodeURIComponent(key) + '&sort=' + encodeURIComponent(sortForTab('drill-artist')))
+          .then(function (d) { return d.items; });
         menuArtistCache[key] = pr;
         pr.catch(function () { if (menuArtistCache[key] === pr) delete menuArtistCache[key]; });
       }
@@ -4379,10 +4399,10 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!SKINS) return Promise.resolve({ items: [] });
       if (n.type === 'playon') return RC ? playOnItems() : Promise.resolve({ items: [] });
       if (n.type === 'artists') {
-        return fetchJson('/api/music/artists?limit=10000&sort=title-asc').then(function (d) { return { items: SKINS.menuArtistItems(menuItemsOf(d), musicArtUrl), letters: true }; });
+        return fetchAllRows('/api/music/artists?sort=title-asc').then(function (d) { return { items: SKINS.menuArtistItems(menuItemsOf(d), musicArtUrl), letters: true }; });
       }
       if (n.type === 'albums') {
-        return fetchJson('/api/music/albums?limit=10000&sort=title-asc').then(function (d) { return { items: SKINS.menuAlbumItems(menuItemsOf(d), musicArtUrl), letters: true }; });
+        return fetchAllRows('/api/music/albums?sort=title-asc').then(function (d) { return { items: SKINS.menuAlbumItems(menuItemsOf(d), musicArtUrl), letters: true }; });
       }
       if (n.type === 'recentArtists') {
         // Recent Artists: the Recently Played source's own route (visibility-gated), its artists in
@@ -4421,20 +4441,20 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       if (n.type === 'album') {
         var asort = sortForTab('drill-album');
-        return fetchJson('/api/music?album=' + encodeURIComponent(n.key || '') + '&sort=' + encodeURIComponent(asort) + '&limit=10000').then(function (d) {
+        return fetchAllRows('/api/music?album=' + encodeURIComponent(n.key || '') + '&sort=' + encodeURIComponent(asort)).then(function (d) {
           return menuSongLevel(menuItemsOf(d), { ctx: { src: 'music', album: n.key, sort: asort }, drill: { type: 'album', key: n.key, label: n.label }, label: n.label });
         });
       }
       if (n.type === 'playlist') {
         var pl = playlistSource(n.key);
-        return fetchJson(pl.url).then(function (d) { return menuSongLevel(menuItemsOf(d), { ctx: pl.ctx, label: n.label }); });
+        return pl.all ? fetchAllRows(pl.url).then(function (d) { return menuSongLevel(menuItemsOf(d), { ctx: pl.ctx, label: n.label }); }) : fetchJson(pl.url).then(function (d) { return menuSongLevel(menuItemsOf(d), { ctx: pl.ctx, label: n.label }); });
       }
       return Promise.resolve({ items: [] });
     }
     // The iPod menu's playlists (and the v1.352 L3 `?playlist=` links): where each one's songs come from.
     function playlistSource(key) {
       return key === 'liked'
-        ? { url: '/api/music?filter=liked&sort=title-asc&limit=10000', ctx: { src: 'music', filter: 'liked', sort: 'title-asc' }, label: 'Liked' }
+        ? { url: '/api/music?filter=liked&sort=title-asc', all: true, ctx: { src: 'music', filter: 'liked', sort: 'title-asc' }, label: 'Liked' }
         : key === 'recent-played'
           ? { url: MENU_RECENT_URL, ctx: { src: 'music', filter: 'recent-listening' }, label: 'Recently Played' }
           : { url: '/api/music?sort=newest&limit=100', ctx: { src: 'music', sort: 'newest' }, label: 'Recently Added' };
@@ -4602,7 +4622,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function shuffleAllFromMenu() {
       var seed = String(Math.floor(Math.random() * 1e9));
       var gen = playSelectGen;
-      fetchJson('/api/music?sort=random&seed=' + seed + '&limit=10000').then(function (d) {
+      fetchAllRows('/api/music?sort=random&seed=' + seed).then(function (d) {
         // post-await: the view is alive and no newer pick claimed the player meanwhile.
         if (signal.aborted || gen !== playSelectGen) return;
         playFromMenu({ tracks: menuItemsOf(d), index: 0, play: { ctx: { src: 'music', sort: 'random', seed: seed }, label: 'Shuffle Songs' } });
@@ -4625,21 +4645,22 @@ if (typeof module !== 'undefined' && module.exports) {
       if (o.type === 'playlist') {
         var pl = playlistSource(o.key);
         var serverShuffle = o.key === 'liked' && mode === 'shuffle';
-        src = { url: serverShuffle ? '/api/music?filter=liked&sort=random&seed=' + seed + '&limit=10000' : pl.url,
+        src = { url: serverShuffle ? '/api/music?filter=liked&sort=random&seed=' + seed : pl.url,
+          all: serverShuffle || !!pl.all,
           ctx: serverShuffle ? { src: 'music', filter: 'liked', sort: 'random', seed: seed } : pl.ctx,
           clientShuffle: mode === 'shuffle' && !serverShuffle, label: pl.label, name: pl.label, drill: null };
       } else {
         var isAlbum = o.type === 'album';
         var key = isAlbum ? musicAlbumKeyFor(o.artist, o.album) : o.artist;
         var sort = mode === 'shuffle' ? 'random' : sortForTab(isAlbum ? 'drill-album' : 'drill-artist');
-        var q = (isAlbum ? 'album=' : 'artist=') + encodeURIComponent(key) + '&sort=' + sort + (mode === 'shuffle' ? '&seed=' + seed : '') + '&limit=10000';
+        var q = (isAlbum ? 'album=' : 'artist=') + encodeURIComponent(key) + '&sort=' + sort + (mode === 'shuffle' ? '&seed=' + seed : '');
         var ctx = { src: 'music', sort: sort };
         ctx[isAlbum ? 'album' : 'artist'] = key;
         if (mode === 'shuffle') ctx.seed = seed;
-        src = { url: '/api/music?' + q, ctx: ctx, clientShuffle: false, label: isAlbum ? o.album : o.artist,
+        src = { url: '/api/music?' + q, all: true, ctx: ctx, clientShuffle: false, label: isAlbum ? o.album : o.artist,
           name: isAlbum ? o.album : o.artist, drill: { type: o.type, key: key, label: isAlbum ? o.album : o.artist } };
       }
-      return fetchJson(src.url).then(function (d) {
+      return (src.all ? fetchAllRows : fetchJson)(src.url).then(function (d) {
         if (signal.aborted || gen !== playSelectGen) return; // a newer pick or a torn-down view owns the page
         var tracks = menuItemsOf(d);
         if (!tracks.length) {

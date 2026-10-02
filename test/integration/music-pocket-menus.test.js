@@ -260,7 +260,7 @@ test('Shuffle Songs shuffles the WHOLE library and plays through from the top', 
     menu(h);
     tapRow(h, 'Shuffle Songs');
     await settleNet();
-    const shuffleCall = h.log.find((u) => /\/api\/music\?sort=random&seed=\d+&limit=10000/.test(u));
+    const shuffleCall = h.log.find((u) => /\/api\/music\?sort=random&seed=\d+&limit=5000&offset=0/.test(u));
     assert.ok(shuffleCall, 'fetched the whole library, randomly ordered: ' + h.log.join(' | '));
     assert.ok(!inMenu(h), 'Now Playing shows');
     const behind = h.D.querySelectorAll('#music-content .music-song-row');
@@ -353,7 +353,7 @@ test('Click: in a menu the |<< >>| zones still skip tracks (the device\'s own); 
   } });
 });
 
-const songsUrl = (u) => /^\/api\/music\?sort=title-asc&limit=10000$/.test(u);
+const songsUrl = (u) => /^\/api\/music\?sort=title-asc&limit=5000&offset=0$/.test(u);
 test('the menus drop their library cache on a rescan AND after a delete/move (a removed track never lingers in a menu)', async () => {
   // (1) the Scan button: the next Songs open re-fetches the library
   await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {

@@ -5,7 +5,7 @@
 //   Songs   - the last row after scrolling to the bottom
 //   Genres  - whether the Zydeco row exists
 //   Shuffle - how many songs the shuffled queue holds and whether it holds a Z Bulk song
-// Run: node tools/listen-control-proof/cap-v0.js   (prints one JSON line; exit 1 if any read is short)
+// Run: node tools/listen-control-proof/cap-v0.js   (prints one JSON line; exit 1 if any read is short: red before the W1 fix, green after)
 const path = require('node:path');
 const { start } = require('./serve');
 const pw = require(require.resolve('playwright', { paths: [path.join(__dirname, '..', 'capture'), '/home/coder/projects/filetube/tools/capture'] }));
@@ -55,7 +55,7 @@ async function run() {
   } finally { await b.close(); await srv.stop(); }
   out.songsComplete = /Z Bulk 0*1049\d/.test(out.songsLastRow || '') || /Z Bulk/.test(out.songsLastRow || '');
   console.log(JSON.stringify(out));
-  const short = !out.songsComplete || !out.genresHasZydeco || !(out.shuffleFetches[0] && out.shuffleFetches[0].n >= COUNT);
+  const short = !out.songsComplete || !out.genresHasZydeco || !(out.shuffleFetches.filter((f) => f.total === COUNT + 3).reduce((a, f) => a + f.n, 0) >= COUNT + 3);
   process.exit(short ? 1 : 0);
 }
 run().catch((e) => { console.error(e); process.exit(2); });
