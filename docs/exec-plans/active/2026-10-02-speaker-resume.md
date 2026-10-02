@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.356-speaker-resume
 anchor: spec
 status: Building
-next: Step 0, then W0 (falsifiers), W1-W3; read the whole plan, every section
+next: W0-W3 built (section 6); the Architect rules on the stale listed-state finding (section 6), then the FULL gate
 design: Dean 2026-10-02 - valid = the speaker is still on AND (it is still playing OR the app closed under 1 hour ago); reattach SILENTLY with a short toast; reattach and show whatever the speaker plays now (or idle); R4-R8 are architect defaults
 gate: FULL (adversary + qa + security-brief; Dean: it changes what the phone trusts; never dial down)
 ---
@@ -105,7 +105,166 @@ existing pick of that speaker does (a track -> Now Playing, idle -> the menu), t
 
 ## 6. Build log
 
-(empty)
+Builder (Opus), 2026-10-02, worktree `.claude/worktrees/v1356`, branch `feat/v1.356-speaker-resume` on main d6abd4e3.
+Commits: 078a410a (W1), 72816fd5 (W2), d090a6a1 (W3 tests + proof), 5b59e6d0 (W3 mutant-closing tests), then this log.
+
+### W0 findings (measured; probe `b356-w0.js` in the session scratchpad, the real server, Chromium, iPhone 13 context)
+
+1. **Today's failure, confirmed.** The phone picked the speaker (`RC.select`) and played song1 on it (speaker
+   snapshot: `song1`, playing). Before the kill: `isRemote` true, `mms-on` true, `sessionStorage['ft-remote-controlling']`
+   set, no remote key in localStorage. A NEW context with the same localStorage (Playwright `storageState`) and empty
+   sessionStorage, opening `/music`: `isRemote` false, `label` "", `mms-on` false, the Now Playing panel hidden. It opens
+   local.
+2. **A cold launch plays nothing locally.** A fresh phone on `/music`: no `#media-player` element at all
+   (`mediaSrc: "no-element"`), `player.currentId()` null, `mms-on` false. The PWA's own cold-start helper
+   (`ft-last-session`, common.js) only restores the ROUTE; Jump back in needs a tap. So a reattach cannot leave two
+   players sounding; the resume still calls `player.pause()` (the remoteChoose rule) for a tap made during the check.
+3. **The signed-in user's id on the client:** `window.fetchCurrentUser()` (common.js, memoized per page load, the same
+   `/api/auth/me` the shell already asks for) -> `me.user.id`, a NUMBER (measured `{"id":1,"type":"number"}`). The
+   record stores it as a string; `/api/auth/me` failing (or no shared fetch) = "cannot tell" = stay local.
+
+### What was built
+
+- **W1 (public/js/remote.js, public/js/common.js).** `RESUME_KEY = 'ft-remote-resume'`, `{v:1, deviceId, label, user, at}`,
+  phone only (`env.isPhone()` = `isPhoneDoc`), through a `safeLocalStorage` like the session one. Pure exported
+  `validResume` + `resumeDecision(record, now, user, targets)`. Written on attach (`select`, and a per-tab `restore` the
+  targets check confirmed), re-stamped on visibilitychange hidden and on pagehide while attached (bootWhenReady calls
+  `control.pagehide()` beside the target's `/off`). `restore()` with no per-tab pick calls `resume()`: the record is read
+  (bad JSON / shape / `v` != 1 deleted unread, no request), then the user (`currentUser()`): unknown -> keep; another
+  user -> deleted, the targets check is never asked; then `GET /api/remote/targets` (a STRICT variant: a non-OK answer
+  or a network error is "cannot tell", never "gone"). After each await: a pick made meanwhile (generation, `targetId`)
+  wins, the record is re-read (forgotten or replaced = do nothing), and a page back in the background keeps it for the
+  return. Attach = the same `attach()` a pick uses (stream, mirror, sessionStorage, record), after `player.pause()`, then
+  the toast "Playing on <label>" with the LISTED label. Keep = local, quiet, one retry on the next visible. Forgotten on
+  This device (`leave`), `lost()`, a failed R1, a user mismatch, a malformed record, and `accountSignOut`.
+- **W2 (public/js/skin-surface.js, public/js/music.js).** One landing rule `landAfterPlayOn(landed)` used by the
+  Speakers pick and by the new `engine.landPlayOn(hasTrack)`. The Music view consumes the controller's one-shot
+  `consumeResume()` on every mirror change and once at mount (a resume that attached on Home lands when Music mounts):
+  `remoteDocked = false`, `updateNowPlayingPanel()`, then `landPlayOn(r.hasTrack)` (`hasTrack` from the LISTED state,
+  as `remoteChoose` reads it). The position shown is `RC.position()`, the interpolated one.
+- **W3.** `test/unit/remote-resume.test.js` (25 tests), a landing test in `music-pocket-menus.test.js`, a wire lock in
+  `music-remote-controller-wiring.test.js`, `tools/listen-control-proof/resume-proof.js` + `resume-proof-out.json`.
+
+### Deviations (each stated)
+
+1. **The local pause lives in remote.js, not music.js** (plan W2 put it in the view). A resume can attach on any shell
+   (Home, Watch), where the Music view is not mounted; the controller pauses `FileTube.player` itself before attaching.
+2. **skin-surface.js changed** (the plan named only music.js for W2): the engine had no outside door to its Speakers
+   landing (`landOnMusic` / `showNowPlaying` are private). Added `landPlayOn` and moved the pick onto the same
+   `landAfterPlayOn`, so pick and resume cannot drift.
+3. **No time-only drop before the check.** W1's text says "older than R1 allows -> delete" before the fetch; R1 has no
+   age that rules a record out on its own (a playing speaker attaches at any age), so the age is judged only against the
+   listed state. A record stamped in the FUTURE (clock change, edited storage) fails the hour arm (a playing speaker
+   still attaches).
+4. **The user check runs BEFORE the targets request** (R6 says "deleted unread"): a mismatched record never causes a
+   `/api/remote/targets` call (bound: AC4 test, `resume_targets_requests: 0` in the proof).
+5. **Sign-out only, not login** (R7 lists sign-out). A different account logging in on the same phone is caught by the
+   user check instead; the same account logging in again keeps its record.
+
+### FINDING for the Architect (needs a ruling; not changed): the LISTED state can be stale
+
+A speaker reports its state only while a controller is attached (`createTarget`: `if (!on || !attached) return;`), so
+`GET /api/remote/targets` lists the last state reported while a phone was attached. Measured (proof rows below):
+- `stale_*`: the phone left while the speaker played; the speaker was then paused AT THE PC; the listed state still
+  read `{"state":"playing","ageMs":2823}`, so a record 3 h old ATTACHED (`stale_paused_3h_attached: true`); the mirror
+  then showed `paused` from the speaker's fresh report. R1 says it should have stayed local.
+- The reverse holds too (paused when the phone left, played at the PC later: listed `paused`, a record over an hour old
+  is dropped though the speaker plays), and a speaker that turned Remote control off and on (or reloaded) lists `idle`
+  until a controller attaches (`paused_20min`: listed idle, so the landing was the menu, `{"menuMode":true,"cursor":"Music"}`,
+  though the speaker had a paused song; it attached by the hour arm).
+- Dean's device steps (section 1) are unaffected: in steps 1-3 the speaker's state when the phone left is still its
+  state at reopen. The gap is a state change made AT THE PC after the phone left.
+- A fix needs the speaker to report while no phone is attached (a client change on the TARGET side: post on
+  play/pause/track/ended even unattached, throttled; no server change), which changes what a desktop tab sends (AC5:
+  "desktop tabs behave exactly as v1.355"). Not built; the Architect's call.
+
+### Real-browser proof (`node tools/listen-control-proof/resume-proof.js`, raw: `tools/listen-control-proof/resume-proof-out.json`)
+
+Real server, Chromium with `--autoplay-policy=no-user-gesture-required` for the speaker (1280x800, Remote control on via
+`/music?remote=on`), the phone = Playwright's iPhone 13 (`is-phone`), a Click skin (ipod-2004) so the menu landing shows.
+A killed app = a new context from `storageState` (localStorage kept, sessionStorage empty). Numbers copied from the file:
+
+| Row | Result |
+|---|---|
+| setup: record after the pick | `{"v":1,...,"user":"1"}`; `at` vs the page close: 2 ms (stamped on pagehide/hide) |
+| AC1 relaunch | per-tab pick at load `null`; attached in 311 ms; toasts `["Playing on Linux PC · Radish"]`; track "Proof Song 1", playing; Now Playing (`menuMode:false`) |
+| AC1 position | speaker 4.3 s, phone 4.29 s, gap 0.01 s |
+| AC1 PC undisturbed | speaker 3.08 s before -> 6.3 s two seconds after, same id `song1`, playing (`advanced_not_restarted: true`) |
+| AC1 network | 0 command POSTs; 1 targets request, then the stream |
+| relaunch on Home, then in-app nav to Music | attached on Home: true; iPod up on Music: true; Now Playing; 0 command POSTs |
+| AC3 targets answer held | during: pending true, isRemote false, label "", mms-on false, no toast; play/toggle/next/prev returned `[false,false,false,false]`, seek and volume sent nothing; 0 command POSTs during, 0 after the release (attached) |
+| AC3 note | the speaker's name DID show during the hold, in the v1.78 handoff card ("Listening on Linux PC · Radish ... Continue here", server presence of the same account), not from the record and not in the iPod (`ipodBadge: null`) |
+| AC2 Remote control off | local, label "", no toast, record deleted, 0 command POSTs, 0 streams |
+| AC2 paused + 61 min | local, no toast, record deleted, 0 command POSTs, 0 streams (the listed state here was idle, see the finding) |
+| paused + 20 min | attached, `state: paused`, landing `{"menuMode":true,"cursor":"Music"}` (listed idle), 0 command POSTs, speaker still paused |
+| playing + 3 h | attached, "Proof Song 1", toast, 0 command POSTs |
+| AC4 | second account `otheruser` whose OWN speaker has the SAME device id (its targets list that id: true); carrying user 1's record: isRemote false, label "", record deleted, no toast, 0 command POSTs, 0 targets requests from the resume; user 1's speaker still playing song1 |
+| idle speaker, record 5 min old | attached, `state: idle`, landing `{"menuMode":true,"cursor":"Music"}`, 0 command POSTs |
+| page errors | `[]` |
+
+### Mutants (sandbox: `git archive 5b59e6d0` under the session scratchpad, a pristine copy diffed after: identical)
+
+Run: `node --test test/unit/remote-resume.test.js test/unit/music-pocket-menus.test.js test/unit/music-remote-controller-wiring.test.js test/unit/remote-controller.test.js` (93 tests).
+The first pass (on d090a6a1, 90 tests) left M9, M11, M19 and M32 green; 5b59e6d0 added the tests that kill them.
+
+| # | Mutant | Red (test names) |
+|---|---|---|
+| M1 | `record.user !== user` check deleted | resumeDecision: every arm; AC4: another account on this phone |
+| M2 | the playing arm deleted | resumeDecision: every arm; AC1: a fresh launch...; AC3: during the check... |
+| M3 | `age < 1 h` -> `<=` | resumeDecision: every arm |
+| M4 | `age >= 0` dropped (future stamp trusted) | resumeDecision: every arm |
+| M5 | not listed -> attach | resumeDecision: every arm; AC2: not listed (Remote control off, tab closed, asleep) |
+| M6 | targets null -> drop | 7 tests incl. "a failed targets check stays local and quiet, keeps the record..." |
+| M7 | unknown user not held as keep | resumeDecision: every arm |
+| M8 | `r.v === 1` -> true | resumeDecision: a malformed record...; a malformed record is deleted without a single request |
+| M9 | no re-read of the record after the await | a record REPLACED while the check was in flight ... is not acted on here |
+| M10 | attaches while hidden | a check that answers while the app is back in the background... |
+| M11 | no supersession check after the targets await | a pick of the SAME speaker during the check is the pick... |
+| M12 | `select` does not bump the generation | none: MASKED (stale() also checks `targetId`, which a select sets; a leave bumps it itself) |
+| M13 | leave/lost keep the record | a pick made during the check wins...; `at` is stamped...; R7: ... This device, lost(), a 410 |
+| M14 | no stamp on hide | `at` is stamped on every hide and on pagehide... |
+| M15 | no stamp on pagehide | `at` is stamped on every hide and on pagehide... |
+| M16 | attach writes no record | 5 tests incl. AC1 and "the record carries the signed-in user..." |
+| M17 | `restore()` never resumes | 11 tests (every launch test) |
+| M18 | a desktop reads the record | AC5: a desktop (no is-phone) never writes or reads the record |
+| M19 | a desktop writes the record | AC5: a desktop (no is-phone) never writes or reads the record |
+| M20 | no toast | AC1: a fresh launch... |
+| M21 | local player not paused | AC1: a fresh launch... |
+| M22 | no landing handed to the view | AC1: a fresh launch...; AC1: a paused speaker inside the hour attaches; an idle one lands the menu |
+| M23 | no same-user pre-check | AC4: another account on this phone: ... the targets check is never asked |
+| M24 | a failed answer reads as `[]` | a failed targets check stays local and quiet... |
+| M25 | no retry on the next foreground | AC4: the user that cannot be told...; a failed targets check...; a check that answers while... background |
+| M26 | numeric user id not carried | 14 tests |
+| M27 | sign-out keeps the record (common.js) | R7: sign-out forgets the remembered speaker (accountSignOut, executed) |
+| M28 | engine `landPlayOn` ignores idle (skin-surface.js) | v1.356 W2: engine.landPlayOn(false)...; v1.356 W2: a resume on launch lands the Music view... |
+| M29 | the view lands every resume on Now Playing (music.js) | v1.356 W2: a resume on launch lands the Music view... (a source lock); and the proof: `idle_screen` `{"menuMode":false,"cursor":null}` |
+| M30 | `send()` without a target | with no target nothing is sent; AC3: during the check... |
+| M31 | the mirror never lands a later resume (music.js) | v1.356 W2: a resume on launch lands the Music view... (a source lock); and the proof: `idle_screen` and `paused_20min` screen `{"menuMode":false,"cursor":null}` |
+| M32 | bootWhenReady never calls `control.pagehide` | bootWhenReady wires the controller: pagehide stamps... |
+
+### Suites and lints (at 5b59e6d0, the tree this log describes)
+
+- Node 22.23.1, `npm test` (exit 0): `# tests 10779`, `# pass 10767`, `# fail 0`, `# cancelled 0`, `# skipped 12`, `# todo 0`.
+- Node 24.20.0, `npm test` (exit 0): `ℹ tests 10779`, `ℹ pass 10767`, `ℹ fail 0`, `ℹ cancelled 0`, `ℹ skipped 12`, `ℹ todo 0`.
+- `npm run lint`: `✖ 6 problems (0 errors, 6 warnings)` (the pre-existing no-unused-vars warnings; the new files lint clean).
+- `npm run lint:ui`: `ui-lint: OK - the live debt equals docs/ui-exceptions.json` (TOTAL 3181, unchanged).
+- `node scripts/overlay-containment-lint.js --enforce`: `overlay-containment: clean (0 violations)`.
+- Em dashes added by the branch: 0 (`git diff d6abd4e3..HEAD | grep '^+' | grep -c` the em dash).
+- Pre-commit hook (Node 22, unit): W1, W2 green; the first W3 attempt was REFUSED by one failure, verbatim:
+  `test at test/unit/pocket-search.test.js:197:1` / `the wheel moves the marker along the strip (both ways, wrapping);
+  center adds the letter under it` / `AssertionError [ERR_ASSERTION]: counter-clockwise comes back (got 38)`
+  (`ℹ tests 8349`, `ℹ pass 8348`, `ℹ fail 1`, load average 5.45 / 8.23 / 6.54). The test sizes a wheel turn by gesture
+  SPEED (its own comment); this branch does not touch the wheel. Standalone it passed 3 of 3 (34/34 each); after the load
+  drained under 2.5 the same commit passed the hook (`ℹ tests 8349`, `ℹ pass 8349`, `ℹ fail 0`). Recorded as a
+  load-sensitive test, not root-caused here.
+
+### What headless cannot prove
+
+- iOS kills: a swiped-away PWA may not fire pagehide or visibilitychange at all; then `at` is the last hide or the
+  attach. iOS normally fires visibilitychange hidden on the app switcher, before the swipe (device check).
+- The "Playing on" toast and the landing on a real iPhone home-screen app, and that a cold launch there plays nothing.
+- The hour measured on a real clock (unit tests use an injected clock; the proof rewrites `at`).
+- nginx / the poll fallback on resume (the stream opens through the same `attach()` as a pick; not re-measured).
 
 ## 7. Device checks owed (to DEVICE-CHECKS.md at release)
 
