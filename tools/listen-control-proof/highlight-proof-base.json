@@ -1,0 +1,94 @@
+{
+  "speaker_playing": "song1",
+  "step_menu": {
+    "title": "Click",
+    "marked": [],
+    "markedElsewhere": [
+      "mms-row is-current | Proof Song 12:00"
+    ],
+    "rows": [
+      "Music",
+      "Extras",
+      "Settings",
+      "Shuffle Songs",
+      "Speakers",
+      "Now Playing"
+    ],
+    "phonePlayerCurrentId": null,
+    "speakerTrackId": "song1",
+    "remote": true
+  },
+  "tap_music": true,
+  "tap_albums": true,
+  "tap_album": true,
+  "step_album_before": {
+    "title": "Proof Album",
+    "marked": [],
+    "markedElsewhere": [
+      "mms-row is-current | Proof Song 12:00"
+    ],
+    "rows": [
+      "Proof Song 1",
+      "Proof Song 2",
+      "Proof Song 3"
+    ],
+    "phonePlayerCurrentId": null,
+    "speakerTrackId": "song1",
+    "remote": true
+  },
+  "tap_song2": true,
+  "pc_after_pick": "song2",
+  "step_after_pick": {
+    "title": "Now Playing",
+    "marked": [],
+    "markedElsewhere": [
+      "mms-row is-current | Proof Song 22:00"
+    ],
+    "rows": [],
+    "phonePlayerCurrentId": null,
+    "speakerTrackId": "song2",
+    "remote": true
+  },
+  "step_back_to_album": {
+    "title": "Proof Album",
+    "marked": [],
+    "markedElsewhere": [
+      "mms-row is-current | Proof Song 22:00"
+    ],
+    "rows": [
+      "Proof Song 1",
+      "Proof Song 2",
+      "Proof Song 3"
+    ],
+    "phonePlayerCurrentId": null,
+    "speakerTrackId": "song2",
+    "remote": true
+  },
+  "pc_next": "song3",
+  "mark_follows_ms": null,
+  "step_after_next": {
+    "title": "Proof Album",
+    "marked": [],
+    "markedElsewhere": [
+      "mms-row is-current | Proof Song 32:00"
+    ],
+    "rows": [
+      "Proof Song 1",
+      "Proof Song 2",
+      "Proof Song 3"
+    ],
+    "phonePlayerCurrentId": null,
+    "speakerTrackId": "song3",
+    "remote": true
+  },
+  "step_after_leave": {
+    "title": null,
+    "marked": [],
+    "markedElsewhere": [],
+    "rows": [],
+    "phonePlayerCurrentId": null,
+    "speakerTrackId": null,
+    "remote": false
+  },
+  "errors": []
+}

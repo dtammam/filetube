@@ -8357,7 +8357,7 @@ a.tv-continue-card { text-decoration: none; }
   /* .mms-z is position:relative and LATER in the DOM than the absolute .mms-bleed,
      so it paints above without a z-index (the census governs z-index; no local rung). */
   :where(html.is-phone, html.mms-popout) .mms-apple .mms-z{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column;
-    padding:calc(env(safe-area-inset-top,0px) + var(--space-8)) var(--space-12) calc(env(safe-area-inset-bottom,0px) + var(--space-12)); }
+    padding:calc(var(--pk-top-inset, env(safe-area-inset-top,0px)) + var(--space-8)) var(--space-12) calc(env(safe-area-inset-bottom,0px) + var(--space-12)); }
   :where(html.is-phone, html.mms-popout) .mms-apple .mms-top{ justify-content:center; }
   /* the dismiss grab handle - a big transparent TAP TARGET (Dean couldn't find the exit)
      with the visible 38x5 pill centered inside via ::before. */
@@ -8380,7 +8380,7 @@ a.tv-continue-card { text-decoration: none; }
      Purple-to-black canvas, fat title, a control row of REAL shuffle (green) +
      prev / play / next, and a raised "Next in queue" panel. No fake repeat/heart. */
   :where(html.is-phone, html.mms-popout) .mms-spotify{ background:linear-gradient(var(--mms-sp-g1) 0%, var(--mms-sp-g2) 48%, var(--mms-sp-g3) 100%); color:var(--mms-sp-fg);
-    padding:calc(env(safe-area-inset-top,0px) + var(--space-8)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-8)); }
+    padding:calc(var(--pk-top-inset, env(safe-area-inset-top,0px)) + var(--space-8)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-8)); }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-chev{ opacity:.9; }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-ctx{ flex:1; text-align:center; font-size:var(--fs-2xs); letter-spacing:var(--mms-ls-caps); text-transform:uppercase; opacity:.7; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-top-spacer{ width:var(--size-touch); flex:none; }
@@ -8494,7 +8494,7 @@ a.tv-continue-card { text-decoration: none; }
   /* the body: the colorway's stack, over its 1px edge */
   :where(html.is-phone, html.mms-popout) .mms-ipod{ background:var(--pk-c-body);
     color:var(--mms-black); box-shadow:inset 0 0 0 1px var(--pk-c-body-edge);
-    padding:calc(env(safe-area-inset-top,0px) + var(--space-8)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-10)); }
+    padding:calc(var(--pk-top-inset, env(safe-area-inset-top,0px)) + var(--space-8)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-10)); }
   /* THE TEXT LINE (v1.332, D3: ONE overflow rule, not one per incident): every single-line text
      element of the pocket screens - the status title, the Now Playing lines, the list and menu rows,
      their values and times, About's name - may shrink below its text, never wraps, and truncates with

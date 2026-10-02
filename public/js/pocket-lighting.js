@@ -106,6 +106,86 @@
       if (el && el.getAttribute('data-ft-rot') !== a) el.setAttribute('data-ft-rot', a);
     } catch (_) { /* no document (the unit harness) */ }
   }
+  // v1.357: the Pocket's top inset DURING a turn. Dean's 2026-10-02 capture (home-screen app, 393x852): after a turn back to
+  // portrait the app area already excludes the status bar (innerHeight 793 = 852 - 59) while env(safe-area-inset-top) still
+  // reads 59 for ~200 ms until the window `resize`, so the 59 px is counted twice. What is left of the inset is what the app
+  // area does NOT already cover: the inset minus the part of the screen the area has lost (px in, px out).
+  function pocketTopInset(m) {
+    var long = Math.max(m.screenW, m.screenH), short = Math.min(m.screenW, m.screenH);
+    var full = m.land ? short : long; // iOS reports the portrait screen size in either orientation
+    return Math.max(0, m.sat - Math.max(0, full - m.innerH));
+  }
+  var TURN_PROP = '--pk-top-inset';
+  var TURN_CAP_MS = 1000;
+  // The turn window (R4): from the first orientation flip seen (media query, orientationchange or screen.orientation, whichever
+  // comes first) until the next window `resize` plus one frame, capped at 1 s, the effective inset is written to ONE custom
+  // property on <html> that the Pocket's portrait top padding reads (var(--pk-top-inset, env(safe-area-inset-top))). Outside a
+  // window the property is absent, so a steady screen is today's CSS exactly. Phone home-screen app only: a Safari tab's toolbars
+  // make screen - innerHeight large while the inset may be real, and that was never measured.
+  function installTurnInset(win, opts) {
+    var doc = win && win.document;
+    if (!doc || !doc.documentElement || typeof win.addEventListener !== 'function') return null;
+    var off = [], open = false, probe = null, raf = null, capTimer = null, closing = false, lastWritten = null;
+    function standalone() {
+      try { if (win.navigator && win.navigator.standalone === true) return true; } catch (_) { /* none */ }
+      try { return !!(win.matchMedia && win.matchMedia('(display-mode: standalone)').matches); } catch (_) { return false; }
+    }
+    function eligible() { return doc.documentElement.classList.contains('is-phone') && standalone(); }
+    function compute() {
+      if (!probe) return;
+      var sat = parseFloat(win.getComputedStyle(probe).paddingTop) || 0;
+      var land = !!(win.matchMedia && win.matchMedia('(orientation: landscape)').matches);
+      var px = pocketTopInset({ sat: sat, screenW: win.screen.width, screenH: win.screen.height, innerH: win.innerHeight, innerW: win.innerWidth, land: land });
+      var v = px + 'px';
+      if (v !== lastWritten) { lastWritten = v; doc.documentElement.style.setProperty(TURN_PROP, v); }
+    }
+    function frame() { raf = null; if (!open) return; compute(); raf = win.requestAnimationFrame(frame); }
+    function close() {
+      if (!open) return;
+      open = false; closing = false; lastWritten = null;
+      if (raf != null) { try { win.cancelAnimationFrame(raf); } catch (_) { /* gone */ } raf = null; }
+      if (capTimer != null) { win.clearTimeout(capTimer); capTimer = null; }
+      doc.documentElement.style.removeProperty(TURN_PROP);
+      if (!doc.documentElement.getAttribute('style')) doc.documentElement.removeAttribute('style');
+      if (probe && probe.parentNode) probe.parentNode.removeChild(probe);
+      probe = null;
+    }
+    function flip() {
+      if (!eligible()) return;
+      if (!open) {
+        var host = doc.body || doc.documentElement;
+        probe = doc.createElement('div');
+        probe.setAttribute('aria-hidden', 'true');
+        probe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top,0px)';
+        host.appendChild(probe);
+        open = true;
+      }
+      closing = false; // a second flip inside the window is the same turn still going: the cap restarts
+      if (capTimer != null) win.clearTimeout(capTimer);
+      capTimer = win.setTimeout(close, TURN_CAP_MS);
+      compute();
+      if (raf == null) raf = win.requestAnimationFrame(frame);
+    }
+    function resized() {
+      if (!open || closing) return;
+      closing = true;
+      compute();
+      win.requestAnimationFrame(function () { if (closing) close(); });
+    }
+    function listen(target, type, fn) {
+      try { target.addEventListener(type, fn); off.push(function () { target.removeEventListener(type, fn); }); } catch (_) { /* no events here */ }
+    }
+    listen(win, 'orientationchange', flip);
+    listen(win, 'resize', resized);
+    // the caller that already owns the orientation query's one listener (the rotation stamp below) calls flip() from it
+    if (!(opts && opts.sharedMq)) { try { if (win.matchMedia) listen(win.matchMedia('(orientation: landscape)'), 'change', flip); } catch (_) { /* no matchMedia events */ } }
+    try { if (win.screen && win.screen.orientation && win.screen.orientation.addEventListener) listen(win.screen.orientation, 'change', flip); } catch (_) { /* no screen.orientation */ }
+    return {
+      flip: flip,
+      isOpen: function () { return open; },
+      destroy: function () { close(); off.splice(0).forEach(function (f) { try { f(); } catch (_) { /* gone */ } }); },
+    };
+  }
   function k(dt, tau) { return dt > 0 ? 1 - Math.exp(-dt / tau) : 0; }
   // Gate r2 (qa W5): the pitch (beta) wraps at +-180 - lying on your back with the phone overhead
   // (Dean's G5 pose) the sensor jitters between +179 and -179, and a plain difference read that as a
@@ -584,6 +664,7 @@
     NOTE_DENIED: NOTE_DENIED, NOTE_NO_SENSOR: NOTE_NO_SENSOR, NOTE_REDUCED: NOTE_REDUCED,
     normalizeStrength: normalizeStrength, readStrength: readStrength, setStrength: setStrength,
     rotationOf: rotationOf, stampRotation: stampRotation,
+    pocketTopInset: pocketTopInset, installTurnInset: installTurnInset, TURN_PROP: TURN_PROP, TURN_CAP_MS: TURN_CAP_MS,
     mapTilt: mapTilt, orientationAngle: orientationAngle, recentre: recentre, ease: ease, pointerLight: pointerLight, newFilter: newFilter, wrapDiff: wrapDiff,
     create: create, askForOpen: askForOpen, paintSticker: paintSticker,
     STK_TILT_SIN: STK_TILT_SIN, STK_TILT_COS: STK_TILT_COS, STK_SHADE_PAD: STK_SHADE_PAD, STK_SHADE_ALPHA: STK_SHADE_ALPHA, STK_GLOSS_STEP: STK_GLOSS_STEP,
@@ -594,7 +675,8 @@
     window.addEventListener('orientationchange', stamp);
     // v1.354: the orientation media query flips in the SAME frame the landscape layout applies (before paint), so the
     // stamp lands with it; the events above stay as the angle's late correction.
-    try { if (window.matchMedia) window.matchMedia('(orientation: landscape)').addEventListener('change', stamp); } catch (_) { /* no matchMedia events */ }
+    try { if (window.matchMedia) window.matchMedia('(orientation: landscape)').addEventListener('change', function () { stamp(); if (turn) turn.flip(); }); } catch (_) { /* no matchMedia events */ }
+    var turn = installTurnInset(window, { sharedMq: true });
     window.addEventListener('resize', stamp); // some engines report the new angle only once the new size lands
     try { if (window.screen && window.screen.orientation && window.screen.orientation.addEventListener) window.screen.orientation.addEventListener('change', stamp); } catch (_) { /* no screen.orientation */ }
   }
