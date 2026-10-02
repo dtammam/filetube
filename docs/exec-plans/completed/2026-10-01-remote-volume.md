@@ -3,10 +3,10 @@ plan: remote-volume
 harness: v2 · lean
 branch: feat/v1.353-remote-volume
 anchor: spec
-status: Building
-next: gate r2 (the same three seats, delta fdfb0d1e..<fix sha>)
+status: Shipped v1.353.0
+next: shipped (device checks owed, see docs/DEVICE-CHECKS.md)
 design: Dean 2026-10-01 ("I like this. Yes. Let's do it.") on option A, then "As long as the volume screen is low friction and looks like iPod volume I am good" (R1, R2 below are binding); R3, R4 are architect defaults he did not overrule
-gate: FULL (adversary + qa + security-brief; a new command and state field on the remote channel, lib/remote/**)
+gate: APPROVED r2 @b145bd14 (FULL: adversary + qa + security-brief)
 ---
 
 # Speakers: set the speaker's PLAYER volume from the phone
@@ -233,6 +233,13 @@ Gate: APPROVED r1 @fdfb0d1e - security-brief
 - SUGGESTION (same user, not a security boundary): `remoteChoose(t)` switches speakers with `RC.select(B)` and never calls `leave()`. `select()` does not clear `volTimer`/`volPending`/`volHeld`, so a level still waiting out the 250 ms throttle when you switch from speaker A to speaker B is sent to B. The old held level can also show on B's bar for up to 1.5 s. Making this happen needs a menu trip finished inside 250 ms, so it is unlikely, and seek has the same shape already. Fix: clear the volume and seek throttle state in `select()` as `leave()` does. The plan's fix covers leaving a speaker, not switching straight to another one.
 - SUGGESTION (functional, not security): a target that replays its outbox (poll `since` or Last-Event-ID) can re-apply the phone's last queued volume over a change made later at the PC's own slider. This is the same "replays queued commands once" limit v1.348 already accepted.
 
+Gate: APPROVED r2 @b145bd14 - security-brief
+- Gap (stated first): still no shell, so no `git diff fdfb0d1e..b145bd14` and no test run. I read the delta files the coordinator named at the worktree's HEAD and assumed HEAD is b145bd14 without checking. I did not read the delta's tests. I re-read `lib/remote/routes.js` only by grep and did not diff it; the coordinator lists no change there.
+- r1 SUGGESTION 1 (switching sends a pending level to the new speaker): fixed as prescribed. `remote.js` `select()` now calls `dropPending()` (clears the seek timer and pending seek, the volume timer, the pending level and the held level) before it changes `targetId`. `leave()` calls the same helper.
+- r1 SUGGESTION 2 (an outbox replay re-applies the last queued volume): accepted as the v1.348 known limit. No security impact.
+- New in the delta, checked by reading the code, nothing opens a surface. A muted PC shows 0 on the phone (`music.js` `remoteVolume`): display only, the input is already a checked number. `getRemoteSnapshot` reports null when the volume cannot be set, and null is already a handled value on every carrier. The bar tap maps `clientX` across the groove, then clamps and rounds; a NaN still reaches `setVolumeLevel` as NaN, but `RC.volume` drops anything that is not finite and the server refuses it with a 400. The Cider/Nordic `::before` tap area is CSS only.
+- No CRITICAL, no WARNING, no new SUGGESTION.
+
 Gate: CHANGES r1 @fdfb0d1e - qa
 - Instruments (QA ran these, Node 22.23.1): `npm run lint:ui` exit 0 ("the live debt equals docs/ui-exceptions.json"); `node scripts/overlay-containment-lint.js --enforce` exit 0 ("clean (0 violations)"); eslint on every changed js file and tools/listen-control-proof exit 0. Targeted suites: the remote set (remote-target, remote-controller, remote-api, player-remote-api, music-remote-controller-wiring, remote-store, remote-volume-surface) plus music-skins, music-sticker-menu, pocket-design-system, token-scale-lock gave 222 tests, 222 pass, 0 fail. Every test file that loads skin-surface (37 files) plus the PC volume files (player-controls, player-responsive-controls, player-cc-btn-parity, swipe-back-owners, prefs-sync-client, prefs-api) gave 1163 tests, 1163 pass, 0 fail. The full suite was not re-run (the builder's dual-Node runs stand).
 - Regressions, none found. The PC's own volume (the #vol-bar input, ArrowUp/Down, wheel over the slider, the mute button, the volumechange persistence, initVolume, the iOS hide) is unchanged in the diff; setVolume is a new, separate entry point. Real browser, iPhone 13 (scratch script, worktree serve.js): the bar row and the scrubber row end at the same y (268.5) on ipod, ipod-original, ipod-frost, ipod-nano3-silver and ipod-2004. .ip-lcd-in stays 258.5 tall, and the meta above does not move. The bar is 20 px against the scrubber's 16.8, and the extra 3.2 px goes upward into the flexible meta area. Local play: no voltap, no [data-skin-vol], no .ip-vol. Cider puts the row in by moving the content above it up 34 px (the transport stays at 744). Nordic pushes the transport and queue down 46 px (one row, R3). 0 page errors.
@@ -273,15 +280,45 @@ r1 fix round (the builder; measured at the fix commit):
 - security S2 (disclosed, the v1.348 known limit): a target replaying its outbox once (poll since / Last-Event-ID) can re-apply
   the phone's last queued volume over a later change at the PC.
 
-## 8. Device checks Dean would owe (into DEVICE-CHECKS.md at release, one line each)
+Gate: APPROVED r2 @b145bd14 - qa
+- Instruments at b145bd14 (Node 22.23.1): `npm run lint:ui` gives "OK - the live debt equals docs/ui-exceptions.json". `node scripts/overlay-containment-lint.js --enforce` gives "clean (0 violations)", exit 0. eslint on the changed js files, tools/listen-control-proof and the changed tests: exit 0. Targeted files gave 287 tests, 287 pass, 0 fail: the remote set, remote-volume-surface, music-skins, music-sticker-menu, pocket-design-system, token-scale-lock, player-controls and swipe-back-owners.
+- r1 W1 (direct switch), fixed as prescribed. My r1 scratch probe was re-run unchanged against b145bd14. Sent `[["pc",0.5]]`, so nothing reached pc2. B showed its own 0.2 after select, after its first frame, and 5 s later.
+- r1 W2 (muted), fixed per Dean's ruling, real browser, iPhone 13, iPod skin. With the PC muted at 0.5, the bar reads aria 0 and a 0% fill. A tap at the groove's left end gives the PC {v:0, muted:true}, still silent. A tap at 30% of the groove gives the PC {v:0.3, muted:false}, and the phone shows 0.3, un-muted, with a 30% fill. Wheel-down from a mute: stepVolume finds next == cur == 0 and sends nothing (code read; the builder's row g measured it).
+- r1 W3 (iOS), fixed for a speaker that has loaded a song (the snapshot is null when volumeSettable is false, and the read-only-realm test binds it). See the first SUGGESTION for the case before the first load.
+- r1 S1 (volume-look.js) fixed. r1 S2 disclosed in section 7.
+- What the fix added, the Cider/Nordic ::before tap area, measured with elementFromPoint at x=195 (real browser, iPhone 13) on a vertical scan. Cider: SEEK 658-663, times 672-685, VOL 694-723, transport from 744. Nordic: SEEK 450-454, times 460-474, VOL 495-523, transport from 544. The volume area does not overlap the seek bar, its time labels or the transport (8-20 px clear). The seek bars keep their own 6 px / 4 px target, which is unchanged. The iPod bar's tap now maps across .ip-vol-track, and its icons only keep the bar up. 0 page errors.
+- SUGGESTION: player.js getRemoteSnapshot still reports the stored level (or 1) while `mediaPlayer` is null (ensureHost runs only on the first load), and volumeSettable is only probed in initVolume. An iPhone/iPad speaker that has not played anything yet therefore still reports a volume, and the phone offers a bar until the first song loads. The new comment "null where a page cannot set it (iOS)" is true only after that load. This is narrow (an idle iOS speaker), so I do not block on it.
+- SUGGESTION: withHeldVolume ends the hold on a volume match alone. Take a muted PC at 0.7 and a phone tap at 70%. A PC report sent before the command landed, {0.7, muted:true}, ends the hold and shows the bar empty for one report cycle (about 500 ms) until {0.7, muted:false} arrives. This is cosmetic; comparing `muted` as well (a held level above 0 means not muted) would close it.
 
-- [ ] v1.353.0 - Phone controlling the speaker, Now Playing: one tap brings up the iPod volume bar in place of the scrubber; turn the wheel: the PC gets louder and quieter and the bar matches; stop turning and it goes back to the scrubber by itself.
-- [ ] v1.353.0 - It looks like the iPod's own volume bar (speaker glyphs, the fill) on each iPod skin you use.
-- [ ] v1.353.0 - Move the volume on the PC itself: the phone's Volume bar follows within a couple of seconds.
-- [ ] v1.353.0 - Turn it all the way down and back up from the phone: it plays again with no click on the PC.
-- [ ] v1.353.0 - On Now Playing the wheel still scrubs the song (it never changes volume there).
-- [ ] v1.353.0 - Cider or Nordic skin while controlling the speaker: the volume row works the same.
-- [ ] v1.353.0 - The phone's own volume buttons still change only the phone (expected).
+Gate: APPROVED r2 @b145bd14 - adversary
+- Delta reviewed: `git diff fdfb0d1e..b145bd14`. All runs were in a /tmp `git archive b145bd14` sandbox (Node 22.23.1), diffed pristine afterwards. No full suite was run (that is for after the gate, per the brief). No CRITICAL, no WARNING.
+- r1 W muted, fixed as Dean ruled (verified, real browser, iPod skin). PC muted at 0.5: the bar shows 0 (aria 0, fill 0%). A real counter-clockwise detent left the PC at {0.5, muted}. Re-muted at the PC and tapped the groove at 60%: PC {0.6, un-muted}, bar 60. A tap at the groove's left edge: PC {0, un-muted}, bar 0. Cider and Nordic: muted shows the row at 0, and a tap 9 px above the 4-6 px bar set PC 0.4 un-muted. Unit test on the real controller: a turn up to 0.05 shows [0.05, un-muted], and a stale {0.7, muted} frame inside the hold keeps it.
+- r1 W unsettable volume, fixed as prescribed (verified). Simulated read-only element volume, now playing: the phone state is volume null, with no .ip-vol and 0 tap targets. M18 is now RED.
+- r1 W switching speakers, fixed as prescribed (verified). My r1 unit repro now sends [["pc",0.25]] (nothing to pc2), and B's first frame shows its own 0.9, not A's hold. Old M27 (the hold kept) is RED as R2.
+- r1 S1, fixed. A tap on the loud speaker icon kept the bar up and set nothing (PC stayed 0.6). The Cider/Nordic ::before reaches 12 px above and below. Hit test: it takes 0 of 399 / 0 of 290 points from the seek bars, 0 of 855 / 0 of 870 from the time rows, and 0 from every transport button on both skins.
+- Mutants on b145bd14: 15 run, 12 RED (select keeping its pending state, the hold kept, heldFields x3, the view ignoring muted, the snapshot ignoring settability, M18, the whole-bar tap mapping, an icon tap setting a level, M11, M6). 3 survived, all SUGGESTION:
+  - R3: dropPending keeping seekPending (a direct switch would still send a waiting seek to the new speaker; unbound).
+  - R11: an icon tap not re-arming the idle timer (the fix-round claim "only keeps the bar up" is unbound).
+  - R12: deleting the Cider/Nordic ::before tap area (CSS, unbound; measured above).
+- SUGGESTION (verified, simulated read-only realm): before the speaker's first load (the player host is created lazily), getRemoteSnapshot still reports the stored volume (1). An idle iOS/iPad speaker therefore shows the phone volume 1 and offers Speakers > Volume, and a level set then is only stored, which initVolume never applies there. The window closes at the first play (the state then reads null).
+- SUGGESTION (unit test): a muted PC whose stored level is exactly 0.05. Its stale {0.05, muted} report releases the hold by level equality and briefly shows 0 until the un-muted report arrives. Re-picking the SAME speaker inside the 250 ms throttle drops the last waiting level (it sent 0.6, not 0.65). Both are cosmetic or hard to reach.
+
+**Gate closed: all three seats APPROVED r2 @b145bd14** (their lines above). Fix-round mutants on b145bd14: 12/12 RED (the
+builder); the adversary's 15 there: 12 RED, 3 SUGGESTION survivors (the waiting seek on a direct switch, the icon tap's idle
+re-arm, the Cider/Nordic ::before tap area: the last two measured in the browser only). Disclosed, logged in ROADMAP Planned >
+Bugs: an iOS speaker before its first song still offers a bar (QA S1 = adversary); a sub-second empty bar when a muted PC's
+stored level equals the level set (QA S2 = adversary); re-picking the same speaker within 250 ms drops the last waiting level.
+
+**Suites on b145bd14 (after the gate, the round changed code): Node 22.23.1: 10640 tests, 10628 pass, 0 fail, 12 skipped.
+Node 24.20.0: 10640 tests, 10628 pass, 0 fail, 12 skipped.** Before the gate, on fdfb0d1e: Node 22.23.1 10634 / 10622 / 0 / 12
+(a first Node 22 run read 10634 / 10621 / 1 fail / 12: ytdlp-outcome-threading "AC-FM-C baseline" `fetch failed`, under a CPU
+straggler the builder had left from a hung mutant, pid killed; that file standalone 10/10 twice; the clean re-run is the record);
+Node 24.20.0 10634 / 10622 / 0 / 12. `lint:ui` OK (2 paid entries shrunk), overlay census 0.
+
+## 8. Device checks Dean would owe (in DEVICE-CHECKS.md, "Speakers volume (v1.353.0)")
+
+The nine v1.353.0 lines there, reworded from this plan's draft for the shipped look (the in-place bar, the time-label tap,
+Speakers > Volume, Dean's mute rule).
 
 ## 9. Out of scope (log, do not build)
 
