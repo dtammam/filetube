@@ -197,7 +197,41 @@ The small-phone (iPhone SE) bug, keyboard search for the skins list, the speaker
 
 ## 6. Build log (the builder fills this in: W0 numbers, deviations, mutants per wave, suite results verbatim)
 
-(empty)
+### W0 numbers (Dean's capture, 393x852, test/fixtures/rotate-capture-2026-10-02.jsonl, 9 rows)
+
+- Model: every portrait row has LCD top = safe-area inset + --space-8 (16) - scrollY (giant 59+16, low 59+16, scrolled 0+16-59, settled 0+16).
+- Rule (`pocketTopInset`): inset = max(0, sat - max(0, screen long side - innerHeight)) in portrait (short side in landscape).
+  Giant (ih 852): 59, unchanged. Low (ih 793, sat 59 stale): 0, LCD y 16 = settled. Scrolled and settled: 0. Landscape-steady and portrait-settled: identity.
+- Giant LCD (W0.2): no declaration explains it (a fixed box against a stale layout viewport), so INSTRUMENT ONLY (R3): rows gain sh, cvw, cvh, pti.
+- W0.3 (highlight falsifier): reproduced. Phone on Music > Albums > Proof Album while the PC plays song 2: 0 rows marked, phone player id null, speaker track id song2. Stop rule (c) did not apply. Output: tools/listen-control-proof/highlight-proof-base.json.
+- Branch proof (highlight-proof-out.json): song 2 marked after pick and on MENU back; song 3 marked 2 ms after the PC advanced; after leaving the speaker nothing marked (the phone's own player is idle); no page errors.
+
+### Deviations (disclosed)
+
+1. W1 product code was written before the W0 replay test existed (plan order broken); the replay test now exists and is mutated red (M01-M03).
+2. The window opens only in the home-screen phone app (is-phone and standalone): a Safari tab's toolbars make screen - innerHeight large while the inset may be real, and that was never measured (R4 narrowing).
+3. The property is written on <html> (not on .mms-full) so the three portrait paddings and the log read one place; outside a window it is absent and the CSS is today's env().
+4. The orientation media query keeps ONE listener: the rotation stamp's, which calls turn.flip() (a second listener broke the v1.354 "one listener" test; M11/M12 bind both halves).
+5. Highlight: a separate `menuCurrentId()` (speaker's track id while remoteOn(), else effectiveCurrentId()) feeds only cfg.menu.currentId, instead of changing effectiveCurrentId (about 25 callers; blast radius).
+6. Landscape (--pkl-*) and the other safe-area-inset-top uses are untouched: no landscape capture of this turn exists.
+7. Mutant M09 survived the first time: jsdom drops padding-top:env() from the probe's style attribute, so the test's probes() selector (on that text) matched nothing and every probe assertion was vacuous. Fixed (240e4263: the probe is the aria-hidden div in <body>, and two assertions prove it exists while open); M09 re-run killed.
+
+### Mutants (committed code, /tmp-style git archive sandbox, `node --test` on the owning file, exact-once replace restored in finally)
+
+On 0752927a: 24 mutants, 23 KILLED first run.
+M01 rule off KILLED (2 fail). M02 full side swapped KILLED (2). M03 drop the >=0 clamp KILLED (2). M04 cap 1000 -> 100000 KILLED (2). M05 resize never closes KILLED (1). M06 standalone gate off KILLED (1). M07 phone gate off KILLED (1). M08 close keeps the property KILLED (4). M09 close keeps the probe SURVIVED (0), then KILLED on 240e4263 (2 fail: the captured-turn test and destroy test). M10 second flip does not restart the cap KILLED (1). M11 shared-mq flag ignored KILLED (1). M12 page wiring skips turn.flip KILLED (1). M13 orientationchange not heard KILLED (2). M14 screen.orientation not heard KILLED (1). M15 destroy leaves listeners KILLED (1). M16 resize not heard KILLED (1). M17 css first portrait padding back to env() KILLED (1). M18 log pti dropped KILLED (1). M19 log cvw dropped KILLED (1). M20 log probe not removed on off KILLED (1). M21 speaker branch off KILLED (4). M22 idle speaker falls back to the phone KILLED (1). M23 menu cfg not wired to menuCurrentId KILLED (4). M24 local branch broken KILLED (2).
+Not mutated (equivalent): the `v !== lastWritten` write guard (same visible result) and `!open || closing` in resized (a resize with no flip opens nothing either way).
+
+### Tests and instruments
+
+- New: test/unit/pocket-turn-inset.test.js (11 tests: model, replay of every row, steady identity, window on each flip event, captured sequence, 1 s cap, steady sweep and gating, destroy, CSS census, rotate-log fields, real-load reachability). music-skin-integration.test.js: 5 tests (speaker id vs divergent phone id, chapter id, idle speaker, speaker advancing then leaving, local play).
+- `npm run lint:ui`: "ui-lint: OK - the live debt equals docs/ui-exceptions.json" (TOTAL 3181, unchanged). `node scripts/overlay-containment-lint.js --enforce`: "overlay-containment: clean (0 violations)".
+- W1.4 steady diff (fork, base 01e56dee vs branch 240e4263, ipod skin, phone, 3x DPR, one seeded data dir): base vs base 0/0/0 changed pixels (noise floor), base vs branch 0/0/0 on portrait, landscape and portrait-after. Control with navigator.standalone forced: the property was seen during the turn on the branch (0px in 61 of 109 samples; with a 47 px top inset 47px and 0px in 60 of 110) and ABSENT after it settled; steady frames 0/0/0. The probe can show a difference: base with inset 0 vs base with inset 47 = 582,723 / 1,055,108 / 582,723 changed pixels. The harness `capture.js --only rotation` itself was not run (a purpose-built driver on capture.js's helpers was).
+- Full suites, `npm test`, run once after W2 + W3 (240e4263): Node v22.23.1: tests 10807, pass 10795, fail 0, cancelled 0, skipped 12, EXIT 0. Node v24.20.0 (reporter prints the info marker, not #): tests 10807, pass 10795, fail 0, cancelled 0, skipped 12, EXIT 0.
+
+### Not done / open
+
+The 2 giant frames and the 1 scrolled frame are NOT fixed (instrument only, ROADMAP Planned > Bugs). Whether iOS fires an early `resize` that closes the window early is a device question (the per-frame recompute and the 1 s cap bound it).
 
 ## 7. Device checks owed (to DEVICE-CHECKS.md at release)
 
