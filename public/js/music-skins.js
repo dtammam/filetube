@@ -79,8 +79,35 @@
   function playIndHtml(paused) {
     return '<span class="mms-playind' + (paused ? ' is-paused' : '') + '" aria-hidden="true">' + skGlyph('play') + skGlyph('pause') + '</span>';
   }
-  // speaker glyph for the desktop pop-out's wheel-VOLUME bar (v1.235; SVG not emoji).
-  function ipVolGlyph() { return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4zm12.5 3a4 4 0 0 0-2.2-3.6v7.2A4 4 0 0 0 16.5 12zM14.3 4.3v1.9a6 6 0 0 1 0 11.6v1.9a8 8 0 0 0 0-15.4z"/></svg>'; }
+  // v1.353 the volume speaker: a solid cone and three sound waves (each its own path, so the quiet end
+  // of a volume bar can hide them).
+  function ipVolGlyph() {
+    return '<svg viewBox="0 0 48 48" aria-hidden="true"><path class="ip-vol-cone" d="M6 18h8l11-9v30l-11-9H6z"/>' +
+      '<path class="ip-vol-w ip-vol-w1" d="M30 18.5a7.5 7.5 0 0 1 0 11"/>' +
+      '<path class="ip-vol-w ip-vol-w2" d="M34 13.5a14 14 0 0 1 0 21"/>' +
+      '<path class="ip-vol-w ip-vol-w3" d="M38 8.5a20.5 20.5 0 0 1 0 31"/></svg>';
+  }
+  // v1.353: the remote volume, shared by the iPod volume bar and the Cider/Nordic row. A level the PC has not
+  // reported (null) shows nothing to drive: the renderers draw no volume control at all.
+  function volLevel(ctx) { var v = ctx && ctx.volume; return (typeof v === 'number' && isFinite(v)) ? Math.min(1, Math.max(0, v)) : null; }
+  function volAria(v) { return 'role="slider" aria-label="Volume" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + Math.round(v * 100) + '" tabindex="0"'; }
+  // The real iPod's volume bar: it takes the scrubber's place on Now Playing (a quiet speaker, the
+  // same glassy groove and blue fill as the scrubber, a loud speaker). No box: the iPods never drew one.
+  function ipVolBar(ctx) {
+    var v = volLevel(ctx);
+    if (v === null) return '';
+    return '<div class="ip-vol" data-skin-vol ' + volAria(v) + '><span class="ip-vol-ico ip-vol-lo">' + ipVolGlyph() + '</span>' +
+      '<div class="ip-vol-track"><div class="ip-vol-fill" style="width:' + Math.round(v * 100) + '%"></div></div>' +
+      '<span class="ip-vol-ico">' + ipVolGlyph() + '</span></div>';
+  }
+  // Cider and Nordic have no wheel and no LCD: a plain volume row under the scrubber, a tap sets the level.
+  function volRow(ctx) {
+    var v = volLevel(ctx);
+    if (v === null) return '';
+    return '<div class="mms-volrow"><span class="mms-volic mms-volic-lo" aria-hidden="true">' + ipVolGlyph() + '</span>' +
+      '<div class="mms-bar mms-volbar" data-skin-vol ' + volAria(v) + '><div class="mms-volfill" style="width:' + Math.round(v * 100) + '%"></div></div>' +
+      '<span class="mms-volic" aria-hidden="true">' + ipVolGlyph() + '</span></div>';
+  }
 
   // ---- shared building blocks (hooks + REFLECT classes are identical everywhere
   // so music.js's one proxy handler + reflectSkin work for every skin) ----------
@@ -171,6 +198,7 @@
       '<div class="mms-art"' + artVar(ctx) + '>' + artImg(ctx) + '</div>' +
       '<div class="mms-head"><div class="mms-ttl" title="' + esc(a.title) + '">' + esc(a.title || 'Unknown track') + '</div>' + artistLine('mms-sub', a.artist, ctx.artistTap, ctx.artistTitle) + '</div>' +
       '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
+      volRow(ctx) +
       '<div class="mms-transport">' + prevBtn() + playBtn(ctx) + nextBtn() + '</div>' +
       '</div>';
   }
@@ -182,6 +210,7 @@
       '<div class="mms-art"' + artVar(ctx) + '>' + artImg(ctx) + '</div>' +
       '<div class="mms-meta"><div class="mms-ttl">' + esc(a.title || 'Unknown track') + '</div>' + artistLine('mms-sub', a.artist, ctx.artistTap, ctx.artistTitle) + '</div>' +
       '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
+      volRow(ctx) +
       '<div class="mms-transport"><button type="button" class="mms-ic mms-shuffle" data-skin-shuffle aria-label="Shuffle">' + shuffleGlyph() + '</button>' + prevBtn() + playBtn(ctx) + nextBtn() + '<span class="mms-tr-spacer" aria-hidden="true"></span></div>' +
       '<div class="mms-queue"><h4 class="mms-qh">Next in queue</h4><div class="mms-qlist">' + goRows(ctx, true) + '</div></div>';
   }
@@ -192,14 +221,16 @@
   // prev/next skip tracks, bottom=play/pause; center opens the list from Now Playing and,
   // in the list, PLAYS the highlighted song. Spinning the wheel with the list open moves
   // the selection cursor song-by-song (fast flicks accelerate). In Now Playing the spin
-  // sets VOLUME in the desktop pop-out (v1.235, where media.volume is settable - a volume
-  // bar swaps in for the scrubber); on iPhone (the in-tab skin) it does nothing, since iOS
-  // makes media.volume read-only. Play STATE shows in the status bar.
+  // SCRUBS (Dean 2026-09-02, every surface); v1.353: while this phone controls a speaker, a tap
+  // on the time labels brings up the volume bar and the wheel turns the SPEAKER's volume
+  // until it goes (skin-surface.js). Play STATE shows in the status bar.
   // The shared iPod SCREEN (LCD + list) - every Click colorway renders it, so the list-view
   // flip, scrub, reflect and marquee machinery is identical.
   function ipScreen(ctx) {
     var a = ctx.track || {}; var u = artUrl(ctx);
     var nof = (Number(ctx.curNum) || 0) > 0 ? (ctx.curNum + ' of ' + (ctx.total || ctx.curNum)) : '';
+    // v1.353 (R2): with a speaker's volume to drive, the time labels are the one-tap way to it
+    var volTap = volLevel(ctx) === null ? '' : ' data-skin-voltap role="button" aria-label="Volume"';
     return '<div class="ip-lcd"><div class="ip-lcd-in">' +
       '<div class="ip-status"><span class="ip-np">Now Playing</span>' + remoteBadge(ctx) +
       '<span class="ip-status-rt">' + playIndHtml(ctx.playing === false) + '<span class="ip-batt" aria-hidden="true"><i></i></span></span></div>' +
@@ -213,14 +244,11 @@
       '<div class="ip-album">' + esc(a.album || '') + '</div>' +
       '<div class="ip-stars" aria-hidden="true">' + skGlyph('star') + skGlyph('star') + skGlyph('star') + skGlyph('star') + skGlyph('star') + '</div>' +
       '<div class="ip-nof">' + esc(nof) + '</div></div></div>' +
-      '<div class="ip-scrub"><span class="mms-pos">' + esc(ctx.posLabel || '0:00') + '</span>' +
+      '<div class="ip-scrub"><span class="mms-pos"' + volTap + '>' + esc(ctx.posLabel || '0:00') + '</span>' +
       '<div class="ip-track" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div>' +
-      '<span class="mms-rem">' + esc(ctx.remLabel || '') + '</span></div>' +
-      // v1.235's wheel-VOLUME bar, DORMANT since v1.250 (Dean retired wheel-volume - the
-      // Now-Playing wheel scrubs everywhere). Nothing writes .ip-vol-fill or .mms-voladj
-      // any more; the markup stays only to avoid churning every skin render this wave.
-      '<div class="ip-vol" aria-hidden="true"><span class="ip-vol-ico">' + ipVolGlyph() + '</span>' +
-      '<div class="ip-vol-track"><div class="ip-vol-fill"></div></div></div></div>' +
+      '<span class="mms-rem"' + volTap + '>' + esc(ctx.remLabel || '') + '</span></div>' +
+      // v1.353: the volume bar (only while a speaker reports a volume); it replaces the scrubber while it shows
+      ipVolBar(ctx) + '</div>' +
       // --- List view (Select flips to it) ---
       '<div class="ip-listview">' + goRows(ctx, false, ctx.fullList) + '</div>' +
       '</div></div>';
@@ -1017,7 +1045,7 @@
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
     skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, skinFamilies: skinFamilies, skinLines: skinLines, colorwayLabel: colorwayLabel, menuSkinItems: menuSkinItems, isClickColorway: isClickColorway,
     renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
-    remoteBadge: remoteBadge, skinActiveFor: skinActiveFor, isPhone: isPhone, phoneFrom: phoneFrom, markPhoneClass: markPhoneClass,
+    remoteBadge: remoteBadge, volLevel: volLevel, skinActiveFor: skinActiveFor, isPhone: isPhone, phoneFrom: phoneFrom, markPhoneClass: markPhoneClass,
     PHONE_CLASS: PHONE_CLASS, PHONE_SHORT_SIDE_MAX: PHONE_SHORT_SIDE_MAX, observeSettled: observeSettled,
     // the pocket menus (the pure half - see the block above).
     menuStyle: menuStyle, menuTitle: menuTitle, menuStaticItems: menuStaticItems,

@@ -35,6 +35,8 @@
 
   // What the PC reports: idle when nothing is loaded, else playing/paused (or blocked). needsClick
   // (v1.352 W0): this tab has had no click or key yet, so the browser will refuse to start sound.
+  // volume/muted (v1.353): the player volume the phone's Volume bar shows, rounded to 2 places; a
+  // player that cannot say reports no volume (null), never a made-up one.
   function buildStatePayload(deviceId, snap, blocked, needsClick) {
     var s = snap || {};
     var id = typeof s.id === 'string' && s.id ? s.id : null;
@@ -47,7 +49,9 @@
       state: state,
       hasPrev: !!s.hasPrev,
       hasNext: !!s.hasNext,
-      needsClick: !!needsClick
+      needsClick: !!needsClick,
+      volume: Number.isFinite(s.volume) ? Math.round(Math.min(1, Math.max(0, s.volume)) * 100) / 100 : null,
+      muted: s.muted === true
     };
   }
 
@@ -101,6 +105,10 @@
     var wait = lastAt + REPORT_THROTTLE_MS - now;
     return wait > 0 ? wait : 0;
   }
+
+  // The element events that change what the PC reports (v1.353: volumechange, so a change made AT the PC,
+  // its own slider or keys, reaches the phone's Volume bar).
+  var MEDIA_EVENTS = ['play', 'pause', 'seeked', 'ended', 'loadedmetadata', 'emptied', 'volumechange'];
 
   // ---- runtime ------------------------------------------------------------
 
@@ -200,6 +208,13 @@
       sendState();
       notify();
     }
+    // v1.353: a volume change that makes PLAYING sound audible is the same proof as onPlaying (a kiosk
+    // that started at volume 0, or muted, and the phone turns it up): the click hint goes.
+    function onVolume(e) {
+      onMedia();
+      var el = e && e.target;
+      if (el && el.paused === false) onPlaying(e);
+    }
     // The first click or key since load: the browser now lets this tab start sound.
     function onActivation() {
       if (!needsClick) return;
@@ -214,8 +229,8 @@
     function bindMedia() {
       if (mediaBound || !env.document) return;
       mediaBound = true;
-      ['play', 'pause', 'seeked', 'ended', 'loadedmetadata', 'emptied'].forEach(function (t) {
-        env.document.addEventListener(t, onMedia, true);
+      MEDIA_EVENTS.forEach(function (t) {
+        env.document.addEventListener(t, t === 'volumechange' ? onVolume : onMedia, true);
       });
       env.document.addEventListener('filetube:autostart', onAutostart);
       env.document.addEventListener('playing', onPlaying, true);
@@ -224,8 +239,8 @@
     function unbindMedia() {
       if (!mediaBound || !env.document) return;
       mediaBound = false;
-      ['play', 'pause', 'seeked', 'ended', 'loadedmetadata', 'emptied'].forEach(function (t) {
-        env.document.removeEventListener(t, onMedia, true);
+      MEDIA_EVENTS.forEach(function (t) {
+        env.document.removeEventListener(t, t === 'volumechange' ? onVolume : onMedia, true);
       });
       env.document.removeEventListener('filetube:autostart', onAutostart);
       env.document.removeEventListener('playing', onPlaying, true);
@@ -250,7 +265,12 @@
         if (navTimer) env.clearTimeout(navTimer);
         navTimer = env.setTimeout(function () {
           navTimer = null;
-          if (pendingPlay) { pendingPlay = null; attached && post('/api/remote/state', buildStatePayload(env.deviceId(), null, false, needsClick)); }
+          if (!pendingPlay) return;
+          pendingPlay = null;
+          // idle (the Music view never came), but the volume is still this PC's (v1.353: every carrier)
+          var ps = null;
+          try { var p2 = player(); ps = p2 && p2.getRemoteSnapshot ? p2.getRemoteSnapshot() : null; } catch (_) { ps = null; }
+          if (attached) post('/api/remote/state', buildStatePayload(env.deviceId(), ps ? { volume: ps.volume, muted: ps.muted } : null, false, needsClick));
         }, NAVIGATE_TIMEOUT_MS);
         try { env.navigate('/music'); } catch (_) { /* the timeout reports idle */ }
         return;
@@ -261,6 +281,7 @@
       else if (c.cmd === 'next') pl.next();
       else if (c.cmd === 'prev') pl.prev();
       else if (c.cmd === 'seek') pl.seek(a.position);
+      else if (c.cmd === 'volume') { if (typeof pl.setVolume === 'function') pl.setVolume(a.level); }
       else return;
       scheduleReport();
     }
@@ -407,6 +428,10 @@
   var CONTROL_KEY = 'ft-remote-controlling';
   var CONTROL_POLL_MS = 2000;
   var SEEK_THROTTLE_MS = 250;
+  var VOLUME_THROTTLE_MS = 250; // v1.353 (R4): at most one volume command per 250 ms, the last level always sent
+  // A level this device just set holds on screen this long, so a PC report sent BEFORE the command
+  // landed (the 500 ms report throttle) cannot snap the bar back mid-turn.
+  var VOLUME_HOLD_MS = 1500;
   var PLAY_MAX_IDS = 2000;
 
   // D6: a play command carries at most PLAY_MAX_IDS ids; a longer list sends the slice that starts at the
@@ -442,6 +467,10 @@
     var seekTimer = null;
     var seekLastAt = -Infinity;
     var seekPending = null;
+    var volTimer = null;
+    var volLastAt = -Infinity;
+    var volPending = null;
+    var volHeld = null;   // {level, at}: the level the wheel set, shown until the PC reports it or the hold ends
     var streamWanted = false;
 
     function notify() {
@@ -459,8 +488,17 @@
       if (pollTimer) { env.clearTimeout(pollTimer); pollTimer = null; }
       polling = false;
     }
+    // A level above 0 un-mutes the PC (player.setVolume, the slider's rule), so the shown state does too.
+    function heldFields(lv, s) { return lv > 0 ? { volume: lv, muted: false } : { volume: lv, muted: !!(s && s.muted) }; }
+    // The PC's report, with a level this device set in the last VOLUME_HOLD_MS kept on top of it.
+    function withHeldVolume(s) {
+      if (!volHeld) return s;
+      if (env.now() - volHeld.at > VOLUME_HOLD_MS || s.volume === volHeld.level) { volHeld = null; return s; }
+      return Object.assign({}, s, heldFields(volHeld.level, s));
+    }
     function setState(s) {
       if (!s || typeof s !== 'object') return;
+      s = withHeldVolume(s);
       last = s;
       receivedAt = env.now();
       notify();
@@ -509,9 +547,18 @@
       es.onerror = function () { if (es && es.readyState === 2) startPolling(); };
     }
 
+    // The throttled seek and volume and the held level belong to the speaker they were meant for (gate r1,
+    // qa W1 = adversary W1, measured: a switch straight to another PC sent A's level to B and showed it there).
+    function dropPending() {
+      if (seekTimer) { env.clearTimeout(seekTimer); seekTimer = null; }
+      seekPending = null;
+      if (volTimer) { env.clearTimeout(volTimer); volTimer = null; }
+      volPending = null; volHeld = null;
+    }
     function select(target) {
       if (!target || !target.deviceId) return;
       closeStream();
+      dropPending();
       targetId = target.deviceId;
       label = target.label || 'PC';
       last = target.state || null;
@@ -523,8 +570,7 @@
     }
     function leave(silent) {
       closeStream();
-      if (seekTimer) { env.clearTimeout(seekTimer); seekTimer = null; }
-      seekPending = null;
+      dropPending();
       streamWanted = false;
       var was = !!targetId;
       targetId = ''; label = ''; last = null;
@@ -587,6 +633,27 @@
       seekLastAt = env.now();
       send('seek', { position: pos });
     }
+    // v1.353 (R4, the seek throttle's twin): the wheel sends at most one volume per VOLUME_THROTTLE_MS and
+    // the last level always goes out; the shown level is this one until the PC reports it.
+    function volume(level) {
+      if (!targetId || typeof level !== 'number' || !isFinite(level)) return;
+      var lv = Math.round(Math.min(1, Math.max(0, level)) * 100) / 100;
+      volPending = lv;
+      volHeld = { level: lv, at: env.now() };
+      if (last) last = Object.assign({}, last, heldFields(lv, last));
+      notify();
+      var wait = volLastAt + VOLUME_THROTTLE_MS - env.now();
+      if (wait <= 0 && !volTimer) { flushVolume(); return; }
+      if (!volTimer) volTimer = env.setTimeout(function () { volTimer = null; flushVolume(); }, wait > 0 ? wait : 0);
+    }
+    function flushVolume() {
+      if (volPending === null || !targetId) return;
+      var lv = volPending;
+      volPending = null;
+      volLastAt = env.now();
+      if (volHeld) volHeld.at = env.now(); // the hold runs from the SEND, not the turn
+      send('volume', { level: lv });
+    }
     function visibility(hidden) {
       if (!targetId) return;
       if (hidden) { closeStream(); return; }
@@ -616,6 +683,7 @@
       next: function () { return send('next'); },
       prev: function () { return send('prev'); },
       seek: seek,
+      volume: volume,
       visibility: visibility,
       onChange: function (fn) {
         if (typeof fn !== 'function') return function () {};

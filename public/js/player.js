@@ -9353,6 +9353,21 @@ if (typeof module !== 'undefined' && module.exports) {
     next: function () { manualTrackStep('next'); },
     prev: function () { manualTrackStep('prev'); },
     seek: function (sec) { if (typeof sec === 'number' && isFinite(sec) && sec >= 0) seekActiveMedia(sec, false); },
+    // v1.353: a phone sets this PC's player volume. The SAME rule as the volume slider's input and the
+    // ArrowUp/Down step (raising off 0 un-mutes); the slider fill, the mute icon and the stored
+    // ft-volume / ft-muted all ride the existing 'volumechange' listener. Before the first load there is
+    // no element yet: the level is stored, and the first load applies it (initVolume).
+    setVolume: function (level) {
+      if (typeof level !== 'number') return false;
+      var v = clampVolume(level);
+      if (v === null) return false;
+      v = Math.round(v * 100) / 100;
+      if (!mediaPlayer) { persistVolume(v, v > 0 ? false : loadStoredMuted()); return true; }
+      if (!volumeSettable) return false;
+      mediaPlayer.volume = v;
+      if (v > 0 && mediaPlayer.muted) mediaPlayer.muted = false;
+      return true;
+    },
     // v1.348: what a remote controller mirrors - the loaded id, the live position and the prev/next reach.
     getRemoteSnapshot: function () {
       var el = activeMediaElement();
@@ -9363,7 +9378,11 @@ if (typeof module !== 'undefined' && module.exports) {
         duration: dur,
         playing: !!(el && !el.paused && !el.ended),
         hasPrev: !!(trackNavHandlers && typeof trackNavHandlers.onPrev === 'function'),
-        hasNext: !!(trackNavHandlers && typeof trackNavHandlers.onNext === 'function')
+        hasNext: !!(trackNavHandlers && typeof trackNavHandlers.onNext === 'function'),
+        // v1.353: the player volume (the element's, or the stored preference before the first load); null
+        // where a page cannot set it (iOS, the volumeIsSettable probe): a phone then offers no volume bar
+        volume: mediaPlayer ? (volumeSettable ? mediaPlayer.volume : null) : (function () { var sv = loadStoredVolume(); return sv === null ? 1 : sv; })(),
+        muted: mediaPlayer ? !!mediaPlayer.muted : loadStoredMuted()
       };
     },
     // v1.334: iOS refused this load's auto-start (no user gesture: a notification's page) and it has not

@@ -393,13 +393,18 @@ test('v1.233: a fast flick ACCELERATES (songs-per-step scales with angular speed
   assert.match(body, /setWheelCursor\(wheelCursorRow \+ sign \* mult/, 'the multiplier drives how many songs the cursor jumps');
 });
 
-test('v1.250 (Dean): ONE Now-Playing wheel behavior - SCRUB - on every surface; dead-center Select still passes through', () => {
+test('v1.250 (Dean): the Now-Playing wheel SCRUBS on every surface; v1.353: the one exception is a SPEAKER\'s volume bar; dead-center Select still passes through', () => {
   // Dean 2026-09-02 retired v1.235's pop-out wheel-volume ("make the classic wheel scrub
-  // like it does on mobile - consistent UI and useful"): the mode line has exactly two
-  // arms, cursor (list) and scrub (Now Playing) - no volume, nowhere. Pocket menus (2026-09-24): a pocket-menu
-  // level is a cursor list too (the SAME cursor arm), so the line reads (list || menu).
+  // like it does on mobile - consistent UI and useful"): cursor (list) and scrub (Now Playing).
+  // Pocket menus (2026-09-24): a pocket-menu level is a cursor list too, so the line reads
+  // (list || menu). v1.353 (the plan's R1, Dean 2026-10-01): a third arm only while the volume bar
+  // of a CONTROLLED SPEAKER is up (volOpen, and volumeShowable needs the view's speaker level).
   const { body } = wheelHandlerSrc();
-  assert.match(body, /mode: \(listMode \|\| menuMode\) \? 'cursor' : 'scrub'/, 'list/menu -> cursor, Now Playing -> scrub; no third mode');
+  assert.match(body, /mode: \(listMode \|\| menuMode\) \? 'cursor' : \(\(volOpen && volumeShowable\(\)\) \? 'volume' : 'scrub'\)/, 'list/menu -> cursor, the speaker volume bar -> volume, Now Playing -> scrub');
+  const fs = require('node:fs'); const path = require('node:path');
+  const engine = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
+  assert.match(engine, /function volumeShowable\(\) \{\s*return volumeLevel\(\) !== null &&/, 'the bar needs a speaker level');
+  assert.match(engine, /try \{ if \(volumeCfg\.available\(\)\) v = volumeCfg\.level\(\); \}/, 'and the level needs the view to say a speaker is controlled');
   assert.match(body, /r\.width \* DEAD_FRAC[\s\S]*?return/, 'a press on the dead center (Select) is ignored so its tap passes through (DEAD_FRAC sourced from the shared module, v1.303)');
 });
 
@@ -433,20 +438,22 @@ test('v1.233: the wheel CURSOR bar is a distinct highlight - is-cursor gets the 
 });
 
 // ---- v1.235: wheel-VOLUME in Now Playing (desktop pop-out) - source locks ---------------
-test('v1.250 (Dean): wheel-volume is RETIRED - no volume mode, no adjustVolume, in either file', () => {
+test('v1.250 (Dean): LOCAL wheel-volume is RETIRED - the engine never sets an element volume, no adjustVolume, no allowVolume', () => {
   // Dean 2026-09-02: "make the classic wheel scrub like it does on mobile instead of
-  // volume, consistent UI and useful." The v1.235 pop-out wheel-volume is gone; the shared
-  // engine carries the ONE gesture implementation and it has no volume arm. (The dormant
-  // .ip-vol-fill markup/CSS stay in music-skins.js/style.css - unused, zero-risk.)
+  // volume, consistent UI and useful." The v1.235 pop-out wheel-volume is gone. v1.353: the
+  // engine's only volume is a CONTROLLED SPEAKER's, sent through the view's volume.set (RC.volume);
+  // it never writes a local element's volume.
   const fs = require('node:fs'); const path = require('node:path');
   const engine = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
   const music = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'music.js'), 'utf8');
-  assert.ok(!/'volume'/.test(engine), 'no volume gesture mode in the engine');
+  assert.ok(!/\.volume\s*=[^=]/.test(engine), 'the engine never writes an element volume');
+  assert.ok(!/\.muted\s*=[^=]/.test(engine), 'or a mute');
+  assert.match(engine, /try \{ volumeCfg\.set\(lv\); \}/, 'the one volume write is the view\'s speaker hook');
   assert.ok(!/function adjustVolume/.test(engine) && !/function adjustVolume/.test(music), 'adjustVolume is gone from both files');
   assert.ok(!/allowVolume/.test(engine) && !/allowVolume/.test(music), 'no allowVolume flag survives anywhere');
 });
 
-test('v1.235 CSS is DORMANT since v1.250 (wheel-volume retired; .mms-voladj has no writer) - rules kept unchurned this wave', () => {
+test('v1.353 the iPod volume bar CSS: hidden by default; .mms-voladj (a controlled speaker\'s bar, written only by the engine) swaps it for the scrubber', () => {
   const fs = require('node:fs'); const path = require('node:path');
   const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
   assert.match(css, /\.mms-ipod \.ip-vol\{[^}]*display:\s*none/, 'the volume bar is hidden by default');

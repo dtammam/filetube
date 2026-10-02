@@ -1,0 +1,52 @@
+{
+  "no-user-gesture-required": {
+    "hasBeenActive": false,
+    "volume_cmd": "400 {\"error\":\"unknown cmd\"}",
+    "phone_api_has_volume": "undefined",
+    "playing": true,
+    "volume_before": 1,
+    "volume_set_03": 0.3,
+    "ft_volume_after": "0.3",
+    "playing_after": true,
+    "hasBeenActive_after": false
+  },
+  "user-gesture-required": {
+    "hasBeenActive": false,
+    "volume_cmd": "400 {\"error\":\"unknown cmd\"}",
+    "phone_api_has_volume": "undefined",
+    "hasBeenActive_reload": false,
+    "element_seen": true,
+    "state_on_phone": "playing",
+    "speaker_snapshot": {
+      "path": "/music",
+      "refused": false,
+      "el": true,
+      "id": "song2",
+      "position": 1.896866,
+      "duration": 60,
+      "playing": true,
+      "hasPrev": false,
+      "hasNext": true
+    },
+    "muted_play": {
+      "muted": true,
+      "paused": false,
+      "vol": 1
+    },
+    "unmute": {
+      "muted": false,
+      "paused": true,
+      "vol": 0.5
+    },
+    "zero_then_up": {
+      "atZero": {
+        "paused": true
+      },
+      "after": {
+        "paused": true,
+        "vol": 0.5
+      }
+    }
+  },
+  "errors": []
+}

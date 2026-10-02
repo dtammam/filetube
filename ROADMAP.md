@@ -4,6 +4,18 @@
 
 ### Bugs
 
+- [ ] **Speakers volume: small edges disclosed at v1.353's gate r2** _(adversary + QA, measured)_ - (a) an iPhone or iPad speaker
+  that has not played anything yet still reports its stored level, so the phone offers a bar whose level is only stored (the
+  player's settable-volume probe runs at the first load; probe a detached element at boot instead); (b) a muted PC whose stored
+  level equals the level just set releases the phone's hold early and shows empty for about 500 ms (match `muted` too when
+  ending the hold); (c) re-picking the SAME speaker within 250 ms of a turn drops the last waiting level; (d) the waiting SEEK
+  dropped on a direct switch is fixed (dropPending) but no test binds it, and the iPod bar's speaker-icon tap keeping the bar up
+  and the Cider/Nordic tap area are measured in the browser only.
+- [ ] **Speakers: on the PC, the handoff card ("Continue here") can sit over the remote pill's "Click anywhere" text**
+  _(measured during the v1.353 build, headless Chromium)_ - once the same user has played on another device, the PC's handoff
+  card covers the centre of the pill's text, and a click there presses "Continue here", which PLAYS (the pill asks for a click
+  anywhere, so a user aiming at the text starts the song the card offers). Pre-existing since v1.352's pill; out of v1.353's
+  scope. Fix shape: hide the handoff card while Remote control is On (the tab is a speaker), or stack the pill above it.
 - [ ] **Speakers: the chapter name on the phone falls back to the picked chapter when the PC leaves Music, or re-opens it
   mid-file** _(gate r3 of v1.352, adversary + QA, measured)_ - v1.352 reports the chapter the PC's Music view shows; on Home
   (the view torn down) or after a re-opened Music view (its chapter tracking starts empty) the phone shows the loaded
@@ -484,6 +496,24 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.353.0 - Turn the speaker computer up or down from your phone (2026-10-02)
+
+- Speakers volume: while the phone controls a speaker computer, a tap on the Now Playing time labels (or Speakers > Volume)
+  swaps the scrubber for the iPod's own volume bar, in place (Dean's ruling after a look round: no box, the iPods never drew
+  one); the wheel turns the speaker's PLAYER volume 5% a detent; MENU, Select or 2 s idle put the scrubber back. Local play
+  never shows it (the 2026-09-02 scrub rule holds). Cider and Nordic get a volume row. A muted PC shows empty, up un-mutes from
+  5%, down does nothing (Dean's ruling at gate r1). A speaker whose volume a page cannot set (iOS) offers no bar.
+- Wire: a `volume` command (a finite level, clamped; 400 otherwise; a newer volume supersedes one still queued), `volume` /
+  `muted` in the PC's state on every carrier; `player.setVolume` takes the slider's own rule (raising off 0 un-mutes);
+  `volumechange` reported, and audible playing sound clears the click hint. The phone throttles to one command per 250 ms (the
+  last level always sent) and holds the shown level until the PC reports it; switching or leaving drops what was waiting.
+- Measured in real browsers (tools/listen-control-proof/volume-proof.js, raw JSON beside it): every row passes, 0 page errors;
+  the phone's 30% reached the PC in 5 ms and survives a reload, the PC's slider reached the phone in 408 ms, a muted
+  never-clicked tab pauses when un-muted (a browser rule) and the phone then asks for the click. Suites on b145bd14: Node
+  22.23.1 and 24.20.0, each 10640 tests, 10628 pass, 0 fail, 12 skipped. `lint:ui` shrank by 2 paid entries, overlay 0.
+- Gate: adversary, QA and security-brief, two rounds; all three APPROVED r2 @b145bd14. Disclosed in Planned: an iOS speaker
+  before its first song still offers a bar; two sub-second bar edges; the waiting seek on a direct switch is fixed but unbound.
 
 ### v1.352.0 - A speaker computer from a bookmark, the one click, links you can keep (2026-10-01)
 
