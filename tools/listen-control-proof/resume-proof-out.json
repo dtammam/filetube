@@ -1,40 +1,40 @@
 {
   "notes": [],
-  "speaker_label": "Linux PC · Radish",
+  "speaker_label": "Linux PC · Urchin",
   "setup_is_phone": true,
   "setup_speaker_playing": "song1",
   "setup_record_after_pick": {
     "v": 1,
-    "deviceId": "0008422e-47ab-4b70-8df8-f043064992ba",
-    "label": "Linux PC · Radish",
+    "deviceId": "d25ebe81-cb96-489a-9ad2-ef6d599fd37b",
+    "label": "Linux PC · Urchin",
     "user": "1",
-    "at": 1790964590844
+    "at": 1790968971463
   },
   "setup_command_posts": 1,
   "setup_record_saved": {
     "v": 1,
-    "deviceId": "0008422e-47ab-4b70-8df8-f043064992ba",
-    "label": "Linux PC · Radish",
+    "deviceId": "d25ebe81-cb96-489a-9ad2-ef6d599fd37b",
+    "label": "Linux PC · Urchin",
     "user": "1",
-    "at": 1790964594051
+    "at": 1790968974699
   },
   "setup_record_at_vs_close_ms": 2,
   "ac1_tab_pick_at_load": null,
-  "ac1_attached_ms": 311,
+  "ac1_attached_ms": 226,
   "ac1_phone": {
     "isRemote": true,
-    "label": "Linux PC · Radish",
+    "label": "Linux PC · Urchin",
     "track": "Proof Song 1",
     "state": "playing",
     "mmsOn": true,
-    "lcdText": "Now Playingon Linux PC · RadishProof Song 1Proof BandProof Album0:03-9:56Proof Song 110:002Proof Song 210:003Proof Song 310:00MENUHome›Speed0.25×0.5×0.75×Normal",
-    "tabPick": "{\"deviceId\":\"0008422e-47ab-4b70-8df8-f043064992ba\",\"label\":\"Linux PC · Radish\"}",
+    "lcdText": "Now Playingon Linux PC · UrchinProof Song 1Proof BandProof Album0:03-9:56Proof Song 110:002Proof Song 210:003Proof Song 310:00MENUHome›Speed0.25×0.5×0.75×Normal",
+    "tabPick": "{\"deviceId\":\"d25ebe81-cb96-489a-9ad2-ef6d599fd37b\",\"label\":\"Linux PC · Urchin\"}",
     "record": {
       "v": 1,
-      "deviceId": "0008422e-47ab-4b70-8df8-f043064992ba",
-      "label": "Linux PC · Radish",
+      "deviceId": "d25ebe81-cb96-489a-9ad2-ef6d599fd37b",
+      "label": "Linux PC · Urchin",
       "user": "1",
-      "at": 1790964594448
+      "at": 1790968975104
     },
     "localPlayer": null
   },
@@ -43,12 +43,12 @@
     "cursor": null
   },
   "ac1_toasts": [
-    "Playing on Linux PC · Radish"
+    "Playing on Linux PC · Urchin"
   ],
   "ac1_speaker_track": "song1",
-  "ac1_speaker_position": 4.3,
-  "ac1_phone_position": 4.29,
-  "ac1_position_gap_s": 0.01,
+  "ac1_speaker_position": 4.25,
+  "ac1_phone_position": 4.23,
+  "ac1_position_gap_s": 0.02,
   "ac1_speaker_before": {
     "id": "song1",
     "position": 3.08,
@@ -56,19 +56,26 @@
   },
   "ac1_speaker_after_2s": {
     "id": "song1",
-    "position": 6.3,
+    "position": 6.25,
     "playing": true
   },
   "ac1_speaker_advanced_not_restarted": true,
   "ac1_command_posts": 0,
   "ac1_targets_requests": 1,
   "ac1_net_log": [
-    "GET targets @1790964594432",
+    "GET targets @1790968975086",
     "GET stream"
   ],
+  "card_speaker_played_s": 7,
+  "card_shown_while_pending": "Listening on Linux PC · UrchinProof Song 10:03 / 10:00Continue here",
+  "card_attached": true,
+  "card_after_attach_ms_at_check": 2,
+  "card_visible_1s_after_attach": false,
+  "card_visible_8s_after_attach": false,
+  "card_command_posts": 0,
   "home_attached_on_home": true,
   "home_then_music_mms_on": true,
-  "home_then_music_lcd": "Now Playingon Linux PC · RadishProof Song 1Proof BandProof Album0:07-9:52Proof Song 110:002Proof Song 210:003Proof Song 310:00MENUHome›Speed0.25×0.5×0.75×Normal",
+  "home_then_music_lcd": "Now Playingon Linux PC · UrchinProof Song 1Proof BandProof Album0:16-9:43Proof Song 110:002Proof Song 210:003Proof Song 310:00MENUHome›Speed0.25×0.5×0.75×Normal",
   "home_then_music_screen": {
     "menuMode": false,
     "cursor": null
@@ -84,8 +91,8 @@
   },
   "ac3_during_label_on_page": {
     "found": true,
-    "around": "me Playlists History P You Listening on Linux PC · Radish Proof Song 1 0:07 /",
-    "handoffCard": "Listening on Linux PC · RadishProof Song 10:07 / 10:00Continue here",
+    "around": "me Playlists History P You Listening on Linux PC · Urchin Proof Song 1 0:15 /",
+    "handoffCard": "Listening on Linux PC · UrchinProof Song 10:15 / 10:00Continue here",
     "ipodBadge": null
   },
   "ac3_tap_results": [
@@ -135,7 +142,7 @@
       "cursor": "Music"
     },
     "toasts": [
-      "Playing on Linux PC · Radish"
+      "Playing on Linux PC · Urchin"
     ]
   },
   "paused_20min_command_posts": 0,
@@ -145,7 +152,7 @@
   "playing_3h": {
     "track": "Proof Song 1",
     "toasts": [
-      "Playing on Linux PC · Radish"
+      "Playing on Linux PC · Urchin"
     ],
     "command_posts": 0
   },
@@ -155,7 +162,7 @@
   },
   "stale_listed_state": {
     "state": "playing",
-    "ageMs": 2823
+    "ageMs": 2782
   },
   "stale_paused_3h_attached": true,
   "stale_paused_3h_mirror_after_attach": "paused",
@@ -184,12 +191,51 @@
     "state": "idle",
     "track": null,
     "mmsOn": true,
-    "lcdText": "Clickon Linux PC · RadishNothing playingClick the PC's tab once to let it play0:00MusicExtrasSettingsShuffle SongsSpeakersNow PlayingMENUHome›Speed0.25×0.5×0.75",
+    "lcdText": "Clickon Linux PC · UrchinNothing playingClick the PC's tab once to let it play0:00MusicExtrasSettingsShuffle SongsSpeakersNow PlayingMENUHome›Speed0.25×0.5×0.75",
     "command_posts": 0
   },
   "idle_screen": {
     "menuMode": true,
     "cursor": "Music"
+  },
+  "signout_before": {
+    "isRemote": true,
+    "record": true,
+    "tabPick": true
+  },
+  "signout_landed": "/login",
+  "signout_after": {
+    "record": null,
+    "tabPick": null
+  },
+  "signout_command_posts": 0,
+  "signout_user2": {
+    "signedInAs": "otheruser",
+    "isRemote": false,
+    "label": "",
+    "toasts": [],
+    "record": null,
+    "tabPick": null,
+    "remote_requests": 0
+  },
+  "expiry_on_login_page": {
+    "record": true,
+    "tabPick": true
+  },
+  "expiry_after_login": {
+    "url": "/",
+    "record": null,
+    "tabPick": null,
+    "isRemote": false,
+    "toasts": []
+  },
+  "local_playing_before_release": true,
+  "local_wins": {
+    "isRemote": false,
+    "record": null,
+    "toasts": [],
+    "command_posts": 0,
+    "still_playing_here": true
   },
   "errors": []
 }

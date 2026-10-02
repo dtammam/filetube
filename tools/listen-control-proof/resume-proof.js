@@ -94,6 +94,15 @@ const phoneView = (p) => p.evaluate(() => {
 async function main() {
   const srv = await start({ seconds: 600 });
   const server = require('../../server');
+  // gate r1: a real password, so the session-expiry row can sign in through the login form (re-mint after: the change bumps tv)
+  const PASSWORD = 'resume-proof-password';
+  {
+    const authCrypto = require('../../lib/auth/crypto');
+    const u = server.userStore.getByUsername('proofadmin');
+    server.userStore.updatePassword(u.id, await authCrypto.hashPassword(PASSWORD));
+    const fresh = server.__mintTestSession({ username: 'proofadmin' });
+    srv.cookie = { name: fresh.cookieName, value: encodeURIComponent(fresh.token), url: srv.base };
+  }
   const out = { notes: [] };
   const errs = [];
   const browser = await pw.chromium.launch({ args: ['--autoplay-policy=no-user-gesture-required'] });
@@ -160,6 +169,31 @@ async function main() {
     out.ac1_targets_requests = ph.net.targets;
     out.ac1_net_log = ph.net.log.slice(0, 8);
     saved = await ph.ctx.storageState();
+    await p.close(); await ph.ctx.close();
+  }
+
+  // ---- gate r1 (Q2 = A3): the v1.78 handoff card (decided while the resume is PENDING) goes at the attach ----
+  {
+    const ph = await phoneContext(browser, srv.cookie, saved);
+    let release; const held = new Promise((r) => { release = r; });
+    let n = 0;
+    await ph.ctx.route('**/api/remote/targets*', async (route) => { n += 1; if (n === 1) await held; await route.continue(); });
+    const p = await ph.ctx.newPage();
+    p.on('pageerror', (e) => errs.push('CARD ' + e.message));
+    const cardUp = () => p.evaluate(() => { const c = document.getElementById('handoff-card'); return !!(c && !c.hidden) && c.textContent.replace(/\s+/g, ' ').trim(); });
+    await p.goto(srv.base + '/', { waitUntil: 'domcontentloaded' });
+    out.card_speaker_played_s = Math.round((await snap(sp)).position);
+    out.card_shown_while_pending = await untilNode(cardUp, 8000);
+    release();
+    const att = await untilNode(async () => (await p.evaluate(() => window.FileTube.remoteControl.isRemote())) && Date.now(), 6000);
+    out.card_attached = !!att;
+    const t1 = Date.now();
+    out.card_after_attach_ms_at_check = await untilNode(async () => !(await cardUp()) && (Date.now() - t1), 1000);
+    await sleep(Math.max(0, 1000 - (Date.now() - t1)));
+    out.card_visible_1s_after_attach = await cardUp();
+    await sleep(7000);
+    out.card_visible_8s_after_attach = await cardUp();
+    out.card_command_posts = ph.net.command;
     await p.close(); await ph.ctx.close();
   }
 
@@ -328,6 +362,78 @@ async function main() {
     const v = await phoneView(p);
     out.idle = { state: v.state, track: v.track, mmsOn: v.mmsOn, lcdText: v.lcdText, command_posts: ph.net.command };
     out.idle_screen = v.menu;
+    await p.close(); await ph.ctx.close();
+  }
+
+  // ---- gate r1 (S1 = Q1 = A1, A2): sign out while ATTACHED; then another account in that same tab ----
+  {
+    const ph = await phoneContext(browser, srv.cookie);
+    const p = await ph.ctx.newPage();
+    p.on('pageerror', (e) => errs.push('SIGNOUT ' + e.message));
+    await p.goto(srv.base + '/music', { waitUntil: 'networkidle' });
+    const t = await untilNode(async () => (await p.evaluate(() => window.FileTube.remoteControl.fetchTargets())).find((x) => x.deviceId === sid), 5000);
+    await p.evaluate((x) => window.FileTube.remoteControl.select(x), t);
+    await untilNode(async () => (await phoneView(p)).record, 5000);
+    const before = await phoneView(p);
+    out.signout_before = { isRemote: before.isRemote, record: !!before.record, tabPick: !!before.tabPick };
+    await Promise.all([p.waitForURL(/\/login/, { timeout: 10000 }), p.evaluate(() => { window.accountSignOut(); })]);
+    await p.waitForLoadState('domcontentloaded');
+    await sleep(500);
+    out.signout_landed = p.url().replace(srv.base, '');
+    out.signout_after = await p.evaluate(() => ({ record: localStorage.getItem('ft-remote-resume'), tabPick: sessionStorage.getItem('ft-remote-controlling') }));
+    out.signout_command_posts = ph.net.command;
+    // user 2 in this same tab (sessionStorage kept), same phone (localStorage kept)
+    const other = server.__mintTestSession({ username: 'otheruser' });
+    await ph.ctx.addCookies([{ name: other.cookieName, value: encodeURIComponent(other.token), url: srv.base }]);
+    const n0 = { targets: ph.net.targets, stream: ph.net.stream, command: ph.net.command };
+    await p.goto(srv.base + '/music', { waitUntil: 'networkidle' });
+    await sleep(2000);
+    const v = await phoneView(p);
+    out.signout_user2 = { signedInAs: await p.evaluate(async () => { const me = await window.fetchCurrentUser(); return me && me.user ? me.user.username : null; }),
+      isRemote: v.isRemote, label: v.label, toasts: v.toasts, record: v.record, tabPick: v.tabPick,
+      remote_requests: (ph.net.targets - n0.targets) + (ph.net.stream - n0.stream) + (ph.net.command - n0.command) };
+    await p.close(); await ph.ctx.close();
+  }
+  // ---- gate r1: a session that EXPIRED (no accountSignOut): the login form drops the speaker keys ----
+  {
+    const ph = await phoneContext(browser, srv.cookie);
+    const p = await ph.ctx.newPage();
+    p.on('pageerror', (e) => errs.push('EXPIRY ' + e.message));
+    await p.goto(srv.base + '/music', { waitUntil: 'networkidle' });
+    const t = await untilNode(async () => (await p.evaluate(() => window.FileTube.remoteControl.fetchTargets())).find((x) => x.deviceId === sid), 5000);
+    await p.evaluate((x) => window.FileTube.remoteControl.select(x), t);
+    await untilNode(async () => (await phoneView(p)).record, 5000);
+    await ph.ctx.clearCookies(); // the session is gone; nothing on the page ran sign-out
+    await p.goto(srv.base + '/login', { waitUntil: 'networkidle' });
+    out.expiry_on_login_page = await p.evaluate(() => ({ record: !!localStorage.getItem('ft-remote-resume'), tabPick: !!sessionStorage.getItem('ft-remote-controlling') }));
+    await p.fill('#login-username', 'proofadmin');
+    await p.fill('#login-password', PASSWORD);
+    await Promise.all([p.waitForURL((u) => !/\/login/.test(u.pathname), { timeout: 10000 }), p.click('#login-submit')]);
+    await p.waitForLoadState('networkidle');
+    await sleep(1000);
+    const v = await phoneView(p).catch(() => null);
+    out.expiry_after_login = { url: p.url().replace(srv.base, ''), record: v ? v.record : 'n/a', tabPick: v ? v.tabPick : 'n/a', isRemote: v ? v.isRemote : 'n/a', toasts: v ? v.toasts : 'n/a' };
+    await p.close(); await ph.ctx.close();
+  }
+
+  // ---- gate r1 (Architect ruling): music started on the phone DURING the check wins ----
+  {
+    const ph = await phoneContext(browser, srv.cookie, withRecord(saved, { at: Date.now() - 5 * MIN }));
+    let release; const held = new Promise((r) => { release = r; });
+    let n = 0;
+    await ph.ctx.route('**/api/remote/targets*', async (route) => { n += 1; if (n === 1) await held; await route.continue(); });
+    const p = await ph.ctx.newPage();
+    p.on('pageerror', (e) => errs.push('LOCAL ' + e.message));
+    await p.goto(srv.base + '/music', { waitUntil: 'domcontentloaded' });
+    await untilNode(() => p.evaluate(() => window.FileTube.remoteControl.resumePending()), 6000);
+    // a song started on the phone during the check (the view's own deep-link play path; the phone is local, so it plays here)
+    await p.evaluate(() => window.FileTube.navigate('/music?play=song2'));
+    out.local_playing_before_release = await untilNode(() => p.evaluate(() => window.FileTube.player.getRemoteSnapshot().playing), 6000);
+    release();
+    await sleep(1500);
+    const v = await phoneView(p);
+    out.local_wins = { isRemote: v.isRemote, record: v.record, toasts: v.toasts, command_posts: ph.net.command,
+      still_playing_here: await p.evaluate(() => window.FileTube.player.getRemoteSnapshot().playing) };
     await p.close(); await ph.ctx.close();
   }
 

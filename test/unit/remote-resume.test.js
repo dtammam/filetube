@@ -61,7 +61,7 @@ function harness(o) {
     localStore: local,
     isPhone: () => phone,
     currentUser: () => (typeof o.user === 'function' ? o.user() : Promise.resolve(o.user === undefined ? 7 : o.user)),
-    player: () => ({ pause: () => pauses.push(clock) }),
+    player: () => ({ pause: () => pauses.push(clock), getRemoteSnapshot: () => ({ playing: !!(o.localPlaying && o.localPlaying()) }) }),
     document: { get visibilityState() { return hidden ? 'hidden' : 'visible'; } },
     now: () => clock,
     setTimeout: (f, ms) => { tid += 1; timers.set(tid, { f, at: clock + ms }); return tid; },
@@ -393,7 +393,7 @@ test('R7: the record is forgotten on This device, on lost() (target-gone, a 410)
   assert.strictEqual(k.record(), null, 'This device');
 });
 
-test('R7: sign-out forgets the remembered speaker (accountSignOut, executed)', async () => {
+test('R7: sign-out removes the stored record (accountSignOut, executed, no controller on the page)', async () => {
   const { JSDOM } = require('jsdom');
   const COMMON = require.resolve('../../public/js/common.js');
   const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/music' });
@@ -477,4 +477,175 @@ test('bootWhenReady wires the controller: pagehide stamps (beside the target\'s 
   w.document.visibilityState = 'hidden'; docHandlers.visibilitychange();
   w.document.visibilityState = 'visible'; docHandlers.visibilitychange();
   assert.deepStrictEqual(calls.slice(3), ['control.visibility:true', 'control.visibility:false']);
+});
+
+// ---------------------------------------------------------------- gate r1 fix round
+test('gate r1 (Q3a/A4): the toast, the label, the per-tab pick and the new record all use the LISTED label, never the record\'s', async () => {
+  const h = harness({ targets: [Object.assign(speaker('playing'), { label: 'Den Speaker' })] });
+  h.remember(rec({ label: 'Old Name' }));
+  h.c.restore(); await h.settle();
+  assert.strictEqual(h.c.isRemote(), true);
+  assert.deepStrictEqual(h.toasts, ['Playing on Den Speaker']);
+  assert.strictEqual(h.c.label(), 'Den Speaker');
+  assert.strictEqual(JSON.parse(h.session.m.get(R.CONTROL_KEY)).label, 'Den Speaker');
+  assert.strictEqual(h.record().label, 'Den Speaker');
+});
+
+test('gate r1 (Q3b/A4): a pick then This device before /api/auth/me answers leaves NO record (the owner lookup lands after the leave)', async () => {
+  const me = deferred();
+  const h = harness({ user: () => me.p });
+  h.c.select({ deviceId: 'pc', label: 'Desk' });
+  h.c.leave();
+  me.resolve(7);
+  await h.settle();
+  assert.strictEqual(h.record(), null);
+});
+
+test('gate r1 (Q3c): a record swapped to ANOTHER user mid-check (same speaker) is not acted on: no attach, that record left alone', async () => {
+  const gate = deferred();
+  const h = harness({ targets: () => gate });
+  h.remember(rec());
+  h.c.restore(); await h.settle();
+  h.remember(rec({ user: '9' })); // a sign-out and another sign-in in another tab
+  gate.resolve([speaker('playing')]);
+  await h.settle();
+  assert.strictEqual(h.c.isRemote(), false);
+  assert.deepStrictEqual(h.toasts, []);
+  assert.strictEqual(h.record().user, '9', 'the other account\'s record is not this check\'s to delete');
+});
+
+test('gate r1 (A4): a per-tab restore the targets check confirms writes the record (with the listed label)', async () => {
+  const h = harness({ targets: [Object.assign(speaker('playing'), { label: 'Den Speaker' })] });
+  h.session.m.set(R.CONTROL_KEY, JSON.stringify({ deviceId: 'pc', label: 'Desk' }));
+  h.c.restore(); await h.settle();
+  assert.strictEqual(h.c.isRemote(), true);
+  assert.deepStrictEqual(h.record(), { v: 1, deviceId: 'pc', label: 'Den Speaker', user: '7', at: T0 });
+});
+
+test('gate r1 (A4): the retry is armed only by a check that could not decide (a superseded check never retries)', async () => {
+  const gate = deferred();
+  const h = harness({ targets: () => gate });
+  h.remember(rec());
+  h.c.restore(); await h.settle();
+  h.remember(rec({ deviceId: 'pc2', label: 'Den' })); // superseded by another tab
+  gate.resolve([speaker('playing')]);
+  await h.settle();
+  h.c.visibility(true); h.c.visibility(false); await h.settle();
+  assert.strictEqual(h.targetFetches(), 1, 'no second check on return');
+  assert.strictEqual(h.c.isRemote(), false);
+});
+
+test('gate r1 (Architect ruling): music started on the phone DURING the check wins: no attach, no toast, record deleted, nothing paused', async () => {
+  const gate = deferred();
+  let playing = false;
+  const h = harness({ targets: () => gate, localPlaying: () => playing });
+  h.remember(rec());
+  h.c.restore(); await h.settle();
+  playing = true; // a tap on a song while the check is out
+  gate.resolve([speaker('playing')]);
+  await h.settle();
+  assert.strictEqual(h.c.isRemote(), false);
+  assert.deepStrictEqual(h.toasts, []);
+  assert.strictEqual(h.record(), null);
+  assert.strictEqual(h.pauses.length, 0, 'the phone\'s own music is left playing');
+  assert.strictEqual(h.cmds().length, 0);
+  assert.strictEqual(h.sources.length, 0);
+});
+
+// The real accountSignOut against the REAL controller, both on one jsdom window (storage shared, as in a browser).
+async function withSignOutPage(fn) {
+  const { JSDOM } = require('jsdom');
+  const COMMON = require.resolve('../../public/js/common.js');
+  const dom = new JSDOM('<!DOCTYPE html><body></body>', { url: 'http://localhost/music' });
+  const keep = {};
+  for (const k of ['window', 'document', 'localStorage', 'sessionStorage', 'fetch']) keep[k] = global[k];
+  try {
+    delete global.window; delete global.document;
+    delete require.cache[COMMON];
+    const C = require(COMMON);
+    global.window = dom.window; global.document = dom.window.document;
+    global.localStorage = dom.window.localStorage; global.sessionStorage = dom.window.sessionStorage;
+    const net = [];
+    global.fetch = async (u) => { net.push(String(u)); return { ok: true, status: 200, json: async () => ({}) }; };
+    await fn({ dom, C, net });
+  } finally {
+    delete require.cache[COMMON];
+    for (const k of Object.keys(keep)) { if (keep[k] === undefined) delete global[k]; else global[k] = keep[k]; }
+  }
+}
+function pageController(dom, o) {
+  const fetches = []; const toasts = [];
+  const env = {
+    fetch: (u) => { fetches.push(String(u)); return Promise.resolve({ ok: true, status: 200, json: async () => (String(u).startsWith('/api/remote/targets') ? o.targets : {}) }); },
+    EventSource: class { constructor() { this.h = {}; } addEventListener() {} close() {} },
+    storage: dom.window.sessionStorage, localStore: dom.window.localStorage,
+    isPhone: () => true, currentUser: () => Promise.resolve(o.user), player: () => null,
+    document: { visibilityState: 'visible' }, now: () => T0,
+    setTimeout: () => 0, clearTimeout: () => {}, deviceId: () => 'phone', label: () => 'Pocket', toast: (m) => toasts.push(m),
+  };
+  return { c: R.createController(env), fetches, toasts };
+}
+
+test('gate r1 (S1 = Q1 = A1, A2): sign-out while ATTACHED, then the unload\'s hide and pagehide: no record, no per-tab pick; the next user sees no remote, no toast, no remote request', async () => {
+  await withSignOutPage(async ({ dom, C }) => {
+    const a = pageController(dom, { user: 1, targets: [speaker('playing')] });
+    dom.window.FileTube = { remoteControl: a.c };
+    a.c.select({ deviceId: 'pc', label: 'Desk' });
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    assert.ok(dom.window.localStorage.getItem(R.RESUME_KEY), 'precondition: the record exists');
+    assert.ok(dom.window.sessionStorage.getItem(R.CONTROL_KEY), 'precondition: the per-tab pick exists');
+    C.accountSignOut();
+    a.c.visibility(true); // the unload: visibilitychange hidden
+    a.c.pagehide();       // and pagehide (bootWhenReady's listener)
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    assert.strictEqual(dom.window.localStorage.getItem(R.RESUME_KEY), null, 'the record');
+    assert.strictEqual(dom.window.sessionStorage.getItem(R.CONTROL_KEY), null, 'the per-tab pick');
+    assert.strictEqual(a.c.isRemote(), false);
+    assert.ok(!a.fetches.some((u) => u === '/api/remote/command'), 'sign-out sends nothing to the speaker');
+    // the next user, same tab (sessionStorage) and same phone (localStorage)
+    const b = pageController(dom, { user: 2, targets: [] });
+    b.c.restore();
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    assert.strictEqual(b.c.isRemote(), false);
+    assert.deepStrictEqual(b.toasts, [], 'no "Lost <user 1\'s speaker>"');
+    assert.deepStrictEqual(b.fetches.filter((u) => u.startsWith('/api/remote/')), [], 'no remote request at all');
+  });
+});
+
+test('gate r1 (Q2 = A3): the handoff card hides the moment the phone attaches and asks again when it lets go (bindHandoffToRemote, executed)', async () => {
+  const C = require('../../public/js/common.js');
+  const h = harness({ targets: [speaker('playing')] });
+  const card = { shown: true, polls: 0, hide() { this.shown = false; }, poll() { this.polls += 1; } };
+  const off = C.bindHandoffToRemote(h.c, card);
+  assert.strictEqual(card.shown, true, 'local: the card the boot poll showed stays');
+  h.remember(rec());
+  h.c.restore(); await h.settle();
+  assert.strictEqual(h.c.isRemote(), true);
+  assert.strictEqual(card.shown, false, 'hidden at the attach, not at the next 30 s poll');
+  assert.strictEqual(card.polls, 0);
+  h.c.seek(10); h.sources[0].emit('state', speaker('paused').state); // mirror traffic is not a transition
+  assert.strictEqual(card.polls, 0);
+  h.c.leave();
+  assert.strictEqual(card.polls, 1, 'This device: the normal rule again (one poll)');
+  off();
+  h.c.select({ deviceId: 'pc', label: 'Desk' });
+  assert.strictEqual(card.polls, 1, 'unsubscribed');
+  const pre = harness(); pre.c.select({ deviceId: 'pc', label: 'Desk' });
+  const card2 = { shown: true, hide() { this.shown = false; }, poll() {} };
+  C.bindHandoffToRemote(pre.c, card2);
+  assert.strictEqual(card2.shown, false, 'already attached at boot: hidden at bind');
+});
+
+test('gate r1 (Q2 = A3): the handoff card controller binds itself to the page\'s remote control at init', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public/js/common.js'), 'utf8');
+  const body = src.slice(src.indexOf('const handoffCard = (() => {'), src.indexOf('return { init, __poll: poll, __hide: hide };'));
+  assert.match(body, /function init\(\) \{[\s\S]*bindHandoffToRemote\(window\.FileTube && window\.FileTube\.remoteControl, \{ hide, poll: \(\) => \{ if \(!document\.hidden\) poll\(\); \} \}\);\s*\}/);
+});
+
+test('gate r1: a fresh login (the session-expiry path, which never ran accountSignOut) drops the remembered speaker and the per-tab pick before it leaves /login', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public/js/login.js'), 'utf8');
+  const ok = src.slice(src.indexOf("postJson('/api/auth/login'"), src.indexOf('window.location.assign(safeNext());'));
+  assert.ok(ok.length > 0);
+  assert.match(ok, new RegExp("localStorage\\.removeItem\\('" + R.RESUME_KEY + "'\\)"));
+  assert.match(ok, new RegExp("sessionStorage\\.removeItem\\('" + R.CONTROL_KEY + "'\\)"));
 });

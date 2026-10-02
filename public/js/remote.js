@@ -543,6 +543,12 @@
     var mePromise = null;
 
     function isPhone() { try { return !!(env.isPhone && env.isPhone()); } catch (_) { return false; } }
+    function localPlaying() {
+      try {
+        var pl = env.player ? env.player() : null;
+        return !!(pl && typeof pl.getRemoteSnapshot === 'function' && pl.getRemoteSnapshot().playing);
+      } catch (_) { return false; }
+    }
     function forgetResume() {
       if (!env.localStore || !isPhone()) return;
       try { env.localStore.removeItem(RESUME_KEY); } catch (_) { /* storage blocked */ }
@@ -723,6 +729,9 @@
           var still = readResume(); // a sign-out or a pick in another tab forgot it meanwhile
           if (!still || still.deviceId !== rec.deviceId || still.user !== rec.user) { resumeBusy = false; return; }
           if (env.document && env.document.visibilityState === 'hidden') { keep(); return; } // back in the background: try on return
+          // gate r1 (Architect's ruling): music started on THIS phone during the check wins - stay local, quiet,
+          // forget the speaker, pause nothing
+          if (localPlaying()) { drop(); return; }
           var d = resumeDecision(still, env.now(), u, list);
           if (d === 'keep') { keep(); return; }
           if (d !== 'attach') { drop(); return; }

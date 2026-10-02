@@ -6537,10 +6537,20 @@ function accountSignOut() {
     try { localStorage.removeItem('ft-queue-shown'); } catch (_) { /* storage disabled */ }
     try { localStorage.removeItem('ft-bottomnav-last'); } catch (_) { /* storage disabled */ }
     try { localStorage.removeItem('ft-books-continue-count'); } catch (_) { /* storage disabled */ }
-    // v1.356 (R7): the phone's remembered speaker (remote.js RESUME_KEY) is this user's; the next one starts local.
+    // v1.356 (R7): the phone's remembered speaker (remote.js RESUME_KEY) and the per-tab pick (CONTROL_KEY) are
+    // this user's; the next one starts local.
     try { localStorage.removeItem('ft-remote-resume'); } catch (_) { /* storage disabled */ }
+    try { sessionStorage.removeItem('ft-remote-controlling'); } catch (_) { /* storage disabled */ }
     window.location.href = '/login';
   };
+  // v1.356 gate r1 (S1 = Q1 = A1, A2): let go of a speaker before the logout request and every removal in
+  // done(), so the unload's hide / pagehide have nothing to remember (while attached they re-stamp the phone's
+  // remembered speaker) and the per-tab pick goes too (the next user in this tab once saw "Lost <this user's
+  // speaker>"). leave() sends nothing.
+  try {
+    const rc = window.FileTube && window.FileTube.remoteControl;
+    if (rc && typeof rc.leave === 'function') rc.leave();
+  } catch (_) { /* no remote control on this shell */ }
   fetch('/api/auth/logout', { method: 'POST' }).then(done, done);
 }
 
@@ -10776,6 +10786,21 @@ function handoffSuppressionToken(presence) {
  *   localPlayingId - the id THIS page's player currently has loaded (or null)
  *   dismissedToken - the token the user last dismissed (or '')
  */
+// v1.356 gate r1 (Q2 = A3): the card follows the remote control LIVE, not only at its 30 s poll. A phone that
+// attaches to a speaker (a resume on launch decided the card while still local) hides it at once; one that
+// lets go asks again under the normal rule. `card` = {hide, poll}. Returns the unsubscribe.
+function bindHandoffToRemote(rc, card) {
+  if (!rc || typeof rc.onChange !== 'function' || typeof rc.isRemote !== 'function' || !card) return () => {};
+  let was = !!rc.isRemote();
+  if (was) card.hide();
+  return rc.onChange(() => {
+    const now = !!rc.isRemote();
+    if (now === was) return;
+    was = now;
+    if (now) card.hide(); else card.poll();
+  });
+}
+
 function shouldShowHandoffCard(presence, ctx) {
   if (!presence || !presence.mediaId) return false;
   const c = ctx || {};
@@ -16735,6 +16760,8 @@ const handoffCard = (() => {
       poll();
       startTimer();
     }
+    // v1.356 gate r1 (Q2 = A3): D8 holds the moment the phone attaches, not 30 s later (remote.js loads after this file)
+    bindHandoffToRemote(window.FileTube && window.FileTube.remoteControl, { hide, poll: () => { if (!document.hidden) poll(); } });
   }
 
   return { init, __poll: poll, __hide: hide };
@@ -17070,7 +17097,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.78: the card's pure decisions. The runtime around them is a thin
     // fetch/render shell on purpose - everything that can be WRONG is here,
     // where node:test can hold it without a browser.
-    shouldShowHandoffCard, handoffSuppressionToken, formatHandoffHeadline,
+    shouldShowHandoffCard, bindHandoffToRemote, handoffSuppressionToken, formatHandoffHeadline,
     formatHandoffTime, formatHandoffAge, handoffProgressPercent,
     HANDOFF_LIST_SURFACES, HANDOFF_POLL_MS,
     resolveIconSet, ICON_SET_REGISTRY, ICON_SETS, AUTO_ERA_ICON_MAP, migrateIconPref,
