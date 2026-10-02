@@ -3436,5 +3436,11 @@
     "date": "2026-10-02",
     "title": "Your whole library, the computer's queue and search on the phone's iPod",
     "intent": "The iPod menus on your phone now list every song, genre, album and artist you own, however big the library, instead of stopping around the letter H. While your phone plays music on a speaker computer, the center button on Now Playing shows that computer's up-next list and a tap plays a song there. Music has a Search that works like the iPod's own, with a letter strip you turn the wheel along, and the skins list can be searched by name too. Turning the phone sideways now draws the see-through iPod's board in place right away."
+  },
+  {
+    "version": "1.355.0",
+    "date": "2026-10-02",
+    "title": "A switch for the turn log, and typing to search on the phone's iPod",
+    "intent": "Settings has a new switch, Show rotate debug log, so the turn log can be turned on from the app on your home screen, where there is no address bar; it starts and stops at once. Settings > Mobile player has an experimental Keyboard search: when it is on, Search on the phone's iPod brings up the phone's own keyboard so you can type instead of turning the wheel to each letter. It is off unless you turn it on, and Search works exactly as before when it is off."
   }
 ]

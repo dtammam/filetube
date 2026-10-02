@@ -1713,6 +1713,8 @@ if (typeof module !== 'undefined' && module.exports) {
         menu: {
           load: menuLoad,
           search: menuSearch,
+          // v1.355: Settings > Mobile player > Keyboard search (experimental), read live each time Search opens
+          keyboardSearch: function () { var MS = window.FileTubeMusicSkins; return !!(MS && typeof MS.keyboardSearchOn === 'function' && MS.keyboardSearchOn()); },
           onPlay: function (req) { playFromMenu(req); },
           onShuffleAll: shuffleAllFromMenu,
           hasCurrent: function () { return remoteOn() || hasCurrentMusicTrack(); },

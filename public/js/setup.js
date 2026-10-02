@@ -2,6 +2,7 @@
 
 /* global buildSortableTable */ // v1.159: the shared table component (common.js, loaded first)
 /* global sidebarMoveAnchor, persistSidebarMoveByPath */ // v1.339 S2: the by-path sidebar persist (common.js, loaded first; not in eslint.config.js's list)
+/* global ROTATE_LOG_KEY, installRotateDebug, uninstallRotateDebug */ // v1.355: the rotate debug log (common.js, loaded first)
 
 // FileTube Setup/Settings page — registered VIEW MODULE (FR-1, T1).
 //
@@ -1521,6 +1522,74 @@ function wireBgTimingLog(signal) {
   }
 }
 
+// v1.355: Settings > Troubleshooting > "Show rotate debug log" switches common.js's ?debugRotate=1 log. The
+// key and both functions are common.js's own (ROTATE_LOG_KEY, installRotateDebug, uninstallRotateDebug),
+// read here at call time, never re-typed. Unlike the lifecycle log (loadDebugLifecycleControl, below) it applies AT ONCE both ways: ON
+// stores '1' and installs the log in this window, OFF removes the key and takes the log down (in the
+// home-screen app a reload is a relaunch). Device-local like every Troubleshooting switch.
+function rotateDebugApi() {
+  return {
+    key: (typeof ROTATE_LOG_KEY === 'string') ? ROTATE_LOG_KEY : null,
+    install: (typeof installRotateDebug === 'function') ? installRotateDebug : null,
+    uninstall: (typeof uninstallRotateDebug === 'function') ? uninstallRotateDebug : null,
+  };
+}
+// v1.355: Settings > Mobile player > "Keyboard search (experimental)". The key and its reader are music-skins.js's
+// (KB_SEARCH_KEY, keyboardSearchOn), never re-typed here; '1' = on, removed = off (the default). Nothing else to
+// apply: the iPod reads the flag live each time Music > Search opens, so a change needs no reload.
+function pocketKbKey(w) {
+  const MS = w && w.FileTubeMusicSkins;
+  return MS && typeof MS.KB_SEARCH_KEY === 'string' ? MS.KB_SEARCH_KEY : null;
+}
+function loadPocketKbSearchControl(win) {
+  const w = win || window;
+  const check = w.document.getElementById('pocket-kb-search-check');
+  const key = pocketKbKey(w);
+  if (!check || !key) return;
+  let raw = null;
+  try { raw = w.localStorage.getItem(key); } catch (_) { /* storage disabled -- treat as off */ }
+  check.checked = raw === '1';
+}
+function wirePocketKbSearchControl(win, signal) {
+  const w = win || window;
+  const check = w.document.getElementById('pocket-kb-search-check');
+  if (!check) return;
+  check.addEventListener('change', (e) => {
+    const key = pocketKbKey(w);
+    if (!key) return;
+    try {
+      if (e.target.checked) w.localStorage.setItem(key, '1');
+      else w.localStorage.removeItem(key);
+    } catch (_) { /* storage disabled/full -- best-effort only */ }
+  }, signal ? { signal } : undefined);
+}
+function loadDebugRotateControl(win) {
+  const w = win || window;
+  const check = w.document.getElementById('debug-rotate-check');
+  const api = rotateDebugApi();
+  if (!check || !api.key) return;
+  let raw = null;
+  try { raw = w.localStorage.getItem(api.key); } catch (_) { /* storage disabled -- treat as off */ }
+  check.checked = raw === '1';
+}
+function wireDebugRotateControl(win, signal) {
+  const w = win || window;
+  const check = w.document.getElementById('debug-rotate-check');
+  if (!check) return;
+  check.addEventListener('change', (e) => {
+    const api = rotateDebugApi();
+    if (!api.key) return;
+    const on = !!e.target.checked;
+    try {
+      if (on) w.localStorage.setItem(api.key, '1');
+      else w.localStorage.removeItem(api.key);
+    } catch (_) { /* storage disabled/full -- best-effort only */ }
+    try {
+      if (on) { if (api.install) api.install(w); } else if (api.uninstall) api.uninstall(w);
+    } catch (_) { /* a diagnostic must never break Settings */ }
+  }, signal ? { signal } : undefined);
+}
+
 // Prefills the checkbox from whatever's currently stored -- mirrors
 // `isDebugLifecycleEnabled()`'s own `=== '1'` check in player.js exactly, so
 // the two never disagree about what counts as "on".
@@ -2956,6 +3025,9 @@ function wireStaticControls(signal) {
       } catch (_) { /* storage disabled/full -- best-effort only */ }
     }, { signal });
   }
+
+  wireDebugRotateControl(window, signal); // v1.355: the rotate debug log, applied at once (loadDebugRotateControl)
+  wirePocketKbSearchControl(window, signal); // v1.355: Mobile player > Keyboard search (experimental)
 
   // v1.45.6 (Dean): per-page sort — a CLIENT toggle (localStorage), like the
   // debug-lifecycle overlay above. Prefill from + persist via the common.js
@@ -4761,6 +4833,8 @@ function init(root) {
   wireWheelCalControl(controller.signal); // Click wheel test (Experimental)
   loadResumeThresholdControl();
   loadDebugLifecycleControl();
+  loadDebugRotateControl(window); // v1.355
+  loadPocketKbSearchControl(window); // v1.355: Mobile player > Keyboard search
   // v1.246: open-audio-in-music toggle retired (audio always opens in the skin).
   loadHomeRowControl('home-continue-watching-check', 'ft-home-continue-watching');
   loadHomeRowControl('tv-continue-watching-check', 'ft-tv-continue-watching'); // v1.198.2: reflect-on-load (the v1.193 lesson)
@@ -4830,6 +4904,9 @@ if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     // Chapter Snap (2026-09-24) (gate r1 qa S8): the lead-in select's wiring (jsdom-bound).
     wireChapterSnapLeadIn,
+    // v1.355: Settings > Troubleshooting > Show rotate debug log (jsdom-bound against the real common.js log).
+    loadDebugRotateControl, wireDebugRotateControl,
+    loadPocketKbSearchControl, wirePocketKbSearchControl, // v1.355: Mobile player > Keyboard search
     // Click wheel test — the pure metering core (boundary- and
     // cross-lock-tested in wheel-cal-metering.test.js; the DOM/native-switch
     // shell is device-validated).

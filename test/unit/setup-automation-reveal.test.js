@@ -36,6 +36,7 @@ const SETTINGS_FED = [
 // barriered by the /api/settings reveal.
 const FOREIGN = [
   'home-feed-check', 'modern-mode-check', 'per-page-sort-check', 'debug-lifecycle-check',
+  'debug-rotate-check', 'pocket-kb-search-check', // v1.355: device-local (localStorage), never /api/settings
   'push-user-enabled-check', 'home-continue-watching-check',
   'engine-autoupdate-check', // v1.146: fed by /api/ytdlp/engine, never /api/settings
 ];

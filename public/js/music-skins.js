@@ -707,6 +707,33 @@
     cells.push({ id: 'go', label: 'results' });
     return cells;
   })();
+  // v1.355 (experimental, Settings > Mobile player, off by default): Music > Search takes the phone's own keyboard
+  // instead of the strip. The flag is device-local ('1' = on, absent = off) and read LIVE each time Search opens.
+  var KB_SEARCH_KEY = 'ft-pocket-keyboard-search';
+  function keyboardSearchOn() {
+    try { return typeof localStorage !== 'undefined' && localStorage.getItem(KB_SEARCH_KEY) === '1'; } catch (_) { return false; }
+  }
+  // The typed text as the query: control characters dropped (a paste can carry tabs or line breaks), at most
+  // SEARCH_MAX characters as a reader counts them (grapheme clusters through Intl.Segmenter, so a flag or a ZWJ family
+  // emoji is never cut; without Intl.Segmenter, code points, so never a lone surrogate), otherwise shown exactly as
+  // typed. searchUrls trims and encodes it.
+  function searchFromTyped(raw) {
+    var s = typeof raw === 'string' ? raw : (raw == null ? '' : String(raw));
+    var kept = '';
+    for (var i = 0; i < s.length; i++) {
+      var c = s.charCodeAt(i);
+      if (c < 32 || (c >= 127 && c < 160)) continue;
+      kept += s.charAt(i);
+    }
+    var chars = null;
+    try {
+      if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+        chars = Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(kept), function (g) { return g.segment; });
+      }
+    } catch (_) { chars = null; }
+    if (!chars) chars = Array.from(kept);
+    return chars.slice(0, SEARCH_MAX).join('');
+  }
   // The marker's next cell: a wheel detent moves one cell and wraps at both ends.
   function searchStripStep(cursor, delta) {
     var n = SEARCH_STRIP.length;
@@ -1117,10 +1144,16 @@
     }
     return html;
   }
-  // The search level's typed query and letter strip (v1.354 W4): s = { q, sc, focus: 'strip' | 'list' }.
+  // The search level's typed query and letter strip (v1.354 W4): s = { q, sc, focus: 'strip' | 'list', kb? }. With kb (v1.355
+  // keyboard search) the bar is the query alone; without it the markup is exactly v1.354's.
   var STRIP_SHORT = { space: 'SPC', del: 'DEL', go: 'GO' };
   function renderSearchBar(s) {
     var q = (s && s.q) || '';
+    // v1.355: keyboard mode draws the query bar alone (the phone's keyboard types; the strip is not drawn)
+    if (s && s.kb) {
+      return '<div class="ipm-searchbar is-kb' + (s.focus === 'list' ? ' is-listfocus' : '') + '" data-skin-searchbar>' +
+        '<div class="ipm-q' + (q ? '' : ' is-empty') + '" role="status">' + (q ? esc(q) : 'Search') + '</div></div>';
+    }
     var cells = searchStripView(s ? s.sc : 0, 5).map(function (c) {
       return '<span role="button" class="ipm-sc' + (c.on ? ' is-on' : '') + (STRIP_SHORT[c.id] ? ' is-word' : '') + '" data-skin-strip="' + c.index + '" aria-label="' + esc(c.label) + '">' + esc(STRIP_SHORT[c.id] || c.label) + '</span>';
     }).join('');
@@ -1141,7 +1174,7 @@
   var api = {
     SKIN_KEY: SKIN_KEY, IDS: IDS, DEFAULT_ID: DEFAULT_ID, SKINS: SKINS,
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
-    skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, skinFamilies: skinFamilies, skinLines: skinLines, colorwayLabel: colorwayLabel, menuSkinItems: menuSkinItems, SEARCH_STRIP: SEARCH_STRIP, searchStripStep: searchStripStep, searchEdit: searchEdit, searchStripView: searchStripView, searchUrls: searchUrls, menuSearchItems: menuSearchItems, skinSearchItems: skinSearchItems, renderSearchBar: renderSearchBar, searchNextStop: searchNextStop, isClickColorway: isClickColorway,
+    skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, skinFamilies: skinFamilies, skinLines: skinLines, colorwayLabel: colorwayLabel, menuSkinItems: menuSkinItems, SEARCH_STRIP: SEARCH_STRIP, searchStripStep: searchStripStep, searchEdit: searchEdit, searchStripView: searchStripView, searchUrls: searchUrls, menuSearchItems: menuSearchItems, skinSearchItems: skinSearchItems, renderSearchBar: renderSearchBar, searchNextStop: searchNextStop, KB_SEARCH_KEY: KB_SEARCH_KEY, keyboardSearchOn: keyboardSearchOn, searchFromTyped: searchFromTyped, isClickColorway: isClickColorway,
     renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
     remoteBadge: remoteBadge, volLevel: volLevel, skinActiveFor: skinActiveFor, isPhone: isPhone, phoneFrom: phoneFrom, markPhoneClass: markPhoneClass,
     PHONE_CLASS: PHONE_CLASS, PHONE_SHORT_SIDE_MAX: PHONE_SHORT_SIDE_MAX, observeSettled: observeSettled,
