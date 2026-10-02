@@ -4,6 +4,31 @@
 
 ### Bugs
 
+- [ ] **Pocket turn: the Transparent board jumps, and the skin bumps on the way back upright** _(Dean's device check of v1.350.0 FAILED,
+  2026-10-02: "it rotates but it looks like it jumps around ... a small jump"; measured from his screen recording, 1180x2556 at
+  58.65 fps, every frame, two turns each way, identical both times = deterministic)_.
+  (a) To landscape: the layout lands, then the board is drawn somewhere else for ~5 frames (~85 ms) and snaps to its place on
+  the glass (settled landscape is right: board offset 0,0 against portrait). Hypothesis from the code: the counter-turn needs
+  `html[data-ft-rot]`, which pocket-lighting.js stamps only on orientationchange / resize / screen.orientation change, while
+  `@media (orientation: landscape)` applies at the first landscape layout, so those frames render landscape with the stale
+  angle. Falsifier: NOT possible with the v1.350 instrument as it stands (its rows record the landscape media query and the
+  screen angle but not `data-ft-rot`, and sampling starts on the same events that stamp it, so it never sees the frames in
+  question): first add a `data-ft-rot` column and start sampling from a `matchMedia('(orientation: landscape)')` change
+  listener (or a free-running rAF), then capture.
+  (b) Back upright: 3 frames (~50 ms) with the LCD drawn under the status bar and the board 58 CSS px high, then 2-4 frames
+  (~67 ms) with the whole skin ~58 CSS px TOO LOW, then it rises into place. 58 CSS px = this iPhone's top safe-area inset (59),
+  so the hypothesis is the inset applied twice for a few frames (a JS-measured offset on top of `env(safe-area-inset-top)`, or
+  the reverse). Falsifier: the `?debugRotate=1` rows (the v1.350 instrument) across the turn. The v1.341.3 watch-page "settles
+  in one step" check is the same class on another page. Frames: the 2026-10-02 session's scratch (re-measure from a new
+  recording if needed: `ffmpeg -i rec.mov -vf scale=236:-1 f%04d.png`, then the LCD top edge and a board patch per frame).
+- [ ] **iPod Songs (and Genres) stop at the letter H** _(Dean, 2026-10-02; a 23,000-song library)_ - menuAllSongs() in
+  public/js/music.js asks `/api/music?sort=title-asc&limit=10000` and the server caps every list at 10,000
+  (lib/videoQuery.js MAX_LIMIT), so the menu holds the first 10,000 titles and ends around H; Genres reads the same list.
+  menuAllSongs() also feeds the untagged-artist bucket and the Click cover pool (covered if it pages). Separate requests with
+  the same cap that paging menuAllSongs would NOT fix: Shuffle Songs (shuffleAllFromMenu, `sort=random&limit=10000`: a random
+  10,000 of 23,000) and Liked. Related: tracker #255 (b) and #266 (b) name the menu's 10000 limit; #29 is the same cap on the
+  video side. Fix shape: page the requests (or load by letter for the letter jump), never raise the cap; prove with a seeded
+  library over it.
 - [ ] **Speakers volume: small edges disclosed at v1.353's gate r2** _(adversary + QA, measured)_ - (a) an iPhone or iPad speaker
   that has not played anything yet still reports its stored level, so the phone offers a bar whose level is only stored (the
   player's settable-volume probe runs at the first load; probe a detached element at boot instead); (b) a muted PC whose stored
@@ -200,6 +225,12 @@
 
 ### Features
 
+- [ ] **Speakers: the PC's queue on the phone** _(Dean, 2026-10-02: "Would it be worth sending the PC's queue? ... We are
+  remotely playing on that PC, after all")_ - today the center button on the iPod's Now Playing opens the song list, and while
+  the phone controls a speaker that list is empty (remoteSkinCtx passes fullList: []), so it shows a blank "Songs" page. The PC
+  reports its up-next (ids, titles, the current index; capped; every title resolved through the CALLER's visibility like the
+  state's track card), the phone's list shows it with the current marked, a row tap plays it on the PC (a play from that index).
+  A new field on the remote channel: FULL gate.
 - [ ] **Speakers: a phone that closes the app comes back still connected** _(Dean, 2026-10-01: "if connected to a
   speaker on mobile and you close out of app it should resume from that position/connection if still valid")_ -
   Next swing. Today the phone remembers its speaker in `sessionStorage['ft-remote-controlling']`
@@ -208,11 +239,12 @@
   `GET /api/remote/targets` (the `restore()` path already does this) before trusting it; reattach and show the
   speaker's current song and position, or drop back to local quietly if the speaker is gone. Needs a plan
   (intake: what "still valid" means, e.g. how long after closing, and whether it reattaches silently or asks).
-- [ ] **Search for the mobile player skins, and the iPod-style search for future things** _(Dean, 2026-10-01)_ - Scope: a
-  search for the Music skins (Settings > Mobile player, and the Pocket Extras > Skins menu), in the iPod style
-  (the click-wheel search). Build it on the existing search capabilities rather than a new engine, so the same
-  iPod-style search can be reused later for other lists. Not started; needs a plan (intake: what the iPod search
-  looks like today, and which existing search function it can lean on).
+- [ ] **iPod-style search: the music library first, then the skins list** _(Dean, 2026-10-01; the library ask 2026-10-02: "Yes.
+  Yes. Yes!!!")_ - Music > Search as on the 6G Classic and the nanos: an alphabet strip along the bottom of the LCD, the wheel
+  picks a letter, center adds it, MENU deletes one, and the matching songs, albums and artists narrow live above. Build it on
+  the existing search capabilities rather than a new engine, so the same control then searches the Music skins (Settings >
+  Mobile player, Pocket Extras > Skins: the 2026-10-01 ask) and later lists. Not started; needs a plan with reference photos
+  beside a build sketch for Dean's look sign-off (the v1.353 rule: "look like X" = X's real look).
 - [x] **Listen Control: the phone plays music on the PC** - SHIPPED v1.348.0 (see Shipped) _(Dean, 2026-09-30: "I want the ability to have a
   device control playback on another device as an optional opt-in thing ... pick things on the phone and
   explicitly have them be played on the computer's web browser instance")_ - plan:

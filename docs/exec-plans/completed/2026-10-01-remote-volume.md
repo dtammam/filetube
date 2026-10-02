@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.353-remote-volume
 anchor: spec
 status: Shipped v1.353.0
-next: shipped (device checks owed, see docs/DEVICE-CHECKS.md)
+next: shipped (device checks confirmed by Dean on 2026-10-02)
 design: Dean 2026-10-01 ("I like this. Yes. Let's do it.") on option A, then "As long as the volume screen is low friction and looks like iPod volume I am good" (R1, R2 below are binding); R3, R4 are architect defaults he did not overrule
 gate: APPROVED r2 @b145bd14 (FULL: adversary + qa + security-brief)
 ---
