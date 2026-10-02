@@ -738,6 +738,20 @@ const MUSIC_SKIN_BLURB = {
 function skinSwatchClasses(s) {
   return 'skin-swatch mms-' + s.id + (s.base ? ' mms-' + s.base : '') + (s.look ? ' mms-look-' + s.look : '');
 }
+let musicSkinFilter = '';
+function applyMusicSkinFilter(container) {
+  const q = musicSkinFilter.trim().toLowerCase();
+  container.querySelectorAll('.skin-family').forEach((fam) => {
+    const famName = (fam.getAttribute('aria-label') || '').toLowerCase();
+    let any = false;
+    fam.querySelectorAll('.skin-tile').forEach((t) => {
+      const hit = !q || famName.indexOf(q) !== -1 || (t.getAttribute('aria-label') || '').toLowerCase().indexOf(q) !== -1;
+      t.hidden = !hit;
+      if (hit) any = true;
+    });
+    fam.hidden = !any;
+  });
+}
 function renderMusicSkinPicker() {
   const container = document.getElementById('music-skin-picker');
   if (!container || !controller) return; // same premature-call guard as renderIconPicker
@@ -755,6 +769,9 @@ function renderMusicSkinPicker() {
     }).join('');
     return `<div class="skin-family" role="group" aria-label="${escStickerHtml(fam.label)}"><h4 class="skin-family-name">${escStickerHtml(fam.label)}</h4><div class="skin-grid">${tiles}</div></div>`;
   }).join('');
+  applyMusicSkinFilter(container);
+  const filterInput = document.getElementById('music-skin-filter');
+  if (filterInput) filterInput.oninput = () => { musicSkinFilter = filterInput.value; applyMusicSkinFilter(container); };
   container.querySelectorAll('.skin-tile').forEach((btn) => {
     btn.addEventListener('click', () => {
       skins.setActiveSkin(btn.dataset.skinPref); // persists ft-music-skin (per-device)

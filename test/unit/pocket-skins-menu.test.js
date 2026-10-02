@@ -36,9 +36,9 @@ test('Extras > Skins rows: Skins appears only where hasSkins; Games only unless 
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'extras' }, { hasGames: false, hasSkins: true })), ['Skins']);
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'extras' }, { hasGames: true })), ['Games']);
   const top = skins.menuStaticItems({ type: 'skins' }, { activeSkin: 'ipod-matte' });
-  assert.deepStrictEqual(lbl(top), ['Original', 'Classic', 'Mini', 'Nano', 'Shuffle', 'Touch', 'Custom', 'Cider', 'Nordic']);
-  assert.deepStrictEqual(top.map((r) => !!r.check), [false, true, false, false, false, false, false, false, false], 'the line holding the active skin wears the check');
-  assert.deepStrictEqual(top.map((r) => !!r.preview), [true, false, false, false, false, false, false, false, false], 'only a Click-menu skin row previews (Cider/Nordic would end the menu)');
+  assert.deepStrictEqual(lbl(top), ['Original', 'Classic', 'Mini', 'Nano', 'Shuffle', 'Touch', 'Custom', 'Cider', 'Nordic', 'Search']);
+  assert.deepStrictEqual(top.map((r) => !!r.check), [false, true, false, false, false, false, false, false, false, false], 'the line holding the active skin wears the check');
+  assert.deepStrictEqual(top.map((r) => !!r.preview), [true, false, false, false, false, false, false, false, false, false], 'only a Click-menu skin row previews (Cider/Nordic would end the menu)');
   assert.deepStrictEqual(top[1].node, { type: 'skinLine', key: 'classic', label: 'Classic' });
   const line = skins.menuStaticItems(top[1].node, { activeSkin: 'ipod-matte' });
   assert.deepStrictEqual(lbl(line), ['4G (2004)', '5G (2005)', '6G (2007)']);
@@ -121,7 +121,7 @@ test('the Main Menu reaches Extras > Skins > Classic > 5G > colorways; with no s
     assert.deepStrictEqual(rowsOf(b).map((x) => x.querySelector('.ipm-lbl').textContent), ['Skins'], 'no game here: Skins only');
     tapLabel(b, 'Skins');
     assert.strictEqual(b.engine.menuState().title, 'Skins');
-    assert.deepStrictEqual(rowsOf(b).map((x) => x.querySelector('.ipm-lbl').textContent), ['Original', 'Classic', 'Mini', 'Nano', 'Shuffle', 'Touch', 'Custom', 'Cider', 'Nordic']);
+    assert.deepStrictEqual(rowsOf(b).map((x) => x.querySelector('.ipm-lbl').textContent), ['Original', 'Classic', 'Mini', 'Nano', 'Shuffle', 'Touch', 'Custom', 'Cider', 'Nordic', 'Search']);
     tapLabel(b, 'Classic');
     assert.strictEqual(b.engine.menuState().title, 'Classic');
     assert.deepStrictEqual(rowsOf(b).map((x) => x.querySelector('.ipm-lbl').textContent), ['4G (2004)', '5G (2005)', '6G (2007)']);
@@ -218,12 +218,19 @@ test('MENU out of the flow and destroy also end a preview: nothing is left half-
   } finally { c.restore(); }
 });
 
-test('Cider and Nordic rows never preview (the menu would vanish); Select saves them and the view repaints', () => {
+test('Cider and Nordic rows never preview (the menu would vanish); Select saves them and the view repaints', async () => {
   const b = boot();
   try {
     tapLabel(b, 'Extras'); tapLabel(b, 'Skins');
     assert.strictEqual(cursorLabel(b), 'Classic', 'the menu opens on the saved line');
     wheelBy(b, 48); // clockwise: the wheel accelerates, so this runs to the last row
+    assert.strictEqual(cursorLabel(b), 'Search', 'v1.354: the Search row ends the list');
+    // one SLOW detent (3 x 8 degrees, 25 ms apart: a speed of 0.3 deg/ms is one row per step)
+    const w = P(b).querySelector('.ip-wheel');
+    const at = (d) => ({ clientX: 100 * Math.cos(d * Math.PI / 180), clientY: 100 * Math.sin(d * Math.PI / 180) });
+    w.dispatchEvent(new b.dom.window.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    for (let d = -8; d >= -24; d -= 8) { await new Promise((r) => setTimeout(r, 25)); w.dispatchEvent(new b.dom.window.MouseEvent('pointermove', Object.assign({ bubbles: true }, at(d)))); }
+    w.dispatchEvent(new b.dom.window.MouseEvent('pointerup', { bubbles: true }));
     assert.strictEqual(cursorLabel(b), 'Nordic');
     assert.ok(P(b).classList.contains('mms-ipod-black'), 'highlighting Nordic leaves the LCD as it was');
     assert.ok(!P(b).classList.contains('mms-spotify'));

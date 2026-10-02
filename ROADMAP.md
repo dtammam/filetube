@@ -4,31 +4,22 @@
 
 ### Bugs
 
-- [ ] **Pocket turn: the Transparent board jumps, and the skin bumps on the way back upright** _(Dean's device check of v1.350.0 FAILED,
-  2026-10-02: "it rotates but it looks like it jumps around ... a small jump"; measured from his screen recording, 1180x2556 at
-  58.65 fps, every frame, two turns each way, identical both times = deterministic)_.
-  (a) To landscape: the layout lands, then the board is drawn somewhere else for ~5 frames (~85 ms) and snaps to its place on
-  the glass (settled landscape is right: board offset 0,0 against portrait). Hypothesis from the code: the counter-turn needs
-  `html[data-ft-rot]`, which pocket-lighting.js stamps only on orientationchange / resize / screen.orientation change, while
-  `@media (orientation: landscape)` applies at the first landscape layout, so those frames render landscape with the stale
-  angle. Falsifier: NOT possible with the v1.350 instrument as it stands (its rows record the landscape media query and the
-  screen angle but not `data-ft-rot`, and sampling starts on the same events that stamp it, so it never sees the frames in
-  question): first add a `data-ft-rot` column and start sampling from a `matchMedia('(orientation: landscape)')` change
-  listener (or a free-running rAF), then capture.
-  (b) Back upright: 3 frames (~50 ms) with the LCD drawn under the status bar and the board 58 CSS px high, then 2-4 frames
-  (~67 ms) with the whole skin ~58 CSS px TOO LOW, then it rises into place. 58 CSS px = this iPhone's top safe-area inset (59),
-  so the hypothesis is the inset applied twice for a few frames (a JS-measured offset on top of `env(safe-area-inset-top)`, or
-  the reverse). Falsifier: the `?debugRotate=1` rows (the v1.350 instrument) across the turn. The v1.341.3 watch-page "settles
-  in one step" check is the same class on another page. Frames: the 2026-10-02 session's scratch (re-measure from a new
-  recording if needed: `ffmpeg -i rec.mov -vf scale=236:-1 f%04d.png`, then the LCD top edge and a board patch per frame).
-- [ ] **iPod Songs (and Genres) stop at the letter H** _(Dean, 2026-10-02; a 23,000-song library)_ - menuAllSongs() in
-  public/js/music.js asks `/api/music?sort=title-asc&limit=10000` and the server caps every list at 10,000
-  (lib/videoQuery.js MAX_LIMIT), so the menu holds the first 10,000 titles and ends around H; Genres reads the same list.
-  menuAllSongs() also feeds the untagged-artist bucket and the Click cover pool (covered if it pages). Separate requests with
-  the same cap that paging menuAllSongs would NOT fix: Shuffle Songs (shuffleAllFromMenu, `sort=random&limit=10000`: a random
-  10,000 of 23,000) and Liked. Related: tracker #255 (b) and #266 (b) name the menu's 10000 limit; #29 is the same cap on the
-  video side. Fix shape: page the requests (or load by letter for the letter jump), never raise the cap; prove with a seeded
-  library over it.
+- [ ] **Pocket turn back upright: the skin sits ~58 px low for a few frames (hypothesis b)** _(Dean's v1.350 device check,
+  2026-10-02, measured from his screen recording)_ - v1.354 fixed the landscape half (the board's turn is stamped in the same
+  frame the layout flips); this half is PARKED, not fixed: 3 frames with the LCD under the status bar, then 2-4 frames with the
+  whole skin ~58 CSS px too low (this iPhone's top safe-area inset is 59), then it rises. Dean's `?debugRotate=1` capture read
+  `sat` 0 px in every row, so the double-counted-inset hypothesis was NOT confirmed. Next: Dean records the turn back on v1.354
+  with `?debugRotate=1` (now including the frames before the event); name the stale value from the rows, then fix the cause
+  (never a timeout). The v1.341.3 watch-page "settles in one step" check is the same class.
+- [ ] **Pocket music (v1.354 gate notes and edges)** _(adversary + QA, measured)_ - (a) a queue edit on the PC with the SAME
+  current song is not pushed: the plan said a queue change pings `trackChanged`, it was not built, so the edit rides the next
+  state report (at most 5 s; while paused, not until the next report); (b) Cider and Nordic read `upNext`, which `remoteSkinCtx`
+  still sets to `[]`, so the PC's queue shows on the iPod skins only (an inert sibling list); (c) the PC's own Music page and
+  the browse-view Albums/Artists tabs still ask `limit=10000`; (d) `fetchAllRows` stops on an empty page or when `total` is
+  reached, but a library that shrinks mid-read leaves `total` above the rows and the loop re-asks until the view tears down;
+  (e) the queue resolver's chapter eligibility check has a surviving mutant (the visibility check around it is bound).
+- [ ] **Search outside Music** - videos, podcasts and books get the iPod strip too (Music and the skins list shipped in v1.354).
+- [ ] **Editing the PC's queue from the phone** - reorder, remove (the phone shows and plays the PC's queue since v1.354).
 - [ ] **Speakers volume: small edges disclosed at v1.353's gate r2** _(adversary + QA, measured)_ - (a) an iPhone or iPad speaker
   that has not played anything yet still reports its stored level, so the phone offers a bar whose level is only stored (the
   player's settable-volume probe runs at the first load; probe a detached element at boot instead); (b) a muted PC whose stored
@@ -225,12 +216,6 @@
 
 ### Features
 
-- [ ] **Speakers: the PC's queue on the phone** _(Dean, 2026-10-02: "Would it be worth sending the PC's queue? ... We are
-  remotely playing on that PC, after all")_ - today the center button on the iPod's Now Playing opens the song list, and while
-  the phone controls a speaker that list is empty (remoteSkinCtx passes fullList: []), so it shows a blank "Songs" page. The PC
-  reports its up-next (ids, titles, the current index; capped; every title resolved through the CALLER's visibility like the
-  state's track card), the phone's list shows it with the current marked, a row tap plays it on the PC (a play from that index).
-  A new field on the remote channel: FULL gate.
 - [ ] **Speakers: a phone that closes the app comes back still connected** _(Dean, 2026-10-01: "if connected to a
   speaker on mobile and you close out of app it should resume from that position/connection if still valid")_ -
   Next swing. Today the phone remembers its speaker in `sessionStorage['ft-remote-controlling']`
@@ -239,12 +224,6 @@
   `GET /api/remote/targets` (the `restore()` path already does this) before trusting it; reattach and show the
   speaker's current song and position, or drop back to local quietly if the speaker is gone. Needs a plan
   (intake: what "still valid" means, e.g. how long after closing, and whether it reattaches silently or asks).
-- [ ] **iPod-style search: the music library first, then the skins list** _(Dean, 2026-10-01; the library ask 2026-10-02: "Yes.
-  Yes. Yes!!!")_ - Music > Search as on the 6G Classic and the nanos: an alphabet strip along the bottom of the LCD, the wheel
-  picks a letter, center adds it, MENU deletes one, and the matching songs, albums and artists narrow live above. Build it on
-  the existing search capabilities rather than a new engine, so the same control then searches the Music skins (Settings >
-  Mobile player, Pocket Extras > Skins: the 2026-10-01 ask) and later lists. Not started; needs a plan with reference photos
-  beside a build sketch for Dean's look sign-off (the v1.353 rule: "look like X" = X's real look).
 - [x] **Listen Control: the phone plays music on the PC** - SHIPPED v1.348.0 (see Shipped) _(Dean, 2026-09-30: "I want the ability to have a
   device control playback on another device as an optional opt-in thing ... pick things on the phone and
   explicitly have them be played on the computer's web browser instance")_ - plan:
@@ -528,6 +507,27 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.354.0 - Your whole library, the computer's queue and search on the phone's iPod (2026-10-02)
+
+- The whole library: the iPod menus page their reads (5,000 a request, joined once) so Songs, Genres, the untagged bucket, the
+  cover pool, Artists, Albums, an album's or artist's songs, Liked, Shuffle Songs and the `?playlist=`/artist/album music links
+  cover every song (the server's 10,000 cap is unchanged; falsifier 10,503 songs: Songs 10,000 -> 10,503 rows, Genres gained
+  Zydeco, Shuffle 5000 + 5000 + 503). The browse-view tabs and the PC's Music page keep the old limit (Planned).
+- The PC's queue on the phone: a `queue` field on every remote carrier (1..201 ids, resolved through the caller's visibility, a
+  hidden id dropped before any title leaves, the index follows its song); the center button on Now Playing lists it with the
+  playing song marked, a row tap plays it from there on the PC, and with no queue the button does nothing. Per-frame cost at
+  23,000 songs 283 -> 9.8 ms (a point query, not a library filter).
+- The turn: the board's counter-turn is stamped in the same frame the landscape layout flips (a `matchMedia` listener); a
+  landscape phone with a stale stamp draws no board; `?debugRotate=1` now logs the frames before the event. The back-upright
+  dip stays parked in Planned.
+- Search: Music > Search on the iPod (a 39-cell strip, the wheel moves, center adds, MENU deletes, 250 ms debounce, results
+  grouped Songs / Albums / Artists, a song plays in the results); the skins list is filterable in Pocket Extras > Skins and
+  Settings > Mobile player (Find a skin). Dean signed off the look ("Ship it as is").
+- Suites on 87160e9a: Node 22.23.1 and 24.20.0, each 10714 tests, 10702 pass, 0 fail, 12 skipped. `lint:ui` unchanged, overlay 0.
+- Gate: adversary, QA and security-brief (full); r1 CHANGES by adversary and QA (binding gaps, a per-frame cost), all three
+  APPROVED r2 @87160e9a. Disclosed in Planned: the queue-edit ping, Cider/Nordic's empty up-next, the 10,000 limits left on the
+  PC page, a shrinking-library re-ask, one chapter-check mutant.
 
 ### v1.353.0 - Turn the speaker computer up or down from your phone (2026-10-02)
 

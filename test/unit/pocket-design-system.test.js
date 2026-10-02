@@ -2486,7 +2486,7 @@ test('AC5: the structure + type tokens are defined ONCE, on the chassis (.mms-ip
 // never grows with a user's name). A new text element fails this census until it joins a list.
 const { JSDOM } = require('jsdom');
 const WRAP = ['ipm-note', 'ipm-noterow ipm-lbl'];
-const GLYPH = ['mms-playind', 'ip-stars', 'mms-rn', 'mms-chev-r', 'ipm-chev', 'ipm-check', 'ipm-letter', 'ipm-badge', 'ipm-gl', 'ip-zone'];
+const GLYPH = ['mms-playind', 'ip-stars', 'mms-rn', 'mms-chev-r', 'ipm-chev', 'ipm-check', 'ipm-letter', 'ipm-badge', 'ipm-gl', 'ipm-sc', 'ip-zone'];
 function textLineClasses() {
   const r = ALL.filter((x) => /white-space:\s*nowrap/.test(x.body) && /text-overflow:\s*ellipsis/.test(x.body) && /\.mms-ipod \.ipm-lbl\b/.test(x.sel));
   assert.strictEqual(r.length, 1, 'ONE text-line rule');
@@ -2502,6 +2502,7 @@ function pocketLevels() {
   out.push(v([{ label: LONG, node: { type: 'album' } }, { label: LONG, id: 's1', song: true, sub: LONG }, { label: LONG, check: true, action: 'lighting' }]));
   out.push(v(SK.menuAboutItems({ songs: 1234567, albums: 5, artists: 7, version: '1.332.0-' + LONG }), { aboutName: LONG }));
   out.push(v(SK.menuLightingItems({ strength: 'subtle', note: LONG })));
+  out.push(v([{ label: 'Songs', info: true, heading: true, value: '' }, { label: LONG, id: 's1', song: true }], { cursor: -1, search: { q: LONG, sc: 0, focus: 'strip' } })); // v1.354 W4: Music > Search
   out.push(v([], { state: 'loading' }), v([], { state: 'error' }), v([], { state: 'empty', emptyText: LONG }));
   const runs = SK.menuLetterRuns(new Array(30).fill(0).map((_, i) => ({ label: String.fromCharCode(65 + (i % 26)) + ' ' + LONG })));
   out.push(v([{ label: LONG }], { jump: { letter: 'A', overlay: true, badge: true, grid: SK.menuLetterTargets(runs) } }));

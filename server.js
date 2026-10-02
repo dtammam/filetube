@@ -5383,12 +5383,31 @@ function resolveRemoteTracks(req, ids) {
   return ids.map((id) => rows.get(id) || null);
 }
 
+// v1.354: the PC's queue on the phone needs only title/artist/duration per id, so this resolves each id
+// ALONE (one point query, or one chapter expansion per distinct media item) under the caller's own
+// visibility: O(queue), not O(library), per state frame. Same null-for-hidden contract as resolveRemoteTracks.
+function resolveRemoteQueueTracks(req, ids) {
+  const expanded = new Map();
+  return ids.map((id) => {
+    const own = musicDb.parts.tracks.get(id); // a point query: musicDb.read() would load every track
+    if (own) return trackVisibleTo(req, own) ? own : null;
+    const baseId = String(id).split('::c')[0];
+    if (!expanded.has(baseId)) {
+      const db = getCachedDatabase();
+      const item = db.metadata && Object.prototype.hasOwnProperty.call(db.metadata, baseId) ? db.metadata[baseId] : null;
+      const ok = item && item.type === 'audio' && mediaVisibleTo(req, item) && libraryAudio.isEligibleAudioUniversal(item, musicDb.readPart('channels'));
+      expanded.set(baseId, ok ? itemChapterTracks(item) : []);
+    }
+    return expanded.get(baseId).find((t) => t.id === id) || null;
+  });
+}
+
 // The phone's "now playing" card for a track id: title, artist, album, art. Light on
 // purpose (the PC reports state every few seconds): one native lookup, or one chapter
 // expansion of the single media item the id names.
 function resolveRemoteTrackCard(req, id) {
   let track = null;
-  const native = ownTrack(musicDb.read().tracks, id);
+  const native = musicDb.parts.tracks.get(id); // a point query (this runs on every state frame; musicDb.read() loads every track)
   if (native) {
     if (trackVisibleTo(req, native)) track = native;
   } else {
@@ -5414,6 +5433,7 @@ const remoteStore = remoteStoreLib.createRemoteStore({ now: () => remoteClock() 
 const remoteRoutes = require('./lib/remote/routes').registerRoutes(app, {
   remote: remoteStore,
   resolveTracks: resolveRemoteTracks,
+  resolveQueueTracks: resolveRemoteQueueTracks,
   resolveTrackCard: resolveRemoteTrackCard,
   createRateLimiter: authGateLib.createRateLimiter,
   normalizeLabel: presenceStore.normalizeLabel,

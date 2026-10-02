@@ -592,6 +592,9 @@
     stampRotation(window);
     var stamp = function () { stampRotation(window); };
     window.addEventListener('orientationchange', stamp);
+    // v1.354: the orientation media query flips in the SAME frame the landscape layout applies (before paint), so the
+    // stamp lands with it; the events above stay as the angle's late correction.
+    try { if (window.matchMedia) window.matchMedia('(orientation: landscape)').addEventListener('change', stamp); } catch (_) { /* no matchMedia events */ }
     window.addEventListener('resize', stamp); // some engines report the new angle only once the new size lands
     try { if (window.screen && window.screen.orientation && window.screen.orientation.addEventListener) window.screen.orientation.addEventListener('change', stamp); } catch (_) { /* no screen.orientation */ }
   }

@@ -606,7 +606,7 @@
       if (!onPreview) return;
       var want = null;
       var pane = (!destroyed && screen === 'menu') ? curPane() : null;
-      if (pane && (pane.node.type === 'skins' || pane.node.type === 'skinLine' || pane.node.type === 'skinGen') && !trayUp()) {
+      if (pane && (pane.node.type === 'skins' || pane.node.type === 'skinLine' || pane.node.type === 'skinGen' || (pane.node.type === 'skinSearch' && pane.s && pane.s.focus === 'list')) && !trayUp()) {
         var it = pane.items[pane.cursor];
         if (it && it.action === 'skin' && it.preview) want = it.skinId;
       }
@@ -628,6 +628,7 @@
     function makeLevel(node) {
       return { node: node, pane: 0, panes: [makePane(node)] };
     }
+    function isSearch(p) { return !!p && (p.node.type === 'search' || p.node.type === 'skinSearch'); }
     function resetStack() { builtFor = style(); stack = [makeLevel({ type: 'main' })]; }
     resetStack();
     function top() { return stack[stack.length - 1]; }
@@ -659,6 +660,7 @@
       stack.forEach(function (l) {
         l.panes.forEach(function (p) {
           if (p.node.type === 'main' || SK.menuStaticItems(p.node, {})) return;
+          if (isSearch(p)) { if (pred(p) && p.node.type === 'search' && p.s && p.s.q) scheduleSearch(p); return; } // v1.354: its rows follow the library: ask again
           if (!pred(p)) return;
           if (p.items.length) p.anchor = identityOf(p.items[p.cursor]);
           p.state = 'idle'; p.token += 1; p.items = []; p.tracks = null; p.runs = null;
@@ -702,6 +704,15 @@
         if (pane.state !== 'ready') { // first draw: open on the saved skin, so entering never previews a stranger
           for (var ci = 0; ci < pane.items.length; ci++) if (pane.items[ci].check) { pane.cursor = ci; break; }
         }
+        pane.state = 'ready';
+        pane.cursor = Math.max(0, Math.min(pane.items.length - 1, pane.cursor));
+        return;
+      }
+      // v1.354 W4: the search levels hold their own query and strip (pane.s). The skins search re-derives
+      // every draw (the registry is local); the library search is filled by runSearch, never by cfg.load.
+      if (isSearch(pane)) {
+        if (!pane.s) pane.s = { q: '', sc: 0, focus: 'strip', timer: null, err: false };
+        if (pane.node.type === 'skinSearch') pane.items = SK.skinSearchItems(pane.s.q, SK.activeSkinId()) || [];
         pane.state = 'ready';
         pane.cursor = Math.max(0, Math.min(pane.items.length - 1, pane.cursor));
         return;
@@ -871,8 +882,110 @@
       var st = style();
       var sTop = list ? list.scrollTop : pane.scrollTop;
       var w = SK.menuWindow(pane.items.length, pane.cursor, rowH, sTop, viewH);
-      return { style: st, items: pane.items, cursor: pane.cursor, currentId: currentId(), start: w.start, end: w.end,
-        rowH: rowH, state: pane.state, emptyText: emptyTextFor(pane.node) };
+      var inStrip = isSearch(pane) && !!pane.s && pane.s.focus !== 'list';
+      return { style: st, items: pane.items, cursor: inStrip ? -1 : pane.cursor, currentId: currentId(), start: w.start, end: w.end,
+        rowH: rowH, state: pane.state, emptyText: isSearch(pane) ? searchEmptyText(pane) : emptyTextFor(pane.node) };
+    }
+    // ---- SEARCH (v1.354 W4): the typed query, the letter strip, the debounced read ----------------
+    var SEARCH_DEBOUNCE_MS = 250;
+    function searchEmptyText(pane) {
+      var q = pane.s ? pane.s.q : '';
+      if (pane.s && pane.s.err) return 'Couldn’t search. Type again to retry.';
+      return q ? 'No matches.' : (pane.node.type === 'skinSearch' ? 'Type a skin name.' : 'Type to search your music.');
+    }
+    function searchModel(pane) { return (isSearch(pane) && pane.s) ? { q: pane.s.q, sc: pane.s.sc, focus: pane.s.focus } : null; }
+    function applyStrip() {
+      var pane = curPane();
+      var bar = panel.querySelector('.ip-menuview .ipm-searchbar');
+      var m = searchModel(pane);
+      if (!bar || !m || !bar.parentNode) return;
+      var w = doc.createElement('div');
+      w.innerHTML = SK.renderSearchBar(m);
+      bar.parentNode.replaceChild(w.firstChild, bar);
+    }
+    // Every keystroke bumps the token (a response still in flight is dead on arrival) and restarts the wait;
+    // the read itself re-checks, after its await, that it is still the newest query on a live controller.
+    function scheduleSearch(pane) {
+      var ss = pane.s;
+      if (!ss) return;
+      ss.timer = cancel(ss.timer);
+      var q = ss.q;
+      pane.token += 1;
+      if (!q) { pane.items = []; pane.tracks = null; pane.play = null; pane.cursor = 0; ss.err = false; return; }
+      ss.timer = later(function () {
+        ss.timer = null;
+        if (destroyed) return;
+        var tok = ++pane.token;
+        var pr;
+        try { pr = Promise.resolve(typeof cfg.search === 'function' ? cfg.search(q) : { items: [] }); } catch (e) { pr = Promise.reject(e); }
+        pr.then(function (res) {
+          if (destroyed || tok !== pane.token || ss.q !== q) return;
+          pane.items = (res && Array.isArray(res.items)) ? res.items : [];
+          pane.tracks = (res && Array.isArray(res.tracks)) ? res.tracks : null;
+          pane.play = (res && res.play) || null;
+          ss.err = false;
+          pane.cursor = SK.searchNextStop(pane.items, -1, 1);
+          if (pane.cursor < 0) pane.cursor = 0;
+          if (!pane.items.length || pane.items[pane.cursor] && pane.items[pane.cursor].info) ss.focus = 'strip';
+          if (isVisible(pane)) render();
+        }, function () {
+          if (destroyed || tok !== pane.token || ss.q !== q) return;
+          pane.items = []; pane.tracks = null; ss.err = true; ss.focus = 'strip';
+          if (isVisible(pane)) render();
+        });
+      }, SEARCH_DEBOUNCE_MS);
+    }
+    function setQuery(pane, q) {
+      if (!pane.s || q === pane.s.q) return;
+      pane.s.q = q;
+      pane.s.focus = 'strip';
+      pane.cursor = 0;
+      if (pane.node.type === 'search') scheduleSearch(pane);
+      render();
+    }
+    function searchPress(pane) {
+      var ss = pane.s;
+      if (!ss) return;
+      var cell = SK.SEARCH_STRIP[ss.sc] || {};
+      if (cell.id === 'go') {
+        var first = SK.searchNextStop(pane.items, -1, 1);
+        if (first < 0 || !pane.items[first] || pane.items[first].info) return;
+        ss.focus = 'list';
+        pane.cursor = first;
+        render();
+        return;
+      }
+      setQuery(pane, SK.searchEdit(ss.q, cell.id));
+    }
+    // One wheel detent on a search level: along the strip, or (focus in the results) down/up the rows.
+    // Heading rows are never stops; up past the first row hands the wheel back to the strip.
+    function searchWheel(pane, delta) {
+      var ss = pane.s;
+      if (!ss) return 0;
+      if (ss.focus !== 'list') {
+        ss.sc = SK.searchStripStep(ss.sc, delta);
+        applyStrip();
+        return 1;
+      }
+      var n = Math.abs(Math.round(delta)) || 1;
+      var dir = delta < 0 ? -1 : 1;
+      var at = pane.cursor;
+      var moved = 0;
+      for (var k = 0; k < n; k++) {
+        var nx = SK.searchNextStop(pane.items, at, dir);
+        if (nx === at) {
+          if (dir < 0) { ss.focus = 'strip'; applyStrip(); renderList(); syncPreview(); return 1; }
+          break;
+        }
+        at = nx; moved += 1;
+      }
+      if (!moved) return 0;
+      pane.cursor = at;
+      scrollCursorIntoView(pane, false);
+      renderList();
+      syncPreview();
+      scheduleArt();
+      return 1;
     }
     // Re-draw ONLY the rows (a scroll or a cursor step), keeping the list's own scroll offset.
     function renderList() {
@@ -930,6 +1043,7 @@
         art: art && art === artShown ? art : '', artIn: !!art && art === artShown,
         jump: null, // the layers are applyJump()'s (persistent nodes, below)
         aboutName: pane.node.type === 'about' ? SK.menuTitle({ type: 'main' }, st) : '',
+        search: searchModel(pane),
       });
       var wrap = doc.createElement('div');
       wrap.innerHTML = SK.renderMenuView(st, v);
@@ -1319,6 +1433,11 @@
         if (gridOpen && screen === 'menu') { closeGrid(); return true; }
         clearJump();
         if (screen !== 'menu') { screen = 'menu'; render(); return true; }
+        var sp = curPane();
+        if (isSearch(sp) && sp.s) { // MENU undoes the search first: results -> strip, then one letter at a time
+          if (sp.s.focus === 'list') { sp.s.focus = 'strip'; applyStrip(); renderList(); syncPreview(); return true; }
+          if (sp.s.q) { setQuery(sp, SK.searchEdit(sp.s.q, 'del')); return true; }
+        }
         if (stack.length > 1) { stack.pop(); render(); return true; }
         return false;
       },
@@ -1327,6 +1446,7 @@
         if (gridOpen) { closeGrid(); return true; }
         if (checkData()) { render(); return true; } // a stale level re-loads; never act on its old rows
         var p = curPane();
+        if (isSearch(p) && p.s && p.s.focus !== 'list') { searchPress(p); return true; }
         activate(p ? p.cursor : 0);
         return true;
       },
@@ -1346,6 +1466,7 @@
         var p = curPane();
         if (!p) return 0;
         if (gridOpen) closeGrid();
+        if (isSearch(p)) return searchWheel(p, delta);
         if (lm.on && letterable(p)) {
           if (lm.moveJumped) return 0; // one letter per pointermove, however far the finger went
           lm.moveJumped = true;
@@ -1361,12 +1482,26 @@
         screen = 'menu';
         render();
       },
-      onItemTap: function (i) { if (screen !== 'menu') return; if (checkData()) { render(); return; } activate(i); },
+      onItemTap: function (i) {
+        if (screen !== 'menu') return;
+        if (checkData()) { render(); return; }
+        var tp = curPane();
+        if (isSearch(tp) && tp.s && tp.items[i] && !tp.items[i].info) tp.s.focus = 'list';
+        activate(i);
+      },
       // quick scroll's taps (the overlay/badge open the picker, a letter jumps, a tap outside
       // closes it). True = consumed. ANY other tap while the picker is open only closes it.
       onPanelClick: function (e) {
         if (!style() || screen !== 'menu') return false;
         var t = e.target;
+        var st0 = t.closest('[data-skin-strip]');
+        var sp0 = curPane();
+        if (st0 && isSearch(sp0) && sp0.s) {
+          clearJump();
+          sp0.s.sc = Math.max(0, Math.min(SK.SEARCH_STRIP.length - 1, parseInt(st0.getAttribute('data-skin-strip'), 10) || 0));
+          searchPress(sp0);
+          return true;
+        }
         var lt = t.closest('[data-skin-letter]');
         if (lt) { pickLetter(parseInt(lt.getAttribute('data-skin-letter'), 10)); return true; }
         if (t.closest('[data-skin-letters]')) { openGrid(); return true; }
@@ -1394,6 +1529,7 @@
       },
       destroy: function () {
         destroyed = true;
+        stack.forEach(function (l) { l.panes.forEach(function (pp) { if (pp.s) pp.s.timer = cancel(pp.s.timer); }); });
         syncPreview(); // a level torn down mid-preview hands the panel back to the saved skin
         artTimer = cancel(artTimer);
         clearJump();
@@ -2360,7 +2496,7 @@
           setListMode(false);
           if (cur && !isNaN(cgi)) onSelectIndex(cgi);
         } else if (pocket && pocket.onSelect()) { /* pocket menus: the menu selected / drilled in */ }
-        else { setListMode(true); }
+        else if (!panel.querySelector('.mms-remote') || panel.querySelector('.ip-listview .mms-row')) { setListMode(true); } // v1.354 (R4): a speaker with no list to show = the button does nothing
         return;
       }
       var seek = e.target.closest('[data-skin-seek]');

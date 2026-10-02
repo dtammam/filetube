@@ -1506,6 +1506,30 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!(st && typeof st.volume === 'number' && isFinite(st.volume))) return null;
       return st.muted === true ? 0 : st.volume;
     }
+    // v1.354: the PC's own queue (up to 100 either side of the current song), as the skin's song list. The
+    // server already dropped what this account may not see; no queue reported = no rows (the center button
+    // then does nothing).
+    function remoteQueueRows(st) {
+      var q = st && st.queue;
+      if (!q || !Array.isArray(q.tracks) || !q.tracks.length) return [];
+      return q.tracks.map(function (t, j) {
+        return { index: j, title: t.title, artist: t.artist, durLabel: mmssMusic(t.durationSec),
+          state: j < q.index ? 'played' : (j === q.index ? 'current' : 'next') };
+      });
+    }
+    // The PC's queue as one string (its songs and the current index): the mirror repaints when it arrives or changes.
+    function remoteQueueSig(st) {
+      var q = st && st.queue;
+      return q && Array.isArray(q.tracks) ? q.index + ':' + q.tracks.map(function (t) { return t.id; }).join(',') : 'nq';
+    }
+    // A row tap on the PC's list: play THAT list from that row on the PC (the ids as the server resolved them).
+    function remoteQueuePlay(i) {
+      var st = RC.state() || {};
+      var q = st.queue;
+      if (!q || !Array.isArray(q.tracks) || !(i >= 0 && i < q.tracks.length)) return;
+      remoteDocked = false;
+      RC.play(q.tracks.map(function (t) { return t.id; }), i);
+    }
     function remoteSkinCtx() {
       var st = RC.state() || {};
       var tr = st.track || null;
@@ -1516,7 +1540,7 @@ if (typeof module !== 'undefined' && module.exports) {
           album: tr ? tr.album : '', artUrl: (tr && tr.artUrl) || '' },
         remote: { label: RC.label() },
         artistTap: false, artistTitle: '',
-        upNext: [], fullList: [], playing: st.state === 'playing', posSec: pos, durSec: dur,
+        upNext: [], fullList: remoteQueueRows(st), playing: st.state === 'playing', posSec: pos, durSec: dur,
         posLabel: mmssMusic(pos), remLabel: dur > 0 ? ('-' + mmssMusic(dur - pos)) : '',
         curNum: 0, total: 0, // no "N of M": the PC's queue is not this device's
         volume: remoteVolume(), // v1.353: the speaker's player volume (null: it has not said)
@@ -1669,7 +1693,7 @@ if (typeof module !== 'undefined' && module.exports) {
         getSkinId: function () { return SKINS.activeSkinId(); },
         getCtx: function () { return buildSkinCtx(currentSkinIndex(), popout); },
         hostCtl: hostCtl, // MAIN-document controls - a pop-out click still drives the real player
-        onSelectIndex: function (i) { playAt(i, { soloChapter: true, pick: true }); }, // v1.311: a skin track tap is a single-chapter SELECT (exit after that segment)
+        onSelectIndex: function (i) { if (remoteOn()) { remoteQueuePlay(i); return; } playAt(i, { soloChapter: true, pick: true }); }, // v1.311: a skin track tap is a single-chapter SELECT (exit after that segment)
         onDock: dockToOrigin,
         onPlayOnBadge: function () { if (RC) { RC.leave(); updateNowPlayingPanel(); } }, // skins without menus: the badge ends remote control
         // v1.353: the speaker's volume - offered only while this device controls one that reported it
@@ -1688,6 +1712,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // same /api/music routes the browse view reads) and the play seam (playFromMenu).
         menu: {
           load: menuLoad,
+          search: menuSearch,
           onPlay: function (req) { playFromMenu(req); },
           onShuffleAll: shuffleAllFromMenu,
           hasCurrent: function () { return remoteOn() || hasCurrentMusicTrack(); },
@@ -2903,7 +2928,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (RC) {
       var mirrorSig = '';
       // v1.353: a speaker's first volume report repaints too (the bar / row render only with a level)
-      var sigOf = function () { var st = RC.state() || {}; return [RC.targetId(), st.track && st.track.id, st.state, remoteVolume() === null ? 'nv' : 'v'].join('|'); };
+      var sigOf = function () { var st = RC.state() || {}; return [RC.targetId(), st.track && st.track.id, st.state, remoteVolume() === null ? 'nv' : 'v'].join('|') + '|' + remoteQueueSig(st); };
       var offMirror = RC.onChange(function () {
         var sig = sigOf();
         if (sig !== mirrorSig) { mirrorSig = sig; updateNowPlayingPanel(); } else reflectEngines();
@@ -2917,11 +2942,14 @@ if (typeof module !== 'undefined' && module.exports) {
         playFromMenu({ tracks: req.tracks, index: req.index, play: { flat: true, label: 'From ' + (req.label || 'another device') } });
       };
       REMOTE.setMusicPlayHandler(remotePlay);
+      // v1.354: this PC's queue, for the phone's list (the target cuts it to 100 either side and reads it each report)
+      if (typeof REMOTE.setQueueReader === 'function') REMOTE.setQueueReader(function () { var ci = currentSkinIndex(); return ci >= 0 && ci < queue.length ? { list: queue, index: ci } : null; });
       // v1.352: the chapter on screen is the one this PC reports to the phone (reflectChapter rolls it)
       if (typeof REMOTE.setNowPlayingResolver === 'function') REMOTE.setNowPlayingResolver(function () { return chapterViewId; });
       signal.addEventListener('abort', function () {
         REMOTE.setMusicPlayHandler(null);
         if (typeof REMOTE.setNowPlayingResolver === 'function') REMOTE.setNowPlayingResolver(null);
+        if (typeof REMOTE.setQueueReader === 'function') REMOTE.setQueueReader(null);
       });
       if (remoteBtn) {
         var paintRemote = function () {
@@ -4320,10 +4348,30 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     function noteLikedChanged() { menuLikedGen += 1; }
     try { document.addEventListener('filetube:library-changed', function () { invalidateMenuData(); }, { signal: signal }); } catch (_) { /* no document */ }
+    // v1.354 W1: the server clamps one request to 10,000 rows (MAX_LIMIT), so a bigger library came back
+    // cut. Every menu list that must hold ALL of its rows reads sequential pages of MENU_PAGE and joins
+    // them. `url` carries no limit/offset. The seeded random order is stable across pages, so a shuffle
+    // pages like any sort. A torn-down view stops after the page in flight (signal), and a page that
+    // comes back empty ends the loop (a library that shrank mid-read must not spin).
+    var MENU_PAGE = 5000;
+    function fetchAllRows(url) {
+      var rows = [];
+      function page() {
+        if (signal.aborted) return Promise.reject(new Error('aborted'));
+        return fetchJson(url + (url.indexOf('?') < 0 ? '?' : '&') + 'limit=' + MENU_PAGE + '&offset=' + rows.length).then(function (d) {
+          var items = menuItemsOf(d);
+          rows = rows.concat(items);
+          var total = Number(d && d.total);
+          if (!items.length || !(total > rows.length)) return { items: rows, total: rows.length };
+          return page();
+        });
+      }
+      return page();
+    }
     function menuAllSongs() {
       if (!menuSongsPromise) {
-        var pr = fetchJson('/api/music?sort=title-asc&limit=10000')
-          .then(function (d) { return Array.isArray(d && d.items) ? d.items : []; });
+        var pr = fetchAllRows('/api/music?sort=title-asc')
+          .then(function (d) { return d.items; });
         menuSongsPromise = pr;
         pr.catch(function () { if (menuSongsPromise === pr) menuSongsPromise = null; }); // a failure retries on the next open
       }
@@ -4337,8 +4385,8 @@ if (typeof module !== 'undefined' && module.exports) {
         return menuAllSongs().then(function (t) { return t.filter(function (x) { return !((x && (x.albumArtist || x.artist)) || ''); }); });
       }
       if (!menuArtistCache[key]) {
-        var pr = fetchJson('/api/music?artist=' + encodeURIComponent(key) + '&sort=' + encodeURIComponent(sortForTab('drill-artist')) + '&limit=10000')
-          .then(function (d) { return Array.isArray(d && d.items) ? d.items : []; });
+        var pr = fetchAllRows('/api/music?artist=' + encodeURIComponent(key) + '&sort=' + encodeURIComponent(sortForTab('drill-artist')))
+          .then(function (d) { return d.items; });
         menuArtistCache[key] = pr;
         pr.catch(function () { if (menuArtistCache[key] === pr) delete menuArtistCache[key]; });
       }
@@ -4379,10 +4427,10 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!SKINS) return Promise.resolve({ items: [] });
       if (n.type === 'playon') return RC ? playOnItems() : Promise.resolve({ items: [] });
       if (n.type === 'artists') {
-        return fetchJson('/api/music/artists?limit=10000&sort=title-asc').then(function (d) { return { items: SKINS.menuArtistItems(menuItemsOf(d), musicArtUrl), letters: true }; });
+        return fetchAllRows('/api/music/artists?sort=title-asc').then(function (d) { return { items: SKINS.menuArtistItems(menuItemsOf(d), musicArtUrl), letters: true }; });
       }
       if (n.type === 'albums') {
-        return fetchJson('/api/music/albums?limit=10000&sort=title-asc').then(function (d) { return { items: SKINS.menuAlbumItems(menuItemsOf(d), musicArtUrl), letters: true }; });
+        return fetchAllRows('/api/music/albums?sort=title-asc').then(function (d) { return { items: SKINS.menuAlbumItems(menuItemsOf(d), musicArtUrl), letters: true }; });
       }
       if (n.type === 'recentArtists') {
         // Recent Artists: the Recently Played source's own route (visibility-gated), its artists in
@@ -4421,20 +4469,30 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       if (n.type === 'album') {
         var asort = sortForTab('drill-album');
-        return fetchJson('/api/music?album=' + encodeURIComponent(n.key || '') + '&sort=' + encodeURIComponent(asort) + '&limit=10000').then(function (d) {
+        return fetchAllRows('/api/music?album=' + encodeURIComponent(n.key || '') + '&sort=' + encodeURIComponent(asort)).then(function (d) {
           return menuSongLevel(menuItemsOf(d), { ctx: { src: 'music', album: n.key, sort: asort }, drill: { type: 'album', key: n.key, label: n.label }, label: n.label });
         });
       }
       if (n.type === 'playlist') {
         var pl = playlistSource(n.key);
-        return fetchJson(pl.url).then(function (d) { return menuSongLevel(menuItemsOf(d), { ctx: pl.ctx, label: n.label }); });
+        return pl.all ? fetchAllRows(pl.url).then(function (d) { return menuSongLevel(menuItemsOf(d), { ctx: pl.ctx, label: n.label }); }) : fetchJson(pl.url).then(function (d) { return menuSongLevel(menuItemsOf(d), { ctx: pl.ctx, label: n.label }); });
       }
       return Promise.resolve({ items: [] });
+    }
+    // v1.354 W4: Music > Search. Three reads of the routes' own `search=` (visibility-gated like every list), a handful
+    // of rows each; the song rows play IN the result list under a search ctx (the browse view's own list context).
+    function menuSearch(q) {
+      var u = SKINS.searchUrls(q);
+      return Promise.all([fetchJson(u.songs), fetchJson(u.albums), fetchJson(u.artists)]).then(function (r) {
+        var built = SKINS.menuSearchItems({ songs: menuItemsOf(r[0]), albums: menuItemsOf(r[1]), artists: menuItemsOf(r[2]) }, musicArtUrl);
+        built.play = { ctx: { src: 'music', search: String(q), sort: 'title-asc' }, label: 'Search' };
+        return built;
+      });
     }
     // The iPod menu's playlists (and the v1.352 L3 `?playlist=` links): where each one's songs come from.
     function playlistSource(key) {
       return key === 'liked'
-        ? { url: '/api/music?filter=liked&sort=title-asc&limit=10000', ctx: { src: 'music', filter: 'liked', sort: 'title-asc' }, label: 'Liked' }
+        ? { url: '/api/music?filter=liked&sort=title-asc', all: true, ctx: { src: 'music', filter: 'liked', sort: 'title-asc' }, label: 'Liked' }
         : key === 'recent-played'
           ? { url: MENU_RECENT_URL, ctx: { src: 'music', filter: 'recent-listening' }, label: 'Recently Played' }
           : { url: '/api/music?sort=newest&limit=100', ctx: { src: 'music', sort: 'newest' }, label: 'Recently Added' };
@@ -4602,7 +4660,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function shuffleAllFromMenu() {
       var seed = String(Math.floor(Math.random() * 1e9));
       var gen = playSelectGen;
-      fetchJson('/api/music?sort=random&seed=' + seed + '&limit=10000').then(function (d) {
+      fetchAllRows('/api/music?sort=random&seed=' + seed).then(function (d) {
         // post-await: the view is alive and no newer pick claimed the player meanwhile.
         if (signal.aborted || gen !== playSelectGen) return;
         playFromMenu({ tracks: menuItemsOf(d), index: 0, play: { ctx: { src: 'music', sort: 'random', seed: seed }, label: 'Shuffle Songs' } });
@@ -4625,21 +4683,22 @@ if (typeof module !== 'undefined' && module.exports) {
       if (o.type === 'playlist') {
         var pl = playlistSource(o.key);
         var serverShuffle = o.key === 'liked' && mode === 'shuffle';
-        src = { url: serverShuffle ? '/api/music?filter=liked&sort=random&seed=' + seed + '&limit=10000' : pl.url,
+        src = { url: serverShuffle ? '/api/music?filter=liked&sort=random&seed=' + seed : pl.url,
+          all: serverShuffle || !!pl.all,
           ctx: serverShuffle ? { src: 'music', filter: 'liked', sort: 'random', seed: seed } : pl.ctx,
           clientShuffle: mode === 'shuffle' && !serverShuffle, label: pl.label, name: pl.label, drill: null };
       } else {
         var isAlbum = o.type === 'album';
         var key = isAlbum ? musicAlbumKeyFor(o.artist, o.album) : o.artist;
         var sort = mode === 'shuffle' ? 'random' : sortForTab(isAlbum ? 'drill-album' : 'drill-artist');
-        var q = (isAlbum ? 'album=' : 'artist=') + encodeURIComponent(key) + '&sort=' + sort + (mode === 'shuffle' ? '&seed=' + seed : '') + '&limit=10000';
+        var q = (isAlbum ? 'album=' : 'artist=') + encodeURIComponent(key) + '&sort=' + sort + (mode === 'shuffle' ? '&seed=' + seed : '');
         var ctx = { src: 'music', sort: sort };
         ctx[isAlbum ? 'album' : 'artist'] = key;
         if (mode === 'shuffle') ctx.seed = seed;
-        src = { url: '/api/music?' + q, ctx: ctx, clientShuffle: false, label: isAlbum ? o.album : o.artist,
+        src = { url: '/api/music?' + q, all: true, ctx: ctx, clientShuffle: false, label: isAlbum ? o.album : o.artist,
           name: isAlbum ? o.album : o.artist, drill: { type: o.type, key: key, label: isAlbum ? o.album : o.artist } };
       }
-      return fetchJson(src.url).then(function (d) {
+      return (src.all ? fetchAllRows : fetchJson)(src.url).then(function (d) {
         if (signal.aborted || gen !== playSelectGen) return; // a newer pick or a torn-down view owns the page
         var tracks = menuItemsOf(d);
         if (!tracks.length) {
