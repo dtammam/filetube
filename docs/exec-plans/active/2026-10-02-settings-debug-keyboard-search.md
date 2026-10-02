@@ -533,3 +533,55 @@ Measured in a `git archive da9a4de9` sandbox (node_modules symlinked), headless 
   A1 A3 (builder's, re-run) and mine X1 X9 X10 X11 X12 X13 X14 X15 X16 X17 X19 X21. Targeted files: 143 pass, 0 fail
   (settings-forms-sweep cancelled once at a 20 s per-file timeout under load, 20/20 at 120 s). lint:ui OK (3181),
   overlay-containment 0, eslint 0 errors (6 old warnings in common.js). Full suite NOT run by this seat.
+
+Gate: APPROVED r2 @259fef21 - qa
+
+Delta 549b4394..259fef21 reviewed; sandbox `qa355r2-` (git archive 259fef21, diffed pristine after every run).
+- Q1 fixed as prescribed, verified in headless Chromium 393x852 touch, both skins: `.ipm-kb` computed pointer-events none,
+  z-index auto, opacity 0, font 16px; keyboard down, `elementFromPoint` at the bar = `ipm-q`, a real tap there -> active
+  `input#ipm-kb`; sticker menu open (input still 1), the point inside the input's rect over "Home ›" hits
+  `button.mms-sm-extras`, a real tap there navigates /music?play=song1 -> / and focus never reaches the input.
+  Committed proof JSON rows barTap/stickerMenu match the section 7 table.
+- Q2 fixed: M1 (no resize removal), M2 (no mo.disconnect), M6 (no blur-timer cancel) now RED (pocket-kb-search 28/29).
+- Q3: `curPane() !== pane`, `!trayUp()` and the `kb.pane !== pane` arm removed. Sound: every stack change
+  (resetStack in afterPaint/landOnMusic, push in activate, pop in MENU, openPlayOn) is followed synchronously by
+  render() -> kbSync, and the tray path drops the menu view the bar keys on; the tray is now bound by behaviour. The two
+  new parenthetical comments are accurate.
+- Q4 fixed (setup.js names loadDebugLifecycleControl below; sweep comment says 28 then 30). Q5 not taken (accepted).
+- New code: bar-tap branch in onPanelClick (N1 drop -> red; N2 drop the `kb` check -> 20 pocket-search tests red, so
+  strip taps are unharmed); grapheme cap (N3 cap-1 -> red; fallback bound by deleting Intl.Segmenter); CSS (N4 drop
+  pointer-events -> red); phase census (N5 parser always 'bubble' -> red). 
+- Instruments (Node 22.23.1, per file): pocket-kb-search 29/29, setup-debug-rotate-toggle 9/9, settings-forms-sweep
+  20/20, setup-advanced-pages 3/3, setup-automation-reveal 7/7, setup-debug-lifecycle-toggle 11/11, pocket-search
+  34/34, pocket-phone-scope 18/18, setup-sticker-picker 9/9 (140, 0 fail); lint:ui "ui-lint: OK - the live debt equals
+  docs/ui-exceptions.json" (3181); overlay-containment "clean (0 violations)".
+- NOTE (non-blocking, lying doc): this plan's Deviation 2 (section 7, "it sits above the skin (`z-index:
+  calc(var(--z-player-max) + 1)`) so a tap on the bar reaches it natively") and the W2 evidence line naming that z-index
+  now describe the reverted design; mark them superseded by the r1 fix round when the plan closes.
+- NOTE (device): the input now sits UNDER the skin with pointer-events none; iOS raising the keyboard for a focus()
+  on such a field inside the bar/center click is covered by the existing v1.355 keyboard device check.
+
+Gate: APPROVED r2 @259fef21 - adversary
+
+Delta 549b4394..259fef21; sandbox `adv355r2-` (git archive 259fef21, mutants exact-once, restored, diffed pristine:
+identical). Each r1 finding re-measured on 259fef21:
+- A1 fixed as prescribed (verified, headless Chromium 393x852 touch, ipod-charcoal AND ipod-original): keyboard down,
+  `elementFromPoint` at the bar = `ipm-q`; a real tap -> `ipm-kb` focused; a second tap with the keyboard up keeps it.
+  Sticker menu open: the bar point hits the menu ("Speed"); a real tap there -> the menu row gets the click (menu
+  closes), focus stays on body, Search unchanged. Pop-out (desktop, its own document, 420x1100): a real mouse click on
+  the bar -> `ipm-kb` focused (click on `ipm-q`, then focusin on the input).
+- A2 fixed: X3 (hand-over synchronous) now RED on two tests (the row-tap test and the stale-timer test).
+- A3 fixed: X2 (drop isComposing) and X2b (drop keyCode 229) RED on the IME behaviour test, not only the census.
+- A4 fixed: X20 (music.js Escape bubble -> capture) RED; X20b (DDR capture -> bubble) RED.
+- A5 fixed: flag kept whole (1f1fa 1f1f8), ZWJ family kept whole, combining accent kept with its base; X22 (no
+  Segmenter) RED.
+- A6 addressed in DEVICE-CHECKS (accurate: any tap on the panel copies; the wheel's bottom needs the log off).
+- A7: the removed guards were the ones I measured as unreachable; the tray is now bound by behaviour. qa's teardown
+  mutants re-run as mine: X25 (resize listener), X26 (MO disconnect), X27 (blur-timer cancel) all RED. X23 (bar-tap
+  branch dropped) and X24 (pointer-events dropped) RED.
+- NOTE: inside kbBlur's timer the `if (!kb) return;` survived (X28): unreachable now that kbRemove cancels the timer
+  (X27 bound); a belt, fine.
+- Instruments: pocket-kb-search + pocket-search + setup-debug-rotate-toggle + settings-forms-sweep 92/92 pass; lint:ui
+  OK (3181); overlay-containment 0; eslint 0 errors on the changed files. Full suite not run by this seat (builder's
+  dual-Node 10740/0 at 5aac5619 stands as theirs). iOS behaviour (keyboard raise from a focus() in the bar/center click
+  on a pointer-events:none field, IME confirm) stays with the v1.355 device check.
