@@ -1,0 +1,195 @@
+{
+  "notes": [],
+  "speaker_label": "Linux PC · Radish",
+  "setup_is_phone": true,
+  "setup_speaker_playing": "song1",
+  "setup_record_after_pick": {
+    "v": 1,
+    "deviceId": "0008422e-47ab-4b70-8df8-f043064992ba",
+    "label": "Linux PC · Radish",
+    "user": "1",
+    "at": 1790964590844
+  },
+  "setup_command_posts": 1,
+  "setup_record_saved": {
+    "v": 1,
+    "deviceId": "0008422e-47ab-4b70-8df8-f043064992ba",
+    "label": "Linux PC · Radish",
+    "user": "1",
+    "at": 1790964594051
+  },
+  "setup_record_at_vs_close_ms": 2,
+  "ac1_tab_pick_at_load": null,
+  "ac1_attached_ms": 311,
+  "ac1_phone": {
+    "isRemote": true,
+    "label": "Linux PC · Radish",
+    "track": "Proof Song 1",
+    "state": "playing",
+    "mmsOn": true,
+    "lcdText": "Now Playingon Linux PC · RadishProof Song 1Proof BandProof Album0:03-9:56Proof Song 110:002Proof Song 210:003Proof Song 310:00MENUHome›Speed0.25×0.5×0.75×Normal",
+    "tabPick": "{\"deviceId\":\"0008422e-47ab-4b70-8df8-f043064992ba\",\"label\":\"Linux PC · Radish\"}",
+    "record": {
+      "v": 1,
+      "deviceId": "0008422e-47ab-4b70-8df8-f043064992ba",
+      "label": "Linux PC · Radish",
+      "user": "1",
+      "at": 1790964594448
+    },
+    "localPlayer": null
+  },
+  "ac1_ipod_screen": {
+    "menuMode": false,
+    "cursor": null
+  },
+  "ac1_toasts": [
+    "Playing on Linux PC · Radish"
+  ],
+  "ac1_speaker_track": "song1",
+  "ac1_speaker_position": 4.3,
+  "ac1_phone_position": 4.29,
+  "ac1_position_gap_s": 0.01,
+  "ac1_speaker_before": {
+    "id": "song1",
+    "position": 3.08,
+    "playing": true
+  },
+  "ac1_speaker_after_2s": {
+    "id": "song1",
+    "position": 6.3,
+    "playing": true
+  },
+  "ac1_speaker_advanced_not_restarted": true,
+  "ac1_command_posts": 0,
+  "ac1_targets_requests": 1,
+  "ac1_net_log": [
+    "GET targets @1790964594432",
+    "GET stream"
+  ],
+  "home_attached_on_home": true,
+  "home_then_music_mms_on": true,
+  "home_then_music_lcd": "Now Playingon Linux PC · RadishProof Song 1Proof BandProof Album0:07-9:52Proof Song 110:002Proof Song 210:003Proof Song 310:00MENUHome›Speed0.25×0.5×0.75×Normal",
+  "home_then_music_screen": {
+    "menuMode": false,
+    "cursor": null
+  },
+  "home_command_posts": 0,
+  "ac3_during": {
+    "pending": true,
+    "isRemote": false,
+    "label": "",
+    "track": null,
+    "mmsOn": false,
+    "toasts": []
+  },
+  "ac3_during_label_on_page": {
+    "found": true,
+    "around": "me Playlists History P You Listening on Linux PC · Radish Proof Song 1 0:07 /",
+    "handoffCard": "Listening on Linux PC · RadishProof Song 10:07 / 10:00Continue here",
+    "ipodBadge": null
+  },
+  "ac3_tap_results": [
+    false,
+    false,
+    false,
+    false
+  ],
+  "ac3_command_posts_during": 0,
+  "ac3_attached_after_release": true,
+  "ac3_command_posts_total": 0,
+  "ac3_speaker_still": {
+    "id": "song1",
+    "playing": true
+  },
+  "ac2_off": {
+    "isRemote": false,
+    "label": "",
+    "mmsOn": false,
+    "record": null,
+    "tabPick": null,
+    "toasts": [],
+    "command_posts": 0,
+    "targets_requests": 1,
+    "stream_requests": 0
+  },
+  "ac2_paused_speaker": {
+    "id": "song1",
+    "playing": false
+  },
+  "ac2_paused_61min": {
+    "isRemote": false,
+    "label": "",
+    "mmsOn": false,
+    "record": null,
+    "tabPick": null,
+    "toasts": [],
+    "command_posts": 0,
+    "targets_requests": 1,
+    "stream_requests": 0
+  },
+  "paused_20min_attached": true,
+  "paused_20min": {
+    "state": "paused",
+    "screen": {
+      "menuMode": true,
+      "cursor": "Music"
+    },
+    "toasts": [
+      "Playing on Linux PC · Radish"
+    ]
+  },
+  "paused_20min_command_posts": 0,
+  "paused_20min_speaker_still_paused": true,
+  "paused_20min_mirror_follows_play": true,
+  "playing_3h_attached": true,
+  "playing_3h": {
+    "track": "Proof Song 1",
+    "toasts": [
+      "Playing on Linux PC · Radish"
+    ],
+    "command_posts": 0
+  },
+  "stale_speaker_now": {
+    "id": "song1",
+    "playing": false
+  },
+  "stale_listed_state": {
+    "state": "playing",
+    "ageMs": 2823
+  },
+  "stale_paused_3h_attached": true,
+  "stale_paused_3h_mirror_after_attach": "paused",
+  "stale_command_posts": 0,
+  "ac4_other_speaker_same_device_id": true,
+  "ac4_signed_in_as": "otheruser",
+  "ac4_other_users_targets_list_that_id": true,
+  "ac4": {
+    "isRemote": false,
+    "label": "",
+    "record": null,
+    "toasts": [],
+    "command_posts": 0,
+    "resume_targets_requests": 0
+  },
+  "ac4_speaker1_undisturbed": {
+    "id": "song1",
+    "playing": true
+  },
+  "idle_speaker_snapshot": {
+    "id": null,
+    "playing": false
+  },
+  "idle_attached": true,
+  "idle": {
+    "state": "idle",
+    "track": null,
+    "mmsOn": true,
+    "lcdText": "Clickon Linux PC · RadishNothing playingClick the PC's tab once to let it play0:00MusicExtrasSettingsShuffle SongsSpeakersNow PlayingMENUHome›Speed0.25×0.5×0.75",
+    "command_posts": 0
+  },
+  "idle_screen": {
+    "menuMode": true,
+    "cursor": "Music"
+  },
+  "errors": []
+}
