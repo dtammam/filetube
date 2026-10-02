@@ -20,7 +20,7 @@ const { seedState } = require('../helpers/seed-state');
 const musicStore = require('../../lib/music/store');
 const { authenticateFetch } = require('../helpers/auth');
 
-let server, base, auth, member, rateUser, other, valUser, volUser, volQueueUser, perfUser;
+let server, base, auth, member, rateUser, other, valUser, volUser, volQueueUser, perfUser, qUser;
 const ROOT = path.join(DATA_DIR, 'ytdlp');
 const blockedRoot = path.join(ROOT, 'blockedchan');
 const PC = 'pc-device-1';
@@ -63,6 +63,7 @@ before(async () => {
   volUser = __mintTestSession({ username: 'remotevol', role: 'member' });
   volQueueUser = __mintTestSession({ username: 'remotevolq', role: 'member' });
   perfUser = __mintTestSession({ username: 'remoteperf', role: 'member' });
+  qUser = __mintTestSession({ username: 'remoteqadmin', role: 'admin' });
 });
 
 after(async () => {
@@ -601,19 +602,19 @@ test('v1.353 another user cannot set my speaker\'s volume', async () => {
 });
 
 test('v1.354 the PC queue survives POST state -> stream frame -> GET targets -> controller poll, as THIS caller may see it', async () => {
-  const t = await asTarget();
+  const t = await asTarget(qUser.cookie, 'q-pc', 'PC');
   await t.next('hello');
-  const c = await asController();
+  const c = await asController(qUser.cookie, 'q-phone', 'q-pc');
   await c.next('hello');
-  const st = (extra) => post('/api/remote/state', Object.assign({ deviceId: PC, trackId: 'tonzak1', position: 3, duration: 100, state: 'playing' }, extra));
+  const st = (extra) => post('/api/remote/state', Object.assign({ deviceId: 'q-pc', trackId: 'tonzak1', position: 3, duration: 100, state: 'playing' }, extra), qUser.cookie);
   assert.strictEqual((await st({ queue: { ids: ['tonzak2', 'tonzak1', 'tonzak2'], index: 1 } })).status, 202);
   const f = await c.next('state');
   assert.deepStrictEqual(f.data.queue.tracks.map((x) => x.id), ['tonzak2', 'tonzak1', 'tonzak2'], 'the stream frame');
   assert.strictEqual(f.data.queue.index, 1);
   assert.strictEqual(f.data.queue.tracks[1].title, 'tonzak1 title');
-  const list = await (await fetch(`${base}/api/remote/targets?deviceId=${PHONE}`)).json();
-  assert.strictEqual(list.find((x) => x.deviceId === PC).state.queue.index, 1, 'the targets list');
-  const cp = await (await fetch(`${base}/api/remote/poll?deviceId=${PHONE}&role=controller&target=${PC}`)).json();
+  const list = await (await fetch(`${base}/api/remote/targets?deviceId=q-phone`, { headers: { Cookie: qUser.cookie } })).json();
+  assert.strictEqual(list.find((x) => x.deviceId === 'q-pc').state.queue.index, 1, 'the targets list');
+  const cp = await (await fetch(`${base}/api/remote/poll?deviceId=q-phone&role=controller&target=q-pc`, { headers: { Cookie: qUser.cookie } })).json();
   assert.strictEqual(cp.state.queue.tracks.length, 3, 'the controller poll');
   for (const bad of [{ ids: [], index: 0 }, { ids: ['tonzak1'], index: 1 }, { ids: ['tonzak1'], index: -1 }, { ids: ['tonzak1'], index: 0.5 }, { ids: ['bad id!'], index: 0 }, { ids: 'tonzak1', index: 0 }, { ids: new Array(202).fill('tonzak1'), index: 0 }, 'x']) {
     assert.strictEqual((await st({ queue: bad })).status, 202, JSON.stringify(bad).slice(0, 40));
@@ -623,11 +624,11 @@ test('v1.354 the PC queue survives POST state -> stream frame -> GET targets -> 
 });
 
 test('v1.354 gate r1: the queue cap is exactly 201 ids (201 carried, 202 not); each row carries its title, artist and duration', async () => {
-  const t = await asTarget();
+  const t = await asTarget(qUser.cookie, 'q-pc', 'PC');
   await t.next('hello');
-  const c = await asController();
+  const c = await asController(qUser.cookie, 'q-phone', 'q-pc');
   await c.next('hello');
-  const st = (queue) => post('/api/remote/state', { deviceId: PC, trackId: 'tonzak1', position: 3, duration: 100, state: 'playing', queue });
+  const st = (queue) => post('/api/remote/state', { deviceId: 'q-pc', trackId: 'tonzak1', position: 3, duration: 100, state: 'playing', queue }, qUser.cookie);
   const ids = (n) => Array.from({ length: n }, (_, i) => (i % 2 ? 'tonzak1' : 'tonzak2'));
   assert.strictEqual((await st({ ids: ids(201), index: 200 })).status, 202);
   const f = await c.next('state');
@@ -639,11 +640,11 @@ test('v1.354 gate r1: the queue cap is exactly 201 ids (201 carried, 202 not); e
 });
 
 test('v1.354 gate r1: a native track and a library chapter id resolve in the queue under the caller\'s own visibility (the O(queue) resolver), an unknown id is dropped', async () => {
-  const t = await asTarget();
+  const t = await asTarget(qUser.cookie, 'q-pc', 'PC');
   await t.next('hello');
-  const c = await asController();
+  const c = await asController(qUser.cookie, 'q-phone', 'q-pc');
   await c.next('hello');
-  const st = (queue) => post('/api/remote/state', { deviceId: PC, trackId: 'nvis', position: 3, duration: 100, state: 'playing', queue });
+  const st = (queue) => post('/api/remote/state', { deviceId: 'q-pc', trackId: 'nvis', position: 3, duration: 100, state: 'playing', queue }, qUser.cookie);
   assert.strictEqual((await st({ ids: ['nvis', 'nblk', 'no-such-track', 'tonzak1', 'tonzak1::c9', '__proto__'], index: 0 })).status, 202);
   const f = await c.next('state');
   assert.deepStrictEqual(f.data.queue.tracks.map((x) => x.id), ['nvis', 'nblk', 'tonzak1'], 'the admin sees the native and library tracks; unknown, a missing chapter and an inherited key are dropped');
