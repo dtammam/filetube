@@ -97,9 +97,37 @@ async function row(b, srv, size, skin, flagOn) {
     out.lcdBottomY = out.afterType.lcd ? Math.round((out.afterType.lcd[1] + out.afterType.lcd[3]) * 100) / 100 : null;
     const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     out.unmoved = { focus: same(out.before, out.afterFocus), typing: same(out.before, out.afterType) };
+    // gate r1 (qa Q1 = adversary A1): the input takes no taps. (a) Keyboard down (the Search key), a REAL tap on the bar's
+    // center brings it back up (the panel's click focuses it). (b) The sticker menu open over the bar: a REAL tap there is
+    // the menu's (elementFromPoint is a menu node, the input never takes focus).
+    const tapAt = async (x, y) => { await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] }); await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await p.waitForTimeout(200); };
+    const active = () => ev(() => (document.activeElement ? document.activeElement.tagName.toLowerCase() + (document.activeElement.id ? '#' + document.activeElement.id : '') : ''));
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await p.waitForTimeout(150);
+    const bar = await ev(() => { const r = document.querySelector('.ip-menuview .ipm-q').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+    out.barTap = { activeBefore: await active(), hitAtBar: await ev((pt) => { const e = document.elementFromPoint(pt.x, pt.y); return e ? e.className : null; }, bar) };
+    await tapAt(bar.x, bar.y);
+    out.barTap.activeAfter = await active();
+    out.barTap.ok = out.barTap.activeBefore !== 'input#ipm-kb' && out.barTap.activeAfter === 'input#ipm-kb' && !/ipm-kb/.test(out.barTap.hitAtBar || '');
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await cdp.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13 });
+    await p.waitForTimeout(150);
+    const stk = await ev(() => { const r = document.querySelector('[data-skin-sticker]').getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+    await tapAt(stk.x, stk.y);
+    out.stickerMenu = await ev((pt) => {
+      const m = document.querySelector('[data-skin-sticker-menu]'); const r = m && !m.hidden ? m.getBoundingClientRect() : null;
+      const e = document.elementFromPoint(pt.x, pt.y);
+      return { open: !!r, rect: r ? [r.x, r.y, r.width, r.height].map(Math.round) : null, inputs: document.querySelectorAll('#ipm-kb').length,
+        hitAtBar: e ? (e.closest('[data-skin-sticker-menu]') ? 'menu: ' + (e.closest('button,a,[role]') || e).textContent.trim().slice(0, 20) : e.className) : null };
+    }, bar);
+    await tapAt(bar.x, bar.y);
+    out.stickerMenu.activeAfterTap = await active();
+    out.stickerMenu.menuStillOpenOrActed = await ev(() => { const m = document.querySelector('[data-skin-sticker-menu]'); return m ? (m.hidden ? 'closed/acted' : 'open: ' + m.textContent.trim().slice(0, 30)) : 'gone'; });
+    out.stickerMenu.ok = out.stickerMenu.open && out.stickerMenu.inputs === 1 && /^menu: /.test(out.stickerMenu.hitAtBar || '') && out.stickerMenu.activeAfterTap !== 'input#ipm-kb';
     out.ok = out.title === 'Search' && out.activeAfterTap === 'input#ipm-kb' && out.inputs === 1 && !out.strip && out.input.parent === 'body' &&
       out.input.effectiveFontPx >= 16 && out.input.inside && out.searchRequests.some((u) => u.startsWith('/api/music?search=Proof')) &&
-      out.resultRows.length > 0 && out.unmoved.focus && out.unmoved.typing;
+      out.resultRows.length > 0 && out.unmoved.focus && out.unmoved.typing && out.barTap.ok && out.stickerMenu.ok;
   } else {
     // the wheel types: the center adds the letter under the marker (A on open)
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: c.x, y: c.y }] });

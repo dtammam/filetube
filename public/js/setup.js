@@ -1524,7 +1524,7 @@ function wireBgTimingLog(signal) {
 
 // v1.355: Settings > Troubleshooting > "Show rotate debug log" switches common.js's ?debugRotate=1 log. The
 // key and both functions are common.js's own (ROTATE_LOG_KEY, installRotateDebug, uninstallRotateDebug),
-// read here at call time, never re-typed. Unlike the lifecycle log above it applies AT ONCE both ways: ON
+// read here at call time, never re-typed. Unlike the lifecycle log (loadDebugLifecycleControl, below) it applies AT ONCE both ways: ON
 // stores '1' and installs the log in this window, OFF removes the key and takes the log down (in the
 // home-screen app a reload is a relaunch). Device-local like every Troubleshooting switch.
 function rotateDebugApi() {

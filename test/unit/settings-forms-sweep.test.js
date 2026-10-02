@@ -351,7 +351,7 @@ const viewRoot = (html) => {
 };
 
 // Sweep S3's merge follow-up: the resume-countdown switch left with the countdown (the modal it
-// configured is gone, D8.2), so the Settings switches number 28.
+// configured is gone, D8.2), so the Settings switches numbered 28; v1.355 added two (the rotate log, keyboard search): 30.
 test('Settings (F09): every checkbox is a ui-switch with role=switch; there are 30', () => {
   const root = viewRoot(SETUP_HTML);
   const boxes = root.querySelectorAll('input[type="checkbox"]');

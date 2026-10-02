@@ -21,7 +21,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const DEBOUNCE = 320;
 
 // ---------------------------------------------------------------- the pure half
-test('searchFromTyped: shown as typed (case, punctuation, spaces), control characters dropped, at most 40 whole characters', () => {
+test('searchFromTyped: shown as typed (case, punctuation, spaces), control characters dropped, at most 40 characters as a reader counts them', () => {
   assert.strictEqual(skins.searchFromTyped('Pro Song, vol. 2!'), 'Pro Song, vol. 2!');
   assert.strictEqual(skins.searchFromTyped(null), '');
   assert.strictEqual(skins.searchFromTyped(undefined), '');
@@ -35,6 +35,19 @@ test('searchFromTyped: shown as typed (case, punctuation, spaces), control chara
   const smile = String.fromCodePoint(0x1F600);
   const capped = skins.searchFromTyped('x'.repeat(39) + smile + 'y');
   assert.strictEqual(capped, 'x'.repeat(39) + smile, 'an emoji counts as one character and is never cut in half');
+  // gate r1 (adversary A5): multi-code-point emoji are one character too (grapheme clusters, Intl.Segmenter)
+  const flag = String.fromCodePoint(0x1F1FA, 0x1F1F8);
+  assert.strictEqual(skins.searchFromTyped('x'.repeat(39) + flag + 'y'), 'x'.repeat(39) + flag, 'a flag (two regional indicators) is kept whole');
+  const family = [0x1F468, 0x200D, 0x1F469, 0x200D, 0x1F467].map((c) => String.fromCodePoint(c)).join('');
+  assert.strictEqual(skins.searchFromTyped('x'.repeat(38) + family + 'yz'), 'x'.repeat(38) + family + 'y', 'a ZWJ family is one character, kept whole');
+  // without Intl.Segmenter: code points, so never a lone surrogate
+  const seg = Intl.Segmenter;
+  try {
+    delete Intl.Segmenter;
+    const cut = skins.searchFromTyped('x'.repeat(39) + smile + 'y');
+    assert.strictEqual(cut, 'x'.repeat(39) + smile, 'the fallback keeps the whole code point');
+    assert.strictEqual(skins.searchFromTyped('x'.repeat(39) + flag), 'x'.repeat(39) + String.fromCodePoint(0x1F1FA), 'the fallback counts code points (no lone surrogate)');
+  } finally { Intl.Segmenter = seg; }
   assert.strictEqual(skins.searchFromTyped(ctl.repeat(10) + 'Q'), 'Q', 'dropped before the cap is counted');
 });
 
@@ -307,9 +320,139 @@ test('flag ON: the input lies exactly over the query bar (its rect), and is plac
     assert.deepStrictEqual(st(), ['5px', '40px', '200px', '30px'], 'after a resize');
     pressMenu(b);
     box = { left: 1, top: 1, width: 1, height: 1 };
-    b.w.dispatchEvent(new b.w.Event('resize')); // the listener left with the input (nothing to place, nothing throws)
+    b.w.dispatchEvent(new b.w.Event('resize')); // nothing to place, nothing throws (the listener count is bound below)
     assert.strictEqual(inputs(b).length, 0);
     proto.getBoundingClientRect = orig;
+  } finally { b.restore(); }
+});
+
+// gate r1 (qa Q2): every handle the input brings (a window resize listener, a MutationObserver on the panel, the blur's
+// hand-over timer) goes with it, on every way out.
+function countHandles(b) {
+  const c = { resizeAdd: 0, resizeRemove: 0, observe: 0, disconnect: 0 };
+  const add = b.w.addEventListener.bind(b.w); const rem = b.w.removeEventListener.bind(b.w);
+  const mine = new Set(); // only listeners added after counting starts (the engine's own resize listener predates it)
+  b.w.addEventListener = (t, f, o) => { if (t === 'resize') { c.resizeAdd += 1; mine.add(f); } return add(t, f, o); };
+  b.w.removeEventListener = (t, f, o) => { if (t === 'resize' && mine.has(f)) c.resizeRemove += 1; return rem(t, f, o); };
+  const MO = b.w.MutationObserver;
+  b.w.MutationObserver = class extends MO {
+    observe(t, o) { this.kbCounted = !(o && o.subtree); if (this.kbCounted) c.observe += 1; return super.observe(t, o); }
+    disconnect() { if (this.kbCounted) { c.disconnect += 1; this.kbCounted = false; } return super.disconnect(); }
+  };
+  c.live = () => ({ resize: c.resizeAdd - c.resizeRemove, mo: c.observe - c.disconnect });
+  return c;
+}
+test('flag ON: the input\'s resize listener and panel observer are taken back on MENU, Now Playing, a dock and destroy (never one more per entry)', async () => {
+  const b = boot({ search: () => Promise.resolve({ items: [] }), hasCurrent: true });
+  try {
+    pressMenu(b); // NP -> Main
+    const c = countHandles(b);
+    const open = () => { centerIntoSearch(b); assert.deepStrictEqual(c.live(), { resize: 1, mo: 1 }, 'one of each while open'); };
+    open();
+    pressMenu(b); // MENU leaves
+    assert.deepStrictEqual(c.live(), { resize: 0, mo: 0 }, 'MENU');
+    tapLabel(b, 'Search');
+    assert.deepStrictEqual(c.live(), { resize: 1, mo: 1 });
+    pressMenu(b); pressMenu(b); tapLabel(b, 'Now Playing');
+    assert.deepStrictEqual(c.live(), { resize: 0, mo: 0 }, 'Now Playing');
+    pressMenu(b); pressMenu(b); // NP -> Music -> Main
+    open();
+    P(b).innerHTML = ''; // a dock: the view empties the panel, no render
+    await wait(0);
+    assert.deepStrictEqual(c.live(), { resize: 0, mo: 0 }, 'dock');
+    b.engine.paint();
+    assert.deepStrictEqual(c.live(), { resize: 1, mo: 1 }, 'expanded again on Search');
+    b.engine.destroy();
+    assert.deepStrictEqual(c.live(), { resize: 0, mo: 0 }, 'destroy');
+    assert.ok(c.resizeAdd >= 4 && c.observe >= 4, 'the counters saw every entry');
+  } finally { b.restore(); }
+});
+
+test('flag ON: a blur\'s hand-over timer never acts on a later input (blur, then a dock, then back on Search before it fires)', async () => {
+  const b = boot({ search: () => Promise.resolve(built(['One', 'Two'])) });
+  try {
+    centerIntoSearch(b);
+    type(b, 'o');
+    await wait(DEBOUNCE);
+    kbInput(b).blur(); // schedules the hand-over one turn later
+    P(b).innerHTML = ''; // a dock in the same turn
+    await Promise.resolve(); // the panel observer runs: the input is gone
+    assert.strictEqual(inputs(b).length, 0);
+    b.engine.paint(); // expanded again on Search: a NEW input, keyboard down, results not yet walked
+    assert.strictEqual(inputs(b).length, 1);
+    await wait(10); // the old timer's turn
+    assert.strictEqual(cursorLabel(b), null, 'the stale hand-over did nothing to the new input\'s level');
+    assert.strictEqual(P(b).querySelector('.ipm-searchbar.is-listfocus'), null);
+  } finally { b.restore(); }
+});
+
+test('flag ON: a tap on a result row while the keyboard is up plays it: the blur that comes first never redraws the rows under the tap', async () => {
+  const b = boot({ search: () => Promise.resolve(built(['One', 'Two'])) });
+  try {
+    centerIntoSearch(b);
+    type(b, 'o');
+    await wait(DEBOUNCE);
+    assert.strictEqual(b.d.activeElement, kbInput(b), 'keyboard up');
+    const row = rowsOf(b).find((r) => r.querySelector('.ipm-lbl').textContent === 'Two');
+    kbInput(b).blur(); // the browser blurs on the press...
+    tap(b, row); // ...and clicks the same row in the same turn
+    assert.strictEqual(b.plays.length, 1, 'the row played');
+    assert.strictEqual(b.plays[0].index, 1, 'the row that was tapped');
+    assert.strictEqual(b.engine.menuState().screen, 'np');
+    assert.strictEqual(inputs(b).length, 0, 'Now Playing: the input is gone');
+    await wait(5);
+    assert.strictEqual(b.engine.menuState().screen, 'np', 'the late hand-over changed nothing');
+  } finally { b.restore(); }
+});
+
+test('flag ON: a tap on the query bar brings the keyboard back up, inside the tap (the input itself takes no taps)', async () => {
+  const b = boot({ search: () => Promise.resolve(built(['One'])) });
+  try {
+    centerIntoSearch(b);
+    type(b, 'o');
+    await wait(DEBOUNCE);
+    kbInput(b).blur();
+    await wait(5);
+    assert.notStrictEqual(b.d.activeElement, kbInput(b));
+    tap(b, P(b).querySelector('.ipm-q'));
+    assert.strictEqual(b.d.activeElement, kbInput(b), 'focused in the same tap');
+    assert.strictEqual(b.plays.length, 0, 'nothing else happened');
+    assert.strictEqual(b.engine.menuState().title, 'Search');
+    const css = fs.readFileSync(path.join(ROOT, 'public/css/style.css'), 'utf8');
+    const rule = /\n {2}:where\(html\.is-phone, html\.mms-popout\) \.ipm-kb\{([^}]*)\}/.exec(css);
+    assert.ok(rule, 'the .ipm-kb rule');
+    assert.match(rule[1], /(^|;)\s*pointer-events:none;/, 'the input takes no taps (an overlay over the bar keeps its own)');
+    assert.doesNotMatch(rule[1], /z-index/, 'and no longer sits above the skin');
+  } finally { b.restore(); }
+});
+
+test('flag ON: Enter while an IME is composing (isComposing, or WebKit\'s keyCode 229) is the IME\'s confirm, not the Search key', () => {
+  const b = boot({ search: () => Promise.resolve({ items: [] }) });
+  try {
+    centerIntoSearch(b);
+    const composing = new b.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, isComposing: true });
+    kbInput(b).dispatchEvent(composing);
+    assert.strictEqual(b.d.activeElement, kbInput(b), 'isComposing: the keyboard stays');
+    assert.strictEqual(composing.defaultPrevented, false);
+    const k229 = new b.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+    Object.defineProperty(k229, 'keyCode', { value: 229 });
+    kbInput(b).dispatchEvent(k229);
+    assert.strictEqual(b.d.activeElement, kbInput(b), 'keyCode 229: the keyboard stays');
+    kbInput(b).dispatchEvent(new b.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    assert.notStrictEqual(b.d.activeElement, kbInput(b), 'a plain Enter is the Search key');
+  } finally { b.restore(); }
+});
+
+test('flag ON: the pop-out tray (no menu shown) takes the input away; the menu back brings it back', () => {
+  const b = boot({ search: () => Promise.resolve({ items: [] }) });
+  try {
+    centerIntoSearch(b);
+    b.d.body.classList.add('mms-tray');
+    b.engine.paint();
+    assert.strictEqual(inputs(b).length, 0, 'tray up: no input');
+    b.d.body.classList.remove('mms-tray');
+    b.engine.paint();
+    assert.strictEqual(inputs(b).length, 1, 'tray down, Search on screen: one');
   } finally { b.restore(); }
 });
 
@@ -518,7 +661,7 @@ const CLASSIFIED = [
   ['public/js/music.js', "if (searchInput) searchInput.addEventListener('keydown'", 'element'],
   // the keyboard-search input's own listeners (the stop itself)
   ['public/js/skin-surface.js', "['keydown', 'keypress', 'keyup'].forEach(function (t) { i.addEventListener(t, kbKey); });", 'the input itself'],
-  ['public/js/skin-surface.js', "if (e.type === 'keydown' && (e.key === 'Enter' || e.keyCode === 13) && !e.isComposing) {", 'the input itself (its Search key)'],
+  ['public/js/skin-surface.js', "if (e.type === 'keydown' && (e.key === 'Enter' || e.keyCode === 13) && !e.isComposing && e.keyCode !== 229) {", 'the input itself (its Search key)'],
   // bubble on document/window: the input's stopPropagation keeps them deaf (bound by the dispatch test above)
   ['public/js/music.js', "document.addEventListener('keydown', function (e) {\n      if (e.key === 'Escape' && actionsMenu", 'bubble'],
   ['public/js/player.js', "document.addEventListener('keydown', function (e) {\n      if (state !== STATE_FULL) return;\n      if (e.ctrlKey", 'bubble'],
@@ -562,4 +705,39 @@ test('R9 census: every key listener a player shell can load is classified (eleme
     return h.f + ':' + src.slice(0, h.at).split('\n').length + ' ' + src.slice(src.lastIndexOf('\n', h.at) + 1, src.indexOf('\n', h.at)).trim();
   });
   assert.deepStrictEqual(unclassified, [], 'classify each new key listener (and if it is CAPTURE on document/window, say why the keyboard-search input is safe)');
+  // gate r1 (adversary A4): the class is checked against the PHASE the call really registers in, not only its text
+  let phased = 0;
+  for (const [f, needle, why] of CLASSIFIED) {
+    if (!(why === 'bubble' || why.startsWith('capture'))) continue;
+    const src = fs.readFileSync(path.join(ROOT, f), 'utf8');
+    let k = -1;
+    while ((k = src.indexOf(needle, k + 1)) !== -1) {
+      const li = needle.indexOf("EventListener('key");
+      if (li < 0) continue; // an array form (classified by its reason)
+      const open = k + li + 'EventListener'.length;
+      const phase = listenerPhase(src, open);
+      assert.strictEqual(phase, why === 'bubble' ? 'bubble' : 'capture', f + ': ' + needle.slice(0, 50) + ' registers in the ' + phase + ' phase, classified ' + why.split(':')[0]);
+      phased += 1;
+    }
+  }
+  assert.ok(phased >= 14, 'the phase check reached the calls (' + phased + ')');
 });
+
+// The phase an add/removeEventListener call at `open` (its '(') registers in: its LAST top-level argument `true`, or an
+// options object with `capture: true`, is capture; anything else is bubble. Quotes, comments and nested brackets are skipped.
+function listenerPhase(src, open) {
+  let depth = 0; let q = null; let lastComma = -1; let end = -1;
+  for (let i = open; i < src.length; i++) {
+    const c = src[i];
+    if (q) { if (c === '\\') { i += 1; continue; } if (c === q) q = null; continue; }
+    if (c === '/' && src[i + 1] === '/') { i = src.indexOf('\n', i); continue; } // a line comment (an apostrophe in it is no quote)
+    if (c === '/' && src[i + 1] === '*') { i = src.indexOf('*/', i) + 1; continue; }
+    if (c === "'" || c === '"' || c === '`') { q = c; continue; }
+    if (c === '(' || c === '[' || c === '{') depth += 1;
+    else if (c === ')' || c === ']' || c === '}') { depth -= 1; if (depth === 0) { end = i; break; } }
+    else if (c === ',' && depth === 1) lastComma = i;
+  }
+  assert.ok(end > 0 && lastComma > 0, 'parsed the call');
+  const last = src.slice(lastComma + 1, end).trim();
+  return (last === 'true' || /\bcapture\s*:\s*true\b/.test(last)) ? 'capture' : 'bubble';
+}

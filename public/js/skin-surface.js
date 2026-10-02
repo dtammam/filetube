@@ -1021,7 +1021,9 @@
     }
     function kbKey(e) {
       e.stopPropagation(); // the keys typed here are the query's alone: no page shortcut (Space, arrows, Escape) sees them
-      if (e.type === 'keydown' && (e.key === 'Enter' || e.keyCode === 13) && !e.isComposing) {
+      // an IME's own confirm is not the Search key: skip a composing keydown, and WebKit's keyCode 229 (its confirm keydown
+      // can arrive after compositionend, with isComposing already false)
+      if (e.type === 'keydown' && (e.key === 'Enter' || e.keyCode === 13) && !e.isComposing && e.keyCode !== 229) {
         e.preventDefault();
         try { e.target.blur(); } catch (_) { /* gone */ } // the keyboard's Search key: keyboard down
       }
@@ -1029,8 +1031,8 @@
     function kbInput(e) {
       if (!kb || e.target !== kb.input) return;
       if (e.type === 'input' && e.isComposing) return; // an IME word lands on compositionend
-      var pane = kb.pane;
-      if (!pane || !pane.s || curPane() !== pane) return;
+      var pane = kb.pane; // (always the pane on screen: kbSync removes the input whenever the level changes)
+      if (!pane || !pane.s) return;
       var q = SK.searchFromTyped(kb.input.value);
       if (kb.input.value !== q) kb.input.value = q; // capped or cleaned: the field holds exactly the query
       setQuery(pane, q);
@@ -1086,9 +1088,10 @@
       try { k.input.blur(); } catch (_) { /* gone */ }
       if (k.input.parentNode) k.input.parentNode.removeChild(k.input);
     }
-    // After every render: the input exists exactly while a keyboard-mode Search level is on screen.
+    // After every render: the input exists exactly while a keyboard-mode Search level is on screen. (The pop-out's tray
+    // needs no test here: render() removes the menu view under it, and with it the bar this keys on.)
     function kbSync() {
-      var pane = (!destroyed && screen === 'menu' && style() && !trayUp()) ? curPane() : null;
+      var pane = (!destroyed && screen === 'menu' && style()) ? curPane() : null;
       var want = !!(pane && pane.node.type === 'search' && pane.s && pane.s.kb && panel.querySelector('.ip-menuview .ipm-q'));
       if (!want) { kbRemove(); return; }
       if (!kb) {
@@ -1102,11 +1105,8 @@
           kb.mo = new MO(function () { if (kb && !panel.querySelector('.ip-menuview .ipm-q')) kbRemove(); });
           try { kb.mo.observe(panel, { childList: true }); } catch (_) { kb.mo = null; }
         }
-      } else if (kb.pane !== pane) {
-        kb.pane = pane;
-        kb.input.value = pane.s.q;
       }
-      kbPlace();
+      kbPlace(); // (a different Search level never reaches here with the old input: leaving a level re-renders and removes it)
     }
     function kbFocus() {
       if (!kb) return;
@@ -1633,6 +1633,9 @@
         var t = e.target;
         var st0 = t.closest('[data-skin-strip]');
         var sp0 = curPane();
+        // v1.355: a tap on the keyboard-search bar brings the keyboard up, inside this click (the gesture iOS needs). The
+        // input itself takes no taps (pointer-events:none), so an overlay over the bar (the sticker menu) keeps its own.
+        if (isSearch(sp0) && sp0.s && sp0.s.kb && t.closest('[data-skin-searchbar]')) { kbFocus(); return true; }
         if (st0 && isSearch(sp0) && sp0.s) {
           clearJump();
           sp0.s.sc = Math.max(0, Math.min(SK.SEARCH_STRIP.length - 1, parseInt(st0.getAttribute('data-skin-strip'), 10) || 0));

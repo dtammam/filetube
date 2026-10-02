@@ -1,5 +1,5 @@
 {
- "when": "2026-10-02T14:57:35.817Z",
+ "when": "2026-10-02T15:52:21.422Z",
  "rows": [
   {
    "size": "393x852",
@@ -64,7 +64,7 @@
     ],
     "inside": true,
     "opacity": "0",
-    "zIndex": "1101",
+    "zIndex": "auto",
     "position": "fixed"
    },
    "searchRequests": [
@@ -103,6 +103,26 @@
    "unmoved": {
     "focus": true,
     "typing": true
+   },
+   "barTap": {
+    "activeBefore": "body",
+    "hitAtBar": "ipm-q",
+    "activeAfter": "input#ipm-kb",
+    "ok": true
+   },
+   "stickerMenu": {
+    "open": true,
+    "rect": [
+     12,
+     187,
+     320,
+     595
+    ],
+    "inputs": 1,
+    "hitAtBar": "menu: Home›Speed0.25×0.5×0",
+    "activeAfterTap": "body",
+    "menuStillOpenOrActed": "closed/acted",
+    "ok": true
    },
    "ok": true,
    "errors": []
@@ -170,7 +190,7 @@
     ],
     "inside": true,
     "opacity": "0",
-    "zIndex": "1101",
+    "zIndex": "auto",
     "position": "fixed"
    },
    "searchRequests": [
@@ -209,6 +229,26 @@
    "unmoved": {
     "focus": true,
     "typing": true
+   },
+   "barTap": {
+    "activeBefore": "body",
+    "hitAtBar": "ipm-q",
+    "activeAfter": "input#ipm-kb",
+    "ok": true
+   },
+   "stickerMenu": {
+    "open": true,
+    "rect": [
+     12,
+     187,
+     320,
+     595
+    ],
+    "inputs": 1,
+    "hitAtBar": "menu: Home›Speed0.25×0.5×0",
+    "activeAfterTap": "body",
+    "menuStillOpenOrActed": "closed/acted",
+    "ok": true
    },
    "ok": true,
    "errors": []
@@ -276,7 +316,7 @@
     ],
     "inside": true,
     "opacity": "0",
-    "zIndex": "1101",
+    "zIndex": "auto",
     "position": "fixed"
    },
    "searchRequests": [
@@ -315,6 +355,26 @@
    "unmoved": {
     "focus": true,
     "typing": true
+   },
+   "barTap": {
+    "activeBefore": "body",
+    "hitAtBar": "ipm-q",
+    "activeAfter": "input#ipm-kb",
+    "ok": true
+   },
+   "stickerMenu": {
+    "open": true,
+    "rect": [
+     12,
+     23,
+     320,
+     574
+    ],
+    "inputs": 1,
+    "hitAtBar": "menu: LoopOff",
+    "activeAfterTap": "button",
+    "menuStillOpenOrActed": "open: Home›Speed0.25×0.5×0.75×Normal",
+    "ok": true
    },
    "ok": true,
    "errors": []
@@ -382,7 +442,7 @@
     ],
     "inside": true,
     "opacity": "0",
-    "zIndex": "1101",
+    "zIndex": "auto",
     "position": "fixed"
    },
    "searchRequests": [
@@ -421,6 +481,26 @@
    "unmoved": {
     "focus": true,
     "typing": true
+   },
+   "barTap": {
+    "activeBefore": "body",
+    "hitAtBar": "ipm-q",
+    "activeAfter": "input#ipm-kb",
+    "ok": true
+   },
+   "stickerMenu": {
+    "open": true,
+    "rect": [
+     12,
+     23,
+     320,
+     574
+    ],
+    "inputs": 1,
+    "hitAtBar": "menu: LoopOff",
+    "activeAfterTap": "button",
+    "menuStillOpenOrActed": "open: Home›Speed0.25×0.5×0.75×Normal",
+    "ok": true
    },
    "ok": true,
    "errors": []

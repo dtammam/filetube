@@ -714,8 +714,9 @@
     try { return typeof localStorage !== 'undefined' && localStorage.getItem(KB_SEARCH_KEY) === '1'; } catch (_) { return false; }
   }
   // The typed text as the query: control characters dropped (a paste can carry tabs or line breaks), at most
-  // SEARCH_MAX characters (whole characters, so an emoji is never cut in half), otherwise shown exactly as typed.
-  // searchUrls trims and encodes it.
+  // SEARCH_MAX characters as a reader counts them (grapheme clusters through Intl.Segmenter, so a flag or a ZWJ family
+  // emoji is never cut; without Intl.Segmenter, code points, so never a lone surrogate), otherwise shown exactly as
+  // typed. searchUrls trims and encodes it.
   function searchFromTyped(raw) {
     var s = typeof raw === 'string' ? raw : (raw == null ? '' : String(raw));
     var kept = '';
@@ -724,7 +725,14 @@
       if (c < 32 || (c >= 127 && c < 160)) continue;
       kept += s.charAt(i);
     }
-    return Array.from(kept).slice(0, SEARCH_MAX).join('');
+    var chars = null;
+    try {
+      if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
+        chars = Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(kept), function (g) { return g.segment; });
+      }
+    } catch (_) { chars = null; }
+    if (!chars) chars = Array.from(kept);
+    return chars.slice(0, SEARCH_MAX).join('');
   }
   // The marker's next cell: a wheel detent moves one cell and wraps at both ends.
   function searchStripStep(cursor, delta) {
