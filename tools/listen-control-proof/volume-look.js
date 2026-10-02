@@ -1,6 +1,6 @@
 'use strict';
 /* global window, document */
-// v1.353 V2 LOOK: a phone (iPhone 13) controlling a speaker, Now Playing with the volume tile up, shot
+// v1.353 V2 LOOK: a phone (iPhone 13) controlling a speaker, Now Playing with the volume bar up, shot
 // per skin through CDP Page.captureScreenshot (LESSONS 13: page.screenshot resets the emulated screen).
 //   node tools/listen-control-proof/volume-look.js <outdir>
 const fs = require('node:fs');
@@ -41,7 +41,7 @@ async function main() {
     await shot('scrubber');
     const tap = await p.$('[data-skin-voltap]');
     if (tap) { await tap.click(); await p.waitForTimeout(300); await shot('volume'); }
-    out[skin] = await p.evaluate(() => ({ voladj: document.querySelector('.mms-full').classList.contains('mms-voladj'), segsOn: document.querySelectorAll('.ip-vol-seg.is-on').length, row: !!document.querySelector('.mms-volrow'), aria: (document.querySelector('[data-skin-vol]') || { getAttribute: () => null }).getAttribute('aria-valuenow') }));
+    out[skin] = await p.evaluate(() => ({ voladj: document.querySelector('.mms-full').classList.contains('mms-voladj'), fill: (document.querySelector('.ip-vol-fill') || { style: {} }).style.width || null, row: !!document.querySelector('.mms-volrow'), aria: (document.querySelector('[data-skin-vol]') || { getAttribute: () => null }).getAttribute('aria-valuenow') }));
     await ph.close();
   }
   out.pc_volume = await sp.evaluate(() => document.getElementById('media-player').volume);

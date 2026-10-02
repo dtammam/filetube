@@ -41,6 +41,7 @@ function realm(opts) {
     fetches.push(((init && init.method) || 'GET') + ' ' + String(u));
     return Promise.resolve({ ok: true, json: async () => (String(u).indexOf('/api/queue') === 0 ? { entries: [], pointerUid: null } : {}) });
   };
+  if (o.beforeLoad) o.beforeLoad(w);
   w.eval(fs.readFileSync(path.join(REPO, 'public', 'js', 'player.js'), 'utf8'));
   const player = w.FileTube.player;
   if (o.noLoad) return { w, player, calls, close: () => w.close() };
@@ -230,5 +231,17 @@ test('v1.353 before the first load (no element yet) setVolume stores the level a
     const snap = r.player.getRemoteSnapshot();
     assert.strictEqual(snap.volume, 0.25);
     assert.strictEqual(snap.muted, false);
+  } finally { r.close(); }
+});
+
+test('v1.353 gate r1 (adversary W2, qa W3): where a page cannot set the volume (iOS), the snapshot reports null and setVolume does nothing', () => {
+  const r = realm({ beforeLoad: (w) => {
+    Object.defineProperty(w.HTMLMediaElement.prototype, 'volume', { configurable: true, get() { return 1; }, set() { /* read-only, as on iOS */ } });
+  } });
+  try {
+    assert.strictEqual(r.w.document.getElementById('vol-bar').style.display, 'none', 'the probe found it unsettable (the PC hides its own slider)');
+    assert.strictEqual(r.player.getRemoteSnapshot().volume, null, 'no made-up volume');
+    assert.strictEqual(r.player.setVolume(0.3), false);
+    assert.strictEqual(r.w.localStorage.getItem('ft-volume'), null, 'nothing stored');
   } finally { r.close(); }
 });

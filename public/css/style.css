@@ -8397,6 +8397,8 @@ a.tv-continue-card { text-decoration: none; }
      The bar wears each skin's own .mms-bar look above; the fill is its own class (reflect owns .mms-fill). */
   :where(html.is-phone, html.mms-popout) .mms-full .mms-volrow{ display:flex; align-items:center; gap:var(--space-4); margin-top:var(--space-6); }
   :where(html.is-phone, html.mms-popout) .mms-full .mms-volbar{ flex:1; }
+  /* gate r1 (adversary S1): the bar is 4-6px tall; the tap area reaches a finger's height around it */
+  :where(html.is-phone, html.mms-popout) .mms-full .mms-volbar::before{ content:''; position:absolute; inset:calc(var(--space-6) * -1) 0; }
   :where(html.is-phone, html.mms-popout) .mms-full .mms-volfill{ position:absolute; left:0; top:0; bottom:0; border-radius:inherit; background:currentColor; }
   :where(html.is-phone, html.mms-popout) .mms-full .mms-volic{ flex:none; display:grid; place-items:center; opacity:.7; }
   :where(html.is-phone, html.mms-popout) .mms-full .mms-volic svg{ width:var(--icon-md); height:var(--icon-md); }

@@ -2309,8 +2309,12 @@
       if (e.target.closest('[data-skin-voltap]')) { openVolume(); return; }
       var volEl = e.target.closest('[data-skin-vol]');
       if (volEl) {
+        // the level maps across the GROOVE (the iPod bar's .ip-vol-track; the Cider/Nordic bar is its own
+        // groove); a tap on the iPod bar's speaker icons only keeps the bar up (gate r1 adversary S1)
+        var groove = volEl.querySelector('.ip-vol-track') || volEl;
+        if (groove !== volEl && !groove.contains(e.target)) { if (volOpen) armVolumeIdle(); return; }
         if (volumeLevel() !== null) {
-          var vr = volEl.getBoundingClientRect();
+          var vr = groove.getBoundingClientRect();
           var vf = Math.min(1, Math.max(0, (e.clientX - vr.left) / (vr.width || 1)));
           setVolumeLevel(Math.round(vf / VOLUME_STEP) * VOLUME_STEP);
           if (volOpen) armVolumeIdle();

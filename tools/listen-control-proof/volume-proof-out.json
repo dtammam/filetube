@@ -15,14 +15,14 @@
     "ftVolume": "0.3",
     "ftMuted": "0",
     "hasBeenActive": false,
-    "pill": "Controlled by Linux PC · BasilStop"
+    "pill": "Controlled by Linux PC · RyeStop"
   },
   "a_after_reload_ft_volume": "0.3",
   "a_after_reload_snapshot_volume": 0.3,
   "a_after_reload_element_volume": 0.3,
   "a_after_reload_phone_volume": 0.3,
   "b_phone": 0.8,
-  "b_ms": 407,
+  "b_ms": 408,
   "b_targets_list_volume": 0.8,
   "c_has_been_active": false,
   "c_samples": [
@@ -31,7 +31,7 @@
       "state": "playing",
       "needsClick": false,
       "volume": 0.8,
-      "pill": "Controlled by Linux PC · BasilStop",
+      "pill": "Controlled by Linux PC · RyeStop",
       "playing": true,
       "el": {
         "volume": 0.8,
@@ -44,7 +44,7 @@
       "state": "playing",
       "needsClick": false,
       "volume": 0,
-      "pill": "Controlled by Linux PC · BasilStop",
+      "pill": "Controlled by Linux PC · RyeStop",
       "playing": true,
       "el": {
         "volume": 0,
@@ -57,7 +57,7 @@
       "state": "playing",
       "needsClick": false,
       "volume": 0,
-      "pill": "Controlled by Linux PC · BasilStop",
+      "pill": "Controlled by Linux PC · RyeStop",
       "playing": true,
       "el": {
         "volume": 0,
@@ -70,7 +70,7 @@
       "state": "playing",
       "needsClick": false,
       "volume": 0,
-      "pill": "Controlled by Linux PC · BasilStop",
+      "pill": "Controlled by Linux PC · RyeStop",
       "playing": true,
       "el": {
         "volume": 0,
@@ -83,7 +83,7 @@
       "state": "playing",
       "needsClick": false,
       "volume": 0,
-      "pill": "Controlled by Linux PC · BasilStop",
+      "pill": "Controlled by Linux PC · RyeStop",
       "playing": true,
       "el": {
         "volume": 0,
@@ -96,7 +96,7 @@
       "state": "playing",
       "needsClick": false,
       "volume": 0.5,
-      "pill": "Controlled by Linux PC · BasilStop",
+      "pill": "Controlled by Linux PC · RyeStop",
       "playing": true,
       "el": {
         "volume": 0.5,
@@ -109,7 +109,7 @@
       "state": "playing",
       "needsClick": false,
       "volume": 0.5,
-      "pill": "Controlled by Linux PC · BasilStop",
+      "pill": "Controlled by Linux PC · RyeStop",
       "playing": true,
       "el": {
         "volume": 0.5,
@@ -122,7 +122,7 @@
       "state": "playing",
       "needsClick": false,
       "volume": 0.5,
-      "pill": "Controlled by Linux PC · BasilStop",
+      "pill": "Controlled by Linux PC · RyeStop",
       "playing": true,
       "el": {
         "volume": 0.5,
@@ -135,7 +135,7 @@
       "state": "playing",
       "needsClick": false,
       "volume": 0.5,
-      "pill": "Controlled by Linux PC · BasilStop",
+      "pill": "Controlled by Linux PC · RyeStop",
       "playing": true,
       "el": {
         "volume": 0.5,
@@ -161,6 +161,26 @@
   "e_voladj_after_menu": false,
   "e_idle_closed": true,
   "e_idle_ms": 2012,
+  "g_pc_muted": {
+    "volume": 0.7,
+    "muted": true
+  },
+  "g_phone_state": {
+    "volume": 0.7,
+    "muted": true
+  },
+  "g_bar_width": "0%",
+  "g_pc_after_down": {
+    "volume": 0.7,
+    "muted": true,
+    "paused": false
+  },
+  "g_pc_after_up": {
+    "volume": 0.05,
+    "muted": false,
+    "paused": false
+  },
+  "g_bar_width_after_up": "5%",
   "f_np": "Now Playing",
   "f_voladj": true,
   "f_local_has_bar": false,

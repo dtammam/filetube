@@ -124,7 +124,7 @@ test('v1.353 the Speakers menu offers Volume only while this device controls a s
   const rows = MUSIC.slice(MUSIC.indexOf('function playOnItems() {'), MUSIC.indexOf('function remoteChoose('));
   assert.match(rows, /if \(RC\.isRemote\(\) && remoteVolume\(\) !== null\) items\.push\(\{ label: 'Volume', action: 'volume' \}\);/);
   const vol = MUSIC.slice(MUSIC.indexOf('function remoteVolume() {'), MUSIC.indexOf('function remoteSkinCtx() {'));
-  assert.match(vol, /typeof st\.volume === 'number' && isFinite\(st\.volume\)\) \? st\.volume : null/, 'an unreported volume is null');
+  assert.match(vol, /if \(!\(st && typeof st\.volume === 'number' && isFinite\(st\.volume\)\)\) return null;/, 'an unreported volume is null');
 });
 
 test('v1.353 the view hands the engine the speaker volume: offered only while remote and not stepped aside; set sends RC.volume', () => {
@@ -134,4 +134,9 @@ test('v1.353 the view hands the engine the speaker volume: offered only while re
   const local = MUSIC.slice(MUSIC.indexOf('function buildSkinCtx(ci, popout) {'), MUSIC.indexOf('var SkinSurface ='));
   assert.ok(!/volume:/.test(local), 'the LOCAL ctx never carries a volume (no bar on local play)');
   assert.match(MUSIC, /remoteVolume\(\) === null \? 'nv' : 'v'\]\.join\('\|'\)/, 'a first volume report repaints');
+});
+
+test('v1.353 gate r1 (Dean): a MUTED speaker shows 0 on the phone (what you hear); an unreported volume stays null', () => {
+  const vol = MUSIC.slice(MUSIC.indexOf('function remoteVolume() {'), MUSIC.indexOf('function remoteSkinCtx() {'));
+  assert.match(vol, /if \(!\(st && typeof st\.volume === 'number' && isFinite\(st\.volume\)\)\) return null;\s*return st\.muted === true \? 0 : st\.volume;/);
 });

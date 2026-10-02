@@ -488,11 +488,13 @@
       if (pollTimer) { env.clearTimeout(pollTimer); pollTimer = null; }
       polling = false;
     }
+    // A level above 0 un-mutes the PC (player.setVolume, the slider's rule), so the shown state does too.
+    function heldFields(lv, s) { return lv > 0 ? { volume: lv, muted: false } : { volume: lv, muted: !!(s && s.muted) }; }
     // The PC's report, with a level this device set in the last VOLUME_HOLD_MS kept on top of it.
     function withHeldVolume(s) {
       if (!volHeld) return s;
       if (env.now() - volHeld.at > VOLUME_HOLD_MS || s.volume === volHeld.level) { volHeld = null; return s; }
-      return Object.assign({}, s, { volume: volHeld.level });
+      return Object.assign({}, s, heldFields(volHeld.level, s));
     }
     function setState(s) {
       if (!s || typeof s !== 'object') return;
@@ -545,9 +547,18 @@
       es.onerror = function () { if (es && es.readyState === 2) startPolling(); };
     }
 
+    // The throttled seek and volume and the held level belong to the speaker they were meant for (gate r1,
+    // qa W1 = adversary W1, measured: a switch straight to another PC sent A's level to B and showed it there).
+    function dropPending() {
+      if (seekTimer) { env.clearTimeout(seekTimer); seekTimer = null; }
+      seekPending = null;
+      if (volTimer) { env.clearTimeout(volTimer); volTimer = null; }
+      volPending = null; volHeld = null;
+    }
     function select(target) {
       if (!target || !target.deviceId) return;
       closeStream();
+      dropPending();
       targetId = target.deviceId;
       label = target.label || 'PC';
       last = target.state || null;
@@ -559,10 +570,7 @@
     }
     function leave(silent) {
       closeStream();
-      if (seekTimer) { env.clearTimeout(seekTimer); seekTimer = null; }
-      seekPending = null;
-      if (volTimer) { env.clearTimeout(volTimer); volTimer = null; }
-      volPending = null; volHeld = null;
+      dropPending();
       streamWanted = false;
       var was = !!targetId;
       targetId = ''; label = ''; last = null;
@@ -632,7 +640,7 @@
       var lv = Math.round(Math.min(1, Math.max(0, level)) * 100) / 100;
       volPending = lv;
       volHeld = { level: lv, at: env.now() };
-      if (last) last = Object.assign({}, last, { volume: lv });
+      if (last) last = Object.assign({}, last, heldFields(lv, last));
       notify();
       var wait = volLastAt + VOLUME_THROTTLE_MS - env.now();
       if (wait <= 0 && !volTimer) { flushVolume(); return; }

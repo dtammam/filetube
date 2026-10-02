@@ -221,7 +221,7 @@ test('v1.353 a tap on the volume bar sets the level where it lands (5% steps)', 
   const b = boot();
   try {
     b.engine.paint(); openByTap(b);
-    const bar = P(b).querySelector('.ip-vol');
+    const bar = P(b).querySelector('.ip-vol-track'); // gate r1: the level maps across the groove
     bar.getBoundingClientRect = () => ({ left: 100, width: 200, top: 0, height: 10, right: 300, bottom: 10 });
     bar.dispatchEvent(new b.dom.window.MouseEvent('click', { bubbles: true, clientX: 241 }));
     assert.deepStrictEqual(b.st.sets, [0.7]);
@@ -316,4 +316,32 @@ test('v1.353 the renderers take only a NUMBER level: a string draws nothing, 0 d
   const zero = SK.renderFull('ipod', { track: {}, volume: 0 });
   assert.match(zero, /<div class="ip-vol-fill" style="width:0%">/, 'muted to 0 is still a bar');
   assert.match(SK.renderFull('spotify', { track: {}, volume: 0 }), /<div class="mms-volfill" style="width:0%">/);
+});
+
+test('v1.353 gate r1 (adversary S2): a tap on the shown bar restarts the idle timer; a tap on its speaker icons sets nothing', () => {
+  const b = boot();
+  try {
+    b.engine.paint(); openByTap(b);
+    const armed = b.timers.filter((t) => t.live && t.ms === 2000);
+    const groove = P(b).querySelector('.ip-vol-track');
+    groove.getBoundingClientRect = () => ({ left: 100, width: 200, top: 0, height: 10, right: 300, bottom: 10 });
+    groove.dispatchEvent(new b.dom.window.MouseEvent('click', { bubbles: true, clientX: 260 }));
+    assert.deepStrictEqual(b.st.sets, [0.8], 'mapped across the groove');
+    assert.strictEqual(armed[0].live, false, 'the tap cancelled the old idle timer');
+    assert.strictEqual(b.timers.filter((t) => t.live && t.ms === 2000).length, 1, 'and armed a fresh one');
+    P(b).querySelector('.ip-vol-ico').dispatchEvent(new b.dom.window.MouseEvent('click', { bubbles: true, clientX: 5 }));
+    assert.deepStrictEqual(b.st.sets, [0.8], 'the speaker icon sets nothing');
+    assert.strictEqual(voladj(b), true);
+  } finally { b.restore(); }
+});
+
+test('v1.353 gate r1 (adversary S2): destroy() takes the bar and its idle timer with it', () => {
+  const b = boot();
+  try {
+    b.engine.paint(); openByTap(b);
+    const armed = b.timers.filter((t) => t.live && t.ms === 2000);
+    b.engine.destroy();
+    assert.strictEqual(armed[0].live, false, 'no idle timer outlives the surface');
+    assert.strictEqual(voladj(b), false);
+  } finally { b.restore(); }
 });

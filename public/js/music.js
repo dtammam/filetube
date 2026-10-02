@@ -1499,10 +1499,12 @@ if (typeof module !== 'undefined' && module.exports) {
       return document.getElementById(id);
     }
     // v1.353: the speaker's player volume as this device shows it (the controller holds a level the
-    // wheel just set until the PC reports it back); null when the PC never reported one.
+    // wheel just set until the PC reports it back); null when the PC never reported one (or cannot set
+    // it). A MUTED PC shows 0, what you hear (Dean, gate r1): turning up un-mutes it from 5%, down does nothing.
     function remoteVolume() {
       var st = RC && RC.state();
-      return (st && typeof st.volume === 'number' && isFinite(st.volume)) ? st.volume : null;
+      if (!(st && typeof st.volume === 'number' && isFinite(st.volume))) return null;
+      return st.muted === true ? 0 : st.volume;
     }
     function remoteSkinCtx() {
       var st = RC.state() || {};

@@ -238,3 +238,30 @@ test('v1.353 volume: a level still waiting when this phone leaves never reaches 
   const sent = h.cmds().map((x) => [x.targetDeviceId, x.args.level]);
   assert.deepStrictEqual(sent, [['pc', 0.5]], 'nothing went to pc2');
 });
+
+test('v1.353 gate r1 (qa W1 = adversary W1): a DIRECT switch to another speaker drops the waiting level and the hold', () => {
+  const h = harness();
+  h.c.select(PC);
+  h.c.volume(0.25); h.c.volume(0.3); // 0.3 waits out the throttle; 0.3 is held on screen
+  h.c.select({ deviceId: 'pc2', label: 'Den', state: Object.assign({}, PC.state, { volume: 0.9 }) }); // no leave() between
+  h.advance(1000);
+  assert.deepStrictEqual(h.cmds().map((x) => [x.targetDeviceId, x.args.level]), [['pc', 0.25]], 'nothing went to pc2');
+  h.sources[1].emit('state', Object.assign({}, PC.state, { volume: 0.9 })); // pc2's first frame
+  assert.strictEqual(h.c.state().volume, 0.9, 'pc2 shows its own level, not the held 0.3');
+});
+
+test('v1.353 gate r1 (Dean: a muted PC shows empty, up un-mutes): a level above 0 shows un-muted at once and holds; 0 keeps the mute', () => {
+  const h = harness();
+  h.c.select(PC);
+  h.sources[0].emit('state', Object.assign({}, PC.state, { volume: 0.5, muted: true }));
+  h.c.volume(0.05);
+  assert.deepStrictEqual([h.c.state().volume, h.c.state().muted], [0.05, false], 'shown un-muted at once');
+  h.advance(300);
+  h.sources[0].emit('state', Object.assign({}, PC.state, { volume: 0.5, muted: true })); // sent before the command landed
+  assert.deepStrictEqual([h.c.state().volume, h.c.state().muted], [0.05, false], 'held un-muted');
+  const g = harness();
+  g.c.select(PC);
+  g.sources[0].emit('state', Object.assign({}, PC.state, { volume: 0.5, muted: true }));
+  g.c.volume(0);
+  assert.deepStrictEqual([g.c.state().volume, g.c.state().muted], [0, true], '0 never un-mutes');
+});

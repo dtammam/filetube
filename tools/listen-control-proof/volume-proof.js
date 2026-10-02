@@ -154,6 +154,22 @@ async function main() {
     out.e_idle_closed = await m.p.waitForFunction(() => !document.querySelector('.mms-full').classList.contains('mms-voladj'), null, { timeout: 5000 }).then(() => true).catch(() => false);
     out.e_idle_ms = Date.now() - tIdle;
 
+    // g. (gate r1, Dean) the PC muted with its OWN mute button: the phone's bar reads 0%; a step down does nothing;
+    //    a step up un-mutes it at 5%
+    await sp.ev(() => { document.getElementById('mute-btn').click(); return true; });
+    out.g_pc_muted = await sp.until(() => { const m = document.getElementById('media-player'); return m.muted && { volume: m.volume, muted: m.muted }; }, null, 3000);
+    out.g_phone_state = await m.until(async () => { const s = await m.state(); return s && s.muted === true && { volume: s.volume, muted: s.muted }; }, 4000);
+    await m.p.click('.mms-pos[data-skin-voltap]');
+    out.g_bar_width = await m.p.evaluate(() => document.querySelector('.ip-vol-fill').style.width);
+    await spinDeg(60, 30); // one detent counter-clockwise
+    await m.p.waitForTimeout(900);
+    out.g_pc_after_down = (await snap(sp)).el;
+    await spinDeg(0, 30); // one detent clockwise
+    out.g_pc_after_up = await sp.until(() => { const m2 = document.getElementById('media-player'); return !m2.muted && { volume: m2.volume, muted: m2.muted, paused: m2.paused }; }, null, 4000);
+    await m.p.waitForTimeout(800);
+    out.g_bar_width_after_up = await m.p.evaluate(() => document.querySelector('.ip-vol-fill').style.width);
+    await m.p.click('[data-skin-menu]');
+
     // f. Speakers > Volume: the badge opens Speakers, the Volume row lands on Now Playing with the bar up
     await m.p.click('[data-skin-playon]');
     await m.p.locator('[data-skin-mi]', { hasText: /^Volume$/ }).waitFor({ timeout: 5000 });

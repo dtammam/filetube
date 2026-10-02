@@ -9379,8 +9379,9 @@ if (typeof module !== 'undefined' && module.exports) {
         playing: !!(el && !el.paused && !el.ended),
         hasPrev: !!(trackNavHandlers && typeof trackNavHandlers.onPrev === 'function'),
         hasNext: !!(trackNavHandlers && typeof trackNavHandlers.onNext === 'function'),
-        // v1.353: the player volume (the element's, or the stored preference before the first load)
-        volume: mediaPlayer ? mediaPlayer.volume : (function () { var sv = loadStoredVolume(); return sv === null ? 1 : sv; })(),
+        // v1.353: the player volume (the element's, or the stored preference before the first load); null
+        // where a page cannot set it (iOS, the volumeIsSettable probe): a phone then offers no volume bar
+        volume: mediaPlayer ? (volumeSettable ? mediaPlayer.volume : null) : (function () { var sv = loadStoredVolume(); return sv === null ? 1 : sv; })(),
         muted: mediaPlayer ? !!mediaPlayer.muted : loadStoredMuted()
       };
     },
