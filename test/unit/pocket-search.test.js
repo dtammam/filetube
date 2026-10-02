@@ -9,6 +9,9 @@ const { JSDOM } = require('jsdom');
 const skinsPath = require.resolve('../../public/js/music-skins.js');
 const surfacePath = require.resolve('../../public/js/skin-surface.js');
 const skins = require(skinsPath);
+const fs = require('node:fs');
+const path = require('node:path');
+const { cssRules } = require('../helpers/stylesheets');
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const DEBOUNCE = 320;
@@ -47,6 +50,21 @@ test('edit: a letter adds, space needs a word before it and never doubles, delet
   const full = 'A'.repeat(40);
   assert.strictEqual(skins.searchEdit(full, 'B'), full);
   assert.strictEqual(skins.searchEdit(full, 'space'), full);
+  // only the strip's own ids edit: no lowercase, no multi-character, no empty, no punctuation
+  assert.strictEqual(skins.searchEdit('A', 'b'), 'A', 'a lowercase id is not a strip cell');
+  assert.strictEqual(skins.searchEdit('A', 'AB'), 'A', 'two characters are not one cell');
+  assert.strictEqual(skins.searchEdit('A', ''), 'A');
+  assert.strictEqual(skins.searchEdit('A', '-'), 'A');
+  assert.strictEqual(skins.searchEdit('A', '9'), 'A9');
+  assert.strictEqual(skins.searchEdit(null, 'A'), 'A', 'a missing query is empty');
+});
+
+test('urls: a trailing space (a typed word break) never reaches the route', () => {
+  const u = skins.searchUrls('AB ');
+  assert.strictEqual(u.songs, '/api/music?search=AB&sort=title-asc&limit=30');
+  assert.strictEqual(u.albums, '/api/music/albums?search=AB&sort=title-asc&limit=12');
+  assert.strictEqual(u.artists, '/api/music/artists?search=AB&sort=title-asc&limit=12');
+  assert.strictEqual(skins.searchUrls(null).songs, '/api/music?search=&sort=title-asc&limit=30');
 });
 
 test('urls: the routes\' own search= param, encoded, three bounded reads', () => {
@@ -115,17 +133,18 @@ function boot({ withSticker = true, search = null } = {}) {
   S.setActiveSkin('ipod-black');
   const spy = { changed: 0 };
   const plays = [];
+  const ver = { v: 1, liked: 1 };
   const cfg = {
     getSkinId: () => S.activeSkinId(),
     panel: dom.window.document.getElementById('panel'),
     getCtx: () => ({ track: { title: 'T', artist: 'A', artUrl: '/albumart/now' }, upNext: [], fullList: [], playing: true }),
     hostCtl: (id) => dom.window.document.getElementById(id), onSelectIndex: () => {}, onDock: () => {}, win: dom.window,
-    menu: { load: () => Promise.resolve({ items: [] }), onPlay(r) { plays.push(r); }, search, onShuffleAll() {}, hasCurrent: () => false, currentId: () => null },
+    menu: { dataVersion: () => ver.v, likedVersion: () => ver.liked, load: () => Promise.resolve({ items: [] }), onPlay(r) { plays.push(r); }, search, onShuffleAll() {}, hasCurrent: () => false, currentId: () => null },
   };
   if (withSticker) cfg.sticker = { onSkinChange: () => { spy.changed += 1; engine.paint(); } };
   const engine = dom.window.FileTubeSkinSurface.create(cfg);
   engine.paint();
-  return { dom, engine, S, spy, plays, restore: () => { engine.destroy(); Object.assign(global, saved); } };
+  return { dom, engine, S, spy, plays, ver, restore: () => { engine.destroy(); Object.assign(global, saved); } };
 }
 const P = (b) => b.dom.window.document.getElementById('panel');
 const tap = (b, el) => { for (const t of ['pointerdown', 'pointerup', 'click']) el.dispatchEvent(new b.dom.window.MouseEvent(t, { bubbles: true })); };
@@ -329,5 +348,272 @@ test('Extras > Skins > Search filters the registry by name; the wheel picks, Sel
     typeCell(b, 'go');
     select(b);
     assert.strictEqual(b.S.activeSkinId(), 'spotify', 'Select on the filtered row saves that skin');
+  } finally { b.restore(); }
+});
+
+// ---------------------------------------------------------------- gate r1: the guards, each bound by a behaviour
+const labelsOf = (b) => rowsOf(b).map((r) => r.querySelector('.ipm-lbl').textContent);
+const threeRows = () => ({ items: [{ label: 'Songs', info: true, heading: true, value: '' }, { label: 'One', song: true, id: 'a', trackIndex: 0 }, { label: 'Two', song: true, id: 'b', trackIndex: 1 }],
+  tracks: [{ id: 'a' }, { id: 'b' }], play: { ctx: { src: 'music', search: 'P', sort: 'title-asc' }, label: 'Search' } });
+
+test('a query emptied after results landed clears them, and a stale error note, without asking the library for ""', async () => {
+  const seen = [];
+  let n = 0;
+  const b = boot({ search: (q) => { seen.push(q); return ++n === 1 ? Promise.reject(new Error('down')) : Promise.resolve(built(['One'])); } });
+  try {
+    goSearch(b);
+    typeCell(b, 'P');
+    await wait(DEBOUNCE);
+    assert.match(P(b).querySelector('.ipm-note').textContent, /Couldn.t search/);
+    typeCell(b, 'R');
+    await wait(DEBOUNCE);
+    assert.deepStrictEqual(labelsOf(b), ['One']);
+    pressMenu(b); pressMenu(b);
+    assert.strictEqual(query(b), '');
+    assert.deepStrictEqual(rowsOf(b), [], 'the results are gone with the query');
+    assert.match(P(b).querySelector('.ipm-note').textContent, /Type to search/);
+    await wait(DEBOUNCE * 2);
+    assert.deepStrictEqual(seen, ['P', 'PR'], 'the empty query is never read');
+  } finally { b.restore(); }
+});
+
+test('an error for a query the user has since typed past does not land over the newer answer', async () => {
+  const d = { P: deferred(), PR: deferred() };
+  const b = boot({ search: (q) => d[q].p });
+  try {
+    goSearch(b);
+    typeCell(b, 'P');
+    await wait(DEBOUNCE);
+    typeCell(b, 'R');
+    await wait(DEBOUNCE);
+    d.PR.res(built(['new']));
+    await wait(20);
+    d.P.rej(new Error('late failure'));
+    await wait(20);
+    assert.deepStrictEqual(labelsOf(b), ['new'], 'the old failure neither wipes the rows nor posts the error note');
+    assert.doesNotMatch(P(b).textContent, /Couldn.t search/);
+  } finally { b.restore(); }
+});
+
+test('destroy with a letter still waiting reads nothing; destroy with a read in flight lands nothing', async () => {
+  const seen = [];
+  const b1 = boot({ search: (q) => { seen.push(q); return Promise.resolve(built(['One'])); } });
+  goSearch(b1);
+  typeCell(b1, 'P');
+  b1.engine.destroy();
+  await wait(DEBOUNCE * 2);
+  assert.deepStrictEqual(seen, [], 'the pending read died with the controller');
+  b1.restore();
+
+  const d = deferred();
+  const b2 = boot({ search: () => d.p });
+  goSearch(b2);
+  typeCell(b2, 'P');
+  await wait(DEBOUNCE * 2);
+  assert.strictEqual(P(b2).querySelector('.ipm-row'), null, 'the read is in flight');
+  b2.engine.destroy();
+  d.res(built(['One']));
+  await wait(20);
+  assert.deepStrictEqual(rowsOf(b2), [], 'a late answer never paints a destroyed controller');
+  b2.restore();
+});
+
+test('go with nothing to go to keeps the wheel on the strip', async () => {
+  const b = boot({ search: () => Promise.resolve({ items: [] }) });
+  try {
+    goSearch(b);
+    typeCell(b, 'P');
+    await wait(DEBOUNCE);
+    const at = markerIndex(b);
+    typeCell(b, 'go');
+    assert.strictEqual(query(b), 'P', 'go changes no letter');
+    const goAt = markerIndex(b);
+    wheelBy(b, 24);
+    assert.notStrictEqual(markerIndex(b), goAt, 'the wheel still turns the strip (it never moved into an empty list)');
+    assert.ok(at >= 0);
+  } finally { b.restore(); }
+});
+
+test('go over headings only does not take the wheel either', async () => {
+  const b = boot({ search: () => Promise.resolve({ items: [{ label: 'Songs', info: true, heading: true, value: '' }], tracks: [], play: null }) });
+  try {
+    goSearch(b);
+    typeCell(b, 'P');
+    await wait(DEBOUNCE);
+    typeCell(b, 'go');
+    const goAt = markerIndex(b);
+    wheelBy(b, 24);
+    assert.notStrictEqual(markerIndex(b), goAt);
+  } finally { b.restore(); }
+});
+
+test('tapping a result row hands that row the wheel (the list has focus, the row is highlighted)', async () => {
+  const b = boot({ search: () => Promise.resolve(threeRows()) });
+  try {
+    goSearch(b);
+    typeCell(b, 'P');
+    await wait(DEBOUNCE);
+    assert.strictEqual(cursorLabel(b), null);
+    tapLabel(b, 'Two');
+    assert.strictEqual(b.plays.length, 1);
+    assert.strictEqual(b.plays[0].index, 1);
+    pressMenu(b); // the pick went to Now Playing; MENU comes back to the same search
+    assert.strictEqual(query(b), 'P');
+    assert.strictEqual(cursorLabel(b), 'Two', 'the tapped row keeps the highlight: the list has the wheel');
+  } finally { b.restore(); }
+});
+
+test('tapping a heading row does not take the wheel', async () => {
+  const b = boot({ search: () => Promise.resolve(threeRows()) });
+  try {
+    goSearch(b);
+    typeCell(b, 'P');
+    await wait(DEBOUNCE);
+    tapLabel(b, 'Songs');
+    assert.strictEqual(cursorLabel(b), null);
+    assert.strictEqual(b.plays.length, 0);
+  } finally { b.restore(); }
+});
+
+test('a strip tap while the results have the wheel types the letter and hands the wheel back to the strip', async () => {
+  const b = boot({ search: () => Promise.resolve(threeRows()) });
+  try {
+    goSearch(b);
+    typeCell(b, 'P');
+    await wait(DEBOUNCE);
+    typeCell(b, 'go');
+    assert.strictEqual(cursorLabel(b), 'One');
+    typeCell(b, 'A');
+    assert.strictEqual(query(b), 'PA');
+    assert.strictEqual(cursorLabel(b), null, 'typing returns the wheel to the strip');
+    const at = markerIndex(b);
+    wheelBy(b, 24);
+    assert.notStrictEqual(markerIndex(b), at, 'the wheel turns the strip again');
+  } finally { b.restore(); }
+});
+
+test('results re-read when the library changes: same query, once; a liked-only change leaves them alone; the skins search never reads the library', async () => {
+  const seen = [];
+  const b = boot({ search: (q) => { seen.push(q); return Promise.resolve(threeRows()); } });
+  try {
+    goSearch(b);
+    typeCell(b, 'P');
+    await wait(DEBOUNCE);
+    assert.deepStrictEqual(seen, ['P']);
+    b.ver.v = 2;
+    tapLabel(b, 'One'); // any press checks the version first
+    await wait(DEBOUNCE * 2);
+    assert.deepStrictEqual(seen, ['P', 'P'], 'a changed library asks again, once, for the same word');
+    pressMenu(b); // back from Now Playing
+    b.ver.liked = 2;
+    tapLabel(b, 'One');
+    await wait(DEBOUNCE * 2);
+    assert.deepStrictEqual(seen, ['P', 'P'], 'a liked-only change does not touch a search');
+  } finally { b.restore(); }
+  const seen2 = [];
+  const c = boot({ search: (q) => { seen2.push(q); return Promise.resolve(built(['x'])); } });
+  try {
+    tapLabel(c, 'Extras'); tapLabel(c, 'Skins'); tapLabel(c, 'Search');
+    typeCell(c, 'A');
+    c.ver.v = 2;
+    typeCell(c, 'B');
+    await wait(DEBOUNCE * 2);
+    assert.deepStrictEqual(seen2, [], 'the skins search is local: a library change never reaches the library read');
+    assert.strictEqual(query(c), 'AB');
+  } finally { c.restore(); }
+});
+
+test('a re-read that lands while the results have the wheel puts the highlight back on the first RESULT, not on a heading', async () => {
+  const b = boot({ search: () => Promise.resolve(threeRows()) });
+  try {
+    goSearch(b);
+    typeCell(b, 'P');
+    await wait(DEBOUNCE);
+    typeCell(b, 'go');
+    wheelBy(b, 24);
+    assert.strictEqual(cursorLabel(b), 'Two');
+    b.ver.v = 2;
+    wheelBy(b, 24); // already on the last row: it moves nothing, but the version check runs on the wheel and queues the re-read
+    await wait(DEBOUNCE * 2);
+    assert.strictEqual(cursorLabel(b), 'One', 'the fresh list starts on its first result, with the wheel still in the list');
+  } finally { b.restore(); }
+});
+
+test('Skins > Search previews a Click colorway only while the RESULTS have the wheel; MENU back to the strip drops the preview', () => {
+  const b = boot();
+  try {
+    tapLabel(b, 'Extras'); tapLabel(b, 'Skins'); tapLabel(b, 'Search');
+    const cls = () => P(b).className.split(/\s+/).sort().join(' ');
+    const base = cls();
+    assert.ok(base.includes('mms-ipod-black'));
+    typeCell(b, 'go');
+    assert.strictEqual(cls(), base, 'the first row (not a colorway worth previewing) changes nothing');
+    let k = 0;
+    while (cls() === base && k++ < 10) wheelBy(b, 24);
+    assert.notStrictEqual(cls(), base, 'the highlighted colorway is previewed live on the panel');
+    assert.ok(cursorLabel(b));
+    pressMenu(b);
+    assert.strictEqual(cursorLabel(b), null, 'MENU gave the wheel back to the strip');
+    assert.strictEqual(cls(), base, 'with the strip holding the wheel the preview is gone and the saved skin is back');
+  } finally { b.restore(); }
+});
+
+test('the Settings "Find a skin" filter keeps family-name matching ON PURPOSE: its grid sits under family headings, so a heading word shows the group (the pocket Search lists flat rows and matches the label only)', () => {
+  const { JSDOM } = require('jsdom');
+  const js = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'setup.js'), 'utf8');
+  const m = /let musicSkinFilter = '';\n(function applyMusicSkinFilter[\s\S]*?\n\})\n/.exec(js);
+  assert.ok(m);
+  const dom = new JSDOM('<div id="c"><div class="skin-family" aria-label="Click"><button class="skin-tile" aria-label="Silver"></button></div><div class="skin-family" aria-label="Other"><button class="skin-tile" aria-label="Mint"></button></div></div>');
+  const run = new dom.window.Function('c', 'q', 'let musicSkinFilter = q;\n' + m[1] + '\napplyMusicSkinFilter(c);');
+  const c = dom.window.document.getElementById('c');
+  run(c, 'click');
+  assert.deepStrictEqual([...c.querySelectorAll('.skin-tile')].filter((t) => !t.hidden).map((t) => t.getAttribute('aria-label')), ['Silver'], 'the family word shows its tiles');
+  assert.strictEqual(skins.skinSearchItems('click', 'ipod').every((r) => r.label.toLowerCase().includes('click')), true, 'the pocket Search never matches a row whose own label lacks the word');
+});
+
+test('search bar CSS: the bar never flex-shrinks away from the results, and a strip cell stays a full row tall (a touch target)', () => {
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  const rules = cssRules(css).filter((r) => r.at === '');
+  const rule = (sel) => rules.find((r) => r.sel.replace(/^:where\([^)]*\)\s*/, '') === sel);
+  const bar = rule('.mms-ipod .ipm-searchbar');
+  assert.ok(bar, 'the search bar rule exists');
+  assert.match(bar.body, /flex\s*:\s*none/, 'the bar does not grow or shrink: the results take what is left');
+  const cell = rule('.mms-ipod .ipm-sc');
+  assert.ok(cell, 'the strip cell rule exists');
+  assert.match(cell.body, /min-height\s*:\s*var\(--pk-row-h\)/, 'a cell is at least one menu row tall');
+  assert.match(cell.body, /flex\s*:\s*1 1 0/, 'the cells share the strip equally');
+  assert.match(cell.body, /min-width\s*:\s*0/, 'and can narrow below their text');
+});
+
+test('an emptied query drops a stale error note', async () => {
+  const b = boot({ search: () => Promise.reject(new Error('down')) });
+  try {
+    goSearch(b);
+    typeCell(b, 'P');
+    await wait(DEBOUNCE);
+    assert.match(P(b).querySelector('.ipm-note').textContent, /Couldn.t search/);
+    pressMenu(b);
+    assert.strictEqual(query(b), '');
+    assert.match(P(b).querySelector('.ipm-note').textContent, /Type to search/, 'an empty query is a fresh start, not an error');
+  } finally { b.restore(); }
+});
+
+test('two reads for the SAME word (a library change re-asked it): the older read failing late does not wipe the newer answer', async () => {
+  const reads = [deferred(), deferred()];
+  let n = 0;
+  const b = boot({ search: () => reads[n++].p });
+  try {
+    goSearch(b);
+    typeCell(b, 'P');
+    await wait(DEBOUNCE);
+    b.ver.v = 2;
+    typeCell(b, 'go'); // the strip press checks the version first and queues the second read
+    await wait(DEBOUNCE * 2);
+    assert.strictEqual(n, 2, 'both reads are in flight');
+    reads[1].res(built(['fresh']));
+    await wait(20);
+    reads[0].rej(new Error('late failure'));
+    await wait(20);
+    assert.deepStrictEqual(labelsOf(b), ['fresh']);
   } finally { b.restore(); }
 });

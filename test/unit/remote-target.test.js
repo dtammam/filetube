@@ -713,3 +713,26 @@ test('v1.354 buildStatePayload carries a queue only when it has ids, and null ot
   assert.strictEqual(R.buildStatePayload('d', base, false, false, { ids: 'a' }).queue, null);
   assert.strictEqual(R.buildStatePayload('d', null, false, false, { ids: ['a'], index: 0 }).queue.ids[0], 'a', 'the idle payload still passes what it is given');
 });
+
+test('v1.354 the target reports the registered reader\'s queue (cut to the window) on every state post, and none once the reader is cleared or throws', () => {
+  const h = harness();
+  const list = Array.from({ length: 500 }, (_, i) => 'id' + i);
+  h.t.setQueueReader(() => ({ list, index: 250 }));
+  h.t.setOn(true); h.attach();
+  h.advance(6000);
+  const withQ = h.states().filter((x) => x.queue);
+  assert.ok(withQ.length >= 1, 'a report carried the queue');
+  const q = withQ[withQ.length - 1].queue;
+  assert.strictEqual(q.ids.length, 201, '100 either side plus the current');
+  assert.strictEqual(q.ids[q.index], 'id250', 'the index points at the current song');
+  const before = h.states().length;
+  h.t.setQueueReader(() => { throw new Error('view torn down'); });
+  h.advance(6000);
+  const after = h.states().slice(before);
+  assert.ok(after.length >= 1, 'it still reports');
+  assert.ok(after.every((x) => x.queue === null), 'a throwing reader means no queue, not a dead report');
+  h.t.setQueueReader(null);
+  const b2 = h.states().length;
+  h.advance(6000);
+  assert.ok(h.states().slice(b2).every((x) => x.queue === null), 'a cleared reader is not read');
+});

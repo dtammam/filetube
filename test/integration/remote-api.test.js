@@ -621,6 +621,48 @@ test('v1.354 the PC queue survives POST state -> stream frame -> GET targets -> 
   }
 });
 
+test('v1.354 gate r1: the queue cap is exactly 201 ids (201 carried, 202 not); each row carries its title, artist and duration', async () => {
+  const t = await asTarget();
+  await t.next('hello');
+  const c = await asController();
+  await c.next('hello');
+  const st = (queue) => post('/api/remote/state', { deviceId: PC, trackId: 'tonzak1', position: 3, duration: 100, state: 'playing', queue });
+  const ids = (n) => Array.from({ length: n }, (_, i) => (i % 2 ? 'tonzak1' : 'tonzak2'));
+  assert.strictEqual((await st({ ids: ids(201), index: 200 })).status, 202);
+  const f = await c.next('state');
+  assert.strictEqual(f.data.queue.tracks.length, 201, '201 ids are carried');
+  assert.strictEqual(f.data.queue.index, 200);
+  assert.deepStrictEqual(f.data.queue.tracks[0], { id: 'tonzak2', title: 'tonzak2 title', artist: 'Tonzak', durationSec: 100 }, 'title, artist and duration ride each row');
+  assert.strictEqual((await st({ ids: ids(202), index: 0 })).status, 202);
+  assert.strictEqual((await c.next('state')).data.queue, null, '202 ids are not carried');
+});
+
+test('v1.354 gate r1: a native track and a library chapter id resolve in the queue under the caller\'s own visibility (the O(queue) resolver), an unknown id is dropped', async () => {
+  const t = await asTarget();
+  await t.next('hello');
+  const c = await asController();
+  await c.next('hello');
+  const st = (queue) => post('/api/remote/state', { deviceId: PC, trackId: 'nvis', position: 3, duration: 100, state: 'playing', queue });
+  assert.strictEqual((await st({ ids: ['nvis', 'nblk', 'no-such-track', 'tonzak1', 'tonzak1::c9', '__proto__'], index: 0 })).status, 202);
+  const f = await c.next('state');
+  assert.deepStrictEqual(f.data.queue.tracks.map((x) => x.id), ['nvis', 'nblk', 'tonzak1'], 'the admin sees the native and library tracks; unknown, a missing chapter and an inherited key are dropped');
+});
+
+test('v1.354 gate r1 (perf): a state frame with a queue never loads the whole track table (point queries only: musicDb.read() is O(library))', async () => {
+  const t = await asTarget();
+  await t.next('hello');
+  assert.strictEqual((await post('/api/remote/state', { deviceId: PC, trackId: 'nvis', position: 3, duration: 100, state: 'playing', queue: { ids: ['nvis', 'tonzak1', 'nblk'], index: 0 } })).status, 202);
+  const real = musicDb.read;
+  let reads = 0;
+  musicDb.read = function () { reads += 1; return real.apply(this, arguments); };
+  try {
+    const cp = await (await fetch(`${base}/api/remote/poll?deviceId=${PHONE}&role=controller&target=${PC}`)).json();
+    assert.strictEqual(cp.state.queue.tracks.length, 3, 'precondition: the queue resolved');
+    assert.strictEqual(cp.state.track.id, 'nvis', 'precondition: the now-playing card resolved (a native track)');
+  } finally { musicDb.read = real; }
+  assert.strictEqual(reads, 0, 'no full musicDb.read() on a state frame');
+});
+
 test('v1.354 a hidden id never leaves in the queue: dropped, the index follows its song; a hidden current song gives index -1', async () => {
   const ck = volQueueUser.cookie;
   const mem = member.cookie;

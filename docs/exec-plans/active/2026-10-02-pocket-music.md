@@ -238,9 +238,38 @@ W3 mutants (committed sha bcba71e5, /tmp sandbox, pocket-lighting + pocket-phone
 
 Built: `Search` row in Music; `search` level (5-cell window over a 39-cell strip A-Z, 0-9, space, del, go; wheel moves the marker or, once the go cell moves focus into the results, the rows; headings are never stops; up past the first row returns to the strip; MENU undoes in the order results focus, a letter, then climbs); 250 ms debounce with a token + query re-check after the await; results grouped Songs/Albums/Artists, a song row plays IN the result list (ctx `{src:'music', search:q, sort:'title-asc'}`); Extras > Skins > Search filters the registry by name; Settings > Mobile player has a "Find a skin" input over the grid. Tests: pocket-search (18), setup-music-skin-picker (1 new), and six neighbours updated for the new Search rows and the `.ipm-q` text-line rule (the AC6 census now classifies it with the other one-line texts).
 
-Real browser (headless Chromium, iPhone 13 viewport, coarse pointer, seeded library, `ipod-charcoal`): the wheel dragged on the real ring typed N, I, G; results Songs (Neon Arrival, Nightfall, Nighthawk, Opal Night Theme, Overpass) / Albums / Artists; MENU left "NI". Shots in the session scratchpad (01-open, 02-typed).
+Real browser (headless Chromium, iPhone 13 viewport, coarse pointer, seeded library, `ipod-charcoal`): the wheel dragged on the real ring typed N, I, G; results Songs (Neon Arrival, Nightfall, Nighthawk, Opal Night Theme, Overpass) / Albums / Artists; MENU left "NI". Shots in the session scratchpad (01-open, 02-typed). Stop rule (c): the look was shown to Dean (reference photos beside the real-browser shot, AskUserQuestion); his answer: "Ship it as is (Recommended)".
 
 W4 mutants (committed sha 5dfdbf9f, /tmp sandbox, pocket-search): S1 strip does not wrap, S2 space allowed first/double, S3 delete drops nothing, S4 cap removed, S5 urls unencoded, S6 headings are stops, S7 skins filter any-word, S8 no debounce (first run SURVIVED: the test asserted nothing read in the same tick; strengthened to wait half a debounce between letters, then red), S9 no token guard, S11 go does not focus the list, S12 up past the first row stays, S13 error not surfaced: all red. S10 (the `ss.q !== q` re-check removed) survives BY DESIGN: `scheduleSearch` already bumps the token on every keystroke, so the query re-check is a second guard on the same condition; no input reaches it alone.
+
+### Gate r1 - security-brief
+
+Findings at 0f2728c1: no CRITICAL/HIGH. NOTE: a queue of 201 unknown or chapter ids makes resolveRemoteTracks project the whole library per state POST (self-inflicted, 5/s per user limiter). NOTE: the stored queue is not re-resolved at store time, only at read time, so a track hidden after a report is filtered at the next read (verified). The remote store is keyed by req.user.id, so no cross-user title path exists.
+
+Gate: APPROVED r1 @0f2728c1 — security-brief
+
+### Gate r1 - qa
+
+Measured at 0f2728c1 (Node 22.23.1): 62 targeted files (every pocket-*, music-*, remote-* unit, setup-music-skin-picker, integration music-pocket-menus(-r1), pocket-*, remote-*): 1073 tests, 1073 pass, 0 fail. `npm run lint:ui`: OK, live debt equals docs/ui-exceptions.json (TOTAL 3181). `overlay-containment-lint --enforce`: clean (0). `tools/listen-control-proof/queue-proof.js` run by me: exit 0 (3 rows from the PC queue, current marked, tap on row 3 played song3 on the PC, errors []). The six edited tests are deliberate updates (Search row appended to the expected lists; the 10000 URL regexes follow the paged URL; AC6 GLYPH gains ipm-sc; the Nordic wheel test now asserts Search ends the list AND steps one slow detent back to Nordic, so it is stronger, not weaker). No security surface beyond the security seat's pass: queue ids go through validId and the caller's visibility, the store is per user.
+
+WARNING W-1 (test binding) test/unit/music-remote-controller-wiring.test.js:143-154: the phone side of W2 (remoteQueueRows, remoteQueuePlay, the R4 center-button guard in skin-surface.js:2499) is bound only by source-text regexes. The plan (W2 "Tests") required: a populated state renders the rows and clears when the speaker is left; the center with no queue opens nothing; a tap sends the right ids and index. Failure scenario: a mutant that makes remoteQueuePlay send `i+1`, or reverses the R4 condition so a no-queue speaker opens a blank list, can be rewritten to keep the same text shape or move the logic and the suite stays green (the builder's own M3 note admits "regex bind"). The behaviour is proven only by queue-proof.js, which is not a CI gate. Fix: one jsdom test on the real music.js seams (populated state -> rows with is-current; no queue + .mms-remote -> select does not enter listmode; tap row 2 -> RC.play(ids, 2)), mutated red.
+
+WARNING W-2 (process, cannot verify) plan stop rule 0.8(c): the Search LOOK must go to Dean (reference photos beside a real-browser shot, SendUserFile + ask) BEFORE W4's UI is built. Section 7 W4 evidence records shots "in the session scratchpad" but no ask and no answer. If Dean has not seen it, the Architect must show him before release (the device check 4 only asks afterward); if he did, record the answer in section 7.
+
+NOTE N-1 Cider and Nordic (music-skins.js:215 uses goRows(ctx,true) = upNext) still get `upNext: []` from remoteSkinCtx while controlling a speaker: the PC queue shows only on the iPod skins. Matches the plan's wording (center button on Now Playing) but is an inert sibling list; log it in ROADMAP Planned.
+NOTE N-2 plan W2 says "a queue change pings trackChanged"; the diff does not (queue edits without a track change ride the 5 s heartbeat; a queue edit while PAUSED is not reported until the next state report). Benign for the stated outcome; either add the ping or amend the plan.
+NOTE N-3 lib/remote/routes.js resolveQueue -> server.js resolveRemoteTracks does an O(library) visibility filter plus artRepresentatives per state POST with a controller connected (every 5 s heartbeat, every change), where the old resolve was one lookup. Not measured by me; fine at 10k, worth a number at 23k (the security seat noted the unknown-id variant).
+NOTE N-4 W3 evidence says hypothesis (b) is "parked in ROADMAP Planned", but ROADMAP.md is not in this diff (W5 not yet done): make sure the entry exists at release. W3's headless proof does not discriminate old from new code (disclosed by the builder); the fix is structural and the device recording is the judge.
+NOTE N-5 The PC's own Music page still reads albums/artists with limit=10000 (music.js:3440, 3447); out of the plan's scope, the ROADMAP row should say so. Settings > Mobile player's filter matches a family name (typing "click" shows every Click tile) while the pocket skins Search matches the skin label only: small inconsistency. public/setup.html:280-284 indentation of the new field block is off.
+Comment/marker accuracy: no lying comment found in the diff; no em dashes added in code, comments or user-facing text (grep clean).
+
+Gate: CHANGES r1 @0f2728c1 — qa
+
+### Gate r1 - adversary
+
+W2 queue: 32 mutants, 11 survive (R4 Select arm, the 201 boundary, C7, C13, C14). W1 paging: 13 mutants, 11 survive (Artists, Albums, drills, Liked, untagged, empty-page guard, error retry unbound). W4: 32 mutants, 12 survive (menu.search wiring and search ctx unbound, destroy guards, empty-query clear, library-changed rerun). W3: 8 of 8 killed (CSS by regex only). Per-state-frame resolve cost at 23k songs is a WARNING.
+
+Gate: CHANGES r1 @0f2728c1 — adversary
 
 ## 8. Device checks Dean would owe (into DEVICE-CHECKS.md at release, one line each)
 
