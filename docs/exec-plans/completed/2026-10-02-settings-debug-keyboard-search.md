@@ -3,10 +3,10 @@ plan: settings-debug-keyboard-search
 harness: v2 · lean
 branch: feat/v1.355-settings-keyboard-search
 anchor: spec
-status: Building
-next: built (W0-W3, section 7); the gate (adversary + qa), then the Architect's release
+status: Shipped v1.355.0
+next: shipped; owed: the v1.355.0 device checks in docs/DEVICE-CHECKS.md
 design: Dean 2026-10-02 - A + B in ONE release v1.355.0; B experimental and OFF by default; hard constraint for B: the keyboard just appears, nothing resizes, moves, shifts or zooms, nothing else changes; R2-R9 are architect defaults he did not overrule
-gate: adversary + qa (escalated from the table's floor: UI/layout and a new input path, LESSONS 1 "seats split"); security-brief applied as a section by both
+gate: APPROVED r2 @259fef21 - adversary, qa (escalated from the table's floor: UI/layout and a new input path, LESSONS 1 "seats split"); security-brief applied as a section by both
 ---
 
 # v1.355: a Settings switch for the rotate debug log, and keyboard search on the iPod (experimental)
@@ -305,7 +305,7 @@ W1 mutants (sandbox `git archive`, `node --test --test-timeout=20000`, exact-onc
 ### W2 evidence
 
 Built (2f75b2f9, tests and proof 51c86fb5): see the W2 commit message. The input is `input#ipm-kb.ui-field__input.ipm-kb`
-(the field primitive's 16px font; style.css `.ipm-kb`: fixed, `z-index: calc(var(--z-player-max) + 1)`, opacity 0,
+(the field primitive's 16px font; style.css `.ipm-kb`: fixed, `z-index: calc(var(--z-player-max) + 1)` [SUPERSEDED by the gate r1 fix 5aac5619: `pointer-events:none`, no z-index; a bar tap focuses it through the panel click], opacity 0,
 transparent text and caret), in `doc.body`, created by `kbSync()` at the end of every `render()` while a keyboard-mode
 Search level is on screen, removed otherwise (and by a MutationObserver on the panel when the view empties it without a
 render, i.e. a dock, and by `destroy()`). R6 as specified; two refinements: the blur's hand-over to the results runs one
@@ -391,8 +391,8 @@ only the phone can say). The rotate log (W1, now with sy/vvo/vs/ae) is the instr
    can see a typed key; the capture listeners are classified with reasons in the R9 census test, which fails on any new
    key listener. Bound by one dispatch test (B1) plus the census (B26), not one mutant per handler.
 2. **R8 container:** `document.body` (W0.1: the only container that survives `paint()`), so the input is `position:fixed`
-   over the bar rather than inside the LCD; it sits above the skin (`z-index: calc(var(--z-player-max) + 1)`) so a tap
-   on the bar reaches it natively. The 16px comes from the `ui-field__input` primitive (its `--fs-input-min`), since a
+   over the bar rather than inside the LCD. [SUPERSEDED by the gate r1 fix 5aac5619: it no longer sits above the skin;
+   it is `pointer-events:none` and a tap on the bar reaches it through the panel's click handler (`kbFocus()`).] The 16px comes from the `ui-field__input` primitive (its `--fs-input-min`), since a
    new `--fs-*` use is UI-ratchet debt and no `--t-*` role is 16px.
 3. **Settings placement:** the Keyboard search group sits ABOVE the Music skin group in Mobile player, because
    setup-sticker-picker.test.js locks the skin grid as the section's last block (v1.350); not changed.
