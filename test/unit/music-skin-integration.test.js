@@ -50,7 +50,7 @@ const settle = () => new Promise((r) => setImmediate(r));
 // v1.351: `overflowIf(el)` picks WHICH elements the layout-less jsdom reports as overflowing (default: the
 // Now Playing title lines); `remote` boots the REAL controller from remote.js (a fake EventSource, a fetch
 // that answers /api/remote/targets with `remote.targets`) and, with `remote.select`, controls that device.
-async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog, playerOverride, runSync, skinsSrc, overflowIf, remote, remoteTarget }) {
+async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog, playerOverride, runSync, skinsSrc, overflowIf, remote, remoteTarget, cfgSpy }) {
   // jsdom won't let location.replace be overridden - it hard-navigates and emits a jsdomError.
   // Capture that so a test can assert a /watch bounce was ATTEMPTED (reachability); the exact
   // URL + ::c strip are source-locked in audio-opens-in-music.test.js.
@@ -122,6 +122,7 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
   // window exactly as music.html does (after music-skins.js, before music.js).
   delete require.cache[surfacePath];
   require(surfacePath);
+  if (cfgSpy) { const SS = dom.window.FileTubeSkinSurface; const real = SS.create; SS.create = function (cfg) { cfgSpy(cfg); return real.apply(this, arguments); }; } // v1.357: hand the test the config music.js builds
   // v1.230: the Settings-page picker persists ft-music-skin; the music view reads it
   // on render. Preset it to simulate "picked in Settings, then opened the player".
   if (skin) dom.window.localStorage.setItem('ft-music-skin', skin);
@@ -3219,4 +3220,52 @@ test('v1.354 PC side: the Music view registers its queue reader on the target, a
     mod.destroy();
     assert.strictEqual(reg.reader, null, 'cleared on teardown');
   } });
+});
+
+// ---- v1.357 W2: the iPod's lists mark the SPEAKER's song while this phone controls one ----
+// The engine reads which row is playing ONLY through cfg.menu.currentId. The phone's own player (here 't1', a
+// divergent id on purpose) is the wrong answer while a speaker plays: the list must mark the speaker's track.
+const speakerWith = (track, state) => target('pc-h', 'Speaker', state || 'playing', track);
+async function menuIdOf(t, extra) {
+  const seen = {};
+  await boot(Object.assign({ mobile: true, isMusic: true, skin: 'ipod', cfgSpy: (c) => { seen.cfg = c; }, remote: { targets: [t], select: 'pc-h' } }, extra || {}, { run: async (dom, spy) => {
+    seen.dom = dom; seen.spy = spy; seen.id = seen.cfg.menu.currentId();
+    if (extra && extra.after) await extra.after(seen, dom, spy);
+  } }));
+  return seen;
+}
+
+test('v1.357 W2: controlling a speaker, the list marks the SPEAKER\'s track - not the phone\'s own (divergent) player id', async () => {
+  const s = await menuIdOf(speakerWith({ id: 'song2', title: 'Two', artist: 'A', album: 'B', artUrl: '' }));
+  assert.strictEqual(s.id, 'song2', 'the speaker\'s id; the phone\'s own player says t1 and must NOT win');
+});
+
+test('v1.357 W2: a CHAPTER id from the speaker is passed through whole (the list marks that chapter row)', async () => {
+  const s = await menuIdOf(speakerWith({ id: 'mix::c3', title: 'Chapter', artist: 'A', album: 'B', artUrl: '' }));
+  assert.strictEqual(s.id, 'mix::c3');
+});
+
+test('v1.357 W2: an IDLE speaker (no track) marks nothing - it does not fall back to the phone\'s own player', async () => {
+  const s = await menuIdOf(speakerWith(null, 'idle'));
+  assert.strictEqual(s.id, null);
+});
+
+test('v1.357 W2: the mark follows the speaker advancing (a new report -> the next read), and leaving the speaker returns to the phone\'s own player id', async () => {
+  const s = await menuIdOf(speakerWith({ id: 'song2', title: 'Two', artist: 'A', album: 'B', artUrl: '' }), { after: async (seen, dom, spy) => {
+    spy.es.listeners.state && spy.es.listeners.state({ data: JSON.stringify({ deviceId: 'pc-h', label: 'Speaker', state: 'playing', position: 1, duration: 200, hasPrev: true, hasNext: true, at: 2, ageMs: 0, track: { id: 'song3', title: 'Three', artist: 'A', album: 'B', artUrl: '' } }) });
+    await settle();
+    seen.advanced = seen.cfg.menu.currentId();
+    spy.rc.leave();
+    await settle();
+    seen.left = seen.cfg.menu.currentId();
+  } });
+  assert.strictEqual(s.id, 'song2');
+  assert.strictEqual(s.advanced, 'song3', 'the speaker moved to song 3: the list reads it');
+  assert.strictEqual(s.left, 't1', 'off the speaker: the phone\'s own player again (local play unchanged)');
+});
+
+test('v1.357 W2: local play (no speaker) is unchanged - the list marks the phone\'s own player id', async () => {
+  const seen = {};
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', cfgSpy: (c) => { seen.cfg = c; }, run: async () => { seen.id = seen.cfg.menu.currentId(); } });
+  assert.strictEqual(seen.id, 't1');
 });
