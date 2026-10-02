@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.352-speaker-bookmark
 anchor: spec
 status: Shipped v1.352.0
-next: shipped (device checks owed, see docs/DEVICE-CHECKS.md)
+next: shipped (device checks confirmed by Dean on 2026-10-02)
 design: Rulings 2026-10-01 (Dean: R2 yes, R3 tooltip + README, R5 sliding renewal, L1-L3 in the same release; W0 from his autoplay report; R1, R4, W0 and the L defaults are architect defaults he did not overrule)
 gate: APPROVED r3 @6b461ab6 (FULL: adversary + qa + security-brief; forced by lib/auth/** via R2 and R5)
 ---

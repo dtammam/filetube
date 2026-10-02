@@ -2,9 +2,8 @@
 
 One list of what Dean taps on his phone or desktop to confirm a release, grouped by area. Each line
 carries the version that introduced it. A release appends its checks here instead of adding a tracker
-row; a line is deleted when Dean has confirmed it (or moved to the tracker if it turns into a bug).
-Rows #280-#289 of `docs/exec-plans/tech-debt-tracker.md` keep their other residuals and point here for
-the checks.
+row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
+ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture).
 
 ## Whole app, layout and dialogs
 
