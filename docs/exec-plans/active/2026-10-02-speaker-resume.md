@@ -444,3 +444,89 @@ Gate: CHANGES r1 @53a36548 - adversary
 - NOTE: a song the user starts locally DURING the check is paused by the attach (deviation 1's remoteChoose rule).
   Rare (one targets round trip) but it is the phone overriding a fresh local tap; Dean's call, not a finding.
 - R9 (stale listed state) is Dean's disclosed limit and not counted.
+
+Gate: APPROVED r2 @5c7dba16 - security-brief
+- Gap: still no Bash in this seat. HEAD 5c7dba16 was confirmed from the branch ref file. I read the fix in place
+  (common.js accountSignOut, bindHandoffToRemote + the handoff card's poll/init; login.js success branch; remote.js
+  leave/resume). I did not execute anything; the browser numbers are the builder's section 6 table.
+- S1: FIXED AS PRESCRIBED (traced). accountSignOut calls the guarded `remoteControl.leave()` synchronously, before the
+  logout request. leave() sets `targetId = ''`, bumps `resumeGen`, clears `resumeRetry`, and runs `store('', '')` +
+  forgetResume(). So the unload's visibility(true) and pagehide reach `writeResume`, which returns at `!targetId`. An
+  in-flight resume or restore is stale and does nothing. done() also removes both keys, which covers Settings
+  (no remote.js on that page). leave() makes no fetch. The new test uses an ATTACHED controller with hide + pagehide,
+  which is the binding I asked for.
+- Session expiry (verified): the login success branch drops `ft-remote-resume` and `ft-remote-controlling` before it
+  navigates, and login.html loads no remote.js. Before that login, an expired session gets 401 from targets: the
+  strict check reads that as null, which means keep, no attach. A command gets 401: false, no `lost` toast. So nothing
+  crosses accounts in that window.
+- bindHandoffToRemote (verified): it only calls the card's own hide(), or poll(), which asks `/api/handoff` under the
+  current session cookie (the server's per-user presence). It adds no new data source. Hiding shows nothing, and a
+  re-poll can only show the signed-in account's own presence. If remoteControl is missing at init, the bind is a
+  no-op, which is the pre-fix behaviour and not a security issue.
+- Q3c (swapped-user record left alone, verified): the post-await re-read returns without attaching or sending. The
+  foreign record then meets the user check on the next launch and is dropped before any request. Leaving it alone is
+  safe.
+- Local-play-wins (verified): `localPlaying()` -> drop runs after the visibility guard and before attach. It only
+  removes a capability (no attach, no send). It cannot widen anything.
+- NOTE (not a finding): a speaker picked by hand during the logout round trip (leave() already ran, done() not yet)
+  would be re-stamped by the unload. It needs a deliberate tap in a sub-second window by the user who is signing out,
+  so the record is their own and the next user's check drops it.
+
+Gate: APPROVED r2 @5c7dba16 - qa
+- Delta 9fa35e65..5c7dba16 reviewed (common.js, login.js, remote.js, the two test files, the proof). Sandbox
+  `git archive 5c7dba16`, diffed pristine after the mutants. Verbatim: Node 22, 14 remote/skin/sign-out files
+  `# tests 435` `# pass 435` `# fail 0` `# cancelled 0`; handoff-card + handoff-card-styling + login* `# tests 27`
+  `# pass 27` `# fail 0`; Node 24.20.0 remote-resume + music-skin-integration `ℹ tests 174` `ℹ pass 174` `ℹ fail 0`;
+  `ui-lint: OK - the live debt equals docs/ui-exceptions.json`; `overlay-containment: clean (0 violations)`; eslint on
+  the changed files `✖ 6 problems (0 errors, 6 warnings)` (the pre-existing six).
+- Q1 fixed as prescribed, VERIFIED: my r1 sign-out probe re-run (real server, iPhone 13): before = the record, after
+  landing on `/login` `ft-remote-resume` = null (r1: re-stamped). `rc.leave()` sits after `done`'s definition and
+  before the logout request, so before every removal; header-right-reserve (the 1100-char window) is in my green run.
+- Q2 fixed, VERIFIED: my r1 card probe re-run: on `/` and `/music`, `remote: true` and the card hidden at 0.5, 3, 10
+  and 20 s after the attach (r1: up at all four); speaker undisturbed, 0 command POSTs. bindHandoffToRemote reacts
+  only to transitions (attach = hide, leave = one poll), the card's poll re-reads controllingRemote after its await,
+  and it binds at DOMContentLoaded, after remote.js has run (the comment's "remote.js loads after this file" holds).
+- Q3 fixed (bound): my mutants re-run on the 8 files (345 tests): A red ("gate r1 (Q3c) ..."), C red ("gate r1
+  (Q3a/A4) ..."), F red ("gate r1 (Q3b/A4) ..."). Also mine on the fix: G accountSignOut without leave() -> red
+  ("gate r1 (S1 = Q1 = A1, A2) ..."); H no poll on leave -> red, J no hide-at-bind -> red ("gate r1 (Q2 = A3) ...
+  executed"); I local play -> keep instead of drop -> red ("gate r1 (Architect ruling) ...").
+- Q4 fixed: the landing now executes in the real Music view. D (no `remoteDocked = false`), K (no mount-time
+  landResume), L (landPlayOn(true) always) each red in the new music-skin-integration tests by name, not only the lock.
+- Proof JSON card_*, signout_*, expiry_*, local_* and AC1 rows match the section 6 fix-round table.
+- SUGGESTION (comment placement, fold into the release commit): common.js ~10781, bindHandoffToRemote was inserted
+  BETWEEN shouldShowHandoffCard's JSDoc ("The one show/hide decision. `ctx` carries ...") and that function, so the
+  block now documents bindHandoffToRemote (whose args are rc, card) and shouldShowHandoffCard has none. Move the new
+  function above that JSDoc. No behaviour.
+- Not blocking, noted: the login.js removal is bound by a source lock (behaviour in the proof's expiry_* row);
+  sign-out while attached fires one /api/handoff poll from the leave transition (answered 401 or ignored, harmless).
+
+Gate: APPROVED r2 @5c7dba16 - adversary
+- Instruments (sandbox `git archive 5c7dba16`, node_modules symlinked, diffed against a pristine copy after every
+  mutant and probe: identical). Node 22.23.1, every remote / resume / handoff / sign-out / login unit file (33 files):
+  `# tests 751` `# pass 751` `# fail 0`. eslint on the changed sources, tests and proof tool: `0 errors, 6 warnings`
+  (the pre-existing six). Em dashes added by the delta: 0. 7403ab6a..5c7dba16 is docs + proof JSON only. Full suites
+  not re-run by this seat (the builder's at 7403ab6a; same code).
+- A1 fixed as prescribed (VERIFIED, real browser): attached, then `accountSignOut()`, then /login: record null,
+  per-tab pick null (before: both set).
+- A2 fixed (VERIFIED): user 2 in that tab: controller states `["false|"]`, toasts `[]`, zero /api/remote/ requests
+  (r1: `true|<user 1's speaker>` and "Lost ..."). login.js's catch-all bound (my R9/R10 mutants red).
+- A3 fixed (VERIFIED): PC played 12 s, relaunch on `/`: card hidden 1 s and 8 s after the attach (r1: visible at
+  both); This device -> the card returns within 2 s; in-app nav /music -> / and a re-pick -> hidden 300 ms after, no
+  page errors (no duplicate binding; init is once per page, the card is shell-level).
+- A4 survivors all bound now: A2, A6, A6b, A8, A17, A28 each red under its mutant (11 files, 320 tests).
+- New code, attacked: 11 more mutants, all red: the sign-out `leave()` dropped; its sessionStorage removal dropped;
+  bind-time hide dropped; the transition guard dropped; poll-on-leave dropped; the `document.hidden` guard on the
+  leave poll; local-play-wins turned into keep; `.playing` read as `.id` (a loaded-but-paused player); both login.js
+  removals; the attach's `pause()` dropped.
+- Failed logout POST (VERIFIED, logout route aborted): the phone is detached, record and per-tab pick gone, lands on
+  /login while `/api/auth/me` is still 200. Same navigation as v1.355 (done runs on failure); the detach is what the
+  user asked for. Not a finding.
+- A poll in flight across the attach evaluates `isRemote()` after its fetch resolves (common.js poll), so a late
+  answer hides, never shows (read, consistent with the 1 s / 8 s rows).
+- Local play wins (read + the builder's N8 and my mutants): no media element yet / a paused element -> not playing ->
+  attach (correct); a tap after the synchronous decision lands in remote mode. NOTE: any playing media (a video too)
+  drops the record; quiet and conservative, within the ruling.
+- Q3c "left alone" is right: a swapped record belongs to whoever the shared cookie now is; this page's memoized user
+  is the stale one.
+- SUGGESTION (concur with the seat above, seen in the diff): bindHandoffToRemote sits between shouldShowHandoffCard's
+  JSDoc and that function; move it above the JSDoc. No behaviour.
