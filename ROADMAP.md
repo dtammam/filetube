@@ -228,13 +228,21 @@
 
 ### Features
 
+- [ ] **Speakers: the speaker reports its state with no phone attached** _(v1.356 R9, Dean: shipped the gap as is,
+  disclosed)_ - A speaker posts its state only while a phone is attached, so a pause or play AT THE PC after the phone left
+  is missing from `GET /api/remote/targets`; a remembered speaker older than the hour can then reattach to a PC paused by
+  hand (shown paused, never commanded). Fix: the target posts on play / pause / track change / end even with no controller
+  (rate-limited; mind the per-user state bucket, v1.354 lesson). Needs its own gate (it changes what every speaker tab sends).
+- [ ] **Chore: `bindHandoffToRemote` sits between `shouldShowHandoffCard` and its JSDoc** _(v1.356 gate r2, qa + adversary
+  suggestion)_ - public/js/common.js: move the new function above the JSDoc so the comment documents its own function.
+  Comment-only; fold into the next change that touches common.js (v1.357).
 - [ ] **Keyboard search for the skins list** _(v1.355 plan, R5)_ - v1.355 gave Music > Search the phone's own keyboard
   (Settings > Mobile player > Keyboard search, experimental, off by default). The skins search (Pocket Extras > Skins >
   Search) stays on the wheel's letter strip on purpose ("nothing else changes"). If Dean likes the keyboard on device,
   the same input (skin-surface.js `kbSync`) can serve the `skinSearch` level; it needs its own tests (the preview follows
   the highlighted row) and a device check. Decide after the v1.355 device pass.
 
-- [ ] **Speakers: a phone that closes the app comes back still connected** _(Dean, 2026-10-01: "if connected to a
+- [x] **Speakers: a phone that closes the app comes back still connected** - SHIPPED v1.356.0 (see Shipped) _(Dean, 2026-10-01: "if connected to a
   speaker on mobile and you close out of app it should resume from that position/connection if still valid")_ -
   Next swing. Today the phone remembers its speaker in `sessionStorage['ft-remote-controlling']`
   (public/js/remote.js `createController`), which a closed app or killed PWA loses, so it reopens in local mode.
@@ -525,6 +533,22 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.356.0 - Close the app, come back still on your speaker (2026-10-02)
+
+- The phone remembers its speaker across a full close (localStorage `ft-remote-resume`, phones only, with the signed-in user's
+  id and the time it was last hidden). On launch the pick is PENDING: nothing is sent and no speaker name is shown until
+  `GET /api/remote/targets` lists it; it reattaches if the speaker plays, or the app closed under an hour ago (Dean), silently
+  with a "Playing on ..." toast, and shows whatever the speaker plays now. Otherwise local, quietly. Another account's record
+  is deleted before any request. Sign-out (and a login after an expired session) forgets the speaker and the per-tab pick
+  (the per-tab pick surviving sign-out dated from v1.348). The "Continue here" card hides the moment the phone attaches.
+  Music started on the phone during the check wins (no attach).
+- Proof (two browsers, one user): attached in 202 ms, position within 0.01 s of the speaker, 0 commands, the speaker
+  undisturbed; Remote control off / paused + 61 min: local, no toast; another account: 0 requests to the speaker list.
+- Suites on 7403ab6a: Node 22.23.1 and 24.20.0, each 10791 tests, 10779 pass, 0 fail, 12 skipped. `lint:ui` unchanged, overlay 0.
+- Gate: FULL (adversary, QA, security-brief); r1 CHANGES by all three (sign-out wrote the speaker back, the stale
+  "Continue here" card, five unbound guards), all APPROVED r2 @5c7dba16. Disclosed (R9, Dean): a speaker's state is only
+  reported while a phone is attached, so a pause made at the PC can still reattach an hour-old pick (Planned).
 
 ### v1.355.0 - A switch for the turn log, and typing to search on the phone's iPod (2026-10-02)
 

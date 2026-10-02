@@ -699,6 +699,24 @@ async function pickPlayOn(ret) {
 const npText = (b) => P(b).querySelector('.ip-np').textContent;
 const cursorLbl = (b) => { const n = P(b).querySelector('.ipm-row.is-cursor .ipm-name'); return n ? n.textContent : null; };
 
+// v1.356 W2: the resume on launch lands through the SAME seam as a Speakers pick (landAfterPlayOn), from the outer engine
+test('v1.356 W2: engine.landPlayOn(false) lands on the Main menu, cursor on Music; landPlayOn(true) on Now Playing', async () => {
+  const b = bootEngine({ hasCurrent: true, menuExtra: { hasPlayOn: () => 1 } });
+  try {
+    b.engine.paint();
+    assert.strictEqual(npText(b), 'Now Playing', 'starts on Now Playing');
+    assert.strictEqual(b.engine.landPlayOn(false), true, 'handled');
+    assert.strictEqual(b.engine.menuState().screen, 'menu');
+    assert.strictEqual(b.engine.menuState().depth, 1, 'the Main menu');
+    assert.strictEqual(cursorLbl(b), 'Music', 'cursor on Music');
+    assert.strictEqual(b.engine.landPlayOn(true), true);
+    assert.strictEqual(b.engine.menuState().screen, 'np');
+    assert.strictEqual(npText(b), 'Now Playing');
+  } finally { b.engine.destroy && b.engine.destroy(); b.restore(); }
+  const n = bootEngine({ hasCurrent: true, noMenu: true });
+  try { n.engine.paint(); assert.strictEqual(n.engine.landPlayOn(false), false, 'no menus: nothing to land'); } finally { n.engine.destroy && n.engine.destroy(); n.restore(); }
+});
+
 test('v1.351 W4: onPlayOn returning false lands on the Main menu with the cursor on Music; true or nothing goes to Now Playing', async () => {
   const f = await pickPlayOn(false);
   try {

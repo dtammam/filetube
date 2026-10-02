@@ -98,6 +98,14 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
     const env = api.browserEnv(dom.window); env.storage = dom.window.sessionStorage;
     spy.rc = dom.window.FileTube.remoteControl = api.createController(env);
     if (remote.select) spy.rc.select(remote.targets.find((t) => t.deviceId === remote.select));
+    // v1.356 gate r1 (Q4): a phone with a remembered speaker (the record), launched fresh; `resume.before` runs the
+    // controller's resume BEFORE the view mounts (it attached on another view), else the test calls restore() itself
+    if (remote.resume) {
+      dom.window.document.documentElement.classList.add('is-phone');
+      dom.window.fetchCurrentUser = () => Promise.resolve({ user: { id: 7 } });
+      dom.window.localStorage.setItem(api.RESUME_KEY, JSON.stringify({ v: 1, deviceId: remote.resume.deviceId, label: 'Stale', user: '7', at: Date.now() - 60000 }));
+      if (remote.resume.before) { spy.rc.restore(); for (let i = 0; i < 10; i++) await settle(); }
+    }
   }
   // load the skins module into this window (sets window.FileTubeMusicSkins)
   delete require.cache[skinsPath]; global.module = undefined;
@@ -523,6 +531,37 @@ test('v1.351 W4: "This <device>" goes to Now Playing with a local track and to M
     // with nothing loaded the pocket skin itself steps aside (skinIsActive), so there is no Now Playing to land on
     const np = p.querySelector('.ip-np');
     assert.ok(!np || np.textContent !== 'Now Playing', 'nothing loaded: never Now Playing');
+  } });
+});
+
+// ---- v1.356 gate r1 (Q4): the resume's landing in the REAL view (music.js landResume, executed) ----
+test('v1.356 (Q4): a resume that attached BEFORE Music mounted lands at mount: a track -> Now Playing, idle -> Main/Music', async () => {
+  for (const [id, want] of [['pc-play', 'np'], ['pc-pause', 'np'], ['pc-idle', 'menu']]) {
+    await boot({ mobile: true, isMusic: true, skin: 'ipod', playerOverride: NO_PLAYER, remote: { targets: SPEAKERS, resume: { deviceId: id, before: true } }, run: async (dom, spy) => {
+      assert.strictEqual(spy.rc.targetId(), id, 'precondition: the resume attached');
+      const p = panel(dom);
+      assert.ok(dom.window.document.body.classList.contains('mms-on'), id + ': the iPod is up');
+      if (want === 'np') assert.strictEqual(p.querySelector('.ip-np').textContent, 'Now Playing', id);
+      else assert.ok(onMainMusic(p), id + ': Main menu, cursor on Music');
+      assert.strictEqual(spy.rc.consumeResume(), null, 'consumed by the view');
+    } });
+  }
+});
+
+test('v1.356 (Q4): a resume that attaches AFTER mount lands through the mirror, from a stepped-aside mirror (remoteDocked reset)', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', playerOverride: NO_PLAYER, remote: { targets: SPEAKERS, select: 'pc-play', resume: { deviceId: 'pc-idle' } }, run: async (dom, spy) => {
+    const p = panel(dom);
+    const menu = () => { p.querySelector('[data-skin-menu]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); };
+    menu(); await tick(); menu(); await tick(); // Now Playing -> Main -> the mirror steps aside (dockToOrigin)
+    assert.ok(!dom.window.document.body.classList.contains('mms-on'), 'precondition: the mirror stepped aside');
+    spy.rc.leave(); // This device forgets the record (R7), so a fresh one stands in for the next check
+    dom.window.localStorage.setItem('ft-remote-resume', JSON.stringify({ v: 1, deviceId: 'pc-idle', label: 'x', user: '7', at: Date.now() - 60000 }));
+    spy.rc.restore();
+    for (let i = 0; i < 10; i++) await settle();
+    await tick();
+    assert.strictEqual(spy.rc.targetId(), 'pc-idle');
+    assert.ok(dom.window.document.body.classList.contains('mms-on'), 'the iPod comes back up');
+    assert.ok(onMainMusic(panel(dom)), 'idle -> Main menu, cursor on Music');
   } });
 });
 

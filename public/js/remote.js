@@ -469,6 +469,41 @@
     return { ids: list.slice(i, i + PLAY_MAX_IDS), index: 0 };
   }
 
+  // ---- v1.356: a phone that closes the app comes back still connected ----
+  // A phone (html.is-phone) also remembers its speaker in localStorage, so a killed app can find it again
+  // on its next launch. The record is only a HINT: nothing is sent and no speaker name is shown until
+  // GET /api/remote/targets lists that speaker for the signed-in user and the rule below holds (Dean,
+  // 2026-10-02: the speaker is still on AND it plays, or the phone left it under an hour ago).
+  var RESUME_KEY = 'ft-remote-resume';
+  var RESUME_WINDOW_MS = 60 * 60 * 1000;
+  var RESUME_ID_RE = /^[A-Za-z0-9_-]{1,64}$/; // the server's DEVICE_ID_RE (lib/presence/store.js)
+  var RESUME_LABEL_MAX = 64;
+  var RESUME_USER_MAX = 64;
+
+  // The record's shape, checked before anything reads a field of it.
+  function validResume(r) {
+    return !!(r && typeof r === 'object' && !Array.isArray(r) && r.v === 1
+      && typeof r.deviceId === 'string' && RESUME_ID_RE.test(r.deviceId)
+      && typeof r.label === 'string' && r.label.length <= RESUME_LABEL_MAX
+      && typeof r.user === 'string' && r.user.length > 0 && r.user.length <= RESUME_USER_MAX
+      && typeof r.at === 'number' && isFinite(r.at) && r.at > 0);
+  }
+  // 'attach' | 'drop' | 'keep'. `user` = the signed-in user's id as a string (null: not known yet);
+  // `targets` = the GET /api/remote/targets list (null: the check failed). 'keep' = cannot tell now, stay
+  // local and keep the record for the next foreground; 'drop' = forget it.
+  function resumeDecision(record, now, user, targets) {
+    if (!validResume(record)) return 'drop';
+    if (typeof user !== 'string' || !user) return 'keep';
+    if (record.user !== user) return 'drop';
+    if (!Array.isArray(targets)) return 'keep';
+    var hit = null;
+    for (var i = 0; i < targets.length; i++) { if (targets[i] && targets[i].deviceId === record.deviceId) { hit = targets[i]; break; } }
+    if (!hit) return 'drop';
+    if (hit.state && hit.state.state === 'playing') return 'attach';
+    var age = now - record.at;
+    return (age >= 0 && age < RESUME_WINDOW_MS) ? 'attach' : 'drop';
+  }
+
   // The PC's position now: the report's position, plus the time since it was taken while it plays.
   function interpolatePosition(state, receivedAt, now) {
     var s = state || {};
@@ -498,6 +533,68 @@
     var volPending = null;
     var volHeld = null;   // {level, at}: the level the wheel set, shown until the PC reports it or the hold ends
     var streamWanted = false;
+    // v1.356 resume (phone only): a check in flight never attaches after a pick made meanwhile (every
+    // select/leave bumps the generation); a check that could not decide arms one retry on the next foreground.
+    var resumeGen = 0;
+    var resumeBusy = false;
+    var resumeRetry = false;
+    var resumeLanding = null; // {hasTrack}: where the Music view lands after a resume, read once
+    var meUser = null;
+    var mePromise = null;
+
+    function isPhone() { try { return !!(env.isPhone && env.isPhone()); } catch (_) { return false; } }
+    function localPlaying() {
+      try {
+        var pl = env.player ? env.player() : null;
+        return !!(pl && typeof pl.getRemoteSnapshot === 'function' && pl.getRemoteSnapshot().playing);
+      } catch (_) { return false; }
+    }
+    function forgetResume() {
+      if (!env.localStore || !isPhone()) return;
+      try { env.localStore.removeItem(RESUME_KEY); } catch (_) { /* storage blocked */ }
+    }
+    // The record, or null; a record of the wrong shape is deleted unread.
+    function readResume() {
+      if (!env.localStore || !isPhone()) return null;
+      var raw = null;
+      try { raw = env.localStore.getItem(RESUME_KEY); } catch (_) { return null; }
+      if (!raw) return null;
+      var r = null;
+      try { r = JSON.parse(raw); } catch (_) { r = null; }
+      if (!validResume(r)) { forgetResume(); return null; }
+      return r;
+    }
+    function userKey(u) {
+      var s = (typeof u === 'number' && isFinite(u)) ? String(u) : (typeof u === 'string' ? u : '');
+      return (s && s.length <= RESUME_USER_MAX) ? s : null;
+    }
+    // The signed-in user's id (GET /api/auth/me, shared with common.js), or null when it cannot be told.
+    function currentUser() {
+      if (meUser) return Promise.resolve(meUser);
+      if (!mePromise) {
+        var p = null;
+        try { p = env.currentUser ? env.currentUser() : null; } catch (_) { p = null; }
+        mePromise = Promise.resolve(p).then(function (u) {
+          var s = userKey(u);
+          if (s) meUser = s; else mePromise = null;
+          return s;
+        }, function () { mePromise = null; return null; });
+      }
+      return mePromise;
+    }
+    // Remember the attached speaker, stamped now (on attach and on every hide). Phone only; no user, no record.
+    function writeResume() {
+      if (!targetId || !env.localStore || !isPhone()) return;
+      var id = targetId;
+      var rec = { v: 1, deviceId: id, label: String(label || '').slice(0, RESUME_LABEL_MAX), user: '', at: env.now() };
+      var put = function (u) {
+        if (!u || targetId !== id) return;
+        rec.user = u;
+        try { env.localStore.setItem(RESUME_KEY, JSON.stringify(rec)); } catch (_) { /* storage blocked or full */ }
+      };
+      if (meUser) { put(meUser); return; }
+      currentUser().then(put);
+    }
 
     function notify() {
       for (var i = 0; i < changeFns.length; i++) { try { changeFns[i](!!targetId, label, last); } catch (_) { /* a listener must not break the channel */ } }
@@ -581,8 +678,7 @@
       if (volTimer) { env.clearTimeout(volTimer); volTimer = null; }
       volPending = null; volHeld = null;
     }
-    function select(target) {
-      if (!target || !target.deviceId) return;
+    function attach(target) {
       closeStream();
       dropPending();
       targetId = target.deviceId;
@@ -591,22 +687,70 @@
       receivedAt = env.now();
       streamWanted = true;
       store(targetId, label);
+      writeResume();
       openStream();
       notify();
     }
+    // A pick (a speaker, or this device) wins over a resume check still in flight.
+    function select(target) {
+      if (!target || !target.deviceId) return;
+      resumeGen += 1; resumeRetry = false; resumeLanding = null;
+      attach(target);
+    }
     function leave(silent) {
+      resumeGen += 1; resumeRetry = false; resumeLanding = null;
       closeStream();
       dropPending();
       streamWanted = false;
       var was = !!targetId;
       targetId = ''; label = ''; last = null;
       store('', '');
+      forgetResume();
       if (was || !silent) notify();
+    }
+    // v1.356 (R5): a fresh launch (no per-tab pick) with a remembered speaker. PENDING until the checks
+    // pass: targetId stays empty (isRemote() false, send() refuses, no label), so the UI stays local.
+    function resume() {
+      if (targetId || resumeBusy) return;
+      var rec = readResume();
+      if (!rec) return;
+      resumeBusy = true; resumeRetry = false;
+      var gen = ++resumeGen;
+      var stale = function () { return gen !== resumeGen || !!targetId; };
+      var keep = function () { resumeBusy = false; if (!stale()) resumeRetry = true; };
+      var drop = function () { resumeBusy = false; if (!stale()) forgetResume(); };
+      currentUser().then(function (u) {
+        if (stale()) { resumeBusy = false; return; }
+        if (!u) { keep(); return; }
+        // another account's record is deleted unread (R6): the targets check is never even asked
+        if (resumeDecision(rec, env.now(), u, null) === 'drop') { drop(); return; }
+        getTargets(true).then(function (list) {
+          if (stale()) { resumeBusy = false; return; }
+          var still = readResume(); // a sign-out or a pick in another tab forgot it meanwhile
+          if (!still || still.deviceId !== rec.deviceId || still.user !== rec.user) { resumeBusy = false; return; }
+          if (env.document && env.document.visibilityState === 'hidden') { keep(); return; } // back in the background: try on return
+          // gate r1 (Architect's ruling): music started on THIS phone during the check wins - stay local, quiet,
+          // forget the speaker, pause nothing
+          if (localPlaying()) { drop(); return; }
+          var d = resumeDecision(still, env.now(), u, list);
+          if (d === 'keep') { keep(); return; }
+          if (d !== 'attach') { drop(); return; }
+          var hit = list.filter(function (x) { return x && x.deviceId === still.deviceId; })[0];
+          resumeBusy = false;
+          // the remoteChoose rule: the phone is silent while it drives a speaker
+          var pl = null;
+          try { pl = env.player ? env.player() : null; } catch (_) { pl = null; }
+          if (pl && typeof pl.pause === 'function') { try { pl.pause(); } catch (_) { /* best effort */ } }
+          resumeLanding = { hasTrack: !!(hit.state && hit.state.track) };
+          attach(hit);
+          env.toast('Playing on ' + label);
+        }, function () { keep(); });
+      });
     }
     function restore() {
       var raw = null;
       try { raw = env.storage.getItem(CONTROL_KEY); } catch (_) { raw = null; }
-      if (!raw) return;
+      if (!raw) { resume(); return; }
       var t = null;
       try { t = JSON.parse(raw); } catch (_) { t = null; }
       if (!t || !t.deviceId) { store('', ''); return; }
@@ -618,15 +762,21 @@
         var hit = list.filter(function (x) { return x.deviceId === targetId; })[0];
         if (!hit) { lost(); return; }
         label = hit.label || label; last = hit.state || null; receivedAt = env.now();
+        writeResume();
         openStream();
         notify();
       }).catch(function () { openStream(); });
       notify();
     }
-    function fetchTargets() {
+    // `strict` (the resume check): a failed answer is null (cannot tell), never an empty list (gone).
+    function getTargets(strict) {
       var url = '/api/remote/targets?deviceId=' + encodeURIComponent(env.deviceId());
-      return env.fetch(url, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : []; }).then(function (l) { return Array.isArray(l) ? l : []; });
+      var fail = strict ? null : [];
+      return env.fetch(url, { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : fail; })
+        .then(function (l) { return Array.isArray(l) ? l : fail; });
     }
+    function fetchTargets() { return getTargets(false); }
 
     // One command; a 410 means the PC is gone.
     function send(cmd, args) {
@@ -681,8 +831,11 @@
       send('volume', { level: lv });
     }
     function visibility(hidden) {
-      if (!targetId) return;
-      if (hidden) { closeStream(); return; }
+      if (!targetId) {
+        if (!hidden && resumeRetry) { resumeRetry = false; resume(); } // v1.356: the check that could not decide, once more
+        return;
+      }
+      if (hidden) { writeResume(); closeStream(); return; } // v1.356: the hour counts from the phone leaving
       fetchTargets().then(function (list) {
         if (!targetId) return;
         var hit = list.filter(function (x) { return x.deviceId === targetId; })[0];
@@ -703,6 +856,11 @@
       select: select,
       leave: function () { leave(false); },
       restore: restore,
+      resume: resume,
+      resumePending: function () { return resumeBusy; },
+      // v1.356: where the Music view lands after a resume ({hasTrack}), handed out once
+      consumeResume: function () { var r = resumeLanding; resumeLanding = null; return r; },
+      pagehide: function () { writeResume(); },
       send: send,
       play: play,
       toggle: function () { return send('toggle'); },
@@ -749,6 +907,11 @@
     try { if (w.sessionStorage) return w.sessionStorage; } catch (_) { /* blocked */ }
     return { getItem: function () { return null; }, setItem: function () {}, removeItem: function () {} };
   }
+  // v1.356: the same, for the phone's remembered speaker (blocked storage = nothing is remembered)
+  function safeLocalStorage(w) {
+    try { if (w.localStorage) return w.localStorage; } catch (_) { /* blocked */ }
+    return { getItem: function () { return null; }, setItem: function () {}, removeItem: function () {} };
+  }
 
   function browserEnv(w) {
     return {
@@ -756,6 +919,13 @@
       EventSource: w.EventSource,
       document: w.document,
       storage: safeSessionStorage(w),
+      localStore: safeLocalStorage(w),
+      isPhone: function () { return isPhoneDoc(w.document); },
+      // the signed-in user's id, from the /api/auth/me common.js already asks for (null: cannot tell)
+      currentUser: function () {
+        if (typeof w.fetchCurrentUser !== 'function') return null;
+        return w.fetchCurrentUser().then(function (me) { return me && me.user ? me.user.id : null; });
+      },
       now: function () { return Date.now(); },
       setTimeout: function (f, ms) { return w.setTimeout(f, ms); },
       clearTimeout: function (t) { return w.clearTimeout(t); },
@@ -791,7 +961,10 @@
       try {
         if (w.sessionStorage.getItem(STORAGE_KEY) === '1') remote.setOn(true);
       } catch (_) { /* sessionStorage blocked: the switch still works for this page */ }
-      w.addEventListener('pagehide', function () { remote.pagehide(); });
+      w.addEventListener('pagehide', function () {
+        remote.pagehide();
+        if (control) { try { control.pagehide(); } catch (_) { /* storage blocked */ } } // v1.356: stamp when the phone left
+      });
       // Another tab of this browser renamed the device (Settings > Account): tell the server.
       w.addEventListener('storage', function (e) { if (e && e.key === 'ft-device-name') remote.relabel(); });
       if (control) {
@@ -819,6 +992,10 @@
     slicePlay: slicePlay,
     interpolatePosition: interpolatePosition,
     CONTROL_KEY: CONTROL_KEY,
+    RESUME_KEY: RESUME_KEY,
+    RESUME_WINDOW_MS: RESUME_WINDOW_MS,
+    validResume: validResume,
+    resumeDecision: resumeDecision,
     PLAY_MAX_IDS: PLAY_MAX_IDS,
     mountPill: mountPill,
     browserEnv: browserEnv,
