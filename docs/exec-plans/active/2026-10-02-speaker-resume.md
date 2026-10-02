@@ -259,6 +259,65 @@ The first pass (on d090a6a1, 90 tests) left M9, M11, M19 and M32 green; 5b59e6d0
   drained under 2.5 the same commit passed the hook (`ℹ tests 8349`, `ℹ pass 8349`, `ℹ fail 0`). Recorded as a
   load-sensitive test, not root-caused here.
 
+### Gate r1 fix round (the builder, against section 8's r1 verdicts at 53a36548)
+
+Commits: 726a751d (the fix), 7403ab6a (two mutant-binding tests), then this log. The first attempt of 726a751d was
+REFUSED by the pre-commit hook, verbatim: `test at test/unit/header-right-reserve.test.js:90:1` / `both per-device
+header reserves are dropped on sign-out (no stale reserve for the next user)` / `AssertionError [ERR_ASSERTION]:
+avatar-bar count cleared on sign-out` (`ℹ tests 8364`, `ℹ pass 8363`, `ℹ fail 1`). That lock reads the first 1100 chars
+of `accountSignOut`; the new `leave()` block at the TOP of the function pushed the removals out of its window. The block
+moved to just before the logout request (after `done`'s definition, still before every removal and before the
+request); the lock is unchanged and green.
+
+| Finding | Fix | Test (red under the mutant) | Mutant |
+|---|---|---|---|
+| S1 = Q1 = A1: sign-out while attached writes the record back | `accountSignOut` calls `window.FileTube.remoteControl.leave()` (guarded; sends nothing) before the logout request and every removal | "gate r1 (S1 = Q1 = A1, A2): sign-out while ATTACHED, then the unload's hide and pagehide: no record, no per-tab pick; the next user sees no remote, no toast, no remote request" (the REAL accountSignOut and the REAL controller on one jsdom window) | N1 (leave call deleted): red |
+| A2 (pre-existing since v1.348): the per-tab pick survives sign-out; user 2 saw "Lost <user 1's speaker>" | the same `leave()` (its `store('', '')`), and `accountSignOut` also removes `ft-remote-controlling` (Settings, setup.html, loads no remote.js, so there the removal is the only one) | the test above, and "R7: sign-out removes the stored record and the per-tab pick with no controller on the page (Settings: setup.html loads no remote.js)" (retitled: the old title "sign-out forgets the remembered speaker" over-claimed) | N2 (the sessionStorage removal deleted): red; M27 (the localStorage removal deleted): red |
+| A2 / suggestion: the session-expiry path never runs accountSignOut | login.js drops `ft-remote-resume` and `ft-remote-controlling` on a successful login (same origin, two lines in the existing per-user removal list) | "gate r1: a fresh login (the session-expiry path...) drops the remembered speaker and the per-tab pick before it leaves /login" (a source lock on the success branch; behaviour in the proof row `expiry_*`) | N16: red |
+| Q2 = A3: the v1.78 handoff card stays up after a resume attach | `bindHandoffToRemote(rc, {hide, poll})` (common.js, exported): hide on the attach transition, poll on the leave transition, hide at bind if already attached; the card controller binds it at init | "gate r1 (Q2 = A3): the handoff card hides the moment the phone attaches and asks again when it lets go (bindHandoffToRemote, executed)"; "gate r1 (Q2 = A3): the handoff card controller binds itself to the page's remote control at init" | N3, N4, N5, N6, N7: red |
+| Q3 (A) / A4: the post-await `still.user` re-check | unchanged code; now bound | "gate r1 (Q3c): a record swapped to ANOTHER user mid-check (same speaker) is not acted on: no attach, that record left alone" | N11: red (and M9) |
+| Q3 (C) / A4: the LISTED label | unchanged; bound with fixtures whose listed label differs from the record's | "gate r1 (Q3a/A4): the toast, the label, the per-tab pick and the new record all use the LISTED label, never the record's" | N9 (toast from the record label): red |
+| Q3 (F) / A4: writeResume's `targetId !== id` guard | unchanged; bound | "gate r1 (Q3b/A4): a pick then This device before /api/auth/me answers leaves NO record" | N10: red |
+| A4: restore()'s new writeResume() | unchanged; bound | "gate r1 (A4): a per-tab restore the targets check confirms writes the record (with the listed label)" | N12: red |
+| A4: the retry-once flag | unchanged; bound | "gate r1 (A4): the retry is armed only by a check that could not decide (a superseded check never retries)" | N14 (every foreground retries): red |
+| Q4: landResume bound by a source regex only | executed in the REAL Music view (music-skin-integration's boot with the real controller): before mount and after mount from a stepped-aside mirror | "v1.356 (Q4): a resume that attached BEFORE Music mounted lands at mount: a track -> Now Playing, idle -> Main/Music"; "v1.356 (Q4): a resume that attaches AFTER mount lands through the mirror, from a stepped-aside mirror (remoteDocked reset)" | N15 (no `remoteDocked = false`): red; M29, M31: red in these executed tests too |
+| Architect ruling (the adversary's note on deviation 1): local play during the check wins | `resume()`: if the phone's player is playing at decision time (`getRemoteSnapshot().playing`), drop: no attach, no toast, record deleted, nothing paused | "gate r1 (Architect ruling): music started on the phone DURING the check wins: no attach, no toast, record deleted, nothing paused" | N8: red |
+
+Deviation 1 is amended by the ruling: the attach still calls `player.pause()`, but only when nothing plays locally at the
+decision. Deviation 5 is superseded: login now drops both keys too.
+
+**Masked or equivalent (left documented, not faked):**
+- M12 (`select` does not bump the generation): `stale()` also checks `targetId`, which every select sets.
+- N13 (keep arms the retry even when the check was superseded): the generation changes only on select/leave, and both
+  reset `resumeRetry` themselves. While attached, the retry branch is unreachable.
+
+**Mutant table:** `git archive 7403ab6a` sandbox; 48 mutants (M1-M32, N1-N16); 6 files
+(remote-resume, music-pocket-menus, music-remote-controller-wiring, remote-controller, music-skin-integration,
+app-look-l2; 269 tests). 46 red, 2 masked (M12, N13). Sandbox diffed against a pristine copy afterwards: identical.
+On 726a751d, N2 and N5 were also green; 7403ab6a bound them.
+
+**Real browser** (`node tools/listen-control-proof/resume-proof.js` on 7403ab6a; numbers copied from
+`resume-proof-out.json`):
+
+| Row | Result |
+|---|---|
+| card (PC played 6 s) | while the check was held: `"Listening on Linux PC · Willow ... Continue here"`; attached; card visible 1 s after the attach `false`, 8 s after `false`; 0 command POSTs |
+| sign-out while attached | before `{isRemote: true, record: true, tabPick: true}`; landed `/login`; after `{record: null, tabPick: null}`; 0 command POSTs |
+| user 2 in that tab | signed in as `otheruser`: isRemote false, label "", toasts `[]`, record null, tab pick null, remote requests 0 |
+| session expiry (cookies cleared, no sign-out) | on /login `{record: true, tabPick: true}`; after a form login as proofadmin: url `/`, record null, tab pick null, isRemote false, toasts `[]` |
+| local play during the check (`?play=song2` while the targets answer was held) | playing here before the release: true; after: isRemote false, record null, toasts `[]`, 0 command POSTs, still playing here: true |
+| AC1 (re-run) | attached in 202 ms, toast `["Playing on Linux PC · Willow"]`, gap 0.01 s, speaker 3.04 -> 6.16 s same song, 0 command POSTs |
+| AC2 / AC3 / AC4 (re-run) | unchanged: off and paused + 61 min local and quiet; 0 POSTs during and after the hold; the second account 0 targets requests, record deleted |
+| page errors | `[]` |
+
+**Suites and lints (at 7403ab6a; one launcher, sequential):**
+- Node 22.23.1, `npm test` (EXIT22 0): `# tests 10791`, `# pass 10779`, `# fail 0`, `# cancelled 0`, `# skipped 12`, `# todo 0`.
+- Node 24.20.0, `npm test` (EXIT24 0): `ℹ tests 10791`, `ℹ pass 10779`, `ℹ fail 0`, `ℹ cancelled 0`, `ℹ skipped 12`, `ℹ todo 0`.
+- `npm run lint` (exit 0): `✖ 6 problems (0 errors, 6 warnings)` (the pre-existing six in common.js).
+- `npm run lint:ui`: `ui-lint: OK - the live debt equals docs/ui-exceptions.json`.
+- `node scripts/overlay-containment-lint.js --enforce`: `overlay-containment: clean (0 violations)`.
+- Em dashes added by the branch (d6abd4e3..HEAD): 0.
+
 ### What headless cannot prove
 
 - iOS kills: a swiped-away PWA may not fire pagehide or visibilitychange at all; then `at` is the last hide or the
