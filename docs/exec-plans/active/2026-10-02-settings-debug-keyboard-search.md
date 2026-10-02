@@ -357,7 +357,8 @@ W2 mutants (2f75b2f9, then 51c86fb5 for the re-runs; sandbox diff identical each
 | B29 | no resize re-placement | the input lies exactly over the query bar ... |
 
 `preventScroll` is bound by the focus-arguments assertion added in W3 (headless shows no difference either way: the
-input is fixed and in view).
+input is fixed and in view). B30 (abfc349c): `focus()` without `preventScroll` -> red: the center press that opens Search
+creates ONE input in the body (not the panel) and focuses it in the same call stack.
 
 **Real-browser proof** (`node tools/listen-control-proof/kb-search-proof.js`, exit 0, `kb-search-proof-out.json`,
 copied from the file): flag ON, all four rows (393x852 and 375x667 x ipod-charcoal and ipod-original): `title` "Search",
