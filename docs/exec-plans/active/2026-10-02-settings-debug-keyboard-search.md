@@ -415,3 +415,87 @@ only the phone can say). The rotate log (W1, now with sy/vvo/vs/ae) is the instr
 ## 9. Gate record
 
 (seats write their verdict lines here, bound to the sha they reviewed)
+
+Gate: CHANGES r1 @da9a4de9 - qa
+
+- **WARNING Q1 (verified, headless Chromium 393x852 touch, ipod-charcoal AND ipod-original, flag ON):** the invisible input
+  steals taps from the sticker menu. `.ipm-kb` is in the body at `z-index: calc(var(--z-player-max) + 1)` (style.css 8642),
+  ABOVE the whole `.mms-full` stacking context (z 1100) that holds the sticker menu. Music > Search open, tap the sticker:
+  menu rect [12,187,320,595], input rect [26,239,167,34] (charcoal) / [26,239,341,34] (original) still there (inputs 1);
+  `elementFromPoint` at the input's center = `input#ipm-kb`; the menu control under it = "Home ›"; a real CDP tap there
+  -> activeElement `input#ipm-kb` (keyboard up), the menu item never gets the tap. Breaks "nothing else changes" in the
+  opt-in mode. Prescription: `pointer-events:none` on `.ipm-kb` (it then needs no z above the skin) and route a click on
+  the kb search bar (`[data-skin-searchbar]` / `.ipm-q`) through the panel's click handler to `kbFocus()` (synchronous in
+  the click, the same gesture rule as the center); bind it with a test that the bar click focuses the input, plus a re-run
+  of this probe shape (sticker menu open: elementFromPoint at the bar is a menu node).
+- **WARNING Q2 (LESSONS 4 handle kinds, binding):** three teardown handles in `kbRemove` are present but unbound - my
+  mutants on da9a4de9 (sandbox, exact-once, restored, sandbox diffed pristine) all SURVIVED pocket-kb-search.test.js
+  (23/23 pass): M1 drop `win.removeEventListener('resize', kbPlace)`; M2 drop `k.mo.disconnect()`; M6 drop
+  `k.blurTimer = cancel(k.blurTimer)`. The test at pocket-kb-search.test.js:310 says "the listener left with the input"
+  but asserts only `inputs(b).length === 0` (kbPlace no-ops without `kb`, so a leaked listener is invisible): an
+  overclaiming comment. Scenario if regressed: every Search entry adds a MutationObserver on the panel that is never
+  disconnected (one per entry, for the controller's life); a stale blur timer acts on the NEXT input. Fix: spy
+  win add/removeEventListener('resize') counts and the MO's disconnect (or count live observers) across MENU / Now
+  Playing / dock / destroy, and a removed-then-reopened case for the blur timer; each mutant above red.
+- NOTE Q3: unbound guards (survived): M3 `curPane() !== pane` in kbInput; M5 `!trayUp()` in kbSync. Low risk; bind or accept.
+- NOTE Q4 (lying comments, LESSONS 12): setup.js "Unlike the lifecycle log above it" - the lifecycle code is BELOW
+  (loadDebugLifecycleControl follows; the switch row is above only in setup.html): name the file. settings-forms-sweep
+  .test.js:353-354 lead comment still says "so the Settings switches number 28" over a test titled "there are 30".
+- NOTE Q5: rotate dispose's `cancelAnimationFrame` is unexercised (M7 survived 9/9): the fixture's rAF queue ignores
+  jsdom's cancel; `h.stopped` carries the behaviour, so harmless.
+- Verified clean: flag-off path (FROZEN literals + pocket-search 34/34); censuses carry both switches (FOREIGN,
+  Troubleshooting, F09 30, Mobile player placement + note text bound); proof JSON numbers match section 7; input
+  placement re-measured across a 393x852 -> 852x393 -> back resize (input rect == .ipm-q rect at 80 ms and 1.5 s, both
+  skins); security: query cleaned (searchFromTyped), encoded (searchUrls encodeURIComponent), rendered via esc(); flags
+  are localStorage only, no server surface; no em dashes added.
+
+Gate: CHANGES r1 @da9a4de9 - adversary
+
+Measured in a `git archive da9a4de9` sandbox (node_modules symlinked), headless Chromium via the real server
+(serve.js), iPhone UA, touch, 393x852. Mutants exact-once, restored, sandbox diffed against a pristine copy: identical.
+
+- **WARNING A1 (agrees with qa Q1, measured on its own):** Search open in keyboard mode, keyboard down, a real touch tap
+  on the sticker opens its menu ([12,187,320,595]); `elementFromPoint` at the bar = `input#ipm-kb`, the row under it =
+  "Speed"; a real tap there -> activeElement `ipm-kb` (the keyboard comes up), the menu row never gets the tap. Any
+  in-panel overlay over the LCD loses the bar's rect while the input exists. qa's prescription (pointer-events:none on
+  `.ipm-kb`, a bar click routed through the panel's click to `kbFocus()` synchronously) is sound; bind it with the probe
+  shape above.
+- **WARNING A2 (presence-not-binding, a load-bearing refinement):** the blur's hand-over "one turn later" (kbBlur's
+  `later(..., 0)`, deviation text in section 7 W2) is unbound. Mutant X3 (run the hand-over synchronously inside the
+  blur): pocket-kb-search.test.js 23/23 pass. Real browser with X3 applied (Chromium, haptic ghost emulated): type
+  "Proof", real touch tap on the "Proof Song 2" row while the input holds focus -> stays on Search, inputs 1, nothing
+  plays. On da9a4de9 the same tap -> Now Playing, inputs 0. Fix: a jsdom test that blurs the input then clicks a result
+  row in the same turn and asserts the play (X3 must go red).
+- NOTE A3: the Enter-during-IME guard (`!e.isComposing` in kbKey) is held only by the R9 census needle text (mutant X2
+  red ONLY on the census), no behaviour test. Suspicion, not measured: WebKit fires compositionend BEFORE the confirming
+  keydown (isComposing false, keyCode 229), so on an iPhone CJK keyboard the confirm may also put the keyboard down;
+  consider `e.keyCode === 229` too; device check.
+- NOTE A4: the census classifies by text prefix, not phase: mutant X20 (music.js's Escape keydown listener flipped
+  bubble -> capture) passes the census (23/23). A real net for NEW listeners only.
+- NOTE A5 (lying comment/test claim): searchFromTyped's "an emoji is never cut in half" holds for one code point only:
+  39 x + a flag -> keeps U+1F1FA alone; 38 x + a ZWJ family -> ends in U+1F468 U+200D. Cap rarely hit; fix the comment
+  or cap by grapheme (Intl.Segmenter where present).
+- NOTE A6 (the instrument covers the instrumented): with the rotate log ON (as the v1.355 device check asks), after one
+  viewport event the green panel is [0,554,393,298] over the wheel [59,425,275,275]; a tap at the wheel's bottom zone
+  hits `ft-rotate-panel` (tap = copy), and the lower part of the center too. Pre-existing since v1.350; worth one line
+  in the DEVICE-CHECKS entry (or the panel moved to the top for the keyboard test).
+- NOTE A7: unbound guards, survived and, as far as I could construct, unreachable today: X5 (kbBlur's later-guards
+  dropped), X6 (kbFocus without kbPlace), X7 (kbInput's `curPane() !== pane`), X8 (kbSync's `kb.pane !== pane` re-bind
+  arm: every path that changes the pane goes through kbRemove first; suspicion of dead code), X4 (kbSync's trayUp),
+  X18 (run() ignoring stopped: its listeners are removed first). Section 3's "nothing in the pocket listens to
+  visualViewport except the rotate log" is not exact (player.js:2607 snapSoonAfterRotation, gated to 1 s after a turn;
+  harmless).
+- Verified holding: (1) REACHABILITY end to end: real taps on the real Settings switches (Mobile player, Troubleshooting)
+  -> `ft-pocket-keyboard-search`='1', `ft-debug-rotate`='1', log live -> SPA `FileTube.navigate('/music?play=song1')` (same
+  document) -> real touch tap on the center -> activeElement `input#ipm-kb`, inputs 1; with the haptic ghost emulated
+  (`switch` on HTMLInputElement) the trusted click lands on the ghost, the re-dispatched center click focuses the input
+  in the same chain. (2) Flag off: renderSearchBar base vs branch over 819 models (7 queries x 39 cursors x 3 focus) +
+  null: 0 diffs. (3) Exits: real MENU tap, OS back (history.back to /setup.html), MENU x4 dock, a row play, pop-out close
+  -> 0 inputs; a track change keeps the same focused node and value; Space/ArrowRight/K/Escape typed: player unchanged
+  (not paused, time unchanged), Escape did not leave Search. (4) Placement: input rect == .ipm-q rect open / landscape /
+  back on charcoal, custom5-transparent, nano7, mini2, nano3, touch5, shuffle4, 2004; pop-out (desktop) works in its own
+  document, none in the main. (5) A in a real page: ON 60 rAF/s, OFF 0 rAF/s, panel/probe/__ftRotateLog gone; ON again
+  60 (not 120); OFF mid-run -> 0 rAF in 1.2 s; `?debugRotate=1` / `=0` unchanged. (6) Mutants red: B1 B2 B6 B10 B14 B29
+  A1 A3 (builder's, re-run) and mine X1 X9 X10 X11 X12 X13 X14 X15 X16 X17 X19 X21. Targeted files: 143 pass, 0 fail
+  (settings-forms-sweep cancelled once at a 20 s per-file timeout under load, 20/20 at 120 s). lint:ui OK (3181),
+  overlay-containment 0, eslint 0 errors (6 old warnings in common.js). Full suite NOT run by this seat.
