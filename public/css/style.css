@@ -10425,6 +10425,10 @@ a.tv-continue-card { text-decoration: none; }
   @media (orientation: landscape){
     html.is-phone[data-ft-rot="90"] .mms-full.mms-ipod{ --mms-ipod-board-turn:var(--pk-c-board-r90, none); }
     html.is-phone[data-ft-rot="270"] .mms-full.mms-ipod{ --mms-ipod-board-turn:var(--pk-c-board-r270, none); }
+    /* v1.354: a phone laid sideways whose angle still reads portrait (the frame before the engine reports the new one)
+       draws no board photo rather than a wrong turn; the stamp follows in the same frame the layout flips. */
+    html.is-phone[data-ft-rot="0"] .mms-full.mms-ipod,
+    html.is-phone[data-ft-rot="180"] .mms-full.mms-ipod{ --mms-ipod-board-turn:none; }
   }
   /* Click (Original) (v1.335, Dean: "one special Original skin which includes the entire vibe of the
      first") - its COLORS, one role block like every colorway. Commons "IPod1stWIKIPEDIA.png" (CC BY-SA

@@ -195,7 +195,7 @@ function rotateWin(url) {
   let now = 0; const q = [];
   w.performance.now = () => now;
   w.requestAnimationFrame = (cb) => { q.push(cb); return q.length; };
-  const frames = (n, dt) => { for (let i = 0; i < n; i++) { now += dt; const cb = q.shift(); if (cb) cb(now); } };
+  const frames = (n, dt) => { for (let i = 0; i < n; i++) { now += dt; q.splice(0).forEach((cb) => cb(now)); } };
   return { w, frames };
 }
 
@@ -221,15 +221,31 @@ test('v1.350 debugRotate: an orientationchange samples every frame for 1 s with 
   w.dispatchEvent(new w.Event('orientationchange'));
   frames(80, 20); // 1.6 s of frames: sampling stops at 1 s
   const log = w.__ftRotateLog;
-  const rows = log.filter((e) => 'iw' in e);
+  const rows = log.filter((e) => 'iw' in e && !e.pre);
   assert.ok(rows.length >= 45 && rows.length <= 52, 'about one row per 20 ms frame for 1 s, not beyond: ' + rows.length);
   assert.strictEqual(log[0].why, 'orientationchange');
-  for (const k of ['t', 'iw', 'ih', 'vv', 'land', 'ang', 'pklh', 'sat', 'lcd']) assert.ok(k in rows[0], 'row has ' + k);
+  for (const k of ['t', 'iw', 'ih', 'vv', 'land', 'ang', 'pklh', 'sat', 'rot', 'lcd']) assert.ok(k in rows[0], 'row has ' + k);
   assert.ok(w.document.getElementById('ft-rotate-probe'), 'the safe-area probe element');
   assert.ok(/orientationchange/.test(w.document.getElementById('ft-rotate-panel').textContent), 'rendered for copy once the second is up');
   for (let i = 0; i < 12; i++) { w.dispatchEvent(new w.Event('resize')); frames(60, 20); }
   assert.ok(w.__ftRotateLog.length <= ROTATE_LOG_CAP, 'a ring: ' + w.__ftRotateLog.length);
   assert.strictEqual(ROTATE_LOG_MS, 1000);
+});
+
+test('v1.354 debugRotate: the 12 frames BEFORE the first event are logged (pre), and an orientation media-query change starts a run', () => {
+  const { installRotateDebug } = require('../../public/js/common.js');
+  const { w, frames } = rotateWin('http://localhost/music?debugRotate=1');
+  const mq = { matches: false, _l: [], addEventListener(t, f) { this._l.push(f); } };
+  w.matchMedia = () => mq;
+  assert.strictEqual(installRotateDebug(w), true);
+  frames(30, 16); // idle: only the free-running ring samples, nothing reaches the log
+  assert.strictEqual(w.__ftRotateLog.length, 0, 'an idle page logs nothing');
+  mq._l.forEach((f) => f());
+  const log = w.__ftRotateLog;
+  assert.strictEqual(log[0].why, 'mq-change');
+  const pre = log.filter((e) => e.pre);
+  assert.strictEqual(pre.length, 12, 'exactly the last 12 frames');
+  assert.ok(pre.every((e) => e.t <= 0) && pre[0].t < 0, 'their t is at or before the event');
 });
 
 test('v1.350 debugRotate: rotateSample reads the LCD rect, the --pkl-h of the panel and the orientation query', () => {
@@ -243,6 +259,8 @@ test('v1.350 debugRotate: rotateSample reads the LCD rect, the --pkl-h of the pa
   assert.deepStrictEqual(s.lcd, [67, 34, 402, 302]);
   assert.strictEqual(s.land, true);
   assert.strictEqual(s.pklh, '300px');
+  w.document.documentElement.setAttribute('data-ft-rot', '270');
+  assert.strictEqual(rotateSample(w, 1).rot, '270', 'the stamp the board turn keys on');
 });
 
 // ---- the same-art guard (skin-surface.js paint) -----------------------------------------------

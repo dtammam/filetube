@@ -1269,6 +1269,26 @@ test('v1.350: the real script stamps on load and again on orientationchange and 
   assert.strictEqual(rot(), '0', 'screen.orientation change restamps');
 });
 
+test('v1.354: the orientation media query restamps in the same step the layout flips (not only on the late events)', () => {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', { runScripts: 'outside-only' });
+  const w = dom.window;
+  const orient = { angle: 0, addEventListener() {} };
+  Object.defineProperty(w.screen, 'orientation', { value: orient, configurable: true });
+  const mq = { matches: false, _l: [], addEventListener(t, f) { if (t === 'change') this._l.push(f); } };
+  w.matchMedia = (q) => { assert.strictEqual(q, '(orientation: landscape)'); return mq; };
+  w.eval(fs.readFileSync(lightPath, 'utf8'));
+  const rot = () => w.document.documentElement.getAttribute('data-ft-rot');
+  assert.strictEqual(rot(), '0');
+  assert.strictEqual(mq._l.length, 1, 'one media-query listener');
+  orient.angle = 90; mq._l.forEach((f) => f());
+  assert.strictEqual(rot(), '90', 'stamped by the media-query change alone, before any orientationchange');
+});
+
+test('v1.354: a landscape phone whose stamp still says portrait draws no board photo (never a wrong turn)', () => {
+  const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /@media \(orientation: landscape\)\{[^@]*html\.is-phone\[data-ft-rot="0"\] \.mms-full\.mms-ipod,\s*html\.is-phone\[data-ft-rot="180"\] \.mms-full\.mms-ipod\{ --mms-ipod-board-turn:none; \}/);
+});
+
 test('v1.350: the Transparent board photo is a role with turned-back copies; landscape on a phone swaps one in, gated on the full player and the angle', () => {
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
   assert.strictEqual((css.match(/var\(--mms-ipod-board-turn, var\(--pk-c-board, none\)\),\s*#2c4238;/g) || []).length, 3, 'all three Transparent skins read the board through the swap');
