@@ -3,8 +3,8 @@ plan: speaker-resume
 harness: v2 · lean
 branch: feat/v1.356-speaker-resume
 anchor: spec
-status: Draft
-next: build after v1.355.0 ships; rebase onto main first; read the whole plan, every section
+status: Building
+next: Step 0, then W0 (falsifiers), W1-W3; read the whole plan, every section
 design: Dean 2026-10-02 - valid = the speaker is still on AND (it is still playing OR the app closed under 1 hour ago); reattach SILENTLY with a short toast; reattach and show whatever the speaker plays now (or idle); R4-R8 are architect defaults
 gate: FULL (adversary + qa + security-brief; Dean: it changes what the phone trusts; never dial down)
 ---

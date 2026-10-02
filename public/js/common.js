@@ -6537,6 +6537,8 @@ function accountSignOut() {
     try { localStorage.removeItem('ft-queue-shown'); } catch (_) { /* storage disabled */ }
     try { localStorage.removeItem('ft-bottomnav-last'); } catch (_) { /* storage disabled */ }
     try { localStorage.removeItem('ft-books-continue-count'); } catch (_) { /* storage disabled */ }
+    // v1.356 (R7): the phone's remembered speaker (remote.js RESUME_KEY) is this user's; the next one starts local.
+    try { localStorage.removeItem('ft-remote-resume'); } catch (_) { /* storage disabled */ }
     window.location.href = '/login';
   };
   fetch('/api/auth/logout', { method: 'POST' }).then(done, done);
