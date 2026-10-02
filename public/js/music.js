@@ -1506,6 +1506,30 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!(st && typeof st.volume === 'number' && isFinite(st.volume))) return null;
       return st.muted === true ? 0 : st.volume;
     }
+    // v1.354: the PC's own queue (up to 100 either side of the current song), as the skin's song list. The
+    // server already dropped what this account may not see; no queue reported = no rows (the center button
+    // then does nothing).
+    function remoteQueueRows(st) {
+      var q = st && st.queue;
+      if (!q || !Array.isArray(q.tracks) || !q.tracks.length) return [];
+      return q.tracks.map(function (t, j) {
+        return { index: j, title: t.title, artist: t.artist, durLabel: mmssMusic(t.durationSec),
+          state: j < q.index ? 'played' : (j === q.index ? 'current' : 'next') };
+      });
+    }
+    // The PC's queue as one string (its songs and the current index): the mirror repaints when it arrives or changes.
+    function remoteQueueSig(st) {
+      var q = st && st.queue;
+      return q && Array.isArray(q.tracks) ? q.index + ':' + q.tracks.map(function (t) { return t.id; }).join(',') : 'nq';
+    }
+    // A row tap on the PC's list: play THAT list from that row on the PC (the ids as the server resolved them).
+    function remoteQueuePlay(i) {
+      var st = RC.state() || {};
+      var q = st.queue;
+      if (!q || !Array.isArray(q.tracks) || !(i >= 0 && i < q.tracks.length)) return;
+      remoteDocked = false;
+      RC.play(q.tracks.map(function (t) { return t.id; }), i);
+    }
     function remoteSkinCtx() {
       var st = RC.state() || {};
       var tr = st.track || null;
@@ -1516,7 +1540,7 @@ if (typeof module !== 'undefined' && module.exports) {
           album: tr ? tr.album : '', artUrl: (tr && tr.artUrl) || '' },
         remote: { label: RC.label() },
         artistTap: false, artistTitle: '',
-        upNext: [], fullList: [], playing: st.state === 'playing', posSec: pos, durSec: dur,
+        upNext: [], fullList: remoteQueueRows(st), playing: st.state === 'playing', posSec: pos, durSec: dur,
         posLabel: mmssMusic(pos), remLabel: dur > 0 ? ('-' + mmssMusic(dur - pos)) : '',
         curNum: 0, total: 0, // no "N of M": the PC's queue is not this device's
         volume: remoteVolume(), // v1.353: the speaker's player volume (null: it has not said)
@@ -1669,7 +1693,7 @@ if (typeof module !== 'undefined' && module.exports) {
         getSkinId: function () { return SKINS.activeSkinId(); },
         getCtx: function () { return buildSkinCtx(currentSkinIndex(), popout); },
         hostCtl: hostCtl, // MAIN-document controls - a pop-out click still drives the real player
-        onSelectIndex: function (i) { playAt(i, { soloChapter: true, pick: true }); }, // v1.311: a skin track tap is a single-chapter SELECT (exit after that segment)
+        onSelectIndex: function (i) { if (remoteOn()) { remoteQueuePlay(i); return; } playAt(i, { soloChapter: true, pick: true }); }, // v1.311: a skin track tap is a single-chapter SELECT (exit after that segment)
         onDock: dockToOrigin,
         onPlayOnBadge: function () { if (RC) { RC.leave(); updateNowPlayingPanel(); } }, // skins without menus: the badge ends remote control
         // v1.353: the speaker's volume - offered only while this device controls one that reported it
@@ -2903,7 +2927,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (RC) {
       var mirrorSig = '';
       // v1.353: a speaker's first volume report repaints too (the bar / row render only with a level)
-      var sigOf = function () { var st = RC.state() || {}; return [RC.targetId(), st.track && st.track.id, st.state, remoteVolume() === null ? 'nv' : 'v'].join('|'); };
+      var sigOf = function () { var st = RC.state() || {}; return [RC.targetId(), st.track && st.track.id, st.state, remoteVolume() === null ? 'nv' : 'v'].join('|') + '|' + remoteQueueSig(st); };
       var offMirror = RC.onChange(function () {
         var sig = sigOf();
         if (sig !== mirrorSig) { mirrorSig = sig; updateNowPlayingPanel(); } else reflectEngines();
@@ -2917,11 +2941,14 @@ if (typeof module !== 'undefined' && module.exports) {
         playFromMenu({ tracks: req.tracks, index: req.index, play: { flat: true, label: 'From ' + (req.label || 'another device') } });
       };
       REMOTE.setMusicPlayHandler(remotePlay);
+      // v1.354: this PC's queue, for the phone's list (the target cuts it to 100 either side and reads it each report)
+      if (typeof REMOTE.setQueueReader === 'function') REMOTE.setQueueReader(function () { var ci = currentSkinIndex(); return ci >= 0 && ci < queue.length ? { list: queue, index: ci } : null; });
       // v1.352: the chapter on screen is the one this PC reports to the phone (reflectChapter rolls it)
       if (typeof REMOTE.setNowPlayingResolver === 'function') REMOTE.setNowPlayingResolver(function () { return chapterViewId; });
       signal.addEventListener('abort', function () {
         REMOTE.setMusicPlayHandler(null);
         if (typeof REMOTE.setNowPlayingResolver === 'function') REMOTE.setNowPlayingResolver(null);
+        if (typeof REMOTE.setQueueReader === 'function') REMOTE.setQueueReader(null);
       });
       if (remoteBtn) {
         var paintRemote = function () {

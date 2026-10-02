@@ -691,3 +691,25 @@ test('v1.353 the idle report after a play whose Music view never mounts still ca
   assert.strictEqual(idle.volume, 0.6);
   assert.strictEqual(idle.muted, true);
 });
+
+test('v1.354 queueWindow: 100 either side of the current song, listen items skipped, the index follows its song', () => {
+  const ids = Array.from({ length: 1000 }, (_, i) => 's' + i);
+  const w = R.queueWindow(ids, 500);
+  assert.strictEqual(w.ids.length, 201);
+  assert.strictEqual(w.ids[w.index], 's500');
+  assert.strictEqual(w.ids[0], 's400');
+  const edge = R.queueWindow(ids, 3);
+  assert.deepStrictEqual([edge.ids.length, edge.index], [104, 3], 'near the start the window is short, not shifted');
+  const items = [{ id: 'a' }, { id: 'v', listen: true }, { id: 'b' }, { id: 'c' }];
+  assert.deepStrictEqual(R.queueWindow(items, 2), { ids: ['a', 'b', 'c'], index: 1 }, 'a listen item is left out, the index follows');
+  assert.strictEqual(R.queueWindow(items, 1), null, 'a current item with no id is not carried');
+  for (const bad of [[null, 0], [[], 0], [ids, -1], [ids, 1000], [ids, 1.5], ['x', 0]]) assert.strictEqual(R.queueWindow(bad[0], bad[1]), null);
+});
+
+test('v1.354 buildStatePayload carries a queue only when it has ids, and null otherwise', () => {
+  const base = { id: 't1', position: 1, duration: 2, playing: true };
+  assert.deepStrictEqual(R.buildStatePayload('d', base, false, false, { ids: ['a'], index: 0 }).queue, { ids: ['a'], index: 0 });
+  assert.strictEqual(R.buildStatePayload('d', base, false, false).queue, null);
+  assert.strictEqual(R.buildStatePayload('d', base, false, false, { ids: 'a' }).queue, null);
+  assert.strictEqual(R.buildStatePayload('d', null, false, false, { ids: ['a'], index: 0 }).queue.ids[0], 'a', 'the idle payload still passes what it is given');
+});

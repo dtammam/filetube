@@ -2360,7 +2360,7 @@
           setListMode(false);
           if (cur && !isNaN(cgi)) onSelectIndex(cgi);
         } else if (pocket && pocket.onSelect()) { /* pocket menus: the menu selected / drilled in */ }
-        else { setListMode(true); }
+        else if (!panel.querySelector('.mms-remote') || panel.querySelector('.ip-listview .mms-row')) { setListMode(true); } // v1.354 (R4): a speaker with no list to show = the button does nothing
         return;
       }
       var seek = e.target.closest('[data-skin-seek]');

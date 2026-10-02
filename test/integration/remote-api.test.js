@@ -598,3 +598,49 @@ test('v1.353 another user cannot set my speaker\'s volume', async () => {
   assert.strictEqual(r.status, 410);
   await assert.rejects(t.next('command', 200), /no "command"/);
 });
+
+test('v1.354 the PC queue survives POST state -> stream frame -> GET targets -> controller poll, as THIS caller may see it', async () => {
+  const t = await asTarget();
+  await t.next('hello');
+  const c = await asController();
+  await c.next('hello');
+  const st = (extra) => post('/api/remote/state', Object.assign({ deviceId: PC, trackId: 'tonzak1', position: 3, duration: 100, state: 'playing' }, extra));
+  assert.strictEqual((await st({ queue: { ids: ['tonzak2', 'tonzak1', 'tonzak2'], index: 1 } })).status, 202);
+  const f = await c.next('state');
+  assert.deepStrictEqual(f.data.queue.tracks.map((x) => x.id), ['tonzak2', 'tonzak1', 'tonzak2'], 'the stream frame');
+  assert.strictEqual(f.data.queue.index, 1);
+  assert.strictEqual(f.data.queue.tracks[1].title, 'tonzak1 title');
+  const list = await (await fetch(`${base}/api/remote/targets?deviceId=${PHONE}`)).json();
+  assert.strictEqual(list.find((x) => x.deviceId === PC).state.queue.index, 1, 'the targets list');
+  const cp = await (await fetch(`${base}/api/remote/poll?deviceId=${PHONE}&role=controller&target=${PC}`)).json();
+  assert.strictEqual(cp.state.queue.tracks.length, 3, 'the controller poll');
+  for (const bad of [{ ids: [], index: 0 }, { ids: ['tonzak1'], index: 1 }, { ids: ['tonzak1'], index: -1 }, { ids: ['tonzak1'], index: 0.5 }, { ids: ['bad id!'], index: 0 }, { ids: 'tonzak1', index: 0 }, { ids: new Array(202).fill('tonzak1'), index: 0 }, 'x']) {
+    assert.strictEqual((await st({ queue: bad })).status, 202, JSON.stringify(bad).slice(0, 40));
+    const g = await c.next('state');
+    assert.strictEqual(g.data.queue, null, 'a malformed queue is not carried: ' + JSON.stringify(bad).slice(0, 40));
+  }
+});
+
+test('v1.354 a hidden id never leaves in the queue: dropped, the index follows its song; a hidden current song gives index -1', async () => {
+  const ck = volQueueUser.cookie;
+  const mem = member.cookie;
+  const poll = (cookie, dev, role, extra) => fetch(`${base}/api/remote/poll?deviceId=${dev}&role=${role}${extra || ''}`, { headers: { Cookie: cookie } }).then((r) => r.json());
+  await poll(mem, 'pc-mem', 'target');
+  const stm = (queue) => post('/api/remote/state', { deviceId: 'pc-mem', trackId: 'tonzak1', position: 1, duration: 100, state: 'playing', queue }, mem);
+  assert.strictEqual((await stm({ ids: ['blk1', 'tonzak1', 'nblk', 'tonzak2'], index: 3 })).status, 202);
+  const cp = await poll(mem, 'ph-mem', 'controller', '&target=pc-mem');
+  assert.deepStrictEqual(cp.state.queue.tracks.map((x) => x.id), ['tonzak1', 'tonzak2'], 'the restricted member never gets blk1 / nblk');
+  assert.strictEqual(cp.state.queue.index, 1, 'the index follows tonzak2');
+  assert.ok(!JSON.stringify(cp).includes('blk1 title'), 'no hidden title in the frame');
+  assert.strictEqual((await stm({ ids: ['tonzak1', 'blk1'], index: 1 })).status, 202);
+  const cp2 = await poll(mem, 'ph-mem', 'controller', '&target=pc-mem');
+  assert.strictEqual(cp2.state.queue.index, -1, 'the current song is hidden from this caller');
+  assert.strictEqual(ck.length > 0, true);
+});
+
+test('v1.354 an idle target and a state without a queue list queue null', async () => {
+  const t = await asTarget();
+  await t.next('hello');
+  const list = await (await fetch(`${base}/api/remote/targets?deviceId=${PHONE}`)).json();
+  assert.strictEqual(list.find((x) => x.deviceId === PC).state.queue, null);
+});

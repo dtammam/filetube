@@ -216,9 +216,15 @@ expected: confirm), the rate limiters. Brief each seat: page.evaluate grants a g
 
 **Paging decision:** sequential pages of 5,000 via `offset`/`limit` (`fetchAllRows` in music.js), joined and resolved once; no page-1-first render (the menus need the whole list for Genres, letters and Shuffle, and one 10,000-row request measured 317 ms server side, so a 23,000-song library is five requests). Menu paths paged: Songs, Genres, the untagged-artist bucket, the cover pool, Artists, Albums, an album's songs, an artist's songs, Liked, Shuffle Songs, and the `?playlist=`/artist/album music links. The browse-view Albums/Artists tabs (limit=10000) are left as they are (not an iPod menu; ROADMAP Planned).
 **After (same script, `cap-v0.js`, 10,503 songs):** Songs 10,503 rows, last row "Z Bulk 010499"; Genres ["Music","Zydeco"]; Shuffle fetches 5000 + 5000 + 503 of 10,503.
-Tests: `test/integration/pocket-library-paging.test.js` (4); suites music-pocket-menus, -r1, pocket-quick-scroll, music-view: 107/107 pass. Mutants: recorded below once run.
+Tests: `test/integration/pocket-library-paging.test.js` (4); suites music-pocket-menus, -r1, pocket-quick-scroll, music-view: 107/107 pass. Mutants (committed sha, /tmp sandbox): M1 first page only = 4 red; M2 no abort on teardown = test 4 red; M3 shuffle capped = test 3 red; M4 songs level capped = tests 1, 2, 4 red.
 
 **Turn capture (Dean, `?debugRotate=1`):** rows analysed at W3 (see W3 notes below once written).
+
+### W2 evidence
+
+Server: `reportedQueue` (1..201 valid ids, integer index inside; anything else is null, not repaired), `resolveQueue` (the caller's visibility, a hidden id is dropped before any title leaves, the index follows its song, -1 when the current one is hidden), queue null in the idle default. PC: `queueWindow` (100 either side, listen items skipped), `setQueueReader`, cleared on view teardown. Phone: `remoteQueueRows` fills the skin list, a row tap sends the state's ids from that row (`remoteQueuePlay`), `remoteQueueSig` repaints the mirror, the center button does nothing when there is no list (R4). Not built: a `trackChanged` ping on a queue edit with the SAME current song (the next report, at most the throttle later, carries it).
+
+Tests: remote-api (3 new: carriers + validation, hidden ids, idle null), remote-target (2), music-remote-controller-wiring (1). Real browser: `tools/listen-control-proof/queue-proof.js` exits 0: 3-song queue on the PC arrives as 3 rows with the current marked, a row tap plays song3 on the PC, the phone index follows.
 
 ## 8. Device checks Dean would owe (into DEVICE-CHECKS.md at release, one line each)
 

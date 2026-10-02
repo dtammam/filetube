@@ -140,3 +140,15 @@ test('v1.353 gate r1 (Dean): a MUTED speaker shows 0 on the phone (what you hear
   const vol = MUSIC.slice(MUSIC.indexOf('function remoteVolume() {'), MUSIC.indexOf('function remoteSkinCtx() {'));
   assert.match(vol, /if \(!\(st && typeof st\.volume === 'number' && isFinite\(st\.volume\)\)\) return null;\s*return st\.muted === true \? 0 : st\.volume;/);
 });
+
+test('v1.354 the phone shows the PC queue: rows come from the state, a tap plays THAT list, the mirror repaints on it', () => {
+  const ctx = MUSIC.slice(MUSIC.indexOf('function remoteSkinCtx() {'), MUSIC.indexOf('function remotePlayAt('));
+  assert.match(ctx, /fullList: remoteQueueRows\(st\)/, 'the remote ctx lists the PC queue');
+  assert.match(MUSIC, /onSelectIndex: function \(i\) \{ if \(remoteOn\(\)\) \{ remoteQueuePlay\(i\); return; \}/, 'the select arm in remote mode');
+  const tap = MUSIC.slice(MUSIC.indexOf('function remoteQueuePlay('), MUSIC.indexOf('function remoteSkinCtx() {'));
+  assert.match(tap, /RC\.play\(q\.tracks\.map\(function \(t\) \{ return t\.id; \}\), i\)/, 'sends the state ids from the tapped row');
+  assert.match(MUSIC, /\+ '\|' \+ remoteQueueSig\(st\)/, 'a new queue repaints the mirror');
+  assert.match(MUSIC, /REMOTE\.setQueueReader\(function \(\)/, 'the PC registers its reader');
+  assert.match(MUSIC, /REMOTE\.setQueueReader\(null\)/, 'and clears it on teardown');
+  assert.match(SURFACE, /!panel\.querySelector\('\.mms-remote'\) \|\| panel\.querySelector\('\.ip-listview \.mms-row'\)\) \{ setListMode\(true\); \}/, 'the center button does nothing with no list (R4)');
+});
