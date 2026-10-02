@@ -87,7 +87,9 @@ function turnEnv(opts) {
   const prop = () => w.document.documentElement.style.getPropertyValue('--pk-top-inset');
   return {
     w, st, prop, advance, mq: mq('(orientation: landscape)'), counts: () => ({ rafs: rafs.size, timers: timers.size }),
-    probes: () => w.document.querySelectorAll('div[style*="env(safe-area-inset-top"]').length,
+    // jsdom drops the env() declaration from the probe's style attribute, so the probe is found by what it is: the one
+    // aria-hidden div the window appends to <body> (a selector on the env() text matched nothing and bound nothing)
+    probes: () => w.document.querySelectorAll('body > div[aria-hidden="true"]').length,
     fireMq: () => mq('(orientation: landscape)')._l.slice().forEach((f) => f()),
     fireOrientation: () => w.dispatchEvent(new w.Event('orientationchange')),
     fireScreenOrientation: () => w.screen.orientation.dispatchEvent(new w.Event('change')),
@@ -116,6 +118,7 @@ test('W1 window: the captured turn sequence - 59px, then 0px as the app area shr
   assert.strictEqual(e.prop(), '0px', 'low: the stale env() is no longer counted');
   e.st.sat = 0; e.fireResize(); // the window resize event: env() corrected
   assert.ok(h.isOpen(), 'still open on the resize itself: it closes one frame later');
+  assert.strictEqual(e.probes(), 1, 'non-vacuous: the probe exists until the window closes');
   e.advance(16 * 2);
   assert.ok(!h.isOpen(), 'closed after resize + one frame');
   assert.strictEqual(e.prop(), '', 'the property is gone: the CSS is today\'s env() again');
@@ -159,6 +162,7 @@ test('W1 window: destroy() mid-window clears the property, the probe, the timers
   const e = turnEnv(); const h = L.installTurnInset(e.w);
   e.fireMq(); e.advance(48);
   assert.strictEqual(e.prop(), '59px');
+  assert.strictEqual(e.probes(), 1, 'non-vacuous: the probe exists while the window is open');
   h.destroy();
   assert.strictEqual(e.prop(), '');
   assert.strictEqual(e.probes(), 0);

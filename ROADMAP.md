@@ -333,6 +333,7 @@
   the lock's visible state and how to release it (a tap on a speed pill? holding again?); whether it
   applies in faux fullscreen and inline alike; that the drag-down does not fight the drag-cancel, the
   swipe-back (v1.337: off in fullscreen) or a vertical page scroll inline.
+  Dean confirmed 2026-10-02 this is the lock he wants, queued for the next wave after v1.357.
 
 - [ ] **VR / 360 video: look around inside 360 and 180 MP4s** (Dean, 2026-09-27: "Can we add support for
   vr enabled mp4s?"; scope from his answers: the phone and desktop watch page, drag or tilt to look
