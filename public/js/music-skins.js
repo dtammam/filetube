@@ -623,7 +623,7 @@
   ];
   var ROOT_TITLE = { click: 'Click' }; // the cheeky name, never the product's (Dean)
   var TYPE_TITLE = { playon: 'Speakers', music: 'Music', playlists: 'Playlists', artists: 'Artists', albums: 'Albums', songs: 'Songs', genres: 'Genres',
-    recentArtists: 'Recent Artists', recentAlbums: 'Recent Albums', extras: 'Extras', skins: 'Skins', games: 'Games', settings: 'Settings', about: 'About', lighting: 'Lighting' };
+    recentArtists: 'Recent Artists', recentAlbums: 'Recent Albums', extras: 'Extras', skins: 'Skins', games: 'Games', settings: 'Settings', about: 'About', lighting: 'Lighting', search: 'Search', skinSearch: 'Search' };
   function menuTitle(node, style) {
     var n = node || {};
     if (n.type === 'main') return ROOT_TITLE[style] || 'Menu';
@@ -648,7 +648,7 @@
       if (o.hasCurrent) rows.push({ label: 'Now Playing', action: 'nowplaying' });
       return rows;
     }
-    if (t === 'music') return MUSIC_MENU.map(function (m) { return { label: m.label, node: { type: m.type } }; });
+    if (t === 'music') return MUSIC_MENU.map(function (m) { return { label: m.label, node: { type: m.type } }; }).concat([{ label: 'Search', node: { type: 'search' } }]);
     if (t === 'playlists') return PLAYLISTS.map(function (p) { return { label: p.label, node: { type: 'playlist', key: p.key, label: p.label } }; });
     if (t === 'extras') {
       var ex = [];
@@ -690,7 +690,94 @@
     });
     rows.push(row('apple', 'Cider'));
     rows.push(row('spotify', 'Nordic'));
+    rows.push({ label: 'Search', node: { type: 'skinSearch' } });
     return rows;
+  }
+  // ==== SEARCH (v1.354 W4) ======================================================================
+  // The iPod's own search: a strip of letters along the bottom of the LCD, the wheel moves along it,
+  // the center adds the letter under the marker, MENU deletes one. The strip is letters, digits, a space,
+  // a delete glyph and a "go" cell (the wheel's way down into the results). Pure parts only; the controller
+  // (skin-surface.js) owns the query, the debounce and the stale guard.
+  var SEARCH_MAX = 40;
+  var SEARCH_STRIP = (function () {
+    var cells = [];
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('').forEach(function (c) { cells.push({ id: c, label: c }); });
+    cells.push({ id: 'space', label: 'space' });
+    cells.push({ id: 'del', label: 'delete' });
+    cells.push({ id: 'go', label: 'results' });
+    return cells;
+  })();
+  // The marker's next cell: a wheel detent moves one cell and wraps at both ends.
+  function searchStripStep(cursor, delta) {
+    var n = SEARCH_STRIP.length;
+    var c = Math.floor(Number(cursor)) || 0;
+    var d = Math.floor(Number(delta)) || 0;
+    return (((c + d) % n) + n) % n;
+  }
+  // The query after the center is pressed on `cellId` (a letter/digit adds, space adds one between words,
+  // delete drops the last character, go changes nothing).
+  function searchEdit(query, cellId) {
+    var q = typeof query === 'string' ? query : '';
+    if (cellId === 'del') return q.slice(0, -1);
+    if (cellId === 'space') return (!q || q.slice(-1) === ' ' || q.length >= SEARCH_MAX) ? q : q + ' ';
+    if (typeof cellId === 'string' && /^[A-Z0-9]$/.test(cellId)) return q.length >= SEARCH_MAX ? q : q + cellId;
+    return q;
+  }
+  // The strip as drawn: `width` cells (odd) centered on the marker, wrapping.
+  function searchStripView(cursor, width) {
+    var w = Math.max(1, Math.floor(Number(width) || 7));
+    var half = Math.floor(w / 2);
+    var out = [];
+    for (var k = -half; k <= half; k++) {
+      var i = searchStripStep(cursor, k);
+      out.push({ index: i, id: SEARCH_STRIP[i].id, label: SEARCH_STRIP[i].label, on: k === 0 });
+    }
+    return out;
+  }
+  // The three library reads for one query (the existing `search=` param of each route); a handful of rows each.
+  var SEARCH_SONGS = 30, SEARCH_ALBUMS = 12, SEARCH_ARTISTS = 12;
+  function searchUrls(query) {
+    var q = encodeURIComponent(String(query == null ? '' : query).trim());
+    return {
+      songs: '/api/music?search=' + q + '&sort=title-asc&limit=' + SEARCH_SONGS,
+      albums: '/api/music/albums?search=' + q + '&sort=title-asc&limit=' + SEARCH_ALBUMS,
+      artists: '/api/music/artists?search=' + q + '&sort=title-asc&limit=' + SEARCH_ARTISTS,
+    };
+  }
+  // The results as menu rows, grouped Songs / Albums / Artists under read-only heading rows (a group with no
+  // match has no heading). Song rows index into `tracks`, so a pick plays IN the result list.
+  function menuSearchItems(res, artFor) {
+    var r = res || {};
+    var songs = Array.isArray(r.songs) ? r.songs : [];
+    var albums = Array.isArray(r.albums) ? r.albums : [];
+    var artists = Array.isArray(r.artists) ? r.artists : [];
+    var items = [];
+    function head(label) { items.push({ label: label, info: true, value: '', heading: true }); }
+    if (songs.length) { head('Songs'); menuSongItems(songs, artFor).forEach(function (x) { items.push(x); }); }
+    if (albums.length) { head('Albums'); menuAlbumItems(albums, artFor).forEach(function (x) { items.push(x); }); }
+    if (artists.length) { head('Artists'); menuArtistItems(artists, artFor).forEach(function (x) { items.push(x); }); }
+    return { items: items, tracks: songs };
+  }
+  // The skins list, narrowed by name: every skin whose label holds EVERY word of the query (case-blind).
+  function skinSearchItems(query, active) {
+    var words = String(query == null ? '' : query).toLowerCase().split(/\s+/).filter(Boolean);
+    var cur = normalizeSkinId(active);
+    var rows = [];
+    IDS.forEach(function (id) {
+      var label = skinById(id).label || '';
+      var hay = label.toLowerCase();
+      if (!words.every(function (w) { return hay.indexOf(w) >= 0; })) return;
+      rows.push({ label: label, action: 'skin', skinId: id, check: id === cur, preview: menuStyle(id) === 'click' });
+    });
+    return rows;
+  }
+  // The next wheel stop among result rows: headings (info rows) are never stops.
+  function searchNextStop(items, from, dir) {
+    var list = Array.isArray(items) ? items : [];
+    var d = dir < 0 ? -1 : 1;
+    var i = from + d;
+    while (i >= 0 && i < list.length) { if (list[i] && !list[i].info) return i; i += d; }
+    return from;
   }
   // Settings > Lighting: the four strengths (v1.333: + Ambient) with a check on the active one, plus a read-only
   // note row (motion denied / no sensor / Reduce Motion) when the driver has one. Re-derived on
@@ -708,7 +795,7 @@
   // not library items. On Click their right pane plays the slow cover drift (the 6G/7G main-menu
   // slideshow); every other level shows the highlighted item's own art. One list, read by the
   // controller - never a second copy.
-  var NON_ITEM_LEVELS = ['main', 'playon', 'music', 'playlists', 'genres', 'extras', 'games', 'skins', 'skinLine', 'skinGen', 'settings', 'about', 'lighting'];
+  var NON_ITEM_LEVELS = ['main', 'playon', 'music', 'playlists', 'genres', 'extras', 'games', 'skins', 'skinLine', 'skinGen', 'skinSearch', 'settings', 'about', 'lighting'];
   function menuIsItemLevel(node) { return NON_ITEM_LEVELS.indexOf(node && node.type) < 0; }
   // The builders take the VIEW's art rule (`artFor(id, explicitArtUrl)` - music.js passes its one
   // musicArtUrl) so the menus can never drift from the art the rest of Music shows. v1.339 (L1):
@@ -993,7 +1080,7 @@
       if (it.info) {
         // a NOTE row (Lighting's "motion denied" line) wraps; a value row (About) keeps one line.
         if (it.note) { html += '<div class="ipm-row ipm-info ipm-noterow" role="status"><span class="ipm-lbl">' + esc(it.label) + '</span></div>'; continue; }
-        html += '<div class="ipm-row ipm-info"><span class="ipm-lbl">' + esc(it.label) + '</span><span class="ipm-val' + (it.volatile ? ' ipm-volatile' : '') + '">' + esc(it.value) + '</span></div>';
+        html += '<div class="ipm-row ipm-info' + (it.heading ? ' ipm-head' : '') + '"><span class="ipm-lbl">' + esc(it.label) + '</span><span class="ipm-val' + (it.volatile ? ' ipm-volatile' : '') + '">' + esc(it.value) + '</span></div>';
         continue;
       }
       var cls = 'ipm-row' + (i === v.cursor ? ' is-cursor' : '') + (it.node ? ' has-chev' : '') +
@@ -1030,20 +1117,31 @@
     }
     return html;
   }
-  // v = renderMenuList's v + { title, root, art, artIn, jump?, aboutName? }
+  // The search level's typed query and letter strip (v1.354 W4): s = { q, sc, focus: 'strip' | 'list' }.
+  var STRIP_SHORT = { space: 'SPC', del: 'DEL', go: 'GO' };
+  function renderSearchBar(s) {
+    var q = (s && s.q) || '';
+    var cells = searchStripView(s ? s.sc : 0, 5).map(function (c) {
+      return '<span role="button" class="ipm-sc' + (c.on ? ' is-on' : '') + (STRIP_SHORT[c.id] ? ' is-word' : '') + '" data-skin-strip="' + c.index + '" aria-label="' + esc(c.label) + '">' + esc(STRIP_SHORT[c.id] || c.label) + '</span>';
+    }).join('');
+    return '<div class="ipm-searchbar' + (s && s.focus === 'list' ? ' is-listfocus' : '') + '" data-skin-searchbar>' +
+      '<div class="ipm-q' + (q ? '' : ' is-empty') + '" role="status">' + (q ? esc(q) : 'Search') + '</div>' +
+      '<div class="ipm-strip" role="group" aria-label="Letters">' + cells + '</div></div>';
+  }
+  // v = renderMenuList's v + { title, root, art, artIn, jump?, aboutName?, search? }
   function renderMenuView(style, v) {
     var list = '<div class="ipm-list" data-skin-menulist role="listbox" aria-label="' + esc(v.title || 'Menu') + '">' +
       renderMenuList(v) + '</div>';
     var art = v.art ? '<img class="ipm-art-img' + (v.artIn ? ' is-in' : '') + '" src="' + esc(v.art) + '" alt="" />' : '';
     var aboutC = v.aboutName ? '<div class="ipm-about-name">' + esc(v.aboutName) + '</div>' : '';
-    return '<div class="ip-menuview ipm-click"><div class="ipm-split"><div class="ipm-lpane">' + aboutC + list + '</div>' +
+    return '<div class="ip-menuview ipm-click"><div class="ipm-split"><div class="ipm-lpane">' + aboutC + list + (v.search ? renderSearchBar(v.search) : '') + '</div>' +
       '<div class="ipm-art" aria-hidden="true">' + art + '</div></div>' + renderJumpLayers(v.jump) + '</div>';
   }
 
   var api = {
     SKIN_KEY: SKIN_KEY, IDS: IDS, DEFAULT_ID: DEFAULT_ID, SKINS: SKINS,
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
-    skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, skinFamilies: skinFamilies, skinLines: skinLines, colorwayLabel: colorwayLabel, menuSkinItems: menuSkinItems, isClickColorway: isClickColorway,
+    skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, skinFamilies: skinFamilies, skinLines: skinLines, colorwayLabel: colorwayLabel, menuSkinItems: menuSkinItems, SEARCH_STRIP: SEARCH_STRIP, searchStripStep: searchStripStep, searchEdit: searchEdit, searchStripView: searchStripView, searchUrls: searchUrls, menuSearchItems: menuSearchItems, skinSearchItems: skinSearchItems, renderSearchBar: renderSearchBar, searchNextStop: searchNextStop, isClickColorway: isClickColorway,
     renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
     remoteBadge: remoteBadge, volLevel: volLevel, skinActiveFor: skinActiveFor, isPhone: isPhone, phoneFrom: phoneFrom, markPhoneClass: markPhoneClass,
     PHONE_CLASS: PHONE_CLASS, PHONE_SHORT_SIDE_MAX: PHONE_SHORT_SIDE_MAX, observeSettled: observeSettled,

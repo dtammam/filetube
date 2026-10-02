@@ -414,6 +414,7 @@ function installResizeStillness(win) {
 const ROTATE_LOG_KEY = 'ft-debug-rotate';
 const ROTATE_LOG_CAP = 240;
 const ROTATE_LOG_MS = 1000;
+const ROTATE_PRE_FRAMES = 12;
 function rotateSample(win, t) {
   const w = win || window;
   const d = w.document;
@@ -433,6 +434,7 @@ function rotateSample(win, t) {
     ang: w.screen && w.screen.orientation ? w.screen.orientation.angle : null,
     pklh: pnl ? w.getComputedStyle(pnl).getPropertyValue('--pkl-h').trim() : '',
     sat,
+    rot: d.documentElement.getAttribute('data-ft-rot'), // v1.354: the stamp the board's turn keys on
     lcd: r ? [r.x, r.y, r.width, r.height].map(Math.round) : null,
   };
 }
@@ -478,11 +480,22 @@ function installRotateDebug(win) {
     panel.addEventListener('click', () => { try { w.navigator.clipboard.writeText(log.map((e) => JSON.stringify(e)).join('\n')); } catch (_) { /* no clipboard */ } });
     d.body.appendChild(panel);
   };
+  // v1.354: a free-running ring of the last ROTATE_PRE_FRAMES frames, so the rows BEFORE the first event are
+  // in the log too (the 2026-10-02 capture started at the event, after the wrong frame had been painted).
+  const preRing = [];
+  const preTick = () => {
+    const t = w.performance.now();
+    preRing.push(rotateSample(w, t));
+    while (preRing.length > ROTATE_PRE_FRAMES) preRing.shift();
+    w.requestAnimationFrame(preTick);
+  };
+  w.requestAnimationFrame(preTick);
   const run = (why) => {
     ensurePanel();
     const id = ++seq;
     const t0 = w.performance.now();
     log.push({ why, at: Math.round(t0) });
+    preRing.forEach((row) => log.push(Object.assign({ pre: true }, row, { t: Math.round(row.t - t0) })));
     const tick = () => {
       if (id !== seq) return;
       const t = w.performance.now() - t0;
@@ -495,6 +508,7 @@ function installRotateDebug(win) {
   w.addEventListener('orientationchange', () => run('orientationchange'));
   w.addEventListener('resize', () => run('resize'));
   try { if (w.screen && w.screen.orientation && w.screen.orientation.addEventListener) w.screen.orientation.addEventListener('change', () => run('so-change')); } catch (_) { /* no screen.orientation */ }
+  try { if (w.matchMedia) w.matchMedia('(orientation: landscape)').addEventListener('change', () => run('mq-change')); } catch (_) { /* no matchMedia events */ }
   try { if (w.visualViewport) w.visualViewport.addEventListener('resize', () => run('vv-resize')); } catch (_) { /* no visualViewport */ }
   return true;
 }

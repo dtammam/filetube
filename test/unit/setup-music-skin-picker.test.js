@@ -121,6 +121,8 @@ test('v1.345: the rendered grid has 24 groups (Original, 22 line generations, Ci
   const src = [
     grab(/function escStickerHtml\(s\) \{[\s\S]*?\n\}/),
     grab(/function skinSwatchClasses\(s\) \{[\s\S]*?\n\}/),
+    "let musicSkinFilter = '';",
+    grab(/function applyMusicSkinFilter\(container\) \{[\s\S]*?\n\}/),
     grab(/function renderMusicSkinPicker\(\) \{[\s\S]*?\n\}/),
   ].join('\n');
   const ctx = vm.createContext({
@@ -142,4 +144,28 @@ test('v1.345: the rendered grid has 24 groups (Original, 22 line generations, Ci
   assert.strictEqual(tile('apple'), 'Cider');
   assert.strictEqual(tile('ipod-original'), 'Original');
   assert.strictEqual(doc.querySelectorAll('.skin-tile').length, 131);
+});
+
+// ---- v1.354 W4: the name filter over the grid ---------------------------------------
+
+test('setup.html + setup.js (v1.354): a "Find a skin" input filters the tiles by name, hiding emptied families', () => {
+  assert.match(sectionHtml('mobile-player'), /<input type="search" id="music-skin-filter" class="ui-field__input"/, 'a search input in the mobile-player section');
+  const { JSDOM } = require('jsdom');
+  const m = /let musicSkinFilter = '';\n(function applyMusicSkinFilter[\s\S]*?\n\})\n/.exec(SETUP_JS);
+  assert.ok(m, 'applyMusicSkinFilter is defined');
+  const dom = new JSDOM('<div id="c"><div class="skin-family" aria-label="Click"><button class="skin-tile" aria-label="Silver Click"></button><button class="skin-tile" aria-label="Red Click"></button></div>'
+    + '<div class="skin-family" aria-label="Nordic"><button class="skin-tile" aria-label="Nordic dark"></button></div></div>');
+  const run = new dom.window.Function('c', 'filterRef', 'let musicSkinFilter = filterRef.q;\n' + m[1] + '\napplyMusicSkinFilter(c);');
+  const c = dom.window.document.getElementById('c');
+  const vis = () => [...c.querySelectorAll('.skin-tile')].filter((t) => !t.hidden).map((t) => t.getAttribute('aria-label'));
+  run(c, { q: 'red' });
+  assert.deepStrictEqual(vis(), ['Red Click'], 'only the matching tile shows');
+  assert.strictEqual(c.querySelectorAll('.skin-family')[1].hidden, true, 'a family with no match hides');
+  run(c, { q: 'NORDIC' });
+  assert.deepStrictEqual(vis(), ['Nordic dark'], 'case-insensitive');
+  run(c, { q: '' });
+  assert.strictEqual(vis().length, 3, 'empty shows all');
+  assert.ok(![...c.querySelectorAll('.skin-family')].some((f) => f.hidden), 'no family stays hidden');
+  assert.match(SETUP_JS, /filterInput\.oninput = \(\) => \{ musicSkinFilter = filterInput\.value; applyMusicSkinFilter\(container\); \}/, 'the input is wired to the filter');
+  assert.match(SETUP_JS, /applyMusicSkinFilter\(container\);\n\s+const filterInput/, 'a re-render (a tap re-marks the active tile) re-applies the filter');
 });

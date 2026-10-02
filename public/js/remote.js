@@ -37,7 +37,26 @@
   // (v1.352 W0): this tab has had no click or key yet, so the browser will refuse to start sound.
   // volume/muted (v1.353): the player volume the phone's Volume bar shows, rounded to 2 places; a
   // player that cannot say reports no volume (null), never a made-up one.
-  function buildStatePayload(deviceId, snap, blocked, needsClick) {
+  // v1.354 (R3): the PC's queue, cut to 100 before the current song and 100 after it. `list` holds ids or
+  // library items ({id, listen}); a listen (video) item and anything without an id is left out and the index
+  // follows its song. null when the current song is not music with an id (nothing to show).
+  var QUEUE_AROUND = 100;
+  function queueWindow(list, index) {
+    if (!Array.isArray(list) || !Number.isInteger(index) || index < 0 || index >= list.length) return null;
+    var lo = Math.max(0, index - QUEUE_AROUND);
+    var hi = Math.min(list.length, index + QUEUE_AROUND + 1);
+    var ids = [];
+    var at = -1;
+    for (var i = lo; i < hi; i++) {
+      var x = list[i];
+      var id = typeof x === 'string' ? x : (x && !x.listen && typeof x.id === 'string' ? x.id : null);
+      if (!id) continue;
+      if (i === index) at = ids.length;
+      ids.push(id);
+    }
+    return at < 0 ? null : { ids: ids, index: at };
+  }
+  function buildStatePayload(deviceId, snap, blocked, needsClick, queue) {
     var s = snap || {};
     var id = typeof s.id === 'string' && s.id ? s.id : null;
     var state = !id ? 'idle' : (blocked ? 'blocked' : (s.playing ? 'playing' : 'paused'));
@@ -51,7 +70,8 @@
       hasNext: !!s.hasNext,
       needsClick: !!needsClick,
       volume: Number.isFinite(s.volume) ? Math.round(Math.min(1, Math.max(0, s.volume)) * 100) / 100 : null,
-      muted: s.muted === true
+      muted: s.muted === true,
+      queue: queue && Array.isArray(queue.ids) ? queue : null
     };
   }
 
@@ -129,6 +149,7 @@
     var needsClick = false;
     var musicHandler = null;
     var nowPlayingId = null; // the Music view's chapter-on-screen reader (setNowPlayingResolver)
+    var queueReader = null; // v1.354: the Music view's queue reader (setQueueReader)
     var pendingPlay = null;
     var changeFns = [];
     var mediaBound = false;
@@ -171,7 +192,9 @@
       try { viewId = nowPlayingId ? nowPlayingId() : null; } catch (_) { viewId = null; }
       var id = reportedTrackId(snap.id, viewId);
       if (id !== snap.id) snap = Object.assign({}, snap, { id: id });
-      post('/api/remote/state', buildStatePayload(env.deviceId(), snap, isBlocked(pl), needsClick));
+      var q = null;
+      try { var qr = queueReader ? queueReader() : null; q = qr ? queueWindow(qr.list, qr.index) : null; } catch (_) { q = null; }
+      post('/api/remote/state', buildStatePayload(env.deviceId(), snap, isBlocked(pl), needsClick, q));
       if (cleared) notify();
     }
     function scheduleReport() {
@@ -380,6 +403,8 @@
     }
     // The Music view registers its chapter-on-screen reader, and pings when the chapter rolls over.
     function setNowPlayingResolver(fn) { nowPlayingId = typeof fn === 'function' ? fn : null; }
+    // v1.354: the Music view registers a reader of its queue: () => { list, index } | null
+    function setQueueReader(fn) { queueReader = typeof fn === 'function' ? fn : null; }
     function trackChanged() { scheduleReport(); }
     function setMusicPlayHandler(fn) {
       musicHandler = typeof fn === 'function' ? fn : null;
@@ -411,6 +436,7 @@
       toggle: function () { setOn(!on, false); },
       setMusicPlayHandler: setMusicPlayHandler,
       setNowPlayingResolver: setNowPlayingResolver,
+      setQueueReader: setQueueReader,
       trackChanged: trackChanged,
       onChange: function (fn) {
         if (typeof fn !== 'function') return function () {};
@@ -785,6 +811,7 @@
     consumeRemoteParam: consumeRemoteParam,
     LINK_TOAST: LINK_TOAST,
     needsClickNow: needsClickNow,
+    queueWindow: queueWindow,
     playRoute: playRoute,
     throttleDelay: throttleDelay,
     createTarget: createTarget,

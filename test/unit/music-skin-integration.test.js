@@ -50,7 +50,7 @@ const settle = () => new Promise((r) => setImmediate(r));
 // v1.351: `overflowIf(el)` picks WHICH elements the layout-less jsdom reports as overflowing (default: the
 // Now Playing title lines); `remote` boots the REAL controller from remote.js (a fake EventSource, a fetch
 // that answers /api/remote/targets with `remote.targets`) and, with `remote.select`, controls that device.
-async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog, playerOverride, runSync, skinsSrc, overflowIf, remote }) {
+async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, reducedMotion, query, fetchImpl, navLog, playerOverride, runSync, skinsSrc, overflowIf, remote, remoteTarget }) {
   // jsdom won't let location.replace be overridden - it hard-navigates and emits a jsdomError.
   // Capture that so a test can assert a /watch bounce was ATTEMPTED (reachability); the exact
   // URL + ::c strip are source-locked in audio-opens-in-music.test.js.
@@ -87,6 +87,7 @@ async function boot({ mobile, isMusic, run, skin, mockOverflow, smallOverflow, r
     registerView: (n, m) => { mod = m; }, encodeListContext: () => '', decodeListContext: () => null, shimmerArt: () => {},
     player: playerOverride || { currentId: meta.id, getState: () => 'full', getCurrentMeta: () => meta, expand() {}, setTrackNav() {}, load() {}, dock() { spy.dock += 1; }, ensureTheaterButton: () => ensureTheaterButton(dom.window.document) },
   };
+  if (remoteTarget) dom.window.FileTube.remote = remoteTarget; // v1.354: a stand-in for the PC-side target (the view registers its handlers on it)
   if (remote) {
     delete require.cache[remotePath]; global.module = undefined;
     const api = require(remotePath);
@@ -3094,4 +3095,89 @@ test('v1.317 gate r2 qa W3: a chaptered listen video with an UNKNOWN file durati
       assert.deepStrictEqual(rows.map((r) => { const d = r.querySelector('.mms-rd'); return d ? d.textContent : null; }), ['5:00', '5:00', null], 'the 0-span chapter has no length span (never 0:00)');
     },
   });
+});
+
+// ---- v1.354 gate r1 (qa W-1, adversary C7/C8/C13/C14/C16): the PC's queue on the phone, behaviour not text ----
+const QTRACKS = [0, 1, 2, 3].map((i) => ({ id: 'q' + i, title: 'Queue Song ' + i, artist: 'Band', durationSec: 60 + i }));
+const queueTarget = (queue) => { const t = target('pc-q', 'Queue PC', 'playing', trackCard); if (queue) t.state.queue = queue; return t; };
+const cmdLog = () => { const log = []; return { log, fetchImpl: (u, o) => { if (/\/api\/remote\/command/.test(String(u))) log.push(JSON.parse(o.body)); return Promise.resolve({ ok: true, status: 202, json: async () => ({ items: [] }) }); } }; };
+const clickEl = (dom, el) => el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+const qRows = (p) => [...p.querySelectorAll('.ip-listview .mms-row')];
+
+test('v1.354 phone: a speaker that reported a queue shows it as the song list (played / current / next), a tap sends THAT list from THAT row, and leaving the speaker drops it', async () => {
+  const c = cmdLog();
+  const t = queueTarget({ tracks: QTRACKS, index: 1 });
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', fetchImpl: c.fetchImpl, remote: { targets: [t], select: 'pc-q' }, run: async (dom, spy) => {
+    const p = panel(dom);
+    clickEl(dom, p.querySelector('[data-skin-select]'));
+    assert.ok(p.classList.contains('mms-listmode'), 'the center button opens the list');
+    const rows = qRows(p);
+    assert.deepStrictEqual(rows.map((r) => r.querySelector('.mms-rt').textContent), QTRACKS.map((x) => x.title), 'the PC queue, in order');
+    assert.deepStrictEqual(rows.map((r) => (r.classList.contains('is-current') ? 'current' : (r.classList.contains('is-played') ? 'played' : 'next'))), ['played', 'current', 'next', 'next'], 'the boundary: the song AT the index is current, not played');
+    clickEl(dom, rows[2]);
+    await settle();
+    assert.strictEqual(c.log.length, 1, 'one command');
+    assert.strictEqual(c.log[0].cmd, 'play');
+    assert.strictEqual(c.log[0].targetDeviceId, 'pc-q');
+    assert.deepStrictEqual(c.log[0].args, { ids: ['q0', 'q1', 'q2', 'q3'], index: 2 }, 'the state ids, from the tapped row');
+    assert.ok(!p.classList.contains('mms-listmode'), 'the tap leaves the list');
+    // a row index past the list sends nothing (the bound is exclusive)
+    clickEl(dom, p.querySelector('[data-skin-select]'));
+    const ghost = dom.window.document.createElement('button');
+    ghost.className = 'mms-row'; ghost.setAttribute('data-skin-go', String(QTRACKS.length));
+    p.querySelector('.ip-listview').appendChild(ghost);
+    clickEl(dom, ghost);
+    await settle();
+    assert.strictEqual(c.log.length, 1, 'a tap past the end plays nothing');
+    // leaving the speaker: the mirror (and its queue rows) are gone
+    spy.rc.leave();
+    await tick(); await tick();
+    assert.ok(!panel(dom).querySelector('.mms-remote'), 'no speaker badge once left');
+    assert.ok(!qRows(panel(dom)).some((r) => /Queue Song/.test(r.textContent)), 'the PC queue rows are cleared');
+  } });
+});
+
+test('v1.354 phone (R4): a speaker with NO queue reported - the center button opens nothing and shows no empty list', async () => {
+  for (const q of [undefined, null, { tracks: [], index: -1 }]) {
+    await boot({ mobile: true, isMusic: true, skin: 'ipod', remote: { targets: [queueTarget(q)], select: 'pc-q' }, run: async (dom) => {
+      const p = panel(dom);
+      assert.ok(p.querySelector('.mms-remote'), 'precondition: controlling the speaker');
+      clickEl(dom, p.querySelector('[data-skin-select]'));
+      assert.ok(!p.classList.contains('mms-listmode'), 'no list opens for ' + JSON.stringify(q));
+      assert.strictEqual(qRows(p).length, 0);
+    } });
+  }
+});
+
+test('v1.354 phone: a queue that ARRIVES after the speaker was picked repaints the mirror and the center button then opens it', async () => {
+  await boot({ mobile: true, isMusic: true, skin: 'ipod', remote: { targets: [queueTarget(null)], select: 'pc-q' }, run: async (dom, spy) => {
+    const p = panel(dom);
+    clickEl(dom, p.querySelector('[data-skin-select]'));
+    assert.ok(!p.classList.contains('mms-listmode'), 'nothing to show yet');
+    spy.rc.select(queueTarget({ tracks: QTRACKS, index: 0 }));
+    await tick(); await tick();
+    clickEl(dom, panel(dom).querySelector('[data-skin-select]'));
+    assert.ok(panel(dom).classList.contains('mms-listmode'), 'the list opens now');
+    assert.strictEqual(qRows(panel(dom)).length, QTRACKS.length);
+  } });
+});
+
+test('v1.354 PC side: the Music view registers its queue reader on the target, answers with the playing list and index, and clears it on teardown', async () => {
+  const reg = { reader: 'unset', handler: null };
+  const stub = { setMusicPlayHandler: (f) => { reg.handler = f; }, setQueueReader: (f) => { reg.reader = f; }, setNowPlayingResolver() {}, trackChanged() {}, isOn: () => false, on() {}, off() {}, onChange() {} };
+  const items = [0, 1, 2].map((i) => ({ id: 't' + i, isMusic: true, title: 'Song ' + i, artist: 'A', album: 'B', albumKey: 'k', durationSec: 100 }));
+  items[1].id = 't1';
+  const fetchImpl = () => Promise.resolve({ ok: true, json: async () => ({ items }) });
+  await boot({ mobile: false, isMusic: true, fetchImpl, remoteTarget: stub, run: async (dom, spy, mod) => {
+    assert.strictEqual(typeof reg.reader, 'function', 'the view registered a reader');
+    assert.strictEqual(reg.reader(), null, 'no list loaded: nothing to report');
+    reg.handler({ tracks: items, index: 1, label: 'Pixel' }); // the phone played this list here
+    for (let i = 0; i < 10; i++) await settle();
+    const got = reg.reader();
+    assert.ok(got, 'a list is playing: the reader answers');
+    assert.deepStrictEqual(got.list.map((x) => x.id), ['t0', 't1', 't2'], 'the playing list');
+    assert.strictEqual(got.index, 1, 'the index points at the current song');
+    mod.destroy();
+    assert.strictEqual(reg.reader, null, 'cleared on teardown');
+  } });
 });

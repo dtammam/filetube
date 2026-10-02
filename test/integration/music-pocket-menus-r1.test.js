@@ -172,7 +172,7 @@ test('K2 (qa W1 + adversary W2): a chapter save RE-TIMES and DROPS - the open al
 test('K2: the ONE seam - a library-changed event from ANY writer (common.js notifyLibraryChanged, the event the chapters editor raises) re-loads an open level', async () => {
   await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
     await openSongs(h);
-    const songsUrl = (u) => /^\/api\/music\?sort=title-asc&limit=10000$/.test(u);
+    const songsUrl = (u) => /^\/api\/music\?sort=title-asc&limit=5000&offset=0$/.test(u);
     assert.strictEqual(h.log.filter(songsUrl).length, 1);
     assert.strictEqual(LIBRARY_CHANGED_EVENT, 'filetube:library-changed');
     assert.strictEqual(notifyLibraryChanged({ kind: 'chapters', mediaId: 'djmix1' }, h.D), true, 'the seam raised its event');
@@ -247,7 +247,7 @@ test('K6 A9: a Shuffle Songs fetch that lands AFTER a later menu pick never play
   let release; const gate = new Promise((r) => { release = r; });
   await boot({
     skin: 'ipod', play: 'nd1',
-    intercept: (u) => (/sort=random&seed=\d+&limit=10000/.test(u)
+    intercept: (u) => (/sort=random&seed=\d+&limit=5000&offset=0/.test(u)
       ? { ok: true, status: 200, json: async () => { await gate; return (await authedFetch(base + u)).json(); } } : null),
     run: async (h) => {
       menu(h); tapRow(h, 'Shuffle Songs'); await settleNet(5);
@@ -510,7 +510,7 @@ test('r2 S2 (adversary, refutes the old "equivalent"): a flat list ending at the
 test('r2 S3 (adversary R12): Select on a level the library changed under RE-LOADS it - it never acts on the stale row (the pop-out shape: no repaint)', async () => {
   await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
     await openSongs(h);
-    const songsUrl = (u) => /^\/api\/music\?sort=title-asc&limit=10000$/.test(u);
+    const songsUrl = (u) => /^\/api\/music\?sort=title-asc&limit=5000&offset=0$/.test(u);
     assert.strictEqual(h.log.filter(songsUrl).length, 1);
     const loads = h.spy.loads.length;
     notifyLibraryChanged({ kind: 'chapters', mediaId: 'djmix1' }, h.D); // a save in ANOTHER window
@@ -555,7 +555,7 @@ test('Chapter Snap: a SAVE and a REVERT through the REAL snap editor each re-loa
   try {
     await boot({ skin: 'ipod', play: 'nd1', setup: (dom) => { dom.window.showToast = () => {}; }, run: async (h) => {
       const fetchImpl = (url, init) => authedFetch(base + url, init);
-      const songsUrl = (u) => /^\/api\/music\?sort=title-asc&limit=10000$/.test(u);
+      const songsUrl = (u) => /^\/api\/music\?sort=title-asc&limit=5000&offset=0$/.test(u);
       await openSongs(h);
       assert.strictEqual(h.log.filter(songsUrl).length, 1);
       const events = [];
@@ -593,7 +593,7 @@ test('Chapter Snap: a SAVE and a REVERT through the REAL snap editor each re-loa
 
 test('Chapter Snap: the Music-side seam (applySnappedChapterTimes, the snap editor\'s onSaved in Music) invalidates the menus on its own', async () => {
   await boot({ skin: 'ipod', play: 'nd1', setup: (dom) => { dom.window.showToast = () => {}; dom.window.fetchCurrentUser = async () => ({ user: { role: 'admin' } }); }, run: async (h) => {
-    const songsUrl = (u) => /^\/api\/music\?sort=title-asc&limit=10000$/.test(u);
+    const songsUrl = (u) => /^\/api\/music\?sort=title-asc&limit=5000&offset=0$/.test(u);
     await openSongs(h);
     menu(h); tapRow(h, 'Albums'); await settleNet();
     tapRow(h, 'Full Album Mix'); await settleNet();
