@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.355-settings-keyboard-search
 anchor: spec
 status: Building
-next: Step 0, then W0 (falsifiers and the census), W1 (A), W2 (B); read the whole plan first
+next: built (W0-W3, section 7); the gate (adversary + qa), then the Architect's release
 design: Dean 2026-10-02 - A + B in ONE release v1.355.0; B experimental and OFF by default; hard constraint for B: the keyboard just appears, nothing resizes, moves, shifts or zooms, nothing else changes; R2-R9 are architect defaults he did not overrule
 gate: adversary + qa (escalated from the table's floor: UI/layout and a new input path, LESSONS 1 "seats split"); security-brief applied as a section by both
 ---
@@ -265,6 +265,140 @@ is classified.
 `{q:'PRO', sc:38, focus:'list'}`.
 
 ### W1 evidence
+
+Built (9a218b67): the `#debug-rotate-check` row right after the lifecycle row in the same list, its own `.setup-note`;
+setup.js `loadDebugRotateControl` / `wireDebugRotateControl` read `ROTATE_LOG_KEY`, `installRotateDebug` and
+`uninstallRotateDebug` from common.js at call time (no second copy of the key); common.js `installRotateDebug` keeps a
+per-window handle (a second call while live returns true and installs nothing), `uninstallRotateDebug` takes back every
+recorded listener (window orientationchange + resize, screen.orientation, the orientation media query, visualViewport),
+cancels and stops the pre-frame ring and any run in flight, removes the panel and the probe and deletes `__ftRotateLog`;
+`rotateSample` adds `sy`, `vvo`, `vs`, `ae`. Tests: `test/unit/setup-debug-rotate-toggle.test.js` (9, jsdom, the real
+log and the real switch; listeners counted on every target; the rAF queue counted). Censuses carried the new row:
+setup-automation-reveal FOREIGN, setup-advanced-pages Troubleshooting, settings-forms-sweep switch count 28 -> 29 (the
+first W1 commit attempt was REFUSED by the pre-commit hook on exactly that census, `Settings (F09): every checkbox is a
+ui-switch with role=switch; there are 28`, 1 fail; fixed, re-committed), setup-debug-lifecycle-toggle's hint regex
+(the rotate row now sits between the lifecycle row and the list's end).
+
+W1 mutants (sandbox `git archive`, `node --test --test-timeout=20000`, exact-once, restored, sandbox diff identical):
+
+| id | mutation | red (by name) |
+|---|---|---|
+| A1 | install not idempotent | installRotateDebug is idempotent - a second install while live installs nothing |
+| A2 | dispose leaves the listeners | OFF removes the key and takes the log down at once |
+| A3 | the pre-frame ring ignores OFF | OFF removes the key ... |
+| A4 | a run in flight ignores OFF | OFF removes the key ... |
+| A5 | panel left up | OFF removes the key ... |
+| A6 | probe left | OFF removes the key ... |
+| A7 | `__ftRotateLog` kept | OFF removes the key ... |
+| A8 | Settings ON does not install | ON stores "1" and the log is live ... ; OFF removes the key ... |
+| A9 | Settings OFF does not uninstall | OFF removes the key ... |
+| A10 | OFF stores '0' | OFF removes the key ... |
+| A11 | prefill: any stored value is on | the switch reflects ft-debug-rotate on load, both ways |
+| A12 | init no longer prefills | at 9a218b67 SURVIVED; at 2f75b2f9 red: init() prefills the switch (loadDebugRotateControl) |
+| A13 | wireStaticControls no longer wires | at 9a218b67 SURVIVED; at 2f75b2f9 red: the real setup.html switch, wired by the real wireStaticControls() |
+| A14 | `sy` dropped | each row carries sy, vvo, vs and ae |
+| A15 | `vvo` reads offsetLeft twice | each row carries ... |
+| A16 | `vs` fixed at 1 | each row carries ... |
+| A17 | `ae` reports body | each row carries ... |
+| A18 | the vv-resize listener not recorded | OFF removes the key ... |
+
+### W2 evidence
+
+Built (2f75b2f9, tests and proof 51c86fb5): see the W2 commit message. The input is `input#ipm-kb.ui-field__input.ipm-kb`
+(the field primitive's 16px font; style.css `.ipm-kb`: fixed, `z-index: calc(var(--z-player-max) + 1)`, opacity 0,
+transparent text and caret), in `doc.body`, created by `kbSync()` at the end of every `render()` while a keyboard-mode
+Search level is on screen, removed otherwise (and by a MutationObserver on the panel when the view empties it without a
+render, i.e. a dock, and by `destroy()`). R6 as specified; two refinements: the blur's hand-over to the results runs one
+turn later (a tap on a result row blurs first and clicks second; re-drawing the rows inside the blur would swap them out
+from under the click), and turning the wheel while the keyboard is up with results puts it down and walks them.
+
+Tests: `test/unit/pocket-kb-search.test.js` (23): searchFromTyped (control characters built with String.fromCharCode,
+the 40 cap counted in whole characters), renderSearchBar against the W0.3 literals, keyboardSearchOn, flag off end to
+end (no input ever, the strip types), flag on: opening by center press and by row tap (focused in the same call stack,
+`focus({preventScroll:true})` exactly once), typing through the debounce (one read, the text as typed), IME, Enter, blur,
+late results, the wheel's top row, the wheel with the keyboard up, the center with nothing to act on, MENU, a drill and
+back, Now Playing, a skin change to Cider, a repaint, a dock, destroy, re-entry (one input), the placement (rect, render,
+resize), the key stop (16 keys x keydown/keypress/keyup, nothing reaches body/document/window bubble listeners; the
+control reaches all three), the skins search (no input, the flag not even read), music.js's live reader, the Settings
+switch, and the R9 census (every key listener in public/js and lib/ytdlp/client classified; it reds on any new one).
+
+W2 mutants (2f75b2f9, then 51c86fb5 for the re-runs; sandbox diff identical each time):
+
+| id | mutation | red (by name) |
+|---|---|---|
+| B1 | the input no longer stops key propagation | no page key handler sees a key typed into the input |
+| B2 | no focus inside the opening press | center press opens Search ...; row tap ...; typing ...; the Search key ... (4) |
+| B3 | keyboard mode ignores the flag | flag OFF ...; row tap ... (live read) |
+| B4 | the skins search gets keyboard mode | the skins search stays on the strip (R5) |
+| B5 | kbRemove leaves the node | Search key ...; MENU ...; Now Playing/skin/dock/destroy ...; drill ...; Now Playing from the menu (5) |
+| B6 | MENU in keyboard mode deletes a letter | MENU leaves Search at once |
+| B7 | center with nothing to act on presses the strip | the center with nothing to act on brings the keyboard back up |
+| B8 | Enter does not blur | the Search key (Enter) puts the keyboard down |
+| B9 | blur does not hand the wheel to the results | the Search key (Enter) ... |
+| B10 | composing input events applied | an IME composition applies on compositionend |
+| B11 | compositionend not listened | an IME composition ... |
+| B12 | control characters kept | searchFromTyped ...; typing feeds ... |
+| B13 | no cap | searchFromTyped ... |
+| B14 | a dock leaves the input | Now Playing, a skin with no menus, a dock ... |
+| B15 | destroy leaves the input | Now Playing, a skin with no menus, a dock ... |
+| B16 | no kb bar | renderSearchBar ...; center press ...; drill ... |
+| B17 | input in the panel | center press ... (in the body); Now Playing/.../a repaint keeps it |
+| B18 | late results not walked | a blur (Done, a tap outside) ... late results |
+| B19 | up past the first result goes to the strip | at 2f75b2f9 SURVIVED; at 51c86fb5 red: one wheel detent up on the first result stays on it |
+| B20 | no keyboard-mode wheel branch | at 2f75b2f9 SURVIVED; at 51c86fb5 red: turning the wheel while the keyboard is up with results |
+| B21 | no write-back of the cleaned text | typing feeds the existing debounced read |
+| B22 | music.js never turns it on | music.js hands the engine a LIVE keyboardSearch reader (a source lock: the cfg closure is not reachable from a unit test) |
+| B23 | Settings OFF stores '0' | Settings > Mobile player ... |
+| B24 | Settings prefill: any value on | Settings > Mobile player ... |
+| B25 | keyboardSearchOn: any value on | keyboardSearchOn: only the stored literal "1" is on |
+| B26 | a new unclassified capture key listener (music.js) | R9 census |
+| B27 | placement never runs | at 2f75b2f9 SURVIVED; at 51c86fb5 red: the input lies exactly over the query bar |
+| B28 | kbWanted always true | flag OFF ...; row tap ... |
+| B29 | no resize re-placement | the input lies exactly over the query bar ... |
+
+`preventScroll` is bound by the focus-arguments assertion added in W3 (headless shows no difference either way: the
+input is fixed and in view).
+
+**Real-browser proof** (`node tools/listen-control-proof/kb-search-proof.js`, exit 0, `kb-search-proof-out.json`,
+copied from the file): flag ON, all four rows (393x852 and 375x667 x ipod-charcoal and ipod-original): `title` "Search",
+`activeAfterTap` "input#ipm-kb" (right after the real CDP touch tap on the center), `inputs` 1, `strip` false,
+`input.parent` "body", `fontSizePx` 16, `onScreenScale` 1, `effectiveFontPx` 16, `inside` true (input rect = .ipm-q rect:
+[26,239,167,34] charcoal 393, [26,239,341,34] original 393, [26,225,158,34] charcoal 375, [26,225,323,34] original 375),
+`searchRequests` ["/api/music?search=Proof&sort=title-asc&limit=30"], `resultRows` Songs / Proof Song 1-3 / Albums /
+Proof Album / Artists / Proof Band, `activeAfterType` "input#ipm-kb", `unmoved` {focus: true, typing: true}: at 393x852
+before = after focus = after typing = {sy 0, vvTop 0, vvScale 1, lcd [20,16,353,264.75], panel [0,0,393,852]};
+`lcdBottomY` 280.75 at 393x852 and 267.25 at 375x667. Flag OFF (393x852, both skins): `inputs` 0, `strip` true, the
+center typed `query` "A", `inputsAfterType` 0, `activeAfterTap` "button" (Chromium focuses the tapped center, as v1.354).
+The first run's two flag-off rows read ok:false on a check of mine (focus unchanged by the tap); the check was wrong (the
+center button takes focus on a tap in Chromium on v1.354 too), corrected to "focus is not an input", re-run: 6/6 ok.
+
+**Headless cannot prove** (device checks, section 8): the iOS keyboard itself, iOS's keyboard-avoidance scroll, the form
+accessory bar, the visual viewport shrinking under the keyboard, iOS focus-zoom, and whether iOS raises the keyboard for a
+focus() inside a click re-dispatched from the haptic ghost (the wheel's invisible switch covers the center on capable
+iPhones: `onClick` re-dispatches `under.click()` synchronously inside the same click, so the gesture should hold, but
+only the phone can say). The rotate log (W1, now with sy/vvo/vs/ae) is the instrument for all of these.
+
+**Full dual-Node suite** at 51c86fb5, sequential (`npm test`): Node 22.23.1 `# tests 10746`, `# pass 10734`,
+`# fail 0`, `# skipped 12`, exit 0; Node 24.20.0 `ℹ tests 10746`, `ℹ pass 10734`, `ℹ fail 0`, `ℹ skipped 12`, exit 0.
+`npm run lint:ui`: "ui-lint: OK - the live debt equals docs/ui-exceptions.json" (TOTAL 3181, unchanged);
+`node scripts/overlay-containment-lint.js --enforce`: "overlay-containment: clean (0 violations)".
+
+### Deviations
+
+1. **R9 / W2.6 mechanism:** one seam instead of a guard per handler. The input stops keydown/keypress/keyup at itself,
+   so no bubble listener (music.js:2234, player.js:8327, common.js:3064/6800/6963, ui.js's sheet keys, and any future one)
+   can see a typed key; the capture listeners are classified with reasons in the R9 census test, which fails on any new
+   key listener. Bound by one dispatch test (B1) plus the census (B26), not one mutant per handler.
+2. **R8 container:** `document.body` (W0.1: the only container that survives `paint()`), so the input is `position:fixed`
+   over the bar rather than inside the LCD; it sits above the skin (`z-index: calc(var(--z-player-max) + 1)`) so a tap
+   on the bar reaches it natively. The 16px comes from the `ui-field__input` primitive (its `--fs-input-min`), since a
+   new `--fs-*` use is UI-ratchet debt and no `--t-*` role is 16px.
+3. **Settings placement:** the Keyboard search group sits ABOVE the Music skin group in Mobile player, because
+   setup-sticker-picker.test.js locks the skin grid as the section's last block (v1.350); not changed.
+4. **A skin change** between two Click skins keeps the Search level (and its input): the stack survives a same-style
+   repaint; a change to a skin with no menus (Cider, Nordic) removes it. R8's "skin change" is read as the latter.
+5. W2.7 "fake timers": the debounce tests use real waits, as `pocket-search.test.js` does (the engine's timers are the
+   jsdom window's).
 
 
 ## 8. Device checks owed (to DEVICE-CHECKS.md at release)

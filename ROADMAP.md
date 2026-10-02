@@ -216,6 +216,12 @@
 
 ### Features
 
+- [ ] **Keyboard search for the skins list** _(v1.355 plan, R5)_ - v1.355 gave Music > Search the phone's own keyboard
+  (Settings > Mobile player > Keyboard search, experimental, off by default). The skins search (Pocket Extras > Skins >
+  Search) stays on the wheel's letter strip on purpose ("nothing else changes"). If Dean likes the keyboard on device,
+  the same input (skin-surface.js `kbSync`) can serve the `skinSearch` level; it needs its own tests (the preview follows
+  the highlighted row) and a device check. Decide after the v1.355 device pass.
+
 - [ ] **Speakers: a phone that closes the app comes back still connected** _(Dean, 2026-10-01: "if connected to a
   speaker on mobile and you close out of app it should resume from that position/connection if still valid")_ -
   Next swing. Today the phone remembers its speaker in `sessionStorage['ft-remote-controlling']`

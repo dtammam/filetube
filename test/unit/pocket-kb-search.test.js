@@ -153,10 +153,14 @@ test('flag OFF (the default): Search is the v1.354 strip - no input is ever crea
 
 test('flag ON: the center press that opens Search creates ONE input in the body (not the panel) and focuses it in the same call stack', () => {
   const b = boot({ search: () => Promise.resolve({ items: [] }) });
+  const focusArgs = [];
+  const realFocus = b.w.HTMLElement.prototype.focus;
+  b.w.HTMLElement.prototype.focus = function (opts) { if (this.id === 'ipm-kb') focusArgs.push(opts); return realFocus.call(this, opts); };
   try {
     centerIntoSearch(b);
     // no await between the dispatched press and this read: the focus happened inside the press
     const i = kbInput(b);
+    assert.deepStrictEqual(focusArgs, [{ preventScroll: true }], 'focused once, with preventScroll (no focus scroll)');
     assert.ok(i, 'the input exists');
     assert.strictEqual(b.d.activeElement, i, 'focused inside the opening press');
     assert.strictEqual(inputs(b).length, 1, 'exactly one');
