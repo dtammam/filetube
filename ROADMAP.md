@@ -4,6 +4,18 @@
 
 ### Bugs
 
+- [ ] **Small phones (iPhone SE): the page shows only its frame and nothing works** _(Dean, 2026-10-02: "on a smaller
+  phone certain elements straight up do not work or display"; he sees the top banner, "Listening on X" for a song on
+  another device, the bottom toolbar and the notification area, but no tiles, and the bottom buttons go nowhere; the same in
+  Chrome, Safari and the home-screen app; model unknown, so cover both SE sizes)_ - Intake 2026-10-02: every client script
+  parses at ES2020 (acorn, all of public/js), so a syntax error on an older Safari is ruled out as the cause. Leading
+  hypothesis: a layout layer at small sizes covers the content and swallows taps (an invisible full-screen panel, e.g. the
+  remote/Pocket layer, or the view sized to zero). Falsifier RUN by Dean 2026-10-02: with the speaker
+  dropped (no "Listening on" banner) the tiles still do not come back and the buttons still do nothing, and a direct load
+  of `/music` shows the pills with nothing under them: the speaker/Pocket layer is RULED OUT; the page layout itself at
+  that size is the suspect (the view below the pills sized to zero or pushed off-screen, or a covering layer that is not
+  the player). Measure at 320x568 (1st-gen SE) and 375x667 (2nd/3rd gen): `document.elementFromPoint` at the bottom buttons and the tile area, the #view-root rect, and
+  any fixed layer covering the viewport. Ask Dean for one screenshot and `?debugLifecycle=1` if the probe cannot reproduce it.
 - [ ] **Pocket turn back upright: the skin sits ~58 px low for a few frames (hypothesis b)** _(Dean's v1.350 device check,
   2026-10-02, measured from his screen recording)_ - v1.354 fixed the landscape half (the board's turn is stamped in the same
   frame the layout flips); this half is PARKED, not fixed: 3 frames with the LCD under the status bar, then 2-4 frames with the
@@ -215,6 +227,12 @@
   wanted: Dean can tell "stuck" from "stale" without restarting the container.
 
 ### Features
+
+- [ ] **Keyboard search for the skins list** _(v1.355 plan, R5)_ - v1.355 gave Music > Search the phone's own keyboard
+  (Settings > Mobile player > Keyboard search, experimental, off by default). The skins search (Pocket Extras > Skins >
+  Search) stays on the wheel's letter strip on purpose ("nothing else changes"). If Dean likes the keyboard on device,
+  the same input (skin-surface.js `kbSync`) can serve the `skinSearch` level; it needs its own tests (the preview follows
+  the highlighted row) and a device check. Decide after the v1.355 device pass.
 
 - [ ] **Speakers: a phone that closes the app comes back still connected** _(Dean, 2026-10-01: "if connected to a
   speaker on mobile and you close out of app it should resume from that position/connection if still valid")_ -
@@ -507,6 +525,24 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.355.0 - A switch for the turn log, and typing to search on the phone's iPod (2026-10-02)
+
+- Settings > Troubleshooting > Show rotate debug log: the `?debugRotate` log from a switch, so it works in the home-screen
+  app (no URL bar, its own storage); it starts and stops at once, no reload (`installRotateDebug` idempotent, a new
+  `uninstallRotateDebug` takes back every listener, the frame ring, the panel and the probe). Each row now also carries
+  `sy`, `vvo`, `vs` and `ae` (scroll, visual viewport offset and scale, the focused element): the instrument for the keyboard.
+- Settings > Mobile player > Keyboard search (experimental, off by default): Music > Search on the iPod raises the phone's
+  keyboard instead of the wheel's letter strip. One invisible 16px field on the page body over the query bar (W0: the only
+  container a track change does not rebuild), `pointer-events:none`, focused with `preventScroll` inside the opening click;
+  typing feeds the same debounced search; Return/Done hand the wheel to the results; MENU leaves; typed keys never reach
+  a page shortcut (stopped at the field; a phase-checked census of every capture listener). Off = byte-identical
+  (0 differences over 819 search-bar models). Proof (headless, iPhone 393x852 and 375x667): focus lands in the tap, typing
+  reaches `/api/music?search=`, scroll / visual viewport / LCD / panel unchanged. The real keyboard is a device check.
+- Suites on 5aac5619: Node 22.23.1 and 24.20.0, each 10752 tests, 10740 pass, 0 fail, 12 skipped. `lint:ui` unchanged, overlay 0.
+- Gate: adversary and QA (escalated from the floor); r1 CHANGES by both (the field stole taps from the sticker menu, unbound
+  teardown and blur timing, IME Enter, an emoji cut at the cap), both APPROVED r2 @259fef21. Disclosed: whether iOS raises the
+  keyboard for a `pointer-events:none` field is a device check; Planned: the keyboard for the skins search.
 
 ### v1.354.0 - Your whole library, the computer's queue and search on the phone's iPod (2026-10-02)
 

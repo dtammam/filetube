@@ -51,7 +51,7 @@ test('v1.181 the MOVES: each control lives in its NEW section and is GONE from i
   const critters = section('critters', 'data-collapse-key="video-folders"');
 
   // Troubleshooting: the lifecycle debug log + the critter Voice check.
-  for (const id of ['debug-lifecycle-check', 'critter-voice-check-btn', 'critter-voice-check-status']) {
+  for (const id of ['debug-lifecycle-check', 'debug-rotate-check', 'critter-voice-check-btn', 'critter-voice-check-status']) { // v1.355: + the rotate log
     assert.ok(troubleshooting.includes(`id="${id}"`), id + ' lives in Troubleshooting');
   }
   // Experimental: the whole background-audio family + custom player.
@@ -61,7 +61,7 @@ test('v1.181 the MOVES: each control lives in its NEW section and is GONE from i
   }
   // ...and none of them linger in their old homes (each id must appear
   // EXACTLY once in the whole file - moved, not duplicated).
-  for (const id of ['debug-lifecycle-check', 'critter-voice-check-btn', 'background-audio-check',
+  for (const id of ['debug-lifecycle-check', 'debug-rotate-check', 'critter-voice-check-btn', 'background-audio-check',
     'pre-extract-audio-check', 'bg-audio-sync-check', 'bg-keepalive-check',
     'audio-session-declare-check', 'mobile-custom-player-check']) {
     assert.strictEqual(SETUP_HTML.split(`id="${id}"`).length - 1, 1, id + ' appears exactly once (moved, never duplicated)');

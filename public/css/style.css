@@ -8635,6 +8635,11 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-sc.is-word{ font-size:var(--pk-fs-note); }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-sc.is-on{ background:linear-gradient(var(--pk-s-sel1), var(--pk-s-sel2)); color:var(--pk-s-paper); }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-searchbar.is-listfocus .ipm-sc.is-on{ background:transparent; color:var(--pk-s-ink); }
+  /* v1.355 keyboard search (experimental): the bar is the query alone, and an invisible field lies over it. The field
+     lives in the BODY (skin-surface.js kbPlace sets its box from the bar's rect), so no LCD transform scales it, and it
+     keeps the ui-field__input font (16px: iOS zooms into a focused field under 16px). It takes no taps (gate r1: over the
+     skin it stole them from the sticker menu): a tap on the bar reaches the panel, whose click focuses it (kbFocus). */
+  :where(html.is-phone, html.mms-popout) .ipm-kb{ position:fixed; pointer-events:none; margin:0; padding:0; border:0; background:transparent; color:transparent; caret-color:transparent; opacity:0; box-shadow:none; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-head{ height:auto; min-height:0; padding-top:var(--space-1); padding-bottom:var(--space-1); font-size:var(--pk-fs-note); color:var(--pk-s-sub); }
   /* the right half: the art pane, a soft inner edge where it meets the list (the 6G seam) */
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-art{ position:relative; flex:1; min-width:0; overflow:hidden; background:var(--pk-s-groove); box-shadow:var(--pk-s-art-shadow); }
