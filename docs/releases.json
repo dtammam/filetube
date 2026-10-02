@@ -3442,5 +3442,11 @@
     "date": "2026-10-02",
     "title": "A switch for the turn log, and typing to search on the phone's iPod",
     "intent": "Settings has a new switch, Show rotate debug log, so the turn log can be turned on from the app on your home screen, where there is no address bar; it starts and stops at once. Settings > Mobile player has an experimental Keyboard search: when it is on, Search on the phone's iPod brings up the phone's own keyboard so you can type instead of turning the wheel to each letter. It is off unless you turn it on, and Search works exactly as before when it is off."
+  },
+  {
+    "version": "1.356.0",
+    "date": "2026-10-02",
+    "title": "Close the app, come back still on your speaker",
+    "intent": "If your phone was playing music on a speaker computer and you close the app, opening it again puts you straight back on that speaker, showing what it is playing now, as long as it is still playing or you closed the app less than an hour ago. Nothing on the computer changes when you come back. Signing out now makes the phone forget the speaker, so the next person to sign in never sees it."
   }
 ]

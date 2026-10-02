@@ -168,6 +168,10 @@ if (typeof document !== 'undefined') (function () {
         try { localStorage.removeItem('ft-queue-shown'); } catch (_) { /* storage disabled */ }
         try { localStorage.removeItem('ft-bottomnav-last'); } catch (_) { /* storage disabled */ }
         try { localStorage.removeItem('ft-books-continue-count'); } catch (_) { /* storage disabled */ }
+        // v1.356 gate r1: the phone's remembered speaker and the per-tab pick (remote.js RESUME_KEY / CONTROL_KEY)
+        // belong to whoever was signed in before; a session that expired never ran accountSignOut.
+        try { localStorage.removeItem('ft-remote-resume'); } catch (_) { /* storage disabled */ }
+        try { sessionStorage.removeItem('ft-remote-controlling'); } catch (_) { /* storage disabled */ }
         window.location.assign(safeNext());
         return;
       }

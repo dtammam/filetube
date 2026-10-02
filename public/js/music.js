@@ -2931,10 +2931,23 @@ if (typeof module !== 'undefined' && module.exports) {
       var mirrorSig = '';
       // v1.353: a speaker's first volume report repaints too (the bar / row render only with a level)
       var sigOf = function () { var st = RC.state() || {}; return [RC.targetId(), st.track && st.track.id, st.state, remoteVolume() === null ? 'nv' : 'v'].join('|') + '|' + remoteQueueSig(st); };
+      // v1.356 (W2): a phone that came back attached to its speaker (the controller's resume on launch) shows it
+      // as a pick of it shows it: the iPod up (never stepped aside), Now Playing for a track, the menu for an
+      // idle speaker. One-shot, so a resume that landed while another view was up lands when Music mounts.
+      var landResume = function () {
+        if (!remoteOn() || typeof RC.consumeResume !== 'function') return;
+        var r = RC.consumeResume();
+        if (!r) return;
+        remoteDocked = false;
+        updateNowPlayingPanel();
+        if (inTabEngine && typeof inTabEngine.landPlayOn === 'function') inTabEngine.landPlayOn(r.hasTrack);
+      };
       var offMirror = RC.onChange(function () {
         var sig = sigOf();
         if (sig !== mirrorSig) { mirrorSig = sig; updateNowPlayingPanel(); } else reflectEngines();
+        landResume();
       });
+      landResume();
       var mirrorTick = window.setInterval(function () { if (remoteOn() && !remoteDocked) reflectEngines(); }, 500);
       signal.addEventListener('abort', function () { offMirror(); window.clearInterval(mirrorTick); });
     }

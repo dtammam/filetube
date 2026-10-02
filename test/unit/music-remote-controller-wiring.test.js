@@ -152,3 +152,16 @@ test('v1.354 the phone shows the PC queue: rows come from the state, a tap plays
   assert.match(MUSIC, /REMOTE\.setQueueReader\(null\)/, 'and clears it on teardown');
   assert.match(SURFACE, /!panel\.querySelector\('\.mms-remote'\) \|\| panel\.querySelector\('\.ip-listview \.mms-row'\)\) \{ setListMode\(true\); \}/, 'the center button does nothing with no list (R4)');
 });
+
+test('v1.356 W2: a resume on launch lands the Music view as a pick does (iPod up, then the engine\'s Speakers landing), once', () => {
+  const fn = MUSIC.slice(MUSIC.indexOf('var landResume = function () {'), MUSIC.indexOf('var offMirror = RC.onChange('));
+  assert.ok(fn.length > 0, 'the landing is there');
+  assert.match(fn, /if \(!remoteOn\(\) \|\| typeof RC\.consumeResume !== 'function'\) return;/, 'only while attached');
+  assert.match(fn, /var r = RC\.consumeResume\(\);\s*if \(!r\) return;/, 'one-shot');
+  assert.match(fn, /remoteDocked = false;\s*updateNowPlayingPanel\(\);\s*if \(inTabEngine && typeof inTabEngine\.landPlayOn === 'function'\) inTabEngine\.landPlayOn\(r\.hasTrack\);/, 'iPod up, then land');
+  const mirror = MUSIC.slice(MUSIC.indexOf('var offMirror = RC.onChange('), MUSIC.indexOf('var mirrorTick ='));
+  assert.match(mirror, /else reflectEngines\(\);\s*landResume\(\);\s*\}\);\s*landResume\(\);/, 'on every mirror change, and once at mount (a resume that landed on another view)');
+  assert.match(SURFACE, /function landAfterPlayOn\(landed\) \{\s*if \(landed === false\) \{ landOnMusic\(\); return; \}\s*showNowPlaying\(\);\s*\}/, 'ONE landing rule');
+  assert.match(SURFACE, /cfg\.onPlayOn\(it\.target \|\| null\); \} catch \(_\) \{ \/\* view best-effort \*\/ \}\s*landAfterPlayOn\(landed\);/, 'the Speakers pick uses it');
+  assert.match(SURFACE, /landPlayOn: function \(hasTrack\) \{\s*if \(destroyed \|\| !style\(\)\) return false;\s*landAfterPlayOn\(hasTrack === false \? false : true\);/, 'and the resume');
+});

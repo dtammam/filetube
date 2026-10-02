@@ -1412,6 +1412,12 @@
       }
       render();
     }
+    // Where a speaker choice lands (a pick in Speakers, or v1.356's resume on launch): false = the speaker has
+    // nothing loaded, so the Main menu with the cursor on Music; anything else = Now Playing.
+    function landAfterPlayOn(landed) {
+      if (landed === false) { landOnMusic(); return; }
+      showNowPlaying();
+    }
     function showNowPlaying() {
       screen = 'np';
       clearJump();
@@ -1450,8 +1456,7 @@
         // v1.348 Listen Control: pick where the music plays (this device, or a PC that is listening).
         var landed = true;
         try { if (typeof cfg.onPlayOn === 'function') landed = cfg.onPlayOn(it.target || null); } catch (_) { /* view best-effort */ }
-        if (landed === false) { landOnMusic(); return; }
-        showNowPlaying();
+        landAfterPlayOn(landed);
         return;
       }
       if (it.action === 'shuffle') {
@@ -1611,6 +1616,12 @@
         }
         setCursor(p.cursor + delta);
         return 0;
+      },
+      // v1.356: a phone that came back attached to its speaker lands where a pick of it lands (hasTrack false = idle)
+      landPlayOn: function (hasTrack) {
+        if (destroyed || !style()) return false;
+        landAfterPlayOn(hasTrack === false ? false : true);
+        return true;
       },
       // the "on <device>" badge: open Main > Speakers (the same level the menu row opens)
       openPlayOn: function () {
@@ -3256,6 +3267,8 @@
       // v1.353: the volume bar (a phone controlling a speaker) - the Speakers menu's Volume row opens it
       openVolume: openVolume,
       isVolumeOpen: function () { return volOpen; },
+      // v1.356: the resume on launch lands the pocket menu as a Speakers pick would (false: no menus here)
+      landPlayOn: function (hasTrack) { return pocket ? pocket.landPlayOn(hasTrack) : false; },
     };
   }
 
