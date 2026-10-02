@@ -1712,6 +1712,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // same /api/music routes the browse view reads) and the play seam (playFromMenu).
         menu: {
           load: menuLoad,
+          search: menuSearch,
           onPlay: function (req) { playFromMenu(req); },
           onShuffleAll: shuffleAllFromMenu,
           hasCurrent: function () { return remoteOn() || hasCurrentMusicTrack(); },
@@ -4477,6 +4478,16 @@ if (typeof module !== 'undefined' && module.exports) {
         return pl.all ? fetchAllRows(pl.url).then(function (d) { return menuSongLevel(menuItemsOf(d), { ctx: pl.ctx, label: n.label }); }) : fetchJson(pl.url).then(function (d) { return menuSongLevel(menuItemsOf(d), { ctx: pl.ctx, label: n.label }); });
       }
       return Promise.resolve({ items: [] });
+    }
+    // v1.354 W4: Music > Search. Three reads of the routes' own `search=` (visibility-gated like every list), a handful
+    // of rows each; the song rows play IN the result list under a search ctx (the browse view's own list context).
+    function menuSearch(q) {
+      var u = SKINS.searchUrls(q);
+      return Promise.all([fetchJson(u.songs), fetchJson(u.albums), fetchJson(u.artists)]).then(function (r) {
+        var built = SKINS.menuSearchItems({ songs: menuItemsOf(r[0]), albums: menuItemsOf(r[1]), artists: menuItemsOf(r[2]) }, musicArtUrl);
+        built.play = { ctx: { src: 'music', search: String(q), sort: 'title-asc' }, label: 'Search' };
+        return built;
+      });
     }
     // The iPod menu's playlists (and the v1.352 L3 `?playlist=` links): where each one's songs come from.
     function playlistSource(key) {

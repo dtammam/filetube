@@ -8504,7 +8504,7 @@ a.tv-continue-card { text-decoration: none; }
      this list, the wrap list and the glyph list: a new text element fails until it is classified. */
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-np, :where(html.is-phone, html.mms-popout) .mms-ipod .ip-ttl, :where(html.is-phone, html.mms-popout) .mms-ipod .ip-artist, :where(html.is-phone, html.mms-popout) .mms-ipod .ip-album, :where(html.is-phone, html.mms-popout) .mms-ipod .ip-nof,
   :where(html.is-phone, html.mms-popout) .mms-ipod .mms-pos, :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rem, :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rt, :where(html.is-phone, html.mms-popout) .mms-ipod .mms-rd,
-  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-lbl, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-name, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-detail, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-val, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-about-name{ min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-lbl, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-name, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-detail, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-val, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-about-name, :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-q{ min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   /* the LCD - a COMPACT ~4:3 screen at the top (not fill), the real iPod proportion;
      the body + wheel take the space below. */
   /* The LCD must NEVER resize from its content (Dean, v1.232.1: the song list made it
@@ -8626,6 +8626,16 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-skel{ cursor:default; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-skel-bar{ display:block; width:var(--pk-skel-w); height:var(--pk-skel-h); border-radius:var(--radius-full); }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-note{ padding:var(--space-6); font-size:var(--pk-fs-note); color:var(--pk-s-sub); }
+  /* v1.354 W4: Music > Search - the typed query over a strip of letters along the bottom of the LCD, results above */
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-searchbar{ flex:none; display:flex; flex-direction:column; gap:var(--space-1); padding:var(--space-2) var(--space-2) var(--space-3); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-q{ min-height:var(--pk-row-h); display:flex; align-items:center; padding:0 var(--space-2); font-size:var(--pk-fs-menu); font-weight:var(--fw-bold); color:var(--pk-s-ink); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-q.is-empty{ font-weight:var(--fw-normal); color:var(--pk-s-sub); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-strip{ display:flex; align-items:stretch; gap:0; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-sc{ flex:1 1 0; min-width:0; min-height:var(--pk-row-h); padding:0; background:transparent; color:var(--pk-s-sub); font-family:inherit; font-size:var(--pk-fs-menu); font-weight:var(--fw-bold); text-align:center; display:flex; align-items:center; justify-content:center; }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-sc.is-word{ font-size:var(--pk-fs-note); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-sc.is-on{ background:linear-gradient(var(--pk-s-sel1), var(--pk-s-sel2)); color:var(--pk-s-paper); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-searchbar.is-listfocus .ipm-sc.is-on{ background:transparent; color:var(--pk-s-ink); }
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-head{ height:auto; min-height:0; padding-top:var(--space-1); padding-bottom:var(--space-1); font-size:var(--pk-fs-note); color:var(--pk-s-sub); }
   /* the right half: the art pane, a soft inner edge where it meets the list (the 6G seam) */
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-art{ position:relative; flex:1; min-width:0; overflow:hidden; background:var(--pk-s-groove); box-shadow:var(--pk-s-art-shadow); }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ipm-art-img{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; opacity:0; transform:scale(1.08);

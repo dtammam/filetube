@@ -33,7 +33,7 @@ test('static levels: Main Menu (Now Playing only while a track exists), Music in
   const lbl = (rows) => rows.map((r) => r.label);
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: true })), ['Music', 'Settings', 'Shuffle Songs', 'Now Playing']);
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: false })), ['Music', 'Settings', 'Shuffle Songs'], 'nothing playing: no Now Playing row');
-  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'music' })), ['Recent Artists', 'Recent Albums', 'Playlists', 'Artists', 'Albums', 'Songs', 'Genres']);
+  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'music' })), ['Recent Artists', 'Recent Albums', 'Playlists', 'Artists', 'Albums', 'Songs', 'Genres', 'Search']);
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'playlists' })), ['Liked Songs', 'Recently Added', 'Recently Played']);
   assert.strictEqual(skins.menuStaticItems({ type: 'artists' }), null, 'a library level is not static');
   assert.strictEqual(skins.menuTitle({ type: 'main' }, 'click'), 'Click');
@@ -258,7 +258,7 @@ test('TOCTOU: a level\'s load that lands AFTER the user climbed out never draws 
     pressMenu(b); // back to Music before it lands
     release(); await tick(); await tick();
     assert.strictEqual(b.engine.menuState().title, 'Music');
-    assert.deepStrictEqual(lbls(b), ['Recent Artists', 'Recent Albums', 'Playlists', 'Artists', 'Albums', 'Songs', 'Genres'], 'the late payload did not paint over Music');
+    assert.deepStrictEqual(lbls(b), ['Recent Artists', 'Recent Albums', 'Playlists', 'Artists', 'Albums', 'Songs', 'Genres', 'Search'], 'the late payload did not paint over Music');
     tapLabel(b, 'Artists'); await tick();
     assert.strictEqual(b.spy.loads.filter((n) => n.type === 'artists').length, 2, 'a re-entered level loads afresh');
   } finally { b.restore(); }
