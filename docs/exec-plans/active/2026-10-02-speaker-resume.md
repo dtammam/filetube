@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.356-speaker-resume
 anchor: spec
 status: Building
-next: W0-W3 built (section 6); the Architect rules on the stale listed-state finding (section 6), then the FULL gate
+next: Dean ruled R9 (ship as is, disclosed); the FULL gate
 design: Dean 2026-10-02 - valid = the speaker is still on AND (it is still playing OR the app closed under 1 hour ago); reattach SILENTLY with a short toast; reattach and show whatever the speaker plays now (or idle); R4-R8 are architect defaults
 gate: FULL (adversary + qa + security-brief; Dean: it changes what the phone trusts; never dial down)
 ---
@@ -45,6 +45,7 @@ Stop and ask the Architect if a seam differs from section 4 or the design needs 
 | R6 | Whose speaker | The record carries the signed-in user's id (or another stable per-account value the client already has; W0 finds it). A different user = the record is deleted unread. Belt and braces: the server already buckets every remote route by `req.user.id` (lib/remote/routes.js), so a foreign deviceId is never listed and never accepts a command (410). Architect default. |
 | R7 | When the record is forgotten | Picking "This device", `lost()` (the speaker went away while attached), a failed R1 on launch, a user mismatch, and sign-out. Architect default. |
 | R8 | Quiet means quiet | A launch that does not reattach shows no toast and no error; `lost()`'s "Lost <label>" toast stays for a speaker that goes away WHILE attached. Architect default. |
+| R9 | The listed state can be stale (builder finding 1) | **Dean 2026-10-02: ship as is, disclosed.** A speaker reports its state only while a phone is attached, so a pause or play AT THE PC after the phone left is not in `GET /api/remote/targets`; a record older than the hour can then reattach to a speaker paused by hand (shown paused, never commanded). Logged in ROADMAP Planned: the speaker posts its state on play / pause / track change / end even with no phone attached. |
 
 ## 3. The seams (read at 534f4a70)
 
