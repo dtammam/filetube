@@ -3,7 +3,7 @@ plan: turn-speaker-highlight
 harness: v2 · lean
 branch: feat/v1.357-turn-speaker-highlight
 anchor: spec
-status: Draft
+status: Shipped v1.357.0
 next: UNBLOCKED (v1.356.0 shipped 2026-10-02; branch rebased onto main 01e56dee); Step 0, then W0, W1, W2, W3; read the whole plan first, every section
 design: Dean 2026-10-02 - both items in ONE branch and ONE release v1.357.0, built by Sonnet; (1) the Pocket turn back upright, from his on-device rotate log; (2) "when I am listening to a song with a speaker selected and go back to see the album I picked from, the playing song isn't highlighted"; R1-R6 are architect defaults
 gate: adversary + qa (UI/layout on the device's hardest path, and the remote mirror); security-brief applied as a section by both
@@ -197,7 +197,7 @@ The small-phone (iPhone SE) bug, keyboard search for the skins list, the speaker
 
 ## 6. Build log (the builder fills this in: W0 numbers, deviations, mutants per wave, suite results verbatim)
 
-### W0 numbers (Dean's capture, 393x852, test/fixtures/rotate-capture-2026-10-02.jsonl, 9 rows)
+### W0 numbers (Dean's capture, 393x852, test/fixtures/rotate-capture-2026-10-02.jsonl, 8 rows)
 
 - Model: every portrait row has LCD top = safe-area inset + --space-8 (16) - scrollY (giant 59+16, low 59+16, scrolled 0+16-59, settled 0+16).
 - Rule (`pocketTopInset`): inset = max(0, sat - max(0, screen long side - innerHeight)) in portrait (short side in landscape).
@@ -244,3 +244,8 @@ The 2 giant frames and the 1 scrolled frame are NOT fixed (instrument only, ROAD
 ## 8. Gate record
 
 (seats write their verdict lines here, bound to the sha they reviewed)
+
+Gate: APPROVED r1 @c47b4768b9154c833c6c4cc1ae52ffc62c3b6110 - adversary
+Gate: APPROVED r1 @c47b4768b9154c833c6c4cc1ae52ffc62c3b6110 - qa
+
+Round 1 closed with no CRITICAL or WARNING. Suggestions logged to ROADMAP Planned (adversary: M25 two-turns test, the sticker-menu max-height still on raw env(); qa: the row count, fixed here).

@@ -3448,5 +3448,11 @@
     "date": "2026-10-02",
     "title": "Close the app, come back still on your speaker",
     "intent": "If your phone was playing music on a speaker computer and you close the app, opening it again puts you straight back on that speaker, showing what it is playing now, as long as it is still playing or you closed the app less than an hour ago. Nothing on the computer changes when you come back. Signing out now makes the phone forget the speaker, so the next person to sign in never sees it."
+  },
+  {
+    "version": "1.357.0",
+    "date": "2026-10-02",
+    "title": "The turn back upright settles in one step, and your speaker's song is marked",
+    "intent": "Turning your phone from sideways back upright no longer leaves the iPod sitting too low under the status bar for a moment; it lands in place in one step. When you are playing on a speaker computer and go back to the album or list you picked from, the song the computer is playing is now marked, and the mark moves when the computer goes to the next song."
   }
 ]
