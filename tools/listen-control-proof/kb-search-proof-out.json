@@ -1,0 +1,494 @@
+{
+ "when": "2026-10-02T14:57:35.817Z",
+ "rows": [
+  {
+   "size": "393x852",
+   "skin": "ipod-charcoal",
+   "flag": "on",
+   "cursorBefore": "Search",
+   "before": {
+    "sy": 0,
+    "vvTop": 0,
+    "vvScale": 1,
+    "lcd": [
+     20,
+     16,
+     353,
+     264.75
+    ],
+    "panel": [
+     0,
+     0,
+     393,
+     852
+    ]
+   },
+   "activeBefore": "body",
+   "title": "Search",
+   "activeAfterTap": "input#ipm-kb",
+   "inputs": 1,
+   "strip": false,
+   "afterFocus": {
+    "sy": 0,
+    "vvTop": 0,
+    "vvScale": 1,
+    "lcd": [
+     20,
+     16,
+     353,
+     264.75
+    ],
+    "panel": [
+     0,
+     0,
+     393,
+     852
+    ]
+   },
+   "input": {
+    "parent": "body",
+    "fontSizePx": 16,
+    "onScreenScale": 1,
+    "effectiveFontPx": 16,
+    "rect": [
+     26,
+     239,
+     167,
+     34
+    ],
+    "qRect": [
+     26,
+     239,
+     167,
+     34
+    ],
+    "inside": true,
+    "opacity": "0",
+    "zIndex": "1101",
+    "position": "fixed"
+   },
+   "searchRequests": [
+    "/api/music?search=Proof&sort=title-asc&limit=30"
+   ],
+   "query": "Proof",
+   "resultRows": [
+    "Songs",
+    "Proof Song 1",
+    "Proof Song 2",
+    "Proof Song 3",
+    "Albums",
+    "Proof Album",
+    "Artists",
+    "Proof Band"
+   ],
+   "activeAfterType": "input#ipm-kb",
+   "afterType": {
+    "sy": 0,
+    "vvTop": 0,
+    "vvScale": 1,
+    "lcd": [
+     20,
+     16,
+     353,
+     264.75
+    ],
+    "panel": [
+     0,
+     0,
+     393,
+     852
+    ]
+   },
+   "lcdBottomY": 280.75,
+   "unmoved": {
+    "focus": true,
+    "typing": true
+   },
+   "ok": true,
+   "errors": []
+  },
+  {
+   "size": "393x852",
+   "skin": "ipod-original",
+   "flag": "on",
+   "cursorBefore": "Search",
+   "before": {
+    "sy": 0,
+    "vvTop": 0,
+    "vvScale": 1,
+    "lcd": [
+     20,
+     16,
+     353,
+     264.75
+    ],
+    "panel": [
+     0,
+     0,
+     393,
+     852
+    ]
+   },
+   "activeBefore": "body",
+   "title": "Search",
+   "activeAfterTap": "input#ipm-kb",
+   "inputs": 1,
+   "strip": false,
+   "afterFocus": {
+    "sy": 0,
+    "vvTop": 0,
+    "vvScale": 1,
+    "lcd": [
+     20,
+     16,
+     353,
+     264.75
+    ],
+    "panel": [
+     0,
+     0,
+     393,
+     852
+    ]
+   },
+   "input": {
+    "parent": "body",
+    "fontSizePx": 16,
+    "onScreenScale": 1,
+    "effectiveFontPx": 16,
+    "rect": [
+     26,
+     239,
+     341,
+     34
+    ],
+    "qRect": [
+     26,
+     239,
+     341,
+     34
+    ],
+    "inside": true,
+    "opacity": "0",
+    "zIndex": "1101",
+    "position": "fixed"
+   },
+   "searchRequests": [
+    "/api/music?search=Proof&sort=title-asc&limit=30"
+   ],
+   "query": "Proof",
+   "resultRows": [
+    "Songs",
+    "Proof Song 1",
+    "Proof Song 2",
+    "Proof Song 3",
+    "Albums",
+    "Proof Album",
+    "Artists",
+    "Proof Band"
+   ],
+   "activeAfterType": "input#ipm-kb",
+   "afterType": {
+    "sy": 0,
+    "vvTop": 0,
+    "vvScale": 1,
+    "lcd": [
+     20,
+     16,
+     353,
+     264.75
+    ],
+    "panel": [
+     0,
+     0,
+     393,
+     852
+    ]
+   },
+   "lcdBottomY": 280.75,
+   "unmoved": {
+    "focus": true,
+    "typing": true
+   },
+   "ok": true,
+   "errors": []
+  },
+  {
+   "size": "375x667",
+   "skin": "ipod-charcoal",
+   "flag": "on",
+   "cursorBefore": "Search",
+   "before": {
+    "sy": 0,
+    "vvTop": 0,
+    "vvScale": 1,
+    "lcd": [
+     20,
+     16,
+     335,
+     251.25
+    ],
+    "panel": [
+     0,
+     0,
+     375,
+     667
+    ]
+   },
+   "activeBefore": "body",
+   "title": "Search",
+   "activeAfterTap": "input#ipm-kb",
+   "inputs": 1,
+   "strip": false,
+   "afterFocus": {
+    "sy": 0,
+    "vvTop": 0,
+    "vvScale": 1,
+    "lcd": [
+     20,
+     16,
+     335,
+     251.25
+    ],
+    "panel": [
+     0,
+     0,
+     375,
+     667
+    ]
+   },
+   "input": {
+    "parent": "body",
+    "fontSizePx": 16,
+    "onScreenScale": 1,
+    "effectiveFontPx": 16,
+    "rect": [
+     26,
+     225,
+     158,
+     34
+    ],
+    "qRect": [
+     26,
+     225,
+     158,
+     34
+    ],
+    "inside": true,
+    "opacity": "0",
+    "zIndex": "1101",
+    "position": "fixed"
+   },
+   "searchRequests": [
+    "/api/music?search=Proof&sort=title-asc&limit=30"
+   ],
+   "query": "Proof",
+   "resultRows": [
+    "Songs",
+    "Proof Song 1",
+    "Proof Song 2",
+    "Proof Song 3",
+    "Albums",
+    "Proof Album",
+    "Artists",
+    "Proof Band"
+   ],
+   "activeAfterType": "input#ipm-kb",
+   "afterType": {
+    "sy": 0,
+    "vvTop": 0,
+    "vvScale": 1,
+    "lcd": [
+     20,
+     16,
+     335,
+     251.25
+    ],
+    "panel": [
+     0,
+     0,
+     375,
+     667
+    ]
+   },
+   "lcdBottomY": 267.25,
+   "unmoved": {
+    "focus": true,
+    "typing": true
+   },
+   "ok": true,
+   "errors": []
+  },
+  {
+   "size": "375x667",
+   "skin": "ipod-original",
+   "flag": "on",
+   "cursorBefore": "Search",
+   "before": {
+    "sy": 0,
+    "vvTop": 0,
+    "vvScale": 1,
+    "lcd": [
+     20,
+     16,
+     335,
+     251.25
+    ],
+    "panel": [
+     0,
+     0,
+     375,
+     667
+    ]
+   },
+   "activeBefore": "body",
+   "title": "Search",
+   "activeAfterTap": "input#ipm-kb",
+   "inputs": 1,
+   "strip": false,
+   "afterFocus": {
+    "sy": 0,
+    "vvTop": 0,
+    "vvScale": 1,
+    "lcd": [
+     20,
+     16,
+     335,
+     251.25
+    ],
+    "panel": [
+     0,
+     0,
+     375,
+     667
+    ]
+   },
+   "input": {
+    "parent": "body",
+    "fontSizePx": 16,
+    "onScreenScale": 1,
+    "effectiveFontPx": 16,
+    "rect": [
+     26,
+     225,
+     323,
+     34
+    ],
+    "qRect": [
+     26,
+     225,
+     323,
+     34
+    ],
+    "inside": true,
+    "opacity": "0",
+    "zIndex": "1101",
+    "position": "fixed"
+   },
+   "searchRequests": [
+    "/api/music?search=Proof&sort=title-asc&limit=30"
+   ],
+   "query": "Proof",
+   "resultRows": [
+    "Songs",
+    "Proof Song 1",
+    "Proof Song 2",
+    "Proof Song 3",
+    "Albums",
+    "Proof Album",
+    "Artists",
+    "Proof Band"
+   ],
+   "activeAfterType": "input#ipm-kb",
+   "afterType": {
+    "sy": 0,
+    "vvTop": 0,
+    "vvScale": 1,
+    "lcd": [
+     20,
+     16,
+     335,
+     251.25
+    ],
+    "panel": [
+     0,
+     0,
+     375,
+     667
+    ]
+   },
+   "lcdBottomY": 267.25,
+   "unmoved": {
+    "focus": true,
+    "typing": true
+   },
+   "ok": true,
+   "errors": []
+  },
+  {
+   "size": "393x852",
+   "skin": "ipod-charcoal",
+   "flag": "off",
+   "cursorBefore": "Search",
+   "before": {
+    "sy": 0,
+    "vvTop": 0,
+    "vvScale": 1,
+    "lcd": [
+     20,
+     16,
+     353,
+     264.75
+    ],
+    "panel": [
+     0,
+     0,
+     393,
+     852
+    ]
+   },
+   "activeBefore": "body",
+   "title": "Search",
+   "activeAfterTap": "button",
+   "inputs": 0,
+   "strip": true,
+   "query": "A",
+   "inputsAfterType": 0,
+   "ok": true,
+   "errors": []
+  },
+  {
+   "size": "393x852",
+   "skin": "ipod-original",
+   "flag": "off",
+   "cursorBefore": "Search",
+   "before": {
+    "sy": 0,
+    "vvTop": 0,
+    "vvScale": 1,
+    "lcd": [
+     20,
+     16,
+     353,
+     264.75
+    ],
+    "panel": [
+     0,
+     0,
+     393,
+     852
+    ]
+   },
+   "activeBefore": "body",
+   "title": "Search",
+   "activeAfterTap": "button",
+   "inputs": 0,
+   "strip": true,
+   "query": "A",
+   "inputsAfterType": 0,
+   "ok": true,
+   "errors": []
+  }
+ ],
+ "ok": true
+}

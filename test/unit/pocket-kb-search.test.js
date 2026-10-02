@@ -255,6 +255,60 @@ test('flag ON: the Search key (Enter) puts the keyboard down and the wheel then 
   } finally { b.restore(); }
 });
 
+test('flag ON: one wheel detent up on the first result stays on it (keyboard mode has no strip to go back to)', async () => {
+  const b = boot({ search: () => Promise.resolve(built(['One', 'Two'])) });
+  try {
+    centerIntoSearch(b);
+    type(b, 'o');
+    await wait(DEBOUNCE);
+    kbInput(b).dispatchEvent(new b.w.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    await wait(5);
+    assert.strictEqual(cursorLabel(b), 'One');
+    wheelBy(b, -24);
+    assert.strictEqual(cursorLabel(b), 'One', 'still on the first row');
+    assert.ok(P(b).querySelector('.ipm-searchbar.is-listfocus'), 'and the wheel still holds the results');
+  } finally { b.restore(); }
+});
+
+test('flag ON: turning the wheel while the keyboard is up with results puts it down and walks them from the first row', async () => {
+  const b = boot({ search: () => Promise.resolve(built(['One', 'Two'])) });
+  try {
+    centerIntoSearch(b);
+    type(b, 'o');
+    await wait(DEBOUNCE);
+    assert.strictEqual(b.d.activeElement, kbInput(b), 'typing: keyboard up');
+    assert.strictEqual(cursorLabel(b), null, 'no highlight while typing');
+    wheelBy(b, 24);
+    assert.notStrictEqual(b.d.activeElement, kbInput(b), 'the wheel put the keyboard down');
+    assert.ok(cursorLabel(b) === 'One' || cursorLabel(b) === 'Two', 'and highlights a result row: ' + cursorLabel(b));
+    assert.ok(P(b).querySelector('.ipm-searchbar.is-listfocus'));
+  } finally { b.restore(); }
+});
+
+test('flag ON: the input lies exactly over the query bar (its rect), and is placed again on a re-layout (render, resize)', async () => {
+  const b = boot({ search: () => Promise.resolve(built(['One'])) });
+  try {
+    let box = { left: 10.4, top: 20.6, width: 150, height: 31 };
+    const proto = b.w.Element.prototype;
+    const orig = proto.getBoundingClientRect;
+    proto.getBoundingClientRect = function () { return this.classList && this.classList.contains('ipm-q') ? Object.assign({ right: 0, bottom: 0, x: 0, y: 0 }, box) : orig.call(this); };
+    centerIntoSearch(b);
+    const st = () => { const s = kbInput(b).style; return [s.left, s.top, s.width, s.height]; };
+    assert.deepStrictEqual(st(), ['10px', '21px', '150px', '31px']);
+    box = { left: 12, top: 300, width: 140, height: 28 };
+    type(b, 'o'); // a render
+    assert.deepStrictEqual(st(), ['12px', '300px', '140px', '28px'], 'after a render');
+    box = { left: 5, top: 40, width: 200, height: 30 };
+    b.w.dispatchEvent(new b.w.Event('resize'));
+    assert.deepStrictEqual(st(), ['5px', '40px', '200px', '30px'], 'after a resize');
+    pressMenu(b);
+    box = { left: 1, top: 1, width: 1, height: 1 };
+    b.w.dispatchEvent(new b.w.Event('resize')); // the listener left with the input (nothing to place, nothing throws)
+    assert.strictEqual(inputs(b).length, 0);
+    proto.getBoundingClientRect = orig;
+  } finally { b.restore(); }
+});
+
 test('flag ON: a blur (Done, a tap outside) puts the keyboard down the same way; results that land while it is down get the wheel too', async () => {
   const d = [];
   const b = boot({ search: () => new Promise((r) => d.push(r)) });
