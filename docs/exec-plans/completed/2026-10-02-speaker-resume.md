@@ -3,10 +3,10 @@ plan: speaker-resume
 harness: v2 · lean
 branch: feat/v1.356-speaker-resume
 anchor: spec
-status: Building
-next: Dean ruled R9 (ship as is, disclosed); the FULL gate
+status: Shipped v1.356.0
+next: shipped; owed: the v1.356.0 device check in docs/DEVICE-CHECKS.md
 design: Dean 2026-10-02 - valid = the speaker is still on AND (it is still playing OR the app closed under 1 hour ago); reattach SILENTLY with a short toast; reattach and show whatever the speaker plays now (or idle); R4-R8 are architect defaults
-gate: FULL (adversary + qa + security-brief; Dean: it changes what the phone trusts; never dial down)
+gate: APPROVED r2 @5c7dba16 - adversary, qa, security-brief (FULL; Dean: it changes what the phone trusts; never dial down)
 ---
 
 # v1.356: a phone that closes the app comes back still connected to its speaker

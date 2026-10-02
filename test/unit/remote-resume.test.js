@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.356 speaker resume (plan docs/exec-plans/active/2026-10-02-speaker-resume.md): a phone that closes
+// [UNIT] v1.356 speaker resume (plan docs/exec-plans/completed/2026-10-02-speaker-resume.md): a phone that closes
 // the app comes back still connected. Executes the REAL controller in public/js/remote.js with injected deps
 // (storage, clock, fetch, the signed-in user, the device class). Binds every resumeDecision arm, the PENDING
 // window (no command, no label, isRemote() false until the targets check passes: AC3), another account never
