@@ -893,7 +893,12 @@
       if (pane.s && pane.s.err) return 'Couldn’t search. Type again to retry.';
       return q ? 'No matches.' : (pane.node.type === 'skinSearch' ? 'Type a skin name.' : 'Type to search your music.');
     }
-    function searchModel(pane) { return (isSearch(pane) && pane.s) ? { q: pane.s.q, sc: pane.s.sc, focus: pane.s.focus } : null; }
+    function searchModel(pane) {
+      if (!(isSearch(pane) && pane.s)) return null;
+      var m = { q: pane.s.q, sc: pane.s.sc, focus: pane.s.focus };
+      if (pane.s.kb) m.kb = true; // v1.355: only a keyboard-mode level carries it (the strip's model is v1.354's)
+      return m;
+    }
     function applyStrip() {
       var pane = curPane();
       var bar = panel.querySelector('.ip-menuview .ipm-searchbar');
@@ -927,6 +932,7 @@
           pane.cursor = SK.searchNextStop(pane.items, -1, 1);
           if (pane.cursor < 0) pane.cursor = 0;
           if (!pane.items.length || pane.items[pane.cursor] && pane.items[pane.cursor].info) ss.focus = 'strip';
+          if (ss.kb && !kbUp() && ss.focus !== 'list') kbToList(pane); // v1.355: the keyboard is down - the wheel walks these
           if (isVisible(pane)) render();
         }, function () {
           if (destroyed || tok !== pane.token || ss.q !== q) return;
@@ -962,6 +968,12 @@
     function searchWheel(pane, delta) {
       var ss = pane.s;
       if (!ss) return 0;
+      if (ss.kb && ss.focus !== 'list') { // v1.355: no strip in keyboard mode - the wheel goes straight to the results
+        if (!kbToList(pane)) return 0; // nothing to walk: the wheel does nothing (the keyboard stays as it is)
+        if (kbUp()) { try { kb.input.blur(); } catch (_) { /* gone */ } }
+        render();
+        return 1;
+      }
       if (ss.focus !== 'list') {
         ss.sc = SK.searchStripStep(ss.sc, delta);
         applyStrip();
@@ -974,7 +986,7 @@
       for (var k = 0; k < n; k++) {
         var nx = SK.searchNextStop(pane.items, at, dir);
         if (nx === at) {
-          if (dir < 0) { ss.focus = 'strip'; applyStrip(); renderList(); syncPreview(); return 1; }
+          if (dir < 0 && !ss.kb) { ss.focus = 'strip'; applyStrip(); renderList(); syncPreview(); return 1; } // (keyboard mode: the first row is the top)
           break;
         }
         at = nx; moved += 1;
@@ -986,6 +998,120 @@
       syncPreview();
       scheduleArt();
       return 1;
+    }
+    // ---- KEYBOARD SEARCH (v1.355, experimental: Settings > Mobile player, off by default) ---------------------
+    // With the flag on, Music > Search types with the phone's own keyboard. ONE invisible <input> per controller,
+    // in the BODY of the panel's document (W0 measured it: paint() rebuilds the panel, so nothing inside it keeps
+    // focus across a track change), laid over the query bar after every render, and focused (preventScroll)
+    // inside the very press that opens Search (iOS raises the keyboard only inside a gesture). Typing feeds the
+    // existing setQuery seam: one debounce, one fetch path. The Search key, Done or a tap outside put the
+    // keyboard down and the wheel walks the results; the center with nothing to act on, or a tap on the bar,
+    // brings it back up; MENU leaves Search. Every way out (MENU, Now Playing, a skin change, a dock, destroy)
+    // removes the input. The skins search stays on the strip.
+    var kb = null; // { input, pane, blurTimer, mo } while a keyboard-mode Search level is on screen
+    function kbWanted() { try { return !!(typeof cfg.keyboardSearch === 'function' && cfg.keyboardSearch()); } catch (_) { return false; } }
+    function kbUp() { return !!(kb && doc.activeElement === kb.input); }
+    // the keyboard is down: the wheel walks the results from their first row (the strip's GO), when there are any
+    function kbToList(pane) {
+      var f = SK.searchNextStop(pane.items, -1, 1);
+      if (f < 0 || !pane.items[f] || pane.items[f].info) return false;
+      pane.s.focus = 'list';
+      pane.cursor = f;
+      return true;
+    }
+    function kbKey(e) {
+      e.stopPropagation(); // the keys typed here are the query's alone: no page shortcut (Space, arrows, Escape) sees them
+      if (e.type === 'keydown' && (e.key === 'Enter' || e.keyCode === 13) && !e.isComposing) {
+        e.preventDefault();
+        try { e.target.blur(); } catch (_) { /* gone */ } // the keyboard's Search key: keyboard down
+      }
+    }
+    function kbInput(e) {
+      if (!kb || e.target !== kb.input) return;
+      if (e.type === 'input' && e.isComposing) return; // an IME word lands on compositionend
+      var pane = kb.pane;
+      if (!pane || !pane.s || curPane() !== pane) return;
+      var q = SK.searchFromTyped(kb.input.value);
+      if (kb.input.value !== q) kb.input.value = q; // capped or cleaned: the field holds exactly the query
+      setQuery(pane, q);
+    }
+    function kbBlur(e) {
+      if (!kb || e.target !== kb.input) return;
+      // One turn later: a tap on a result row blurs first and clicks second, and the click must land on the rows
+      // it was aimed at (re-drawing them here would swap them out from under it).
+      kb.blurTimer = cancel(kb.blurTimer);
+      kb.blurTimer = later(function () {
+        if (!kb) return;
+        kb.blurTimer = null;
+        var pane = kb.pane;
+        if (destroyed || kbUp() || !pane || curPane() !== pane || screen !== 'menu' || pane.s.focus === 'list') return;
+        if (kbToList(pane)) render();
+      }, 0);
+    }
+    function kbCreate() {
+      var i = doc.createElement('input');
+      i.type = 'text';
+      i.id = 'ipm-kb';
+      i.className = 'ui-field__input ipm-kb'; // the field primitive: its 16px font is the iOS no-zoom floor
+      i.setAttribute('autocomplete', 'off');
+      i.setAttribute('autocorrect', 'off');
+      i.setAttribute('autocapitalize', 'off');
+      i.setAttribute('spellcheck', 'false');
+      i.setAttribute('enterkeyhint', 'search');
+      i.setAttribute('aria-label', 'Search your music');
+      ['keydown', 'keypress', 'keyup'].forEach(function (t) { i.addEventListener(t, kbKey); });
+      i.addEventListener('input', kbInput);
+      i.addEventListener('compositionend', kbInput);
+      i.addEventListener('blur', kbBlur);
+      return i;
+    }
+    function kbPlace() {
+      if (!kb) return;
+      var bar = panel.querySelector('.ip-menuview .ipm-q');
+      if (!bar) return;
+      var r = bar.getBoundingClientRect();
+      var st = kb.input.style;
+      st.left = Math.round(r.left) + 'px';
+      st.top = Math.round(r.top) + 'px';
+      st.width = Math.round(r.width) + 'px';
+      st.height = Math.round(r.height) + 'px';
+    }
+    function kbRemove() {
+      if (!kb) return;
+      var k = kb;
+      kb = null; // first: the blur this causes is ours, not the user's
+      k.blurTimer = cancel(k.blurTimer);
+      if (k.mo) { try { k.mo.disconnect(); } catch (_) { /* gone */ } }
+      try { win.removeEventListener('resize', kbPlace); } catch (_) { /* a detached fixture window */ }
+      try { k.input.blur(); } catch (_) { /* gone */ }
+      if (k.input.parentNode) k.input.parentNode.removeChild(k.input);
+    }
+    // After every render: the input exists exactly while a keyboard-mode Search level is on screen.
+    function kbSync() {
+      var pane = (!destroyed && screen === 'menu' && style() && !trayUp()) ? curPane() : null;
+      var want = !!(pane && pane.node.type === 'search' && pane.s && pane.s.kb && panel.querySelector('.ip-menuview .ipm-q'));
+      if (!want) { kbRemove(); return; }
+      if (!kb) {
+        kb = { input: kbCreate(), pane: pane, blurTimer: null, mo: null };
+        kb.input.value = pane.s.q;
+        (doc.body || doc.documentElement).appendChild(kb.input);
+        try { win.addEventListener('resize', kbPlace); } catch (_) { /* a detached fixture window */ }
+        // the view can empty the panel without a render (a dock): the input goes with it
+        var MO = win.MutationObserver;
+        if (MO) {
+          kb.mo = new MO(function () { if (kb && !panel.querySelector('.ip-menuview .ipm-q')) kbRemove(); });
+          try { kb.mo.observe(panel, { childList: true }); } catch (_) { kb.mo = null; }
+        }
+      } else if (kb.pane !== pane) {
+        kb.pane = pane;
+        kb.input.value = pane.s.q;
+      }
+      kbPlace();
+    }
+    function kbFocus() {
+      if (!kb) return;
+      kbPlace();
+      try { kb.input.focus({ preventScroll: true }); } catch (_) { /* gone */ }
     }
     // Re-draw ONLY the rows (a scroll or a cursor step), keeping the list's own scroll offset.
     function renderList() {
@@ -1033,6 +1159,7 @@
         panel.classList.remove('mms-menumode');
         if (np && !panel.classList.contains('mms-listmode')) np.textContent = 'Now Playing';
         syncPreview();
+        kbSync(); // v1.355: no menu on screen - no keyboard-search input
         return;
       }
       var pane = curPane();
@@ -1077,6 +1204,7 @@
       applyJump();
       syncSlides();
       syncPreview();
+      kbSync(); // v1.355: keyboard search - the input follows the level on screen and the bar's place
       if (typeof o.marquee === 'function') o.marquee();
     }
 
@@ -1302,7 +1430,16 @@
       if (it.info) return; // About's rows are read-only
       pane.cursor = i;
       clearJump();
-      if (it.node) { stack.push(makeLevel(it.node)); render(); return; }
+      if (it.node) {
+        stack.push(makeLevel(it.node));
+        // v1.355: keyboard search (flag read NOW, so Settings needs no reload) - the level opens in keyboard mode
+        // and the input takes focus inside this same press, the only moment iOS will raise the keyboard
+        var kbOpen = it.node.type === 'search' && kbWanted();
+        if (kbOpen) curPane().s = { q: '', sc: 0, focus: 'strip', timer: null, err: false, kb: true };
+        render();
+        if (kbOpen) kbFocus();
+        return;
+      }
       if (it.action === 'nowplaying') { showNowPlaying(); return; }
       if (it.action === 'volume') { // v1.353: Speakers > Volume - Now Playing with the volume bar up
         showNowPlaying();
@@ -1434,7 +1571,7 @@
         clearJump();
         if (screen !== 'menu') { screen = 'menu'; render(); return true; }
         var sp = curPane();
-        if (isSearch(sp) && sp.s) { // MENU undoes the search first: results -> strip, then one letter at a time
+        if (isSearch(sp) && sp.s && !sp.s.kb) { // MENU undoes the search first: results -> strip, then one letter at a time (keyboard mode: MENU leaves)
           if (sp.s.focus === 'list') { sp.s.focus = 'strip'; applyStrip(); renderList(); syncPreview(); return true; }
           if (sp.s.q) { setQuery(sp, SK.searchEdit(sp.s.q, 'del')); return true; }
         }
@@ -1446,7 +1583,7 @@
         if (gridOpen) { closeGrid(); return true; }
         if (checkData()) { render(); return true; } // a stale level re-loads; never act on its old rows
         var p = curPane();
-        if (isSearch(p) && p.s && p.s.focus !== 'list') { searchPress(p); return true; }
+        if (isSearch(p) && p.s && p.s.focus !== 'list') { if (p.s.kb) kbFocus(); else searchPress(p); return true; } // v1.355: keyboard mode, nothing to act on - the keyboard comes back up
         activate(p ? p.cursor : 0);
         return true;
       },
@@ -1529,6 +1666,7 @@
       },
       destroy: function () {
         destroyed = true;
+        kbRemove(); // v1.355
         stack.forEach(function (l) { l.panes.forEach(function (pp) { if (pp.s) pp.s.timer = cancel(pp.s.timer); }); });
         syncPreview(); // a level torn down mid-preview hands the panel back to the saved skin
         artTimer = cancel(artTimer);

@@ -1534,6 +1534,35 @@ function rotateDebugApi() {
     uninstall: (typeof uninstallRotateDebug === 'function') ? uninstallRotateDebug : null,
   };
 }
+// v1.355: Settings > Mobile player > "Keyboard search (experimental)". The key and its reader are music-skins.js's
+// (KB_SEARCH_KEY, keyboardSearchOn), never re-typed here; '1' = on, removed = off (the default). Nothing else to
+// apply: the iPod reads the flag live each time Music > Search opens, so a change needs no reload.
+function pocketKbKey(w) {
+  const MS = w && w.FileTubeMusicSkins;
+  return MS && typeof MS.KB_SEARCH_KEY === 'string' ? MS.KB_SEARCH_KEY : null;
+}
+function loadPocketKbSearchControl(win) {
+  const w = win || window;
+  const check = w.document.getElementById('pocket-kb-search-check');
+  const key = pocketKbKey(w);
+  if (!check || !key) return;
+  let raw = null;
+  try { raw = w.localStorage.getItem(key); } catch (_) { /* storage disabled -- treat as off */ }
+  check.checked = raw === '1';
+}
+function wirePocketKbSearchControl(win, signal) {
+  const w = win || window;
+  const check = w.document.getElementById('pocket-kb-search-check');
+  if (!check) return;
+  check.addEventListener('change', (e) => {
+    const key = pocketKbKey(w);
+    if (!key) return;
+    try {
+      if (e.target.checked) w.localStorage.setItem(key, '1');
+      else w.localStorage.removeItem(key);
+    } catch (_) { /* storage disabled/full -- best-effort only */ }
+  }, signal ? { signal } : undefined);
+}
 function loadDebugRotateControl(win) {
   const w = win || window;
   const check = w.document.getElementById('debug-rotate-check');
@@ -2998,6 +3027,7 @@ function wireStaticControls(signal) {
   }
 
   wireDebugRotateControl(window, signal); // v1.355: the rotate debug log, applied at once (loadDebugRotateControl)
+  wirePocketKbSearchControl(window, signal); // v1.355: Mobile player > Keyboard search (experimental)
 
   // v1.45.6 (Dean): per-page sort — a CLIENT toggle (localStorage), like the
   // debug-lifecycle overlay above. Prefill from + persist via the common.js
@@ -4804,6 +4834,7 @@ function init(root) {
   loadResumeThresholdControl();
   loadDebugLifecycleControl();
   loadDebugRotateControl(window); // v1.355
+  loadPocketKbSearchControl(window); // v1.355: Mobile player > Keyboard search
   // v1.246: open-audio-in-music toggle retired (audio always opens in the skin).
   loadHomeRowControl('home-continue-watching-check', 'ft-home-continue-watching');
   loadHomeRowControl('tv-continue-watching-check', 'ft-tv-continue-watching'); // v1.198.2: reflect-on-load (the v1.193 lesson)
@@ -4875,6 +4906,7 @@ if (typeof module !== 'undefined' && module.exports) {
     wireChapterSnapLeadIn,
     // v1.355: Settings > Troubleshooting > Show rotate debug log (jsdom-bound against the real common.js log).
     loadDebugRotateControl, wireDebugRotateControl,
+    loadPocketKbSearchControl, wirePocketKbSearchControl, // v1.355: Mobile player > Keyboard search
     // Click wheel test — the pure metering core (boundary- and
     // cross-lock-tested in wheel-cal-metering.test.js; the DOM/native-switch
     // shell is device-validated).

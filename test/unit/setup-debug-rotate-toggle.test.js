@@ -192,3 +192,45 @@ test('v1.355 A: setup.html has the "Show rotate debug log" switch directly after
   assert.match(note, /device-local/);
   assert.ok(rot.closest('details[data-collapse-key="troubleshooting"]'), 'in Troubleshooting');
 });
+
+// ---- the wiring on the REAL Settings page: wireStaticControls() binds the switch, init() prefills it ----
+test('v1.355 A: the real setup.html switch, wired by the real wireStaticControls(), installs and uninstalls the log', () => {
+  const shell = Object.assign({}, require('../../public/js/glyph-pool.js'), common, {
+    homeFeedEnabled: () => false, modernModeEnabled: () => false, applyHomeFeedPref() {}, applyModernModePref() {},
+    initDebugLifecycleFlag() {}, setPerPageSortEnabled() {}, isPerPageSortEnabled: () => false,
+    setActionStatus() {}, showToast() {}, setButtonBusy() {}, applyCustomLogoIfSet() {}, wireReorderable() {},
+  });
+  const dom = new JSDOM(SETUP_HTML, { url: 'http://localhost/setup.html', pretendToBeVisual: true });
+  const w = dom.window;
+  w.requestAnimationFrame = () => 1;
+  const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch };
+  const borrowed = Object.keys(shell).filter((k) => !(k in global));
+  for (const k of borrowed) global[k] = shell[k];
+  Object.assign(global, { window: w, document: w.document, localStorage: w.localStorage, fetch: () => new Promise(() => {}) });
+  const ac = new w.AbortController();
+  setup.__setFolderStateForTests({ controller: ac, folders: [], settings: {} });
+  try {
+    setup.wireStaticControls(ac.signal);
+    flip(w, true);
+    assert.strictEqual(w.localStorage.getItem('ft-debug-rotate'), '1');
+    assert.ok(Array.isArray(w.__ftRotateLog), 'live in this window, no reload');
+    flip(w, false);
+    assert.strictEqual(w.localStorage.getItem('ft-debug-rotate'), null);
+    assert.strictEqual(w.__ftRotateLog, undefined, 'down at once');
+  } finally {
+    ac.abort();
+    setup.__setFolderStateForTests({ controller: null });
+    common.uninstallRotateDebug(w);
+    Object.assign(global, saved);
+    for (const k of borrowed) delete global[k];
+    w.close();
+  }
+});
+
+test('v1.355 A: init() prefills the switch (loadDebugRotateControl) beside the lifecycle one', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'setup.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  const init = /\nfunction init\(root\) \{([\s\S]*?)\n\}/.exec(src);
+  assert.ok(init, 'init(root) found');
+  assert.match(init[1], /\n\s*loadDebugLifecycleControl\(\);\s*\n\s*loadDebugRotateControl\(window\);/);
+});
