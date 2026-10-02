@@ -402,6 +402,40 @@ only the phone can say). The rotate log (W1, now with sy/vvo/vs/ae) is the instr
    jsdom window's).
 
 
+### Gate r1 fix round (fix 5aac5619)
+
+All tests named below are in `test/unit/pocket-kb-search.test.js`. Mutants were run on 5aac5619 in a `b355r2-` sandbox
+(`git archive`, exact-once, restored, sandbox diff identical); all 12 are red (fail=1 or 2 of 29).
+
+| finding | fix | bound by (test name) | mutant -> red |
+|---|---|---|---|
+| A1 = Q1 (input steals taps from the sticker menu) | `.ipm-kb` `pointer-events:none`, the above-the-skin z-index removed; `onPanelClick`: a tap on `[data-skin-searchbar]` in keyboard mode calls `kbFocus()` inside the click | "a tap on the query bar brings the keyboard back up, inside the tap (the input itself takes no taps)" + kb-search-proof rows `barTap` / `stickerMenu` | Q1a bar tap without focus, Q1b branch removed, Q1c the old z-index and no pointer-events: red |
+| A2 (one-turn hand-over unbound) | (code unchanged) | "a tap on a result row while the keyboard is up plays it: the blur that comes first never redraws the rows under the tap" | X3 (hand-over synchronous): red, plus the re-entry test |
+| Q2 (teardown handles unbound) | (code unchanged); the overclaiming comment in the placement test reworded | "the input's resize listener and panel observer are taken back on MENU, Now Playing, a dock and destroy (never one more per entry)"; "a blur's hand-over timer never acts on a later input (blur, then a dock, then back on Search before it fires)" | M1 (no removeEventListener resize), M2 (no mo.disconnect), M6 (no blurTimer cancel): red |
+| A3 (Enter during IME) | `kbKey` also skips `keyCode 229` | "Enter while an IME is composing (isComposing, or WebKit's keyCode 229) is the IME's confirm, not the Search key" | X2 (both guards dropped), X2b (229 dropped): red on the behaviour test (and the census needle) |
+| A5 (emoji claim false) | the cap counts grapheme clusters via `Intl.Segmenter` (code points without it); the comment says so | "searchFromTyped: ... at most 40 characters as a reader counts them" (a flag, a ZWJ family, the fallback with `Intl.Segmenter` deleted) | A5a (Segmenter skipped), A5b (UTF-16 units in the fallback): red |
+| Q4 (stale comments) | setup.js names `loadDebugLifecycleControl, below`; settings-forms-sweep's lead comment says 28 then 30 | (comments) | - |
+| Q3 / A7 (unbound guards) | REMOVED as unreachable: `kbInput`'s `curPane() !== pane` (kbSync removes the input whenever the level changes), `kbSync`'s `!trayUp()` (render's no-menu branch removes the menu view, so the bar it keys on is gone), `kbSync`'s `kb.pane !== pane` re-bind arm (X8, dead) | the tray is bound by behaviour: "the pop-out tray (no menu shown) takes the input away; the menu back brings it back" | - (no guard left to mutate) |
+| A4 (census by text, not phase) | the census now parses each classified add/removeEventListener call and checks its real phase (bubble vs capture: a last argument `true` or `capture: true`) | "R9 census: ..." (phase-checked 14+ calls) | A4 (music.js's Escape listener flipped to `capture: true`, = adversary X20): red |
+| A6 (rotate panel over the wheel) | DEVICE-CHECKS v1.355 keyboard line: tap the panel's top edge to copy, turn the log off to use the wheel's bottom | - | - |
+| Q5 (cancelAnimationFrame unexercised) | not taken (optional; `h.stopped` carries the behaviour) | - | - |
+| X5 / X6 (adversary NOTE) | not changed: kbBlur's later-guards and kbFocus's kbPlace stay as belts | - | - |
+
+**Real browser** (`node tools/listen-control-proof/kb-search-proof.js`, exit 0, 6/6 ok, copied from
+`kb-search-proof-out.json`). Each flag-ON row: keyboard down (Enter) -> `barTap.hitAtBar` "ipm-q" (the input is not hit)
+-> a real tap at the bar's center -> `activeAfter` "input#ipm-kb". Then the sticker menu opened by a real tap ->
+`stickerMenu.open` true, rect [12,187,320,595] at 393x852 / [12,23,320,574] at 375x667, `inputs` 1, `hitAtBar` a menu
+node ("menu: ..."), and after a real tap at the bar `activeAfterTap` "body" (393x852) / "button" (375x667), never
+the input. `unmoved` stays {focus: true, typing: true} on all four rows.
+
+**Suites at 5aac5619** (`npm test`, sequential): Node 22.23.1 `# tests 10752`, `# pass 10740`, `# fail 0`,
+`# cancelled 0`, `# skipped 12`, SUITE_EXIT 0. Node 24.20.0 `ℹ tests 10752`, `ℹ pass 10740`, `ℹ fail 0`,
+`ℹ cancelled 0`, `ℹ skipped 12`, SUITE_EXIT 0. Targeted files (pocket-kb-search, pocket-search,
+setup-debug-rotate-toggle, settings-forms-sweep, setup-automation-reveal, setup-advanced-pages,
+setup-debug-lifecycle-toggle, setup-sticker-picker, pocket-phone-scope): 140 tests, 140 pass, 0 fail. `npm run lint:ui`:
+"ui-lint: OK - the live debt equals docs/ui-exceptions.json"; overlay-containment: "clean (0 violations)"; eslint: 0
+errors.
+
 ## 8. Device checks owed (to DEVICE-CHECKS.md at release)
 
 - v1.355.0 - In the HOME-SCREEN app: Settings > Troubleshooting > Show rotate debug log ON, go to Music, turn the phone: the green
