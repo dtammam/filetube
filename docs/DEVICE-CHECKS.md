@@ -3,7 +3,7 @@
 One list of what Dean taps on his phone or desktop to confirm a release, grouped by area. Each line
 carries the version that introduced it. A release appends its checks here instead of adding a tracker
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
-ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture).
+ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.360.0 checks).
 
 ## Whole app, layout and dialogs
 
@@ -14,6 +14,13 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
   in this release; the log names the cause. (2026-10-02: Dean's screen recording measured the turn frame by frame; see
   ROADMAP Planned > Bugs, "Pocket turn". The log is still wanted for the fix.) v1.357.0 changed the turn: its check is under "Turn and speaker highlight" below, and covers this one. Since v1.355.0 this can be done in the
   HOME-SCREEN app: Settings > Troubleshooting > Show rotate debug log (no URL bar needed).
+
+## The black picture after a pause (v1.360.0)
+
+- [ ] v1.360.0 - iPhone, a video inline in the watch page, Background audio for video ON, Ambient on: pause and unpause 20 times (picture taps, the bar's button, a double-tap in some), the first pause right after it starts by itself. The picture never goes black, or, if it does, it comes back by itself within about 6 seconds. Same in a Safari tab and the home-screen app.
+- [ ] v1.360.0 - The same in full screen, then in the mini player (scroll down so it docks, pause/play there).
+- [ ] v1.360.0 - Background audio still works: let a video start by itself, pause (once by tapping the picture, once with the bar's button), unpause, then lock the phone: the sound carries on and the lock screen shows the video's title. (Disclosed: if you never paused it before locking, the first lock may only pause; pause and play once, then lock again.)
+- [ ] v1.360.0 - If it ever goes black again: open `?debugLifecycle=1`, make it go black, wait 15 s, screenshot the panel. A `video:heal` line with no `video:heal-ok` after it, or no `video:heal` line at all, is the next clue; also try once with Background audio for video OFF.
 
 ## Mobile player edge to edge (v1.359.0)
 
@@ -64,8 +71,6 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
 
 ## Only if it comes back
 
-- [ ] v1.336 - The black picture on resume from the background: capture `?debugLifecycle=1` (the
-  `video:check` line), with Ambient off too, and once with only the bar's play button.
 - [ ] v1.344.2 - On the phone, a video with chapters: watch to the middle of a later chapter, tap Listen;
   it carries on from that spot in that chapter (not chapter 1). Then Watch again: still the same spot.
   Repeat PAUSED: pause on Watch, tap Listen (still paused, same spot), then Watch (still paused).
