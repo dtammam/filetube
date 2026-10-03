@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: plan/black-screen-after-pauses
 anchor: outcome
 status: Draft
-next: Dean answers section 7 (the 2-minute Ambient A/B and the on-device capture), then W0 (headless repro, no product code) runs on a feat/ branch cut from main; this branch carries the plan only
+next: H1 falsified by Dean's Ambient-off run (2026-10-03). Dean sends the Step B capture (section 7); W0 (headless repro for H3/H4, no product code) can start on a feat/ branch cut from main now; this branch carries the plan only
 gate: pending
 ---
 
@@ -227,6 +227,7 @@ ROADMAP Shipped and the bug marked, DEVICE-CHECKS (section 8 below), tracker #28
 video 10 times (picture taps, then 10 more using only the bar's play button). Does it ever go black?
 - Never black with Ambient off, but black with it on: H1 is confirmed to first order; the fix is about the glow.
 - Black with Ambient off too: H1 is dead; H2/H3/H4/H5 stay, and the next step matters.
+- **RESULT (Dean, 2026-10-03): Ambient OFF, pause/unpause/pause, still goes black. H1 is falsified** (the glow is not the cause; its start/stop is not what drops the layer). Remaining: H2 (video layer dropped by a rapid pause burst), H3 (an opaque element inside the wrapper, which rides the dock), H4 (gesture layer), H5 (background-audio sidecar), H6 (the v1.359 stage clip, only if the bug predates it: Dean's first report was on the pre-v1.359 build, so H6 is unlikely). Next: Step B on device, and the headless W0 for H3/H4.
 
 **Step B (the on-device capture, if Step A does not close it, or for any recurrence):**
 1. Note: iPhone model and iOS version, Safari tab or home-screen app, Dark mode on or off, Ambient on or off, Background audio for
