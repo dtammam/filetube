@@ -3,9 +3,9 @@ plan: tap-glyph-filter
 harness: v2 · lean
 branch: fix/v1.361-tap-glyph
 anchor: outcome
-status: Building (v1.361.0)
-next: build done; the gate (adversary + qa, same HEAD), then the release
-gate: pending
+status: Shipped v1.361.0
+next: Dean's v1.361.0 device checks (DEVICE-CHECKS.md); black again after picture taps = no glyph over the video next
+gate: APPROVED r3 @417bd0bf (adversary + qa) (the player overlay CSS, a revert of the player core to v1.359, the no-filter lock; security-brief applied as a section by both)
 ---
 
 # v1.361: the tap glyph loses its shadow, and v1.360 is undone
