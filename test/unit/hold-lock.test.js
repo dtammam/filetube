@@ -317,3 +317,15 @@ test('R6: no lock where the hold does not work (docked)', async () => {
   h.p.dock();
   assert.strictEqual(h.badge.classList.contains('is-locked'), false);
 });
+
+test('after an unlock a plain hold behaves as before: its lift releases to the prior rate, and it can lock again', async () => {
+  const h = await boot(VIDEO);
+  h.v.playbackRate = 1.5;
+  await locked(h);
+  h.badge.dispatchEvent(new h.w.Event('click', { bubbles: true }));
+  assert.strictEqual(h.v.playbackRate, 1.5);
+  await holdDown(h, 200, 100);
+  fire(h.w, h.v, 'touchend', 200, 100);
+  assert.strictEqual(h.v.playbackRate, 1.5, 'a plain hold lifted: back to the prior rate');
+  await locked(h);
+});

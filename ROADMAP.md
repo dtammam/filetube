@@ -446,6 +446,8 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ### 🐞 Bugs
 
+- [ ] **Bug: the mobile video player, when not fullscreen, should span the iPhone viewport side to side like YouTube** (Dean, 2026-10-03, next wave: "The video player on mobile when not full screen should expand to the size of the full iPhone viewport side to side (right now there is a gap). It should mirror YouTube in that sense."). Measure the gutter (watch container padding, player stage margin, safe-area insets) at iPhone widths before and after; the picture goes edge to edge, the title and actions below keep their gutter. Look reference: YouTube's mobile watch page, side by side.
+
 - [ ] **Bug: the music player's pop-out is glitchy at the iPad / desktop viewport and opens no new tab** (Dean, 2026-10-03: "glitchiness with iPad / desktop viewport when trying to pop out music player, doesn't open in new tab. Not a pop out"). Not yet reproduced; first measure the pop-out path at an iPad-width viewport and find why no window opens.
 
 - [x] **Bug: tapping an iOS PWA notification opens Music but does not start the song** - ✅ SHIPPED v1.334.0 (not a regression: iOS refuses to start audio in a page a notification opened; the player now shows Tap to play) (Dean,
@@ -547,6 +549,16 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.358.0 - Drag down while holding the 2x to lock it (2026-10-03)
+
+- Hold the picture for 2x, drag down 48 px (more down than sideways), lift: the 2x stays and the pill shows a lock; the pill (tap or
+  Enter/Space) unlocks to the prior rate. The lock ends, with no rate write, on a speed pick; it ends with the rate restored on a
+  dock, close, a new load, a second finger or cancel of the locking gesture, and the page going hidden. Never touches
+  defaultPlaybackRate or ft-rate. The drag is claimed by a non-passive touchmove on the player wrapper (measured in Chromium: on the
+  video itself it stays non-cancelable and the page scrolls). Also fixed: a live hold no longer hands the background-audio sidecar 2x.
+- Step zero: the critter-mode "v1.176 gate W closure" flake was geometry (a 0.67 % shallow peek that clears the dock), not leaked
+  timers; the test now puts the card wholly inside the dock (3000/3000 seeds). Tracker #178 and the #238 line updated.
 
 ### v1.357.0 - The turn back upright lands in one step, and the speaker's song is marked (2026-10-02)
 

@@ -4763,7 +4763,8 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // Mutable hold-to-2x state, module-scope so dock()/close() can force-release
   // it (previously per-view closures; now must survive/reset across the
-  // persistent host's whole lifetime).
+  // persistent host's whole lifetime). v1.358: a drag down while held LOCKS it (holdLocked), so holdActive can
+  // outlive the finger that engaged it.
   var holdTimer = null;
   var holdActive = false;
   var prevRate = 1;
@@ -4816,10 +4817,6 @@ if (typeof module !== 'undefined' && module.exports) {
     return (mediaPlayer && mediaPlayer.defaultPlaybackRate) || 1;
   }
 
-  function holdLockAllowed() {
-    return state === STATE_FULL && !inNativeFullscreen() && !inNativeControlsMode();
-  }
-
   function setHoldLockUi(on) {
     if (!speedBadge) return;
     speedBadge.classList.toggle('is-locked', !!on);
@@ -4835,7 +4832,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function lockHold() {
-    if (!holdActive || !holdGestureLive || holdLocked || !holdLockAllowed()) return;
+    if (holdLocked) return;
     holdLocked = true;
     setHoldLockUi(true);
   }
