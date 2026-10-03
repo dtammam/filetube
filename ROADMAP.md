@@ -549,7 +549,8 @@ Kept verbatim for the record - the full release story lives in Shipped below.
   frozen-picture watchdog and its seek are gone, with their tests). Both failed on the device: the prime was not the cause, and a
   seek does not revive the picture.
 - Lock: `test/unit/player-overlay-no-filter.test.js` fails on any `filter`, `backdrop-filter`, mask or blend in any stylesheet rule
-  that names the player, the video or an overlay in it (red on v1.360's stylesheet), and binds the disc. SUITES_LINE
+  that names the player, the video or an overlay in it (red on v1.360's stylesheet), and binds the disc. Suites at
+  15518480: Node 22.23.1 and 24.20.0 `npm test` 10837 tests, 10825 pass, 0 fail, 12 skipped.
 - Disclosed: the shadow is the suspect, not proven; only the device can say. If picture taps still black it out, the next step is
   no glyph over the video (the opacity / scale flash itself), not a recovery. The disc is a small look change on the audio cover
   art too (the same glyph).
