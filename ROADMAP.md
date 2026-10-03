@@ -554,7 +554,8 @@ Kept verbatim for the record - the full release story lives in Shipped below.
   the pause tap is the prime, and his log shows its sidecar pause at the very tap after which the frame count froze.
 - Tests: 30 in `test/unit/black-picture-watchdog.test.js` (the pure decisions, and the real player.js in jsdom through its real
   touch, click and media events with a hand-driven clock, every sidecar play/pause recorded with the video's paused state); every
-  mutant red after the gate r1 fix round (two guards no state could reach were removed instead of kept untested). SUITES_LINE
+  mutant red after the gate r1 fix round (two guards no state could reach were removed instead of kept untested). Suites at bfc7843a: Node 22.23.1 and
+  24.20.0 `npm test` 10865 tests, 10853 pass, 0 fail, 12 skipped.
 - Gate: adversary + qa, CHANGES r1 (the bar's play press still primed under the playing video, a variable-frame-rate still was
   healed, one frame read as a successful heal, per-load resets untested, a placeholder), all fixed in r2.
 - Disclosed: NOT verified on an iPhone (4 device checks owed in DEVICE-CHECKS.md); whether WebKit drops the video layer when a
