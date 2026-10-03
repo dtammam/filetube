@@ -3466,5 +3466,11 @@
     "date": "2026-10-03",
     "title": "The phone video now runs edge to edge",
     "intent": "On a phone, the video in the watch page now fills the screen from side to side, like YouTube, with no gap or outline around it. The title and buttons below keep their margin, and desktop, the mini player and full screen look as before."
+  },
+  {
+    "version": "1.360.0",
+    "date": "2026-10-03",
+    "title": "A fix for the video that goes black after a pause",
+    "intent": "On iPhone, a video could turn black after you paused and resumed it while the sound kept playing. The player no longer starts its hidden background sound player at the moment you pause, which is the likely cause, and if the picture still freezes after you resume it now nudges the video back to life by itself. Not yet confirmed on a phone; if it still happens, tell us."
   }
 ]

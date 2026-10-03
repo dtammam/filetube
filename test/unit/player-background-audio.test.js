@@ -248,14 +248,14 @@ test('primeBackgroundAudioElement() exists and is one-shot per load (bgAudioGest
   assert.match(body, /bgAudioEl\.play\(\)/);
 });
 
-test('the ppBtn click handler primes BEFORE calling togglePlayPause (same synchronous gesture)', () => {
+test('the ppBtn click handler primes on a PAUSE press, AFTER togglePlayPause paused the video (v1.360; same synchronous gesture)', () => {
   const match = /ppBtn\.addEventListener\('click', function \(\) \{([\s\S]*?)\n {6}\}\);/.exec(PLAYER_JS);
   assert.ok(match, 'expected to find the ppBtn click listener\'s source body');
-  const body = match[1];
+  const body = match[1].split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
   const primeIdx = body.indexOf('primeBackgroundAudioElement();');
   const toggleIdx = body.indexOf('togglePlayPause();');
   assert.ok(primeIdx !== -1 && toggleIdx !== -1);
-  assert.ok(primeIdx < toggleIdx, 'priming must happen before togglePlayPause() inside the same gesture callback');
+  assert.ok(toggleIdx < primeIdx, 'v1.360: the pause runs first, so the prime never plays the sidecar under a playing video (behaviour bound in black-picture-watchdog.test.js)');
 });
 
 test('mediaPlayer has a touchstart (capture-phase, passive) listener priming for the native-controls path', () => {
