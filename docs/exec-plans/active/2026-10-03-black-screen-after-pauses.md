@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: plan/black-screen-after-pauses
 anchor: outcome
 status: Draft
-next: H1 falsified by Dean's Ambient-off run (2026-10-03). Dean sends the Step B capture (section 7); W0 (headless repro for H3/H4, no product code) can start on a feat/ branch cut from main now; this branch carries the plan only
+next: EVIDENCE 1 (section 7) makes H2 the leader (frames stop reaching the video layer after a pause/unpause, sound is the video's own). Owed from Dean: black on screen at that moment? did tap / seek / rotate / reload recover it? was the mini player black? Then W1/W2 design a recovery for H2 on a feat/ branch; this branch carries the plan only
 gate: pending
 ---
 
@@ -228,6 +228,8 @@ video 10 times (picture taps, then 10 more using only the bar's play button). Do
 - Never black with Ambient off, but black with it on: H1 is confirmed to first order; the fix is about the glow.
 - Black with Ambient off too: H1 is dead; H2/H3/H4/H5 stay, and the next step matters.
 - **RESULT (Dean, 2026-10-03): Ambient OFF, pause/unpause/pause, still goes black. H1 is falsified** (the glow is not the cause; its start/stop is not what drops the layer). Remaining: H2 (video layer dropped by a rapid pause burst), H3 (an opaque element inside the wrapper, which rides the dock), H4 (gesture layer), H5 (background-audio sidecar), H6 (the v1.359 stage clip, only if the bug predates it: Dean's first report was on the pre-v1.359 build, so H6 is unlikely). Next: Step B on device, and the headless W0 for H3/H4.
+
+**EVIDENCE 1 (Dean's ?debugLifecycle=1 capture, 2026-10-03, Ambient off, amb=0 lock=0, inline, 1920x960, pm=inline):** the video is playing (p=0, rs=4 HAVE_ENOUGH_DATA, ns=2) and its clock runs (`t` 1.9 -> 8.0 -> 12.2 -> 25.2) but the frame counter is FROZEN at `f=64/0` from 6 frames after the unpause to the last line, 23 s later; the `video:check` line reads `+f=0 +t=6.4 fser=0,0,0,0,0,0` (flat while `t` runs). The sequence: autostart, `video:pause` at f=58, `video:playing` 1 s later, ~6 more frames, then `video:stalled` repeatedly with no frame progress. Per the code's own reading rule (player.js, formatVideoStateDetail): flat `fser` while `t` runs = no frames reach the AVPlayerLayer, or there is no layer. `bgp=1` (the sidecar is paused) and `act=video`, `mu=0 vol=1.00`: the sound is the VIDEO's own, so H5 (sidecar holds the sound) is out. `pm=inline`: iOS did not move it to a native presentation. What this does and does not settle: it falsifies H1 (amb=0) and points away from H3/H4 (a DOM overlay or gesture layer would leave the frame counter climbing; this one is not climbing), and makes H2 the leader: the video layer stops receiving frames after a pause/unpause. Not settled: whether the picture was black on screen at that moment, whether tap/seek/rotate/reload recovered it, and whether the dock was black (still owed from Dean); `dom:check` (W1) would still be the instrument that proves no overlay.
 
 **Step B (the on-device capture, if Step A does not close it, or for any recurrence):**
 1. Note: iPhone model and iOS version, Safari tab or home-screen app, Dark mode on or off, Ambient on or off, Background audio for
