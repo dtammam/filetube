@@ -370,6 +370,74 @@ Mutants of the guards 12.4 names, re-run in a `git archive` sandbox: 14 of 15 re
 - Security: client-only; the log sink is `textContent` (player.js 4780) and every new detail is numbers via `toFixed`; no
   injection surface.
 
+Gate: CHANGES r2 @68abb354 - qa
+
+Measured at 68abb354 (Node 22.23.1): eslint on player.js and the two touched tests, exit 0, no output; `node --test` on
+black-picture-watchdog, player-background-audio and hold-lock: tests 171, pass 171, fail 0. My r1 mutants re-run in a `git archive`
+sandbox (watchdog + background-audio tests): `frozenHeals = 0` dropped, `frozenClimbed = false` dropped and the gave-up line
+disabled each go red (fail 1). Also red: the heal-ok strictness (`n.frames >` instead of `climbedFrom`), the session-climb branch,
+`pm === 'inline'`, `frozenSince = n` after a heal, the three `frozenGaveUp` lines, the prime guard (fail 3).
+
+r1 findings: W1 fixed as prescribed (the second- and third-load test, the gave-up line asserted). W2 fixed differently and better
+(only a session whose count has not climbed is judged; the residual, a VFR video resumed on a still, is disclosed in 12.3 and the
+ROADMAP). W3 disclosed as prescribed (12.3 falsifiers, both ROADMAP entries), and the bar's play press no longer primes at all.
+W4 fixed as prescribed (heal-ok needs `climbedFrom` on the heal reading, every tick). W5 fixed. S1-S6 fixed as written. The ppBtn
+order is right: `play()` sets `paused` false synchronously, so the prime's guard refuses a play press; a pause press primes under
+the paused video. Comments in the rewritten block, the prime and ppBtn are true against the code. No em dashes in added lines.
+
+- WARNING W6 (two new guards unbound; the r1 class again): two one-line mutants stay green (30/30 watchdog, 149/149 with the
+  background-audio file). (a) Drop `frozenHealFrom = null` after heal-ok: a probe test (heal, then 10 healthy seconds) logs
+  `video:heal-ok` 10 times, not once, and the watch keeps ticking. (b) Replace `if (!frozenHealFrom) stopFrozenPictureWatch();`
+  with nothing: the VFR test passes because its 10 s still keeps the session average above 5 fps (90 frames / 13 s); with a 40 s
+  still after 3 s of motion the mutant heals (my probe: red under the mutant, green on the real code). The production code is
+  right in both; the tests do not hold it. Fix: assert exactly one heal-ok line in the heal-ok test, and lengthen the VFR still
+  (40 s). It blocks only because of the next item.
+- WARNING W7 (lying docs, again): 12.5 says "Mutants after the fix ... all red" and the ROADMAP v1.360.0 entry says "every mutant
+  red after the gate r1 fix round", which W6 makes false; the ROADMAP also says "all fixed in r2" before r2 has a verdict.
+  Fix: bind W6 (then the claims hold), and write the gate line after the verdicts.
+- SUGGESTION S7: 12.3 item 1 says the prime "never plays or pauses the sidecar while the video is playing", but the falsifier
+  paragraph below it (rightly) says the picture's play tap can overlap if the sidecar's `play()` resolves later than the 350 ms
+  tap debounce. Add "except" to item 1 so the acceptance does not contradict its own disclosure.
+- SUGGESTION S8: the bar's PAUSE press now primes (new): the muted sidecar play is the last media play on the page after a pause
+  (LESSONS 5 "TWO parallel media elements": any play on a second element affects iOS now-playing). The same thing happened before
+  v1.360 on the picture's first touch of a paused video, so it is not a new class, but the DEVICE-CHECKS lock check is worth doing
+  after a BAR pause as well as after a picture pause.
+- SUGGESTION S9: the ROADMAP Shipped "Tests:" bullet has one line far past the wrap width ("... kept untested). Suites at
+  bfc7843a: Node 22.23.1 and").
+- Security: unchanged from r1; client-only, numeric log details; no surface.
+
+Gate: CHANGES r2 @68abb354 - adversary
+
+Measured: `npm test` in a fresh clone at 68abb354, Node 22.23.1 and 24.20.0 each: 10865 tests, 10853 pass, 0 fail, 12 skipped.
+My r1 survivors re-run in a clone at 68abb354 (watchdog + background-audio tests): `frozenHeals = 0` and `frozenClimbed = false`
+dropped, `r.right > 0`, `r.left < vw`, `r.top < vh` dropped, and `df >= minFrames` dropped: all six red. New-branch mutants red:
+`pm === 'inline'`, the three `frozenGaveUp` lines, the session-climb branch, `frozenSince = n` after a heal, the climb read at the
+pause, the heal-ok and gave-up log lines, the prime guard, and the ppBtn order (prime-then-toggle) and ppBtn no-prime (fail 2 each).
+Survivors: drop `frozenHealFrom = null` after heal-ok, and drop the session stop (both = qa W6, concur); drop `n.ok` from the heal-ok
+test and drop `frozenHealFrom = null` on gave-up (no behaviour change found).
+
+r1 findings: A1 fixed as prescribed (toggle then prime; my r1 probe now records every sidecar play/pause with the video paused,
+and a play press does not prime). A2 fixed differently: the r1 webm readings run through the real runtime now give 0 seeks in one
+session; the residual (resumed on a still: my readings give 1 seek) is disclosed. A3 fixed (one frame after a heal: no heal-ok,
+second heal, gave-up). A4 fixed (all six survivors red). A5 fixed. A6 fixed. A7 fixed and bound. A8 not changed, argued; accepted.
+
+- WARNING A9 (NEW in the fix, measured): the session-climb stop gives up on a freeze too early. It ends judging for the session
+  once the count climbs 10 frames at 5 fps from the `playing` reading, and that can happen on the first ~2 s cached refresh. Repro
+  (jsdom, the committed harness): first play climbs, pause, `playing`, then one tick +0, one tick +12 frames, then 20 s flat with
+  the clock running: r2 = 0 seeks and the watch stopped; the same input on b6b8bb34 = 2 heals. So if the layer takes about 0.4 s of
+  frames after the resume and then freezes, it is never healed, and it is not disclosed. (Dean's capture showed 6 frames after the
+  resume, so his run would still heal, by 4 frames.) Fix, verified in the clone: the session is healthy only after a SUSTAINED climb,
+  `if (frozenSession && n.t - frozenSession.t >= FROZEN_MIN_ADVANCE_S && climbedFrom(frozenSession, n))`. With it, all 30 tests
+  pass; the 12-frame repro heals (2); the r1 webm in one session still gets 0 seeks; the resumed-on-a-still residual is unchanged (1).
+  Add the 12-frame repro as a test.
+- Concur qa W6 (the two unbound guards; I found the same two), W7 (the "every mutant red" and "all fixed in r2" claims) and S7-S9.
+- SUGGESTION A10 (measured in jsdom; the device timing is a suspicion): a bar pause press, then a play press before the prime's
+  `play()` resolves, runs the sidecar's `pause()` under the playing video (recorded: sidecar play with the video paused, then
+  sidecar pause with the video playing). Synchronous in jsdom; on a phone it needs a second press inside the sidecar's play
+  latency. Rare, and the prime must still pause its own play, so there is no cheap guard: disclose it next to the 350 ms
+  overlap.
+- Security: unchanged; client-only, numeric details, `textContent` sink.
+
 ## 12. v1.360: the static review (H8) and Dean's ruling - the fix ships without a device repro
 
 ### 12.1 The static review (Opus reviewer, 2026-10-03, read-only at main 4c366600)
