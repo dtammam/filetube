@@ -4198,7 +4198,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // iPhone, so besides removing the suspected trigger (primeBackgroundAudioElement) this watches
   // for that exact state and, when it holds, re-seeks the video in place to its own position: a
   // seek makes the player decode and present a fresh frame. Phones only, video only, the video
-  // element only (never the sidecar), on screen only, at most FROZEN_HEALS_PER_LOAD times per
+  // element only (never the sidecar: a handoff pauses it), on screen only, at most FROZEN_HEALS_PER_LOAD times per
   // load, so a misread can cost at most that many in-place seeks. Every heal and its outcome is
   // a ?debugLifecycle=1 line (video:heal, video:heal-ok), so the next capture says if it worked.
   // Reads the same counter as the v1.336 instrument (getVideoPlaybackQuality; never
@@ -4226,9 +4226,10 @@ if (typeof module !== 'undefined' && module.exports) {
       var vw = window.innerWidth || 0, vh = window.innerHeight || 0;
       onScreen = !!(r && r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < vw && r.top < vh);
     } catch (_) { onScreen = false; }
+    // (No separate sidecar / audio-mode test: a handoff pauses the video and only runs hidden, and
+    // audio-mode is only ever set on an audio item, which frozenWatchEligible already refuses.)
     var ok = !!(v && !v.paused && !v.ended && !v.seeking && v.readyState >= 2 && v.videoWidth > 0
-      && document.visibilityState === 'visible' && onScreen
-      && activeMediaElement() === v && !(host && host.classList.contains('audio-mode')));
+      && document.visibilityState === 'visible' && onScreen);
     return { frames: q ? q.totalVideoFrames : null, t: v ? v.currentTime : null, at: Date.now(), ok: ok };
   }
   function frozenWatchEligible() {

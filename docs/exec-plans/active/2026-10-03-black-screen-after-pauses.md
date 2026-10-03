@@ -338,3 +338,13 @@ gates missed the state (read the `video:check` line); black with Background audi
   `teardownMediaState`.
 - `test/unit/black-picture-watchdog.test.js`: the pure decisions by invocation; the real player.js in jsdom (the hold-lock harness)
   through its real touch / click / media events with a hand-driven clock and interval.
+- Mutants (a scratchpad copy of the committed tree, one at a time, `node --test test/unit/black-picture-watchdog.test.js`):
+  25 tried. First pass 1041fb4f: 18 tried, 14 killed; survivors M9 (no climb read at the pause), M16 (the active-element
+  test), M17 (the audio-mode test), M18 (the paused test). Second pass: M9 and M18 bound by two new tests (Dean's f 1 -> 58 in
+  1.9 s first play; a paused read with no pause event). M16 and M17 REMOVED, not bound: a handoff pauses the video and runs only
+  hidden (both already gated), and audio-mode is only set on an audio item (already refused). M19-M25 (seeking, readyState,
+  videoWidth, the audio-item gate, the ended / emptied listeners, the generation check after close) survived until bound by six
+  new tests, then all killed. The prime guard (M1, M2 = the guard consuming the one-shot) and the climb, advance, window, cap,
+  visibility, on-screen, desktop, listeners, teardown stop, the heal write and the heal-ok line are each red when mutated.
+  Final: 20 tests, every mutant red.
+- Deviation (none of the acceptance changed): the ok-gate lost its sidecar and audio-mode clauses (above), with a comment.

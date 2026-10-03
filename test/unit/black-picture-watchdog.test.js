@@ -60,7 +60,7 @@ let dom = null;
 afterEach(() => { if (dom) { dom.window.close(); dom = null; } });
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function boot(settings) {
+async function boot(settings, item) {
   dom = new JSDOM(WATCH, { url: 'http://localhost/watch.html?v=v1', runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   Object.defineProperty(w.navigator, 'platform', { value: 'iPhone' });
@@ -91,16 +91,17 @@ async function boot(settings) {
   w.eval(PLAYER_SRC);
   const slot = w.document.createElement('div'); slot.id = 'player-slot'; w.document.body.appendChild(slot);
   const p = w.FileTube.player;
-  assert.strictEqual(p.load('v1', { id: 'v1', title: 'T', type: 'video', ext: '.mp4' }, { slot }), true, 'the real player loaded the item');
+  const it = item || { id: 'v1', title: 'T', type: 'video', ext: '.mp4' };
+  assert.strictEqual(p.load(it.id, it, { slot }), true, 'the real player loaded the item');
   await wait(60);
   const v = w.document.getElementById('media-player');
   // The video's media state, owned by the test.
-  const st = { paused: false, frames: 0, t: 0, seeks: [] };
+  const st = { paused: false, frames: 0, t: 0, seeks: [], seeking: false, readyState: 4, videoWidth: 640 };
   Object.defineProperty(v, 'paused', { get: () => st.paused, configurable: true });
   Object.defineProperty(v, 'ended', { get: () => false, configurable: true });
-  Object.defineProperty(v, 'seeking', { get: () => false, configurable: true });
-  Object.defineProperty(v, 'readyState', { get: () => 4, configurable: true });
-  Object.defineProperty(v, 'videoWidth', { get: () => 640, configurable: true });
+  Object.defineProperty(v, 'seeking', { get: () => st.seeking, configurable: true });
+  Object.defineProperty(v, 'readyState', { get: () => st.readyState, configurable: true });
+  Object.defineProperty(v, 'videoWidth', { get: () => st.videoWidth, configurable: true });
   Object.defineProperty(v, 'currentTime', { get: () => st.t, set: (x) => { st.seeks.push(x); st.t = x; }, configurable: true });
   v.getVideoPlaybackQuality = () => ({ totalVideoFrames: st.frames, droppedVideoFrames: 0 });
   v.getBoundingClientRect = () => ({ left: 0, top: 0, width: 400, height: 225, right: 400, bottom: 225 });
@@ -248,4 +249,62 @@ test('watchdog: with ?debugLifecycle=1 on, the heal and its outcome are log line
   const ok = types.findIndex((s) => /^video:heal-ok f=\d+ t=[\d.]+ n=1$/.test(s));
   assert.ok(heal !== -1, 'video:heal logged: ' + types.join(' | '));
   assert.ok(ok > heal, 'video:heal-ok logged after it');
+});
+
+test('watchdog: a first play too short for a tick to see the climb still counts (the pause reading proves it; Dean\'s f 1 -> 58 in 1.9 s)', async () => {
+  const h = await boot({});
+  h.st.frames = 1;
+  fireMedia(h, 'playing');
+  h.clock.now += 1000; h.st.t += 1; h.live().forEach((x) => x.fn()); // the cached copy has not refreshed yet
+  h.clock.now += 900; h.st.t += 0.9; h.st.frames = 58;
+  h.st.paused = true;
+  fireMedia(h, 'pause');
+  h.st.paused = false;
+  fireMedia(h, 'playing');
+  for (let i = 0; i < 6; i++) h.second(0);
+  assert.strictEqual(h.st.seeks.length, 1, 'healed: the climb was seen at the pause');
+});
+
+test('watchdog: a video that reads paused is never healed, even if no pause event arrived', async () => {
+  const h = await frozenAfterResume();
+  h.st.paused = true;
+  for (let i = 0; i < 20; i++) h.second(0);
+  assert.deepStrictEqual(h.st.seeks, []);
+});
+
+for (const [what, set] of [
+  ['seeking', (st) => { st.seeking = true; }],
+  ['readyState below 2 (no current frame data)', (st) => { st.readyState = 1; }],
+  ['no picture size (videoWidth 0)', (st) => { st.videoWidth = 0; }],
+]) {
+  test('watchdog: no heal while ' + what, async () => {
+    const h = await frozenAfterResume();
+    set(h.st);
+    for (let i = 0; i < 20; i++) h.second(0);
+    assert.deepStrictEqual(h.st.seeks, []);
+  });
+}
+
+test('watchdog: never for an audio item', async () => {
+  const h = await boot({}, { id: 'a1', title: 'A', type: 'audio', ext: '.mp3' });
+  fireMedia(h, 'playing');
+  assert.strictEqual(h.live().length, 0);
+});
+
+test('watchdog: ended stops it, and so does closing the player', async () => {
+  const h = await frozenAfterResume();
+  fireMedia(h, 'ended');
+  assert.strictEqual(h.live().length, 0, 'ended');
+  h.st.seeks.length = 0; // the ended cascade's own rewind to 0 is not the watchdog's
+  fireMedia(h, 'playing');
+  assert.strictEqual(h.live().length, 1);
+  fireMedia(h, 'emptied');
+  assert.strictEqual(h.live().length, 0, 'emptied (the src went away)');
+  fireMedia(h, 'playing');
+  assert.strictEqual(h.live().length, 1);
+  h.p.close();
+  h.second(0);
+  assert.strictEqual(h.live().length, 0, 'closed: the next tick sees the new generation and stops');
+  for (let i = 0; i < 20; i++) h.second(0);
+  assert.deepStrictEqual(h.st.seeks, []);
 });
