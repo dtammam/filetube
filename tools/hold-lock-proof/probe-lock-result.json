@@ -1,0 +1,75 @@
+{
+ "runAt": "2026-10-03T02:52:25.266Z",
+ "runs": [
+  {
+   "tg": "media-player. < player-wrapper.player-container < player-slot. < div.watch-player-stage < div.watch-main < div.watch-container < view-root. < main-content.main-content < div.app-container < body. < html.ft-custom-logo",
+   "tm": "1,1,0 1,1,0 1,1,0 1,1,0 1,1,0 1,1,0 1,1,0 1,1,0 1,1,0 1,1,0 1,1,0",
+   "scenario": "scrollY0",
+   "scrollDuringDrag": [
+    0,
+    0
+   ],
+   "locked": {
+    "rate": 2,
+    "hidden": false,
+    "cls": "speed-badge is-locked",
+    "role": "button",
+    "pe": "auto",
+    "rect": {
+     "x": 153,
+     "y": 85,
+     "w": 84,
+     "h": 32
+    },
+    "glyph": {
+     "w": 18,
+     "h": 18,
+     "display": "block"
+    },
+    "hitIsPill": true,
+    "scrollY": 0
+   },
+   "afterPillTap": {
+    "rate": 1,
+    "hidden": true,
+    "cls": "speed-badge"
+   },
+   "errs": []
+  },
+  {
+   "tg": "media-player. < player-wrapper.player-container < player-slot. < div.watch-player-stage < div.watch-main < div.watch-container < view-root. < main-content.main-content < div.app-container < body. < html.ft-custom-logo",
+   "tm": "1,1,40 1,1,40 1,1,40 1,1,40 1,1,40 1,1,40 1,1,40 1,1,40 1,1,40 1,1,40 1,1,40",
+   "scenario": "scrollY40",
+   "scrollDuringDrag": [
+    40,
+    40
+   ],
+   "locked": {
+    "rate": 2,
+    "hidden": false,
+    "cls": "speed-badge is-locked",
+    "role": "button",
+    "pe": "auto",
+    "rect": {
+     "x": 153,
+     "y": 45,
+     "w": 84,
+     "h": 32
+    },
+    "glyph": {
+     "w": 18,
+     "h": 18,
+     "display": "block"
+    },
+    "hitIsPill": true,
+    "scrollY": 40
+   },
+   "afterPillTap": {
+    "rate": 1,
+    "hidden": true,
+    "cls": "speed-badge"
+   },
+   "errs": []
+  }
+ ]
+}

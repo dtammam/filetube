@@ -43,6 +43,17 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
 - [ ] v1.357.0 - Play on a speaker PC, pick a song from an album, MENU back to the album: the speaker's song is marked; when the PC
   moves to the next song, the mark moves too.
 
+## Hold to speed up, lock (v1.358.0)
+
+- [ ] v1.358.0 - Settings > Mobile player > custom player controls ON. Play a video full screen: press and hold the picture (2x), drag
+  your finger down a little, lift: it stays at 2x and the pill shows a lock. Tap the picture: it pauses and plays as usual, still
+  2x. Tap the pill: back to normal speed. A plain hold and lift still goes back to normal on its own.
+- [ ] v1.358.0 - Lock 2x, then lock the phone or switch apps and come back: normal speed (with background audio on, the sound in the
+  background is normal speed too). Lock 2x, then open the next item or dock the player: normal speed. Lock 2x, then pick a speed
+  from the speed menu: that speed wins and the pill goes.
+- [ ] v1.358.0 - In a Safari tab and in the home-screen app, lock 2x on a video in a page that scrolls (not full screen), and on the
+  audio file's art: the page does not scroll or refresh while you hold and drag. Chromium only was measured.
+
 ## Only if it comes back
 
 - [ ] v1.336 - The black picture on resume from the background: capture `?debugLifecycle=1` (the

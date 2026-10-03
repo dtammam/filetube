@@ -1652,6 +1652,11 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   pointer-events: none;
 }
 
+/* v1.358: the locked 2x pill is a control (tap or Enter/Space unlocks); the lock glyph shows only then. */
+.speed-badge__lock { display: none; }
+#speed-badge.is-locked { pointer-events: auto; }
+#speed-badge.is-locked .speed-badge__lock { display: inline-block; }
+
 /* Double-tap ripple feedback */
 .skip-ripple {
   position: absolute;

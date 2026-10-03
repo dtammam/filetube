@@ -29,6 +29,8 @@ const NAMES = [
   'picture_in_picture_alt', 'closed_caption', 'speed', 'volume_up', 'volume_off',
   // Watch later (v1.343): the clock
   'schedule',
+  // the locked 2x pill (v1.358)
+  'lock',
 ];
 
 const FILL = ['notifications', 'notifications_active', 'push_pin', 'keep', 'thumb_up', 'favorite', 'star',
