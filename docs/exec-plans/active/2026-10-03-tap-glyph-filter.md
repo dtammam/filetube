@@ -170,3 +170,86 @@ Mutants against the new lock (a copy of public/css + watch.html + the test, one 
 backdrop, `.speed-badge` backdrop, `.player-resumed` -webkit-backdrop, `.skip-controls` filter, `#skip-ripple-left` blend,
 `video` filter, `FILTER:` on the glyph, `-webkit-mask-box-image` / `mask-border` on `#media-player`, a filter inside `@media`,
 `.art-play-glyph { background: none }` after the disc, `#player-controls` backdrop: 11 of 11 red. Pristine: 3 pass.
+
+### qa r2 @1e2d6bee (delta 45bf97a2..1e2d6bee)
+
+Instruments (Node 22.23.1): `npm run lint:ui` "ui-lint: OK - the live debt equals docs/ui-exceptions.json" (token-exempt 202,
+2 keys); `overlay-containment-lint --enforce` "overlay-containment: clean (0 violations)"; eslint on the lock exit 0; lock +
+player-background-audio + era-player-skins: 132 tests, 132 pass, 0 fail, 0 skipped. `git diff 4c366600 HEAD -- public/js/player.js
+test/unit/player-background-audio.test.js` still 0 bytes. No em dashes added in the delta. Lock mutants (sandbox, git archive of
+1e2d6bee): baseline 3/3; RED on the W1 frosted resume chip (`.player-resumed { -webkit-backdrop-filter; backdrop-filter }`),
+`.speed-badge { backdrop-filter }`, `.player-container::after { FILTER }` (upper case), `video { -webkit-mask-size }` inside
+`@supports { @media { } }`, a later `.art-play-glyph { background: none }`, and a `-webkit-filter` on the pause-glyph rule (2 red).
+
+- W1 FIXED as prescribed (net derived from the template; the derivation bound by test 1).
+- W2 FIXED: LESSONS 7 says "is the suspect ... (unconfirmed at release)"; ROADMAP adds "the suspect" and the disclosure stands.
+- S1 FIXED (v1.361.0). S2 FIXED-differently and fine: the rule is folded into the base rule with an accurate comment, and the
+  0.3 / 0.5 mode dependence is disclosed (ROADMAP, DEVICE-CHECKS "a little darker in dark mode") rather than changed. S3 FIXED
+  (the tip is kept in the LESSONS 7 bullet).
+- Pause-bar margin: verified by arithmetic. The flex box is 10px + margin wide and the painted pair spans 28px, so its centre is
+  offset 9 - margin/2: the old 8px (--space-4) put it 5px right, and 8 + 10 (--space-5) = 18px centres it. The comment is accurate.
+  This is a disclosed look change (ROADMAP, DEVICE-CHECKS).
+- W3 NEW (introduced by the fix: the derivation's mechanism is not what its comment and the docs say)
+  `test/unit/player-overlay-no-filter.test.js:27-44`. The depth walk counts tag-like text inside HTML comments: watch.html:388 has
+  `<video controls>` and :420 has `<video id="media-player">` inside `<!-- -->`. Depth is off by 2, so the walk never stops at the
+  wrapper's `</div>` and runs on to line 593 (`</body>`). Measured: the net is 42 ids and 56 classes, including `bottom-nav`,
+  `bottom-nav-item`, `nav-playlists-btn` and `nav-theme-toggle`, which are outside `#player-wrapper`. With comments stripped it is 39
+  ids and 49 classes, the bottom nav drops out, and the lock stays 3/3. Failure scenarios:
+  (a) Measured: `.bottom-nav { backdrop-filter: blur(12px) }` fails the lock as a "player" rule, while the test comment, LESSONS:153
+  and ROADMAP's Lock line say the net is "every id and class in `#player-wrapper`".
+  (b) Reasoned: the converse. A future comment in the wrapper with closing-tag text (say `</div>`) ends the walk early and silently
+  drops every name after it. Test 1 binds only 5 ids and 5 classes, so most of those drops would pass.
+  Fix: strip `<!--[\s\S]*?-->` before the walk, and assert the walk ended at the wrapper's own close (for example, `bottom-nav`
+  is NOT in the net). If the fixed bottom nav (which can sit over a scrolled video) belongs in the net, add it to HOSTS deliberately
+  with that reason, and say so in the docs.
+  This is fail-safe today (over-inclusive: no player filter can slip through), but it is a lying mechanism comment and doc claim,
+  and the fix is two lines.
+
+Gate: CHANGES r2 @1e2d6bee - qa
+
+### adversary r2 @1e2d6bee (delta 45bf97a2..1e2d6bee)
+
+Measured (Node 22.23.1, a scratchpad clone of 1e2d6bee, one mutant at a time, restored from HEAD). Baseline: the lock passes 3/3.
+I did not re-run the full suite. The walker, run on all 9 shells and compared with a jsdom parse of each `#player-wrapper`:
+8 shells match exactly (86 names each; the walk stops at the wrapper's close, `</template>` next). watch.html does NOT: the walk
+runs on to `</body>`, adding `bottom-nav`, `nav-playlists-btn`, `nav-theme-toggle`, `ui-btn--md`, `ui-btn--stack`,
+`bottom-nav-item`, `ui-btn__icon`, `ui-icon--lg`, `bottom-nav-label`. Every shell's template holds the same 86 names, so reading
+only watch.html is fine. No icon mask lands in the net (the lock is green on the real CSS).
+
+- W1 FIXED, verified: all six r1 mutants are now red (`.player-container::after` backdrop, `.speed-badge` backdrop,
+  `.player-resumed` -webkit-backdrop, `.skip-controls` filter, `#skip-ripple-left` blend, `video` filter).
+- W2 FIXED: `FILTER:` red, `-WEBKIT-FILTER:` red (2 tests each).
+- W3 FIXED: LESSONS 7 now says "is the suspect ... (unconfirmed at release)".
+- S1 FIXED for the exact selector (`.art-play-glyph { background: none }` red). Still green: `#art-play-glyph { background: none }`
+  and `.player-container .art-play-glyph { background: none }`. This remains a SUGGESTION, not blocking.
+- S2 FIXED: `-webkit-mask-box-image` and `mask-border` red. `clip-path` stays out by ruling; acceptable.
+- S3 FIXED: --space-4 (8px) + --space-5 (10px) = 18px, so the laid-out 10 + 18 = 28px equals the painted 28px pair. Checked by
+  arithmetic, not rendered. Unlocked: reverting the margin keeps the lock 3/3. Suggestion only.
+- S4 FIXED.
+
+New:
+- W4 (concur qa r2 W3, measured independently) `test/unit/player-overlay-no-filter.test.js:27-44`: the depth walker counts tag
+  text inside HTML comments (watch.html `<video controls>` in the 'Standard video player' comment). So it does not stop at the
+  wrapper. `.bottom-nav { backdrop-filter: blur(10px) }` and `.ui-btn--md:hover { filter: brightness(1.1) }` (an app-wide class)
+  are red as "player" rules. Converse: a `</div></div>` inside a wrapper comment ends the walk early. Test 1's required list
+  caught my placement, but it binds only 10 names. Fix: strip comments before the walk (LESSONS 76: once, at read), and assert
+  the walk ended at the wrapper (`bottom-nav` absent).
+- W5 (enumeration gap: elements built by JS) the net is the TEMPLATE, but player.js builds overlays into the host at runtime that
+  the template never names. Each of these stays 3/3 green:
+  - `.cc-overlay { backdrop-filter: blur(6px) }`: the captions overlay, appended to the host at player.js:2774-2780 and drawn
+    over the playing video whenever CC is on. A frosted caption box is a likely restyle.
+  - `.cc-overlay-text { -webkit-backdrop-filter }`.
+  - `.seek-preview { backdrop-filter }` (player.js:2786-2797, inside `.player-controls`).
+  - `#player-slot { filter: blur(1px) }`: the watch view's host parent (watch.html:231). It is an ANCESTOR of the video, so a
+    filter there is on the video, yet HOSTS lists the dock and fs-stage only.
+
+  LESSONS:153 and ROADMAP's Lock line ("every id and class in `#player-wrapper`") read as "everything inside the player", and
+  that is false for these. Fix: add the JS-built classes (`cc-overlay`, `cc-overlay-text`, `seek-preview*`, `seek-chapters`,
+  `chapter-now`, `player-dock-close`) and `player-slot` / `reader-player-slot` to the net. Best is to derive them, e.g. from the
+  `className = '...'` writes in player.js's host-building block. Then add a mutant per name.
+- S5 over-breadth by design: template classes such as `ui-btn`, `ui-icon` and `ui-btn--plain` are app-wide, so the lock forbids
+  a filter on ANY `.ui-btn` rule anywhere (e.g. a hover `filter: brightness`). It is fail-safe and green today. Document it, or
+  match only compound selectors that also carry a player-specific name.
+- Security: no change from r1 (none).
+
+Gate: CHANGES r2 @1e2d6bee - adversary
