@@ -3,9 +3,9 @@ plan: black-screen-after-pauses
 harness: v2 · lean
 branch: feat/v1.360-black-picture (plan carried from plan/black-screen-after-pauses)
 anchor: outcome
-status: Building (v1.360.0)
-next: section 12 - build done, then the gate (adversary + qa + security-brief, same HEAD), then the release
-gate: pending
+status: Shipped v1.360.0
+next: Dean's 4 device checks (DEVICE-CHECKS.md, v1.360.0); if black returns, read section 12.3's falsifiers
+gate: APPROVED r3 @5db173ea (adversary + qa) (the shared player core: the background-audio prime and a new watchdog; security-brief applied as a section by both)
 ---
 
 # Black picture after pause / unpause / pause: assess it, then fix the mechanism it names
