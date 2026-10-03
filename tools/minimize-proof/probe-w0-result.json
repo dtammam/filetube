@@ -1,0 +1,378 @@
+{
+ "runAt": "2026-10-03T22:47:11.906Z",
+ "item1": {
+  "dock": {
+   "x": 222,
+   "y": 468,
+   "w": 160,
+   "h": 116
+  },
+  "state": "docked",
+  "close": {
+   "rect": {
+    "x": 354,
+    "y": 472,
+    "w": 24,
+    "h": 24
+   },
+   "gridPoints": 961,
+   "hits": 121,
+   "hitSpanW": 24,
+   "hitSpanH": 24,
+   "otherDockPoints": 425
+  },
+  "pp": {
+   "rect": {
+    "x": 226,
+    "y": 560.5,
+    "w": 22,
+    "h": 22
+   },
+   "gridPoints": 961,
+   "hits": 105,
+   "hitSpanW": 22,
+   "hitSpanH": 22,
+   "otherDockPoints": 394
+  },
+  "centreHit": "media-player"
+ },
+ "item2": [
+  {
+   "scenario": "scrollY0 claim=none",
+   "scrollBefore": 0,
+   "scrollAfter": 0,
+   "moves": 14,
+   "cancelable": 1,
+   "prevented": 0,
+   "touchcancel": 0,
+   "pausedAfter": false,
+   "perMove": "1,0,202,0 0,0,212,0 0,0,222,0 0,0,232,0 0,0,242,0 0,0,252,0 0,0,262,0 0,0,272,0 0,0,282,0 0,0,292,0 0,0,302,0 0,0,312,0 0,0,322,0 0,0,332,0"
+  },
+  {
+   "scenario": "scrollY0 claim=pdAfter12",
+   "scrollBefore": 0,
+   "scrollAfter": 0,
+   "moves": 14,
+   "cancelable": 14,
+   "prevented": 14,
+   "touchcancel": 0,
+   "pausedAfter": false,
+   "perMove": "1,1,202,0 1,1,212,0 1,1,222,0 1,1,232,0 1,1,242,0 1,1,252,0 1,1,262,0 1,1,272,0 1,1,282,0 1,1,292,0 1,1,302,0 1,1,312,0 1,1,322,0 1,1,332,0"
+  },
+  {
+   "scenario": "scrollY0 claim=pdFromFirst",
+   "scrollBefore": 0,
+   "scrollAfter": 0,
+   "moves": 14,
+   "cancelable": 14,
+   "prevented": 14,
+   "touchcancel": 0,
+   "pausedAfter": false,
+   "perMove": "1,1,202,0 1,1,212,0 1,1,222,0 1,1,232,0 1,1,242,0 1,1,252,0 1,1,262,0 1,1,272,0 1,1,282,0 1,1,292,0 1,1,302,0 1,1,312,0 1,1,322,0 1,1,332,0"
+  },
+  {
+   "scenario": "scrollY40 claim=none",
+   "scrollBefore": 40,
+   "scrollAfter": 0,
+   "moves": 12,
+   "cancelable": 1,
+   "prevented": 0,
+   "touchcancel": 0,
+   "pausedAfter": false,
+   "perMove": "1,0,162,40 0,0,172,25 0,0,192,15 0,0,212,0 0,0,222,0 0,0,232,0 0,0,242,0 0,0,252,0 0,0,262,0 0,0,272,0 0,0,282,0 0,0,292,0"
+  },
+  {
+   "scenario": "scrollY40 claim=pdFromFirst",
+   "scrollBefore": 40,
+   "scrollAfter": 0,
+   "moves": 12,
+   "cancelable": 1,
+   "prevented": 0,
+   "touchcancel": 0,
+   "pausedAfter": false,
+   "perMove": "1,0,162,40 0,0,172,25 0,0,192,15 0,0,212,0 0,0,222,0 0,0,232,0 0,0,242,0 0,0,252,0 0,0,262,0 0,0,272,0 0,0,282,0 0,0,292,0"
+  }
+ ],
+ "item3": {
+  "ancestors": [
+   {
+    "el": "div#player-wrapper.player-container.ff-mobile",
+    "flags": {
+     "overflowX": "hidden",
+     "overflowY": "hidden",
+     "position": "relative"
+    }
+   },
+   {
+    "el": "div#player-slot",
+    "flags": {}
+   },
+   {
+    "el": "div.watch-player-stage",
+    "flags": {
+     "overflowX": "clip",
+     "position": "relative",
+     "zIndex": "0"
+    }
+   },
+   {
+    "el": "div.watch-main",
+    "flags": {}
+   },
+   {
+    "el": "div.watch-container",
+    "flags": {}
+   },
+   {
+    "el": "div#view-root",
+    "flags": {}
+   },
+   {
+    "el": "main#main-content.main-content",
+    "flags": {}
+   },
+   {
+    "el": "div.app-container",
+    "flags": {}
+   },
+   {
+    "el": "body",
+    "flags": {}
+   },
+   {
+    "el": "html.ft-custom-logo.is-phone",
+    "flags": {
+     "overflowX": "clip"
+    }
+   }
+  ],
+  "fixedDescendantsInline": []
+ },
+ "item5": [
+  {
+   "gesture": "drag150",
+   "at500ms": {
+    "path": "/watch.html?v=clip1",
+    "state": "docked",
+    "src": "/video/clip1",
+    "paused": false,
+    "t": 3.5,
+    "parent": "player-dock",
+    "depth": 0,
+    "cls": "player-container ff-mobile"
+   },
+   "at2500ms": {
+    "path": "/watch.html?v=clip1",
+    "state": "docked",
+    "src": "/video/clip1",
+    "paused": false,
+    "t": 5.5,
+    "parent": "player-dock",
+    "depth": 0,
+    "cls": "player-container ff-mobile"
+   },
+   "clicks": [],
+   "advancing": true
+  },
+  {
+   "gesture": "flick",
+   "at500ms": {
+    "path": "/watch.html?v=clip1",
+    "state": "docked",
+    "src": "/video/clip1",
+    "paused": false,
+    "t": 2.6,
+    "parent": "player-dock",
+    "depth": 0,
+    "cls": "player-container ff-mobile"
+   },
+   "at2500ms": {
+    "path": "/watch.html?v=clip1",
+    "state": "docked",
+    "src": "/video/clip1",
+    "paused": false,
+    "t": 4.6,
+    "parent": "player-dock",
+    "depth": 0,
+    "cls": "player-container ff-mobile"
+   },
+   "clicks": [],
+   "advancing": true
+  },
+  {
+   "gesture": "tap",
+   "at500ms": {
+    "path": "/watch.html?v=clip1",
+    "state": "docked",
+    "src": "/video/clip1",
+    "paused": true,
+    "t": 2.3,
+    "parent": "player-dock",
+    "depth": 0,
+    "cls": "player-container ff-mobile"
+   },
+   "at2500ms": {
+    "path": "/watch.html?v=clip1",
+    "state": "docked",
+    "src": "/video/clip1",
+    "paused": true,
+    "t": 2.3,
+    "parent": "player-dock",
+    "depth": 0,
+    "cls": "player-container ff-mobile"
+   },
+   "clicks": [],
+   "advancing": false
+  }
+ ],
+ "item6": [
+  {
+   "flow": "home-watch-back",
+   "log": [
+    [
+     "before",
+     {
+      "path": "/watch.html?v=clip1",
+      "state": "full",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 2.7,
+      "parent": "player-slot",
+      "depth": 1,
+      "cls": "player-container ff-mobile"
+     }
+    ],
+    [
+     "after800",
+     {
+      "path": "/",
+      "state": "docked",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 3.5,
+      "parent": "player-dock",
+      "depth": 0,
+      "cls": "player-container ff-mobile"
+     }
+    ],
+    [
+     "after2800",
+     {
+      "path": "/",
+      "state": "docked",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 5.5,
+      "parent": "player-dock",
+      "depth": 0,
+      "cls": "player-container ff-mobile"
+     }
+    ]
+   ],
+   "errs": []
+  },
+  {
+   "flow": "deeplink-navigate-home",
+   "log": [
+    [
+     "before",
+     {
+      "path": "/watch.html?v=clip1",
+      "state": "full",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 3.3,
+      "parent": "player-slot",
+      "depth": 0,
+      "cls": "player-container ff-mobile"
+     }
+    ],
+    [
+     "after800",
+     {
+      "path": "/",
+      "state": "docked",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 4.1,
+      "parent": "player-dock",
+      "depth": 0,
+      "cls": "player-container ff-mobile"
+     }
+    ],
+    [
+     "after2800",
+     {
+      "path": "/",
+      "state": "docked",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 6.2,
+      "parent": "player-dock",
+      "depth": 0,
+      "cls": "player-container ff-mobile"
+     }
+    ]
+   ],
+   "errs": []
+  },
+  {
+   "flow": "home-watch2-watch1-back",
+   "log": [
+    [
+     "on clip2",
+     {
+      "path": "/watch.html?v=clip2",
+      "state": "full",
+      "src": "/video/clip2",
+      "paused": false,
+      "t": 1.2,
+      "parent": "player-slot",
+      "depth": 1,
+      "cls": "player-container ff-mobile"
+     }
+    ],
+    [
+     "before",
+     {
+      "path": "/watch.html?v=clip1",
+      "state": "full",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 2.8,
+      "parent": "player-slot",
+      "depth": 2,
+      "cls": "player-container ff-mobile"
+     }
+    ],
+    [
+     "after800",
+     {
+      "path": "/watch.html?v=clip2",
+      "state": "full",
+      "src": "/video/clip2",
+      "paused": false,
+      "t": 0.7,
+      "parent": "player-slot",
+      "depth": 1,
+      "cls": "player-container ff-mobile"
+     }
+    ],
+    [
+     "after2800",
+     {
+      "path": "/watch.html?v=clip2",
+      "state": "full",
+      "src": "/video/clip2",
+      "paused": false,
+      "t": 2.7,
+      "parent": "player-slot",
+      "depth": 1,
+      "cls": "player-container ff-mobile"
+     }
+    ]
+   ],
+   "errs": []
+  }
+ ]
+}
