@@ -3454,5 +3454,11 @@
     "date": "2026-10-02",
     "title": "The turn back upright settles in one step, and your speaker's song is marked",
     "intent": "Turning your phone from sideways back upright no longer leaves the iPod sitting too low under the status bar for a moment; it lands in place in one step. When you are playing on a speaker computer and go back to the album or list you picked from, the song the computer is playing is now marked, and the mark moves when the computer goes to the next song."
+  },
+  {
+    "version": "1.358.0",
+    "date": "2026-10-03",
+    "title": "Hold to speed up, then drag down to lock it",
+    "intent": "Press and hold the picture to play at 2x, and now slide your finger down a little before letting go: the video stays at 2x and the speed pill shows a lock. Tap the pill to go back to normal speed. Picking a speed from the menu, closing or docking the player, or leaving the app also ends it. A video playing with the screen off no longer carries a held 2x along."
   }
 ]

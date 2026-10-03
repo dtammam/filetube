@@ -1,0 +1,282 @@
+{
+ "runAt": "2026-10-03T01:26:28.653Z",
+ "note": "Chromium (iPhone 13 emulation, CDP touch), real server; 12 touchMoves of 12px after a 750ms hold. Not WebKit: iOS is a device check.",
+ "runs": [
+  {
+   "name": "baseline",
+   "scenario": "inline_scrollY0",
+   "touchmoveCount": 11,
+   "cancelableSample": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "scrollBefore": 0,
+   "scrollAfterDrag": 0,
+   "preventDefaultCalls": 0,
+   "rateAfterDrag": 2,
+   "rateAfterEnd": 1,
+   "ratedDuringHold": 2,
+   "touchActionChain": [
+    "body:manipulation"
+   ],
+   "faux": false
+  },
+  {
+   "name": "baseline",
+   "scenario": "inline_scrollY_gt0",
+   "touchmoveCount": 10,
+   "cancelableSample": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "scrollBefore": 40,
+   "scrollAfterDrag": 0,
+   "preventDefaultCalls": 0,
+   "rateAfterDrag": 2,
+   "rateAfterEnd": 1,
+   "ratedDuringHold": 2,
+   "touchActionChain": [
+    "body:manipulation"
+   ],
+   "faux": false
+  },
+  {
+   "name": "baseline",
+   "scenario": "faux_fullscreen",
+   "touchmoveCount": 11,
+   "cancelableSample": [
+    true,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "scrollBefore": 0,
+   "scrollAfterDrag": 0,
+   "preventDefaultCalls": 0,
+   "rateAfterDrag": 2,
+   "rateAfterEnd": 1,
+   "ratedDuringHold": 2,
+   "touchActionChain": [
+    "body:manipulation"
+   ],
+   "faux": true
+  },
+  {
+   "name": "a_touch_action_class",
+   "scenario": "inline_scrollY0",
+   "touchmoveCount": 11,
+   "cancelableSample": [
+    true,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "scrollBefore": 0,
+   "scrollAfterDrag": 0,
+   "preventDefaultCalls": 0,
+   "rateAfterDrag": 2,
+   "rateAfterEnd": 1,
+   "ratedDuringHold": 2,
+   "touchActionChain": [
+    "body:manipulation"
+   ],
+   "faux": false
+  },
+  {
+   "name": "a_touch_action_class",
+   "scenario": "inline_scrollY_gt0",
+   "touchmoveCount": 10,
+   "cancelableSample": [
+    true,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "scrollBefore": 40,
+   "scrollAfterDrag": 0,
+   "preventDefaultCalls": 0,
+   "rateAfterDrag": 2,
+   "rateAfterEnd": 1,
+   "ratedDuringHold": 2,
+   "touchActionChain": [
+    "body:manipulation"
+   ],
+   "faux": false
+  },
+  {
+   "name": "a_touch_action_class",
+   "scenario": "faux_fullscreen",
+   "touchmoveCount": 11,
+   "cancelableSample": [
+    true,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "scrollBefore": 0,
+   "scrollAfterDrag": 0,
+   "preventDefaultCalls": 0,
+   "rateAfterDrag": 2,
+   "rateAfterEnd": 1,
+   "ratedDuringHold": 2,
+   "touchActionChain": [
+    "body:manipulation"
+   ],
+   "faux": true
+  },
+  {
+   "name": "b_lazy_nonpassive",
+   "scenario": "inline_scrollY0",
+   "touchmoveCount": 11,
+   "cancelableSample": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "scrollBefore": 0,
+   "scrollAfterDrag": 0,
+   "preventDefaultCalls": 11,
+   "rateAfterDrag": 2,
+   "rateAfterEnd": 1,
+   "ratedDuringHold": 2,
+   "touchActionChain": [
+    "body:manipulation"
+   ],
+   "faux": false
+  },
+  {
+   "name": "b_lazy_nonpassive",
+   "scenario": "inline_scrollY_gt0",
+   "touchmoveCount": 10,
+   "cancelableSample": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "scrollBefore": 40,
+   "scrollAfterDrag": 0,
+   "preventDefaultCalls": 10,
+   "rateAfterDrag": 2,
+   "rateAfterEnd": 1,
+   "ratedDuringHold": 2,
+   "touchActionChain": [
+    "body:manipulation"
+   ],
+   "faux": false
+  },
+  {
+   "name": "b_lazy_nonpassive",
+   "scenario": "faux_fullscreen",
+   "touchmoveCount": 11,
+   "cancelableSample": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ],
+   "scrollBefore": 0,
+   "scrollAfterDrag": 0,
+   "preventDefaultCalls": 11,
+   "rateAfterDrag": 2,
+   "rateAfterEnd": 1,
+   "ratedDuringHold": 2,
+   "touchActionChain": [
+    "body:manipulation"
+   ],
+   "faux": true
+  },
+  {
+   "name": "c_permanent_nonpassive",
+   "scenario": "inline_scrollY0",
+   "touchmoveCount": 11,
+   "cancelableSample": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ],
+   "scrollBefore": 0,
+   "scrollAfterDrag": 0,
+   "preventDefaultCalls": 11,
+   "rateAfterDrag": 2,
+   "rateAfterEnd": 1,
+   "ratedDuringHold": 2,
+   "touchActionChain": [
+    "body:manipulation"
+   ],
+   "faux": false
+  },
+  {
+   "name": "c_permanent_nonpassive",
+   "scenario": "inline_scrollY_gt0",
+   "touchmoveCount": 11,
+   "cancelableSample": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ],
+   "scrollBefore": 40,
+   "scrollAfterDrag": 40,
+   "preventDefaultCalls": 11,
+   "rateAfterDrag": 2,
+   "rateAfterEnd": 1,
+   "ratedDuringHold": 2,
+   "touchActionChain": [
+    "body:manipulation"
+   ],
+   "faux": false
+  },
+  {
+   "name": "c_permanent_nonpassive",
+   "scenario": "faux_fullscreen",
+   "touchmoveCount": 11,
+   "cancelableSample": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ],
+   "scrollBefore": 0,
+   "scrollAfterDrag": 0,
+   "preventDefaultCalls": 11,
+   "rateAfterDrag": 2,
+   "rateAfterEnd": 1,
+   "ratedDuringHold": 2,
+   "touchActionChain": [
+    "body:manipulation"
+   ],
+   "faux": true
+  }
+ ]
+}

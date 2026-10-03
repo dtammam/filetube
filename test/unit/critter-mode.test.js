@@ -1758,9 +1758,17 @@ test('v1.176 gate W closure: the re-glue DROP predicates bind - exclusion (never
   };
   // EXCLUSION: the card slides ONTO the player dock - its critter is dropped,
   // never left over the playback surface (Dean's founding constraint, on the
-  // NEW mid-view path).
+  // NEW mid-view path). v1.358 (root cause of the CI flake, measured): the card
+  // used to slide to top 1620 (spanning 1620-1820 against a dock ending at 1800),
+  // so a bottom-edge peek hanging 16-20px below the card sat wholly under the
+  // dock and legitimately survived (1 draw in ~145). Now the slid card lies
+  // wholly INSIDE the dock rect, and the reglue keeps only critters that
+  // intersect their anchor, so EVERY draw intersects the dock and must drop.
   await place();
-  cardRect.top = 1620;
+  cardRect.top = 1600;
+  assert.ok(cardRect.left >= 0 && cardRect.left + cardRect.width <= 800
+    && cardRect.top >= 1600 && cardRect.top + cardRect.height <= 1800,
+  'non-vacuity: the slid card is contained in the dock rect (0,1600,800,200), so every surviving draw must hit the exclusion');
   reglueCritterPlacements();
   assert.strictEqual(dom.window.document.querySelectorAll('.critter').length, 0, 'slid into #player-dock: dropped');
   // BOUNDS: the card slides past the page end - never grow the document (W4).
