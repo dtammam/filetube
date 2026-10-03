@@ -1084,6 +1084,26 @@ function storyboardTile(index, geom) {
 // folding it into this table would be artificial -- `wireSkipHoldGestures`
 // still runs its own, untouched `if (holdActive)` short-circuit first,
 // exactly as the video surface always has.
+// v1.358: the drag that LOCKS a held 2x. Pure: 'lock' iff the finger moved down at least lockPx from
+// the touchstart point and further down than sideways (disjoint from swipeBackShouldClaim by construction).
+function holdDragDecision(ctx) {
+  var o = ctx || {};
+  var dx = Number(o.dx), dy = Number(o.dy), lockPx = Number(o.lockPx);
+  if (!isFinite(dx) || !isFinite(dy) || !isFinite(lockPx) || lockPx <= 0) return 'none';
+  return dy >= lockPx && Math.abs(dx) < dy ? 'lock' : 'none';
+}
+
+// v1.358: an explicit speed pick while locked wins. A hold never writes defaultPlaybackRate, so a moved
+// default (or a rate that is no longer the held 2x) means someone else wrote it: 'drop' the lock, no rate write.
+function holdRatePickDecision(ctx) {
+  var o = ctx || {};
+  if (!o.locked) return 'keep';
+  var atEngage = Number(o.defaultAtEngage), now = Number(o.defaultNow);
+  if (isFinite(atEngage) && isFinite(now) && atEngage !== now) return 'drop';
+  if (o.rateNow !== undefined && isFinite(Number(o.rateNow)) && Number(o.rateNow) !== 2) return 'drop';
+  return 'keep';
+}
+
 function classifyTapGesture(ctx) {
   var opts = ctx || {};
   // v1.140 (Dean's confirmed friction): the SKIP CHAIN - after a double-tap
@@ -1850,6 +1870,8 @@ if (typeof module !== 'undefined' && module.exports) {
     storyboardFrameForTime,
     storyboardTile,
     classifyTapGesture,
+    holdDragDecision,
+    holdRatePickDecision,
     shouldArtSingleTapAct,
     resolveMobileFormFactor,
     isDesktopClassPlatform,
@@ -3493,6 +3515,9 @@ if (typeof module !== 'undefined' && module.exports) {
       return false;
     }
 
+    // v1.358: a live hold (or lock) must not be copied onto the sidecar as 2x; the safety net that releases it
+    // runs only AFTER this read (its listeners register later), so release here, before carriedRate.
+    releaseHold();
     var resumeTime = currentAbsTime();
     var timing = bgTimingBeforeHandoff(trigger, resumeTime); // lock-audio phase 1: null unless a timing record is open
     bgAudioState = nextBackgroundAudioState(bgAudioState, 'BACKGROUND', { eligible: true });
@@ -4780,9 +4805,56 @@ if (typeof module !== 'undefined' && module.exports) {
   // by `cancelPendingArtTap` -- see both, below.
   var pendingArtTapTimer = null;
 
+  // v1.358: drag down while holding locks the 2x. holdGestureLive = the finger that ENGAGED the hold is
+  // still down (the hold branches key on it, not on holdActive, which now outlives that finger).
+  var holdLocked = false;
+  var holdGestureLive = false;
+  var holdDefaultAtEngage = 1;
+  var LOCK_DRAG_PX = 48;
+
+  function readDefaultRate() {
+    return (mediaPlayer && mediaPlayer.defaultPlaybackRate) || 1;
+  }
+
+  function holdLockAllowed() {
+    return state === STATE_FULL && !inNativeFullscreen() && !inNativeControlsMode();
+  }
+
+  function setHoldLockUi(on) {
+    if (!speedBadge) return;
+    speedBadge.classList.toggle('is-locked', !!on);
+    if (on) {
+      speedBadge.setAttribute('role', 'button');
+      speedBadge.setAttribute('aria-label', 'Unlock 2x');
+      speedBadge.setAttribute('tabindex', '0');
+    } else {
+      speedBadge.removeAttribute('role');
+      speedBadge.removeAttribute('aria-label');
+      speedBadge.removeAttribute('tabindex');
+    }
+  }
+
+  function lockHold() {
+    if (!holdActive || !holdGestureLive || holdLocked || !holdLockAllowed()) return;
+    holdLocked = true;
+    setHoldLockUi(true);
+  }
+
+  // The lock ends WITHOUT writing the rate: an explicit speed pick already wrote the one it wants.
+  function dropHold() {
+    if (!holdActive) return;
+    holdActive = false;
+    holdLocked = false;
+    holdGestureLive = false;
+    setHoldLockUi(false);
+    if (speedBadge) speedBadge.hidden = true;
+  }
+
   function engageHold() {
     if (holdActive || !mediaPlayer || mediaPlayer.paused || inNativeFullscreen() || state !== STATE_FULL) return;
     holdActive = true;
+    holdGestureLive = true;
+    holdDefaultAtEngage = readDefaultRate();
     prevRate = mediaPlayer.playbackRate || 1;
     mediaPlayer.playbackRate = 2;
     if (speedBadge) speedBadge.hidden = false; // UI pass: the chip-styled 2x pill (global [hidden] rule)
@@ -4791,6 +4863,9 @@ if (typeof module !== 'undefined' && module.exports) {
   function releaseHold() {
     if (!holdActive) return;
     holdActive = false;
+    holdLocked = false;
+    holdGestureLive = false;
+    setHoldLockUi(false);
     if (mediaPlayer) mediaPlayer.playbackRate = prevRate || 1;
     if (speedBadge) speedBadge.hidden = true;
   }
@@ -4876,7 +4951,7 @@ if (typeof module !== 'undefined' && module.exports) {
     el.addEventListener('touchstart', function (e) {
       if (inNativeFullscreen() || inNativeControlsMode() || e.touches.length > 1) {
         clearTimeout(holdTimer);
-        releaseHold();
+        if (holdGestureLive || !holdLocked) releaseHold();
         return;
       }
       startX = e.touches[0].clientX;
@@ -4888,7 +4963,14 @@ if (typeof module !== 'undefined' && module.exports) {
 
     el.addEventListener('touchmove', function (e) {
       var t = e.touches[0];
-      if (!t || holdActive) return;
+      if (!t) return;
+      if (holdActive) {
+        if (!holdGestureLive) return;
+        if (!holdLocked && holdDragDecision({ dx: t.clientX - startX, dy: t.clientY - startY, lockPx: LOCK_DRAG_PX }) === 'lock') lockHold();
+        // v1.358: measured in Chromium, only a permanent non-passive listener can stop the page scrolling under the drag.
+        if (e.cancelable) e.preventDefault();
+        return;
+      }
       if (Math.abs(t.clientX - startX) > MOVE_TOL || Math.abs(t.clientY - startY) > MOVE_TOL) {
         clearTimeout(holdTimer);
         // Gate W2 (v1.134 fix round): a drag past tolerance is a SCROLL, not
@@ -4901,19 +4983,20 @@ if (typeof module !== 'undefined' && module.exports) {
         // skip/hold/double-tap paths (the reviewer's prescription).
         tapGestureMoved = true;
       }
-    }, { passive: true });
+    }, { passive: false });
 
     el.addEventListener('touchcancel', function () {
       clearTimeout(holdTimer);
-      releaseHold();
+      if (holdGestureLive || !holdLocked) releaseHold();
     }, { passive: true });
 
     el.addEventListener('touchend', function (e) {
       if (inNativeControlsMode()) return;
       clearTimeout(holdTimer);
-      if (holdActive) {
+      if (holdActive && holdGestureLive) {
         e.preventDefault();
-        releaseHold();
+        holdGestureLive = false;
+        if (!holdLocked) releaseHold();
         lastTapTime = 0;
         return;
       }
@@ -6736,7 +6819,10 @@ if (typeof module !== 'undefined' && module.exports) {
     mediaPlayer.addEventListener('loadedmetadata', function () { updatePositionState(true); });
     mediaPlayer.addEventListener('durationchange', function () { updatePositionState(true); });
     mediaPlayer.addEventListener('seeked', function () { updatePositionState(true); });
-    mediaPlayer.addEventListener('ratechange', function () { updatePositionState(true); });
+    mediaPlayer.addEventListener('ratechange', function () {
+      updatePositionState(true);
+      if (holdLocked && holdRatePickDecision({ locked: true, defaultAtEngage: holdDefaultAtEngage, defaultNow: mediaPlayer.defaultPlaybackRate, rateNow: mediaPlayer.playbackRate }) === 'drop') dropHold();
+    });
     mediaPlayer.addEventListener('timeupdate', function () { updatePositionState(false); });
     // v1.121 (Dean, lock-blip tuning): position pre-sync -- throttled off
     // timeupdate (>=10s between syncs; timeupdate only fires while playing, so
@@ -7963,6 +8049,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // immersive bar is hidden; see videoSingleTapOrReveal).
     wireSkipHoldGestures(mediaPlayer, videoSingleTapOrReveal);
     wireSkipHoldGestures(audioBgArt, artSingleTapOrReveal);
+    if (speedBadge) {
+      speedBadge.addEventListener('click', function () { if (holdLocked) releaseHold(); });
+      speedBadge.addEventListener('keydown', function (e) {
+        if (holdLocked && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); releaseHold(); }
+      });
+    }
 
     function onEnterFullscreen() { clearTimeout(holdTimer); releaseHold(); keeperNativeFsCapture(); }
     document.addEventListener('fullscreenchange', function () { if (document.fullscreenElement) onEnterFullscreen(); });

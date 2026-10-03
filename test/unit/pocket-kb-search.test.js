@@ -681,6 +681,7 @@ const CLASSIFIED = [
   ['public/js/ipod-brick.js', "keyDoc.addEventListener('keydown', keyFn, true);", 'capture: only while Brick runs, which starts from Extras, so Search (and its input) has been left'],
   ['public/js/ipod-brick.js', "keyDoc.removeEventListener('keydown', keyFn, true);", 'capture: the removal of the one above'],
   ['public/js/player.js', "['touchstart', 'pointerdown', 'wheel', 'keydown'].forEach(function (type) {", 'capture, passive: any input ends the rotation scroll-snap window; no key action'],
+  ['public/js/player.js', "speedBadge.addEventListener('keydown', function (e) {", 'element: the locked 2x pill only; Enter or Space unlocks, a key typed into the input never reaches it'],
   ['public/js/remote.js', "var ACTIVATION_EVENTS = ['pointerdown', 'pointerup', 'keydown', 'click'];", 'capture: marks user activation on a speaker; observes only'],
 ];
 test('R9 census: every key listener a player shell can load is classified (element / the input / bubble / capture with a reason)', () => {
