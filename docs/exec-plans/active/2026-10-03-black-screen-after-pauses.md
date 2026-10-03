@@ -281,6 +281,95 @@ anything in the Pocket/iPod skins. They are separate ROADMAP entries.
 
 The v1.360 seats write `Gate: <verdict> r<n> @<sha> - <seat>` here (section 12 is what they review).
 
+Gate: CHANGES r1 @b6b8bb34 - qa
+
+- WARNING W1 (tests do not bind the per-load semantics): three one-line mutants of player.js stay 20/20 green in
+  `test/unit/black-picture-watchdog.test.js`: drop `frozenHeals = 0` in `syncFrozenGen` (after two heals on one video the watchdog
+  never runs again for the page's life), drop `frozenClimbed = false` there (a one-frame still loaded after a climbing video gets
+  healed twice, breaking 12.3 item 3), and `if(0)` the `gave up` `recordLifecycleEvent` (12.3 item 4 unbound). The test titled
+  "a new load stops it and starts its counters fresh" only asserts the stop. Fix: a second-load test (heal twice on v1, load v2,
+  freeze: heals again; and a v2 one-frame still: no heal) and assert the `video:heal gave up` line.
+- WARNING W2 (12.3 item 3 "a healthy count never triggers it" is not true for variable-frame-rate video): a screen recording (VFR)
+  that has moved, then holds a static screen for 6 s+, decodes no new frames while the clock runs, so the watchdog seeks it in
+  place up to twice (each seek also fires `seeking`/`seeked`: closes an open chapters menu, re-runs presync, remote.js posts state).
+  Bounded and cheap, safe to ship IF disclosed in the ROADMAP v1.360.0 Disclosed line and 12.3.
+- WARNING W3 (the prime moves, it is not removed, for Dean's exact sequence): after the guard, autostart -> pause tap (no prime) ->
+  unpause tap primes, so the sidecar's muted play() now runs in the SAME gesture as the video's own play(). 12.1 names the unknown
+  as "whether WebKit drops the video's layer when a second media element starts in the same gesture"; that applies to the play tap
+  too. Safe to ship disclosed (the play-tap prime is the years-old path for non-autostarted videos, and the watchdog backstops), but
+  12.2/ROADMAP must say it, and the falsifier "black with Background audio OFF = H8 dead" needs its twin: black with it ON after
+  v1.360 does not clear H8.
+- WARNING W4 (heal-ok can claim a heal that did not happen): `video:heal-ok` logs on ANY count increase after the heal
+  (`n.frames > frozenSince.frames`), so one frame presented by the seek itself, then frozen again, reads as success, which is the
+  H2b falsifier's exact case ("video:heal and NO video:heal-ok"). Fix: gate heal-ok on `framesClimbed(...)` from the post-heal
+  reading, or put the frame delta in the line and in the falsifier text.
+- WARNING W5: ROADMAP v1.360.0 Shipped entry carries a literal unfilled `SUITES_LINE` placeholder.
+- SUGGESTION S1: 12.4 "Deviation (none of the acceptance changed)" contradicts itself: 12.3 item 2 still lists "the active element
+  (not the sidecar) and not in audio mode"; amend 12.3. (The removal itself checks out: `audio-mode` is only added in the audio
+  branch, and a handoff runs only hidden with the video paused.)
+- SUGGESTION S2: docs say "phone-only"; the gate is `isMobileFormFactor()`, which includes iPads (coarse, no hover). Say "mobile".
+- SUGGESTION S3: the prime comment ("Dean's capture logged that sidecar play/pause") and ROADMAP ("his log shows its sidecar
+  play/pause") go beyond 12.1, which cites only `media:pause el=bgAudio`; a prime would also log `media:play el=bgAudio` and
+  `bgAudio:prime ok`. Confirm those against the capture or say "pause".
+- SUGGESTION S4: after two SUCCESSFUL heals the watch stops (and `startFrozenPictureWatch` returns early on later `playing`), so a
+  third freeze is silent with no `gave up` line; the docs say "then it stops (gave up line)".
+- SUGGESTION S5: `endFrozenPictureSession`'s comment names 'pause' / 'ended' but it is also the 'emptied' listener; one line of the
+  watchdog block comment overruns the block's wrap width.
+- SUGGESTION S6: the LESSONS 5 bullet records H8 as an established cause ("for months it ran ...", x1) before any device result;
+  phrase it as the suspected trigger until Dean's checks pass.
+- Security: client-only, no network, no storage change; log details are numbers built with `toFixed`; no surface.
+
+Gate: CHANGES r1 @b6b8bb34 - adversary
+
+Measured: `npm test` in a fresh clone at b6b8bb34, Node 22.23.1 and 24.20.0 each: 10855 tests, 10843 pass, 0 fail, 12 skipped.
+Mutants of the guards 12.4 names, re-run in a `git archive` sandbox: 14 of 15 red; the 15th (`minFrames`, A4) survives.
+
+- WARNING A1 (measured; sharper than qa W3): the bar's play button still runs the sidecar play/pause UNDER A PLAYING VIDEO. In the
+  jsdom harness (video paused, Background audio ON, one `#pp-btn` click) the call order is `bg-audio-sidecar.play()`,
+  `media-player.play()`, then `bg-audio-sidecar.pause()` with the video's `paused === false`: the prime runs first (the video is
+  still paused, so the guard lets it through), `togglePlayPause()` starts the video in the same task, and the prime's `.then`
+  pauses the sidecar after that. So `media:pause el=bgAudio` under a playing video, the signature 12.1 reads as H8, still fires on
+  the first bar play of every load. The ROADMAP wording "no longer plays a second media element under the video" is true only for
+  the picture's pause tap. Fix (cheap, keeps 12.3.1): in the `ppBtn` handler, when the video is playing, call `togglePlayPause()`
+  FIRST and prime after it (the sidecar cycle then runs under a paused video, still inside the click gesture, and the bar's pause
+  primes the autostarted case, which shrinks the disclosed lock cost); when the video is paused, do not prime from the bar, or
+  disclose it. Suspicion only (not reproduced): the picture-tap path primes at `touchstart` and plays the video 350 ms later from
+  a timer, so the sidecar's pause lands before the video plays only if its `play()` resolves within 350 ms; a v1.35 pre-armed real
+  `/audio/:id` sidecar that still has to buffer can take longer.
+- WARNING A2 (concur qa W2, now measured): a healthy variable-frame-rate video IS healed. A VP9 webm (3 s moving at 30 fps, an 8 s
+  still held as one frame, 3 s moving) in Playwright Chromium reads `t=3.9 f=94` ... `t=10.9 f=94` (flat 7 s while the clock
+  runs); those exact readings fed to the exported `framesClimbed` / `frozenPictureDecision` give `heal` at t=9.9. 12.3.3 is false as
+  written; disclose or tighten.
+- WARNING A3 (concur qa W4, measured): heal, one tick still, then one frame (+1), then frozen again logs `video:heal ... n=1`,
+  `video:heal-ok f=61 ... n=1`, `video:heal ... n=2`, `video:heal gave up`: one frame reads as success. Whether heal-ok appears
+  depends on which tick the +1 lands on (on the very next tick it is NOT logged, because `frozenSince` is null there), so the
+  falsifier "heal with no heal-ok" is timing-dependent.
+- WARNING A4 (test binding, extends qa W1): unclaimed one-line mutants of player.js, each 20/20 green: drop `frozenHeals = 0` and
+  drop `frozenClimbed = false` in `syncFrozenGen` (qa W1; at the committed code a second load does heal again, measured, the test
+  just does not say so); drop the in-tick climb read in `tickFrozenPictureWatch` (a freeze in the FIRST play session, before any
+  pause, then never heals: unbound); drop `r.right > 0`, `r.left < vw` or `r.top < vh` from the on-screen test (only the bottom
+  edge is bound); and the builder's own `df >= minFrames &&` mutant SURVIVES: the "9 frames is under the floor" assertion
+  (`R(1,0) -> R(10,1.9)`) is rejected by the 5 fps clause alone (4.7 fps), so the 10-frame floor is unbound and that assertion is
+  vacuous. 12.4's "every mutant red" is true of the list it tried, not of the guards it names.
+- WARNING A5 (concur qa W5): `SUITES_LINE` is a literal placeholder in the ROADMAP v1.360.0 entry.
+- SUGGESTION A6: `!mediaPlayer.ended` (prime) and `!v.ended` (readPictureProgress) are dead clauses: per the media spec reaching
+  the end without `loop` sets `paused` first, and with `loop` `ended` never reads true. Both mutants survive. Drop or comment.
+- SUGGESTION A7 (suspicion): `readPictureProgress` does not look at `webkitPresentationMode`; in iOS native fullscreen or PiP the
+  inline element keeps its page rect, so "on screen" is the inline box, and whether WebKit's counter keeps climbing there is a
+  device fact. Dean's capture was `pm=inline`; refusing `pm !== 'inline'` loses nothing the bug showed.
+- SUGGESTION A8 (should-work, not measured on device): `liveMode` is chosen by `!isMobileViewport()` (width > 768) while the
+  watchdog gates on `isMobileFormFactor()` (pointer), so an iPad or a landscape Pro Max opening a needs-transcode video runs the
+  watchdog on a live-transcode stream; a native seek there should be a no-op when `seekable` is empty, but excluding `liveMode`
+  is one clause.
+- Harmless survivors (no behaviour change found): the `startFrozenPictureWatch` cap guard, the heal-ok cap stop, the gave-up
+  `frozenHealPending = false`, the `frozenSince = null` after a heal, the `frozenTimer`/generation clauses in
+  `endFrozenPictureSession`.
+- Claims checked true: the panel is newest first (`renderLifecycleOverlay`, player.js 4766 `log.slice().reverse()`); the only
+  sidecar `play()` sites are the prime (3858), the handoff (3581) and `playActiveMedia` (3151, lock-screen); DEVICE-CHECKS has 4
+  v1.360 lines as the ROADMAP says; the v1.336 line moved into them. Concur qa S1-S6.
+- Security: client-only; the log sink is `textContent` (player.js 4780) and every new detail is numbers via `toFixed`; no
+  injection surface.
+
 ## 12. v1.360: the static review (H8) and Dean's ruling - the fix ships without a device repro
 
 ### 12.1 The static review (Opus reviewer, 2026-10-03, read-only at main 4c366600)
