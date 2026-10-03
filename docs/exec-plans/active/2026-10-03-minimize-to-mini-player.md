@@ -114,6 +114,10 @@ them in the build if the evidence says so, never loosen them.
    playing (`paused === false`, `currentTime` advancing over 2 s after) and that no synthetic `click` from the same touch lands on
    the dock (it would expand the player straight back: the dock's own click handler navigates to the watch page). If one does,
    `preventDefault()` the claiming `touchend`.
+6. **Leaving the watch view while already docked.** R4 docks BEFORE the route swap (the `goHomeFromPlayer` order). Read what the
+   watch view's (and the TV / podcast slot views') un-render does with the player when it is left, and prove by a jsdom drive and
+   the probe that it neither closes, re-expands nor pauses an already-docked host, for both the `history.back()` and the
+   `navigate('/')` landings.
 
 ## 4. Seams (main c85a20c7; line numbers approximate)
 
@@ -195,6 +199,18 @@ LOOK is shown, not described). Then the gate: adversary + qa, briefed with secti
   the new button.
 - **History** (LESSONS 4): a minimize from a deep link (depth 0) goes Home, never exits the app to the referrer; two fast commits
   never pop two levels.
+
+## 8b. Release (v1.362.0)
+
+Exactly `docs/RELEASING.md` and AGENTS.md "Release ceremony": `npm version 1.362.0 --no-git-tag-version`; ROADMAP.md "Shipped"
+entry (and tick the Planned entry); a `docs/releases.json` ledger entry in pure user language (the tone test enforces it; mention
+that the pull-down and the chevron need Settings > Mobile player > custom controls on); section 7's checks into
+DEVICE-CHECKS.md; the LESSONS update in the release commit if the wave taught one; `node scripts/plan-complete.js <this plan>
+"Shipped v1.362.0" --apply`. Then the protected-main flow: local `merge --no-ff` into main, tag on that merge, push the branch +
+tag in ONE push with `GIT_SSH_COMMAND="ssh -o ServerAliveInterval=20 -o ServerAliveCountMax=60"`, `gh pr create`, wait for CI
+green (`ci (22)`, `ci (24)`, `audit`, `secret-scan`), then ASK Dean (AskUserQuestion) before `gh pr merge --merge`; `git pull
+--ff-only`; delete the branch remote (`gh api -X DELETE repos/dtammam/filetube/git/refs/heads/feat/v1.362-minimize`, verify with
+`git ls-remote`) and local (`-d`), and remove the worktree.
 
 ## 9. Out of scope (logged, not built)
 
