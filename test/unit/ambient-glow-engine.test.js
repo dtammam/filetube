@@ -812,17 +812,20 @@ test('v1.312 CSS GEOMETRY: the glow reaches by negative insets; each band is the
   assert.strictEqual(glowRules().filter((r) => /data-ambient=/.test(r.selector)).length, 0, 'no rung rules remain');
 });
 
-// v1.314 (Dean, iPhone: "look at left and right of ambient on mobile, make it spread").
-// MEASURED (plan: ambient-mobile-spread-and-pace, headless Chromium at 390x844): the
-// stage box WAS the player box (x 16, w 358) and the v1.194.3 `overflow-x: clip` sat on
-// it, so the 43px side reach was clipped to NOTHING - every gutter pixel read the page
-// [18,18,18]; removing the clip tinted the gutter but grew scrollWidth 390 -> 417 (the
-// sideways scroll). The fix moves the CLIP EDGE to the viewport edge: the stage grows by
-// the page gutter (negative margin + matching padding) and the glow's x insets are
-// re-anchored so its bitmap still lands exactly on the player.
-test('v1.314 CSS MOBILE SPREAD: the stage clip edge is the VIEWPORT edge (grown by the page gutter) and the glow x insets are re-anchored on the player - geometry identical to desktop', () => {
-  const stage = stageAndGlowRules().find((r) => r.selector === '.watch-player-stage' && r.mobile);
-  assert.ok(stage, 'the mobile stage rule exists inside a max-width: 768px block');
+// v1.314 (Dean, iPhone: "look at left and right of ambient on mobile, make it spread"):
+// the stage grows to the VIEWPORT edge (negative margin of the page gutter) so the
+// `overflow-x: clip` edge is the screen edge and nothing can scroll sideways.
+// v1.359 (Dean: the phone player spans the screen side to side like YouTube): the stage
+// still reaches the viewport edge but no longer pads the player back in by the gutter;
+// it pads by the SAFE AREA only (env(), 0 in portrait), and the glow's x insets are
+// re-anchored on the same two inputs so its bitmap still lands exactly on the player.
+// MEASURED (tools/edge-to-edge-proof, headless Chromium, 2021 era): player x 0, w = the
+// viewport at 390; with a 47px side inset player x 47, w 573 and the glow x -21.8
+// (= 47 - 0.12 * 573). The old gutter-padding lock was updated, never widened.
+test('v1.359 CSS MOBILE EDGE TO EDGE: the stage reaches the viewport edge and pads by the safe area only; the glow x insets follow the player inside it', () => {
+  const stageRules = stageAndGlowRules().filter((r) => r.selector === '.watch-player-stage' && r.mobile);
+  assert.strictEqual(stageRules.length, 1, 'exactly ONE mobile .watch-player-stage rule (an appended twin would leave this lock reading a rule that no longer wins)');
+  const stage = stageRules[0];
   assert.match(stage.body, /overflow-x:\s*clip/, 'the v1.194.3 clip stays (nothing may overflow the page sideways)');
   assert.doesNotMatch(stage.body, /overflow-y|overflow:\s*hidden|overflow:\s*clip/, 'x only: the vertical bloom must survive');
   assert.match(stage.body, /--ambient-gutter:\s*var\(--space-8\)/, 'the gutter is a token, --space-8');
@@ -831,34 +834,39 @@ test('v1.314 CSS MOBILE SPREAD: the stage clip edge is the VIEWPORT edge (grown 
   assert.ok(mainMobile.some((m) => /padding:\s*var\(--space-8\);/.test(m[1])), '.main-content pads var(--space-8) on mobile: the gutter the stage grows into');
   for (const side of ['left', 'right']) {
     assert.match(stage.body, new RegExp('margin-' + side + ':\\s*calc\\(-1 \\* var\\(--ambient-gutter\\)\\)'), 'margin-' + side + ' pulls the stage to the viewport edge');
-    assert.match(stage.body, new RegExp('padding-' + side + ':\\s*var\\(--ambient-gutter\\)'), 'padding-' + side + ' keeps the player where it was');
+    assert.match(stage.body, new RegExp('(?:^|[;\\s])padding-' + side + ':\\s*var\\(--stage-inset-' + side[0] + '\\)\\s*;'), 'padding-' + side + ' is exactly the safe-area inset var, no gutter');
+    assert.match(stage.body, new RegExp('--stage-inset-' + side[0] + ':\\s*env\\(safe-area-inset-' + side + ',\\s*0px\\)\\s*;'), '--stage-inset-' + side[0] + ' is exactly env(safe-area-inset-' + side + ', 0px)');
   }
-  assert.doesNotMatch(stage.body, /position|z-index|width|height/, 'nothing else moves on the stage (position/z-index stay on the base rule)');
-  const glowM = glowRules().find((r) => r.selector === '.ambient-glow' && r.mobile);
-  assert.ok(glowM, 'the mobile glow override exists');
+  assert.doesNotMatch(stage.body, /padding-(?:left|right):[^;]*ambient-gutter/, 'the gutter no longer pads the player back in');
+  assert.doesNotMatch(stage.body, /position|z-index|width|height|vw|vh/, 'nothing else moves on the stage (position/z-index stay on the base rule; no viewport units)');
+  assert.ok(![...CSS_STRIPPED.matchAll(/(?:^|\})\s*:root\s*\{([^}]*)\}/g)].some((m) => /--stage-inset/.test(m[1])), 'the inset vars are local to the stage rule, never on :root');
+  const glowMs = glowRules().filter((r) => r.selector === '.ambient-glow' && r.mobile);
+  assert.strictEqual(glowMs.length, 1, 'exactly ONE mobile .ambient-glow rule (an appended twin goes red)');
+  const glowM = glowMs[0];
   // THE CASCADE (measured: an override placed BEFORE the base rule was inert - same
   // specificity, so source order decides - and the probe read the glow at -12% of the
-  // VIEWPORT, x -46.8, instead of -12% of the player, x -27.0). Bind the order.
+  // VIEWPORT instead of -12% of the player). Bind the order.
   const glowBase = glowRules().find((r) => r.selector === '.ambient-glow' && !r.mobile);
   assert.ok(glowM.index > glowBase.index, 'the mobile .ambient-glow override comes AFTER the base rule in the sheet, or the base left/right win the cascade');
   assert.match(glowBase.body, /left:\s*calc\(-1 \* var\(--ambient-reach-x\)\)/, 'and the base rule still declares the desktop insets it must override');
   const fracs = [];
   for (const side of ['left', 'right']) {
-    const m = new RegExp(side + ':\\s*calc\\(var\\(--ambient-gutter\\) - \\(100% - 2 \\* var\\(--ambient-gutter\\)\\) \\* ([0-9.]+)\\)').exec(glowM.body);
-    assert.ok(m, side + ' is re-anchored: gutter minus the reach as a fraction of the PLAYER width (100% minus two gutters)');
+    const k = side[0];
+    const m = new RegExp('(?:^|[;\\s])' + side + ':\\s*calc\\(var\\(--stage-inset-' + k + '\\) - \\(100% - var\\(--stage-inset-l\\) - var\\(--stage-inset-r\\)\\) \\* ([0-9.]+)\\)').exec(glowM.body);
+    assert.ok(m, side + ' is re-anchored: its inset minus the reach as a fraction of the PLAYER width (100% minus the two insets)');
     fracs.push(Number(m[1]));
   }
   for (const f of fracs) assert.strictEqual(f, W.AMBIENT_REACH_X, 'the mobile x reach fraction equals ambient.js AMBIENT_REACH_X (the vignette\'s inner rectangle)');
   assert.doesNotMatch(glowM.body, /top:|bottom:|--ambient-reach|--ambient-opacity|--ambient-fade|overflow/, 'only the x insets change on mobile (the padding is horizontal, so the y reach is still a % of the player height)');
-  // The numbers: at a 390px viewport with a 16px gutter the mobile formula puts the glow's edge
-  // exactly where the base formula puts it for the 358px player - the glow is byte-identical
-  // (probe: x -27.0, w 443.9 both before and after); only the CLIP box changed (358 -> 390).
-  const vw = 390, g = 16, player = vw - 2 * g;
-  const baseLeft = -W.AMBIENT_REACH_X * player;                 // relative to the player's left edge
-  const mobileLeft = g - (vw - 2 * g) * fracs[0];               // relative to the stage padding box = the viewport
-  assert.ok(Math.abs((mobileLeft - g) - baseLeft) < 1e-9, 'same glow edge: ' + (mobileLeft - g) + ' vs ' + baseLeft);
-  assert.ok(-baseLeft > g, 'the reach (' + (-baseLeft).toFixed(1) + 'px) exceeds the gutter (' + g + 'px): the whole gutter is lit to the screen edge');
-  assert.ok(vw + 2 * -mobileLeft > vw, 'the glow still overflows the clip box, which now ends at the viewport - so scrollWidth stays the viewport width');
+  // The numbers, from the formula: glow edge = player edge - 0.12 x player width, with inset 0 and 47.
+  for (const [vw, inset] of [[390, 0], [390, 47], [667, 47]]) {
+    const player = vw - 2 * inset;                              // the player fills the stage minus both insets
+    const mobileLeft = inset - (vw - inset - inset) * fracs[0]; // glow left in the stage's padding box (= the viewport)
+    assert.ok(Math.abs((mobileLeft - inset) - (-W.AMBIENT_REACH_X * player)) < 1e-9, 'vw ' + vw + ' inset ' + inset + ': glow edge = player edge - ' + W.AMBIENT_REACH_X + ' x player width (' + (mobileLeft - inset) + ')');
+  }
+  const m390 = 0 - (390 - 0 - 0) * fracs[0];
+  assert.ok(Math.abs(m390 - (-46.8)) < 1e-9, 'at 390 with no inset the glow left is -46.8 (probe: -46.8), outside the viewport, so the clip cuts the side reach');
+  assert.ok(Math.abs((47 - (667 - 94) * fracs[0]) - (-21.76)) < 1e-9, 'with a 47px inset at 667 the glow left is -21.76 (probe: -21.8)');
 });
 
 test('v1.313 CSS PAINT: the layer is a plain background-image slot (100% 100%, no-repeat, NO gradients / colour vars), and the layers cross-fade on opacity', () => {

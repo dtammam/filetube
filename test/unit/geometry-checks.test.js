@@ -6,7 +6,7 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { evalG1, evalG2, evalG3, evalG4, evalHeader, evalBottomBar, evalSheetHeader, evalPopover, TOL, G4_TOL } = require('../geometry/checks.js');
+const { evalG1, evalG2, evalG3, evalG4, evalHeader, evalBottomBar, evalSheetHeader, evalPopover, evalPlayerBleed, TOL, G4_TOL } = require('../geometry/checks.js');
 const { summarize, expectedFor, loadExpected } = require('../geometry/run.js');
 const { SURFACES, FAST_SCENES, G4_SEQUENCES } = require('../geometry/scenes.js');
 const { MUTATIONS } = require('../geometry/mutations.js');
@@ -151,8 +151,8 @@ test('every check has at least one mutation proof, each aimed at a live scene or
     else assert.ok(SURFACES.find((s) => s.id === m.target.surface && !s.pending), name);
   }
   // Sweep S1 adds HDR / NAV, the chrome's rendered contracts; sweep S9 SHD, the sheet header;
-  // gate r1 POP, an open menu's reach.
-  assert.deepStrictEqual(Object.keys(byCheck).sort(), ['G1', 'G2', 'G3', 'G4', 'HDR', 'NAV', 'POP', 'SHD']);
+  // gate r1 POP, an open menu's reach; v1.359 BLD, the phone player edge to edge.
+  assert.deepStrictEqual(Object.keys(byCheck).sort(), ['BLD', 'G1', 'G2', 'G3', 'G4', 'HDR', 'NAV', 'POP', 'SHD']);
 });
 
 test('geometry files are not *.test.js (npm test must not try to boot Playwright)', () => {
@@ -327,4 +327,34 @@ test('POP: each broken property fails on its own (off the bottom, a row unreacha
   bottom.sheet = { x: 0, y: 505, w: 390, h: 339 };
   bottom.rows.forEach((r, i) => { r.box = { x: 0, y: 572 + i * 44, w: 390, h: 44 }; });
   assert.deepStrictEqual(evalPopover(bottom).failures, []);
+});
+
+// BLD (v1.359): the phone player edge to edge, the desktop player inside its column.
+const bleed = (o = {}) => ({
+  vw: 390, phone: true, wrapper: { x: 0, y: 56, w: 390, h: 219.4 }, title: { x: 16, y: 290, w: 358, h: 30 },
+  stagePad: { l: 0, r: 0 }, border: [0, 0, 0, 0], radius: [0, 0, 0, 0], ...o,
+});
+
+test('BLD: a phone player flush with both edges, unframed and square passes', () => {
+  assert.deepStrictEqual(evalPlayerBleed(bleed()), { measured: { player: 1 }, failures: [] });
+});
+
+test('BLD: a notched phone passes only with the player at the inset and the title at the gutter', () => {
+  const d = bleed({ vw: 844, wrapper: { x: 47, y: 0, w: 750, h: 400 }, stagePad: { l: 47, r: 47 } });
+  assert.deepStrictEqual(evalPlayerBleed(d).failures, []);
+  assert.strictEqual(evalPlayerBleed({ ...d, wrapper: { x: 0, y: 0, w: 844, h: 400 } }).failures.length >= 1, true, 'under the notch is a failure');
+});
+
+test('BLD: the gutter back (x 16, w 358), a border, a radius and a bled title each fail by name', () => {
+  assert.match(evalPlayerBleed(bleed({ wrapper: { x: 16, y: 56, w: 358, h: 200 } })).failures.join('|'), /starts at x 16.*|358px wide/);
+  assert.match(evalPlayerBleed(bleed({ border: [1, 1, 1, 1] })).failures.join('|'), /paints a border/);
+  assert.match(evalPlayerBleed(bleed({ radius: [12, 12, 12, 12] })).failures.join('|'), /rounded/);
+  assert.match(evalPlayerBleed(bleed({ title: { x: 0, y: 290, w: 390, h: 30 } })).failures.join('|'), /title starts at x 0/);
+});
+
+test('BLD: desktop keeps its column; a bleed there fails; no wrapper is a failure, never a pass', () => {
+  const desk = { vw: 1440, phone: false, wrapper: { x: 254, y: 80, w: 900, h: 506 }, title: { x: 254, y: 600, w: 900, h: 30 }, stagePad: { l: 0, r: 0 }, border: [1, 1, 1, 1], radius: [12, 12, 12, 12] };
+  assert.deepStrictEqual(evalPlayerBleed(desk).failures, []);
+  assert.match(evalPlayerBleed({ ...desk, wrapper: { x: 0, y: 80, w: 1440, h: 506 } }).failures.join('|'), /reaches a viewport edge/);
+  assert.deepStrictEqual(evalPlayerBleed(null), { measured: { player: 0 }, failures: ['no player wrapper in the stage'] });
 });

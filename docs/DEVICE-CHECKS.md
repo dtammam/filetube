@@ -15,6 +15,14 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
   ROADMAP Planned > Bugs, "Pocket turn". The log is still wanted for the fix.) v1.357.0 changed the turn: its check is under "Turn and speaker highlight" below, and covers this one. Since v1.355.0 this can be done in the
   HOME-SCREEN app: Settings > Troubleshooting > Show rotate debug log (no URL bar needed).
 
+## Mobile player edge to edge (v1.359.0)
+
+- [ ] v1.359.0 - iPhone, portrait, a video in the watch page (not full screen): the picture touches both screen edges, square corners, no outline; the title and the buttons below keep their margin; the gap above the player is unchanged. Try a few eras (Settings > Appearance) and dark mode.
+- [ ] v1.359.0 - Same with a song (cover art) and a tall Shorts-style video; then with Settings > Mobile player custom controls ON: every control-bar button is there and full size.
+- [ ] v1.359.0 - Press and hold the picture for 2x, drag down to lock, tap the pill; double-tap left and right to skip; a swipe from the left screen edge still goes back (Safari tab) and does not seek or pause.
+- [ ] v1.359.0 - Scroll down so the player docks, then back to the video: the mini player looks as before and the full player returns edge to edge with no jump. Rotate to landscape and back while playing: full screen as before, then edge to edge again.
+- [ ] v1.359.0 - Ambient on (dark mode): the glow still shows above and below the player; nothing scrolls sideways.
+
 ## Pocket music (v1.354.0)
 
 - [ ] v1.354.0 - iPod Songs: scroll and letter-jump to the last songs (past H, to Z); Genres shows every genre; Shuffle Songs plays songs from the whole library; Liked lists every liked song.

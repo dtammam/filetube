@@ -4332,6 +4332,16 @@ select {
   #player-wrapper.audio-mode:not(.audio-expanded) #audio-bg-art {
     bottom: 44px; /* token-exempt: positional geometry (Stop A Batch A) */
   }
+  /* v1.359 (Dean): on a phone the inline watch player touches both screen edges
+     like YouTube, so it drops the frame the shared .player-container paints
+     (1px outline plus the era radius): at the screen edge a frame reads as the very
+     gap Dean reported. 1 ID + 3 classes beats .player-container (0,1,0) in every era
+     whatever the order; faux full screen and the expanded audio view keep their own
+     frame rules. */
+  .watch-player-stage #player-wrapper:not(.css-fullscreen):not(.audio-expanded) {
+    border: none;
+    border-radius: 0;
+  }
 }
 
 /* DOCKED mini-player (v1.23.6, Dean): same bar-below layout, just using the
@@ -6581,21 +6591,27 @@ body:not([data-view="watch"]):not([data-view="music"]):not([data-view="podcasts"
    page colour. Removing the clip tints the gutter but grows scrollWidth 390 -> 417
    (the sideways scroll above). So the stage grows by the page gutter on each side
    (negative margin + matching padding: `.main-content`'s mobile padding, the same
-   --space-8 token) and the clip edge becomes the VIEWPORT edge - the glow fills
-   the gutter and nothing can overflow the page. Margin and padding create no
-   containing block (the fixed overlay still escapes; the phone probe checks it).
-   The glow's containing block is now that padding box, one gutter wider than the
-   player on each side, so its x insets are re-anchored below: the bitmap's inner
-   rectangle must still land exactly on the player (gutter minus the reach as a
-   fraction of the PLAYER's width = 100% minus two gutters). */
+   --space-8 token) and the clip edge becomes the VIEWPORT edge, so nothing can
+   overflow the page. Margin and padding create no containing block (the fixed
+   overlay still escapes; the phone probe checks it).
+   v1.359 (Dean: the phone player should span the screen side to side like
+   YouTube): the stage still grows to the viewport edge, but it no longer pads
+   the player back in. The player now fills the stage minus the SAFE AREA (the
+   notch side of a landscape phone; 0 in portrait), so the picture and its
+   control strip touch the screen edges. The v1.314 side glow therefore falls
+   outside the viewport and the clip cuts it, by design: on a phone only the
+   above/below bloom shows. The glow's containing block is that padding box, so
+   its x insets are re-anchored below on the same two safe-area inputs. */
 @media (max-width: 768px) {
   .watch-player-stage {
     --ambient-gutter: var(--space-8);
+    --stage-inset-l: env(safe-area-inset-left, 0px);
+    --stage-inset-r: env(safe-area-inset-right, 0px);
     overflow-x: clip;
     margin-left: calc(-1 * var(--ambient-gutter));
     margin-right: calc(-1 * var(--ambient-gutter));
-    padding-left: var(--ambient-gutter);
-    padding-right: var(--ambient-gutter);
+    padding-left: var(--stage-inset-l);
+    padding-right: var(--stage-inset-r);
   }
 }
 /* THE GEOMETRY. The glow element is the player's box grown by the REACH on each
@@ -6623,14 +6639,17 @@ body:not([data-view="watch"]):not([data-view="music"]):not([data-view="podcasts"
   transition: opacity var(--dur-slow) var(--ease-ui);
 }
 .ambient-glow.is-on { opacity: var(--ambient-opacity); }
-/* v1.314 MOBILE x insets (the stage grew by the gutter above). This block must
-   sit AFTER the base rule: same specificity, so source order decides - an
-   earlier copy was inert and the probe measured the glow at -12% of the
-   viewport (x -46.8) instead of -12% of the player (x -27.0). Test-bound. */
+/* MOBILE x insets (v1.314, re-anchored v1.359). The stage reaches the viewport
+   edge and the player fills it minus the safe-area insets, so the player's width
+   is 100% minus the two insets and the glow's inner rectangle sits at the inset
+   minus the reach as a fraction of THAT width. This block must sit AFTER the base
+   rule: same specificity, so source order decides - an earlier copy was inert and
+   the probe measured the glow at -12% of the viewport instead of -12% of the
+   player. Test-bound. */
 @media (max-width: 768px) {
   .ambient-glow {
-    left: calc(var(--ambient-gutter) - (100% - 2 * var(--ambient-gutter)) * 0.12); /* token-exempt: glow reach geometry; 0.12 = ambient.js AMBIENT_REACH_X (test-bound) */
-    right: calc(var(--ambient-gutter) - (100% - 2 * var(--ambient-gutter)) * 0.12); /* token-exempt: glow reach geometry; 0.12 = ambient.js AMBIENT_REACH_X (test-bound) */
+    left: calc(var(--stage-inset-l) - (100% - var(--stage-inset-l) - var(--stage-inset-r)) * 0.12); /* token-exempt: glow reach geometry; 0.12 = ambient.js AMBIENT_REACH_X (test-bound) */
+    right: calc(var(--stage-inset-r) - (100% - var(--stage-inset-l) - var(--stage-inset-r)) * 0.12); /* token-exempt: glow reach geometry; 0.12 = ambient.js AMBIENT_REACH_X (test-bound) */
   }
 }
 /* One layer = one painted source. ambient.js sets the vignetted PNG data URL as
@@ -11374,7 +11393,7 @@ a.tv-continue-card { text-decoration: none; }
    element used to appear in one jump after the network round trips,
    shoving everything below it down. While empty, the slot reserves the
    default 16/9 box with the same outer geometry as .player-container
-   (style.css ~1476), in the same #000 the player letterboxes with -- so
+   (style.css ~1476; on a phone both drop the frame, v1.359), in the same #000 the player letterboxes with -- so
    the mount swaps content INSIDE an identical frame instead of creating
    one. Seeded full loads mount the real player in frame one and never
    show this; cold/partial paths hold it until hydration. Cold PORTRAIT
@@ -11406,6 +11425,11 @@ a.tv-continue-card { text-decoration: none; }
        dynamic-toolbar delta in dvh browsers; same stale-vh rationale as the
        three player caps. vh above stays as the no-dvh fallback. */
     max-height: 45dvh;
+    /* v1.359: the mounted player is edge to edge on a phone with no frame
+       (rule above), so the reserved frame drops its outline and radius too or
+       the mount would change the frame under the picture. */
+    border: none;
+    border-radius: 0;
   }
 }
 
