@@ -4,6 +4,10 @@
 
 ### Bugs
 
+- [ ] **Bug: after several pause / unpause / pause the picture goes black, in the mini player too** _(Dean, 2026-10-03: "after multiple pauses on a given video the screen goes black, like an overlay that just doesn't go away"; further testing: it is pause/unpause/pause, maybe the double-tap; audio keeps playing and ambient mode keeps running, "a layering thing"; the mini player shows black too)_ - Next: a separate plan-only branch to assess it (reproduce, then at the black moment `elementFromPoint` at the picture centre and the video's paint state; suspects: the double-tap / tap-to-show-bar overlay, the ambient glow's stacking against the video layer, the reparented `#player-wrapper` shared by stage and dock). Check the open v1.336 black-picture device check (#284) for a shared root.
+
+- [ ] **v1.359 gate r1 suggestions (non-blocking)** - (a) a persisted `ft-theater=1` on a landscape phone (667x375, 740x360) keeps the old theatre `margin-inline:auto` width rule (about style.css 6441) so the player is not edge to edge there (x 129.9 / w 407.1); predates v1.359, the theatre button is hidden on phones, drop the stored flag below 1025px or let the mobile rule win; (b) BLD's desktop leg checks only x offsets: a mutant dropping the desktop border and radius is not caught in a real browser (the unit source lock covers it): add a desktop border / radius expectation per era; (c) `evalPlayerBleed` does not check scrollWidth or the picture's span, and its title check is `x < 8` not the page gutter; (d) the stage-rule unit lock does not forbid `padding-top` / `padding-bottom`; (e) the loose regex in the BLD gutter-back fixture test; (f) BLD sees only `env()` = 0 in a real browser, the 47px notch case is unit arithmetic plus the probe.
+
 - [ ] **Small phones (iPhone SE): the page shows only its frame and nothing works** _(Dean, 2026-10-02: "on a smaller
   phone certain elements straight up do not work or display"; he sees the top banner, "Listening on X" for a song on
   another device, the bottom toolbar and the notification area, but no tiles, and the bottom buttons go nowhere; the same in

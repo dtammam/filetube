@@ -3,7 +3,7 @@ plan: mobile-player-edge-to-edge
 harness: v2 · lean
 branch: feat/v1.359-mobile-edge-to-edge
 anchor: spec
-status: Building
+status: Shipped v1.359.0
 next: W0-W3 done; the gate (adversary + qa, same HEAD) next
 design: Dean 2026-10-03 - "The video player on mobile when not full screen should expand to the size of the full iPhone viewport side to side (right now there is a gap). It should mirror YouTube in that sense." Read "iPhone" as the mobile layout (max-width 768px), every era. Dean 2026-10-03 (AskUserQuestion, F1): side to side only; the 16px gap above the player stays.
 gate: adversary + qa (layout on the shared player host, the ambient stage geometry, every era; security-brief applied as a section by both)
@@ -399,3 +399,27 @@ video layer at x 0, the iOS edge swipe-back over a picture that now starts at th
 ## 8. Gate record
 
 (seats write their verdict lines here, bound to the sha they reviewed)
+
+### qa r1
+
+Gate: APPROVED r1 @6dbfe406 - qa
+
+Verified in a /tmp `git archive HEAD` sandbox (Node 22.23.1): ambient-glow-engine + mobile-player-height + geometry-checks tests 61 pass, 0 fail; `lint:ui` OK; `--mutate bld-gutter-back` -> "405 checks - 397 ok, 8 FAIL" (red on the 8 phone scenes; other 4 mutants and the clean 405/405 run taken from section 6, not re-run). Source reading: no stale comment or title left (grep gutter / keeps the player / 16px clean; the v1.314 lock and style comments were rewritten with intent kept). Security surface: none (CSS + test + proof tool only).
+
+No CRITICAL, no WARNING. SUGGESTIONS:
+1. checks.js `evalPlayerBleed`: weaker than plan W2 (no scrollWidth, no picture-span, title test is `x < 8`, not `== main padding-left`); a title shifted to x 10 would pass.
+2. Notch insets (47px) are locked only by the unit arithmetic and the probe; Chromium geometry runs see env() = 0, so BLD never exercises a non-zero inset in a real browser.
+3. `bld-desktop-bleeds` and `bld-gutter-back` are media-scoped; fine, but the unit `/starts at x 16.*|358px wide/` regex is alternation-loose.
+
+### adversary r1
+
+Gate: APPROVED r1 @6dbfe406 - adversary
+
+Measured in /tmp `git archive HEAD` sandboxes (Node 22.23.1). No CRITICAL, no WARNING.
+- All 5 bld-* mutants red by name via `node test/geometry/run.js --mutate <m>`: gutter-back 8 FAIL, rounded 8, outlined 8, title-bleeds 16, desktop-bleeds 8 (each "405 checks - N ok"). Unit mutants (drop the radius from the frame rule, glow right uses the left inset, drop the radius from the reserved frame) each 1 red; unit suites 61 pass 0 fail clean; lint:ui OK; critter-mode 107 pass.
+- Cascade: grep of every rule naming `#player-wrapper` / `.player-container` with border or radius matches the unit test's painter set; no JS writes the wrapper border.
+SUGGESTIONS (measured, none blocking):
+1. A persisted `ft-theater=1` (watch.js init applies it at any width) on a landscape phone defeats the bleed: probe with localStorage ft-theater=1 gives 667x375 wrapper x 129.9 w 407.1, 740x360 x 179.8 w 380.4 (390 and 768 portrait stay x 0 full width). The old theatre width rule (`min(100%, ... * 16/9)`, margin-inline:auto, ~line 6441) still applies below 1025px. Pre-existing; the button is hidden on phones, so only a resized desktop browser reaches it. Disclose or add the mobile override later.
+2. BLD's desktop leg checks only x offsets, though its comment says "keeps its frame": mutant `adv-desktop-frameless` (`@media (min-width:769px){.watch-player-stage #player-wrapper{border:none!important;border-radius:0!important}}`, injected via a sandbox-only mutations.js entry) survives: "405 checks - 405 ok, 0 FAIL". Only the unit source lock (rule must be inside the 768 query) binds it.
+3. Stage mobile rule lock does not forbid padding-top/bottom (`padding-top:0` appended: 61 pass).
+Unmeasured (no WebKit): iOS env() re-resolution, edge swipe-back, iOS video layer.
