@@ -1,10 +1,10 @@
 ---
 plan: black-screen-after-pauses
 harness: v2 · lean
-branch: plan/black-screen-after-pauses
+branch: feat/v1.360-black-picture (plan carried from plan/black-screen-after-pauses)
 anchor: outcome
-status: Draft
-next: EVIDENCE 1 (section 7) makes H2 the leader (frames stop reaching the video layer after a pause/unpause, sound is the video's own). Owed from Dean: did tap / seek / rotate / reload recover it? was the mini player black? Then W1/W2 design a recovery for H2 on a feat/ branch; this branch carries the plan only
+status: Building (v1.360.0)
+next: section 12 - build done, then the gate (adversary + qa + security-brief, same HEAD), then the release
 gate: pending
 ---
 
@@ -279,5 +279,62 @@ anything in the Pocket/iPod skins. They are separate ROADMAP entries.
 
 ## 11. Gate record
 
-Plan-only branch: no code to gate. When W0 begins on its `feat/` branch the adversary and qa seats write
-`Gate: <verdict> r<n> @<sha> - <seat>` here. Until then `gate: pending`.
+The v1.360 seats write `Gate: <verdict> r<n> @<sha> - <seat>` here (section 12 is what they review).
+
+## 12. v1.360: the static review (H8) and Dean's ruling - the fix ships without a device repro
+
+### 12.1 The static review (Opus reviewer, 2026-10-03, read-only at main 4c366600)
+
+- **H7 (our code mutates the `<video>` or `#player-wrapper` around a pause/play) is dead.** Every write to the video's
+  `currentTime` / `src` / `load()` / `playbackRate` / display, and every reparent or class change of the wrapper, sits behind a
+  user seek, a double-tap, a 500 ms hold on a playing video, a load, a teardown, a swap-back from BACKGROUND_AUDIO, or the
+  `css-fullscreen` autohide (CSS that only styles `.player-controls`). None of them runs on a single pause/play tap inline.
+- **The "clock went backward" (`video:check t=8.3` above `video:stalled t=8.0`) is a reading artifact:** the panel lists newest
+  first (`renderLifecycleOverlay`, `log.slice().reverse()`), and `t=` is the video's currentTime, not a stamp. The resume was at
+  about t=1.9 and the check carries `+t=6.4`, so the check is at 8.3, AFTER the stall at 8.0. No seek.
+- **New, H8: the background-audio gesture prime.** `primeBackgroundAudioElement` runs on the video's capture-phase `touchstart`
+  (and the bar's play button), once per load, with Background audio for video ON. It plays the hidden sidecar `<audio>` (muted;
+  pre-armed with the REAL `/audio/:id` since v1.35) under the video and pauses it when that play resolves. On an autostarted
+  video the first touch is the PAUSE tap, so the prime runs under a playing video at exactly the tap after which Dean's frame
+  count froze, and his log's `media:pause el=bgAudio` at that pause can only be the prime's own pause (a `pause()` on an
+  already-paused element fires no event; the only inline path that plays the sidecar is the prime). One cycle to fail fits a
+  one-shot. Against it: the prime is old (v1.27.1 / v1.35), and the report says "a recent regression" (an iOS update would fit
+  both). What no static read settles: whether WebKit on iOS drops the video's layer when a second media element starts in the
+  same gesture.
+
+### 12.2 Dean's ruling (2026-10-03, AskUserQuestion)
+
+Dean cannot test on device now and asked for a coded fix. Options put to him: the prime fix only, a self-heal only, or both.
+**Ruling: both.** Stop rule 1 ("never theory-fix") is overruled for this release by Dean, on these terms (LESSONS 1: ship a fix
+that also reports whether it worked): (a) the change that removes the suspected trigger; (b) a bounded self-heal for the observed
+failed state that writes every attempt and its outcome into the `?debugLifecycle=1` log. Disclosed cost of (a), accepted: if
+every touch of a load lands while the video plays (it autostarted and was never paused before a lock), the first lock is not
+primed and may fall back to a plain pause instead of background audio.
+
+### 12.3 Acceptance (what the gate measures)
+
+1. The prime never plays the sidecar while the video is playing (`paused === false && ended === false`), from the video touch AND
+   the bar's play button; a touch on a paused video still primes, once per load (the guard does not consume the one-shot).
+2. The watchdog: on a phone form factor, for a video item, from each `playing` to the next `pause` / `ended` / `emptied` / load,
+   it reads `getVideoPlaybackQuality().totalVideoFrames` once a second. If the count stands still for 6 s of wall time while
+   `currentTime` advances by at least 4 s, the video is playing, not seeking, `readyState >= 2`, `videoWidth > 0`, the page is
+   visible, the video is on screen, it is the active element (not the sidecar) and not in audio mode, AND this load has seen the
+   count climb (at least 10 frames at 5 fps or more of media time, including first-play-to-pause), it sets
+   `currentTime = currentTime` once. At most 2 heals per load, then it stops ("gave up" line).
+3. Never: on desktop, for audio items, while hidden, off screen, on a video whose count never climbed (a one-frame still), or after
+   its load ended. A healthy count (including iOS's ~2 s cached refresh) never triggers it.
+4. Log lines (only with `?debugLifecycle=1`): `video:heal f=<n> t=<a>-><b> n=<k>`, then `video:heal-ok f=<n> t=<t> n=<k>` when the
+   count moves again, or `video:heal (gave up ...)`.
+5. Nothing else changes: the v1.336 instrument's format, the handoff, the swap-back, presync, desktop.
+
+Falsifiers on device (the device checks of section 8 plus): black again with `video:heal` and NO `video:heal-ok` after it = the
+seek does not restore the layer (H2b, the layer is gone: re-root-cause); black with NO `video:heal` line at all = the watchdog's
+gates missed the state (read the `video:check` line); black with Background audio OFF = H8 is dead.
+
+### 12.4 Build log
+
+- `public/js/player.js`: the guard in `primeBackgroundAudioElement`; the pure `frozenPictureDecision` + `framesClimbed`
+  (exported); the runtime watchdog after `recordVideoState`; its listeners in `wireHostListeners`; its stop in
+  `teardownMediaState`.
+- `test/unit/black-picture-watchdog.test.js`: the pure decisions by invocation; the real player.js in jsdom (the hold-lock harness)
+  through its real touch / click / media events with a hand-driven clock and interval.
