@@ -4,7 +4,7 @@
 
 ### Bugs
 
-- [ ] **Bug: after a pause / unpause the picture goes black while the sound plays on, in the mini player too (inline and in full screen)** _(Dean, 2026-09-26: "a recent regression where if I'm watching a video in full screen, there's some way in which after I pause or resume, pause and resume again, the screen of the video goes black"; 2026-10-03: "after multiple pauses on a given video the screen goes black, like an overlay that just doesn't go away", audio keeps playing, the mini player shows black too)_ - **v1.360.0 ships a fix it could not verify on the device** (Dean cannot test now; his ruling, plan 2026-10-03-black-screen-after-pauses section 12): (1) the background-audio gesture prime no longer plays the hidden sidecar under a PLAYING video (the pause tap), the suspected trigger (H8: his capture logged the sidecar's play/pause at the very tap after which the video's frame count froze); (2) a phone-only watchdog re-seeks the video in place when its frame count stands still for 6 s while its clock runs (at most twice per load; `video:heal` / `video:heal-ok` in `?debugLifecycle=1`). Instrumented in v1.336 (the `video:check` series); Dean's 2026-10-03 capture: Ambient off still fails, the sound is the video's own, frames stop after one pause/unpause. Close when Dean's device checks (DEVICE-CHECKS.md, v1.360) pass. If it comes back: black with `video:heal` and no `video:heal-ok` = a seek does not restore the layer; black with no `video:heal` = the watchdog missed it; black with Background audio for video OFF = the prime was not the cause.
+- [ ] **Bug: after a pause / unpause the picture goes black while the sound plays on, in the mini player too (inline and in full screen)** _(Dean, 2026-09-26: "a recent regression where if I'm watching a video in full screen, there's some way in which after I pause or resume, pause and resume again, the screen of the video goes black"; 2026-10-03: "after multiple pauses on a given video the screen goes black, like an overlay that just doesn't go away", audio keeps playing, the mini player shows black too)_ - **v1.360.0 ships a fix it could not verify on the device** (Dean cannot test now; his ruling, plan 2026-10-03-black-screen-after-pauses section 12): (1) the background-audio gesture prime no longer plays or pauses the hidden sidecar under a PLAYING video, the suspected trigger (H8: his capture logged the sidecar's pause at the very tap after which the video's frame count froze); (2) a watchdog on the mobile form factor re-seeks the video in place when, after a resume, its frame count stands still for 6 s while its clock runs (at most twice per load; `video:heal` / `video:heal-ok` / `video:heal-gave-up` in `?debugLifecycle=1`). Instrumented in v1.336 (the `video:check` series); Dean's 2026-10-03 capture: Ambient off still fails, the sound is the video's own, frames stop after one pause/unpause. Close when Dean's device checks (DEVICE-CHECKS.md, v1.360) pass. If it comes back: black with `video:heal` and no `video:heal-ok` = a seek does not restore the layer; black with no `video:heal` = the watchdog missed it; black with Background audio for video OFF = the prime was not the cause (black with it ON does not clear the prime: the picture's play tap still primes about 350 ms before the video plays).
 
 - [ ] **v1.359 gate r1 suggestions (non-blocking)** - (a) a persisted `ft-theater=1` on a landscape phone (667x375, 740x360) keeps the old theatre `margin-inline:auto` width rule (about style.css 6441) so the player is not edge to edge there (x 129.9 / w 407.1); predates v1.359, the theatre button is hidden on phones, drop the stored flag below 1025px or let the mobile rule win; (b) BLD's desktop leg checks only x offsets: a mutant dropping the desktop border and radius is not caught in a real browser (the unit source lock covers it): add a desktop border / radius expectation per era; (c) `evalPlayerBleed` does not check scrollWidth or the picture's span, and its title check is `x < 8` not the page gutter; (d) the stage-rule unit lock does not forbid `padding-top` / `padding-bottom`; (e) the loose regex in the BLD gutter-back fixture test; (f) BLD sees only `env()` = 0 in a real browser, the 47px notch case is unit arithmetic plus the probe.
 
@@ -542,22 +542,29 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 - The iPhone bug: after a pause and unpause the picture goes black while the sound plays on (inline, full screen, the mini player).
   Dean cannot test on the device now and ruled for a fix anyway (plan 2026-10-03-black-screen-after-pauses, section 12): (1) the
-  background-audio gesture prime (`primeBackgroundAudioElement`) no longer starts the hidden sidecar `<audio>` while the video is
-  playing, so the pause tap no longer plays a second media element under the video; a touch on a paused video still primes, once
-  per load. (2) A phone-only watchdog from each `playing` to the next pause: if the video's layer frame count stands still for 6 s
-  while its clock runs at least 4 s (playing, visible, on screen, and only after this load has seen the count climb), it re-seeks
-  the video to its own position, at most twice per load, and logs `video:heal` / `video:heal-ok` with `?debugLifecycle=1`.
+  background-audio gesture prime (`primeBackgroundAudioElement`) no longer plays or pauses the hidden sidecar `<audio>` under a
+  playing video: a touch on the picture primes only while the video is paused (the play tap), and the bar's button primes after
+  its toggle (a pause press primes, a play press does not); still once per load. (2) A watchdog on the mobile form factor (phones,
+  iPads): after each resume, if the video's layer frame count has not moved and stands still for 6 s while its clock runs at least
+  4 s (playing, inline, visible, on screen, and only once this load has seen the count climb), it re-seeks the video to its own
+  position, at most twice per load, and logs `video:heal`, `video:heal-ok` (only on a real climb) or `video:heal-gave-up` with
+  `?debugLifecycle=1`.
 - Why these two: a static review found no pause/play path that writes the video or its wrapper (the "our own mutation" hypothesis
   is dead), and the "clock went backward" in Dean's capture was the panel's newest-first order. The one thing our code starts at
-  the pause tap is the prime, and his log shows its sidecar play/pause at the very tap after which the frame count froze.
-- Tests: 20 in `test/unit/black-picture-watchdog.test.js` (the pure decisions, and the real player.js in jsdom through its real
-  touch, click and media events with a hand-driven clock); 25 mutants, all killed (two guards that no state could reach were
-  removed instead of kept untested). SUITES_LINE
+  the pause tap is the prime, and his log shows its sidecar pause at the very tap after which the frame count froze.
+- Tests: 30 in `test/unit/black-picture-watchdog.test.js` (the pure decisions, and the real player.js in jsdom through its real
+  touch, click and media events with a hand-driven clock, every sidecar play/pause recorded with the video's paused state); every
+  mutant red after the gate r1 fix round (two guards no state could reach were removed instead of kept untested). SUITES_LINE
+- Gate: adversary + qa, CHANGES r1 (the bar's play press still primed under the playing video, a variable-frame-rate still was
+  healed, one frame read as a successful heal, per-load resets untested, a placeholder), all fixed in r2.
 - Disclosed: NOT verified on an iPhone (4 device checks owed in DEVICE-CHECKS.md); whether WebKit drops the video layer when a
-  second element starts, and whether an in-place seek brings a dropped layer back, are device facts no headless run can show. If
-  every touch of a load lands while the video plays (it started by itself and was never paused), the first lock is not primed and
-  may only pause instead of switching to background audio. The watchdog reads `getVideoPlaybackQuality()` once a second while a
-  phone plays video (the same read the v1.336 instrument makes).
+  second element starts, and whether an in-place seek brings a dropped layer back, are device facts no headless run can show. On
+  Dean's sequence the prime moves to the picture's play tap, about 350 ms before the video plays (an overlap if the sidecar's play
+  is slower). If every touch of a load is a play or lands on a playing video with no pause, the first lock is not primed and may
+  only pause instead of switching to background audio. A freeze in the very first play before any pause is not healed. A
+  variable-frame-rate video resumed on a still scene can get up to 2 needless in-place seeks. The watchdog reads
+  `getVideoPlaybackQuality()` once a second from each `playing` until the picture is seen moving (the same read the v1.336
+  instrument makes).
 
 ### v1.359.0 - The phone player goes edge to edge, side to side (2026-10-03)
 

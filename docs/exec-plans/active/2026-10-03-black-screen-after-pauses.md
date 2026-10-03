@@ -400,25 +400,32 @@ failed state that writes every attempt and its outcome into the `?debugLifecycle
 every touch of a load lands while the video plays (it autostarted and was never paused before a lock), the first lock is not
 primed and may fall back to a plain pause instead of background audio.
 
-### 12.3 Acceptance (what the gate measures)
+### 12.3 Acceptance (what the gate measures; amended in the r1 fix round, see 12.5)
 
-1. The prime never plays the sidecar while the video is playing (`paused === false && ended === false`), from the video touch AND
-   the bar's play button; a touch on a paused video still primes, once per load (the guard does not consume the one-shot).
-2. The watchdog: on a phone form factor, for a video item, from each `playing` to the next `pause` / `ended` / `emptied` / load,
-   it reads `getVideoPlaybackQuality().totalVideoFrames` once a second. If the count stands still for 6 s of wall time while
-   `currentTime` advances by at least 4 s, the video is playing, not seeking, `readyState >= 2`, `videoWidth > 0`, the page is
-   visible, the video is on screen, it is the active element (not the sidecar) and not in audio mode, AND this load has seen the
-   count climb (at least 10 frames at 5 fps or more of media time, including first-play-to-pause), it sets
-   `currentTime = currentTime` once. At most 2 heals per load, then it stops ("gave up" line).
-3. Never: on desktop, for audio items, while hidden, off screen, on a video whose count never climbed (a one-frame still), or after
-   its load ended. A healthy count (including iOS's ~2 s cached refresh) never triggers it.
-4. Log lines (only with `?debugLifecycle=1`): `video:heal f=<n> t=<a>-><b> n=<k>`, then `video:heal-ok f=<n> t=<t> n=<k>` when the
-   count moves again, or `video:heal (gave up ...)`.
+1. The prime never plays or pauses the sidecar while the video is playing (`paused === false`): the video touch primes only on a
+   paused video (the play tap); the bar's button primes AFTER its toggle, so a pause press primes under the now-paused video and a
+   play press does not prime. The guard does not consume the one-shot.
+2. The watchdog: on a mobile form factor (`isMobileFormFactor()`: phones and iPads), for a video item, from each `playing` to the
+   next `pause` / `ended` / `emptied` / load, it reads `getVideoPlaybackQuality().totalVideoFrames` once a second. It judges only a
+   play session whose count has NOT climbed since its `playing` (at least 10 frames at 5 fps or more of media time ends the judging
+   for that session), and only once this load has seen the count climb (including first-play-to-pause). If the count then stands
+   still for 6 s of wall time while `currentTime` advances by at least 4 s, the video is playing, not seeking, `readyState >= 2`,
+   `videoWidth > 0`, inline (`webkitPresentationMode` absent or `inline`), the page is visible and the video is on screen, it sets
+   `currentTime = currentTime` once. At most 2 heals per load; a third freeze logs gave-up and the load is not watched again.
+3. Never: on desktop, for audio items, while hidden, off screen, in a native presentation, on a video whose count never climbed
+   (a one-frame still), on a freeze in the first play before any pause, later in a session whose picture moved (a variable-frame-
+   rate still), or after its load ended. A healthy count (including iOS's ~2 s cached refresh) never triggers it. Disclosed false
+   positive: a variable-frame-rate video PAUSED and resumed on a still scene that holds 6 s or more (at most 2 in-place seeks).
+4. Log lines (only with `?debugLifecycle=1`): `video:heal f=<n> t=<a>-><b> n=<k>`; `video:heal-ok f=<a>-><b> t=<t> n=<k>` only when
+   the count climbs from the heal reading (10 frames at 5 fps); `video:heal-gave-up f=<n> t=<t> n=2`.
 5. Nothing else changes: the v1.336 instrument's format, the handoff, the swap-back, presync, desktop.
 
 Falsifiers on device (the device checks of section 8 plus): black again with `video:heal` and NO `video:heal-ok` after it = the
 seek does not restore the layer (H2b, the layer is gone: re-root-cause); black with NO `video:heal` line at all = the watchdog's
-gates missed the state (read the `video:check` line); black with Background audio OFF = H8 is dead.
+gates missed the state (read the `video:check` line); black with Background audio OFF = H8 is dead. Black with Background audio ON
+does NOT clear H8: on Dean's sequence the prime moves from the pause tap to the picture's PLAY tap, where the sidecar's muted play
+starts about 350 ms before the video's own play (the single-tap debounce); if its play() resolves slower than that, the two
+overlap (gate r1, qa W3 / adversary A1, reasoned).
 
 ### 12.4 Build log
 
@@ -436,4 +443,32 @@ gates missed the state (read the `video:check` line); black with Background audi
   new tests, then all killed. The prime guard (M1, M2 = the guard consuming the one-shot) and the climb, advance, window, cap,
   visibility, on-screen, desktop, listeners, teardown stop, the heal write and the heal-ok line are each red when mutated.
   Final: 20 tests, every mutant red.
-- Deviation (none of the acceptance changed): the ok-gate lost its sidecar and audio-mode clauses (above), with a comment.
+- Deviation: the ok-gate lost its sidecar and audio-mode clauses (above), with a comment; 12.3 item 2 amended to match (r1 fix).
+- CORRECTION (gate r1): "Final: 20 tests, every mutant red" was false. Both seats found survivors the build's mutant list never
+  tried (the per-load resets in syncFrozenGen, the gave-up line, three on-screen edges, the 10-frame floor). See 12.5.
+
+### 12.5 Fix round r1 -> r2 (both seats CHANGES @b6b8bb34, no CRITICAL)
+
+| Finding | Fix |
+|---|---|
+| adv A1: the bar's play press primed, then played the video in the same task; the prime's pause landed under the playing video | `ppBtn` toggles FIRST, then primes: a pause press primes under the paused video, the prime's own guard refuses a play press. Bound by behaviour (every sidecar play/pause recorded with the video's paused state). |
+| qa W2 / adv A2: a variable-frame-rate still gets healed | The watchdog judges only a play session whose count has not climbed since its `playing` (Dean's freeze started at the resume); a session whose picture moved is healthy for good. Residual (disclosed): a VFR video resumed on a still scene. |
+| qa W4 / adv A3: one frame after a heal logged heal-ok; timing-dependent | heal-ok needs a real climb (10 frames at 5 fps) from the heal reading, checked every tick (no null window after a heal). Bound: a one-frame-then-freeze run logs no heal-ok, a second heal, then gave-up. |
+| qa W1 / adv A4: per-load resets, gave-up line, on-screen edges, the 10-frame floor unbound | Tests: a second load heals again and a third load's one-frame still is never healed; the gave-up line; left / right / below / zero-size; the floor at 18 fps (9 frames false, 10 true). |
+| qa W3: on Dean's sequence the prime moves to the play tap | Disclosed in 12.3 falsifiers, the ROADMAP Planned entry and the Shipped entry. |
+| qa W5 / adv A5: `SUITES_LINE` placeholder | Filled with the r2 suite line. |
+| qa S1 | 12.3 amended. |
+| qa S2 | "mobile form factor (phones and iPads)" in the docs. |
+| qa S3 | Comments and docs say the capture shows the sidecar's PAUSE. |
+| qa S4 | `video:heal-gave-up` on the freeze after the cap; the load is not watched again. |
+| qa S5 | The block comment rewritten (widths, `emptied` named). |
+| qa S6 | LESSONS bullet: "suspected trigger", not an established cause. |
+| adv A6 | The `ended` tests dropped from the prime and the ok-gate, with a comment (an element at its end reads paused). |
+| adv A7 | The ok-gate requires `webkitPresentationMode` absent or `inline`; bound by a test. |
+| adv A8 | Not changed, reasoned: live transcode is chosen above 768 px wide; the in-place seek there is to the same position in the live stream (qa found it harmless). |
+| (new in the fix) | A freeze in the first play before any pause is not healed (no proof yet the counter is live); bound by a test, disclosed. |
+
+Mutants after the fix (scratchpad copy of the working tree, `node --test test/unit/black-picture-watchdog.test.js`, 30 + 3 re-runs):
+all red. Two equivalents found and removed rather than kept: a `wasPlaying` gate on the bar's prime (the prime's own guard decides
+it) and, in the first draft of the VFR test, a fixture that passed for the wrong reason (no load climb), rewritten on
+`frozenAfterResume`. 30 tests in the file.

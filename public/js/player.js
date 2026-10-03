@@ -3835,10 +3835,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.360 (the black picture after a pause): never start the sidecar while the
     // VIDEO is playing. The touch that lands on a playing video is a pause (or a
     // skip, a hold, a bar reveal), and the prime below plays a second media element
-    // under it - Dean's capture logged that sidecar play/pause at the very tap after
+    // under it - Dean's capture logged the sidecar's pause at the very tap after
     // which the video's frames stopped. Like the guards above, it does NOT consume
     // the one-shot, so the next touch on a paused video (the play tap) still primes.
-    if (mediaPlayer && !mediaPlayer.paused && !mediaPlayer.ended) return;
+    // (An element at its end reads paused, so no separate `ended` test.)
+    if (mediaPlayer && !mediaPlayer.paused) return;
     bgAudioGesturePrimed = true;
     try {
       // Only ever assigns the SILENT clip -- the real handoff src lives
@@ -4193,16 +4194,19 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   // ---- v1.360: the frozen-picture watchdog (the black picture after a pause) -------
-  // Dean's ?debugLifecycle=1 capture: after one pause/unpause the video's own layer frame count
-  // stood still (f=64) for 17 s while its clock and its sound ran on. Not reproducible off the
-  // iPhone, so besides removing the suspected trigger (primeBackgroundAudioElement) this watches
-  // for that exact state and, when it holds, re-seeks the video in place to its own position: a
-  // seek makes the player decode and present a fresh frame. Phones only, video only, the video
-  // element only (never the sidecar: a handoff pauses it), on screen only, at most FROZEN_HEALS_PER_LOAD times per
-  // load, so a misread can cost at most that many in-place seeks. Every heal and its outcome is
-  // a ?debugLifecycle=1 line (video:heal, video:heal-ok), so the next capture says if it worked.
-  // Reads the same counter as the v1.336 instrument (getVideoPlaybackQuality; never
-  // requestVideoFrameCallback or a canvas read, which attach a video output - see readVideoState).
+  // Dean's ?debugLifecycle=1 capture: right after one pause/unpause the video's own layer frame
+  // count stood still (f=64) for 17 s while its clock and its sound ran on. Not reproducible off
+  // the iPhone, so besides removing the suspected trigger (primeBackgroundAudioElement) this
+  // watches for that state and, when it holds, re-seeks the video in place to its own position: a
+  // seek makes the player decode and present a fresh frame. It only judges a play session whose
+  // count has NOT moved since its 'playing' (a session whose picture moved is healthy, so a
+  // variable-frame-rate still later in it is never "healed"), and only once this load has seen the
+  // count climb at all. Mobile form factor, video items, inline (not native fullscreen or PiP),
+  // visible and on screen, at most FROZEN_HEALS_PER_LOAD seeks per load. Every heal and its outcome
+  // is a ?debugLifecycle=1 line (video:heal; video:heal-ok only once the count really climbs again;
+  // video:heal-gave-up), so the next capture says if it worked. Reads the same counter as the
+  // v1.336 instrument (getVideoPlaybackQuality; never requestVideoFrameCallback or a canvas read,
+  // which attach a video output - see readVideoState).
   var FROZEN_TICK_MS = 1000;
   var FROZEN_WINDOW_MS = 6000;
   var FROZEN_MIN_ADVANCE_S = 4;
@@ -4214,7 +4218,8 @@ if (typeof module !== 'undefined' && module.exports) {
   var frozenSession = null;    // the reading at this play session's 'playing'
   var frozenClimbed = false;   // this load has seen the count climb at a real frame rate
   var frozenHeals = 0;
-  var frozenHealPending = false; // a heal ran; the next moving count logs video:heal-ok
+  var frozenHealFrom = null;   // the reading at the last heal, until the count climbs from it (video:heal-ok)
+  var frozenGaveUp = false;
   var frozenGen = -1;
   function readPictureProgress() {
     var v = mediaPlayer;
@@ -4226,9 +4231,11 @@ if (typeof module !== 'undefined' && module.exports) {
       var vw = window.innerWidth || 0, vh = window.innerHeight || 0;
       onScreen = !!(r && r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < vw && r.top < vh);
     } catch (_) { onScreen = false; }
-    // (No separate sidecar / audio-mode test: a handoff pauses the video and only runs hidden, and
-    // audio-mode is only ever set on an audio item, which frozenWatchEligible already refuses.)
-    var ok = !!(v && !v.paused && !v.ended && !v.seeking && v.readyState >= 2 && v.videoWidth > 0
+    var pm = v && typeof v.webkitPresentationMode === 'string' ? v.webkitPresentationMode : 'inline';
+    // (No ended / sidecar / audio-mode test: an element at its end reads paused, a handoff pauses
+    // the video and runs only hidden, and audio-mode is only ever set on an audio item, which
+    // frozenWatchEligible already refuses.)
+    var ok = !!(v && !v.paused && !v.seeking && v.readyState >= 2 && v.videoWidth > 0 && pm === 'inline'
       && document.visibilityState === 'visible' && onScreen);
     return { frames: q ? q.totalVideoFrames : null, t: v ? v.currentTime : null, at: Date.now(), ok: ok };
   }
@@ -4246,16 +4253,15 @@ if (typeof module !== 'undefined' && module.exports) {
     frozenGen = loadGeneration;
     frozenClimbed = false;
     frozenHeals = 0;
-    frozenHealPending = false;
+    frozenHealFrom = null;
+    frozenGaveUp = false;
     frozenSession = null;
   }
-  // 'pause' / 'ended': the pause reading is fresh (Dean's capture read f=58 at the pause, after
-  // f=1 at the 'playing' 1.9 s before), so a short first play still proves the counter is live.
+  function climbedFrom(a, b) { return framesClimbed(a, b, FROZEN_CLIMB_MIN_FRAMES, FROZEN_CLIMB_MIN_FPS); }
+  // 'pause' / 'ended' / 'emptied': the pause reading is fresh (Dean's capture read f=58 at the pause,
+  // after f=1 at the 'playing' 1.9 s before), so a short first play still proves the counter is live.
   function endFrozenPictureSession() {
-    if (frozenTimer && frozenSession && frozenGen === loadGeneration && !frozenClimbed) {
-      var n = readPictureProgress();
-      if (framesClimbed(frozenSession, n, FROZEN_CLIMB_MIN_FRAMES, FROZEN_CLIMB_MIN_FPS)) frozenClimbed = true;
-    }
+    if (frozenTimer && frozenSession && !frozenClimbed && climbedFrom(frozenSession, readPictureProgress())) frozenClimbed = true;
     frozenSession = null;
     stopFrozenPictureWatch();
   }
@@ -4263,7 +4269,7 @@ if (typeof module !== 'undefined' && module.exports) {
     stopFrozenPictureWatch();
     if (!frozenWatchEligible()) return;
     syncFrozenGen();
-    if (frozenHeals >= FROZEN_HEALS_PER_LOAD && !frozenHealPending) return;
+    if (frozenGaveUp) return;
     frozenSession = readPictureProgress();
     frozenSince = frozenSession;
     frozenTimer = setInterval(tickFrozenPictureWatch, FROZEN_TICK_MS);
@@ -4271,30 +4277,33 @@ if (typeof module !== 'undefined' && module.exports) {
   function tickFrozenPictureWatch() {
     if (frozenGen !== loadGeneration || !mediaPlayer) { stopFrozenPictureWatch(); return; }
     var n = readPictureProgress();
-    if (!frozenClimbed && frozenSession && framesClimbed(frozenSession, n, FROZEN_CLIMB_MIN_FRAMES, FROZEN_CLIMB_MIN_FPS)) frozenClimbed = true;
-    var d = frozenPictureDecision({ since: frozenSince, now: n, climbed: frozenClimbed, windowMs: FROZEN_WINDOW_MS, minAdvanceS: FROZEN_MIN_ADVANCE_S });
-    if (d === 'off') { stopFrozenPictureWatch(); return; }
-    if (d === 'reset') {
-      if (frozenHealPending && n.ok && frozenSince && frozenSince.ok && typeof frozenSince.frames === 'number' && n.frames > frozenSince.frames) {
-        frozenHealPending = false;
-        recordLifecycleEvent('video:heal-ok', { detail: 'f=' + n.frames + ' t=' + n.t.toFixed(1) + ' n=' + frozenHeals });
-        if (frozenHeals >= FROZEN_HEALS_PER_LOAD) { stopFrozenPictureWatch(); return; }
-      }
-      frozenSince = n;
+    if (frozenHealFrom && n.ok && climbedFrom(frozenHealFrom, n)) {
+      recordLifecycleEvent('video:heal-ok', { detail: 'f=' + frozenHealFrom.frames + '->' + n.frames + ' t=' + n.t.toFixed(1) + ' n=' + frozenHeals });
+      frozenHealFrom = null;
+    }
+    if (frozenSession && climbedFrom(frozenSession, n)) {
+      // this session's picture moves: healthy (and the load's counter is live); nothing to judge
+      // until the next 'playing' (a later still in the same session is the video, not a fault)
+      frozenClimbed = true;
+      if (!frozenHealFrom) stopFrozenPictureWatch();
       return;
     }
+    var d = frozenPictureDecision({ since: frozenSince, now: n, climbed: frozenClimbed, windowMs: FROZEN_WINDOW_MS, minAdvanceS: FROZEN_MIN_ADVANCE_S });
+    if (d === 'off') { stopFrozenPictureWatch(); return; }
+    if (d === 'reset') { frozenSince = n; return; }
     if (d !== 'heal') return;
     if (frozenHeals >= FROZEN_HEALS_PER_LOAD) {
-      recordLifecycleEvent('video:heal', { detail: 'gave up f=' + n.frames + ' t=' + n.t.toFixed(1) + ' n=' + frozenHeals });
-      frozenHealPending = false;
+      recordLifecycleEvent('video:heal-gave-up', { detail: 'f=' + n.frames + ' t=' + n.t.toFixed(1) + ' n=' + frozenHeals });
+      frozenGaveUp = true;
+      frozenHealFrom = null;
       stopFrozenPictureWatch();
       return;
     }
     frozenHeals++;
-    frozenHealPending = true;
+    frozenHealFrom = n;
     recordLifecycleEvent('video:heal', { detail: 'f=' + n.frames + ' t=' + frozenSince.t.toFixed(1) + '->' + n.t.toFixed(1) + ' n=' + frozenHeals });
     try { var here = mediaPlayer.currentTime; mediaPlayer.currentTime = here; } catch (_) { /* not seekable - the next window decides again */ }
-    frozenSince = null;
+    frozenSince = n;
   }
 
   // ---- Lock-to-audio phase 1 (MEASURE): the timing log's runtime half ---------
@@ -7122,8 +7131,12 @@ if (typeof module !== 'undefined' && module.exports) {
 
     if (ppBtn) {
       ppBtn.addEventListener('click', function () {
-        primeBackgroundAudioElement(); // v1.27.0: synchronous gesture-prime BEFORE the play() below (DOCKED + non-native-controls FULL path)
+        // v1.27.0: the synchronous gesture-prime (DOCKED + non-native-controls FULL path). v1.360: AFTER
+        // the toggle, so it rides a PAUSE press under the now-paused video, and the prime's own
+        // playing-video guard refuses a PLAY press (before, a play press primed and then started the
+        // video in the same task, and the prime's pause landed under the playing video).
         togglePlayPause();
+        primeBackgroundAudioElement();
       });
     }
 

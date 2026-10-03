@@ -47,7 +47,8 @@ test('framesClimbed: at least minFrames and minFps per second of media time', ()
   const c = player.framesClimbed;
   assert.strictEqual(typeof c, 'function', 'exported');
   assert.strictEqual(c(R(1, 0), R(58, 1.9), 10, 5), true, 'Dean\'s first play: f 1 -> 58 over 1.9 s');
-  assert.strictEqual(c(R(1, 0), R(10, 1.9), 10, 5), false, '9 frames is under the floor');
+  assert.strictEqual(c(R(1, 0), R(10, 0.5), 10, 5), false, '9 frames is under the floor (even at 18 fps)');
+  assert.strictEqual(c(R(1, 0), R(11, 0.5), 10, 5), true, '10 frames at 20 fps is a climb');
   assert.strictEqual(c(R(1, 0), R(20, 10), 10, 5), false, '1.9 fps is not a real frame rate');
   assert.strictEqual(c(R(1, 0), R(58, 0), 10, 5), false, 'no media time');
   assert.strictEqual(c(R(null, 0), R(58, 1.9), 10, 5), false);
@@ -70,8 +71,22 @@ async function boot(settings, item) {
     return { ok: true, status: 200, json: async () => Object.assign({ mobileCustomPlayer: true }, settings || {}), text: async () => '' };
   };
   const plays = [];
-  w.HTMLMediaElement.prototype.play = function () { plays.push(this.id || this.tagName); return Promise.resolve(); };
-  w.HTMLMediaElement.prototype.pause = function () {};
+  // Every play()/pause() in order, with whether the VIDEO read paused at that moment (the H8
+  // measure: the sidecar must never play or pause under a playing video).
+  const calls = [];
+  const hook = { st: null };
+  const isVideo = (el) => el.id === 'media-player';
+  const videoPaused = () => (hook.st ? hook.st.paused : true);
+  w.HTMLMediaElement.prototype.play = function () {
+    plays.push(this.id || this.tagName);
+    if (isVideo(this) && hook.st) hook.st.paused = false;
+    calls.push({ op: 'play', id: this.id, videoPaused: videoPaused() });
+    return Promise.resolve();
+  };
+  w.HTMLMediaElement.prototype.pause = function () {
+    if (isVideo(this) && hook.st) hook.st.paused = true;
+    calls.push({ op: 'pause', id: this.id, videoPaused: videoPaused() });
+  };
   w.HTMLMediaElement.prototype.load = function () {};
   w.scrollTo = () => {};
   // The watchdog's interval and clock are driven by hand: its tick is captured by name, and
@@ -97,6 +112,7 @@ async function boot(settings, item) {
   const v = w.document.getElementById('media-player');
   // The video's media state, owned by the test.
   const st = { paused: false, frames: 0, t: 0, seeks: [], seeking: false, readyState: 4, videoWidth: 640 };
+  hook.st = st;
   Object.defineProperty(v, 'paused', { get: () => st.paused, configurable: true });
   Object.defineProperty(v, 'ended', { get: () => false, configurable: true });
   Object.defineProperty(v, 'seeking', { get: () => st.seeking, configurable: true });
@@ -108,7 +124,8 @@ async function boot(settings, item) {
   const live = () => ticks.filter((x) => x.live);
   // One watchdog second: the clock and the media clock advance, the count by `fps` frames.
   const second = (fps) => { clock.now += 1000; st.t += 1; st.frames += fps; live().forEach((x) => x.fn()); };
-  return { w, doc: w.document, p, v, st, plays, clock, live, second, bgAudio: w.document.getElementById('bg-audio-sidecar') };
+  const log = () => JSON.parse(w.localStorage.getItem('ft-lifecycle-log') || '[]').map((e) => e.type + ' ' + (e.detail || ''));
+  return { w, doc: w.document, p, v, st, plays, calls, clock, live, second, log, bgAudio: w.document.getElementById('bg-audio-sidecar') };
 }
 const fireMedia = (h, type) => h.v.dispatchEvent(new h.w.Event(type));
 function touch(h, el, type) {
@@ -142,16 +159,35 @@ test('prime: the next touch on a PAUSED video still primes, once (the guard does
   assert.strictEqual(h.plays.filter((x) => x === 'bg-audio-sidecar').length, 1, 'still one-shot');
 });
 
-test('prime: the bar\'s play button pausing a playing video does not prime either; pressing it on a paused video does', async () => {
+test('prime: the bar\'s button primes on a PAUSE press, after the pause; a PLAY press does not prime (red before the r1 fix: the play press primed and the prime\'s pause landed under the playing video)', async () => {
   const h = await boot(BG_ON);
   const pp = h.doc.getElementById('pp-btn');
   assert.ok(pp, 'the bar\'s play button');
-  h.st.paused = false;
-  pp.dispatchEvent(new h.w.MouseEvent('click', { bubbles: true, detail: 1 }));
-  assert.strictEqual(h.plays.filter((x) => x === 'bg-audio-sidecar').length, 0);
   h.st.paused = true;
   pp.dispatchEvent(new h.w.MouseEvent('click', { bubbles: true, detail: 1 }));
-  assert.strictEqual(h.plays.filter((x) => x === 'bg-audio-sidecar').length, 1);
+  await wait(10);
+  assert.strictEqual(h.st.paused, false, 'the play press played the video');
+  assert.strictEqual(h.plays.filter((x) => x === 'bg-audio-sidecar').length, 0, 'a play press does not prime');
+  pp.dispatchEvent(new h.w.MouseEvent('click', { bubbles: true, detail: 1 }));
+  await wait(10);
+  assert.strictEqual(h.st.paused, true, 'the pause press paused the video');
+  assert.strictEqual(h.plays.filter((x) => x === 'bg-audio-sidecar').length, 1, 'the pause press primed');
+  const side = h.calls.filter((c) => c.id === 'bg-audio-sidecar');
+  assert.ok(side.length >= 2, 'the prime played and paused the sidecar: ' + JSON.stringify(h.calls));
+  assert.deepStrictEqual(side.filter((c) => !c.videoPaused), [], 'no sidecar play or pause ever ran under a playing video');
+});
+
+test('prime: across a picture-tap pause and play and the bar\'s pause and play, the sidecar never plays or pauses under a playing video', async () => {
+  const h = await boot(BG_ON);
+  const pp = h.doc.getElementById('pp-btn');
+  h.st.paused = false; // it started by itself
+  touch(h, h.v, 'touchstart'); h.v.pause(); await wait(5); // the pause tap
+  touch(h, h.v, 'touchstart'); await wait(5); h.v.play(); await wait(5); // the play tap (the prime first, the video 350 ms later)
+  pp.dispatchEvent(new h.w.MouseEvent('click', { bubbles: true, detail: 1 })); await wait(5);
+  pp.dispatchEvent(new h.w.MouseEvent('click', { bubbles: true, detail: 1 })); await wait(5);
+  const side = h.calls.filter((c) => c.id === 'bg-audio-sidecar');
+  assert.ok(side.length >= 2, 'it primed: ' + JSON.stringify(h.calls));
+  assert.deepStrictEqual(side.filter((c) => !c.videoPaused), []);
 });
 
 // (2) the watchdog -------------------------------------------------------------
@@ -237,18 +273,36 @@ test('watchdog: a new load stops it and starts its counters fresh', async () => 
   assert.strictEqual(h.live().length, 0, 'the old watch died with its load');
 });
 
-test('watchdog: with ?debugLifecycle=1 on, the heal and its outcome are log lines (video:heal, then video:heal-ok)', async () => {
+test('watchdog: with ?debugLifecycle=1 on, the heal and its outcome are log lines (video:heal, then video:heal-ok once the count really climbs)', async () => {
   const h = await frozenAfterResume();
   h.w.localStorage.setItem('ft-debug-lifecycle', '1');
   for (let i = 0; i < 6; i++) h.second(0);
   assert.strictEqual(h.st.seeks.length, 1);
   h.second(30);
-  h.second(30);
-  const types = JSON.parse(h.w.localStorage.getItem('ft-lifecycle-log') || '[]').map((e) => e.type + ' ' + (e.detail || ''));
-  const heal = types.findIndex((s) => /^video:heal f=\d+ t=[\d.]+->[\d.]+ n=1$/.test(s));
-  const ok = types.findIndex((s) => /^video:heal-ok f=\d+ t=[\d.]+ n=1$/.test(s));
-  assert.ok(heal !== -1, 'video:heal logged: ' + types.join(' | '));
-  assert.ok(ok > heal, 'video:heal-ok logged after it');
+  const lines = h.log();
+  const heal = lines.findIndex((x) => /^video:heal f=\d+ t=[\d.]+->[\d.]+ n=1$/.test(x));
+  const ok = lines.findIndex((x) => /^video:heal-ok f=\d+->\d+ t=[\d.]+ n=1$/.test(x));
+  assert.ok(heal !== -1, 'video:heal logged: ' + lines.join(' | '));
+  assert.ok(ok > heal, 'video:heal-ok logged after it, on the very next tick: ' + lines.join(' | '));
+});
+
+test('watchdog: ONE frame after a heal is not a heal-ok; it freezes again, heals a second time, then logs gave-up and stops', async () => {
+  const h = await frozenAfterResume();
+  h.w.localStorage.setItem('ft-debug-lifecycle', '1');
+  for (let i = 0; i < 6; i++) h.second(0);
+  assert.strictEqual(h.st.seeks.length, 1);
+  h.second(1); // the seek presented one frame
+  for (let i = 0; i < 6; i++) h.second(0);
+  assert.strictEqual(h.st.seeks.length, 2, 'a second heal');
+  for (let i = 0; i < 6; i++) h.second(0);
+  assert.strictEqual(h.st.seeks.length, 2, 'never a third seek');
+  assert.strictEqual(h.live().length, 0, 'stopped');
+  const lines = h.log();
+  assert.deepStrictEqual(lines.filter((x) => /^video:heal-ok/.test(x)), [], 'no false success: ' + lines.join(' | '));
+  assert.strictEqual(lines.filter((x) => /^video:heal f=/.test(x)).length, 2);
+  assert.ok(lines.some((x) => /^video:heal-gave-up f=\d+ t=[\d.]+ n=2$/.test(x)), 'gave-up logged: ' + lines.join(' | '));
+  h.st.paused = true; fireMedia(h, 'pause'); h.st.paused = false; fireMedia(h, 'playing');
+  assert.strictEqual(h.live().length, 0, 'once it gave up, this load is not watched again');
 });
 
 test('watchdog: a first play too short for a tick to see the climb still counts (the pause reading proves it; Dean\'s f 1 -> 58 in 1.9 s)', async () => {
@@ -307,4 +361,65 @@ test('watchdog: ended stops it, and so does closing the player', async () => {
   assert.strictEqual(h.live().length, 0, 'closed: the next tick sees the new generation and stops');
   for (let i = 0; i < 20; i++) h.second(0);
   assert.deepStrictEqual(h.st.seeks, []);
+});
+
+test('watchdog: a variable-frame-rate still LATER in a session whose picture moved is never healed (the gate r1 webm shape)', async () => {
+  const h = await frozenAfterResume(); // this load's counter is proven live, a new session is playing
+  for (let i = 0; i < 3; i++) h.second(30); // motion
+  for (let i = 0; i < 10; i++) h.second(0); // an 8 s+ still held as one frame
+  for (let i = 0; i < 3; i++) h.second(30);
+  assert.deepStrictEqual(h.st.seeks, []);
+});
+
+test('watchdog: a freeze on the very first play, before any pause, is not healed (no proof yet that the counter is live)', async () => {
+  const h = await boot({});
+  h.st.frames = 1;
+  fireMedia(h, 'playing');
+  for (let i = 0; i < 20; i++) h.second(0);
+  assert.deepStrictEqual(h.st.seeks, []);
+});
+
+test('watchdog: a second load starts fresh: it heals again after the first load used both heals, and a one-frame still there is never healed', async () => {
+  const h = await frozenAfterResume();
+  for (let i = 0; i < 20; i++) h.second(0);
+  assert.strictEqual(h.st.seeks.length, 2, 'load 1 used both heals');
+  h.p.load('v2', { id: 'v2', title: 'T2', type: 'video', ext: '.mp4' }, {});
+  await wait(30);
+  h.st.seeks.length = 0;
+  h.st.frames = 500; h.st.t = 0; h.st.paused = false;
+  fireMedia(h, 'playing');
+  h.second(30); h.second(30);
+  h.st.paused = true; fireMedia(h, 'pause'); h.st.paused = false; fireMedia(h, 'playing');
+  for (let i = 0; i < 7; i++) h.second(0);
+  assert.strictEqual(h.st.seeks.length, 1, 'load 2 heals (its heal count started at 0)');
+  h.p.load('v3', { id: 'v3', title: 'T3', type: 'video', ext: '.mp4' }, {});
+  await wait(30);
+  h.st.seeks.length = 0; h.st.t = 0; h.st.paused = false;
+  fireMedia(h, 'playing'); // a one-frame still: the count never climbs on this load
+  for (let i = 0; i < 20; i++) h.second(0);
+  assert.deepStrictEqual(h.st.seeks, [], 'load 3 never saw a climb (the previous load\'s does not carry over)');
+});
+
+for (const [what, rect] of [
+  ['left of the screen', { left: -500, top: 0, width: 400, height: 225, right: -100, bottom: 225 }],
+  ['right of the screen', { left: 2000, top: 0, width: 400, height: 225, right: 2400, bottom: 225 }],
+  ['below the screen', { left: 0, top: 5000, width: 400, height: 225, right: 400, bottom: 5225 }],
+  ['zero-size', { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 }],
+]) {
+  test('watchdog: no heal while the video is ' + what, async () => {
+    const h = await frozenAfterResume();
+    h.v.getBoundingClientRect = () => rect;
+    for (let i = 0; i < 20; i++) h.second(0);
+    assert.deepStrictEqual(h.st.seeks, []);
+  });
+}
+
+test('watchdog: no heal in a native presentation (iOS full screen or picture in picture); inline still heals', async () => {
+  const h = await frozenAfterResume();
+  h.v.webkitPresentationMode = 'picture-in-picture';
+  for (let i = 0; i < 20; i++) h.second(0);
+  assert.deepStrictEqual(h.st.seeks, []);
+  h.v.webkitPresentationMode = 'inline';
+  for (let i = 0; i < 7; i++) h.second(0);
+  assert.strictEqual(h.st.seeks.length, 1);
 });
