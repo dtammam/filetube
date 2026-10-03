@@ -446,7 +446,7 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ### 🐞 Bugs
 
-- [ ] **Bug: the mobile video player, when not fullscreen, should span the iPhone viewport side to side like YouTube** (Dean, 2026-10-03, next wave: "The video player on mobile when not full screen should expand to the size of the full iPhone viewport side to side (right now there is a gap). It should mirror YouTube in that sense."). Measure the gutter (watch container padding, player stage margin, safe-area insets) at iPhone widths before and after; the picture goes edge to edge, the title and actions below keep their gutter. Look reference: YouTube's mobile watch page, side by side.
+- [x] **Bug: the mobile video player, when not fullscreen, should span the iPhone viewport side to side like YouTube** - ✅ SHIPPED v1.359.0 (see Shipped) (Dean, 2026-10-03, next wave: "The video player on mobile when not full screen should expand to the size of the full iPhone viewport side to side (right now there is a gap). It should mirror YouTube in that sense."). Measure the gutter (watch container padding, player stage margin, safe-area insets) at iPhone widths before and after; the picture goes edge to edge, the title and actions below keep their gutter. Look reference: YouTube's mobile watch page, side by side.
 
 - [ ] **Bug: the music player's pop-out is glitchy at the iPad / desktop viewport and opens no new tab** (Dean, 2026-10-03: "glitchiness with iPad / desktop viewport when trying to pop out music player, doesn't open in new tab. Not a pop out"). Not yet reproduced; first measure the pop-out path at an iPad-width viewport and find why no window opens.
 
@@ -549,6 +549,28 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.359.0 - The phone player goes edge to edge, side to side (2026-10-03)
+
+- On the mobile layout (max-width 768px, every era) the inline watch player now spans the screen from edge to edge, like YouTube: no
+  16 px gap either side, no outline, square corners. The title and the buttons below keep their margin; the 16 px gap above the player
+  stays (Dean's ruling). Three CSS rules edited in place in `public/css/style.css`: the stage pads by the safe area (`env()`, 0 in
+  portrait, the notch side turned landscape) instead of the gutter; the wrapper and the reserved frame (`#player-slot:empty`) drop
+  their border and radius; the ambient glow's x insets follow the player. Desktop, tablet above 768, the dock, faux full screen and
+  the expanded audio view are untouched. No JS, server or storage change.
+- Measured (headless Chromium, iPhone emulation; `tools/edge-to-edge-proof`, before.json vs after.json): at 390 the wrapper went from
+  x 16 / w 358 / picture h 200.3 to x 0 / w 390 / h 219.4, border 1 px to 0, radius 0 / 2 / 2 / 12 px to 0; the same at 320 to 768
+  in all four eras; portrait files fill the width too; a 47 px notch inset gives x 47 / w 573 at 667; the 18 desktop and dock rows are
+  identical in every field; the reserved frame equals the mounted picture (390 x 219.4, no jump); `scrollWidth` equals the viewport
+  at every phone row.
+- Locks: the v1.314 ambient lock updated with its intent kept and an exactly-one-rule assertion; two parsed source locks; a new
+  real-browser geometry check BLD (16 scenes) with five mutants, all killed (a first draft let the gutter-back mutant survive because it
+  read its expected inset from the stage; fixed). Suites: Node 22.23.1 and 24.20.0 `npm test` 10823 pass, 0 fail; `test:geometry`
+  405 / 405 ok.
+- Disclosed: iOS Safari and the home-screen app are not measurable here (5 device checks owed in DEVICE-CHECKS.md). The Podcasts
+  phone player could not be mounted in the fixture (no episodes), so it is measured as "page unchanged" only. A title under a landscape
+  notch is not changed (out of scope). The locked-pill rect of the hold-lock probe moved up 1 px (the border). Desktop `scrollWidth`
+  804 at 769 wide (the glow) predates this change and is unchanged.
 
 ### v1.358.0 - Drag down while holding the 2x to lock it (2026-10-03)
 

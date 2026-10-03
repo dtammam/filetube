@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.359-mobile-edge-to-edge
 anchor: spec
 status: Building
-next: W0, W1, W2 done; W3 (docs) next, then the gate (adversary + qa, same HEAD)
+next: W0-W3 done; the gate (adversary + qa, same HEAD) next
 design: Dean 2026-10-03 - "The video player on mobile when not full screen should expand to the size of the full iPhone viewport side to side (right now there is a gap). It should mirror YouTube in that sense." Read "iPhone" as the mobile layout (max-width 768px), every era. Dean 2026-10-03 (AskUserQuestion, F1): side to side only; the 16px gap above the player stays.
 gate: adversary + qa (layout on the shared player host, the ambient stage geometry, every era; security-brief applied as a section by both)
 ---
