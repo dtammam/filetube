@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.359-mobile-edge-to-edge
 anchor: spec
 status: Building
-next: W0 done (before.json committed); W1 next (three in-place CSS edits + the v1.314 lock), then W2, W3
+next: W0, W1, W2 done; W3 (docs) next, then the gate (adversary + qa, same HEAD)
 design: Dean 2026-10-03 - "The video player on mobile when not full screen should expand to the size of the full iPhone viewport side to side (right now there is a gap). It should mirror YouTube in that sense." Read "iPhone" as the mobile layout (max-width 768px), every era. Dean 2026-10-03 (AskUserQuestion, F1): side to side only; the 16px gap above the player stays.
 gate: adversary + qa (layout on the shared player host, the ambient stage geometry, every era; security-brief applied as a section by both)
 ---
@@ -351,6 +351,33 @@ h 200.3, x 17, w 356); cold frame 390: slot x 16, w 358, h 201.4 (mounted wrappe
 1px; cold frame 768: slot 16 / 736 / h 414; Music 390: wrapper x 16 w 358 (radius per era); Podcasts: the fixture has no episodes,
 so no player mounts and its row has no wrapper (disclosed: Podcasts is measured only as "no change in the page", not as a mounted
 player; its slot has no `.watch-*` ancestor by construction, section 3).
+
+**W1 (builder, 2026-10-03, Node 22.23.1; commit 111b6bb9).** Three in-place CSS edits plus the mobile glow override placed AFTER the base
+`.ambient-glow` rule. Locks: the v1.314 MOBILE SPREAD test in `ambient-glow-engine.test.js` rewritten with intent kept (exactly ONE mobile
+`.watch-player-stage` rule and ONE mobile `.ambient-glow` rule, padding is exactly the `--stage-inset-*` vars, those are exactly
+`env(safe-area-inset-*, 0px)`, glow fraction == `AMBIENT_REACH_X`, glow after base, arithmetic at 390 with insets 0 and 47); two parsed
+source locks in `mobile-player-height.test.js` (one frame-drop rule inside the 768px query excluding `.css-fullscreen` and `.audio-expanded`;
+a fail-by-default set of every rule that paints a border or radius on the player frame; the reserved-frame rule after its base).
+Targeted run: 135 pass, 0 fail; `lint:ui` OK; overlay-containment 0 violations.
+
+**W2 (builder, 2026-10-03, Node 22.23.1; commits b7445508 + this one).**
+- BLD (`collectPlayerBleed`/`evalPlayerBleed`, scene `watch-player`, floor `player: 1`): 16 scenes, 16 ok. Mutants (`node test/geometry/run.js
+  --mutants`): bld-rounded, bld-outlined, bld-title-bleeds, bld-desktop-bleeds KILLED on first run. `bld-gutter-back` SURVIVED the first
+  draft (the check took its expected inset from the stage's own padding, so a gutter padding justified itself: presence-not-binding);
+  fixed by measuring the inset on a throwaway `env()` element; re-run: red on phone, clean control green. The gutter-back and
+  desktop-bleeds mutants are media-scoped so each is red only on its own viewport class.
+- after.json: `node tools/edge-to-edge-proof/probe.js "$PWD" tools/edge-to-edge-proof/after.json` -> exit 0, 77 runs (before.json also holds 77 runs), 0 ERR/VACUOUS. Diff vs before.json by field: the 18 rows at vw > 768 (desktop widths, dock included) identical in
+  EVERY field; Music rows identical; Podcasts rows identical (no mounted player in the fixture, disclosed). Every phone row: wrapper x 0, w = vw,
+  border 0, radius 0, stage padding 0, title x 16, scrollWidth == vw. 390: pic h 219.4 (was 200.3). Notch rows: stage p 47, wrapper x 47,
+  glow x -21.8 at 667. portrait-notch (top inset) wrapper x 0. Portrait file rows: full width, `.portrait-media` present. Cold frame:
+  slot x 0 w 390 h 219.4 = the mounted picture, radius 0, border 0 (no jump). Desktop `scrollWidth` 804 at 769 is unchanged from before.
+- Hold-lock probes re-run: `probe-lock` differs from the committed result only in the locked pill's rect y (85 -> 84, 45 -> 44; the
+  wrapper lost its 1px border; not confirmed separately). `probe.js` (the W0 candidate experiment) has run-to-run differences that are about
+  the candidates, not the layout (unchanged files, not re-committed).
+- Not produced: the side-by-side image (the probe numbers are the evidence).
+- Suites: Node 22.23.1 `npm test` pass 10823, fail 0, exit 0; Node 24.20.0 `npm test` tests 10835, pass 10823, fail 0,
+  exit 0; `npm run test:geometry` "geometry: 405 checks - 405 ok, 0 FAIL, 0 XFAIL (expected), 0 XPASS; 192 scenes in 280s"; `lint:ui`
+  OK; overlay-containment clean (0 violations).
 
 ## 7. Device checks owed (to DEVICE-CHECKS.md at release, tagged v1.359.0)
 
