@@ -56,7 +56,7 @@ test('holdDragDecision vs swipeBackShouldClaim: pure-by-pure disjoint over a gri
 
 // ---- pure: holdRatePickDecision (R5b) ----------------------------------------
 
-test('holdRatePickDecision: a locked hold drops only when defaultPlaybackRate moved from its value at engage', () => {
+test('holdRatePickDecision: a locked hold drops when the default moved from its value at engage OR the rate is no longer our 2x', () => {
   const d = player.holdRatePickDecision;
   assert.strictEqual(typeof d, 'function', 'exported');
   assert.strictEqual(d({ locked: true, defaultAtEngage: 1, defaultNow: 1.5 }), 'drop');
@@ -64,6 +64,8 @@ test('holdRatePickDecision: a locked hold drops only when defaultPlaybackRate mo
   assert.strictEqual(d({ locked: false, defaultAtEngage: 1, defaultNow: 1.5 }), 'keep', 'a plain hold is untouched');
   assert.strictEqual(d({ locked: true, defaultAtEngage: 1.5, defaultNow: 1 }), 'drop', 'a pick back to 1 counts');
   assert.strictEqual(d({ locked: true, defaultAtEngage: 1, defaultNow: NaN }), 'keep');
+  assert.strictEqual(d({ locked: true, defaultAtEngage: 1, defaultNow: 1, rateNow: 2 }), 'keep', 'our own 2x');
+  assert.strictEqual(d({ locked: true, defaultAtEngage: 1, defaultNow: 1, rateNow: 1 }), 'drop', 'a pick equal to the default still moved the rate');
   assert.strictEqual(d(), 'keep');
 });
 
@@ -328,4 +330,33 @@ test('after an unlock a plain hold behaves as before: its lift releases to the p
   fire(h.w, h.v, 'touchend', 200, 100);
   assert.strictEqual(h.v.playbackRate, 1.5, 'a plain hold lifted: back to the prior rate');
   await locked(h);
+});
+
+test('the drag claim is registered on the player wrapper, never on the <video> (measured: a video listener leaves moves non-cancelable)', () => {
+  assert.match(PLAYER_SRC, /host\.addEventListener\('touchmove', function \(e\) \{\s*if \(holdActive && holdGestureLive && e\.cancelable\) e\.preventDefault\(\);/);
+  assert.ok(!/mediaPlayer\.addEventListener\('touchmove'/.test(PLAYER_SRC), 'no video-level touchmove claim');
+});
+
+test('a drag that starts while LOCKED is a scroll, not a tap: no single-tap is scheduled after it (v1.134 veto stays alive)', async () => {
+  const h = await boot(VIDEO);
+  await locked(h);
+  let toggles = 0;
+  h.v.pause = () => { toggles++; };
+  h.v.play = () => { toggles++; return Promise.resolve(); };
+  fire(h.w, h.v, 'touchstart', 200, 50);
+  fire(h.w, h.v, 'touchmove', 200, 150);
+  fire(h.w, h.v, 'touchend', 200, 150);
+  await wait(450);
+  assert.strictEqual(toggles, 0, 'the pan did not toggle play/pause 350 ms after the lift');
+  assert.strictEqual(h.v.playbackRate, 2);
+});
+
+test('Space on the focused locked pill unlocks and does NOT also reach the shortcut that pauses', async () => {
+  const h = await boot(VIDEO);
+  await locked(h);
+  let paused = 0;
+  h.v.pause = () => { paused++; };
+  h.badge.dispatchEvent(new h.w.KeyboardEvent('keydown', { key: ' ', bubbles: true, cancelable: true }));
+  assert.strictEqual(h.v.playbackRate, 1);
+  assert.strictEqual(paused, 0, 'Space unlocked only');
 });

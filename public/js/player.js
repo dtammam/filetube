@@ -4685,7 +4685,8 @@ if (typeof module !== 'undefined' && module.exports) {
   // touch input on the player stops responding.)
   //
   // The hold-to-2x gesture arms `holdTimer` on touchstart and latches
-  // `holdActive` in engageHold; both are cleared only by touchend/touchcancel.
+  // `holdActive` in engageHold; both are cleared by touchend/touchcancel (v1.358: a LOCKED
+  // hold outlives its finger and is cleared by the pill, a speed pick, dock/close/load or backgrounding).
   // iOS does NOT reliably deliver either when a PWA is backgrounded mid-gesture
   // (and the touchend handler returns early while inNativeControlsMode(), never
   // reaching its release path at all). A latch that outlives the gesture that
@@ -4961,8 +4962,7 @@ if (typeof module !== 'undefined' && module.exports) {
     el.addEventListener('touchmove', function (e) {
       var t = e.touches[0];
       if (!t) return;
-      if (holdActive) {
-        if (!holdGestureLive) return;
+      if (holdActive && holdGestureLive) {
         if (!holdLocked && holdDragDecision({ dx: t.clientX - startX, dy: t.clientY - startY, lockPx: LOCK_DRAG_PX }) === 'lock') lockHold();
         return;
       }
@@ -8053,7 +8053,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (speedBadge) {
       speedBadge.addEventListener('click', function () { if (holdLocked) releaseHold(); });
       speedBadge.addEventListener('keydown', function (e) {
-        if (holdLocked && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); releaseHold(); }
+        if (holdLocked && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); e.stopPropagation(); releaseHold(); }
       });
     }
 
