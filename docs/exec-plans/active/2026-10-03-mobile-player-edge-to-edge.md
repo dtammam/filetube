@@ -3,8 +3,8 @@ plan: mobile-player-edge-to-edge
 harness: v2 · lean
 branch: feat/v1.359-mobile-edge-to-edge
 anchor: spec
-status: Planned
-next: READY TO BUILD (Architect, Opus, 2026-10-03, at main 9e17aa87; Dean's ruling F1 answered 2026-10-03); set `status: Building` in your first commit; order = section 0, then W0, W1, W2, W3; read the whole plan first
+status: Building
+next: W0 done (before.json committed); W1 next (three in-place CSS edits + the v1.314 lock), then W2, W3
 design: Dean 2026-10-03 - "The video player on mobile when not full screen should expand to the size of the full iPhone viewport side to side (right now there is a gap). It should mirror YouTube in that sense." Read "iPhone" as the mobile layout (max-width 768px), every era. Dean 2026-10-03 (AskUserQuestion, F1): side to side only; the 16px gap above the player stays.
 gate: adversary + qa (layout on the shared player host, the ambient stage geometry, every era; security-brief applied as a section by both)
 ---
@@ -336,6 +336,21 @@ eras at 390). The first dock run failed (`page.click` intercepted by the bottom 
 recorded). ui-lint on the candidate: sandbox `git archive HEAD` + candidate appended, `node scripts/ui-lint.js --enforce` -> "OK".
 Note: with the candidate APPENDED (a twin), `test/unit/ambient-glow-engine.test.js` stayed green (28 pass, 0 fail) because the lock
 reads the FIRST mobile stage rule: proof that W1 must edit in place and add the uniqueness assertion.
+
+**W0 (builder, Sonnet, 2026-10-03, Node 22.23.1, main 9e17aa87 tree).** Probe copied to `tools/edge-to-edge-proof/probe.js`
+(requires `../hold-lock-proof/serve`; Playwright resolved from the worktree's or the primary checkout's `tools/capture`). Added cases:
+a REAL portrait WebM (a landscape file under a portrait row does not stay portrait: player.js re-applies the browser's own
+orientation on `loadedmetadata`, so the probe renders a 180x320 clip; the case records a VACUOUS error if the wrapper lacks
+`.portrait-media`), the cold reserved frame (the item's API never answers; VACUOUS error unless `#player-slot` matches `:empty`),
+Music (`/music?play=song1`) and Podcasts (`/podcasts`) phone slots, and every visible wrapper button's box. Glow box un-hidden in
+every run. Command: `node tools/edge-to-edge-proof/probe.js "$PWD" tools/edge-to-edge-proof/before.json` -> exit 0, 76 rows, 0
+ERR/VACUOUS. Section 1's table reproduced exactly (phone rows: wrapper x 16, right gap 16, w = vw - 32, picture x 17, w = vw - 34;
+390 h 200.3; landscape 635 / 633 / 223; desktop 769 w 491 x 254 h 275.1, 1024 w 746, 1280 w 598, 1920 w 1238; dock 222, 648,
+160x116), so stop rule 0.8 (a) does not fire. New rows: portrait 390 (all eras): `.portrait-media` present, box still 16:9 (pic
+h 200.3, x 17, w 356); cold frame 390: slot x 16, w 358, h 201.4 (mounted wrapper 358 x ~200.3 + strip), radius 0 / 2 / 2 / 12, border
+1px; cold frame 768: slot 16 / 736 / h 414; Music 390: wrapper x 16 w 358 (radius per era); Podcasts: the fixture has no episodes,
+so no player mounts and its row has no wrapper (disclosed: Podcasts is measured only as "no change in the page", not as a mounted
+player; its slot has no `.watch-*` ancestor by construction, section 3).
 
 ## 7. Device checks owed (to DEVICE-CHECKS.md at release, tagged v1.359.0)
 
