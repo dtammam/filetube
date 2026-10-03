@@ -438,6 +438,37 @@ second heal, gave-up). A4 fixed (all six survivors red). A5 fixed. A6 fixed. A7 
   overlap.
 - Security: unchanged; client-only, numeric details, `textContent` sink.
 
+Gate: APPROVED r3 @5db173ea - qa
+
+Measured at 5db173ea (Node 22.23.1): eslint on player.js and the two touched tests, exit 0, no output; `node --test` on
+black-picture-watchdog, player-background-audio and hold-lock: tests 172, pass 172, fail 0. W6 mutants re-run in a `git archive`
+sandbox (watchdog file): drop `frozenHealFrom = null` after heal-ok, 1 fail; drop the session stop, 2 fails; also drop the new
+`n.t - frozenSession.t >= FROZEN_MIN_ADVANCE_S` clause, 1 fail (the A9 test). W6 fixed as prescribed. W7 fixed: the 12.6 paragraph
+and the ROADMAP Tests / Gate bullets no longer overclaim. S7 (12.3 item 1 "never STARTS" plus both timing exceptions), S8
+(DEVICE-CHECKS lock check after a bar pause and a picture pause) and S9 done. The new sustained-stretch comment and 12.3 items 1-2
+match the code; dropping `n.ok` from heal-ok and the gave-up `frozenHealFrom = null` are equivalent (gave-up sets frozenGaveUp,
+syncFrozenGen resets per load). No em dashes in added lines.
+
+- SUGGESTION S10 (fix in the release commit): the watchdog file has 31 tests (`node --test`: tests 31), not the 32 that the
+  ROADMAP Tests bullet and 12.6 say.
+- SUGGESTION S11: two lines overrun the wrap width again: the ROADMAP Disclosed bullet ("is slower); a bar pause press ...") and
+  the watchdog block comment ("this load has seen the count climb at all. Mobile form factor, ...").
+
+Gate: APPROVED r3 @5db173ea - adversary
+
+Measured: `npm test` in a fresh clone at 5db173ea, Node 22.23.1 and 24.20.0 each: 10866 tests, 10854 pass, 0 fail, 12 skipped.
+A9 fixed as prescribed: the +0/+12/flat repro heals (2 seeks), and is now a test. Dean's capture shape (resume at f=64, then flat):
+2 heals. My r1 webm readings through the runtime: one session 0 seeks; resumed 1 s before the still 0; resumed on the still 1
+(the disclosed residual). A10 disclosed (12.3 item 1, ROADMAP). Mutants (watchdog + background-audio tests): drop the heal-ok
+`frozenHealFrom = null` red; drop the session stop red; drop the new 4 s clause red; 4 s -> 1 s red; 4 s -> never red. One
+survivor, equivalent: stopping even while a heal-ok is pending (the heal-ok check runs first in the same tick, and a sustained
+session climb implies the climb from the heal reading). The two removed clauses (`n.ok`, the gave-up `frozenHealFrom = null`) I had
+found to change nothing at r2.
+- SUGGESTION A11: the ROADMAP v1.360.0 entry says "Tests: 32" in black-picture-watchdog.test.js; `node --test` there reports 31.
+  It also quotes suites at bfc7843a; the measured line above is at 5db173ea. Fold both into the release commit.
+- SUGGESTION A12: one line of the rewritten watchdog block comment (player.js, "this load has seen the count climb at all. Mobile
+  form factor, ...") overruns the block's wrap width.
+
 ## 12. v1.360: the static review (H8) and Dean's ruling - the fix ships without a device repro
 
 ### 12.1 The static review (Opus reviewer, 2026-10-03, read-only at main 4c366600)
