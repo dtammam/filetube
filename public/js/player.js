@@ -4199,9 +4199,9 @@ if (typeof module !== 'undefined' && module.exports) {
   // the iPhone, so besides removing the suspected trigger (primeBackgroundAudioElement) this
   // watches for that state and, when it holds, re-seeks the video in place to its own position: a
   // seek makes the player decode and present a fresh frame. It only judges a play session whose
-  // count has NOT moved since its 'playing' (a session whose picture moved is healthy, so a
-  // variable-frame-rate still later in it is never "healed"), and only once this load has seen the
-  // count climb at all. Mobile form factor, video items, inline (not native fullscreen or PiP),
+  // count has not climbed for a sustained stretch since its 'playing' (a session whose picture
+  // moved is healthy, so a variable-frame-rate still later in it is never "healed"), and only once
+  // this load has seen the count climb at all. Mobile form factor, video items, inline (not native fullscreen or PiP),
   // visible and on screen, at most FROZEN_HEALS_PER_LOAD seeks per load. Every heal and its outcome
   // is a ?debugLifecycle=1 line (video:heal; video:heal-ok only once the count really climbs again;
   // video:heal-gave-up), so the next capture says if it worked. Reads the same counter as the
@@ -4277,13 +4277,15 @@ if (typeof module !== 'undefined' && module.exports) {
   function tickFrozenPictureWatch() {
     if (frozenGen !== loadGeneration || !mediaPlayer) { stopFrozenPictureWatch(); return; }
     var n = readPictureProgress();
-    if (frozenHealFrom && n.ok && climbedFrom(frozenHealFrom, n)) {
+    if (frozenHealFrom && climbedFrom(frozenHealFrom, n)) {
       recordLifecycleEvent('video:heal-ok', { detail: 'f=' + frozenHealFrom.frames + '->' + n.frames + ' t=' + n.t.toFixed(1) + ' n=' + frozenHeals });
       frozenHealFrom = null;
     }
-    if (frozenSession && climbedFrom(frozenSession, n)) {
-      // this session's picture moves: healthy (and the load's counter is live); nothing to judge
-      // until the next 'playing' (a later still in the same session is the video, not a fault)
+    if (frozenSession && n.t - frozenSession.t >= FROZEN_MIN_ADVANCE_S && climbedFrom(frozenSession, n)) {
+      // this session's picture has moved for a sustained stretch (4 s of media time, at a real
+      // frame rate): healthy, and the load's counter is live; nothing to judge until the next
+      // 'playing' (a later still in the same session is the video, not a fault). Not on the first
+      // cached refresh: a picture that freezes a fraction of a second after a resume must still heal.
       frozenClimbed = true;
       if (!frozenHealFrom) stopFrozenPictureWatch();
       return;
@@ -4295,7 +4297,6 @@ if (typeof module !== 'undefined' && module.exports) {
     if (frozenHeals >= FROZEN_HEALS_PER_LOAD) {
       recordLifecycleEvent('video:heal-gave-up', { detail: 'f=' + n.frames + ' t=' + n.t.toFixed(1) + ' n=' + frozenHeals });
       frozenGaveUp = true;
-      frozenHealFrom = null;
       stopFrozenPictureWatch();
       return;
     }

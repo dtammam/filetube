@@ -470,13 +470,16 @@ primed and may fall back to a plain pause instead of background audio.
 
 ### 12.3 Acceptance (what the gate measures; amended in the r1 fix round, see 12.5)
 
-1. The prime never plays or pauses the sidecar while the video is playing (`paused === false`): the video touch primes only on a
-   paused video (the play tap); the bar's button primes AFTER its toggle, so a pause press primes under the now-paused video and a
-   play press does not prime. The guard does not consume the one-shot.
+1. The prime never STARTS while the video is playing (`paused === false`): the video touch primes only on a paused video (the
+   play tap); the bar's button primes AFTER its toggle, so a pause press primes under the now-paused video and a play press does
+   not prime. The guard does not consume the one-shot. Except (disclosed, timing): the prime's own pause runs when its play()
+   resolves, so it can land under a playing video if the video starts first: the picture's play tap starts the video about 350 ms
+   after the prime (the single-tap debounce), and a bar pause press followed quickly by a play press (gate r2 A10).
 2. The watchdog: on a mobile form factor (`isMobileFormFactor()`: phones and iPads), for a video item, from each `playing` to the
    next `pause` / `ended` / `emptied` / load, it reads `getVideoPlaybackQuality().totalVideoFrames` once a second. It judges only a
-   play session whose count has NOT climbed since its `playing` (at least 10 frames at 5 fps or more of media time ends the judging
-   for that session), and only once this load has seen the count climb (including first-play-to-pause). If the count then stands
+   play session whose count has NOT climbed for a sustained stretch since its `playing` (at least 4 s of media time AND at least 10
+   frames at 5 fps or more ends the judging for that session; a single cached refresh of a few frames does not), and only once
+   this load has seen the count climb (including first-play-to-pause). If the count then stands
    still for 6 s of wall time while `currentTime` advances by at least 4 s, the video is playing, not seeking, `readyState >= 2`,
    `videoWidth > 0`, inline (`webkitPresentationMode` absent or `inline`), the page is visible and the video is on screen, it sets
    `currentTime = currentTime` once. At most 2 heals per load; a third freeze logs gave-up and the load is not watched again.
@@ -540,3 +543,21 @@ Mutants after the fix (scratchpad copy of the working tree, `node --test test/un
 all red. Two equivalents found and removed rather than kept: a `wasPlaying` gate on the bar's prime (the prime's own guard decides
 it) and, in the first draft of the VFR test, a fixture that passed for the wrong reason (no load climb), rewritten on
 `frozenAfterResume`. 30 tests in the file.
+
+### 12.6 Fix round r2 -> r3 (both seats CHANGES @68abb354, no CRITICAL; Dean, AskUserQuestion: "Fix all, short round 3")
+
+| Finding | Fix |
+|---|---|
+| adv A9 (new in r1 fix, measured): the session-climb stop fired on the first cached refresh, so a freeze ~0.4 s after a resume never healed | The session counts as healthy only after 4 s of media time AND a real climb (the adversary's verified line). Bound by the A9 repro (+0, +12, then flat: 2 heals). |
+| qa W6 / adv: `frozenHealFrom = null` after heal-ok and the session stop unbound | The heal-ok test runs 10 healthy seconds and asserts exactly one heal-ok and a stopped watch; the VFR test holds its still 40 s. |
+| adv: `n.ok` in the heal-ok test and `frozenHealFrom = null` on gave-up (no behaviour change found) | Removed (equivalent code), so no untested guard remains. |
+| qa W7: "all red" / "every mutant red" / "all fixed in r2" overclaimed | Docs rewritten with the r3 mutant count; the ROADMAP gate line is written only from the recorded verdicts. |
+| qa S7 / adv A10 | 12.3 item 1 says "never STARTS" and discloses both timing overlaps; ROADMAP Disclosed too. |
+| qa S8 | DEVICE-CHECKS: the lock check after a bar pause as well as a picture pause. |
+| qa S9 | The ROADMAP Tests bullet re-wrapped. |
+
+Mutants at the r3 fix (scratchpad copy, `node --test` on black-picture-watchdog + player-background-audio; the sandbox has no
+server.js, so one unrelated source-lock test fails in every run including the pristine copy, 1 fail): 41 tried (the r1/r2 set plus
+R1 heal-ok reset, R2 session stop, R3 the sustained-stretch clause, W5b gave-up start, W31 since-after-heal, W32/W33 listeners),
+each at 2 or more fails, i.e. every one red on at least one real test. 32 tests in the watchdog file.
+

@@ -278,12 +278,14 @@ test('watchdog: with ?debugLifecycle=1 on, the heal and its outcome are log line
   h.w.localStorage.setItem('ft-debug-lifecycle', '1');
   for (let i = 0; i < 6; i++) h.second(0);
   assert.strictEqual(h.st.seeks.length, 1);
-  h.second(30);
+  for (let i = 0; i < 10; i++) h.second(30);
   const lines = h.log();
+  assert.strictEqual(lines.filter((x) => /^video:heal-ok/.test(x)).length, 1, 'exactly one heal-ok for one heal: ' + lines.join(' | '));
+  assert.strictEqual(h.live().length, 0, 'and the watch stopped once the picture moved for a sustained stretch');
   const heal = lines.findIndex((x) => /^video:heal f=\d+ t=[\d.]+->[\d.]+ n=1$/.test(x));
   const ok = lines.findIndex((x) => /^video:heal-ok f=\d+->\d+ t=[\d.]+ n=1$/.test(x));
   assert.ok(heal !== -1, 'video:heal logged: ' + lines.join(' | '));
-  assert.ok(ok > heal, 'video:heal-ok logged after it, on the very next tick: ' + lines.join(' | '));
+  assert.ok(ok > heal, 'video:heal-ok logged after it: ' + lines.join(' | '));
 });
 
 test('watchdog: ONE frame after a heal is not a heal-ok; it freezes again, heals a second time, then logs gave-up and stops', async () => {
@@ -366,7 +368,7 @@ test('watchdog: ended stops it, and so does closing the player', async () => {
 test('watchdog: a variable-frame-rate still LATER in a session whose picture moved is never healed (the gate r1 webm shape)', async () => {
   const h = await frozenAfterResume(); // this load's counter is proven live, a new session is playing
   for (let i = 0; i < 3; i++) h.second(30); // motion
-  for (let i = 0; i < 10; i++) h.second(0); // an 8 s+ still held as one frame
+  for (let i = 0; i < 40; i++) h.second(0); // a 40 s still held as one frame (the session's average falls under 5 fps)
   for (let i = 0; i < 3; i++) h.second(30);
   assert.deepStrictEqual(h.st.seeks, []);
 });
@@ -422,4 +424,12 @@ test('watchdog: no heal in a native presentation (iOS full screen or picture in 
   h.v.webkitPresentationMode = 'inline';
   for (let i = 0; i < 7; i++) h.second(0);
   assert.strictEqual(h.st.seeks.length, 1);
+});
+
+test('watchdog: a picture that freezes a fraction of a second after a resume (one cached refresh of +12 frames) still heals (gate r2 A9)', async () => {
+  const h = await frozenAfterResume();
+  h.second(0);
+  h.second(12);
+  for (let i = 0; i < 20; i++) h.second(0);
+  assert.strictEqual(h.st.seeks.length, 2, 'healed (twice: the count never moved again)');
 });

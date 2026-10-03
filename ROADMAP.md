@@ -552,16 +552,18 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - Why these two: a static review found no pause/play path that writes the video or its wrapper (the "our own mutation" hypothesis
   is dead), and the "clock went backward" in Dean's capture was the panel's newest-first order. The one thing our code starts at
   the pause tap is the prime, and his log shows its sidecar pause at the very tap after which the frame count froze.
-- Tests: 30 in `test/unit/black-picture-watchdog.test.js` (the pure decisions, and the real player.js in jsdom through its real
-  touch, click and media events with a hand-driven clock, every sidecar play/pause recorded with the video's paused state); every
-  mutant red after the gate r1 fix round (two guards no state could reach were removed instead of kept untested). Suites at bfc7843a: Node 22.23.1 and
-  24.20.0 `npm test` 10865 tests, 10853 pass, 0 fail, 12 skipped.
-- Gate: adversary + qa, CHANGES r1 (the bar's play press still primed under the playing video, a variable-frame-rate still was
-  healed, one frame read as a successful heal, per-load resets untested, a placeholder), all fixed in r2.
+- Tests: 32 in `test/unit/black-picture-watchdog.test.js` (the pure decisions, and the real player.js in jsdom through its real
+  touch, click and media events with a hand-driven clock, every sidecar play/pause recorded with the video's paused state). 41
+  mutants at the round-3 fix, each red on a real test; guards no state could reach were removed rather than kept untested. Suites
+  at bfc7843a: Node 22.23.1 and 24.20.0 `npm test` 10865 tests, 10853 pass, 0 fail, 12 skipped.
+- Gate: adversary + qa. r1 CHANGES (the bar's play press still primed under the playing video, a variable-frame-rate still was
+  healed, one frame read as a successful heal, per-load resets untested, a placeholder). r2 CHANGES (the r1 fix stopped watching on
+  the first cached refresh, so a freeze a fraction of a second after a resume never healed; two guards untested; the docs
+  overclaimed). The r3 verdict is added in the release commit.
 - Disclosed: NOT verified on an iPhone (4 device checks owed in DEVICE-CHECKS.md); whether WebKit drops the video layer when a
   second element starts, and whether an in-place seek brings a dropped layer back, are device facts no headless run can show. On
   Dean's sequence the prime moves to the picture's play tap, about 350 ms before the video plays (an overlap if the sidecar's play
-  is slower). If every touch of a load is a play or lands on a playing video with no pause, the first lock is not primed and may
+  is slower); a bar pause press followed quickly by a play press can also land the prime's pause under the playing video. If every touch of a load is a play or lands on a playing video with no pause, the first lock is not primed and may
   only pause instead of switching to background audio. A freeze in the very first play before any pause is not healed. A
   variable-frame-rate video resumed on a still scene can get up to 2 needless in-place seeks. The watchdog reads
   `getVideoPlaybackQuality()` once a second from each `playing` until the picture is seen moving (the same read the v1.336
