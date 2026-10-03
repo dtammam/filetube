@@ -392,6 +392,12 @@
 
 ### Chores
 
+- [ ] **progress-coalescer AC4.1 flakes under CPU contention** _(tracker #238, v1.358 Wave Z, 2026-10-03)_ - `test/integration/progress-coalescer.test.js`
+  "a burst of N rapid pings collapses into <= N/5 batch transactions" paces 20 POSTs with wall-clock `setTimeout` at
+  `PROGRESS_FLUSH_MS * 0.8 / 5`, so under load the burst spans one more flush window ("saw 5", expected <= 4). Real timers, not
+  random geometry. Fix shape: drive the cadence from the flush timer (fake timers or an injectable clock), or assert against the
+  number of flush windows the burst actually spanned. Never a retry.
+
 - [x] **Refresh the README screenshots** - DONE in v1.347.3 _(Dean, 2026-09-29)_: the README's images (`assets/images/`:
   the desktop Home, Library and Watch shots, and the four mobile shots) predate the skins, the Pocket
   and the one consistent look. Retake them from the current UI (light and dark, desktop and phone), add
