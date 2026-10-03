@@ -3,7 +3,7 @@
 One list of what Dean taps on his phone or desktop to confirm a release, grouped by area. Each line
 carries the version that introduced it. A release appends its checks here instead of adding a tracker
 row; a line is deleted when Dean has confirmed it, and a line that fails becomes a bug (in the tracker or
-ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.360.0 checks).
+ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the v1.336 black picture, now the v1.361.0 checks).
 
 ## Whole app, layout and dialogs
 
@@ -17,7 +17,7 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
 
 ## The black picture after a pause (v1.361.0)
 
-- [ ] v1.361.0 - iPhone, a video inline in the watch page: pause and play 20 times by TAPPING THE PICTURE (with a double-tap skip in a few), then the same in full screen and in the mini player. The picture never goes black. The play/pause icon still flashes on each tap, with a faint dark disc behind it. If it does go black: say so (the next step is no icon over the video).
+- [ ] v1.361.0 - iPhone, a video inline in the watch page: pause and play 20 times by TAPPING THE PICTURE (with a double-tap skip in a few), then the same in full screen and in the mini player. The picture never goes black. The play/pause icon still flashes on each tap, with a soft dark disc behind it (a little darker in dark mode), the pause bars centred on it. If it does go black: say so (the next step is no icon over the video).
 - [ ] v1.361.0 - Background audio is as it was before v1.360: let a video start by itself, then lock the phone: the sound carries on.
 
 ## Mobile player edge to edge (v1.359.0)

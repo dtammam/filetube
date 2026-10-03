@@ -151,3 +151,22 @@ clip-path, `.ui-swipe__action`) is not on or over the video; critters exclude `#
   network, auth, storage or shell surface.
 
 Gate: CHANGES r1 @45bf97a2 - adversary
+
+### Fix round r1 -> r2 (both seats CHANGES @45bf97a2, no CRITICAL)
+
+| Finding | Fix |
+|---|---|
+| qa W1 / adv W1: the lock's hand-written selector list missed `.player-container`, `.speed-badge`, `.player-resumed`, `.skip-controls`, `#skip-ripple-left`, `video`, `#player-controls`, ... | The net is DERIVED from the host template in watch.html (every id and class in `#player-wrapper`'s subtree) plus `video`, `#player-dock`, `#fs-stage`; a test pins that the net holds the wrapper, the video and the overlays. |
+| adv W2: `FILTER:` (case) passed | LAYER_PROPS and the glyph check are case-insensitive. |
+| adv S2: `-webkit-mask-box-image` / `mask-border` passed | `mask(-[a-z-]+)?` (every mask longhand). `clip-path` stays unlocked (not a compositing filter; the mute icon uses it). |
+| adv S1: `.some()` let a later `background: none` win | The LAST `.art-play-glyph` background must be the disc. |
+| qa W2 / adv W3: LESSONS overclaimed the cause and the lock's coverage | "the suspect ... (unconfirmed at release)"; the coverage claim now matches the derived net (also in the ROADMAP lock line). |
+| adv S3: the pause bars sat 5 px right of the disc | `margin-right: calc(var(--space-4) + var(--space-5))` (18 px): the 28 px painted pair centres. |
+| qa S1 / adv S4: DEVICE-CHECKS:6 said v1.360 | v1.361. |
+| qa S2: the disc's darkness follows the mode; two `.art-play-glyph` rules | Folded into the base rule; the comment, the ROADMAP and the device check say 0.3 light / 0.5 dark. |
+| qa S3: the newest-first panel tip was lost with the removed bullet | Kept at the end of the LESSONS 7 bullet. |
+
+Mutants against the new lock (a copy of public/css + watch.html + the test, one appended rule each): `.player-container::after`
+backdrop, `.speed-badge` backdrop, `.player-resumed` -webkit-backdrop, `.skip-controls` filter, `#skip-ripple-left` blend,
+`video` filter, `FILTER:` on the glyph, `-webkit-mask-box-image` / `mask-border` on `#media-player`, a filter inside `@media`,
+`.art-play-glyph { background: none }` after the disc, `#player-controls` backdrop: 11 of 11 red. Pristine: 3 pass.

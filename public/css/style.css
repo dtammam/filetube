@@ -1450,6 +1450,14 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   justify-content: center;
   pointer-events: none;
   opacity: 0;
+  /* v1.361: the legibility backing is a plain painted disc (radius --size-control, 72px
+     across; --scrim, so a touch darker in dark mode), never a `filter`. The `filter:
+     drop-shadow` this glyph carried until v1.360, flashed over a PLAYING video on every
+     picture tap, is the suspect for the iPhone's black picture on iOS 27 (sound and ambient
+     glow ran on; Dean, 2026-10-03: 20 pause/play cycles on the bar's button never went
+     black, picture taps did). LESSONS 7: no filter / mask / backdrop on or over a playing
+     video (locked by test/unit/player-overlay-no-filter.test.js). */
+  background: radial-gradient(circle, var(--scrim) 0 var(--size-control), transparent calc(var(--size-control) + 1px));
 }
 
 .art-play-glyph::before {
@@ -1462,16 +1470,6 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   border-color: transparent transparent transparent rgba(255, 255, 255, 0.92); /* token-exempt: glyph art */
 }
 
-/* v1.361: the glyph's legibility backing is a plain painted disc (a radial gradient on the
-   overlay, radius --size-control, so 72px across), never a `filter`. The `filter: drop-shadow`
-   this glyph carried until v1.360, flashed over a PLAYING video on every picture tap, is the
-   suspect for the iPhone's black picture on iOS 27 (sound and ambient glow ran on; Dean,
-   2026-10-03: 20 pause/play cycles on the bar's button never went black, picture taps did).
-   LESSONS 7: no filter / mask / backdrop on or over a playing video. */
-.art-play-glyph {
-  background: radial-gradient(circle, var(--scrim) 0 var(--size-control), transparent calc(var(--size-control) + 1px));
-}
-
 .art-play-glyph.art-play-glyph-playing::before {
   /* Two blocky bars (pause), drawn from a single zero-width element via
      box-shadow duplication -- same "square/beveled" language as the pp-btn
@@ -1481,7 +1479,9 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   border: none;
   background: rgba(255, 255, 255, 0.92); /* token-exempt: glyph art */
   box-shadow: 18px 0 0 rgba(255, 255, 255, 0.92); /* token-exempt: glyph art */
-  margin-right: var(--space-4);
+  /* v1.361: 18px, so the painted pair (10px bar + the 18px-offset copy = 28px) centres on the
+     disc; the old 8px sat it 5px right of centre, invisible until the disc made it show. */
+  margin-right: calc(var(--space-4) + var(--space-5));
 }
 
 .art-play-glyph.art-play-glyph-flash {

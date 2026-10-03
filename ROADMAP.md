@@ -543,13 +543,15 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - The iPhone black picture after a pause / unpause: Dean's device A/B (iOS 27, Background audio for video OFF, Ambient OFF) found
   the trigger is the picture TAP, not the pause: 20 pause/play cycles with the bar's button never went black, picture taps did. The
   tap flashes the play/pause glyph over the playing video, and the glyph carried a `filter: drop-shadow` (the v1.312 class: a filter
-  over a playing iPhone video blacks out its picture). The glyph now has a faint painted disc behind it (a radial gradient,
-  `var(--scrim)`, 72 px across) and no filter; it looks almost the same (before/after crop sent to Dean).
+  over a playing iPhone video blacks out its picture), the suspect. The glyph now has a soft painted disc behind it (a radial
+  gradient, `var(--scrim)`: 0.3 black in light mode, 0.5 in dark; 72 px across) and no filter (before/after crop sent to Dean).
 - v1.360.0 is undone: `public/js/player.js` is byte-identical to v1.359.0 again (the background-audio prime is back as it was, the
   frozen-picture watchdog and its seek are gone, with their tests). Both failed on the device: the prime was not the cause, and a
   seek does not revive the picture.
-- Lock: `test/unit/player-overlay-no-filter.test.js` fails on any `filter`, `backdrop-filter`, mask or blend in any stylesheet rule
-  that names the player, the video or an overlay in it (red on v1.360's stylesheet), and binds the disc. Suites at
+- Lock: `test/unit/player-overlay-no-filter.test.js` derives its selector net from the host template in `public/watch.html` (every
+  id and class in `#player-wrapper`, plus `video`, the dock and fs-stage) and fails on any `filter`, `backdrop-filter`, mask or blend
+  (any case, any vendor spelling, inside `@media` too) in any stylesheet (red on v1.360's stylesheet); it binds the disc as the
+  glyph's last background. The pause bars now centre on the disc (they sat 5 px right, invisible until the disc showed it). Suites at
   15518480: Node 22.23.1 and 24.20.0 `npm test` 10837 tests, 10825 pass, 0 fail, 12 skipped.
 - Disclosed: the shadow is the suspect, not proven; only the device can say. If picture taps still black it out, the next step is
   no glyph over the video (the opacity / scale flash itself), not a recovery. The disc is a small look change on the audio cover
