@@ -552,7 +552,7 @@ Kept verbatim for the record - the full release story lives in Shipped below.
   id and class in `#player-wrapper`, plus `video`, the dock and fs-stage) and fails on any `filter`, `backdrop-filter`, mask or blend
   (any case, any vendor spelling, inside `@media` too) in any stylesheet (red on v1.360's stylesheet); it binds the disc as the
   glyph's last background. The pause bars now centre on the disc (they sat 5 px right, invisible until the disc showed it). Suites at
-  15518480: Node 22.23.1 and 24.20.0 `npm test` 10837 tests, 10825 pass, 0 fail, 12 skipped.
+  96474ced: Node 22.23.1 and 24.20.0 `npm test` 10838 tests, 10826 pass, 0 fail, 12 skipped.
 - Disclosed: the shadow is the suspect, not proven; only the device can say. If picture taps still black it out, the next step is
   no glyph over the video (the opacity / scale flash itself), not a recovery. The disc is a small look change on the audio cover
   art too (the same glyph).
