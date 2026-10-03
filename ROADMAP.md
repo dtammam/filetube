@@ -221,6 +221,8 @@
 
 ### Features
 
+- [ ] **Swipe the playing video down to shrink it into the mini player (like the YouTube app)** _(Dean, 2026-10-03: "if I'm watching a video on mobile, I can ... drag from the top left down to the bottom right ... a mechanism to swipe down to reduce to a small view. You can do this in the YouTube app. It would bring it to the mini player. It's equivalent to pressing the home button effectively ... I kind of like that natural feel of like, hey, I'm just tapping the screen and drag it down, like pull it down.")_ - Wanted after v1.361 merges; talk it through first. A pull-down on the picture (phone, inline) that ends in the same state as leaving the watch page (the dock / mini player), ideally following the finger (the picture shrinks toward the corner as you drag, then settles or snaps back). Seams to settle in the design: v1.358's hold-then-drag-down LOCKS 2x (a minimize drag must start WITHOUT a hold), the double-tap skip and the single-tap toggle, the page's own vertical scroll (the wrapper's non-passive touchmove claim), the left-edge swipe-back, faux fullscreen, and LESSONS 7 (no filter / transform effects painted over the playing picture that could black it out on iOS: an animated shrink must be checked on the device).
+
 - [ ] **Speakers: the speaker reports its state with no phone attached** _(v1.356 R9, Dean: shipped the gap as is,
   disclosed)_ - A speaker posts its state only while a phone is attached, so a pause or play AT THE PC after the phone left
   is missing from `GET /api/remote/targets`; a remembered speaker older than the hour can then reattach to a PC paused by
@@ -549,7 +551,9 @@ Kept verbatim for the record - the full release story lives in Shipped below.
   frozen-picture watchdog and its seek are gone, with their tests). Both failed on the device: the prime was not the cause, and a
   seek does not revive the picture.
 - Lock: `test/unit/player-overlay-no-filter.test.js` derives its selector net from the host template in `public/watch.html` (every
-  id and class in `#player-wrapper`, plus `video`, the dock and fs-stage) and fails on any `filter`, `backdrop-filter`, mask or blend
+  id and class in `#player-wrapper`, comments stripped), every class and id player.js builds into the player at runtime (captions,
+  seek preview, chapter and speed sheets, dock close), `video`, and the mount slots, dock and fs-stage (one disclosed exemption: the
+  chapters menu's mask-drawn share icon), and fails on any `filter`, `backdrop-filter`, mask or blend
   (any case, any vendor spelling, inside `@media` too) in any stylesheet (red on v1.360's stylesheet); it binds the disc as the
   glyph's last background. The pause bars now centre on the disc (they sat 5 px right, invisible until the disc showed it). Suites at
   96474ced: Node 22.23.1 and 24.20.0 `npm test` 10838 tests, 10826 pass, 0 fail, 12 skipped.

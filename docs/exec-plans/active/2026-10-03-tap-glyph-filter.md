@@ -253,3 +253,20 @@ New:
 - Security: no change from r1 (none).
 
 Gate: CHANGES r2 @1e2d6bee - adversary
+
+### Fix round r2 -> r3 (both seats CHANGES @1e2d6bee, no CRITICAL, both findings in the lock only; Dean, AskUserQuestion: "Fix the test, short round 3")
+
+| Finding | Fix |
+|---|---|
+| qa W3 / adv W4: the depth walk counted tags inside HTML comments (watch.html's commented `<video ...>`), ran past the wrapper to `</body>` and pulled in the bottom nav | `<!-- -->` stripped before the walk; the walk must reach the wrapper's own close; test 1 asserts `bottom-nav` / `bottom-nav-item` are NOT in the net. A `<!-- </div></div> -->` inside the wrapper no longer shortens it (measured: 3 pass). |
+| adv W5: overlays player.js builds at runtime (`.cc-overlay*`, `.seek-preview*`, ...) and `#player-slot` were outside the net | Every `.className = '...'` and `.id = '...'` literal in player.js joins the net (the page-level debug panel excluded by name); `player-slot` and `reader-player-slot` join the hosts. Test 1 pins `cc-overlay`, `cc-overlay-text`, `seek-preview`, `seek-chapters`, `chapter-now`, `speed-sheet-backdrop`, `player-dock-close`, `#player-slot`. |
+| (found by the widened net) `.icon-share`, the chapters menu's share icon, is drawn with a CSS mask | A named, commented exemption (`EXEMPT_CLASSES`): the app-wide `.icon-*` mask technique on a menu that opens only on request, not an effect over the playing picture. Disclosed in the ROADMAP lock line. |
+| adv S5: the net is wide by design (ui-btn / ui-icon primitives) | Documented in the test header ("errs safe"). |
+| adv S1 / S3 (not blocking) | Left: the disc check binds the exact selector; the pause-bar margin is arithmetic, unguarded (a device look). |
+
+Mutants (a copy of public/css + watch.html + player.js + the test, one appended rule each): `.cc-overlay` backdrop,
+`.cc-overlay-text` filter, `.seek-preview` backdrop, `.seek-preview-img` filter, `.seek-chapters` blend, `.chapter-now` filter,
+`.player-dock-close` backdrop, `.speed-sheet-backdrop` backdrop, `#player-slot` filter, `#reader-player-slot` filter,
+`.player-resumed` backdrop: 11 of 11 red. `.bottom-nav` backdrop: green (outside the player, as intended). Pristine: 3 pass.
+
+Also in this commit (docs only, Dean mid-gate): a ROADMAP Planned > Features entry, swipe the video down into the mini player.

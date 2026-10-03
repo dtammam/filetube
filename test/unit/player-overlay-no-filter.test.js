@@ -6,10 +6,14 @@
 // went black, picture taps did; sound and the ambient glow ran on). LESSONS 7 holds the class (v1.312:
 // a filter / blur / mask / backdrop over or around a playing video blacks it out on the iPhone).
 //
-// The selector net is DERIVED from the real host markup: every id and class on #player-wrapper and on
-// each element inside it in public/watch.html (the template every shell clones), plus the `video`
-// element type and the shell-owned hosts the wrapper is reparented into. A rule whose selector names
-// any of them, in any stylesheet (inside @media / @supports too), fails on any of the properties.
+// The selector net is DERIVED from the real player: every id and class on #player-wrapper and on each
+// element inside it in public/watch.html (the template every shell clones; HTML comments stripped
+// first, so a commented-out tag cannot move the walk), every class and id player.js itself builds into
+// the player at runtime (the captions overlay, the seek preview, the chapter and speed sheets, the dock
+// close), the `video` element type, and the hosts the wrapper is mounted or reparented into. A rule
+// whose selector names any of them, in any stylesheet (inside @media / @supports too), fails on any of
+// the properties. The net is deliberately wide: a template class shared with the rest of the app (the
+// ui-btn / ui-icon primitives inside the bar) is held to the same rule everywhere, which errs safe.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -19,10 +23,18 @@ const path = require('node:path');
 const PUB = path.join(__dirname, '..', '..', 'public');
 const CSS_DIR = path.join(PUB, 'css');
 const LAYER_PROPS = /(^|[\s;{])(-webkit-)?(filter|backdrop-filter|mask(-[a-z-]+)?|mix-blend-mode)\s*:/i;
-const HOSTS = ['player-dock', 'fs-stage']; // the shells the wrapper is reparented into (dock, desktop fullscreen)
+// the wrapper's mount slots and the shells it is reparented into (watch / reader slot, dock, desktop fullscreen)
+const HOSTS = ['player-slot', 'reader-player-slot', 'player-dock', 'fs-stage'];
+// player.js's own debug panel is a page-level fixed panel, never drawn into the player
+const JS_BUILT_EXCLUDE = new Set(['ui-selectable', 'ft-lifecycle-overlay']);
+// Disclosed exceptions (v1.361 gate r2): the app's mask-drawn icon set. `.icon-share` is the share icon in the
+// chapters menu, which opens only on request; its mask is the app-wide icon technique (style.css, the
+// `.icon-*` family), not an effect painted over the playing picture by the player. Revisit if the
+// picture ever blacks out with the chapters menu open.
+const EXEMPT_CLASSES = new Set(['icon-share']);
 
 function playerNames() {
-  const html = fs.readFileSync(path.join(PUB, 'watch.html'), 'utf8');
+  const html = fs.readFileSync(path.join(PUB, 'watch.html'), 'utf8').replace(/<!--[\s\S]*?-->/g, '');
   const start = html.indexOf('id="player-wrapper"');
   assert.ok(start !== -1, 'the host template');
   // walk the wrapper's subtree by tag depth
@@ -31,16 +43,20 @@ function playerNames() {
   tagRe.lastIndex = open;
   const VOID = /^(area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)$/i;
   const ids = new Set(), classes = new Set();
-  let depth = 0, m;
+  let depth = 0, m, closed = false;
   while ((m = tagRe.exec(html))) {
     const [, closing, tag, attrs, selfClose] = m;
-    if (closing) { depth--; if (depth === 0) break; continue; }
+    if (closing) { depth--; if (depth === 0) { closed = true; break; } continue; }
     const id = /\bid="([^"]+)"/.exec(attrs);
     if (id) ids.add(id[1]);
     const cls = /\bclass="([^"]+)"/.exec(attrs);
     if (cls) cls[1].split(/\s+/).filter(Boolean).forEach((c) => classes.add(c));
     if (!selfClose && !VOID.test(tag)) depth++;
   }
+  assert.ok(closed, 'the walk reached the wrapper\'s own closing tag');
+  const js = fs.readFileSync(path.join(PUB, 'js', 'player.js'), 'utf8');
+  for (const w of js.matchAll(/\.className\s*=\s*'([^']+)'/g)) w[1].split(/\s+/).filter((c) => c && !JS_BUILT_EXCLUDE.has(c) && !EXEMPT_CLASSES.has(c)).forEach((c) => classes.add(c));
+  for (const w of js.matchAll(/\.id\s*=\s*'([^']+)'/g)) if (!JS_BUILT_EXCLUDE.has(w[1])) ids.add(w[1]);
   HOSTS.forEach((h) => ids.add(h));
   return { ids, classes };
 }
@@ -65,6 +81,10 @@ test('the selector net is the real host: it holds the wrapper, the video, the ov
   const n = playerNames();
   ['player-wrapper', 'media-player', 'speed-badge', 'player-dock', 'fs-stage'].forEach((id) => assert.ok(n.ids.has(id), '#' + id));
   ['player-container', 'art-play-glyph', 'skip-ripple', 'speed-badge', 'player-controls'].forEach((c) => assert.ok(n.classes.has(c), '.' + c));
+  ['cc-overlay', 'cc-overlay-text', 'seek-preview', 'seek-chapters', 'chapter-now', 'speed-sheet-backdrop', 'player-dock-close'].forEach((c) => assert.ok(n.classes.has(c), 'built by player.js: .' + c));
+  ['player-slot', 'bg-audio-sidecar'].forEach((id) => assert.ok(n.ids.has(id), '#' + id));
+  ['bottom-nav', 'bottom-nav-item', 'ui-selectable'].forEach((c) => assert.ok(!n.classes.has(c), 'outside the player: .' + c));
+  assert.ok(!n.ids.has('ft-lifecycle-overlay'), 'the debug panel is not the player');
   assert.ok(n.ids.size + n.classes.size > 40, 'a real subtree, not one tag (' + (n.ids.size + n.classes.size) + ' names)');
 });
 
