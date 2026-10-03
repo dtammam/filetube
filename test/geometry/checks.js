@@ -522,5 +522,59 @@ function evalPopover(d, tol = TOL) {
   return { measured: { rows: d.rows.length }, failures };
 }
 
+// BLD (v1.359, Dean: the phone player spans the screen side to side like YouTube): the watch
+// page's inline player against the page. On the phone (<= 768px) the wrapper starts at the
+// stage's left safe-area inset (0 in portrait) and is exactly as wide as the viewport less the
+// two insets, with no border and no radius, and the title below it still starts at the page
+// gutter (the player bleeds, the text does not). On desktop nothing bleeds: the wrapper sits
+// inside the page column, clear of both viewport edges, and keeps its frame. Runs in the page.
+function collectPlayerBleed() {
+  const box = (el) => { if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; };
+  const w = document.querySelector('.watch-player-stage #player-wrapper');
+  const title = document.getElementById('media-title');
+  const cs = w ? getComputedStyle(w) : null;
+  const num = (v) => parseFloat(v) || 0;
+  // The expected inset is measured on a throwaway element, NOT read back from the stage: a
+  // stage that pads by the gutter again would otherwise justify its own padding.
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;visibility:hidden;padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)';
+  document.body.appendChild(probe);
+  const ps = getComputedStyle(probe);
+  const inset = { l: num(ps.paddingLeft), r: num(ps.paddingRight) };
+  probe.remove();
+  return {
+    vw: document.documentElement.clientWidth,
+    phone: matchMedia('(max-width: 768px)').matches,
+    wrapper: box(w),
+    title: box(title),
+    stagePad: inset,
+    border: cs ? ['Top', 'Right', 'Bottom', 'Left'].map((e) => num(cs['border' + e + 'Width'])) : null,
+    radius: cs ? ['TopLeft', 'TopRight', 'BottomRight', 'BottomLeft'].map((e) => num(cs['border' + e + 'Radius'])) : null,
+  };
+}
+
+// -> { measured: {player}, failures: [string] }
+function evalPlayerBleed(d, tol = TOL) {
+  const failures = [];
+  const r2 = (v) => Math.round(v * 100) / 100;
+  if (!d || !d.wrapper) return { measured: { player: 0 }, failures: ['no player wrapper in the stage'] };
+  const wr = d.wrapper;
+  const right = d.vw - (wr.x + wr.w);
+  if (d.phone) {
+    const padL = d.stagePad ? d.stagePad.l : 0;
+    const padR = d.stagePad ? d.stagePad.r : 0;
+    if (Math.abs(wr.x - padL) > tol) failures.push(`the player starts at x ${r2(wr.x)}, not the left safe-area inset ${r2(padL)}`);
+    if (Math.abs(right - padR) > tol) failures.push(`the player ends ${r2(right)}px short of the right edge, not the right safe-area inset ${r2(padR)}`);
+    if (Math.abs(wr.w - (d.vw - padL - padR)) > tol) failures.push(`the player is ${r2(wr.w)}px wide, not the viewport (${r2(d.vw)}) less its insets`);
+    if (d.border.some((v) => v > tol)) failures.push(`the player paints a border (${d.border.join('/')}px) on a phone`);
+    if (d.radius.some((v) => v > tol)) failures.push(`the player is rounded (${d.radius.join('/')}px) on a phone`);
+    if (d.title && d.title.x < 8) failures.push(`the title starts at x ${r2(d.title.x)}: the text bled to the screen edge with the player`);
+  } else {
+    if (wr.x < 8 || right < 8) failures.push(`on desktop the player reaches a viewport edge (left ${r2(wr.x)}, right ${r2(right)})`);
+    if (d.title && wr.x > d.title.x + tol + 1) failures.push(`on desktop the player starts at x ${r2(wr.x)}, right of its title ${r2(d.title.x)}`);
+  }
+  return { measured: { player: 1 }, failures };
+}
+
 module.exports = { TOL, G4_TOL, collectG1, collectG2, collectG3, startG4Recorder, evalG1, evalG2, evalG3, evalG4,
-  collectHeader, collectBottomBar, evalHeader, evalBottomBar, collectSheetHeader, evalSheetHeader, collectPopover, evalPopover };
+  collectHeader, collectBottomBar, evalHeader, evalBottomBar, collectSheetHeader, evalSheetHeader, collectPopover, evalPopover, collectPlayerBleed, evalPlayerBleed };

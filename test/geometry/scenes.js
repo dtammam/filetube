@@ -207,6 +207,17 @@ const SURFACES = [
     checks: ['POP'],
     min: { POP: { rows: 6 } },
   },
+  // v1.359 (Dean: the phone player spans the screen side to side like YouTube): BLD measures the
+  // watch page's inline player against the viewport - flush with both edges, unframed and
+  // square on the phone, inside the column and framed on desktop. Measured at v1.359 (every
+  // era/mode): 1 player per scene.
+  {
+    id: 'watch-player', owner: 'v1.359', fast: false,
+    path: (FX) => `/watch.html?v=${FX.video}`,
+    ready: '.watch-player-stage #player-wrapper video, .watch-player-stage #player-wrapper',
+    checks: ['BLD'],
+    min: { BLD: { player: 1 } },
+  },
 ];
 
 // The pre-push set: 5 scenes of the fast surfaces (D10.2 asked for 4 at about 20s; see below).
