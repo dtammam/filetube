@@ -392,3 +392,152 @@ test('?minimizeAnim=0: the pull still claims and docks, but the picture never mo
   h = await boot(VIDEO, { query: '&minimizeAnim=1' });
   assert.strictEqual(h.w.sessionStorage.getItem('ft-minimize-anim'), null);
 });
+
+// ---- W2: the chevron (R6) -----------------------------------------------------
+
+test('the chevron is shown only where minimize is offered: inline on the phone watch view; gone in faux full screen, docked, closed, off the watch view and past 768 px', async () => {
+  let h = await boot(VIDEO);
+  const btn = () => h.host.querySelector('.player-minimize');
+  assert.ok(btn(), 'built into the host');
+  assert.strictEqual(btn().tagName, 'BUTTON');
+  assert.strictEqual(btn().getAttribute('aria-label'), 'Minimize player');
+  assert.ok(btn().querySelector('use').getAttribute('href') === '#i-expand_more', 'the sprite glyph');
+  assert.strictEqual(btn().hidden, false, 'shown inline');
+  h.doc.getElementById('fs-btn').click();
+  assert.ok(h.host.classList.contains('css-fullscreen'), 'precondition: faux full screen through the real fs button');
+  assert.strictEqual(btn().hidden, true, 'hidden in faux full screen');
+  h.doc.getElementById('fs-btn').click();
+  assert.ok(!h.host.classList.contains('css-fullscreen'), 'precondition: back inline');
+  assert.strictEqual(btn().hidden, false, 'back when it exits');
+  h.p.dock();
+  assert.strictEqual(btn().hidden, true, 'hidden docked');
+  h.p.expand(h.slot);
+  assert.strictEqual(btn().hidden, false, 'back when expanded into the slot');
+  h.w.matchMedia = () => ({ media: '', matches: false, addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} });
+  h.w.dispatchEvent(new h.w.Event('resize'));
+  assert.strictEqual(btn().hidden, true, 'a resize past 768 px (desktop form factor) hides it');
+  h.p.close();
+  assert.strictEqual(h.doc.querySelector('.player-minimize'), null, 'close detaches the host and the chevron with it');
+  dom.window.close(); dom = null;
+  h = await boot(VIDEO, { view: 'music' });
+  assert.strictEqual(h.host.querySelector('.player-minimize').hidden, true, 'not on another view (M8)');
+  dom.window.close(); dom = null;
+  h = await boot(VIDEO, { native: true });
+  assert.strictEqual(h.host.querySelector('.player-minimize').hidden, true, 'not in native-controls mode');
+});
+
+test('a chevron click runs the one commit path: docked, then leave once; a second click while docked does nothing', async () => {
+  const h = await boot(VIDEO);
+  const btn = h.host.querySelector('.player-minimize');
+  let bubbled = 0;
+  h.host.addEventListener('click', () => { bubbled++; });
+  btn.click();
+  assert.strictEqual(h.p.getState(), 'docked');
+  assert.deepStrictEqual(h.leaves, [{ state: 'docked' }], 'docked first, then left once');
+  assert.strictEqual(bubbled, 0, 'the click stops at the chevron (nothing under it hears it)');
+  btn.click();
+  assert.strictEqual(h.leaves.length, 1, 'no second commit while docked');
+  const handler = PLAYER_SRC.slice(PLAYER_SRC.indexOf("minimizeBtn.addEventListener('click'"), PLAYER_SRC.indexOf('host.appendChild(minimizeBtn)'));
+  assert.match(handler, /minimizeToDock\('button'\)/, 'the chevron calls the same minimizeToDock as the pull');
+  assert.strictEqual((PLAYER_SRC.match(/leaveWatchForBrowse\(\)/g) || []).length, 1, 'one caller of the landing: minimizeToDock');
+});
+
+test('a touch that starts on the chevron never reaches the picture: no hold, no claim, no transform', async () => {
+  const h = await boot(VIDEO);
+  const btn = h.host.querySelector('.player-minimize');
+  fire(h.w, btn, 'touchstart', 20, 20, 1000);
+  const m = [];
+  for (let d = 10; d <= 200; d += 10) m.push(fire(h.w, btn, 'touchmove', 20, 20 + d, 1000 + d * 4));
+  await wait(600);
+  fire(h.w, btn, 'touchend', 20, 220, 1900);
+  assert.ok(m.every((e) => !e.defaultPrevented), 'not claimed');
+  assert.strictEqual(h.host.style.transform, '');
+  assert.strictEqual(h.v.playbackRate, 1, 'no hold engaged');
+  assert.strictEqual(h.p.getState(), 'full');
+  assert.strictEqual(h.leaves.length, 0);
+});
+
+// ---- W2: the mini player targets (M5 / R8), locked by value and order ---------
+
+const CSS = fs.readFileSync(path.join(PUB, 'css', 'style.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' '));
+// Every rule as {selector, body, media, at}: a brace walk with @media flattened (fails closed on a bad brace).
+function cssRules(css) {
+  const out = [];
+  let i = 0;
+  const walk = (end, media) => {
+    while (i < end) {
+      const open = css.indexOf('{', i);
+      if (open === -1 || open >= end) { i = end; return; }
+      const head = css.slice(i, open).trim();
+      let depth = 1, j = open + 1;
+      while (depth && j < css.length) { if (css[j] === '{') depth++; else if (css[j] === '}') depth--; j++; }
+      assert.strictEqual(depth, 0, 'balanced braces at ' + open);
+      if (/^@media/.test(head)) { const save = i; i = open + 1; walk(j - 1, head.replace(/\s+/g, ' ')); i = j; void save; continue; }
+      out.push({ selector: head.replace(/\s+/g, ' '), body: css.slice(open + 1, j - 1), media, at: open });
+      i = j;
+    }
+  };
+  walk(css.length, null);
+  return out;
+}
+const RULES = cssRules(CSS);
+const decl = (r, prop) => { const m = new RegExp('(?:^|;)\\s*' + prop.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+)').exec(r.body); return m ? m[1].trim() : null; };
+const one = (selector, media) => {
+  const hits = RULES.filter((r) => r.selector === selector && r.media === media);
+  assert.strictEqual(hits.length, 1, 'exactly one rule ' + selector + ' @ ' + media + ' (got ' + hits.length + ')');
+  return hits[0];
+};
+const PHONE = '@media (max-width: 768px)';
+
+test('M5 phone: the docked bar, the reserve and the art bottom are ONE value (--size-touch), after the 26 px base rules they override', () => {
+  for (const [sel, prop] of [['#player-dock .player-controls', 'height'], ['#player-dock #player-wrapper', 'padding-bottom'], ['#player-dock #player-wrapper.audio-mode #audio-bg-art', 'bottom']]) {
+    const base = one(sel, null);
+    assert.strictEqual(decl(base, prop), '26px', 'desktop/base keeps 26px: ' + sel);
+    const phone = one(sel, PHONE);
+    assert.strictEqual(decl(phone, prop), 'var(--size-touch)', 'phone: ' + sel);
+    assert.ok(phone.at > base.at, 'the phone override comes AFTER its base (equal specificity: order wins): ' + sel);
+  }
+});
+
+test('M5 phone: play/pause keeps a 32 px face with a 44 px hit ring; the X is a 44 px box in the corner around a 32 px disc; desktop values untouched', () => {
+  const ppBase = one('#player-dock .pc-btn', null);
+  assert.strictEqual(decl(ppBase, 'width'), '22px');
+  assert.strictEqual(decl(ppBase, 'height'), '22px');
+  const pp = one('#player-dock #pp-btn', PHONE);
+  assert.strictEqual(decl(pp, 'width'), 'var(--size-control-sm)');
+  assert.strictEqual(decl(pp, 'height'), 'var(--size-control-sm)');
+  assert.strictEqual(decl(pp, 'position'), 'relative');
+  assert.ok(pp.at > ppBase.at, 'after the 22px base');
+  const ring = one('#player-dock #pp-btn::after', PHONE);
+  assert.strictEqual(decl(ring, 'inset'), 'calc((var(--size-control-sm) - var(--size-touch)) / 2)', 'the ring reaches 44px');
+  assert.strictEqual(decl(ring, 'position'), 'absolute');
+  const xBase = one('.player-dock-close', null);
+  assert.strictEqual(decl(xBase, 'width'), '24px');
+  assert.strictEqual(decl(xBase, 'top'), '4px');
+  const x = one('#player-dock .player-dock-close', PHONE);
+  assert.strictEqual(decl(x, 'width'), 'var(--size-touch)');
+  assert.strictEqual(decl(x, 'height'), 'var(--size-touch)');
+  assert.strictEqual(decl(x, 'top'), '0');
+  assert.strictEqual(decl(x, 'right'), '0');
+  assert.match(decl(x, 'background'), /radial-gradient\(circle, var\(--scrim\) 0 calc\(var\(--size-control-sm\) \/ 2\)/, 'a plain painted disc');
+  assert.ok(x.at > xBase.at);
+});
+
+test('R6: the chevron is a 44 px box with a painted 36 px disc and no filter, mask or blend on it', () => {
+  const r = one('.ui-btn.player-minimize', null);
+  assert.strictEqual(decl(r, 'width'), 'var(--size-touch)');
+  assert.strictEqual(decl(r, 'height'), 'var(--size-touch)');
+  assert.strictEqual(decl(r, 'position'), 'absolute');
+  assert.match(decl(r, 'background'), /^radial-gradient\(circle, var\(--scrim\) 0 calc\(var\(--size-control\) \/ 2\)/);
+  for (const rr of RULES.filter((q) => /player-minimize/.test(q.selector))) {
+    assert.doesNotMatch(rr.body, /(filter|mask|mix-blend-mode|opacity)\s*:/i, rr.selector);
+  }
+});
+
+test('one non-passive touchmove on the host and none on the document (LESSONS 4); the fetch-path history push carries the browse level (M7)', () => {
+  assert.ok(!/document\.addEventListener\('touchmove'/.test(PLAYER_SRC), 'no document touchmove in player.js');
+  assert.strictEqual((PLAYER_SRC.match(/host\.addEventListener\('touchmove'/g) || []).length, 1, 'one host touchmove');
+  const nav = COMMON_SRC.slice(COMMON_SRC.indexOf('function navigate('), COMMON_SRC.indexOf('function handleDocumentClick'));
+  assert.match(nav, /const state = buildHistoryState\(view, parsed\.href, 0, desiredDepth, null, browseDepthBehind\(window\.history\.state\)\);/,
+    'a watch entry pushed by navigate() remembers the browse level it was opened from');
+});

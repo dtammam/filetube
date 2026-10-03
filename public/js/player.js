@@ -2396,6 +2396,7 @@ if (typeof module !== 'undefined' && module.exports) {
       mediaPlayer.removeAttribute('controls');
       host.classList.remove('native-controls');
     }
+    refreshMinimizeButton(); // v1.362: the chevron follows every surface change this function makes
   }
 
   // v1.36.2 (Dean's PWA report): after an app-switch, iOS can leave a
@@ -2485,6 +2486,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (BL) BL.scrollTo(document, window, plan.restoreTo);
       else window.scrollTo(0, plan.restoreTo);
     }
+    refreshMinimizeButton(); // v1.362: no chevron in faux full screen
   }
   // v1.311.2: the ONE shared iOS body lock (body-scroll-lock.js, loaded before this
   // file on every shell that loads it; require()d under node tests).
@@ -5133,6 +5135,34 @@ if (typeof module !== 'undefined' && module.exports) {
     return true;
   }
 
+  // R6: the chevron, built here (no shell edit) and appended to the host, so the no-filter census sees it
+  // (player-overlay-no-filter.test.js reads every class player.js builds). Shown only while minimizeAllowed();
+  // refreshed wherever the surface changes (applyControlsMode, faux full screen, the audio expanded view, a
+  // resize or rotate). A sibling of the video: a touch on it never reaches the picture's gesture layer.
+  var minimizeBtn = null;
+  function refreshMinimizeButton() {
+    if (!host) return;
+    if (!minimizeBtn) {
+      minimizeBtn = document.createElement('button');
+      minimizeBtn.type = 'button';
+      minimizeBtn.className = 'ui-btn ui-btn--plain player-minimize';
+      minimizeBtn.setAttribute('aria-label', 'Minimize player');
+      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', 'ui-icon');
+      svg.setAttribute('aria-hidden', 'true');
+      var use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+      use.setAttribute('href', '#i-expand_more');
+      svg.appendChild(use);
+      minimizeBtn.appendChild(svg);
+      minimizeBtn.addEventListener('click', function (e) {
+        e.stopPropagation(); // the dock-close precedent: nothing under it hears this click
+        minimizeToDock('button');
+      });
+      host.appendChild(minimizeBtn);
+    }
+    minimizeBtn.hidden = !minimizeAllowed();
+  }
+
   function playMinimizeSettle(from) {
     if (!minimizeAnimEnabled() || minimizeReducedMotion()) return;
     var to = host.getBoundingClientRect();
@@ -6887,6 +6917,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (on) revealControlsAndReArm();
     else { clearControlsAutoHide(); clearRevealGrace(); showControlsBar(); }
+    refreshMinimizeButton(); // v1.362: no chevron on the expanded view
   }
 
   function toggleAudioExpand() {
@@ -8330,8 +8361,8 @@ if (typeof module !== 'undefined' && module.exports) {
       minimizeTouchMove(e);
     }, { passive: false });
     // v1.362: a rotate or resize mid-pull springs back at once (the geometry it followed is gone).
-    window.addEventListener('resize', function () { if (minimizeClaimed) clearMinimizeDrag(); });
-    window.addEventListener('orientationchange', function () { if (minimizeClaimed) clearMinimizeDrag(); });
+    window.addEventListener('resize', function () { if (minimizeClaimed) clearMinimizeDrag(); refreshMinimizeButton(); });
+    window.addEventListener('orientationchange', function () { if (minimizeClaimed) clearMinimizeDrag(); refreshMinimizeButton(); });
     if (speedBadge) {
       speedBadge.addEventListener('click', function () { if (holdLocked) releaseHold(); });
       speedBadge.addEventListener('keydown', function (e) {

@@ -246,6 +246,51 @@ check.
   past clip2), clip1 docked and playing. Deep link, pull 250: fresh Home, docked, playing. Pull 60 slow: springs back, still
   full on the watch page, playing, transform cleared. Scrolled 40, pull 250: 1 of 22 cancelable, 0 prevented, the page scrolls
   40 -> 0, no minimize (R2b).
+- **W1 mutants** (on ab8f6c4b, `git archive` sandbox in the session scratchpad, exact-once replace, restored in a `finally`,
+  sandbox identical to its pristine copy after; runner output verbatim per mutant): W1-M1 drop `holdActive` KILLED (2 red:
+  `minimizeDragDecision: claim iff`, `disjoint over a grid, and a hold never minimizes`); W1-M2 drop the scrollY guard KILLED
+  (`claim iff`, `scrolled down at touchstart`); W1-M3 flip the dominance factor KILLED by `claim iff` (the grid stays green: a
+  flipped factor is still disjoint from swipe-back, so the grid cannot see it; the pure case `at(8, 12)` does); W1-M4 drop
+  `clearMinimizeDrag` from `resetTransientPlaybackUi` KILLED (`the inline transform is gone after a commit, a close mid-drag`);
+  W1-M5 leave before `dock()` KILLED (`docks, THEN leaves`); W1-M6 the guard arm not preventing KILLED (`docks, THEN leaves`:
+  the first 10 px move); W1-M7 R7 ignored KILLED (`?minimizeAnim=0`); W1-M8 `browseDepthBehind` passing a watch entry's own
+  depth KILLED (`browseDepthBehind`); W1-M10 a touchcancel commits KILLED (`a touchcancel mid-pull always snaps`); W1-M11 the
+  threshold 0.35 -> 0.2 KILLED (`minimizeReleaseDecision`, `the threshold is 35% of the travel`). **W1-M9 SURVIVED** (navigate's
+  fetch-path push dropping the inherited browse level: 93 of 93 green; only the Chromium probe saw it). Fixed in W2 by a source
+  lock (`one non-passive touchmove on the host ... the fetch-path history push carries the browse level`); re-run below.
+
+**W2 (builder, 2026-10-03).**
+
+- Built: the chevron (`refreshMinimizeButton`, built on first use into the host, `hidden` unless `minimizeAllowed()`, refreshed
+  from `applyControlsMode`, `setCssFullscreen`, `setAudioExpanded`, resize and orientationchange; its click stops propagation and
+  calls `minimizeToDock('button')`); phone-only M5 rules after their base rules.
+- **Deviations (disclosed), all forced by `npm run lint:ui` (the ratchet refused 7 new debt keys on the plan's literal shape;
+  the file never grows):** the chevron's class is `ui-btn ui-btn--plain player-minimize` (not `player-minimize-btn`: a `-btn`
+  subject without a `ui-` class is bespoke-control debt), styled through `.ui-btn.player-minimize`; it has **no z-index** (a
+  local-band literal is counted `token-exempt` debt; as the host's last positioned child it paints over the video, and the
+  only positive-z siblings over it, the tap glyph and the skip ripples, are `pointer-events: none`; measured: `elementFromPoint`
+  at its centre is the chevron, 484 of 484 grid points hit it); its disc is `--scrim` (`--scrim-legacy` is a legacy token), as
+  is the phone X's; no `display: none !important` state rules (the global `[hidden]` rule and `refreshMinimizeButton` own it);
+  play/pause's phone rule targets `#player-dock #pp-btn` (not `.pc-btn`, bespoke debt; the dock shows only play/pause), with a
+  32 px face (`--size-control-sm`, the full bar's button) and a transparent `::after` ring to 44 px, rather than a 28 px glyph.
+- **Found by measuring, fixed:** (1) the ui-btn press layer is an `::after` whose opacity fades in: over the picture that is
+  stop rule (d) / LESSONS 7, so `.ui-btn.player-minimize::after { content: none }`; (2) the X's base `border-radius: 50%`
+  made its 44 px box hit-test as a circle (400 of 484 points: 78 fell through to the video), so the phone X box is square; (3)
+  the bar's 4 px left padding clipped the play/pause ring 2 px at the dock's edge (span 42), so the phone bar pads
+  `--space-3`. The bar, the wrapper reserve and the art's bottom are one value, `var(--size-touch)` (R8's "change together"),
+  which `dockRestingRect` reads; Dean's F.5 "reserves stay literal" is kept for the base 26 px literals, untouched.
+- **Section 3 item 1 AFTER** (`tools/minimize-proof/probe-targets.js`, same 961-point grid as W0, result JSON beside it): dock
+  x 222 y 450 w 160 h **134** (was 116: the bar is 44). `.player-dock-close` box 44 x 44, **478 of 961** points, span **44 x 44**,
+  0 points outside the dock (the 6 misses are the dock's own 12 px rounded corner). `#player-dock #pp-btn` face 32 x 32, **478**
+  points, span **44 x 44**, 0 outside the dock. The dock's tap-to-expand at the picture's centre still hits `media-player`.
+  Desktop dock (1280 x 800): dock 280 x 184, X 24 x 24, play/pause 22 x 22, bar 26: unchanged; no chevron. Chevron inline: 44 x 44
+  at (4, 76) (video top 72), 484 of 484 points, centre hit is the chevron, computed filter `none`, opacity `1`. A real CDP tap on
+  it: the settle runs (host computed transform `matrix(1.95, ..., -146.8, -249.9)` at 50 ms, `matrix(1.01, ...)` at 250 ms,
+  `none` at 300 ms; the dock's overflow `visible` during, `hidden` after), lands on `/`, docked, playing, chevron hidden.
+| before / after | X hit span | X grid hits | play/pause hit span | play/pause grid hits | dock h |
+|---|---|---|---|---|---|
+| before (W0, main) | 24 x 24 | 121 | 22 x 22 | 105 | 116 |
+| after (W2) | 44 x 44 | 478 | 44 x 44 | 478 | 134 |
 
 ## 7. Device checks (Dean, on the released build; add each to DEVICE-CHECKS.md in the release commit)
 

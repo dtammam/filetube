@@ -1397,6 +1397,33 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   box-shadow: none;
 }
 
+/* v1.362 (R6): the minimize chevron on the phone's inline picture, top-left (player.js builds it as a
+   plain ui-btn and shows it only where minimize is offered: the global [hidden] rule hides it
+   everywhere else). A 44 x 44 touch box carrying a plain painted 36 px disc (a radial gradient, never a
+   filter: LESSONS 7) under the expand_more glyph. No z-index: it is the host's last positioned child,
+   so it paints over the video; the tap glyph and the skip ripples (pointer-events none) may flash over
+   it, and the resume / transcode overlays (10) cover it. Square corners: the box hit-tests as drawn,
+   so a radius would round off its corners (the disc is painted, not the box). The ui-btn press layer
+   (an ::after that fades its opacity in) is removed: nothing fades over the picture (LESSONS 7). */
+.ui-btn.player-minimize {
+  position: absolute;
+  top: var(--space-2);
+  left: calc(var(--space-2) + env(safe-area-inset-left, 0px));
+  width: var(--size-touch);
+  height: var(--size-touch);
+  padding: 0;
+  border-radius: 0;
+  background: radial-gradient(circle, var(--scrim) 0 calc(var(--size-control) / 2), transparent calc(var(--size-control) / 2 + 1px));
+  color: var(--on-overlay);
+}
+.ui-btn.player-minimize::after {
+  content: none;
+}
+.ui-btn.player-minimize .ui-icon {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
+}
+
 /* Audio thumbnail-as-background art (Feature 1, v1.10.0). Hidden by default;
    only shown for audio items whose setupPlayer() audio branch resolves a real
    thumbnail (resolveAudioArtUrl) and opts #player-wrapper into .audio-mode.
@@ -4385,6 +4412,48 @@ select {
 }
 #player-dock #player-wrapper.audio-mode #audio-bg-art {
   bottom: 26px; /* token-exempt: positional geometry (Stop A Batch A) */
+}
+
+/* v1.362 (M5, Dean): on a phone the mini player's X and play/pause each answer a 44 x 44 touch
+   (--size-touch), and both look a little bigger (32 px, the full bar's button size). The dock clips
+   its content (overflow: hidden), so both boxes lie INSIDE it: the bar grows from 26 px to the touch
+   height (the bar, the wrapper's reserve and the art's bottom move together as one value, which
+   player.js dockRestingRect also reads; its left padding lets the ring below fit), play/pause (the
+   only bar button the dock shows) keeps a 32 px face and gains a transparent
+   44 px hit ring, and the X takes the picture's top-right 44 px corner around a 32 px disc (square:
+   a box hit-tests as drawn, and the old 50% radius made it a circle). Width
+   (160 px) and the desktop dock are unchanged. Placed AFTER the base rules above (equal
+   specificity: file order decides). */
+@media (max-width: 768px) {
+  #player-dock .player-controls {
+    height: var(--size-touch);
+    padding: 0 var(--space-3);
+  }
+  #player-dock #player-wrapper {
+    padding-bottom: var(--size-touch);
+  }
+  #player-dock #player-wrapper.audio-mode #audio-bg-art {
+    bottom: var(--size-touch);
+  }
+  #player-dock #pp-btn {
+    position: relative;
+    width: var(--size-control-sm);
+    height: var(--size-control-sm);
+  }
+  #player-dock #pp-btn::after {
+    content: '';
+    position: absolute;
+    inset: calc((var(--size-control-sm) - var(--size-touch)) / 2);
+  }
+  #player-dock .player-dock-close {
+    top: 0;
+    right: 0;
+    width: var(--size-touch);
+    height: var(--size-touch);
+    line-height: var(--size-touch);
+    border-radius: 0;
+    background: radial-gradient(circle, var(--scrim) 0 calc(var(--size-control-sm) / 2), transparent calc(var(--size-control-sm) / 2 + 1px));
+  }
 }
 
 /* Feature A (v1.26.1, Shorts player-size jump): the DOCKED mini-player
