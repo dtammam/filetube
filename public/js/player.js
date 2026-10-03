@@ -4967,8 +4967,6 @@ if (typeof module !== 'undefined' && module.exports) {
       if (holdActive) {
         if (!holdGestureLive) return;
         if (!holdLocked && holdDragDecision({ dx: t.clientX - startX, dy: t.clientY - startY, lockPx: LOCK_DRAG_PX }) === 'lock') lockHold();
-        // v1.358: measured in Chromium, only a permanent non-passive listener can stop the page scrolling under the drag.
-        if (e.cancelable) e.preventDefault();
         return;
       }
       if (Math.abs(t.clientX - startX) > MOVE_TOL || Math.abs(t.clientY - startY) > MOVE_TOL) {
@@ -8049,6 +8047,12 @@ if (typeof module !== 'undefined' && module.exports) {
     // immersive bar is hidden; see videoSingleTapOrReveal).
     wireSkipHoldGestures(mediaPlayer, videoSingleTapOrReveal);
     wireSkipHoldGestures(audioBgArt, artSingleTapOrReveal);
+    // v1.358: the page scrolls under a held drag unless a NON-PASSIVE touchmove claims it. Measured in Chromium
+    // (tools/hold-lock-proof/probe-lock.js): a listener on the <video> itself leaves every move non-cancelable;
+    // one on an ancestor (this wrapper) makes them cancelable. It claims only the engaging finger's drag.
+    host.addEventListener('touchmove', function (e) {
+      if (holdActive && holdGestureLive && e.cancelable) e.preventDefault();
+    }, { passive: false });
     if (speedBadge) {
       speedBadge.addEventListener('click', function () { if (holdLocked) releaseHold(); });
       speedBadge.addEventListener('keydown', function (e) {

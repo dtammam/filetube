@@ -446,6 +446,8 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ### 🐞 Bugs
 
+- [ ] **Bug: the music player's pop-out is glitchy at the iPad / desktop viewport and opens no new tab** (Dean, 2026-10-03: "glitchiness with iPad / desktop viewport when trying to pop out music player, doesn't open in new tab. Not a pop out"). Not yet reproduced; first measure the pop-out path at an iPad-width viewport and find why no window opens.
+
 - [x] **Bug: tapping an iOS PWA notification opens Music but does not start the song** - ✅ SHIPPED v1.334.0 (not a regression: iOS refuses to start audio in a page a notification opened; the player now shows Tap to play) (Dean,
   2026-09-25: "flakiness of me tapping an iOS PWA notification and having it launch the app, go to the
   music page, but not actually launch the song. Unsure why that's happening. If that's a regression or
