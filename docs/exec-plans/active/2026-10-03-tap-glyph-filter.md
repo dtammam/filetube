@@ -270,3 +270,53 @@ Mutants (a copy of public/css + watch.html + player.js + the test, one appended 
 `.player-resumed` backdrop: 11 of 11 red. `.bottom-nav` backdrop: green (outside the player, as intended). Pristine: 3 pass.
 
 Also in this commit (docs only, Dean mid-gate): a ROADMAP Planned > Features entry, swipe the video down into the mini player.
+
+### qa r3 @417bd0bf (short delta, 1e2d6bee..417bd0bf; test + docs only)
+
+Measured (Node 22.23.1): `npx eslint test/unit/player-overlay-no-filter.test.js` exit 0; `node --test` on the lock: 3 tests,
+3 pass, 0 fail, 0 skipped. The net at HEAD (the test's own playerNames, comments stripped): 43 ids, 73 classes. `bottom-nav`,
+`nav-theme-toggle` and `icon-share` are absent; the walk now asserts it reached the wrapper's own close. No em dashes added.
+
+- W3 FIXED as prescribed: comments are stripped before the walk, `closed` is asserted, and `bottom-nav` / `bottom-nav-item` /
+  `ui-selectable` / `#ft-lifecycle-overlay` are asserted absent. The converse risk (a `</div>` in a comment ending the walk early)
+  is gone with the strip.
+- The header, HOSTS, JS_BUILT_EXCLUDE and EXEMPT_CLASSES comments match the code. The `icon-share` exemption (the chapters menu's
+  app-wide mask icon) is disclosed in the test and in the ROADMAP lock line, with a revisit trigger; I accept it as disclosed.
+- ROADMAP lock line and LESSONS 7 coverage wording match the test. The new ROADMAP Features entry (swipe down to the mini player) is
+  docs only, accurate to the tree, and marked "talk it through first".
+- S (non-blocking): the runtime harvest reads only `.className = '...'` and `.id = '...'`. Classes player.js adds through
+  `classList` (for example `audio-mode`, `ft-css-fullscreen`, `controls-autohidden`) are not in the net. Today these are state
+  modifiers used compounded with netted names, so nothing escapes. A future rule on a modifier alone (for example
+  `.ft-css-fullscreen { backdrop-filter }`) would pass.
+
+Gate: APPROVED r3 @417bd0bf - qa
+
+### adversary r3 @417bd0bf (short delta, 1e2d6bee..417bd0bf)
+
+Measured (Node 22.23.1, a scratchpad clone of 417bd0bf, one mutant at a time, restored from HEAD). Baseline: the lock passes 3/3.
+I did not re-run the full suite, and the CSS has not changed since 96474ced.
+
+- W4 FIXED:
+  - `.bottom-nav { backdrop-filter }` and `.ui-btn--md:hover { filter }` now pass, as they should: both are outside the player.
+  - A `<!-- ... </div></div> -->` inside the wrapper, plus `.audio-vinyl { filter }`, is RED: the walk is no longer shortened.
+  - An attribute containing `>` before `#audio-visualizer`, plus the same vinyl filter, is RED.
+- W5 FIXED: `.cc-overlay` backdrop, `.cc-overlay-text` -webkit-backdrop, `.seek-preview` backdrop and `#player-slot` filter are
+  each red. So is `.speed-sheet` backdrop. The sheet is appended to `document.body` (player.js:7211), a page-level sheet over the
+  video, so including it is right.
+- What the player.js harvest pulls in, beyond the excluded debug panel: 26 className literals, all player chrome (captions,
+  seek preview and chapters, the chapter and speed sheets, the dock close), and the ids `bg-audio-sidecar` / `bg-keepalive`.
+  Those two are undrawn `<audio>` elements with no CSS, so they are harmless. No false positive on the real CSS (green).
+- S5 FIXED: documented as intended breadth.
+- `icon-share` exemption: it is really only the chapters menu. player.js:7685 is the only builder in the player; the other user,
+  skin-surface.js:191, is the music sheet, outside the player. The exemption is disclosed (test comment, ROADMAP lock line), so it
+  is honest enough to ship. Two notes, both SUGGESTION:
+  - (a) The comment says it is "not an effect painted over the playing picture". But `.chapters-menu` sits at
+    `bottom: calc(100% + 6px)` of the control bar (style.css:4576), i.e. over the video while it plays. It is an on-request
+    exception to the LESSONS 7 headline rule, not something outside it. Say that. The clean fix is the SVG sprite
+    (`<svg class="ui-icon"><use href="#i-share">`), as the speed badge already does.
+  - (b) It exempts the class from EVERY property: `.icon-share { filter: drop-shadow(...) }` alone passes 3/3. A selector naming
+    the menu (`.chapters-menu .icon-share { filter }`) is still red. Narrow it to the mask properties only.
+- S1 / S3 carried, not blocking (as ruled).
+- Security: none.
+
+Gate: APPROVED r3 @417bd0bf - adversary
