@@ -59,3 +59,62 @@ test('mobile player height: the audio-mode/.audio-bg-art rules are untouched by 
   assert.match(css, /#player-wrapper\.audio-mode #audio-bg-art\s*\{[^}]*display:\s*block;[^}]*\}/);
   assert.match(css, /#player-wrapper\.audio-mode #media-player\s*\{/);
 });
+
+// v1.359 (Dean: the phone player spans the screen side to side). The binding is the real-browser
+// geometry check BLD (test/geometry); this is the source backstop. Rules are parsed (comments stripped,
+// brace-walked, @media flattened) so a COMMENT or a lookalike cannot satisfy it.
+function flatRules(src) {
+  const stripped = src.replace(/\/\*[\s\S]*?\*\//g, '');
+  const out = [];
+  (function walk(text, mobile, base) {
+    let i = 0;
+    while (i < text.length) {
+      const open = text.indexOf('{', i);
+      if (open < 0) break;
+      const head = text.slice(i, open).trim();
+      let depth = 1; let j = open + 1;
+      while (j < text.length && depth > 0) { if (text[j] === '{') depth++; else if (text[j] === '}') depth--; j++; }
+      const body = text.slice(open + 1, j - 1);
+      if (head.startsWith('@')) walk(body, mobile || /^@media[^{]*\(max-width:\s*768px\)/.test(head), base + open + 1);
+      else out.push({ selector: head.replace(/\s+/g, ' '), body, mobile, index: base + open });
+      i = j;
+    }
+  })(stripped, false, 0);
+  return out;
+}
+const hasDecl = (body, prop, value) => new RegExp('(?:^|[;\\s])' + prop + '\\s*:\\s*' + value + '\\s*(?:;|$)').test(body);
+
+test('v1.359 mobile edge to edge: one mobile rule drops the wrapper frame, excluding faux full screen and the expanded audio view', () => {
+  const rules = flatRules(css);
+  const frame = rules.filter((r) => r.selector === '.watch-player-stage #player-wrapper:not(.css-fullscreen):not(.audio-expanded)');
+  assert.strictEqual(frame.length, 1, 'exactly one frame-drop rule');
+  assert.ok(frame[0].mobile, 'it sits inside @media (max-width: 768px): desktop keeps every era\'s frame');
+  assert.ok(hasDecl(frame[0].body, 'border', 'none'), 'border: none');
+  assert.ok(hasDecl(frame[0].body, 'border-radius', '0'), 'border-radius: 0');
+  // A denylist that fails by default: every rule that paints a border or radius on the wrapper/container is known.
+  // A new one is a finding (it may out-rank the drop above in some era or state) until the set is updated on purpose.
+  const painters = rules.filter((r) => /#player-wrapper|\.player-container/.test(r.selector) && /(?:^|[;\s])(?:border|border-radius|border-[a-z-]+-radius)\s*:/.test(r.body)).map((r) => (r.mobile ? '@m ' : '') + r.selector).sort();
+  assert.deepStrictEqual(painters, [
+    '#fs-stage:fullscreen .player-container',
+    '#player-dock .player-container',
+    '#player-wrapper.audio-mode.audio-expanded',
+    '#player-wrapper.css-fullscreen',
+    '.player-container',
+    '.player-container:fullscreen, .player-container:-webkit-full-screen',
+    '.reader-nowplaying .player-container',
+    '@m .watch-player-stage #player-wrapper:not(.css-fullscreen):not(.audio-expanded)',
+  ].sort(), 'the set of rules that paint a border or radius on the player frame');
+});
+
+test('v1.359 mobile edge to edge: the reserved frame (#player-slot:empty) drops its outline and radius on a phone, after its base rule', () => {
+  const rules = flatRules(css);
+  const slot = rules.filter((r) => r.selector === '.watch-container #player-slot:empty');
+  const base = slot.filter((r) => !r.mobile);
+  const mob = slot.filter((r) => r.mobile);
+  assert.strictEqual(base.length, 1, 'one base reserved-frame rule');
+  assert.strictEqual(mob.length, 1, 'one mobile reserved-frame rule');
+  assert.ok(mob[0].index > base[0].index, 'the mobile rule comes AFTER the base rule (equal specificity: file order decides)');
+  assert.ok(hasDecl(mob[0].body, 'border', 'none'), 'border: none');
+  assert.ok(hasDecl(mob[0].body, 'border-radius', '0'), 'border-radius: 0');
+  assert.ok(hasDecl(base[0].body, 'border', '1px solid var\\(--separator\\)'), 'the base (desktop) frame still has its outline');
+});

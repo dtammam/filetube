@@ -1,0 +1,8070 @@
+{
+ "runAt": "2026-10-03T05:41:10.108Z",
+ "runs": [
+  {
+   "case": "phone-native 320x568 2005",
+   "w": 320,
+   "h": 568,
+   "errs": [],
+   "vw": 320,
+   "vh": 568,
+   "scrollW": 320,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 288,
+    "h": 1200.6,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 320,
+     "h": 180,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 320,
+    "h": 180,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 320,
+     "h": 180,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "255.6px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 320,
+    "h": 180,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 320
+   },
+   "title": {
+    "x": 16,
+    "y": 268,
+    "w": 288,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -38.4,
+    "y": 32.4,
+    "w": 396.8,
+    "h": 259.2,
+    "right": -38.4
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 320x568 2009",
+   "w": 320,
+   "h": 568,
+   "errs": [],
+   "vw": 320,
+   "vh": 568,
+   "scrollW": 320,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 288,
+    "h": 1200.6,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 320,
+     "h": 180,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 320,
+    "h": 180,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 320,
+     "h": 180,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "255.6px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 320,
+    "h": 180,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 320
+   },
+   "title": {
+    "x": 16,
+    "y": 268,
+    "w": 288,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -38.4,
+    "y": 32.4,
+    "w": 396.8,
+    "h": 259.2,
+    "right": -38.4
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 320x568 2014",
+   "w": 320,
+   "h": 568,
+   "errs": [],
+   "vw": 320,
+   "vh": 568,
+   "scrollW": 320,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 288,
+    "h": 1200.6,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 320,
+     "h": 180,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 320,
+    "h": 180,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 320,
+     "h": 180,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "255.6px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 320,
+    "h": 180,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 320
+   },
+   "title": {
+    "x": 16,
+    "y": 268,
+    "w": 288,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -38.4,
+    "y": 32.4,
+    "w": 396.8,
+    "h": 259.2,
+    "right": -38.4
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 320x568 2021",
+   "w": 320,
+   "h": 568,
+   "errs": [],
+   "vw": 320,
+   "vh": 568,
+   "scrollW": 320,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 288,
+    "h": 890.6,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 320,
+     "h": 180,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 320,
+    "h": 180,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 320,
+     "h": 180,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "255.6px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 320,
+    "h": 180,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 320
+   },
+   "title": {
+    "x": 16,
+    "y": 268,
+    "w": 288,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -38.4,
+    "y": 32.4,
+    "w": 396.8,
+    "h": 259.2,
+    "right": -38.4
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 360x740 2005",
+   "w": 360,
+   "h": 740,
+   "errs": [],
+   "vw": 360,
+   "vh": 740,
+   "scrollW": 360,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 328,
+    "h": 1185.1,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 360,
+     "h": 202.5,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 360,
+    "h": 202.5,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 360,
+     "h": 202.5,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "333px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 360,
+    "h": 202.5,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 360
+   },
+   "title": {
+    "x": 16,
+    "y": 290.5,
+    "w": 328,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -43.2,
+    "y": 27.5,
+    "w": 446.4,
+    "h": 291.6,
+    "right": -43.2
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 360x740 2009",
+   "w": 360,
+   "h": 740,
+   "errs": [],
+   "vw": 360,
+   "vh": 740,
+   "scrollW": 360,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 328,
+    "h": 1185.1,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 360,
+     "h": 202.5,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 360,
+    "h": 202.5,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 360,
+     "h": 202.5,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "333px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 360,
+    "h": 202.5,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 360
+   },
+   "title": {
+    "x": 16,
+    "y": 290.5,
+    "w": 328,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -43.2,
+    "y": 27.5,
+    "w": 446.4,
+    "h": 291.6,
+    "right": -43.2
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 360x740 2014",
+   "w": 360,
+   "h": 740,
+   "errs": [],
+   "vw": 360,
+   "vh": 740,
+   "scrollW": 360,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 328,
+    "h": 1185.1,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 360,
+     "h": 202.5,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 360,
+    "h": 202.5,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 360,
+     "h": 202.5,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "333px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 360,
+    "h": 202.5,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 360
+   },
+   "title": {
+    "x": 16,
+    "y": 290.5,
+    "w": 328,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -43.2,
+    "y": 27.5,
+    "w": 446.4,
+    "h": 291.6,
+    "right": -43.2
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 360x740 2021",
+   "w": 360,
+   "h": 740,
+   "errs": [],
+   "vw": 360,
+   "vh": 740,
+   "scrollW": 360,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 328,
+    "h": 913.1,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 360,
+     "h": 202.5,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 360,
+    "h": 202.5,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 360,
+     "h": 202.5,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "333px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 360,
+    "h": 202.5,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 360
+   },
+   "title": {
+    "x": 16,
+    "y": 290.5,
+    "w": 328,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -43.2,
+    "y": 27.5,
+    "w": 446.4,
+    "h": 291.6,
+    "right": -43.2
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 390x844 2005",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1182,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 390
+   },
+   "title": {
+    "x": 16,
+    "y": 307.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 23.8,
+    "w": 483.6,
+    "h": 315.9,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 390x844 2009",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1182,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 390
+   },
+   "title": {
+    "x": 16,
+    "y": 307.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 23.8,
+    "w": 483.6,
+    "h": 315.9,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 390x844 2014",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1182,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 390
+   },
+   "title": {
+    "x": 16,
+    "y": 307.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 23.8,
+    "w": 483.6,
+    "h": 315.9,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 390x844 2021",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 930,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 390
+   },
+   "title": {
+    "x": 16,
+    "y": 307.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 23.8,
+    "w": 483.6,
+    "h": 315.9,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 430x932 2005",
+   "w": 430,
+   "h": 932,
+   "errs": [],
+   "vw": 430,
+   "vh": 932,
+   "scrollW": 430,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 398,
+    "h": 1204.5,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 430,
+     "h": 241.9,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 430,
+    "h": 241.9,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 430,
+     "h": 241.9,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "419.4px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 430,
+    "h": 241.9,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 430
+   },
+   "title": {
+    "x": 16,
+    "y": 329.9,
+    "w": 398,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -51.6,
+    "y": 18.8,
+    "w": 533.2,
+    "h": 348.3,
+    "right": -51.6
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 430x932 2009",
+   "w": 430,
+   "h": 932,
+   "errs": [],
+   "vw": 430,
+   "vh": 932,
+   "scrollW": 430,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 398,
+    "h": 1204.5,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 430,
+     "h": 241.9,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 430,
+    "h": 241.9,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 430,
+     "h": 241.9,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "419.4px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 430,
+    "h": 241.9,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 430
+   },
+   "title": {
+    "x": 16,
+    "y": 329.9,
+    "w": 398,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -51.6,
+    "y": 18.8,
+    "w": 533.2,
+    "h": 348.3,
+    "right": -51.6
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 430x932 2014",
+   "w": 430,
+   "h": 932,
+   "errs": [],
+   "vw": 430,
+   "vh": 932,
+   "scrollW": 430,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 398,
+    "h": 1204.5,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 430,
+     "h": 241.9,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 430,
+    "h": 241.9,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 430,
+     "h": 241.9,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "419.4px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 430,
+    "h": 241.9,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 430
+   },
+   "title": {
+    "x": 16,
+    "y": 329.9,
+    "w": 398,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -51.6,
+    "y": 18.8,
+    "w": 533.2,
+    "h": 348.3,
+    "right": -51.6
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 430x932 2021",
+   "w": 430,
+   "h": 932,
+   "errs": [],
+   "vw": 430,
+   "vh": 932,
+   "scrollW": 430,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 398,
+    "h": 952.5,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 430,
+     "h": 241.9,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 430,
+    "h": 241.9,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 430,
+     "h": 241.9,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "419.4px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 430,
+    "h": 241.9,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 430
+   },
+   "title": {
+    "x": 16,
+    "y": 329.9,
+    "w": 398,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -51.6,
+    "y": 18.8,
+    "w": 533.2,
+    "h": 348.3,
+    "right": -51.6
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 600x960 2005",
+   "w": 600,
+   "h": 960,
+   "errs": [],
+   "vw": 600,
+   "vh": 960,
+   "scrollW": 600,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 568,
+    "h": 1260.1,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 600,
+     "h": 337.5,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 600,
+    "h": 337.5,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 600,
+     "h": 337.5,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "432px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 600,
+    "h": 337.5,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 600
+   },
+   "title": {
+    "x": 16,
+    "y": 425.5,
+    "w": 568,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -72,
+    "y": -2.3,
+    "w": 744,
+    "h": 486,
+    "right": -72
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 600x960 2009",
+   "w": 600,
+   "h": 960,
+   "errs": [],
+   "vw": 600,
+   "vh": 960,
+   "scrollW": 600,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 568,
+    "h": 1260.1,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 600,
+     "h": 337.5,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 600,
+    "h": 337.5,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 600,
+     "h": 337.5,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "432px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 600,
+    "h": 337.5,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 600
+   },
+   "title": {
+    "x": 16,
+    "y": 425.5,
+    "w": 568,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -72,
+    "y": -2.3,
+    "w": 744,
+    "h": 486,
+    "right": -72
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 600x960 2014",
+   "w": 600,
+   "h": 960,
+   "errs": [],
+   "vw": 600,
+   "vh": 960,
+   "scrollW": 600,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 568,
+    "h": 1260.1,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 600,
+     "h": 337.5,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 600,
+    "h": 337.5,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 600,
+     "h": 337.5,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "432px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 600,
+    "h": 337.5,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 600
+   },
+   "title": {
+    "x": 16,
+    "y": 425.5,
+    "w": 568,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -72,
+    "y": -2.3,
+    "w": 744,
+    "h": 486,
+    "right": -72
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 600x960 2021",
+   "w": 600,
+   "h": 960,
+   "errs": [],
+   "vw": 600,
+   "vh": 960,
+   "scrollW": 600,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 568,
+    "h": 1048.1,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 600,
+     "h": 337.5,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 600,
+    "h": 337.5,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 600,
+     "h": 337.5,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "432px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 600,
+    "h": 337.5,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 600
+   },
+   "title": {
+    "x": 16,
+    "y": 425.5,
+    "w": 568,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -72,
+    "y": -2.3,
+    "w": 744,
+    "h": 486,
+    "right": -72
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 768x1024 2005",
+   "w": 768,
+   "h": 1024,
+   "errs": [],
+   "vw": 768,
+   "vh": 1024,
+   "scrollW": 768,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 736,
+    "h": 1354.6,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 768,
+     "h": 432,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 768,
+    "h": 432,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 768,
+     "h": 432,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "460.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 768,
+    "h": 432,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 768
+   },
+   "title": {
+    "x": 16,
+    "y": 520,
+    "w": 736,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -92.2,
+    "y": -23,
+    "w": 952.3,
+    "h": 622.1,
+    "right": -92.2
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 768x1024 2009",
+   "w": 768,
+   "h": 1024,
+   "errs": [],
+   "vw": 768,
+   "vh": 1024,
+   "scrollW": 768,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 736,
+    "h": 1354.6,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 768,
+     "h": 432,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 768,
+    "h": 432,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 768,
+     "h": 432,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "460.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 768,
+    "h": 432,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 768
+   },
+   "title": {
+    "x": 16,
+    "y": 520,
+    "w": 736,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -92.2,
+    "y": -23,
+    "w": 952.3,
+    "h": 622.1,
+    "right": -92.2
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 768x1024 2014",
+   "w": 768,
+   "h": 1024,
+   "errs": [],
+   "vw": 768,
+   "vh": 1024,
+   "scrollW": 768,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 736,
+    "h": 1354.6,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 768,
+     "h": 432,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 768,
+    "h": 432,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 768,
+     "h": 432,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "460.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 768,
+    "h": 432,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 768
+   },
+   "title": {
+    "x": 16,
+    "y": 520,
+    "w": 736,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -92.2,
+    "y": -23,
+    "w": 952.3,
+    "h": 622.1,
+    "right": -92.2
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-native 768x1024 2021",
+   "w": 768,
+   "h": 1024,
+   "errs": [],
+   "vw": 768,
+   "vh": 1024,
+   "scrollW": 768,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 736,
+    "h": 1142.6,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 768,
+     "h": 432,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 768,
+    "h": 432,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 768,
+     "h": 432,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "460.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 768,
+    "h": 432,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 768
+   },
+   "title": {
+    "x": 16,
+    "y": 520,
+    "w": 736,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -92.2,
+    "y": -23,
+    "w": 952.3,
+    "h": 622.1,
+    "right": -92.2
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "phone-custom 390x844 2005",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1262,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 299.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 291.4,
+    "w": 390,
+    "h": 80,
+    "right": 0
+   },
+   "title": {
+    "x": 16,
+    "y": 387.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 6.1,
+    "w": 483.6,
+    "h": 431.1,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "pp-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "track-next-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "settings-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "fs-btn",
+     "w": 44,
+     "h": 44
+    }
+   ]
+  },
+  {
+   "case": "phone-audio 390x844 2005",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1578,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 299.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 291.4,
+    "w": 390,
+    "h": 80,
+    "right": 0
+   },
+   "title": {
+    "x": 16,
+    "y": 387.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 6.1,
+    "w": 483.6,
+    "h": 431.1,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "pp-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "track-next-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "settings-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "fs-btn",
+     "w": 44,
+     "h": 44
+    }
+   ]
+  },
+  {
+   "case": "phone-custom 390x844 2009",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1262,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 299.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 291.4,
+    "w": 390,
+    "h": 80,
+    "right": 0
+   },
+   "title": {
+    "x": 16,
+    "y": 387.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 6.1,
+    "w": 483.6,
+    "h": 431.1,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "pp-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "track-next-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "settings-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "fs-btn",
+     "w": 44,
+     "h": 44
+    }
+   ]
+  },
+  {
+   "case": "phone-audio 390x844 2009",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1578,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 299.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 291.4,
+    "w": 390,
+    "h": 80,
+    "right": 0
+   },
+   "title": {
+    "x": 16,
+    "y": 387.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 6.1,
+    "w": 483.6,
+    "h": 431.1,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "pp-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "track-next-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "settings-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "fs-btn",
+     "w": 44,
+     "h": 44
+    }
+   ]
+  },
+  {
+   "case": "phone-custom 390x844 2014",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1262,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 299.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 291.4,
+    "w": 390,
+    "h": 80,
+    "right": 0
+   },
+   "title": {
+    "x": 16,
+    "y": 387.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 6.1,
+    "w": 483.6,
+    "h": 431.1,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "pp-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "track-next-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "settings-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "fs-btn",
+     "w": 44,
+     "h": 44
+    }
+   ]
+  },
+  {
+   "case": "phone-audio 390x844 2014",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1578,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 299.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 291.4,
+    "w": 390,
+    "h": 80,
+    "right": 0
+   },
+   "title": {
+    "x": 16,
+    "y": 387.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 6.1,
+    "w": 483.6,
+    "h": 431.1,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "pp-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "track-next-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "settings-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "fs-btn",
+     "w": 44,
+     "h": 44
+    }
+   ]
+  },
+  {
+   "case": "phone-custom 390x844 2021",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1010,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 299.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 291.4,
+    "w": 390,
+    "h": 80,
+    "right": 0
+   },
+   "title": {
+    "x": 16,
+    "y": 387.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 6.1,
+    "w": 483.6,
+    "h": 431.1,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "pp-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "track-next-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "settings-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "fs-btn",
+     "w": 44,
+     "h": 44
+    }
+   ]
+  },
+  {
+   "case": "phone-audio 390x844 2021",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1010,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 299.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 291.4,
+    "w": 390,
+    "h": 80,
+    "right": 0
+   },
+   "title": {
+    "x": 16,
+    "y": 387.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 6.1,
+    "w": 483.6,
+    "h": 431.1,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "pp-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "track-next-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "settings-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "fs-btn",
+     "w": 44,
+     "h": 44
+    }
+   ]
+  },
+  {
+   "case": "phone-custom-dark 390x844 2021",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "dark",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1010,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 299.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 291.4,
+    "w": 390,
+    "h": 80,
+    "right": 0
+   },
+   "title": {
+    "x": 16,
+    "y": 387.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 6.1,
+    "w": 483.6,
+    "h": 431.1,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "pp-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "track-next-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "settings-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "fs-btn",
+     "w": 44,
+     "h": 44
+    }
+   ]
+  },
+  {
+   "case": "phone-dock 390x844 2021",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1010,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 299.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 291.4,
+    "w": 390,
+    "h": 80,
+    "right": 0
+   },
+   "title": {
+    "x": 16,
+    "y": 387.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 6.1,
+    "w": 483.6,
+    "h": 431.1,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "pp-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "track-next-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "settings-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "fs-btn",
+     "w": 44,
+     "h": 44
+    }
+   ],
+   "docked": {
+    "dockHidden": false,
+    "host": "player-dock",
+    "rect": {
+     "x": 222,
+     "y": 648,
+     "w": 160,
+     "h": 116
+    }
+   }
+  },
+  {
+   "case": "land 667x375 2021",
+   "w": 667,
+   "h": 375,
+   "errs": [],
+   "vw": 667,
+   "vh": 375,
+   "scrollW": 667,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 635,
+    "h": 1013.6,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 667,
+     "h": 303,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 667,
+    "h": 303,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 667,
+     "h": 303,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 667,
+    "h": 223,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 295,
+    "w": 667,
+    "h": 80,
+    "right": 0
+   },
+   "title": {
+    "x": 16,
+    "y": 391,
+    "w": 635,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -80,
+    "y": 5.3,
+    "w": 827.1,
+    "h": 436.3,
+    "right": -80
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "pp-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "track-next-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "settings-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "fs-btn",
+     "w": 44,
+     "h": 44
+    }
+   ]
+  },
+  {
+   "case": "land-notch 667x375 2021 L47",
+   "w": 667,
+   "h": 375,
+   "errs": [],
+   "vw": 667,
+   "vh": 375,
+   "scrollW": 667,
+   "inset": {
+    "l": "47px",
+    "r": "47px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 635,
+    "h": 1013.6,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 667,
+     "h": 303,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "47px",
+    "padding-right": "47px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 47,
+    "y": 72,
+    "w": 573,
+    "h": 303,
+    "right": 47
+   },
+   "wrapper": {
+    "rect": {
+     "x": 47,
+     "y": 72,
+     "w": 573,
+     "h": 303,
+     "right": 47
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 47,
+    "y": 72,
+    "w": 573,
+    "h": 223,
+    "right": 47
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 47,
+    "y": 295,
+    "w": 573,
+    "h": 80,
+    "right": 47
+   },
+   "title": {
+    "x": 16,
+    "y": 391,
+    "w": 635,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -21.8,
+    "y": 5.3,
+    "w": 710.5,
+    "h": 436.3,
+    "right": -21.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "pp-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "track-next-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "settings-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "fs-btn",
+     "w": 44,
+     "h": 44
+    }
+   ]
+  },
+  {
+   "case": "land 740x360 2021",
+   "w": 740,
+   "h": 360,
+   "errs": [],
+   "vw": 740,
+   "vh": 360,
+   "scrollW": 740,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 708,
+    "h": 998.6,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 740,
+     "h": 288,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 740,
+    "h": 288,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 740,
+     "h": 288,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 740,
+    "h": 208,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 280,
+    "w": 740,
+    "h": 80,
+    "right": 0
+   },
+   "title": {
+    "x": 16,
+    "y": 376,
+    "w": 708,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -88.8,
+    "y": 8.6,
+    "w": 917.6,
+    "h": 414.7,
+    "right": -88.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "pp-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "track-next-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "settings-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "fs-btn",
+     "w": 44,
+     "h": 44
+    }
+   ]
+  },
+  {
+   "case": "land-notch 740x360 2021 L47",
+   "w": 740,
+   "h": 360,
+   "errs": [],
+   "vw": 740,
+   "vh": 360,
+   "scrollW": 740,
+   "inset": {
+    "l": "47px",
+    "r": "47px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 708,
+    "h": 998.6,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 740,
+     "h": 288,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "47px",
+    "padding-right": "47px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 47,
+    "y": 72,
+    "w": 646,
+    "h": 288,
+    "right": 47
+   },
+   "wrapper": {
+    "rect": {
+     "x": 47,
+     "y": 72,
+     "w": 646,
+     "h": 288,
+     "right": 47
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 47,
+    "y": 72,
+    "w": 646,
+    "h": 208,
+    "right": 47
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 47,
+    "y": 280,
+    "w": 646,
+    "h": 80,
+    "right": 47
+   },
+   "title": {
+    "x": 16,
+    "y": 376,
+    "w": 708,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -30.5,
+    "y": 8.6,
+    "w": 801,
+    "h": 414.7,
+    "right": -30.5
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "pp-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "track-next-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "settings-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "fs-btn",
+     "w": 44,
+     "h": 44
+    }
+   ]
+  },
+  {
+   "case": "portrait-notch 390x844 2021 T47",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "47px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 119,
+    "w": 358,
+    "h": 1010,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 119,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 119,
+    "w": 390,
+    "h": 299.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 119,
+     "w": 390,
+     "h": 299.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 0,
+    "y": 119,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 338.4,
+    "w": 390,
+    "h": 80,
+    "right": 0
+   },
+   "title": {
+    "x": 16,
+    "y": 434.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 53.1,
+    "w": 483.6,
+    "h": 431.1,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "pp-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "track-next-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "settings-btn",
+     "w": 44,
+     "h": 44
+    },
+    {
+     "id": "fs-btn",
+     "w": 44,
+     "h": 44
+    }
+   ]
+  },
+  {
+   "case": "phone-portrait 390x844 2005",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls portrait-media",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1720,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "658.32px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 390
+   },
+   "title": {
+    "x": 16,
+    "y": 307.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 23.8,
+    "w": 483.6,
+    "h": 315.9,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [],
+   "portraitClass": true
+  },
+  {
+   "case": "phone-portrait 390x844 2009",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls portrait-media",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1720,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "658.32px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 390
+   },
+   "title": {
+    "x": 16,
+    "y": 307.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 23.8,
+    "w": 483.6,
+    "h": 315.9,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [],
+   "portraitClass": true
+  },
+  {
+   "case": "phone-portrait 390x844 2014",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls portrait-media",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1720,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "658.32px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 390
+   },
+   "title": {
+    "x": 16,
+    "y": 307.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 23.8,
+    "w": 483.6,
+    "h": 315.9,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [],
+   "portraitClass": true
+  },
+  {
+   "case": "phone-portrait 390x844 2021",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile native-controls portrait-media",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 930,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "border-left-width": "0px",
+    "border-right-width": "0px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "0px",
+    "max-height": "658.32px"
+   },
+   "video": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 390
+   },
+   "title": {
+    "x": 16,
+    "y": 307.4,
+    "w": 358,
+    "h": 25,
+    "right": 16
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 23.8,
+    "w": 483.6,
+    "h": 315.9,
+    "right": -46.8
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [],
+   "portraitClass": true
+  },
+  {
+   "case": "desk-portrait 1280x720 2021",
+   "w": 1280,
+   "h": 720,
+   "errs": [],
+   "vw": 1280,
+   "vh": 720,
+   "scrollW": 1280,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container portrait-media",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 1002,
+    "h": 885.3,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 598,
+     "h": 377.3,
+     "right": 428
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 598,
+    "h": 377.3,
+    "right": 428
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 598,
+     "h": 377.3,
+     "right": 428
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "12px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 596,
+    "h": 335.3,
+    "right": 429
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 416.3,
+    "w": 596,
+    "h": 40,
+    "right": 429
+   },
+   "title": {
+    "x": 254,
+    "y": 473.3,
+    "w": 598,
+    "h": 25,
+    "right": 428
+   },
+   "glow": {
+    "x": 182.3,
+    "y": -3,
+    "w": 741.5,
+    "h": 543.2,
+    "right": 356.3
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "theater-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ],
+   "portraitClass": true
+  },
+  {
+   "case": "cold-frame 390x844 2005",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": null,
+   "wrapperClass": null,
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1003.4,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": null
+   },
+   "video": null,
+   "videoObjectFit": null,
+   "art": null,
+   "controls": null,
+   "title": {
+    "x": 16,
+    "y": 307.4,
+    "w": 250.6,
+    "h": 26,
+    "right": 123.4
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 23.8,
+    "w": 483.6,
+    "h": 315.9,
+    "right": -46.8
+   },
+   "slotEmpty": true,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [],
+   "heldSlotEmpty": true
+  },
+  {
+   "case": "cold-frame 390x844 2009",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": null,
+   "wrapperClass": null,
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1003.4,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": null
+   },
+   "video": null,
+   "videoObjectFit": null,
+   "art": null,
+   "controls": null,
+   "title": {
+    "x": 16,
+    "y": 307.4,
+    "w": 250.6,
+    "h": 26,
+    "right": 123.4
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 23.8,
+    "w": 483.6,
+    "h": 315.9,
+    "right": -46.8
+   },
+   "slotEmpty": true,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [],
+   "heldSlotEmpty": true
+  },
+  {
+   "case": "cold-frame 390x844 2014",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": null,
+   "wrapperClass": null,
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 1003.4,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": null
+   },
+   "video": null,
+   "videoObjectFit": null,
+   "art": null,
+   "controls": null,
+   "title": {
+    "x": 16,
+    "y": 307.4,
+    "w": 250.6,
+    "h": 26,
+    "right": 123.4
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 23.8,
+    "w": 483.6,
+    "h": 315.9,
+    "right": -46.8
+   },
+   "slotEmpty": true,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [],
+   "heldSlotEmpty": true
+  },
+  {
+   "case": "cold-frame 390x844 2021",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": null,
+   "wrapperClass": null,
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 358,
+    "h": 751.4,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 219.4,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 390,
+    "h": 219.4,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": null
+   },
+   "video": null,
+   "videoObjectFit": null,
+   "art": null,
+   "controls": null,
+   "title": {
+    "x": 16,
+    "y": 307.4,
+    "w": 250.6,
+    "h": 26,
+    "right": 123.4
+   },
+   "glow": {
+    "x": -46.8,
+    "y": 23.8,
+    "w": 483.6,
+    "h": 315.9,
+    "right": -46.8
+   },
+   "slotEmpty": true,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [],
+   "heldSlotEmpty": true
+  },
+  {
+   "case": "cold-frame 768x1024 2005",
+   "w": 768,
+   "h": 1024,
+   "errs": [],
+   "vw": 768,
+   "vh": 1024,
+   "scrollW": 768,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": null,
+   "wrapperClass": null,
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 736,
+    "h": 1176,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 768,
+     "h": 432,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 768,
+    "h": 432,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": null
+   },
+   "video": null,
+   "videoObjectFit": null,
+   "art": null,
+   "controls": null,
+   "title": {
+    "x": 16,
+    "y": 520,
+    "w": 480,
+    "h": 26,
+    "right": 272
+   },
+   "glow": {
+    "x": -92.2,
+    "y": -23,
+    "w": 952.3,
+    "h": 622.1,
+    "right": -92.2
+   },
+   "slotEmpty": true,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [],
+   "heldSlotEmpty": true
+  },
+  {
+   "case": "cold-frame 768x1024 2009",
+   "w": 768,
+   "h": 1024,
+   "errs": [],
+   "vw": 768,
+   "vh": 1024,
+   "scrollW": 768,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": null,
+   "wrapperClass": null,
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 736,
+    "h": 1176,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 768,
+     "h": 432,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 768,
+    "h": 432,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": null
+   },
+   "video": null,
+   "videoObjectFit": null,
+   "art": null,
+   "controls": null,
+   "title": {
+    "x": 16,
+    "y": 520,
+    "w": 480,
+    "h": 26,
+    "right": 272
+   },
+   "glow": {
+    "x": -92.2,
+    "y": -23,
+    "w": 952.3,
+    "h": 622.1,
+    "right": -92.2
+   },
+   "slotEmpty": true,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [],
+   "heldSlotEmpty": true
+  },
+  {
+   "case": "cold-frame 768x1024 2014",
+   "w": 768,
+   "h": 1024,
+   "errs": [],
+   "vw": 768,
+   "vh": 1024,
+   "scrollW": 768,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": null,
+   "wrapperClass": null,
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 736,
+    "h": 1176,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 768,
+     "h": 432,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 768,
+    "h": 432,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": null
+   },
+   "video": null,
+   "videoObjectFit": null,
+   "art": null,
+   "controls": null,
+   "title": {
+    "x": 16,
+    "y": 520,
+    "w": 480,
+    "h": 26,
+    "right": 272
+   },
+   "glow": {
+    "x": -92.2,
+    "y": -23,
+    "w": 952.3,
+    "h": 622.1,
+    "right": -92.2
+   },
+   "slotEmpty": true,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [],
+   "heldSlotEmpty": true
+  },
+  {
+   "case": "cold-frame 768x1024 2021",
+   "w": 768,
+   "h": 1024,
+   "errs": [],
+   "vw": 768,
+   "vh": 1024,
+   "scrollW": 768,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": null,
+   "wrapperClass": null,
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": {
+    "x": 16,
+    "y": 72,
+    "w": 736,
+    "h": 964,
+    "right": 16
+   },
+   "stage": {
+    "rect": {
+     "x": 0,
+     "y": 72,
+     "w": 768,
+     "h": 432,
+     "right": 0
+    },
+    "margin-left": "-16px",
+    "margin-right": "-16px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "clip"
+   },
+   "slot": {
+    "x": 0,
+    "y": 72,
+    "w": 768,
+    "h": 432,
+    "right": 0
+   },
+   "wrapper": {
+    "rect": null
+   },
+   "video": null,
+   "videoObjectFit": null,
+   "art": null,
+   "controls": null,
+   "title": {
+    "x": 16,
+    "y": 520,
+    "w": 480,
+    "h": 26,
+    "right": 272
+   },
+   "glow": {
+    "x": -92.2,
+    "y": -23,
+    "w": 952.3,
+    "h": 622.1,
+    "right": -92.2
+   },
+   "slotEmpty": true,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [],
+   "heldSlotEmpty": true
+  },
+  {
+   "case": "cold-frame 1280x720 2021",
+   "w": 1280,
+   "h": 720,
+   "errs": [],
+   "vw": 1280,
+   "vh": 720,
+   "scrollW": 1280,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": null,
+   "wrapperClass": null,
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 1002,
+    "h": 844.4,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 598,
+     "h": 336.4,
+     "right": 428
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 598,
+    "h": 336.4,
+    "right": 428
+   },
+   "wrapper": {
+    "rect": null
+   },
+   "video": null,
+   "videoObjectFit": null,
+   "art": null,
+   "controls": null,
+   "title": {
+    "x": 254,
+    "y": 432.4,
+    "w": 418.6,
+    "h": 26,
+    "right": 607.4
+   },
+   "glow": {
+    "x": 182.3,
+    "y": 6,
+    "w": 741.5,
+    "h": 484.4,
+    "right": 356.3
+   },
+   "slotEmpty": true,
+   "slotRadius": "12px",
+   "slotBorder": "1px",
+   "buttons": [],
+   "heldSlotEmpty": true
+  },
+  {
+   "case": "music 390x844 2005",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile audio-mode",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": null,
+   "stage": {
+    "rect": null
+   },
+   "slot": {
+    "x": 16,
+    "y": 233.3,
+    "w": 358,
+    "h": 0,
+    "right": 16
+   },
+   "wrapper": {
+    "rect": {
+     "x": 16,
+     "y": 233.3,
+     "w": 358,
+     "h": 282.3,
+     "right": 16
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 17,
+    "y": 234.3,
+    "w": 356,
+    "h": 200.3,
+    "right": 17
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 390
+   },
+   "title": null,
+   "glow": null,
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "podcasts 390x844 2005",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": null,
+   "wrapperClass": null,
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": null,
+   "stage": {
+    "rect": null
+   },
+   "slot": {
+    "x": 16,
+    "y": 153.3,
+    "w": 358,
+    "h": 0,
+    "right": 16
+   },
+   "wrapper": {
+    "rect": null
+   },
+   "video": null,
+   "videoObjectFit": null,
+   "art": null,
+   "controls": null,
+   "title": null,
+   "glow": null,
+   "slotEmpty": true,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "music 390x844 2009",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile audio-mode",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": null,
+   "stage": {
+    "rect": null
+   },
+   "slot": {
+    "x": 16,
+    "y": 233.3,
+    "w": 358,
+    "h": 0,
+    "right": 16
+   },
+   "wrapper": {
+    "rect": {
+     "x": 16,
+     "y": 233.3,
+     "w": 358,
+     "h": 282.3,
+     "right": 16
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "2px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 17,
+    "y": 234.3,
+    "w": 356,
+    "h": 200.3,
+    "right": 17
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 390
+   },
+   "title": null,
+   "glow": null,
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "podcasts 390x844 2009",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": null,
+   "wrapperClass": null,
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": null,
+   "stage": {
+    "rect": null
+   },
+   "slot": {
+    "x": 16,
+    "y": 153.3,
+    "w": 358,
+    "h": 0,
+    "right": 16
+   },
+   "wrapper": {
+    "rect": null
+   },
+   "video": null,
+   "videoObjectFit": null,
+   "art": null,
+   "controls": null,
+   "title": null,
+   "glow": null,
+   "slotEmpty": true,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "music 390x844 2014",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile audio-mode",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": null,
+   "stage": {
+    "rect": null
+   },
+   "slot": {
+    "x": 16,
+    "y": 233.3,
+    "w": 358,
+    "h": 0,
+    "right": 16
+   },
+   "wrapper": {
+    "rect": {
+     "x": 16,
+     "y": 233.3,
+     "w": 358,
+     "h": 282.3,
+     "right": 16
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "2px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 17,
+    "y": 234.3,
+    "w": 356,
+    "h": 200.3,
+    "right": 17
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 390
+   },
+   "title": null,
+   "glow": null,
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "podcasts 390x844 2014",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": null,
+   "wrapperClass": null,
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": null,
+   "stage": {
+    "rect": null
+   },
+   "slot": {
+    "x": 16,
+    "y": 153.3,
+    "w": 358,
+    "h": 0,
+    "right": 16
+   },
+   "wrapper": {
+    "rect": null
+   },
+   "video": null,
+   "videoObjectFit": null,
+   "art": null,
+   "controls": null,
+   "title": null,
+   "glow": null,
+   "slotEmpty": true,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "music 390x844 2021",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container ff-mobile audio-mode",
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": null,
+   "stage": {
+    "rect": null
+   },
+   "slot": {
+    "x": 16,
+    "y": 233.3,
+    "w": 358,
+    "h": 0,
+    "right": 16
+   },
+   "wrapper": {
+    "rect": {
+     "x": 16,
+     "y": 233.3,
+     "w": 358,
+     "h": 282.3,
+     "right": 16
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "12px",
+    "margin-bottom": "16px",
+    "padding-bottom": "80px",
+    "max-height": "379.8px"
+   },
+   "video": {
+    "x": 17,
+    "y": 234.3,
+    "w": 356,
+    "h": 200.3,
+    "right": 17
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 0,
+    "y": 0,
+    "w": 0,
+    "h": 0,
+    "right": 390
+   },
+   "title": null,
+   "glow": null,
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "podcasts 390x844 2021",
+   "w": 390,
+   "h": 844,
+   "errs": [],
+   "vw": 390,
+   "vh": 844,
+   "scrollW": 390,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": null,
+   "wrapperClass": null,
+   "main": {
+    "padding-left": "16px",
+    "padding-right": "16px"
+   },
+   "container": null,
+   "stage": {
+    "rect": null
+   },
+   "slot": {
+    "x": 16,
+    "y": 153.3,
+    "w": 358,
+    "h": 0,
+    "right": 16
+   },
+   "wrapper": {
+    "rect": null
+   },
+   "video": null,
+   "videoObjectFit": null,
+   "art": null,
+   "controls": null,
+   "title": null,
+   "glow": null,
+   "slotEmpty": true,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": []
+  },
+  {
+   "case": "desk 769x1024 2005",
+   "w": 769,
+   "h": 1024,
+   "errs": [],
+   "vw": 769,
+   "vh": 1024,
+   "scrollW": 804,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 491,
+    "h": 1239.7,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 491,
+     "h": 317.1,
+     "right": 24
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 491,
+    "h": 317.1,
+    "right": 24
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 491,
+     "h": 317.1,
+     "right": 24
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 489,
+    "h": 275.1,
+    "right": 25
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 356.1,
+    "w": 489,
+    "h": 40,
+    "right": 25
+   },
+   "title": {
+    "x": 254,
+    "y": 413.1,
+    "w": 491,
+    "h": 25,
+    "right": 24
+   },
+   "glow": {
+    "x": 195.1,
+    "y": 10.3,
+    "w": 608.8,
+    "h": 456.6,
+    "right": -34.9
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ]
+  },
+  {
+   "case": "desk 769x1024 2009",
+   "w": 769,
+   "h": 1024,
+   "errs": [],
+   "vw": 769,
+   "vh": 1024,
+   "scrollW": 804,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 491,
+    "h": 1239.7,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 491,
+     "h": 317.1,
+     "right": 24
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 491,
+    "h": 317.1,
+    "right": 24
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 491,
+     "h": 317.1,
+     "right": 24
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "2px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 489,
+    "h": 275.1,
+    "right": 25
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 356.1,
+    "w": 489,
+    "h": 40,
+    "right": 25
+   },
+   "title": {
+    "x": 254,
+    "y": 413.1,
+    "w": 491,
+    "h": 25,
+    "right": 24
+   },
+   "glow": {
+    "x": 195.1,
+    "y": 10.3,
+    "w": 608.8,
+    "h": 456.6,
+    "right": -34.9
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ]
+  },
+  {
+   "case": "desk 769x1024 2014",
+   "w": 769,
+   "h": 1024,
+   "errs": [],
+   "vw": 769,
+   "vh": 1024,
+   "scrollW": 804,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 491,
+    "h": 1239.7,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 491,
+     "h": 317.1,
+     "right": 24
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 491,
+    "h": 317.1,
+    "right": 24
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 491,
+     "h": 317.1,
+     "right": 24
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "2px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 489,
+    "h": 275.1,
+    "right": 25
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 356.1,
+    "w": 489,
+    "h": 40,
+    "right": 25
+   },
+   "title": {
+    "x": 254,
+    "y": 413.1,
+    "w": 491,
+    "h": 25,
+    "right": 24
+   },
+   "glow": {
+    "x": 195.1,
+    "y": 10.3,
+    "w": 608.8,
+    "h": 456.6,
+    "right": -34.9
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ]
+  },
+  {
+   "case": "desk 769x1024 2021",
+   "w": 769,
+   "h": 1024,
+   "errs": [],
+   "vw": 769,
+   "vh": 1024,
+   "scrollW": 804,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 491,
+    "h": 1027.7,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 491,
+     "h": 317.1,
+     "right": 24
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 491,
+    "h": 317.1,
+    "right": 24
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 491,
+     "h": 317.1,
+     "right": 24
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "12px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 489,
+    "h": 275.1,
+    "right": 25
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 356.1,
+    "w": 489,
+    "h": 40,
+    "right": 25
+   },
+   "title": {
+    "x": 254,
+    "y": 413.1,
+    "w": 491,
+    "h": 25,
+    "right": 24
+   },
+   "glow": {
+    "x": 195.1,
+    "y": 10.3,
+    "w": 608.8,
+    "h": 456.6,
+    "right": -34.9
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ]
+  },
+  {
+   "case": "desk 1024x768 2005",
+   "w": 1024,
+   "h": 768,
+   "errs": [],
+   "vw": 1024,
+   "vh": 768,
+   "scrollW": 1090,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 746,
+    "h": 1383.1,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 746,
+     "h": 460.5,
+     "right": 24
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 746,
+    "h": 460.5,
+    "right": 24
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 746,
+     "h": 460.5,
+     "right": 24
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 744,
+    "h": 418.5,
+    "right": 25
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 499.5,
+    "w": 744,
+    "h": 40,
+    "right": 25
+   },
+   "title": {
+    "x": 254,
+    "y": 556.5,
+    "w": 746,
+    "h": 25,
+    "right": 24
+   },
+   "glow": {
+    "x": 164.5,
+    "y": -21.3,
+    "w": 925,
+    "h": 663.1,
+    "right": -65.5
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ]
+  },
+  {
+   "case": "desk 1024x768 2009",
+   "w": 1024,
+   "h": 768,
+   "errs": [],
+   "vw": 1024,
+   "vh": 768,
+   "scrollW": 1090,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 746,
+    "h": 1383.1,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 746,
+     "h": 460.5,
+     "right": 24
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 746,
+    "h": 460.5,
+    "right": 24
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 746,
+     "h": 460.5,
+     "right": 24
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "2px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 744,
+    "h": 418.5,
+    "right": 25
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 499.5,
+    "w": 744,
+    "h": 40,
+    "right": 25
+   },
+   "title": {
+    "x": 254,
+    "y": 556.5,
+    "w": 746,
+    "h": 25,
+    "right": 24
+   },
+   "glow": {
+    "x": 164.5,
+    "y": -21.3,
+    "w": 925,
+    "h": 663.1,
+    "right": -65.5
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ]
+  },
+  {
+   "case": "desk 1024x768 2014",
+   "w": 1024,
+   "h": 768,
+   "errs": [],
+   "vw": 1024,
+   "vh": 768,
+   "scrollW": 1090,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 746,
+    "h": 1383.1,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 746,
+     "h": 460.5,
+     "right": 24
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 746,
+    "h": 460.5,
+    "right": 24
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 746,
+     "h": 460.5,
+     "right": 24
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "2px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 744,
+    "h": 418.5,
+    "right": 25
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 499.5,
+    "w": 744,
+    "h": 40,
+    "right": 25
+   },
+   "title": {
+    "x": 254,
+    "y": 556.5,
+    "w": 746,
+    "h": 25,
+    "right": 24
+   },
+   "glow": {
+    "x": 164.5,
+    "y": -21.3,
+    "w": 925,
+    "h": 663.1,
+    "right": -65.5
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ]
+  },
+  {
+   "case": "desk 1024x768 2021",
+   "w": 1024,
+   "h": 768,
+   "errs": [],
+   "vw": 1024,
+   "vh": 768,
+   "scrollW": 1090,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 746,
+    "h": 1171.1,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 746,
+     "h": 460.5,
+     "right": 24
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 746,
+    "h": 460.5,
+    "right": 24
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 746,
+     "h": 460.5,
+     "right": 24
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "12px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 744,
+    "h": 418.5,
+    "right": 25
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 499.5,
+    "w": 744,
+    "h": 40,
+    "right": 25
+   },
+   "title": {
+    "x": 254,
+    "y": 556.5,
+    "w": 746,
+    "h": 25,
+    "right": 24
+   },
+   "glow": {
+    "x": 164.5,
+    "y": -21.3,
+    "w": 925,
+    "h": 663.1,
+    "right": -65.5
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ]
+  },
+  {
+   "case": "desk 1280x720 2005",
+   "w": 1280,
+   "h": 720,
+   "errs": [],
+   "vw": 1280,
+   "vh": 720,
+   "scrollW": 1280,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 1002,
+    "h": 1097.3,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 598,
+     "h": 377.3,
+     "right": 428
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 598,
+    "h": 377.3,
+    "right": 428
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 598,
+     "h": 377.3,
+     "right": 428
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 596,
+    "h": 335.3,
+    "right": 429
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 416.3,
+    "w": 596,
+    "h": 40,
+    "right": 429
+   },
+   "title": {
+    "x": 254,
+    "y": 473.3,
+    "w": 598,
+    "h": 25,
+    "right": 428
+   },
+   "glow": {
+    "x": 182.3,
+    "y": -3,
+    "w": 741.5,
+    "h": 543.2,
+    "right": 356.3
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "theater-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ]
+  },
+  {
+   "case": "desk 1280x720 2009",
+   "w": 1280,
+   "h": 720,
+   "errs": [],
+   "vw": 1280,
+   "vh": 720,
+   "scrollW": 1280,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 1002,
+    "h": 1097.3,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 598,
+     "h": 377.3,
+     "right": 428
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 598,
+    "h": 377.3,
+    "right": 428
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 598,
+     "h": 377.3,
+     "right": 428
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "2px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 596,
+    "h": 335.3,
+    "right": 429
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 416.3,
+    "w": 596,
+    "h": 40,
+    "right": 429
+   },
+   "title": {
+    "x": 254,
+    "y": 473.3,
+    "w": 598,
+    "h": 25,
+    "right": 428
+   },
+   "glow": {
+    "x": 182.3,
+    "y": -3,
+    "w": 741.5,
+    "h": 543.2,
+    "right": 356.3
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "theater-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ]
+  },
+  {
+   "case": "desk 1280x720 2014",
+   "w": 1280,
+   "h": 720,
+   "errs": [],
+   "vw": 1280,
+   "vh": 720,
+   "scrollW": 1280,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 1002,
+    "h": 1097.3,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 598,
+     "h": 377.3,
+     "right": 428
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 598,
+    "h": 377.3,
+    "right": 428
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 598,
+     "h": 377.3,
+     "right": 428
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "2px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 596,
+    "h": 335.3,
+    "right": 429
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 416.3,
+    "w": 596,
+    "h": 40,
+    "right": 429
+   },
+   "title": {
+    "x": 254,
+    "y": 473.3,
+    "w": 598,
+    "h": 25,
+    "right": 428
+   },
+   "glow": {
+    "x": 182.3,
+    "y": -3,
+    "w": 741.5,
+    "h": 543.2,
+    "right": 356.3
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "theater-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ]
+  },
+  {
+   "case": "desk 1280x720 2021",
+   "w": 1280,
+   "h": 720,
+   "errs": [],
+   "vw": 1280,
+   "vh": 720,
+   "scrollW": 1280,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 1002,
+    "h": 885.3,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 598,
+     "h": 377.3,
+     "right": 428
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 598,
+    "h": 377.3,
+    "right": 428
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 598,
+     "h": 377.3,
+     "right": 428
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "12px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 596,
+    "h": 335.3,
+    "right": 429
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 416.3,
+    "w": 596,
+    "h": 40,
+    "right": 429
+   },
+   "title": {
+    "x": 254,
+    "y": 473.3,
+    "w": 598,
+    "h": 25,
+    "right": 428
+   },
+   "glow": {
+    "x": 182.3,
+    "y": -3,
+    "w": 741.5,
+    "h": 543.2,
+    "right": 356.3
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "theater-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ]
+  },
+  {
+   "case": "desk 1920x1080 2005",
+   "w": 1920,
+   "h": 1080,
+   "errs": [],
+   "vw": 1920,
+   "vh": 1080,
+   "scrollW": 1920,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2005",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 1642,
+    "h": 1457.3,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 1238,
+     "h": 737.3,
+     "right": 428
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 1238,
+    "h": 737.3,
+    "right": 428
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 1238,
+     "h": 737.3,
+     "right": 428
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "0px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 1236,
+    "h": 695.3,
+    "right": 429
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 776.3,
+    "w": 1236,
+    "h": 40,
+    "right": 429
+   },
+   "title": {
+    "x": 254,
+    "y": 833.3,
+    "w": 1238,
+    "h": 25,
+    "right": 428
+   },
+   "glow": {
+    "x": 105.5,
+    "y": -82.2,
+    "w": 1535.1,
+    "h": 1061.6,
+    "right": 279.5
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "theater-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ]
+  },
+  {
+   "case": "desk 1920x1080 2009",
+   "w": 1920,
+   "h": 1080,
+   "errs": [],
+   "vw": 1920,
+   "vh": 1080,
+   "scrollW": 1920,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2009",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 1642,
+    "h": 1457.3,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 1238,
+     "h": 737.3,
+     "right": 428
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 1238,
+    "h": 737.3,
+    "right": 428
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 1238,
+     "h": 737.3,
+     "right": 428
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "2px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 1236,
+    "h": 695.3,
+    "right": 429
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 776.3,
+    "w": 1236,
+    "h": 40,
+    "right": 429
+   },
+   "title": {
+    "x": 254,
+    "y": 833.3,
+    "w": 1238,
+    "h": 25,
+    "right": 428
+   },
+   "glow": {
+    "x": 105.5,
+    "y": -82.2,
+    "w": 1535.1,
+    "h": 1061.6,
+    "right": 279.5
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "theater-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ]
+  },
+  {
+   "case": "desk 1920x1080 2014",
+   "w": 1920,
+   "h": 1080,
+   "errs": [],
+   "vw": 1920,
+   "vh": 1080,
+   "scrollW": 1920,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2014",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 1642,
+    "h": 1457.3,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 1238,
+     "h": 737.3,
+     "right": 428
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 1238,
+    "h": 737.3,
+    "right": 428
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 1238,
+     "h": 737.3,
+     "right": 428
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "2px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 1236,
+    "h": 695.3,
+    "right": 429
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 776.3,
+    "w": 1236,
+    "h": 40,
+    "right": 429
+   },
+   "title": {
+    "x": 254,
+    "y": 833.3,
+    "w": 1238,
+    "h": 25,
+    "right": 428
+   },
+   "glow": {
+    "x": 105.5,
+    "y": -82.2,
+    "w": 1535.1,
+    "h": 1061.6,
+    "right": 279.5
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "theater-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ]
+  },
+  {
+   "case": "desk 1920x1080 2021",
+   "w": 1920,
+   "h": 1080,
+   "errs": [],
+   "vw": 1920,
+   "vh": 1080,
+   "scrollW": 1920,
+   "inset": {
+    "l": "0px",
+    "r": "0px",
+    "t": "0px"
+   },
+   "era": "2021",
+   "mode": "light",
+   "host": "player-slot",
+   "wrapperClass": "player-container",
+   "main": {
+    "padding-left": "24px",
+    "padding-right": "24px"
+   },
+   "container": {
+    "x": 254,
+    "y": 80,
+    "w": 1642,
+    "h": 1245.3,
+    "right": 24
+   },
+   "stage": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 1238,
+     "h": 737.3,
+     "right": 428
+    },
+    "margin-left": "0px",
+    "margin-right": "0px",
+    "padding-left": "0px",
+    "padding-right": "0px",
+    "overflow-x": "visible"
+   },
+   "slot": {
+    "x": 254,
+    "y": 80,
+    "w": 1238,
+    "h": 737.3,
+    "right": 428
+   },
+   "wrapper": {
+    "rect": {
+     "x": 254,
+     "y": 80,
+     "w": 1238,
+     "h": 737.3,
+     "right": 428
+    },
+    "border-left-width": "1px",
+    "border-right-width": "1px",
+    "border-top-left-radius": "12px",
+    "margin-bottom": "16px",
+    "padding-bottom": "40px",
+    "max-height": "none"
+   },
+   "video": {
+    "x": 255,
+    "y": 81,
+    "w": 1236,
+    "h": 695.3,
+    "right": 429
+   },
+   "videoObjectFit": "contain",
+   "art": null,
+   "controls": {
+    "x": 255,
+    "y": 776.3,
+    "w": 1236,
+    "h": 40,
+    "right": 429
+   },
+   "title": {
+    "x": 254,
+    "y": 833.3,
+    "w": 1238,
+    "h": 25,
+    "right": 428
+   },
+   "glow": {
+    "x": 105.5,
+    "y": -82.2,
+    "w": 1535.1,
+    "h": 1061.6,
+    "right": 279.5
+   },
+   "slotEmpty": false,
+   "slotRadius": "0px",
+   "slotBorder": "0px",
+   "buttons": [
+    {
+     "id": "track-prev-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "pp-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "track-next-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "mute-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "theater-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "settings-btn",
+     "w": 32,
+     "h": 32
+    },
+    {
+     "id": "fs-btn",
+     "w": 32,
+     "h": 32
+    }
+   ]
+  }
+ ]
+}

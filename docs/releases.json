@@ -3460,5 +3460,11 @@
     "date": "2026-10-03",
     "title": "Hold to speed up, then drag down to lock it",
     "intent": "Press and hold the picture to play at 2x, and now slide your finger down a little before letting go: the video stays at 2x and the speed pill shows a lock. Tap the pill to go back to normal speed. Picking a speed from the menu, closing or docking the player, or leaving the app also ends it. A video playing with the screen off no longer carries a held 2x along."
+  },
+  {
+    "version": "1.359.0",
+    "date": "2026-10-03",
+    "title": "The phone video now runs edge to edge",
+    "intent": "On a phone, the video in the watch page now fills the screen from side to side, like YouTube, with no gap or outline around it. The title and buttons below keep their margin, and desktop, the mini player and full screen look as before."
   }
 ]

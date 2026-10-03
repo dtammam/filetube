@@ -4,6 +4,10 @@
 
 ### Bugs
 
+- [ ] **Bug: after several pause / unpause / pause the picture goes black, in the mini player too** _(Dean, 2026-10-03: "after multiple pauses on a given video the screen goes black, like an overlay that just doesn't go away"; further testing: it is pause/unpause/pause, maybe the double-tap; audio keeps playing and ambient mode keeps running, "a layering thing"; the mini player shows black too)_ - Next: a separate plan-only branch to assess it (reproduce, then at the black moment `elementFromPoint` at the picture centre and the video's paint state; suspects: the double-tap / tap-to-show-bar overlay, the ambient glow's stacking against the video layer, the reparented `#player-wrapper` shared by stage and dock). Check the open v1.336 black-picture device check (#284) for a shared root.
+
+- [ ] **v1.359 gate r1 suggestions (non-blocking)** - (a) a persisted `ft-theater=1` on a landscape phone (667x375, 740x360) keeps the old theatre `margin-inline:auto` width rule (about style.css 6441) so the player is not edge to edge there (x 129.9 / w 407.1); predates v1.359, the theatre button is hidden on phones, drop the stored flag below 1025px or let the mobile rule win; (b) BLD's desktop leg checks only x offsets: a mutant dropping the desktop border and radius is not caught in a real browser (the unit source lock covers it): add a desktop border / radius expectation per era; (c) `evalPlayerBleed` does not check scrollWidth or the picture's span, and its title check is `x < 8` not the page gutter; (d) the stage-rule unit lock does not forbid `padding-top` / `padding-bottom`; (e) the loose regex in the BLD gutter-back fixture test; (f) BLD sees only `env()` = 0 in a real browser, the 47px notch case is unit arithmetic plus the probe.
+
 - [ ] **Small phones (iPhone SE): the page shows only its frame and nothing works** _(Dean, 2026-10-02: "on a smaller
   phone certain elements straight up do not work or display"; he sees the top banner, "Listening on X" for a song on
   another device, the bottom toolbar and the notification area, but no tiles, and the bottom buttons go nowhere; the same in
@@ -446,7 +450,7 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ### 🐞 Bugs
 
-- [ ] **Bug: the mobile video player, when not fullscreen, should span the iPhone viewport side to side like YouTube** (Dean, 2026-10-03, next wave: "The video player on mobile when not full screen should expand to the size of the full iPhone viewport side to side (right now there is a gap). It should mirror YouTube in that sense."). Measure the gutter (watch container padding, player stage margin, safe-area insets) at iPhone widths before and after; the picture goes edge to edge, the title and actions below keep their gutter. Look reference: YouTube's mobile watch page, side by side.
+- [x] **Bug: the mobile video player, when not fullscreen, should span the iPhone viewport side to side like YouTube** - ✅ SHIPPED v1.359.0 (see Shipped) (Dean, 2026-10-03, next wave: "The video player on mobile when not full screen should expand to the size of the full iPhone viewport side to side (right now there is a gap). It should mirror YouTube in that sense."). Measure the gutter (watch container padding, player stage margin, safe-area insets) at iPhone widths before and after; the picture goes edge to edge, the title and actions below keep their gutter. Look reference: YouTube's mobile watch page, side by side.
 
 - [ ] **Bug: the music player's pop-out is glitchy at the iPad / desktop viewport and opens no new tab** (Dean, 2026-10-03: "glitchiness with iPad / desktop viewport when trying to pop out music player, doesn't open in new tab. Not a pop out"). Not yet reproduced; first measure the pop-out path at an iPad-width viewport and find why no window opens.
 
@@ -549,6 +553,28 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.359.0 - The phone player goes edge to edge, side to side (2026-10-03)
+
+- On the mobile layout (max-width 768px, every era) the inline watch player now spans the screen from edge to edge, like YouTube: no
+  16 px gap either side, no outline, square corners. The title and the buttons below keep their margin; the 16 px gap above the player
+  stays (Dean's ruling). Three CSS rules edited in place in `public/css/style.css`: the stage pads by the safe area (`env()`, 0 in
+  portrait, the notch side turned landscape) instead of the gutter; the wrapper and the reserved frame (`#player-slot:empty`) drop
+  their border and radius; the ambient glow's x insets follow the player. Desktop, tablet above 768, the dock, faux full screen and
+  the expanded audio view are untouched. No JS, server or storage change.
+- Measured (headless Chromium, iPhone emulation; `tools/edge-to-edge-proof`, before.json vs after.json): at 390 the wrapper went from
+  x 16 / w 358 / picture h 200.3 to x 0 / w 390 / h 219.4, border 1 px to 0, radius 0 / 2 / 2 / 12 px to 0; the same at 320 to 768
+  in all four eras; portrait files fill the width too; a 47 px notch inset gives x 47 / w 573 at 667; the 18 desktop and dock rows are
+  identical in every field; the reserved frame equals the mounted picture (390 x 219.4, no jump); `scrollWidth` equals the viewport
+  at every phone row.
+- Locks: the v1.314 ambient lock updated with its intent kept and an exactly-one-rule assertion; two parsed source locks; a new
+  real-browser geometry check BLD (16 scenes) with five mutants, all killed (a first draft let the gutter-back mutant survive because it
+  read its expected inset from the stage; fixed). Suites: Node 22.23.1 and 24.20.0 `npm test` 10823 pass, 0 fail; `test:geometry`
+  405 / 405 ok.
+- Disclosed: iOS Safari and the home-screen app are not measurable here (5 device checks owed in DEVICE-CHECKS.md). The Podcasts
+  phone player could not be mounted in the fixture (no episodes), so it is measured as "page unchanged" only. A title under a landscape
+  notch is not changed (out of scope). The locked-pill rect of the hold-lock probe moved up 1 px (the border). Desktop `scrollWidth`
+  804 at 769 wide (the glow) predates this change and is unchanged.
 
 ### v1.358.0 - Drag down while holding the 2x to lock it (2026-10-03)
 

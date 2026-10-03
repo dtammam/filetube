@@ -148,6 +148,32 @@ const MUTATIONS = {
     check: 'POP', target: { surface: 'card-menu', era: '2005', mode: 'light', vp: 'phone' },
     css: '.ui-sheet--bottom.is-open{transform:translateY(200px)!important}',
   },
+  // ---- v1.359: the phone player edge to edge (BLD) ----
+  // BLD: the v1.314 gutter padding comes back, so the player is inset 16px each side again.
+  'bld-gutter-back': {
+    check: 'BLD', target: { surface: 'watch-player', era: '2021', mode: 'dark', vp: 'phone' },
+    css: '@media (max-width:768px){.watch-player-stage{padding-left:var(--space-8)!important;padding-right:var(--space-8)!important}}',
+  },
+  // BLD: the wrapper is rounded again on the phone (the old 12px radius in the 2021 era).
+  'bld-rounded': {
+    check: 'BLD', target: { surface: 'watch-player', era: '2021', mode: 'light', vp: 'phone' },
+    css: '.watch-player-stage #player-wrapper{border-radius:12px!important}',
+  },
+  // BLD: the outline comes back on the phone in a retro era.
+  'bld-outlined': {
+    check: 'BLD', target: { surface: 'watch-player', era: '2005', mode: 'light', vp: 'phone' },
+    css: '.watch-player-stage #player-wrapper{border:1px solid #888!important}',
+  },
+  // BLD: the title bleeds to the screen edge with the player (the page gutter dropped on the text).
+  'bld-title-bleeds': {
+    check: 'BLD', target: { surface: 'watch-player', era: '2014', mode: 'dark', vp: 'phone' },
+    css: '#media-title{position:relative!important;left:-16px!important}',
+  },
+  // BLD: the bleed leaks to desktop (the stage pulled out to the page edge there too).
+  'bld-desktop-bleeds': {
+    check: 'BLD', target: { surface: 'watch-player', era: '2021', mode: 'dark', vp: 'desktop' },
+    css: '@media (min-width:769px){.watch-player-stage #player-wrapper{margin-left:-2000px!important;margin-right:-2000px!important}}',
+  },
   // G4: a layout property moves over time after a rotate (the F37 class): the kit's padding
   // slides for 400ms once the viewport turns landscape. (UI pass S7: an ANIMATION, not a
   // transition - since D7 every rotate holds html.no-motion, which zeroes transitions, so a
