@@ -1450,6 +1450,14 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   justify-content: center;
   pointer-events: none;
   opacity: 0;
+  /* v1.361: the legibility backing is a plain painted disc (radius --size-control, 72px
+     across; --scrim, so a touch darker in dark mode), never a `filter`. The `filter:
+     drop-shadow` this glyph carried until v1.360, flashed over a PLAYING video on every
+     picture tap, is the suspect for the iPhone's black picture on iOS 27 (sound and ambient
+     glow ran on; Dean, 2026-10-03: 20 pause/play cycles on the bar's button never went
+     black, picture taps did). LESSONS 7: no filter / mask / backdrop on or over a playing
+     video (locked by test/unit/player-overlay-no-filter.test.js). */
+  background: radial-gradient(circle, var(--scrim) 0 var(--size-control), transparent calc(var(--size-control) + 1px));
 }
 
 .art-play-glyph::before {
@@ -1460,7 +1468,6 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   border-style: solid;
   border-width: 18px 0 18px 30px;
   border-color: transparent transparent transparent rgba(255, 255, 255, 0.92); /* token-exempt: glyph art */
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6)); /* token-exempt: glyph legibility shadow over arbitrary art (F.5 ruling 5) */
 }
 
 .art-play-glyph.art-play-glyph-playing::before {
@@ -1472,7 +1479,9 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   border: none;
   background: rgba(255, 255, 255, 0.92); /* token-exempt: glyph art */
   box-shadow: 18px 0 0 rgba(255, 255, 255, 0.92); /* token-exempt: glyph art */
-  margin-right: var(--space-4);
+  /* v1.361: 18px, so the painted pair (10px bar + the 18px-offset copy = 28px) centres on the
+     disc; the old 8px sat it 5px right of centre, invisible until the disc made it show. */
+  margin-right: calc(var(--space-4) + var(--space-5));
 }
 
 .art-play-glyph.art-play-glyph-flash {
