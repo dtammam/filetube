@@ -15,12 +15,10 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
   ROADMAP Planned > Bugs, "Pocket turn". The log is still wanted for the fix.) v1.357.0 changed the turn: its check is under "Turn and speaker highlight" below, and covers this one. Since v1.355.0 this can be done in the
   HOME-SCREEN app: Settings > Troubleshooting > Show rotate debug log (no URL bar needed).
 
-## The black picture after a pause (v1.360.0)
+## The black picture after a pause (v1.361.0)
 
-- [ ] v1.360.0 - iPhone, a video inline in the watch page, Background audio for video ON, Ambient on: pause and unpause 20 times (picture taps, the bar's button, a double-tap in some), the first pause right after it starts by itself. The picture never goes black, or, if it does, it comes back by itself within about 6 seconds. Same in a Safari tab and the home-screen app.
-- [ ] v1.360.0 - The same in full screen, then in the mini player (scroll down so it docks, pause/play there).
-- [ ] v1.360.0 - Background audio still works: let a video start by itself, pause (once by tapping the picture, once with the bar's button), unpause, then lock the phone: the sound carries on and the lock screen shows the video's title. (Disclosed: if you never paused it before locking, the first lock may only pause; pause and play once, then lock again.)
-- [ ] v1.360.0 - If it ever goes black again: open `?debugLifecycle=1`, make it go black, wait 15 s, screenshot the panel. A `video:heal` line with no `video:heal-ok` after it, or no `video:heal` line at all, is the next clue; also try once with Background audio for video OFF.
+- [ ] v1.361.0 - iPhone, a video inline in the watch page: pause and play 20 times by TAPPING THE PICTURE (with a double-tap skip in a few), then the same in full screen and in the mini player. The picture never goes black. The play/pause icon still flashes on each tap, with a faint dark disc behind it. If it does go black: say so (the next step is no icon over the video).
+- [ ] v1.361.0 - Background audio is as it was before v1.360: let a video start by itself, then lock the phone: the sound carries on.
 
 ## Mobile player edge to edge (v1.359.0)
 

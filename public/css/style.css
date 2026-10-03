@@ -1460,7 +1460,16 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   border-style: solid;
   border-width: 18px 0 18px 30px;
   border-color: transparent transparent transparent rgba(255, 255, 255, 0.92); /* token-exempt: glyph art */
-  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6)); /* token-exempt: glyph legibility shadow over arbitrary art (F.5 ruling 5) */
+}
+
+/* v1.361: the glyph's legibility backing is a plain painted disc (a radial gradient on the
+   overlay, radius --size-control, so 72px across), never a `filter`. The `filter: drop-shadow`
+   this glyph carried until v1.360, flashed over a PLAYING video on every picture tap, is the
+   suspect for the iPhone's black picture on iOS 27 (sound and ambient glow ran on; Dean,
+   2026-10-03: 20 pause/play cycles on the bar's button never went black, picture taps did).
+   LESSONS 7: no filter / mask / backdrop on or over a playing video. */
+.art-play-glyph {
+  background: radial-gradient(circle, var(--scrim) 0 var(--size-control), transparent calc(var(--size-control) + 1px));
 }
 
 .art-play-glyph.art-play-glyph-playing::before {
