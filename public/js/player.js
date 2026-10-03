@@ -1104,35 +1104,6 @@ function holdRatePickDecision(ctx) {
   return 'keep';
 }
 
-// v1.360: the frozen-picture watchdog's decision (the black picture after a pause). `since` and `now`
-// are two readings of the video ({ frames, t, at, ok }): the layer frame count, currentTime (s), the wall
-// clock (ms) and whether the video was eligible (playing, visible, on screen). 'off' = this engine has no
-// frame counter (stop watching); 'reset' = start a new window at `now` (frames moved, a seek back, or not
-// eligible); 'heal' = the clock ran at least minAdvanceS over at least windowMs of wall time while the
-// frame count stood still, but only once this load has SEEN the count climb (`climbed`), so a video whose
-// count never moves (a still image encoded as one frame) is never "healed"; 'wait' = keep watching.
-// iOS relays the count as a ~2s cached copy (see formatVideoStateDetail), so the window spans several
-// refreshes. Pure so it is testable.
-function frozenPictureDecision(ctx) {
-  var o = ctx || {};
-  var a = o.since || {}, b = o.now || {};
-  var num = function (v) { return typeof v === 'number' && isFinite(v); };
-  if (!num(b.frames)) return 'off';
-  if (!b.ok || !a.ok || !num(a.frames) || !num(a.t) || !num(b.t) || !num(a.at) || !num(b.at)) return 'reset';
-  if (b.frames !== a.frames || b.t < a.t) return 'reset';
-  if (!o.climbed) return 'wait';
-  if (b.at - a.at >= Number(o.windowMs) && b.t - a.t >= Number(o.minAdvanceS)) return 'heal';
-  return 'wait';
-}
-// v1.360: has the count CLIMBED between two readings at a real frame rate (at least minFrames, and at
-// least minFps per second of media time)? The watchdog's evidence that this video's counter is live.
-function framesClimbed(since, now, minFrames, minFps) {
-  var a = since || {}, b = now || {};
-  if (![a.frames, b.frames, a.t, b.t].every(function (v) { return typeof v === 'number' && isFinite(v); })) return false;
-  var df = b.frames - a.frames, dt = b.t - a.t;
-  return dt > 0 && df >= minFrames && df / dt >= minFps;
-}
-
 function classifyTapGesture(ctx) {
   var opts = ctx || {};
   // v1.140 (Dean's confirmed friction): the SKIP CHAIN - after a double-tap
@@ -1900,8 +1871,6 @@ if (typeof module !== 'undefined' && module.exports) {
     storyboardTile,
     classifyTapGesture,
     holdDragDecision,
-    frozenPictureDecision, // v1.360: the frozen-picture watchdog's decision
-    framesClimbed, // v1.360: the watchdog's live-counter evidence
     holdRatePickDecision,
     shouldArtSingleTapAct,
     resolveMobileFormFactor,
@@ -3832,14 +3801,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // gesture (after SWAP_BACK returns to INLINE_VIDEO) still gets a real
     // chance to prime.
     if (bgAudioState !== BG_AUDIO_STATES.INLINE_VIDEO) return;
-    // v1.360 (the black picture after a pause): never start the sidecar while the
-    // VIDEO is playing. The touch that lands on a playing video is a pause (or a
-    // skip, a hold, a bar reveal), and the prime below plays a second media element
-    // under it - Dean's capture logged the sidecar's pause at the very tap after
-    // which the video's frames stopped. Like the guards above, it does NOT consume
-    // the one-shot, so the next touch on a paused video (the play tap) still primes.
-    // (An element at its end reads paused, so no separate `ended` test.)
-    if (mediaPlayer && !mediaPlayer.paused) return;
     bgAudioGesturePrimed = true;
     try {
       // Only ever assigns the SILENT clip -- the real handoff src lives
@@ -4191,120 +4152,6 @@ if (typeof module !== 'undefined' && module.exports) {
       recordLifecycleEvent('video:check', { detail: formatVideoStateDetail(n) });
     };
     videoStateCheckTimer = setTimeout(tick, VIDEO_CHECK_EVERY_MS);
-  }
-
-  // ---- v1.360: the frozen-picture watchdog (the black picture after a pause) -------
-  // Dean's ?debugLifecycle=1 capture: right after one pause/unpause the video's own layer frame
-  // count stood still (f=64) for 17 s while its clock and its sound ran on. Not reproducible off
-  // the iPhone, so besides removing the suspected trigger (primeBackgroundAudioElement) this
-  // watches for that state and, when it holds, re-seeks the video in place to its own position: a
-  // seek makes the player decode and present a fresh frame. It only judges a play session whose
-  // count has not climbed for a sustained stretch since its 'playing' (a session whose picture
-  // moved is healthy, so a variable-frame-rate still later in it is never "healed"), and only once
-  // this load has seen the count climb at all. Mobile form factor, video items, inline (not native fullscreen or PiP),
-  // visible and on screen, at most FROZEN_HEALS_PER_LOAD seeks per load. Every heal and its outcome
-  // is a ?debugLifecycle=1 line (video:heal; video:heal-ok only once the count really climbs again;
-  // video:heal-gave-up), so the next capture says if it worked. Reads the same counter as the
-  // v1.336 instrument (getVideoPlaybackQuality; never requestVideoFrameCallback or a canvas read,
-  // which attach a video output - see readVideoState).
-  var FROZEN_TICK_MS = 1000;
-  var FROZEN_WINDOW_MS = 6000;
-  var FROZEN_MIN_ADVANCE_S = 4;
-  var FROZEN_CLIMB_MIN_FRAMES = 10;
-  var FROZEN_CLIMB_MIN_FPS = 5;
-  var FROZEN_HEALS_PER_LOAD = 2;
-  var frozenTimer = null;
-  var frozenSince = null;      // the start of the current still window
-  var frozenSession = null;    // the reading at this play session's 'playing'
-  var frozenClimbed = false;   // this load has seen the count climb at a real frame rate
-  var frozenHeals = 0;
-  var frozenHealFrom = null;   // the reading at the last heal, until the count climbs from it (video:heal-ok)
-  var frozenGaveUp = false;
-  var frozenGen = -1;
-  function readPictureProgress() {
-    var v = mediaPlayer;
-    var q = null;
-    try { q = (v && typeof v.getVideoPlaybackQuality === 'function') ? v.getVideoPlaybackQuality() : null; } catch (_) { q = null; }
-    var onScreen = false;
-    try {
-      var r = v ? v.getBoundingClientRect() : null;
-      var vw = window.innerWidth || 0, vh = window.innerHeight || 0;
-      onScreen = !!(r && r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < vw && r.top < vh);
-    } catch (_) { onScreen = false; }
-    var pm = v && typeof v.webkitPresentationMode === 'string' ? v.webkitPresentationMode : 'inline';
-    // (No ended / sidecar / audio-mode test: an element at its end reads paused, a handoff pauses
-    // the video and runs only hidden, and audio-mode is only ever set on an audio item, which
-    // frozenWatchEligible already refuses.)
-    var ok = !!(v && !v.paused && !v.seeking && v.readyState >= 2 && v.videoWidth > 0 && pm === 'inline'
-      && document.visibilityState === 'visible' && onScreen);
-    return { frames: q ? q.totalVideoFrames : null, t: v ? v.currentTime : null, at: Date.now(), ok: ok };
-  }
-  function frozenWatchEligible() {
-    return !!(mediaPlayer && currentData && currentData.type !== 'audio' && isMobileFormFactor()
-      && typeof mediaPlayer.getVideoPlaybackQuality === 'function');
-  }
-  function stopFrozenPictureWatch() {
-    if (frozenTimer) clearInterval(frozenTimer);
-    frozenTimer = null;
-    frozenSince = null;
-  }
-  function syncFrozenGen() {
-    if (frozenGen === loadGeneration) return;
-    frozenGen = loadGeneration;
-    frozenClimbed = false;
-    frozenHeals = 0;
-    frozenHealFrom = null;
-    frozenGaveUp = false;
-    frozenSession = null;
-  }
-  function climbedFrom(a, b) { return framesClimbed(a, b, FROZEN_CLIMB_MIN_FRAMES, FROZEN_CLIMB_MIN_FPS); }
-  // 'pause' / 'ended' / 'emptied': the pause reading is fresh (Dean's capture read f=58 at the pause,
-  // after f=1 at the 'playing' 1.9 s before), so a short first play still proves the counter is live.
-  function endFrozenPictureSession() {
-    if (frozenTimer && frozenSession && !frozenClimbed && climbedFrom(frozenSession, readPictureProgress())) frozenClimbed = true;
-    frozenSession = null;
-    stopFrozenPictureWatch();
-  }
-  function startFrozenPictureWatch() {
-    stopFrozenPictureWatch();
-    if (!frozenWatchEligible()) return;
-    syncFrozenGen();
-    if (frozenGaveUp) return;
-    frozenSession = readPictureProgress();
-    frozenSince = frozenSession;
-    frozenTimer = setInterval(tickFrozenPictureWatch, FROZEN_TICK_MS);
-  }
-  function tickFrozenPictureWatch() {
-    if (frozenGen !== loadGeneration || !mediaPlayer) { stopFrozenPictureWatch(); return; }
-    var n = readPictureProgress();
-    if (frozenHealFrom && climbedFrom(frozenHealFrom, n)) {
-      recordLifecycleEvent('video:heal-ok', { detail: 'f=' + frozenHealFrom.frames + '->' + n.frames + ' t=' + n.t.toFixed(1) + ' n=' + frozenHeals });
-      frozenHealFrom = null;
-    }
-    if (frozenSession && n.t - frozenSession.t >= FROZEN_MIN_ADVANCE_S && climbedFrom(frozenSession, n)) {
-      // this session's picture has moved for a sustained stretch (4 s of media time, at a real
-      // frame rate): healthy, and the load's counter is live; nothing to judge until the next
-      // 'playing' (a later still in the same session is the video, not a fault). Not on the first
-      // cached refresh: a picture that freezes a fraction of a second after a resume must still heal.
-      frozenClimbed = true;
-      if (!frozenHealFrom) stopFrozenPictureWatch();
-      return;
-    }
-    var d = frozenPictureDecision({ since: frozenSince, now: n, climbed: frozenClimbed, windowMs: FROZEN_WINDOW_MS, minAdvanceS: FROZEN_MIN_ADVANCE_S });
-    if (d === 'off') { stopFrozenPictureWatch(); return; }
-    if (d === 'reset') { frozenSince = n; return; }
-    if (d !== 'heal') return;
-    if (frozenHeals >= FROZEN_HEALS_PER_LOAD) {
-      recordLifecycleEvent('video:heal-gave-up', { detail: 'f=' + n.frames + ' t=' + n.t.toFixed(1) + ' n=' + frozenHeals });
-      frozenGaveUp = true;
-      stopFrozenPictureWatch();
-      return;
-    }
-    frozenHeals++;
-    frozenHealFrom = n;
-    recordLifecycleEvent('video:heal', { detail: 'f=' + n.frames + ' t=' + frozenSince.t.toFixed(1) + '->' + n.t.toFixed(1) + ' n=' + frozenHeals });
-    try { var here = mediaPlayer.currentTime; mediaPlayer.currentTime = here; } catch (_) { /* not seekable - the next window decides again */ }
-    frozenSince = n;
   }
 
   // ---- Lock-to-audio phase 1 (MEASURE): the timing log's runtime half ---------
@@ -6838,11 +6685,6 @@ if (typeof module !== 'undefined' && module.exports) {
     ['pause', 'playing', 'waiting', 'stalled', 'emptied', 'error', 'resize', 'loadstart', 'webkitpresentationmodechanged'].forEach(function (evName) {
       mediaPlayer.addEventListener(evName, function () { recordVideoState(evName); });
     });
-    // v1.360: the frozen-picture watchdog runs from each 'playing' to the next pause/end/emptied.
-    mediaPlayer.addEventListener('playing', startFrozenPictureWatch);
-    mediaPlayer.addEventListener('pause', endFrozenPictureSession);
-    mediaPlayer.addEventListener('ended', endFrozenPictureSession);
-    mediaPlayer.addEventListener('emptied', endFrozenPictureSession);
     // v1.27.2 (pre-pause candidate bridge): any resumed playback invalidates
     // a pending candidate -- the pause it described is no longer "the last
     // thing that happened" (e.g. user paused, changed their mind, hit play,
@@ -7132,12 +6974,8 @@ if (typeof module !== 'undefined' && module.exports) {
 
     if (ppBtn) {
       ppBtn.addEventListener('click', function () {
-        // v1.27.0: the synchronous gesture-prime (DOCKED + non-native-controls FULL path). v1.360: AFTER
-        // the toggle, so it rides a PAUSE press under the now-paused video, and the prime's own
-        // playing-video guard refuses a PLAY press (before, a play press primed and then started the
-        // video in the same task, and the prime's pause landed under the playing video).
+        primeBackgroundAudioElement(); // v1.27.0: synchronous gesture-prime BEFORE the play() below (DOCKED + non-native-controls FULL path)
         togglePlayPause();
-        primeBackgroundAudioElement();
       });
     }
 
@@ -8649,7 +8487,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // opportunity).
     bgAudioState = nextBackgroundAudioState(bgAudioState, 'TEARDOWN', {});
     bgAudioGesturePrimed = false;
-    stopFrozenPictureWatch(); // v1.360: the watchdog never outlives its load (its counters reset on the next load's generation)
     bgAudioSettingCached = false;
     bgAudioSyncPositionCached = false; // v1.121: per-load, like its setting siblings
     lastBgAudioPresyncAt = 0; // v1.121: fresh throttle window for the next load
