@@ -213,6 +213,39 @@ check.
   6.2). **Home -> watch(clip2) -> watch(clip1), `dock()` then `history.back()`: lands on `/watch.html?v=clip2`, state `full`, src
   clip2, clip1 GONE.** Stop rule (a) triggered (the seam behaves differently from the outcome): asked Dean, ruled M7 (last
   browse page) and M8 (watch page only), section 2.
+- **Failing-first (verbatim, `node --test test/unit/minimize-player.test.js` before any product code):** `# tests 20 / # pass 5 /
+  # fail 15`. The 5 passes are the regression guards that hold on main too (a touchcancel, hold-then-drag locks, upward/sideways
+  never claimed, scrolled never claimed, the excluded surfaces); the 15 fails are every pure decision (not exported) and every
+  pull/commit/flag drive. Two of the 15 were TEST bugs found while greening (the double-tap pair needed a real `Date.now` gap and
+  a `duration`, as hold-lock's does); fixed in the test, not the code.
+
+**W1 (builder, 2026-10-03).**
+
+- Built: `minimizeAllowedDecision` / `minimizeDragDecision` / `minimizeReleaseDecision` / `minimizeDragTransform` (top-level pure,
+  exported); the claim in the v1.358 host `touchmove` (the same listener, now `hold arm, return; else minimizeTouchMove`); the
+  release in the surface `touchend` before the hold branch; `minimizeToDock(source)` (lifecycle `minimize`, `dock()`, FLIP,
+  `FileTube.leaveWatchForBrowse()`); `clearMinimizeDrag()` as the one remover, called from `resetTransientPlaybackUi()` and on a
+  resize/orientationchange mid-pull; `?minimizeAnim=0|1` (sessionStorage `ft-minimize-anim`). common.js: `browseDepth` on every
+  history entry (`buildHistoryState`, carried by `parseHistoryState`, the scroll rewrite, `pushViewState`, `replaceViewState` and
+  navigate's fetch-path push), `browseDepthBehind`, `resolveMinimizeLanding`, `leaveWatchForBrowse` on `window.FileTube`.
+- **Deviations / interpretations (disclosed):** (1) R2's `holdActive` is passed as `holdActive && holdGestureLive`: a hold engaged
+  by THIS finger owns the drag, while a 2x LOCK left by an earlier gesture does not stop a later pull (v1.358 keys every hold
+  branch on the engaging finger; a lock is meant to outlive it). A docked lock ends via `dock()`'s reset, as before. (2) R2b's
+  `scrollY` is read at TOUCHSTART (W0 item 2). (3) A gesture that goes past 12 px up or sideways before any claim is dead for
+  the rest of that touch (so a swipe-back that curls down never also minimizes). (4) M6's mechanism is replaced by M7's
+  `leaveWatchForBrowse`; `goHomeControl` is untouched. (5) The FLIP needs `#player-dock.is-minimize-settle { overflow: visible;
+  box-shadow: none }` for the settle (the dock clips its content): a class on the dock, no transform on it (stop rule d holds).
+  (6) The dock's resting rect is read from the hidden dock's computed `right` / `bottom` / `width` plus `--size-touch` for the
+  phone bar (measured in Chromium: `160px`, `8px`, `80px`, `44px`).
+- Locks updated in place, intent kept (LESSONS 3): `hold-lock.test.js` "the drag claim is registered on the player wrapper"
+  (the hold arm now returns before the minimize hand-off); `router-helpers.test.js` shape tests gain `browseDepth`, the
+  push/replace/scroll-rewrite locks gain the sixth argument, the navigate builds regex accepts `desiredDepth,`.
+- **Chromium end to end** (`tools/minimize-proof/probe-pull.js`, result JSON beside it, the branch's product code): home > clip1,
+  pull 250: 24 of 24 moves cancelable and prevented, the picture moved on all 24 (mid-drag `translate(146.825px, 250px)
+  scale(0.609958)`), lands on `/` docked, playing 3.1 -> 6.6 s. home > clip2 > clip1, pull 250: lands on `/` (depth 2 -> 0,
+  past clip2), clip1 docked and playing. Deep link, pull 250: fresh Home, docked, playing. Pull 60 slow: springs back, still
+  full on the watch page, playing, transform cleared. Scrolled 40, pull 250: 1 of 22 cancelable, 0 prevented, the page scrolls
+  40 -> 0, no minimize (R2b).
 
 ## 7. Device checks (Dean, on the released build; add each to DEVICE-CHECKS.md in the release commit)
 

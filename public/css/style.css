@@ -1284,9 +1284,11 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
    stays `[hidden]` -- and therefore invisible with zero layout impact --
    until player.js's dock() reparents the live player host into it (only
    when the user navigates away from the watch view WHILE media is loaded;
-   see player.js). On the watch page itself the player always renders via
-   `.player-container` above, completely unaffected by any of this -- the
-   watch page is never "docked" while it is the active view. Era-themed via
+   see player.js). On the watch page itself the player renders via
+   `.player-container` above, unaffected by any of this; the one exception is
+   v1.362's minimize (the phone chevron or pull-down), which docks first and
+   then leaves the watch page, so the page is docked for the instant before
+   the route swap. Era-themed via
    the role tokens (--shadow-overlay/--r-md); the video's own #000 letterbox
    background matches `.player-container` above (not a themed surface). */
 #player-dock {
@@ -1377,6 +1379,22 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
        independently re-resolving env(safe-area-inset-bottom). */
     bottom: calc(var(--mobile-bottom-nav-h) + 8px); /* token-exempt: positional geometry (Stop A Batch A) */
   }
+}
+
+/* v1.362: minimize into the mini player (player.js minimizeToDock). The pull moves the host with an
+   inline transform and no transition (the finger drives it); a release that springs back eases it
+   home, and a commit settles the docked host from where the finger left it (FLIP). While it settles,
+   the dock stops clipping it to the dock's own box. Plain transforms only: nothing here filters,
+   masks or fades the picture (LESSONS 7). */
+#player-wrapper.is-minimize-snap {
+  transition: transform var(--dur-fade) var(--ease-std);
+}
+#player-wrapper.is-minimize-settle {
+  transition: transform var(--dur-sheet) var(--ease-enter);
+}
+#player-dock.is-minimize-settle {
+  overflow: visible;
+  box-shadow: none;
 }
 
 /* Audio thumbnail-as-background art (Feature 1, v1.10.0). Hidden by default;
