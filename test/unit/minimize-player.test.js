@@ -1054,3 +1054,16 @@ test('gate r1 (adversary A14): an index that over-counts by one still goes Home 
     assert.strictEqual(homeFetches(a), 1);
   } finally { a.close(); }
 });
+
+test('gate r1: the pairing window runs from the LIFT (a 300 ms press keeps the chevron inert for 350 ms after the finger leaves)', async () => {
+  const h = await bootPeek(VIDEO);
+  h.media(false);
+  fire(h.w, h.v, 'touchstart', 26, 98, 1000);
+  await wait(300); // under HOLD_MS: still a tap, not a 2x hold
+  fire(h.w, h.v, 'touchend', 26, 98, 1300);
+  assert.strictEqual(h.v.playbackRate, 1, 'precondition: a tap, not a hold');
+  await wait(200);
+  assert.strictEqual(chev(h).hasAttribute('inert'), true, '500 ms after touchstart, 200 ms after the lift: still the picture\'s next tap');
+  await wait(260);
+  assert.strictEqual(chev(h).hasAttribute('inert'), false);
+});

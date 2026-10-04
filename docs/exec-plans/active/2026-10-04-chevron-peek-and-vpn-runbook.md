@@ -370,6 +370,15 @@ Round 1 fixes (builder, 2026-10-04):
   The stale player.js comment ("`#media-player` (no `onSingleTap`) never reaches this branch", false since v1.134) now states
   the real reason a video tap synthesizes no click. VoiceOver suspicion: added to section 7 as device check 5 (unmeasured).
 - Adversary suggestion A14 (an index over-counted by one survived): a drive at depth 46 with 45 reachable -> Home.
+- Round 1 fix mutants (on 7a035bd2, sandbox identical after; minimize-player + router-helpers + hold-lock +
+  player-overlay-no-filter, 154 tests, Node 22): R1-M1 no guard at the picture touchstart KILLED (`while the picture can still
+  pair a tap`); R1-M3 no guard through the chain KILLED (`keeps the chevron inert for the whole skip chain`); R1-M4 inert never
+  written KILLED (3); R1-M5 the guard timer never ends the guard KILLED (2); R1-M6 no pending-tap cancel KILLED (`a single tap
+  still waiting out the double-tap window never pauses the player after a dock`); R1-M7 the A14 over-count KILLED (`an index that
+  over-counts by one`); R1-M8 inert always false KILLED (2). **R1-M2 (no guard from the single-tap lift) SURVIVED** (154/154:
+  the touchstart guard masked it in an instant tap); bound by `the pairing window runs from the LIFT` (a 300 ms press), then
+  KILLED by that name (`# tests 57 / # pass 56 / # fail 1`; the committed product code with the new test file copied into the
+  sandbox and its pristine twin).
 
 ## 9. Out of scope (logged, not built)
 
