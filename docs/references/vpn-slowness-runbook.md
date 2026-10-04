@@ -72,10 +72,13 @@ For each run:
    unusual.
 3. Tap **Arm run & start recording**. The grey status line turns red: "RECORDING - <label> · scenario:
    (none) · 0 events captured".
-4. Tap **Open FileTube in new tab**. In that tab a small red **REC** badge shows at the bottom-left while the
-   run records. You will switch between the two tabs.
+4. Make sure no FileTube tab from an earlier run is still open (close it first: an old tab can write
+   its old events over this run's). Then tap **Open FileTube in new tab**. In that tab a small red
+   **REC** badge shows at the bottom-left while the run records. You will switch between the two tabs.
 5. Under **2 · Guided scenarios**, for each scenario in turn: in the `/diag` tab tap its **Set active**
-   (it changes to **Active**), switch to the app tab and do it, switch back. The eight:
+   (it changes to **Active**), switch to the app tab and do it, then switch back to `/diag` straight away.
+   A scenario's time runs from its first request to its last, and the app checks in with the server in
+   the background (every 30 to 60 seconds), so lingering in the app tab stretches the numbers. The eight:
    1. **Cold app load -> Home**: "Open FileTube fresh in the app tab (or hard-reload). Wait until Home
       fully populates."
    2. **Soft-nav: Home -> Music**: "Inside the app, navigate Home to Music (same-section view swap)."
@@ -90,7 +93,8 @@ For each run:
    (If you have no TV or Music library, skip that scenario; the rest still work.)
 6. Under **3 · Active probes (isolate one variable each)**, tap each and wait for its "done" line:
    **Measure RTT (20×)**, then **Throughput (1 / 5 / 20 MB)**, then **Compression delta**.
-7. Tap **Stop & save**. The line under the probes says "Saved run <id>" (for example
+7. Close the FileTube tab this run opened, then, in `/diag`, tap **Stop & save**. The line under the
+   probes says "Saved run <id>" (for example
    "Saved run 2026-10-04-0310-zxtxn4"). Write the id in the results table (section 7).
 
 The saved run appears under **4 · Saved runs & isolation matrix** with its label, event count ("85 ev")
@@ -118,8 +122,10 @@ the same means that part is fine; double or more means that part is a real cost.
 | **Stalls (60s play)** | How often the video paused to wait for data in the Play ~60s scenario, and for how long | Stalls on the VPN but not at home: the pipe cannot keep up with the file's bitrate (FileTube plays the original file; there is no lower-quality version). | adaptive bitrate |
 | **Cold vs warm Home** | Home's load time on a fresh open vs a reload | Both slow on the VPN: each page re-checks every file with the server (the app's files are served "no-cache", so every load revalidates). | service-worker shell/thumb caching |
 
-A row shows "-" when its scenario or probe was not done in that run (Stalls needs **Play ~60s untouched
-(stalls)**; the warm half of the last row needs **Warm reload -> Home**).
+A row shows "-" when nothing in that run feeds it (Stalls needs **Play ~60s untouched (stalls)**;
+Time-to-first-frame needs **Open a video (time-to-first-frame)**). **Cold vs warm Home** is different: a
+half that was not done prints **0 ms**, so "80 ms cold / 0 ms warm" means the warm reload was not tagged,
+not that it was instant.
 
 Some readings put together:
 
@@ -149,8 +155,11 @@ Some readings put together:
 
 - The run ids (the "Saved run ..." lines), and which network each one was.
 - Or the files themselves: each run is saved on the server as `run-<id>.json` in the `.diag` folder of
-  FileTube's data directory (DATA_DIR). The same data is at `/api/diag/runs/<id>` while signed in as an
-  admin.
+  FileTube's data directory (DATA_DIR); they stay there after you switch the suite off. While the switch
+  is on, the same data is at `/api/diag/runs/<id>` (signed in as an admin).
+- Keep these files private (send them to Claude, never post them): a run records your phone's browser
+  details, the server's address, your note, and every address the app requested, including searches
+  and video ids.
 - Your results table (section 7), the speed tests, and the VPN details from section 2.
 - Anything that felt slow that no scenario covered.
 

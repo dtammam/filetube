@@ -4961,6 +4961,9 @@ if (typeof module !== 'undefined' && module.exports) {
     skipChainUntil = 0;
     clearMinimizeDrag(); // v1.362: the one remover of the minimize pull's transform (R5)
     endMinimizePeek(); // v1.362.1 (D3): a dock, close, new load or backgrounding ends the chevron's peek
+    // v1.362.1 gate r1 (adversary): a single tap still waiting out the double-tap window never lands on the
+    // surface that replaced it (a tap, then a minimize inside 350 ms, paused the docked player).
+    cancelPendingArtTap();
   }
 
   // ---- v1.362: minimize into the mini player (plan 2026-10-03-minimize-to-mini-player) ----
@@ -5175,6 +5178,21 @@ if (typeof module !== 'undefined' && module.exports) {
   function endMinimizePeek() {
     if (minimizePeekTimer) { clearTimeout(minimizePeekTimer); minimizePeekTimer = null; }
     minimizePeekUntil = 0;
+    if (minimizeTapGuardTimer) { clearTimeout(minimizeTapGuardTimer); minimizeTapGuardTimer = null; }
+    minimizeTapGuardUntil = 0;
+    refreshMinimizeButton();
+  }
+  // v1.362.1 gate r1 (adversary): a touch on the picture reveals the chevron UNDER the finger, so the next tap
+  // of a double-tap (or a skip chain) at its spot would land on the chevron and minimize. While the picture can
+  // still pair a tap, the chevron is `inert` (not hit-testable: the tap reaches the picture as before). An
+  // attribute, never paint (LESSONS 7). Like the peek, the timer ENDS the guard; it never re-reads the clock.
+  var minimizeTapGuardUntil = 0;
+  var minimizeTapGuardTimer = null;
+  function guardMinimizeTap(until) {
+    if (!(until > minimizeTapGuardUntil)) return;
+    minimizeTapGuardUntil = until;
+    if (minimizeTapGuardTimer) clearTimeout(minimizeTapGuardTimer);
+    minimizeTapGuardTimer = setTimeout(function () { minimizeTapGuardTimer = null; minimizeTapGuardUntil = 0; refreshMinimizeButton(); }, Math.max(0, until - Date.now()));
     refreshMinimizeButton();
   }
   function refreshMinimizeButton() {
@@ -5208,6 +5226,7 @@ if (typeof module !== 'undefined' && module.exports) {
       peekUntil: minimizePeekUntil,
       focused: document.activeElement === minimizeBtn,
     });
+    minimizeBtn.toggleAttribute('inert', minimizeTapGuardUntil > 0); // gate r1: the tap guard above
   }
 
   function playMinimizeSettle(from) {
@@ -5301,6 +5320,7 @@ if (typeof module !== 'undefined' && module.exports) {
       tapGestureMoved = false; // gate W2 (v1.134 fix round): fresh gesture, no movement yet
       beginMinimizeGesture(); // v1.362: this finger may become a pull into the mini player
       peekMinimizeButton(); // v1.362.1 (D1): any touch on the picture shows the chevron for a while
+      guardMinimizeTap(Date.now() + DOUBLE_TAP_MS); // gate r1: the next tap here still belongs to the picture
       clearTimeout(holdTimer);
       holdTimer = setTimeout(engageHold, HOLD_MS);
     }, { passive: true });
@@ -5374,17 +5394,20 @@ if (typeof module !== 'undefined' && module.exports) {
         // refreshes the chain window - the run keeps going as long as taps
         // keep landing.
         skipChainUntil = now + SKIP_CHAIN_MS;
+        guardMinimizeTap(skipChainUntil); // v1.362.1 gate r1: a chain tap at the chevron's spot still skips
       } else {
         lastTapTime = now;
         lastTapLeft = onLeft;
+        guardMinimizeTap(now + DOUBLE_TAP_MS); // v1.362.1 gate r1: the pairing window runs from this lift
         if (shouldArtSingleTapAct(state, onSingleTap) && !tapGestureMoved) {
           // Suppress the synthetic 'click' the browser would otherwise
           // dispatch after this touchend -- the tap is handled entirely by
           // the debounced timer below, so a stray synthetic click could
-          // otherwise double-fire the toggle. `#media-player` (no
-          // `onSingleTap`) never reaches this branch, so video's touchend
-          // keeps its original never-preventDefault-on-a-single-tap
-          // behavior exactly as before.
+          // otherwise double-fire the toggle. Since v1.134 `#media-player`
+          // passes an `onSingleTap` (videoSingleTapOrReveal) and takes this
+          // branch too, so a video tap never synthesizes a click either
+          // (v1.362.1: why a chevron revealed by this touch never receives
+          // it).
           //
           // v1.21 FIX A (post-post-gate correction): gated to
           // `state === STATE_FULL` via `shouldArtSingleTapAct` -- while

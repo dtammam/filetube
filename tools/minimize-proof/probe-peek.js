@@ -65,12 +65,40 @@ const read = () => {
     await play();
     await p.waitForTimeout(3600);
     await log(p, 'played again +3600 ms (before the pull)');
+    // gate r1 (adversary): a DOUBLE-tap at the hidden chevron's spot must skip back, not minimize
+    await p.evaluate(() => { document.getElementById('media-player').currentTime = 20; });
+    await play();
+    await p.waitForTimeout(3600);
+    const t0dbl = await p.evaluate(() => document.getElementById('media-player').currentTime);
+    await log(p, 'before the double-tap at the chevron spot (t=' + Math.round(t0dbl * 10) / 10 + ')');
+    await touch('touchStart', geo.chev[0], geo.chev[1]); await touch('touchEnd');
+    await p.waitForTimeout(120);
+    const inertAfterFirst = await p.evaluate(() => document.querySelector('.player-minimize').hasAttribute('inert'));
+    await touch('touchStart', geo.chev[0], geo.chev[1]); await touch('touchEnd');
+    await p.waitForTimeout(100);
+    out.doubleTap = { inertAfterFirst, at100: await p.evaluate(read), t: await p.evaluate(() => document.getElementById('media-player').currentTime) };
+    // a third tap inside the 800 ms chain, still at the spot: another skip
+    await p.waitForTimeout(400);
+    await touch('touchStart', geo.chev[0], geo.chev[1]); await touch('touchEnd');
+    await p.waitForTimeout(900);
+    out.doubleTap.afterChain = Object.assign(await p.evaluate(read), { t: await p.evaluate(() => document.getElementById('media-player').currentTime) });
+    await log(p, 'after double-tap + chain tap at the chevron spot (skipped, full, playing?)');
+    // control: a deliberate tap on the shown chevron once the guard is over still minimizes (checked last, below)
     // the pull with the chevron hidden
     await touch('touchStart', geo.mid[0], geo.mid[1] - 60);
     for (let i = 1; i <= 25; i++) { await touch('touchMove', geo.mid[0], geo.mid[1] - 60 + i * 10); await p.waitForTimeout(30); }
     await touch('touchEnd');
     await p.waitForTimeout(1500);
     await log(p, 'after a 250 px pull');
+    // the deliberate chevron tap: expand back, pause (shown, no guard), tap it
+    await p.evaluate(() => { window.FileTube.navigate('/watch.html?v=clip1'); });
+    await p.waitForTimeout(1500);
+    await p.evaluate(() => document.getElementById('media-player').pause());
+    await p.waitForTimeout(600);
+    await log(p, 'back on the watch page, paused');
+    await touch('touchStart', geo.chev[0], geo.chev[1]); await touch('touchEnd');
+    await p.waitForTimeout(1500);
+    await log(p, 'after a deliberate tap on the shown chevron (minimized?)');
     out.errs = errs;
     await ctx.close();
   } catch (e) { out.error = String(e.stack || e); }

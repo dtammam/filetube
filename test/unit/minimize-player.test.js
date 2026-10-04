@@ -877,7 +877,7 @@ test('D1: a focused chevron stays up while playing, and goes on blur', async () 
   assert.strictEqual(chev(h).hidden, true, 'blurred while playing: hidden at once');
 });
 
-test('D1/D3: no peek where minimize is not offered, and the timer never re-shows it after a dock, a close or a new item', async () => {
+test('D1/D3: no peek where minimize is not offered, and the timer never re-shows it after a dock or a new item', async () => {
   let h = await bootPeek(VIDEO);
   h.media(false);
   h.doc.getElementById('fs-btn').click();
@@ -920,6 +920,7 @@ test('D2: refreshMinimizeButton stays the ONE writer of the chevron\'s hidden, a
   const src = PLAYER_SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
   assert.strictEqual((src.match(/minimizeBtn\.hidden\s*=/g) || []).length, 1, 'one write of hidden');
   assert.ok(!/minimizeBtn\.(style|classList)/.test(src), 'no style or class write on the chevron (no fade, no paint)');
+  assert.strictEqual((src.match(/minimizeBtn\.(toggleAttribute|setAttribute|removeAttribute)\(\s*'inert'/g) || []).length, 1, 'one write of inert (gate r1 tap guard), in the same writer');
   const fn = src.slice(src.indexOf('function refreshMinimizeButton'), src.indexOf('function playMinimizeSettle'));
   assert.match(fn, /minimizeBtn\.hidden = !minimizeChevronShownDecision\(/, 'the writer asks the pure decision');
   // D4 (W1-M11, a source lock: jsdom cannot reach the background-audio state): paused is read from the
@@ -992,4 +993,64 @@ test('D6 (c): the settle opens the dock clip by value (overflow visible, no shad
   const r = one('#player-dock.is-minimize-settle', null);
   assert.strictEqual(decl(r, 'overflow'), 'visible');
   assert.strictEqual(decl(r, 'box-shadow'), 'none');
+});
+
+// ---- gate r1 (adversary WARNING): a double-tap at the hidden chevron's spot minimized the player -----------
+
+test('gate r1: while the picture can still pair a tap, the revealed chevron is inert (a second tap at its spot reaches the picture); the guard ends on its own', async () => {
+  const h = await bootPeek(VIDEO);
+  h.media(false);
+  await wait(PEEK * 1.6);
+  assert.strictEqual(chev(h).hidden, true, 'precondition: hidden while playing');
+  assert.strictEqual(chev(h).hasAttribute('inert'), false, 'precondition: not inert at rest');
+  fire(h.w, h.v, 'touchstart', 26, 98, 1000);
+  assert.strictEqual(chev(h).hidden, false, 'the touch reveals it');
+  assert.strictEqual(chev(h).hasAttribute('inert'), true, 'revealed under the finger: inert, so the next tap is the picture\'s');
+  fire(h.w, h.v, 'touchend', 26, 98, 1040);
+  await wait(200);
+  assert.strictEqual(chev(h).hasAttribute('inert'), true, 'still inside the double-tap window (350 ms from the lift)');
+  await wait(260);
+  assert.strictEqual(chev(h).hasAttribute('inert'), false, 'the window passed: the chevron takes taps again');
+});
+
+test('gate r1: a double-tap skip keeps the chevron inert for the whole skip chain', async () => {
+  const h = await bootPeek(VIDEO);
+  Object.defineProperty(h.v, 'duration', { value: 600, configurable: true });
+  h.v.currentTime = 100;
+  h.media(false);
+  fire(h.w, h.v, 'touchstart', 26, 98, 1000);
+  fire(h.w, h.v, 'touchend', 26, 98, 1040);
+  await wait(40);
+  fire(h.w, h.v, 'touchstart', 26, 98, 1100);
+  fire(h.w, h.v, 'touchend', 26, 98, 1140);
+  assert.ok(h.v.currentTime < 100, 'precondition: the double-tap skipped back, got ' + h.v.currentTime);
+  await wait(500);
+  assert.strictEqual(chev(h).hasAttribute('inert'), true, 'past the 350 ms pairing window, still inside the 800 ms chain: inert');
+  await wait(450);
+  assert.strictEqual(chev(h).hasAttribute('inert'), false, 'the chain ended');
+  assert.strictEqual(h.p.getState(), 'full');
+  assert.strictEqual(h.leaves.length, 0);
+});
+
+test('gate r1: a single tap still waiting out the double-tap window never pauses the player after a dock', async () => {
+  const h = await bootPeek(VIDEO);
+  h.media(false);
+  fire(h.w, h.v, 'touchstart', 200, 100, 1000);
+  fire(h.w, h.v, 'touchend', 200, 100, 1040);
+  await wait(100);
+  h.p.dock();
+  await wait(420);
+  assert.strictEqual(h.p.getState(), 'docked');
+  assert.strictEqual(h.pauses(), 0, 'the pending tap died with the full surface');
+});
+
+test('gate r1 (adversary A14): an index that over-counts by one still goes Home (depth 46, 45 reachable)', async () => {
+  const a = routerWorld({ depth: 46, browseDepth: 0 }, 50);
+  try {
+    Object.defineProperty(a.W, 'navigation', { value: { currentEntry: { index: 45 } }, configurable: true });
+    a.W.FileTube.leaveWatchForBrowse();
+    await wait(20);
+    assert.deepStrictEqual(a.moves, [], 'no go(-46) with only 45 entries behind');
+    assert.strictEqual(homeFetches(a), 1);
+  } finally { a.close(); }
 });

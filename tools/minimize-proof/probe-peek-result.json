@@ -1,5 +1,5 @@
 {
- "runAt": "2026-10-04T03:57:14.875Z",
+ "runAt": "2026-10-04T04:23:58.358Z",
  "steps": [
   {
    "label": "paused",
@@ -72,10 +72,38 @@
    "chevronHidden": true
   },
   {
+   "label": "before the double-tap at the chevron spot (t=23.6)",
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "paused": false,
+   "chevronHidden": true
+  },
+  {
+   "label": "after double-tap + chain tap at the chevron spot (skipped, full, playing?)",
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "paused": false,
+   "chevronHidden": false
+  },
+  {
    "label": "after a 250 px pull",
    "path": "/",
    "state": "docked",
    "paused": false,
+   "chevronHidden": true
+  },
+  {
+   "label": "back on the watch page, paused",
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "paused": true,
+   "chevronHidden": false
+  },
+  {
+   "label": "after a deliberate tap on the shown chevron (minimized?)",
+   "path": "/",
+   "state": "docked",
+   "paused": true,
    "chevronHidden": true
   }
  ],
@@ -88,6 +116,23 @@
    195,
    181.6875
   ]
+ },
+ "doubleTap": {
+  "inertAfterFirst": true,
+  "at100": {
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "paused": false,
+   "chevronHidden": false
+  },
+  "t": 8.889264,
+  "afterChain": {
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "paused": false,
+   "chevronHidden": false,
+   "t": 0.903023
+  }
  },
  "errs": []
 }
