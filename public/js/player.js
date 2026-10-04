@@ -4312,7 +4312,6 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.362.2 (D5): the frozen-picture sampler starts on 'playing' and stops on what ends playback.
     if (evName === 'playing') startFrozenSampler();
     else if (evName === 'pause' || evName === 'emptied' || evName === 'loadstart') stopFrozenSampler();
-    else if (evName === 'waiting') frozenSamples = []; // gate r1: a buffering wait is not a frozen picture; start the series again
     if (evName !== 'playing') return;
     if (videoStateCheckTimer) clearTimeout(videoStateCheckTimer);
     var samples = [];

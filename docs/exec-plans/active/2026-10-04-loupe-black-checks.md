@@ -344,3 +344,15 @@ Verified clean: 82 mutants (L 17, B 49, E 16). Every one was killed except those
   and a new ruling).
 - The v1.362 gate r1/r2 and v1.361 r3 suggestions already in ROADMAP Planned > Bugs.
 - Migrating the rotate log (or any other) to the export pattern (D6: documented now, migrated later; ROADMAP Chores).
+
+**Builder, round 1 fixes (3b11c6c5, then the follow-up below).** Every finding of both seats taken; hook on 3b11c6c5
+`ℹ tests 8539 / ℹ pass 8539 / ℹ fail 0`; neighbouring suites 1333/1333. qa 1 / adversary 2 (a stalled skip read as frozen):
+`frozenPictureDecision` counts only PLAYED time (a step whose clock went backwards or faster than 4x its wall time is a seek). qa 2:
+the via stamp names its element. qa 3 / adversary 7: the desktop click is `picture-tap`. qa 4 / adversary 6a: the 30-entry wording.
+qa 5 / adversary 6b: either switch off removes the panel at once. Adversary 1: the docs now name the double-tap-then-hold gesture
+(7a, outcome B, section 3, ROADMAP item 11, LESSONS 8 marked unconfirmed); the loupe test's pause really pauses and drives both
+gestures; the single-tap-then-hold pause (unchanged from main) and the per-event storage suspicion (adversary 9) are logged in
+ROADMAP Planned > Bugs. Adversary 3-5: new drives (lift +340 / +360, the hidden `playing`, standalone). Adversary 8: the ROADMAP bug
+entry says the sampler runs only in the FULL player. Fix mutants (10, sandbox of 3b11c6c5, clean): 9 KILLED; R1-M3 (the `waiting`
+restart) SURVIVED as redundant with the played-time rule, so that line is removed in the follow-up commit.
+
