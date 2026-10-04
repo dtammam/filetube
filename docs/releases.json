@@ -3496,5 +3496,11 @@
     "date": "2026-10-04",
     "title": "No magnifier on the playing video, and a player log you export with one button",
     "intent": "On an iPhone, holding the video for double speed right after a double tap no longer brings up the grey text magnifier. For tracking down the black video picture, Settings > Troubleshooting can now record a player log quietly in the background, with nothing on screen, and Export log hands you the whole thing as a text file to share or save; Clear log asks first. Nothing about the black picture is fixed yet: the next time it happens, the exported log should show why."
+  },
+  {
+    "version": "1.362.3",
+    "date": "2026-10-04",
+    "title": "No magnifier on any hold, and a sharper player log",
+    "intent": "On an iPhone, pressing and holding the video for double speed no longer brings up the grey text magnifier, with or without a tap first. A finger that starts on the video no longer scrolls the page; scroll from below it. For tracking down the black video picture, the player log now notices it even across quick pause and play taps, and Settings > Troubleshooting has a temporary test switch to play without the play/pause sign over the video."
   }
 ]

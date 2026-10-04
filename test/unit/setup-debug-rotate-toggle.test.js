@@ -234,5 +234,5 @@ test('v1.355 A: init() prefills the switch (loadDebugRotateControl) beside the l
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
   const init = /\nfunction init\(root\) \{([\s\S]*?)\n\}/.exec(src);
   assert.ok(init, 'init(root) found');
-  assert.match(init[1], /\n\s*loadDebugLifecycleControl\(\);\s*\n\s*loadDebugLifecycleOverlayControl\(window\);\s*\n\s*loadDebugRotateControl\(window\);/);
+  assert.match(init[1], /\n\s*loadDebugLifecycleControl\(\);\s*\n\s*loadDebugLifecycleOverlayControl\(window\);\s*\n\s*loadNoTapGlyphControl\(window\);\s*\n\s*loadDebugRotateControl\(window\);/);
 });
