@@ -3,10 +3,10 @@ plan: loupe-any-hold-and-hold-log
 harness: v2 · lean
 branch: feat/v1.362.3-loupe-hold-log
 anchor: spec
-status: Building
-next: gate r2 (the same seats) on the round 1 fixes, then the release
+status: Shipped v1.362.3
+next: Dean's v1.362.3 device checks (section 5) and the four black-picture runs; the investigation continues in a Fable session (docs/exec-plans/active/2026-10-04-black-picture-root-cause.md on its own branch)
 design: Dean's rulings E1-E3, 2026-10-04 (kickoff at main ce799825), after his v1.362.2 device pass and the first exported log.
-gate: pending
+gate: APPROVED r2 @9d7b27f9 (adversary, qa; security-brief applied as a section by both, no finding)
 ---
 
 # v1.362.3: no loupe on any hold; the black-picture log sees short pause/play rounds and the hold's layer reset
@@ -90,6 +90,13 @@ On a desktop a click on the picture toggles inside the click with no glyph, so 1
   waiting -> playing no longer moves it; an expand-started run has one); `player:dock` / `player:expand` lines; an art-tap drive for
   the switch; the stale test header, probe note and LESSONS casing. Logged in ROADMAP Planned > Bugs: the podcasts art scope, the
   cached-count suspicion, the unbound backups.
+
+- Dual-Node full `npm test` on 9d7b27f9 (the approved sha): Node 22.23.1 `# tests 10976 / # pass 10964 / # fail 0 / # skipped 12`;
+  Node 24.20.0 `ℹ tests 10976 / ℹ pass 10964 / ℹ fail 0 / ℹ skipped 12`. Fix mutants (7) on 9d7b27f9: all KILLED.
+- Gate r2 APPROVED @9d7b27f9 (qa, adversary); their r2 suggestions are in ROADMAP Planned > Bugs (v1.362.3 gate suggestions).
+- Dean, 2026-10-04, after the gate: "disabling the glyph (my decision) feels terrible. A toggle workaround for a recently
+  introduced non root caused bug is not tolerable." The E3 switch is a TEST for Run B only; the release that fixes the cause
+  removes it (recorded in the Fable brief's stop rules and the memory index).
 
 ## 5. Device checks (Dean, on the released build; in DEVICE-CHECKS.md in the release commit)
 
@@ -182,3 +189,59 @@ hold f=, art cancel, video cancel), 8 survived (R, U, B, C, D, E, I, Q above). T
 DEVICE-CHECKS 37 open = ROADMAP 1-37 in order. The bug entry's log facts match section 1 and 1b. LESSONS 8 is accurate. Security:
 no surface. Client only; no network, server or auth path; one device-local localStorage key compared to '1'; numeric log detail; no
 innerHTML; static Settings markup.
+
+Gate: APPROVED r2 @9d7b27f9 - qa
+
+Delta re-confirmation of the qa r1 findings against 9d7b27f9 (`git diff 5c7e6718..9d7b27f9`):
+1. Fixed as prescribed. A source lock in lifecycle-log-export.test.js checks both `init` (loadNoTapGlyphControl) and
+   `wireStaticControls` (wireNoTapGlyphControl). Mutants in a /tmp sandbox of 9d7b27f9, run on the 5 changed suites: wire call
+   deleted `# pass 109 # fail 1`, KILLED; init prefill deleted `# pass 108 # fail 2`, KILLED.
+2. (a) Fixed: the R2b comment at player.js:1151-1152 now says a pull there neither scrolls nor minimizes. (b) Fixed: the v1.362.0
+   Regressions line drops both stale steps and says why; the Safari line names the changed premise; the v1.362.3 Regressions line
+   adds the scrolled-down pull. (c) Fixed: the test header describes E1.
+3. Fixed: probe.js marks W1 as v1.362.2-only, with the expected readings on this tree.
+4. Fixed differently, and better: the run start moved into startFrozenSampler (`frozenRunStartState = r`), so a mid-run
+   waiting -> playing no longer moves it, and an expand or return run has a baseline. Bound by a new drive. Mutants: the line
+   removed `# pass 108 # fail 2`, KILLED; the old per-playing set restored `# pass 109 # fail 1`, KILLED. The unbound backups
+   (ld guard, ld reset, the stop clear) are disclosed in ROADMAP Bugs (c). Accepted as belts.
+5. Logged in ROADMAP Bugs (b), with `fser` / `+f` named as the reader's check. Accepted.
+6. Fixed: LESSONS 1 casing; the build log records 5c7e6718, its dual-Node numbers and the r1 fixes; frontmatter `next:` is current.
+New in the fix: the `player:dock` / `player:expand` lines go through recordLifecycleEvent. That call is a no-op with the flag off;
+bgTimingTap ignores non-bgAudio/msAction types, so the bg timing record is untouched. A mutant dropping the expand line: `# pass 109
+# fail 1`, KILLED. Two non-blocking nits. The dock line is written before the `#player-dock` null return, so a shell with no dock
+would log a dock that does not happen. A pause with no new run start (a 'pause' before any 'playing') reuses the last run's
+baseline, as on 5c7e6718. Instruments on 9d7b27f9 (Node 22.23.1):
+5 changed suites `# tests 110 / # pass 110 / # fail 0`; 13 neighbour/census suites `# tests 168 / # pass 168 / # fail 0`; lint:ui
+`TOTAL 3179` / `ui-lint: OK - the live debt equals docs/ui-exceptions.json`; `overlay-containment: clean (0 violations)`; eslint
+exit 0; `check-markers: 12 issue(s) found`, none in this plan (the same 12 as base). DEVICE-CHECKS 37 open; no new em dashes.
+Security: unchanged, no surface (two flag-gated log lines with no detail).
+
+Gate: APPROVED r2 @9d7b27f9 - adversary
+
+r1 findings against 9d7b27f9:
+1. Fixed as prescribed. The R2b comment (player.js:1151-1152), the v1.362.0 Regressions and Safari lines, and the v1.362.3
+   Regressions line now say that, scrolled down, a pull on the picture does nothing. A grep for the old phrases ("pull scrolls the page
+   as today", "page scrolls to the top first", "tap pair or a chain") over public, test and DEVICE-CHECKS finds nothing.
+2. Fixed. Mutant R (the wireStaticControls line dropped) is KILLED by the new source lock, `# tests 437 / # pass 436 / # fail 1`.
+   R2 (the init prefill dropped) is KILLED too, 435/437.
+3. Fixed. Mutant U (the switch spares the art) is KILLED by the art-tap drive, 436/437.
+4. Fixed differently, and better: the run start is recorded in startFrozenSampler. Q2 (every playing moves the baseline) and Q3 (the
+   start is not recorded) are KILLED. Real browser (i1.js on 9d7b27f9): there is no longer a playing line at the mid-run seek, each
+   1.4 s round's pause reads +f=13/14 +t=1.4, and there is no fcount-reset and no frozen line. B, C, D, E and I are logged in ROADMAP
+   (c).
+5. Fixed: the test header, the probe note and the LESSONS casing.
+6. Logged in ROADMAP Bugs (a). 7: player:dock and player:expand are added. X and Y (each line dropped) are KILLED. They write nothing
+   with the flag off: recordLifecycleEvent returns before writing, and bgTimingTap ignores types that are not bgAudio:/msAction:.
+
+New, from the fix (non-blocking):
+8. SUGGESTION - player:expand logs on every expand() call, not on a move from the mini player. Real browser, one dock-tap expand:
+   `11.769 player:expand` and `11.787 player:expand` (the second is a no-op adopt into the same slot). A new item opened on a FULL
+   watch page gives `15.272 player:expand` (the view's eager reparent). Mutant Z (log only when DOCKED) survives, 437/437. A reader can
+   match a layer restart to an expand that never left the full player. Cheap fix: log in mountInSlot with `moved=` and the state it
+   came from. Also, dock() writes player:dock before its `!dockEl` return.
+9. SUGGESTION - the run start is now recorded only when the sampler is eligible. Pauses of an audio item lose the +t they carried at
+   5c7e6718. There are no frames there anyway.
+
+Targeted on 9d7b27f9 (Node 22.23.1), the five changed suites: `# tests 110 / # pass 110 / # fail 0`. eslint on the changed js: exit 0.
+Mutants: 8 run in a /tmp archive of 9d7b27f9, 7 KILLED, 1 SURVIVED (Z); the sandbox diff is clean afterwards. Security: no change
+in surface. The two new log lines carry no detail and are flag-gated.
