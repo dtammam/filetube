@@ -285,7 +285,7 @@ check.
   points, span **44 x 44**, 0 outside the dock. The dock's tap-to-expand at the picture's centre still hits `media-player`.
   Desktop dock (1280 x 800): dock 280 x 184, X 24 x 24, play/pause 22 x 22, bar 26: unchanged; no chevron. Chevron inline: 44 x 44
   at (4, 76) (video top 72), 484 of 484 points, centre hit is the chevron, computed filter `none`, opacity `1`. A real CDP tap on
-  it: the settle runs (host computed transform `matrix(1.95, ..., -146.8, -249.9)` at 50 ms, `matrix(1.01, ...)` at 250 ms,
+  it: the settle runs (host computed transform `matrix(1.95038, ..., -146.985, -250.272)` at 50 ms (the committed probe-targets-result.json; a re-run reads within a pixel), `matrix(1.01, ...)` at 250 ms,
   `none` at 300 ms; the dock's overflow `visible` during, `hidden` after), lands on `/`, docked, playing, chevron hidden.
 | before / after | X hit span | X grid hits | play/pause hit span | play/pause grid hits | dock h |
 |---|---|---|---|---|---|
@@ -326,11 +326,15 @@ check.
 1. iPhone, custom controls on, inline video playing: pull down slowly and let go early (springs back, still playing); pull past a
    third (docks bottom-right, still playing, the page is where Home would take it). **Watch the picture during and after the
    drag: if it goes black or freezes while sound runs on, open the same page with `?minimizeAnim=0` and repeat. Black with the
-   animation and fine without = the transform is the trigger (R7 is the shipped fallback; tell the Architect).**
+   animation and fine without = the transform is the trigger (R7 is the shipped fallback; tell the Architect).** The switch is a URL
+   parameter, so do this A/B in a Safari tab (the home-screen app has no address bar).
 2. Tap the chevron: same end state. Then tap the mini player: back to the watch page, same position, still playing.
 3. The mini player X and play/pause: hit them with a thumb, ten times each, without mis-taps into "expand".
 4. Regressions: tap pauses, double-tap skips, hold 2x, hold-drag-down locks 2x, swipe right goes back, scroll the page from below
-   the picture, scroll down then pull on the picture (scrolls to top first, R2b), full screen untouched.
+   the picture, scroll down then pull on the picture (scrolls to top first, R2b), full screen untouched. **And at the top of the
+   page, put a finger on the picture, wiggle it down a hair, then drag UP: the page must still scroll** (gate r1: the pull's guard
+   prevents a downward first move from 1 px; Chromium swallows such small moves as touch slop, so only the iPhone can show
+   whether iOS then refuses the rest of that touch).
 5. Home-screen app AND Safari tab (the pull at the top of a Safari tab fights the browser's own overscroll; report which wins).
 
 ## 8. Gate brief (attack surfaces)
@@ -384,6 +388,26 @@ Gate: CHANGES r1 @9a88b892 — adversary
 - SUGGESTION: deviation (1) is unbound: `holdActive && holdGestureLive` -> `holdActive` SURVIVED (Chromium on the tree: lock 2x, lift, pull -> docked, rate 1). Masked, not findings: claim's `lastTapTime = 0` and `tapGestureMoved = true` (the claimed touchend returns first; MOVE_TOL 16).
 - SUGGESTION: R7 `?minimizeAnim=0` is a URL param read at boot into sessionStorage, so it cannot be reached in the home-screen app (no address bar; `?debugLifecycle` has a Settings checkbox for that reason, setup.js ~3013). Device check 1 should say to A/B in a Safari tab, or add the toggle. Same iOS guard-arm suspicion as QA's third suggestion (not measured: Chromium eats sub-slop moves).
 - Verified clean: 129 targeted tests pass 128 / skip 1 (the ratchet's merge-base test, skipped outside git; 3 / 3 in the worktree); lint:ui OK; containment 0; probe-targets re-run reproduces 478 / 478, 44 x 44, desktop 24 / 22 / 26, chevron 484 points, filter none; no filter / mask / opacity / blend reaches `.ui-btn.player-minimize` (rule scan of style.css + ui.css).
+
+Round 1 fixes (builder, 2026-10-04):
+- QA W1: `#player-dock .cc-overlay { bottom: var(--size-touch) }` in its own phone block AFTER its 26 px base (the M5 block sits
+  before that base, so it would have lost on file order); test binds value and order.
+- QA W2: `resolveMinimizeLanding(depth, browseDepth, historyLength)` goes Home when the jump would reach past the session history
+  the browser kept (`steps >= history.length`), so `history.go` never silently no-ops and the guard is never left set.
+- QA W3 + adversary A1: the REAL `leaveWatchForBrowse` is now executed (common.js booted in jsdom, the pocket-lighting-open-ask
+  harness): `go(-2)` once (never `back()`), a second call coalesced until the popstate, Home from a deep link and past the cap,
+  and the guard released after the cap path.
+- Adversary A2: main.js's search chip `history.replaceState(null, ...)` now carries the entry's state forward with its new url
+  (the remote.js pattern); a census test fails any `history.replaceState(null` in public/js.
+- QA W4 + adversary A3: tests for the width conjunct alone (a coarse pointer past 768 px), the audio expanded view's refresh,
+  the claim cancelling the armed hold (2x never under a pull), a finished gesture leaving nothing live (a drag from the control
+  bar), second-finger aborts on touchstart and touchmove, the resize / orientationchange clears, a new finger ending the spring-back,
+  the settle clearing host and dock, the pp ring's `content`, and deviation (1) (a lock from an earlier gesture does not block a pull).
+- QA suggestions: the stale "26px docked" comments now say 44 px on a phone (8 places); the settle numbers in section 6 match the
+  committed JSON; the chevron refreshes on picture-in-picture enter / leave. Device checks 1 (A/B in a Safari tab) and 4 (an upward
+  drag after a downward wiggle) updated. Logged to ROADMAP Planned > Bugs, not built: the curl-right swipe-back after a sprung-back
+  pull (changing it would alter the swipe-right gesture outcome item 4 promises unchanged, stop rule c) and a Settings toggle for
+  `?minimizeAnim` in the home-screen app.
 
 ## 9. Out of scope (logged, not built)
 

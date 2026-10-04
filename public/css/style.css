@@ -3979,7 +3979,7 @@ select {
                      tracks, thin seek line, YouTube's round red scrubber.
    HARD RULES (locked by test/unit/era-player-skins.test.js):
    - visual-only: never height/padding/gap/order on .player-controls -- the
-     bar's geometry (40px desktop / two-row 80px mobile / 26px docked) is
+     bar's geometry (40px desktop / two-row 80px mobile / 26px docked, 44px docked on a phone since v1.362) is
      identical in every era;
    - every color is an era TOKEN or an rgba() overlay over one, never a
      hardcoded palette hex -- that is what makes each skin correct in BOTH
@@ -4153,7 +4153,7 @@ select {
 #player-dock .pip-btn,
 #player-dock .speed-btn,
 #player-dock .cc-btn,
-#player-dock .settings-btn { /* v1.112: the cog too -- no room in the 26px mini-dock */
+#player-dock .settings-btn { /* v1.112: the cog too -- no room in the mini-dock's play/pause-only bar */
   display: none;
 }
 #player-dock .pc-btn {
@@ -4212,7 +4212,7 @@ select {
      buttons. `order: -1` lifts the three scrub elements above the
      DOM-first play button; among themselves they keep DOM order
      (time-cur, seek, time-dur). Scoped to the FULL in-slot player -- the
-     DOCKED mini-player keeps its single trimmed row (its own 26px rules).
+     DOCKED mini-player keeps its single trimmed row (its own rules: 26px, 44px on a phone since v1.362).
      The bar-strip reservations below grow to match (80px). */
   #player-slot .player-controls {
     flex-wrap: wrap;
@@ -4373,12 +4373,12 @@ select {
 @media (max-width: 768px) {
   /* v1.34.1: the FULL mobile bar is now two rows (80px, see the two-row
      rules above) -- the reserved strip below the picture/art matches it.
-     Docked (26px) and native-controls (strip removed) keep their own rules. */
+     Docked (26px; 44px on a phone, v1.362) and native-controls (strip removed) keep their own rules. */
   #player-slot #player-wrapper:not(.audio-expanded) {
     padding-bottom: 80px; /* token-exempt: player-bar reserve, two-row mobile bar (Dean F.5: reserves stay literal) */
   }
   #player-wrapper:not(.audio-expanded) {
-    padding-bottom: 44px; /* token-exempt: player-bar reserve, mobile single-row bar (Dean F.5: reserves stay literal) */  /* non-slot fallback (docked wrapper has its own 26px rule below) */
+    padding-bottom: 44px; /* token-exempt: player-bar reserve, mobile single-row bar (Dean F.5: reserves stay literal) */  /* non-slot fallback (docked wrapper has its own rules below: 26px, 44px on a phone) */
   }
   /* Native-controls mode removes the strip entirely -- must outrank the
      2-ID 80px reservation above (its own base rule is only 1 ID and would
@@ -4405,7 +4405,7 @@ select {
 }
 
 /* DOCKED mini-player (v1.23.6, Dean): same bar-below layout, just using the
-   trimmed mini-player bar height (26px, see `#player-dock .player-controls`)
+   trimmed mini-player bar height (26px, 44px on a phone since v1.362; see `#player-dock .player-controls`)
    instead of the full 40/44px. The universal `aspect-ratio:auto` +
    `#media-player { aspect-ratio: var(--media-aspect, 16/9) }` rules above
    already apply here -- only the reserved strip height differs, so the tiny
@@ -5352,7 +5352,7 @@ html:has(> body.ft-audio-expanded),
    it (player.js only ever calls renderActiveCueOverlay for audio -- see its
    own comment). Positioned as a centered pill directly ABOVE the control
    strip, mirroring `#audio-bg-art`'s own per-view bottom offsets just above
-   (in-slot 40/44px, docked 26px) -- the compound selectors below add the
+   (in-slot 40/44px, docked 26px / 44px on a phone) -- the compound selectors below add the
    SAME offsets for this overlay; the audio-expanded full-viewport view gets
    its own safe-area-aware offset further below, alongside
    `.audio-mode.audio-expanded .player-controls`. `z-index: 9` sits above
@@ -5545,6 +5545,13 @@ html:has(> body.ft-audio-expanded),
 
 #player-dock .cc-overlay {
   bottom: 26px;      /* matches the trimmed mini-player bar height */ /* token-exempt: positional geometry (Stop A Batch A) */
+}
+/* v1.362 gate r1 (QA W1): the phone mini-player bar is --size-touch tall (the M5 block above), so the
+   captions sit on top of it rather than 18px down over play/pause. After its base (file order wins). */
+@media (max-width: 768px) {
+  #player-dock .cc-overlay {
+    bottom: var(--size-touch);
+  }
 }
 /* v1.163.3 (Dean): in the 160/280px dock a full-size cue (--fs-md, unclamped)
    grew UP out of the thumbnail and covered the whole video. Shrink to fit and
@@ -12248,7 +12255,7 @@ html[data-era-flourish="on"] .ft-unfabricated {
      seek sitting thin (16px) inside it, so 30px FILLS the row without GROWING it -
      the engineered two-row 80px budget stays intact (30 + 2 row-gap + 44 buttons
      = 76 <= 78px content box; the v1.34.1 clip class that budget guards against).
-     NOT a global `#seek-bar { height }`: the 26px docked mini-bar reuses the same
+     NOT a global `#seek-bar { height }`: the docked mini-bar (26px; 44px on a phone) reuses the same
      element, and a tall band there would overflow it AND steal its tap-to-expand
      gesture (QA v1.95 CRITICAL - the reason the earlier global 44px rule was
      wrong). The gesture is UNCHANGED: touch-action:none + the pointer-capture

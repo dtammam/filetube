@@ -8364,6 +8364,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.362: a rotate or resize mid-pull springs back at once (the geometry it followed is gone).
     window.addEventListener('resize', function () { if (minimizeClaimed) clearMinimizeDrag(); refreshMinimizeButton(); });
     window.addEventListener('orientationchange', function () { if (minimizeClaimed) clearMinimizeDrag(); refreshMinimizeButton(); });
+    // gate r1 (QA suggestion): picture-in-picture is a native presentation (inNativeFullscreen), so the
+    // chevron follows it in and out.
+    ['enterpictureinpicture', 'leavepictureinpicture', 'webkitpresentationmodechanged'].forEach(function (t) {
+      mediaPlayer.addEventListener(t, refreshMinimizeButton);
+    });
     if (speedBadge) {
       speedBadge.addEventListener('click', function () { if (holdLocked) releaseHold(); });
       speedBadge.addEventListener('keydown', function (e) {

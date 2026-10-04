@@ -4,6 +4,12 @@
 
 ### Bugs
 
+- [ ] **v1.362 gate r1 suggestions (non-blocking)** - (a) a claimed minimize pull that curls hard right springs back and then
+  also fires swipe-back on the same lift (QA; the swipe-back finish reads only its own deltas, and making it respect a prevented
+  touchend would change the swipe-right gesture outcome item 4 promised unchanged); (b) the `?minimizeAnim=0` A/B switch is a URL
+  parameter, so it cannot be reached in the home-screen app (adversary; `?debugLifecycle` has a Settings checkbox for that
+  reason): give it one if the device check needs the A/B in the app rather than a Safari tab.
+
 - [ ] **v1.361 gate r3 suggestions (non-blocking)** - (a) the `EXEMPT_CLASSES` comment in `test/unit/player-overlay-no-filter.test.js` says the chapters menu's `.icon-share` mask is "not an effect painted over the playing picture", but `.chapters-menu` opens above the control bar, over the video (style.css ~4576): reword it as an on-request exception, or draw that icon from the SVG sprite like the speed badge and drop the exemption; (b) narrow the exemption to the mask properties (a bare `.icon-share { filter }` passes today); (c) the net misses player state classes added with `classList` (`audio-mode`, `ft-css-fullscreen`, `controls-autohidden`): a rule on one ALONE would pass; (d) the disc check binds only the exact `.art-play-glyph` selector; (e) the pause-bar centring is unguarded arithmetic.
 
 - [ ] **Bug: after a pause / unpause the picture goes black while the sound plays on, in the mini player too (inline and in full screen)** _(Dean, 2026-09-26: "a recent regression" in full screen; 2026-10-03: "after multiple pauses on a given video the screen goes black, like an overlay that just doesn't go away", audio keeps playing, the mini player shows black too)_ - **v1.361.0 removes the suspected trigger: the tap glyph's `filter: drop-shadow`**, flashed over the playing video on every picture tap. Dean's device A/B on iOS 27 (2026-10-03): 20 pause/play cycles with only the BAR's button never went black; picture taps did, with Background audio for video OFF and Ambient OFF too. v1.360.0's fix (the background-audio prime + a seek self-heal) FAILED on the device and is removed in v1.361. Recovery facts: a far seek does not bring the picture back, switching to another video and back does, an app restart does. Close when the v1.361 device check passes; if it still goes black with picture taps, the next step is no glyph over the video at all (Dean ruled out a recovery mechanism for a glyph problem).

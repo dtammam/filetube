@@ -561,3 +561,205 @@ test('W3 (Dean 2026-10-04): while the finger pulls, the stage rises over the pag
   fire(h.w, h.v, 'touchend', g.x, g.y, g.t + 10);
   assert.ok(!h.host.classList.contains('is-minimize-drag'), 'off once docked');
 });
+
+// ---- gate r1 fixes -------------------------------------------------------------
+
+test('r1 (QA W2): resolveMinimizeLanding goes Home when the jump reaches past the session history the browser kept', () => {
+  const r = common.resolveMinimizeLanding;
+  assert.deepStrictEqual(r(55, 0, 50), { action: 'home' }, '55 steps, 50 entries kept (Chromium cap): go() would no-op');
+  assert.deepStrictEqual(r(50, 0, 50), { action: 'home' }, 'steps = length: the oldest kept entry is the current one minus 49');
+  assert.deepStrictEqual(r(49, 0, 50), { action: 'back', steps: 49 });
+  assert.deepStrictEqual(r(3, 1, 6), { action: 'back', steps: 2 });
+  assert.deepStrictEqual(r(3, 1), { action: 'back', steps: 2 }, 'no length known: unchanged');
+});
+
+// The REAL router (common.js booted in jsdom, the pocket-lighting-open-ask harness): leaveWatchForBrowse itself.
+function routerWorld(state, length) {
+  const rdom = new JSDOM('<!doctype html><html><body><div id="view-root" data-view="watch"></div></body></html>', { url: 'http://localhost/watch.html?v=b', runScripts: 'outside-only', pretendToBeVisual: true });
+  const W = rdom.window;
+  const fetches = [];
+  const moves = [];
+  W.fetch = (u) => { fetches.push(String(u)); return new Promise(() => {}); };
+  W.eval(COMMON_SRC);
+  W.document.dispatchEvent(new W.Event('DOMContentLoaded'));
+  W.history.replaceState(Object.assign({ view: 'watch', url: '/watch.html?v=b', scrollY: 0, viewState: null }, state), '');
+  W.history.go = (n) => { moves.push('go ' + n); };
+  W.history.back = () => { moves.push('back'); };
+  Object.defineProperty(W.history, 'length', { value: length, configurable: true });
+  const pop = () => W.dispatchEvent(new W.PopStateEvent('popstate', { state: W.history.state }));
+  return { W, fetches, moves, pop, close: () => W.close() };
+}
+// navigate('/') fetches the home view a microtask later (the fetch never lands here).
+const homeFetches = (r) => r.fetches.filter((u) => /^http:\/\/localhost\/(\?|$)/.test(u)).length;
+
+test('r1 (QA W3, adversary A1): the real leaveWatchForBrowse goes back past the watch entries ONCE, coalesces a second call until the popstate, and goes Home from a deep link or past the history cap', async () => {
+  const worlds = [];
+  try {
+    const a = routerWorld({ depth: 3, browseDepth: 1 }, 6); worlds.push(a);
+    assert.strictEqual(typeof a.W.FileTube.leaveWatchForBrowse, 'function', 'exposed on window.FileTube');
+    a.W.FileTube.leaveWatchForBrowse();
+    assert.deepStrictEqual(a.moves, ['go -2'], 'back two levels in one jump (never back() one level: M7 over M6)');
+    a.W.FileTube.leaveWatchForBrowse();
+    assert.deepStrictEqual(a.moves, ['go -2'], 'a second call before the popstate never pops again (two fast commits, or a minimize plus a swipe-back on one lift)');
+    await wait(20);
+    assert.strictEqual(homeFetches(a), 0, 'no Home push either');
+    a.pop();
+    a.W.history.replaceState(Object.assign({}, a.W.history.state, { depth: 3, browseDepth: 1, view: 'watch' }), '');
+    a.W.FileTube.leaveWatchForBrowse();
+    assert.deepStrictEqual(a.moves, ['go -2', 'go -2'], 'the popstate released the coalescing guard');
+
+    const b = routerWorld({ depth: 0, browseDepth: null }, 1); worlds.push(b);
+    b.W.FileTube.leaveWatchForBrowse();
+    await wait(20);
+    assert.deepStrictEqual(b.moves, [], 'a deep link never walks history (it could leave the app)');
+    assert.strictEqual(homeFetches(b), 1, 'it navigates to a fresh Home');
+
+    const c = routerWorld({ depth: 55, browseDepth: 0 }, 50); worlds.push(c);
+    c.W.FileTube.leaveWatchForBrowse();
+    await wait(20);
+    assert.deepStrictEqual(c.moves, [], 'past the cap: no silent no-op go()');
+    assert.strictEqual(homeFetches(c), 1, 'Home instead');
+    c.W.history.replaceState(Object.assign({}, c.W.history.state, { depth: 3, browseDepth: 1, view: 'watch' }), '');
+    c.W.FileTube.leaveWatchForBrowse();
+    assert.deepStrictEqual(c.moves, ['go -2'], 'and the guard was never left set (Home and minimize still work after)');
+  } finally { for (const w of worlds) w.close(); }
+});
+
+test('r1 (adversary A2): no history writer in public/js replaces the router state with null (a search chip erased depth and browseDepth)', () => {
+  for (const f of fs.readdirSync(path.join(PUB, 'js')).filter((n) => n.endsWith('.js'))) {
+    const src = fs.readFileSync(path.join(PUB, 'js', f), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    assert.ok(!/history\.replaceState\(\s*null\b/.test(src), f + ' replaces history state with null');
+  }
+  const main = fs.readFileSync(path.join(PUB, 'js', 'main.js'), 'utf8');
+  assert.match(main, /const prev = history\.state;\s*history\.replaceState\(prev && typeof prev === 'object' \? Object\.assign\(\{\}, prev, \{ url: u\.pathname \+ u\.search \}\) : prev, '', u\);/, 'the chip carries the entry forward with its new url');
+});
+
+function evN(w, type, pts) {
+  const e = new w.Event(type, { bubbles: true, cancelable: true });
+  Object.defineProperty(e, 'touches', { value: pts.map(([x, y]) => ({ clientX: x, clientY: y })) });
+  Object.defineProperty(e, 'changedTouches', { value: [{ clientX: pts[0][0], clientY: pts[0][1] }] });
+  return e;
+}
+
+test('r1 (adversary A3): a claim cancels the armed hold, so 2x never starts under a pull', async () => {
+  const h = await boot(VIDEO);
+  fire(h.w, h.v, 'touchstart', 200, 100, 1000);
+  fire(h.w, h.v, 'touchmove', 200, 114, 1040); // past the 12 px claim, under MOVE_TOL (16): only the claim cancels the hold
+  assert.notStrictEqual(h.host.style.transform, '', 'precondition: claimed');
+  await wait(650);
+  assert.strictEqual(h.v.playbackRate, 1, 'no 2x under the pull');
+  fire(h.w, h.v, 'touchend', 200, 114, 1700);
+});
+
+test('r1 (adversary A3): a finished gesture leaves nothing live: a later drag that starts on the control bar is not a pull', async () => {
+  const h = await boot(VIDEO);
+  fire(h.w, h.v, 'touchstart', 200, 100, 1000);
+  fire(h.w, h.v, 'touchend', 200, 100, 1040);
+  const bar = h.doc.getElementById('player-controls') || h.host.querySelector('.player-controls');
+  assert.ok(bar && h.host.contains(bar), 'the bar is inside the host');
+  const m = [];
+  for (let d = 10; d <= 200; d += 10) { const e = ev(h.w, 'touchmove', 200, 100 + d, 1100 + d); bar.dispatchEvent(e); m.push(e); }
+  assert.ok(m.every((e) => !e.defaultPrevented), 'not claimed');
+  assert.strictEqual(h.host.style.transform, '');
+  await wait(420);
+});
+
+test('r1 (adversary A3): a second finger (on touchstart or touchmove) springs the pull back; a resize, a rotate and a new finger during the spring-back clear at once', async () => {
+  let h = await boot(VIDEO);
+  pull(h, 120);
+  h.v.dispatchEvent(evN(h.w, 'touchstart', [[200, 220], [100, 100]]));
+  await wait(420);
+  assert.strictEqual(h.host.style.transform, '', 'second finger at touchstart: sprung back');
+  fire(h.w, h.v, 'touchend', 200, 220, 5000);
+  assert.strictEqual(h.p.getState(), 'full');
+  dom.window.close(); dom = null;
+
+  h = await boot(VIDEO);
+  pull(h, 120);
+  h.v.dispatchEvent(evN(h.w, 'touchmove', [[200, 230], [100, 100]]));
+  await wait(420);
+  assert.strictEqual(h.host.style.transform, '', 'second finger on a move: sprung back');
+  fire(h.w, h.v, 'touchend', 200, 400, 5000);
+  assert.strictEqual(h.p.getState(), 'full', 'and the lift cannot commit it');
+  dom.window.close(); dom = null;
+
+  for (const t of ['resize', 'orientationchange']) {
+    h = await boot(VIDEO);
+    pull(h, 120);
+    h.w.dispatchEvent(new h.w.Event(t));
+    assert.strictEqual(h.host.style.transform, '', t + ' clears at once');
+    fire(h.w, h.v, 'touchend', 200, 400, 5000);
+    assert.strictEqual(h.p.getState(), 'full', t + ': no commit after');
+    dom.window.close(); dom = null;
+  }
+
+  h = await boot(VIDEO);
+  const g = pull(h, 60);
+  fire(h.w, h.v, 'touchend', g.x, g.y, g.t + 10);
+  assert.ok(h.host.classList.contains('is-minimize-snap'), 'precondition: springing back');
+  fire(h.w, h.v, 'touchstart', 200, 100, g.t + 30);
+  assert.ok(!h.host.classList.contains('is-minimize-snap'), 'a new finger ends the spring at once');
+  assert.strictEqual(h.host.style.transform, '');
+});
+
+test('r1 (adversary A3): the commit settle opens the dock clip only while it runs, then clears host and dock', async () => {
+  const h = await boot(VIDEO);
+  const g = pull(h, 300);
+  fire(h.w, h.v, 'touchend', g.x, g.y, g.t + 10);
+  assert.ok(h.dockEl.classList.contains('is-minimize-settle'), 'precondition: the settle runs (dock unclipped)');
+  assert.ok(h.host.classList.contains('is-minimize-settle'));
+  await wait(450);
+  assert.ok(!h.dockEl.classList.contains('is-minimize-settle'), 'the dock clips again');
+  assert.ok(!h.host.classList.contains('is-minimize-settle'));
+  assert.strictEqual(h.host.style.transformOrigin, '');
+});
+
+test('r1 (adversary suggestion, deviation 1): a 2x LOCK left by an earlier gesture does not block a later pull', async () => {
+  const h = await boot(VIDEO);
+  fire(h.w, h.v, 'touchstart', 200, 100, 1000);
+  await wait(560);
+  fire(h.w, h.v, 'touchmove', 200, 130, 1600);
+  fire(h.w, h.v, 'touchmove', 200, 160, 1640);
+  fire(h.w, h.v, 'touchend', 200, 160, 1680);
+  assert.strictEqual(h.v.playbackRate, 2, 'precondition: locked');
+  await wait(40);
+  const g = pull(h, 300);
+  fire(h.w, h.v, 'touchend', g.x, g.y, g.t + 10);
+  assert.strictEqual(h.p.getState(), 'docked', 'the later pull minimizes');
+});
+
+test('r1 (QA W4): a coarse-pointer device wider than 768 px gets no chevron and no pull (the width conjunct alone)', async () => {
+  const h = await boot(VIDEO);
+  const btn = h.host.querySelector('.player-minimize');
+  assert.strictEqual(btn.hidden, false, 'precondition');
+  h.w.matchMedia = (q) => ({ media: q, matches: /coarse|hover: none/.test(q), addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} });
+  h.w.dispatchEvent(new h.w.Event('resize'));
+  assert.strictEqual(btn.hidden, true, 'hidden past 768 px with touch still on');
+  const g = pull(h, 300);
+  assert.ok(g.moves.every((m) => !m.defaultPrevented), 'not claimed');
+  fire(h.w, h.v, 'touchend', g.x, g.y, g.t + 10);
+  assert.strictEqual(h.p.getState(), 'full');
+});
+
+test('r1 (QA W4): the audio expanded view hides the chevron and collapsing brings it back (an audio file on the watch page)', async () => {
+  const h = await boot({ id: 'a1', title: 'A', type: 'audio', ext: '.mp3', hasThumbnail: true });
+  assert.ok(h.host.classList.contains('audio-mode'), 'precondition: audio mode (cover art)');
+  const btn = h.host.querySelector('.player-minimize');
+  assert.strictEqual(btn.hidden, false, 'precondition: shown inline for an audio file');
+  h.doc.getElementById('fs-btn').click();
+  assert.ok(h.host.classList.contains('audio-expanded'), 'precondition: expanded through the real fs button');
+  assert.strictEqual(btn.hidden, true, 'hidden while expanded');
+  h.doc.getElementById('fs-btn').click();
+  assert.ok(!h.host.classList.contains('audio-expanded'));
+  assert.strictEqual(btn.hidden, false, 'back after collapsing');
+});
+
+test('r1 (QA W1, adversary A3): the phone captions sit on the 44 px bar (after their base), and the play/pause ring is a real box', () => {
+  const base = one('#player-dock .cc-overlay', null);
+  assert.strictEqual(decl(base, 'bottom'), '26px');
+  const phone = one('#player-dock .cc-overlay', PHONE);
+  assert.strictEqual(decl(phone, 'bottom'), 'var(--size-touch)');
+  assert.ok(phone.at > base.at, 'after its base');
+  const ring = one('#player-dock #pp-btn::after', PHONE);
+  assert.strictEqual(decl(ring, 'content'), "''", 'without content the ring does not exist (probe: 214 points, 32 x 32)');
+});

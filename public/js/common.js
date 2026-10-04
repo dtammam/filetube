@@ -10301,11 +10301,16 @@ function browseDepthBehind(state) {
 // nearest browse entry behind (the feed / channel / search, past any watch
 // entries, so a video opened from another video never reloads the earlier one),
 // or a fresh Home when there is none (a deep link). Steps never exceed depth, so
-// it can never walk out of the app. Pure - exported for node:test.
-function resolveMinimizeLanding(depth, browseDepth) {
+// it can never walk out of the app. historyLength (gate r1, QA W2): the browser
+// caps session history (Chromium keeps 50 entries), and a history.go() past the
+// oldest kept entry is a silent no-op that fires no popstate - so a jump the
+// session can no longer reach goes Home instead. Pure - exported for node:test.
+function resolveMinimizeLanding(depth, browseDepth, historyLength) {
   const d = (Number.isInteger(depth) && depth >= 0) ? depth : null;
   if (d !== null && Number.isInteger(browseDepth) && browseDepth >= 0 && browseDepth < d) {
-    return { action: 'back', steps: d - browseDepth };
+    const steps = d - browseDepth;
+    if (typeof historyLength === 'number' && isFinite(historyLength) && steps >= historyLength) return { action: 'home' };
+    return { action: 'back', steps };
   }
   return { action: 'home' };
 }
@@ -11599,7 +11604,7 @@ if (typeof window !== 'undefined') {
   function leaveWatchForBrowse() {
     if (homeBackPending) return;
     const state = window.history.state;
-    const land = resolveMinimizeLanding(state && state.depth, browseDepthBehind(state));
+    const land = resolveMinimizeLanding(state && state.depth, browseDepthBehind(state), window.history.length);
     if (land.action === 'back') {
       homeBackPending = true;
       window.history.go(-land.steps);
