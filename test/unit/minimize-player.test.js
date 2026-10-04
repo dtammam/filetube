@@ -886,6 +886,10 @@ test('D1/D3: no peek where minimize is not offered, and the timer never re-shows
   assert.strictEqual(chev(h).hidden, true, 'expanded again inside the old window, still playing: the dock ended the window');
   await wait(PEEK * 1.6);
   assert.strictEqual(chev(h).hidden, true, 'and no stale timer re-shows it');
+  h.p.dock();
+  h.media(false); // playback (re)starts while docked
+  h.p.expand(h.slot);
+  assert.strictEqual(chev(h).hidden, true, 'a play while docked opens no window for a later expand (W1-M8)');
   h.media(false);
   assert.strictEqual(chev(h).hidden, false, 'precondition: a new window');
   assert.strictEqual(h.p.load(VIDEO2.id, VIDEO2, { slot: h.slot }), true, 'a new item loads');
@@ -908,4 +912,74 @@ test('D2: refreshMinimizeButton stays the ONE writer of the chevron\'s hidden, a
   assert.ok(!/minimizeBtn\.(style|classList)/.test(src), 'no style or class write on the chevron (no fade, no paint)');
   const fn = src.slice(src.indexOf('function refreshMinimizeButton'), src.indexOf('function playMinimizeSettle'));
   assert.match(fn, /minimizeBtn\.hidden = !minimizeChevronShownDecision\(/, 'the writer asks the pure decision');
+  // D4 (W1-M11, a source lock: jsdom cannot reach the background-audio state): paused is read from the
+  // element that is playing, never the video alone (after a handoff the video is paused while the sidecar plays).
+  assert.match(fn, /var el = activeMediaElement\(\);[\s\S]*paused: !el \|\| !!el\.paused,/, 'paused from activeMediaElement()');
+});
+// ---- v1.362.1 D5: the landing's reachable depth (the Navigation API) --------------------------------
+
+test('D5: resolveMinimizeLanding goes Home iff the jump reaches past the entries history.go can reach (navigation.currentEntry.index)', () => {
+  const r = common.resolveMinimizeLanding;
+  assert.deepStrictEqual(r(46, 0, 50, 34), { action: 'home' }, 'the adversary\'s case: depth 46 after 15 backs from 61, 34 reachable');
+  assert.deepStrictEqual(r(46, 0, 50, 46), { action: 'back', steps: 46 }, 'exactly reachable');
+  assert.deepStrictEqual(r(46, 0, 50, 45), { action: 'home' }, 'one short');
+  assert.deepStrictEqual(r(49, 0, 50, 49), { action: 'back', steps: 49 });
+  assert.deepStrictEqual(r(3, 1, 50, 2), { action: 'back', steps: 2 }, 'a reachable index decides even when the length would too');
+  assert.deepStrictEqual(r(3, 1, 3, 5), { action: 'back', steps: 2 }, 'the index decides over the length when it is known');
+  assert.deepStrictEqual(r(55, 0, 50, undefined), { action: 'home' }, 'no Navigation API (Safari): the length rule stands');
+  assert.deepStrictEqual(r(49, 0, 50, undefined), { action: 'back', steps: 49 });
+  assert.deepStrictEqual(r(49, 0, 50, 2.5), { action: 'back', steps: 49 }, 'a non-integer index is ignored');
+  assert.deepStrictEqual(r(49, 0, 50, -1), { action: 'home' }, 'index -1 (no entry): nothing is reachable');
+  assert.deepStrictEqual(r(0, null, 50, 10), { action: 'home' }, 'a deep link');
+});
+
+test('D5: the real leaveWatchForBrowse passes navigation.currentEntry.index (Home when the jump is out of reach), and falls back to the length without it', async () => {
+  const worlds = [];
+  try {
+    const a = routerWorld({ depth: 46, browseDepth: 0 }, 50); worlds.push(a);
+    Object.defineProperty(a.W, 'navigation', { value: { currentEntry: { index: 34 } }, configurable: true });
+    a.W.FileTube.leaveWatchForBrowse();
+    await wait(20);
+    assert.deepStrictEqual(a.moves, [], 'no silent no-op go(-46)');
+    assert.strictEqual(homeFetches(a), 1, 'Home instead');
+    a.W.history.replaceState(Object.assign({}, a.W.history.state, { depth: 3, browseDepth: 1, view: 'watch' }), '');
+    a.W.FileTube.leaveWatchForBrowse();
+    assert.deepStrictEqual(a.moves, ['go -2'], 'the guard was never left set (the Home button still works after)');
+
+    const b = routerWorld({ depth: 46, browseDepth: 0 }, 50); worlds.push(b);
+    Object.defineProperty(b.W, 'navigation', { value: { currentEntry: { index: 46 } }, configurable: true });
+    b.W.FileTube.leaveWatchForBrowse();
+    assert.deepStrictEqual(b.moves, ['go -46'], 'reachable: back to the browse entry');
+
+    const c = routerWorld({ depth: 49, browseDepth: 0 }, 50); worlds.push(c);
+    Object.defineProperty(c.W, 'navigation', { value: undefined, configurable: true });
+    c.W.FileTube.leaveWatchForBrowse();
+    assert.deepStrictEqual(c.moves, ['go -49'], 'no Navigation API: the v1.362.0 length rule');
+
+    const d = routerWorld({ depth: 49, browseDepth: 0 }, 50); worlds.push(d);
+    Object.defineProperty(d.W, 'navigation', { value: { currentEntry: null }, configurable: true });
+    d.W.FileTube.leaveWatchForBrowse();
+    assert.deepStrictEqual(d.moves, ['go -49'], 'no current entry: the length rule');
+  } finally { for (const w of worlds) w.close(); }
+});
+
+// ---- v1.362.1 D6: the two untested wires (v1.362 gate r2 (b), (c)) ---------------------------------
+
+test('D6 (b): the real picture-in-picture listeners hide the chevron on enter and bring it back on leave', async () => {
+  const h = await boot(VIDEO);
+  h.media(true);
+  assert.strictEqual(chev(h).hidden, false, 'precondition: shown (paused, inline)');
+  let pip = h.v;
+  Object.defineProperty(h.doc, 'pictureInPictureElement', { get: () => pip, configurable: true });
+  h.v.dispatchEvent(new h.w.Event('enterpictureinpicture'));
+  assert.strictEqual(chev(h).hidden, true, 'in picture-in-picture: hidden');
+  pip = null;
+  h.v.dispatchEvent(new h.w.Event('leavepictureinpicture'));
+  assert.strictEqual(chev(h).hidden, false, 'back inline: shown');
+});
+
+test('D6 (c): the settle opens the dock clip by value (overflow visible, no shadow)', () => {
+  const r = one('#player-dock.is-minimize-settle', null);
+  assert.strictEqual(decl(r, 'overflow'), 'visible');
+  assert.strictEqual(decl(r, 'box-shadow'), 'none');
 });

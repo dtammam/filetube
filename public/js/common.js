@@ -10304,11 +10304,19 @@ function browseDepthBehind(state) {
 // it can never walk out of the app. historyLength (gate r1, QA W2): the browser
 // caps session history (Chromium keeps 50 entries), and a history.go() past the
 // oldest kept entry is a silent no-op that fires no popstate - so a jump the
-// session can no longer reach goes Home instead. Pure - exported for node:test.
-function resolveMinimizeLanding(depth, browseDepth, historyLength) {
+// session can no longer reach goes Home instead. reachableBack (v1.362.1, D5):
+// the Navigation API's navigation.currentEntry.index, the count of same-origin
+// entries the browser still keeps BEHIND this one (the HTML spec builds that
+// list from the navigable's session history, contiguous same origin), so a jump
+// of more steps cannot land; it decides when it is an integer, because
+// history.length also counts FORWARD entries (a capped session after some Back
+// presses). Without it (Safari before the Navigation API) the length rule stands.
+// Pure - exported for node:test.
+function resolveMinimizeLanding(depth, browseDepth, historyLength, reachableBack) {
   const d = (Number.isInteger(depth) && depth >= 0) ? depth : null;
   if (d !== null && Number.isInteger(browseDepth) && browseDepth >= 0 && browseDepth < d) {
     const steps = d - browseDepth;
+    if (Number.isInteger(reachableBack)) return steps > reachableBack ? { action: 'home' } : { action: 'back', steps };
     if (typeof historyLength === 'number' && isFinite(historyLength) && steps >= historyLength) return { action: 'home' };
     return { action: 'back', steps };
   }
@@ -11604,7 +11612,10 @@ if (typeof window !== 'undefined') {
   function leaveWatchForBrowse() {
     if (homeBackPending) return;
     const state = window.history.state;
-    const land = resolveMinimizeLanding(state && state.depth, browseDepthBehind(state), window.history.length);
+    // v1.362.1 (D5): how far back history.go can really reach, where the Navigation API exists.
+    const nav = window.navigation;
+    const reachableBack = (nav && nav.currentEntry && Number.isInteger(nav.currentEntry.index)) ? nav.currentEntry.index : undefined;
+    const land = resolveMinimizeLanding(state && state.depth, browseDepthBehind(state), window.history.length, reachableBack);
     if (land.action === 'back') {
       homeBackPending = true;
       window.history.go(-land.steps);
