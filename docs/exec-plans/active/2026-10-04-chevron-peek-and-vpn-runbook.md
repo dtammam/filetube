@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.362.1-chevron-runbook
 anchor: spec
 status: Building
-next: W0-W3 committed; full dual-Node npm test, then W4 gate (adversary + qa, section 8)
+next: W0-W3 + the suite fix committed, dual-Node green at 39ee4a7b; W4 gate (adversary + qa, section 8) running, verdicts in 8c
 design: Dean 2026-10-04, after his v1.362.0 smoke test ("It works great"): the minimize chevron "is always visible when I'm listening or watching something" and feels awkward; he took the Architect's recommendation (show it while paused, for a few seconds after playback starts and after any touch on the picture; hidden while playing, instantly). Bundled by Dean in one branch: the two v1.362 gate r2 leftovers the Architect recommended (the history-cap gap; the untested picture-in-picture refresh and settle clip) and a runbook for diagnosing his slow app over the VPN, built on the tooling that already exists.
 gate: adversary + qa (the player's chevron visibility on the shared player core, the SPA router's minimize landing; the runbook's every claim checked against the tree; security-brief applied as a section by both)
 ---
@@ -267,6 +267,23 @@ global); the real 3000 is asserted on the export.
   runbook says to use Safari tabs; a Stalls or warm-Home cell reads "-" unless its scenario ran (derived in `deriveMetrics`).
 - No stop rule (d) or (e): nothing new was needed; every name the runbook uses is in the list above.
 
+**Full suite after W3 (148c5e53), verbatim:** Node 22.23.1 `# tests 10889 / # pass 10877 / # fail 0 / # cancelled 0 / # skipped
+12`, exit 0; Node 24.20.0 `ℹ tests 10889 / ℹ pass 10876 / ℹ fail 1 / ℹ cancelled 0 / ℹ skipped 12`, exit 1. The one failure:
+`D1: paused shows it; play shows it for the window, then it hides at once; a pause brings it back` - "the window closed while
+playing: hidden / false !== true" (the chevron still shown after the window). **Root cause (a real defect, not a flake):** the
+peek timer's callback re-asked the decision `Date.now() < peekUntil`; a timer may fire a hair before the clock reaches its edge,
+and then the chevron stayed up with no timer left (on a phone: until the next touch, pause or resize). **Fix (39ee4a7b):** the
+timer ends the window (`minimizePeekUntil = 0`) before it refreshes; bound by a drive whose clock lags the timer (`D3: the
+window ends when its timer fires, even when the clock reads a hair early`). Mutant F1-M1 (the pre-fix callback) KILLED by that
+name on Node 24 (`ℹ tests 52 / ℹ pass 51 / ℹ fail 1`), sandbox identical after; minimize-player.test.js 10 runs in a row on Node
+24: 0 failed. (The mutant runner's name parser read only Node 22's `not ok` lines; it now reads Node 24's `✖` too. The W1/W2
+mutant runs were on Node 22, so their names stand.) probe-peek.js re-run on 39ee4a7b: identical rows (paused shown; +3500 ms
+hidden; a centre tap and a tap on the hidden chevron's spot both pause, state full, same page; the pull docks), 0 errors.
+
+**Full suite at 39ee4a7b, verbatim:** Node 22.23.1 `# tests 10890 / # pass 10878 / # fail 0 / # cancelled 0 / # skipped 12`,
+exit 0; Node 24.20.0 `ℹ tests 10890 / ℹ pass 10878 / ℹ fail 0 / ℹ cancelled 0 / ℹ skipped 12`, exit 0. `npm run lint:ui` OK
+(docs/ui-exceptions.json unchanged), `node scripts/overlay-containment-lint.js --enforce` clean (0).
+
 ## 7. Device checks (Dean, on the released build; add each to DEVICE-CHECKS.md in the release commit)
 
 1. Phone, custom controls on: pause a video, the chevron shows; play, it disappears after about 3 s with no fade; touch the picture
@@ -301,6 +318,10 @@ merge, local main will not fast-forward (the tag is on the local merge): confirm
 `git reset --keep origin/main`. GitHub auto-deletes the remote branch (confirm with `git ls-remote --heads origin <branch>`); delete
 the local branch with `-d`; `rm` the worktree's `node_modules` link and `git worktree remove` it. Send Dean the runbook (SendUserFile)
 with the final report.
+
+## 8c. Gate record
+
+(seats write their verdict lines here, bound to the sha they reviewed)
 
 ## 9. Out of scope (logged, not built)
 
