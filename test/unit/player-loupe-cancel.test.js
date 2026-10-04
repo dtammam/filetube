@@ -1,9 +1,9 @@
 'use strict';
 
-// [UNIT] v1.362.2 W1 (plan 2026-10-04-loupe-black-checks, D1) - the iOS text loupe. A press that follows a
-// tap on the playing picture brought up WebKit's magnifier; the fix is ONE separate non-passive touchstart
-// on each gesture surface that cancels only the touch the app already classifies as a tap pair or a chain
-// tap. The pure decision is bound conjunct by conjunct; then the REAL wireSkipHoldGestures is driven in a
+// [UNIT] v1.362.2 W1 (D1) / v1.362.3 (E1, plan 2026-10-04-loupe-any-hold-and-hold-log) - the iOS text loupe.
+// A hold on the playing picture brings up WebKit's magnifier, a plain hold too (the v1.362.2 tap-window cancel
+// failed on the device); the fix is ONE separate non-passive touchstart on each gesture surface that cancels
+// every one-finger touch while the player is FULL. The pure decision is bound conjunct by conjunct; then the REAL wireSkipHoldGestures is driven in a
 // jsdom watch shell (the minimize-player harness shape), so a decision that is right but never reached by
 // a touch cannot pass (LESSONS 2, inert feature).
 
@@ -302,4 +302,20 @@ test('E3: with "No glyph on picture taps" on, a picture tap still pauses but nev
   tap(h, h.v, 110000);
   await wait(420);
   assert.strictEqual(glyph.classList.contains('art-play-glyph-flash'), true, 'switch off: the glyph flashes again at once');
+});
+
+test('E3 gate r1: the switch also silences the ART tap (an audio file); off, the art flashes', async () => {
+  const h = await boot(AUDIO);
+  const glyph = h.doc.querySelector('.art-play-glyph');
+  assert.ok(glyph && h.art);
+  h.w.localStorage.setItem('ft-debug-no-tap-glyph', '1');
+  tap(h, h.art, 100000);
+  await wait(420);
+  assert.strictEqual(h.pauses(), 1, 'the art tap still paused');
+  assert.strictEqual(glyph.classList.contains('art-play-glyph-flash'), false);
+  h.w.localStorage.removeItem('ft-debug-no-tap-glyph');
+  Object.defineProperty(h.v, 'paused', { value: true, configurable: true });
+  tap(h, h.art, 110000);
+  await wait(420);
+  assert.strictEqual(glyph.classList.contains('art-play-glyph-flash'), true);
 });

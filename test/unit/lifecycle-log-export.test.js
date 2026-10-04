@@ -365,3 +365,9 @@ test('E3: the no-glyph switch sits in Troubleshooting, reflects its key (only th
   assert.match(P, /var NO_TAP_GLYPH_STORAGE_KEY = 'ft-debug-no-tap-glyph';/);
   assert.match(S, /const NO_TAP_GLYPH_STORAGE_KEY = 'ft-debug-no-tap-glyph';/);
 });
+
+test('E3 gate r1 (both seats): init prefills the no-glyph switch and wireStaticControls wires it (the real wiring, not a hand call)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'setup.js'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+  assert.match(/\nfunction init\(root\) \{([\s\S]*?)\n\}/.exec(src)[1], /\n\s*loadNoTapGlyphControl\(window\);/, 'init prefills it');
+  assert.match(/\nfunction wireStaticControls\(signal\) \{([\s\S]*?)\n\}/.exec(src)[1], /\n\s*wireNoTapGlyphControl\(window, signal\);/, 'wireStaticControls wires it');
+});

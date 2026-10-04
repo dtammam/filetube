@@ -1148,7 +1148,8 @@ function minimizeAllowedDecision(f) {
 // R2: 'claim' = this drag is a minimize; 'guard' = a downward-dominant move at the top that is not yet a
 // claim, prevented anyway because W0 measured that an unprevented first move hands the gesture to the
 // browser (every later move non-cancelable); 'none' = not ours. scrollY is the page's scroll at TOUCHSTART:
-// scrolled down, the pull scrolls the page as today and only the NEXT pull at the top minimizes (R2b).
+// scrolled down, the pull is not a minimize (R2b). Since v1.362.3 (E1) every touch that starts on the picture is
+// cancelled, so a pull there neither scrolls the page nor minimizes: scroll from below the picture first.
 function minimizeDragDecision(ctx) {
   var o = ctx || {};
   var dx = Number(o.dx), dy = Number(o.dy), sy = Number(o.scrollY);
@@ -4312,7 +4313,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function recordVideoState(evName) {
     if (!isDebugLifecycleEnabled() || !mediaPlayer) return;
     var s = readVideoState();
-    // v1.362.3 (I1.2): a pause line says how far the frame count and the clock moved since this run's 'playing'.
+    // v1.362.3 (I1.2): a pause line says how far the frame count and the clock moved since its run began.
     if (evName === 'pause' && frozenRunStartState && frozenRunStartState.ld === s.ld) s.delta = videoStateDelta(frozenRunStartState, s);
     recordLifecycleEvent('video:' + evName, { detail: formatVideoStateDetail(s) });
     // A new source starts its own count: its emptied / loadstart reading (0) is the new baseline, never a drop.
@@ -4320,7 +4321,7 @@ if (typeof module !== 'undefined' && module.exports) {
     else noteFrameCount(s);
     // v1.362.2 (D5) / v1.362.3 (I1.1): 'playing' starts a run of the frozen-picture series; a pause ends the
     // run but keeps the series (short pause/play rounds add up); what ends the item clears it.
-    if (evName === 'playing') { frozenRunStartState = s; startFrozenSampler(s); }
+    if (evName === 'playing') startFrozenSampler(s);
     else if (evName === 'pause') pauseFrozenSampler(s);
     else if (evName === 'emptied' || evName === 'loadstart') stopFrozenSampler();
     if (evName !== 'playing') return;
@@ -4386,6 +4387,9 @@ if (typeof module !== 'undefined' && module.exports) {
     frozenRun += 1;
     var r = s || readVideoState();
     if (!s) noteFrameCount(r);
+    // The pause line's +f / +t count from the RUN's first reading (gate r1: a mid-run waiting -> playing, which
+    // Chromium fires at every seek, no longer moves it; a run started by an expand or a return has one too).
+    frozenRunStartState = r;
     pushFrozenSample(r);
     frozenSampleTimer = setTimeout(frozenSampleTick, FROZEN_SAMPLE_EVERY_MS);
   }
@@ -9711,6 +9715,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function expand(slotEl) {
+    recordLifecycleEvent('player:expand', {}); // v1.362.3 gate r1: a layer restart near an expand is not blamed on a hold
     mountInSlot(slotEl);
   }
 
@@ -9793,6 +9798,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // handler places the host when fullscreen genuinely ends.
     if (stagedFullscreen) return;
     if (!host || !mediaPlayer || !currentId || state === STATE_CLOSED || state === STATE_DOCKED) return;
+    recordLifecycleEvent('player:dock', {}); // v1.362.3 gate r1 (see expand)
     var dockEl = document.getElementById('player-dock');
     if (!dockEl) return;
     ensureDockChrome(dockEl);

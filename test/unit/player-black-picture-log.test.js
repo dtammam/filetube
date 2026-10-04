@@ -548,3 +548,26 @@ test('I1.1 (mutants B3-M9/M11): sub-second rounds count only through their pause
   playing(h); await run(h, 1, (i, f) => f); h.v.pause();
   assert.ok(!types(h).includes('video:frozen'), 'only 2 s of playing');
 });
+
+test('gate r1: the pause delta counts from the RUN start (a mid-run waiting -> playing does not move it); an expand-started run has one; dock and expand are logged', async () => {
+  const h = await boot(VIDEO);
+  playing(h);
+  h.clearLog();
+  await run(h, 1, (i, f) => f + 30);
+  h.v.dispatchEvent(new h.w.Event('waiting'));
+  playing(h); // what Chromium fires after a seek, mid-run
+  await run(h, 1, (i, f) => f + 30);
+  h.v.pause();
+  assert.match(h.log().find((e) => e.type === 'video:pause').detail, / \+f=60 \+dec=- \+t=2\.0$/, 'both seconds counted');
+  // A run started by an expand (no playing event): its pause still carries a delta.
+  h.v.play();
+  playing(h);
+  h.p.dock();
+  assert.ok(types(h).includes('player:dock'));
+  h.clearLog();
+  h.p.expand(h.doc.getElementById('player-slot'));
+  assert.ok(types(h).includes('player:expand'));
+  await run(h, 1, (i, f) => f + 30);
+  h.v.pause();
+  assert.match(h.log().find((e) => e.type === 'video:pause').detail, / \+f=30 \+dec=- \+t=1\.0$/, 'the expand began the run');
+});

@@ -22,8 +22,8 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON for 
 - [ ] v1.362.0 - iPhone, inline video playing: pull down slowly and let go early (springs back, still playing); pull past a third (docks bottom-right, still playing, the page is where you browsed from). Watch the picture during and after the drag: if it goes black or freezes while the sound runs on, open the same page in a SAFARI TAB with `?minimizeAnim=0` and repeat (the switch is a URL parameter; the home-screen app has no address bar). Black with the animation and fine without = the moving picture is the trigger.
 - [ ] v1.362.0 - Tap the down-chevron at the picture's top-left (since v1.362.1 it shows while paused, or for about 3 s after play or a touch on the picture): same end state. Then tap the mini player: back to the watch page, same position, still playing. Open a video from another video (a related card), minimize: you land on the feed / search you started from, and the second video keeps playing.
 - [ ] v1.362.0 - The mini player's X and play/pause: hit each with a thumb ten times without a mis-tap into "expand". With captions on, they sit above the bar.
-- [ ] v1.362.0 - Regressions: tap pauses, double-tap skips, hold 2x, hold-drag-down locks 2x, swipe right goes back, scroll the page from below the picture, scroll down then pull on the picture (the page scrolls to the top first), full screen untouched. At the top of the page, put a finger on the picture, wiggle it down a hair, then drag UP: the page must still scroll (since v1.362.3 a finger that starts on the picture never scrolls the page: skip this part).
-- [ ] v1.362.0 - Home-screen app AND Safari tab: in the Safari tab the pull at the top fights the browser's own overscroll; report which wins.
+- [ ] v1.362.0 - Regressions: tap pauses, double-tap skips, hold 2x, hold-drag-down locks 2x, swipe right goes back, scroll the page from below the picture, full screen untouched. (Since v1.362.3 a finger that starts on the picture never scrolls the page: scrolled down, a pull on the picture does nothing, so the old "scroll down then pull on the picture" and "wiggle then drag up" steps no longer apply.)
+- [ ] v1.362.0 - Home-screen app AND Safari tab: in the Safari tab the pull at the top fights the browser's own overscroll; report which wins (since v1.362.3 the browser never gets a touch that starts on the picture).
 
 ## The minimize chevron peeks (v1.362.1)
 
@@ -41,7 +41,8 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON for 
 - [ ] v1.362.3 - iPhone: press and hold the playing picture with no tap before it, inline, in full screen and on an audio file's
   art; and a double-tap then a hold: 2x every time, NO grey magnifier. Hold-drag down: locks.
 - [ ] v1.362.3 - Regressions: tap pauses, double-tap skips, chains skip, hold 2x, the lock pill, pull down minimizes, swipe right
-  goes back, the mini player's tap expands. Expected change: a finger that starts on the picture no longer scrolls the page.
+  goes back, the mini player's tap expands. Expected change: a finger that starts on the picture no longer scrolls the page, and
+  scrolled down, a pull on the picture does nothing (scroll from below the picture first).
 - [ ] v1.362.3 - The black picture, four runs (lifecycle log ON; no double-taps): (A) twenty pause/play rounds by PICTURE tap, no
   holds; (B) the same with Settings > Troubleshooting > "No glyph on picture taps" ON; (C) pause by PICTURE tap, resume with the
   BAR's play button, twenty times; (D) a few 2x holds, then pause/play with the BAR only. Say which runs went black; after any black,

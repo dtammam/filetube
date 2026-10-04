@@ -52,6 +52,14 @@
 
 ### Bugs
 
+- [ ] **v1.362.3 gate r1 suggestions (non-blocking)** - (a) E1 cancels touches on `#audio-bg-art` in EVERY full slot, so on the
+  podcasts now-playing page a finger that starts on the art no longer scrolls the episode list (adversary, not measured; Music and
+  the reader hide the art); a ruling for Dean if it bites; (b) summing short rounds assumes iOS refreshes its cached frame count on
+  wall time through pauses; if it restarts per play, healthy ~1.3 s rounds could read flat and fire `video:frozen` falsely in Run A
+  (qa, a suspicion): the line's `fser` and the pause lines' `+f` are the check; (c) backups with no own binding: the `ld` reset in
+  `noteFrameCount`, the `ld` guard on the pause delta, `loadstart` in the baseline reset (redundant behind `emptied`), and the
+  frame-count note when an expand or a return starts a run (costs at most one second).
+
 - [ ] **v1.362.2 gate r2 suggestions (non-blocking)** - (a) a small FORWARD seek (up to about 3 s per sampled second) that then
   stalls still counts as played time, so it can log `video:frozen` (the app's own skips, 15 s and 5 s, are excluded; a fix: require
   played time in at least two steps); (b) four instrument mutants have no drive: dropping `dt > 0` in the played-time rule, the
