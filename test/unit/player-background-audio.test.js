@@ -253,7 +253,7 @@ test('the ppBtn click handler primes BEFORE calling togglePlayPause (same synchr
   assert.ok(match, 'expected to find the ppBtn click listener\'s source body');
   const body = match[1];
   const primeIdx = body.indexOf('primeBackgroundAudioElement();');
-  const toggleIdx = body.indexOf('togglePlayPause();');
+  const toggleIdx = body.indexOf("togglePlayPause('bar-button');"); // v1.362.2: the toggle names its source (via)
   assert.ok(primeIdx !== -1 && toggleIdx !== -1);
   assert.ok(primeIdx < toggleIdx, 'priming must happen before togglePlayPause() inside the same gesture callback');
 });
@@ -1058,7 +1058,7 @@ test('F-D/F1/F5 source-lock: every one of this file\'s own lifecycle-driven medi
 });
 
 test('F-D source-lock: user-driven pauses (togglePlayPause, the spacebar shortcut) are UNCHANGED -- still a bare mediaPlayer.pause(), never routed through pauseSuppressingHandoff (they must keep firing the real \'pause\' event/listeners normally)', () => {
-  const toggleMatch = /function togglePlayPause\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  const toggleMatch = /function togglePlayPause\(via\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS); // v1.362.2: takes its source (via)
   assert.ok(toggleMatch, 'expected to find togglePlayPause()\'s source body');
   assert.match(toggleMatch[1], /else mediaPlayer\.pause\(\);/);
   assert.ok(!/pauseSuppressingHandoff/.test(toggleMatch[1]), 'a real user play/pause toggle must never be treated as a lifecycle-driven pause');
@@ -1246,14 +1246,14 @@ test('gate fix (source-lock): the visible-at-pause branch vetoes ENDED and recen
 });
 
 test('gate fix (source-lock): every user-pause surface is stamped -- togglePlayPause stamps lastUserGestureAt, the spacebar routes through togglePlayPause, and the host carries capture-phase passive gesture listeners (covers native-controls taps)', () => {
-  const toggleMatch = /function togglePlayPause\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
+  const toggleMatch = /function togglePlayPause\(via\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS); // v1.362.2: takes its source (via)
   assert.ok(toggleMatch, 'expected togglePlayPause()');
   assert.match(toggleMatch[1], /lastUserGestureAt = Date\.now\(\);/, 'an explicit in-app toggle is a user gesture');
   // The spacebar no longer duplicates the toggle inline -- it routes through
   // the stamped function (also removes the drift-prone duplication).
   const spacebarBlock = /case ' ':\s*\n\s*case 'Spacebar':([\s\S]*?)break;/.exec(PLAYER_JS);
   assert.ok(spacebarBlock, 'expected the spacebar handler');
-  assert.match(spacebarBlock[1], /togglePlayPause\(\);/);
+  assert.match(spacebarBlock[1], /togglePlayPause\('keyboard'\);/);
   assert.ok(!/mediaPlayer\.pause\(\)/.test(spacebarBlock[1]), 'the old inline duplicate toggle must be gone');
   // Host-level capture stamps: the only signal that sees a NATIVE-iOS-
   // controls pause coming (those taps never surface a dedicated JS event).
@@ -1309,8 +1309,8 @@ test('v1.35 T1 / v1.136: ONE playback-declaration writer, called from BOTH the v
   assert.match(body[1], /try \{/, 'never throws where the API is absent/locked');
   // v1.136 diagnostics (gate S1 shape): ONE overlay line per page load,
   // always - 'type=playback' inside the transition branch, 'already-playback'
-  // once on the skip path (page-scoped flag) - because the 30-entry ring
-  // buffer evicts and persists across loads, so a transition-only record
+  // once on the skip path (page-scoped flag) - because the capped ring
+  // buffer (30 entries then, 1000 since v1.362.2) evicts and persists across loads, so a transition-only record
   // could not prove the declaration was live during THIS repro.
   // CONTAINMENT-bound, not position-bound - the first draft asserted
   // recIdx > ifIdx, which a record moved BELOW the closing brace satisfied

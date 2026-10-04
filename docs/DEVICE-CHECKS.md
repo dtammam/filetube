@@ -29,12 +29,28 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON for 
 
 Settings > Mobile player > "Use custom player controls on touch devices" ON for all of these.
 
-- [ ] v1.362.1 - Phone: pause a video, the chevron shows; play, it disappears after about 3 s with no fade; touch the picture while it plays (the tap pauses, as always) and it shows; play again and it goes after about 3 s. Pull down with the chevron hidden: it still minimizes. The same with an audio file on the watch page.
-- [ ] v1.362.1 - Is 3 s right? Say if it should be longer or shorter (one constant).
-- [ ] v1.362.1 - A video playing, the chevron hidden: double-tap the picture's top-left corner (where the chevron sits): it skips back 15 s and never minimizes (measured in Chromium only).
 - [ ] v1.362.1 - Tap to pause and lock the phone at once: does the pause still happen? (A tap waiting out the double-tap window now ends with backgrounding.)
 - [ ] v1.362.1 - VoiceOver on, a video playing: rest the VoiceOver cursor on the chevron; does it stay, or vanish after about 3 s?
 - [ ] v1.362.1 - Follow `docs/references/vpn-slowness-runbook.md` once; tell Claude where it was unclear, and send the run ids.
+
+## No loupe on the picture; the black-picture log (v1.362.2)
+
+Settings > Mobile player > "Use custom player controls on touch devices" ON for the first two.
+
+- [ ] v1.362.2 - iPhone, a video playing inline: double-tap the picture (it skips) and, at once, press and hold: 2x, NO grey
+  magnifier. Then a plain hold with no tap before it: 2x; say whether the magnifier shows (this release does not cover that one).
+  Hold-drag down: locks. Same in full screen and on an audio file's art. (A SINGLE tap then a hold pauses first, as before: no 2x.)
+- [ ] v1.362.2 - Regressions: tap pauses, double-tap skips, triple-tap chains skip, hold 2x, lock pill, pull down minimizes, swipe
+  right goes back, scroll the page with a finger that starts on the picture (wait a second after any tap first).
+- [ ] v1.362.2 - The black picture A/B (lifecycle log ON in Settings > Troubleshooting, reload): twenty cycles of pause with a PICTURE
+  tap, resume with the BAR's play button; then twenty of pause with the BAR, resume with a PICTURE tap. No holds, no double-taps.
+  Say which run went black (if any). If it goes black at any point: Settings > Troubleshooting > Export log, and send the file with
+  what you had just done.
+- [ ] v1.362.2 - Whenever it goes black in normal use: Settings > Troubleshooting > Export log and send the file with a word on the
+  last few things you did.
+- [ ] v1.362.2 - Settings > Troubleshooting: lifecycle log ON (nothing appears on screen), use the app for a while (play, pause,
+  hold, close and reopen the app), come back to Settings, press Export log: the share sheet offers a .txt file; save it to Files and
+  open it: one line per event with times. Send one to Claude. Clear log asks first.
 
 ## The black picture after a pause (v1.361.0)
 

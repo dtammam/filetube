@@ -14778,6 +14778,70 @@ function shareMediaFile(opts) {
     });
 }
 
+// v1.362.2 (D6, Dean: "export everything with like a button press"): the ONE way a diagnostic log
+// leaves the phone - docs/references/log-collection-pattern.md. A log is recorded in the background
+// behind a Settings switch; Settings exports ALL of it with one button through this helper: the OS
+// share sheet with a .txt file (save to Files, AirDrop, Messages, Mail), else the clipboard, else a
+// download. The File is built and navigator.share is called SYNCHRONOUSLY inside the caller's click,
+// from text the caller already holds (no fetch or await first: iOS drops the user activation).
+// Pure strategy (exported for node:test): 'file' | 'copy' | 'download'.
+function chooseLogExportStrategy(opts) {
+  var o = opts || {};
+  if (o.canShareFiles) return 'file';
+  if (o.hasClipboard) return 'copy';
+  return 'download';
+}
+
+// Resolves 'shared' | 'copied' | 'downloaded' | 'failed'. A dismissed share sheet is the user's
+// choice, never an error (the shareMediaFile rule); a share that FAILS for another reason (no
+// activation, a refused type) falls back to the download so the log is never silently lost.
+// Toasts the copied / downloaded / failed outcomes (the share sheet is its own feedback).
+function exportDiagnosticLog(opts) {
+  var o = opts || {};
+  var text = typeof o.text === 'string' ? o.text : '';
+  var filename = o.filename || 'filetube-log.txt';
+  var title = o.title || 'FileTube log';
+  var nav = typeof navigator !== 'undefined' ? navigator : null;
+  var file = null;
+  try { if (typeof File === 'function') file = new File([text], filename, { type: 'text/plain' }); } catch (_) { file = null; }
+  var canShareFiles = false;
+  try {
+    canShareFiles = !!(file && nav && typeof nav.share === 'function' && typeof nav.canShare === 'function' && nav.canShare({ files: [file] }));
+  } catch (_) { canShareFiles = false; }
+  var hasClipboard = !!(nav && nav.clipboard && typeof nav.clipboard.writeText === 'function');
+  function note(outcome) {
+    if (outcome === 'copied') showToast('Log copied to the clipboard');
+    else if (outcome === 'downloaded') showToast('Log downloaded as ' + filename);
+    else if (outcome === 'failed') showToast('Could not export the log', null, { kind: 'error' });
+    return outcome;
+  }
+  function download() {
+    try {
+      var blob = new Blob([text], { type: 'text/plain' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { try { URL.revokeObjectURL(url); } catch (_) { /* best-effort */ } }, 10000);
+      return 'downloaded';
+    } catch (e) { console.error('Export log: download failed:', e); return 'failed'; }
+  }
+  var strategy = chooseLogExportStrategy({ canShareFiles: canShareFiles, hasClipboard: hasClipboard });
+  if (strategy === 'file') {
+    var shared;
+    try { shared = nav.share({ files: [file], title: title }); } catch (e) { shared = Promise.reject(e); }
+    return Promise.resolve(shared).then(function () { return 'shared'; }, function (err) {
+      if (err && err.name === 'AbortError') return 'shared';
+      console.error('Export log: share failed:', err);
+      return note(download());
+    });
+  }
+  if (strategy === 'copy') {
+    return copyTextToClipboard(text).then(function (r) { return note(r === 'copied' ? 'copied' : download()); });
+  }
+  return Promise.resolve(note(download()));
+}
+
 // Sweep S9 (F56): every toast rides ui.toast's ONE queue - one visible at a time, the rest
 // wait, instead of each call appending its own node on top of the last. showToast stays as
 // the thin shim every caller already uses (116 call sites, several of them in other views
@@ -17107,6 +17171,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // `module` is undefined there).
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
+    chooseLogExportStrategy, exportDiagnosticLog, // v1.362.2 (D6): the one log export (log-collection pattern)
     // v1.110 (Dean): the pure share-URL start-time param appender (unit-tested)
     // + the pick-one action modal (jsdom-tested for textContent + settle-once).
     withShareStartTime,

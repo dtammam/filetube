@@ -1524,7 +1524,7 @@ function wireBgTimingLog(signal) {
 
 // v1.355: Settings > Troubleshooting > "Show rotate debug log" switches common.js's ?debugRotate=1 log. The
 // key and both functions are common.js's own (ROTATE_LOG_KEY, installRotateDebug, uninstallRotateDebug),
-// read here at call time, never re-typed. Unlike the lifecycle log (loadDebugLifecycleControl, below) it applies AT ONCE both ways: ON
+// read here at call time, never re-typed. It applies AT ONCE both ways (as the lifecycle log does since v1.362.2): ON
 // stores '1' and installs the log in this window, OFF removes the key and takes the log down (in the
 // home-screen app a reload is a relaunch). Device-local like every Troubleshooting switch.
 function rotateDebugApi() {
@@ -1588,6 +1588,121 @@ function wireDebugRotateControl(win, signal) {
       if (on) { if (api.install) api.install(w); } else if (api.uninstall) api.uninstall(w);
     } catch (_) { /* a diagnostic must never break Settings */ }
   }, signal ? { signal } : undefined);
+}
+
+// v1.362.2 (D6): the lifecycle log's export. The log records in the background (player.js, behind the
+// switch above) and leaves the phone ONE way: Settings > Troubleshooting > Export log
+// (docs/references/log-collection-pattern.md). These keys MUST match player.js's
+// LIFECYCLE_LOG_STORAGE_KEY and DEBUG_LIFECYCLE_OVERLAY_STORAGE_KEY exactly.
+const LIFECYCLE_LOG_STORAGE_KEY = 'ft-lifecycle-log';
+const DEBUG_LIFECYCLE_OVERLAY_STORAGE_KEY = 'ft-debug-lifecycle-overlay';
+
+// The ONE formatter of the exported log (pure, exported): a header (app version, user agent, standalone
+// app or browser tab, entry count), then one line per entry OLDEST first - ISO time to the millisecond,
+// type, the detail in FULL (never cut, unlike the on-screen panel), persisted, vis, playing.
+function formatLifecycleLogForExport(entries, meta) {
+  const list = Array.isArray(entries) ? entries.filter((e) => e && typeof e === 'object') : [];
+  const m = meta || {};
+  const iso = (t) => {
+    const n = Number(t);
+    if (!isFinite(n)) return '-';
+    try { return new Date(n).toISOString(); } catch (_) { return '-'; }
+  };
+  const rows = list.slice().sort((a, b) => (Number(a.t) || 0) - (Number(b.t) || 0)).map((e) =>
+    iso(e.t) + ' ' + (e.type || '?') + (e.detail !== null && e.detail !== undefined && e.detail !== '' ? ' (' + String(e.detail) + ')' : '') +
+    ' persisted=' + e.persisted + ' vis=' + e.vis + ' playing=' + e.playing);
+  const head = [
+    'FileTube lifecycle log',
+    'exported: ' + iso(m.exportedAt),
+    'version: ' + (m.version || '-'),
+    'user agent: ' + (m.userAgent || '-'),
+    'mode: ' + (m.standalone ? 'standalone app' : 'browser tab'),
+    'entries: ' + rows.length,
+    '',
+  ];
+  return head.concat(rows).join('\n') + '\n';
+}
+
+// ft-lifecycle-<yyyymmdd-hhmmss>.txt in the device's local time (pure, exported).
+function lifecycleExportFilename(date) {
+  const d = date instanceof Date ? date : new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return 'ft-lifecycle-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '.txt';
+}
+
+function readLifecycleLogEntries(w) {
+  let raw = null;
+  try { raw = w.localStorage.getItem(LIFECYCLE_LOG_STORAGE_KEY); } catch (_) { raw = null; }
+  try { const v = raw ? JSON.parse(raw) : []; return Array.isArray(v) ? v : []; } catch (_) { return []; }
+}
+
+function loadDebugLifecycleOverlayControl(win) {
+  const w = win || window;
+  const check = w.document.getElementById('debug-lifecycle-overlay-check');
+  if (!check) return;
+  let raw = null;
+  try { raw = w.localStorage.getItem(DEBUG_LIFECYCLE_OVERLAY_STORAGE_KEY); } catch (_) { /* storage disabled -- treat as off */ }
+  check.checked = raw === '1';
+}
+
+// The on-screen switch, Export log and Clear log. Export builds the text from localStorage and hands it to
+// exportDiagnosticLog (common.js) in the SAME click turn; Clear asks through the one confirm step and
+// removes the log only on an explicit yes. Both work with the log switch off (the log survives it).
+// The on-screen panel lives in this same document (the SPA keeps player.js loaded): a switch turned OFF takes
+// it down at once, instead of at the next recorded event or (for the log switch) never (gate r1, qa + adversary).
+function removeLifecycleOverlay(w) {
+  const el = w.document.getElementById('ft-lifecycle-overlay');
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+}
+
+function wireLifecycleLogControls(win, signal) {
+  const w = win || window;
+  const doc = w.document;
+  const opt = signal ? { signal } : undefined;
+  const life = doc.getElementById('debug-lifecycle-check');
+  if (life) life.addEventListener('change', (e) => { if (!e.target.checked) removeLifecycleOverlay(w); }, opt);
+  const overlay = doc.getElementById('debug-lifecycle-overlay-check');
+  if (overlay) {
+    overlay.addEventListener('change', (e) => {
+      try {
+        if (e.target.checked) w.localStorage.setItem(DEBUG_LIFECYCLE_OVERLAY_STORAGE_KEY, '1');
+        else w.localStorage.removeItem(DEBUG_LIFECYCLE_OVERLAY_STORAGE_KEY);
+      } catch (_) { /* storage disabled/full -- best-effort only */ }
+      if (!e.target.checked) removeLifecycleOverlay(w);
+    }, opt);
+  }
+  const exportBtn = doc.getElementById('lifecycle-log-export-btn');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => {
+      const exp = (typeof exportDiagnosticLog === 'function') ? exportDiagnosticLog : null;
+      if (!exp) return;
+      const nav = w.navigator || {};
+      let standalone = false;
+      try { standalone = nav.standalone === true || !!(w.matchMedia && w.matchMedia('(display-mode: standalone)').matches); } catch (_) { standalone = false; }
+      const now = new Date();
+      const text = formatLifecycleLogForExport(readLifecycleLogEntries(w), {
+        exportedAt: now.getTime(),
+        version: (typeof appVersionString === 'function') ? appVersionString() : '',
+        userAgent: nav.userAgent || '',
+        standalone,
+      });
+      exp({ filename: lifecycleExportFilename(now), text, title: 'FileTube lifecycle log' });
+    }, opt);
+  }
+  const clearBtn = doc.getElementById('lifecycle-log-clear-btn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      confirmDestructive({
+        title: 'Clear the lifecycle log?',
+        body: 'Every recorded line on this device is deleted. Export it first if you still need it.',
+        confirmLabel: 'Clear log',
+      }).then((yes) => {
+        if (!yes) return;
+        try { w.localStorage.removeItem(LIFECYCLE_LOG_STORAGE_KEY); } catch (_) { /* best-effort only */ }
+        settingsNotice('Lifecycle log cleared', 'success');
+      });
+    }, opt);
+  }
 }
 
 // Prefills the checkbox from whatever's currently stored -- mirrors
@@ -3011,11 +3126,9 @@ function wireStaticControls(signal) {
   // localStorage pattern as the resume-threshold control just above, writing
   // the exact key/value shape `initDebugLifecycleFlag()` (player.js) already
   // writes for the `?debugLifecycle=1`/`=0` URL-param mechanism, so both
-  // paths stay interchangeable. player.js does not currently expose a hook to
-  // re-render its already-initialized overlay from another page's script, so
-  // a reload is the simplest correct way to pick up a change made here (see
-  // the hint text in setup.html) -- deliberately not adding a new cross-file
-  // API surface just for this.
+  // paths stay interchangeable. player.js reads the flag at every event, so
+  // recording starts and stops at once (v1.362.2); the on-screen panel is its
+  // own switch (wireLifecycleLogControls) and appears with the next event.
   const debugLifecycleCheck = document.getElementById('debug-lifecycle-check');
   if (debugLifecycleCheck) {
     debugLifecycleCheck.addEventListener('change', (e) => {
@@ -3026,6 +3139,7 @@ function wireStaticControls(signal) {
     }, { signal });
   }
 
+  wireLifecycleLogControls(window, signal); // v1.362.2 (D6): the on-screen switch, Export log, Clear log
   wireDebugRotateControl(window, signal); // v1.355: the rotate debug log, applied at once (loadDebugRotateControl)
   wirePocketKbSearchControl(window, signal); // v1.355: Mobile player > Keyboard search (experimental)
 
@@ -4833,6 +4947,7 @@ function init(root) {
   wireWheelCalControl(controller.signal); // Click wheel test (Experimental)
   loadResumeThresholdControl();
   loadDebugLifecycleControl();
+  loadDebugLifecycleOverlayControl(window); // v1.362.2 (D6)
   loadDebugRotateControl(window); // v1.355
   loadPocketKbSearchControl(window); // v1.355: Mobile player > Keyboard search
   // v1.246: open-audio-in-music toggle retired (audio always opens in the skin).
@@ -4906,6 +5021,8 @@ if (typeof module !== 'undefined' && module.exports) {
     wireChapterSnapLeadIn,
     // v1.355: Settings > Troubleshooting > Show rotate debug log (jsdom-bound against the real common.js log).
     loadDebugRotateControl, wireDebugRotateControl,
+    // v1.362.2 (D6): the lifecycle log's export (jsdom-bound against the real common.js helper).
+    formatLifecycleLogForExport, lifecycleExportFilename, loadDebugLifecycleOverlayControl, wireLifecycleLogControls,
     loadPocketKbSearchControl, wirePocketKbSearchControl, // v1.355: Mobile player > Keyboard search
     // Click wheel test — the pure metering core (boundary- and
     // cross-lock-tested in wheel-cal-metering.test.js; the DOM/native-switch
