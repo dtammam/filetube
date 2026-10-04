@@ -5,6 +5,8 @@
 //   node tools/log-export-proof/probe.js out.json
 // W1 (D1): a tap on the playing picture, then a second touch at +200 ms is cancelled and at +450 ms is not;
 // an upward drag that starts on the picture 1 s after a tap scrolls the page, one inside 0.35 s does not.
+// v1.362.2 ONLY: since v1.362.3 (E1) every picture touch is cancelled, so these two W1 rows read
+// [true,true,true,true] and 0 px there by design; the W2 export rows still hold.
 // W2 (D5, D6): the lifecycle log on, play with the BAR's button, a speed change, then Settings >
 // Troubleshooting > Export log pressed with a real touch while navigator.share is ABSENT: the clipboard holds
 // the exported text, and it carries media:play via=bar-button and a media:rate line. No panel on screen.

@@ -143,7 +143,7 @@ async function run(h, n, frames) {
 
 test('the real sample period is one second, and the sampler is bounded to one timer', () => {
   assert.match(PLAYER_SRC, /var FROZEN_SAMPLE_EVERY_MS = 1000;/);
-  assert.match(PLAYER_SRC, /function startFrozenSampler\(\) \{\n {4}if \(frozenSampleTimer \|\| !frozenSamplerEligible\(\)\) return;/);
+  assert.match(PLAYER_SRC, /function startFrozenSampler\(s\) \{\n {4}if \(frozenSampleTimer \|\| !frozenSamplerEligible\(\)\) return;/); // v1.362.3: takes the 'playing' reading
 });
 
 test('flag OFF: playing, visibility and expand start NOTHING (zero sampler timers) and no line is written', async () => {
@@ -442,4 +442,132 @@ test('the panel shows media:, hold: and gesture: lines up to 400 characters (oth
   const text = h.doc.getElementById('ft-lifecycle-overlay').textContent;
   for (const t of ['media:play', 'hold:engage', 'gesture:tap-pair']) assert.ok(text.includes(t + ' (' + long + ')'), t + ' in full');
   assert.ok(text.includes('pagehide (' + 'x'.repeat(60) + ')'), 'pagehide cut at 60');
+});
+
+// ---- v1.362.3 (I1): the series across pauses, the pause delta, the layer restart -------------------
+
+test('frozenPictureDecision (I1.1): steps across a pause add nothing; short runs with a flat count add up', () => {
+  const d = player.frozenPictureDecision;
+  const r = (rows) => rows.map(([s, t, f, run]) => ({ wall: s * 1000, t, f, run }));
+  // Dean's shape: three ~1.3 s rounds by picture tap, the count flat, pauses of ~1 s between them.
+  const rounds = r([[0, 43.6, 114, 1], [1.3, 44.9, 114, 1], [2.3, 44.9, 114, 2], [3.6, 46.2, 114, 2], [4.6, 46.2, 114, 3], [5.9, 47.5, 114, 3]]);
+  assert.strictEqual(d(rounds.slice(0, 4)), false, 'two rounds: 2.6 s of playing');
+  assert.strictEqual(d(rounds), true, 'three rounds: 3.9 s of playing, 3.9 s played');
+  // A long pause between two short runs cannot fake it: the gap is not playing time.
+  assert.strictEqual(d(r([[0, 10, 50, 1], [1, 11, 50, 1], [30, 11, 50, 2], [31, 12, 50, 2]])), false, '2 s of playing across a 29 s pause');
+  // Without run ids (one run) the old rule holds.
+  assert.strictEqual(d(r([[0, 10, 300], [1, 11, 300], [2, 12, 300], [3, 13, 300]])), true);
+});
+
+test('I1.1 drive: short pause/play rounds with a flat layer add up to video:frozen; a pause keeps the series and leaves no timer', async () => {
+  const h = await boot(VIDEO);
+  h.clearLog();
+  for (let round = 0; round < 3; round++) {
+    playing(h);
+    assert.strictEqual(h.live.size, 1, 'sampling in round ' + round);
+    await run(h, 1, (i, f) => f); // one sample second of play, count flat
+    h.layer.t += 0.3; await wait(SAMPLE_MS * 0.3);
+    h.v.pause();
+    assert.strictEqual(h.live.size, 0, 'a pause leaves no timer');
+    await wait(SAMPLE_MS);
+  }
+  assert.ok(types(h).includes('video:frozen'), 'the rounds added up: ' + types(h).filter((x) => /^video:/.test(x)).join(','));
+});
+
+test('I1.1: the series is cleared on a new load (a frozen count never spans two items)', async () => {
+  const h = await boot(VIDEO);
+  playing(h); await run(h, 1, (i, f) => f); h.layer.t += 0.3; h.v.pause();
+  h.p.load('v2', { id: 'v2', title: 'T2', type: 'video', ext: '.mp4' }, { slot: h.doc.getElementById('player-slot') });
+  await wait(60);
+  h.clearLog();
+  playing(h); await run(h, 1, (i, f) => f); h.layer.t += 0.3; await wait(SAMPLE_MS * 0.3); h.v.pause();
+  playing(h); await run(h, 1, (i, f) => f); h.layer.t += 0.3; await wait(SAMPLE_MS * 0.3); h.v.pause();
+  assert.ok(!types(h).includes('video:frozen'), 'only 2.6 s of this item');
+});
+
+test('I1.2: video:pause carries +f / +t since its run\'s playing reading', async () => {
+  const h = await boot(VIDEO);
+  playing(h);
+  h.clearLog();
+  await run(h, 2, (i, f) => f + 30);
+  h.v.pause();
+  const line = h.log().find((e) => e.type === 'video:pause');
+  assert.ok(line, 'a pause line');
+  assert.match(line.detail, / \+f=60 \+dec=- \+t=2\.0$/);
+});
+
+test('I1.3: a LOWER frame count in the same load logs video:fcount-reset with both counts; a new load does not', async () => {
+  const h = await boot(VIDEO);
+  h.layer.frames = 208;
+  playing(h);
+  h.clearLog();
+  await run(h, 1, () => 102);
+  const line = h.log().find((e) => e.type === 'video:fcount-reset');
+  assert.ok(line, types(h).join(','));
+  assert.match(line.detail, /^f=208->102 t=\d+\.\d rate=1$/);
+  h.v.pause();
+  h.p.load('v2', { id: 'v2', title: 'T2', type: 'video', ext: '.mp4' }, { slot: h.doc.getElementById('player-slot') });
+  await wait(60);
+  h.clearLog();
+  h.layer.frames = 0;
+  h.v.dispatchEvent(new h.w.Event('emptied')); // what a browser fires on the new source (its 0 is not a drop)
+  h.layer.frames = 3;
+  playing(h);
+  assert.ok(!types(h).includes('video:fcount-reset'), 'a new item starts its own count: ' + JSON.stringify(h.log().filter((e) => /^video/.test(e.type))));
+});
+
+test('I1.3: the hold lines carry the frame count', async () => {
+  const h = await boot(VIDEO);
+  h.layer.frames = 77;
+  h.clearLog();
+  const fire = (type) => { const e = new h.w.Event(type, { bubbles: true, cancelable: true }); const l = [{ clientX: 300, clientY: 100 }]; Object.defineProperty(e, 'touches', { value: type === 'touchend' ? [] : l }); Object.defineProperty(e, 'changedTouches', { value: l }); h.v.dispatchEvent(e); };
+  fire('touchstart');
+  await wait(560);
+  fire('touchend');
+  const eng = h.log().find((e) => e.type === 'hold:engage');
+  assert.match(eng.detail, /^rate=2 locked=0 f=77$/);
+});
+
+test('I1.1 (mutants B3-M9/M11): sub-second rounds count only through their pause readings; two short rounds around a long pause never read as frozen', async () => {
+  // Rounds of 0.8 s: no tick lands inside a run, so only the run's playing + pause readings make a step.
+  let h = await boot(VIDEO);
+  h.clearLog();
+  for (let round = 0; round < 5; round++) {
+    playing(h);
+    h.layer.t += 0.8; await wait(SAMPLE_MS * 0.8);
+    h.v.pause();
+    await wait(SAMPLE_MS * 0.5);
+  }
+  assert.ok(types(h).includes('video:frozen'), 'five 0.8 s rounds (4 s playing) add up: ' + types(h).filter((x) => /^video:/.test(x)).join(','));
+  dom.window.close(); dom = null;
+  // Two 1 s rounds with a 4 s pause between: 2 s of playing, never 3; a pause gap must not count as wall time.
+  h = await boot(VIDEO);
+  h.clearLog();
+  playing(h); await run(h, 1, (i, f) => f); h.v.pause();
+  await wait(SAMPLE_MS * 4);
+  playing(h); await run(h, 1, (i, f) => f); h.v.pause();
+  assert.ok(!types(h).includes('video:frozen'), 'only 2 s of playing');
+});
+
+test('gate r1: the pause delta counts from the RUN start (a mid-run waiting -> playing does not move it); an expand-started run has one; dock and expand are logged', async () => {
+  const h = await boot(VIDEO);
+  playing(h);
+  h.clearLog();
+  await run(h, 1, (i, f) => f + 30);
+  h.v.dispatchEvent(new h.w.Event('waiting'));
+  playing(h); // what Chromium fires after a seek, mid-run
+  await run(h, 1, (i, f) => f + 30);
+  h.v.pause();
+  assert.match(h.log().find((e) => e.type === 'video:pause').detail, / \+f=60 \+dec=- \+t=2\.0$/, 'both seconds counted');
+  // A run started by an expand (no playing event): its pause still carries a delta.
+  h.v.play();
+  playing(h);
+  h.p.dock();
+  assert.ok(types(h).includes('player:dock'));
+  h.clearLog();
+  h.p.expand(h.doc.getElementById('player-slot'));
+  assert.ok(types(h).includes('player:expand'));
+  await run(h, 1, (i, f) => f + 30);
+  h.v.pause();
+  assert.match(h.log().find((e) => e.type === 'video:pause').detail, / \+f=30 \+dec=- \+t=1\.0$/, 'the expand began the run');
 });

@@ -877,7 +877,8 @@ function formatFrameSeries(startFrames, samples) {
 }
 
 // v1.362.2 (D5): is the picture frozen while the clock runs? `samples` = one reading a second,
-// oldest first, `{ wall, t, f }` (wall ms, media time s, the layer's frame count). iOS relays that
+// oldest first, `{ wall, t, f, run }` (wall ms, media time s, the layer's frame count, the play run;
+// v1.362.3: only steps inside one run count, so short pause/play rounds add up). iOS relays that
 // count as a cached copy that refreshes about every 2 s, so a healthy stream can read flat for 2 s;
 // frozen therefore needs the TRAILING run of equal counts to span at least 3 s of wall time while
 // the media time advanced at least 2 s inside it (LESSONS 1: a series, never one reading). Only PLAYED
@@ -893,19 +894,22 @@ function frozenPictureDecision(samples) {
   var last = list[list.length - 1];
   var num = function (v) { return typeof v === 'number' && isFinite(v); };
   if (!last || !num(last.f) || !num(last.t) || !num(last.wall)) return false;
-  var first = last;
+  var wallMs = 0;
   var played = 0;
   var later = last;
   for (var i = list.length - 2; i >= 0; i--) {
     var s = list[i];
     if (!s || !num(s.f) || !num(s.t) || !num(s.wall) || s.f !== last.f) break;
-    var dt = later.t - s.t;
-    var dw = (later.wall - s.wall) / 1000;
-    if (dt > 0 && dt <= dw * FROZEN_MAX_RATE) played += dt;
-    first = s;
+    // v1.362.3 (I1.1): a step across a pause (two runs) adds neither wall nor played time.
+    if (s.run === later.run) {
+      var dt = later.t - s.t;
+      var dw = (later.wall - s.wall) / 1000;
+      wallMs += later.wall - s.wall;
+      if (dt > 0 && dt <= dw * FROZEN_MAX_RATE) played += dt;
+    }
     later = s;
   }
-  return (last.wall - first.wall) >= FROZEN_MIN_WALL_MS && played >= FROZEN_MIN_MEDIA_S;
+  return wallMs >= FROZEN_MIN_WALL_MS && played >= FROZEN_MIN_MEDIA_S;
 }
 
 // v1.161.1 (Dean device bug: AirPods/lock-screen play-pause inconsistent during
@@ -1144,7 +1148,8 @@ function minimizeAllowedDecision(f) {
 // R2: 'claim' = this drag is a minimize; 'guard' = a downward-dominant move at the top that is not yet a
 // claim, prevented anyway because W0 measured that an unprevented first move hands the gesture to the
 // browser (every later move non-cancelable); 'none' = not ours. scrollY is the page's scroll at TOUCHSTART:
-// scrolled down, the pull scrolls the page as today and only the NEXT pull at the top minimizes (R2b).
+// scrolled down, the pull is not a minimize (R2b). Since v1.362.3 (E1) every touch that starts on the picture is
+// cancelled, so a pull there neither scrolls the page nor minimizes: scroll from below the picture first.
 function minimizeDragDecision(ctx) {
   var o = ctx || {};
   var dx = Number(o.dx), dy = Number(o.dy), sy = Number(o.scrollY);
@@ -1222,23 +1227,23 @@ function classifyTapGesture(ctx) {
 }
 
 // v1.362.2 (D1): the TAP RUN - a touch that lands while the picture can still pair it (inside the
-// double-tap window after a lone tap's lift) or while a skip chain is hot. ONE predicate: the bar's
-// reveal grace (`inTapRun` in the video down listener) and the loupe cancel below both read it.
+// double-tap window after a lone tap's lift) or while a skip chain is hot. ONE predicate, read by the
+// bar's reveal grace (`inTapRun` in the video down listener); the gesture:tap-pair log line names it.
 function inTapRunDecision(o) {
   var opts = o || {};
   return opts.now < opts.skipChainUntil || (opts.lastTapTime > 0 && opts.now - opts.lastTapTime < opts.doubleTapMs);
 }
 
-// v1.362.2 (D1, Dean): the iOS text loupe. A press that follows a tap on the playing picture (a
-// double-tap's second touch, a tap then a hold, a skip-chain tap) brings up WebKit's magnifier even
-// under `user-select:none`; only a `preventDefault` on that touchstart stops it. This decides exactly
-// which touchstart: one finger, not native full screen, not native-controls mode, the player FULL (the
-// docked tap must still synthesize the click that expands it), and inside the tap run. Accepted cost:
-// a page scroll that starts on the picture inside the window does not scroll.
-function tapPairCancelDecision(o) {
+// v1.362.3 (E1, Dean): the iOS text loupe. iOS 27 brings up WebKit's magnifier on a hold on the playing
+// picture even under `user-select:none` and `-webkit-touch-callout:none`, on a PLAIN hold too (v1.362.2
+// cancelled only a touch inside the tap window, and the loupe still showed on the device). So every
+// one-finger touch that starts on the picture or the art is cancelled: one finger, not native full
+// screen, not native-controls mode, the player FULL (the docked tap must still synthesize the click
+// that expands it). Accepted cost (Dean's ruling): a finger that starts on the picture no longer
+// scrolls the page; taps, holds, the pull-down minimize and swipe back are the app's own.
+function pictureTouchCancelDecision(o) {
   var opts = o || {};
-  if (opts.touches !== 1 || opts.nativeFs || opts.nativeControls || opts.state !== 'full') return false;
-  return inTapRunDecision(opts);
+  return opts.touches === 1 && !opts.nativeFs && !opts.nativeControls && opts.state === 'full';
 }
 
 // v1.21 FIX A (post-post-gate correction -- docked-audio tap-to-expand
@@ -1992,7 +1997,7 @@ if (typeof module !== 'undefined' && module.exports) {
     storyboardTile,
     classifyTapGesture,
     inTapRunDecision, // v1.362.2 (D1): the tap run, shared by the reveal grace and the loupe cancel
-    tapPairCancelDecision, // v1.362.2 (D1): which touchstart on the picture cancels (no text loupe)
+    pictureTouchCancelDecision, // v1.362.3 (E1): every picture touch cancels while FULL (no text loupe)
     holdDragDecision,
     holdRatePickDecision,
     // v1.362: minimize into the mini player (the pull-down and the chevron).
@@ -4308,10 +4313,17 @@ if (typeof module !== 'undefined' && module.exports) {
   function recordVideoState(evName) {
     if (!isDebugLifecycleEnabled() || !mediaPlayer) return;
     var s = readVideoState();
+    // v1.362.3 (I1.2): a pause line says how far the frame count and the clock moved since its run began.
+    if (evName === 'pause' && frozenRunStartState && frozenRunStartState.ld === s.ld) s.delta = videoStateDelta(frozenRunStartState, s);
     recordLifecycleEvent('video:' + evName, { detail: formatVideoStateDetail(s) });
-    // v1.362.2 (D5): the frozen-picture sampler starts on 'playing' and stops on what ends playback.
-    if (evName === 'playing') startFrozenSampler();
-    else if (evName === 'pause' || evName === 'emptied' || evName === 'loadstart') stopFrozenSampler();
+    // A new source starts its own count: its emptied / loadstart reading (0) is the new baseline, never a drop.
+    if (evName === 'emptied' || evName === 'loadstart') lastFrameCount = null;
+    else noteFrameCount(s);
+    // v1.362.2 (D5) / v1.362.3 (I1.1): 'playing' starts a run of the frozen-picture series; a pause ends the
+    // run but keeps the series (short pause/play rounds add up); what ends the item clears it.
+    if (evName === 'playing') startFrozenSampler(s);
+    else if (evName === 'pause') pauseFrozenSampler(s);
+    else if (evName === 'emptied' || evName === 'loadstart') stopFrozenSampler();
     if (evName !== 'playing') return;
     if (videoStateCheckTimer) clearTimeout(videoStateCheckTimer);
     var samples = [];
@@ -4333,16 +4345,21 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // v1.362.2 (D5): video:frozen / video:thawed. While the flag is on, the page visible, the video (not an
   // audio item, not the background sidecar) the active element and playing, one reading a second of
-  // { wall, t, f }; frozenPictureDecision says when the layer's frame count stood still while the clock
-  // ran. ONE line at the onset (with the last 6 counts), ONE when the count moves again. Reads only: the
-  // same property reads and getVideoPlaybackQuality() as readVideoState, never a write to the media. At
-  // most one timer; stopped on pause, ended, emptied, a new load, a hide, a dock or close
-  // (resetTransientPlaybackUi) and when the flag goes off. Flag off: never started, so no timer exists.
+  // { wall, t, f, run }; frozenPictureDecision says when the layer's frame count stood still while the clock
+  // ran. ONE line at the onset (with the last 6 counts), ONE when the count moves again. v1.362.3 (I1.1):
+  // each play is a RUN (a reading at its 'playing', one a second, one at its pause); a pause stops the timer
+  // but KEEPS the series, so short pause/play rounds add up (Dean's ~1.3 s rounds never reached 3 s); the
+  // decision counts only steps inside one run, so a pause cannot fake a freeze. Reads only: the same
+  // property reads and getVideoPlaybackQuality() as readVideoState, never a write to the media. At most
+  // one timer. Cleared on ended, emptied, a new load, a hide, a dock or close (resetTransientPlaybackUi) and
+  // when the flag goes off. Flag off: never started, so no timer exists.
   var FROZEN_SAMPLE_EVERY_MS = 1000;
   var FROZEN_SAMPLES_KEPT = 12;
   var frozenSampleTimer = null;
   var frozenSamples = [];
   var frozenLogged = false;
+  var frozenRun = 0;
+  var frozenRunStartState = null;
   // `activeMediaElement() === mediaPlayer` and `visible` are belts: the background sidecar only plays with the
   // video paused, and a hide stops the sampler through resetTransientPlaybackUi; a `playing` that arrives
   // while hidden is refused by the visible check (bound in player-black-picture-log.test.js).
@@ -4351,23 +4368,8 @@ if (typeof module !== 'undefined' && module.exports) {
       activeMediaElement() === mediaPlayer && !(host && host.classList.contains('audio-mode')) &&
       !mediaPlayer.paused && !mediaPlayer.ended;
   }
-  function startFrozenSampler() {
-    if (frozenSampleTimer || !frozenSamplerEligible()) return;
-    frozenSamples = [];
-    frozenLogged = false;
-    frozenSampleTimer = setTimeout(frozenSampleTick, FROZEN_SAMPLE_EVERY_MS);
-  }
-  function stopFrozenSampler() {
-    if (frozenSampleTimer) clearTimeout(frozenSampleTimer);
-    frozenSampleTimer = null;
-    frozenSamples = [];
-    frozenLogged = false;
-  }
-  function frozenSampleTick() {
-    frozenSampleTimer = null;
-    if (!frozenSamplerEligible()) { stopFrozenSampler(); return; }
-    var s = readVideoState();
-    frozenSamples.push({ wall: Date.now(), t: s.t, f: s.frames });
+  function pushFrozenSample(s) {
+    frozenSamples.push({ wall: Date.now(), t: s.t, f: s.frames, run: frozenRun });
     if (frozenSamples.length > FROZEN_SAMPLES_KEPT) frozenSamples.shift();
     var n = frozenSamples.length;
     if (!frozenLogged && frozenPictureDecision(frozenSamples)) {
@@ -4378,7 +4380,56 @@ if (typeof module !== 'undefined' && module.exports) {
       frozenLogged = false;
       recordLifecycleEvent('video:thawed', { detail: formatVideoStateDetail(s) });
     }
+  }
+  // `s` = the 'playing' reading when the caller has one; a resume on a visible return or an expand reads afresh.
+  function startFrozenSampler(s) {
+    if (frozenSampleTimer || !frozenSamplerEligible()) return;
+    frozenRun += 1;
+    var r = s || readVideoState();
+    if (!s) noteFrameCount(r);
+    // The pause line's +f / +t count from the RUN's first reading (gate r1: a mid-run waiting -> playing, which
+    // Chromium fires at every seek, no longer moves it; a run started by an expand or a return has one too).
+    frozenRunStartState = r;
+    pushFrozenSample(r);
     frozenSampleTimer = setTimeout(frozenSampleTick, FROZEN_SAMPLE_EVERY_MS);
+  }
+  // A pause ends the run with its own reading and keeps the series (only a live run takes one).
+  function pauseFrozenSampler(s) {
+    if (!frozenSampleTimer) return;
+    clearTimeout(frozenSampleTimer);
+    frozenSampleTimer = null;
+    pushFrozenSample(s);
+  }
+  function stopFrozenSampler() {
+    if (frozenSampleTimer) clearTimeout(frozenSampleTimer);
+    frozenSampleTimer = null;
+    frozenSamples = [];
+    frozenLogged = false;
+    frozenRunStartState = null;
+  }
+  function frozenSampleTick() {
+    frozenSampleTimer = null;
+    if (!frozenSamplerEligible()) { stopFrozenSampler(); return; }
+    var s = readVideoState();
+    noteFrameCount(s);
+    pushFrozenSample(s);
+    frozenSampleTimer = setTimeout(frozenSampleTick, FROZEN_SAMPLE_EVERY_MS);
+  }
+
+  // v1.362.3 (I1.3): the layer's frame count only climbs while its layer lives; a LOWER reading in the same
+  // load means the layer restarted (Dean's log: 208 -> 102 right after a 2x hold, then the picture went
+  // black). One line per drop, with both counts, the clock and the rate. Reads only; called with readings
+  // already taken (flag on).
+  var lastFrameCount = null;
+  var lastFrameLd = null;
+  function noteFrameCount(s) {
+    if (!s) return;
+    if (s.ld !== lastFrameLd) { lastFrameLd = s.ld; lastFrameCount = null; }
+    if (typeof s.frames !== 'number' || !isFinite(s.frames)) return;
+    if (lastFrameCount !== null && s.frames < lastFrameCount) {
+      recordLifecycleEvent('video:fcount-reset', { detail: 'f=' + lastFrameCount + '->' + s.frames + ' t=' + (typeof s.t === 'number' && isFinite(s.t) ? s.t.toFixed(1) : '-') + ' rate=' + (mediaPlayer ? mediaPlayer.playbackRate : '-') });
+    }
+    lastFrameCount = s.frames;
   }
 
   // ---- Lock-to-audio phase 1 (MEASURE): the timing log's runtime half ---------
@@ -5067,7 +5118,11 @@ if (typeof module !== 'undefined' && module.exports) {
 
   // v1.362.2 (D5): the hold's four transitions in the lifecycle log (a no-op when the flag is off).
   function logHold(type) {
-    if (isDebugLifecycleEnabled()) recordLifecycleEvent(type, { detail: 'rate=' + (mediaPlayer ? mediaPlayer.playbackRate : '-') + ' locked=' + (holdLocked ? 1 : 0) });
+    if (!isDebugLifecycleEnabled()) return;
+    // v1.362.3 (I1.3): the layer's frame count too, to place a layer restart against the hold.
+    var q = null;
+    try { q = (mediaPlayer && typeof mediaPlayer.getVideoPlaybackQuality === 'function') ? mediaPlayer.getVideoPlaybackQuality() : null; } catch (_) { q = null; }
+    recordLifecycleEvent(type, { detail: 'rate=' + (mediaPlayer ? mediaPlayer.playbackRate : '-') + ' locked=' + (holdLocked ? 1 : 0) + ' f=' + (q && typeof q.totalVideoFrames === 'number' ? q.totalVideoFrames : '-') });
   }
 
   function lockHold() {
@@ -5490,17 +5545,12 @@ if (typeof module !== 'undefined' && module.exports) {
       holdTimer = setTimeout(engageHold, HOLD_MS);
     }, { passive: true });
 
-    // v1.362.2 (D1): the loupe cancel. A SEPARATE non-passive touchstart, registered AFTER the passive
-    // tracker above (LESSONS 4), that cancels only the touch tapPairCancelDecision names: the one the
-    // app already treats as a tap pair or a chain tap. Every other touchstart stays passive, so the
-    // page scrolls from the picture as before outside the window.
+    // v1.362.2 (D1) / v1.362.3 (E1): the loupe cancel. A SEPARATE non-passive touchstart, registered AFTER
+    // the passive tracker above (LESSONS 4), that cancels the touch pictureTouchCancelDecision names: since
+    // v1.362.3 every one-finger touch on the FULL player's picture or art (a plain hold raised the loupe
+    // too). The lifecycle log notes only the touches inside a tap run (`gesture:tap-pair`), not every touch.
     el.addEventListener('touchstart', function (e) {
-      var now = Date.now();
-      if (!tapPairCancelDecision({
-        now: now,
-        lastTapTime: lastTapTime,
-        skipChainUntil: skipChainUntil,
-        doubleTapMs: DOUBLE_TAP_MS,
+      if (!pictureTouchCancelDecision({
         touches: e.touches.length,
         nativeFs: inNativeFullscreen(),
         nativeControls: inNativeControlsMode(),
@@ -5508,7 +5558,10 @@ if (typeof module !== 'undefined' && module.exports) {
       })) return;
       e.preventDefault();
       if (isDebugLifecycleEnabled()) {
-        recordLifecycleEvent('gesture:tap-pair', { detail: (el === mediaPlayer ? 'video' : 'art') + ' gap=' + (lastTapTime > 0 ? now - lastTapTime : '-') + ' chain=' + (now < skipChainUntil ? 1 : 0) });
+        var now = Date.now();
+        if (inTapRunDecision({ now: now, lastTapTime: lastTapTime, skipChainUntil: skipChainUntil, doubleTapMs: DOUBLE_TAP_MS })) {
+          recordLifecycleEvent('gesture:tap-pair', { detail: (el === mediaPlayer ? 'video' : 'art') + ' gap=' + (lastTapTime > 0 ? now - lastTapTime : '-') + ' chain=' + (now < skipChainUntil ? 1 : 0) });
+        }
       }
     }, { passive: false });
 
@@ -6572,8 +6625,16 @@ if (typeof module !== 'undefined' && module.exports) {
   // Cover-art click-to-play overlay glyph (AC9): flashes via the same
   // remove/reflow/add idiom `flashRipple` (above) already uses for the
   // skip-ripple feedback, so a rapid repeat click always re-triggers the fade.
+  // v1.362.3 (E3, Dean): Settings > Troubleshooting > "No glyph on picture taps" - a device-local A/B for the
+  // black picture. A picture tap is the only pause/play that animates a full-size layer over the playing
+  // video (this flash); with the switch on, the tap still pauses and plays and nothing is drawn. Read at
+  // every tap, so it applies at once. MUST match NO_TAP_GLYPH_STORAGE_KEY in setup.js.
+  var NO_TAP_GLYPH_STORAGE_KEY = 'ft-debug-no-tap-glyph';
+  function tapGlyphSuppressed() {
+    try { return localStorage.getItem(NO_TAP_GLYPH_STORAGE_KEY) === '1'; } catch (_) { return false; }
+  }
   function flashArtGlyph(playing) {
-    if (!artPlayGlyph) return;
+    if (!artPlayGlyph || tapGlyphSuppressed()) return;
     artPlayGlyph.classList.toggle('art-play-glyph-playing', playing);
     artPlayGlyph.classList.remove('art-play-glyph-flash');
     void artPlayGlyph.offsetWidth; // force reflow so rapid repeats re-trigger the animation
@@ -9654,6 +9715,7 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function expand(slotEl) {
+    recordLifecycleEvent('player:expand', {}); // v1.362.3 gate r1: a layer restart near an expand is not blamed on a hold
     mountInSlot(slotEl);
   }
 
@@ -9736,6 +9798,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // handler places the host when fullscreen genuinely ends.
     if (stagedFullscreen) return;
     if (!host || !mediaPlayer || !currentId || state === STATE_CLOSED || state === STATE_DOCKED) return;
+    recordLifecycleEvent('player:dock', {}); // v1.362.3 gate r1 (see expand)
     var dockEl = document.getElementById('player-dock');
     if (!dockEl) return;
     ensureDockChrome(dockEl);

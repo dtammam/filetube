@@ -1636,6 +1636,29 @@ function readLifecycleLogEntries(w) {
   try { const v = raw ? JSON.parse(raw) : []; return Array.isArray(v) ? v : []; } catch (_) { return []; }
 }
 
+// v1.362.3 (E3): Settings > Troubleshooting > "No glyph on picture taps". MUST match NO_TAP_GLYPH_STORAGE_KEY in
+// player.js; '1' = on, removed = off (the default); player.js reads it at every tap, so a change needs no reload.
+const NO_TAP_GLYPH_STORAGE_KEY = 'ft-debug-no-tap-glyph';
+function loadNoTapGlyphControl(win) {
+  const w = win || window;
+  const check = w.document.getElementById('debug-no-tap-glyph-check');
+  if (!check) return;
+  let raw = null;
+  try { raw = w.localStorage.getItem(NO_TAP_GLYPH_STORAGE_KEY); } catch (_) { /* storage disabled -- treat as off */ }
+  check.checked = raw === '1';
+}
+function wireNoTapGlyphControl(win, signal) {
+  const w = win || window;
+  const check = w.document.getElementById('debug-no-tap-glyph-check');
+  if (!check) return;
+  check.addEventListener('change', (e) => {
+    try {
+      if (e.target.checked) w.localStorage.setItem(NO_TAP_GLYPH_STORAGE_KEY, '1');
+      else w.localStorage.removeItem(NO_TAP_GLYPH_STORAGE_KEY);
+    } catch (_) { /* storage disabled/full -- best-effort only */ }
+  }, signal ? { signal } : undefined);
+}
+
 function loadDebugLifecycleOverlayControl(win) {
   const w = win || window;
   const check = w.document.getElementById('debug-lifecycle-overlay-check');
@@ -3140,6 +3163,7 @@ function wireStaticControls(signal) {
   }
 
   wireLifecycleLogControls(window, signal); // v1.362.2 (D6): the on-screen switch, Export log, Clear log
+  wireNoTapGlyphControl(window, signal); // v1.362.3 (E3): the black-picture glyph A/B
   wireDebugRotateControl(window, signal); // v1.355: the rotate debug log, applied at once (loadDebugRotateControl)
   wirePocketKbSearchControl(window, signal); // v1.355: Mobile player > Keyboard search (experimental)
 
@@ -4948,6 +4972,7 @@ function init(root) {
   loadResumeThresholdControl();
   loadDebugLifecycleControl();
   loadDebugLifecycleOverlayControl(window); // v1.362.2 (D6)
+  loadNoTapGlyphControl(window); // v1.362.3 (E3)
   loadDebugRotateControl(window); // v1.355
   loadPocketKbSearchControl(window); // v1.355: Mobile player > Keyboard search
   // v1.246: open-audio-in-music toggle retired (audio always opens in the skin).
@@ -5023,6 +5048,7 @@ if (typeof module !== 'undefined' && module.exports) {
     loadDebugRotateControl, wireDebugRotateControl,
     // v1.362.2 (D6): the lifecycle log's export (jsdom-bound against the real common.js helper).
     formatLifecycleLogForExport, lifecycleExportFilename, loadDebugLifecycleOverlayControl, wireLifecycleLogControls,
+    loadNoTapGlyphControl, wireNoTapGlyphControl, // v1.362.3 (E3): the no-glyph A/B switch
     loadPocketKbSearchControl, wirePocketKbSearchControl, // v1.355: Mobile player > Keyboard search
     // Click wheel test — the pure metering core (boundary- and
     // cross-lock-tested in wheel-cal-metering.test.js; the DOM/native-switch
