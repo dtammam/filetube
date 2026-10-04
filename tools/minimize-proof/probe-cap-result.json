@@ -1,0 +1,66 @@
+{
+ "runAt": "2026-10-04T03:02:13.418Z",
+ "root": "/home/coder/projects/filetube/.claude/worktrees/v13621",
+ "steps": [
+  {
+   "label": "watch clip1",
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "depth": 1,
+   "browseDepth": 0,
+   "historyLength": 3,
+   "navIndex": 1
+  },
+  {
+   "label": "pushed to depth 61",
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "depth": 61,
+   "browseDepth": 0,
+   "historyLength": 50,
+   "navIndex": 49
+  },
+  {
+   "label": "after Back 15",
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "depth": 46,
+   "browseDepth": 0,
+   "historyLength": 50,
+   "navIndex": 34
+  },
+  {
+   "label": "after the chevron",
+   "path": "/",
+   "state": "docked",
+   "depth": 0,
+   "browseDepth": 0,
+   "historyLength": 36,
+   "navIndex": 35
+  },
+  {
+   "label": "navigated to a search",
+   "path": "/?search=probe",
+   "state": "docked",
+   "depth": 1,
+   "browseDepth": 1,
+   "historyLength": 37,
+   "navIndex": 36
+  },
+  {
+   "label": "after the bottom-nav Home tap",
+   "path": "/",
+   "state": "docked",
+   "depth": 0,
+   "browseDepth": 0,
+   "historyLength": 37,
+   "navIndex": 35
+  }
+ ],
+ "chevronBeforeTap": {
+  "hidden": false,
+  "x": 26,
+  "y": 98
+ },
+ "errs": []
+}

@@ -20,10 +20,21 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
 Settings > Mobile player > "Use custom player controls on touch devices" ON for all of these.
 
 - [ ] v1.362.0 - iPhone, inline video playing: pull down slowly and let go early (springs back, still playing); pull past a third (docks bottom-right, still playing, the page is where you browsed from). Watch the picture during and after the drag: if it goes black or freezes while the sound runs on, open the same page in a SAFARI TAB with `?minimizeAnim=0` and repeat (the switch is a URL parameter; the home-screen app has no address bar). Black with the animation and fine without = the moving picture is the trigger.
-- [ ] v1.362.0 - Tap the down-chevron at the picture's top-left: same end state. Then tap the mini player: back to the watch page, same position, still playing. Open a video from another video (a related card), minimize: you land on the feed / search you started from, and the second video keeps playing.
+- [ ] v1.362.0 - Tap the down-chevron at the picture's top-left (since v1.362.1 it shows while paused, or for about 3 s after play or a touch on the picture): same end state. Then tap the mini player: back to the watch page, same position, still playing. Open a video from another video (a related card), minimize: you land on the feed / search you started from, and the second video keeps playing.
 - [ ] v1.362.0 - The mini player's X and play/pause: hit each with a thumb ten times without a mis-tap into "expand". With captions on, they sit above the bar.
 - [ ] v1.362.0 - Regressions: tap pauses, double-tap skips, hold 2x, hold-drag-down locks 2x, swipe right goes back, scroll the page from below the picture, scroll down then pull on the picture (the page scrolls to the top first), full screen untouched. At the top of the page, put a finger on the picture, wiggle it down a hair, then drag UP: the page must still scroll.
 - [ ] v1.362.0 - Home-screen app AND Safari tab: in the Safari tab the pull at the top fights the browser's own overscroll; report which wins.
+
+## The minimize chevron peeks (v1.362.1)
+
+Settings > Mobile player > "Use custom player controls on touch devices" ON for all of these.
+
+- [ ] v1.362.1 - Phone: pause a video, the chevron shows; play, it disappears after about 3 s with no fade; touch the picture while it plays (the tap pauses, as always) and it shows; play again and it goes after about 3 s. Pull down with the chevron hidden: it still minimizes. The same with an audio file on the watch page.
+- [ ] v1.362.1 - Is 3 s right? Say if it should be longer or shorter (one constant).
+- [ ] v1.362.1 - A video playing, the chevron hidden: double-tap the picture's top-left corner (where the chevron sits): it skips back 15 s and never minimizes (measured in Chromium only).
+- [ ] v1.362.1 - Tap to pause and lock the phone at once: does the pause still happen? (A tap waiting out the double-tap window now ends with backgrounding.)
+- [ ] v1.362.1 - VoiceOver on, a video playing: rest the VoiceOver cursor on the chevron; does it stay, or vanish after about 3 s?
+- [ ] v1.362.1 - Follow `docs/references/vpn-slowness-runbook.md` once; tell Claude where it was unclear, and send the run ids.
 
 ## The black picture after a pause (v1.361.0)
 
