@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.362.4-minimize-fade
 anchor: spec
 status: Building
-next: build W1 (the fade, CSS + player.js), W2 (tests + a Chromium measurement against the YouTube recording), W3 (docs); gate adversary + qa
+next: the dual-Node full npm test, then the gate (adversary + qa)
 design: Dean's rulings F1-F3, 2026-10-04 (kickoff at main 471c15e7), from his YouTube screen recording.
 gate: pending
 ---
@@ -78,6 +78,12 @@ and on `.watch-sidebar`. On another page the whole `#view-root` fades only while
   (run() advances exactly 1 s per sample; drives that need time say h.tick(ms)). Under six CPU-burning processes: the new harness
   0/5 failed; the old one also 0/5 (the failure did not reproduce on demand: the fix removes the mechanism, it is not proven
   against a reproduction).
+
+- Commit 34db46a6, hook `ℹ tests 8559 / ℹ pass 8559 / ℹ fail 0`.
+- Mutants (16, /tmp `git archive 34db46a6` sandbox, exact-once, restored, diff clean): 14 KILLED first run. SURVIVED: F-M4 (the
+  leave marked after `dock()`: a transient flash the end state hides) and F-M13 (the expand's root-holds-the-player belt, behind
+  the CSS guard). New drives (a MutationObserver over every style state of the commit; a root that holds the dock) KILL both.
+- W3: DEVICE-CHECKS (38 open lines), ROADMAP "Device checks owed" item 16 (VPN results now 39), LESSONS-rules sections 2, 3, 7.
 
 ## 6. Device checks
 

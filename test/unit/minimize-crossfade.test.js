@@ -230,3 +230,26 @@ test('no opacity or animation rule paints the video or any of its watch-page anc
   }
   assert.ok(checked >= 2, 'the census saw the whole-root rules (' + checked + ')');
 });
+
+test('mutant F-M4: the commit never flashes the page back up (the fade is never removed between the pull and the floor)', async () => {
+  const h = await boot(VIDEO);
+  const g = pull(h, 200);
+  const mo = new h.w.MutationObserver(() => {});
+  mo.observe(h.root, { attributes: true, attributeFilter: ['style'], attributeOldValue: true });
+  fire(h.w, h.v, 'touchend', g.x, g.y, g.t + 10);
+  const states = mo.takeRecords().map((r) => r.oldValue || '').concat([h.root.getAttribute('style') || '']);
+  mo.disconnect();
+  assert.ok(states.length >= 2, 'the commit changed the style');
+  for (const st of states) assert.match(st, /--minimize-fade/, 'a state without the fade (a flash): ' + JSON.stringify(states));
+  assert.strictEqual(fade(h), '1');
+});
+
+test('mutant F-M13: a page root that holds the player (the mini player inside it) is never dimmed by the expand', async () => {
+  const h = await boot(VIDEO);
+  h.p.dock();
+  h.root.setAttribute('data-view', 'home');
+  h.root.appendChild(h.dockEl); // a shell whose dock sits inside #view-root: the root holds the player
+  h.dockEl.dispatchEvent(new h.w.MouseEvent('click', { bubbles: true }));
+  assert.deepStrictEqual(h.navs, ['/watch.html?v=v1'], 'precondition: the tap still expands');
+  assert.ok(!h.root.classList.contains('is-view-leaving'));
+});
