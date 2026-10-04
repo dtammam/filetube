@@ -409,6 +409,20 @@ Round 1 fixes (builder, 2026-10-04):
   pull (changing it would alter the swipe-right gesture outcome item 4 promises unchanged, stop rule c) and a Settings toggle for
   `?minimizeAnim` in the home-screen app.
 
+Gate: APPROVED r2 @bfb3cb07 — qa
+- W1 fixed as prescribed, verified: the phone dock captions now end at 540 = the bar top (overlap 0 px, was 18; pp face 0, was 11.5), same probe; mutant (phone cc bottom back to 26px) KILLED by name.
+- W2 fixed (in the pure resolver, a fine deviation), verified: the real app at 55 hops (history.length 50, depth 55) now docks AND lands on /, and the bottom-nav Home works after; mutants (leave drops history.length, `>=` -> `>`) KILLED by name.
+- W3 fixed: the real leaveWatchForBrowse runs in jsdom; QA-M4 (back()) and QA-M5 (no pending check) KILLED by name.
+- W4 fixed: QA-M1 (narrow true) and QA-M3 (no audio-expanded refresh) KILLED by name. QA-M7 (orientationchange) still masked by resize, disclosed.
+- New code reviewed: the main.js chip replaceState carries the home entry forward with its new url (the remote.js / music.js pattern; view stays home, plain data, popstate fetches the same url the old null-state fallback derived); mutant back to a url-less carry KILLED. The PiP listeners are wired once beside resize and only re-run refreshMinimizeButton.
+- SUGGESTION (non-blocking, safe to ship disclosed): the PiP refresh is unbound (QA-M8, removing it SURVIVED 137/137); its worst case is the r1 state (an inert chevron shown during Android PiP), no gesture, playback or history effect.
+- SUGGESTION: section 6 now quotes the settle as `matrix(1.95038, ...)`; the committed probe-targets-result.json says 1.95176 (the translate values now match).
+
+Gate: APPROVED r2 @bfb3cb07 — adversary
+- A1, A2, A3 and the deviation (1) suggestion: fixed as prescribed. Mutants re-run against minimize-player + router-helpers + hold-lock: all four leaveWatchForBrowse mutants (including the one that left the app in Chromium at r1), the touchend reset, the claim's hold-timer clear, the dock settle class, the settle timer, both second-finger aborts, the resize / rotate / new-finger clears, deviation (1) and the pp ring `content` are KILLED by name; new ones are KILLED too: the cap `>=` to `>`, leave without history.length, the chip url not carried, the chip state back to undefined, the phone cc-overlay rule dropped. Masked (unchanged from r1, not findings): the claim's lastTapTime and tapGestureMoved. Targeted tests: 137 / 137 pass. lint:ui OK, containment 0, ratchet 3 / 3. Chromium: one diagonal lands on /, docked, playing, history.length 3; the search chip keeps `{depth 1, browseDepth 1}` and the pull lands on `/?search=Proof&type=videos`, history.length unchanged (4).
+- SUGGESTION (residual of QA W2): the cap check `steps >= history.length` misses a session at the cap that has forward entries. Measured (Chromium, router-shaped watch entries pushed to depth 61, history.length 50, then history.go(-15) to depth 46): chevron -> docked but still on /watch.html, and the bottom-nav Home tap is dead afterwards (the go(-46) is a no-op and homeBackPending stays set). Needs a 50+ entry chain and then 4+ backs; a reload recovers. Log it in ROADMAP; `navigation.currentEntry.index`, where it exists, gives the true reachable depth.
+- SUGGESTION: the new picture-in-picture chevron refresh is not tested (dropping the listeners SURVIVED); `#player-dock.is-minimize-settle { overflow: visible }` is still bound only by the probe (cosmetic: only the picture's flight into the dock gets clipped).
+
 ## 9. Out of scope (logged, not built)
 
 - Full screen / landscape pull-down (YouTube exits full screen on a pull), the iPad and desktop chevron, swipe the mini player
