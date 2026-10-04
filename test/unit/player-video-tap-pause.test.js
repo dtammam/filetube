@@ -55,7 +55,7 @@ test('videoSingleTapOrReveal: consume-check FIRST, reveal-first belt SECOND, the
   assert.ok(body, 'videoSingleTapOrReveal body not found');
   const consumeIdx = body[1].indexOf('shouldConsumeTapAsReveal(videoTapConsumedByRevealAt, Date.now(), VIDEO_TAP_REVEAL_CONSUME_MS)');
   const revealIdx = body[1].indexOf("host.classList.contains('controls-autohidden')");
-  const toggleIdx = body[1].indexOf('toggleArtPlayPause();');
+  const toggleIdx = body[1].indexOf("toggleArtPlayPause('picture-tap');"); // v1.362.2: names its source (via)
   assert.ok(consumeIdx !== -1 && revealIdx !== -1 && toggleIdx !== -1, 'all three stages present');
   assert.ok(consumeIdx < revealIdx && revealIdx < toggleIdx, 'stage order: consume -> reveal-first belt -> toggle');
   // Parity by construction: the toggle routes through the art's own

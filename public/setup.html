@@ -802,9 +802,16 @@
         <div class="setup-group">
           <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
             <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="debug-lifecycle-check">Show lifecycle debug log</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="debug-lifecycle-check" /></span></div>
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="debug-lifecycle-overlay-check">Show the log on screen</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="debug-lifecycle-overlay-check" /></span></div>
+          </div>
+          <div class="action-bar">
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" id="lifecycle-log-export-btn"><span class="ui-btn__label">Export log</span></button>
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" id="lifecycle-log-clear-btn"><span class="ui-btn__label">Clear log</span></button>
+          </div>
+          <p class="setup-note">A player event log for diagnosing player issues (a black picture, background audio not engaging). Switch it on, then use the app as usual: it records in the background, across reloads and a force-quit, with nothing on screen. Come back here and press Export log to share it as a text file (or copy it where file sharing is missing). Clear log asks first. "Show the log on screen" adds a small panel at the bottom of the screen. Device-local, never sent anywhere.</p>
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
             <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="debug-rotate-check">Show rotate debug log</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="debug-rotate-check" /></span></div>
           </div>
-          <p class="setup-note">An on-screen event log for diagnosing player lifecycle issues (e.g. background audio not engaging) -- survives a force-quit. This is a device-local setting, not shared across devices; reload the page after enabling for the overlay to appear. Tap the overlay to clear it.</p>
           <p class="setup-note">The rotate debug log records what the screen does when you turn the phone (and when the keyboard comes up in the Music player), frame by frame, in a small green panel at the bottom. Tap the panel to copy the rows. Takes effect at once, no reload; device-local.</p>
         </div>
         <!-- v1.179.1 instrument: runs the REAL critter manifest path + a REAL playback attempt on THIS device and reports which link breaks. -->

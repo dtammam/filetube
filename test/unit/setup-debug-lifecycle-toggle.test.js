@@ -40,12 +40,16 @@ test('setup.html: a "Show lifecycle debug log" checkbox exists (#debug-lifecycle
 
 test('setup.html: the checkbox has an explanatory hint mentioning force-quit survival (matches player.js\'s own documented rationale)', () => {
   // Sweep S8: the hint is the .setup-note footer directly under the switch's grouped list.
-  // v1.355: the rotate-log switch row now follows this one in the same list, so the hint is the FIRST
-  // note after the list closes (the rotate log's own note follows it).
-  const match = /id="debug-lifecycle-check" \/><\/span><\/div>\s*<div class="ui-row[^\n]*id="debug-rotate-check" \/><\/span><\/div>\s*<\/div>\s*<p class="setup-note">([\s\S]*?)<\/p>/.exec(SETUP_HTML);
-  assert.ok(match, 'expected a .setup-note hint immediately following the switch row');
-  assert.match(match[1], /diagnosing player lifecycle issues/);
-  assert.match(match[1], /survives a force-quit/);
+  // v1.355: the rotate-log switch row followed this one in the same list. v1.362.2 (D6): the list holds the
+  // log switch and its on-screen switch; the Export / Clear buttons follow, then this hint.
+  const match = /id="debug-lifecycle-check" \/><\/span><\/div>\s*<div class="ui-row[^\n]*id="debug-lifecycle-overlay-check" \/><\/span><\/div>\s*<\/div>\s*<div class="action-bar">[\s\S]*?id="lifecycle-log-export-btn"[\s\S]*?id="lifecycle-log-clear-btn"[\s\S]*?<\/div>\s*<p class="setup-note">([\s\S]*?)<\/p>/.exec(SETUP_HTML);
+  assert.ok(match, 'expected the switches, then Export / Clear, then the hint');
+  assert.match(match[1], /diagnosing player issues/);
+  assert.match(match[1], /across reloads and a force-quit/);
+  assert.match(match[1], /records in the background/);
+  assert.match(match[1], /Export log/);
+  assert.match(match[1], /Clear log asks first/);
+  assert.ok(!/Tap the overlay to clear|reload the page after enabling/.test(match[1]), 'the v1.362.1 promises are gone');
 });
 
 // ---- setup.js: reads/writes the EXACT SAME storage key as player.js ---

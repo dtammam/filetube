@@ -174,14 +174,16 @@ test('v1.355 A: each row carries sy (page scroll), vvo (visual viewport offset),
   assert.strictEqual(s.vs, null);
 });
 
-test('v1.355 A: setup.html has the "Show rotate debug log" switch directly after the lifecycle row, in the same list, with its note', () => {
+test('v1.355 A: setup.html has the "Show rotate debug log" switch beside the lifecycle log (same Troubleshooting group, its own list since v1.362.2), with its note', () => {
   const doc = new JSDOM(SETUP_HTML).window.document;
   const life = doc.getElementById('debug-lifecycle-check');
   const rot = doc.getElementById('debug-rotate-check');
   assert.ok(rot, 'the switch exists');
   assert.strictEqual(rot.getAttribute('role'), 'switch');
   assert.ok(rot.classList.contains('ui-switch'));
-  assert.strictEqual(life.closest('.ui-row').nextElementSibling, rot.closest('.ui-row'), 'the row right after the lifecycle row');
+  // v1.362.2 (D6): the lifecycle log's switches, Export and Clear and note come first; the rotate row follows in its own list.
+  assert.strictEqual(life.closest('.setup-group'), rot.closest('.setup-group'), 'the same Troubleshooting group as the lifecycle log');
+  assert.ok(life.compareDocumentPosition(rot) & 4, 'after the lifecycle log');
   assert.strictEqual(doc.querySelector('label[for="debug-rotate-check"]').textContent, 'Show rotate debug log');
   const group = rot.closest('.setup-group');
   const notes = Array.from(group.querySelectorAll('.setup-note')).map((n) => n.textContent);
@@ -232,5 +234,5 @@ test('v1.355 A: init() prefills the switch (loadDebugRotateControl) beside the l
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
   const init = /\nfunction init\(root\) \{([\s\S]*?)\n\}/.exec(src);
   assert.ok(init, 'init(root) found');
-  assert.match(init[1], /\n\s*loadDebugLifecycleControl\(\);\s*\n\s*loadDebugRotateControl\(window\);/);
+  assert.match(init[1], /\n\s*loadDebugLifecycleControl\(\);\s*\n\s*loadDebugLifecycleOverlayControl\(window\);\s*\n\s*loadDebugRotateControl\(window\);/);
 });

@@ -44,6 +44,8 @@ test('tapPairCancelDecision: the double-tap window edges (349 cancels, 350 does 
   assert.strictEqual(d({ now: 10000, lastTapTime: 10000 - 350 }), false, '350 ms after the lift');
   assert.strictEqual(d({ now: 10000, lastTapTime: 0 }), false, 'a first touch (no lone tap before it)');
   assert.strictEqual(d({ now: 10000, lastTapTime: 10000 - 351 }), false);
+  // r0 mutant M9 (survived on the real clock): a clock under the window with no lift yet must not read as a pair.
+  assert.strictEqual(d({ now: 100, lastTapTime: 0 }), false, 'no lift recorded, even with a clock inside the window of 0');
 });
 
 test('tapPairCancelDecision: a hot skip chain cancels on its own; its edge is exclusive', () => {
@@ -219,10 +221,9 @@ test('docked: a touch inside the window is NOT cancelled (the tap must synthesiz
 });
 
 test('native-controls mode: never cancelled', async () => {
-  const h = await boot(VIDEO, { native: true });
-  await wait(30);
-  h.host.classList.add('native-controls'); // belt: whichever way the mode is read
-  tap(h, h.v, 100000);
+  const h = await boot(VIDEO);
+  tap(h, h.v, 100000); // the lone tap is recorded on the custom surface first (native mode's touchend bails)
+  h.host.classList.add('native-controls'); // then the native strip takes over (inNativeControlsMode reads this class)
   h.at(100040 + 100);
   const s = fire(h, h.v, 'touchstart', 300, 100);
   assert.strictEqual(s.defaultPrevented, false);

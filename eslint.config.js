@@ -227,6 +227,9 @@ module.exports = [
         shareTextContent: 'readonly',
         copyTextToClipboard: 'readonly',
         showTranscriptModal: 'readonly',
+        // v1.362.2 (D6): the one log export (common.js) and the running version, used by setup.js's Export log.
+        exportDiagnosticLog: 'readonly',
+        appVersionString: 'readonly',
         // v1.203: the shared transcript flow (common.js), called by watch.js and main.js's card corner.
         openTranscriptFor: 'readonly',
         // v1.68 (ruling 4): close a played video's delivered push banner

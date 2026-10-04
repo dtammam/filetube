@@ -352,12 +352,13 @@ const viewRoot = (html) => {
 
 // Sweep S3's merge follow-up: the resume-countdown switch left with the countdown (the modal it
 // configured is gone, D8.2), so the Settings switches numbered 28; v1.355 added two (the rotate log, keyboard search): 30.
-test('Settings (F09): every checkbox is a ui-switch with role=switch; there are 30', () => {
+test('Settings (F09): every checkbox is a ui-switch with role=switch; there are 31', () => {
   const root = viewRoot(SETUP_HTML);
   const boxes = root.querySelectorAll('input[type="checkbox"]');
   // v1.355 DELIBERATE bump (28 -> 30): Troubleshooting > Show rotate debug log (#debug-rotate-check) and
   // Mobile player > Keyboard search (experimental) (#pocket-kb-search-check).
-  assert.strictEqual(boxes.length, 30, 'the same settings (no key dropped) minus the retired resume-countdown switch, plus the rotate log and keyboard search');
+  // v1.362.2 DELIBERATE bump (30 -> 31): Troubleshooting > Show the log on screen (#debug-lifecycle-overlay-check, D6).
+  assert.strictEqual(boxes.length, 31, 'the same settings (no key dropped) minus the retired resume-countdown switch, plus the rotate log, keyboard search and the on-screen log switch');
   for (const b of boxes) {
     assert.ok(b.classList.contains('ui-switch'), b.id + ' is a ui-switch');
     assert.strictEqual(b.getAttribute('role'), 'switch', b.id);

@@ -876,6 +876,28 @@ function formatFrameSeries(startFrames, samples) {
   }).join(',');
 }
 
+// v1.362.2 (D5): is the picture frozen while the clock runs? `samples` = one reading a second,
+// oldest first, `{ wall, t, f }` (wall ms, media time s, the layer's frame count). iOS relays that
+// count as a cached copy that refreshes about every 2 s, so a healthy stream can read flat for 2 s;
+// frozen therefore needs the TRAILING run of equal counts to span at least 3 s of wall time while
+// the media time advanced at least 2 s inside it (LESSONS 1: a series, never one reading).
+var FROZEN_MIN_WALL_MS = 3000;
+var FROZEN_MIN_MEDIA_S = 2;
+function frozenPictureDecision(samples) {
+  var list = Array.isArray(samples) ? samples : [];
+  if (list.length < 2) return false;
+  var last = list[list.length - 1];
+  var num = function (v) { return typeof v === 'number' && isFinite(v); };
+  if (!last || !num(last.f) || !num(last.t) || !num(last.wall)) return false;
+  var first = last;
+  for (var i = list.length - 2; i >= 0; i--) {
+    var s = list[i];
+    if (!s || !num(s.f) || !num(s.t) || !num(s.wall) || s.f !== last.f) break;
+    first = s;
+  }
+  return (last.wall - first.wall) >= FROZEN_MIN_WALL_MS && (last.t - first.t) >= FROZEN_MIN_MEDIA_S;
+}
+
 // v1.161.1 (Dean device bug: AirPods/lock-screen play-pause inconsistent during
 // background play). The detail line for a MediaSession action ARRIVAL - records
 // WHICH element the handler will act on (`bgAudio` sidecar vs the paused `video`)
@@ -1936,6 +1958,8 @@ if (typeof module !== 'undefined' && module.exports) {
     formatVideoStateDetail,
     videoStateDelta,
     formatFrameSeries,
+    // v1.362.2 (D5): the frozen-picture decision behind video:frozen / video:thawed.
+    frozenPictureDecision,
     // v1.161.1: the MediaSession-action arrival detail line (element + bg state).
     formatMsActionDetail,
     // v1.161.4: the runtime silent-WAV builder (the background keep-alive's loop).
@@ -3094,6 +3118,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // FOREGROUND at this point, which is normally enough gesture context),
       // leave it paused -- the position is already correct either way, so
       // the user just needs one more tap, never a lost/wrong position.
+      if (audioWasPlaying) notePlayVia('swapback'); // v1.362.2 (D5)
       if (audioWasPlaying) bgTimingNoteReturnPlay(mediaPlayer.play()).catch(function () {});
     }
     recordLifecycleEvent('bgAudio:swapback', { detail: 'audio=' + resumeTime.toFixed(1) + 's->video=' + (mediaPlayer ? mediaPlayer.currentTime.toFixed(1) : '?') + 's' });
@@ -3193,6 +3218,7 @@ if (typeof module !== 'undefined' && module.exports) {
           hidden: typeof document !== 'undefined' && document.visibilityState === 'hidden',
         }),
       });
+      notePlayVia('media-session'); // v1.362.2 (D5): a lock-screen play/pause names its source
       return handler(details);
     } : null;
     try { navigator.mediaSession.setActionHandler(action, wrapped); } catch (_) { /* action unsupported by this browser */ }
@@ -4087,10 +4113,19 @@ if (typeof module !== 'undefined' && module.exports) {
   // skip-or-handoff .. ok-or-fail .. swapback) visible alongside a little
   // surrounding context without the overlay scrolling out of what fits in
   // its own 35vh max-height (see ensureLifecycleOverlayEl).
-  var LIFECYCLE_LOG_CAP = 30;
+  // v1.362.2 (D5, D6): 30 -> 1000. The log is now recorded in the background and EXPORTED from Settings >
+  // Troubleshooting (setup.js, docs/references/log-collection-pattern.md), not read off a 35vh panel, so
+  // it keeps a whole session; at the cap the stored JSON stays well under 1 MB (measured in the plan, section 6).
+  var LIFECYCLE_LOG_CAP = 1000;
+  // v1.362.2 (D6): the on-screen panel is OPT-IN, its own switch (Settings > Troubleshooting > "Show the
+  // log on screen"); the log records with it off. Read the same way as the log's own flag.
+  var DEBUG_LIFECYCLE_OVERLAY_STORAGE_KEY = 'ft-debug-lifecycle-overlay';
 
   function isDebugLifecycleEnabled() {
     try { return localStorage.getItem(DEBUG_LIFECYCLE_STORAGE_KEY) === '1'; } catch (_) { return false; }
+  }
+  function isLifecycleOverlayEnabled() {
+    try { return localStorage.getItem(DEBUG_LIFECYCLE_OVERLAY_STORAGE_KEY) === '1'; } catch (_) { return false; }
   }
 
   // Wired ONCE, at parse time: lets the owner enable/disable the debug log
@@ -4180,8 +4215,34 @@ if (typeof module !== 'undefined' && module.exports) {
         suppressed: suppressPauseHandoff,
         ended: !!(el && el.ended),
         state: bgAudioState,
-      }),
+      }) + ' ' + playViaDetail(),
     });
+  }
+
+  // v1.362.2 (D5): WHERE a play or pause came from. A source that starts or stops playback stamps
+  // { via, at } just before it acts (notePlayVia); the next media:play / media:pause line reads the stamp
+  // if it is under PLAY_VIA_FRESH_MS old (else via=other) and consumes it. `g` = ms since the last lift
+  // (touchend) or click on the player: a picture tap plays ~350 ms after its lift (the double-tap
+  // window, outside the gesture), the bar's button inside its click (H1). Flag off: nothing is stamped.
+  var PLAY_VIA_FRESH_MS = 1500;
+  var lastPlayVia = null;
+  var lastPlayerLiftAt = 0;
+  function notePlayVia(via) {
+    if (!isDebugLifecycleEnabled()) return;
+    lastPlayVia = { via: via || 'other', at: Date.now() };
+  }
+  function notePlayerLift() {
+    if (isDebugLifecycleEnabled()) lastPlayerLiftAt = Date.now();
+  }
+  function playViaDetail() {
+    var now = Date.now();
+    var via = (lastPlayVia && now - lastPlayVia.at < PLAY_VIA_FRESH_MS) ? lastPlayVia.via : 'other';
+    lastPlayVia = null;
+    return 'via=' + via + ' g=' + (lastPlayerLiftAt ? now - lastPlayerLiftAt : '-');
+  }
+  // The media:play line's detail; the via read happens only while the flag is on.
+  function mediaPlayDetail(elName) {
+    return 'el=' + elName + (isDebugLifecycleEnabled() ? ' ' + playViaDetail() : '');
   }
 
   // v1.336 (D1 instrument): the runtime half of formatVideoStateDetail. Gated on the
@@ -4235,6 +4296,9 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!isDebugLifecycleEnabled() || !mediaPlayer) return;
     var s = readVideoState();
     recordLifecycleEvent('video:' + evName, { detail: formatVideoStateDetail(s) });
+    // v1.362.2 (D5): the frozen-picture sampler starts on 'playing' and stops on what ends playback.
+    if (evName === 'playing') startFrozenSampler();
+    else if (evName === 'pause' || evName === 'emptied' || evName === 'loadstart') stopFrozenSampler();
     if (evName !== 'playing') return;
     if (videoStateCheckTimer) clearTimeout(videoStateCheckTimer);
     var samples = [];
@@ -4252,6 +4316,53 @@ if (typeof module !== 'undefined' && module.exports) {
       recordLifecycleEvent('video:check', { detail: formatVideoStateDetail(n) });
     };
     videoStateCheckTimer = setTimeout(tick, VIDEO_CHECK_EVERY_MS);
+  }
+
+  // v1.362.2 (D5): video:frozen / video:thawed. While the flag is on, the page visible, the video (not an
+  // audio item, not the background sidecar) the active element and playing, one reading a second of
+  // { wall, t, f }; frozenPictureDecision says when the layer's frame count stood still while the clock
+  // ran. ONE line at the onset (with the last 6 counts), ONE when the count moves again. Reads only: the
+  // same property reads and getVideoPlaybackQuality() as readVideoState, never a write to the media. At
+  // most one timer; stopped on pause, ended, emptied, a new load, a hide, a dock or close
+  // (resetTransientPlaybackUi) and when the flag goes off. Flag off: never started, so no timer exists.
+  var FROZEN_SAMPLE_EVERY_MS = 1000;
+  var FROZEN_SAMPLES_KEPT = 12;
+  var frozenSampleTimer = null;
+  var frozenSamples = [];
+  var frozenLogged = false;
+  function frozenSamplerEligible() {
+    return isDebugLifecycleEnabled() && !!mediaPlayer && document.visibilityState === 'visible' &&
+      activeMediaElement() === mediaPlayer && !(host && host.classList.contains('audio-mode')) &&
+      !mediaPlayer.paused && !mediaPlayer.ended;
+  }
+  function startFrozenSampler() {
+    if (frozenSampleTimer || !frozenSamplerEligible()) return;
+    frozenSamples = [];
+    frozenLogged = false;
+    frozenSampleTimer = setTimeout(frozenSampleTick, FROZEN_SAMPLE_EVERY_MS);
+  }
+  function stopFrozenSampler() {
+    if (frozenSampleTimer) clearTimeout(frozenSampleTimer);
+    frozenSampleTimer = null;
+    frozenSamples = [];
+    frozenLogged = false;
+  }
+  function frozenSampleTick() {
+    frozenSampleTimer = null;
+    if (!frozenSamplerEligible()) { stopFrozenSampler(); return; }
+    var s = readVideoState();
+    frozenSamples.push({ wall: Date.now(), t: s.t, f: s.frames });
+    if (frozenSamples.length > FROZEN_SAMPLES_KEPT) frozenSamples.shift();
+    var n = frozenSamples.length;
+    if (!frozenLogged && frozenPictureDecision(frozenSamples)) {
+      frozenLogged = true;
+      s.series = frozenSamples.slice(-6).map(function (x) { return (typeof x.f === 'number' && isFinite(x.f)) ? String(x.f) : '-'; }).join(',');
+      recordLifecycleEvent('video:frozen', { detail: formatVideoStateDetail(s) });
+    } else if (frozenLogged && n >= 2 && frozenSamples[n - 1].f !== frozenSamples[n - 2].f) {
+      frozenLogged = false;
+      recordLifecycleEvent('video:thawed', { detail: formatVideoStateDetail(s) });
+    }
+    frozenSampleTimer = setTimeout(frozenSampleTick, FROZEN_SAMPLE_EVERY_MS);
   }
 
   // ---- Lock-to-audio phase 1 (MEASURE): the timing log's runtime half ---------
@@ -4577,7 +4688,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // Diagnostics (gate S1, evidence fidelity for the coupling E-tests): the
   // ?debugLifecycle=1 overlay gets ONE `audioSession:declare` line per PAGE
   // LOAD, always - 'type=playback' on the transition, 'already-playback' on
-  // the first skipped call - because the 30-entry ring buffer both evicts
+  // the first skipped call - because the capped ring buffer both evicts
   // old lines and persists across loads, so a transition-only record could
   // neither prove nor disprove "the declaration was live during THIS repro".
   // v1.136.1: the audio-path declare experiment's device-local switch. The
@@ -4696,21 +4807,23 @@ if (typeof module !== 'undefined' && module.exports) {
       'color:#0f0', 'font:11px/1.4 monospace', 'padding:4px 6px',
       'pointer-events:auto', 'white-space:pre-wrap',
     ].join(';');
-    el.title = 'Tap to clear';
-    el.addEventListener('click', function () {
-      try { localStorage.removeItem(LIFECYCLE_LOG_STORAGE_KEY); } catch (_) { /* best-effort only */ }
-      renderLifecycleOverlay();
-    });
+    // v1.362.2 (D6): a tap no longer clears it (a stray tap lost the evidence); Settings > Troubleshooting
+    // exports and clears the log, and Clear asks first.
     document.body.appendChild(el);
     return el;
   }
 
   // Renders the ring buffer newest-first. No-op (and never creates the
-  // element) unless the debug flag is on -- called both on initial page load
-  // (to surface whatever was recorded right before a force-quit) and after
-  // every new recorded event, so it stays live while open.
+  // element) unless the debug flag AND (v1.362.2, D6) the on-screen switch are
+  // on; with the switch off an existing panel is removed. Called both on
+  // initial page load (to surface whatever was recorded right before a
+  // force-quit) and after every new recorded event, so it stays live while open.
   function renderLifecycleOverlay() {
-    if (!isDebugLifecycleEnabled()) return;
+    if (!isDebugLifecycleEnabled() || !isLifecycleOverlayEnabled()) {
+      var stale = document.getElementById('ft-lifecycle-overlay');
+      if (stale && stale.parentNode) stale.parentNode.removeChild(stale);
+      return;
+    }
     var el = ensureLifecycleOverlayEl();
     if (!el) return;
     var log = [];
@@ -4725,16 +4838,17 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.27.1: an optional `detail` string (background-audio diagnostics --
       // e.g. a skip reason, or a position/error summary) rendered right after
       // the type, truncated so one noisy entry (e.g. a long err.message)
-      // never blows out the overlay's fixed-height, tap-to-clear layout.
+      // never blows out the overlay's fixed-height layout.
       // v1.336: a `video:` line is the D1 instrument's reading and every field of it
-      // is evidence, so it renders in full (the panel wraps it); every other type keeps
-      // the 60-character cut.
-      var detailCap = (entry && typeof entry.type === 'string' && entry.type.indexOf('video:') === 0) ? 400 : 60;
+      // is evidence, so it renders in full (the panel wraps it); v1.362.2 adds the
+      // `media:`, `hold:` and `gesture:` lines; every other type keeps the 60-character
+      // cut. The panel only; the exported log (Settings) carries every detail uncut.
+      var detailCap = (entry && typeof entry.type === 'string' && /^(video|media|hold|gesture):/.test(entry.type)) ? 400 : 60;
       var detailStr = entry && entry.detail ? ' (' + String(entry.detail).slice(0, detailCap) + ')' : '';
       return (entry.type || '?') + detailStr + ' · persisted=' + entry.persisted + ' · vis=' + entry.vis +
         ' · playing=' + entry.playing + ' · ' + agoS + 's ago';
     });
-    el.textContent = '[tap to clear]\n' + (lines.length ? lines.join('\n') : '(no lifecycle events recorded yet)');
+    el.textContent = '[export from Settings]\n' + (lines.length ? lines.join('\n') : '(no lifecycle events recorded yet)');
   }
 
   initDebugLifecycleFlag();
@@ -4753,6 +4867,8 @@ if (typeof module !== 'undefined' && module.exports) {
   document.addEventListener('visibilitychange', function () {
     recordLifecycleEvent('visibilitychange', {});
     if (document.visibilityState === 'hidden') handleBackgroundLifecycle('visibilitychangeHidden');
+    // v1.362.2 (D5): the sampler sleeps while hidden and resumes on return (start is a no-op when the flag is off).
+    if (document.visibilityState === 'hidden') stopFrozenSampler(); else startFrozenSampler();
   });
   // `resume`/`pageshow` never drive a pause/release decision (nothing to do
   // on returning to the foreground beyond the existing Media Session
@@ -4761,7 +4877,7 @@ if (typeof module !== 'undefined' && module.exports) {
   window.addEventListener('pageshow', function () { recordLifecycleEvent('pageshow', {}); });
   // UI pass D7: the viewport events, with sizes (formatViewportDetail) - observational only, and a
   // no-op unless the flag is on. Coalesced to one line per event type per animation frame, so a
-  // desktop drag-resize cannot flush the 30-line log.
+  // desktop drag-resize cannot flush the capped log (30 lines until v1.362.2, 1000 since).
   var viewportLogPending = {};
   function logViewport(type) {
     if (!isDebugLifecycleEnabled() || viewportLogPending[type]) return;
@@ -4772,7 +4888,7 @@ if (typeof module !== 'undefined' && module.exports) {
   window.addEventListener('resize', function () { logViewport('resize'); });
   window.addEventListener('orientationchange', function () { logViewport('orientationchange'); });
   // v1.341.3: scroll lines, only in the second after a rotation (rotationSettleUntil), coalesced
-  // like the rest, so ordinary scrolling never floods the 30-line log.
+  // like the rest, so ordinary scrolling never floods the capped log.
   window.addEventListener('scroll', function () { if (Date.now() <= rotationSettleUntil) logViewport('scroll'); }, { passive: true });
   if (window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
     window.visualViewport.addEventListener('resize', function () { logViewport('visualViewport:resize'); });
@@ -4932,15 +5048,22 @@ if (typeof module !== 'undefined' && module.exports) {
     }
   }
 
+  // v1.362.2 (D5): the hold's four transitions in the lifecycle log (a no-op when the flag is off).
+  function logHold(type) {
+    if (isDebugLifecycleEnabled()) recordLifecycleEvent(type, { detail: 'rate=' + (mediaPlayer ? mediaPlayer.playbackRate : '-') + ' locked=' + (holdLocked ? 1 : 0) });
+  }
+
   function lockHold() {
     if (holdLocked) return;
     holdLocked = true;
+    logHold('hold:lock');
     setHoldLockUi(true);
   }
 
   // The lock ends WITHOUT writing the rate: an explicit speed pick already wrote the one it wants.
   function dropHold() {
     if (!holdActive) return;
+    logHold('hold:drop');
     holdActive = false;
     holdLocked = false;
     holdGestureLive = false;
@@ -4956,10 +5079,12 @@ if (typeof module !== 'undefined' && module.exports) {
     prevRate = mediaPlayer.playbackRate || 1;
     mediaPlayer.playbackRate = 2;
     if (speedBadge) speedBadge.hidden = false; // UI pass: the chip-styled 2x pill (global [hidden] rule)
+    logHold('hold:engage');
   }
 
   function releaseHold() {
     if (!holdActive) return;
+    logHold('hold:release');
     holdActive = false;
     holdLocked = false;
     holdGestureLive = false;
@@ -4986,6 +5111,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.362.1 gate r1 (adversary): a single tap still waiting out the double-tap window never lands on the
     // surface that replaced it (a tap, then a minimize inside 350 ms, paused the docked player).
     cancelPendingArtTap();
+    stopFrozenSampler(); // v1.362.2 (D5): the frozen-picture sampler never outlives the surface
   }
 
   // ---- v1.362: minimize into the mini player (plan 2026-10-03-minimize-to-mini-player) ----
@@ -5398,6 +5524,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     el.addEventListener('touchend', function (e) {
       if (inNativeControlsMode()) return;
+      notePlayerLift(); // v1.362.2 (D5): the media:play line's g= counts from this lift
       clearTimeout(holdTimer);
       // v1.362: a claimed pull ends here (dock or spring back), never as a tap.
       if (minimizeClaimed) {
@@ -5568,6 +5695,7 @@ if (typeof module !== 'undefined' && module.exports) {
   function autoStart() {
     var gen = loadGeneration;
     var p;
+    notePlayVia('autostart'); // v1.362.2 (D5)
     try { p = mediaPlayer.play(); } catch (e) { p = Promise.reject(e); }
     Promise.resolve(p).then(function () {
       recordLifecycleEvent('autostart:ok', { detail: autoStartCtx() });
@@ -6335,8 +6463,9 @@ if (typeof module !== 'undefined' && module.exports) {
     ppBtn.setAttribute('aria-pressed', playing ? 'true' : 'false');
   }
 
-  function togglePlayPause() {
+  function togglePlayPause(via) {
     if (!mediaPlayer) return;
+    notePlayVia(via); // v1.362.2 (D5): the media:play / media:pause line names this source
     // v1.27.2 gate fix (belt-and-braces with the host-level gesture capture
     // in wireHostListeners): an explicit in-app toggle is a user gesture --
     // stamp it so handlePossibleIOSPrePauseHandoff never arms a pre-pause
@@ -6359,10 +6488,10 @@ if (typeof module !== 'undefined' && module.exports) {
   // `wireSkipHoldGestures`'s `onSingleTap` callback (touch path) invoke the
   // IDENTICAL toggle-then-flash-glyph behavior via `scheduleArtSingleTap`,
   // rather than two independently-written copies drifting apart.
-  function toggleArtPlayPause() {
+  function toggleArtPlayPause(via) {
     if (!mediaPlayer) return;
     var willPlay = mediaPlayer.paused;
-    togglePlayPause();
+    togglePlayPause(via || 'art-tap');
     flashArtGlyph(willPlay);
   }
 
@@ -6379,7 +6508,7 @@ if (typeof module !== 'undefined' && module.exports) {
       revealControlsAndReArm();
       return;
     }
-    toggleArtPlayPause();
+    toggleArtPlayPause('art-tap');
   }
 
   // v1.134 (Dean): tap ANYWHERE on the VIDEO surface toggles play/pause with
@@ -6420,7 +6549,7 @@ if (typeof module !== 'undefined' && module.exports) {
       revealControlsAndReArm();
       return;
     }
-    toggleArtPlayPause();
+    toggleArtPlayPause('picture-tap');
   }
 
   // Cover-art click-to-play overlay glyph (AC9): flashes via the same
@@ -7102,7 +7231,7 @@ if (typeof module !== 'undefined' && module.exports) {
     mediaPlayer.addEventListener('pause', bgTimingOnVideoPause);
     mediaPlayer.addEventListener('playing', bgTimingOnVideoPlaying);
     mediaPlayer.addEventListener('timeupdate', bgTimingOnVideoTime);
-    mediaPlayer.addEventListener('play', function () { recordLifecycleEvent('media:play', { detail: 'el=video' }); });
+    mediaPlayer.addEventListener('play', function () { recordLifecycleEvent('media:play', { detail: mediaPlayDetail('video') }); });
     // v1.336 (D1 instrument): the video's own state at each event that can start,
     // stop or starve its picture - no-ops unless the ?debugLifecycle=1 flag is on.
     ['pause', 'playing', 'waiting', 'stalled', 'emptied', 'error', 'resize', 'loadstart', 'webkitpresentationmodechanged'].forEach(function (evName) {
@@ -7166,7 +7295,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // activeMediaElement() (unlike the state-sync listeners above): a pause
     // arriving on the non-active element is itself diagnostic signal.
     bgAudioEl.addEventListener('pause', function () { recordDiagnosticPauseEvent('bgAudio'); });
-    bgAudioEl.addEventListener('play', function () { recordLifecycleEvent('media:play', { detail: 'el=bgAudio' }); });
+    bgAudioEl.addEventListener('play', function () { recordLifecycleEvent('media:play', { detail: mediaPlayDetail('bgAudio') }); });
     // Lock-to-audio phase 1: the sidecar's 'playing' and first real advance
     // (passive marks; gated on a real handoff being the active surface).
     bgAudioEl.addEventListener('playing', bgTimingOnSidecarPlaying);
@@ -7238,6 +7367,7 @@ if (typeof module !== 'undefined' && module.exports) {
     mediaPlayer.addEventListener('durationchange', function () { updatePositionState(true); });
     mediaPlayer.addEventListener('seeked', function () { updatePositionState(true); });
     mediaPlayer.addEventListener('ratechange', function () {
+      if (isDebugLifecycleEnabled()) recordLifecycleEvent('media:rate', { detail: 'rate=' + mediaPlayer.playbackRate + ' def=' + mediaPlayer.defaultPlaybackRate }); // v1.362.2 (D5)
       updatePositionState(true);
       if (holdLocked && holdRatePickDecision({ locked: true, defaultAtEngage: holdDefaultAtEngage, defaultNow: mediaPlayer.defaultPlaybackRate, rateNow: mediaPlayer.playbackRate }) === 'drop') dropHold();
     });
@@ -7330,7 +7460,7 @@ if (typeof module !== 'undefined' && module.exports) {
     ['touchstart', 'pointerdown'].forEach(function (evt) {
       if (playerControls) playerControls.addEventListener(evt, function () { if (inImmersiveMode()) revealControlsAndReArm(); }, { passive: true });
     });
-    mediaPlayer.addEventListener('ended', function () { stopFillLoop(); updateSeekVisual(); });
+    mediaPlayer.addEventListener('ended', function () { stopFrozenSampler(); stopFillLoop(); updateSeekVisual(); });
     // v1.109: the seek-bar segment notches depend on total duration, so (re)build
     // them the moment it's known/changes (loadedmetadata/durationchange), on top
     // of the chapter-set-change build in applyChaptersForMedia.
@@ -7393,6 +7523,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // Capture phase, because the control bar's delegated stopPropagation
     // above would keep a bubble-phase listener from ever seeing bar clicks.
     host.addEventListener('click', function (e) {
+      notePlayerLift(); // v1.362.2 (D5): a click on the player (the bar's button) is the lift for g=
       if (e.detail === 0) return; // keyboard activation -- a11y focus stays
       var btn = e.target && e.target.closest ? e.target.closest('button') : null;
       if (btn) btn.blur();
@@ -7401,7 +7532,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (ppBtn) {
       ppBtn.addEventListener('click', function () {
         primeBackgroundAudioElement(); // v1.27.0: synchronous gesture-prime BEFORE the play() below (DOCKED + non-native-controls FULL path)
-        togglePlayPause();
+        togglePlayPause('bar-button');
       });
     }
 
@@ -8802,7 +8933,7 @@ if (typeof module !== 'undefined' && module.exports) {
           // v1.27.2 gate fix: route through togglePlayPause() (was a
           // duplicated inline toggle) so the user-gesture stamp inside it
           // covers the keyboard pause path too -- see lastUserGestureAt.
-          togglePlayPause();
+          togglePlayPause('keyboard');
           break;
         case 'f':
         case 'F': {
@@ -9473,6 +9604,7 @@ if (typeof module !== 'undefined' && module.exports) {
     applyControlsMode(); // re-toggles .ff-mobile AND re-derives native-vs-custom controls for this FULL transition (mobile video -> native; everything else -> custom -- native-controls round)
     hideDock();
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
+    startFrozenSampler(); // v1.362.2 (D5): the dock stopped it; a still-playing expand resumes it (a no-op when the flag is off)
     scheduleCapRefresh(); // (Dean) measure the space below THIS view's player -> --player-cap-h
   }
 
@@ -9878,7 +10010,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // the SAME internal the lock screen / control bar uses (one behavior, two callers).
     play: function () { return playActiveMedia(); },
     pause: function () { pauseActiveMedia(); },
-    togglePlay: function () { togglePlayPause(); },
+    togglePlay: function () { togglePlayPause('other'); },
     next: function () { manualTrackStep('next'); },
     prev: function () { manualTrackStep('prev'); },
     seek: function (sec) { if (typeof sec === 'number' && isFinite(sec) && sec >= 0) seekActiveMedia(sec, false); },

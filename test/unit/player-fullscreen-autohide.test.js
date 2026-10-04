@@ -154,7 +154,7 @@ test('v1.120: an audio cover-art tap reveals a HIDDEN bar without toggling playb
   // reveal guard in the click handler alone was DEAD on a phone.
   const fn = /function artSingleTapOrReveal\(\) \{([\s\S]*?)\n {2}\}/.exec(SRC);
   assert.ok(fn, 'artSingleTapOrReveal exists');
-  assert.match(fn[1], /if \(inImmersiveMode\(\) && host && host\.classList\.contains\('controls-autohidden'\)\) \{\s*revealControlsAndReArm\(\);\s*return;\s*\}[\s\S]*?toggleArtPlayPause\(\);/,
+  assert.match(fn[1], /if \(inImmersiveMode\(\) && host && host\.classList\.contains\('controls-autohidden'\)\) \{\s*revealControlsAndReArm\(\);\s*return;\s*\}[\s\S]*?toggleArtPlayPause\('art-tap'\);/, // v1.362.2: names its source (via)
     'reveal-if-hidden short-circuits BEFORE the play/pause toggle');
   // It is the TOUCH single-tap action (the real iOS reveal path), not a
   // click-only guard.
