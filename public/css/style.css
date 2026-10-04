@@ -1403,6 +1403,36 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
   box-shadow: none;
 }
 
+/* v1.362.4 (plan 2026-10-04-minimize-crossfade, Dean's rulings F1-F3): the page under the video fades like
+   YouTube's when it minimizes and expands (measured on his recording: ~0.4 s through ~60 %). Opacity toward
+   the page's own background, floor 0.4. NEVER on an ancestor of the video (LESSONS 7, the v1.312 class): on
+   the watch page only the children of .watch-main that do not hold #player-slot fade (the player stage's
+   siblings, excluded by content, not by name: the v1.312 sweep in ambient-glow-engine.test.js keeps every
+   rule that names the stage free of animation); another page fades whole only while it does not hold the player.
+   player.js drives it (followMinimizeDrag, minimizeToDock, the dock's tap); reduced motion and
+   ?minimizeAnim=0 leave it off. Plain opacity only (player-overlay-no-filter.test.js). */
+#view-root[data-view="watch"] .watch-main > :not(:has(#player-slot)),
+#view-root[data-view="watch"] .watch-sidebar {
+  opacity: calc(1 - 0.6 * var(--minimize-fade, 0));
+}
+#view-root[data-view="watch"].is-minimize-fade-ease .watch-main > :not(:has(#player-slot)),
+#view-root[data-view="watch"].is-minimize-fade-ease .watch-sidebar {
+  transition: opacity var(--dur-fade) var(--ease-std);
+}
+#view-root:not([data-view="watch"]):not(:has(#player-wrapper)).is-view-leaving {
+  opacity: 0.4;
+  transition: opacity var(--dur-fade) var(--ease-std);
+}
+html[data-ft-view-fade="arrive"] #view-root:not([data-view="watch"]):not(.is-view-leaving):not(:has(#player-wrapper)),
+html[data-ft-view-fade="arrive"] #view-root[data-view="watch"]:not(.is-minimize-fading) .watch-main > :not(:has(#player-slot)),
+html[data-ft-view-fade="arrive"] #view-root[data-view="watch"]:not(.is-minimize-fading) .watch-sidebar {
+  animation: ft-view-arrive var(--dur-sheet) var(--ease-enter);
+}
+@keyframes ft-view-arrive {
+  from { opacity: 0.4; }
+  to { opacity: 1; }
+}
+
 /* v1.362 (R6): the minimize chevron on the phone's inline picture, top-left (player.js builds it as a
    plain ui-btn and shows it only where minimize is offered, and since v1.362.1 only while paused, for
    3 s after play or a touch, or while focused: the global [hidden] rule hides it, at once, otherwise). A 44 x 44 touch box carrying a plain painted 36 px disc (a radial gradient, never a

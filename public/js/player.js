@@ -5232,6 +5232,54 @@ if (typeof module !== 'undefined' && module.exports) {
     return matchMediaBool('(prefers-reduced-motion: reduce)') === true;
   }
 
+  // ---- v1.362.4: the page under the video fades like YouTube's (plan 2026-10-04-minimize-crossfade) ----
+  // style.css owns the paint (opacity on the watch page's content around the player stage, or on another page's
+  // whole #view-root while it does not hold the player; never an ancestor of the video, LESSONS 7). This only
+  // flips classes, one custom property and one <html> mark: `--minimize-fade` (0..1, the pull's progress) on the
+  // watch #view-root; `is-view-leaving` on a page the mini player's tap leaves; `data-ft-view-fade="arrive"` on
+  // <html> so the page that arrives next fades in. One timer ends the mark and restores whatever never left.
+  var VIEW_FADE_HOLD_MS = 4000;
+  var viewFadeTimer = null;
+  var viewFadeMarked = null; // the #view-root this fade changed (it may be cached and re-inserted later: home)
+  function minimizeFadeEnabled() {
+    return minimizeAnimEnabled() && !minimizeReducedMotion();
+  }
+  function watchViewRoot() {
+    var r = document.getElementById('view-root');
+    return (r && r.getAttribute('data-view') === 'watch') ? r : null;
+  }
+  // The pull: progress 0..1 follows the finger (no transition); `ease` animates to it (the arrow, a spring-back).
+  function setMinimizeFade(p, ease) {
+    var r = watchViewRoot();
+    if (!r) return;
+    var v = (typeof p === 'number' && isFinite(p)) ? Math.max(0, Math.min(1, p)) : 0;
+    r.classList.add('is-minimize-fading');
+    r.classList.toggle('is-minimize-fade-ease', !!ease);
+    r.style.setProperty('--minimize-fade', String(v));
+  }
+  function clearMinimizeFade() {
+    var r = watchViewRoot();
+    if (!r) return;
+    r.classList.remove('is-minimize-fading', 'is-minimize-fade-ease');
+    r.style.removeProperty('--minimize-fade');
+  }
+  function endViewFade() {
+    if (viewFadeTimer) { clearTimeout(viewFadeTimer); viewFadeTimer = null; }
+    try { delete document.documentElement.dataset.ftViewFade; } catch (_) { document.documentElement.removeAttribute('data-ft-view-fade'); }
+    var m = viewFadeMarked;
+    viewFadeMarked = null;
+    if (!m) return;
+    m.classList.remove('is-view-leaving', 'is-minimize-fading', 'is-minimize-fade-ease');
+    m.style.removeProperty('--minimize-fade');
+  }
+  // A page is leaving (`root` already dimmed by the caller): the next #view-root to arrive fades in.
+  function markViewArrival(root) {
+    endViewFade();
+    viewFadeMarked = root || null;
+    document.documentElement.setAttribute('data-ft-view-fade', 'arrive');
+    viewFadeTimer = setTimeout(endViewFade, VIEW_FADE_HOLD_MS);
+  }
+
   // The page's real scroll (LESSONS 4: through the body lock, which pins scrollY at 0 while it holds).
   function pageScrollY() {
     var BL = playerBodyLock();
@@ -5271,6 +5319,7 @@ if (typeof module !== 'undefined' && module.exports) {
     host.classList.remove('is-minimize-drag', 'is-minimize-snap', 'is-minimize-settle');
     var dockEl = document.getElementById('player-dock');
     if (dockEl) dockEl.classList.remove('is-minimize-settle');
+    if (!viewFadeMarked) clearMinimizeFade(); // v1.362.4: the fade goes with the drag, unless the page is leaving
   }
 
   function beginMinimizeGesture() {
@@ -5308,6 +5357,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var f = minimizeDragTransform({ from: minimizeFrom, to: minimizeTo, dy: dy });
     host.style.transformOrigin = '0 0';
     host.style.transform = 'translate(' + f.tx + 'px, ' + f.ty + 'px) scale(' + f.s + ')';
+    if (minimizeFadeEnabled()) setMinimizeFade(f.p, false); // v1.362.4: the page under it dims as the finger pulls
   }
 
   // The host's touchmove (the v1.358 claim listener) hands every move it does not own to this.
@@ -5353,6 +5403,8 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function snapMinimizeDrag() {
     minimizeClaimed = false;
+    // v1.362.4: a spring-back brings the page back up; clearMinimizeDrag (the snap's end) removes the fade.
+    if (watchViewRoot() && watchViewRoot().classList.contains('is-minimize-fading')) setMinimizeFade(0, true);
     if (!host || !host.style.transform || minimizeReducedMotion()) { clearMinimizeDrag(); return; }
     host.classList.add('is-minimize-snap');
     host.style.transform = '';
@@ -5368,8 +5420,13 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!minimizeAllowed()) return false;
     var from = host.getBoundingClientRect(); // where the picture is NOW (the pull's transform included)
     recordLifecycleEvent('minimize', { detail: source });
+    // v1.362.4: marked BEFORE dock(), whose clearMinimizeDrag would otherwise flash the page back up mid-leave.
+    var leaving = (minimizeFadeEnabled() && watchViewRoot()) || null;
+    if (leaving) markViewArrival(leaving);
     dock();
-    if (state !== STATE_DOCKED) return false;
+    if (state !== STATE_DOCKED) { if (leaving) endViewFade(); return false; }
+    // The watch page holds at its floor while it leaves; the page that arrives fades in.
+    if (leaving) setMinimizeFade(1, true);
     playMinimizeSettle(from);
     if (window.FileTube && typeof window.FileTube.leaveWatchForBrowse === 'function') window.FileTube.leaveWatchForBrowse();
     return true;
@@ -9779,6 +9836,14 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!(currentData && currentData.readerHref) && currentData
         && window.FileTube && typeof window.FileTube.stashWatchSeed === 'function') {
         window.FileTube.stashWatchSeed(Object.assign({}, currentData, { id: currentId }));
+      }
+      // v1.362.4: a video's return from the mini player on a phone: this page dims, the watch page fades in.
+      if (!(currentData && currentData.readerHref) && minimizeFadeEnabled() && isMobileFormFactor() && matchMediaBool('(max-width: 768px)') === true) {
+        var root = document.getElementById('view-root');
+        if (root && root.getAttribute('data-view') !== 'watch' && !root.contains(host)) {
+          root.classList.add('is-view-leaving');
+          markViewArrival(root);
+        }
       }
       if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(url);
       else window.location.href = url;
