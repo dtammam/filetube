@@ -2628,7 +2628,10 @@ const PreviewCards = (function () {
             const v = changes[urlKey[0]];
             if (v === 'all') u.searchParams.delete(urlKey[1]);
             else u.searchParams.set(urlKey[1], v);
-            history.replaceState(null, '', u);
+            // v1.362 gate r1 (A2): keep the entry's router state (depth, browseDepth - where a
+            // minimized player lands), only the URL changes; a null state erased it.
+            const prev = history.state;
+            history.replaceState(prev && typeof prev === 'object' ? Object.assign({}, prev, { url: u.pathname + u.search }) : prev, '', u);
           } catch (_) { /* URL/history quirk - the in-view state still drives the fetch */ }
         }
         resetAndReload();

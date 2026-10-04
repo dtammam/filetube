@@ -1,0 +1,442 @@
+---
+plan: minimize-to-mini-player
+harness: v2 · lean
+branch: feat/v1.362-minimize
+anchor: spec
+status: Shipped v1.362.0
+next: Dean's v1.362.0 device checks (DEVICE-CHECKS.md, section 7); a black picture during the pull = re-run with ?minimizeAnim=0 in a Safari tab
+design: Dean 2026-10-03 - on a phone, shrink the playing video into the mini player without leaving the page by hand - a down-chevron at the picture's top-left and a pull-down on the picture that follows the finger - plus bigger mini player X and play/pause ("a lot of friction now, especially in a mobile viewport"). The end state equals leaving the watch page ("equivalent to pressing the home button"). AskUserQuestion 2026-10-03, every default taken (section 2).
+gate: APPROVED r2 @bfb3cb07 (adversary, qa) (touch gestures on the shared player core, the reparent, the SPA back path, a transform on the playing picture; security-brief applied as a section by both)
+---
+
+# v1.362: minimize the phone player into the mini player (chevron + pull-down), bigger mini player targets
+
+Kickoff 2026-10-03 by the Architect (Opus) at main c85a20c7. ROADMAP Planned > Features "Swipe the playing video down to
+shrink it into the mini player" is the WHAT; this plan is the HOW. Client only (`public/js/player.js`, `public/js/common.js`,
+`public/css/style.css`), no server, no storage, no new dependency, no shell (`*.html`) edit.
+
+## 1. The outcome (what Dean will do on device)
+
+Phone (portrait, width up to 768 px), Settings > Mobile player > "Use custom player controls on touch devices" ON, a video
+playing inline on the watch page:
+
+1. A small down-chevron sits on the picture's top-left on a plain dark disc. Tap it: the picture settles into the mini player
+   (bottom-right) and the page goes where the Home button would take it (back one level to the feed / channel / search with its
+   scroll, or Home if the video was opened directly). Playback never stops.
+2. Instead, put a finger on the picture and pull DOWN: the picture follows the finger, shrinking toward the mini player's corner.
+   Let go past about a third of the way (or flick down): it settles into the mini player, same end state as 1. Let go early:
+   it springs back, playback untouched.
+3. The mini player's X and play/pause are easy to hit: each answers a 44 x 44 px touch, and both look a little bigger.
+4. Unchanged: a tap pauses, a double-tap skips 15 s, a hold is 2x and a hold-then-drag-down LOCKS 2x (v1.358), swipe right goes
+   back, an UPWARD drag on the picture scrolls the page, full screen and landscape behave exactly as today, desktop and iPad as
+   today.
+
+## 0. Step 0 - read, set up, and the stop rules
+
+0.1 Read `AGENTS.md`, then `docs/LESSONS.md` sections **0, 1, 2, 4, 5, 6, 7, 8, 12, 13**, then
+`docs/exec-plans/completed/2026-10-02-hold-lock.md` sections 3 and 6 (the W0 measurements: which touchmove listener is
+cancelable, on which element) and `docs/exec-plans/completed/2026-10-03-tap-glyph-filter.md` (the iOS 27 black picture).
+Read this plan fully before editing.
+
+0.2 Environment, every shell: `export PATH="$HOME/.local/share/fnm/node-versions/v22.23.1/installation/bin:$PATH"`.
+Dual-Node for the final suite: 22.23.1 and 24.20.0 (Node 24 prints `ℹ`, not `#`; an empty grep is not green).
+
+0.3 Worktree: `.claude/worktrees/v1362` on branch `feat/v1.362-minimize` (it exists and carries this plan). `git rebase main`
+first (a no-op unless main moved). `ln -s /home/coder/projects/filetube/node_modules node_modules` before any commit; it stays
+untracked, never staged; `rm node_modules` before the worktree is removed.
+
+0.4 Git: stage files BY NAME; `git commit -F <file>` (message via a QUOTED heredoc, `<<'EOF'`); never `--no-verify`, never
+force-push, never pipe a commit or push; verify with `git log`. The pre-commit hook runs the unit suite (~3-5 min): run commits
+in the background and wait. Push only in the release step. Commit trailers: the ones your session's system reminder gives you.
+
+0.5 Tests while building: the targeted files each wave names. Full dual-Node `npm test` once after W2, again only if a gate
+round changes code, never while a gate seat is running.
+
+0.6 Report every failure verbatim with counts. "Verified" means you ran it and saw it. Mutants only on COMMITTED work, in a
+/tmp `git archive <sha>` sandbox, exact-once replace, restored in a `finally`, sandbox diffed against a pristine copy after;
+kill anything you start BY PID (never `pkill -f`). Record every mutant in section 6. Probes run in the sandbox or against a
+throwaway server, never by editing the worktree.
+
+0.7 No em dashes anywhere. UI through tokens (`--size-touch`, `--dur-*`, `--scrim-*`, `--on-overlay`); `npm run lint:ui` must
+not grow; `node scripts/overlay-containment-lint.js --enforce` stays 0. A comment, test title or doc your change inverts is a
+finding: grep for it (the `#player-dock` CSS header comment "the watch page is never docked while it is the active view" at
+style.css ~1282 becomes FALSE for the instant between dock() and the route swap: rewrite it; the `.player-dock-close` and
+`#player-dock .pc-btn` blocks; `applyPlayerTransition`'s comment in common.js ~11052 if the order changes; `goHomeFromPlayer`'s).
+
+0.8 **Stop rules.** Stop and report (never guess) if: (a) a seam in section 4 does not exist or behaves differently and the fix is
+not a like-for-like rename; (b) W0 shows the downward drag on the picture cannot be made cancelable in Chromium inline at
+`scrollY` 0 (then the pull would rubber-band or scroll the page under the finger and the design needs Dean); (c) any change
+alters a gesture listed in outcome item 4, measured, not argued; (d) the transform has to go on anything but `#player-wrapper`
+(the host) or needs a `filter`, `mask`, `backdrop-filter`, `mix-blend-mode`, `opacity` below 1 or `will-change: filter` on or over
+the picture (LESSONS 7); (e) a new npm dependency or a shell `*.html` edit; (f) scope grows: log extras in ROADMAP.md Planned.
+A stop rule is never satisfied by narrowing a test.
+
+## 2. Rulings
+
+Dean answered M1-M6 on 2026-10-03 (two AskUserQuestion rounds, every default taken). The rest are Architect defaults; tighten
+them in the build if the evidence says so, never loosen them.
+
+| # | Question | Ruling |
+|---|---|---|
+| M1 | Is it worth building, given swipe-right already goes back and leaving docks (**Dean**) | Yes: the pull-down is the natural, discoverable motion; the chevron makes it visible. Swipe right is untouched. |
+| M2 | Chevron (**Dean**) | Inline: always shown on the picture's top-left while M4 holds, a `expand_more` glyph (already in the sprite, `tools/icons/names.js`) on a plain dark disc, never hidden (the inline bar never hides either). Dean's "full screen fades" half is moot: M4 keeps full screen out, so no chevron there. |
+| M3 | Drag feel (**Dean**) | Follows the finger: the host translates and scales toward the dock's rect as the finger moves; release commits or springs back (R2, R3). A runtime switch (R7) falls back to a plain threshold flick with NO moving picture if the device check shows the iOS black picture. |
+| M4 | Surfaces (**Dean**) | Phone inline only. One predicate `minimizeAllowed()` (R1). Full screen, `.audio-expanded`, landscape-full-screen, the dock itself, native fullscreen/PiP, native-controls mode, iPad and desktop: unchanged. |
+| M5 | Mini player targets (**Dean**) | On phones (max-width 768 px): X and play/pause each answer a 44 x 44 hit box (`--size-touch`), visible X about 32 px, visible play/pause glyph about 28 px. Mini player width (160 px) unchanged. Desktop dock unchanged. |
+| M6 | Landing (**Dean**) | Like the Home button: `goHomeControl()` in common.js (~11504): back one in-app level (the router restores that view and its scroll) when `history.state.depth > 0`, else `navigate('/')`. |
+| R1 | `minimizeAllowed()` | `state === STATE_FULL` AND the host's parent is a `#player-slot` AND not `.css-fullscreen`, not `.audio-expanded`, not `inNativeFullscreen()`, not `inNativeControlsMode()` AND `isMobileFormFactor()` AND `matchMedia('(max-width: 768px)')`. A phone in landscape is wider than 768 px on most models, so it falls out by width; where it does not, an inline landscape slot is allowed (full screen is excluded by the class checks above). Pure core `minimizeAllowedDecision({...flags})` exported and tested branch by branch; the DOM wrapper only gathers flags. W0 enumerates every view that mounts a `#player-slot` (watch, TV episode, podcasts, anything else) and the plan's section 6 lists them; all of them are in scope since the landing is generic. |
+| R2 | The claim | Pure `minimizeDragDecision({dx, dy, scrollY, holdActive})` returns `'claim'` iff `!holdActive` AND `scrollY <= 1` AND `dy >= MIN_CLAIM_PX` (12, beside `MOVE_TOL`) AND `dy > Math.abs(dx) * 1.5` (the swipe-back dominance factor mirrored, so a claim and `swipeBackShouldClaim` are disjoint by construction; bind it pure-by-pure, as v1.358 bound `holdDragDecision`). Upward or sideways: never. A claim happens at most once per gesture and ends the tap: `tapGestureMoved = true`, `clearTimeout(holdTimer)`, no single-tap toggle, no double-tap pairing (`lastTapTime = 0`). |
+| R2b | Page scrolled (`scrollY > 1`) | Scroll first, then minimize: a pull-down on the picture while the page is scrolled down scrolls the page as today; the NEXT pull at the top minimizes (the iOS sheet convention). Keeps today's scroll behaviour byte-identical below the top. Architect default; Dean can flip it to "always minimize" after the device pass. |
+| R3 | Release | Pure `minimizeReleaseDecision({dy, travel, velocityPxPerMs})` returns `'dock'` iff `dy >= travel * 0.35` OR (`velocityPxPerMs >= 0.5` AND `dy >= MIN_CLAIM_PX * 2`), else `'snap'`. `travel` = the vertical distance from the host's top to the dock's top at the claim. Velocity from the last ~80 ms of moves. A `touchcancel` mid-claim is always `'snap'`. Named constants `MINIMIZE_COMMIT_FRAC`, `MINIMIZE_FLICK_V`. |
+| R4 | The commit sequence (one path for chevron and drag) | `minimizeToDock(fromRect)`: (1) `recordLifecycleEvent('minimize', {detail: 'button'|'drag'})`; (2) `dock()` (it already resets transient UI, closes menus, reparents into `#player-dock`, keeps playing; `goHomeFromPlayer` common.js ~10896 is the precedent for dock-then-navigate); (3) FLIP: read the docked host rect, set the inverse transform from `fromRect` (no transition), force a style flush, then transition `transform` to none over `--dur-sheet` ease-out; (4) `goHomeControl()` (expose it on `window.FileTube` beside `returnToPlayerOrigin`). The router's own `applyPlayerTransition` dock() on the swap is then a no-op (state already DOCKED). A second chevron tap or a drag during the settle is ignored (`homeBackPending` already coalesces the back). Reduced motion (`prefers-reduced-motion: reduce`): steps 1, 2, 4 only. |
+| R5 | During the drag | Inline `transform` on the host only: `translate(x, y) scale(s)` with `transform-origin: 0 0`, interpolated from the slot rect toward the dock's resting rect (computed from the dock's CSS: right 8 px + scroll-lock gap, bottom `--mobile-bottom-nav-h` + 8 px, width 160 px, 16:9 plus the 26 px bar or its M5 replacement) by `p = clamp(dy / travel, 0, 1)`, top edge under the finger. The rest of the page does not move or fade (no opacity anywhere, stop rule d). Snap: transition `transform` to none over `--dur-fade`. The inline transform is cleared on EVERY end path (snap end, commit end, close(), a new load, pagehide) - one remover, `clearMinimizeDrag()`, called from `resetTransientPlaybackUi()`. |
+| R6 | Chevron mechanics | Built at runtime in player.js (like `dockCloseBtn`), appended to the host, so no shell edit and the no-filter census covers it automatically (it enumerates classes player.js builds). `<button type="button" class="player-minimize-btn" aria-label="Minimize player">` with the sprite `<svg class="ui-icon"><use href="#i-expand_more"/></svg>`. Shown only while `minimizeAllowed()`, re-evaluated wherever `applyControlsMode()` runs and on resize/orientationchange. Visible disc about 36 px, hit box 44 x 44, top-left inset `--space-2` plus the safe-area left inset, z above the video and the tap glyph, below the resume toast and transcode overlay. Its `click` calls `stopPropagation` (the dock-close precedent) and `minimizeToDock(host rect)`; its touchstart must not reach the picture's gesture layer (it is a sibling of the video, so it does not; prove it with a test). Background: plain paint only (`--scrim-legacy` or `--scrim-heavy`), never a filter or blur. |
+| R7 | The device A/B switch (M3's fallback, zero rebuild) | `?minimizeAnim=0` on the URL (read once at boot like `?debugLifecycle=1`, then remembered for the tab in `sessionStorage`; `?minimizeAnim=1` clears it) turns R5's live transform and R4's FLIP off: the drag claims and commits exactly the same, but the picture does not move until it docks. Dean A/Bs the iOS black picture on the SAME build. Default on. |
+| M7 | Landing when the level behind is another video (**Dean**, 2026-10-03, W0 stop rule (a)) | W0 measured that "back one level" from video B opened over video A lands on A's watch page, which loads A FULL and stops B. Ruling: land on the **last browse page** - walk back past every watch entry to the nearest non-watch entry (feed, channel, search, with its scroll), or a fresh Home when there is none (a deep link). Supersedes M6's mechanism: `goHomeControl` is left as it is; common.js gains the browse-level landing (each history entry records the depth of the nearest browse entry at or behind it). |
+| M8 | Surfaces, after the census (**Dean**, 2026-10-03) | **Watch page only** (videos, TV episodes, audio files on `/watch.html`). Music and Podcasts answer Back in place (their `onPopState` collapses now-playing) and the reader would leave the book, so they keep their own controls, unchanged. R1 gains `body[data-view="watch"]`. |
+| R8 | M5 mechanics | Measured, not assumed: the dock has `overflow: hidden`, so a hit box drawn past its edge is clipped from hit testing. Both boxes must lie INSIDE the dock. Phone only (`@media (max-width: 768px)`): the docked bar may grow from 26 px (the two `26px` reserve literals, style.css ~4093 and ~4365/4368, change together as one value, plus `#player-dock .pc-btn`); the X may grow its box into the picture's top-right corner. Desktop dock byte-identical. Lock each rule by value and order (LESSONS 6: a rule that exists is not a rule that wins). |
+
+## 3. Research to do first (W0 measures; nothing here is assumed)
+
+1. **Hit boxes before.** In Chromium, iPhone 13 emulation, a docked video: `getBoundingClientRect()` of `.player-dock-close`
+   and `#player-dock #pp-btn`, and `elementFromPoint` at a grid of points 2 px apart over a 60 x 60 area around each, counting
+   the points that land on the button. The Architect's CSS reading (24 x 24 and 22 x 22) is NOT a measurement: record the
+   instrument's numbers in section 6 and use them.
+2. **Cancelable pull.** Inline, `scrollY` 0: a downward 150 px drag from the picture's centre. Does the existing non-passive
+   host `touchmove` (player.js ~8050) see every move as `cancelable: true` from the first move? If the first moves (under 12 px)
+   are not prevented, does the page start an overscroll / rubber-band that makes later moves non-cancelable? Record per move.
+   If needed, the claim may `preventDefault` a vertical-dominant DOWNWARD move from its first pixel while `scrollY <= 1` (it
+   cannot be a scroll at the top: there is nothing above), provided R2's disjointness with swipe-back still holds. Measure
+   `scrollY > 1` too: R2b says the page scrolls exactly as today (same `scrollY` deltas as baseline main).
+3. **The transform and its ancestors.** Does any ancestor of the host in the watch view clip it (`overflow`, `contain`) so a
+   scaled host vanishes mid-drag? Does `transform` on the host change the containing block of anything `position: fixed` inside
+   it (LESSONS 6: the speed sheet, menus, the resume toast)? Enumerate with a DOM sweep, list them in section 6.
+4. **The `#player-slot` census** (R1): every view that mounts the host into a `#player-slot`.
+5. **Reparent during a gesture.** The commit reparents the host on `touchend`. Confirm in Chromium that the video keeps
+   playing (`paused === false`, `currentTime` advancing over 2 s after) and that no synthetic `click` from the same touch lands on
+   the dock (it would expand the player straight back: the dock's own click handler navigates to the watch page). If one does,
+   `preventDefault()` the claiming `touchend`.
+6. **Leaving the watch view while already docked.** R4 docks BEFORE the route swap (the `goHomeFromPlayer` order). Read what the
+   watch view's (and the TV / podcast slot views') un-render does with the player when it is left, and prove by a jsdom drive and
+   the probe that it neither closes, re-expands nor pauses an already-docked host, for both the `history.back()` and the
+   `navigate('/')` landings.
+
+## 4. Seams (main c85a20c7; line numbers approximate)
+
+- player.js `holdDragDecision` ~1089, `classifyTapGesture` ~1108 (top-level pure, exported for node:test).
+- player.js `MOVE_TOL`, `LOCK_DRAG_PX` ~4815, `lockHold` ~4835, `engageHold` ~4851, `wireSkipHoldGestures` ~4933 (touchstart sets
+  `startX/startY` and the hold timer; touchmove past `MOVE_TOL` sets `tapGestureMoved`; touchend classifies).
+- player.js wiring ~8045-8053: `wireSkipHoldGestures(mediaPlayer, ...)`, `(audioBgArt, ...)`, the v1.358 host non-passive
+  `touchmove` claim. The minimize claim joins THAT host listener (it is the one measured cancelable); it must not add a second
+  non-passive listener anywhere else, never on `document` (LESSONS 4).
+- player.js `applyControlsMode` ~2310-2340 (`native-controls` is added when mobile + video + FULL + custom controls off: the
+  DEFAULT for a new device, so outcome 1-2 need the custom-controls setting, as v1.358's hold does; disclose in the release
+  notes), `inImmersiveMode` ~2440, `isMobileFormFactor` ~2263, `inNativeControlsMode` ~2652.
+- player.js `expand`/`mountInDock`/`ensureDockChrome`/`dock` ~9071-9190 (`dockCloseBtn` ~9101; the dock's click-to-expand
+  ~9111); `resetTransientPlaybackUi` (called by dock, close, teardown, background).
+- common.js `goHomeControl` ~11504 (and `homeBackPending`), `goHomeFromPlayer` ~10896, `applyPlayerTransition` ~11078,
+  `swipeBackShouldClaim` ~10426, the exports block ~11724.
+- style.css `#player-dock` ~1292, `.player-dock-close` ~1346, the phone `#player-dock` block ~1370, `#player-dock .player-controls`
+  / `.pc-btn` ~4093-4111, `#player-dock #player-wrapper` reserve ~4365-4369.
+- `test/unit/player-overlay-no-filter.test.js` (the LESSONS 7 census; the chevron must be inside its net, prove it by a mutant
+  that adds `filter: drop-shadow(...)` to `.player-minimize-btn` and goes red).
+
+## 5. Waves
+
+**W0 - measure (section 3), write the falsifiers.** Probe under `tools/minimize-proof/` (the hold-lock-proof pattern). Red unit
+tests for R1, R2, R3 pure decisions, and the disjointness binds: for every input R2 claims, `swipeBackShouldClaim` is false and
+`holdDragDecision` is irrelevant because `holdActive` is false; for every input with `holdActive`, R2 never claims. Record all
+of section 3 in section 6.
+
+**W1 - the pull-down and the commit path.** `minimizeAllowedDecision`, `minimizeDragDecision`, `minimizeReleaseDecision`
+(top-level pure, exported); the claim inside the host's touchmove; release in the surface touchend (before the tap classifier,
+returning early like the hold branch); `minimizeToDock` (R4) + `clearMinimizeDrag` (R5) + the R7 switch; `goHomeControl` on
+`window.FileTube`; lifecycle events. Tests: jsdom drives of the real wiring (touchstart/move/end on the real `#media-player`
+and `#audio-bg-art` inside a real host in a `#player-slot`), asserting: a pull at the top past the threshold calls dock then
+goHomeControl once, in that order; a short pull snaps back with no dock and no play/pause; a hold then drag still LOCKS 2x and
+never minimizes; a tap still toggles; a double-tap still skips; `scrollY > 1` never claims; full screen, audio-expanded,
+native-controls and a desktop form factor never claim; the inline transform is gone after snap, commit, close and a new load.
+Mutants: drop `!holdActive`, drop the `scrollY` guard, flip the dominance factor, drop the `clearMinimizeDrag` call in
+`resetTransientPlaybackUi`, swap dock/goHome order; each red by name.
+
+**W2 - the chevron and the mini player targets.** R6 and R8. Tests: the button exists only while `minimizeAllowed()` (and
+leaves on full screen, dock, close, a resize past 768 px); its click runs the SAME `minimizeToDock` (spy on the one function);
+the no-filter census sees it (mutant above); CSS locks for M5 by value and order; the probe re-measures section 3 item 1 AFTER
+and reports both tables: each box at least 44 x 44 by `elementFromPoint` count, inside the dock, and the dock's tap-to-expand
+still answers at the picture's centre. `npm run lint:ui` no growth; containment lint 0. Then the full dual-Node `npm test`.
+
+**W3 - look, then gate.** Headless iPhone-13 screenshots of: inline with the chevron (light and dark, every era skin the watch
+page renders), mid-drag at p 0.3 and 0.7, the docked result, the mini player before/after with the hit boxes outlined (an
+overlay drawn only in the screenshot script). Send them to Dean side by side (SendUserFile) before the gate (memory norm: a
+LOOK is shown, not described). Then the gate: adversary + qa, briefed with section 8.
+
+## 6. Build log (the builder fills this in: W0 measurements, deviations, mutants per wave, suite results verbatim)
+
+**W0 measurements (builder, Sonnet session on Opus 5.5, 2026-10-03, `tools/minimize-proof/probe-w0.js` on main's product code
+at 25e277e0: the real server on a throwaway DATA_DIR, Chromium with iPhone 13 emulation (390 x 664) + touch, raw CDP touch, the
+custom-controls setting forced on; proof JSON `tools/minimize-proof/probe-w0-result.json`).** Chromium only; WebKit is Dean's device
+check.
+
+- **Item 1, hit boxes BEFORE** (docked on `/` after leaving the watch page; 31 x 31 points 2 px apart, 961 per button): dock rect
+  x 222 y 468 w 160 h 116. `.player-dock-close` rect 24 x 24, **121 of 961** points hit it, hit span 24 x 24. `#player-dock #pp-btn`
+  rect 22 x 22, **105 of 961** points, hit span 22 x 22. The dock's tap-to-expand at the picture's centre hits `media-player`.
+  The Architect's reading (24 and 22) matches the instrument.
+- **Item 2, the pull is cancelable** (15 moves of 10 px down from the picture's centre; Chromium eats the first as touch slop, so
+  14 arrive; per move `cancelable,defaultPrevented,clientY,scrollY` read by a window bubble listener):
+  - scrollY 0, no claim (today): **1 of 14 cancelable**, 0 prevented, scrollY 0 -> 0. Only the first move is cancelable: an
+    unclaimed first move commits the gesture to the browser, so the claim must prevent from the FIRST delivered move.
+  - scrollY 0, a host listener preventing a downward vertical-dominant move once dy >= 12: **14 of 14 cancelable, 14 prevented**.
+  - scrollY 0, preventing from the first pixel: **14 of 14 cancelable, 14 prevented** (identical here, because Chromium's first
+    delivered move is already past the slop at dy 20; iOS delivers finer moves, so W1 prevents from the first downward-dominant
+    pixel at the top: the `'guard'` arm of `minimizeDragDecision`).
+  - scrollY 40, no claim: 1 of 12 cancelable, scrollY 40 -> 0 (the page scrolls). scrollY 40 with the from-first-pixel claim
+    gated on scrollY <= 1: identical (1 of 12, 40 -> 0): R2b keeps the scroll byte-identical. **Found:** mid-drag the page
+    reaches scrollY 0 (move 4), so a claim keyed on the LIVE scrollY would minimize on the same pull. R2b ("the NEXT pull at the
+    top") needs the scrollY read at TOUCHSTART; W1 passes that.
+  - Stop rule (b) is not triggered.
+- **Item 3, the transform and its ancestors** (watch view, inline): `#player-wrapper` overflow hidden, position relative;
+  `#player-slot` nothing; `.watch-player-stage` overflow-x **clip**, position relative, **z-index 0** (a stacking context);
+  `.watch-main`, `.watch-container`, `#view-root`, `main`, `.app-container`, `body` nothing; `html` overflow-x clip. Nothing
+  clips vertically, and the dock's rect (x 222..382) lies inside the 390 px stage, so a scaled host does not vanish mid-drag.
+  The stage's z 0 context means a later POSITIONED sibling below the player could paint over the moving picture: W3's mid-drag
+  screenshots check it. Fixed descendants of the host inline: **none** (the speed sheet is body-level), so the drag transform
+  changes no fixed element's containing block.
+- **Item 4, the `#player-slot` census:** `watch.html` (videos, TV episodes via `?tv=`, audio files; view `watch`), `music.html`
+  (now-playing), `podcasts.html` (now-playing), `read.html` (book narration). Music and Podcasts register `onPopState` (in-view
+  pops). In scope after M8: watch only.
+- **Item 5, reparent during the gesture** (a window touchend listener calls `player.dock()`): a 150 px drag: docked, playing,
+  currentTime 3.5 -> 5.5 over 2 s, **0 clicks**. A 3-move flick (14 px steps, 10 ms): docked, playing, 2.6 -> 4.6, 0 clicks. A
+  plain tap (control): the tap's own pause ran, 0 clicks. No synthetic click reaches the dock after a moved touch, so the
+  claiming touchend needs no extra click guard (W1 still `preventDefault`s it, as the hold branch does).
+- **Item 6, leaving the watch view while already docked:** Home -> watch(clip1), `dock()` then `history.back()`: on `/`, docked,
+  playing (3.5 -> 5.5). Deep link `watch.html?v=clip1` (depth 0), `dock()` then `navigate('/')`: on `/`, docked, playing (4.1 ->
+  6.2). **Home -> watch(clip2) -> watch(clip1), `dock()` then `history.back()`: lands on `/watch.html?v=clip2`, state `full`, src
+  clip2, clip1 GONE.** Stop rule (a) triggered (the seam behaves differently from the outcome): asked Dean, ruled M7 (last
+  browse page) and M8 (watch page only), section 2.
+- **Failing-first (verbatim, `node --test test/unit/minimize-player.test.js` before any product code):** `# tests 20 / # pass 5 /
+  # fail 15`. The 5 passes are the regression guards that hold on main too (a touchcancel, hold-then-drag locks, upward/sideways
+  never claimed, scrolled never claimed, the excluded surfaces); the 15 fails are every pure decision (not exported) and every
+  pull/commit/flag drive. Two of the 15 were TEST bugs found while greening (the double-tap pair needed a real `Date.now` gap and
+  a `duration`, as hold-lock's does); fixed in the test, not the code.
+
+**W1 (builder, 2026-10-03).**
+
+- Built: `minimizeAllowedDecision` / `minimizeDragDecision` / `minimizeReleaseDecision` / `minimizeDragTransform` (top-level pure,
+  exported); the claim in the v1.358 host `touchmove` (the same listener, now `hold arm, return; else minimizeTouchMove`); the
+  release in the surface `touchend` before the hold branch; `minimizeToDock(source)` (lifecycle `minimize`, `dock()`, FLIP,
+  `FileTube.leaveWatchForBrowse()`); `clearMinimizeDrag()` as the one remover, called from `resetTransientPlaybackUi()` and on a
+  resize/orientationchange mid-pull; `?minimizeAnim=0|1` (sessionStorage `ft-minimize-anim`). common.js: `browseDepth` on every
+  history entry (`buildHistoryState`, carried by `parseHistoryState`, the scroll rewrite, `pushViewState`, `replaceViewState` and
+  navigate's fetch-path push), `browseDepthBehind`, `resolveMinimizeLanding`, `leaveWatchForBrowse` on `window.FileTube`.
+- **Deviations / interpretations (disclosed):** (1) R2's `holdActive` is passed as `holdActive && holdGestureLive`: a hold engaged
+  by THIS finger owns the drag, while a 2x LOCK left by an earlier gesture does not stop a later pull (v1.358 keys every hold
+  branch on the engaging finger; a lock is meant to outlive it). A docked lock ends via `dock()`'s reset, as before. (2) R2b's
+  `scrollY` is read at TOUCHSTART (W0 item 2). (3) A gesture that goes past 12 px up or sideways before any claim is dead for
+  the rest of that touch (so a swipe-back that curls down never also minimizes). (4) M6's mechanism is replaced by M7's
+  `leaveWatchForBrowse`; `goHomeControl` is untouched. (5) The FLIP needs `#player-dock.is-minimize-settle { overflow: visible;
+  box-shadow: none }` for the settle (the dock clips its content): a class on the dock, no transform on it (stop rule d holds).
+  (6) The dock's resting rect is read from the hidden dock's computed `right` / `bottom` / `width` plus `--size-touch` for the
+  phone bar (measured in Chromium: `160px`, `8px`, `80px`, `44px`).
+- Locks updated in place, intent kept (LESSONS 3): `hold-lock.test.js` "the drag claim is registered on the player wrapper"
+  (the hold arm now returns before the minimize hand-off); `router-helpers.test.js` shape tests gain `browseDepth`, the
+  push/replace/scroll-rewrite locks gain the sixth argument, the navigate builds regex accepts `desiredDepth,`.
+- **Chromium end to end** (`tools/minimize-proof/probe-pull.js`, result JSON beside it, the branch's product code): home > clip1,
+  pull 250: 24 of 24 moves cancelable and prevented, the picture moved on all 24 (mid-drag `translate(146.825px, 250px)
+  scale(0.609958)`), lands on `/` docked, playing 3.1 -> 6.6 s. home > clip2 > clip1, pull 250: lands on `/` (depth 2 -> 0,
+  past clip2), clip1 docked and playing. Deep link, pull 250: fresh Home, docked, playing. Pull 60 slow: springs back, still
+  full on the watch page, playing, transform cleared. Scrolled 40, pull 250: 1 of 22 cancelable, 0 prevented, the page scrolls
+  40 -> 0, no minimize (R2b).
+- **W1 mutants** (on ab8f6c4b, `git archive` sandbox in the session scratchpad, exact-once replace, restored in a `finally`,
+  sandbox identical to its pristine copy after; runner output verbatim per mutant): W1-M1 drop `holdActive` KILLED (2 red:
+  `minimizeDragDecision: claim iff`, `disjoint over a grid, and a hold never minimizes`); W1-M2 drop the scrollY guard KILLED
+  (`claim iff`, `scrolled down at touchstart`); W1-M3 flip the dominance factor KILLED by `claim iff` (the grid stays green: a
+  flipped factor is still disjoint from swipe-back, so the grid cannot see it; the pure case `at(8, 12)` does); W1-M4 drop
+  `clearMinimizeDrag` from `resetTransientPlaybackUi` KILLED (`the inline transform is gone after a commit, a close mid-drag`);
+  W1-M5 leave before `dock()` KILLED (`docks, THEN leaves`); W1-M6 the guard arm not preventing KILLED (`docks, THEN leaves`:
+  the first 10 px move); W1-M7 R7 ignored KILLED (`?minimizeAnim=0`); W1-M8 `browseDepthBehind` passing a watch entry's own
+  depth KILLED (`browseDepthBehind`); W1-M10 a touchcancel commits KILLED (`a touchcancel mid-pull always snaps`); W1-M11 the
+  threshold 0.35 -> 0.2 KILLED (`minimizeReleaseDecision`, `the threshold is 35% of the travel`). **W1-M9 SURVIVED** (navigate's
+  fetch-path push dropping the inherited browse level: 93 of 93 green; only the Chromium probe saw it). Fixed in W2 by a source
+  lock (`one non-passive touchmove on the host ... the fetch-path history push carries the browse level`); re-run below.
+
+**W2 (builder, 2026-10-03).**
+
+- Built: the chevron (`refreshMinimizeButton`, built on first use into the host, `hidden` unless `minimizeAllowed()`, refreshed
+  from `applyControlsMode`, `setCssFullscreen`, `setAudioExpanded`, resize and orientationchange; its click stops propagation and
+  calls `minimizeToDock('button')`); phone-only M5 rules after their base rules.
+- **Deviations (disclosed), all forced by `npm run lint:ui` (the ratchet refused 7 new debt keys on the plan's literal shape;
+  the file never grows):** the chevron's class is `ui-btn ui-btn--plain player-minimize` (not `player-minimize-btn`: a `-btn`
+  subject without a `ui-` class is bespoke-control debt), styled through `.ui-btn.player-minimize`; it has **no z-index** (a
+  local-band literal is counted `token-exempt` debt; as the host's last positioned child it paints over the video, and the
+  only positive-z siblings over it, the tap glyph and the skip ripples, are `pointer-events: none`; measured: `elementFromPoint`
+  at its centre is the chevron, 484 of 484 grid points hit it); its disc is `--scrim` (`--scrim-legacy` is a legacy token), as
+  is the phone X's; no `display: none !important` state rules (the global `[hidden]` rule and `refreshMinimizeButton` own it);
+  play/pause's phone rule targets `#player-dock #pp-btn` (not `.pc-btn`, bespoke debt; the dock shows only play/pause), with a
+  32 px face (`--size-control-sm`, the full bar's button) and a transparent `::after` ring to 44 px, rather than a 28 px glyph.
+- **Found by measuring, fixed:** (1) the ui-btn press layer is an `::after` whose opacity fades in: over the picture that is
+  stop rule (d) / LESSONS 7, so `.ui-btn.player-minimize::after { content: none }`; (2) the X's base `border-radius: 50%`
+  made its 44 px box hit-test as a circle (400 of 484 points: 78 fell through to the video), so the phone X box is square; (3)
+  the bar's 4 px left padding clipped the play/pause ring 2 px at the dock's edge (span 42), so the phone bar pads
+  `--space-3`. The bar, the wrapper reserve and the art's bottom are one value, `var(--size-touch)` (R8's "change together"),
+  which `dockRestingRect` reads; Dean's F.5 "reserves stay literal" is kept for the base 26 px literals, untouched.
+- **Section 3 item 1 AFTER** (`tools/minimize-proof/probe-targets.js`, same 961-point grid as W0, result JSON beside it): dock
+  x 222 y 450 w 160 h **134** (was 116: the bar is 44). `.player-dock-close` box 44 x 44, **478 of 961** points, span **44 x 44**,
+  0 points outside the dock (the 6 misses are the dock's own 12 px rounded corner). `#player-dock #pp-btn` face 32 x 32, **478**
+  points, span **44 x 44**, 0 outside the dock. The dock's tap-to-expand at the picture's centre still hits `media-player`.
+  Desktop dock (1280 x 800): dock 280 x 184, X 24 x 24, play/pause 22 x 22, bar 26: unchanged; no chevron. Chevron inline: 44 x 44
+  at (4, 76) (video top 72), 484 of 484 points, centre hit is the chevron, computed filter `none`, opacity `1`. A real CDP tap on
+  it: the settle runs (host computed transform `matrix(1.95176, ..., -146.985, -250.272)` at 50 ms (copied from the committed probe-targets-result.json; a re-run reads within a pixel), `matrix(1.01, ...)` at 250 ms,
+  `none` at 300 ms; the dock's overflow `visible` during, `hidden` after), lands on `/`, docked, playing, chevron hidden.
+| before / after | X hit span | X grid hits | play/pause hit span | play/pause grid hits | dock h |
+|---|---|---|---|---|---|
+| before (W0, main) | 24 x 24 | 121 | 22 x 22 | 105 | 116 |
+| after (W2) | 44 x 44 | 478 | 44 x 44 | 478 | 134 |
+- **W2 mutants** (on 6e85dc12, same runner, sandbox identical to pristine after): W2-M1 a `drop-shadow` filter on the chevron
+  KILLED (2 red: the census `player-overlay-no-filter` and `R6: the chevron is a 44 px box`); W2-M2 no refresh on faux full
+  screen KILLED (`the chevron is shown only where`); W2-M3 the click propagates KILLED (`a chevron click runs the one commit
+  path`); W2-M4 the phone reserve back to 26px KILLED (`ONE value`); W2-M5 the phone X off the corner KILLED (`play/pause keeps a
+  32 px face`); W2-M6 the watch-view flag always true KILLED (2 red); W2-M7 no refresh from `applyControlsMode` KILLED; W2-M9 the
+  ring removed KILLED; **W1-M9 re-run KILLED** (`the fetch-path history push carries the browse level`). **W2-M8 SURVIVED** (the
+  ui-btn press layer, an opacity fade, restored over the picture: 30 of 30 green); fixed by a lock in the R6 test
+  (`.ui-btn.player-minimize::after { content: none }` exactly once).
+- **Full suite after W2 (verbatim tallies, `npm test`, the W2 tree plus the M8 lock):** Node 22.23.1 `# tests 10865 / # pass 10853
+  / # fail 0 / # cancelled 0 / # skipped 12`, exit 0; Node 24.20.0 `ℹ tests 10865 / ℹ pass 10853 / ℹ fail 0 / ℹ cancelled 0 / ℹ
+  skipped 12`, exit 0.
+
+**W3 (builder, 2026-10-04).**
+
+- Shots (`tools/minimize-proof/shots.js`, headless iPhone 13, single-thread raster; the main BEFORE from a `git archive c85a20c7`
+  sandbox with the same script): the chevron in 2005 / 2009 / 2014 / 2021 x light / dark (each read back from `data-theme` /
+  `data-mode`: the first run read 2021 for every era because the server's synced prefs overrode the seed and "modern" is not an
+  era id, so the script stubs `/api/prefs` and uses the registry ids; the device-handoff card from earlier contexts covered
+  the mini player, so it stubs `/api/handoff`), the pull held at 30% and 70%, the docked result, the mini player before / after
+  with the hit boxes outlined. Sent to Dean side by side.
+- **Found in the shots (W0 item 3's warning, measured):** at 70% the Like / Listen / More row painted OVER the moving picture
+  (the stage is a z-index 0 stacking context; the row after it is positioned). Dean (2026-10-04): fix it, and the look passes.
+  Fix: the host carries `is-minimize-drag` from the claim until `clearMinimizeDrag` (so through a spring-back), and
+  `.watch-player-stage:has(#player-wrapper.is-minimize-drag) { z-index: 1 }` lifts the stage over the page below while it moves
+  (header and bottom nav stay above). One counted `token-exempt` line, approved by Dean; but
+  `test/unit/ui-exceptions-ratchet.test.js` forbids ANY growth against main (the hook refused 199 -> 200), so it is paid for in
+  the same file: the dock X's `top: 4px` / `right: 4px` (two token-exempt literals) became `var(--space-2)` (4px, one global
+  definition, no era override: the same pixels). `public/css/style.css|token-exempt` 199 -> 198. Reshot: the picture now draws over the row at 70%. Bound by a test (class on
+  while pulling, off after the snap and after a commit; the rule locked by value).
+
+**Gate round 1 fix verification (builder, 2026-10-04, on bfb3cb07).** Mutants (same runner, sandbox identical to pristine after):
+every survivor the seats reported, 20 in all, KILLED by name: R1-L1..L4 (the four `leaveWatchForBrowse` mutants) and R1-L5 (the cap
+dropped) by `the real leaveWatchForBrowse` / `resolveMinimizeLanding goes Home`; R1-C1 (the chip back to `replaceState(null`) by `no
+history writer`; R1-G1 (claim keeps the hold) `a claim cancels the armed hold`; R1-G2 (touchend leaves the gesture live) `a finished
+gesture leaves nothing live`; R1-G3 / G4 (dock settle class, settle timer) `the commit settle opens the dock clip`; R1-G5..G9 (second
+finger x2, resize, orientationchange, new finger) `a second finger ...`; R1-G10 (deviation 1) `does not block a later pull`; R1-W1
+(width) `a coarse-pointer device wider than 768 px`; R1-W2 (audio expanded refresh) `the audio expanded view hides the chevron`;
+R1-S1 / S2 (pp ring content, phone captions) by their CSS locks. (R1-G4 first ran with a stale anchor, `find count 0`, and was re-run
+with the right one.) Full suite at bfb3cb07: Node 22.23.1 `# tests 10877 / # pass 10865 / # fail 0 / # cancelled 0 / # skipped 12`,
+exit 0; Node 24.20.0 `ℹ tests 10877 / ℹ pass 10865 / ℹ fail 0 / ℹ cancelled 0 / ℹ skipped 12`, exit 0. Gate r2 APPROVED @bfb3cb07
+(qa, adversary); their suggestions are in ROADMAP Planned > Bugs ("v1.362 gate r2 suggestions").
+
+## 7. Device checks (Dean, on the released build; add each to DEVICE-CHECKS.md in the release commit)
+
+1. iPhone, custom controls on, inline video playing: pull down slowly and let go early (springs back, still playing); pull past a
+   third (docks bottom-right, still playing, the page is where Home would take it). **Watch the picture during and after the
+   drag: if it goes black or freezes while sound runs on, open the same page with `?minimizeAnim=0` and repeat. Black with the
+   animation and fine without = the transform is the trigger (R7 is the shipped fallback; tell the Architect).** The switch is a URL
+   parameter, so do this A/B in a Safari tab (the home-screen app has no address bar).
+2. Tap the chevron: same end state. Then tap the mini player: back to the watch page, same position, still playing.
+3. The mini player X and play/pause: hit them with a thumb, ten times each, without mis-taps into "expand".
+4. Regressions: tap pauses, double-tap skips, hold 2x, hold-drag-down locks 2x, swipe right goes back, scroll the page from below
+   the picture, scroll down then pull on the picture (scrolls to top first, R2b), full screen untouched. **And at the top of the
+   page, put a finger on the picture, wiggle it down a hair, then drag UP: the page must still scroll** (gate r1: the pull's guard
+   prevents a downward first move from 1 px; Chromium swallows such small moves as touch slop, so only the iPhone can show
+   whether iOS then refuses the rest of that touch).
+5. Home-screen app AND Safari tab (the pull at the top of a Safari tab fights the browser's own overscroll; report which wins).
+
+## 8. Gate brief (attack surfaces)
+
+- **Gesture disjointness** (LESSONS 2): try to minimize while holding, to lock 2x while minimizing, to fire swipe-back and a
+  minimize from one diagonal drag, to pause the video with the drag's lift (a phantom single-tap), to expand the dock straight
+  back with the commit's synthetic click.
+- **Inert feature** (LESSONS 0): prove the claim fires through the REAL listeners in the real host (not a hand-called pure
+  function), and that `preventDefault` actually stops the page moving (the v1.358 W0 trap: a non-passive listener on the
+  `<video>` is inert, on the host it is not).
+- **Strand / leak** (LESSONS 4, reveal and clear are two axes): a transform left on the host after any end path (snap, commit,
+  touchcancel, close mid-drag, a new item mid-drag, the app backgrounded mid-drag, a rotate mid-drag) - the docked or next
+  full player would render shrunk or offset.
+- **Blast radius** (LESSONS 6): a transform on the host makes it a containing block for every fixed descendant; the M5 rules
+  must not reach the desktop dock or the full-player `.pc-btn`; the "watch page is never docked" comment.
+- **iOS 27** (LESSONS 7): nothing with a filter, mask, backdrop, blend or opacity on or over the picture; the census covers
+  the new button.
+- **History** (LESSONS 4): a minimize from a deep link (depth 0) goes Home, never exits the app to the referrer; two fast commits
+  never pop two levels.
+
+## 8b. Release (v1.362.0)
+
+Exactly `docs/RELEASING.md` and AGENTS.md "Release ceremony": `npm version 1.362.0 --no-git-tag-version`; ROADMAP.md "Shipped"
+entry (and tick the Planned entry); a `docs/releases.json` ledger entry in pure user language (the tone test enforces it; mention
+that the pull-down and the chevron need Settings > Mobile player > custom controls on); section 7's checks into
+DEVICE-CHECKS.md; the LESSONS update in the release commit if the wave taught one; `node scripts/plan-complete.js <this plan>
+"Shipped v1.362.0" --apply`. Then the protected-main flow: local `merge --no-ff` into main, tag on that merge, push the branch +
+tag in ONE push with `GIT_SSH_COMMAND="ssh -o ServerAliveInterval=20 -o ServerAliveCountMax=60"`, `gh pr create`, wait for CI
+green (`ci (22)`, `ci (24)`, `audit`, `secret-scan`), then ASK Dean (AskUserQuestion) before `gh pr merge --merge`; `git pull
+--ff-only`; delete the branch remote (`gh api -X DELETE repos/dtammam/filetube/git/refs/heads/feat/v1.362-minimize`, verify with
+`git ls-remote`) and local (`-d`), and remove the worktree.
+
+## 8c. Gate record
+
+(seats write their verdict lines here, bound to the sha they reviewed)
+
+Gate: CHANGES r1 @9a88b892 — qa
+- WARNING (W1, style.css ~5546 `#player-dock .cc-overlay { bottom: 26px }`, a missed third sibling of R8's "26px" reserve; its comment "matches the trimmed mini-player bar height" is now false on a phone): with captions on, the docked caption strip (z 9) sits 18 px down into the new 44 px bar (z 8) and over the top 11.5 px of the play/pause face. Measured (Chromium iPhone 13, docked, overlay forced visible): branch capText bottom 558 vs bar top 540 (overlap 18, pp face 11.5); base c85a20c7 overlap 0. Fix: `bottom: var(--size-touch)` in the M5 phone block, joined to the "ONE value" lock.
+- WARNING (W2, common.js leaveWatchForBrowse): `history.go(-steps)` past the browser's session-history cap is a silent no-op, so `homeBackPending` stays true for the session: the chevron docks but the page stays on the watch page, and the Home control is dead after it. Measured (real app, Chromium): 55 in-app video hops (autoplay advance pushes one entry per item) -> history.length 50, depth 55, browseDepth 0; chevron tap -> state docked, path still /watch.html?v=clip1; bottom-nav Home tap -> path unchanged. Control at 4 hops lands on /. Fix: fall back to navigate('/') (never arm the flag) when steps >= history.length; bind it.
+- WARNING (W3, presence-not-binding): leaveWatchForBrowse's wiring is unbound (the jsdom drives stub it). QA mutants, 4 files 126 tests: back() instead of go(-steps) (exactly the M6 behaviour Dean overruled with M7) SURVIVED 126/126; dropping its homeBackPending coalesce (Home tap + quick chevron from depth 1 pops 2 levels, out of the app) SURVIVED 126/126.
+- WARNING (W4, presence-not-binding): two minimizeAllowed / chevron wires are unbound: `narrow: true` (the 768 px gate dropped) SURVIVED 126/126 (the "past 768 px" chevron drive flips every media query, the form factor too, so the title over-claims); removing the setAudioExpanded refresh SURVIVED 126/126. (The orientationchange refresh is masked by the resize one: survivor, disclosed, not a finding.)
+- SUGGESTION: comments still stating the docked bar is 26 px without "above 768 px": style.css ~3982, 4156, 4215, 4376/4381, 4408, 5355, 12251.
+- SUGGESTION: section 6 W2 quotes the settle at "-146.8, -249.9"; the committed probe-targets-result.json says -146.985, -250.272. The 9a88b892 message names the added token-exempt line but not the paydown (desktop `.player-dock-close` top/right 4px -> var(--space-2), the same 4 px); true but incomplete, and the plan records it, so no history rewrite: name it in the release commit.
+- SUGGESTION: device check 4 should include an UPWARD drag that STARTS on the picture at the top (with a small first downward wiggle): the 'guard' arm prevents a downward-dominant first move from 1 px, and whether WebKit then refuses the rest of that touch's scroll is unmeasured.
+- SUGGESTION: a claimed pull that curls right snaps back and then fires swipe-back on the same lift (the dock case is coalesced by homeBackPending, since the surface's touchend runs before the document's); and the chevron stays shown, inert, during Android PiP (no refresh on enter/leavepictureinpicture).
+
+Gate: CHANGES r1 @9a88b892 — adversary
+- WARNING (A1, presence-not-binding, the app-exit protection; joins QA W3): common.js leaveWatchForBrowse is never executed by a test. Mutants vs minimize-player + router-helpers + hold-lock (129 tests): drop the coalesce SURVIVED, never set homeBackPending SURVIVED, back() for go(-steps) SURVIVED, always navigate('/') SURVIVED. Made concrete in Chromium (iPhone 13, about:blank > / > clip1, one diagonal drag dx +300 dy +155): on 9a88b892 it lands on /, docked, playing, history.length 3 (verified); with only `homeBackPending = true` deleted the SAME gesture minimizes AND swipe-backs and the tab is on about:blank, player gone. Bind leaveWatchForBrowse by executing it (fake history.go, popstate) incl. the minimize-then-swipe-back lift.
+- WARNING (A2, enumeration gap: a history writer that drops browseDepth): main.js ~2631 `history.replaceState(null, '', u)` (a search type/scope chip) erases the entry, so a watch opened from those results records depth 1 / browseDepth null and the minimize pushes a fresh Home instead of returning to the search (M7 names search). Measured, real chip click in Chromium: search state after chip `null`; watch `depth 1, bd null`; after the pull path `/`, history.length 4 -> 5 (a push, not a back). Fix: carry history.state forward with the new url (the music.js / podcasts.js / remote.js pattern) and bind it.
+- WARNING (A3, end-path and gesture guards unbound; strand/leak + "lock 2x while minimizing"): each SURVIVED the 129 tests: claimMinimizeDrag without clearTimeout(holdTimer) (a scratch jsdom drive, claim at 14 px then rest 650 ms, reads playbackRate 2 mid-pull: a 2x engaged under the pull, red under the mutant, green on 9a88b892); touchend without the minimizeGestureLive reset (scratch drive: after a tap, a downward drag starting on the controls bar is claimed: red under the mutant, green on the tree); clearMinimizeDrag not removing #player-dock.is-minimize-settle, and the FLIP settle timer never firing (the dock keeps overflow visible / box-shadow none); second-finger abort at touchstart and at touchmove; resize and orientationchange clears; a new finger during the spring; `content: ''` dropped from the phone `#player-dock #pp-btn::after` ring (probe-targets under that mutant: play/pause 214 of 961 points, span 32 x 32, i.e. outcome 3 broken with the suite green). On 9a88b892 these paths are right in Chromium (verified: second finger mid-pull, rotate mid-pull, regrab during the spring, settle classes gone by 960 ms, dock overflow hidden). Add drives / a `content` lock.
+- SUGGESTION: deviation (1) is unbound: `holdActive && holdGestureLive` -> `holdActive` SURVIVED (Chromium on the tree: lock 2x, lift, pull -> docked, rate 1). Masked, not findings: claim's `lastTapTime = 0` and `tapGestureMoved = true` (the claimed touchend returns first; MOVE_TOL 16).
+- SUGGESTION: R7 `?minimizeAnim=0` is a URL param read at boot into sessionStorage, so it cannot be reached in the home-screen app (no address bar; `?debugLifecycle` has a Settings checkbox for that reason, setup.js ~3013). Device check 1 should say to A/B in a Safari tab, or add the toggle. Same iOS guard-arm suspicion as QA's third suggestion (not measured: Chromium eats sub-slop moves).
+- Verified clean: 129 targeted tests pass 128 / skip 1 (the ratchet's merge-base test, skipped outside git; 3 / 3 in the worktree); lint:ui OK; containment 0; probe-targets re-run reproduces 478 / 478, 44 x 44, desktop 24 / 22 / 26, chevron 484 points, filter none; no filter / mask / opacity / blend reaches `.ui-btn.player-minimize` (rule scan of style.css + ui.css).
+
+Round 1 fixes (builder, 2026-10-04):
+- QA W1: `#player-dock .cc-overlay { bottom: var(--size-touch) }` in its own phone block AFTER its 26 px base (the M5 block sits
+  before that base, so it would have lost on file order); test binds value and order.
+- QA W2: `resolveMinimizeLanding(depth, browseDepth, historyLength)` goes Home when the jump would reach past the session history
+  the browser kept (`steps >= history.length`), so `history.go` never silently no-ops and the guard is never left set.
+- QA W3 + adversary A1: the REAL `leaveWatchForBrowse` is now executed (common.js booted in jsdom, the pocket-lighting-open-ask
+  harness): `go(-2)` once (never `back()`), a second call coalesced until the popstate, Home from a deep link and past the cap,
+  and the guard released after the cap path.
+- Adversary A2: main.js's search chip `history.replaceState(null, ...)` now carries the entry's state forward with its new url
+  (the remote.js pattern); a census test fails any `history.replaceState(null` in public/js.
+- QA W4 + adversary A3: tests for the width conjunct alone (a coarse pointer past 768 px), the audio expanded view's refresh,
+  the claim cancelling the armed hold (2x never under a pull), a finished gesture leaving nothing live (a drag from the control
+  bar), second-finger aborts on touchstart and touchmove, the resize / orientationchange clears, a new finger ending the spring-back,
+  the settle clearing host and dock, the pp ring's `content`, and deviation (1) (a lock from an earlier gesture does not block a pull).
+- QA suggestions: the stale "26px docked" comments now say 44 px on a phone (8 places); the settle numbers in section 6 match the
+  committed JSON; the chevron refreshes on picture-in-picture enter / leave. Device checks 1 (A/B in a Safari tab) and 4 (an upward
+  drag after a downward wiggle) updated. Logged to ROADMAP Planned > Bugs, not built: the curl-right swipe-back after a sprung-back
+  pull (changing it would alter the swipe-right gesture outcome item 4 promises unchanged, stop rule c) and a Settings toggle for
+  `?minimizeAnim` in the home-screen app.
+
+Gate: APPROVED r2 @bfb3cb07 — qa
+- W1 fixed as prescribed, verified: the phone dock captions now end at 540 = the bar top (overlap 0 px, was 18; pp face 0, was 11.5), same probe; mutant (phone cc bottom back to 26px) KILLED by name.
+- W2 fixed (in the pure resolver, a fine deviation), verified: the real app at 55 hops (history.length 50, depth 55) now docks AND lands on /, and the bottom-nav Home works after; mutants (leave drops history.length, `>=` -> `>`) KILLED by name.
+- W3 fixed: the real leaveWatchForBrowse runs in jsdom; QA-M4 (back()) and QA-M5 (no pending check) KILLED by name.
+- W4 fixed: QA-M1 (narrow true) and QA-M3 (no audio-expanded refresh) KILLED by name. QA-M7 (orientationchange) still masked by resize, disclosed.
+- New code reviewed: the main.js chip replaceState carries the home entry forward with its new url (the remote.js / music.js pattern; view stays home, plain data, popstate fetches the same url the old null-state fallback derived); mutant back to a url-less carry KILLED. The PiP listeners are wired once beside resize and only re-run refreshMinimizeButton.
+- SUGGESTION (non-blocking, safe to ship disclosed): the PiP refresh is unbound (QA-M8, removing it SURVIVED 137/137); its worst case is the r1 state (an inert chevron shown during Android PiP), no gesture, playback or history effect.
+- SUGGESTION: section 6 now quotes the settle as `matrix(1.95038, ...)`; the committed probe-targets-result.json says 1.95176 (the translate values now match).
+
+Gate: APPROVED r2 @bfb3cb07 — adversary
+- A1, A2, A3 and the deviation (1) suggestion: fixed as prescribed. Mutants re-run against minimize-player + router-helpers + hold-lock: all four leaveWatchForBrowse mutants (including the one that left the app in Chromium at r1), the touchend reset, the claim's hold-timer clear, the dock settle class, the settle timer, both second-finger aborts, the resize / rotate / new-finger clears, deviation (1) and the pp ring `content` are KILLED by name; new ones are KILLED too: the cap `>=` to `>`, leave without history.length, the chip url not carried, the chip state back to undefined, the phone cc-overlay rule dropped. Masked (unchanged from r1, not findings): the claim's lastTapTime and tapGestureMoved. Targeted tests: 137 / 137 pass. lint:ui OK, containment 0, ratchet 3 / 3. Chromium: one diagonal lands on /, docked, playing, history.length 3; the search chip keeps `{depth 1, browseDepth 1}` and the pull lands on `/?search=Proof&type=videos`, history.length unchanged (4).
+- SUGGESTION (residual of QA W2): the cap check `steps >= history.length` misses a session at the cap that has forward entries. Measured (Chromium, router-shaped watch entries pushed to depth 61, history.length 50, then history.go(-15) to depth 46): chevron -> docked but still on /watch.html, and the bottom-nav Home tap is dead afterwards (the go(-46) is a no-op and homeBackPending stays set). Needs a 50+ entry chain and then 4+ backs; a reload recovers. Log it in ROADMAP; `navigation.currentEntry.index`, where it exists, gives the true reachable depth.
+- SUGGESTION: the new picture-in-picture chevron refresh is not tested (dropping the listeners SURVIVED); `#player-dock.is-minimize-settle { overflow: visible }` is still bound only by the probe (cosmetic: only the picture's flight into the dock gets clipped).
+
+## 9. Out of scope (logged, not built)
+
+- Full screen / landscape pull-down (YouTube exits full screen on a pull), the iPad and desktop chevron, swipe the mini player
+  up to expand or sideways to dismiss, dragging the mini player around, fading the page behind the drag. Add any Dean asks for
+  after the device pass to ROADMAP Planned.

@@ -1284,9 +1284,11 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
    stays `[hidden]` -- and therefore invisible with zero layout impact --
    until player.js's dock() reparents the live player host into it (only
    when the user navigates away from the watch view WHILE media is loaded;
-   see player.js). On the watch page itself the player always renders via
-   `.player-container` above, completely unaffected by any of this -- the
-   watch page is never "docked" while it is the active view. Era-themed via
+   see player.js). On the watch page itself the player renders via
+   `.player-container` above, unaffected by any of this; the one exception is
+   v1.362's minimize (the phone chevron or pull-down), which docks first and
+   then leaves the watch page, so the page is docked for the instant before
+   the route swap. Era-themed via
    the role tokens (--shadow-overlay/--r-md); the video's own #000 letterbox
    background matches `.player-container` above (not a themed surface). */
 #player-dock {
@@ -1345,8 +1347,8 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 
 .player-dock-close {
   position: absolute;
-  top: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
-  right: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
+  top: var(--space-2); /* v1.362: was a 4px literal, the same value (pays for the stage lift's annotation) */
+  right: var(--space-2);
   z-index: 5; /* token-exempt: local stacking */
   width: 24px;
   height: 24px;
@@ -1377,6 +1379,55 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
        independently re-resolving env(safe-area-inset-bottom). */
     bottom: calc(var(--mobile-bottom-nav-h) + 8px); /* token-exempt: positional geometry (Stop A Batch A) */
   }
+}
+
+/* v1.362: minimize into the mini player (player.js minimizeToDock). The pull moves the host with an
+   inline transform and no transition (the finger drives it); a release that springs back eases it
+   home, and a commit settles the docked host from where the finger left it (FLIP). While it settles,
+   the dock stops clipping it to the dock's own box. Plain transforms only: nothing here filters,
+   masks or fades the picture (LESSONS 7). */
+/* While the finger pulls (and the picture springs back), the watch stage, a z-index 0 stacking context,
+   rises over the page below it: the action row after it is positioned and would otherwise paint over the
+   moving picture (W3 screenshot, Dean 2026-10-04). Header and bottom nav stay above it. */
+.watch-player-stage:has(#player-wrapper.is-minimize-drag) {
+  z-index: 1; /* token-exempt: local stacking (v1.362, Dean 2026-10-04) */
+}
+#player-wrapper.is-minimize-snap {
+  transition: transform var(--dur-fade) var(--ease-std);
+}
+#player-wrapper.is-minimize-settle {
+  transition: transform var(--dur-sheet) var(--ease-enter);
+}
+#player-dock.is-minimize-settle {
+  overflow: visible;
+  box-shadow: none;
+}
+
+/* v1.362 (R6): the minimize chevron on the phone's inline picture, top-left (player.js builds it as a
+   plain ui-btn and shows it only where minimize is offered: the global [hidden] rule hides it
+   everywhere else). A 44 x 44 touch box carrying a plain painted 36 px disc (a radial gradient, never a
+   filter: LESSONS 7) under the expand_more glyph. No z-index: it is the host's last positioned child,
+   so it paints over the video; the tap glyph and the skip ripples (pointer-events none) may flash over
+   it, and the resume / transcode overlays (10) cover it. Square corners: the box hit-tests as drawn,
+   so a radius would round off its corners (the disc is painted, not the box). The ui-btn press layer
+   (an ::after that fades its opacity in) is removed: nothing fades over the picture (LESSONS 7). */
+.ui-btn.player-minimize {
+  position: absolute;
+  top: var(--space-2);
+  left: calc(var(--space-2) + env(safe-area-inset-left, 0px));
+  width: var(--size-touch);
+  height: var(--size-touch);
+  padding: 0;
+  border-radius: 0;
+  background: radial-gradient(circle, var(--scrim) 0 calc(var(--size-control) / 2), transparent calc(var(--size-control) / 2 + 1px));
+  color: var(--on-overlay);
+}
+.ui-btn.player-minimize::after {
+  content: none;
+}
+.ui-btn.player-minimize .ui-icon {
+  width: var(--icon-lg);
+  height: var(--icon-lg);
 }
 
 /* Audio thumbnail-as-background art (Feature 1, v1.10.0). Hidden by default;
@@ -3928,7 +3979,7 @@ select {
                      tracks, thin seek line, YouTube's round red scrubber.
    HARD RULES (locked by test/unit/era-player-skins.test.js):
    - visual-only: never height/padding/gap/order on .player-controls -- the
-     bar's geometry (40px desktop / two-row 80px mobile / 26px docked) is
+     bar's geometry (40px desktop / two-row 80px mobile / 26px docked, 44px docked on a phone since v1.362) is
      identical in every era;
    - every color is an era TOKEN or an rgba() overlay over one, never a
      hardcoded palette hex -- that is what makes each skin correct in BOTH
@@ -4102,7 +4153,7 @@ select {
 #player-dock .pip-btn,
 #player-dock .speed-btn,
 #player-dock .cc-btn,
-#player-dock .settings-btn { /* v1.112: the cog too -- no room in the 26px mini-dock */
+#player-dock .settings-btn { /* v1.112: the cog too -- no room in the mini-dock's play/pause-only bar */
   display: none;
 }
 #player-dock .pc-btn {
@@ -4161,7 +4212,7 @@ select {
      buttons. `order: -1` lifts the three scrub elements above the
      DOM-first play button; among themselves they keep DOM order
      (time-cur, seek, time-dur). Scoped to the FULL in-slot player -- the
-     DOCKED mini-player keeps its single trimmed row (its own 26px rules).
+     DOCKED mini-player keeps its single trimmed row (its own rules: 26px, 44px on a phone since v1.362).
      The bar-strip reservations below grow to match (80px). */
   #player-slot .player-controls {
     flex-wrap: wrap;
@@ -4322,12 +4373,12 @@ select {
 @media (max-width: 768px) {
   /* v1.34.1: the FULL mobile bar is now two rows (80px, see the two-row
      rules above) -- the reserved strip below the picture/art matches it.
-     Docked (26px) and native-controls (strip removed) keep their own rules. */
+     Docked (26px; 44px on a phone, v1.362) and native-controls (strip removed) keep their own rules. */
   #player-slot #player-wrapper:not(.audio-expanded) {
     padding-bottom: 80px; /* token-exempt: player-bar reserve, two-row mobile bar (Dean F.5: reserves stay literal) */
   }
   #player-wrapper:not(.audio-expanded) {
-    padding-bottom: 44px; /* token-exempt: player-bar reserve, mobile single-row bar (Dean F.5: reserves stay literal) */  /* non-slot fallback (docked wrapper has its own 26px rule below) */
+    padding-bottom: 44px; /* token-exempt: player-bar reserve, mobile single-row bar (Dean F.5: reserves stay literal) */  /* non-slot fallback (docked wrapper has its own rules below: 26px, 44px on a phone) */
   }
   /* Native-controls mode removes the strip entirely -- must outrank the
      2-ID 80px reservation above (its own base rule is only 1 ID and would
@@ -4354,7 +4405,7 @@ select {
 }
 
 /* DOCKED mini-player (v1.23.6, Dean): same bar-below layout, just using the
-   trimmed mini-player bar height (26px, see `#player-dock .player-controls`)
+   trimmed mini-player bar height (26px, 44px on a phone since v1.362; see `#player-dock .player-controls`)
    instead of the full 40/44px. The universal `aspect-ratio:auto` +
    `#media-player { aspect-ratio: var(--media-aspect, 16/9) }` rules above
    already apply here -- only the reserved strip height differs, so the tiny
@@ -4367,6 +4418,48 @@ select {
 }
 #player-dock #player-wrapper.audio-mode #audio-bg-art {
   bottom: 26px; /* token-exempt: positional geometry (Stop A Batch A) */
+}
+
+/* v1.362 (M5, Dean): on a phone the mini player's X and play/pause each answer a 44 x 44 touch
+   (--size-touch), and both look a little bigger (32 px, the full bar's button size). The dock clips
+   its content (overflow: hidden), so both boxes lie INSIDE it: the bar grows from 26 px to the touch
+   height (the bar, the wrapper's reserve and the art's bottom move together as one value, which
+   player.js dockRestingRect also reads; its left padding lets the ring below fit), play/pause (the
+   only bar button the dock shows) keeps a 32 px face and gains a transparent
+   44 px hit ring, and the X takes the picture's top-right 44 px corner around a 32 px disc (square:
+   a box hit-tests as drawn, and the old 50% radius made it a circle). Width
+   (160 px) and the desktop dock are unchanged. Placed AFTER the base rules above (equal
+   specificity: file order decides). */
+@media (max-width: 768px) {
+  #player-dock .player-controls {
+    height: var(--size-touch);
+    padding: 0 var(--space-3);
+  }
+  #player-dock #player-wrapper {
+    padding-bottom: var(--size-touch);
+  }
+  #player-dock #player-wrapper.audio-mode #audio-bg-art {
+    bottom: var(--size-touch);
+  }
+  #player-dock #pp-btn {
+    position: relative;
+    width: var(--size-control-sm);
+    height: var(--size-control-sm);
+  }
+  #player-dock #pp-btn::after {
+    content: '';
+    position: absolute;
+    inset: calc((var(--size-control-sm) - var(--size-touch)) / 2);
+  }
+  #player-dock .player-dock-close {
+    top: 0;
+    right: 0;
+    width: var(--size-touch);
+    height: var(--size-touch);
+    line-height: var(--size-touch);
+    border-radius: 0;
+    background: radial-gradient(circle, var(--scrim) 0 calc(var(--size-control-sm) / 2), transparent calc(var(--size-control-sm) / 2 + 1px));
+  }
 }
 
 /* Feature A (v1.26.1, Shorts player-size jump): the DOCKED mini-player
@@ -5259,7 +5352,7 @@ html:has(> body.ft-audio-expanded),
    it (player.js only ever calls renderActiveCueOverlay for audio -- see its
    own comment). Positioned as a centered pill directly ABOVE the control
    strip, mirroring `#audio-bg-art`'s own per-view bottom offsets just above
-   (in-slot 40/44px, docked 26px) -- the compound selectors below add the
+   (in-slot 40/44px, docked 26px / 44px on a phone) -- the compound selectors below add the
    SAME offsets for this overlay; the audio-expanded full-viewport view gets
    its own safe-area-aware offset further below, alongside
    `.audio-mode.audio-expanded .player-controls`. `z-index: 9` sits above
@@ -5452,6 +5545,13 @@ html:has(> body.ft-audio-expanded),
 
 #player-dock .cc-overlay {
   bottom: 26px;      /* matches the trimmed mini-player bar height */ /* token-exempt: positional geometry (Stop A Batch A) */
+}
+/* v1.362 gate r1 (QA W1): the phone mini-player bar is --size-touch tall (the M5 block above), so the
+   captions sit on top of it rather than 18px down over play/pause. After its base (file order wins). */
+@media (max-width: 768px) {
+  #player-dock .cc-overlay {
+    bottom: var(--size-touch);
+  }
 }
 /* v1.163.3 (Dean): in the 160/280px dock a full-size cue (--fs-md, unclamped)
    grew UP out of the thumbnail and covered the whole video. Shrink to fit and
@@ -12155,7 +12255,7 @@ html[data-era-flourish="on"] .ft-unfabricated {
      seek sitting thin (16px) inside it, so 30px FILLS the row without GROWING it -
      the engineered two-row 80px budget stays intact (30 + 2 row-gap + 44 buttons
      = 76 <= 78px content box; the v1.34.1 clip class that budget guards against).
-     NOT a global `#seek-bar { height }`: the 26px docked mini-bar reuses the same
+     NOT a global `#seek-bar { height }`: the docked mini-bar (26px; 44px on a phone) reuses the same
      element, and a tall band there would overflow it AND steal its tap-to-expand
      gesture (QA v1.95 CRITICAL - the reason the earlier global 44px rule was
      wrong). The gesture is UNCHANGED: touch-action:none + the pointer-capture

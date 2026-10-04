@@ -333,7 +333,8 @@ test('after an unlock a plain hold behaves as before: its lift releases to the p
 });
 
 test('the drag claim is registered on the player wrapper, never on the <video> (measured: a video listener leaves moves non-cancelable)', () => {
-  assert.match(PLAYER_SRC, /host\.addEventListener\('touchmove', function \(e\) \{\s*if \(holdActive && holdGestureLive && e\.cancelable\) e\.preventDefault\(\);/);
+  // v1.362: the same listener hands every other move to the minimize pull, so the hold arm returns first.
+  assert.match(PLAYER_SRC, /host\.addEventListener\('touchmove', function \(e\) \{\s*if \(holdActive && holdGestureLive\) \{ if \(e\.cancelable\) e\.preventDefault\(\); return; \}/);
   assert.ok(!/mediaPlayer\.addEventListener\('touchmove'/.test(PLAYER_SRC), 'no video-level touchmove claim');
 });
 

@@ -10253,7 +10253,8 @@ function shouldInterceptLinkClick({ button, metaKey, ctrlKey, shiftKey, altKey, 
 // The `history.pushState`/`history.state` shape, in one place so the router
 // and its `popstate` handler always agree on the fields. `scrollY` defaults
 // to 0 (a fresh in-app navigation starts at the top, like a real page load).
-function buildHistoryState(view, url, scrollY, depth, viewState) {
+function buildHistoryState(view, url, scrollY, depth, viewState, browseDepth) {
+  const d = (typeof depth === 'number' && depth >= 0) ? Math.floor(depth) : 0;
   return {
     view,
     url: String(url),
@@ -10264,18 +10265,54 @@ function buildHistoryState(view, url, scrollY, depth, viewState) {
     // is an in-app level to pop to via history.back(): depth>0 can NEVER walk
     // back past the session's first stamped entry to an external referrer,
     // because depth only ever rises on this router's OWN pushState calls.
-    depth: (typeof depth === 'number' && depth >= 0) ? Math.floor(depth) : 0,
+    depth: d,
     // v1.217 (in-view back-stack): an OPAQUE per-view sub-state payload the
     // owning view stamps via pushViewState/replaceViewState (a drill descriptor,
     // a now-playing marker) and reads back in its onPopState hook. null for every
-    // entry a view has not opted in on - i.e. byte-identical for every caller
-    // that passes only four args (navigate's two builds + bootRouter's seed).
-    // Four callers pass a 5th arg: the two that CARRY an existing entry's payload
+    // entry a view has not opted in on - i.e. every caller that passes no
+    // viewState (navigate's two builds + bootRouter's seed).
+    // Four callers pass a viewState: the two that CARRY an existing entry's payload
     // forward (parseHistoryState + the scroll-rewrite) and the two that STAMP a
     // new one (pushViewState/replaceViewState). Must be structured-cloneable
     // (plain data only) since the browser structured-clones history state.
     viewState: (viewState === undefined || viewState === null) ? null : viewState,
+    // v1.362 (M7): the depth of the nearest BROWSE entry (any view but watch) at or
+    // behind this one - where minimizing the player lands. A browse entry is its
+    // own; a watch entry carries the one it was pushed from (browseDepthBehind),
+    // kept only while it is really BEHIND (< depth), else null (a deep link).
+    browseDepth: view !== 'watch'
+      ? d
+      : ((Number.isInteger(browseDepth) && browseDepth >= 0 && browseDepth < d) ? browseDepth : null),
   };
+}
+
+// v1.362 (M7): the browse depth a NEW entry pushed from `state` inherits. A browse
+// entry (including one written before v1.362, which has no field) is its own
+// level; a watch entry passes on what it carries. Pure - exported for node:test.
+function browseDepthBehind(state) {
+  if (!state || typeof state !== 'object') return null;
+  if (state.view !== 'watch') {
+    return (typeof state.depth === 'number' && state.depth >= 0) ? Math.floor(state.depth) : null;
+  }
+  return (Number.isInteger(state.browseDepth) && state.browseDepth >= 0) ? state.browseDepth : null;
+}
+
+// v1.362 (M7, Dean 2026-10-03): where minimizing the player goes - back to the
+// nearest browse entry behind (the feed / channel / search, past any watch
+// entries, so a video opened from another video never reloads the earlier one),
+// or a fresh Home when there is none (a deep link). Steps never exceed depth, so
+// it can never walk out of the app. historyLength (gate r1, QA W2): the browser
+// caps session history (Chromium keeps 50 entries), and a history.go() past the
+// oldest kept entry is a silent no-op that fires no popstate - so a jump the
+// session can no longer reach goes Home instead. Pure - exported for node:test.
+function resolveMinimizeLanding(depth, browseDepth, historyLength) {
+  const d = (Number.isInteger(depth) && depth >= 0) ? depth : null;
+  if (d !== null && Number.isInteger(browseDepth) && browseDepth >= 0 && browseDepth < d) {
+    const steps = d - browseDepth;
+    if (typeof historyLength === 'number' && isFinite(historyLength) && steps >= historyLength) return { action: 'home' };
+    return { action: 'back', steps };
+  }
+  return { action: 'home' };
 }
 
 // Defensive parse of `event.state` (a `popstate` can fire with a `null` state
@@ -10287,7 +10324,7 @@ function parseHistoryState(state, fallbackLocation) {
     // v1.45.0 (T2): carry `depth` through so a popstate back to this entry
     // (and any later replaceState that rebuilds it — recordScrollForCurrentState)
     // preserves the in-app depth the Home control reads.
-    return buildHistoryState(state.view, state.url, state.scrollY, state.depth, state.viewState);
+    return buildHistoryState(state.view, state.url, state.scrollY, state.depth, state.viewState, state.browseDepth);
   }
   const loc = (fallbackLocation && typeof fallbackLocation === 'object') ? fallbackLocation : {};
   const view = deriveRouteView(loc.pathname || '');
@@ -11000,7 +11037,7 @@ if (typeof window !== 'undefined') {
     // payload its onPopState hook will need.
     const updated = buildHistoryState(
       window.history.state.view, window.history.state.url, pageScrollY(), window.history.state.depth,
-      window.history.state.viewState);
+      window.history.state.viewState, window.history.state.browseDepth);
     window.history.replaceState(updated, '');
   }
 
@@ -11022,7 +11059,7 @@ if (typeof window !== 'undefined') {
     recordScrollForCurrentState();
     const url = window.location.pathname + window.location.search;
     const depth = nextHistoryDepth(window.history.state, false);
-    window.history.pushState(buildHistoryState(currentViewName, url, 0, depth, viewState), '', url);
+    window.history.pushState(buildHistoryState(currentViewName, url, 0, depth, viewState, browseDepthBehind(window.history.state)), '', url);
   }
   function replaceViewState(viewState) {
     if (!currentViewName) return;
@@ -11030,7 +11067,7 @@ if (typeof window !== 'undefined') {
     const url = (s && s.url) || (window.location.pathname + window.location.search);
     const depth = nextHistoryDepth(s, true); // replace keeps the level
     const scrollY = (s && typeof s.scrollY === 'number') ? s.scrollY : pageScrollY();
-    window.history.replaceState(buildHistoryState(currentViewName, url, scrollY, depth, viewState), '');
+    window.history.replaceState(buildHistoryState(currentViewName, url, scrollY, depth, viewState, s && s.browseDepth), '');
   }
 
   // Extracts `#view-root` (+ `<title>`) from a fetched HTML document string.
@@ -11057,7 +11094,8 @@ if (typeof window !== 'undefined') {
   // Only ONE transition is decided here: leaving the watch view for any other
   // in-shell view docks the player (a no-op if nothing is loaded, per
   // `player.dock()`'s own guard -- so there is never a dock when nothing is
-  // playing). watch -> watch (a related-card/prev-next click into a
+  // playing -- and a no-op when v1.362's minimize already docked it before
+  // leaving). watch -> watch (a related-card/prev-next click into a
   // DIFFERENT video) intentionally does NOT dock here: the host simply stays
   // wherever it currently is (inside the old `#player-slot`, about to be
   // replaced) and the incoming watch view's own `init()` reparents it into
@@ -11466,7 +11504,8 @@ if (typeof window !== 'undefined') {
         // `navigate`) -- the winning (non-stale) navigation pushes/replaces
         // exactly once, then swaps exactly once, so `window.location` is
         // already correct when the incoming view's `init()` reads it.
-        const state = buildHistoryState(view, parsed.href, 0, desiredDepth);
+        // v1.362 (M7): a watch entry remembers the browse level it was opened from.
+        const state = buildHistoryState(view, parsed.href, 0, desiredDepth, null, browseDepthBehind(window.history.state));
         if (opts.replace) window.history.replaceState(state, '', parsed.href);
         else window.history.pushState(state, '', parsed.href);
         swapToView(view, fragment.root, fragment.title, 0, targetUrl);
@@ -11556,6 +11595,22 @@ if (typeof window !== 'undefined') {
       return;
     }
     navigate('/', { top: true });
+  }
+
+  // v1.362 (M7): minimizing the player (player.js minimizeToDock, after its dock())
+  // lands on the last browse level: history.go back past every watch entry to the
+  // nearest browse entry (the router restores that view and its scroll), or a fresh
+  // Home from a deep link. Coalesced with the Home control (homeBackPending).
+  function leaveWatchForBrowse() {
+    if (homeBackPending) return;
+    const state = window.history.state;
+    const land = resolveMinimizeLanding(state && state.depth, browseDepthBehind(state), window.history.length);
+    if (land.action === 'back') {
+      homeBackPending = true;
+      window.history.go(-land.steps);
+    } else {
+      navigate('/');
+    }
   }
 
   function handleDocumentClick(event) {
@@ -11723,6 +11778,7 @@ if (typeof window !== 'undefined') {
   window.FileTube.clearPlayerLaunchOrigin = clearPlayerLaunchOrigin;
   window.FileTube.returnToPlayerOrigin = returnToPlayerOrigin;
   window.FileTube.goHomeFromPlayer = goHomeFromPlayer; // v1.332 D7
+  window.FileTube.leaveWatchForBrowse = leaveWatchForBrowse; // v1.362 M7: the minimize landing
   window.FileTube.queueEntryHref = queueEntryHref;
   window.FileTube.bootRouter = bootRouter;
   // v1.52 instant watch: click surfaces stash, watch's init consumes.
@@ -17262,6 +17318,8 @@ if (typeof module !== 'undefined' && module.exports) {
     shouldDockOnTransition, isSameLocationNav, toPathAndQuery, isStaleNavGeneration,
     // v1.45.0 (T2): incremental-pop Home helpers.
     nextHistoryDepth, resolveHomeButtonAction, isHomeRootTarget,
+    // v1.362 (M7): the minimize landing (the last browse level).
+    browseDepthBehind, resolveMinimizeLanding,
     // v1.160/.3: the swipe-back decision (pure; the wiring is DOM/device). v1.160.3
     // dropped the edge-start requirement - a rightward horizontal drag from
     // anywhere goes back.

@@ -1,0 +1,400 @@
+{
+ "runAt": "2026-10-03T23:07:31.867Z",
+ "runs": [
+  {
+   "label": "home > clip1, pull 250 (dock)",
+   "dockCss": {
+    "width": "160px",
+    "right": "8px",
+    "bottom": "80px",
+    "sizeTouch": "44px"
+   },
+   "midDrag": {
+    "transform": "translate(146.825px, 250px) scale(0.609958)"
+   },
+   "moves": 24,
+   "cancelable": 24,
+   "prevented": 24,
+   "movedPicture": 24,
+   "log": [
+    [
+     "before",
+     {
+      "path": "/watch.html?v=clip1",
+      "state": "full",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 1.2,
+      "parent": "player-slot",
+      "depth": 1,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ],
+    [
+     "at150ms",
+     {
+      "path": "/",
+      "state": "docked",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 3.1,
+      "parent": "player-dock",
+      "depth": 0,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ],
+    [
+     "at1650ms",
+     {
+      "path": "/",
+      "state": "docked",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 4.6,
+      "parent": "player-dock",
+      "depth": 0,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ],
+    [
+     "at3650ms",
+     {
+      "path": "/",
+      "state": "docked",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 6.6,
+      "parent": "player-dock",
+      "depth": 0,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ]
+   ],
+   "errs": []
+  },
+  {
+   "label": "home > clip2 > clip1, pull 250 (dock, land on home past clip2)",
+   "dockCss": {
+    "width": "160px",
+    "right": "8px",
+    "bottom": "80px",
+    "sizeTouch": "44px"
+   },
+   "midDrag": {
+    "transform": "translate(146.825px, 250px) scale(0.609958)"
+   },
+   "moves": 24,
+   "cancelable": 24,
+   "prevented": 24,
+   "movedPicture": 24,
+   "log": [
+    [
+     "before",
+     {
+      "path": "/watch.html?v=clip1",
+      "state": "full",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 1.3,
+      "parent": "player-slot",
+      "depth": 2,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ],
+    [
+     "at150ms",
+     {
+      "path": "/",
+      "state": "docked",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 3.2,
+      "parent": "player-dock",
+      "depth": 0,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ],
+    [
+     "at1650ms",
+     {
+      "path": "/",
+      "state": "docked",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 4.7,
+      "parent": "player-dock",
+      "depth": 0,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ],
+    [
+     "at3650ms",
+     {
+      "path": "/",
+      "state": "docked",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 6.7,
+      "parent": "player-dock",
+      "depth": 0,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ]
+   ],
+   "errs": []
+  },
+  {
+   "label": "deep link clip1, pull 250 (dock, fresh Home)",
+   "dockCss": {
+    "width": "160px",
+    "right": "8px",
+    "bottom": "80px",
+    "sizeTouch": "44px"
+   },
+   "midDrag": {
+    "transform": "translate(146.825px, 250px) scale(0.609958)"
+   },
+   "moves": 24,
+   "cancelable": 24,
+   "prevented": 24,
+   "movedPicture": 24,
+   "log": [
+    [
+     "before",
+     {
+      "path": "/watch.html?v=clip1",
+      "state": "full",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 1.8,
+      "parent": "player-slot",
+      "depth": 0,
+      "browseDepth": null,
+      "transform": "",
+      "scrollY": 0
+     }
+    ],
+    [
+     "at150ms",
+     {
+      "path": "/",
+      "state": "docked",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 3.7,
+      "parent": "player-dock",
+      "depth": 0,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ],
+    [
+     "at1650ms",
+     {
+      "path": "/",
+      "state": "docked",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 5.2,
+      "parent": "player-dock",
+      "depth": 0,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ],
+    [
+     "at3650ms",
+     {
+      "path": "/",
+      "state": "docked",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 7.2,
+      "parent": "player-dock",
+      "depth": 0,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ]
+   ],
+   "errs": []
+  },
+  {
+   "label": "home > clip1, pull 60 slow (spring back)",
+   "dockCss": {
+    "width": "160px",
+    "right": "8px",
+    "bottom": "80px",
+    "sizeTouch": "44px"
+   },
+   "midDrag": {
+    "transform": "translate(35.2381px, 60px) scale(0.90639)"
+   },
+   "moves": 5,
+   "cancelable": 5,
+   "prevented": 5,
+   "movedPicture": 5,
+   "log": [
+    [
+     "before",
+     {
+      "path": "/watch.html?v=clip1",
+      "state": "full",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 1.2,
+      "parent": "player-slot",
+      "depth": 1,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ],
+    [
+     "at150ms",
+     {
+      "path": "/watch.html?v=clip1",
+      "state": "full",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 2.1,
+      "parent": "player-slot",
+      "depth": 1,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ],
+    [
+     "at1650ms",
+     {
+      "path": "/watch.html?v=clip1",
+      "state": "full",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 3.6,
+      "parent": "player-slot",
+      "depth": 1,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ],
+    [
+     "at3650ms",
+     {
+      "path": "/watch.html?v=clip1",
+      "state": "full",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 5.6,
+      "parent": "player-slot",
+      "depth": 1,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ]
+   ],
+   "errs": []
+  },
+  {
+   "label": "home > clip1, scrolled 40, pull 250 (R2b: scrolls, no minimize)",
+   "dockCss": {
+    "width": "160px",
+    "right": "8px",
+    "bottom": "80px",
+    "sizeTouch": "44px"
+   },
+   "midDrag": {
+    "transform": ""
+   },
+   "moves": 22,
+   "cancelable": 1,
+   "prevented": 0,
+   "movedPicture": 0,
+   "log": [
+    [
+     "before",
+     {
+      "path": "/watch.html?v=clip1",
+      "state": "full",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 1.4,
+      "parent": "player-slot",
+      "depth": 1,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 40
+     }
+    ],
+    [
+     "at150ms",
+     {
+      "path": "/watch.html?v=clip1",
+      "state": "full",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 2.9,
+      "parent": "player-slot",
+      "depth": 1,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ],
+    [
+     "at1650ms",
+     {
+      "path": "/watch.html?v=clip1",
+      "state": "full",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 4.4,
+      "parent": "player-slot",
+      "depth": 1,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ],
+    [
+     "at3650ms",
+     {
+      "path": "/watch.html?v=clip1",
+      "state": "full",
+      "src": "/video/clip1",
+      "paused": false,
+      "t": 6.4,
+      "parent": "player-slot",
+      "depth": 1,
+      "browseDepth": 0,
+      "transform": "",
+      "scrollY": 0
+     }
+    ]
+   ],
+   "errs": []
+  }
+ ]
+}

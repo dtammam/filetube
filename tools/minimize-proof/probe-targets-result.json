@@ -1,0 +1,113 @@
+{
+ "runAt": "2026-10-03T23:26:03.361Z",
+ "phoneDocked": {
+  "dock": {
+   "x": 222,
+   "y": 450,
+   "w": 160,
+   "h": 134
+  },
+  "close": {
+   "faceRect": {
+    "x": 338,
+    "y": 450,
+    "w": 44,
+    "h": 44
+   },
+   "gridPoints": 961,
+   "hits": 478,
+   "hitSpanW": 44,
+   "hitSpanH": 44,
+   "hitPointsOutsideDock": 0
+  },
+  "pp": {
+   "faceRect": {
+    "x": 228,
+    "y": 546.5,
+    "w": 32,
+    "h": 32
+   },
+   "gridPoints": 961,
+   "hits": 478,
+   "hitSpanW": 44,
+   "hitSpanH": 44,
+   "hitPointsOutsideDock": 0
+  },
+  "centreHit": "media-player"
+ },
+ "desktopDocked": {
+  "dock": [
+   280,
+   184
+  ],
+  "close": [
+   24,
+   24
+  ],
+  "pp": [
+   22,
+   22
+  ],
+  "bar": [
+   280,
+   26
+  ],
+  "chevronShown": false
+ },
+ "chevron": {
+  "hidden": false,
+  "rect": [
+   4,
+   76,
+   44,
+   44
+  ],
+  "videoTop": 72,
+  "hits": 484,
+  "centreIsChevron": true,
+  "filter": "none",
+  "opacity": "1"
+ },
+ "settleAfterTap": [
+  {
+   "t": "matrix(1.95176, 0, 0, 1.95176, -146.985, -250.272)",
+   "hostCls": "player-container ff-mobile is-minimize-settle",
+   "dockOverflow": "visible"
+  },
+  {
+   "t": "matrix(1.46497, 0, 0, 1.46497, -71.808, -122.268)",
+   "hostCls": "player-container ff-mobile is-minimize-settle",
+   "dockOverflow": "visible"
+  },
+  {
+   "t": "matrix(1.22977, 0, 0, 1.22977, -35.4839, -60.4185)",
+   "hostCls": "player-container ff-mobile is-minimize-settle",
+   "dockOverflow": "visible"
+  },
+  {
+   "t": "matrix(1.09712, 0, 0, 1.09712, -14.9984, -25.5378)",
+   "hostCls": "player-container ff-mobile is-minimize-settle",
+   "dockOverflow": "visible"
+  },
+  {
+   "t": "matrix(1.01441, 0, 0, 1.01441, -2.22473, -3.78805)",
+   "hostCls": "player-container ff-mobile is-minimize-settle",
+   "dockOverflow": "visible"
+  },
+  {
+   "t": "none",
+   "hostCls": "player-container ff-mobile is-minimize-settle",
+   "dockOverflow": "visible"
+  }
+ ],
+ "afterTap": {
+  "path": "/",
+  "state": "docked",
+  "paused": false,
+  "hostTransform": "none",
+  "hostCls": "player-container ff-mobile",
+  "dockOverflow": "hidden",
+  "chevronHidden": true
+ },
+ "errs": []
+}
