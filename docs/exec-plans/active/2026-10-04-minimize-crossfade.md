@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.362.4-minimize-fade
 anchor: spec
 status: Building
-next: the dual-Node full npm test, then the gate (adversary + qa)
+next: dual-Node on b83b2822, then gate r2 (the same seats)
 design: Dean's rulings F1-F3, 2026-10-04 (kickoff at main 471c15e7), from his YouTube screen recording.
 gate: pending
 ---
@@ -84,6 +84,19 @@ and on `.watch-sidebar`. On another page the whole `#view-root` fades only while
   leave marked after `dock()`: a transient flash the end state hides) and F-M13 (the expand's root-holds-the-player belt, behind
   the CSS guard). New drives (a MutationObserver over every style state of the commit; a root that holds the dock) KILL both.
 - W3: DEVICE-CHECKS (38 open lines), ROADMAP "Device checks owed" item 16 (VPN results now 39), LESSONS-rules sections 2, 3, 7.
+
+- Dual-Node full `npm test` on 79e3cc56: Node 22.23.1 `# tests 10988 / # pass 10976 / # fail 0 / # skipped 12`; Node 24.20.0
+  `ℹ tests 10988 / ℹ pass 10976 / ℹ fail 0 / ℹ skipped 12`.
+- Gate r1 CHANGES @79e3cc56 (qa, adversary; section 7). Round 1 fixes (b83b2822, hook `ℹ tests 8567 / ℹ pass 8567 / ℹ fail 0`):
+  clearMinimizeDrag clears unless THIS page is leaving; the page an expand leaves is cleaned when it is swapped out (a
+  MutationObserver on #view-root's parent) and on a back; the expand marks first, then dims; the CSS census now runs
+  `element.matches()` for every opacity / animation rule on the real watch markup with the real host mounted, under four fade
+  states, with a positive control; drives for reduced motion mid-pull, a wide coarse tablet, a narrow fine window, the full
+  arrival selector; the seek-then-wait drive in player-black-picture-log ticks its clock again. Fix mutants (14, sandbox of
+  b83b2822, clean): all KILLED, including the adversary's census survivors A-M1/A-M2/A-M3/A-M6 and A-M4/A-M5/A-M7/A-M8/A-M16.
+- Disclosed (adversary r1 S7): the 4 s arrival mark also fades a page reached by another navigation inside the window; a TV
+  episode (a readerHref return) fades on minimize but not on expand; WebKit was not available to either seat (Playwright's
+  webkit build is not installed), so the iPhone check stands.
 
 ## 6. Device checks
 
