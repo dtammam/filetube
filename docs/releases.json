@@ -3478,5 +3478,11 @@
     "date": "2026-10-03",
     "title": "The video should no longer go black when you tap it",
     "intent": "On iPhone, tapping the picture to pause and play could turn the video black while the sound kept playing. The play and pause icon that flashes on a tap had a shadow effect the newest iPhone software does not handle over a playing video; it now has a soft disc behind it instead. The changes from the last update, which did not fix it, are removed."
+  },
+  {
+    "version": "1.362.0",
+    "date": "2026-10-04",
+    "title": "Pull the video down into the mini player, and a bigger mini player on phones",
+    "intent": "On a phone, while a video plays on its page, pull the picture down and it follows your finger into the mini player, or tap the new down arrow at its top left; the video keeps playing and you land back where you were browsing. The mini player's close and play buttons are bigger and easier to hit. The pull and the arrow need Settings > Mobile player > custom player controls turned on."
   }
 ]

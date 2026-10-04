@@ -4,6 +4,13 @@
 
 ### Bugs
 
+- [ ] **v1.362 gate r2 suggestions (non-blocking)** - (a) the history-cap fallback (`steps >= history.length`) misses a session that
+  is AT the cap and has forward entries (the adversary: depth 61, 15 backs to depth 46, history.length 50: the chevron docks on the
+  watch page and `go(-46)` no-ops, leaving Home dead until a reload); `navigation.currentEntry.index` gives the reachable depth where
+  the browser has it; (b) the chevron's picture-in-picture refresh has no test (jsdom cannot enter PiP; worst case an inert chevron
+  during Android PiP); (c) the dock's settle `overflow: visible` is bound only by the Chromium probe (cosmetic: the flight is clipped);
+  (d) the claim's `lastTapTime = 0` and `tapGestureMoved = true` are masked by the claimed touchend returning first (MOVE_TOL 16).
+
 - [ ] **v1.362 gate r1 suggestions (non-blocking)** - (a) a claimed minimize pull that curls hard right springs back and then
   also fires swipe-back on the same lift (QA; the swipe-back finish reads only its own deltas, and making it respect a prevented
   touchend would change the swipe-right gesture outcome item 4 promised unchanged); (b) the `?minimizeAnim=0` A/B switch is a URL
@@ -229,7 +236,7 @@
 
 ### Features
 
-- [ ] **Swipe the playing video down to shrink it into the mini player (like the YouTube app)** _(Dean, 2026-10-03: "if I'm watching a video on mobile, I can ... drag from the top left down to the bottom right ... a mechanism to swipe down to reduce to a small view. You can do this in the YouTube app. It would bring it to the mini player. It's equivalent to pressing the home button effectively ... I kind of like that natural feel of like, hey, I'm just tapping the screen and drag it down, like pull it down.")_ - Wanted after v1.361 merges; talk it through first. A pull-down on the picture (phone, inline) that ends in the same state as leaving the watch page (the dock / mini player), ideally following the finger (the picture shrinks toward the corner as you drag, then settles or snaps back). **Kickoff 2026-10-03 (Dean, every default): plan `docs/exec-plans/active/2026-10-03-minimize-to-mini-player.md`, target v1.362.0.** Two more parts in the same wave: a **minimize chevron** on the picture's top-left (inline, always shown, like the YouTube app's down-chevron), and **bigger mini player tap targets** (Dean: "a lot of friction now, especially in a mobile viewport"): the X and play/pause each answer a 44 x 44 touch and look a little bigger. Phone inline only; the pull follows the finger; the page lands where the Home button would. Seams to settle in the design: v1.358's hold-then-drag-down LOCKS 2x (a minimize drag must start WITHOUT a hold), the double-tap skip and the single-tap toggle, the page's own vertical scroll (the wrapper's non-passive touchmove claim), the left-edge swipe-back, faux fullscreen, and LESSONS 7 (no filter / transform effects painted over the playing picture that could black it out on iOS: an animated shrink must be checked on the device).
+- [x] **Swipe the playing video down to shrink it into the mini player (like the YouTube app)** **Shipped v1.362.0 (2026-10-04).** _(Dean, 2026-10-03: "if I'm watching a video on mobile, I can ... drag from the top left down to the bottom right ... a mechanism to swipe down to reduce to a small view. You can do this in the YouTube app. It would bring it to the mini player. It's equivalent to pressing the home button effectively ... I kind of like that natural feel of like, hey, I'm just tapping the screen and drag it down, like pull it down.")_ - Wanted after v1.361 merges; talk it through first. A pull-down on the picture (phone, inline) that ends in the same state as leaving the watch page (the dock / mini player), ideally following the finger (the picture shrinks toward the corner as you drag, then settles or snaps back). **Kickoff 2026-10-03 (Dean, every default): plan `docs/exec-plans/completed/2026-10-03-minimize-to-mini-player.md`, shipped v1.362.0.** Two more parts in the same wave: a **minimize chevron** on the picture's top-left (inline, always shown, like the YouTube app's down-chevron), and **bigger mini player tap targets** (Dean: "a lot of friction now, especially in a mobile viewport"): the X and play/pause each answer a 44 x 44 touch and look a little bigger. Phone inline only; the pull follows the finger; the page lands where the Home button would. Seams to settle in the design: v1.358's hold-then-drag-down LOCKS 2x (a minimize drag must start WITHOUT a hold), the double-tap skip and the single-tap toggle, the page's own vertical scroll (the wrapper's non-passive touchmove claim), the left-edge swipe-back, faux fullscreen, and LESSONS 7 (no filter / transform effects painted over the playing picture that could black it out on iOS: an animated shrink must be checked on the device).
 
 - [ ] **Speakers: the speaker reports its state with no phone attached** _(v1.356 R9, Dean: shipped the gap as is,
   disclosed)_ - A speaker posts its state only while a phone is attached, so a pause or play AT THE PC after the phone left
@@ -547,6 +554,28 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.362.0 - Pull the phone video down into the mini player; a chevron; bigger mini player targets (2026-10-04)
+
+- On a phone (custom player controls on), a pull DOWN on the inline watch-page picture, with the page at the top, follows the
+  finger toward the mini player's corner (the host translates and scales; the stage rises over the page below while it moves). Let
+  go past 35% of the way, or flick, and it docks (a FLIP settle) and the page goes back to the last browse page (Dean's M7: past any
+  video pages, to the feed / channel / search with its scroll, or a fresh Home from a deep link or past the browser's history cap);
+  let go early and it springs back. Playback never stops. A down-chevron on the picture's top-left does the same (one commit path).
+- Every history entry the router writes now records the depth of the nearest browse entry (`browseDepth`); the search type / scope
+  chips no longer replace the entry's state with null.
+- The phone mini player's X and play/pause each answer a 44 x 44 touch inside the dock (elementFromPoint: 478 grid points and a
+  44 x 44 span each, from 121 / 24 x 24 and 105 / 22 x 22); the bar is 44 px (dock 160 x 134, was 116); captions sit on it. Desktop
+  dock unchanged.
+- Unchanged by design and bound by tests: tap pauses, double-tap skips, hold 2x and hold-drag-down locks 2x, swipe right goes back,
+  an upward drag scrolls, a scrolled page scrolls first (the next pull at the top minimizes), full screen, landscape, iPad, desktop;
+  Music, Podcasts and the reader keep their own controls (Dean's M8: watch page only).
+- `?minimizeAnim=0` (remembered for the tab, `=1` clears it) turns the moving picture off for a device A/B of the iOS 27 black picture.
+- Disclosed: needs Settings > Mobile player > custom controls (the native-controls default has neither); Chromium-measured only, the
+  iPhone is the device check; the UI ratchet stayed flat (the stage lift's z-index paid for by two dock-X literals becoming `--space-2`).
+- Gate: adversary + qa. r1 CHANGES (the landing function never executed by a test; a search chip erasing the history state; captions
+  over the taller bar; the history cap; unbound guards); r2 APPROVED @bfb3cb07 (qa, adversary); security-brief applied by both, no
+  finding. Suggestions carried to ROADMAP Planned > Bugs.
 
 ### v1.361.0 - The tap glyph loses its shadow (the black picture on iOS 27), and v1.360 is undone (2026-10-03)
 
