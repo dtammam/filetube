@@ -354,17 +354,20 @@ test('census: no opacity / animation rule matches the video or any ancestor, in 
     { label: 'leaving', html: 'arrive', root: ['is-minimize-fading', 'is-minimize-fade-ease'] },
     { label: 'arrival', html: 'arrive', root: [] },
     { label: 'other page holding the player', html: 'arrive', root: ['is-view-leaving'], view: 'music' },
+    // gate r2 (adversary): the host DOCKED, where it sits during a minimize's leave and the arrival after it.
+    { label: 'docked', html: 'arrive', root: ['is-view-leaving'], view: 'home', docked: true },
   ];
   for (const st of states) {
     const d = new JSDOM(fs.readFileSync(path.join(PUB, 'watch.html'), 'utf8').replace(/<script[\s\S]*?<\/script>/g, '')).window.document;
-    d.getElementById('player-slot').appendChild(d.getElementById('player-host-template').content.cloneNode(true));
+    (st.docked ? d.getElementById('player-dock') : d.getElementById('player-slot')).appendChild(d.getElementById('player-host-template').content.cloneNode(true));
     const root = d.getElementById('view-root');
     st.root.forEach((c) => root.classList.add(c));
     if (st.view) root.setAttribute('data-view', st.view);
     if (st.html) d.documentElement.setAttribute('data-ft-view-fade', st.html);
     const chain = [];
     for (let n = d.getElementById('media-player'); n; n = n.parentElement) chain.push(n);
-    assert.ok(chain.length > 6 && chain.includes(root), st.label + ': the video sits under #view-root');
+    if (st.docked) assert.ok(chain.includes(d.getElementById('player-dock')) && !chain.includes(root), 'docked: the video sits in #player-dock, outside #view-root');
+    else assert.ok(chain.length > 6 && chain.includes(root), st.label + ': the video sits under #view-root');
     const hits = [];
     for (const r of rules) {
       for (const sel of splitTop(r.sel)) {
@@ -372,12 +375,13 @@ test('census: no opacity / animation rule matches the video or any ancestor, in 
         for (const el of chain) {
           let ok;
           try { ok = el.matches(sel); } catch (e) { assert.fail(st.label + ': the census cannot parse "' + sel + '" (' + e.message + ')'); }
-          if (ok && !/opacity\s*:\s*1\s*(;|$)/.test(r.body.trim())) hits.push(sel + ' -> ' + (el.id || el.className || el.tagName));
+          // gate r2 (both seats): ANY animation is a hit; only a rule whose opacity is exactly 1 (and no animation) is exempt.
+          if (ok && (/(^|[;\s])(?:-webkit-)?animation(?:-name)?\s*:/i.test(r.body) || /(^|[;\s])opacity\s*:\s*(?!1\s*(;|$))/i.test(r.body.trim()))) hits.push(sel + ' -> ' + (el.id || el.className || el.tagName));
         }
       }
     }
     assert.deepStrictEqual(hits, [], st.label + ': a rule paints the video or an ancestor');
-    if (st.label !== 'other page holding the player') {
+    if (st.label !== 'other page holding the player' && !st.docked) {
       const title = d.querySelector('.watch-title');
       const matched = rules.filter((r) => splitTop(r.sel).some((sel) => { try { return title.matches(sel); } catch (_) { return false; } }));
       assert.ok(matched.some((r) => /minimize-fade|ft-view-arrive/.test(r.body)), st.label + ': positive control, a fade rule reaches the title under the video');
