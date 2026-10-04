@@ -3,10 +3,10 @@ plan: minimize-to-mini-player
 harness: v2 · lean
 branch: feat/v1.362-minimize
 anchor: spec
-status: Building
-next: the gate r1 (adversary + qa) at 9a88b892, briefed with section 8; then section 8b release
+status: Shipped v1.362.0
+next: Dean's v1.362.0 device checks (DEVICE-CHECKS.md, section 7); a black picture during the pull = re-run with ?minimizeAnim=0 in a Safari tab
 design: Dean 2026-10-03 - on a phone, shrink the playing video into the mini player without leaving the page by hand - a down-chevron at the picture's top-left and a pull-down on the picture that follows the finger - plus bigger mini player X and play/pause ("a lot of friction now, especially in a mobile viewport"). The end state equals leaving the watch page ("equivalent to pressing the home button"). AskUserQuestion 2026-10-03, every default taken (section 2).
-gate: adversary + qa (touch gestures on the shared player core beside v1.358's hold-lock, a reparent during a gesture, the SPA back path, a transform on the playing picture; security-brief applied as a section by both)
+gate: APPROVED r2 @bfb3cb07 (adversary, qa) (touch gestures on the shared player core, the reparent, the SPA back path, a transform on the playing picture; security-brief applied as a section by both)
 ---
 
 # v1.362: minimize the phone player into the mini player (chevron + pull-down), bigger mini player targets
@@ -285,7 +285,7 @@ check.
   points, span **44 x 44**, 0 outside the dock. The dock's tap-to-expand at the picture's centre still hits `media-player`.
   Desktop dock (1280 x 800): dock 280 x 184, X 24 x 24, play/pause 22 x 22, bar 26: unchanged; no chevron. Chevron inline: 44 x 44
   at (4, 76) (video top 72), 484 of 484 points, centre hit is the chevron, computed filter `none`, opacity `1`. A real CDP tap on
-  it: the settle runs (host computed transform `matrix(1.95038, ..., -146.985, -250.272)` at 50 ms (the committed probe-targets-result.json; a re-run reads within a pixel), `matrix(1.01, ...)` at 250 ms,
+  it: the settle runs (host computed transform `matrix(1.95176, ..., -146.985, -250.272)` at 50 ms (copied from the committed probe-targets-result.json; a re-run reads within a pixel), `matrix(1.01, ...)` at 250 ms,
   `none` at 300 ms; the dock's overflow `visible` during, `hidden` after), lands on `/`, docked, playing, chevron hidden.
 | before / after | X hit span | X grid hits | play/pause hit span | play/pause grid hits | dock h |
 |---|---|---|---|---|---|
@@ -320,6 +320,18 @@ check.
   the same file: the dock X's `top: 4px` / `right: 4px` (two token-exempt literals) became `var(--space-2)` (4px, one global
   definition, no era override: the same pixels). `public/css/style.css|token-exempt` 199 -> 198. Reshot: the picture now draws over the row at 70%. Bound by a test (class on
   while pulling, off after the snap and after a commit; the rule locked by value).
+
+**Gate round 1 fix verification (builder, 2026-10-04, on bfb3cb07).** Mutants (same runner, sandbox identical to pristine after):
+every survivor the seats reported, 20 in all, KILLED by name: R1-L1..L4 (the four `leaveWatchForBrowse` mutants) and R1-L5 (the cap
+dropped) by `the real leaveWatchForBrowse` / `resolveMinimizeLanding goes Home`; R1-C1 (the chip back to `replaceState(null`) by `no
+history writer`; R1-G1 (claim keeps the hold) `a claim cancels the armed hold`; R1-G2 (touchend leaves the gesture live) `a finished
+gesture leaves nothing live`; R1-G3 / G4 (dock settle class, settle timer) `the commit settle opens the dock clip`; R1-G5..G9 (second
+finger x2, resize, orientationchange, new finger) `a second finger ...`; R1-G10 (deviation 1) `does not block a later pull`; R1-W1
+(width) `a coarse-pointer device wider than 768 px`; R1-W2 (audio expanded refresh) `the audio expanded view hides the chevron`;
+R1-S1 / S2 (pp ring content, phone captions) by their CSS locks. (R1-G4 first ran with a stale anchor, `find count 0`, and was re-run
+with the right one.) Full suite at bfb3cb07: Node 22.23.1 `# tests 10877 / # pass 10865 / # fail 0 / # cancelled 0 / # skipped 12`,
+exit 0; Node 24.20.0 `ℹ tests 10877 / ℹ pass 10865 / ℹ fail 0 / ℹ cancelled 0 / ℹ skipped 12`, exit 0. Gate r2 APPROVED @bfb3cb07
+(qa, adversary); their suggestions are in ROADMAP Planned > Bugs ("v1.362 gate r2 suggestions").
 
 ## 7. Device checks (Dean, on the released build; add each to DEVICE-CHECKS.md in the release commit)
 
