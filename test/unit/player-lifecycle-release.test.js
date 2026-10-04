@@ -240,10 +240,10 @@ test('recordLifecycleEvent() is a no-op (returns immediately) unless the debug f
   assert.match(match[1].trim(), /^(?:if \(bgTimingCur\) bgTimingTap\(type, extraCtx\);[ \t]*(?:\/\/[^\n]*)?\n\s*)?if \(!isDebugLifecycleEnabled\(\)\) return;/, 'expected the first lifecycle-log statement to bail out when the flag is off');
 });
 
-test('recordLifecycleEvent() caps the ring buffer at 30 entries (bumped from 20 in v1.27.1 for the extra bgAudio:* diagnostic events)', () => {
+test('recordLifecycleEvent() caps the ring buffer at 1000 entries (20 -> 30 in v1.27.1; 30 -> 1000 in v1.362.2, D5: the log is exported from Settings, not read off the panel)', () => {
   const match = /function recordLifecycleEvent\(type, extraCtx\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.match(match[1], /LIFECYCLE_LOG_CAP/);
-  assert.match(PLAYER_JS, /var LIFECYCLE_LOG_CAP = 30;/);
+  assert.match(PLAYER_JS, /var LIFECYCLE_LOG_CAP = 1000;/);
 });
 
 test('recordLifecycleEvent() wraps localStorage access in try/catch (never throws)', () => {
@@ -325,10 +325,14 @@ test('F2 (executable): a corrupt raw value self-heals on the VERY NEXT record ca
   assert.deepStrictEqual(afterSecond, [{ type: 'first-after-corruption' }, { type: 'second-after-heal' }]);
 });
 
-test('renderLifecycleOverlay() is a no-op unless the debug flag is on, and never creates the overlay element otherwise', () => {
+test('renderLifecycleOverlay() never creates the overlay unless the debug flag AND (v1.362.2, D6) the on-screen switch are on; otherwise it only removes a stale one', () => {
   const match = /function renderLifecycleOverlay\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(match, 'expected to find renderLifecycleOverlay()\'s source body');
-  assert.match(match[1].trim(), /^if \(!isDebugLifecycleEnabled\(\)\) return;/, 'expected the very first statement to bail out when the flag is off, before touching the DOM');
+  const m = /^if \(!isDebugLifecycleEnabled\(\) \|\| !isLifecycleOverlayEnabled\(\)\) \{([\s\S]*?)\n {4}\}/.exec(match[1].trim());
+  assert.ok(m, 'expected the very first statement to bail out when either switch is off');
+  assert.match(m[1], /return;/);
+  assert.ok(!/ensureLifecycleOverlayEl|createElement/.test(m[1]), 'the bail never builds the panel');
+  assert.match(PLAYER_JS, /var DEBUG_LIFECYCLE_OVERLAY_STORAGE_KEY = 'ft-debug-lifecycle-overlay';/);
 });
 
 test('ensureLifecycleOverlayEl() builds the overlay element in JS (no shell HTML edited) with a fixed, high z-index, semi-transparent, monospace style', () => {
@@ -342,12 +346,13 @@ test('ensureLifecycleOverlayEl() builds the overlay element in JS (no shell HTML
   assert.match(body, /document\.body\.appendChild\(el\);/);
 });
 
-test('the overlay is tap-to-clear (a click listener removes the stored log and re-renders)', () => {
+test('v1.362.2 (D6): a tap on the overlay no longer clears the log (no click listener, no removeItem); Settings exports and clears it', () => {
   const match = /function ensureLifecycleOverlayEl\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
-  const body = match[1];
-  assert.match(body, /el\.addEventListener\('click', function \(\) \{/);
-  assert.match(body, /localStorage\.removeItem\(LIFECYCLE_LOG_STORAGE_KEY\);/);
-  assert.match(body, /renderLifecycleOverlay\(\);/);
+  const body = match[1].replace(/\/\/.*$/gm, '');
+  assert.ok(!/addEventListener\('click'/.test(body), 'no click listener on the panel');
+  assert.ok(!/removeItem\(LIFECYCLE_LOG_STORAGE_KEY\)/.test(body), 'the panel never removes the log');
+  assert.ok(!/Tap to clear|tap to clear/.test(PLAYER_JS), 'no panel text or title promises tap-to-clear');
+  assert.match(PLAYER_JS, /el\.textContent = '\[export from Settings\]\\n'/);
 });
 
 test('initDebugLifecycleFlag() sets the flag on ?debugLifecycle=1 and clears it on ?debugLifecycle=0', () => {
@@ -377,8 +382,8 @@ test('renderLifecycleOverlay() renders `detail` right after the type, truncated 
   const match = /function renderLifecycleOverlay\(\) \{([\s\S]*?)\n {2}\}/.exec(PLAYER_JS);
   assert.ok(match, 'expected to find renderLifecycleOverlay()\'s source body');
   const body = match[1];
-  assert.match(body, /var detailCap = \(entry && typeof entry\.type === 'string' && entry\.type\.indexOf\('video:'\) === 0\) \? 400 : 60;/,
-    'every type but the video: instrument keeps the 60-char cut');
+  assert.match(body, /var detailCap = \(entry && typeof entry\.type === 'string' && \/\^\(video\|media\|hold\|gesture\):\/\.test\(entry\.type\)\) \? 400 : 60;/,
+    'every type but the video: / media: / hold: / gesture: instrument lines keeps the 60-char cut (v1.362.2)');
   assert.match(body, /var detailStr = entry && entry\.detail \? ' \(' \+ String\(entry\.detail\)\.slice\(0, detailCap\) \+ '\)' : '';/);
   const lineTemplateIdx = body.indexOf("(entry.type || '?') + detailStr + ' · persisted='");
   assert.ok(lineTemplateIdx !== -1, 'expected detailStr to be concatenated directly after the type');

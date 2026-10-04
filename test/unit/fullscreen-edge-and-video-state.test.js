@@ -177,7 +177,8 @@ test('the reader reads the REAL sources: the sounding element, the sidecar, and 
 
 test('the panel renders a video: line IN FULL (every field is evidence); other types keep the 60 cut', () => {
   const body = fnBody('renderLifecycleOverlay');
-  assert.match(body, /var detailCap = \(entry && typeof entry\.type === 'string' && entry\.type\.indexOf\('video:'\) === 0\) \? 400 : 60;/);
+  // v1.362.2: the media:, hold: and gesture: instrument lines join video: at 400 (D5); the rest keep 60.
+  assert.match(body, /var detailCap = \(entry && typeof entry\.type === 'string' && \/\^\(video\|media\|hold\|gesture\):\/\.test\(entry\.type\)\) \? 400 : 60;/);
   assert.match(body, /String\(entry\.detail\)\.slice\(0, detailCap\)/);
   // the longest line the instrument can write fits the cap
   const longest = formatVideoStateDetail({ rs: 4, ns: 3, paused: false, vw: 3840, vh: 2160, t: 99999.9, frames: 99999999, dropped: 99999999,

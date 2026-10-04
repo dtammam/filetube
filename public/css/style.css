@@ -4604,11 +4604,12 @@ body.ft-css-fullscreen .bottom-nav {
   visibility: hidden;
 }
 /* v1.336 (gate r1, measured): the ?debugLifecycle=1 panel is fixed to the BOTTOM
-   (player.js ensureLifecycleOverlayEl, inline style, z-index 999999) and clears the
-   log on a tap, so in faux fullscreen it sat over the control bar: a tap on
+   (player.js ensureLifecycleOverlayEl, inline style, z-index 999999) and cleared the
+   log on a tap (until v1.362.2), so in faux fullscreen it sat over the control bar: a tap on
    #pp-btn landed on the panel and erased the capture instead of pausing. While the
-   overlay is up the panel moves to the TOP and lets every tap through (read it, or
-   tap to clear it, after leaving fullscreen). !important: beats its inline style. */
+   overlay is up the panel moves to the TOP and lets every tap through (read it after
+   leaving fullscreen; since v1.362.2 a tap never clears it, and Settings exports and
+   clears the log). !important: beats its inline style. */
 body.ft-css-fullscreen #ft-lifecycle-overlay {
   top: 0 !important;
   bottom: auto !important;

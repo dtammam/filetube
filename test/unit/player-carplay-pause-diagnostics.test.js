@@ -117,9 +117,11 @@ test('recordDiagnosticPauseEvent: flag-gated before any context read, and reads 
 
 test('BOTH elements wire the pause/play provenance pair (a pause on the non-active sidecar is itself signal)', () => {
   assert.match(PLAYER_JS, /mediaPlayer\.addEventListener\('pause', function \(\) \{ recordDiagnosticPauseEvent\('video'\); \}\);/);
-  assert.match(PLAYER_JS, /mediaPlayer\.addEventListener\('play', function \(\) \{ recordLifecycleEvent\('media:play', \{ detail: 'el=video' \}\); \}\);/);
+  // v1.362.2 (D5): the play line's detail gains via= / g= (mediaPlayDetail), still 'el=<element>' first.
+  assert.match(PLAYER_JS, /mediaPlayer\.addEventListener\('play', function \(\) \{ recordLifecycleEvent\('media:play', \{ detail: mediaPlayDetail\('video'\) \}\); \}\);/);
   assert.match(PLAYER_JS, /bgAudioEl\.addEventListener\('pause', function \(\) \{ recordDiagnosticPauseEvent\('bgAudio'\); \}\);/);
-  assert.match(PLAYER_JS, /bgAudioEl\.addEventListener\('play', function \(\) \{ recordLifecycleEvent\('media:play', \{ detail: 'el=bgAudio' \}\); \}\);/);
+  assert.match(PLAYER_JS, /bgAudioEl\.addEventListener\('play', function \(\) \{ recordLifecycleEvent\('media:play', \{ detail: mediaPlayDetail\('bgAudio'\) \}\); \}\);/);
+  assert.match(PLAYER_JS, /return 'el=' \+ elName \+ \(isDebugLifecycleEnabled\(\) \? ' ' \+ playViaDetail\(elName\) : ''\);/);
 });
 
 test('the diagnostics are PASSIVE: the provenance recorder never touches playback state', () => {

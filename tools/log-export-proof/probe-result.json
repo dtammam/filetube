@@ -1,0 +1,89 @@
+{
+  "runAt": "2026-10-04T15:07:19.478Z",
+  "rows": {
+    "flagOn": "1",
+    "playingAfterBar": true,
+    "tapPair": [
+      false,
+      true,
+      false,
+      false
+    ],
+    "pageScrollable": 489,
+    "scrollOneSecondAfterTap": {
+      "before": 0,
+      "after": 175
+    },
+    "scrollInsideWindow": {
+      "before": 0,
+      "after": 0
+    },
+    "panelOnWatch": false,
+    "storedEntries": 28,
+    "shareAbsent": "undefined",
+    "exportReach": {
+      "helper": "function",
+      "hit": "lifecycle-log-export-btn",
+      "hitTag": "SPAN.ui-btn__label",
+      "btn": [
+        16,
+        316,
+        240,
+        32
+      ],
+      "vh": 664,
+      "clipboardApi": true
+    },
+    "exportOutcome": "copied",
+    "export": {
+      "header": [
+        "FileTube lifecycle log",
+        "exported: 2026-10-04T15:07:36.019Z",
+        "version: 1.362.1",
+        "user agent: Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.5 Mobile/15E148 Safari/604.1",
+        "mode: browser tab",
+        "entries: 29"
+      ],
+      "lineCount": 37,
+      "barButtonPlay": [
+        "2026-10-04T15:07:22.369Z media:play (el=video via=bar-button g=16) persisted=null vis=visible playing=true"
+      ],
+      "rateLines": [
+        "2026-10-04T15:07:22.858Z media:rate (rate=1.5 def=1) persisted=null vis=visible playing=true",
+        "2026-10-04T15:07:23.060Z media:rate (rate=1 def=1) persisted=null vis=visible playing=true"
+      ],
+      "tapPairLines": [
+        "2026-10-04T15:07:24.537Z gesture:tap-pair (video gap=217 chain=0) persisted=null vis=visible playing=true",
+        "2026-10-04T15:07:31.985Z gesture:tap-pair (video gap=167 chain=0) persisted=null vis=visible playing=false"
+      ]
+    },
+    "panelOnSettings": false,
+    "buttons": [
+      {
+        "id": "lifecycle-log-export-btn",
+        "x": 16,
+        "y": 316,
+        "w": 240,
+        "h": 32
+      },
+      {
+        "id": "lifecycle-log-clear-btn",
+        "x": 16,
+        "y": 356,
+        "w": 240,
+        "h": 32
+      }
+    ]
+  },
+  "geo": {
+    "mid": [
+      292.5,
+      181.6875
+    ],
+    "pp": [
+      80,
+      348.296875
+    ]
+  },
+  "pageErrors": []
+}
