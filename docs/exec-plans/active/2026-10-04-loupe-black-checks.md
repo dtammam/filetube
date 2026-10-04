@@ -20,8 +20,11 @@ server, no storage schema, no new dependency, no shell edit except `public/setup
 A. **One list.** The first entry under ROADMAP.md Planned is a numbered, one-line-per-check list of EVERY open device check (from
    `docs/DEVICE-CHECKS.md`) plus the VPN runbook results, so Dean can reply "1-5 pass, 9 fails". v1.362.1 checks 1-3 show as passed
    (2026-10-04) and are deleted from DEVICE-CHECKS.md (its own rule: a confirmed line is deleted).
-B. **No loupe.** On the iPhone, pressing and holding the playing picture for 2x (including the hold that follows a tap, and the
-   hold-drag lock) never brings up the grey magnifier capsule. Every gesture works as before; the one accepted cost (D1): a page
+B. **No loupe.** On the iPhone, pressing and holding the playing picture for 2x right after a double-tap or a chain tap (and the
+   hold-drag lock that follows) never brings up the grey magnifier capsule. (Gate r1, adversary, measured in Chromium on main AND
+   the branch: a SINGLE tap then a hold never reaches 2x, because the first tap's pending pause lands under the finger; so the
+   loupe gesture at 2x in Dean's recording is a double-tap or chain tap then a hold. The plain hold with no tap first is not
+   covered, section 9.) Every gesture works as before; the one accepted cost (D1): a page
    scroll that STARTS on the picture within 0.35 s of a tap on the picture does not scroll.
 C. **The black picture gets caught.** With Settings > Troubleshooting > "Show lifecycle debug log" on, the log now records the moment
    the picture stops getting frames while the clock runs (`video:frozen`), where each play came from (a picture tap, the bar
@@ -101,7 +104,8 @@ Measured (Architect, 2026-10-04, `~/.local/bin/ffmpeg-static/ffmpeg` on Dean's 4
   playing while black: the element runs, the picture layer does not paint. (Agrees with v1.361's facts: the layer's frame count
   froze, a far seek did not revive it, a new src did.)
 - The loupe box (crop 420x330 at 700,300) is up 0.23-1.50 s and from 3.45 s: about 0.86 s and 0.93 s after each inferred touch,
-  later than a plain long press's loupe and the app's 500 ms `HOLD_MS`, which fits a tap followed by a hold (D1's gesture).
+  later than a plain long press's loupe and the app's 500 ms `HOLD_MS`, which fits a tap followed by a hold (D1's gesture; gate r1 correction: with the clock at 2x it must be a double-tap or chain tap
+  then a hold, since a single tap then a hold pauses first).
 - Not measured: what started the black (the clip begins black).
 
 Code facts (Explore pass, 2026-10-04; verify): the clock (`updateSeekVisual` via `currentAbsTime()`, rAF loop only while
@@ -218,7 +222,7 @@ Builder (Claude Opus 5.5 under the Sonnet handoff), 2026-10-04, worktree .claude
 - Commit hook (lint + unit): `ℹ pass 8485 / ℹ fail 0`.
 - Mutants (12, /tmp git-archive sandbox of ce276fe3, exact-once, restored, sandbox diff clean): 11 killed on the first run; **M9**
   (drop `lastTapTime > 0`) SURVIVED (unreachable on a real clock) and the native-controls drive was vacuous (its tap never set
-  `lastTapTime`, so M7 died only by the pure test). Fixed in W3's commit: a `now: 100, lastTapTime: 0` fixture, and the drive taps on
+  `lastTapTime`, so M7 died only by the pure test). Fixed in W2's commit 17bbc28a: a `now: 100, lastTapTime: 0` fixture, and the drive taps on
   the custom surface first, then switches to native controls. Re-run: M7 KILLED by 2 (pure + drive), M9 KILLED by 1.
 - Real browser (Chromium, iPhone 13 emulation, raw CDP touch, `tools/log-export-proof/probe.js`, result in `probe-result.json`):
   touchstart `defaultPrevented` for [first tap, +200 ms, first tap, +450 ms] = `[false, true, false, false]`; an upward drag that
@@ -268,8 +272,9 @@ Builder (Claude Opus 5.5 under the Sonnet handoff), 2026-10-04, worktree .claude
 ## 7. Device checks (Dean, on the released build; add each to DEVICE-CHECKS.md in the release commit)
 
 7a. The loupe (custom player controls ON):
-- [ ] v1.362.2 - iPhone, a video playing inline: tap the picture once and, at once, press and hold: 2x, NO grey magnifier. Hold
-  without tapping first: 2x, no magnifier. Hold-drag down: locks, no magnifier. Same in full screen and on an audio file's art.
+- [ ] v1.362.2 - iPhone, a video playing inline: double-tap the picture (it skips) and, at once, press and hold: 2x, NO grey
+  magnifier. Then a plain hold with no tap before it: 2x; say whether the magnifier shows (this release does not cover that one).
+  Hold-drag down: locks. Same in full screen and on an audio file's art. (A SINGLE tap then a hold pauses first, as before: no 2x.)
 - [ ] v1.362.2 - Regressions: tap pauses, double-tap skips, triple-tap chains skip, hold 2x, lock pill, pull down minimizes, swipe
   right goes back, scroll the page with a finger that starts on the picture (wait a second after any tap first).
 
@@ -312,6 +317,25 @@ the protected-main PR flow (local `merge --no-ff`, tag, ONE push of the release 
 `gh pr create`, CI green, `gh pr merge --merge` on Dean's word if the classifier refuses, `git pull --ff-only`); delete branches.
 
 ## 8c. Gate record
+
+Gate: CHANGES r1 @f36abfe3 - qa
+1. WARNING - player.js frozenPictureDecision (~line 894) + the sampler (~4321-4366): a seek is read as "the clock ran". A double-tap +15 s skip into an unbuffered range that waits ~3 s (t parked at the target, count flat, paused=false) logs `video:frozen`. Verified through the real sampler (sandbox drive of f36abfe3): `["video:waiting","video:frozen","video:playing","video:thawed"]`; pure: `{0,100,3000},{1000,115,3000},{2000,115,3000},{3000,115,3000}` -> true. Nothing resets the series on `seeking`/`waiting` and a later `playing` is a no-op while the timer lives. After a picture double-tap this is `gesture:tap-pair` then `video:frozen`, H2's exact signature (section 3), on Dean's slow VPN. Fix: drop the samples on `seeking` (and `waiting`), or bound each step's t advance by its wall step x rate, plus a test with this series.
+2. SUGGESTION - the first bar press of a page load on an iPhone with Background audio on: `primeBackgroundAudioElement()` (~7535) calls bgAudioEl.play() before `togglePlayPause('bar-button')`, so the sidecar's queued `play` event fires first and its `media:play (el=bgAudio ...)` line uses up the stamp; the video's line reads `via=other`. Reasoned from the code and the spec's event-task order, not run. Fix: only use up the stamp on the element the toggle acts on.
+3. SUGGESTION - player.js ~8584: the desktop click on the video calls `scheduleArtSingleTap(togglePlayPause)`, which logs `via=other` for a picture click. Section 6's deviations do not list this.
+4. SUGGESTION - stale "30-entry" wording: docs/references/pwa-ios-notes.md:73 ("Screenshot AT the repro moment (the 30-entry ring buffer evicts)", now 1000 entries and exported) and the test/unit/player-background-audio.test.js:1312 comment.
+5. SUGGESTION - turning "Show lifecycle debug log" OFF leaves a visible panel up until a reload, because `recordLifecycleEvent` returns before it renders. Turning "Show the log on screen" OFF removes the panel only at the next recorded event. Fix: have setup.js's change handlers remove `#ft-lifecycle-overlay` when either switch goes off.
+
+Gate: CHANGES r1 @f36abfe3 - adversary
+1. WARNING - "tap once, then at once press and hold: 2x" is not what the code does, on main or on this branch. The first tap's single-tap timer (`scheduleArtSingleTap`, 350 ms after the lift) is not cancelled by the next touchstart, so it PAUSES the video while the finger is down, and `engageHold` then refuses because the video is paused. Real Chromium (iPhone 13 emulation, raw CDP touch; tap, then a hold 150 ms after the lift, read 800 ms in): branch `{"rate":1,"paused":true,"ts":[false,true]}`, main 140f73e4 `{"rate":1,"paused":true,"ts":[false,false]}`; on release the hold's lift plays it again (`media:play via=picture-tap g=351`). The jsdom test "a tap then a hold inside the window: ... the hold still engages 2x" passes only because its `v.pause` stub never sets `paused` (a divergent fixture). Adding `assert.strictEqual(h.pauses(), 0)` turns it red: `expected: 0 actual: 1`. So the following are wrong: outcome B, the first 7a line in DEVICE-CHECKS.md (Dean will see a pause and no 2x), ROADMAP list item 11, and the LESSONS section 8 line "a press that FOLLOWS a tap". It also undercuts section 3's inference: the recording shows the clock running at 2x under the loupe, and a tap-then-hold cannot produce that. The gestures that DO reach 2x under D1's cancel are a double-tap then a hold (branch `{"rate":2,"paused":false,"ts":[false,true,true]}`) or a plain hold, and D1 does not touch the plain hold (`{"rate":2,"ts":[false]}`). The same 7a line also expects "Hold without tapping first: ... no magnifier", which section 9 says this release does not cover. Fix: reword the check as a double-tap then a hold, and ask "magnifier yes/no" for the plain hold. Make the test's fixture pause for real, or drive the double-tap-then-hold. Correct outcome B, LESSONS 8 and section 3.
+2. WARNING (concur with qa 1, verified on the pure decision) - a skip parked in a wait reads as frozen: `frozenPictureDecision([{0,100,3000},{1000,115,3000},{2000,115,3000},{3000,115,3000}])` -> `true`.
+3. SUGGESTION - the real listener's window argument is not bound at its edge. Mutants `doubleTapMs: DOUBLE_TAP_MS` -> `400` and -> `351` at the loupe listener's call site both SURVIVE (17/17 green), because the drive only touches at +200 and +400. Add a drive at lift+360 ms.
+4. SUGGESTION - two of the sampler's eligibility guards are unbound. Dropping `document.visibilityState === 'visible'` SURVIVES (30/30), and so does dropping `activeMediaElement() === mediaPlayer`. Bind them, or comment them as belt-and-braces: a hide already stops the sampler through the reset, and while the sidecar plays the video is paused.
+5. SUGGESTION - the Export click's standalone detection is unbound: mutant `standalone = false;` SURVIVES (16/16), so the header's `mode:` could always read "browser tab".
+6. SUGGESTION (concur with qa 4, 5) - two items, both measured. (a) The stale "30-entry" lines at docs/references/pwa-ios-notes.md:73 and test/unit/player-background-audio.test.js:1312. (b) With both switches on and the log switch then turned OFF in Settings, the panel (232 px, pointer-events auto, the hit target at the bottom of the screen) stays up through navigation and play until a reload.
+7. SUGGESTION (concur with qa 3) - the desktop video click, `scheduleArtSingleTap(togglePlayPause)` (player.js ~8584), logs `via=other`.
+8. SUGGESTION - the sampler is off while docked (by ruling), but the bug also shows in the mini player. A freeze that starts docked is logged only about 3 s after an expand, with that onset time. Say so in the 7b/7c checks or the ROADMAP bug entry.
+9. Suspicion, not a finding - with the flag on, every event does a full parse + stringify of up to ~340 KB at the cap (about 2 ms per event in Node on this box; not measured on an iPhone), including inside the non-passive touchstart. The instrument may perturb what it measures. LESSONS 8 also states "only a touchstart preventDefault stops it (WebKit bug 296492)" as fact before any device run. Mark it unconfirmed until 7a.
+Verified clean: 82 mutants (L 17, B 49, E 16). Every one was killed except those in items 3-5 and two equivalent mutants: dropping the flag gate inside `mediaPlayDetail` or `notePlayVia` survives, but `recordLifecycleEvent` drops the output with the flag off anyway. My first spelling of B27 was a syntax error; re-run as `if (false) startFrozenSampler()`, it is killed (9 red). Also verified: the real-browser export with a stubbed share (user activation live at share(), one text/plain File, sorted oldest first, no download, no toast); Clear's Cancel kept 38 entries and OK removed the key; flag off: 0 sampler timers and 0 entries; a 9 s healthy stream: 0 `video:frozen`; the double-tap still skips (20.3 -> 36.3, playing); the docked tap expands; DEVICE-CHECKS 37 open lines == ROADMAP items 1-37, in order; the pattern doc's claims about the rotate, bg-timing and debugTouch logs match the tree.
 
 ## 9. Out of scope (logged, not built)
 

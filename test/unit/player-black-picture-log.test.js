@@ -52,6 +52,13 @@ test('frozenPictureDecision: paused (clock flat) or a clock under 2 s is NOT fro
   assert.strictEqual(d([]), false);
   assert.strictEqual(d(), false);
   assert.strictEqual(d(series([[0, 10, 300]])), false, 'one reading is never a verdict');
+  // gate r1 (qa, adversary): a skip into an unbuffered range sits flat at its target: the jump is a seek, not
+  // played time, so it is NOT frozen; a back skip neither; played time after the seek still counts.
+  assert.strictEqual(d(series([[0, 100, 3000], [1, 115, 3000], [2, 115, 3000], [3, 115, 3000]])), false, 'seek then wait');
+  assert.strictEqual(d(series([[0, 100, 3000], [1, 115, 3000], [2, 115, 3000], [3, 115, 3000], [4, 115, 3000], [5, 115, 3000]])), false, 'a long wait');
+  assert.strictEqual(d(series([[0, 100, 3000], [1, 85, 3000], [2, 85, 3000], [3, 85, 3000]])), false, 'back skip then wait');
+  assert.strictEqual(d(series([[0, 100, 3000], [1, 115, 3000], [2, 116, 3000], [3, 117, 3000], [4, 118, 3000]])), true, 'seek, then 3 s played with no frames');
+  assert.strictEqual(d(series([[0, 10, 300], [1, 12, 300], [2, 14, 300], [3, 16, 300]])), true, '2x playback counts');
   // A gap in the readings breaks the run.
   assert.strictEqual(d(series([[0, 10, 300], [1, 11, null], [2, 12, 300], [3, 13, 300], [4, 14, 300]])), false, 'the run starts after the gap: 2 s');
 });
@@ -163,6 +170,46 @@ test('a frozen layer while the clock runs logs video:frozen ONCE with the last 6
   await run(h, 2, (i, f) => f + 30);
   assert.deepStrictEqual(types(h).filter((x) => /^video:(frozen|thawed)$/.test(x)), ['video:frozen', 'video:thawed']);
   assert.strictEqual(h.live.size, 1, 'still sampling');
+});
+
+test('a skip that waits on the network (seek, waiting, clock flat at the target) never logs video:frozen (gate r1)', async () => {
+  const h = await boot(VIDEO);
+  playing(h);
+  h.clearLog();
+  await run(h, 2, (i, f) => f + 30);
+  h.layer.t += 15; // the skip
+  h.v.dispatchEvent(new h.w.Event('waiting'));
+  for (let i = 0; i < 6; i++) await wait(SAMPLE_MS); // the clock sits at the target, no frames
+  assert.ok(!types(h).includes('video:frozen'), types(h).join(','));
+});
+
+test('a playing that arrives while the page is hidden starts nothing (the visible belt, r1 mutant B13b)', async () => {
+  const h = await boot(VIDEO);
+  h.v.pause = () => {};
+  Object.defineProperty(h.w.document, 'visibilityState', { value: 'hidden', configurable: true });
+  h.w.document.dispatchEvent(new h.w.Event('visibilitychange'));
+  playing(h);
+  assert.strictEqual(h.live.size, 0);
+});
+
+test('the bar press after a background-audio prime: the sidecar\'s own play never takes the video\'s stamp (gate r1, qa)', async () => {
+  const h = await boot(VIDEO);
+  h.v.pause(); h.clearLog();
+  const side = h.doc.getElementById('bg-audio-sidecar');
+  assert.ok(side, 'precondition: the sidecar exists');
+  // The prime plays the SIDECAR first inside the bar's click (primeBackgroundAudioElement), before the video's
+  // play: model it with a capture listener on the button that fires the sidecar's play event after the stamp.
+  const btn = h.doc.getElementById('pp-btn');
+  const realPlay = h.v.play;
+  h.v.play = function () { side.dispatchEvent(new h.w.Event('play')); return realPlay.call(this); };
+  btn.dispatchEvent(new h.w.MouseEvent('click', { bubbles: true, detail: 1 }));
+  const plays = h.log().filter((e) => e.type === 'media:play').map((e) => e.detail.replace(/ g=.*$/, ''));
+  assert.deepStrictEqual(plays, ['el=bgAudio via=other', 'el=video via=bar-button']);
+});
+
+test('a desktop click on the picture is via=picture-tap (gate r1)', () => {
+  assert.match(PLAYER_SRC, /scheduleArtSingleTap\(function \(\) \{ togglePlayPause\('picture-tap'\); \}\);/);
+  assert.ok(!/scheduleArtSingleTap\(togglePlayPause\)/.test(PLAYER_SRC));
 });
 
 test('a healthy stream read through the ~2 s cache never logs video:frozen', async () => {

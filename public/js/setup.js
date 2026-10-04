@@ -1648,10 +1648,19 @@ function loadDebugLifecycleOverlayControl(win) {
 // The on-screen switch, Export log and Clear log. Export builds the text from localStorage and hands it to
 // exportDiagnosticLog (common.js) in the SAME click turn; Clear asks through the one confirm step and
 // removes the log only on an explicit yes. Both work with the log switch off (the log survives it).
+// The on-screen panel lives in this same document (the SPA keeps player.js loaded): a switch turned OFF takes
+// it down at once, instead of at the next recorded event or (for the log switch) never (gate r1, qa + adversary).
+function removeLifecycleOverlay(w) {
+  const el = w.document.getElementById('ft-lifecycle-overlay');
+  if (el && el.parentNode) el.parentNode.removeChild(el);
+}
+
 function wireLifecycleLogControls(win, signal) {
   const w = win || window;
   const doc = w.document;
   const opt = signal ? { signal } : undefined;
+  const life = doc.getElementById('debug-lifecycle-check');
+  if (life) life.addEventListener('change', (e) => { if (!e.target.checked) removeLifecycleOverlay(w); }, opt);
   const overlay = doc.getElementById('debug-lifecycle-overlay-check');
   if (overlay) {
     overlay.addEventListener('change', (e) => {
@@ -1659,6 +1668,7 @@ function wireLifecycleLogControls(win, signal) {
         if (e.target.checked) w.localStorage.setItem(DEBUG_LIFECYCLE_OVERLAY_STORAGE_KEY, '1');
         else w.localStorage.removeItem(DEBUG_LIFECYCLE_OVERLAY_STORAGE_KEY);
       } catch (_) { /* storage disabled/full -- best-effort only */ }
+      if (!e.target.checked) removeLifecycleOverlay(w);
     }, opt);
   }
   const exportBtn = doc.getElementById('lifecycle-log-export-btn');

@@ -37,8 +37,9 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON for 
 
 Settings > Mobile player > "Use custom player controls on touch devices" ON for the first two.
 
-- [ ] v1.362.2 - iPhone, a video playing inline: tap the picture once and, at once, press and hold: 2x, NO grey magnifier. Hold
-  without tapping first: 2x, no magnifier. Hold-drag down: locks, no magnifier. Same in full screen and on an audio file's art.
+- [ ] v1.362.2 - iPhone, a video playing inline: double-tap the picture (it skips) and, at once, press and hold: 2x, NO grey
+  magnifier. Then a plain hold with no tap before it: 2x; say whether the magnifier shows (this release does not cover that one).
+  Hold-drag down: locks. Same in full screen and on an audio file's art. (A SINGLE tap then a hold pauses first, as before: no 2x.)
 - [ ] v1.362.2 - Regressions: tap pauses, double-tap skips, triple-tap chains skip, hold 2x, lock pill, pull down minimizes, swipe
   right goes back, scroll the page with a finger that starts on the picture (wait a second after any tap first).
 - [ ] v1.362.2 - The black picture A/B (lifecycle log ON in Settings > Troubleshooting, reload): twenty cycles of pause with a PICTURE

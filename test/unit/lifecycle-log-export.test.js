@@ -310,3 +310,27 @@ test('the log never leaves by a network call: no fetch / sendBeacon / XHR in the
     assert.ok(!/\bfetch\(|sendBeacon|XMLHttpRequest|WebSocket/.test(code), n + ': no network call');
   }
 });
+
+test('gate r1: turning EITHER switch off takes the on-screen panel down at once (it caught taps until a reload)', async () => {
+  for (const id of ['debug-lifecycle-check', 'debug-lifecycle-overlay-check']) {
+    await withSettings({}, {}, async ({ w }) => {
+      const panel = w.document.createElement('div'); panel.id = 'ft-lifecycle-overlay'; w.document.body.appendChild(panel);
+      setup.wireLifecycleLogControls(w);
+      const c = w.document.getElementById(id);
+      c.checked = true; c.dispatchEvent(new w.Event('change', { bubbles: true }));
+      assert.ok(w.document.getElementById('ft-lifecycle-overlay'), id + ' ON keeps it');
+      c.checked = false; c.dispatchEvent(new w.Event('change', { bubbles: true }));
+      assert.strictEqual(w.document.getElementById('ft-lifecycle-overlay'), null, id + ' OFF removes it');
+    });
+  }
+});
+
+test('gate r1 (mutant E13): the export header says standalone app when the page runs as one', async () => {
+  const { nav, calls } = shareNav({});
+  await withSettings(nav, {}, async ({ w }) => {
+    w.matchMedia = (q) => ({ matches: /display-mode: standalone/.test(q) });
+    setup.wireLifecycleLogControls(w);
+    w.document.getElementById('lifecycle-log-export-btn').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
+    assert.match(await calls[0].files[0].text(), /\nmode: standalone app\n/);
+  });
+});

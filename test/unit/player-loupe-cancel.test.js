@@ -115,7 +115,9 @@ async function boot(item, o) {
   const art = w.document.getElementById('audio-bg-art');
   if (art) art.getBoundingClientRect = () => rect;
   host.getBoundingClientRect = () => rect;
-  let pauses = 0; v.pause = () => { pauses++; };
+  // gate r1 (adversary): a pause really pauses (the old stub counted it but left paused false, which let
+  // a tap-then-hold reach 2x in jsdom while the real player pauses first).
+  let pauses = 0; v.pause = () => { pauses++; Object.defineProperty(v, 'paused', { value: true, configurable: true }); };
   // A controlled clock: every Date.now() in the player reads it.
   let clock = 100000;
   w.Date.now = () => clock;
@@ -191,16 +193,42 @@ test('a hot skip chain cancels each chain tap; the double-tap still skips and a 
   assert.strictEqual(h.pauses(), 0, 'no stray pause from the first tap');
 });
 
-test('a tap then a hold inside the window: cancelled, and the hold still engages 2x', async () => {
+test('a DOUBLE-tap then a hold (the gesture that reaches 2x): every touch after the first is cancelled, 2x engages, nothing pauses', async () => {
+  const h = await boot(VIDEO);
+  h.v.currentTime = 100;
+  tap(h, h.v, 100000);
+  h.at(100140); const s2 = fire(h, h.v, 'touchstart', 300, 100);
+  h.at(100180); fire(h, h.v, 'touchend', 300, 100); // the skip
+  h.at(100180 + 300); const s3 = fire(h, h.v, 'touchstart', 300, 100); // the hold, inside the chain
+  assert.deepStrictEqual([s2.defaultPrevented, s3.defaultPrevented], [true, true]);
+  await wait(560); // HOLD_MS is a real timer
+  assert.strictEqual(h.v.playbackRate, 2, 'the hold engaged');
+  assert.strictEqual(h.pauses(), 0, 'no pending single tap paused it');
+  h.at(100180 + 1200); fire(h, h.v, 'touchend', 300, 100);
+  assert.strictEqual(h.v.playbackRate, 1, 'released');
+});
+
+test('a SINGLE tap then a hold inside the window: cancelled, but the first tap\'s pending pause lands first, so no 2x (unchanged from main, measured in Chromium too)', async () => {
   const h = await boot(VIDEO);
   tap(h, h.v, 100000);
   h.at(100040 + 150);
   const s = fire(h, h.v, 'touchstart', 300, 100);
-  assert.strictEqual(s.defaultPrevented, true);
-  await wait(560); // HOLD_MS is a real timer
-  assert.strictEqual(h.v.playbackRate, 2, 'the hold engaged');
-  h.at(100040 + 900); fire(h, h.v, 'touchend', 300, 100);
-  assert.strictEqual(h.v.playbackRate, 1, 'released');
+  assert.strictEqual(s.defaultPrevented, true, 'no loupe');
+  await wait(560);
+  assert.strictEqual(h.pauses(), 1, 'the first tap paused (scheduleArtSingleTap is not cancelled by the next touch)');
+  assert.strictEqual(h.v.playbackRate, 1, 'so the hold never engaged');
+});
+
+test('the listener passes the real window: a touch at lift+340 is cancelled, at lift+360 is not (r1 mutants L14/L17)', async () => {
+  const h = await boot(VIDEO);
+  tap(h, h.v, 100000);
+  h.at(100040 + 340);
+  assert.strictEqual(fire(h, h.v, 'touchstart', 300, 100).defaultPrevented, true, '+340');
+  h.at(100040 + 345); fire(h, h.v, 'touchend', 300, 100);
+  await wait(420);
+  tap(h, h.v, 110000);
+  h.at(110040 + 360);
+  assert.strictEqual(fire(h, h.v, 'touchstart', 300, 100).defaultPrevented, false, '+360');
 });
 
 test('a lone tap still pauses after the window (the cancel changes nothing about the tap)', async () => {

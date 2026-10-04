@@ -1309,8 +1309,8 @@ test('v1.35 T1 / v1.136: ONE playback-declaration writer, called from BOTH the v
   assert.match(body[1], /try \{/, 'never throws where the API is absent/locked');
   // v1.136 diagnostics (gate S1 shape): ONE overlay line per page load,
   // always - 'type=playback' inside the transition branch, 'already-playback'
-  // once on the skip path (page-scoped flag) - because the 30-entry ring
-  // buffer evicts and persists across loads, so a transition-only record
+  // once on the skip path (page-scoped flag) - because the capped ring
+  // buffer (30 entries then, 1000 since v1.362.2) evicts and persists across loads, so a transition-only record
   // could not prove the declaration was live during THIS repro.
   // CONTAINMENT-bound, not position-bound - the first draft asserted
   // recIdx > ifIdx, which a record moved BELOW the closing brace satisfied

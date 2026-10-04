@@ -121,7 +121,7 @@ test('BOTH elements wire the pause/play provenance pair (a pause on the non-acti
   assert.match(PLAYER_JS, /mediaPlayer\.addEventListener\('play', function \(\) \{ recordLifecycleEvent\('media:play', \{ detail: mediaPlayDetail\('video'\) \}\); \}\);/);
   assert.match(PLAYER_JS, /bgAudioEl\.addEventListener\('pause', function \(\) \{ recordDiagnosticPauseEvent\('bgAudio'\); \}\);/);
   assert.match(PLAYER_JS, /bgAudioEl\.addEventListener\('play', function \(\) \{ recordLifecycleEvent\('media:play', \{ detail: mediaPlayDetail\('bgAudio'\) \}\); \}\);/);
-  assert.match(PLAYER_JS, /return 'el=' \+ elName \+ \(isDebugLifecycleEnabled\(\) \? ' ' \+ playViaDetail\(\) : ''\);/);
+  assert.match(PLAYER_JS, /return 'el=' \+ elName \+ \(isDebugLifecycleEnabled\(\) \? ' ' \+ playViaDetail\(elName\) : ''\);/);
 });
 
 test('the diagnostics are PASSIVE: the provenance recorder never touches playback state', () => {

@@ -69,8 +69,9 @@ Evidence instrument for every experiment in sections 1-2: the
 ?debugLifecycle=1 overlay (Setup -> "Show lifecycle debug log") - since
 v1.136 it records ONE `audioSession:declare` line per page load, always
 ('type=playback' | 'already-playback'), so a repro carries proof of
-whether the declaration was live. Screenshot AT the repro moment (the
-30-entry ring buffer evicts).
+whether the declaration was live. Since v1.362.2 the log keeps 1000
+entries and is exported from Settings > Troubleshooting > Export log
+(docs/references/log-collection-pattern.md); export it right after the repro.
 
 Revisit trigger: an iOS release notes change to the Audio Session API, or
 webkit.org/b/261554 closing as fixed - then re-run the toggle experiment.

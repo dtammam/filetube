@@ -880,9 +880,13 @@ function formatFrameSeries(startFrames, samples) {
 // oldest first, `{ wall, t, f }` (wall ms, media time s, the layer's frame count). iOS relays that
 // count as a cached copy that refreshes about every 2 s, so a healthy stream can read flat for 2 s;
 // frozen therefore needs the TRAILING run of equal counts to span at least 3 s of wall time while
-// the media time advanced at least 2 s inside it (LESSONS 1: a series, never one reading).
+// the media time advanced at least 2 s inside it (LESSONS 1: a series, never one reading). Only PLAYED
+// time counts: a step whose clock moved backwards or faster than FROZEN_MAX_RATE x its wall time is a
+// seek, not playback (gate r1, qa + adversary: a skip into an unbuffered range sat flat at its target
+// and read as frozen).
 var FROZEN_MIN_WALL_MS = 3000;
 var FROZEN_MIN_MEDIA_S = 2;
+var FROZEN_MAX_RATE = 4;
 function frozenPictureDecision(samples) {
   var list = Array.isArray(samples) ? samples : [];
   if (list.length < 2) return false;
@@ -890,12 +894,18 @@ function frozenPictureDecision(samples) {
   var num = function (v) { return typeof v === 'number' && isFinite(v); };
   if (!last || !num(last.f) || !num(last.t) || !num(last.wall)) return false;
   var first = last;
+  var played = 0;
+  var later = last;
   for (var i = list.length - 2; i >= 0; i--) {
     var s = list[i];
     if (!s || !num(s.f) || !num(s.t) || !num(s.wall) || s.f !== last.f) break;
+    var dt = later.t - s.t;
+    var dw = (later.wall - s.wall) / 1000;
+    if (dt > 0 && dt <= dw * FROZEN_MAX_RATE) played += dt;
     first = s;
+    later = s;
   }
-  return (last.wall - first.wall) >= FROZEN_MIN_WALL_MS && (last.t - first.t) >= FROZEN_MIN_MEDIA_S;
+  return (last.wall - first.wall) >= FROZEN_MIN_WALL_MS && played >= FROZEN_MIN_MEDIA_S;
 }
 
 // v1.161.1 (Dean device bug: AirPods/lock-screen play-pause inconsistent during
@@ -3218,7 +3228,7 @@ if (typeof module !== 'undefined' && module.exports) {
           hidden: typeof document !== 'undefined' && document.visibilityState === 'hidden',
         }),
       });
-      notePlayVia('media-session'); // v1.362.2 (D5): a lock-screen play/pause names its source
+      notePlayVia('media-session', activeMediaElement() === bgAudioEl && bgAudioEl ? 'bgAudio' : 'video'); // v1.362.2 (D5): a lock-screen play/pause names its source
       return handler(details);
     } : null;
     try { navigator.mediaSession.setActionHandler(action, wrapped); } catch (_) { /* action unsupported by this browser */ }
@@ -4215,7 +4225,7 @@ if (typeof module !== 'undefined' && module.exports) {
         suppressed: suppressPauseHandoff,
         ended: !!(el && el.ended),
         state: bgAudioState,
-      }) + ' ' + playViaDetail(),
+      }) + ' ' + playViaDetail(elName),
     });
   }
 
@@ -4227,22 +4237,25 @@ if (typeof module !== 'undefined' && module.exports) {
   var PLAY_VIA_FRESH_MS = 1500;
   var lastPlayVia = null;
   var lastPlayerLiftAt = 0;
-  function notePlayVia(via) {
+  // `el` = the element the source acts on ('video' unless named): the line of ANOTHER element (the
+  // background-audio prime's own play, fired first inside the bar's click) never takes the stamp (gate r1, qa).
+  function notePlayVia(via, el) {
     if (!isDebugLifecycleEnabled()) return;
-    lastPlayVia = { via: via || 'other', at: Date.now() };
+    lastPlayVia = { via: via || 'other', at: Date.now(), el: el || 'video' };
   }
   function notePlayerLift() {
     if (isDebugLifecycleEnabled()) lastPlayerLiftAt = Date.now();
   }
-  function playViaDetail() {
+  function playViaDetail(elName) {
     var now = Date.now();
-    var via = (lastPlayVia && now - lastPlayVia.at < PLAY_VIA_FRESH_MS) ? lastPlayVia.via : 'other';
-    lastPlayVia = null;
+    var mine = !!(lastPlayVia && lastPlayVia.el === (elName || 'video'));
+    var via = (mine && now - lastPlayVia.at < PLAY_VIA_FRESH_MS) ? lastPlayVia.via : 'other';
+    if (mine) lastPlayVia = null;
     return 'via=' + via + ' g=' + (lastPlayerLiftAt ? now - lastPlayerLiftAt : '-');
   }
   // The media:play line's detail; the via read happens only while the flag is on.
   function mediaPlayDetail(elName) {
-    return 'el=' + elName + (isDebugLifecycleEnabled() ? ' ' + playViaDetail() : '');
+    return 'el=' + elName + (isDebugLifecycleEnabled() ? ' ' + playViaDetail(elName) : '');
   }
 
   // v1.336 (D1 instrument): the runtime half of formatVideoStateDetail. Gated on the
@@ -4299,6 +4312,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.362.2 (D5): the frozen-picture sampler starts on 'playing' and stops on what ends playback.
     if (evName === 'playing') startFrozenSampler();
     else if (evName === 'pause' || evName === 'emptied' || evName === 'loadstart') stopFrozenSampler();
+    else if (evName === 'waiting') frozenSamples = []; // gate r1: a buffering wait is not a frozen picture; start the series again
     if (evName !== 'playing') return;
     if (videoStateCheckTimer) clearTimeout(videoStateCheckTimer);
     var samples = [];
@@ -4330,6 +4344,9 @@ if (typeof module !== 'undefined' && module.exports) {
   var frozenSampleTimer = null;
   var frozenSamples = [];
   var frozenLogged = false;
+  // `activeMediaElement() === mediaPlayer` and `visible` are belts: the background sidecar only plays with the
+  // video paused, and a hide stops the sampler through resetTransientPlaybackUi; a `playing` that arrives
+  // while hidden is refused by the visible check (bound in player-black-picture-log.test.js).
   function frozenSamplerEligible() {
     return isDebugLifecycleEnabled() && !!mediaPlayer && document.visibilityState === 'visible' &&
       activeMediaElement() === mediaPlayer && !(host && host.classList.contains('audio-mode')) &&
@@ -8581,7 +8598,7 @@ if (typeof module !== 'undefined' && module.exports) {
           cancelPendingArtTap();
           return;
         }
-        scheduleArtSingleTap(togglePlayPause);
+        scheduleArtSingleTap(function () { togglePlayPause('picture-tap'); }); // v1.362.2 gate r1: a desktop click on the picture names its source
       });
     }
 
