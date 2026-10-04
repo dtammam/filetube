@@ -69,7 +69,10 @@ let dom = null;
 afterEach(() => { if (dom) { dom.window.close(); dom = null; } });
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const SAMPLE_MS = 20; // the drive's sample period; the real 1000 is asserted on the source below
-const SCALE = 1000 / SAMPLE_MS; // the player's clock runs SCALE x real time, so one drive sample = one wall second
+// v1.362.4 (a load flake, measured): the player's clock is MANUAL. It ran at 50x real time until v1.362.3, so a timer
+// that fired late on a loaded box added whole wall "seconds" and two short rounds crossed the 3 s freeze threshold (the
+// full suite failed "the series is cleared on a new load" once; 0/15 standalone). Now run() advances it exactly one
+// second per sample, and a drive that needs time to pass says so with h.tick(ms).
 
 async function boot(item, o) {
   const opt = o || {};
@@ -106,9 +109,8 @@ async function boot(item, o) {
   const NEEDLE = 'var FROZEN_SAMPLE_EVERY_MS = 1000;';
   assert.strictEqual(PLAYER_SRC.split(NEEDLE).length, 2, 'the sample period is defined once');
   w.eval(PLAYER_SRC.replace(NEEDLE, 'var FROZEN_SAMPLE_EVERY_MS = ' + SAMPLE_MS + ';'));
-  // The player's clock runs SCALE x real time from here on.
-  const realNow = Date.now; const t0 = realNow();
-  w.Date.now = () => t0 + (realNow() - t0) * SCALE;
+  let clock = Date.now();
+  w.Date.now = () => clock;
   w.FileTube.leaveWatchForBrowse = () => {};
   const slot = w.document.createElement('div'); slot.id = 'player-slot'; w.document.body.appendChild(slot);
   const p = w.FileTube.player;
@@ -128,7 +130,7 @@ async function boot(item, o) {
   Object.defineProperty(v, 'currentTime', { get: () => layer.t, set: (x) => { layer.t = x; }, configurable: true });
   const log = () => { try { return JSON.parse(w.localStorage.getItem('ft-lifecycle-log') || '[]'); } catch (_) { return []; } };
   const clearLog = () => w.localStorage.removeItem('ft-lifecycle-log');
-  return { w, doc: w.document, p, v, host, art, layer, live, log, clearLog, ms, setPaused };
+  return { w, doc: w.document, p, v, host, art, layer, live, log, clearLog, ms, setPaused, tick: (ms2) => { clock += ms2; } };
 }
 const VIDEO = { id: 'v1', title: 'T', type: 'video', ext: '.mp4' };
 const AUDIO = { id: 'a1', title: 'A', type: 'audio', ext: '.mp3', hasThumbnail: true };
@@ -138,7 +140,7 @@ const types = (h) => h.log().map((e) => e.type);
 function playing(h) { h.setPaused(h.v, false); h.v.dispatchEvent(new h.w.Event('playing')); }
 // Run n drive samples with the media clock advancing 1 s per sample and the count from `frames(i)`.
 async function run(h, n, frames) {
-  for (let i = 0; i < n; i++) { h.layer.t += 1; h.layer.frames = frames(i, h.layer.frames); await wait(SAMPLE_MS); }
+  for (let i = 0; i < n; i++) { h.tick(1000); h.layer.t += 1; h.layer.frames = frames(i, h.layer.frames); await wait(SAMPLE_MS); }
 }
 
 test('the real sample period is one second, and the sampler is bounded to one timer', () => {
@@ -179,7 +181,7 @@ test('a skip that waits on the network (seek, waiting, clock flat at the target)
   await run(h, 2, (i, f) => f + 30);
   h.layer.t += 15; // the skip
   h.v.dispatchEvent(new h.w.Event('waiting'));
-  for (let i = 0; i < 6; i++) await wait(SAMPLE_MS); // the clock sits at the target, no frames
+  for (let i = 0; i < 6; i++) { h.tick(1000); await wait(SAMPLE_MS); } // the clock sits at the target, no frames (v1.362.4 gate r1: the wall time must advance or this binds nothing)
   assert.ok(!types(h).includes('video:frozen'), types(h).join(','));
 });
 
@@ -293,6 +295,7 @@ test('via=picture-tap for a tap on the picture, with g = ms since its lift (the 
   h.v.pause(); h.clearLog();
   const fire = (type) => { const e = new h.w.Event(type, { bubbles: true, cancelable: true }); const l = [{ clientX: 300, clientY: 100 }]; Object.defineProperty(e, 'touches', { value: type === 'touchend' ? [] : l }); Object.defineProperty(e, 'changedTouches', { value: l }); h.v.dispatchEvent(e); };
   fire('touchstart'); fire('touchend');
+  h.tick(360); // the double-tap window passes on the player's clock (the timer itself is real)
   await wait(420);
   const line = lastOf(h, 'media:play');
   assert.ok(line, 'a media:play line');
@@ -362,7 +365,7 @@ test('r0 mutants W2-M15/M16: a stamp is consumed by the line that reads it, and 
   const realPlay = h.v.play; h.v.play = () => Promise.resolve();
   h.doc.getElementById('pp-btn').dispatchEvent(new h.w.MouseEvent('click', { bubbles: true, detail: 1 }));
   assert.strictEqual(lastOf(h, 'media:play'), undefined, 'precondition: no play fired');
-  await wait(40); // x50: 2000 ms on the player's clock
+  h.tick(2000); await wait(40); // 2 s on the player's clock
   h.v.play = realPlay;
   h.v.play();
   assert.match(lastOf(h, 'media:play').detail, /^el=video via=other /, 'a stale stamp is ignored');
@@ -466,7 +469,7 @@ test('I1.1 drive: short pause/play rounds with a flat layer add up to video:froz
     playing(h);
     assert.strictEqual(h.live.size, 1, 'sampling in round ' + round);
     await run(h, 1, (i, f) => f); // one sample second of play, count flat
-    h.layer.t += 0.3; await wait(SAMPLE_MS * 0.3);
+    h.layer.t += 0.3; h.tick(300); await wait(SAMPLE_MS * 0.3);
     h.v.pause();
     assert.strictEqual(h.live.size, 0, 'a pause leaves no timer');
     await wait(SAMPLE_MS);
@@ -476,12 +479,12 @@ test('I1.1 drive: short pause/play rounds with a flat layer add up to video:froz
 
 test('I1.1: the series is cleared on a new load (a frozen count never spans two items)', async () => {
   const h = await boot(VIDEO);
-  playing(h); await run(h, 1, (i, f) => f); h.layer.t += 0.3; h.v.pause();
+  playing(h); await run(h, 1, (i, f) => f); h.layer.t += 0.3; h.tick(300); h.v.pause();
   h.p.load('v2', { id: 'v2', title: 'T2', type: 'video', ext: '.mp4' }, { slot: h.doc.getElementById('player-slot') });
   await wait(60);
   h.clearLog();
-  playing(h); await run(h, 1, (i, f) => f); h.layer.t += 0.3; await wait(SAMPLE_MS * 0.3); h.v.pause();
-  playing(h); await run(h, 1, (i, f) => f); h.layer.t += 0.3; await wait(SAMPLE_MS * 0.3); h.v.pause();
+  playing(h); await run(h, 1, (i, f) => f); h.layer.t += 0.3; h.tick(300); await wait(SAMPLE_MS * 0.3); h.v.pause();
+  playing(h); await run(h, 1, (i, f) => f); h.layer.t += 0.3; h.tick(300); await wait(SAMPLE_MS * 0.3); h.v.pause();
   assert.ok(!types(h).includes('video:frozen'), 'only 2.6 s of this item');
 });
 
@@ -534,9 +537,9 @@ test('I1.1 (mutants B3-M9/M11): sub-second rounds count only through their pause
   h.clearLog();
   for (let round = 0; round < 5; round++) {
     playing(h);
-    h.layer.t += 0.8; await wait(SAMPLE_MS * 0.8);
+    h.layer.t += 0.8; h.tick(800); await wait(SAMPLE_MS * 0.8);
     h.v.pause();
-    await wait(SAMPLE_MS * 0.5);
+    h.tick(500); await wait(SAMPLE_MS * 0.5);
   }
   assert.ok(types(h).includes('video:frozen'), 'five 0.8 s rounds (4 s playing) add up: ' + types(h).filter((x) => /^video:/.test(x)).join(','));
   dom.window.close(); dom = null;
@@ -544,7 +547,7 @@ test('I1.1 (mutants B3-M9/M11): sub-second rounds count only through their pause
   h = await boot(VIDEO);
   h.clearLog();
   playing(h); await run(h, 1, (i, f) => f); h.v.pause();
-  await wait(SAMPLE_MS * 4);
+  h.tick(4000); await wait(SAMPLE_MS * 4);
   playing(h); await run(h, 1, (i, f) => f); h.v.pause();
   assert.ok(!types(h).includes('video:frozen'), 'only 2 s of playing');
 });
