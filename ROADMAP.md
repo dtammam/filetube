@@ -4,7 +4,7 @@
 
 ### Bugs
 
-- [ ] **v1.362 gate r2 suggestions (non-blocking)** - (a) the history-cap fallback (`steps >= history.length`) misses a session that
+- [ ] **v1.362 gate r2 suggestions (non-blocking)** - (a), (b) and (c) **done in v1.362.1**; (d) stays open. (a) the history-cap fallback (`steps >= history.length`) misses a session that
   is AT the cap and has forward entries (the adversary: depth 61, 15 backs to depth 46, history.length 50: the chevron docks on the
   watch page and `go(-46)` no-ops, leaving Home dead until a reload); `navigation.currentEntry.index` gives the reachable depth where
   the browser has it; (b) the chevron's picture-in-picture refresh has no test (jsdom cannot enter PiP; worst case an inert chevron
@@ -234,7 +234,23 @@
   state change and finish or fail of each one-off download so a hang shows up after the fact). Outcome
   wanted: Dean can tell "stuck" from "stale" without restarting the container.
 
+- [ ] **v1.362.1 gate leftovers (non-blocking)** - (a) the comment above `scheduleArtSingleTap` (player.js) says only the
+  touchend double-tap and the click listener cancel a pending tap; `close()` and, since v1.362.1, `resetTransientPlaybackUi` do too
+  (QA r2; a comment, left because the code was already approved). (b) The chevron's paused read from the background-audio sidecar
+  (`activeMediaElement()`) is bound only by a source lock: no box here has the FFmpeg the sidecar's audio rendition needs, so no
+  drive reaches it (both seats). (c) Mutant B8 (endMinimizePeek keeps the tap guard) survives as benign: the guard ends on its own
+  within 800 ms.
+
 ### Features
+
+- [ ] **What the VPN runbook may point at (candidates, not planned; Dean picks after his runs)** - v1.362.1 shipped
+  `docs/references/vpn-slowness-runbook.md`, built on the v1.307 `/diag` suite. What FileTube cannot measure or do today, each a
+  possible next step once the numbers say which matters: response compression (the Compression delta row shows the saving);
+  caching of the app's own files and thumbnails on the phone (every load revalidates: `no-cache`); a lower-quality video version,
+  a quality picker or a data-saver setting (no adaptive bitrate: the original file plays); fewer API requests per page (the Nav
+  fan-out row); a data-usage record; an always-on slow-request log; page-smoothness measures (long tasks, Web Vitals); timing in the
+  transcode and scan logs; load testing. Also: `/diag` cannot record inside the home-screen app (its storage is separate from
+  Safari's), so the runbook runs in Safari tabs.
 
 - [x] **Swipe the playing video down to shrink it into the mini player (like the YouTube app)** **Shipped v1.362.0 (2026-10-04).** _(Dean, 2026-10-03: "if I'm watching a video on mobile, I can ... drag from the top left down to the bottom right ... a mechanism to swipe down to reduce to a small view. You can do this in the YouTube app. It would bring it to the mini player. It's equivalent to pressing the home button effectively ... I kind of like that natural feel of like, hey, I'm just tapping the screen and drag it down, like pull it down.")_ - Wanted after v1.361 merges; talk it through first. A pull-down on the picture (phone, inline) that ends in the same state as leaving the watch page (the dock / mini player), ideally following the finger (the picture shrinks toward the corner as you drag, then settles or snaps back). **Kickoff 2026-10-03 (Dean, every default): plan `docs/exec-plans/completed/2026-10-03-minimize-to-mini-player.md`, shipped v1.362.0.** Two more parts in the same wave: a **minimize chevron** on the picture's top-left (inline, always shown, like the YouTube app's down-chevron), and **bigger mini player tap targets** (Dean: "a lot of friction now, especially in a mobile viewport"): the X and play/pause each answer a 44 x 44 touch and look a little bigger. Phone inline only; the pull follows the finger; the page lands where the Home button would. Seams to settle in the design: v1.358's hold-then-drag-down LOCKS 2x (a minimize drag must start WITHOUT a hold), the double-tap skip and the single-tap toggle, the page's own vertical scroll (the wrapper's non-passive touchmove claim), the left-edge swipe-back, faux fullscreen, and LESSONS 7 (no filter / transform effects painted over the playing picture that could black it out on iOS: an animated shrink must be checked on the device).
 
@@ -554,6 +570,26 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.362.1 - The minimize chevron peeks; the landing's last history gap; a VPN slowness runbook (2026-10-04)
+
+- The phone's down-chevron (v1.362.0) now shows only while the video is paused, for 3 s after play starts or after any touch on the
+  picture or on the chevron, and while it has keyboard focus; otherwise it is hidden at once (`hidden`, no fade). Dean: "always
+  visible when I'm listening or watching something". One named constant (`MINIMIZE_PEEK_MS`, 3000) for the device pass.
+- While the picture can still pair a tap (350 ms after a touch or a tap's lift, and through a skip chain) the revealed chevron is
+  `inert`, so a double-tap or a skip chain at its spot still skips (gate r1: it minimized and then paused). A tap still waiting out
+  the double-tap window no longer lands on the mini player after a dock.
+- The minimize landing reads `navigation.currentEntry.index` (the entries the browser still keeps behind this one) where it
+  exists, so a long chain of videos plus some Back presses lands on Home instead of a silent no-op that left Home dead (Chromium:
+  main stuck on the watch page, the branch on `/`, Home working after). Safari without the Navigation API keeps the
+  history.length rule. The chevron's picture-in-picture refresh and the dock's settle clip are now tested.
+- `docs/references/vpn-slowness-runbook.md`: a phone walkthrough to find which part of "slow over the VPN" is slow (round trip,
+  throughput, requests per page, the server), built only on the existing `/diag` suite, every label read off the real page.
+- Found by the suite and fixed before the gate: the peek timer re-read the clock and could leave the chevron up with no timer left.
+- Disclosed: Chromium-measured only (WebKit's `inert` hit testing and VoiceOver are device checks); the sidecar half of the paused
+  read is source-bound. UI ratchet flat.
+- Gate: adversary + qa. r1 CHANGES (the double-tap at the hidden chevron's spot; the runbook's "-" for a missing warm reload; a
+  stale device check); r2 APPROVED @ee812180 (qa, adversary); security-brief applied by both, no finding.
 
 ### v1.362.0 - Pull the phone video down into the mini player; a chevron; bigger mini player targets (2026-10-04)
 

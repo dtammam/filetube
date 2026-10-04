@@ -78,7 +78,7 @@ For each run:
 5. Under **2 · Guided scenarios**, for each scenario in turn: in the `/diag` tab tap its **Set active**
    (it changes to **Active**), switch to the app tab and do it, then switch back to `/diag` straight away.
    A scenario's time runs from its first request to its last, and the app checks in with the server in
-   the background (every 30 to 60 seconds), so lingering in the app tab stretches the numbers. The eight:
+   the background (at least every 30 to 60 seconds), so lingering in the app tab stretches the numbers. The eight:
    1. **Cold app load -> Home**: "Open FileTube fresh in the app tab (or hard-reload). Wait until Home
       fully populates."
    2. **Soft-nav: Home -> Music**: "Inside the app, navigate Home to Music (same-section view swap)."
