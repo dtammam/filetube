@@ -527,3 +527,24 @@ test('I1.3: the hold lines carry the frame count', async () => {
   const eng = h.log().find((e) => e.type === 'hold:engage');
   assert.match(eng.detail, /^rate=2 locked=0 f=77$/);
 });
+
+test('I1.1 (mutants B3-M9/M11): sub-second rounds count only through their pause readings; two short rounds around a long pause never read as frozen', async () => {
+  // Rounds of 0.8 s: no tick lands inside a run, so only the run's playing + pause readings make a step.
+  let h = await boot(VIDEO);
+  h.clearLog();
+  for (let round = 0; round < 5; round++) {
+    playing(h);
+    h.layer.t += 0.8; await wait(SAMPLE_MS * 0.8);
+    h.v.pause();
+    await wait(SAMPLE_MS * 0.5);
+  }
+  assert.ok(types(h).includes('video:frozen'), 'five 0.8 s rounds (4 s playing) add up: ' + types(h).filter((x) => /^video:/.test(x)).join(','));
+  dom.window.close(); dom = null;
+  // Two 1 s rounds with a 4 s pause between: 2 s of playing, never 3; a pause gap must not count as wall time.
+  h = await boot(VIDEO);
+  h.clearLog();
+  playing(h); await run(h, 1, (i, f) => f); h.v.pause();
+  await wait(SAMPLE_MS * 4);
+  playing(h); await run(h, 1, (i, f) => f); h.v.pause();
+  assert.ok(!types(h).includes('video:frozen'), 'only 2 s of playing');
+});

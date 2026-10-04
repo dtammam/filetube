@@ -74,6 +74,12 @@ On a desktop a click on the picture toggles inside the click with no glyph, so 1
   as a browser does, and the code resets the count's baseline on `emptied` / `loadstart` (an emptied reading of 0 is not a drop).
 - Targeted: the neighbouring suites `# tests 1337 / # pass 1337 / # fail 0` before E3; after E3 the loupe, export, setup,
   settings and shell files `# pass 285 / # fail 0`. `npm run lint:ui` OK (unchanged), overlay containment 0, eslint 0 errors.
+- Commit df0d1bd7, hook `ℹ tests 8545 / ℹ pass 8545 / ℹ fail 0`.
+- Mutants (18, /tmp `git archive df0d1bd7` sandbox, exact-once, restored, sandbox diff clean): 16 KILLED first run (each guard
+  of the cancel, its passivity, the tap-pair log gate, cross-run steps, pause clearing, the run-start reading, the pause delta,
+  the reset line and its emptied baseline, the hold `f=`, the glyph switch read, default and Settings write). SURVIVED: B3-M9
+  (the pause takes no reading) and B3-M11 (the run id never moves): the drive's rounds held a tick and no drive had a long pause.
+  A new drive (five 0.8 s rounds add up; two 1 s rounds around a 4 s pause do not) KILLS both.
 
 ## 5. Device checks (Dean, on the released build; in DEVICE-CHECKS.md in the release commit)
 
