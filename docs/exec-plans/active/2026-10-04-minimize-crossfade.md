@@ -93,3 +93,88 @@ and on `.watch-sidebar`. On another page the whole `#view-root` fades only while
   fades toward white). The picture itself never dims or goes black.
 
 ## 7. Gate record
+
+Gate: CHANGES r1 @79e3cc56 - qa
+
+1. WARNING - test/unit/player-black-picture-log.test.js:184 ("a skip that waits on the network ... never logs video:frozen"): the
+   manual clock made this drive vacuous. Its six flat samples no longer advance the wall clock, so wallMs stays 0 and no freeze can
+   ever be logged, whatever the decision does. Mutant `if (dt > 0 && dt <= dw * FROZEN_MAX_RATE)` -> `if (dt > 0)` (/tmp archive
+   sandbox): base 471c15e7 `not ok` (killed); 79e3cc56 `# pass 1 / # fail 0` (survives; only the pure frozenPictureDecision test
+   kills it, so the wiring bind through the real waiting path is gone). Fix, verified in the sandbox: `for (...) { h.tick(1000);
+   await wait(SAMPLE_MS); }` -> mutant `# fail 1`, pristine `# pass 1`. Other drives checked: the series-cleared-on-load test
+   still kills a no-clear mutant (`frozenSamples = []` removed: `# fail 1`).
+2. WARNING - player.js dock click + endViewFade: expand, then back within the 4 s hold. The tap gives the home node
+   `is-view-leaving`; the router caches it (swapToView) and restoreHomeFromCache re-inserts the SAME node; nothing removes the
+   class before the timer, so home shows at opacity 0.4 for the rest of the 4 s (and its arrival animation is suppressed by
+   `:not(.is-view-leaving)`). jsdom drive (router swap simulated, real dock tap + p.expand): `QA-A home is-view-leaving after
+   back: true html mark: arrive`. Scenario: a mistaken tap on the mini player, iOS edge-swipe back at once. The build log's
+   "the cached home node is re-inserted later" assumes later than 4 s. Suggested fix (sandbox-verified, all 12 crossfade tests
+   green): in expand(), `if (viewFadeMarked && !viewFadeMarked.isConnected) viewFadeMarked.classList.remove('is-view-leaving')`
+   (a back before the watch page's expand stays dimmed until the timer: say so or cover it).
+3. WARNING - player.js clearMinimizeDrag `if (!viewFadeMarked) clearMinimizeFade()`: the guard means "any mark is live", not "THIS
+   page is leaving". Within 4 s of an expand (viewFadeMarked = the cached home node), a pull on the watch page that ends through
+   clearMinimizeDrag without a snap (orientationchange/resize while claimed, a new load, close) leaves the watch content dimmed
+   at 1 - 0.6p permanently (the timer cleans only the home node). Drive: `QA-B after rotate: fade= "0.1777..." fading class true
+   host transform ""`, unchanged after the hold. Same false premise in the snapMinimizeDrag comment ("clearMinimizeDrag ...
+   removes the fade"). Fix (sandbox-verified, F-M4 drive still green): `if (viewFadeMarked !== watchViewRoot()) clearMinimizeFade()`.
+4. SUGGESTION - minimize-crossfade.test.js census: the subject check catches only named ancestors; a universal or type subject
+   (`.watch-main > * { opacity: .5 }`, `.watch-main > div`) fades the stage and passes. Add a negative for `*`/type subjects under
+   `.watch-main` / `.watch-player-stage`'s parents, or a jsdom-free check that every crossfade subject carries `:not(:has(#player-slot))`.
+5. SUGGESTION - comments: markViewArrival "(`root` already dimmed by the caller)" is false on the minimize path (the arrow's root
+   is at full when marked; setMinimizeFade(1) runs after dock()); the block header "restores whatever never left" also restores
+   a node that left (the expand's home). Plan frontmatter `next:` still says the full npm test is pending.
+
+Verified clean: crossfade 12/12, black-picture + overlay-no-filter + ambient-glow 85/85, lint:ui OK (unchanged), containment 0,
+eslint 0, check-markers 12 issues = the same 12 at base (none in this plan), no em dashes added, DEVICE-CHECKS 38 lines match
+ROADMAP 1-38 in order (+39 VPN). Security: no new surface (class/custom-property toggles on existing nodes, no input parsed,
+the probe tool is local-only like its siblings).
+
+Gate: CHANGES r1 @79e3cc56 - adversary
+
+Sandbox: `git archive 79e3cc56` in /tmp/adv-v13624 (pristine copy beside it), every mutant exact-once, restored, `diff -rq`
+against pristine clean except my three probe scripts (sandbox only). Chromium probes = the builder's serve.js shape, iPhone 13.
+
+1. WARNING (independent of qa 3, measured in real Chromium) - for up to 4 s after an expand, a pull on the watch page that ends
+   through clearMinimizeDrag (a resize/rotate while claimed, a new load, a backgrounding) leaves the watch content dimmed FOR
+   GOOD. `adv-probe.js`: expand, pull 120 px, `resize` mid-pull: `B_midPull title 0.809524` -> 6 s later `B_6sLater title
+   0.809524, cls "is-minimize-fading", mark null`, root style `--minimize-fade: 0.31746...`. jsdom: `ADV-1 mid=0.222
+   after="0.222" cls=is-minimize-fading mark=null`. Cause: `if (!viewFadeMarked)` reads "any mark", not "this page is
+   leaving". qa's `viewFadeMarked !== watchViewRoot()` is right by reading; bind it with this drive.
+2. WARNING (independent of qa 2, measured in real Chromium) - expand, then back at +900 ms: the cached home node comes back
+   at 0.4 and sits there 3.1 s. Series `[8106,"home","is-view-leaving",0.4,"docked"]` -> `[11207,"home","",1]`. Clear the
+   class from the marked node once it is no longer the live #view-root (qa's expand() hook is one place; bind with a drive).
+3. WARNING (confirms qa 1) - player-black-picture-log.test.js:184 is vacuous under the manual clock. Mutant `if (dt > 0 && dt
+   <= dw * FROZEN_MAX_RATE)` -> `if (dt > 0)`: base 471c15e7 `not ok 3` + `not ok 7` (the drive); 79e3cc56 only `not ok 3`
+   (pure). My other harness mutants all KILL at 79e3cc56 (runs ignored, MIN_WALL 2500 and 3600, pause takes no reading, stop
+   keeps the series, MAX_RATE 1000, wall constant 0, MIN_MEDIA 2.7); 4 concurrent runs `# pass 42 # fail 0` each.
+4. WARNING (qa rated this SUGGESTION; I block on it) - the LESSONS 7 guard does not bind the shipped ARRIVAL rule. A-M6: the
+   arrive selector's `.watch-main > :not(:has(#player-slot))` -> `.watch-main > *` animates `.watch-player-stage`, the video's
+   ancestor, from 0.4: crossfade + ambient-glow-engine `pass=40 fail=0` SURVIVED (the census's subject is `*`, the literal
+   lock covers only the first two rule blocks). Added rules also survive crossfade + ambient + overlay-no-filter (43/43): A-M1
+   `...is-minimize-fading .watch-main > div { opacity: .5 }`, A-M2 `html[...arrive] .watch-container > * { animation }`, A-M3
+   `html[...arrive] #main-content { animation }`. The LESSONS-rules section 7 line ("a CSS census ... fails on the host or any
+   ancestor") states a guard that is not there. Fix: lock the arrive block literally, and make the census structural (any
+   opacity/animation rule under `.watch-main >`/`.watch-container >` must carry `:not(:has(#player-slot))`; a `*` or type
+   subject there fails; `#main-content`, `main`, `.app-container`, `body`, `html` join the ancestor list).
+5. SUGGESTION - a second tap on the mini player while the first navigation is pending (Dean's slow VPN) UN-dims the page:
+   add, then markViewArrival -> endViewFade strips the class it just added. jsdom: `ADV-2 navs=2 first=true
+   afterSecond=false`. Mark first, then add the class.
+6. SUGGESTION - survivors against the plan's "every gate refuses" (W2): A-M16 the pull ignores minimizeFadeEnabled (reduced
+   motion still dims mid-pull; the test checks only after the commit); A-M7 / A-M8 the expand's isMobileFormFactor and
+   narrow checks each removable (the desktop case negates both at once; a mobile-wide tablet case is missing); A-M4 / A-M5 the
+   arrive selectors' `:not(.is-view-leaving)` / `:not(.is-minimize-fading)` removable (12/12); A-M9 the dock-failure
+   endViewFade removable; A-M10, A-M13, A-M17 removable (belts behind the CSS). A-M12 (no clamp) is a dead guard (the
+   transform already clamps p). KILLED: A-M11, A-M14, A-M15, F-M4, F-M13, the clearMinimizeDrag guard dropped, never-clears.
+7. SUGGESTION - the 4 s arrival mark applies to ANY navigation in the window (a related video tapped within 4 s fades in
+   from 0.4 too); a TV episode (readerHref /watch.html?tv=) fades on minimize but not on expand. Disclose or end the mark at
+   the first arrival. Concur with qa 5 on the comments (markViewArrival "already dimmed", snapMinimizeDrag's "removes the fade").
+
+Verified clean: crossfade 12/12; ambient-glow + overlay-no-filter + black-picture `# tests 73 # pass 73 # fail 0`; lint:ui OK
+(unchanged); overlay-containment 0; eslint exit 0 on the four changed js files. LESSONS 7 in Chromium: every ancestor of
+#player-wrapper min opacity 1 over 1308 frames (commit, expand, back, pull, resize); the `:has()` guard binds per style recalc
+(non-watch root holding the host under the arrive mark: opacity 1, animation none; host moved out: 0.69 `ft-view-arrive`;
+host adopted back in the same task: 1, none, ancestors 1 for 20 frames; is-view-leaving with the host: 1); stage 1 /
+title 0.4 / sidebar 0.4 at `--minimize-fade: 1`; mid-pull the moving host is ABOVE the faded title and meta
+(elementsFromPoint hostIdx 0 vs 3 and 2). INSTRUMENT GAP: Playwright WebKit is not installed (`Executable doesn't exist at
+.../webkit-2336`), so nothing here is WebKit-verified; the device check stands. DEVICE-CHECKS 38 open lines == ROADMAP 1-38
+in order, +39 VPN. Security: no new surface (class and custom-property toggles on existing nodes, no input parsed; probes local).

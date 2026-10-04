@@ -181,7 +181,7 @@ test('a skip that waits on the network (seek, waiting, clock flat at the target)
   await run(h, 2, (i, f) => f + 30);
   h.layer.t += 15; // the skip
   h.v.dispatchEvent(new h.w.Event('waiting'));
-  for (let i = 0; i < 6; i++) await wait(SAMPLE_MS); // the clock sits at the target, no frames
+  for (let i = 0; i < 6; i++) { h.tick(1000); await wait(SAMPLE_MS); } // the clock sits at the target, no frames (v1.362.4 gate r1: the wall time must advance or this binds nothing)
   assert.ok(!types(h).includes('video:frozen'), types(h).join(','));
 });
 

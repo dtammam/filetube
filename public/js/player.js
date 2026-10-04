@@ -5237,7 +5237,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // whole #view-root while it does not hold the player; never an ancestor of the video, LESSONS 7). This only
   // flips classes, one custom property and one <html> mark: `--minimize-fade` (0..1, the pull's progress) on the
   // watch #view-root; `is-view-leaving` on a page the mini player's tap leaves; `data-ft-view-fade="arrive"` on
-  // <html> so the page that arrives next fades in. One timer ends the mark and restores whatever never left.
+  // <html> so the page that arrives next fades in. One timer ends the mark (and restores a page that never left).
   var VIEW_FADE_HOLD_MS = 4000;
   var viewFadeTimer = null;
   var viewFadeMarked = null; // the #view-root this fade changed (it may be cached and re-inserted later: home)
@@ -5272,12 +5272,30 @@ if (typeof module !== 'undefined' && module.exports) {
     m.classList.remove('is-view-leaving', 'is-minimize-fading', 'is-minimize-fade-ease');
     m.style.removeProperty('--minimize-fade');
   }
-  // A page is leaving (`root` already dimmed by the caller): the next #view-root to arrive fades in.
+  // A page is leaving (the caller dims it right after): the next #view-root to arrive fades in. The page that left
+  // is cleaned the moment it is swapped out (gate r1, both seats: the cached home node came back at 0.4 on a back
+  // within the hold) and on a back before the swap; the timer ends the mark and restores a page that never left.
+  var viewFadeWatch = null;
+  function watchViewSwap() {
+    if (viewFadeWatch || typeof MutationObserver !== 'function') return;
+    var root = document.getElementById('view-root');
+    if (!root || !root.parentNode) return;
+    viewFadeWatch = new MutationObserver(function () {
+      var m = viewFadeMarked;
+      if (m && !m.isConnected) { m.classList.remove('is-view-leaving', 'is-minimize-fading', 'is-minimize-fade-ease'); m.style.removeProperty('--minimize-fade'); }
+    });
+    viewFadeWatch.observe(root.parentNode, { childList: true });
+  }
+  window.addEventListener('popstate', function () {
+    var m = viewFadeMarked;
+    if (m && m.isConnected && m.classList.contains('is-view-leaving')) endViewFade();
+  });
   function markViewArrival(root) {
     endViewFade();
     viewFadeMarked = root || null;
     document.documentElement.setAttribute('data-ft-view-fade', 'arrive');
     viewFadeTimer = setTimeout(endViewFade, VIEW_FADE_HOLD_MS);
+    watchViewSwap();
   }
 
   // The page's real scroll (LESSONS 4: through the body lock, which pins scrollY at 0 while it holds).
@@ -5319,7 +5337,9 @@ if (typeof module !== 'undefined' && module.exports) {
     host.classList.remove('is-minimize-drag', 'is-minimize-snap', 'is-minimize-settle');
     var dockEl = document.getElementById('player-dock');
     if (dockEl) dockEl.classList.remove('is-minimize-settle');
-    if (!viewFadeMarked) clearMinimizeFade(); // v1.362.4: the fade goes with the drag, unless the page is leaving
+    // v1.362.4: the fade goes with the drag, unless THIS page is the one leaving (gate r1, both seats: a mark left
+    // by an expand points at another page and must not keep this one dimmed).
+    if (viewFadeMarked !== watchViewRoot()) clearMinimizeFade();
   }
 
   function beginMinimizeGesture() {
@@ -5403,7 +5423,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
   function snapMinimizeDrag() {
     minimizeClaimed = false;
-    // v1.362.4: a spring-back brings the page back up; clearMinimizeDrag (the snap's end) removes the fade.
+    // v1.362.4: a spring-back eases the page back up; clearMinimizeDrag, at the snap's end, removes the fade.
     if (watchViewRoot() && watchViewRoot().classList.contains('is-minimize-fading')) setMinimizeFade(0, true);
     if (!host || !host.style.transform || minimizeReducedMotion()) { clearMinimizeDrag(); return; }
     host.classList.add('is-minimize-snap');
@@ -9841,8 +9861,8 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!(currentData && currentData.readerHref) && minimizeFadeEnabled() && isMobileFormFactor() && matchMediaBool('(max-width: 768px)') === true) {
         var root = document.getElementById('view-root');
         if (root && root.getAttribute('data-view') !== 'watch' && !root.contains(host)) {
+          markViewArrival(root); // first: it ends any earlier fade (gate r1: a second tap un-dimmed the page)
           root.classList.add('is-view-leaving');
-          markViewArrival(root);
         }
       }
       if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(url);

@@ -28,7 +28,8 @@ async function boot(item, o) {
   dom = new JSDOM(WATCH, { url: 'http://localhost/watch.html?v=' + item.id + (opt.query || ''), runScripts: 'outside-only', pretendToBeVisual: true });
   const w = dom.window;
   Object.defineProperty(w.navigator, 'platform', { value: opt.desktop ? 'Win32' : 'iPhone' });
-  w.matchMedia = (q) => ({ media: q, matches: opt.desktop ? false : (/prefers-reduced-motion/.test(q) ? !!opt.reduced : /coarse|hover: none|max-width/.test(q)), addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} });
+  const mq = (q) => { if (opt.desktop) return false; if (/prefers-reduced-motion/.test(q)) return !!opt.reduced; if (/max-width/.test(q)) return !opt.wide; if (/coarse|hover: none/.test(q)) return !opt.fine; return false; };
+  w.matchMedia = (q) => ({ media: q, matches: mq(q), addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} });
   Object.defineProperty(w, 'innerHeight', { value: 664, configurable: true });
   Object.defineProperty(w, 'innerWidth', { value: 390, configurable: true });
   w.fetch = async () => ({ ok: true, status: 200, json: async () => ({ mobileCustomPlayer: true }), text: async () => '' });
@@ -252,4 +253,134 @@ test('mutant F-M13: a page root that holds the player (the mini player inside it
   h.dockEl.dispatchEvent(new h.w.MouseEvent('click', { bubbles: true }));
   assert.deepStrictEqual(h.navs, ['/watch.html?v=v1'], 'precondition: the tap still expands');
   assert.ok(!h.root.classList.contains('is-view-leaving'));
+});
+
+
+// ---- gate r1 (both seats) ----------------------------------------------------------------------------------
+
+test('gate r1 W1: a pull ended by a rotate within the hold of an expand never leaves the watch page dimmed', async () => {
+  const h = await boot(VIDEO);
+  h.p.dock();
+  h.root.setAttribute('data-view', 'home');
+  h.dockEl.dispatchEvent(new h.w.MouseEvent('click', { bubbles: true })); // an expand: the mark points at the home page
+  const home = h.root;
+  const watch = h.doc.createElement('div'); watch.id = 'view-root'; watch.setAttribute('data-view', 'watch');
+  watch.innerHTML = '<div class="watch-container"><div class="watch-main"><div class="watch-player-stage"></div><h1 class="watch-title">t</h1></div></div>';
+  home.replaceWith(watch); // the router's swap
+  h.p.expand(h.slot); // the host is mounted back FULL (its slot is in the old page here; the state is what counts)
+  await wait(10);
+  assert.ok(!home.classList.contains('is-view-leaving'), 'W2: the page that left is cleaned the moment it is swapped out');
+  assert.strictEqual(h.html.getAttribute('data-ft-view-fade'), 'arrive', 'precondition: inside the hold');
+  pull(h, 80);
+  assert.ok(Number(watch.style.getPropertyValue('--minimize-fade')) > 0, 'precondition: the pull dims this page');
+  h.w.dispatchEvent(new h.w.Event('resize')); // a rotate / resize mid-pull ends it through clearMinimizeDrag
+  assert.strictEqual(watch.style.getPropertyValue('--minimize-fade'), '', 'not stuck dimmed');
+  assert.ok(!watch.classList.contains('is-minimize-fading'));
+});
+
+test('gate r1 W2: a back before the watch page arrives restores the page at once', async () => {
+  const h = await boot(VIDEO);
+  h.p.dock();
+  h.root.setAttribute('data-view', 'home');
+  h.dockEl.dispatchEvent(new h.w.MouseEvent('click', { bubbles: true }));
+  assert.ok(h.root.classList.contains('is-view-leaving'));
+  h.w.dispatchEvent(new h.w.PopStateEvent('popstate', { state: null }));
+  assert.ok(!h.root.classList.contains('is-view-leaving'));
+});
+
+test('gate r1 S5: a second tap on the mini player keeps the page dimmed', async () => {
+  const h = await boot(VIDEO);
+  h.p.dock();
+  h.root.setAttribute('data-view', 'home');
+  h.dockEl.dispatchEvent(new h.w.MouseEvent('click', { bubbles: true }));
+  h.dockEl.dispatchEvent(new h.w.MouseEvent('click', { bubbles: true }));
+  assert.strictEqual(h.navs.length, 2);
+  assert.ok(h.root.classList.contains('is-view-leaving'));
+});
+
+test('gate r1 S6: reduced motion never dims mid-pull; a coarse-pointer tablet wider than 768 px and a narrow fine-pointer window never fade the expand', async () => {
+  let h = await boot(VIDEO, { reduced: true });
+  pull(h, 120);
+  assert.ok(!h.root.classList.contains('is-minimize-fading'), 'reduced motion mid-pull');
+  dom.window.close(); dom = null;
+  for (const o of [{ wide: true }, { fine: true }]) {
+    h = await boot(VIDEO, o);
+    h.root.setAttribute('data-view', 'home');
+    h.p.dock();
+    h.dockEl.dispatchEvent(new h.w.MouseEvent('click', { bubbles: true }));
+    assert.ok(!h.root.classList.contains('is-view-leaving'), JSON.stringify(o));
+    dom.window.close(); dom = null;
+  }
+});
+
+test('gate r1 (adversary blocker): the arrival rule, literally', () => {
+  assert.ok(CSS.includes('html[data-ft-view-fade="arrive"] #view-root:not([data-view="watch"]):not(.is-view-leaving):not(:has(#player-wrapper)),\nhtml[data-ft-view-fade="arrive"] #view-root[data-view="watch"]:not(.is-minimize-fading) .watch-main > :not(:has(#player-slot)),\nhtml[data-ft-view-fade="arrive"] #view-root[data-view="watch"]:not(.is-minimize-fading) .watch-sidebar {\n  animation: ft-view-arrive var(--dur-sheet) var(--ease-enter);\n}'));
+});
+
+// The census the design rests on (adversary r1 blocker): every opacity / animation rule in style.css, matched with
+// element.matches() against the REAL watch markup with the REAL host mounted in its slot, under every fade state,
+// may never match the video or any of its ancestors. A selector the engine cannot parse fails the census (never
+// skipped), and a positive control proves the fade rules DO match the content under the video.
+function splitTop(sel) {
+  const out = []; let depth = 0; let cur = '';
+  for (const ch of sel) { if (ch === '(') depth++; if (ch === ')') depth--; if (ch === ',' && depth === 0) { out.push(cur.trim()); cur = ''; } else cur += ch; }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+function flatRules() {
+  const css = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+  const rules = [];
+  (function walk(src) {
+    let i = 0;
+    while (i < src.length) {
+      const o = src.indexOf('{', i); if (o < 0) break;
+      const head = src.slice(i, o).trim();
+      let depth = 1; let j = o + 1;
+      while (j < src.length && depth) { if (src[j] === '{') depth++; else if (src[j] === '}') depth--; j++; }
+      const body = src.slice(o + 1, j - 1);
+      if (/^@(media|supports|layer|container)/.test(head)) walk(body); else if (!/^@/.test(head)) rules.push({ sel: head, body });
+      i = j;
+    }
+  })(css);
+  return rules;
+}
+const PAINT = /(^|[;\s])(?:-webkit-)?(?:opacity|animation(?:-name)?)\s*:/i;
+
+test('census: no opacity / animation rule matches the video or any ancestor, in any fade state (and the fade rules do match the content under it)', () => {
+  const rules = flatRules().filter((r) => PAINT.test(r.body));
+  assert.ok(rules.length > 50, 'the sweep sees the sheet\'s opacity / animation rules (' + rules.length + ')');
+  const states = [
+    { label: 'pulling', html: null, root: ['is-minimize-fading'] },
+    { label: 'leaving', html: 'arrive', root: ['is-minimize-fading', 'is-minimize-fade-ease'] },
+    { label: 'arrival', html: 'arrive', root: [] },
+    { label: 'other page holding the player', html: 'arrive', root: ['is-view-leaving'], view: 'music' },
+  ];
+  for (const st of states) {
+    const d = new JSDOM(fs.readFileSync(path.join(PUB, 'watch.html'), 'utf8').replace(/<script[\s\S]*?<\/script>/g, '')).window.document;
+    d.getElementById('player-slot').appendChild(d.getElementById('player-host-template').content.cloneNode(true));
+    const root = d.getElementById('view-root');
+    st.root.forEach((c) => root.classList.add(c));
+    if (st.view) root.setAttribute('data-view', st.view);
+    if (st.html) d.documentElement.setAttribute('data-ft-view-fade', st.html);
+    const chain = [];
+    for (let n = d.getElementById('media-player'); n; n = n.parentElement) chain.push(n);
+    assert.ok(chain.length > 6 && chain.includes(root), st.label + ': the video sits under #view-root');
+    const hits = [];
+    for (const r of rules) {
+      for (const sel of splitTop(r.sel)) {
+        if (/::/.test(sel)) continue; // a pseudo-element paints itself, never its element
+        for (const el of chain) {
+          let ok;
+          try { ok = el.matches(sel); } catch (e) { assert.fail(st.label + ': the census cannot parse "' + sel + '" (' + e.message + ')'); }
+          if (ok && !/opacity\s*:\s*1\s*(;|$)/.test(r.body.trim())) hits.push(sel + ' -> ' + (el.id || el.className || el.tagName));
+        }
+      }
+    }
+    assert.deepStrictEqual(hits, [], st.label + ': a rule paints the video or an ancestor');
+    if (st.label !== 'other page holding the player') {
+      const title = d.querySelector('.watch-title');
+      const matched = rules.filter((r) => splitTop(r.sel).some((sel) => { try { return title.matches(sel); } catch (_) { return false; } }));
+      assert.ok(matched.some((r) => /minimize-fade|ft-view-arrive/.test(r.body)), st.label + ': positive control, a fade rule reaches the title under the video');
+    }
+  }
 });
