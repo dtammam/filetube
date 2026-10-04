@@ -91,3 +91,21 @@ Dean: black "at the very end, one of the last pauses". In order:
 4. Build it as a normal release (plan, waves, gate, `docs/RELEASING.md`), with a device check that can FAIL.
 
 ## 6. Evidence (the investigator fills this)
+
+**Run 1 (Dean, 2026-10-04 20:26-20:31, v1.362.3, iOS 27.0.1, home-screen app, 382 entries): runs A-D, "could not repro".**
+Read by the v1.362.x builder:
+- About 45 picture-tap pause/play rounds, every resume from the late timer (`via=picture-tap g=356..469`): the frame count climbed in
+  every round (`+f` 17..126), no `video:frozen`. C1 (the late play) did NOT trigger it here; C2 (the glyph) neither, in whichever
+  rounds had the switch off (the log does not record the switch: an instrument gap; ask Dean which stretch was Run B).
+- The layer restarts are ROUTINE and recover: during or right after every 2x hold (`f=2901->11` at 20:29:52 with rate 2; 457 ->
+  144 after a held lock's release; `467->0` at 20:30:17), after a dock + expand with no hold (`1594->244` at 20:28:01) and at a
+  double-tap skip (`331->237` at 20:30:20). C4 alone cannot be the cause; a restart may still be a precondition.
+- One near-miss, recovered: the round after the dock/expand restart moved 1 frame in 1.4 s (`+f=1 +t=1.4`, pause at 20:28:07.874);
+  the next round climbed (+84).
+- What v1.362.3 changed in the picture-tap path since the black was last seen: E1 cancels the touch on the `<video>` (C3; WebKit's
+  touch handling, the loupe, never runs). The blacks were seen on builds where that touch reached the video (v1.362.1, v1.362.2,
+  each session with holds that raised the loupe). So: either C3 was the trigger and v1.362.3 removed it, or the bug is
+  intermittent and did not appear in 5 minutes.
+- **Next:** days of normal use on v1.362.3. No black -> C3 named by elimination; the fix release removes the "No glyph" test
+  switch (stop rule (e)) and closes the bug with a device check. A black on v1.362.3 -> C3 falsified; its exported log is the input
+  to section 5 step 2. Instrument gap to close in any next build: log the "No glyph" switch state with each `media:play`.
