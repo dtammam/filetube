@@ -16,6 +16,25 @@ INVESTIGATION brief, not a build plan. Five releases have shipped against this b
 fix FAILED, v1.362.2 instrument, v1.362.3 instrument + A/B switch). The pattern that cost them: a theory from indirect evidence,
 a fix, a device failure. The next step must NAME the cause from a discriminating measurement taken on Dean's iPhone, then fix it.
 
+## How to start this session (paste into a fresh Fable session when the black picture comes back)
+
+Trigger: Dean sees the black picture again on v1.362.3 or later (or asks). Bring the exported log (Settings > Troubleshooting >
+Export log) and a word on what he had just done. The brief's branch is `plan/black-picture-root-cause` (pushed to origin).
+
+```markdown
+You are the investigator for the iPhone black picture in FileTube (/home/coder/projects/filetube). Model: Fable. Your brief is
+docs/exec-plans/active/2026-10-04-black-picture-root-cause.md on branch `plan/black-picture-root-cause` (git fetch; it is on
+origin). Read AGENTS.md, then docs/LESSONS.md sections 0, 1, 7, 8, then the brief top to bottom, then every plan its Step 0 lists.
+This bug looped through five releases on theories; NAME the cause from an on-device measurement before anything is built, never
+re-patch a failed theory. Start from the brief's section 6 (run 1 on v1.362.3: no repro; the C3 lead) and the exported log I
+attach. Read it against section 4's falsifiers and write the verdict into section 6, every claim citing a log line or a run; if
+two candidates survive, design the next zero-build test that splits them and ask me to run it. No toggle workarounds (my ruling):
+never propose a setting or turning a feature off as the fix; the v1.362.3 test switch "No glyph on picture taps" is removed in the
+release that fixes the cause. A change to how a gesture behaves is my ruling: ask (AskUserQuestion). When the cause is named,
+propose the fix, then build it as a normal release (plan, gate adversary + qa, docs/RELEASING.md, the protected-main PR flow).
+Report at decision points and at the end with two progress bars and the measured numbers behind them.
+```
+
 ## 0. Step 0 - read, environment, rules
 
 0.1 Read `AGENTS.md`, `docs/LESSONS.md` sections 0, 1, 7, 8 (section 7's last class is this bug's lesson; section 1's diagnosis
