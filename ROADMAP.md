@@ -5,7 +5,7 @@
 ### Device checks owed
 
 - [ ] **Device checks owed (Dean: reply "1-5 pass, 9 fails")** _(v1.362.2, 2026-10-04)_ - one line per open check in
-  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (37 open lines at v1.362.3); the steps are only there. A
+  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (38 open lines at v1.362.4); the steps are only there. A
   passed line is deleted from both places; a failed one becomes a bug below. Closes when every line is resolved.
 
   1. v1.341.3 - watch page: turn back upright settles in one step
@@ -23,34 +23,42 @@
   13. v1.362.3 - black picture, four runs: taps / taps with no glyph / tap-pause bar-resume / holds then bar
   14. v1.362.2 - whenever it goes black: Export log and send the file
   15. v1.362.2 - lifecycle log records in the background; Export log gives a .txt; Clear asks
-  16. v1.361.0 - 20 picture-tap pause/plays (inline, full screen, mini): never black
-  17. v1.361.0 - background audio as before v1.360: autostarted video, lock, sound carries on
-  18. v1.359.0 - portrait video edge to edge, square corners, margins kept
-  19. v1.359.0 - a song and a Shorts video edge to edge; custom bar full size
-  20. v1.359.0 - hold 2x, lock, pill, skips, edge swipe back still work
-  21. v1.359.0 - dock and back: no jump; rotate and back
-  22. v1.359.0 - ambient glow above and below; no sideways scroll
-  23. v1.354.0 - iPod Songs to Z, Genres, Shuffle Songs, Liked
-  24. v1.354.0 - speaker Now Playing: the PC's up-next list
-  25. v1.354.0 - Transparent skin: turn and back in one step
-  26. v1.354.0 - Music > Search on the iPod with the wheel
-  27. v1.354.0 - search the skins list
-  28. v1.355.0 - rotate debug log switch in the home-screen app
-  29. v1.355.0 - keyboard search OFF: the wheel letter strip
-  30. v1.355.0 - keyboard search ON: keyboard, nothing on screen moves
-  31. v1.356.0 - close and reopen the app on a speaker
-  32. v1.357.0 - iPod skin turn and back in one step (rotate log rows)
-  33. v1.357.0 - the speaker's song is marked in an album
-  34. v1.358.0 - hold, drag down, lift: 2x locked; pill unlocks
-  35. v1.358.0 - locked 2x ends on lock, next item, dock, speed pick
-  36. v1.358.0 - locked 2x in a scrolling page and on art: no scroll or refresh
-  37. v1.344.2 - only if it comes back: Watch/Listen keeps a chapter's spot
-  38. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
+  16. v1.362.4 - the page under the video fades on pull, arrow and expand (compare with YouTube)
+  17. v1.361.0 - 20 picture-tap pause/plays (inline, full screen, mini): never black
+  18. v1.361.0 - background audio as before v1.360: autostarted video, lock, sound carries on
+  19. v1.359.0 - portrait video edge to edge, square corners, margins kept
+  20. v1.359.0 - a song and a Shorts video edge to edge; custom bar full size
+  21. v1.359.0 - hold 2x, lock, pill, skips, edge swipe back still work
+  22. v1.359.0 - dock and back: no jump; rotate and back
+  23. v1.359.0 - ambient glow above and below; no sideways scroll
+  24. v1.354.0 - iPod Songs to Z, Genres, Shuffle Songs, Liked
+  25. v1.354.0 - speaker Now Playing: the PC's up-next list
+  26. v1.354.0 - Transparent skin: turn and back in one step
+  27. v1.354.0 - Music > Search on the iPod with the wheel
+  28. v1.354.0 - search the skins list
+  29. v1.355.0 - rotate debug log switch in the home-screen app
+  30. v1.355.0 - keyboard search OFF: the wheel letter strip
+  31. v1.355.0 - keyboard search ON: keyboard, nothing on screen moves
+  32. v1.356.0 - close and reopen the app on a speaker
+  33. v1.357.0 - iPod skin turn and back in one step (rotate log rows)
+  34. v1.357.0 - the speaker's song is marked in an album
+  35. v1.358.0 - hold, drag down, lift: 2x locked; pill unlocks
+  36. v1.358.0 - locked 2x ends on lock, next item, dock, speed pick
+  37. v1.358.0 - locked 2x in a scrolling page and on art: no scroll or refresh
+  38. v1.344.2 - only if it comes back: Watch/Listen keeps a chapter's spot
+  39. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
 
   Passed 2026-10-04 (deleted from DEVICE-CHECKS.md): [x] v1.362.1 - pause shows the chevron, ~3 s after play it goes, a touch
   shows it; [x] v1.362.1 - 3 s is right; [x] v1.362.1 - a double-tap at the hidden chevron's spot skips, never minimizes.
 
 ### Bugs
+
+- [ ] **v1.362.4 gate r3 suggestions (non-blocking, test only)** - (a) the crossfade census's "exactly 1 is exempt" pattern
+  (`opacity\s*:\s*(?!1...)`) backtracks over the space, so `opacity: 1;` (the sheet's spacing) counts as a hit: strict, never
+  porous; fix `opacity\s*:(?!\s*1\s*(;|$))` and the comment; (b) the census never sets the minimize's transient classes
+  (`is-minimize-drag` / `-snap` / `-settle`) on the host or the dock: `#player-dock.is-minimize-settle { animation }` passes it
+  (one unrelated test catches it); add a fifth state. Carried (r2, harmless): the swap observer cleans only `is-view-leaving`
+  from a swapped-out watch node (never re-inserted); the popstate restore keys on `is-view-leaving`.
 
 - [ ] **v1.362.3 gate r1 suggestions (non-blocking)** - (a) E1 cancels touches on `#audio-bg-art` in EVERY full slot, so on the
   podcasts now-playing page a finger that starts on the art no longer scrolls the episode list (adversary, not measured; Music and
@@ -652,6 +660,25 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.362.4 - The page under the video fades like YouTube's when it minimizes and expands (2026-10-04)
+
+- From Dean's YouTube screen recording (measured: the area under the video crossfades in ~0.4 s through ~60 %): on a phone the
+  title, buttons and comments under the video follow the pull down (opacity 1 - 0.6 x progress), hold at 0.4 while the page
+  leaves, and the page you came from fades in from 0.4 in ~300 ms; a tap on the mini player dims the page and fades the watch
+  page in under the picture. Toward the page's own background (dark / light). Off with reduced motion and `?minimizeAnim=0`.
+  Chromium: mid-pull 0.81 at ~120 px, the arrival 0.60 -> 1.0 in ~300 ms, an expand on a slow network 1 -> 0.4 in ~180 ms.
+- Never an ancestor of the video (LESSONS 7, the black-picture class): the watch page fades only the content beside the player
+  (`.watch-main > :not(:has(#player-slot))`, `.watch-sidebar`); another page fades whole only while it does not hold the player.
+  A census runs `element.matches()` for every opacity / animation rule on the real watch markup with the real host mounted (slot
+  and dock) under five fade states. Chromium: every ancestor of the host at opacity 1 in every sampled frame (1313).
+- Also fixed: a load flake in the black-picture log's test harness (its clock ran at 50x real time; now manual).
+- Disclosed: the 4 s arrival mark also fades a page reached by another navigation inside it; a TV episode fades on minimize but
+  not on expand; WebKit was not available here, so the iPhone check is the measurement. The minimize chevron report was withdrawn
+  (it shows while paused, by design).
+- Gate: adversary + qa. r1 CHANGES @79e3cc56 (a stuck dim after an expand, home at 0.4 on a quick back, a census that matched
+  names); r2 CHANGES @76270536 (the census exempted an animating `opacity: 1`, no docked state); Dean approved a third round; r3
+  APPROVED @91cfc287 (adversary, qa); security-brief applied by both, no finding.
 
 ### v1.362.3 - No loupe on any hold; the log adds up short rounds and names a layer restart (2026-10-04)
 

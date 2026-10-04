@@ -53,6 +53,15 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON for 
   hold, close and reopen the app), come back to Settings, press Export log: the share sheet offers a .txt file; save it to Files and
   open it: one line per event with times. Send one to Claude. Clear log asks first.
 
+## The page fades under the video, like YouTube (v1.362.4)
+
+Settings > Mobile player > "Use custom player controls on touch devices" ON.
+
+- [ ] v1.362.4 - iPhone, a video playing inline: pull it down slowly: the title, buttons and comments under it dim as you pull;
+  let go early: they come back. Pull past a third (or tap the arrow): the page you came from fades in as the mini player lands.
+  Tap the mini player: the page dims and the watch page fades back in under the picture. Try light mode too (it fades toward
+  white). The picture itself never dims or goes black. Compare with the YouTube app side by side.
+
 ## The black picture after a pause (v1.361.0)
 
 - [ ] v1.361.0 - iPhone, a video inline in the watch page: pause and play 20 times by TAPPING THE PICTURE (with a double-tap skip in a few), then the same in full screen and in the mini player. The picture never goes black. The play/pause icon still flashes on each tap, with a soft dark disc behind it (a little darker in dark mode), the pause bars centred on it. If it does go black: say so (the next step is no icon over the video).

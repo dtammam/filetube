@@ -3502,5 +3502,11 @@
     "date": "2026-10-04",
     "title": "No magnifier on any hold, and a sharper player log",
     "intent": "On an iPhone, pressing and holding the video for double speed no longer brings up the grey text magnifier, with or without a tap first. A finger that starts on the video no longer scrolls the page; scroll from below it. For tracking down the black video picture, the player log now notices it even across quick pause and play taps, and Settings > Troubleshooting has a temporary test switch to play without the play/pause sign over the video."
+  },
+  {
+    "version": "1.362.4",
+    "date": "2026-10-04",
+    "title": "The page fades under the video, like YouTube, when it shrinks to the mini player",
+    "intent": "On a phone, when you pull a playing video down into the mini player, the title, buttons and comments under it dim as you pull and the page you came from fades back in as the mini player lands. Tapping the mini player runs it in reverse. The video itself never dims. It follows your light or dark mode and stays off if you have reduced motion turned on."
   }
 ]
