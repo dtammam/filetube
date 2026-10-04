@@ -3,8 +3,8 @@ plan: chevron-peek-and-vpn-runbook
 harness: v2 · lean
 branch: feat/v1.362.1-chevron-runbook
 anchor: spec
-status: Draft
-next: READY TO BUILD (Architect kickoff 2026-10-04 on Opus at main 10fe3291, Dean's rulings below); set `status: Building` in your first commit; order = section 0, then W0, W1, W2, W3, W4; read the whole plan first
+status: Building
+next: W0+W1 committed; W1 mutants, then W2 (the landing gap D5, the PiP drive and settle lock D6), W3 (the runbook), W4 (gate)
 design: Dean 2026-10-04, after his v1.362.0 smoke test ("It works great"): the minimize chevron "is always visible when I'm listening or watching something" and feels awkward; he took the Architect's recommendation (show it while paused, for a few seconds after playback starts and after any touch on the picture; hidden while playing, instantly). Bundled by Dean in one branch: the two v1.362 gate r2 leftovers the Architect recommended (the history-cap gap; the untested picture-in-picture refresh and settle clip) and a runbook for diagnosing his slow app over the VPN, built on the tooling that already exists.
 gate: adversary + qa (the player's chevron visibility on the shared player core, the SPA router's minimize landing; the runbook's every claim checked against the tree; security-brief applied as a section by both)
 ---

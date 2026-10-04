@@ -1404,8 +1404,8 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 }
 
 /* v1.362 (R6): the minimize chevron on the phone's inline picture, top-left (player.js builds it as a
-   plain ui-btn and shows it only where minimize is offered: the global [hidden] rule hides it
-   everywhere else). A 44 x 44 touch box carrying a plain painted 36 px disc (a radial gradient, never a
+   plain ui-btn and shows it only where minimize is offered, and since v1.362.1 only while paused, for
+   3 s after play or a touch, or while focused: the global [hidden] rule hides it, at once, otherwise). A 44 x 44 touch box carrying a plain painted 36 px disc (a radial gradient, never a
    filter: LESSONS 7) under the expand_more glyph. No z-index: it is the host's last positioned child,
    so it paints over the video; the tap glyph and the skip ripples (pointer-events none) may flash over
    it, and the resume / transcode overlays (10) cover it. Square corners: the box hit-tests as drawn,

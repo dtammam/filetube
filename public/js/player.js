@@ -1121,6 +1121,19 @@ function minimizeDragDecision(ctx) {
   return dy >= MINIMIZE_CLAIM_PX ? 'claim' : 'guard';
 }
 
+// v1.362.1 (D1, Dean 2026-10-04: the always-up chevron felt awkward): the chevron peeks. Shown where
+// minimize is offered AND (the media is paused or has not started OR a peek window is open OR the chevron
+// itself has keyboard focus). A window of MINIMIZE_PEEK_MS opens on play and on every touch on the picture
+// or the chevron; when it ends while playing, the chevron hides at once (`hidden`, never a fade: LESSONS 7).
+// Pure; the player's refreshMinimizeButton() only gathers the flags.
+var MINIMIZE_PEEK_MS = 3000;
+function minimizeChevronShownDecision(f) {
+  var o = f || {};
+  if (!o.allowed) return false;
+  var now = Number(o.now), until = Number(o.peekUntil);
+  return !!(o.paused || (isFinite(now) && isFinite(until) && now < until) || o.focused);
+}
+
 // R3: at the lift, 'dock' past MINIMIZE_COMMIT_FRAC of the travel (host top to dock top) or on a flick
 // down; else 'snap' back. No travel known: only a flick docks.
 function minimizeReleaseDecision(ctx) {
@@ -1928,6 +1941,8 @@ if (typeof module !== 'undefined' && module.exports) {
     holdRatePickDecision,
     // v1.362: minimize into the mini player (the pull-down and the chevron).
     minimizeAllowedDecision,
+    minimizeChevronShownDecision,
+    MINIMIZE_PEEK_MS,
     minimizeDragDecision,
     minimizeReleaseDecision,
     minimizeDragTransform,
@@ -4945,6 +4960,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // always a single.
     skipChainUntil = 0;
     clearMinimizeDrag(); // v1.362: the one remover of the minimize pull's transform (R5)
+    endMinimizePeek(); // v1.362.1 (D3): a dock, close, new load or backgrounding ends the chevron's peek
   }
 
   // ---- v1.362: minimize into the mini player (plan 2026-10-03-minimize-to-mini-player) ----
@@ -5137,10 +5153,28 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   // R6: the chevron, built here (no shell edit) and appended to the host, so the no-filter census sees it
-  // (player-overlay-no-filter.test.js reads every class player.js builds). Shown only while minimizeAllowed();
-  // refreshed wherever the surface changes (applyControlsMode, faux full screen, the audio expanded view, a
-  // resize or rotate). A sibling of the video: a touch on it never reaches the picture's gesture layer.
+  // (player-overlay-no-filter.test.js reads every class player.js builds). v1.362.1 (D1-D4): shown only where
+  // minimizeAllowed() AND (paused OR a peek window OR focused), see minimizeChevronShownDecision; refreshed
+  // wherever the surface changes (applyControlsMode, faux full screen, the audio expanded view, a resize or
+  // rotate, picture-in-picture), on play and pause, and when a peek window ends. A sibling of the video: a
+  // touch on it never reaches the picture's gesture layer.
   var minimizeBtn = null;
+  var minimizePeekUntil = 0;
+  var minimizePeekTimer = null;
+  // D3: ONE timer, cleared and re-armed by each peek. A peek opens only where minimize is offered, so a play
+  // while docked or in full screen leaves no window behind for a later expand.
+  function peekMinimizeButton() {
+    if (minimizePeekTimer) { clearTimeout(minimizePeekTimer); minimizePeekTimer = null; }
+    if (!minimizeAllowed()) { minimizePeekUntil = 0; refreshMinimizeButton(); return; }
+    minimizePeekUntil = Date.now() + MINIMIZE_PEEK_MS;
+    minimizePeekTimer = setTimeout(function () { minimizePeekTimer = null; refreshMinimizeButton(); }, MINIMIZE_PEEK_MS);
+    refreshMinimizeButton();
+  }
+  function endMinimizePeek() {
+    if (minimizePeekTimer) { clearTimeout(minimizePeekTimer); minimizePeekTimer = null; }
+    minimizePeekUntil = 0;
+    refreshMinimizeButton();
+  }
   function refreshMinimizeButton() {
     if (!host) return;
     if (!minimizeBtn) {
@@ -5159,9 +5193,19 @@ if (typeof module !== 'undefined' && module.exports) {
         e.stopPropagation(); // the dock-close precedent: nothing under it hears this click
         minimizeToDock('button');
       });
+      // v1.362.1 (D1): a touch on the chevron keeps it up; leaving keyboard focus lets the rule hide it.
+      minimizeBtn.addEventListener('touchstart', peekMinimizeButton, { passive: true });
+      minimizeBtn.addEventListener('blur', refreshMinimizeButton);
       host.appendChild(minimizeBtn);
     }
-    minimizeBtn.hidden = !minimizeAllowed();
+    var el = activeMediaElement(); // D4: the element that is playing (the background-audio sidecar after a handoff)
+    minimizeBtn.hidden = !minimizeChevronShownDecision({
+      allowed: minimizeAllowed(),
+      paused: !el || !!el.paused,
+      now: Date.now(),
+      peekUntil: minimizePeekUntil,
+      focused: document.activeElement === minimizeBtn,
+    });
   }
 
   function playMinimizeSettle(from) {
@@ -5254,6 +5298,7 @@ if (typeof module !== 'undefined' && module.exports) {
       startY = e.touches[0].clientY;
       tapGestureMoved = false; // gate W2 (v1.134 fix round): fresh gesture, no movement yet
       beginMinimizeGesture(); // v1.362: this finger may become a pull into the mini player
+      peekMinimizeButton(); // v1.362.1 (D1): any touch on the picture shows the chevron for a while
       clearTimeout(holdTimer);
       holdTimer = setTimeout(engageHold, HOLD_MS);
     }, { passive: true });
@@ -7160,6 +7205,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // fade countdown on play, and reveal+hold the bar on pause/ended (a paused
     // frame keeps its scrubber). No-ops entirely outside faux fullscreen.
     mediaPlayer.addEventListener('play', armControlsAutoHide);
+    // v1.362.1 (D1, D4): the chevron peeks when playback starts and shows again on a pause.
+    mediaPlayer.addEventListener('play', peekMinimizeButton);
+    mediaPlayer.addEventListener('pause', refreshMinimizeButton);
     mediaPlayer.addEventListener('pause', function () { clearControlsAutoHide(); showControlsBar(); });
     mediaPlayer.addEventListener('ended', function () { clearControlsAutoHide(); showControlsBar(); });
     // v1.119: ANY tap on the video OR the bar reveals the bar and restarts the

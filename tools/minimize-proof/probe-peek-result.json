@@ -1,0 +1,93 @@
+{
+ "runAt": "2026-10-04T02:50:57.827Z",
+ "steps": [
+  {
+   "label": "paused",
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "paused": true,
+   "chevronHidden": false
+  },
+  {
+   "label": "play +500 ms",
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "paused": false,
+   "chevronHidden": false
+  },
+  {
+   "label": "play +2500 ms",
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "paused": false,
+   "chevronHidden": false
+  },
+  {
+   "label": "play +3500 ms",
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "paused": false,
+   "chevronHidden": true
+  },
+  {
+   "label": "centre touch down (playing)",
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "paused": false,
+   "chevronHidden": false
+  },
+  {
+   "label": "centre tap +600 ms (the tap paused?)",
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "paused": true,
+   "chevronHidden": false
+  },
+  {
+   "label": "played again +3600 ms",
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "paused": false,
+   "chevronHidden": true
+  },
+  {
+   "label": "chevron-spot touch down (hidden before it)",
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "paused": false,
+   "chevronHidden": false
+  },
+  {
+   "label": "chevron-spot tap +600 ms (paused, still full, same page?)",
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "paused": true,
+   "chevronHidden": false
+  },
+  {
+   "label": "played again +3600 ms (before the pull)",
+   "path": "/watch.html?v=clip1",
+   "state": "full",
+   "paused": false,
+   "chevronHidden": true
+  },
+  {
+   "label": "after a 250 px pull",
+   "path": "/",
+   "state": "docked",
+   "paused": false,
+   "chevronHidden": true
+  }
+ ],
+ "geo": {
+  "chev": [
+   26,
+   98
+  ],
+  "mid": [
+   195,
+   181.6875
+  ]
+ },
+ "errs": []
+}
