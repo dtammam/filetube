@@ -53,6 +53,13 @@
 
 ### Bugs
 
+- [ ] **v1.362.4 gate r3 suggestions (non-blocking, test only)** - (a) the crossfade census's "exactly 1 is exempt" pattern
+  (`opacity\s*:\s*(?!1...)`) backtracks over the space, so `opacity: 1;` (the sheet's spacing) counts as a hit: strict, never
+  porous; fix `opacity\s*:(?!\s*1\s*(;|$))` and the comment; (b) the census never sets the minimize's transient classes
+  (`is-minimize-drag` / `-snap` / `-settle`) on the host or the dock: `#player-dock.is-minimize-settle { animation }` passes it
+  (one unrelated test catches it); add a fifth state. Carried (r2, harmless): the swap observer cleans only `is-view-leaving`
+  from a swapped-out watch node (never re-inserted); the popstate restore keys on `is-view-leaving`.
+
 - [ ] **v1.362.3 gate r1 suggestions (non-blocking)** - (a) E1 cancels touches on `#audio-bg-art` in EVERY full slot, so on the
   podcasts now-playing page a finger that starts on the art no longer scrolls the episode list (adversary, not measured; Music and
   the reader hide the art); a ruling for Dean if it bites; (b) summing short rounds assumes iOS refreshes its cached frame count on
@@ -653,6 +660,25 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.362.4 - The page under the video fades like YouTube's when it minimizes and expands (2026-10-04)
+
+- From Dean's YouTube screen recording (measured: the area under the video crossfades in ~0.4 s through ~60 %): on a phone the
+  title, buttons and comments under the video follow the pull down (opacity 1 - 0.6 x progress), hold at 0.4 while the page
+  leaves, and the page you came from fades in from 0.4 in ~300 ms; a tap on the mini player dims the page and fades the watch
+  page in under the picture. Toward the page's own background (dark / light). Off with reduced motion and `?minimizeAnim=0`.
+  Chromium: mid-pull 0.81 at ~120 px, the arrival 0.60 -> 1.0 in ~300 ms, an expand on a slow network 1 -> 0.4 in ~180 ms.
+- Never an ancestor of the video (LESSONS 7, the black-picture class): the watch page fades only the content beside the player
+  (`.watch-main > :not(:has(#player-slot))`, `.watch-sidebar`); another page fades whole only while it does not hold the player.
+  A census runs `element.matches()` for every opacity / animation rule on the real watch markup with the real host mounted (slot
+  and dock) under five fade states. Chromium: every ancestor of the host at opacity 1 in every sampled frame (1313).
+- Also fixed: a load flake in the black-picture log's test harness (its clock ran at 50x real time; now manual).
+- Disclosed: the 4 s arrival mark also fades a page reached by another navigation inside it; a TV episode fades on minimize but
+  not on expand; WebKit was not available here, so the iPhone check is the measurement. The minimize chevron report was withdrawn
+  (it shows while paused, by design).
+- Gate: adversary + qa. r1 CHANGES @79e3cc56 (a stuck dim after an expand, home at 0.4 on a quick back, a census that matched
+  names); r2 CHANGES @76270536 (the census exempted an animating `opacity: 1`, no docked state); Dean approved a third round; r3
+  APPROVED @91cfc287 (adversary, qa); security-brief applied by both, no finding.
 
 ### v1.362.3 - No loupe on any hold; the log adds up short rounds and names a layer restart (2026-10-04)
 
