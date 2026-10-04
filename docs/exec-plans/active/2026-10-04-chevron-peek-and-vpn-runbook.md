@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.362.1-chevron-runbook
 anchor: spec
 status: Building
-next: W0+W1 committed; W1 mutants, then W2 (the landing gap D5, the PiP drive and settle lock D6), W3 (the runbook), W4 (gate)
+next: W0-W3 committed; full dual-Node npm test, then W4 gate (adversary + qa, section 8)
 design: Dean 2026-10-04, after his v1.362.0 smoke test ("It works great"): the minimize chevron "is always visible when I'm listening or watching something" and feels awkward; he took the Architect's recommendation (show it while paused, for a few seconds after playback starts and after any touch on the picture; hidden while playing, instantly). Bundled by Dean in one branch: the two v1.362 gate r2 leftovers the Architect recommended (the history-cap gap; the untested picture-in-picture refresh and settle clip) and a runbook for diagnosing his slow app over the VPN, built on the tooling that already exists.
 gate: adversary + qa (the player's chevron visibility on the shared player core, the SPA router's minimize landing; the runbook's every claim checked against the tree; security-brief applied as a section by both)
 ---
@@ -163,6 +163,109 @@ results template table; 8 what the app cannot measure today (section 3's list), 
 **W4 - gate.** adversary + qa, briefed with section 8. Then section 8b.
 
 ## 6. Build log (the builder fills this in: failing-first runs, measurements, the D5 primary-source quote, the /diag verification, deviations, mutants per wave, suites verbatim)
+
+**W0 (builder, Sonnet session on Opus 5.5, 2026-10-04, at 9bd3ffbb).** Failing-first, verbatim, `node --test
+test/unit/minimize-player.test.js` with the new tests and no product code: `# tests 51 / # pass 41 / # fail 10`. The 10: the
+pure `minimizeChevronShownDecision` (not exported), the six peek drives, the D2 one-writer lock, the two D5 tests. The two D6
+tests (the PiP drive and the settle lock) PASS on main: they bind code v1.362.0 already shipped, so their binding is proven by
+the W2 mutants (W2-M4..M6), not by a red run. One test bug found while greening: the tap-pauses drive waited 240 ms, inside the
+350 ms double-tap window (the single tap is debounced); now 420 ms, as the v1.362.0 tap test does. The peek drives shorten the
+window by an exact-once source swap of `var MINIMIZE_PEEK_MS = 3000;` (player.js is strict, so a top-level var is not a jsdom
+global); the real 3000 is asserted on the export.
+
+**W1 (builder, 2026-10-04, committed ca5e0ffa).**
+
+- Built: `MINIMIZE_PEEK_MS = 3000` and `minimizeChevronShownDecision` top-level and exported; `peekMinimizeButton` (one timer,
+  cleared and re-armed by each peek) and `endMinimizePeek` (called from `resetTransientPlaybackUi`, so dock, close, a new load and
+  backgrounding end the window); the surface `touchstart` peeks right after `beginMinimizeGesture`; the chevron's own
+  `touchstart` peeks and its `blur` refreshes; ONE `play`/`pause` pair on the video (`play` peeks, `pause` refreshes);
+  `refreshMinimizeButton` stays the one writer of `hidden` and reads `paused` from `activeMediaElement()`.
+- **Interpretation (disclosed):** a peek opens only while `minimizeAllowed()` (else the window is reset), so a `play` while docked
+  or in full screen leaves no window for a later expand (D1 says the window opens on `play`; it now opens on a `play` that can
+  show the chevron). No stop rule hit: (b) no opacity, transition or class on the chevron (locked: no `minimizeBtn.style` or
+  `.classList` write anywhere); (c) measured below.
+- Updated in place, intent kept: the v1.362.0 "shown only where minimize is offered" test and the two r1 chevron tests (coarse
+  pointer past 768 px, audio expanded) now pause first (a playing chevron is hidden by design). style.css's chevron comment now
+  states the peek rule.
+- **Chromium** (`tools/minimize-proof/probe-peek.js`, result JSON beside it; iPhone 13, raw CDP touch, custom controls on):
+  paused: shown; play +500 ms shown, +2500 ms shown, **+3500 ms hidden**; a centre touch while playing: shown at touch-down, and
+  600 ms after the tap **paused true**, state full; played again, +3600 ms hidden; **a tap exactly on the hidden chevron's spot
+  (26, 98): shown at touch-down, 600 ms later paused true, state full, still `/watch.html?v=clip1`** (the picture's touchend
+  prevents the synthetic click, so the revealed chevron never receives it: no new gesture); played again, hidden; **a 250 px pull
+  with the chevron hidden: docked, playing, on `/`**. 0 page errors.
+- **W1 mutants** (on ca5e0ffa, `git archive` sandbox in the scratchpad, exact-once replace, restored in a `finally`, sandbox
+  identical to its pristine copy after; minimize-player + hold-lock + player-overlay-no-filter, 72 tests): M1 drop the paused
+  conjunct KILLED (5 red, incl. `minimizeChevronShownDecision`, `paused shows it`); M2 no peek on a picture touch KILLED (3: `a
+  touch on the picture`, `every touch re-arms`, `the cover art`); M3 no timer clear on dock / teardown KILLED (`the timer never
+  re-shows it after a dock`); M4 no peek on play KILLED (4); M5 drop focus KILLED (2); M6 no peek on a chevron touch KILLED
+  (`every touch re-arms`); M7 no refresh on pause KILLED (`a pause brings it back`); M9 the timer never refreshes KILLED (4); M10
+  no blur refresh KILLED (`goes on blur`). **M8 SURVIVED** (a peek opens where minimize is not offered: 72/72) and **M11
+  SURVIVED** (paused read from the video, not `activeMediaElement()`: 72/72). Both bound in W2: M8 by a drive (play while docked,
+  expand inside the window: hidden); M11 by a source lock in the D2 test (jsdom cannot reach the background-audio state;
+  disclosed as a source binding).
+
+**W2 (builder, 2026-10-04, committed fb8633ac).**
+
+- **D5 primary source** (the WHATWG HTML Standard, fetched 2026-10-04, section 7.2.6 and "browsing the web"), quoted:
+  "To get session history entries for the navigation API of a navigable navigable given an integer targetStep: Let rawEntries be
+  the result of getting session history entries for navigable. ... Let startingOrigin be rawEntries[startingIndex]'s document
+  state's origin. Let i be startingIndex - 1. While i > 0: If rawEntries[i]'s document state's origin is not same origin with
+  startingOrigin, then break. Prepend rawEntries[i] to entriesForNavigationAPI." and "newSHEs will have originally come from
+  getting session history entries for the navigation API, and thus each newSHE will be contiguous same origin with initialSHE.
+  Set navigation's current entry index to the result of getting the navigation API entry index of initialSHE within
+  navigation." with "To get the navigation API entry index of a session history entry she within a Navigation navigation: Let
+  index be 0. For each nhe of navigation's entry list: If nhe's session history entry is equal to she, then return index.
+  Increment index by 1." So `currentEntry.index` = the same-origin, contiguous entries the navigable still HAS behind the
+  current one: a `history.go(-n)` with n <= index lands on one of them. (The spec's loop reads `i > 0`, which would never prepend
+  entry 0, i.e. it can only UNDER-count, the safe side here; Chromium measured below counts it: index 1 at depth 1 over `/`.)
+- Built: `resolveMinimizeLanding(depth, browseDepth, historyLength, reachableBack)`: an integer `reachableBack` decides (Home iff
+  steps > reachableBack), else the v1.362.0 length rule; `leaveWatchForBrowse` passes `navigation.currentEntry.index` when it is
+  an integer. The comment above it states the spec reading.
+- **Chromium, the v1.362 gate r2 adversary repro** (`tools/minimize-proof/probe-cap.js`, result JSON beside it; Home > clip1,
+  router-shaped watch entries pushed to depth 61, Back 15, then the chevron, then a search and the bottom-nav Home):
+  - main 10fe3291 (a `git archive` sandbox, same probe): pushed: history.length 50, navIndex 49; after Back 15: depth 46, length
+    50, **navIndex 34**; after the chevron: **state docked, still `/watch.html?v=clip1`** (the go(-46) no-op); after a search,
+    the Home tap: **still `/?search=probe`** (Home dead).
+  - branch: the same until the chevron; after it: **`/`, docked** (history.length 36, navIndex 35: a fresh Home push; the
+    **index branch decided**, 46 steps > 34 reachable); after a search, the Home tap: **`/`** (Home works).
+- **W2 mutants** (on fb8633ac, same runner; minimize-player + router-helpers, 124 tests; sandbox identical after): M1 ignore
+  `reachableBack` KILLED (2: `D5: resolveMinimizeLanding`, `D5: the real leaveWatchForBrowse`); M2 `>` to `>=` KILLED (2); M3
+  leave does not pass the index KILLED (`the real leaveWatchForBrowse`); M4 the PiP listeners removed KILLED (`D6 (b)`); M5 the
+  settle rule dropped KILLED (`D6 (c)`); M6 the settle keeps `overflow: hidden` KILLED (`D6 (c)`); **W1-M8 re-run KILLED**
+  (`the timer never re-shows it after a dock`); **W1-M11 re-run KILLED** (`D2: ... one writer`).
+
+**W3 (builder, 2026-10-04).**
+
+- Written: docs/references/vpn-slowness-runbook.md, sections 1-8 as the plan's shape.
+- **/diag verified on the real page** (`tools/vpn-runbook-proof/probe-diag.js`, result JSON beside it; FT_DIAG=1 on the proof
+  server, Chromium iPhone 13; two runs armed through the chips, scenarios tagged in a second tab, all three probes fired, saved,
+  viewed and compared). Read off the pages, verbatim: Settings > **Experimental** > "Performance diagnostics (experimental)", the
+  "Open performance diagnostics" button (href `/diag`, hidden while the switch is off); Experimental > "Instant
+  background-audio handoff (experimental)"; **Troubleshooting** > "Show lifecycle debug log". `/diag`: title and h1 "FileTube
+  Perf Diagnostics", "← Back to Settings", "Idle - no run armed.", sections "1 · Arm a run", "2 · Guided scenarios", "3 · Active
+  probes (isolate one variable each)", "4 · Saved runs & isolation matrix"; labels "Network label (what conditions is this
+  run?)", "Note (optional - device, signal bars, anything)"; chips LAN / 5G + VPN / 5G no VPN / WiFi + VPN filling "LAN (home
+  wifi, no VPN)" / "5G + VPN" / "5G, no VPN" / "Home wifi + VPN"; buttons "Arm run & start recording", "Stop & save", "Open
+  FileTube in new tab ↗", "Clear active scenario", "Measure RTT (20×)", "Throughput (1 / 5 / 20 MB)", "Compression delta",
+  "Refresh", "Compare selected (2)" (disabled until two ticks), "Tick two runs (e.g. LAN + VPN) to compare."; the eight scenario
+  titles and descriptions exactly as diag-page.js (each "Set active", disabled until a run is armed); armed status "● RECORDING
+  - LAN (home wifi, no VPN) · scenario: (none) · 0 events captured"; the app tab's badge "REC ● diag · cold-load-home · 59";
+  "Saved run 2026-10-04-0310-zxtxn4"; runs list "LAN (home wifi, no VPN)85 ev2 scen... View Delete"; matrix headers "Dimension",
+  the run labels, "Lever it points to", and the nine rows with their levers (RTT wall (median) / WireGuard / MTU / VPN endpoint;
+  RTT pipe-only (median) / network minus server compute; Server compute (avg) / rules the BOX in or out; Throughput @20MB /
+  mobile rendition / home-upload cap; Compression wire size / brotli / gzip; Nav fan-out (worst view) / aggregated bootstrap
+  endpoint; Time-to-first-frame / confirms faststart is fine; Stalls (60s play) / adaptive bitrate; Cold vs warm Home /
+  service-worker shell/thumb caching); per-scenario headers Scenario, Wall, API reqs, Total reqs, Σ TTFB, Bytes, TTFF, Stalls.
+  Files `run-2026-10-04-0310-3yxr23.json` and `run-2026-10-04-0310-zxtxn4.json` under DATA_DIR/.diag; `GET /api/diag/runs/<id>`
+  200; `Server-Timing: app;dur=0.4` on a ping. 0 page errors. (The numbers in the probe are localhost, meaningless for a VPN;
+  only the labels are used.)
+- **Corrections to section 3, found in the tree (the runbook follows the tree):** the lifecycle log has no once-per-second line:
+  it logs `video:waiting` / `video:stalled` (and other media events) as they happen, plus ONE `video:check` six seconds after
+  each `playing` (player.js `recordVideoState`, `VIDEO_CHECK_SAMPLES` 6 x 1000 ms); the background polling intervals were not
+  re-verified one by one, so the runbook names none. Added from the tree: /diag and the app talk through localStorage
+  (diag-page.js / perf-collector.js), and a home-screen app has its own storage (docs/references/pwa-ios-notes.md), so the
+  runbook says to use Safari tabs; a Stalls or warm-Home cell reads "-" unless its scenario ran (derived in `deriveMetrics`).
+- No stop rule (d) or (e): nothing new was needed; every name the runbook uses is in the list above.
 
 ## 7. Device checks (Dean, on the released build; add each to DEVICE-CHECKS.md in the release commit)
 
