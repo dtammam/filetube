@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.362-minimize
 anchor: spec
 status: Building
-next: W1 (the pull-down, the one commit path, the browse-level landing per M7, the ?minimizeAnim switch); W0 measured (section 6), M7 + M8 ruled by Dean 2026-10-03
+next: the gate r1 (adversary + qa) at 9a88b892, briefed with section 8; then section 8b release
 design: Dean 2026-10-03 - on a phone, shrink the playing video into the mini player without leaving the page by hand - a down-chevron at the picture's top-left and a pull-down on the picture that follows the finger - plus bigger mini player X and play/pause ("a lot of friction now, especially in a mobile viewport"). The end state equals leaving the watch page ("equivalent to pressing the home button"). AskUserQuestion 2026-10-03, every default taken (section 2).
 gate: adversary + qa (touch gestures on the shared player core beside v1.358's hold-lock, a reparent during a gesture, the SPA back path, a transform on the playing picture; security-brief applied as a section by both)
 ---
@@ -362,6 +362,10 @@ tag in ONE push with `GIT_SSH_COMMAND="ssh -o ServerAliveInterval=20 -o ServerAl
 green (`ci (22)`, `ci (24)`, `audit`, `secret-scan`), then ASK Dean (AskUserQuestion) before `gh pr merge --merge`; `git pull
 --ff-only`; delete the branch remote (`gh api -X DELETE repos/dtammam/filetube/git/refs/heads/feat/v1.362-minimize`, verify with
 `git ls-remote`) and local (`-d`), and remove the worktree.
+
+## 8c. Gate record
+
+(seats write their verdict lines here, bound to the sha they reviewed)
 
 ## 9. Out of scope (logged, not built)
 
