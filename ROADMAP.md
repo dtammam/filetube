@@ -2,6 +2,54 @@
 
 ## Planned
 
+### Device checks owed
+
+- [ ] **Device checks owed (Dean: reply "1-5 pass, 9 fails")** _(v1.362.2, 2026-10-04)_ - one line per open check in
+  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (37 open lines when this was written); the steps are only there. A
+  passed line is deleted from both places; a failed one becomes a bug below. Closes when every line is resolved.
+
+  1. v1.341.3 - watch page: turn back upright settles in one step
+  2. v1.350.0 - Pocket turn back: send the rotate-log rows with a recording
+  3. v1.362.0 - pull down: springs back early, docks past a third, picture never black
+  4. v1.362.0 - the chevron minimizes; tap the mini player returns; lands where you browsed
+  5. v1.362.0 - mini player X and play/pause: ten thumb taps, no mis-tap
+  6. v1.362.0 - minimize regressions (tap, double-tap, hold, lock, swipe, scroll)
+  7. v1.362.0 - home-screen app vs Safari tab: which wins the pull at the top
+  8. v1.362.1 - tap to pause and lock at once: does the pause happen
+  9. v1.362.1 - VoiceOver cursor on the chevron: stays or vanishes
+  10. v1.362.1 - follow the VPN runbook once, say where it was unclear, send run ids
+  11. v1.362.2 - tap then hold the picture: 2x, no grey magnifier
+  12. v1.362.2 - no-loupe regressions (taps, chains, hold, lock, pull, swipe, scroll)
+  13. v1.362.2 - black picture A/B: picture-tap pause vs bar pause, 20 each
+  14. v1.362.2 - whenever it goes black: Export log and send the file
+  15. v1.362.2 - lifecycle log records in the background; Export log gives a .txt; Clear asks
+  16. v1.361.0 - 20 picture-tap pause/plays (inline, full screen, mini): never black
+  17. v1.361.0 - background audio as before v1.360: autostarted video, lock, sound carries on
+  18. v1.359.0 - portrait video edge to edge, square corners, margins kept
+  19. v1.359.0 - a song and a Shorts video edge to edge; custom bar full size
+  20. v1.359.0 - hold 2x, lock, pill, skips, edge swipe back still work
+  21. v1.359.0 - dock and back: no jump; rotate and back
+  22. v1.359.0 - ambient glow above and below; no sideways scroll
+  23. v1.354.0 - iPod Songs to Z, Genres, Shuffle Songs, Liked
+  24. v1.354.0 - speaker Now Playing: the PC's up-next list
+  25. v1.354.0 - Transparent skin: turn and back in one step
+  26. v1.354.0 - Music > Search on the iPod with the wheel
+  27. v1.354.0 - search the skins list
+  28. v1.355.0 - rotate debug log switch in the home-screen app
+  29. v1.355.0 - keyboard search OFF: the wheel letter strip
+  30. v1.355.0 - keyboard search ON: keyboard, nothing on screen moves
+  31. v1.356.0 - close and reopen the app on a speaker
+  32. v1.357.0 - iPod skin turn and back in one step (rotate log rows)
+  33. v1.357.0 - the speaker's song is marked in an album
+  34. v1.358.0 - hold, drag down, lift: 2x locked; pill unlocks
+  35. v1.358.0 - locked 2x ends on lock, next item, dock, speed pick
+  36. v1.358.0 - locked 2x in a scrolling page and on art: no scroll or refresh
+  37. v1.344.2 - only if it comes back: Watch/Listen keeps a chapter's spot
+  38. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
+
+  Passed 2026-10-04 (deleted from DEVICE-CHECKS.md): [x] v1.362.1 - pause shows the chevron, ~3 s after play it goes, a touch
+  shows it; [x] v1.362.1 - 3 s is right; [x] v1.362.1 - a double-tap at the hidden chevron's spot skips, never minimizes.
+
 ### Bugs
 
 - [ ] **v1.362 gate r2 suggestions (non-blocking)** - (a), (b) and (c) **done in v1.362.1**; (d) stays open. (a) the history-cap fallback (`steps >= history.length`) misses a session that
@@ -19,7 +67,7 @@
 
 - [ ] **v1.361 gate r3 suggestions (non-blocking)** - (a) the `EXEMPT_CLASSES` comment in `test/unit/player-overlay-no-filter.test.js` says the chapters menu's `.icon-share` mask is "not an effect painted over the playing picture", but `.chapters-menu` opens above the control bar, over the video (style.css ~4576): reword it as an on-request exception, or draw that icon from the SVG sprite like the speed badge and drop the exemption; (b) narrow the exemption to the mask properties (a bare `.icon-share { filter }` passes today); (c) the net misses player state classes added with `classList` (`audio-mode`, `ft-css-fullscreen`, `controls-autohidden`): a rule on one ALONE would pass; (d) the disc check binds only the exact `.art-play-glyph` selector; (e) the pause-bar centring is unguarded arithmetic.
 
-- [ ] **Bug: after a pause / unpause the picture goes black while the sound plays on, in the mini player too (inline and in full screen)** _(Dean, 2026-09-26: "a recent regression" in full screen; 2026-10-03: "after multiple pauses on a given video the screen goes black, like an overlay that just doesn't go away", audio keeps playing, the mini player shows black too)_ - **v1.361.0 removes the suspected trigger: the tap glyph's `filter: drop-shadow`**, flashed over the playing video on every picture tap. Dean's device A/B on iOS 27 (2026-10-03): 20 pause/play cycles with only the BAR's button never went black; picture taps did, with Background audio for video OFF and Ambient OFF too. v1.360.0's fix (the background-audio prime + a seek self-heal) FAILED on the device and is removed in v1.361. Recovery facts: a far seek does not bring the picture back, switching to another video and back does, an app restart does. Close when the v1.361 device check passes; if it still goes black with picture taps, the next step is no glyph over the video at all (Dean ruled out a recovery mechanism for a glyph problem).
+- [ ] **Bug: after a pause / unpause the picture goes black while the sound plays on, in the mini player too (inline and in full screen)** _(Dean, 2026-09-26: "a recent regression" in full screen; 2026-10-03: "after multiple pauses on a given video the screen goes black, like an overlay that just doesn't go away", audio keeps playing, the mini player shows black too)_ - **v1.361.0 removes the suspected trigger: the tap glyph's `filter: drop-shadow`**, flashed over the playing video on every picture tap. Dean's device A/B on iOS 27 (2026-10-03): 20 pause/play cycles with only the BAR's button never went black; picture taps did, with Background audio for video OFF and Ambient OFF too. v1.360.0's fix (the background-audio prime + a seek self-heal) FAILED on the device and is removed in v1.361. Recovery facts: a far seek does not bring the picture back, switching to another video and back does, an app restart does. **It RECURRED on v1.362.1 (Dean's recording, 2026-10-04), so the v1.361 glyph diagnosis was wrong or incomplete.** Measured from that 4.04 s recording (56.36 fps): the picture region is digital black on every frame while the clock runs 39:02 -> 39:08 at 2x and the captions advance; the chevron is lit on every frame except 2.368-2.502 s, which under v1.362.1's rule is a 3 s touch peek ending on time, so the element reported PLAYING while black (the kickoff lead "the chevron stayed shown past its window" is FALSIFIED: the element runs, the picture layer does not paint); the iOS text loupe is up 0.23-1.50 s and from 3.45 s, about 0.9 s after each inferred touch (a tap followed by a hold). Not measured: what started the black (the clip begins black). Hypotheses (plan docs/exec-plans/completed/2026-10-04-loupe-black-checks.md section 3): **H1** a play() issued outside the gesture (the picture tap plays from a 350 ms timer after the lift; the bar's button plays inside its click) resumes the sound but not the iOS 27 video layer, which fits the v1.361 asymmetry; **H2** the iOS text interaction (the loupe magnifying the playing layer) breaks it; **H3** an iOS 27 fault independent of input. v1.362.2 builds the INSTRUMENT, not a fix: `video:frozen` / `video:thawed`, each play's source (`via=`) and gap (`g=`), the rate and hold lines and the loupe-cancel lines, exported from Settings > Troubleshooting > Export log; and it removes the loupe after a tap (D1), which may confound H2 if the black stops. Awaiting the log of the next occurrence + the zero-build A/B (DEVICE-CHECKS.md, v1.362.2: picture-tap pause vs bar pause, twenty each).
 
 - [ ] **v1.359 gate r1 suggestions (non-blocking)** - (a) a persisted `ft-theater=1` on a landscape phone (667x375, 740x360) keeps the old theatre `margin-inline:auto` width rule (about style.css 6441) so the player is not edge to edge there (x 129.9 / w 407.1); predates v1.359, the theatre button is hidden on phones, drop the stored flag below 1025px or let the mobile rule win; (b) BLD's desktop leg checks only x offsets: a mutant dropping the desktop border and radius is not caught in a real browser (the unit source lock covers it): add a desktop border / radius expectation per era; (c) `evalPlayerBleed` does not check scrollWidth or the picture's span, and its title check is `x < 8` not the page gutter; (d) the stage-rule unit lock does not forbid `padding-top` / `padding-bottom`; (e) the loose regex in the BLD gutter-back fixture test; (f) BLD sees only `env()` = 0 in a real browser, the 47px notch case is unit arithmetic plus the probe.
 
@@ -412,6 +460,12 @@
   any site, sharing the source URL recorded at download time. Nothing else.
 
 ### Chores
+
+- [ ] **Move the rotate log (and any other) to the log-collection pattern** _(Dean, 2026-10-04, v1.362.2 D6: "not to say we have to
+  go reinvent anything right now")_ - [docs/references/log-collection-pattern.md](docs/references/log-collection-pattern.md) lists the
+  logs that predate it: the rotate log (in memory, its green panel copies on a tap), the background audio timing log (a Settings
+  Copy button, clipboard only) and `?debugTouch=1` (console only). Each gets a Settings switch that records to storage, one Export
+  log button through `exportDiagnosticLog`, a Clear that asks first, and nothing on screen by default.
 
 - [ ] **progress-coalescer AC4.1 flakes under CPU contention** _(tracker #238, v1.358 Wave Z, 2026-10-03)_ - `test/integration/progress-coalescer.test.js`
   "a burst of N rapid pings collapses into <= N/5 batch transactions" paces 20 POSTs with wall-clock `setTimeout` at

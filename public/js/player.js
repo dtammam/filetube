@@ -4867,8 +4867,9 @@ if (typeof module !== 'undefined' && module.exports) {
   document.addEventListener('visibilitychange', function () {
     recordLifecycleEvent('visibilitychange', {});
     if (document.visibilityState === 'hidden') handleBackgroundLifecycle('visibilitychangeHidden');
-    // v1.362.2 (D5): the sampler sleeps while hidden and resumes on return (start is a no-op when the flag is off).
-    if (document.visibilityState === 'hidden') stopFrozenSampler(); else startFrozenSampler();
+    // v1.362.2 (D5): a return resumes the sampler (a no-op when the flag is off). A hide stops it through
+    // resetGestureLatchesOnBackground -> resetTransientPlaybackUi (r0 mutant W2-M7: a second stop here was masked).
+    if (document.visibilityState !== 'hidden') startFrozenSampler();
   });
   // `resume`/`pageshow` never drive a pause/release decision (nothing to do
   // on returning to the foreground beyond the existing Media Session

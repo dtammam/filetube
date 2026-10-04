@@ -178,7 +178,9 @@ for (const [name, act] of [
   ['ended', (h) => { Object.defineProperty(h.v, 'ended', { value: true, configurable: true }); h.v.dispatchEvent(new h.w.Event('ended')); }],
   ['emptied', (h) => h.v.dispatchEvent(new h.w.Event('emptied'))],
   ['loadstart', (h) => h.v.dispatchEvent(new h.w.Event('loadstart'))],
-  ['a hide', (h) => { Object.defineProperty(h.w.document, 'visibilityState', { value: 'hidden', configurable: true }); h.w.document.dispatchEvent(new h.w.Event('visibilitychange')); }],
+  // r0 mutant W2-M7: the hide's background rule pauses the video, which would stop the sampler by itself; keep the
+  // video playing through the hide (pause a no-op) so only the hide's own stop can pass this.
+  ['a hide', (h) => { h.v.pause = () => {}; Object.defineProperty(h.w.document, 'visibilityState', { value: 'hidden', configurable: true }); h.w.document.dispatchEvent(new h.w.Event('visibilitychange')); assert.strictEqual(h.v.paused, false, 'still playing through the hide'); }],
   ['a dock', (h) => h.p.dock()],
   ['a close', (h) => h.p.close()],
   ['a new load', (h) => h.p.load('v2', { id: 'v2', title: 'T2', type: 'video', ext: '.mp4' }, { slot: h.doc.getElementById('player-slot') })],
@@ -297,6 +299,26 @@ test('via=other for the remote toggle, and for a play with no fresh source (a st
   h.v.play();
   assert.match(lastOf(h, 'media:play').detail, /^el=video via=other /, 'an unstamped play');
   assert.match(PLAYER_SRC, /var PLAY_VIA_FRESH_MS = 1500;/);
+});
+
+test('r0 mutants W2-M15/M16: a stamp is consumed by the line that reads it, and one older than 1.5 s is ignored', async () => {
+  const h = await boot(VIDEO);
+  h.v.pause(); h.clearLog();
+  // M16: a lock-screen play reads media-session; a second, unstamped play right after must read other.
+  h.ms.play({ action: 'play' });
+  assert.match(lastOf(h, 'media:play').detail, /via=media-session /);
+  h.setPaused(h.v, true);
+  h.v.play();
+  assert.match(lastOf(h, 'media:play').detail, /^el=video via=other /, 'the stamp was consumed');
+  // M15: a stamp with no play after it (the play never fires), then a play 2 s of player clock later reads other.
+  h.v.pause(); h.clearLog();
+  const realPlay = h.v.play; h.v.play = () => Promise.resolve();
+  h.doc.getElementById('pp-btn').dispatchEvent(new h.w.MouseEvent('click', { bubbles: true, detail: 1 }));
+  assert.strictEqual(lastOf(h, 'media:play'), undefined, 'precondition: no play fired');
+  await wait(40); // x50: 2000 ms on the player's clock
+  h.v.play = realPlay;
+  h.v.play();
+  assert.match(lastOf(h, 'media:play').detail, /^el=video via=other /, 'a stale stamp is ignored');
 });
 
 test('via=autostart and via=swapback are stamped right before their play() (source, one each)', () => {

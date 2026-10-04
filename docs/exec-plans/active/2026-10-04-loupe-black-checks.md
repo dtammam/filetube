@@ -3,9 +3,9 @@ plan: loupe-black-checks
 harness: v2 · lean
 branch: feat/v1.362.2-loupe-black-checks
 anchor: spec
-status: Approved @140f73e4
-next: the builder (Sonnet) runs section 0, then W1 -> W2 -> W3 in order
-design: Approved 2026-10-04 @140f73e4 (Dean's rulings D1-D4). Dean 2026-10-04, after his v1.362.1 device pass (checks 1-3 passed, the rest untested). Four asks in one branch: (1) the first ROADMAP item gathers every open device check and his VPN runbook results; (2) the iOS text loupe during a long press on the playing video; (3) the black picture RECURRED on v1.362.1, so this release builds the INSTRUMENT, not a fix; (4, mid-kickoff) logs are recorded in the background and exported with one button, and that is documented as the pattern for all log collection. Rulings D1-D4 (section 2) are Dean's, asked 2026-10-04.
+status: Building
+next: W1-W3 built; the full dual-Node npm test, then the gate (adversary + qa, security-brief as a section)
+design: Dean's rulings D1-D4, 2026-10-04 (kickoff at main 140f73e4). Dean 2026-10-04, after his v1.362.1 device pass (checks 1-3 passed, the rest untested). Four asks in one branch: (1) the first ROADMAP item gathers every open device check and his VPN runbook results; (2) the iOS text loupe during a long press on the playing video; (3) the black picture RECURRED on v1.362.1, so this release builds the INSTRUMENT, not a fix; (4, mid-kickoff) logs are recorded in the background and exported with one button, and that is documented as the pattern for all log collection. Rulings D1-D4 (section 2) are Dean's, asked 2026-10-04.
 gate: pending
 ---
 
@@ -206,6 +206,64 @@ panel"; Guard: the pattern doc + `exportDiagnosticLog`); ROADMAP Planned > Chore
 log-collection pattern".
 
 ## 6. Build log (the builder fills this in: failing-first runs, the real-browser reachability run, mutants per wave, suites verbatim, deviations)
+
+Builder (Claude Opus 5.5 under the Sonnet handoff), 2026-10-04, worktree .claude/worktrees/v13622. Node 22.23.1 unless noted.
+
+**W1 - the loupe cancel (commit ce276fe3).**
+- Failing first: `test/unit/player-loupe-cancel.test.js` (17 tests) against main's player.js: `# tests 17 / # pass 5 / # fail 12`
+  (the 5 green are the "not cancelled" negatives, true on main too).
+- Targeted after: the new file 17/17; the 11 neighbouring gesture / player / policy files (skip-chain, video-tap-pause, minimize,
+  native-controls guard, fullscreen-autohide, immersive grace, controls, form factor, tap-to-play, interaction-policy-css,
+  player-overlay-no-filter): `# tests 199 / # pass 199 / # fail 0`.
+- Commit hook (lint + unit): `ℹ pass 8485 / ℹ fail 0`.
+- Mutants (12, /tmp git-archive sandbox of ce276fe3, exact-once, restored, sandbox diff clean): 11 killed on the first run; **M9**
+  (drop `lastTapTime > 0`) SURVIVED (unreachable on a real clock) and the native-controls drive was vacuous (its tap never set
+  `lastTapTime`, so M7 died only by the pure test). Fixed in W3's commit: a `now: 100, lastTapTime: 0` fixture, and the drive taps on
+  the custom surface first, then switches to native controls. Re-run: M7 KILLED by 2 (pure + drive), M9 KILLED by 1.
+- Real browser (Chromium, iPhone 13 emulation, raw CDP touch, `tools/log-export-proof/probe.js`, result in `probe-result.json`):
+  touchstart `defaultPrevented` for [first tap, +200 ms, first tap, +450 ms] = `[false, true, false, false]`; an upward drag that
+  starts on the picture 1 s after a tap scrolled the page 0 -> 175 px; one 150 ms after a tap stayed at 0 -> 0 (D1's stated cost).
+
+**W2 - the instrument and the export (commit 17bbc28a).**
+- Failing first: `player-black-picture-log.test.js` + `lifecycle-log-export.test.js` against ce276fe3: `# tests 45 / # pass 0 / # fail 45`.
+- Old locks red on INTENDED changes, updated in place with the intent kept (each names v1.362.2): the cap (30 -> 1000), the overlay
+  bail (now both switches), "tap-to-clear" inverted to "a tap never clears", the 60/400 cut spelling (two files), the Settings hint
+  and row order (two files), `togglePlayPause(via)` / `toggleArtPlayPause(via)` spellings (four locks), the `media:play` detail
+  (carplay diagnostics), the Settings switch count 30 -> 31.
+- Targeted after: 1287 tests over every setup / shell / player / minimize / share / lifecycle / settings file: `# pass 1287 / # fail 0`.
+- Commit attempts, verbatim: (1) refused by lint in the new probe file: `2:29 error 'navigator' is already defined as a built-in
+  global variable no-redeclare`, `2:40 error 'localStorage' ...`, `28:123 error '_' is defined but never used`; (2) refused by the
+  unit suite: `ℹ tests 8530 / ℹ pass 8529 / ℹ fail 1`, failing `the panel renders a video: line IN FULL (every field is evidence);
+  other types keep the 60 cut` (test/unit/fullscreen-edge-and-video-state.test.js, a third lock on the cut spelling), plus a
+  style.css comment that still promised "tap to clear it"; (3) passed: `ℹ tests 8530 / ℹ pass 8530 / ℹ fail 0`.
+- Storage at the cap, measured with the longest real line (a `video:frozen` reading, every field at its widest): detail 276 chars,
+  one entry 377 bytes, **1000 entries 378,001 bytes of JSON** (about 756 KB as WebKit's UTF-16), under the 1 MB bound; cap kept at 1000.
+- `npm run lint:ui`: `ui-lint: OK - the live debt equals docs/ui-exceptions.json` (unchanged); `overlay-containment-lint --enforce`:
+  `clean (0 violations)`; `player-overlay-no-filter.test.js` green; eslint 0 errors (6 pre-existing common.js warnings).
+- Real browser (same probe): lifecycle log on via `?debugLifecycle=1`, the BAR's play button tapped, two rate changes, then Settings
+  > Troubleshooting (the md row tapped) > Export log tapped with `navigator.share` and `canShare` deleted: outcome `copied`; the
+  clipboard held the file text: header `FileTube lifecycle log / exported / version / user agent / mode: browser tab / entries: 29`,
+  `media:play (el=video via=bar-button g=15)`, `media:rate (rate=1.5 def=1)`, `media:rate (rate=1 def=1)`, and two
+  `gesture:tap-pair (video gap=219 chain=0)` / `(gap=166 ...)` lines; no panel on the watch page or in Settings; no page errors.
+  (The probe's first run read an empty clipboard: on a phone Settings shows sections as subpages, so the button was 0x0 until
+  the Troubleshooting row was tapped; the probe now takes that real path.)
+- Mutants (30, sandbox of 17bbc28a, sandbox diff clean): 27 killed first run. Survivors: **W2-M15** (the 1.5 s stamp expiry) and
+  **W2-M16** (the stamp consume): my `via=other` drive could not diverge; a new drive (a consumed lock-screen stamp, then a stale
+  bar-button stamp with no play) KILLS both. **W2-M7** (no stop on hide) was MASKED: every hide already runs
+  `resetGestureLatchesOnBackground -> resetTransientPlaybackUi -> stopFrozenSampler`; the redundant stop is removed (W3 commit) and
+  the hide drive keeps the video playing through the hide, verified red when the reset's stop is removed.
+
+**Deviations (stated, not hidden).**
+1. `inTapRunDecision` / `tapPairCancelDecision` take `doubleTapMs` as a field (the window lives inside the IIFE).
+2. `exportDiagnosticLog`: a dismissed sheet (`AbortError`) is 'shared' (the `shareMediaFile` rule), but a share that fails for
+   another reason (no activation, a refused type) falls back to the download instead of reporting 'shared', so a log is never
+   silently lost; a failed clipboard write downloads too.
+3. The sampler also RESUMES on a visible return and on an expand while playing (the plan lists only `playing` as a start); the hide
+   and the dock stop it, and neither fires a new `playing`.
+4. Settings layout: the lifecycle list holds its two switches; Export / Clear follow, then its note; the rotate switch moved to its
+   own list below (same group). The on-screen switch reads its own key `ft-debug-lifecycle-overlay`.
+5. `api.togglePlay` (the remote control) is labelled `via=other` (the plan's source list has no remote entry).
+6. `g=` is stamped from the gesture surfaces' existing touchend and the host's existing capture click listener (no new listener).
 
 ## 7. Device checks (Dean, on the released build; add each to DEVICE-CHECKS.md in the release commit)
 
