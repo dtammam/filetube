@@ -3490,5 +3490,11 @@
     "date": "2026-10-04",
     "title": "The minimize arrow steps out of the way while you watch",
     "intent": "On a phone, the down arrow at the top left of a playing video now shows while the video is paused, for a few seconds after it starts, and whenever you touch the picture, then gets out of the way. A double tap in that corner still skips back. Minimizing after a long run of videos always lands somewhere useful. There is also a step-by-step guide for finding out why the app is slow over a VPN."
+  },
+  {
+    "version": "1.362.2",
+    "date": "2026-10-04",
+    "title": "No magnifier on the playing video, and a player log you export with one button",
+    "intent": "On an iPhone, holding the video for double speed right after a double tap no longer brings up the grey text magnifier. For tracking down the black video picture, Settings > Troubleshooting can now record a player log quietly in the background, with nothing on screen, and Export log hands you the whole thing as a text file to share or save; Clear log asks first. Nothing about the black picture is fixed yet: the next time it happens, the exported log should show why."
   }
 ]
