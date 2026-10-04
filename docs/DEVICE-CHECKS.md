@@ -15,6 +15,16 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
   ROADMAP Planned > Bugs, "Pocket turn". The log is still wanted for the fix.) v1.357.0 changed the turn: its check is under "Turn and speaker highlight" below, and covers this one. Since v1.355.0 this can be done in the
   HOME-SCREEN app: Settings > Troubleshooting > Show rotate debug log (no URL bar needed).
 
+## Minimize into the mini player (v1.362.0)
+
+Settings > Mobile player > "Use custom player controls on touch devices" ON for all of these.
+
+- [ ] v1.362.0 - iPhone, inline video playing: pull down slowly and let go early (springs back, still playing); pull past a third (docks bottom-right, still playing, the page is where you browsed from). Watch the picture during and after the drag: if it goes black or freezes while the sound runs on, open the same page in a SAFARI TAB with `?minimizeAnim=0` and repeat (the switch is a URL parameter; the home-screen app has no address bar). Black with the animation and fine without = the moving picture is the trigger.
+- [ ] v1.362.0 - Tap the down-chevron at the picture's top-left: same end state. Then tap the mini player: back to the watch page, same position, still playing. Open a video from another video (a related card), minimize: you land on the feed / search you started from, and the second video keeps playing.
+- [ ] v1.362.0 - The mini player's X and play/pause: hit each with a thumb ten times without a mis-tap into "expand". With captions on, they sit above the bar.
+- [ ] v1.362.0 - Regressions: tap pauses, double-tap skips, hold 2x, hold-drag-down locks 2x, swipe right goes back, scroll the page from below the picture, scroll down then pull on the picture (the page scrolls to the top first), full screen untouched. At the top of the page, put a finger on the picture, wiggle it down a hair, then drag UP: the page must still scroll.
+- [ ] v1.362.0 - Home-screen app AND Safari tab: in the Safari tab the pull at the top fights the browser's own overscroll; report which wins.
+
 ## The black picture after a pause (v1.361.0)
 
 - [ ] v1.361.0 - iPhone, a video inline in the watch page: pause and play 20 times by TAPPING THE PICTURE (with a double-tap skip in a few), then the same in full screen and in the mini player. The picture never goes black. The play/pause icon still flashes on each tap, with a soft dark disc behind it (a little darker in dark mode), the pause bars centred on it. If it does go black: say so (the next step is no icon over the video).

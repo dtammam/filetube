@@ -1093,6 +1093,60 @@ function holdDragDecision(ctx) {
   return dy >= lockPx && Math.abs(dx) < dy ? 'lock' : 'none';
 }
 
+// v1.362: minimize the phone player into the mini player by pulling the picture down (plan
+// 2026-10-03-minimize-to-mini-player). A pull must beat sideways by MINIMIZE_DOMINANCE (common.js
+// SWIPE_BACK_DOMINANCE mirrored, so a minimize and a swipe-back are disjoint by construction).
+var MINIMIZE_CLAIM_PX = 12;
+var MINIMIZE_DOMINANCE = 1.5;
+var MINIMIZE_COMMIT_FRAC = 0.35;
+var MINIMIZE_FLICK_V = 0.5; // px per ms
+
+// R1 + M8: the one surface that offers minimize - the phone's inline player on the watch page. Pure; the
+// player's minimizeAllowed() only gathers the flags.
+function minimizeAllowedDecision(f) {
+  var o = f || {};
+  return !!(o.stateFull && o.inSlot && o.watchView && !o.cssFullscreen && !o.audioExpanded &&
+    !o.nativeFullscreen && !o.nativeControls && o.mobile && o.narrow);
+}
+
+// R2: 'claim' = this drag is a minimize; 'guard' = a downward-dominant move at the top that is not yet a
+// claim, prevented anyway because W0 measured that an unprevented first move hands the gesture to the
+// browser (every later move non-cancelable); 'none' = not ours. scrollY is the page's scroll at TOUCHSTART:
+// scrolled down, the pull scrolls the page as today and only the NEXT pull at the top minimizes (R2b).
+function minimizeDragDecision(ctx) {
+  var o = ctx || {};
+  var dx = Number(o.dx), dy = Number(o.dy), sy = Number(o.scrollY);
+  if (o.holdActive || !isFinite(dx) || !isFinite(dy) || !isFinite(sy) || sy > 1) return 'none';
+  if (!(dy > 0 && dy > Math.abs(dx) * MINIMIZE_DOMINANCE)) return 'none';
+  return dy >= MINIMIZE_CLAIM_PX ? 'claim' : 'guard';
+}
+
+// R3: at the lift, 'dock' past MINIMIZE_COMMIT_FRAC of the travel (host top to dock top) or on a flick
+// down; else 'snap' back. No travel known: only a flick docks.
+function minimizeReleaseDecision(ctx) {
+  var o = ctx || {};
+  var dy = Number(o.dy), travel = Number(o.travel), v = Number(o.velocityPxPerMs);
+  if (!isFinite(dy)) return 'snap';
+  if (isFinite(travel) && travel > 0 && dy >= travel * MINIMIZE_COMMIT_FRAC) return 'dock';
+  if (isFinite(v) && v >= MINIMIZE_FLICK_V && dy >= MINIMIZE_CLAIM_PX * 2) return 'dock';
+  return 'snap';
+}
+
+// R5: the host's pose during the pull, from its slot rect toward the dock's resting rect (transform-origin
+// 0 0). p = dy / travel, clamped; the top edge stays under the finger (ty = dy until the dock is reached).
+function minimizeDragTransform(ctx) {
+  var o = ctx || {};
+  var from = o.from || {}, to = o.to || {};
+  var travel = Number(to.y) - Number(from.y);
+  var dy = Number(o.dy);
+  var p = (isFinite(travel) && travel > 0 && isFinite(dy)) ? Math.min(1, Math.max(0, dy / travel)) : 0;
+  var ratio = Number(to.w) / Number(from.w);
+  if (!isFinite(ratio) || ratio <= 0) ratio = 1;
+  var tx = Number(to.x) - Number(from.x);
+  if (!isFinite(tx)) tx = 0;
+  return { tx: tx * p, ty: (p > 0 ? travel * p : 0), s: 1 + (ratio - 1) * p, p: p };
+}
+
 // v1.358: an explicit speed pick while locked wins. A hold never writes defaultPlaybackRate, so a moved
 // default (or a rate that is no longer the held 2x) means someone else wrote it: 'drop' the lock, no rate write.
 function holdRatePickDecision(ctx) {
@@ -1872,6 +1926,13 @@ if (typeof module !== 'undefined' && module.exports) {
     classifyTapGesture,
     holdDragDecision,
     holdRatePickDecision,
+    // v1.362: minimize into the mini player (the pull-down and the chevron).
+    minimizeAllowedDecision,
+    minimizeDragDecision,
+    minimizeReleaseDecision,
+    minimizeDragTransform,
+    MINIMIZE_COMMIT_FRAC,
+    MINIMIZE_FLICK_V,
     shouldArtSingleTapAct,
     resolveMobileFormFactor,
     isDesktopClassPlatform,
@@ -2335,6 +2396,7 @@ if (typeof module !== 'undefined' && module.exports) {
       mediaPlayer.removeAttribute('controls');
       host.classList.remove('native-controls');
     }
+    refreshMinimizeButton(); // v1.362: the chevron follows every surface change this function makes
   }
 
   // v1.36.2 (Dean's PWA report): after an app-switch, iOS can leave a
@@ -2424,6 +2486,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (BL) BL.scrollTo(document, window, plan.restoreTo);
       else window.scrollTo(0, plan.restoreTo);
     }
+    refreshMinimizeButton(); // v1.362: no chevron in faux full screen
   }
   // v1.311.2: the ONE shared iOS body lock (body-scroll-lock.js, loaded before this
   // file on every shell that loads it; require()d under node tests).
@@ -4881,6 +4944,240 @@ if (typeof module !== 'undefined' && module.exports) {
     // a chain never survives a load/dock - the new surface's first tap is
     // always a single.
     skipChainUntil = 0;
+    clearMinimizeDrag(); // v1.362: the one remover of the minimize pull's transform (R5)
+  }
+
+  // ---- v1.362: minimize into the mini player (plan 2026-10-03-minimize-to-mini-player) ----
+  // The pull: a finger that BEGAN on the picture (the gesture surfaces' touchstart) while minimizeAllowed();
+  // the host's non-passive touchmove claims it (W0: the host is where moves are cancelable), the surface's
+  // touchend releases it. The chevron (W2) and the pull commit through the one minimizeToDock().
+  var minimizeGestureLive = false;
+  var minimizeClaimed = false;
+  var minimizeStartScrollY = 0;
+  var minimizeFrom = null;
+  var minimizeTo = null;
+  var minimizeSamples = [];
+  var minimizeSettleTimer = null;
+  var MINIMIZE_SAMPLE_MS = 80; // R3: the flick velocity reads the last ~80 ms of moves
+  var MINIMIZE_ANIM_STORAGE_KEY = 'ft-minimize-anim';
+
+  function minimizeAllowed() {
+    var parent = host && host.parentNode;
+    return minimizeAllowedDecision({
+      stateFull: state === STATE_FULL,
+      inSlot: !!(parent && parent.id === 'player-slot'),
+      watchView: !!(document.body && document.body.getAttribute('data-view') === 'watch'),
+      cssFullscreen: !!(host && host.classList.contains('css-fullscreen')),
+      audioExpanded: !!(host && host.classList.contains('audio-expanded')),
+      nativeFullscreen: inNativeFullscreen(),
+      nativeControls: inNativeControlsMode(),
+      mobile: isMobileFormFactor(),
+      narrow: matchMediaBool('(max-width: 768px)') === true,
+    });
+  }
+
+  // R7: `?minimizeAnim=0` (read once at boot, remembered for the tab) turns the moving picture off: the pull
+  // claims and commits the same, the picture just does not move until it docks. `?minimizeAnim=1` clears it.
+  function initMinimizeAnimFlag() {
+    try {
+      var params = new URLSearchParams(window.location.search);
+      if (params.get('minimizeAnim') === '0') sessionStorage.setItem(MINIMIZE_ANIM_STORAGE_KEY, '0');
+      else if (params.get('minimizeAnim') === '1') sessionStorage.removeItem(MINIMIZE_ANIM_STORAGE_KEY);
+    } catch (_) { /* storage unavailable: the default (on) stands */ }
+  }
+  initMinimizeAnimFlag(); // once at boot (after the key above is assigned)
+  function minimizeAnimEnabled() {
+    try { return sessionStorage.getItem(MINIMIZE_ANIM_STORAGE_KEY) !== '0'; } catch (_) { return true; }
+  }
+  function minimizeReducedMotion() {
+    return matchMediaBool('(prefers-reduced-motion: reduce)') === true;
+  }
+
+  // The page's real scroll (LESSONS 4: through the body lock, which pins scrollY at 0 while it holds).
+  function pageScrollY() {
+    var BL = playerBodyLock();
+    if (BL && typeof BL.scrollYOf === 'function') return BL.scrollYOf(document, window);
+    return window.pageYOffset || window.scrollY || 0;
+  }
+
+  // Where the docked host will rest, read from the (hidden) dock's own CSS: right, bottom and width; the
+  // docked host is a compact 16:9 picture over the phone dock bar (--size-touch, style.css M5). null when the
+  // dock's geometry cannot be read (then the picture does not follow and only a flick docks).
+  function dockRestingRect() {
+    var dockEl = document.getElementById('player-dock');
+    if (!dockEl || typeof window.getComputedStyle !== 'function') return null;
+    var cs = window.getComputedStyle(dockEl);
+    var w = parseFloat(cs.width), right = parseFloat(cs.right), bottom = parseFloat(cs.bottom);
+    var bar = parseFloat(cs.getPropertyValue('--size-touch'));
+    if (!isFinite(w) || !isFinite(right) || !isFinite(bottom) || w <= 0) return null;
+    var h = w * 9 / 16 + (isFinite(bar) ? bar : 0);
+    return { x: window.innerWidth - right - w, y: window.innerHeight - bottom - h, w: w };
+  }
+
+  function transitionMs(el) {
+    var d = parseFloat(window.getComputedStyle(el).transitionDuration);
+    return isFinite(d) ? d * 1000 : 0;
+  }
+
+  // The ONE remover (R5): every end path (snap end, commit end, close, a new load, backgrounding, a rotate)
+  // lands here, via resetTransientPlaybackUi or directly.
+  function clearMinimizeDrag() {
+    if (minimizeSettleTimer) { clearTimeout(minimizeSettleTimer); minimizeSettleTimer = null; }
+    minimizeGestureLive = false;
+    minimizeClaimed = false;
+    minimizeSamples = [];
+    if (!host) return;
+    host.style.transform = '';
+    host.style.transformOrigin = '';
+    host.classList.remove('is-minimize-drag', 'is-minimize-snap', 'is-minimize-settle');
+    var dockEl = document.getElementById('player-dock');
+    if (dockEl) dockEl.classList.remove('is-minimize-settle');
+  }
+
+  function beginMinimizeGesture() {
+    if (minimizeSettleTimer) clearMinimizeDrag(); // a new finger ends a running spring at once
+    minimizeClaimed = false;
+    minimizeSamples = [];
+    minimizeGestureLive = minimizeAllowed();
+    minimizeStartScrollY = minimizeGestureLive ? pageScrollY() : 0;
+  }
+
+  // A second finger, a touchcancel or a rotate: never a commit (R3: a cancel always snaps).
+  function abortMinimizeGesture() {
+    if (minimizeClaimed) snapMinimizeDrag();
+    minimizeGestureLive = false;
+  }
+
+  function claimMinimizeDrag() {
+    minimizeClaimed = true;
+    // A claim ends the tap (R2): no hold, no single-tap toggle, no double-tap pairing.
+    tapGestureMoved = true;
+    clearTimeout(holdTimer);
+    lastTapTime = 0;
+    cancelPendingArtTap();
+    var r = host.getBoundingClientRect();
+    minimizeFrom = { x: r.left, y: r.top, w: r.width };
+    minimizeTo = dockRestingRect();
+    host.classList.remove('is-minimize-snap', 'is-minimize-settle');
+    host.classList.add('is-minimize-drag'); // style.css: the stage rises over the page below while the picture moves
+  }
+
+  function followMinimizeDrag(dy, stamp) {
+    minimizeSamples.push([stamp, dy]);
+    while (minimizeSamples.length > 2 && stamp - minimizeSamples[0][0] > MINIMIZE_SAMPLE_MS) minimizeSamples.shift();
+    if (!minimizeTo || !minimizeAnimEnabled()) return;
+    var f = minimizeDragTransform({ from: minimizeFrom, to: minimizeTo, dy: dy });
+    host.style.transformOrigin = '0 0';
+    host.style.transform = 'translate(' + f.tx + 'px, ' + f.ty + 'px) scale(' + f.s + ')';
+  }
+
+  // The host's touchmove (the v1.358 claim listener) hands every move it does not own to this.
+  function minimizeTouchMove(e) {
+    if (!minimizeGestureLive) return;
+    var t = e.touches && e.touches[0];
+    if (!t || e.touches.length > 1) { abortMinimizeGesture(); return; }
+    var dx = t.clientX - startX, dy = t.clientY - startY;
+    if (!minimizeClaimed) {
+      // holdGestureLive: a hold engaged by THIS finger owns the drag (a lock left by an earlier gesture does not).
+      var d = minimizeDragDecision({ dx: dx, dy: dy, scrollY: minimizeStartScrollY, holdActive: holdActive && holdGestureLive });
+      if (d === 'none') {
+        // Gone past the claim distance any other way (up, sideways): this gesture never becomes a minimize.
+        if (Math.abs(dx) >= MINIMIZE_CLAIM_PX || dy <= -MINIMIZE_CLAIM_PX) minimizeGestureLive = false;
+        return;
+      }
+      if (d === 'claim') claimMinimizeDrag();
+    }
+    if (e.cancelable) e.preventDefault();
+    if (minimizeClaimed) followMinimizeDrag(dy, e.timeStamp);
+  }
+
+  function minimizeVelocity(endDy, endStamp) {
+    var first = null;
+    for (var i = 0; i < minimizeSamples.length; i++) {
+      if (endStamp - minimizeSamples[i][0] <= MINIMIZE_SAMPLE_MS) { first = minimizeSamples[i]; break; }
+    }
+    if (!first || !(endStamp > first[0])) return NaN;
+    return (endDy - first[1]) / (endStamp - first[0]);
+  }
+
+  // The surface's touchend, for a claimed pull.
+  function finishMinimizeDrag(e) {
+    var t = e.changedTouches && e.changedTouches[0];
+    var dy = t ? t.clientY - startY : NaN;
+    var travel = (minimizeTo && minimizeFrom) ? minimizeTo.y - minimizeFrom.y : NaN;
+    var decision = minimizeReleaseDecision({ dy: dy, travel: travel, velocityPxPerMs: minimizeVelocity(dy, e.timeStamp) });
+    minimizeClaimed = false;
+    minimizeGestureLive = false;
+    if (decision === 'dock') minimizeToDock('drag');
+    else snapMinimizeDrag();
+  }
+
+  function snapMinimizeDrag() {
+    minimizeClaimed = false;
+    if (!host || !host.style.transform || minimizeReducedMotion()) { clearMinimizeDrag(); return; }
+    host.classList.add('is-minimize-snap');
+    host.style.transform = '';
+    if (minimizeSettleTimer) clearTimeout(minimizeSettleTimer);
+    minimizeSettleTimer = setTimeout(clearMinimizeDrag, transitionMs(host) + 50);
+  }
+
+  // R4: the one commit path, for the pull and the chevron alike. Dock first (it resets the transient UI,
+  // which clears the pull's transform, and reparents into #player-dock still playing), then the picture
+  // settles from where it was (FLIP), then the page leaves for the last browse level (M7). The router's own
+  // dock() on that swap is a no-op (already DOCKED).
+  function minimizeToDock(source) {
+    if (!minimizeAllowed()) return false;
+    var from = host.getBoundingClientRect(); // where the picture is NOW (the pull's transform included)
+    recordLifecycleEvent('minimize', { detail: source });
+    dock();
+    if (state !== STATE_DOCKED) return false;
+    playMinimizeSettle(from);
+    if (window.FileTube && typeof window.FileTube.leaveWatchForBrowse === 'function') window.FileTube.leaveWatchForBrowse();
+    return true;
+  }
+
+  // R6: the chevron, built here (no shell edit) and appended to the host, so the no-filter census sees it
+  // (player-overlay-no-filter.test.js reads every class player.js builds). Shown only while minimizeAllowed();
+  // refreshed wherever the surface changes (applyControlsMode, faux full screen, the audio expanded view, a
+  // resize or rotate). A sibling of the video: a touch on it never reaches the picture's gesture layer.
+  var minimizeBtn = null;
+  function refreshMinimizeButton() {
+    if (!host) return;
+    if (!minimizeBtn) {
+      minimizeBtn = document.createElement('button');
+      minimizeBtn.type = 'button';
+      minimizeBtn.className = 'ui-btn ui-btn--plain player-minimize';
+      minimizeBtn.setAttribute('aria-label', 'Minimize player');
+      var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      svg.setAttribute('class', 'ui-icon');
+      svg.setAttribute('aria-hidden', 'true');
+      var use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+      use.setAttribute('href', '#i-expand_more');
+      svg.appendChild(use);
+      minimizeBtn.appendChild(svg);
+      minimizeBtn.addEventListener('click', function (e) {
+        e.stopPropagation(); // the dock-close precedent: nothing under it hears this click
+        minimizeToDock('button');
+      });
+      host.appendChild(minimizeBtn);
+    }
+    minimizeBtn.hidden = !minimizeAllowed();
+  }
+
+  function playMinimizeSettle(from) {
+    if (!minimizeAnimEnabled() || minimizeReducedMotion()) return;
+    var to = host.getBoundingClientRect();
+    if (!to.width || !from.width) return;
+    var dockEl = document.getElementById('player-dock');
+    host.style.transformOrigin = '0 0';
+    host.style.transform = 'translate(' + (from.left - to.left) + 'px, ' + (from.top - to.top) + 'px) scale(' + (from.width / to.width) + ')';
+    void host.offsetWidth; // flush: the inverse pose is the transition's start
+    // The dock clips its content (overflow hidden): while the picture flies in it must not be cut to the
+    // dock's box (style.css #player-dock.is-minimize-settle).
+    if (dockEl) dockEl.classList.add('is-minimize-settle');
+    host.classList.add('is-minimize-settle');
+    host.style.transform = '';
+    minimizeSettleTimer = setTimeout(clearMinimizeDrag, transitionMs(host) + 50);
   }
 
   // v1.21 FIX 1 (post-gate hardening, both reviewers -- FR-2 regression,
@@ -4950,11 +5247,13 @@ if (typeof module !== 'undefined' && module.exports) {
       if (inNativeFullscreen() || inNativeControlsMode() || e.touches.length > 1) {
         clearTimeout(holdTimer);
         if (holdGestureLive || !holdLocked) releaseHold();
+        abortMinimizeGesture(); // v1.362: a second finger is never a minimize
         return;
       }
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
       tapGestureMoved = false; // gate W2 (v1.134 fix round): fresh gesture, no movement yet
+      beginMinimizeGesture(); // v1.362: this finger may become a pull into the mini player
       clearTimeout(holdTimer);
       holdTimer = setTimeout(engageHold, HOLD_MS);
     }, { passive: true });
@@ -4983,11 +5282,20 @@ if (typeof module !== 'undefined' && module.exports) {
     el.addEventListener('touchcancel', function () {
       clearTimeout(holdTimer);
       if (holdGestureLive || !holdLocked) releaseHold();
+      abortMinimizeGesture(); // v1.362 R3: a cancel always springs back
     }, { passive: true });
 
     el.addEventListener('touchend', function (e) {
       if (inNativeControlsMode()) return;
       clearTimeout(holdTimer);
+      // v1.362: a claimed pull ends here (dock or spring back), never as a tap.
+      if (minimizeClaimed) {
+        e.preventDefault();
+        lastTapTime = 0;
+        finishMinimizeDrag(e);
+        return;
+      }
+      minimizeGestureLive = false;
       if (holdActive && holdGestureLive) {
         e.preventDefault();
         holdGestureLive = false;
@@ -6610,6 +6918,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     if (on) revealControlsAndReArm();
     else { clearControlsAutoHide(); clearRevealGrace(); showControlsBar(); }
+    refreshMinimizeButton(); // v1.362: no chevron on the expanded view
   }
 
   function toggleAudioExpand() {
@@ -8046,10 +8355,20 @@ if (typeof module !== 'undefined' && module.exports) {
     wireSkipHoldGestures(audioBgArt, artSingleTapOrReveal);
     // v1.358: the page scrolls under a held drag unless a NON-PASSIVE touchmove claims it. Measured in Chromium
     // (tools/hold-lock-proof/probe-lock.js): a listener on the <video> itself leaves every move non-cancelable;
-    // one on an ancestor (this wrapper) makes them cancelable. It claims only the engaging finger's drag.
+    // one on an ancestor (this wrapper) makes them cancelable. It claims the engaging finger's drag; v1.362: any
+    // other move goes to the minimize pull (the same listener: no second non-passive one anywhere).
     host.addEventListener('touchmove', function (e) {
-      if (holdActive && holdGestureLive && e.cancelable) e.preventDefault();
+      if (holdActive && holdGestureLive) { if (e.cancelable) e.preventDefault(); return; }
+      minimizeTouchMove(e);
     }, { passive: false });
+    // v1.362: a rotate or resize mid-pull springs back at once (the geometry it followed is gone).
+    window.addEventListener('resize', function () { if (minimizeClaimed) clearMinimizeDrag(); refreshMinimizeButton(); });
+    window.addEventListener('orientationchange', function () { if (minimizeClaimed) clearMinimizeDrag(); refreshMinimizeButton(); });
+    // gate r1 (QA suggestion): picture-in-picture is a native presentation (inNativeFullscreen), so the
+    // chevron follows it in and out.
+    ['enterpictureinpicture', 'leavepictureinpicture', 'webkitpresentationmodechanged'].forEach(function (t) {
+      mediaPlayer.addEventListener(t, refreshMinimizeButton);
+    });
     if (speedBadge) {
       speedBadge.addEventListener('click', function () { if (holdLocked) releaseHold(); });
       speedBadge.addEventListener('keydown', function (e) {
