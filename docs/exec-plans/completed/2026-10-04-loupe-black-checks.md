@@ -3,10 +3,10 @@ plan: loupe-black-checks
 harness: v2 · lean
 branch: feat/v1.362.2-loupe-black-checks
 anchor: spec
-status: Building
-next: W1-W3 built; the full dual-Node npm test, then the gate (adversary + qa, security-brief as a section)
+status: Shipped v1.362.2
+next: Dean's v1.362.2 device checks (section 7, DEVICE-CHECKS.md; ROADMAP Planned > Device checks owed items 11-15) and the next black-picture export
 design: Dean's rulings D1-D4, 2026-10-04 (kickoff at main 140f73e4). Dean 2026-10-04, after his v1.362.1 device pass (checks 1-3 passed, the rest untested). Four asks in one branch: (1) the first ROADMAP item gathers every open device check and his VPN runbook results; (2) the iOS text loupe during a long press on the playing video; (3) the black picture RECURRED on v1.362.1, so this release builds the INSTRUMENT, not a fix; (4, mid-kickoff) logs are recorded in the background and exported with one button, and that is documented as the pattern for all log collection. Rulings D1-D4 (section 2) are Dean's, asked 2026-10-04.
-gate: pending
+gate: APPROVED r2 @9b55e0d3 (adversary, qa; security-brief applied as a section by both, no finding)
 ---
 
 # v1.362.2: one list of every open device check; no text loupe on the picture; a log that catches the black picture
@@ -257,6 +257,18 @@ Builder (Claude Opus 5.5 under the Sonnet handoff), 2026-10-04, worktree .claude
   `resetGestureLatchesOnBackground -> resetTransientPlaybackUi -> stopFrozenSampler`; the redundant stop is removed (W3 commit) and
   the hide drive keeps the video playing through the hide, verified red when the reset's stop is removed.
 
+**Full suites (dual-Node, sequential, never with a seat running).**
+- f36abfe3 (after W3): Node 22.23.1 `# tests 10958 / # pass 10946 / # fail 0 / # skipped 12`; Node 24.20.0
+  `ℹ tests 10958 / ℹ pass 10946 / ℹ fail 0 / ℹ skipped 12`.
+- 9b55e0d3 (after the round 1 fixes, the approved sha): Node 22.23.1 `# tests 10966 / # pass 10954 / # fail 0 / # skipped 12`;
+  Node 24.20.0 `ℹ tests 10966 / ℹ pass 10954 / ℹ fail 0 / ℹ skipped 12`.
+
+**Gate (section 8c).** r1 CHANGES @f36abfe3 from both seats (qa: a stalled skip read as frozen, 4 suggestions; adversary: the
+single-tap-then-hold gesture never reaches 2x, so the 7a check and the docs named the wrong gesture, the same stalled-skip finding,
+and 7 suggestions after 82 mutants); r2 APPROVED @9b55e0d3 from both. The r2 suggestions are logged in ROADMAP Planned > Bugs
+(v1.362.2 gate r2 suggestions); suggestion (c), the "must be a double-tap" overclaim, is softened in the release commit's ROADMAP
+and LESSONS text (a plain hold also reaches 2x; the 7a check settles which gesture it was).
+
 **Deviations (stated, not hidden).**
 1. `inTapRunDecision` / `tapPairCancelDecision` take `doubleTapMs` as a field (the window lives inside the IIFE).
 2. `exportDiagnosticLog`: a dismissed sheet (`AbortError`) is 'shared' (the `shareMediaFile` rule), but a share that fails for
@@ -336,6 +348,26 @@ Gate: CHANGES r1 @f36abfe3 - adversary
 8. SUGGESTION - the sampler is off while docked (by ruling), but the bug also shows in the mini player. A freeze that starts docked is logged only about 3 s after an expand, with that onset time. Say so in the 7b/7c checks or the ROADMAP bug entry.
 9. Suspicion, not a finding - with the flag on, every event does a full parse + stringify of up to ~340 KB at the cap (about 2 ms per event in Node on this box; not measured on an iPhone), including inside the non-passive touchstart. The instrument may perturb what it measures. LESSONS 8 also states "only a touchstart preventDefault stops it (WebKit bug 296492)" as fact before any device run. Mark it unconfirmed until 7a.
 Verified clean: 82 mutants (L 17, B 49, E 16). Every one was killed except those in items 3-5 and two equivalent mutants: dropping the flag gate inside `mediaPlayDetail` or `notePlayVia` survives, but `recordLifecycleEvent` drops the output with the flag off anyway. My first spelling of B27 was a syntax error; re-run as `if (false) startFrozenSampler()`, it is killed (9 red). Also verified: the real-browser export with a stubbed share (user activation live at share(), one text/plain File, sorted oldest first, no download, no toast); Clear's Cancel kept 38 entries and OK removed the key; flag off: 0 sampler timers and 0 entries; a 9 s healthy stream: 0 `video:frozen`; the double-tap still skips (20.3 -> 36.3, playing); the docked tap expands; DEVICE-CHECKS 37 open lines == ROADMAP items 1-37, in order; the pattern doc's claims about the rotate, bg-timing and debugTouch logs match the tree.
+
+Gate: APPROVED r2 @9b55e0d3 - qa
+r1 findings: 1 FIXED as prescribed (counts played time only; `seek then wait`, `a long wait` and `back skip then wait` are false; a seek followed by 3 s played and 2x playback are true; plus a sampler drive). 2 FIXED: the stamp carries its element, and every caller passes the element it acts on (togglePlayPause, swapback and autostart act on mediaPlayer, so the 'video' default is right; media-session uses activeMediaElement). 3 FIXED. 4 FIXED (pwa-ios-notes and the test comment). 5 FIXED (setup.js removeLifecycleOverlay, both switches, jsdom-bound). The adversary's doc correction holds across 7a, outcome B, section 3, DEVICE-CHECKS, ROADMAP item 11, LESSONS 8 (marked unconfirmed) and the new ROADMAP Bugs entry.
+New, non-blocking:
+1. SUGGESTION - a forward seek of 4 s or less per sample second still counts as played time: `{0,100},{1000,103},{2000,103},{3000,103}` with the count flat gives true. In practice a short scrub into an unbuffered range that then waits 2 s or more would log `video:frozen`. The double-tap and chain skips (15 s) are excluded. Fix if it shows up: require played time in at least two steps.
+2. SUGGESTION - test/unit/player-black-picture-log.test.js, the prime test's comment says "model it with a capture listener on the button", but the code wraps `h.v.play`. The modelled order (the sidecar's play after the stamp, before the video's) is right; only the comment is wrong. The desktop-click `picture-tap` test is a source lock, not a drive.
+
+Gate: APPROVED r2 @9b55e0d3 - adversary
+Delta re-review of `git diff f36abfe3..9b55e0d3`.
+- r1 1 is fixed as prescribed. The loupe test's `pause` now sets `paused` and drives both gestures, double-tap then hold and single tap then hold. 7a, outcome B, section 3, ROADMAP 11 and the new Bugs entry are corrected, and LESSONS 8 is marked UNCONFIRMED. A real-browser re-run on 9b55e0d3 matches r1: `tapHold {"rate":1,"paused":true}`, `plainHold {"rate":2}`, double-tap 20.3 -> 36.3 still playing.
+- r1 2 is fixed. `frozenPictureDecision` returns false for qa's seek-then-wait series, and mutants R1, R2, R4, R5 and R6 are killed.
+- r1 3: L14 (400) and L18 (330) are killed. L17 (351) survives; it differs only at exactly +350 ms, so I accept it.
+- r1 4: B13b is killed. B13c survives but is commented as a belt, so I accept it as disclosed.
+- r1 5: E13 is killed.
+- r1 6a and 7 are fixed. 6b is fixed and verified in a real browser: `panelAfterLogOff: null` (it was the 232 px panel). 8 is fixed in the ROADMAP bug entry.
+- New in this round, all SUGGESTIONs, none blocking:
+  - (a) The played-time rule still counts a small forward seek as played time. A seek of up to about 3 s that then stalls reads as frozen: `[[0,100,f],[1,103,f],[2,103,f],[3,103,f]] -> true`. A plain forward seek that small is usually inside the buffer, so I see it as unlikely.
+  - (b) Four mutants survive (34/34 green). R3 (drop `dt > 0`) would let a back skip mask a later freeze. R7 (`<` for `<=` at exactly 4x) is a boundary. V3 (the media-session stamp's element argument) is the bgAudio path. V4 (`playViaDetail()` without `elName` on the pause line) would let a bgAudio pause consume the video's stamp. None of these is bound by a drive.
+  - (c) Outcome B, section 3 and LESSONS 8 say the 2x loupe "must be a double-tap or chain tap then a hold". A plain hold also reaches 2x (measured), and its loupe is excluded only by the unmeasured timing argument. 7a now asks about the plain hold, so the device pass decides it.
+Mutants: 22 in a /tmp `git archive 9b55e0d3` sandbox; 16 killed, 6 survived (L17, B13c, R3, R7, V3, V4). The sandbox diffs clean against a pristine copy.
 
 ## 9. Out of scope (logged, not built)
 
