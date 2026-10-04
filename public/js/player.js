@@ -5167,7 +5167,9 @@ if (typeof module !== 'undefined' && module.exports) {
     if (minimizePeekTimer) { clearTimeout(minimizePeekTimer); minimizePeekTimer = null; }
     if (!minimizeAllowed()) { minimizePeekUntil = 0; refreshMinimizeButton(); return; }
     minimizePeekUntil = Date.now() + MINIMIZE_PEEK_MS;
-    minimizePeekTimer = setTimeout(function () { minimizePeekTimer = null; refreshMinimizeButton(); }, MINIMIZE_PEEK_MS);
+    // The timer ENDS the window (it never re-asks the clock): a timer may fire a hair before Date.now() reaches
+    // peekUntil, and a re-check would then leave the chevron up with no timer left (the Node 24 suite caught it).
+    minimizePeekTimer = setTimeout(function () { minimizePeekTimer = null; minimizePeekUntil = 0; refreshMinimizeButton(); }, MINIMIZE_PEEK_MS);
     refreshMinimizeButton();
   }
   function endMinimizePeek() {

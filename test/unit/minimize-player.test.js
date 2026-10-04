@@ -814,6 +814,16 @@ test('D1: paused shows it; play shows it for the window, then it hides at once; 
   assert.strictEqual(chev(h).hidden, false, 'paused again: shown at once');
 });
 
+test('D3: the window ends when its timer fires, even when the clock reads a hair early (no chevron left up with no timer)', async () => {
+  const h = await bootPeek(VIDEO);
+  const realNow = h.w.Date.now.bind(h.w.Date);
+  h.w.Date.now = () => realNow() - 40; // the clock lags the timer: at the timer's fire, now < peekUntil
+  h.media(false);
+  h.w.Date.now = () => realNow() - 80;
+  await wait(PEEK + 60);
+  assert.strictEqual(chev(h).hidden, true, 'the timer closed the window by itself');
+});
+
 test('D1: a touch on the picture while playing shows it for the window, and the tap still pauses', async () => {
   const h = await bootPeek(VIDEO);
   h.media(false);
