@@ -5029,7 +5029,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!host) return;
     host.style.transform = '';
     host.style.transformOrigin = '';
-    host.classList.remove('is-minimize-snap', 'is-minimize-settle');
+    host.classList.remove('is-minimize-drag', 'is-minimize-snap', 'is-minimize-settle');
     var dockEl = document.getElementById('player-dock');
     if (dockEl) dockEl.classList.remove('is-minimize-settle');
   }
@@ -5059,6 +5059,7 @@ if (typeof module !== 'undefined' && module.exports) {
     minimizeFrom = { x: r.left, y: r.top, w: r.width };
     minimizeTo = dockRestingRect();
     host.classList.remove('is-minimize-snap', 'is-minimize-settle');
+    host.classList.add('is-minimize-drag'); // style.css: the stage rises over the page below while the picture moves
   }
 
   function followMinimizeDrag(dy, stamp) {

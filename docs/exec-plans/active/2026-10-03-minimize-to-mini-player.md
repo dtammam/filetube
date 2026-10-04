@@ -291,6 +291,35 @@ check.
 |---|---|---|---|---|---|
 | before (W0, main) | 24 x 24 | 121 | 22 x 22 | 105 | 116 |
 | after (W2) | 44 x 44 | 478 | 44 x 44 | 478 | 134 |
+- **W2 mutants** (on 6e85dc12, same runner, sandbox identical to pristine after): W2-M1 a `drop-shadow` filter on the chevron
+  KILLED (2 red: the census `player-overlay-no-filter` and `R6: the chevron is a 44 px box`); W2-M2 no refresh on faux full
+  screen KILLED (`the chevron is shown only where`); W2-M3 the click propagates KILLED (`a chevron click runs the one commit
+  path`); W2-M4 the phone reserve back to 26px KILLED (`ONE value`); W2-M5 the phone X off the corner KILLED (`play/pause keeps a
+  32 px face`); W2-M6 the watch-view flag always true KILLED (2 red); W2-M7 no refresh from `applyControlsMode` KILLED; W2-M9 the
+  ring removed KILLED; **W1-M9 re-run KILLED** (`the fetch-path history push carries the browse level`). **W2-M8 SURVIVED** (the
+  ui-btn press layer, an opacity fade, restored over the picture: 30 of 30 green); fixed by a lock in the R6 test
+  (`.ui-btn.player-minimize::after { content: none }` exactly once).
+- **Full suite after W2 (verbatim tallies, `npm test`, the W2 tree plus the M8 lock):** Node 22.23.1 `# tests 10865 / # pass 10853
+  / # fail 0 / # cancelled 0 / # skipped 12`, exit 0; Node 24.20.0 `ℹ tests 10865 / ℹ pass 10853 / ℹ fail 0 / ℹ cancelled 0 / ℹ
+  skipped 12`, exit 0.
+
+**W3 (builder, 2026-10-04).**
+
+- Shots (`tools/minimize-proof/shots.js`, headless iPhone 13, single-thread raster; the main BEFORE from a `git archive c85a20c7`
+  sandbox with the same script): the chevron in 2005 / 2009 / 2014 / 2021 x light / dark (each read back from `data-theme` /
+  `data-mode`: the first run read 2021 for every era because the server's synced prefs overrode the seed and "modern" is not an
+  era id, so the script stubs `/api/prefs` and uses the registry ids; the device-handoff card from earlier contexts covered
+  the mini player, so it stubs `/api/handoff`), the pull held at 30% and 70%, the docked result, the mini player before / after
+  with the hit boxes outlined. Sent to Dean side by side.
+- **Found in the shots (W0 item 3's warning, measured):** at 70% the Like / Listen / More row painted OVER the moving picture
+  (the stage is a z-index 0 stacking context; the row after it is positioned). Dean (2026-10-04): fix it, and the look passes.
+  Fix: the host carries `is-minimize-drag` from the claim until `clearMinimizeDrag` (so through a spring-back), and
+  `.watch-player-stage:has(#player-wrapper.is-minimize-drag) { z-index: 1 }` lifts the stage over the page below while it moves
+  (header and bottom nav stay above). One counted `token-exempt` line, approved by Dean; but
+  `test/unit/ui-exceptions-ratchet.test.js` forbids ANY growth against main (the hook refused 199 -> 200), so it is paid for in
+  the same file: the dock X's `top: 4px` / `right: 4px` (two token-exempt literals) became `var(--space-2)` (4px, one global
+  definition, no era override: the same pixels). `public/css/style.css|token-exempt` 199 -> 198. Reshot: the picture now draws over the row at 70%. Bound by a test (class on
+  while pulling, off after the snap and after a commit; the rule locked by value).
 
 ## 7. Device checks (Dean, on the released build; add each to DEVICE-CHECKS.md in the release commit)
 

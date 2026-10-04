@@ -513,7 +513,7 @@ test('M5 phone: play/pause keeps a 32 px face with a 44 px hit ring; the X is a 
   assert.strictEqual(decl(ring, 'position'), 'absolute');
   const xBase = one('.player-dock-close', null);
   assert.strictEqual(decl(xBase, 'width'), '24px');
-  assert.strictEqual(decl(xBase, 'top'), '4px');
+  assert.strictEqual(decl(xBase, 'top'), 'var(--space-2)', 'the desktop X stays 4px from the corner (a token since v1.362, same value)');
   const x = one('#player-dock .player-dock-close', PHONE);
   assert.strictEqual(decl(x, 'width'), 'var(--size-touch)');
   assert.strictEqual(decl(x, 'height'), 'var(--size-touch)');
@@ -529,6 +529,10 @@ test('R6: the chevron is a 44 px box with a painted 36 px disc and no filter, ma
   assert.strictEqual(decl(r, 'height'), 'var(--size-touch)');
   assert.strictEqual(decl(r, 'position'), 'absolute');
   assert.match(decl(r, 'background'), /^radial-gradient\(circle, var\(--scrim\) 0 calc\(var\(--size-control\) \/ 2\)/);
+  // ui.css gives every .ui-btn an ::after press layer whose opacity fades in; over the picture that is stop rule (d):
+  // the chevron removes it (W2-M8 survived until this line existed).
+  const press = one('.ui-btn.player-minimize::after', null);
+  assert.strictEqual(decl(press, 'content'), 'none', 'no press layer fading over the picture');
   for (const rr of RULES.filter((q) => /player-minimize/.test(q.selector))) {
     assert.doesNotMatch(rr.body, /(filter|mask|mix-blend-mode|opacity)\s*:/i, rr.selector);
   }
@@ -540,4 +544,20 @@ test('one non-passive touchmove on the host and none on the document (LESSONS 4)
   const nav = COMMON_SRC.slice(COMMON_SRC.indexOf('function navigate('), COMMON_SRC.indexOf('function handleDocumentClick'));
   assert.match(nav, /const state = buildHistoryState\(view, parsed\.href, 0, desiredDepth, null, browseDepthBehind\(window\.history\.state\)\);/,
     'a watch entry pushed by navigate() remembers the browse level it was opened from');
+});
+
+test('W3 (Dean 2026-10-04): while the finger pulls, the stage rises over the page below; the class is gone after the snap and after a commit', async () => {
+  const r = one('.watch-player-stage:has(#player-wrapper.is-minimize-drag)', null);
+  assert.strictEqual(decl(r, 'z-index'), '1');
+  let h = await boot(VIDEO);
+  let g = pull(h, 60);
+  assert.ok(h.host.classList.contains('is-minimize-drag'), 'on while pulling');
+  fire(h.w, h.v, 'touchend', g.x, g.y, g.t + 10);
+  await wait(420);
+  assert.ok(!h.host.classList.contains('is-minimize-drag'), 'off after the snap');
+  dom.window.close(); dom = null;
+  h = await boot(VIDEO);
+  g = pull(h, 300);
+  fire(h.w, h.v, 'touchend', g.x, g.y, g.t + 10);
+  assert.ok(!h.host.classList.contains('is-minimize-drag'), 'off once docked');
 });

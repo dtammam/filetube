@@ -1347,8 +1347,8 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 
 .player-dock-close {
   position: absolute;
-  top: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
-  right: 4px; /* token-exempt: positional geometry (Stop A Batch A) */
+  top: var(--space-2); /* v1.362: was a 4px literal, the same value (pays for the stage lift's annotation) */
+  right: var(--space-2);
   z-index: 5; /* token-exempt: local stacking */
   width: 24px;
   height: 24px;
@@ -1386,6 +1386,12 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
    home, and a commit settles the docked host from where the finger left it (FLIP). While it settles,
    the dock stops clipping it to the dock's own box. Plain transforms only: nothing here filters,
    masks or fades the picture (LESSONS 7). */
+/* While the finger pulls (and the picture springs back), the watch stage, a z-index 0 stacking context,
+   rises over the page below it: the action row after it is positioned and would otherwise paint over the
+   moving picture (W3 screenshot, Dean 2026-10-04). Header and bottom nav stay above it. */
+.watch-player-stage:has(#player-wrapper.is-minimize-drag) {
+  z-index: 1; /* token-exempt: local stacking (v1.362, Dean 2026-10-04) */
+}
 #player-wrapper.is-minimize-snap {
   transition: transform var(--dur-fade) var(--ease-std);
 }
