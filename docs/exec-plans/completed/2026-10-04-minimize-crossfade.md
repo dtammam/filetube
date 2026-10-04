@@ -3,10 +3,10 @@ plan: minimize-crossfade
 harness: v2 · lean
 branch: feat/v1.362.4-minimize-fade
 anchor: spec
-status: Building
-next: dual-Node on b83b2822, then gate r2 (the same seats)
+status: Shipped v1.362.4
+next: Dean's v1.362.4 device check (section 6; ROADMAP Device checks owed item 16): compare with YouTube side by side
 design: Dean's rulings F1-F3, 2026-10-04 (kickoff at main 471c15e7), from his YouTube screen recording.
-gate: pending
+gate: APPROVED r3 @91cfc287 (adversary, qa; security-brief applied as a section by both, no finding)
 ---
 
 # v1.362.4: the page under the video fades like YouTube's when it minimizes and expands
@@ -97,6 +97,14 @@ and on `.watch-sidebar`. On another page the whole `#view-root` fades only while
 - Disclosed (adversary r1 S7): the 4 s arrival mark also fades a page reached by another navigation inside the window; a TV
   episode (a readerHref return) fades on minimize but not on expand; WebKit was not available to either seat (Playwright's
   webkit build is not installed), so the iPhone check stands.
+
+- Dual-Node full `npm test` on 76270536: Node 22.23.1 `# tests 10994 / # pass 10982 / # fail 0 / # skipped 12`; Node 24.20.0
+  `ℹ tests 10994 / ℹ pass 10982 / ℹ fail 0 / ℹ skipped 12`.
+- Gate r2 CHANGES @76270536 (both: the census exempted any rule holding `opacity: 1` even when it animated; no docked state).
+  Dean approved a third round. Fix 91cfc287 (test only; `git diff 76270536..91cfc287 -- public/` empty): any animation is a hit,
+  a docked state joins; hook `ℹ tests 8567 / ℹ pass 8567 / ℹ fail 0`; the reviewers' survivors (C-M9, C-M2, qa's
+  `opacity: 1` + animation, `opacity: 1; opacity: .5`) all KILLED. Gate r3 APPROVED @91cfc287 (adversary, qa). The r3
+  suggestions are in ROADMAP Planned > Bugs.
 
 ## 6. Device checks
 
@@ -191,3 +199,112 @@ title 0.4 / sidebar 0.4 at `--minimize-fade: 1`; mid-pull the moving host is ABO
 (elementsFromPoint hostIdx 0 vs 3 and 2). INSTRUMENT GAP: Playwright WebKit is not installed (`Executable doesn't exist at
 .../webkit-2336`), so nothing here is WebKit-verified; the device check stands. DEVICE-CHECKS 38 open lines == ROADMAP 1-38
 in order, +39 VPN. Security: no new surface (class and custom-property toggles on existing nodes, no input parsed; probes local).
+
+Gate: CHANGES r2 @76270536 - qa
+
+r1 findings against b83b2822 (mutants in a /tmp `git archive 76270536` sandbox, exact-once, restored, `diff -rq` clean):
+- 1 FIXED as prescribed. The rate-cap mutant now fails the seek drive (`# pass 40 # fail 2`, the drive plus the pure test).
+- 2 FIXED differently (MutationObserver on #view-root's parent plus a popstate listener, instead of a cleanup in expand()):
+  better, because it also covers a back before the watch page arrives. My r1 drive now prints `QA-A home is-view-leaving after back:
+  false`. Observer callback made a no-op: `# fail 1`; popstate listener made a no-op: `# fail 1`; the old order in the dock tap
+  (dim, then mark): `# fail 1`. Lifetime and reach: one observer per tab, childList only, on the persistent parent, an isConnected
+  check per mutation; the popstate path skips the minimize's own history.go (the watch root has no is-view-leaving). OK.
+- 3 FIXED as prescribed. The r1 drive prints `QA-B after rotate: fade= "" fading class false`; the old guard: `# fail 1`.
+- 4 FIXED (element.matches census; `.watch-main > * { opacity: 0.5 }`: `# fail 1`), but see the NEW finding below.
+- 5 FIXED (markViewArrival, header, snap comment and plan next: all accurate now).
+
+NEW:
+1. WARNING - test/unit/minimize-crossfade.test.js census, `if (ok && !/opacity\s*:\s*1\s*(;|$)/.test(r.body.trim()))`: the
+   opacity-1 exemption covers the WHOLE rule body, so a rule that ALSO animates is exempt. Mutant (style.css, before the keyframes):
+   `#view-root .watch-main > * { animation: ft-view-arrive 1s; opacity: 1; }`, which animates the player stage (an ancestor of the
+   video) from 0.4 to 1. It SURVIVES the census and every other test that reads style.css: 28 files, `# tests 690 / # pass 690 /
+   # fail 0`. (With a named subject, `.watch-main { opacity: 1; animation: ... }`, it is caught only by the older name census.)
+   `opacity: 1` plus a fade-in animation is a common idiom, and this is the lock the design and the new LESSONS-rules line ("EVERY
+   opacity / animation rule") rest on. Fix, sandbox-verified: exempt only when the body has no animation, i.e.
+   `if (ok && (/(^|[;\s])(?:-webkit-)?animation(?:-name)?\s*:/i.test(r.body) || !/opacity\s*:\s*1\s*(;|$)/.test(r.body.trim())))`.
+   The current sheet passes it (`# pass 18 # fail 0`) and the mutant fails (`# fail 1`). The shipped CSS is clean, so this is a lock
+   hole, not a live bug.
+Note, not a finding: a selector jsdom cannot parse now fails the census by design. The message names the selector, and the current
+sheet parses cleanly.
+
+Instruments: crossfade + black-picture + overlay-no-filter + ambient-glow `# tests 91 / # pass 91 / # fail 0 / # skipped 0`;
+lint:ui `TOTAL 3179` / `ui-lint: OK - the live debt equals docs/ui-exceptions.json`; `overlay-containment: clean (0 violations)`;
+eslint exit 0; `check-markers: 12 issue(s) found` (all in completed/ and 2026-09-29-next-waves.md, the same as at base); 0 em
+dashes added. Security: no new surface (a same-document observer and a popstate listener that only remove classes).
+
+Gate: CHANGES r2 @76270536 - adversary
+
+Sandbox: `git archive 76270536` in /tmp/adv-v13624 (+ pristine), mutants exact-once, restored, `diff -rq` clean except my probe
+script (sandbox only). Targeted suites: crossfade + black-picture + ambient-glow + overlay-no-filter `# tests 91 # pass 91 #
+fail 0`; eslint exit 0 (3 changed js files); `ui-lint: OK - the live debt equals docs/ui-exceptions.json`.
+
+r1 findings against the fix:
+- 1 FIXED as prescribed. Chromium (`adv-probe.js` on 76270536), expand, pull, resize mid-pull: `B_midPull title 0.809524 cls
+  is-minimize-fading` -> 6 s later `B_6sLater title 1, cls "", mark null`, root style empty. Old guard (R-M5): KILLED.
+- 2 FIXED differently (MutationObserver + popstate), better than prescribed. Chromium, back at +900 ms after an expand:
+  `[8101,"home","",0.4]` -> `0.60, 0.69 ... 0.9995` -> `[8397,"home","",1]`: the cached home comes back CLEAN and plays the
+  arrival fade (~300 ms), where r1 sat at 0.4 for 3.1 s. Observer no-op (R-M1), popstate no-op (R-M3), observer never
+  installed (R-M7): KILLED. One observer per tab (singleton, never re-created), childList only on the persistent parent, an
+  isConnected check per mutation; the popstate listener is registered once and is a no-op with no mark. Survivors, harmless:
+  R-M2 (the observer cleans only is-view-leaving: a swapped-out watch node keeps dead classes, never re-inserted) and R-M4
+  (popstate drops the is-view-leaving check: only a back between a minimize's mark and its swap differs).
+- 3 FIXED: Q-M1 now fails the seek drive and the pure test (`pass=40 fail=2`).
+- 4 PARTLY FIXED. KILLED now: A-M6, A-M1, A-M3, C-M1 (opacity on the stage while dragging), C-M3, C-M8/C-M8b (named subjects,
+  by the older name census). See NEW 1.
+- 5 FIXED (mark, then dim): R-M6 KILLED. 6 FIXED: A-M16 KILLED; wide/fine drives added. 7 disclosed in section 5; comments true.
+
+NEW:
+1. WARNING (same hole as qa r2 NEW 1, found independently, plus one qa did not report) - the element.matches() census is
+   porous in two ways:
+   (a) `opacity: 1` anywhere in a rule body exempts the whole rule. C-M9 `html[data-ft-view-fade="arrive"] .watch-container > *
+       { opacity: 1; animation: ft-view-arrive var(--dur-sheet) var(--ease-enter); }` animates .watch-main (an ancestor of
+       the video) from 0.4: crossfade + ambient + overlay-no-filter `pass=49 fail=0` SURVIVED.
+   (b) No state has the host DOCKED, and that is exactly where it sits during the leave and the arrival after a minimize.
+       C-M2 `html[data-ft-view-fade="arrive"] #player-dock { animation: ft-view-arrive ... }` (dims the playing mini player)
+       `pass=49 fail=0` SURVIVED.
+   Prescription, run in the sandbox: add a state `{ label: 'docked', html: 'arrive', root: ['is-view-leaving'], view: 'home',
+   docked: true }` that mounts the host into #player-dock (skip the under-#view-root assert and the positive control for it),
+   and flag a hit when `/animation/.test(r.body) || /opacity\s*:\s*(?!1\s*(;|$))/.test(r.body.trim())`, which also catches
+   `opacity: 1; opacity: .5`. qa's rule does not. Result: the current sheet `# pass 18 # fail 0`; C-M9 KILLED, C-M2 KILLED.
+   The shipped CSS is clean: in Chromium the minimum ancestor opacity is 1 over 1313 frames, docked included. So this is a lock
+   hole, not a live bug, but it is the r1 blocker's lock, and LESSONS-rules section 7 now says "EVERY ... under every fade state".
+
+Gate: APPROVED r3 @91cfc287 - adversary
+
+Delta 76270536..91cfc287 = test/unit/minimize-crossfade.test.js only (`git diff --stat -- public/` empty: no product change since
+the r2 Chromium measurements). Sandbox `git archive 91cfc287` (+ pristine), mutants exact-once, restored, `diff -rq` clean
+(exit 0). crossfade `# tests 18 # pass 18 # fail 0`.
+- r2 NEW 1 FIXED. (a) KILLED: C-M9 (`.watch-container > * { opacity: 1; animation: ... }`), C-M8c (`* { opacity: 1; opacity:
+  0.5 }`), C-M14 (`body > * { opacity: 1 !important; animation }`). (b) KILLED: C-M2 (`#player-dock` animation under the arrive
+  mark), by the new docked state.
+- Hunted new porousness, all KILLED by the census itself: C-M11 `-webkit-animation` on `*`, C-M12 `animation-name` alone inside
+  `@media` on `main > *`, C-M13 `{OPACITY:.5}` (uppercase, no space), C-M15 `@supports` wrapper with an `:is(.watch-main, .x)`
+  subject; A-M6 still KILLED. The stricter hit test only ADDS hits, and the suite is green, so the four earlier states remain
+  sound (no existing rule matches the video or an ancestor in any of them). It errs conservative (`opacity: 1.0`, `!important`,
+  `animation: none` would be flagged), never porous in what I tried.
+- Test mutant T-M1 (hit condition -> false) survives on the clean sheet, as expected: the census's binding is shown by the CSS
+  mutants above, not by the clean run.
+- Carried, harmless (r2): R-M2, R-M4. Disclosed (section 5): the 4 s mark spans other navigations; TV expand; WebKit not
+  available, so the iPhone device check stands.
+
+Gate: APPROVED r3 @91cfc287 - qa
+
+Delta 76270536..91cfc287: test/unit/minimize-crossfade.test.js only (`git diff --stat -- public/` is empty). Mutants ran in a /tmp
+`git archive 91cfc287` sandbox, exact-once, restored, `diff -rq` clean, sandbox deleted.
+- r2 WARNING (the census exempted an animating rule if it also said `opacity: 1`): FIXED. `#view-root .watch-main > * { animation:
+  ft-view-arrive 1s; opacity: 1; }` -> `# pass 17 # fail 1`. Also killed: `body #player-wrapper { opacity: 0.99 }` (`# fail 2`),
+  `@media (max-width: 768px) { .watch-container > .watch-main { opacity: 0.5 } }` (`# fail 2`), `#player-dock { animation }` in the
+  new docked state (`# fail 1`).
+SUGGESTIONS (not blocking; the shipped CSS is clean under the strict reading):
+1. The exemption regex `opacity\s*:\s*(?!1\s*(;|$))` backtracks: `\s*` gives up its space and the lookahead then sees " 1;", so
+   `opacity: 1;` (the sheet's spacing) is a HIT (node: `"opacity: 1;" true`, `"opacity:1;" false`). The comment "only a rule whose
+   opacity is exactly 1 ... is exempt" is false. The error is on the strict side (a future restoring `opacity: 1` on an ancestor
+   would red, not slip through). Fix: `opacity\s*:(?!\s*1\s*(;|$))`, which on the current sheet gives `# pass 18 # fail 0`.
+2. The census states do not set the minimize's transient classes on the host or dock (`is-minimize-drag/snap/settle`).
+   `#player-dock.is-minimize-settle { animation: ... }` passes the census (`# pass 18 # fail 0`). It is killed in the wider suite
+   only incidentally (minimize-player.test.js D6 (c) reads the first rule with that selector). A fifth state with those classes
+   would close it.
+Instruments: crossfade + black-picture + overlay-no-filter + ambient-glow + minimize-player `# tests 148 / # pass 148 / # fail 0 /
+# skipped 0`; lint:ui `TOTAL 3179` / `ui-lint: OK - the live debt equals docs/ui-exceptions.json`; `overlay-containment: clean
+(0 violations)`; eslint exit 0; `check-markers: 12 issue(s) found` (all pre-existing, in completed/ and 2026-09-29-next-waves.md);
+0 em dashes added. Security: no surface (test-only change).
