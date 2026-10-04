@@ -58,7 +58,11 @@
   wall time through pauses; if it restarts per play, healthy ~1.3 s rounds could read flat and fire `video:frozen` falsely in Run A
   (qa, a suspicion): the line's `fser` and the pause lines' `+f` are the check; (c) backups with no own binding: the `ld` reset in
   `noteFrameCount`, the `ld` guard on the pause delta, `loadstart` in the baseline reset (redundant behind `emptied`), and the
-  frame-count note when an expand or a return starts a run (costs at most one second).
+  frame-count note when an expand or a return starts a run (costs at most one second); r2: (d) `player:expand` also logs a
+  re-mount that never left the full player (a mini-player tap wrote two lines, a new item from a full watch page one), and
+  `player:dock` is written before `dock()`'s missing-dock return: read a layer restart against `state` before blaming an
+  expand; log inside `mountInSlot` with `moved=` if it misleads; (e) an audio item's pause line lost its `+t` (audio never
+  samples; it has no frame count).
 
 - [ ] **v1.362.2 gate r2 suggestions (non-blocking)** - (a) a small FORWARD seek (up to about 3 s per sampled second) that then
   stalls still counts as played time, so it can log `video:frozen` (the app's own skips, 15 s and 5 s, are excluded; a fix: require
@@ -648,6 +652,24 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.362.3 - No loupe on any hold; the log adds up short rounds and names a layer restart (2026-10-04)
+
+- Dean's v1.362.2 device pass: the loupe still showed, on a PLAIN hold (v1.362.2 cancelled only a touch inside the tap window), and
+  the picture went black "at the very end, one of the last pauses" with the first exported log in hand. Now EVERY one-finger touch
+  that starts on the full player's picture or art is cancelled (`pictureTouchCancelDecision`); docked, native full screen and
+  native controls never. Cost (Dean's ruling): a finger that starts on the picture no longer scrolls the page, and scrolled down a
+  pull on the picture does nothing (Chromium: 120 -> 120 px; main 120 -> 0). Every gesture measured unchanged in Chromium.
+- The log: the frozen-picture series survives a pause (each play is a run; only in-run steps count), so short pause/play rounds add
+  up; each pause line carries `+f` / `+t` since its run began; `video:fcount-reset` when the layer's frame count goes down (the
+  first log showed it after each 2x hold); the hold lines carry `f=`; `player:dock` / `player:expand` lines.
+- Settings > Troubleshooting > "No glyph on picture taps": a TEST switch for the black-picture runs only (the one thing a picture
+  tap still draws over the playing video). Dean: "A toggle workaround for a recently introduced non root caused bug is not
+  tolerable": it is removed with the real fix.
+- DEVICE-CHECKS: the black-picture test is four runs (taps / taps with no glyph / tap-pause bar-resume / holds then bar); the bug
+  entry carries the first log and H4 (a 2x hold restarts the layer). The investigation moves to a Fable session.
+- Gate: adversary + qa. r1 CHANGES @5c7e6718 (both: the scrolled-down pull's false text, the switch's unbound wiring); r2 APPROVED
+  @9d7b27f9 (qa, adversary); security-brief applied by both, no finding.
 
 ### v1.362.2 - No loupe after a double-tap; the black-picture log, exported with one button; one list of device checks (2026-10-04)
 
