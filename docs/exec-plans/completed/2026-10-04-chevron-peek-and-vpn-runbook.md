@@ -3,10 +3,10 @@ plan: chevron-peek-and-vpn-runbook
 harness: v2 · lean
 branch: feat/v1.362.1-chevron-runbook
 anchor: spec
-status: Building
-next: W0-W3 + the suite fix committed, dual-Node green at 39ee4a7b; W4 gate (adversary + qa, section 8) running, verdicts in 8c
+status: Shipped v1.362.1
+next: Dean's v1.362.1 device checks (section 7, DEVICE-CHECKS.md); follow the VPN runbook (docs/references/vpn-slowness-runbook.md) and send the run ids
 design: Dean 2026-10-04, after his v1.362.0 smoke test ("It works great"): the minimize chevron "is always visible when I'm listening or watching something" and feels awkward; he took the Architect's recommendation (show it while paused, for a few seconds after playback starts and after any touch on the picture; hidden while playing, instantly). Bundled by Dean in one branch: the two v1.362 gate r2 leftovers the Architect recommended (the history-cap gap; the untested picture-in-picture refresh and settle clip) and a runbook for diagnosing his slow app over the VPN, built on the tooling that already exists.
-gate: adversary + qa (the player's chevron visibility on the shared player core, the SPA router's minimize landing; the runbook's every claim checked against the tree; security-brief applied as a section by both)
+gate: APPROVED r2 @ee812180 (adversary, qa) (the player's chevron visibility on the shared player core, the SPA router's minimize landing; the runbook's every claim checked against the tree; security-brief applied as a section by both)
 ---
 
 # v1.362.1: the minimize chevron peeks instead of staying up; the landing's last history gap; a VPN slowness runbook
@@ -294,6 +294,9 @@ exit 0; Node 24.20.0 `ℹ tests 10890 / ℹ pass 10878 / ℹ fail 0 / ℹ cancel
 4. Follow the runbook once; tell Claude where it was unclear.
 5. VoiceOver (gate r1, QA suspicion, unmeasured): with VoiceOver on and a video playing, move the VoiceOver cursor to the
    chevron; does it stay while the cursor rests on it, or vanish after about 3 s?
+6. The tap guard on WebKit (gate r2, adversary: measured in Chromium only): a video playing, the chevron hidden, double-tap the
+   picture's top-left corner (where the chevron sits): it skips back 15 s and never minimizes. Also tap to pause there and lock
+   the phone at once (QA r2): the pause may not happen (the pending tap now dies with backgrounding); say if that bothers you.
 
 ## 8. Gate brief (attack surfaces)
 
@@ -379,6 +382,54 @@ Round 1 fixes (builder, 2026-10-04):
   the touchstart guard masked it in an instant tap); bound by `the pairing window runs from the LIFT` (a 300 ms press), then
   KILLED by that name (`# tests 57 / # pass 56 / # fail 1`; the committed product code with the new test file copied into the
   sandbox and its pristine twin).
+
+Gate: APPROVED r2 @ee812180 - qa
+
+Instruments (verified, sandbox `git archive ee812180` under /tmp, identical to its pristine copy after the mutant): lint:ui "ui-lint: OK - the live debt equals docs/ui-exceptions.json" (TOTAL 3179; ui-exceptions.json unchanged vs 10fe3291); overlay-containment "clean (0 violations)"; eslint on the changed .js "0 errors, 6 warnings" (the 6 pre-existing common.js ones); targeted 6 files Node 22.23.1 `# tests 160 / # pass 159 / # fail 0 / # skipped 1`, Node 24.20.0 `ℹ tests 160 / ℹ pass 159 / ℹ fail 0 / ℹ skipped 1` (the sandbox has no .git, so the ratchet skips there; run read-only in the worktree it gives 3/3, 0 skipped, on both Nodes). My own mutant: I dropped `cancelPendingArtTap()` from resetTransientPlaybackUi (exact once, then restored). It was KILLED by name: `not ok 55 - gate r1: a single tap still waiting out the double-tap window never pauses the player after a dock` (`# tests 57 / # pass 56 / # fail 1`).
+
+r1 findings, each against the fix:
+- WARNING runbook "-" vs 0 ms warm: FIXED AS PRESCRIBED (runbook lines 125-128 match diag-page.js:199/247 and the probe's "80 ms cold / 0 ms warm"; build log line 267 corrected).
+- WARNING DEVICE-CHECKS.md:23: FIXED. It now says when the chevron shows (paused, or about 3 s after play or a touch).
+- Stale app tabs: FIXED DIFFERENTLY AND BETTER. It closes the previous run's tabs before arming AND this run's tab before Stop & save. That is right: perf-collector.js:72 flushes the in-memory buffer on pagehide, so closing first puts this run's last events in before stopRun reads them.
+- Linger, API needs the switch, privacy: FIXED. The text is accurate to routes.js (the gate) and to diag-page.js:40-41 and perf-collector.js:88. "every 30 to 60 seconds" matches HANDOFF_POLL_MS 30000 and NOTIF_BADGE_POLL_MS 60000.
+- Test title: FIXED. The stale player.js comment: FIXED, and the new text is true (player.js:8404 passes `videoSingleTapOrReveal`, `shouldArtSingleTapAct` is true in full, and the branch preventDefaults). VoiceOver: section 7 item 5, as suggested.
+
+New code (the tap guard and the pending-tap cancel), re-derived:
+- One writer holds. `inert` is written only in refreshMinimizeButton (toggleAttribute), and the D2 lock now counts it. No paint, so LESSONS 7 holds. The guard only grows (`until > current`), its timer ENDS it without re-reading the clock, and endMinimizePeek clears it, so a dock, close, load or backgrounding drops it.
+- Each of the 4 resetTransientPlaybackUi callers, with the cancel:
+  - load (player.js:8866): BETTER. A pending tap from the old item can no longer toggle the new one.
+  - dock (9550): the intended fix.
+  - close (9610): already cancelled there, a no-op.
+  - backgrounding (4785): see the suggestion below.
+- Desktop: the shared scheduleArtSingleTap (the mediaPlayer and art click paths) is also cancelled on a dock within 350 ms. Correct.
+
+- SUGGESTION (disclosed, not blocking), player.js:4785 with the new cancel at ~4966: a tap to pause followed within 350 ms by a lock or app switch is now dropped. Before, the debounced pause would probably still have fired. Scenario: tap to pause, press the side button at once, with Instant background-audio handoff on: the sound may carry on in the background. The window is 350 ms and needs one specific setting, and the reset's purpose (no gesture outlives its surface) argues for the cancel. So I note it for the device pass; I am not asking for a change.
+- SUGGESTION player.js ~5248-5257 (the scheduleArtSingleTap header): it names the touchend double-tap and the click listener as what cancels a pending tap. close() (pre-existing) and now resetTransientPlaybackUi also do. A one-clause update when next touched.
+
+Gate: APPROVED r2 @ee812180 - adversary
+
+Delta verified in a `git archive ee812180` sandbox (identical to its pristine copy after, `diff -r` clean). Targeted 5 files: Node 22.23.1 `# tests 171 / # pass 171 / # fail 0`; Node 24.20.0 `ℹ tests 171 / ℹ pass 171 / ℹ fail 0`.
+
+- r1 WARNING (double-tap at the hidden chevron's spot): FIXED as described. I re-ran adv-probe1.js on the branch in real Chromium (iPhone 13, raw CDP touch). Playing at 33.6 s with the chevron hidden, a double-tap at (26, 98) 120 ms apart skips back to 18.95 s; at +800 ms it is still `full`, `/watch.html?v=clip1`, playing (r1: docked and paused). A 4-tap chain at the spot, 150 ms apart, skips to 0.75 s, still full and playing. A hold at the spot: 2x while held, 1x after release, still full. The guard reads `inert` true right after the tap and false 420 ms after the lift.
+- Probes on the edges (all measured, none blocking):
+  - (a) A second tap at the spot 420 ms after the first lift (the guard has expired) minimizes. The video is already paused by then, because the first tap's pause fires at 350 ms. The chevron is visible and paused, which is the D1 rule. At v1.362.0 the first tap there minimized outright. A tap later than 350 ms is not a double-tap for the classifier anywhere on the picture, so I judge this intended.
+  - (b) A moved touch at the centre, then a tap on the SHOWN chevron 200 ms later: the tap reaches the picture (it paused; full). The tap reaches the picture, as the builder said it would. A deliberate chevron tap within 350 ms of touching the picture is rare, and the cost is one pause, not a lost state. I do not judge it a regression worth blocking.
+  - (c) The same with a 600 ms gap: it minimizes, still playing.
+- WebKit `inert` hit testing is device-only, and the whole fix rests on it. Chromium is verified. On iOS, if WebKit still hit-tests an inert button, the r1 bug returns as it was. SUGGESTION: add a device check to section 7 / DEVICE-CHECKS.md: "playing, chevron hidden: double-tap the picture's top-left corner: it skips back, never minimizes".
+- r1 WARNING (runbook "-" vs "0 ms warm"): FIXED. The runbook now states a missing half prints 0 ms ("80 ms cold / 0 ms warm" means not tagged), which matches diag-page.js (`Math.round(c.warm || 0)`) and my r1 page read. The QA follow-ons are in and match the code: close old tabs (perf-collector flush), switch back promptly, the API needs the switch on (routes.js gate), the privacy line (diag-page.js `ua`/`host`, perf-collector paths with query strings).
+  - SUGGESTION, minor: "every 30 to 60 seconds" is the idle cadence (handoff 30 s, notification badge 60 s; my r1 measurement saw only the 30 s handoff poll on Home). remote.js polls at 1.5 to 5 s when it is on, so "at least every 30 to 60 seconds" is more exact. The advice is right either way.
+- r1 SUGGESTION A14: FIXED. The over-count mutant is now KILLED (`an index that over-counts by one still goes Home`).
+- r1 SUGGESTION D4 (the sidecar's paused source is checked only by a source-text lock): unchanged, still reasoned and not run (no FFmpeg on this box). Not blocking.
+- Mutants on ee812180 (Node 22, 5 files, 171 tests):
+  - KILLED: B1 no guard at the picture touchstart; B2 no guard from the single-tap lift (R1-M2, now bound by `the pairing window runs from the LIFT`); B3 no guard through the chain; B4 inert never written (4); B5 the guard timer does not zero (3); B6 the guard never extends (2); B7 no cancelPendingArtTap in resetTransientPlaybackUi; B9 guard delay doubled (3); A14 re-run; A7 (the r1 peek clock re-read) re-run.
+  - SURVIVED: B8, endMinimizePeek keeps the tap guard. It is benign: the guard self-expires within 800 ms at most, and the chevron is hidden while docked. The only observable effect is that a chevron expanded inside a live guard stays inert until the guard ends. No action needed.
+- New with the fix: no clock re-read (the guard's timer zeroes `minimizeTapGuardUntil`). `inert` is an attribute written once, in refreshMinimizeButton, and locked by the D2 test. There is no paint (LESSONS 7). No security surface added.
+
+Gate closed (builder, 2026-10-04): both seats APPROVED r2 @ee812180. Taken after the gate, docs only: device check 6 (WebKit
+`inert`, adversary r2; the backgrounding cancel, QA r2) and the runbook's "at least every 30 to 60 seconds" (adversary r2). Logged
+to ROADMAP Planned, not built (a code edit past the approved sha): the scheduleArtSingleTap comment clause (QA r2); D4's sidecar
+read stays source-bound (no FFmpeg on this box to reach it). Masked mutant B8 (endMinimizePeek keeps the tap guard): benign,
+disclosed.
 
 ## 9. Out of scope (logged, not built)
 
