@@ -1,0 +1,385 @@
+{
+ "runAt": "2026-10-04T03:10:13.025Z",
+ "settings": {
+  "perfDiag": {
+   "label": "Performance diagnostics (experimental)",
+   "section": "Experimental",
+   "checked": false
+  },
+  "openButton": {
+   "text": "Open performance diagnostics",
+   "hidden": true,
+   "href": "/diag"
+  },
+  "bgAudioSync": {
+   "label": "Instant background-audio handoff (experimental)",
+   "section": "Experimental"
+  },
+  "lifecycleLog": {
+   "label": "Show lifecycle debug log",
+   "section": "Troubleshooting"
+  }
+ },
+ "diag": {
+  "title": "FileTube Perf Diagnostics",
+  "h1": "FileTube Perf Diagnostics",
+  "back": "← Back to Settings",
+  "status": "Idle - no run armed.",
+  "sections": [
+   "1 · Arm a run",
+   "2 · Guided scenarios",
+   "3 · Active probes (isolate one variable each)",
+   "4 · Saved runs & isolation matrix"
+  ],
+  "fieldLabels": [
+   "Network label (what conditions is this run?)",
+   "Note (optional - device, signal bars, anything)"
+  ],
+  "chips": [
+   {
+    "text": "LAN",
+    "fills": "LAN (home wifi, no VPN)"
+   },
+   {
+    "text": "5G + VPN",
+    "fills": "5G + VPN"
+   },
+   {
+    "text": "5G no VPN",
+    "fills": "5G, no VPN"
+   },
+   {
+    "text": "WiFi + VPN",
+    "fills": "Home wifi + VPN"
+   }
+  ],
+  "buttons": [
+   {
+    "id": "startBtn",
+    "text": "Arm run & start recording",
+    "disabled": false
+   },
+   {
+    "id": "stopBtn",
+    "text": "Stop & save",
+    "disabled": true
+   },
+   {
+    "id": "openAppBtn",
+    "text": "Open FileTube in new tab ↗",
+    "disabled": false
+   },
+   {
+    "id": "clearScenario",
+    "text": "Clear active scenario",
+    "disabled": false
+   },
+   {
+    "id": "probeRtt",
+    "text": "Measure RTT (20×)",
+    "disabled": false
+   },
+   {
+    "id": "probeThroughput",
+    "text": "Throughput (1 / 5 / 20 MB)",
+    "disabled": false
+   },
+   {
+    "id": "probeCompression",
+    "text": "Compression delta",
+    "disabled": false
+   },
+   {
+    "id": "refreshRuns",
+    "text": "Refresh",
+    "disabled": false
+   },
+   {
+    "id": "compareBtn",
+    "text": "Compare selected (2)",
+    "disabled": true
+   }
+  ],
+  "scenarios": [
+   {
+    "title": "Cold app load -> Home",
+    "desc": "Open FileTube fresh in the app tab (or hard-reload). Wait until Home fully populates.",
+    "button": "Set active",
+    "disabled": true
+   },
+   {
+    "title": "Soft-nav: Home -> Music",
+    "desc": "Inside the app, navigate Home to Music (same-section view swap).",
+    "button": "Set active",
+    "disabled": true
+   },
+   {
+    "title": "Cross-section: Music -> TV",
+    "desc": "Navigate Music to TV (a full-document section load).",
+    "button": "Set active",
+    "disabled": true
+   },
+   {
+    "title": "Open a video (time-to-first-frame)",
+    "desc": "Tap a video. Stop interacting the moment it starts playing.",
+    "button": "Set active",
+    "disabled": true
+   },
+   {
+    "title": "Seek to the middle",
+    "desc": "While a video plays, seek to roughly its midpoint.",
+    "button": "Set active",
+    "disabled": true
+   },
+   {
+    "title": "Scrub a feed row (thumbnails)",
+    "desc": "Scroll a feed row so a batch of thumbnails loads.",
+    "button": "Set active",
+    "disabled": true
+   },
+   {
+    "title": "Play ~60s untouched (stalls)",
+    "desc": "Let a video or track play for about a minute without touching it.",
+    "button": "Set active",
+    "disabled": true
+   },
+   {
+    "title": "Warm reload -> Home",
+    "desc": "Reload Home once more, to compare against the cold load.",
+    "button": "Set active",
+    "disabled": true
+   }
+  ],
+  "probeIdle": "Arm a run, then fire probes so their results attach to it.",
+  "hints": [
+   "The red REC badge appears in the app tab while a run is armed. Do your scenarios there; this page keeps recording across full section loads.",
+   "Click a scenario to tag what you're about to do, then perform it in the app tab. Every request and media event gets attributed to the active scenario."
+  ],
+  "compareHint": "Tick two runs (e.g. LAN + VPN) to compare."
+ },
+ "run1": {
+  "chip": "LAN",
+  "label": "LAN (home wifi, no VPN)",
+  "armed": {
+   "status": "● RECORDING - LAN (home wifi, no VPN) · scenario: (none) · 0 events captured",
+   "scenarioButtons": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "appBadge": "REC ● diag · cold-load-home · 59",
+  "scenarioActive": [
+   "Open a video (time-to-first-frame)"
+  ],
+  "probes": "RTT: wall median 2 ms (min 2, p95 22), pipe-only 2 ms, server 0 msThroughput: 1MB=425.8 Mbps · 5MB=1588.8 Mbps · 20MB=3335.4 MbpsCompression: none=217.3 KB/15ms · gz=14.5 KB/6ms · br=12.4 KB/17ms",
+  "saved": "Saved run 2026-10-04-0310-zxtxn4"
+ },
+ "matrixSingle": {
+  "headers": [
+   "Dimension",
+   "LAN (home wifi, no VPN)",
+   "Lever it points to"
+  ],
+  "rows": [
+   [
+    "RTT wall (median)",
+    "2 ms (min 2, p95 22)",
+    "WireGuard / MTU / VPN endpoint"
+   ],
+   [
+    "RTT pipe-only (median)",
+    "2 ms",
+    "network minus server compute"
+   ],
+   [
+    "Server compute (avg)",
+    "2 ms",
+    "rules the BOX in or out"
+   ],
+   [
+    "Throughput @20MB",
+    "3335.4 Mbps",
+    "mobile rendition / home-upload cap"
+   ],
+   [
+    "Compression wire size",
+    "217.3 KB → 12.4 KB (-94%)",
+    "brotli / gzip"
+   ],
+   [
+    "Nav fan-out (worst view)",
+    "28 API reqs, 59 total, 80 ms (cold-load-home)",
+    "aggregated bootstrap endpoint"
+   ],
+   [
+    "Time-to-first-frame",
+    "22 ms",
+    "confirms faststart is fine"
+   ],
+   [
+    "Stalls (60s play)",
+    "-",
+    "adaptive bitrate"
+   ],
+   [
+    "Cold vs warm Home",
+    "80 ms cold / 0 ms warm",
+    "service-worker shell/thumb caching"
+   ]
+  ],
+  "detailHeaders": [
+   "Scenario",
+   "Wall",
+   "API reqs",
+   "Total reqs",
+   "Σ TTFB",
+   "Bytes",
+   "TTFF",
+   "Stalls"
+  ],
+  "detailRows": [
+   [
+    "cold-load-home",
+    "80 ms",
+    "28",
+    "59",
+    "229 ms",
+    "100.5 KB",
+    "-",
+    "0/0ms"
+   ],
+   [
+    "open-video-ttff",
+    "132 ms",
+    "15",
+    "18",
+    "62 ms",
+    "250.8 KB",
+    "22 ms",
+    "1/10ms"
+   ]
+  ],
+  "runsList": [
+   "LAN (home wifi, no VPN)85 ev2 scen10/4/2026, 3:10:31 AMViewDelete"
+  ]
+ },
+ "run2": {
+  "chip": "5G + VPN",
+  "label": "5G + VPN",
+  "armed": {
+   "status": "● RECORDING - 5G + VPN · scenario: (none) · 0 events captured",
+   "scenarioButtons": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ]
+  },
+  "appBadge": "REC ● diag · cold-load-home · 61",
+  "scenarioActive": [
+   "Open a video (time-to-first-frame)"
+  ],
+  "probes": "RTT: wall median 2 ms (min 2, p95 15), pipe-only 2 ms, server 0 msThroughput: 1MB=460.9 Mbps · 5MB=1698.1 Mbps · 20MB=3423.9 MbpsCompression: none=217.3 KB/15ms · gz=14.5 KB/5ms · br=12.4 KB/6ms",
+  "saved": "Saved run 2026-10-04-0310-3yxr23"
+ },
+ "compareEnabled": true,
+ "matrixCompare": {
+  "headers": [
+   "Dimension",
+   "5G + VPN",
+   "LAN (home wifi, no VPN)",
+   "Lever it points to"
+  ],
+  "rows": [
+   [
+    "RTT wall (median)",
+    "2 ms (min 2, p95 15)",
+    "2 ms (min 2, p95 22)",
+    "WireGuard / MTU / VPN endpoint"
+   ],
+   [
+    "RTT pipe-only (median)",
+    "2 ms",
+    "2 ms",
+    "network minus server compute"
+   ],
+   [
+    "Server compute (avg)",
+    "2 ms",
+    "2 ms",
+    "rules the BOX in or out"
+   ],
+   [
+    "Throughput @20MB",
+    "3423.9 Mbps",
+    "3335.4 Mbps",
+    "mobile rendition / home-upload cap"
+   ],
+   [
+    "Compression wire size",
+    "217.3 KB → 12.4 KB (-94%)",
+    "217.3 KB → 12.4 KB (-94%)",
+    "brotli / gzip"
+   ],
+   [
+    "Nav fan-out (worst view)",
+    "29 API reqs, 61 total, 137 ms (cold-load-home)",
+    "28 API reqs, 59 total, 80 ms (cold-load-home)",
+    "aggregated bootstrap endpoint"
+   ],
+   [
+    "Time-to-first-frame",
+    "18 ms",
+    "22 ms",
+    "confirms faststart is fine"
+   ],
+   [
+    "Stalls (60s play)",
+    "-",
+    "-",
+    "adaptive bitrate"
+   ],
+   [
+    "Cold vs warm Home",
+    "137 ms cold / 0 ms warm",
+    "80 ms cold / 0 ms warm",
+    "service-worker shell/thumb caching"
+   ]
+  ],
+  "runsList": [
+   "5G + VPN86 ev2 scen10/4/2026, 3:10:37 AMViewDelete",
+   "LAN (home wifi, no VPN)85 ev2 scen10/4/2026, 3:10:31 AMViewDelete"
+  ]
+ },
+ "savedFiles": [
+  "run-2026-10-04-0310-3yxr23.json",
+  "run-2026-10-04-0310-zxtxn4.json"
+ ],
+ "apiRun": {
+  "status": 200,
+  "keys": [
+   "id",
+   "createdAt",
+   "label",
+   "note",
+   "client",
+   "scenarios",
+   "events",
+   "probes",
+   "summary"
+  ],
+  "label": "LAN (home wifi, no VPN)"
+ },
+ "serverTiming": "app;dur=0.4",
+ "errs": []
+}

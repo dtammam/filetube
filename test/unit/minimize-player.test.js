@@ -180,7 +180,13 @@ async function boot(item, o) {
   w.document.body.setAttribute('data-view', opt.view || 'watch');
   w.eval(COMMON_SRC.slice(COMMON_SRC.indexOf('function resolveAudioArtUrl('), COMMON_SRC.indexOf('\n}\n', COMMON_SRC.indexOf('function resolveAudioArtUrl(')) + 3));
   w.eval(LOCK_SRC);
-  w.eval(PLAYER_SRC);
+  if (opt.peekMs) {
+    // v1.362.1: a short peek window for the drives (the real 3000 is asserted on the export). Exact once.
+    assert.strictEqual(PLAYER_SRC.split('var MINIMIZE_PEEK_MS = 3000;').length, 2, 'the peek constant is defined once');
+    w.eval(PLAYER_SRC.replace('var MINIMIZE_PEEK_MS = 3000;', 'var MINIMIZE_PEEK_MS = ' + opt.peekMs + ';'));
+  } else {
+    w.eval(PLAYER_SRC);
+  }
   const leaves = [];
   w.FileTube.leaveWatchForBrowse = () => { leaves.push({ state: w.FileTube.player.getState() }); };
   const dockEl = w.document.getElementById('player-dock');
@@ -196,7 +202,9 @@ async function boot(item, o) {
   v.getBoundingClientRect = () => rect;
   host.getBoundingClientRect = () => (host.parentNode === slot ? rect : { left: 222, top: 450, x: 222, y: 450, width: 160, height: 134, right: 382, bottom: 584 });
   let pauses = 0; v.pause = () => { pauses++; };
-  return { w, doc: w.document, p, v, host, slot, dockEl, leaves, pauses: () => pauses };
+  // v1.362.1: drive the media's paused state AND its event (the chevron reads paused on play / pause).
+  const media = (paused) => { Object.defineProperty(v, 'paused', { value: paused, configurable: true }); v.dispatchEvent(new w.Event(paused ? 'pause' : 'play')); };
+  return { w, doc: w.document, p, v, host, slot, dockEl, leaves, pauses: () => pauses, media };
 }
 const VIDEO = { id: 'v1', title: 'T', type: 'video', ext: '.mp4' };
 const VIDEO2 = { id: 'v2', title: 'T2', type: 'video', ext: '.mp4' };
@@ -395,8 +403,9 @@ test('?minimizeAnim=0: the pull still claims and docks, but the picture never mo
 
 // ---- W2: the chevron (R6) -----------------------------------------------------
 
-test('the chevron is shown only where minimize is offered: inline on the phone watch view; gone in faux full screen, docked, closed, off the watch view and past 768 px', async () => {
+test('the chevron is shown only where minimize is offered (paused, so the peek rule shows it): inline on the phone watch view; gone in faux full screen, docked, closed, off the watch view and past 768 px', async () => {
   let h = await boot(VIDEO);
+  h.media(true); // v1.362.1 (D1): paused, so shown wherever minimize is offered
   const btn = () => h.host.querySelector('.player-minimize');
   assert.ok(btn(), 'built into the host');
   assert.strictEqual(btn().tagName, 'BUTTON');
@@ -420,9 +429,11 @@ test('the chevron is shown only where minimize is offered: inline on the phone w
   assert.strictEqual(h.doc.querySelector('.player-minimize'), null, 'close detaches the host and the chevron with it');
   dom.window.close(); dom = null;
   h = await boot(VIDEO, { view: 'music' });
+  h.media(true);
   assert.strictEqual(h.host.querySelector('.player-minimize').hidden, true, 'not on another view (M8)');
   dom.window.close(); dom = null;
   h = await boot(VIDEO, { native: true });
+  h.media(true);
   assert.strictEqual(h.host.querySelector('.player-minimize').hidden, true, 'not in native-controls mode');
 });
 
@@ -730,6 +741,7 @@ test('r1 (adversary suggestion, deviation 1): a 2x LOCK left by an earlier gestu
 
 test('r1 (QA W4): a coarse-pointer device wider than 768 px gets no chevron and no pull (the width conjunct alone)', async () => {
   const h = await boot(VIDEO);
+  h.media(true); // v1.362.1: paused, so the chevron shows wherever minimize is offered (the width conjunct alone hides it)
   const btn = h.host.querySelector('.player-minimize');
   assert.strictEqual(btn.hidden, false, 'precondition');
   h.w.matchMedia = (q) => ({ media: q, matches: /coarse|hover: none/.test(q), addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {} });
@@ -744,6 +756,7 @@ test('r1 (QA W4): a coarse-pointer device wider than 768 px gets no chevron and 
 test('r1 (QA W4): the audio expanded view hides the chevron and collapsing brings it back (an audio file on the watch page)', async () => {
   const h = await boot({ id: 'a1', title: 'A', type: 'audio', ext: '.mp3', hasThumbnail: true });
   assert.ok(h.host.classList.contains('audio-mode'), 'precondition: audio mode (cover art)');
+  h.media(true); // v1.362.1: paused, so shown
   const btn = h.host.querySelector('.player-minimize');
   assert.strictEqual(btn.hidden, false, 'precondition: shown inline for an audio file');
   h.doc.getElementById('fs-btn').click();
@@ -762,4 +775,295 @@ test('r1 (QA W1, adversary A3): the phone captions sit on the 44 px bar (after t
   assert.ok(phone.at > base.at, 'after its base');
   const ring = one('#player-dock #pp-btn::after', PHONE);
   assert.strictEqual(decl(ring, 'content'), "''", 'without content the ring does not exist (probe: 214 points, 32 x 32)');
+});
+
+// ---- v1.362.1: the chevron peeks (plan 2026-10-04-chevron-peek-and-vpn-runbook, D1-D4) -----------
+
+const SHOW = { allowed: true, paused: false, now: 1000, peekUntil: 0, focused: false };
+test('minimizeChevronShownDecision: allowed AND (paused OR inside the peek window OR focused); each conjunct flipped alone', () => {
+  const d = player.minimizeChevronShownDecision;
+  assert.strictEqual(typeof d, 'function', 'exported');
+  assert.strictEqual(player.MINIMIZE_PEEK_MS, 3000, 'the peek window is 3 s (one named constant)');
+  assert.strictEqual(d(SHOW), false, 'playing, no window, not focused: hidden');
+  assert.strictEqual(d(Object.assign({}, SHOW, { paused: true })), true, 'paused (or not started): shown');
+  assert.strictEqual(d(Object.assign({}, SHOW, { peekUntil: 1001 })), true, 'inside the window: shown');
+  assert.strictEqual(d(Object.assign({}, SHOW, { peekUntil: 1000 })), false, 'the window has ended at its edge');
+  assert.strictEqual(d(Object.assign({}, SHOW, { focused: true })), true, 'a focused chevron stays');
+  for (const k of ['paused', 'focused']) assert.strictEqual(d(Object.assign({}, SHOW, { allowed: false, [k]: true })), false, 'never where minimize is not offered (' + k + ')');
+  assert.strictEqual(d(Object.assign({}, SHOW, { allowed: false, peekUntil: 9999 })), false, 'never where minimize is not offered (window)');
+  assert.strictEqual(d({}), false);
+  assert.strictEqual(d(Object.assign({}, SHOW, { now: NaN, peekUntil: 5000 })), false, 'no clock: no window');
+});
+
+// The peek window is shortened for the drives (the real one is the 3000 asserted above).
+const PEEK = 150;
+const bootPeek = (item, o) => boot(item, Object.assign({ peekMs: PEEK }, o || {}));
+const chev = (h) => h.host.querySelector('.player-minimize');
+
+test('D1: paused shows it; play shows it for the window, then it hides at once; a pause brings it back', async () => {
+  const h = await bootPeek(VIDEO);
+  h.media(true);
+  assert.strictEqual(chev(h).hidden, false, 'paused: shown');
+  h.media(false);
+  assert.strictEqual(chev(h).hidden, false, 'just after play: shown (the window)');
+  await wait(PEEK / 2);
+  assert.strictEqual(chev(h).hidden, false, 'still inside the window');
+  await wait(PEEK);
+  assert.strictEqual(chev(h).hidden, true, 'the window closed while playing: hidden');
+  h.media(true);
+  assert.strictEqual(chev(h).hidden, false, 'paused again: shown at once');
+});
+
+test('D3: the window ends when its timer fires, even when the clock reads a hair early (no chevron left up with no timer)', async () => {
+  const h = await bootPeek(VIDEO);
+  const realNow = h.w.Date.now.bind(h.w.Date);
+  h.w.Date.now = () => realNow() - 40; // the clock lags the timer: at the timer's fire, now < peekUntil
+  h.media(false);
+  h.w.Date.now = () => realNow() - 80;
+  await wait(PEEK + 60);
+  assert.strictEqual(chev(h).hidden, true, 'the timer closed the window by itself');
+});
+
+test('D1: a touch on the picture while playing shows it for the window, and the tap still pauses', async () => {
+  const h = await bootPeek(VIDEO);
+  h.media(false);
+  await wait(PEEK * 1.6);
+  assert.strictEqual(chev(h).hidden, true, 'precondition: hidden while playing');
+  fire(h.w, h.v, 'touchstart', 200, 100, 1000);
+  assert.strictEqual(chev(h).hidden, false, 'the touch shows it at once');
+  fire(h.w, h.v, 'touchend', 200, 100, 1050);
+  await wait(420); // past the double-tap window (the single tap is debounced)
+  assert.strictEqual(h.pauses(), 1, 'the single tap still paused (the peek changes nothing about the tap)');
+  assert.strictEqual(h.p.getState(), 'full');
+  assert.strictEqual(h.leaves.length, 0, 'a tap is never a minimize');
+});
+
+test('D1: every touch re-arms the window (the touch on the picture and on the chevron itself)', async () => {
+  const h = await bootPeek(VIDEO);
+  h.media(false);
+  await wait(PEEK * 0.6);
+  fire(h.w, h.v, 'touchstart', 200, 100, 1000);
+  fire(h.w, h.v, 'touchmove', 230, 100, 1020); // a moved touch: no tap
+  fire(h.w, h.v, 'touchend', 230, 100, 1040);
+  await wait(PEEK * 0.6);
+  assert.strictEqual(chev(h).hidden, false, 'the picture touch re-armed it (the first window would have ended)');
+  fire(h.w, chev(h), 'touchstart', 20, 20, 2000);
+  fire(h.w, chev(h), 'touchend', 20, 20, 2010);
+  await wait(PEEK * 0.6);
+  assert.strictEqual(chev(h).hidden, false, 'the touch on the chevron re-armed it');
+  await wait(PEEK);
+  assert.strictEqual(chev(h).hidden, true, 'then it goes');
+});
+
+test('D1: the touch on the cover art (an audio file on the watch page) peeks too', async () => {
+  const h = await bootPeek({ id: 'a1', title: 'A', type: 'audio', ext: '.mp3', hasThumbnail: true });
+  h.media(false);
+  await wait(PEEK * 1.6);
+  assert.strictEqual(chev(h).hidden, true, 'precondition: hidden while playing');
+  const art = h.doc.getElementById('audio-bg-art');
+  fire(h.w, art, 'touchstart', 200, 100, 1000);
+  assert.strictEqual(chev(h).hidden, false);
+  fire(h.w, art, 'touchcancel', 200, 100, 1010);
+});
+
+test('D1: a focused chevron stays up while playing, and goes on blur', async () => {
+  const h = await bootPeek(VIDEO);
+  h.media(false);
+  chev(h).focus();
+  assert.strictEqual(h.doc.activeElement, chev(h), 'precondition: focused (a keyboard user)');
+  await wait(PEEK * 1.6);
+  assert.strictEqual(chev(h).hidden, false, 'focused: still shown after the window');
+  chev(h).blur();
+  assert.strictEqual(chev(h).hidden, true, 'blurred while playing: hidden at once');
+});
+
+test('D1/D3: no peek where minimize is not offered, and the timer never re-shows it after a dock or a new item', async () => {
+  let h = await bootPeek(VIDEO);
+  h.media(false);
+  h.doc.getElementById('fs-btn').click();
+  assert.ok(h.host.classList.contains('css-fullscreen'), 'precondition: faux full screen');
+  fire(h.w, h.v, 'touchstart', 200, 100, 1000);
+  fire(h.w, h.v, 'touchcancel', 200, 100, 1010);
+  assert.strictEqual(chev(h).hidden, true, 'faux full screen: a touch never shows it');
+  h.media(true);
+  assert.strictEqual(chev(h).hidden, true, 'faux full screen: paused never shows it');
+  h.doc.getElementById('fs-btn').click();
+  h.media(false);
+  assert.strictEqual(chev(h).hidden, false, 'precondition: a window is open inline');
+  h.p.dock();
+  assert.strictEqual(chev(h).hidden, true, 'docked: hidden');
+  h.p.expand(h.slot);
+  assert.strictEqual(chev(h).hidden, true, 'expanded again inside the old window, still playing: the dock ended the window');
+  await wait(PEEK * 1.6);
+  assert.strictEqual(chev(h).hidden, true, 'and no stale timer re-shows it');
+  h.p.dock();
+  h.media(false); // playback (re)starts while docked
+  h.p.expand(h.slot);
+  assert.strictEqual(chev(h).hidden, true, 'a play while docked opens no window for a later expand (W1-M8)');
+  h.media(false);
+  assert.strictEqual(chev(h).hidden, false, 'precondition: a new window');
+  assert.strictEqual(h.p.load(VIDEO2.id, VIDEO2, { slot: h.slot }), true, 'a new item loads');
+  Object.defineProperty(h.v, 'paused', { value: false, configurable: true });
+  h.w.dispatchEvent(new h.w.Event('resize')); // any refresh
+  assert.strictEqual(chev(h).hidden, true, 'the new item does not inherit the old window');
+  dom.window.close(); dom = null;
+  h = await bootPeek(VIDEO, { native: true });
+  h.media(true);
+  assert.strictEqual(chev(h).hidden, true, 'native-controls mode: never, even paused');
+  dom.window.close(); dom = null;
+  h = await bootPeek(VIDEO, { desktop: true });
+  h.media(true);
+  assert.strictEqual(chev(h).hidden, true, 'desktop: never, even paused');
+});
+
+test('D2: refreshMinimizeButton stays the ONE writer of the chevron\'s hidden, and nothing fades it (LESSONS 7)', () => {
+  const src = PLAYER_SRC.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+  assert.strictEqual((src.match(/minimizeBtn\.hidden\s*=/g) || []).length, 1, 'one write of hidden');
+  assert.ok(!/minimizeBtn\.(style|classList)/.test(src), 'no style or class write on the chevron (no fade, no paint)');
+  assert.strictEqual((src.match(/minimizeBtn\.(toggleAttribute|setAttribute|removeAttribute)\(\s*'inert'/g) || []).length, 1, 'one write of inert (gate r1 tap guard), in the same writer');
+  const fn = src.slice(src.indexOf('function refreshMinimizeButton'), src.indexOf('function playMinimizeSettle'));
+  assert.match(fn, /minimizeBtn\.hidden = !minimizeChevronShownDecision\(/, 'the writer asks the pure decision');
+  // D4 (W1-M11, a source lock: jsdom cannot reach the background-audio state): paused is read from the
+  // element that is playing, never the video alone (after a handoff the video is paused while the sidecar plays).
+  assert.match(fn, /var el = activeMediaElement\(\);[\s\S]*paused: !el \|\| !!el\.paused,/, 'paused from activeMediaElement()');
+});
+// ---- v1.362.1 D5: the landing's reachable depth (the Navigation API) --------------------------------
+
+test('D5: resolveMinimizeLanding goes Home iff the jump reaches past the entries history.go can reach (navigation.currentEntry.index)', () => {
+  const r = common.resolveMinimizeLanding;
+  assert.deepStrictEqual(r(46, 0, 50, 34), { action: 'home' }, 'the adversary\'s case: depth 46 after 15 backs from 61, 34 reachable');
+  assert.deepStrictEqual(r(46, 0, 50, 46), { action: 'back', steps: 46 }, 'exactly reachable');
+  assert.deepStrictEqual(r(46, 0, 50, 45), { action: 'home' }, 'one short');
+  assert.deepStrictEqual(r(49, 0, 50, 49), { action: 'back', steps: 49 });
+  assert.deepStrictEqual(r(3, 1, 50, 2), { action: 'back', steps: 2 }, 'a reachable index decides even when the length would too');
+  assert.deepStrictEqual(r(3, 1, 3, 5), { action: 'back', steps: 2 }, 'the index decides over the length when it is known');
+  assert.deepStrictEqual(r(55, 0, 50, undefined), { action: 'home' }, 'no Navigation API (Safari): the length rule stands');
+  assert.deepStrictEqual(r(49, 0, 50, undefined), { action: 'back', steps: 49 });
+  assert.deepStrictEqual(r(49, 0, 50, 2.5), { action: 'back', steps: 49 }, 'a non-integer index is ignored');
+  assert.deepStrictEqual(r(49, 0, 50, -1), { action: 'home' }, 'index -1 (no entry): nothing is reachable');
+  assert.deepStrictEqual(r(0, null, 50, 10), { action: 'home' }, 'a deep link');
+});
+
+test('D5: the real leaveWatchForBrowse passes navigation.currentEntry.index (Home when the jump is out of reach), and falls back to the length without it', async () => {
+  const worlds = [];
+  try {
+    const a = routerWorld({ depth: 46, browseDepth: 0 }, 50); worlds.push(a);
+    Object.defineProperty(a.W, 'navigation', { value: { currentEntry: { index: 34 } }, configurable: true });
+    a.W.FileTube.leaveWatchForBrowse();
+    await wait(20);
+    assert.deepStrictEqual(a.moves, [], 'no silent no-op go(-46)');
+    assert.strictEqual(homeFetches(a), 1, 'Home instead');
+    a.W.history.replaceState(Object.assign({}, a.W.history.state, { depth: 3, browseDepth: 1, view: 'watch' }), '');
+    a.W.FileTube.leaveWatchForBrowse();
+    assert.deepStrictEqual(a.moves, ['go -2'], 'the guard was never left set (the Home button still works after)');
+
+    const b = routerWorld({ depth: 46, browseDepth: 0 }, 50); worlds.push(b);
+    Object.defineProperty(b.W, 'navigation', { value: { currentEntry: { index: 46 } }, configurable: true });
+    b.W.FileTube.leaveWatchForBrowse();
+    assert.deepStrictEqual(b.moves, ['go -46'], 'reachable: back to the browse entry');
+
+    const c = routerWorld({ depth: 49, browseDepth: 0 }, 50); worlds.push(c);
+    Object.defineProperty(c.W, 'navigation', { value: undefined, configurable: true });
+    c.W.FileTube.leaveWatchForBrowse();
+    assert.deepStrictEqual(c.moves, ['go -49'], 'no Navigation API: the v1.362.0 length rule');
+
+    const d = routerWorld({ depth: 49, browseDepth: 0 }, 50); worlds.push(d);
+    Object.defineProperty(d.W, 'navigation', { value: { currentEntry: null }, configurable: true });
+    d.W.FileTube.leaveWatchForBrowse();
+    assert.deepStrictEqual(d.moves, ['go -49'], 'no current entry: the length rule');
+  } finally { for (const w of worlds) w.close(); }
+});
+
+// ---- v1.362.1 D6: the two untested wires (v1.362 gate r2 (b), (c)) ---------------------------------
+
+test('D6 (b): the real picture-in-picture listeners hide the chevron on enter and bring it back on leave', async () => {
+  const h = await boot(VIDEO);
+  h.media(true);
+  assert.strictEqual(chev(h).hidden, false, 'precondition: shown (paused, inline)');
+  let pip = h.v;
+  Object.defineProperty(h.doc, 'pictureInPictureElement', { get: () => pip, configurable: true });
+  h.v.dispatchEvent(new h.w.Event('enterpictureinpicture'));
+  assert.strictEqual(chev(h).hidden, true, 'in picture-in-picture: hidden');
+  pip = null;
+  h.v.dispatchEvent(new h.w.Event('leavepictureinpicture'));
+  assert.strictEqual(chev(h).hidden, false, 'back inline: shown');
+});
+
+test('D6 (c): the settle opens the dock clip by value (overflow visible, no shadow)', () => {
+  const r = one('#player-dock.is-minimize-settle', null);
+  assert.strictEqual(decl(r, 'overflow'), 'visible');
+  assert.strictEqual(decl(r, 'box-shadow'), 'none');
+});
+
+// ---- gate r1 (adversary WARNING): a double-tap at the hidden chevron's spot minimized the player -----------
+
+test('gate r1: while the picture can still pair a tap, the revealed chevron is inert (a second tap at its spot reaches the picture); the guard ends on its own', async () => {
+  const h = await bootPeek(VIDEO);
+  h.media(false);
+  await wait(PEEK * 1.6);
+  assert.strictEqual(chev(h).hidden, true, 'precondition: hidden while playing');
+  assert.strictEqual(chev(h).hasAttribute('inert'), false, 'precondition: not inert at rest');
+  fire(h.w, h.v, 'touchstart', 26, 98, 1000);
+  assert.strictEqual(chev(h).hidden, false, 'the touch reveals it');
+  assert.strictEqual(chev(h).hasAttribute('inert'), true, 'revealed under the finger: inert, so the next tap is the picture\'s');
+  fire(h.w, h.v, 'touchend', 26, 98, 1040);
+  await wait(200);
+  assert.strictEqual(chev(h).hasAttribute('inert'), true, 'still inside the double-tap window (350 ms from the lift)');
+  await wait(260);
+  assert.strictEqual(chev(h).hasAttribute('inert'), false, 'the window passed: the chevron takes taps again');
+});
+
+test('gate r1: a double-tap skip keeps the chevron inert for the whole skip chain', async () => {
+  const h = await bootPeek(VIDEO);
+  Object.defineProperty(h.v, 'duration', { value: 600, configurable: true });
+  h.v.currentTime = 100;
+  h.media(false);
+  fire(h.w, h.v, 'touchstart', 26, 98, 1000);
+  fire(h.w, h.v, 'touchend', 26, 98, 1040);
+  await wait(40);
+  fire(h.w, h.v, 'touchstart', 26, 98, 1100);
+  fire(h.w, h.v, 'touchend', 26, 98, 1140);
+  assert.ok(h.v.currentTime < 100, 'precondition: the double-tap skipped back, got ' + h.v.currentTime);
+  await wait(500);
+  assert.strictEqual(chev(h).hasAttribute('inert'), true, 'past the 350 ms pairing window, still inside the 800 ms chain: inert');
+  await wait(450);
+  assert.strictEqual(chev(h).hasAttribute('inert'), false, 'the chain ended');
+  assert.strictEqual(h.p.getState(), 'full');
+  assert.strictEqual(h.leaves.length, 0);
+});
+
+test('gate r1: a single tap still waiting out the double-tap window never pauses the player after a dock', async () => {
+  const h = await bootPeek(VIDEO);
+  h.media(false);
+  fire(h.w, h.v, 'touchstart', 200, 100, 1000);
+  fire(h.w, h.v, 'touchend', 200, 100, 1040);
+  await wait(100);
+  h.p.dock();
+  await wait(420);
+  assert.strictEqual(h.p.getState(), 'docked');
+  assert.strictEqual(h.pauses(), 0, 'the pending tap died with the full surface');
+});
+
+test('gate r1 (adversary A14): an index that over-counts by one still goes Home (depth 46, 45 reachable)', async () => {
+  const a = routerWorld({ depth: 46, browseDepth: 0 }, 50);
+  try {
+    Object.defineProperty(a.W, 'navigation', { value: { currentEntry: { index: 45 } }, configurable: true });
+    a.W.FileTube.leaveWatchForBrowse();
+    await wait(20);
+    assert.deepStrictEqual(a.moves, [], 'no go(-46) with only 45 entries behind');
+    assert.strictEqual(homeFetches(a), 1);
+  } finally { a.close(); }
+});
+
+test('gate r1: the pairing window runs from the LIFT (a 300 ms press keeps the chevron inert for 350 ms after the finger leaves)', async () => {
+  const h = await bootPeek(VIDEO);
+  h.media(false);
+  fire(h.w, h.v, 'touchstart', 26, 98, 1000);
+  await wait(300); // under HOLD_MS: still a tap, not a 2x hold
+  fire(h.w, h.v, 'touchend', 26, 98, 1300);
+  assert.strictEqual(h.v.playbackRate, 1, 'precondition: a tap, not a hold');
+  await wait(200);
+  assert.strictEqual(chev(h).hasAttribute('inert'), true, '500 ms after touchstart, 200 ms after the lift: still the picture\'s next tap');
+  await wait(260);
+  assert.strictEqual(chev(h).hasAttribute('inert'), false);
 });

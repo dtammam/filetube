@@ -3484,5 +3484,11 @@
     "date": "2026-10-04",
     "title": "Pull the video down into the mini player, and a bigger mini player on phones",
     "intent": "On a phone, while a video plays on its page, pull the picture down and it follows your finger into the mini player, or tap the new down arrow at its top left; the video keeps playing and you land back where you were browsing. The mini player's close and play buttons are bigger and easier to hit. The pull and the arrow need Settings > Mobile player > custom player controls turned on."
+  },
+  {
+    "version": "1.362.1",
+    "date": "2026-10-04",
+    "title": "The minimize arrow steps out of the way while you watch",
+    "intent": "On a phone, the down arrow at the top left of a playing video now shows while the video is paused, for a few seconds after it starts, and whenever you touch the picture, then gets out of the way. A double tap in that corner still skips back. Minimizing after a long run of videos always lands somewhere useful. There is also a step-by-step guide for finding out why the app is slow over a VPN."
   }
 ]
