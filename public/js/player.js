@@ -1189,6 +1189,26 @@ function classifyTapGesture(ctx) {
   return 'single-tap';
 }
 
+// v1.362.2 (D1): the TAP RUN - a touch that lands while the picture can still pair it (inside the
+// double-tap window after a lone tap's lift) or while a skip chain is hot. ONE predicate: the bar's
+// reveal grace (`inTapRun` in the video down listener) and the loupe cancel below both read it.
+function inTapRunDecision(o) {
+  var opts = o || {};
+  return opts.now < opts.skipChainUntil || (opts.lastTapTime > 0 && opts.now - opts.lastTapTime < opts.doubleTapMs);
+}
+
+// v1.362.2 (D1, Dean): the iOS text loupe. A press that follows a tap on the playing picture (a
+// double-tap's second touch, a tap then a hold, a skip-chain tap) brings up WebKit's magnifier even
+// under `user-select:none`; only a `preventDefault` on that touchstart stops it. This decides exactly
+// which touchstart: one finger, not native full screen, not native-controls mode, the player FULL (the
+// docked tap must still synthesize the click that expands it), and inside the tap run. Accepted cost:
+// a page scroll that starts on the picture inside the window does not scroll.
+function tapPairCancelDecision(o) {
+  var opts = o || {};
+  if (opts.touches !== 1 || opts.nativeFs || opts.nativeControls || opts.state !== 'full') return false;
+  return inTapRunDecision(opts);
+}
+
 // v1.21 FIX A (post-post-gate correction -- docked-audio tap-to-expand
 // regression introduced by FIX 1): pure gate behind the touchend
 // single-tap branch in `wireSkipHoldGestures` below. `onSingleTap` (the
@@ -1937,6 +1957,8 @@ if (typeof module !== 'undefined' && module.exports) {
     storyboardFrameForTime,
     storyboardTile,
     classifyTapGesture,
+    inTapRunDecision, // v1.362.2 (D1): the tap run, shared by the reveal grace and the loupe cancel
+    tapPairCancelDecision, // v1.362.2 (D1): which touchstart on the picture cancels (no text loupe)
     holdDragDecision,
     holdRatePickDecision,
     // v1.362: minimize into the mini player (the pull-down and the chevron).
@@ -5325,6 +5347,28 @@ if (typeof module !== 'undefined' && module.exports) {
       holdTimer = setTimeout(engageHold, HOLD_MS);
     }, { passive: true });
 
+    // v1.362.2 (D1): the loupe cancel. A SEPARATE non-passive touchstart, registered AFTER the passive
+    // tracker above (LESSONS 4), that cancels only the touch tapPairCancelDecision names: the one the
+    // app already treats as a tap pair or a chain tap. Every other touchstart stays passive, so the
+    // page scrolls from the picture as before outside the window.
+    el.addEventListener('touchstart', function (e) {
+      var now = Date.now();
+      if (!tapPairCancelDecision({
+        now: now,
+        lastTapTime: lastTapTime,
+        skipChainUntil: skipChainUntil,
+        doubleTapMs: DOUBLE_TAP_MS,
+        touches: e.touches.length,
+        nativeFs: inNativeFullscreen(),
+        nativeControls: inNativeControlsMode(),
+        state: state,
+      })) return;
+      e.preventDefault();
+      if (isDebugLifecycleEnabled()) {
+        recordLifecycleEvent('gesture:tap-pair', { detail: (el === mediaPlayer ? 'video' : 'art') + ' gap=' + (lastTapTime > 0 ? now - lastTapTime : '-') + ' chain=' + (now < skipChainUntil ? 1 : 0) });
+      }
+    }, { passive: false });
+
     el.addEventListener('touchmove', function (e) {
       var t = e.touches[0];
       if (!t) return;
@@ -7278,7 +7322,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // second half of a double-tap whose first touch was held past the window
       // (double-taps pair touchEND to touchEND) - re-arms the grace too.
       var now = Date.now();
-      var inTapRun = now < skipChainUntil || (lastTapTime > 0 && now - lastTapTime < DOUBLE_TAP_MS);
+      var inTapRun = inTapRunDecision({ now: now, lastTapTime: lastTapTime, skipChainUntil: skipChainUntil, doubleTapMs: DOUBLE_TAP_MS });
       if ((wasHidden || inTapRun) && !(e && e.pointerType && e.pointerType !== 'touch')) armRevealGrace();
     }, { passive: true });
     // The BAR keeps the both-event blind reveal - it never stamps, so the
