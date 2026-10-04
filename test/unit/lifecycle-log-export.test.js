@@ -334,3 +334,34 @@ test('gate r1 (mutant E13): the export header says standalone app when the page 
     assert.match(await calls[0].files[0].text(), /\nmode: standalone app\n/);
   });
 });
+
+// ---- v1.362.3 (E3): Settings > Troubleshooting > "No glyph on picture taps" ----------------------------
+
+test('E3: the no-glyph switch sits in Troubleshooting, reflects its key (only the literal "1" is on) and writes it', async () => {
+  const doc = new JSDOM(SETUP_HTML).window.document;
+  const c0 = doc.getElementById('debug-no-tap-glyph-check');
+  assert.ok(c0 && c0.classList.contains('ui-switch'));
+  assert.strictEqual(doc.querySelector('label[for="debug-no-tap-glyph-check"]').textContent, 'No glyph on picture taps');
+  assert.strictEqual(c0.closest('details').getAttribute('data-collapse-key'), 'troubleshooting');
+  await withSettings({}, {}, async ({ w }) => {
+    const c = w.document.getElementById('debug-no-tap-glyph-check');
+    for (const raw of [null, '0', 'true']) {
+      if (raw === null) w.localStorage.removeItem('ft-debug-no-tap-glyph'); else w.localStorage.setItem('ft-debug-no-tap-glyph', raw);
+      c.checked = true;
+      setup.loadNoTapGlyphControl(w);
+      assert.strictEqual(c.checked, false, String(raw));
+    }
+    w.localStorage.setItem('ft-debug-no-tap-glyph', '1');
+    setup.loadNoTapGlyphControl(w);
+    assert.strictEqual(c.checked, true);
+    setup.wireNoTapGlyphControl(w);
+    c.checked = false; c.dispatchEvent(new w.Event('change', { bubbles: true }));
+    assert.strictEqual(w.localStorage.getItem('ft-debug-no-tap-glyph'), null);
+    c.checked = true; c.dispatchEvent(new w.Event('change', { bubbles: true }));
+    assert.strictEqual(w.localStorage.getItem('ft-debug-no-tap-glyph'), '1');
+  });
+  const P = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
+  const S = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'setup.js'), 'utf8');
+  assert.match(P, /var NO_TAP_GLYPH_STORAGE_KEY = 'ft-debug-no-tap-glyph';/);
+  assert.match(S, /const NO_TAP_GLYPH_STORAGE_KEY = 'ft-debug-no-tap-glyph';/);
+});

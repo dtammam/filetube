@@ -20,40 +20,25 @@ const COMMON_SRC = fs.readFileSync(path.join(PUB, 'js', 'common.js'), 'utf8');
 const PLAYER_SRC = fs.readFileSync(path.join(PUB, 'js', 'player.js'), 'utf8');
 const WATCH = fs.readFileSync(path.join(PUB, 'watch.html'), 'utf8').replace(/<script[\s\S]*?<\/script>/g, '');
 
-// ---- pure: tapPairCancelDecision ------------------------------------------------
+// ---- pure: pictureTouchCancelDecision (v1.362.3, E1) -------------------------------
 
-const BASE = { now: 10000, lastTapTime: 9800, skipChainUntil: 0, doubleTapMs: 350, touches: 1, nativeFs: false, nativeControls: false, state: 'full' };
-const d = (o) => player.tapPairCancelDecision(Object.assign({}, BASE, o || {}));
+const BASE = { touches: 1, nativeFs: false, nativeControls: false, state: 'full' };
+const d = (o) => player.pictureTouchCancelDecision(Object.assign({}, BASE, o || {}));
 
-test('tapPairCancelDecision: cancels a one-finger touch inside the double-tap window on the FULL player', () => {
-  assert.strictEqual(typeof player.tapPairCancelDecision, 'function', 'exported');
+test('pictureTouchCancelDecision: every one-finger touch on the FULL player cancels (no tap window since v1.362.3)', () => {
+  assert.strictEqual(typeof player.pictureTouchCancelDecision, 'function', 'exported');
+  assert.strictEqual(player.tapPairCancelDecision, undefined, 'the v1.362.2 window decision is gone');
   assert.strictEqual(d(), true);
 });
 
-test('tapPairCancelDecision: each guard flipped ALONE refuses', () => {
+test('pictureTouchCancelDecision: each guard flipped ALONE refuses', () => {
   assert.strictEqual(d({ touches: 2 }), false, 'two fingers');
   assert.strictEqual(d({ touches: 0 }), false, 'no finger');
   assert.strictEqual(d({ nativeFs: true }), false, 'native full screen');
   assert.strictEqual(d({ nativeControls: true }), false, 'native-controls mode');
   assert.strictEqual(d({ state: 'docked' }), false, 'docked: the tap must still synthesize the expanding click');
   assert.strictEqual(d({ state: 'closed' }), false, 'closed');
-});
-
-test('tapPairCancelDecision: the double-tap window edges (349 cancels, 350 does not; no lift yet never cancels)', () => {
-  assert.strictEqual(d({ now: 10000, lastTapTime: 10000 - 349 }), true, '349 ms after the lift');
-  assert.strictEqual(d({ now: 10000, lastTapTime: 10000 - 350 }), false, '350 ms after the lift');
-  assert.strictEqual(d({ now: 10000, lastTapTime: 0 }), false, 'a first touch (no lone tap before it)');
-  assert.strictEqual(d({ now: 10000, lastTapTime: 10000 - 351 }), false);
-  // r0 mutant M9 (survived on the real clock): a clock under the window with no lift yet must not read as a pair.
-  assert.strictEqual(d({ now: 100, lastTapTime: 0 }), false, 'no lift recorded, even with a clock inside the window of 0');
-});
-
-test('tapPairCancelDecision: a hot skip chain cancels on its own; its edge is exclusive', () => {
-  assert.strictEqual(d({ lastTapTime: 0, skipChainUntil: 10001 }), true, 'chain still hot');
-  assert.strictEqual(d({ lastTapTime: 0, skipChainUntil: 10000 }), false, 'chain ends at its deadline');
-  assert.strictEqual(d({ lastTapTime: 0, skipChainUntil: 0 }), false);
-  assert.strictEqual(d({ lastTapTime: 0, skipChainUntil: 10001, touches: 2 }), false, 'a chain does not override the finger guard');
-  assert.strictEqual(d({ lastTapTime: 0, skipChainUntil: 10001, state: 'docked' }), false, 'nor the state guard');
+  assert.strictEqual(player.pictureTouchCancelDecision(), false, 'no input');
 });
 
 test('inTapRunDecision is the ONE window: the reveal grace reads it, and the window is not copied (LESSONS 0, no second copy)', () => {
@@ -151,19 +136,16 @@ test('the cancel is ONE separate non-passive touchstart per surface, registered 
   }
 });
 
-test('a tap, then a second touch 200 ms after its lift: cancelled (no loupe); 400 ms after: not', async () => {
+test('every one-finger touch on the playing picture is cancelled: a first touch, inside the tap window and long after it (E1)', async () => {
   const h = await boot(VIDEO);
   const first = tap(h, h.v, 100000);
-  assert.strictEqual(first.defaultPrevented, false, 'a first touch is never cancelled');
+  assert.strictEqual(first.defaultPrevented, true, 'a first touch (a plain hold starts like this)');
   h.at(100040 + 200);
-  const second = fire(h, h.v, 'touchstart', 300, 100);
-  assert.strictEqual(second.defaultPrevented, true, 'the touch that can pair the tap is cancelled');
+  assert.strictEqual(fire(h, h.v, 'touchstart', 300, 100).defaultPrevented, true, 'inside the window');
   h.at(100040 + 240); fire(h, h.v, 'touchend', 300, 100);
-  // A fresh run: a lone tap, then a touch past the window.
   tap(h, h.v, 105000);
-  h.at(105040 + 400);
-  const late = fire(h, h.v, 'touchstart', 300, 100);
-  assert.strictEqual(late.defaultPrevented, false, 'past the window the touch stays native (a scroll can start)');
+  h.at(105040 + 5000);
+  assert.strictEqual(fire(h, h.v, 'touchstart', 300, 100).defaultPrevented, true, '5 s after a tap');
 });
 
 test('two fingers inside the window: not cancelled (a pinch stays the browser\'s)', async () => {
@@ -219,16 +201,16 @@ test('a SINGLE tap then a hold inside the window: cancelled, but the first tap\'
   assert.strictEqual(h.v.playbackRate, 1, 'so the hold never engaged');
 });
 
-test('the listener passes the real window: a touch at lift+340 is cancelled, at lift+360 is not (r1 mutants L14/L17)', async () => {
+test('a PLAIN hold (no tap before it) is cancelled and still engages 2x; released, back to 1x (the device case, E1)', async () => {
   const h = await boot(VIDEO);
-  tap(h, h.v, 100000);
-  h.at(100040 + 340);
-  assert.strictEqual(fire(h, h.v, 'touchstart', 300, 100).defaultPrevented, true, '+340');
-  h.at(100040 + 345); fire(h, h.v, 'touchend', 300, 100);
-  await wait(420);
-  tap(h, h.v, 110000);
-  h.at(110040 + 360);
-  assert.strictEqual(fire(h, h.v, 'touchstart', 300, 100).defaultPrevented, false, '+360');
+  h.at(100000);
+  const s0 = fire(h, h.v, 'touchstart', 300, 100);
+  assert.strictEqual(s0.defaultPrevented, true);
+  await wait(560);
+  assert.strictEqual(h.v.playbackRate, 2, 'held');
+  assert.strictEqual(h.pauses(), 0);
+  h.at(101000); fire(h, h.v, 'touchend', 300, 100);
+  assert.strictEqual(h.v.playbackRate, 1);
 });
 
 test('a lone tap still pauses after the window (the cancel changes nothing about the tap)', async () => {
@@ -238,7 +220,7 @@ test('a lone tap still pauses after the window (the cancel changes nothing about
   assert.strictEqual(h.pauses(), 1);
 });
 
-test('docked: a touch inside the window is NOT cancelled (the tap must synthesize the expanding click)', async () => {
+test('docked: a touch is NOT cancelled (the tap must synthesize the expanding click)', async () => {
   const h = await boot(VIDEO);
   tap(h, h.v, 100000);
   h.p.dock();
@@ -292,20 +274,32 @@ test('native full screen: never cancelled', async () => {
   assert.strictEqual(s.defaultPrevented, false);
 });
 
-test('an upward drag 1 s after a tap is never cancelled anywhere (the page scrolls); inside the window only its START is', async () => {
+test('an upward drag from the picture: its START is cancelled at any time (the stated cost: no page scroll from the picture), its moves are untouched', async () => {
   const h = await boot(VIDEO);
   tap(h, h.v, 100000);
   h.at(101040);
-  const s = fire(h, h.v, 'touchstart', 200, 200);
+  const s0 = fire(h, h.v, 'touchstart', 200, 200);
   const moves = [];
   for (let dy = 10; dy <= 80; dy += 10) { h.at(101040 + dy); moves.push(fire(h, h.v, 'touchmove', 200, 200 - dy)); }
   h.at(101200); fire(h, h.v, 'touchend', 200, 120);
-  assert.strictEqual(s.defaultPrevented, false, 'the start is native');
-  assert.ok(moves.every((m) => !m.defaultPrevented), 'no move is cancelled');
+  assert.strictEqual(s0.defaultPrevented, true);
+  assert.ok(moves.every((m) => !m.defaultPrevented), 'no move is cancelled by this listener');
+  await wait(420);
+  assert.strictEqual(h.pauses(), 1, 'only the lone tap before it paused; the moved touch is not a tap');
+});
+
+test('E3: with "No glyph on picture taps" on, a picture tap still pauses but never flashes the glyph; off, it flashes (read at every tap)', async () => {
+  const h = await boot(VIDEO);
+  const glyph = h.doc.querySelector('.art-play-glyph');
+  assert.ok(glyph, 'precondition: the glyph exists in the player');
+  h.w.localStorage.setItem('ft-debug-no-tap-glyph', '1');
+  tap(h, h.v, 100000);
+  await wait(420);
+  assert.strictEqual(h.pauses(), 1, 'the tap still paused');
+  assert.strictEqual(glyph.classList.contains('art-play-glyph-flash'), false, 'nothing drawn over the video');
+  h.w.localStorage.removeItem('ft-debug-no-tap-glyph');
+  Object.defineProperty(h.v, 'paused', { value: true, configurable: true });
   tap(h, h.v, 110000);
-  h.at(110040 + 100);
-  const s2 = fire(h, h.v, 'touchstart', 200, 200);
-  const m2 = []; for (let dy = 10; dy <= 80; dy += 10) { h.at(110140 + dy); m2.push(fire(h, h.v, 'touchmove', 200, 200 - dy)); }
-  assert.strictEqual(s2.defaultPrevented, true, 'inside the window the start is cancelled (D1\'s accepted cost)');
-  assert.ok(m2.every((m) => !m.defaultPrevented), 'and the moves themselves are untouched');
+  await wait(420);
+  assert.strictEqual(glyph.classList.contains('art-play-glyph-flash'), true, 'switch off: the glyph flashes again at once');
 });

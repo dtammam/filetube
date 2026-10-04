@@ -22,7 +22,7 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON for 
 - [ ] v1.362.0 - iPhone, inline video playing: pull down slowly and let go early (springs back, still playing); pull past a third (docks bottom-right, still playing, the page is where you browsed from). Watch the picture during and after the drag: if it goes black or freezes while the sound runs on, open the same page in a SAFARI TAB with `?minimizeAnim=0` and repeat (the switch is a URL parameter; the home-screen app has no address bar). Black with the animation and fine without = the moving picture is the trigger.
 - [ ] v1.362.0 - Tap the down-chevron at the picture's top-left (since v1.362.1 it shows while paused, or for about 3 s after play or a touch on the picture): same end state. Then tap the mini player: back to the watch page, same position, still playing. Open a video from another video (a related card), minimize: you land on the feed / search you started from, and the second video keeps playing.
 - [ ] v1.362.0 - The mini player's X and play/pause: hit each with a thumb ten times without a mis-tap into "expand". With captions on, they sit above the bar.
-- [ ] v1.362.0 - Regressions: tap pauses, double-tap skips, hold 2x, hold-drag-down locks 2x, swipe right goes back, scroll the page from below the picture, scroll down then pull on the picture (the page scrolls to the top first), full screen untouched. At the top of the page, put a finger on the picture, wiggle it down a hair, then drag UP: the page must still scroll.
+- [ ] v1.362.0 - Regressions: tap pauses, double-tap skips, hold 2x, hold-drag-down locks 2x, swipe right goes back, scroll the page from below the picture, scroll down then pull on the picture (the page scrolls to the top first), full screen untouched. At the top of the page, put a finger on the picture, wiggle it down a hair, then drag UP: the page must still scroll (since v1.362.3 a finger that starts on the picture never scrolls the page: skip this part).
 - [ ] v1.362.0 - Home-screen app AND Safari tab: in the Safari tab the pull at the top fights the browser's own overscroll; report which wins.
 
 ## The minimize chevron peeks (v1.362.1)
@@ -33,19 +33,19 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON for 
 - [ ] v1.362.1 - VoiceOver on, a video playing: rest the VoiceOver cursor on the chevron; does it stay, or vanish after about 3 s?
 - [ ] v1.362.1 - Follow `docs/references/vpn-slowness-runbook.md` once; tell Claude where it was unclear, and send the run ids.
 
-## No loupe on the picture; the black-picture log (v1.362.2)
+## No loupe on any hold; the black-picture tests (v1.362.3)
 
-Settings > Mobile player > "Use custom player controls on touch devices" ON for the first two.
+Settings > Mobile player > "Use custom player controls on touch devices" ON for all of these. (The v1.362.2 loupe line failed on
+2026-10-04: the magnifier still showed on a plain hold; this release cancels every touch on the picture instead.)
 
-- [ ] v1.362.2 - iPhone, a video playing inline: double-tap the picture (it skips) and, at once, press and hold: 2x, NO grey
-  magnifier. Then a plain hold with no tap before it: 2x; say whether the magnifier shows (this release does not cover that one).
-  Hold-drag down: locks. Same in full screen and on an audio file's art. (A SINGLE tap then a hold pauses first, as before: no 2x.)
-- [ ] v1.362.2 - Regressions: tap pauses, double-tap skips, triple-tap chains skip, hold 2x, lock pill, pull down minimizes, swipe
-  right goes back, scroll the page with a finger that starts on the picture (wait a second after any tap first).
-- [ ] v1.362.2 - The black picture A/B (lifecycle log ON in Settings > Troubleshooting, reload): twenty cycles of pause with a PICTURE
-  tap, resume with the BAR's play button; then twenty of pause with the BAR, resume with a PICTURE tap. No holds, no double-taps.
-  Say which run went black (if any). If it goes black at any point: Settings > Troubleshooting > Export log, and send the file with
-  what you had just done.
+- [ ] v1.362.3 - iPhone: press and hold the playing picture with no tap before it, inline, in full screen and on an audio file's
+  art; and a double-tap then a hold: 2x every time, NO grey magnifier. Hold-drag down: locks.
+- [ ] v1.362.3 - Regressions: tap pauses, double-tap skips, chains skip, hold 2x, the lock pill, pull down minimizes, swipe right
+  goes back, the mini player's tap expands. Expected change: a finger that starts on the picture no longer scrolls the page.
+- [ ] v1.362.3 - The black picture, four runs (lifecycle log ON; no double-taps): (A) twenty pause/play rounds by PICTURE tap, no
+  holds; (B) the same with Settings > Troubleshooting > "No glyph on picture taps" ON; (C) pause by PICTURE tap, resume with the
+  BAR's play button, twenty times; (D) a few 2x holds, then pause/play with the BAR only. Say which runs went black; after any black,
+  Export log and send it (it now adds up short rounds and names a layer restart as `video:fcount-reset`).
 - [ ] v1.362.2 - Whenever it goes black in normal use: Settings > Troubleshooting > Export log and send the file with a word on the
   last few things you did.
 - [ ] v1.362.2 - Settings > Troubleshooting: lifecycle log ON (nothing appears on screen), use the app for a while (play, pause,
