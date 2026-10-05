@@ -5,57 +5,54 @@
 ### Device checks owed
 
 - [ ] **Device checks owed (Dean: reply "1-5 pass, 9 fails")** _(v1.362.2, 2026-10-04)_ - one line per open check in
-  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (44 open lines at v1.363.2); the steps are only there. A
+  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (37 open lines on 2026-10-05); the steps are only there. A
   passed line is deleted from both places; a failed one becomes a bug below. Closes when every line is resolved.
 
-  1. v1.341.3 - watch page: turn back upright settles in one step
-  2. v1.350.0 - Pocket turn back: send the rotate-log rows with a recording
-  3. v1.362.0 - pull down: springs back early, docks past a third, picture never black
-  4. v1.362.0 - the chevron minimizes; tap the mini player returns; lands where you browsed
-  5. v1.362.0 - mini player X and play/pause: ten thumb taps, no mis-tap
-  6. v1.362.0 - minimize regressions (tap, double-tap, hold, lock, swipe, scroll)
-  7. v1.362.0 - home-screen app vs Safari tab: which wins the pull at the top
-  8. v1.362.1 - tap to pause and lock at once: does the pause happen
-  9. v1.362.1 - VoiceOver cursor on the chevron: stays or vanishes
-  10. v1.362.1 - follow the VPN runbook once, say where it was unclear, send run ids
-  11. v1.362.3 - any hold on the picture (plain, after a double-tap; inline, full screen, art): 2x, no magnifier
-  12. v1.362.3 - regressions (taps, chains, hold, lock, pull, swipe, mini player); the picture no longer scrolls the page
-  13. v1.362.3 - black picture, four runs: taps / taps with no glyph / tap-pause bar-resume / holds then bar
-  14. v1.362.2 - whenever it goes black: Export log and send the file
-  15. v1.362.2 - lifecycle log records in the background; Export log gives a .txt; Clear asks
-  16. v1.362.4 - the page under the video fades on pull, arrow and expand (compare with YouTube)
-  17. v1.361.0 - 20 picture-tap pause/plays (inline, full screen, mini): never black
-  18. v1.361.0 - background audio as before v1.360: autostarted video, lock, sound carries on
-  19. v1.359.0 - portrait video edge to edge, square corners, margins kept
-  20. v1.359.0 - a song and a Shorts video edge to edge; custom bar full size
-  21. v1.359.0 - hold 2x, lock, pill, skips, edge swipe back still work
-  22. v1.359.0 - dock and back: no jump; rotate and back
-  23. v1.359.0 - ambient glow above and below; no sideways scroll
-  24. v1.354.0 - iPod Songs to Z, Genres, Shuffle Songs, Liked
-  25. v1.354.0 - speaker Now Playing: the PC's up-next list
-  26. v1.354.0 - Transparent skin: turn and back in one step
-  27. v1.354.0 - Music > Search on the iPod with the wheel
-  28. v1.354.0 - search the skins list
-  29. v1.355.0 - rotate debug log switch in the home-screen app
-  30. v1.355.0 - keyboard search OFF: the wheel letter strip
-  31. v1.355.0 - keyboard search ON: keyboard, nothing on screen moves
-  32. v1.356.0 - close and reopen the app on a speaker
-  33. v1.357.0 - iPod skin turn and back in one step (rotate log rows)
-  34. v1.357.0 - the speaker's song is marked in an album
-  35. v1.358.0 - hold, drag down, lift: 2x locked; pill unlocks
-  36. v1.358.0 - locked 2x ends on lock, next item, dock, speed pick
-  37. v1.358.0 - locked 2x in a scrolling page and on art: no scroll or refresh
-  38. v1.344.2 - only if it comes back: Watch/Listen keeps a chapter's spot
-  39. v1.363.0 - Ask me: R and S, length 0, default choice, countdown off
-  40. v1.363.0 - Ask me: minimize with a prompt up; Auto note; music/podcast/TV never ask
-  41. v1.363.1 - pop-out: Add/Edit chapters opens in the pop-out, Watch row on a video file, none on an mp3; small window clipping
-  42. v1.363.1 - Add chapters on a chapterless mp3: chapter tracks after re-list and next pick; the playing song untouched
-  43. v1.363.1 - watch cog: Add / Edit chapters row; the new sticker rows match the old
-  44. v1.363.2 - Music/podcasts theatre: off = list beside the player, on = wide player with the list below
-  45. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
+  1. v1.362.0 - pull down: springs back early, docks past a third, picture never black
+  2. v1.362.0 - the chevron minimizes; tap the mini player returns; lands where you browsed
+  3. v1.362.0 - mini player X and play/pause: ten thumb taps, no mis-tap
+  4. v1.362.0 - minimize regressions (tap, double-tap, hold, lock, swipe, scroll)
+  5. v1.362.0 - home-screen app vs Safari tab: which wins the pull at the top
+  6. v1.362.1 - tap to pause and lock at once: does the pause happen
+  7. v1.362.1 - VoiceOver cursor on the chevron: stays or vanishes
+  8. v1.362.1 - follow the VPN runbook once, say where it was unclear, send run ids
+  9. v1.362.3 - any hold on the picture (plain, after a double-tap; inline, full screen, art): 2x, no magnifier
+  10. v1.362.3 - regressions (taps, chains, hold, lock, pull, swipe, mini player); the picture no longer scrolls the page
+  11. v1.362.3 - black picture, four runs: taps / taps with no glyph / tap-pause bar-resume / holds then bar
+  12. v1.362.2 - whenever it goes black: Export log and send the file
+  13. v1.362.2 - lifecycle log records in the background; Export log gives a .txt; Clear asks
+  14. v1.362.4 - the page under the video fades on pull, arrow and expand (compare with YouTube)
+  15. v1.361.0 - 20 picture-tap pause/plays (inline, full screen, mini): never black
+  16. v1.361.0 - background audio as before v1.360: autostarted video, lock, sound carries on
+  17. v1.359.0 - portrait video edge to edge, square corners, margins kept
+  18. v1.359.0 - a song and a Shorts video edge to edge; custom bar full size
+  19. v1.359.0 - hold 2x, lock, pill, skips, edge swipe back still work
+  20. v1.359.0 - dock and back: no jump; rotate and back
+  21. v1.359.0 - ambient glow above and below; no sideways scroll
+  22. v1.354.0 - iPod Songs to Z, Genres, Shuffle Songs, Liked
+  23. v1.354.0 - speaker Now Playing: the PC's up-next list
+  24. v1.354.0 - Transparent skin: turn and back in one step
+  25. v1.354.0 - Music > Search on the iPod with the wheel
+  26. v1.354.0 - search the skins list
+  27. v1.355.0 - rotate debug log switch in the home-screen app
+  28. v1.355.0 - keyboard search OFF: the wheel letter strip
+  29. v1.355.0 - keyboard search ON: keyboard, nothing on screen moves
+  30. v1.356.0 - close and reopen the app on a speaker
+  31. v1.357.0 - the speaker's song is marked in an album
+  32. v1.344.2 - only if it comes back: Watch/Listen keeps a chapter's spot
+  33. v1.363.0 - Ask me: R and S, length 0, default choice, countdown off
+  34. v1.363.0 - Ask me: minimize with a prompt up; Auto note; music/podcast/TV never ask
+  35. v1.363.1 - pop-out: Add/Edit chapters opens in the pop-out, Watch row on a video file, none on an mp3; small window clipping
+  36. v1.363.1 - Add chapters on a chapterless mp3: chapter tracks after re-list and next pick; the playing song untouched
+  37. v1.363.1 - watch cog: Add / Edit chapters row; the new sticker rows match the old
+  38. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
 
   Passed 2026-10-05 (deleted from DEVICE-CHECKS.md): [x] v1.363.0 - the Ask me prompt, the 5 s countdown, a tap cancels it; [x]
-  v1.363.0 - the mini player never prompts.
+  v1.363.0 - the mini player never prompts; [x] v1.341.3 - watch page: turn back upright settles in one step; [x] v1.350.0 - Pocket turn back: send the
+  rotate-log rows with a recording; [x] v1.357.0 - iPod skin turn and back in one step; [x] v1.358.0 - hold, drag down, lift: 2x
+  locked; pill unlocks; [x] v1.358.0 - locked 2x ends on lock, next item, dock, speed pick; [x] v1.358.0 - locked 2x in a scrolling
+  page and on art: no scroll or refresh; [x] v1.363.2 - Music/podcasts theatre: off = list beside the player, on = wide player
+  with the list below.
 
   Passed 2026-10-04 (deleted from DEVICE-CHECKS.md): [x] v1.362.1 - pause shows the chevron, ~3 s after play it goes, a touch
   shows it; [x] v1.362.1 - 3 s is right; [x] v1.362.1 - a double-tap at the hidden chevron's spot skips, never minimizes.
@@ -132,7 +129,7 @@
   that size is the suspect (the view below the pills sized to zero or pushed off-screen, or a covering layer that is not
   the player). Measure at 320x568 (1st-gen SE) and 375x667 (2nd/3rd gen): `document.elementFromPoint` at the bottom buttons and the tile area, the #view-root rect, and
   any fixed layer covering the viewport. Ask Dean for one screenshot and `?debugLifecycle=1` if the probe cannot reproduce it.
-- [ ] **Pocket turn back upright: the skin sits ~58 px low for a few frames** _(Dean's v1.350 device check, 2026-10-02; v1.357.0
+- [x] **Pocket turn back upright: the skin sits ~58 px low for a few frames** _(Dean's v1.350 device check, 2026-10-02; v1.357.0
   built, device check owed)_ - Dean's `?debugRotate=1` capture (test/fixtures/rotate-capture-2026-10-02.jsonl, 393x852) named
   the cause: for ~200 ms after the turn `innerHeight` is already 793 (the app area excludes the status bar) while
   `env(safe-area-inset-top)` still reads the stale 59, so the Pocket's top padding counts the status bar twice (LCD y 75, not 16);
@@ -142,7 +139,7 @@
   [20,75,812,609] at innerHeight 852, a fixed box against a stale layout viewport; no declaration explains it) and the 1
   "scrolled" frame (scrollY 59, LCD y -43; the existing scroll keeper owns it). The log rows now carry sh, cvw, cvh, pti; if the
   device check still shows a giant frame, the rows say what 100vw / 100dvh resolve to. The v1.341.3 watch-page check is the
-  same class.
+  same class. - FIXED v1.357.0, confirmed on device 2026-10-05 (Dean).
 - [ ] **Pocket turn (v1.357 gate suggestions)** _(adversary, measured)_ - (a) a two-back-to-back-turns test: dropping `lastWritten = null` in `close()` survived (a second turn whose first value equals the first turn's last value skips the write, so `env()` applies and the status bar counts twice; rare); (b) the sticker menu's `max-height` (style.css, near line 8341) still reads raw `env(safe-area-inset-top)`, off only for the ~200 ms window.
 - [ ] **Pocket music (v1.354 gate notes and edges)** _(adversary + QA, measured)_ - (a) a queue edit on the PC with the SAME
   current song is not pushed: the plan said a queue change pings `trackChanged`, it was not built, so the edit rides the next
@@ -190,10 +187,10 @@
   log the PC's reported trackId across a chapter boundary; if it already changes, the stale name is on the phone side
   (music.js remoteSkinCtx). Fix shape to plan: report the playing chapter's id (the view's chapterViewId), and bind it
   with a real-browser row across a boundary.
-- [ ] **Bug: the turn back to portrait flashes a giant LCD for ~5 frames, then sits ~20 px low** (Dean, 2026-10-01, from a screen
+- [x] **Bug: the turn back to portrait flashes a giant LCD for ~5 frames, then sits ~20 px low** (Dean, 2026-10-01, from a screen
   recording). **INSTRUMENTED in v1.350.0, not fixed**: headless does not reproduce it (all values flip in one frame). Next step:
   Dean records the turn back with `?debugRotate=1` (tap the panel to copy the rows); name the stale value from the log, then fix
-  the cause (never a timeout). Rows: t, innerWidth/Height, visualViewport, orientation query, angle, `--pkl-h`, top safe-area, LCD rect.
+  the cause (never a timeout). Rows: t, innerWidth/Height, visualViewport, orientation query, angle, `--pkl-h`, top safe-area, LCD rect. - confirmed fixed on device 2026-10-05 (Dean).
 
 - [ ] **Bug: a video opened from a subscription notification seems to loop with Loop off** (Dean,
   2026-09-25, captured mid-v1.333 and deferred: "if I tap a notification of a video for someone I'm
@@ -275,7 +272,7 @@
   error. iOS not measured. Resume with Dean's no-seek play-through on phone + desktop (note the clock at
   the song change), then an m4a re-download on the device; only then the m4a-default fix.
 
-- [ ] **Bug: after rotating back to portrait the page bumps up and down (deterministic)** - MITIGATED
+- [x] **Bug: after rotating back to portrait the page bumps up and down (deterministic)** - MITIGATED
   v1.341.3, confirm on device (one rotate with `?debugLifecycle=1`; the log now shows the scroll) _(Dean,
   2026-09-28, screen recording
   `~/.claude/uploads/ef864c0d-24a7-4879-a566-0754c2cf820a/a05ca679-ScreenRecording_09-28-2026_18-17-56_1.mov`)_.
@@ -293,7 +290,7 @@
   the second after a rotation re-runs the snap next frame (emulated: a stray 59px scroll corrected 16ms
   later, was 434ms). The log names the source: `y` on every viewport line, scroll lines near a
   rotation, and `fauxScroll` (on/off, y, saved, restore). If y reads ~59 after the rotation and the
-  saved value is 0, iOS deposited it; if saved is 59, the faux keeper's entry capture is the bug.
+  saved value is 0, iOS deposited it; if saved is 59, the faux keeper's entry capture is the bug. - FIXED v1.341.3, confirmed on device 2026-10-05 (Dean).
 
 - [x] **HIGHEST PRIORITY (2 of 2). Bug: a very thin white border around the whole screen in fullscreen, in
   every mode** (Dean, 2026-09-26: "in full screen, in all modes, I see a very thin white border around the
@@ -444,7 +441,7 @@
 
 - [ ] **A mobile theatre behaviour for all media** (retired memory, v1.198 record; "theatre-on-mobile = Dean").
 
-- [ ] **Idea: lock the hold-to-speed-up by dragging down** (Dean, 2026-09-26: "hold to speed up exists, I'd
+- [x] **Idea: lock the hold-to-speed-up by dragging down** (Dean, 2026-09-26: "hold to speed up exists, I'd
   like a hold to speed up lock option by dragging down. No need to do now please just add to roadmap").
   Today a press-and-hold on the picture plays at 2x until the finger lifts (player.js hold-to-2x:
   `HOLD_MS` 500, cancelled by a drag past `MOVE_TOL` 16px). The ask: while holding, drag DOWN to LOCK
@@ -452,7 +449,7 @@
   the lock's visible state and how to release it (a tap on a speed pill? holding again?); whether it
   applies in faux fullscreen and inline alike; that the drag-down does not fight the drag-cancel, the
   swipe-back (v1.337: off in fullscreen) or a vertical page scroll inline.
-  Dean confirmed 2026-10-02 this is the lock he wants, queued for the next wave after v1.357.
+  Dean confirmed 2026-10-02 this is the lock he wants, queued for the next wave after v1.357. - SHIPPED v1.358.0, confirmed on device 2026-10-05 (Dean).
 
 - [ ] **VR / 360 video: look around inside 360 and 180 MP4s** (Dean, 2026-09-27: "Can we add support for
   vr enabled mp4s?"; scope from his answers: the phone and desktop watch page, drag or tilt to look
