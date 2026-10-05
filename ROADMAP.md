@@ -5,7 +5,7 @@
 ### Device checks owed
 
 - [ ] **Device checks owed (Dean: reply "1-5 pass, 9 fails")** _(v1.362.2, 2026-10-04)_ - one line per open check in
-  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (37 open lines on 2026-10-05); the steps are only there. A
+  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (43 open lines on 2026-10-05); the steps are only there. A
   passed line is deleted from both places; a failed one becomes a bug below. Closes when every line is resolved.
 
   1. v1.362.0 - pull down: springs back early, docks past a third, picture never black
@@ -46,6 +46,12 @@
   36. v1.363.1 - Add chapters on a chapterless mp3: chapter tracks after re-list and next pick; the playing song untouched
   37. v1.363.1 - watch cog: Add / Edit chapters row; the new sticker rows match the old
   38. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
+  39. v1.364.0 - the iPhone SE (iOS 15): Home tiles, Music, and the bottom buttons all work
+  40. v1.364.0 - home-screen app: Settings > Troubleshooting > Export error log gives a .txt; empty after a clean sign-in
+  41. v1.364.0 - iPod Now Playing: hold the center 1 s: volume bar on a speaker, "Use the side buttons" on the phone
+  42. v1.364.0 - iPod: a plain center tap still selects with one tick
+  43. v1.364.0 - Music tab tapped again (or the iPod button): the iPod with no song; MENU closes it; Back goes Home
+  44. v1.364.0 - music Extras: the Add chapters row sits left like its neighbours
 
   Passed 2026-10-05 (deleted from DEVICE-CHECKS.md): [x] v1.363.0 - the Ask me prompt, the 5 s countdown, a tap cancels it; [x]
   v1.363.0 - the mini player never prompts; [x] v1.341.3 - watch page: turn back upright settles in one step; [x] v1.350.0 - Pocket turn back: send the
@@ -117,10 +123,10 @@
 
 - [ ] **v1.359 gate r1 suggestions (non-blocking)** - (a) a persisted `ft-theater=1` on a landscape phone (667x375, 740x360) keeps the old theatre `margin-inline:auto` width rule (about style.css 6441) so the player is not edge to edge there (x 129.9 / w 407.1); predates v1.359, the theatre button is hidden on phones, drop the stored flag below 1025px or let the mobile rule win; (b) BLD's desktop leg checks only x offsets: a mutant dropping the desktop border and radius is not caught in a real browser (the unit source lock covers it): add a desktop border / radius expectation per era; (c) `evalPlayerBleed` does not check scrollWidth or the picture's span, and its title check is `x < 8` not the page gutter; (d) the stage-rule unit lock does not forbid `padding-top` / `padding-bottom`; (e) the loose regex in the BLD gutter-back fixture test; (f) BLD sees only `env()` = 0 in a real browser, the 47px notch case is unit arithmetic plus the probe.
 
-- [ ] **Small phones (iPhone SE): the page shows only its frame and nothing works** _(Dean, 2026-10-02: "on a smaller
+- [x] **Small phones (iPhone SE): the page shows only its frame and nothing works** _(Dean, 2026-10-02: "on a smaller
   phone certain elements straight up do not work or display"; he sees the top banner, "Listening on X" for a song on
   another device, the bottom toolbar and the notification area, but no tiles, and the bottom buttons go nowhere; the same in
-  Chrome, Safari and the home-screen app; model unknown, so cover both SE sizes)_ - Intake 2026-10-02: every client script
+  Chrome, Safari and the home-screen app; model unknown, so cover both SE sizes)_ - **SHIPPED v1.364.0, root-caused in a real WebKit 15.4 (Dean: iOS 15.8.5):** not layout. iOS 15 cannot see a block's const/let from a function declared in that block of non-strict top-level script, so common.js's router block threw `Can't find variable: viewRegistry` and no view ever started. The block now runs inside `routerRuntime()`; a census test forbids the shape (including loop-head and catch bindings). Device check 39 confirms on the phone. History below. Intake 2026-10-02: every client script
   parses at ES2020 (acorn, all of public/js), so a syntax error on an older Safari is ruled out as the cause. Leading
   hypothesis: a layout layer at small sizes covers the content and swallows taps (an invisible full-screen panel, e.g. the
   remote/Pocket layer, or the view sized to zero). Falsifier RUN by Dean 2026-10-02: with the speaker
@@ -676,6 +682,29 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.364.0 - The iPhone SE works again, hold the iPod center for volume, the iPod with no song (2026-10-05)
+
+- Small phones (W1): the iPhone SE on iOS 15.8.5 showed only the frame. Not reproduced in current Chromium or WebKit at 7 sizes;
+  reproduced in a real WebKit 15.4 (Playwright 1.20.2, webkit-1616): `ReferenceError: Can't find variable: viewRegistry` from
+  common.js's router block (a function declared in a block of non-strict top-level code cannot see that block's const/let on iOS
+  15). Fix: the block runs inside `routerRuntime()`. WebKit 15.4 after: Home 46 cards, /music renders, History navigates, 0 page
+  errors. `test/unit/ios15-floor.test.js` forbids the shape over every classic script (block, loop-head and catch bindings).
+- An always-on error log (W1): an ES5 recorder is the first head script of all 13 shells (byte-identical): script errors, failed
+  script/style loads and rejections, last 50 under 64000 chars, in this browser only. Settings > Troubleshooting > Export / Clear
+  error log; `/errors.html` (signed in) for a page that cannot boot. A home-screen app keeps its own log (export it there).
+  `/js/glyph-pool.js` and `/js/prefs-sync.js` now load signed out (exact paths; Dean's ruling) so a sign-in logs nothing.
+- VPM (W1): a viewport matrix of 7 phone sizes (5 portrait, 2 landscape), 33 cells: 33 ok; 4 of 4 mutants killed.
+- The iPod (W2): hold the center 600 ms on Now Playing: with a speaker the volume bar opens; on the phone a 1.5 s note "Use the
+  side buttons" (iPhone Safari ignores page volume), and the release never fires the tap. The Music tab tapped again on Music, or the
+  toolbar iPod button, opens the iPod with no song (a remote to pick a speaker); it replaces the history entry. The music Extras
+  "Add chapters" row sits left in the same font as its neighbours (12/12 cells measured equal).
+- Suites at a3402a93: Node 22.23.1 `# tests 11117` `# pass 11108` `# fail 0` `# skipped 9`; Node 24.20.0 `ℹ pass 11108` `ℹ fail 0`.
+- Gate: adversary + qa r1 CHANGES @a041cef1 (6 WARNINGs: census blind spots, unbound hold cancel paths, a dead Back press, sign-in
+  log noise, errors.html copy vs the home-screen app's storage, the build log); r2 APPROVED @a3402a93 by adversary, qa and a
+  security-brief seat (added for the sign-in gate change). Disclosed: the idle-iPod hand-over (`pocketIdle = false`) is guarded by the
+  real-browser proof tool (tools/pocket-proof), not CI; the center hold on a real iPhone (could iOS's long-press cancel the touch
+  first?) is device check 41.
 
 ### v1.363.2 - Music and podcasts theatre means what the watch page's does (2026-10-05)
 
