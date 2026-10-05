@@ -169,6 +169,19 @@ lists), ROADMAP Shipped + `docs/releases.json` at release, LESSONS-rules if a le
 
 ## 6. Build log (the builder fills this in: failing-first runs, mutants, suites verbatim, the real-browser run, deviations)
 
+- W1 e1a835a1: failing first against main 3 pass / 14 fail (player-resume-prompt.test.js); hook pass 8584 fail 0.
+- W2 896eb1aa: failing first against the W1 setup files 0 pass / 5 fail (resume-mode-settings.test.js); hook pass 8589 fail 0.
+- W3 d309e2f3: hook pass 8591 fail 0. Real-browser run: tools/minimize-proof/probe-resume-prompt-result.json (askOpen time 0 paused
+  prompt true "Resume - 4" armed; askAfterCountdown 83.3 s playing prompt hidden; askAfterTouch and 6.5 s later time 0 prompt up,
+  no arming; autoLoad 82.3 s toast shown no prompt; ancestor opacity 1, no filter; pageErrors []).
+- Mutants (on committed work, /tmp git archive sandbox): 23 run. Round 1 killed 18; survivors were the two capture-listener unbinds,
+  the tick's hidden check, the tick's gen check; one string did not match (Settings mode write). Added two tests
+  (balanced capture listeners on tap / key / close; a tick on a hidden prompt fires nothing) and re-ran on d309e2f3: both unbinds,
+  the hidden check and the mode write KILLED. Survivor: the tick's `gen !== loadGeneration`, an equivalent belt (every load runs
+  teardownMediaState, which cancels the countdown first); kept, not weakened.
+- Deviation: the probe seeds 80 s of a 120 s clip (the 300 s clip encode exceeded the tool timeout), not 120 s.
+- Suite after W3: see 8c.
+
 ## 7. Device checks (Dean, on the released build; add to DEVICE-CHECKS.md in the release commit)
 
 - [ ] v1.363.0 - Settings > Automation & Storage > "When a video has saved progress": Ask me. Open a video you watched past a
