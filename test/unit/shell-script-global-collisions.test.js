@@ -51,7 +51,9 @@ const ROOT = path.join(__dirname, '..', '..');
 // none of the shared app globals - so there is no shared global scope for it to
 // collide in, and it is deliberately not an app shell. Excluded here (an
 // exclusion for a known-standalone page, not a rot-prone inclusion list).
-const NON_SHELL_PAGES = new Set(['diag.html']);
+// errors.html (v1.364.0) is the standalone error-log exporter: it loads NO app script at all (one inline ES5
+// IIFE, test/unit/boot-error-recorder.test.js), because on a broken phone the app's scripts are the suspect.
+const NON_SHELL_PAGES = new Set(['diag.html', 'errors.html']);
 const SHELLS = [
   ...fs.readdirSync(path.join(ROOT, 'public'))
     .filter((f) => f.endsWith('.html') && !NON_SHELL_PAGES.has(f))

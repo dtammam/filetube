@@ -10888,7 +10888,13 @@ function shouldShowHandoffCard(presence, ctx) {
 // `window`/`document`. Everything in this block is the actual router RUNTIME
 // (registry storage, fetch/swap, click/popstate wiring) -- the pure helpers
 // above are what node:test exercises directly.
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined') { (function routerRuntime() {
+  // v1.364.0 (W1, ROADMAP "Small phones"): the router runtime runs inside this function, never as bare
+  // block code. iOS 15's JavaScriptCore cannot see a block's const/let from a function declared in that
+  // block in non-strict top-level script code ("Can't find variable: viewRegistry" on the first
+  // registerView, so no view ever registered and the router never booted: the static frame and dead
+  // bottom buttons on Dean's iPhone SE). Measured in WebKit 15.4; test/unit/ios15-floor.test.js keeps
+  // every classic script free of that shape.
   const viewRegistry = Object.create(null);
   let currentViewName = null;
   // FR-4 (T4) -- the URL (pathname+search) the CURRENT view is displaying,
@@ -11836,7 +11842,7 @@ if (typeof window !== 'undefined') {
   window.FileTube.shimmerArt = shimmerArt;
   // v1.339 (L1): the batched in-viewport reveal (music first; a general helper for any view).
   window.FileTube.revealArtTogether = revealArtTogether;
-}
+})(); }
 
 // Renders the Playlists sheet's folder list — functionally equivalent to the
 // existing #sidebar-folders-list (same /?root=<path> links, same folderSettings
