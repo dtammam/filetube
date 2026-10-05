@@ -50,6 +50,10 @@
 //                     channel" row beside Watch when visible() (music: the playing item is a
 //                     library-backed track with a channel folder); onTap navigates to the
 //                     home grid filtered by that folder. Main-document only, as Watch.
+//     chapters        OPTIONAL (v1.363.1) - { visible(), label(), onTap(doc) }: the POP-OUT's way to the
+//                     chapter editor (the pop-out has no Extras page, where the main document's entry
+//                     lives). Page 1 gains an "Add chapters" / "Edit chapters" row when visible(); the
+//                     editor opens in the surface's own document (`doc`), never behind the pop-out.
 //     tray            OPTIONAL (v1.257, INJECTED BY THE POP-OUT SHELL only) - { enabled(),
 //                     onToggle() }: page 1 gains a "Tray" row on the pop-out surface;
 //                     toggling reopens the pip window as the taskbar strip. Views never
@@ -220,6 +224,14 @@
       // modify the library (the server enforces regardless).
       if (canModify && typeof cfg.onChapterSnap === 'function' && typeof item.chapterSnapIndex === 'number') {
         acts.push('<button type="button" class="mms-sm-act" data-skin-x="chapter-snap"><i class="icon-list"></i>Fix chapter times</button>');
+      }
+      // v1.363.1 (Dean): the text chapters editor from an audio item. The watch page's only trigger
+      // is the chapter-name label on the bar, which exists only for an item that ALREADY has chapters,
+      // so a chapterless file (a long mix with its song times in a comment) could never get its first
+      // list. Same gate as the editor itself: the viewer may modify the library.
+      if (canModify && typeof cfg.onChapters === 'function' && extrasCap('chapters')) {
+        var hasChapters = Array.isArray(item.chapters) && item.chapters.length > 0;
+        acts.push('<button type="button" class="ui-btn ui-btn--plain mms-sm-act" data-skin-x="chapters"><i class="icon-list"></i>' + (hasChapters ? 'Edit chapters' : 'Add chapters') + '</button>');
       }
       if (extrasCap('move') && canModify) {
         acts.push('<button type="button" class="mms-sm-act" data-skin-x="move"><i class="icon-folder"></i>Move to folder</button>');
@@ -531,6 +543,7 @@
       if (act === 'transcript') { extrasClose(); extrasTranscript(item, el); return; }
       if (act === 'reheat') { extrasClose(); extrasReheat(item); return; }
       if (act === 'chapter-snap') { extrasClose(); if (typeof cfg.onChapterSnap === 'function') { try { cfg.onChapterSnap(item); } catch (_) { /* editor open best-effort */ } } return; }
+      if (act === 'chapters') { extrasClose(); if (typeof cfg.onChapters === 'function') { try { cfg.onChapters(item); } catch (_) { /* editor open best-effort */ } } return; }
       if (act === 'move') { extrasClose(); extrasMove(item); return; }
       if (act === 'delete') { extrasClose(); extrasDelete(item); }
     }
@@ -2019,9 +2032,12 @@
       // the watchBack hook AND says it applies to the playing item (music: a listen track).
       // Rides the Extras row chassis (44px full-width) with its own dispatch hook.
       var watchBack = '';
-      // QA gate S4: main-document only, the extras posture - a pop-out row navigating the
-      // window BEHIND the always-on-top pop-out would be the exact confusion extras avoids.
-      if (inMainDoc && stickerCfg.watchBack && typeof stickerCfg.watchBack.visible === 'function') {
+      // v1.363.1 (Dean: the pop-out had no way to switch to watching): the row now rides BOTH surfaces.
+      // v1.252 kept it main-document only, because a tap navigates the window BEHIND the always-on-top
+      // pop-out. The view's onTap owns that: it navigates AND brings the main window forward (the
+      // music view leaving takes the pop-out down with it), and visible() is still only a listen
+      // track, so an audio-only file offers no Watch at all rather than a dead button.
+      if (stickerCfg.watchBack && typeof stickerCfg.watchBack.visible === 'function') {
         var wbOn = false;
         try { wbOn = !!stickerCfg.watchBack.visible(); } catch (_) { wbOn = false; }
         if (wbOn) watchBack = '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-watchback><span class="mms-sm-lbl"><i class="icon-tv"></i>Watch</span><span class="mms-sm-state">&rsaquo;</span></button></div>';
@@ -2056,6 +2072,15 @@
         try { trOn = !!stickerCfg.tray.enabled(); } catch (_) { trOn = false; }
         trayRow = '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (trOn ? ' is-on' : '') +
           '" data-skin-tray aria-checked="' + (trOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-download"></i>Tray</span><span class="mms-sm-state">' + (trOn ? 'On' : 'Off') + '</span></button></div>';
+      }
+      // v1.363.1: the pop-out's Add / Edit chapters row (the pop-out has no Extras page; the main
+      // document reaches the same editor through Extras). The tap hands the editor THIS document.
+      var chaptersRow = '';
+      if (!inMainDoc && stickerCfg.chapters && typeof stickerCfg.chapters.visible === 'function') {
+        var chOk = false;
+        var chLbl = 'Add chapters';
+        try { chOk = !!stickerCfg.chapters.visible(); if (chOk && typeof stickerCfg.chapters.label === 'function') chLbl = String(stickerCfg.chapters.label() || chLbl); } catch (_) { chOk = false; }
+        if (chOk) chaptersRow = '<div class="mms-sm-sec"><button type="button" class="ui-btn ui-btn--plain mms-sm-extras" data-skin-chapters><span class="mms-sm-lbl"><i class="icon-list"></i>' + escapeHtml(chLbl) + '</span><span class="mms-sm-state">&rsaquo;</span></button></div>';
       }
       // v1.333 (Dean: "We have brick there. I don't think we need it to be there"): the sticker no
       // longer offers Brick. The game lives on at the pocket menus' Extras > Games > Brick, which rides
@@ -2097,7 +2122,7 @@
         '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (loopOn ? ' is-on' : '') +
         '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-refresh"></i>' + loopLabel + '</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
         autoplay + trayRow + skinSec + lightRow +
-        watchBack + channelRow + extras;
+        watchBack + channelRow + chaptersRow + extras;
     }
     // The skin chips (v1.332: the registry's list; inside the TRAY only the Click colorways - those picks
     // genuinely restyle the tray, the rest would no-op there). Page 1 of the tray, the Skin page elsewhere.
@@ -2163,7 +2188,7 @@
       if (!a || !menu || !menu.contains(a) || typeof a.getAttribute !== 'function') return null;
       var valued = ['data-skin-lighting', 'data-skin-speed', 'data-skin-pick'];
       for (var i = 0; i < valued.length; i++) { var v = a.getAttribute(valued[i]); if (v !== null) return '[' + valued[i] + '="' + String(v).replace(/["\\]/g, '') + '"]'; }
-      var flags = ['data-skin-loop', 'data-skin-autoplay', 'data-skin-skins', 'data-skin-extras', 'data-skin-home', 'data-skin-watchback', 'data-skin-channel', 'data-skin-tray'];
+      var flags = ['data-skin-loop', 'data-skin-autoplay', 'data-skin-skins', 'data-skin-extras', 'data-skin-home', 'data-skin-watchback', 'data-skin-channel', 'data-skin-chapters', 'data-skin-tray'];
       for (var j = 0; j < flags.length; j++) { if (a.hasAttribute(flags[j])) return '[' + flags[j] + ']'; }
       return null;
     }
@@ -2250,6 +2275,7 @@
       likeRequest: extrasCfg ? extrasCfg.likeRequest : undefined,
       watchedRequest: extrasCfg ? extrasCfg.watchedRequest : undefined,
       onChapterSnap: extrasCfg ? extrasCfg.onChapterSnap : undefined, // Chapter Snap (2026-09-24): "This chapter starts wrong"
+      onChapters: extrasCfg ? extrasCfg.onChapters : undefined, // v1.363.1: Add / Edit chapters
     });
     function openStickerExtras() {
       var menu = panel.querySelector('[data-skin-sticker-menu]');
@@ -2285,6 +2311,11 @@
       if (e.target.closest('[data-skin-channel]')) { // v1.317 M1: the same navigate-away shape as Watch
         closeStickerMenu();
         if (stickerCfg.channel && typeof stickerCfg.channel.onTap === 'function') { try { stickerCfg.channel.onTap(); } catch (_) { /* view nav best-effort */ } }
+        return true;
+      }
+      if (e.target.closest('[data-skin-chapters]')) { // v1.363.1: the pop-out's chapter editor, opened in THIS document
+        closeStickerMenu();
+        if (stickerCfg.chapters && typeof stickerCfg.chapters.onTap === 'function') { try { stickerCfg.chapters.onTap(doc); } catch (_) { /* editor open best-effort */ } }
         return true;
       }
       if (e.target.closest('[data-skin-extras]')) { openStickerExtras(); return true; }

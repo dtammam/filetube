@@ -3514,5 +3514,11 @@
     "date": "2026-10-05",
     "title": "Ask before resuming a video",
     "intent": "Settings now lets you choose what happens when you open a video you have part-watched: resume automatically as before, or Ask me. Ask me shows Resume and Start from beginning over the paused picture, with an optional countdown that picks your default for you; touch the player and the countdown stops. Music, podcasts, TV and the mini player never ask."
+  },
+  {
+    "version": "1.363.1",
+    "date": "2026-10-05",
+    "title": "Add chapters to any song or video",
+    "intent": "A song with no chapters, like a long mix, can now get them: Add chapters is in the music player's menu, in the pop-out, and in the watch page's settings cog, using the same editor videos already had. Your saved chapters work like built-in ones. The pop-out also gets a Watch button for video files."
   }
 ]

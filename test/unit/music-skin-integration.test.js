@@ -3269,3 +3269,152 @@ test('v1.357 W2: local play (no speaker) is unchanged - the list marks the phone
   await boot({ mobile: true, isMusic: true, skin: 'ipod', cfgSpy: (c) => { seen.cfg = c; }, run: async () => { seen.id = seen.cfg.menu.currentId(); } });
   assert.strictEqual(seen.id, 't1');
 });
+
+// v1.363.1 (Dean): Add / Edit chapters from the music player and the pop-out. DATA-LOSS rule: the editor
+// is seeded from the FILE at tap time (storage + its version token), never from the queue or an item the
+// menu captured earlier - POST /chapters replaces the manual list wholesale.
+test('v1.363.1 chapters from the player: seeded from the FILE (time order, 0:00 kept) with its version token, handed the pop-out document, capability fail-closed', async () => {
+  const log = [];
+  const FILE = Object.assign({}, LISTEN_VIDEO, {
+    chaptersVersion: 'v-abc',
+    chapters: [{ startTime: 240, title: 'Outro' }, { startTime: 0, title: 'Intro' }, { startTime: 120, title: 'Middle' }],
+  });
+  const seen = { cfg: null, calls: [] };
+  const calls = { loads: [], navs: [] };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, FILE), playerOverride: listenPlayer(calls),
+    cfgSpy: (c) => { seen.cfg = c; },
+    run: async (dom) => {
+      const ch = seen.cfg.sticker.chapters;
+      assert.ok(ch && typeof ch.onTap === 'function', 'the sticker config carries the chapters hook');
+      assert.strictEqual(ch.visible(), false, 'FAIL CLOSED: the capability probe has not said yes (no fetchCurrentUser answer) -> no row');
+      dom.window.showChaptersEditor = (id, lines, onSaved, doc, opts) => { seen.calls.push({ id, lines, doc, opts, onSaved }); };
+      const popDoc = { marker: 'pip-document' };
+      ch.onTap(popDoc);
+      for (let i = 0; i < 10; i++) await settle();
+      assert.strictEqual(seen.calls.length, 1, 'the editor opened');
+      const c = seen.calls[0];
+      assert.strictEqual(c.id, 'vid1', 'against the FILE id');
+      assert.strictEqual(c.lines, '0:00 Intro\n2:00 Middle\n4:00 Outro', 'seeded from the fetched file: time order, 0:00 intact');
+      assert.deepStrictEqual(c.opts, { version: 'v-abc' }, 'the version token rides along so a stale save 409s instead of overwriting');
+      assert.strictEqual(c.doc, popDoc, 'the pop-out\'s own document is handed through');
+      assert.ok(log.some((l) => l.url === '/api/videos/vid1'), 'and it asked storage at tap time');
+    },
+  });
+});
+
+test('v1.363.1 chapters from the player: a file the server cannot resolve never opens an empty editor (a save would wipe the list)', async () => {
+  const log = [];
+  const seen = { cfg: null, calls: 0, toasts: [] };
+  const calls = { loads: [], navs: [] };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, LISTEN_VIDEO), playerOverride: listenPlayer(calls),
+    cfgSpy: (c) => { seen.cfg = c; },
+    run: async (dom) => {
+      dom.window.showChaptersEditor = () => { seen.calls += 1; };
+      dom.window.showToast = (m) => { seen.toasts.push(m); };
+      // the server answers for a DIFFERENT id than the one asked
+      global.fetch = () => Promise.resolve({ ok: true, json: async () => ({ id: 'someone-else', chapters: [] }) });
+      seen.cfg.sticker.chapters.onTap();
+      for (let i = 0; i < 10; i++) await settle();
+      assert.strictEqual(seen.calls, 0, 'no editor over a mismatched record');
+      assert.ok(seen.toasts.some((m) => /can.t be edited/.test(m)), 'and the user is told why');
+    },
+  });
+});
+
+// v1.363.1 gate r1 (adversary W-A): the guards and hooks that were correct but unbound.
+function heldVideoFetch(log, file, gate) {
+  return (u, init) => {
+    const url = String(u);
+    log.push({ url, method: (init && init.method) || 'GET' });
+    if (/^\/api\/videos\//.test(url)) return gate.then(() => ({ ok: true, json: async () => file }));
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+}
+const CH_FILE = Object.assign({}, LISTEN_VIDEO, { chaptersVersion: 'v1', chapters: [{ startTime: 0, title: 'A' }] });
+
+test('v1.363.1 gate r1: the editor open is ASYNC - a song change or a destroyed view during the fetch opens nothing', async () => {
+  for (const kind of ['song-change', 'destroyed']) {
+    const log = [];
+    let release; const gate = new Promise((r) => { release = r; });
+    const seen = { cfg: null, opened: 0 };
+    const calls = { loads: [], navs: [] };
+    await boot({
+      mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+      fetchImpl: (u, i) => (String(u) === '/api/videos/vid1' && seen.hold ? heldVideoFetch(log, CH_FILE, gate)(u, i) : listenFetch(log, CH_FILE)(u, i)),
+      playerOverride: listenPlayer(calls), cfgSpy: (c) => { seen.cfg = c; },
+      run: async (dom, spy, mod) => {
+        dom.window.showChaptersEditor = () => { seen.opened += 1; };
+        seen.hold = true;
+        seen.cfg.sticker.chapters.onTap();
+        await settle();
+        assert.strictEqual(seen.opened, 0, 'still in flight (non-vacuous)');
+        if (kind === 'song-change') dom.window.FileTube.player.currentId = 'other-song';
+        else mod.destroy();
+        release();
+        for (let i = 0; i < 10; i++) await settle();
+        assert.strictEqual(seen.opened, 0, kind + ': no editor lands over a moved-on view');
+      },
+    });
+  }
+});
+
+test('v1.363.1 gate r1: a SAVE re-lists the view (the onSaved arm RUNS) and refuses once the view is gone', async () => {
+  const log = [];
+  const seen = { cfg: null, onSaved: null };
+  const calls = { loads: [], navs: [] };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch(log, CH_FILE), playerOverride: listenPlayer(calls), cfgSpy: (c) => { seen.cfg = c; },
+    run: async (dom, spy, mod) => {
+      dom.window.showChaptersEditor = (id, lines, onSaved) => { seen.onSaved = onSaved; };
+      seen.cfg.sticker.chapters.onTap();
+      for (let i = 0; i < 10; i++) await settle();
+      assert.strictEqual(typeof seen.onSaved, 'function', 'the editor was handed a save callback');
+      const listed = () => log.filter((l) => /^\/api\/music\/(albums|songs|tracks)/.test(l.url)).length;
+      const before = listed();
+      seen.onSaved('0:00 A\n1:00 B');
+      for (let i = 0; i < 10; i++) await settle();
+      assert.ok(listed() > before, 'a save re-fetched the list - new chapter rows exist only after a re-list');
+      mod.destroy();
+      const after = listed();
+      seen.onSaved('0:00 A');
+      for (let i = 0; i < 10; i++) await settle();
+      assert.strictEqual(listed(), after, 'a destroyed view is never re-listed');
+    },
+  });
+});
+
+test('v1.363.1 gate r1: BOTH Extras writers carry the chapters hook (phone sticker cfg and the desktop actions menu)', async () => {
+  const seen = { cfg: null, desk: null };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch([], CH_FILE), playerOverride: listenPlayer({ loads: [], navs: [] }), cfgSpy: (c) => { seen.cfg = c; },
+    run: async () => {
+      assert.strictEqual(typeof seen.cfg.sticker.extras.onChapters, 'function', 'phone sticker Extras cfg');
+    },
+  });
+  await boot({
+    mobile: false, isMusic: true, query: '?play=vid1&listen=1',
+    fetchImpl: listenFetch([], CH_FILE), playerOverride: listenPlayer({ loads: [], navs: [] }),
+    run: async (dom) => {
+      const SS = dom.window.FileTubeSkinSurface; const real = SS.createExtrasMenu;
+      SS.createExtrasMenu = function (cfg) { seen.desk = cfg; return real.apply(this, arguments); };
+      dom.window.document.getElementById('music-actions-btn').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 6; i++) await settle();
+      assert.ok(seen.desk, 'the desktop menu was built (non-vacuous)');
+      assert.strictEqual(typeof seen.desk.onChapters, 'function', 'desktop actions menu cfg');
+    },
+  });
+});
+
+test('v1.363.1 gate r1: a text save drops the menu caches and patches the queue BEFORE it re-lists (source-bound: the queue is empty in a listen harness, so this half has no behavioural witness here)', () => {
+  const src = require('node:fs').readFileSync(musicPath, 'utf8');
+  const body = src.slice(src.indexOf('function afterChaptersTextSave'), src.indexOf('function extrasEditChapters'));
+  assert.ok(body.length > 100, 'non-vacuous');
+  const a = body.indexOf('invalidateMenuData();'), b = body.indexOf('applySnappedChapterTimes(baseId, body, { skipDrillRefresh: true });'), c = body.indexOf('render()');
+  assert.ok(a !== -1 && b > a && c > b, 'invalidate, then the queue patch, then the re-list');
+});
