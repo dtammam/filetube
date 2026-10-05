@@ -8389,6 +8389,15 @@ a.tv-continue-card { text-decoration: none; }
   .mms-sticker-menu .mms-sm-act{ display:flex; align-items:center; gap:var(--space-4); width:100%; text-align:left; text-decoration:none; border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; min-height:var(--size-touch); transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
   .mms-sticker-menu .mms-sm-act.is-on{ background:var(--overlay-border); color:inherit; border-color:currentColor; font-weight:var(--fw-semibold); }
   .mms-sticker-menu .mms-sm-act[disabled]{ opacity:.5; cursor:default; }
+  /* v1.364.0 (W2c, Dean: "the new Add chapters button for music view is centered instead of left aligned"): the v1.363.1
+     chapters rows carry ui-btn (the lint's bespoke-button rule; their siblings are counted carve-out debt, never widened),
+     and ui-btn centres its content, fixes its height, sets its own font size, weight and line height and draws a tint layer
+     (the family is the menu's, .mms-sticker-menu button; the extras row's whole font reverts to the button default its
+     siblings render in, then takes that family back). Inside the sticker menu
+     those rows lay out exactly as their bare siblings do: these two rules sit AFTER both row bases (file order decides). */
+  .mms-sticker-menu .ui-btn.mms-sm-act{ justify-content:flex-start; height:auto; font-style:revert; font-weight:revert; line-height:revert; white-space:revert; }
+  .mms-sticker-menu .ui-btn.mms-sm-extras{ height:auto; font:revert; font-family:var(--font-ui); white-space:revert; border-radius:revert; }
+  .mms-sticker-menu .ui-btn:is(.mms-sm-act, .mms-sm-extras)::after{ content:none; }
   .mms-sticker-menu .mms-sm-danger{ color:var(--yt-red); border-color:var(--yt-red); }
   .mms-sticker-menu .mms-sm-note{ font-size:var(--fs-md); opacity:.7; }
   /* v1.278: desktop actions menu - anchored under its top-toolbar button (a positioned
