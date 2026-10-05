@@ -12508,3 +12508,9 @@ html[data-era-flourish="on"] .ft-unfabricated {
 :where(html.is-phone, html.mms-popout) .mms-ipod .mms-remote{ min-height:0; padding:0 var(--space-2); }
 :where(html.is-phone, html.mms-popout) .ipm-name{ display:block; }
 :where(html.is-phone, html.mms-popout) .ipm-detail{ display:block; font-size:var(--pk-fs-note); opacity:.7; }
+
+/* v1.364.0 (W1): /errors.html, the standalone error-log exporter (it loads no app script). */
+.errors-page { padding: var(--space-4); }
+.errors-page h1 { font: var(--t-title); margin: 0 0 var(--space-2); }
+.errors-page pre { white-space: pre-wrap; word-break: break-word; font: var(--t-caption); color: var(--ink-2); }
+.errors-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0; }

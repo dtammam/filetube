@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <script>/* ft-boot-errors v1 (v1.364.0): records script errors from the first moment of the page into localStorage 'ft-boot-errors' (last 50, under 64 KB) for Settings > Troubleshooting > Export error log and /errors.html. ES5 only; byte-identical in every shell (test/unit/boot-error-recorder.test.js). */(function(w){var K='ft-boot-errors';function s(v,n){try{v=String(v===null||v===undefined?'':v)}catch(_){v=''}return v.length>n?v.slice(0,n):v}function rec(e){try{var ls=w.localStorage,a=null;try{a=JSON.parse(ls.getItem(K)||'[]')}catch(_){a=null}if(!(a instanceof Array))a=[];e.t=new Date().toISOString();e.path=s(w.location&&w.location.pathname,200);try{var m=w.document.querySelector('meta[name="ft-version"]');e.v=m?s(m.getAttribute('content'),40):''}catch(_){e.v=''}a.push(e);while(a.length>50)a.shift();var j=JSON.stringify(a);while(j.length>64000&&a.length>1){a.shift();j=JSON.stringify(a)}ls.setItem(K,j)}catch(_){}}try{w.addEventListener('error',function(ev){try{var t=ev&&ev.target;if(t&&t!==w&&t.nodeName){var n=String(t.nodeName).toLowerCase();if(n!=='script'&&n!=='link')return;rec({kind:'resource',msg:'failed to load '+n,src:s(t.src||t.href,300)});return}var er=ev&&ev.error;rec({kind:'error',msg:s(ev&&ev.message,300),src:s(ev&&ev.filename,300),line:(ev&&ev.lineno)||0,col:(ev&&ev.colno)||0,stack:s(er&&er.stack,600)})}catch(_){}},true);w.addEventListener('unhandledrejection',function(ev){try{var r=ev&&ev.reason;rec({kind:'rejection',msg:s(r&&r.message!==undefined?r.message:r,300),stack:s(r&&r.stack,600)})}catch(_){}})}catch(_){}})(window);</script>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
   <title>Setup - FileTube</title>
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -826,6 +827,15 @@
       <details class="setup-box setup-sec sub-collapsible" data-collapse-key="troubleshooting" data-md-icon="wrench" data-md-group="Advanced" open>
         <summary>Troubleshooting</summary>
         <p class="setup-intro">Diagnostics for when something on THIS device misbehaves. Nothing here changes how FileTube works - these tools only observe and report. All device-local.</p>
+        <!-- v1.364.0 (W1): the boot error log. Always on (a broken phone may never reach this page to flip a switch): every shell's first head script records script errors to localStorage 'ft-boot-errors'. /errors.html exports the same log without the app's scripts. -->
+        <div class="setup-group">
+          <h3 class="setup-heading">Error log</h3>
+          <div class="action-bar">
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" id="boot-error-log-export-btn"><span class="ui-btn__label">Export error log</span></button>
+            <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" id="boot-error-log-clear-btn"><span class="ui-btn__label">Clear error log</span></button>
+          </div>
+          <p class="setup-note">FileTube always keeps the last 50 script errors on this device, so a page that will not load can be fixed. Export error log shares them as a text file (or copies them where file sharing is missing). If Settings itself will not open, go to /errors.html in the address bar instead. Device-local, never sent anywhere.</p>
+        </div>
         <div class="setup-group">
           <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
             <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="debug-lifecycle-check">Show lifecycle debug log</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="debug-lifecycle-check" /></span></div>
