@@ -8161,10 +8161,11 @@ const KEYBOARD_SHORTCUT_GROUPS = [
       { keys: ['0', '…', '9'], desc: 'Jump to 0% - 90% of the item' },
       { keys: ['<'], desc: 'Slow down' },
       { keys: ['>'], desc: 'Speed up' },
-      // v1.50 (UI pass S3, D8.2): only live while the "Resumed at" toast is
-      // showing (R went with the modal: the load has already resumed) -- the desc says so, keeping the reference's one rule ("every listed
-      // key ACTUALLY works") honest about the scoping.
-      { keys: ['S'], desc: 'Start over (while "Resumed at" shows)' },
+      // v1.50, v1.363: only live while the "Resume playback?" prompt (R and S) or the
+      // "Resumed at" toast (S) is showing -- the descs say so, keeping the reference's one rule
+      // ("every listed key ACTUALLY works") honest about the scoping.
+      { keys: ['R'], desc: 'Resume (while the Resume prompt is showing)' },
+      { keys: ['S'], desc: 'Start over (while the Resume prompt or "Resumed at" shows)' },
     ],
   },
   {
