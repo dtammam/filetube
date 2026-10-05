@@ -1006,6 +1006,15 @@ async function saveAutomationSetting(key, value, errorEl) {
 // FOUC-guard script; no shared-constant module exists in this codebase for
 // cross-file storage keys).
 const RESUME_THRESHOLD_KEY = 'filetube_resume_threshold';
+// v1.363 (Dean's rulings R1-R3): the resume mode and the countdown keys. Each MUST match the same-named
+// *_STORAGE_KEY in player.js exactly (the RESUME_THRESHOLD_KEY cross-file string-literal convention above;
+// a source lock binds the pairs). They are device-local (localStorage) and never reach server.js.
+const RESUME_MODE_KEY = 'filetube_resume_mode';
+const RESUME_COUNTDOWN_KEY = 'filetube_resume_countdown';
+const RESUME_COUNTDOWN_ACTION_KEY = 'filetube_resume_countdown_action';
+// The countdown length: the player clamps on read (resolveResumeCountdownSeconds, [0,30], default 5); setup
+// clamps on WRITE with the SAME contract (clampResumeSeconds below) so a bad value is never stored.
+const RESUME_COUNTDOWN_SECONDS_KEY = 'filetube_resume_countdown_seconds';
 const RESUME_THRESHOLD_DEFAULT = 60;
 
 // Populates the control from whatever's currently stored (or the default,
@@ -1275,6 +1284,26 @@ function wireCritterManager(signal) {
   refresh();
 }
 
+// Clamp a raw seconds input to the SAME contract as player.js's resolveResumeCountdownSeconds - integer [0,30].
+// Returns null for absent/blank (the field cleared -> remove the key -> the player's default 5 applies), so the
+// setter can tell "cleared" from a real 0 (= choose instantly). Out-of-range numbers clamp to the nearest bound.
+function clampResumeSeconds(raw) {
+  if (raw === null || raw === undefined || String(raw).trim() === '') return null;
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n)) return null;
+  if (n < 0) return 0;
+  if (n > 30) return 30;
+  return n;
+}
+
+// Reveal the countdown controls only on Ask me. They are hidden (not cleared) on Resume automatically: the
+// stored values survive a switch back, and the player ignores them in auto mode.
+function syncResumeAskControls(win) {
+  const select = win.document.getElementById('resume-mode-select');
+  const box = win.document.getElementById('resume-ask-controls');
+  if (box) box.hidden = !select || select.value !== 'ask';
+}
+
 function loadResumeThresholdControl() {
   const input = document.getElementById('resume-threshold-input');
   if (!input) return;
@@ -1282,6 +1311,68 @@ function loadResumeThresholdControl() {
   try { raw = localStorage.getItem(RESUME_THRESHOLD_KEY); } catch (_) { /* storage disabled -- fall back to the default */ }
   const n = parseFloat(raw);
   input.value = String(Number.isFinite(n) && n >= 0 ? n : RESUME_THRESHOLD_DEFAULT);
+}
+
+// v1.363: the resume mode and the Ask me countdown controls - the same immediate-apply localStorage pattern as the
+// threshold. (Exported: jsdom-tested against the real setup.html.)
+function wireResumeModeControls(win, signal) {
+  // v1.363: the resume mode and the Ask me countdown controls - the same immediate-apply localStorage pattern.
+  // The mode stores the literal 'ask' only (anything else is auto, mirroring resolveResumeMode in player.js; the
+  // select writes 'auto' verbatim). The countdown switch stores '0' ONLY when off (absent = ON); the action
+  // select stores 'resume' | 'beginning'; the seconds field is clamped on write. The countdown controls show
+  // only on Ask me (syncResumeAskControls) and keep their stored values while hidden.
+  const resumeModeSelect = win.document.getElementById('resume-mode-select');
+  if (resumeModeSelect) {
+    resumeModeSelect.addEventListener('change', (e) => {
+      const value = e.target.value === 'ask' ? 'ask' : 'auto';
+      try { win.localStorage.setItem(RESUME_MODE_KEY, value); } catch (_) { /* storage disabled/full -- best-effort only */ }
+      syncResumeAskControls(win);
+    }, { signal });
+  }
+  const resumeCountdownCheck = win.document.getElementById('resume-countdown-check');
+  if (resumeCountdownCheck) {
+    resumeCountdownCheck.addEventListener('change', (e) => {
+      try {
+        if (e.target.checked) win.localStorage.removeItem(RESUME_COUNTDOWN_KEY);
+        else win.localStorage.setItem(RESUME_COUNTDOWN_KEY, '0');
+      } catch (_) { /* storage disabled/full -- best-effort only */ }
+    }, { signal });
+  }
+  const resumeCountdownActionSelect = win.document.getElementById('resume-countdown-action-select');
+  if (resumeCountdownActionSelect) {
+    resumeCountdownActionSelect.addEventListener('change', (e) => {
+      try { win.localStorage.setItem(RESUME_COUNTDOWN_ACTION_KEY, e.target.value === 'beginning' ? 'beginning' : 'resume'); } catch (_) { /* storage disabled/full -- best-effort only */ }
+    }, { signal });
+  }
+  const resumeCountdownSecondsInput = win.document.getElementById('resume-countdown-seconds-input');
+  if (resumeCountdownSecondsInput) {
+    resumeCountdownSecondsInput.addEventListener('change', (e) => {
+      const clamped = clampResumeSeconds(e.target.value);
+      try {
+        if (clamped === null) win.localStorage.removeItem(RESUME_COUNTDOWN_SECONDS_KEY);
+        else win.localStorage.setItem(RESUME_COUNTDOWN_SECONDS_KEY, String(clamped));
+      } catch (_) { /* storage disabled/full -- best-effort only */ }
+      e.target.value = clamped === null ? '5' : String(clamped);
+    }, { signal });
+  }
+}
+
+// v1.363: reflect the stored mode and the three countdown values into the controls on load.
+function loadResumeModeControls(win) {
+  const modeSelect = win.document.getElementById('resume-mode-select');
+  if (!modeSelect) return;
+  const read = (key) => { try { return win.localStorage.getItem(key); } catch (_) { return null; /* storage disabled -- show the defaults */ } };
+  modeSelect.value = read(RESUME_MODE_KEY) === 'ask' ? 'ask' : 'auto';
+  const check = win.document.getElementById('resume-countdown-check');
+  if (check) check.checked = read(RESUME_COUNTDOWN_KEY) !== '0';
+  const action = win.document.getElementById('resume-countdown-action-select');
+  if (action) action.value = read(RESUME_COUNTDOWN_ACTION_KEY) === 'beginning' ? 'beginning' : 'resume';
+  const seconds = win.document.getElementById('resume-countdown-seconds-input');
+  if (seconds) {
+    const shown = clampResumeSeconds(read(RESUME_COUNTDOWN_SECONDS_KEY));
+    seconds.value = String(shown === null ? 5 : shown);
+  }
+  syncResumeAskControls(win);
 }
 
 // v1.27.1: the on-screen `?debugLifecycle=1` player-lifecycle debug overlay
@@ -3110,6 +3201,8 @@ function wireStaticControls(signal) {
       try { localStorage.setItem(RESUME_THRESHOLD_KEY, String(value)); } catch (_) { /* storage disabled/full -- best-effort only */ }
     }, { signal });
   }
+
+  wireResumeModeControls(window, signal); // v1.363: the resume mode + the Ask me countdown controls
 
   // v1.136.1: the audio-session declare experiment toggle - same immediate-
   // apply localStorage pattern. Key MUST match
@@ -4970,6 +5063,7 @@ function init(root) {
   wireBgTimingLog(controller.signal); // lock-to-audio phase 1: the Experimental background-audio timing log
   wireWheelCalControl(controller.signal); // Click wheel test (Experimental)
   loadResumeThresholdControl();
+  loadResumeModeControls(window);
   loadDebugLifecycleControl();
   loadDebugLifecycleOverlayControl(window); // v1.362.2 (D6)
   loadNoTapGlyphControl(window); // v1.362.3 (E3)
@@ -5050,6 +5144,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatLifecycleLogForExport, lifecycleExportFilename, loadDebugLifecycleOverlayControl, wireLifecycleLogControls,
     loadNoTapGlyphControl, wireNoTapGlyphControl, // v1.362.3 (E3): the no-glyph A/B switch
     loadPocketKbSearchControl, wirePocketKbSearchControl, // v1.355: Mobile player > Keyboard search
+    loadResumeModeControls, wireResumeModeControls, clampResumeSeconds, // v1.363: the resume mode + Ask me countdown controls
     // Click wheel test — the pure metering core (boundary- and
     // cross-lock-tested in wheel-cal-metering.test.js; the DOM/native-switch
     // shell is device-validated).

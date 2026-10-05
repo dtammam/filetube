@@ -352,14 +352,15 @@ const viewRoot = (html) => {
 
 // Sweep S3's merge follow-up: the resume-countdown switch left with the countdown (the modal it
 // configured is gone, D8.2), so the Settings switches numbered 28; v1.355 added two (the rotate log, keyboard search): 30.
-test('Settings (F09): every checkbox is a ui-switch with role=switch; there are 32', () => {
+test('Settings (F09): every checkbox is a ui-switch with role=switch; there are 33', () => {
   const root = viewRoot(SETUP_HTML);
   const boxes = root.querySelectorAll('input[type="checkbox"]');
   // v1.355 DELIBERATE bump (28 -> 30): Troubleshooting > Show rotate debug log (#debug-rotate-check) and
   // Mobile player > Keyboard search (experimental) (#pocket-kb-search-check).
   // v1.362.2 DELIBERATE bump (30 -> 31): Troubleshooting > Show the log on screen (#debug-lifecycle-overlay-check, D6).
   // v1.362.3 DELIBERATE bump (31 -> 32): Troubleshooting > No glyph on picture taps (#debug-no-tap-glyph-check, E3).
-  assert.strictEqual(boxes.length, 32, 'the same settings (no key dropped) minus the retired resume-countdown switch, plus the rotate log, keyboard search, the on-screen log switch and the no-glyph test');
+  // v1.363 DELIBERATE bump (32 -> 33): Playback > Auto-choose on the resume prompt (#resume-countdown-check) is back with the Ask me mode.
+  assert.strictEqual(boxes.length, 33, 'the same settings (no key dropped), the rotate log, keyboard search, the on-screen log switch, the no-glyph test and the resume-prompt countdown switch');
   for (const b of boxes) {
     assert.ok(b.classList.contains('ui-switch'), b.id + ' is a ui-switch');
     assert.strictEqual(b.getAttribute('role'), 'switch', b.id);
