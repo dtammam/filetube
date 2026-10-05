@@ -653,6 +653,17 @@ Gate: CHANGES r1 @a041cef1 - adversary
 - SUGGESTIONs folded: CONTRIBUTING.md VPM count (seven sizes: five portrait, two landscape; 33 cells); the skin-surface.js
   comment no longer calls HOME_HOLD_MS the wheel's one hold; ROADMAP Planned > Chores "The error log folds repeats".
 
+**Gate r1 fix mutants** (committed f2240b62, /tmp git-archive sandbox with a pristine copy, each diff non-empty, restored
+byte-identical): 13 of 13 killed by name. I1 catch param dropped and I2 loop head dropped -> `the detector sees the iOS 15
+shape`; C1 armCenterHold's pointercancel listener dropped -> `W2a (10)`; C2 pointerup + pointercancel dropped -> `W2a (5b)`,
+`(10)`, `(11)`; C3 both pointerId filters dropped -> `W2a (12)`, `(13)`; C3a the move filter alone -> `(12)`; C3b the end
+filter alone -> `(13)`; C4 `wheel.isConnected` dropped at the fire -> `W2a (14)`; C5 `hideLcdNote` dropped from destroy ->
+`W2a (15)`; R1 push instead of replace -> `W2b the second Music-tab tap REPLACES the history entry`; E1 errors.html back to
+"on this device" -> `the error log copy is honest about storage` + both /errors.html rows; E2 the setup note back to "the
+address bar" -> `the error log copy is honest about storage`. Control (no mutant): 71 pass / 0 fail over the four files.
+Targeted before the commit: the 16 files touching the change 439/439, auth-flow 8/8, lint 0 errors (6 warnings), lint:ui OK,
+`--only VPM` `geometry: 33 checks - 33 ok, 0 FAIL, 0 XFAIL (expected), 0 XPASS`; commit hook `ℹ pass 8687` `ℹ fail 0`.
+
 ## 7. Cut or deferred (Dean can overrule each)
 
 - Refactoring existing pixel breakpoints: no instrument shows one broken; the VPM net + the design rule stop new ones.
