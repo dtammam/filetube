@@ -1727,6 +1727,90 @@ function readLifecycleLogEntries(w) {
   try { const v = raw ? JSON.parse(raw) : []; return Array.isArray(v) ? v : []; } catch (_) { return []; }
 }
 
+// v1.364.0 (W1): the boot error log. Every shell's FIRST head script (an ES5 recorder, byte-identical across
+// shells, test/unit/boot-error-recorder.test.js) records script errors to localStorage BOOT_ERROR_LOG_STORAGE_KEY,
+// always on: a phone whose scripts fail may never reach Settings to flip a switch (a stated deviation from rule 1
+// of docs/references/log-collection-pattern.md). Export and Clear follow the pattern; /errors.html is the
+// standalone exporter for when common.js itself is what fails. MUST match the recorder's and errors.html's key.
+const BOOT_ERROR_LOG_STORAGE_KEY = 'ft-boot-errors';
+
+// The ONE formatter of the exported error log (pure, exported): the pattern's header, then one line per entry
+// OLDEST first (the recorder appends, so storage order is oldest first) with every field the recorder kept.
+function formatBootErrorLogForExport(entries, meta) {
+  const list = Array.isArray(entries) ? entries.filter((e) => e && typeof e === 'object') : [];
+  const m = meta || {};
+  let exported = '-';
+  try { exported = new Date(Number(m.exportedAt)).toISOString(); } catch (_) { exported = '-'; }
+  const rows = list.map((e) => {
+    const where = (e.src ? ' at ' + e.src + (e.line ? ':' + e.line + ':' + (e.col || 0) : '') : '');
+    return (e.t || '-') + ' ' + (e.kind || '?') + (e.v ? ' v' + e.v : '') + ' on ' + (e.path || '-') + ': ' + (e.msg || '') + where +
+      (e.stack ? '\n    ' + String(e.stack).split('\n').join('\n    ') : '');
+  });
+  const head = [
+    'FileTube error log',
+    'exported: ' + exported,
+    'version: ' + (m.version || '-'),
+    'user agent: ' + (m.userAgent || '-'),
+    'mode: ' + (m.standalone ? 'standalone app' : 'browser tab'),
+    'entries: ' + rows.length,
+    '',
+  ];
+  return head.concat(rows).join('\n') + '\n';
+}
+
+// ft-errors-<yyyymmdd-hhmmss>.txt in the device's local time (pure, exported).
+function bootErrorExportFilename(date) {
+  const d = date instanceof Date ? date : new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  return 'ft-errors-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds()) + '.txt';
+}
+
+function readBootErrorEntries(w) {
+  let raw = null;
+  try { raw = w.localStorage.getItem(BOOT_ERROR_LOG_STORAGE_KEY); } catch (_) { raw = null; }
+  try { const v = raw ? JSON.parse(raw) : []; return Array.isArray(v) ? v : []; } catch (_) { return []; }
+}
+
+// Export error log builds the text from localStorage and hands it to exportDiagnosticLog in the SAME click turn;
+// Clear error log asks through the one confirm step and removes the log only on an explicit yes.
+function wireBootErrorLogControls(win, signal) {
+  const w = win || window;
+  const doc = w.document;
+  const opt = signal ? { signal } : undefined;
+  const exportBtn = doc.getElementById('boot-error-log-export-btn');
+  if (exportBtn) {
+    exportBtn.addEventListener('click', () => {
+      const exp = (typeof exportDiagnosticLog === 'function') ? exportDiagnosticLog : null;
+      if (!exp) return;
+      const nav = w.navigator || {};
+      let standalone = false;
+      try { standalone = nav.standalone === true || !!(w.matchMedia && w.matchMedia('(display-mode: standalone)').matches); } catch (_) { standalone = false; }
+      const now = new Date();
+      const text = formatBootErrorLogForExport(readBootErrorEntries(w), {
+        exportedAt: now.getTime(),
+        version: (typeof appVersionString === 'function') ? appVersionString() : '',
+        userAgent: nav.userAgent || '',
+        standalone,
+      });
+      exp({ filename: bootErrorExportFilename(now), text, title: 'FileTube error log' });
+    }, opt);
+  }
+  const clearBtn = doc.getElementById('boot-error-log-clear-btn');
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      confirmDestructive({
+        title: 'Clear the error log?',
+        body: 'Every recorded error on this device is deleted. Export it first if you still need it.',
+        confirmLabel: 'Clear error log',
+      }).then((yes) => {
+        if (!yes) return;
+        try { w.localStorage.removeItem(BOOT_ERROR_LOG_STORAGE_KEY); } catch (_) { /* best-effort only */ }
+        settingsNotice('Error log cleared', 'success');
+      });
+    }, opt);
+  }
+}
+
 // v1.362.3 (E3): Settings > Troubleshooting > "No glyph on picture taps". MUST match NO_TAP_GLYPH_STORAGE_KEY in
 // player.js; '1' = on, removed = off (the default); player.js reads it at every tap, so a change needs no reload.
 const NO_TAP_GLYPH_STORAGE_KEY = 'ft-debug-no-tap-glyph';
@@ -3256,6 +3340,7 @@ function wireStaticControls(signal) {
   }
 
   wireLifecycleLogControls(window, signal); // v1.362.2 (D6): the on-screen switch, Export log, Clear log
+  wireBootErrorLogControls(window, signal); // v1.364.0 (W1): Export error log, Clear error log (always recorded)
   wireNoTapGlyphControl(window, signal); // v1.362.3 (E3): the black-picture glyph A/B
   wireDebugRotateControl(window, signal); // v1.355: the rotate debug log, applied at once (loadDebugRotateControl)
   wirePocketKbSearchControl(window, signal); // v1.355: Mobile player > Keyboard search (experimental)
@@ -5142,6 +5227,7 @@ if (typeof module !== 'undefined' && module.exports) {
     loadDebugRotateControl, wireDebugRotateControl,
     // v1.362.2 (D6): the lifecycle log's export (jsdom-bound against the real common.js helper).
     formatLifecycleLogForExport, lifecycleExportFilename, loadDebugLifecycleOverlayControl, wireLifecycleLogControls,
+    formatBootErrorLogForExport, bootErrorExportFilename, wireBootErrorLogControls, // v1.364.0 (W1): the boot error log
     loadNoTapGlyphControl, wireNoTapGlyphControl, // v1.362.3 (E3): the no-glyph A/B switch
     loadPocketKbSearchControl, wirePocketKbSearchControl, // v1.355: Mobile player > Keyboard search
     loadResumeModeControls, wireResumeModeControls, clampResumeSeconds, // v1.363: the resume mode + Ask me countdown controls

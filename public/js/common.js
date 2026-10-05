@@ -10405,6 +10405,17 @@ function isSameLocationNav(currentPathAndSearch, targetPathAndSearch) {
   return typeof targetPathAndSearch === 'string' && currentPathAndSearch === targetPathAndSearch;
 }
 
+// v1.364.0 (W2b, Dean: "within 1 to 2 taps get to the click ipod view. i may want to use my phone as a
+// remote and not choose a song"): the bottom bar's Music tab tapped AGAIN while /music is already up
+// (today a same-URL no-op) opens the iPod through its one seam, /music?pocket=1, when the iPod can
+// open with no song on this device (a phone whose skin has the Pocket menus). Any other tab, a
+// different URL, or no iPod: null (the tap is what it was). Pure, for node:test.
+function musicTabPocketUrl(navKey, currentPathAndSearch, targetPathAndSearch, pocketAvailable) {
+  if (navKey !== 'music' || !pocketAvailable) return null;
+  if (!isSameLocationNav(currentPathAndSearch, targetPathAndSearch)) return null;
+  return '/music?pocket=1';
+}
+
 // v1.45.0 (T2): the depth the NEXT history entry should carry. A pushState adds
 // one in-app level behind the new entry (current + 1); a replaceState keeps the
 // current entry's own depth (it replaces in place, adding no level). `current`
@@ -10888,7 +10899,13 @@ function shouldShowHandoffCard(presence, ctx) {
 // `window`/`document`. Everything in this block is the actual router RUNTIME
 // (registry storage, fetch/swap, click/popstate wiring) -- the pure helpers
 // above are what node:test exercises directly.
-if (typeof window !== 'undefined') {
+if (typeof window !== 'undefined') { (function routerRuntime() {
+  // v1.364.0 (W1, ROADMAP "Small phones"): the router runtime runs inside this function, never as bare
+  // block code. iOS 15's JavaScriptCore cannot see a block's const/let from a function declared in that
+  // block in non-strict top-level script code ("Can't find variable: viewRegistry" on the first
+  // registerView, so no view ever registered and the router never booted: the static frame and dead
+  // bottom buttons on Dean's iPhone SE). Measured in WebKit 15.4; test/unit/ios15-floor.test.js keeps
+  // every classic script free of that shape.
   const viewRegistry = Object.create(null);
   let currentViewName = null;
   // FR-4 (T4) -- the URL (pathname+search) the CURRENT view is displaying,
@@ -11658,6 +11675,14 @@ if (typeof window !== 'undefined') {
       else goHomeControl();
       return;
     }
+    // v1.364.0 (W2b): the Music tab tapped again on /music opens the iPod (musicTabPocketUrl)
+    const SKM = window.FileTubeMusicSkins;
+    const pocketUrl = musicTabPocketUrl(anchor.closest('#bottom-nav') ? anchor.getAttribute('data-nav') : null,
+      window.location.pathname + window.location.search, target.pathname + target.search,
+      !!(SKM && typeof SKM.pocketEntryAvailable === 'function' && SKM.pocketEntryAvailable()));
+    // gate r1: REPLACE, never push - the iPod is the same /music page, so Back from it lands where Back
+    // from /music would (a push left a dead Back press: the idle iPod stayed up on /music).
+    if (pocketUrl) { navigate(pocketUrl, { replace: true }); return; }
     navigate(target.href);
   }
 
@@ -11836,7 +11861,7 @@ if (typeof window !== 'undefined') {
   window.FileTube.shimmerArt = shimmerArt;
   // v1.339 (L1): the batched in-viewport reveal (music first; a general helper for any view).
   window.FileTube.revealArtTogether = revealArtTogether;
-}
+})(); }
 
 // Renders the Playlists sheet's folder list — functionally equivalent to the
 // existing #sidebar-folders-list (same /?root=<path> links, same folderSettings
@@ -17392,7 +17417,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // down while the dialog is open), so it is exported here too rather than
     // reading as an unused local.
     isShortcutsModalOpen,
-    shouldDockOnTransition, isSameLocationNav, toPathAndQuery, isStaleNavGeneration,
+    shouldDockOnTransition, isSameLocationNav, musicTabPocketUrl, toPathAndQuery, isStaleNavGeneration,
     // v1.45.0 (T2): incremental-pop Home helpers.
     nextHistoryDepth, resolveHomeButtonAction, isHomeRootTarget,
     // v1.362 (M7): the minimize landing (the last browse level).

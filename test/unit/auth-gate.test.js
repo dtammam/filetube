@@ -31,6 +31,51 @@ test('allowlist: the intended pre-login surface is reachable; everything else is
   assert.equal(gate.isAllowlisted('GET', '/api/auth/login'), false);
 });
 
+// v1.364.0 gate r1 (Dean's ruling): the sign-in pages' scripts load signed out. Every boot error the recorder
+// logs on /login is a false lead in Dean's export, and a refused script was two on every sign-in.
+const PRE_AUTH_SHELLS = ['login.html', 'welcome.html'];
+function preAuthShellResources() {
+  const out = [];
+  for (const f of PRE_AUTH_SHELLS) {
+    const html = fs.readFileSync(path.join(__dirname, '..', '..', 'public', f), 'utf8');
+    const re = /<(script|link)\b([^>]*)>/gi;
+    let m;
+    while ((m = re.exec(html))) {
+      const a = /\s(?:src|href)\s*=\s*"([^"]+)"/i.exec(m[2]);
+      if (a && a[1].startsWith('/') && !a[1].startsWith('//')) out.push([f, m[1].toLowerCase(), a[1]]);
+    }
+  }
+  return out;
+}
+
+test('v1.364.0: every script, stylesheet and icon a pre-auth shell (login.html, welcome.html) loads is allowed signed out', () => {
+  const res = preAuthShellResources();
+  for (const f of PRE_AUTH_SHELLS) {
+    const scripts = res.filter((r) => r[0] === f && r[1] === 'script');
+    assert.ok(scripts.length >= 6, f + ': the census reads its scripts (' + scripts.length + ')');
+    for (const must of ['/js/common.js', '/js/login.js', '/js/glyph-pool.js', '/js/prefs-sync.js']) {
+      assert.ok(scripts.some((r) => r[2] === must), f + ' loads ' + must + ' (census witness)');
+    }
+  }
+  const refused = res.filter((r) => !gate.isAllowlisted('GET', r[2])).map((r) => r[0] + ': ' + r[2]);
+  assert.deepStrictEqual(refused, [], 'the gate refuses these before sign-in, so the page logs a failed load on every visit');
+});
+
+test('v1.364.0: /js/glyph-pool.js and /js/prefs-sync.js are allowed signed out, by EXACT path only', () => {
+  for (const p of ['/js/glyph-pool.js', '/js/prefs-sync.js']) {
+    assert.strictEqual(gate.isAllowlisted('GET', p), true, 'GET ' + p);
+    assert.strictEqual(gate.isAllowlisted('HEAD', p), true, 'HEAD ' + p);
+    assert.strictEqual(gate.isAllowlisted('GET', p + '?v=2'), true, p + ' with a query (the path is what matches, as for every asset)');
+    assert.strictEqual(gate.isAllowlisted('POST', p), false, 'POST ' + p);
+    for (const n of [p + '.map', p + 'x', p + '/', p.replace(/\.js$/, ''), p.replace(/\.js$/, '.json'), p.replace('/js/', '/js/sub/'), p.replace('/js/', '/'), p.toUpperCase(), p.replace('.js', '.js%00')]) {
+      assert.strictEqual(gate.isAllowlisted('GET', n), false, 'a neighbour stays gated: ' + n);
+    }
+  }
+  for (const p of ['/js/main.js', '/js/setup.js', '/js/player.js', '/js/music.js', '/js/skin-surface.js']) {
+    assert.strictEqual(gate.isAllowlisted('GET', p), false, 'the app scripts stay gated: ' + p);
+  }
+});
+
 test('allowlist: traversal (raw AND percent-encoded) is refused OUTRIGHT — never allowlisted', () => {
   for (const p of [
     '/fonts/../../server.js', '/fonts/../api/secret', '/assets/icons/../../db.json',

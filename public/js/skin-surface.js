@@ -1870,6 +1870,81 @@
       if (volTimer) { try { win.clearTimeout(volTimer); } catch (_) { /* ignore */ } volTimer = null; }
       if (panel) panel.classList.remove('mms-voladj');
     }
+    // ---- v1.364.0 (W2a) HOLD THE CENTER on Now Playing (Dean 2026-10-05, "speaker only"): with a speaker
+    // on, the hold opens the volume bar above; with the phone playing itself, a short LCD note says to
+    // use the side buttons (iPhone Safari ignores a page's volume writes). Its own small state, NOT a
+    // wheel gesture (a dead-center press never spins). Same hold length as MENU's (HOME_HOLD_MS, 600 ms;
+    // the wheel also has the 400 ms scan hold and LETTER_HOLD_MS). Armed only on Now Playing: never on a menu level (search is one), in list mode,
+    // under a takeover, with the bar already up, on an un-rendered panel, or in the desktop pop-out.
+    // Cancelled by an 8 px move, the release, pointercancel, any new press, every endWheel arm and
+    // destroy. On fire: the wheel's tick, then the release click is swallowed (wheelSuppressClick) so
+    // the hold never ALSO fires the tap. Passive listeners only, never a preventDefault (haptics rule 2).
+    var CENTER_NOTE_MS = 1500;
+    var centerHold = null; // {timer, x0, y0, onMove, onEnd, hap}
+    function centerHoldArmable() {
+      return inMainDoc && !wheelTakeover && !volOpen && panel.classList.contains('mms-full') &&
+        !panel.classList.contains('mms-listmode') && !(pocket && pocket.isMenuMode());
+    }
+    function armCenterHold(e, wheel) {
+      clearCenterHold();
+      if (!centerHoldArmable()) return;
+      var wcfg = readWheelCfg();
+      var c = { timer: null, x0: e.clientX, y0: e.clientY, id: e.pointerId, onMove: null, onEnd: null,
+        hap: { wheel: wheel, engine: wcfg.engine, detentDeg: wcfg.detentDeg, dither: wcfg.dither, buzz: wcfg.buzz, sweepAngle: 0 } };
+      c.onMove = function (ev) {
+        if (ev.pointerId !== c.id) return;
+        if (Math.hypot(ev.clientX - c.x0, ev.clientY - c.y0) > 8) clearCenterHold();
+      };
+      c.onEnd = function (ev) { if (ev.pointerId === c.id) clearCenterHold(); };
+      hapticGestureStart(c.hap, e); // the switch rides under the thumb from the press, as MENU's hold does
+      c.placed = true;
+      try {
+        doc.addEventListener('pointermove', c.onMove);
+        doc.addEventListener('pointerup', c.onEnd);
+        doc.addEventListener('pointercancel', c.onEnd);
+      } catch (_) { /* a detached fixture */ }
+      c.timer = win.setTimeout(function () {
+        c.timer = null;
+        if (centerHold !== c) return;
+        var ok = centerHoldArmable() && wheel.isConnected;
+        if (ok) hapticLetterTick(c.hap, { clientX: c.x0, clientY: c.y0 }); // the wheel's own tick, once, where it ticks
+        clearCenterHold();
+        if (!ok) return;
+        wheelSuppressClick = true; // the release's click is swallowed (MENU hold's way)
+        if (volumeShowable()) openVolume();
+        else showLcdNote('Use the side buttons');
+      }, HOME_HOLD_MS);
+      centerHold = c;
+    }
+    function clearCenterHold() {
+      var c = centerHold;
+      if (!c) return;
+      centerHold = null;
+      if (c.placed) hapticGestureEnd(); // the ghost back to its arming cover
+      if (c.timer) { try { win.clearTimeout(c.timer); } catch (_) { /* ignore */ } c.timer = null; }
+      try {
+        doc.removeEventListener('pointermove', c.onMove);
+        doc.removeEventListener('pointerup', c.onEnd);
+        doc.removeEventListener('pointercancel', c.onEnd);
+      } catch (_) { /* ignore */ }
+    }
+    var lcdNoteTimer = null;
+    function hideLcdNote() {
+      if (lcdNoteTimer) { try { win.clearTimeout(lcdNoteTimer); } catch (_) { /* ignore */ } lcdNoteTimer = null; }
+      var old = panel && panel.querySelector('.ip-lcd-note');
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+    }
+    function showLcdNote(text) {
+      hideLcdNote();
+      var lcd = panel.querySelector('.ip-lcd-in');
+      if (!lcd) return;
+      var n = doc.createElement('div');
+      n.className = 'ip-lcd-note';
+      n.setAttribute('role', 'status');
+      n.textContent = text;
+      lcd.appendChild(n);
+      lcdNoteTimer = win.setTimeout(function () { lcdNoteTimer = null; hideLcdNote(); }, CENTER_NOTE_MS);
+    }
     function setVolumeLevel(v) {
       var lv = Math.round(Math.min(1, Math.max(0, v)) * 100) / 100;
       try { volumeCfg.set(lv); } catch (_) { /* the view's send is best-effort */ }
@@ -3005,6 +3080,7 @@
       if (st.scanTimer) { try { st.win.clearTimeout(st.scanTimer); } catch (_) { /* ignore */ } st.scanTimer = null; }
       if (st.scanInterval) { try { st.win.clearInterval(st.scanInterval); } catch (_) { /* ignore */ } st.scanInterval = null; }
       if (st.homeTimer) { try { st.win.clearTimeout(st.homeTimer); } catch (_) { /* ignore */ } st.homeTimer = null; } // D7: every end arm drops the hold
+      clearCenterHold(); // v1.364.0 (W2a): and the center hold, on every end arm
       try { if (st.captured) w.releasePointerCapture(st.id); } catch (_) { /* not captured */ }
       w.removeEventListener('pointermove', st.onMove);
       w.removeEventListener('pointerup', st.onUp);
@@ -3036,14 +3112,16 @@
       // any early return - written below the dead-center guard, a CENTER tap kept the
       // LAST ZONE'S stash and the lying click replayed that zone instead of Select.
       if (wheelGhost && e.target === wheelGhost) ghostDownPoint = { x: e.clientX, y: e.clientY };
+      clearCenterHold(); // v1.364.0 (W2a): any new press drops a pending center hold (a second finger included)
       if (wheelSpin) return; // one gesture at a time
       var listMode = panel.classList.contains('mms-listmode');
       var menuMode = !!(pocket && pocket.isMenuMode()); // pocket menus: a menu level is a cursor list too
       var wheel = e.target.closest('.ip-wheel'); if (!wheel) return;
       var r = wheel.getBoundingClientRect();
       var cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-      // ignore a press on the dead center (the Select button): let its tap pass through.
-      if (Math.hypot(e.clientX - cx, e.clientY - cy) < r.width * DEAD_FRAC) return;
+      // a press on the dead center (the Select button) never spins the wheel: its tap passes through.
+      // v1.364.0 (W2a): on Now Playing it may arm the center HOLD (its own small state, never a spin).
+      if (Math.hypot(e.clientX - cx, e.clientY - cy) < r.width * DEAD_FRAC) { armCenterHold(e, wheel); return; }
       var st = {
         wheel: wheel, id: e.pointerId, captured: false, moved: false,
         // Now Playing is never idle: the wheel SCRUBS the timeline on EVERY surface
@@ -3248,6 +3326,8 @@
     function destroy() {
       releaseWheelTakeover(); // v1.270: the surface dying takes its takeover with it
       closeVolume();          // v1.353: and its volume bar's idle timer
+      clearCenterHold();      // v1.364.0 (W2a): a pending center hold dies with the surface
+      hideLcdNote();          // ...and so does its LCD note's timer
       paintPending = false;   // v1.271: a deferred repaint must not outlive the surface
       if (bound) {
         panel.removeEventListener('click', onClick);

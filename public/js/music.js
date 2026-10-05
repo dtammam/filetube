@@ -1467,6 +1467,11 @@ if (typeof module !== 'undefined' && module.exports) {
     // mode (RC off) returns the real elements, byte-for-byte.
     var RC = (window.FileTube && window.FileTube.remoteControl) || null;
     var remoteDocked = false;
+    // v1.364.0 (W2b, Dean: "i may want to use my phone as a remote and not choose a song"): the iPod asked for
+    // with NO song (openPocketSeam: /music?pocket=1, the Music tab tapped again, the toolbar's iPod button).
+    // updateNowPlayingPanel shows it on the Main menu instead of hiding the panel; MENU there closes it back
+    // to the browse view (dockToOrigin), and a song that starts playing hands over to the normal arm.
+    var pocketIdle = false;
     function remoteOn() { return !!(RC && RC.isRemote()); }
     function remoteDur() { var st = RC && RC.state(); return (st && Number(st.duration) > 0) ? Number(st.duration) : 0; }
     var remoteCtls = null;
@@ -1592,7 +1597,7 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     function skinIsActive() {
       if (!SKINS) return false;
-      if (remoteOn()) return SKINS.skinActiveFor({ isMusic: true });
+      if (remoteOn() || pocketIdle) return SKINS.skinActiveFor({ isMusic: true }); // v1.364.0 (W2b): the idle iPod has no track meta
       var pl = window.FileTube && window.FileTube.player;
       var meta = (pl && typeof pl.getCurrentMeta === 'function') ? pl.getCurrentMeta() : null;
       return SKINS.skinActiveFor(meta);
@@ -1657,7 +1662,12 @@ if (typeof module !== 'undefined' && module.exports) {
     var SkinSurface = (typeof window !== 'undefined' && window.FileTubeSkinSurface) || null;
     var inTabEngine = null;  // created lazily at first skin render (mobile); the pop-out rides the shared shell below
     function dockToOrigin() {
+      // v1.364.0 (W2b): MENU on the idle iPod's Main menu (no song) closes it back to the browse view - never pl.dock(),
+      // which assumes a track. With a speaker it is today's step-aside below.
+      var wasIdle = pocketIdle;
+      pocketIdle = false;
       if (remoteOn()) { remoteDocked = true; updateNowPlayingPanel(); return; } // v1.348: a remote mirror just steps aside
+      if (wasIdle) { updateNowPlayingPanel(); return; }
       // v1.247 (F2): dock to the mini on the ORIGIN tab - the engine's MENU/collapse hook.
       var pl = window.FileTube && window.FileTube.player;
       if (pl && typeof pl.dock === 'function') {
@@ -2218,6 +2228,32 @@ if (typeof module !== 'undefined' && module.exports) {
     // Show the trigger only when a library-backed track is EXPANDED (FULL): Share/Reheat/
     // Transcript/etc are for a real library item; a native track or a docked player gets
     // nothing (extrasEligibleView is the same gate the sticker Extras entry uses).
+    // v1.364.0 (W2b): the /music toolbar's iPod button - a phone whose skin has the Pocket menus only; it opens
+    // the same seam as /music?pocket=1 (no navigation: this view is already up).
+    var pocketBtn = root.querySelector('#music-pocket-btn');
+    function updatePocketBtn() {
+      if (!pocketBtn) return;
+      pocketBtn.hidden = !(SKINS && typeof SKINS.pocketEntryAvailable === 'function' && SKINS.pocketEntryAvailable());
+    }
+    if (pocketBtn) pocketBtn.addEventListener('click', function () { openPocketSeam(); }, { signal: signal });
+    // The one seam into the iPod (v1.364.0 W2b): with a speaker attached, its iPod; with a music track, the player
+    // expanded (a docked mini comes up); with neither, the idle iPod. Every case lands on the Main menu with the
+    // cursor on Music (the engine's landPlayOn(false), the v1.351 idle-speaker landing). False = not applicable.
+    function openPocketSeam() {
+      if (!SKINS || typeof SKINS.pocketEntryAvailable !== 'function' || !SKINS.pocketEntryAvailable()) return false;
+      var pl = window.FileTube && window.FileTube.player;
+      if (remoteOn()) {
+        remoteDocked = false;
+      } else if (hasCurrentMusicTrack()) {
+        var slot = root.querySelector('#player-slot');
+        if (slot && pl && typeof pl.getState === 'function' && typeof pl.expand === 'function' && pl.getState() !== 'full') pl.expand(slot);
+      } else {
+        pocketIdle = true;
+      }
+      updateNowPlayingPanel();
+      if (inTabEngine && typeof inTabEngine.landPlayOn === 'function') inTabEngine.landPlayOn(false);
+      return true;
+    }
     function updateActionsBtn() {
       if (!actionsBtn) return;
       var p = window.FileTube && window.FileTube.player;
@@ -2801,6 +2837,7 @@ if (typeof module !== 'undefined' && module.exports) {
       repaintPopout();
       updatePopoutBtn();
       updateActionsBtn(); // v1.278: show/hide the desktop actions trigger in lockstep with the panel
+      updatePocketBtn(); // v1.364.0 (W2b): the toolbar's iPod button (a skin picked in the sticker can change it)
       reflectPlaybackModes(); // v1.284: keep the desktop Loop/Autoplay toggles + chapter label current
       ensureChapterReflect(); // arm the chapter-boundary watcher once the player element is live (idempotent)
       var p = window.FileTube && window.FileTube.player;
@@ -2816,6 +2853,10 @@ if (typeof module !== 'undefined' && module.exports) {
         // bug Dean hit on v1.243/the first v1.244 attempt). Cleared when the skin paints or the
         // load misses, so this can never strand the cover.
         if (straightToPlayerPending) return;
+        // v1.364.0 (W2b): the iPod asked for with no song stays up (on the Main menu) - the local hide below waits
+        // until MENU closes it (dockToOrigin) or a song takes over. A skin that cannot show (not a phone, a skin
+        // without menus) drops the request.
+        if (pocketIdle) { if (renderNowPlayingSkin()) return; pocketIdle = false; }
         var wasSkin = document.body.classList.contains('mms-on'); // v1.248: skin -> docked transition?
         nowPlayingPanel.hidden = true;
         nowPlayingPanel.innerHTML = '';
@@ -2829,6 +2870,7 @@ if (typeof module !== 'undefined' && module.exports) {
         if (wasSkin) restorePocketAnchor(); // UI pass D7: the list returns to the row it showed, whatever the width now
         return;
       }
+      pocketIdle = false; // v1.364.0 (W2b): a song is up now - the normal arm owns the panel
       var ci = -1;
       for (var k = 0; k < queue.length; k++) { if (queue[k].id === curId) { ci = k; break; } }
       // v1.227 mobile skins: on mobile + music, the panel becomes the chosen
@@ -5104,6 +5146,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // router's state object forward with a corrected `url` so popstate stays
     // consistent. expand() reads player state, not the URL, so ordering is safe.
     stripNowPlayingParam();
+    // v1.364.0 (W2b): /music?pocket=1 is read here and stripped only AFTER its landing below (unlike nowplaying=1:
+    // the seam needs the view's state up first), with the same replaceState idiom.
+    var wantPocket = urlParams.get('pocket') === '1';
     var player = window.FileTube && window.FileTube.player;
     if (player && typeof player.getState === 'function' && typeof player.expand === 'function') {
       var pState = player.getState();
@@ -5116,6 +5161,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // panel - metadata immediately, up-next once the queue is (re)built from the
     // player's stored browseCtx (a grid tab didn't repopulate it).
     updateNowPlayingPanel();
+    if (wantPocket) { openPocketSeam(); stripMusicParam('pocket'); }
     rebuildPlayingQueue().catch(function () {});
   }
 

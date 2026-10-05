@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<!--
+  /errors.html - the standalone error-log exporter (v1.364.0, W1).
+
+  Every app shell's first head script records script errors into localStorage 'ft-boot-errors'
+  (test/unit/boot-error-recorder.test.js). Settings > Troubleshooting > Export error log is the normal way out,
+  but on a phone whose scripts fail, Settings (and common.js, which owns exportDiagnosticLog) may be the very
+  thing that does not run. So this page loads NO app script: one inline ES5 script reads the log and exports
+  it with its own share -> clipboard -> download fallback. It is the second stated exception to "one helper"
+  in docs/references/log-collection-pattern.md. Served by express.static behind the normal sign-in gate.
+  It reads THIS browser's storage only: an iOS Home Screen app keeps its own, so its log is reachable only from
+  its own Settings > Export error log (qa gate r1; docs/references/pwa-ios-notes.md).
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
+  <title>FileTube error log</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="preload" href="/fonts/geist.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/css/tokens.css">
+  <link rel="stylesheet" href="/css/ui.css">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <main class="errors-page">
+    <h1>Error log</h1>
+    <p id="errors-count">Reading the log...</p>
+    <div class="errors-actions">
+      <button type="button" class="ui-btn ui-btn--primary" id="errors-export-btn"><span class="ui-btn__label">Export</span></button>
+      <a class="ui-btn ui-btn--secondary" href="/"><span class="ui-btn__label">Back to FileTube</span></a>
+    </div>
+    <p id="errors-scope">This page shows the log of this browser only. An app added to the Home Screen keeps its own log: open its Settings &gt; Troubleshooting &gt; Export error log.</p>
+    <p id="errors-status" role="status" aria-live="polite"></p>
+    <pre id="errors-text"></pre>
+  </main>
+  <script>
+  (function () {
+    var KEY = 'ft-boot-errors';
+    function byId(id) { return document.getElementById(id); }
+    function setText(id, t) { var el = byId(id); if (el) el.textContent = t; }
+    function readEntries() {
+      var raw = null;
+      try { raw = window.localStorage.getItem(KEY); } catch (_) { raw = null; }
+      try { var v = raw ? JSON.parse(raw) : []; return (v instanceof Array) ? v : []; } catch (_) { return []; }
+    }
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function filename(d) {
+      return 'ft-errors-' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '-' +
+        pad(d.getHours()) + pad(d.getMinutes()) + pad(d.getSeconds()) + '.txt';
+    }
+    function format(entries, now) {
+      var standalone = false;
+      try { standalone = window.navigator.standalone === true || !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches); } catch (_) { standalone = false; }
+      var lines = [
+        'FileTube error log',
+        'exported: ' + now.toISOString(),
+        'version: per entry (the version that recorded it)',
+        'user agent: ' + (window.navigator.userAgent || '-'),
+        'mode: ' + (standalone ? 'standalone app' : 'browser tab'),
+        'entries: ' + entries.length,
+        ''
+      ];
+      for (var i = 0; i < entries.length; i++) {
+        var e = entries[i] || {};
+        var where = e.src ? ' at ' + e.src + (e.line ? ':' + e.line + ':' + (e.col || 0) : '') : '';
+        lines.push((e.t || '-') + ' ' + (e.kind || '?') + (e.v ? ' v' + e.v : '') + ' on ' + (e.path || '-') + ': ' + (e.msg || '') + where +
+          (e.stack ? '\n    ' + String(e.stack).split('\n').join('\n    ') : ''));
+      }
+      return lines.join('\n') + '\n';
+    }
+    function download(text, name) {
+      try {
+        var url = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+        var a = document.createElement('a');
+        a.href = url; a.download = name; document.body.appendChild(a); a.click();
+        setTimeout(function () { try { URL.revokeObjectURL(url); a.parentNode.removeChild(a); } catch (_) {} }, 1000);
+        setText('errors-status', 'Downloaded ' + name);
+      } catch (_) {
+        setText('errors-status', 'Could not export. Take a screenshot of the text below instead.');
+      }
+    }
+    function copy(text, name) {
+      try {
+        window.navigator.clipboard.writeText(text).then(function () {
+          setText('errors-status', 'Copied the error log. Paste it into a message.');
+        }, function () { download(text, name); });
+      } catch (_) { download(text, name); }
+    }
+    // Share sheet (.txt) -> clipboard -> download, all started inside the click (iOS drops the gesture after an await).
+    function exportLog() {
+      var now = new Date();
+      var text = format(readEntries(), now);
+      var name = filename(now);
+      var nav = window.navigator;
+      var file = null;
+      try { file = new File([text], name, { type: 'text/plain' }); } catch (_) { file = null; }
+      var canFile = false;
+      try { canFile = !!(file && nav.share && nav.canShare && nav.canShare({ files: [file] })); } catch (_) { canFile = false; }
+      if (canFile) {
+        try {
+          nav.share({ files: [file], title: 'FileTube error log' }).then(function () {
+            setText('errors-status', 'Shared.');
+          }, function (err) {
+            if (err && err.name === 'AbortError') return;
+            download(text, name);
+          });
+          return;
+        } catch (_) { /* fall through to the clipboard */ }
+      }
+      if (nav.clipboard && nav.clipboard.writeText) { copy(text, name); return; }
+      download(text, name);
+    }
+    var entries = readEntries();
+    setText('errors-count', entries.length === 0 ? 'No errors recorded in this browser.' :
+      entries.length + (entries.length === 1 ? ' error' : ' errors') + ' recorded in this browser (the last 50 are kept).');
+    setText('errors-text', format(entries, new Date()));
+    var btn = byId('errors-export-btn');
+    if (btn) btn.addEventListener('click', exportLog);
+  })();
+  </script>
+</body>
+</html>
