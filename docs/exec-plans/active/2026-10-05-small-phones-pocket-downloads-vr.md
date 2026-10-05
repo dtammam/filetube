@@ -703,6 +703,61 @@ Gate: APPROVED r2 @a3402a93 - adversary
 - New in the delta: none found. 0 em dashes in added lines; the copy changes match QA's prescription; the docs claims match the tree (VPM 33 cells; ROADMAP gains the fold-repeats item).
 - Hygiene: my r2 allowlist probe left one fixture server from my base sandbox running (PID 257604, `.../scratchpad/adv/base/... server.js`, data /tmp/adv-allow-ynvoe1). Stopping it was refused by the permission check. It is not part of the repo tree.
 
+### Release B (v1.365.0)
+
+**W3** (feat/v1.365.0-oneoff-trace, built from fc9fb7c5 as 7040a582 code + 11f7f784 status-shape test; rebased onto
+origin/main 4dcdf41f as **78105b7a** code + **3922ea47** test). Falsifiers red first: with the poll failing, the
+populated chip still read "Clip - Clip - 47%" with no sign; one failed health probe latched the chip off (health
+fetched 1 time, never 2); chip tests 2 pass / 7 fail before the edit.
+- Server: lib/ytdlp/oneshotTrace.js (JSONL, last 2000 lines, every write try/caught and counted; `queued` records the
+  host only; `state` events from activity.setOneShot's one listener; run.js takes a per-call hook with child-exit and
+  child-close recorded separately). GET /api/ytdlp/oneshot-trace.txt (requireAdmin first, attachment). rbac-census
+  263 -> 264, route-read-classification ADMIN, not in the backup bundle (lib/admin/backup.js reads only the database
+  and the logo files). The status snapshot carries the server clock `now`. No timeout, sweep, gate or kill behaviour
+  changed.
+- Client: the age label past 60 s on the server clock (`now` minus `updatedAt`), the "Can't reach FileTube, last
+  checked Ns ago" line and its clear on the first good poll (chip and /subscriptions), the probe latch released on a
+  failed probe (network and 5xx), a per-row render catch. Settings > Troubleshooting > Download trace (admin + the
+  downloader on, revealed by the same /api/ytdlp/engine probe as the Downloads box).
+- Tests: unit oneoff-chip-stale 9, subs-oneoff-stale 4, ytdlp-oneshot-trace 13, setup-download-trace 2; integration
+  ytdlp-oneshot-trace 5.
+- Mutants on committed 7040a582 (/tmp git-archive sandbox, each landed in 1 file): 16 of 16 killed by name (M1-M14
+  plus M3b and M4b; log: scratchpad w3-mut-r2.log). M1 drop requireAdmin, M2 drop the exit/close split, M3/M3b drop
+  the offline clear (chip, /subscriptions), M4/M4b drop the probe reset (network, 5xx), M5 drop the per-row catch, M6
+  full URL into `queued`, M7 drop the state listener, M8 age on the phone clock, M9 trace write not try/caught, M10 age
+  threshold 0, M11 terminal rows age too, M12 Settings link never revealed, M13 drop the cap trim, M14 status drops
+  `now`.
+- The 11f7f784 fix: the full Node 22 run on 7040a582 was red on one test, "GET /api/subscriptions/status returns empty
+  namespaces when nothing has run yet" (test/integration/ytdlp-status-endpoint.test.js): its exact-shape assertion
+  predated `now`. It now binds `now` (an ISO time near the response) and keeps the rest of the shape exact. The unit
+  hook could not see it (LESSONS 2). Pre-rebase suites on 11f7f784: Node 22 `# pass 11056` `# fail 0`; Node 24
+  `ℹ pass 11056` `ℹ fail 0`.
+
+**Rebase onto origin/main 4dcdf41f (v1.364.0).** No conflicts: git merged public/setup.html, public/js/setup.js,
+public/js/common.js and public/css/style.css on its own. `git range-diff fc9fb7c5..11f7f784 origin/main..HEAD`: the
+code commit differs only in one context line of setup.js's export list (v1.364.0's boot error log exports sit beside
+W3's `loadEngineSection`); the test commit is identical. No code semantics changed. Troubleshooting order: Error log
+(Export / Clear error log) first, then the lifecycle log rows, the no-glyph and rotate switches, then Download trace,
+then Critter sound check. The route count stays 264 (rbac-census LOCK "the live route count is pinned" passes on the
+rebased tree; v1.364.0 added no route, it changed only lib/auth/gate.js ALLOW_EXACT). Unit hook on each rebased
+commit (`git rebase --exec "bash hooks/pre-commit"`, shas unchanged): `ℹ tests 8717` `ℹ pass 8717` `ℹ fail 0`, lint 0
+errors, ui-lint OK, both times.
+
+Post-rebase at 3922ea47. Targeted (the 5 W3 files plus ytdlp-status-endpoint, rbac-census, route-census,
+route-read-classification, auth-gate, boot-error-recorder, lifecycle-log-export, settings-forms-sweep,
+setup-advanced-pages, setup-debug-rotate-toggle, ios15-floor, pocket-idle-seam), Node 22.23.1: `# tests 180`
+`# pass 180` `# fail 0`. Full suites, sequential:
+- Node 22.23.1: `# tests 11150` `# pass 11138` `# fail 0` `# cancelled 0` `# skipped 12`, exit 0
+- Node 24.20.0: `ℹ tests 11150` `ℹ pass 11138` `ℹ fail 0` `ℹ cancelled 0` `ℹ skipped 12`, exit 0
+- The 12 skips: 9 "no ffmpeg binary (set FILETUBE_TEST_FFMPEG)" (as on main) and 3 "tools/capture playwright not
+  installed" (the worktree has no tools/capture/node_modules).
+- lint `✖ 6 problems (0 errors, 6 warnings)`, lint:ui `ui-lint: OK - the live debt equals docs/ui-exceptions.json`,
+  lint:overlay `overlay-containment: clean (0 violations)`.
+- Real browser (Chromium, the seeded fixture, admin, downloader on; /setup.html#troubleshooting at 390x844 and
+  1280x900): Export error log, Clear error log and Download trace all visible (240x32 each; Download trace is an
+  `<a download href="/api/ytdlp/oneshot-trace.txt">`, its group revealed), the route answers 200 `text/plain;
+  charset=utf-8` with `attachment; filename="filetube-download-trace-<ISO>.txt"`, 0 page errors on both sizes.
+
 ## 7. Cut or deferred (Dean can overrule each)
 
 - Refactoring existing pixel breakpoints: no instrument shows one broken; the VPM net + the design rule stop new ones.
