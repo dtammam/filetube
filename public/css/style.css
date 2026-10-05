@@ -1667,8 +1667,40 @@ html[data-ft-view-fade="arrive"] #view-root[data-view="watch"]:not(.is-minimize-
   color: var(--on-overlay-muted);
 }
 
-/* UI pass sweep S3 (D8.2): the resume toast - the "Resume playback?" modal is gone (the
-   .resume-overlay rules above now serve only #transcode-overlay). A ui-chip-styled pill over
+/* v1.363: the "Resume playback?" prompt is back (Settings: Ask me), so .resume-overlay serves
+   #resume-overlay AND #transcode-overlay again. Plain paint only: a scrim colour, no filter, mask,
+   backdrop-filter or blend over the video. The default button's countdown is an underline that
+   drains (a transform on a pseudo-element of the BUTTON, never an ancestor of the video). */
+.resume-actions {
+  display: flex;
+  gap: var(--space-6);
+}
+.resume-actions .ui-btn.countdown-armed {
+  position: relative;
+  overflow: hidden;
+}
+.resume-actions .countdown-armed::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--space-1);
+  background: currentColor;
+  opacity: 0.5;
+  transform-origin: left center;
+  animation: resume-countdown-drain var(--resume-countdown-duration) linear forwards;
+}
+@keyframes resume-countdown-drain {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .resume-actions .countdown-armed::after { animation: none; }
+}
+
+/* UI pass sweep S3 (D8.2): the resume toast, the Resume automatically mode's announcement (the
+   prompt above is the Ask me mode). A ui-chip-styled pill over
    the bottom-left of the video, above the control bar: "Resumed at 12:34 - Start over". It
    fades in and out on opacity only (player.js toggles .is-visible; [hidden] removes it). */
 .player-resumed {

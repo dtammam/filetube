@@ -5,7 +5,7 @@
 ### Device checks owed
 
 - [ ] **Device checks owed (Dean: reply "1-5 pass, 9 fails")** _(v1.362.2, 2026-10-04)_ - one line per open check in
-  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (38 open lines at v1.362.4); the steps are only there. A
+  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (40 open lines at v1.363.0); the steps are only there. A
   passed line is deleted from both places; a failed one becomes a bug below. Closes when every line is resolved.
 
   1. v1.341.3 - watch page: turn back upright settles in one step
@@ -46,13 +46,21 @@
   36. v1.358.0 - locked 2x ends on lock, next item, dock, speed pick
   37. v1.358.0 - locked 2x in a scrolling page and on art: no scroll or refresh
   38. v1.344.2 - only if it comes back: Watch/Listen keeps a chapter's spot
-  39. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
+  39. v1.363.0 - Settings > Ask me: the prompt, countdown, tap cancels, length 0, default choice, countdown off
+  40. v1.363.0 - Ask me: mini player resumes with no prompt; minimize with a prompt up; Auto note; music/podcast/TV never ask
+  41. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
 
   Passed 2026-10-04 (deleted from DEVICE-CHECKS.md): [x] v1.362.1 - pause shows the chevron, ~3 s after play it goes, a touch
   shows it; [x] v1.362.1 - 3 s is right; [x] v1.362.1 - a double-tap at the hidden chevron's spot skips, never minimizes.
 
 ### Bugs
 
+- [ ] **Lock-screen or headset Play with the Resume prompt up** (v1.363.0 gate, inherited from v1.161): the media-session `play`
+  action (player.js `setMediaSessionAction('play', ...)`) calls `playActiveMedia()` with no prompt check, so a lock-screen or
+  headset play while "Resume playback?" waits starts the video from 0 under it, and the progress saver can then overwrite the saved
+  position. Not driven in a browser (reasoned). Fix: refuse it, or route it to Resume, while the prompt shows.
+- [ ] **The music player's theatre button has its colours flipped** (Dean, 2026-10-05): off it shows red, on it shows grey. Next
+  branch, small things; find the button's on / off style pair and swap them (measure both states, light and dark).
 - [ ] **v1.362.4 gate r3 suggestions (non-blocking, test only)** - (a) the crossfade census's "exactly 1 is exempt" pattern
   (`opacity\s*:\s*(?!1...)`) backtracks over the space, so `opacity: 1;` (the sheet's spacing) counts as a hit: strict, never
   porous; fix `opacity\s*:(?!\s*1\s*(;|$))` and the comment; (b) the census never sets the minimize's transient classes
@@ -327,6 +335,11 @@
 
 ### Features
 
+- [ ] **Reach the chapter editor from audio and the pop-out, and a Watch in the pop-out** (Dean, 2026-10-05, planned with the theatre
+  button fix as the next branch): yt-dlp does download chapters for audio, but a YouTube audio file with none (for example a 47
+  minute mix whose song times are only in the comments) has no way on desktop to add them afterwards: the chapter-editing modal
+  that videos have seems unreachable from audio. Wanted: open that same modal from an audio item (and the pop-out), no new editor.
+  Also: the pop-out view has no way to Watch; give it the Watch / Listen switch (check first whether the file has a video at all).
 - [ ] **What the VPN runbook may point at (candidates, not planned; Dean picks after his runs)** - v1.362.1 shipped
   `docs/references/vpn-slowness-runbook.md`, built on the v1.307 `/diag` suite. What FileTube cannot measure or do today, each a
   possible next step once the numbers say which matters: response compression (the Compression delta row shows the saving);
@@ -660,6 +673,22 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.363.0 - "Resume playback?" comes back as a Settings choice (2026-10-05)
+
+- Settings > Automation & Storage > "When a video has saved progress": Resume automatically (as before, the "Resumed at" note)
+  or Ask me. Ask me opens the video paused at 0 with "Resume playback?", Resume and Start from beginning; a countdown (default
+  5 s, 0-30, 0 = act at once with no prompt, default choice Resume or Start from beginning, or off) fires the default button;
+  a touch or key cancels it and the prompt waits; R and S work. The saved-progress threshold serves both modes.
+- Never prompts: music, podcasts, TV, books, chapters, the Listen handoff, `&t=` links, autoplay advances, and a video in the mini
+  player (it resumes; minimizing with the prompt up dismisses it and resumes).
+- Paint: plain only, nothing filtered, masked or faded over or above the video; the countdown is a drain underline on the button.
+- Proof: Chromium iPhone 13 (tools/minimize-proof/probe-resume-prompt.js): Ask opens paused at 0 with "Resume - 4", the countdown
+  lands at ~83 s of an 80 s save, a touch leaves the prompt up at 0 through 6.5 s, Auto resumes at ~82 s with the note; every
+  ancestor of the video at opacity 1, no filter. Mutants: 22 of 23 killed; the one survivor (the countdown tick's generation check)
+  is a belt behind the teardown cancel, unreachable without internals.
+- Disclosed: WebKit was not available here; the phone check is the measurement.
+- Gate: adversary + qa. r1 CHANGES @c7f46077 (adversary: a digit key behind the prompt seeked and overwrote the saved position, Space played under it; the listener-balance test missed the capture flag); r2 APPROVED @0837cf47 (adversary, qa); security-brief applied by both, no finding. Disclosed: lock-screen Play with the prompt up is inherited (ROADMAP Bugs).
 
 ### v1.362.4 - The page under the video fades like YouTube's when it minimizes and expands (2026-10-04)
 

@@ -54,7 +54,7 @@ test('resolveResumeStart: the configurable threshold still decides the ANNOUNCEM
   assert.deepStrictEqual(resolveResumeStart({ savedProgress: 0, threshold: 0 }), { action: 'start', toast: false }, 'but never a never-watched video');
 });
 
-test('resolveResumeShortcutAction: S = Start over only while the toast shows; R is gone with the modal (the load has already resumed)', () => {
+test('resolveResumeShortcutAction: S = Start over while the toast shows; R needs the v1.363 prompt (with only the toast the load has already resumed)', () => {
   assert.strictEqual(resolveResumeShortcutAction({ key: 's', overlayVisible: true }), 'restart');
   assert.strictEqual(resolveResumeShortcutAction({ key: 'S', overlayVisible: true }), 'restart');
   assert.strictEqual(resolveResumeShortcutAction({ key: 'r', overlayVisible: true }), 'none');
@@ -63,20 +63,9 @@ test('resolveResumeShortcutAction: S = Start over only while the toast shows; R 
   assert.strictEqual(resolveResumeShortcutAction({ key: 's', overlayVisible: true, isTypingContext: true }), 'none');
 });
 
-test('the retired modal leaves nothing behind: no countdown keys, no prompt markup, no R/Resume path in player.js; every player template carries the toast', () => {
-  const src = fs.readFileSync(path.join(REPO, 'public/js/player.js'), 'utf8');
-  for (const gone of ['filetube_resume_countdown', 'resume-overlay', 'resume-yes-btn', 'resume-no-btn', 'startResumeCountdown', 'resolveDockTransitionResumeAction', 'resolveDockedResumeAction']) {
-    assert.ok(!src.includes(gone), `player.js still names ${gone}`);
-  }
-  // ...and Settings no longer offers the countdown's three controls (they drove nothing once
-  // the modal left); the resume threshold stays, now deciding when the resume is announced.
+test('the AUTO mode (the default) keeps the toast in every player template, and the v1.363 Ask me prompt sits beside it (hidden)', () => {
   const setupHtml = fs.readFileSync(path.join(REPO, 'public/setup.html'), 'utf8');
-  const setupJs = fs.readFileSync(path.join(REPO, 'public/js/setup.js'), 'utf8');
-  for (const gone of ['resume-countdown-check', 'resume-countdown-seconds-input', 'resume-countdown-action-select', 'filetube_resume_countdown', 'clampResumeSeconds']) {
-    assert.ok(!setupHtml.includes(gone) && !setupJs.includes(gone), `Settings still carries ${gone}`);
-  }
   assert.match(setupHtml, /id="resume-threshold-input"/, 'the threshold stays');
-  assert.doesNotMatch(setupHtml, /Resume playback\?/, 'no copy describes the retired prompt');
   const shells = fs.readdirSync(path.join(REPO, 'public')).filter((f) => f.endsWith('.html')).map((f) => path.join(REPO, 'public', f))
     .concat([path.join(REPO, 'lib/ytdlp/views/subscriptions.html')])
     .filter((f) => fs.readFileSync(f, 'utf8').includes('id="player-host-template"'));
@@ -84,7 +73,7 @@ test('the retired modal leaves nothing behind: no countdown keys, no prompt mark
   for (const f of shells) {
     const html = fs.readFileSync(f, 'utf8');
     assert.match(html, /<div id="resume-toast" class="player-resumed" role="status" hidden>[\s\S]*?id="resume-time-str"[\s\S]*?<button type="button" class="ui-btn ui-btn--plain ui-btn--sm player-resumed__action" id="resume-restart-btn">/, path.basename(f));
-    assert.ok(!html.includes('id="resume-overlay"'), path.basename(f) + ': the modal is gone');
+    assert.match(html, /<div id="resume-overlay" class="resume-overlay" role="dialog" aria-labelledby="resume-prompt-title" hidden>[\s\S]*?id="resume-prompt-time"[\s\S]*?id="resume-no-btn"[\s\S]*?id="resume-yes-btn"/, path.basename(f) + ': the prompt');
   }
 });
 
@@ -132,7 +121,7 @@ async function loadAndSettle(r) {
   for (let i = 0; i < 6; i++) await settle();
 }
 
-test('a load with announced saved progress SEEKS there and plays through the existing seek, and shows "Resumed at 12:34" - no modal, no prompt', async () => {
+test('a load with announced saved progress SEEKS there and plays through the existing seek, and shows "Resumed at 12:34" - no prompt (the default, auto mode)', async () => {
   const r = realPlayerRealm(754);
   try {
     await loadAndSettle(r);
@@ -143,7 +132,7 @@ test('a load with announced saved progress SEEKS there and plays through the exi
     assert.strictEqual(toast.hidden, false, 'the toast shows');
     assert.strictEqual(r.$('#resume-time-str').textContent, '12:34');
     assert.ok(toast.classList.contains('is-visible'), 'faded in on the next frame');
-    assert.strictEqual(r.$('#resume-overlay'), null, 'the modal is gone');
+    assert.strictEqual(r.$('#resume-overlay').hidden, true, 'auto mode never opens the prompt');
     // 4s later it fades (the class goes), then hides ([hidden]) after the fade
     r.runTimers(4000);
     assert.ok(!toast.classList.contains('is-visible'), 'fading after 4s');

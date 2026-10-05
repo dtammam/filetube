@@ -1,0 +1,62 @@
+{
+ "runAt": "2026-10-05T02:39:12.269Z",
+ "rows": {
+  "askOpen": {
+   "time": 0,
+   "paused": true,
+   "prompt": true,
+   "promptTime": "1:20",
+   "toast": false,
+   "yesLabel": "Resume · 4",
+   "armed": true,
+   "ancestorOpacityMin": 1,
+   "ancestorFilter": "none"
+  },
+  "askAfterCountdown": {
+   "time": 83.3,
+   "paused": false,
+   "prompt": false,
+   "promptTime": "1:20",
+   "toast": false,
+   "yesLabel": "Resume",
+   "armed": false,
+   "ancestorOpacityMin": 1,
+   "ancestorFilter": "none"
+  },
+  "askAfterTouch": {
+   "time": 0,
+   "paused": true,
+   "prompt": true,
+   "promptTime": "1:20",
+   "toast": false,
+   "yesLabel": "Resume",
+   "armed": false,
+   "ancestorOpacityMin": 1,
+   "ancestorFilter": "none"
+  },
+  "askTouchStillWaiting": {
+   "time": 0,
+   "paused": true,
+   "prompt": true,
+   "promptTime": "1:20",
+   "toast": false,
+   "yesLabel": "Resume",
+   "armed": false,
+   "ancestorOpacityMin": 1,
+   "ancestorFilter": "none"
+  },
+  "autoLoad": {
+   "time": 82.3,
+   "paused": false,
+   "prompt": false,
+   "promptTime": "0:00",
+   "toast": true,
+   "yesLabel": "Resume",
+   "armed": false,
+   "ancestorOpacityMin": 1,
+   "ancestorFilter": "none"
+  }
+ },
+ "seed": 200,
+ "pageErrors": []
+}
