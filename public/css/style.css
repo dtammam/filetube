@@ -4807,6 +4807,7 @@ html:has(> body.ft-audio-expanded),
 }
 #settings-menu .settings-menu-item::before { font-weight: var(--fw-semibold); }
 #settings-menu #chapters-edit-btn[hidden] { display: none; } /* v1.363.1: the row's display:flex would otherwise beat [hidden] */
+#settings-menu #video-type-btn[hidden] { display: none; } /* v1.366.0: the same row shape as #chapters-edit-btn */
 #settings-menu #speed-btn::before { content: "Playback speed"; }
 #settings-menu #cc-btn::before { content: "Subtitles"; }
 #settings-menu #pip-btn::before { content: "Picture-in-picture"; }
@@ -6922,6 +6923,21 @@ body:not([data-view="watch"]):not([data-view="music"]) #ambient-toggle-row { dis
    so it hides these rather than carrying a second copy. */
 body:not([data-view="watch"]) #watch-autoplay-row,
 body:not([data-view="watch"]) #watch-loop-row { display: none; }
+/* v1.366.0 (VR / 360): the 360 view switch and the owner's Video type row are wired by the watch view only. */
+body:not([data-view="watch"]) #watch-vr-row,
+body:not([data-view="watch"]) #video-type-btn { display: none; }
+/* v1.366.0 (VR / 360): public/js/vr-view.js's canvas, inserted right after #media-player inside #player-wrapper:
+   positioned with no z-index, so every later overlay (the glyphs, the bar, the resume and transcode overlays)
+   still paints above it. A finger or a mouse drag looks around; nothing here filters or blends the picture. */
+.vr-view-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: grab;
+}
 @media (prefers-reduced-motion: reduce) {
   .ambient-glow,
   .ambient-glow-layer { transition: none; }

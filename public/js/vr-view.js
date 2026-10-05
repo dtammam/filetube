@@ -26,6 +26,7 @@
   var PITCH_LIMIT_DEG = 89;   // never flip over the pole
   var WHEEL_FOV_PER_PX = 0.05; // degrees of fov per wheel deltaY pixel
   var MAX_TEXTURE_FALLBACK = 4096; // assumed when the GL cannot say
+  var TAP_SLOP_PX = 4; // a press that moves less than this is a tap, not a look
 
   var PROJECTIONS = ['360', '360-tb', '360-sbs', '180', '180-sbs', '180-tb'];
   function isProjection(v) { return PROJECTIONS.indexOf(v) >= 0; }
@@ -42,6 +43,9 @@
   }
 
   function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
+
+  // Pure: a frame larger than the GPU's texture limit on either side is refused (never shrunk).
+  function frameTooLarge(w, h, maxTex) { return w > maxTex || h > maxTex; }
 
   // Pure: yaw (about +y, positive looks LEFT) then pitch (about +x, positive looks UP) -> a 3x3
   // rotation, column-major (WebGL's uniformMatrix3fv order). The camera looks down -z.
@@ -157,9 +161,13 @@
     return s;
   }
 
-  // Mount a view over `video` inside `host` (the element the canvas is appended to; it must be the
-  // video's positioned container). Returns a handle, or null when WebGL is unavailable (the caller
-  // keeps the flat picture). `opts.onFail()` runs if the GL context is lost mid-view.
+  // Mount a view over `video` inside `host` (the video's positioned container; the canvas goes right
+  // after the video, under the controls). Returns a handle, or null when WebGL is unavailable (the
+  // caller keeps the flat picture). `opts.onFail()` runs if the GL context is lost mid-view;
+  // `opts.onTooLarge()` when a frame is larger than this GPU's MAX_TEXTURE_SIZE (v1.366.0: the
+  // sphere is REFUSED, never shrunk through a 2D canvas: `drawImage(video)` is the v1.312 shape that
+  // blacked out every iPhone video, so nothing here ever reads the video into a 2D canvas);
+  // `opts.onTap()` for a tap that did not drag (the caller's play/pause).
   function mount(video, host, projection, opts) {
     opts = opts || {};
     if (!video || !host || !isProjection(projection)) return null;
@@ -203,8 +211,6 @@
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.uniform1i(loc.tex, 0);
     var maxTex = gl.getParameter(gl.MAX_TEXTURE_SIZE) || MAX_TEXTURE_FALLBACK;
-    // An 8K panorama is wider than many phones' texture limit: scale it through a 2D canvas first.
-    var shrink = null;
 
     var state = {
       projection: projection,
@@ -215,24 +221,23 @@
       hasFrame: false,
       lastTime: -1,
       destroyed: false,
+      tooLarge: false,
     };
 
     function uploadFrame() {
       if (video.readyState < 2) return false;
       var vw = video.videoWidth, vh = video.videoHeight;
       if (!vw || !vh) return false;
-      var src = video;
-      if (vw > maxTex || vh > maxTex) {
-        var k = Math.min(maxTex / vw, maxTex / vh);
-        if (!shrink) shrink = document.createElement('canvas');
-        var sw = Math.floor(vw * k), sh = Math.floor(vh * k);
-        if (shrink.width !== sw) shrink.width = sw;
-        if (shrink.height !== sh) shrink.height = sh;
-        shrink.getContext('2d').drawImage(video, 0, 0, sw, sh);
-        src = shrink;
+      if (frameTooLarge(vw, vh, maxTex)) {
+        // Refused, not shrunk (see mount's comment). Once: the caller unmounts and says why.
+        if (!state.tooLarge) {
+          state.tooLarge = true;
+          if (typeof opts.onTooLarge === 'function') opts.onTooLarge();
+        }
+        return false;
       }
       gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, src);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, video);
       state.hasFrame = true;
       return true;
     }
@@ -269,7 +274,7 @@
     // otherwise it parks (no rAF at all) until an event wakes it.
     function frame() {
       state.raf = 0;
-      if (state.destroyed) return;
+      if (state.destroyed || state.tooLarge) return;
       var t = video.currentTime;
       if (!video.paused || !state.hasFrame || t !== state.lastTime) {
         if (uploadFrame()) { state.lastTime = t; state.dirty = true; }
@@ -311,7 +316,7 @@
         invalidate();
         return;
       }
-      if (Math.abs(dx) + Math.abs(dy) > 0) dragMoved = true;
+      if (Math.abs(dx) + Math.abs(dy) > TAP_SLOP_PX) dragMoved = true;
       var h = canvas.clientHeight || 1;
       var aspect = (canvas.clientWidth || 1) / h;
       if (state.gyro) state.gyro.yawOffset += dragView({ yaw: 0, pitch: 0, fovDeg: state.view.fovDeg }, dx, 0, h, aspect).yaw;
@@ -319,8 +324,12 @@
       invalidate();
     }
     function onUp(e) {
+      var wasOne = pointerCount() === 1;
       delete pointers[e.pointerId];
       if (pointerCount() < 2) pinchStart = null;
+      // A one-finger press that never moved is a tap: the caller's play/pause (the picture's own tap
+      // gesture lives on the <video>, which this canvas covers).
+      if (e.type === 'pointerup' && wasOne && !dragMoved && typeof opts.onTap === 'function') opts.onTap();
     }
     function onClick(e) {
       // A drag is a look, not a tap: keep it from reaching the player's tap-to-pause.
@@ -337,6 +346,10 @@
     canvas.addEventListener('pointercancel', onUp);
     canvas.addEventListener('click', onClick, true);
     canvas.addEventListener('wheel', onWheel, { passive: false });
+    // iOS raises its text loupe on a hold (LESSONS 8): cancel a one-finger touch on the canvas. Pointer
+    // events still fire (the drag reads them); only the touch's own defaults (loupe, scroll) go.
+    function onTouchStart(e) { if (e.touches && e.touches.length === 1 && e.cancelable) e.preventDefault(); }
+    canvas.addEventListener('touchstart', onTouchStart, { passive: false });
 
     // ---- the motion sensor (opt-in; iOS asks permission on the tap that enables it) ----
     function screenDeg() {
@@ -388,7 +401,8 @@
     }
     canvas.addEventListener('webglcontextlost', onLost);
 
-    host.appendChild(canvas);
+    if (video.parentNode === host) host.insertBefore(canvas, video.nextSibling);
+    else host.appendChild(canvas);
     host.classList.add('vr-view-on');
     wake();
 
@@ -419,6 +433,7 @@
     PROJECTIONS: PROJECTIONS,
     isProjection: isProjection,
     uniformsFor: uniformsFor,
+    frameTooLarge: frameTooLarge,
     yawPitchMatrix: yawPitchMatrix,
     quatMatrix: quatMatrix,
     quatMul: quatMul,

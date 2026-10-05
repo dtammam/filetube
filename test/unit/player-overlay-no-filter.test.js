@@ -57,6 +57,11 @@ function playerNames() {
   const js = fs.readFileSync(path.join(PUB, 'js', 'player.js'), 'utf8');
   for (const w of js.matchAll(/\.className\s*=\s*'([^']+)'/g)) w[1].split(/\s+/).filter((c) => c && !JS_BUILT_EXCLUDE.has(c) && !EXEMPT_CLASSES.has(c)).forEach((c) => classes.add(c));
   for (const w of js.matchAll(/\.id\s*=\s*'([^']+)'/g)) if (!JS_BUILT_EXCLUDE.has(w[1])) ids.add(w[1]);
+  // v1.366.0 (VR / 360): the sphere's canvas is built by vr-view.js inside the host (its class, and the class it puts
+  // on the host): in the net too, so a filter on the 360 view's picture reds here like one on the video.
+  const vr = fs.readFileSync(path.join(PUB, 'js', 'vr-view.js'), 'utf8');
+  for (const w of vr.matchAll(/\.className\s*=\s*'([^']+)'/g)) w[1].split(/\s+/).filter(Boolean).forEach((c) => classes.add(c));
+  for (const w of vr.matchAll(/classList\.add\('([^']+)'\)/g)) classes.add(w[1]);
   HOSTS.forEach((h) => ids.add(h));
   return { ids, classes };
 }
@@ -83,6 +88,7 @@ test('the selector net is the real host: it holds the wrapper, the video, the ov
   ['player-container', 'art-play-glyph', 'skip-ripple', 'speed-badge', 'player-controls'].forEach((c) => assert.ok(n.classes.has(c), '.' + c));
   ['cc-overlay', 'cc-overlay-text', 'seek-preview', 'seek-chapters', 'chapter-now', 'speed-sheet-backdrop', 'player-dock-close'].forEach((c) => assert.ok(n.classes.has(c), 'built by player.js: .' + c));
   ['player-slot', 'bg-audio-sidecar'].forEach((id) => assert.ok(n.ids.has(id), '#' + id));
+  ['vr-view-canvas', 'vr-view-on'].forEach((c) => assert.ok(n.classes.has(c), 'built by vr-view.js: .' + c)); // v1.366.0
   ['bottom-nav', 'bottom-nav-item', 'ui-selectable'].forEach((c) => assert.ok(!n.classes.has(c), 'outside the player: .' + c));
   assert.ok(!n.ids.has('ft-lifecycle-overlay'), 'the debug panel is not the player');
   assert.ok(n.ids.size + n.classes.size > 40, 'a real subtree, not one tag (' + (n.ids.size + n.classes.size) + ' names)');

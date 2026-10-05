@@ -838,10 +838,54 @@ function buildRelatedSkeletonCards(n, doc) {
   return html;
 }
 
+// ---- v1.366.0 (VR / 360): the watch page's 360 view (plan 2026-10-05, W4) ----
+// The per-device switch: '1' = on; anything else (absent, storage off) = OFF, the default.
+const VR_VIEW_STORAGE_KEY = 'ft-vr-view';
+function vrViewIsOn(storage) {
+  try { return !!storage && storage.getItem(VR_VIEW_STORAGE_KEY) === '1'; } catch (_) { return false; }
+}
+// Pure: does the sphere belong on the page right now? Every condition must hold: the item's effective projection
+// (GET /api/videos/:id `projection`) is a sphere, the switch is on, the view is alive, the player is FULL with THIS
+// item loaded, and the browser is not presenting the <video> itself (native full screen, Picture in Picture, or the
+// native-controls mode): there the canvas cannot be seen or would cover the native controls. The app's own full
+// screen (the host or the stage element) keeps the sphere. A flat item never mounts, whatever the switch says.
+function vrMountDecision(s) {
+  if (!s || typeof s.projection !== 'string' || s.projection === '' || s.projection === 'flat') return false;
+  if (s.toggleOn !== true || s.viewAlive !== true) return false;
+  if (s.playerState !== 'full' || !s.itemId || s.playerId !== s.itemId) return false;
+  if (s.nativePresentation === true || s.nativeControls === true) return false;
+  return true;
+}
+// Pure: is the browser presenting the <video> element itself (so a canvas over it is never seen)?
+function nativeVideoPresentation(video, doc) {
+  if (!video) return false;
+  const d = doc || (typeof document !== 'undefined' ? document : null);
+  return !!((d && d.fullscreenElement === video) || video.webkitDisplayingFullscreen ||
+    video.webkitPresentationMode === 'picture-in-picture' || video.webkitPresentationMode === 'fullscreen' ||
+    (d && d.pictureInPictureElement === video));
+}
+// The owner's "Video type" list (POST /api/videos/:id/projection). `auto` clears the pick (null on the wire).
+const VIDEO_TYPE_OPTIONS = Object.freeze([
+  { value: 'auto', label: 'Auto (from the file)' },
+  { value: 'flat', label: 'Flat' },
+  { value: '360', label: '360' },
+  { value: '360-tb', label: '360 top-bottom' },
+  { value: '360-sbs', label: '360 side-by-side' },
+  { value: '180', label: '180' },
+  { value: '180-sbs', label: '180 side-by-side' },
+  { value: '180-tb', label: '180 top-bottom' },
+]);
+// Pure: the menu rows for the owner's pick, the current one checked (no pick = Auto).
+function videoTypeMenuItems(projectionOverride) {
+  const cur = typeof projectionOverride === 'string' && projectionOverride ? projectionOverride : 'auto';
+  return VIDEO_TYPE_OPTIONS.map((o) => ({ label: o.label, value: o.value, checked: o.value === cur }));
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   const ambientExports = module.require('./ambient.js'); // module.require: the player.js / skin-surface.js convention (browser-env lint)
   module.exports = {
     parseStartTime, // v1.352 L1
+    VR_VIEW_STORAGE_KEY, vrViewIsOn, vrMountDecision, nativeVideoPresentation, VIDEO_TYPE_OPTIONS, videoTypeMenuItems, // v1.366.0 (VR / 360)
     resolveDisplayDescription,
     // UI pass sweep S3: the action bar's order, the More menu, About this file, real comments.
     WATCH_BAR_ORDER,
@@ -1678,6 +1722,7 @@ if (typeof module !== 'undefined' && module.exports) {
         setupLoopToggle();
         setupTheatreToggle();
         setupAmbientMode();
+        setupVrView(); // v1.366.0 (VR / 360): the switch, the owner's Video type row, the sphere's mount
 
         // 10. Subscribe toggle (FR-1/FR-3, v1.20.0, T3): resolve this file's
         // channel identity, probe the module + existing subscription list,
@@ -2289,6 +2334,153 @@ if (typeof module !== 'undefined' && module.exports) {
       if (menu && window.FileTubeAmbient && typeof window.FileTubeAmbient.ensureAmbientToggleRow === 'function') {
         window.FileTubeAmbient.ensureAmbientToggleRow(document);
       }
+      // v1.366.0 (VR / 360): the "360 view" switch (shown only for a sphere) and the owner's "Video type" row
+      // (shown only with the library-modify capability). Watch-only like Autoplay/Loop: bound on this view's
+      // signal, hidden off watch by style.css. Both start hidden; syncVrRows reveals them per item. Injected AFTER the
+      // Ambient row (which may already be there from a cold /music), so the order is the same whichever view came
+      // first: Autoplay, Loop, Ambient, 360 view (test/unit/music-ambient.test.js AC9).
+      if (menu && !document.getElementById('watch-vr-check')) {
+        menu.insertAdjacentHTML('beforeend', '<label class="watch-autoplay-label settings-menu-toggle" id="watch-vr-row" for="watch-vr-check" hidden>'
+          + '<span class="watch-autoplay-text">360 view</span>'
+          + '<span class="watch-autoplay-switch"><input type="checkbox" id="watch-vr-check" aria-label="360 view: drag to look around" />'
+          + '<span class="watch-autoplay-track"><span class="watch-autoplay-thumb"></span></span></span></label>'
+          + '<button type="button" id="video-type-btn" class="ui-btn ui-btn--plain pc-btn settings-menu-item video-type-btn" hidden>Video type</button>');
+      }
+    }
+
+    // ---- v1.366.0 (VR / 360): the 360 view, owned by this view ----
+    // ONE reconciler (syncVr) decides from live state (vrMountDecision) and mounts or unmounts; every boundary
+    // calls it: the switch, a new item, the owner's pick, the browser presenting the <video> itself (native full
+    // screen / PiP / native controls), and this view's end (destroy aborts `signal`, which unmounts). vr-view.js is
+    // loaded only on the first mount, so a flat video never loads it, never creates a canvas or a WebGL context.
+    let vrHandle = null;
+    let vrHandleKey = '';
+    let vrRefusedKey = ''; // an item this device cannot show as a sphere (too large, no WebGL): no retry until it changes
+    let vrGen = 0;
+    let vrWired = false;
+    function vrElements() {
+      return { video: document.getElementById('media-player'), host: document.getElementById('player-wrapper') };
+    }
+    function vrStorage() { try { return window.localStorage; } catch (_) { return null; } }
+    function vrState() {
+      const { video, host } = vrElements();
+      const player = window.FileTube && window.FileTube.player;
+      return {
+        projection: mediaData && typeof mediaData.projection === 'string' ? mediaData.projection : '',
+        toggleOn: vrViewIsOn(vrStorage()),
+        viewAlive: !signal.aborted,
+        playerState: player && typeof player.getState === 'function' ? player.getState() : 'closed',
+        playerId: player ? player.currentId : null,
+        itemId: mediaData ? mediaData.id : null,
+        nativePresentation: nativeVideoPresentation(video, document),
+        nativeControls: !!(host && host.classList.contains('native-controls')),
+      };
+    }
+    function vrToast(message) {
+      try { if (window.ui && typeof window.ui.toast === 'function') window.ui.toast(message); } catch (_) { /* best-effort */ }
+    }
+    function unmountVr() {
+      vrGen++; // a mount still waiting on the script load is void
+      const h = vrHandle;
+      vrHandle = null;
+      vrHandleKey = '';
+      if (h) { try { h.destroy(); } catch (_) { /* best-effort */ } }
+    }
+    function syncVrRows(st) {
+      const row = document.getElementById('watch-vr-row');
+      const check = document.getElementById('watch-vr-check');
+      const typeBtn = document.getElementById('video-type-btn');
+      if (row) row.hidden = !st.projection || st.projection === 'flat';
+      if (check) check.checked = st.toggleOn;
+      if (typeBtn) typeBtn.hidden = !(canModifyLibrary && mediaData && mediaData.type !== 'audio');
+    }
+    function syncVr() {
+      if (signal.aborted) { unmountVr(); return; }
+      const st = vrState();
+      const want = vrMountDecision(st);
+      const key = want ? st.itemId + '|' + st.projection : '';
+      syncVrRows(st);
+      if (vrHandle && key !== vrHandleKey) unmountVr();
+      if (!want || vrHandle || key === vrRefusedKey) return;
+      const gen = ++vrGen;
+      loadVrViewScript().then((VR) => {
+        if (gen !== vrGen || signal.aborted) return;
+        const again = vrState(); // re-checked after the await (LESSONS 4: a pre-await guard is not a post-await guard)
+        if (!vrMountDecision(again) || again.itemId + '|' + again.projection !== key) return;
+        const { video, host } = vrElements();
+        let h = null;
+        h = (VR && typeof VR.mount === 'function') ? VR.mount(video, host, again.projection, {
+          onFail: () => { if (h && vrHandle === h) { unmountVr(); vrToast('360 view stopped; showing the flat picture'); } },
+          onTooLarge: () => { if (h && vrHandle === h) { vrRefusedKey = key; unmountVr(); vrToast('This video is too large for 360 view on this device'); } },
+          onTap: () => { try { window.FileTube.player.togglePlay(); } catch (_) { /* best-effort */ } },
+        }) : null;
+        if (!h) { vrRefusedKey = key; vrToast('360 view is not available in this browser; showing the flat picture'); return; }
+        vrHandle = h;
+        vrHandleKey = key;
+      }, () => { if (gen === vrGen) vrToast('Could not load the 360 view'); });
+    }
+    async function saveVideoType(value) {
+      if (!mediaData || signal.aborted) return;
+      const id = mediaData.id;
+      let res = null;
+      let body = null;
+      try {
+        res = await fetch(`/api/videos/${encodeURIComponent(id)}/projection`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projection: value === 'auto' ? null : value }), signal,
+        });
+        body = await res.json().catch(() => null);
+      } catch (_) {
+        if (!signal.aborted) vrToast('Could not save the video type');
+        return;
+      }
+      if (signal.aborted || !mediaData || mediaData.id !== id) return; // the page moved on during the save
+      if (!res.ok || !body || body.success !== true) { vrToast((body && body.error) || 'Could not save the video type'); return; }
+      if (typeof body.projection === 'string' && body.projection) mediaData.projection = body.projection; else delete mediaData.projection;
+      if (value === 'auto') delete mediaData.projectionOverride; else mediaData.projectionOverride = value;
+      vrRefusedKey = '';
+      syncVr();
+    }
+    function openVideoTypeMenu(anchor) {
+      if (!mediaData || !window.ui || typeof window.ui.menu !== 'function') return;
+      const sm = document.getElementById('settings-menu');
+      if (sm) sm.hidden = true;
+      const sb = document.getElementById('settings-btn');
+      if (sb) sb.setAttribute('aria-expanded', 'false');
+      const viewSig = (window.FileTube && typeof window.FileTube.viewSignal === 'function') ? window.FileTube.viewSignal() : signal;
+      window.ui.menu({ title: 'Video type', anchor, items: videoTypeMenuItems(mediaData.projectionOverride), signal: viewSig, onSelect: (v) => { saveVideoType(v); } });
+    }
+    function setupVrView() {
+      if (!vrWired) {
+        vrWired = true;
+        const check = document.getElementById('watch-vr-check');
+        if (check) {
+          check.addEventListener('change', (e) => {
+            const st = vrStorage();
+            try { if (st) { if (e.target.checked) st.setItem(VR_VIEW_STORAGE_KEY, '1'); else st.removeItem(VR_VIEW_STORAGE_KEY); } } catch (_) { /* storage off: nothing persists */ }
+            vrRefusedKey = '';
+            syncVr();
+          }, { signal });
+        }
+        const typeBtn = document.getElementById('video-type-btn');
+        if (typeBtn) typeBtn.addEventListener('click', (e) => { e.stopPropagation(); openVideoTypeMenu(typeBtn); }, { signal });
+        const { video, host } = vrElements();
+        document.addEventListener('fullscreenchange', syncVr, { signal });
+        if (video) {
+          for (const ev of ['webkitbeginfullscreen', 'webkitendfullscreen', 'enterpictureinpicture', 'leavepictureinpicture', 'webkitpresentationmodechanged', 'loadedmetadata']) {
+            video.addEventListener(ev, syncVr, { signal });
+          }
+        }
+        // The native-controls mode is a class on the host. An observer is NOT covered by the signal (LESSONS 4):
+        // it is disconnected on the abort below, which also unmounts the sphere (the view's end: nav, dock).
+        let obs = null;
+        if (host && typeof MutationObserver === 'function') {
+          obs = new MutationObserver(syncVr);
+          obs.observe(host, { attributes: true, attributeFilter: ['class'] });
+        }
+        signal.addEventListener('abort', () => { if (obs) obs.disconnect(); unmountVr(); });
+      }
+      syncVr();
     }
 
     // v1.319 D2: the theatre-owned sidebar collapse (module helpers theatreGuide*).
@@ -3712,6 +3904,7 @@ if (typeof module !== 'undefined' && module.exports) {
         .then((fresh) => {
           if (!fresh || signal.aborted) return;
           mediaData = fresh;
+          syncVr(); // v1.366.0: a refreshed record re-decides the 360 view
           const channelName = resolveChannelName(mediaData, folderSettings);
           currentChannelName = channelName;
           populateMetadata(channelName);
@@ -4283,6 +4476,22 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // Run start (the ?tv= branch returned early up in init; this is the video path)
     initWatch();
+  }
+
+  // v1.366.0 (VR / 360): /js/vr-view.js is loaded on the FIRST sphere mount only (a flat video never loads it).
+  let vrViewScriptPromise = null;
+  function loadVrViewScript() {
+    if (window.VrView) return Promise.resolve(window.VrView);
+    if (!vrViewScriptPromise) {
+      vrViewScriptPromise = new Promise((resolve, reject) => {
+        const el = document.createElement('script');
+        el.src = '/js/vr-view.js';
+        el.onload = () => resolve(window.VrView);
+        el.onerror = () => { vrViewScriptPromise = null; el.remove(); reject(new Error('vr-view.js did not load')); };
+        document.head.appendChild(el);
+      });
+    }
+    return vrViewScriptPromise;
   }
 
   // NOTE (T2): this view no longer owns the player, so destroy() no longer

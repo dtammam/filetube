@@ -1,0 +1,126 @@
+{
+ "runAt": "2026-10-05T18:35:39.867Z",
+ "rows": {
+  "flat": {
+   "gc": [],
+   "canvases": 0,
+   "script": false,
+   "vrRowHidden": true,
+   "typeBtnHidden": false
+  },
+  "vrOff": {
+   "gc": [],
+   "canvases": 0,
+   "script": false,
+   "vrRowHidden": false,
+   "typeBtnHidden": false
+  },
+  "vrOn": {
+   "gc": [
+    "webgl"
+   ],
+   "canvases": 1,
+   "script": true,
+   "vrRowHidden": false,
+   "typeBtnHidden": false,
+   "box": {
+    "x": 255,
+    "y": 81,
+    "w": 596,
+    "h": 338
+   }
+  },
+  "sense": {
+   "per90px": 501,
+   "yaw0": {
+    "rgb": [
+     254,
+     0,
+     0
+    ],
+    "name": "red"
+   },
+   "afterDragLeft90": {
+    "rgb": [
+     1,
+     128,
+     1
+    ],
+    "name": "green"
+   },
+   "backToFront": {
+    "rgb": [
+     254,
+     0,
+     0
+    ],
+    "name": "red"
+   },
+   "afterDragRight90": {
+    "rgb": [
+     255,
+     255,
+     0
+    ],
+    "name": "yellow"
+   }
+  },
+  "off": {
+   "gc": [
+    "webgl"
+   ],
+   "canvases": 0,
+   "script": true,
+   "vrRowHidden": false,
+   "typeBtnHidden": false
+  },
+  "pickFlat": {
+   "before": {
+    "gc": [
+     "webgl",
+     "webgl"
+    ],
+    "canvases": 1,
+    "script": true,
+    "vrRowHidden": false,
+    "typeBtnHidden": false
+   },
+   "afterFlat": {
+    "gc": [
+     "webgl",
+     "webgl"
+    ],
+    "canvases": 0,
+    "script": true,
+    "vrRowHidden": true,
+    "typeBtnHidden": false
+   },
+   "afterAuto": {
+    "gc": [
+     "webgl",
+     "webgl",
+     "webgl"
+    ],
+    "canvases": 1,
+    "script": true,
+    "vrRowHidden": false,
+    "typeBtnHidden": false
+   },
+   "stored": {
+    "projection": "360"
+   }
+  },
+  "nav": {
+   "gc": [
+    "webgl",
+    "webgl",
+    "webgl"
+   ],
+   "canvases": 0,
+   "script": true,
+   "vrRowHidden": false,
+   "typeBtnHidden": false
+  }
+ },
+ "pageErrors": []
+}
