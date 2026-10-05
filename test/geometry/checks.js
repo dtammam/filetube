@@ -576,5 +576,94 @@ function evalPlayerBleed(d, tol = TOL) {
   return { measured: { player: 1 }, failures };
 }
 
+// ---- VPM (v1.364.0 W1): the viewport matrix. Every phone size, nothing tuned to one device (Dean: "nothing
+// hard-coded for small OR big"). Run per cell (scenes.js VPM_SIZES x VPM_SURFACES) in a context of that size.
+// Measures: #view-root and its first painted element, sideways scroll, every visible bottom-bar tab hit-testing
+// itself (portrait), any large invisible-or-not layer that takes taps, the content centre's hit, and on the iPod
+// skin the centre button's hit. `arg` = { portrait, pocket }.
+function collectVPM(arg) {
+  const o = arg || {};
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const box = (r) => ({ x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) });
+  const name = (el) => (!el || !el.tagName ? String(el) : el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') +
+    (el.classList && el.classList.length ? '.' + Array.from(el.classList).slice(0, 3).join('.') : ''));
+  const ALLOW = '.mms-full, .ui-sheet.is-open, .ui-sheet-backdrop.is-open';
+  const allowed = (el) => !!(el && el.closest && el.closest(ALLOW));
+  const vr = document.getElementById('view-root');
+  let first = null;
+  if (vr) {
+    const w = document.createTreeWalker(vr, NodeFilter.SHOW_ELEMENT);
+    let n = w.nextNode();
+    while (n) {
+      const r = n.getBoundingClientRect();
+      const cs = getComputedStyle(n);
+      if (r.width > 0 && r.height > 0 && cs.visibility !== 'hidden' && cs.display !== 'none') { first = { sel: name(n), box: box(r) }; break; }
+      n = w.nextNode();
+    }
+  }
+  const nav = document.getElementById('bottom-nav');
+  const navShown = !!(nav && getComputedStyle(nav).display !== 'none' && nav.getBoundingClientRect().height > 0);
+  const tabs = navShown ? Array.from(nav.querySelectorAll('.bottom-nav-item')).filter((t) => !t.hidden && getComputedStyle(t).display !== 'none' && t.getBoundingClientRect().width > 0).map((t) => {
+    const r = t.getBoundingClientRect();
+    const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+    return { name: t.getAttribute('data-nav') || '?', box: box(r), hit: name(hit), self: !!(hit && t.contains(hit)) };
+  }) : [];
+  const covers = [];
+  for (const el of document.querySelectorAll('body *')) {
+    const cs = getComputedStyle(el);
+    if (cs.position !== 'fixed' && cs.position !== 'absolute') continue;
+    if (cs.pointerEvents === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) <= 0.01) continue;
+    const r = el.getBoundingClientRect();
+    const ix = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
+    const iy = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+    if (ix * iy <= 0.5 * vw * vh) continue;
+    if (allowed(el)) continue;
+    covers.push({ sel: name(el), box: box(r), z: cs.zIndex });
+  }
+  const header = document.querySelector('header');
+  const top = Math.max(header ? header.getBoundingClientRect().bottom : 0, 0);
+  const bottom = navShown ? nav.getBoundingClientRect().top : vh;
+  const cy = Math.round((top + bottom) / 2);
+  const centreHit = document.elementFromPoint(Math.round(vw / 2), cy);
+  const centre = { at: [Math.round(vw / 2), cy], hit: name(centreHit), ok: !!(centreHit && ((vr && vr.contains(centreHit)) || allowed(centreHit))) };
+  let pocket = null;
+  if (o.pocket) {
+    const c = document.querySelector('.mms-full .ip-center');
+    if (c) {
+      const r = c.getBoundingClientRect();
+      const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      pocket = { found: true, box: box(r), hit: name(hit), ok: !!(hit && (c.contains(hit) || hit.classList.contains('mms-haptic-ghost'))) };
+    } else pocket = { found: false };
+  }
+  return { vw, vh, portrait: !!o.portrait, isPocket: !!o.pocket, viewRoot: vr ? box(vr.getBoundingClientRect()) : null, first,
+    scrollW: document.documentElement.scrollWidth, tabs, covers, centre, pocket };
+}
+
+// -> { measured: {tabs, covers}, failures: [string] }. Non-vacuity is a failure here, not a floor: a cell that
+// found no #view-root, or (portrait, outside the iPod skin) no bottom-bar tab, measured nothing.
+function evalVPM(d) {
+  const failures = [];
+  if (!d.viewRoot) failures.push('VACUOUS: no #view-root');
+  else if (d.viewRoot.h <= 200) failures.push(`#view-root is ${d.viewRoot.h}px tall (want > 200)`);
+  if (d.viewRoot && !d.isPocket) {
+    if (!d.first) failures.push('#view-root paints nothing (no element with a size)');
+    else if (!(d.first.box.y < d.vh && d.first.box.y + d.first.box.h > 0 && d.first.box.x < d.vw && d.first.box.x + d.first.box.w > 0)) failures.push(`the first content element ${d.first.sel} ${JSON.stringify(d.first.box)} is outside the ${d.vw}x${d.vh} viewport`);
+  }
+  if (d.scrollW > d.vw) failures.push(`sideways scroll: the page is ${d.scrollW}px wide in a ${d.vw}px viewport`);
+  if (d.portrait && !d.isPocket) {
+    if (!d.tabs.length) failures.push('VACUOUS: no bottom-bar tab shown in portrait');
+    for (const t of d.tabs) if (!t.self) failures.push(`bottom-bar ${t.name}: its centre hits ${t.hit}, not the tab`);
+  }
+  for (const c of d.covers) failures.push(`a layer takes taps over more than half the viewport: ${c.sel} ${JSON.stringify(c.box)} z ${c.z}`);
+  if (!d.isPocket && !d.centre.ok) failures.push(`the content centre ${d.centre.at.join(',')} hits ${d.centre.hit}, outside #view-root`);
+  if (d.isPocket) {
+    if (!d.pocket || !d.pocket.found) failures.push('VACUOUS: the iPod centre button was not found');
+    else if (!d.pocket.ok) failures.push(`the iPod centre button's centre hits ${d.pocket.hit}, not the button or the haptic ghost`);
+  }
+  return { measured: { tabs: d.tabs.length, covers: d.covers.length }, failures };
+}
+
 module.exports = { TOL, G4_TOL, collectG1, collectG2, collectG3, startG4Recorder, evalG1, evalG2, evalG3, evalG4,
-  collectHeader, collectBottomBar, evalHeader, evalBottomBar, collectSheetHeader, evalSheetHeader, collectPopover, evalPopover, collectPlayerBleed, evalPlayerBleed };
+  collectHeader, collectBottomBar, evalHeader, evalBottomBar, collectSheetHeader, evalSheetHeader, collectPopover, evalPopover, collectPlayerBleed, evalPlayerBleed,
+  collectVPM, evalVPM };

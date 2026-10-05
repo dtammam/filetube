@@ -128,6 +128,10 @@ test('route census: the documented allowlist IS reachable pre-auth (positive con
   assert.equal(await probeGated('GET', '/css/style.css'), false);
   assert.equal(await probeGated('GET', '/js/common.js'), false);
   assert.equal(await probeGated('GET', '/js/login.js'), false, 'login.js must reach the browser pre-auth or sign-in is impossible');
+  // v1.364.0 gate r1: login.html and welcome.html load these two; refused, every sign-in logged two failed loads.
+  assert.equal(await probeGated('GET', '/js/glyph-pool.js'), false, 'the sign-in pages load the glyph registry signed out');
+  assert.equal(await probeGated('GET', '/js/prefs-sync.js'), false, 'the sign-in pages load the prefs agent signed out');
+  assert.equal(await probeGated('GET', '/js/main.js'), true, 'the app scripts stay gated');
   assert.equal(await probeGated('GET', '/filetube-worker.js'), false, 'v1.66: the SW update check fetches this itself; a 401 body in the SW slot is the login.js failure shape one layer down');
   // The retired worker paths are NOT allowlisted - nothing is served there,
   // and neither must become a pre-auth hole by inheritance. /push-sw.js was

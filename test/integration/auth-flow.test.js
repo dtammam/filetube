@@ -146,3 +146,24 @@ test('v1.352 W1: a 16-day-old session is renewed on the real server; logout stil
   assert.match(out.setCookie || '', /Max-Age=0/, 'the route runs after the gate: logout wins over a renewal');
   assert.doesNotMatch(out.setCookie || '', /Max-Age=2592000/);
 });
+
+test('v1.364.0 W1: /errors.html is behind sign-in, served signed in with no app script; every served shell carries the recorder', async () => {
+  const setup = await jsonPost('/api/auth/setup', { username: 'dean', displayName: 'Dean', password: 'a-good-password' });
+  const cookie = (setup.setCookie || '').split(';')[0];
+  const out = await raw('/errors.html', { headers: { Accept: 'text/html' } });
+  assert.equal(out.status, 302);
+  assert.equal(out.location, '/login?next=%2Ferrors.html');
+  const page = await fetch(base + '/errors.html', { headers: { Cookie: cookie, Accept: 'text/html' }, redirect: 'manual' });
+  assert.equal(page.status, 200);
+  const html = await page.text();
+  assert.match(html, /<title>FileTube error log<\/title>/);
+  assert.doesNotMatch(html, /<script\b[^>]*\bsrc=/i, 'no app script on the standalone exporter');
+  for (const p of ['/', '/music', '/setup.html', '/watch.html']) {
+    const r = await fetch(base + p, { headers: { Cookie: cookie, Accept: 'text/html' }, redirect: 'manual' });
+    assert.equal(r.status, 200, p);
+    const h = await r.text();
+    const head = h.slice(0, h.search(/<\/head>/i));
+    assert.match(/<script\b[^>]*>([\s\S]*?)<\/script>/i.exec(head)[1], /^\/\* ft-boot-errors v1 /, p + ': the served first head script is the recorder');
+    assert.ok(head.indexOf('name="ft-version"') < head.indexOf('ft-boot-errors v1'), p + ': the version meta precedes the recorder (it stamps each entry)');
+  }
+});

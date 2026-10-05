@@ -69,6 +69,19 @@ docs/exec-plans/completed/2026-10-04-loupe-black-checks.md, ruling D6).
 - **The lifecycle log** (Settings > Troubleshooting > "Show lifecycle debug log", `ft-lifecycle-log`,
   player.js): since v1.362.2. Its panel is "Show the log on screen" (`ft-debug-lifecycle-overlay`).
 
+- **The error log** (Settings > Troubleshooting > Export error log / Clear error log, `ft-boot-errors`,
+  v1.364.0): every app shell's FIRST head script, a tiny ES5 recorder byte-identical across shells
+  (`test/unit/boot-error-recorder.test.js`), keeps the last 50 script errors, failed script/stylesheet loads and
+  unhandled rejections (under 64 KB). Two stated deviations: (1) it is ALWAYS ON, with no switch, because the phone
+  that needs it may never reach Settings (the iPhone SE on iOS 15 showed only the app's frame); (2) besides the
+  helper, the standalone `/errors.html` exports it with its own share -> clipboard -> download fallback and loads
+  no app script, because common.js (which owns `exportDiagnosticLog`) may be what fails. That is the second
+  exception to "one helper". Its limit: `/errors.html` reads the storage of the browser it opens in. An iOS
+  Home Screen app keeps its own storage, separate from Safari's (pwa-ios-notes.md), and has no address bar, so
+  the app's log is reachable only from the app's own Settings > Export error log; `/errors.html` in a Safari tab
+  shows Safari's log. A Home Screen app whose Settings never opens has no way out today (the copy on both pages
+  says so plainly).
+
 ## Logs that do NOT follow it yet (listed, not migrated; ROADMAP Planned > Chores)
 
 - **The rotate log** (Settings > Troubleshooting > "Show rotate debug log", `?debugRotate=1`, common.js

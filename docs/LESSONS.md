@@ -173,6 +173,8 @@ Depth: `docs/references/ios-background-audio-behavior-map.md`, `docs/references/
 
 - **Un-muting a muted media element on a never-clicked page PAUSES it in Chromium** (a muted autoplay is allowed; the un-mute without a gesture is not, so the browser stops the element). A remote control that raises a muted speaker's volume can stop it; no page code lifts this. Guard: the existing click-hint path (sound that played only muted never clears it), and a real-browser row with `--autoplay-policy=user-gesture-required` and `ft-muted` set (tools/listen-control-proof/volume-proof.js row c2). (v1.353; x1)
 
+- **A phone that cannot run a script shows the static frame: capture boot errors at the top of every shell, then reproduce in the phone's REAL engine.** iOS 15 WebKit cannot see a block's const/let from a function declared in that block of non-strict top-level script (also loop-head and catch bindings): `Can't find variable`, so the router never started and the SE showed only its frame. Four layout probes in current engines and an API census found nothing; a real WebKit 15.4 (Playwright 1.20.2 webkit-1616) reproduced it on the first run. Guard: `test/unit/ios15-floor.test.js` (the shape census over every classic script, non-vacuity rows per binding kind) and the ES5 boot recorder (first head script, byte-identical in all 13 shells). A home-screen app keeps its own storage: its log is exported from inside it. (v1.364.0)
+
 Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#8-platform-facts-ios-webkit-pwa-browsers).
 
 ## 9. Data integrity and persistence (the data-loss core: full gate, never slimmed)

@@ -3526,5 +3526,11 @@
     "date": "2026-10-05",
     "title": "Theatre mode works the same in Music",
     "intent": "In Music and Podcasts the theatre button now does what it does on a video: off keeps the song list beside the player, on makes the player wide with the list below. It used to be the other way round."
+  },
+  {
+    "version": "1.364.0",
+    "date": "2026-10-05",
+    "title": "The iPhone SE works again, and the iPod center hold",
+    "intent": "On older iPhones (iOS 15) the app showed only its frame; it now loads and every button works. Hold the iPod's center button on Now Playing to change a speaker's volume, and tap the Music tab again to open the iPod without picking a song. Settings can export an error log if a page ever fails to load."
   }
 ]

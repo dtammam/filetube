@@ -6,9 +6,9 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { evalG1, evalG2, evalG3, evalG4, evalHeader, evalBottomBar, evalSheetHeader, evalPopover, evalPlayerBleed, TOL, G4_TOL } = require('../geometry/checks.js');
+const { evalG1, evalG2, evalG3, evalG4, evalHeader, evalBottomBar, evalSheetHeader, evalPopover, evalPlayerBleed, evalVPM, TOL, G4_TOL } = require('../geometry/checks.js');
 const { summarize, expectedFor, loadExpected } = require('../geometry/run.js');
-const { SURFACES, FAST_SCENES, G4_SEQUENCES } = require('../geometry/scenes.js');
+const { SURFACES, FAST_SCENES, G4_SEQUENCES, VPM_SIZES, vpmCells } = require('../geometry/scenes.js');
 const { MUTATIONS } = require('../geometry/mutations.js');
 
 const row = (title, lead, media, body, aside, actions) => ({ title, slots: { lead, media, body, aside, actions } });
@@ -148,11 +148,12 @@ test('every check has at least one mutation proof, each aimed at a live scene or
     byCheck[m.check] = (byCheck[m.check] || 0) + 1;
     assert.ok(m.css && m.css.length > 10, name);
     if (m.check === 'G4') assert.ok(G4_SEQUENCES.find((q) => q.id === m.target.sequence), name);
+    else if (m.check === 'VPM') { const ids = new Set(vpmCells().map((c) => c.id)); assert.ok(m.target.cells.length > 0 && m.target.cells.every((id) => ids.has(id)), name); }
     else assert.ok(SURFACES.find((s) => s.id === m.target.surface && !s.pending), name);
   }
   // Sweep S1 adds HDR / NAV, the chrome's rendered contracts; sweep S9 SHD, the sheet header;
-  // gate r1 POP, an open menu's reach; v1.359 BLD, the phone player edge to edge.
-  assert.deepStrictEqual(Object.keys(byCheck).sort(), ['BLD', 'G1', 'G2', 'G3', 'G4', 'HDR', 'NAV', 'POP', 'SHD']);
+  // gate r1 POP, an open menu's reach; v1.359 BLD, the phone player edge to edge; v1.364.0 VPM, the viewport matrix.
+  assert.deepStrictEqual(Object.keys(byCheck).sort(), ['BLD', 'G1', 'G2', 'G3', 'G4', 'HDR', 'NAV', 'POP', 'SHD', 'VPM']);
 });
 
 test('geometry files are not *.test.js (npm test must not try to boot Playwright)', () => {
@@ -357,4 +358,46 @@ test('BLD: desktop keeps its column; a bleed there fails; no wrapper is a failur
   assert.deepStrictEqual(evalPlayerBleed(desk).failures, []);
   assert.match(evalPlayerBleed({ ...desk, wrapper: { x: 0, y: 80, w: 1440, h: 506 } }).failures.join('|'), /reaches a viewport edge/);
   assert.deepStrictEqual(evalPlayerBleed(null), { measured: { player: 0 }, failures: ['no player wrapper in the stage'] });
+});
+
+// ---- v1.364.0 W1: VPM, the viewport matrix's evaluator on synthetic cells ----
+const vpmCell = (over) => ({
+  vw: 320, vh: 568, portrait: true, isPocket: false, viewRoot: { x: 0, y: 56, w: 320, h: 900 },
+  first: { sel: 'div.section', box: { x: 0, y: 60, w: 320, h: 40 } }, scrollW: 320,
+  tabs: [{ name: 'home', self: true, hit: 'a' }, { name: 'history', self: true, hit: 'a' }], covers: [],
+  centre: { at: [160, 300], hit: 'div.video-card', ok: true }, pocket: null, ...over,
+});
+
+test('VPM: the matrix is the plan\'s 7 sizes, and the iPod skin runs the portrait ones only (33 cells)', () => {
+  assert.deepStrictEqual(VPM_SIZES, [[320, 568], [375, 667], [360, 640], [390, 844], [430, 932], [667, 375], [568, 320]]);
+  const cells = vpmCells();
+  assert.strictEqual(cells.length, 33);
+  assert.ok(cells.filter((c) => c.surface.pocket).every((c) => c.h > c.w));
+});
+
+test('VPM: a healthy cell passes; each broken property fails on its own', () => {
+  assert.deepStrictEqual(evalVPM(vpmCell()).failures, []);
+  const cases = [
+    [{ viewRoot: null }, /VACUOUS: no #view-root/],
+    [{ viewRoot: { x: 0, y: 56, w: 320, h: 0 } }, /#view-root is 0px tall/],
+    [{ first: null }, /paints nothing/],
+    [{ first: { sel: 'x', box: { x: 0, y: 700, w: 320, h: 40 } } }, /outside the 320x568 viewport/],
+    [{ scrollW: 400 }, /sideways scroll: the page is 400px wide/],
+    [{ tabs: [] }, /VACUOUS: no bottom-bar tab/],
+    [{ tabs: [{ name: 'home', self: false, hit: 'html' }] }, /bottom-bar home: its centre hits html/],
+    [{ covers: [{ sel: 'div.layer', box: { x: 0, y: 0, w: 320, h: 568 }, z: '9' }] }, /takes taps over more than half/],
+    [{ centre: { at: [160, 300], hit: 'html', ok: false } }, /content centre 160,300 hits html/],
+  ];
+  for (const [over, re] of cases) {
+    const f = evalVPM(vpmCell(over)).failures;
+    assert.ok(f.length >= 1 && f.some((x) => re.test(x)), re + ' in ' + JSON.stringify(f));
+  }
+});
+
+test('VPM: landscape skips the bottom-bar rows; the iPod skin checks its centre button instead of the tabs and the centre', () => {
+  assert.deepStrictEqual(evalVPM(vpmCell({ portrait: false, tabs: [] })).failures, []);
+  const pocket = (p) => vpmCell({ isPocket: true, tabs: [], centre: { at: [0, 0], hit: 'html', ok: false }, pocket: p });
+  assert.deepStrictEqual(evalVPM(pocket({ found: true, ok: true, hit: 'button.ip-center' })).failures, []);
+  assert.ok(evalVPM(pocket({ found: false })).failures.some((f) => /VACUOUS: the iPod centre button/.test(f)));
+  assert.ok(evalVPM(pocket({ found: true, ok: false, hit: 'div.ip-wheel' })).failures.some((f) => /centre button's centre hits div.ip-wheel/.test(f)));
 });

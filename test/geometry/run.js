@@ -6,6 +6,9 @@
 //
 //   npm run test:geometry                  G1-G3 on every live surface x 4 eras x 2 modes x
 //                                          phone/desktop, then G4 on every sequence
+//                                          and VPM, the viewport matrix (scenes.js vpmCells: 7 phone
+//                                          sizes x home, music, watch, the iPod skin, Settings)
+//   node test/geometry/run.js --only VPM   the viewport matrix alone
 //   npm run test:geometry:fast             G1-G3 on the 4 pre-push scenes (FAST_SCENES)
 //   (both also run DBLTAP, confirm-double-tap.js: a double-tap never answers the confirm
 //   its first tap opened; skip it with --only naming other checks)
@@ -29,9 +32,10 @@ const path = require('node:path');
 const capture = require('../visual/capture.js');
 const { seed, boot } = require('../visual/server.js');
 const checks = require('./checks.js');
-const { SURFACES, ERAS, MODES, FAST_SCENES, G4_SEQUENCES } = require('./scenes.js');
+const { SURFACES, ERAS, MODES, FAST_SCENES, G4_SEQUENCES, vpmCells } = require('./scenes.js');
 const { MUTATIONS } = require('./mutations.js');
 const doubleTap = require('./confirm-double-tap.js');
+const { newGuardedContext } = require('../../tools/capture/request-policy.js');
 
 const EXPECTED_PATH = path.join(__dirname, 'expected-failures.json');
 
@@ -77,8 +81,8 @@ function planScenes(opts) {
 
 // Check id -> its in-page collector and pure evaluator. HDR / NAV (sweep S1) are the chrome's
 // rendered contracts (checks.js); G1-G3 take the surface's optional `scope` selector.
-const COLLECT = { G1: checks.collectG1, G2: checks.collectG2, G3: checks.collectG3, HDR: checks.collectHeader, NAV: checks.collectBottomBar, SHD: checks.collectSheetHeader, POP: checks.collectPopover, BLD: checks.collectPlayerBleed };
-const EVALUATE = { G1: checks.evalG1, G2: checks.evalG2, G3: checks.evalG3, HDR: checks.evalHeader, NAV: checks.evalBottomBar, SHD: checks.evalSheetHeader, POP: checks.evalPopover, BLD: checks.evalPlayerBleed };
+const COLLECT = { G1: checks.collectG1, G2: checks.collectG2, G3: checks.collectG3, HDR: checks.collectHeader, NAV: checks.collectBottomBar, SHD: checks.collectSheetHeader, POP: checks.collectPopover, BLD: checks.collectPlayerBleed, VPM: checks.collectVPM };
+const EVALUATE = { G1: checks.evalG1, G2: checks.evalG2, G3: checks.evalG3, HDR: checks.evalHeader, NAV: checks.evalBottomBar, SHD: checks.evalSheetHeader, POP: checks.evalPopover, BLD: checks.evalPlayerBleed, VPM: checks.evalVPM };
 
 async function measureScene(env, scene, mutationCss) {
   const surf = SURFACES.find((s) => s.id === scene.surface);
@@ -107,6 +111,39 @@ async function measureScene(env, scene, mutationCss) {
     }
     return { res, errors };
   } finally { await ctx.close(); }
+}
+
+// ---- VPM (v1.364.0 W1): the viewport matrix ----
+// One cell = one surface at one phone size, in its own context (iOS UA, mobile, touch, DPR 2).
+// -> [{ id, measured, failures }] for every cell of scenes.js vpmCells().
+async function runVPM(env, mutationCss) {
+  const out = [];
+  const { openPocket } = capture.sceneKit(env.FX, env.base);
+  const phone = capture.viewports(2).phone;
+  for (const cell of vpmCells()) {
+    const ctx = await env.guardedContext({ ...phone, viewport: { width: cell.w, height: cell.h }, ...capture.CONTEXT_PINS, storageState: env.st, reducedMotion: 'reduce' }, { scene: 'geometry:' + cell.id });
+    const page = await ctx.newPage();
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(String(e).slice(0, 200)));
+    try {
+      if (cell.surface.pocket) {
+        await page.goto(env.base + '/music', { waitUntil: 'networkidle', timeout: 20000 });
+        await openPocket(page, 'ipod', 'phone');
+        await capture.pausePlayback(page);
+      } else {
+        await page.goto(env.base + cell.surface.path(env.FX), { waitUntil: 'networkidle', timeout: 20000 });
+      }
+      await page.waitForSelector(cell.surface.ready, { state: 'attached', timeout: 12000 });
+      await page.addStyleTag({ content: capture.FREEZE_CSS + (mutationCss || '') });
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+      const data = await page.evaluate(COLLECT.VPM, { portrait: cell.portrait, pocket: !!cell.surface.pocket });
+      const ev = EVALUATE.VPM(data);
+      out.push({ id: cell.id, measured: `(${ev.measured.tabs} tabs, ${ev.measured.covers} covers)`, failures: ev.failures.concat(errors.map((e) => 'pageerror: ' + e)) });
+    } catch (e) {
+      out.push({ id: cell.id, failures: [`the cell did not load: ${String(e).split('\n')[0]}`] });
+    } finally { await ctx.close(); }
+  }
+  return out;
 }
 
 // ---- G4 ----
@@ -237,7 +274,8 @@ async function main() {
   let code = 0;
   try {
     const st = await capture.login(browser, base, FX, record);
-    const env = { browser, st, record, FX, base, only: opts.only };
+    const env = { browser, st, record, FX, base, only: opts.only,
+      guardedContext: (o, tag) => newGuardedContext(browser, o, record, tag) };
 
     // A failure an expected-failure entry covers is not evidence either way (mutants mode).
     const unexpectedOnly = (id, failures) => {
@@ -248,7 +286,21 @@ async function main() {
     if (opts.mutants) {
       console.log('geometry --mutants: each mutation must turn its check red on its target; the same scene unmutated must be green.');
       let survived = 0;
+      let vpmControl = null; // one unmutated matrix serves every VPM mutant
       for (const [name, m] of Object.entries(MUTATIONS)) {
+        if (opts.only && !opts.only.includes(m.check)) continue; // --mutants --only VPM: one check's proofs
+        if (m.check === 'VPM') {
+          if (!vpmControl) vpmControl = await runVPM(env, '');
+          const controlRed = vpmControl.filter((r) => r.failures.length).map((r) => r.id);
+          const red = (await runVPM(env, m.css)).filter((r) => r.failures.length).map((r) => r.id);
+          const want = new Set(m.target.cells);
+          const missed = m.target.cells.filter((id) => !red.includes(id));
+          const extra = red.filter((id) => !want.has(id));
+          const ok = controlRed.length === 0 && missed.length === 0 && extra.length === 0;
+          if (!ok) survived++;
+          console.log(`${ok ? 'KILLED  ' : 'SURVIVED'} ${name} (VPM): ${red.length} red of ${vpmControl.length} cells, want exactly ${want.size}; missed [${missed.join(' ')}] extra [${extra.join(' ')}] control red [${controlRed.join(' ')}]`);
+          continue;
+        }
         const run = async (css) => {
           if (m.check === 'G4') {
             const seq = G4_SEQUENCES.find((s) => s.id === m.target.sequence);
@@ -267,7 +319,7 @@ async function main() {
         if (control.length) console.log(`         control not green: ${JSON.stringify(control[0]).slice(0, 220)}`);
       }
       // DBLTAP's mutant is JS, not CSS: ui.js served with ACTIVATION_GUARD_MS = 0.
-      {
+      if (!opts.only || opts.only.includes('DBLTAP')) {
         const fails = (rs) => rs.reduce((n, r) => n + r.failures.length, 0);
         const control = fails(await doubleTap.run(env));
         const mutated = fails(await doubleTap.run(env, { mutateGuard: true }));
@@ -275,18 +327,19 @@ async function main() {
         if (!ok) survived++;
         console.log(`${ok ? 'KILLED  ' : 'SURVIVED'} dbltap-guard-off (DBLTAP on stats-delete phone+desktop): control ${control} failure(s), mutated ${mutated} failure(s)`);
       }
-      const total = Object.keys(MUTATIONS).length + 1;
+      const total = Object.values(MUTATIONS).filter((m) => !opts.only || opts.only.includes(m.check)).length + (!opts.only || opts.only.includes('DBLTAP') ? 1 : 0);
       console.log(`geometry --mutants: ${total - survived} of ${total} killed, ${survived} survived (${Math.round((Date.now() - t0) / 1000)}s)`);
       return survived ? 1 : 0;
     }
 
     const mutation = opts.mutate ? MUTATIONS[opts.mutate] : null;
     const results = [];
-    const scenes = planScenes(opts);
+    const sceneChecks = ['G1', 'G2', 'G3', 'HDR', 'NAV', 'SHD', 'POP', 'BLD'];
+    const scenes = (opts.only && !opts.only.some((c) => sceneChecks.includes(c))) ? [] : planScenes(opts);
     for (const scene of scenes) {
       let out;
       try {
-        out = await measureScene(env, scene, mutation ? mutation.css : '');
+        out = await measureScene(env, scene, mutation && mutation.check !== 'VPM' ? mutation.css : '');
       } catch (e) {
         results.push({ id: `LOAD/${sceneId(scene)}`, failures: [`the scene did not load: ${String(e).split('\n')[0]}`] });
         continue;
@@ -305,6 +358,10 @@ async function main() {
           results.push({ id: `G4/${seq.id}/${mode}`, measured: `(${r.steps.map((s) => `${s.step}: ${s.frames} frames, change@${s.firstChange}, ${s.moved.length} moved`).join('; ')})`, failures: r.failures });
         }
       }
+    }
+    if (!opts.fast && (!opts.only || opts.only.includes('VPM'))) {
+      const css = mutation && mutation.check === 'VPM' ? mutation.css : '';
+      results.push(...await runVPM(env, css));
     }
     if (!opts.only || opts.only.includes('DBLTAP')) results.push(...await doubleTap.run(env));
     if (record.blockedRequests.length) results.push({ id: 'REQUEST-POLICY', failures: record.blockedRequests.map((b) => `${b.scene} ${b.method} ${b.url}`) });

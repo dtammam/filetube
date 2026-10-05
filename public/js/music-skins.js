@@ -560,6 +560,10 @@
   function skinActiveFor(meta, phone) {
     return !!(meta && (meta.isMusic || meta.resumeMode === 'podcast')) && isPhone(phone);
   }
+  // v1.364.0 (W2b, Dean: "within 1 to 2 taps get to the click ipod view"): the iPod can open with no song
+  // (the Music tab tapped again, the /music toolbar's iPod button, /music?pocket=1) on a phone whose chosen
+  // skin carries the Pocket menus - a skin without menus has nothing to show without a track.
+  function pocketEntryAvailable(phone, store) { return isPhone(phone) && !!menuStyle(activeSkinId(store)); }
   if (typeof window !== 'undefined' && window.document) markPhoneClass(window);
 
   // Measure AFTER settle (UI pass D7, F59). A size the skin reads once (the haptic ghost's
@@ -1176,7 +1180,7 @@
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
     skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, skinFamilies: skinFamilies, skinLines: skinLines, colorwayLabel: colorwayLabel, menuSkinItems: menuSkinItems, SEARCH_STRIP: SEARCH_STRIP, searchStripStep: searchStripStep, searchEdit: searchEdit, searchStripView: searchStripView, searchUrls: searchUrls, menuSearchItems: menuSearchItems, skinSearchItems: skinSearchItems, renderSearchBar: renderSearchBar, searchNextStop: searchNextStop, KB_SEARCH_KEY: KB_SEARCH_KEY, keyboardSearchOn: keyboardSearchOn, searchFromTyped: searchFromTyped, isClickColorway: isClickColorway,
     renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
-    remoteBadge: remoteBadge, volLevel: volLevel, skinActiveFor: skinActiveFor, isPhone: isPhone, phoneFrom: phoneFrom, markPhoneClass: markPhoneClass,
+    remoteBadge: remoteBadge, volLevel: volLevel, skinActiveFor: skinActiveFor, pocketEntryAvailable: pocketEntryAvailable, isPhone: isPhone, phoneFrom: phoneFrom, markPhoneClass: markPhoneClass,
     PHONE_CLASS: PHONE_CLASS, PHONE_SHORT_SIDE_MAX: PHONE_SHORT_SIDE_MAX, observeSettled: observeSettled,
     // the pocket menus (the pure half - see the block above).
     menuStyle: menuStyle, menuTitle: menuTitle, menuStaticItems: menuStaticItems,

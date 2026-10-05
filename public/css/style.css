@@ -8389,6 +8389,15 @@ a.tv-continue-card { text-decoration: none; }
   .mms-sticker-menu .mms-sm-act{ display:flex; align-items:center; gap:var(--space-4); width:100%; text-align:left; text-decoration:none; border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; min-height:var(--size-touch); transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
   .mms-sticker-menu .mms-sm-act.is-on{ background:var(--overlay-border); color:inherit; border-color:currentColor; font-weight:var(--fw-semibold); }
   .mms-sticker-menu .mms-sm-act[disabled]{ opacity:.5; cursor:default; }
+  /* v1.364.0 (W2c, Dean: "the new Add chapters button for music view is centered instead of left aligned"): the v1.363.1
+     chapters rows carry ui-btn (the lint's bespoke-button rule; their siblings are counted carve-out debt, never widened),
+     and ui-btn centres its content, fixes its height, sets its own font size, weight and line height and draws a tint layer
+     (the family is the menu's, .mms-sticker-menu button; the extras row's whole font reverts to the button default its
+     siblings render in, then takes that family back). Inside the sticker menu
+     those rows lay out exactly as their bare siblings do: these two rules sit AFTER both row bases (file order decides). */
+  .mms-sticker-menu .ui-btn.mms-sm-act{ justify-content:flex-start; height:auto; font-style:revert; font-weight:revert; line-height:revert; white-space:revert; }
+  .mms-sticker-menu .ui-btn.mms-sm-extras{ height:auto; font:revert; font-family:var(--font-ui); white-space:revert; border-radius:revert; }
+  .mms-sticker-menu .ui-btn:is(.mms-sm-act, .mms-sm-extras)::after{ content:none; }
   .mms-sticker-menu .mms-sm-danger{ color:var(--yt-red); border-color:var(--yt-red); }
   .mms-sticker-menu .mms-sm-note{ font-size:var(--fs-md); opacity:.7; }
   /* v1.278: desktop actions menu - anchored under its top-toolbar button (a positioned
@@ -8763,6 +8772,9 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-cone{ fill:currentColor; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-w{ fill:none; stroke:currentColor; stroke-width:3.5; stroke-linecap:round; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-lo .ip-vol-w{ visibility:hidden; }
+  /* v1.364.0 (W2a): hold the center with the phone playing itself - a short note on the LCD (1.5 s), ink on paper like a menu row;
+     it never takes a tap (the wheel under it keeps working). */
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-lcd-note{ position:absolute; left:var(--space-4); right:var(--space-4); bottom:var(--space-4); padding:var(--space-3) var(--space-4); border-radius:var(--mms-ipod-r-sm); background:var(--pk-s-ink); color:var(--pk-s-paper); font-size:var(--pk-fs-row); font-weight:var(--fw-semibold); text-align:center; pointer-events:none; }
   /* List view (Select flips to it) */
   /* v1.270 BRICK (Dean's easter egg): the canvas overlays the LCD's inner box.
      THAT REQUIRES .ip-lcd-in TO BE POSITIONED - the slim gate measured that neither
@@ -12508,3 +12520,9 @@ html[data-era-flourish="on"] .ft-unfabricated {
 :where(html.is-phone, html.mms-popout) .mms-ipod .mms-remote{ min-height:0; padding:0 var(--space-2); }
 :where(html.is-phone, html.mms-popout) .ipm-name{ display:block; }
 :where(html.is-phone, html.mms-popout) .ipm-detail{ display:block; font-size:var(--pk-fs-note); opacity:.7; }
+
+/* v1.364.0 (W1): /errors.html, the standalone error-log exporter (it loads no app script). */
+.errors-page { padding: var(--space-4); }
+.errors-page h1 { font: var(--t-title); margin: 0 0 var(--space-2); }
+.errors-page pre { white-space: pre-wrap; word-break: break-word; font: var(--t-caption); color: var(--ink-2); }
+.errors-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0; }
