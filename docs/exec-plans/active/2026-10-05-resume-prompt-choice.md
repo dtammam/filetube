@@ -217,6 +217,8 @@ delete the branches (`-d`; GitHub deletes the remote one).
 
 ## 8c. Gate record
 
+Gate: CHANGES r1 @c7f460775d9b66ca91b1a295c523d4d026306b30 - adversary
+
 ## 9. Out of scope (logged, not built)
 
 - A prompt for music, podcasts, TV episodes or books (they never had one).

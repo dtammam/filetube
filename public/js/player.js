@@ -9228,6 +9228,9 @@ if (typeof module !== 'undefined' && module.exports) {
     document.addEventListener('keydown', function (e) {
       if (state !== STATE_FULL) return;
       if (e.ctrlKey || e.metaKey || e.altKey) return;
+      // v1.363: the Resume prompt waits for a choice; a digit would seek AND save over the saved position, Space would play under it
+      // (R and S have their own listener below)
+      if (resumePromptVisible()) return;
       var el = document.activeElement;
       var tag = (el && el.tagName) || '';
       if (['INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A'].indexOf(tag) !== -1 || (el && el.isContentEditable)) return;

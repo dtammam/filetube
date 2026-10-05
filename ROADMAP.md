@@ -331,11 +331,11 @@
 
 ### Features
 
-- [ ] **Add chapters by hand to a download that has none, and a Watch in the pop-out** (Dean, 2026-10-05, planned with the theatre
-  button fix as the next branch): a YouTube audio file or video with no chapters (for example a 47 minute mix whose song times are
-  only in the comments) has no way on desktop to add them afterwards. Wanted: an editor to paste a timestamp list (`0:00 Song`)
-  or add chapters while it plays, saved so they behave like embedded chapters. Also: the pop-out view has no way to Watch; give it
-  the Watch / Listen switch (check first whether the file has a video at all).
+- [ ] **Reach the chapter editor from audio and the pop-out, and a Watch in the pop-out** (Dean, 2026-10-05, planned with the theatre
+  button fix as the next branch): yt-dlp does download chapters for audio, but a YouTube audio file with none (for example a 47
+  minute mix whose song times are only in the comments) has no way on desktop to add them afterwards: the chapter-editing modal
+  that videos have seems unreachable from audio. Wanted: open that same modal from an audio item (and the pop-out), no new editor.
+  Also: the pop-out view has no way to Watch; give it the Watch / Listen switch (check first whether the file has a video at all).
 - [ ] **What the VPN runbook may point at (candidates, not planned; Dean picks after his runs)** - v1.362.1 shipped
   `docs/references/vpn-slowness-runbook.md`, built on the v1.307 `/diag` suite. What FileTube cannot measure or do today, each a
   possible next step once the numbers say which matters: response compression (the Compression delta row shows the saving);

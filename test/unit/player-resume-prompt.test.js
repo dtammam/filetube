@@ -183,23 +183,44 @@ test('Ask: a pointer touch or a key cancels the countdown and the prompt STAYS (
   }
 });
 
-test('Ask: the countdown\'s capture listeners are balanced (a cancel by tap, by key, and by close each remove exactly what the start added)', async () => {
+test('Ask: the countdown\'s listeners are balanced (a cancel by tap, by key, and by close each remove exactly what the start added, flag for flag)', async () => {
   for (const how of ['pointer', 'key', 'close']) {
     const r = realPlayerRealm(754, ASKED);
     try {
-      const net = { pointerdown: 0, keydown: 0 };
+      // every (target, type, fn, capture) the player adds and has not removed with the SAME capture flag
+      const live = new Set(); const ids = new Map();
+      const id = (x) => { if (!ids.has(x)) ids.set(x, ids.size + 1); return ids.get(x); };
+      const cap = (o) => (o === true || !!(o && o.capture)) ? 'c' : 'b';
+      const tag = (t, ty, fn, o) => id(t) + ':' + ty + ':' + id(fn) + ':' + cap(o);
       const proto = r.w.EventTarget.prototype;
       const add = proto.addEventListener; const rem = proto.removeEventListener;
-      const cap = (o) => o === true || !!(o && o.capture);
-      proto.addEventListener = function (t, fn, o) { if (t in net && cap(o)) net[t] += 1; return add.call(this, t, fn, o); };
-      proto.removeEventListener = function (t, fn, o) { if (t in net && cap(o)) net[t] -= 1; return rem.call(this, t, fn, o); };
+      proto.addEventListener = function (ty, fn, o) { if (ty === 'pointerdown' || ty === 'keydown') live.add(tag(this, ty, fn, o)); return add.call(this, ty, fn, o); };
+      proto.removeEventListener = function (ty, fn, o) { if (ty === 'pointerdown' || ty === 'keydown') live.delete(tag(this, ty, fn, o)); return rem.call(this, ty, fn, o); };
       await loadAndSettle(r);
-      const armed = { ...net };
+      const armed = new Set(live);
       if (how === 'pointer') r.$('#player-wrapper').dispatchEvent(new r.w.Event('pointerdown', { bubbles: true }));
       else if (how === 'key') key(r, 'x');
       else r.player.close();
-      assert.strictEqual(armed.pointerdown - net.pointerdown, 1, how + ': one pointerdown capture listener removed');
-      assert.strictEqual(armed.keydown - net.keydown, 1, how + ': one keydown capture listener removed');
+      const gone = [...armed].filter((t) => !live.has(t));
+      assert.strictEqual(gone.filter((t) => t.includes(':pointerdown:')).length, 1, how + ': one pointerdown listener removed');
+      assert.strictEqual(gone.filter((t) => t.includes(':keydown:')).length, 1, how + ': one keydown listener removed');
+    } finally { r.close(); }
+  }
+});
+
+test('Ask: while the prompt is up a digit, Space, K and the arrows do nothing to the picture or the saved position (R and S still answer)', async () => {
+  for (const k of ['5', '1', ' ', 'k', 'ArrowRight', 'ArrowLeft', 'l', 'j']) {
+    const r = realPlayerRealm(754, ASKED);
+    try {
+      await loadAndSettle(r);
+      const plays = r.media.plays;
+      r.fetches.length = 0;
+      key(r, k);
+      await settle();
+      assert.strictEqual(r.$('#resume-overlay').hidden, false, JSON.stringify(k) + ': the prompt stays');
+      assert.strictEqual(r.$('#media-player').currentTime, 0, JSON.stringify(k) + ': no seek');
+      assert.strictEqual(r.media.plays, plays, JSON.stringify(k) + ': no play');
+      assert.deepStrictEqual(r.fetches.filter((f) => f.method !== 'GET' && /progress/.test(f.url)), [], JSON.stringify(k) + ': no progress write: ' + JSON.stringify(r.fetches));
     } finally { r.close(); }
   }
 });
