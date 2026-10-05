@@ -507,8 +507,96 @@ its video; a drawImage of the video anywhere.
 
 ## 6. Build log
 
-(The builder writes here: falsifier results, the census table, measured numbers per acceptance check, mutants and
-their red tests by name, suites verbatim, gate verdict lines bound to shas.)
+### Release A (v1.364.0)
+
+**W0** (1ba180b2, docs only): ROADMAP 135/193/278/447 ticked with Dean's 2026-10-05 device confirmation; DEVICE-CHECKS lines
+deleted as listed; index items 1, 2, 33, 35, 36, 37, 44 moved to "Passed 2026-10-05". `grep -c '^- \[ \]' docs/DEVICE-CHECKS.md`
+after the edit: 37. `git diff --stat`: ROADMAP.md, docs/DEVICE-CHECKS.md only.
+
+**W1 step 1 (falsifiers).** Dean (AskUserQuestion): iOS **15.8.5**; a private Safari tab is still broken (H3 out); 15.4+
+means `:has()`/`dvh`/`@layer` work (H2 out). Census at `iOS >= 15.8` (eslint 9 + eslint-plugin-compat, /tmp sandbox, 30
+public/js files + 46 inline scripts + lib/ytdlp/client + the worker; every script parses at ES2021):
+
+| Finding | Where | iOS 15.8 | On a boot/view path? |
+|---|---|---|---|
+| `navigator.connection` | diag-page.js:38 | absent | no (diag page, `|| {}`) |
+| `navigator.userAgentData` | player.js:2480 | absent | guarded (`uaData &&`) |
+| `document.fullscreenElement` | player.js:2670, 2900-2901 | absent on iPhone | reads only (undefined) |
+| `navigator.userActivation` | player.js:5916 | absent | guarded (try + `|| null`) |
+| `Notification` | setup.js:4298 | absent in a tab | inside a click's try |
+| `overflow-x: clip` | style.css:280, 6783 (5 decl.) | unsupported (16) | no (degrades to visible) |
+| `content-visibility`, `text-wrap`, `font-size-adjust`, `scrollbar-*` | style.css | unsupported | no (cosmetic) |
+| regex lookbehind, `@container`, `color-mix`, range media queries, `@property`, CSS nesting | - | - | 0 uses |
+
+Census found nothing; STOP rule 1 asked (Dean answered with a screenshot: header, bell 14, "Listening on", bottom bar;
+"Recently added" with no chips and no tiles, no tab highlighted; then "Same with Music view"). A Chromium run with every
+iOS 16+ API deleted did NOT reproduce (46 tiles). **A real WebKit 15.4 did** (Playwright 1.20.2 webkit-1616, four
+Ubuntu 20.04 libs extracted to its lib dir, 320x568, iOS 15.8.5 UA): `ReferenceError: Can't find variable: viewRegistry`
+at common.js:11012 from main.js/watch.js/setup.js/music.js registerView, and `Can't find variable: swipeBackWired` at
+11584 from bootRouter: cards 0, chips 0 (the new recorder captured all of it on its first run). Minimal repro in the same
+engine: a function declared in a block of non-strict top-level script code cannot see that block's const/let (same
+script or another: A/B/C/E/H fail); `'use strict'` or an IIFE works (F/G). Census of the shape over every classic script:
+21 hits, all in common.js's router block (10891-11839); 0 bare-name references to its 30 functions from outside it.
+
+**W1 step 3 (fix, 20a3cfde).** The block body runs inside `routerRuntime()` (an IIFE, no reindent). WebKit 15.4 after:
+home 46 cards + 1 chip row, 0 page errors; /music renders (artists, albums); bottom bar: History navigates (view
+history, tab active), Playlists opens its sheet, Home active. `test/unit/ios15-floor.test.js` (5 tests): the shape census
+over every classic script (0 hits), a detector non-vacuity row per block kind, an ES2021 parse floor, the routerRuntime lock.
+
+**W1 step 2 (instrument, 20a3cfde).** ES5 recorder as the first head script of all 13 app shells (public/*.html that load
+common.js + subscriptions.html), byte-identical; `ft-boot-errors`, last 50, under 64 KB, version-stamped from the
+ft-version meta; errors + failed script/link loads (capture) + rejections. Settings > Troubleshooting > Export error log /
+Clear error log; standalone `/errors.html` (no app script, ES5, share -> clipboard -> download, behind sign-in).
+`test/unit/boot-error-recorder.test.js` 33 pass; auth-flow integration row (302 to login, 200 signed in, served shells
+carry the recorder first after the version meta). Commit hook: `ℹ pass 8646` / `ℹ fail 0`.
+
+**W1 step 4 (VPM).** `node test/geometry/run.js --only VPM`: `geometry: 33 checks - 33 ok, 0 FAIL, 0 XFAIL (expected), 0
+XPASS`. `--mutants --only VPM`: `4 of 4 killed, 0 survived (216s)`; red cells: M1 5 (every 320 cell), M2 18 (every cell
+<= 640 tall), M3 20 (every cell under 400 wide), M4 5 (every iPod cell); control 0 red. Deviation: the iPod cells skip
+the bottom-bar and content-centre rows (the full-screen skin covers both by design) and assert the centre button
+instead; M2 uses `max-height: 640px` so 360x640 is in its set as the plan intended.
+
+**W1 mutants** (committed 20a3cfde, /tmp git-archive sandbox, each diff non-empty): 11 of 11 killed by name - M1 router
+block back to bare block code (`no classic script declares a function in a top-level block...`, `the router runtime runs
+inside routerRuntime()`), M2 keep 60 (`60 errors keep EXACTLY the last 50`), M3b no try on the error path (`a throwing
+localStorage ... never lets an error escape`), M4 one shell differs (`byte-identical`), M5 `let` (`the recorder is ES5`),
+M6 not capture (`CAPTURE`), M7 records images (`a broken image is not`), M8 wire dropped (`the enabling wire`), M9 clear
+without asking (`Clear error log asks first`), M10 errors.html without share (`Export shares a .txt File`), M11 recorder
+missing from tv.html (`tv.html: ... FIRST head script`). Masked, documented: the inner storage try alone (M3) is masked
+by the listener's own try (two guards, one observable property).
+
+**W2** (built on feat/v1.364.0-small-phones-pocket-w2; acb47a25 W2a, 3bb32c20 W2c, 702619df W2b, 4296f00a W2b tests; merged 882d59d0).
+W2a falsifier: test/unit/pocket-center-hold.test.js on the unchanged engine 10 pass / 5 fail (a 700 ms centre hold opened no volume
+bar, no note); after 16/16. Change: a centre-hold arm in onDown's dead-centre branch (own state, passive document listeners,
+HOME_HOLD_MS 600), Now Playing only, main document only; fire = hapticLetterTick + wheelSuppressClick + openVolume() (speaker) or a
+1500 ms LCD note "Use the side buttons" (.ip-lcd-note). Cancel: 8 px move, release, pointercancel, a new press, endWheel, destroy,
+and a re-check at fire. The music-skins dead-centre lock updated in place (intent kept: a dead-centre press never spins). Real
+browser (Chromium, CDP touch hold 900 ms, eras 2021/2005): note shown, the release opened no list, note gone after 1500 ms.
+Mutants (/tmp/w2-mut-*, each landed): context check dropped -> 5a-5e + 8 red; click swallow dropped -> 1, 1b, 2, 7; move cancel
+dropped -> 4; HOME_HOLD_MS 0 -> 2, 3, 4, 5b, 8; armed in the pop-out -> 9; destroy clear dropped -> 8b; fire re-check dropped ->
+8; top-of-onDown clear dropped -> 4b; dead-centre no return -> the music-skins lock + 1, 1b, 2, 7, 8b. Masked (documented): the
+endWheel clear alone (a spin cannot start without the top-of-onDown clear).
+W2b: the seam /music?pocket=1 (openPocketSeam): a speaker -> its iPod; a music track -> expand; neither -> the idle iPod
+(pocketIdle arm in updateNowPlayingPanel), landing via landPlayOn(false) on Main/Music; the param is stripped after. MENU on the
+idle Main menu closes to browse with no pl.dock(). Entries: the Music tab tapped again on /music (common.js musicTabPocketUrl)
+and the toolbar iPod button (#music-pocket-btn, phone + a skin with menus). pocket-idle-seam 9/9; red before 1 pass / 8 fail
+(the pass was vacuous and was removed). Mutants B1-B9, B11, B12 red by name; B10 (no hand-over clear) survives the unit tests and
+is killed by the real-browser row (tools/pocket-proof/pocket-idle-row.js: MENU path 5 presses vs 4). Real browser 390x844 +
+320x568: 24/24 PASS (cold /, Music, Music -> iPod Main/Music, currentId null, MENU closes, toolbar button reopens, a picked song
+plays, 0 page errors). Deviation: the row is a committed proof tool, not wired into CI.
+W2c falsifier (Playwright; 390x844 + 1440x900; eras 2021/2005; light/dark): Extras chapters row icon x 89 / label x 115 vs Play
+next 13 / 39 (centred), weight 500 (2021) / 700 (2005) vs 400; the pop-out row matched x and height but read 14px/500 vs
+13.33px/400. After: 12/12 cells equal the neighbour's icon x, label x, height 44 and font. Lock
+test/unit/sticker-menu-chapters-row.test.js 5/5; mutants justify-centre (lock red + probe 8/8 Extras cells red), the rule moved
+before the base (the order test), the family restore dropped, the tint restored: all red. Deviation: ui-btn kept on the rows
+(dropping it raises the lint's carve-out debt; the siblings pass as counted debt) and three ordered rules reset what it adds.
+The watch cog row was measured already left (text x 12, h 29, as its siblings): unchanged. Commit-hook flake on the way:
+pocket-skins-menu.test.js:221 'Cider' !== 'Search' once at load ~11 (wall-clock wheel speed); 6/6 alone, retry green.
+
+**Release A suites, round 1 (merged 882d59d0), Node 22.23.1:** `# tests 11107` `# pass 11097` `# fail 1` (`# skipped 9`):
+`not ok 1573 - v1.90: the meta is injected exactly once (idempotent) even if re-served` (expected 1, actual 2). Cause: the
+recorder's selector text `meta[name="ft-version"]` matched the test's count of `name="ft-version"`; the recorder now reads
+`meta[name=ft-version]` (same selector, unquoted). The Node 24 run was stopped for the fix; both re-run below.
 
 ## 7. Cut or deferred (Dean can overrule each)
 

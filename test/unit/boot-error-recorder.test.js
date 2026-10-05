@@ -86,7 +86,7 @@ function makeWindow(o) {
   const handlers = {};
   const w = {
     location: { pathname: '/music' },
-    document: { querySelector: (sel) => (sel === 'meta[name="ft-version"]' && opt.version ? { getAttribute: () => opt.version } : null) },
+    document: { querySelector: (sel) => (sel === 'meta[name=ft-version]' && opt.version ? { getAttribute: () => opt.version } : null) },
     addEventListener: (type, fn, capture) => { (handlers[type] = handlers[type] || []).push({ fn, capture }); },
     localStorage: opt.throwingStorage ? {
       getItem() { throw new Error('SecurityError'); },
