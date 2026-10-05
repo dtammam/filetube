@@ -806,8 +806,10 @@ test('U2 pop-out exclusion at the ENGINE level: a non-main-document surface neve
     const m = pipPanel.querySelector('[data-skin-sticker-menu]');
     assert.ok(m.querySelector('[data-skin-speed]'), 'quick controls render there (non-vacuous)');
     assert.strictEqual(m.querySelector('[data-skin-extras]'), null, 'but never the Extras entry (main-document only)');
-    assert.strictEqual(m.querySelector('[data-skin-watchback]'), null, 'and never the Watch row either - a pop-out row must not navigate the window BEHIND it (v1.252 W1)');
-    assert.strictEqual(m.querySelector('[data-skin-channel]'), null, 'nor the "Go to channel" row (v1.317) - it navigates the window too');
+    // v1.363.1 (Dean): the pop-out HAS the Watch row now (its tap navigates the main window and brings
+    // it forward - the view owns that); "Go to channel" still navigates the window behind it and stays out.
+    assert.ok(m.querySelector('[data-skin-watchback]'), 'the Watch row rides the pop-out (v1.363.1) - a visible() listen track');
+    assert.strictEqual(m.querySelector('[data-skin-channel]'), null, 'but not the "Go to channel" row (v1.317) - it navigates the window too');
     eng2.destroy();
   } finally { mainBoot.restoreAll(); }
 });
@@ -1899,4 +1901,103 @@ test('v1.311.3 gate r1 W1 (no view re-render): the viewport release drops the de
     assert.strictEqual(body.style.position, '', 'the lift found no deferred paint to flush - no re-lock');
     assert.strictEqual(ghostOf(b.dom), null, 'no ghost came back');
   } finally { b.restore(); }
+});
+
+
+// ---- v1.363.1 (Dean): Watch in the pop-out, and Add / Edit chapters from audio + the pop-out ----------
+function bootPip(sticker) {
+  const pipDom = new JSDOM('<body><div id="panel" class="music-nowplaying-panel"></div></body>', { url: 'http://localhost/pip' });
+  const mainBoot = bootSticker({ extras: false });
+  const eng = mainBoot.dom.window.FileTubeSkinSurface.create({
+    panel: pipDom.window.document.getElementById('panel'),
+    getSkinId: () => 'ipod', getCtx: () => ({ track: {}, upNext: [], fullList: [] }),
+    hostCtl: (id) => mainBoot.dom.window.document.getElementById(id),
+    win: pipDom.window,
+    sticker: Object.assign({ onSkinChange: () => {} }, sticker),
+  });
+  eng.paint();
+  const pipPanel = pipDom.window.document.getElementById('panel');
+  pipPanel.querySelector('[data-skin-sticker]').dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true }));
+  return { pipDom, mainBoot, eng, pipPanel, menu: pipPanel.querySelector('[data-skin-sticker-menu]') };
+}
+
+test('v1.363.1 pop-out Watch: the row follows visible() (an audio-only file gets NO row), and a tap reaches the view hook', () => {
+  for (const [visible, expectRow] of [[true, true], [false, false]]) {
+    let taps = 0;
+    const p = bootPip({ watchBack: { visible: () => visible, onTap: () => { taps += 1; } } });
+    try {
+      const row = p.menu.querySelector('[data-skin-watchback]');
+      assert.strictEqual(!!row, expectRow, 'visible()=' + visible + ' -> row ' + (expectRow ? 'present' : 'absent: never a dead button'));
+      if (row) {
+        row.dispatchEvent(new p.pipDom.window.MouseEvent('click', { bubbles: true }));
+        assert.strictEqual(taps, 1, 'the tap called the view hook once');
+        assert.strictEqual(p.menu.hidden, true, 'and closed the menu');
+      }
+      p.eng.destroy();
+    } finally { p.mainBoot.restoreAll(); }
+  }
+});
+
+test('v1.363.1 pop-out chapters row: label follows the hook, only the pop-out draws it, the tap hands over the POP-OUT document', () => {
+  const seen = [];
+  const hook = { visible: () => true, label: () => 'Add chapters', onTap: (d) => seen.push(d) };
+  const p = bootPip({ chapters: hook });
+  try {
+    const row = p.menu.querySelector('[data-skin-chapters]');
+    assert.ok(row, 'the pop-out draws the row');
+    assert.ok(/Add chapters/.test(row.textContent), 'the label is the hook\'s');
+    row.dispatchEvent(new p.pipDom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(seen.length, 1, 'one tap, one open');
+    assert.strictEqual(seen[0], p.pipDom.window.document, 'the editor is handed the pop-out\'s own document, never the window behind');
+    p.eng.destroy();
+  } finally { p.mainBoot.restoreAll(); }
+  // hidden when the view says no (no capability / nothing editable)
+  const q = bootPip({ chapters: { visible: () => false, label: () => 'Add chapters', onTap: () => {} } });
+  try { assert.strictEqual(q.menu.querySelector('[data-skin-chapters]'), null, 'visible() false -> no row'); q.eng.destroy(); } finally { q.mainBoot.restoreAll(); }
+  // the MAIN document never draws it on page 1 (it reaches the editor through Extras)
+  const b = bootSticker({ extras: false });
+  try {
+    const eng = b.dom.window.FileTubeSkinSurface.create({
+      panel: panel(b.dom), getSkinId: () => 'ipod', getCtx: () => ({ track: {}, upNext: [], fullList: [] }),
+      hostCtl: (id) => b.dom.window.document.getElementById(id),
+      sticker: { onSkinChange: () => {}, chapters: hook },
+    });
+    eng.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-chapters]'), null, 'main document: no page-1 chapters row');
+    eng.destroy();
+  } finally { b.restoreAll(); }
+});
+
+test('v1.363.1 Extras chapters action: Add vs Edit by the item\'s chapters, modify-gated, and the tap hands the item to the view', async () => {
+  for (const [video, canModify, expectLabel] of [
+    [{ chapters: [] }, true, 'Add chapters'],
+    [{ chapters: [{ startTime: 0, title: 'A' }, { startTime: 60, title: 'B' }] }, true, 'Edit chapters'],
+    [{ chapters: [] }, false, null],
+  ]) {
+    const handed = [];
+    const b = bootSticker({ video, adapter: { onChapters: (item) => handed.push(item.id) } });
+    b.dom.window.fetchCurrentUser = () => Promise.resolve({ user: { role: canModify ? 'admin' : 'member' } });
+    try {
+      b.engine.paint();
+      sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+      sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
+      for (let i = 0; i < 6; i++) await b.settle();
+      const row = sMenu(b.dom).querySelector('[data-skin-x="chapters"]');
+      if (expectLabel === null) { assert.strictEqual(row, null, 'no library-modify capability -> no row'); continue; }
+      assert.ok(row, 'row present');
+      assert.strictEqual(row.textContent.trim(), expectLabel);
+      sClick(b.dom, row);
+      assert.deepStrictEqual(handed, ['s1'], 'the view hook got the item');
+    } finally { b.restoreAll(); }
+  }
+  // no hook (podcasts, video surfaces): no row, byte-identical to before
+  const b = bootSticker({});
+  try {
+    b.engine.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    sClick(b.dom, sMenu(b.dom).querySelector('[data-skin-extras]'));
+    for (let i = 0; i < 6; i++) await b.settle();
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-x="chapters"]'), null, 'no onChapters hook -> no row');
+  } finally { b.restoreAll(); }
 });

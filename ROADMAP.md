@@ -5,7 +5,7 @@
 ### Device checks owed
 
 - [ ] **Device checks owed (Dean: reply "1-5 pass, 9 fails")** _(v1.362.2, 2026-10-04)_ - one line per open check in
-  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (40 open lines at v1.363.0); the steps are only there. A
+  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (44 open lines at v1.363.1); the steps are only there. A
   passed line is deleted from both places; a failed one becomes a bug below. Closes when every line is resolved.
 
   1. v1.341.3 - watch page: turn back upright settles in one step
@@ -46,9 +46,16 @@
   36. v1.358.0 - locked 2x ends on lock, next item, dock, speed pick
   37. v1.358.0 - locked 2x in a scrolling page and on art: no scroll or refresh
   38. v1.344.2 - only if it comes back: Watch/Listen keeps a chapter's spot
-  39. v1.363.0 - Settings > Ask me: the prompt, countdown, tap cancels, length 0, default choice, countdown off
-  40. v1.363.0 - Ask me: mini player resumes with no prompt; minimize with a prompt up; Auto note; music/podcast/TV never ask
-  41. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
+  39. v1.363.0 - Ask me: R and S, length 0, default choice, countdown off
+  40. v1.363.0 - Ask me: minimize with a prompt up; Auto note; music/podcast/TV never ask
+  41. v1.363.1 - pop-out: Add/Edit chapters opens in the pop-out, Watch row on a video file, none on an mp3; small window clipping
+  42. v1.363.1 - Add chapters on a chapterless mp3: chapter tracks after re-list and next pick; the playing song untouched
+  43. v1.363.1 - watch cog: Add / Edit chapters row; the new sticker rows match the old
+  44. v1.363.1 - theatre button colours (only if still flipped: device, scheme, era)
+  45. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
+
+  Passed 2026-10-05 (deleted from DEVICE-CHECKS.md): [x] v1.363.0 - the Ask me prompt, the 5 s countdown, a tap cancels it; [x]
+  v1.363.0 - the mini player never prompts.
 
   Passed 2026-10-04 (deleted from DEVICE-CHECKS.md): [x] v1.362.1 - pause shows the chevron, ~3 s after play it goes, a touch
   shows it; [x] v1.362.1 - 3 s is right; [x] v1.362.1 - a double-tap at the hidden chevron's spot skips, never minimizes.
@@ -59,8 +66,6 @@
   action (player.js `setMediaSessionAction('play', ...)`) calls `playActiveMedia()` with no prompt check, so a lock-screen or
   headset play while "Resume playback?" waits starts the video from 0 under it, and the progress saver can then overwrite the saved
   position. Not driven in a browser (reasoned). Fix: refuse it, or route it to Resume, while the prompt shows.
-- [ ] **The music player's theatre button has its colours flipped** (Dean, 2026-10-05): off it shows red, on it shows grey. Next
-  branch, small things; find the button's on / off style pair and swap them (measure both states, light and dark).
 - [ ] **v1.362.4 gate r3 suggestions (non-blocking, test only)** - (a) the crossfade census's "exactly 1 is exempt" pattern
   (`opacity\s*:\s*(?!1...)`) backtracks over the space, so `opacity: 1;` (the sheet's spacing) counts as a hit: strict, never
   porous; fix `opacity\s*:(?!\s*1\s*(;|$))` and the comment; (b) the census never sets the minimize's transient classes
@@ -335,11 +340,6 @@
 
 ### Features
 
-- [ ] **Reach the chapter editor from audio and the pop-out, and a Watch in the pop-out** (Dean, 2026-10-05, planned with the theatre
-  button fix as the next branch): yt-dlp does download chapters for audio, but a YouTube audio file with none (for example a 47
-  minute mix whose song times are only in the comments) has no way on desktop to add them afterwards: the chapter-editing modal
-  that videos have seems unreachable from audio. Wanted: open that same modal from an audio item (and the pop-out), no new editor.
-  Also: the pop-out view has no way to Watch; give it the Watch / Listen switch (check first whether the file has a video at all).
 - [ ] **What the VPN runbook may point at (candidates, not planned; Dean picks after his runs)** - v1.362.1 shipped
   `docs/references/vpn-slowness-runbook.md`, built on the v1.307 `/diag` suite. What FileTube cannot measure or do today, each a
   possible next step once the numbers say which matters: response compression (the Compression delta row shows the saving);
@@ -673,6 +673,23 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.363.1 - Add chapters from audio and the pop-out; Watch in the pop-out (2026-10-05)
+
+- Root cause (code): the watch page's chapter-name label was the editor's only trigger and it hides for an item with fewer than two
+  chapters, so a chapterless file (a 47 minute mix) could never get a first list. The same editor now opens from the music
+  player's Extras (phone and desktop), a row in the pop-out's sticker menu, and a row in the watch page's settings cog. Seeded
+  from the file in storage at tap time with its version token (never the queue, a searched subset or a captured item); needs the
+  library-modify capability, fail closed; no new route. Saved chapters are the file's chapters (list, chapter tracks, resume).
+- The pop-out has the Watch row for a video file (an audio-only file shows none); its tap focuses the main window first.
+- Theatre button colours: NOT reproduced. The state-to-colour pairs are right in all 18 cells (scheme x era x state) and the
+  adversary measured 2009/2014/2021 light and dark, cold and via the SPA, with a real click; the button is hidden at 1024 px and
+  below. No swap made; tools/theatre-proof/probe-theatre-colour.js plus test/unit/theatre-button-paint.test.js stay so a real flip
+  goes red. Device check 44 asks for the device, scheme and era if it still looks flipped.
+- Gate: full (destructive editor): adversary + qa. QA APPROVED r1 @12ee6b2c; adversary r1 CHANGES (seven guards deleted with the
+  suite green: all test binding, no production change; no data-loss path found live in Chromium), r2 APPROVED @d20a470c.
+- Proof: full dual-Node npm test 11029 tests, 0 fail (22.23.1 and 24.20.0); 9 builder mutants and the adversary's re-run all red.
+- Disclosed: the pop-out closing mid-save and a very small pop-out window were not measured (device check 41/42).
 
 ### v1.363.0 - "Resume playback?" comes back as a Settings choice (2026-10-05)
 

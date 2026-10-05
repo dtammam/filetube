@@ -8788,6 +8788,27 @@ if (typeof module !== 'undefined' && module.exports) {
     // shared teardown (chapters + speed + the mobile speed sheet + settings), so
     // we re-open settings AFTER it. stopPropagation keeps this click from
     // reaching the document outside-close below.
+    // v1.363.1 (Dean): the chapter-name label is the chapters menu's ONLY trigger and it is hidden for
+    // an item with fewer than two chapters, so the menu's "Add chapters" entry was unreachable
+    // exactly when it was needed (an item with no chapters yet). The cog carries the editor's own
+    // row for the watch page, same gate as the menu entry (library-modify capability). The watch
+    // page only: elsewhere the host's current id can be a `::c` chapter id the editor would POST to.
+    var chaptersEditRow = null;
+    function syncChaptersEditRow() {
+      if (!settingsMenu) return;
+      var show = playerCanModifyLibrary && !!currentId && document.body.getAttribute('data-view') === 'watch';
+      if (show && !chaptersEditRow) {
+        chaptersEditRow = document.createElement('button');
+        chaptersEditRow.type = 'button';
+        chaptersEditRow.id = 'chapters-edit-btn';
+        chaptersEditRow.className = 'ui-btn ui-btn--plain pc-btn settings-menu-item chapters-edit-btn';
+        chaptersEditRow.addEventListener('click', function () { closeSettingsMenu(); openChaptersEditorFromMenu(); });
+        settingsMenu.appendChild(chaptersEditRow);
+      }
+      if (!chaptersEditRow) return;
+      chaptersEditRow.hidden = !show;
+      chaptersEditRow.textContent = currentChapters.length > 0 ? 'Edit chapters' : 'Add chapters';
+    }
     if (settingsBtn) {
       settingsBtn.addEventListener('click', function (e) {
         e.stopPropagation();
@@ -8795,6 +8816,7 @@ if (typeof module !== 'undefined' && module.exports) {
         var opening = settingsMenu.hidden;
         closeChaptersMenu();
         if (opening) {
+          syncChaptersEditRow();
           settingsMenu.hidden = false;
           clampBarMenuHeight(settingsMenu);
           settingsBtn.setAttribute('aria-expanded', 'true');

@@ -1738,6 +1738,7 @@ if (typeof module !== 'undefined' && module.exports) {
           // continuously by the periodic save + seek pipeline) is what makes the watch
           // page's resume ladder land at the live position - one truth, both directions.
           watchBack: { visible: watchBackVisible, onTap: watchBackTap }, // v1.278: hoisted (shared with the desktop actions menu)
+          chapters: { visible: chaptersEditable, label: chaptersRowLabel, onTap: openChaptersEditorForPlaying }, // v1.363.1: the pop-out's Add / Edit chapters (no Extras page there)
           channel: { visible: channelVisible, onTap: channelTap }, // v1.317 (M1): "Go to channel" beside Watch (shared with the desktop actions menu)
           extras: {
             getBaseId: extrasBaseId,
@@ -1748,6 +1749,7 @@ if (typeof module !== 'undefined' && module.exports) {
             fetchItem: extrasFetchItem,
             likeRequest: extrasLikeRequest,
             onChapterSnap: extrasChapterSnap, // Chapter Snap (2026-09-24): "This chapter starts wrong"
+            onChapters: extrasEditChapters, // v1.363.1: Add / Edit chapters
           },
           // v1.254 (ENDLESS AUTOPLAY): the page-1 toggle. Lives HERE (not the Extras
           // page) deliberately: Extras exists only for library-backed items, and the
@@ -2086,6 +2088,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // base VIDEO id so the watch page (which knows nothing of `::c`) opens the real item.
       var base = String(id).replace(/::c\d+$/, '');
       var target = '/watch.html?v=' + encodeURIComponent(base);
+      // v1.363.1: a tap from the POP-OUT runs here too (this closure is the main window's) - bring the
+      // main window forward so the video it is about to show is the thing in front.
+      try { window.focus(); } catch (_) { /* best-effort: a browser may refuse a focus request */ }
       if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(target);
       else window.location.href = target;
     }
@@ -2182,6 +2187,7 @@ if (typeof module !== 'undefined' && module.exports) {
         fetchItem: extrasFetchItem,
         likeRequest: extrasLikeRequest,
         onChapterSnap: extrasChapterSnap, // Chapter Snap (2026-09-24): the SAME hook the sticker cfg passes (two writers)
+        onChapters: extrasEditChapters, // v1.363.1: Add / Edit chapters (same hook, both writers)
         getPlayer: function () { return (window.FileTube && window.FileTube.player) || null; },
         getSignal: function () { return signal; },
         close: hideActionsMenu,
@@ -2291,6 +2297,60 @@ if (typeof module !== 'undefined' && module.exports) {
         onSaved: function (body) { applySnappedChapterTimes(baseId, body); },
       });
     }
+    // v1.363.1 (Dean): ADD / EDIT chapters from the music player and the pop-out. The text editor
+    // (common.js showChaptersEditor) was reachable only from the watch page's chapter-name label,
+    // which exists only for an item that already has chapters - so a chapterless file (a long mix
+    // whose song times live in a comment) could never get its first list. This opens the SAME
+    // editor from where the audio plays. DATA-LOSS rule: the seed is the FILE's resolved list and
+    // its version token, fetched at tap time from storage (as the album drill's button does) -
+    // never `queue`, `nowPlaying` or an Extras item captured when the menu opened, which can be a
+    // searched subset or a stale list. POST /chapters REPLACES the manual list wholesale.
+    function chaptersEditable() {
+      return musicCanModifyLibrary && !!effectiveCurrentId() && extrasEligibleView();
+    }
+    function chaptersRowLabel() {
+      var id = effectiveCurrentId();
+      return (id && /::c\d+$/.test(String(id))) ? 'Edit chapters' : 'Add chapters';
+    }
+    function openChaptersEditorForPlaying(doc) {
+      var baseId = extrasBaseId();
+      if (!baseId || typeof window.showChaptersEditor !== 'function') return;
+      fetchJson('/api/videos/' + encodeURIComponent(baseId)).then(function (item) {
+        // async open: the view may be gone, or the song may have moved on while the file was read
+        if (signal.aborted || extrasBaseId() !== baseId) return;
+        if (!item || item.id !== baseId) {
+          if (typeof window.showToast === 'function') window.showToast('Chapters can\u2019t be edited for this track.');
+          return;
+        }
+        var chapters = Array.isArray(item.chapters) ? item.chapters : [];
+        var lines = chapters.slice().sort(function (a, b) {
+          return (Number(a.startTime) || 0) - (Number(b.startTime) || 0);
+        }).map(function (ch) {
+          return chapterStamp(Number(ch.startTime) || 0) + ' ' + (ch.title || '');
+        }).join('\n');
+        window.showChaptersEditor(baseId, lines, function (body) { afterChaptersTextSave(baseId, body); },
+          doc || undefined, { version: typeof item.chaptersVersion === 'string' ? item.chaptersVersion : undefined });
+      }).catch(function () {
+        if (typeof window.showToast === 'function') window.showToast('Could not load the chapters to edit.');
+      });
+    }
+    // A text save changes the file's expansion (a plain track becomes an album of chapter tracks, or
+    // the reverse): drop the pocket menus' caches, patch what the queue holds, and re-list the view
+    // the user is on so the new chapter rows exist. The track playing now keeps playing untouched.
+    function afterChaptersTextSave(baseId, body) {
+      invalidateMenuData();
+      applySnappedChapterTimes(baseId, body, { skipDrillRefresh: true });
+      if (signal.aborted || !content || !content.isConnected || drillLoadInFlight) return;
+      if (!drill && tab !== 'songs' && tab !== 'albums') { reflectEngines(); return; }
+      render().then(function () {
+        reflectChapter();
+        renavPlaying();
+        reflectEngines();
+      }).catch(function () {
+        if (typeof window.showToast === 'function') window.showToast('Chapters saved, but the list could not be refreshed.');
+      });
+    }
+    function extrasEditChapters() { openChaptersEditorForPlaying(); }
     // Chapter Snap (2026-09-24): the ONE queue seam for a chapter save of `baseId` (the time
     // editor's save or revert, or a text-editor save). It re-registers everything keyed
     // to the chapter list IN PLACE: every queued `<baseId>::c<n>` takes chapter n's new
