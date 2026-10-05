@@ -15317,6 +15317,11 @@ function buildDownloadChipFailureLines(state, rawEntry) {
  */
 // v1.365.0 (W3): "stuck or stale". A row the server has not touched for more than this many seconds says so
 // ("updated Ns ago": the server itself is stuck); a failed poll says "Can't reach FileTube" (the screen is stale).
+// Gate r1 (adversary W3, qa W2; ruling in the plan): an age means what its words say. Only a DOWNLOADING row that
+// is not merging or converting (ffmpeg is legitimately silent for minutes there) says "updated N ago"; a QUEUED
+// row says "waiting N" (it can legitimately wait hours behind a subscription run); a merging, converting,
+// activity-batch (`kind`) or terminal row shows no age; and while the screen is offline every age is hidden (the
+// offline line already says how stale the screen is).
 const DL_STALE_AFTER_S = 60;
 
 // "45s" / "2 min" / "3 h" (pure).
@@ -15333,10 +15338,37 @@ function formatDownloadStaleNote(ageSec) {
   return 'updated ' + formatDownloadAgo(ageSec) + ' ago';
 }
 
-// The chip header while polls fail: "Can't reach FileTube", plus how long ago the last GOOD poll was (pure).
-function formatDownloadOfflineText(lastOkMs, nowMs) {
+// One live row's age note, '' for none (pure; the chip and /subscriptions both use it). `entry` is the RAW status
+// entry; `nowMs` the SERVER's clock (absent: no age, never this device's clock). The rules are above.
+function formatDownloadRowAge(entry, nowMs) {
+  if (!entry || typeof entry !== 'object' || typeof entry.kind === 'string') return '';
+  if (typeof nowMs !== 'number' || !Number.isFinite(nowMs)) return '';
+  const updatedMs = typeof entry.updatedAt === 'string' ? Date.parse(entry.updatedAt) : NaN;
+  if (!Number.isFinite(updatedMs)) return '';
+  const ageSec = (nowMs - updatedMs) / 1000;
+  if (entry.state === 'downloading') {
+    return entry.phase === 'merging' || entry.phase === 'converting' ? '' : formatDownloadStaleNote(ageSec);
+  }
+  if (entry.state === 'queued') {
+    return ageSec > DL_STALE_AFTER_S ? 'waiting ' + formatDownloadAgo(ageSec) : '';
+  }
+  return '';
+}
+
+// The chip header while polls fail (pure): "Can't reach FileTube", plus how long ago the last GOOD poll was
+// ("last reached": the page checked seconds ago, it last REACHED the server then; gate r1, qa S3). `kind`
+// 'signed-out' (the poll answered 401) says the session ended instead (gate r1, qa S2).
+function formatDownloadOfflineText(lastOkMs, nowMs, kind) {
+  if (kind === 'signed-out') return 'Signed out - reload to sign in';
   if (typeof lastOkMs !== 'number' || !Number.isFinite(lastOkMs) || typeof nowMs !== 'number') return "Can't reach FileTube";
-  return "Can't reach FileTube, last checked " + formatDownloadAgo((nowMs - lastOkMs) / 1000) + ' ago';
+  return "Can't reach FileTube, last reached " + formatDownloadAgo((nowMs - lastOkMs) / 1000) + ' ago';
+}
+
+// Gate r1 (adversary N1, qa S2): a throw in this page's own code AFTER a good poll (the library refresh, the
+// pending-job store) is counted here and is NOT "can't reach": the server answered.
+let dlChipPollFaults = 0;
+function downloadChipPollFaultCount() {
+  return dlChipPollFaults;
 }
 
 // Rows whose render threw (one bad entry must never freeze the chip): counted here, read by tests.
@@ -15361,13 +15393,11 @@ function reduceDownloadChipState(snapshot, dismissedKeys, nowMs) {
     if (item) items.push(item);
   });
   // v1.365.0 (W3): `nowMs` is the SERVER's clock (the status response's `now`, carried forward by the poll);
-  // without it no row carries an age. Only a non-terminal (active) row can be "stuck".
-  const hasNow = typeof nowMs === 'number' && Number.isFinite(nowMs);
+  // without it (no `now` in the snapshot, or the screen is offline) no row carries an age. The rules:
+  // formatDownloadRowAge.
   const entryOf = (item) => (item.kind === 'oneshot' ? oneShots : subs)[item.id];
   items.forEach((item) => {
-    const entry = entryOf(item);
-    const updatedMs = hasNow && entry && typeof entry.updatedAt === 'string' ? Date.parse(entry.updatedAt) : NaN;
-    item.staleNote = hasNow && chipItemLifecycle(item.state, item.failureKind) === 'active' ? formatDownloadStaleNote((nowMs - updatedMs) / 1000) : '';
+    item.staleNote = formatDownloadRowAge(entryOf(item), nowMs);
   });
   const visible = items.filter((item) => {
     // v1.24.9: a merely-queued/listing SUBSCRIPTION is sub-queue noise, not
@@ -15913,9 +15943,11 @@ function injectDownloadStatusChip() {
       // v1.365.0 (W3): stuck or stale. `serverOffsetMs` = the server's clock minus this device's at the last
       // good poll (rows age on the SERVER's clock); `lastOkAt` = this device's clock at that poll; `offline` =
       // the latest poll failed (the header says so until a poll succeeds).
-      let serverOffsetMs = 0;
+      // Gate r1: `serverOffsetMs` is null when the snapshot carried no `now` (then no row ages: adversary N2);
+      // `offline` is null, 'unreachable' (the fetch failed or answered non-OK) or 'signed-out' (a 401).
+      let serverOffsetMs = null;
       let lastOkAt = null;
-      let offline = false;
+      let offline = null;
 
       const chip = document.createElement('div');
       chip.id = 'dl-status-chip';
@@ -16051,7 +16083,9 @@ function injectDownloadStatusChip() {
       const rowsByKey = new Map();
 
       function render() {
-        const state = reduceDownloadChipState(latestSnapshot, dismissedKeys, Date.now() + serverOffsetMs);
+        // Offline, or no server clock: no row ages (the offline line says how stale the screen is).
+        const ageNowMs = offline || serverOffsetMs === null ? undefined : Date.now() + serverOffsetMs;
+        const state = reduceDownloadChipState(latestSnapshot, dismissedKeys, ageNowMs);
         // v1.32 (gate fix, QA "check-storm invisibility"): individual CHECK
         // failures are muted off the badge (Dean's noise ask), but a
         // TRIPPED BREAKER -- the systemic "many checks are failing" signal,
@@ -16063,10 +16097,19 @@ function injectDownloadStatusChip() {
           return;
         }
         chip.hidden = false;
-        summaryText.textContent = offline
-          ? formatDownloadOfflineText(lastOkAt, Date.now())
-          : (state.count === 0 ? breakerText : formatDownloadChipSummary(state));
-        chip.classList.toggle('dl-status-chip-offline', offline);
+        if (offline) {
+          // Gate r1 (qa S4, measured in Chromium): the pill is about 212 px wide at 320 and 390 px, and the
+          // sentence needs 270-297 px, so it clipped to "Can't reach FileTube, last re...". Where it does not
+          // fit, the pill says the bare words; the full sentence stays in its tooltip.
+          const full = formatDownloadOfflineText(lastOkAt, Date.now(), offline);
+          summaryText.textContent = full;
+          summaryBtn.title = full;
+          if (summaryText.scrollWidth > summaryText.clientWidth + 1) summaryText.textContent = formatDownloadOfflineText(null, 0, offline);
+        } else {
+          summaryText.textContent = state.count === 0 ? breakerText : formatDownloadChipSummary(state);
+          summaryBtn.removeAttribute('title');
+        }
+        chip.classList.toggle('dl-status-chip-offline', !!offline);
         chip.classList.toggle('dl-status-chip-has-error', state.hasError);
         setSummaryIcon(state.hasError ? 'error' : 'download');
         // v1.32: 'Dismiss all' only when there is something dismissible.
@@ -16113,9 +16156,18 @@ function injectDownloadStatusChip() {
           scheduleNextPoll(DL_CHIP_POLL_BASE_MS);
           return Promise.resolve();
         }
+        // Gate r1 (adversary N1, qa S2): `reached` turns true once the server answered OK with a body; a throw
+        // after that is this page's own fault (counted), never "can't reach".
+        let reached = false;
         return fetch('/api/subscriptions/status')
-          .then((r) => (r.ok ? r.json() : Promise.reject(new Error('status endpoint returned ' + r.status))))
+          .then((r) => {
+            if (r && r.ok) return r.json();
+            const err = new Error('status endpoint returned ' + (r && r.status));
+            err.status = r && r.status;
+            throw err;
+          })
           .then((snapshot) => {
+            reached = true;
             latestSnapshot = snapshot && typeof snapshot === 'object'
               ? {
                 subscriptions: snapshot.subscriptions || {},
@@ -16127,9 +16179,9 @@ function injectDownloadStatusChip() {
               }
               : { subscriptions: {}, oneShots: {}, breaker: null };
             const serverNowMs = snapshot && typeof snapshot.now === 'string' ? Date.parse(snapshot.now) : NaN;
-            serverOffsetMs = Number.isFinite(serverNowMs) ? serverNowMs - Date.now() : 0; // absent: this device's clock
+            serverOffsetMs = Number.isFinite(serverNowMs) ? serverNowMs - Date.now() : null; // absent: no ages
             lastOkAt = Date.now();
-            offline = false;
+            offline = null;
             // v1.30.0 T8 (B1, AC5.3): persist which jobs are currently in
             // flight on every ACTIVE tick (a hidden-tab early-return above
             // never reaches here) -- the last value written here is what a
@@ -16160,10 +16212,16 @@ function injectDownloadStatusChip() {
             pollDelay = nextDownloadChipPollDelay(pollDelay, true, snapshotHasActiveDownload(latestSnapshot));
             try { render(); } catch (_) { dlChipRenderErrors += 1; } // a render fault is not "can't reach"
           })
-          .catch(() => {
+          .catch((err) => {
+            if (reached) {
+              // The server answered; this page's code threw after it. Counted, not offline.
+              dlChipPollFaults += 1;
+              try { render(); } catch (_) { dlChipRenderErrors += 1; }
+              return;
+            }
             pollDelay = nextDownloadChipPollDelay(pollDelay, false);
             // v1.365.0 (W3): the stale screen says so; the rows keep their last state.
-            offline = true;
+            offline = err && err.status === 401 ? 'signed-out' : 'unreachable';
             try { render(); } catch (_) { dlChipRenderErrors += 1; }
           })
           .finally(() => scheduleNextPoll(pollDelay));
@@ -17526,6 +17584,7 @@ if (typeof module !== 'undefined' && module.exports) {
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     formatDownloadStaleNote, formatDownloadOfflineText, downloadChipRenderErrorCount, // v1.365.0 (W3)
+    formatDownloadRowAge, downloadChipPollFaultCount, // v1.365.0 gate r1
     ACTIVITY_CHIP_LABELS, formatActivityStatusText,
     setActionStatus, setButtonBusy, wireMasterDetail,
     shouldShowDownloadChipOnPath, injectDownloadStatusChip,

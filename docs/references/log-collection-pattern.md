@@ -82,6 +82,20 @@ docs/exec-plans/completed/2026-10-04-loupe-black-checks.md, ruling D6).
   shows Safari's log. A Home Screen app whose Settings never opens has no way out today (the copy on both pages
   says so plainly).
 
+- **The download trace** (Settings > Troubleshooting > Download trace, admin only, v1.365.0): the one SERVER
+  log here. `lib/ytdlp/oneshotTrace.js` records every step of every one-off download to
+  `<dataDir>/ytdlp-oneshot-trace.jsonl` (capped at 2000 lines; a still-open job's lifecycle lines survive the
+  cap), and `GET /api/ytdlp/oneshot-trace.txt` serves it as a self-describing attachment. Stated deviations:
+  (1) it is ALWAYS ON, with no switch, because the hang it exists for is rare and comes unannounced, and a
+  restart wipes the in-memory state that would explain it; (2) its Export is a plain admin `<a href download>`
+  to that route, NOT `exportDiagnosticLog`: the text lives on the server, so the helper would need a `fetch`
+  before its share, and a fetch before `navigator.share` drops the iOS user activation (the rule above). The
+  link starts no script work, so the tap's gesture is the browser's own download. Its limit: an iOS Home Screen
+  app's handling of an attachment link is not measured on a device yet (Chromium only); a device check is owed:
+  tap it in the Home Screen app, and the file should reach Files or the share sheet. (3) No Clear: it is
+  bounded by its cap, and the server, not the phone, owns it. It never leaves the server except by an admin's
+  download.
+
 ## Logs that do NOT follow it yet (listed, not migrated; ROADMAP Planned > Chores)
 
 - **The rotate log** (Settings > Troubleshooting > "Show rotate debug log", `?debugRotate=1`, common.js

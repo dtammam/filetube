@@ -5,13 +5,17 @@
 // injectDownloadStatusChip in jsdom with ui.js and a scripted fetch, on the mock clock (setTimeout + Date).
 //
 //   - stale screen: a status poll that fails used to only back off, so the row kept saying "Downloading 47%"
-//     with no sign. Now the chip header says "Can't reach FileTube, last checked Ns ago" until a poll
+//     with no sign. Now the chip header says "Can't reach FileTube, last reached Ns ago" until a poll
 //     succeeds, and the rows keep their last state. Both axes, from a POPULATED chip (LESSONS 2/4).
 //   - stuck server: every non-terminal row shows "updated Ns ago" once the server's own entry is older than
 //     60 s, measured on the SERVER's clock (the status response's `now`), and the label clears on a fresh update.
 //   - the health probe: one failed probe used to latch the chip off for the tab, silently. Now the next call
 //     probes again.
 //   - one bad row: a row whose render throws is caught and counted; the other rows and the poll carry on.
+//   - gate r1 (adversary W3/N1/N2, qa W2/S2/S3): an age means what it says. Only a downloading row that is not
+//     merging or converting says "updated N ago"; a queued row says "waiting N"; batch (`kind`) and terminal
+//     rows never age; offline hides every age; no `now` in the snapshot means no age. A 401 says "Signed out";
+//     a throw in page code after a good poll is counted, never "Can't reach FileTube".
 
 const { test, mock, afterEach } = require('node:test');
 const assert = require('node:assert');
@@ -71,7 +75,7 @@ const snap = (nowMs, ageMs, extra) => ({
 
 // ---- the stale screen ----------------------------------------------------------------
 
-test('a failed poll on a POPULATED chip says "Can\'t reach FileTube, last checked Ns ago"; the row keeps its last state', async () => {
+test('a failed poll on a POPULATED chip says "Can\'t reach FileTube, last reached Ns ago"; the row keeps its last state', async () => {
   let failing = false;
   const { common, w } = await boot((url) => {
     if (url === '/api/subscriptions/health') return ok({});
@@ -85,14 +89,14 @@ test('a failed poll on a POPULATED chip says "Can\'t reach FileTube, last checke
   failing = true;
   mock.timers.tick(6000); // the next poll fails
   await settle();
-  assert.match(summaryText(w), /^Can't reach FileTube, last checked \d+s ago$/);
+  assert.match(summaryText(w), /^Can't reach FileTube, last reached \d+s ago$/);
   mock.timers.tick(31000); // the backed-off poll after it fails too
   await settle();
-  assert.match(summaryText(w), /^Can't reach FileTube, last checked \d+s ago$/);
+  assert.match(summaryText(w), /^Can't reach FileTube, last reached \d+s ago$/);
   assert.ok(chipOf(w).classList.contains('dl-status-chip-offline'));
   const row = chipOf(w).querySelector('.dl-status-chip-item');
   assert.match(row.els.statusEl.textContent, /47%/, 'the row keeps its last known state');
-  const secs = Number(/last checked (\d+)s/.exec(summaryText(w))[1]);
+  const secs = Number(/last reached (\d+)s/.exec(summaryText(w))[1]);
   assert.ok(secs >= 30, 'the age grows from the last GOOD poll: ' + secs);
 });
 
@@ -163,12 +167,13 @@ test('terminal rows never show an age; 60 s is the threshold (59 s none, 61 s sh
   }, new Set(), T0);
   const by = Object.fromEntries(state.items.map((i) => [i.id, i.staleNote]));
   assert.strictEqual(by.a, 'updated 5 min ago');
-  assert.strictEqual(by.q, 'updated 5 min ago', 'a queued row counts too (non-terminal)');
+  assert.strictEqual(by.q, 'waiting 5 min', 'a queued row says it is waiting, not stuck (gate r1)');
   assert.strictEqual(by.b, '', 'a failed (terminal) row never shows an age');
   assert.strictEqual(c.reduceDownloadChipState({ subscriptions: {}, oneShots: { a: { state: 'downloading', updatedAt: iso(T0 - 300000) } } }, new Set()).items[0].staleNote, '', 'no clock given: no age');
   assert.strictEqual(c.formatDownloadOfflineText(null, T0), "Can't reach FileTube");
-  assert.strictEqual(c.formatDownloadOfflineText(T0 - 12000, T0), "Can't reach FileTube, last checked 12s ago");
-  assert.strictEqual(c.formatDownloadOfflineText(T0 - 300000, T0), "Can't reach FileTube, last checked 5 min ago");
+  assert.strictEqual(c.formatDownloadOfflineText(T0 - 12000, T0), "Can't reach FileTube, last reached 12s ago");
+  assert.strictEqual(c.formatDownloadOfflineText(T0 - 12000, T0, 'signed-out'), 'Signed out - reload to sign in');
+  assert.strictEqual(c.formatDownloadOfflineText(T0 - 300000, T0), "Can't reach FileTube, last reached 5 min ago");
 });
 
 // ---- the health probe ----------------------------------------------------------------
@@ -235,4 +240,155 @@ test('a row whose render throws is caught and counted; the other rows render and
   assert.strictEqual(rows.length, 1, 'the good row rendered');
   assert.strictEqual(common.downloadChipRenderErrorCount(), before + 1, 'the bad row was counted');
   assert.strictEqual(chipOf(w).classList.contains('dl-status-chip-offline'), false, 'a render fault is not "can\'t reach"');
+});
+
+// ---- gate r1: the age rules ------------------------------------------------------------
+
+const rowByName = (w, name) => Array.from(chipOf(w).querySelectorAll('.dl-status-chip-item')).find((r) => r.els.nameEl.textContent === name);
+const ageOfRow = (row) => (row && !row.els.ageEl.hidden ? row.els.ageEl.textContent : '');
+
+test('gate r1: on the chip only a downloading row (not merging, not converting) says "updated N ago"; queued says "waiting N"; a batch row never ages', async () => {
+  const { common, w } = await boot((url) => {
+    if (url === '/api/subscriptions/health') return ok({});
+    if (url === '/api/subscriptions/status') {
+      const now = Date.now();
+      return ok({
+        now: iso(now),
+        subscriptions: {},
+        oneShots: {
+          d: { state: 'downloading', percent: 20, title: 'Down', updatedAt: iso(now - 90000) },
+          m: { state: 'downloading', phase: 'merging', percent: 100, title: 'Merge', updatedAt: iso(now - 300000) },
+          c: { state: 'downloading', phase: 'converting', percent: 100, title: 'Conv', updatedAt: iso(now - 300000) },
+          q: { state: 'queued', title: 'Wait', updatedAt: iso(now - 180000) },
+          k: { kind: 'repull', state: 'running', total: 4, done: 1, updatedAt: iso(now - 300000) },
+        },
+      });
+    }
+    return new Promise(() => {});
+  });
+  common.injectDownloadStatusChip();
+  await settle();
+  assert.strictEqual(chipOf(w).querySelectorAll('.dl-status-chip-item').length, 5, 'precondition: all five rows rendered');
+  assert.strictEqual(ageOfRow(rowByName(w, 'Down')), 'updated 90s ago');
+  assert.strictEqual(ageOfRow(rowByName(w, 'Merge')), '', 'merging: ffmpeg is legitimately silent');
+  assert.strictEqual(ageOfRow(rowByName(w, 'Conv')), '', 'converting: the same');
+  assert.strictEqual(ageOfRow(rowByName(w, 'Wait')), 'waiting 3 min', 'queued: waiting, not stuck');
+  assert.strictEqual(ageOfRow(rowByName(w, 'Reheating library')), '', 'an activity batch is not a download');
+});
+
+test('gate r1: formatDownloadRowAge, every rule (pure)', () => {
+  delete global.document; delete global.window;
+  delete require.cache[COMMON];
+  const c = require(COMMON);
+  const old = iso(T0 - 300000);
+  assert.strictEqual(c.formatDownloadRowAge({ state: 'downloading', updatedAt: old }, T0), 'updated 5 min ago');
+  assert.strictEqual(c.formatDownloadRowAge({ state: 'downloading', phase: 'merging', updatedAt: old }, T0), '');
+  assert.strictEqual(c.formatDownloadRowAge({ state: 'downloading', phase: 'converting', updatedAt: old }, T0), '');
+  assert.strictEqual(c.formatDownloadRowAge({ state: 'queued', updatedAt: iso(T0 - 59000) }, T0), '', 'queued: the same 60 s threshold');
+  assert.strictEqual(c.formatDownloadRowAge({ state: 'queued', updatedAt: iso(T0 - 61000) }, T0), 'waiting 61s');
+  assert.strictEqual(c.formatDownloadRowAge({ state: 'queued', updatedAt: old }, T0), 'waiting 5 min');
+  for (const st of ['done', 'error', 'cancelled', 'listing']) assert.strictEqual(c.formatDownloadRowAge({ state: st, updatedAt: old }, T0), '', st);
+  assert.strictEqual(c.formatDownloadRowAge({ kind: 'repull', state: 'downloading', updatedAt: old }, T0), '', 'a batch row');
+  assert.strictEqual(c.formatDownloadRowAge({ state: 'downloading', updatedAt: old }, undefined), '', 'no server clock: no age');
+  assert.strictEqual(c.formatDownloadRowAge({ state: 'downloading' }, T0), '', 'no updatedAt: no age');
+});
+
+test('gate r1: offline hides every row age (the offline line says how stale the screen is); the next good poll shows it again', async () => {
+  let failing = false;
+  const { common, w } = await boot((url) => {
+    if (url === '/api/subscriptions/health') return ok({});
+    if (url === '/api/subscriptions/status') return failing ? down() : ok(snap(Date.now(), 90000));
+    return new Promise(() => {});
+  });
+  common.injectDownloadStatusChip();
+  await settle();
+  assert.strictEqual(rowAge(w), 'updated 90s ago', 'precondition: the row ages while online');
+  failing = true;
+  mock.timers.tick(6000); await settle();
+  assert.match(summaryText(w), /^Can't reach FileTube/);
+  assert.strictEqual(rowAge(w), '', 'offline: no row age (the snapshot is frozen, not the server)');
+  mock.timers.tick(31000); await settle();
+  assert.strictEqual(rowAge(w), '', 'still none minutes later');
+  failing = false;
+  mock.timers.tick(61000); await settle();
+  assert.doesNotMatch(summaryText(w), /^Can't reach/);
+  assert.strictEqual(rowAge(w), 'updated 90s ago', 'back online: the server-clock age again');
+});
+
+test('gate r1: a snapshot with no `now` carries no row age, whatever this device\'s clock says (adversary N2)', async () => {
+  const { common, w } = await boot((url) => {
+    if (url === '/api/subscriptions/health') return ok({});
+    if (url === '/api/subscriptions/status') {
+      const s = snap(Date.now(), 10 * 60 * 1000);
+      delete s.now;
+      return ok(s);
+    }
+    return new Promise(() => {});
+  });
+  common.injectDownloadStatusChip();
+  await settle();
+  assert.match(summaryText(w), /47%/, 'precondition: the row rendered');
+  assert.strictEqual(rowAge(w), '');
+});
+
+test('gate r1: a 401 poll says "Signed out - reload to sign in", not "Can\'t reach FileTube"; a good poll clears it', async () => {
+  let status = 200;
+  const { common, w } = await boot((url) => {
+    if (url === '/api/subscriptions/health') return ok({});
+    if (url === '/api/subscriptions/status') {
+      return status === 200 ? ok(snap(Date.now(), 1000)) : Promise.resolve({ ok: false, status, json: async () => ({}) });
+    }
+    return new Promise(() => {});
+  });
+  common.injectDownloadStatusChip();
+  await settle();
+  status = 401;
+  mock.timers.tick(6000); await settle();
+  assert.strictEqual(summaryText(w), 'Signed out - reload to sign in');
+  assert.ok(chipOf(w).classList.contains('dl-status-chip-offline'));
+  status = 503;
+  mock.timers.tick(31000); await settle();
+  assert.match(summaryText(w), /^Can't reach FileTube, last reached/, 'a non-OK answer other than 401 is "can\'t reach"');
+  status = 200;
+  mock.timers.tick(61000); await settle();
+  assert.match(summaryText(w), /47%/);
+  assert.strictEqual(chipOf(w).classList.contains('dl-status-chip-offline'), false);
+});
+
+test('gate r1: a throw in page code after a GOOD poll is counted and never shown as "Can\'t reach FileTube"', async () => {
+  const { common, w } = await boot((url) => {
+    if (url === '/api/subscriptions/health') return ok({});
+    if (url === '/api/subscriptions/status') return ok(snap(Date.now(), 1000, { jd: { state: 'done', title: 'Done', updatedAt: iso(Date.now()) } }));
+    return new Promise(() => {});
+  });
+  w.__filetubeRefreshLibrary = () => { throw new Error('library refresh blew up'); };
+  const before = common.downloadChipPollFaultCount();
+  common.injectDownloadStatusChip();
+  await settle();
+  assert.strictEqual(common.downloadChipPollFaultCount(), before + 1, 'the page fault was counted');
+  assert.doesNotMatch(summaryText(w), /Can't reach/);
+  assert.strictEqual(chipOf(w).classList.contains('dl-status-chip-offline'), false);
+});
+
+test('gate r1 (qa S4, measured 212 px at 320 and 390): where the offline sentence clips, the pill says the bare words; the sentence stays in its tooltip', async () => {
+  let failing = false;
+  const { common, w } = await boot((url) => {
+    if (url === '/api/subscriptions/health') return ok({});
+    if (url === '/api/subscriptions/status') return failing ? down() : ok(snap(Date.now(), 1000));
+    return new Promise(() => {});
+  });
+  // jsdom has no layout: model the measured pill (212 px of room; about 6.6 px per character).
+  const isPill = (el) => el.classList && el.classList.contains('dl-status-chip-text');
+  Object.defineProperty(w.HTMLElement.prototype, 'clientWidth', { configurable: true, get() { return isPill(this) ? 212 : 0; } });
+  Object.defineProperty(w.HTMLElement.prototype, 'scrollWidth', { configurable: true, get() { return isPill(this) ? Math.round(this.textContent.length * 6.6) : 0; } });
+  common.injectDownloadStatusChip();
+  await settle();
+  failing = true;
+  mock.timers.tick(6000); await settle();
+  assert.strictEqual(summaryText(w), "Can't reach FileTube", 'the bare words fit the pill');
+  const btn = chipOf(w).querySelector('.dl-status-chip-summary');
+  assert.match(btn.title, /^Can't reach FileTube, last reached \d+s ago$/, 'the full sentence in the tooltip');
+  failing = false;
+  mock.timers.tick(31000); await settle();
+  assert.strictEqual(btn.hasAttribute('title'), false, 'cleared with the offline line');
 });

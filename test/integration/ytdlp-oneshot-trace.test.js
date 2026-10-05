@@ -21,6 +21,9 @@ if (argv.includes('--version')) { process.stdout.write('2026.08.19\n'); process.
 const tmpl = argv[argv.indexOf('-o') + 1];
 const target_url = argv[argv.indexOf('--') + 1];
 const id = new URL(target_url).searchParams.get('v');
+// Gate r1 fixtures, by video id: HANGHANGHAN hangs after its first progress line (a live child to cancel);
+// GRANDCHILD1 exits while a grandchild still holds its stdout/stderr for 1.5 s (the adversary's shape).
+if (id === 'HANGHANGHAN') { process.stdout.write('[download]  10.0% of 1.00MiB at 1.00MiB/s ETA 00:09\n'); setInterval(() => {}, 1000); return; }
 const target = tmpl.replace('%(title)s', 'Trace Video').replace('%(id)s', id).replace('%(ext)s', 'mp4');
 fs.mkdirSync(require('path').dirname(target), { recursive: true });
 process.stdout.write('[download]  50.0% of 1.00MiB at 1.00MiB/s ETA 00:01\n');
@@ -31,9 +34,12 @@ for (const p of prints) {
   const body = p.slice('after_move:'.length);
   if (body.includes('%(__real_download)j')) process.stdout.write(body.replace('%(__real_download)j', 'true') + '\n');
 }
+if (id === 'GRANDCHILD1') {
+  require('child_process').spawn(process.execPath, ['-e', 'setTimeout(() => {}, 1500)'], { stdio: ['ignore', 'inherit', 'inherit'] });
+}
 process.exit(0);
 `;
-fs.writeFileSync(path.join(binDir, 'yt-dlp'), `#!${process.execPath}\n${FAKE}`, { mode: 0o755 });
+fs.writeFileSync(path.join(binDir, 'yt-dlp'), `#!${process.execPath}\n(function () {\n${FAKE}\n})();\n`, { mode: 0o755 });
 process.env.PATH = `${binDir}${path.delimiter}${process.env.PATH}`;
 
 const { test, beforeEach, afterEach, after } = require('node:test');
@@ -159,6 +165,7 @@ test('GET /api/ytdlp/oneshot-trace.txt: an admin gets an attachment; a member is
     assert.strictEqual(admin.status, 200);
     assert.match(admin.headers.get('content-type'), /^text\/plain/);
     assert.match(admin.headers.get('content-disposition'), /^attachment; filename="filetube-download-trace-\d{4}-\d\d-\d\dT[\d-]+Z\.txt"$/);
+    assert.strictEqual(admin.headers.get('cache-control'), 'no-store', 'gate r1 X9: never cached');
     const text = await admin.text();
     assert.match(text, /^FileTube one-off download trace\n/);
     assert.match(text, /\nserver time: \d{4}-/);
@@ -206,6 +213,130 @@ test('cancel: a cancel of a queued job with no child is traced (cancel-requested
     const unknown = await fetch(`${base}/api/ytdlp/download/no-such-job/cancel`, { method: 'POST' });
     assert.strictEqual(unknown.status, 404);
     assert.ok(!trace.readEntries(dataDir).some((e) => e.jobId === 'no-such-job'), 'an unknown id never writes a line');
+  } finally {
+    await close();
+  }
+});
+
+// ---- gate r1 (adversary W1/W4/N3, qa W1) -----------------------------------------------------
+
+async function submit(base, videoId) {
+  const res = await fetch(`${base}/api/ytdlp/download`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url: `https://www.youtube.com/watch?v=${videoId}`, folder: 'Trace Folder' }),
+  });
+  assert.strictEqual(res.status, 202);
+  return (await res.json()).jobId;
+}
+async function waitForTrace(pred, label) {
+  const until = Date.now() + 10000;
+  while (Date.now() < until) {
+    if (pred(trace.readEntries(dataDir))) return;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error('trace never showed: ' + label + ' ' + JSON.stringify(trace.readEntries(dataDir).map((e) => e.ev)));
+}
+
+test('gate r1 W1: a child that exits while a grandchild holds its pipes: child-exit at once, child-close over a second later', async () => {
+  const { base, close } = await startApp(makeDeps());
+  try {
+    const jobId = await submit(base, 'GRANDCHILD1');
+    await waitForSettled(jobId);
+    await waitForTrace((es) => es.some((e) => e.jobId === jobId && e.ev === 'gate-leave'), 'gate-leave');
+    const evs = trace.readEntries(dataDir).filter((e) => e.jobId === jobId);
+    const names = evs.map((e) => e.ev);
+    const exit = evs.find((e) => e.ev === 'child-exit');
+    const closed = evs.find((e) => e.ev === 'child-close');
+    assert.ok(names.indexOf('child-exit') < names.indexOf('child-close'), JSON.stringify(names));
+    assert.ok(exit.ms < 1000, 'the child itself exited at once: ' + exit.ms + ' ms');
+    assert.ok(closed.msAfterExit > 1000, 'its pipes closed only when the grandchild let go: ' + closed.msAfterExit + ' ms');
+  } finally {
+    await close();
+  }
+});
+
+test('gate r1 W4: cancelling a LIVE download traces cancel-requested then kill (why=cancel, the spawned pid)', async () => {
+  const { base, close } = await startApp(makeDeps());
+  try {
+    const jobId = await submit(base, 'HANGHANGHAN');
+    await waitForTrace((es) => es.some((e) => e.jobId === jobId && e.ev === 'spawn'), 'spawn');
+    // Wait for the child to be registered as cancellable (onChild runs right after spawn).
+    const r = await fetch(`${base}/api/ytdlp/download/${jobId}/cancel`, { method: 'POST' });
+    assert.strictEqual(r.status, 200);
+    await waitForSettled(jobId);
+    const evs = trace.readEntries(dataDir).filter((e) => e.jobId === jobId);
+    const names = evs.map((e) => e.ev);
+    const kill = evs.find((e) => e.ev === 'kill');
+    assert.ok(kill, JSON.stringify(names));
+    assert.strictEqual(kill.why, 'cancel');
+    assert.strictEqual(kill.signal, 'SIGKILL');
+    assert.strictEqual(kill.pid, evs.find((e) => e.ev === 'spawn').pid);
+    assert.ok(names.indexOf('cancel-requested') < names.indexOf('kill'));
+    assert.strictEqual(evs.find((e) => e.ev === 'cancel-requested').live, true);
+  } finally {
+    await close();
+  }
+});
+
+test('gate r1 W4: the status route\'s watchdog sweep is traced (from downloading, to error)', async () => {
+  const { base, close } = await startApp(makeDeps());
+  try {
+    activity.setOneShot('job-swept', { state: 'downloading', label: 'F' }, Date.now() - 11 * 60 * 1000);
+    await (await fetch(`${base}/api/subscriptions/status`)).json();
+    const evs = trace.readEntries(dataDir).filter((e) => e.jobId === 'job-swept');
+    const sweep = evs.find((e) => e.ev === 'sweep');
+    assert.ok(sweep, JSON.stringify(evs));
+    assert.deepStrictEqual([sweep.from, sweep.to], ['downloading', 'error']);
+  } finally {
+    await close();
+  }
+});
+
+test('gate r1 W4 / X3: a restart requeue is traced as boot-requeue with the URL HOST only', async () => {
+  const deps = makeDeps();
+  const { close } = await startApp(deps);
+  try {
+    pending.addPending(dataDir, { jobId: 'job-boot', url: `https://www.youtube.com/watch?v=${VIDEO_ID}&si=SECRETSHARETOKEN`, videoId: VIDEO_ID, format: 'video', folder: 'Trace Folder' });
+    ytdlp.requeuePendingOneShots(deps, config());
+    await waitForSettled('job-boot');
+    const evs = trace.readEntries(dataDir).filter((e) => e.jobId === 'job-boot');
+    const boot = evs.find((e) => e.ev === 'boot-requeue');
+    assert.ok(boot, JSON.stringify(evs));
+    assert.strictEqual(boot.host, 'www.youtube.com');
+    const raw = fs.readFileSync(trace.tracePath(dataDir), 'utf8');
+    assert.ok(!raw.includes('http'), 'never a URL');
+    assert.ok(!raw.includes(VIDEO_ID), 'never the video id');
+    assert.ok(!raw.includes('SECRETSHARETOKEN'), 'never a token');
+  } finally {
+    await close();
+  }
+});
+
+test('gate r1 X19: an activity batch (a `kind` entry) is not traced as a download; a plain one-shot is', async () => {
+  const { close } = await startApp(makeDeps());
+  try {
+    activity.setOneShot('repull', { kind: 'repull', state: 'running' });
+    activity.setOneShot('repull', { kind: 'repull', state: 'done' });
+    activity.setOneShot('job-plain', { state: 'queued' });
+    const evs = trace.readEntries(dataDir);
+    assert.ok(!evs.some((e) => e.jobId === 'repull'), JSON.stringify(evs));
+    assert.ok(evs.some((e) => e.jobId === 'job-plain' && e.ev === 'state' && e.to === 'queued'), 'control: the listener is live');
+  } finally {
+    await close();
+  }
+});
+
+test('gate r1 N3: a cancel of an Object.prototype name (constructor, toString, __proto__, hasOwnProperty) is a 404: no phantom row, no trace line', async () => {
+  const { base, close } = await startApp(makeDeps());
+  try {
+    for (const id of ['constructor', 'toString', '__proto__', 'hasOwnProperty']) {
+      const r = await fetch(`${base}/api/ytdlp/download/${id}/cancel`, { method: 'POST' });
+      assert.strictEqual(r.status, 404, id);
+    }
+    const snapshot = await (await fetch(`${base}/api/subscriptions/status`)).json();
+    const names = ['constructor', 'toString', '__proto__', 'hasOwnProperty'];
+    assert.deepStrictEqual(Object.keys(snapshot.oneShots).filter((k) => names.includes(k)), [], 'no phantom rows');
+    assert.deepStrictEqual(trace.readEntries(dataDir), [], 'no trace lines');
   } finally {
     await close();
   }
