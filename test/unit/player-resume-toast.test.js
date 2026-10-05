@@ -54,7 +54,7 @@ test('resolveResumeStart: the configurable threshold still decides the ANNOUNCEM
   assert.deepStrictEqual(resolveResumeStart({ savedProgress: 0, threshold: 0 }), { action: 'start', toast: false }, 'but never a never-watched video');
 });
 
-test('resolveResumeShortcutAction: S = Start over only while the toast shows; R is gone with the modal (the load has already resumed)', () => {
+test('resolveResumeShortcutAction: S = Start over while the toast shows; R needs the v1.363 prompt (with only the toast the load has already resumed)', () => {
   assert.strictEqual(resolveResumeShortcutAction({ key: 's', overlayVisible: true }), 'restart');
   assert.strictEqual(resolveResumeShortcutAction({ key: 'S', overlayVisible: true }), 'restart');
   assert.strictEqual(resolveResumeShortcutAction({ key: 'r', overlayVisible: true }), 'none');

@@ -3508,5 +3508,11 @@
     "date": "2026-10-04",
     "title": "The page fades under the video, like YouTube, when it shrinks to the mini player",
     "intent": "On a phone, when you pull a playing video down into the mini player, the title, buttons and comments under it dim as you pull and the page you came from fades back in as the mini player lands. Tapping the mini player runs it in reverse. The video itself never dims. It follows your light or dark mode and stays off if you have reduced motion turned on."
+  },
+  {
+    "version": "1.363.0",
+    "date": "2026-10-05",
+    "title": "Ask before resuming a video",
+    "intent": "Settings now lets you choose what happens when you open a video you have part-watched: resume automatically as before, or Ask me. Ask me shows Resume and Start from beginning over the paused picture, with an optional countdown that picks your default for you; touch the player and the countdown stops. Music, podcasts, TV and the mini player never ask."
   }
 ]

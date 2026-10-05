@@ -3,7 +3,7 @@ plan: resume-prompt-choice
 harness: v2 · lean
 branch: feat/v1.363.0-resume-prompt
 anchor: spec
-status: Approved @56a714fb
+status: Shipped v1.363.0
 next: the builder (Sonnet) runs section 0, then W1 -> W2 -> W3 in order
 design: Dean's rulings R1-R3, 2026-10-05 (kickoff at main 56a714fb, v1.362.4 shipped).
 gate: pending
@@ -180,7 +180,8 @@ lists), ROADMAP Shipped + `docs/releases.json` at release, LESSONS-rules if a le
   the hidden check and the mode write KILLED. Survivor: the tick's `gen !== loadGeneration`, an equivalent belt (every load runs
   teardownMediaState, which cancels the countdown first); kept, not weakened.
 - Deviation: the probe seeds 80 s of a 120 s clip (the 300 s clip encode exceeded the tool timeout), not 120 s.
-- Suite after W3: see 8c.
+- Full `npm test` after W3 (c7f46077 tree): Node 22.23.1 tests 11018, pass 11006, fail 0, skipped 12; Node 24.20.0 tests 11018, pass 11006, fail 0, skipped 12.
+- Gate fix r1 (0837cf47): keys gated while the prompt shows; hook pass 8592 fail 0; the two new tests fail with their fix reverted (measured).
 
 ## 7. Device checks (Dean, on the released build; add to DEVICE-CHECKS.md in the release commit)
 
@@ -218,6 +219,8 @@ delete the branches (`-d`; GitHub deletes the remote one).
 ## 8c. Gate record
 
 Gate: CHANGES r1 @c7f460775d9b66ca91b1a295c523d4d026306b30 - adversary
+Gate: APPROVED r2 @0837cf47c27197efc320e918ae34c56d00b39275 - adversary (media-session play with the prompt up is an inherited ROADMAP item, disclosed)
+Gate: APPROVED r1 @0837cf47c27197efc320e918ae34c56d00b39275 - qa (non-blocking: add the media-session-play-under-the-prompt ROADMAP item before release; reword the stale test title in player-resume-toast.test.js line 53)
 
 ## 9. Out of scope (logged, not built)
 

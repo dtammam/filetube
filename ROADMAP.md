@@ -55,6 +55,10 @@
 
 ### Bugs
 
+- [ ] **Lock-screen or headset Play with the Resume prompt up** (v1.363.0 gate, inherited from v1.161): the media-session `play`
+  action (player.js `setMediaSessionAction('play', ...)`) calls `playActiveMedia()` with no prompt check, so a lock-screen or
+  headset play while "Resume playback?" waits starts the video from 0 under it, and the progress saver can then overwrite the saved
+  position. Not driven in a browser (reasoned). Fix: refuse it, or route it to Resume, while the prompt shows.
 - [ ] **The music player's theatre button has its colours flipped** (Dean, 2026-10-05): off it shows red, on it shows grey. Next
   branch, small things; find the button's on / off style pair and swap them (measure both states, light and dark).
 - [ ] **v1.362.4 gate r3 suggestions (non-blocking, test only)** - (a) the crossfade census's "exactly 1 is exempt" pattern
@@ -684,6 +688,7 @@ Kept verbatim for the record - the full release story lives in Shipped below.
   ancestor of the video at opacity 1, no filter. Mutants: 22 of 23 killed; the one survivor (the countdown tick's generation check)
   is a belt behind the teardown cancel, unreachable without internals.
 - Disclosed: WebKit was not available here; the phone check is the measurement.
+- Gate: adversary + qa. r1 CHANGES @c7f46077 (adversary: a digit key behind the prompt seeked and overwrote the saved position, Space played under it; the listener-balance test missed the capture flag); r2 APPROVED @0837cf47 (adversary, qa); security-brief applied by both, no finding. Disclosed: lock-screen Play with the prompt up is inherited (ROADMAP Bugs).
 
 ### v1.362.4 - The page under the video fades like YouTube's when it minimizes and expands (2026-10-04)
 
