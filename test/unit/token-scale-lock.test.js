@@ -181,10 +181,10 @@ test('v1.70: every fallback-less var() names a token the stylesheet defines (the
   // BOTH) and case-SENSITIVE (custom properties are).
   const defined = new Set([...css.matchAll(/(?:^|[;{])\s*(--[A-Za-z0-9_-]+)\s*:/gm)].map((m) => m[1]));
   // Custom properties set from JS at runtime (never declared in CSS).
-  // (v1.132's --resume-countdown-duration left with the resume modal, UI pass S3.)
+  // (v1.132's --resume-countdown-duration is back with the v1.363 Resume prompt: player.js sets it on the armed button.)
   // v1.232: the skin title marquee's shift distance + constant-speed duration are set
   // inline by music.js applySkinMarquee (all skins, measured per track), never in CSS.
-  const jsSet = new Set(['--history-pct', '--media-aspect', '--music-sticky-top', '--ptr-pull', '--seek-fill', '--vol-fill', '--mms-mq-shift', '--mms-mq-dur']);
+  const jsSet = new Set(['--history-pct', '--media-aspect', '--music-sticky-top', '--ptr-pull', '--seek-fill', '--vol-fill', '--mms-mq-shift', '--mms-mq-dur', '--resume-countdown-duration']);
   const missing = new Set();
   // Usages: allow the whitespace shapes ordinary wrapped formatting produces
   // (`var(\n  --token\n)`, tabs, spaces) and the full custom-property

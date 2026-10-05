@@ -176,13 +176,16 @@ test('captureAutoplayAdvanceForLoad + shouldShowResumeOverlay: simulates the fix
 
 const { resolveResumeShortcutAction } = require('../../public/js/player.js');
 
-// UI pass sweep S3 (D8.2): the modal is replaced by auto-resume + the "Resumed at" toast, so
-// R (Resume) has nothing left to do and is gone; S (Start over) works while the toast shows.
-test('resolveResumeShortcutAction: s/S restart only while the resume toast is visible; r/R is gone with the modal', () => {
+// UI pass sweep S3 (D8.2): auto-resume + the "Resumed at" toast left R with nothing to do; S (Start over)
+// works while the toast shows. v1.363: the Resume prompt is back (Ask me), so R = Resume and S = Start from
+// beginning while it shows; the toast still answers only S.
+test('resolveResumeShortcutAction: r/R resume only while the prompt shows; s/S restart while the prompt or the toast shows', () => {
   for (const key of ['r', 'R']) {
-    assert.strictEqual(resolveResumeShortcutAction({ key, overlayVisible: true }), 'none');
-    assert.strictEqual(resolveResumeShortcutAction({ key, overlayVisible: false }), 'none');
+    assert.strictEqual(resolveResumeShortcutAction({ key, promptVisible: true }), 'resume');
+    assert.strictEqual(resolveResumeShortcutAction({ key, overlayVisible: true }), 'none', 'the toast has nothing to resume');
+    assert.strictEqual(resolveResumeShortcutAction({ key, overlayVisible: false, promptVisible: false }), 'none');
   }
+  for (const key of ['s', 'S']) assert.strictEqual(resolveResumeShortcutAction({ key, promptVisible: true }), 'restart');
   for (const key of ['s', 'S']) {
     assert.strictEqual(resolveResumeShortcutAction({ key, overlayVisible: true }), 'restart');
     assert.strictEqual(resolveResumeShortcutAction({ key, overlayVisible: false }), 'none');
@@ -214,7 +217,7 @@ test('resolveResumeShortcutAction: never throws on a missing/garbage context', (
 // page kept firing at the torn-down player. UI pass S3: the resume UI is the toast; this is
 // bound BEHAVIOURALLY in player-resume-toast.test.js ("every seam that hid the modal hides
 // the toast: dock, close, and the next load"). The source lock stays as a second net.
-test('close() hides the resume toast, exactly as dock() does on its transition', () => {
+test('close() hides the resume toast AND cancels the prompt (and its countdown); dock() hides the toast and dismisses the prompt', () => {
   const fs = require('node:fs');
   const path = require('node:path');
   const src = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'player.js'), 'utf8');
@@ -225,5 +228,6 @@ test('close() hides the resume toast, exactly as dock() does on its transition',
     const body = src.slice(start, end === -1 ? src.length : end)
       .split('\n').filter((line) => !/^\s*\/\//.test(line)).join('\n');
     assert.match(body, /hideResumeToast\(\);/, fn + ' must hide the resume toast so the S listener can never fire against it');
+    assert.match(body, /hideResumePrompt\(\);/, fn + ' must dismiss the prompt (hideResumePrompt cancels its countdown) so neither the timer nor R / S can fire against a gone player');
   }
 });

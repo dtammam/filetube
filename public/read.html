@@ -351,6 +351,18 @@
     <div class="player-container" id="player-wrapper">
       <div id="audio-bg-art" class="audio-bg-art"></div>
       <div id="art-play-glyph" class="art-play-glyph" aria-hidden="true"></div>
+      <!-- v1.363: the "Resume playback?" prompt (Settings > Playback > "When a video has saved
+           progress": Ask me). player.js shows it over the PAUSED picture, with a countdown on the
+           default button; the toast below is the Resume automatically mode's announcement. -->
+      <div id="resume-overlay" class="resume-overlay" role="dialog" aria-labelledby="resume-prompt-title" hidden>
+        <h3 id="resume-prompt-title">Resume playback?</h3>
+        <p>You watched this up to <span id="resume-prompt-time">0:00</span>.</p>
+        <div class="resume-actions">
+          <button type="button" class="ui-btn ui-btn--secondary" id="resume-no-btn"><span class="ui-btn__label">Start from beginning</span></button>
+          <button type="button" class="ui-btn ui-btn--primary" id="resume-yes-btn"><span class="ui-btn__label">Resume</span></button>
+        </div>
+      </div>
+
       <div id="resume-toast" class="player-resumed" role="status" hidden>
         <span class="player-resumed__text">Resumed at <span id="resume-time-str">0:00</span></span>
         <button type="button" class="ui-btn ui-btn--plain ui-btn--sm player-resumed__action" id="resume-restart-btn"><span class="ui-btn__label">Start over</span></button>

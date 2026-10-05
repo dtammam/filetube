@@ -119,3 +119,13 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON.
 - [ ] v1.344.2 - On the phone, a video with chapters: watch to the middle of a later chapter, tap Listen;
   it carries on from that spot in that chapter (not chapter 1). Then Watch again: still the same spot.
   Repeat PAUSED: pause on Watch, tap Listen (still paused, same spot), then Watch (still paused).
+
+## Resume prompt (v1.363.0)
+
+- [ ] v1.363.0 - Settings > Automation & Storage > "When a video has saved progress": Ask me. Open a video you watched past a
+  minute: it opens paused with "Resume playback?" over the picture; Resume counts down (5 s) and resumes on its own; open another,
+  tap the player during the countdown: it stops counting and waits; R and S on a keyboard work. Set the length to 0: it resumes at
+  once with no prompt; set the default choice to Start from beginning: it starts over. Turn the countdown off: the prompt waits.
+- [ ] v1.363.0 - Ask me, a video with saved progress opened in the mini player (play from a list while browsing): no prompt, it
+  resumes. A prompt up, then minimize: it resumes in the mini player. Back to "Resume automatically": the "Resumed at" note as
+  before. Music, podcasts, a TV episode and an autoplay next never ask.
