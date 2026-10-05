@@ -7,6 +7,8 @@
 //   node test/geometry/run.js --mutate g1-drop-slot (one, on the full scene set)
 //
 // `target` is the check that must go red and the scene it is proven on.
+const { vpmCells } = require('./scenes.js');
+
 const MUTATIONS = {
   // G1: a row drops its reserved lead slot (the ui-row grid then packs media/body/aside one
   // column left) - the "optional child moved a column" bug AC5 exists for.
@@ -189,6 +191,28 @@ const MUTATIONS = {
   'g4-pocket-no-stillness': {
     check: 'G4', target: { sequence: 'pocket-rotation', mode: 'dark' },
     css: 'html.no-motion.no-motion #sidebar{transition:transform .3s linear!important}',
+  },
+  // VPM (v1.364.0 W1): each must turn red EXACTLY its target cells (the runner compares the red set).
+  // M1: the view collapses at the smallest width only (a 320-only breakpoint gone wrong).
+  'vpm-m1-viewroot-zero-320': {
+    check: 'VPM', target: { cells: vpmCells().filter((c) => c.w <= 340).map((c) => c.id) },
+    css: '@media (max-width: 340px){#view-root{height:0!important;overflow:hidden!important}}',
+  },
+  // M2: an invisible full-viewport layer that takes taps, on short viewports only (a pseudo-element:
+  // querySelectorAll cannot see it, the hit tests must).
+  'vpm-m2-invisible-cover-short': {
+    check: 'VPM', target: { cells: vpmCells().filter((c) => c.h <= 640).map((c) => c.id) },
+    css: '@media (max-height: 640px){html::after{content:"";position:fixed;inset:0;z-index:2147483647;pointer-events:auto;background:transparent}}',
+  },
+  // M3: a fixed minimum width (every viewport under 400px scrolls sideways).
+  'vpm-m3-min-width-400': {
+    check: 'VPM', target: { cells: vpmCells().filter((c) => c.w < 400).map((c) => c.id) },
+    css: 'body{min-width:400px!important}',
+  },
+  // M4: the iPod centre button stops taking taps.
+  'vpm-m4-ipod-centre-dead': {
+    check: 'VPM', target: { cells: vpmCells().filter((c) => c.surface.pocket).map((c) => c.id) },
+    css: '.ip-center{pointer-events:none!important}',
   },
 };
 

@@ -247,4 +247,26 @@ const G4_SEQUENCES = [
   { id: 'kit-rotation', owner: 'step 4', modes: ['light'] },
 ];
 
-module.exports = { ERAS, MODES, SURFACES, FAST_SCENES, G4_SEQUENCES };
+// VPM (v1.364.0 W1): the viewport matrix, every phone size x the surfaces a phone lands on. iOS UA, mobile, touch,
+// DPR 2 (run.js runVPM). The iPod skin is full screen in phone portrait only, so it runs the portrait sizes.
+const VPM_SIZES = [[320, 568], [375, 667], [360, 640], [390, 844], [430, 932], [667, 375], [568, 320]];
+const VPM_SURFACES = [
+  { id: 'home', path: () => '/', ready: '#video-grid .video-card' },
+  { id: 'music', path: () => '/music', ready: '.music-album-card' },
+  { id: 'watch', path: (FX) => '/watch.html?v=' + encodeURIComponent(FX.video), ready: '#media-player' },
+  { id: 'pocket', pocket: true, portraitOnly: true, ready: '.mms-full .ip-center' },
+  { id: 'setup', path: () => '/setup.html', ready: '#view-root .setup-box' },
+];
+const vpmCellId = (surface, w, h) => 'VPM/' + surface + '/' + w + 'x' + h;
+function vpmCells() {
+  const out = [];
+  for (const surf of VPM_SURFACES) {
+    for (const [w, h] of VPM_SIZES) {
+      if (surf.portraitOnly && w > h) continue;
+      out.push({ id: vpmCellId(surf.id, w, h), surface: surf, w, h, portrait: h > w });
+    }
+  }
+  return out;
+}
+
+module.exports = { ERAS, MODES, SURFACES, FAST_SCENES, G4_SEQUENCES, VPM_SIZES, VPM_SURFACES, vpmCells, vpmCellId };
