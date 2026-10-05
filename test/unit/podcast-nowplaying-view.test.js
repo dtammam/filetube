@@ -329,7 +329,7 @@ test('v1.105 (T4 reseed): a NON-podcast item on the shared host does not show th
 // toolbar's second button is gone. Its visibility is CSS (desktop-only, hidden in the dock and on
 // views that do not wire it), so the view never touches `hidden` on the shared node.
 
-test('v1.251 theatre: an expanded episode binds the player\'s #theater-btn, which toggles is-theater on the stage and persists ft-podcast-theater', async () => {
+test('v1.251 theatre: an expanded episode binds the player\'s #theater-btn, which toggles is-split (the inverse) on the stage and persists ft-podcast-theater', async () => {
   await boot('http://localhost/podcasts?show=s1', 'full', async (dom) => {
     const stage = dom.window.document.getElementById('podcast-stage');
     assert.equal(dom.window.document.getElementById('podcast-theater-btn'), null, 'no toolbar toggle any more');
@@ -337,15 +337,15 @@ test('v1.251 theatre: an expanded episode binds the player\'s #theater-btn, whic
     const btn = dom.window.document.getElementById('theater-btn');
     assert.ok(btn, 'the mount seam bound the player\'s button');
     assert.equal(btn.getAttribute('aria-pressed'), 'false', 're-stamped from the podcasts key');
-    assert.ok(!stage.classList.contains('is-theater'), 'off by default');
+    assert.ok(stage.classList.contains('is-split'), 'theatre off by default: the panel is beside the player');
     btn.click();
     await settle();
-    assert.ok(stage.classList.contains('is-theater'), 'toggle lays the panel beside the player');
+    assert.ok(!stage.classList.contains('is-split'), 'theatre ON drops the side-by-side split (wide player)');
     assert.equal(btn.getAttribute('aria-pressed'), 'true');
     assert.equal(dom.window.localStorage.getItem('ft-podcast-theater'), '1', 'persisted per device');
     btn.click();
     await settle();
-    assert.ok(!stage.classList.contains('is-theater'), 'a second tap turns it off');
+    assert.ok(stage.classList.contains('is-split'), 'a second tap turns theatre off: the split returns');
     assert.equal(dom.window.localStorage.getItem('ft-podcast-theater'), '0');
     assert.equal(btn.hasAttribute('hidden'), false, 'the view never sets `hidden` on the shared button');
   });

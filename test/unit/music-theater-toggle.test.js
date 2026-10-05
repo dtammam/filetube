@@ -18,7 +18,7 @@
 // music shell whose player host is still in its <template>, then a real row play that
 // mounts it; (b) a host the watch view already injected into, with a watch-scoped
 // listener, then a music mount; (c) music's init/destroy leaving the button for watch.
-// The v1.222 contract still holds: `.is-theater` on #music-stage, persisted to
+// v1.363.2: `.is-split` (panel BESIDE the player) = theatre OFF, on #music-stage, persisted to
 // localStorage (ft-music-theater), restored on init.
 
 const { test } = require('node:test');
@@ -198,7 +198,7 @@ test('v1.317 reachability: the REAL player api exposes ensureTheaterButton and i
 test('v1.317 cold-load /music: no button exists at init; the first play mounts the host, the in-player button appears and toggles the MUSIC theatre (class, aria, persist), and it is the only theatre control', async () => {
   await boot({ run: async (c) => {
     assert.strictEqual(c.btn(), null, 'precondition (the cold-load shape): the host is still in its template, no button anywhere');
-    assert.ok(!c.stage().classList.contains('is-theater'), 'default OFF');
+    assert.ok(c.stage().classList.contains('is-split'), 'default OFF: the panel sits beside the player (is-split), as the watch page shows Related');
     await c.playRow(0);
     const btn = c.btn();
     assert.ok(btn, 'the first play mounted the host and the music view injected the in-player button');
@@ -208,18 +208,18 @@ test('v1.317 cold-load /music: no button exists at init; the first play mounts t
     assert.strictEqual(btn.getAttribute('aria-pressed'), 'false');
     assert.strictEqual(btn.hidden, false, 'never hidden by the music view (CSS gates it by breakpoint/dock/view)');
     c.click(btn);
-    assert.ok(c.stage().classList.contains('is-theater'), 'ON: the stage goes two-column (CSS does the layout on desktop)');
+    assert.ok(!c.stage().classList.contains('is-split'), 'ON: wide player, the split class is dropped (the panel moves below)');
     assert.strictEqual(btn.getAttribute('aria-pressed'), 'true');
     assert.strictEqual(c.dom.window.localStorage.getItem('ft-music-theater'), '1', 'the choice persists under the music key');
     c.click(btn);
-    assert.ok(!c.stage().classList.contains('is-theater'), 'toggles back OFF');
+    assert.ok(c.stage().classList.contains('is-split'), 'toggles back OFF: the split returns');
     assert.strictEqual(btn.getAttribute('aria-pressed'), 'false');
     assert.strictEqual(c.dom.window.localStorage.getItem('ft-music-theater'), '0');
     // a second play in the same init re-runs the mount seam: still ONE button, ONE listener
     await c.playRow(1);
     assert.strictEqual(c.D.querySelectorAll('#theater-btn').length, 1, 'no double-inject on the next track');
     c.click(c.btn());
-    assert.ok(c.stage().classList.contains('is-theater'), 'one click = exactly one flip (a second listener would flip it back)');
+    assert.ok(!c.stage().classList.contains('is-split'), 'one click = exactly one flip (a second listener would flip it back)');
     assert.strictEqual(c.dom.window.localStorage.getItem('ft-music-theater'), '1');
   } });
 });
@@ -228,7 +228,7 @@ test('v1.317 a persisted theatre choice is restored synchronously at init (befor
   await boot({
     prep: (dom) => { try { dom.window.localStorage.setItem('ft-music-theater', '1'); } catch (_) { /* ignore */ } },
     run: async (c) => {
-      assert.ok(c.stage().classList.contains('is-theater'), 'restored ON from localStorage with no button yet (no widen-flash on the first paint)');
+      assert.ok(!c.stage().classList.contains('is-split'), 'restored ON from localStorage with no button yet: no split on the first paint (no widen-flash)');
       assert.strictEqual(c.btn(), null, 'still no host (cold load)');
       await c.playRow(0);
       assert.strictEqual(c.btn().getAttribute('aria-pressed'), 'true', 'aria-pressed reflects the music state the moment the button binds');
@@ -273,7 +273,7 @@ test('v1.317 watch -> music: the button watch injected is REUSED (no second inje
       assert.strictEqual(musicRegs.length, 1, 'music bound exactly ONE click listener at init (the host already existed)');
       assert.ok(musicRegs[0].signal && !musicRegs[0].signal.aborted, 'bound on a live (music) signal');
       c.click(btn);
-      assert.ok(c.stage().classList.contains('is-theater'), 'the click now toggles the MUSIC theatre');
+      assert.ok(!c.stage().classList.contains('is-split'), 'the click now toggles the MUSIC theatre (ON = no split)');
       assert.strictEqual(c.dom.window.localStorage.getItem('ft-music-theater'), '1');
       assert.strictEqual(watchClicks, 0, 'the watch listener is gone (its signal was aborted) - no cross-view toggle');
       // expanding a track in this init runs the mount seam again: no extra listener
@@ -284,7 +284,7 @@ test('v1.317 watch -> music: the button watch injected is REUSED (no second inje
       c.mod.destroy();
       assert.ok(musicRegs[0].signal.aborted, 'destroy aborted the signal the listener rode on');
       c.click(btn);
-      assert.ok(c.stage().classList.contains('is-theater'), 'no listener left: the click changed nothing');
+      assert.ok(!c.stage().classList.contains('is-split'), 'no listener left: the click changed nothing (still ON = no split)');
       assert.strictEqual(c.dom.window.localStorage.getItem('ft-music-theater'), '1');
       // back into music (the round trip): exactly one fresh listener, one flip per click
       c.mod.init(c.D.getElementById('view-root'));
@@ -292,7 +292,7 @@ test('v1.317 watch -> music: the button watch injected is REUSED (no second inje
       assert.strictEqual(registrations.filter((r) => r.type === 'click').length, 2, 're-init bound exactly one more listener (no accumulation)');
       assert.strictEqual(c.btn().getAttribute('aria-pressed'), 'true', 're-stamped from the persisted music state on the new mount');
       c.click(c.btn());
-      assert.ok(!c.stage().classList.contains('is-theater'), 'one click = one flip (two live listeners would cancel out)');
+      assert.ok(c.stage().classList.contains('is-split'), 'one click = one flip (two live listeners would cancel out)');
       assert.strictEqual(c.dom.window.localStorage.getItem('ft-music-theater'), '0');
     },
   });
@@ -392,4 +392,16 @@ test('v1.317 SHELL PARITY (dynamic roster): every shell that loads watch.js or m
   }
   assert.ok(consumers >= 11, `fail-safe floor: expected >=11 view-loading shells, checked ${consumers}`);
   assert.ok(hosts >= 10, `fail-safe floor: expected >=10 player-hosting shells, checked ${hosts}`);
+});
+
+test('v1.363.2 the side-by-side layout CSS keys on .is-split (theatre OFF), never on theatre ON, for music and podcasts', () => {
+  const css = fs.readFileSync(path.join(REPO, 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /\.music-stage\.is-split \{ display: flex;/, 'the two-column row is the split class');
+  assert.match(css, /\.music-stage\.is-split \.music-nowplaying-panel \{/, 'the panel beside the player is the split class');
+  assert.ok(!/\.music-stage\.is-theater/.test(css), 'no layout rule is keyed on theatre ON any more (the v1.222 meaning was the inverse of the watch page)');
+  for (const f of ['music.js', 'podcasts.js']) {
+    const src = fs.readFileSync(path.join(REPO, 'public', 'js', f), 'utf8');
+    assert.match(src, /classList\.toggle\('is-split', !on\)/, `${f}: the split class is the inverse of the theatre state`);
+    assert.ok(!/classList\.toggle\('is-theater'/.test(src), `${f}: nothing toggles is-theater`);
+  }
 });

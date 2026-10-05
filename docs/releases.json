@@ -3520,5 +3520,11 @@
     "date": "2026-10-05",
     "title": "Add chapters to any song or video",
     "intent": "A song with no chapters, like a long mix, can now get them: Add chapters is in the music player's menu, in the pop-out, and in the watch page's settings cog, using the same editor videos already had. Your saved chapters work like built-in ones. The pop-out also gets a Watch button for video files."
+  },
+  {
+    "version": "1.363.2",
+    "date": "2026-10-05",
+    "title": "Theatre mode works the same in Music",
+    "intent": "In Music and Podcasts the theatre button now does what it does on a video: off keeps the song list beside the player, on makes the player wide with the list below. It used to be the other way round."
   }
 ]
