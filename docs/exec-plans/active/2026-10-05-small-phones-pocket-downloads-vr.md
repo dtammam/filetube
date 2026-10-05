@@ -57,6 +57,7 @@ covered, STOP and AskUserQuestion.
 | 4 | In the iPod view, hold the center button: the volume bar. | **Speaker only** (Dean's pick): with a speaker on, the hold opens the existing volume bar. With the phone playing itself, the hold shows a short LCD note "Use the side buttons" and does NOT fire the tap. iPhone Safari ignores page volume writes. |
 | 5 | Housekeeping: the hold-lock, the watch-page bump and the Pocket turn are confirmed on device. | Mark done; drop matching device checks (W0 lists them exactly). |
 | 6 | **New (Dean, mid-kickoff):** open the app on the phone and reach the iPod view in 1-2 taps WITHOUT picking a song, to use the phone as a remote (pick a speaker). | His words: "within 1 to 2 taps get to the click ipod view. i may want to use my phone as a remote and not choose a song to then pause to then go to speaker". Design in W2b. |
+| 7 | The music "Add chapters" row sits left like its neighbours. | Match the siblings exactly (W2c). |
 
 Architect intake (where the problem got smaller):
 - Item 1: four probes found no layout fault (tiles, `#view-root`, every bottom button hit-tests itself at all 7
@@ -139,7 +140,7 @@ player-hosted selector.
 
 | Release | Version | Branch | Waves | Gate |
 |---|---|---|---|---|
-| A | v1.364.0 | `feat/v1.364.0-small-phones-pocket` | W0 docs, W1 small phones, W2 iPod hold + way in | adversary + qa |
+| A | v1.364.0 | `feat/v1.364.0-small-phones-pocket` | W0 docs, W1 small phones, W2 iPod hold + way in + chapters row | adversary + qa |
 | B | v1.365.0 | `feat/v1.365.0-oneoff-trace` | W3 stuck or stale | FULL: adversary + qa + security-brief |
 | C | v1.366.0 | `feat/v1.366.0-vr-360` | W4 VR / 360 | FULL: adversary + qa + security-brief |
 
@@ -254,7 +255,7 @@ Briefing for the gate (W1): LESSONS 1, 2, 3 (a probe must show a difference; cen
 storage; a check that passes because its selector matches nothing; viewport-specific hard-coding slipped into the fix;
 a covering layer the VPM allow-list hides.
 
-## W2 - The iPod: hold the center for volume (W2a); a way in with no song (W2b)
+## W2 - The iPod: hold the center for volume (W2a); a way in with no song (W2b); the chapters row alignment (W2c)
 
 **W2a falsifier first:** in jsdom (wheel rect stubbed), a pointerdown at the wheel centre followed by 700 ms and a
 pointerup: today `onDown` returns at 3046, nothing arms, and the release click runs the center tap (Now Playing ->
@@ -305,6 +306,29 @@ move cancel (4); drop the endWheel clear (8); replace `HOME_HOLD_MS` with 0 (3 r
   Music tap opens the iPod on a phone with a skin and is a no-op without a skin; the toolbar button's both axes
   (shown/hidden, LESSONS 2). A real-browser row (Playwright, phone 390x844 and 320x568): cold `/`, tap Music, tap
   Music: `.mms-full` visible, Main menu, no song loaded (`player` has no current id).
+
+**W2c - the music "Add chapters" row is centered, its neighbours are left-aligned (Dean, 2026-10-05: "the new Add
+chapters button for music view is centered instead of left aligned. why").** Cause (read, Architect): v1.363.1 gave
+the new rows `ui-btn ui-btn--plain` to satisfy `lint:ui`'s bespoke-button rule (its build log says so); `.ui-btn`
+(`public/css/ui.css:110`) sets `justify-content:center`, a fixed `height:var(--btn-h)` and its own padding, and the
+menu's row rule `.mms-sticker-menu .mms-sm-act` (`style.css:8389`) sets `text-align:left` but never resets
+`justify-content` or `height`. The siblings (Share, Watch, Go to channel, Add to queue, Play next: `skin-surface.js`
+195-215) are bare `mms-sm-act` and lay out from the start. Affected: the Extras row `skin-surface.js:234`
+(`ui-btn ui-btn--plain mms-sm-act`); also check the pop-out row 2083 (`ui-btn ui-btn--plain mms-sm-extras`; its rule
+sets `justify-content:space-between` and `padding:0`, so it may only differ in height) and the watch cog row
+`player.js:8791-8812` against its siblings `#speed-btn` etc.
+- Falsifier first (Playwright, phone 390x844 and desktop 1440x900, eras 2021 and 2005, light and dark): open the
+  music Extras page with a chapterless song and the pop-out sticker menu; record for the chapters row and the row
+  above it: the icon's x, the label's x, the row's height and padding. Expected before: the chapters label x larger
+  than its neighbour's (centered). If they already match, STOP and ask Dean for a screenshot (another surface).
+- Fix: make the new row the same as its siblings: drop `ui-btn ui-btn--plain` from the affected rows. If `lint:ui`
+  then reds, comply the compliant way (LESSONS 3: never widen): change the lint's view of the whole `.mms-sm-act` /
+  `.mms-sm-extras` row family ONLY if that is how the siblings already pass; otherwise keep `ui-btn` and reset what it
+  adds inside the menu rule (`justify-content:flex-start; height:auto; padding` equal to the siblings') with ONE rule
+  placed after the base (LESSONS 6: file order decides; lock the order). Do not touch any other `.ui-btn`.
+- Acceptance: after, in every cell, the chapters row's icon x and label x equal its neighbour's to the pixel and its
+  height equals the neighbour's; a unit lock on the chosen rule (by value, comments stripped); the mutant (restore
+  `justify-content:center` on the row) reds the probe and the lock. Add a DEVICE-CHECKS line for v1.364.0.
 
 **STOP rules (W2).** STOP and AskUserQuestion if: a center hold cannot be armed without a `preventDefault` on a touch
 event (haptics rule 2); the haptic ghost swallows the pointerdown so the hold can never see the press on a real iPhone
