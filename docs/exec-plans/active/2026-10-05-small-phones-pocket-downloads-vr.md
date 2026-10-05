@@ -796,6 +796,51 @@ Gate: CHANGES r1 @fc26275c - adversary
 - N5 NOTE - "the next submit or poll retries" (plan): there is no poll before the chip exists, so a boot-time probe failure leaves the chip absent until a submit IN THIS TAB or a reload (a job started on another device never shows). Not a storm (verified: inject runs only at boot and after a successful submit, and a 404 stays latched, X2 killed). The trace also does not name the gate holder (subscriptions carry no onTrace), and nothing is recorded between child-close and `done` (avatar probe, meta persist), so a gate hang reads only "gate-wait".
 - Tree: the worktree was read-only for me apart from this entry (git status before writing: only the other seats' uncommitted appends to this file; no untracked files; no node_modules). Sandboxes /tmp/adv-w3-r1(+-pristine) were removed after use.
 
+**Gate r1 fixes** (467f9bb1 on fc26275c; every WARNING closed, the notes taken):
+- A (adv W1): the exit/close split is bound by a real one-off whose stub yt-dlp exits while a grandchild holds its
+  stdout/stderr for 1.5 s (integration "gate r1 W1"): child-exit under 1 s, child-close over 1 s after it.
+- B (adv W2): the heartbeat keeps beating after the exit until the pipes close and says so (`exited`,
+  `msSinceExit`), and backs off after 10 beats to every 5 min. The trim and the reader keep each still-open job's
+  lifecycle lines (queued, gate, spawn, child-exit, kill, cancel-requested, sweep, state) however old, up to a
+  quarter of the cap; a job is open until its gate-leave, or until it is terminal with every spawned child closed.
+- C (adv W3, qa W2; the main session's ruling): one rule set, common.js `formatDownloadRowAge`, on the chip and
+  /subscriptions: downloading and not merging/converting = "updated N ago" past 60 s; queued = "waiting N" past
+  60 s; merging, converting, `kind` batches and terminal rows = none; offline = none; no `now` = none; both on
+  the server clock. Converting is included with merging (the same silent ffmpeg phase).
+- D (adv W4, qa W1): heartbeat, msSinceOutput refresh (X18), sweep, boot-requeue host-only (X3), cancel kill,
+  timeout kill, gate-leave ok:false (the gate task is now `traceGateTask`, exported), Cache-Control (X9), the kind
+  skip (X19): one test each.
+- E (adv W5): trim() unlinks its .tmp on any failure; while trims keep failing, appends stop at twice the cap.
+- F (qa S1): the age is out of the one-off signature and updated in place; the Dismiss node survives a tick.
+- G (adv N1, qa S2/S3): "Can't reach FileTube" only for a failed fetch or a non-OK answer; a 401 = "Signed out -
+  reload to sign in"; a throw after a good poll is counted (`downloadChipPollFaultCount`,
+  `subsStatusPollFaultCount`), never offline. "last checked" is now "last reached".
+- H (adv N3, security INFO): the cancel route's lookup is an own-property one: constructor, toString,
+  `__proto__`, hasOwnProperty = 404, no phantom row, no trace line.
+- I (adv N4): log-collection-pattern.md lists the download trace with its deviations (always on; a plain admin
+  attachment link, not exportDiagnosticLog; no Clear) and the owed Home Screen app device check.
+- qa S4, real browser (Chromium, the seeded fixture, the status route stubbed by Playwright; probe
+  scratchpad Bfix-chip-probe.js): BEFORE (fc26275c) at 320 and 390 px the pill's text slot is 212 px and "Can't
+  reach FileTube, last checked 0s ago" needs 273 px: clipped. AFTER: where the sentence does not fit, the pill
+  says "Can't reach FileTube" (133 of 133 px) and the sentence is its tooltip; "Signed out - reload to sign in"
+  190 of 190 px; at 1280 the full sentence fits (270 of 270 px, slot 272). 0 page errors at each width. Not
+  fixed (out of scope, for Dean): the offline pill on a hover device rests at opacity 0.55 like a healthy one.
+- Measured on 467f9bb1, Node 22.23.1: 35 targeted files (the W3 five, chip, subs, ytdlp-run, oneshot
+  cancel/stuck/retry/keep-mine/audio-keep, status endpoint, censuses, spawn security, settings sweeps)
+  `# tests 869` `# pass 869` `# fail 0`; the commit's unit hook `ℹ tests 8739` `ℹ pass 8739` `ℹ fail 0`; lint
+  `✖ 6 problems (0 errors, 6 warnings)`, lint:ui OK, lint:overlay clean. No full suite (the main session runs it).
+- Mutants on committed 467f9bb1 (/tmp git-archive sandbox + pristine copy, each diff non-empty, sandbox restored
+  identical; log scratchpad Bfix-mut.log): 36 run, 36 killed by name. A1 child-exit on 'close'; B1 beats never
+  say exited; B2 msSinceExit null; B3 no back-off; B4 trim pins nothing; B5 every job open; B6 reader slices the
+  tail; D1 no heartbeat; D2 lastOutputAt never refreshed; D3 no sweep record; D4 full URL in boot-requeue; D5 no
+  cancel kill record; D6 no timeout kill record; D7 gate-leave ok:true on a rejection; D8 no Cache-Control; D9
+  no kind skip; E1 no .tmp cleanup; E2 no hard cap; C1/C1s merging ages (chip, /subscriptions); C2/C2s queued
+  reads "updated"; C3 batch rows age; C4/C6 ages while offline (chip, /subscriptions); C5/C7 no `now` falls back
+  to the device clock; C8 /subscriptions on the phone clock; F1 age back in the signature; F2 no in-place update;
+  G1/G3 a page fault reads offline; G2/G4 a 401 reads "Can't reach"; G5 no narrow-pill fallback; H1 inherited
+  lookup in cancel. C3 is killed by "gate r1: formatDownloadRowAge, every rule"; in the DOM test it is MASKED, as
+  real batches carry state 'running', which the state rule never ages (a redundant guard, LESSONS 2).
+
 ## 7. Cut or deferred (Dean can overrule each)
 
 - Refactoring existing pixel breakpoints: no instrument shows one broken; the VPM net + the design rule stop new ones.
