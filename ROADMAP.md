@@ -5,7 +5,7 @@
 ### Device checks owed
 
 - [ ] **Device checks owed (Dean: reply "1-5 pass, 9 fails")** _(v1.362.2, 2026-10-04)_ - one line per open check in
-  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (44 open lines at v1.363.1); the steps are only there. A
+  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (44 open lines at v1.363.2); the steps are only there. A
   passed line is deleted from both places; a failed one becomes a bug below. Closes when every line is resolved.
 
   1. v1.341.3 - watch page: turn back upright settles in one step
@@ -51,7 +51,7 @@
   41. v1.363.1 - pop-out: Add/Edit chapters opens in the pop-out, Watch row on a video file, none on an mp3; small window clipping
   42. v1.363.1 - Add chapters on a chapterless mp3: chapter tracks after re-list and next pick; the playing song untouched
   43. v1.363.1 - watch cog: Add / Edit chapters row; the new sticker rows match the old
-  44. v1.363.1 - theatre button colours (only if still flipped: device, scheme, era)
+  44. v1.363.2 - Music/podcasts theatre: off = list beside the player, on = wide player with the list below
   45. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
 
   Passed 2026-10-05 (deleted from DEVICE-CHECKS.md): [x] v1.363.0 - the Ask me prompt, the 5 s countdown, a tap cancels it; [x]
@@ -673,6 +673,14 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.363.2 - Music and podcasts theatre means what the watch page's does (2026-10-05)
+
+- Dean's screenshots after v1.363.1: the colours were right, the MEANING was inverted. Watch: theatre ON = wide player, Related
+  hidden. Music (v1.222): ON = the list beside the player. Ruled "Match watch": OFF (default) = list beside, ON = wide player with
+  the list below; podcasts the same. Stage class `is-split` = !theatre; stored keys unchanged (a saved ON is now the wide layout).
+- Gate: adversary APPROVED @b4864f55 (4 mutants, 3 red). Disclosed WARNING: the panel-height cap gate (`isSplit`) is only
+  source-pinned (pre-existing gap); measured correct in Chromium at 1600 and 1100 px. Podcasts not browser-measured.
 
 ### v1.363.1 - Add chapters from audio and the pop-out; Watch in the pop-out (2026-10-05)
 

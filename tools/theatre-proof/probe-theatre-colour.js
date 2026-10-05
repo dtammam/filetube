@@ -1,7 +1,7 @@
 'use strict';
 /* global window, document, getComputedStyle */
 // v1.363.1 W1: the music player's theatre button. Real server, desktop Chromium. For each scheme x era theme, reads the
-// button's aria-pressed, its computed colour and the stage's is-theater class in OFF and ON, after a cold /music load and
+// button's aria-pressed, its computed colour and the stage's is-split class and whether the panel sits beside the player in OFF and ON, after a cold /music load and
 // after a /watch -> /music SPA hop. Not a CI gate.
 //   node tools/theatre-proof/probe-theatre-colour.js out.json
 const fs = require('node:fs');
@@ -19,7 +19,7 @@ const pw = require(require.resolve('playwright', { paths: [path.join(__dirname, 
     const st = document.getElementById('music-stage');
     if (!b) return { btn: false };
     const cs = getComputedStyle(b);
-    return { pressed: b.getAttribute('aria-pressed'), color: cs.color, display: cs.display, stage: st ? st.classList.contains('is-theater') : null, stored: localStorage.getItem('ft-music-theater') };
+    return { pressed: b.getAttribute('aria-pressed'), color: cs.color, display: cs.display, split: st ? st.classList.contains('is-split') : null, beside: (() => { const pn = document.querySelector('.music-nowplaying-panel'); const sl = document.getElementById('player-slot'); if (!pn || !sl || pn.hidden) return null; return pn.getBoundingClientRect().left >= sl.getBoundingClientRect().right - 1; })(), stored: localStorage.getItem('ft-music-theater') };
   });
   try {
     // scenario: how the persistent host reaches the music view and what each view's stored theatre flag says
