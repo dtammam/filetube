@@ -8763,6 +8763,9 @@ a.tv-continue-card { text-decoration: none; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-cone{ fill:currentColor; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-w{ fill:none; stroke:currentColor; stroke-width:3.5; stroke-linecap:round; }
   :where(html.is-phone, html.mms-popout) .mms-ipod .ip-vol-lo .ip-vol-w{ visibility:hidden; }
+  /* v1.364.0 (W2a): hold the center with the phone playing itself - a short note on the LCD (1.5 s), ink on paper like a menu row;
+     it never takes a tap (the wheel under it keeps working). */
+  :where(html.is-phone, html.mms-popout) .mms-ipod .ip-lcd-note{ position:absolute; left:var(--space-4); right:var(--space-4); bottom:var(--space-4); padding:var(--space-3) var(--space-4); border-radius:var(--mms-ipod-r-sm); background:var(--pk-s-ink); color:var(--pk-s-paper); font-size:var(--pk-fs-row); font-weight:var(--fw-semibold); text-align:center; pointer-events:none; }
   /* List view (Select flips to it) */
   /* v1.270 BRICK (Dean's easter egg): the canvas overlays the LCD's inner box.
      THAT REQUIRES .ip-lcd-in TO BE POSITIONED - the slim gate measured that neither

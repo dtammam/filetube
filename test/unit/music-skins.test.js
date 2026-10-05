@@ -405,7 +405,11 @@ test('v1.250 (Dean): the Now-Playing wheel SCRUBS on every surface; v1.353: the 
   const engine = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'skin-surface.js'), 'utf8');
   assert.match(engine, /function volumeShowable\(\) \{\s*return volumeLevel\(\) !== null &&/, 'the bar needs a speaker level');
   assert.match(engine, /try \{ if \(volumeCfg\.available\(\)\) v = volumeCfg\.level\(\); \}/, 'and the level needs the view to say a speaker is controlled');
-  assert.match(body, /r\.width \* DEAD_FRAC[\s\S]*?return/, 'a press on the dead center (Select) is ignored so its tap passes through (DEAD_FRAC sourced from the shared module, v1.303)');
+  // v1.364.0 (W2a): the dead-center branch may now ARM the center hold (its own state, a timer and
+  // passive listeners), so the lock reads the WHOLE branch: it arms that and returns, and it sits
+  // before the wheel gesture is built, so a dead-center press still never spins (intent unchanged).
+  assert.match(body, /if \(Math\.hypot\(e\.clientX - cx, e\.clientY - cy\) < r\.width \* DEAD_FRAC\) \{ armCenterHold\(e, wheel\); return; \}/, 'a press on the dead center (Select) never starts a spin: it may arm the center hold, then returns so its tap passes through (DEAD_FRAC sourced from the shared module, v1.303)');
+  assert.ok(body.indexOf('r.width * DEAD_FRAC') < body.indexOf('var st = {'), 'the dead-center return comes before the gesture state is built');
 });
 
 test('v1.233: center-select in the list PLAYS the cursor row (not the current), then returns to Now Playing', () => {
