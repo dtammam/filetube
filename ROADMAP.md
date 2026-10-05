@@ -5,7 +5,7 @@
 ### Device checks owed
 
 - [ ] **Device checks owed (Dean: reply "1-5 pass, 9 fails")** _(v1.362.2, 2026-10-04)_ - one line per open check in
-  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (43 open lines on 2026-10-05); the steps are only there. A
+  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (40 open lines on 2026-10-05); the steps are only there. A
   passed line is deleted from both places; a failed one becomes a bug below. Closes when every line is resolved.
 
   1. v1.362.0 - pull down: springs back early, docks past a third, picture never black
@@ -46,14 +46,11 @@
   36. v1.363.1 - Add chapters on a chapterless mp3: chapter tracks after re-list and next pick; the playing song untouched
   37. v1.363.1 - watch cog: Add / Edit chapters row; the new sticker rows match the old
   38. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
-  39. v1.364.0 - the iPhone SE (iOS 15): Home tiles, Music, and the bottom buttons all work
-  40. v1.364.0 - home-screen app: Settings > Troubleshooting > Export error log gives a .txt; empty after a clean sign-in
-  41. v1.364.0 - iPod Now Playing: hold the center 1 s: volume bar on a speaker, "Use the side buttons" on the phone
-  42. v1.364.0 - iPod: a plain center tap still selects with one tick
-  43. v1.364.0 - Music tab tapped again (or the iPod button): the iPod with no song; MENU closes it; Back goes Home
-  44. v1.364.0 - music Extras: the Add chapters row sits left like its neighbours
+  39. v1.365.0 - a one-off download with the server stopped or Wi-Fi off: "Can't reach FileTube"; it clears by itself
+  40. v1.365.0 - a Downloading row stuck for minutes shows "updated N ago"; a Queued one shows "waiting N"
+  41. v1.365.0 - home-screen app: Settings > Troubleshooting > Download trace saves a .txt (hosts only, no full links)
 
-  Passed 2026-10-05 (deleted from DEVICE-CHECKS.md): [x] v1.363.0 - the Ask me prompt, the 5 s countdown, a tap cancels it; [x]
+  Passed 2026-10-05 (deleted from DEVICE-CHECKS.md): [x] v1.364.0 - the iPhone SE (iOS 15) shows tiles, Music and working bottom buttons; [x] v1.364.0 - Export error log in the home-screen app; [x] v1.364.0 - center hold: volume bar on a speaker, "Use the side buttons" on the phone; [x] v1.364.0 - a plain center tap selects with one tick; [x] v1.364.0 - Music tab again opens the iPod with no song; [x] v1.364.0 - the Add chapters row sits left; [x] v1.363.0 - the Ask me prompt, the 5 s countdown, a tap cancels it; [x]
   v1.363.0 - the mini player never prompts; [x] v1.341.3 - watch page: turn back upright settles in one step; [x] v1.350.0 - Pocket turn back: send the
   rotate-log rows with a recording; [x] v1.357.0 - iPod skin turn and back in one step; [x] v1.358.0 - hold, drag down, lift: 2x
   locked; pill unlocks; [x] v1.358.0 - locked 2x ends on lock, next item, dock, speed pick; [x] v1.358.0 - locked 2x in a scrolling
@@ -324,15 +321,40 @@
 
 - [ ] **Bug (investigate): a one-off download sometimes looks stuck until the container restarts** (Dean,
   2026-09-30: "sometimes I see one-off downloads getting stuck. I don't know if they're actually stuck or if
-  they're just a graphical thing, but then I will restart my file tube container and I'll see it either
-  failed or completed ... maybe I'm just perceiving it differently since the UI rewrite."). Not yet
-  reproduced; may be a display-only problem (the row never refreshes) rather than a real hang. First
-  question (LESSONS 1: name the falsifying observation before editing): when a row looks stuck, does the
-  server still know its true state (the queue API or the yt-dlp process) while the page shows the old
-  one? Ask for the next occurrence before a reload: the row's text, whether a manual refresh changes it,
-  and `?debugLifecycle=1` output. Then decide between a UI staleness fix and a server-side trace (log the
-  state change and finish or fail of each one-off download so a hang shows up after the fact). Outcome
-  wanted: Dean can tell "stuck" from "stale" without restarting the container.
+  they're just a graphical thing"). **v1.365.0 instruments it** (no hang fix). Next time a row looks stuck, before restarting:
+  look at the row. "Can't reach FileTube, last reached N ago" = the screen is stale (the page cannot reach the server). A
+  Downloading row with "updated N ago" (several minutes) = the server has not touched it: likely a real hang. A Queued row with
+  "waiting N" = it waits behind another download. Merging / Converting rows show no age (follow-up below). Then Settings >
+  Troubleshooting > Download trace (admin) and send the .txt. Outcome wanted: Dean can tell "stuck" from "stale" without
+  restarting the container.
+- [ ] **Download rows: a stuck merge says so, and phones see "last reached"** _(v1.365.0 gate r2, Dean: ship now, follow up)_ - (a) a
+  Merging / Converting row shows no age, so a stuck ffmpeg merge (probably the likeliest real hang) reads "Merging..." forever: show
+  "merging for N min" past about 10 min; (b) on a phone the offline chip shows only "Can't reach FileTube" (the "last reached N
+  ago" part is in a tooltip, which touch cannot open); (c) the offline chip rests at opacity 0.55 like a healthy one on hover
+  devices; (d) gate leftover W6: no test binds the trace's quarter-of-the-cap limit on kept lines for still-open jobs (mutant
+  R14 survives; the behaviour was measured correct); (e) a healthy row may read "updated 61s ago" for up to ~60 s after the
+  download closes (avatar probe + channel save; reasoned, not measured).
+- [ ] **Settings reorganized: SYSTEM, PERSONALIZE, ACCOUNT, LIBRARY, ADVANCED; "Automation & Storage" split up** _(Dean, 2026-10-05:
+  "automation & storage feels like an inadequate name"; rulings in the same talk)_ - Today: 18 pages; Appearance, Mobile player and
+  Critters sit ungrouped at the top, then Library, System, Account, Advanced. "Automation & Storage" holds ~30 unrelated controls
+  (home page, playback, library behaviour, housekeeping). Target, admins:
+  - **SYSTEM:** Scan & cache (scan interval, remove deleted files, chapter snap lead-in, transcode cache), Downloads, Trash,
+    Notifications (the bell + push switches, moved out).
+  - **PERSONALIZE** (Dean picked the name): Appearance, Home page (default view and sort, home feed modes, the Continue rows, the
+    mobile bottom bar), Playback (autoplay next, the resume prompt and countdown; its own page), Mobile player, Critters.
+  - **ACCOUNT:** Account, Users, Backup & Restore.
+  - **LIBRARY:** Videos, Music (+ "Channels in Music", moved here from Automation), Books, Shows, Podcasts, Hidden. Page titles are
+    the plain noun ("Video folders" -> "Videos"; the video page's current title "FileTube Setup & Configuration" goes). "File
+    imported videos under their channel" moves to Videos.
+  - **ADVANCED:** Troubleshooting, Experimental, Transcript sharing.
+  - Members (non-admins) start at PERSONALIZE (Dean: SYSTEM first for admins only).
+  - **Full naming sweep (Dean: "a full category sweep of all section names"):** every group, page title, in-page heading (h3) and
+    sub-group label in Settings gets a census table (current name, where it lives, what it holds, proposed name), shown to Dean
+    side by side before any rename; plain nouns, one naming style across pages, no name that hides what the page holds.
+  Before building, measure: every control's save path (server-wide `saveAutomationSetting` vs per-device/prefs-sync) so a page
+  never mixes "for everyone" and "this device" without saying so; what each role sees today; and every reference to the old names
+  and collapse keys (device checks, docs, tests, `#` deep links, stored open/closed state per `data-collapse-key`). Moves only:
+  no setting changes meaning, key or default. Phone and desktop measured before/after (rows wrap, buttons never shrink).
 
 - [ ] **v1.362.1 gate leftovers (non-blocking)** - (a) the comment above `scheduleArtSingleTap` (player.js) says only the
   touchend double-tap and the click listener cancel a pending tap; `close()` and, since v1.362.1, `resetTransientPlaybackUi` do too
@@ -682,6 +704,26 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.365.0 - Tell a stuck download from a stale screen (2026-10-05)
+
+- Falsifiers first: with the status poll failing, a populated chip still read "Clip - Clip - 47%" with no sign; one failed health
+  probe latched the chip off for the tab. Client (corner chip and /subscriptions, one rule `formatDownloadRowAge`): a Downloading
+  row shows "updated N ago" past 60 s on the SERVER's clock (the status snapshot carries `now`); a Queued row "waiting N";
+  merging, converting, batch and finished rows show no age; a failed poll shows "Can't reach FileTube, last reached N ago" (no row
+  ages while offline), a 401 "Signed out - reload to sign in"; a failed probe no longer latches the chip off; one row's render
+  throw is caught per row; the age updates in place (a tap on Dismiss is never lost to a rebuild).
+- Server instrument, no hang fix: lib/ytdlp/oneshotTrace.js, an append-only trace (last 2000 lines; a still-open job keeps its
+  lifecycle lines, up to a quarter of the cap; every write try/caught; a full disk leaves no temp files): queued (host only),
+  gate wait/enter/leave, spawn, child-exit and child-close separately, state, a 30 s heartbeat that says whether the child has
+  exited (backs off after 10 beats), cancel, kill (stall / timeout / cancel), sweep. GET /api/ytdlp/oneshot-trace.txt (admin,
+  attachment, no-store); Settings > Troubleshooting > Download trace. Measured: a stub child that exits while a grandchild holds
+  its pipes reads child-exit 37 ms, child-close 2999 ms after. Cancel of `constructor` / `__proto__` now 404 (own-property lookup).
+- Suites at b8b3ca7d: Node 22.23.1 `# tests 11178` `# pass 11166` `# fail 0` `# skipped 12`; Node 24.20.0 `ℹ pass 11166` `ℹ fail 0`.
+- Gate (FULL): r1 security-brief APPROVED, adversary + qa CHANGES @fc26275c (7 WARNINGs: the exit/close split and six events
+  unbound, a long hang trimming its own evidence, ages on healthy rows, orphan temp files on a full disk); r2 APPROVED @b8b3ca7d by
+  all three. Disclosed and on the ROADMAP: merging rows show no age, phones cannot see "last reached", W6 (the kept-lines limit is
+  untested). Device check: the Download trace link in the home-screen app (Chromium only so far).
 
 ### v1.364.0 - The iPhone SE works again, hold the iPod center for volume, the iPod with no song (2026-10-05)
 

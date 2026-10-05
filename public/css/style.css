@@ -6524,6 +6524,14 @@ html:has(> body.ft-audio-expanded),
   white-space: nowrap;
 }
 
+/* v1.365.0 (W3): "updated Ns ago" - the server has not touched this row for over a minute. Same line style as
+   the status above; it carries no display rule, so [hidden] hides it. */
+.dl-status-chip-item-age {
+  margin-top: var(--space-1);
+  font: var(--t-footnote);
+  color: var(--ink-2);
+}
+
 /* FIX-5: a batch's per-item {video: reason} failure lines - they wrap (each stays readable)
    instead of clipping like the one-line status above. */
 .dl-status-chip-item-failures {

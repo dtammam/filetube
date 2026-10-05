@@ -141,6 +141,7 @@ const READ = {
   '/api/videos': 'GATED',
   '/api/videos/:id': 'GATED',
   '/api/videos/:id/chapter-snap': 'GATED', // Chapter Snap (2026-09-24): requireModifyLibrary + the single-item 404 (chapter-snap.test.js RBAC)
+  '/api/ytdlp/oneshot-trace.txt': 'ADMIN', // v1.365.0: the one-off download trace file; requireAdmin first-line (fail-closed in lib/ytdlp/index.js)
   '/api/ytdlp/engine': 'ADMIN', // v1.146: downloader-engine status; requireAdmin first-line (fail-closed gate in lib/ytdlp/index.js)
   '/audio/:id': 'GATED',
   '/book/:id/file': 'GATED',

@@ -3532,5 +3532,11 @@
     "date": "2026-10-05",
     "title": "The iPhone SE works again, and the iPod center hold",
     "intent": "On older iPhones (iOS 15) the app showed only its frame; it now loads and every button works. Hold the iPod's center button on Now Playing to change a speaker's volume, and tap the Music tab again to open the iPod without picking a song. Settings can export an error log if a page ever fails to load."
+  },
+  {
+    "version": "1.365.0",
+    "date": "2026-10-05",
+    "title": "Tell a stuck download from a stale screen",
+    "intent": "A download row now says how long since the server last updated it, and a queued one how long it has waited. When FileTube can't be reached the screen says so instead of freezing. Admins can save a download trace from Settings to send when a download looks stuck."
   }
 ]

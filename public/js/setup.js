@@ -4603,6 +4603,9 @@ async function loadEngineSection(signal) {
     dropDownloadsReserve(); return;
   }
   box.hidden = false;
+  // v1.365.0 (W3): the same probe (an admin, the downloader on) reveals Troubleshooting > Download trace.
+  const traceGroup = document.getElementById('download-trace-group');
+  if (traceGroup) traceGroup.hidden = false;
   renderEngineSection(status);
   document.querySelectorAll('input[name="engine-channel"]').forEach((el) => {
     el.addEventListener('change', (e) => {
@@ -5229,6 +5232,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatLifecycleLogForExport, lifecycleExportFilename, loadDebugLifecycleOverlayControl, wireLifecycleLogControls,
     formatBootErrorLogForExport, bootErrorExportFilename, wireBootErrorLogControls, // v1.364.0 (W1): the boot error log
     loadNoTapGlyphControl, wireNoTapGlyphControl, // v1.362.3 (E3): the no-glyph A/B switch
+    loadEngineSection, // v1.365.0 (W3): its probe also reveals Troubleshooting > Download trace
     loadPocketKbSearchControl, wirePocketKbSearchControl, // v1.355: Mobile player > Keyboard search
     loadResumeModeControls, wireResumeModeControls, clampResumeSeconds, // v1.363: the resume mode + Ask me countdown controls
     // Click wheel test — the pure metering core (boundary- and

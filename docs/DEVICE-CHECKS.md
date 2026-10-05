@@ -116,17 +116,12 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON.
 - [ ] v1.363.1 - Watch page settings cog (a chapterless video): "Add chapters" opens the same editor; with chapters it says "Edit
   chapters". The row is plain weight at the end of the menu; say if it looks out of place. The sticker menu's new rows match the old.
 
-## Small phones, the error log, the iPod center hold and the iPod with no song (v1.364.0)
+## Stuck or stale downloads (v1.365.0)
 
-- [ ] v1.364.0 - The iPhone SE (iOS 15): open the app in the home-screen app AND a Safari tab: Home shows its tiles, Music shows
-  artists and albums, and every bottom button goes where it says.
-- [ ] v1.364.0 - In the HOME-SCREEN app: Settings > Troubleshooting > Export error log gives a .txt (share, copy or save). Right
-  after a clean sign-in it should say there are no errors; if it lists any, send the file. Clear error log asks first.
-- [ ] v1.364.0 - iPod skin, Now Playing: hold the center button about 1 s. With a speaker on: the volume bar opens. With the phone
-  playing itself: a short "Use the side buttons" note, and letting go does NOT select anything. Try both.
-- [ ] v1.364.0 - iPod skin: a plain center TAP still selects, with one tick (no double buzz, no missed tap).
-- [ ] v1.364.0 - With nothing playing, on Music, tap the Music tab again (or the iPod button in the toolbar): the iPod opens with no
-  song, ready to pick a speaker. MENU on its main menu closes it; Back from there goes Home (no dead Back press). Picking a song
-  plays it.
-- [ ] v1.364.0 - Music player Extras (phone and desktop): the "Add chapters" row sits left with the same icon spot and font as
-  "Play next" and its other neighbours.
+- [ ] v1.365.0 - Start a one-off download, then stop FileTube (or turn off Wi-Fi): the corner chip and /subscriptions say "Can't
+  reach FileTube" (on a computer, "last reached N ago" too) and the rows keep their last state; bring it back: the line goes away
+  by itself.
+- [ ] v1.365.0 - If a download looks stuck: a Downloading row says "updated N ago" after a minute or more; a Queued row says
+  "waiting N". Note which you see before restarting anything.
+- [ ] v1.365.0 - In the HOME-SCREEN app, as an admin: Settings > Troubleshooting > Download trace saves (or offers to share) a
+  .txt with your recent one-off downloads, hosts only, no full links. Say if the tap does nothing.

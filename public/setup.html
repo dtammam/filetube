@@ -855,6 +855,14 @@
           </div>
           <p class="setup-note">The rotate debug log records what the screen does when you turn the phone (and when the keyboard comes up in the Music player), frame by frame, in a small green panel at the bottom. Tap the panel to copy the rows. Takes effect at once, no reload; device-local.</p>
         </div>
+        <!-- v1.365.0 (W3): the one-off download trace. Admin-only AND downloader-module-only: revealed with the Downloads box (setup.js loadEngineSection, the same /api/ytdlp/engine probe); the server refuses everyone else. A plain link with download (no fetch before a share), so iOS keeps the gesture. -->
+        <div class="setup-group" id="download-trace-group" hidden>
+          <h3 class="setup-heading">Download trace</h3>
+          <div class="action-bar">
+            <a class="ui-btn ui-btn--secondary ui-btn--sm" id="download-trace-link" href="/api/ytdlp/oneshot-trace.txt" download><span class="ui-btn__label">Download trace</span></a>
+          </div>
+          <p class="setup-note">If a download looks stuck, tap this before restarting FileTube and send the file.</p>
+        </div>
         <!-- v1.179.1 instrument: runs the REAL critter manifest path + a REAL playback attempt on THIS device and reports which link breaks. -->
         <div class="setup-group">
           <h3 class="setup-heading">Critter sound check</h3>
