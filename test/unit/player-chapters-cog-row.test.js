@@ -60,3 +60,13 @@ test('cog row: label follows the chapter count, a flip back to hidden is honoure
   h.sync();
   assert.strictEqual(h.row().hidden, true, 'a revoked capability hides it on the next open');
 });
+
+test('cog row: the cog click SYNCS the row before it unhides the menu, and the [hidden] rule exists (jsdom has no cascade: bound at source)', () => {
+  const handler = SRC.slice(SRC.indexOf('if (settingsBtn) {'), SRC.indexOf('if (!chaptersOutsideCloseWired)'));
+  assert.ok(handler.length > 100, 'non-vacuous');
+  assert.ok(handler.indexOf('syncChaptersEditRow();') !== -1 && handler.indexOf('syncChaptersEditRow();') < handler.indexOf('settingsMenu.hidden = false'),
+    'the row is synced before the menu opens - otherwise it never appears');
+  const css = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8');
+  assert.match(css, /#settings-menu #chapters-edit-btn\[hidden\]\s*\{\s*display:\s*none;?\s*\}/,
+    'the row\'s display:flex would beat [hidden] without this rule - a viewer without the capability would see it');
+});
