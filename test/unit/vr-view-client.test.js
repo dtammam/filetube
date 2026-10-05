@@ -65,6 +65,23 @@ test('nativeVideoPresentation: the <video> itself in full screen or PiP counts; 
   assert.strictEqual(W.nativeVideoPresentation(null, {}), false);
 });
 
+test('vrNativeNotice: a sphere that gives way to the browser\'s own full screen is disclosed ONCE, on the way back', () => {
+  const N = { ...ON, nativePresentation: true };
+  let n = { lost: false, shown: false };
+  let r = W.vrNativeNotice(n, N, true); // the sphere was up, the browser takes the video over
+  assert.deepStrictEqual(r, { lost: true, shown: false, show: false }, 'no toast while Apple\'s player is up (never seen)');
+  r = W.vrNativeNotice({ lost: r.lost, shown: r.shown }, ON, false); // back on the page
+  assert.deepStrictEqual(r, { lost: false, shown: true, show: true }, 'the note shows on the way back');
+  n = { lost: r.lost, shown: r.shown };
+  r = W.vrNativeNotice(n, N, true); r = W.vrNativeNotice({ lost: r.lost, shown: r.shown }, ON, false);
+  assert.strictEqual(r.show, false, 'once per page view');
+  // No sphere up (switch off, a flat video): the native full screen says nothing.
+  r = W.vrNativeNotice({ lost: false, shown: false }, N, false); r = W.vrNativeNotice({ lost: r.lost, shown: r.shown }, ON, false);
+  assert.strictEqual(r.show, false, 'no sphere was lost, nothing to disclose');
+  assert.match(W.VR_NATIVE_NOTE, /flat picture/);
+  assert.ok(!/\u2014/.test(W.VR_NATIVE_NOTE), 'no em dash in user copy');
+});
+
 test('videoTypeMenuItems: the plan\'s eight rows in order, the current pick checked (no pick = Auto)', () => {
   const labels = W.VIDEO_TYPE_OPTIONS.map((o) => o.label);
   assert.deepStrictEqual(labels, ['Auto (from the file)', 'Flat', '360', '360 top-bottom', '360 side-by-side', '180', '180 side-by-side', '180 top-bottom']);

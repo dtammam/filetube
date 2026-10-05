@@ -864,6 +864,17 @@ function nativeVideoPresentation(video, doc) {
     video.webkitPresentationMode === 'picture-in-picture' || video.webkitPresentationMode === 'fullscreen' ||
     (d && d.pictureInPictureElement === video));
 }
+// Pure: the one-time note that the browser's OWN full screen (on an iPhone, Apple's player) shows the flat picture
+// (plan W4: disclose it). `n` = { lost, shown }: `lost` latches when a mounted sphere gives way to a native
+// presentation; the note shows on the way BACK (a toast inside Apple's player is never seen), once per page view.
+function vrNativeNotice(n, st, hadSphere) {
+  const cur = n || { lost: false, shown: false };
+  const native = !!(st && st.nativePresentation === true);
+  const lost = cur.lost || (hadSphere === true && native);
+  if (lost && !native) return { lost: false, shown: true, show: !cur.shown };
+  return { lost, shown: cur.shown, show: false };
+}
+const VR_NATIVE_NOTE = 'Full screen on this device shows the flat picture; 360 view returns here';
 // The owner's "Video type" list (POST /api/videos/:id/projection). `auto` clears the pick (null on the wire).
 const VIDEO_TYPE_OPTIONS = Object.freeze([
   { value: 'auto', label: 'Auto (from the file)' },
@@ -885,7 +896,7 @@ if (typeof module !== 'undefined' && module.exports) {
   const ambientExports = module.require('./ambient.js'); // module.require: the player.js / skin-surface.js convention (browser-env lint)
   module.exports = {
     parseStartTime, // v1.352 L1
-    VR_VIEW_STORAGE_KEY, vrViewIsOn, vrMountDecision, nativeVideoPresentation, VIDEO_TYPE_OPTIONS, videoTypeMenuItems, // v1.366.0 (VR / 360)
+    VR_VIEW_STORAGE_KEY, vrViewIsOn, vrMountDecision, nativeVideoPresentation, vrNativeNotice, VR_NATIVE_NOTE, VIDEO_TYPE_OPTIONS, videoTypeMenuItems, // v1.366.0 (VR / 360)
     resolveDisplayDescription,
     // UI pass sweep S3: the action bar's order, the More menu, About this file, real comments.
     WATCH_BAR_ORDER,
@@ -2358,6 +2369,7 @@ if (typeof module !== 'undefined' && module.exports) {
     let vrRefusedKey = ''; // an item this device cannot show as a sphere (too large, no WebGL): no retry until it changes
     let vrGen = 0;
     let vrWired = false;
+    let vrNotice = { lost: false, shown: false }; // the native-full-screen note (vrNativeNotice)
     function vrElements() {
       return { video: document.getElementById('media-player'), host: document.getElementById('player-wrapper') };
     }
@@ -2400,6 +2412,9 @@ if (typeof module !== 'undefined' && module.exports) {
       const want = vrMountDecision(st);
       const key = want ? st.itemId + '|' + st.projection : '';
       syncVrRows(st);
+      const nn = vrNativeNotice(vrNotice, st, !!vrHandle);
+      vrNotice = { lost: nn.lost, shown: nn.shown };
+      if (nn.show) vrToast(VR_NATIVE_NOTE);
       if (vrHandle && key !== vrHandleKey) unmountVr();
       if (!want || vrHandle || key === vrRefusedKey) return;
       const gen = ++vrGen;
