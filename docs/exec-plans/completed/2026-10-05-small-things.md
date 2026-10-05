@@ -3,10 +3,10 @@ plan: small-things
 harness: v2 · lean
 branch: feat/v1.363.1-small-things
 anchor: spec
-status: In build
+status: Shipped v1.363.1
 next: build W1 -> W2 -> W3, gate (adversary + qa, full: W2 is a destructive editor), release v1.363.1
 design: Dean's three ROADMAP Planned items, 2026-10-05 (main fa21f654, v1.363.0 shipped).
-gate: pending
+gate: APPROVED
 ---
 
 # v1.363.1: small things - theatre button colours, the chapter editor from audio and the pop-out, Watch in the pop-out
@@ -48,7 +48,23 @@ document handoff, no new route.
 
 ## 6. Build log
 
-(filled in as the waves land)
+- W1: probe tools/theatre-proof/probe-theatre-colour.js (scheme x era x scenario) and test/unit/theatre-button-paint.test.js (18 cells
+  plus its mutants). Not reproduced; no swap. The adversary measured 2009/2014/2021 light and dark, cold and SPA, real click: ON red,
+  OFF ink everywhere; hidden at 1024 px and below. The committed probe covers era 2021 at 1440 only (its "each era" comment is loose).
+- W2+W3 failing-first: skin-surface U2 assertion inverted (pop-out now HAS the Watch row) and three new skin-surface tests, two
+  music-skin-integration tests, three player cog-row tests, all written with the code (passing on first run, so binding is proven by
+  mutants below, not by a red-first run).
+- Mutants on COMMITTED 12ee6b2c in a /tmp git-archive sandbox, all red: version token dropped; music capability dropped; cog
+  capability dropped; cog view gate dropped; pop-out `!inMainDoc` dropped; Watch visible() ignored; Extras label swapped; Extras
+  canModify dropped; onTap(doc) -> onTap(). Round 1 gate found seven more unbound guards (adversary); d20a470c binds them: song-change
+  guard, aborted guard, whole afterChaptersTextSave (re-list behavioural, invalidate+patch source-ordered), cog sync call site,
+  desktop and phone onChapters, the [hidden] rule. Builder re-run: all red except the invalidate/patch deletion (source-order only);
+  adversary r2 re-ran its nine: all red.
+- Lint hook deviations: probe lint (`localStorage` global), ui-lint (new bespoke buttons: fixed with `ui-btn ui-btn--plain` on the three
+  new controls; the sticker rows lose to the menu's more specific rules, adversary measured no regression in 3 eras).
+- Suites verbatim: Node 22.23.1 `tests 11029 / pass 11017 / fail 0 / skipped 12`; Node 24.20.0 identical. (Run at 12ee6b2c; d20a470c
+  adds tests only and ran under its own pre-commit unit suite.)
+- Gate: QA APPROVED r1 @12ee6b2c; adversary r1 CHANGES @12ee6b2c, r2 APPROVED @d20a470c.
 
 ## 7. Device checks (Dean)
 
@@ -66,7 +82,7 @@ Reviewed 12ee6b2c vs fa21f654. Verified: eslint 0 errors (6 pre-existing warning
 - NOTE 2: `escapeHtml(chLbl)` and the `window.focus()` in watchBackTap and the `#chapters-edit-btn[hidden]` CSS rule have no binding test (jsdom has no cascade/focus); labels are code-controlled so no injection. Device check covers them.
 - NOTE 3: pop-out row label uses the `::c` id heuristic ("Add" for a raw track that has embedded chapters); label only, seed is from storage.
 
-Gate: APPROVED r1 @12ee6b2cfd26a194835a0763c6d32a774fd6c666 — qa
+Gate: APPROVED r1 @12ee6b2cfd26a194835a0763c6d32a774fd6c666 - qa
 
 ## 8c. Adversary gate r1 (measured; mutants in a /tmp git-archive sandbox, real-browser probes against the real server)
 
@@ -91,4 +107,16 @@ NOTE: notifyLibraryChanged fires on the POP-OUT document, so main-document libra
  still runs (measured only for the open case; suspicion for the closed case). NOTE (suspicion, not measured): a real small PiP window may clip the
  now-taller sticker menu. NOTE: W1's committed probe only covers era 2021 desktop (comment says "each era"); I measured 2009/2014 myself.
 
-Gate: CHANGES r1 @12ee6b2cfd26a194835a0763c6d32a774fd6c666 — adversary
+Gate: CHANGES r1 @12ee6b2cfd26a194835a0763c6d32a774fd6c666 - adversary
+
+## 8d. Adversary gate r2 (delta, tests only; mutants re-run in a /tmp git-archive sandbox of d20a470c)
+
+Baseline 230/230. Every r1 W-A mutant now RED (229/1): song-change guard, signal.aborted (both openChaptersEditorForPlaying and
+afterChaptersTextSave), invalidate deletion, queue-patch deletion, cog sync call site, desktop onChapters, phone extras.onChapters,
+[hidden] CSS rule. Item (3): the source-order witness is ACCEPTABLE (the invalidate+patch pair is the only half with no behavioural
+witness; the re-list half is behavioural). Its known weakness: `if (false) invalidateMenuData();` survives (230/230) - contrived, not
+a regression a real edit produces; no further witness demanded. Still unbound, accepted as NOTE: `window.focus()` in watchBackTap
+(device-only effect) and the `extrasEligibleView()` term in chaptersEditable (native-track case; the server 404 path toasts).
+Pop-out closing mid-save and small-PiP clipping go to device checks. No production change since 12ee6b2c (diff is tests + plan doc only).
+
+Gate: APPROVED r2 @d20a470c251ddcf99f01e3ef4132f8ddb9193eaf - adversary

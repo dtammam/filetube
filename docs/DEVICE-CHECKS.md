@@ -122,10 +122,20 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON.
 
 ## Resume prompt (v1.363.0)
 
-- [ ] v1.363.0 - Settings > Automation & Storage > "When a video has saved progress": Ask me. Open a video you watched past a
-  minute: it opens paused with "Resume playback?" over the picture; Resume counts down (5 s) and resumes on its own; open another,
-  tap the player during the countdown: it stops counting and waits; R and S on a keyboard work. Set the length to 0: it resumes at
-  once with no prompt; set the default choice to Start from beginning: it starts over. Turn the countdown off: the prompt waits.
-- [ ] v1.363.0 - Ask me, a video with saved progress opened in the mini player (play from a list while browsing): no prompt, it
-  resumes. A prompt up, then minimize: it resumes in the mini player. Back to "Resume automatically": the "Resumed at" note as
-  before. Music, podcasts, a TV episode and an autoplay next never ask.
+- [ ] v1.363.0 - Ask me: R and S on a keyboard work. Length 0: it resumes at once with no prompt. Default choice "Start from
+  beginning": it starts over. Countdown off: the prompt waits.
+- [ ] v1.363.0 - Ask me: a prompt up, then minimize: it resumes in the mini player. Back to "Resume automatically": the "Resumed at"
+  note as before. Music, podcasts, a TV episode and an autoplay next never ask.
+
+## Chapters from audio and the pop-out, Watch in the pop-out (v1.363.1)
+
+- [ ] v1.363.1 - Desktop pop-out (music): its sticker menu shows "Add chapters" / "Edit chapters" and, for a video file played as
+  audio, "Watch". The chapter editor opens IN the pop-out window (not behind it). Watch brings the main window forward on the watch
+  page at the same spot. An audio-only mp3 shows no Watch row. Also: a very small pop-out window, does the menu clip.
+- [ ] v1.363.1 - Add chapters on a chapterless mp3 (a long mix) from the music player's Extras (desktop actions menu and phone):
+  type a few "0:00 Title" lines, Save. Chapter tracks appear after the list re-opens and on the next pick; the song playing now keeps
+  playing; resume works inside a chapter. Close the pop-out while a save is in flight: nothing odd.
+- [ ] v1.363.1 - Watch page settings cog (a chapterless video): "Add chapters" opens the same editor; with chapters it says "Edit
+  chapters". The row is plain weight at the end of the menu; say if it looks out of place. The sticker menu's new rows match the old.
+- [ ] v1.363.1 - Music player theatre button: off is grey, on is red? Only if it still looks flipped: say the device, light or dark,
+  and the era (the lab measured every desktop cell correct).
