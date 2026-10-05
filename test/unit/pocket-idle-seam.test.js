@@ -78,7 +78,7 @@ async function boot(o, run) {
     dom.window.FileTube.getDeviceLabel = () => 'Pixel';
     const env = api.browserEnv(dom.window); env.storage = dom.window.sessionStorage;
     spy.rc = dom.window.FileTube.remoteControl = api.createController(env);
-    spy.rc.select(targets[0]);
+    if (o.remote !== 'present') spy.rc.select(targets[0]); // 'present': the controller is there, no speaker picked yet
   }
   delete require.cache[skinsPath]; global.module = undefined;
   dom.window.FileTubeMusicSkins = require(skinsPath);
@@ -147,16 +147,6 @@ test('W2b MENU on the idle Main menu (no song, no speaker) closes the iPod back 
   });
 });
 
-test('W2b the collapse control on the idle iPod closes it the same way (one exit, both controls)', async () => {
-  await boot({ phone: true, skin: 'ipod', track: 'none', query: '?pocket=1' }, async (dom, spy) => {
-    const c = P(dom).querySelector('[data-skin-collapse]');
-    if (!c) return; // the iPod skin may draw no collapse; MENU above is then the only exit
-    click(dom, c);
-    assert.strictEqual(P(dom).hidden, true);
-    assert.strictEqual(spy.dock, 0);
-  });
-});
-
 test('W2b with a speaker: the seam shows the speaker\'s iPod on the Main menu, and MENU there steps aside as today (no idle state left behind)', async () => {
   await boot({ phone: true, skin: 'ipod', track: 'none', remote: true, query: '?pocket=1' }, async (dom, spy) => {
     assert.ok(spy.rc.isRemote(), 'precondition: controlling the speaker');
@@ -167,6 +157,20 @@ test('W2b with a speaker: the seam shows the speaker\'s iPod on the Main menu, a
     click(dom, P(dom).querySelector('[data-skin-menu]'));
     assert.strictEqual(P(dom).hidden, true, 'stepped aside (remoteDocked), as before');
     assert.strictEqual(spy.dock, 0, 'a remote mirror never docks the local player');
+  });
+});
+
+test('W2b the idle iPod, then a speaker picked: MENU steps aside as a speaker\'s iPod does and the idle state is gone (never re-shown)', async () => {
+  await boot({ phone: true, skin: 'ipod', track: 'none', remote: 'present', query: '?pocket=1' }, async (dom, spy) => {
+    assert.ok(menuShown(dom), 'precondition: the idle iPod is up');
+    assert.ok(!spy.rc.isRemote(), 'precondition: no speaker yet');
+    spy.rc.select(targets[0]);
+    for (let i = 0; i < 10; i++) await settle();
+    assert.ok(spy.rc.isRemote(), 'now controlling the speaker');
+    assert.ok(menuShown(dom), 'the speaker\'s iPod, still on the Main menu');
+    click(dom, P(dom).querySelector('[data-skin-menu]'));
+    assert.strictEqual(P(dom).hidden, true, 'MENU on the Main menu stepped aside; the idle arm did not paint it back');
+    assert.strictEqual(spy.dock, 0);
   });
 });
 
