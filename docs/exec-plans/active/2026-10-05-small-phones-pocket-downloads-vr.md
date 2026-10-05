@@ -670,6 +670,15 @@ address bar" -> `the error log copy is honest about storage`. Control (no mutant
 Targeted before the commit: the 16 files touching the change 439/439, auth-flow 8/8, lint 0 errors (6 warnings), lint:ui OK,
 `--only VPM` `geometry: 33 checks - 33 ok, 0 FAIL, 0 XFAIL (expected), 0 XPASS`; commit hook `ℹ pass 8687` `ℹ fail 0`.
 
+**Gate r1 fix 4 mutants** (committed 6c8fe182, same sandbox method, each landed and restored): 5 of 5 killed by name over
+auth-gate + route-census. G1 the glyph-pool entry dropped and G2 the prefs-sync entry dropped -> `route census: the
+documented allowlist IS reachable pre-auth`, `every script, stylesheet and icon a pre-auth shell ... loads is allowed signed
+out`, `are allowed signed out, by EXACT path only`; G3 widened to a prefix regex, G5 matched case-insensitively -> `by EXACT
+path only`; G4 every /js/ allowed -> `the shell catch-all + arbitrary static paths are gated`, the positive control, `the
+intended pre-login surface is reachable; everything else is not`, `by EXACT path only`. Control 29 pass / 0 fail. Targeted
+before the commit: auth-gate, route-census, auth-flow, shell-smoke, history-nav-gate, login-safe-next, glyph-pool-script-order,
+prefs-sync-client 72/72; lint 0 errors (6 warnings); commit hook `ℹ pass 8689` `ℹ fail 0`.
+
 ## 7. Cut or deferred (Dean can overrule each)
 
 - Refactoring existing pixel breakpoints: no instrument shows one broken; the VPM net + the design rule stop new ones.
