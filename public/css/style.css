@@ -6702,8 +6702,8 @@ html:has(> body.ft-audio-expanded),
 #player-dock #theater-btn { display: none; }
 /* v1.317 (Dean, T1): the button is injected into the PERSISTENT player host and
    rides along on every SPA swap, but only the watch view (`.theater-mode`), the
-   music view (`#music-stage.is-theater`) and - since UI pass S7 - the podcasts view
-   (`#podcast-stage.is-theater`, which retired its own toolbar button for it) wire a
+   music view (`#music-stage`) and - since UI pass S7 - the podcasts view
+   (`#podcast-stage`, which retired its own toolbar button for it) wire a
    click to it. On any other view that mounts the player inline (shows, the reader)
    it would be a visible-but-inert control, so it is scoped to the views that own it.
    The router stamps `data-view` on <body> on every swap, cold load included
@@ -8121,14 +8121,15 @@ a.tv-continue-card { text-decoration: none; }
   gap: var(--space-6);
   margin: var(--space-6) 0 var(--space-8);
 }
-/* v1.222 (Dean): desktop THEATRE - the album / up-next beside the expanded player
-   (the watch page's Related-files space) instead of the panel stacked below. The
-   stage is a plain block by default; theatre ON + a wide viewport makes it a
-   two-column row (player left, panel right). Mobile / theatre-off is untouched. */
+/* v1.222 (Dean): the album / up-next beside the expanded player (the watch page's
+   Related-files space) instead of the panel stacked below. v1.363.2: `.is-split` is
+   the class, and it is the INVERSE of theatre (theatre ON = wide player, panel below,
+   as on the watch page). A wide viewport + `.is-split` makes the stage a two-column
+   row (player left, panel right). Mobile / theatre-on is a plain block. */
 .music-stage { display: block; }
 @media (min-width: 1024px) {
-  .music-stage.is-theater { display: flex; align-items: flex-start; gap: var(--space-8); }
-  .music-stage.is-theater #player-slot { flex: 2 1 0; min-width: 0; }
+  .music-stage.is-split { display: flex; align-items: flex-start; gap: var(--space-8); }
+  .music-stage.is-split #player-slot { flex: 2 1 0; min-width: 0; }
   /* v1.317 M4: in the music view #player-slot sits inside .music-player-stage (the
      ambient stage), so the STAGE is the flex item; podcasts keep the bare slot above.
      MEASURED (headless Chromium, 1600px, theatre): a flex item contains its children's
@@ -8137,8 +8138,8 @@ a.tv-continue-card { text-decoration: none; }
      stage, so its vignette's inner rectangle sat 16px below the player's edge. The
      margin moves OUT to the stage (a flex item's margin is outside its box): the stage is
      the player's box exactly, and the row below keeps the same 16px of air. */
-  .music-stage.is-theater > .music-player-stage { flex: 2 1 0; min-width: 0; margin-bottom: var(--space-8); }
-  .music-stage.is-theater > .music-player-stage #player-wrapper { margin-bottom: 0; }
+  .music-stage.is-split > .music-player-stage { flex: 2 1 0; min-width: 0; margin-bottom: var(--space-8); }
+  .music-stage.is-split > .music-player-stage #player-wrapper { margin-bottom: 0; }
   /* v1.226 (Dean device): the up-next sits BESIDE the player in theatre; if it
      grows taller than the player when the queue fills, the whole stage grows and
      shoves "Jump back in" (and the tabs/content) down - the return-from-miniplayer
@@ -8146,8 +8147,8 @@ a.tv-continue-card { text-decoration: none; }
      max-height); the queue then fills + scrolls INSIDE, so the stage stays put and
      nothing below shifts. min-height:0 + overflow:hidden make the flex child clip
      to the cap so the queue (not the panel) scrolls. */
-  .music-stage.is-theater .music-nowplaying-panel { flex: 1 1 0; min-width: 0; margin-top: 0; min-height: 0; overflow: hidden; max-height: var(--mnp-cap-h, none); } /* v1.251: class-based - podcasts' stage/panel share the theatre layout */
-  .music-stage.is-theater .music-nowplaying-panel .mnp-queue { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; }
+  .music-stage.is-split .music-nowplaying-panel { flex: 1 1 0; min-width: 0; margin-top: 0; min-height: 0; overflow: hidden; max-height: var(--mnp-cap-h, none); } /* v1.251: class-based - podcasts' stage/panel share the theatre layout */
+  .music-stage.is-split .music-nowplaying-panel .mnp-queue { flex: 1 1 auto; min-height: 0; max-height: none; overflow-y: auto; }
 }
 .mnp-meta { display: flex; flex-direction: column; gap: var(--space-2); }
 .mnp-title {

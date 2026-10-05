@@ -347,14 +347,14 @@ test('v1.224: updateNowPlayingPanel scrolls the queue to the current row (not th
 // instead of growing the stage. jsdom has no layout, so lock the glue.
 test('v1.226: the theatre now-playing panel is capped to the MEASURED player height (no stage-growth flash)', () => {
   const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/js/music.js'), 'utf8');
-  assert.match(src, /musicStage\.classList\.contains\('is-theater'\)/, 'gated on theatre mode');
+  assert.match(src, /musicStage\.classList\.contains\('is-split'\)/, 'gated on the side-by-side split (theatre OFF)');
   assert.match(src, /root\.querySelector\('#player-slot'\)[\s\S]{0,120}?getBoundingClientRect\(\)\.height/, 'it MEASURES the player-slot height (measure the container)');
   // UI pass S7: the cap is DATA (--mnp-cap-h), never an inline style; style.css's theatre rule reads it
   assert.match(src, /if \(ph > 120\) nowPlayingPanel\.style\.setProperty\('--mnp-cap-h', ph \+ 'px'\); else nowPlayingPanel\.style\.removeProperty\('--mnp-cap-h'\);/, 'caps the panel to the player height in theatre');
   assert.match(src, /else \{\s*nowPlayingPanel\.style\.removeProperty\('--mnp-cap-h'\);/, 'clears the cap off-theatre so the panel flows normally');
   assert.doesNotMatch(src, /nowPlayingPanel\.style\.maxHeight/, 'no inline max-height');
   const css = require('node:fs').readFileSync(require('node:path').join(__dirname, '../../public/css/style.css'), 'utf8');
-  assert.match(css, /\.music-stage\.is-theater \.music-nowplaying-panel \{[^}]*max-height: var\(--mnp-cap-h, none\);/, 'the theatre panel rule consumes the cap');
+  assert.match(css, /\.music-stage\.is-split \.music-nowplaying-panel \{[^}]*max-height: var\(--mnp-cap-h, none\);/, 'the theatre panel rule consumes the cap');
 });
 
 // ---- v1.317 (M1+M2): the panel's artist line drills; each row shows its own length ---------

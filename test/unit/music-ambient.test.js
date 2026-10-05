@@ -753,7 +753,7 @@ test('v1.317 CSS: the music player stage owns its stacking context on DESKTOP on
   for (const m of unscoped) assert.doesNotMatch(m[2], /position|z-index/, m[1].trim() + ': no UNSCOPED stage context (the phone skin\'s fixed covers must never be trapped)');
   assert.ok([...outside.matchAll(/body\.ft-audio-expanded \.music-player-stage[^{]*\{\s*z-index: auto;/g)].length === 1, 'the drop itself is present');
   const theatre = mediaBlocks('(min-width: 1024px)');
-  assert.match(theatre, /\.music-stage\.is-theater > \.music-player-stage \{ flex: 2 1 0; min-width: 0; margin-bottom: var\(--space-8\); \}/, 'the stage is the flex item and carries the 16px below the row');
-  assert.match(theatre, /\.music-stage\.is-theater > \.music-player-stage #player-wrapper \{ margin-bottom: 0; \}/, 'the player itself carries none there (MEASURED: else the stage is 16px taller than the player)');
-  assert.match(theatre, /\.music-stage\.is-theater #player-slot \{ flex: 2 1 0; min-width: 0; \}/, 'podcasts\' bare-slot theatre rule is untouched');
+  assert.match(theatre, /\.music-stage\.is-split > \.music-player-stage \{ flex: 2 1 0; min-width: 0; margin-bottom: var\(--space-8\); \}/, 'the stage is the flex item and carries the 16px below the row');
+  assert.match(theatre, /\.music-stage\.is-split > \.music-player-stage #player-wrapper \{ margin-bottom: 0; \}/, 'the player itself carries none there (MEASURED: else the stage is 16px taller than the player)');
+  assert.match(theatre, /\.music-stage\.is-split #player-slot \{ flex: 2 1 0; min-width: 0; \}/, 'podcasts\' bare-slot theatre rule is untouched');
 });

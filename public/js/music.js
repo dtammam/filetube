@@ -1285,11 +1285,13 @@ if (typeof module !== 'undefined' && module.exports) {
     reserveDockSpace(root, signal);
     if (!content) return;
 
-    // v1.222 (Dean): desktop THEATRE toggle - lay the album / up-next panel BESIDE
-    // the expanded player (the watch page's Related-files space) instead of below.
-    // Persisted (ft-music-theater). The class rides #music-stage; a wide-viewport
-    // media query does the actual two-column layout, so on mobile the class is
-    // inert (panel stays below).
+    // v1.363.2 (Dean): theatre means what it means on the watch page - ON = the wide
+    // player, the album / up-next panel BELOW; OFF (the default) = the panel BESIDE the
+    // player, the watch page's Related-files space. v1.222 had it the other way round
+    // (ON = beside), so the red button showed the list. The class that lays the panel
+    // beside the player is `is-split` = !theatre. Persisted (ft-music-theater). The class
+    // rides #music-stage; a wide-viewport media query does the two-column layout, so on
+    // mobile the class is inert (panel stays below).
     // v1.317 (Dean, T1): the control is the player's own era-style `#theater-btn`
     // (the popcorn `.pc-btn` before the cog - the same button the watch page
     // uses), not a second button in the toolbar. Dean: "the player has a built-in
@@ -1312,7 +1314,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var THEATER_KEY = 'ft-music-theater';
     function theaterOn() { try { return localStorage.getItem(THEATER_KEY) === '1'; } catch (_) { return false; } }
     function applyTheater(on) {
-      if (musicStage) musicStage.classList.toggle('is-theater', !!on);
+      if (musicStage) musicStage.classList.toggle('is-split', !on);
       if (theaterBtn) theaterBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
     applyTheater(theaterOn()); // the stage class synchronously, before any host exists (no widen-flash)
@@ -2875,7 +2877,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // the taller list pushed it out). rAF reads offsetTop AFTER the final layout.
       var mnpQueue = nowPlayingPanel.querySelector('.mnp-queue');
       var curRow = nowPlayingPanel.querySelector('.mnp-queue-row.is-current');
-      var isTheater = !!(musicStage && musicStage.classList.contains('is-theater'));
+      var isSplit = !!(musicStage && musicStage.classList.contains('is-split'));
       var settleNowPlaying = function () {
         // v1.226 (Dean device): in THEATRE the up-next sits BESIDE the player; when
         // the queue fills it can grow TALLER than the player and grow the whole
@@ -2885,7 +2887,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // off-theatre so the panel flows normally. (Measure the container, per the
         // norm - never guess a CSS-var height.)
         try {
-          if (isTheater) {
+          if (isSplit) {
             var slotEl = root.querySelector('#player-slot');
             var ph = slotEl ? slotEl.getBoundingClientRect().height : 0;
             if (ph > 120) nowPlayingPanel.style.setProperty('--mnp-cap-h', ph + 'px'); else nowPlayingPanel.style.removeProperty('--mnp-cap-h'); // UI pass S7: the cap is DATA (style.css reads it), never an inline style

@@ -168,8 +168,9 @@
     var podcastStage = root.querySelector('#podcast-stage');
     var theaterBtn = null; // UI pass S7: the player's own #theater-btn, bound by bindTheaterControl once the host exists
 
-    // v1.251 (R2): desktop THEATRE for podcasts - the same music v1.222 toggle (panel beside
-    // the expanded player), its own persisted key (ft-podcast-theater).
+    // v1.251 (R2): desktop THEATRE for podcasts - the same toggle as music, its own persisted
+    // key (ft-podcast-theater). v1.363.2: ON = wide player, panel below; OFF = panel beside
+    // (`is-split` = !theatre), as on the watch page.
     // UI pass S7: the toggle is the PLAYER's own era-style #theater-btn in the control bar, as
     // music has used since v1.317 (T1) - one control, one glyph writer (player.js
     // ensureTheaterButton) - instead of a second bespoke toolbar button. Its visibility is CSS
@@ -180,7 +181,7 @@
     var THEATER_KEY = 'ft-podcast-theater';
     function theaterOn() { try { return localStorage.getItem(THEATER_KEY) === '1'; } catch (_) { return false; } }
     function applyTheater(on) {
-      if (podcastStage) podcastStage.classList.toggle('is-theater', !!on);
+      if (podcastStage) podcastStage.classList.toggle('is-split', !on);
       if (theaterBtn) theaterBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
     applyTheater(theaterOn()); // the stage class synchronously, before any host exists
@@ -987,10 +988,10 @@
       // offsetTop read lands after the final layout.
       var mnpQueue = nowPlayingPanel.querySelector('.mnp-queue');
       var curRow = nowPlayingPanel.querySelector('.mnp-queue-row.is-current');
-      var isTheater = !!(podcastStage && podcastStage.classList.contains('is-theater'));
+      var isSplit = !!(podcastStage && podcastStage.classList.contains('is-split'));
       var settleNowPlaying = function () {
         try {
-          if (isTheater) {
+          if (isSplit) {
             var slotEl = root.querySelector('#player-slot');
             var ph = slotEl ? slotEl.getBoundingClientRect().height : 0;
             if (ph > 120) nowPlayingPanel.style.setProperty('--mnp-cap-h', ph + 'px'); else nowPlayingPanel.style.removeProperty('--mnp-cap-h'); // UI pass S7: the cap is DATA (style.css reads it), never an inline style
