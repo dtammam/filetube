@@ -640,11 +640,17 @@ Gate: CHANGES r1 @a041cef1 - adversary
   (the view fetch answers, then: no pushState, the seam URL replaced the entry, history.length unchanged); red with
   the push restored. Real browser (adversary's w2b-hostile.js, Chromium 390x844): history.length 4 -> 4 on the second tap,
   Back with the idle iPod up lands on / (home), Back after MENU closes it lands on /; 0 page errors.
-- adversary W4: NOT fixed, STOPPED (the brief's rule). Measured (Chromium, the seeded fixture): signed out, /login GETs
-  both scripts 401 and the log holds the two "failed to load script" entries; signed IN, /login is served (the gate
-  passes it with a session) and loads both (304), prefs-sync runs (`GET /api/prefs` 200, an era tap POSTs /api/prefs),
-  `resolveFolderGlyphClass` is a function. So the two shells DO use them on the signed-in path; dropping them changes
-  that path, and allowlisting them touches lib/auth. Dean's call.
+- adversary W4: first STOPPED (the brief's rule): measured (Chromium, the seeded fixture) signed IN, /login is served and
+  loads both scripts (304) and prefs-sync runs (`GET /api/prefs` 200, an era tap POSTs /api/prefs), so dropping them from
+  the shells changes that path. Dean's ruling: allow them signed out. lib/auth/gate.js ALLOW_EXACT gains
+  `/js/glyph-pool.js` and `/js/prefs-sync.js` (exact paths only). Measured signed out, Chromium and WebKit 15.4
+  (PLAYWRIGHT_BROWSERS_PATH=/tmp/wk15/browsers, 320x568, iOS 15.8.5 UA), /login (seeded) and /welcome (no users): both
+  scripts 200, 0 page errors, `ft-boot-errors` null after load, the form present; prefs-sync's `GET /api/prefs` 401 puts it
+  dormant with no log entry (no prefs-sync change needed). Tests: auth-gate `every script, stylesheet and icon a pre-auth
+  shell ... loads is allowed signed out` (derived from the two shells' script and link tags, with witnesses) and `are
+  allowed signed out, by EXACT path only` (neighbours .map, x suffix, trailing slash, no extension, .json, a subdirectory,
+  the root, upper case, an encoded NUL, POST: all refused; a query keeps the asset behaviour); route-census positive
+  control probes both (not gated) and /js/main.js (gated).
 - qa W1: setup.html's note says to open /errors.html in a Safari tab and that a Home Screen app keeps its own log,
   reachable only from its own Settings > Export error log; errors.html says "in this browser" and carries the same
   scope line; log-collection-pattern.md records the limit. boot-error-recorder row `the error log copy is honest about
