@@ -137,5 +137,4 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON.
   playing; resume works inside a chapter. Close the pop-out while a save is in flight: nothing odd.
 - [ ] v1.363.1 - Watch page settings cog (a chapterless video): "Add chapters" opens the same editor; with chapters it says "Edit
   chapters". The row is plain weight at the end of the menu; say if it looks out of place. The sticker menu's new rows match the old.
-- [ ] v1.363.1 - Music player theatre button: off is grey, on is red? Only if it still looks flipped: say the device, light or dark,
-  and the era (the lab measured every desktop cell correct).
+- [ ] v1.363.2 - Music and Podcasts theatre (desktop): off (grey) = list beside the player; on (red) = wide player, list below; same as a video.
