@@ -583,7 +583,8 @@ and the toolbar iPod button (#music-pocket-btn, phone + a skin with menus). pock
 (the pass was vacuous and was removed). Mutants B1-B9, B11, B12 red by name; B10 (no hand-over clear) survives the unit tests and
 is killed by the real-browser row (tools/pocket-proof/pocket-idle-row.js: MENU path 5 presses vs 4). Real browser 390x844 +
 320x568: 24/24 PASS (cold /, Music, Music -> iPod Main/Music, currentId null, MENU closes, toolbar button reopens, a picked song
-plays, 0 page errors). Deviation: the row is a committed proof tool, not wired into CI.
+plays, 0 page errors; gate r1 correction: the tool prints 26 PASS / `FAILS 0`, 13 rows per size, re-run on the r1 fix tree).
+Deviation: the row is a committed proof tool, not wired into CI.
 W2c falsifier (Playwright; 390x844 + 1440x900; eras 2021/2005; light/dark): Extras chapters row icon x 89 / label x 115 vs Play
 next 13 / 39 (centred), weight 500 (2021) / 700 (2005) vs 400; the pop-out row matched x and height but read 14px/500 vs
 13.33px/400. After: 12/12 cells equal the neighbour's icon x, label x, height 44 and font. Lock
@@ -597,6 +598,60 @@ pocket-skins-menu.test.js:221 'Cider' !== 'Search' once at load ~11 (wall-clock 
 `not ok 1573 - v1.90: the meta is injected exactly once (idempotent) even if re-served` (expected 1, actual 2). Cause: the
 recorder's selector text `meta[name="ft-version"]` matched the test's count of `name="ft-version"`; the recorder now reads
 `meta[name=ft-version]` (same selector, unquoted). The Node 24 run was stopped for the fix; both re-run below.
+Re-run at a041cef1, Node 22.23.1: `# tests 11107` `# pass 11098` `# fail 0` `# cancelled 0` `# skipped 9`; Node 24.20.0:
+`ℹ tests 11107` `ℹ pass 11098` `ℹ fail 0` `ℹ cancelled 0` `ℹ skipped 9` (logs: scratchpad A-suite-v22.23.1.log /
+A-suite-v24.20.0.log).
+
+Gate: CHANGES r1 @a041cef1 - qa
+- WARNING (public/setup.html:837, public/errors.html:113-114, docs/references/log-collection-pattern.md:72-79): the /errors.html fallback cannot reach the home-screen app's log. iOS home-screen apps keep their own storage (pwa-ios-notes.md:161, vpn-slowness-runbook.md:39). Dean's phone fails in the app: the app has no address bar to "go to /errors.html in the address bar", and the same URL in Safari reads Safari's storage and says "No errors recorded on this device" while the app holds 50. Fix the copy (open it in a Safari tab; the home-screen app keeps its own log, reachable only through its Settings), change "on this device" to "in this browser" on errors.html, and record the limit in the pattern doc.
+- WARNING (this plan, section 6, "Release A suites, round 1"): it says "both re-run below" and nothing follows. The green numbers at a041cef1 (tests 11107, pass 11098, fail 0, skipped 9 on 22.23.1 and 24.20.0) are not recorded (section 4 step 2 wants them copied word for word).
+- SUGGESTION (the recorder in all 13 shells): it keeps the LAST 50 only, so a repeating error (a timer or rAF handler throwing each tick) pushes the boot error that caused it out within 50 ticks, and each record reparses and rewrites up to 64000 chars of storage on the main thread. Fold repeats (same msg+src: a count) or keep the first few plus the last ones. "under 64 KB" is 64000 UTF-16 chars, so up to ~125 KB of storage quota.
+- SUGGESTION (docs/CONTRIBUTING.md:287): "seven phone sizes from 320x568 to 430x932 plus two landscapes" says 9 sizes. scenes.js VPM_SIZES holds 7 (5 portrait + 2 landscapes), 33 cells.
+- SUGGESTION (public/js/skin-surface.js:1876-1877): "HOME_HOLD_MS, the wheel's one hold" is wrong: the wheel has the 400 ms scan hold and LETTER_HOLD_MS 1000 too (line 1739's own comment names the scan hold).
+- SUGGESTION (public/js/music.js, `pocketIdle = false` after "a song is up now"): mutant B10 is killed only by tools/pocket-proof/pocket-idle-row.js, which is not in CI, so dropping that line ships green. Add a jsdom row (idle, then a song picked, then MENU x4 docks).
+- NOTE: the brief's base cdd3a07d is behind origin/main fc9fb7c5. All 66 PNGs in `git diff cdd3a07d` are main's PR #93 baseline refresh: this branch changes 0 baselines (`git diff --stat fc9fb7c5..HEAD`: 39 files, no PNG).
+- NOTE: check-markers exits 1 with 14 issues: 12 are older ones in completed/; 2 are this plan's design approval @fc9fb7c5, stale by design once code lands.
+- NOTE, release readiness (section 4), still to do: package.json/lock still 1.363.2; no docs/releases.json 1.364 entry; no ROADMAP Shipped entry; ROADMAP "Small phones" still open and unchanged; no v1.364.0 DEVICE-CHECKS lines (SE on 15.8.5 shows tiles and the bottom bar works; Export error log from the app; center hold both arms and a center TAP still Selects with one tick on the iPhone (the ghost now moves on every center press); Music, Music opens the iPod; the W2c row) and the index count; no LESSONS entry; frontmatter `gate: pending`.
+- Verified by QA at a041cef1: lint 0 errors (6 warnings), lint:ui OK, lint:overlay 0; `--only VPM`: 33 checks - 33 ok, 0 FAIL; 8 target unit files 178/178. The 9 skips are all pre-existing no-ffmpeg rows. No new skips. No em dashes in added lines. /errors.html is behind sign-in (auth-flow row) and renders only via textContent; no CSP; the 30 router functions that lost their Annex-B globals have 0 bare uses outside common.js (public, lib/ytdlp, tests, tools).
+
+Gate: CHANGES r1 @a041cef1 - adversary
+- WARNING (test/unit/ios15-floor.test.js blockFunctionHazards): the census misses two shapes iOS 15 also breaks on. Measured in WebKit 15.4 (/tmp/wk15, webkit-1616): `for (let i = 0; i < 1; i++) { function g() { return i; } }` and `try { throw 5 } catch (err) { function g() { return err; } }` both throw "Can't find variable" (i, err), and the detector returns 0 hits for both (it never adds a loop head's let/const or a catch param to the names). The tree has 0 live hits today (an extended census over the same 95 scripts, both controls detected), so this is the guard, not the app. Add both binding kinds to the walker plus two non-vacuity rows, so the test's "fails on any reintroduction" is true.
+- WARNING (test/unit/pocket-center-hold.test.js, W2a cancel paths): mutant "drop the pointercancel listener" (skin-surface.js armCenterHold) survives 16/16; the helper's `opts.cancel` is never passed. "Drop the pointerup + pointercancel listeners" is killed only by 5b, by accident. The events are MouseEvent with no pointerId (LESSONS 2), so mutant "drop both pointerId filters" also survives 16/16. Also surviving: "drop wheel.isConnected at the fire" and "drop hideLcdNote in destroy". Add a pointercancel-at-300 ms row (no note and no volume at 700 ms, the next tap a normal click) and give the events a pointerId, with a second pointer's move that must NOT cancel.
+- WARNING (public/js/common.js handleDocumentClick, the Music tab tapped again): `navigate('/music?pocket=1')` PUSHES an entry, and stripMusicParam then replaces it with a second `/music`. Measured (Chromium, 390x844, iPhone UA): history.length 4 -> 5; Back with the idle iPod up leaves it up on /music (a dead press); after MENU closes it, Back is dead again. It also rebuilds the view: #view-root is replaced (the toolbar button keeps it). Verified fix: `navigate(pocketUrl, { replace: true })` keeps history.length 4, Back from the iPod lands on Home, pocket-idle-seam stays 9/9. That test does not bind push vs replace either: assert history.length.
+- WARNING (public/login.html:102,104, welcome.html:107,109 vs lib/auth/gate.js ALLOW_EXACT): the signed-out shells load /js/glyph-pool.js and /js/prefs-sync.js, which the gate refuses before login (an old gap). The new recorder logs both on every signed-out visit. Measured in WebKit 15.4: right after sign-in the log held 2 entries, "failed to load script ... glyph-pool.js" and "... prefs-sync.js" on /login, before anything else. Dean's export from a broken phone will open with two false leads. Allowlist both (static client code, the same trust as common.js) or drop them from the two shells, and re-measure that the log is empty after a clean sign-in.
+- NOTE (style.css 8398, test/unit/sticker-menu-chapters-row.test.js): the order lock passes when a LATER higher-specificity rule (`.mms-sticker-menu button.ui-btn.mms-sm-act{ justify-content:center; }`) re-centres the row (5/5 green). Only the probe sees it (LESSONS 6). Known limit of a source lock, disclosed.
+- NOTE (W2b B10): verified the claim. B10 survives the unit rows, and tools/pocket-proof/pocket-idle-row.js kills it at both sizes (MENU path 5 presses vs 4). A jsdom row needs a real pick: `nowPlaying` is set only by playAt, so flipping the player stub's currentId does not reach the normal arm (tried). OK to ship disclosed if no jsdom row lands.
+- NOTE (section 6 W2b): "24/24 PASS" - the committed tool prints 26 PASS / FAILS 0 at a041cef1 (13 rows per size).
+- SUSPICION (device only, W2a): the center hold has no pointer capture and lands on the haptic switch. If iOS's own long-press recognizer (about 500 ms) sends pointercancel before 600 ms, the hold never fires on the iPhone. The MENU hold working on device argues against it but goes through a different path. Device check: hold the center 1 s on Now Playing, with and without a speaker.
+- Verified at a041cef1. WebKit 15.4, iOS 15.8.5 UA, 320x568: base cdd3a07d has 0 cards and the viewRegistry/swipeBackWired ReferenceErrors, and a History tap stays on /; HEAD has 44 watch links on home, a History tap lands on /history, /music renders, 0 page errors. /errors.html 302s to /login when signed out. Hostile messages (`<img onerror>`, `<svg onload>`) render inert on errors.html (window flag 0, 0 images); the Settings export has no DOM sink for the text. meta[name=ft-version] works in a real engine (entries carry v 1.363.2). 13/13 shells carry the recorder. 0 references outside the block to the 30 router functions (AST, common.js; grep, public, lib, test, tools). `--only VPM`: 33 checks - 33 ok, 0 FAIL (57 s). W0: DEVICE-CHECKS 44 -> 37, index 45 -> 38, the four suffixes exact. lint 0 errors / 6 warnings (same on base), lint:ui OK, lint:overlay 0; check-markers 14 issues = base's 12 + this plan's stale design approval @fc9fb7c5 (twice).
+- Process NOTE: section 4 puts the release commit (version, releases.json, DEVICE-CHECKS, LESSONS) after the gate, so it moves the sha off any approval bound here. Each seat must re-engage on that delta.
+
+**Gate r1 fixes** (one commit on a041cef1; mutants on the committed tree recorded below it):
+- adversary W1: `blockFunctionHazards` adds a loop head's let/const (for, for-in, for-of, destructured) and a catch param
+  (plain and destructured) to the names a block function must not read. Non-vacuity rows: 5 new bad shapes, 3 new ok
+  shapes (`for (var ...)`, a catch block function that reads nothing, `catch {}`). WebKit 15.4 (/tmp/wk15): all 5 bad
+  shapes throw "Can't find variable" (i, k, v, err, message), the `for (var ...)` control returns 1. Census over every
+  classic script: 0 hits. Red before: the old walker on the new rows fails `the detector sees the iOS 15 shape`.
+- adversary W2: test/unit/pocket-center-hold.test.js pointer events are PointerEvents with `pointerId` 1 (a foreign
+  finger is 2); rows 10 (pointercancel at 300 ms, then a tap is the tap), 11 (release with no click), 12 (a foreign
+  move), 13 (a foreign pointerup and pointercancel), 14 (the wheel leaves the document mid-hold), 15 (destroy with the
+  note up). 22/22.
+- adversary W3: common.js the second Music-tab tap is `navigate(pocketUrl, { replace: true })`. pocket-idle-seam row 10
+  (the view fetch answers, then: no pushState, the seam URL replaced the entry, history.length unchanged); red with
+  the push restored. Real browser (adversary's w2b-hostile.js, Chromium 390x844): history.length 4 -> 4 on the second tap,
+  Back with the idle iPod up lands on / (home), Back after MENU closes it lands on /; 0 page errors.
+- adversary W4: NOT fixed, STOPPED (the brief's rule). Measured (Chromium, the seeded fixture): signed out, /login GETs
+  both scripts 401 and the log holds the two "failed to load script" entries; signed IN, /login is served (the gate
+  passes it with a session) and loads both (304), prefs-sync runs (`GET /api/prefs` 200, an era tap POSTs /api/prefs),
+  `resolveFolderGlyphClass` is a function. So the two shells DO use them on the signed-in path; dropping them changes
+  that path, and allowlisting them touches lib/auth. Dean's call.
+- qa W1: setup.html's note says to open /errors.html in a Safari tab and that a Home Screen app keeps its own log,
+  reachable only from its own Settings > Export error log; errors.html says "in this browser" and carries the same
+  scope line; log-collection-pattern.md records the limit. boot-error-recorder row `the error log copy is honest about
+  storage`; the two count pins now bind "in this browser".
+- qa W2: the suite re-run lines above; the W2b proof count corrected (26 PASS, `FAILS 0`).
+- SUGGESTIONs folded: CONTRIBUTING.md VPM count (seven sizes: five portrait, two landscape; 33 cells); the skin-surface.js
+  comment no longer calls HOME_HOLD_MS the wheel's one hold; ROADMAP Planned > Chores "The error log folds repeats".
 
 ## 7. Cut or deferred (Dean can overrule each)
 

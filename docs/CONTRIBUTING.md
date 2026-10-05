@@ -284,8 +284,9 @@ Sizes come from tokens, `%`, `vw`/`vh` (with a `vh` fallback declared before any
 and flex/grid that wraps. A new media query is allowed only where the LAYOUT changes (the bottom bar vs the
 sidebar, one column vs two) and is written against the content's need, never tuned to one device's width. No fixed
 pixel widths on containers; touch targets keep 44 px. Existing breakpoints stay as they are until an instrument
-shows one broken. The net is the geometry check `VPM` (`npm run test:geometry -- --only VPM`): seven phone sizes
-from 320x568 to 430x932 plus two landscapes, on home, music browse, watch, the iPod skin and Settings. Scripts are
+shows one broken. The net is the geometry check `VPM` (`npm run test:geometry -- --only VPM`): seven sizes (five
+portrait phones from 320x568 to 430x932, two landscapes), on home, music browse, watch, the iPod skin (portrait
+only) and Settings: 33 cells. Scripts are
 held to iOS 15 (Dean's iPhone SE): `test/unit/ios15-floor.test.js`.
 
 ## The first-class media experience (MANDATORY vocabulary for any media-kind work)

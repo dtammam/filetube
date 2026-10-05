@@ -8,6 +8,8 @@
   thing that does not run. So this page loads NO app script: one inline ES5 script reads the log and exports
   it with its own share -> clipboard -> download fallback. It is the second stated exception to "one helper"
   in docs/references/log-collection-pattern.md. Served by express.static behind the normal sign-in gate.
+  It reads THIS browser's storage only: an iOS Home Screen app keeps its own, so its log is reachable only from
+  its own Settings > Export error log (qa gate r1; docs/references/pwa-ios-notes.md).
 -->
 <html lang="en">
 <head>
@@ -28,6 +30,7 @@
       <button type="button" class="ui-btn ui-btn--primary" id="errors-export-btn"><span class="ui-btn__label">Export</span></button>
       <a class="ui-btn ui-btn--secondary" href="/"><span class="ui-btn__label">Back to FileTube</span></a>
     </div>
+    <p id="errors-scope">This page shows the log of this browser only. An app added to the Home Screen keeps its own log: open its Settings &gt; Troubleshooting &gt; Export error log.</p>
     <p id="errors-status" role="status" aria-live="polite"></p>
     <pre id="errors-text"></pre>
   </main>
@@ -109,8 +112,8 @@
       download(text, name);
     }
     var entries = readEntries();
-    setText('errors-count', entries.length === 0 ? 'No errors recorded on this device.' :
-      entries.length + (entries.length === 1 ? ' error' : ' errors') + ' recorded on this device (the last 50 are kept).');
+    setText('errors-count', entries.length === 0 ? 'No errors recorded in this browser.' :
+      entries.length + (entries.length === 1 ? ' error' : ' errors') + ' recorded in this browser (the last 50 are kept).');
     setText('errors-text', format(entries, new Date()));
     var btn = byId('errors-export-btn');
     if (btn) btn.addEventListener('click', exportLog);

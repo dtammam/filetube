@@ -81,7 +81,11 @@ function boot(o = {}) {
   };
   return { dom, sdom, w, engine, st, panel, wheel, tick, clock, restore: () => Object.assign(global, saved) };
 }
-const ev = (b, type, x, y) => new b.w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y });
+// Pointer events carry a pointerId (LESSONS 2: a MouseEvent has none, so `ev.pointerId !== c.id` is
+// undefined !== undefined and a pointerId filter is never exercised). The finger is pointer 1.
+const ev = (b, type, x, y, id = 1) => (/^pointer/.test(type)
+  ? new b.w.PointerEvent(type, { bubbles: true, clientX: x, clientY: y, pointerId: id, pointerType: 'touch', isPrimary: id === 1 })
+  : new b.w.MouseEvent(type, { bubbles: true, clientX: x, clientY: y }));
 const center = (b) => b.panel.querySelector('[data-skin-select]');
 // a press at the wheel's centre: down on the center button (or the ghost), held ms, then up + the click
 function hold(b, ms, opts = {}) {
@@ -343,5 +347,84 @@ test('W2a (9): the desktop pop-out never arms the hold (a tap there is the tap)'
     center(b).dispatchEvent(ev(b, 'click', 2, 3));
     assert.strictEqual(volOpen(b), false);
     assert.strictEqual(upNext(b), true, 'the release was the plain tap');
+  } finally { b.restore(); }
+});
+
+// ---- gate r1 (adversary W2): every cancel path, each bound by its own row ----
+
+test('W2a (10): pointercancel at 300 ms (iOS took the touch): nothing fires at 700 ms, and the next tap is a normal click (up-next)', () => {
+  const b = boot({ speaker: true });
+  try {
+    hold(b, 300, { cancel: true });
+    b.tick(400);
+    assert.strictEqual(volOpen(b), false, 'the cancel dropped the hold: no volume bar');
+    assert.strictEqual(note(b), null, 'and no note');
+    assert.strictEqual(upNext(b), false, 'a cancel is no click');
+    hold(b, 100);
+    assert.strictEqual(upNext(b), true, 'the next tap is the plain center tap');
+    assert.strictEqual(volOpen(b), false);
+  } finally { b.restore(); }
+});
+
+test('W2a (11): a release at 300 ms with no click (the finger slid off the button): nothing fires at 700 ms', () => {
+  const b = boot({ speaker: true });
+  try {
+    center(b).dispatchEvent(ev(b, 'pointerdown', 2, 3));
+    b.tick(300);
+    b.w.document.dispatchEvent(ev(b, 'pointerup', 2, 3));
+    b.tick(400);
+    assert.strictEqual(upNext(b), false, 'precondition: no click ran, so list mode cannot mask the release');
+    assert.strictEqual(volOpen(b), false, 'the release dropped the hold: no volume bar');
+    assert.strictEqual(note(b), null);
+  } finally { b.restore(); }
+});
+
+test('W2a (12): a second finger (another pointerId) moving 50 px does NOT cancel the hold: the volume opens at 600 ms', () => {
+  const b = boot({ speaker: true });
+  try {
+    center(b).dispatchEvent(ev(b, 'pointerdown', 2, 3));
+    b.tick(200);
+    b.w.document.dispatchEvent(ev(b, 'pointermove', 52, 3, 2));
+    b.tick(500);
+    assert.strictEqual(volOpen(b), true, 'the foreign move was ignored (pointerId filter)');
+  } finally { b.restore(); }
+});
+
+test('W2a (13): a second finger (another pointerId) lifting or cancelling does NOT cancel the hold: the volume opens at 600 ms', () => {
+  for (const type of ['pointerup', 'pointercancel']) {
+    const b = boot({ speaker: true });
+    try {
+      center(b).dispatchEvent(ev(b, 'pointerdown', 2, 3));
+      b.tick(200);
+      b.w.document.dispatchEvent(ev(b, type, 60, 3, 2));
+      b.tick(500);
+      assert.strictEqual(volOpen(b), true, type + ' from pointer 2 was ignored (pointerId filter)');
+    } finally { b.restore(); }
+  }
+});
+
+test('W2a (14): the wheel leaves the document mid-hold (a repaint swapped it): the fire re-check shows no note', () => {
+  const b = boot({ speaker: false });
+  try {
+    center(b).dispatchEvent(ev(b, 'pointerdown', 2, 3));
+    b.tick(200);
+    assert.ok(b.panel.classList.contains('mms-full') && b.panel.querySelector('.ip-lcd-in'), 'precondition: still full, the LCD still there');
+    b.wheel.remove();
+    b.tick(500);
+    assert.strictEqual(note(b), null, 'no note for a wheel that is gone');
+    assert.strictEqual(volOpen(b), false);
+  } finally { b.restore(); }
+});
+
+test('W2a (15): destroy with the LCD note up removes the note and drops its timer', () => {
+  const b = boot({ speaker: false });
+  try {
+    const t0 = liveTimers(b);
+    hold(b, 700);
+    assert.ok(note(b), 'precondition: the note is up');
+    assert.strictEqual(liveTimers(b), t0 + 1, 'precondition: one live timer (the note\'s)');
+    b.engine.destroy();
+    assert.strictEqual(note(b), null, 'destroy took the note down');
+    assert.strictEqual(liveTimers(b), t0, 'and its 1500 ms timer');
   } finally { b.restore(); }
 });

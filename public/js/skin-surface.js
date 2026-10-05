@@ -1873,8 +1873,8 @@
     // ---- v1.364.0 (W2a) HOLD THE CENTER on Now Playing (Dean 2026-10-05, "speaker only"): with a speaker
     // on, the hold opens the volume bar above; with the phone playing itself, a short LCD note says to
     // use the side buttons (iPhone Safari ignores a page's volume writes). Its own small state, NOT a
-    // wheel gesture (a dead-center press never spins). Same hold length as MENU's (HOME_HOLD_MS, the
-    // wheel's one hold). Armed only on Now Playing: never on a menu level (search is one), in list mode,
+    // wheel gesture (a dead-center press never spins). Same hold length as MENU's (HOME_HOLD_MS, 600 ms;
+    // the wheel also has the 400 ms scan hold and LETTER_HOLD_MS). Armed only on Now Playing: never on a menu level (search is one), in list mode,
     // under a takeover, with the bar already up, on an un-rendered panel, or in the desktop pop-out.
     // Cancelled by an 8 px move, the release, pointercancel, any new press, every endWheel arm and
     // destroy. On fire: the wheel's tick, then the release click is swallowed (wheelSuppressClick) so

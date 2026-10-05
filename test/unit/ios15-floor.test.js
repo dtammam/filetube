@@ -71,7 +71,8 @@ function collectIds(p, set) {
 }
 
 // Every function declared in a block of TOP-LEVEL code (never inside a function) of a non-strict script that
-// reads a const/let/class of that block or an enclosing top-level block. Returns [{ fn, line, uses }].
+// reads a const/let/class of that block or an enclosing top-level block, a let/const of an enclosing loop head,
+// or an enclosing catch param. Returns [{ fn, line, uses }].
 function blockFunctionHazards(src) {
   const ast = acorn.parse(src, { ecmaVersion: 2022, sourceType: 'script', locations: true, allowHashBang: true });
   const first = ast.body[0];
@@ -97,8 +98,26 @@ function blockFunctionHazards(src) {
         return;
       }
       case 'IfStatement': visit(node.consequent, lex); visit(node.alternate, lex); return;
-      case 'TryStatement': visit(node.block, lex); if (node.handler) visit(node.handler.body, lex); visit(node.finalizer, lex); return;
-      case 'ForStatement': case 'ForInStatement': case 'ForOfStatement': case 'WhileStatement': case 'DoWhileStatement': case 'LabeledStatement':
+      case 'TryStatement': {
+        visit(node.block, lex);
+        if (node.handler) {
+          // A catch param binds like a let of the catch block (WebKit 15.4: "Can't find variable: err").
+          const names = new Set(lex);
+          collectIds(node.handler.param, names);
+          visit(node.handler.body, names);
+        }
+        visit(node.finalizer, lex);
+        return;
+      }
+      case 'ForStatement': case 'ForInStatement': case 'ForOfStatement': {
+        // A loop head's let/const binds for the body (WebKit 15.4: "Can't find variable: i").
+        const names = new Set(lex);
+        const head = node.type === 'ForStatement' ? node.init : node.left;
+        if (head && head.type === 'VariableDeclaration' && head.kind !== 'var') for (const d of head.declarations) collectIds(d.id, names);
+        visit(node.body, names);
+        return;
+      }
+      case 'WhileStatement': case 'DoWhileStatement': case 'LabeledStatement':
         visit(node.body, lex); return;
       case 'SwitchStatement': for (const c of node.cases) visit({ type: 'BlockStatement', body: c.consequent }, lex); return;
       default: return; // a function, class or expression body is not top-level block code
@@ -134,6 +153,11 @@ test('the detector sees the iOS 15 shape (non-vacuity), in each block kind, and 
     "{ class C {} function f() { return C; } }",
     "if (true) { const a = 1; if (y) { function f() { return a; } } }",
     "switch (k) { case 1: const a = 1; function f() { return a; } }",
+    "for (let i = 0; i < 1; i++) { function f() { return i; } }",
+    "for (const k in o) { function f() { return k; } }",
+    "for (const { v } of list) { function f() { return v; } }",
+    "try { throw 5; } catch (err) { function f() { return err; } }",
+    "try {} catch ({ message }) { function f() { return message; } }",
   ];
   for (const s of bad) assert.strictEqual(blockFunctionHazards(s).length, 1, s);
   const ok = [
@@ -143,6 +167,9 @@ test('the detector sees the iOS 15 shape (non-vacuity), in each block kind, and 
     "if (true) { const a = 1; function f() { return 2; } }",
     "function outer() { if (true) { const a = 1; function f() { return a; } } }",
     "const a = 1; function f() { return a; }",
+    "for (var i = 0; i < 1; i++) { function f() { return i; } }",
+    "try {} catch (err) { function f() { return 1; } }",
+    "try {} catch { function f() { return 1; } }",
   ];
   for (const s of ok) assert.deepStrictEqual(blockFunctionHazards(s), [], s);
 });

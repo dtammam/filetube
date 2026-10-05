@@ -201,11 +201,17 @@ test('W2b musicTabPocketUrl: only the Music tab, only on the same URL, only when
 });
 
 // The REAL router (common.js in jsdom): a tap on the bottom bar's Music tab while /music is up.
-function routerWorld(pocketAvailable) {
+// respond: the view fetch answers with a /music page (the push or replace happens only after it lands).
+function routerWorld(pocketAvailable, respond) {
   const rdom = new JSDOM('<!doctype html><html><body><div id="view-root" data-view="music"></div><nav id="bottom-nav"><a href="/music" class="bottom-nav-item" data-nav="music">Music</a><a href="/" class="bottom-nav-item" data-nav="home">Home</a></nav><a id="other" href="/music">Music elsewhere</a></body></html>', { url: 'http://localhost/music', runScripts: 'outside-only', pretendToBeVisual: true });
   const W = rdom.window;
   const fetches = [];
-  W.fetch = (u) => { fetches.push(String(u)); return new Promise(() => {}); };
+  W.fetch = (u) => {
+    fetches.push(String(u));
+    if (!respond) return new Promise(() => {});
+    const html = '<!doctype html><html><head><title>Music</title></head><body><div id="view-root" data-view="music"></div></body></html>';
+    return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(html) });
+  };
   W.eval(COMMON_SRC);
   W.document.dispatchEvent(new W.Event('DOMContentLoaded'));
   W.history.replaceState({ view: 'music', url: '/music', scrollY: 0, viewState: null }, '');
@@ -236,4 +242,22 @@ test('W2b the Music tab tapped again on /music opens the iPod (navigates to /mus
     await wait(20);
     assert.deepStrictEqual(c.fetches.filter((u) => /^http:\/\/localhost\/music(\?|$)/.test(u)), [], 'a /music link outside the bottom bar is untouched');
   } finally { c.close(); }
+});
+
+test('W2b the second Music-tab tap REPLACES the history entry (no push): history.length unchanged, Back lands where Back from /music would', async () => {
+  const a = routerWorld(true, true);
+  try {
+    const H = a.W.history;
+    const calls = { push: [], replace: [] };
+    const push0 = H.pushState.bind(H); const rep0 = H.replaceState.bind(H);
+    H.pushState = (st, t, u) => { calls.push.push(String(u)); return push0(st, t, u); };
+    H.replaceState = (st, t, u) => { calls.replace.push(String(u)); return rep0(st, t, u); };
+    const len0 = H.length;
+    a.W.document.querySelector('#bottom-nav [data-nav="music"]').dispatchEvent(new a.W.MouseEvent('click', { bubbles: true, cancelable: true, button: 0 }));
+    await wait(20);
+    assert.ok(a.fetches.some((u) => /\/music\?pocket=1$/.test(u)), 'precondition: the tap navigated to the seam');
+    assert.deepStrictEqual(calls.push, [], 'no pushState');
+    assert.ok(calls.replace.some((u) => /\/music\?pocket=1$/.test(u)), 'the seam URL replaced the entry (' + calls.replace.join(',') + ')');
+    assert.strictEqual(H.length, len0, 'history.length unchanged');
+  } finally { a.close(); }
 });

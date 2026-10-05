@@ -507,6 +507,12 @@
 
 ### Chores
 
+- [ ] **The error log folds repeats** _(qa gate r1 SUGGESTION, v1.364.0)_ - the boot error recorder (every shell's first head
+  script, `ft-boot-errors`) keeps only the LAST 50 entries, so an error that repeats (a timer or animation-frame handler throwing
+  every tick) pushes out the boot error that caused it within 50 ticks, and each record re-reads and rewrites up to 64000 chars of
+  storage. Fold an entry with the same message and source into the one before it with a count (or keep the first few plus the last
+  ones). Keep it ES5 and byte-identical across shells (`test/unit/boot-error-recorder.test.js`).
+
 - [ ] **Move the rotate log (and any other) to the log-collection pattern** _(Dean, 2026-10-04, v1.362.2 D6: "not to say we have to
   go reinvent anything right now")_ - [docs/references/log-collection-pattern.md](docs/references/log-collection-pattern.md) lists the
   logs that predate it: the rotate log (in memory, its green panel copies on a tap), the background audio timing log (a Settings

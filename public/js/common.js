@@ -11680,7 +11680,9 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     const pocketUrl = musicTabPocketUrl(anchor.closest('#bottom-nav') ? anchor.getAttribute('data-nav') : null,
       window.location.pathname + window.location.search, target.pathname + target.search,
       !!(SKM && typeof SKM.pocketEntryAvailable === 'function' && SKM.pocketEntryAvailable()));
-    if (pocketUrl) { navigate(pocketUrl); return; }
+    // gate r1: REPLACE, never push - the iPod is the same /music page, so Back from it lands where Back
+    // from /music would (a push left a dead Back press: the idle iPod stayed up on /music).
+    if (pocketUrl) { navigate(pocketUrl, { replace: true }); return; }
     navigate(target.href);
   }
 

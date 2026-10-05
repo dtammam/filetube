@@ -258,6 +258,19 @@ test('setup.html: Export error log and Clear error log are plain Settings button
   assert.strictEqual(exp.closest('details').getAttribute('data-collapse-key'), 'troubleshooting');
 });
 
+test('the error log copy is honest about storage (qa gate r1): /errors.html reads THIS browser only; a Home Screen app keeps its own log', () => {
+  const note = new JSDOM(SETUP_HTML).window.document.getElementById('boot-error-log-note');
+  assert.ok(note, 'the Settings note exists');
+  const t = note.textContent;
+  assert.match(t, /open \/errors\.html in a Safari tab/, 'the fallback names a Safari tab');
+  assert.match(t, /Home Screen keeps its own log/, 'and says the Home Screen app keeps its own');
+  assert.match(t, /only its own Settings > Export error log can reach it/);
+  assert.doesNotMatch(t, /address bar/, 'the Home Screen app has no address bar');
+  const edoc = new JSDOM(ERRORS_HTML).window.document;
+  assert.match(edoc.getElementById('errors-scope').textContent, /this browser only[\s\S]*Home Screen keeps its own log/);
+  assert.doesNotMatch(ERRORS_HTML, /on this device/, 'errors.html never claims the whole device');
+});
+
 test('formatBootErrorLogForExport: the pattern header, then one line per entry oldest first with every field', () => {
   const text = setup.formatBootErrorLogForExport(ENTRIES, { exportedAt: Date.UTC(2026, 9, 5, 11), version: '1.364.0', userAgent: 'UA/15', standalone: true });
   const lines = text.split('\n');
@@ -337,7 +350,7 @@ function errorsPage(navStub, entries) {
 test('/errors.html: shows the count and the log, and Export shares a .txt File inside the click', async () => {
   const { nav, calls } = shareNav();
   const { w, dom } = errorsPage(nav, ENTRIES);
-  assert.match(w.document.getElementById('errors-count').textContent, /^2 errors recorded/);
+  assert.match(w.document.getElementById('errors-count').textContent, /^2 errors recorded in this browser /);
   assert.match(w.document.getElementById('errors-text').textContent, /failed to load script at \/js\/music\.js/);
   w.document.getElementById('errors-export-btn').dispatchEvent(new w.MouseEvent('click', { bubbles: true }));
   assert.strictEqual(calls.length, 1, 'share ran inside the click');
@@ -357,7 +370,7 @@ test('/errors.html: no file sharing -> the clipboard; neither -> a download', as
   assert.match(a.w.document.getElementById('errors-status').textContent, /^Copied/);
   a.dom.window.close();
   const b = errorsPage({}, []);
-  assert.match(b.w.document.getElementById('errors-count').textContent, /No errors recorded/);
+  assert.match(b.w.document.getElementById('errors-count').textContent, /^No errors recorded in this browser\.$/);
   b.w.document.getElementById('errors-export-btn').dispatchEvent(new b.w.MouseEvent('click', { bubbles: true }));
   assert.strictEqual(b.clicks.length, 1);
   assert.match(b.clicks[0], /^ft-errors-\d{8}-\d{6}\.txt$/);

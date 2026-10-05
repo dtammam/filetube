@@ -827,14 +827,14 @@
       <details class="setup-box setup-sec sub-collapsible" data-collapse-key="troubleshooting" data-md-icon="wrench" data-md-group="Advanced" open>
         <summary>Troubleshooting</summary>
         <p class="setup-intro">Diagnostics for when something on THIS device misbehaves. Nothing here changes how FileTube works - these tools only observe and report. All device-local.</p>
-        <!-- v1.364.0 (W1): the boot error log. Always on (a broken phone may never reach this page to flip a switch): every shell's first head script records script errors to localStorage 'ft-boot-errors'. /errors.html exports the same log without the app's scripts. -->
+        <!-- v1.364.0 (W1): the boot error log. Always on (a broken phone may never reach this page to flip a switch): every shell's first head script records script errors to localStorage 'ft-boot-errors'. /errors.html exports the same browser's log without the app's scripts; a Home Screen app keeps its own storage, so its log is reachable only from its own Settings (qa gate r1). -->
         <div class="setup-group">
           <h3 class="setup-heading">Error log</h3>
           <div class="action-bar">
             <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" id="boot-error-log-export-btn"><span class="ui-btn__label">Export error log</span></button>
             <button type="button" class="ui-btn ui-btn--secondary ui-btn--sm" id="boot-error-log-clear-btn"><span class="ui-btn__label">Clear error log</span></button>
           </div>
-          <p class="setup-note">FileTube always keeps the last 50 script errors on this device, so a page that will not load can be fixed. Export error log shares them as a text file (or copies them where file sharing is missing). If Settings itself will not open, go to /errors.html in the address bar instead. Device-local, never sent anywhere.</p>
+          <p class="setup-note" id="boot-error-log-note">FileTube always keeps the last 50 script errors in this browser, so a page that will not load can be fixed. Export error log shares them as a text file (or copies them where file sharing is missing). If Settings itself will not open in Safari, open /errors.html in a Safari tab instead. An app added to the Home Screen keeps its own log, separate from Safari's: only its own Settings > Export error log can reach it. Kept on this phone or computer, never sent anywhere.</p>
         </div>
         <div class="setup-group">
           <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
