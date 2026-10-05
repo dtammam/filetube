@@ -4806,6 +4806,7 @@ html:has(> body.ft-audio-expanded),
   }
 }
 #settings-menu .settings-menu-item::before { font-weight: var(--fw-semibold); }
+#settings-menu #chapters-edit-btn[hidden] { display: none; } /* v1.363.1: the row's display:flex would otherwise beat [hidden] */
 #settings-menu #speed-btn::before { content: "Playback speed"; }
 #settings-menu #cc-btn::before { content: "Subtitles"; }
 #settings-menu #pip-btn::before { content: "Picture-in-picture"; }
