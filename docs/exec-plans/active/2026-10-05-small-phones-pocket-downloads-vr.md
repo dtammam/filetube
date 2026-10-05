@@ -4,9 +4,9 @@ harness: v2 · lean
 branch: one branch per release (named in section 3)
 anchor: spec
 status: Approved @fc9fb7c5
-next: Release B (W3 built on feat/v1.365.0-oneoff-trace @11f7f784): rebase on main after v1.364.0, FULL gate + security-brief; then Release C (W4 @20dfa7a8)
+next: Release C (W4 on feat/v1.366.0-vr-360 @20dfa7a8): rebase on main after v1.365.0 (route census 264 -> 265), both suites, FULL gate + security-brief
 design: Approved 2026-10-05 @fc9fb7c5 (Dean's Q&A in the kickoff; every ruling in section 1 is his answer)
-gate: Release A APPROVED r2 @a3402a93 (adversary, qa, security-brief); B and C pending
+gate: Release A APPROVED r2 @a3402a93; Release B APPROVED r2 @b8b3ca7d (adversary, qa, security-brief); C pending
 ---
 
 # Small phones (iOS 15), the iPod center hold and a way into the iPod, stuck-or-stale downloads, VR / 360
@@ -840,6 +840,47 @@ Gate: CHANGES r1 @fc26275c - adversary
   G1/G3 a page fault reads offline; G2/G4 a 401 reads "Can't reach"; G5 no narrow-pill fallback; H1 inherited
   lookup in cancel. C3 is killed by "gate r1: formatDownloadRowAge, every rule"; in the DOM test it is MASKED, as
   real batches carry state 'running', which the state rule never ages (a redundant guard, LESSONS 2).
+
+Gate: APPROVED r2 @b8b3ca7d - security-brief
+- Gap, unchanged: no Bash. I did not run git diff, git rev-parse or any test. Everything below is a code read of the w3 worktree, taken to be at b8b3ca7d.
+- r1 INFO 1 (cancel prototype keys): fixed as prescribed, verified. lib/ytdlp/index.js:6573-6576 now uses `Object.prototype.hasOwnProperty.call(cancelSnapshot.oneShots, jobId)` for both the trace record and the no-child cancel branch (`entry = knownEntry`). A prototype name reads as null, so it writes no trace line, sets no latch and makes no phantom row; the route falls through to 404.
+- r1 INFO 2 (.tmp orphans): fixed, verified. In lib/ytdlp/oneshotTrace.js:128-134, trim() unlinks its tmp in a catch and rethrows; trimSafe counts the failure. When the count reaches `maxLines * 2` (4000), record() tries one trim and drops the event if that fails, so the file stays bounded while trims keep failing. With URLs capped at 2048 chars, that is about 4000 lines of about 2 KB on disk.
+- Pinning (keepMask, 94-109), verified bounded: pinned lines are capped at `floor(max/4)` = 500, chosen newest first, and the total is still capped at `max`. Neither the file nor the export can grow past the cap. A user with download rights who queues hundreds of jobs can push an older hung job's pinned lines out of the 500 slots. That user can already disrupt the queue, and the cost is diagnostic quality, not data or secrets. INFO. A job id that never gets gate-leave (dropped at boot) stays "open" and keeps up to its pinned lines, inside the same 500 bound. INFO, not security.
+- Test seams, verified unreachable from a request. setLimitsForTests, setProgressMsForTests and setFsForTests have no caller outside test/ (searched everything except test/; only their definitions and exports in oneshotTrace.js). They take no request input, and no route touches them. traceGateTask (index.js:4298) is called only at 4266 with a server-made jobId. Exporting it gives a request no new surface. progressDelayMs reads only the module constant in production.
+- New fields: progress `exited` (boolean) and `msSinceExit` (number or null), run.js:1361-1367. No text from the child.
+- The "Signed out - reload to sign in" text is a fixed string, picked when the poll error has `status === 401` (common.js:15362, 16224; subscriptions.js:2893). It goes through the same textContent paths as r1. It reveals nothing beyond the 401 the browser already sees.
+- boot-requeue host-only and Cache-Control: the code is unchanged from r1 (verified then). The tests the coordinator says were added are not runs I made.
+- Nothing new found.
+
+Gate: APPROVED r2 @b8b3ca7d - qa
+- Measured on b8b3ca7d (Node 22.23.1; node_modules symlinked, then removed): the 12 W3, status, census, one-off and progress files gave `# tests 188` `# pass 188` `# fail 0` `# skipped 0`. eslint on the 5 touched code files: `0 errors, 6 warnings` (pre-existing). 0 em dashes in the added lines. I did not re-run the full suites; the numbers above them are the Architect's.
+- W1 fixed as prescribed. Each event named in r1 now has its own test: the heartbeat (plus the exited/back-off/latest-output rows), sweep, boot-requeue (asserts `host` and no `http`, video id or token in the raw file), the cancel kill, the timeout kill, and gate-leave ok:false through the exported `traceGateTask`. The builder's mutants D1-D7 were killed by name. I ran the tests but not the mutants.
+- W2 fixed differently, per the main session's ruling, through one rule in common.js `formatDownloadRowAge`, used by both surfaces. Only a downloading row that is not merging or converting reads "updated N ago". A queued row reads "waiting N". Batches, terminal rows, an offline screen and a missing `now` show no age. Evaluated: progress.js sets `phase` only to 'merging' (Merger, Fixup) or 'converting' (ExtractAudio, VideoConvertor, VideoRemuxer), so both silent ffmpeg phases are covered, and the phase stays set until a Destination line resets it. The window after the child closes, before `done`, is bounded (a 30 s persist race plus the time-bounded avatar probe), so a healthy single-file job rarely passes 60 s there. The copy is true. The ROADMAP 325 wording still lands in the release commit, and should now name "a Downloading row with an age" and "waiting N".
+- S1 fixed as prescribed. The age is out of the signature and `updateOneShotAgesInPlace` rewrites only the span; a test checks that the Dismiss node survives an age tick.
+- S2 fixed. A `reached` flag counts a throw after a good poll (`downloadChipPollFaultCount`, `subsStatusPollFaultCount`). A 401 reads "Signed out - reload to sign in", which is true: the session gate answered 401.
+- S3 fixed: the copy is now "last reached N ago".
+- S4 fixed for width. Where the sentence does not fit, the pill falls back to "Can't reach FileTube" with the sentence in a `title`; the builder measured 212 px slots at 320 and 390. Disclosed for Dean: on a phone a tooltip never shows, so the "last reached" age is not visible there. The opacity point is deferred to Dean, as stated in the fixes entry.
+- Test seams: `setProgressMsForTests`, `setLimitsForTests` and `setFsForTests` have no caller outside test/ (grep of lib, server.js and public). `traceGateTask` is called only at index.js:4266 with a server-made jobId. None takes request input. No production path reaches them.
+- Delta checked: keepMask caps pinned lines at max/4 and the total at max, keeping file order; the reader applies the same mask. The heartbeat's setTimeout chain is cleared by `clear()` on close and error, and nothing reschedules after a clear. The hard cap of 2x stops appends while trims fail. The cancel own-property lookup also feeds the no-child branch. The /subscriptions offline transition re-renders the rows without ages.
+- S5 SUGGESTION (new, comment accuracy): lib/ytdlp/client/subscriptions.js:3369 still says `"Can't reach FileTube, last checked Ns ago"`; the copy is now "last reached". Fold it into the release commit.
+- INFO: a job that never gets a gate-leave (process killed, requeue dropped) stays "open" and keeps its pinned lines inside the 500-line bound (security-brief agrees). The cost is diagnostic only.
+
+Gate: APPROVED r2 @b8b3ca7d - adversary
+- Measured (my runs on a /tmp git-archive of b8b3ca7d, Node 22.23.1; the worktree untouched apart from this entry): the 8 W3/status/census files `# tests 78` `# pass 78` `# fail 0`, exit 0. Mutants on the committed tree: my r1 survivors X1, X3, X7, X9, X18 and X19 are all now red by name. Of 22 new mutants on the r1 fixes, 21 are red by name and 1 survives (R14, below).
+- W1 fixed as prescribed. My r1 stub (a grandchild holds the pipes 3 s), through the real route: `child-exit ms=37`, `child-close msAfterExit=2999`. X1 (exit recorded on 'close') now fails the W1 integration test and both W2 heartbeat tests.
+- W2 fixed (back-off + `exited`/`msSinceExit` + pinning). Sped up through the real route (setProgressMsForTests(1), maxLines 200, an 8 s grandchild hang), read MID-HANG: the file holds 200 lines; queued, both state lines, gate-wait, gate-enter, spawn and child-exit are all kept, plus 193 beats (the last one `exited=true msSinceExit=7989`). Once the job closes, its old lines age out normally (by design). Trim abuse, measured with keepMask at the real cap: 600 never-closing jobs x 5 pinned lines plus a live hang plus 3000 newer lines -> 2000 kept, 494 stale pins (quota 500), the hang's 5 lifecycle lines kept, the newest 1500 lines and the last line kept; a flood of 3000 open jobs -> 2000 kept, newest kept, oldest dropped. The tail is never starved below 3/4 of the cap. Back-off: R18 (no back-off) is red.
+- W3 fixed per the main-session ruling, on both surfaces. Chip: after 6 min offline the row age is '' under "Can't reach FileTube, last reached 6 min ago"; a reheat batch '', queued `waiting 5 min`, merging '', downloading `updated 5 min ago`. R1-R7 (offline ages, no-now device clock, merging ages, queued says "updated", batch ages; chip and /subscriptions) are all red.
+- W4 fixed: X3, X9, X18 and X19 are red, and so are the sweep, cancel-kill, timeout-kill and gate-leave ok:false records (builder D3-D7, my survivors X10-X14).
+- W5 fixed. My r1 ENOSPC fs, 2500 events: 0 `.tmp` files, the file stops at 4000 lines (2x cap), errors 2500. After the disk frees, one event trims it to 2001. R20 (no unlink) and R21 (no hard cap) are red.
+- N1 fixed (R11/R12 red). N2 fixed (ADV3: no `now` and a phone 10 min fast -> no age). N3 fixed: cancel of toString, constructor, hasOwnProperty, __proto__ and valueOf -> 404, 0 trace lines, status oneShots `[]`; R22 is red.
+- 401 path, real server: signed-out GET /api/subscriptions/status and /health both 401 JSON (no redirect), and so is a bogus cookie. So "Signed out - reload to sign in" is reachable; R8/R9 are red.
+- Narrow pill, my own real-browser probe (Chromium, real server, admin session, status routed to fail): at 320 and 390 the text is "Can't reach FileTube" (133 of 133 px) with the full sentence as the title, and the 401 text is 190 of 190 px; at 1280 the full sentence is 270 of 270 px; 0 page errors at all six probes. This matches the builder's numbers. R10 is red.
+- W6 WARNING (safe to ship disclosed) - R14 survives: the pin quota `Math.floor(max / 4)` -> `max` passes all 21 trace unit tests. So the anti-starvation bound has no test. The behaviour is correct, as measured above. Add one test (more open-job lines than max/4, assert the newest 3/4 kept); list it as a v1.365.0 gate leftover in ROADMAP.
+- N6 NOTE (the ruling, for Dean) - a merging or converting row never ages. A wedged ffmpeg merge, the most plausible real hang, reads "Merging..." forever with no stuck signal on screen; only the trace shows it (heartbeats with `exited`). A longer threshold for those phases (for example 10 min) would keep the signal.
+- N7 NOTE (reasoned, not measured) - after the child closes, a healthy row can sit `downloading` with phase null through the avatar probe (up to 30 s) and the meta persist (up to 30 s), so it can briefly read "updated 61s ago".
+- N8 NOTE - a job whose pending entry is dropped at requeue (invalid) never gets gate-leave or a terminal state in the trace, so its lines stay pinned forever. That is bounded by the quota (measured above).
+- N9 NOTE - on a phone the offline pill shows only the bare words; "last reached N ago" sits in a title tooltip that touch cannot open.
+- Tree: before writing, git status showed only the other seats' uncommitted appends to this file. I removed all my sandboxes and probe dirs. The other /tmp/filetube-adv-* dirs are not mine and I left them alone.
 
 ## 7. Cut or deferred (Dean can overrule each)
 
