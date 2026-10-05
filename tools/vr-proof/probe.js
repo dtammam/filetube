@@ -95,7 +95,16 @@ function colourName([r, g, b]) {
       vrRowHidden: (document.getElementById('watch-vr-row') || {}).hidden,
       typeBtnHidden: (document.getElementById('video-type-btn') || {}).hidden,
     }));
-    const openCog = async () => { await p.hover('#player-wrapper'); if (await p.evaluate(() => document.getElementById('settings-menu').hidden)) await p.click('#settings-btn'); await p.waitForTimeout(200); };
+    const openCog = async () => {
+      // The bar auto-hides and the cog toggles: poll until the menu is really open (the probe's own timing, not product).
+      for (let k = 0; k < 6; k++) {
+        if (await p.evaluate(() => !document.getElementById('settings-menu').hidden)) return;
+        await p.mouse.move(640, 300); await p.hover('#player-wrapper');
+        await p.click('#settings-btn', { timeout: 3000 }).catch(() => {});
+        await p.waitForTimeout(300);
+      }
+      throw new Error('the cog would not open');
+    };
     const tapSwitch = async () => { await openCog(); await p.click('#watch-vr-row'); await p.waitForTimeout(900); await p.keyboard.press('Escape').catch(() => {}); };
 
     // flat: the switch stored ON before the page loads.
@@ -149,10 +158,10 @@ function colourName([r, g, b]) {
     // pickFlat: the switch on again, then the owner's Video type > Flat, then Auto.
     await tapSwitch();
     const before = await state();
-    await openCog(); await p.click('#video-type-btn'); await p.waitForTimeout(400);
+    await openCog(); await p.click('#video-type-btn'); await p.waitForTimeout(900);
     await p.click('.ui-sheet.is-open .ui-row:has-text("Flat")'); await p.waitForTimeout(900);
     const afterFlat = await state();
-    await openCog(); await p.click('#video-type-btn'); await p.waitForTimeout(400);
+    await openCog(); await p.click('#video-type-btn'); await p.waitForTimeout(900);
     await p.click('.ui-sheet.is-open .ui-row:has-text("Auto")'); await p.waitForTimeout(1200);
     const afterAuto = await state();
     out.rows.pickFlat = { before, afterFlat, afterAuto, stored: await p.evaluate(() => fetch('/api/videos/pano').then((r) => r.json()).then((j) => ({ projection: j.projection, projectionOverride: j.projectionOverride }))) };

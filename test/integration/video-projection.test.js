@@ -112,10 +112,13 @@ test('REACHABILITY: the real fixtures through the real scan land `projection` fr
   // Rotation still parses through the grown args: the 512x256 coded frame with a 90 degree flag is 256x512.
   assert.deepStrictEqual([meta[ids['rot90.mp4']].width, meta[ids['rot90.mp4']].height], [256, 512]);
 
-  // An unchanged file is never re-probed and keeps its value (the reuse arm).
+  // An unchanged file is never re-probed and keeps its value (the reuse arm). A NEW file joins first so this scan
+  // SAVES (an unchanged-only scan writes nothing, which would hide a reuse arm that dropped the key).
+  fs.copyFileSync(path.join(FIX, 'pano_360.mp4'), path.join(mediaDir, 'new_360.mp4')); // (no recording: its probe fails, it still indexes)
   const n = probeCalls().length;
   await scanDirectories();
-  assert.strictEqual(probeCalls().length, n, 'no re-probe of unchanged files');
+  assert.strictEqual(probeCalls().length, n + 1, 'only the new file is probed; the unchanged ones are not');
+  assert.ok(loadDatabase().metadata[getMediaId(path.join(mediaDir, 'new_360.mp4'))], 'the new file was indexed (this scan saved)');
   assert.strictEqual(loadDatabase().metadata[ids['vr-360-v2.mp4']].projection, '360', 'kept across a rescan');
 });
 
