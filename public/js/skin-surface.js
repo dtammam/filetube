@@ -3122,7 +3122,6 @@
       // a press on the dead center (the Select button) never spins the wheel: its tap passes through.
       // v1.364.0 (W2a): on Now Playing it may arm the center HOLD (its own small state, never a spin).
       if (Math.hypot(e.clientX - cx, e.clientY - cy) < r.width * DEAD_FRAC) { armCenterHold(e, wheel); return; }
-      clearCenterHold(); // a ring press (a spin or a zone) is never also a center hold
       var st = {
         wheel: wheel, id: e.pointerId, captured: false, moved: false,
         // Now Playing is never idle: the wheel SCRUBS the timeline on EVERY surface

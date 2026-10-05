@@ -10405,6 +10405,17 @@ function isSameLocationNav(currentPathAndSearch, targetPathAndSearch) {
   return typeof targetPathAndSearch === 'string' && currentPathAndSearch === targetPathAndSearch;
 }
 
+// v1.364.0 (W2b, Dean: "within 1 to 2 taps get to the click ipod view. i may want to use my phone as a
+// remote and not choose a song"): the bottom bar's Music tab tapped AGAIN while /music is already up
+// (today a same-URL no-op) opens the iPod through its one seam, /music?pocket=1, when the iPod can
+// open with no song on this device (a phone whose skin has the Pocket menus). Any other tab, a
+// different URL, or no iPod: null (the tap is what it was). Pure, for node:test.
+function musicTabPocketUrl(navKey, currentPathAndSearch, targetPathAndSearch, pocketAvailable) {
+  if (navKey !== 'music' || !pocketAvailable) return null;
+  if (!isSameLocationNav(currentPathAndSearch, targetPathAndSearch)) return null;
+  return '/music?pocket=1';
+}
+
 // v1.45.0 (T2): the depth the NEXT history entry should carry. A pushState adds
 // one in-app level behind the new entry (current + 1); a replaceState keeps the
 // current entry's own depth (it replaces in place, adding no level). `current`
@@ -11658,6 +11669,12 @@ if (typeof window !== 'undefined') {
       else goHomeControl();
       return;
     }
+    // v1.364.0 (W2b): the Music tab tapped again on /music opens the iPod (musicTabPocketUrl)
+    const SKM = window.FileTubeMusicSkins;
+    const pocketUrl = musicTabPocketUrl(anchor.closest('#bottom-nav') ? anchor.getAttribute('data-nav') : null,
+      window.location.pathname + window.location.search, target.pathname + target.search,
+      !!(SKM && typeof SKM.pocketEntryAvailable === 'function' && SKM.pocketEntryAvailable()));
+    if (pocketUrl) { navigate(pocketUrl); return; }
     navigate(target.href);
   }
 
@@ -17392,7 +17409,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // down while the dialog is open), so it is exported here too rather than
     // reading as an unused local.
     isShortcutsModalOpen,
-    shouldDockOnTransition, isSameLocationNav, toPathAndQuery, isStaleNavGeneration,
+    shouldDockOnTransition, isSameLocationNav, musicTabPocketUrl, toPathAndQuery, isStaleNavGeneration,
     // v1.45.0 (T2): incremental-pop Home helpers.
     nextHistoryDepth, resolveHomeButtonAction, isHomeRootTarget,
     // v1.362 (M7): the minimize landing (the last browse level).

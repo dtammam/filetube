@@ -172,6 +172,19 @@ test('W2a (4): hold, then move 12 px before 600 ms: nothing fires, and the relea
   } finally { b.restore(); }
 });
 
+test('W2a (4b): a second finger on the ring before 600 ms cancels the pending hold (any new press drops it)', () => {
+  const b = boot({ speaker: true });
+  try {
+    center(b).dispatchEvent(new b.w.MouseEvent('pointerdown', { bubbles: true, clientX: 2, clientY: 3 }));
+    b.tick(300);
+    const nz = b.panel.querySelector('[data-skin-next]');
+    nz.dispatchEvent(new b.w.MouseEvent('pointerdown', { bubbles: true, clientX: 100, clientY: 0 }));
+    b.tick(400);
+    assert.strictEqual(volOpen(b), false, 'the ring press cancelled the center hold');
+    assert.strictEqual(note(b), null);
+  } finally { b.restore(); }
+});
+
 test('W2a (5a): on a MENU level a 700 ms hold behaves exactly as a tap (Select drills, no volume, no note)', () => {
   const b = boot({ speaker: true });
   try {
