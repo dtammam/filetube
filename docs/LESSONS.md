@@ -107,6 +107,8 @@ Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#3-locks-censuses-and
 
 - **A value baked into a LONG-LIVED connection (an SSE URL) is frozen at connect: a rename/relabel must reopen it.** The label reached the server only when the stream opened, so a Settings rename left the phone's Play on... on the old name while the tab's own label was already new. Guard: a two-browser proof that changes the value MID-SESSION and reads the OTHER side; a test per path (same tab, `storage` event from another tab), each mutated red.
 
+- **A poll that fails silently freezes a row that looks live: show the age and the offline state, and make the age mean what it says.** Guard: one age rule for every surface on the SERVER's clock (the snapshot's `now`), shown only where silence is abnormal (Downloading; Queued says "waiting"; silent phases like a merge and offline screens show none); a failed poll shows "Can't reach ..." until the first good poll clears it (both axes, tested from a POPULATED state); a code fault after a good poll is never shown as offline; a failed probe releases its latch; ticking text stays out of a list's render signature. And a trace for a hang must survive the hang: a capped log keeps a still-open job's lifecycle lines, and its heartbeat backs off. (v1.365.0)
+
 Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#4-spa-shell-client-lifecycle-and-async-ui-state).
 
 ## 5. Media playback, queue and chapters

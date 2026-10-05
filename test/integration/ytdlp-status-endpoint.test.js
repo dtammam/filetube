@@ -290,12 +290,18 @@ test('GET /api/subscriptions/status returns empty namespaces when nothing has ru
   const deps = makeFakeDeps();
   const { base, close } = await startTestApp(deps, enabledConfig());
   try {
+    const before = Date.now();
     const res = await fetch(`${base}/api/subscriptions/status`);
     assert.equal(res.status, 200);
     // v1.31 P2/P6: `breaker` (null when never tripped) and `ytdlpVersion`
     // (null until the cache's first probe resolves) are additive fields
-    // present on every snapshot.
-    assert.deepEqual(await res.json(), { subscriptions: {}, oneShots: {}, breaker: null, ytdlpVersion: null });
+    // present on every snapshot. v1.365.0 (W3): so is `now`, the server's clock (ISO), which the
+    // chip and /subscriptions age a running row on (now - updatedAt).
+    const body = await res.json();
+    assert.match(body.now, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/, 'the snapshot carries the server clock as ISO');
+    const nowMs = Date.parse(body.now);
+    assert.ok(nowMs >= before - 1000 && nowMs <= Date.now() + 1000, 'now is the server clock at the response');
+    assert.deepEqual(body, { subscriptions: {}, oneShots: {}, breaker: null, ytdlpVersion: null, now: body.now });
   } finally {
     await close();
   }
