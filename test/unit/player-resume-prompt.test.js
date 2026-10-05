@@ -183,6 +183,40 @@ test('Ask: a pointer touch or a key cancels the countdown and the prompt STAYS (
   }
 });
 
+test('Ask: the countdown\'s capture listeners are balanced (a cancel by tap, by key, and by close each remove exactly what the start added)', async () => {
+  for (const how of ['pointer', 'key', 'close']) {
+    const r = realPlayerRealm(754, ASKED);
+    try {
+      const net = { pointerdown: 0, keydown: 0 };
+      const proto = r.w.EventTarget.prototype;
+      const add = proto.addEventListener; const rem = proto.removeEventListener;
+      const cap = (o) => o === true || !!(o && o.capture);
+      proto.addEventListener = function (t, fn, o) { if (t in net && cap(o)) net[t] += 1; return add.call(this, t, fn, o); };
+      proto.removeEventListener = function (t, fn, o) { if (t in net && cap(o)) net[t] -= 1; return rem.call(this, t, fn, o); };
+      await loadAndSettle(r);
+      const armed = { ...net };
+      if (how === 'pointer') r.$('#player-wrapper').dispatchEvent(new r.w.Event('pointerdown', { bubbles: true }));
+      else if (how === 'key') key(r, 'x');
+      else r.player.close();
+      assert.strictEqual(armed.pointerdown - net.pointerdown, 1, how + ': one pointerdown capture listener removed');
+      assert.strictEqual(armed.keydown - net.keydown, 1, how + ': one keydown capture listener removed');
+    } finally { r.close(); }
+  }
+});
+
+test('Ask: a countdown tick that finds the prompt hidden (by any path) cancels itself and fires nothing', async () => {
+  const r = realPlayerRealm(754, ASKED);
+  try {
+    await loadAndSettle(r);
+    const plays = r.media.plays;
+    r.$('#resume-overlay').hidden = true;
+    r.tick(10);
+    assert.strictEqual(r.liveTimers(), 0, 'the timer is gone');
+    assert.strictEqual(r.$('#media-player').currentTime, 0, 'nothing fired');
+    assert.strictEqual(r.media.plays, plays, 'no play');
+  } finally { r.close(); }
+});
+
 test('Ask + action Start from beginning: the Start button counts down and its firing seeks 0 and clears the saved position', async () => {
   const r = realPlayerRealm(754, { ...ASKED, filetube_resume_countdown_action: 'beginning' });
   try {
