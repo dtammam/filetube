@@ -1149,6 +1149,16 @@ if (typeof module !== 'undefined' && module.exports) {
   function setAutoplayEnabled(on) {
     try { window.localStorage.setItem(AUTOPLAY_STORAGE_KEY, on ? '1' : '0'); } catch (_) { /* best-effort */ }
   }
+  // v1.368.0 (R5, R16): the Shuffle MODE - synced like Autoplay (prefs-sync + the server allowlist),
+  // default OFF (only '1' is on). The one-shot Shuffle buttons (Shuffle all, album / artist Shuffle,
+  // Shuffle Songs, ?mode=shuffle) never write it.
+  var SHUFFLE_STORAGE_KEY = 'ft-music-shuffle';
+  function shuffleEnabled() {
+    try { return window.localStorage.getItem(SHUFFLE_STORAGE_KEY) === '1'; } catch (_) { return false; }
+  }
+  function setShuffleEnabled(on) {
+    try { window.localStorage.setItem(SHUFFLE_STORAGE_KEY, on ? '1' : '0'); } catch (_) { /* best-effort */ }
+  }
   // The session's no-repeat memory: every id loadTrack has played. Bounded: a session
   // that somehow plays >2000 tracks starts forgetting the oldest - fine, "no repeats"
   // is a taste rule, not an invariant (and the picker's RECYCLE arm relaxes it before
@@ -1281,6 +1291,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var actionsMenu = root.querySelector('#music-actions-menu');
     var loopBtn = root.querySelector('#music-loop-btn');       // v1.284: desktop playback-mode toggles
     var autoplayBtn = root.querySelector('#music-autoplay-btn');
+    var shuffleModeBtn = root.querySelector('#music-shufflemode-btn'); // v1.368.0: the Shuffle mode (not #music-shuffle-btn, the one-shot Shuffle all)
     var jumpbackHost = root.querySelector('#music-jumpback');
     reserveDockSpace(root, signal);
     if (!content) return;
@@ -1426,6 +1437,7 @@ if (typeof module !== 'undefined' && module.exports) {
         loopBtn.setAttribute('aria-label', lbl);
       }
       if (autoplayBtn) autoplayBtn.setAttribute('aria-pressed', autoplayEnabled() ? 'true' : 'false');
+      if (shuffleModeBtn) shuffleModeBtn.setAttribute('aria-pressed', shuffleEnabled() ? 'true' : 'false');
     }
     // The toggles write the SHARED setting (ft-loop / ft-music-autoplay), which every other
     // surface (enforcement, watch page, skin sticker, pop-out) reads live - so no cross-surface
@@ -1448,6 +1460,19 @@ if (typeof module !== 'undefined' && module.exports) {
         applyAutoplayToggle(!autoplayEnabled()); // the ONE toggle seam (it reflects the modes too)
       }, { signal });
     }
+    if (shuffleModeBtn) {
+      shuffleModeBtn.addEventListener('click', function () {
+        applyShuffleToggle(!shuffleEnabled()); // the ONE Shuffle seam (it reflects the modes too)
+      }, { signal });
+    }
+    // v1.368.0: Shuffle flipped in ANOTHER tab of this browser reorders this tab's queue now (a flip
+    // that arrives through prefs-sync from another device lands in storage silently; the next
+    // track's registerTrackNav reconciles it - see reconcileShuffle).
+    window.addEventListener('storage', function (e) {
+      if (!e || e.key !== SHUFFLE_STORAGE_KEY) return;
+      reconcileShuffle(navIndex);
+      reflectPlaybackModes();
+    }, { signal });
     // The initial paint is the unconditional updateNowPlayingPanel() at the end of init(): it
     // calls reflectPlaybackModes() before its track/expanded early return, so no explicit paint
     // is needed here - a redundant one would be a line no test could distinguish.
@@ -1771,6 +1796,11 @@ if (typeof module !== 'undefined' && module.exports) {
             enabled: autoplayEnabled,
             onToggle: function () { applyAutoplayToggle(!autoplayEnabled()); }, // the ONE toggle seam (music follow-ups item 0)
           },
+          // v1.368.0: the Shuffle mode row (beside Loop), the same seam as the desktop chip.
+          shuffle: {
+            enabled: shuffleEnabled,
+            onToggle: function () { applyShuffleToggle(!shuffleEnabled()); },
+          },
           // v1.270 BRICK (Dean: "almost a little easter egg"). The VIEW owns the
           // question the engine must not: which skins have a wheel to play it with.
           // The Click skins only - the flat skins have no wheel.
@@ -2048,7 +2078,10 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!autoplayEnabled()) return; // re-checked at the hand-off (primed while on, switched off since): no station
       var startIdx = queue.length;
       markAutoplayPicks(picks);
+      var preStation = queue;
       queue = queue.concat(picks); // the album is the tail: append the station (existing rows' data-index unchanged)
+      shuffleCarry(preStation);
+      if (shuffleBase && shuffledQueue === queue) shuffleBase = shuffleBase.concat(picks); // v1.368.0: OFF puts them after the album
       playAt(startIdx, { keepPosition: true }); // a continuation: keep the player where it is, its own load arms the next station leg
     }
     var chapterReflectBound = false;
@@ -2454,7 +2487,9 @@ if (typeof module !== 'undefined' && module.exports) {
         return true;
       }
       var wasFlat = (flatQueue === queue); // pocket menus K4: a patched flat list stays flat
+      var prePatch = queue;
       queue = queue.filter(keepPatched);
+      shuffleCarry(prePatch); // v1.368.0: a chapter patch keeps the shuffle (the restore order filters what is gone)
       if (wasFlat) flatQueue = queue;
       if (activeListenChapters) activeListenChapters = listenAliased ? queue : activeListenChapters.filter(keepPatched);
       var countChanged = ownsDrill ? (queuedCount > 0 && queuedCount !== chapters.length) : droppedAny;
@@ -4067,6 +4102,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // around the recovered playing index, not just a fresh loadTrack.
     function registerTrackNav(i) {
       if (!window.FileTube.player || typeof window.FileTube.player.setTrackNav !== 'function') return;
+      reconcileShuffle(i); // v1.368.0: a new queue while Shuffle is on, or a flip from another device (reorders only AFTER i)
       navIndex = i; // the queue index the nav is armed around (retractAutoplayPicks keeps it and everything before)
       // i<0 (no known index) registers NO neighbors - clears any stale closures
       // rather than binding onNext to playAt(0) off a negative index.
@@ -4136,7 +4172,9 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       if (!dropped) return false;
       if (flatQueue === queue) flatQueue = kept; // pocket menus K4: a retract keeps the flat list flat
+      var preRetract = queue;
       queue = kept;
+      shuffleCarry(preRetract); // v1.368.0: retracting picks keeps the shuffle state
       if (navIndex >= 0 && navIndex < queue.length) registerTrackNav(navIndex);
       updateNowPlayingPanel();
       return true;
@@ -4157,6 +4195,77 @@ if (typeof module !== 'undefined' && module.exports) {
       else if (navIndex >= 0 && navIndex === queue.length - 1) registerTrackNav(navIndex);
       reflectPlaybackModes();
     }
+    // ---- v1.368.0 SHUFFLE MODE (R5, R16) ---------------------------------------------------
+    // ON: the songs AFTER the playing one play in random order (Fisher-Yates); the playing song and
+    // everything before it stay byte-identical. OFF: the not-yet-played songs go back to their
+    // original order (a song added while ON goes after them, in arrival order). A queue STARTED while
+    // ON is shuffled too (R16, "like Spotify"): registerTrackNav reconciles every track change, so a
+    // new queue array (a row tap, a menu pick, an album) gets its tail shuffled, and a flip that
+    // reached storage from another device applies at the next track.
+    // Rows on screen are indexed into the queue (data-index), so a reorder re-draws the list drawn
+    // from it (the v1.104/v1.207 wrong-track class): the list shows the play order.
+    // A shuffled queue plays as a FLAT list (flatQueue): a DJ-set chapter plays its own segment
+    // and the list moves to its next row, instead of the file rolling into the next chapter.
+    // A station batch arrives only when the LAST song starts (maybeExtendQueueForAutoplay), so it
+    // has no unplayed song to mix into: it is appended in station order (the picker's artist spacing
+    // kept) and joins the end of the restore order.
+    var shuffleBase = null;     // the original order of the songs after the playing one, while shuffled
+    var shuffledQueue = null;   // the queue array that order belongs to (a new array = a new queue)
+    var shuffleWasFlat = false; // was the queue a flat list before the shuffle made it one
+    function shuffleCarry(oldQueue) {
+      // an internal reassignment (an append, a retract, a chapter patch) keeps the shuffle state
+      if (shuffledQueue && shuffledQueue === oldQueue) shuffledQueue = queue;
+    }
+    function shufflePlayingIndex(i) {
+      return (i >= 0 && i < queue.length && queue[i] && queue[i].id === playingId && !queue[i].listen) ? i : -1;
+    }
+    function reconcileShuffle(i) {
+      if (queue !== shuffledQueue) { shuffleBase = null; shuffledQueue = null; } // a NEW queue: its list order
+      var at = shufflePlayingIndex(i);
+      if (at < 0) return false;
+      var on = shuffleEnabled();
+      if (on && !shuffleBase) return shuffleTailAfter(at);
+      if (!on && shuffleBase) return restoreTailAfter(at);
+      return false;
+    }
+    function shuffleTailAfter(at) {
+      var tail = queue.slice(at + 1);
+      var wasFlat = (flatQueue === queue);
+      shuffleBase = tail.slice();
+      shuffleWasFlat = wasFlat;
+      queue = queue.slice(0, at + 1).concat(tail.length > 1 ? fisherYatesShuffle(tail) : tail);
+      shuffledQueue = queue;
+      flatQueue = queue;
+      redrawQueueViews();
+      return true;
+    }
+    function restoreTailAfter(at) {
+      var rest = queue.slice(at + 1);
+      var inRest = (typeof Set === 'function') ? new Set(rest) : null;
+      var inBase = (typeof Set === 'function') ? new Set(shuffleBase) : null;
+      var restored = shuffleBase.filter(function (t) { return inRest.has(t); })
+        .concat(rest.filter(function (t) { return !inBase.has(t); }));
+      var wasFlatNow = (flatQueue === queue);
+      queue = queue.slice(0, at + 1).concat(restored);
+      flatQueue = (wasFlatNow && shuffleWasFlat) ? queue : null;
+      shuffleBase = null;
+      shuffledQueue = null;
+      redrawQueueViews();
+      return true;
+    }
+    function redrawQueueViews() {
+      if (drill) renderDrillView();
+      else if (tab === 'songs') renderSongListProgressive();
+      updateNowPlayingPanel();
+    }
+    // The ONE Shuffle seam (the desktop chip, the skin / pop-out sticker row): write the synced
+    // setting, reorder the live queue now, re-arm the nav around the playing song, repaint.
+    function applyShuffleToggle(on) {
+      setShuffleEnabled(on);
+      if (reconcileShuffle(navIndex) && navIndex >= 0) registerTrackNav(navIndex);
+      reflectPlaybackModes();
+    }
+
     // v1.311: the picker's fetch+pick core, extracted so BOTH consumers - the end-of-queue
     // extension (maybeExtendQueueForAutoplay) AND the solo-chapter exit (primeSoloExitStation) -
     // route through ONE truth (the "hand-copied sibling drifts" bug class). Same-artist first,
@@ -4243,8 +4352,11 @@ if (typeof module !== 'undefined' && module.exports) {
         if (picks.length === 0) return;
         var wasFlat = (flatQueue === queue);
         markAutoplayPicks(picks); // remembered as the STATION, so Autoplay off can retract them
+        var preAppend = queue;
         queue = queue.concat(picks);
         if (wasFlat) flatQueue = queue; // gate r1 K4: the appended station rides the flat list on
+        shuffleCarry(preAppend); // v1.368.0: appended in station order while shuffled (see SHUFFLE MODE)
+        if (shuffleBase && shuffledQueue === queue) shuffleBase = shuffleBase.concat(picks);
         // Adversarial S3: recompute the re-arm index from the LIVE queue instead of
         // trusting the pre-await `i` - the one path that threads every guard (a
         // same-OBJECT requeue, e.g. playTrackInAlbum's miss arm `queue = [item]`)

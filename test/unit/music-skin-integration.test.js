@@ -1717,6 +1717,32 @@ test('v1.254 autoplay: the LAST track VISIBLY extends the queue (same-artist fir
   });
 });
 
+// v1.368.0: the music VIEW supplies the sticker's Shuffle hook - the row writes the synced mode
+// through the same seam as the desktop chip (applyShuffleToggle), and reads back On.
+test('v1.368.0 Shuffle mode: the music view\'s sticker row writes ft-music-shuffle and reads On', async () => {
+  const t9 = { id: 't9', title: 'Song', artist: 'Band', album: '', albumKey: '', durationSec: 100 };
+  const fetchImpl = (u, init) => {
+    const url = String(u);
+    if (url.indexOf('filter=recent-listening') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: [t9] }) });
+    if (/^\/api\/music\/t9$/.test(url)) return Promise.resolve({ ok: true, json: async () => t9 });
+    if ((init && init.method) === 'POST') return Promise.resolve({ ok: true, json: async () => ({}) });
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  const calls = { loads: [], navs: [] };
+  await boot({
+    mobile: true, isMusic: true, query: '?play=t9', skin: 'spotify', fetchImpl, playerOverride: listenPlayer(calls),
+    run: async (dom) => {
+      for (let i = 0; i < 10; i++) await settle();
+      const row = openSticker(dom).querySelector('[data-skin-shufflemode]');
+      assert.ok(row, 'the music view supplies the Shuffle hook');
+      assert.strictEqual(row.getAttribute('aria-checked'), 'false', 'default OFF');
+      row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      assert.strictEqual(dom.window.localStorage.getItem('ft-music-shuffle'), '1', 'the row wrote the synced mode');
+      assert.strictEqual(openSticker(dom).querySelector('[data-skin-shufflemode]').getAttribute('aria-checked'), 'true', 'the row reads On');
+    },
+  });
+});
+
 // Music follow-ups item 0: the SKIN's sticker Autoplay row goes through the same toggle seam as
 // the desktop toolbar button - switched OFF after the early append, the station is retracted.
 test('item 0: the sticker Autoplay row switched OFF after the early append retracts the station (no Next for the ended-advance); the row reads Off', async () => {

@@ -15686,7 +15686,7 @@
       },
       {
         "key": "public/js/skin-surface.js|<button>|mms-sm-loop",
-        "count": 3,
+        "count": 1,
         "reason": "Pocket/whcal skin art (D10.4 carve-out): the device palette and the controls painted as part of it",
         "added": "2026-09-27"
       },

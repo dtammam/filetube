@@ -59,6 +59,7 @@
 //                     toggling reopens the pip window as the taskbar strip. Views never
 //                     declare this hook themselves.
 //     autoplay        OPTIONAL (v1.254 endless autoplay) - { enabled(), onToggle() }: page 1
+//     shuffle         OPTIONAL (v1.368.0 Shuffle mode) - { enabled(), onToggle() }: page 1, beside Loop
 //                     gains an "Autoplay" On/Off row (Loop chassis). Both surfaces - the
 //                     setting is device-global, so a pop-out flip is coherent. Omitted
 //                     (podcasts) = no row.
@@ -2073,6 +2074,15 @@
       if (!extrasCfg || !inMainDoc) return false;
       try { return !!extrasCfg.isEligible(); } catch (_) { return false; }
     }
+    // v1.368.0: the ONE builder of a page-1 On/Off row (Loop, Shuffle, Autoplay, Tray) - the four
+    // rows were four hand copies of this markup (and the UI ratchet counts each copy as debt).
+    // `icon` is a mask class (icon-play), or { svg } for a drawn mark (Shuffle: the .icon-shuffle mask
+    // is retired - test/unit/shuffle-rescan-icon.test.js - so it draws the skins' own glyph).
+    function stickerToggleRow(flag, icon, label, on) {
+      var mark = (icon && typeof icon === 'object') ? '<i class="mms-sm-glyph">' + icon.svg + '</i>' : '<i class="' + icon + '"></i>';
+      return '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (on ? ' is-on' : '') +
+        '" ' + flag + ' aria-checked="' + (on ? 'true' : 'false') + '"><span class="mms-sm-lbl">' + mark + label + '</span><span class="mms-sm-state">' + (on ? 'On' : 'Off') + '</span></button></div>';
+    }
     function buildStickerMenuHtml() {
       var rate = liveRate();
       var speed = MMS_SPEED_RATES.map(function (r) {
@@ -2135,8 +2145,17 @@
       if (stickerCfg.autoplay && typeof stickerCfg.autoplay.enabled === 'function') {
         var apOn = false;
         try { apOn = !!stickerCfg.autoplay.enabled(); } catch (_) { apOn = false; }
-        autoplay = '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (apOn ? ' is-on' : '') +
-          '" data-skin-autoplay aria-checked="' + (apOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-play"></i>Autoplay</span><span class="mms-sm-state">' + (apOn ? 'On' : 'Off') + '</span></button></div>';
+        autoplay = stickerToggleRow('data-skin-autoplay', 'icon-play', 'Autoplay', apOn);
+      }
+      // v1.368.0 (R5, R16): the Shuffle MODE toggle rides page 1 beside Loop and Autoplay, on BOTH
+      // surfaces, rendered only when the view supplies the hook (music does; podcasts not). The
+      // setting is the synced ft-music-shuffle; the view owns what ON / OFF do to its queue.
+      var shuffleRow = '';
+      if (stickerCfg.shuffle && typeof stickerCfg.shuffle.enabled === 'function') {
+        var shOn = false;
+        try { shOn = !!stickerCfg.shuffle.enabled(); } catch (_) { shOn = false; }
+        var shGlyph = (SKINS && typeof SKINS.shuffleGlyph === 'function') ? SKINS.shuffleGlyph() : '';
+        shuffleRow = stickerToggleRow('data-skin-shufflemode', { svg: shGlyph }, 'Shuffle', shOn);
       }
       // v1.257 (TRAY PLAYER): the pop-out-ONLY row - the first !inMainDoc-gated one (the
       // inverse of watchBack/Extras): a tray toggle makes no sense in the tab, and the
@@ -2145,8 +2164,7 @@
       if (!inMainDoc && stickerCfg.tray && typeof stickerCfg.tray.enabled === 'function') {
         var trOn = false;
         try { trOn = !!stickerCfg.tray.enabled(); } catch (_) { trOn = false; }
-        trayRow = '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (trOn ? ' is-on' : '') +
-          '" data-skin-tray aria-checked="' + (trOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-download"></i>Tray</span><span class="mms-sm-state">' + (trOn ? 'On' : 'Off') + '</span></button></div>';
+        trayRow = stickerToggleRow('data-skin-tray', 'icon-download', 'Tray', trOn);
       }
       // v1.363.1: the pop-out's Add / Edit chapters row (the pop-out has no Extras page; the main
       // document reaches the same editor through Extras). The tap hands the editor THIS document.
@@ -2194,9 +2212,8 @@
         ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-home><span class="mms-sm-lbl"><i class="icon-home"></i>Home</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
         : '';
       return homeRow + '<div class="mms-sm-sec"><div class="mms-sm-h" id="' + smId('speed') + '">Speed</div><div class="mms-sm-speed" role="group" aria-labelledby="' + smId('speed') + '">' + speed + '</div></div>' +
-        '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (loopOn ? ' is-on' : '') +
-        '" data-skin-loop aria-checked="' + (loopOn ? 'true' : 'false') + '"><span class="mms-sm-lbl"><i class="icon-refresh"></i>' + loopLabel + '</span><span class="mms-sm-state">' + (loopOn ? 'On' : 'Off') + '</span></button></div>' +
-        autoplay + trayRow + skinSec + lightRow +
+        stickerToggleRow('data-skin-loop', 'icon-refresh', loopLabel, loopOn) +
+        shuffleRow + autoplay + trayRow + skinSec + lightRow +
         watchBack + channelRow + chaptersRow + extras;
     }
     // The skin chips (v1.332: the registry's list; inside the TRAY only the Click colorways - those picks
@@ -2263,7 +2280,7 @@
       if (!a || !menu || !menu.contains(a) || typeof a.getAttribute !== 'function') return null;
       var valued = ['data-skin-lighting', 'data-skin-speed', 'data-skin-pick'];
       for (var i = 0; i < valued.length; i++) { var v = a.getAttribute(valued[i]); if (v !== null) return '[' + valued[i] + '="' + String(v).replace(/["\\]/g, '') + '"]'; }
-      var flags = ['data-skin-loop', 'data-skin-autoplay', 'data-skin-skins', 'data-skin-extras', 'data-skin-home', 'data-skin-watchback', 'data-skin-channel', 'data-skin-chapters', 'data-skin-tray'];
+      var flags = ['data-skin-loop', 'data-skin-shufflemode', 'data-skin-autoplay', 'data-skin-skins', 'data-skin-extras', 'data-skin-home', 'data-skin-watchback', 'data-skin-channel', 'data-skin-chapters', 'data-skin-tray'];
       for (var j = 0; j < flags.length; j++) { if (a.hasAttribute(flags[j])) return '[' + flags[j] + ']'; }
       return null;
     }
@@ -2404,6 +2421,12 @@
       // new dims, so no re-render here (this document is about to die).
       if (e.target.closest('[data-skin-tray]')) {
         if (stickerCfg.tray && typeof stickerCfg.tray.onToggle === 'function') { try { stickerCfg.tray.onToggle(); } catch (_) { /* shell best-effort */ } }
+        return true;
+      }
+      // v1.368.0: the Shuffle mode toggle - flip via the view's hook, re-render for the new state.
+      if (e.target.closest('[data-skin-shufflemode]')) {
+        if (stickerCfg.shuffle && typeof stickerCfg.shuffle.onToggle === 'function') { try { stickerCfg.shuffle.onToggle(); } catch (_) { /* view toggle best-effort */ } }
+        refreshStickerMenu();
         return true;
       }
       // v1.254: the autoplay toggle - flip via the view's hook, re-render for the new state.
