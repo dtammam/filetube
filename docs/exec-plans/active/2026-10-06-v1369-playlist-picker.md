@@ -21,6 +21,22 @@ Read first: AGENTS.md, docs/LESSONS.md sections 0, 2 (inert feature: drive yt-dl
 shape), 4 (sheets bound to `viewSignal`, activation guard), 9 (a new persisted record), 10 (access control: every new route,
 the token surface), 11 (yt-dlp flags verified at SOURCE), 12 (sibling lists, censuses).
 
+## Step 0. Before anything (builder)
+
+- Work ONLY in the existing worktree `.claude/worktrees/v1369pl` on branch `feat/v1.369.0-playlist-picker` (the plan is committed there; `node_modules`
+  is a symlink to the main checkout's, never stage it). Do not touch the main checkout or the other release worktrees.
+- Before every node / npm / git command: `export PATH="$HOME/.local/share/fnm/node-versions/v22.23.1/installation/bin:$PATH"`.
+  Dual-Node runs use 22.23.1 then 24.20.0, sequential (Node 24 prints `ℹ`, not `#`).
+- Git: stage files by name (never `git add .` / `-A`), `git commit -F <file>`, never pipe a commit or push, verify with
+  `git log -1` and `git ls-remote`; never `--no-verify`, never force-push, never self-merge (the gate runs first).
+- Read AGENTS.md, then the LESSONS sections this plan names, then this plan top to bottom.
+- Stop and ask Dean (AskUserQuestion) when: a ruling contradicts what the code or a measurement shows; a change turns out to
+  delete or migrate data (that forces the full gate); the gate reaches round 3; `gh pr merge` is refused by the classifier.
+- T0 runs yt-dlp on Dean's production container; if you cannot reach it, ask Dean to run the command and send the output.
+- If T0 shows a yt-dlp behaviour that contradicts a ruling (for example flat entries lack titles, or Load more cannot page),
+  stop and ask.
+- If the waiting-playlist store needs a schema migration, the data-loss rule forces the full gate: say so before building it.
+
 ## 1. Outcomes
 
 1. A link that carries a playlist is recognised. A `watch?v=X&list=Y` link asks "Just this video" (today's download, one tap) or
