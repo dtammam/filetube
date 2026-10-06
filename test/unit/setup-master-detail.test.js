@@ -215,7 +215,7 @@ test('v1.367.0: an old link or remembered page for a page revealed LATER lands t
     const { dom, doc, signal } = load();
     try {
       const [kind, key] = how.split(':');
-      if (kind === 'hash') dom.window.location.hash = '#' + key; else dom.window.localStorage.setItem('ft-md:setup', key);
+      if (kind === 'hash') dom.window.history.replaceState(null, '', '#' + key); else dom.window.localStorage.setItem('ft-md:setup', key); // replaceState: a browser fires no hashchange for the URL it loaded with
       wireMasterDetail('setup', doc, signal);
       assert.strictEqual(doc.querySelector('.md-row--active').getAttribute('data-md-target'), 'trash', 'before the reveal a member-visible page is selected');
       doc.getElementById('scan-cache-box').hidden = false; // the admin branch of initAccountSection
@@ -230,9 +230,8 @@ test('v1.367.0: an old link or remembered page for a page revealed LATER lands t
 test('v1.367.0: a click before the late reveal cancels the pending link', async () => {
   const { dom, doc, signal } = load();
   try {
-    dom.window.location.hash = '#automation-storage';
+    dom.window.history.replaceState(null, '', '#automation-storage'); // no hashchange, as in a browser
     wireMasterDetail('setup', doc, signal);
-    await tick(); await tick(); // jsdom delivers the hashchange for the pre-set hash after wiring; a browser would not
     doc.querySelector('.md-row[data-md-target="account"]').click();
     doc.getElementById('scan-cache-box').hidden = false;
     await tick();
