@@ -1,0 +1,155 @@
+{
+ "_comment": "Recorded with: ffprobe 7.0.2-static, -v error -show_entries format=duration:format_tags:stream=codec_name,codec_type,width,height:stream_disposition=attached_pic:stream_side_data=rotation,side_data_type,projection,type,bound_left,bound_right -show_chapters -of json <file>. The real output of the real fixtures in this folder (test/fixtures/vr/README.md); regenerate, never hand-edit. format is dropped (durations only).",
+ "clip_360_TB.mp4": {
+  "programs": [],
+  "stream_groups": [],
+  "streams": [
+   {
+    "codec_name": "h264",
+    "codec_type": "video",
+    "width": 512,
+    "height": 512,
+    "disposition": {
+     "attached_pic": 0
+    }
+   }
+  ],
+  "chapters": []
+ },
+ "pano_360.mp4": {
+  "programs": [],
+  "stream_groups": [],
+  "streams": [
+   {
+    "codec_name": "h264",
+    "codec_type": "video",
+    "width": 512,
+    "height": 256,
+    "disposition": {
+     "attached_pic": 0
+    }
+   }
+  ],
+  "chapters": []
+ },
+ "rot90.mp4": {
+  "programs": [],
+  "stream_groups": [],
+  "streams": [
+   {
+    "codec_name": "h264",
+    "codec_type": "video",
+    "width": 512,
+    "height": 256,
+    "disposition": {
+     "attached_pic": 0
+    },
+    "side_data_list": [
+     {
+      "side_data_type": "Display Matrix",
+      "rotation": 90
+     }
+    ]
+   }
+  ],
+  "chapters": []
+ },
+ "vr-180-sbs-v2.mp4": {
+  "programs": [],
+  "stream_groups": [],
+  "streams": [
+   {
+    "codec_name": "h264",
+    "codec_type": "video",
+    "width": 512,
+    "height": 256,
+    "disposition": {
+     "attached_pic": 0
+    },
+    "side_data_list": [
+     {
+      "side_data_type": "Stereo 3D",
+      "type": "side by side"
+     },
+     {
+      "side_data_type": "Spherical Mapping",
+      "projection": "tiled equirectangular",
+      "bound_left": 257,
+      "bound_right": 255
+     }
+    ]
+   }
+  ],
+  "chapters": []
+ },
+ "vr-360-tb-v2.mp4": {
+  "programs": [],
+  "stream_groups": [],
+  "streams": [
+   {
+    "codec_name": "h264",
+    "codec_type": "video",
+    "width": 512,
+    "height": 512,
+    "disposition": {
+     "attached_pic": 0
+    },
+    "side_data_list": [
+     {
+      "side_data_type": "Stereo 3D",
+      "type": "top and bottom"
+     },
+     {
+      "side_data_type": "Spherical Mapping",
+      "projection": "equirectangular"
+     }
+    ]
+   }
+  ],
+  "chapters": []
+ },
+ "vr-360-v1.mp4": {
+  "programs": [],
+  "stream_groups": [],
+  "streams": [
+   {
+    "codec_name": "h264",
+    "codec_type": "video",
+    "width": 512,
+    "height": 256,
+    "disposition": {
+     "attached_pic": 0
+    },
+    "side_data_list": [
+     {
+      "side_data_type": "Spherical Mapping",
+      "projection": "equirectangular"
+     }
+    ]
+   }
+  ],
+  "chapters": []
+ },
+ "vr-360-v2.mp4": {
+  "programs": [],
+  "stream_groups": [],
+  "streams": [
+   {
+    "codec_name": "h264",
+    "codec_type": "video",
+    "width": 512,
+    "height": 256,
+    "disposition": {
+     "attached_pic": 0
+    },
+    "side_data_list": [
+     {
+      "side_data_type": "Spherical Mapping",
+      "projection": "equirectangular"
+     }
+    ]
+   }
+  ],
+  "chapters": []
+ }
+}
