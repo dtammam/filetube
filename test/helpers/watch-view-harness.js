@@ -6,7 +6,8 @@
 //   item      the GET /api/videos/:id record (default VIDEO);
 //   subs/pins the /api/subscriptions and /api/subscriptions/pins answers (module on);
 //   me        the /api/auth/me user (default an admin: canModifyLibrary);
-//   route     (method, url, body) -> {status, body} | null, consulted first.
+//   route     (method, url, body) -> {status, body, delayMs?} | null, consulted first (delayMs: answer late);
+//   player    members merged into the stub player (v1.366.0: getState, currentId).
 // Returns { w, doc, $, fetches, calls(method, prefix), settle(), init() , destroy() }.
 const fs = require('node:fs');
 const path = require('node:path');
@@ -43,6 +44,7 @@ function watchViewRealm(o) {
     const body = init && typeof init.body === 'string' ? (() => { try { return JSON.parse(init.body); } catch (_) { return init.body; } })() : null;
     fetches.push({ method, url, body });
     const r = opts.route ? opts.route(method, url, body) : null;
+    if (r && r.delayMs > 0) return new Promise((res) => setTimeout(res, r.delayMs)).then(() => json(r.status, r.body)); // v1.366.0: a late answer
     if (r) return json(r.status, r.body);
     if (url === '/api/auth/me') return json(200, { user: opts.me === undefined ? { username: 'admin', role: 'admin' } : opts.me });
     if (url === '/api/config') return json(200, { folders: ['/lib'], folderSettings: {} });
@@ -61,6 +63,8 @@ function watchViewRealm(o) {
     load: (id, data, lo) => { loads.push({ id, data, lo }); return true; },
     close: () => { loads.push({ close: true }); }, expand: () => {}, setTrackNav: () => {}, isLoopEnabled: () => false,
     getCurrentTime: () => (opts.currentTime == null ? null : opts.currentTime), applyLateDetail: () => {},
+    // v1.366.0: a test may override or add player members (getState, currentId, ...); `opts.player` is merged in.
+    ...(opts.player || {}),
   }, { get(t, p) { return p in t ? t[p] : () => undefined; } });
   w.__harness = {
     register: (name, h) => { if (name === 'watch') registered = h; },

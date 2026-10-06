@@ -48,7 +48,7 @@ const HOSTILE = ['__proto__', 'constructor', 'toString', 'hasOwnProperty', 'valu
 const post = (p, body) => fetch(`${base}${p}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
 
 function assertNothingPolluted(label) {
-  for (const k of ['chaptersManual', 'width', 'height', 'channelAttributedManually', 'channelUrl', 'channelName']) {
+  for (const k of ['chaptersManual', 'width', 'height', 'channelAttributedManually', 'channelUrl', 'channelName', 'projectionOverride']) {
     assert.strictEqual(({})[k], undefined, `${label}: Object.prototype.${k} stays unset`);
     assert.strictEqual(Object[k], undefined, `${label}: Object.${k} stays unset`);
     assert.strictEqual(Object.prototype.toString[k], undefined, `${label}: toString.${k} stays unset`);
@@ -60,6 +60,8 @@ for (const id of HOSTILE) {
     const enc = encodeURIComponent(id);
     const chapters = await post(`/api/videos/${enc}/chapters`, { text: '0:00 A\n1:00 B' });
     assert.strictEqual(chapters.status, 404, 'POST /chapters');
+    const proj = await post(`/api/videos/${enc}/projection`, { projection: '360' }); // v1.366.0
+    assert.strictEqual(proj.status, 404, 'POST /projection');
     const dims = await post(`/api/videos/${enc}/dimensions`, { width: 640, height: 360 });
     assert.strictEqual(dims.status, 404, 'POST /dimensions');
     const attr = await post(`/api/videos/${enc}/attribute-channel`, { clear: true });

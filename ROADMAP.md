@@ -5,7 +5,7 @@
 ### Device checks owed
 
 - [ ] **Device checks owed (Dean: reply "1-5 pass, 9 fails")** _(v1.362.2, 2026-10-04)_ - one line per open check in
-  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (40 open lines on 2026-10-05); the steps are only there. A
+  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (45 open lines on 2026-10-06); the steps are only there. A
   passed line is deleted from both places; a failed one becomes a bug below. Closes when every line is resolved.
 
   1. v1.362.0 - pull down: springs back early, docks past a third, picture never black
@@ -49,6 +49,11 @@
   39. v1.365.0 - a one-off download with the server stopped or Wi-Fi off: "Can't reach FileTube"; it clears by itself
   40. v1.365.0 - a Downloading row stuck for minutes shows "updated N ago"; a Queued one shows "waiting N"
   41. v1.365.0 - home-screen app: Settings > Troubleshooting > Download trace saves a .txt (hosts only, no full links)
+  42. v1.366.0 - iPhone FIRST: a 360 video inline with the 360 view on: does the picture stay live while you drag
+  43. v1.366.0 - drag direction feels right; "Move to look" turns the view as you turn the phone
+  44. v1.366.0 - the phone's own full screen and picture in picture: flat, and the right note on the way back; rotate 5 times: no note
+  45. v1.366.0 - Video type > Flat removes the sphere, Auto brings it back; a flat video shows no 360 row
+  46. v1.366.0 - in the container: a newly added 360 file is detected (Alpine's ffprobe)
 
   Passed 2026-10-05 (deleted from DEVICE-CHECKS.md): [x] v1.364.0 - the iPhone SE (iOS 15) shows tiles, Music and working bottom buttons; [x] v1.364.0 - Export error log in the home-screen app; [x] v1.364.0 - center hold: volume bar on a speaker, "Use the side buttons" on the phone; [x] v1.364.0 - a plain center tap selects with one tick; [x] v1.364.0 - Music tab again opens the iPod with no song; [x] v1.364.0 - the Add chapters row sits left; [x] v1.363.0 - the Ask me prompt, the 5 s countdown, a tap cancels it; [x]
   v1.363.0 - the mini player never prompts; [x] v1.341.3 - watch page: turn back upright settles in one step; [x] v1.350.0 - Pocket turn back: send the
@@ -479,29 +484,37 @@
   swipe-back (v1.337: off in fullscreen) or a vertical page scroll inline.
   Dean confirmed 2026-10-02 this is the lock he wants, queued for the next wave after v1.357. - SHIPPED v1.358.0, confirmed on device 2026-10-05 (Dean).
 
-- [ ] **VR / 360 video: look around inside 360 and 180 MP4s** (Dean, 2026-09-27: "Can we add support for
-  vr enabled mp4s?"; scope from his answers: the phone and desktop watch page, drag or tilt to look
-  around, not a headset; his files are generic website downloads). **PAUSED mid-build on his call, same
-  day.** Today a VR file plays as the raw stretched panorama. A WIP commit (untested) lives on the
-  local branch `feat/v1.340-vr-360` (worktree `.claude/worktrees/vr360`), not pushed and not gated:
-  `lib/media/projection.js` (detection: the owner's pick > the file's spherical metadata > the file name
-  in the DeoVR/Skybox convention `_180_LR` / `_360_TB` / `180x180_3dh`, the name counting only when the
-  frame's shape agrees) and `public/js/vr-view.js` (a WebGL canvas over the `<video>`: one triangle and a
-  ray-to-longitude/latitude shader; 360 / 180, mono / side-by-side / stacked, left eye only; drag, wheel
-  and pinch zoom, opt-in motion via the device quaternion). Measured: ffprobe 7.0.2 on files from
-  Google's spatial-media injector prints `side_data_type: 'Spherical Mapping'` +
-  `projection: 'equirectangular' | 'tiled equirectangular'` (VR180's bound_left/right in panorama
-  PIXELS) + `'Stereo 3D'` / `type: 'top and bottom' | 'side by side'`; the probe's
-  `stream_side_data=rotation` must grow those keys (rotation keeps working beside them). Not done: the
-  scan wiring, the owner's per-video pick (the `chaptersManual` precedent: requireModifyLibrary, the
-  scan's re-init carry AND the Phase-2 mirror, route-write classification), a player settings-menu row,
-  tests, the gate. Known risks for the device pass: (1) an iPhone fullscreen is Apple's own player, so
-  the sphere needs a full-window mode instead; (2) iOS once blacked out video when a page drew live
-  frames (the v1.312 Ambient lesson) - the sphere must upload live frames to WebGL, so test it on the
-  iPhone FIRST; (3) the existing library is never re-probed, so metadata-only files need a tag-only
-  backfill pass or a manual pick (the file-name rule works at once); (4) not verified yet: the shader's
-  left/right sense, which needs one rendered frame of a labelled panorama. Out of scope: headset WebXR,
-  cardboard, fisheye and cubemap files (YouTube's EAC), Roku / TV / thumbnails (they stay flat).
+- [x] **VR / 360 video: look around inside 360 and 180 MP4s** - SHIPPED v1.366.0 (see Shipped) (Dean, 2026-09-27: "Can we add
+  support for vr enabled mp4s?"; phone and desktop watch page, drag or tilt, not a headset). Risks resolved: (1) the browser's own full
+  screen shows the flat picture, disclosed by a note on the way back, and FileTube's own full window keeps the sphere; (2) the sphere
+  uploads frames to WebGL only (no 2D canvas read of the video): the iPhone check comes first; (3) no backfill: a file already in
+  the library shows as VR after an owner pick or a file change; file-name guessing was DROPPED (Dean, 2026-10-06: it caught flat
+  videos like "Xbox 360 unboxing"), so only the file's own metadata or the owner's pick makes a video VR; (4) left/right sense
+  measured (a drag left shows the right side). Out of scope: headset WebXR, cardboard, fisheye and cubemap files, Roku / TV /
+  thumbnails (they stay flat).
+- [ ] **360 view with the phone's own controls** _(Dean, 2026-10-06: "it must work with phone controls too")_ - v1.366.0 shows the 360
+  view on a phone only with Settings > Mobile player > "Use custom player controls" ON: the sphere is a WebGL canvas drawn over
+  FileTube's own player, and with the phone's own (native) controls the video element owns the picture and its gestures, so the
+  360 row is hidden there. Design first (LESSONS 8: measure on the device): can a canvas sit over a native-controls video on iOS
+  and still let its controls work; does iOS take the video to its own full screen on play (flat, as v1.366.0's note says);
+  would a "360 view" button switch that one video into FileTube's player. Desktop is unaffected (it always uses FileTube's player).
+- [ ] **360 view follow-ups (v1.366.0 gate r2)** - (a) suspicion, no device repro: the sphere waits 600 ms before giving way to a
+  native full screen, but player.js treats a native exit up to 1500 ms after the iPhone rotate bounce starts as part of the bounce;
+  a simulated 900 ms bounce rebuilt the sphere and showed the full-screen note wrongly: if device check "rotate 5 times" fails, set
+  `VR_NATIVE_SETTLE_MS = 1500`; (b) Android with no permission prompt: if the phone sends `alpha: null`, "Move to look" reads on and
+  nothing moves (check for a real reading first); (c) wrap `requestPermission()` in try/catch like pocket-lighting.js:251; (d) with
+  the sphere up, the picture's own gestures (double-tap skip, hold 2x, pull to the mini player) give way to drag; a tap is
+  play/pause; on desktop a double-click toggles twice; (e) a one-off ffprobe failure on a new VR file stores nothing and is not
+  retried; (f) the production ffprobe is Alpine's build: the side-data keys were measured on 7.0.2 only (device check: a VR scan in
+  the container); (g) an item with no stored width/height shows no 360 row on its first play.
+- [ ] **Desktop subtitles: resize and move them** _(Dean, 2026-10-05: "Subtitles on desktop should be resizeable and movable")_ - Today a
+  desktop video paints its captions with the browser's own `<track>` rendering, which a page can style (::cue) but not drag or
+  resize; FileTube's own caption overlay (player.js ~1716, built from `cuechange`) exists only for audio / cover art. So the likely
+  shape: use the custom overlay for desktop video too, then a drag to move it and a size control (a corner handle or a Settings
+  size), remembered per device, with a "reset position". Settle at kickoff: drag on the captions themselves vs an edit mode;
+  where size lives (handle, Settings, or both); per device or synced; does it carry into full screen and the pop-out; phones
+  untouched unless Dean says otherwise. Must not break: the native-cue path on iPhone, caption timing, the existing caption
+  styling, clicks on the picture (a drag must never pause or seek).
 
 - [x] **Watch later: a living, saved list** - SHIPPED v1.343.0 (see Shipped) _(Dean, 2026-09-28)_ (Dean: "Really high value. 'Watch
   later' list. Basically a living queue. Maybe I just treat queue this way?"). Recommendation recorded:
@@ -704,6 +717,32 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.366.1 - Security update for two dependencies (2026-10-06)
+
+- The CI audit gate failed on main and on PR #96 for two advisories published after v1.365.0: GHSA-jqcg-44mw-7w3h (critical,
+  proxy-addr IP spoofing via an IPv4-mapped IPv6 trust subnet; via express) and GHSA-68fv-2mgg-jv7q (high, source-map-js event-loop
+  denial of service; via css-tree, used by the ui-lint). `npm audit fix --package-lock-only`: proxy-addr 2.0.7 -> 2.0.8,
+  source-map-js 1.2.1 -> 1.2.2, lockfile only; `audit:check` OK (0 high / critical). The v1.366.0 tag never published an image
+  (its publish run runs the same audit); 1.366.1 ships v1.366.0's 360 view with the fix (Dean's call).
+
+### v1.366.0 - Look around inside 360 and 180 videos (2026-10-06)
+
+- A 360 or 180 video tagged in the file (spherical / stereo side data, read by a grown ffprobe probe; rotation still parsed on 14
+  file shapes) gets a "360 view" switch in the watch page's settings cog: drag to look around; on a phone "Move to look" turns the
+  view with the phone (iOS asks on that tap). Off by default, per device. Owners set Video type (Auto / Flat / 360 / 180, mono or
+  stereo) per video (POST /api/videos/:id/projection, library-write, the restricted-item guard; route count 265). File-name guessing
+  dropped (Dean). Flat video is untouched: vr-view.js is not even loaded, no WebGL context, no canvas (measured). Frames go to WebGL
+  only; a lost context stays flat with "360 view stopped; showing the flat picture". The browser's own full screen and picture in
+  picture are flat, with a note on the way back. On a phone it needs Settings > Mobile player > custom player controls (Dean: the
+  phone's own controls are a follow-up).
+- Measured in Chromium (tools/vr-proof/probe.js, real scan + ffprobe): a drag left shows the right side; tilt left looks left; flat
+  rows make 0 getContext calls. Mutants: 18 of 19 on the build (M8 equivalent), 28 of 28 on the r1 fixes, 23 of 25 in r2 (2 masked).
+- Suites at a924614e: Node 22.23.1 `# tests 11230` `# pass 11227` `# fail 0` `# skipped 3`; Node 24.20.0 `ℹ pass 11227` `ℹ fail 0`.
+- Gate (FULL): r1 security-brief APPROVED, adversary + qa CHANGES @950c2aca (10 WARNINGs: tilt unreachable, the mount wiring
+  unbound, a lost context remounting, a false full-screen note, dead TV cog rows, the restricted-item guard unbound, the name rule
+  catching flat videos); r2 APPROVED @a924614e by all three. Disclosed follow-ups on the ROADMAP (the iPhone rotate-bounce timing,
+  Android null orientation, gestures under the sphere, no ffprobe retry).
 
 ### v1.365.0 - Tell a stuck download from a stale screen (2026-10-05)
 
