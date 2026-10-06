@@ -130,7 +130,7 @@ test('v1.69.1 SOURCE-LOCK: setup.html carries the Podcasts zero-state door (Dean
   // no path to the place at all - the chicken-and-egg v1.69.0 shipped with.
   const html = fs.readFileSync(path.join(__dirname, '../../public/setup.html'), 'utf8');
   assert.ok(html.includes('href="/podcasts"'), 'the door exists at zero subscriptions');
-  assert.ok(html.includes('data-collapse-key="podcasts-place"'), 'a real setup box, the music/books pattern');
+  assert.ok(html.includes('data-collapse-key="podcasts"'), 'a real setup box, the music/books pattern');
   assert.ok(html.includes('FILETUBE_PODCASTS_DIR'), 'the set-the-var-BEFORE-first-subscription guidance is on the page');
 });
 

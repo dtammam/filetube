@@ -225,7 +225,7 @@ test('setup.html: Critters is its OWN section (Dean\'s ruling) - the toggle/dens
   // The toggle/density ids live inside the critters section, NOT in appearance.
   const appearance = SETUP_HTML.slice(SETUP_HTML.indexOf('data-collapse-key="appearance"'), SETUP_HTML.indexOf('data-collapse-key="critters"'));
   assert.ok(!appearance.includes('critter-mode-check'), 'the toggle left Appearance');
-  const critters = SETUP_HTML.slice(SETUP_HTML.indexOf('data-collapse-key="critters"'), SETUP_HTML.indexOf('data-collapse-key="video-folders"'));
+  const critters = SETUP_HTML.slice(SETUP_HTML.indexOf('data-collapse-key="critters"'), SETUP_HTML.indexOf('data-collapse-key="account"'));
   for (const id of ['critter-mode-check', 'critter-density-select', 'critter-manager', 'critter-pool-grid',
     'critter-image-input', 'critter-sound-input', 'critter-upload-images-btn', 'critter-upload-sounds-btn',
     'critter-download-all-link', 'critter-delete-all-btn', 'critter-manager-status']) {
@@ -237,7 +237,7 @@ test('setup.html: Critters is its OWN section (Dean\'s ruling) - the toggle/dens
 });
 
 test('v1.174: the section is just CRITTERS (Dean killed the companions split) and its copy carries ZERO em dashes (the CONTRIBUTING rule)', () => {
-  const section = SETUP_HTML.slice(SETUP_HTML.indexOf('data-collapse-key="critters"'), SETUP_HTML.indexOf('data-collapse-key="video-folders"'));
+  const section = SETUP_HTML.slice(SETUP_HTML.indexOf('data-collapse-key="critters"'), SETUP_HTML.indexOf('data-collapse-key="account"'));
   // v1.174 (Dean, twice-confirmed): just "Critters" - no "sneaky", no
   // "companions"; the name matches every id, key, and route. The generic
   // spirit ("anything with a transparent background") stays in the copy.
@@ -283,7 +283,7 @@ test('setup.js: wireCritterManager is called ONLY from the admin branch (the rev
 
 // jsdom harness for the manager: mount the REAL section markup, stub fetch.
 function mountManager(t, fetchImpl) {
-  const critters = SETUP_HTML.slice(SETUP_HTML.indexOf('<details class="setup-box setup-sec sub-collapsible" data-collapse-key="critters"'), SETUP_HTML.indexOf('data-collapse-key="video-folders"'));
+  const critters = SETUP_HTML.slice(SETUP_HTML.indexOf('<details class="setup-box setup-sec sub-collapsible" data-collapse-key="critters"'), SETUP_HTML.indexOf('data-collapse-key="account"'));
   const dom = new JSDOM('<!DOCTYPE html><body>' + critters.slice(0, critters.lastIndexOf('<details')) + '</body>', { url: 'http://localhost/' });
   global.window = dom.window;
   global.document = dom.window.document;
