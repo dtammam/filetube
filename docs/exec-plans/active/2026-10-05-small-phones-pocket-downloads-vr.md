@@ -882,6 +882,108 @@ Gate: APPROVED r2 @b8b3ca7d - adversary
 - N9 NOTE - on a phone the offline pill shows only the bare words; "last reached N ago" sits in a title tooltip that touch cannot open.
 - Tree: before writing, git status showed only the other seats' uncommitted appends to this file. I removed all my sandboxes and probe dirs. The other /tmp/filetube-adv-* dirs are not mine and I left them alone.
 
+### Release C (v1.366.0)
+
+**W4** (feat/v1.366.0-vr-360, built from fc9fb7c5 as d3d9e256 port + b4344963 feature + 4433a729 test + 20dfa7a8
+native full-screen note; rebased onto the v1.365.0 release commit 398e7873 as **252887ee** port + **8918f050** feature
++ **2ee6170a** test + **34341199** note). The builder was killed by the host reboot at about 19:12 UTC and resumed;
+nothing was lost (all four commits were on disk).
+
+- V0 falsifier (before wiring; ffmpeg and ffprobe 7.0.2-static, grown keys
+  `rotation,side_data_type,projection,type,bound_left,bound_right`, spelled as ffprobe 7 prints them). Fixtures made
+  with ffmpeg `lavfi color` + `drawbox` (this static build has no `drawtext`, so the panorama's sides are colour bands:
+  front red, right green, back blue, left yellow) and Google's spatial-media injector (github master, python 3.12 in a
+  /tmp venv). Results: vr-360-v1 (v1 XML box) and vr-360-v2 (v2 sv3d) print `Spherical Mapping`, `equirectangular`;
+  vr-360-tb-v2 prints `Stereo 3D` `top and bottom` plus equirectangular; vr-180-sbs-v2 prints `Stereo 3D` `side by
+  side` plus `tiled equirectangular`, bound_left 257, bound_right 255; clip_360_TB.mp4 (1:1 stacked frame, no metadata)
+  has no side data. STOP check: rot90.mp4 gives `[{"rotation":90}]` with the old args and
+  `[{"side_data_type":"Display Matrix","rotation":90}]` with the grown args; the rotation readers look for the
+  `rotation` key, so rotation still parses. Codecs and dimensions unchanged on every file. No STOP rule hit. The
+  fixtures (2-3 KB each) and the recorded real ffprobe output `ffprobe-grown.json` are in test/fixtures/vr/ with a
+  provenance README.
+- Server: the probe args grow; only the scan writes `projection` (only when the side data says so; absent stays
+  absent), both reuse arms carry it with no re-probe; `projectionOverride` follows chaptersManual
+  (POST /api/videos/:id/projection: requireModifyLibrary first, restrictedVideoMutation, ownMediaItem, NUL or empty id
+  refused, null deletes the key; the re-init carry and the Phase-2 mirror; library-write + enforced; the proto-id
+  net). GET serves the effective projection (owner pick > file metadata > file name). No SCHEMA_VERSION bump.
+- Client: cog "360 view" (per device, `ft-vr-view`, default off, shown only for a sphere) and owner "Video type" (Auto,
+  Flat, 360, 360 top-bottom, 360 side-by-side, 180, 180 side-by-side, 180 top-bottom; `ui.menu`, built on `ui.sheet`).
+  The sphere mounts only for a sphere with the switch on, the player full with this item and the browser not
+  presenting the video itself; one reconciler unmounts on every boundary. vr-view.js loads on the first mount only.
+  The drawImage shrink path is deleted; a frame over the GPU texture limit is refused with a note. New user copy for
+  the gate and Dean: "Full screen on this device shows the flat picture; 360 view returns here" (once per page view,
+  on the way back from the browser's own full screen, only when a sphere was up).
+- Tests: unit video-projection 9 (8 pass + 1 skip without an ffprobe binary; with
+  `FILETUBE_TEST_FFMPEG=~/.local/bin/ffmpeg-static/ffmpeg` the LIVE row passes too, 9 of 9, on 34341199), unit
+  vr-view-client 10, integration video-projection 6. Edited locks: music-ambient AC9, player-overlay-no-filter (the net
+  covers vr-view.js), rbac-census, route-write-classification, media-write-proto-ids.
+- Left/right sense, measured (tools/vr-proof/probe.js, Chromium with SwiftShader WebGL, the real server, re-run on the
+  rebased 34341199, `pageErrors []`): 501 px of drag per 90 degrees; yaw 0 reads red (front, rgb 254,0,0); a 90 degree
+  drag LEFT reads green (the RIGHT band, rgb 1,128,1); back to front reads red; a 90 degree drag RIGHT reads yellow (the
+  LEFT band, rgb 255,255,0). The picture follows the finger and is not mirrored (ROADMAP risk 4 settled).
+
+| Row | getContext calls | Canvases | vr-view.js loaded | 360 row hidden | Video type hidden |
+|---|---|---|---|---|---|
+| flat (switch stored on) | none | 0 | no | yes | no |
+| vrOff | none | 0 | no | no | no |
+| vrOn | webgl | 1 | yes | no | no |
+| off (switch tapped off) | webgl | 0 | yes | no | no |
+| pickFlat: before | webgl x2 | 1 | yes | no | no |
+| pickFlat: after Flat | webgl x2 | 0 | yes | yes | no |
+| pickFlat: after Auto | webgl x3 | 1 | yes | no | no |
+| nav (in-app home) | webgl x3 | 0 | yes | no | no |
+
+  The pickFlat row stored `{projection: "360"}` (the name rule). The rows match the pre-rebase runs on 4433a729 (twice)
+  and 20dfa7a8 exactly.
+- Mutants on the committed, rebased 34341199 (/tmp git-archive sandbox with a pristine copy, each mutation landed in 1
+  file, Node 22.23.1; driver scratchpad w4-mut.py, log C-mut.log): 18 of 19 killed by name.
+  - M1 drop the switch check, M2 drop the flat check, M13 native presentation ignored, M14 docked still mounts:
+    "vrMountDecision: each condition alone stops the mount".
+  - M3 restore the drawImage shrink: "source rules: nothing reads the video into a 2D canvas...".
+  - M4 drop requireModifyLibrary, M7 drop the clear-deletes branch, M11 the route accepts any value: "route: a pick
+    wins at GET, flat hides a sphere, null DELETES the key; validation and RBAC".
+  - M5 drop the Phase-2 mirror: "Phase-2 mirror: a pick and a clear landing MID-SCAN survive the final merge".
+  - M6 drop the plain reuse-arm carry, M10 store projection for a flat file too: "REACHABILITY: the real fixtures
+    through the real scan land `projection`...". M6b drop the legacy codec-arm carry: "the OTHER reuse arm...".
+  - M9 drop the ffprobe args growth: REACHABILITY and "re-init carry: a CHANGED file keeps the owner pick...".
+  - M12 the file metadata beats the owner pick: "effectiveProjection: owner pick > file metadata > file name...".
+  - M15 the note never shows, M16 shows every time, M17 fires with no sphere: "vrNativeNotice: a sphere that gives
+    way to the browser's own full screen is disclosed ONCE...".
+  - M8 drop the re-init carry: SURVIVED, equivalent. The Phase-2 mirror copies `projectionOverride` from the fresh
+    database whenever the item exists there, so it masks this carry (the same belt and braces as chaptersManual).
+    M8x drops both and is KILLED by "re-init carry..." and "Phase-2 mirror...", which proves the mask.
+- First-run lesson (for LESSONS 2 at release): M6 first survived because an unchanged-only rescan saves nothing, so a
+  dropped derived field never reached disk. The rescan test now indexes one new file first so the scan saves.
+
+**Rebase onto 398e7873 (v1.365.0).** `git rebase --exec "bash hooks/pre-commit"` (no force-push; the branch was never
+pushed). One conflict: test/integration/rbac-census.test.js, where v1.365.0 and W4 had each bumped
+`EXPECTED_ROUTE_COUNT` 263 -> 264. Resolved by keeping v1.365.0's line and its comment, adding W4's v1.366.0 comment
+in front, and taking the number from the instrument: with 264 the census LOCK failed with "route count changed (265
+vs 264)", so the line reads 265 and the census passes. The feature commit's message now says "Route count 264 -> 265".
+public/css/style.css merged on its own; `git range-diff fc9fb7c5..20dfa7a8 398e7873..34341199` shows the port, test
+and note commits identical and the feature commit different only in the census line and that message line. No
+ROADMAP, plan or other docs edits in W4. Hook on each rebased commit (it sources ~/.profile, so its unit run is Node 24.14.0, hence the `ℹ` lines), all `Pre-commit checks passed.`, lint
+`✖ 6 problems (0 errors, 6 warnings)`, ui-lint OK: 252887ee `ℹ tests 8739` `ℹ pass 8739` `ℹ fail 0`; 8918f050
+`ℹ tests 8757` `ℹ pass 8756` `ℹ fail 0`; 2ee6170a `ℹ tests 8757` `ℹ pass 8756` `ℹ fail 0`; 34341199 `ℹ tests 8758`
+`ℹ pass 8757` `ℹ fail 0` (the 1 not passed is the LIVE ffprobe skip). The first hook run on 252887ee failed only
+because the worktree had no node_modules symlink (ui-lint's canary copies a rule to /tmp and cannot resolve
+css-tree); with the symlink it passed.
+
+Post-rebase at 34341199. Targeted (the 3 W4 files plus rbac-census, route-census, route-write-classification,
+route-read-classification, media-write-proto-ids, music-ambient, player-overlay-no-filter, overlay-containment,
+ui-lint, shell-script-global-collisions, oneoff-chip-stale, subs-oneoff-stale, ytdlp-oneshot-trace (integration),
+player-chapters-cog-row, watch-init-behavioral, ffprobe-codecs), Node 22.23.1: `# tests 286` `# pass 285` `# fail 0`
+`# skipped 1`, exit 0. Full suites, sequential:
+- Node 22.23.1: `# tests 11203` `# pass 11190` `# fail 0` `# cancelled 0` `# skipped 13`, exit 0 (29 min; the main
+  checkout was running its own tests part of the time)
+- Node 24.20.0: `ℹ tests 11203` `ℹ pass 11190` `ℹ fail 0` `ℹ cancelled 0` `ℹ skipped 13`, exit 0
+- The 13 skips: 9 "no ffmpeg binary (set FILETUBE_TEST_FFMPEG)" (as on main), 3 "tools/capture playwright not
+  installed" (the worktree has no tools/capture/node_modules) and 1 W4 LIVE ffprobe row (passes with the binary, above).
+- lint `✖ 6 problems (0 errors, 6 warnings)`, lint:ui `ui-lint: OK - the live debt equals docs/ui-exceptions.json`,
+  lint:overlay `overlay-containment: clean (0 violations)`. check-markers: 23 issues, all in older plan approval
+  markers (stale or unknown-commit approvals in 2026-09-29-next-waves.md and this plan, plus "approved work @b8b3ca7d
+  is already in 'main' but plan not Shipped", which the release close-out clears); none from W4.
+
 ## 7. Cut or deferred (Dean can overrule each)
 
 - Refactoring existing pixel breakpoints: no instrument shows one broken; the VPM net + the design rule stop new ones.
