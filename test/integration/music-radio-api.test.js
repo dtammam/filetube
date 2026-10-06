@@ -45,8 +45,13 @@ const GROUPS = [
   ['Crossover', 'cross', 'Blues', '1990', 3, 'cx'], // T4: Blues neighbours Rock through Crossover (below)
   ['Bluesman', 'blues', 'Blues', '1988', 4, 'bm'], // T4
   ['Folder Friend', 'seedy', null, null, 2, 'ff'], // T5: untagged, in the seed's folder
-  ['Big Jazz', 'jazz', 'Jazz', '1990', 40, 'jz'], // T6: the big unrelated genre
+  ['Big Jazz', 'jazz', 'Jazz', '1990', 40, 'jz'], // T7: the big unrelated genre
+  // T0 tuning: yt-dlp writes YouTube's CATEGORY as the genre. "Music" on two unrelated channels is
+  // not a shared genre: for a Tube A seed, Tube B is T6 (same category); for a Seedy seed both are T7
+  ['Tube A', 'tubea', 'Music', '2020', 3, 'ta'],
+  ['Tube B', 'tubeb', 'Music', '2020', 8, 'tb'],
 ];
+const FAR_GROUPS = ['jz', 'ta', 'tb'];
 
 before(async () => {
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
@@ -88,7 +93,7 @@ let realLib = null;
 async function lib() {
   if (!realLib) {
     realLib = (await api('/api/music?limit=10000')).body.items;
-    assert.strictEqual(realLib.length, 69, 'precondition: the real projection returned the seeded library (' + realLib.length + ')');
+    assert.strictEqual(realLib.length, 80, 'precondition: the real projection returned the seeded library (' + realLib.length + ')');
     assert.ok(realLib.every((t) => 'genre' in t && 'year' in t && 'folderName' in t && 'artist' in t), 'precondition: the real items carry the fields the picker reads');
   }
   return realLib;
@@ -111,22 +116,22 @@ async function session(seed, batches, cookie, firstPlayed) {
 test('W1 tiers: a song seed draws the seed artist and the close genre first, and never the big unrelated genre while any closer tier has candidates', async () => {
   const played = await session('track:sd0', 30, null, 'sd0');
   const list = await lib();
-  const jazzAt = played.findIndex((id) => group(id) === 'jz');
-  const close = list.filter((t) => group(t.id) !== 'jz').map((t) => t.id); // admin: the secret folder is visible
+  const jazzAt = played.findIndex((id) => FAR_GROUPS.includes(group(id)));
+  const close = list.filter((t) => !FAR_GROUPS.includes(group(t.id))).map((t) => t.id); // admin: the secret folder is visible
   const lastCloseAt = Math.max(...close.map((id) => played.indexOf(id)));
   assert.ok(close.every((id) => played.includes(id)), 'the session reached every non-Jazz track');
-  assert.ok(jazzAt > lastCloseAt, `no Jazz pick before the closer tiers ran out (first Jazz at ${jazzAt}, last close pick at ${lastCloseAt})`);
+  assert.ok(jazzAt > lastCloseAt, `no T7 pick (Jazz, the YouTube-"Music" channels) before the closer tiers ran out (first at ${jazzAt}, last close pick at ${lastCloseAt})`);
   // the first batch: exactly 2 from the seed artist (T1), 3 from T2 (same genre, year within 5)
   const first = played.slice(1, 6);
   const seedy = first.filter((id) => byId(list, id).artist === 'Seedy');
   assert.strictEqual(seedy.length, 2, 'first batch: 2 seed-artist picks: ' + first.join(' '));
   assert.ok(first.filter((id) => !seedy.includes(id)).every((id) => group(id) === 'nb'), 'first batch: the rest are T2 (Neighbour Band, Rock 1993): ' + first.join(' '));
-  // tier order by FIRST appearance: T2 before T3 before T4 before T5 before T6
+  // tier order by FIRST appearance: T2 before T3 before T4 before T5 before T7
   const firstAt = (g) => played.findIndex((id) => group(id) === g);
   assert.ok(firstAt('nb') < firstAt('lr'), 'T2 before T3');
   assert.ok(firstAt('lr') < firstAt('bm'), 'T3 before T4');
   assert.ok(firstAt('bm') < firstAt('ff'), 'T4 before T5');
-  assert.ok(firstAt('ff') < firstAt('jz'), 'T5 before T6');
+  assert.ok(firstAt('ff') < firstAt('jz'), 'T5 before T7');
 });
 
 test('W1 tiers (pure, on the real shape): tierOf classifies every seeded group as the ruling says', async () => {
@@ -135,22 +140,54 @@ test('W1 tiers (pure, on the real shape): tierOf classifies every seeded group a
   const nb = radio.genreNeighbours(list);
   const tierOfGroup = {};
   for (const t of list) tierOfGroup[t.id.startsWith('sec') ? 'sec' : group(t.id)] = radio.tierOf(t, profile, nb);
-  assert.deepStrictEqual(tierOfGroup, { sd: 1, nb: 2, lr: 3, xr: 3, cx: 4, bm: 4, ff: 5, jz: 6, sec: 1 });
-  // a divergent control: Jazz is the LARGEST group, so a tier-ignoring uniform draw takes it most
-  assert.ok(list.filter((t) => group(t.id) === 'jz').length > list.length / 2, 'precondition: Jazz is over half the library');
+  assert.deepStrictEqual(tierOfGroup, { sd: 1, nb: 2, lr: 3, xr: 3, cx: 4, bm: 4, ff: 5, jz: 7, ta: 7, tb: 7, sec: 1 });
+  // a divergent control: the unrelated tracks are most of the library, so a tier-ignoring uniform draw takes them most
+  assert.ok(list.filter((t) => FAR_GROUPS.includes(group(t.id))).length * 2 > list.length, 'precondition: the unrelated tracks are over half the library');
+  // T0 tuning: a YouTube category is not a genre on yt-dlp audio - Tube B is T6 (same category,
+  // below the folder tier) for a Tube A seed, where a raw genre match would make it T2 (same
+  // "genre" Music, same year)
+  const tube = radio.buildStationProfile({ kind: 'track', value: 'ta0' }, list);
+  assert.strictEqual(tube.genre, null, 'a yt-dlp "Music" tag is untagged');
+  assert.strictEqual(tube.category, 'music', 'the station keeps the category as its last close tier');
+  assert.strictEqual(radio.tierOf(byId(list, 'tb0'), tube, nb), 6, 'another channel\'s "Music" upload is T6, after its own folder');
+  assert.strictEqual(radio.tierOf(byId(list, 'jz0'), tube, nb), 7, 'a tagged unrelated genre is T7');
+  assert.strictEqual(byId(list, 'tb0').genre, 'Music', 'precondition: the real item carries the category as its genre');
+  // a station seeded FROM the category plays its members
+  const cat = radio.buildStationProfile({ kind: 'genre', value: 'Music' }, list);
+  assert.strictEqual(radio.tierOf(byId(list, 'tb0'), cat, nb), 3, 'genre:Music station: a Music upload is in its genre');
+  assert.strictEqual(radio.tierOf(byId(list, 'jz0'), cat, nb), 7);
+  // folding: hip-hop = hip hop
+  assert.strictEqual(radio.genreKey({ genre: 'Hip-Hop', source: 'native' }), radio.genreKey({ genre: 'hip  hop', source: 'native' }));
 });
 
-test('W1 spacing: never 3 in a row from one artist, across batch boundaries too, while another artist has a candidate', async () => {
+test('W1 spacing: never 3 in a row from one artist, across batch boundaries too, while another artist has a CLOSE candidate', async () => {
+  // R12 within R4: a run of 3 is allowed only when every unplayed track in T1-T5 is that artist (the
+  // only alternative is an unrelated genre, T7, which spacing never jumps to); the Jazz tail is T7.
   const played = await session('track:sd0', 30, null, 'sd0');
   const list = await lib();
   const artist = (id) => byId(list, id).artist;
-  let run = 1; let longest = 1;
+  const closeIds = list.filter((t) => !FAR_GROUPS.includes(group(t.id))).map((t) => t.id);
+  let run = 1; let checked = 0;
   for (let i = 1; i < played.length; i += 1) {
     run = artist(played[i]) === artist(played[i - 1]) ? run + 1 : 1;
-    // the only artist left at the end is Big Jazz: spacing relaxes there by design (no silence)
-    if (group(played[i]) !== 'jz') longest = Math.max(longest, run);
+    if (FAR_GROUPS.includes(group(played[i]))) continue;
+    checked += 1;
+    if (run > radio.MAX_ARTIST_RUN) {
+      const left = closeIds.filter((id) => !played.slice(0, i).includes(id));
+      assert.ok(left.every((id) => artist(id) === artist(played[i])), `run of ${run} at ${i} (${played[i]}) while another close artist had a candidate: ${left.join(' ')}`);
+    }
   }
-  assert.ok(longest <= radio.MAX_ARTIST_RUN, 'longest same-artist run outside the Jazz tail: ' + longest);
+  assert.ok(checked > 25, 'precondition: the close part of the session was checked');
+  // the hourly cap (T0 tuning): no artist over 3 in any 15 consecutive close plays while another close artist remained
+  for (let i = 0; i + 15 <= played.length; i += 1) {
+    const win = played.slice(i, i + 15).filter((id) => !FAR_GROUPS.includes(group(id)));
+    const counts = {};
+    for (const id of win) counts[artist(id)] = (counts[artist(id)] || 0) + 1;
+    const left = closeIds.filter((id) => !played.slice(0, i + 15).includes(id));
+    for (const [a, n] of Object.entries(counts)) {
+      if (n > radio.ARTIST_WINDOW_MAX) assert.ok(left.length === 0 || left.every((id) => artist(id) === a), `${a} played ${n} times in plays ${i}-${i + 14}`);
+    }
+  }
 });
 
 test('W1 spacing (pure, cross-batch): the last two plays from one artist bar that artist from the next batch\'s first slot', async () => {

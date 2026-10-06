@@ -28,6 +28,9 @@
 // Usage:
 //   node tools/radio-sim/simulate.js [--data DIR | --db FILE] [--trials 200] [--seed 1]
 //   node tools/radio-sim/simulate.js --selftest     (a SYNTHETIC library, to sanity-check the sim)
+//   --picker new    runs v1.368.0's station picker (lib/music/radio.js pickRadioBatch, imported -
+//                   never a copy) instead of today's; in the repo it is required directly, over stdin
+//                   pipe the BUNDLE: node tools/radio-sim/bundle.js | docker exec -i <c> node - --picker new
 // DATA dir default mirrors server.js:206: $DATA_DIR, else /app/data if it exists, else cwd.
 
 const fs = require('node:fs');
@@ -35,7 +38,7 @@ const path = require('node:path');
 
 // ---------------------------------------------------------------- args
 function parseArgs(argv) {
-  const out = { trials: 200, seed: 1, data: null, db: null, selftest: false };
+  const out = { trials: 200, seed: 1, data: null, db: null, selftest: false, picker: 'today' };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--data') out.data = argv[++i];
@@ -43,6 +46,7 @@ function parseArgs(argv) {
     else if (a === '--trials') out.trials = Math.max(1, parseInt(argv[++i], 10) || 200);
     else if (a === '--seed') out.seed = parseInt(argv[++i], 10) || 1;
     else if (a === '--selftest') out.selftest = true;
+    else if (a === '--picker') out.picker = argv[++i] === 'new' ? 'new' : 'today';
     else if (a === '--help' || a === '-h') out.help = true;
   }
   return out;
@@ -168,6 +172,7 @@ function projectAudioItem(item) {
     albumArtist: str(tags.albumartist) || artist,
     year: parseYear(tags.date),
     genre: str(tags.genre),
+    folderName: item.folderName, // the radio's T5 (same folder / channel)
     durationSec: Number(item.duration) || 0,
     fileDurationSec: Number(item.duration) || 0,
     source: 'library',
@@ -336,6 +341,48 @@ function simulateSession(list, seedTrack, rng, maxSec, chapterMode) {
 }
 const FALLBACK_DURATION_SEC = 210;
 
+// ---------------------------------------------------------------- the v1.368.0 picker (--picker new)
+// The REAL module: required from the repo, or from the bundle tools/radio-sim/bundle.js prepends
+// (its './store' is this file's albumKeyFor mirror - the only function radio.js takes from it).
+function loadRadio() {
+  // eslint-disable-next-line no-undef
+  if (typeof __RADIO_BUNDLE__ === 'function') return __RADIO_BUNDLE__({ albumKeyFor });
+  try {
+    return require(path.join(__dirname, '..', '..', 'lib', 'music', 'radio.js'));
+  } catch {
+    process.stderr.write('--picker new needs lib/music/radio.js: run inside the repo, or pipe the bundle (node tools/radio-sim/bundle.js)\n');
+    process.exit(2);
+  }
+}
+// One station session, the v1.368.0 client: the seed track plays, and whenever the LAST queued track
+// starts the client asks for a batch against the station seed (R8: the first track, never the last),
+// sending the session's plays as the exclude list (R11, last 200). A radio chapter pick stops at its
+// own segment (R13), so chapters are 'span'. No likes or recency: the simulator has no viewer.
+function simulateNewSession(list, seedTrack, rng, maxSec, radio, neighbours) {
+  const profile = radio.buildStationProfile({ kind: 'track', value: seedTrack.id }, list);
+  const queue = [Object.assign({}, seedTrack, { arm: 'seed' })];
+  const played = [];
+  const playedIds = [];
+  let elapsed = 0;
+  let endedEarly = false;
+  for (let i = 0; elapsed < maxSec; i += 1) {
+    if (i >= queue.length) { endedEarly = true; break; }
+    const cur = queue[i];
+    if (playedIds.indexOf(cur.id) === -1) playedIds.push(cur.id);
+    let dur = Number(cur.durationSec) || 0;
+    if (!(dur > 0)) dur = FALLBACK_DURATION_SEC;
+    played.push({ t: cur, startSec: elapsed, dur });
+    elapsed += dur;
+    if (i === queue.length - 1) {
+      const batchRng = createSeededRng(Math.floor(rng() * 4294967296));
+      const picks = radio.pickRadioBatch(profile, list, { exclude: playedIds.slice(-radio.EXCLUDE_CAP), count: radio.BATCH_COUNT }, batchRng);
+      const inQueue = new Set(queue.map((q) => q.id));
+      for (const p of picks) if (!inQueue.has(p.id)) queue.push(Object.assign({}, p, { arm: 'radio', tier: radio.tierOf(p, profile, neighbours) }));
+    }
+  }
+  return { played, endedEarly, recycles: 0, elapsed };
+}
+
 // ---------------------------------------------------------------- metrics
 function sessionMetrics(played) {
   const n = played.length;
@@ -349,7 +396,11 @@ function sessionMetrics(played) {
   let titledPlays = 0;
   for (const p of played) { const k = titledAlbum(p.t); if (k) { titledPlays += 1; albumCounts.set(k, (albumCounts.get(k) || 0) + 1); } }
   let backToBack = 0;
-  for (let i = 1; i < n; i += 1) if (artistOf(played[i].t) === artistOf(played[i - 1].t)) backToBack += 1;
+  let run = n ? 1 : 0; let longestRun = run;
+  for (let i = 1; i < n; i += 1) {
+    if (artistOf(played[i].t) === artistOf(played[i - 1].t)) { backToBack += 1; run += 1; } else run = 1;
+    if (run > longestRun) longestRun = run;
+  }
   // A just-played (titled) album returns within the next W tracks: positions with a titled
   // album whose next W plays include the same album key, over positions that HAVE W plays after.
   const albumReturn = (w) => {
@@ -373,10 +424,12 @@ function sessionMetrics(played) {
     albumReturn5: albumReturn(5),
     albumReturn10: albumReturn(10),
     backToBack,
+    longestRun,
     chapterPickShare: picks.length ? chapterPicks / picks.length : null,
     artistArmShare: picks.length ? artistArm / picks.length : null,
     genreJump: genreJumpShare(played),
     farFromSeed: farFromSeedShare(played),
+    farFromTaggedSeed: played.length && primaryGenre(played[0].t) ? farFromSeedShare(played) : null,
   };
 }
 // Dean's complaint (2026-10-06): "the random genre change is rough". Over consecutive pairs where
@@ -472,13 +525,14 @@ function libraryStats(list, lib) {
   return lines;
 }
 
-function runTrials(list, args, chapterMode) {
+function runTrials(list, args, chapterMode, radio) {
   const rng = createSeededRng(args.seed);
+  const neighbours = radio ? radio.genreNeighbours(list) : null;
   const H1 = 3600; const H3 = 3 * 3600;
-  const res = { h1: [], h3: [], ended1: 0, ended3: 0, recycles: 0 };
+  const res = { h1: [], h3: [], ended1: 0, ended3: 0, recycles: 0, tiers: {} };
   for (let k = 0; k < args.trials; k += 1) {
     const seedTrack = list[Math.floor(rng() * list.length)];
-    const s = simulateSession(list, seedTrack, rng, H3, chapterMode);
+    const s = radio ? simulateNewSession(list, seedTrack, rng, H3, radio, neighbours) : simulateSession(list, seedTrack, rng, H3, chapterMode);
     const p1 = prefixUntil(s.played, H1);
     res.h1.push(sessionMetrics(p1));
     res.h3.push(sessionMetrics(s.played));
@@ -486,8 +540,15 @@ function runTrials(list, args, chapterMode) {
     if (s.endedEarly && end1 < H1) res.ended1 += 1;
     if (s.endedEarly) res.ended3 += 1;
     res.recycles += s.recycles;
+    for (const p of s.played) if (p.t.tier) res.tiers[p.t.tier] = (res.tiers[p.t.tier] || 0) + 1;
   }
   return res;
+}
+
+function tierShare(tiers) {
+  const total = Object.values(tiers).reduce((a, b) => a + b, 0);
+  if (!total) return 'n/a';
+  return [1, 2, 3, 4, 5, 6, 7].map((k) => `T${k} ${fmt((tiers[k] || 0) / total, true)}`).join(' | ');
 }
 
 function metricTable(rows, label) {
@@ -497,6 +558,7 @@ function metricTable(rows, label) {
     ['artistRepeats', 'artist repeats (plays - distinct)', false],
     ['maxArtist', 'max plays of one artist', false],
     ['backToBack', 'same-artist back-to-back pairs', false],
+    ['longestRun', 'longest same-artist run', false],
     ['albumRepeats', 'album repeats (titled albums)', false],
     ['albumReturn5', 'titled album returns within next 5', true],
     ['albumReturn10', 'titled album returns within next 10', true],
@@ -504,6 +566,7 @@ function metricTable(rows, label) {
     ['chapterPickShare', 'share of picks that are lone chapters', true],
     ['genreJump', 'genre changes between tagged neighbours', true],
     ['farFromSeed', 'picks sharing neither seed artist nor genre', true],
+    ['farFromTaggedSeed', '  the same, seeds WITH a genre tag only', true],
   ];
   const out = [`${label}`, `  ${pad('metric', 40)} ${pad('median', 8)} ${pad('p90', 8)}`];
   for (const [k, name, pct] of keys) {
@@ -515,7 +578,7 @@ function metricTable(rows, label) {
 
 function report(list, lib, args, sourceLabel) {
   const L = [];
-  L.push('FileTube radio (Autoplay) baseline simulation - TODAY\'S picker');
+  L.push(args.picker === 'new' ? 'FileTube radio (Autoplay) simulation - v1.368.0 STATION picker (lib/music/radio.js)' : 'FileTube radio (Autoplay) baseline simulation - TODAY\'S picker');
   L.push(`source: ${sourceLabel}`);
   for (const n of lib.notes) L.push(`note: ${n}`);
   L.push(`trials: ${args.trials} sessions, rng seed ${args.seed}; each starts from 1 uniformly random track, queue = [that track]`);
@@ -525,17 +588,20 @@ function report(list, lib, args, sourceLabel) {
   L.push('');
   if (list.length === 0) { L.push('No music tracks: nothing to simulate.'); return L.join('\n'); }
   const hasChapters = list.some((t) => t.source === 'library-chapter');
-  const modes = hasChapters ? ['roll', 'span'] : ['span'];
+  const radio = args.picker === 'new' ? loadRadio() : null;
+  const modes = (hasChapters && !radio) ? ['roll', 'span'] : ['span'];
   for (const mode of modes) {
-    const r = runTrials(list, args, mode);
-    const modeLabel = !hasChapters ? 'no chaptered files, chapter mode irrelevant'
+    const r = runTrials(list, args, mode, radio);
+    const modeLabel = radio ? 'v1.368.0 STATION: seed = the first track, a radio chapter pick stops at its segment (R13)'
+      : !hasChapters ? 'no chaptered files, chapter mode irrelevant'
       : (mode === 'roll' ? 'CHAPTER PICKS ROLL TO THE FILE END (any non-menu queue; the common path)'
         : 'CHAPTER PICKS STOP AT THEIR SEGMENT (a flat menu-list queue)');
     L.push(`SESSIONS - ${modeLabel}`);
     L.push(...metricTable(r.h1, ' 1 hour'));
     L.push(...metricTable(r.h3, ' 3 hours'));
     L.push(`  sessions whose picks ran dry (playback stopped) before 1h: ${r.ended1}/${args.trials}; before 3h: ${r.ended3}/${args.trials}`);
-    L.push(`  recycle-arm firings (no-repeat rule relaxed), total across trials: ${r.recycles}`);
+    if (!radio) L.push(`  recycle-arm firings (no-repeat rule relaxed), total across trials: ${r.recycles}`);
+    else L.push(`  tier share of picks, all sessions, 3 hours: ${tierShare(r.tiers)}`);
     L.push('');
   }
   L.push('Definitions: artist = the track artist field (the picker queries it; matchesArtist also accepts');
@@ -548,6 +614,7 @@ function report(list, lib, args, sourceLabel) {
 }
 
 // ---------------------------------------------------------------- selftest library (synthetic)
+const SYN_GENRES = ['Rock', 'Hip-Hop', 'Jazz', 'Electronic', 'Folk', 'Heavy Metal', 'Pop', 'Country'];
 function syntheticLibrary(seed) {
   const rng = createSeededRng(seed);
   const tracks = {};
@@ -557,14 +624,17 @@ function syntheticLibrary(seed) {
     for (let i = 0; i < n; i += 1) {
       id += 1;
       const tid = 'syn' + id;
-      tracks[tid] = { id: tid, title: 'T' + id, artist: 'Artist ' + a, albumArtist: 'Artist ' + a, album: 'Album ' + a + '-' + Math.floor(i / 10), durationSec: 150 + Math.floor(rng() * 180), source: 'native' };
+      // genres: 8 families, a few artists straddle two (genre neighbours), every 7th untagged
+      const genre = a % 7 === 6 ? '' : SYN_GENRES[(a + (a % 5 === 0 && i % 3 === 0 ? 1 : 0)) % SYN_GENRES.length];
+      tracks[tid] = { id: tid, title: 'T' + id, artist: 'Artist ' + a, albumArtist: 'Artist ' + a, album: 'Album ' + a + '-' + Math.floor(i / 10), durationSec: 150 + Math.floor(rng() * 180), source: 'native', genre, year: 1965 + ((a * 7) % 55), folderName: 'artist' + a };
     }
   }
   const metadata = {};
   for (let f = 0; f < 4; f += 1) {
     const chapters = [];
     for (let c = 0; c < 15; c += 1) chapters.push({ startTime: c * 240, title: 'Ch' + c });
-    metadata['mix' + f] = { id: 'mix' + f, type: 'audio', title: 'DJ Set ' + f, folderName: 'djchannel', channelName: 'DJ Channel', duration: 3600, chapters };
+    // yt-dlp writes YouTube's CATEGORY ("Music") as the genre tag
+    metadata['mix' + f] = { id: 'mix' + f, type: 'audio', title: 'DJ Set ' + f, folderName: 'djchannel', channelName: 'DJ Channel', duration: 3600, chapters, tags: { genre: 'Music', date: '2021' } };
   }
   return { tracks, marks: {}, metadata, notes: ['SYNTHETIC library from --selftest: NOT a real library'], version: 'synthetic', signals: { musicLiked: 0, mediaLiked: 0, musicProgressRows: 0, mediaProgressRows: 0, watchedRows: 0 } };
 }
@@ -572,7 +642,7 @@ function syntheticLibrary(seed) {
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    process.stdout.write('usage: simulate.js [--data DIR | --db FILE] [--trials N] [--seed N] [--selftest]\n');
+    process.stdout.write('usage: simulate.js [--data DIR | --db FILE] [--trials N] [--seed N] [--selftest] [--picker today|new]\n');
     return;
   }
   let lib; let label;
