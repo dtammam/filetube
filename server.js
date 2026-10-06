@@ -2630,7 +2630,11 @@ function codecNeedsTranscode(videoCodec, audioCodec) {
 function buildFfprobeArgs(filePath) {
   return [
     '-v', 'error',
-    '-show_entries', 'format=duration:format_tags:stream=codec_name,codec_type,width,height:stream_disposition=attached_pic:stream_side_data=rotation',
+    // v1.366.0 (VR / 360): the side-data keys grow by the spherical ones (side_data_type, projection, type,
+    // bound_left/right), read by lib/media/projection.js projectionFromProbe; measured on ffprobe 7.0.2 with the
+    // real files in test/fixtures/vr: rotation still parses (firstStreamRotation reads each entry's own
+    // `rotation` key) and the codecs and dims come from other fields, so every existing reading is unchanged.
+    '-show_entries', 'format=duration:format_tags:stream=codec_name,codec_type,width,height:stream_disposition=attached_pic:stream_side_data=rotation,side_data_type,projection,type,bound_left,bound_right',
     '-show_chapters',
     '-of', 'json',
     filePath,
@@ -7594,6 +7598,7 @@ module.exports = {
   buildAudioExtractArgs,
   // v1.92 storyboard sprites (pure): planner, arg-builders, gate, path.
   planStoryboard,
+  buildFfprobeArgs, // v1.366.0 (VR / 360): the probe args, bound by test/unit/video-projection.test.js
   buildStoryboardFrameArgs,
   buildStoryboardAssembleArgs,
   shouldGenerateStoryboard,
