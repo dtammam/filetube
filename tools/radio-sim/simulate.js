@@ -430,6 +430,8 @@ function sessionMetrics(played) {
     genreJump: genreJumpShare(played),
     farFromSeed: farFromSeedShare(played),
     farFromTaggedSeed: played.length && primaryGenre(played[0].t) ? farFromSeedShare(played) : null,
+    // --picker new only: the share of picks drawn from T7 (the rest of the library: an unrelated genre)
+    t7Share: picks.length && picks.some((p) => p.t.tier) ? picks.filter((p) => p.t.tier === 7).length / picks.length : null,
   };
 }
 // Dean's complaint (2026-10-06): "the random genre change is rough". Over consecutive pairs where
@@ -567,6 +569,7 @@ function metricTable(rows, label) {
     ['genreJump', 'genre changes between tagged neighbours', true],
     ['farFromSeed', 'picks sharing neither seed artist nor genre', true],
     ['farFromTaggedSeed', '  the same, seeds WITH a genre tag only', true],
+    ['t7Share', 'picks from T7, the rest (new picker only)', true],
   ];
   const out = [`${label}`, `  ${pad('metric', 40)} ${pad('median', 8)} ${pad('p90', 8)}`];
   for (const [k, name, pct] of keys) {
@@ -615,6 +618,7 @@ function report(list, lib, args, sourceLabel) {
 
 // ---------------------------------------------------------------- selftest library (synthetic)
 const SYN_GENRES = ['Rock', 'Hip-Hop', 'Jazz', 'Electronic', 'Folk', 'Heavy Metal', 'Pop', 'Country'];
+const SYN_RARE = ['Grunge Rock', 'Punk Rock', 'Thrash Metal', 'Death Metal', 'Acoustic Fingerstyle', 'Folk Rock'];
 function syntheticLibrary(seed) {
   const rng = createSeededRng(seed);
   const tracks = {};
@@ -625,7 +629,9 @@ function syntheticLibrary(seed) {
       id += 1;
       const tid = 'syn' + id;
       // genres: 8 families, a few artists straddle two (genre neighbours), every 7th untagged
-      const genre = a % 7 === 6 ? '' : SYN_GENRES[(a + (a % 5 === 0 && i % 3 === 0 ? 1 : 0)) % SYN_GENRES.length];
+      // the small tail artists carry RARE genres in families (T0: 53 genres, many small: grunge / folk /
+      // punk rock, thrash / death metal), so a rare-genre station must widen through its family
+      const genre = a % 7 === 6 ? '' : (a >= 40 ? SYN_RARE[a % SYN_RARE.length] : SYN_GENRES[(a + (a % 5 === 0 && i % 3 === 0 ? 1 : 0)) % SYN_GENRES.length]);
       tracks[tid] = { id: tid, title: 'T' + id, artist: 'Artist ' + a, albumArtist: 'Artist ' + a, album: 'Album ' + a + '-' + Math.floor(i / 10), durationSec: 150 + Math.floor(rng() * 180), source: 'native', genre, year: 1965 + ((a * 7) % 55), folderName: 'artist' + a };
     }
   }
