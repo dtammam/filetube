@@ -71,22 +71,25 @@
   touched: history (ROADMAP Shipped entries, releases.json, completed plans, git). Cost to disclose in the ledger: an old
   Settings bookmark lands on the menu's first page. Measure first: grep for every old id and name, list what each pin protects.
 
-- [ ] **Music radio: make the station less simple and less repetitive** _(Dean, 2026-10-06: "it feels too simple and then
-  repetitive"; wants to understand what exists, then expand)_ - **What exists today** (read from `public/js/music.js` ~1144, 4099-4230;
-  shipped v1.254.0 "Endless autoplay", v1.284 desktop Autoplay button, v1.311 chapter-album exit station): when the LAST queued track
-  starts, with Autoplay on (default on, per device `ft-music-autoplay`, never in Listen mode) it fetches and appends 5 tracks:
-  first up to 3 random tracks by the SAME artist (`/api/music?artist=..&sort=random`), then a random page of the whole library
-  (60 fetched, 5 kept). It skips what is already queued and what this page session has played (an in-memory list, gone on reload);
-  if everything is excluded a recycle arm relaxes that rule so it never ends in silence. Autoplay off retracts the unplayed picks. The
-  shuffle is seeded random (`seed = Date.now() % 100000`). There is no named station, no "start radio from this song / artist /
-  album", and nothing steers the picks: no likes, plays, skips, genre, year, or recency. That is why it reads as simple (artist, then
-  anything) and repetitive (a fresh random draw each time, a short memory, the same artist first, so an album you just heard comes
-  back). Open taste question from v1.254: a lone chapter of a DJ-set album can be picked. **Outcomes to choose between (not decided;
-  Dean picks):** start a station from a song, artist, album or genre; weight by what you like and finish, and away from what you
-  skip; a longer memory (persist the played list, cool-down per artist and per album); mix in familiar and new; named stations
-  (Favorites radio, Genre radio, Throwback); a "radio" row in the pocket iPod skins and on the speaker's now-playing. Before design:
-  measure what signals the library already stores (likes, history, genres on tracks) and how a 1-hour session repeats today
-  (artist and album repeat counts over a simulated run).
+- [ ] **Music radio: stay close to where it started (in v1.368.0)** _(Dean, 2026-10-06: "The random genre change is rough. Less
+  repetitive more too random. I like the idea of it being the same artist/genre. It gets real random after a point." and "Bland /
+  no direction")_ - Autoplay plays like a station: it stays near its seed (same artist, same genre, nearby years), drifts slowly,
+  never jumps to an unrelated genre, and never plays one artist 3 in a row. Start radio from a song, an artist, an album or a
+  genre. Plan: docs/exec-plans/active/2026-10-06-v1368-music-radio.md.
+
+- [ ] **Music Shuffle mode toggle (in v1.368.0)** _(Dean, 2026-10-06)_ - a Shuffle toggle beside Loop and Autoplay: on reshuffles
+  the songs after the current one, off restores their original order. Synced across devices like Autoplay.
+
+- [ ] **Named radio stations** _(parked by the v1.368.0 intake, R2)_ - Favorites, Genre, Throwback and Deep cuts stations built on
+  the v1.368.0 radio picker.
+
+- [ ] **A radio row in the pocket iPod skins and on the speaker's now playing** _(parked by the v1.368.0 intake, R2)_.
+
+- [ ] **Count plays, skips and finishes for music** _(parked by the v1.368.0 intake, R2)_ - music has no play counts today
+  (`media_view_counts` is video only), no skips and no finished flag; a radio that weighs away from skips needs them first.
+
+- [ ] **Opt-in outside similar-artist data for radio** _(parked by the v1.368.0 intake, R2)_ - Last.fm or ListenBrainz similar
+  artists, off by default (a network call per station).
 
 ### Bugs
 
