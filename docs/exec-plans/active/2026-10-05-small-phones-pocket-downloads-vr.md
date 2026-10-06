@@ -1158,6 +1158,98 @@ C6, M8 (equivalent).
 
 Gate: CHANGES r1 @950c2aca - adversary
 
+**Gate r1 fixes** (fix commit **b8b390be**, on 950c2aca; Dean's rulings R1 and R2 of 2026-10-06).
+- R1 tilt wired: a "Move to look" switch in the cog, shown only while the sphere is up on a device with
+  `DeviceOrientationEvent` AND a coarse pointer (hidden on desktop and with no API); OFF at every mount, not
+  remembered (iOS asks per page anyway). The tap calls `enableMotion` synchronously inside the click (iOS
+  `requestPermission` needs the gesture); denied: the note "Motion was not allowed; drag to look around" and the
+  switch returns off; a drag still turns the view with motion on (it offsets the motion heading).
+- R2: `projectionFromName` deleted; `effectiveProjection(item)` reads only the owner's pick and the file's metadata.
+  Unit test: 'Xbox 360 unboxing [dQw4w9WgXcQ].mp4' 1080x1080, 'Day 180 of learning piano.mp4' 1080x1080, 'Tony Hawk
+  360 flip tutorial.mp4' 2532x1170, 'Frontside 180.mp4' 1080x1080, 'Best 360 dunk.mp4' 1920x960, 'clip_360_TB.mp4'
+  512x512, 'trip_180_LR.mp4' 512x256 are all flat; integration: clip_360_TB.mp4 and pano_360.mp4 serve no projection.
+  Fixtures README updated.
+- A (adv W2, qa W2b): new test/unit/vr-view-wiring.test.js (19 tests: the real watch view through
+  test/helpers/watch-view-harness.js, the host cloned from watch.html's own template, a stub VrView counting
+  mount/destroy) and 5 fake-GL mount tests in vr-view-client (the drag sense read through the shader's OWN `lon/lat/u/v`
+  lines, exported as `VrView.FRAG`, so a sign flip in the shader text reds).
+- B (adv W3, qa W2): `onFail` sets `vrRefusedKey`; the toast stays; remount only on the switch or a pick.
+- C (adv W4): a native presentation under a mounted sphere counts only after it has held `VR_NATIVE_SETTLE_MS` (600 ms;
+  player.js's bounce retries 5 x 45 ms), so the iPhone rotate bounce into the app's own full screen keeps the sphere,
+  remounts nothing and says nothing; PiP has its own note "Picture in picture shows the flat picture; 360 view returns
+  here"; the full-screen note shows only after the sphere was really replaced. The bounce case is jsdom-tested, not
+  device-measured.
+- D (adv W5, qa W3): every `ensureCogControlsInjected` run hides the three VR rows and the view's abort hides them;
+  only `setupVrView` reveals them, so a TV episode shows none.
+- E (adv W6): integration test, a member with `canModifyLibrary` and a folder restriction on the item: 404, nothing
+  written; lifted: 200.
+- Folded in: the 360 row is hidden in the native-controls mode (adv N4); the Video type row re-syncs when the
+  capability answer lands late (qa S5, hook hoisted above the `?tv=` branch for the TDZ reason); style.css comment
+  corrected (qa S1); the probe builds its library with the REAL scan and REAL ffprobe 7.0.2-static and records the
+  commit it ran on (qa S2). The harness takes a `player` override and a delayed route answer.
+- Targeted Node 22.23.1 with `FILETUBE_TEST_FFMPEG` (the 4 VR files + music-ambient, player-overlay-no-filter,
+  ios15-floor, player-chapters-cog-row, watch-init-behavioral, player-settings-cog-parity, watch-sweep-s3,
+  watch-destructive-confirm, rbac-census, route-write-classification, media-write-proto-ids, overlay-containment,
+  ui-lint, shell-script-global-collisions, chapter-snap-watch, chapter-snap integration): `# tests 286` `# pass 286`
+  `# fail 0` `# skipped 0`, exit 0. lint `✖ 6 problems (0 errors, 6 warnings)`, lint:ui `ui-lint: OK - the live debt
+  equals docs/ui-exceptions.json`, lint:overlay `overlay-containment: clean (0 violations)`. Hook on b8b390be (Node
+  24 via ~/.profile): `ℹ tests 8784` `ℹ pass 8783` `ℹ fail 0` `ℹ skipped 1`, `Pre-commit checks passed.` Full suites
+  not run (the release builder runs them).
+- Mutants on the COMMITTED b8b390be (/tmp `git archive` sandbox + pristine copy, each mutation landed, restored and
+  diffed clean; driver scratchpad Cfix-mut.py, log Cfix-mut.log): **28 of 28 killed by name**.
+  - This round: F1 onFail without the refusal ("a lost WebGL context stays flat..."); F2 native counts at once ("the
+    iPhone rotate bounce..."); F3 PiP with the full-screen words ("Picture in Picture that holds..."); F5 the TV
+    injection leaves rows ("D: a TV episode shows no VR rows..."); F6 the abort leaves rows and A1 the abort does not
+    unmount ("navigation away..."); F7 the row in native-controls mode ("the native-controls mode..."); F8
+    enableMotion after an await and F10 denied says nothing ("the tap calls enableMotion INSIDE the click..."); F9
+    no motion-support check ("shown only while a sphere is up on a device with motion..."); F11 orientation ignored
+    and F12 a drag with motion does nothing ("motion - requestPermission is asked synchronously..."); F13 a name rule
+    returns ("R2: a file NAME never makes a video VR..." and "REACHABILITY..."); F14 = adv B1 drop
+    restrictedVideoMutation ("a member WITH the modify right but a folder restriction..."); F15 no capability re-sync
+    ("qa S5...").
+  - The adversary's survivors: A2 no key-change unmount ("the switch off unmounts...", "the owner's Flat pick..."); A3
+    no post-await re-check ("RE-CHECKED after vr-view.js loads..."); A4 no video listeners ("another item...", "iPhone
+    native full screen...", "Picture in Picture..."); A5 the 360 row for flat and A6 Video type for members ("a flat
+    video never mounts and hides the 360 row..."); A6b no host observer ("docking the player unmounts"); A7 no
+    fullscreenchange listener ("own full screen that HOLDS..."); C1 too large never reported ("over MAX_TEXTURE_SIZE
+    calls onTooLarge..."); C2 shader u mirrored, C2b drag mirrored, C6 shader v upside down ("neither mirrored nor
+    upside down..."); C3 contextlost not listened ("a lost WebGL context is reported..."); C4 destroy leaves the
+    canvas ("destroy removes the canvas...").
+  - Left as the adversary ruled them, equivalent: B6, B7 (`!isAudio`), B10 (`l < 0 || r < 0`), M8 (masked by the
+    Phase-2 mirror).
+- Real-browser probe on b8b390be (tools/vr-proof/probe-result.json, `head` b8b390be, `dirtyProductFiles` [],
+  `pageErrors` []). Scan with the real ffprobe: vr-360-v2.mp4 stored `projection` "360"; 'Best 360 dunk.mp4' (the same
+  2:1 panorama, no metadata) stored no key.
+
+| Row | getContext calls | Canvases | vr-view.js loaded | 360 row hidden | Move to look hidden | Video type hidden |
+|---|---|---|---|---|---|---|
+| flat ('Best 360 dunk.mp4', switch stored on) | none | 0 | no | yes | yes | no |
+| vrOff | none | 0 | no | no | yes | no |
+| vrOn | webgl | 1 | yes | no | yes (desktop) | no |
+| off | webgl | 0 | yes | no | yes | no |
+| pickFlat: before | webgl x2 | 1 | yes | no | yes | no |
+| pickFlat: after Flat | webgl x2 | 0 | yes | yes | yes | no |
+| pickFlat: after Auto | webgl x3 | 1 | yes | no | yes | no |
+| nav (in-app home) | webgl x3 | 0 | yes | yes | yes | yes |
+
+  Sense (desktop, 501 px per 90 degrees): yaw 0 red, drag left 90 green (RIGHT band), back red, drag right 90 yellow
+  (LEFT band), as before. Tilt (phone context 390x844, touch, custom mobile player): the Move to look row shown with
+  the sphere (`coarse` true, `DeviceOrientationEvent` present), unticked; after the tap ticked; Chromium-dispatched
+  `deviceorientation`: upright (0, 90, 0) red, alpha 90 (turned LEFT) yellow (the LEFT band), alpha -90 green (the
+  RIGHT band), back upright red; a 90 degree drag left with motion on: green. The nav row now also hides the rows
+  (D). The vertical sense is bound by the fake-GL test only: the panorama's bands are full height, so the probe has
+  no pitch row (adv N1).
+- Disclosures for the release text: on a phone the 360 view needs the custom mobile player (Settings); with the
+  phone's own controls (the default) the 360 row is hidden; with the sphere up the picture's own gestures (double-tap
+  skip, hold for 2x, tap to reveal, pull to the mini player) give way to drag and tap = play/pause, and a desktop
+  double-click toggles twice (qa S3); Move to look is off again after every remount (a new item, back from full
+  screen); a library item with no stored width/height still shows its sphere now (dims are no longer read), but a
+  metadata-tagged file already in the library before this release shows as VR only after the owner's pick or a file
+  change (no backfill, section 7); a transient ffprobe failure on a new or changed VR file stores no `projection` and
+  is not retried (adv N3); production ffprobe is Alpine's apk build, measured on 7.0.2 only (qa S4, adv N5);
+  ROADMAP.md line 502 (the VR Planned entry) still says "the file-name rule works at once", to fix in the release
+  commit.
+
 ## 7. Cut or deferred (Dean can overrule each)
 
 - Refactoring existing pixel breakpoints: no instrument shows one broken; the VPM net + the design rule stop new ones.

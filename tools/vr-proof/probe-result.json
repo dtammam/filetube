@@ -1,11 +1,27 @@
 {
- "runAt": "2026-10-05T19:18:53.044Z",
+ "runAt": "2026-10-06T01:32:35.270Z",
+ "head": "b8b390bed825f1c6265c2323bc366ea3d128fd2d",
+ "dirtyProductFiles": [],
  "rows": {
+  "scan": {
+   "ffprobe": "/home/coder/.local/bin/ffmpeg-static/ffprobe",
+   "vr360v2": {
+    "projection": "360",
+    "width": 512,
+    "height": 256
+   },
+   "best360dunk": {
+    "hasProjectionKey": false,
+    "width": 512,
+    "height": 256
+   }
+  },
   "flat": {
    "gc": [],
    "canvases": 0,
    "script": false,
    "vrRowHidden": true,
+   "motionRowHidden": true,
    "typeBtnHidden": false
   },
   "vrOff": {
@@ -13,6 +29,7 @@
    "canvases": 0,
    "script": false,
    "vrRowHidden": false,
+   "motionRowHidden": true,
    "typeBtnHidden": false
   },
   "vrOn": {
@@ -22,6 +39,7 @@
    "canvases": 1,
    "script": true,
    "vrRowHidden": false,
+   "motionRowHidden": true,
    "typeBtnHidden": false,
    "box": {
     "x": 255,
@@ -72,6 +90,7 @@
    "canvases": 0,
    "script": true,
    "vrRowHidden": false,
+   "motionRowHidden": true,
    "typeBtnHidden": false
   },
   "pickFlat": {
@@ -83,6 +102,7 @@
     "canvases": 1,
     "script": true,
     "vrRowHidden": false,
+    "motionRowHidden": true,
     "typeBtnHidden": false
    },
    "afterFlat": {
@@ -93,6 +113,7 @@
     "canvases": 0,
     "script": true,
     "vrRowHidden": true,
+    "motionRowHidden": true,
     "typeBtnHidden": false
    },
    "afterAuto": {
@@ -104,6 +125,7 @@
     "canvases": 1,
     "script": true,
     "vrRowHidden": false,
+    "motionRowHidden": true,
     "typeBtnHidden": false
    },
    "stored": {
@@ -118,9 +140,78 @@
    ],
    "canvases": 0,
    "script": true,
-   "vrRowHidden": false,
-   "typeBtnHidden": false
-  }
+   "vrRowHidden": true,
+   "motionRowHidden": true,
+   "typeBtnHidden": true
+  },
+  "tilt": {
+   "before": {
+    "nativeControls": false,
+    "canvases": 1,
+    "motionRowHidden": false,
+    "motionChecked": false,
+    "hasDOE": true,
+    "coarse": true,
+    "box": {
+     "x": 0,
+     "y": 72,
+     "w": 390,
+     "h": 275
+    }
+   },
+   "cogOpen": true,
+   "afterTap": {
+    "nativeControls": false,
+    "canvases": 1,
+    "motionRowHidden": false,
+    "motionChecked": true,
+    "hasDOE": true,
+    "coarse": true
+   },
+   "cogClosed": true,
+   "upright": {
+    "rgb": [
+     254,
+     0,
+     0
+    ],
+    "name": "red"
+   },
+   "turnedLeft90": {
+    "rgb": [
+     255,
+     255,
+     0
+    ],
+    "name": "yellow"
+   },
+   "turnedRight90": {
+    "rgb": [
+     1,
+     128,
+     1
+    ],
+    "name": "green"
+   },
+   "backUpright": {
+    "rgb": [
+     254,
+     0,
+     0
+    ],
+    "name": "red"
+   },
+   "dragLeft90WithMotion": {
+    "rgb": [
+     1,
+     128,
+     1
+    ],
+    "name": "green"
+   },
+   "per90px": 370
+  },
+  "desktopMotionRowHidden": true
  },
  "pageErrors": []
 }
