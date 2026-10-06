@@ -115,3 +115,9 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
   playing; resume works inside a chapter. Close the pop-out while a save is in flight: nothing odd.
 - [ ] v1.363.1 - Watch page settings cog (a chapterless video): "Add chapters" opens the same editor; with chapters it says "Edit
   chapters". The row is plain weight at the end of the menu; say if it looks out of place. The sticker menu's new rows match the old.
+
+## Settings reorganized (v1.367.0)
+
+- [ ] v1.367.0 - As admin on the phone: Settings lists SYSTEM, PERSONALIZE, ACCOUNT, LIBRARY, ADVANCED; Scan & cache, Home page and Playback show "These apply to everyone on this FileTube". An old bookmark to Settings > Automation & Storage opens Scan & cache.
+- [ ] v1.367.0 - As a member (second account): no Scan & cache, Downloads, Users or Backup; Home page and Playback show only your own switches; Notifications shows push if it is on. Say if anything you use is missing.
+

@@ -5,7 +5,7 @@
 ### Device checks owed
 
 - [ ] **Device checks owed (Dean: reply "1-5 pass, 9 fails")** _(v1.362.2, 2026-10-04)_ - one line per open check in
-  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (37 open lines on 2026-10-06); the steps are only there. A
+  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (39 open lines on 2026-10-06); the steps are only there. A
   passed line is deleted from both places; a failed one becomes a bug below. Closes when every line is resolved.
 
   1. v1.362.0 - pull down: springs back early, docks past a third, picture never black
@@ -46,6 +46,8 @@
   36. v1.363.1 - Add chapters on a chapterless mp3: chapter tracks after re-list and next pick; the playing song untouched
   37. v1.363.1 - watch cog: Add / Edit chapters row; the new sticker rows match the old
   38. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
+  39. v1.367.0 - admin, phone: five groups, "apply to everyone" lines, an old Automation & Storage bookmark opens Scan & cache
+  40. v1.367.0 - member account: no admin pages or rows, personal switches intact, push under Notifications when on
 
   Passed 2026-10-06 (deleted from DEVICE-CHECKS.md): [x] v1.365.0 - a one-off download with the server stopped: "Can't reach FileTube", it clears; [x] v1.365.0 - stuck row "updated N ago", queued "waiting N"; [x] v1.365.0 - Download trace saves a .txt in the home-screen app; [x] v1.366.0 - 360 view checks (iPhone live picture, drag direction and Move to look, native full screen and PiP, Video type Flat/Auto, container ffprobe detection).
 
@@ -333,28 +335,6 @@
   devices; (d) gate leftover W6: no test binds the trace's quarter-of-the-cap limit on kept lines for still-open jobs (mutant
   R14 survives; the behaviour was measured correct); (e) a healthy row may read "updated 61s ago" for up to ~60 s after the
   download closes (avatar probe + channel save; reasoned, not measured).
-- [ ] **Settings reorganized: SYSTEM, PERSONALIZE, ACCOUNT, LIBRARY, ADVANCED; "Automation & Storage" split up** _(Dean, 2026-10-05:
-  "automation & storage feels like an inadequate name"; rulings in the same talk)_ - Today: 18 pages; Appearance, Mobile player and
-  Critters sit ungrouped at the top, then Library, System, Account, Advanced. "Automation & Storage" holds ~30 unrelated controls
-  (home page, playback, library behaviour, housekeeping). Target, admins:
-  - **SYSTEM:** Scan & cache (scan interval, remove deleted files, chapter snap lead-in, transcode cache), Downloads, Trash,
-    Notifications (the bell + push switches, moved out).
-  - **PERSONALIZE** (Dean picked the name): Appearance, Home page (default view and sort, home feed modes, the Continue rows, the
-    mobile bottom bar), Playback (autoplay next, the resume prompt and countdown; its own page), Mobile player, Critters.
-  - **ACCOUNT:** Account, Users, Backup & Restore.
-  - **LIBRARY:** Videos, Music (+ "Channels in Music", moved here from Automation), Books, Shows, Podcasts, Hidden. Page titles are
-    the plain noun ("Video folders" -> "Videos"; the video page's current title "FileTube Setup & Configuration" goes). "File
-    imported videos under their channel" moves to Videos.
-  - **ADVANCED:** Troubleshooting, Experimental, Transcript sharing.
-  - Members (non-admins) start at PERSONALIZE (Dean: SYSTEM first for admins only).
-  - **Full naming sweep (Dean: "a full category sweep of all section names"):** every group, page title, in-page heading (h3) and
-    sub-group label in Settings gets a census table (current name, where it lives, what it holds, proposed name), shown to Dean
-    side by side before any rename; plain nouns, one naming style across pages, no name that hides what the page holds.
-  Before building, measure: every control's save path (server-wide `saveAutomationSetting` vs per-device/prefs-sync) so a page
-  never mixes "for everyone" and "this device" without saying so; what each role sees today; and every reference to the old names
-  and collapse keys (device checks, docs, tests, `#` deep links, stored open/closed state per `data-collapse-key`). Moves only:
-  no setting changes meaning, key or default. Phone and desktop measured before/after (rows wrap, buttons never shrink).
-
 - [ ] **v1.362.1 gate leftovers (non-blocking)** - (a) the comment above `scheduleArtSingleTap` (player.js) says only the
   touchend double-tap and the click listener cancel a pending tap; `close()` and, since v1.362.1, `resetTransientPlaybackUi` do too
   (QA r2; a comment, left because the code was already approved). (b) The chevron's paused read from the background-audio sidecar
@@ -711,6 +691,34 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.367.0 - Settings reorganized: SYSTEM, PERSONALIZE, ACCOUNT, LIBRARY, ADVANCED (2026-10-06)
+
+- Dean's rulings 2026-10-05/06. 21 pages in five groups (System: Scan & cache, Downloads, Notifications, Trash; Personalize:
+  Appearance, Home page, Playback, Mobile player, Critters; Account: Account, Users, Backup & Restore; Library: Videos, Music,
+  Books, Shows, Podcasts, Hidden; Advanced: Troubleshooting, Experimental, Transcript sharing). "Automation & Storage" is split;
+  "Resume rows" is "Continue rows"; the critter sound check moved to Critters; Bottom bar to Mobile player; Channels in Music to
+  Music; Imported videos to Videos. Moves and renames only: no save path, route, stored key or default changed (`git diff
+  origin/main -- lib` is two comments).
+- Old ids: `data-md-aliases` on the menu maps the 8 renamed ids (automation-storage lands on Scan & cache); a `#hash` and the
+  remembered `ft-md:setup` choice resolve through it, including for an admin page that appears a moment after the menu is built
+  (a pending key). Tested both ways on the real markup.
+- Falsifier: `scripts/settings-census.js` (every control, its save path, its roles) run on main BEFORE any edit; the baseline is
+  `test/fixtures/settings-controls-v1.366.1.txt` (109 controls) and `test/unit/settings-census.test.js` allows exactly 11 role
+  changes. Measured in Chromium, phone and desktop, admin and member: 0 control-size changes, no overflow.
+- Member view (Dean, 2026-10-06, asked because Home page and Playback mix server-wide rows with personal ones): the page shows, the
+  server-wide rows (default view and sort, autoplay, bell, scan, cache, chapter snap) show to admins only with "These apply to
+  everyone on this FileTube"; every personal row stays. Scan & cache is an admin page. DISCLOSED: a member's menu still lists
+  SYSTEM first (Trash, and Notifications when push is on) although the ruling said members start at PERSONALIZE; if `/api/auth/me`
+  fails for an admin the admin rows stay hidden (as Users/Backup do); Trash retention (server-wide) stays visible and inert for a
+  member as before; "Sorting on this device" is a new plain heading for the per-folder sort switch; the custom-controls switch is
+  in Experimental (the device checks said Mobile player: corrected).
+- Suites at 4768ecb1: Node 22.23.1 `# tests 11241` `# pass 11231` `# fail 0`; Node 24.20.0 `ℹ pass 11231` `ℹ fail 0`; later commits
+  re-ran the unit suite in the pre-commit hook and the settings tests directly.
+- Gate (adversary + qa, security brief applied as a section): r1 CHANGES @4768ecb1 (an admin's old Automation link landed on Trash;
+  a dangling Push heading; the member Notifications reveal unbound); r2 adversary APPROVED @60b36546; qa r2 CHANGES (the
+  pending-hash branch unbound, a jsdom late hashchange masked it), r3 APPROVED @dce8e2d1. Visual scene names changed (baselines
+  rebuild by the bot PR). Lesson: LESSONS section 4.
 
 ### v1.366.1 - Security update for two dependencies (2026-10-06)
 
