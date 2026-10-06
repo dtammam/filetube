@@ -3,10 +3,10 @@ plan: small-phones-pocket-downloads-vr
 harness: v2 · lean
 branch: one branch per release (named in section 3)
 anchor: spec
-status: Approved @fc9fb7c5
-next: Release C (W4 on feat/v1.366.0-vr-360 @20dfa7a8): rebase on main after v1.365.0 (route census 264 -> 265), both suites, FULL gate + security-brief
+status: Shipped v1.366.0
+next: none (all three releases shipped: v1.364.0, v1.365.0, v1.366.0)
 design: Approved 2026-10-05 @fc9fb7c5 (Dean's Q&A in the kickoff; every ruling in section 1 is his answer)
-gate: Release A APPROVED r2 @a3402a93; Release B APPROVED r2 @b8b3ca7d (adversary, qa, security-brief); C pending
+gate: APPROVED (A r2 @a3402a93, B r2 @b8b3ca7d, C r2 @a924614e; adversary, qa, security-brief)
 ---
 
 # Small phones (iOS 15), the iPod center hold and a way into the iPod, stuck-or-stale downloads, VR / 360
@@ -1249,6 +1249,137 @@ Gate: CHANGES r1 @950c2aca - adversary
   is not retried (adv N3); production ffprobe is Alpine's apk build, measured on 7.0.2 only (qa S4, adv N5);
   ROADMAP.md line 502 (the VR Planned entry) still says "the file-name rule works at once", to fix in the release
   commit.
+
+**Security-brief r2 @a924614e** (delta b8b390be, a924614e). Gap first: no shell, so the delta diff was NOT run; I
+traced it by reading the w4 tree at its current state. No tests run. 0 CRITICAL, 0 HIGH, 0 MEDIUM, 1 LOW, 2 INFO.
+- r1 INFO 1, tilt unreachable: FIXED. The only caller of `enableMotion` in public/ is `onVrMotionTap`
+  (watch.js:2527), bound as a `click` listener on `#watch-vr-motion-check` (watch.js:2584). It calls
+  `h.enableMotion()` synchronously with no await before it; `DeviceOrientationEvent.requestPermission()` runs inside
+  enableMotion's own body (vr-view.js:376). Verified: no other path reaches the prompt. A script-made `.click()`
+  would need code from this origin, and iOS enforces the user gesture itself. The row shows only with a sphere up and
+  `(pointer: coarse)` + DeviceOrientationEvent. The listener is removed through disableMotion on destroy
+  (vr-view.js:424). The vr-view.js:356 comment now matches the code.
+- Route: UNCHANGED, apart from `effectiveProjection(item)` losing its name argument. The check order is the same
+  (requireModifyLibrary, then restrictedVideoMutation, then the id and value checks, then ownMediaItem), and it still
+  writes only `projectionOverride`. The new test (video-projection.test.js:161) checks for a member who has the
+  modify right plus a folder restriction: 404, nothing written; it lifts the restriction and gets 200 with
+  the write (it can tell the two cases apart).
+- Nothing new reachable from a request: EXPECTED_ROUTE_COUNT is still 265. `FRAG` is a static string on the
+  same object as before. The probe tool's real scan and PATH prepend run only in that tool. I did not find a test
+  hook in public/js/watch.js (no `__test`/override name), so the harness change is in the test files; I did not read
+  it.
+- The file-name rule is deleted (projection.js has no name reader left), so r1 item 3 (regex DoS) no longer applies;
+  projection now comes only from ffprobe metadata or the owner's pick.
+- LOW 1 (fix or accept): tools/vr-proof/probe-result.json:7 now commits the absolute personal path
+  `"ffprobe": "/home/coder/.local/bin/ffmpeg-static/ffprobe"` (written by probe.js:97). It is a username and a
+  home layout, not a secret, and `/home/coder` already appears in 31 tools/ files, so it reveals nothing new. Fix:
+  record `path.basename` or a `~`-relative path. Accepting it as the tools/ convention is fine.
+- INFO 1: probe-result.json has no other secret or path (it holds the HEAD sha, `dirtyProductFiles []`, and the
+  rows). The session token is minted in memory and never written.
+- INFO 2 (robustness, not security): if a browser's `requestPermission()` threw synchronously instead of returning
+  a rejected promise, enableMotion would throw out of the tap with the switch left checked until the next
+  syncVrRows. pocket-lighting.js:251 wraps the same call in try/catch; copying that would close it. iOS returns a
+  rejected promise, so I expect no effect on device (reasoned, not verified).
+
+Gate: APPROVED r2 @a924614e - security-brief
+
+**QA r2 @a924614e (delta 950c2aca..a924614e: b8b390be fix + a924614e docs/probe).** Ran on the w4 tree (node_modules
+symlinked, then removed), Node 22.23.1 with `FILETUBE_TEST_FFMPEG` set: unit video-projection, vr-view-client,
+vr-view-wiring, music-ambient, player-overlay-no-filter, watch-destructive-confirm, watch-sweep-s3 (the two other
+users of the harness), integration video-projection, rbac-census, route-write-classification, media-write-proto-ids:
+`# tests 116` `# pass 116` `# fail 0` `# skipped 0`, exit 0. lint `✖ 6 problems (0 errors, 6 warnings)`,
+lint:overlay `clean (0 violations)`, lint:ui `OK`. Full suites not re-run; read from the logs on a924614e: Node 22
+`# tests 11230` `# pass 11227` `# fail 0` `# skipped 3`, Node 24 `ℹ tests 11230` `ℹ pass 11227` `ℹ fail 0`
+`ℹ skipped 3`, both exit 0 (C2-suites.status).
+- W1 tilt: FIXED per Dean's ruling. "Move to look" (watch.js onVrMotionTap) calls `enableMotion` synchronously in the
+  click, and enableMotion calls `DeviceOrientationEvent.requestPermission()` before any await (vr-view.js:373). The
+  row shows only with a sphere up on a coarse-pointer device that has the API; a new mount starts it off; denied
+  leaves it off with the note. Bound by vr-view-wiring "R1 Move to look" (enableCalls === 1 right after `click()`).
+  Real browser: probe-result.json `tilt` row (turn left 90 reads yellow, right reads green, upright red). The vr-view.js
+  header and :356 comments now name the real caller.
+- W2 context loss: FIXED as prescribed. `onFail` sets `vrRefusedKey`, re-syncs the rows and toasts once; the wiring
+  test proves no remount and no second toast on a later host class change, and that flipping the switch tries again.
+  The boundary wiring I said was unbound (native full screen, iPhone webkitbegin/endfullscreen, PiP, dock via the
+  host observer, native controls, a new item via loadedmetadata, nav/abort) now each has a wiring test through a stub
+  VrView.mount.
+- W3 TV-episode rows: FIXED. `ensureCogControlsInjected` hides all three rows on every view, and the abort hides
+  them too; "D: a TV episode shows no VR rows" forces them visible first, then proves the TV path hides them.
+- W4 name rule: FIXED per Dean's ruling. `projectionFromName` is gone (the test asserts it is not exported);
+  `effectiveProjection(item)` reads only the pick and the metadata; the GET and the route call it with no name. The
+  three names I measured plus clip_360_TB / pano_360 are flat in unit and integration (GET `projection` undefined).
+  Leftover prose: none in lib/, public/, tools/ or the fixtures README (it now says both named files are flat and
+  that the probe plays vr-360-v2.mp4). The plan's W4 text still says "the file-name rule works at once" (the contract
+  as written, overruled in the build log) and ROADMAP 502 does too: you fix 502 in the release commit.
+- S1 FIXED (the CSS comment now credits the z-index for the overlays before the video). S2 FIXED (probe-result.json
+  `runAt` 2026-10-06T01:32:35Z, between b8b390be 01:23 and a924614e 01:33, `pageErrors []`). S5 FIXED (`vrResync`
+  from the capability callback, declared before the ?tv= branch; the callback is a `.then`, so it runs after init's
+  synchronous body and the `let` is out of its TDZ; bound by "wiring (qa S5)" with a 1000 ms late /api/auth/me).
+- New in the delta, checked: the harness `player` merge and `delayMs` are opt-in, and only vr-view-wiring passes
+  them (grep), so watch-destructive-confirm and watch-sweep-s3 mean what they did (both green above).
+  `VrView.FRAG` is a static string; the test pulls the lon/lat/u/v lines out of it into `new Function`, which is
+  test-only, repo-owned text, no security surface. The new copy ("Move to look", the aria "Move to look: turn the
+  phone to look around", "Motion was not allowed; drag to look around", "Picture in picture shows the flat picture;
+  360 view returns here") is plain, has no em dash, and is true where it shows: the PiP note fires only after a PiP
+  that held 600 ms under a mounted sphere, on the way back. The 600 ms settle keeps the sphere through the iPhone
+  rotate bounce (tested). The 360 row is hidden in native-controls mode, which matches the ruling (custom mobile
+  player only); the release text must say so.
+- SUGGESTION (new, not blocking): with no `requestPermission` (Android), enableMotion returns granted, but if the
+  device sends `alpha: null` then `onOrient` ignores every event: the switch reads on and nothing moves. Dean's devices
+  are iPhones; disclose it or check `e.alpha` before saying on.
+S3, S4 and S6 stay as disclosures for the release text. The release-readiness list from r1 still lands in the
+release commit.
+
+Gate: APPROVED r2 @a924614e - qa
+
+**Adversary r2 @a924614e (delta from 950c2aca).** Sandbox: /tmp `git archive` of a924614e plus a pristine copy,
+diffed clean after every mutant; node_modules symlinked there only. W4 tests on Node 22.23.1 with
+`FILETUBE_TEST_FFMPEG` (unit video-projection, vr-view-client, vr-view-wiring; integration video-projection):
+`# tests 52` `# pass 52` `# fail 0` `# skipped 0`. lint `✖ 6 problems (0 errors, 6 warnings)`, lint:ui OK,
+lint:overlay `clean (0 violations)`; no em dash in any added line. Full suites taken from the brief, not re-run.
+r1 findings, each re-measured on a924614e:
+- W1 tilt: FIXED as Dean ruled (R1). The shipped probe, re-run by me on pristine a924614e in a phone context
+  (390x844, touch, coarse pointer): Move to look is shown only with the sphere up (hidden on desktop: `true`); a tap
+  turns it on (`motionChecked true`); orientation upright -> red, alpha +90 -> yellow (the LEFT band: turning the
+  phone left looks left), alpha -90 -> green, back -> red; a 90 degree drag LEFT with motion on -> green (the drag
+  offsets the heading). My math check of deviceQuaternion: portrait facing north looks down -z with +y up;
+  alpha +30 looks 30 degrees left; beta 120 looks 30 degrees up; landscape with screen angle 90 (alpha 90, gamma -90)
+  and angle 270 / window.orientation -90 both look north with +y up (iOS 15's window.orientation path is the same
+  rotation). Permission inside the gesture: Chromium has no requestPermission, so it is bound by unit tests only;
+  my mutants that defer it (in watch.js D4, in vr-view.js D8) go red by name; the denied note (D5) and the off tap
+  (D12) are bound too.
+- W2 the wiring: FIXED. All 13 r1 survivors are now KILLED by name: A1 (abort unmount), A2 (key-change unmount), A3
+  (post-await re-check), A4 (video listeners), A5 (360 row for flat), A6 (Video type for members), A6b (host observer),
+  C1 (too-large refusal), C2 (mirrored), C3 (contextlost), C4 (destroy keeps the canvas), C6 (upside down), B1.
+- W3 context loss: FIXED, measured in Chromium SwiftShader: after `loseContext()` and 3 s of host class changes,
+  canvases 0, exactly one toast "360 view stopped; showing the flat picture" (r1: a new canvas within 1.5 s).
+- W4 the notes: FIXED for PiP (own copy, D10 kills a swap back). Element full screen measured: the sphere is still
+  up at 300 ms, gone at 1200 ms, back on exit with the full-screen note. A simulated iPhone bounce
+  (webkitDisplayingFullscreen true, then webkitbeginfullscreen / webkitendfullscreen) lasting 250 ms: sphere kept,
+  no toast.
+- W5 TV cog: FIXED, measured: sphere page (360 row and Video type shown), then in-app nav to /watch.html?tv=ep1:
+  all three VR rows hidden.
+- W6 restricted member: FIXED: the shipped test now goes red when restrictedVideoMutation is dropped (B1 KILLED,
+  "route: a member WITH the modify right but a folder restriction...").
+- Name rule: DROPPED as Dean ruled (R2). A whole-tree grep finds no projectionFromName or name read; the routes call
+  `effectiveProjection(item)` with one argument (owner pick > file metadata, nothing else); the probe's scan row
+  stores no projection for "Best 360 dunk.mp4" at 2:1 and serves it flat (no getContext, no script, no canvas).
+New in the delta:
+- SUSPICION (not a finding: there is no device repro; device check): the settle window is 600 ms, but player.js's
+  own Fix A (player.js:9064) treats a native exit up to 1500 ms after the intercept armed faux as the bounce
+  itself. A bounce that ends between 600 and 1500 ms would tear the sphere down and show the full-screen note
+  while the user is in the app's full screen WITH the sphere. Simulated at 900 ms in Chromium: the sphere was rebuilt
+  (a second webgl context) and the toast "Full screen on this device shows the flat picture..." showed. I am
+  refuting my own r1 prescription ("e.g. 500 ms"): it bounded the retry calls (5 x 45 ms), not the exit EVENT. Cheap
+  alignment: VR_NATIVE_SETTLE_MS = 1500 (a real native full screen then keeps an unseen sphere 1.5 s longer). Device
+  check: on the iPhone, sphere up, rotate to landscape while playing 5 times: no toast, and the sphere stays.
+- NOTE: two equivalent-looking mutants survive: D3 (no re-check of the kind when the settle timer fires) and D11
+  (the timer not cleared when the presentation ends). Each is masked: the timer's own syncVr resets the held kind,
+  and the re-check covers D11. One narrow difference: with D11, a second native presentation inside the leftover
+  window gets a shorter settle. Harmless as shipped; both lines are untested belt-and-braces.
+Mutants this round: 25 (13 r1 re-runs, all killed; 12 new on the delta, 10 killed, D3 and D11 survive as above).
+Safe to ship: no CRITICAL, no WARNING open; the suspicion above goes to DEVICE-CHECKS with the iPhone 360 check.
+
+Gate: APPROVED r2 @a924614e - adversary
 
 ## 7. Cut or deferred (Dean can overrule each)
 

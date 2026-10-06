@@ -67,6 +67,8 @@ Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#1-gate-diagnosis-and
 - **A header-only assertion cannot see a redirect LOOP: follow the redirect once and assert the target is served.** The unit and integration tests read `Location: /login?next=%2Fmusic...` and passed, while every browser got ERR_TOO_MANY_REDIRECTS (the allowlist's traversal regex scanned the query, so the encoded slash un-allowlisted /login itself). Only the real-browser proof caught it. Guard: a redirect test requests its own Location and asserts 200. (v1.352; x1)
 - **A selector that matches nothing makes every assertion built on it vacuous: jsdom drops `env()` declarations from a style attribute, so a probe found by its `env()` text was never found and the leak test passed with the leak present.** Guard: assert the probe EXISTS while the state is open (a non-vacuity floor), key it on something jsdom keeps (`aria-hidden`), and mutate the cleanup to see it red. (v1.357; mutant M09 survived once)
 
+- **A pure decision function binds the rule, not the wiring that calls it.** v1.366's `vrMountDecision` was tested per input while every listener that fed it (navigation, dock, native full screen, context loss, the host observer) could be deleted with 1019 tests green; a stub-module wiring test through the real view harness killed all 13. Also: an unchanged-only rescan saves nothing, so a reuse-arm test must make the scan SAVE (index one new file) or a dropped derived field never reaches disk. Guard: for each pure decision, a wiring test that drives the real events through a stub and counts the effect. (v1.366.0)
+
 Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#2-test-binding-can-the-test-actually-fail).
 
 ## 3. Locks, censuses and instruments

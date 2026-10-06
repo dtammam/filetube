@@ -3538,5 +3538,11 @@
     "date": "2026-10-05",
     "title": "Tell a stuck download from a stale screen",
     "intent": "A download row now says how long since the server last updated it, and a queued one how long it has waited. When FileTube can't be reached the screen says so instead of freezing. Admins can save a download trace from Settings to send when a download looks stuck."
+  },
+  {
+    "version": "1.366.0",
+    "date": "2026-10-06",
+    "title": "Look around inside 360 and 180 videos",
+    "intent": "A 360 or 180 video gets a 360 view switch in the player's settings: drag to look around, or on a phone turn on Move to look and turn the phone. Off by default on each device. Owners can set a video's type by hand. Flat videos are untouched. On a phone it needs FileTube's own player controls."
   }
 ]
