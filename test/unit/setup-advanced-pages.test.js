@@ -29,7 +29,7 @@ const section = (key, nextMarker) => {
 };
 
 test('v1.181: TWO separate subpages in a new Advanced group at the bottom, both visible to everyone (no admin gating)', () => {
-  assert.match(SETUP_HTML, /data-md-groups="Library,System,Account,Advanced"/, 'the Advanced group is declared LAST');
+  assert.match(SETUP_HTML, /data-md-groups="System,Personalize,Account,Library,Advanced"/, 'the Advanced group is declared LAST');
   const trouble = SETUP_HTML.match(/<details[^>]*data-collapse-key="troubleshooting"[^>]*>/)[0];
   const experimental = SETUP_HTML.match(/<details[^>]*data-collapse-key="experimental"[^>]*>/)[0];
   for (const [name, tag, icon] of [['troubleshooting', trouble, 'wrench'], ['experimental', experimental, 'flask']]) {
@@ -47,11 +47,10 @@ test('v1.181: TWO separate subpages in a new Advanced group at the bottom, both 
 test('v1.181 the MOVES: each control lives in its NEW section and is GONE from its old one', () => {
   const troubleshooting = section('troubleshooting', 'data-collapse-key="experimental"');
   const experimental = section('experimental', '</details>\n      </div><!-- /.md-root -->');
-  const automation = section('automation-storage', 'data-collapse-key="downloads"');
-  const critters = section('critters', 'data-collapse-key="video-folders"');
+  const critters = section('critters', 'data-collapse-key="account"');
 
-  // Troubleshooting: the lifecycle debug log + the critter Voice check.
-  for (const id of ['debug-lifecycle-check', 'debug-rotate-check', 'critter-voice-check-btn', 'critter-voice-check-status']) { // v1.355: + the rotate log
+  // Troubleshooting: the lifecycle debug log. (v1.367.0: the critter Voice check moved to Critters > Sound check.)
+  for (const id of ['debug-lifecycle-check', 'debug-rotate-check']) { // v1.355: + the rotate log
     assert.ok(troubleshooting.includes(`id="${id}"`), id + ' lives in Troubleshooting');
   }
   // Experimental: the whole background-audio family + custom player.
@@ -61,17 +60,20 @@ test('v1.181 the MOVES: each control lives in its NEW section and is GONE from i
   }
   // ...and none of them linger in their old homes (each id must appear
   // EXACTLY once in the whole file - moved, not duplicated).
+  assert.ok(critters.includes('id="critter-voice-check-btn"') && critters.includes('id="critter-voice-check-status"'), 'the Voice check lives in Critters (Sound check)');
+  assert.ok(!troubleshooting.includes('critter-voice-check'), 'and left Troubleshooting');
   for (const id of ['debug-lifecycle-check', 'debug-rotate-check', 'critter-voice-check-btn', 'background-audio-check',
     'pre-extract-audio-check', 'bg-audio-sync-check', 'bg-keepalive-check',
     'audio-session-declare-check', 'mobile-custom-player-check']) {
     assert.strictEqual(SETUP_HTML.split(`id="${id}"`).length - 1, 1, id + ' appears exactly once (moved, never duplicated)');
-    assert.ok(!automation.includes(`id="${id}"`), id + ' left Automation & Storage');
-    assert.ok(!critters.includes(`id="${id}"`), id + ' is not in the Critters section');
+    assert.ok(!SETUP_HTML.includes('data-collapse-key="automation-storage"'), 'Automation & Storage is gone');
+    if (id !== 'critter-voice-check-btn') assert.ok(!critters.includes(`id="${id}"`), id + ' is not in the Critters section');
   }
   // The settled QoL settings deliberately STAYED put.
-  for (const id of ['relocate-hydrated-check', 'notifications-enabled-check', 'per-page-sort-check',
-    'resume-threshold-input', 'push-user-enabled-check']) {
-    assert.ok(automation.includes(`id="${id}"`), id + ' stays in Automation & Storage (a settled preference, not an experiment)');
+  // (v1.367.0: Automation & Storage is split; each settled preference sits on the page that now names it.)
+  for (const [id, page] of [['relocate-hydrated-check', 'videos'], ['notifications-enabled-check', 'notifications'], ['per-page-sort-check', 'home-page'],
+    ['resume-threshold-input', 'playback'], ['push-user-enabled-check', 'notifications']]) {
+    assert.ok(section(page, '</details>').includes(`id="${id}"`), id + ' lives on ' + page + ' (a settled preference, not an experiment)');
   }
 });
 

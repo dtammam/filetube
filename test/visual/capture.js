@@ -428,10 +428,10 @@ function R3_SCENES(FX) {
       await p.waitForSelector('.stable-expand-btn, .dup-expand', { timeout: 12000 }); await tap(p, '.stable-expand-btn, .dup-expand', vp); await sleep(500); } },
     { id: '97-stats-about', path: '/stats.html', run: async (p) => { await section(p, 'about-filetube'); await sleep(400); } },
     { id: '98-settings-trash', path: '/setup.html', run: async (p) => { await stubFetches(p, { '/api/trash': TRASH }); await section(p, 'trash'); await sleep(400); } },
-    { id: '99-settings-hidden', path: '/setup.html', run: async (p) => { await stubFetches(p, { '/api/feed-hidden': HIDDEN }); await section(p, 'feedhidden'); await sleep(400); } },
+    { id: '99-settings-hidden', path: '/setup.html', run: async (p) => { await stubFetches(p, { '/api/feed-hidden': HIDDEN }); await section(p, 'hidden'); await sleep(400); } },
     { id: '9a-settings-account', path: '/setup.html', run: async (p) => { await section(p, 'account'); await sleep(400); } },
-    { id: '9b-settings-book-folders', path: '/setup.html', run: async (p) => { await section(p, 'book-folders'); await sleep(400); } },
-    { id: '9c-settings-transcript-ai', path: '/setup.html', run: async (p, vp) => { await section(p, 'transcript-ai');
+    { id: '9b-settings-books', path: '/setup.html', run: async (p) => { await section(p, 'books'); await sleep(400); } },
+    { id: '9c-settings-transcript-sharing', path: '/setup.html', run: async (p, vp) => { await section(p, 'transcript-sharing');
       await tap(p, '#transcript-ai-add-btn', vp); await sleep(300); await tap(p, '#transcript-ai-add-btn', vp); await sleep(500); } },
   ];
 }
@@ -439,8 +439,8 @@ function R3_SCENES(FX) {
 // [id digit, scene name, #collapse-key, scrolled half-way (phone only)] - the Settings sections sweep S8
 // migrated; a scene per section so each one's before/after pair is reviewable on its own.
 const SETTINGS_SECTIONS = [
-  ['0', 'appearance', 'appearance'], ['0b', 'mobile-player', 'mobile-player'], ['1', 'critters', 'critters'], ['2', 'folders', 'video-folders'],
-  ['3', 'automation', 'automation-storage'], ['4', 'automation-mid', 'automation-storage', true],
+  ['0', 'appearance', 'appearance'], ['0b', 'mobile-player', 'mobile-player'], ['1', 'critters', 'critters'], ['2', 'videos', 'videos'],
+  ['3', 'scan-cache', 'scan-cache'], ['4', 'home-page', 'home-page'], ['4b', 'playback', 'playback'], ['4c', 'notifications', 'notifications'],
   ['5', 'downloads', 'downloads'], ['6', 'trash', 'trash'], ['7', 'users', 'users'],
   ['8', 'backup', 'backup-restore'], ['9', 'experimental', 'experimental'],
 ];

@@ -9,7 +9,7 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
 
 ## Minimize into the mini player (v1.362.0)
 
-Settings > Mobile player > "Use custom player controls on touch devices" ON for all of these.
+Settings > Experimental > "Use custom player controls on touch devices" ON for all of these.
 
 - [ ] v1.362.0 - iPhone, inline video playing: pull down slowly and let go early (springs back, still playing); pull past a third (docks bottom-right, still playing, the page is where you browsed from). Watch the picture during and after the drag: if it goes black or freezes while the sound runs on, open the same page in a SAFARI TAB with `?minimizeAnim=0` and repeat (the switch is a URL parameter; the home-screen app has no address bar). Black with the animation and fine without = the moving picture is the trigger.
 - [ ] v1.362.0 - Tap the down-chevron at the picture's top-left (since v1.362.1 it shows while paused, or for about 3 s after play or a touch on the picture): same end state. Then tap the mini player: back to the watch page, same position, still playing. Open a video from another video (a related card), minimize: you land on the feed / search you started from, and the second video keeps playing.
@@ -19,7 +19,7 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON for 
 
 ## The minimize chevron peeks (v1.362.1)
 
-Settings > Mobile player > "Use custom player controls on touch devices" ON for all of these.
+Settings > Experimental > "Use custom player controls on touch devices" ON for all of these.
 
 - [ ] v1.362.1 - Tap to pause and lock the phone at once: does the pause still happen? (A tap waiting out the double-tap window now ends with backgrounding.)
 - [ ] v1.362.1 - VoiceOver on, a video playing: rest the VoiceOver cursor on the chevron; does it stay, or vanish after about 3 s?
@@ -27,7 +27,7 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON for 
 
 ## No loupe on any hold; the black-picture tests (v1.362.3)
 
-Settings > Mobile player > "Use custom player controls on touch devices" ON for all of these. (The v1.362.2 loupe line failed on
+Settings > Experimental > "Use custom player controls on touch devices" ON for all of these. (The v1.362.2 loupe line failed on
 2026-10-04: the magnifier still showed on a plain hold; this release cancels every touch on the picture instead.)
 
 - [ ] v1.362.3 - iPhone: press and hold the playing picture with no tap before it, inline, in full screen and on an audio file's
@@ -47,7 +47,7 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON for 
 
 ## The page fades under the video, like YouTube (v1.362.4)
 
-Settings > Mobile player > "Use custom player controls on touch devices" ON.
+Settings > Experimental > "Use custom player controls on touch devices" ON.
 
 - [ ] v1.362.4 - iPhone, a video playing inline: pull it down slowly: the title, buttons and comments under it dim as you pull;
   let go early: they come back. Pull past a third (or tap the arrow): the page you came from fades in as the mini player lands.
@@ -62,7 +62,7 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON.
 ## Mobile player edge to edge (v1.359.0)
 
 - [ ] v1.359.0 - iPhone, portrait, a video in the watch page (not full screen): the picture touches both screen edges, square corners, no outline; the title and the buttons below keep their margin; the gap above the player is unchanged. Try a few eras (Settings > Appearance) and dark mode.
-- [ ] v1.359.0 - Same with a song (cover art) and a tall Shorts-style video; then with Settings > Mobile player custom controls ON: every control-bar button is there and full size.
+- [ ] v1.359.0 - Same with a song (cover art) and a tall Shorts-style video; then with Settings > Experimental custom controls ON: every control-bar button is there and full size.
 - [ ] v1.359.0 - Press and hold the picture for 2x, drag down to lock, tap the pill; double-tap left and right to skip; a swipe from the left screen edge still goes back (Safari tab) and does not seek or pause.
 - [ ] v1.359.0 - Scroll down so the player docks, then back to the video: the mini player looks as before and the full player returns edge to edge with no jump. Rotate to landscape and back while playing: full screen as before, then edge to edge again.
 - [ ] v1.359.0 - Ambient on (dark mode): the glow still shows above and below the player; nothing scrolls sideways.
@@ -116,26 +116,8 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON.
 - [ ] v1.363.1 - Watch page settings cog (a chapterless video): "Add chapters" opens the same editor; with chapters it says "Edit
   chapters". The row is plain weight at the end of the menu; say if it looks out of place. The sticker menu's new rows match the old.
 
-## Stuck or stale downloads (v1.365.0)
+## Settings reorganized (v1.367.0)
 
-- [ ] v1.365.0 - Start a one-off download, then stop FileTube (or turn off Wi-Fi): the corner chip and /subscriptions say "Can't
-  reach FileTube" (on a computer, "last reached N ago" too) and the rows keep their last state; bring it back: the line goes away
-  by itself.
-- [ ] v1.365.0 - If a download looks stuck: a Downloading row says "updated N ago" after a minute or more; a Queued row says
-  "waiting N". Note which you see before restarting anything.
-- [ ] v1.365.0 - In the HOME-SCREEN app, as an admin: Settings > Troubleshooting > Download trace saves (or offers to share) a
-  .txt with your recent one-off downloads, hosts only, no full links. Say if the tap does nothing.
+- [ ] v1.367.0 - As admin on the phone: Settings lists SYSTEM, PERSONALIZE, ACCOUNT, LIBRARY, ADVANCED; Scan & cache, Home page and Playback show "These apply to everyone on this FileTube". An old bookmark to Settings > Automation & Storage opens Scan & cache.
+- [ ] v1.367.0 - As a member (second account): no Scan & cache, Downloads, Users or Backup; Home page and Playback show only your own switches; Notifications shows push if it is on. Say if anything you use is missing.
 
-## 360 view (v1.366.0)
-
-Settings > Mobile player > "Use custom player controls on touch devices" ON for the phone checks; turn on the 360 view in the
-player's settings cog on a 360 video. Owners: Video type sets a video by hand.
-
-- [ ] v1.366.0 - iPhone FIRST: one 360 video inline, 360 view on: does the picture stay live while you drag? If it goes black,
-  that is a 360-only finding (keep it apart from the open black-picture bug): say so and Export log.
-- [ ] v1.366.0 - Drag direction feels right (drag left, the view turns as if you turned right). Turn on "Move to look": turning the
-  phone turns the view the same way (iOS asks for motion access on that tap).
-- [ ] v1.366.0 - The phone's own full screen and picture in picture show the flat picture, with the matching note when you come
-  back. Then, sphere up, rotate to landscape while playing, 5 times: the sphere stays and NO note shows.
-- [ ] v1.366.0 - Video type > Flat removes the sphere; Auto brings it back. A normal (flat) video shows no 360 row at all.
-- [ ] v1.366.0 - In the container: add a new 360 file, let the scan run: it shows the 360 row (the server's ffprobe reads the tag).

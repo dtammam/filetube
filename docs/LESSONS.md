@@ -112,6 +112,7 @@ Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#3-locks-censuses-and
 - **A poll that fails silently freezes a row that looks live: show the age and the offline state, and make the age mean what it says.** Guard: one age rule for every surface on the SERVER's clock (the snapshot's `now`), shown only where silence is abnormal (Downloading; Queued says "waiting"; silent phases like a merge and offline screens show none); a failed poll shows "Can't reach ..." until the first good poll clears it (both axes, tested from a POPULATED state); a code fault after a good poll is never shown as offline; a failed probe releases its latch; ticking text stays out of a list's render signature. And a trace for a hang must survive the hang: a capped log keeps a still-open job's lifecycle lines, and its heartbeat backs off. (v1.365.0)
 
 Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#4-spa-shell-client-lifecycle-and-async-ui-state).
+- **A deep link or remembered choice aimed at a page revealed LATER is dropped by a menu built before the reveal.** Guard: keep it as a pending key and apply it when its row appears (a click cancels it); test in the REAL boot order (wire first, reveal after), never reveal-then-wire, and set a pre-loaded `#hash` with `history.replaceState` (jsdom fires a `hashchange` a browser does not, which masks the bug). A reorganization that renames ids also needs the old -> new table tested BOTH ways against the real markup (v1.367.0).
 
 ## 5. Media playback, queue and chapters
 

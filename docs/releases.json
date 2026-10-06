@@ -3550,5 +3550,11 @@
     "date": "2026-10-06",
     "title": "Security update for two dependencies",
     "intent": "Updates two libraries FileTube uses (proxy-addr, used by the web server, and source-map-js) to fix newly published security advisories. Includes everything in 1.366.0, the 360 and 180 video view. Nothing else changes."
+  },
+  {
+    "version": "1.367.0",
+    "date": "2026-10-06",
+    "title": "Settings, reorganized",
+    "intent": "Settings now has five groups: System, Personalize, Account, Library and Advanced. \"Automation & Storage\" is gone: its settings moved to Scan & cache, Notifications, Home page, Playback, Mobile player, Videos and Music, and the critter sound check sits with Critters. Pages have plain names (Videos, Music, Books, Shows). Old Settings links and your last open page still work. Members no longer see the settings only an admin can change."
   }
 ]
