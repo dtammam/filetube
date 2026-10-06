@@ -5869,12 +5869,16 @@ function wireMasterDetail(pageKey, root, signal) {
   });
   function resolveKey(k) { return Object.prototype.hasOwnProperty.call(aliasMap, k) ? aliasMap[k] : k; }
 
+  // v1.367.0: a deep link or remembered page that is still HIDDEN when the menu is wired (an admin page, revealed a moment
+  // later by setup.js) is kept here and applied the moment its row appears. A user click clears it.
+  let pending = null;
   let selectedKey = null;
   try {
     const saved = localStorage.getItem('ft-md:' + pageKey);
     if (saved) {
       selectedKey = resolveKey(saved);
       if (selectedKey !== saved) localStorage.setItem('ft-md:' + pageKey, selectedKey); // carry the old choice over
+      pending = { key: selectedKey, open: false };
     }
   } catch (_) { /* private mode */ }
   mdRoot.dataset.mdOpen = 'false';
@@ -5970,6 +5974,7 @@ function wireMasterDetail(pageKey, root, signal) {
     if (!selectedKey || vis.indexOf(selectedKey) === -1) selectedKey = vis[0] || null;
     applySelection();
     observeSections();
+    if (pending && vis.indexOf(pending.key) !== -1) { const p = pending; pending = null; selectKey(p.key, p.open); }
   }
 
   // v1.164 (Dean): SCROLL OWNERSHIP. On phone the push-in swaps what fills the
@@ -6010,6 +6015,7 @@ function wireMasterDetail(pageKey, root, signal) {
   nav.addEventListener('click', (e) => {
     const row = e.target && e.target.closest ? e.target.closest('.md-row') : null;
     if (!row || !nav.contains(row)) return;
+    pending = null;
     selectKey(row.getAttribute('data-md-target'), true);
   }, signal ? { signal } : undefined);
   backBtn.addEventListener('click', () => {
@@ -6084,7 +6090,8 @@ function wireMasterDetail(pageKey, root, signal) {
     const key = resolveKey(String(window.location.hash || '').replace(/^#/, ''));
     if (!key) return;
     const target = sections.filter((s) => s.getAttribute('data-collapse-key') === key && !s.hidden)[0];
-    if (target) selectKey(key, true);
+    if (target) { pending = null; selectKey(key, true); return; }
+    if (sections.some((s) => s.getAttribute('data-collapse-key') === key)) pending = { key, open: true }; // hidden for now
   }
   selectFromHash();
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {

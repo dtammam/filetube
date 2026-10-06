@@ -5152,7 +5152,7 @@ function init(root) {
   renderStickerPicker();   // v1.238: the player-sticker icon picker (logo / emoji / custom upload)
   wireHideStarsControl(controller.signal); // v1.63.1: the fake-stars toggle
   wireCritterModeControls(controller.signal); // v1.166: Sneaky critter mode
-  wireVoiceCheck(controller.signal); // v1.181: the Troubleshooting page's critter sound diagnostic
+  wireVoiceCheck(controller.signal); // v1.181: the Critters page's sound check (a diagnostic)
   wireBgTimingLog(controller.signal); // lock-to-audio phase 1: the Experimental background-audio timing log
   wireWheelCalControl(controller.signal); // Click wheel test (Experimental)
   loadResumeThresholdControl();

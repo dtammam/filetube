@@ -207,3 +207,69 @@ test('v1.367.0: a member sees no Scan & cache; Notifications appears only with p
     assert.ok(has('scan-cache'), 'admin');
   } finally { unload(dom); }
 });
+
+// Gate r1 (adversary W1): the REAL boot order is wire first, reveal the admin pages a moment later. An admin's old
+// #automation-storage link and remembered selection must still end on Scan & cache once it appears.
+test('v1.367.0: an old link or remembered page for a page revealed LATER lands there when it appears (real boot order)', async () => {
+  for (const [how, expected] of [['hash:automation-storage', 'scan-cache'], ['hash:scan-cache', 'scan-cache'], ['hash:users', 'users'], ['stored:automation-storage', 'scan-cache']]) {
+    const { dom, doc, signal } = load();
+    try {
+      const [kind, key] = how.split(':');
+      if (kind === 'hash') dom.window.location.hash = '#' + key; else dom.window.localStorage.setItem('ft-md:setup', key);
+      wireMasterDetail('setup', doc, signal);
+      assert.strictEqual(doc.querySelector('.md-row--active').getAttribute('data-md-target'), 'trash', 'before the reveal a member-visible page is selected');
+      doc.getElementById('scan-cache-box').hidden = false; // the admin branch of initAccountSection
+      doc.getElementById('users-box').hidden = false;
+      await tick();
+      assert.strictEqual(doc.querySelector('.md-row--active').getAttribute('data-md-target'), expected, how);
+      if (kind === 'hash') assert.strictEqual(doc.querySelector('.md-root').dataset.mdOpen, 'true', how + ' opens the page');
+    } finally { unload(dom); }
+  }
+});
+
+test('v1.367.0: a click before the late reveal cancels the pending link', async () => {
+  const { dom, doc, signal } = load();
+  try {
+    dom.window.location.hash = '#automation-storage';
+    wireMasterDetail('setup', doc, signal);
+    await tick(); await tick(); // jsdom delivers the hashchange for the pre-set hash after wiring; a browser would not
+    doc.querySelector('.md-row[data-md-target="account"]').click();
+    doc.getElementById('scan-cache-box').hidden = false;
+    await tick();
+    assert.strictEqual(doc.querySelector('.md-row--active').getAttribute('data-md-target'), 'account', 'the user choice wins');
+  } finally { unload(dom); }
+});
+
+test('v1.367.0: Object.prototype names are not page aliases (hash and stored)', () => {
+  for (const bad of ['constructor', '__proto__', 'toString', 'hasOwnProperty']) {
+    for (const kind of ['hash', 'stored']) {
+      const { dom, doc, signal } = load();
+      try {
+        if (kind === 'hash') dom.window.location.hash = '#' + bad; else dom.window.localStorage.setItem('ft-md:setup', bad);
+        wireMasterDetail('setup', doc, signal);
+        assert.strictEqual(doc.querySelector('.md-row--active').getAttribute('data-md-target'), 'trash', kind + ' ' + bad);
+        if (kind === 'stored') assert.strictEqual(dom.window.localStorage.getItem('ft-md:setup'), bad, 'never rewritten to a function body');
+      } finally { unload(dom); }
+    }
+  }
+});
+
+test('v1.367.0: setup.js reveals Notifications for a member when the push probe says push is on (inside initPushControls)', () => {
+  const src = fs.readFileSync(path.join(__dirname, '../../public/js/setup.js'), 'utf8');
+  const fn = src.slice(src.indexOf('function initPushControls('));
+  const probe = fn.slice(fn.indexOf("fetch('/api/push/key')"), fn.indexOf("fetch('/api/push/key')") + 700);
+  assert.match(probe, /getElementById\('notifications-box'\)[\s\S]*notificationsBox\.hidden = false/, 'the reveal sits right after the probe succeeds');
+  assert.ok(probe.indexOf('if (!body || !body.key) return;') < probe.indexOf('notificationsBox.hidden = false'), 'and only when push is on');
+});
+
+test('v1.367.0: the Push notifications heading lives inside the hidden push group (no dangling heading with push off)', () => {
+  const { dom, doc } = load();
+  try {
+    const group = doc.getElementById('push-controls');
+    assert.ok(group.hidden);
+    assert.ok(Array.from(group.querySelectorAll('h3')).some((h) => h.textContent === 'Push notifications'));
+    const notif = doc.querySelector('[data-collapse-key="notifications"]');
+    const visibleHeadings = Array.from(notif.querySelectorAll('h3')).filter((h) => !h.closest('[hidden]')).map((h) => h.textContent);
+    assert.deepStrictEqual(visibleHeadings, [], 'with nothing revealed, no heading shows');
+  } finally { unload(dom); }
+});
