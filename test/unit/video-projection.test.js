@@ -2,7 +2,7 @@
 
 // [UNIT] v1.366.0 W4 (VR / 360): lib/media/projection.js on the REAL ffprobe output of the real fixtures
 // (test/fixtures/vr/ffprobe-grown.json, recorded from ffprobe 7.0.2; never hand-typed side data), every arm
-// of the precedence, the file-name rule with the frame shape agreeing and disagreeing, and the probe args.
+// of the precedence, the named flat videos that stay flat (no file-name rule, Dean 2026-10-06), and the probe args.
 // With a real ffprobe on this box (FILETUBE_TEST_FFMPEG or PATH), the recording is re-proven live through
 // server.js's own buildFfprobeArgs; without one that test SKIPS and says so.
 
@@ -31,7 +31,7 @@ test('projectionFromProbe: each real side-data shape maps to its projection', ()
     'vr-360-v2.mp4': '360', // v2 sv3d
     'vr-360-tb-v2.mp4': '360-tb', // Stereo 3D top and bottom
     'vr-180-sbs-v2.mp4': '180-sbs', // tiled equirectangular, bounds 257 + 255 on a 512 frame
-    'clip_360_TB.mp4': undefined, // no metadata: the NAME decides, at serve time
+    'clip_360_TB.mp4': undefined, // no metadata: flat (the name is never read)
     'pano_360.mp4': undefined,
     'rot90.mp4': undefined, // a Display Matrix is not a sphere
   };
@@ -55,28 +55,40 @@ test('projectionFromSideData: the tiled bounds decide 360 vs 180, and a partial 
   assert.strictEqual(P.projectionFromSideData([stereo], 512, 256), undefined, 'a 3D flat movie is not a sphere');
 });
 
-test('projectionFromName: whole tokens, and the frame shape must agree', () => {
-  assert.strictEqual(P.projectionFromName('clip_360_TB.mp4', 512, 512), '360-tb');
-  assert.strictEqual(P.projectionFromName('clip_360_TB.mp4', 1920, 1080), undefined, 'a 16:9 frame disagrees');
-  assert.strictEqual(P.projectionFromName('pano_360.mp4', 512, 256), '360');
-  assert.strictEqual(P.projectionFromName('pano_360.mp4', 512, 512), '360-tb', 'no eye token: 1:1 is stacked 3D');
-  assert.strictEqual(P.projectionFromName('Top360 plays.mp4', 512, 256), undefined, 'not a whole token');
-  assert.strictEqual(P.projectionFromName('trip_180_LR.mp4', 512, 256), '180-sbs');
-  assert.strictEqual(P.projectionFromName('trip_180.mp4', 512, 512), '180');
-  assert.strictEqual(P.projectionFromName('trip_180_fisheye.mp4', 512, 256), undefined, 'fisheye is never guessed');
-  assert.strictEqual(P.projectionFromName('pano_360.mp4'), undefined, 'no dims: no guess');
-  assert.strictEqual(P.projectionFromName('movie_LR.mp4', 512, 256), undefined, 'an eye token alone is a 3D flat movie');
+// Dean 2026-10-06 (gate r1, R2): a video is VR ONLY from the file's own metadata or the owner's pick. These are
+// the names the gate measured turning a flat video into a sphere under the old name rule (each at a frame shape
+// that rule accepted), plus a DeoVR-style name with no side data: every one is FLAT.
+const FLAT_BY_NAME = [
+  ['Xbox 360 unboxing [dQw4w9WgXcQ].mp4', 1080, 1080],
+  ['Day 180 of learning piano.mp4', 1080, 1080],
+  ['Tony Hawk 360 flip tutorial.mp4', 2532, 1170],
+  ['Frontside 180.mp4', 1080, 1080],
+  ['Best 360 dunk.mp4', 1920, 960],
+  ['clip_360_TB.mp4', 512, 512],
+  ['trip_180_LR.mp4', 512, 256],
+];
+test('R2: a file NAME never makes a video VR - each named flat video is flat, and no name rule is left to call', () => {
+  for (const [name, width, height] of FLAT_BY_NAME) {
+    const item = { name, filePath: '/lib/x/' + name, title: name, width, height, type: 'video' };
+    assert.strictEqual(P.effectiveProjection(item, name), undefined, name);
+    assert.strictEqual(P.effectiveProjection(item), undefined, name);
+  }
+  assert.strictEqual(P.projectionFromName, undefined, 'no name rule is exported');
+  const src = fs.readFileSync(path.join(__dirname, '..', '..', 'lib', 'media', 'projection.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
+  assert.doesNotMatch(src, /\.name\b|\bname\s*[,)]/, 'projection.js reads no name');
+  // The recorded real ffprobe output of the name-only fixture has no side data: the scan stores nothing for it.
+  assert.strictEqual(P.projectionFromProbe(REC['clip_360_TB.mp4']), undefined);
 });
 
-test('effectiveProjection: owner pick > file metadata > file name; flat beats everything', () => {
-  const base = { width: 512, height: 256 };
-  assert.strictEqual(P.effectiveProjection({ ...base }, 'plain.mp4'), undefined);
-  assert.strictEqual(P.effectiveProjection({ ...base }, 'pano_360.mp4'), '360', 'name');
-  assert.strictEqual(P.effectiveProjection({ ...base, projection: '180-sbs' }, 'pano_360.mp4'), '180-sbs', 'metadata beats the name');
-  assert.strictEqual(P.effectiveProjection({ ...base, projection: '180-sbs', projectionOverride: '360-tb' }, 'pano_360.mp4'), '360-tb', 'the pick beats metadata');
-  assert.strictEqual(P.effectiveProjection({ ...base, projection: '360', projectionOverride: 'flat' }, 'pano_360.mp4'), undefined, 'flat beats both');
-  assert.strictEqual(P.effectiveProjection({ ...base, projection: 'bogus', projectionOverride: 'nope' }, 'plain.mp4'), undefined, 'junk values are ignored');
-  assert.strictEqual(P.effectiveProjection(null, 'pano_360.mp4'), undefined);
+test('effectiveProjection: owner pick > file metadata; flat beats both; nothing else counts', () => {
+  const base = { width: 512, height: 256, name: 'pano_360.mp4' };
+  assert.strictEqual(P.effectiveProjection({ ...base }), undefined, 'no metadata, no pick: flat (the name is not read)');
+  assert.strictEqual(P.effectiveProjection({ ...base, projection: '180-sbs' }), '180-sbs', 'the file metadata');
+  assert.strictEqual(P.effectiveProjection({ ...base, projectionOverride: '360' }), '360', 'the pick alone');
+  assert.strictEqual(P.effectiveProjection({ ...base, projection: '180-sbs', projectionOverride: '360-tb' }), '360-tb', 'the pick beats metadata');
+  assert.strictEqual(P.effectiveProjection({ ...base, projection: '360', projectionOverride: 'flat' }), undefined, 'flat beats the metadata');
+  assert.strictEqual(P.effectiveProjection({ ...base, projection: 'bogus', projectionOverride: 'nope' }), undefined, 'junk values are ignored');
+  assert.strictEqual(P.effectiveProjection(null), undefined);
 });
 
 test('the override list is flat plus every projection, and only those', () => {

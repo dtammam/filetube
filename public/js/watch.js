@@ -856,25 +856,53 @@ function vrMountDecision(s) {
   if (s.nativePresentation === true || s.nativeControls === true) return false;
   return true;
 }
-// Pure: is the browser presenting the <video> element itself (so a canvas over it is never seen)?
-function nativeVideoPresentation(video, doc) {
-  if (!video) return false;
+// Pure: HOW the browser is presenting the <video> element itself (so a canvas over it is never seen): 'pip' for
+// Picture in Picture, 'fullscreen' for the element's own full screen (an iPhone's Apple player, or the <video> as
+// document.fullscreenElement), '' when the page shows it. The app's own full screen (the host or the stage) is ''.
+function nativePresentationKind(video, doc) {
+  if (!video) return '';
   const d = doc || (typeof document !== 'undefined' ? document : null);
-  return !!((d && d.fullscreenElement === video) || video.webkitDisplayingFullscreen ||
-    video.webkitPresentationMode === 'picture-in-picture' || video.webkitPresentationMode === 'fullscreen' ||
-    (d && d.pictureInPictureElement === video));
+  if (video.webkitPresentationMode === 'picture-in-picture' || (d && d.pictureInPictureElement === video)) return 'pip';
+  if ((d && d.fullscreenElement === video) || video.webkitDisplayingFullscreen || video.webkitPresentationMode === 'fullscreen') return 'fullscreen';
+  return '';
 }
-// Pure: the one-time note that the browser's OWN full screen (on an iPhone, Apple's player) shows the flat picture
-// (plan W4: disclose it). `n` = { lost, shown }: `lost` latches when a mounted sphere gives way to a native
-// presentation; the note shows on the way BACK (a toast inside Apple's player is never seen), once per page view.
-function vrNativeNotice(n, st, hadSphere) {
-  const cur = n || { lost: false, shown: false };
-  const native = !!(st && st.nativePresentation === true);
-  const lost = cur.lost || (hadSphere === true && native);
-  if (lost && !native) return { lost: false, shown: true, show: !cur.shown };
-  return { lost, shown: cur.shown, show: false };
-}
+function nativeVideoPresentation(video, doc) { return nativePresentationKind(video, doc) !== ''; }
+// How long a native presentation must HOLD before a mounted sphere gives way to it. On an iPhone in custom-controls
+// mode player.js bounces every webkitbeginfullscreen (a rotate to landscape while playing) straight back into the
+// app's own full screen, which KEEPS the sphere (its retry loop: up to 5 tries 45 ms apart); a presentation that
+// ends inside this window was that bounce, so the sphere stays up and nothing is said.
+const VR_NATIVE_SETTLE_MS = 600;
+// The notes, one per kind of native presentation, each TRUE where it shows: on the way back from a native
+// presentation that really replaced a mounted sphere with the flat picture (a toast inside Apple's player or the
+// PiP window is never seen). Once per kind per page view.
 const VR_NATIVE_NOTE = 'Full screen on this device shows the flat picture; 360 view returns here';
+const VR_PIP_NOTE = 'Picture in picture shows the flat picture; 360 view returns here';
+// Pure: `n` = { lost: '' | kind, shown: { fullscreen, pip } }; `st.nativePresentation` is the HELD presentation
+// (VR_NATIVE_SETTLE_MS) and `st.nativeKind` its kind; `hadSphere` = a sphere was mounted before this sync.
+// Returns the next { lost, shown } and `show`: the note to show now, or ''.
+function vrNativeNotice(n, st, hadSphere) {
+  const cur = n || { lost: '', shown: {} };
+  const shown = Object.assign({}, cur.shown || {});
+  const held = !!(st && st.nativePresentation === true);
+  const kind = held && (st.nativeKind === 'pip' || st.nativeKind === 'fullscreen') ? st.nativeKind : '';
+  const lost = cur.lost || (hadSphere === true && kind ? kind : '');
+  if (lost && !held) {
+    const show = shown[lost] ? '' : (lost === 'pip' ? VR_PIP_NOTE : VR_NATIVE_NOTE);
+    shown[lost] = true;
+    return { lost: '', shown, show };
+  }
+  return { lost, shown, show: '' };
+}
+// R1 (Dean 2026-10-06) "Move to look": the phone's motion turns the view. Offered only where a motion sensor can
+// exist (the DeviceOrientationEvent API) on a touch-first device (a coarse primary pointer: phones and tablets; a
+// desktop has the API but no sensor). Pure on the window it is handed.
+function vrMotionSupported(win) {
+  try {
+    if (!win || typeof win.DeviceOrientationEvent !== 'function') return false;
+    return !!(typeof win.matchMedia === 'function' && win.matchMedia('(pointer: coarse)').matches);
+  } catch (_) { return false; }
+}
+const VR_MOTION_DENIED_NOTE = 'Motion was not allowed; drag to look around';
 // The owner's "Video type" list (POST /api/videos/:id/projection). `auto` clears the pick (null on the wire).
 const VIDEO_TYPE_OPTIONS = Object.freeze([
   { value: 'auto', label: 'Auto (from the file)' },
@@ -896,7 +924,7 @@ if (typeof module !== 'undefined' && module.exports) {
   const ambientExports = module.require('./ambient.js'); // module.require: the player.js / skin-surface.js convention (browser-env lint)
   module.exports = {
     parseStartTime, // v1.352 L1
-    VR_VIEW_STORAGE_KEY, vrViewIsOn, vrMountDecision, nativeVideoPresentation, vrNativeNotice, VR_NATIVE_NOTE, VIDEO_TYPE_OPTIONS, videoTypeMenuItems, // v1.366.0 (VR / 360)
+    VR_VIEW_STORAGE_KEY, vrViewIsOn, vrMountDecision, nativeVideoPresentation, nativePresentationKind, VR_NATIVE_SETTLE_MS, vrNativeNotice, VR_NATIVE_NOTE, VR_PIP_NOTE, vrMotionSupported, VR_MOTION_DENIED_NOTE, VIDEO_TYPE_OPTIONS, videoTypeMenuItems, // v1.366.0 (VR / 360)
     resolveDisplayDescription,
     // UI pass sweep S3: the action bar's order, the More menu, About this file, real comments.
     WATCH_BAR_ORDER,
@@ -1093,6 +1121,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (typeof fetchCurrentUser === 'function') {
       fetchCurrentUser().then(function (me) {
         canModifyLibrary = !!(me && me.user && (me.user.role === 'admin' || me.user.canModifyLibrary === true));
+        if (vrResync && !signal.aborted) vrResync(); // v1.366.0 (qa S5): the Video type row follows the settled capability
         // The capability answer is now known (true OR false), so the final set
         // is determined -- release this half of the reveal barrier either way.
         actionCapabilitySettled = true;
@@ -1275,6 +1304,9 @@ if (typeof module !== 'undefined' && module.exports) {
     // the video id normally, the episode id on the tv path (set in initTvWatch).
     // Hoisted above the ?tv= branch for the same TDZ reason as mediaData.
     let commentScopeId = mediaId;
+    // v1.366.0 (VR / 360): the 360 view's reconciler, set by setupVrView. Hoisted above the ?tv= branch for the same
+    // TDZ reason (the capability callback reads it on every path; the tv path never sets it).
+    let vrResync = null;
     const tvEpisodeId = urlParams.get('tv');
     if (tvEpisodeId) { initTvWatch(tvEpisodeId); return; }
     // v1.36.2 (Dean): the LAUNCH-CONTEXT param -- which list the user was
@@ -2345,31 +2377,45 @@ if (typeof module !== 'undefined' && module.exports) {
       if (menu && window.FileTubeAmbient && typeof window.FileTubeAmbient.ensureAmbientToggleRow === 'function') {
         window.FileTubeAmbient.ensureAmbientToggleRow(document);
       }
-      // v1.366.0 (VR / 360): the "360 view" switch (shown only for a sphere) and the owner's "Video type" row
-      // (shown only with the library-modify capability). Watch-only like Autoplay/Loop: bound on this view's
-      // signal, hidden off watch by style.css. Both start hidden; syncVrRows reveals them per item. Injected AFTER the
-      // Ambient row (which may already be there from a cold /music), so the order is the same whichever view came
-      // first: Autoplay, Loop, Ambient, 360 view (test/unit/music-ambient.test.js AC9).
+      // v1.366.0 (VR / 360): the "360 view" switch (shown only for a sphere), the "Move to look" switch (shown only
+      // while the sphere is up on a phone or tablet) and the owner's "Video type" row (shown only with the
+      // library-modify capability). Watch-only like Autoplay/Loop: bound on this view's signal, hidden off watch by
+      // style.css. Injected AFTER the Ambient row (which may already be there from a cold /music), so the order is the
+      // same whichever view came first: Autoplay, Loop, Ambient, 360 view, Move to look (music-ambient.test.js AC9).
       if (menu && !document.getElementById('watch-vr-check')) {
         menu.insertAdjacentHTML('beforeend', '<label class="watch-autoplay-label settings-menu-toggle" id="watch-vr-row" for="watch-vr-check" hidden>'
           + '<span class="watch-autoplay-text">360 view</span>'
           + '<span class="watch-autoplay-switch"><input type="checkbox" id="watch-vr-check" aria-label="360 view: drag to look around" />'
           + '<span class="watch-autoplay-track"><span class="watch-autoplay-thumb"></span></span></span></label>'
+          + '<label class="watch-autoplay-label settings-menu-toggle" id="watch-vr-motion-row" for="watch-vr-motion-check" hidden>'
+          + '<span class="watch-autoplay-text">Move to look</span>'
+          + '<span class="watch-autoplay-switch"><input type="checkbox" id="watch-vr-motion-check" aria-label="Move to look: turn the phone to look around" />'
+          + '<span class="watch-autoplay-track"><span class="watch-autoplay-thumb"></span></span></span></label>'
           + '<button type="button" id="video-type-btn" class="ui-btn ui-btn--plain pc-btn settings-menu-item video-type-btn" hidden>Video type</button>');
+      }
+      // Gate r1 (W5/W3): the rows live in the PERSISTENT host, so a view that injects the cog but never runs
+      // setupVrView (a TV episode) must not inherit the last video's rows, dead (their listeners died with that
+      // view's signal). Every view starts with all three hidden; only setupVrView's syncVrRows reveals them.
+      for (const id of ['watch-vr-row', 'watch-vr-motion-row', 'video-type-btn']) {
+        const el = document.getElementById(id);
+        if (el) el.hidden = true;
       }
     }
 
     // ---- v1.366.0 (VR / 360): the 360 view, owned by this view ----
     // ONE reconciler (syncVr) decides from live state (vrMountDecision) and mounts or unmounts; every boundary
     // calls it: the switch, a new item, the owner's pick, the browser presenting the <video> itself (native full
-    // screen / PiP / native controls), and this view's end (destroy aborts `signal`, which unmounts). vr-view.js is
-    // loaded only on the first mount, so a flat video never loads it, never creates a canvas or a WebGL context.
+    // screen / PiP, once it has HELD for VR_NATIVE_SETTLE_MS; native controls), and this view's end (destroy aborts
+    // `signal`, which unmounts). vr-view.js is loaded only on the first mount, so a flat video never loads it, never
+    // creates a canvas or a WebGL context.
     let vrHandle = null;
     let vrHandleKey = '';
-    let vrRefusedKey = ''; // an item this device cannot show as a sphere (too large, no WebGL): no retry until it changes
+    let vrRefusedKey = ''; // an item this device cannot show as a sphere (too large, no WebGL, context lost): no retry until the switch or a pick
     let vrGen = 0;
     let vrWired = false;
-    let vrNotice = { lost: false, shown: false }; // the native-full-screen note (vrNativeNotice)
+    let vrNotice = { lost: '', shown: {} }; // the native-presentation notes (vrNativeNotice)
+    let vrNativeHeldKind = ''; // the native presentation that has held VR_NATIVE_SETTLE_MS ('' = none)
+    let vrNativeTimer = 0;
     function vrElements() {
       return { video: document.getElementById('media-player'), host: document.getElementById('player-wrapper') };
     }
@@ -2377,6 +2423,10 @@ if (typeof module !== 'undefined' && module.exports) {
     function vrState() {
       const { video, host } = vrElements();
       const player = window.FileTube && window.FileTube.player;
+      const kind = nativePresentationKind(video, document);
+      // With a sphere up, a native presentation counts only once it has held (an iPhone's rotate-to-landscape is
+      // bounced back into the app's own full screen, which keeps the sphere); with none up, it blocks a mount at once.
+      const held = kind !== '' && (vrNativeHeldKind === kind || !vrHandle);
       return {
         projection: mediaData && typeof mediaData.projection === 'string' ? mediaData.projection : '',
         toggleOn: vrViewIsOn(vrStorage()),
@@ -2384,9 +2434,28 @@ if (typeof module !== 'undefined' && module.exports) {
         playerState: player && typeof player.getState === 'function' ? player.getState() : 'closed',
         playerId: player ? player.currentId : null,
         itemId: mediaData ? mediaData.id : null,
-        nativePresentation: nativeVideoPresentation(video, document),
+        nativePresentation: held,
+        nativeKind: held ? kind : '',
+        rawNativeKind: kind,
         nativeControls: !!(host && host.classList.contains('native-controls')),
       };
+    }
+    // The settle timer: started when a native presentation begins under a mounted sphere; when it fires, the
+    // presentation counts only if it is STILL the same kind.
+    function vrTrackNative(st) {
+      if (!st.rawNativeKind) {
+        if (vrNativeTimer) { clearTimeout(vrNativeTimer); vrNativeTimer = 0; }
+        vrNativeHeldKind = '';
+        return;
+      }
+      if (vrNativeHeldKind === st.rawNativeKind || vrNativeTimer || !vrHandle) return;
+      const kind = st.rawNativeKind;
+      vrNativeTimer = setTimeout(() => {
+        vrNativeTimer = 0;
+        if (signal.aborted) return;
+        if (nativePresentationKind(vrElements().video, document) === kind) vrNativeHeldKind = kind;
+        syncVr();
+      }, VR_NATIVE_SETTLE_MS);
     }
     function vrToast(message) {
       try { if (window.ui && typeof window.ui.toast === 'function') window.ui.toast(message); } catch (_) { /* best-effort */ }
@@ -2401,21 +2470,35 @@ if (typeof module !== 'undefined' && module.exports) {
     function syncVrRows(st) {
       const row = document.getElementById('watch-vr-row');
       const check = document.getElementById('watch-vr-check');
+      const motionRow = document.getElementById('watch-vr-motion-row');
+      const motionCheck = document.getElementById('watch-vr-motion-check');
       const typeBtn = document.getElementById('video-type-btn');
-      if (row) row.hidden = !st.projection || st.projection === 'flat';
+      // The 360 row: a sphere, and not the native-controls mode (there the switch could never mount: a dead switch).
+      if (row) row.hidden = !st.projection || st.projection === 'flat' || st.nativeControls;
       if (check) check.checked = st.toggleOn;
+      // Move to look: only while a sphere is up, on a device with a motion sensor. Off unless this sphere's motion is on.
+      const motionShown = !!vrHandle && vrMotionSupported(window);
+      if (motionRow) motionRow.hidden = !motionShown;
+      if (motionCheck) motionCheck.checked = motionShown && typeof vrHandle.motionOn === 'function' && vrHandle.motionOn() === true;
       if (typeBtn) typeBtn.hidden = !(canModifyLibrary && mediaData && mediaData.type !== 'audio');
+    }
+    function hideVrRows() {
+      for (const id of ['watch-vr-row', 'watch-vr-motion-row', 'video-type-btn']) {
+        const el = document.getElementById(id);
+        if (el) el.hidden = true;
+      }
     }
     function syncVr() {
       if (signal.aborted) { unmountVr(); return; }
       const st = vrState();
+      vrTrackNative(st);
       const want = vrMountDecision(st);
       const key = want ? st.itemId + '|' + st.projection : '';
-      syncVrRows(st);
       const nn = vrNativeNotice(vrNotice, st, !!vrHandle);
       vrNotice = { lost: nn.lost, shown: nn.shown };
-      if (nn.show) vrToast(VR_NATIVE_NOTE);
+      if (nn.show) vrToast(nn.show);
       if (vrHandle && key !== vrHandleKey) unmountVr();
+      syncVrRows(st);
       if (!want || vrHandle || key === vrRefusedKey) return;
       const gen = ++vrGen;
       loadVrViewScript().then((VR) => {
@@ -2425,14 +2508,33 @@ if (typeof module !== 'undefined' && module.exports) {
         const { video, host } = vrElements();
         let h = null;
         h = (VR && typeof VR.mount === 'function') ? VR.mount(video, host, again.projection, {
-          onFail: () => { if (h && vrHandle === h) { unmountVr(); vrToast('360 view stopped; showing the flat picture'); } },
-          onTooLarge: () => { if (h && vrHandle === h) { vrRefusedKey = key; unmountVr(); vrToast('This video is too large for 360 view on this device'); } },
+          // A lost context stays flat (gate r1 W2/W3): refused until the switch or a pick, or the host's next class
+          // change would mount a new context at once, and a GPU that keeps losing it would toast every cycle.
+          onFail: () => { if (h && vrHandle === h) { vrRefusedKey = key; unmountVr(); syncVrRows(vrState()); vrToast('360 view stopped; showing the flat picture'); } },
+          onTooLarge: () => { if (h && vrHandle === h) { vrRefusedKey = key; unmountVr(); syncVrRows(vrState()); vrToast('This video is too large for 360 view on this device'); } },
           onTap: () => { try { window.FileTube.player.togglePlay(); } catch (_) { /* best-effort */ } },
         }) : null;
         if (!h) { vrRefusedKey = key; vrToast('360 view is not available in this browser; showing the flat picture'); return; }
         vrHandle = h;
         vrHandleKey = key;
+        syncVrRows(vrState()); // Move to look appears with the sphere
       }, () => { if (gen === vrGen) vrToast('Could not load the 360 view'); });
+    }
+    // R1 (Dean 2026-10-06): the "Move to look" tap. iOS grants motion only to a request made INSIDE the tap's own
+    // event (DeviceOrientationEvent.requestPermission), so enableMotion is called synchronously here, never after
+    // an await. Off at every mount (not remembered: iOS asks per page anyway). Denied: a short note, the switch
+    // returns off, and the drag keeps working. With motion on a drag still turns the view (it offsets the heading).
+    function onVrMotionTap(e) {
+      const h = vrHandle;
+      const check = e.currentTarget;
+      if (!h || typeof h.enableMotion !== 'function') { if (check) check.checked = false; return; }
+      if (h.motionOn()) { h.disableMotion(); syncVrRows(vrState()); return; }
+      const asked = h.enableMotion();
+      Promise.resolve(asked).then((ok) => {
+        if (signal.aborted || vrHandle !== h) return;
+        if (ok !== true) vrToast(VR_MOTION_DENIED_NOTE);
+        syncVrRows(vrState());
+      }, () => { if (!signal.aborted && vrHandle === h) { vrToast(VR_MOTION_DENIED_NOTE); syncVrRows(vrState()); } });
     }
     async function saveVideoType(value) {
       if (!mediaData || signal.aborted) return;
@@ -2468,6 +2570,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function setupVrView() {
       if (!vrWired) {
         vrWired = true;
+        vrResync = syncVr;
         const check = document.getElementById('watch-vr-check');
         if (check) {
           check.addEventListener('change', (e) => {
@@ -2477,6 +2580,8 @@ if (typeof module !== 'undefined' && module.exports) {
             syncVr();
           }, { signal });
         }
+        const motionCheck = document.getElementById('watch-vr-motion-check');
+        if (motionCheck) motionCheck.addEventListener('click', onVrMotionTap, { signal });
         const typeBtn = document.getElementById('video-type-btn');
         if (typeBtn) typeBtn.addEventListener('click', (e) => { e.stopPropagation(); openVideoTypeMenu(typeBtn); }, { signal });
         const { video, host } = vrElements();
@@ -2487,13 +2592,19 @@ if (typeof module !== 'undefined' && module.exports) {
           }
         }
         // The native-controls mode is a class on the host. An observer is NOT covered by the signal (LESSONS 4):
-        // it is disconnected on the abort below, which also unmounts the sphere (the view's end: nav, dock).
+        // it is disconnected on the abort below, which also unmounts the sphere (the view's end: nav, dock) and
+        // hides the rows (the persistent host outlives this view).
         let obs = null;
         if (host && typeof MutationObserver === 'function') {
           obs = new MutationObserver(syncVr);
           obs.observe(host, { attributes: true, attributeFilter: ['class'] });
         }
-        signal.addEventListener('abort', () => { if (obs) obs.disconnect(); unmountVr(); });
+        signal.addEventListener('abort', () => {
+          if (obs) obs.disconnect();
+          if (vrNativeTimer) { clearTimeout(vrNativeTimer); vrNativeTimer = 0; }
+          unmountVr();
+          hideVrRows();
+        });
       }
       syncVr();
     }

@@ -678,11 +678,12 @@ test('v1.317 AC9: ONE Ambient row across the two views - a cold /music writes it
     watchCogInjector(W)();
     watchCogInjector(W)(); // a second watch mount adds nothing
     const labels = [...c.D.querySelectorAll('#settings-menu .settings-menu-toggle')].map((l) => l.getAttribute('for'));
-    // v1.366.0: the watch view's "360 view" switch joins the cog AFTER Ambient (hidden unless the item is a sphere);
-    // the lock's intent is unchanged: Autoplay, Loop, Ambient in that order, each exactly once, whichever view came first.
-    assert.deepStrictEqual(labels, ['watch-autoplay-check', 'watch-loop-check', 'watch-ambient-check', 'watch-vr-check'], 'the watch order, whichever view came first');
+    // v1.366.0: the watch view's "360 view" and "Move to look" switches join the cog AFTER Ambient (hidden unless a
+    // sphere is up); the lock's intent is unchanged: Autoplay, Loop, Ambient in that order, each exactly once,
+    // whichever view came first.
+    assert.deepStrictEqual(labels, ['watch-autoplay-check', 'watch-loop-check', 'watch-ambient-check', 'watch-vr-check', 'watch-vr-motion-check'], 'the watch order, whichever view came first');
     assert.strictEqual(c.check(), check, 'the SAME checkbox (the music binding still owns it)');
-    for (const id of ['watch-autoplay-check', 'watch-loop-check', 'watch-ambient-check', 'watch-vr-check']) assert.strictEqual(c.D.querySelectorAll('#' + id).length, 1, id + ' exactly once');
+    for (const id of ['watch-autoplay-check', 'watch-loop-check', 'watch-ambient-check', 'watch-vr-check', 'watch-vr-motion-check']) assert.strictEqual(c.D.querySelectorAll('#' + id).length, 1, id + ' exactly once');
   });
   // the other way round: watch first (a fresh host), then music reuses its row
   await withMusic({ pref: '1', prep: ({ W, D, ps, ensureHost }) => {
@@ -691,7 +692,7 @@ test('v1.317 AC9: ONE Ambient row across the two views - a cold /music writes it
     watchCogInjector(W)();
   } }, async (c) => {
     const labels = [...c.D.querySelectorAll('#settings-menu .settings-menu-toggle')].map((l) => l.getAttribute('for'));
-    assert.deepStrictEqual(labels, ['watch-autoplay-check', 'watch-loop-check', 'watch-ambient-check', 'watch-vr-check']); // v1.366.0: 360 view last (see above)
+    assert.deepStrictEqual(labels, ['watch-autoplay-check', 'watch-loop-check', 'watch-ambient-check', 'watch-vr-check', 'watch-vr-motion-check']); // v1.366.0: 360 view, Move to look last (see above)
     await c.tapRow('n1');
     await c.play();
     assert.ok(await until(() => c.lit()), 'music drives the row the watch view wrote');

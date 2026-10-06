@@ -6923,12 +6923,17 @@ body:not([data-view="watch"]):not([data-view="music"]) #ambient-toggle-row { dis
    so it hides these rather than carrying a second copy. */
 body:not([data-view="watch"]) #watch-autoplay-row,
 body:not([data-view="watch"]) #watch-loop-row { display: none; }
-/* v1.366.0 (VR / 360): the 360 view switch and the owner's Video type row are wired by the watch view only. */
+/* v1.366.0 (VR / 360): the 360 view and Move to look switches and the owner's Video type row are wired by the watch
+   view only. */
 body:not([data-view="watch"]) #watch-vr-row,
+body:not([data-view="watch"]) #watch-vr-motion-row,
 body:not([data-view="watch"]) #video-type-btn { display: none; }
 /* v1.366.0 (VR / 360): public/js/vr-view.js's canvas, inserted right after #media-player inside #player-wrapper:
-   positioned with no z-index, so every later overlay (the glyphs, the bar, the resume and transcode overlays)
-   still paints above it. A finger or a mouse drag looks around; nothing here filters or blends the picture. */
+   positioned with no z-index (z-index auto). The overlays that must show over the picture still paint above it by
+   their OWN z-index: the glyph, resume and transcode overlays come BEFORE the video in the host template, so it is
+   their z-index (2, 10), not their order, that lifts them over the canvas; the bar and the controls that follow
+   the video paint above it by order as well. A finger or a mouse drag looks around; nothing here filters or blends
+   the picture. */
 .vr-view-canvas {
   position: absolute;
   inset: 0;

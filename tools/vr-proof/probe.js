@@ -1,20 +1,28 @@
 'use strict';
-/* global window, document, HTMLCanvasElement */
+/* global window, document, HTMLCanvasElement, matchMedia, DeviceOrientationEvent */
 // v1.366.0 (VR / 360) reachability, plan 2026-10-05 W4: the REAL server, the branch's product code, Chromium with
 // SwiftShader WebGL (--use-angle=swiftshader). Not a CI gate (no browser in CI):
 //   node tools/vr-proof/probe.js [out.json]
+// The library is built by the REAL scan with the REAL ffprobe (FILETUBE_TEST_FFMPEG's directory, else
+// ~/.local/bin/ffmpeg-static, put first on PATH before the server loads), so the sphere comes from the file's own
+// metadata exactly as in production (Dean 2026-10-06: a video is VR only from its metadata or the owner's pick).
 // Rows:
-//   flat     - a flat video's watch page with the 360 switch stored ON: 0 getContext calls, no canvas, vr-view.js
-//              never loaded, the 360 row hidden (the switch never reaches a flat video), Video type shown (admin).
-//   vrOff    - the labelled panorama (pano_360.mp4, 360 by its NAME) with the switch OFF: the row shown, no canvas.
+//   scan     - what the scan stored: the metadata-tagged vr-360-v2.mp4 -> projection '360'; the flat
+//              'Best 360 dunk.mp4' (the same 2:1 panorama, no metadata, a 360-looking NAME) -> no key.
+//   flat     - the flat-by-name video's watch page with the 360 switch stored ON: 0 getContext calls, no canvas,
+//              vr-view.js never loaded, the 360 row hidden (a name never reaches WebGL), Video type shown (admin).
+//   vrOff    - the labelled panorama (vr-360-v2.mp4, 360 by its metadata) with the switch OFF: the row shown, no canvas.
 //   vrOn     - the switch tapped ON: one canvas, one 'webgl' context, the centre colour at yaw 0 is the FRONT band.
 //   sense    - a mouse drag to the LEFT by 90 degrees of view shows the RIGHT band (green); a drag to the RIGHT by 90
 //              degrees shows the LEFT band (yellow): the picture follows the finger, and the sphere is not mirrored.
 //   off      - the switch tapped OFF: no canvas left.
 //   pickFlat - the owner picks Video type > Flat: the canvas goes, the 360 row hides; Auto brings both back.
 //   nav      - the switch on, then an in-app navigation home: no canvas left in the document.
-// The panorama's bands (test/fixtures/vr/README.md): front red at longitude 0, right green at +90, back blue at
-// 180, left yellow at -90; each 45 degrees wide.
+//   tilt     - a phone context (390x844, touch, the custom mobile player): the Move to look row shows with the
+//              sphere (and not on the desktop rows), the tap turns it on, and Chromium-dispatched deviceorientation
+//              events move the view: upright reads the front (red), the phone turned 90 degrees LEFT (alpha 90)
+//              reads the LEFT band (yellow), turned RIGHT (alpha -90) the RIGHT band (green); a drag with motion on
+//              still turns the view.
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -22,6 +30,9 @@ const zlib = require('node:zlib');
 const pw = require(require.resolve('playwright', { paths: [path.join(__dirname, '..', 'capture'), '/home/coder/projects/filetube/tools/capture'] }));
 
 const FIX = path.join(__dirname, '..', '..', 'test', 'fixtures', 'vr');
+const FFDIR = process.env.FILETUBE_TEST_FFMPEG ? path.dirname(process.env.FILETUBE_TEST_FFMPEG) : path.join(os.homedir(), '.local', 'bin', 'ffmpeg-static');
+if (!fs.existsSync(path.join(FFDIR, 'ffprobe'))) { console.error('no ffprobe in ' + FFDIR + ' (set FILETUBE_TEST_FFMPEG)'); process.exit(2); }
+process.env.PATH = FFDIR + path.delimiter + process.env.PATH;
 
 // A tiny PNG reader (8-bit RGB/RGBA, non-interlaced: what Chromium's screenshots are) -> pixel at (x, y).
 function pngPixel(buf, x, y) {
@@ -58,20 +69,35 @@ function colourName([r, g, b]) {
 
 (async () => {
   const outFile = process.argv[2] || path.join(__dirname, 'probe-result.json');
-  const out = { runAt: new Date().toISOString(), rows: {} };
+  // qa S2: the result names the commit it measured, and whether the product files differed from it.
+  const git = (args) => { try { return require('node:child_process').execFileSync('git', args, { cwd: path.join(__dirname, '..', '..') }).toString().trim(); } catch { return null; } };
+  const out = {
+    runAt: new Date().toISOString(),
+    head: git(['rev-parse', 'HEAD']),
+    dirtyProductFiles: (git(['status', '--porcelain', '--', 'public', 'lib', 'server.js', 'tools/vr-proof/probe.js']) || '').split('\n').filter(Boolean),
+    rows: {},
+  };
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ft-vr-proof-'));
   process.env.DATA_DIR = dataDir;
   const root = path.join(dataDir, 'media');
   fs.mkdirSync(path.join(root, 'Proof'), { recursive: true });
-  const pano = path.join(root, 'Proof', 'pano_360.mp4');
-  const flat = path.join(root, 'Proof', 'flat_clip.mp4');
-  fs.copyFileSync(path.join(FIX, 'pano_360.mp4'), pano);
+  const pano = path.join(root, 'Proof', 'vr-360-v2.mp4');
+  const flat = path.join(root, 'Proof', 'Best 360 dunk.mp4');
+  fs.copyFileSync(path.join(FIX, 'vr-360-v2.mp4'), pano);
   fs.copyFileSync(path.join(FIX, 'pano_360.mp4'), flat);
   const server = require('../../server');
   const { seedState } = require('../../test/helpers/seed-state');
-  seedState({ folders: [root], folderSettings: {}, metadata: {}, liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
-  const item = (id, name, file, add) => ({ id, type: 'video', title: id, name, filePath: file, rootFolder: root, folderName: 'Proof', channelName: 'Proof', duration: 2, hasThumbnail: false, ext: '.mp4', addedAt: 1788000000000 + add, width: 512, height: 256, videoCodec: 'h264', audioCodec: null });
-  await server.updateDatabase((db) => { db.metadata = { pano: item('pano', 'pano_360.mp4', pano, 1), flatclip: item('flatclip', 'flat_clip.mp4', flat, 2) }; return true; });
+  seedState({ folders: [root], folderSettings: {}, metadata: {}, liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: false, cacheMaxBytes: null, cacheMaxAgeDays: 30, mobileCustomPlayer: true } });
+  await new Promise((r) => setTimeout(r, 500)); // the server's boot-time `ffmpeg -version` check is async
+  await server.scanDirectories();
+  const panoId = server.getMediaId(pano);
+  const flatId = server.getMediaId(flat);
+  const meta = server.loadDatabase().metadata;
+  out.rows.scan = {
+    ffprobe: path.join(FFDIR, 'ffprobe'),
+    vr360v2: meta[panoId] ? { projection: meta[panoId].projection, width: meta[panoId].width, height: meta[panoId].height } : null,
+    best360dunk: meta[flatId] ? { hasProjectionKey: 'projection' in meta[flatId], width: meta[flatId].width, height: meta[flatId].height } : null,
+  };
   const session = server.__mintTestSession({ username: 'vrproofadmin' });
   const http = await new Promise((resolve) => { const s = server.app.listen(0, '127.0.0.1', () => resolve(s)); });
   const base = 'http://127.0.0.1:' + http.address().port;
@@ -93,6 +119,7 @@ function colourName([r, g, b]) {
       canvases: document.querySelectorAll('canvas.vr-view-canvas').length,
       script: !!document.querySelector('script[src*="vr-view.js"]'),
       vrRowHidden: (document.getElementById('watch-vr-row') || {}).hidden,
+      motionRowHidden: (document.getElementById('watch-vr-motion-row') || {}).hidden,
       typeBtnHidden: (document.getElementById('video-type-btn') || {}).hidden,
     }));
     const openCog = async () => {
@@ -110,13 +137,13 @@ function colourName([r, g, b]) {
     // flat: the switch stored ON before the page loads.
     await p.goto(base + '/', { waitUntil: 'networkidle' });
     await p.evaluate(() => localStorage.setItem('ft-vr-view', '1'));
-    await p.goto(base + '/watch.html?v=flatclip', { waitUntil: 'networkidle' });
+    await p.goto(base + '/watch.html?v=' + encodeURIComponent(flatId), { waitUntil: 'networkidle' });
     await p.waitForTimeout(1500);
     out.rows.flat = await state();
 
     // vrOff: the panorama with the switch OFF.
     await p.evaluate(() => localStorage.removeItem('ft-vr-view'));
-    await p.goto(base + '/watch.html?v=pano', { waitUntil: 'networkidle' });
+    await p.goto(base + '/watch.html?v=' + encodeURIComponent(panoId), { waitUntil: 'networkidle' });
     await p.waitForTimeout(1500);
     out.rows.vrOff = await state();
 
@@ -164,12 +191,86 @@ function colourName([r, g, b]) {
     await openCog(); await p.click('#video-type-btn'); await p.waitForTimeout(900);
     await p.click('.ui-sheet.is-open .ui-row:has-text("Auto")'); await p.waitForTimeout(1200);
     const afterAuto = await state();
-    out.rows.pickFlat = { before, afterFlat, afterAuto, stored: await p.evaluate(() => fetch('/api/videos/pano').then((r) => r.json()).then((j) => ({ projection: j.projection, projectionOverride: j.projectionOverride }))) };
+    out.rows.pickFlat = { before, afterFlat, afterAuto, stored: await p.evaluate((id) => fetch('/api/videos/' + encodeURIComponent(id)).then((r) => r.json()).then((j) => ({ projection: j.projection, projectionOverride: j.projectionOverride })), panoId) };
 
     // nav: in-app navigation home with the sphere up.
     await p.evaluate(() => window.FileTube.navigate('/'));
     await p.waitForTimeout(1200);
     out.rows.nav = await state();
+
+    // tilt: a phone, the switch stored on, the custom mobile player (settings.mobileCustomPlayer).
+    const mctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
+    await mctx.addCookies([{ name: session.cookieName, value: encodeURIComponent(session.token), url: base }]);
+    const m = await mctx.newPage();
+    m.on('pageerror', (e) => errs.push('phone: ' + e.message));
+    await m.goto(base + '/', { waitUntil: 'networkidle' });
+    await m.evaluate(() => localStorage.setItem('ft-vr-view', '1'));
+    await m.goto(base + '/watch.html?v=' + encodeURIComponent(panoId), { waitUntil: 'networkidle' });
+    await m.waitForTimeout(1500);
+    await m.evaluate(async () => { const v = document.getElementById('media-player'); v.muted = true; try { await v.play(); } catch { /* the frame still loads */ } v.pause(); v.currentTime = 0.4; });
+    await m.waitForTimeout(1200);
+    const mstate = () => m.evaluate(() => ({
+      nativeControls: document.getElementById('player-wrapper').classList.contains('native-controls'),
+      canvases: document.querySelectorAll('canvas.vr-view-canvas').length,
+      motionRowHidden: (document.getElementById('watch-vr-motion-row') || {}).hidden,
+      motionChecked: (document.getElementById('watch-vr-motion-check') || {}).checked,
+      hasDOE: typeof window.DeviceOrientationEvent === 'function',
+      coarse: matchMedia('(pointer: coarse)').matches,
+    }));
+    const mbox = await m.evaluate(() => { const c = document.querySelector('canvas.vr-view-canvas'); if (!c) return null; const r = c.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; });
+    const mcentre = async () => {
+      const shot = await m.screenshot({ clip: { x: Math.round(mbox.x + mbox.w / 2) - 2, y: Math.round(mbox.y + mbox.h / 2) - 2, width: 5, height: 5 } });
+      const px = pngPixel(shot, 2, 2); return { rgb: px, name: colourName(px) };
+    };
+    const orient = async (alpha, beta, gamma) => {
+      await m.evaluate((o) => window.dispatchEvent(new DeviceOrientationEvent('deviceorientation', { alpha: o[0], beta: o[1], gamma: o[2], absolute: false })), [alpha, beta, gamma]);
+      await m.waitForTimeout(300);
+    };
+    const tilt = { before: Object.assign(await mstate(), { box: mbox }) };
+    // Open the cog (a tap reveals the bar first) and tap Move to look.
+    for (let k = 0; k < 6; k++) {
+      if (await m.evaluate(() => !document.getElementById('settings-menu').hidden)) break;
+      await m.tap('#player-wrapper', { position: { x: 20, y: 20 } }).catch(() => {});
+      await m.waitForTimeout(250);
+      await m.click('#settings-btn', { timeout: 3000 }).catch(() => {});
+      await m.waitForTimeout(300);
+    }
+    tilt.cogOpen = await m.evaluate(() => !document.getElementById('settings-menu').hidden);
+    await m.click('#watch-vr-motion-row');
+    await m.waitForTimeout(500);
+    tilt.afterTap = await mstate();
+    // Close the cog (the cog button toggles it) so the picture's centre is the canvas, then let the bar auto-hide.
+    for (let k = 0; k < 4 && await m.evaluate(() => !document.getElementById('settings-menu').hidden); k++) {
+      await m.click('#settings-btn', { timeout: 3000 }).catch(() => {});
+      await m.waitForTimeout(300);
+    }
+    tilt.cogClosed = await m.evaluate(() => document.getElementById('settings-menu').hidden);
+    await m.waitForTimeout(3500);
+    await orient(0, 90, 0);
+    tilt.upright = await mcentre();
+    await orient(90, 90, 0);
+    tilt.turnedLeft90 = await mcentre();
+    await orient(-90, 90, 0);
+    tilt.turnedRight90 = await mcentre();
+    await orient(0, 90, 0);
+    tilt.backUpright = await mcentre();
+    // A drag with motion on still turns the view: 90 degrees of drag to the LEFT shows the RIGHT band.
+    const mper90 = (Math.PI / 2) * mbox.w / (2 * Math.atan(Math.tan(75 * Math.PI / 360) * (mbox.w / mbox.h)));
+    {
+      let left = -mper90; const step = -Math.min(mper90, mbox.w * 0.4);
+      while (Math.abs(left) > 0.5) {
+        const d = Math.abs(left) < Math.abs(step) ? left : step;
+        const sx = mbox.x + mbox.w / 2 - d / 2; const y = mbox.y + mbox.h / 2;
+        await m.mouse.move(sx, y); await m.mouse.down(); await m.mouse.move(sx + d, y, { steps: 12 }); await m.mouse.up();
+        left -= d;
+      }
+      await m.waitForTimeout(300);
+    }
+    tilt.dragLeft90WithMotion = await mcentre();
+    tilt.per90px = Math.round(mper90);
+    out.rows.tilt = tilt;
+    out.rows.desktopMotionRowHidden = out.rows.vrOn.motionRowHidden;
+    await mctx.close();
   } catch (e) {
     out.error = String(e && e.stack || e).slice(0, 800);
   } finally {

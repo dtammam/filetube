@@ -45,7 +45,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-projectio
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
-const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId, __mintTestSession } = require('../../server');
+const { app, scanDirectories, loadDatabase, updateDatabase, getMediaId, __mintTestSession, userStore } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
 
@@ -89,7 +89,7 @@ const pick = (id, projection, headers) => fetch(`${base}/api/videos/${encodeURIC
   method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json' }, headers || {}), body: JSON.stringify({ projection }),
 });
 
-test('REACHABILITY: the real fixtures through the real scan land `projection` from the file; flat and name-only files carry no key', async () => {
+test('REACHABILITY: the real fixtures through the real scan land `projection` from the file; flat and name-only files carry no key and serve flat', async () => {
   freshLibrary();
   const ids = {};
   for (const f of ['vr-360-v1.mp4', 'vr-360-v2.mp4', 'vr-360-tb-v2.mp4', 'vr-180-sbs-v2.mp4', 'clip_360_TB.mp4', 'pano_360.mp4', 'rot90.mp4']) ids[f] = copyFixture(f);
@@ -104,9 +104,11 @@ test('REACHABILITY: the real fixtures through the real scan land `projection` fr
   assert.strictEqual(meta[ids['vr-360-tb-v2.mp4']].projection, '360-tb');
   assert.strictEqual(meta[ids['vr-180-sbs-v2.mp4']].projection, '180-sbs');
   for (const f of ['clip_360_TB.mp4', 'pano_360.mp4', 'rot90.mp4']) assert.ok(!('projection' in meta[ids[f]]), f + ' carries no projection key');
-  // The name rule works at once, at serve time; a flat file serves none.
-  assert.strictEqual((await getItem(ids['clip_360_TB.mp4'])).projection, '360-tb');
-  assert.strictEqual((await getItem(ids['pano_360.mp4'])).projection, '360');
+  // Dean 2026-10-06 (R2): the NAME never makes a video VR. The DeoVR-style clip_360_TB.mp4 (1:1, stacked) and
+  // pano_360.mp4 (2:1) carry no side data, so both serve FLAT; only the metadata-tagged files serve a sphere.
+  assert.strictEqual((await getItem(ids['clip_360_TB.mp4'])).projection, undefined);
+  assert.strictEqual((await getItem(ids['pano_360.mp4'])).projection, undefined);
+  assert.strictEqual((await getItem(ids['vr-360-tb-v2.mp4'])).projection, '360-tb');
   assert.strictEqual((await getItem(ids['rot90.mp4'])).projection, undefined);
   assert.strictEqual((await getItem(ids['vr-180-sbs-v2.mp4'])).projection, '180-sbs');
   // Rotation still parses through the grown args: the 512x256 coded frame with a 90 degree flag is 256x512.
@@ -154,6 +156,25 @@ test('route: a pick wins at GET, flat hides a sphere, null DELETES the key; vali
   const res = await pick(id, '360-tb', { Cookie: member.cookie });
   assert.equal(res.status, 403, 'a member cannot set the video type');
   assert.ok(!('projectionOverride' in loadDatabase().metadata[id]), 'nothing written for a member');
+});
+
+test('route: a member WITH the modify right but a folder restriction on the item gets 404 and nothing is written (restrictedVideoMutation)', async () => {
+  freshLibrary();
+  const id = copyFixture('vr-360-v2.mp4');
+  await scanDirectories();
+  const folder = loadDatabase().metadata[id].folderName;
+  assert.ok(typeof folder === 'string' && folder, 'the item has a folder to restrict (non-vacuity)');
+  const granted = __mintTestSession({ username: 'vr-granted', role: 'member' });
+  userStore.setCanModifyLibrary(granted.user.id, true);
+  userStore.setRestrictions(granted.user.id, [{ kind: 'folder', value: folder }]);
+  const r = await pick(id, 'flat', { Cookie: granted.cookie });
+  assert.equal(r.status, 404, 'a restricted item is not visible to this member, so it cannot be written');
+  assert.ok(!('projectionOverride' in loadDatabase().metadata[id]), 'nothing written onto the hidden item');
+  // Lifted: the same member can now pick (discrimination - the gate is the restriction, not the role).
+  userStore.setRestrictions(granted.user.id, []);
+  const ok = await pick(id, 'flat', { Cookie: granted.cookie });
+  assert.equal(ok.status, 200);
+  assert.strictEqual(loadDatabase().metadata[id].projectionOverride, 'flat');
 });
 
 test('route: an audio item is refused (the video type is video-only)', async () => {

@@ -13,7 +13,9 @@
 // Look-around, all device-local and optional:
 //   drag (mouse / one finger)  - yaw and pitch, the picture follows the finger
 //   wheel / two-finger pinch   - zoom (field of view)
-//   Motion (phone)             - the phone's orientation drives the view; a drag then only turns yaw.
+//   Motion (phone)             - the phone's orientation drives the view; a drag then only turns yaw (it
+//                                offsets the motion heading). Opt-in per mount: watch.js's "Move to look" switch
+//                                calls enableMotion inside its tap (iOS's permission prompt needs the gesture).
 //                                Uses the absolute orientation quaternion (never Euler pitch/roll
 //                                differences - the gimbal class in docs/LESSONS.md section 7).
 // The pure half (matrices, quaternions, uniforms per projection) is dual-exported so it unit-tests
@@ -351,7 +353,8 @@
     function onTouchStart(e) { if (e.touches && e.touches.length === 1 && e.cancelable) e.preventDefault(); }
     canvas.addEventListener('touchstart', onTouchStart, { passive: false });
 
-    // ---- the motion sensor (opt-in; iOS asks permission on the tap that enables it) ----
+    // ---- the motion sensor (opt-in: watch.js's "Move to look" tap calls enableMotion, which asks iOS's permission
+    // synchronously, inside that tap) ----
     function screenDeg() {
       try { if (screen.orientation && typeof screen.orientation.angle === 'number') return screen.orientation.angle; } catch (_) { /* old WebKit */ }
       return typeof window.orientation === 'number' ? window.orientation : 0;
@@ -444,6 +447,7 @@
     FOV_DEFAULT_DEG: FOV_DEFAULT_DEG,
     FOV_MIN_DEG: FOV_MIN_DEG,
     FOV_MAX_DEG: FOV_MAX_DEG,
+    FRAG: FRAG, // the fragment shader's source: test/unit/vr-view-client.test.js evaluates its mapping lines
     mount: mount,
   };
   if (typeof window !== 'undefined') window.VrView = api;
