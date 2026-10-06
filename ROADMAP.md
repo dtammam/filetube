@@ -739,7 +739,7 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - Measured in Chromium (tools/vr-proof/probe.js, real scan + ffprobe): a drag left shows the right side; tilt left looks left; flat
   rows make 0 getContext calls. Mutants: 18 of 19 on the build (M8 equivalent), 28 of 28 on the r1 fixes, 23 of 25 in r2 (2 masked).
 - Suites at a924614e: Node 22.23.1 `# tests 11230` `# pass 11227` `# fail 0` `# skipped 3`; Node 24.20.0 `ℹ pass 11227` `ℹ fail 0`.
-- Gate (FULL): r1 security-brief APPROVED, adversary + qa CHANGES @950c2aca (11 WARNINGs: tilt unreachable, the mount wiring
+- Gate (FULL): r1 security-brief APPROVED, adversary + qa CHANGES @950c2aca (10 WARNINGs: tilt unreachable, the mount wiring
   unbound, a lost context remounting, a false full-screen note, dead TV cog rows, the restricted-item guard unbound, the name rule
   catching flat videos); r2 APPROVED @a924614e by all three. Disclosed follow-ups on the ROADMAP (the iPhone rotate-bounce timing,
   Android null orientation, gestures under the sphere, no ffprobe retry).

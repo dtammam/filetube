@@ -3,10 +3,10 @@ plan: small-phones-pocket-downloads-vr
 harness: v2 · lean
 branch: one branch per release (named in section 3)
 anchor: spec
-status: Shipped v1.366.0
-next: none (all three releases shipped: v1.364.0, v1.365.0, v1.366.0)
+status: Shipped v1.366.1
+next: none (shipped v1.364.0, v1.365.0, v1.366.1; v1.366.0 was tagged but published no image: its audit failed on two new advisories, fixed in v1.366.1)
 design: Approved 2026-10-05 @fc9fb7c5 (Dean's Q&A in the kickoff; every ruling in section 1 is his answer)
-gate: APPROVED (A r2 @a3402a93, B r2 @b8b3ca7d, C r2 @a924614e; adversary, qa, security-brief)
+gate: APPROVED (A r2 @a3402a93, B r2 @b8b3ca7d, C r2 @a924614e + r3 @10c39392 for v1.366.1; adversary, qa, security-brief)
 ---
 
 # Small phones (iOS 15), the iPod center hold and a way into the iPod, stuck-or-stale downloads, VR / 360
@@ -1380,6 +1380,99 @@ Mutants this round: 25 (13 r1 re-runs, all killed; 12 new on the delta, 10 kille
 Safe to ship: no CRITICAL, no WARNING open; the suspicion above goes to DEVICE-CHECKS with the iPhone 360 check.
 
 Gate: APPROVED r2 @a924614e - adversary
+
+**Security-brief r3 @10c39392** (dependency change: `npm audit fix --package-lock-only`). Gap first: no shell, so
+`git diff 92c186ca 10c39392 -- package-lock.json` was NOT run. I compared the w4 package-lock.json with the main
+checkout's (v1.365.0, the nearest lockfile I could read) by package entry and by counts, not line by line.
+0 CRITICAL, 0 HIGH, 0 MEDIUM, 0 LOW, 2 INFO.
+- Lockfile:
+  - proxy-addr 2.0.7 -> 2.0.8. The URL is `https://registry.npmjs.org/proxy-addr/-/proxy-addr-2.0.8.tgz` with a new
+    sha512 integrity. It gains a 4-line `funding` block (the whole line shift after it). Its dependencies are
+    unchanged (forwarded 0.2.0, ipaddr.js 1.9.1).
+  - source-map-js 1.2.1 -> 1.2.2. The URL is `https://registry.npmjs.org/source-map-js/-/source-map-js-1.2.2.tgz`
+    with a new sha512, still `dev: true`.
+  - The `resolved`+`integrity`+`hasInstallScript` count is 396 in both files, and `hasInstallScript` appears in
+    neither. So there are no new packages and no install scripts.
+  - The root version reads 1.366.1 (from 1.365.0, through the v1.366.0 commit).
+- Primary source: I read the installed `node_modules/proxy-addr` 2.0.8 in w4 (package.json + index.js). Its scripts
+  are bench/lint/test only, with no pre/post/install. The change is in trustSingle/trustMulti: an IPv4-mapped
+  candidate is folded to IPv4, a native IPv6 address cannot match a mapped subnet, and an IPv6 subnet spans IPv4 only
+  when it is mapped with a prefix of at least 96.
+- FileTube was NOT exposed (verified): no `app.set`/`app.enable` call exists in server.js or lib/, so Express's
+  `trust proxy` stays at its default (trust nothing; proxy-addr never compiles a subnet), and no code reads
+  `req.ip`/`req.ips`/`req.protocol`/`req.secure`/`req.hostname`. FILETUBE_TRUST_PROXY is FileTube's own switch: it
+  reads X-Forwarded-Proto (lib/auth/gate.js:97) and the first X-Forwarded-For hop for the login rate key
+  (server.js:3249) directly, without proxy-addr. So the bump hardens a dependency that no FileTube code path calls.
+- source-map-js never reaches production (verified): it is `dev: true`, reached only through css-tree
+  (devDependency). The only `require('css-tree')` is scripts/ui-lint.js, and the Dockerfile runs
+  `npm ci --only=production` (Dockerfile:86).
+- INFO 1: I did not check the tarball hashes against the registry (no network). They are taken as npm wrote them.
+- INFO 2 (existing, unchanged): with FILETUBE_TRUST_PROXY=1, the rate key trusts the first XFF hop, as the
+  server.js:3241 note already says; this fix does not touch it.
+
+Gate: APPROVED r3 @10c39392 - security-brief
+
+**QA r3 @10c39392 (delta a924614e..10c39392: 92c186ca release v1.366.0, 10c39392 lockfile bumps + v1.366.1).**
+Ran in w4 (its own node_modules from npm ci, left in place), Node 22.23.1: release-ledger, exec-plans-census,
+docs-status-census, docs-link-census: `# tests 13` `# pass 13` `# fail 0` `# skipped 0`, exit 0. `npm run audit:check`:
+`audit-check: OK - high:0 critical:0 (low:0 moderate:0 info:0); excepted:0; stale:0`, exit 0.
+`bash .harness/lib/check-markers.sh`: exit 1, `12 issue(s) found`, all in other plans (next-waves.md and five
+completed plans' frontmatter); none in this plan (r1 had 23 with this plan's own). Full suites not re-run; your
+C1 logs report them.
+- Release readiness from r1/r2, checked against 92c186ca: package.json and package-lock.json root are 1.366.1 (by way of
+  1.366.0); ROADMAP has a v1.366.0 Shipped entry and a v1.366.1 entry, and the VR item is ticked with risks 1-4 stated
+  (4 settled; file-name guessing dropped, Dean's words); index items 42-46 added; DEVICE-CHECKS has a "360 view
+  (v1.366.0)" section of 5 lines (iPhone first, drag/Move to look, native full screen + PiP + rotate x5, Flat/Auto,
+  the container scan); releases.json has v1.366.0 and v1.366.1; LESSONS section 2 has the line (wiring vs pure
+  decision, plus the rescan-must-save point; "1019" matches adversary r1 at plan:1109); the plan is closed out in
+  completed/ (status Shipped, next none). Disclosures: S3 = ROADMAP follow-up (d), S4 = (f) + device check 46, S6 = (g),
+  Android null alpha = (b); the custom-player-only ruling is in releases.json ("On a phone it needs FileTube's own
+  player controls"), the Shipped entry, the new Planned item and the DEVICE-CHECKS preamble. ROADMAP 502 no longer
+  says the file-name rule works. No em dash in any added line (grep: 0).
+- The v1.366.1 copy is plain and true: lockfile only (proxy-addr 2.0.7 -> 2.0.8 with a new integrity and a funding
+  block; source-map-js 1.2.1 -> 1.2.2, still dev), and "Includes everything in 1.366.0" is correct.
+- SUGGESTION: ROADMAP v1.366.0 Shipped says "11 WARNINGs" for r1. The plan has 10 (qa 4 at plan:1088 block, adversary
+  6: "0 CRITICAL, 6 WARNING"; security-brief 0). Fix in the next docs commit.
+- SUGGESTION (pre-existing off by one): the Device checks index has 46 numbered items and says "45 open lines";
+  DEVICE-CHECKS.md has 45 `- [ ]` lines (grep). At a924614e it was already 41 vs 40, so the release did not cause it.
+  One index item has no line: find it and drop it.
+- SUGGESTION: the plan's status reads "Shipped v1.366.0" and section 6 has no entry for the release commit or the
+  v1.366.1 audit bump (only the seats' verdicts); the image that ships is v1.366.1. A one-line build-log note would make
+  the record match the tag.
+
+Gate: APPROVED r3 @10c39392 - qa
+
+**Adversary r3 @10c39392 (delta from a924614e: 92c186ca release commit + 10c39392 audit fix).** 0 CRITICAL, 0 WARNING,
+2 NOTE.
+- Lockfile: `git diff 92c186ca..10c39392 -- package-lock.json` changes only the root version (1.366.0 -> 1.366.1),
+  proxy-addr 2.0.7 -> 2.0.8 (resolved, integrity, a new `funding` block) and source-map-js 1.2.1 -> 1.2.2 (resolved,
+  integrity); no other resolved entry moves. I fetched all four tarballs with `npm pack` and hashed them with
+  `openssl dgst -sha512`: all four hashes equal the lockfile's old and new `integrity`. The installed tree
+  (`npm ls`): express@4.22.3 -> proxy-addr@2.0.8, css-tree@3.2.1 -> source-map-js@1.2.2 (dev only).
+- Primary source (the tarballs diffed, not the changelog): proxy-addr 2.0.8 changes only `trustMulti`/`trustSingle`:
+  an IPv4-mapped IPv6 candidate is canonicalized to IPv4, and IPv6 subnets no longer match IPv4 unless they are a
+  ::ffff:/96+ mapped subnet (GHSA-jqcg-44mw-7w3h). source-map-js 1.2.2 bounds the indexed-map section offsets and
+  adds an eval-free quick-sort fallback (GHSA-68fv-2mgg-jv7q).
+- Trust parsing in FileTube: no `app.set('trust proxy')`, no `req.ip`/`req.ips`/`req.protocol`/`req.secure`/
+  `req.hostname` anywhere in server.js or lib (grep). FILETUBE_TRUST_PROXY is FileTube's own reading of
+  X-Forwarded-Proto (gate.js requestIsHttps) and X-Forwarded-For (server.js rateKey), with no proxy-addr call, so
+  Express keeps its default trust (none). Measured anyway: the two proxy-addr versions return the same address for
+  5 sockets (127.0.0.1, ::ffff:127.0.0.1, ::1, 172.18.0.2, ::ffff:172.18.0.2), each with an X-Forwarded-For, under
+  6 trust settings (Express's default false, loopback, uniquelocal, ::1, 172.16.0.0/12, ::ffff:0:0/96): 0 differ.
+- `npm run audit:check`: `audit-check: OK - high:0 critical:0 (low:0 moderate:0 info:0); excepted:0; stale:0`, exit
+  0. The 92c186ca lockfile under `npm audit --package-lock-only`: `2 vulnerabilities (1 high, 1 critical)`, exactly
+  these two advisories. So the fix is needed and enough.
+- 92c186ca docs claims checked against the tree: DEVICE-CHECKS has 45 open `- [ ]` lines and the ROADMAP index has 45
+  entries ("45 open lines" is true); the plan moved to completed/ (none left in active/), status `Shipped v1.366.0`;
+  `gh run view 37403596165` (the v1.366.0 tag publish): audit failure, publish skipped, so "the v1.366.0 tag never
+  published an image" is true; the r2 mutant numbers in the Shipped entry ("23 of 25 in r2, 2 masked") are mine;
+  the LESSONS entry's "killed all 13" matches r2. The 5 test files that read releases.json / DEVICE-CHECKS / ROADMAP /
+  LESSONS: `# tests 32` `# pass 32` `# fail 0`. check-markers reports 12 issues, none in this plan.
+- NOTE 1: the v1.366.0 Shipped entry says r1 found "11 WARNINGs"; the r1 blocks hold 10 (adversary 6, qa 4). Fix the
+  number in the next docs-bearing commit.
+- NOTE 2: frontmatter `gate:` still names C r2 @a924614e; r3 @10c39392 is now the binding round for v1.366.1.
+
+Gate: APPROVED r3 @10c39392 - adversary
 
 ## 7. Cut or deferred (Dean can overrule each)
 
