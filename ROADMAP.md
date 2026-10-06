@@ -718,6 +718,14 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.366.1 - Security update for two dependencies (2026-10-06)
+
+- The CI audit gate failed on main and on PR #96 for two advisories published after v1.365.0: GHSA-jqcg-44mw-7w3h (critical,
+  proxy-addr IP spoofing via an IPv4-mapped IPv6 trust subnet; via express) and GHSA-68fv-2mgg-jv7q (high, source-map-js event-loop
+  denial of service; via css-tree, used by the ui-lint). `npm audit fix --package-lock-only`: proxy-addr 2.0.7 -> 2.0.8,
+  source-map-js 1.2.1 -> 1.2.2, lockfile only; `audit:check` OK (0 high / critical). The v1.366.0 tag never published an image
+  (its publish run runs the same audit); 1.366.1 ships v1.366.0's 360 view with the fix (Dean's call).
+
 ### v1.366.0 - Look around inside 360 and 180 videos (2026-10-06)
 
 - A 360 or 180 video tagged in the file (spherical / stereo side data, read by a grown ffprobe probe; rotation still parsed on 14
