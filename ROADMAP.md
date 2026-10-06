@@ -5,7 +5,7 @@
 ### Device checks owed
 
 - [ ] **Device checks owed (Dean: reply "1-5 pass, 9 fails")** _(v1.362.2, 2026-10-04)_ - one line per open check in
-  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (39 open lines on 2026-10-06); the steps are only there. A
+  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (37 open lines on 2026-10-06); the steps are only there. A
   passed line is deleted from both places; a failed one becomes a bug below. Closes when every line is resolved.
 
   1. v1.362.0 - pull down: springs back early, docks past a third, picture never black
@@ -46,10 +46,8 @@
   36. v1.363.1 - Add chapters on a chapterless mp3: chapter tracks after re-list and next pick; the playing song untouched
   37. v1.363.1 - watch cog: Add / Edit chapters row; the new sticker rows match the old
   38. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
-  39. v1.367.0 - admin, phone: five groups, "apply to everyone" lines, an old Automation & Storage bookmark opens Scan & cache
-  40. v1.367.0 - member account: no admin pages or rows, personal switches intact, push under Notifications when on
 
-  Passed 2026-10-06 (deleted from DEVICE-CHECKS.md): [x] v1.365.0 - a one-off download with the server stopped: "Can't reach FileTube", it clears; [x] v1.365.0 - stuck row "updated N ago", queued "waiting N"; [x] v1.365.0 - Download trace saves a .txt in the home-screen app; [x] v1.366.0 - 360 view checks (iPhone live picture, drag direction and Move to look, native full screen and PiP, Video type Flat/Auto, container ffprobe detection).
+  Passed 2026-10-06 (deleted from DEVICE-CHECKS.md): [x] v1.367.0 - Settings reorganized, admin and member views; [x] v1.365.0 - a one-off download with the server stopped: "Can't reach FileTube", it clears; [x] v1.365.0 - stuck row "updated N ago", queued "waiting N"; [x] v1.365.0 - Download trace saves a .txt in the home-screen app; [x] v1.366.0 - 360 view checks (iPhone live picture, drag direction and Move to look, native full screen and PiP, Video type Flat/Auto, container ffprobe detection).
 
   Passed 2026-10-05 (deleted from DEVICE-CHECKS.md): [x] v1.364.0 - the iPhone SE (iOS 15) shows tiles, Music and working bottom buttons; [x] v1.364.0 - Export error log in the home-screen app; [x] v1.364.0 - center hold: volume bar on a speaker, "Use the side buttons" on the phone; [x] v1.364.0 - a plain center tap selects with one tick; [x] v1.364.0 - Music tab again opens the iPod with no song; [x] v1.364.0 - the Add chapters row sits left; [x] v1.363.0 - the Ask me prompt, the 5 s countdown, a tap cancels it; [x]
   v1.363.0 - the mini player never prompts; [x] v1.341.3 - watch page: turn back upright settles in one step; [x] v1.350.0 - Pocket turn back: send the
@@ -60,6 +58,35 @@
 
   Passed 2026-10-04 (deleted from DEVICE-CHECKS.md): [x] v1.362.1 - pause shows the chevron, ~3 s after play it goes, a touch
   shows it; [x] v1.362.1 - 3 s is right; [x] v1.362.1 - a double-tap at the hidden chevron's spot skips, never minimizes.
+
+- [ ] **Remove the old Settings names and ids (tech debt)** _(Dean, 2026-10-06: "that's now tech debt to keep for no reason")_ -
+  v1.367.0 kept a compatibility layer so old bookmarks and the remembered page survived the reorganization. Dean passed the new
+  menu, so it goes: (a) `data-md-aliases` on the Settings `.md-root` (setup.html) and the alias map + `resolveKey` in
+  `wireMasterDetail` (common.js), including the stored `ft-md:setup` rewrite; keep the `pending` key (it also serves a plain
+  `#users` link while the admin page is still hidden); (b) the tests that pin the old ids both ways (setup-master-detail.test.js:
+  "OLD_TO_NEW", the stored-old-selection case, the 18-pages table) and the census baseline's role of "v1.366.1" naming; (c) any
+  live text that still says "Automation & Storage", "Resume rows", "Critter sound check", "Video/Music/Book folders" as a page name,
+  or "Settings > Mobile player" for the custom-controls switch (a pre-existing wrong path; the switch is in Experimental), in
+  `docs/`, `public/`, `lib/` comments and the README; `public/assets/icons/README.md:201` says "Settings -> Media folders". Not
+  touched: history (ROADMAP Shipped entries, releases.json, completed plans, git). Cost to disclose in the ledger: an old
+  Settings bookmark lands on the menu's first page. Measure first: grep for every old id and name, list what each pin protects.
+
+- [ ] **Music radio: make the station less simple and less repetitive** _(Dean, 2026-10-06: "it feels too simple and then
+  repetitive"; wants to understand what exists, then expand)_ - **What exists today** (read from `public/js/music.js` ~1144, 4099-4230;
+  shipped v1.254.0 "Endless autoplay", v1.284 desktop Autoplay button, v1.311 chapter-album exit station): when the LAST queued track
+  starts, with Autoplay on (default on, per device `ft-music-autoplay`, never in Listen mode) it fetches and appends 5 tracks:
+  first up to 3 random tracks by the SAME artist (`/api/music?artist=..&sort=random`), then a random page of the whole library
+  (60 fetched, 5 kept). It skips what is already queued and what this page session has played (an in-memory list, gone on reload);
+  if everything is excluded a recycle arm relaxes that rule so it never ends in silence. Autoplay off retracts the unplayed picks. The
+  shuffle is seeded random (`seed = Date.now() % 100000`). There is no named station, no "start radio from this song / artist /
+  album", and nothing steers the picks: no likes, plays, skips, genre, year, or recency. That is why it reads as simple (artist, then
+  anything) and repetitive (a fresh random draw each time, a short memory, the same artist first, so an album you just heard comes
+  back). Open taste question from v1.254: a lone chapter of a DJ-set album can be picked. **Outcomes to choose between (not decided;
+  Dean picks):** start a station from a song, artist, album or genre; weight by what you like and finish, and away from what you
+  skip; a longer memory (persist the played list, cool-down per artist and per album); mix in familiar and new; named stations
+  (Favorites radio, Genre radio, Throwback); a "radio" row in the pocket iPod skins and on the speaker's now-playing. Before design:
+  measure what signals the library already stores (likes, history, genres on tracks) and how a 1-hour session repeats today
+  (artist and album repeat counts over a simulated run).
 
 ### Bugs
 
