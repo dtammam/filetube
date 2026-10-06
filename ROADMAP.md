@@ -5,7 +5,7 @@
 ### Device checks owed
 
 - [ ] **Device checks owed (Dean: reply "1-5 pass, 9 fails")** _(v1.362.2, 2026-10-04)_ - one line per open check in
-  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (45 open lines on 2026-10-06); the steps are only there. A
+  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (37 open lines on 2026-10-06); the steps are only there. A
   passed line is deleted from both places; a failed one becomes a bug below. Closes when every line is resolved.
 
   1. v1.362.0 - pull down: springs back early, docks past a third, picture never black
@@ -46,14 +46,8 @@
   36. v1.363.1 - Add chapters on a chapterless mp3: chapter tracks after re-list and next pick; the playing song untouched
   37. v1.363.1 - watch cog: Add / Edit chapters row; the new sticker rows match the old
   38. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
-  39. v1.365.0 - a one-off download with the server stopped or Wi-Fi off: "Can't reach FileTube"; it clears by itself
-  40. v1.365.0 - a Downloading row stuck for minutes shows "updated N ago"; a Queued one shows "waiting N"
-  41. v1.365.0 - home-screen app: Settings > Troubleshooting > Download trace saves a .txt (hosts only, no full links)
-  42. v1.366.0 - iPhone FIRST: a 360 video inline with the 360 view on: does the picture stay live while you drag
-  43. v1.366.0 - drag direction feels right; "Move to look" turns the view as you turn the phone
-  44. v1.366.0 - the phone's own full screen and picture in picture: flat, and the right note on the way back; rotate 5 times: no note
-  45. v1.366.0 - Video type > Flat removes the sphere, Auto brings it back; a flat video shows no 360 row
-  46. v1.366.0 - in the container: a newly added 360 file is detected (Alpine's ffprobe)
+
+  Passed 2026-10-06 (deleted from DEVICE-CHECKS.md): [x] v1.365.0 - a one-off download with the server stopped: "Can't reach FileTube", it clears; [x] v1.365.0 - stuck row "updated N ago", queued "waiting N"; [x] v1.365.0 - Download trace saves a .txt in the home-screen app; [x] v1.366.0 - 360 view checks (iPhone live picture, drag direction and Move to look, native full screen and PiP, Video type Flat/Auto, container ffprobe detection).
 
   Passed 2026-10-05 (deleted from DEVICE-CHECKS.md): [x] v1.364.0 - the iPhone SE (iOS 15) shows tiles, Music and working bottom buttons; [x] v1.364.0 - Export error log in the home-screen app; [x] v1.364.0 - center hold: volume bar on a speaker, "Use the side buttons" on the phone; [x] v1.364.0 - a plain center tap selects with one tick; [x] v1.364.0 - Music tab again opens the iPod with no song; [x] v1.364.0 - the Add chapters row sits left; [x] v1.363.0 - the Ask me prompt, the 5 s countdown, a tap cancels it; [x]
   v1.363.0 - the mini player never prompts; [x] v1.341.3 - watch page: turn back upright settles in one step; [x] v1.350.0 - Pocket turn back: send the

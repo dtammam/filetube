@@ -115,27 +115,3 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON.
   playing; resume works inside a chapter. Close the pop-out while a save is in flight: nothing odd.
 - [ ] v1.363.1 - Watch page settings cog (a chapterless video): "Add chapters" opens the same editor; with chapters it says "Edit
   chapters". The row is plain weight at the end of the menu; say if it looks out of place. The sticker menu's new rows match the old.
-
-## Stuck or stale downloads (v1.365.0)
-
-- [ ] v1.365.0 - Start a one-off download, then stop FileTube (or turn off Wi-Fi): the corner chip and /subscriptions say "Can't
-  reach FileTube" (on a computer, "last reached N ago" too) and the rows keep their last state; bring it back: the line goes away
-  by itself.
-- [ ] v1.365.0 - If a download looks stuck: a Downloading row says "updated N ago" after a minute or more; a Queued row says
-  "waiting N". Note which you see before restarting anything.
-- [ ] v1.365.0 - In the HOME-SCREEN app, as an admin: Settings > Troubleshooting > Download trace saves (or offers to share) a
-  .txt with your recent one-off downloads, hosts only, no full links. Say if the tap does nothing.
-
-## 360 view (v1.366.0)
-
-Settings > Mobile player > "Use custom player controls on touch devices" ON for the phone checks; turn on the 360 view in the
-player's settings cog on a 360 video. Owners: Video type sets a video by hand.
-
-- [ ] v1.366.0 - iPhone FIRST: one 360 video inline, 360 view on: does the picture stay live while you drag? If it goes black,
-  that is a 360-only finding (keep it apart from the open black-picture bug): say so and Export log.
-- [ ] v1.366.0 - Drag direction feels right (drag left, the view turns as if you turned right). Turn on "Move to look": turning the
-  phone turns the view the same way (iOS asks for motion access on that tap).
-- [ ] v1.366.0 - The phone's own full screen and picture in picture show the flat picture, with the matching note when you come
-  back. Then, sphere up, rotate to landscape while playing, 5 times: the sphere stays and NO note shows.
-- [ ] v1.366.0 - Video type > Flat removes the sphere; Auto brings it back. A normal (flat) video shows no 360 row at all.
-- [ ] v1.366.0 - In the container: add a new 360 file, let the scan run: it shows the 360 row (the server's ffprobe reads the tag).
