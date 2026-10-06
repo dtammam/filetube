@@ -85,7 +85,7 @@ function census(html) {
       key: sec.getAttribute('data-collapse-key'),
       title: (sec.getAttribute('data-md-label') || sec.querySelector('summary').textContent).trim().replace(/\s+/g, ' '),
       group: sec.getAttribute('data-md-group') || '',
-      pageAdmin: sec.hasAttribute('data-md-badge') || sec.hasAttribute('data-md-reserve') || sec.hasAttribute('data-admin-only'),
+      pageAdmin: sec.hasAttribute('data-md-badge') || sec.hasAttribute('data-admin-only'),
       headings: [],
       controls: [],
     };

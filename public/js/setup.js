@@ -913,7 +913,7 @@ async function renderStickerPicker() {
   }, sig);
 }
 
-// ---- Automation & Storage --------------------------------------------
+// ---- Server-wide settings (Scan & cache, Home page, Playback, ...) ----
 // Persisted server-side (db.settings via /api/settings), NOT localStorage
 // like the theme/icon prefs above — these govern server automation
 // (scan cadence, cache housekeeping), not per-browser display prefs.
@@ -3656,6 +3656,9 @@ async function initAccountSection(signal) {
     loadUsersList(signal, me.user);
     const backupBox = document.getElementById('backup-box');
     if (backupBox) backupBox.hidden = false;
+    // v1.367.0: the server-wide rows (saved through the admin-only POST /api/settings) and the whole Scan & cache page and
+    // Notifications page are for admins; a member never gets them (the server refused their saves anyway).
+    document.querySelectorAll('[data-admin-only][hidden], #notifications-box[hidden]').forEach((el) => { el.hidden = false; });
     wireRestoreControls(signal);
     wireCritterManager(signal); // v1.171: the critter pool manager is admin-only (Dean's intake ruling)
     // (Users/Backup reveal fires the nav's hidden-observer -> their reserved
@@ -4358,6 +4361,8 @@ function initPushControls(signal) {
     .then((body) => {
       if (!body || !body.key) return; // feature off -> the group stays hidden
       group.hidden = false;
+      const notificationsBox = document.getElementById('notifications-box'); // v1.367.0: a member's one Notifications row
+      if (notificationsBox) notificationsBox.hidden = false;
       fetch('/api/auth/me')
         .then((r) => (r.ok ? r.json() : null))
         .then((me) => {

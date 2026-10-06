@@ -40,7 +40,7 @@ test('buildFeedHiddenRowHtml: a missing title falls back, and no channel omits t
 test('setup.html carries the Hidden section beside Trash; setup.js renders + wires it', () => {
   const html = fs.readFileSync(path.join(__dirname, '../../public/setup.html'), 'utf8');
   const js = fs.readFileSync(path.join(__dirname, '../../public/js/setup.js'), 'utf8');
-  assert.match(html, /data-collapse-key="feedhidden"/, 'a collapsible Hidden section exists');
+  assert.match(html, /data-collapse-key="hidden"/, 'a collapsible Hidden section exists');
   assert.match(html, /id="feedhidden-list"/, 'the list host is present');
   assert.match(html, /<summary>Hidden<\/summary>/, 'the section header is just "Hidden" (Dean: shorter than "Hidden from feed")');
   // Ordered after Trash (the settings-page section it mirrors and sits beside).

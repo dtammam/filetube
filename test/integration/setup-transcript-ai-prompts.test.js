@@ -166,8 +166,8 @@ test('setup: a 400 from the server lands in the field error and the typed rows s
 
 test('setup.html: the section is registered like its siblings (setup-box, collapse key, md icon + Advanced group) and uses NO reveal-toggle barrier', () => {
   const html = fs.readFileSync(path.join(PUBLIC_DIR, 'setup.html'), 'utf8');
-  assert.match(html, /<details class="setup-box setup-sec sub-collapsible" data-collapse-key="transcript-ai" data-md-icon="copy" data-md-group="Advanced" open>/);
-  const section = html.slice(html.indexOf('data-collapse-key="transcript-ai"'));
+  assert.match(html, /<details class="setup-box setup-sec sub-collapsible" data-collapse-key="transcript-sharing" data-md-icon="copy" data-md-group="Advanced" open>/);
+  const section = html.slice(html.indexOf('data-collapse-key="transcript-sharing"'));
   const end = section.indexOf('</details>');
   assert.ok(!section.slice(0, end).includes('reveal-toggle'), 'the editor is fed by its own fetch, not the automation-settings barrier (the v1.96 rule)');
 });

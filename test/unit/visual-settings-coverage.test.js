@@ -18,9 +18,9 @@ const CAPTURE_JS = fs.readFileSync(path.join(ROOT, 'test', 'visual', 'capture.js
 // Sections that have no scene today (measured against capture.js at v1.348.0). Each needs a scene
 // someday; none may be added here.
 const UNCOVERED = [
-  ['music-folders', 'folder-list section with no scene of its own yet'],
-  ['tv-folders', 'folder-list section with no scene of its own yet'],
-  ['podcasts-place', 'folder-list section with no scene of its own yet'],
+  ['music', 'folder-list section with no scene of its own yet'],
+  ['shows', 'folder-list section with no scene of its own yet'],
+  ['podcasts', 'folder-list section with no scene of its own yet'],
   ['troubleshooting', 'admin diagnostics section with no scene of its own yet'],
 ];
 
@@ -74,5 +74,5 @@ test('the coverage reader can fail: a section no scene opens is reported', () =>
 });
 
 test('UNCOVERED never grows: it is exactly the four sections that had no scene at v1.348.0', () => {
-  assert.deepStrictEqual(UNCOVERED.map((u) => u[0]).sort(), ['music-folders', 'podcasts-place', 'troubleshooting', 'tv-folders']);
+  assert.deepStrictEqual(UNCOVERED.map((u) => u[0]).sort(), ['music', 'podcasts', 'shows', 'troubleshooting']);
 });

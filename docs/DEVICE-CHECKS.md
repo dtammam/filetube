@@ -9,7 +9,7 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
 
 ## Minimize into the mini player (v1.362.0)
 
-Settings > Mobile player > "Use custom player controls on touch devices" ON for all of these.
+Settings > Experimental > "Use custom player controls on touch devices" ON for all of these.
 
 - [ ] v1.362.0 - iPhone, inline video playing: pull down slowly and let go early (springs back, still playing); pull past a third (docks bottom-right, still playing, the page is where you browsed from). Watch the picture during and after the drag: if it goes black or freezes while the sound runs on, open the same page in a SAFARI TAB with `?minimizeAnim=0` and repeat (the switch is a URL parameter; the home-screen app has no address bar). Black with the animation and fine without = the moving picture is the trigger.
 - [ ] v1.362.0 - Tap the down-chevron at the picture's top-left (since v1.362.1 it shows while paused, or for about 3 s after play or a touch on the picture): same end state. Then tap the mini player: back to the watch page, same position, still playing. Open a video from another video (a related card), minimize: you land on the feed / search you started from, and the second video keeps playing.
@@ -19,7 +19,7 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON for 
 
 ## The minimize chevron peeks (v1.362.1)
 
-Settings > Mobile player > "Use custom player controls on touch devices" ON for all of these.
+Settings > Experimental > "Use custom player controls on touch devices" ON for all of these.
 
 - [ ] v1.362.1 - Tap to pause and lock the phone at once: does the pause still happen? (A tap waiting out the double-tap window now ends with backgrounding.)
 - [ ] v1.362.1 - VoiceOver on, a video playing: rest the VoiceOver cursor on the chevron; does it stay, or vanish after about 3 s?
@@ -27,7 +27,7 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON for 
 
 ## No loupe on any hold; the black-picture tests (v1.362.3)
 
-Settings > Mobile player > "Use custom player controls on touch devices" ON for all of these. (The v1.362.2 loupe line failed on
+Settings > Experimental > "Use custom player controls on touch devices" ON for all of these. (The v1.362.2 loupe line failed on
 2026-10-04: the magnifier still showed on a plain hold; this release cancels every touch on the picture instead.)
 
 - [ ] v1.362.3 - iPhone: press and hold the playing picture with no tap before it, inline, in full screen and on an audio file's
@@ -47,7 +47,7 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON for 
 
 ## The page fades under the video, like YouTube (v1.362.4)
 
-Settings > Mobile player > "Use custom player controls on touch devices" ON.
+Settings > Experimental > "Use custom player controls on touch devices" ON.
 
 - [ ] v1.362.4 - iPhone, a video playing inline: pull it down slowly: the title, buttons and comments under it dim as you pull;
   let go early: they come back. Pull past a third (or tap the arrow): the page you came from fades in as the mini player lands.
@@ -62,7 +62,7 @@ Settings > Mobile player > "Use custom player controls on touch devices" ON.
 ## Mobile player edge to edge (v1.359.0)
 
 - [ ] v1.359.0 - iPhone, portrait, a video in the watch page (not full screen): the picture touches both screen edges, square corners, no outline; the title and the buttons below keep their margin; the gap above the player is unchanged. Try a few eras (Settings > Appearance) and dark mode.
-- [ ] v1.359.0 - Same with a song (cover art) and a tall Shorts-style video; then with Settings > Mobile player custom controls ON: every control-bar button is there and full size.
+- [ ] v1.359.0 - Same with a song (cover art) and a tall Shorts-style video; then with Settings > Experimental custom controls ON: every control-bar button is there and full size.
 - [ ] v1.359.0 - Press and hold the picture for 2x, drag down to lock, tap the pill; double-tap left and right to skip; a swipe from the left screen edge still goes back (Safari tab) and does not seek or pause.
 - [ ] v1.359.0 - Scroll down so the player docks, then back to the video: the mini player looks as before and the full player returns edge to edge with no jump. Rotate to landscape and back while playing: full screen as before, then edge to edge again.
 - [ ] v1.359.0 - Ambient on (dark mode): the glow still shows above and below the player; nothing scrolls sideways.

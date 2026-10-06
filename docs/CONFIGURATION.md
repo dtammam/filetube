@@ -75,10 +75,10 @@ subscription lists are a planned follow-up), and non-admin API responses may
 still contain absolute server paths (a LAN-disclosure hardening follow-up) -
 neither affects what CONTENT a restricted member can reach.
 
-## Automation & Storage
+## Scan & cache
 
-The **Settings → Automation & Storage** box controls the two things the
-server does in the background:
+The **Settings → Scan & cache** page (admins only, under SYSTEM) controls the two
+things the server does in the background:
 
 - **Scan interval** - Off (manual only) / 30m / 1h / 6h / 12h / 24h, **default
   30 minutes**. A "Scan now" button and a "Last scanned: N ago" line are also
