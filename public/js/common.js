@@ -7534,8 +7534,11 @@ function openPlaylistPicker(opts) {
   };
   const albumOn = albumSwitch('Save as an album');
   const cleanOn = albumSwitch('Clean up titles');
-  const albumName = U.field({ label: 'Album', doc: d });
-  const albumArtist = U.field({ label: 'Album artist', doc: d });
+  // `help: ' '` gives each field its kit help line (ui-field__help, aria-describedby) for the "already in Music" note
+  const albumName = U.field({ label: 'Album', help: ' ', doc: d });
+  const albumArtist = U.field({ label: 'Album artist', help: ' ', doc: d });
+  const noteOf = (f) => f.el.querySelector('.ui-field__help');
+  [albumName, albumArtist].forEach((f) => { noteOf(f).textContent = ''; noteOf(f).hidden = true; });
   [albumName.input, albumArtist.input].forEach((inp) => { inp.maxLength = 200; inp.autocomplete = 'off'; });
   const albumFields = d.createElement('div');
   albumFields.className = 'oneoff-form playlist-picker-album-fields';
@@ -7553,8 +7556,36 @@ function openPlaylistPicker(opts) {
   wrap.appendChild(albumFields);
   // what the user typed is kept; the defaults follow the loaded rows until then
   const albumTouched = { name: false, artist: false };
-  albumName.input.addEventListener('input', () => { albumTouched.name = true; });
-  albumArtist.input.addEventListener('input', () => { albumTouched.artist = true; });
+  albumName.input.addEventListener('input', () => { albumTouched.name = true; checkExisting(); });
+  albumArtist.input.addEventListener('input', () => { albumTouched.artist = true; checkExisting(); });
+  // Dean (2026-10-07): say when the artist or the album is already in Music. Read from Music's own lists (the
+  // viewer's visible library - the routes filter it), matched without regard to case. An untouched default takes
+  // the library's spelling, because Music groups by the exact name ("kyle gordon" would be a second artist).
+  let existingGen = 0;
+  let existingTimer = null;
+  const setNote = (f, text) => { noteOf(f).textContent = text; noteOf(f).hidden = !text; };
+  const sameName = (a, b) => typeof a === 'string' && typeof b === 'string' && a.trim().toLowerCase() === b.trim().toLowerCase();
+  const musicItems = (kind, q) => fetch('/api/music/' + kind + '?' + new URLSearchParams({ search: q, limit: '100' }).toString(), { signal })
+    .then((r) => (r.ok ? r.json() : null)).then((j) => (j && Array.isArray(j.items) ? j.items : [])).catch(() => []);
+  function checkExisting() {
+    if (existingTimer) clearTimeout(existingTimer);
+    existingTimer = setTimeout(() => {
+      existingTimer = null;
+      const gen = ++existingGen;
+      const artist = albumArtist.input.value.trim();
+      const name = albumName.input.value.trim();
+      if (!artist) { setNote(albumArtist, ''); setNote(albumName, ''); return; }
+      Promise.all([musicItems('artists', artist), name ? musicItems('albums', name) : Promise.resolve([])]).then(([artists, albums]) => {
+        if (gen !== existingGen || (signal && signal.aborted)) return; // a later edit asked again
+        const hit = artists.find((a) => a && sameName(a.artist, artist));
+        if (hit && hit.artist !== artist && !albumTouched.artist) albumArtist.input.value = hit.artist; // the library's spelling
+        const shown = albumArtist.input.value.trim();
+        setNote(albumArtist, !hit ? '' : (hit.artist === shown ? 'Already in Music' : `In Music as "${hit.artist}"`));
+        const albumHit = albums.find((a) => a && sameName(a.album, name) && sameName(a.artist, shown));
+        setNote(albumName, albumHit ? 'Already in Music: these tracks join it' : '');
+      });
+    }, 300);
+  }
   const currentFormat = () => (fmt ? fmt.format.value : o.format);
   const albumWanted = () => currentFormat() === 'audio' && albumOn.checked;
   function syncAlbum() {
@@ -7562,7 +7593,7 @@ function openPlaylistPicker(opts) {
     albumFields.hidden = albumList.hidden || !albumOn.checked;
     cleanRow.hidden = !albumOn.checked;
   }
-  if (fmt) fmt.format.addEventListener('change', syncAlbum);
+  if (fmt) fmt.format.addEventListener('change', () => { syncAlbum(); if (currentFormat() === 'audio') checkExisting(); });
   const head = d.createElement('div');
   head.className = 'oneoff-row';
   head.hidden = true;
@@ -7651,6 +7682,7 @@ function openPlaylistPicker(opts) {
         if (!albumTouched.name) albumName.input.value = state.title;
         if (!albumTouched.artist) albumArtist.input.value = defaultAlbumArtist(state.rows);
         syncAlbum();
+        if (currentFormat() === 'audio') checkExisting();
         refresh();
       })
       .catch((err) => {

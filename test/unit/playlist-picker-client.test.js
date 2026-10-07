@@ -55,6 +55,7 @@ function fresh(routes) {
       return { ok: st < 300, status: st, json: async () => json };
     }
     if (u.pathname === '/api/subscriptions/health') return { ok: false, status: 404, json: async () => ({}) };
+    if (u.pathname.startsWith('/api/music/') && routes.music) { const j = await routes.music(u); return { ok: true, status: 200, json: async () => j }; }
     return { ok: true, status: 200, json: async () => ({}) };
   };
   return common;
@@ -376,4 +377,65 @@ test('v1.371.0: Retry of an album job posts the album back, so the retried track
   const req = c.buildPlaylistRetryRequest({ kind: 'playlist', failedIds: ['b'], listId: L, title: 'T', format: 'audio', album: albumObj });
   assert.deepStrictEqual(req.body.album, albumObj);
   assert.strictEqual(c.buildPlaylistRetryRequest({ kind: 'playlist', failedIds: ['b'], listId: L, title: 'T', format: 'audio', album: null }).body.album, undefined);
+});
+
+// Dean 2026-10-07: "Do we show to see if there's an existing artist ... (like Existing)"
+const LIB = { artists: [{ artist: 'Kyle Gordon' }, { artist: 'Weird Al' }], albums: [{ album: 'Kyle Gordon Is Everywhere', artist: 'Kyle Gordon' }] };
+const music = (lib) => (u) => {
+  const q = (u.searchParams.get('search') || '').toLowerCase();
+  const kind = u.pathname.split('/').pop();
+  const items = lib[kind].filter((x) => (x.album || x.artist).toLowerCase().includes(q) || (x.artist || '').toLowerCase().includes(q));
+  return { items, total: items.length };
+};
+const note = (label) => { const p = albumInput(label).closest('.ui-field').querySelector('.ui-field__help'); return p.hidden ? '' : p.textContent; };
+const DEBOUNCE = 360;
+
+test('v1.371.0 existing: the defaults already in Music say so (artist and album), read from Music\'s own lists', async () => {
+  const c = fresh({ pages: { 1: KG }, music: music(LIB) });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await sleep(20 + DEBOUNCE);
+  assert.strictEqual(note('Album artist'), 'Already in Music');
+  assert.strictEqual(note('Album'), 'Already in Music: these tracks join it');
+  const asked = calls.filter((x) => x.url.startsWith('/api/music/')).map((x) => x.url);
+  assert.ok(asked.includes('/api/music/artists?search=Kyle+Gordon&limit=100'), asked.join(' '));
+});
+
+test('v1.371.0 existing: nothing in Music = no note; a different album by a known artist notes the artist only', async () => {
+  let c = fresh({ pages: { 1: KG }, music: music({ artists: [], albums: [] }) });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await sleep(20 + DEBOUNCE);
+  assert.strictEqual(note('Album artist'), '');
+  assert.strictEqual(note('Album'), '');
+  await sleep(400);
+  c = fresh({ pages: { 1: KG }, music: music(LIB) });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await sleep(20 + DEBOUNCE);
+  albumInput('Album').value = 'Kyle Gordon Is Wonderful'; albumInput('Album').dispatchEvent(new global.window.Event('input'));
+  await sleep(DEBOUNCE);
+  assert.strictEqual(note('Album artist'), 'Already in Music');
+  assert.strictEqual(note('Album'), '', 'a new album');
+});
+
+test('v1.371.0 existing: an untouched default takes the library\'s spelling; a TYPED name is kept and told the library\'s', async () => {
+  const lower = { artists: [{ artist: 'kyle gordon' }], albums: [] };
+  const c = fresh({ pages: { 1: KG }, music: music(lower) });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await sleep(20 + DEBOUNCE);
+  assert.strictEqual(albumInput('Album artist').value, 'kyle gordon', 'Music groups by the exact name: the default joins the existing artist');
+  assert.strictEqual(note('Album artist'), 'Already in Music');
+  albumInput('Album artist').value = 'KYLE GORDON'; albumInput('Album artist').dispatchEvent(new global.window.Event('input'));
+  await sleep(DEBOUNCE);
+  assert.strictEqual(albumInput('Album artist').value, 'KYLE GORDON', 'what the user typed is never rewritten');
+  assert.strictEqual(note('Album artist'), 'In Music as "kyle gordon"');
+});
+
+test('v1.371.0 existing: a slow answer for an OLD name never overwrites the note for the current one', async () => {
+  let slow = true;
+  const c = fresh({ pages: { 1: KG }, music: async (u) => { if (slow && u.searchParams.get('search') === 'Kyle Gordon') { await sleep(500); } return music(LIB)(u); } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await sleep(20 + DEBOUNCE); // the default's question is in flight (slow)
+  albumInput('Album artist').value = 'Nobody'; albumInput('Album artist').dispatchEvent(new global.window.Event('input'));
+  await sleep(DEBOUNCE + 600);
+  assert.strictEqual(note('Album artist'), '', 'the late "Kyle Gordon" answer was dropped');
+  slow = false;
 });
