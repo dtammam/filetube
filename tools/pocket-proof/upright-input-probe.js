@@ -1,6 +1,6 @@
 'use strict';
 /* global window, document, getComputedStyle, location */
-// REAL-BROWSER PROBE (the iPod portrait lock, plan docs/exec-plans/active/2026-10-07-ipod-portrait-lock.md, W2). Not a CI gate.
+// REAL-BROWSER PROBE (the iPod portrait lock, plan docs/exec-plans/completed/2026-10-07-ipod-portrait-lock.md, W2). Not a CI gate.
 //   node tools/pocket-proof/upright-input-probe.js [repoRoot] [setting]
 // Chromium (iPhone UA, touch) on a fresh seeded fixture server, the iPod (Classic 5G) with a song playing, the screen turned
 // through CDP (angle 0, 90, 270). Under each turn, REAL touches through CDP Input.dispatchTouchEvent at points given in the

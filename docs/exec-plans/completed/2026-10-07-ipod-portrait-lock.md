@@ -3,7 +3,7 @@ plan: ipod-portrait-lock
 harness: v2 · lean
 branch: feat/ipod-portrait-lock
 anchor: outcome
-status: Built (W1-W2), gate next
+status: Shipped v1.369.0
 next: W0 measurement (headless, then Dean's phone); W1-W3 (Upright default, Sideways kept as a setting, R7); the gate (section 6); the release (version set at release: after v1.369.0)
 design: Dean's intake 2026-10-07 (rulings R1-R6 below). Base main a8626406.
 gate: APPROVED r2 @f522f600 (adversary, qa; security-brief applied as a section)
@@ -120,7 +120,7 @@ Gate: APPROVED r2 @f522f600 — qa
 
 ## 7. Release and evidence
 
-Version set at release (after v1.369.0 ships). Release per docs/RELEASING.md and AGENTS.md (dual Node 22.23.1 + 24.20.0,
+Shipped as v1.369.0 (Dean, 2026-10-07: ship the iPod lock first, then the playlist picker, which becomes v1.370.0). Release per docs/RELEASING.md and AGENTS.md (dual Node 22.23.1 + 24.20.0,
 protected main: tag the local no-ff merge, push branch + tag in ONE push, `gh pr create`, required checks green, `gh pr merge
 --merge`, the tag's Publish Docker Image green, delete the branch).
 
@@ -177,7 +177,7 @@ only, M14 the insets not mapped at 90, M15 the Settings switch inverted, M16 the
 captured at module scope (the paging suite's heap). M7 was killed only by a source lock at first; a driven test now kills it
 on its own (a REAL deviceorientation through the real engine on a turned panel at angle 90).
 
-**Suites:** Node 22.23.1 `npm test`: tests 11334, pass 11321, fail 0 (before the Brick test). Node 24: at release.
+**Suites at 19c1180e (the release candidate):** Node 22.23.1 `# tests 11338` `# pass 11325` `# fail 0`; Node 24.20.0 `ℹ tests 11338` `ℹ pass 11325` `ℹ fail 0`.
 
 ### Gate round 1 (adversary + qa @6e9a28c0: CHANGES) and the fixes
 

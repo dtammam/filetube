@@ -1,6 +1,6 @@
 'use strict';
 /* global window, document, getComputedStyle */
-// REAL-BROWSER PROBE (the iPod portrait lock, plan docs/exec-plans/active/2026-10-07-ipod-portrait-lock.md, W0/W1).
+// REAL-BROWSER PROBE (the iPod portrait lock, plan docs/exec-plans/completed/2026-10-07-ipod-portrait-lock.md, W0/W1).
 // Not a CI gate.
 //   node tools/pocket-proof/upright-probe.js [repoRoot] [outDir] [skin] [setting]
 // A fresh seeded fixture server (test/visual/server.js), Chromium with an iPhone UA at 390x844, the iPod opened with a

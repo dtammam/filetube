@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] The iPod portrait lock (plan docs/exec-plans/active/2026-10-07-ipod-portrait-lock.md; Dean 2026-10-07: "if you
+// [UNIT] The iPod portrait lock (plan docs/exec-plans/completed/2026-10-07-ipod-portrait-lock.md; Dean 2026-10-07: "if you
 // even turn the phone sideways, it won't change it", R7: "You can make it a setting to enable sideways" / "Don't lose the
 // flexibility and existing solidly working code"). iOS lets no web page lock its orientation, so with the Upright setting
 // (html.pk-upright, the default on a phone) style.css draws the full player turned back by the screen's angle; Sideways

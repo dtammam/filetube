@@ -133,3 +133,21 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
 - [ ] v1.368.0 - A long Autoplay session (several hours): it never stops while the library has songs; at most a single batch
   from an unrelated genre late in a very long session (disclosed, tracker #291).
 
+## The iPod stays upright (v1.369.0)
+
+- [ ] v1.369.0 - In the home-screen app, open the iPod (Now Playing) and turn the phone to the LEFT (its top to the left): the iPod
+  stays upright in your hand, the same size, MENU at the top of the wheel as you hold it. Then to the RIGHT: the same. If it is
+  ever upside down, say which way you turned.
+- [ ] v1.369.0 - Sideways: scroll the wheel, press MENU / play / skip, hold the centre, scrub the time bar, change the volume
+  (speaker), drag the up-next list, swipe right across the iPod to go back. Each works as in portrait; the wheel's tick (haptic)
+  still lands under your thumb.
+- [ ] v1.369.0 - The turn itself: any flash of a big screen or a missing wheel while it turns? Flip straight from left to right
+  over the top: how long the iPod shows upside down before it rights itself.
+- [ ] v1.369.0 - The notch / Dynamic Island side and the home bar: nothing of the iPod sits under them in either direction; say if
+  the iPod looks shorter than in portrait.
+- [ ] v1.369.0 - Settings > Mobile player > Keep the iPod upright OFF: turning the phone gives the old side-by-side layout; ON
+  again: upright. The iPod's own Settings > Stay Upright does the same.
+- [ ] v1.369.0 - Cider and Nordic stay upright too; the Transparent skins' board photo turns with the iPod; a video and the browse
+  pages still turn with the phone.
+- [ ] v1.369.0 - Known and left as is: a dialog, a toast or the keyboard (keyboard search) opened while sideways appears sideways
+  to the iPod. Say if that is worth fixing.
