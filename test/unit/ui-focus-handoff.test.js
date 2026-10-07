@@ -139,3 +139,12 @@ test('ui.prompt takes the caller\'s signal: an abort closes it and answers null 
   assert.strictEqual(await peek(p), null);
   assert.strictEqual(liveDialog(doc), null, 'no live dialog left over the next page');
 });
+
+test('gate r2: ui.prompt with an ALREADY aborted signal answers null at once and opens nothing (as ui.confirm answers false)', async () => {
+  const { win, doc } = page();
+  const ac = new win.AbortController();
+  ac.abort();
+  const p = ui.prompt({ title: 'Song name', label: 'Song name', signal: ac.signal, doc, win });
+  assert.strictEqual(await peek(p), null);
+  assert.strictEqual(liveDialog(doc), null);
+});

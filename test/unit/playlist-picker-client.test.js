@@ -708,3 +708,20 @@ test('gate r1 (adversary W4): leaving the page while the rename dialog is up clo
   await sleep(20);
   assert.strictEqual([...global.document.querySelectorAll('.ui-sheet:not(.is-closing)')].length, 0, 'neither the picker nor the dialog stays');
 });
+
+test('gate r2: a row with no listing title but a TYPED name sends that name; the default artist drops an edge mark', async () => {
+  const page1 = { listId: L, title: 'T', total: 2, page: 1, nextPage: null, entries: [entry(1, { position: 1, title: '' }), entry(2, { position: 2, title: 'Kyle Gordon\u200e - Two' })] };
+  const c = fresh({ pages: { 1: page1 } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await albumOnNow();
+  assert.strictEqual(albumInput('Album artist').value, 'Kyle Gordon', 'the trailing U+200E is not part of the default');
+  pointerClick(rowOf(0).querySelector('.ui-row__link'));
+  await sleep(GUARD_MS);
+  dialog().querySelector('.ui-field__input').value = 'Typed';
+  pointerClick(dialogBtn('Save'));
+  await sleep(400);
+  switches()[0].checked = true; switches()[0].dispatchEvent(new global.window.Event('change'));
+  click(btn('Download'));
+  await sleep(20);
+  assert.deepStrictEqual(calls.find((x) => x.url === '/api/ytdlp/download-playlist').body.album.titles, { [entry(1).id]: 'Typed' });
+});

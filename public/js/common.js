@@ -7473,8 +7473,11 @@ function defaultAlbumArtist(entries) {
   (Array.isArray(entries) ? entries : []).forEach((e) => {
     if (!e || typeof e !== 'object') return;
     const m = typeof e.title === 'string' ? /^(.+?)\s+[-\u2013\u2014]\s+\S/.exec(e.title) : null;
-    let name = m ? m[1].trim() : '';
-    if (!name && typeof e.channel === 'string') name = e.channel.replace(/\s+-\s+Topic$/i, '').trim();
+    // (joiners and direction marks at the ends are trimmed too: the server trims them from the album artist, and a
+    // default that kept one would read as a different artist than the one in Music - v1.372.0 gate r2)
+    const edges = /^[\s\u200c-\u200f]+|[\s\u200c-\u200f]+$/g;
+    let name = m ? m[1].replace(edges, '') : '';
+    if (!name && typeof e.channel === 'string') name = e.channel.replace(/\s+-\s+Topic$/i, '').replace(edges, '');
     if (!name) return;
     const n = (counts.get(name) || 0) + 1;
     counts.set(name, n);

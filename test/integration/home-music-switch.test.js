@@ -173,3 +173,10 @@ test('a pref that cannot be read hides nothing (fails OPEN to today\'s feed)', a
     assert.deepStrictEqual(ids(await grid('all')), ['song', 'vid']);
   } finally { userStore.getPrefs = real; }
 });
+
+test('gate r2 (adversary W1): Settings CALLS wireHomeMusicApply, right after the toggle\'s own wiring (the line that turns the fix on)', () => {
+  const strip = (s) => s.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const setupJs = strip(fs.readFileSync(path.join(__dirname, '../../public/js/setup.js'), 'utf8'));
+  assert.match(setupJs, /wireHomeRowToggle\('home-music-check', 'ft-home-music', signal\);[^\n]*\n\s*wireHomeMusicApply\(signal\);/);
+  assert.strictEqual((setupJs.match(/wireHomeMusicApply\(signal\);/g) || []).length, 1);
+});

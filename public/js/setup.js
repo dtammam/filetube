@@ -5279,7 +5279,7 @@ if (typeof module !== 'undefined' && module.exports) {
     loadEngineSection, // v1.365.0 (W3): its probe also reveals Troubleshooting > Download trace
     loadPocketKbSearchControl, wirePocketKbSearchControl, // v1.355: Mobile player > Keyboard search
     loadPocketUprightControl, wirePocketUprightControl, // the iPod portrait lock: Mobile player > Keep the iPod upright
-  wireHomeMusicApply, // v1.372.0: Show music in the home feed pushes at once and drops the cached home
+    wireHomeMusicApply, // v1.372.0: Show music in the home feed pushes at once and drops the cached home
     loadResumeModeControls, wireResumeModeControls, clampResumeSeconds, // v1.363: the resume mode + Ask me countdown controls
     // Click wheel test — the pure metering core (boundary- and
     // cross-lock-tested in wheel-cal-metering.test.js; the DOM/native-switch

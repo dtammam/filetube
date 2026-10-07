@@ -527,8 +527,9 @@
     }
 
     function finish() {
-      // v1.372.0 (Dean: Enter on the Move to Trash confirm re-opened the card menu): is focus still ours (in this sheet, or
-      // nowhere: a removed focused node leaves it on body, so reading it before or after the removal agrees)? A dialog opened from this sheet while it
+      // v1.372.0 (Dean: Enter on the Move to Trash confirm re-opened the card menu): is focus still ours (in this sheet,
+      // or nowhere: a removed focused node leaves it on body, so reading it before or after the removal agrees)? A
+      // dialog opened from this sheet while it
       // closed (a menu item's confirm) has taken focus by now, and must keep it: handing it back to our opener put focus on
       // the card's menu button BEHIND the confirm, so the next Enter pressed that button.
       var focusNow = doc.activeElement;
@@ -875,6 +876,7 @@
     return new Promise(function (resolve) {
       var settled = false;
       function settle(v) { if (!settled) { settled = true; resolve(v); } }
+      if (o.signal && o.signal.aborted) { settle(null); return; } // v1.372.0 gate r2: an owner already gone answers at once (as ui.confirm does)
       var content = doc.createDocumentFragment();
       if (o.body) { var p = el(doc, 'p', 'ui-confirm__body'); p.textContent = String(o.body); content.appendChild(p); }
       var f = field({ label: o.label || '', type: type, value: o.value, doc: doc });

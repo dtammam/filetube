@@ -46,11 +46,11 @@ test('albumFrom: each refusal on its own (name, artist, control bytes incl. NUL,
     [good({ artist: '' }), 'The album needs an album artist'],
     [good({ artist: 'X' + String.fromCharCode(0x7f) }), 'The album needs an album artist'],
     [good({ artist: 'b'.repeat(201) }), 'The album needs an album artist'],
-    [good({ artist: 'Kyle\u200bGordon' }), 'The album needs an album artist'],
-    [good({ artist: 'Kyle\u202eGordon' }), 'The album needs an album artist'],
+    [good({ artist: '\u200b' }), 'The album needs an album artist'], // v1.372.0: the hidden set is DROPPED, so only a name made of it fails
+    [good({ artist: '\u202e\u2066' }), 'The album needs an album artist'],
     [good({ title: 'A\u0085B' }), 'The album needs a name'],
-    [good({ title: 'A\u2028B' }), 'The album needs a name'],
-    [good({ title: 'A\ufeffB' }), 'The album needs a name'], // (a LEADING BOM is trimmed away, which is fine)
+    [good({ title: '\u2028' }), 'The album needs a name'],
+    [good({ title: '\ufeff' }), 'The album needs a name'],
     [good({ tracks: { vid00000001: 0 } }), 'Invalid track number'],
     [good({ tracks: { vid00000001: 10000 } }), 'Invalid track number'],
     [good({ tracks: { vid00000001: 1.5 } }), 'Invalid track number'],
@@ -188,7 +188,7 @@ test('v1.372.0 albumFrom: titles are kept per job id (trimmed, null-prototype); 
   for (const bad of ['', '   ', 'A' + String.fromCharCode(0) + 'B', 'x'.repeat(201), 7, '\u200b\u202e']) {
     const b = album.albumFrom(good({ titles: { vid00000001: bad } }), IDS);
     assert.strictEqual(b.ok, false, JSON.stringify(bad));
-    assert.strictEqual(b.error, 'The name for vid00000001 must be 1 to 200 characters', 'it names the song (gate r1)');
+    assert.strictEqual(b.error, 'The name for vid00000001 must be 1 to 200 characters, with no control characters', 'it names the video (gate r1) and the real rules (gate r2)');
   }
   // gate r1 (qa W1, adversary W3, security LOW): a YouTube title's joiners and direction marks are text, not junk - the
   // family emoji (U+200D), Persian (U+200C) and Hebrew/Arabic marks (U+200E / U+200F) pass; the hiding / spoofing
@@ -222,4 +222,18 @@ test('v1.372.0 cleanTitleNoise: the noise groups off Dean\'s real titles, by the
   assert.strictEqual(album.cleanTitleNoise(fx.entries[14].title), 'Kyle Gordon - Mr. Jambo [Instrumental Version]');
   assert.strictEqual(album.cleanTitleNoise('Song (Official Video [HD])'), 'Song');
   assert.strictEqual(album.cleanTitleNoise(7), '');
+});
+
+// v1.372.0 gate r2 (adversary W2): the album and the album artist are Music's grouping key - an invisible joiner or
+// direction mark at either END (a title's trailing U+200E, a "- Topic" channel's leading U+200F) is trimmed so it never
+// makes a look-alike second artist; one INSIDE a name stays; the hiding set and the bidi isolates are dropped anywhere.
+test('gate r2: album and artist names lose edge marks and hidden characters, keep inner joiners', () => {
+  const r = album.albumFrom(good({ artist: 'Kyle Gordon\u200e', title: '\u200fAlbum\u2066 One\u2069 ' }), IDS);
+  assert.strictEqual(r.ok, true, r.error);
+  assert.strictEqual(r.album.artist, 'Kyle Gordon');
+  assert.strictEqual(r.album.title, 'Album One');
+  assert.strictEqual(album.albumFrom(good({ artist: 'Kyle\u200dGordon' }), IDS).album.artist, 'Kyle\u200dGordon', 'an inner joiner stays');
+  assert.strictEqual(album.albumFrom(good({ artist: '\u200e\u200f' }), IDS).ok, false, 'nothing but marks is no name');
+  const song = album.albumFrom(good({ titles: { vid00000001: '\u200f\u05e9\u05dc\u05d5\u05dd\u2066' } }), IDS);
+  assert.strictEqual(song.album.titles.vid00000001, '\u200f\u05e9\u05dc\u05d5\u05dd', 'a SONG name keeps its leading RLM (it is display text, not a key); the isolate goes');
 });
