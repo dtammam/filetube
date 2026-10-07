@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/ipod-portrait-lock
 anchor: outcome
 status: Ruled (intake 2026-10-07)
-next: W0 measurement (headless, then Dean's phone); W1-W3; the gate (section 6); the release (version set at release: after v1.369.0)
+next: W0 measurement (headless, then Dean's phone); W1-W3 (Upright default, Sideways kept as a setting, R7); the gate (section 6); the release (version set at release: after v1.369.0)
 design: Dean's intake 2026-10-07 (rulings R1-R6 below). Base main a8626406.
 gate: pending
 ---
@@ -31,7 +31,7 @@ screen, the browse pages) still turns with the phone.
   (public/js/music-skins.js `markPhoneClass`), so a turn never tears the skin down.
 - **The sideways layout D7 built** (Dean's earlier ruling "Pocket on rotation: STAY in Pocket"): style.css
   `@media (orientation: landscape)` "POCKET IN LANDSCAPE" (~10890): the LCD left, height-fitted; the wheel right; Cider and the
-  other skins side by side; the safe-area insets pad the sides. THIS release replaces that layout for the full player.
+  other skins side by side; the safe-area insets pad the sides. It works and STAYS (R7): it becomes the "sideways" choice.
 - **The screen's angle is already stamped**: public/js/pocket-lighting.js `stampRotation` writes `html[data-ft-rot="0|90|180|270"]`
   (screen.orientation.angle, else window.orientation) for the Transparent skins' board photo (style.css ~10680, v1.350, which
   turns the photo back by the angle so it stays on the glass; v1.354 draws none while the angle still reads portrait).
@@ -60,8 +60,9 @@ screen, the browse pages) still turns with the phone.
 | R1 | What must stop (Dean) | Both: the layout changing AND the whole page turning sideways. |
 | R2 | Scope (Dean) | Only while the iPod / a Pocket skin's full player is up. The browse pages, a video and full screen still turn. |
 | R3 | Where (Dean) | The home-screen app (Safari's tab gets the same code; the platform cannot lock either). |
-| R4 | How (builder, from the platform facts) | iOS cannot be asked to stay portrait, so the page DOES turn; the full player is then drawn as a PORTRAIT box (the phone's portrait width x height) turned back by the screen's angle (`html[data-ft-rot]` 90 -> -90deg, 270 -> 90deg) about the viewport centre, so it sits upright in the hand. The D7 side-by-side landscape rules stop applying to the full player. The Transparent board photo needs no turn inside the turned box (it is already upright with the glass): its `--mms-ipod-board-turn` rules follow. |
+| R4 | How (builder, from the platform facts; when Upright is chosen, R7) | iOS cannot be asked to stay portrait, so the page DOES turn; the full player is then drawn as a PORTRAIT box (the phone's portrait width x height) turned back by the screen's angle (`html[data-ft-rot]` 90 -> -90deg, 270 -> 90deg) about the viewport centre, so it sits upright in the hand. The D7 side-by-side landscape rules stop applying to the full player. The Transparent board photo needs no turn inside the turned box (it is already upright with the glass): its `--mms-ipod-board-turn` rules follow. |
 | R5 | The turn itself | No animation added: the page turn is iOS's; the counter-turn applies in the same frame the angle stamp changes (v1.354's rule: a frame whose angle still reads portrait draws the player unturned rather than wrongly turned). |
+| R7 | Keep sideways (Dean, 2026-10-07: "You can make it a setting to enable sideways." / "Don't lose the flexibility and existing solidly working code.") | A setting chooses: **Upright** (the new default - the player stays upright when the phone turns) or **Sideways** (today's D7 layout, unchanged). The D7 landscape rules are NOT deleted or rewritten: the upright turn applies only when the setting is Upright, by a marker class (e.g. `html.pk-upright`) the new rules key on, so Sideways is byte-for-byte today's path. The setting lives in Settings > Mobile player and on the Pocket's own Settings menu; it is a synced pref (`ft-pocket-sideways`, '1' = sideways), so its sibling lists apply (prefs-sync.js, lib/prefs-allowlist.js and the plan-key lock, LESSONS 12). |
 | R6 | Safe areas | The turned box uses the PORTRAIT safe-area meaning: the notch / Dynamic Island edge and the home indicator edge follow the glass (in landscape the env() insets arrive on the left/right; the box maps them back to its own top/bottom). Measured on the device (W0.3). |
 
 ## 5. Waves
@@ -70,17 +71,22 @@ screen, the browse pages) still turns with the phone.
 - Section 3, items 1 and 2; outputs into section 7.
 
 ### W1. The turned full player (CSS + the one stamp)
-- Under `@media (orientation: landscape)` and `html.is-phone[data-ft-rot="90"|"270"]`: the full player (`.mms-full`) becomes a
-  fixed box of the portrait size (100vh x 100vw of the landscape viewport, i.e. the phone's portrait width and height)
-  centred and rotated by -90deg / 90deg; the D7 landscape rules for the full player are scoped out (kept for the pop-out? no:
-  the pop-out is portrait by design; the D7 rules are phone-only, so they are retired for the full player, deleted with their
-  trail per LESSONS 12 "a deleted control deletes its whole trail" unless another surface still uses them: builder enumerates).
+- Under `@media (orientation: landscape)` and `html.is-phone.pk-upright[data-ft-rot="90"|"270"]`: the full player (`.mms-full`)
+  becomes a fixed box of the portrait size (100vh x 100vw of the landscape viewport, i.e. the phone's portrait width and height)
+  centred and rotated by -90deg / 90deg. The D7 landscape rules are untouched; under `pk-upright` the new rules win for the
+  full player (higher specificity, or the D7 selectors gain `:not(.pk-upright)` - builder picks the smaller, untouched-D7 way and
+  proves the Sideways path's computed styles are byte-identical to base).
+- The setting (R7): `ft-pocket-sideways` (synced), the Settings > Mobile player switch "Turn the iPod sideways" and the Pocket
+  Settings row; the marker class is set from it at boot and on change (storage event, prefs-sync), before first paint where the
+  shell's pre-paint block already sets classes (LESSONS 4: every shell that can host the player).
 - The board photo: inside the turned box the photo's own turn is none for 90 / 270.
 - Falsifier: headless Chromium (CDP) at landscape 844x390 with angle 90 and 270: the LCD and wheel bounding boxes, mapped back
   through the turn, equal portrait's within 1px for every Pocket skin; the screenshot of the turned player rotated back matches
   portrait's (pixel diff over the player box); at angle 0 in a landscape viewport (the pre-stamp frame) the player is drawn
-  unturned (v1.354); a browse page in landscape is untouched. Mutants: drop the turn (boxes differ), the wrong sign (the
-  player upside down: the wheel's MENU at the bottom of the glass), keep the D7 rules (the side-by-side layout wins).
+  unturned (v1.354); a browse page in landscape is untouched; with Sideways chosen, every Pocket element's computed style in
+  landscape equals base's (the D7 path is unchanged). Mutants: drop the turn (boxes differ), the wrong sign (the player upside
+  down: the wheel's MENU at the bottom of the glass), the turn ignoring the setting (Sideways turns too: red), the setting's
+  sync sibling lists (an allowlist entry dropped: red).
 
 ### W2. Input under the turn
 - Every handler W0.2 lists as direction- or size-dependent gets the turn mapped (one helper: screen point -> player point, by
