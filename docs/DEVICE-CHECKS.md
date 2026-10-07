@@ -116,8 +116,20 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
 - [ ] v1.363.1 - Watch page settings cog (a chapterless video): "Add chapters" opens the same editor; with chapters it says "Edit
   chapters". The row is plain weight at the end of the menu; say if it looks out of place. The sticker menu's new rows match the old.
 
-## Settings reorganized (v1.367.0)
+## Music radio and Shuffle (v1.368.0)
 
-- [ ] v1.367.0 - As admin on the phone: Settings lists SYSTEM, PERSONALIZE, ACCOUNT, LIBRARY, ADVANCED; Scan & cache, Home page and Playback show "These apply to everyone on this FileTube". An old bookmark to Settings > Automation & Storage opens Scan & cache.
-- [ ] v1.367.0 - As a member (second account): no Scan & cache, Downloads, Users or Backup; Home page and Playback show only your own switches; Notifications shows push if it is on. Say if anything you use is missing.
+- [ ] v1.368.0 - An hour of Autoplay from a song (let an album or a single song run out): the station stays in that song's
+  genre and nearby artists, drifts gently, and never plays one artist three times in a row. Say if anything jumps genre.
+- [ ] v1.368.0 - Start radio from an artist (its page's Radio button, or the iPod's Artists > artist, last row), an album, and a
+  genre (the iPod's Genres > genre, last row), and from a song's row menu (desktop) or the sticker menu (phone). Each replaces
+  the queue; if Autoplay was off it turns on with a note.
+- [ ] v1.368.0 - A DJ-set chapter the radio picks plays THAT chapter and moves on (it never rolls on through the rest of the set);
+  a station started from a DJ channel stays on that channel, mixing its sets.
+- [ ] v1.368.0 - Shuffle (the desktop chip beside Loop and Autoplay, the sticker row on the phone, the pop-out): on, the songs
+  after the playing one change order and the list shows the new order; off, they go back. Turn it on on the phone: the desktop
+  picks it up at the next song. Start an album with Shuffle on: it plays shuffled. Radio songs stay after your own songs.
+- [ ] v1.368.0 - Start a radio, minimize to the mini player, tap it to come back: the station continues (Next plays a radio
+  song, not the song's album).
+- [ ] v1.368.0 - A long Autoplay session (several hours): it never stops while the library has songs; at most a single batch
+  from an unrelated genre late in a very long session (disclosed, tracker #291).
 

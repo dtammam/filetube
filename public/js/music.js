@@ -519,6 +519,11 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
     '<div class="music-drill-actions">' +
     '<button type="button" class="ui-btn ui-btn--primary ui-btn--sm ui-btn--pill music-drill-play">' + songIconHtml('play_arrow') + '<span class="ui-btn__label">Play</span></button>' +
     '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-shuffle">' + songIconHtml('shuffle') + '<span class="ui-btn__label">Shuffle</span></button>' +
+    // v1.368.0 (R3): Start radio from this album or artist - only with a seed (an unnamed artist has none;
+    // a button that does nothing is never shown)
+    ((drill && drill.key && (drill.type === 'album' || drill.type === 'artist'))
+      ? '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-radio">' + songIconHtml('radio') + '<span class="ui-btn__label">Radio</span></button>'
+      : '') +
     // v1.352 L3 (Dean's ruling: a pill in this row): copy this album's or artist's music link
     (musicDrillLink(drill)
       ? '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-copylink" data-link="' + escapeMusicHtml(musicDrillLink(drill)) + '">' + songIconHtml('content_copy') + '<span class="ui-btn__label">Copy link</span></button>'
@@ -1112,6 +1117,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // through. `soloExitPicks` is the station pre-fetched at select time so the boundary hand-off is
   // instant (the v1.254 "append EARLY" posture). Both null on any play-all / nav / non-chapter load.
   var soloChapterExitId = null;
+  var soloExitRadio = false; // v1.368.0 R13: the armed exit belongs to a RADIO chapter (it hands off to the next row)
   var soloExitPicks = null;
   // v1.311 gate r2: the playhead position enforceChapterExit saw on its PREVIOUS non-scrub tick, so
   // a FAR seek past the segment end (a seek-bar/MediaSession jump into a later chapter) is rejected
@@ -1149,13 +1155,27 @@ if (typeof module !== 'undefined' && module.exports) {
   function setAutoplayEnabled(on) {
     try { window.localStorage.setItem(AUTOPLAY_STORAGE_KEY, on ? '1' : '0'); } catch (_) { /* best-effort */ }
   }
-  // The session's no-repeat memory: every id loadTrack has played. Bounded: a session
-  // that somehow plays >2000 tracks starts forgetting the oldest - fine, "no repeats"
-  // is a taste rule, not an invariant (and the picker's RECYCLE arm relaxes it before
-  // ever letting playback die - see maybeExtendQueueForAutoplay).
+  // v1.368.0 (R5, R16): the Shuffle MODE - synced like Autoplay (prefs-sync + the server allowlist),
+  // default OFF (only '1' is on). The one-shot Shuffle buttons (Shuffle all, album / artist Shuffle,
+  // Shuffle Songs, ?mode=shuffle) never write it.
+  var SHUFFLE_STORAGE_KEY = 'ft-music-shuffle';
+  function shuffleEnabled() {
+    try { return window.localStorage.getItem(SHUFFLE_STORAGE_KEY) === '1'; } catch (_) { return false; }
+  }
+  function setShuffleEnabled(on) {
+    try { window.localStorage.setItem(SHUFFLE_STORAGE_KEY, on ? '1' : '0'); } catch (_) { /* best-effort */ }
+  }
+  // The session's no-repeat memory: every id loadTrack has played, most recent LAST (a replay
+  // moves to the end - the radio spaces artists by the tail). Bounded: a session that somehow
+  // plays >2000 tracks starts forgetting the oldest - fine, "no repeats" is a taste rule, not an
+  // invariant (v1.368.0: when every track is excluded the server's radio picker brings back the
+  // least recently played first - lib/music/radio.js - and the client appends any that are not
+  // still queued; a library smaller than the session, every song already queued, ends the station).
   var autoplayPlayedIds = [];
   function autoplayNotePlayed(id) {
-    if (autoplayPlayedIds.indexOf(id) === -1) autoplayPlayedIds.push(id);
+    var at = autoplayPlayedIds.indexOf(id);
+    if (at !== -1) autoplayPlayedIds.splice(at, 1);
+    autoplayPlayedIds.push(id);
     if (autoplayPlayedIds.length > 2000) autoplayPlayedIds.shift();
   }
   // v1.250 (F-UNIFY): the current init's IN-TAB shared-engine instance. Module-scoped so
@@ -1281,6 +1301,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var actionsMenu = root.querySelector('#music-actions-menu');
     var loopBtn = root.querySelector('#music-loop-btn');       // v1.284: desktop playback-mode toggles
     var autoplayBtn = root.querySelector('#music-autoplay-btn');
+    var shuffleModeBtn = root.querySelector('#music-shufflemode-btn'); // v1.368.0: the Shuffle mode (not #music-shuffle-btn, the one-shot Shuffle all)
     var jumpbackHost = root.querySelector('#music-jumpback');
     reserveDockSpace(root, signal);
     if (!content) return;
@@ -1426,6 +1447,7 @@ if (typeof module !== 'undefined' && module.exports) {
         loopBtn.setAttribute('aria-label', lbl);
       }
       if (autoplayBtn) autoplayBtn.setAttribute('aria-pressed', autoplayEnabled() ? 'true' : 'false');
+      if (shuffleModeBtn) shuffleModeBtn.setAttribute('aria-pressed', shuffleEnabled() ? 'true' : 'false');
     }
     // The toggles write the SHARED setting (ft-loop / ft-music-autoplay), which every other
     // surface (enforcement, watch page, skin sticker, pop-out) reads live - so no cross-surface
@@ -1448,6 +1470,19 @@ if (typeof module !== 'undefined' && module.exports) {
         applyAutoplayToggle(!autoplayEnabled()); // the ONE toggle seam (it reflects the modes too)
       }, { signal });
     }
+    if (shuffleModeBtn) {
+      shuffleModeBtn.addEventListener('click', function () {
+        applyShuffleToggle(!shuffleEnabled()); // the ONE Shuffle seam (it reflects the modes too)
+      }, { signal });
+    }
+    // v1.368.0: Shuffle flipped in ANOTHER tab of this browser reorders this tab's queue now (a flip
+    // that arrives through prefs-sync from another device lands in storage silently; the next
+    // track's registerTrackNav reconciles it - see reconcileShuffle).
+    window.addEventListener('storage', function (e) {
+      if (!e || e.key !== SHUFFLE_STORAGE_KEY) return;
+      reconcileShuffle(navIndex);
+      reflectPlaybackModes();
+    }, { signal });
     // The initial paint is the unconditional updateNowPlayingPanel() at the end of init(): it
     // calls reflectPlaybackModes() before its track/expanded early return, so no explicit paint
     // is needed here - a redundant one would be a line no test could distinguish.
@@ -1729,6 +1764,7 @@ if (typeof module !== 'undefined' && module.exports) {
           keyboardSearch: function () { var MS = window.FileTubeMusicSkins; return !!(MS && typeof MS.keyboardSearchOn === 'function' && MS.keyboardSearchOn()); },
           onPlay: function (req) { playFromMenu(req); },
           onShuffleAll: shuffleAllFromMenu,
+          onStartRadio: function (seed) { startRadio(seed); }, // v1.368.0: a level's Start radio row
           hasCurrent: function () { return remoteOn() || hasCurrentMusicTrack(); },
           hasPlayOn: function () { return !!RC; },
           onPlayOn: remoteChoose,
@@ -1770,6 +1806,22 @@ if (typeof module !== 'undefined' && module.exports) {
           autoplay: {
             enabled: autoplayEnabled,
             onToggle: function () { applyAutoplayToggle(!autoplayEnabled()); }, // the ONE toggle seam (music follow-ups item 0)
+          },
+          // v1.368.0: Start radio from the song now playing (a listen video is not a song).
+          radio: {
+            visible: function () { var cur = nowPlaying; return !!(cur && cur.id && !activeListenId); },
+            onStart: function () {
+              var cur = nowPlaying;
+              if (!cur || !cur.id) return;
+              var item = null;
+              for (var k = 0; k < queue.length; k++) { if (queue[k] && queue[k].id === cur.id) { item = queue[k]; break; } }
+              startRadio('track:' + cur.id, item);
+            },
+          },
+          // v1.368.0: the Shuffle mode row (beside Loop), the same seam as the desktop chip.
+          shuffle: {
+            enabled: shuffleEnabled,
+            onToggle: function () { applyShuffleToggle(!shuffleEnabled()); },
           },
           // v1.270 BRICK (Dean: "almost a little easter egg"). The VIEW owns the
           // question the engine must not: which skins have a wheel to play it with.
@@ -1871,7 +1923,15 @@ if (typeof module !== 'undefined' && module.exports) {
       if (idx === -1) return null;
       var start = Number(chaps[idx].chapterStartSec) || 0;
       var dur = (isFinite(mp.duration) && mp.duration > 0) ? mp.duration : 0;
-      var end = (idx + 1 < chaps.length) ? (Number(chaps[idx + 1].chapterStartSec) || dur) : dur;
+      // v1.368.0: the chapter's own span bounds it too - the EARLIER of its own end and the next queued
+      // chapter of the file. In a full album the two agree (the server's durationSec is next-start minus
+      // start, or the file end for the last chapter); for radio picks of one DJ set that are NOT
+      // neighbours in the file (gate r1 adversary W1 = qa C1) the next queued chapter is far away and the
+      // un-picked chapters between would play.
+      var ownSpan = Number(chaps[idx].durationSec) || 0;
+      var ownEnd = ownSpan > 0 ? start + ownSpan : 0;
+      var nextStart = (idx + 1 < chaps.length) ? (Number(chaps[idx + 1].chapterStartSec) || dur) : dur;
+      var end = (ownEnd > start && (!(nextStart > start) || ownEnd < nextStart)) ? ownEnd : nextStart;
       if (!(end > start)) return null; // unknown/zero duration on the last chapter -> can't bound
       return { start: start, end: end };
     }
@@ -1901,6 +1961,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!id || id === chapterViewId) return;
       chapterViewId = id;
       playingId = id;
+      autoplayNotePlayed(id); // v1.368.0 (gate r1 adversary W3): a chapter the file ROLLED into was played too
       var t = null, ti = -1;
       for (var i = 0; i < queue.length; i++) { if (queue[i] && queue[i].id === id) { t = queue[i]; ti = i; break; } }
       if (t) nowPlaying = nowPlayingFrom(t);
@@ -2012,9 +2073,15 @@ if (typeof module !== 'undefined' && module.exports) {
       try { if (pl && typeof pl.isLoopEnabled === 'function' && pl.isLoopEnabled()) return; } catch (_) { return; }
       // The displayed chapter is no longer the solo one (a seek/jump moved past it and reflect
       // advanced it) - the "just this bit" intent no longer applies. Clear it.
-      if (chapterViewId !== soloChapterExitId) { soloChapterExitId = null; soloExitPicks = null; return; }
+      if (chapterViewId !== soloChapterExitId) { soloChapterExitId = null; soloExitPicks = null; soloExitRadio = false; return; }
       var b = currentChapterBounds(); if (!b) return;
       var mp = hostCtl('media-player'); if (!mp) return;
+      // the file's LAST chapter has nothing to bleed into: the ended advance moves on (the same rule as
+      // enforceFlatSegmentEnd). Restored at gate r2 (adversary C4 suspicion): an exit here onto a chapter of
+      // the SAME file would leave the file loaded, and its already-queued 'ended' could advance a second
+      // time. Unbound: no harness drives player.js's ended path (tech-debt #180).
+      var fileDur = (isFinite(mp.duration) && mp.duration > 0) ? mp.duration : 0;
+      if (fileDur > 0 && b.end >= fileDur - 0.5) return;
       var t = Number(mp.currentTime) || 0;
       var last = lastExitTime;
       lastExitTime = t; // track playback so the NEXT tick's delta is meaningful (frozen only by the scrub-skip above)
@@ -2027,7 +2094,17 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!(inBand || crossed)) return;
       var soloId = soloChapterExitId;
       var picks = soloExitPicks;
-      soloChapterExitId = null; soloExitPicks = null; // ONE-SHOT: clear before any load so a re-entrant tick can't re-fire
+      var fromRadio = soloExitRadio;
+      soloChapterExitId = null; soloExitPicks = null; soloExitRadio = false; // ONE-SHOT: clear before any load so a re-entrant tick can't re-fire
+      if (fromRadio) {
+        // v1.368.0 R13 (gate r1 adversary W1 = qa C1): a radio chapter hands off to the NEXT ROW - the
+        // station is a list of picks, and another chapter of the same set later in it is its own pick,
+        // never something to skip past (the album rule below jumps past the album's last chapter).
+        var at = -1;
+        for (var r = 0; r < queue.length; r++) { if (queue[r] && queue[r].id === soloId) { at = r; break; } }
+        if (at >= 0 && at + 1 < queue.length && !autoplayHoldsAt(at + 1)) playAt(at + 1, { keepPosition: true });
+        return;
+      }
       // Gate r3 (adversary F1b): if the queue ALREADY has an entry after this file's chapters (a
       // station the play-all extend appended, and one the user can SEE in up-next), station on to
       // THAT - never append a second station over it and skip the visible rows (v1.254 see-and-skip).
@@ -2047,8 +2124,12 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!picks || !picks.length) return; // no existing station AND nothing pre-fetched -> degrade to a straight-through listen
       if (!autoplayEnabled()) return; // re-checked at the hand-off (primed while on, switched off since): no station
       var startIdx = queue.length;
+      if (picks.seed) recordStationSeed(picks.seed); // v1.368.0 R8: this station's seed rides on
       markAutoplayPicks(picks);
+      var preStation = queue;
       queue = queue.concat(picks); // the album is the tail: append the station (existing rows' data-index unchanged)
+      shuffleCarry(preStation);
+      if (shuffleBase && shuffledQueue === queue) shuffleBase = shuffleBase.concat(picks); // v1.368.0: OFF puts them after the album
       playAt(startIdx, { keepPosition: true }); // a continuation: keep the player where it is, its own load arms the next station leg
     }
     var chapterReflectBound = false;
@@ -2454,7 +2535,9 @@ if (typeof module !== 'undefined' && module.exports) {
         return true;
       }
       var wasFlat = (flatQueue === queue); // pocket menus K4: a patched flat list stays flat
+      var prePatch = queue;
       queue = queue.filter(keepPatched);
+      shuffleCarry(prePatch); // v1.368.0: a chapter patch keeps the shuffle (the restore order filters what is gone)
       if (wasFlat) flatQueue = queue;
       if (activeListenChapters) activeListenChapters = listenAliased ? queue : activeListenChapters.filter(keepPatched);
       var countChanged = ownsDrill ? (queuedCount > 0 && queuedCount !== chapters.length) : droppedAny;
@@ -3666,6 +3749,10 @@ if (typeof module !== 'undefined' && module.exports) {
         if (queue.length) playAt(0);
         return;
       }
+      if (e.target.closest('.music-drill-radio')) { // v1.368.0: Start radio from this album / artist
+        startRadio(radioSeedForDrill(drill));
+        return;
+      }
       // v1.273 (Dean): rename a chaptered album's "songs". The chapters ARE the track
       // names here, and the editor that writes them already exists on the watch page -
       // this is the same dialog, reached from where the names are actually read.
@@ -3862,6 +3949,9 @@ if (typeof module !== 'undefined' && module.exports) {
           openDrill({ type: 'artist', key: item.artist, label: item.artist }).catch(function () {});
         } });
       }
+      if (item.id && !item.listen) { // v1.368.0: Start radio from this song (it plays now, the station follows)
+        items.push({ label: 'Start radio', icon: 'radio', onSelect: function () { startRadio(radioSeedForSong(item), item); } });
+      }
       U.menu({ title: item.title || 'Song', items: items, anchor: anchor || null, signal: signal });
     }
     // the same menu by a long-press (touch) or a right-click (desktop) on a row - FTInteraction
@@ -3990,10 +4080,23 @@ if (typeof module !== 'undefined' && module.exports) {
       // tracks (a play-all extend already ran) - has no rest-of-album to skip, so its "exit after that
       // bit" IS the normal last-index/ended station-on; priming it too would double-fetch and jump the
       // visible up-next. laterSameBaseChapterExists is chapter-based, not queue-tail-based (r3 F1b).
-      soloChapterExitId = (opts.soloChapter && laterSameBaseChapterExists(item, i)) ? item.id : null;
+      // v1.368.0 R13 (Dean): a chapter the RADIO picked plays THAT chapter and stops at its end (the
+      // same solo exit), never rolling through the rest of the DJ set. (A Start radio queue is a flat
+      // list, whose enforceFlatSegmentEnd already does this; this covers picks appended to any queue.)
+      // A radio chapter's own file is (almost) never in the queue past it, so the queue-based
+      // laterSameBaseChapterExists cannot see the rest of its set: it arms on its own, and the exit's
+      // file-end guard (enforceChapterExit) leaves a set's LAST chapter to the normal ended advance.
+      var radioChapter = isAutoplayPick(item) && item.source === 'library-chapter';
+      soloChapterExitId = ((opts.soloChapter && laterSameBaseChapterExists(item, i)) || radioChapter) ? item.id : null;
+      // a radio chapter hands off to the next row however it was started - an up-next or skin track-list TAP
+      // passes soloChapter too, and the album rule would skip the picks after it (gate r2 qa R2-W1)
+      soloExitRadio = !!(soloChapterExitId && radioChapter);
       soloExitPicks = null;
       lastExitTime = -1; // fresh segment: no prior tick, so the first boundary delta can't be a stale carry
-      if (soloChapterExitId) primeSoloExitStation(item);
+      // a radio chapter never primes: it hands off to the next row, and when it is the LAST row the
+      // last-track arm (registerTrackNav -> maybeExtendQueueForAutoplay) appends that row anyway (gate r1
+      // adversary S1: priming too sent a second radio request whose picks were always thrown away)
+      if (soloChapterExitId && !soloExitRadio) primeSoloExitStation(item);
       applyPlayingHighlight();
       // v1.106 (Dean): SELECTING a track opens the EXPANDED now-playing view
       // (mount FULL into #player-slot) instead of the docked mini-player - the
@@ -4067,6 +4170,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // around the recovered playing index, not just a fresh loadTrack.
     function registerTrackNav(i) {
       if (!window.FileTube.player || typeof window.FileTube.player.setTrackNav !== 'function') return;
+      reconcileShuffle(i); // v1.368.0: a new queue while Shuffle is on, or a flip from another device (reorders only AFTER i)
       navIndex = i; // the queue index the nav is armed around (retractAutoplayPicks keeps it and everything before)
       // i<0 (no known index) registers NO neighbors - clears any stale closures
       // rather than binding onNext to playAt(0) off a negative index.
@@ -4088,16 +4192,18 @@ if (typeof module !== 'undefined' && module.exports) {
       maybeExtendQueueForAutoplay(i);
     }
 
-    // ---- v1.254 ENDLESS AUTOPLAY (Dean's locked intake, all four points) ---------
-    // When the queue is about to run out - ANY exhaustion: a single song, an album's
-    // last track, the end of a shuffle - pick a few related tracks and append them to
-    // the visible queue instead of letting playback die. Same-artist first, then
-    // library neighbors, shuffled server-side, never repeating what this session
-    // already played. MUSIC ONLY: podcasts never enter this view's queue, and a
-    // LISTEN track (the v1.252 projected video) is excluded by flag - autoplaying a
-    // random song after a listened video is not the contract. Client-only v1.
+    // ---- v1.254 ENDLESS AUTOPLAY, v1.368.0 RADIO -------------------------------------------
+    // When the queue is about to run out - ANY exhaustion: a single song, an album's last track,
+    // the end of a shuffle - the next batch of a STATION is appended to the visible queue instead
+    // of letting playback die. v1.368.0 (plan docs/exec-plans/completed/2026-10-06-v1368-music-radio.md):
+    // the server picks it (GET /api/music/radio, lib/music/radio.js: the seed artist, the same genre
+    // and nearby years first, drifting slowly, artist spacing), drawn against the station's SEED -
+    // queueCtx.radio, set by Start radio or by the first batch of plain Autoplay (the song that was
+    // playing when the queue ran out) - never "the last track", and never repeating what this
+    // session played. MUSIC ONLY: podcasts never enter this view's queue, and a LISTEN track (the
+    // v1.252 projected video) is excluded by flag.
     var AUTOPLAY_APPEND_COUNT = 5;   // tracks appended per exhaustion
-    var AUTOPLAY_ARTIST_MAX = 3;     // cap on the ARTIST-ARM picks (the library fill may add more same-artist)
+    var RADIO_EXCLUDE_URL_BUDGET = 3500; // characters of exclude ids per request (a proxy's URL limit is often 8 KB)
     var autoplayFetchInFlight = false;
     // ---- Music follow-ups item 0 (2026-09-24): what "Autoplay off" means ---------------------
     // Autoplay is the STATION: the tracks FileTube lines up when YOUR queue runs out (the v1.254
@@ -4136,7 +4242,9 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       if (!dropped) return false;
       if (flatQueue === queue) flatQueue = kept; // pocket menus K4: a retract keeps the flat list flat
+      var preRetract = queue;
       queue = kept;
+      shuffleCarry(preRetract); // v1.368.0: retracting picks keeps the shuffle state
       if (navIndex >= 0 && navIndex < queue.length) registerTrackNav(navIndex);
       updateNowPlayingPanel();
       return true;
@@ -4157,49 +4265,170 @@ if (typeof module !== 'undefined' && module.exports) {
       else if (navIndex >= 0 && navIndex === queue.length - 1) registerTrackNav(navIndex);
       reflectPlaybackModes();
     }
-    // v1.311: the picker's fetch+pick core, extracted so BOTH consumers - the end-of-queue
-    // extension (maybeExtendQueueForAutoplay) AND the solo-chapter exit (primeSoloExitStation) -
-    // route through ONE truth (the "hand-copied sibling drifts" bug class). Same-artist first,
-    // then a shuffled library page, then a RECYCLE arm that relaxes the no-repeat rule rather than
-    // ending in silence (QA S3, Dean's radio intent). Excludes what's already queued + everything
-    // this session has played. Best-effort: a fetch failure just yields fewer picks, never throws.
+    // ---- v1.368.0 SHUFFLE MODE (R5, R16) ---------------------------------------------------
+    // ON: the songs AFTER the playing one play in random order (Fisher-Yates); the playing song and
+    // everything before it stay byte-identical. OFF: the not-yet-played songs go back to their
+    // original order (a song added while ON goes after them, in arrival order). A queue STARTED while
+    // ON is shuffled too (R16, "like Spotify"): registerTrackNav reconciles every track change, so a
+    // new queue array (a row tap, a menu pick, an album) gets its tail shuffled, and a flip that
+    // reached storage from another device applies at the next track.
+    // Rows on screen are indexed into the queue (data-index), so a reorder re-draws the list drawn
+    // from it (the v1.104/v1.207 wrong-track class): the list shows the play order.
+    // A shuffled queue plays as a FLAT list (flatQueue): a DJ-set chapter plays its own segment
+    // and the list moves to its next row, instead of the file rolling into the next chapter.
+    // Station picks are never mixed into YOUR songs: ON shuffles your songs and keeps the picks after
+    // them in station order (the picker's artist spacing kept); a batch appended while ON goes to the
+    // end and joins the end of the restore order (shuffleCarry keeps the state across that append).
+    var shuffleBase = null;     // the original order of the songs after the playing one, while shuffled
+    var shuffledQueue = null;   // the queue array that order belongs to (a new array = a new queue)
+    var shuffleWasFlat = false; // was the queue a flat list before the shuffle made it one
+    function shuffleCarry(oldQueue) {
+      // an internal reassignment (an append, a retract, a chapter patch) keeps the shuffle state
+      if (shuffledQueue && shuffledQueue === oldQueue) shuffledQueue = queue;
+    }
+    function shufflePlayingIndex(i) {
+      return (i >= 0 && i < queue.length && queue[i] && queue[i].id === playingId && !queue[i].listen) ? i : -1;
+    }
+    function reconcileShuffle(i) {
+      if (queue !== shuffledQueue) { shuffleBase = null; shuffledQueue = null; } // a NEW queue: its list order
+      var at = shufflePlayingIndex(i);
+      if (at < 0) return false;
+      var on = shuffleEnabled();
+      if (on && !shuffleBase) return shuffleTailAfter(at);
+      if (!on && shuffleBase) return restoreTailAfter(at);
+      return false;
+    }
+    function shuffleTailAfter(at) {
+      var tail = queue.slice(at + 1);
+      var wasFlat = (flatQueue === queue);
+      shuffleBase = tail.slice();
+      shuffleWasFlat = wasFlat;
+      // YOUR songs are shuffled; station picks stay AFTER them, in station order (gate r1 adversary W6: a
+      // pick shuffled ahead of your songs hid them - an Autoplay-off then held Next on a pick - and the
+      // picker's artist spacing is an order). A Start radio queue is the seed plus picks, so its first
+      // batch keeps its order too (qa S5).
+      var mine = tail.filter(function (t) { return !isAutoplayPick(t); });
+      var station = tail.filter(function (t) { return isAutoplayPick(t); });
+      queue = queue.slice(0, at + 1).concat(mine.length > 1 ? fisherYatesShuffle(mine) : mine, station);
+      shuffledQueue = queue;
+      flatQueue = queue;
+      redrawQueueViews();
+      return true;
+    }
+    function restoreTailAfter(at) {
+      var rest = queue.slice(at + 1);
+      var inRest = (typeof Set === 'function') ? new Set(rest) : null;
+      var inBase = (typeof Set === 'function') ? new Set(shuffleBase) : null;
+      // (the second half is defensive: every row this view adds while shuffled - a station batch - already
+      // joins shuffleBase, so today nothing lands there)
+      var restored = shuffleBase.filter(function (t) { return inRest.has(t); })
+        .concat(rest.filter(function (t) { return !inBase.has(t); }));
+      var wasFlatNow = (flatQueue === queue);
+      queue = queue.slice(0, at + 1).concat(restored);
+      // a restored CHAPTERED queue stays flat (gate r1 adversary W4): the playing chapter's file would
+      // otherwise roll on into its next chapter, past the restored rows (c4 rolled into c5; c1-c3 never played)
+      var hasChapters = restored.some(function (t) { return t && t.source === 'library-chapter'; });
+      flatQueue = (wasFlatNow && (shuffleWasFlat || hasChapters)) ? queue : null;
+      shuffleBase = null;
+      shuffledQueue = null;
+      redrawQueueViews();
+      return true;
+    }
+    function redrawQueueViews() {
+      // never while a drill load is in flight - `drill` is then AHEAD of `queue`, and a redraw would paint
+      // the new album's header over the old queue's rows (gate r1 adversary W5; the v1.273 W1 guard the
+      // other off-cycle redraws carry); the load's own render draws the new queue
+      if (content && content.isConnected && !drillLoadInFlight) {
+        if (drill) renderDrillView();
+        else if (tab === 'songs') renderSongListProgressive();
+      }
+      updateNowPlayingPanel();
+    }
+    // The ONE Shuffle seam (the desktop chip, the skin / pop-out sticker row): write the synced
+    // setting, reorder the live queue now, re-arm the nav around the playing song, repaint.
+    function applyShuffleToggle(on) {
+      setShuffleEnabled(on);
+      if (reconcileShuffle(navIndex) && navIndex >= 0) registerTrackNav(navIndex);
+      reflectPlaybackModes();
+    }
+
+    // The station a batch is drawn against (R8): the queue's recorded seed, else the song now playing.
+    function stationSeedFor(cur) {
+      var seed = queueCtx && typeof queueCtx.radio === 'string' && queueCtx.radio ? queueCtx.radio : '';
+      return seed || ('track:' + cur.id);
+    }
+    // Record the seed in the queue context (and the player's browseCtx carry) so every later batch,
+    // and a resume after a reload (rebuildPlayingQueue), keeps the same station.
+    function recordStationSeed(seed) {
+      if (queueCtx && queueCtx.radio === seed) return;
+      queueCtx = Object.assign({}, queueCtx || { src: 'music' }, { radio: seed });
+      queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(queueCtx) : '');
+    }
+    // The session's plays, most recent LAST (R11; the server spaces artists by the tail), and - in their
+    // own parameter - the songs still QUEUED (gate r1 adversary W3: without them the server picked what the
+    // queue already held and the client dropped it all, a batch of nothing; gate r2 adversary S7: sent as
+    // plays they starved the seed artist, so they are never-pick only). Plays fill the URL budget first.
+    function radioIdParams() {
+      var len = 0;
+      var sent = {};
+      var plays = [];
+      for (var k = autoplayPlayedIds.length - 1; k >= 0; k--) { // most recent first into the budget...
+        var enc = encodeURIComponent(autoplayPlayedIds[k]);
+        if (len + enc.length + 1 > RADIO_EXCLUDE_URL_BUDGET) break;
+        plays.unshift(enc); // ...kept oldest-first, so the most recent play is LAST
+        sent[autoplayPlayedIds[k]] = true;
+        len += enc.length + 1;
+      }
+      var queued = [];
+      for (var q = queue.length - 1; q >= 0; q--) {
+        var id = queue[q] && queue[q].id;
+        if (!id || sent[id]) continue;
+        var encQ = encodeURIComponent(id);
+        if (len + encQ.length + 1 > RADIO_EXCLUDE_URL_BUDGET) break;
+        queued.unshift(encQ);
+        sent[id] = true;
+        len += encQ.length + 1;
+      }
+      return '&exclude=' + plays.join(',') + (queued.length ? '&queued=' + queued.join(',') : '');
+    }
+    function radioUrl(seed, count, widen) {
+      return '/api/music/radio?seed=' + encodeURIComponent(seed) + '&count=' + count +
+        '&rng=' + Math.floor(Math.random() * 4294967296) + radioIdParams() + (widen ? '&widen=1' : '');
+    }
+    // v1.311 / v1.368.0: the picker's fetch core, ONE truth for BOTH consumers - the end-of-queue
+    // extension (maybeExtendQueueForAutoplay) and the solo-chapter exit (primeSoloExitStation). The
+    // server owns the widening (the old same-artist arm, whole-library arm and recycle arm are gone:
+    // the whole-library arm was Dean's "gets real random"). Drops anything already queued.
+    // Best-effort: a failure yields no picks, never throws.
     async function fetchAutoplayPicks(cur) {
-      var exclude = {};
-      for (var q = 0; q < queue.length; q++) exclude[queue[q].id] = true;
-      for (var s = 0; s < autoplayPlayedIds.length; s++) exclude[autoplayPlayedIds[s]] = true;
-      var seed = String(Date.now() % 100000);
+      var seed = stationSeedFor(cur);
+      // the batch, minus anything already queued; when that leaves NOTHING (gate r3 adversary W10: a long
+      // session's older plays fall outside the URL budget, so the server re-picks them from the close
+      // tiers and every one is still queued here) ask once more with widen - the rest of the library
+      var picks = await stationBatch(seed, false);
+      if (picks && !picks.length && picks.answered) picks = await stationBatch(seed, true);
+      if (!picks) return [];
+      if (picks.length) picks.seed = seed;
+      return picks;
+    }
+    async function stationBatch(seed, widen) {
+      var d;
+      try { d = await fetchJson(radioUrl(seed, AUTOPLAY_APPEND_COUNT, widen)); } catch (_) { return null; }
+      var inQueue = {};
+      for (var q = 0; q < queue.length; q++) inQueue[queue[q].id] = true;
       var picks = [];
-      function takeFrom(items, cap) {
-        for (var k = 0; k < items.length && picks.length < cap; k++) {
-          var t = items[k];
-          if (!t || !t.id || exclude[t.id]) continue;
-          exclude[t.id] = true;
-          picks.push(t);
-        }
+      var items = (d && Array.isArray(d.items)) ? d.items : [];
+      for (var k = 0; k < items.length; k++) {
+        var t = items[k];
+        if (!t || !t.id || inQueue[t.id]) continue;
+        inQueue[t.id] = true;
+        picks.push(t);
       }
-      if (cur.artist) {
-        try {
-          var a = await fetchJson('/api/music?artist=' + encodeURIComponent(cur.artist) + '&sort=random&seed=' + seed + '&limit=30');
-          takeFrom((a && a.items) || [], AUTOPLAY_ARTIST_MAX);
-        } catch (_) { /* artist arm is best-effort */ }
-      }
-      var libItems = [];
-      if (picks.length < AUTOPLAY_APPEND_COUNT) {
-        try {
-          var lib = await fetchJson('/api/music?sort=random&seed=' + seed + '&limit=60');
-          libItems = (lib && lib.items) || [];
-          takeFrom(libItems, AUTOPLAY_APPEND_COUNT);
-        } catch (_) { /* library arm is best-effort */ }
-      }
-      // RECYCLE arm (QA S3, Dean's radio intent): a fully-played library must not end in silence -
-      // his original complaint recurring at library scale. When BOTH arms produced nothing, relax
-      // the no-repeat rule to "not what's in the queue right now" and re-walk the already-fetched
-      // library page. No extra request.
-      if (picks.length === 0 && libItems.length) {
-        exclude = {};
-        for (var q2 = 0; q2 < queue.length; q2++) exclude[queue[q2].id] = true;
-        takeFrom(libItems, AUTOPLAY_APPEND_COUNT);
-      }
+      // NOTE (gate r2 adversary W8): when EVERY song the viewer can see is already queued (a library smaller
+      // than the session) even the widened answer is all queued rows and the batch is empty, so the station
+      // ends there. Appending copies instead put a second row with the same id in the queue, and the
+      // chapter code resolves rows by id - playback looped back through the played rows. Disclosed.
+      picks.answered = items.length > 0;
       return picks;
     }
     // v1.311 (Dean, first-class chapters): pre-fetch the station a SELECTED chapter will exit to,
@@ -4241,10 +4470,14 @@ if (typeof module !== 'undefined' && module.exports) {
         if (queue[queue.length - 1] !== cur) return;
         if (playingId !== cur.id) return;
         if (picks.length === 0) return;
+        if (picks.seed) recordStationSeed(picks.seed); // R8: plain Autoplay's station is the song that ran out
         var wasFlat = (flatQueue === queue);
         markAutoplayPicks(picks); // remembered as the STATION, so Autoplay off can retract them
+        var preAppend = queue;
         queue = queue.concat(picks);
         if (wasFlat) flatQueue = queue; // gate r1 K4: the appended station rides the flat list on
+        shuffleCarry(preAppend); // v1.368.0: appended in station order while shuffled (see SHUFFLE MODE)
+        if (shuffleBase && shuffledQueue === queue) shuffleBase = shuffleBase.concat(picks);
         // Adversarial S3: recompute the re-arm index from the LIVE queue instead of
         // trusting the pre-await `i` - the one path that threads every guard (a
         // same-OBJECT requeue, e.g. playTrackInAlbum's miss arm `queue = [item]`)
@@ -4290,6 +4523,14 @@ if (typeof module !== 'undefined' && module.exports) {
       applyPlayingHighlight();
       updateNowPlaying();
     }
+    // v1.368.0 (R14): the player's carried context when it is a RADIO station (the seed rides it), else null.
+    function playerRadioCtx() {
+      var p = window.FileTube && window.FileTube.player;
+      var meta = (p && typeof p.getCurrentMeta === 'function') ? p.getCurrentMeta() : null;
+      if (!meta || !meta.isMusic || !meta.browseCtx) return null;
+      var ctx = (window.FileTube && typeof window.FileTube.decodeListContext === 'function') ? window.FileTube.decodeListContext(meta.browseCtx) : null;
+      return (ctx && ctx.src === 'music' && typeof ctx.radio === 'string' && ctx.radio) ? ctx : null;
+    }
     async function rebuildPlayingQueue() {
       // Gate CRITICAL (both seats): only rebuild when the expanded panel is
       // actually showing, and NEVER on the Songs tab / a drill - those run
@@ -4308,6 +4549,22 @@ if (typeof module !== 'undefined' && module.exports) {
       var ctx = (window.FileTube && typeof window.FileTube.decodeListContext === 'function')
         ? window.FileTube.decodeListContext(meta.browseCtx || '') : null;
       if (!ctx || ctx.src !== 'music') return;
+      if (ctx.radio) {
+        // v1.368.0 (R14): a radio queue is a STATION, not a list - rebuild it as the song now playing
+        // with the station seed back in the context, so the last-track arm lines the next batch up
+        // from the same station (re-fetching a "list" would hand back the whole library).
+        var cur;
+        try { cur = await fetchJson('/api/music/' + encodeURIComponent(meta.id)); } catch (_) { return; }
+        if (signal.aborted || !cur || cur.id !== meta.id || playingId !== meta.id) return;
+        loadSongsGen += 1; // an in-flight list load must not land over this queue
+        queue = [cur];
+        flatQueue = queue;
+        queueCtx = ctx;
+        queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(ctx) : '');
+        registerTrackNav(0);
+        updateNowPlayingPanel();
+        return;
+      }
       var scope = ctx.album ? { type: 'album', key: ctx.album } : (ctx.artist ? { type: 'artist', key: ctx.artist } : null);
       var rebuilt;
       try {
@@ -4522,6 +4779,14 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     // Quick scroll: `letters` = the rows are in title order (the sort this view asked the server
     // for), so the engine may jump them by letter - an album / release-date order never is.
+    // v1.368.0 (R3): an artist's, an album's or a genre's level ENDS with "Start radio" - last, so a
+    // level still opens with the cursor on its first song (a centre press plays track 1, as it always
+    // did); a song row's own trackIndex is unaffected; the letter jump skips action rows.
+    function withRadioRow(level, seed) {
+      if (!seed || !level || !Array.isArray(level.items) || !level.items.length) return level;
+      level.items = level.items.concat([{ label: 'Start radio', action: 'radio', seed: seed }]);
+      return level;
+    }
     function menuSongLevel(tracks, play) {
       var sort = play && play.ctx && play.ctx.sort;
       return { items: SKINS.menuSongItems(tracks, musicArtUrl), tracks: tracks, play: play, letters: SKINS.menuSortIsAlpha(sort) };
@@ -4578,10 +4843,12 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       if (n.type === 'genre') {
         // Genre has no list-context key: the queue rides a plain title-order ctx (disclosed).
-        return menuAllSongs().then(function (t) { return menuSongLevel(SKINS.tracksOfGenre(t, n.key), { ctx: { src: 'music', sort: 'title-asc' }, label: n.label || 'Genre' }); });
+        // v1.368.0: ends with Start radio (an "Unknown Genre" row has no genre to seed from)
+        return menuAllSongs().then(function (t) { return withRadioRow(menuSongLevel(SKINS.tracksOfGenre(t, n.key), { ctx: { src: 'music', sort: 'title-asc' }, label: n.label || 'Genre' }), n.key ? 'genre:' + n.key : ''); });
       }
       if (n.type === 'artist') {
-        return menuArtistTracks(n.key).then(function (t) { return { items: SKINS.menuArtistAlbumItems(t, n, musicArtUrl) }; });
+        // v1.368.0: ends with Start radio - not for "Unknown Artist" (an empty name is no seed: the route answers 400)
+        return menuArtistTracks(n.key).then(function (t) { return withRadioRow({ items: SKINS.menuArtistAlbumItems(t, n, musicArtUrl) }, n.key ? 'artist:' + n.key : ''); });
       }
       if (n.type === 'artistAll') {
         return menuArtistTracks(n.artist).then(function (t) {
@@ -4592,13 +4859,14 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       if (n.type === 'artistAlbum') {
         return menuArtistTracks(n.artist).then(function (t) {
-          return menuSongLevel(SKINS.tracksOfAlbum(t, n.key), { ctx: { src: 'music', album: n.key, sort: sortForTab('drill-artist') }, drill: { type: 'album', key: n.key, label: n.label }, label: n.label });
+          // v1.368.0: an album reached through its artist ends with Start radio too (Albums > album does)
+          return withRadioRow(menuSongLevel(SKINS.tracksOfAlbum(t, n.key), { ctx: { src: 'music', album: n.key, sort: sortForTab('drill-artist') }, drill: { type: 'album', key: n.key, label: n.label }, label: n.label }), 'album:' + n.key);
         });
       }
       if (n.type === 'album') {
         var asort = sortForTab('drill-album');
         return fetchAllRows('/api/music?album=' + encodeURIComponent(n.key || '') + '&sort=' + encodeURIComponent(asort)).then(function (d) {
-          return menuSongLevel(menuItemsOf(d), { ctx: { src: 'music', album: n.key, sort: asort }, drill: { type: 'album', key: n.key, label: n.label }, label: n.label });
+          return withRadioRow(menuSongLevel(menuItemsOf(d), { ctx: { src: 'music', album: n.key, sort: asort }, drill: { type: 'album', key: n.key, label: n.label }, label: n.label }), 'album:' + n.key);
         });
       }
       if (n.type === 'playlist') {
@@ -4795,6 +5063,47 @@ if (typeof module !== 'undefined' && module.exports) {
       }).catch(function () {
         if (typeof window.showToast === 'function') window.showToast('Could not shuffle your songs.');
       });
+    }
+
+    // v1.368.0 (R3, R14): START RADIO from a song, an artist, an album or a genre. It REPLACES the
+    // queue: the song (or the station's first coherent pick) plays now, then the station extends as
+    // Autoplay does. The queue is a flat list (playFromMenu), so a DJ-set chapter plays its own
+    // segment (R13), and its context records the seed (recordStationSeed's key), so later batches
+    // and a resume after a reload stay on this station. Autoplay is turned on if it was off (the
+    // station could not continue otherwise), with a toast saying so. The station's picks are
+    // remembered as picks, so Autoplay off retracts the unplayed ones like any station.
+    function startRadio(seed, seedItem) {
+      if (typeof seed !== 'string' || !seed) return;
+      askLightingForOpen(); // before the fetch spends the gesture (the Shuffle buttons' rule)
+      var gen = playSelectGen;
+      var pgen = playGen; // every play bumps it (a row tap, an up-next tap, Prev / Next) - gate r1 qa W1
+      fetchJson(radioUrl(seed, AUTOPLAY_APPEND_COUNT)).then(function (d) {
+        // post-await: the view is alive and no newer pick or play claimed the player meanwhile
+        if (signal.aborted || gen !== playSelectGen || pgen !== playGen) return;
+        var items = (d && Array.isArray(d.items)) ? d.items : [];
+        var picks = items.filter(function (t) { return t && t.id && !(seedItem && t.id === seedItem.id); });
+        var tracks = (seedItem && seedItem.id) ? [seedItem].concat(picks) : picks;
+        if (!tracks.length) {
+          if (typeof window.showToast === 'function') window.showToast('Nothing to play on this radio yet.');
+          return;
+        }
+        if (!autoplayEnabled()) {
+          setAutoplayEnabled(true);
+          reflectPlaybackModes();
+          if (typeof window.showToast === 'function') window.showToast('Autoplay is on, so the radio keeps playing.');
+        }
+        markAutoplayPicks(picks);
+        playFromMenu({ tracks: tracks, index: 0, play: { ctx: { src: 'music', radio: seed }, label: 'Radio' } });
+      }).catch(function () {
+        if (typeof window.showToast === 'function') window.showToast('Could not start the radio.');
+      });
+    }
+    // The seed of each surface's "Start radio" (R3): a song by its id, an artist by name, an album by
+    // its album key, a genre by name.
+    function radioSeedForSong(t) { return (t && t.id) ? 'track:' + t.id : ''; }
+    function radioSeedForDrill(d) {
+      if (!d || !d.key) return '';
+      return d.type === 'album' ? 'album:' + d.key : (d.type === 'artist' ? 'artist:' + d.key : '');
     }
 
     // v1.352 L3: act on a music link (musicLinkIntent). The list is fetched once: an empty result is a
@@ -5096,6 +5405,22 @@ if (typeof module !== 'undefined' && module.exports) {
       registerTrackNav(lci);
       render().catch(function () {}); // the albums grid behind the skin (a grid tab leaves `queue` untouched)
       updateNowPlayingPanel();
+    } else if (wantNowPlaying && playerRadioCtx()) {
+      // v1.368.0 R14 (gate r1 adversary W2): the mini-player returns a RADIO song here, and the album
+      // branch below would re-open its album and drop the station (Next walked the album). The station
+      // is rebuilt as the playing song - drawn as a flat list, the seed back in the context - so the
+      // last-track arm lines the next batch up from the same station. Ordered BEFORE the album branch.
+      var rctx = playerRadioCtx();
+      var rid = playingId;
+      fetchJson('/api/music/' + encodeURIComponent(rid)).then(function (cur) {
+        if (signal.aborted || !cur || cur.id !== rid || playingId !== rid) return;
+        if (!adoptMenuList({ tracks: [cur], index: 0, play: { ctx: rctx, label: 'Radio' } })) return;
+        registerTrackNav(0);
+        updateNowPlayingPanel();
+      }).catch(function (err) {
+        console.error('Music: radio restore failed', err);
+        render().catch(function () {}); // degrade to the plain browse view (the song plays on)
+      });
     } else if (wantNowPlaying && nowPlaying && nowPlaying.albumKey) {
       // v1.207 (Dean): returning to a playing music track via the mini-player
       // restores that track's ALBUM as the browse view - it persists across the

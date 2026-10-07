@@ -3556,5 +3556,11 @@
     "date": "2026-10-06",
     "title": "Settings, reorganized",
     "intent": "Settings now has five groups: System, Personalize, Account, Library and Advanced. \"Automation & Storage\" is gone: its settings moved to Scan & cache, Notifications, Home page, Playback, Mobile player, Videos and Music, and the critter sound check sits with Critters. Pages have plain names (Videos, Music, Books, Shows). Old Settings links and your last open page still work. Members no longer see the settings only an admin can change."
+  },
+  {
+    "version": "1.368.0",
+    "date": "2026-10-07",
+    "title": "Music radio that stays close, and a Shuffle mode",
+    "intent": "When your songs run out, Autoplay now plays like a radio station: it stays with the same artist, the same genre and nearby years, drifting slowly instead of jumping to something unrelated, and never plays one artist three times in a row. You can start a radio from a song, an album, an artist or a genre, and a new Shuffle switch beside Loop and Autoplay plays the rest of your songs in random order."
   }
 ]

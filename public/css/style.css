@@ -8392,6 +8392,7 @@ a.tv-continue-card { text-decoration: none; }
   .mms-sticker-menu .mms-sm-lbl{ display:inline-flex; align-items:center; gap:var(--space-3); font-size:var(--fs-md); font-weight:var(--fw-semibold); }
   .mms-sticker-menu .mms-sm-title{ font-size:var(--fs-md); font-weight:var(--fw-semibold); }
   .mms-sticker-menu .mms-sm-lbl i, .mms-sticker-menu .mms-sm-act i{ width:var(--icon-sm); text-align:center; opacity:.7; flex:none; }
+  .mms-sticker-menu .mms-sm-glyph svg{ display:block; width:100%; height:auto; fill:currentColor; }
   .mms-sticker-menu .mms-sm-speed{ display:flex; flex-wrap:wrap; gap:var(--space-3); }
   .mms-sticker-menu .mms-sm-opt{ border:1px solid var(--overlay-border); background:transparent; color:inherit; border-radius:var(--radius); padding:var(--space-3) var(--space-6); font-size:var(--fs-md); cursor:pointer; font-variant-numeric:tabular-nums; min-height:var(--size-touch); display:inline-flex; align-items:center; justify-content:center; transition:background-color var(--dur-fast) var(--ease-ui), border-color var(--dur-fast) var(--ease-ui); }
   .mms-sticker-menu .mms-sm-opt.is-on{ background:var(--overlay-border); color:inherit; border-color:currentColor; font-weight:var(--fw-semibold); }

@@ -214,11 +214,12 @@
               <button class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill" id="music-actions-btn" type="button" hidden aria-haspopup="true" aria-expanded="false" title="More actions" aria-label="More actions for this track"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-more_horiz"/></svg></span><span class="ui-btn__label">More</span></button>
               <div class="mms-sticker-menu" id="music-actions-menu" role="menu" hidden></div>
             </span>
-            <!-- v1.284 (Dean): the two playback-MODE toggles the mobile skin has (Loop,
-                 Autoplay) surfaced on the desktop player - the shared ft-loop / autoplay
+            <!-- v1.284 (Dean): the playback-MODE toggles the mobile skin has (Loop, Shuffle since
+                 v1.368.0, Autoplay) surfaced on the desktop player - the shared ft-loop / autoplay
                  settings. UI pass S7: filter chips - aria-pressed is the state, ON is ink on
                  --fill-selected (never red, visible in every era). -->
             <button class="ui-chip ui-chip--filter music-mode-btn" id="music-loop-btn" type="button" title="Loop" aria-label="Loop" aria-pressed="false"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-repeat"/></svg><span class="music-mode-lbl">Loop</span></button>
+            <button class="ui-chip ui-chip--filter music-mode-btn" id="music-shufflemode-btn" type="button" title="Shuffle mode: play what is next in random order" aria-label="Shuffle mode" aria-pressed="false"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-shuffle"/></svg><span class="music-mode-lbl">Shuffle</span></button>
             <button class="ui-chip ui-chip--filter music-mode-btn" id="music-autoplay-btn" type="button" title="Autoplay" aria-label="Autoplay" aria-pressed="false"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-playlist_play"/></svg><span class="music-mode-lbl">Autoplay</span></button>
             <button class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill" id="music-shuffle-btn" type="button" title="Shuffle all"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-shuffle"/></svg></span><span class="ui-btn__label">Shuffle</span></button>
             <button class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill" id="music-scan-btn" type="button" title="Scan music folders now"><span class="ui-btn__icon"><svg class="ui-icon ui-icon--sm" aria-hidden="true" focusable="false"><use href="#i-refresh"/></svg></span><span class="ui-btn__label">Scan</span></button>

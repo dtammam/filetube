@@ -1040,6 +1040,7 @@
     var runs = [];
     var prev = null;
     (Array.isArray(items) ? items : []).forEach(function (it, i) {
+      if (it && it.action) return; // v1.368.0: an action row (a level's trailing "Start radio") is not a title
       var l = menuLetterOf(it && it.label);
       if (l !== prev) { runs.push({ letter: l, index: i }); prev = l; }
     });
@@ -1195,6 +1196,7 @@
     menuLetterAt: menuLetterAt, menuLetterJump: menuLetterJump, menuLetterTargets: menuLetterTargets,
     menuLetterable: menuLetterable, menuSortIsAlpha: menuSortIsAlpha, renderMenuJump: renderJumpLayers,
     MENU_LETTERS: MENU_LETTERS, MENU_LETTER_MIN: MENU_LETTER_MIN, RECENT_ARTISTS_MAX: RECENT_ARTISTS_MAX, RECENT_ALBUMS_MAX: RECENT_ALBUMS_MAX,
+    shuffleGlyph: shuffleGlyph, // v1.368.0: the sticker's Shuffle mode row draws the same mark (the .icon-shuffle mask is retired)
     _esc: esc, _pct: pct,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
