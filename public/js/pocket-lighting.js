@@ -508,7 +508,11 @@
       arm();
     }
     function onOrient(e) {
-      var m = mapTilt(e && e.beta, e && e.gamma, orientationAngle(win));
+      // the Upright iPod (style.css POCKET STAYS UPRIGHT) is drawn turned back to the phone's own frame: the tilt maps by
+      // the screen's angle PLUS the drawn turn (-90 at 90 = 0, the portrait mapping), never by the screen's angle alone
+      var S2 = null; try { S2 = win.FileTubeMusicSkins || null; } catch (_) { S2 = null; }
+      var turn = (S2 && typeof S2.turnOf === 'function') ? S2.turnOf(panel, win) : 0;
+      var m = mapTilt(e && e.beta, e && e.gamma, orientationAngle(win) + turn);
       if (!m) return;
       samples += 1; sessionSamples += 1;
       if (permission !== 'granted') { permission = 'granted'; sess.permission = 'granted'; disarmFirstTapAsk(); } // a sample IS a grant (the session's too)

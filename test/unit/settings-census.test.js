@@ -23,9 +23,12 @@ test('the census classifies every control (no unclassified id, no stale entry)',
   assert.deepStrictEqual(census(HTML).problems, []);
 });
 
-test('no control is lost, added or re-routed: (id, save path) equals the v1.366.1 baseline', () => {
+// Controls added deliberately since the baseline (each named with its release): the iPod portrait lock's device-local switch.
+const ADDED_SINCE = ['pocket-upright-check|localStorage'];
+
+test('no control is lost, added or re-routed: (id, save path) equals the v1.366.1 baseline plus the named additions', () => {
   const now = census(HTML).pages.flatMap((p) => p.controls).map((c) => c.id + '|' + c.save).sort();
-  const base = BASELINE.map((l) => l.split('|').slice(0, 2).join('|')).sort();
+  const base = BASELINE.map((l) => l.split('|').slice(0, 2).join('|')).concat(ADDED_SINCE).sort();
   assert.deepStrictEqual(now, base);
 });
 

@@ -1286,7 +1286,9 @@ test('v1.354: the orientation media query restamps in the same step the layout f
 
 test('v1.354: a landscape phone whose stamp still says portrait draws no board photo (never a wrong turn)', () => {
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /@media \(orientation: landscape\)\{[^@]*html\.is-phone\[data-ft-rot="0"\] \.mms-full\.mms-ipod,\s*html\.is-phone\[data-ft-rot="180"\] \.mms-full\.mms-ipod\{ --mms-ipod-board-turn:none; \}/);
+  // the iPod portrait lock: the board's own turn is the Sideways setting's (:where(:not(.pk-upright)), zero specificity);
+  // the Upright player turns whole, the photo with it (test/unit/pocket-upright.test.js)
+  assert.match(css, /@media \(orientation: landscape\)\{[^@]*html\.is-phone:where\(:not\(\.pk-upright\)\)\[data-ft-rot="0"\] \.mms-full\.mms-ipod,\s*html\.is-phone:where\(:not\(\.pk-upright\)\)\[data-ft-rot="180"\] \.mms-full\.mms-ipod\{ --mms-ipod-board-turn:none; \}/);
 });
 
 test('v1.350: the Transparent board photo is a role with turned-back copies; landscape on a phone swaps one in, gated on the full player and the angle', () => {
@@ -1294,6 +1296,6 @@ test('v1.350: the Transparent board photo is a role with turned-back copies; lan
   assert.strictEqual((css.match(/var\(--mms-ipod-board-turn, var\(--pk-c-board, none\)\),\s*#2c4238;/g) || []).length, 3, 'all three Transparent skins read the board through the swap');
   assert.strictEqual((css.match(/--pk-c-board-r90:url\(\.\.\/assets\/skins\/transparent-board-r90\.webp\) 100% 50% \/ auto 121% no-repeat;/g) || []).length, 3, 'angle 90 copy anchored where the portrait bottom lands');
   assert.strictEqual((css.match(/--pk-c-board-r270:url\(\.\.\/assets\/skins\/transparent-board-r270\.webp\) 0% 50% \/ auto 121% no-repeat;/g) || []).length, 3, 'angle 270 copy, the other side');
-  assert.match(css, /@media \(orientation: landscape\)\{\s*html\.is-phone\[data-ft-rot="90"\] \.mms-full\.mms-ipod\{ --mms-ipod-board-turn:var\(--pk-c-board-r90, none\); \}\s*html\.is-phone\[data-ft-rot="270"\] \.mms-full\.mms-ipod\{ --mms-ipod-board-turn:var\(--pk-c-board-r270, none\); \}/, 'the swap is landscape + phone + full player + angle');
+  assert.match(css, /@media \(orientation: landscape\)\{\s*html\.is-phone:where\(:not\(\.pk-upright\)\)\[data-ft-rot="90"\] \.mms-full\.mms-ipod\{ --mms-ipod-board-turn:var\(--pk-c-board-r90, none\); \}\s*html\.is-phone:where\(:not\(\.pk-upright\)\)\[data-ft-rot="270"\] \.mms-full\.mms-ipod\{ --mms-ipod-board-turn:var\(--pk-c-board-r270, none\); \}/, 'the swap is landscape + phone (Sideways) + full player + angle');
   for (const f of ['transparent-board-r90.webp', 'transparent-board-r270.webp']) assert.ok(fs.existsSync(path.join(ROOT, 'public', 'assets', 'skins', f)), f + ' ships');
 });

@@ -269,9 +269,10 @@ test('v1.241 source-lock (CSS): size classes scale via --mms-sticker-px; tilt cl
   // v1.333 (Dean's 2x sticker pushed the menu's top ~44px off-screen; measured): the menu's cap is the space
   // ABOVE the sticker - bound to the SAME bottom offset the wrap uses and the sticker's own size var
   const wrapRule = (css.match(/\n {2}\.mms-sticker-wrap\{[^}]*\}/) || [''])[0];
-  assert.match(wrapRule, /bottom:calc\(env\(safe-area-inset-bottom,0px\) \+ var\(--space-6\)\)/, 'the wrap sits var(--space-6) over the bottom inset');
+  // the iPod portrait lock: each inset reads --mms-up-* first (set only on the turned Upright player), else today's env()
+  assert.match(wrapRule, /bottom:calc\(var\(--mms-up-bottom, env\(safe-area-inset-bottom,0px\)\) \+ var\(--space-6\)\)/, 'the wrap sits var(--space-6) over the bottom inset');
   const cap = (css.match(/\n {2}\.mms-sticker-wrap > \.mms-sticker-menu\{[^}]*\}/) || [''])[0];
-  assert.match(cap, /max-height:min\(86vh, calc\(100dvh - env\(safe-area-inset-top,0px\) - env\(safe-area-inset-bottom,0px\) - var\(--space-6\) - var\(--mms-sticker-px,52px\) - var\(--space-3\) - var\(--space-3\)\)\);/, 'the cap subtracts both insets, the wrap offset, the sticker and the gap');
+  assert.match(cap, /max-height:min\(var\(--mms-up-86vh, 86vh\), calc\(var\(--mms-up-dvh, 100dvh\) - var\(--mms-up-top, env\(safe-area-inset-top,0px\)\) - var\(--mms-up-bottom, env\(safe-area-inset-bottom,0px\)\) - var\(--space-6\) - var\(--mms-sticker-px,52px\) - var\(--space-3\) - var\(--space-3\)\)\);/, 'the cap subtracts both insets, the wrap offset, the sticker and the gap');
   // UI pass S7 (D7 landscape): the menu's side anchor is data its wrap sets (the wrap's left edge in
   // portrait; its right edge in landscape, where the sticker moves to the right-hand corner).
   assert.match(css, /\n {2}\.mms-sticker-menu\{ position:absolute; left:var\(--mms-sm-anchor-l\); right:var\(--mms-sm-anchor-r\); bottom:calc\(100% \+ var\(--space-3\)\);/, 'the gap the cap subtracts is the menu\'s own');
@@ -297,7 +298,7 @@ test('v1.252 L1 (Dean: "the buttons are too small") source-lock: every sticker-m
   // and a wider menu. jsdom has no layout - lock the CSS floors (the v1.241 lock pattern).
   const fs = require('node:fs'); const path = require('node:path');
   const css = unscopePocket(fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'css', 'style.css'), 'utf8'));
-  assert.match(css, /\.mms-sticker-menu\{[^}]*min-width:min\(320px, 88vw\)/, 'the menu is wide enough for thumb rows');
+  assert.match(css, /\.mms-sticker-menu\{[^}]*min-width:min\(320px, var\(--mms-up-88vw, 88vw\)\)/, 'the menu is wide enough for thumb rows (88vw; the turned Upright player\'s own width)');
   // UI pass S7 (F70): ONE row height - every row reads the touch token (44px), the action rows'
   // 48px (taller than their 44px neighbours) is gone.
   assert.match(css, /\.mms-sm-opt\{[^}]*min-height:var\(--size-touch\)/, 'speed options = the touch height');

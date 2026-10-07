@@ -3,7 +3,7 @@ plan: ipod-portrait-lock
 harness: v2 · lean
 branch: feat/ipod-portrait-lock
 anchor: outcome
-status: Ruled (intake 2026-10-07)
+status: Built (W1-W2), gate next
 next: W0 measurement (headless, then Dean's phone); W1-W3 (Upright default, Sideways kept as a setting, R7); the gate (section 6); the release (version set at release: after v1.369.0)
 design: Dean's intake 2026-10-07 (rulings R1-R6 below). Base main a8626406.
 gate: pending
@@ -62,7 +62,7 @@ screen, the browse pages) still turns with the phone.
 | R3 | Where (Dean) | The home-screen app (Safari's tab gets the same code; the platform cannot lock either). |
 | R4 | How (builder, from the platform facts; when Upright is chosen, R7) | iOS cannot be asked to stay portrait, so the page DOES turn; the full player is then drawn as a PORTRAIT box (the phone's portrait width x height) turned back by the screen's angle (`html[data-ft-rot]` 90 -> -90deg, 270 -> 90deg) about the viewport centre, so it sits upright in the hand. The D7 side-by-side landscape rules stop applying to the full player. The Transparent board photo needs no turn inside the turned box (it is already upright with the glass): its `--mms-ipod-board-turn` rules follow. |
 | R5 | The turn itself | No animation added: the page turn is iOS's; the counter-turn applies in the same frame the angle stamp changes (v1.354's rule: a frame whose angle still reads portrait draws the player unturned rather than wrongly turned). |
-| R7 | Keep sideways (Dean, 2026-10-07: "You can make it a setting to enable sideways." / "Don't lose the flexibility and existing solidly working code.") | A setting chooses: **Upright** (the new default - the player stays upright when the phone turns) or **Sideways** (today's D7 layout, unchanged). The D7 landscape rules are NOT deleted or rewritten: the upright turn applies only when the setting is Upright, by a marker class (e.g. `html.pk-upright`) the new rules key on, so Sideways is byte-for-byte today's path. The setting lives in Settings > Mobile player and on the Pocket's own Settings menu; it is a synced pref (`ft-pocket-sideways`, '1' = sideways), so its sibling lists apply (prefs-sync.js, lib/prefs-allowlist.js and the plan-key lock, LESSONS 12). |
+| R7 | Keep sideways (Dean, 2026-10-07: "You can make it a setting to enable sideways." / "Don't lose the flexibility and existing solidly working code.") | A setting chooses: **Upright** (the new default - the player stays upright when the phone turns) or **Sideways** (today's D7 layout, unchanged). The D7 landscape rules are NOT deleted or rewritten: the upright turn applies only when the setting is Upright, by a marker class (e.g. `html.pk-upright`) the new rules key on, so Sideways is byte-for-byte today's path. The setting lives in Settings > Mobile player ("Keep the iPod upright", on by default) and on the Pocket's own Settings menu ("Stay Upright", a check row, phone only). Builder ruling at W1: it is PER DEVICE (`ft-pocket-sideways` in localStorage, '1' = sideways, absent = upright), like the skin (`ft-music-skin`) and keyboard search beside it in Mobile player: how a phone is held is the phone's, and it keeps the synced-pref sibling lists out of the change. |
 | R6 | Safe areas | The turned box uses the PORTRAIT safe-area meaning: the notch / Dynamic Island edge and the home indicator edge follow the glass (in landscape the env() insets arrive on the left/right; the box maps them back to its own top/bottom). Measured on the device (W0.3). |
 
 ## 5. Waves
@@ -76,9 +76,9 @@ screen, the browse pages) still turns with the phone.
   centred and rotated by -90deg / 90deg. The D7 landscape rules are untouched; under `pk-upright` the new rules win for the
   full player (higher specificity, or the D7 selectors gain `:not(.pk-upright)` - builder picks the smaller, untouched-D7 way and
   proves the Sideways path's computed styles are byte-identical to base).
-- The setting (R7): `ft-pocket-sideways` (synced), the Settings > Mobile player switch "Turn the iPod sideways" and the Pocket
-  Settings row; the marker class is set from it at boot and on change (storage event, prefs-sync), before first paint where the
-  shell's pre-paint block already sets classes (LESSONS 4: every shell that can host the player).
+- The setting (R7): `ft-pocket-sideways` (per device), the Settings > Mobile player switch "Keep the iPod upright" and the
+  Pocket Settings row "Stay Upright"; the marker class is set by music-skins.js at load (every shell that loads it: index,
+  history, books, read), re-read at every turn and on a storage event, and set at once by the setter.
 - The board photo: inside the turned box the photo's own turn is none for 90 / 270.
 - Falsifier: headless Chromium (CDP) at landscape 844x390 with angle 90 and 270: the LCD and wheel bounding boxes, mapped back
   through the turn, equal portrait's within 1px for every Pocket skin; the screenshot of the turned player rotated back matches
@@ -118,6 +118,51 @@ protected main: tag the local no-ff merge, push branch + tag in ONE push, `gh pr
 
 Evidence (the builder fills, copied from instruments): W0 measurements; W1 / W2 falsifier outputs and mutants by name; suites on
 both Nodes; device checks owed.
+
+### Evidence (builder, 2026-10-07)
+
+**W0.1 base (a8626406), tools/pocket-proof/upright-probe.js, the iPod (Classic 5G) on Now Playing, 390x844 / 844x390 (CDP
+screenOrientation):** portrait panel [0,0,390,844] flex, LCD [20,16,350,263], wheel [59,421,273,273]; landscape 90 and 270
+panel [0,0,844,390] grid (the D7 side-by-side), LCD [22,12,488,366], wheel [536,51,288,288]; back to portrait = the first.
+
+**W0.2 the input census (grep of clientX/clientY and getBoundingClientRect in the Pocket path), classified:**
+- turn-invariant: the wheel scrub (atan2 DIFFERENCES about the rect centre, skin-surface.js), the dead centre and the 8 px
+  move thresholds (distances), the zone / button taps (DOM hit tests through the transform), elementsFromPoint (screen
+  points), the haptic switch's rest scale (the wheel is square), the keyboard-search input (a body-level fixed overlay on the
+  bar's screen footprint), pocket-lighting's pointer light (mouse only).
+- needs the turn mapped (W2): the volume groove and the seek bar (a fraction of the screen x), the haptic switch placement
+  (a translate in the wheel's own frame), the tilt lighting (screen axes), the app's swipe-back (common.js, screen
+  "rightward"), Brick's canvas backing store (the rect is the screen footprint), and the lists' touch-action (pan-y is read
+  in screen space by Chromium, measured below).
+
+**W1 the skin matrix (7 skins: Cider, Nordic, Classic 5G, Mini 1G, Nano 4G, Shuffle 2G, Custom 5G Transparent; base vs
+Sideways vs Upright, 4 states each, the same probe):**
+- Sideways == base in every state, every box and the panel's display / grid / transform: YES for all 7.
+- Upright portrait == base portrait: YES for all 7.
+- Upright at 90 and 270: every part (LCD, wheel, centre, MENU, play; Cider / Nordic: art, title, transport, scrub) mapped
+  back through the turn equals portrait within 1 px: YES for all 7. The board photo turns with the player (screenshots read).
+- test/geometry G4 (pocket-rotation dark + light, kit-rotation): 3 ok, 0 FAIL ("0 moved" after the change frame).
+
+**W2 tools/pocket-proof/upright-input-probe.js (real CDP touches given in the iPod's own frame, the player opened in each
+orientation):**
+
+| state | wheel 3/4 turn | MENU zone | seek tap at 25% | up-next drag | swipe down / right |
+|---|---|---|---|---|---|
+| Upright portrait | Music -> Speakers (4) | back to Main | 0.25 | 0 -> 99 | 0 / 1 |
+| Upright 90 | Music -> Speakers (4) | back to Main | 0.25 | 0 -> 99 | 0 / 1 |
+| Upright 270 | Music -> Speakers (4) | back to Main | 0.25 | 0 -> 99 | 0 / 1 |
+| Sideways (all 3) | identical to base, field for field | | | | |
+
+Measured on the way: with the lists' pan-y alone the turned up-next drag scrolled 0 px (Chromium reads touch-action in
+screen space while scrolling the turned list in its own frame); the turned lists pan on both axes now (99 px, = portrait).
+
+**A leak found by the suite:** test/integration/pocket-library-paging-paths.test.js died of heap exhaustion (SIGABRT) on the
+branch, 16/16 on base. Bisected to music-skins.js: a module-scope `var upWin = window` captured by the re-read closure sat in
+the module's shared V8 context, so EVERY exported function held each loaded window (12,500-row jsdom pages) alive. Moved into
+its own function (installUpright): 16/16.
+
+**Suites:** Node 22.23.1 `npm test`: tests 11334, pass 11321, fail 0 (before the Brick test). Node 24: at release.
+
 
 ## 8. Out of scope
 
