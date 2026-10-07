@@ -1,0 +1,92 @@
+T0 baseline, production, 2026-10-06 - pasted by Dean's agent from radio-baseline.txt, copied here VERBATIM
+(some lines arrived cut off in the paste; they are kept as received). Run: container filetube
+(deantammam/filetube:latest), Node v22.23.3, piped over stdin, selftest_exit=0, baseline_exit=0.
+
+FileTube radio (Autoplay) baseline simulation - TODAY'S picker
+source: /app/data/filetube.db (opened read-only, schema v34)
+trials: 200 sessions, rng seed 1; each starts from 1 uniformly random track, queue = [that track]
+
+LIBRARY
+  tracks (as GET /api/music lists them, unrestricted viewer): 23754
+    by source: native=11450, library-chapter=11951, library=353
+    chaptered files expanded into chapter-tracks: 733
+  distinct artists (track artist field, the picker's key): 565
+  albums: 1851 with an album title; 1946 album keys incl. untitled (
+  tracks per artist: min 1, median 4, p75 21, p90 72, max 4273
+    artists with 1 track: 239; with >=10: 240; with >=50: 82
+    share of all tracks held by the top 1 / 5 / 10 artists: 18.0% / 36.1% / 45.4%
+  duration: median 3.2 min, p90 5.1 min; zero/unknown duration: 1 (s
+  tags present: genre 17537/23754, year 22930/23754
+    native: genre 11266/11450, year 10644/11450, album title 11450/1
+    library-chapter: genre 6013/11951, year 11936/11951, album title 11951/11951
+    library: genre 258/353, year 350/353, album title 3/353
+  distinct primary genres (lowercased, first of ; / , |): 53
+    top 25: music 3414 | hip-hop 2972 | gaming 2419 | rock 1615 | po6 | heavy metal 543 | grunge rock 495 | folk rock 466 | thrash metal451 | people & blogs 261 | industrial rock 250 | death metal 223 | electronic dance music 208 | hip hop 189 | acoustic fingerstyle 167 | video game 156 | country 124
+| trap 89 | metalcore 89 | r&b 84 | rap 81 | punk rock 74 | melodic
+  artists with >=1 genre-tagged track: 488/565; of those with >=2 genres: 34
+  decades: 1940s 9 | 1960s 208 | 1970s 465 | 1980s 593 | 1990s 2597 020s 11877
+  stored per-user signal rows (all users): music likes 0, media likes 62, music progress 248, media progress 1442, watched 436
+
+SESSIONS - CHAPTER PICKS ROLL TO THE FILE END (any non-menu queue; the common path)
+ 1 hour
+  metric                                   median   p90
+  tracks played                            4        10
+  distinct artists                         1        4
+  artist repeats (plays - distinct)        3        6
+  max plays of one artist                  4        4
+  same-artist back-to-back pairs           3        6
+  album repeats (titled albums)            0        3
+  titled album returns within next 5       33.3%    100.0%
+  titled album returns within next 10      20.0%    100.0%
+  share of picks from the artist arm       75.0%    100.0%
+  share of picks that are lone chapters    80.0%    100.0%
+  genre changes between tagged neighbours  25.0%    42.9%
+  picks sharing neither seed artist nor genre 22.2%    66.7%
+ 3 hours
+  metric                                   median   p90
+  tracks played                            9        20
+  distinct artists                         3        7
+  artist repeats (plays - distinct)        6        12
+  max plays of one artist                  4        5
+  same-artist back-to-back pairs           6        12
+  album repeats (titled albums)            1        4
+  titled album returns within next 5       11.1%    56.3%
+  titled album returns within next 10      16.7%    100.0%
+  share of picks from the artist arm       66.7%    100.0%
+  share of picks that are lone chapters    55.6%    100.0%
+  genre changes between tagged neighbours  25.0%    57.1%
+  picks sharing neither seed artist nor genre 60.0%    82.4%
+  sessions whose picks ran dry (playback stopped) before 1h: 0/200;
+  recycle-arm firings (no-repeat rule relaxed), total across trials: 0
+
+SESSIONS - CHAPTER PICKS STOP AT THEIR SEGMENT (a flat menu-list queue)
+ 1 hour
+  metric                                   median   p90
+  tracks played                            19       21
+  distinct artists                         7        8
+  artist repeats (plays - distinct)        12       14
+  max plays of one artist                  4        9
+  same-artist back-to-back pairs           12       13
+  album repeats (titled albums)            3        5
+  titled album returns within next 5       14.3%    35.3%
+  titled album returns within next 10      14.3%    40.0%
+  share of picks from the artist arm       63.6%    66.7%
+  share of picks that are lone chapters    50.0%    81.8%
+  genre changes between tagged neighbours  31.3%    50.0%
+  picks sharing neither seed artist nor genre 78.9%    85.0%
+ 3 hours
+  metric                                   median   p90
+  tracks played                            52       59
+  distinct artists                         16       19
+  artist repeats (plays - distinct)        36       43
+  max plays of one artist                  9        17
+  same-artist back-to-back pairs           31       36
+  album repeats (titled albums)            8        13
+  titled album returns within next 5       15.6%    25.5%
+  titled album returns within next 10      15.2%    25.0%
+  share of picks from the artist arm       61.1%    62.5%
+  share of picks that are lone chapters    50.0%    70.4%
+  genre changes between tagged neighbours  35.0%    44.7%
+  picks sharing neither seed artist nor genre 87.0%    94.2%
+  sessions whose picks ran dry (playback stopped) before 1h: 0/200;
+  recycle-arm firings (no-repeat rule relaxed), total across trials: 0

@@ -5,7 +5,7 @@
 ### Device checks owed
 
 - [ ] **Device checks owed (Dean: reply "1-5 pass, 9 fails")** _(v1.362.2, 2026-10-04)_ - one line per open check in
-  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (39 open lines on 2026-10-06); the steps are only there. A
+  [docs/DEVICE-CHECKS.md](docs/DEVICE-CHECKS.md), in its order (37 open lines on 2026-10-06); the steps are only there. A
   passed line is deleted from both places; a failed one becomes a bug below. Closes when every line is resolved.
 
   1. v1.362.0 - pull down: springs back early, docks past a third, picture never black
@@ -46,10 +46,8 @@
   36. v1.363.1 - Add chapters on a chapterless mp3: chapter tracks after re-list and next pick; the playing song untouched
   37. v1.363.1 - watch cog: Add / Edit chapters row; the new sticker rows match the old
   38. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
-  39. v1.367.0 - admin, phone: five groups, "apply to everyone" lines, an old Automation & Storage bookmark opens Scan & cache
-  40. v1.367.0 - member account: no admin pages or rows, personal switches intact, push under Notifications when on
 
-  Passed 2026-10-06 (deleted from DEVICE-CHECKS.md): [x] v1.365.0 - a one-off download with the server stopped: "Can't reach FileTube", it clears; [x] v1.365.0 - stuck row "updated N ago", queued "waiting N"; [x] v1.365.0 - Download trace saves a .txt in the home-screen app; [x] v1.366.0 - 360 view checks (iPhone live picture, drag direction and Move to look, native full screen and PiP, Video type Flat/Auto, container ffprobe detection).
+  Passed 2026-10-06 (deleted from DEVICE-CHECKS.md): [x] v1.367.0 - Settings reorganized, admin and member views; [x] v1.365.0 - a one-off download with the server stopped: "Can't reach FileTube", it clears; [x] v1.365.0 - stuck row "updated N ago", queued "waiting N"; [x] v1.365.0 - Download trace saves a .txt in the home-screen app; [x] v1.366.0 - 360 view checks (iPhone live picture, drag direction and Move to look, native full screen and PiP, Video type Flat/Auto, container ffprobe detection).
 
   Passed 2026-10-05 (deleted from DEVICE-CHECKS.md): [x] v1.364.0 - the iPhone SE (iOS 15) shows tiles, Music and working bottom buttons; [x] v1.364.0 - Export error log in the home-screen app; [x] v1.364.0 - center hold: volume bar on a speaker, "Use the side buttons" on the phone; [x] v1.364.0 - a plain center tap selects with one tick; [x] v1.364.0 - Music tab again opens the iPod with no song; [x] v1.364.0 - the Add chapters row sits left; [x] v1.363.0 - the Ask me prompt, the 5 s countdown, a tap cancels it; [x]
   v1.363.0 - the mini player never prompts; [x] v1.341.3 - watch page: turn back upright settles in one step; [x] v1.350.0 - Pocket turn back: send the
@@ -60,6 +58,39 @@
 
   Passed 2026-10-04 (deleted from DEVICE-CHECKS.md): [x] v1.362.1 - pause shows the chevron, ~3 s after play it goes, a touch
   shows it; [x] v1.362.1 - 3 s is right; [x] v1.362.1 - a double-tap at the hidden chevron's spot skips, never minimizes.
+
+- [ ] **Remove the old Settings names and ids (tech debt)** _(Dean, 2026-10-06: "that's now tech debt to keep for no reason")_ -
+  v1.367.0 kept a compatibility layer so old bookmarks and the remembered page survived the reorganization. Dean passed the new
+  menu, so it goes: (a) `data-md-aliases` on the Settings `.md-root` (setup.html) and the alias map + `resolveKey` in
+  `wireMasterDetail` (common.js), including the stored `ft-md:setup` rewrite; keep the `pending` key (it also serves a plain
+  `#users` link while the admin page is still hidden); (b) the tests that pin the old ids both ways (setup-master-detail.test.js:
+  "OLD_TO_NEW", the stored-old-selection case, the 18-pages table) and the census baseline's role of "v1.366.1" naming; (c) any
+  live text that still says "Automation & Storage", "Resume rows", "Critter sound check", "Video/Music/Book folders" as a page name,
+  or "Settings > Mobile player" for the custom-controls switch (a pre-existing wrong path; the switch is in Experimental), in
+  `docs/`, `public/`, `lib/` comments and the README; `public/assets/icons/README.md:201` says "Settings -> Media folders". Not
+  touched: history (ROADMAP Shipped entries, releases.json, completed plans, git). Cost to disclose in the ledger: an old
+  Settings bookmark lands on the menu's first page. Measure first: grep for every old id and name, list what each pin protects.
+
+- [ ] **Lock the iPod in portrait: turning the phone sideways changes nothing** _(Dean, 2026-10-07: "lock the iPod mode in
+  iPod mode. So, like, if you even turn the phone sideways, it won't change it.")_ - **What exists:** since UI pass D7 the Pocket
+  skin is a DEVICE class (`html.is-phone`, set once from the screen's short side), so a rotate no longer tears the skin down
+  (public/js/music-skins.js `markPhoneClass`); but style.css still has landscape layouts (`@media (orientation: landscape)`
+  blocks) that re-lay the player out when the phone turns. The web app manifest sets no `orientation`. **To measure at intake
+  (not assumed):** what the iPod looks like today in landscape on Dean's iPhone; whether iOS honours a manifest `orientation`
+  for the home-screen app (Screen Orientation `lock()` is not available to web pages on iOS Safari, per MDN compat data, to be
+  re-checked); and, if not, whether drawing the iPod at its portrait size and counter-rotating it in landscape works with the
+  click wheel's touch angles and the haptics. Scope question for Dean: only while the iPod skin is up, or the whole app.
+
+- [ ] **Named radio stations** _(parked by the v1.368.0 intake, R2)_ - Favorites, Genre, Throwback and Deep cuts stations built on
+  the v1.368.0 radio picker.
+
+- [ ] **A radio row in the pocket iPod skins and on the speaker's now playing** _(parked by the v1.368.0 intake, R2)_.
+
+- [ ] **Count plays, skips and finishes for music** _(parked by the v1.368.0 intake, R2)_ - music has no play counts today
+  (`media_view_counts` is video only), no skips and no finished flag; a radio that weighs away from skips needs them first.
+
+- [ ] **Opt-in outside similar-artist data for radio** _(parked by the v1.368.0 intake, R2)_ - Last.fm or ListenBrainz similar
+  artists, off by default (a network call per station).
 
 ### Bugs
 
@@ -691,6 +722,33 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.368.0 - Music radio that stays close, Start radio, and a Shuffle mode (2026-10-07)
+
+- Dean's complaint (2026-10-06): "The random genre change is rough... It gets real random after a point." Autoplay now asks a
+  server-side station picker (GET /api/music/radio, lib/music/radio.js) drawn against a recorded SEED: tiers T1 the seed artist,
+  T2 same genre within 5 years, T3 same genre, T4 a neighbouring genre (an artist bridge, a shared word, second degree), T5 the
+  same folder, T6 the same YouTube category, T7 the rest; 2 seed-artist slots per 5; likes 2x, played in 24 h 0.25x; never 3 in a
+  row and at most 3 per 24 plays from one artist; a DJ-set chapter is spaced by its set (Dean's R15: a DJ channel's station stays
+  on the channel). yt-dlp's "Music" / "Gaming" category tags count as untagged. The route reads only the viewer's visible library
+  (the same function GET /api/music uses).
+- Start radio from a song (row menu, sticker), an album or artist (the drill's Radio button), and the iPod's Artist / Album / Genre
+  levels (a trailing row). A radio chapter plays its own chapter and stops (R13). A resume keeps the station.
+- Shuffle mode (R5, R16 "like Spotify"): a toggle beside Loop and Autoplay (desktop chip, sticker row, pop-out), synced; your songs
+  are shuffled, station picks stay after them; off restores the order.
+- Measured: the T0 production baseline (23,754 tracks: today's picker 1-hour longest same-artist run 4 / 5, far-from-seed
+  78.9% / 84.2% in the span mode) and two production runs of the new picker (run 2: longest run 2 / 2, max plays of one artist
+  3 / 3; medians met; p90 genre changes 37.5%, far-from-tagged-seed 50.0%). Dean ruled to ship WITHOUT a run of the final
+  picker (2026-10-07: "merge without"); his device pass is the arbiter.
+- DISCLOSED: a library smaller than the session (every song already queued) ends the station; after ~200 continuous plays one
+  batch can jump genre once (adversary r4 S10); two widen behaviours and the file-end guard are unbound; no neighbour cache (a
+  shared one would leak one viewer's library into another's station; ~53-73 ms per request on 23.5k tracks); the exclude list is
+  what fits 3500 URL characters (~80-100 ids). Tracker #291.
+- Suites at de39b4fd: Node 22.23.1 `# tests 11314` `# pass 11301` `# fail 0`; Node 24.20.0 `ℹ pass 11301` `ℹ fail 0`.
+- Gate (adversary + qa + security-brief): r1 CHANGES @aace109b (R13 broken for two chapters of a set, the dock return dropped the
+  station, silence, three Shuffle bugs, a late Start radio, a dozen unbound claims); r2 CHANGES @590cff36 (a tapped radio chapter,
+  duplicate rows looping, a skewed draw); r3 CHANGES @75b35997 (long sessions went silent past the URL budget); r4 APPROVED
+  @de39b4fd by all three. Lesson: LESSONS section 5.
 
 ### v1.367.0 - Settings reorganized: SYSTEM, PERSONALIZE, ACCOUNT, LIBRARY, ADVANCED (2026-10-06)
 
