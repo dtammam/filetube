@@ -150,6 +150,7 @@ const CLASSIFICATION = {
   'DELETE /api/subscriptions/failures/:id': 'manage-subs',
   'DELETE /api/subscriptions/failures/all': 'manage-subs',
   'POST /api/ytdlp/download': 'manage-subs',
+  'POST /api/ytdlp/download-playlist': 'manage-subs', // v1.369.0 W3: one playlist job; requireManageSubscriptions first-line (the API token is refused outright, R9)
   'POST /api/ytdlp/download/:jobId/cancel': 'manage-subs',
   'POST /api/ytdlp/refresh-avatars': 'manage-subs',
   'POST /api/ytdlp/refresh-avatars/cancel': 'manage-subs',
@@ -419,6 +420,7 @@ const VISIBILITY = {
   'DELETE /api/subscriptions/failures/:id': na('clears one failure-log row; job bookkeeping only'),
   'DELETE /api/subscriptions/failures/all': na('clears the failure log; job bookkeeping only'),
   'POST /api/ytdlp/download': na('one-off download of a NEW file into the download root; addresses no existing item'),
+  'POST /api/ytdlp/download-playlist': na('v1.369.0: the picked videos of a playlist, each a NEW file into its channel folder through the one-off pipeline; addresses no existing item'),
   'POST /api/ytdlp/download/:jobId/cancel': na('stops one one-off download job; job control only'),
   'POST /api/ytdlp/refresh-avatars': na('registry fan-out: rewrites channel AVATAR files derived from the registry; response is aggregate counts only (count-oracle residual: Wave B read-surface census)'),
   'POST /api/ytdlp/refresh-avatars/cancel': na('cancel latch for the avatar fan-out; job control only'),
