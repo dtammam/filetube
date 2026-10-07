@@ -15,6 +15,12 @@ it wakes up: the purge half is DATA-LOSS territory and gets the FULL adversarial
 
 ## How music autoplay actually works today (the contrast that seeded the ideas)
 
+> **Superseded by v1.368.0 (2026-10-07):** the three-arm picker described below (artist arm, library arm,
+> recycle arm) is RETIRED. Autoplay now asks the server's station picker (GET /api/music/radio,
+> lib/music/radio.js): similarity tiers drawn against a recorded station seed, artist spacing, like
+> weighting, and a server-side recycle. See docs/exec-plans/completed/2026-10-06-v1368-music-radio.md. The text
+> below is kept as the historical contrast this plan was written against.
+
 `music.js` `maybeExtendQueueForAutoplay`. It is a RADIO STATION, not a similarity engine:
 
 - Fires only when playback reaches the LAST track in the queue (just-in-time extension,

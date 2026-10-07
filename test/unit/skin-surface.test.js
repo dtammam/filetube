@@ -462,7 +462,7 @@ test('U1 fastScan: a quick TAP still skips (hold never fires), and a ROTATE canc
   } finally { restore(); }
 });
 
-test('U1 onShuffle: the [data-skin-shuffle] zone fires the hook; without the hook it falls through harmlessly', () => {
+test('U1 onShuffle: the [data-skin-shufflemode] zone fires the hook; without the hook it falls through harmlessly', () => {
   // with the hook
   {
     const { dom, engine, restore } = bootEngine({ engineCfg: { onShuffle: null } });
@@ -812,6 +812,81 @@ test('U2 pop-out exclusion at the ENGINE level: a non-main-document surface neve
     assert.strictEqual(m.querySelector('[data-skin-channel]'), null, 'but not the "Go to channel" row (v1.317) - it navigates the window too');
     eng2.destroy();
   } finally { mainBoot.restoreAll(); }
+});
+
+test('v1.368.0 Start radio: the hook\'s row shows only while visible() says a song is up, a tap calls onStart once and closes the menu; no hook (podcasts) = no row', () => {
+  const state = { visible: true, starts: 0 };
+  const b = bootSticker({ extras: false });
+  try {
+    const eng = b.dom.window.FileTubeSkinSurface.create({
+      panel: panel(b.dom),
+      getSkinId: () => 'ipod', getCtx: () => ({ track: {}, upNext: [], fullList: [] }),
+      hostCtl: (id) => b.dom.window.document.getElementById(id),
+      sticker: { onSkinChange: () => {}, radio: { visible: () => state.visible, onStart: () => { state.starts += 1; } } },
+    });
+    eng.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    const row = sMenu(b.dom).querySelector('[data-skin-radio]');
+    assert.ok(row, 'the Start radio row rendered');
+    assert.match(row.textContent, /Start radio/);
+    sClick(b.dom, row);
+    assert.strictEqual(state.starts, 1, 'the tap started the radio through the view hook');
+    state.visible = false;
+    eng.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    assert.ok(sMenu(b.dom).querySelector('[data-skin-loop]'), 'quick menu up (non-vacuous)');
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-radio]'), null, 'no song up = no row');
+    eng.destroy();
+    b.engine.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-radio]'), null, 'no hook = no row (podcasts)');
+  } finally { b.restoreAll(); }
+});
+
+test('v1.368.0 Shuffle mode: the hook renders a page-1 row beside Loop on the tab AND the pop-out, a tap flips via onToggle and re-renders; no hook (podcasts) = no row', () => {
+  const state = { on: false };
+  const b = bootSticker({ extras: false });
+  const pipDom = new JSDOM('<body><div id="panel" class="music-nowplaying-panel"></div></body>', { url: 'http://localhost/pip' });
+  try {
+    const mk = (panelEl, win) => b.dom.window.FileTubeSkinSurface.create({
+      panel: panelEl,
+      getSkinId: () => 'ipod', getCtx: () => ({ track: {}, upNext: [], fullList: [] }),
+      hostCtl: (id) => b.dom.window.document.getElementById(id),
+      win,
+      sticker: { onSkinChange: () => {}, shuffle: { enabled: () => state.on, onToggle: () => { state.on = !state.on; } } },
+    });
+    // the tab
+    const eng = mk(panel(b.dom));
+    eng.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    let row = sMenu(b.dom).querySelector('[data-skin-shufflemode]');
+    assert.ok(row, 'the Shuffle row rendered (hook present)');
+    assert.strictEqual(row.getAttribute('aria-checked'), 'false', 'reflects enabled()');
+    assert.match(row.textContent, /Shuffle\s*Off/, 'says Shuffle Off');
+    assert.ok(row.querySelector('.mms-sm-glyph svg path'), 'draws the skins\' shuffle glyph (the .icon-shuffle mask is retired)');
+    const order = [...sMenu(b.dom).querySelectorAll('[data-skin-loop], [data-skin-shufflemode]')].map((e) => (e.hasAttribute('data-skin-loop') ? 'loop' : 'shuffle'));
+    assert.deepStrictEqual(order, ['loop', 'shuffle'], 'Shuffle sits right after Loop');
+    sClick(b.dom, row);
+    assert.strictEqual(state.on, true, 'the tap flipped the view state via onToggle');
+    row = sMenu(b.dom).querySelector('[data-skin-shufflemode]');
+    assert.strictEqual(row.getAttribute('aria-checked'), 'true', 're-rendered to the new state');
+    eng.destroy();
+    // the pop-out
+    const eng2 = mk(pipDom.window.document.getElementById('panel'), pipDom.window);
+    eng2.paint();
+    const pipPanel = pipDom.window.document.getElementById('panel');
+    pipPanel.querySelector('[data-skin-sticker]').dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true }));
+    const prow = pipPanel.querySelector('[data-skin-sticker-menu] [data-skin-shufflemode]');
+    assert.ok(prow, 'the pop-out offers the Shuffle row');
+    prow.dispatchEvent(new pipDom.window.MouseEvent('click', { bubbles: true }));
+    assert.strictEqual(state.on, false, 'the pop-out tap flips the shared setting');
+    eng2.destroy();
+    // podcast parity: no hook, no row
+    b.engine.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    assert.ok(sMenu(b.dom).querySelector('[data-skin-loop]'), 'quick menu up (non-vacuous)');
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-shufflemode]'), null, 'no hook = no row');
+  } finally { b.restoreAll(); }
 });
 
 test('v1.254 autoplay toggle: the hook renders the page-1 row, a tap flips via onToggle and re-renders; no hook (podcasts) = no row', () => {

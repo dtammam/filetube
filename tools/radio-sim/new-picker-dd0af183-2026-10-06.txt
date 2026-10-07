@@ -1,0 +1,47 @@
+--picker new on production, 2026-10-06 - bundle built from dd0af183 (1217 lines, sha256 a2a4a907ab17b5e2...),
+pasted by Dean's agent, copied here VERBATIM (some lines arrive cut off through the relay; kept as received).
+Exit codes: selftest_exit=0 baseline_exit=0 new_exit=0. Run 3 took 1m35s.
+
+==================== radio-new.txt (session sections) ====================
+SESSIONS - v1.368.0 STATION: seed = the first track, a radio chapter pick stops at its segment (R13)
+ 1 hour
+  metric                                   median   p90
+  tracks played                            16       21
+  distinct artists                         8        12
+  artist repeats (plays - distinct)        7        12
+  max plays of one artist                  3        4
+  same-artist back-to-back pairs           2        4
+  longest same-artist run                  2        2
+  album repeats (titled albums)            2        6
+  titled album returns within next 5       13.3%    40.0%
+  titled album returns within next 10      20.0%    50.0%
+  share of picks from the artist arm       0.0%     0.0%
+  share of picks that are lone chapters    20.0%    95.8%
+  genre changes between tagged neighbours  0.0%     37.5%
+  picks sharing neither seed artist nor genre 0.0%     87.5%
+    the same, seeds WITH a genre tag only  0.0%     50.0%
+ 3 hours
+  metric                                   median   p90
+  tracks played                            46       56
+  distinct artists                         13       21
+  artist repeats (plays - distinct)        32       44
+  max plays of one artist                  9        11
+  same-artist back-to-back pairs           4        8
+  longest same-artist run                  2        2
+  album repeats (titled albums)            16       26
+  titled album returns within next 5       13.2%    31.7%
+  titled album returns within next 10      18.2%    42.4%
+  share of picks from the artist arm       0.0%     0.0%
+  share of picks that are lone chapters    15.2%    98.0%
+  genre changes between tagged neighbours  4.0%     27.3%
+  picks sharing neither seed artist nor genre 2.1%     84.8%
+    the same, seeds WITH a genre tag only  0.0%     8.9%
+  sessions whose picks ran dry (playback stopped) before 1h: 0/200;
+  tier share of picks, all sessions, 3 hours: T1 17.3% | T2 30.0% | T3 6.7% | T4 1.9% | T5 2.1% | T6 20.9% | T7 21.1%
+
+==================== radio-baseline-v2.txt (today's picker, the two new rows) ====================
+ROLL 1 hour:  longest same-artist run 4 / 4;  seeds WITH a genre tag only 40.0% / 70.0%
+ROLL 3 hours: longest same-artist run 4 / 4;  seeds WITH a genre tag only 66.7% / 84.2%
+SPAN 1 hour:  longest same-artist run 4 / 5;  seeds WITH a genre tag only 78.9% / 84.2%
+SPAN 3 hours: longest same-artist run 5 / 5;  seeds WITH a genre tag only 87.0% / 94.2%
+(every other row of radio-baseline-v2.txt is identical to tools/radio-sim/baseline-2026-10-06.txt)
