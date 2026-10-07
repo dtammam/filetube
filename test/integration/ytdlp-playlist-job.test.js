@@ -30,9 +30,9 @@ beforeEach(() => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-pljob-data-'));
   calls = []; live = 0; maxLive = 0; failIds = new Set(); holdMs = 5;
   run.probeChannel = async (watchUrl) => 'Chan ' + new URL(watchUrl).searchParams.get('v').slice(-1);
-  run.runDownload = async (sub, cfg, ids) => {
+  run.runDownload = async (sub, cfg, ids, opts) => {
     live += 1; maxLive = Math.max(maxLive, live);
-    calls.push({ id: ids[0], folder: sub.name });
+    calls.push({ id: ids[0], folder: sub.name, albumTags: opts ? opts.albumTags : undefined });
     await new Promise((r) => setTimeout(r, holdMs));
     live -= 1;
     return failIds.has(ids[0]) ? { ok: false, code: 1, stdout: '', stderr: '', error: 'yt-dlp exited with code 1' } : { ok: true, code: 0, stdout: '', stderr: '' };
@@ -320,4 +320,99 @@ test('gate r2: a FULL pending file refuses a one-off too (503) - even when the h
     assert.strictEqual(res.status, 503, 'the one-off is refused, not accepted and then dropped off the file');
     assert.deepStrictEqual(pending.readPending(dataDir).map((e) => e.jobId), before, 'every accepted job still persisted');
   } finally { release(); await new Promise((r) => setTimeout(r, 50)); await app.close(); }
+});
+
+// ---- v1.371.0: Save as an album (plan docs/exec-plans/active/2026-10-07-v1371-album-tags.md) ----
+const ALBUM = (ids, extra) => Object.assign({ title: 'Kyle Gordon Is Everywhere', artist: 'Kyle Gordon', cleanTitles: true, tracks: Object.fromEntries(ids.map((id, i) => [id, i + 3])) }, extra || {});
+
+test('v1.371.0: an audio job with an album hands EACH track its own tags (its playlist number), and the row keeps the album for Retry', async () => {
+  const ids = [1, 2, 3].map(ID);
+  failIds = new Set([ids[1]]);
+  const app = await startApp(makeDeps());
+  try {
+    const res = await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', album: ALBUM(ids) }));
+    assert.strictEqual(res.status, 202);
+    const e = await settle((await res.json()).jobId);
+    assert.deepStrictEqual(calls.map((c) => c.albumTags), ids.map((id, i) => ({ album: 'Kyle Gordon Is Everywhere', albumArtist: 'Kyle Gordon', track: i + 3, cleanTitles: true })));
+    assert.strictEqual(e.album.title, 'Kyle Gordon Is Everywhere');
+    assert.deepStrictEqual({ ...e.album.tracks }, { [ids[0]]: 3, [ids[1]]: 4, [ids[2]]: 5 });
+  } finally { await app.close(); }
+});
+
+test('v1.371.0: a job without an album hands no tags (today\'s job, unchanged)', async () => {
+  const ids = [1, 2].map(ID);
+  const app = await startApp(makeDeps());
+  try {
+    const e = await settle((await (await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio' }))).json()).jobId);
+    assert.deepStrictEqual(calls.map((c) => c.albumTags), [null, null]);
+    assert.strictEqual(e.album, null);
+  } finally { await app.close(); }
+});
+
+test('v1.371.0: an album with video, or a bad album, is 400 and queues nothing', async () => {
+  const ids = [1].map(ID);
+  const app = await startApp(makeDeps());
+  try {
+    const v = await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'video', album: ALBUM(ids) }));
+    assert.strictEqual(v.status, 400);
+    assert.strictEqual((await v.json()).error, 'Save as an album needs the Audio format');
+    const b = await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', album: ALBUM(ids, { artist: '' }) }));
+    assert.strictEqual(b.status, 400);
+    assert.ok((await b.json()).error.startsWith('The album needs an album artist'));
+    await new Promise((r) => setTimeout(r, 50));
+    assert.strictEqual(calls.length, 0);
+    assert.strictEqual(pending.readPending(dataDir).length, 0);
+  } finally { await app.close(); }
+});
+
+test('v1.371.0: the album is persisted, and a restart resumes the remainder WITH it', async () => {
+  const ids = [1, 2, 3].map(ID);
+  holdMs = 200;
+  const app = await startApp(makeDeps());
+  try {
+    await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', album: ALBUM(ids) }));
+    const saved = pending.readPending(dataDir).find((p) => p.kind === 'playlist');
+    assert.strictEqual(saved.album.title, 'Kyle Gordon Is Everywhere');
+    assert.deepStrictEqual(saved.album.tracks, { [ids[0]]: 3, [ids[1]]: 4, [ids[2]]: 5 });
+  } finally { await app.close(); }
+  calls = [];
+  holdMs = 5;
+  pending.addPending(dataDir, { jobId: 'job-album-restart', kind: 'playlist', listId: LIST, title: 'T', ids, doneIds: [ids[0]], failedIds: [], format: 'audio', quality: 'best', album: ALBUM(ids, { cleanTitles: false }), createdAt: '2026-10-07T00:00:00.000Z' });
+  ytdlp.requeuePendingOneShots(makeDeps(), config());
+  await settle('job-album-restart');
+  const resumed = calls.filter((c) => c.albumTags && c.albumTags.cleanTitles === false);
+  assert.deepStrictEqual(resumed.map((c) => [c.id, c.albumTags.track]), [[ids[1], 4], [ids[2], 5]]);
+});
+
+test('v1.371.0: through the REAL runDownload, the spawned yt-dlp argv carries each track\'s tags (audio) - the wire, end to end', async () => {
+  const cp = require('node:child_process');
+  const { EventEmitter } = require('node:events');
+  const origSpawn = cp.spawn;
+  run.runDownload = orig.runDownload; // the real one: args.js builds the argv
+  const argvs = [];
+  cp.spawn = (cmd, argv) => {
+    argvs.push(argv);
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter(); child.stderr = new EventEmitter();
+    child.kill = () => {}; child.pid = 4242;
+    setImmediate(() => child.emit('close', 0));
+    return child;
+  };
+  const ids = [1, 2].map(ID);
+  const app = await startApp(makeDeps());
+  try {
+    const res = await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', album: ALBUM(ids, { title: 'Brat \\g<0>' }) }));
+    await settle((await res.json()).jobId);
+  } finally { cp.spawn = origSpawn; await app.close(); }
+  const downloads = argvs.filter((a) => a.includes('-x'));
+  assert.strictEqual(downloads.length, 2, 'one download spawn per track');
+  downloads.forEach((a, i) => {
+    const at = (field) => a[a.indexOf('pre_process:' + field) + 2];
+    assert.strictEqual(at('meta_album'), 'Brat \\\\g<0>', 'the album, backslash doubled');
+    assert.strictEqual(at('meta_album_artist'), 'Kyle Gordon');
+    assert.strictEqual(at('meta_track'), String(i + 3));
+    assert.ok(a.includes('pre_process:meta_title'), 'Clean up titles was on');
+    assert.ok(a.indexOf('pre_process:meta_album') < a.indexOf('-o'), 'before -o');
+    assert.ok(a[a.length - 1].endsWith(ids[i]), 'and it is that track\'s spawn');
+  });
 });

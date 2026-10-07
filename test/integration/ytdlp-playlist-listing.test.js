@@ -131,7 +131,8 @@ test('W2: Dean\'s example link lists its 24 entries (the verbatim T0 output), pa
     assert.strictEqual(body.entries.length, 24);
     assert.deepStrictEqual(body.entries.map((e) => e.id), EXAMPLE.entries.map((e) => e.id), 'every entry, in the list\'s order');
     const first = body.entries[0];
-    assert.deepStrictEqual(Object.keys(first).sort(), ['durationSec', 'id', 'inLibrary', 'thumb', 'title', 'unavailable']);
+    assert.deepStrictEqual(Object.keys(first).sort(), ['channel', 'durationSec', 'id', 'inLibrary', 'thumb', 'title', 'unavailable']);
+    assert.strictEqual(first.channel, 'kylegordonisgreat', 'v1.371.0: the verbatim row\'s channel, for the album-artist default');
     assert.strictEqual(first.title, EXAMPLE.entries[0].title);
     assert.strictEqual(first.durationSec, Math.round(EXAMPLE.entries[0].duration));
     assert.strictEqual(first.thumb, `https://i.ytimg.com/vi/${first.id}/mqdefault.jpg`, 'the thumb is rebuilt from the checked id, never a URL off stdout');

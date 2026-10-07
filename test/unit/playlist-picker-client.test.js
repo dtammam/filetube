@@ -67,7 +67,8 @@ afterEach(async () => {
   delete require.cache[COMMON];
 });
 const picker = () => global.document.querySelector('.playlist-picker');
-const switches = () => [...picker().querySelectorAll('input[type="checkbox"]')];
+// the VIDEO rows' switches (v1.371.0: the album section's two switches live in their own list)
+const switches = () => [...picker().querySelectorAll('.ui-list:not(.playlist-picker-album) input[type="checkbox"]')];
 const btn = (label) => [...picker().querySelectorAll('button')].find((b) => b.textContent.trim().startsWith(label));
 const click = (el) => el.dispatchEvent(new global.window.MouseEvent('click', { bubbles: true }));
 
@@ -111,7 +112,7 @@ test('picker (R2, R6): only the linked video starts ticked; in-library and unava
   await sleep(20);
   assert.strictEqual(switches().length, 3, '5 rows, 2 not tickable');
   assert.deepStrictEqual(switches().map((s) => s.checked), [false, true, false], 'only the linked video');
-  const rowsText = [...picker().querySelectorAll('.ui-row')].map((r) => r.textContent);
+  const rowsText = [...picker().querySelectorAll('.ui-list:not(.playlist-picker-album) .ui-row')].map((r) => r.textContent);
   assert.ok(rowsText[2].includes('Already in library') && rowsText[3].includes('Unavailable'));
   assert.strictEqual(btn('Download').textContent, 'Download (1)');
   assert.match(picker().querySelector('.oneoff-status').textContent, /Kyle Gordon Is Everywhere: 5 of 203 shown/);
@@ -263,4 +264,116 @@ test('gate r1 (QA W3): the Subscriptions one-off list shows ONE row per playlist
   const src = require('node:fs').readFileSync(require.resolve('../../lib/ytdlp/client/subscriptions.js'), 'utf8');
   assert.match(src, /Object\.entries\(visibleOneShotEntries\(latestSnapshot\.oneShots, dismissedOneShotIds\)\)/, 'renderOneShots draws through it');
   assert.match(src, /entry\.kind === 'playlist' && typeof formatPlaylistChipStatus === 'function' \? formatPlaylistChipStatus\(entry\)/);
+});
+
+// ---- v1.371.0: Save as an album (plan docs/exec-plans/active/2026-10-07-v1371-album-tags.md) ----
+const albumSection = () => picker().querySelector('.playlist-picker-album');
+const albumFields = () => picker().querySelector('.playlist-picker-album-fields');
+const albumSwitch = (label) => albumSection().querySelector(`input[aria-label="${label}"]`);
+const albumInput = (label) => [...albumFields().querySelectorAll('.ui-field')].find((f) => f.querySelector('label').textContent === label).querySelector('input');
+const KG = { listId: L, title: 'Kyle Gordon Is Everywhere', total: 4, page: 1, nextPage: null, entries: [
+  entry(1, { title: 'Kyle Gordon - Introduction (feat. Daniel Radcliffe) [Official Audio]', channel: 'kylegordonisgreat' }),
+  entry(2, { title: 'Kyle Gordon - Mr. Jambo (feat. Barry Bergen) [Official Music Video]', channel: 'kylegordonisgreat', inLibrary: true }),
+  entry(3, { title: 'Kyle Gordon – My Life (Is the Worst Life Ever) [Official Music Video]', channel: 'kylegordonisgreat' }),
+  entry(4, { title: 'I’m a Horse', channel: 'kylegordonisgreat' }),
+] };
+
+test('v1.371.0 defaultAlbumArtist: the name most rows credit first (any dash), else the channel without " - Topic"; a tie goes to the first to reach it', () => {
+  const c = fresh({});
+  const fx = require('../fixtures/ytdlp-playlist/example-list-PLUtyNbQXMTLg.json');
+  assert.strictEqual(c.defaultAlbumArtist(fx.entries), 'Kyle Gordon', 'Dean\'s real list (verbatim yt-dlp rows)');
+  assert.strictEqual(c.defaultAlbumArtist([{ title: 'Introduction', channel: 'Kyle Gordon - Topic' }, { title: 'Freak Out', channel: 'Kyle Gordon - Topic' }]), 'Kyle Gordon', 'Provided to YouTube');
+  assert.strictEqual(c.defaultAlbumArtist([{ title: 'A — x' }, { title: 'B - y' }, { title: 'B – z' }]), 'B', 'em / en dash too');
+  assert.strictEqual(c.defaultAlbumArtist([{ title: 'A - x' }, { title: 'B - y' }]), 'A', 'tie: first');
+  assert.strictEqual(c.defaultAlbumArtist([{ title: 'Song' }, null, {}]), '');
+});
+
+test('v1.371.0: the album section shows only for Audio, with the playlist title and the credited artist as defaults', async () => {
+  let c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'video' });
+  await sleep(20);
+  assert.strictEqual(albumSection().hidden, true, 'video: no album');
+  assert.strictEqual(albumFields().hidden, true);
+  await sleep(400);
+  c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  assert.strictEqual(albumSection().hidden, true, 'hidden until the list is read');
+  await sleep(20);
+  assert.strictEqual(albumSection().hidden, false, 'audio: the switch shows');
+  assert.strictEqual(albumSwitch('Save as an album').checked, false, 'off by default');
+  assert.strictEqual(albumFields().hidden, true, 'the fields wait for the switch');
+  assert.strictEqual(albumInput('Album').value, 'Kyle Gordon Is Everywhere');
+  assert.strictEqual(albumInput('Album artist').value, 'Kyle Gordon');
+});
+
+test('v1.371.0: with the format controls, switching to Audio reveals the album, and back to Video hides it', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, withFormatControls: true });
+  await sleep(20);
+  const format = picker().querySelector('select[aria-label="Format"]');
+  assert.strictEqual(albumSection().hidden, true);
+  format.value = 'audio'; format.dispatchEvent(new global.window.Event('change'));
+  assert.strictEqual(albumSection().hidden, false);
+  albumSwitch('Save as an album').checked = true; albumSwitch('Save as an album').dispatchEvent(new global.window.Event('change'));
+  assert.strictEqual(albumFields().hidden, false);
+  format.value = 'video'; format.dispatchEvent(new global.window.Event('change'));
+  assert.strictEqual(albumSection().hidden, true);
+  assert.strictEqual(albumFields().hidden, true, 'the fields go with it');
+  switches()[0].checked = true; switches()[0].dispatchEvent(new global.window.Event('change'));
+  await sleep(GUARD_MS);
+  click(btn('Download'));
+  await sleep(20);
+  assert.strictEqual(calls.find((x) => x.url === '/api/ytdlp/download-playlist').body.album, undefined, 'video never posts an album, even with the switch left on');
+});
+
+test('v1.371.0: Download posts the album - typed names, Clean up titles, and each track\'s PLAYLIST position (blocked rows counted)', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio', quality: 'best', filetype: 'mp3' });
+  await sleep(GUARD_MS + 20);
+  pointerClick(albumSwitch('Save as an album'));
+  assert.strictEqual(albumSwitch('Save as an album').checked, true);
+  assert.strictEqual(albumFields().hidden, false);
+  pointerClick(albumSwitch('Clean up titles'));
+  albumInput('Album').value = '  Kyle Gordon Is Wonderful '; albumInput('Album').dispatchEvent(new global.window.Event('input'));
+  switches().forEach((s) => { s.checked = true; });
+  switches()[0].dispatchEvent(new global.window.Event('change'));
+  click(btn('Download'));
+  await sleep(20);
+  const body = calls.find((x) => x.url === '/api/ytdlp/download-playlist').body;
+  const [a, , c3, d4] = KG.entries.map((e) => e.id);
+  assert.deepStrictEqual(body.ids, [a, c3, d4]);
+  assert.deepStrictEqual(body.album, { title: 'Kyle Gordon Is Wonderful', artist: 'Kyle Gordon', cleanTitles: true, tracks: { [a]: 1, [c3]: 3, [d4]: 4 } });
+});
+
+test('v1.371.0: an empty album artist says so and posts nothing', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await sleep(GUARD_MS + 20);
+  pointerClick(albumSwitch('Save as an album'));
+  albumInput('Album artist').value = '   ';
+  switches()[0].checked = true; switches()[0].dispatchEvent(new global.window.Event('change'));
+  click(btn('Download'));
+  await sleep(20);
+  assert.strictEqual(calls.filter((x) => x.url === '/api/ytdlp/download-playlist').length, 0);
+  assert.strictEqual(picker().querySelector('.oneoff-status').textContent, 'Name the album and its artist, or turn off Save as an album.');
+});
+
+test('v1.371.0: the album switches honour the activation guard - a tap inside the window leaves them as they were', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await sleep(20);
+  pointerClick(albumSwitch('Save as an album'));
+  assert.strictEqual(albumSwitch('Save as an album').checked, false, 'inside the window: refused');
+  assert.strictEqual(albumFields().hidden, true);
+  await sleep(GUARD_MS);
+  pointerClick(albumSwitch('Save as an album'));
+  assert.strictEqual(albumSwitch('Save as an album').checked, true, 'after it: toggles');
+});
+
+test('v1.371.0: Retry of an album job posts the album back, so the retried tracks join it', () => {
+  const c = fresh({});
+  const albumObj = { title: 'Brat', artist: 'Charli xcx', cleanTitles: false, tracks: { a: 1, b: 2 } };
+  const req = c.buildPlaylistRetryRequest({ kind: 'playlist', failedIds: ['b'], listId: L, title: 'T', format: 'audio', album: albumObj });
+  assert.deepStrictEqual(req.body.album, albumObj);
+  assert.strictEqual(c.buildPlaylistRetryRequest({ kind: 'playlist', failedIds: ['b'], listId: L, title: 'T', format: 'audio', album: null }).body.album, undefined);
 });
