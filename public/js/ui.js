@@ -527,6 +527,12 @@
     }
 
     function finish() {
+      // v1.372.0 (Dean: Enter on the Move to Trash confirm re-opened the card menu): read BEFORE the sheet leaves the page
+      // (removing a focused node moves focus to body) whether focus is still ours. A dialog opened from this sheet while it
+      // closed (a menu item's confirm) has taken focus by now, and must keep it: handing it back to our opener put focus on
+      // the card's menu button BEHIND the confirm, so the next Enter pressed that button.
+      var focusNow = doc.activeElement;
+      var focusIsOurs = !focusNow || focusNow === doc.body || focusNow === doc.documentElement || s.contains(focusNow);
       unwatchPlacement();
       if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
       if (onEnd) { s.removeEventListener('transitionend', onEnd); onEnd = null; }
@@ -538,7 +544,7 @@
       if (bl) bl.release(doc, win, lockOwner);
       state = 'closed';
       var back = opener; opener = null;
-      if (back && typeof back.focus === 'function' && back.isConnected !== false) {
+      if (focusIsOurs && back && typeof back.focus === 'function' && back.isConnected !== false) {
         try { back.focus(); } catch (_) {}
       }
       if (typeof o.onClose === 'function') o.onClose();
@@ -562,7 +568,12 @@
         return ctrl;
       }
       applyVariant(resolveVariant(requested, o.anchor, win));
-      opener = doc.activeElement || null;
+      // A sheet opened from inside a CLOSING one (a menu item opening its confirm) returns focus where that one would have:
+      // the focused item is about to leave the page (v1.372.0).
+      var active = doc.activeElement || null;
+      var closingHost = active && typeof active.closest === 'function' ? active.closest('.ui-sheet.is-closing') : null;
+      opener = closingHost && closingHost.__uiOpener ? closingHost.__uiOpener : active;
+      s.__uiOpener = opener;
       anchorRect = null;
       if (variant === 'popover' && o.anchor && o.anchor.getBoundingClientRect) {
         var rect = o.anchor.getBoundingClientRect();

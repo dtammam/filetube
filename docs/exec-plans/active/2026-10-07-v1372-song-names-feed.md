@@ -47,7 +47,14 @@ sibling lists: every home surface and every synced-pref list).
   setup.html rows + setup.js `wireHomeRowToggle` / `loadHomeRowControl` (`ft-home-continue-listening`).
 
 ## 3. Measurements
-(builder fills in)
+- `%(.{id,title,meta_title})j` (yt-dlp 2026.08.19, -s on QFIFEobmIIQ): with a `meta_title` set the dict carries it
+  (`"meta_title": "Planet of the Bass"`); without one the key is absent, so the capture template changes nothing for any
+  other download.
+- Real yt-dlp end to end (FileTube's argv, album.titles = 'Planet of the Bass \\g<0> %(id)s'): exit 0; the captured
+  library title and the file's title tag are both exactly that string; album "Kyle Gordon Is Everywhere", track 7; the
+  file name keeps YouTube's title.
+- 390px Chromium: each pickable row shows the cleaned name and "Track N"; the first draft's per-row "tap the name to edit"
+  was cut off, so the hint moved to the Save as an album row ("Tap a song's name to rename it").
 
 ## 4. Rulings (Dean, 2026-10-07)
 
@@ -60,6 +67,12 @@ sibling lists: every home surface and every synced-pref list).
 - R5 (builder) The server decides the feed from the user's SYNCED pref (`ft-home-music`, '0' = off), so every home surface
   (and any future one) honours it with no per-request flag; the Settings switch pushes the pref before it reports done.
 - R6 (builder) Music = a media item of `type === 'audio'` (yt-dlp audio and local audio files alike); podcast episodes are not.
+- R7 (Dean, mid-build) Each row shows the name it will be saved as ("It wasn't clear what the new saved name would have
+  been"); the library list shows the same name as Music (he saw "Kyle Gordon - Name [...]" there but not in Music).
+- R8 (Dean, mid-build, a bug folded in) "If you right-click or go to Move to Trash? and press Enter, it brings up the
+  right-click menu." He first ruled that Enter should confirm; the pre-commit suite showed that contradicts F33 (the
+  2026-09-27 UI pass: "the keyboard cannot confirm by accident", three locks), and asked again he ruled F33 stays: Enter
+  does nothing on a confirm; only the focus fix ships.
 
 ## 5. Waves
 
@@ -82,6 +95,15 @@ sibling lists: every home surface and every synced-pref list).
   pattern), and `/api/home` (rows + grid) and the `/api/videos` home arm skip `type === 'audio'` media when it is '0'.
 - Falsifier: integration tests per surface with a seeded pref (on, off, absent), the folder/search arms unaffected, the
   triple-lock and settings-shape locks.
+
+### W4. Enter on Move to Trash re-opened the menu (ui.js, every sheet)
+- Diagnosis (falsified first, in Chromium with real keys: a button -> ui.menu -> Move to Trash -> ui.confirm): the menu's
+  `finish()` (after its ~280 ms exit) focused its opener unconditionally, AFTER the confirm had taken focus, so focus sat
+  on the button behind the dialog and Enter pressed it. Before: focus "kebab", menuOpens 2, answers [].
+- Fix: `finish()` gives focus back only if focus is still in the sheet (or nowhere); `open()` from inside a CLOSING sheet
+  inherits that sheet's opener (focus returns to the card's button after the confirm). After: focus on the dialog,
+  menuOpens 1, answers [] (Enter does nothing: F33).
+- Bound: test/unit/ui-focus-handoff.test.js; the F33 locks (subs-destructive-confirm and the Extras delete) stay green.
 
 ## 6. Gate
 Seats: adversary (floor) + qa + security-brief (a new per-user read on every home surface; a new persisted field).
