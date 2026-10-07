@@ -512,7 +512,7 @@ test('v1.372.0: the song names the picker sent reach each track\'s tags (and the
   } finally { await app.close(); }
 });
 
-// ---- v1.373.0: Hide from feed + quiet playlist videos (plan docs/exec-plans/active/2026-10-07-v1373-hide-from-feed.md) ----
+// ---- v1.373.0: Hide from feed + quiet playlist videos (plan docs/exec-plans/completed/2026-10-07-v1373-hide-from-feed.md) ----
 const arrivalsStore = require('../../lib/ytdlp/arrivals');
 const arrivalOf = (id, type) => arrivalsStore.findArrival(arrivalsStore.listArrivals(dataDir), id, type);
 async function startAppAs(deps, userId) {

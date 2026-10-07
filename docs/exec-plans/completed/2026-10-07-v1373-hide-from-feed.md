@@ -3,10 +3,10 @@ plan: v1373-hide-from-feed
 harness: v2 · lean
 branch: feat/v1.373.0-hide-from-feed
 anchor: outcome
-status: Building
-next: W1-W2, then the gate (section 6) and the release as v1.373.0
+status: Shipped v1.373.0
+next: the release as v1.373.0
 design: Dean's device pass on v1.372.0 and his rulings 2026-10-07 (R1-R4). Base main 6846aec5. The subtitles + 360 + cleanup wave renumbers to v1.374.0.
-gate: pending
+gate: APPROVED - security-brief + qa r2 @eb93798e, adversary r4 @911e9002 (Dean ruled quick delta re-checks by the adversary at rounds 3 and 4)
 ---
 
 # v1.373.0: "Hide from feed" for a playlist download, no notification per playlist video (and the music switch comes out)
@@ -220,6 +220,8 @@ returned by GET /api/prefs (getPrefs is unfiltered; read, not run) and the clien
   functions (qa S2). Disclosed, not fixed: a Retry tapped by ANOTHER user (the status row is shared) hides the retried videos
   from that user's feed (adversary S5); two playlist jobs racing for the same download share one arrival (S6).
 - Mutants on the fixes: 8 of 8 red by name (mut-1373r1 + r1b).
+- Final suites @911e9002: Node 22.23.1 `# tests 11519 / # pass 11506 / # fail 0 / # skipped 13`; Node 24.20.0 `tests 11519 /
+  pass 11506 / fail 0 / skipped 13`.
 - The album track listing (W3, merged from feat/v1.373.0-album-order @b56a7394): 9 album mutants, 8 red, 1 equivalent (a
   redundant stable tie-break, removed).
 
@@ -366,6 +368,24 @@ no problems. Sweep: zero hits for sortAlbumOrder / albumDrillSort in public, lib
   track order (the default) the level is built off the cached list with `sortAlbumOrder`, an EXACT mirror of the server's
   albumSortValue (any integer disc, so the r2 disc-0 mismatch does not return - a test compares it with
   lib/music/query.js sortTracks on one album); any other album sort asks the server. Mutants 4 of 4 red.
+
+Gate: APPROVED r4 @911e9002 - adversary
+Instruments: targeted node --test (Node 22.23.1) on a git-archive sandbox of 911e9002. pocket-library-paging-paths,
+music-pocket-menus (integration), music-album-order, music-sort-behaviour: 48 tests, 48 pass, 0 fail (the r3 failure, W1 paths
+"an artist drill pages the artist route; its albums come from the whole list", now passes). Siblings: pocket-library-paging +
+music-pocket-menus-r1: 32 tests, 32 pass, 0 fail; unit music-pocket-menus, music-skins, music-skin-integration,
+pocket-quick-scroll, pocket-skins-menu: 248 tests, 248 pass, 0 fail. 9 mutants: 8 red, 1 survivor.
+- The fix holds. q1 (never the cached list) turns the paging test red (the r3 failure); q2 (always the cached list) turns the
+  divergent-sort play-through red; q3 (no sortAlbumOrder) red by the source lock only; q4 (disc > 0, the old client rule), q6
+  (a missing track last), q9 (a missing disc 0) red against the server comparison; q7 (descending) red in 4 play-through
+  tests; q8 (an unstable tie-break) red in the paging test and the mirror test.
+- S1 Survivor q5 (disc weight 1000 -> 10): the fixture's highest disc-1 track is 10, which still sorts before disc 2 track 1
+  at weight 10. Add a disc-1 track 12 to the mirror test.
+- S2 (reasoned, not run) "Mirrored EXACTLY" holds for the comparator. Ties (tracks without numbers, e.g. an untagged
+  downloaded "album") keep each side's INPUT order: the server's library order for Albums > album, the artist sort for the
+  iPod's artist > album. So an unnumbered album can list differently on the two paths.
+- S3 (disclose, as the brief notes) The level's scope now depends on the album sort: in track order it is the artist's own
+  songs on that album; under any other album sort it is the whole album (r3 S1, compilations only).
 
 ## 7. Evidence
 - Recon (builder): `users.id` is an INTEGER key (lib/db/sqlite.js `CREATE TABLE users`), so the job and the arrivals store

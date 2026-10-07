@@ -713,6 +713,29 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.373.0 - Hide a playlist download from your feed; album track numbers (2026-10-07)
+
+- Dean (2026-10-07, after v1.372.0 on his device): the home-feed switch "worked but wasn't what I intended": he wants a
+  per-download opt-out ("Basically the hide modal"), keeps his hour-long chaptered audio "albums" visible, and "make it so
+  that notifications don't pop for these. for playlists". Then, from a read-only exploration of "should an album I
+  download have a track listing and be sorted by track": "let's do it all together".
+- Removed: Settings > Show music in the home feed (v1.372.0) with its server filters; the keepalive prefs POST and the
+  ui.js focus fix stay.
+- The picker's "Hide from feed" row (any format, off by default; "Out of your feed in Modern mode"). The playlist job
+  records an ARRIVAL per video before it starts (lib/ytdlp/arrivals.js: one download's - YouTube id AND type - used once
+  by the scan, removed when the video does not finish, none for Opus, 7-day / 2000-entry bound): every playlist video is
+  quiet (no bell, no push) and, when asked, joins the downloader's own Hide from feed list after the scan's commit -
+  never a video any library already had. One scan seam (noteDownloaded) replaces three notification calls.
+- Albums: "Track N" / "Disc D · Track N" in the row's overline (TV episode codes' slot) on an album page in album order;
+  the iPod's Artists > artist > album lists and queues in the album sort (track order off the cached list, mirroring the
+  server; another sort from the server). The album sort stays one remembered setting (Dean's ruling, R6).
+- Gate (adversary + qa + security-brief): r1 @80d012f4 security APPROVED, adversary + qa CHANGES (an arrival keyed by id
+  alone for 7 days silenced and hid OTHER downloads; a kept file's fresh birthtime defeated the "already had it" guard; an
+  untested join rule; stale docs of the removed switch); r2 @eb93798e security + qa APPROVED, adversary CHANGES (Opus) and
+  the full suite failed 2 v1.331 play-through tests (Dean kept the remembered album sort); r3 @e067dbe2 adversary APPROVED,
+  then the full suite failed the W1 paging test (fixed off the cached list); r4 @911e9002 adversary APPROVED (Dean ruled
+  quick delta re-checks at rounds 3 and 4). Suites @911e9002: 11519 / 0 fail on Node 22 and 24. Residuals: tracker #294.
+
 ### v1.372.0 - Song names before an album downloads; Show music in the home feed (2026-10-07)
 
 - Dean (2026-10-07, after v1.371.0 on his device): "it wasn't clear what the new saved name would have been", "can we make

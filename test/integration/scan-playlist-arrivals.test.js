@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.373.0 (plan docs/exec-plans/active/2026-10-07-v1373-hide-from-feed.md, R2, R3, R5): a playlist job's
+// [INTEGRATION] v1.373.0 (plan docs/exec-plans/completed/2026-10-07-v1373-hide-from-feed.md, R2, R3, R5): a playlist job's
 // video is QUIET (no download notification) and, with "Hide from feed" ticked, joins its downloader's Hide from feed list
 // when the scan indexes it - through the REAL server.js scan (the scan-notification-bridge harness: only what a real
 // download writes is seeded - the yt-dlp capture and the job's arrival - everything after is the production path).
