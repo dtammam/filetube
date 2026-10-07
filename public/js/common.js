@@ -16497,8 +16497,11 @@ function injectDownloadStatusChip() {
                 // SITEWIDE chip can show the one-line systemic signal even
                 // while individual check failures are muted off the badge.
                 breaker: snapshot.breaker || null,
+                // v1.369.0 W4: the Shortcut's waiting playlists (the e2e proof caught them dropped right here:
+                // the reducer was fed directly in the unit test, never through this poll)
+                waitingPlaylists: Array.isArray(snapshot.waitingPlaylists) ? snapshot.waitingPlaylists : [],
               }
-              : { subscriptions: {}, oneShots: {}, breaker: null };
+              : { subscriptions: {}, oneShots: {}, breaker: null, waitingPlaylists: [] };
             const serverNowMs = snapshot && typeof snapshot.now === 'string' ? Date.parse(snapshot.now) : NaN;
             serverOffsetMs = Number.isFinite(serverNowMs) ? serverNowMs - Date.now() : null; // absent: no ages
             lastOkAt = Date.now();
