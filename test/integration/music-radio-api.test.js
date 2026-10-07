@@ -222,6 +222,16 @@ test('gate r2 S7: the route honours `queued` - a still-queued song is never pick
   }
 });
 
+test('gate r3 W10: the route honours `widen=1` - the rest of the library first, as if the close tiers were spent', async () => {
+  const lib0 = await lib();
+  for (let k = 1; k <= 10; k += 1) {
+    const plain = (await api(radioUrl('track:sd0', ['sd0'], '&count=5&rng=' + k))).body.items;
+    assert.ok(plain.every((t) => byId(lib0, t.id).genre === 'Rock'), 'precondition: a plain batch stays in Rock');
+    const wide = (await api(radioUrl('track:sd0', ['sd0'], '&count=5&rng=' + k + '&widen=1'))).body.items;
+    assert.ok(wide.length === 5 && wide.every((t) => byId(lib0, t.id).genre !== 'Rock' && byId(lib0, t.id).genre !== 'Blues'), 'rng ' + k + ': a widened batch comes from T7: ' + wide.map((t) => t.id).join(' '));
+  }
+});
+
 test('W1 likes (R10): a liked track weighs ~2x within its tier (statistical over fixed rng seeds, through the real route and the real like store)', async () => {
   // T2 for a Seedy seed is Neighbour Band (6 tracks). With 2 liked, the first non-T1 pick (slot 1)
   // is liked with p = 4/8 = 50% at 2x, 2/6 = 33% unweighted.

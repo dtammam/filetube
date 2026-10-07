@@ -1,10 +1,13 @@
 'use strict';
 
-// [UNIT] v1.368.0 gate r1 (adversary W3, qa W2): Autoplay never goes silent because of the client. The
-// REAL music.js in jsdom, the REAL picker (lib/music/radio.js) behind the faked route - the adversary's
-// repro. (1) An album's LAST song tapped while nothing else is close by: the server must be told what
-// the queue holds (exclude), or it hands back the album and the client drops it all. (2) A library
-// too small for the exclude list: the server's recycle (R11) must be appended, not filtered out.
+// [UNIT] v1.368.0 gate rounds 1-3 (adversary W3, W8, W10; qa W2): when Autoplay stops, and when it must
+// not. The REAL music.js in jsdom, the REAL picker (lib/music/radio.js) behind the faked route (it honours
+// exclude, queued and widen like the route). (1) An album's LAST song tapped while nothing else is close
+// by: the server is told what the queue holds (`queued`), or it hands back the album and the client
+// drops it all. (2) A library smaller than the session (every song already queued): nothing already
+// queued is appended again - the station ends there (the disclosed limit; copies looped playback).
+// (3) A LONG session in a big library: older plays fall outside the URL budget, the server re-picks them,
+// the client drops them as queued - and the widen retry keeps the station going.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -86,7 +89,7 @@ async function boot(url, run, opts) {
   global.fetch = (u) => {
     const s = String(u);
     urls.push(s);
-    if (s.indexOf('/api/music/radio?') === 0) { const q = new URL(s, 'http://x').searchParams; const L = opts.lib || TRACKS.concat(JAZZ); const prof = radioLib.buildStationProfile(radioLib.parseSeed(q.get('seed')), L); const picks = prof ? radioLib.pickRadioBatch(prof, L, { exclude: (q.get('exclude') || '').split(',').filter(Boolean), queued: (q.get('queued') || '').split(',').filter(Boolean), count: Number(q.get('count')) }, createSeededRng(Number(q.get('rng')))) : []; return Promise.resolve({ ok: true, json: async () => ({ items: picks.map((t) => Object.assign({}, t)) }) }); }
+    if (s.indexOf('/api/music/radio?') === 0) { const q = new URL(s, 'http://x').searchParams; const L = opts.lib || TRACKS.concat(JAZZ); const prof = radioLib.buildStationProfile(radioLib.parseSeed(q.get('seed')), L); const picks = prof ? radioLib.pickRadioBatch(prof, L, { exclude: (q.get('exclude') || '').split(',').filter(Boolean), queued: (q.get('queued') || '').split(',').filter(Boolean), widen: q.get('widen') === '1', count: Number(q.get('count')) }, createSeededRng(Number(q.get('rng')))) : []; return Promise.resolve({ ok: true, json: async () => ({ items: picks.map((t) => Object.assign({}, t)) }) }); }
     if (s.indexOf('album=') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: TRACKS.map((t) => Object.assign({}, t)) }) });
     // the Songs tab's list (a NEW queue array, list order = the album order here)
     if (/\/api\/music\?/.test(s) && s.indexOf('filter=') === -1 && s.indexOf('sort=random') === -1) return Promise.resolve({ ok: true, json: async () => ({ items: TRACKS.map((t) => Object.assign({}, t)), total: TRACKS.length }) });
@@ -137,4 +140,28 @@ test('v1.368.0 gate r2 adversary W8: a library smaller than the session (every s
     const nav = ctx.getNav();
     assert.strictEqual(nav && nav.onNext, undefined, 'nothing new to add: the last song is the end (a tiny library ends rather than loops)');
   }, { autoplay: true, lib: TRACKS });
+});
+
+test('v1.368.0 gate r3 adversary W10: a LONG session in a big library never goes silent - past the URL budget the widen retry draws from the rest of the library', async () => {
+  // a close pool of 80 (the album's genre, 30 artists) and 400 unrelated tracks, every id md5-length like
+  // production's, so ~106 plays fill the 3500-character budget (the adversary measured silence at play 112)
+  const crypto = require('node:crypto');
+  const md5 = (x) => crypto.createHash('md5').update(x).digest('hex');
+  const close = Array.from({ length: 80 }, (_, i) => ({ id: md5('c' + i), title: 'Close ' + i, artist: 'Close Artist ' + (i % 30), genre: 'Shoegaze', year: '1991', folderName: 'c' + (i % 30), durationSec: 200, source: 'native' }));
+  const far = Array.from({ length: 400 }, (_, i) => ({ id: md5('f' + i), title: 'Far ' + i, artist: 'Far Artist ' + (i % 60), genre: 'Jazz', year: '1960', folderName: 'f' + (i % 60), durationSec: 200, source: 'native' }));
+  const LIB = TRACKS.concat(close, far);
+  await boot('http://localhost/music?play=t0', async (dom, ctx) => {
+    dom.window.document.querySelector('#music-content .music-song-row[data-id="t8"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 20; i++) await settle();
+    let plays = 0;
+    for (; plays < 200; plays += 1) {
+      const nav = ctx.getNav();
+      if (!nav || typeof nav.onNext !== 'function') break;
+      nav.onNext();
+      for (let i = 0; i < 8; i++) await settle();
+    }
+    const widened = ctx.urls.filter((u) => u.indexOf('/api/music/radio?') === 0 && u.indexOf('widen=1') !== -1).length;
+    assert.strictEqual(plays, 200, 'the station played on for 200 songs (silent at ' + plays + ')');
+    assert.ok(widened >= 1, 'precondition: the session went past the budget and needed a widen retry (' + widened + ')');
+  }, { autoplay: true, lib: LIB });
 });

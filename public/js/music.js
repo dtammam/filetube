@@ -4364,8 +4364,6 @@ if (typeof module !== 'undefined' && module.exports) {
       queueCtx = Object.assign({}, queueCtx || { src: 'music' }, { radio: seed });
       queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(queueCtx) : '');
     }
-    // The session's plays, most recent LAST, as many as fit the URL budget (R11; the server keeps the
-    // last 200): the server spaces artists by the tail and never repeats an id it is sent.
     // The session's plays, most recent LAST (R11; the server spaces artists by the tail), and - in their
     // own parameter - the songs still QUEUED (gate r1 adversary W3: without them the server picked what the
     // queue already held and the client dropped it all, a batch of nothing; gate r2 adversary S7: sent as
@@ -4393,9 +4391,9 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       return '&exclude=' + plays.join(',') + (queued.length ? '&queued=' + queued.join(',') : '');
     }
-    function radioUrl(seed, count) {
+    function radioUrl(seed, count, widen) {
       return '/api/music/radio?seed=' + encodeURIComponent(seed) + '&count=' + count +
-        '&rng=' + Math.floor(Math.random() * 4294967296) + radioIdParams();
+        '&rng=' + Math.floor(Math.random() * 4294967296) + radioIdParams() + (widen ? '&widen=1' : '');
     }
     // v1.311 / v1.368.0: the picker's fetch core, ONE truth for BOTH consumers - the end-of-queue
     // extension (maybeExtendQueueForAutoplay) and the solo-chapter exit (primeSoloExitStation). The
@@ -4404,8 +4402,18 @@ if (typeof module !== 'undefined' && module.exports) {
     // Best-effort: a failure yields no picks, never throws.
     async function fetchAutoplayPicks(cur) {
       var seed = stationSeedFor(cur);
+      // the batch, minus anything already queued; when that leaves NOTHING (gate r3 adversary W10: a long
+      // session's older plays fall outside the URL budget, so the server re-picks them from the close
+      // tiers and every one is still queued here) ask once more with widen - the rest of the library
+      var picks = await stationBatch(seed, false);
+      if (picks && !picks.length && picks.answered) picks = await stationBatch(seed, true);
+      if (!picks) return [];
+      if (picks.length) picks.seed = seed;
+      return picks;
+    }
+    async function stationBatch(seed, widen) {
       var d;
-      try { d = await fetchJson(radioUrl(seed, AUTOPLAY_APPEND_COUNT)); } catch (_) { return []; }
+      try { d = await fetchJson(radioUrl(seed, AUTOPLAY_APPEND_COUNT, widen)); } catch (_) { return null; }
       var inQueue = {};
       for (var q = 0; q < queue.length; q++) inQueue[queue[q].id] = true;
       var picks = [];
@@ -4417,10 +4425,10 @@ if (typeof module !== 'undefined' && module.exports) {
         picks.push(t);
       }
       // NOTE (gate r2 adversary W8): when EVERY song the viewer can see is already queued (a library smaller
-      // than the session) the server's answer is all queued rows and this batch is empty, so the station
+      // than the session) even the widened answer is all queued rows and the batch is empty, so the station
       // ends there. Appending copies instead put a second row with the same id in the queue, and the
       // chapter code resolves rows by id - playback looped back through the played rows. Disclosed.
-      if (picks.length) picks.seed = seed;
+      picks.answered = items.length > 0;
       return picks;
     }
     // v1.311 (Dean, first-class chapters): pre-fetch the station a SELECTED chapter will exit to,

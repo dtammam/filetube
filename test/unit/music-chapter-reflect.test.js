@@ -1116,12 +1116,14 @@ test('v1.368.0 gate r1 C5: a radio chapter in the LAST row sends ONE radio reque
     const orig = global.fetch;
     global.fetch = (u, i) => { urls.push(String(u)); return orig(u, i); };
     await ctx.drain();
-    const before = urls.filter((u) => u.indexOf('/api/music/radio?') === 0).length;
+    // count the station's FIRST requests only: a widen=1 retry (gate r3 W10) follows a batch that kept
+    // nothing, which this stub's answer (the already-queued chapter) always is
+    const firsts = () => urls.filter((u) => u.indexOf('/api/music/radio?') === 0 && u.indexOf('widen=1') === -1).length;
+    const before = firsts();
     ctx.getNav().onNext(); // into the radio chapter - the LAST row
     await ctx.drain();
     assert.strictEqual(ctx.playerState.currentId, 'mix::c1', 'precondition');
-    const after = urls.filter((u) => u.indexOf('/api/music/radio?') === 0).length;
-    assert.strictEqual(after - before, 1, 'one request for the last row (the extension), no prime');
+    assert.strictEqual(firsts() - before, 1, 'one request for the last row (the extension), no prime');
   }, { radio: RADIO });
 });
 
