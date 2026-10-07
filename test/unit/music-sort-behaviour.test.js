@@ -58,7 +58,8 @@ async function bootMusicView(storage, run, opts) {
     if (opts.rejectArtists && u.indexOf('/api/music/artists') >= 0) return Promise.reject(new Error('network fail'));
     let body = { items: [] };
     if (u.indexOf('/api/music/artists') >= 0) body = { items: [{ artist: 'Boards', albumCount: 2, trackCount: 8, artIds: ['x', 'y'] }] };
-    else if (u.indexOf('/api/music/albums') >= 0) body = { items: [{ albumKey: 'k1', album: 'One', artist: 'Boards', artId: 'x', trackCount: 4 }] };
+    else if (u.indexOf('/api/music/albums') >= 0) body = { items: opts.albums || [{ albumKey: 'k1', album: 'One', artist: 'Boards', artId: 'x', trackCount: 4 }] };
+    else if (opts.songs && /\/api\/music\?/.test(u)) body = { items: opts.songs }; // v1.373.0: an album page's rows
     return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
   };
   Object.keys(storage || {}).forEach((k) => dom.window.localStorage.setItem(k, storage[k]));
@@ -186,4 +187,49 @@ test('friction: an ARTIST drill defaults to RELEASE DATE (Dean: not arbitrary or
     const after = [...fetches].slice(before).reverse().find((u) => /\/api\/music\?/.test(u));
     assert.ok(after && /[?&]sort=title-asc\b/.test(after), 'the changed drill sort re-fetched title-asc (persisted under the drill key), got: ' + after);
   });
+});
+
+// ---- v1.373.0: an album's track listing (Dean: "should an 'album' I download have a track listing and be sorted by 'track'") ----
+const SONGS = [
+  { id: 's1', title: 'Introduction', artist: 'Kyle Gordon', album: 'One', albumKey: 'k1', trackNo: 1, durationSec: 60 },
+  { id: 's2', title: 'Mr. Jambo', artist: 'Kyle Gordon', album: 'One', albumKey: 'k1', trackNo: 2, discNo: 1, durationSec: 60 },
+  { id: 's3', title: 'Bonus', artist: 'Kyle Gordon', album: 'One', albumKey: 'k1', trackNo: 1, discNo: 2, durationSec: 60 },
+  { id: 's4', title: 'No Number', artist: 'Kyle Gordon', album: 'One', albumKey: 'k1', durationSec: 60 },
+];
+const trackLabels = (dom) => [...dom.window.document.querySelectorAll('.music-drill .music-song-row')].map((r) => { const o = r.querySelector('.music-song-track'); return o ? o.textContent : ''; });
+
+test('v1.373.0: an album page in album order numbers its tracks ("Track N", "Disc 2 · Track N", none without a number)', async () => {
+  await bootMusicView({ filetube_music_tab: 'albums' }, async (dom) => {
+    dom.window.document.querySelector('.music-album-card').click();
+    await settle(); await settle();
+    assert.deepStrictEqual(trackLabels(dom), ['Track 1', 'Track 2', 'Disc 2 \u00b7 Track 1', '']);
+    const o = dom.window.document.querySelector('.music-song-track');
+    assert.ok(o.classList.contains('ui-row__overline'), 'the kit\'s overline slot (TV episode codes use it), no new style');
+    sel(dom).value = 'title-asc';
+    sel(dom).dispatchEvent(new dom.window.Event('change'));
+    await settle(); await settle();
+    assert.deepStrictEqual(trackLabels(dom), ['', '', '', ''], 'another order numbers nothing (it would number out of order)');
+  }, { songs: SONGS });
+});
+
+test('v1.373.0: every album OPENS in album order - a sort picked on one album (or saved by an older build) is not carried to the next', async () => {
+  const albums = [{ albumKey: 'k1', album: 'One', artist: 'Boards', artId: 'x', trackCount: 4 }, { albumKey: 'k2', album: 'Two', artist: 'Boards', artId: 'y', trackCount: 4 }];
+  await bootMusicView({ filetube_music_tab: 'albums', filetube_music_sort: JSON.stringify({ 'drill-album': 'release-newest' }) }, async (dom, fetches) => {
+    dom.window.document.querySelectorAll('.music-album-card')[0].click();
+    await settle(); await settle();
+    assert.equal(sel(dom).value, 'album-order', 'the old saved "Release date" no longer decides');
+    sel(dom).value = 'release-newest';
+    sel(dom).dispatchEvent(new dom.window.Event('change'));
+    await settle(); await settle();
+    const songUrl = [...fetches].reverse().find((u) => /\/api\/music\?/.test(u));
+    assert.ok(/[?&]sort=release-newest\b/.test(songUrl), 'the pick applies to this album: ' + songUrl);
+    assert.strictEqual(dom.window.localStorage.getItem('filetube_music_sort'), JSON.stringify({ 'drill-album': 'release-newest' }), 'an album pick is not saved (the stored map is untouched)');
+    dom.window.document.querySelector('.music-tab[data-tab="albums"]').click();
+    await settle(); await settle();
+    dom.window.document.querySelectorAll('.music-album-card')[1].click();
+    await settle(); await settle();
+    assert.equal(sel(dom).value, 'album-order', 'the next album opens in album order');
+    const url2 = [...fetches].reverse().find((u) => /\/api\/music\?/.test(u));
+    assert.ok(/[?&]sort=album-order\b/.test(url2), url2);
+  }, { songs: SONGS, albums });
 });
