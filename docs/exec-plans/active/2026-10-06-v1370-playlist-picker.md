@@ -3,8 +3,8 @@ plan: v1370-playlist-picker
 harness: v2 · lean
 branch: feat/v1.370.0-playlist-picker
 anchor: outcome
-status: Building (T0 measured on the dev box 2026-10-07)
-next: a Sonnet builder runs T0 and W1-W5, then the gate (section 6), then the release (section 7)
+status: Built (W1-W4), gate next
+next: the gate (section 6), then W5 and the release as v1.370.0 (Dean, 2026-10-07: the iPod lock shipped first as v1.369.0)
 design: Dean's intake 2026-10-06 (Opus kickoff session, rulings R1-R14 below). Base main 5f1dcc1b. Ships after v1.368.0 (radio), before v1.370.0 (subtitles, 360, cleanup).
 gate: pending
 ---
@@ -228,6 +228,66 @@ setup); none affected the flat listing.
 
 Evidence (the builder fills, copied from instruments): T0 outputs verbatim; falsifier outputs per wave; mutants by name; census
 diffs; suite summary lines on both Nodes; device checks owed.
+
+### Evidence (builder, 2026-10-07)
+
+**Builder rulings made while building (named so the gate can challenge them):**
+- The client never classifies a link itself: `GET /api/ytdlp/playlist?peek=1` returns `{kind, videoId, listId, listable}` from
+  `url.classifyPlaylistLink` with no spawn (LESSONS 12, one authority). Watch Later / Liked are listable only when the
+  operator's cookies file is usable (R5).
+- ONE playlist job is a coordinator over the existing one-off pipeline (`launchOneShotJob` per video, one at a time): every
+  one-off guard, the channel probe (R8), the runExclusive gate, cleanup and logs are reused, never forked. Each video is a
+  child activity entry carrying `parent`; the chip draws only the parent row. A failed video leaves the row as a sticky error
+  with Retry = the failed ids (state 'error' when any failed).
+- Persisted in the existing pending file (`kind: 'playlist'`, done / failed ids rewritten per video); a restart resumes the
+  remainder after re-validating every field. A video another job already downloads is waited for, never written twice.
+- The button labels follow the repo's three-word rule (docs/CONTRIBUTING.md, button-label-rule.test.js): "Choose videos" (R1's
+  "Choose from the playlist..."), "Subscribe to playlist" (R4). The extension keeps "Choose from playlist..." (R10's words).
+- The extension's Audio / Video drop a watch link's `list` before posting (the API token now makes a playlist wait, R9; R10 keeps
+  the extension's one-video downloads). Extension 0.1.0 -> 0.2.0.
+- The waiting-playlist push is a direct broadcast (lib/push/deliver.js `broadcast`) to users allowed to download, with the
+  round's rules (feature switch, cooldown, opt-out, endpoint guard, prune / cooldown); the media feed and its cursor are not
+  touched (the feed is library media).
+- Subscribe to playlist opens Subscriptions > Add with the canonical `/playlist?list=` URL filled (`?add=`), not a new modal.
+
+**W1** (7c182c17): test/unit/ytdlp-playlist-link.test.js, every shape incl. Dean's exact link; mutants killed (from the W1
+commit): the Mix arm, running after the allowlist, the id safety, the personal arm, the error wording.
+
+**W2** (c54f3f37): test/integration/ytdlp-playlist-listing.test.js 10/10 through the real spawn boundary (a fake yt-dlp printing
+the verbatim T0 JSON, honouring --playlist-start/--playlist-end and --download-archive). Mutants (a `git archive` sandbox,
+restored identical): P1 add --download-archive (fail 3), P2 drop the visibility filter (1), P3 drop the single-flight (1),
+P4 trust any id (1), P5 unavailable-by-title off (1), P6 no RBAC (1), P7 trashed counts as in library (1), P8 total ignored
+(2), P9 Mix not refused before the spawn (1) - KILLED; P10 (accept a non-playlist `_type`) SURVIVED as equivalent: yt-dlp's
+Mix answer is a single video with no `entries`, refused by the same guard either way.
+
+**W3** (5423c61c): test/integration/ytdlp-playlist-job.test.js 7/7 (stable across two runs): exact counts and failed ids,
+each video in its channel folder, one at a time (max concurrency 1), 60 ids accepted as one job, Cancel stops the job and the
+running video, a restart resumes the remainder, a tampered pending entry dropped, the boundary 400s, token and member 403.
+
+**W4** (3ce40f6a, 13cc2182): test/integration/ytdlp-playlist-waiting.test.js 7/7 (the Shortcut waits with no download and no
+queued job, one push, the URL rebuilt from the ids; a list page waits too and dedupes; Mix / Watch Later / a plain video from
+the token download one video; a session caller's video-in-list downloads the one video; only allowed callers see waiting
+playlists; Dismiss for allowed callers only (member and token 403); 7-day expiry, 20 max; peek without a spawn, personal lists
+listable with cookies); test/unit/playlist-picker-client.test.js 8/8 (the router's four answers, the picker's ticks / blocked
+rows / Select all count / Load more / one job / double tap / the R12 controls / R14, the chip rows); extension/ftClient.test.js
+8/8 (run standalone: not in `npm test`). The double-tap test found a real bug (a tap during the sheet's close posted the job
+again): Download stays off once a job is accepted.
+Mutants on 3ce40f6a: Q1 N one-shots at once (fail 4), Q2 retry all ids (1), Q3 no RBAC (1), Q4 the token downloads instead of
+waiting (3), Q5 Dismiss keeps the entry (1), Q6 the picker double tap (1), Q7 children shown in the chip (1), Q8 a restart
+re-runs done ids (1), Q10 waiting listed to members (1), Q11 the linked video not pre-ticked (1), Q12 an in-library row
+tickable (2), Q13 a Mix asks instead of the note (1), Q14 the waiting URL = the posted text (1), Q15 a hostile id accepted (3)
+- KILLED; Q9 (the loop-top cancel check) SURVIVED as equivalent: the check after each video catches the same cancel.
+
+**Real browser** (tools/playlist-proof/picker-e2e.js: a writable server, a fake yt-dlp on PATH answering the verbatim T0
+listing and failing every download): ALL PASS - 1. the box: Dean's link -> the choice -> Choose videos -> the picker (24 rows,
+only the linked video ticked) -> 3 ticked -> ONE chip row "Kyle Gordon Is Everywhere ... 0 of 3 downloaded, 3 failed" with
+Retry, the children hidden, no page errors; 2. `?pick=` signed out -> login -> the choice -> the picker, the param dropped
+from the address bar; 3. the Shortcut's POST -> 202 waiting -> the chip "Playlist waiting: choose videos" -> Choose -> the
+choice -> the picker with Format / Quality / File type. Its first run caught the chip's poll dropping `waitingPlaylists`
+(the unit test fed the reducer directly): fixed in 13cc2182.
+
+**Censuses:** route count 266 -> 269 (GET /api/ytdlp/playlist GATED; POST /api/ytdlp/download-playlist and POST
+/api/ytdlp/waiting/:id/dismiss manage-subs + na). The API token still reaches only POST /api/ytdlp/download (lib/auth/gate.js).
 
 ## 8. Out of scope
 
