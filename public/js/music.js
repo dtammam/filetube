@@ -216,8 +216,29 @@ function songIconHtml(name) {
 }
 var SONG_LIST_CLASSES = 'ui-list ui-list--media ui-list--media-art ui-list--aside-text ui-list--actions-3 ui-list--divider-inset';
 var SONG_LIST_OPEN = '<div class="music-song-list ' + SONG_LIST_CLASSES + '" role="list">';
-function buildSongRowHtml(item, index) {
+// v1.373.0 (Dean: "should an 'album' I download have a track listing and be sorted by 'track'"): an album page in album
+// order numbers its rows - "Track 3" (or "Disc 2 · Track 3") in the row's overline, the slot TV episode rows already use
+// for their "S1 E3" code (no new design). A row without a track number shows none.
+function songTrackLabel(item) {
+  var t = item && Number.isInteger(item.trackNo) && item.trackNo > 0 ? item.trackNo : null;
+  if (t === null) return '';
+  var d = Number.isInteger(item.discNo) && item.discNo > 1 ? item.discNo : null;
+  return (d ? 'Disc ' + d + ' · ' : '') + 'Track ' + t;
+}
+// The server's within-album order (lib/music/query.js albumSortValue, mirrored EXACTLY: any integer disc, a missing disc
+// is 1, a missing track 0; ties keep their order - Array.prototype.sort is stable), for an album level the client builds
+// from a list it already holds (the iPod's artist > album, off the artist's cached whole list - no second read).
+function albumOrderValue(t) {
+  var disc = Number.isInteger(t && t.discNo) ? t.discNo : 1;
+  var track = Number.isInteger(t && t.trackNo) ? t.trackNo : 0;
+  return disc * 1000 + track;
+}
+function sortAlbumOrder(tracks) {
+  return (Array.isArray(tracks) ? tracks.slice() : []).sort(function (a, b) { return albumOrderValue(a) - albumOrderValue(b); });
+}
+function buildSongRowHtml(item, index, opts) {
   var dur = formatTrackDuration(item.durationSec);
+  var trackLabel = opts && opts.trackNumbers === true ? songTrackLabel(item) : '';
   var liked = !!item.liked;
   // M3 chapter likes (v1.317): a PROJECTED row (a yt-dlp audio file, or one `::c`
   // chapter of it - source 'library'/'library-chapter') is liked in the MEDIA store
@@ -233,6 +254,7 @@ function buildSongRowHtml(item, index) {
     '<span class="music-eq" aria-hidden="true"><i></i><i></i><i></i></span>' +
     '</span></span>' +
     '<span class="ui-row__body">' +
+    (trackLabel ? '<span class="ui-row__overline music-song-track">' + escapeMusicHtml(trackLabel) + '</span>' : '') +
     '<span class="ui-row__title music-song-title"><button type="button" class="ui-row__link music-song-play" title="' + escapeMusicHtml(title) + '">' + escapeMusicHtml(title) + '</button></span>' +
     '<span class="ui-row__meta music-song-sub">' +
     (item.artist ? '<button type="button" class="ui-link music-song-artist" data-artist="' + escapeMusicHtml(item.artist) + '" title="Go to artist">' + escapeMusicHtml(item.artist) + '</button>' : '') +
@@ -1056,7 +1078,7 @@ if (typeof module !== 'undefined' && module.exports) {
     MUSIC_ALBUM_KEY_SEP, musicLinkIntent, musicLinkFor, musicAlbumKeyFor, musicDrillLink, musicLinkToastName, // v1.352 L3
     chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC, CHAPTER_VERIFY, chapterAdoptSeekFor, queuedChaptersDiffer,
     liveListenPosition, listenHandoffChapterIndex, chapterStartFor, handoffPaused,
-    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml,
+    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml, songTrackLabel, sortAlbumOrder, // v1.373.0: album track numbers + the iPod's album order
     buildNowPlayingPanelHtml, musicArtUrl, musicAmbientArtUrl,
     MUSIC_ART_SIZES, MUSIC_ART_DPR_CAP, MUSIC_ART_ROW_PX, MUSIC_ART_DRILL_PX, musicArtCardPx, musicArtSize, albumArtSrc, musicArtId,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
@@ -3551,13 +3573,15 @@ if (typeof module !== 'undefined' && module.exports) {
     // Layout order: [sticky bar][big header][sentinel][song list]. The sticky
     // bar parks below the fixed site header and is revealed by CSS once the
     // big header scrolls out (the IntersectionObserver toggles `.collapsed`).
+    // v1.373.0: an album page in album order numbers its tracks (another sort would number them out of order)
+    function drillNumbersTracks() { return !!drill && drill.type === 'album' && sortForTab('drill-album') === 'album-order'; }
     function renderDrillView() {
       content.innerHTML =
         '<div class="music-drill">' +
         buildStickyBarHtml(drill, queue) +
         buildDrillHeaderHtml(drill, queue, { canEditChapters: musicCanModifyLibrary }) +
         '<div class="music-drill-sentinel" aria-hidden="true"></div>' +
-        SONG_LIST_OPEN + queue.map(buildSongRowHtml).join('') + '</div>' +
+        SONG_LIST_OPEN + queue.map(function (it, i) { return buildSongRowHtml(it, i, { trackNumbers: drillNumbersTracks() }); }).join('') + '</div>' +
         '</div>';
       setEmpty(!(queue.length > 0));
       applyPlayingHighlight();
@@ -4858,9 +4882,20 @@ if (typeof module !== 'undefined' && module.exports) {
         });
       }
       if (n.type === 'artistAlbum') {
-        return menuArtistTracks(n.artist).then(function (t) {
+        // v1.373.0 (Dean's album question): an album reached through its artist lists - and queues - in the ALBUM sort
+        // (track order by default), exactly as Albums > album does; it used to keep the artist's sort (newest upload
+        // first). Track order (the default) comes off the artist's cached WHOLE list, sorted like the server, with no
+        // second read (the W1 paging design for a big library - pocket-library-paging-paths); any other album sort asks the
+        // server the 'album' level's way.
+        var aasort = sortForTab('drill-album');
+        if (aasort === 'album-order') {
+          return menuArtistTracks(n.artist).then(function (t) {
+            return withRadioRow(menuSongLevel(sortAlbumOrder(SKINS.tracksOfAlbum(t, n.key)), { ctx: { src: 'music', album: n.key, sort: aasort }, drill: { type: 'album', key: n.key, label: n.label }, label: n.label }), 'album:' + n.key);
+          });
+        }
+        return fetchAllRows('/api/music?album=' + encodeURIComponent(n.key || '') + '&sort=' + encodeURIComponent(aasort)).then(function (d) {
           // v1.368.0: an album reached through its artist ends with Start radio too (Albums > album does)
-          return withRadioRow(menuSongLevel(SKINS.tracksOfAlbum(t, n.key), { ctx: { src: 'music', album: n.key, sort: sortForTab('drill-artist') }, drill: { type: 'album', key: n.key, label: n.label }, label: n.label }), 'album:' + n.key);
+          return withRadioRow(menuSongLevel(menuItemsOf(d), { ctx: { src: 'music', album: n.key, sort: aasort }, drill: { type: 'album', key: n.key, label: n.label }, label: n.label }), 'album:' + n.key);
         });
       }
       if (n.type === 'album') {

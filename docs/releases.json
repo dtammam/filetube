@@ -3586,5 +3586,11 @@
     "date": "2026-10-07",
     "title": "See and edit song names before an album downloads; keep music out of the home feed",
     "intent": "With Save as an album on, each song in the playlist picker now shows the name it will be saved with and its track number, and you can tap a name to change it; the library list shows the same name as Music. Settings has a new switch, Show music in the home feed: turn it off and songs stay in Music instead of filling the home page (Continue listening keeps its own switch). And pressing Enter on a Move to Trash confirm no longer brings the menu back."
+  },
+  {
+    "version": "1.373.0",
+    "date": "2026-10-07",
+    "title": "Hide a playlist download from your feed; album track numbers",
+    "intent": "The playlist picker has a new Hide from feed switch: tick it and the songs you download stay out of your feed in Modern mode, while still showing in Music, folders and search. Playlist downloads no longer send a notification for every song. Albums now list their songs with track numbers when sorted in album order, and on the iPod an album reached through its artist plays in track order. The Show music in the home feed setting from the last update is gone, replaced by the per-download switch."
   }
 ]

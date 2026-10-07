@@ -23,9 +23,9 @@ test('the census classifies every control (no unclassified id, no stale entry)',
   assert.deepStrictEqual(census(HTML).problems, []);
 });
 
-// Controls added deliberately since the baseline (each named with its release): the iPod portrait lock's device-local switch;
-// v1.372.0 Home > Show music in the home feed (a synced pref, saved through localStorage like the other home rows).
-const ADDED_SINCE = ['pocket-upright-check|localStorage', 'home-music-check|localStorage'];
+// Controls added deliberately since the baseline (each named with its release): the iPod portrait lock's device-local switch.
+// (v1.372.0's Home > Show music in the home feed came and went: v1.373.0 removed it.)
+const ADDED_SINCE = ['pocket-upright-check|localStorage'];
 
 test('no control is lost, added or re-routed: (id, save path) equals the v1.366.1 baseline plus the named additions', () => {
   const now = census(HTML).pages.flatMap((p) => p.controls).map((c) => c.id + '|' + c.save).sort();

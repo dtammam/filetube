@@ -69,7 +69,7 @@ afterEach(async () => {
 });
 const picker = () => global.document.querySelector('.playlist-picker');
 // the VIDEO rows' switches (v1.371.0: the album section's two switches live in their own list)
-const switches = () => [...picker().querySelectorAll('.ui-list:not(.playlist-picker-album) input[type="checkbox"]')];
+const switches = () => [...picker().querySelectorAll('.ui-list:not(.playlist-picker-album):not(.playlist-picker-feed) input[type="checkbox"]')];
 const btn = (label) => [...picker().querySelectorAll('button')].find((b) => b.textContent.trim().startsWith(label));
 const click = (el) => el.dispatchEvent(new global.window.MouseEvent('click', { bubbles: true }));
 
@@ -113,7 +113,7 @@ test('picker (R2, R6): only the linked video starts ticked; in-library and unava
   await sleep(20);
   assert.strictEqual(switches().length, 3, '5 rows, 2 not tickable');
   assert.deepStrictEqual(switches().map((s) => s.checked), [false, true, false], 'only the linked video');
-  const rowsText = [...picker().querySelectorAll('.ui-list:not(.playlist-picker-album) .ui-row')].map((r) => r.textContent);
+  const rowsText = [...picker().querySelectorAll('.ui-list:not(.playlist-picker-album):not(.playlist-picker-feed) .ui-row')].map((r) => r.textContent);
   assert.ok(rowsText[2].includes('Already in library') && rowsText[3].includes('Unavailable'));
   assert.strictEqual(btn('Download').textContent, 'Download (1)');
   assert.match(picker().querySelector('.oneoff-status').textContent, /Kyle Gordon Is Everywhere: 5 of 203 shown/);
@@ -546,7 +546,7 @@ test('gate r1 (adversary ADVC2): a press INSIDE the window whose click lands aft
 });
 
 // ---- v1.372.0: the song names (Dean: "it wasn't clear what the new saved name would have been") ----
-const rowOf = (i) => [...picker().querySelectorAll('.ui-list:not(.playlist-picker-album) .ui-row')][i];
+const rowOf = (i) => [...picker().querySelectorAll('.ui-list:not(.playlist-picker-album):not(.playlist-picker-feed) .ui-row')][i];
 const nameOf = (i) => rowOf(i).querySelector('.ui-row__title').textContent;
 const metaOf = (i) => { const m = rowOf(i).querySelector('.ui-row__meta'); return m && !m.hidden ? m.textContent : ''; };
 const dialog = () => [...global.document.querySelectorAll('.ui-sheet')].find((s) => s.querySelector('.ui-field__input') && !s.querySelector('.playlist-picker'));
@@ -724,4 +724,64 @@ test('gate r2: a row with no listing title but a TYPED name sends that name; the
   click(btn('Download'));
   await sleep(20);
   assert.deepStrictEqual(calls.find((x) => x.url === '/api/ytdlp/download-playlist').body.album.titles, { [entry(1).id]: 'Typed' });
+});
+
+// ---- v1.373.0: Hide from feed (Dean) ----
+test('v1.373.0: the picker has a "Hide from feed" row for ANY format once the list is read; ticked, the job posts hideFromFeed; Retry carries it', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'video' });
+  const feedRow = () => picker().querySelector('.playlist-picker-feed');
+  assert.strictEqual(feedRow().hidden, true, 'hidden until the list is read');
+  await sleep(20);
+  assert.strictEqual(feedRow().hidden, false, 'video too');
+  const box = feedRow().querySelector('input[aria-label="Hide from feed"]');
+  assert.strictEqual(box.checked, false, 'off by default');
+  pointerClick(box);
+  assert.strictEqual(box.checked, false, 'the activation guard holds it inside the window');
+  await sleep(GUARD_MS);
+  pointerClick(box);
+  assert.strictEqual(box.checked, true);
+  switches()[0].checked = true; switches()[0].dispatchEvent(new global.window.Event('change'));
+  click(btn('Download'));
+  await sleep(20);
+  const body = calls.find((x) => x.url === '/api/ytdlp/download-playlist').body;
+  assert.strictEqual(body.hideFromFeed, true);
+  assert.strictEqual(body.userId, undefined, 'the client never names a user');
+  assert.strictEqual(c.buildPlaylistRetryRequest({ kind: 'playlist', failedIds: ['a'], listId: L, title: 'T', hideFromFeed: true }).body.hideFromFeed, true);
+  assert.strictEqual(c.buildPlaylistRetryRequest({ kind: 'playlist', failedIds: ['a'], listId: L, title: 'T' }).body.hideFromFeed, undefined);
+});
+
+test('v1.373.0: left off, the body carries no hideFromFeed', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await sleep(GUARD_MS + 20);
+  switches()[0].checked = true; switches()[0].dispatchEvent(new global.window.Event('change'));
+  click(btn('Download'));
+  await sleep(20);
+  assert.strictEqual(calls.find((x) => x.url === '/api/ytdlp/download-playlist').body.hideFromFeed, undefined);
+});
+
+test('v1.373.0: a press on Hide from feed INSIDE the window whose click lands after it toggles nothing (the held-press rule)', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await sleep(20);
+  const box = picker().querySelector('.playlist-picker-feed input[aria-label="Hide from feed"]');
+  const pd = new global.window.Event('pointerdown', { bubbles: true }); pd.pointerId = 1;
+  box.dispatchEvent(pd);
+  await sleep(GUARD_MS);
+  pointerClick(box);
+  assert.strictEqual(box.checked, false, 'the press began inside the window');
+  pointerClick(box);
+  assert.strictEqual(box.checked, true);
+});
+
+test('gate r1 (adversary S3): the Hide from feed row stays hidden until the list is read, even when the format changes first', async () => {
+  const c = fresh({ pages: { 1: KG }, pageStatus: 404 });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, withFormatControls: true });
+  const format = picker().querySelector('select[aria-label="Format"]');
+  format.value = 'audio'; format.dispatchEvent(new global.window.Event('change'));
+  assert.strictEqual(picker().querySelector('.playlist-picker-feed').hidden, true);
+  await sleep(20);
+  assert.strictEqual(picker().querySelector('.playlist-picker-feed').hidden, true, 'a list that could not be read offers no row');
+  assert.strictEqual(picker().querySelector('.playlist-picker-feed .ui-row__meta').textContent, 'Out of your feed in Modern mode', 'says where (v1.97 applies to the Modern feed)');
 });
