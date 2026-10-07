@@ -527,6 +527,13 @@
     }
 
     function finish() {
+      // v1.372.0 (Dean: Enter on the Move to Trash confirm re-opened the card menu): is focus still ours (in this sheet,
+      // or nowhere: a removed focused node leaves it on body, so reading it before or after the removal agrees)? A
+      // dialog opened from this sheet while it
+      // closed (a menu item's confirm) has taken focus by now, and must keep it: handing it back to our opener put focus on
+      // the card's menu button BEHIND the confirm, so the next Enter pressed that button.
+      var focusNow = doc.activeElement;
+      var focusIsOurs = !focusNow || focusNow === doc.body || focusNow === doc.documentElement || s.contains(focusNow);
       unwatchPlacement();
       if (closeTimer) { clearTimeout(closeTimer); closeTimer = null; }
       if (onEnd) { s.removeEventListener('transitionend', onEnd); onEnd = null; }
@@ -538,7 +545,7 @@
       if (bl) bl.release(doc, win, lockOwner);
       state = 'closed';
       var back = opener; opener = null;
-      if (back && typeof back.focus === 'function' && back.isConnected !== false) {
+      if (focusIsOurs && back && typeof back.focus === 'function' && back.isConnected !== false) {
         try { back.focus(); } catch (_) {}
       }
       if (typeof o.onClose === 'function') o.onClose();
@@ -562,7 +569,12 @@
         return ctrl;
       }
       applyVariant(resolveVariant(requested, o.anchor, win));
-      opener = doc.activeElement || null;
+      // A sheet opened from inside a CLOSING one (a menu item opening its confirm) returns focus where that one would have:
+      // the focused item is about to leave the page (v1.372.0).
+      var active = doc.activeElement || null;
+      var closingHost = active && typeof active.closest === 'function' ? active.closest('.ui-sheet.is-closing') : null;
+      opener = closingHost && closingHost.__uiOpener ? closingHost.__uiOpener : active;
+      s.__uiOpener = opener;
       anchorRect = null;
       if (variant === 'popover' && o.anchor && o.anchor.getBoundingClientRect) {
         var rect = o.anchor.getBoundingClientRect();
@@ -864,6 +876,7 @@
     return new Promise(function (resolve) {
       var settled = false;
       function settle(v) { if (!settled) { settled = true; resolve(v); } }
+      if (o.signal && o.signal.aborted) { settle(null); return; } // v1.372.0 gate r2: an owner already gone answers at once (as ui.confirm does)
       var content = doc.createDocumentFragment();
       if (o.body) { var p = el(doc, 'p', 'ui-confirm__body'); p.textContent = String(o.body); content.appendChild(p); }
       var f = field({ label: o.label || '', type: type, value: o.value, doc: doc });
@@ -881,8 +894,9 @@
       content.appendChild(f.el);
       var acts = actionsRow(doc, o.cancelLabel || 'Cancel', o.confirmLabel || 'OK', !!o.danger);
       content.appendChild(acts.row);
+      // v1.372.0 (gate r1 adversary W4): the caller's signal, like ui.confirm's - a prompt a view opened closes with it
       var ctrl = sheet({ variant: 'dialog', title: o.title, label: o.title ? null : (o.label || 'Prompt'), content: content,
-        initialFocus: f.input, onClosing: function () { settle(null); }, doc: doc, win: o.win });
+        initialFocus: f.input, onClosing: function () { settle(null); }, signal: o.signal, doc: doc, win: o.win });
       function submit() { if (ctrl.isOpen()) { settle(f.input.value); ctrl.close(); } }
       ctrl.guard(acts.cancel);
       ctrl.guard(acts.ok);

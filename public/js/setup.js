@@ -1946,6 +1946,16 @@ function loadHomeRowControl(id, key) {
   try { raw = localStorage.getItem(key); } catch (_) { /* storage disabled -- default on */ }
   check.checked = raw !== '0';
 }
+// v1.372.0: Show music in the home feed is the one home switch the SERVER reads, so a change is pushed at once and the
+// cached home page (built with the old value) is forgotten.
+function wireHomeMusicApply(signal) {
+  const check = document.getElementById('home-music-check');
+  if (!check) return;
+  check.addEventListener('change', () => {
+    try { if (window.__ftPrefsSync && typeof window.__ftPrefsSync.flush === 'function') window.__ftPrefsSync.flush(); } catch (_) { /* sync off: the debounce still sends it */ }
+    try { if (window.FileTube && typeof window.FileTube.forgetHomeView === 'function') window.FileTube.forgetHomeView(); } catch (_) { /* no router: a full load is fresh anyway */ }
+  }, { signal });
+}
 function wireHomeRowToggle(id, key, signal) {
   const check = document.getElementById(id);
   if (!check) return;
@@ -3387,6 +3397,10 @@ function wireStaticControls(signal) {
   wireHomeRowToggle('home-continue-watching-check', 'ft-home-continue-watching', signal);
   wireHomeRowToggle('tv-continue-watching-check', 'ft-tv-continue-watching', signal); // v1.198.2 (Dean): the Shows-page row
   wireHomeRowToggle('home-continue-listening-check', 'ft-home-continue-listening', signal);
+  wireHomeRowToggle('home-music-check', 'ft-home-music', signal); // v1.372.0: synced; the server reads it for every home surface
+  // ...so it reaches the server NOW (not after the sync's 1 s debounce) and the cached home page is dropped, or a
+  // Back / Home tap shows the old feed (gate r1: adversary W1, qa W2)
+  wireHomeMusicApply(signal);
   wireHomeRowToggle('home-continue-reading-check', 'ft-home-continue-reading', signal);
 
   // v1.79: the home-feed vs classic-grid toggle. Unlike the device-local row
@@ -5190,6 +5204,7 @@ function init(root) {
   loadHomeRowControl('home-continue-watching-check', 'ft-home-continue-watching');
   loadHomeRowControl('tv-continue-watching-check', 'ft-tv-continue-watching'); // v1.198.2: reflect-on-load (the v1.193 lesson)
   loadHomeRowControl('home-continue-listening-check', 'ft-home-continue-listening');
+  loadHomeRowControl('home-music-check', 'ft-home-music'); // v1.372.0
   loadHomeRowControl('home-continue-reading-check', 'ft-home-continue-reading');
   renderBottomBarEditor(controller.signal); // v1.44 T12 bottom-bar editor
   renderLibraryGlyphEditor(controller.signal); // v1.77 Library-icon pickers (Appearance box)
@@ -5264,6 +5279,7 @@ if (typeof module !== 'undefined' && module.exports) {
     loadEngineSection, // v1.365.0 (W3): its probe also reveals Troubleshooting > Download trace
     loadPocketKbSearchControl, wirePocketKbSearchControl, // v1.355: Mobile player > Keyboard search
     loadPocketUprightControl, wirePocketUprightControl, // the iPod portrait lock: Mobile player > Keep the iPod upright
+    wireHomeMusicApply, // v1.372.0: Show music in the home feed pushes at once and drops the cached home
     loadResumeModeControls, wireResumeModeControls, clampResumeSeconds, // v1.363: the resume mode + Ask me countdown controls
     // Click wheel test — the pure metering core (boundary- and
     // cross-lock-tested in wheel-cal-metering.test.js; the DOM/native-switch

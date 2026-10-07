@@ -7473,14 +7473,29 @@ function defaultAlbumArtist(entries) {
   (Array.isArray(entries) ? entries : []).forEach((e) => {
     if (!e || typeof e !== 'object') return;
     const m = typeof e.title === 'string' ? /^(.+?)\s+[-\u2013\u2014]\s+\S/.exec(e.title) : null;
-    let name = m ? m[1].trim() : '';
-    if (!name && typeof e.channel === 'string') name = e.channel.replace(/\s+-\s+Topic$/i, '').trim();
+    // (joiners and direction marks at the ends are trimmed too: the server trims them from the album artist, and a
+    // default that kept one would read as a different artist than the one in Music - v1.372.0 gate r2)
+    const edges = /^[\s\u200c-\u200f]+|[\s\u200c-\u200f]+$/g;
+    let name = m ? m[1].replace(edges, '') : '';
+    if (!name && typeof e.channel === 'string') name = e.channel.replace(/\s+-\s+Topic$/i, '').replace(edges, '');
     if (!name) return;
     const n = (counts.get(name) || 0) + 1;
     counts.set(name, n);
     if (n > bestN) { best = name; bestN = n; }
   });
   return best;
+}
+
+// v1.372.0: "Kyle Gordon - Name" -> "Name" for the album artist "Kyle Gordon" (any case; a hyphen, en or em dash), the
+// picker's half of Clean up titles (the noise groups come off on the server: run.playlistEntryFrom `titleClean`). A title
+// that is nothing but the prefix is kept whole.
+function stripArtistPrefix(title, artist) {
+  const t = typeof title === 'string' ? title : '';
+  const a = typeof artist === 'string' ? artist.trim() : '';
+  if (!a) return t;
+  const m = new RegExp('^' + a.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*[-\u2013\u2014]\\s*', 'i').exec(t);
+  const rest = m ? t.slice(m[0].length).trim() : t;
+  return rest || t;
 }
 
 function playlistApiUrl(link, page, peek) {
@@ -7549,7 +7564,8 @@ function openPlaylistPicker(opts) {
   const albumList = U.list({ actions: 1, grouped: true, label: 'Album', doc: d });
   albumList.classList.add('playlist-picker-album');
   albumList.hidden = true;
-  albumList.appendChild(U.row({ title: 'Save as an album', meta: 'Album, artist and track numbers', actions: [albumOn], doc: d }));
+  const albumRow = U.row({ title: 'Save as an album', meta: 'Album, artist and track numbers', actions: [albumOn], doc: d });
+  albumList.appendChild(albumRow);
   albumList.appendChild(cleanRow);
   cleanRow.hidden = true;
   wrap.appendChild(albumList);
@@ -7557,7 +7573,7 @@ function openPlaylistPicker(opts) {
   // what the user typed is kept; the defaults follow the loaded rows until then
   const albumTouched = { name: false, artist: false };
   albumName.input.addEventListener('input', () => { albumTouched.name = true; checkExisting(); });
-  albumArtist.input.addEventListener('input', () => { albumTouched.artist = true; checkExisting(); });
+  albumArtist.input.addEventListener('input', () => { albumTouched.artist = true; checkExisting(); renderRows(); }); // the prefix follows the artist
   // Dean (2026-10-07): say when the artist or the album is already in Music. Read from Music's own lists (the
   // viewer's visible library - the routes filter it), matched without regard to case. Music groups by the EXACT name
   // ("kyle gordon" is a second artist), so an untouched default takes the library's spelling, a typed name is kept
@@ -7601,6 +7617,9 @@ function openPlaylistPicker(opts) {
     albumList.hidden = !albumOffered() || list.hidden;
     albumFields.hidden = albumList.hidden || !albumOn.checked;
     cleanRow.hidden = !albumOn.checked;
+    // v1.372.0: while on, the switch's own line says how to rename (measured: a per-row hint was cut off at 390px)
+    albumRow.querySelector('.ui-row__meta').textContent = albumOn.checked ? 'Tap a song\'s name to rename it' : 'Album, artist and track numbers';
+    renderRows();
   }
   if (fmt) [fmt.format, fmt.filetype].forEach((sel) => sel.addEventListener('change', () => { syncAlbum(); checkExisting(); }));
   const head = d.createElement('div');
@@ -7623,7 +7642,7 @@ function openPlaylistPicker(opts) {
 
   // `started`: the job was accepted - Download stays off while the sheet closes (a second tap during the
   // close would start the same videos again)
-  const state = { listId: null, title: '', total: null, nextPage: null, rows: [], loading: false, posting: false, started: false };
+  const state = { listId: null, title: '', total: null, nextPage: null, rows: [], loading: false, posting: false, started: false, customNames: Object.create(null) };
   // the view's signal (LESSONS 4): leaving the page closes the picker, never strands it over the next view
   const signal = o.signal || ((typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.viewSignal === 'function') ? window.FileTube.viewSignal() : undefined);
   const sheet = U.sheet({ title: 'Choose from the playlist', content: wrap, doc: d, signal });
@@ -7634,6 +7653,7 @@ function openPlaylistPicker(opts) {
   // jsdom, restore the state from before the click), and no change event fires
   [albumOn, cleanOn].forEach((box) => box.addEventListener('click', (e) => { if (!sheet.accepts(e)) e.preventDefault(); }));
   albumOn.addEventListener('change', () => { syncAlbum(); checkExisting(); });
+  cleanOn.addEventListener('change', renderRows);
 
   const picked = () => state.rows.filter((r) => r.box && r.box.checked).map((r) => r.id);
   function refresh() {
@@ -7662,12 +7682,53 @@ function openPlaylistPicker(opts) {
       actions.push(null);
     }
     const media = U.thumb({ src: e.thumb, duration: e.durationSec || 0, context: 'row', doc: d });
-    const row = U.row({ title: e.title || e.id, meta: blocked || undefined, media, actions, doc: d });
-    if (blocked) row.classList.add('is-disabled');
-    list.appendChild(row);
+    // v1.372.0: a pickable row's name is a tap target (ui.row's title link): with Save as an album on it renames the song,
+    // off it ticks the row. Its meta line (`' '`: ui.row makes the span) carries "Track N" while the album is on.
     // v1.371.0: `pos` = the row's place in the playlist, the track number when the videos are saved as an album
     // (the server's `position`, counted before any bad row was dropped; the row count only as a fallback)
-    state.rows.push({ id: e.id, box, pos: Number.isInteger(e.position) && e.position > 0 ? e.position : state.rows.length + 1, title: e.title || '', channel: e.channel || '' });
+    const rec = { id: e.id, box, pos: Number.isInteger(e.position) && e.position > 0 ? e.position : state.rows.length + 1, title: e.title || '', titleClean: typeof e.titleClean === 'string' ? e.titleClean : '', channel: e.channel || '', nameEl: null, metaEl: null };
+    const row = U.row({ title: e.title || e.id, meta: blocked || ' ', media, actions, onClick: blocked ? undefined : (ev) => tapRow(rec, ev), doc: d });
+    if (blocked) row.classList.add('is-disabled');
+    else {
+      rec.nameEl = row.querySelector('.ui-row__link');
+      rec.metaEl = row.querySelector('.ui-row__meta');
+      sheet.guard(rec.nameEl);
+      renderRow(rec);
+    }
+    list.appendChild(row);
+    state.rows.push(rec);
+  }
+  // v1.372.0 (Dean: "it wasn't clear what the new saved name would have been"): with Save as an album on, a row shows the
+  // name the song WILL get - the typed one, else the cleaned one (the server's noise-free title, then the album artist's
+  // "Artist - " prefix dropped) when Clean up titles is on, else YouTube's - and "Track N". What it shows is what is written.
+  function songName(r) {
+    const custom = Object.prototype.hasOwnProperty.call(state.customNames, r.id) ? state.customNames[r.id] : null;
+    if (custom) return custom; // a rename is the VIDEO's (a video listed twice shows and sends one name)
+    if (!cleanOn.checked) return r.title || r.id;
+    return stripArtistPrefix(r.titleClean || r.title, albumArtist.input.value.trim()) || r.title || r.id;
+  }
+  function renderRow(r) {
+    if (!r.nameEl) return;
+    const on = albumWanted();
+    r.nameEl.textContent = on ? songName(r) : (r.title || r.id);
+    // what the tap does, for a screen reader (gate r1 qa S5): rename with the album on, tick the row with it off
+    r.nameEl.setAttribute('aria-label', on ? 'Rename ' + songName(r) : 'Select ' + (r.title || r.id));
+    r.metaEl.textContent = on ? `Track ${r.pos}` : ''; // (the "tap to rename" hint is on the Save as an album row: it fits a phone)
+    r.metaEl.hidden = !on;
+  }
+  function renderRows() { state.rows.forEach(renderRow); }
+  function tapRow(r, ev) {
+    if (!sheet.accepts(ev)) return;
+    if (!albumWanted()) { r.box.checked = !r.box.checked; refresh(); return; } // album off: the tap ticks the row
+    // the picker's signal: leaving the page (or closing the picker by it) closes the dialog too (gate r1 adversary W4)
+    U.prompt({ title: 'Song name', label: 'Song name', value: songName(r), confirmLabel: 'Save', signal, doc: d }).then((v) => {
+      if (v === null || v === undefined) return; // Cancel
+      const t = String(v).trim();
+      if (!t) return; // an empty name keeps the one shown
+      if (t.length > 200) { status.textContent = 'A song name can be up to 200 characters.'; return; } // the server's bound
+      state.customNames[r.id] = t;
+      renderRows(); // every row of that video
+    });
   }
   function load(page) {
     if (state.loading) return;
@@ -7727,9 +7788,17 @@ function openPlaylistPicker(opts) {
       const artist = albumArtist.input.value.trim();
       if (!title || !artist) { status.textContent = 'Name the album and its artist, or turn off Save as an album.'; return; }
       const tracks = {};
-      // the ticked ROW's place (a video listed twice takes the row that was ticked, the first if both were)
-      state.rows.forEach((r) => { if (r.box && r.box.checked && !Object.prototype.hasOwnProperty.call(tracks, r.id)) tracks[r.id] = r.pos; });
-      albumBody = { title, artist, cleanTitles: cleanOn.checked, tracks };
+      const titles = {};
+      // the ticked ROW's place (a video listed twice takes the row that was ticked, the first if both were); its shown
+      // name goes along when it differs from YouTube's (v1.372.0: written as it is, so the server runs no cleanup)
+      state.rows.forEach((r) => {
+        if (!r.box || !r.box.checked || Object.prototype.hasOwnProperty.call(tracks, r.id)) return;
+        tracks[r.id] = r.pos;
+        const name = songName(r);
+        // a row with no title shows its id: that is never sent as a name (gate r1 qa S3) unless the user typed one
+        if (name !== r.title && (r.title || Object.prototype.hasOwnProperty.call(state.customNames, r.id))) titles[r.id] = name;
+      });
+      albumBody = { title, artist, cleanTitles: false, tracks, titles };
     }
     state.posting = true;
     refresh();
@@ -11404,6 +11473,17 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   // In-memory only: a real page load/refresh starts with this null, so a
   // fresh or deep-linked home load is never affected by a previous session.
   let homeViewCache = null;
+  // v1.372.0 (gate r1, adversary W1 / qa W2): a setting the home page is BUILT from (Show music in the home feed) makes
+  // the cached home stale - Settings -> off -> Home reattached the old page with the songs still on it. Drop it the way
+  // a non-restoring navigation does (destroy the cached instance's listeners first), so the next Home loads fresh.
+  function forgetHomeView() {
+    if (!homeViewCache) return;
+    const staleHome = viewRegistry.home;
+    if (staleHome && typeof staleHome.destroy === 'function') {
+      try { staleHome.destroy(); } catch (err) { console.error('Stale home-cache destroy() failed', err); }
+    }
+    homeViewCache = null;
+  }
 
   // W2 remediation (v1.16.0): a monotonically-increasing navigation-
   // generation token -- mirrors player.js's `loadGeneration` guard exactly.
@@ -12226,6 +12306,7 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   window.FileTube.registerView = registerView;
   window.FileTube.navigate = navigate;
   window.FileTube.viewSignal = viewSignal; // gate r1: aborts when the user leaves the shown view
+  window.FileTube.forgetHomeView = forgetHomeView; // v1.372.0: a Settings change the home feed depends on
   window.FileTube.pushViewState = pushViewState; // v1.217 in-view back-stack
   window.FileTube.replaceViewState = replaceViewState;
   // v1.247 (F2): the skin's MENU/collapse asks to dock back on the launch-origin tab. The getter
@@ -18069,7 +18150,7 @@ if (typeof module !== 'undefined' && module.exports) {
     LIBRARY_CHANGED_EVENT, notifyLibraryChanged, // showChaptersEditor is exported with the Chapter Snap group above
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     formatPlaylistChipStatus, buildPlaylistRetryRequest, routeOneOffDownload, openPlaylistPicker, // v1.370.0 W4: the playlist picker
-    defaultAlbumArtist, // v1.371.0: Save as an album
+    defaultAlbumArtist, stripArtistPrefix, // v1.371.0: Save as an album; v1.372.0: the song names
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     formatDownloadStaleNote, formatDownloadOfflineText, downloadChipRenderErrorCount, // v1.365.0 (W3)
     formatDownloadRowAge, downloadChipPollFaultCount, // v1.365.0 gate r1
