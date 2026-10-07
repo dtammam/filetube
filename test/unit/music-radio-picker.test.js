@@ -68,3 +68,38 @@ test('P18: a YouTube category name on a NATIVE track is a real genre tag (only y
   assert.strictEqual(radio.genreKey({ genre: 'Music', source: 'library' }), null, 'yt-dlp audio\'s "Music" is a category');
   assert.strictEqual(radio.genreKey({ genre: 'Music', source: 'library-chapter' }), null);
 });
+
+test('gate r2 S7: QUEUED songs are never picked but are NOT plays - they neither block the seed artist by spacing nor anchor the genre', () => {
+  const lib = [];
+  for (let i = 0; i < 6; i += 1) lib.push(nat('a' + i, 'A', 'Rock'));
+  for (let i = 0; i < 6; i += 1) lib.push(nat('r' + i, 'R' + i, 'Rock'));
+  const profile = radio.buildStationProfile({ kind: 'track', value: 'a0' }, lib);
+  for (let k = 1; k <= 30; k += 1) {
+    const picks = radio.pickRadioBatch(profile, lib, { exclude: ['a0'], queued: ['a1', 'a2'], count: 5 }, createSeededRng(k));
+    const ids = picks.map((t) => t.id);
+    assert.ok(!ids.includes('a1') && !ids.includes('a2'), 'seed ' + k + ': a queued song came back: ' + ids.join(' '));
+    assert.strictEqual(picks[0].artist, 'A', 'seed ' + k + ': slot 0 (a seed-artist slot) is the seed artist - two queued A songs are not two A plays');
+  }
+});
+
+test('gate r2 W9: a candidate spacing skipped gets no head start - the slot after a block draws the blocked artist at its weighted share', () => {
+  // the adversary's measurement: Heavy has 6 tracks, 6 others 1 each (o0 liked); the last two plays were
+  // Heavy, so slot 0 blocks it; slot 1 must draw it at its fair share (~0.51), not ~0.74
+  const lib = [];
+  for (let i = 0; i < 6; i += 1) lib.push(nat('h' + i, 'Heavy', 'Rock', { folderName: 'h' }));
+  for (let i = 0; i < 6; i += 1) lib.push(nat('o' + i, 'Other ' + i, 'Rock', { folderName: 'o' + i }));
+  lib.push(nat('seed', 'Seedless', 'Rock', { folderName: 'z' }));
+  lib.push(nat('p1', 'Heavy', 'Jazz', { year: '1950', folderName: 'x' }));
+  lib.push(nat('p2', 'Heavy', 'Jazz', { year: '1950', folderName: 'x' }));
+  const profile = radio.buildStationProfile({ kind: 'track', value: 'seed' }, lib);
+  const N = 4000;
+  const heavy = [0, 0, 0];
+  for (let s = 1; s <= N; s += 1) {
+    const picks = radio.pickRadioBatch(profile, lib, { exclude: ['seed', 'p1', 'p2'], count: 3, liked: new Set(['o0']) }, createSeededRng(s));
+    picks.forEach((t, k) => { if (t.artist === 'Heavy') heavy[k] += 1; });
+  }
+  assert.strictEqual(heavy[0], 0, 'precondition: slot 0 blocks Heavy (the run rule)');
+  const s1 = heavy[1] / N; const s2 = heavy[2] / N;
+  assert.ok(s1 > 0.46 && s1 < 0.57, 'slot 1 Heavy share ~0.51 (a stale key gives ~0.74): ' + s1.toFixed(3));
+  assert.ok(s2 > 0.23 && s2 < 0.33, 'slot 2 Heavy share ~0.28 (a stale key gives ~0.15): ' + s2.toFixed(3));
+});

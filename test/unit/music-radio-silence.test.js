@@ -86,7 +86,7 @@ async function boot(url, run, opts) {
   global.fetch = (u) => {
     const s = String(u);
     urls.push(s);
-    if (s.indexOf('/api/music/radio?') === 0) { const q = new URL(s, 'http://x').searchParams; const L = opts.lib || TRACKS.concat(JAZZ); const prof = radioLib.buildStationProfile(radioLib.parseSeed(q.get('seed')), L); const picks = prof ? radioLib.pickRadioBatch(prof, L, { exclude: (q.get('exclude') || '').split(',').filter(Boolean), count: Number(q.get('count')) }, createSeededRng(Number(q.get('rng')))) : []; return Promise.resolve({ ok: true, json: async () => ({ items: picks.map((t) => Object.assign({}, t)) }) }); }
+    if (s.indexOf('/api/music/radio?') === 0) { const q = new URL(s, 'http://x').searchParams; const L = opts.lib || TRACKS.concat(JAZZ); const prof = radioLib.buildStationProfile(radioLib.parseSeed(q.get('seed')), L); const picks = prof ? radioLib.pickRadioBatch(prof, L, { exclude: (q.get('exclude') || '').split(',').filter(Boolean), queued: (q.get('queued') || '').split(',').filter(Boolean), count: Number(q.get('count')) }, createSeededRng(Number(q.get('rng')))) : []; return Promise.resolve({ ok: true, json: async () => ({ items: picks.map((t) => Object.assign({}, t)) }) }); }
     if (s.indexOf('album=') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: TRACKS.map((t) => Object.assign({}, t)) }) });
     // the Songs tab's list (a NEW queue array, list order = the album order here)
     if (/\/api\/music\?/.test(s) && s.indexOf('filter=') === -1 && s.indexOf('sort=random') === -1) return Promise.resolve({ ok: true, json: async () => ({ items: TRACKS.map((t) => Object.assign({}, t)), total: TRACKS.length }) });
@@ -116,24 +116,25 @@ test('v1.368.0 gate r1 adversary W3: the album\'s LAST song tapped (Autoplay on,
     for (let i = 0; i < 20; i++) await settle();
     assert.strictEqual(ctx.playerState.currentId, 't8', 'precondition: the last song plays');
     const calls = ctx.urls.filter((u) => u.indexOf('/api/music/radio?') === 0);
-    const ex = new URL(calls[calls.length - 1], 'http://x').searchParams.get('exclude').split(',');
-    assert.ok(['t0', 't3', 't7', 't8'].every((id) => ex.includes(id)), 'the queued album went to the server as the exclude list: ' + ex.join(','));
-    assert.strictEqual(ex[ex.length - 1], 't8', 'the most recent play stays LAST (the spacing tail)');
+    const sp = new URL(calls[calls.length - 1], 'http://x').searchParams;
+    const queued = (sp.get('queued') || '').split(',');
+    assert.deepStrictEqual(queued, ['t1', 't2', 't3', 't4', 't5', 't6', 't7'], 'the album never-played songs went to the server as queued');
+    assert.deepStrictEqual(sp.get('exclude').split(','), ['t0', 't8'], 'the PLAYS alone are `exclude`, most recent last (gate r2 S7: queued songs are not plays)');
     const nav = ctx.getNav();
     assert.ok(nav && typeof nav.onNext === 'function', 'the station lined up a next song (playback continues)');
   }, { autoplay: true });
 });
 
-test('v1.368.0 gate r1 qa W2: a library smaller than the session (everything already queued) - the server\'s RECYCLE is appended, never filtered into silence', async () => {
+test('v1.368.0 gate r2 adversary W8: a library smaller than the session (every song already queued) - nothing already queued is appended again (no duplicate row, no loop); the station ends there (disclosed)', async () => {
   await boot('http://localhost/music?play=t0', async (dom, ctx) => {
     const row = dom.window.document.querySelector('#music-content .music-song-row[data-id="t8"]');
     row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
     for (let i = 0; i < 20; i++) await settle();
     assert.strictEqual(ctx.playerState.currentId, 't8', 'precondition: the album\'s last song (the whole library) plays');
+    assert.ok(ctx.urls.some((u) => u.indexOf('/api/music/radio?') === 0), 'precondition: the station was asked');
+    const ids = [...dom.window.document.querySelectorAll('#music-nowplaying-panel .mnp-queue-row, #music-content .music-song-row')].map((r) => r.getAttribute('data-id')).filter(Boolean);
+    assert.strictEqual(new Set(ids).size, ids.length, 'no id appears twice in the queue: ' + ids.join(' '));
     const nav = ctx.getNav();
-    assert.ok(nav && typeof nav.onNext === 'function', 'a recycled song was lined up');
-    nav.onNext();
-    for (let i = 0; i < 6; i++) await settle();
-    assert.ok(/^t[0-7]$/.test(ctx.playerState.currentId), 'it is an album song behind the cursor, played again (' + ctx.playerState.currentId + ')');
+    assert.strictEqual(nav && nav.onNext, undefined, 'nothing new to add: the last song is the end (a tiny library ends rather than loops)');
   }, { autoplay: true, lib: TRACKS });
 });

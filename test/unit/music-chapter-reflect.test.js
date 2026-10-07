@@ -1124,3 +1124,31 @@ test('v1.368.0 gate r1 C5: a radio chapter in the LAST row sends ONE radio reque
     assert.strictEqual(after - before, 1, 'one request for the last row (the extension), no prime');
   }, { radio: RADIO });
 });
+
+// v1.368.0 gate r2 (qa R2-W1): a radio chapter the user TAPS (an up-next row passes soloChapter) still hands
+// off to the next row - the album rule would skip the picks after it. QA's probe 3.
+test('v1.368.0 gate r2 qa R2-W1: a TAPPED radio chapter hands off to the next row (x1), never past its set\'s later chapter', async () => {
+  const RADIO = [
+    { id: 'mix::c1', title: 'Set Cut Two', artist: 'Other DJ', album: 'Big Set', albumKey: 'Y', durationSec: 100, chapterStartSec: 100, source: 'library-chapter', streamSrc: '/video/mix' },
+    { id: 'x1', title: 'Between', artist: 'Someone', album: 'Other', albumKey: 'X', durationSec: 200, source: 'library' },
+    { id: 'mix::c3', title: 'Set Cut Four', artist: 'Other DJ', album: 'Big Set', albumKey: 'Y', durationSec: 100, chapterStartSec: 300, source: 'library-chapter', streamSrc: '/video/mix' },
+    { id: 'after1', title: 'After Song', artist: 'Someone', album: 'Other', albumKey: 'X', durationSec: 200, source: 'library' },
+  ];
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    ctx.playerState.state = 'full'; // the expanded desktop player: the up-next panel renders
+    const film = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    film.set(250); await settle(); // roll into the album's LAST chapter: the station is appended
+    await ctx.drain();
+    const row = [...dom.window.document.querySelectorAll('#music-nowplaying-panel .mnp-queue-row')].find((r) => /Set Cut Two/.test(r.textContent));
+    assert.ok(row, 'precondition: the radio chapter is an up-next row');
+    row.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); // the TAP (soloChapter: true)
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'mix::c1', 'precondition: the tapped chapter plays');
+    const { set } = loopable(dom, 900);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(150); await settle(); set(200); await settle();
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'x1', 'the next visible pick plays');
+  }, { radio: RADIO, panel: true });
+});

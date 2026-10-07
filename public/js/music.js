@@ -1169,7 +1169,8 @@ if (typeof module !== 'undefined' && module.exports) {
   // moves to the end - the radio spaces artists by the tail). Bounded: a session that somehow
   // plays >2000 tracks starts forgetting the oldest - fine, "no repeats" is a taste rule, not an
   // invariant (v1.368.0: when every track is excluded the server's radio picker brings back the
-  // least recently played first rather than ever letting playback die - lib/music/radio.js).
+  // least recently played first - lib/music/radio.js - and the client appends any that are not
+  // still queued; a library smaller than the session, every song already queued, ends the station).
   var autoplayPlayedIds = [];
   function autoplayNotePlayed(id) {
     var at = autoplayPlayedIds.indexOf(id);
@@ -2075,6 +2076,12 @@ if (typeof module !== 'undefined' && module.exports) {
       if (chapterViewId !== soloChapterExitId) { soloChapterExitId = null; soloExitPicks = null; soloExitRadio = false; return; }
       var b = currentChapterBounds(); if (!b) return;
       var mp = hostCtl('media-player'); if (!mp) return;
+      // the file's LAST chapter has nothing to bleed into: the ended advance moves on (the same rule as
+      // enforceFlatSegmentEnd). Restored at gate r2 (adversary C4 suspicion): an exit here onto a chapter of
+      // the SAME file would leave the file loaded, and its already-queued 'ended' could advance a second
+      // time. Unbound: no harness drives player.js's ended path (tech-debt #180).
+      var fileDur = (isFinite(mp.duration) && mp.duration > 0) ? mp.duration : 0;
+      if (fileDur > 0 && b.end >= fileDur - 0.5) return;
       var t = Number(mp.currentTime) || 0;
       var last = lastExitTime;
       lastExitTime = t; // track playback so the NEXT tick's delta is meaningful (frozen only by the scrub-skip above)
@@ -4081,7 +4088,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // file-end guard (enforceChapterExit) leaves a set's LAST chapter to the normal ended advance.
       var radioChapter = isAutoplayPick(item) && item.source === 'library-chapter';
       soloChapterExitId = ((opts.soloChapter && laterSameBaseChapterExists(item, i)) || radioChapter) ? item.id : null;
-      soloExitRadio = !!(soloChapterExitId && radioChapter && !opts.soloChapter);
+      // a radio chapter hands off to the next row however it was started - an up-next or skin track-list TAP
+      // passes soloChapter too, and the album rule would skip the picks after it (gate r2 qa R2-W1)
+      soloExitRadio = !!(soloChapterExitId && radioChapter);
       soloExitPicks = null;
       lastExitTime = -1; // fresh segment: no prior tick, so the first boundary delta can't be a stale carry
       // a radio chapter never primes: it hands off to the next row, and when it is the LAST row the
@@ -4357,10 +4366,11 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     // The session's plays, most recent LAST, as many as fit the URL budget (R11; the server keeps the
     // last 200): the server spaces artists by the tail and never repeats an id it is sent.
-    // v1.368.0 gate r1 (adversary W3): the songs still QUEUED and not yet played go too, at the FRONT (the
-    // server spaces artists by the tail, which must stay the real plays). Without them the server picked
-    // what the queue already held and the client dropped it - a batch of nothing, and silence.
-    function radioExcludeParam() {
+    // The session's plays, most recent LAST (R11; the server spaces artists by the tail), and - in their
+    // own parameter - the songs still QUEUED (gate r1 adversary W3: without them the server picked what the
+    // queue already held and the client dropped it all, a batch of nothing; gate r2 adversary S7: sent as
+    // plays they starved the seed artist, so they are never-pick only). Plays fill the URL budget first.
+    function radioIdParams() {
       var len = 0;
       var sent = {};
       var plays = [];
@@ -4381,11 +4391,11 @@ if (typeof module !== 'undefined' && module.exports) {
         sent[id] = true;
         len += encQ.length + 1;
       }
-      return queued.concat(plays).join(',');
+      return '&exclude=' + plays.join(',') + (queued.length ? '&queued=' + queued.join(',') : '');
     }
     function radioUrl(seed, count) {
       return '/api/music/radio?seed=' + encodeURIComponent(seed) + '&count=' + count +
-        '&rng=' + Math.floor(Math.random() * 4294967296) + '&exclude=' + radioExcludeParam();
+        '&rng=' + Math.floor(Math.random() * 4294967296) + radioIdParams();
     }
     // v1.311 / v1.368.0: the picker's fetch core, ONE truth for BOTH consumers - the end-of-queue
     // extension (maybeExtendQueueForAutoplay) and the solo-chapter exit (primeSoloExitStation). The
@@ -4406,22 +4416,10 @@ if (typeof module !== 'undefined' && module.exports) {
         inQueue[t.id] = true;
         picks.push(t);
       }
-      // v1.368.0 gate r1 (qa W2): when EVERYTHING the server could send is already queued, its answer is
-      // the RECYCLE (R11: the least recently played first) - a song BEHIND the playing one (played, or
-      // skipped past) comes back as a fresh row rather than the station going silent. Never a song still
-      // waiting AHEAD in the queue, and never the playing song itself.
-      if (!picks.length && items.length) {
-        var at = queue.indexOf(cur);
-        var ahead = {};
-        for (var a2 = at + 1; at >= 0 && a2 < queue.length; a2++) if (queue[a2] && queue[a2].id) ahead[queue[a2].id] = true;
-        var again = {};
-        for (var k2 = 0; k2 < items.length; k2++) {
-          var t2 = items[k2];
-          if (!t2 || !t2.id || ahead[t2.id] || again[t2.id] || t2.id === cur.id) continue;
-          again[t2.id] = true;
-          picks.push(Object.assign({}, t2));
-        }
-      }
+      // NOTE (gate r2 adversary W8): when EVERY song the viewer can see is already queued (a library smaller
+      // than the session) the server's answer is all queued rows and this batch is empty, so the station
+      // ends there. Appending copies instead put a second row with the same id in the queue, and the
+      // chapter code resolves rows by id - playback looped back through the played rows. Disclosed.
       if (picks.length) picks.seed = seed;
       return picks;
     }

@@ -214,6 +214,14 @@ test('W1 exclude: an excluded id is never picked while unexcluded candidates rem
   assert.deepStrictEqual(picks.map((t) => t.id), expected, 'least recently played first, never silence');
 });
 
+test('gate r2 S7: the route honours `queued` - a still-queued song is never picked (and is not counted as a play)', async () => {
+  const queued = ['nb0', 'nb1', 'nb2', 'nb3', 'nb4', 'nb5'];
+  for (let k = 1; k <= 10; k += 1) {
+    const { body } = await api(radioUrl('track:sd0', ['sd0'], '&count=5&rng=' + k + '&queued=' + queued.join(',')));
+    assert.ok(!body.items.some((t) => queued.includes(t.id)), 'rng ' + k + ': a queued song was picked: ' + body.items.map((t) => t.id).join(' '));
+  }
+});
+
 test('W1 likes (R10): a liked track weighs ~2x within its tier (statistical over fixed rng seeds, through the real route and the real like store)', async () => {
   // T2 for a Seedy seed is Neighbour Band (6 tracks). With 2 liked, the first non-T1 pick (slot 1)
   // is liked with p = 4/8 = 50% at 2x, 2/6 = 33% unweighted.
