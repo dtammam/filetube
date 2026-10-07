@@ -161,6 +161,14 @@ branch, 16/16 on base. Bisected to music-skins.js: a module-scope `var upWin = w
 the module's shared V8 context, so EVERY exported function held each loaded window (12,500-row jsdom pages) alive. Moved into
 its own function (installUpright): 16/16.
 
+**Mutants (committed d582bcd8, a /tmp `git archive` sandbox with a pristine copy, restored byte-identical):** 17/17
+killed - M1 drop the turn, M2 the wrong sign at 90, M3 the turn ignoring the setting, M4 D7 not Sideways-only, M5 the seek by
+screen x, M6 the haptic switch unmapped, M7 the tilt by the screen angle alone, M8 the swipe-back unmapped, M9 the mark ignoring
+Sideways, M10 the setter leaving "0", M11 the Stay Upright row never re-listing, M12 Brick by the rect, M13 the lists pan-y
+only, M14 the insets not mapped at 90, M15 the Settings switch inverted, M16 the board turned in Upright too, M17 the window
+captured at module scope (the paging suite's heap). M7 was killed only by a source lock at first; a driven test now kills it
+on its own (a REAL deviceorientation through the real engine on a turned panel at angle 90).
+
 **Suites:** Node 22.23.1 `npm test`: tests 11334, pass 11321, fail 0 (before the Brick test). Node 24: at release.
 
 

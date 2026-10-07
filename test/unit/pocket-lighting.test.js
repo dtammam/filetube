@@ -245,6 +245,27 @@ const S = (b) => b.engine.lightingState();
 const listening = (b) => ({ orient: b.count('win:deviceorientation'), move: b.count('panel:pointermove'), leave: b.count('panel:pointerleave') });
 const vis = (b) => b.count('doc:visibilitychange');
 
+// The iPod portrait lock: at screen angle 90 the Upright player is DRAWN turned back (rotate(-90deg)), i.e. in the phone's
+// own frame - so a tilt to the phone's right must light it exactly as in portrait (--lx), not as the screen axes say.
+test('the iPod portrait lock: a REAL tilt on the TURNED player at angle 90 lights it as in portrait; unturned at 90 it maps by the screen', () => {
+  const drive = (turn) => {
+    const b = boot({ strength: 'pronounced' });
+    try {
+      Object.defineProperty(b.win.screen, 'orientation', { value: { angle: 90, addEventListener() {} }, configurable: true });
+      const gcs = b.win.getComputedStyle.bind(b.win);
+      b.win.getComputedStyle = (el, ps) => { const cs = gcs(el, ps); return el === b.panel ? new Proxy(cs, { get: (t, k) => (k === 'transform' ? turn : (typeof t[k] === 'function' ? t[k].bind(t) : t[k])) }) : cs; };
+      b.engine.paint();
+      tiltTo(b, 0, 3); b.clock.advance(200);
+      tiltTo(b, 0, 3 + L.TILT_RANGE_DEG); b.clock.advance(700); // the phone tilted to ITS right
+      return { x: lx(b), y: ly(b) };
+    } finally { b.engine.destroy(); b.restore(); }
+  };
+  const up = drive('matrix(0, -1, 1, 0, 0, 0)');
+  assert.ok(up.x < -0.9 && Math.abs(up.y) < 0.05, 'turned: the light slides LEFT across the upright iPod, as in portrait: ' + JSON.stringify(up));
+  const side = drive('none');
+  assert.ok(Math.abs(side.x) < 0.05 && Math.abs(side.y) > 0.9, 'CONTROL unturned at 90 (Sideways): the same tilt is the screen\'s other axis: ' + JSON.stringify(side));
+});
+
 test('AC1 reachability: a REAL deviceorientation event moves --lx/--ly on the panel through the real engine; opposite the tilt; scaled by the strength', () => {
   const b = boot({ strength: 'pronounced' });
   try {
