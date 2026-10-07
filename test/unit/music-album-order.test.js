@@ -25,11 +25,22 @@ test('buildSongRowHtml: the track overline only when asked (an album page in alb
   assert.ok(!music.buildSongRowHtml({ id: 'i', title: 'T' }, 0, { trackNumbers: true }).includes('music-song-track'), 'no number, no empty line');
 });
 
-test('the iPod\'s Artists > artist > album level lists and queues in the ALBUM sort (the same request as Albums > album)', () => {
+test('sortAlbumOrder mirrors the server\'s albumSortValue exactly: any integer disc (0 too), a missing disc 1, a missing track 0, stable', () => {
+  const t = (id, trackNo, discNo) => ({ id, trackNo, discNo });
+  // the artist sort hands them in another order; the album wants disc-major, then track
+  const list = [t('c', 3, null), t('b2', 1, 2), t('a', 1, 1), t('x', null, null), t('d0', 5, 0), t('b', 2, undefined), t('a2', 1, 1), t('t10', 10, 1)];
+  assert.deepStrictEqual(music.sortAlbumOrder(list).map((x) => x.id), ['d0', 'x', 'a', 'a2', 'b', 'c', 't10', 'b2']);
+  const query = require('../../lib/music/query.js');
+  assert.deepStrictEqual(query.sortTracks(list.map((x) => Object.assign({ album: 'A', artist: 'Z' }, x)), 'album-order').map((x) => x.id),
+    music.sortAlbumOrder(list).map((x) => x.id), 'the same order the server gives for one album');
+  assert.deepStrictEqual(music.sortAlbumOrder(null), []);
+});
+
+test('the iPod\'s Artists > artist > album level: track order off the cached list (no read), any other album sort from the server', () => {
   const src = fs.readFileSync(path.join(__dirname, '../../public/js/music.js'), 'utf8');
   const branch = src.slice(src.indexOf("if (n.type === 'artistAlbum') {"), src.indexOf("if (n.type === 'album') {"));
   assert.match(branch, /var aasort = sortForTab\('drill-album'\);/);
+  assert.match(branch, /if \(aasort === 'album-order'\) \{\s+return menuArtistTracks\(n\.artist\)\.then\(function \(t\) \{\s+return withRadioRow\(menuSongLevel\(sortAlbumOrder\(SKINS\.tracksOfAlbum\(t, n\.key\)\), \{ ctx: \{ src: 'music', album: n\.key, sort: aasort \}/);
   assert.match(branch, /fetchAllRows\('\/api\/music\?album=' \+ encodeURIComponent\(n\.key \|\| ''\) \+ '&sort=' \+ encodeURIComponent\(aasort\)\)/);
-  assert.match(branch, /ctx: \{ src: 'music', album: n\.key, sort: aasort \}/);
   assert.ok(!/drill-artist/.test(branch), 'never the artist sort');
 });

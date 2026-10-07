@@ -225,6 +225,17 @@ function songTrackLabel(item) {
   var d = Number.isInteger(item.discNo) && item.discNo > 1 ? item.discNo : null;
   return (d ? 'Disc ' + d + ' · ' : '') + 'Track ' + t;
 }
+// The server's within-album order (lib/music/query.js albumSortValue, mirrored EXACTLY: any integer disc, a missing disc
+// is 1, a missing track 0; ties keep their order - Array.prototype.sort is stable), for an album level the client builds
+// from a list it already holds (the iPod's artist > album, off the artist's cached whole list - no second read).
+function albumOrderValue(t) {
+  var disc = Number.isInteger(t && t.discNo) ? t.discNo : 1;
+  var track = Number.isInteger(t && t.trackNo) ? t.trackNo : 0;
+  return disc * 1000 + track;
+}
+function sortAlbumOrder(tracks) {
+  return (Array.isArray(tracks) ? tracks.slice() : []).sort(function (a, b) { return albumOrderValue(a) - albumOrderValue(b); });
+}
 function buildSongRowHtml(item, index, opts) {
   var dur = formatTrackDuration(item.durationSec);
   var trackLabel = opts && opts.trackNumbers === true ? songTrackLabel(item) : '';
@@ -1067,7 +1078,7 @@ if (typeof module !== 'undefined' && module.exports) {
     MUSIC_ALBUM_KEY_SEP, musicLinkIntent, musicLinkFor, musicAlbumKeyFor, musicDrillLink, musicLinkToastName, // v1.352 L3
     chapterResumeSecFor, CHAPTER_RESUME_TAIL_SEC, CHAPTER_VERIFY, chapterAdoptSeekFor, queuedChaptersDiffer,
     liveListenPosition, listenHandoffChapterIndex, chapterStartFor, handoffPaused,
-    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml, songTrackLabel, // v1.373.0: album track numbers
+    escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml, songTrackLabel, sortAlbumOrder, // v1.373.0: album track numbers + the iPod's album order
     buildNowPlayingPanelHtml, musicArtUrl, musicAmbientArtUrl,
     MUSIC_ART_SIZES, MUSIC_ART_DPR_CAP, MUSIC_ART_ROW_PX, MUSIC_ART_DRILL_PX, musicArtCardPx, musicArtSize, albumArtSrc, musicArtId,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
@@ -4873,8 +4884,15 @@ if (typeof module !== 'undefined' && module.exports) {
       if (n.type === 'artistAlbum') {
         // v1.373.0 (Dean's album question): an album reached through its artist lists - and queues - in the ALBUM sort
         // (track order by default), exactly as Albums > album does; it used to keep the artist's sort (newest upload
-        // first). The same server request as the 'album' level below (one ordering, discs included).
+        // first). Track order (the default) comes off the artist's cached WHOLE list, sorted like the server, with no
+        // second read (the W1 paging design for a big library - pocket-library-paging-paths); any other album sort asks the
+        // server the 'album' level's way.
         var aasort = sortForTab('drill-album');
+        if (aasort === 'album-order') {
+          return menuArtistTracks(n.artist).then(function (t) {
+            return withRadioRow(menuSongLevel(sortAlbumOrder(SKINS.tracksOfAlbum(t, n.key)), { ctx: { src: 'music', album: n.key, sort: aasort }, drill: { type: 'album', key: n.key, label: n.label }, label: n.label }), 'album:' + n.key);
+          });
+        }
         return fetchAllRows('/api/music?album=' + encodeURIComponent(n.key || '') + '&sort=' + encodeURIComponent(aasort)).then(function (d) {
           // v1.368.0: an album reached through its artist ends with Start radio too (Albums > album does)
           return withRadioRow(menuSongLevel(menuItemsOf(d), { ctx: { src: 'music', album: n.key, sort: aasort }, drill: { type: 'album', key: n.key, label: n.label }, label: n.label }), 'album:' + n.key);

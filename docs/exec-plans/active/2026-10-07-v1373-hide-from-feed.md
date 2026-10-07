@@ -337,6 +337,36 @@ across a reload: the encoded browseCtx carries `sort`, and the ctx rebuild passe
   not hidden when its audio lands); N2 (a done video that created no item keeps its arrival up to 7 days); security INFO
   (id reuse, restore remapping, removeArrivals by key); adversary S5 (a Retry by another user), S6 (racing jobs).
 
+Gate: APPROVED r3 @e067dbe2 - adversary
+Instruments: targeted node --test (Node 22.23.1) on a git-archive sandbox of e067dbe2 (arrivals scan, playlist job, arrivals
+unit, album order, sort behaviour, music-pocket-menus): 76 tests, 76 pass, 0 fail. eslint on the 7 touched code/test files:
+no problems. Sweep: zero hits for sortAlbumOrder / albumDrillSort in public, lib, test. 8 mutants, 8 red.
+- r2 W1 FIXED as prescribed: an Opus job writes no arrival. o1 (guard removed) red by name (test 32); o2 (no arrival for any
+  filetype) and o3 (guard on format instead of filetype) red via tests 25/29/30. With no arrival, my r2 scan repro's later
+  MP3 one-off takes the plain path, which the control test binds (notifies, not hidden).
+- r2 S1, S2, S4 moot by R6 (sortAlbumOrder and the in-memory album sort are gone). S3's al2/al9 survivors went with them.
+- The artistAlbum level: `n.key` is the row's `albumKey` (music-skins menuArtistAlbumItems), which the server mints with
+  store.albumKeyFor (server.js:4148), the same function `?album=` filters by (query.js matchesAlbum). It now follows the
+  remembered drill-album sort: p1 (the artist sort), p3 (a fixed URL sort) red in the v1.331 play-through with divergent
+  sorts; p2 (a fixed ctx sort) red by the source lock only.
+- Numbering under the remembered sort: rows are numbered only when the remembered drill-album sort is album-order (p4
+  always / p5 never red).
+- S1 (disclose) The artistAlbum level changed SCOPE, not just order. It used to list the artist's own songs on that album
+  (tracksOfAlbum over `?artist=`); `?album=` alone lists the whole album. Measured with the route's own predicates
+  (routes.js:226-227 compose album AND artist): artist A on a "Various Artists" compilation -> before `c1`, now `c1 c2 c3`.
+  This matches Albums > album and the desktop, but a real iPod's Artists > artist > album shows that artist's songs. If
+  wanted, add `&artist=` to the request (the route already ANDs them), knowing the ctx rebuild scopes by album only.
+- S2 (disclose) Under R6 a device whose remembered album sort is not Album order shows no track numbers on any album until
+  Album order is picked once. Worth a line in the v1.373.0 device check.
+
+### After round 3 (builder, 2026-10-07)
+- The full suite @e067dbe2 FAILED 1 of 11518 on both Nodes (verbatim: "not ok 772 - W1 paths: an artist drill pages the
+  artist route; its albums come from the whole list"): the round-3 artist > album level always fetched, against the W1
+  paging design (a big library's album level is served from the artist's cached whole list, no second read). Fix: in
+  track order (the default) the level is built off the cached list with `sortAlbumOrder`, an EXACT mirror of the server's
+  albumSortValue (any integer disc, so the r2 disc-0 mismatch does not return - a test compares it with
+  lib/music/query.js sortTracks on one album); any other album sort asks the server. Mutants 4 of 4 red.
+
 ## 7. Evidence
 - Recon (builder): `users.id` is an INTEGER key (lib/db/sqlite.js `CREATE TABLE users`), so the job and the arrivals store
   validate a positive safe integer (the first draft checked for a string and would have refused every real user).
