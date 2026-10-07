@@ -352,7 +352,7 @@ const viewRoot = (html) => {
 
 // Sweep S3's merge follow-up: the resume-countdown switch left with the countdown (the modal it
 // configured is gone, D8.2), so the Settings switches numbered 28; v1.355 added two (the rotate log, keyboard search): 30.
-test('Settings (F09): every checkbox is a ui-switch with role=switch; there are 35', () => {
+test('Settings (F09): every checkbox is a ui-switch with role=switch; there are 34', () => {
   const root = viewRoot(SETUP_HTML);
   const boxes = root.querySelectorAll('input[type="checkbox"]');
   // v1.355 DELIBERATE bump (28 -> 30): Troubleshooting > Show rotate debug log (#debug-rotate-check) and
@@ -361,8 +361,8 @@ test('Settings (F09): every checkbox is a ui-switch with role=switch; there are 
   // v1.362.3 DELIBERATE bump (31 -> 32): Troubleshooting > No glyph on picture taps (#debug-no-tap-glyph-check, E3).
   // v1.363 DELIBERATE bump (32 -> 33): Playback > Auto-choose on the resume prompt (#resume-countdown-check) is back with the Ask me mode.
   // The iPod portrait lock DELIBERATE bump (33 -> 34): Mobile player > Keep the iPod upright (#pocket-upright-check).
-  // v1.372.0 DELIBERATE bump (34 -> 35): Home > Show music in the home feed (#home-music-check).
-  assert.strictEqual(boxes.length, 35, 'the same settings (no key dropped), the rotate log, keyboard search, the on-screen log switch, the no-glyph test, the resume-prompt countdown switch, Keep the iPod upright and Show music in the home feed');
+  // v1.372.0 DELIBERATE bump (34 -> 35): Home > Show music in the home feed; v1.373.0 removed it again (35 -> 34, Dean).
+  assert.strictEqual(boxes.length, 34, 'the same settings (no key dropped), the rotate log, keyboard search, the on-screen log switch, the no-glyph test, the resume-prompt countdown switch and Keep the iPod upright');
   for (const b of boxes) {
     assert.ok(b.classList.contains('ui-switch'), b.id + ' is a ui-switch');
     assert.strictEqual(b.getAttribute('role'), 'switch', b.id);

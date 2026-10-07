@@ -11473,17 +11473,6 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   // In-memory only: a real page load/refresh starts with this null, so a
   // fresh or deep-linked home load is never affected by a previous session.
   let homeViewCache = null;
-  // v1.372.0 (gate r1, adversary W1 / qa W2): a setting the home page is BUILT from (Show music in the home feed) makes
-  // the cached home stale - Settings -> off -> Home reattached the old page with the songs still on it. Drop it the way
-  // a non-restoring navigation does (destroy the cached instance's listeners first), so the next Home loads fresh.
-  function forgetHomeView() {
-    if (!homeViewCache) return;
-    const staleHome = viewRegistry.home;
-    if (staleHome && typeof staleHome.destroy === 'function') {
-      try { staleHome.destroy(); } catch (err) { console.error('Stale home-cache destroy() failed', err); }
-    }
-    homeViewCache = null;
-  }
 
   // W2 remediation (v1.16.0): a monotonically-increasing navigation-
   // generation token -- mirrors player.js's `loadGeneration` guard exactly.
@@ -12306,7 +12295,6 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   window.FileTube.registerView = registerView;
   window.FileTube.navigate = navigate;
   window.FileTube.viewSignal = viewSignal; // gate r1: aborts when the user leaves the shown view
-  window.FileTube.forgetHomeView = forgetHomeView; // v1.372.0: a Settings change the home feed depends on
   window.FileTube.pushViewState = pushViewState; // v1.217 in-view back-stack
   window.FileTube.replaceViewState = replaceViewState;
   // v1.247 (F2): the skin's MENU/collapse asks to dock back on the launch-origin tab. The getter

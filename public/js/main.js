@@ -1934,8 +1934,6 @@ const PreviewCards = (function () {
       if (folderFilter) queryParams.push(`folder=${encodeURIComponent(folderFilter)}`);
       if (rootFilter) queryParams.push(`root=${encodeURIComponent(rootFilter)}`);
       if (subsFilter) queryParams.push('subs=1'); // v1.79.1: subscription-scoped browse
-      // v1.372.0: the HOME grid says so, so the server applies Settings > Show music in the home feed here only
-      if (isBareHome) queryParams.push('home=1');
       queryParams.push(`sort=${encodeURIComponent(currentSort)}`);
       queryParams.push(`format=${encodeURIComponent(getStoredFormatFilter())}`);
       // v1.50: watched-state filter -- server-authoritative like format
@@ -3341,7 +3339,7 @@ const PreviewCards = (function () {
         booksRowHost.insertAdjacentElement('beforebegin', videosRowHost);
         if (homeRowEnabled('ft-home-continue-watching')) {
           hydrateHomeRow(videosRowHost, 'watching', () =>
-            fetch(`/api/videos?filter=recent-watching&limit=${HOME_ROW_CAP}&home=1`) // v1.372.0: a home row (Show music in the home feed)
+            fetch(`/api/videos?filter=recent-watching&limit=${HOME_ROW_CAP}`)
               .then((r) => (r.ok ? r.json() : { items: [] }))
               // No See-all href: the watched-state filter is a stored toolbar
               // pref, not a URL scope - a ?watch= link would silently no-op

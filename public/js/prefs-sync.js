@@ -19,14 +19,14 @@
 (function () {
   if (window.__ftPrefsSync) return; // double-load guard (QA S2): a second eval must not wrap the first patch
   // The client twin of server.js's SYNCED_PREF_KEYS (a lock test binds both
-  // to the exec plan's key list (23 since v1.372.0's ft-home-music) - drift = a key that silently never syncs).
+  // to the exec plan's key list (22: v1.372.0 added ft-home-music, v1.373.0 removed it) - drift = a key that silently never syncs).
   var SYNCED = [
     'ft-era', 'ft-mode', 'ft-modern-mode', 'ft-icons',
     'filetube_sort', 'filetube_modern_sort', 'filetube_modern_chip',
     'ft-star-ratings', 'ft-ambient',
     'ft-critters:on', 'ft-critters:density', 'ft-critters:size', 'ft-critters:kiss', 'ft-critters:randomsound',
     'ft-music-skin', 'ft-music-autoplay', 'ft-music-shuffle',
-    'ft-home-feed', 'ft-home-music', 'ft-home-continue-listening', 'ft-home-continue-podcasts', 'ft-tv-continue-watching',
+    'ft-home-feed', 'ft-home-continue-listening', 'ft-home-continue-podcasts', 'ft-tv-continue-watching',
     'ft-cleanup-days',
   ];
   var META_KEY = 'ft-prefs-meta'; // {key: updatedAtMs} - written via the RAW setter only (never recurses into the mirror)
