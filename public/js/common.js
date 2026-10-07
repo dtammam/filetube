@@ -7561,7 +7561,8 @@ function openPlaylistPicker(opts) {
   const albumList = U.list({ actions: 1, grouped: true, label: 'Album', doc: d });
   albumList.classList.add('playlist-picker-album');
   albumList.hidden = true;
-  albumList.appendChild(U.row({ title: 'Save as an album', meta: 'Album, artist and track numbers', actions: [albumOn], doc: d }));
+  const albumRow = U.row({ title: 'Save as an album', meta: 'Album, artist and track numbers', actions: [albumOn], doc: d });
+  albumList.appendChild(albumRow);
   albumList.appendChild(cleanRow);
   cleanRow.hidden = true;
   wrap.appendChild(albumList);
@@ -7613,6 +7614,8 @@ function openPlaylistPicker(opts) {
     albumList.hidden = !albumOffered() || list.hidden;
     albumFields.hidden = albumList.hidden || !albumOn.checked;
     cleanRow.hidden = !albumOn.checked;
+    // v1.372.0: while on, the switch's own line says how to rename (measured: a per-row hint was cut off at 390px)
+    albumRow.querySelector('.ui-row__meta').textContent = albumOn.checked ? 'Tap a song\'s name to rename it' : 'Album, artist and track numbers';
     renderRows();
   }
   if (fmt) [fmt.format, fmt.filetype].forEach((sel) => sel.addEventListener('change', () => { syncAlbum(); checkExisting(); }));
@@ -7704,7 +7707,7 @@ function openPlaylistPicker(opts) {
     if (!r.nameEl) return;
     const on = albumWanted();
     r.nameEl.textContent = on ? songName(r) : (r.title || r.id);
-    r.metaEl.textContent = on ? `Track ${r.pos} - tap the name to edit` : '';
+    r.metaEl.textContent = on ? `Track ${r.pos}` : ''; // (the "tap to rename" hint is on the Save as an album row: it fits a phone)
     r.metaEl.hidden = !on;
   }
   function renderRows() { state.rows.forEach(renderRow); }

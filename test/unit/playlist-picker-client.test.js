@@ -561,17 +561,19 @@ test('v1.372.0: with the album on, each row shows the name the song WILL get and
   await sleep(GUARD_MS);
   pointerClick(albumSwitch('Save as an album'));
   assert.strictEqual(nameOf(0), KG.entries[0].title, 'album on, Clean up titles off: the name is unchanged');
-  assert.strictEqual(metaOf(0), 'Track 1 - tap the name to edit');
+  assert.strictEqual(metaOf(0), 'Track 1');
+  assert.strictEqual(albumSection().querySelector('.ui-row__meta').textContent, 'Tap a song\'s name to rename it', 'the hint, on the switch row while on');
   pointerClick(albumSwitch('Clean up titles'));
   assert.strictEqual(nameOf(0), 'Introduction (feat. Daniel Radcliffe)', 'cleaned: the noise (server) and "Kyle Gordon - " (picker) off');
   assert.strictEqual(nameOf(2), 'My Life (Is the Worst Life Ever)', 'an en dash prefix too');
-  assert.strictEqual(metaOf(2), 'Track 3 - tap the name to edit');
+  assert.strictEqual(metaOf(2), 'Track 3');
   assert.strictEqual(rowOf(1).querySelector('.ui-row__meta').textContent, 'Already in library', 'a blocked row keeps its note and no tap target');
   assert.strictEqual(rowOf(1).querySelector('.ui-row__link'), null);
   albumInput('Album artist').value = 'Somebody'; albumInput('Album artist').dispatchEvent(new global.window.Event('input'));
   assert.strictEqual(nameOf(0), 'Kyle Gordon - Introduction (feat. Daniel Radcliffe)', 'the prefix follows the Album artist field');
   pointerClick(albumSwitch('Save as an album'));
   assert.strictEqual(nameOf(0), KG.entries[0].title, 'album off again: YouTube\'s name');
+  assert.strictEqual(albumSection().querySelector('.ui-row__meta').textContent, 'Album, artist and track numbers', 'off: the description again');
 });
 
 test('v1.372.0: tapping a name opens the standard dialog, prefilled; Save renames (and is posted), Cancel and an empty name keep it', async () => {
