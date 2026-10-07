@@ -558,6 +558,7 @@ test('v1.372.0: with the album on, each row shows the name the song WILL get and
   await sleep(20);
   assert.strictEqual(nameOf(0), KG.entries[0].title, 'album off: YouTube\'s name');
   assert.strictEqual(metaOf(0), '');
+  assert.strictEqual(rowOf(0).querySelector('.ui-row__meta').hidden, true, 'no empty meta line taking space');
   await sleep(GUARD_MS);
   pointerClick(albumSwitch('Save as an album'));
   assert.strictEqual(nameOf(0), KG.entries[0].title, 'album on, Clean up titles off: the name is unchanged');
@@ -649,4 +650,61 @@ test('v1.372.0: a press on a song name INSIDE the window whose click lands after
   assert.strictEqual(switches()[0].checked, false, 'the press began inside the window');
   pointerClick(link);
   assert.strictEqual(switches()[0].checked, true, 'a fresh tap after it answers');
+});
+
+// ---- v1.372.0 gate r1 ----
+test('gate r1: a rename belongs to the VIDEO (both rows of a twice-listed video show and send it); a name over 200 is refused with a note', async () => {
+  const page1 = { listId: L, title: 'T', total: 3, page: 1, nextPage: null, entries: [entry(1, { position: 1, title: 'A - One' }), entry(2, { position: 2, title: 'A - Two' }), entry(1, { position: 3, title: 'A - One' })] };
+  const c = fresh({ pages: { 1: page1 } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await albumOnNow();
+  pointerClick(rowOf(2).querySelector('.ui-row__link')); // the SECOND listing of video 1
+  await sleep(GUARD_MS);
+  dialog().querySelector('.ui-field__input').value = 'Renamed';
+  pointerClick(dialogBtn('Save'));
+  await sleep(20);
+  assert.strictEqual(nameOf(0), 'Renamed', 'the first row of that video shows it too');
+  assert.strictEqual(nameOf(2), 'Renamed');
+  await sleep(400);
+  pointerClick(rowOf(1).querySelector('.ui-row__link'));
+  await sleep(GUARD_MS);
+  dialog().querySelector('.ui-field__input').value = 'x'.repeat(201);
+  pointerClick(dialogBtn('Save'));
+  await sleep(20);
+  assert.strictEqual(nameOf(1), 'A - Two', 'kept');
+  assert.strictEqual(picker().querySelector('.oneoff-status').textContent, 'A song name can be up to 200 characters.');
+  await sleep(400);
+  switches()[0].checked = true; switches()[1].checked = true;
+  switches()[0].dispatchEvent(new global.window.Event('change'));
+  click(btn('Download'));
+  await sleep(20);
+  assert.deepStrictEqual(calls.find((x) => x.url === '/api/ytdlp/download-playlist').body.album.titles, { [entry(1).id]: 'Renamed' });
+});
+
+test('gate r1: a row with no title shows its id but never sends it as a name; the name link says what a tap does', async () => {
+  const page1 = { listId: L, title: 'T', total: 2, page: 1, nextPage: null, entries: [entry(1, { position: 1, title: '' }), entry(2, { position: 2, title: 'A - Two' })] };
+  const c = fresh({ pages: { 1: page1 } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await sleep(20);
+  assert.strictEqual(rowOf(1).querySelector('.ui-row__link').getAttribute('aria-label'), 'Select A - Two', 'album off: the tap ticks');
+  await sleep(GUARD_MS);
+  pointerClick(albumSwitch('Save as an album'));
+  assert.strictEqual(rowOf(1).querySelector('.ui-row__link').getAttribute('aria-label'), 'Rename A - Two', 'album on: the tap renames');
+  albumInput('Album artist').value = 'Someone';
+  switches()[0].checked = true; switches()[0].dispatchEvent(new global.window.Event('change'));
+  click(btn('Download'));
+  await sleep(20);
+  assert.deepStrictEqual(calls.find((x) => x.url === '/api/ytdlp/download-playlist').body.album.titles, {});
+});
+
+test('gate r1 (adversary W4): leaving the page while the rename dialog is up closes the dialog too', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  const ac = new global.window.AbortController();
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio', signal: ac.signal });
+  await albumOnNow();
+  pointerClick(rowOf(0).querySelector('.ui-row__link'));
+  assert.ok(dialog(), 'the rename dialog is up');
+  ac.abort();
+  await sleep(20);
+  assert.strictEqual([...global.document.querySelectorAll('.ui-sheet:not(.is-closing)')].length, 0, 'neither the picker nor the dialog stays');
 });

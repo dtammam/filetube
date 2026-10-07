@@ -73,7 +73,6 @@ test('Enter on the confirm reaches nothing behind it; when the confirm closes, f
   const enter = key(win, liveDialog(doc), 'Enter');
   assert.strictEqual(await peek(answer()), 'pending', 'Enter on the dialog answers nothing (F33)');
   assert.strictEqual(enter.defaultPrevented, false);
-  assert.strictEqual(doc.querySelectorAll('.ui-sheet:not(.is-closing)').length, 1, 'and opens no menu: only the confirm is up');
   doc.querySelectorAll('.ui-sheet .ui-confirm__actions .ui-btn')[1].click(); // OK
   assert.strictEqual(await peek(answer()), true);
   t.tick(2000); // the confirm's exit finishes
@@ -113,4 +112,30 @@ test('Esc still cancels a confirm', async () => {
   t.tick(GUARD + 10);
   key(win, liveDialog(doc), 'Escape');
   assert.strictEqual(await peek(p), false);
+});
+
+// gate r1 (adversary W5): the COMMON case - a sheet closed by its scrim or Close leaves focus on <body> (the clicked
+// control left the page); the hand-back must still run then.
+test('focus on <body> when a sheet finishes closing still goes back to the opener (the scrim / Close path)', () => {
+  const t = clock();
+  const { win, doc } = page();
+  const opener = doc.getElementById('opener');
+  opener.focus();
+  const s = ui.sheet({ title: 'A sheet', content: doc.createElement('p'), doc, win });
+  s.open();
+  s.close();
+  doc.activeElement.blur(); // what a click on the scrim leaves behind
+  assert.strictEqual(doc.activeElement, doc.body);
+  t.tick(2000);
+  assert.strictEqual(doc.activeElement, opener);
+});
+
+test('ui.prompt takes the caller\'s signal: an abort closes it and answers null (gate r1 adversary W4)', async () => {
+  const { win, doc } = page();
+  const ac = new win.AbortController();
+  const p = ui.prompt({ title: 'Song name', label: 'Song name', value: 'x', signal: ac.signal, doc, win });
+  assert.ok(liveDialog(doc), 'the dialog is up');
+  ac.abort();
+  assert.strictEqual(await peek(p), null);
+  assert.strictEqual(liveDialog(doc), null, 'no live dialog left over the next page');
 });

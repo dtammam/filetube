@@ -7639,7 +7639,7 @@ function openPlaylistPicker(opts) {
 
   // `started`: the job was accepted - Download stays off while the sheet closes (a second tap during the
   // close would start the same videos again)
-  const state = { listId: null, title: '', total: null, nextPage: null, rows: [], loading: false, posting: false, started: false };
+  const state = { listId: null, title: '', total: null, nextPage: null, rows: [], loading: false, posting: false, started: false, customNames: Object.create(null) };
   // the view's signal (LESSONS 4): leaving the page closes the picker, never strands it over the next view
   const signal = o.signal || ((typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.viewSignal === 'function') ? window.FileTube.viewSignal() : undefined);
   const sheet = U.sheet({ title: 'Choose from the playlist', content: wrap, doc: d, signal });
@@ -7683,7 +7683,7 @@ function openPlaylistPicker(opts) {
     // off it ticks the row. Its meta line (`' '`: ui.row makes the span) carries "Track N" while the album is on.
     // v1.371.0: `pos` = the row's place in the playlist, the track number when the videos are saved as an album
     // (the server's `position`, counted before any bad row was dropped; the row count only as a fallback)
-    const rec = { id: e.id, box, pos: Number.isInteger(e.position) && e.position > 0 ? e.position : state.rows.length + 1, title: e.title || '', titleClean: typeof e.titleClean === 'string' ? e.titleClean : '', channel: e.channel || '', custom: null, nameEl: null, metaEl: null };
+    const rec = { id: e.id, box, pos: Number.isInteger(e.position) && e.position > 0 ? e.position : state.rows.length + 1, title: e.title || '', titleClean: typeof e.titleClean === 'string' ? e.titleClean : '', channel: e.channel || '', nameEl: null, metaEl: null };
     const row = U.row({ title: e.title || e.id, meta: blocked || ' ', media, actions, onClick: blocked ? undefined : (ev) => tapRow(rec, ev), doc: d });
     if (blocked) row.classList.add('is-disabled');
     else {
@@ -7699,7 +7699,8 @@ function openPlaylistPicker(opts) {
   // name the song WILL get - the typed one, else the cleaned one (the server's noise-free title, then the album artist's
   // "Artist - " prefix dropped) when Clean up titles is on, else YouTube's - and "Track N". What it shows is what is written.
   function songName(r) {
-    if (r.custom) return r.custom;
+    const custom = Object.prototype.hasOwnProperty.call(state.customNames, r.id) ? state.customNames[r.id] : null;
+    if (custom) return custom; // a rename is the VIDEO's (a video listed twice shows and sends one name)
     if (!cleanOn.checked) return r.title || r.id;
     return stripArtistPrefix(r.titleClean || r.title, albumArtist.input.value.trim()) || r.title || r.id;
   }
@@ -7707,6 +7708,8 @@ function openPlaylistPicker(opts) {
     if (!r.nameEl) return;
     const on = albumWanted();
     r.nameEl.textContent = on ? songName(r) : (r.title || r.id);
+    // what the tap does, for a screen reader (gate r1 qa S5): rename with the album on, tick the row with it off
+    r.nameEl.setAttribute('aria-label', on ? 'Rename ' + songName(r) : 'Select ' + (r.title || r.id));
     r.metaEl.textContent = on ? `Track ${r.pos}` : ''; // (the "tap to rename" hint is on the Save as an album row: it fits a phone)
     r.metaEl.hidden = !on;
   }
@@ -7714,12 +7717,14 @@ function openPlaylistPicker(opts) {
   function tapRow(r, ev) {
     if (!sheet.accepts(ev)) return;
     if (!albumWanted()) { r.box.checked = !r.box.checked; refresh(); return; } // album off: the tap ticks the row
-    U.prompt({ title: 'Song name', label: 'Song name', value: songName(r), confirmLabel: 'Save', doc: d }).then((v) => {
+    // the picker's signal: leaving the page (or closing the picker by it) closes the dialog too (gate r1 adversary W4)
+    U.prompt({ title: 'Song name', label: 'Song name', value: songName(r), confirmLabel: 'Save', signal, doc: d }).then((v) => {
       if (v === null || v === undefined) return; // Cancel
       const t = String(v).trim();
       if (!t) return; // an empty name keeps the one shown
-      r.custom = t;
-      renderRow(r);
+      if (t.length > 200) { status.textContent = 'A song name can be up to 200 characters.'; return; } // the server's bound
+      state.customNames[r.id] = t;
+      renderRows(); // every row of that video
     });
   }
   function load(page) {
@@ -7787,7 +7792,8 @@ function openPlaylistPicker(opts) {
         if (!r.box || !r.box.checked || Object.prototype.hasOwnProperty.call(tracks, r.id)) return;
         tracks[r.id] = r.pos;
         const name = songName(r);
-        if (name !== r.title) titles[r.id] = name;
+        // a row with no title shows its id: that is never sent as a name (gate r1 qa S3) unless the user typed one
+        if (name !== r.title && (r.title || Object.prototype.hasOwnProperty.call(state.customNames, r.id))) titles[r.id] = name;
       });
       albumBody = { title, artist, cleanTitles: false, tracks, titles };
     }
@@ -11464,6 +11470,17 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   // In-memory only: a real page load/refresh starts with this null, so a
   // fresh or deep-linked home load is never affected by a previous session.
   let homeViewCache = null;
+  // v1.372.0 (gate r1, adversary W1 / qa W2): a setting the home page is BUILT from (Show music in the home feed) makes
+  // the cached home stale - Settings -> off -> Home reattached the old page with the songs still on it. Drop it the way
+  // a non-restoring navigation does (destroy the cached instance's listeners first), so the next Home loads fresh.
+  function forgetHomeView() {
+    if (!homeViewCache) return;
+    const staleHome = viewRegistry.home;
+    if (staleHome && typeof staleHome.destroy === 'function') {
+      try { staleHome.destroy(); } catch (err) { console.error('Stale home-cache destroy() failed', err); }
+    }
+    homeViewCache = null;
+  }
 
   // W2 remediation (v1.16.0): a monotonically-increasing navigation-
   // generation token -- mirrors player.js's `loadGeneration` guard exactly.
@@ -12286,6 +12303,7 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
   window.FileTube.registerView = registerView;
   window.FileTube.navigate = navigate;
   window.FileTube.viewSignal = viewSignal; // gate r1: aborts when the user leaves the shown view
+  window.FileTube.forgetHomeView = forgetHomeView; // v1.372.0: a Settings change the home feed depends on
   window.FileTube.pushViewState = pushViewState; // v1.217 in-view back-stack
   window.FileTube.replaceViewState = replaceViewState;
   // v1.247 (F2): the skin's MENU/collapse asks to dock back on the launch-origin tab. The getter

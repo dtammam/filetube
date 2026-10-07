@@ -527,8 +527,8 @@
     }
 
     function finish() {
-      // v1.372.0 (Dean: Enter on the Move to Trash confirm re-opened the card menu): read BEFORE the sheet leaves the page
-      // (removing a focused node moves focus to body) whether focus is still ours. A dialog opened from this sheet while it
+      // v1.372.0 (Dean: Enter on the Move to Trash confirm re-opened the card menu): is focus still ours (in this sheet, or
+      // nowhere: a removed focused node leaves it on body, so reading it before or after the removal agrees)? A dialog opened from this sheet while it
       // closed (a menu item's confirm) has taken focus by now, and must keep it: handing it back to our opener put focus on
       // the card's menu button BEHIND the confirm, so the next Enter pressed that button.
       var focusNow = doc.activeElement;
@@ -892,8 +892,9 @@
       content.appendChild(f.el);
       var acts = actionsRow(doc, o.cancelLabel || 'Cancel', o.confirmLabel || 'OK', !!o.danger);
       content.appendChild(acts.row);
+      // v1.372.0 (gate r1 adversary W4): the caller's signal, like ui.confirm's - a prompt a view opened closes with it
       var ctrl = sheet({ variant: 'dialog', title: o.title, label: o.title ? null : (o.label || 'Prompt'), content: content,
-        initialFocus: f.input, onClosing: function () { settle(null); }, doc: doc, win: o.win });
+        initialFocus: f.input, onClosing: function () { settle(null); }, signal: o.signal, doc: doc, win: o.win });
       function submit() { if (ctrl.isOpen()) { settle(f.input.value); ctrl.close(); } }
       ctrl.guard(acts.cancel);
       ctrl.guard(acts.ok);

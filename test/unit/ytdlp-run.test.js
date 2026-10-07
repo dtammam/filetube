@@ -524,10 +524,10 @@ test('shouldRetryWithoutSubtitles: never throws on a malformed/partial result', 
 
 // v1.372.0: an album track's written song name (`meta_title`, measured present only when FileTube set one) is the
 // captured title, so the library list shows the same name as Music; any other download keeps YouTube's title.
-test('v1.372.0 parseChannelMetaLine: meta_title wins over title when present; absent/empty/NA falls back to title', () => {
+test('v1.372.0 parseChannelMetaLine: meta_title wins over title when present; absent or empty falls back to title', () => {
   const line = (o) => 'FTCHMETA ' + JSON.stringify(Object.assign({ id: 'QFIFEobmIIQ', title: 'Kyle Gordon - Planet of the Bass [Official Audio]' }, o));
   assert.strictEqual(parseChannelMetaLine(line({ meta_title: 'Planet of the Bass' })).title, 'Planet of the Bass');
   assert.strictEqual(parseChannelMetaLine(line({})).title, 'Kyle Gordon - Planet of the Bass [Official Audio]');
   assert.strictEqual(parseChannelMetaLine(line({ meta_title: '' })).title, 'Kyle Gordon - Planet of the Bass [Official Audio]');
-  assert.strictEqual(parseChannelMetaLine(line({ meta_title: 'NA' })).title, 'Kyle Gordon - Planet of the Bass [Official Audio]');
+  assert.strictEqual(parseChannelMetaLine(line({ meta_title: 'NA' })).title, 'NA', 'a song named "NA" is that name (the .{...}j dict omits an unset field, so NA never stands in for it - gate r1 qa S4)');
 });

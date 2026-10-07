@@ -185,11 +185,19 @@ test('v1.372.0 albumFrom: titles are kept per job id (trimmed, null-prototype); 
   assert.strictEqual(r.ok, true);
   assert.strictEqual(Object.getPrototypeOf(r.album.titles), null);
   assert.deepStrictEqual({ ...r.album.titles }, { vid00000001: 'Planet of the Bass' });
-  for (const bad of ['', '   ', 'A' + String.fromCharCode(0) + 'B', 'A​B', 'x'.repeat(201), 7]) {
+  for (const bad of ['', '   ', 'A' + String.fromCharCode(0) + 'B', 'x'.repeat(201), 7, '\u200b\u202e']) {
     const b = album.albumFrom(good({ titles: { vid00000001: bad } }), IDS);
     assert.strictEqual(b.ok, false, JSON.stringify(bad));
-    assert.ok(b.error.startsWith('Each song needs a name'), b.error);
+    assert.strictEqual(b.error, 'The name for vid00000001 must be 1 to 200 characters', 'it names the song (gate r1)');
   }
+  // gate r1 (qa W1, adversary W3, security LOW): a YouTube title's joiners and direction marks are text, not junk - the
+  // family emoji (U+200D), Persian (U+200C) and Hebrew/Arabic marks (U+200E / U+200F) pass; the hiding / spoofing
+  // characters (zero-width space, bidi overrides) are dropped from a song name instead of failing the album
+  const ok = album.albumFrom(good({ titles: { vid00000001: 'Family \u{1F468}\u200d\u{1F469}\u200d\u{1F467}', vid00000003: '\u200f\u05e9\u05dc\u05d5\u05dd\u200b\u202e' } }), IDS);
+  assert.strictEqual(ok.ok, true, ok.error);
+  assert.strictEqual(ok.album.titles.vid00000001, 'Family \u{1F468}\u200d\u{1F469}\u200d\u{1F467}');
+  assert.strictEqual(ok.album.titles.vid00000003, '\u200f\u05e9\u05dc\u05d5\u05dd', 'U+200F kept; U+200B and U+202E dropped');
+  assert.strictEqual(album.albumFrom(good({ artist: 'Kyle\u200dGordon' }), IDS).ok, true, 'a joiner is allowed in the typed names too');
   assert.deepStrictEqual({ ...album.albumFrom(good(), IDS).album.titles }, {}, 'a v1.371.0 album (no titles) still parses');
 });
 
