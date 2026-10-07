@@ -310,6 +310,13 @@ choice -> the picker with Format / Quality / File type. Its first run caught the
 | Adversary W2: a playlist job pushed accepted one-offs out of the 50-entry pending file | progress is rewritten IN PLACE (`pending.updatePending`); a full file refuses a playlist AND a one-off (503) | job test: 50 pending -> 503, every one-off kept; in-place order; no resurrection |
 | Suggestions taken | no second push for the same waiting list; "Select all (N)"; an exactly-200 list has no Load more (tested); members / premium / needs-auth rows tested; the listing's trash comment; the classification comments | tests named above |
 
+Mutants on the fixes (1554f474, a `git archive` sandbox, restored identical): G1 Download ignores the guard, G2 ?pick=
+auto-submits, G3 no view signal, G4 the sweep fails a running playlist, G6 no pending cap, G7 broadcast to everyone, G8
+members among the recipients, G9 children listed on /subscriptions, G10 the blank waiting summary, G11 no join, G12 Cancel
+spares the running video (fail 3), G13 a push per repeat, G14 the extension calls waiting a failure, G15 Subscribe with the
+posted link - KILLED; G5 (progress re-appended) survived the helper-level test and is now KILLED by a job-level one (a
+running job's entry stays ahead of a later one-off).
+
 Disclosed, not changed: the one-off form's Folder is not used by a playlist job (each video goes to its channel's folder,
 R8); "Just this video" from a waiting playlist uses the default format; the listing has no global concurrency cap (one
 yt-dlp per list page in flight); with a cookies file a member who may download can list the operator's Watch Later /

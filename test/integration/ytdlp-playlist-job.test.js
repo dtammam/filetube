@@ -281,3 +281,22 @@ test('gate r1 W2: a full pending file refuses a playlist (503) instead of droppi
   pending.updatePending(dataDir, { jobId: 'never-added', kind: 'playlist' });
   assert.ok(!pending.readPending(dataDir).some((e) => e.jobId === 'never-added'), 'an absent job is never resurrected');
 });
+
+test('gate r1 W2: a RUNNING job rewrites its own pending entry in place after each video (never moved past a later one-off)', async () => {
+  const ids = [1, 2].map(ID);
+  let release;
+  const held = new Promise((r) => { release = r; });
+  // the later one-off is held too, so it stays in the file while the playlist moves
+  run.runDownload = async (sub, cfg, vids) => { calls.push({ id: vids[0] }); if (vids[0] === ids[1] || vids[0] === ID(99)) await held; return { ok: true, code: 0, stdout: '', stderr: '' }; };
+  pending.addPending(dataDir, { jobId: 'job-order', kind: 'playlist', listId: LIST, title: 'T', ids, doneIds: [], failedIds: [], format: 'video', quality: 'best', createdAt: '2026-10-07T00:00:00.000Z' });
+  pending.addPending(dataDir, { jobId: 'later-one-off', url: 'https://www.youtube.com/watch?v=' + ID(99), format: 'video' });
+  ytdlp.requeuePendingOneShots(Object.assign(makeDeps(), {}), config());
+  const until = Date.now() + 5000;
+  const doneOf = () => ((pending.readPending(dataDir).find((e) => e.jobId === 'job-order') || {}).doneIds || []).length;
+  while (doneOf() < 1 && Date.now() < until) await new Promise((r) => setTimeout(r, 10));
+  const mid = pending.readPending(dataDir);
+  assert.deepStrictEqual(mid.map((e) => e.jobId), ['job-order', 'later-one-off'], 'the job is still first: rewritten in place');
+  assert.deepStrictEqual(mid.find((e) => e.jobId === 'job-order').doneIds, [ids[0]], 'its progress is written');
+  release();
+  await settle('job-order');
+});
