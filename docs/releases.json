@@ -3562,5 +3562,11 @@
     "date": "2026-10-07",
     "title": "Music radio that stays close, and a Shuffle mode",
     "intent": "When your songs run out, Autoplay now plays like a radio station: it stays with the same artist, the same genre and nearby years, drifting slowly instead of jumping to something unrelated, and never plays one artist three times in a row. You can start a radio from a song, an album, an artist or a genre, and a new Shuffle switch beside Loop and Autoplay plays the rest of your songs in random order."
+  },
+  {
+    "version": "1.369.0",
+    "date": "2026-10-07",
+    "title": "The iPod stays upright when you turn the phone",
+    "intent": "Turning your phone sideways no longer changes the iPod: it stays upright in your hand, the same size, and the wheel and buttons work the same. If you liked the sideways layout, turn off Settings > Mobile player > Keep the iPod upright (or the iPod's own Settings > Stay Upright) to get it back."
   }
 ]

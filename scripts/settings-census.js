@@ -26,7 +26,7 @@ const SAVE = {
   'logo-file-input': ['/api/settings/logo', 'all'], 'logo-upload-btn': ['/api/settings/logo', 'all'], 'logo-reset-btn': ['/api/settings/logo', 'all'],
   'logo-file-input-dark': ['/api/settings/logo', 'all'], 'logo-upload-btn-dark': ['/api/settings/logo', 'all'], 'logo-reset-btn-dark': ['/api/settings/logo', 'all'],
   'sticker-file-input': ['/api/me/sticker', 'all'],
-  'pocket-kb-search-check': [D, 'all'], 'music-skin-filter': ['none (search box)', 'all'],
+  'pocket-kb-search-check': [D, 'all'], 'pocket-upright-check': [D, 'all'], 'music-skin-filter': ['none (search box)', 'all'],
   'critter-mode-check': [D, 'all'], 'critter-density-select': [D, 'all'], 'critter-size-select': [D, 'all'],
   'critter-kiss-check': [D, 'all'], 'critter-randomsound-check': [D, 'all'],
   'critter-image-input': ['/api/critters', 'admin'], 'critter-sound-input': ['/api/critters', 'admin'],

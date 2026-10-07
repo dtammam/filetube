@@ -10587,7 +10587,7 @@ function swipeBackStandDownReason(startEl, doc, win) {
 // real listeners can be driven in a test. `onBack` is the router's
 // swipeBackIfPossible (the depth>0 / homeBackPending guard stays there).
 function wireSwipeBackGesture(doc, win, onBack) {
-  let track = null; // { startX, startY, x, y, claimed } for a single-touch drag
+  let track = null; // { startX, startY, x, y, claimed, turn } for a single-touch drag
   // v1.160.1/.3: once a drag is CONFIRMED horizontal we preventDefault the rest
   // of it, so the browser can't also pan/rubber-band the page ("the whole app
   // shakes with it"). This non-passive listener is attached LAZILY - only after
@@ -10600,8 +10600,25 @@ function wireSwipeBackGesture(doc, win, onBack) {
   // vertical must STOP being prevented, or it eats an intended scroll and fires
   // no back. Re-checking swipeBackShouldClaim on the live cumulative delta
   // restores the per-move semantics the v1.160.1 edge handler had.
+  // The iPod portrait lock: a drag that starts on a full player drawn TURNED (the Upright setting, style.css POCKET
+  // STAYS UPRIGHT) is read in the player's own frame, so "rightward" means rightward across the upright iPod in the
+  // hand, as in portrait (music-skins.js turnOf / unturnDelta; 0 = no turn, the deltas exactly as before).
+  function turnAt(target) {
+    const MS = win && win.FileTubeMusicSkins;
+    if (!MS || typeof MS.turnOf !== 'function' || !target || typeof target.closest !== 'function') return 0;
+    const full = target.closest('.mms-full');
+    return full ? MS.turnOf(full, win) : 0;
+  }
+  function dragDelta(tr) {
+    const dx = tr.x - tr.startX; const dy = tr.y - tr.startY;
+    if (!tr.turn) return { dx, dy };
+    const d = win.FileTubeMusicSkins.unturnDelta(dx, dy, tr.turn);
+    return { dx: d.x, dy: d.y };
+  }
   function onClaimedMove(e) {
-    if (e.cancelable && track && swipeBackShouldClaim(track.x - track.startX, track.y - track.startY)) e.preventDefault();
+    if (!e.cancelable || !track) return;
+    const d = dragDelta(track);
+    if (swipeBackShouldClaim(d.dx, d.dy)) e.preventDefault();
   }
   function stopTracking() {
     if (!track) return;
@@ -10615,7 +10632,7 @@ function wireSwipeBackGesture(doc, win, onBack) {
     // never tracked.
     if (e.target && swipeBackStandDownReason(e.target, doc, win)) return;
     const t = e.touches[0];
-    track = { startX: t.clientX, startY: t.clientY, x: t.clientX, y: t.clientY, claimed: false };
+    track = { startX: t.clientX, startY: t.clientY, x: t.clientX, y: t.clientY, claimed: false, turn: turnAt(e.target) };
   }, { passive: true });
   doc.addEventListener('touchmove', (e) => {
     if (!track || !e.touches || e.touches.length !== 1) return;
@@ -10623,14 +10640,16 @@ function wireSwipeBackGesture(doc, win, onBack) {
     // Confirmed horizontal + rightward: claim the REST of the drag (attach the
     // non-passive preventDefault). Done once per drag; vertical scrolls never
     // reach here so they stay passive/fast.
-    if (!track.claimed && swipeBackShouldClaim(track.x - track.startX, track.y - track.startY)) {
+    const d = dragDelta(track);
+    if (!track.claimed && swipeBackShouldClaim(d.dx, d.dy)) {
       track.claimed = true;
       doc.addEventListener('touchmove', onClaimedMove, { passive: false });
     }
   }, { passive: true });
   const finish = () => {
     if (!track) return;
-    const g = { deltaX: track.x - track.startX, deltaY: track.y - track.startY };
+    const d = dragDelta(track);
+    const g = { deltaX: d.dx, deltaY: d.dy };
     stopTracking();
     if (decideSwipeBack(g)) onBack();
   };
