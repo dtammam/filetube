@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.370.0 W1 (plan docs/exec-plans/active/2026-10-06-v1370-playlist-picker.md, R1, R5): recognising a
+// [UNIT] v1.370.0 W1 (plan docs/exec-plans/completed/2026-10-06-v1370-playlist-picker.md, R1, R5): recognising a
 // playlist link. `classifyPlaylistLink` reads the RAW input (before `rebuildQueryAllowlist` drops `list`), over
 // every shape the plan names - share-sheet text, `&index=` / `&si=` / `&pp=`, a music album (`OLAK...`),
 // `youtu.be/X?list=Y`, a Mix (`RD...`), Watch Later / Liked, a list with no video, and Dean's exact example.

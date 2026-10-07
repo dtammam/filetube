@@ -3,10 +3,10 @@ plan: v1370-playlist-picker
 harness: v2 · lean
 branch: feat/v1.370.0-playlist-picker
 anchor: outcome
-status: Built (W1-W4), gate next
+status: Shipped v1.370.0
 next: the gate (section 6), then W5 and the release as v1.370.0 (Dean, 2026-10-07: the iPod lock shipped first as v1.369.0)
 design: Dean's intake 2026-10-06 (Opus kickoff session, rulings R1-R14 below). Base main 5f1dcc1b. Ships after v1.368.0 (radio), before v1.371.0 (subtitles, 360, cleanup; renumbered 2026-10-07 when the iPod lock took v1.369.0).
-gate: pending
+gate: APPROVED - security-brief + qa r2 @039169ad, adversary r3 @92225865 (Dean ruled a quick delta re-check at round 3)
 ---
 
 # v1.370.0: YouTube playlist links: ask, pick the videos, download them as one job
@@ -203,6 +203,7 @@ Gate: CHANGES r1 @36207a9c — adversary
 Gate: APPROVED r2 @039169ad — security-brief
 Gate: APPROVED r2 @039169ad — qa
 Gate: CHANGES r2 @039169ad — adversary
+Gate: APPROVED r3 @92225865 — adversary
 
 ## 7. Release and evidence
 
@@ -325,6 +326,20 @@ R8); "Just this video" from a waiting playlist uses the default format; the list
 yt-dlp per list page in flight); with a cookies file a member who may download can list the operator's Watch Later /
 Liked (R5 as ruled); an un-reloaded 0.1.0 extension on a `watch&list` tab makes a waiting playlist (reload the unpacked
 extension: the release note says so).
+
+### Gate round 2 and 3
+
+r2 @039169ad: security-brief APPROVED, qa APPROVED (both re-measured every r1 fix), adversary CHANGES with one WARNING (the
+one-off route's new pending-file cap had no test: the mutant without it lost an accepted job at a full file). Fixed at
+92225865 with a test that fills the file while a playlist video waits on another job (the mutant red); QA's suggestion taken
+(a repeat waiting post keeps its first id, so the push's &waiting=<id> still clears it; tested). Round 3: Dean ruled
+2026-10-07 "Quick re-check, ship": adversary r3 APPROVED @92225865 (delta only: R2-W1's mutant red, three addWaiting
+mutants red). The 92225865 delta is tests, one data-file function and a comment; security-brief and qa approved 039169ad.
+
+W5: ROADMAP Shipped (the Planned item leaves; subtitles / 360 / cleanup are v1.371.0), releases.json, CONFIGURATION.md (the
+Shortcut's waiting reply), ARCHITECTURE.md (the token route), extension/README.md, DEVICE-CHECKS "Playlists (v1.370.0)",
+LESSONS section 4 (guard() without accepts() is inert; a poll's field-by-field copy drops a new field; a link that opens a
+page never writes on its own).
 
 ## 8. Out of scope
 

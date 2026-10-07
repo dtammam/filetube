@@ -365,12 +365,6 @@
 
 ### Features
 
-- [ ] **YouTube playlist links: ask, pick the videos, download them as one job (in v1.370.0)** _(Dean, 2026-10-06: "I'd want it
-  to recognize it's a playlist and maybe have a menu showing what the things are and let one select what to download.")_ - the
-  kickoff recon found four gaps: a `watch?v=X&list=Y` link silently drops the list and downloads one video; the Subscriptions form
-  given such a link subscribes to one video (the subscription trap); the `watch?list=` error names the internal field
-  `channelUrl`; and no test passes a `watch?v&list` link at all. Plan: docs/exec-plans/active/2026-10-06-v1370-playlist-picker.md.
-
 - [ ] **What the VPN runbook may point at (candidates, not planned; Dean picks after his runs)** - v1.362.1 shipped
   `docs/references/vpn-slowness-runbook.md`, built on the v1.307 `/diag` suite. What FileTube cannot measure or do today, each a
   possible next step once the numbers say which matters: response compression (the Compression delta row shows the saving);
@@ -718,6 +712,28 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.370.0 - Download from a YouTube playlist: pick the videos (2026-10-07)
+
+- Dean (2026-10-06): "I'd want it to recognize it's a playlist and maybe have a menu showing what the things are and let one
+  select what to download." The four recon gaps are closed: a `watch?v=X&list=Y` link now asks "Just this video" / "Choose
+  videos" (R1); Subscriptions > Add asks too, and "Subscribe to playlist" subscribes to the LIST (the subscription trap); the
+  error no longer names `channelUrl`; the shapes are tested (url.classifyPlaylistLink, the one classifier, read through
+  `GET /api/ytdlp/playlist?peek=1`).
+- The picker (the download box, the Subscriptions one-off form, the extension's "Choose from playlist...", the push):
+  pages of 200 (Load more), only the linked video ticked, "Already in library" (the viewer's visible library) and
+  unavailable rows not tickable, Select all (N), Subscribe to playlist, Download (N) as ONE job: one progress row ("4 of 12"),
+  one Cancel, Retry = the failed videos, each video in its channel's folder, a restart resumes the rest.
+- The iPhone Shortcut: a playlist link waits as "Playlist waiting: choose videos" (persisted, 7 days, 20 max) with a push to
+  everyone allowed to download; the API token gains no route. A Mix / Watch Later / Liked downloads one video, as before.
+- The browser extension 0.2.0: Audio / Video send one video; a playlist tab gets "Choose from playlist..." (reload the
+  unpacked extension).
+- Measured: the verbatim yt-dlp 2026.08.19 output (T0) through the real spawn boundary; a real-browser proof of the box, the
+  extension link and the Shortcut (19 checks).
+- Gate (adversary + qa + security-brief): r1 CHANGES @36207a9c (a crafted ?pick= link downloaded on load; the picker's
+  activation guard was inert; one row per playlist on /subscriptions; the stuck sweep; the pending file evicting accepted
+  one-offs; untested push, join and Cancel); r2 @039169ad security-brief + qa APPROVED, adversary CHANGES (a test gap); r3
+  (Dean ruled a quick re-check) - see the plan.
 
 ### v1.369.0 - The iPod stays upright when you turn the phone (2026-10-07)
 

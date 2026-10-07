@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.370.0 W3 (plan docs/exec-plans/active/2026-10-06-v1370-playlist-picker.md, R7, R8, R9):
+// [INTEGRATION] v1.370.0 W3 (plan docs/exec-plans/completed/2026-10-06-v1370-playlist-picker.md, R7, R8, R9):
 // POST /api/ytdlp/download-playlist runs the picked videos as ONE job - one activity row with exact counts and
 // the failed ids, one Cancel, a restart that resumes the remainder - over the REAL one-off pipeline
 // (launchOneShotJob -> the channel probe -> runExclusive -> runOneShot). Only the two network seams are

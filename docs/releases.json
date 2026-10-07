@@ -3568,5 +3568,11 @@
     "date": "2026-10-07",
     "title": "The iPod stays upright when you turn the phone",
     "intent": "Turning your phone sideways no longer changes the iPod: it stays upright in your hand, the same size, and the wheel and buttons work the same. If you liked the sideways layout, turn off Settings > Mobile player > Keep the iPod upright (or the iPod's own Settings > Stay Upright) to get it back."
+  },
+  {
+    "version": "1.370.0",
+    "date": "2026-10-07",
+    "title": "Download from a YouTube playlist: pick the videos",
+    "intent": "Paste a YouTube link that is part of a playlist and FileTube asks whether you want just that video or to choose from the playlist. Pick the videos you want (ones already in your library are marked) and they download together as one job you can follow, cancel and retry. Playlists shared from the iPhone Shortcut wait in the app for you to choose, and the browser extension has a new Choose from playlist button (reload the extension to get it)."
   }
 ]

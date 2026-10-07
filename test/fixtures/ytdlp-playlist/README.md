@@ -1,7 +1,7 @@
 # yt-dlp flat-playlist fixtures (v1.370.0 W2)
 
 Captured with yt-dlp 2026.08.19 on the dev box on 2026-10-07 (the plan's T0,
-docs/exec-plans/active/2026-10-06-v1370-playlist-picker.md section 7), with
+docs/exec-plans/completed/2026-10-06-v1370-playlist-picker.md section 7), with
 `yt-dlp --flat-playlist -J --playlist-end 200 -- <url>`.
 
 - `example-list-PLUtyNbQXMTLg.json`: VERBATIM stdout for Dean's example list

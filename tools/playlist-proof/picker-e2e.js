@@ -1,6 +1,6 @@
 'use strict';
 /* global document */
-// REAL-BROWSER PROOF (v1.370.0 W4, plan docs/exec-plans/active/2026-10-06-v1370-playlist-picker.md section 5 W4
+// REAL-BROWSER PROOF (v1.370.0 W4, plan docs/exec-plans/completed/2026-10-06-v1370-playlist-picker.md section 5 W4
 // falsifier). Not a CI gate.
 //   node tools/playlist-proof/picker-e2e.js [repoRoot]
 // A seeded fixture library (test/visual/server.js seed) served by a WRITABLE FileTube (this script boots

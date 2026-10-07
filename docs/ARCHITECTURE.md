@@ -201,7 +201,10 @@ tables), `visibility.js` (the ONE pure visibility decision).
   shell); `url.js` re-validates every URL immediately before spawn;
   per-video failure attribution; durable run/failure logs; the one-off API
   accepts an `X-FileTube-Token` (iOS Shortcut) as session-less auth for
-  exactly that route.
+  exactly that route. Since v1.370.0 a YouTube playlist link posted with the
+  token is not downloaded: it waits (`lib/ytdlp/waiting.js`) for the app's
+  playlist picker, which downloads the chosen videos as one job over the
+  one-off pipeline.
 
 ## The client
 

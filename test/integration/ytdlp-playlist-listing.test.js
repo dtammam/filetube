@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.370.0 W2 (plan docs/exec-plans/active/2026-10-06-v1370-playlist-picker.md, R4, R5, R10, R11, R14):
+// [INTEGRATION] v1.370.0 W2 (plan docs/exec-plans/completed/2026-10-06-v1370-playlist-picker.md, R4, R5, R10, R11, R14):
 // GET /api/ytdlp/playlist lists ONE PAGE of a playlist for the picker, through the REAL spawn boundary:
 // the route -> run.listPlaylistPage -> spawnYtdlp -> a FAKE `yt-dlp` on PATH that prints the VERBATIM T0
 // output (test/fixtures/ytdlp-playlist/, README there). Nothing between the route and the child is stubbed.

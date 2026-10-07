@@ -7426,7 +7426,7 @@ function injectAccountMenu() {
   }).catch(() => { /* signed-out / network -- no menu */ });
 }
 
-// ---- v1.370.0 W4: the playlist picker (plan docs/exec-plans/active/2026-10-06-v1370-playlist-picker.md) ----
+// ---- v1.370.0 W4: the playlist picker (plan docs/exec-plans/completed/2026-10-06-v1370-playlist-picker.md) ----
 // A YouTube link that carries a playlist is asked about first (R1): a video in a list -> "Just this video" /
 // "Choose from the playlist..."; a list page -> the picker; a Mix (or Watch Later / Liked without the
 // operator's cookies) -> just the video, with a note (R5). What the link IS comes from the server

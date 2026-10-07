@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.370.0 W4 (plan docs/exec-plans/active/2026-10-06-v1370-playlist-picker.md, R1, R2, R5, R6, R7, R9,
+// [UNIT] v1.370.0 W4 (plan docs/exec-plans/completed/2026-10-06-v1370-playlist-picker.md, R1, R2, R5, R6, R7, R9,
 // R12, R14): the client half of the playlist picker, through the REAL common.js and ui.js in jsdom with a
 // fake fetch that answers like the server (the routes are bound by the integration suites):
 //   - routeOneOffDownload: what the server's peek says decides - ask (a video in a list), the picker (a
