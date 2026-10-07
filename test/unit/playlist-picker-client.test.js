@@ -774,3 +774,14 @@ test('v1.373.0: a press on Hide from feed INSIDE the window whose click lands af
   pointerClick(box);
   assert.strictEqual(box.checked, true);
 });
+
+test('gate r1 (adversary S3): the Hide from feed row stays hidden until the list is read, even when the format changes first', async () => {
+  const c = fresh({ pages: { 1: KG }, pageStatus: 404 });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, withFormatControls: true });
+  const format = picker().querySelector('select[aria-label="Format"]');
+  format.value = 'audio'; format.dispatchEvent(new global.window.Event('change'));
+  assert.strictEqual(picker().querySelector('.playlist-picker-feed').hidden, true);
+  await sleep(20);
+  assert.strictEqual(picker().querySelector('.playlist-picker-feed').hidden, true, 'a list that could not be read offers no row');
+  assert.strictEqual(picker().querySelector('.playlist-picker-feed .ui-row__meta').textContent, 'Out of your feed in Modern mode', 'says where (v1.97 applies to the Modern feed)');
+});

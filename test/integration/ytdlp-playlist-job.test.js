@@ -514,6 +514,7 @@ test('v1.372.0: the song names the picker sent reach each track\'s tags (and the
 
 // ---- v1.373.0: Hide from feed + quiet playlist videos (plan docs/exec-plans/active/2026-10-07-v1373-hide-from-feed.md) ----
 const arrivalsStore = require('../../lib/ytdlp/arrivals');
+const arrivalOf = (id, type) => arrivalsStore.findArrival(arrivalsStore.listArrivals(dataDir), id, type);
 async function startAppAs(deps, userId) {
   const app = express();
   app.use(express.json());
@@ -532,7 +533,7 @@ test('v1.373.0: every video the job downloads leaves a QUIET arrival; with Hide 
     assert.strictEqual(res.status, 202);
     const e = await settle((await res.json()).jobId);
     for (const id of ids) {
-      const a = arrivalsStore.findArrival(dataDir, id);
+      const a = arrivalOf(id, 'audio');
       assert.ok(a, 'recorded before the download');
       assert.strictEqual(a.hide, true);
       assert.strictEqual(a.userId, 7, 'the session user, not the body\'s 999');
@@ -542,11 +543,12 @@ test('v1.373.0: every video the job downloads leaves a QUIET arrival; with Hide 
     assert.strictEqual(e.userId, undefined, 'the user id never rides the shared status row');
     const ids2 = [3].map(ID);
     await settle((await (await post(app.base, '/api/ytdlp/download-playlist', job(ids2, { format: 'video' }))).json()).jobId);
-    assert.deepStrictEqual(arrivalsStore.findArrival(dataDir, ids2[0]) && { hide: arrivalsStore.findArrival(dataDir, ids2[0]).hide, userId: arrivalsStore.findArrival(dataDir, ids2[0]).userId }, { hide: false, userId: null }, 'no Hide from feed: quiet only');
+    const v = arrivalOf(ids2[0], 'video');
+    assert.deepStrictEqual(v && { hide: v.hide, userId: v.userId }, { hide: false, userId: null }, 'no Hide from feed: quiet only (a VIDEO job records type video)');
   } finally { await app.close(); }
 });
 
-test('v1.373.0: Hide from feed is persisted (restart) with its user; a video another job is downloading gets no arrival of ours', async () => {
+test('v1.373.0: Hide from feed is persisted (restart) with its user', async () => {
   const ids = [1, 2].map(ID);
   holdMs = 200;
   const app = await startAppAs(makeDeps(), 7);
@@ -588,5 +590,46 @@ test('v1.373.0: the pending entry REWRITTEN after a video still carries Hide fro
     assert.ok(saved && saved.doneIds.length >= 1, 'a video finished and the entry was rewritten');
     assert.strictEqual(saved.hideFromFeed, true);
     assert.strictEqual(saved.userId, 7);
+  } finally { await app.close(); }
+});
+
+// ---- gate r1 (adversary W1-W3, qa W1-W2) ----
+test('gate r1: a video that does NOT finish leaves no arrival (it would silence a later download)', async () => {
+  const ids = [1, 2].map(ID);
+  failIds = new Set([ids[1]]);
+  const app = await startAppAs(makeDeps(), 7);
+  try {
+    await settle((await (await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', hideFromFeed: true }))).json()).jobId);
+    assert.ok(arrivalOf(ids[0], 'audio'), 'the finished one waits for its scan');
+    assert.strictEqual(arrivalOf(ids[1], 'audio'), null, 'the failed one left nothing');
+  } finally { await app.close(); }
+});
+
+test('gate r1 (adversary W2): Hide from feed never marks a video ANY library already has (a kept file is re-muxed: its birthtime is fresh)', async () => {
+  const ids = [1, 2].map(ID);
+  const deps = makeDeps();
+  const realLoad = deps.loadDatabase;
+  deps.loadDatabase = () => Object.assign({}, realLoad(), { metadata: { m1: { youtubeId: ids[1], filePath: '/x/b.mp3' } } });
+  const app = await startAppAs(deps, 7);
+  try {
+    await settle((await (await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', hideFromFeed: true }))).json()).jobId);
+    assert.strictEqual(arrivalOf(ids[0], 'audio').hide, true);
+    const kept = arrivalOf(ids[1], 'audio');
+    assert.deepStrictEqual({ hide: kept.hide, userId: kept.userId }, { hide: false, userId: null }, 'still quiet, never hidden');
+  } finally { await app.close(); }
+});
+
+test('gate r1 (adversary W3, qa W2): a video ANOTHER job is downloading is waited for and gets NO arrival of ours (its own notification stands)', async () => {
+  const v = ID(1);
+  holdMs = 300;
+  const app = await startAppAs(makeDeps(), 7);
+  try {
+    const one = await post(app.base, '/api/ytdlp/download', { url: `https://www.youtube.com/watch?v=${v}`, format: 'audio' });
+    assert.strictEqual(one.status, 202);
+    await new Promise((r) => setTimeout(r, 30)); // the one-off is in flight
+    const res = await post(app.base, '/api/ytdlp/download-playlist', job([v], { format: 'audio', hideFromFeed: true }));
+    await settle((await res.json()).jobId);
+    assert.strictEqual(calls.filter((c) => c.id === v).length, 1, 'joined, never downloaded twice');
+    assert.strictEqual(arrivalOf(v, 'audio'), null, 'the joined video is the one-off\'s: no arrival');
   } finally { await app.close(); }
 });

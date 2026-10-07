@@ -2996,7 +2996,8 @@ const {
   viewCountStore,
   ytdlp,
   ytdlpDb,
-  findPlaylistArrival: (youtubeId) => ytdlpArrivals.findArrival(DATA_DIR, youtubeId), // v1.373.0: quiet / hidden playlist downloads
+  listPlaylistArrivals: () => ytdlpArrivals.listArrivals(DATA_DIR), // v1.373.0: quiet / hidden playlist downloads
+  removePlaylistArrivals: (keys) => ytdlpArrivals.removeArrivals(DATA_DIR, keys), // ... used once
 });
 
 // Periodic scan timer, driven by the persisted `scanIntervalMinutes`

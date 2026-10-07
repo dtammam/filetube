@@ -7554,7 +7554,7 @@ function openPlaylistPicker(opts) {
   const feedOff = albumSwitch('Hide from feed');
   const feedList = U.list({ actions: 1, grouped: true, label: 'Feed', doc: d });
   feedList.classList.add('playlist-picker-feed');
-  feedList.appendChild(U.row({ title: 'Hide from feed', meta: 'Keep these out of your home feed', actions: [feedOff], doc: d }));
+  feedList.appendChild(U.row({ title: 'Hide from feed', meta: 'Out of your feed in Modern mode', actions: [feedOff], doc: d }));
   feedList.hidden = true;
   wrap.appendChild(feedList);
   const cleanOn = albumSwitch('Clean up titles');

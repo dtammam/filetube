@@ -53,16 +53,29 @@ list is per user), 12 (removing a shipped setting: sweep every trace).
 
 ### W2. Arrivals: quiet, and hidden from the downloader's feed
 - `lib/ytdlp/arrivals.js` (new, waiting.js's posture: `<dataDir>/ytdlp-playlist-arrivals.json`, atomic temp + fsync +
-  rename, degrade never throw, bounded MAX entries, TTL 7 days): `add({ youtubeId, userId|null, hide, sinceMs })` and
-  `find(youtubeId, nowMs)`. The playlist job records one per video BEFORE it starts (only for a video it downloads itself,
-  not one it waits on), with `userId` / `hide` when "Hide from feed" was ticked.
-- The scan (lib/scan/orchestrator.js): ONE wrapper replaces the three `collectDownloadNotification` calls - an item whose
-  `youtubeId` has an arrival raises no notification, and when the arrival asks to hide and the item was added at or after
-  `sinceMs`, it joins that user's Hide from feed list (`userStore.addFeedHidden`). server.js passes the arrival lookup.
+  rename, degrade never throw, bounded MAX entries, TTL 7 days): `addArrival({ youtubeId, type, userId|null, hide,
+  sinceMs })`, `listArrivals`, `findArrival(list, youtubeId, type)`, `removeArrivals(keys)`. An arrival is ONE download's
+  (gate r1): the YouTube id AND the type (the job's format), used up by the first scan that matches it, removed when that
+  video does not finish.
+- The playlist job records one per video BEFORE it starts (only for a video it downloads itself, not one it waits on),
+  hiding only when "Hide from feed" was ticked AND no library already has that video (`youtubeIdInLibrary`, failing
+  closed - yt-dlp re-muxes a kept file, so its fresh birthtime defeats the `sinceMs` guard alone: gate r1 adversary W2).
+- The scan (lib/scan/orchestrator.js): ONE wrapper (`noteDownloaded`) replaces the three `collectDownloadNotification`
+  calls; it reads the arrivals once per scan; a matched item raises no notification and, when the arrival hides and the
+  item was added at or after `sinceMs`, joins that user's Hide from feed list (`userStore.addFeedHidden`) - both written,
+  and the used arrivals removed, after the doc commit. server.js passes the list / remove functions.
 - The playlist job: `hideFromFeed` (boolean) and `userId` (from the SESSION in the route, never the body) are validated and
   persisted (restart); `hideFromFeed` rides the activity row for Retry (the user id never does: the status snapshot is
   shared).
-- The picker: a "Hide from feed" row (ui.row + the ui-switch), posted as `hideFromFeed: true`; Retry carries it.
+- The picker: a "Hide from feed" row ("Out of your feed in Modern mode": v1.97's list applies to the Modern feed), posted
+  as `hideFromFeed: true`; Retry carries it.
+
+### W3. The album track listing (Dean: "let's do it all together")
+- From a read-only exploration of "should an 'album' I download have a track listing and be sorted by 'track'": the
+  track number reached the client but no surface showed it; every album opened in ONE saved sort; the iPod's Artists >
+  artist > album played newest upload first. Now: "Track N" (or "Disc D · Track N") in the row's overline on an album page
+  in album order (the slot TV episode rows use); an album opens in album order every time (a pick holds for that album
+  only, in memory); the iPod's artist > album level sorts disc then track (`sortAlbumOrder`) and queues album-order.
 
 ## 6. Gate
 Seats: adversary (floor) + qa + security-brief (a new persisted carrier holding user ids; a write into a per-user table
@@ -184,6 +197,26 @@ validation red (a1, a2, a4, a5, a6); picker guard, refusal, post, Retry, any-for
 the hide write, the server.js wiring red (m1, m2, m6, m7, m8). W1 sweep: zero hits for homeHidesMusic, forgetHomeView,
 wireHomeMusicApply, home-music-check, home=1 in lib, public, test, scripts, server.js. A stored ft-home-music row is still
 returned by GET /api/prefs (getPrefs is unfiltered; read, not run) and the client's applyServer skips it (prefs-sync.js:165).
+
+### Gate round 1 fixes (builder, 2026-10-07)
+- adversary W1 / qa W1 / security LOW (a stale arrival silenced and hid other downloads): an arrival is now ONE download's -
+  keyed by YouTube id AND type (the job's format), used up by the first scan that matches it (removed after the commit),
+  and removed by the job when that video does not finish. Bound: the adversary's repro (the playlist's audio hidden, a
+  later one-off video of the same id notifies and stays visible), a re-download after use notifies, a video-type arrival,
+  a failed video's arrival removed.
+- adversary W2 (a kept file is re-muxed, so its birthtime defeats `sinceMs`): the job hides only when no library already
+  has the video (`youtubeIdInLibrary`, failing closed); still quiet.
+- adversary W3 / qa W2 (a test claimed the join rule untested): a real join (a one-off in flight, then the playlist) leaves
+  no arrival; the over-claiming title was corrected.
+- adversary W4 / qa W3 (docs of the removed switch): the v1.372.0 device checks are marked confirmed (Dean, 2026-10-07; the
+  switch one noted as removed); tracker #293 (f) is moot.
+- Suggestions taken: the arrivals file is read once per scan (S7); the D1a [Youtube=id] site is bound (S1); the row stays
+  hidden until the list is read (S3); the row says "Out of your feed in Modern mode" (S4 / qa S1); the plan names the real
+  functions (qa S2). Disclosed, not fixed: a Retry tapped by ANOTHER user (the status row is shared) hides the retried videos
+  from that user's feed (adversary S5); two playlist jobs racing for the same download share one arrival (S6).
+- Mutants on the fixes: 8 of 8 red by name (mut-1373r1 + r1b).
+- The album track listing (W3, merged from feat/v1.373.0-album-order @b56a7394): 9 album mutants, 8 red, 1 equivalent (a
+  redundant stable tie-break, removed).
 
 ## 7. Evidence
 - Recon (builder): `users.id` is an INTEGER key (lib/db/sqlite.js `CREATE TABLE users`), so the job and the arrivals store
