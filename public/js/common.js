@@ -7559,41 +7559,50 @@ function openPlaylistPicker(opts) {
   albumName.input.addEventListener('input', () => { albumTouched.name = true; checkExisting(); });
   albumArtist.input.addEventListener('input', () => { albumTouched.artist = true; checkExisting(); });
   // Dean (2026-10-07): say when the artist or the album is already in Music. Read from Music's own lists (the
-  // viewer's visible library - the routes filter it), matched without regard to case. An untouched default takes
-  // the library's spelling, because Music groups by the exact name ("kyle gordon" would be a second artist).
+  // viewer's visible library - the routes filter it), matched without regard to case. Music groups by the EXACT name
+  // ("kyle gordon" is a second artist), so an untouched default takes the library's spelling, a typed name is kept
+  // and told the library's, and "these tracks join it" is said only when both names match exactly (gate r1). Asked
+  // only while Save as an album is on and the sheet is open.
   let existingGen = 0;
   let existingTimer = null;
   const setNote = (f, text) => { noteOf(f).textContent = text; noteOf(f).hidden = !text; };
   const sameName = (a, b) => typeof a === 'string' && typeof b === 'string' && a.trim().toLowerCase() === b.trim().toLowerCase();
-  const musicItems = (kind, q) => fetch('/api/music/' + kind + '?' + new URLSearchParams({ search: q, limit: '100' }).toString(), { signal })
+  const musicItems = (kind, q) => fetch('/api/music/' + kind + '?' + new URLSearchParams({ search: q, limit: '1000' }).toString(), { signal })
     .then((r) => (r.ok ? r.json() : null)).then((j) => (j && Array.isArray(j.items) ? j.items : [])).catch(() => []);
   function checkExisting() {
     if (existingTimer) clearTimeout(existingTimer);
     existingTimer = setTimeout(() => {
       existingTimer = null;
+      if (!albumWanted() || !sheet.isOpen()) return;
       const gen = ++existingGen;
       const artist = albumArtist.input.value.trim();
       const name = albumName.input.value.trim();
       if (!artist) { setNote(albumArtist, ''); setNote(albumName, ''); return; }
       Promise.all([musicItems('artists', artist), name ? musicItems('albums', name) : Promise.resolve([])]).then(([artists, albums]) => {
-        if (gen !== existingGen || (signal && signal.aborted)) return; // a later edit asked again
+        if (gen !== existingGen || (signal && signal.aborted) || !sheet.isOpen()) return; // a later edit asked again
         const hit = artists.find((a) => a && sameName(a.artist, artist));
         if (hit && hit.artist !== artist && !albumTouched.artist) albumArtist.input.value = hit.artist; // the library's spelling
         const shown = albumArtist.input.value.trim();
         setNote(albumArtist, !hit ? '' : (hit.artist === shown ? 'Already in Music' : `In Music as "${hit.artist}"`));
-        const albumHit = albums.find((a) => a && sameName(a.album, name) && sameName(a.artist, shown));
-        setNote(albumName, albumHit ? 'Already in Music: these tracks join it' : '');
+        // the album: by THIS artist exactly (the key is album artist + album)
+        const albumHit = albums.find((a) => a && a.artist === shown && sameName(a.album, name));
+        if (albumHit && albumHit.album !== name && !albumTouched.name) albumName.input.value = albumHit.album;
+        const shownName = albumName.input.value.trim();
+        setNote(albumName, !albumHit ? '' : (albumHit.album === shownName ? 'Already in Music: these tracks join it' : `In Music as "${albumHit.album}"`));
       });
     }, 300);
   }
   const currentFormat = () => (fmt ? fmt.format.value : o.format);
-  const albumWanted = () => currentFormat() === 'audio' && albumOn.checked;
+  const currentFiletype = () => (fmt ? fmt.filetype.value : o.filetype);
+  // Audio, and not Opus: an Opus file keeps its tags per stream, where the scan never reads them (the server refuses it)
+  const albumOffered = () => currentFormat() === 'audio' && currentFiletype() !== 'opus';
+  const albumWanted = () => albumOffered() && albumOn.checked;
   function syncAlbum() {
-    albumList.hidden = currentFormat() !== 'audio' || list.hidden;
+    albumList.hidden = !albumOffered() || list.hidden;
     albumFields.hidden = albumList.hidden || !albumOn.checked;
     cleanRow.hidden = !albumOn.checked;
   }
-  if (fmt) fmt.format.addEventListener('change', () => { syncAlbum(); if (currentFormat() === 'audio') checkExisting(); });
+  if (fmt) [fmt.format, fmt.filetype].forEach((sel) => sel.addEventListener('change', () => { syncAlbum(); checkExisting(); }));
   const head = d.createElement('div');
   head.className = 'oneoff-row';
   head.hidden = true;
@@ -7621,14 +7630,10 @@ function openPlaylistPicker(opts) {
   // the activation guard (ui.js): guard() marks a press inside the window; each handler below ASKS accepts(e)
   // first - guard() alone refuses nothing (gate r1: a tap 200 ms after the open posted the job)
   [allBtn, noneBtn, subBtn, moreBtn, goBtn, albumOn, cleanOn].forEach((b) => sheet.guard(b));
-  // a switch's click has toggled it before any listener runs, so a refused click puts it back: preventDefault (a
-  // browser then restores the state from before the click) AND the flip back (an engine that does not restore, jsdom)
-  [albumOn, cleanOn].forEach((box) => box.addEventListener('click', (e) => {
-    if (sheet.accepts(e)) return;
-    e.preventDefault();
-    box.checked = !box.checked;
-  }));
-  albumOn.addEventListener('change', syncAlbum);
+  // a switch's click has toggled it before any listener runs; cancelling a refused click puts it back (the browser, and
+  // jsdom, restore the state from before the click), and no change event fires
+  [albumOn, cleanOn].forEach((box) => box.addEventListener('click', (e) => { if (!sheet.accepts(e)) e.preventDefault(); }));
+  albumOn.addEventListener('change', () => { syncAlbum(); checkExisting(); });
 
   const picked = () => state.rows.filter((r) => r.box && r.box.checked).map((r) => r.id);
   function refresh() {
@@ -7661,7 +7666,8 @@ function openPlaylistPicker(opts) {
     if (blocked) row.classList.add('is-disabled');
     list.appendChild(row);
     // v1.371.0: `pos` = the row's place in the playlist, the track number when the videos are saved as an album
-    state.rows.push({ id: e.id, box, pos: state.rows.length + 1, title: e.title || '', channel: e.channel || '' });
+    // (the server's `position`, counted before any bad row was dropped; the row count only as a fallback)
+    state.rows.push({ id: e.id, box, pos: Number.isInteger(e.position) && e.position > 0 ? e.position : state.rows.length + 1, title: e.title || '', channel: e.channel || '' });
   }
   function load(page) {
     if (state.loading) return;
@@ -7682,7 +7688,7 @@ function openPlaylistPicker(opts) {
         if (!albumTouched.name) albumName.input.value = state.title;
         if (!albumTouched.artist) albumArtist.input.value = defaultAlbumArtist(state.rows);
         syncAlbum();
-        if (currentFormat() === 'audio') checkExisting();
+        checkExisting();
         refresh();
       })
       .catch((err) => {
@@ -7721,7 +7727,8 @@ function openPlaylistPicker(opts) {
       const artist = albumArtist.input.value.trim();
       if (!title || !artist) { status.textContent = 'Name the album and its artist, or turn off Save as an album.'; return; }
       const tracks = {};
-      state.rows.forEach((r) => { if (ids.includes(r.id)) tracks[r.id] = r.pos; });
+      // the ticked ROW's place (a video listed twice takes the row that was ticked, the first if both were)
+      state.rows.forEach((r) => { if (r.box && r.box.checked && !Object.prototype.hasOwnProperty.call(tracks, r.id)) tracks[r.id] = r.pos; });
       albumBody = { title, artist, cleanTitles: cleanOn.checked, tracks };
     }
     state.posting = true;

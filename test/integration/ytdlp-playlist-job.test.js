@@ -416,3 +416,83 @@ test('v1.371.0: through the REAL runDownload, the spawned yt-dlp argv carries ea
     assert.ok(a[a.length - 1].endsWith(ids[i]), 'and it is that track\'s spawn');
   });
 });
+
+// ---- gate r1 (adversary + qa) ----
+test('gate r1 (adversary ADV1): the pending entry REWRITTEN after a video still carries the album (the normal restart case)', async () => {
+  const ids = [1, 2, 3].map(ID);
+  holdMs = 150;
+  const app = await startApp(makeDeps());
+  try {
+    await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', album: ALBUM(ids) }));
+    const until = Date.now() + 5000;
+    let saved;
+    while (Date.now() < until) {
+      saved = pending.readPending(dataDir).find((p) => p.kind === 'playlist');
+      if (saved && saved.doneIds.length >= 1) break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    assert.ok(saved && saved.doneIds.length >= 1, 'a video finished and the entry was rewritten');
+    assert.strictEqual(saved.album && saved.album.title, 'Kyle Gordon Is Everywhere');
+    assert.strictEqual(saved.album.tracks[ids[2]], 5);
+  } finally { await app.close(); }
+});
+
+test('gate r1 (adversary ADV2): a job WITHOUT an album (stored as album: null) resumes after a restart', async () => {
+  const ids = [1, 2].map(ID);
+  holdMs = 300;
+  const app = await startApp(makeDeps());
+  let stored;
+  try {
+    await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'video' }));
+    stored = pending.readPending(dataDir).find((p) => p.kind === 'playlist');
+    assert.strictEqual(stored.album, null);
+  } finally { await app.close(); }
+  await new Promise((r) => setTimeout(r, 800));
+  calls = [];
+  pending.addPending(dataDir, Object.assign({}, stored, { jobId: 'job-noalbum-restart', doneIds: [], failedIds: [] }));
+  ytdlp.requeuePendingOneShots(makeDeps(), config());
+  const e = await settle('job-noalbum-restart');
+  assert.strictEqual(e.done, 2, 'resumed, not dropped');
+});
+
+test('gate r1 (adversary W1, R3): a video ANY user already has is downloaded WITHOUT album tags; the others are tagged', async () => {
+  const ids = [1, 2, 3].map(ID);
+  const deps = makeDeps();
+  const realLoad = deps.loadDatabase;
+  deps.loadDatabase = () => Object.assign({}, realLoad(), { metadata: { m1: { youtubeId: ids[1], filePath: '/x/hidden-folder/b.mp3' } } });
+  const app = await startApp(deps);
+  try {
+    await settle((await (await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', album: ALBUM(ids) }))).json()).jobId);
+    assert.deepStrictEqual(calls.map((c) => (c.albumTags ? c.albumTags.track : null)), [3, null, 5]);
+  } finally { await app.close(); }
+});
+
+test('gate r1: an unreadable library fails CLOSED - no tags (never a re-tag of a file someone has)', async () => {
+  const ids = [1].map(ID);
+  const deps = makeDeps();
+  deps.loadDatabase = () => { throw new Error('db busy'); };
+  const app = await startApp(deps);
+  try {
+    await settle((await (await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', album: ALBUM(ids) }))).json()).jobId);
+    assert.deepStrictEqual(calls.map((c) => c.albumTags), [null]);
+  } finally { await app.close(); }
+  calls = [];
+  deps.loadDatabase = () => null; // no library answer at all
+  const app2 = await startApp(deps);
+  try {
+    await settle((await (await post(app2.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', album: ALBUM(ids) }))).json()).jobId);
+    assert.deepStrictEqual(calls.map((c) => c.albumTags), [null], 'no answer: no tags either');
+  } finally { await app2.close(); }
+});
+
+test('gate r1 (adversary W2): an album with Opus is 400 (its tags would never reach Music)', async () => {
+  const ids = [1].map(ID);
+  const app = await startApp(makeDeps());
+  try {
+    const r = await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', filetype: 'opus', album: ALBUM(ids) }));
+    assert.strictEqual(r.status, 400);
+    assert.strictEqual((await r.json()).error, 'Save as an album needs MP3, M4A or Default');
+    const ok = await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', filetype: 'opus' }));
+    assert.strictEqual(ok.status, 202, 'Opus without an album is unchanged');
+  } finally { await app.close(); }
+});

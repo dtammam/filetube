@@ -46,6 +46,11 @@ test('albumFrom: each refusal on its own (name, artist, control bytes incl. NUL,
     [good({ artist: '' }), 'The album needs an album artist'],
     [good({ artist: 'X' + String.fromCharCode(0x7f) }), 'The album needs an album artist'],
     [good({ artist: 'b'.repeat(201) }), 'The album needs an album artist'],
+    [good({ artist: 'Kyle\u200bGordon' }), 'The album needs an album artist'],
+    [good({ artist: 'Kyle\u202eGordon' }), 'The album needs an album artist'],
+    [good({ title: 'A\u0085B' }), 'The album needs a name'],
+    [good({ title: 'A\u2028B' }), 'The album needs a name'],
+    [good({ title: 'A\ufeffB' }), 'The album needs a name'], // (a LEADING BOM is trimmed away, which is fine)
     [good({ tracks: { vid00000001: 0 } }), 'Invalid track number'],
     [good({ tracks: { vid00000001: 10000 } }), 'Invalid track number'],
     [good({ tracks: { vid00000001: 1.5 } }), 'Invalid track number'],
@@ -118,6 +123,7 @@ test('albumTagArgs: Clean up titles adds the title rules with the album artist r
   assert.deepStrictEqual(out.slice(k + 1), [
     '--replace-in-metadata', 'pre_process:meta_title', '(?i)^AC\\/DC\\ \\(Live\\)\\s*[-–—]\\s*', '',
     '--replace-in-metadata', 'pre_process:meta_title', album.TITLE_NOISE_PATTERN, '',
+    '--replace-in-metadata', 'pre_process:meta_title', album.TITLE_NOISE_PATTERN, '',
     '--replace-in-metadata', 'pre_process:meta_title', '\\s{2,}', ' ',
     '--replace-in-metadata', 'pre_process:meta_title', '^\\s+|\\s+$', '',
   ]);
@@ -135,13 +141,22 @@ test('albumTagArgs: nothing without both names (a bad value never half-tags)', (
 // the leading (?i) is stripped for JS and given as the flag).
 test('TITLE_NOISE_PATTERN on real Kyle Gordon titles: noise goes, credits and meaningful tags stay', () => {
   const re = new RegExp(album.TITLE_NOISE_PATTERN.replace(/^\(\?i\)/, ''), 'gi');
-  const clean = (t) => t.replace(re, '').replace(/\s{2,}/g, ' ').trim();
+  const clean = (t) => t.replace(re, '').replace(re, '').replace(/\s{2,}/g, ' ').trim(); // the rule runs twice, as in the argv
   assert.strictEqual(clean('Planet of the Bass (feat. DJ Crazy Times & Ms. Biljana Electronica) [Official Audio]'), 'Planet of the Bass (feat. DJ Crazy Times & Ms. Biljana Electronica)');
   assert.strictEqual(clean('Mr. Jambo (feat. Barry Bergen) [Official Music Video]'), 'Mr. Jambo (feat. Barry Bergen)');
   assert.strictEqual(clean('My Life (Is the Worst Life Ever) [feat. Our Wounded Courtship] [Official Music Video]'), 'My Life (Is the Worst Life Ever) [feat. Our Wounded Courtship]');
   assert.strictEqual(clean('Mr. Jambo  [Instrumental Version]'), 'Mr. Jambo [Instrumental Version]');
   assert.strictEqual(clean('Planet of the Bass (Original 1997 VHS Version)'), 'Planet of the Bass (Original 1997 VHS Version)');
   assert.strictEqual(clean('Song (Lyrics) (Visualizer) [HD]'), 'Song');
+  // gate r1: a group with ANY real word stays (the first rule stripped these)
+  assert.strictEqual(clean('Song (Live at Video Games Live)'), 'Song (Live at Video Games Live)');
+  assert.strictEqual(clean('Song (Audio Commentary)'), 'Song (Audio Commentary)');
+  assert.strictEqual(clean('Song (From the Video Game X)'), 'Song (From the Video Game X)');
+  assert.strictEqual(clean('Song (Live at the Official Store)'), 'Song (Live at the Official Store)');
+  assert.strictEqual(clean('Song (Official Video [HD])'), 'Song', 'nested noise: two passes, never a stray bracket');
+  assert.strictEqual(clean('Song (Official Lyric Video)'), 'Song');
+  const fx = require('../fixtures/ytdlp-playlist/example-list-PLUtyNbQXMTLg.json');
+  assert.strictEqual(clean(fx.entries[14].title), 'Kyle Gordon - Mr. Jambo [Instrumental Version]', 'Dean\'s list: the meaningful tag stays');
 });
 
 // ---- args.js: only a YouTube AUDIO one-off carries the tags ----
