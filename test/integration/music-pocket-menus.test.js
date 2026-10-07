@@ -97,7 +97,7 @@ test('Click: MENU climbs Now Playing -> Main Menu, every Music level renders the
     assert.strictEqual(title(h), 'Full Album Mix');
     const mixIds = songs.filter((t) => /^djmix1::c\d+$/.test(t.id));
     assert.strictEqual(mixIds.length, 3, 'precondition: the real server expanded the mix into three chapter songs');
-    assert.deepStrictEqual(labels(h), ['Intro', 'Track A', 'Track B'], 'a chaptered album lists its chapters as songs');
+    assert.deepStrictEqual(labels(h), ['Intro', 'Track A', 'Track B', 'Start radio'], 'a chaptered album lists its chapters as songs (v1.368.0: then Start radio)');
     // MENU climbs one level at a time, keeping each level's position
     menu(h); assert.strictEqual(title(h), 'Albums'); assert.strictEqual(cursorLabel(h), 'Full Album Mix', 'back on the album it drilled from');
     menu(h); assert.strictEqual(title(h), 'Music'); assert.strictEqual(cursorLabel(h), 'Albums');
@@ -120,7 +120,7 @@ test('a CHAPTER chosen from a menu plays in its album (the real ::c id), shows N
     await settleNet();
     // v1.331 (Dean): an album pick plays the album ON - it is not a v1.311 solo select, so no exit
     // station is pre-fetched at the pick (the boundary itself is driven in the v1.331 tests below).
-    assert.ok(!h.log.slice(logBefore).some((u) => /sort=random/.test(u)),
+    assert.ok(!h.log.slice(logBefore).some((u) => /\/api\/music\/radio\?/.test(u)),
       'an album pick primes no solo-chapter exit station: ' + h.log.slice(logBefore).join(' | '));
     const last = h.spy.loads[h.spy.loads.length - 1];
     assert.strictEqual(last.id, 'djmix1::c1', 'played the REAL chapter id the server returned');
@@ -216,9 +216,10 @@ test('Artists > artist > All Songs / an album > songs, and Genres > genre > song
     tapRow(h, 'NESTALGIA'); await settleNet();
     assert.strictEqual(title(h), 'NESTALGIA');
     assert.strictEqual(labels(h)[0], 'All Songs', 'more than one album -> the device\'s All Songs row leads');
-    assert.deepStrictEqual(labels(h).slice(1).sort(), ['Full Album Mix', 'Retro Mix']);
+    assert.strictEqual(labels(h).slice(-1)[0], 'Start radio', 'v1.368.0: the artist level ends with Start radio');
+    assert.deepStrictEqual(labels(h).slice(1, -1).sort(), ['Full Album Mix', 'Retro Mix']);
     tapRow(h, 'Retro Mix'); await settleNet();
-    assert.deepStrictEqual(labels(h), ['Cartridge Blues', 'Pixel Rain']);
+    assert.deepStrictEqual(labels(h), ['Cartridge Blues', 'Pixel Rain', 'Start radio']);
     menu(h);
     tapRow(h, 'All Songs'); await settleNet();
     assert.strictEqual(labels(h).length, 5, 'All Songs = both albums\' songs (2 + 3 chapters)');
@@ -232,7 +233,8 @@ test('Artists > artist > All Songs / an album > songs, and Genres > genre > song
     tapRow(h, 'Genres'); await settleNet();
     assert.deepStrictEqual(labels(h), ['Music', 'Synthwave', 'Unknown Genre']);
     tapRow(h, 'Synthwave'); await settleNet();
-    assert.deepStrictEqual(labels(h).sort(), ['Neon Arrival', 'Overpass', 'Tail Lights']);
+    assert.strictEqual(labels(h).slice(-1)[0], 'Start radio', 'v1.368.0: a genre level ends with Start radio');
+    assert.deepStrictEqual(labels(h).slice(0, -1).sort(), ['Neon Arrival', 'Overpass', 'Tail Lights']);
     menu(h);
     tapRow(h, 'Unknown Genre'); await settleNet();
     assert.deepStrictEqual(labels(h), ['Loose Single']);
@@ -426,13 +428,13 @@ const mixClock = (h, t) => {
 };
 async function mixTick(h, el, t, v) { t.v = v; el.dispatchEvent(new h.dom.window.Event('timeupdate')); await settleNet(5); }
 async function pickTrackAThenCrossItsEnd(h, albumTitle) {
-  assert.deepStrictEqual(labels(h), ['Intro', 'Track A', 'Track B'], 'precondition: the album level lists the mix\'s chapters in order');
+  assert.deepStrictEqual(labels(h), ['Intro', 'Track A', 'Track B', 'Start radio'], 'precondition: the album level lists the mix\'s chapters in order (then, v1.368.0, Start radio)');
   const logBefore = h.log.length;
   const loadsBefore = h.spy.loads.length;
   tapRow(h, 'Track A'); await settleNet();
   assert.strictEqual(h.spy.loads.length, loadsBefore + 1, 'the pick loaded once');
   assert.strictEqual(h.player.currentId, 'djmix1::c1', 'the pick played the real chapter id');
-  assert.ok(!h.log.slice(logBefore).some((u) => /sort=random/.test(u)),
+  assert.ok(!h.log.slice(logBefore).some((u) => /\/api\/music\/radio\?/.test(u)),
     'an album pick primes NO exit station (it plays the album on): ' + h.log.slice(logBefore).join(' | '));
   const loads = h.spy.loads.length;
   const t = { v: 300 }; const el = mixClock(h, t);
@@ -499,7 +501,7 @@ test('v1.331 (Dean: "regular album play as well"): Artists > artist > album > a 
 // order: the picked chapter's segment, then the list's next row, then the station after the last.
 const SORT_KEY = 'filetube_music_sort'; // music.js SORT_KEY
 async function pickTrackAInReversedAlbum(h) {
-  assert.deepStrictEqual(labels(h), ['Track B', 'Track A', 'Intro'], 'precondition: the album level is NOT in file order');
+  assert.deepStrictEqual(labels(h), ['Track B', 'Track A', 'Intro', 'Start radio'], 'precondition: the album level is NOT in file order');
   tapRow(h, 'Track A'); await settleNet();
   assert.strictEqual(h.player.currentId, 'djmix1::c1');
   const from = h.spy.loads.length;
@@ -544,7 +546,7 @@ test('v1.331 gate r1 (qa caveat): after a menu album pick, tapping ONE chapter r
     assert.ok(row, 'precondition: the album drill behind the skin lists Track A');
     click(h.dom, row.querySelector('.music-song-play') || row); await settleNet();
     assert.strictEqual(h.player.currentId, 'djmix1::c1', 'the browse row played Track A');
-    assert.ok(h.log.slice(logBefore).some((u) => /^\/api\/music\?artist=NESTALGIA&sort=random/.test(u)), 'the single-chapter select primed its exit station: ' + h.log.slice(logBefore).join(' | '));
+    assert.ok(h.log.slice(logBefore).some((u) => /^\/api\/music\/radio\?seed=track%3Adjmix1%3A%3Ac1&/.test(u)), 'the single-chapter select primed its exit station (v1.368.0: the radio seeded from Track A): ' + h.log.slice(logBefore).join(' | '));
     const from = h.spy.loads.length;
     const t = { v: 300 }; const el = mixClock(h, t);
     await mixTick(h, el, t, 600); await mixTick(h, el, t, 899.2); await mixTick(h, el, t, 899.9);

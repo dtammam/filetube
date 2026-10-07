@@ -80,6 +80,16 @@
 - [ ] **Music Shuffle mode toggle (in v1.368.0)** _(Dean, 2026-10-06)_ - a Shuffle toggle beside Loop and Autoplay: on reshuffles
   the songs after the current one, off restores their original order. Synced across devices like Autoplay.
 
+- [ ] **Lock the iPod in portrait: turning the phone sideways changes nothing** _(Dean, 2026-10-07: "lock the iPod mode in
+  iPod mode. So, like, if you even turn the phone sideways, it won't change it.")_ - **What exists:** since UI pass D7 the Pocket
+  skin is a DEVICE class (`html.is-phone`, set once from the screen's short side), so a rotate no longer tears the skin down
+  (public/js/music-skins.js `markPhoneClass`); but style.css still has landscape layouts (`@media (orientation: landscape)`
+  blocks) that re-lay the player out when the phone turns. The web app manifest sets no `orientation`. **To measure at intake
+  (not assumed):** what the iPod looks like today in landscape on Dean's iPhone; whether iOS honours a manifest `orientation`
+  for the home-screen app (Screen Orientation `lock()` is not available to web pages on iOS Safari, per MDN compat data, to be
+  re-checked); and, if not, whether drawing the iPod at its portrait size and counter-rotating it in landscape works with the
+  click wheel's touch angles and the haptics. Scope question for Dean: only while the iPod skin is up, or the whole app.
+
 - [ ] **Named radio stations** _(parked by the v1.368.0 intake, R2)_ - Favorites, Genre, Throwback and Deep cuts stations built on
   the v1.368.0 radio picker.
 

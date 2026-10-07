@@ -4702,11 +4702,12 @@ if (typeof module !== 'undefined' && module.exports) {
     }
     // Quick scroll: `letters` = the rows are in title order (the sort this view asked the server
     // for), so the engine may jump them by letter - an album / release-date order never is.
-    // v1.368.0 (R3): an artist's, an album's or a genre's level leads with "Start radio" (a song row's
-    // own trackIndex is unaffected; the row stays out of the letter jump, which skips action rows).
+    // v1.368.0 (R3): an artist's, an album's or a genre's level ENDS with "Start radio" - last, so a
+    // level still opens with the cursor on its first song (a centre press plays track 1, as it always
+    // did); a song row's own trackIndex is unaffected; the letter jump skips action rows.
     function withRadioRow(level, seed) {
       if (!seed || !level || !Array.isArray(level.items) || !level.items.length) return level;
-      level.items = [{ label: 'Start radio', action: 'radio', seed: seed }].concat(level.items);
+      level.items = level.items.concat([{ label: 'Start radio', action: 'radio', seed: seed }]);
       return level;
     }
     function menuSongLevel(tracks, play) {
@@ -4765,7 +4766,7 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       if (n.type === 'genre') {
         // Genre has no list-context key: the queue rides a plain title-order ctx (disclosed).
-        // v1.368.0: led by Start radio (an "Unknown Genre" row has no genre to seed from)
+        // v1.368.0: ends with Start radio (an "Unknown Genre" row has no genre to seed from)
         return menuAllSongs().then(function (t) { return withRadioRow(menuSongLevel(SKINS.tracksOfGenre(t, n.key), { ctx: { src: 'music', sort: 'title-asc' }, label: n.label || 'Genre' }), n.key ? 'genre:' + n.key : ''); });
       }
       if (n.type === 'artist') {
@@ -4780,7 +4781,8 @@ if (typeof module !== 'undefined' && module.exports) {
       }
       if (n.type === 'artistAlbum') {
         return menuArtistTracks(n.artist).then(function (t) {
-          return menuSongLevel(SKINS.tracksOfAlbum(t, n.key), { ctx: { src: 'music', album: n.key, sort: sortForTab('drill-artist') }, drill: { type: 'album', key: n.key, label: n.label }, label: n.label });
+          // v1.368.0: an album reached through its artist ends with Start radio too (Albums > album does)
+          return withRadioRow(menuSongLevel(SKINS.tracksOfAlbum(t, n.key), { ctx: { src: 'music', album: n.key, sort: sortForTab('drill-artist') }, drill: { type: 'album', key: n.key, label: n.label }, label: n.label }), 'album:' + n.key);
         });
       }
       if (n.type === 'album') {

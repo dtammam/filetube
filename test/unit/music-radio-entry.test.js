@@ -148,8 +148,8 @@ test('the album drill\'s Radio button starts the album\'s station (the first coh
   });
 });
 
-test('pocket letter jump: a level\'s leading Start radio row is not a title (no stray S run)', () => {
-  const items = [{ label: 'Start radio', action: 'radio', seed: 'genre:x' }].concat(['Alpha', 'Beta', 'Sierra'].map((l) => ({ label: l, song: true })));
+test('pocket letter jump: a level\'s trailing Start radio row is not a title (the S run stays the songs\')', () => {
+  const items = ['Alpha', 'Beta', 'Ruby'].map((l) => ({ label: l, song: true })).concat([{ label: 'Start radio', action: 'radio', seed: 'genre:x' }]);
   const runs = skins.menuLetterRuns(items);
-  assert.deepStrictEqual(runs.map((r) => [r.letter, r.index]), [['A', 1], ['B', 2], ['S', 3]]);
+  assert.deepStrictEqual(runs.map((r) => [r.letter, r.index]), [['A', 0], ['B', 1], ['R', 2]], 'no S run for the action row');
 });

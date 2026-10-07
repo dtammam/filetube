@@ -61,7 +61,7 @@ before(async () => {
   await updateDatabase((db) => {
     db.metadata = {};
     for (const [artist, folder, genre, date, n, prefix] of GROUPS) {
-      for (let i = 0; i < n; i += 1) db.metadata[prefix + i] = audioItem(prefix + i, folder, artist, genre, date);
+      for (let i = 0; i < n; i += 1) db.metadata[prefix + i] = audioItem(prefix + i, folder, artist, genre, date, prefix === 'bm' ? { tags: { title: prefix + i + ' title', artist, genre, date, album: 'Blue Notes' } } : undefined);
     }
     db.metadata.xr0 = audioItem('xr0', 'cross', 'Crossover', 'Rock', '2016'); // Crossover in Rock too -> Rock~Blues neighbours
     // A member-hidden folder: Rock 1990 by the seed artist, so a leaky picker would rank it T1.
@@ -292,13 +292,14 @@ const { encodeListContext } = require('../../public/js/common.js');
 const realCodec = (dom) => { dom.window.encodeListContext = encodeListContext; }; // the browser's page global
 const ctxOf = (load) => { try { return JSON.parse(load.data.browseCtx); } catch (_) { return null; } };
 
-test('W2 Start radio from a GENRE (pocket Genres level): the level leads with the row; the queue is replaced by the station, the seed rides the context, Autoplay is turned on with a toast', async () => {
+test('W2 Start radio from a GENRE (pocket Genres level): the level ends with the row; the queue is replaced by the station, the seed rides the context, Autoplay is turned on with a toast', async () => {
   const toasts = [];
   await H.boot({ skin: 'ipod', play: 'jz0', setup: (dom) => { realCodec(dom); dom.window.localStorage.setItem('ft-music-autoplay', '0'); dom.window.showToast = (m) => toasts.push(m); }, run: async (h) => {
     H.menu(h); H.select(h); await H.settleNet(); // Main Menu > Music
     H.tapRow(h, 'Genres'); await H.settleNet();
     H.tapRow(h, 'Rock'); await H.settleNet();
-    assert.strictEqual(H.labels(h)[0], 'Start radio', 'the genre level leads with Start radio');
+    assert.strictEqual(H.labels(h).slice(-1)[0], 'Start radio', 'the genre level ends with Start radio');
+    assert.notStrictEqual(H.cursorLabel(h), 'Start radio', 'the level opens on its first song, not on the radio row');
     H.tapRow(h, 'Start radio'); await H.settleNet();
     const calls = radioCalls(h.log);
     assert.strictEqual(calls.length, 1, 'one station request');
@@ -318,7 +319,7 @@ test('W2 Start radio from an ARTIST and an ALBUM (pocket levels): each seeds its
     H.menu(h); H.select(h); await H.settleNet(); // Main Menu > Music
     H.tapRow(h, 'Artists'); await H.settleNet();
     H.tapRow(h, 'Bluesman'); await H.settleNet();
-    assert.strictEqual(H.labels(h)[0], 'Start radio');
+    assert.strictEqual(H.labels(h).slice(-1)[0], 'Start radio');
     H.tapRow(h, 'Start radio'); await H.settleNet();
     let calls = radioCalls(h.log);
     assert.strictEqual(calls[calls.length - 1].searchParams.get('seed'), 'artist:Bluesman');
@@ -327,12 +328,11 @@ test('W2 Start radio from an ARTIST and an ALBUM (pocket levels): each seeds its
     // an album level
     H.menu(h); H.menu(h); H.menu(h); await H.settleNet();
     H.tapRow(h, 'Albums'); await H.settleNet();
-    const albumLabel = H.labels(h).find((l) => /bm0|Bluesman/.test(l)) || H.labels(h)[0];
-    H.tapRow(h, albumLabel); await H.settleNet();
-    assert.strictEqual(H.labels(h)[0], 'Start radio', 'an album level leads with Start radio');
+    H.tapRow(h, 'Blue Notes'); await H.settleNet(); // Bluesman's titled album
+    assert.strictEqual(H.labels(h).slice(-1)[0], 'Start radio', 'an album level ends with Start radio');
     H.tapRow(h, 'Start radio'); await H.settleNet();
     calls = radioCalls(h.log);
-    assert.match(calls[calls.length - 1].searchParams.get('seed'), /^album:/, 'an album seed');
+    assert.strictEqual(calls[calls.length - 1].searchParams.get('seed'), 'album:Bluesman\u241fBlue Notes', 'the album\'s own key seeds it');
   } });
 });
 

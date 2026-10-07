@@ -149,7 +149,7 @@ test('K2 (qa W1 + adversary W2): a chapter save RE-TIMES and DROPS - the open al
         menu(h); // Now Playing -> the album level ALREADY open (no skin repaint in between)
         await settleNet();
         assert.strictEqual(title(h), 'Full Album Mix');
-        assert.deepStrictEqual(labels(h), ['Intro', 'Renamed A', 'Track B', 'Track C'], 'the open level re-loaded the server\'s chapters');
+        assert.deepStrictEqual(labels(h), ['Intro', 'Renamed A', 'Track B', 'Track C', 'Start radio'], 'the open level re-loaded the server\'s chapters (v1.368.0: the level ends with Start radio)');
         tapRow(h, 'Renamed A'); await settleNet();
         const last = h.spy.loads[h.spy.loads.length - 1];
         assert.strictEqual(last.id, 'djmix1::c1');
@@ -208,7 +208,7 @@ test('K4 (the Architect\'s ruling): a chapter picked from a FLAT list plays its 
     const logBefore = h.log.length;
     tapRow(h, 'Intro'); await settleNet();
     assert.strictEqual(h.player.currentId, 'djmix1::c0');
-    assert.ok(!h.log.slice(logBefore).some((u) => /sort=random/.test(u)), 'no station is primed for a flat pick');
+    assert.ok(!h.log.slice(logBefore).some((u) => /\/api\/music\/radio\?/.test(u)), 'no station is primed for a flat pick');
     const t = { v: 0 }; const el = mp(h, t, 1800);
     await tick(h, el, t, 150); await tick(h, el, t, 299.2); await tick(h, el, t, 299.9);
     assert.strictEqual(h.player.currentId, songs[at('Intro') + 1].id, 'at the end of Intro\'s segment the list moved to ITS next row (' + songs[at('Intro') + 1].title + ')');
@@ -308,9 +308,9 @@ test('K6 A24: an untagged NATIVE track lives under "Unknown Artist" alone (never
   await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
     menu(h); select(h); tapRow(h, 'Artists'); await settleNet();
     tapRow(h, 'Unknown Artist'); await settleNet();
-    assert.deepStrictEqual(labels(h), ['Unknown Album'], 'one (untitled) album');
+    assert.deepStrictEqual(labels(h), ['Unknown Album', 'Start radio'], 'one (untitled) album (v1.368.0: then Start radio)');
     tapRow(h, 'Unknown Album'); await settleNet();
-    assert.deepStrictEqual(labels(h), ['Nameless Tune'], 'only the untagged track');
+    assert.deepStrictEqual(labels(h), ['Nameless Tune', 'Start radio'], 'only the untagged track (v1.368.0: then Start radio)');
   } });
 });
 
@@ -386,10 +386,11 @@ test('K3: an autoplay append landing mid-build (a pick of a long list\'s LAST ro
   await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
     menu(h); select(h); tapRow(h, 'Genres'); await settleNet();
     tapRow(h, 'Filler'); await settleNet();
-    assert.strictEqual(labels(h).length, 30, 'precondition: thirty fillers');
+    assert.strictEqual(labels(h).length, 31, 'precondition: thirty fillers (and, v1.368.0, the trailing Start radio)');
+    assert.strictEqual(labels(h)[30], 'Start radio');
     tapRow(h, 'Zz Filler 30'); // the LAST row: its load arms the endless-autoplay append
     await settleNet(160);
-    assert.ok(h.log.some((u) => /sort=random/.test(u)), 'precondition: the autoplay append was fetched');
+    assert.ok(h.log.some((u) => /\/api\/music\/radio\?/.test(u)), 'precondition: the autoplay append was fetched');
     const behind = [...h.D.querySelectorAll('#music-content .music-song-row')];
     assert.strictEqual(behind.length, 30, 'every row of the list was built');
     assert.ok(behind.every((r, i) => r.getAttribute('data-index') === String(i)));
@@ -403,11 +404,11 @@ test('K4: a flat list\'s LAST row, a chapter mid-file, still ends at its own seg
   // arms would otherwise sometimes pick this mix's own next chapter, which rolls on by design)
   const station = (await realApi('/api/music?sort=title-asc&limit=10000')).items.filter((t) => t.id === 'za1' || t.id === 'nd2');
   try {
-    await boot({ skin: 'ipod', play: 'nd1', intercept: (u) => (/sort=random/.test(u) ? { ok: true, status: 200, json: async () => ({ items: station }) } : null), run: async (h) => {
+    await boot({ skin: 'ipod', play: 'nd1', intercept: (u) => (/\/api\/music\/radio\?/.test(u) ? { ok: true, status: 200, json: async () => ({ items: station }) } : null), run: async (h) => {
       menu(h); select(h); tapRow(h, 'Playlists'); tapRow(h, 'Liked Songs'); await settleNet();
       assert.deepStrictEqual(labels(h), ['Track A']);
       tapRow(h, 'Track A'); await settleNet(60); // the last (only) row: the autoplay append lands
-      assert.ok(h.log.some((u) => /sort=random/.test(u)), 'precondition: a station was appended');
+      assert.ok(h.log.some((u) => /\/api\/music\/radio\?/.test(u)), 'precondition: a station was appended');
       const loads = h.spy.loads.length;
       const t = { v: 300 }; const el = mp(h, t, 1800);
       await tick(h, el, t, 600); await tick(h, el, t, 899.9);
@@ -422,10 +423,10 @@ test('K4 x v1.320: with Autoplay switched OFF after the station was appended, a 
   assert.ok(r.ok);
   const station = (await realApi('/api/music?sort=title-asc&limit=10000')).items.filter((t) => t.id === 'za1' || t.id === 'nd2');
   try {
-    await boot({ skin: 'ipod', play: 'nd1', intercept: (u) => (/sort=random/.test(u) ? { ok: true, status: 200, json: async () => ({ items: station }) } : null), run: async (h) => {
+    await boot({ skin: 'ipod', play: 'nd1', intercept: (u) => (/\/api\/music\/radio\?/.test(u) ? { ok: true, status: 200, json: async () => ({ items: station }) } : null), run: async (h) => {
       menu(h); select(h); tapRow(h, 'Playlists'); tapRow(h, 'Liked Songs'); await settleNet();
       tapRow(h, 'Track A'); await settleNet(60);
-      assert.ok(h.log.some((u) => /sort=random/.test(u)), 'precondition: the station was appended');
+      assert.ok(h.log.some((u) => /\/api\/music\/radio\?/.test(u)), 'precondition: the station was appended');
       h.dom.window.localStorage.setItem(AUTOPLAY_KEY, '0'); // Autoplay switched off (e.g. on another device)
       const loads = h.spy.loads.length;
       const t = { v: 300 }; const el = mp(h, t, 1800);
@@ -444,7 +445,7 @@ test('K4 x v1.320: switching Autoplay OFF through the real toggle RETRACTS the s
   try {
     await boot({
       skin: 'ipod', play: 'nd1',
-      intercept: (u) => (/sort=random/.test(u) ? { ok: true, status: 200, json: async () => ({ items: station }) } : null),
+      intercept: (u) => (/\/api\/music\/radio\?/.test(u) ? { ok: true, status: 200, json: async () => ({ items: station }) } : null),
       setup: (dom) => { // the toolbar's Autoplay button (the ONE toggle seam's host)
         const b = dom.window.document.createElement('button'); b.id = 'music-autoplay-btn';
         dom.window.document.querySelector('.music-toolbar-actions').appendChild(b);
@@ -452,7 +453,7 @@ test('K4 x v1.320: switching Autoplay OFF through the real toggle RETRACTS the s
       run: async (h) => {
         menu(h); select(h); tapRow(h, 'Playlists'); tapRow(h, 'Liked Songs'); await settleNet();
         tapRow(h, 'Track A'); await settleNet(60);
-        assert.ok(h.log.some((u) => /sort=random/.test(u)), 'precondition: the station was appended');
+        assert.ok(h.log.some((u) => /\/api\/music\/radio\?/.test(u)), 'precondition: the station was appended');
         h.D.getElementById('music-autoplay-btn').click(); await settleNet(); // Autoplay OFF: the station is retracted
         assert.strictEqual(h.dom.window.localStorage.getItem(AUTOPLAY_KEY), '0');
         const loads = h.spy.loads.length;
