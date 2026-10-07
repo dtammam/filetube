@@ -71,7 +71,7 @@
   touched: history (ROADMAP Shipped entries, releases.json, completed plans, git). Cost to disclose in the ledger: an old
   Settings bookmark lands on the menu's first page. Measure first: grep for every old id and name, list what each pin protects.
 
-- [ ] **Lock the iPod in portrait: turning the phone sideways changes nothing** _(Dean, 2026-10-07: "lock the iPod mode in
+- [ ] **Lock the iPod in portrait: turning the phone sideways changes nothing (planned 2026-10-07: docs/exec-plans/active/2026-10-07-ipod-portrait-lock.md)** _(Dean, 2026-10-07: "lock the iPod mode in
   iPod mode. So, like, if you even turn the phone sideways, it won't change it.")_ - **What exists:** since UI pass D7 the Pocket
   skin is a DEVICE class (`html.is-phone`, set once from the screen's short side), so a rotate no longer tears the skin down
   (public/js/music-skins.js `markPhoneClass`); but style.css still has landscape layouts (`@media (orientation: landscape)`
