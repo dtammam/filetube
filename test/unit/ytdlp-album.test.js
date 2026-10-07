@@ -46,11 +46,11 @@ test('albumFrom: each refusal on its own (name, artist, control bytes incl. NUL,
     [good({ artist: '' }), 'The album needs an album artist'],
     [good({ artist: 'X' + String.fromCharCode(0x7f) }), 'The album needs an album artist'],
     [good({ artist: 'b'.repeat(201) }), 'The album needs an album artist'],
-    [good({ artist: 'Kyle\u200bGordon' }), 'The album needs an album artist'],
-    [good({ artist: 'Kyle\u202eGordon' }), 'The album needs an album artist'],
+    [good({ artist: '\u200b' }), 'The album needs an album artist'], // v1.372.0: the hidden set is DROPPED, so only a name made of it fails
+    [good({ artist: '\u202e\u2066' }), 'The album needs an album artist'],
     [good({ title: 'A\u0085B' }), 'The album needs a name'],
-    [good({ title: 'A\u2028B' }), 'The album needs a name'],
-    [good({ title: 'A\ufeffB' }), 'The album needs a name'], // (a LEADING BOM is trimmed away, which is fine)
+    [good({ title: '\u2028' }), 'The album needs a name'],
+    [good({ title: '\ufeff' }), 'The album needs a name'],
     [good({ tracks: { vid00000001: 0 } }), 'Invalid track number'],
     [good({ tracks: { vid00000001: 10000 } }), 'Invalid track number'],
     [good({ tracks: { vid00000001: 1.5 } }), 'Invalid track number'],
@@ -74,7 +74,7 @@ test('albumFrom: a __proto__ key in tracks never pollutes, and an inherited key 
 
 test('trackTagsFor: the track of one video; null without an album; a video with no number has track null', () => {
   const a = album.albumFrom(good({ cleanTitles: true }), IDS).album;
-  assert.deepStrictEqual(album.trackTagsFor(a, 'vid00000003'), { album: 'Kyle Gordon Is Everywhere', albumArtist: 'Kyle Gordon', track: 3, cleanTitles: true });
+  assert.deepStrictEqual(album.trackTagsFor(a, 'vid00000003'), { album: 'Kyle Gordon Is Everywhere', albumArtist: 'Kyle Gordon', track: 3, cleanTitles: true, title: null });
   assert.strictEqual(album.trackTagsFor(a, 'vid00000002').track, null);
   assert.strictEqual(album.trackTagsFor(null, 'vid00000001'), null);
 });
@@ -177,4 +177,63 @@ test('args: video, a subscription, and the universal lane never carry the album 
   assert.strictEqual(has(args.buildYtdlpDownloadArgs(sub('video'), cfg, ['vid00000001'], { oneOff: true, albumTags: TAGS })), false, 'video');
   assert.strictEqual(has(args.buildYtdlpDownloadArgs(sub('audio'), cfg, ['vid00000001'], { albumTags: TAGS })), false, 'subscription (not a one-off)');
   assert.strictEqual(has(args.buildYtdlpDownloadArgs(sub('audio'), cfg, [], { oneOff: true, sourceUrl: 'https://vimeo.com/123456', albumTags: TAGS })), false, 'universal lane');
+});
+
+// ---- v1.372.0: the song names (plan docs/exec-plans/completed/2026-10-07-v1372-song-names-feed.md) ----
+test('v1.372.0 albumFrom: titles are kept per job id (trimmed, null-prototype); an empty or control-byte name is refused', () => {
+  const r = album.albumFrom(good({ titles: { vid00000001: '  Planet of the Bass ', notInJob000: 'x' } }), IDS);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(Object.getPrototypeOf(r.album.titles), null);
+  assert.deepStrictEqual({ ...r.album.titles }, { vid00000001: 'Planet of the Bass' });
+  for (const bad of ['', '   ', 'A' + String.fromCharCode(0) + 'B', 'x'.repeat(201), 7, '\u200b\u202e']) {
+    const b = album.albumFrom(good({ titles: { vid00000001: bad } }), IDS);
+    assert.strictEqual(b.ok, false, JSON.stringify(bad));
+    assert.strictEqual(b.error, 'The name for vid00000001 must be 1 to 200 characters, with no control characters', 'it names the video (gate r1) and the real rules (gate r2)');
+  }
+  // gate r1 (qa W1, adversary W3, security LOW): a YouTube title's joiners and direction marks are text, not junk - the
+  // family emoji (U+200D), Persian (U+200C) and Hebrew/Arabic marks (U+200E / U+200F) pass; the hiding / spoofing
+  // characters (zero-width space, bidi overrides) are dropped from a song name instead of failing the album
+  const ok = album.albumFrom(good({ titles: { vid00000001: 'Family \u{1F468}\u200d\u{1F469}\u200d\u{1F467}', vid00000003: '\u200f\u05e9\u05dc\u05d5\u05dd\u200b\u202e' } }), IDS);
+  assert.strictEqual(ok.ok, true, ok.error);
+  assert.strictEqual(ok.album.titles.vid00000001, 'Family \u{1F468}\u200d\u{1F469}\u200d\u{1F467}');
+  assert.strictEqual(ok.album.titles.vid00000003, '\u200f\u05e9\u05dc\u05d5\u05dd', 'U+200F kept; U+200B and U+202E dropped');
+  assert.strictEqual(album.albumFrom(good({ artist: 'Kyle\u200dGordon' }), IDS).ok, true, 'a joiner is allowed in the typed names too');
+  assert.deepStrictEqual({ ...album.albumFrom(good(), IDS).album.titles }, {}, 'a v1.371.0 album (no titles) still parses');
+});
+
+test('v1.372.0 trackTagsFor + albumTagArgs: a named track writes its name LITERALLY and runs no cleanup rule', () => {
+  const a = album.albumFrom(good({ cleanTitles: true, titles: { vid00000001: 'Song %(id)s \\g<0>' } }), IDS).album;
+  const tags = album.trackTagsFor(a, 'vid00000001');
+  assert.strictEqual(tags.title, 'Song %(id)s \\g<0>');
+  const out = album.albumTagArgs(tags);
+  const k = out.indexOf('pre_process:meta_title');
+  assert.deepStrictEqual(out.slice(k - 3, k + 2), ['--parse-metadata', 'pre_process:%(id)s:(?P<meta_title>.+)', '--replace-in-metadata', 'pre_process:meta_title', '(?s).+']);
+  const k2 = k + 2;
+  assert.strictEqual(out[k2], 'Song %(id)s \\\\g<0>', 'the backslash doubled, the rest literal');
+  assert.ok(!out.includes(album.TITLE_NOISE_PATTERN), 'no cleanup rule on a named track');
+  assert.ok(!out.includes('pre_process:title:(?P<meta_title>.+)'));
+  const other = album.albumTagArgs(album.trackTagsFor(a, 'vid00000003'));
+  assert.ok(other.includes(album.TITLE_NOISE_PATTERN), 'a track without a name keeps the v1.371.0 cleanup (an old pending entry)');
+});
+
+test('v1.372.0 cleanTitleNoise: the noise groups off Dean\'s real titles, by the same pattern the yt-dlp path runs', () => {
+  const fx = require('../fixtures/ytdlp-playlist/example-list-PLUtyNbQXMTLg.json');
+  assert.strictEqual(album.cleanTitleNoise(fx.entries[0].title), 'Kyle Gordon - Introduction (feat. Daniel Radcliffe)');
+  assert.strictEqual(album.cleanTitleNoise(fx.entries[14].title), 'Kyle Gordon - Mr. Jambo [Instrumental Version]');
+  assert.strictEqual(album.cleanTitleNoise('Song (Official Video [HD])'), 'Song');
+  assert.strictEqual(album.cleanTitleNoise(7), '');
+});
+
+// v1.372.0 gate r2 (adversary W2): the album and the album artist are Music's grouping key - an invisible joiner or
+// direction mark at either END (a title's trailing U+200E, a "- Topic" channel's leading U+200F) is trimmed so it never
+// makes a look-alike second artist; one INSIDE a name stays; the hiding set and the bidi isolates are dropped anywhere.
+test('gate r2: album and artist names lose edge marks and hidden characters, keep inner joiners', () => {
+  const r = album.albumFrom(good({ artist: 'Kyle Gordon\u200e', title: '\u200fAlbum\u2066 One\u2069 ' }), IDS);
+  assert.strictEqual(r.ok, true, r.error);
+  assert.strictEqual(r.album.artist, 'Kyle Gordon');
+  assert.strictEqual(r.album.title, 'Album One');
+  assert.strictEqual(album.albumFrom(good({ artist: 'Kyle\u200dGordon' }), IDS).album.artist, 'Kyle\u200dGordon', 'an inner joiner stays');
+  assert.strictEqual(album.albumFrom(good({ artist: '\u200e\u200f' }), IDS).ok, false, 'nothing but marks is no name');
+  const song = album.albumFrom(good({ titles: { vid00000001: '\u200f\u05e9\u05dc\u05d5\u05dd\u2066' } }), IDS);
+  assert.strictEqual(song.album.titles.vid00000001, '\u200f\u05e9\u05dc\u05d5\u05dd', 'a SONG name keeps its leading RLM (it is display text, not a key); the isolate goes');
 });

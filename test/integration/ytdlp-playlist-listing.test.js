@@ -131,8 +131,10 @@ test('W2: Dean\'s example link lists its 24 entries (the verbatim T0 output), pa
     assert.strictEqual(body.entries.length, 24);
     assert.deepStrictEqual(body.entries.map((e) => e.id), EXAMPLE.entries.map((e) => e.id), 'every entry, in the list\'s order');
     const first = body.entries[0];
-    assert.deepStrictEqual(Object.keys(first).sort(), ['channel', 'durationSec', 'id', 'inLibrary', 'position', 'thumb', 'title', 'unavailable']);
+    assert.deepStrictEqual(Object.keys(first).sort(), ['channel', 'durationSec', 'id', 'inLibrary', 'position', 'thumb', 'title', 'titleClean', 'unavailable']);
     assert.deepStrictEqual(body.entries.map((e) => e.position), EXAMPLE.entries.map((_, i) => i + 1), 'v1.371.0: each row\'s place in the list');
+    assert.strictEqual(first.titleClean, 'Kyle Gordon - Introduction (feat. Daniel Radcliffe)', 'v1.372.0: the noise group off, the prefix left for the picker');
+    assert.strictEqual(body.entries[14].titleClean, 'Kyle Gordon - Mr. Jambo [Instrumental Version]', 'a meaningful tag stays');
     assert.strictEqual(first.channel, 'kylegordonisgreat', 'v1.371.0: the verbatim row\'s channel, for the album-artist default');
     assert.strictEqual(first.title, EXAMPLE.entries[0].title);
     assert.strictEqual(first.durationSec, Math.round(EXAMPLE.entries[0].duration));
