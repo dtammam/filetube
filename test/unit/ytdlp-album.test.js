@@ -74,7 +74,7 @@ test('albumFrom: a __proto__ key in tracks never pollutes, and an inherited key 
 
 test('trackTagsFor: the track of one video; null without an album; a video with no number has track null', () => {
   const a = album.albumFrom(good({ cleanTitles: true }), IDS).album;
-  assert.deepStrictEqual(album.trackTagsFor(a, 'vid00000003'), { album: 'Kyle Gordon Is Everywhere', albumArtist: 'Kyle Gordon', track: 3, cleanTitles: true });
+  assert.deepStrictEqual(album.trackTagsFor(a, 'vid00000003'), { album: 'Kyle Gordon Is Everywhere', albumArtist: 'Kyle Gordon', track: 3, cleanTitles: true, title: null });
   assert.strictEqual(album.trackTagsFor(a, 'vid00000002').track, null);
   assert.strictEqual(album.trackTagsFor(null, 'vid00000001'), null);
 });
@@ -177,4 +177,41 @@ test('args: video, a subscription, and the universal lane never carry the album 
   assert.strictEqual(has(args.buildYtdlpDownloadArgs(sub('video'), cfg, ['vid00000001'], { oneOff: true, albumTags: TAGS })), false, 'video');
   assert.strictEqual(has(args.buildYtdlpDownloadArgs(sub('audio'), cfg, ['vid00000001'], { albumTags: TAGS })), false, 'subscription (not a one-off)');
   assert.strictEqual(has(args.buildYtdlpDownloadArgs(sub('audio'), cfg, [], { oneOff: true, sourceUrl: 'https://vimeo.com/123456', albumTags: TAGS })), false, 'universal lane');
+});
+
+// ---- v1.372.0: the song names (plan docs/exec-plans/active/2026-10-07-v1372-song-names-feed.md) ----
+test('v1.372.0 albumFrom: titles are kept per job id (trimmed, null-prototype); an empty or control-byte name is refused', () => {
+  const r = album.albumFrom(good({ titles: { vid00000001: '  Planet of the Bass ', notInJob000: 'x' } }), IDS);
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(Object.getPrototypeOf(r.album.titles), null);
+  assert.deepStrictEqual({ ...r.album.titles }, { vid00000001: 'Planet of the Bass' });
+  for (const bad of ['', '   ', 'A' + String.fromCharCode(0) + 'B', 'A​B', 'x'.repeat(201), 7]) {
+    const b = album.albumFrom(good({ titles: { vid00000001: bad } }), IDS);
+    assert.strictEqual(b.ok, false, JSON.stringify(bad));
+    assert.ok(b.error.startsWith('Each song needs a name'), b.error);
+  }
+  assert.deepStrictEqual({ ...album.albumFrom(good(), IDS).album.titles }, {}, 'a v1.371.0 album (no titles) still parses');
+});
+
+test('v1.372.0 trackTagsFor + albumTagArgs: a named track writes its name LITERALLY and runs no cleanup rule', () => {
+  const a = album.albumFrom(good({ cleanTitles: true, titles: { vid00000001: 'Song %(id)s \\g<0>' } }), IDS).album;
+  const tags = album.trackTagsFor(a, 'vid00000001');
+  assert.strictEqual(tags.title, 'Song %(id)s \\g<0>');
+  const out = album.albumTagArgs(tags);
+  const k = out.indexOf('pre_process:meta_title');
+  assert.deepStrictEqual(out.slice(k - 3, k + 2), ['--parse-metadata', 'pre_process:%(id)s:(?P<meta_title>.+)', '--replace-in-metadata', 'pre_process:meta_title', '(?s).+']);
+  const k2 = k + 2;
+  assert.strictEqual(out[k2], 'Song %(id)s \\\\g<0>', 'the backslash doubled, the rest literal');
+  assert.ok(!out.includes(album.TITLE_NOISE_PATTERN), 'no cleanup rule on a named track');
+  assert.ok(!out.includes('pre_process:title:(?P<meta_title>.+)'));
+  const other = album.albumTagArgs(album.trackTagsFor(a, 'vid00000003'));
+  assert.ok(other.includes(album.TITLE_NOISE_PATTERN), 'a track without a name keeps the v1.371.0 cleanup (an old pending entry)');
+});
+
+test('v1.372.0 cleanTitleNoise: the noise groups off Dean\'s real titles, by the same pattern the yt-dlp path runs', () => {
+  const fx = require('../fixtures/ytdlp-playlist/example-list-PLUtyNbQXMTLg.json');
+  assert.strictEqual(album.cleanTitleNoise(fx.entries[0].title), 'Kyle Gordon - Introduction (feat. Daniel Radcliffe)');
+  assert.strictEqual(album.cleanTitleNoise(fx.entries[14].title), 'Kyle Gordon - Mr. Jambo [Instrumental Version]');
+  assert.strictEqual(album.cleanTitleNoise('Song (Official Video [HD])'), 'Song');
+  assert.strictEqual(album.cleanTitleNoise(7), '');
 });

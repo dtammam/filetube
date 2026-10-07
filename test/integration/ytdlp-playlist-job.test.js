@@ -333,7 +333,7 @@ test('v1.371.0: an audio job with an album hands EACH track its own tags (its pl
     const res = await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', album: ALBUM(ids) }));
     assert.strictEqual(res.status, 202);
     const e = await settle((await res.json()).jobId);
-    assert.deepStrictEqual(calls.map((c) => c.albumTags), ids.map((id, i) => ({ album: 'Kyle Gordon Is Everywhere', albumArtist: 'Kyle Gordon', track: i + 3, cleanTitles: true })));
+    assert.deepStrictEqual(calls.map((c) => c.albumTags), ids.map((id, i) => ({ album: 'Kyle Gordon Is Everywhere', albumArtist: 'Kyle Gordon', track: i + 3, cleanTitles: true, title: null })));
     assert.strictEqual(e.album.title, 'Kyle Gordon Is Everywhere');
     assert.deepStrictEqual({ ...e.album.tracks }, { [ids[0]]: 3, [ids[1]]: 4, [ids[2]]: 5 });
   } finally { await app.close(); }
@@ -494,5 +494,20 @@ test('gate r1 (adversary W2): an album with Opus is 400 (its tags would never re
     assert.strictEqual((await r.json()).error, 'Save as an album needs MP3, M4A or Default');
     const ok = await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', filetype: 'opus' }));
     assert.strictEqual(ok.status, 202, 'Opus without an album is unchanged');
+  } finally { await app.close(); }
+});
+
+test('v1.372.0: the song names the picker sent reach each track\'s tags (and the persisted entry), a track without one gets none', async () => {
+  const ids = [1, 2].map(ID);
+  const app = await startApp(makeDeps());
+  try {
+    const res = await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', album: ALBUM(ids, { cleanTitles: false, titles: { [ids[0]]: 'Planet of the Bass' } }) }));
+    assert.strictEqual(res.status, 202);
+    const saved = pending.readPending(dataDir).find((p) => p.kind === 'playlist');
+    assert.deepStrictEqual(saved.album.titles, { [ids[0]]: 'Planet of the Bass' });
+    await settle((await res.json()).jobId);
+    assert.deepStrictEqual(calls.map((c) => c.albumTags.title), ['Planet of the Bass', null]);
+    const bad = await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', album: ALBUM(ids, { titles: { [ids[0]]: '  ' } }) }));
+    assert.strictEqual(bad.status, 400);
   } finally { await app.close(); }
 });

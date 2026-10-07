@@ -273,10 +273,10 @@ const albumFields = () => picker().querySelector('.playlist-picker-album-fields'
 const albumSwitch = (label) => albumSection().querySelector(`input[aria-label="${label}"]`);
 const albumInput = (label) => [...albumFields().querySelectorAll('.ui-field')].find((f) => f.querySelector('label').textContent === label).querySelector('input');
 const KG = { listId: L, title: 'Kyle Gordon Is Everywhere', total: 4, page: 1, nextPage: null, entries: [
-  entry(1, { title: 'Kyle Gordon - Introduction (feat. Daniel Radcliffe) [Official Audio]', channel: 'kylegordonisgreat' }),
+  entry(1, { title: 'Kyle Gordon - Introduction (feat. Daniel Radcliffe) [Official Audio]', titleClean: 'Kyle Gordon - Introduction (feat. Daniel Radcliffe)', channel: 'kylegordonisgreat' }),
   entry(2, { title: 'Kyle Gordon - Mr. Jambo (feat. Barry Bergen) [Official Music Video]', channel: 'kylegordonisgreat', inLibrary: true }),
-  entry(3, { title: 'Kyle Gordon – My Life (Is the Worst Life Ever) [Official Music Video]', channel: 'kylegordonisgreat' }),
-  entry(4, { title: 'I’m a Horse', channel: 'kylegordonisgreat' }),
+  entry(3, { title: 'Kyle Gordon – My Life (Is the Worst Life Ever) [Official Music Video]', titleClean: 'Kyle Gordon – My Life (Is the Worst Life Ever)', channel: 'kylegordonisgreat' }),
+  entry(4, { title: 'I’m a Horse', titleClean: 'I’m a Horse', channel: 'kylegordonisgreat' }),
 ] };
 
 test('v1.371.0 defaultAlbumArtist: the name most rows credit first (any dash), else the channel without " - Topic"; a tie goes to the first to reach it', () => {
@@ -343,7 +343,10 @@ test('v1.371.0: Download posts the album - typed names, Clean up titles, and eac
   const body = calls.find((x) => x.url === '/api/ytdlp/download-playlist').body;
   const [a, , c3, d4] = KG.entries.map((e) => e.id);
   assert.deepStrictEqual(body.ids, [a, c3, d4]);
-  assert.deepStrictEqual(body.album, { title: 'Kyle Gordon Is Wonderful', artist: 'Kyle Gordon', cleanTitles: true, tracks: { [a]: 1, [c3]: 3, [d4]: 4 } });
+  // v1.372.0: the shown names go along when they differ from YouTube's (cleaned here: noise off on the server, prefix off
+  // in the picker); "I'm a Horse" is unchanged, so it is not sent; the server runs no cleanup of its own (cleanTitles false)
+  assert.deepStrictEqual(body.album, { title: 'Kyle Gordon Is Wonderful', artist: 'Kyle Gordon', cleanTitles: false, tracks: { [a]: 1, [c3]: 3, [d4]: 4 },
+    titles: { [a]: 'Introduction (feat. Daniel Radcliffe)', [c3]: 'My Life (Is the Worst Life Ever)' } });
 });
 
 test('v1.371.0: an empty album artist says so and posts nothing', async () => {
@@ -540,4 +543,94 @@ test('gate r1 (adversary ADVC2): a press INSIDE the window whose click lands aft
   assert.strictEqual(box.checked, false, 'the press began inside the window');
   pointerClick(box);
   assert.strictEqual(box.checked, true, 'a fresh tap after it toggles');
+});
+
+// ---- v1.372.0: the song names (Dean: "it wasn't clear what the new saved name would have been") ----
+const rowOf = (i) => [...picker().querySelectorAll('.ui-list:not(.playlist-picker-album) .ui-row')][i];
+const nameOf = (i) => rowOf(i).querySelector('.ui-row__title').textContent;
+const metaOf = (i) => { const m = rowOf(i).querySelector('.ui-row__meta'); return m && !m.hidden ? m.textContent : ''; };
+const dialog = () => [...global.document.querySelectorAll('.ui-sheet')].find((s) => s.querySelector('.ui-field__input') && !s.querySelector('.playlist-picker'));
+const dialogBtn = (label) => [...dialog().querySelectorAll('button')].find((b) => b.textContent.trim() === label);
+
+test('v1.372.0: with the album on, each row shows the name the song WILL get and its track; off, YouTube\'s name', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await sleep(20);
+  assert.strictEqual(nameOf(0), KG.entries[0].title, 'album off: YouTube\'s name');
+  assert.strictEqual(metaOf(0), '');
+  await sleep(GUARD_MS);
+  pointerClick(albumSwitch('Save as an album'));
+  assert.strictEqual(nameOf(0), KG.entries[0].title, 'album on, Clean up titles off: the name is unchanged');
+  assert.strictEqual(metaOf(0), 'Track 1 - tap the name to edit');
+  pointerClick(albumSwitch('Clean up titles'));
+  assert.strictEqual(nameOf(0), 'Introduction (feat. Daniel Radcliffe)', 'cleaned: the noise (server) and "Kyle Gordon - " (picker) off');
+  assert.strictEqual(nameOf(2), 'My Life (Is the Worst Life Ever)', 'an en dash prefix too');
+  assert.strictEqual(metaOf(2), 'Track 3 - tap the name to edit');
+  assert.strictEqual(rowOf(1).querySelector('.ui-row__meta').textContent, 'Already in library', 'a blocked row keeps its note and no tap target');
+  assert.strictEqual(rowOf(1).querySelector('.ui-row__link'), null);
+  albumInput('Album artist').value = 'Somebody'; albumInput('Album artist').dispatchEvent(new global.window.Event('input'));
+  assert.strictEqual(nameOf(0), 'Kyle Gordon - Introduction (feat. Daniel Radcliffe)', 'the prefix follows the Album artist field');
+  pointerClick(albumSwitch('Save as an album'));
+  assert.strictEqual(nameOf(0), KG.entries[0].title, 'album off again: YouTube\'s name');
+});
+
+test('v1.372.0: tapping a name opens the standard dialog, prefilled; Save renames (and is posted), Cancel and an empty name keep it', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await sleep(GUARD_MS + 20);
+  pointerClick(albumSwitch('Save as an album'));
+  pointerClick(albumSwitch('Clean up titles'));
+  pointerClick(rowOf(0).querySelector('.ui-row__link'));
+  assert.ok(dialog(), 'the dialog is up');
+  const input = dialog().querySelector('.ui-field__input');
+  assert.strictEqual(input.value, 'Introduction (feat. Daniel Radcliffe)', 'prefilled with the name shown');
+  await sleep(GUARD_MS);
+  input.value = '  Introduction  ';
+  pointerClick(dialogBtn('Save'));
+  await sleep(20);
+  assert.strictEqual(nameOf(0), 'Introduction');
+  await sleep(400);
+  pointerClick(rowOf(2).querySelector('.ui-row__link'));
+  await sleep(GUARD_MS);
+  dialog().querySelector('.ui-field__input').value = 'Changed';
+  pointerClick(dialogBtn('Cancel'));
+  await sleep(20);
+  assert.strictEqual(nameOf(2), 'My Life (Is the Worst Life Ever)', 'Cancel keeps it');
+  await sleep(400);
+  pointerClick(rowOf(2).querySelector('.ui-row__link'));
+  await sleep(GUARD_MS);
+  dialog().querySelector('.ui-field__input').value = '   ';
+  pointerClick(dialogBtn('Save'));
+  await sleep(20);
+  assert.strictEqual(nameOf(2), 'My Life (Is the Worst Life Ever)', 'an empty name keeps it');
+  await sleep(400);
+  switches().forEach((s) => { s.checked = true; });
+  switches()[0].dispatchEvent(new global.window.Event('change'));
+  click(btn('Download'));
+  await sleep(20);
+  const body = calls.find((x) => x.url === '/api/ytdlp/download-playlist').body;
+  assert.deepStrictEqual(body.album.titles, { [KG.entries[0].id]: 'Introduction', [KG.entries[2].id]: 'My Life (Is the Worst Life Ever)' });
+});
+
+test('v1.372.0: with the album off a tap on a row ticks it (never a dead tap); inside the activation window it does nothing', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'video' });
+  await sleep(20);
+  pointerClick(rowOf(0).querySelector('.ui-row__link'));
+  assert.strictEqual(switches()[0].checked, false, 'inside the window: refused');
+  await sleep(GUARD_MS);
+  pointerClick(rowOf(0).querySelector('.ui-row__link'));
+  assert.strictEqual(switches()[0].checked, true);
+  assert.strictEqual(btn('Download').textContent, 'Download (1)', 'the count follows');
+  assert.strictEqual(dialog(), undefined, 'no rename dialog with the album off');
+});
+
+test('v1.372.0 stripArtistPrefix: any case, any dash; a title that is only the prefix is kept; no artist = unchanged', () => {
+  const c = fresh({});
+  assert.strictEqual(c.stripArtistPrefix('KYLE GORDON - Song', 'Kyle Gordon'), 'Song');
+  assert.strictEqual(c.stripArtistPrefix('Kyle Gordon — Song', 'Kyle Gordon'), 'Song');
+  assert.strictEqual(c.stripArtistPrefix('AC/DC (Live) - Song', 'AC/DC (Live)'), 'Song', 'regex characters in the artist are literal');
+  assert.strictEqual(c.stripArtistPrefix('Kyle Gordon - ', 'Kyle Gordon'), 'Kyle Gordon - ');
+  assert.strictEqual(c.stripArtistPrefix('Someone - Song', 'Kyle Gordon'), 'Someone - Song');
+  assert.strictEqual(c.stripArtistPrefix('Kyle Gordon - Song', ''), 'Kyle Gordon - Song');
 });
