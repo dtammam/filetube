@@ -167,3 +167,24 @@ test('W4: peek=1 says what a link is without any yt-dlp run; personal lists are 
     assert.strictEqual(r.listable, true, 'with the operator\'s cookies yt-dlp can read Watch Later');
   } finally { await app2.close(); }
 });
+
+// ---- gate r1 --------------------------------------------------------------------------------------------
+test('gate r1: the SAME list posted again by the Shortcut sends no second push', async () => {
+  const app = await startApp(makeDeps());
+  try {
+    for (let i = 0; i < 3; i++) await post(app.base, '/api/ytdlp/download', { url: `https://www.youtube.com/playlist?list=${L}` }, TOKEN);
+    assert.strictEqual(notified.length, 1);
+    await post(app.base, '/api/ytdlp/download', { url: `https://www.youtube.com/playlist?list=PLzzzzzzzzzz` }, TOKEN);
+    assert.strictEqual(notified.length, 2, 'a different list does push');
+  } finally { await app.close(); }
+});
+
+test('gate r1: the waiting list on the status poll FAILS CLOSED when the server wired no check (a waiting file present)', async () => {
+  waiting.addWaiting(dataDir, { kind: 'playlist', listId: L, url: `https://www.youtube.com/playlist?list=${L}` });
+  const deps = makeDeps();
+  delete deps.canManageSubscriptions;
+  const app = await startApp(deps);
+  try {
+    assert.deepStrictEqual((await status(app.base)).waitingPlaylists, []);
+  } finally { await app.close(); }
+});

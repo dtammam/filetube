@@ -7521,7 +7521,11 @@ function openPlaylistPicker(opts) {
   // `started`: the job was accepted - Download stays off while the sheet closes (a second tap during the
   // close would start the same videos again)
   const state = { listId: null, title: '', total: null, nextPage: null, rows: [], loading: false, posting: false, started: false };
-  const sheet = U.sheet({ title: 'Choose from the playlist', content: wrap, doc: d, signal: o.signal });
+  // the view's signal (LESSONS 4): leaving the page closes the picker, never strands it over the next view
+  const signal = o.signal || ((typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.viewSignal === 'function') ? window.FileTube.viewSignal() : undefined);
+  const sheet = U.sheet({ title: 'Choose from the playlist', content: wrap, doc: d, signal });
+  // the activation guard (ui.js): guard() marks a press inside the window; each handler below ASKS accepts(e)
+  // first - guard() alone refuses nothing (gate r1: a tap 200 ms after the open posted the job)
   [allBtn, noneBtn, subBtn, moreBtn, goBtn].forEach((b) => sheet.guard(b));
 
   const picked = () => state.rows.filter((r) => r.box && r.box.checked).map((r) => r.id);
@@ -7530,7 +7534,7 @@ function openPlaylistPicker(opts) {
     goBtn.textContent = n ? `Download (${n})` : 'Download';
     goBtn.disabled = n === 0 || state.posting || state.started;
     const pickable = state.rows.filter((r) => r.box).length;
-    allBtn.textContent = state.nextPage ? `Select all ${pickable} loaded` : 'Select all';
+    allBtn.textContent = state.nextPage ? `Select all (${pickable})` : 'Select all'; // R6: what is loaded, with the count
     const shown = state.rows.length;
     status.textContent = (state.title ? state.title + ': ' : '') + (state.total !== null ? `${shown} of ${state.total} shown` : `${shown} shown`);
   }
@@ -7560,7 +7564,7 @@ function openPlaylistPicker(opts) {
     if (state.loading) return;
     state.loading = true;
     moreBtn.disabled = true;
-    fetch(playlistApiUrl(o.link, page, false), { signal: o.signal })
+    fetch(playlistApiUrl(o.link, page, false), { signal })
       .then(async (r) => {
         const data = await r.json().catch(() => ({}));
         if (!r.ok) throw Object.assign(new Error(data.error || 'Could not read this playlist.'), { soft: true });
@@ -7575,28 +7579,33 @@ function openPlaylistPicker(opts) {
         refresh();
       })
       .catch((err) => {
-        if (o.signal && o.signal.aborted) return;
+        if (signal && signal.aborted) return;
         // R14: say so, and still offer the one video when the link had one
         status.textContent = "Couldn't read this playlist." + (err && err.soft && err.message ? ' ' + err.message : '');
         if (o.linkedVideoId && typeof o.onJustThisVideo === 'function' && !wrap.querySelector('.playlist-picker-single')) {
           const one = U.button({ variant: 'primary', label: 'Just this video', doc: d });
           one.classList.add('playlist-picker-single');
           sheet.guard(one);
-          one.addEventListener('click', () => { sheet.close(); o.onJustThisVideo(); });
+          one.addEventListener('click', (e) => { if (!sheet.accepts(e)) return; sheet.close(); o.onJustThisVideo(); });
           wrap.appendChild(one);
         }
       })
       .finally(() => { state.loading = false; moreBtn.disabled = false; });
   }
-  allBtn.addEventListener('click', () => { state.rows.forEach((r) => { if (r.box) r.box.checked = true; }); refresh(); });
-  noneBtn.addEventListener('click', () => { state.rows.forEach((r) => { if (r.box) r.box.checked = false; }); refresh(); });
-  moreBtn.addEventListener('click', () => { if (state.nextPage) load(state.nextPage); });
-  subBtn.addEventListener('click', () => {
-    // R4: subscribe to the LIST (the canonical /playlist?list= URL), never to the one video
-    if (!state.listId || typeof window === 'undefined' || typeof window.location === 'undefined') return;
-    window.location.href = '/subscriptions?add=' + encodeURIComponent('https://www.youtube.com/playlist?list=' + state.listId);
+  allBtn.addEventListener('click', (e) => { if (!sheet.accepts(e)) return; state.rows.forEach((r) => { if (r.box) r.box.checked = true; }); refresh(); });
+  noneBtn.addEventListener('click', (e) => { if (!sheet.accepts(e)) return; state.rows.forEach((r) => { if (r.box) r.box.checked = false; }); refresh(); });
+  moreBtn.addEventListener('click', (e) => { if (!sheet.accepts(e)) return; if (state.nextPage) load(state.nextPage); });
+  subBtn.addEventListener('click', (e) => {
+    if (!sheet.accepts(e)) return;
+    // R4: subscribe to the LIST (the canonical /playlist?list= URL), never to the one video: Subscriptions > Add,
+    // filled. `o.navigate` is the seam a test reads the destination through.
+    if (!state.listId) return;
+    const dest = '/subscriptions?add=' + encodeURIComponent('https://www.youtube.com/playlist?list=' + state.listId);
+    if (typeof o.navigate === 'function') o.navigate(dest);
+    else if (typeof window !== 'undefined' && window.location) window.location.href = dest;
   });
-  goBtn.addEventListener('click', () => {
+  goBtn.addEventListener('click', (e) => {
+    if (!sheet.accepts(e)) return;
     const ids = picked();
     if (!ids.length || state.posting || state.started) return;
     state.posting = true;
@@ -7625,12 +7634,22 @@ function openPlaylistPicker(opts) {
 
 // The one way a typed / pasted / shared link reaches a download (the download box, the Subscriptions
 // one-off form, a `?pick=` link): `submitSingle(body)` is the caller's today path for one video.
-// `ui` = { status(text) } for the caller's own status line. Resolves when the user has been asked.
+// `ui` = { status(text), onStarted, withFormatControls, noAutoSubmit, fill(body, note) }. Resolves when the user
+// has been asked. `noAutoSubmit` (a LINK opened the page - `?pick=` from the extension or a push - not a link the
+// user typed): nothing is downloaded without a tap here (gate r1 security: a crafted `?pick=` link started a
+// download on load, the session cookie riding the top-level GET); a link that is not a pickable playlist goes to
+// `ui.fill` (the one-off form, filled) for the user to submit.
 function routeOneOffDownload(body, submitSingle, ui) {
   const b = body && typeof body === 'object' ? body : {};
   const link = typeof b.url === 'string' ? b.url.trim() : '';
   const say = (t) => { if (ui && typeof ui.status === 'function') ui.status(t); };
-  if (!PLAYLIST_LINK_HINT.test(link)) { submitSingle(b); return Promise.resolve('single'); }
+  const direct = (note) => {
+    if (ui && ui.noAutoSubmit) { if (typeof ui.fill === 'function') ui.fill(b, note || ''); return 'filled'; }
+    if (note) say(note);
+    submitSingle(b);
+    return note ? 'single-note' : 'single';
+  };
+  if (!PLAYLIST_LINK_HINT.test(link)) return Promise.resolve(direct(''));
   return fetch(playlistApiUrl(link, 1, true))
     .then((r) => (r.ok ? r.json() : null))
     .catch(() => null)
@@ -7649,13 +7668,8 @@ function routeOneOffDownload(body, submitSingle, ui) {
         return 'asked';
       }
       if (kind === 'playlist' || (kind === 'personal' && peek.listable)) { picker(); return 'picker'; }
-      if ((kind === 'mix' || kind === 'personal') && peek.videoId) {
-        say(kind === 'mix' ? PLAYLIST_MIX_NOTE : PLAYLIST_PERSONAL_NOTE);
-        submitSingle(b);
-        return 'single-note';
-      }
-      submitSingle(b); // none, or the server could not say: today's path decides (and words any error)
-      return 'single';
+      if ((kind === 'mix' || kind === 'personal') && peek.videoId) return direct(kind === 'mix' ? PLAYLIST_MIX_NOTE : PLAYLIST_PERSONAL_NOTE);
+      return direct(''); // none, or the server could not say: today's path decides (and words any error)
     });
 }
 
@@ -15787,7 +15801,12 @@ function formatDownloadChipSummary(state) {
     const errored = state.items.filter((item) => item.state === 'error');
     const cancelledCount = state.items.filter((item) => item.state === 'cancelled').length;
     const errorCount = errored.length;
-    if (errorCount === 0 && cancelledCount === 0) return '';
+    // v1.370.0 W4: a playlist the Shortcut left waiting (gate r1: the collapsed chip was blank with only that)
+    const waitingCount = state.items.filter((item) => item.kind === 'waiting').length;
+    if (errorCount === 0 && cancelledCount === 0) {
+      if (waitingCount === 1) return 'Playlist waiting: choose videos';
+      return waitingCount > 1 ? waitingCount + ' playlists waiting' : '';
+    }
     if (cancelledCount === 0) {
       // "download failed" was a lie when the failed thing was a reheat --
       // wording follows what actually failed.

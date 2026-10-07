@@ -150,8 +150,8 @@ const CLASSIFICATION = {
   'DELETE /api/subscriptions/failures/:id': 'manage-subs',
   'DELETE /api/subscriptions/failures/all': 'manage-subs',
   'POST /api/ytdlp/download': 'manage-subs',
-  'POST /api/ytdlp/download-playlist': 'manage-subs',
-  'POST /api/ytdlp/waiting/:id/dismiss': 'manage-subs', // v1.370.0 W4: dismiss a playlist the Shortcut left waiting; requireManageSubscriptions first-line (the API token refused outright) // v1.370.0 W3: one playlist job; requireManageSubscriptions first-line (the API token is refused outright, R9)
+  'POST /api/ytdlp/download-playlist': 'manage-subs', // v1.370.0 W3: one playlist job; requireManageSubscriptions first-line (the API token is refused outright, R9)
+  'POST /api/ytdlp/waiting/:id/dismiss': 'manage-subs', // v1.370.0 W4: dismiss a playlist the Shortcut left waiting; requireManageSubscriptions first-line (the API token refused outright)
   'POST /api/ytdlp/download/:jobId/cancel': 'manage-subs',
   'POST /api/ytdlp/refresh-avatars': 'manage-subs',
   'POST /api/ytdlp/refresh-avatars/cancel': 'manage-subs',

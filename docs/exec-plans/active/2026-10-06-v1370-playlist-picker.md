@@ -5,7 +5,7 @@ branch: feat/v1.370.0-playlist-picker
 anchor: outcome
 status: Built (W1-W4), gate next
 next: the gate (section 6), then W5 and the release as v1.370.0 (Dean, 2026-10-07: the iPod lock shipped first as v1.369.0)
-design: Dean's intake 2026-10-06 (Opus kickoff session, rulings R1-R14 below). Base main 5f1dcc1b. Ships after v1.368.0 (radio), before v1.370.0 (subtitles, 360, cleanup).
+design: Dean's intake 2026-10-06 (Opus kickoff session, rulings R1-R14 below). Base main 5f1dcc1b. Ships after v1.368.0 (radio), before v1.371.0 (subtitles, 360, cleanup; renumbered 2026-10-07 when the iPod lock took v1.369.0).
 gate: pending
 ---
 
@@ -13,7 +13,7 @@ gate: pending
 
 Raised mid-kickoff (Dean, 2026-10-06, example `https://www.youtube.com/watch?v=U3P8pUboZ5g&list=PLUtyNbQXMTLg`): "I'd want it to
 recognize it's a playlist and maybe have a menu showing what the things are and let one select what to download." Version order
-(Dean): radio v1.368.0, this v1.370.0, subtitles + 360 + cleanup v1.370.0. If v1.368.0 has not shipped when this is ready, wait,
+(Dean): radio v1.368.0, the iPod lock v1.369.0, this v1.370.0, subtitles + 360 + cleanup v1.371.0. If v1.368.0 has not shipped when this is ready, wait,
 merge main, release. Norms: no em dashes in docs or user prose; stage files by name; `git commit -F <file>`; never pipe a
 commit or push; export the fnm Node 22.23.1 PATH before any node/npm/git command.
 
@@ -197,6 +197,10 @@ on both routes and the waiting list, `inLibrary` leakage, the 50-queue interplay
 Download, reachability with the REAL flat-playlist JSON from T0. Pacing: ship on CRITICAL/WARNING closure; after 2 rounds,
 ask Dean at round 3.
 
+Gate: CHANGES r1 @36207a9c — security-brief
+Gate: CHANGES r1 @36207a9c — qa
+Gate: CHANGES r1 @36207a9c — adversary
+
 ## 7. Release and evidence
 
 Release per docs/RELEASING.md and AGENTS.md (`npm version 1.370.0 --no-git-tag-version`, ROADMAP Shipped, releases.json, dual
@@ -288,6 +292,29 @@ choice -> the picker with Format / Quality / File type. Its first run caught the
 
 **Censuses:** route count 266 -> 269 (GET /api/ytdlp/playlist GATED; POST /api/ytdlp/download-playlist and POST
 /api/ytdlp/waiting/:id/dismiss manage-subs + na). The API token still reaches only POST /api/ytdlp/download (lib/auth/gate.js).
+
+### Gate round 1 (security-brief + qa + adversary @36207a9c: CHANGES) and the fixes
+
+| Finding | Fix | Proof |
+|---|---|---|
+| Security W / QA W1: a crafted `/subscriptions?pick=` link started a download on load (the session cookie rides a top-level GET) | `routeOneOffDownload(..., { noAutoSubmit })`: a link that opened the page never submits; a playlist opens R1's choice or the picker, anything else FILLS the one-off form | unit "a LINK that opened the page never downloads without a tap" (plain, Mix, failed peek); e2e 2b: `?pick=<plain video>` posts nothing, the form is filled |
+| QA W2 / adversary W5, W7: `sheet.guard()` refused nothing (no handler asked `accepts(e)`); no view signal | every picker control asks `sheet.accepts(e)` first; the sheet takes `FileTube.viewSignal()` | unit: a tap (click detail 1) inside the 450 ms window posts nothing and Select all does nothing, after it posts once; aborting the view signal closes the picker |
+| QA W3: /subscriptions listed every child video row | `visibleOneShotEntries` (parent filter) feeds `renderOneShots`; the row reads like the chip | unit |
+| QA W4: the collapsed chip was blank with only a waiting playlist | the summary says "Playlist waiting: choose videos" / "N playlists waiting" | unit |
+| QA W5: R12 not met from the extension / push; the push left its waiting row | `?pick=` opens the picker with the three controls; the push URL carries `&waiting=<id>`, cleared once chosen | e2e 3b |
+| QA W6 / adversary W6: the extension called the waiting reply a failure; Audio on a playlist page made a waiting row + push | `interpretDownloadResponse` reads `waiting` as a message; Audio / Video are off on a playlist page (`isPlaylistOnly`); the contract header documents the reply | extension tests (now in `npm test` through test/unit/extension-ftclient.test.js, adversary S8) |
+| QA W7 / adversary W3, W4: untested push, Subscribe, join, Cancel-kills | `waitingPlaylistPush` (pure recipients + payload, server.js uses it); `broadcast` fails closed without `allowUser`; picker `navigate` seam | push-delivery tests (recipients; opt-out, cooldown, guard prune, 410 prune, cursor untouched, fail closed); unit Subscribe -> the canonical list URL; job tests: Cancel KILLS the running video (and it is neither done nor failed), a video in flight elsewhere is waited for (one download); e2e: `?add=` and the Add form's question |
+| QA W8: docblocks displaced by the insertions; a test title | isChannelRootUrl's and requeuePendingOneShots' JSDoc back over their functions; the new routes above the cancel route's comment; a dropped playlist on restart gets a runlog line; the cookies test checks cookies | read; listing test |
+| QA W9: Subscriptions > Add still subscribed a video-in-list to one video (R4's trap) | Add asks (the server's peek): "Subscribe to playlist" (the canonical URL) / "Just this video" | e2e 2b |
+| Adversary W1: the stuck sweep failed a running playlist row after 10 minutes (Cancel then 404) | the sweep skips a playlist row whose coordinator runs | job test with the sweep at now + 11 min |
+| Adversary W2: a playlist job pushed accepted one-offs out of the 50-entry pending file | progress is rewritten IN PLACE (`pending.updatePending`); a full file refuses a playlist AND a one-off (503) | job test: 50 pending -> 503, every one-off kept; in-place order; no resurrection |
+| Suggestions taken | no second push for the same waiting list; "Select all (N)"; an exactly-200 list has no Load more (tested); members / premium / needs-auth rows tested; the listing's trash comment; the classification comments | tests named above |
+
+Disclosed, not changed: the one-off form's Folder is not used by a playlist job (each video goes to its channel's folder,
+R8); "Just this video" from a waiting playlist uses the default format; the listing has no global concurrency cap (one
+yt-dlp per list page in flight); with a cookies file a member who may download can list the operator's Watch Later /
+Liked (R5 as ruled); an un-reloaded 0.1.0 extension on a `watch&list` tab makes a waiting playlist (reload the unpacked
+extension: the release note says so).
 
 ## 8. Out of scope
 

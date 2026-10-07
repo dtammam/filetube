@@ -113,6 +113,33 @@ process.stderr.write('ERROR: e2e fake: downloads fail on purpose\\n'); process.e
     ok(!/pick=/.test(p2.url()), '2. the ?pick= is dropped from the address bar');
     await ctx2.close();
 
+    // ---- 2b. gate r1: a crafted ?pick= of a plain video downloads NOTHING without a tap (the form is filled) ----
+    const ctx2b = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const p2b = await ctx2b.newPage();
+    const posts2b = [];
+    p2b.on('request', (r) => { if (r.method() === 'POST' && /\/api\/ytdlp\/download/.test(r.url())) posts2b.push(r.url()); });
+    await p2b.goto(base + '/login', { waitUntil: 'networkidle' });
+    await login(p2b);
+    await p2b.waitForURL((u) => !String(u).includes('login'), { timeout: 10000 });
+    await p2b.goto(base + '/subscriptions?pick=' + encodeURIComponent('https://www.youtube.com/watch?v=abcdefghijk'), { waitUntil: 'networkidle' });
+    await sleep(1500);
+    ok(posts2b.length === 0, '2b. a ?pick= of a plain video posts no download (' + JSON.stringify(posts2b) + ')');
+    ok(await p2b.evaluate(() => { const i = document.getElementById('oneshot-url'); return !!i && i.value === 'https://www.youtube.com/watch?v=abcdefghijk'; }), '2b. ...it fills the one-off form for the user to submit');
+    // ?add= opens Add filled (R4); the Add form asks playlist-or-video for a video in a list (R4 trap, gate r1 QA W9)
+    await p2b.goto(base + '/subscriptions?add=' + encodeURIComponent('https://www.youtube.com/playlist?list=PLUtyNbQXMTLg'), { waitUntil: 'networkidle' });
+    await sleep(800);
+    ok(await p2b.evaluate(() => document.getElementById('sub-add-url').value) === 'https://www.youtube.com/playlist?list=PLUtyNbQXMTLg', '2b. ?add= opens Add with the list URL');
+    const subPosts = [];
+    p2b.on('request', (r) => { if (r.method() === 'POST' && /\/api\/subscriptions$/.test(r.url())) subPosts.push(r.postData()); });
+    await p2b.fill('#sub-add-url', LINK);
+    await p2b.click('#sub-add-btn');
+    await p2b.waitForSelector('.ui-sheet .ui-row:has-text("Subscribe to playlist")', { timeout: 8000 }).catch(() => {});
+    await sleep(500);
+    await p2b.click('.ui-sheet .ui-row:has-text("Subscribe to playlist")').catch(() => {});
+    await sleep(1200);
+    ok(subPosts.length === 1 && JSON.parse(subPosts[0]).channelUrl === 'https://www.youtube.com/playlist?list=PLUtyNbQXMTLg', '2b. Add asks, and "Subscribe to playlist" subscribes to the LIST (' + JSON.stringify(subPosts) + ')');
+    await ctx2b.close();
+
     // ---- 3. the Shortcut ----
     const r = await fetch(base + '/api/ytdlp/download', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-FileTube-Token': TOKEN }, body: JSON.stringify({ url: LINK, format: 'video' }) });
     const rb = await r.json();
@@ -135,6 +162,22 @@ process.stderr.write('ERROR: e2e fake: downloads fail on purpose\\n'); process.e
     const st3 = await pickerState(p3);
     const selects = await p3.evaluate(() => [...document.querySelectorAll('.playlist-picker select')].map((s) => s.getAttribute('aria-label')));
     ok(st3 && st3.rows === 24 && selects.join() === 'Format,Quality,File type', `3. Choose -> the picker, with the box's three controls (${JSON.stringify(st3)} ${selects})`);
+    // the push's link (gate r1 QA W5): ?pick=...&waiting=<id> opens the picker WITH the controls; Download clears the row
+    const wl = await p3.evaluate(async () => (await (await fetch('/api/subscriptions/status')).json()).waitingPlaylists);
+    const wid = wl && wl[0] && wl[0].id;
+    await p3.goto(base + '/subscriptions?pick=' + encodeURIComponent(LINK) + '&waiting=' + wid, { waitUntil: 'networkidle' });
+    await p3.waitForSelector('.ui-sheet .ui-row:has-text("Choose videos")', { timeout: 10000 }).catch(() => {});
+    await sleep(500);
+    await p3.click('.ui-sheet .ui-row:has-text("Choose videos")').catch(() => {});
+    await p3.waitForSelector('.playlist-picker .ui-row', { timeout: 10000 }).catch(() => {});
+    const sel4 = await p3.evaluate(() => [...document.querySelectorAll('.playlist-picker select')].map((s) => s.getAttribute('aria-label')));
+    ok(sel4.join() === 'Format,Quality,File type', '3b. the push link opens the picker WITH the format controls (' + sel4 + ')');
+    await p3.selectOption('.playlist-picker select[aria-label="Format"]', 'audio').catch(() => {});
+    await sleep(600);
+    await p3.click('.playlist-picker button:has-text("Download (1)")').catch(() => {});
+    await sleep(1500);
+    const wl2 = await p3.evaluate(async () => (await (await fetch('/api/subscriptions/status')).json()).waitingPlaylists);
+    ok(Array.isArray(wl2) && !wl2.some((w) => w.id === wid), '3b. choosing from the push clears its waiting row');
     await ctx3.close();
   } finally {
     await browser.close();

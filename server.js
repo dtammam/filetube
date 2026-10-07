@@ -6846,12 +6846,8 @@ ytdlp.registerRoutes(app, {
   // v1.370.0 W4 (R9): a playlist the Shortcut left waiting - one push to everyone allowed to download it;
   // tapping it opens the picker (the Subscriptions page's ?pick=)
   notifyWaitingPlaylist: (entry) => {
-    const allowed = new Set(userStore.listUsers().filter((u) => !u.disabled && (u.role === 'admin' || u.canManageSubscriptions)).map((u) => u.id));
-    pushDelivery.broadcast({
-      title: 'Playlist waiting',
-      body: 'Open FileTube to choose videos',
-      url: '/subscriptions?pick=' + encodeURIComponent(entry.url),
-    }, (userId) => allowed.has(userId));
+    const push = pushDeliverLib.waitingPlaylistPush(entry, userStore.listUsers());
+    pushDelivery.broadcast(push.payload, push.allowUser);
   },
   // v1.146 (downloader-engine): the engine routes are ADMIN-only - they
   // cause pip to execute code from PyPI. Same guard function POST

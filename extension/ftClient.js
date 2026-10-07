@@ -11,6 +11,10 @@
 //   headers: Content-Type: application/json, X-FileTube-Token: <token>
 //   body:    { url, format }              // format: 'audio' | 'video' (D4)
 //   -> 202 { accepted:true, jobId }       // queued
+//   -> 202 { accepted:false, playlist:true, waiting:true, message }
+//                                         // v1.370.0: a YouTube playlist link posted with the token is NOT
+//                                         // downloaded; it waits in the app ("Playlist found: open FileTube
+//                                         // to choose"). singleVideoUrl keeps a watch link from waiting.
 //   -> 400 { error }                      // bad url/format
 //   -> 401 { error }                      // bad/missing token   (lib/auth/gate.js:256)
 //   -> 403 { error, readOnlyMedia:true }  // instance in read-only-media mode
@@ -47,6 +51,17 @@ export function singleVideoUrl(raw) {
   if (!hasVideo || !u.searchParams.has('list')) return raw;
   ['list', 'index', 'start_radio', 'pp'].forEach((k) => u.searchParams.delete(k));
   return u.toString();
+}
+
+// A YouTube playlist PAGE (a list, no one video): Audio / Video have no single video to send there - the
+// popup turns them off and offers "Choose from playlist..." (gate r1: Audio on such a tab made the server keep
+// a waiting playlist and push it, while the popup said it failed).
+export function isPlaylistOnly(raw) {
+  let u;
+  try { u = new URL(String(raw || '')); } catch { return false; }
+  if (!YT_HOSTS.has(u.hostname.toLowerCase()) || !u.searchParams.has('list')) return false;
+  const hasVideo = u.hostname.toLowerCase() === 'youtu.be' ? u.pathname.length > 1 : u.searchParams.has('v');
+  return !hasVideo;
 }
 
 // "Choose from playlist..." shows on a tab whose URL names a list that is not a Mix (RD...): R10.
@@ -101,6 +116,10 @@ export function buildDownloadRequest({ instanceUrl, apiToken, url, format }) {
 export function interpretDownloadResponse(status, payload) {
   if (status === 202 && payload && payload.accepted) {
     return { ok: true, status, jobId: payload.jobId };
+  }
+  // v1.370.0: the playlist is waiting in FileTube - not a failure, nothing was downloaded
+  if (status === 202 && payload && payload.waiting === true) {
+    return { ok: true, status, waiting: true, message: typeof payload.message === 'string' ? payload.message : 'Playlist found: open FileTube to choose' };
   }
   return {
     ok: false,

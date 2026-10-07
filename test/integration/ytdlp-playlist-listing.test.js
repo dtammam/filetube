@@ -30,6 +30,7 @@ if (mode === 'mix') { process.stdout.write(fs.readFileSync(path.join(FIX, 'mix-a
 if (mode === 'garbage') { process.stdout.write('{"_type": "playlist", "entries": [\n'); process.exit(0); }
 const file = mode === 'uploads' ? 'uploads-page2-trimmed.json' : 'example-list-PLUtyNbQXMTLg.json';
 const doc = JSON.parse(fs.readFileSync(path.join(FIX, file), 'utf8'));
+if (mode === 'exact200') { const e0 = doc.entries[0]; doc.entries = Array.from({ length: 200 }, (_, i) => Object.assign({}, e0, { id: ('x' + String(i).padStart(10, '0')).slice(0, 11) })); doc.playlist_count = 200; fs.writeSync(1, JSON.stringify(doc) + '\n'); process.exit(0); } // writeSync: a ~280 KB pipe write would be cut by process.exit
 if (mode === 'example' || mode === 'private') {
   const start = Number(valueOf('--playlist-start') || 1);
   const end = Number(valueOf('--playlist-end') || doc.entries.length);
@@ -267,10 +268,36 @@ test('W2: a double tap on the same page shares ONE yt-dlp run; the next request 
   } finally { await app.close(); }
 });
 
-test('W2 unit: buildYtdlpPlaylistPreviewArgs refuses a bad id or page; cookies ride before --', () => {
+test('W2 unit: buildYtdlpPlaylistPreviewArgs refuses a bad id or page; the cookies (when usable) ride before --', () => {
   assert.throws(() => args.buildYtdlpPlaylistPreviewArgs('PL;rm', 1, {}), /Invalid playlist id/);
   assert.throws(() => args.buildYtdlpPlaylistPreviewArgs(LIST, 0, {}), /Invalid playlist page/);
   assert.throws(() => args.buildYtdlpPlaylistPreviewArgs(LIST, args.PLAYLIST_MAX_PAGE + 1, {}), /Invalid playlist page/);
   const a = args.buildYtdlpPlaylistPreviewArgs(LIST, 3, {});
   assert.deepStrictEqual(a, ['--flat-playlist', '-J', '--playlist-start', '401', '--playlist-end', '600', '--no-warnings', '--', `https://www.youtube.com/playlist?list=${LIST}`]);
+  const cookies = path.join(tmpDir, 'cookies.txt');
+  fs.writeFileSync(cookies, '# Netscape HTTP Cookie File\n.youtube.com\tTRUE\t/\tTRUE\t0\tSID\tx\n');
+  const withC = args.buildYtdlpPlaylistPreviewArgs(LIST, 1, { cookiesFile: cookies });
+  const dd = withC.indexOf('--');
+  assert.ok(withC.indexOf('--cookies') !== -1 && withC.indexOf('--cookies') < dd, 'the cookies before --: ' + withC.join(' '));
+  assert.strictEqual(withC[dd + 1], `https://www.youtube.com/playlist?list=${LIST}`);
+  assert.strictEqual(withC.length, dd + 2, 'the list URL is the last argument');
+});
+
+
+test('gate r1: a list of EXACTLY 200 (one full page) has no next page; members-only / premium / needs-auth rows are unavailable', () => {
+  const { playlistEntryFrom } = require('../../lib/ytdlp/run');
+  for (const a of ['subscriber_only', 'premium_only', 'needs_auth', 'private']) {
+    assert.strictEqual(playlistEntryFrom({ id: 'abcdefghijk', title: 'x', availability: a }).unavailable, true, a);
+  }
+  assert.strictEqual(playlistEntryFrom({ id: 'abcdefghijk', title: 'x', availability: 'unlisted' }).unavailable, false, 'unlisted downloads');
+});
+
+test('gate r1: exactly 200 entries with playlist_count 200 -> nextPage null (no Load more that loads nothing)', async () => {
+  process.env.FAKE_PL_MODE = 'exact200';
+  const app = await startApp(makeDeps());
+  try {
+    const body = await (await get(app.base, { url: DEAN })).json();
+    assert.strictEqual(body.total, 200, JSON.stringify(body).slice(0, 300));
+    assert.strictEqual(body.nextPage, null);
+  } finally { await app.close(); }
 });

@@ -84,3 +84,15 @@ test('playlistPickUrl: a list tab opens the instance picker; a Mix, a plain vide
   assert.equal(playlistPickUrl('https://ft.example', 'https://example.com/?list=PL1'), null);
   assert.equal(playlistPickUrl('', tab), null);
 });
+
+test('gate r1: a 202 "playlist waiting" reply is a message, not a failure; Audio / Video are off on a playlist page', async () => {
+  const { interpretDownloadResponse, isPlaylistOnly } = await mod();
+  assert.deepEqual(interpretDownloadResponse(202, { accepted: false, playlist: true, waiting: true, message: 'Playlist found: open FileTube to choose' }),
+    { ok: true, status: 202, waiting: true, message: 'Playlist found: open FileTube to choose' });
+  assert.equal(interpretDownloadResponse(202, { accepted: true, jobId: 'j' }).jobId, 'j');
+  assert.equal(isPlaylistOnly('https://www.youtube.com/playlist?list=PLUtyNbQXMTLg'), true);
+  assert.equal(isPlaylistOnly('https://www.youtube.com/watch?list=PLUtyNbQXMTLg'), true);
+  assert.equal(isPlaylistOnly('https://www.youtube.com/watch?v=U3P8pUboZ5g&list=PLUtyNbQXMTLg'), false, 'a video: Audio / Video send it alone');
+  assert.equal(isPlaylistOnly('https://youtu.be/U3P8pUboZ5g?list=PLUtyNbQXMTLg'), false);
+  assert.equal(isPlaylistOnly('https://example.com/?list=1'), false);
+});

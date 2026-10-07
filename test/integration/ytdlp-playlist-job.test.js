@@ -193,3 +193,91 @@ test('W3 (R9, R10): the API token gains no route here (403), a member without Ma
   assert.strictEqual(pending.readPending(dataDir).length, 0);
   assert.strictEqual(calls.length, 0);
 });
+
+// ---- gate r1 --------------------------------------------------------------------------------------------
+test('gate r1 W3: Cancel KILLS the video running now (its process), and that video is neither done nor failed', async () => {
+  const ids = [1, 2, 3].map(ID);
+  const kills = [];
+  run.runDownload = async (sub, cfg, vids, opts) => {
+    calls.push({ id: vids[0], folder: sub.name });
+    return new Promise((resolve) => {
+      const child = { pid: 4242, kill: () => { kills.push(vids[0]); resolve({ ok: false, code: null, stdout: '', stderr: '', error: 'killed' }); } };
+      if (opts && typeof opts.onChild === 'function') opts.onChild(child);
+      if (vids[0] !== ids[1]) setTimeout(() => resolve({ ok: true, code: 0, stdout: '', stderr: '' }), 5);
+    });
+  };
+  const app = await startApp(makeDeps());
+  try {
+    const { jobId } = await (await post(app.base, '/api/ytdlp/download-playlist', job(ids))).json();
+    const until = Date.now() + 5000;
+    while (calls.length < 2 && Date.now() < until) await new Promise((r) => setTimeout(r, 10));
+    await new Promise((r) => setTimeout(r, 30));
+    assert.strictEqual((await post(app.base, `/api/ytdlp/download/${jobId}/cancel`, {})).status, 200);
+    const e = await settle(jobId);
+    assert.deepStrictEqual(kills, [ids[1]], 'the running video\'s process was killed');
+    assert.strictEqual(e.state, 'cancelled');
+    assert.strictEqual(e.done, 1);
+    assert.deepStrictEqual(e.failedIds, [], 'the stopped video is not a failure');
+    assert.deepStrictEqual(calls.map((c) => c.id), ids.slice(0, 2), 'nothing after it starts');
+  } finally { await app.close(); }
+});
+
+test('gate r1 W3: a video another job is already downloading is WAITED for, never written twice', async () => {
+  const ids = [1, 2].map(ID);
+  let release;
+  const held = new Promise((r) => { release = r; });
+  run.runDownload = async (sub, cfg, vids) => {
+    calls.push({ id: vids[0], folder: sub.name });
+    if (vids[0] === ids[0] && calls.filter((c) => c.id === ids[0]).length === 1) await held;
+    return { ok: true, code: 0, stdout: '', stderr: '' };
+  };
+  const app = await startApp(makeDeps());
+  try {
+    const one = await post(app.base, '/api/ytdlp/download', { url: `https://www.youtube.com/watch?v=${ids[0]}`, format: 'video', quality: 'best' });
+    assert.strictEqual(one.status, 202);
+    const until = Date.now() + 5000;
+    while (!calls.length && Date.now() < until) await new Promise((r) => setTimeout(r, 10));
+    const { jobId } = await (await post(app.base, '/api/ytdlp/download-playlist', job(ids))).json();
+    await new Promise((r) => setTimeout(r, 200));
+    assert.strictEqual(calls.filter((c) => c.id === ids[0]).length, 1, 'the playlist waits instead of a second writer');
+    release();
+    const e = await settle(jobId);
+    assert.strictEqual(calls.filter((c) => c.id === ids[0]).length, 1, 'one download of that video in all');
+    assert.strictEqual(e.done, 2, 'the joined video counts as done');
+  } finally { await app.close(); }
+});
+
+test('gate r1 W1: the stuck sweep leaves a RUNNING playlist job alone (no process of its own, its row moves between videos)', async () => {
+  const ids = [1, 2].map(ID);
+  let release;
+  const held = new Promise((r) => { release = r; });
+  run.runDownload = async (sub, cfg, vids) => { calls.push({ id: vids[0] }); await held; return { ok: true, code: 0, stdout: '', stderr: '' }; };
+  const app = await startApp(makeDeps());
+  try {
+    const { jobId } = await (await post(app.base, '/api/ytdlp/download-playlist', job(ids))).json();
+    const until = Date.now() + 5000;
+    while (!calls.length && Date.now() < until) await new Promise((r) => setTimeout(r, 10));
+    ytdlp.sweepStuckOneShots(Date.now() + 11 * 60 * 1000);
+    assert.strictEqual(activity.getSnapshot().oneShots[jobId].state, 'downloading', 'not swept while it runs');
+    release();
+    await settle(jobId);
+  } finally { await app.close(); }
+});
+
+test('gate r1 W2: a full pending file refuses a playlist (503) instead of dropping an accepted one-off; a job\'s progress is rewritten IN PLACE', async () => {
+  for (let i = 0; i < pending.MAX_PENDING_ONESHOTS; i++) pending.addPending(dataDir, { jobId: 'one-' + i, url: 'https://www.youtube.com/watch?v=' + ID(i), format: 'video' });
+  const app = await startApp(makeDeps());
+  try {
+    const res = await post(app.base, '/api/ytdlp/download-playlist', job([ID(900)]));
+    assert.strictEqual(res.status, 503);
+    assert.strictEqual(pending.readPending(dataDir).length, pending.MAX_PENDING_ONESHOTS);
+    assert.ok(pending.readPending(dataDir).every((e) => /^one-/.test(e.jobId)), 'every accepted one-off still persisted');
+  } finally { await app.close(); }
+  fs.writeFileSync(path.join(dataDir, pending.PENDING_FILENAME), '[]');
+  pending.addPending(dataDir, { jobId: 'pl', kind: 'playlist', ids: ['a'] });
+  pending.addPending(dataDir, { jobId: 'after', url: 'u' });
+  pending.updatePending(dataDir, { jobId: 'pl', kind: 'playlist', ids: ['a'], doneIds: ['a'] });
+  assert.deepStrictEqual(pending.readPending(dataDir).map((e) => e.jobId), ['pl', 'after'], 'rewritten in place, never moved to the end');
+  pending.updatePending(dataDir, { jobId: 'never-added', kind: 'playlist' });
+  assert.ok(!pending.readPending(dataDir).some((e) => e.jobId === 'never-added'), 'an absent job is never resurrected');
+});

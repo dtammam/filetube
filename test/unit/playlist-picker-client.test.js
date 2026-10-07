@@ -116,7 +116,7 @@ test('picker (R2, R6): only the linked video starts ticked; in-library and unava
   assert.strictEqual(btn('Download').textContent, 'Download (1)');
   assert.match(picker().querySelector('.oneoff-status').textContent, /Kyle Gordon Is Everywhere: 5 of 203 shown/);
   await sleep(GUARD_MS);
-  assert.strictEqual(btn('Select all').textContent, 'Select all 3 loaded', 'says how many (R6)');
+  assert.strictEqual(btn('Select all').textContent, 'Select all (3)', 'says how many (R6)');
   click(btn('Select all'));
   assert.strictEqual(btn('Download').textContent, 'Download (3)');
   click(btn('Load more'));
@@ -191,4 +191,76 @@ test('chip (R7): one row per playlist job (children hidden), its line, and Retry
   for (const [s, want] of [['queued', 'Waiting to start: 5 videos'], ['downloading', '5 of 5 (2 failed)'], ['cancelled', 'Cancelled after 3 of 5'], ['done', 'All 5 downloaded']]) {
     assert.strictEqual(c.formatPlaylistChipStatus(Object.assign({}, job, { state: s })), want, s);
   }
+});
+
+
+// ---- gate r1 -------------------------------------------------------------------------------------------
+const pointerClick = (el) => el.dispatchEvent(new global.window.MouseEvent('click', { bubbles: true, detail: 1 })); // a real tap's click
+
+test('gate r1 (security): a LINK that opened the page (noAutoSubmit) never downloads without a tap - a plain video, a Mix and a failed peek fill the form instead', async () => {
+  for (const [peek, url, note] of [
+    [null, `https://www.youtube.com/watch?v=${V}`, ''],
+    [{ kind: 'mix', videoId: V, listId: 'RD' + V, listable: false }, `https://www.youtube.com/watch?v=${V}&list=RD${V}`, 'This is a YouTube Mix; downloading just this video.'],
+    [{ kind: 'none', videoId: null, listId: null, listable: false }, `https://example.com/v?list=1`, ''],
+  ]) {
+    const c = fresh({ peek });
+    const sent = []; const filled = [];
+    const r = await c.routeOneOffDownload({ url, format: 'video' }, (b) => sent.push(b), { noAutoSubmit: true, fill: (b, n) => filled.push([b.url, n]) });
+    assert.strictEqual(r, 'filled', url);
+    assert.deepStrictEqual(sent, [], 'nothing posted: ' + url);
+    assert.deepStrictEqual(filled, [[url, note]]);
+  }
+});
+
+test('gate r1: the picker\'s controls honour the activation guard - a TAP inside the window answers nothing; after it, it does', async () => {
+  const c = fresh({ pages: { 1: PAGE1 } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/watch?v=${V}&list=${L}`, linkedVideoId: V, format: 'video' });
+  await sleep(20);
+  pointerClick(btn('Download'));
+  await sleep(20);
+  assert.strictEqual(calls.filter((x) => x.url === '/api/ytdlp/download-playlist').length, 0, 'a tap inside the 450 ms window posts nothing');
+  pointerClick(btn('Select all'));
+  assert.strictEqual(btn('Download').textContent, 'Download (1)', 'Select all inside the window did nothing');
+  await sleep(GUARD_MS);
+  pointerClick(btn('Download'));
+  await sleep(20);
+  assert.strictEqual(calls.filter((x) => x.url === '/api/ytdlp/download-playlist').length, 1, 'after the window the tap answers');
+});
+
+test('gate r1: the picker takes the view\'s signal - leaving the page closes it', async () => {
+  const c = fresh({ pages: { 1: PAGE1 } });
+  const ac = new global.window.AbortController();
+  global.window.FileTube = { viewSignal: () => ac.signal };
+  const sheet = c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}` });
+  await sleep(20);
+  assert.ok(sheet.isOpen());
+  ac.abort();
+  await sleep(10);
+  assert.strictEqual(sheet.isOpen(), false, 'closed with the view');
+});
+
+test('gate r1 (R4): Subscribe to playlist goes to Subscriptions > Add with the CANONICAL list URL, never the posted link', async () => {
+  const c = fresh({ pages: { 1: PAGE1 } });
+  const went = [];
+  c.openPlaylistPicker({ link: `https://www.youtube.com/watch?v=${V}&list=${L}&si=tracker`, linkedVideoId: V, navigate: (u) => went.push(u) });
+  await sleep(GUARD_MS);
+  click(btn('Subscribe to playlist'));
+  assert.deepStrictEqual(went, ['/subscriptions?add=' + encodeURIComponent('https://www.youtube.com/playlist?list=' + L)]);
+});
+
+test('gate r1: the collapsed chip names a waiting playlist (it was blank)', () => {
+  const c = fresh({});
+  const one = c.reduceDownloadChipState({ subscriptions: {}, oneShots: {}, waitingPlaylists: [{ id: '0b1f7c39-2e5c-4e3a-9a77-111111111111', url: 'u' }] }, new Set(), Date.now());
+  assert.strictEqual(c.formatDownloadChipSummary(one), 'Playlist waiting: choose videos');
+  const two = c.reduceDownloadChipState({ subscriptions: {}, oneShots: {}, waitingPlaylists: [{ id: 'a'.repeat(36), url: 'u' }, { id: 'b'.repeat(36), url: 'v' }] }, new Set(), Date.now());
+  assert.strictEqual(c.formatDownloadChipSummary(two), '2 playlists waiting');
+});
+
+test('gate r1 (QA W3): the Subscriptions one-off list shows ONE row per playlist job (its videos hidden), worded like the chip', () => {
+  const S = require('../../lib/ytdlp/client/subscriptions.js');
+  const shown = S.visibleOneShotEntries({ j1: { kind: 'playlist', state: 'downloading' }, 'j1.a': { parent: 'j1' }, 'j1.b': { parent: 'j1' }, o1: { state: 'done' }, gone: { state: 'done' } }, new Set(['gone']));
+  assert.deepStrictEqual(Object.keys(shown), ['j1', 'o1']);
+  const src = require('node:fs').readFileSync(require.resolve('../../lib/ytdlp/client/subscriptions.js'), 'utf8');
+  assert.match(src, /Object\.entries\(visibleOneShotEntries\(latestSnapshot\.oneShots, dismissedOneShotIds\)\)/, 'renderOneShots draws through it');
+  assert.match(src, /entry\.kind === 'playlist' && typeof formatPlaylistChipStatus === 'function' \? formatPlaylistChipStatus\(entry\)/);
 });

@@ -110,6 +110,13 @@ async function init() {
   reasonEl.classList.toggle('compat-yes', !!compat.site);
   audioBtn.disabled = !compat.ok;
   videoBtn.disabled = !compat.ok;
+  // v1.370.0: a playlist page has no one video for Audio / Video (Choose from playlist... is the way)
+  const { isPlaylistOnly } = await import('./ftClient.js');
+  if (isPlaylistOnly(currentUrl)) {
+    audioBtn.disabled = true;
+    videoBtn.disabled = true;
+    reasonEl.textContent = 'This is a playlist: use Choose from playlist to pick its videos.';
+  }
 
   // v1.370.0 (R10): a playlist tab (not a Mix) gets "Choose from playlist...": FileTube's picker in a new tab,
   // with the user's normal login (the API token is never used for it)
@@ -133,6 +140,10 @@ async function download(format) {
 
   const result = await chrome.runtime.sendMessage({ type: 'download', url: currentUrl, format });
 
+  if (result && result.ok && result.waiting) {
+    setStatus(result.message, 'ok'); // v1.370.0: the playlist waits in FileTube
+    return;
+  }
   if (result && result.ok) {
     setStatus(`Accepted (${format}). Job ${result.jobId}.`, 'ok');
     return; // leave buttons disabled after a successful enqueue
