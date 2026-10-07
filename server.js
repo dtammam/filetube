@@ -126,6 +126,7 @@ const queueRoutes = require('./lib/queue/routes');
 const notificationsRoutes = require('./lib/notifications/routes');
 const pushRoutes = require('./lib/push/routes');
 const userRoutes = require('./lib/user/routes');
+const ytdlpArrivals = require('./lib/ytdlp/arrivals'); // v1.373.0: a playlist job's videos - quiet, and hidden from feed when asked
 const cleanupShell = require('./lib/cleanup/shell');
 const cleanupRoutes = require('./lib/cleanup/routes'); // v1.342: the read-only Clean up shortlist (the delete is the existing trash route)
 // Wave 7b, slice S1b: the identity routes (/api/auth, /api/users, /api/me)
@@ -2995,6 +2996,8 @@ const {
   viewCountStore,
   ytdlp,
   ytdlpDb,
+  listPlaylistArrivals: () => ytdlpArrivals.listArrivals(DATA_DIR), // v1.373.0: quiet / hidden playlist downloads
+  removePlaylistArrivals: (keys) => ytdlpArrivals.removeArrivals(DATA_DIR, keys), // ... used once
 });
 
 // Periodic scan timer, driven by the persisted `scanIntervalMinutes`

@@ -175,12 +175,22 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
   the switch right as the picker opens does nothing.
 - [ ] v1.371.0 - With File type Opus the album switch is not offered.
 
-## Song names and the music switch (v1.372.0)
+## Song names and the music switch (v1.372.0) - confirmed by Dean 2026-10-07
 
-- [ ] v1.372.0 - Picker, Format Audio, Save as an album and Clean up titles on: each song shows its cleaned name and
+- [x] v1.372.0 - Picker, Format Audio, Save as an album and Clean up titles on: each song shows its cleaned name and
   "Track N"; tap a name, rename it, Download. In Music AND in the library list the song has that name.
-- [ ] v1.372.0 - Settings > Show music in the home feed OFF, then Home (and Back to Home): no songs on the home page, the
+- [x] v1.372.0 - Settings > Show music in the home feed OFF, then Home (and Back to Home): no songs on the home page, the
   Modern mode Audio chip included; Continue listening still shows; the song's folder and search still find it; a video's
-  Related list still offers songs. ON brings them back.
-- [ ] v1.372.0 - Desktop: right-click a card > Move to Trash, press Enter: the menu does NOT come back (Enter does nothing
+  Related list still offers songs. ON brings them back. (Confirmed by Dean 2026-10-07 - "it literally worked" - then
+  REMOVED in v1.373.0 at his ruling, for the picker's per-download Hide from feed.)
+- [x] v1.372.0 - Desktop: right-click a card > Move to Trash, press Enter: the menu does NOT come back (Enter does nothing
   on the confirm; Esc cancels; click Move to Trash to confirm).
+
+## Hide from feed and album track numbers (v1.373.0)
+
+- [ ] v1.373.0 - Settings no longer has "Show music in the home feed".
+- [ ] v1.373.0 - Playlist picker, any format: tick "Hide from feed", download a few songs you do not have yet. No bell or
+  push per song; in Modern mode the songs are not in your feed, and Settings > Hidden from feed lists them (Unhide works);
+  Music, the folder and search still show them. Without the box they show in the feed as usual, still without a bell.
+- [ ] v1.373.0 - Music > Albums > a downloaded album: rows read "Track 1", "Track 2"... (if not, pick "Album order" in the
+  sort menu once - the album sort is remembered). On the iPod: Artists > the artist > that album plays in track order.

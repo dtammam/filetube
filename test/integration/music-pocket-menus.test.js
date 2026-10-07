@@ -525,8 +525,10 @@ test('v1.331 gate r1 W1: Albums > album sorted Title Z-A - a pick plays the rest
   } });
 });
 
-test('v1.331 gate r1 W1: Artists > artist > album sorted Longest first (Dean\'s artist path) - the same list-order play-through', async () => {
-  await boot({ skin: 'ipod', play: 'nd1', setup: (dom) => dom.window.localStorage.setItem(SORT_KEY, JSON.stringify({ 'drill-artist': 'duration-desc' })), run: async (h) => {
+// v1.373.0 (Dean, 2026-10-07): an album reached through its artist lists in the ALBUM sort (track order by default), as
+// Albums > album does - it used to keep the artist's sort (Longest first here). The play-through guard is the same.
+test('v1.331 gate r1 W1: Artists > artist > album sorted Title Z-A (Dean\'s artist path, the ALBUM sort since v1.373.0) - the same list-order play-through', async () => {
+  await boot({ skin: 'ipod', play: 'nd1', setup: (dom) => dom.window.localStorage.setItem(SORT_KEY, JSON.stringify({ 'drill-artist': 'title-asc', 'drill-album': 'title-desc' }) /* the artist sort DIVERGES (Intro first): the level must follow the album's */), run: async (h) => {
     menu(h); select(h);
     tapRow(h, 'Artists'); await settleNet();
     tapRow(h, 'NESTALGIA'); await settleNet();

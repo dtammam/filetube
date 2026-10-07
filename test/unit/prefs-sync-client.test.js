@@ -16,7 +16,7 @@ const { routeSurfaceSource } = require('../helpers/route-surface');
 
 const AGENT_SRC = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'js', 'prefs-sync.js'), 'utf8');
 
-// The plan's keys, 23 (v1.372.0: +1, ft-home-music - Settings > Show music in the home feed; v1.368.0: +1, ft-music-shuffle - the Shuffle mode toggle, synced like
+// The plan's keys, 22 (v1.373.0: -1, ft-home-music - Dean removed Settings > Show music in the home feed for the picker's Hide from feed; v1.372.0: +1, ft-home-music; v1.368.0: +1, ft-music-shuffle - the Shuffle mode toggle, synced like
 // ft-music-autoplay) - the AUTHORITY all three lists are locked against
 // (v1.312: ft-ambient-intensity left with the ambient amount ladder).
 const PLAN_KEYS = [
@@ -25,7 +25,7 @@ const PLAN_KEYS = [
   'ft-star-ratings', 'ft-ambient',
   'ft-critters:on', 'ft-critters:density', 'ft-critters:size', 'ft-critters:kiss', 'ft-critters:randomsound',
   'ft-music-skin', 'ft-music-autoplay', 'ft-music-shuffle',
-  'ft-home-feed', 'ft-home-music', 'ft-home-continue-listening', 'ft-home-continue-podcasts', 'ft-tv-continue-watching',
+  'ft-home-feed', 'ft-home-continue-listening', 'ft-home-continue-podcasts', 'ft-tv-continue-watching',
   'ft-cleanup-days',
 ];
 
@@ -146,7 +146,7 @@ test('the visibility leg: becoming visible refreshes', async () => {
   assert.ok(!b.calls[b.calls.length - 1].opts || !b.calls[b.calls.length - 1].opts.method, 'a GET, not a POST');
 });
 
-test('TRIPLE allowlist lock: the client list, the server list, and the plan are the SAME 23 keys (v1.372.0 added ft-home-music; v1.368.0 added ft-music-shuffle; QA W1 removed the writer-less legacy theme key; v1.312 removed ft-ambient-intensity with the ambient amount ladder - a key nothing writes can never sync)', () => {
+test('TRIPLE allowlist lock: the client list, the server list, and the plan are the SAME 22 keys (v1.373.0 removed ft-home-music, which v1.372.0 added; v1.368.0 added ft-music-shuffle; QA W1 removed the writer-less legacy theme key; v1.312 removed ft-ambient-intensity with the ambient amount ladder - a key nothing writes can never sync)', () => {
   const clientSrc = AGENT_SRC;
   const b = boot();
   assert.deepEqual([...b.api.SYNCED].sort(), [...PLAN_KEYS].sort(), 'client === plan');
@@ -339,4 +339,18 @@ test('adversarial delta: a deterministic 4xx drops ONCE (no 1 Hz retry flood on 
   b.fireTimers(); await settle();
   const posts = calls.filter((c) => c.opts && c.opts.method === 'POST');
   assert.equal(posts.length, 1, 'a 403 is a deterministic rejection - one POST, no retry loop (flip the >=500 to !ok and this reds)');
+});
+
+// v1.372.0 gate r1 (adversary W1, kept in v1.373.0): a reload or a closed tab right after a change used to drop the batch
+// for good (the boot never re-pushes a newer local value) - the POST is sent `keepalive`.
+test('the batch POST is keepalive (it survives a reload right after a change)', async () => {
+  const b = boot();
+  await settle();
+  const before = b.calls.length;
+  b.ls.setItem('ft-era', '2014');
+  b.fireTimers();
+  await settle();
+  const post = b.calls.slice(before).find((c) => c.opts && c.opts.method === 'POST');
+  assert.ok(post, 'a batch was posted');
+  assert.strictEqual(post.opts.keepalive, true);
 });
