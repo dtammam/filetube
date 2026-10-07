@@ -44,6 +44,10 @@ list is per user), 12 (removing a shipped setting: sweep every trace).
 - R3 Reuse the existing Hide from feed exactly: per user, the Modern feed only, undone from Settings' hidden list.
 - R4 (builder) The `keepalive` on the synced-pref POST and the ui.js focus fix stay (they serve every pref and every sheet).
 - R5 (Dean, mid-build) No notification for a playlist job's videos (always; no switch).
+- R6 (Dean, round 3) The album sort stays ONE remembered setting (the friction-pass design the v1.331 play-through tests
+  rely on); not "every album opens in track order".
+- R7 (Dean, round 3) Opus downloads never appearing in the library (the scan's AUDIO_EXTENSIONS lacks .opus) is an older
+  bug: its own release right after this one.
 
 ## 5. Waves
 ### W1. Remove the switch
@@ -74,8 +78,9 @@ list is per user), 12 (removing a shipped setting: sweep every trace).
 - From a read-only exploration of "should an 'album' I download have a track listing and be sorted by 'track'": the
   track number reached the client but no surface showed it; every album opened in ONE saved sort; the iPod's Artists >
   artist > album played newest upload first. Now: "Track N" (or "Disc D · Track N") in the row's overline on an album page
-  in album order (the slot TV episode rows use); an album opens in album order every time (a pick holds for that album
-  only, in memory); the iPod's artist > album level sorts disc then track (`sortAlbumOrder`) and queues album-order.
+  in album order (the slot TV episode rows use); the iPod's artist > album level lists and queues in the ALBUM sort through
+  the same server request as Albums > album. The album sort stays ONE remembered setting (track order by default): Dean
+  ruled to keep the friction-pass design at round 3 (R6), so "always open in track order" was dropped.
 
 ## 6. Gate
 Seats: adversary (floor) + qa + security-brief (a new persisted carrier holding user ids; a write into a per-user table
@@ -217,6 +222,120 @@ returned by GET /api/prefs (getPrefs is unfiltered; read, not run) and the clien
 - Mutants on the fixes: 8 of 8 red by name (mut-1373r1 + r1b).
 - The album track listing (W3, merged from feat/v1.373.0-album-order @b56a7394): 9 album mutants, 8 red, 1 equivalent (a
   redundant stable tie-break, removed).
+
+Gate: APPROVED r2 @eb93798e - security-brief
+- Gap (said first): no Bash, so no `git diff 80d012f4..eb93798e` and no runs; I read the files in place at the worktree
+  HEAD (arrivals.js, index.js 4384-4413, orchestrator.js 1355-1372 and 2123-2126, server.js 2999-3000, music.js 219-257).
+- r1 LOW (a stale arrival silences or hides other downloads): fixed as prescribed. An arrival now matches id AND type,
+  the scan removes it after the commit (`usedArrivals` fills only inside the mutator past the restore guard), and the job
+  removes it when the child ends in any state other than `done` (error and cancel included). A hide is decided when the
+  arrival is written (`!youtubeIdInLibrary`, failing closed). The hide still names only the job's session user.
+- r1 LOW (overwrite / eviction): partly fixed. Replacement is now limited to the same id + type. Racing jobs and the
+  2000 cap can still lose a quiet or hide flag (disclosed as S6). The worst case is a lost flag, never a cross-user hide.
+  Accepted as INFO.
+- New, INFO: `removeArrivals` matches by {youtubeId, type}, not by entry. A same-key arrival written after the scan read
+  the file (a second job re-downloading the same video) is removed with the used one, and that download then notifies.
+  The flag is lost and it fails open (back to the normal bell); no security effect.
+- New, INFO (adversary S5, disclosed): another user's Retry on the shared status row posts `hideFromFeed` under THEIR
+  session, so the hides land only in the retrier's own Modern feed, can be undone, and need the playlist RBAC. Not a
+  cross-user write.
+- Album UI: `songTrackLabel` builds text only from `Number.isInteger` trackNo / discNo plus fixed strings, and it reaches
+  the HTML through `escapeMusicHtml` (music.js:257). The sort uses the data in memory and makes no request. No injection
+  surface.
+
+Gate: APPROVED r2 @eb93798e - qa
+- Ran (Node 22.23.1): `node --test` on ytdlp-arrivals, scan-playlist-arrivals, ytdlp-playlist-job, playlist-picker-client,
+  music-sort-behaviour, music-album-order, music-pocket-menus: 137 tests, 137 pass, 0 fail. `npm run lint:ui`: OK (debt
+  equals docs/ui-exceptions.json). overlay-containment --enforce: clean (0 violations). eslint on the 13 changed lib/public/
+  test files: 0 errors, 6 warnings (the same pre-existing unused globals in common.js).
+- Mutants (/tmp/qa3-r2-m1..m7, git archive eb93798e): all 7 red. m1 match by id only (no type): scan-playlist-arrivals
+  1 fail; m2 no removal on a failed child: playlist-job 1 fail; m3 hide without the in-library check: 1 fail; m4 the scan
+  never removes used arrivals: 1 fail; m5 the iPod artist > album without sortAlbumOrder: 1 fail; m6 the per-album sort
+  carried to every album: music-sort-behaviour 1 fail; m7 (my r1 W2 mutant) addArrival above the join: "a video ANOTHER
+  job is downloading ... gets NO arrival of ours" fails.
+- r1 W1 FIXED as prescribed (id + type, removed when the child ends not done, used once and removed after the commit),
+  plus the in-library rule for the re-mux birthtime. r1 W2 FIXED: a real join test that binds (m7). r1 W3 FIXED:
+  DEVICE-CHECKS v1.372.0 marked confirmed, the switch noted as removed; #293 (f) MOOT. r1 S1 FIXED ("Out of your feed in
+  Modern mode", asserted in the picker test). r1 S2 FIXED.
+- Album listing: the overline is the kit's `ui-row__overline` (ui.css:404, var(--t-footnote) / var(--ink-2): tokens
+  only), as tv.js:86 uses for episode codes. Measured at 390px (qa3-album.png, standalone rows from buildSongRowHtml): one
+  line, 12/16 px, ink-2, row 64 -> 78 px, no overflow from the overline. There is no viewport rule for the overline, so
+  desktop gets the same CSS (reasoned, not shot). The progressive chunked builder (music.js:5023) never numbers rows, but
+  it only builds the flat Songs list; every album page goes through renderDrillView. Screen reader: the label is plain
+  text in the row body, before the title button, so a list walk reads "Track 3" then the title. The play button's name is
+  the title only, the same as a TV episode row. "·" is the separator the meta line already uses.
+- WARNING (safe to ship disclosed; my call, not a blocker) N1 (lib/ytdlp/index.js:4400, youtubeIdInLibrary): the new
+  in-library rule ignores type. Scenario: Dean already has video V as a VIDEO, then downloads the playlist as AUDIO with
+  Hide from feed on. V's audio is a new file, but youtubeIdInLibrary(V) is true, so hide=false and the song shows in his
+  Modern feed though he ticked the box. It fails toward visible: no data loss, no cross-user effect, undo is one tap.
+  Fix later: check the library for the same id AND the job's type (the same key the arrival now uses). Track it.
+- SUGGESTION N2: a child that ends done without making a new item (yt-dlp kept an existing same-type file) leaves its
+  arrival for up to 7 days. If that file is deleted and the same type re-downloaded in the window, the re-download is
+  quiet. Narrow.
+- SUGGESTION N3 (test/unit/music-album-order.test.js, last test): the iPod artist > album order is bound by a source regex,
+  not by behaviour. m5 is also red through it, but a rewrite that keeps the order and changes the spelling would fail.
+- Security: no new surface. removeArrivals keys on the validated (id, type) of entries already read; the music changes
+  are client-only; the overline text goes through escapeMusicHtml.
+
+Gate: CHANGES r2 @eb93798e - adversary
+Instruments: targeted node --test (Node 22.23.1) on a git-archive sandbox of eb93798e: 102 tests, 102 pass, 0 fail. eslint on the
+13 touched files: 0 errors, 6 warnings (unchanged). 23 mutants: 13 on the r1 fixes and r1 survivors (12 red, 1 perf-only
+survivor), 10 on the album listing (6 red, 4 survivors, below).
+r1 findings, verified against eb93798e:
+- W1 FIXED as prescribed (mostly): my r1 repro now notifies and stays visible (bound by name). Red: r1 (no removal of used
+  arrivals), r2 (type ignored), r3 (scan type always audio), r4/r7 (no or wrong-type removal on failure), r6 (job type always
+  audio), r9 (removeArrivals no-op). One residual lane, NEW W1 below.
+- W2 FIXED differently (the job decides with youtubeIdInLibrary rather than the scan): r5 (drop `!youtubeIdInLibrary`) red.
+  The re-muxed kept file through the real scan: the job now writes hide=false for it, so the scan cannot hide it; the
+  scan's own sinceMs check (r10) is still bound by test 4. Over-protects (a video someone has only as an MP4 is not hidden as
+  the new MP3): the safe direction, the #292 (a) class.
+- W3 FIXED: a real join; r12 (an arrival in the join branch) red by name.
+- W4 FIXED: DEVICE-CHECKS marks v1.372.0 confirmed (Dean's quote in section 1 supports it); #293 (f) moot.
+- S1 bound (r11 red), S3 bound (r13 red), S4 copy changed, S7 read once per scan (r8, re-reading every time, survives:
+  perf only, fine), S5/S6 disclosed.
+NEW:
+- W1 (blocks, cheap) An Opus playlist download's arrival is never used, so the r1 class lives on for Opus. `.opus` is not in
+  the scan's AUDIO_EXTENSIONS (server.js:1301), the picker allows Opus for a playlist without an album, the child ends 'done'
+  so its arrival stays for 7 days, and a later MP3/M4A one-off of the same id (type audio) is matched. Measured through the
+  real scan: arrival(audio, hide, Dean) + `Song [cccccccccc1].opus` + capture -> scan: not indexed, arrival still live; then a
+  one-off `Song [cccccccccc1].mp3` + capture -> scan: hidden=true, notified=false. Fix: write no arrival when
+  job.filetype === 'opus' (nothing the scan can index arrives), or remove it after the child for that filetype; add the
+  repro. Safe to ship disclosed only if Dean rules so; the fix is one line.
+- S1 sortAlbumOrder is not the server's album-order for disc 0. Server albumSortValue (lib/music/query.js:27) takes ANY
+  integer disc; the client maps disc <= 0 to 1, and tags.js parseTrackNumber returns 0 for a "0" or "0/1" disc tag. Measured:
+  [d1t1, d1t2, d0t5, nod(t3)] -> server `d0t5 d1t1 d1t2 nod`, client `d1t1 d1t2 nod d0t5`. So the iPod's artist > album order
+  differs from Albums > album for such a file, and the comment "The album sort the server's album-order uses" is false there.
+  Use `Number.isInteger` alone, as the server does.
+- S2 Lying comment: music.js sortForTab says a pick holds "(in memory, until another album opens)", but nothing clears it.
+  Measured in jsdom (music-sort-behaviour harness): album 1 -> Title -> album 2 opens in album-order -> album 1 again opens in
+  title-asc. The plan's "an album opens in album order every time" is not literally true either. Either clear albumDrillSort
+  when a different album opens or reword both.
+- S3 Album survivors: al2 (writeSortForTab persisting the drill-album pick again) survives because the test's pick equals the
+  old saved value ('release-newest' both), so "the stored map is untouched" cannot fail (pick a different value). al9 (disc
+  weight 1000 -> 10) survives: no fixture has a track >= 10. al6 (no escape on the label) is equivalent (digits only).
+- S4 (reasoned, not run) The iPod's artist > album level always queues album-order, but the drill it opens reads the
+  in-memory pick: after a Title pick on that album's page, the iPod's pick shows rows in album order with the sort menu saying
+  Title and no track numbers.
+Album surfaces (read, not run unless stated): every album drill paints through renderDrillView (album card, Recent Albums,
+Playing from at 4702/5469, the iPod's album levels at 4984, deep links via applyMusicLink); renderSongList and the progressive
+renderer serve only non-drill lists, so no album page skips the numbers. A queue whose sort was only in memory keeps it
+across a reload: the encoded browseCtx carries `sort`, and the ctx rebuild passes ctx.sort (music.js ~4606). The old saved
+`drill-album` value is ignored on read (al3 red) and nothing else reads it (grep: music.js only).
+
+### Gate round 2 and the round 3 changes (builder, 2026-10-07)
+- r2: security-brief + qa APPROVED @eb93798e; adversary CHANGES (W1: an Opus playlist's arrival is never used - the scan
+  never indexes .opus). The full Node 22 suite @eb93798e FAILED 2 of 11519 (verbatim: "not ok 720 - v1.331 gate r1 W1:
+  Albums > album sorted Title Z-A - a pick plays the rest of the album in LIST order, then the station (never a loop)" and
+  "not ok 721 - v1.331 gate r1 W1: Artists > artist > album sorted Longest first (Dean's artist path) - the same
+  list-order play-through"): the album change dropped the remembered album sort those tests set. Dean ruled (R6) to keep
+  the remembered sort; round 3 is a quick delta re-check by the adversary (his ruling).
+- Changes: no arrival for an Opus job; the remembered album sort restored; the iPod's artist > album level fetches with
+  the album sort (`/api/music?album=...&sort=<drill-album>`, the Albums > album request - the client sort and its disc-0
+  mismatch, adversary r2 S1, are gone); test 721 now sets the ALBUM sort with a DIVERGENT artist sort (Longest first and
+  Title Z-A ordered the three chapters alike, so a mutant to the artist sort survived). Mutants: 4 of 4 red.
+- Disclosed (tracker): QA r2 N1 (the "already in library" rule ignores audio vs video - a song you have only as a video is
+  not hidden when its audio lands); N2 (a done video that created no item keeps its arrival up to 7 days); security INFO
+  (id reuse, restore remapping, removeArrivals by key); adversary S5 (a Retry by another user), S6 (racing jobs).
 
 ## 7. Evidence
 - Recon (builder): `users.id` is an INTEGER key (lib/db/sqlite.js `CREATE TABLE users`), so the job and the arrivals store

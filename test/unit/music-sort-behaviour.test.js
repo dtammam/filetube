@@ -211,25 +211,3 @@ test('v1.373.0: an album page in album order numbers its tracks ("Track N", "Dis
     assert.deepStrictEqual(trackLabels(dom), ['', '', '', ''], 'another order numbers nothing (it would number out of order)');
   }, { songs: SONGS });
 });
-
-test('v1.373.0: every album OPENS in album order - a sort picked on one album (or saved by an older build) is not carried to the next', async () => {
-  const albums = [{ albumKey: 'k1', album: 'One', artist: 'Boards', artId: 'x', trackCount: 4 }, { albumKey: 'k2', album: 'Two', artist: 'Boards', artId: 'y', trackCount: 4 }];
-  await bootMusicView({ filetube_music_tab: 'albums', filetube_music_sort: JSON.stringify({ 'drill-album': 'release-newest' }) }, async (dom, fetches) => {
-    dom.window.document.querySelectorAll('.music-album-card')[0].click();
-    await settle(); await settle();
-    assert.equal(sel(dom).value, 'album-order', 'the old saved "Release date" no longer decides');
-    sel(dom).value = 'release-newest';
-    sel(dom).dispatchEvent(new dom.window.Event('change'));
-    await settle(); await settle();
-    const songUrl = [...fetches].reverse().find((u) => /\/api\/music\?/.test(u));
-    assert.ok(/[?&]sort=release-newest\b/.test(songUrl), 'the pick applies to this album: ' + songUrl);
-    assert.strictEqual(dom.window.localStorage.getItem('filetube_music_sort'), JSON.stringify({ 'drill-album': 'release-newest' }), 'an album pick is not saved (the stored map is untouched)');
-    dom.window.document.querySelector('.music-tab[data-tab="albums"]').click();
-    await settle(); await settle();
-    dom.window.document.querySelectorAll('.music-album-card')[1].click();
-    await settle(); await settle();
-    assert.equal(sel(dom).value, 'album-order', 'the next album opens in album order');
-    const url2 = [...fetches].reverse().find((u) => /\/api\/music\?/.test(u));
-    assert.ok(/[?&]sort=album-order\b/.test(url2), url2);
-  }, { songs: SONGS, albums });
-});

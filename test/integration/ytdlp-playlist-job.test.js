@@ -633,3 +633,14 @@ test('gate r1 (adversary W3, qa W2): a video ANOTHER job is downloading is waite
     assert.strictEqual(arrivalOf(v, 'audio'), null, 'the joined video is the one-off\'s: no arrival');
   } finally { await app.close(); }
 });
+
+test('gate r2 (adversary W1): an OPUS playlist writes no arrival (the scan never indexes .opus, so it could never be used)', async () => {
+  const ids = [1].map(ID);
+  const app = await startAppAs(makeDeps(), 7);
+  try {
+    await settle((await (await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', filetype: 'opus', hideFromFeed: true }))).json()).jobId);
+    assert.strictEqual(arrivalOf(ids[0], 'audio'), null);
+    await settle((await (await post(app.base, '/api/ytdlp/download-playlist', job([ID(2)], { format: 'audio', filetype: 'mp3', hideFromFeed: true }))).json()).jobId);
+    assert.ok(arrivalOf(ID(2), 'audio'), 'an MP3 playlist still does (control)');
+  } finally { await app.close(); }
+});

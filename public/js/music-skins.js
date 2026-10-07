@@ -938,7 +938,8 @@
       };
     });
   }
-  // An artist's level: their albums (first-seen order of the artist's track list, in the artist sort), led by
+  // An artist's level: their albums (first-seen order of the artist's track list, in the artist sort; each album's own
+  // level then loads in the album sort - music.js 'artistAlbum'), led by
   // "All Songs" when there is more than one album (the device's own row).
   function menuArtistAlbumItems(tracks, artistNode, artFor) {
     var node = artistNode || {};
