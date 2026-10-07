@@ -200,6 +200,9 @@ ask Dean at round 3.
 Gate: CHANGES r1 @36207a9c — security-brief
 Gate: CHANGES r1 @36207a9c — qa
 Gate: CHANGES r1 @36207a9c — adversary
+Gate: APPROVED r2 @039169ad — security-brief
+Gate: APPROVED r2 @039169ad — qa
+Gate: CHANGES r2 @039169ad — adversary
 
 ## 7. Release and evidence
 

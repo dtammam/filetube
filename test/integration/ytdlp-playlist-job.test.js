@@ -300,3 +300,24 @@ test('gate r1 W2: a RUNNING job rewrites its own pending entry in place after ea
   release();
   await settle('job-order');
 });
+
+test('gate r2: a FULL pending file refuses a one-off too (503) - even when the heavy queue is under its cap because a playlist video waits on another job', async () => {
+  let release;
+  const held = new Promise((r) => { release = r; });
+  run.runDownload = async (sub, cfg, vids) => { calls.push({ id: vids[0] }); await held; return { ok: true, code: 0, stdout: '', stderr: '' }; };
+  const app = await startApp(makeDeps());
+  try {
+    // X downloads (held); a playlist of X waits on it (joined: outside the queue)
+    assert.strictEqual((await post(app.base, '/api/ytdlp/download', { url: `https://www.youtube.com/watch?v=${ID(1)}`, format: 'video' })).status, 202);
+    const until = Date.now() + 5000;
+    while (!calls.length && Date.now() < until) await new Promise((r) => setTimeout(r, 10));
+    assert.strictEqual((await post(app.base, '/api/ytdlp/download-playlist', job([ID(1)]))).status, 202);
+    // fill the file to its cap with accepted entries written directly (the queue stays short)
+    const have = pending.readPending(dataDir).length;
+    for (let i = 0; i < pending.MAX_PENDING_ONESHOTS - have; i++) pending.addPending(dataDir, { jobId: 'fill-' + i, url: 'https://www.youtube.com/watch?v=' + ID(500 + i), format: 'video' });
+    const before = pending.readPending(dataDir).map((e) => e.jobId);
+    const res = await post(app.base, '/api/ytdlp/download', { url: `https://www.youtube.com/watch?v=${ID(999)}`, format: 'video' });
+    assert.strictEqual(res.status, 503, 'the one-off is refused, not accepted and then dropped off the file');
+    assert.deepStrictEqual(pending.readPending(dataDir).map((e) => e.jobId), before, 'every accepted job still persisted');
+  } finally { release(); await new Promise((r) => setTimeout(r, 50)); await app.close(); }
+});

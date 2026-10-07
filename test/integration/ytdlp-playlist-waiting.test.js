@@ -174,6 +174,8 @@ test('gate r1: the SAME list posted again by the Shortcut sends no second push',
   try {
     for (let i = 0; i < 3; i++) await post(app.base, '/api/ytdlp/download', { url: `https://www.youtube.com/playlist?list=${L}` }, TOKEN);
     assert.strictEqual(notified.length, 1);
+    const ids = (await status(app.base)).waitingPlaylists.map((w) => w.id);
+    assert.deepStrictEqual(ids, [notified[0].id], 'the repeat keeps the FIRST id (the push\'s &waiting=<id> still clears it)');
     await post(app.base, '/api/ytdlp/download', { url: `https://www.youtube.com/playlist?list=PLzzzzzzzzzz` }, TOKEN);
     assert.strictEqual(notified.length, 2, 'a different list does push');
   } finally { await app.close(); }
