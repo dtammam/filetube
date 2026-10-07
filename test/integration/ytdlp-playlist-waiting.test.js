@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.369.0 W4 (plan docs/exec-plans/active/2026-10-06-v1369-playlist-picker.md, R5, R9, R13):
+// [INTEGRATION] v1.370.0 W4 (plan docs/exec-plans/active/2026-10-06-v1370-playlist-picker.md, R5, R9, R13):
 // the iPhone Shortcut (the API token caller) posting a playlist link to POST /api/ytdlp/download never
 // downloads: the playlist WAITS (persisted, listed on the status poll to callers allowed to download,
 // dismissible, 7 days, at most 20) and one push goes out. A session caller's one video, a Mix and Watch Later

@@ -1,7 +1,7 @@
 ---
-plan: v1369-playlist-picker
+plan: v1370-playlist-picker
 harness: v2 · lean
-branch: feat/v1.369.0-playlist-picker
+branch: feat/v1.370.0-playlist-picker
 anchor: outcome
 status: Building (T0 measured on the dev box 2026-10-07)
 next: a Sonnet builder runs T0 and W1-W5, then the gate (section 6), then the release (section 7)
@@ -9,11 +9,11 @@ design: Dean's intake 2026-10-06 (Opus kickoff session, rulings R1-R14 below). B
 gate: pending
 ---
 
-# v1.369.0: YouTube playlist links: ask, pick the videos, download them as one job
+# v1.370.0: YouTube playlist links: ask, pick the videos, download them as one job
 
 Raised mid-kickoff (Dean, 2026-10-06, example `https://www.youtube.com/watch?v=U3P8pUboZ5g&list=PLUtyNbQXMTLg`): "I'd want it to
 recognize it's a playlist and maybe have a menu showing what the things are and let one select what to download." Version order
-(Dean): radio v1.368.0, this v1.369.0, subtitles + 360 + cleanup v1.370.0. If v1.368.0 has not shipped when this is ready, wait,
+(Dean): radio v1.368.0, this v1.370.0, subtitles + 360 + cleanup v1.370.0. If v1.368.0 has not shipped when this is ready, wait,
 merge main, release. Norms: no em dashes in docs or user prose; stage files by name; `git commit -F <file>`; never pipe a
 commit or push; export the fnm Node 22.23.1 PATH before any node/npm/git command.
 
@@ -23,7 +23,7 @@ the token surface), 11 (yt-dlp flags verified at SOURCE), 12 (sibling lists, cen
 
 ## Step 0. Before anything (builder)
 
-- Work ONLY in the existing worktree `.claude/worktrees/v1369pl` on branch `feat/v1.369.0-playlist-picker` (the plan is committed there; `node_modules`
+- Work ONLY in the existing worktree `.claude/worktrees/v1369pl` on branch `feat/v1.370.0-playlist-picker` (the plan is committed there; `node_modules`
   is a symlink to the main checkout's, never stage it). Do not touch the main checkout or the other release worktrees.
 - Before every node / npm / git command: `export PATH="$HOME/.local/share/fnm/node-versions/v22.23.1/installation/bin:$PATH"`.
   Dual-Node runs use 22.23.1 then 24.20.0, sequential (Node 24 prints `ℹ`, not `#`).
@@ -116,7 +116,7 @@ command and send the file.
 
 ### W0. Housekeeping (first commit, docs only)
 - This plan; ROADMAP Planned item "YouTube playlist links" (the four gaps the recon found: silent drop, subscription trap, error
-  wording with `channelUrl`, no `watch?v&list` test) marked "in v1.369.0".
+  wording with `channelUrl`, no `watch?v&list` test) marked "in v1.370.0".
 
 ### W1. Recognise (server, pure)
 - New pure `classifyPlaylistLink(url)` in url.js that runs on the RAW input before `rebuildQueryAllowlist`: returns
@@ -199,7 +199,7 @@ ask Dean at round 3.
 
 ## 7. Release and evidence
 
-Release per docs/RELEASING.md and AGENTS.md (`npm version 1.369.0 --no-git-tag-version`, ROADMAP Shipped, releases.json, dual
+Release per docs/RELEASING.md and AGENTS.md (`npm version 1.370.0 --no-git-tag-version`, ROADMAP Shipped, releases.json, dual
 Node 22.23.1 + 24.20.0 sequential, protected main: tag the local no-ff merge, push branch + tag in ONE push, `gh pr create`,
 required checks green, `gh pr merge --merge` on Dean's word if the classifier refuses, the tag's Publish Docker Image green in
 every job, delete the branch remote + local).

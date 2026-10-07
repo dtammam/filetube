@@ -111,7 +111,7 @@ async function init() {
   audioBtn.disabled = !compat.ok;
   videoBtn.disabled = !compat.ok;
 
-  // v1.369.0 (R10): a playlist tab (not a Mix) gets "Choose from playlist...": FileTube's picker in a new tab,
+  // v1.370.0 (R10): a playlist tab (not a Mix) gets "Choose from playlist...": FileTube's picker in a new tab,
   // with the user's normal login (the API token is never used for it)
   const pickBtn = document.getElementById('pick');
   const pickUrl = await pickUrlFor(status.instanceUrl, currentUrl);

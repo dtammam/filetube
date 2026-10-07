@@ -301,7 +301,7 @@ test('GET /api/subscriptions/status returns empty namespaces when nothing has ru
     assert.match(body.now, /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/, 'the snapshot carries the server clock as ISO');
     const nowMs = Date.parse(body.now);
     assert.ok(nowMs >= before - 1000 && nowMs <= Date.now() + 1000, 'now is the server clock at the response');
-    // v1.369.0 W4: `waitingPlaylists` (the Shortcut's playlists waiting for the app) - [] for a deployment that
+    // v1.370.0 W4: `waitingPlaylists` (the Shortcut's playlists waiting for the app) - [] for a deployment that
     // wired no canManageSubscriptions check (fail closed), as here
     assert.deepEqual(body, { subscriptions: {}, oneShots: {}, breaker: null, ytdlpVersion: null, now: body.now, waitingPlaylists: [] });
   } finally {

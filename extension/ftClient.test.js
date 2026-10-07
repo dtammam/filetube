@@ -62,7 +62,7 @@ test('interpretTestResponse: token/endpoint verdicts', async () => {
   assert.match(ro.message, /read-only/i);
 });
 
-// v1.369.0 (R10): Audio / Video send ONE video; a playlist tab offers the picker (never for a Mix).
+// v1.370.0 (R10): Audio / Video send ONE video; a playlist tab offers the picker (never for a Mix).
 test('singleVideoUrl: a watch link that names a list loses the list; everything else is untouched', async () => {
   const { singleVideoUrl, buildDownloadRequest } = await mod();
   assert.equal(singleVideoUrl('https://www.youtube.com/watch?v=U3P8pUboZ5g&list=PLUtyNbQXMTLg&index=3'), 'https://www.youtube.com/watch?v=U3P8pUboZ5g');

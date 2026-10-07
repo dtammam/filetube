@@ -34,7 +34,7 @@ export function originPattern(rawUrl) {
 // Validate config + inputs and produce the fetch args, or an error result.
 // Returns either { ok:true, request:{ endpoint, init } }
 //         or     { ok:false, error, configured? }.
-// v1.369.0 (R10): Audio / Video download ONE video. The server keeps a playlist link that arrives with the
+// v1.370.0 (R10): Audio / Video download ONE video. The server keeps a playlist link that arrives with the
 // API token as "Playlist waiting" for the app (the iPhone Shortcut's way, R9), so a YouTube watch link that
 // also names a list is sent WITHOUT its list (and the list's position) - just the video. A list page with no
 // video is left alone (the server waits it, and "Choose from playlist..." is the way to pick from it).

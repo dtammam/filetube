@@ -62,7 +62,7 @@ async function handleTest(msg) {
 
 async function handleStatus() {
   const { instanceUrl, apiToken } = await getConfig();
-  // v1.369.0 (R10): the instance URL (not the token) so the popup can open the playlist picker there
+  // v1.370.0 (R10): the instance URL (not the token) so the popup can open the playlist picker there
   return { configured: Boolean(instanceUrl && apiToken), instanceUrl: instanceUrl || '' };
 }
 

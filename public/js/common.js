@@ -7426,7 +7426,7 @@ function injectAccountMenu() {
   }).catch(() => { /* signed-out / network -- no menu */ });
 }
 
-// ---- v1.369.0 W4: the playlist picker (plan docs/exec-plans/active/2026-10-06-v1369-playlist-picker.md) ----
+// ---- v1.370.0 W4: the playlist picker (plan docs/exec-plans/active/2026-10-06-v1370-playlist-picker.md) ----
 // A YouTube link that carries a playlist is asked about first (R1): a video in a list -> "Just this video" /
 // "Choose from the playlist..."; a list page -> the picker; a Mix (or Watch Later / Liked without the
 // operator's cookies) -> just the video, with a note (R5). What the link IS comes from the server
@@ -7790,7 +7790,7 @@ function injectOneOffDownloadButtonIfEnabled() {
         if (!modalState) {
           modalState = buildOneOffModal(document, {
             onClose: closeModal,
-            // v1.369.0 W4: a link with a playlist is asked about first (R1); one video posts as today
+            // v1.370.0 W4: a link with a playlist is asked about first (R1); one video posts as today
             onDownload: (body) => routeOneOffDownload(body, submitOneOffDownload, {
               status: (t) => showToast(t),
               onStarted: () => closeModal(),
@@ -15432,7 +15432,7 @@ function formatActivityStatusText(entry) {
 
 function buildDownloadChipItem(kind, id, entry) {
   if (!id || !entry || typeof entry !== 'object') return null;
-  // v1.369.0 W3/W4: ONE row for a playlist job (R7): "<Playlist>" over "12 of 40"; Cancel while it runs
+  // v1.370.0 W3/W4: ONE row for a playlist job (R7): "<Playlist>" over "12 of 40"; Cancel while it runs
   // (the one-shot cancel route stops the job and its current video); Retry re-sends only the failed ids.
   if (kind === 'oneshot' && entry.kind === 'playlist') {
     const pState = typeof entry.state === 'string' ? entry.state : 'queued';
@@ -15544,7 +15544,7 @@ function downloadChipItemShowsPercent(item) {
   // with no total (or a single-item reheat) shows no bar at all rather than
   // a fake 0%, and a terminal batch's statusText already says what happened.
   if (item.activityKind) return item.state === 'running' && item.activityBar === true;
-  if (item.kind === 'waiting') return false; // v1.369.0 W4: nothing is downloading yet
+  if (item.kind === 'waiting') return false; // v1.370.0 W4: nothing is downloading yet
   if (item.kind !== 'subscription') return true;
   return item.state === 'downloading';
 }
@@ -15690,12 +15690,12 @@ function reduceDownloadChipState(snapshot, dismissedKeys, nowMs) {
     if (item) items.push(item);
   });
   Object.entries(oneShots).forEach(([id, entry]) => {
-    // v1.369.0 W3: a playlist job's videos run as child entries; the job's own row speaks for them
+    // v1.370.0 W3: a playlist job's videos run as child entries; the job's own row speaks for them
     if (entry && typeof entry.parent === 'string' && entry.parent !== '') return;
     const item = buildDownloadChipItem('oneshot', id, entry);
     if (item) items.push(item);
   });
-  // v1.369.0 W4 (R9, R13): a playlist the Shortcut left waiting: its own row, Choose / Dismiss
+  // v1.370.0 W4 (R9, R13): a playlist the Shortcut left waiting: its own row, Choose / Dismiss
   (Array.isArray(snapshot && snapshot.waitingPlaylists) ? snapshot.waitingPlaylists : []).forEach((w) => {
     if (!w || typeof w.id !== 'string' || typeof w.url !== 'string') return;
     items.push({
@@ -16096,7 +16096,7 @@ function createDownloadChipItemRow(doc, handlers) {
     if (row.state.item) handlers.onRetry(row.state.item, row.state.rawEntry);
   });
   actions.appendChild(retryBtn);
-  // v1.369.0 W4: a waiting playlist's Choose (opens the picker)
+  // v1.370.0 W4: a waiting playlist's Choose (opens the picker)
   const chooseBtn = U.button({ variant: 'primary', size: 'sm', label: 'Choose', doc });
   chooseBtn.classList.add('dl-status-chip-choose-btn');
   chooseBtn.hidden = true;
@@ -16174,7 +16174,7 @@ function updateDownloadChipItemRow(doc, row, item, rawEntry) {
   els.failuresWrap.hidden = failureLines.length === 0;
 
   els.actions.hidden = !(item.state === 'error' || item.state === 'cancelled' || item.kind === 'waiting');
-  els.chooseBtn.hidden = item.kind !== 'waiting'; // v1.369.0 W4
+  els.chooseBtn.hidden = item.kind !== 'waiting'; // v1.370.0 W4
   // v1.55: gate on the item's own `retryable` (previously a write-only field
   // -- this row checked `state` directly, which would have offered a Retry
   // on an errored BATCH row and fired the one-shot retry route against a
@@ -16327,7 +16327,7 @@ function injectDownloadStatusChip() {
       });
 
       function retryOneShot(rawEntry, key) {
-        // v1.369.0 W3/W4: a playlist job retries its failed videos as a new playlist job (R7)
+        // v1.370.0 W3/W4: a playlist job retries its failed videos as a new playlist job (R7)
         const plRetry = buildPlaylistRetryRequest(rawEntry);
         const body = plRetry ? plRetry.body : buildOneShotRetryBody(rawEntry);
         if (!body) return;
@@ -16458,7 +16458,7 @@ function injectDownloadStatusChip() {
             else retrySubscription(item.id);
           },
           onDismiss: (key) => {
-            // v1.369.0 W4: a waiting playlist is dismissed on the SERVER (for everyone), then drops off
+            // v1.370.0 W4: a waiting playlist is dismissed on the SERVER (for everyone), then drops off
             if (key.indexOf('waiting:') === 0) { dismissWaitingPlaylist(key.slice(8)); return; }
             dismissedKeys.add(key);
             render();
@@ -16516,7 +16516,7 @@ function injectDownloadStatusChip() {
                 // SITEWIDE chip can show the one-line systemic signal even
                 // while individual check failures are muted off the badge.
                 breaker: snapshot.breaker || null,
-                // v1.369.0 W4: the Shortcut's waiting playlists (the e2e proof caught them dropped right here:
+                // v1.370.0 W4: the Shortcut's waiting playlists (the e2e proof caught them dropped right here:
                 // the reducer was fed directly in the unit test, never through this poll)
                 waitingPlaylists: Array.isArray(snapshot.waitingPlaylists) ? snapshot.waitingPlaylists : [],
               }
@@ -17925,7 +17925,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // pocket menus gate r1 K2: the library-changed seam + the chapters editor that raises it.
     LIBRARY_CHANGED_EVENT, notifyLibraryChanged, // showChaptersEditor is exported with the Chapter Snap group above
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
-    formatPlaylistChipStatus, buildPlaylistRetryRequest, routeOneOffDownload, openPlaylistPicker, // v1.369.0 W4: the playlist picker
+    formatPlaylistChipStatus, buildPlaylistRetryRequest, routeOneOffDownload, openPlaylistPicker, // v1.370.0 W4: the playlist picker
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     formatDownloadStaleNote, formatDownloadOfflineText, downloadChipRenderErrorCount, // v1.365.0 (W3)
     formatDownloadRowAge, downloadChipPollFaultCount, // v1.365.0 gate r1
