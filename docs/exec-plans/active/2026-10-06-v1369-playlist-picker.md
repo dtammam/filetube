@@ -3,7 +3,7 @@ plan: v1369-playlist-picker
 harness: v2 · lean
 branch: feat/v1.369.0-playlist-picker
 anchor: outcome
-status: Ruled
+status: Building (T0 measured on the dev box 2026-10-07)
 next: a Sonnet builder runs T0 and W1-W5, then the gate (section 6), then the release (section 7)
 design: Dean's intake 2026-10-06 (Opus kickoff session, rulings R1-R14 below). Base main 5f1dcc1b. Ships after v1.368.0 (radio), before v1.370.0 (subtitles, 360, cleanup).
 gate: pending
@@ -203,6 +203,28 @@ Release per docs/RELEASING.md and AGENTS.md (`npm version 1.369.0 --no-git-tag-v
 Node 22.23.1 + 24.20.0 sequential, protected main: tag the local no-ff merge, push branch + tag in ONE push, `gh pr create`,
 required checks green, `gh pr merge --merge` on Dean's word if the classifier refuses, the tag's Publish Docker Image green in
 every job, delete the branch remote + local).
+
+**T0 (2026-10-07, run on the DEV BOX, not the production container).** Dean could not run it on production that day; T0 measures
+yt-dlp's OUTPUT SHAPE and timing, which does not depend on the library, so the builder ran yt-dlp 2026.08.19 (the latest release,
+downloaded to a scratch dir) with `--flat-playlist -J --playlist-end 200 -- <url>`. Production's yt-dlp version may differ (the
+engine updater sets it); the shape below is what W2's fixtures are built from. Wall times include the network from this box.
+
+| Case | Command URL | rc | wall | result |
+|---|---|---|---|---|
+| Dean's example list (13 chars) | `/playlist?list=PLUtyNbQXMTLg` | 0 | 3351 ms | `_type` playlist, title "Kyle Gordon Is Everywhere", 24 entries, `playlist_count` 24 |
+| Dean's example as watch link | `watch?v=U3P8pUboZ5g&list=PLUtyNbQXMTLg` | 0 | 4530 ms | the same playlist (24 entries): yt-dlp expands a watch-in-list link by default |
+| Mix | `watch?v=U3P8pUboZ5g&list=RDU3P8pUboZ5g` | 0 | 5338 ms | `_type` video, 0 entries; stderr `WARNING: [youtube:tab] Unable to recognize playlist. Downloading just video U3P8pUboZ5g` |
+| 300+ list, page 1 | `/playlist?list=UUokXg7-kW6cA_WDe6JPuM9g` (the channel's uploads) | 0 | 4983 ms | 200 entries, `playlist_count` 476 |
+| 300+ list, page 2 | same, `--playlist-start 201 --playlist-end 400` | 0 | 5935 ms | 200 entries (first `U7O4lCZHq_g`), 1 with no duration |
+| A list that does not exist | `/playlist?list=PLzzzz...` (34 chars) | 1 | 2695 ms | stderr `ERROR: [youtube:tab] PLzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz: YouTube said: The playlist does not exist.` |
+
+Flat entry keys (every case): `__x_forwarded_for_ip, _type, availability, channel, channel_id, channel_url, creators, duration,
+id, ie_key, live_status, thumbnails (4 per entry), timestamp, title, uploader, uploader_url, url, view_count`; `availability` and
+`live_status` are null on public videos. Consequences for the rulings: Dean's example list is READABLE (the plan expected an
+error; R14 stays for lists like the last row); a Mix answers as a single video (R5's no-picker rule matches yt-dlp); Load more can
+page with `--playlist-start/--playlist-end` and `playlist_count` gives the total; a 30 s timeout (the probe posture) leaves room.
+The stderr also carried `No supported JavaScript runtime could be found` warnings on this box (production has its own runtime
+setup); none affected the flat listing.
 
 Evidence (the builder fills, copied from instruments): T0 outputs verbatim; falsifier outputs per wave; mutants by name; census
 diffs; suite summary lines on both Nodes; device checks owed.

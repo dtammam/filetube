@@ -344,6 +344,12 @@
 
 ### Features
 
+- [ ] **YouTube playlist links: ask, pick the videos, download them as one job (in v1.369.0)** _(Dean, 2026-10-06: "I'd want it
+  to recognize it's a playlist and maybe have a menu showing what the things are and let one select what to download.")_ - the
+  kickoff recon found four gaps: a `watch?v=X&list=Y` link silently drops the list and downloads one video; the Subscriptions form
+  given such a link subscribes to one video (the subscription trap); the `watch?list=` error names the internal field
+  `channelUrl`; and no test passes a `watch?v&list` link at all. Plan: docs/exec-plans/active/2026-10-06-v1369-playlist-picker.md.
+
 - [ ] **What the VPN runbook may point at (candidates, not planned; Dean picks after his runs)** - v1.362.1 shipped
   `docs/references/vpn-slowness-runbook.md`, built on the v1.307 `/diag` suite. What FileTube cannot measure or do today, each a
   possible next step once the numbers say which matters: response compression (the Compression delta row shows the saving);
