@@ -3387,6 +3387,7 @@ function wireStaticControls(signal) {
   wireHomeRowToggle('home-continue-watching-check', 'ft-home-continue-watching', signal);
   wireHomeRowToggle('tv-continue-watching-check', 'ft-tv-continue-watching', signal); // v1.198.2 (Dean): the Shows-page row
   wireHomeRowToggle('home-continue-listening-check', 'ft-home-continue-listening', signal);
+  wireHomeRowToggle('home-music-check', 'ft-home-music', signal); // v1.372.0: synced; the server reads it for every home surface
   wireHomeRowToggle('home-continue-reading-check', 'ft-home-continue-reading', signal);
 
   // v1.79: the home-feed vs classic-grid toggle. Unlike the device-local row
@@ -5190,6 +5191,7 @@ function init(root) {
   loadHomeRowControl('home-continue-watching-check', 'ft-home-continue-watching');
   loadHomeRowControl('tv-continue-watching-check', 'ft-tv-continue-watching'); // v1.198.2: reflect-on-load (the v1.193 lesson)
   loadHomeRowControl('home-continue-listening-check', 'ft-home-continue-listening');
+  loadHomeRowControl('home-music-check', 'ft-home-music'); // v1.372.0
   loadHomeRowControl('home-continue-reading-check', 'ft-home-continue-reading');
   renderBottomBarEditor(controller.signal); // v1.44 T12 bottom-bar editor
   renderLibraryGlyphEditor(controller.signal); // v1.77 Library-icon pickers (Appearance box)

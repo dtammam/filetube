@@ -1,0 +1,111 @@
+'use strict';
+
+// [INTEGRATION] v1.372.0 "Show music in the home feed" (plan docs/exec-plans/active/2026-10-07-v1372-song-names-feed.md,
+// R3, R5, R6). Dean: "if I download 20 songs and they are Audio from YouTube I have the option to not see them in the main
+// feed. Even the Audio feed." The switch is the user's SYNCED pref `ft-home-music`, written through the real
+// POST /api/prefs, read by the server on every home surface:
+//   FORWARD: off ('0') - an audio item leaves the classic home (/api/videos, no filter), the row feed (/api/home) and the
+//     modern grid (/api/home?view=grid), its Audio chip included; a video stays.
+//   INVERSE: absent / on / '' - today's feed, music included; and with it off, opening the folder and search still find it.
+
+const os = require('node:os');
+const fs = require('node:fs');
+const path = require('node:path');
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-home-music-'));
+const DATA_DIR = process.env.DATA_DIR;
+
+const { test, before, after, beforeEach } = require('node:test');
+const assert = require('node:assert');
+const { app, __resetDatabaseForTests } = require('../../server');
+const { seedState } = require('../helpers/seed-state');
+const { authenticateFetch } = require('../helpers/auth');
+
+let server, base, auth;
+
+before(async () => {
+  await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
+  base = `http://127.0.0.1:${server.address().port}`;
+  auth = authenticateFetch(server, base);
+});
+after(async () => {
+  auth.restore();
+  server.closeAllConnections?.();
+  await new Promise((resolve) => server.close(resolve));
+  fs.rmSync(DATA_DIR, { recursive: true, force: true });
+});
+beforeEach(async () => { await __resetDatabaseForTests(); });
+
+const NOW = Date.now();
+function item(id, over = {}) {
+  return {
+    id, title: `Title ${id}`, filePath: `/media/Chan/${id}.mp4`, folderName: 'Chan',
+    channelName: 'Chan', type: 'video', ext: '.mp4', duration: 100, size: 1000, addedAt: NOW, ...over,
+  };
+}
+const SONG = (id) => item(id, { type: 'audio', ext: '.mp3', filePath: `/media/Chan/${id}.mp3` });
+function seed() {
+  seedState({
+    folders: [], folderSettings: {}, metadata: { vid: item('vid'), song: SONG('song') }, liked: [],
+    settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 },
+  });
+}
+let stamp = NOW;
+async function setPref(value) {
+  stamp += 1000;
+  const res = await fetch(`${base}/api/prefs`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries: [{ key: 'ft-home-music', value, updatedAt: stamp }] }),
+  });
+  assert.ok(res.status < 300, `prefs write ${res.status}`);
+}
+const ids = (body) => (body.items || []).map((i) => i.id).sort();
+const grid = async (filter) => (await fetch(`${base}/api/home?view=grid&filter=${filter}&limit=100`)).json();
+const classic = async (q = '') => (await fetch(`${base}/api/videos?limit=100${q}`)).json();
+const rowsText = async () => JSON.stringify(await (await fetch(`${base}/api/home`)).json());
+
+test('absent (today): music is in every home surface', async () => {
+  seed();
+  assert.deepStrictEqual(ids(await grid('all')), ['song', 'vid']);
+  assert.deepStrictEqual(ids(await grid('audio')), ['song']);
+  assert.deepStrictEqual(ids(await classic()), ['song', 'vid']);
+  assert.ok((await rowsText()).includes('"song"'), 'the row feed has it (anti-vacuity for the OFF test)');
+});
+
+test('off: music leaves the classic home, the row feed, the modern grid and its Audio chip; the video stays', async () => {
+  seed();
+  await setPref('0');
+  assert.deepStrictEqual(ids(await grid('all')), ['vid']);
+  assert.strictEqual((await grid('all')).total, 1, 'the total follows (pagination)');
+  assert.deepStrictEqual(ids(await grid('audio')), [], 'even the Audio feed (Dean)');
+  assert.deepStrictEqual(ids(await classic()), ['vid']);
+  const rows = await rowsText();
+  assert.ok(!rows.includes('"song"'), 'the row feed leaves it out');
+  assert.ok(rows.includes('"vid"'));
+});
+
+test('off: opening the folder and search still find the music (only the home feed is pruned)', async () => {
+  seed();
+  await setPref('0');
+  assert.deepStrictEqual(ids(await classic('&folder=Chan')), ['song', 'vid']);
+  assert.ok(ids(await classic('&search=song')).includes('song'));
+});
+
+test('back on (the switch\'s on writes an empty value, any other value is on too): music returns', async () => {
+  seed();
+  await setPref('0');
+  assert.deepStrictEqual(ids(await grid('all')), ['vid']);
+  await setPref('');
+  assert.deepStrictEqual(ids(await grid('all')), ['song', 'vid']);
+  await setPref('1');
+  assert.deepStrictEqual(ids(await classic()), ['song', 'vid']);
+});
+
+test('Settings: the switch is wired BOTH ways (persist + reflect-on-load, the v1.193 lesson) on the synced key, default on', () => {
+  const strip = (s) => s.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+  const setupJs = strip(fs.readFileSync(path.join(__dirname, '../../public/js/setup.js'), 'utf8'));
+  assert.match(setupJs, /wireHomeRowToggle\('home-music-check', 'ft-home-music', signal\);/, 'the PERSIST half (off writes "0", on removes it -> the server sees "")');
+  assert.match(setupJs, /loadHomeRowControl\('home-music-check', 'ft-home-music'\);/, 'the REFLECT-ON-LOAD half');
+  const html = fs.readFileSync(path.join(__dirname, '../../public/setup.html'), 'utf8');
+  assert.match(html, /<label class="ui-row__title" for="home-music-check">Show music in the home feed \(off: songs stay in Music\)<\/label>/);
+  assert.match(html, /<input type="checkbox" role="switch" class="ui-switch" id="home-music-check" checked \/>/, 'the kit switch, on by default (today\'s feed)');
+});

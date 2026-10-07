@@ -26,7 +26,7 @@
     'ft-star-ratings', 'ft-ambient',
     'ft-critters:on', 'ft-critters:density', 'ft-critters:size', 'ft-critters:kiss', 'ft-critters:randomsound',
     'ft-music-skin', 'ft-music-autoplay', 'ft-music-shuffle',
-    'ft-home-feed', 'ft-home-continue-listening', 'ft-home-continue-podcasts', 'ft-tv-continue-watching',
+    'ft-home-feed', 'ft-home-music', 'ft-home-continue-listening', 'ft-home-continue-podcasts', 'ft-tv-continue-watching',
     'ft-cleanup-days',
   ];
   var META_KEY = 'ft-prefs-meta'; // {key: updatedAtMs} - written via the RAW setter only (never recurses into the mirror)

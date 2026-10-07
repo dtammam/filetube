@@ -44,7 +44,7 @@ const SAVE = {
   'resume-countdown-seconds-input': [D, 'all'], 'resume-countdown-action-select': [D, 'all'],
   'home-feed-check': [U + ' + ' + D, 'all'], 'modern-mode-check': [U + ' + ' + D, 'all'],
   'home-continue-watching-check': [D, 'all'], 'tv-continue-watching-check': [D, 'all'],
-  'home-continue-listening-check': [D, 'all'], 'home-continue-reading-check': [D, 'all'],
+  'home-continue-listening-check': [D, 'all'], 'home-music-check': [D, 'all'] /* v1.372.0 */, 'home-continue-reading-check': [D, 'all'],
   'scan-interval-select': [S, 'all'], 'prune-missing-check': [S, 'all'], 'chapter-snap-leadin-select': [S, 'all'],
   'scan-now-btn': ['/api/scan', 'all'], 'clear-cache-btn': ['/api/cache/clear', 'all'],
   'cache-age-select': [S, 'all'], 'cache-cap-input': [S, 'all'],

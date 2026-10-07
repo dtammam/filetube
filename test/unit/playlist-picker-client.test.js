@@ -634,3 +634,17 @@ test('v1.372.0 stripArtistPrefix: any case, any dash; a title that is only the p
   assert.strictEqual(c.stripArtistPrefix('Someone - Song', 'Kyle Gordon'), 'Someone - Song');
   assert.strictEqual(c.stripArtistPrefix('Kyle Gordon - Song', ''), 'Kyle Gordon - Song');
 });
+
+test('v1.372.0: a press on a song name INSIDE the window whose click lands after it opens nothing (the held-press rule)', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'video' });
+  await sleep(20);
+  const link = rowOf(0).querySelector('.ui-row__link');
+  const pd = new global.window.Event('pointerdown', { bubbles: true }); pd.pointerId = 1;
+  link.dispatchEvent(pd);
+  await sleep(GUARD_MS);
+  pointerClick(link);
+  assert.strictEqual(switches()[0].checked, false, 'the press began inside the window');
+  pointerClick(link);
+  assert.strictEqual(switches()[0].checked, true, 'a fresh tap after it answers');
+});
