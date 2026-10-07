@@ -7458,7 +7458,29 @@ function buildPlaylistRetryRequest(entry) {
   if (typeof e.format === 'string') body.format = e.format;
   if (typeof e.quality === 'string') body.quality = e.quality;
   if (typeof e.filetype === 'string') body.filetype = e.filetype;
+  // v1.371.0: the retried tracks join the same album, with the same numbers
+  if (e.album && typeof e.album === 'object') body.album = e.album;
   return { path: '/api/ytdlp/download-playlist', body };
+}
+
+// v1.371.0 (Save as an album): the album artist the picker suggests - the name most of the rows credit first. A title
+// "Kyle Gordon - Name [...]" credits what precedes the dash (hyphen, en or em dash); a row without one credits its
+// channel ("Kyle Gordon - Topic" for a "Provided to YouTube" track). The first name to reach the top count wins a tie.
+function defaultAlbumArtist(entries) {
+  const counts = new Map();
+  let best = '';
+  let bestN = 0;
+  (Array.isArray(entries) ? entries : []).forEach((e) => {
+    if (!e || typeof e !== 'object') return;
+    const m = typeof e.title === 'string' ? /^(.+?)\s+[-\u2013\u2014]\s+\S/.exec(e.title) : null;
+    let name = m ? m[1].trim() : '';
+    if (!name && typeof e.channel === 'string') name = e.channel.replace(/\s+-\s+Topic$/i, '').trim();
+    if (!name) return;
+    const n = (counts.get(name) || 0) + 1;
+    counts.set(name, n);
+    if (n > bestN) { best = name; bestN = n; }
+  });
+  return best;
 }
 
 function playlistApiUrl(link, page, peek) {
@@ -7500,6 +7522,87 @@ function openPlaylistPicker(opts) {
     [fmt.format, fmt.quality, fmt.filetype].forEach((sel) => fr.appendChild(oneOffSelectBox(d, sel)));
     wrap.appendChild(fr);
   }
+  // v1.371.0: Save as an album (audio only). One grouped list of two switch rows, the album's two fields under it,
+  // all from the existing kit (ui.list / ui.row / ui.field, the native-checkbox ui-switch the video rows use).
+  const albumSwitch = (label) => {
+    const box = d.createElement('input');
+    box.type = 'checkbox';
+    box.className = 'ui-switch';
+    box.setAttribute('role', 'switch');
+    box.setAttribute('aria-label', label);
+    return box;
+  };
+  const albumOn = albumSwitch('Save as an album');
+  const cleanOn = albumSwitch('Clean up titles');
+  // `help: ' '` gives each field its kit help line (ui-field__help, aria-describedby) for the "already in Music" note
+  const albumName = U.field({ label: 'Album', help: ' ', doc: d });
+  const albumArtist = U.field({ label: 'Album artist', help: ' ', doc: d });
+  const noteOf = (f) => f.el.querySelector('.ui-field__help');
+  [albumName, albumArtist].forEach((f) => { noteOf(f).textContent = ''; noteOf(f).hidden = true; });
+  [albumName.input, albumArtist.input].forEach((inp) => { inp.maxLength = 200; inp.autocomplete = 'off'; });
+  const albumFields = d.createElement('div');
+  albumFields.className = 'oneoff-form playlist-picker-album-fields';
+  albumFields.hidden = true;
+  albumFields.appendChild(albumName.el);
+  albumFields.appendChild(albumArtist.el);
+  const cleanRow = U.row({ title: 'Clean up titles', meta: 'Drops tags like [Official Audio]', actions: [cleanOn], doc: d });
+  const albumList = U.list({ actions: 1, grouped: true, label: 'Album', doc: d });
+  albumList.classList.add('playlist-picker-album');
+  albumList.hidden = true;
+  albumList.appendChild(U.row({ title: 'Save as an album', meta: 'Album, artist and track numbers', actions: [albumOn], doc: d }));
+  albumList.appendChild(cleanRow);
+  cleanRow.hidden = true;
+  wrap.appendChild(albumList);
+  wrap.appendChild(albumFields);
+  // what the user typed is kept; the defaults follow the loaded rows until then
+  const albumTouched = { name: false, artist: false };
+  albumName.input.addEventListener('input', () => { albumTouched.name = true; checkExisting(); });
+  albumArtist.input.addEventListener('input', () => { albumTouched.artist = true; checkExisting(); });
+  // Dean (2026-10-07): say when the artist or the album is already in Music. Read from Music's own lists (the
+  // viewer's visible library - the routes filter it), matched without regard to case. Music groups by the EXACT name
+  // ("kyle gordon" is a second artist), so an untouched default takes the library's spelling, a typed name is kept
+  // and told the library's, and "these tracks join it" is said only when both names match exactly (gate r1). Asked
+  // only while Save as an album is on and the sheet is open.
+  let existingGen = 0;
+  let existingTimer = null;
+  const setNote = (f, text) => { noteOf(f).textContent = text; noteOf(f).hidden = !text; };
+  const sameName = (a, b) => typeof a === 'string' && typeof b === 'string' && a.trim().toLowerCase() === b.trim().toLowerCase();
+  const musicItems = (kind, q) => fetch('/api/music/' + kind + '?' + new URLSearchParams({ search: q, limit: '1000' }).toString(), { signal })
+    .then((r) => (r.ok ? r.json() : null)).then((j) => (j && Array.isArray(j.items) ? j.items : [])).catch(() => []);
+  function checkExisting() {
+    if (existingTimer) clearTimeout(existingTimer);
+    existingTimer = setTimeout(() => {
+      existingTimer = null;
+      if (!albumWanted() || !sheet.isOpen()) return;
+      const gen = ++existingGen;
+      const artist = albumArtist.input.value.trim();
+      const name = albumName.input.value.trim();
+      if (!artist) { setNote(albumArtist, ''); setNote(albumName, ''); return; }
+      Promise.all([musicItems('artists', artist), name ? musicItems('albums', name) : Promise.resolve([])]).then(([artists, albums]) => {
+        if (gen !== existingGen || (signal && signal.aborted) || !sheet.isOpen()) return; // a later edit asked again
+        const hit = artists.find((a) => a && sameName(a.artist, artist));
+        if (hit && hit.artist !== artist && !albumTouched.artist) albumArtist.input.value = hit.artist; // the library's spelling
+        const shown = albumArtist.input.value.trim();
+        setNote(albumArtist, !hit ? '' : (hit.artist === shown ? 'Already in Music' : `In Music as "${hit.artist}"`));
+        // the album: by THIS artist exactly (the key is album artist + album)
+        const albumHit = albums.find((a) => a && a.artist === shown && sameName(a.album, name));
+        if (albumHit && albumHit.album !== name && !albumTouched.name) albumName.input.value = albumHit.album;
+        const shownName = albumName.input.value.trim();
+        setNote(albumName, !albumHit ? '' : (albumHit.album === shownName ? 'Already in Music: these tracks join it' : `In Music as "${albumHit.album}"`));
+      });
+    }, 300);
+  }
+  const currentFormat = () => (fmt ? fmt.format.value : o.format);
+  const currentFiletype = () => (fmt ? fmt.filetype.value : o.filetype);
+  // Audio, and not Opus: an Opus file keeps its tags per stream, where the scan never reads them (the server refuses it)
+  const albumOffered = () => currentFormat() === 'audio' && currentFiletype() !== 'opus';
+  const albumWanted = () => albumOffered() && albumOn.checked;
+  function syncAlbum() {
+    albumList.hidden = !albumOffered() || list.hidden;
+    albumFields.hidden = albumList.hidden || !albumOn.checked;
+    cleanRow.hidden = !albumOn.checked;
+  }
+  if (fmt) [fmt.format, fmt.filetype].forEach((sel) => sel.addEventListener('change', () => { syncAlbum(); checkExisting(); }));
   const head = d.createElement('div');
   head.className = 'oneoff-row';
   head.hidden = true;
@@ -7526,7 +7629,11 @@ function openPlaylistPicker(opts) {
   const sheet = U.sheet({ title: 'Choose from the playlist', content: wrap, doc: d, signal });
   // the activation guard (ui.js): guard() marks a press inside the window; each handler below ASKS accepts(e)
   // first - guard() alone refuses nothing (gate r1: a tap 200 ms after the open posted the job)
-  [allBtn, noneBtn, subBtn, moreBtn, goBtn].forEach((b) => sheet.guard(b));
+  [allBtn, noneBtn, subBtn, moreBtn, goBtn, albumOn, cleanOn].forEach((b) => sheet.guard(b));
+  // a switch's click has toggled it before any listener runs; cancelling a refused click puts it back (the browser, and
+  // jsdom, restore the state from before the click), and no change event fires
+  [albumOn, cleanOn].forEach((box) => box.addEventListener('click', (e) => { if (!sheet.accepts(e)) e.preventDefault(); }));
+  albumOn.addEventListener('change', () => { syncAlbum(); checkExisting(); });
 
   const picked = () => state.rows.filter((r) => r.box && r.box.checked).map((r) => r.id);
   function refresh() {
@@ -7558,7 +7665,9 @@ function openPlaylistPicker(opts) {
     const row = U.row({ title: e.title || e.id, meta: blocked || undefined, media, actions, doc: d });
     if (blocked) row.classList.add('is-disabled');
     list.appendChild(row);
-    state.rows.push({ id: e.id, box });
+    // v1.371.0: `pos` = the row's place in the playlist, the track number when the videos are saved as an album
+    // (the server's `position`, counted before any bad row was dropped; the row count only as a fallback)
+    state.rows.push({ id: e.id, box, pos: Number.isInteger(e.position) && e.position > 0 ? e.position : state.rows.length + 1, title: e.title || '', channel: e.channel || '' });
   }
   function load(page) {
     if (state.loading) return;
@@ -7576,6 +7685,10 @@ function openPlaylistPicker(opts) {
         (Array.isArray(data.entries) ? data.entries : []).forEach(addRow);
         head.hidden = false; list.hidden = false;
         moreBtn.hidden = !state.nextPage;
+        if (!albumTouched.name) albumName.input.value = state.title;
+        if (!albumTouched.artist) albumArtist.input.value = defaultAlbumArtist(state.rows);
+        syncAlbum();
+        checkExisting();
         refresh();
       })
       .catch((err) => {
@@ -7608,13 +7721,24 @@ function openPlaylistPicker(opts) {
     if (!sheet.accepts(e)) return;
     const ids = picked();
     if (!ids.length || state.posting || state.started) return;
+    let albumBody = null;
+    if (albumWanted()) {
+      const title = albumName.input.value.trim();
+      const artist = albumArtist.input.value.trim();
+      if (!title || !artist) { status.textContent = 'Name the album and its artist, or turn off Save as an album.'; return; }
+      const tracks = {};
+      // the ticked ROW's place (a video listed twice takes the row that was ticked, the first if both were)
+      state.rows.forEach((r) => { if (r.box && r.box.checked && !Object.prototype.hasOwnProperty.call(tracks, r.id)) tracks[r.id] = r.pos; });
+      albumBody = { title, artist, cleanTitles: cleanOn.checked, tracks };
+    }
     state.posting = true;
     refresh();
     fetch('/api/ytdlp/download-playlist', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(Object.assign({ listId: state.listId, title: state.title, ids },
-        fmt ? { format: fmt.format.value, quality: fmt.quality.value, filetype: fmt.filetype.value } : { format: o.format, quality: o.quality, filetype: o.filetype })),
+        fmt ? { format: fmt.format.value, quality: fmt.quality.value, filetype: fmt.filetype.value } : { format: o.format, quality: o.quality, filetype: o.filetype },
+        albumBody ? { album: albumBody } : {})),
     })
       .then(async (r) => {
         const data = await r.json().catch(() => ({}));
@@ -17945,6 +18069,7 @@ if (typeof module !== 'undefined' && module.exports) {
     LIBRARY_CHANGED_EVENT, notifyLibraryChanged, // showChaptersEditor is exported with the Chapter Snap group above
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     formatPlaylistChipStatus, buildPlaylistRetryRequest, routeOneOffDownload, openPlaylistPicker, // v1.370.0 W4: the playlist picker
+    defaultAlbumArtist, // v1.371.0: Save as an album
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     formatDownloadStaleNote, formatDownloadOfflineText, downloadChipRenderErrorCount, // v1.365.0 (W3)
     formatDownloadRowAge, downloadChipPollFaultCount, // v1.365.0 gate r1

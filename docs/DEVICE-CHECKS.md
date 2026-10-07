@@ -165,3 +165,12 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
 - [ ] v1.370.0 - Desktop extension (reload it first: chrome://extensions, the reload icon): on a video in a playlist, Audio /
   Video download that one video and "Choose from playlist..." opens the picker in a new tab; on a playlist page Audio / Video
   are off.
+
+## Save as an album (v1.371.0)
+
+- [ ] v1.371.0 - Pick a few songs from an artist's playlist (one not already in your library), Format Audio: turn on Save as an
+  album, check the two filled-in names (and the "Already in Music" note), turn on Clean up titles, Download. In Music the songs
+  are ONE album under the album artist, numbered in playlist order, titles without "Artist - " or [Official Audio].
+- [ ] v1.371.0 - On the phone the album switches and fields look like the rest of the app (no new styles); a quick double tap on
+  the switch right as the picker opens does nothing.
+- [ ] v1.371.0 - With File type Opus the album switch is not offered.

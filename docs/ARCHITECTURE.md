@@ -204,7 +204,9 @@ tables), `visibility.js` (the ONE pure visibility decision).
   exactly that route. Since v1.370.0 a YouTube playlist link posted with the
   token is not downloaded: it waits (`lib/ytdlp/waiting.js`) for the app's
   playlist picker, which downloads the chosen videos as one job over the
-  one-off pipeline.
+  one-off pipeline. Since v1.371.0 an audio playlist job can carry an album
+  (`lib/ytdlp/album.js`): each new track is tagged (album, album artist,
+  track number, optional cleaned title) by yt-dlp's own embed pass.
 
 ## The client
 

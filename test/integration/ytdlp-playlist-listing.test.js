@@ -131,7 +131,9 @@ test('W2: Dean\'s example link lists its 24 entries (the verbatim T0 output), pa
     assert.strictEqual(body.entries.length, 24);
     assert.deepStrictEqual(body.entries.map((e) => e.id), EXAMPLE.entries.map((e) => e.id), 'every entry, in the list\'s order');
     const first = body.entries[0];
-    assert.deepStrictEqual(Object.keys(first).sort(), ['durationSec', 'id', 'inLibrary', 'thumb', 'title', 'unavailable']);
+    assert.deepStrictEqual(Object.keys(first).sort(), ['channel', 'durationSec', 'id', 'inLibrary', 'position', 'thumb', 'title', 'unavailable']);
+    assert.deepStrictEqual(body.entries.map((e) => e.position), EXAMPLE.entries.map((_, i) => i + 1), 'v1.371.0: each row\'s place in the list');
+    assert.strictEqual(first.channel, 'kylegordonisgreat', 'v1.371.0: the verbatim row\'s channel, for the album-artist default');
     assert.strictEqual(first.title, EXAMPLE.entries[0].title);
     assert.strictEqual(first.durationSec, Math.round(EXAMPLE.entries[0].duration));
     assert.strictEqual(first.thumb, `https://i.ytimg.com/vi/${first.id}/mqdefault.jpg`, 'the thumb is rebuilt from the checked id, never a URL off stdout');
@@ -158,6 +160,7 @@ test('W2: page 2 asks for entries 201-400 and reads the total off playlist_count
     assert.ok(live && live.durationSec === null && live.unavailable === false, 'a past live stream: no duration, still downloadable');
     const [argv] = spawns();
     assert.deepStrictEqual(argv.slice(2, 6), ['--playlist-start', '201', '--playlist-end', '400']);
+    assert.deepStrictEqual(body.entries.map((e) => e.position), [201, 202, 203, 204], 'v1.371.0: a page-2 row\'s place in the WHOLE list');
   } finally { await app.close(); }
 });
 
@@ -299,5 +302,18 @@ test('gate r1: exactly 200 entries with playlist_count 200 -> nextPage null (no 
     const body = await (await get(app.base, { url: DEAN })).json();
     assert.strictEqual(body.total, 200, JSON.stringify(body).slice(0, 300));
     assert.strictEqual(body.nextPage, null);
+  } finally { await app.close(); }
+});
+
+test('v1.371.0 (gate r1): a row dropped for a hostile id never shifts the positions after it (the track numbers)', async () => {
+  process.env.FAKE_PL_MODE = 'private';
+  const app = await startApp(makeDeps());
+  try {
+    const body = await (await get(app.base, { url: DEAN })).json();
+    assert.ok(!body.entries.some((e) => e.title === 'hostile'), 'the hostile row is dropped');
+    assert.strictEqual(body.entries.length, EXAMPLE.entries.length - 1);
+    const after = body.entries.find((e) => e.id === EXAMPLE.entries[4].id);
+    assert.strictEqual(after.position, 5, 'the row after the dropped 4th is still 5th');
+    assert.strictEqual(body.entries[2].position, 3);
   } finally { await app.close(); }
 });

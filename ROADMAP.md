@@ -713,6 +713,26 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.371.0 - Save a playlist as an album (2026-10-07)
+
+- Dean (2026-10-07, Music on production): Kyle Gordon audio from his official channel showed artist "kylegordonisgreat",
+  album "Unknown Album" and titles "Kyle Gordon - Name [...]". Root cause: a downloaded audio file reaches Music through
+  `projectAudioItem`, which reads the embedded album tag only (never the folder), and official-channel uploads carry no album.
+- The playlist picker, with Format = Audio (MP3, M4A or Default), gets "Save as an album": Album (the playlist title) and
+  Album artist (the name most rows credit first) fields, and a "Clean up titles" switch (off by default). Each field says
+  "Already in Music" when the library has it (an untouched default takes the library's exact spelling; "these tracks join
+  it" only on an exact match). Existing kit components only, no new CSS.
+- yt-dlp writes album, album_artist, the track number (the row's place in the playlist), the artist only when the video
+  credits none, and the cleaned title, in the embed pass it already runs (`meta_*` fields through `--parse-metadata` +
+  `--replace-in-metadata`; values are replacement literals, measured with hostile names). New downloads only: a video any
+  user already has gets no tags. lib/ytdlp/album.js; the album rides the pending entry (restart) and Retry.
+- Measured: the real yt-dlp 2026.08.19 end to end through FileTube's argv builder, ffprobe and Music's own projection (one
+  album key, tracks 1-2, credits kept); 390px Chromium screenshots; dual-Node suites 11453 / 0 fail (pre-gate).
+- Gate (adversary + qa + security-brief): r1 @ecf10270 security APPROVED, adversary + qa CHANGES (files already in the
+  library were re-tagged; Opus tags never reached Music; the "join it" note matched case-blind; two persisted-shape guards
+  and the guard test unbound); r2 APPROVED by all three @9b29c7c0. Disclosed: a chaptered video shows as its own album; a
+  title made only of noise cleans to empty; residuals in tracker #292.
+
 ### v1.370.0 - Download from a YouTube playlist: pick the videos (2026-10-07)
 
 - Dean (2026-10-06): "I'd want it to recognize it's a playlist and maybe have a menu showing what the things are and let one
