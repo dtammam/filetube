@@ -34,6 +34,32 @@ export function originPattern(rawUrl) {
 // Validate config + inputs and produce the fetch args, or an error result.
 // Returns either { ok:true, request:{ endpoint, init } }
 //         or     { ok:false, error, configured? }.
+// v1.369.0 (R10): Audio / Video download ONE video. The server keeps a playlist link that arrives with the
+// API token as "Playlist waiting" for the app (the iPhone Shortcut's way, R9), so a YouTube watch link that
+// also names a list is sent WITHOUT its list (and the list's position) - just the video. A list page with no
+// video is left alone (the server waits it, and "Choose from playlist..." is the way to pick from it).
+const YT_HOSTS = new Set(['www.youtube.com', 'youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be']);
+export function singleVideoUrl(raw) {
+  let u;
+  try { u = new URL(String(raw || '')); } catch { return raw; }
+  if (!YT_HOSTS.has(u.hostname.toLowerCase())) return raw;
+  const hasVideo = u.hostname.toLowerCase() === 'youtu.be' ? u.pathname.length > 1 : u.searchParams.has('v');
+  if (!hasVideo || !u.searchParams.has('list')) return raw;
+  ['list', 'index', 'start_radio', 'pp'].forEach((k) => u.searchParams.delete(k));
+  return u.toString();
+}
+
+// "Choose from playlist..." shows on a tab whose URL names a list that is not a Mix (RD...): R10.
+export function playlistPickUrl(instanceUrl, tabUrl) {
+  const base = normalizeInstanceUrl(instanceUrl);
+  let u;
+  try { u = new URL(String(tabUrl || '')); } catch { return null; }
+  if (!base || !YT_HOSTS.has(u.hostname.toLowerCase())) return null;
+  const list = u.searchParams.get('list');
+  if (!list || /^RD/.test(list)) return null;
+  return `${base}/subscriptions?pick=${encodeURIComponent(u.toString())}`;
+}
+
 export function buildDownloadRequest({ instanceUrl, apiToken, url, format }) {
   const base = normalizeInstanceUrl(instanceUrl);
   if (!base || !apiToken) {
@@ -64,7 +90,7 @@ export function buildDownloadRequest({ instanceUrl, apiToken, url, format }) {
         },
         // D4: v1 sends only { url, format }; the server defaults quality=best
         // and auto-routes the destination folder.
-        body: JSON.stringify({ url, format }),
+        body: JSON.stringify({ url: singleVideoUrl(url), format }),
       },
     },
   };

@@ -61,3 +61,26 @@ test('interpretTestResponse: token/endpoint verdicts', async () => {
   assert.equal(ro.ok, true);
   assert.match(ro.message, /read-only/i);
 });
+
+// v1.369.0 (R10): Audio / Video send ONE video; a playlist tab offers the picker (never for a Mix).
+test('singleVideoUrl: a watch link that names a list loses the list; everything else is untouched', async () => {
+  const { singleVideoUrl, buildDownloadRequest } = await mod();
+  assert.equal(singleVideoUrl('https://www.youtube.com/watch?v=U3P8pUboZ5g&list=PLUtyNbQXMTLg&index=3'), 'https://www.youtube.com/watch?v=U3P8pUboZ5g');
+  assert.equal(singleVideoUrl('https://youtu.be/U3P8pUboZ5g?list=PLUtyNbQXMTLg&si=x'), 'https://youtu.be/U3P8pUboZ5g?si=x');
+  assert.equal(singleVideoUrl('https://www.youtube.com/watch?v=U3P8pUboZ5g&list=RDU3P8pUboZ5g&start_radio=1'), 'https://www.youtube.com/watch?v=U3P8pUboZ5g');
+  assert.equal(singleVideoUrl('https://www.youtube.com/playlist?list=PLUtyNbQXMTLg'), 'https://www.youtube.com/playlist?list=PLUtyNbQXMTLg', 'a list page has no one video');
+  assert.equal(singleVideoUrl('https://vimeo.com/1?list=2'), 'https://vimeo.com/1?list=2');
+  assert.equal(singleVideoUrl('not a url'), 'not a url');
+  const r = buildDownloadRequest({ instanceUrl: 'https://ft.example', apiToken: 't', url: 'https://www.youtube.com/watch?v=U3P8pUboZ5g&list=PLUtyNbQXMTLg', format: 'video' });
+  assert.deepEqual(JSON.parse(r.request.init.body), { url: 'https://www.youtube.com/watch?v=U3P8pUboZ5g', format: 'video' });
+});
+
+test('playlistPickUrl: a list tab opens the instance picker; a Mix, a plain video, another site: none', async () => {
+  const { playlistPickUrl } = await mod();
+  const tab = 'https://www.youtube.com/watch?v=U3P8pUboZ5g&list=PLUtyNbQXMTLg';
+  assert.equal(playlistPickUrl('https://ft.example/', tab), 'https://ft.example/subscriptions?pick=' + encodeURIComponent(tab));
+  assert.equal(playlistPickUrl('https://ft.example', 'https://www.youtube.com/watch?v=U3P8pUboZ5g&list=RDU3P8pUboZ5g'), null);
+  assert.equal(playlistPickUrl('https://ft.example', 'https://www.youtube.com/watch?v=U3P8pUboZ5g'), null);
+  assert.equal(playlistPickUrl('https://ft.example', 'https://example.com/?list=PL1'), null);
+  assert.equal(playlistPickUrl('', tab), null);
+});

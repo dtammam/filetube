@@ -94,7 +94,7 @@ test('W3: one job - exact counts, the failed ids together, one row; each video i
     assert.strictEqual(total, 5);
     const e = await settle(jobId);
     assert.strictEqual(e.kind, 'playlist');
-    assert.strictEqual(e.state, 'done');
+    assert.strictEqual(e.state, 'error', 'a failed video keeps the row up (sticky) with its Retry');
     assert.strictEqual(e.title, 'Kyle Gordon Is Everywhere');
     assert.strictEqual(e.total, 5);
     assert.strictEqual(e.done, 3);
