@@ -713,6 +713,28 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.370.0 - Download from a YouTube playlist: pick the videos (2026-10-07)
+
+- Dean (2026-10-06): "I'd want it to recognize it's a playlist and maybe have a menu showing what the things are and let one
+  select what to download." The four recon gaps are closed: a `watch?v=X&list=Y` link now asks "Just this video" / "Choose
+  videos" (R1); Subscriptions > Add asks too, and "Subscribe to playlist" subscribes to the LIST (the subscription trap); the
+  error no longer names `channelUrl`; the shapes are tested (url.classifyPlaylistLink, the one classifier, read through
+  `GET /api/ytdlp/playlist?peek=1`).
+- The picker (the download box, the Subscriptions one-off form, the extension's "Choose from playlist...", the push):
+  pages of 200 (Load more), only the linked video ticked, "Already in library" (the viewer's visible library) and
+  unavailable rows not tickable, Select all (N), Subscribe to playlist, Download (N) as ONE job: one progress row ("4 of 12"),
+  one Cancel, Retry = the failed videos, each video in its channel's folder, a restart resumes the rest.
+- The iPhone Shortcut: a playlist link waits as "Playlist waiting: choose videos" (persisted, 7 days, 20 max) with a push to
+  everyone allowed to download; the API token gains no route. A Mix / Watch Later / Liked downloads one video, as before.
+- The browser extension 0.2.0: Audio / Video send one video; a playlist tab gets "Choose from playlist..." (reload the
+  unpacked extension).
+- Measured: the verbatim yt-dlp 2026.08.19 output (T0) through the real spawn boundary; a real-browser proof of the box, the
+  extension link and the Shortcut (19 checks).
+- Gate (adversary + qa + security-brief): r1 CHANGES @36207a9c (a crafted ?pick= link downloaded on load; the picker's
+  activation guard was inert; one row per playlist on /subscriptions; the stuck sweep; the pending file evicting accepted
+  one-offs; untested push, join and Cancel); r2 @039169ad security-brief + qa APPROVED, adversary CHANGES (a test gap); r3
+  (Dean ruled a quick re-check) - see the plan.
+
 ### v1.369.0 - The iPod stays upright when you turn the phone (2026-10-07)
 
 - Dean (2026-10-07): "lock the iPod mode in iPod mode. So, like, if you even turn the phone sideways, it won't change it", then

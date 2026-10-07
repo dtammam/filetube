@@ -3344,8 +3344,13 @@ function requireAdmin(req, res) {
 // browse subscriptions but never add/remove/edit them. Passed into the ytdlp
 // module via deps so its routes route through this one predicate. Closes the
 // census finding that the flag was settable-but-unenforced.
+// v1.370.0 W4: the decision alone (no response written), for a read that only ADDS a field for an allowed
+// caller (the waiting playlists on the status poll); requireManageSubscriptions is this plus the 403.
+function canManageSubscriptions(req) {
+  return !!(req && req.user && (req.user.role === 'admin' || req.user.canManageSubscriptions));
+}
 function requireManageSubscriptions(req, res) {
-  if (req.user && (req.user.role === 'admin' || req.user.canManageSubscriptions)) return true;
+  if (canManageSubscriptions(req)) return true;
   res.status(403).json({ error: 'You do not have permission to manage subscriptions.' });
   return false;
 }
@@ -6837,6 +6842,13 @@ function recordEngineEvent(event, version) {
 
 ytdlp.registerRoutes(app, {
   requireManageSubscriptions, // v1.80 RBAC: gate for channel-registry mutations
+  canManageSubscriptions, // v1.370.0 W4: the same decision without a 403 (waiting playlists on the status poll)
+  // v1.370.0 W4 (R9): a playlist the Shortcut left waiting - one push to everyone allowed to download it;
+  // tapping it opens the picker (the Subscriptions page's ?pick=)
+  notifyWaitingPlaylist: (entry) => {
+    const push = pushDeliverLib.waitingPlaylistPush(entry, userStore.listUsers());
+    pushDelivery.broadcast(push.payload, push.allowUser);
+  },
   // v1.146 (downloader-engine): the engine routes are ADMIN-only - they
   // cause pip to execute code from PyPI. Same guard function POST
   // /api/settings uses; the module side fails CLOSED if this is absent.

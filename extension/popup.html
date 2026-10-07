@@ -36,6 +36,7 @@
       color: #fff;
     }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #pick { margin-top: 8px; background: #555; }
     .status { margin-top: 12px; font-size: 12px; min-height: 16px; }
     .status.error { color: #cc0000; }
     .status.ok { color: #0a7d28; }
@@ -52,6 +53,7 @@
     <button id="audio" disabled>Audio</button>
     <button id="video" disabled>Video</button>
   </div>
+  <div class="buttons"><button id="pick" hidden>Choose from playlist…</button></div>
   <div id="reason" class="reason"></div>
   <div id="status" class="status"></div>
   <div id="sites-hint" class="hint"></div>

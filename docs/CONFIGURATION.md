@@ -23,7 +23,13 @@ Useful environment variables (all optional):
   terminates HTTPS (e.g. Nginx Proxy Manager) so cookies are marked Secure.
   Your proxy must overwrite the `X-Forwarded-For` header (NPM does).
 - `FILETUBE_API_TOKEN` - a bearer token that lets an iOS Shortcut post
-  one-off downloads without a browser session.
+  one-off downloads without a browser session. A YouTube playlist link (a
+  playlist page, or a video opened from a playlist) posted this way is not
+  downloaded: it waits in the app as "Playlist waiting: choose videos" (and a
+  push goes out if notifications are on), and the reply is `202
+  {"accepted": false, "playlist": true, "waiting": true, "message":
+  "Playlist found: open FileTube to choose"}`. A Mix, Watch Later or Liked
+  link downloads just the one video, as before.
 
 **Forgot the admin password?** There is deliberately no in-app reset. Run the
 recovery script as whoever operates the box (it works with the server
