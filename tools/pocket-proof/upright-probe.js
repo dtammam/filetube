@@ -55,6 +55,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const cdp = await ctx.newCDPSession(page);
     const states = [
       { name: 'portrait', w: 390, h: 844, type: 'portraitPrimary', angle: 0 },
+      // the frame BEFORE the angle stamp lands (the media query says landscape, the angle still 0; gate r1 W1)
+      { name: 'landscape-prestamp', w: 844, h: 390, type: 'landscapePrimary', angle: 0 },
       { name: 'landscape-90', w: 844, h: 390, type: 'landscapePrimary', angle: 90 },
       { name: 'landscape-270', w: 844, h: 390, type: 'landscapeSecondary', angle: 270 },
       { name: 'portrait-back', w: 390, h: 844, type: 'portraitPrimary', angle: 0 },
@@ -76,7 +78,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
           panel: box(p), transform: cs && cs.transform, display: cs && cs.display, gridCols: cs && cs.gridTemplateColumns,
           lcd: box(q('.ip-lcd')), wheel: box(q('.ip-wheel')), center: box(q('.ip-center')),
           menu: box(q('[data-skin-menu]')), play: box(q('[data-skin-pp], [data-skin-play]')),
-          ghost: box(document.querySelector('.mms-wheel-ghost, [data-wheel-ghost]')),
+          ghost: box(document.querySelector('.mms-haptic-ghost')),
           np: !!q('.ip-np'),
           art: box(q('.mms-art')), ttl: box(q('.mms-ttl')), transport: box(q('.mms-transport')), scrub: box(q('.mms-scrub')),
         };

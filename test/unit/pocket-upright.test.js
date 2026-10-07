@@ -79,6 +79,10 @@ test('mark: a value that lands without the setter (another tab) applies at the n
   assert.ok(html.classList.contains('pk-upright'), 'another key\'s storage event leaves it');
   w.dispatchEvent(new w.Event('resize'));
   assert.ok(!html.classList.contains('pk-upright'), 'a resize re-reads it');
+  // another tab clearing ALL storage (localStorage.clear) fires a storage event with key null
+  w.localStorage.removeItem('ft-pocket-sideways');
+  w.dispatchEvent(new w.StorageEvent('storage', { key: null }));
+  assert.ok(html.classList.contains('pk-upright'), 'a clear (key null) re-reads it');
 });
 
 test('mark: setPocketSideways writes "1" or REMOVES the key, and re-marks at once', () => {
@@ -121,11 +125,11 @@ const CSS = readStyleCss();
 const RULES = cssRules(CSS);
 const LAND = RULES.filter((r) => /@media \(orientation: landscape\)/.test(r.at));
 
-test('CSS: every D7 sideways rule is Sideways-only (the scope gained :not(.pk-upright), zero specificity)', () => {
+test('CSS: every D7 sideways rule stands aside ONLY for the turned upright player (zero specificity); it still draws the pre-stamp frame (gate r1)', () => {
   const d7 = LAND.filter((r) => /:where\(html\.is-phone/.test(r.sel));
   assert.strictEqual(d7.length, 18, 'precondition: the D7 block\'s 18 rules (25 selectors)');
   for (const r of d7) {
-    for (const part of r.sel.split(/,(?![^(]*\))/)) assert.strictEqual(part.trim().indexOf(':where(html.is-phone:not(.pk-upright)) '), 0, part.trim());
+    for (const part of r.sel.split(/,(?![^(]*\))/)) assert.strictEqual(part.trim().indexOf(':where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) '), 0, part.trim());
   }
 });
 
@@ -172,11 +176,11 @@ test('CSS: the inset readers fall back to today\'s env() (portrait and Sideways 
   assert.ok(sets.length >= 3 && sets.every((r) => /html\.is-phone\.pk-upright/.test(r.sel)), sets.map((r) => r.sel).join(' | '));
 });
 
-test('CSS: the Transparent board photo turns back by the angle only in Sideways (upright it already sits on the glass)', () => {
+test('CSS: the Transparent board photo turns back by the angle except on the turned upright player (there it already sits on the glass)', () => {
   const board = RULES.filter((r) => /--mms-ipod-board-turn\s*:/.test(r.body) && /data-ft-rot/.test(r.sel));
   assert.strictEqual(board.length, 3, 'the 90, 270 and 0/180 rules');
   for (const r of board) {
-    for (const part of r.sel.split(/,(?![^(]*\))/)) assert.match(part.trim(), /^html\.is-phone:where\(:not\(\.pk-upright\)\)\[data-ft-rot="\d+"\] \.mms-full\.mms-ipod$/);
+    for (const part of r.sel.split(/,(?![^(]*\))/)) assert.match(part.trim(), /^html\.is-phone:where\(:not\(\.pk-upright\[data-ft-rot="90"\]\):not\(\.pk-upright\[data-ft-rot="270"\]\)\)\[data-ft-rot="\d+"\] \.mms-full\.mms-ipod$/);
   }
 });
 
@@ -284,8 +288,8 @@ test('lighting: the tilt maps by the screen angle PLUS the drawn turn (upright =
   assert.deepStrictEqual(L.mapTilt(10, 20, (90 + 270) % 360), L.mapTilt(10, 20, 0));
   assert.notDeepStrictEqual(L.mapTilt(10, 20, 90), L.mapTilt(10, 20, 0), 'precondition: the screen angle alone maps differently');
   const src = fs.readFileSync(path.join(ROOT, 'public/js/pocket-lighting.js'), 'utf8');
-  assert.match(src, /var m = mapTilt\(e && e\.beta, e && e\.gamma, orientationAngle\(win\) \+ turn\);/);
-  assert.match(src, /S2\.turnOf\(panel, win\)/, 'the turn of THIS panel, as drawn');
+  assert.match(src, /var m = mapTilt\(e && e\.beta, e && e\.gamma, orientationAngle\(win\) \+ drawnTurn\(\)\);/);
+  assert.match(src, /turnVal = S2\.turnOf\(panel, win\)/, 'the turn of THIS panel, as drawn (cached per stamp / class / shape, gate r1 S4)');
 });
 
 // ---- the switches ---------------------------------------------------------------------------------
@@ -324,7 +328,7 @@ test('Pocket Settings: selecting Stay Upright flips the setting and re-lists the
     };
     const checked = () => {
       const row = [...panel.querySelectorAll('.ipm-row')].find((r) => (r.querySelector('.ipm-lbl') || {}).textContent === 'Stay Upright');
-      return row ? row.classList.contains('is-check') || !!row.querySelector('.ipm-check') : null;
+      return row ? row.classList.contains('is-checked') : null;
     };
     await tapRow('Settings');
     assert.strictEqual(checked(), true, 'upright by default');
@@ -433,4 +437,38 @@ test('Brick: on the turned player the board sizes from its layout box, not its s
   };
   assert.deepStrictEqual(run([300.4, 200.6], [300, 201]), [600, 402], 'unturned: the rect (rounded), exactly as before');
   assert.deepStrictEqual(run([200, 300], [300, 200]), [600, 400], 'turned: the 300 x 200 board, not the 200 x 300 footprint');
+});
+
+test('swipe-back CLAIM: on a turned player, a drag rightward across the iPod is claimed (its later moves preventDefault-ed); across the glass it is not (gate r1 W2)', () => {
+  const COMMON = require.resolve('../../public/js/common.js');
+  const saved = { window: global.window, document: global.document };
+  delete global.document; delete global.window;
+  delete require.cache[COMMON];
+  let wireSwipeBackGesture;
+  try { ({ wireSwipeBackGesture } = require(COMMON)); } finally { delete require.cache[COMMON]; Object.assign(global, saved); }
+  const run = (turn, moves) => {
+    const w = new JSDOM('<!DOCTYPE html><html><body><div id="p" class="mms-full"><div id="lcd">screen</div></div></body></html>', { url: 'http://localhost/music' }).window;
+    w.FileTubeMusicSkins = SK;
+    const panel = w.document.getElementById('p');
+    const gcs = w.getComputedStyle.bind(w);
+    w.getComputedStyle = (el, ps) => { const cs = gcs(el, ps); return el === panel ? new Proxy(cs, { get: (t, k) => (k === 'transform' ? turn : (typeof t[k] === 'function' ? t[k].bind(t) : t[k])) }) : cs; };
+    wireSwipeBackGesture(w.document, w, () => {});
+    const tgt = w.document.getElementById('lcd');
+    const fire = (type, x, y) => {
+      const e = new w.Event(type, { bubbles: true, cancelable: true });
+      Object.defineProperty(e, 'touches', { value: type === 'touchend' ? [] : [{ clientX: x, clientY: y, target: tgt }] });
+      tgt.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    fire('touchstart', 200, 200);
+    const prevented = moves.map(([x, y]) => fire('touchmove', 200 + x, 200 + y));
+    fire('touchend', 200, 200);
+    w.close();
+    return prevented;
+  };
+  // three moves: the first claims (passively), the later ones are prevented through the claimed listener
+  const UP = [[1, -40], [2, -80], [3, -120]]; const RIGHT = [[40, 1], [80, 2], [120, 3]];
+  assert.deepStrictEqual(run('none', RIGHT).slice(1), [true, true], 'CONTROL: unturned, a rightward drag is claimed');
+  assert.deepStrictEqual(run('matrix(0, -1, 1, 0, 0, 0)', UP).slice(1), [true, true], 'turned (angle 90): up the glass = right across the iPod, claimed');
+  assert.deepStrictEqual(run('matrix(0, -1, 1, 0, 0, 0)', RIGHT).slice(1), [false, false], 'turned: right across the glass = down the iPod, never claimed (it may be a list scroll)');
 });

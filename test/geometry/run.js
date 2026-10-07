@@ -171,7 +171,8 @@ async function runSequence(env, seq, mode, mutationCss) {
   const steps = [];
   try {
     await setOrientation(page, cdp, true);
-    if (seq.id === 'pocket-rotation') {
+    if (seq.id === 'pocket-rotation' || seq.id === 'pocket-rotation-sideways') {
+      if (seq.sideways) await ctx.addInitScript(() => { try { localStorage.setItem('ft-pocket-sideways', '1'); } catch (_) { /* storage off */ } });
       const { openPocket } = capture.sceneKit(env.FX, env.base);
       await page.goto(env.base + '/music', { waitUntil: 'networkidle', timeout: 20000 });
       await openPocket(page, 'ipod', 'phone');

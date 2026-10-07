@@ -192,6 +192,12 @@ const MUTATIONS = {
     check: 'G4', target: { sequence: 'pocket-rotation', mode: 'dark' },
     css: 'html.no-motion.no-motion #sidebar{transition:transform .3s linear!important}',
   },
+  // the iPod portrait lock (gate r1 QA W3): the Sideways (D7) turn keeps its own check - the wheel resizing with a
+  // transition on the rotate (through the stillness hold) must turn pocket-rotation-sideways red.
+  'g4-pocket-sideways-wheel-transition': {
+    check: 'G4', target: { sequence: 'pocket-rotation-sideways', mode: 'light' },
+    css: 'html.no-motion.no-motion .mms-full.mms-ipod .ip-wheel{transition:width .4s linear,height .4s linear!important}',
+  },
   // VPM (v1.364.0 W1): each must turn red EXACTLY its target cells (the runner compares the red set).
   // M1: the view collapses at the smallest width only (a 320-only breakpoint gone wrong).
   'vpm-m1-viewroot-zero-320': {

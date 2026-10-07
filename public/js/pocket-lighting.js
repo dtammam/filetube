@@ -507,12 +507,21 @@
       if (settled && now - lastSampleAt > PARK_MS) { lastTick = -1; return; }
       arm();
     }
+    // The drawn turn, read once per change of what decides it (the angle stamp, html's classes, the viewport's
+    // shape) - never a computed-style read per motion sample (~60 Hz; gate r1 S4).
+    var turnKey = null, turnVal = 0;
+    function drawnTurn() {
+      var S2 = null; try { S2 = win.FileTubeMusicSkins || null; } catch (_) { S2 = null; }
+      if (!S2 || typeof S2.turnOf !== 'function') return 0;
+      var h = doc && doc.documentElement;
+      var key = h ? (h.getAttribute('data-ft-rot') || '') + '|' + h.className + '|' + (win.innerWidth > win.innerHeight ? 'l' : 'p') : '';
+      if (key !== turnKey) { turnKey = key; turnVal = S2.turnOf(panel, win); }
+      return turnVal;
+    }
     function onOrient(e) {
       // the Upright iPod (style.css POCKET STAYS UPRIGHT) is drawn turned back to the phone's own frame: the tilt maps by
       // the screen's angle PLUS the drawn turn (-90 at 90 = 0, the portrait mapping), never by the screen's angle alone
-      var S2 = null; try { S2 = win.FileTubeMusicSkins || null; } catch (_) { S2 = null; }
-      var turn = (S2 && typeof S2.turnOf === 'function') ? S2.turnOf(panel, win) : 0;
-      var m = mapTilt(e && e.beta, e && e.gamma, orientationAngle(win) + turn);
+      var m = mapTilt(e && e.beta, e && e.gamma, orientationAngle(win) + drawnTurn());
       if (!m) return;
       samples += 1; sessionSamples += 1;
       if (permission !== 'granted') { permission = 'granted'; sess.permission = 'granted'; disarmFirstTapAsk(); } // a sample IS a grant (the session's too)

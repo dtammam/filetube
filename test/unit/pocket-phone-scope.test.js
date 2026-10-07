@@ -135,8 +135,8 @@ test('D7 CSS: nothing Pocket is decided by a width query any more (the rotate th
 });
 
 test('D7 CSS landscape (the Sideways setting since the iPod portrait lock): side by side (screen left, wheel right), insets on the sides, and no transition anywhere in it', () => {
-  const land = RULES.filter((r) => /@media \(orientation: landscape\)/.test(r.at) && r.sel.indexOf(':where(html.is-phone:not(.pk-upright))') === 0);
-  const sel = (s) => land.find((r) => r.sel === ':where(html.is-phone:not(.pk-upright)) ' + s);
+  const land = RULES.filter((r) => /@media \(orientation: landscape\)/.test(r.at) && r.sel.indexOf(':where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"]))') === 0);
+  const sel = (s) => land.find((r) => r.sel === ':where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) ' + s);
   const grid = sel('.mms-full.mms-ipod');
   assert.ok(grid, 'the Click chassis grid rule');
   assert.match(grid.body, /display:grid;/);

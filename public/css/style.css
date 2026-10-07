@@ -10678,12 +10678,12 @@ a.tv-continue-card { text-decoration: none; }
      portrait (the board is part of the phone; it does not rotate with the page). html[data-ft-rot] is stamped by
      pocket-lighting.js; a skin with no --pk-c-board-r* roles never reads --mms-ipod-board-turn. */
   @media (orientation: landscape){
-    html.is-phone:where(:not(.pk-upright))[data-ft-rot="90"] .mms-full.mms-ipod{ --mms-ipod-board-turn:var(--pk-c-board-r90, none); }
-    html.is-phone:where(:not(.pk-upright))[data-ft-rot="270"] .mms-full.mms-ipod{ --mms-ipod-board-turn:var(--pk-c-board-r270, none); }
+    html.is-phone:where(:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"]))[data-ft-rot="90"] .mms-full.mms-ipod{ --mms-ipod-board-turn:var(--pk-c-board-r90, none); }
+    html.is-phone:where(:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"]))[data-ft-rot="270"] .mms-full.mms-ipod{ --mms-ipod-board-turn:var(--pk-c-board-r270, none); }
     /* v1.354: a phone laid sideways whose angle still reads portrait (the frame before the engine reports the new one)
        draws no board photo rather than a wrong turn; the stamp follows in the same frame the layout flips. */
-    html.is-phone:where(:not(.pk-upright))[data-ft-rot="0"] .mms-full.mms-ipod,
-    html.is-phone:where(:not(.pk-upright))[data-ft-rot="180"] .mms-full.mms-ipod{ --mms-ipod-board-turn:none; }
+    html.is-phone:where(:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"]))[data-ft-rot="0"] .mms-full.mms-ipod,
+    html.is-phone:where(:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"]))[data-ft-rot="180"] .mms-full.mms-ipod{ --mms-ipod-board-turn:none; }
   }
   /* Click (Original) (v1.335, Dean: "one special Original skin which includes the entire vibe of the
      first") - its COLORS, one role block like every colorway. Commons "IPod1stWIKIPEDIA.png" (CC BY-SA
@@ -10890,7 +10890,7 @@ a.tv-continue-card { text-decoration: none; }
 @media (orientation: landscape) {
   /* the Click family (every colorway and the Original look): the LCD left, height-fitted at its 4:3;
      the wheel right, fitted to the SHORT side; the gap and padding from the space scale. */
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-ipod{
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-ipod{
     --pkl-pad-y:var(--space-6); --pkl-pad-x:var(--space-10); --pkl-gap:var(--space-12);
     --pkl-h:calc(100vh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 2 * var(--pkl-pad-y));
     --pkl-h:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 2 * var(--pkl-pad-y));
@@ -10904,39 +10904,39 @@ a.tv-continue-card { text-decoration: none; }
       calc(env(safe-area-inset-bottom,0px) + var(--pkl-pad-y)) calc(env(safe-area-inset-left,0px) + var(--pkl-pad-x)); }
   /* the LCD's height is the row, or less when the column is too narrow for a 4:3 at that height
      (an SE sideways); its width follows from the ratio (contain:size keeps content out of it) */
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-ipod .ip-lcd{ grid-column:1; grid-row:1; justify-self:center; width:auto; max-width:100%;
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-ipod .ip-lcd{ grid-column:1; grid-row:1; justify-self:center; width:auto; max-width:100%;
     height:min(100%, calc((var(--pkl-w) - var(--pkl-gap) - var(--pkl-wheel)) * 3 / 4)); }
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-ipod .ip-wheelwrap{ grid-column:2; grid-row:1; }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-ipod .ip-wheelwrap{ grid-column:2; grid-row:1; }
   /* the landscape wheel, and its centre at the chassis's centre-to-wheel proportion (108 / 288) -
      its own --pkl-* family, so the chassis stays the ONE authority for the portrait sizes */
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-ipod .ip-wheel{ width:var(--pkl-wheel); height:var(--pkl-wheel); }
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-ipod .ip-center{ width:calc(var(--pkl-wheel) * .375); height:calc(var(--pkl-wheel) * .375); }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-ipod .ip-wheel{ width:var(--pkl-wheel); height:var(--pkl-wheel); }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-ipod .ip-center{ width:calc(var(--pkl-wheel) * .375); height:calc(var(--pkl-wheel) * .375); }
   /* Cider: the cover left, height-fitted; the handle, title, scrubber and transport stacked right */
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-apple .mms-z{ display:grid; grid-template-columns:auto minmax(0, 1fr); grid-template-rows:auto minmax(0, 1fr) auto auto auto;
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-z{ display:grid; grid-template-columns:auto minmax(0, 1fr); grid-template-rows:auto minmax(0, 1fr) auto auto auto;
     column-gap:var(--space-16); align-items:center;
     padding:calc(env(safe-area-inset-top,0px) + var(--space-6)) calc(env(safe-area-inset-right,0px) + var(--space-12))
       calc(env(safe-area-inset-bottom,0px) + var(--space-6)) calc(env(safe-area-inset-left,0px) + var(--space-12)); }
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-apple .mms-art{ grid-column:1; grid-row:1 / -1; height:100%; width:auto; max-width:none; margin:0; }
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-apple .mms-top, :where(html.is-phone:not(.pk-upright)) .mms-full.mms-apple .mms-head,
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-apple .mms-scrub, :where(html.is-phone:not(.pk-upright)) .mms-full.mms-apple .mms-transport{ grid-column:2; }
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-apple .mms-head{ grid-row:2; align-self:end; margin-top:0; }
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-apple .mms-scrub{ margin-top:var(--space-6); }
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-apple .mms-transport{ margin-top:var(--space-6); }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-art{ grid-column:1; grid-row:1 / -1; height:100%; width:auto; max-width:none; margin:0; }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-top, :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-head,
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-scrub, :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-transport{ grid-column:2; }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-head{ grid-row:2; align-self:end; margin-top:0; }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-scrub{ margin-top:var(--space-6); }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-transport{ margin-top:var(--space-6); }
   /* Nordic: the cover left; the context line, title, scrubber, transport and the queue (which takes
      the rest of the height and scrolls) stacked right */
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-spotify{ display:grid; grid-template-columns:auto minmax(0, 1fr); grid-template-rows:auto auto auto auto minmax(0, 1fr);
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify{ display:grid; grid-template-columns:auto minmax(0, 1fr); grid-template-rows:auto auto auto auto minmax(0, 1fr);
     column-gap:var(--space-12);
     padding:calc(env(safe-area-inset-top,0px) + var(--space-6)) calc(env(safe-area-inset-right,0px) + var(--space-10))
       calc(env(safe-area-inset-bottom,0px) + var(--space-4)) calc(env(safe-area-inset-left,0px) + var(--space-10)); }
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-spotify .mms-art{ grid-column:1; grid-row:1 / -1; align-self:center; height:100%; width:auto; max-width:none; margin:0; }
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-spotify .mms-top, :where(html.is-phone:not(.pk-upright)) .mms-full.mms-spotify .mms-meta, :where(html.is-phone:not(.pk-upright)) .mms-full.mms-spotify .mms-scrub,
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-spotify .mms-transport, :where(html.is-phone:not(.pk-upright)) .mms-full.mms-spotify .mms-queue{ grid-column:2; }
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-spotify .mms-scrub{ margin-top:var(--space-4); }
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-spotify .mms-transport{ margin-top:var(--space-4); }
-  :where(html.is-phone:not(.pk-upright)) .mms-full.mms-spotify .mms-queue{ margin-top:var(--space-4); }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-art{ grid-column:1; grid-row:1 / -1; align-self:center; height:100%; width:auto; max-width:none; margin:0; }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-top, :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-meta, :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-scrub,
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-transport, :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-queue{ grid-column:2; }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-scrub{ margin-top:var(--space-4); }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-transport{ margin-top:var(--space-4); }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-queue{ margin-top:var(--space-4); }
   /* the sticker moves to the RIGHT corner: bottom-left is the screen / the cover now; its menu opens
      up from it, right-aligned so it stays on the screen */
-  :where(html.is-phone:not(.pk-upright)) .mms-full .mms-sticker-wrap{ left:auto; right:calc(env(safe-area-inset-right,0px) + var(--space-6));
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full .mms-sticker-wrap{ left:auto; right:calc(env(safe-area-inset-right,0px) + var(--space-6));
     --mms-sm-anchor-l:auto; --mms-sm-anchor-r:0; }
 }
 
@@ -10945,8 +10945,10 @@ a.tv-continue-card { text-decoration: none; }
    `orientation` are both unsupported on iOS Safari), so the page DOES turn; with the Upright setting (html.pk-upright, the
    default - music-skins.js) the full player is drawn as the phone's PORTRAIT box (the landscape viewport's height wide, its
    width tall) and turned back by the screen's angle (html[data-ft-rot], pocket-lighting.js) about the screen's centre, so it
-   sits upright in the hand at its portrait size and layout. The D7 sideways layout above is the Sideways setting, untouched
-   (its selectors only gained `:not(.pk-upright)`, zero specificity). A turn of -90deg puts the box's top at the screen's left:
+   sits upright in the hand at its portrait size and layout. The D7 sideways layout above is the Sideways setting, untouched:
+   its selectors only gained `:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])` (zero specificity), so
+   it also draws the frames of a turn BEFORE the angle stamp lands (the media query already says landscape, the stamp still
+   says 0: gate r1, measured; the upright box needs the angle to know which way to turn), exactly as today. A turn of -90deg puts the box's top at the screen's left:
    angle 90 (the phone's top to the left) turns -90deg, angle 270 turns 90deg. The portrait safe areas follow the glass: each
    box edge reads the screen edge it now lies on (--mms-up-*); the viewport units the chassis sizes from are re-pointed too
    (in the box the phone's portrait width is the landscape vh). */

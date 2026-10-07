@@ -567,8 +567,9 @@
   // The iPod portrait lock (Dean, 2026-10-07: "if you even turn the phone sideways, it won't change it"; R7: "You can
   // make it a setting to enable sideways"). html.pk-upright (a phone, and the Sideways setting off - the default) makes
   // style.css draw the full player upright when the phone turns (the POCKET STAYS UPRIGHT block); without it the UI pass
-  // D7 sideways layout runs, unchanged. The setting is the synced pref ft-pocket-sideways ('1' = sideways). It is re-read
-  // at every turn (a value prefs-sync lands silently from another device applies at the next turn) and on a storage event.
+  // D7 sideways layout runs, unchanged. The setting is PER DEVICE (localStorage ft-pocket-sideways, '1' = sideways; it is
+  // NOT in prefs-sync's synced list: how a phone is held is that phone's). It is re-read at every turn and on a storage
+  // event (another tab's change), and set at once by setPocketSideways.
   // The turn the full player is DRAWN with (style.css POCKET STAYS UPRIGHT), read off its computed transform - what is on
   // the glass, never a second reading of the angle stamp - in degrees (0 = none). Anything that maps a finger's screen x/y
   // onto the player (the haptic switch, the volume and seek bars) or a screen-axis tilt onto it (pocket-lighting.js) asks

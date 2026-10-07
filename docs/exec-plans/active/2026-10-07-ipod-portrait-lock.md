@@ -61,8 +61,8 @@ screen, the browse pages) still turns with the phone.
 | R2 | Scope (Dean) | Only while the iPod / a Pocket skin's full player is up. The browse pages, a video and full screen still turn. |
 | R3 | Where (Dean) | The home-screen app (Safari's tab gets the same code; the platform cannot lock either). |
 | R4 | How (builder, from the platform facts; when Upright is chosen, R7) | iOS cannot be asked to stay portrait, so the page DOES turn; the full player is then drawn as a PORTRAIT box (the phone's portrait width x height) turned back by the screen's angle (`html[data-ft-rot]` 90 -> -90deg, 270 -> 90deg) about the viewport centre, so it sits upright in the hand. The D7 side-by-side landscape rules stop applying to the full player. The Transparent board photo needs no turn inside the turned box (it is already upright with the glass): its `--mms-ipod-board-turn` rules follow. |
-| R5 | The turn itself | No animation added: the page turn is iOS's; the counter-turn applies in the same frame the angle stamp changes (v1.354's rule: a frame whose angle still reads portrait draws the player unturned rather than wrongly turned). |
-| R7 | Keep sideways (Dean, 2026-10-07: "You can make it a setting to enable sideways." / "Don't lose the flexibility and existing solidly working code.") | A setting chooses: **Upright** (the new default - the player stays upright when the phone turns) or **Sideways** (today's D7 layout, unchanged). The D7 landscape rules are NOT deleted or rewritten: the upright turn applies only when the setting is Upright, by a marker class (e.g. `html.pk-upright`) the new rules key on, so Sideways is byte-for-byte today's path. The setting lives in Settings > Mobile player ("Keep the iPod upright", on by default) and on the Pocket's own Settings menu ("Stay Upright", a check row, phone only). Builder ruling at W1: it is PER DEVICE (`ft-pocket-sideways` in localStorage, '1' = sideways, absent = upright), like the skin (`ft-music-skin`) and keyboard search beside it in Mobile player: how a phone is held is the phone's, and it keeps the synced-pref sibling lists out of the change. |
+| R5 | The turn itself | No animation added: the page turn is iOS's; the counter-turn applies in the same frame the angle stamp changes. A frame whose angle still reads portrait (the media query already landscape: Dean's rotate log measured the stamp 257 ms behind the query on the turn back) draws TODAY's sideways (D7) layout, never a wrongly turned or cropped iPod (gate r1 W1: the first build drew the portrait layout unturned there, the wheel below the screen). A flip from 90 straight to 270 keeps the old turn (upside down) until the stamp lands: no web signal says which landscape before it; a device check. |
+| R7 | Keep sideways (Dean, 2026-10-07: "You can make it a setting to enable sideways." / "Don't lose the flexibility and existing solidly working code.") | A setting chooses: **Upright** (the new default - the player stays upright when the phone turns) or **Sideways** (today's D7 layout, unchanged). The D7 landscape rules are NOT deleted or rewritten: the upright turn applies only when the setting is Upright, by a marker class (e.g. `html.pk-upright`) the new rules key on, so Sideways is byte-for-byte today's path. The setting lives in Settings > Mobile player ("Keep the iPod upright", on by default) and on the Pocket's own Settings menu ("Stay Upright", a check row, phone only). Builder ruling at W1: it is PER DEVICE (`ft-pocket-sideways` in localStorage, '1' = sideways, absent = upright), like keyboard search beside it in Mobile player (the skin, `ft-music-skin`, IS synced: gate r1 corrected this reason): how a phone is held is that phone's. |
 | R6 | Safe areas | The turned box uses the PORTRAIT safe-area meaning: the notch / Dynamic Island edge and the home indicator edge follow the glass (in landscape the env() insets arrive on the left/right; the box maps them back to its own top/bottom). Measured on the device (W0.3). |
 
 ## 5. Waves
@@ -109,6 +109,10 @@ security-brief applied as a section (client-only, no server, auth or data change
 (the angle stamp's timing, the pre-stamp frame), the blast radius of the landscape media query (every Pocket skin, the pop-out
 excluded, browse pages untouched), input mapping by physical position, the safe areas, the board photo, the ratchet and the
 containment census. Pacing: ship on CRITICAL/WARNING closure; after 2 rounds, ask Dean at round 3.
+
+Gate: CHANGES r1 @6e9a28c0d75a8ed3e7026919ac8e27f2e2a18ea3 — adversary
+
+Gate: CHANGES r1 @6e9a28c0 — qa
 
 ## 7. Release and evidence
 
@@ -170,6 +174,25 @@ captured at module scope (the paging suite's heap). M7 was killed only by a sour
 on its own (a REAL deviceorientation through the real engine on a turned panel at angle 90).
 
 **Suites:** Node 22.23.1 `npm test`: tests 11334, pass 11321, fail 0 (before the Brick test). Node 24: at release.
+
+### Gate round 1 (adversary + qa @6e9a28c0: CHANGES) and the fixes
+
+| Finding | Fix | Proof |
+|---|---|---|
+| W1 (both seats): the frame before the angle stamp (landscape, `data-ft-rot` still 0) drew the portrait layout unturned, wheel at [278,631] below a 390 px screen | the D7 scope is now `:where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"]))` (zero specificity; the board rules the same), so D7 draws every landscape frame the upright box does not | upright-probe `landscape-prestamp` row: base grid LCD [22,12,488,366] wheel [536,51,288,288]; Sideways the same; Upright the same; 90 / 270 unchanged (turned) |
+| W2 (adversary): the swipe-back CLAIM path (touchmove claim and onClaimedMove) mapped but unbound (N7, N9 survived) | a driven test: a turned rightward-across-the-iPod drag has its later moves preventDefault-ed, rightward across the glass never | N7 and N9 applied to the working copy: the new test red (fail 1) each; restored |
+| W2 (qa) / W3 (adversary): the comment called ft-pocket-sideways synced | comment says per device; R7's reason corrected (ft-music-skin is synced) | read |
+| W3 (qa): Sideways lost its real-browser rotation check (G4 measured Upright only) | G4 `pocket-rotation-sideways` (seeds ft-pocket-sideways) + mutant `g4-pocket-sideways-wheel-transition` | G4: 4 checks 4 ok; the mutant: `FAIL G4/pocket-rotation-sideways/light (9 boxes moved, worst 14.39px)` |
+| S2 (adversary): the storage key-null branch unbound (N6) | test: a clear (key null) re-reads | in pocket-upright.test.js |
+| S4 (both): a computed-style read per motion sample | pocket-lighting caches the drawn turn per (stamp, html classes, viewport shape) | the driven tilt test still green |
+| S6 / S4 (qa): a test helper matched a class that does not exist; the probe's ghost selector | `is-checked`; `.mms-haptic-ghost` | read |
+
+Disclosed, not changed (to the device checks and ROADMAP): overlays the app draws over the player (a confirm, a toast, the
+keyboard for keyboard search) stay in the landscape frame, 90 degrees to the upright iPod (adversary S1); the safe-area
+sizes on a real phone (the box's bottom may take a side inset larger than portrait's home indicator, adversary S3); the
+direction of `data-ft-rot` 90 on a real phone (adversary S5: if wrong, the iPod is upside down - name both directions);
+the "Keep the iPod upright" switch also governs Cider and Nordic (qa S2: wording left for Dean); the Stay Upright row
+announces nothing when off (qa S3, like every Pocket check row).
 
 
 ## 8. Out of scope
