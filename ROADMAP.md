@@ -713,6 +713,30 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.372.0 - Song names before an album downloads; Show music in the home feed (2026-10-07)
+
+- Dean (2026-10-07, after v1.371.0 on his device): "it wasn't clear what the new saved name would have been", "can we make
+  them modifiable in that window", the library list still showed "Kyle Gordon - Name [...]" while Music showed the clean
+  name, and "if I download 20 songs ... I have the option to not see them in the main feed. Even the Audio feed."
+- The picker: with Save as an album on, each row shows the name the song WILL get (Clean up titles: the noise groups off on
+  the server, `titleClean`; the album artist's prefix off in the picker) and "Track N"; tapping the name opens ui.prompt to
+  rename it (a rename is the video's); the shown names are posted as `album.titles` and written literally (`meta_title`).
+  The download capture prints `meta_title`, so the library title equals the tag.
+- Settings > "Show music in the home feed" (a synced pref `ft-home-music`, read on the server): off = no songs on the home
+  page (its grid via `home=1`, its rows incl. Music-library songs, the modern grid and its Audio chip) except Continue
+  listening; the change flushes at once and drops the cached home page. The watch page's Related rail, Roku, prev/next,
+  folders, search and Music are untouched.
+- Dean's bug, folded in: Enter on "Move to Trash?" re-opened the card menu (a closing menu handed focus back to its opener
+  behind the confirm, measured with real keys). ui.sheet's finish() now gives focus back only when it still holds it, and a
+  sheet opened from a closing one inherits its opener. Enter still never confirms (F33, kept by Dean's ruling).
+- Names: joiners and direction marks are allowed (emoji, Hebrew, Persian titles); the invisible spoofing set is dropped
+  from names, and album / artist lose marks at their ends (no look-alike second artist).
+- Gate (adversary + qa + security-brief): r1 @3965ade6 security APPROVED, adversary + qa CHANGES (the switch did not apply
+  until a reload; it hid songs from the Related rail and Roku; emoji / RTL titles failed an album; the rename dialog
+  outlived the picker); r2 @8e8056f5 security + qa APPROVED, adversary CHANGES (an untested call; marks in the album key);
+  r3 @ad6d5d4d adversary APPROVED (Dean ruled a quick delta re-check). Suites @ad6d5d4d: 11498 / 0 fail on Node 22 and 24.
+  Residuals: tracker #293.
+
 ### v1.371.0 - Save a playlist as an album (2026-10-07)
 
 - Dean (2026-10-07, Music on production): Kyle Gordon audio from his official channel showed artist "kylegordonisgreat",

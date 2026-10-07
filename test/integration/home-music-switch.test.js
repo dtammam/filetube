@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.372.0 "Show music in the home feed" (plan docs/exec-plans/active/2026-10-07-v1372-song-names-feed.md,
+// [INTEGRATION] v1.372.0 "Show music in the home feed" (plan docs/exec-plans/completed/2026-10-07-v1372-song-names-feed.md,
 // R3, R5, R6). Dean: "if I download 20 songs and they are Audio from YouTube I have the option to not see them in the main
 // feed. Even the Audio feed." The switch is the user's SYNCED pref `ft-home-music`, written through the real
 // POST /api/prefs, read by the server on every home surface:

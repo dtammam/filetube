@@ -179,7 +179,7 @@ test('args: video, a subscription, and the universal lane never carry the album 
   assert.strictEqual(has(args.buildYtdlpDownloadArgs(sub('audio'), cfg, [], { oneOff: true, sourceUrl: 'https://vimeo.com/123456', albumTags: TAGS })), false, 'universal lane');
 });
 
-// ---- v1.372.0: the song names (plan docs/exec-plans/active/2026-10-07-v1372-song-names-feed.md) ----
+// ---- v1.372.0: the song names (plan docs/exec-plans/completed/2026-10-07-v1372-song-names-feed.md) ----
 test('v1.372.0 albumFrom: titles are kept per job id (trimmed, null-prototype); an empty or control-byte name is refused', () => {
   const r = album.albumFrom(good({ titles: { vid00000001: '  Planet of the Bass ', notInJob000: 'x' } }), IDS);
   assert.strictEqual(r.ok, true);

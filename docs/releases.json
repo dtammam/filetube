@@ -3580,5 +3580,11 @@
     "date": "2026-10-07",
     "title": "Save a playlist as an album",
     "intent": "When you download songs from a YouTube playlist as audio, turn on Save as an album: you name the album and its artist (both filled in for you, with a note when Music already has them), and every song lands in Music as one album, numbered in playlist order, instead of Unknown Album under the channel's name. Clean up titles also drops the artist name and tags like [Official Audio] from each song's title. It applies to new downloads, not songs already in your library, and is not offered for Opus files."
+  },
+  {
+    "version": "1.372.0",
+    "date": "2026-10-07",
+    "title": "See and edit song names before an album downloads; keep music out of the home feed",
+    "intent": "With Save as an album on, each song in the playlist picker now shows the name it will be saved with and its track number, and you can tap a name to change it; the library list shows the same name as Music. Settings has a new switch, Show music in the home feed: turn it off and songs stay in Music instead of filling the home page (Continue listening keeps its own switch). And pressing Enter on a Move to Trash confirm no longer brings the menu back."
   }
 ]

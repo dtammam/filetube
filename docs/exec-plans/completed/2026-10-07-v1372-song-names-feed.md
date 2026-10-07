@@ -3,10 +3,10 @@ plan: v1372-song-names-feed
 harness: v2 · lean
 branch: feat/v1.372.0-song-names-feed
 anchor: outcome
-status: Building
-next: W1-W3, then the gate (section 6) and the release as v1.372.0
+status: Shipped v1.372.0
+next: the release as v1.372.0
 design: Dean's rulings 2026-10-07 (R1-R6 below), right after v1.371.0 shipped. Base main c2d0d694. The subtitles + 360 + cleanup wave renumbers to v1.373.0 before it builds.
-gate: pending
+gate: APPROVED - security-brief + qa r2 @8e8056f5, adversary r3 @ad6d5d4d (Dean ruled a quick delta re-check by the adversary at round 3)
 ---
 
 # v1.372.0: Edit the song names before an album downloads; keep music out of the home feed
@@ -176,6 +176,14 @@ Delta 3965ade6..8e8056f5 (verified, Node 22.23.1, /tmp git archive sandbox, pris
 - S2 mutant R18: a TYPED name on a row with no listing title is not sent if the custom arm is dropped, and no test says so.
 - S3 (as QA c) an all-stripped or control-character song name is refused as "must be 1 to 200 characters" (the wrong reason), and it names the video id, not the song.
 
+Gate: APPROVED r3 @ad6d5d4d - adversary
+Delta 8e8056f5..ad6d5d4d (verified, Node 22.23.1, /tmp git archive sandbox, pristine diff clean after): 16 targeted files (album, picker, focus-handoff, home-music-switch, playlist-job, forms-sweep, census, prefs-sync, ytdlp-run/args, every ui-*) `# tests 513 # pass 512 # fail 0 # skipped 1` (the .git merge-base skip). Mutants: 18 run, 16 killed, 2 survived (both below, neither a live bug).
+- r2 W1 FIXED and bound: removing the `wireHomeMusicApply(signal);` call, wrapping it in `if (false)`, or moving it before the toggle's wiring each go red.
+- r2 W2 FIXED and bound. Killed: tidyKeyName without the hidden-set drop; without the edge trim; trimming the start only; trimming the end only; stripping inner marks too; not applied to the album title; not applied to the artist; song names tidied like keys; the isolates left out of INVISIBLE_FORMAT_ALL; the default artist using trim() instead of the edge strip. An artist that is ONLY marks ('‎‏') is refused as "needs an album artist", and the picker's default skips it. An INNER mark ("Kyle‎Gordon") is kept by both client and server, so they agree.
+- r2 S1 FIXED (pre-aborted ui.prompt: guard removed -> red, settling '' -> red). S2 FIXED (custom arm dropped -> red). S3 FIXED (the message states the rules).
+- SUGGESTION, measured in jsdom through the real picker: the "Already in Music" note is checked against the RAW field, while the server writes the tidied key. Typed "Kyle Gordon"+U+200E: no note, server writes "Kyle Gordon". A default from the title "Kyle"+U+200B+"Gordon - A": no note, server writes "KyleGordon". Both are Music artists in the probe's library. So the tracks join the existing artist (the W2 harm is closed) without the note saying so; with a typed edge mark, the "Artist - " prefix also stops being stripped from song names. Fix if wanted: tidy the field value (or the checkExisting query) the way the server does.
+- Survivors (equivalent or untested): T9, CONTROL_CHARS without U+2066-2069, survives because every cleanText input has already had INVISIBLE_FORMAT_ALL (which includes them) removed, so that part of CONTROL_CHARS is dead. D2, the "- Topic" channel branch of defaultAlbumArtist using trim(), has no client test (the server's tidy still trims it, which T7 binds).
+
 ## 7. Evidence
 - Suites @3965ade6 (`npm test`, sequential): Node 22.23.1 `# tests 11485 / # pass 11472 / # fail 0 / # skipped 13`;
   Node 24.20.0 `tests 11485 / pass 11472 / fail 0 / skipped 13`.
@@ -188,6 +196,8 @@ Delta 3965ade6..8e8056f5 (verified, Node 22.23.1, /tmp git archive sandbox, pris
   name keeps its marks); the default artist trims them too; the bidi isolates U+2066-2069 join the hidden set (security
   r2 INFO); ui.prompt answers an already-aborted signal at once; the refusal message states the real rules; the setup
   note and indentation (qa r2 b, d). 8 of 8 fix mutants red by name (mut-r3).
+- Suites @ad6d5d4d (final): Node 22.23.1 `# tests 11498 / # pass 11485 / # fail 0 / # skipped 13`; Node 24.20.0 `tests 11498
+  / pass 11485 / fail 0 / skipped 13`.
 
 ## 8. Out of scope
 - Editing other per-track fields (artist per track, track numbers): only names were asked.
