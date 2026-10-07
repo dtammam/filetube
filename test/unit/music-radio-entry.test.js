@@ -2,7 +2,7 @@
 
 // [UNIT] v1.368.0 (plan docs/exec-plans/active/2026-10-06-v1368-music-radio.md, W2, R3 + R14): the
 // desktop Start radio entry points on the REAL music.js - the song row menu and the album / artist
-// drill's Radio button - and the pocket letter jump skipping a level's leading action row. The
+// drill's Radio button - and the pocket letter jump skipping a level's trailing action row. The
 // pocket levels, the station seed and the resume are bound end to end in
 // test/integration/music-radio-api.test.js; the sticker row in skin-surface.test.js.
 
@@ -86,6 +86,7 @@ async function boot(url, run, opts) {
   global.fetch = (u) => {
     const s = String(u);
     urls.push(s);
+    if (opts.gate && opts.gate(s)) return opts.gate(s); // a held response (a race window)
     if (s.indexOf('/api/music/radio?') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: RADIO.map((t) => Object.assign({}, t)) }) });
     if (s.indexOf('album=') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: TRACKS.map((t) => Object.assign({}, t)) }) });
     // the Songs tab's list (a NEW queue array, list order = the album order here)
@@ -95,7 +96,9 @@ async function boot(url, run, opts) {
     return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
   };
   const root = () => dom.window.document.getElementById('view-root');
-  const ctx = { playerState, urls, getNav: () => lastNav, menus };
+  // reinit(url): the view torn down and booted again at `url` with the player still playing (a dock tap
+  // returns to /music?nowplaying=1; a re-entered tab to /music)
+  const ctx = { playerState, urls, getNav: () => lastNav, menus, reinit: async (u) => { registered.destroy(); dom.reconfigure({ url: u }); delete require.cache[musicPath]; registered = null; require(musicPath); registered.init(root()); for (let i = 0; i < 20; i++) await settle(); } };
   try {
     delete require.cache[musicPath];
     require(musicPath);
@@ -162,4 +165,83 @@ test('the drill\'s Radio button shows only with a seed: an album or a named arti
   assert.ok(has({ type: 'artist', key: 'X', label: 'X' }), 'a named artist');
   assert.ok(!has({ type: 'artist', key: '', label: 'Unknown Artist' }), 'no seed, no button');
   delete require.cache[musicPath];
+});
+
+// v1.368.0 gate r1 (adversary W2): R14 "a resume keeps the station" on the REAL dock tap. The mini-player
+// returns to /music?nowplaying=1, whose branch re-opened the playing song's ALBUM and dropped the seed
+// (Next walked the album). Both returns must keep the station. (The adversary's repro.)
+for (const [label, url, state] of [['dock tap (?nowplaying=1, docked)', 'http://localhost/music?nowplaying=1', 'docked'], ['re-enter /music while full', 'http://localhost/music', 'full']]) {
+  test('v1.368.0 gate r1 W2: a resume of a Start radio queue keeps the STATION - ' + label, async () => {
+    await boot('http://localhost/music?play=t0', async (dom, ctx) => {
+      dom.window.localStorage.setItem('ft-music-autoplay', '1');
+      const row = dom.window.document.querySelector('#music-content .music-song-row[data-id="t3"]');
+      row.querySelector('.music-song-more').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+      for (let i = 0; i < 4; i++) await settle();
+      ctx.menus[ctx.menus.length - 1].items.find((x) => x.label === 'Start radio').onSelect();
+      for (let i = 0; i < 10; i++) await settle();
+      assert.strictEqual(ctx.playerState.currentId, 't3');
+      assert.strictEqual((ctxOf(ctx) || {}).radio, 'track:t3', 'precondition: the seed is in the context');
+      ctx.playerState.state = state;
+      await ctx.reinit(url);
+      const nav = ctx.getNav();
+      assert.ok(nav && typeof nav.onNext === 'function', 'the resumed station has a Next');
+      nav.onNext();
+      for (let i = 0; i < 6; i++) await settle();
+      assert.ok(/^r\d$/.test(ctx.playerState.currentId), 'the station continues: Next is a radio pick, not the album\'s next song (' + ctx.playerState.currentId + ')');
+      assert.strictEqual((ctxOf(ctx) || {}).radio, 'track:t3', 'and the seed rides on');
+    });
+  });
+}
+
+// v1.368.0 gate r1 (qa W1): a LATE Start radio answer never replaces a newer pick - the user tapped another
+// song while the radio request was out (playAt bumps playGen, not playSelectGen). QA's probe.
+test('v1.368.0 gate r1 qa W1: a song tapped while Start radio waits for the server keeps playing - the late answer is dropped', async () => {
+  let release = null;
+  const held = new Promise((r) => { release = r; });
+  const gate = (u) => (u.indexOf('/api/music/radio?') === 0 ? held.then(() => ({ ok: true, json: async () => ({ items: RADIO.map((t) => Object.assign({}, t)) }) })) : null);
+  await boot('http://localhost/music?play=t0', async (dom, ctx) => {
+    dom.window.document.querySelector('#music-content .music-drill-radio').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 4; i++) await settle();
+    assert.strictEqual(radioCalls(ctx).length, 1, 'precondition: the radio request is out (held)');
+    dom.window.document.querySelector('#music-content .music-song-row[data-id="t5"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 6; i++) await settle();
+    assert.strictEqual(ctx.playerState.currentId, 't5', 'precondition: the tapped song plays');
+    release();
+    for (let i = 0; i < 10; i++) await settle();
+    assert.strictEqual(ctx.playerState.currentId, 't5', 'the late radio answer did not replace the newer pick');
+  }, { gate });
+});
+
+// v1.368.0 gate r1 (adversary W7 C11): Start radio's picks ARE the station - Autoplay off retracts the
+// unplayed ones like any station (R14), so YOUR song is where it ends.
+test('v1.368.0 gate r1 C11: Autoplay off after Start radio retracts the station\'s unplayed picks', async () => {
+  await boot('http://localhost/music?play=t0', async (dom, ctx) => {
+    dom.window.localStorage.setItem('ft-music-autoplay', '1');
+    const row = dom.window.document.querySelector('#music-content .music-song-row[data-id="t3"]');
+    row.querySelector('.music-song-more').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 4; i++) await settle();
+    ctx.menus[ctx.menus.length - 1].items.find((x) => x.label === 'Start radio').onSelect();
+    for (let i = 0; i < 10; i++) await settle();
+    assert.strictEqual(ctx.playerState.currentId, 't3');
+    assert.ok(ctx.getNav() && typeof ctx.getNav().onNext === 'function', 'precondition: the station follows the song');
+    dom.window.document.getElementById('music-autoplay-btn').click(); // Autoplay OFF
+    for (let i = 0; i < 4; i++) await settle();
+    assert.strictEqual(ctx.getNav().onNext, undefined, 'the station picks were retracted: the song is the end');
+  });
+});
+
+// v1.368.0 gate r1 (adversary W7 C6): a REPLAYED song moves to the end of the session's plays (the server
+// spaces artists by the tail of the exclude list).
+test('v1.368.0 gate r1 C6: a replayed song is the most recent play (last in the exclude list)', async () => {
+  await boot('http://localhost/music?play=t0', async (dom, ctx) => {
+    const tap = async (id) => { dom.window.document.querySelector('#music-content .music-song-row[data-id="' + id + '"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); for (let i = 0; i < 6; i++) await settle(); };
+    await tap('t8'); // the last row: with Autoplay off, no station
+    await tap('t7');
+    dom.window.localStorage.setItem('ft-music-autoplay', '1');
+    await tap('t8'); // replayed - the last row again, the station arms
+    const calls = radioCalls(ctx);
+    assert.ok(calls.length >= 1, 'precondition: the station was asked');
+    const ex = calls[calls.length - 1].searchParams.get('exclude').split(',');
+    assert.deepStrictEqual(ex.slice(-2), ['t7', 't8'], 'the replay moved t8 to the end: ' + ex.join(','));
+  });
 });

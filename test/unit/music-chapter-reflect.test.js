@@ -84,7 +84,7 @@ async function boot(url, run, opts) {
       getCurrentMeta: () => playerState.meta,
       // opts.mobile: the REAL player expands itself on a fresh play (straight-to-player);
       // this stub mirrors that so the skin (which needs state 'full') actually paints.
-      load: (id) => { playerState.currentId = id; dom.window.FileTube.player.currentId = id; playerState.meta = metaById(id); if (opts.mobile) playerState.state = 'full'; },
+      load: (id, data) => { playerState.currentId = id; dom.window.FileTube.player.currentId = id; playerState.meta = metaById(id); playerState.lastData = data || null; if (opts.mobile) playerState.state = 'full'; },
       setTrackNav: (h) => { lastNav = h || null; },
     },
   };
@@ -975,5 +975,152 @@ test('v1.368.0 R13: a radio-picked DJ-set chapter stops at ITS end and moves to 
     set(200); await settle(); // its own end
     await ctx.drain();
     assert.strictEqual(ctx.playerState.currentId, 'after1', 'stopped at the chapter end and moved to the next pick');
+  }, { radio: RADIO });
+});
+
+// v1.368.0 gate r1 (adversary W1 = qa C1): two radio picks from ONE DJ set side by side in a non-flat queue. The
+// bounds ended a chapter at the next QUEUED chapter of its file, and the exit jumped past the LAST queued chapter
+// of the set - the un-picked chapters between played and visible picks were skipped. (The adversary's repros.)
+test('v1.368.0 gate r1 W1: two radio picks from ONE set, adjacent (earlier-in-file first): the first stops at ITS end and the second plays', async () => {
+  const RADIO = [
+    { id: 'mix::c1', title: 'Set Cut Two', artist: 'Other DJ', album: 'Big Set', albumKey: 'Y', durationSec: 100, chapterStartSec: 100, source: 'library-chapter', streamSrc: '/video/mix' },
+    { id: 'mix::c4', title: 'Set Cut Five', artist: 'Other DJ', album: 'Big Set', albumKey: 'Y', durationSec: 100, chapterStartSec: 400, source: 'library-chapter', streamSrc: '/video/mix' },
+    { id: 'after1', title: 'After Song', artist: 'Someone', album: 'Other', albumKey: 'X', durationSec: 200, source: 'library' },
+  ];
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c2'), async (dom, ctx) => {
+    await ctx.drain();
+    ctx.getNav().onNext();
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'mix::c1', 'precondition');
+    const { set } = loopable(dom, 900);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    const seen = [];
+    // record each CHANGE of the playing id with the second it happened (compare ids, not the 'id@t' entries)
+    for (let t = 101; t <= 402; t += 1) { set(t); await settle(); const last = seen.length ? seen[seen.length - 1].split('@')[0] : null; if (last !== ctx.playerState.currentId) seen.push(ctx.playerState.currentId + '@' + t); }
+    await ctx.drain();
+    assert.strictEqual(seen[1] && seen[1].split('@')[0], 'mix::c4', 'the second pick plays next');
+    assert.ok(Number(seen[1].split('@')[1]) <= 201, 'and the first stopped at its own end (200), not the second pick\'s start (400)');
+  }, { radio: RADIO });
+});
+
+test('v1.368.0 gate r1 W1: two radio picks from ONE set, adjacent (LATER-in-file first): the second pick is not skipped', async () => {
+  const RADIO = [
+    { id: 'mix::c4', title: 'Set Cut Five', artist: 'Other DJ', album: 'Big Set', albumKey: 'Y', durationSec: 100, chapterStartSec: 400, source: 'library-chapter', streamSrc: '/video/mix' },
+    { id: 'mix::c1', title: 'Set Cut Two', artist: 'Other DJ', album: 'Big Set', albumKey: 'Y', durationSec: 100, chapterStartSec: 100, source: 'library-chapter', streamSrc: '/video/mix' },
+    { id: 'after1', title: 'After Song', artist: 'Someone', album: 'Other', albumKey: 'X', durationSec: 200, source: 'library' },
+  ];
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c2'), async (dom, ctx) => {
+    await ctx.drain();
+    ctx.getNav().onNext();
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'mix::c4', 'precondition');
+    const { set } = loopable(dom, 900);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(450); await settle(); set(500); await settle();
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'mix::c1', 'the next visible pick plays, never skipped');
+  }, { radio: RADIO });
+});
+
+// v1.368.0 gate r1 (adversary W3): a chapter the file ROLLS into is played too - it joins the session's
+// plays the station is told about, or the radio hands the same set straight back.
+test('v1.368.0 gate r1 W3: a chapter the file rolled into is in the station request\'s exclude list (the session remembers it was played)', async () => {
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    const urls = [];
+    const orig = global.fetch;
+    global.fetch = (u, i) => { urls.push(String(u)); return orig(u, i); };
+    const { set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(130); await settle(); // rolled into chapter two (never loaded)
+    set(250); await settle(); // rolled into chapter three, the last: the station arms
+    await ctx.drain();
+    const radio = urls.filter((u) => u.indexOf('/api/music/radio?') === 0);
+    assert.ok(radio.length >= 1, 'precondition: the last chapter armed the station');
+    const ex = new URL(radio[radio.length - 1], 'http://x').searchParams.get('exclude').split(',').map(decodeURIComponent);
+    assert.ok(ex.includes('film::c1'), 'the rolled-into chapter two is remembered as played: ' + ex.join(','));
+    assert.strictEqual(ex[ex.length - 1], 'film::c2', 'and the chapter playing now is the most recent play');
+  }, { radio: STATION() });
+});
+
+// v1.368.0 gate r1 (adversary M5c, W4): Shuffle on a CHAPTERED album. ON: the queue plays as a flat list,
+// so chapter one ends and the SHUFFLED next row plays (not the file rolling on). OFF mid album: the
+// restored rows play next - the queue stays flat, the file does not roll past them. (The adversary's repros.)
+async function withSeededShuffle(run) {
+  const saved = { random: Math.random, fy: global.fisherYatesShuffle };
+  global.fisherYatesShuffle = require('../../public/js/common.js').fisherYatesShuffle;
+  let s = 3; Math.random = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+  try { return await run(); } finally { Math.random = saved.random; global.fisherYatesShuffle = saved.fy; }
+}
+const SIX = [0,1,2,3,4,5].map((n) => ({ id: 'film::c' + n, title: 'Ch ' + n, artist: 'DJ', album: 'Live Set', albumKey: AK, durationSec: 120, source: 'library-chapter', chapterStartSec: n * 120, streamSrc: '/video/film' }));
+test('v1.368.0 gate r1 Shuffle x chapters: Shuffle ON on a chaptered album: chapter one ends -> the SHUFFLED next row plays (not the file rolling on)', async () => {
+  await withSeededShuffle(() => boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    dom.window.localStorage.setItem('ft-music-autoplay', '0');
+    dom.window.localStorage.setItem('ft-music-shuffle', '1');
+    dom.window.dispatchEvent(new dom.window.StorageEvent('storage', { key: 'ft-music-shuffle', newValue: '1' }));
+    await settle();
+    const order = [...dom.window.document.querySelectorAll('#music-content .music-song-row')].map((r) => r.getAttribute('data-id'));
+    assert.notStrictEqual(order[1], 'film::c1', 'precondition: the shuffle moved c1 off the next slot');
+    const { set } = loopable(dom, 720);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    for (let t = 100; t <= 121; t += 1) { set(t); await settle(); }
+    assert.strictEqual(ctx.playerState.currentId, order[1], 'the shuffled next row plays');
+  }, { chapters: SIX }));
+});
+
+test('v1.368.0 gate r1 Shuffle x chapters: Shuffle OFF mid chaptered album: the restored rows play next (none stranded)', async () => {
+  await withSeededShuffle(() => boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    dom.window.localStorage.setItem('ft-music-autoplay', '0');
+    dom.window.localStorage.setItem('ft-music-shuffle', '1');
+    dom.window.dispatchEvent(new dom.window.StorageEvent('storage', { key: 'ft-music-shuffle', newValue: '1' }));
+    await settle();
+    const { set } = loopable(dom, 720);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    ctx.getNav().onNext(); for (let i = 0; i < 4; i++) await settle();
+    const cur = ctx.playerState.currentId; // film::c4
+    const start = Number(cur.split('::c')[1]) * 120;
+    set(start + 1); await settle();
+    dom.window.localStorage.setItem('ft-music-shuffle', '0');
+    dom.window.dispatchEvent(new dom.window.StorageEvent('storage', { key: 'ft-music-shuffle', newValue: '0' }));
+    await settle();
+    const order = [...dom.window.document.querySelectorAll('#music-content .music-song-row')].map((r) => r.getAttribute('data-id'));
+    for (let t = start + 2; t <= start + 125; t += 1) { set(t); await settle(); }
+    const hl = dom.window.document.querySelector('#music-content .music-song-row.playing');
+    const nextRow = order[order.indexOf(cur) + 1];
+    assert.ok(ctx.playerState.currentId === nextRow || (hl && hl.getAttribute('data-id') === nextRow), 'the next restored row (' + nextRow + ') plays');
+  }, { chapters: SIX }));
+});
+
+// v1.368.0 gate r1 (adversary W7 C9 / C5): the solo-chapter exit's station is a station too - its seed is
+// recorded (R8) so the NEXT batch is drawn against it; and a radio chapter in the LAST row asks the radio
+// ONCE (the last-track arm), never a second wasted prime.
+test('v1.368.0 gate r1 C9: a solo-chapter exit station records its seed - the next load carries it in the context', async () => {
+  const RADIO = [{ id: 'station-track', title: 'Fresh Song', artist: 'Someone', album: 'Other', albumKey: 'X', durationSec: 200, source: 'library' }];
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c0'), async (dom, ctx) => {
+    dom.window.encodeListContext = require('../../public/js/common.js').encodeListContext; // the page global
+    clickSel(dom, '#music-content .music-song-row[data-index="1"]'); // solo-select chapter two
+    await ctx.drain();
+    const { set } = loopable(dom, 360);
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(130); await settle(); set(240); await settle(); // chapter two's end: exit to the station
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'station-track', 'precondition: exited to the station');
+    const carried = JSON.parse(ctx.playerState.lastData.browseCtx || '{}');
+    assert.strictEqual(carried.radio, 'track:film::c1', 'the exit station\'s seed rides the context: ' + ctx.playerState.lastData.browseCtx);
+  }, { radio: RADIO });
+});
+
+test('v1.368.0 gate r1 C5: a radio chapter in the LAST row sends ONE radio request (the extension), not a second prime', async () => {
+  const RADIO = [{ id: 'mix::c1', title: 'Set Cut Two', artist: 'Other DJ', album: 'Big Set', albumKey: 'Y', durationSec: 100, chapterStartSec: 100, source: 'library-chapter', streamSrc: '/video/mix' }];
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c2'), async (dom, ctx) => {
+    const urls = [];
+    const orig = global.fetch;
+    global.fetch = (u, i) => { urls.push(String(u)); return orig(u, i); };
+    await ctx.drain();
+    const before = urls.filter((u) => u.indexOf('/api/music/radio?') === 0).length;
+    ctx.getNav().onNext(); // into the radio chapter - the LAST row
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'mix::c1', 'precondition');
+    const after = urls.filter((u) => u.indexOf('/api/music/radio?') === 0).length;
+    assert.strictEqual(after - before, 1, 'one request for the last row (the extension), no prime');
   }, { radio: RADIO });
 });

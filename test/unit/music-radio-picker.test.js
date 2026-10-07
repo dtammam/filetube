@@ -1,0 +1,70 @@
+'use strict';
+
+// [UNIT] v1.368.0 gate r1 (adversary W7: picker mutants P2, P10, P11, P16, P18 survived every test) - the
+// station picker's T0-tuning claims, each with an input where the claim and its absence DIVERGE.
+
+const { test } = require('node:test');
+const assert = require('node:assert');
+const radio = require('../../lib/music/radio');
+const { createSeededRng } = require('../../lib/videoQuery');
+
+const nat = (id, artist, genre, extra) => Object.assign({ id, artist, genre: genre || '', year: '1990', folderName: 'f-' + artist, source: 'native' }, extra || {});
+
+test('P2: the seed song itself is never picked, even when the client did not exclude it', () => {
+  const lib = [nat('s', 'A', 'Rock'), nat('a1', 'A', 'Rock'), nat('a2', 'A', 'Rock'), nat('r1', 'B', 'Rock'), nat('r2', 'C', 'Rock')];
+  const profile = radio.buildStationProfile({ kind: 'track', value: 's' }, lib);
+  for (let k = 1; k <= 30; k += 1) {
+    const ids = radio.pickRadioBatch(profile, lib, { exclude: [], count: 4 }, createSeededRng(k)).map((t) => t.id);
+    assert.ok(!ids.includes('s'), 'seed ' + k + ': the seed came back: ' + ids.join(' '));
+  }
+});
+
+test('P11: an untagged song borrows its ARTIST\'s most common genre, else its FOLDER\'s', () => {
+  const lib = [nat('u', 'A', ''), nat('a1', 'A', 'Rock'), nat('a2', 'A', 'Rock'), nat('a3', 'A', 'Jazz'),
+    nat('v', 'Lone', '', { folderName: 'shared' }), nat('w1', 'Other', 'Jazz', { folderName: 'shared' }), nat('w2', 'Other2', 'Jazz', { folderName: 'shared' })];
+  assert.strictEqual(radio.buildStationProfile({ kind: 'track', value: 'u' }, lib).genre, 'rock', 'the artist\'s genre');
+  assert.strictEqual(radio.buildStationProfile({ kind: 'track', value: 'v' }, lib).genre, 'jazz', 'no artist genre: the folder\'s');
+});
+
+test('P10: a station with neither a genre nor a category anchors on the genre of its recent plays (drift, not a jump per pick)', () => {
+  const lib = [nat('u0', 'Untagged', ''), nat('u1', 'Untagged', '')];
+  for (let i = 0; i < 10; i += 1) lib.push(nat('r' + i, 'Rocker ' + i, 'Rock'));
+  for (let i = 0; i < 30; i += 1) lib.push(nat('j' + i, 'Jazzer ' + i, 'Jazz'));
+  const profile = radio.buildStationProfile({ kind: 'track', value: 'u0' }, lib);
+  assert.strictEqual(profile.genre, null, 'precondition: nothing to stay close to');
+  assert.strictEqual(profile.category, null);
+  // the session already stepped out into Rock: the next batch keeps that direction
+  const exclude = ['u0', 'r0', 'r1', 'r2'];
+  let jazz = 0;
+  for (let k = 1; k <= 30; k += 1) {
+    const picks = radio.pickRadioBatch(profile, lib, { exclude, count: 5 }, createSeededRng(k));
+    jazz += picks.filter((t) => t.genre === 'Jazz').length;
+  }
+  assert.strictEqual(jazz, 0, 'no Jazz once the session is in Rock (Jazz is three times Rock\'s size, so a direction-less draw takes it most)');
+});
+
+test('P16: a neighbouring genre with more bridges is drawn more often (T4 weighs by strength)', () => {
+  // seed genre Shoegaze; Dreampop bridges it through 3 artists, Grunge through 1
+  const lib = [nat('s', 'Seed', 'Shoegaze')];
+  ['X', 'Y', 'Z'].forEach((a) => { lib.push(nat(a + 's', a, 'Shoegaze')); lib.push(nat(a + 'd', a, 'Dreampop')); });
+  lib.push(nat('Ws', 'W', 'Shoegaze')); lib.push(nat('Wg', 'W', 'Grunge'));
+  for (let i = 0; i < 20; i += 1) { lib.push(nat('d' + i, 'Dream ' + i, 'Dreampop')); lib.push(nat('g' + i, 'Grun ' + i, 'Grunge')); }
+  const profile = radio.buildStationProfile({ kind: 'track', value: 's' }, lib);
+  const nb = radio.genreNeighbours(lib);
+  assert.ok(nb.get('shoegaze').get('dreampop') > nb.get('shoegaze').get('grunge'), 'precondition: Dreampop is the stronger neighbour');
+  // exclude every Shoegaze and the bridges' own songs so the station must draw from T4
+  const exclude = lib.filter((t) => t.genre === 'Shoegaze' || /^[XYZW][sdg]$/.test(t.id)).map((t) => t.id);
+  let dream = 0; let grunge = 0;
+  for (let k = 1; k <= 200; k += 1) {
+    const p = radio.pickRadioBatch(profile, lib, { exclude, count: 1 }, createSeededRng(k))[0];
+    if (p.genre === 'Dreampop') dream += 1; else if (p.genre === 'Grunge') grunge += 1;
+  }
+  assert.strictEqual(dream + grunge, 200, 'precondition: every pick is a T4 neighbour');
+  assert.ok(dream / 200 > 0.65, 'Dreampop (strength 3) is drawn ~75% (50% unweighted): ' + dream + '/200');
+});
+
+test('P18: a YouTube category name on a NATIVE track is a real genre tag (only yt-dlp audio\'s categories count as untagged)', () => {
+  assert.strictEqual(radio.genreKey({ genre: 'Music', source: 'native' }), 'music', 'a native "Music" tag is a genre');
+  assert.strictEqual(radio.genreKey({ genre: 'Music', source: 'library' }), null, 'yt-dlp audio\'s "Music" is a category');
+  assert.strictEqual(radio.genreKey({ genre: 'Music', source: 'library-chapter' }), null);
+});

@@ -87,6 +87,10 @@ async function boot(run, opts) {
       const items = (opts.server && opts.server.drill) || opts.drillTracks || tracks.slice(0, 3);
       return Promise.resolve({ ok: true, json: async () => ({ items }) });
     }
+    // v1.368.0: the station route - a one-album library whose every song is queued (and so excluded, the
+    // client sends them) has nothing new to offer; the catch-all below would answer it with the album
+    // itself, which the real route never does once the queue is in the exclude list
+    if (u.indexOf('/api/music/radio?') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
     const idm = u.match(/^\/api\/music\/([^?]+)$/);
     if (idm) {
       const t = tracks.find((x) => x.id === decodeURIComponent(idm[1]));

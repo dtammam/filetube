@@ -59,11 +59,11 @@
 //                     toggling reopens the pip window as the taskbar strip. Views never
 //                     declare this hook themselves.
 //     autoplay        OPTIONAL (v1.254 endless autoplay) - { enabled(), onToggle() }: page 1
-//     shuffle         OPTIONAL (v1.368.0 Shuffle mode) - { enabled(), onToggle() }: page 1, beside Loop
-//     radio           OPTIONAL (v1.368.0 Start radio) - { visible(), onStart() }: page 1, after Go to channel
 //                     gains an "Autoplay" On/Off row (Loop chassis). Both surfaces - the
 //                     setting is device-global, so a pop-out flip is coherent. Omitted
 //                     (podcasts) = no row.
+//     shuffle         OPTIONAL (v1.368.0 Shuffle mode) - { enabled(), onToggle() }: page 1, beside Loop
+//     radio           OPTIONAL (v1.368.0 Start radio) - { visible(), onStart() }: page 1, after Go to channel
 //     extras          OPTIONAL - the v1.249 Extras second page. Omitting it = quick menu only.
 //                     v1.287: the factory is ENDPOINT-DRIVEN, so a media type supplies an ADAPTER
 //                     here (podcasts do - the video/music surfaces pass only the base 4 hooks and

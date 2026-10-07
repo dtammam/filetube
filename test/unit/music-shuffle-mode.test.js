@@ -19,6 +19,7 @@ const AK = 'Band␟Record';
 const TRACKS = [];
 for (let n = 0; n < 9; n++) TRACKS.push({ id: 't' + n, title: 'Song ' + n, artist: 'Band', albumArtist: 'Band', album: 'Record', albumKey: AK, trackNo: n + 1, durationSec: 200, source: 'native' });
 const IDS = TRACKS.map((t) => t.id);
+const RADIO = [{ id: 'r1', title: 'Radio One', artist: 'Kin', durationSec: 200, source: 'native' }, { id: 'r2', title: 'Radio Two', artist: 'Kin 2', durationSec: 200, source: 'native' }];
 
 const VIEW_HTML = `<body><div id="view-root" data-view="music">
   <select id="music-sort-select"></select>
@@ -59,7 +60,7 @@ async function boot(url, run, opts) {
   const dom = new JSDOM(VIEW_HTML, { url });
   const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController, fisherYatesShuffle: global.fisherYatesShuffle, random: Math.random };
   if (opts.shuffle) dom.window.localStorage.setItem('ft-music-shuffle', '1');
-  dom.window.localStorage.setItem('ft-music-autoplay', '0'); // no station in these tests (W2 binds the append)
+  dom.window.localStorage.setItem('ft-music-autoplay', opts.autoplay ? '1' : '0'); // opts.autoplay: a station (RADIO) appends
   const playerState = { state: 'docked', currentId: null, meta: null };
   const metaById = (id) => { const t = TRACKS.find((x) => x.id === id); return t ? { isMusic: true, id: t.id, title: t.title, artist: t.artist, album: t.album, albumKey: t.albumKey } : null; };
   global.window = dom.window; global.document = dom.window.document;
@@ -84,6 +85,8 @@ async function boot(url, run, opts) {
   global.fetch = (u) => {
     const s = String(u);
     urls.push(s);
+    if (opts.gate && opts.gate(s)) return opts.gate(s); // a held response (a race window)
+    if (s.indexOf('/api/music/radio?') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: RADIO.map((t) => Object.assign({}, t)) }) });
     if (s.indexOf('album=') !== -1) return Promise.resolve({ ok: true, json: async () => ({ items: TRACKS.map((t) => Object.assign({}, t)) }) });
     // the Songs tab's list (a NEW queue array, list order = the album order here)
     if (/\/api\/music\?/.test(s) && s.indexOf('filter=') === -1 && s.indexOf('sort=random') === -1) return Promise.resolve({ ok: true, json: async () => ({ items: TRACKS.map((t) => Object.assign({}, t)), total: TRACKS.length }) });
@@ -208,4 +211,80 @@ test('the one-shot Shuffle all button never writes the mode', async () => {
     for (let i = 0; i < 5; i++) await settle();
     assert.strictEqual(dom.window.localStorage.getItem('ft-music-shuffle'), null, 'the mode is untouched');
   });
+});
+
+// v1.368.0 gate r1 (adversary W5): a Shuffle flip while a drill load is in flight (drill AHEAD of queue)
+// must not paint the new album's header over the old album's rows (the v1.273 W1 class). The adversary's repro.
+test('v1.368.0 gate r1 adversary W5: a Shuffle flip from another tab while a drill load is in flight never paints the NEW drill header over the OLD rows', async () => {
+  let release = null;
+  const held = new Promise((r) => { release = r; });
+  const B = [{ id: 'b0', title: 'B Song', artist: 'Other', albumArtist: 'Other', album: 'Second', albumKey: 'Other␟Second', trackNo: 1, durationSec: 200, source: 'native' }];
+  const gate = (s) => (s.indexOf('album=' + encodeURIComponent('Other␟Second')) !== -1) ? held.then(() => ({ ok: true, json: async () => ({ items: B }) })) : null;
+  await boot('http://localhost/music?play=t0', async (dom, ctx) => {
+    await next(ctx); // t1 playing (so there is a tail after it)
+    // drill into album B (its load is held open): drill = B, queue still = album A
+    registeredOpenDrill(dom);
+    for (let i = 0; i < 4; i++) await settle();
+    dom.window.localStorage.setItem('ft-music-shuffle', '1');
+    dom.window.dispatchEvent(new dom.window.StorageEvent('storage', { key: 'ft-music-shuffle', newValue: '1' }));
+    const title = dom.window.document.querySelector('#music-content .music-drill-header, #music-content .music-drill');
+    const head = title ? title.textContent : '';
+    const rowIdsNow = rowIds(dom);
+    release();
+    for (let i = 0; i < 10; i++) await settle();
+    assert.ok(!(/Second/.test(head) && rowIdsNow.some((id) => /^t\d$/.test(id))), 'album B\'s header never sits over album A\'s rows');
+  }, { gate });
+});
+function registeredOpenDrill(dom) {
+  // the drill header's album-card path: an album card click drills (shared #music-content delegation)
+  const content = dom.window.document.getElementById('music-content');
+  const card = dom.window.document.createElement('div');
+  card.className = 'music-album-card';
+  card.setAttribute('data-album-key', 'Other␟Second');
+  card.innerHTML = '<span class="music-album-title">Second</span>';
+  content.appendChild(card);
+  card.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+}
+
+// v1.368.0 gate r1 (adversary W6): Shuffle never mixes station picks ahead of YOUR songs - after Prev
+// back into your songs, Shuffle ON, then a silent Autoplay-off: Next plays your song. The adversary's repro.
+for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
+test('v1.368.0 gate r1 adversary W6 seed ' + seed + ': Shuffle ON after the station was appended, then Autoplay off arrives silently: Next still plays YOUR remaining songs', async () => {
+  await boot('http://localhost/music?play=t0', async (dom, ctx) => {
+    dom.window.document.querySelector('#music-content .music-song-row[data-id="t8"]').dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 10; i++) await settle();
+    assert.ok(ctx.getNav() && ctx.getNav().onNext, 'precondition: the station was appended after t8');
+    ctx.getNav().onPrev(); for (let i = 0; i < 4; i++) await settle();
+    ctx.getNav().onPrev(); for (let i = 0; i < 4; i++) await settle();
+    assert.strictEqual(ctx.playerState.currentId, 't6');
+    dom.window.document.getElementById('music-shufflemode-btn').click();
+    for (let i = 0; i < 4; i++) await settle();
+    const order = [...dom.window.document.querySelectorAll('#music-content .music-song-row')].map((r) => r.getAttribute('data-id'));
+    dom.window.localStorage.setItem('ft-music-autoplay', '0'); // prefs-sync: a silent write from another device
+    ctx.getNav().onNext(); for (let i = 0; i < 4; i++) await settle();
+    assert.ok(ctx.playerState.currentId === 't7' || ctx.playerState.currentId === 't8', 'Next played one of your own songs (t7/t8), got ' + ctx.playerState.currentId + ' (rows after Shuffle ON: ' + order.join(' ') + ')');
+  }, { autoplay: true, seed });
+});
+}
+
+// v1.368.0 gate r1 (adversary M3, shuffleCarry): a station batch appended WHILE shuffled keeps the shuffle
+// state (the append makes a new queue array); OFF then restores your songs' order with the picks after.
+test('v1.368.0 gate r1 M3: a batch appended while shuffled keeps the shuffle - OFF restores your order with the station after it', async () => {
+  await boot('http://localhost/music?play=t0', async (dom, ctx) => {
+    chip(dom).click(); // ON at t0: your songs shuffled
+    const shuffled = rowIds(dom);
+    assert.notDeepStrictEqual(shuffled, IDS, 'precondition: shuffled');
+    for (let k = 0; k < 8; k++) await next(ctx); // walk to the last of your songs: the station appends
+    for (let i = 0; i < 6; i++) await settle();
+    assert.strictEqual(ctx.urls.filter((u) => u.indexOf('/api/music/radio?') === 0).length, 1, 'precondition: the station was fetched at your last song');
+    // back up two of your songs so there IS something to restore, then OFF
+    ctx.getNav().onPrev(); await settle(); await settle();
+    ctx.getNav().onPrev(); await settle(); await settle();
+    chip(dom).click(); // OFF
+    const order = (await playOrder(ctx)).slice(1, 5); // the next four plays
+    const mine = order.filter((id) => /^t/.test(id));
+    assert.strictEqual(mine.length, 2, 'two of your songs remain: ' + order.join(' '));
+    assert.deepStrictEqual(mine, IDS.filter((id) => mine.includes(id)), 'your remaining songs come back in album order');
+    assert.deepStrictEqual(order.slice(2), ['r1', 'r2'], 'and the station follows them, in station order: ' + order.join(' '));
+  }, { autoplay: true });
 });
