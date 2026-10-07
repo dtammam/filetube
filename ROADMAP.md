@@ -377,6 +377,12 @@
 - [ ] **Music follow-ups after v1.373.0 (Dean's device pass, 2026-10-07)** - (1) desktop Music: no visible sort control,
   and a downloaded album is not in track order there (the iPhone is); (2) iPhone Recent Artists / Recent Albums rows show
   no artist / album line under the name. Measure each on the real page first (LESSONS 1).
+- [ ] **One cover art for a saved album (Dean, 2026-10-07)** - "we need to pick a base art. One base art. So if I download
+  an album/playlist some songs have their own art. I want to be able to pick one from the media and have it download as
+  that for the rest." In the picker's Save as an album: choose one video's thumbnail as the album's cover, embedded in
+  every track (today each track embeds its own video thumbnail; Music groups art per album from a representative track).
+  Intake first: pick from the playlist rows' thumbnails, or from art already in Music? Re-cover an album already
+  downloaded? Verify the yt-dlp thumbnail flags at source (LESSONS 11).
 - [ ] **Opus downloads never reach the library** - server.js AUDIO_EXTENSIONS lacks `.opus`; Opus keeps its tags per
   STREAM (the scan reads the container's); iPhone Safari Opus playback is unmeasured. Measure, then fix or drop Opus from
   the file-type list (Dean: its own release, queued after v1.373.0).
