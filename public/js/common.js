@@ -7460,6 +7460,7 @@ function buildPlaylistRetryRequest(entry) {
   if (typeof e.filetype === 'string') body.filetype = e.filetype;
   // v1.371.0: the retried tracks join the same album, with the same numbers
   if (e.album && typeof e.album === 'object') body.album = e.album;
+  if (e.hideFromFeed === true) body.hideFromFeed = true; // v1.373.0: and stay out of the feed
   return { path: '/api/ytdlp/download-playlist', body };
 }
 
@@ -7548,6 +7549,14 @@ function openPlaylistPicker(opts) {
     return box;
   };
   const albumOn = albumSwitch('Save as an album');
+  // v1.373.0 (Dean): "Hide from feed" for every playlist download (audio or video) - the downloaded videos join YOUR Hide
+  // from feed list as they land (the server does it at scan time, lib/ytdlp/arrivals.js); the same switch kit as above.
+  const feedOff = albumSwitch('Hide from feed');
+  const feedList = U.list({ actions: 1, grouped: true, label: 'Feed', doc: d });
+  feedList.classList.add('playlist-picker-feed');
+  feedList.appendChild(U.row({ title: 'Hide from feed', meta: 'Keep these out of your home feed', actions: [feedOff], doc: d }));
+  feedList.hidden = true;
+  wrap.appendChild(feedList);
   const cleanOn = albumSwitch('Clean up titles');
   // `help: ' '` gives each field its kit help line (ui-field__help, aria-describedby) for the "already in Music" note
   const albumName = U.field({ label: 'Album', help: ' ', doc: d });
@@ -7614,6 +7623,7 @@ function openPlaylistPicker(opts) {
   const albumOffered = () => currentFormat() === 'audio' && currentFiletype() !== 'opus';
   const albumWanted = () => albumOffered() && albumOn.checked;
   function syncAlbum() {
+    feedList.hidden = list.hidden; // v1.373.0: once the list is read, for any format
     albumList.hidden = !albumOffered() || list.hidden;
     albumFields.hidden = albumList.hidden || !albumOn.checked;
     cleanRow.hidden = !albumOn.checked;
@@ -7648,10 +7658,10 @@ function openPlaylistPicker(opts) {
   const sheet = U.sheet({ title: 'Choose from the playlist', content: wrap, doc: d, signal });
   // the activation guard (ui.js): guard() marks a press inside the window; each handler below ASKS accepts(e)
   // first - guard() alone refuses nothing (gate r1: a tap 200 ms after the open posted the job)
-  [allBtn, noneBtn, subBtn, moreBtn, goBtn, albumOn, cleanOn].forEach((b) => sheet.guard(b));
+  [allBtn, noneBtn, subBtn, moreBtn, goBtn, albumOn, cleanOn, feedOff].forEach((b) => sheet.guard(b));
   // a switch's click has toggled it before any listener runs; cancelling a refused click puts it back (the browser, and
   // jsdom, restore the state from before the click), and no change event fires
-  [albumOn, cleanOn].forEach((box) => box.addEventListener('click', (e) => { if (!sheet.accepts(e)) e.preventDefault(); }));
+  [albumOn, cleanOn, feedOff].forEach((box) => box.addEventListener('click', (e) => { if (!sheet.accepts(e)) e.preventDefault(); }));
   albumOn.addEventListener('change', () => { syncAlbum(); checkExisting(); });
   cleanOn.addEventListener('change', renderRows);
 
@@ -7807,7 +7817,8 @@ function openPlaylistPicker(opts) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(Object.assign({ listId: state.listId, title: state.title, ids },
         fmt ? { format: fmt.format.value, quality: fmt.quality.value, filetype: fmt.filetype.value } : { format: o.format, quality: o.quality, filetype: o.filetype },
-        albumBody ? { album: albumBody } : {})),
+        albumBody ? { album: albumBody } : {},
+        feedOff.checked ? { hideFromFeed: true } : {})),
     })
       .then(async (r) => {
         const data = await r.json().catch(() => ({}));

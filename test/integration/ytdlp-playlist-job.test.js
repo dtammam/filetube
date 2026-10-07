@@ -511,3 +511,82 @@ test('v1.372.0: the song names the picker sent reach each track\'s tags (and the
     assert.strictEqual(bad.status, 400);
   } finally { await app.close(); }
 });
+
+// ---- v1.373.0: Hide from feed + quiet playlist videos (plan docs/exec-plans/active/2026-10-07-v1373-hide-from-feed.md) ----
+const arrivalsStore = require('../../lib/ytdlp/arrivals');
+async function startAppAs(deps, userId) {
+  const app = express();
+  app.use(express.json());
+  app.use((req, _res, next) => { req.user = { id: userId }; next(); });
+  ytdlp.registerRoutes(app, deps, config());
+  const server = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+  return { base: `http://127.0.0.1:${server.address().port}`, close: async () => { server.closeAllConnections?.(); await new Promise((r) => server.close(r)); } };
+}
+
+test('v1.373.0: every video the job downloads leaves a QUIET arrival; with Hide from feed it names the SESSION\'s user (never the body\'s)', async () => {
+  const ids = [1, 2].map(ID);
+  const app = await startAppAs(makeDeps(), 7);
+  try {
+    const t0 = Date.now();
+    const res = await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', hideFromFeed: true, userId: 999 }));
+    assert.strictEqual(res.status, 202);
+    const e = await settle((await res.json()).jobId);
+    for (const id of ids) {
+      const a = arrivalsStore.findArrival(dataDir, id);
+      assert.ok(a, 'recorded before the download');
+      assert.strictEqual(a.hide, true);
+      assert.strictEqual(a.userId, 7, 'the session user, not the body\'s 999');
+      assert.ok(a.sinceMs <= t0 && a.sinceMs >= t0 - 120000);
+    }
+    assert.strictEqual(e.hideFromFeed, true, 'the row keeps it for Retry');
+    assert.strictEqual(e.userId, undefined, 'the user id never rides the shared status row');
+    const ids2 = [3].map(ID);
+    await settle((await (await post(app.base, '/api/ytdlp/download-playlist', job(ids2, { format: 'video' }))).json()).jobId);
+    assert.deepStrictEqual(arrivalsStore.findArrival(dataDir, ids2[0]) && { hide: arrivalsStore.findArrival(dataDir, ids2[0]).hide, userId: arrivalsStore.findArrival(dataDir, ids2[0]).userId }, { hide: false, userId: null }, 'no Hide from feed: quiet only');
+  } finally { await app.close(); }
+});
+
+test('v1.373.0: Hide from feed is persisted (restart) with its user; a video another job is downloading gets no arrival of ours', async () => {
+  const ids = [1, 2].map(ID);
+  holdMs = 200;
+  const app = await startAppAs(makeDeps(), 7);
+  try {
+    await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', hideFromFeed: true }));
+    const saved = pending.readPending(dataDir).find((p) => p.kind === 'playlist');
+    assert.strictEqual(saved.hideFromFeed, true);
+    assert.strictEqual(saved.userId, 7);
+  } finally { await app.close(); }
+});
+
+test('v1.373.0: Hide from feed with no signed-in user is refused (400); a restart entry with a tampered user id is dropped', async () => {
+  const app = await startApp(makeDeps()); // no req.user
+  try {
+    const r = await post(app.base, '/api/ytdlp/download-playlist', job([ID(1)], { hideFromFeed: true, userId: 7 }));
+    assert.strictEqual(r.status, 400);
+    assert.strictEqual((await r.json()).error, 'Hide from feed needs a signed-in user');
+  } finally { await app.close(); }
+  pending.addPending(dataDir, { jobId: 'job-bad-user', kind: 'playlist', listId: LIST, title: 'T', ids: [ID(1)], format: 'video', hideFromFeed: true, userId: '7; drop' });
+  ytdlp.requeuePendingOneShots(makeDeps(), config());
+  await new Promise((r) => setTimeout(r, 50));
+  assert.strictEqual(calls.length, 0);
+  assert.ok(!pending.readPending(dataDir).some((p) => p.jobId === 'job-bad-user'));
+});
+
+test('v1.373.0: the pending entry REWRITTEN after a video still carries Hide from feed and its user (the normal restart case)', async () => {
+  const ids = [1, 2, 3].map(ID);
+  holdMs = 150;
+  const app = await startAppAs(makeDeps(), 7);
+  try {
+    await post(app.base, '/api/ytdlp/download-playlist', job(ids, { format: 'audio', hideFromFeed: true }));
+    const until = Date.now() + 5000;
+    let saved;
+    while (Date.now() < until) {
+      saved = pending.readPending(dataDir).find((p) => p.kind === 'playlist');
+      if (saved && saved.doneIds.length >= 1) break;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    assert.ok(saved && saved.doneIds.length >= 1, 'a video finished and the entry was rewritten');
+    assert.strictEqual(saved.hideFromFeed, true);
+    assert.strictEqual(saved.userId, 7);
+  } finally { await app.close(); }
+});

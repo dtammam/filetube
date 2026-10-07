@@ -9,7 +9,7 @@ design: Dean's device pass on v1.372.0 and his rulings 2026-10-07 (R1-R4). Base 
 gate: pending
 ---
 
-# v1.373.0: "Hide from feed" for a playlist download (and the music switch comes out)
+# v1.373.0: "Hide from feed" for a playlist download, no notification per playlist video (and the music switch comes out)
 
 Dean, 2026-10-07, after v1.372.0 on his device ("Song name worked, enter key fix worked. Music in home key worked but
 wasn't what I intended"): "if I download an album I'd like to have the optionality of not having it show in the feed. I
@@ -27,6 +27,9 @@ list is per user), 12 (removing a shipped setting: sweep every trace).
    soon as it is in the library: out of their Modern feed, still in Music, folders and search, and undone from the
    existing "Hidden from feed" list. Other users are unaffected.
 3. Settings > "Show music in the home feed" (v1.372.0) is gone, with its server filters and the `home=1` plumbing.
+4. Dean, mid-build: "Can we also make it so that notifications don't pop for these. for playlists. It's just obnoxious."
+   A video downloaded by a playlist job raises no download notification (bell or push); the job's own row in the
+   download indicator still shows its progress and result.
 
 ## 2. What exists
 - v1.97 Hide from feed: `userStore.addFeedHidden(userId, mediaId, at)` / `getFeedHidden`; applied ONLY in the modern grid of
@@ -40,6 +43,7 @@ list is per user), 12 (removing a shipped setting: sweep every trace).
 - R2 A "Hide from feed" box for every playlist download (audio or video, album or not), off by default.
 - R3 Reuse the existing Hide from feed exactly: per user, the Modern feed only, undone from Settings' hidden list.
 - R4 (builder) The `keepalive` on the synced-pref POST and the ui.js focus fix stay (they serve every pref and every sheet).
+- R5 (Dean, mid-build) No notification for a playlist job's videos (always; no switch).
 
 ## 5. Waves
 ### W1. Remove the switch
@@ -47,16 +51,17 @@ list is per user), 12 (removing a shipped setting: sweep every trace).
   `homeHidesMusic` and its four filters; main.js `home=1`; `FileTube.forgetHomeView` (its only caller); the tests and the
   census bumps. A stored `ft-home-music` row is inert (the client applies only allowlisted keys; a restore drops it).
 
-### W2. Hide from feed on arrival
-- `lib/ytdlp/feedHide.js` (new, waiting.js's posture: `<dataDir>/ytdlp-feed-hide-pending.json`, atomic temp + fsync +
-  rename, degrade never throw, bounded MAX entries, TTL 7 days): `addPending({ userId, youtubeId, sinceMs })`,
-  `applyArrived(userId, metadata, addFn, nowMs)` - hides every library item whose `youtubeId` matches and whose `addedAt` is
-  at or after `sinceMs` (so an older copy someone already had is never hidden), drops what it applied and what expired.
-- The playlist job: `hideFromFeed` (boolean) + `userId` (from the SESSION in the route, never the body) are validated,
-  persisted (restart) and on the activity row (Retry); each video that ends `done` adds a pending entry (since = when that
-  video started, minus a margin).
-- Applied where the hidden list is read: `GET /api/home?view=grid` and `GET /api/feed-hidden` (server.js passes one
-  `applyArrivedFeedHides(userId)` to both).
+### W2. Arrivals: quiet, and hidden from the downloader's feed
+- `lib/ytdlp/arrivals.js` (new, waiting.js's posture: `<dataDir>/ytdlp-playlist-arrivals.json`, atomic temp + fsync +
+  rename, degrade never throw, bounded MAX entries, TTL 7 days): `add({ youtubeId, userId|null, hide, sinceMs })` and
+  `find(youtubeId, nowMs)`. The playlist job records one per video BEFORE it starts (only for a video it downloads itself,
+  not one it waits on), with `userId` / `hide` when "Hide from feed" was ticked.
+- The scan (lib/scan/orchestrator.js): ONE wrapper replaces the three `collectDownloadNotification` calls - an item whose
+  `youtubeId` has an arrival raises no notification, and when the arrival asks to hide and the item was added at or after
+  `sinceMs`, it joins that user's Hide from feed list (`userStore.addFeedHidden`). server.js passes the arrival lookup.
+- The playlist job: `hideFromFeed` (boolean) and `userId` (from the SESSION in the route, never the body) are validated and
+  persisted (restart); `hideFromFeed` rides the activity row for Retry (the user id never does: the status snapshot is
+  shared).
 - The picker: a "Hide from feed" row (ui.row + the ui-switch), posted as `hideFromFeed: true`; Retry carries it.
 
 ## 6. Gate
@@ -64,7 +69,15 @@ Seats: adversary (floor) + qa + security-brief (a new persisted carrier holding 
 from a background path; a removed setting).
 
 ## 7. Evidence
-(builder fills in)
+- Recon (builder): `users.id` is an INTEGER key (lib/db/sqlite.js `CREATE TABLE users`), so the job and the arrivals store
+  validate a positive safe integer (the first draft checked for a string and would have refused every real user).
+- The scan records notifications AFTER its doc commit (lib/scan/orchestrator.js); the hides ride the same post-commit
+  seam (a rolled-back save never hides).
+- Tests: test/unit/ytdlp-arrivals.test.js (the store: shape at rest, TTL, cap, integer user); the real-scan
+  test/integration/scan-playlist-arrivals.test.js (control: a plain one-off notifies; a playlist video is quiet; with
+  hide it joins its downloader's list; an item added before the job is never hidden); the job (the session's user, never
+  the body's; persisted, also after the first video; a tampered user at rest drops the job); the picker (any format, the
+  guard, posted, Retry). Mutants: 20 of 20 red by name (mut-1373 + mut-1373b).
 
 ## 8. Out of scope
 - Hiding for every user (Dean chose per user); the row feed / classic home (v1.97 applies to the Modern feed only).
