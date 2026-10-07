@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.368.0 (plan docs/exec-plans/active/2026-10-06-v1368-music-radio.md, W2, R3 + R14): the
+// [UNIT] v1.368.0 (plan docs/exec-plans/completed/2026-10-06-v1368-music-radio.md, W2, R3 + R14): the
 // desktop Start radio entry points on the REAL music.js - the song row menu and the album / artist
 // drill's Radio button - and the pocket letter jump skipping a level's trailing action row. The
 // pocket levels, the station seed and the resume are bound end to end in

@@ -4195,7 +4195,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // ---- v1.254 ENDLESS AUTOPLAY, v1.368.0 RADIO -------------------------------------------
     // When the queue is about to run out - ANY exhaustion: a single song, an album's last track,
     // the end of a shuffle - the next batch of a STATION is appended to the visible queue instead
-    // of letting playback die. v1.368.0 (plan docs/exec-plans/active/2026-10-06-v1368-music-radio.md):
+    // of letting playback die. v1.368.0 (plan docs/exec-plans/completed/2026-10-06-v1368-music-radio.md):
     // the server picks it (GET /api/music/radio, lib/music/radio.js: the seed artist, the same genre
     // and nearby years first, drifting slowly, artist spacing), drawn against the station's SEED -
     // queueCtx.radio, set by Start radio or by the first batch of plain Autoplay (the song that was

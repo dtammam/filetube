@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.368.0 music radio (plan docs/exec-plans/active/2026-10-06-v1368-music-radio.md, W1):
+// [INTEGRATION] v1.368.0 music radio (plan docs/exec-plans/completed/2026-10-06-v1368-music-radio.md, W1):
 // the station picker (lib/music/radio.js) and GET /api/music/radio, driven through the REAL data
 // shape (LESSONS 2): a real server on an isolated DATA_DIR seeded with projected library audio, every
 // fixture the picker sees is what GET /api/music actually returns. The library is built so a

@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.368.0 (plan docs/exec-plans/active/2026-10-06-v1368-music-radio.md, W3, R5 + R16): the
+// [UNIT] v1.368.0 (plan docs/exec-plans/completed/2026-10-06-v1368-music-radio.md, W3, R5 + R16): the
 // Shuffle MODE toggle. Boots the REAL music.js on an album drill (?play=), drives the REAL desktop
 // chip (#music-shufflemode-btn), the storage event another tab fires, and a prefs-sync flip that
 // lands in storage silently. Binds: ON keeps the playing song and the played prefix byte-identical

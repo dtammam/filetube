@@ -71,15 +71,6 @@
   touched: history (ROADMAP Shipped entries, releases.json, completed plans, git). Cost to disclose in the ledger: an old
   Settings bookmark lands on the menu's first page. Measure first: grep for every old id and name, list what each pin protects.
 
-- [ ] **Music radio: stay close to where it started (in v1.368.0)** _(Dean, 2026-10-06: "The random genre change is rough. Less
-  repetitive more too random. I like the idea of it being the same artist/genre. It gets real random after a point." and "Bland /
-  no direction")_ - Autoplay plays like a station: it stays near its seed (same artist, same genre, nearby years), drifts slowly,
-  never jumps to an unrelated genre, and never plays one artist 3 in a row. Start radio from a song, an artist, an album or a
-  genre. Plan: docs/exec-plans/active/2026-10-06-v1368-music-radio.md.
-
-- [ ] **Music Shuffle mode toggle (in v1.368.0)** _(Dean, 2026-10-06)_ - a Shuffle toggle beside Loop and Autoplay: on reshuffles
-  the songs after the current one, off restores their original order. Synced across devices like Autoplay.
-
 - [ ] **Lock the iPod in portrait: turning the phone sideways changes nothing** _(Dean, 2026-10-07: "lock the iPod mode in
   iPod mode. So, like, if you even turn the phone sideways, it won't change it.")_ - **What exists:** since UI pass D7 the Pocket
   skin is a DEVICE class (`html.is-phone`, set once from the screen's short side), so a rotate no longer tears the skin down
@@ -731,6 +722,33 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.368.0 - Music radio that stays close, Start radio, and a Shuffle mode (2026-10-07)
+
+- Dean's complaint (2026-10-06): "The random genre change is rough... It gets real random after a point." Autoplay now asks a
+  server-side station picker (GET /api/music/radio, lib/music/radio.js) drawn against a recorded SEED: tiers T1 the seed artist,
+  T2 same genre within 5 years, T3 same genre, T4 a neighbouring genre (an artist bridge, a shared word, second degree), T5 the
+  same folder, T6 the same YouTube category, T7 the rest; 2 seed-artist slots per 5; likes 2x, played in 24 h 0.25x; never 3 in a
+  row and at most 3 per 24 plays from one artist; a DJ-set chapter is spaced by its set (Dean's R15: a DJ channel's station stays
+  on the channel). yt-dlp's "Music" / "Gaming" category tags count as untagged. The route reads only the viewer's visible library
+  (the same function GET /api/music uses).
+- Start radio from a song (row menu, sticker), an album or artist (the drill's Radio button), and the iPod's Artist / Album / Genre
+  levels (a trailing row). A radio chapter plays its own chapter and stops (R13). A resume keeps the station.
+- Shuffle mode (R5, R16 "like Spotify"): a toggle beside Loop and Autoplay (desktop chip, sticker row, pop-out), synced; your songs
+  are shuffled, station picks stay after them; off restores the order.
+- Measured: the T0 production baseline (23,754 tracks: today's picker 1-hour longest same-artist run 4 / 5, far-from-seed
+  78.9% / 84.2% in the span mode) and two production runs of the new picker (run 2: longest run 2 / 2, max plays of one artist
+  3 / 3; medians met; p90 genre changes 37.5%, far-from-tagged-seed 50.0%). Dean ruled to ship WITHOUT a run of the final
+  picker (2026-10-07: "merge without"); his device pass is the arbiter.
+- DISCLOSED: a library smaller than the session (every song already queued) ends the station; after ~200 continuous plays one
+  batch can jump genre once (adversary r4 S10); two widen behaviours and the file-end guard are unbound; no neighbour cache (a
+  shared one would leak one viewer's library into another's station; ~53-73 ms per request on 23.5k tracks); the exclude list is
+  what fits 3500 URL characters (~80-100 ids). Tracker #291.
+- Suites at de39b4fd: Node 22.23.1 `# tests 11314` `# pass 11301` `# fail 0`; Node 24.20.0 `ℹ pass 11301` `ℹ fail 0`.
+- Gate (adversary + qa + security-brief): r1 CHANGES @aace109b (R13 broken for two chapters of a set, the dock return dropped the
+  station, silence, three Shuffle bugs, a late Start radio, a dozen unbound claims); r2 CHANGES @590cff36 (a tapped radio chapter,
+  duplicate rows looping, a skewed draw); r3 CHANGES @75b35997 (long sessions went silent past the URL budget); r4 APPROVED
+  @de39b4fd by all three. Lesson: LESSONS section 5.
 
 ### v1.367.0 - Settings reorganized: SYSTEM, PERSONALIZE, ACCOUNT, LIBRARY, ADVANCED (2026-10-06)
 
