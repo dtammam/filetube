@@ -71,16 +71,6 @@
   touched: history (ROADMAP Shipped entries, releases.json, completed plans, git). Cost to disclose in the ledger: an old
   Settings bookmark lands on the menu's first page. Measure first: grep for every old id and name, list what each pin protects.
 
-- [ ] **Lock the iPod in portrait: turning the phone sideways changes nothing** _(Dean, 2026-10-07: "lock the iPod mode in
-  iPod mode. So, like, if you even turn the phone sideways, it won't change it.")_ - **What exists:** since UI pass D7 the Pocket
-  skin is a DEVICE class (`html.is-phone`, set once from the screen's short side), so a rotate no longer tears the skin down
-  (public/js/music-skins.js `markPhoneClass`); but style.css still has landscape layouts (`@media (orientation: landscape)`
-  blocks) that re-lay the player out when the phone turns. The web app manifest sets no `orientation`. **To measure at intake
-  (not assumed):** what the iPod looks like today in landscape on Dean's iPhone; whether iOS honours a manifest `orientation`
-  for the home-screen app (Screen Orientation `lock()` is not available to web pages on iOS Safari, per MDN compat data, to be
-  re-checked); and, if not, whether drawing the iPod at its portrait size and counter-rotating it in landscape works with the
-  click wheel's touch angles and the haptics. Scope question for Dean: only while the iPod skin is up, or the whole app.
-
 - [ ] **Named radio stations** _(parked by the v1.368.0 intake, R2)_ - Favorites, Genre, Throwback and Deep cuts stations built on
   the v1.368.0 radio picker.
 
@@ -728,6 +718,25 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.369.0 - The iPod stays upright when you turn the phone (2026-10-07)
+
+- Dean (2026-10-07): "lock the iPod mode in iPod mode. So, like, if you even turn the phone sideways, it won't change it", then
+  "You can make it a setting to enable sideways" and "Don't lose the flexibility and existing solidly working code." iOS lets
+  no web page lock its orientation (MDN browser-compat-data: `screen.orientation.lock()` and the manifest's `orientation` are
+  unsupported on iOS Safari), so the page still turns and, with the new Upright setting (the default), the full player is
+  drawn as the phone's portrait box turned back by the screen's angle: upright in the hand, the same size and layout.
+- Sideways keeps UI pass D7's layout untouched (its selectors only stand aside for the turned upright box): Settings > Mobile
+  player "Keep the iPod upright" (per device) and the Pocket's Settings > "Stay Upright".
+- Input under the turn goes through one helper pair (music-skins.js turnOf / unturnDelta): the volume and seek bars, the haptic
+  switch, the tilt lighting, the app's swipe-back; Brick sizes from its layout box; the turned lists pan on both axes.
+- Measured: 7 skins x 5 states (incl. the frame before the angle stamp): Sideways == base, Upright mapped back == portrait
+  within 1 px; real CDP touches in the iPod's frame match portrait at 90 and 270; geometry G4 4/4 incl. a new Sideways sequence.
+- DISCLOSED: overlays the app draws over the player (a confirm, a toast, the keyboard for keyboard search) stay in the landscape
+  frame; a flip from 90 straight to 270 shows the old turn until iOS reports the new angle; the real safe areas and the angle's
+  direction are device checks.
+- Gate (adversary + qa, security-brief as a section): r1 CHANGES @6e9a28c0 (the frame before the angle stamp drew a cropped
+  iPod; the swipe-back claim unbound; a comment; Sideways lost its rotation check); r2 APPROVED @f522f600 by both.
 
 ### v1.368.0 - Music radio that stays close, Start radio, and a Shuffle mode (2026-10-07)
 

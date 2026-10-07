@@ -245,6 +245,49 @@ const S = (b) => b.engine.lightingState();
 const listening = (b) => ({ orient: b.count('win:deviceorientation'), move: b.count('panel:pointermove'), leave: b.count('panel:pointerleave') });
 const vis = (b) => b.count('doc:visibilitychange');
 
+// The iPod portrait lock: at screen angle 90 the Upright player is DRAWN turned back (rotate(-90deg)), i.e. in the phone's
+// own frame - so a tilt to the phone's right must light it exactly as in portrait (--lx), not as the screen axes say.
+test('the iPod portrait lock: a REAL tilt on the TURNED player at angle 90 lights it as in portrait; unturned at 90 it maps by the screen', () => {
+  const drive = (turn) => {
+    const b = boot({ strength: 'pronounced' });
+    try {
+      Object.defineProperty(b.win.screen, 'orientation', { value: { angle: 90, addEventListener() {} }, configurable: true });
+      const gcs = b.win.getComputedStyle.bind(b.win);
+      b.win.getComputedStyle = (el, ps) => { const cs = gcs(el, ps); return el === b.panel ? new Proxy(cs, { get: (t, k) => (k === 'transform' ? turn : (typeof t[k] === 'function' ? t[k].bind(t) : t[k])) }) : cs; };
+      b.engine.paint();
+      tiltTo(b, 0, 3); b.clock.advance(200);
+      tiltTo(b, 0, 3 + L.TILT_RANGE_DEG); b.clock.advance(700); // the phone tilted to ITS right
+      return { x: lx(b), y: ly(b) };
+    } finally { b.engine.destroy(); b.restore(); }
+  };
+  const up = drive('matrix(0, -1, 1, 0, 0, 0)');
+  assert.ok(up.x < -0.9 && Math.abs(up.y) < 0.05, 'turned: the light slides LEFT across the upright iPod, as in portrait: ' + JSON.stringify(up));
+  const side = drive('none');
+  assert.ok(Math.abs(side.x) < 0.05 && Math.abs(side.y) > 0.9, 'CONTROL unturned at 90 (Sideways): the same tilt is the screen\'s other axis: ' + JSON.stringify(side));
+});
+
+// gate r2 (adversary): the drawn-turn CACHE re-reads when what decides the turn changes - ONE driver, lit in portrait,
+// then the phone turns (the stamp to 90, the player drawn turned) and the same tilt must still light the iPod's own axis.
+test('the iPod portrait lock: ONE driver keeps the tilt on the iPod\'s axis across a turn (the drawn-turn cache re-reads)', () => {
+  const b = boot({ strength: 'pronounced' });
+  try {
+    const orient = { angle: 0, addEventListener() {} };
+    Object.defineProperty(b.win.screen, 'orientation', { value: orient, configurable: true });
+    let turn = 'none';
+    const gcs = b.win.getComputedStyle.bind(b.win);
+    b.win.getComputedStyle = (el, ps) => { const cs = gcs(el, ps); return el === b.panel ? new Proxy(cs, { get: (t, k) => (k === 'transform' ? turn : (typeof t[k] === 'function' ? t[k].bind(t) : t[k])) }) : cs; };
+    b.engine.paint();
+    tiltTo(b, 0, 3); b.clock.advance(200);
+    tiltTo(b, 0, 3 + L.TILT_RANGE_DEG); b.clock.advance(700);
+    assert.ok(lx(b) < -0.5 && Math.abs(ly(b)) < 0.1, 'portrait: --lx ' + lx(b));
+    orient.angle = 90; turn = 'matrix(0, -1, 1, 0, 0, 0)';
+    b.doc.documentElement.setAttribute('data-ft-rot', '90');
+    tiltTo(b, 0, 3); b.clock.advance(700);
+    tiltTo(b, 0, 3 + L.TILT_RANGE_DEG); b.clock.advance(700);
+    assert.ok(lx(b) < -0.5 && Math.abs(ly(b)) < 0.1, 'turned: still the iPod\'s own axis: ' + JSON.stringify({ x: lx(b), y: ly(b) }));
+  } finally { b.engine.destroy(); b.restore(); }
+});
+
 test('AC1 reachability: a REAL deviceorientation event moves --lx/--ly on the panel through the real engine; opposite the tilt; scaled by the strength', () => {
   const b = boot({ strength: 'pronounced' });
   try {
@@ -1286,7 +1329,10 @@ test('v1.354: the orientation media query restamps in the same step the layout f
 
 test('v1.354: a landscape phone whose stamp still says portrait draws no board photo (never a wrong turn)', () => {
   const css = fs.readFileSync(path.join(ROOT, 'public', 'css', 'style.css'), 'utf8');
-  assert.match(css, /@media \(orientation: landscape\)\{[^@]*html\.is-phone\[data-ft-rot="0"\] \.mms-full\.mms-ipod,\s*html\.is-phone\[data-ft-rot="180"\] \.mms-full\.mms-ipod\{ --mms-ipod-board-turn:none; \}/);
+  // the iPod portrait lock: the board's own turn applies everywhere EXCEPT the turned upright box (the scope
+  // :where(:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])), zero specificity) - Sideways, and
+  // Upright before the stamp lands; the turned Upright player carries the photo with it (test/unit/pocket-upright.test.js)
+  assert.match(css, /@media \(orientation: landscape\)\{[^@]*html\.is-phone:where\(:not\(\.pk-upright\[data-ft-rot="90"\]\):not\(\.pk-upright\[data-ft-rot="270"\]\)\)\[data-ft-rot="0"\] \.mms-full\.mms-ipod,\s*html\.is-phone:where\(:not\(\.pk-upright\[data-ft-rot="90"\]\):not\(\.pk-upright\[data-ft-rot="270"\]\)\)\[data-ft-rot="180"\] \.mms-full\.mms-ipod\{ --mms-ipod-board-turn:none; \}/);
 });
 
 test('v1.350: the Transparent board photo is a role with turned-back copies; landscape on a phone swaps one in, gated on the full player and the angle', () => {
@@ -1294,6 +1340,6 @@ test('v1.350: the Transparent board photo is a role with turned-back copies; lan
   assert.strictEqual((css.match(/var\(--mms-ipod-board-turn, var\(--pk-c-board, none\)\),\s*#2c4238;/g) || []).length, 3, 'all three Transparent skins read the board through the swap');
   assert.strictEqual((css.match(/--pk-c-board-r90:url\(\.\.\/assets\/skins\/transparent-board-r90\.webp\) 100% 50% \/ auto 121% no-repeat;/g) || []).length, 3, 'angle 90 copy anchored where the portrait bottom lands');
   assert.strictEqual((css.match(/--pk-c-board-r270:url\(\.\.\/assets\/skins\/transparent-board-r270\.webp\) 0% 50% \/ auto 121% no-repeat;/g) || []).length, 3, 'angle 270 copy, the other side');
-  assert.match(css, /@media \(orientation: landscape\)\{\s*html\.is-phone\[data-ft-rot="90"\] \.mms-full\.mms-ipod\{ --mms-ipod-board-turn:var\(--pk-c-board-r90, none\); \}\s*html\.is-phone\[data-ft-rot="270"\] \.mms-full\.mms-ipod\{ --mms-ipod-board-turn:var\(--pk-c-board-r270, none\); \}/, 'the swap is landscape + phone + full player + angle');
+  assert.match(css, /@media \(orientation: landscape\)\{\s*html\.is-phone:where\(:not\(\.pk-upright\[data-ft-rot="90"\]\):not\(\.pk-upright\[data-ft-rot="270"\]\)\)\[data-ft-rot="90"\] \.mms-full\.mms-ipod\{ --mms-ipod-board-turn:var\(--pk-c-board-r90, none\); \}\s*html\.is-phone:where\(:not\(\.pk-upright\[data-ft-rot="90"\]\):not\(\.pk-upright\[data-ft-rot="270"\]\)\)\[data-ft-rot="270"\] \.mms-full\.mms-ipod\{ --mms-ipod-board-turn:var\(--pk-c-board-r270, none\); \}/, 'the swap is landscape + phone (not the turned upright box) + full player + angle');
   for (const f of ['transparent-board-r90.webp', 'transparent-board-r270.webp']) assert.ok(fs.existsSync(path.join(ROOT, 'public', 'assets', 'skins', f)), f + ' ships');
 });

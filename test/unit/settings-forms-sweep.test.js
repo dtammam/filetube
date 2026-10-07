@@ -360,7 +360,8 @@ test('Settings (F09): every checkbox is a ui-switch with role=switch; there are 
   // v1.362.2 DELIBERATE bump (30 -> 31): Troubleshooting > Show the log on screen (#debug-lifecycle-overlay-check, D6).
   // v1.362.3 DELIBERATE bump (31 -> 32): Troubleshooting > No glyph on picture taps (#debug-no-tap-glyph-check, E3).
   // v1.363 DELIBERATE bump (32 -> 33): Playback > Auto-choose on the resume prompt (#resume-countdown-check) is back with the Ask me mode.
-  assert.strictEqual(boxes.length, 33, 'the same settings (no key dropped), the rotate log, keyboard search, the on-screen log switch, the no-glyph test and the resume-prompt countdown switch');
+  // The iPod portrait lock DELIBERATE bump (33 -> 34): Mobile player > Keep the iPod upright (#pocket-upright-check).
+  assert.strictEqual(boxes.length, 34, 'the same settings (no key dropped), the rotate log, keyboard search, the on-screen log switch, the no-glyph test, the resume-prompt countdown switch and Keep the iPod upright');
   for (const b of boxes) {
     assert.ok(b.classList.contains('ui-switch'), b.id + ' is a ui-switch');
     assert.strictEqual(b.getAttribute('role'), 'switch', b.id);

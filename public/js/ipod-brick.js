@@ -61,8 +61,13 @@
     // the BACKING STORE is sized here, to the box times the device pixel ratio. UI pass D7
     // (F59): measured once now and again after every settled change of the box (a rotate
     // into the landscape layout, the iOS toolbar), never mid-layout - see observeSettled.
+    // The iPod portrait lock: with the Upright setting the player is drawn TURNED in landscape, and a turned box's
+    // getBoundingClientRect is its screen footprint (width and height swapped); the layout box (offsetWidth/Height) is
+    // the board's own size then. Unturned the two agree, and the rect is read exactly as before.
     function resize() {
       var r = wrap.getBoundingClientRect();
+      var ow = wrap.offsetWidth, oh = wrap.offsetHeight;
+      if (ow > 0 && oh > 0 && Math.abs(ow - r.width) > 1 && Math.abs(oh - r.height) > 1) r = { width: ow, height: oh };
       W = Math.max(80, Math.round(r.width));
       H = Math.max(60, Math.round(r.height));
       dpr = Math.min(3, win.devicePixelRatio || 1);
