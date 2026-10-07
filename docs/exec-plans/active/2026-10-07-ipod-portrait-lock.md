@@ -6,7 +6,7 @@ anchor: outcome
 status: Built (W1-W2), gate next
 next: W0 measurement (headless, then Dean's phone); W1-W3 (Upright default, Sideways kept as a setting, R7); the gate (section 6); the release (version set at release: after v1.369.0)
 design: Dean's intake 2026-10-07 (rulings R1-R6 below). Base main a8626406.
-gate: pending
+gate: APPROVED r2 @f522f600 (adversary, qa; security-brief applied as a section)
 ---
 
 # Lock the iPod in portrait: turning the phone sideways changes nothing
@@ -113,6 +113,10 @@ containment census. Pacing: ship on CRITICAL/WARNING closure; after 2 rounds, as
 Gate: CHANGES r1 @6e9a28c0d75a8ed3e7026919ac8e27f2e2a18ea3 — adversary
 
 Gate: CHANGES r1 @6e9a28c0 — qa
+
+Gate: APPROVED r2 @f522f6007d4741f40ad266fb0bb28c3b3e4c3fc2 — adversary
+
+Gate: APPROVED r2 @f522f600 — qa
 
 ## 7. Release and evidence
 
