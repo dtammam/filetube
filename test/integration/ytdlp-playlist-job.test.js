@@ -322,7 +322,7 @@ test('gate r2: a FULL pending file refuses a one-off too (503) - even when the h
   } finally { release(); await new Promise((r) => setTimeout(r, 50)); await app.close(); }
 });
 
-// ---- v1.371.0: Save as an album (plan docs/exec-plans/active/2026-10-07-v1371-album-tags.md) ----
+// ---- v1.371.0: Save as an album (plan docs/exec-plans/completed/2026-10-07-v1371-album-tags.md) ----
 const ALBUM = (ids, extra) => Object.assign({ title: 'Kyle Gordon Is Everywhere', artist: 'Kyle Gordon', cleanTitles: true, tracks: Object.fromEntries(ids.map((id, i) => [id, i + 3])) }, extra || {});
 
 test('v1.371.0: an audio job with an album hands EACH track its own tags (its playlist number), and the row keeps the album for Retry', async () => {

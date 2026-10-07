@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.371.0 "Save as an album" (plan docs/exec-plans/active/2026-10-07-v1371-album-tags.md): lib/ytdlp/album.js
+// [UNIT] v1.371.0 "Save as an album" (plan docs/exec-plans/completed/2026-10-07-v1371-album-tags.md): lib/ytdlp/album.js
 // validates the album a playlist job carries and builds the yt-dlp argv that writes the tags; args.js adds that argv
 // to a YouTube AUDIO one-off only. The flag forms themselves were measured against the real yt-dlp 2026.08.19 (plan
 // section 3 and 7); these tests lock the argv FileTube builds to those measured forms.

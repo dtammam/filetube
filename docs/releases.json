@@ -3574,5 +3574,11 @@
     "date": "2026-10-07",
     "title": "Download from a YouTube playlist: pick the videos",
     "intent": "Paste a YouTube link that is part of a playlist and FileTube asks whether you want just that video or to choose from the playlist. Pick the videos you want (ones already in your library are marked) and they download together as one job you can follow, cancel and retry. Playlists shared from the iPhone Shortcut wait in the app for you to choose, and the browser extension has a new Choose from playlist button (reload the extension to get it)."
+  },
+  {
+    "version": "1.371.0",
+    "date": "2026-10-07",
+    "title": "Save a playlist as an album",
+    "intent": "When you download songs from a YouTube playlist as audio, turn on Save as an album: you name the album and its artist (both filled in for you, with a note when Music already has them), and every song lands in Music as one album, numbered in playlist order, instead of Unknown Album under the channel's name. Clean up titles also drops the artist name and tags like [Official Audio] from each song's title. It applies to new downloads, not songs already in your library, and is not offered for Opus files."
   }
 ]

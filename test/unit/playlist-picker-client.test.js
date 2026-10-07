@@ -267,7 +267,7 @@ test('gate r1 (QA W3): the Subscriptions one-off list shows ONE row per playlist
   assert.match(src, /entry\.kind === 'playlist' && typeof formatPlaylistChipStatus === 'function' \? formatPlaylistChipStatus\(entry\)/);
 });
 
-// ---- v1.371.0: Save as an album (plan docs/exec-plans/active/2026-10-07-v1371-album-tags.md) ----
+// ---- v1.371.0: Save as an album (plan docs/exec-plans/completed/2026-10-07-v1371-album-tags.md) ----
 const albumSection = () => picker().querySelector('.playlist-picker-album');
 const albumFields = () => picker().querySelector('.playlist-picker-album-fields');
 const albumSwitch = (label) => albumSection().querySelector(`input[aria-label="${label}"]`);
