@@ -519,8 +519,11 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
     '<div class="music-drill-actions">' +
     '<button type="button" class="ui-btn ui-btn--primary ui-btn--sm ui-btn--pill music-drill-play">' + songIconHtml('play_arrow') + '<span class="ui-btn__label">Play</span></button>' +
     '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-shuffle">' + songIconHtml('shuffle') + '<span class="ui-btn__label">Shuffle</span></button>' +
-    // v1.368.0 (R3): Start radio from this album or artist
-    '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-radio">' + songIconHtml('radio') + '<span class="ui-btn__label">Radio</span></button>' +
+    // v1.368.0 (R3): Start radio from this album or artist - only with a seed (an unnamed artist has none;
+    // a button that does nothing is never shown)
+    ((drill && drill.key && (drill.type === 'album' || drill.type === 'artist'))
+      ? '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-radio">' + songIconHtml('radio') + '<span class="ui-btn__label">Radio</span></button>'
+      : '') +
     // v1.352 L3 (Dean's ruling: a pill in this row): copy this album's or artist's music link
     (musicDrillLink(drill)
       ? '<button type="button" class="ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill music-drill-copylink" data-link="' + escapeMusicHtml(musicDrillLink(drill)) + '">' + songIconHtml('content_copy') + '<span class="ui-btn__label">Copy link</span></button>'
@@ -4770,7 +4773,8 @@ if (typeof module !== 'undefined' && module.exports) {
         return menuAllSongs().then(function (t) { return withRadioRow(menuSongLevel(SKINS.tracksOfGenre(t, n.key), { ctx: { src: 'music', sort: 'title-asc' }, label: n.label || 'Genre' }), n.key ? 'genre:' + n.key : ''); });
       }
       if (n.type === 'artist') {
-        return menuArtistTracks(n.key).then(function (t) { return withRadioRow({ items: SKINS.menuArtistAlbumItems(t, n, musicArtUrl) }, 'artist:' + n.key); });
+        // v1.368.0: ends with Start radio - not for "Unknown Artist" (an empty name is no seed: the route answers 400)
+        return menuArtistTracks(n.key).then(function (t) { return withRadioRow({ items: SKINS.menuArtistAlbumItems(t, n, musicArtUrl) }, n.key ? 'artist:' + n.key : ''); });
       }
       if (n.type === 'artistAll') {
         return menuArtistTracks(n.artist).then(function (t) {

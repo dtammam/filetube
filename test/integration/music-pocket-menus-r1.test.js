@@ -308,7 +308,7 @@ test('K6 A24: an untagged NATIVE track lives under "Unknown Artist" alone (never
   await boot({ skin: 'ipod', play: 'nd1', run: async (h) => {
     menu(h); select(h); tapRow(h, 'Artists'); await settleNet();
     tapRow(h, 'Unknown Artist'); await settleNet();
-    assert.deepStrictEqual(labels(h), ['Unknown Album', 'Start radio'], 'one (untitled) album (v1.368.0: then Start radio)');
+    assert.deepStrictEqual(labels(h), ['Unknown Album'], 'one (untitled) album (v1.368.0: and no Start radio - an empty artist name is no seed)');
     tapRow(h, 'Unknown Album'); await settleNet();
     assert.deepStrictEqual(labels(h), ['Nameless Tune', 'Start radio'], 'only the untagged track (v1.368.0: then Start radio)');
   } });

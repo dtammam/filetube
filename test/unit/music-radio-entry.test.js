@@ -153,3 +153,13 @@ test('pocket letter jump: a level\'s trailing Start radio row is not a title (th
   const runs = skins.menuLetterRuns(items);
   assert.deepStrictEqual(runs.map((r) => [r.letter, r.index]), [['A', 0], ['B', 1], ['R', 2]], 'no S run for the action row');
 });
+
+test('the drill\'s Radio button shows only with a seed: an album or a named artist, never an unnamed artist (a button that does nothing is never shown)', () => {
+  delete require.cache[musicPath];
+  const M = require(musicPath);
+  const has = (drill) => /music-drill-radio/.test(M.buildDrillHeaderHtml(drill, [{ id: 'a', title: 'A', artist: 'X', album: 'Y', albumKey: 'X␟Y' }], {}));
+  assert.ok(has({ type: 'album', key: 'X␟Y', label: 'Y' }), 'an album');
+  assert.ok(has({ type: 'artist', key: 'X', label: 'X' }), 'a named artist');
+  assert.ok(!has({ type: 'artist', key: '', label: 'Unknown Artist' }), 'no seed, no button');
+  delete require.cache[musicPath];
+});
