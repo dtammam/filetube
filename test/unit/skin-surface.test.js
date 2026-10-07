@@ -814,6 +814,35 @@ test('U2 pop-out exclusion at the ENGINE level: a non-main-document surface neve
   } finally { mainBoot.restoreAll(); }
 });
 
+test('v1.368.0 Start radio: the hook\'s row shows only while visible() says a song is up, a tap calls onStart once and closes the menu; no hook (podcasts) = no row', () => {
+  const state = { visible: true, starts: 0 };
+  const b = bootSticker({ extras: false });
+  try {
+    const eng = b.dom.window.FileTubeSkinSurface.create({
+      panel: panel(b.dom),
+      getSkinId: () => 'ipod', getCtx: () => ({ track: {}, upNext: [], fullList: [] }),
+      hostCtl: (id) => b.dom.window.document.getElementById(id),
+      sticker: { onSkinChange: () => {}, radio: { visible: () => state.visible, onStart: () => { state.starts += 1; } } },
+    });
+    eng.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    const row = sMenu(b.dom).querySelector('[data-skin-radio]');
+    assert.ok(row, 'the Start radio row rendered');
+    assert.match(row.textContent, /Start radio/);
+    sClick(b.dom, row);
+    assert.strictEqual(state.starts, 1, 'the tap started the radio through the view hook');
+    state.visible = false;
+    eng.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    assert.ok(sMenu(b.dom).querySelector('[data-skin-loop]'), 'quick menu up (non-vacuous)');
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-radio]'), null, 'no song up = no row');
+    eng.destroy();
+    b.engine.paint();
+    sClick(b.dom, panel(b.dom).querySelector('[data-skin-sticker]'));
+    assert.strictEqual(sMenu(b.dom).querySelector('[data-skin-radio]'), null, 'no hook = no row (podcasts)');
+  } finally { b.restoreAll(); }
+});
+
 test('v1.368.0 Shuffle mode: the hook renders a page-1 row beside Loop on the tab AND the pop-out, a tap flips via onToggle and re-renders; no hook (podcasts) = no row', () => {
   const state = { on: false };
   const b = bootSticker({ extras: false });

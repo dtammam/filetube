@@ -351,14 +351,14 @@ test('3 -> 2 revert while PLAYING f1::c1 (in order): nav re-registers at once - 
     await settleN(2);
     assert.strictEqual(typeof lastNav(ctx).onNext, 'function', 'precondition: ::c1 had a Next (::c2)');
     const regsBefore = ctx.navs.length;
-    const artistFetchesBefore = ctx.calls.filter((c) => c.indexOf('artist=') !== -1).length;
+    const radioFetchesBefore = ctx.calls.filter((c) => c.indexOf('/api/music/radio?') !== -1).length; // v1.368.0: the picker's one station request
     server.drill = [chapRow('f1::c0', 'Opening', 0), chapRow('f1::c1', 'Closer', 60, { durationSec: 120 })];
     ctx.editor[0].opts.onSaved({ chapters: [{ startTime: 0, title: 'Opening' }, { startTime: 60, title: 'Closer' }], chaptersSource: 'embedded', chaptersEdited: false });
     assert.ok(ctx.navs.length > regsBefore, 'nav re-registered SYNCHRONOUSLY on the save (the playing id did not change)');
     assert.strictEqual(lastNav(ctx).onNext, undefined, 'no stale Next: ::c1 is now the last chapter');
     await settleN(12);
     assert.strictEqual(lastNav(ctx).onNext, undefined, 'and still none after the re-list');
-    assert.ok(ctx.calls.filter((c) => c.indexOf('artist=') !== -1).length > artistFetchesBefore, 'the last-index radio armed (the autoplay picker fetched)');
+    assert.ok(ctx.calls.filter((c) => c.indexOf('/api/music/radio?') !== -1).length > radioFetchesBefore, 'the last-index radio armed (the autoplay picker fetched)');
     lastNav(ctx).onPrev();
     assert.strictEqual(dom.window.FileTube.player.currentId, 'f1::c0', 'Prev goes to the right row');
   }, { desktop: true, server });

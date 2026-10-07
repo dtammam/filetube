@@ -1040,6 +1040,7 @@
     var runs = [];
     var prev = null;
     (Array.isArray(items) ? items : []).forEach(function (it, i) {
+      if (it && it.action) return; // v1.368.0: an action row (a level's leading "Start radio") is not a title
       var l = menuLetterOf(it && it.label);
       if (l !== prev) { runs.push({ letter: l, index: i }); prev = l; }
     });

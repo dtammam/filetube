@@ -282,3 +282,91 @@ test('W1 RBAC (LESSONS 10): a member never gets a hidden-folder track as a pick,
   const missing = await api(radioUrl('track:nope', []), cookie);
   assert.deepStrictEqual(missing, hidden, 'identical to a non-existent seed (no oracle)');
 });
+
+// ---- W2: the CLIENT through the real server (LESSONS 2: the real /api/music/radio answer, the real
+// music.js + skin engine in jsdom, every fetch to this server) -----------------------------------
+const { createPocketHarness } = require('../helpers/pocket-menu-harness');
+const H = createPocketHarness(() => ({ base, authedFetch: global.fetch }));
+const radioCalls = (log) => log.filter((u) => u.indexOf('/api/music/radio?') !== -1).map((u) => new URL(u, 'http://x'));
+const { encodeListContext } = require('../../public/js/common.js');
+const realCodec = (dom) => { dom.window.encodeListContext = encodeListContext; }; // the browser's page global
+const ctxOf = (load) => { try { return JSON.parse(load.data.browseCtx); } catch (_) { return null; } };
+
+test('W2 Start radio from a GENRE (pocket Genres level): the level leads with the row; the queue is replaced by the station, the seed rides the context, Autoplay is turned on with a toast', async () => {
+  const toasts = [];
+  await H.boot({ skin: 'ipod', play: 'jz0', setup: (dom) => { realCodec(dom); dom.window.localStorage.setItem('ft-music-autoplay', '0'); dom.window.showToast = (m) => toasts.push(m); }, run: async (h) => {
+    H.menu(h); H.select(h); await H.settleNet(); // Main Menu > Music
+    H.tapRow(h, 'Genres'); await H.settleNet();
+    H.tapRow(h, 'Rock'); await H.settleNet();
+    assert.strictEqual(H.labels(h)[0], 'Start radio', 'the genre level leads with Start radio');
+    H.tapRow(h, 'Start radio'); await H.settleNet();
+    const calls = radioCalls(h.log);
+    assert.strictEqual(calls.length, 1, 'one station request');
+    assert.strictEqual(calls[0].searchParams.get('seed'), 'genre:Rock');
+    assert.ok(h.spy.loads.length >= 1, 'the station started');
+    const first = h.spy.loads[h.spy.loads.length - 1];
+    const L = await lib();
+    assert.strictEqual(byId(L, first.id).genre, 'Rock', 'the first pick is IN the genre (a coherent pick, never Jazz)');
+    assert.deepStrictEqual(ctxOf(first), { src: 'music', radio: 'genre:Rock' }, 'the station seed rides the queue context (a resume keeps the station)');
+    assert.strictEqual(h.dom.window.localStorage.getItem('ft-music-autoplay'), '1', 'Autoplay was turned on so the station continues');
+    assert.ok(toasts.some((m) => /Autoplay is on/.test(m)), 'and a toast said so: ' + toasts.join(' | '));
+  } });
+});
+
+test('W2 Start radio from an ARTIST and an ALBUM (pocket levels): each seeds its own station', async () => {
+  await H.boot({ skin: 'ipod', play: 'jz0', setup: (dom) => { realCodec(dom); dom.window.localStorage.setItem('ft-music-autoplay', '0'); }, run: async (h) => {
+    H.menu(h); H.select(h); await H.settleNet(); // Main Menu > Music
+    H.tapRow(h, 'Artists'); await H.settleNet();
+    H.tapRow(h, 'Bluesman'); await H.settleNet();
+    assert.strictEqual(H.labels(h)[0], 'Start radio');
+    H.tapRow(h, 'Start radio'); await H.settleNet();
+    let calls = radioCalls(h.log);
+    assert.strictEqual(calls[calls.length - 1].searchParams.get('seed'), 'artist:Bluesman');
+    const L = await lib();
+    assert.strictEqual(byId(L, h.spy.loads[h.spy.loads.length - 1].id).genre, 'Blues', 'an artist station starts in the artist\'s genre');
+    // an album level
+    H.menu(h); H.menu(h); H.menu(h); await H.settleNet();
+    H.tapRow(h, 'Albums'); await H.settleNet();
+    const albumLabel = H.labels(h).find((l) => /bm0|Bluesman/.test(l)) || H.labels(h)[0];
+    H.tapRow(h, albumLabel); await H.settleNet();
+    assert.strictEqual(H.labels(h)[0], 'Start radio', 'an album level leads with Start radio');
+    H.tapRow(h, 'Start radio'); await H.settleNet();
+    calls = radioCalls(h.log);
+    assert.match(calls[calls.length - 1].searchParams.get('seed'), /^album:/, 'an album seed');
+  } });
+});
+
+test('W2 plain Autoplay: every batch is drawn against the SAME seed (R8) - the song that ran out, never the last pick - and a resume (re-init) keeps the station', async () => {
+  await H.boot({ skin: 'ipod', play: 'lr0', setup: realCodec, run: async (h) => {
+    await H.settleNet();
+    // ?play= opens the song's album: walk it to its LAST song, where the queue runs out
+    for (let k = 0; k < 8 && !radioCalls(h.log).length; k++) { h.spy.nav.onNext(); await H.settleNet(10); }
+    let calls = radioCalls(h.log);
+    assert.strictEqual(calls.length, 1, 'the album ran out: one station request');
+    const seedId = h.spy.loads[h.spy.loads.length - 1].id;
+    assert.strictEqual(byId(await lib(), seedId).artist, 'Late Rocker', 'precondition: the album\'s last song is playing');
+    assert.strictEqual(calls[0].searchParams.get('seed'), 'track:' + seedId, 'the station is the song that ran out');
+    // walk to the station's last pick: the next batch is drawn against the SAME seed
+    for (let k = 0; k < 5; k++) { h.spy.nav.onNext(); await H.settleNet(10); }
+    calls = radioCalls(h.log);
+    assert.ok(calls.length >= 2, 'the last pick armed a second batch');
+    assert.strictEqual(calls[calls.length - 1].searchParams.get('seed'), 'track:' + seedId, 'the station seed, not the last pick (R8)');
+    const ex = calls[calls.length - 1].searchParams.get('exclude').split(',');
+    assert.strictEqual(ex[ex.length - 1], h.spy.loads[h.spy.loads.length - 1].id, 'the exclude list ends with the song playing now (most recent last)');
+    assert.strictEqual((ctxOf(h.spy.loads[h.spy.loads.length - 1]) || {}).radio, 'track:' + seedId, 'the seed rides the player\'s context');
+    // a resume: the view re-inits on the grid tab with the player still on the station
+    const mark = h.log.length;
+    h.mod.destroy();
+    h.dom.window.localStorage.setItem('filetube_music_tab', 'albums');
+    h.dom.window.history.replaceState({}, '', '/music'); // a dock-return: no ?play= - the player carries the song
+    const playing = h.pstate.meta.id;
+    assert.ok(byId(await lib(), playing) && playing !== seedId, 'precondition: a station pick is playing, its context the radio');
+    h.mod.init(h.D.getElementById('view-root'));
+    await H.settleNet();
+    const after = radioCalls(h.log.slice(mark));
+    assert.ok(after.length >= 1, 'the rebuilt station queue armed the next batch');
+    assert.strictEqual(after[after.length - 1].searchParams.get('seed'), 'track:' + seedId, 'the resume kept the station (never a re-fetched list)');
+    assert.ok(!h.log.slice(mark).some((u) => /\/api\/music\?/.test(u) && /limit=1000/.test(u)), 'and did not re-fetch the library as a "list"');
+    assert.ok(h.log.slice(mark).some((u) => u === '/api/music/' + encodeURIComponent(playing)), 'it fetched the playing song itself (the rebuilt one-song queue)');
+  } });
+});

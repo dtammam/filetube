@@ -60,6 +60,7 @@
 //                     declare this hook themselves.
 //     autoplay        OPTIONAL (v1.254 endless autoplay) - { enabled(), onToggle() }: page 1
 //     shuffle         OPTIONAL (v1.368.0 Shuffle mode) - { enabled(), onToggle() }: page 1, beside Loop
+//     radio           OPTIONAL (v1.368.0 Start radio) - { visible(), onStart() }: page 1, after Go to channel
 //                     gains an "Autoplay" On/Off row (Loop chassis). Both surfaces - the
 //                     setting is device-global, so a pop-out flip is coherent. Omitted
 //                     (podcasts) = no row.
@@ -1478,6 +1479,11 @@
         showNowPlaying();
         return;
       }
+      if (it.action === 'radio') { // v1.368.0: a level's "Start radio" row (an artist, an album, a genre)
+        try { if (typeof cfg.onStartRadio === 'function') cfg.onStartRadio(it.seed); } catch (_) { /* view best-effort */ }
+        showNowPlaying();
+        return;
+      }
       if (it.action === 'lighting') {
         // Settings > Lighting: the pick is stored and (on iOS) motion access is asked for INSIDE this
         // tap (the delegated click reaches here synchronously, so the user activation is live). The
@@ -2083,6 +2089,11 @@
       return '<div class="mms-sm-sec"><button type="button" role="menuitemcheckbox" class="mms-sm-loop' + (on ? ' is-on' : '') +
         '" ' + flag + ' aria-checked="' + (on ? 'true' : 'false') + '"><span class="mms-sm-lbl">' + mark + label + '</span><span class="mms-sm-state">' + (on ? 'On' : 'Off') + '</span></button></div>';
     }
+    // v1.368.0: the ONE builder of a page-1 link row (an action with a chevron or a value): Watch,
+    // Go to channel, Start radio, Skin, Extras, Home were hand copies of this markup.
+    function stickerLinkRow(flag, icon, label, state) {
+      return '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" ' + flag + '><span class="mms-sm-lbl"><i class="' + icon + '"></i>' + label + '</span><span class="mms-sm-state">' + (state || '&rsaquo;') + '</span></button></div>';
+    }
     function buildStickerMenuHtml() {
       var rate = liveRate();
       var speed = MMS_SPEED_RATES.map(function (r) {
@@ -2125,7 +2136,7 @@
       if (stickerCfg.watchBack && typeof stickerCfg.watchBack.visible === 'function') {
         var wbOn = false;
         try { wbOn = !!stickerCfg.watchBack.visible(); } catch (_) { wbOn = false; }
-        if (wbOn) watchBack = '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-watchback><span class="mms-sm-lbl"><i class="icon-tv"></i>Watch</span><span class="mms-sm-state">&rsaquo;</span></button></div>';
+        if (wbOn) watchBack = stickerLinkRow('data-skin-watchback', 'icon-tv', 'Watch');
       }
       // v1.317 (M1, Dean: "a smooth way to access the channel"): the "Go to channel" row beside
       // Watch - rendered ONLY when the view supplies the channel hook AND says the playing item
@@ -2135,7 +2146,16 @@
       if (inMainDoc && stickerCfg.channel && typeof stickerCfg.channel.visible === 'function') {
         var chOn = false;
         try { chOn = !!stickerCfg.channel.visible(); } catch (_) { chOn = false; }
-        if (chOn) channelRow = '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-channel><span class="mms-sm-lbl"><i class="icon-folder"></i>Go to channel</span><span class="mms-sm-state">&rsaquo;</span></button></div>';
+        if (chOn) channelRow = stickerLinkRow('data-skin-channel', 'icon-folder', 'Go to channel');
+      }
+      // v1.368.0 (R3, R14): Start radio from the song now playing - both surfaces (it replaces the
+      // queue in the view that owns the player; nothing window-bound), only when the view's hook
+      // says a song is up (music does; podcasts supply no hook).
+      var radioRow = '';
+      if (stickerCfg.radio && typeof stickerCfg.radio.visible === 'function') {
+        var rdOn = false;
+        try { rdOn = !!stickerCfg.radio.visible(); } catch (_) { rdOn = false; }
+        if (rdOn) radioRow = stickerLinkRow('data-skin-radio', 'icon-radio', 'Start radio');
       }
       // v1.254 (ENDLESS AUTOPLAY): the toggle rides page 1 like Loop - rendered only when
       // the view supplies the autoplay hook (music does; podcasts deliberately not). On
@@ -2202,19 +2222,19 @@
       try { trayBody = !!(doc.body && doc.body.classList.contains('mms-tray')); } catch (_) { trayBody = false; }
       var skinSec = (trayActive || trayBody)
         ? '<div class="mms-sm-sec"><div class="mms-sm-h" id="' + smId('skin') + '">' + (trayActive ? 'Color' : 'Skin') + '</div><div class="mms-sm-skins" role="group" aria-labelledby="' + smId('skin') + '">' + chips + '</div></div>'
-        : '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-skins><span class="mms-sm-lbl"><i class="icon-photos"></i>Skin</span><span class="mms-sm-state">' + escapeHtml(activeLabel) + ' &rsaquo;</span></button></div>';
+        : stickerLinkRow('data-skin-skins', 'icon-photos', 'Skin', escapeHtml(activeLabel) + ' &rsaquo;');
       // v1.249: the second-page entry - library-backed tracks on the in-tab surface only.
       var extras = extrasEligible()
-        ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-extras><span class="mms-sm-lbl"><i class="icon-more"></i>Extras</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
+        ? stickerLinkRow('data-skin-extras', 'icon-more', 'Extras')
         : '';
       // D7: Home leads the menu - two taps from any screen or menu depth
       var homeRow = homeAvailable()
-        ? '<div class="mms-sm-sec"><button type="button" class="mms-sm-extras" data-skin-home><span class="mms-sm-lbl"><i class="icon-home"></i>Home</span><span class="mms-sm-state">&rsaquo;</span></button></div>'
+        ? stickerLinkRow('data-skin-home', 'icon-home', 'Home')
         : '';
       return homeRow + '<div class="mms-sm-sec"><div class="mms-sm-h" id="' + smId('speed') + '">Speed</div><div class="mms-sm-speed" role="group" aria-labelledby="' + smId('speed') + '">' + speed + '</div></div>' +
         stickerToggleRow('data-skin-loop', 'icon-refresh', loopLabel, loopOn) +
         shuffleRow + autoplay + trayRow + skinSec + lightRow +
-        watchBack + channelRow + chaptersRow + extras;
+        watchBack + channelRow + radioRow + chaptersRow + extras;
     }
     // The skin chips (v1.332: the registry's list; inside the TRAY only the Click colorways - those picks
     // genuinely restyle the tray, the rest would no-op there). Page 1 of the tray, the Skin page elsewhere.
@@ -2280,7 +2300,7 @@
       if (!a || !menu || !menu.contains(a) || typeof a.getAttribute !== 'function') return null;
       var valued = ['data-skin-lighting', 'data-skin-speed', 'data-skin-pick'];
       for (var i = 0; i < valued.length; i++) { var v = a.getAttribute(valued[i]); if (v !== null) return '[' + valued[i] + '="' + String(v).replace(/["\\]/g, '') + '"]'; }
-      var flags = ['data-skin-loop', 'data-skin-shufflemode', 'data-skin-autoplay', 'data-skin-skins', 'data-skin-extras', 'data-skin-home', 'data-skin-watchback', 'data-skin-channel', 'data-skin-chapters', 'data-skin-tray'];
+      var flags = ['data-skin-loop', 'data-skin-shufflemode', 'data-skin-autoplay', 'data-skin-skins', 'data-skin-extras', 'data-skin-home', 'data-skin-watchback', 'data-skin-channel', 'data-skin-chapters', 'data-skin-tray', 'data-skin-radio'];
       for (var j = 0; j < flags.length; j++) { if (a.hasAttribute(flags[j])) return '[' + flags[j] + ']'; }
       return null;
     }
@@ -2421,6 +2441,13 @@
       // new dims, so no re-render here (this document is about to die).
       if (e.target.closest('[data-skin-tray]')) {
         if (stickerCfg.tray && typeof stickerCfg.tray.onToggle === 'function') { try { stickerCfg.tray.onToggle(); } catch (_) { /* shell best-effort */ } }
+        return true;
+      }
+      // v1.368.0: Start radio from the song now playing - the view replaces the queue; the menu closes
+      // onto Now Playing like any other play from the menu.
+      if (e.target.closest('[data-skin-radio]')) {
+        if (stickerCfg.radio && typeof stickerCfg.radio.onStart === 'function') { try { stickerCfg.radio.onStart(); } catch (_) { /* view best-effort */ } }
+        closeStickerMenu();
         return true;
       }
       // v1.368.0: the Shuffle mode toggle - flip via the view's hook, re-render for the new state.

@@ -93,11 +93,11 @@ async function boot(url, run, opts) {
   // the async station prefetch DETERMINISTICALLY before driving the segment boundary - the solo-exit
   // hand-off is one-shot at the boundary tick (reflect advances chapterViewId right after), so if the
   // prefetch has not resolved by then it degrades and the reveal never fires. `drain` awaits all
-  // outstanding json() promises, re-looping to catch the picker's SEQUENTIAL artist-then-library
-  // fetches (the library one is not even issued until the artist json resolves).
+  // outstanding json() promises, re-looping to catch any fetch a resolved one issues (v1.368.0: the
+  // picker is ONE radio request now; the v1.254 picker's artist-then-library pair needed the loop).
   const jsonPending = [];
   const body = (items) => ({ ok: true, json: () => { const p = Promise.resolve({ items: items }); jsonPending.push(p); return p; } });
-  // v1.311: opts.radio feeds the endless-autoplay picker's random library fetch, so a test can
+  // v1.311: opts.radio feeds the endless-autoplay picker's station fetch (v1.368.0: GET /api/music/radio), so a test can
   // prove a natural chapter playthrough stations on (append tracks) at the last chapter.
   global.fetch = (url2) => {
     const s = String(url2);
@@ -105,7 +105,7 @@ async function boot(url, run, opts) {
     // (a test can hold it open while it switches Autoplay off)
     if (opts.trackGate && s.indexOf('/track/') === 0) return opts.trackGate(s);
     if (s.indexOf('album=') !== -1) return Promise.resolve(body(albumOrder));
-    if (opts.radio && s.indexOf('/api/music?') !== -1 && s.indexOf('sort=random') !== -1) return Promise.resolve(body(opts.radio));
+    if (opts.radio && s.indexOf('/api/music/radio?') === 0) return Promise.resolve(body(opts.radio)); // v1.368.0: the station route
     if (opts.songsList && s.indexOf('/api/music?') !== -1 && s.indexOf('artist=') === -1 && s.indexOf('filter=') === -1) return Promise.resolve(body(CHAPTERS));
     return fetchMap()(url2);
   };
@@ -951,4 +951,29 @@ test('gate r1 F5: a station pick still being PREPARED when Autoplay goes off (to
       }
     }, { radio: RADIO, trackGate });
   }
+});
+
+// v1.368.0 R13 (Dean): a chapter the RADIO picked plays THAT chapter and stops at its end - it never
+// rolls through the rest of its DJ set. The pick is its set's only row in the queue, so neither the
+// queue-based later-chapter test nor a next-queued-chapter boundary can see the rest of the set: the
+// pick arms the exit itself and its own span (durationSec) ends it.
+test('v1.368.0 R13: a radio-picked DJ-set chapter stops at ITS end and moves to the next pick (never rolls into the set\'s next chapter)', async () => {
+  const RADIO = [
+    { id: 'mix::c1', title: 'Set Cut Two', artist: 'Other DJ', album: 'Big Set', albumKey: 'Y', durationSec: 100, chapterStartSec: 100, source: 'library-chapter', streamSrc: '/video/mix' },
+    { id: 'after1', title: 'After Song', artist: 'Someone', album: 'Other', albumKey: 'X', durationSec: 200, source: 'library' },
+  ];
+  await boot('http://localhost/music?play=' + encodeURIComponent('film::c2'), async (dom, ctx) => {
+    await ctx.drain(); // the last chapter armed the station: the picks are appended
+    const nav = ctx.getNav();
+    assert.ok(nav && typeof nav.onNext === 'function', 'precondition: the station is up past the album');
+    nav.onNext(); // the ended advance into the first pick
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'mix::c1', 'precondition: the radio chapter is playing');
+    const { set } = loopable(dom, 600); // the set's FILE is 600 s long: chapter two is [100, 200)
+    dom.window.FileTube.player.isLoopEnabled = () => false;
+    set(150); await settle();
+    set(200); await settle(); // its own end
+    await ctx.drain();
+    assert.strictEqual(ctx.playerState.currentId, 'after1', 'stopped at the chapter end and moved to the next pick');
+  }, { radio: RADIO });
 });

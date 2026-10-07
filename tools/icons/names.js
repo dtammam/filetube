@@ -19,7 +19,7 @@ const NAMES = [
   // actions and states
   'notifications', 'notifications_active', 'notifications_off', 'push_pin', 'keep', 'thumb_up',
   'favorite', 'star', 'share', 'headphones', 'subject', 'delete', 'content_copy', 'warning', 'error',
-  'shuffle', 'repeat',
+  'shuffle', 'repeat', 'radio', // v1.368.0: Start radio
   // the reader (sweep S10): Contents, reader settings (Aa), the font-size stepper
   'toc', 'format_size', 'remove',
   // sweep S2 (cards and feeds): the card action menu, the library toolbar, the channel heading
