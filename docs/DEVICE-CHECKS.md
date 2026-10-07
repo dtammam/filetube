@@ -151,3 +151,17 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
   pages still turn with the phone.
 - [ ] v1.369.0 - Known and left as is: a dialog, a toast or the keyboard (keyboard search) opened while sideways appears sideways
   to the iPod. Say if that is worth fixing.
+
+## Playlists (v1.370.0)
+
+- [ ] v1.370.0 - iPhone: share a YouTube video that is in a playlist from the YouTube app to the FileTube Shortcut. The reply says
+  "Playlist found: open FileTube to choose"; a push arrives (if notifications are on). Tap it: the home-screen app opens the
+  choice; Choose videos -> pick 3 -> Download. One row counts to 3; each video lands in its channel's folder.
+- [ ] v1.370.0 - Without the push: open the app, the download indicator says "Playlist waiting: choose videos"; Choose -> the
+  picker (Format / Quality / File type above the list). Dismiss removes it.
+- [ ] v1.370.0 - The download box on the phone and on desktop: paste a video-in-playlist link -> "Just this video" downloads one;
+  "Choose videos" -> the picker; a long playlist shows Load more; a video already in your library is marked and not tickable.
+- [ ] v1.370.0 - Subscriptions > Add with a video-in-playlist link asks: "Subscribe to playlist" subscribes to the whole list.
+- [ ] v1.370.0 - Desktop extension (reload it first: chrome://extensions, the reload icon): on a video in a playlist, Audio /
+  Video download that one video and "Choose from playlist..." opens the picker in a new tab; on a playlist page Audio / Video
+  are off.

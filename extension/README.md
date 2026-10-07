@@ -36,7 +36,10 @@ environment variables.
 
 Open any page you want to grab, click the FileTube icon, and choose **Audio** or
 **Video**. The download is handed to yt-dlp on your instance and lands in your
-library. The popup shows a positive hint for well-known yt-dlp sites (YouTube,
+library. On a YouTube video that is part of a playlist, Audio and Video still
+download just that video; **Choose from playlist...** (shown on a playlist tab,
+not on a YouTube Mix) opens FileTube's playlist picker in a new tab, signed in as
+you, to pick several videos at once. The popup shows a positive hint for well-known yt-dlp sites (YouTube,
 Vimeo, SoundCloud, Twitch, TikTok, and ~1800 more); it never blocks an
 unrecognized site - the server makes the final call.
 

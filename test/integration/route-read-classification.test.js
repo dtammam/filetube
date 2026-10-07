@@ -142,6 +142,7 @@ const READ = {
   '/api/videos': 'GATED',
   '/api/videos/:id': 'GATED',
   '/api/videos/:id/chapter-snap': 'GATED', // Chapter Snap (2026-09-24): requireModifyLibrary + the single-item 404 (chapter-snap.test.js RBAC)
+  '/api/ytdlp/playlist': 'GATED', // v1.370.0 W2: one page of a YouTube playlist for the picker; requireManageSubscriptions first-line; its only library-derived field (inLibrary) is computed over mediaVisiblePredicate(req) - a hidden folder's copy reads false (ytdlp-playlist-listing.test.js)
   '/api/ytdlp/oneshot-trace.txt': 'ADMIN', // v1.365.0: the one-off download trace file; requireAdmin first-line (fail-closed in lib/ytdlp/index.js)
   '/api/ytdlp/engine': 'ADMIN', // v1.146: downloader-engine status; requireAdmin first-line (fail-closed gate in lib/ytdlp/index.js)
   '/audio/:id': 'GATED',

@@ -770,3 +770,44 @@ test('v1.314 gate r1 (adversary W2): a NON-INTEGER row id in the walk arm is nei
   assert.ok(counts.rounds <= 2, 'bounded: ' + counts.rounds + ' rounds (was 41 before the guard)');
   assert.ok(counts.posts <= 1, 'at most the one sendable row was POSTed: ' + counts.posts);
 });
+
+// ---- v1.370.0 W4 (gate r1 W4): the waiting-playlist push ------------------------------------------------
+const { waitingPlaylistPush } = require('../../lib/push/deliver');
+
+test('waitingPlaylistPush: ONLY enabled admins and members with Manage subscriptions; fixed text; the URL opens the picker and names the row', () => {
+  const p = waitingPlaylistPush({ id: '0b1f7c39-2e5c-4e3a-9a77-111111111111', url: 'https://www.youtube.com/playlist?list=PLUtyNbQXMTLg' }, [
+    { id: 1, role: 'admin' }, { id: 2, role: 'member', canManageSubscriptions: true }, { id: 3, role: 'member', canManageSubscriptions: false },
+    { id: 4, role: 'admin', disabled: true }, { id: 5, role: 'member' },
+  ]);
+  assert.deepStrictEqual([1, 2, 3, 4, 5].map((u) => p.allowUser(u)), [true, true, false, false, false]);
+  assert.deepStrictEqual(p.payload, {
+    title: 'Playlist waiting', body: 'Open FileTube to choose videos',
+    url: '/subscriptions?pick=' + encodeURIComponent('https://www.youtube.com/playlist?list=PLUtyNbQXMTLg') + '&waiting=0b1f7c39-2e5c-4e3a-9a77-111111111111',
+  });
+});
+
+test('broadcast: sends to the allowed users only, honours opt-out and cooldown, prunes a refused endpoint and a 410, never moves the feed cursor', async () => {
+  const NOWB = NOW;
+  const subs = [
+    { endpoint: 'https://push.example/wp/admin', userId: 1, lastPushedId: 5, cooldownUntil: 0 },
+    { endpoint: 'https://push.example/wp/member', userId: 3, lastPushedId: 5, cooldownUntil: 0 },
+    { endpoint: 'https://push.example/wp/optout', userId: 1, lastPushedId: 5, cooldownUntil: 0, settingsJson: JSON.stringify({ pushEnabled: 'off' }) },
+    { endpoint: 'https://push.example/wp/cool', userId: 1, lastPushedId: 5, cooldownUntil: NOWB + 60000 },
+    { endpoint: 'https://push.example/wp/guarded', userId: 1, lastPushedId: 5, cooldownUntil: 0 },
+    { endpoint: 'https://push.example/wp/gone', userId: 1, lastPushedId: 5, cooldownUntil: 0 },
+  ];
+  const { store, sends, delivery } = harness({ subs, feed: [], responses: [{ statusCode: 201, headers: {} }, { statusCode: 410, headers: {} }],
+    guard: async (u) => ({ ok: !/guarded/.test(u), error: 'refused' }) });
+  const sent = await delivery.broadcast({ title: 't', body: 'b', url: '/x' }, (userId) => userId === 1);
+  const urls = sends.map((x) => x.url);
+  assert.ok(!urls.includes('https://push.example/wp/member'), 'a user who may not download gets nothing');
+  assert.ok(!urls.includes('https://push.example/wp/cool'), 'a cooled-down endpoint is skipped');
+  assert.ok(!urls.includes('https://push.example/wp/optout'), 'a user who turned pushes off gets nothing');
+  assert.ok(!urls.includes('https://push.example/wp/guarded'), 'the guard refused it');
+  assert.ok(store.calls.some((c) => c[0] === 'prune' && c[1] === 'https://push.example/wp/guarded'));
+  assert.ok(store.calls.some((c) => c[0] === 'prune' && c[1] === 'https://push.example/wp/gone'), 'a 410 prunes');
+  assert.strictEqual(store.calls.filter((c) => c[0] === 'advance').length, 0, 'the feed cursor never moves');
+  assert.ok(urls.includes('https://push.example/wp/admin'));
+  assert.strictEqual(sent, 1);
+  assert.strictEqual(await delivery.broadcast({ title: 't' }), 0, 'no allowUser = nobody (fail closed)');
+});

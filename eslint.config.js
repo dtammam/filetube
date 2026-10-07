@@ -157,6 +157,9 @@ module.exports = [
     languageOptions: {
       globals: {
         clampPositionState: 'readonly',
+        // v1.370.0 W4: the playlist link router (common.js), the Subscriptions one-off form's way in.
+        routeOneOffDownload: 'readonly',
+        formatPlaylistChipStatus: 'readonly', // v1.370.0: the Subscriptions page's playlist-job row
         formatDuration: 'readonly',
         formatFileSize: 'readonly',
         formatRelativeTime: 'readonly',

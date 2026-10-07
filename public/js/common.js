@@ -7426,6 +7426,253 @@ function injectAccountMenu() {
   }).catch(() => { /* signed-out / network -- no menu */ });
 }
 
+// ---- v1.370.0 W4: the playlist picker (plan docs/exec-plans/completed/2026-10-06-v1370-playlist-picker.md) ----
+// A YouTube link that carries a playlist is asked about first (R1): a video in a list -> "Just this video" /
+// "Choose from the playlist..."; a list page -> the picker; a Mix (or Watch Later / Liked without the
+// operator's cookies) -> just the video, with a note (R5). What the link IS comes from the server
+// (GET /api/ytdlp/playlist?peek=1, url.classifyPlaylistLink): the client keeps no second copy of the rules.
+const PLAYLIST_LINK_HINT = /[?&]list=/i; // only a link with a list is worth asking the server about
+const PLAYLIST_MIX_NOTE = 'This is a YouTube Mix; downloading just this video.';
+const PLAYLIST_PERSONAL_NOTE = 'Watch Later and Liked are private to your YouTube account; downloading just this video.';
+
+// Pure: the chip line for a playlist job (lib/ytdlp/index.js runPlaylistJob's activity entry).
+function formatPlaylistChipStatus(entry) {
+  const e = entry && typeof entry === 'object' ? entry : {};
+  const n = (v) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? Math.floor(v) : 0);
+  const total = n(e.total);
+  const done = n(e.done);
+  const failed = Array.isArray(e.failedIds) ? e.failedIds.length : 0;
+  if (e.state === 'queued') return `Waiting to start: ${total} ${total === 1 ? 'video' : 'videos'}`;
+  if (e.state === 'downloading') return `${done + failed} of ${total}` + (failed ? ` (${failed} failed)` : '');
+  if (e.state === 'cancelled') return `Cancelled after ${done} of ${total}`;
+  if (e.state === 'error') return `${done} of ${total} downloaded, ${failed} failed`;
+  if (e.state === 'done') return `All ${total} downloaded`;
+  return '';
+}
+
+// Pure: a playlist job's Retry - the SAME route, only the failed videos (R7). null when nothing to retry.
+function buildPlaylistRetryRequest(entry) {
+  const e = entry && typeof entry === 'object' ? entry : null;
+  if (!e || e.kind !== 'playlist' || !Array.isArray(e.failedIds) || e.failedIds.length === 0 || typeof e.listId !== 'string') return null;
+  const body = { listId: e.listId, title: typeof e.title === 'string' ? e.title : '', ids: e.failedIds.slice() };
+  if (typeof e.format === 'string') body.format = e.format;
+  if (typeof e.quality === 'string') body.quality = e.quality;
+  if (typeof e.filetype === 'string') body.filetype = e.filetype;
+  return { path: '/api/ytdlp/download-playlist', body };
+}
+
+function playlistApiUrl(link, page, peek) {
+  const q = new URLSearchParams({ url: link });
+  if (peek) q.set('peek', '1'); else q.set('page', String(page || 1));
+  return '/api/ytdlp/playlist?' + q.toString();
+}
+
+// The picker: one sheet listing the playlist, nothing ticked but the linked video (R2), "Already in
+// library" and unavailable rows shown but not tickable, Select all / none over what is LOADED (R6),
+// Load more (the next 200), Subscribe to this playlist (R4), and Download (N) as ONE job (R7) with the
+// download box's format / quality / file type (R12). `opts` = { link, linkedVideoId, format, quality,
+// filetype, signal, onStarted() }. Every dynamic string goes in through textContent (ui.row fills text).
+function openPlaylistPicker(opts) {
+  const o = opts || {};
+  const U = overlayUiLib();
+  if (!U || typeof U.sheet !== 'function' || typeof document === 'undefined') return null;
+  const d = document;
+  const wrap = d.createElement('div');
+  wrap.className = 'oneoff-form playlist-picker';
+  const status = d.createElement('p');
+  status.className = 'oneoff-status';
+  status.setAttribute('role', 'status');
+  status.textContent = 'Reading the playlist…';
+  wrap.appendChild(status);
+  // R12: from a waiting playlist or the extension's tab there is no download box, so the box's three
+  // controls show above the list, at the box's defaults
+  let fmt = null;
+  if (o.withFormatControls) {
+    const fr = d.createElement('div');
+    fr.className = 'oneoff-row';
+    fmt = {
+      format: buildOneOffSelect(d, ONEOFF_FORMAT_OPTIONS, 'video'),
+      quality: buildOneOffSelect(d, ONEOFF_QUALITY_OPTIONS.map((q) => ({ value: q, label: q })), ONEOFF_DEFAULT_QUALITY),
+      filetype: buildOneOffSelect(d, ONEOFF_FILETYPE_OPTIONS.video, ONEOFF_DEFAULT_FILETYPE.video),
+    };
+    fmt.format.setAttribute('aria-label', 'Format'); fmt.quality.setAttribute('aria-label', 'Quality'); fmt.filetype.setAttribute('aria-label', 'File type');
+    fmt.format.addEventListener('change', () => repopulateOneOffFiletypeSelect(d, fmt.format.value, fmt.filetype));
+    [fmt.format, fmt.quality, fmt.filetype].forEach((sel) => fr.appendChild(oneOffSelectBox(d, sel)));
+    wrap.appendChild(fr);
+  }
+  const head = d.createElement('div');
+  head.className = 'oneoff-row';
+  head.hidden = true;
+  const allBtn = U.button({ variant: 'secondary', size: 'sm', label: 'Select all', doc: d });
+  const noneBtn = U.button({ variant: 'secondary', size: 'sm', label: 'Select none', doc: d });
+  const subBtn = U.button({ variant: 'secondary', size: 'sm', label: 'Subscribe to playlist', doc: d });
+  head.appendChild(allBtn); head.appendChild(noneBtn); head.appendChild(subBtn);
+  wrap.appendChild(head);
+  const list = U.list({ media: 'thumb', actions: 1, grouped: true, label: 'Playlist videos', doc: d });
+  list.hidden = true;
+  wrap.appendChild(list);
+  const moreBtn = U.button({ variant: 'secondary', label: 'Load more', doc: d });
+  moreBtn.hidden = true;
+  wrap.appendChild(moreBtn);
+  const goBtn = U.button({ variant: 'primary', label: 'Download', doc: d });
+  goBtn.disabled = true;
+  wrap.appendChild(goBtn);
+
+  // `started`: the job was accepted - Download stays off while the sheet closes (a second tap during the
+  // close would start the same videos again)
+  const state = { listId: null, title: '', total: null, nextPage: null, rows: [], loading: false, posting: false, started: false };
+  // the view's signal (LESSONS 4): leaving the page closes the picker, never strands it over the next view
+  const signal = o.signal || ((typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.viewSignal === 'function') ? window.FileTube.viewSignal() : undefined);
+  const sheet = U.sheet({ title: 'Choose from the playlist', content: wrap, doc: d, signal });
+  // the activation guard (ui.js): guard() marks a press inside the window; each handler below ASKS accepts(e)
+  // first - guard() alone refuses nothing (gate r1: a tap 200 ms after the open posted the job)
+  [allBtn, noneBtn, subBtn, moreBtn, goBtn].forEach((b) => sheet.guard(b));
+
+  const picked = () => state.rows.filter((r) => r.box && r.box.checked).map((r) => r.id);
+  function refresh() {
+    const n = picked().length;
+    goBtn.textContent = n ? `Download (${n})` : 'Download';
+    goBtn.disabled = n === 0 || state.posting || state.started;
+    const pickable = state.rows.filter((r) => r.box).length;
+    allBtn.textContent = state.nextPage ? `Select all (${pickable})` : 'Select all'; // R6: what is loaded, with the count
+    const shown = state.rows.length;
+    status.textContent = (state.title ? state.title + ': ' : '') + (state.total !== null ? `${shown} of ${state.total} shown` : `${shown} shown`);
+  }
+  function addRow(e) {
+    const blocked = e.inLibrary ? 'Already in library' : (e.unavailable ? 'Unavailable' : '');
+    let box = null;
+    const actions = [];
+    if (!blocked) {
+      box = d.createElement('input');
+      box.type = 'checkbox';
+      box.className = 'ui-switch';
+      box.setAttribute('role', 'switch');
+      box.setAttribute('aria-label', 'Download ' + (e.title || e.id));
+      box.checked = e.id === o.linkedVideoId; // R2: only the linked video starts ticked
+      box.addEventListener('change', refresh);
+      actions.push(box);
+    } else {
+      actions.push(null);
+    }
+    const media = U.thumb({ src: e.thumb, duration: e.durationSec || 0, context: 'row', doc: d });
+    const row = U.row({ title: e.title || e.id, meta: blocked || undefined, media, actions, doc: d });
+    if (blocked) row.classList.add('is-disabled');
+    list.appendChild(row);
+    state.rows.push({ id: e.id, box });
+  }
+  function load(page) {
+    if (state.loading) return;
+    state.loading = true;
+    moreBtn.disabled = true;
+    fetch(playlistApiUrl(o.link, page, false), { signal })
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw Object.assign(new Error(data.error || 'Could not read this playlist.'), { soft: true });
+        return data;
+      })
+      .then((data) => {
+        state.listId = data.listId; state.title = data.title || ''; state.total = Number.isInteger(data.total) ? data.total : null;
+        state.nextPage = data.nextPage || null;
+        (Array.isArray(data.entries) ? data.entries : []).forEach(addRow);
+        head.hidden = false; list.hidden = false;
+        moreBtn.hidden = !state.nextPage;
+        refresh();
+      })
+      .catch((err) => {
+        if (signal && signal.aborted) return;
+        // R14: say so, and still offer the one video when the link had one
+        status.textContent = "Couldn't read this playlist." + (err && err.soft && err.message ? ' ' + err.message : '');
+        if (o.linkedVideoId && typeof o.onJustThisVideo === 'function' && !wrap.querySelector('.playlist-picker-single')) {
+          const one = U.button({ variant: 'primary', label: 'Just this video', doc: d });
+          one.classList.add('playlist-picker-single');
+          sheet.guard(one);
+          one.addEventListener('click', (e) => { if (!sheet.accepts(e)) return; sheet.close(); o.onJustThisVideo(); });
+          wrap.appendChild(one);
+        }
+      })
+      .finally(() => { state.loading = false; moreBtn.disabled = false; });
+  }
+  allBtn.addEventListener('click', (e) => { if (!sheet.accepts(e)) return; state.rows.forEach((r) => { if (r.box) r.box.checked = true; }); refresh(); });
+  noneBtn.addEventListener('click', (e) => { if (!sheet.accepts(e)) return; state.rows.forEach((r) => { if (r.box) r.box.checked = false; }); refresh(); });
+  moreBtn.addEventListener('click', (e) => { if (!sheet.accepts(e)) return; if (state.nextPage) load(state.nextPage); });
+  subBtn.addEventListener('click', (e) => {
+    if (!sheet.accepts(e)) return;
+    // R4: subscribe to the LIST (the canonical /playlist?list= URL), never to the one video: Subscriptions > Add,
+    // filled. `o.navigate` is the seam a test reads the destination through.
+    if (!state.listId) return;
+    const dest = '/subscriptions?add=' + encodeURIComponent('https://www.youtube.com/playlist?list=' + state.listId);
+    if (typeof o.navigate === 'function') o.navigate(dest);
+    else if (typeof window !== 'undefined' && window.location) window.location.href = dest;
+  });
+  goBtn.addEventListener('click', (e) => {
+    if (!sheet.accepts(e)) return;
+    const ids = picked();
+    if (!ids.length || state.posting || state.started) return;
+    state.posting = true;
+    refresh();
+    fetch('/api/ytdlp/download-playlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(Object.assign({ listId: state.listId, title: state.title, ids },
+        fmt ? { format: fmt.format.value, quality: fmt.quality.value, filetype: fmt.filetype.value } : { format: o.format, quality: o.quality, filetype: o.filetype })),
+    })
+      .then(async (r) => {
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) { status.textContent = data.error || 'Could not start the download.'; return; }
+        state.started = true;
+        injectDownloadStatusChip();
+        sheet.close();
+        if (typeof o.onStarted === 'function') o.onStarted(data);
+      })
+      .catch(() => { status.textContent = 'Could not start the download (network error).'; })
+      .finally(() => { state.posting = false; refresh(); });
+  });
+  sheet.open();
+  load(1);
+  return sheet;
+}
+
+// The one way a typed / pasted / shared link reaches a download (the download box, the Subscriptions
+// one-off form, a `?pick=` link): `submitSingle(body)` is the caller's today path for one video.
+// `ui` = { status(text), onStarted, withFormatControls, noAutoSubmit, fill(body, note) }. Resolves when the user
+// has been asked. `noAutoSubmit` (a LINK opened the page - `?pick=` from the extension or a push - not a link the
+// user typed): nothing is downloaded without a tap here (gate r1 security: a crafted `?pick=` link started a
+// download on load, the session cookie riding the top-level GET); a link that is not a pickable playlist goes to
+// `ui.fill` (the one-off form, filled) for the user to submit.
+function routeOneOffDownload(body, submitSingle, ui) {
+  const b = body && typeof body === 'object' ? body : {};
+  const link = typeof b.url === 'string' ? b.url.trim() : '';
+  const say = (t) => { if (ui && typeof ui.status === 'function') ui.status(t); };
+  const direct = (note) => {
+    if (ui && ui.noAutoSubmit) { if (typeof ui.fill === 'function') ui.fill(b, note || ''); return 'filled'; }
+    if (note) say(note);
+    submitSingle(b);
+    return note ? 'single-note' : 'single';
+  };
+  if (!PLAYLIST_LINK_HINT.test(link)) return Promise.resolve(direct(''));
+  return fetch(playlistApiUrl(link, 1, true))
+    .then((r) => (r.ok ? r.json() : null))
+    .catch(() => null)
+    .then((peek) => {
+      const kind = peek && peek.kind;
+      const picker = () => openPlaylistPicker({
+        link, linkedVideoId: peek.videoId, format: b.format, quality: b.quality, filetype: b.filetype,
+        withFormatControls: !!(ui && ui.withFormatControls),
+        onJustThisVideo: () => submitSingle(b), onStarted: ui && ui.onStarted,
+      });
+      if ((kind === 'watch-in-list' || (kind === 'personal' && peek.listable && peek.videoId)) && peek.listable) {
+        showChoiceModal('This video is in a playlist', [
+          { label: 'Just this video', onPick: () => submitSingle(b) },
+          { label: 'Choose videos', onPick: picker },
+        ]);
+        return 'asked';
+      }
+      if (kind === 'playlist' || (kind === 'personal' && peek.listable)) { picker(); return 'picker'; }
+      if ((kind === 'mix' || kind === 'personal') && peek.videoId) return direct(kind === 'mix' ? PLAYLIST_MIX_NOTE : PLAYLIST_PERSONAL_NOTE);
+      return direct(''); // none, or the server could not say: today's path decides (and words any error)
+    });
+}
+
 function injectOneOffDownloadButtonIfEnabled() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
   if (document.getElementById('ytdlp-oneoff-btn') || document.querySelector('[data-nav="oneoff-download"]')) return; // already injected
@@ -7557,7 +7804,11 @@ function injectOneOffDownloadButtonIfEnabled() {
         if (!modalState) {
           modalState = buildOneOffModal(document, {
             onClose: closeModal,
-            onDownload: (body) => submitOneOffDownload(body),
+            // v1.370.0 W4: a link with a playlist is asked about first (R1); one video posts as today
+            onDownload: (body) => routeOneOffDownload(body, submitOneOffDownload, {
+              status: (t) => showToast(t),
+              onStarted: () => closeModal(),
+            }),
             // v1.29.0 T6 (R1.4/AC3.4): the modal's error-state Retry --
             // `entry` is the LAST LiveEntry `setStatus` rendered (only
             // reachable while `entry.state === 'error'`, see
@@ -15195,6 +15446,25 @@ function formatActivityStatusText(entry) {
 
 function buildDownloadChipItem(kind, id, entry) {
   if (!id || !entry || typeof entry !== 'object') return null;
+  // v1.370.0 W3/W4: ONE row for a playlist job (R7): "<Playlist>" over "12 of 40"; Cancel while it runs
+  // (the one-shot cancel route stops the job and its current video); Retry re-sends only the failed ids.
+  if (kind === 'oneshot' && entry.kind === 'playlist') {
+    const pState = typeof entry.state === 'string' ? entry.state : 'queued';
+    const pPercent = typeof entry.percent === 'number' && Number.isFinite(entry.percent) ? Math.max(0, Math.min(100, Math.round(entry.percent))) : 0;
+    return {
+      key: kind + ':' + id,
+      id,
+      kind,
+      name: typeof entry.title === 'string' && entry.title.trim() !== '' ? entry.title.trim() : 'Playlist',
+      percent: pPercent,
+      state: pState,
+      phase: null,
+      indeterminate: pState === 'downloading' && pPercent <= 0,
+      failureKind: null,
+      statusText: formatPlaylistChipStatus(entry) || pState,
+      retryable: pState === 'error' && buildPlaylistRetryRequest(entry) !== null,
+    };
+  }
   const activityKind = kind === 'oneshot' && typeof entry.kind === 'string'
     && Object.prototype.hasOwnProperty.call(ACTIVITY_CHIP_LABELS, entry.kind)
     ? entry.kind : null;
@@ -15288,6 +15558,7 @@ function downloadChipItemShowsPercent(item) {
   // with no total (or a single-item reheat) shows no bar at all rather than
   // a fake 0%, and a terminal batch's statusText already says what happened.
   if (item.activityKind) return item.state === 'running' && item.activityBar === true;
+  if (item.kind === 'waiting') return false; // v1.370.0 W4: nothing is downloading yet
   if (item.kind !== 'subscription') return true;
   return item.state === 'downloading';
 }
@@ -15433,8 +15704,19 @@ function reduceDownloadChipState(snapshot, dismissedKeys, nowMs) {
     if (item) items.push(item);
   });
   Object.entries(oneShots).forEach(([id, entry]) => {
+    // v1.370.0 W3: a playlist job's videos run as child entries; the job's own row speaks for them
+    if (entry && typeof entry.parent === 'string' && entry.parent !== '') return;
     const item = buildDownloadChipItem('oneshot', id, entry);
     if (item) items.push(item);
+  });
+  // v1.370.0 W4 (R9, R13): a playlist the Shortcut left waiting: its own row, Choose / Dismiss
+  (Array.isArray(snapshot && snapshot.waitingPlaylists) ? snapshot.waitingPlaylists : []).forEach((w) => {
+    if (!w || typeof w.id !== 'string' || typeof w.url !== 'string') return;
+    items.push({
+      key: 'waiting:' + w.id, id: w.id, kind: 'waiting', url: w.url,
+      name: 'Playlist waiting: choose videos', percent: 0, state: 'waiting', phase: null, indeterminate: false,
+      failureKind: null, statusText: 'Shared to FileTube; nothing is downloaded until you choose', retryable: false,
+    });
   });
   // v1.365.0 (W3): `nowMs` is the SERVER's clock (the status response's `now`, carried forward by the poll);
   // without it (no `now` in the snapshot, or the screen is offline) no row carries an age. The rules:
@@ -15519,7 +15801,12 @@ function formatDownloadChipSummary(state) {
     const errored = state.items.filter((item) => item.state === 'error');
     const cancelledCount = state.items.filter((item) => item.state === 'cancelled').length;
     const errorCount = errored.length;
-    if (errorCount === 0 && cancelledCount === 0) return '';
+    // v1.370.0 W4: a playlist the Shortcut left waiting (gate r1: the collapsed chip was blank with only that)
+    const waitingCount = state.items.filter((item) => item.kind === 'waiting').length;
+    if (errorCount === 0 && cancelledCount === 0) {
+      if (waitingCount === 1) return 'Playlist waiting: choose videos';
+      return waitingCount > 1 ? waitingCount + ' playlists waiting' : '';
+    }
     if (cancelledCount === 0) {
       // "download failed" was a lie when the failed thing was a reheat --
       // wording follows what actually failed.
@@ -15828,6 +16115,14 @@ function createDownloadChipItemRow(doc, handlers) {
     if (row.state.item) handlers.onRetry(row.state.item, row.state.rawEntry);
   });
   actions.appendChild(retryBtn);
+  // v1.370.0 W4: a waiting playlist's Choose (opens the picker)
+  const chooseBtn = U.button({ variant: 'primary', size: 'sm', label: 'Choose', doc });
+  chooseBtn.classList.add('dl-status-chip-choose-btn');
+  chooseBtn.hidden = true;
+  chooseBtn.addEventListener('click', () => {
+    if (row.state.item && typeof handlers.onChoose === 'function') handlers.onChoose(row.state.item);
+  });
+  actions.appendChild(chooseBtn);
   const dismissBtn = U.button({ variant: 'secondary', size: 'sm', label: 'Dismiss', doc });
   dismissBtn.classList.add('dl-status-chip-dismiss-btn');
   dismissBtn.addEventListener('click', () => {
@@ -15836,7 +16131,7 @@ function createDownloadChipItemRow(doc, handlers) {
   actions.appendChild(dismissBtn);
   row.appendChild(actions);
 
-  row.els = { nameEl, errIcon, pctEl, track, fill, statusEl, ageEl, cancelActions, cancelBtn, failuresWrap, actions, retryBtn, dismissBtn };
+  row.els = { nameEl, errIcon, pctEl, track, fill, statusEl, ageEl, cancelActions, cancelBtn, failuresWrap, actions, retryBtn, chooseBtn, dismissBtn };
   return row;
 }
 
@@ -15897,7 +16192,8 @@ function updateDownloadChipItemRow(doc, row, item, rawEntry) {
   });
   els.failuresWrap.hidden = failureLines.length === 0;
 
-  els.actions.hidden = !(item.state === 'error' || item.state === 'cancelled');
+  els.actions.hidden = !(item.state === 'error' || item.state === 'cancelled' || item.kind === 'waiting');
+  els.chooseBtn.hidden = item.kind !== 'waiting'; // v1.370.0 W4
   // v1.55: gate on the item's own `retryable` (previously a write-only field
   // -- this row checked `state` directly, which would have offered a Retry
   // on an errored BATCH row and fired the one-shot retry route against a
@@ -16050,9 +16346,11 @@ function injectDownloadStatusChip() {
       });
 
       function retryOneShot(rawEntry, key) {
-        const body = buildOneShotRetryBody(rawEntry);
+        // v1.370.0 W3/W4: a playlist job retries its failed videos as a new playlist job (R7)
+        const plRetry = buildPlaylistRetryRequest(rawEntry);
+        const body = plRetry ? plRetry.body : buildOneShotRetryBody(rawEntry);
         if (!body) return;
-        fetch('/api/ytdlp/download', {
+        fetch(plRetry ? plRetry.path : '/api/ytdlp/download', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(body),
@@ -16068,6 +16366,12 @@ function injectDownloadStatusChip() {
             }
           })
           .catch(() => { /* best-effort -- the item stays visible; the user can retry again */ });
+      }
+
+      function dismissWaitingPlaylist(id) {
+        fetch('/api/ytdlp/waiting/' + encodeURIComponent(id) + '/dismiss', { method: 'POST' })
+          .then(() => pollOnce(true))
+          .catch(() => { /* the next poll shows whatever is true */ });
       }
 
       function retrySubscription(id) {
@@ -16173,8 +16477,19 @@ function injectDownloadStatusChip() {
             else retrySubscription(item.id);
           },
           onDismiss: (key) => {
+            // v1.370.0 W4: a waiting playlist is dismissed on the SERVER (for everyone), then drops off
+            if (key.indexOf('waiting:') === 0) { dismissWaitingPlaylist(key.slice(8)); return; }
             dismissedKeys.add(key);
             render();
+          },
+          onChoose: (item) => {
+            // R9: R1's choice, then the picker (with the box's controls, R12); clearing it once chosen
+            const done = () => dismissWaitingPlaylist(item.id);
+            routeOneOffDownload({ url: item.url, format: 'video', quality: ONEOFF_DEFAULT_QUALITY }, (one) => {
+              fetch('/api/ytdlp/download', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(one) })
+                .then((r) => { if (r.ok) done(); })
+                .catch(() => { /* the row stays; Choose again */ });
+            }, { withFormatControls: true, onStarted: done, status: (t) => showToast(t) });
           },
         });
       }
@@ -16220,8 +16535,11 @@ function injectDownloadStatusChip() {
                 // SITEWIDE chip can show the one-line systemic signal even
                 // while individual check failures are muted off the badge.
                 breaker: snapshot.breaker || null,
+                // v1.370.0 W4: the Shortcut's waiting playlists (the e2e proof caught them dropped right here:
+                // the reducer was fed directly in the unit test, never through this poll)
+                waitingPlaylists: Array.isArray(snapshot.waitingPlaylists) ? snapshot.waitingPlaylists : [],
               }
-              : { subscriptions: {}, oneShots: {}, breaker: null };
+              : { subscriptions: {}, oneShots: {}, breaker: null, waitingPlaylists: [] };
             const serverNowMs = snapshot && typeof snapshot.now === 'string' ? Date.parse(snapshot.now) : NaN;
             serverOffsetMs = Number.isFinite(serverNowMs) ? serverNowMs - Date.now() : null; // absent: no ages
             lastOkAt = Date.now();
@@ -17626,6 +17944,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // pocket menus gate r1 K2: the library-changed seam + the chapters editor that raises it.
     LIBRARY_CHANGED_EVENT, notifyLibraryChanged, // showChaptersEditor is exported with the Chapter Snap group above
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
+    formatPlaylistChipStatus, buildPlaylistRetryRequest, routeOneOffDownload, openPlaylistPicker, // v1.370.0 W4: the playlist picker
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     formatDownloadStaleNote, formatDownloadOfflineText, downloadChipRenderErrorCount, // v1.365.0 (W3)
     formatDownloadRowAge, downloadChipPollFaultCount, // v1.365.0 gate r1
