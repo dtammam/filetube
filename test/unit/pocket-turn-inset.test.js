@@ -178,7 +178,8 @@ test('W1 CSS: the Pocket portrait top paddings read var(--pk-top-inset, env(safe
   const css = fs.readFileSync(path.join(ROOT, 'public/css/style.css'), 'utf8');
   const uses = css.split('\n').filter((l) => l.includes('--pk-top-inset'));
   assert.strictEqual(uses.length, 3, 'the apple, spotify and ipod portrait paddings, no more');
-  for (const l of uses) assert.ok(l.includes('calc(var(--pk-top-inset, env(safe-area-inset-top,0px)) + var(--space-8))'), 'fallback is today\'s env(): ' + l.trim().slice(0, 80));
+  // the iPod portrait lock: the turned Upright player's own top inset (--mms-up-top) reads first, else this one
+  for (const l of uses) assert.ok(l.includes('calc(var(--mms-up-top, var(--pk-top-inset, env(safe-area-inset-top,0px))) + var(--space-8))'), 'fallback is today\'s env(): ' + l.trim().slice(0, 80));
   // the landscape layout keeps reading env() directly (no capture of that turn exists)
   const land = css.slice(css.indexOf('UI pass D7: POCKET IN LANDSCAPE'));
   assert.ok(!land.includes('--pk-top-inset'), 'the landscape block is untouched');

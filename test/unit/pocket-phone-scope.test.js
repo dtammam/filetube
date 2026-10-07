@@ -134,9 +134,9 @@ test('D7 CSS: nothing Pocket is decided by a width query any more (the rotate th
   assert.ok(RULES.some((r) => r.sel === 'html.is-phone #music-popout-btn' && /display:\s*none/.test(r.body)), 'the pop-out box keys on the class');
 });
 
-test('D7 CSS landscape: side by side (screen left, wheel right), insets on the sides, and no transition anywhere in it', () => {
-  const land = RULES.filter((r) => /@media \(orientation: landscape\)/.test(r.at) && r.sel.indexOf(':where(html.is-phone)') === 0);
-  const sel = (s) => land.find((r) => r.sel === ':where(html.is-phone) ' + s);
+test('D7 CSS landscape (the Sideways setting since the iPod portrait lock): side by side (screen left, wheel right), insets on the sides, and no transition anywhere in it', () => {
+  const land = RULES.filter((r) => /@media \(orientation: landscape\)/.test(r.at) && r.sel.indexOf(':where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"]))') === 0);
+  const sel = (s) => land.find((r) => r.sel === ':where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) ' + s);
   const grid = sel('.mms-full.mms-ipod');
   assert.ok(grid, 'the Click chassis grid rule');
   assert.match(grid.body, /display:grid;/);

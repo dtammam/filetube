@@ -588,6 +588,11 @@
     var getSkinId = o.getSkinId;
     var games = o.games || null; // the view's Brick hook {visible, onTap} - main document only (the engine decides)
     var lighting = o.lighting || null; // the engine's pocket-lighting driver (Settings > Lighting; null = no row)
+    // Settings > Stay Upright (the iPod portrait lock, R7): a phone only; the flag is music-skins.js's ft-pocket-sideways
+    function uprightAvailable() {
+      try { return typeof SK.setPocketSideways === 'function' && doc.documentElement.classList.contains('is-phone'); } catch (_) { return false; }
+    }
+    function uprightOn() { var ls = null; try { ls = win.localStorage; } catch (_) { ls = null; } return !SK.pocketSideways(ls); }
     var onPreview = typeof o.onPreview === 'function' ? o.onPreview : null; // Extras > Skins: the engine re-skins the panel live (null id = back to the saved skin)
     var onSkinChosen = typeof o.onSkinChosen === 'function' ? o.onSkinChosen : null;
     var previewShown = null;   // the skin id the LCD is previewing right now (null = the saved one)
@@ -734,7 +739,8 @@
       }
       if (pane.state !== 'idle') return;
       // gate r1 (adversary W2): the row only where the driver can light THIS skin - Click.
-      var st = SK.menuStaticItems(pane.node, { hasLighting: !!lighting && style() === 'click', hasGames: gamesVisible(), hasSkins: skinsVisible(), style: style() });
+      var st = SK.menuStaticItems(pane.node, { hasLighting: !!lighting && style() === 'click', hasGames: gamesVisible(), hasSkins: skinsVisible(), style: style(),
+        hasUpright: uprightAvailable(), upright: uprightOn() });
       if (st) { pane.items = st; pane.state = 'ready'; return; }
       pane.state = 'loading';
       var tok = ++pane.token;
@@ -1482,6 +1488,13 @@
       if (it.action === 'radio') { // v1.368.0: a level's "Start radio" row (an artist, an album, a genre)
         try { if (typeof cfg.onStartRadio === 'function') cfg.onStartRadio(it.seed); } catch (_) { /* view best-effort */ }
         showNowPlaying();
+        return;
+      }
+      if (it.action === 'upright') { // Settings > Stay Upright (the iPod portrait lock, R7): flip it, re-list the level
+        try { SK.setPocketSideways(uprightOn(), win); } catch (_) { /* storage best-effort */ }
+        var up = curPane();
+        if (up) up.state = 'idle';
+        render();
         return;
       }
       if (it.action === 'lighting') {
@@ -2758,8 +2771,7 @@
         var groove = volEl.querySelector('.ip-vol-track') || volEl;
         if (groove !== volEl && !groove.contains(e.target)) { if (volOpen) armVolumeIdle(); return; }
         if (volumeLevel() !== null) {
-          var vr = groove.getBoundingClientRect();
-          var vf = Math.min(1, Math.max(0, (e.clientX - vr.left) / (vr.width || 1)));
+          var vf = fractionAlong(groove, e);
           setVolumeLevel(Math.round(vf / VOLUME_STEP) * VOLUME_STEP);
           if (volOpen) armVolumeIdle();
         }
@@ -2811,8 +2823,7 @@
       if (seek) {
         var sb = hostCtl('seek-bar');
         if (sb) {
-          var rct = seek.getBoundingClientRect();
-          var f = Math.min(1, Math.max(0, (e.clientX - rct.left) / (rct.width || 1)));
+          var f = fractionAlong(seek, e);
           sb.value = String(f);
           sb.dispatchEvent(new Event('change', { bubbles: true }));
         }
@@ -3027,6 +3038,21 @@
     // deepest element over a zone is its <svg> glyph, and WebKit's SVGElement has no
     // .click() (a tap would have been silently swallowed).
     var ghostDownPoint = null; // {x, y} of the last pointerdown that targeted the ghost
+    // The iPod portrait lock: with the Upright setting the full player is drawn turned back by the screen's angle, so a
+    // finger's screen x/y must be turned into the player's own frame before it means "along the bar" or "where the
+    // switch sits" (SKINS.turnOf reads the drawn turn; 0 = the unturned path, exactly as before).
+    function panelTurn() { return (SKINS && typeof SKINS.turnOf === 'function') ? SKINS.turnOf(panel, win) : 0; }
+    function localDelta(x, y, cx, cy, deg) {
+      return (deg && SKINS && SKINS.unturnDelta) ? SKINS.unturnDelta(x - cx, y - cy, deg) : { x: x - cx, y: y - cy };
+    }
+    function fractionAlong(el, e) {
+      var r = el.getBoundingClientRect();
+      var deg = panelTurn();
+      if (!deg) return Math.min(1, Math.max(0, (e.clientX - r.left) / (r.width || 1)));
+      var d = localDelta(e.clientX, e.clientY, r.left + r.width / 2, r.top + r.height / 2, deg);
+      var w = el.offsetWidth || 1;
+      return Math.min(1, Math.max(0, (d.x + w / 2) / w));
+    }
     function realTargetUnder(e) {
       if (!wheelGhost || e.target !== wheelGhost) return e.target;
       var px = (ghostDownPoint && e.type === 'click') ? ghostDownPoint.x : e.clientX;
@@ -3044,6 +3070,7 @@
     function hapticGestureStart(st, e) {
       if (!wheelGhost || !wheelGhost.isConnected) return;
       st.hapAccum = 0; st.hapLast = 0; st.hapBias = 1;
+      st.turn = panelTurn(); // read once per gesture (a computed-style read per move would cost a recalc)
       if (st.buzz === false) return; // v1.303: buzz OFF -> no haptic ghost tracking (rotation still scrubs/cursors)
       if (st.engine === 'sweep') { hapticPlaceSweep(st, e.clientX, e.clientY); return; } // v1.303: the tracked-switch sweep engine
       hapticPlaceGhost(st, e.clientX, e.clientY, false);
@@ -3054,8 +3081,9 @@
       if (flip) st.hapBias = -st.hapBias;
       // unscaled under the finger, biased past the track midline (the probe-C math); the
       // bias amplitude is the config's Dither (default HAPTIC_BIAS = 18) - v1.303.
-      var tx = (x - (r.left + r.width / 2)) + st.hapBias * (st.dither || HAPTIC_BIAS);
-      var ty = y - (r.top + r.height / 2);
+      var d = localDelta(x, y, r.left + r.width / 2, r.top + r.height / 2, st.turn);
+      var tx = d.x + st.hapBias * (st.dither || HAPTIC_BIAS);
+      var ty = d.y;
       wheelGhost.style.transform = 'translate(' + tx + 'px,' + ty + 'px)';
     }
     // v1.303: the SWEEP engine on the real wheel - the single tracked switch moved
@@ -3069,8 +3097,9 @@
       var off = WC
         ? WC.sweepOffset(st.sweepAngle, st.dither, st.detentDeg)
         : (st.dither * Math.sin((st.sweepAngle / (st.detentDeg || HAPTIC_STEP_DEG)) * Math.PI));
-      var tx = (x - (r.left + r.width / 2)) + off;
-      var ty = y - (r.top + r.height / 2);
+      var d = localDelta(x, y, r.left + r.width / 2, r.top + r.height / 2, st.turn);
+      var tx = d.x + off;
+      var ty = d.y;
       wheelGhost.style.transform = 'translate(' + tx + 'px,' + ty + 'px)';
     }
     function hapticOnMove(st, e, absD, signedD, lettered) {

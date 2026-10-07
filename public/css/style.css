@@ -8376,7 +8376,7 @@ a.tv-continue-card { text-decoration: none; }
      stays in the @media (max-width:768px) block below. */
   /* (the [hidden] lesson - a flex/grid menu's own display beats [hidden] - is ui.css's global
      [hidden] rule, which every shell and the pop-out window load) */
-  .mms-sticker-menu{ min-width:min(320px, 88vw); max-width:92vw; max-height:86vh; overflow-y:auto; /* corner-clip-safe: flex-column menu, buttons/chips only, no positioned descendant (do NOT swap to overflow:hidden - it would clip a tall list) */ /* v1.255 (Dean): the Extras page fits without scrolling; auto-scroll is the small-phone safety net */ display:flex; flex-direction:column; gap:var(--space-5); /* v1.252 L1 (Dean): thumb-sized menu */
+  .mms-sticker-menu{ min-width:min(320px, var(--mms-up-88vw, 88vw)); max-width:var(--mms-up-92vw, 92vw); max-height:86vh; overflow-y:auto; /* corner-clip-safe: flex-column menu, buttons/chips only, no positioned descendant (do NOT swap to overflow:hidden - it would clip a tall list) */ /* v1.255 (Dean): the Extras page fits without scrolling; auto-scroll is the small-phone safety net */ display:flex; flex-direction:column; gap:var(--space-5); /* v1.252 L1 (Dean): thumb-sized menu */
     background:var(--overlay-surface); color:var(--mms-white); border:1px solid var(--overlay-border); border-radius:var(--r-md); box-shadow:var(--shadow-overlay); padding:var(--space-6); font-family:var(--font-ui); } /* sweep S9 (D4.6): the SHELL takes the one overlay radius + shadow (a popover, --r-md); its surface and ink stay the skin's - the rows (S7's) paint on them */
   /* v1.255 (Dean's parity pass): buttons do NOT inherit the body font - every other menu
      sets it explicitly (.account-menu-item, settings-menu-item, .md-row's font:inherit).
@@ -8546,7 +8546,7 @@ a.tv-continue-card { text-decoration: none; }
      corner of EVERY skin + the desktop pop-out; tapping it opens a compact
      popover = speed + loop + skin picker. Self-contained dark overlay surface so
      it reads on any skin's palette; positioned over the safe-area inset. */
-  :where(html.is-phone, html.mms-popout) .mms-sticker-wrap{ --mms-sm-anchor-l:0; --mms-sm-anchor-r:auto; position:absolute; left:calc(env(safe-area-inset-left,0px) + var(--space-6)); bottom:calc(env(safe-area-inset-bottom,0px) + var(--space-6)); z-index:40; /* token-exempt: local stacking (above the skin chrome, below nothing else here) */ }
+  :where(html.is-phone, html.mms-popout) .mms-sticker-wrap{ --mms-sm-anchor-l:0; --mms-sm-anchor-r:auto; position:absolute; left:calc(var(--mms-up-left, env(safe-area-inset-left,0px)) + var(--space-6)); bottom:calc(var(--mms-up-bottom, env(safe-area-inset-bottom,0px)) + var(--space-6)); z-index:40; /* token-exempt: local stacking (above the skin chrome, below nothing else here) */ }
   /* v1.240 (Dean): a slight counter-clockwise tilt so it reads like a literal peel-and-stick
      sticker. On the BUTTON only - the pop-up menu (a sibling) stays upright. */
   /* v1.240/1.241 (Dean): a placed-sticker feel. --mms-sticker-px drives the size (bumped base
@@ -8575,7 +8575,7 @@ a.tv-continue-card { text-decoration: none; }
      scrollTop 0). The menu hangs above the sticker, so its cap is the space ABOVE the sticker: the
      viewport less both safe-area insets, the wrap's bottom offset, the sticker (the wrap carries its size
      class) and the gap - never more than the old 86vh. The tray's full-window menu keeps its own rule. */
-  :where(html.is-phone, html.mms-popout) .mms-sticker-wrap > .mms-sticker-menu{ max-height:min(86vh, calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - var(--space-6) - var(--mms-sticker-px,52px) - var(--space-3) - var(--space-3))); }
+  :where(html.is-phone, html.mms-popout) .mms-sticker-wrap > .mms-sticker-menu{ max-height:min(var(--mms-up-86vh, 86vh), calc(var(--mms-up-dvh, 100dvh) - var(--mms-up-top, env(safe-area-inset-top,0px)) - var(--mms-up-bottom, env(safe-area-inset-bottom,0px)) - var(--space-6) - var(--mms-sticker-px,52px) - var(--space-3) - var(--space-3))); }
   /* v1.334 TAP TO PLAY (Dean: a notification opens the song but iOS refuses to start it - "one tap plays"):
      one clear pill over the upper half of the skin (the art / the LCD, never the wheel or the sticker),
      shown only while player.js's autoStartRefused() holds (skin-surface.js syncTapPlay). No backdrop or
@@ -8594,7 +8594,7 @@ a.tv-continue-card { text-decoration: none; }
   /* .mms-z is position:relative and LATER in the DOM than the absolute .mms-bleed,
      so it paints above without a z-index (the census governs z-index; no local rung). */
   :where(html.is-phone, html.mms-popout) .mms-apple .mms-z{ position:relative; flex:1; min-height:0; display:flex; flex-direction:column;
-    padding:calc(var(--pk-top-inset, env(safe-area-inset-top,0px)) + var(--space-8)) var(--space-12) calc(env(safe-area-inset-bottom,0px) + var(--space-12)); }
+    padding:calc(var(--mms-up-top, var(--pk-top-inset, env(safe-area-inset-top,0px))) + var(--space-8)) var(--space-12) calc(var(--mms-up-bottom, env(safe-area-inset-bottom,0px)) + var(--space-12)); }
   :where(html.is-phone, html.mms-popout) .mms-apple .mms-top{ justify-content:center; }
   /* the dismiss grab handle - a big transparent TAP TARGET (Dean couldn't find the exit)
      with the visible 38x5 pill centered inside via ::before. */
@@ -8617,7 +8617,7 @@ a.tv-continue-card { text-decoration: none; }
      Purple-to-black canvas, fat title, a control row of REAL shuffle (green) +
      prev / play / next, and a raised "Next in queue" panel. No fake repeat/heart. */
   :where(html.is-phone, html.mms-popout) .mms-spotify{ background:linear-gradient(var(--mms-sp-g1) 0%, var(--mms-sp-g2) 48%, var(--mms-sp-g3) 100%); color:var(--mms-sp-fg);
-    padding:calc(var(--pk-top-inset, env(safe-area-inset-top,0px)) + var(--space-8)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-8)); }
+    padding:calc(var(--mms-up-top, var(--pk-top-inset, env(safe-area-inset-top,0px))) + var(--space-8)) var(--space-10) calc(var(--mms-up-bottom, env(safe-area-inset-bottom,0px)) + var(--space-8)); }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-chev{ opacity:.9; }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-ctx{ flex:1; text-align:center; font-size:var(--fs-2xs); letter-spacing:var(--mms-ls-caps); text-transform:uppercase; opacity:.7; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   :where(html.is-phone, html.mms-popout) .mms-spotify .mms-top-spacer{ width:var(--size-touch); flex:none; }
@@ -8695,7 +8695,7 @@ a.tv-continue-card { text-decoration: none; }
     --pk-stk-shade-inset:-12%; --pk-stk-shade-size:124%; /* v1.334: the lit sticker's baked shadow + its blur margin (pocket-lighting.js STK_SHADE_PAD) */
     --pk-split:50%; --pk-speaker:14px; --pk-skel-w:70%; --pk-skel-h:10px;
     --pk-letter:96px; --pk-touch:var(--size-touch); --pk-grid-row:var(--size-touch);
-    --pk-wheel-d:min(70vw,288px); --pk-center-d:min(26vw,108px); /* ~70% of the body, the real wheel's proportion (v1.239) */
+    --pk-wheel-d:min(var(--mms-up-70vw, 70vw),288px); --pk-center-d:min(var(--mms-up-26vw, 26vw),108px); /* ~70% of the body, the real wheel's proportion (v1.239) */
     --pk-zone-glyph:25px; --pk-zone-inset:26%; --pk-zone-long:48%; --pk-zone-short:30%;
     --pk-tray-art:88px; --pk-tray-inset:var(--space-3) var(--space-4); --pk-tray-radius:8px;
     /* 2. type */
@@ -8731,7 +8731,7 @@ a.tv-continue-card { text-decoration: none; }
   /* the body: the colorway's stack, over its 1px edge */
   :where(html.is-phone, html.mms-popout) .mms-ipod{ background:var(--pk-c-body);
     color:var(--mms-black); box-shadow:inset 0 0 0 1px var(--pk-c-body-edge);
-    padding:calc(var(--pk-top-inset, env(safe-area-inset-top,0px)) + var(--space-8)) var(--space-10) calc(env(safe-area-inset-bottom,0px) + var(--space-10)); }
+    padding:calc(var(--mms-up-top, var(--pk-top-inset, env(safe-area-inset-top,0px))) + var(--space-8)) var(--space-10) calc(var(--mms-up-bottom, env(safe-area-inset-bottom,0px)) + var(--space-10)); }
   /* THE TEXT LINE (v1.332, D3: ONE overflow rule, not one per incident): every single-line text
      element of the pocket screens - the status title, the Now Playing lines, the list and menu rows,
      their values and times, About's name - may shrink below its text, never wraps, and truncates with
@@ -10678,12 +10678,12 @@ a.tv-continue-card { text-decoration: none; }
      portrait (the board is part of the phone; it does not rotate with the page). html[data-ft-rot] is stamped by
      pocket-lighting.js; a skin with no --pk-c-board-r* roles never reads --mms-ipod-board-turn. */
   @media (orientation: landscape){
-    html.is-phone[data-ft-rot="90"] .mms-full.mms-ipod{ --mms-ipod-board-turn:var(--pk-c-board-r90, none); }
-    html.is-phone[data-ft-rot="270"] .mms-full.mms-ipod{ --mms-ipod-board-turn:var(--pk-c-board-r270, none); }
+    html.is-phone:where(:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"]))[data-ft-rot="90"] .mms-full.mms-ipod{ --mms-ipod-board-turn:var(--pk-c-board-r90, none); }
+    html.is-phone:where(:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"]))[data-ft-rot="270"] .mms-full.mms-ipod{ --mms-ipod-board-turn:var(--pk-c-board-r270, none); }
     /* v1.354: a phone laid sideways whose angle still reads portrait (the frame before the engine reports the new one)
        draws no board photo rather than a wrong turn; the stamp follows in the same frame the layout flips. */
-    html.is-phone[data-ft-rot="0"] .mms-full.mms-ipod,
-    html.is-phone[data-ft-rot="180"] .mms-full.mms-ipod{ --mms-ipod-board-turn:none; }
+    html.is-phone:where(:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"]))[data-ft-rot="0"] .mms-full.mms-ipod,
+    html.is-phone:where(:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"]))[data-ft-rot="180"] .mms-full.mms-ipod{ --mms-ipod-board-turn:none; }
   }
   /* Click (Original) (v1.335, Dean: "one special Original skin which includes the entire vibe of the
      first") - its COLORS, one role block like every colorway. Commons "IPod1stWIKIPEDIA.png" (CC BY-SA
@@ -10890,7 +10890,7 @@ a.tv-continue-card { text-decoration: none; }
 @media (orientation: landscape) {
   /* the Click family (every colorway and the Original look): the LCD left, height-fitted at its 4:3;
      the wheel right, fitted to the SHORT side; the gap and padding from the space scale. */
-  :where(html.is-phone) .mms-full.mms-ipod{
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-ipod{
     --pkl-pad-y:var(--space-6); --pkl-pad-x:var(--space-10); --pkl-gap:var(--space-12);
     --pkl-h:calc(100vh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 2 * var(--pkl-pad-y));
     --pkl-h:calc(100dvh - env(safe-area-inset-top,0px) - env(safe-area-inset-bottom,0px) - 2 * var(--pkl-pad-y));
@@ -10904,40 +10904,67 @@ a.tv-continue-card { text-decoration: none; }
       calc(env(safe-area-inset-bottom,0px) + var(--pkl-pad-y)) calc(env(safe-area-inset-left,0px) + var(--pkl-pad-x)); }
   /* the LCD's height is the row, or less when the column is too narrow for a 4:3 at that height
      (an SE sideways); its width follows from the ratio (contain:size keeps content out of it) */
-  :where(html.is-phone) .mms-full.mms-ipod .ip-lcd{ grid-column:1; grid-row:1; justify-self:center; width:auto; max-width:100%;
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-ipod .ip-lcd{ grid-column:1; grid-row:1; justify-self:center; width:auto; max-width:100%;
     height:min(100%, calc((var(--pkl-w) - var(--pkl-gap) - var(--pkl-wheel)) * 3 / 4)); }
-  :where(html.is-phone) .mms-full.mms-ipod .ip-wheelwrap{ grid-column:2; grid-row:1; }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-ipod .ip-wheelwrap{ grid-column:2; grid-row:1; }
   /* the landscape wheel, and its centre at the chassis's centre-to-wheel proportion (108 / 288) -
      its own --pkl-* family, so the chassis stays the ONE authority for the portrait sizes */
-  :where(html.is-phone) .mms-full.mms-ipod .ip-wheel{ width:var(--pkl-wheel); height:var(--pkl-wheel); }
-  :where(html.is-phone) .mms-full.mms-ipod .ip-center{ width:calc(var(--pkl-wheel) * .375); height:calc(var(--pkl-wheel) * .375); }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-ipod .ip-wheel{ width:var(--pkl-wheel); height:var(--pkl-wheel); }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-ipod .ip-center{ width:calc(var(--pkl-wheel) * .375); height:calc(var(--pkl-wheel) * .375); }
   /* Cider: the cover left, height-fitted; the handle, title, scrubber and transport stacked right */
-  :where(html.is-phone) .mms-full.mms-apple .mms-z{ display:grid; grid-template-columns:auto minmax(0, 1fr); grid-template-rows:auto minmax(0, 1fr) auto auto auto;
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-z{ display:grid; grid-template-columns:auto minmax(0, 1fr); grid-template-rows:auto minmax(0, 1fr) auto auto auto;
     column-gap:var(--space-16); align-items:center;
     padding:calc(env(safe-area-inset-top,0px) + var(--space-6)) calc(env(safe-area-inset-right,0px) + var(--space-12))
       calc(env(safe-area-inset-bottom,0px) + var(--space-6)) calc(env(safe-area-inset-left,0px) + var(--space-12)); }
-  :where(html.is-phone) .mms-full.mms-apple .mms-art{ grid-column:1; grid-row:1 / -1; height:100%; width:auto; max-width:none; margin:0; }
-  :where(html.is-phone) .mms-full.mms-apple .mms-top, :where(html.is-phone) .mms-full.mms-apple .mms-head,
-  :where(html.is-phone) .mms-full.mms-apple .mms-scrub, :where(html.is-phone) .mms-full.mms-apple .mms-transport{ grid-column:2; }
-  :where(html.is-phone) .mms-full.mms-apple .mms-head{ grid-row:2; align-self:end; margin-top:0; }
-  :where(html.is-phone) .mms-full.mms-apple .mms-scrub{ margin-top:var(--space-6); }
-  :where(html.is-phone) .mms-full.mms-apple .mms-transport{ margin-top:var(--space-6); }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-art{ grid-column:1; grid-row:1 / -1; height:100%; width:auto; max-width:none; margin:0; }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-top, :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-head,
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-scrub, :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-transport{ grid-column:2; }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-head{ grid-row:2; align-self:end; margin-top:0; }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-scrub{ margin-top:var(--space-6); }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-apple .mms-transport{ margin-top:var(--space-6); }
   /* Nordic: the cover left; the context line, title, scrubber, transport and the queue (which takes
      the rest of the height and scrolls) stacked right */
-  :where(html.is-phone) .mms-full.mms-spotify{ display:grid; grid-template-columns:auto minmax(0, 1fr); grid-template-rows:auto auto auto auto minmax(0, 1fr);
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify{ display:grid; grid-template-columns:auto minmax(0, 1fr); grid-template-rows:auto auto auto auto minmax(0, 1fr);
     column-gap:var(--space-12);
     padding:calc(env(safe-area-inset-top,0px) + var(--space-6)) calc(env(safe-area-inset-right,0px) + var(--space-10))
       calc(env(safe-area-inset-bottom,0px) + var(--space-4)) calc(env(safe-area-inset-left,0px) + var(--space-10)); }
-  :where(html.is-phone) .mms-full.mms-spotify .mms-art{ grid-column:1; grid-row:1 / -1; align-self:center; height:100%; width:auto; max-width:none; margin:0; }
-  :where(html.is-phone) .mms-full.mms-spotify .mms-top, :where(html.is-phone) .mms-full.mms-spotify .mms-meta, :where(html.is-phone) .mms-full.mms-spotify .mms-scrub,
-  :where(html.is-phone) .mms-full.mms-spotify .mms-transport, :where(html.is-phone) .mms-full.mms-spotify .mms-queue{ grid-column:2; }
-  :where(html.is-phone) .mms-full.mms-spotify .mms-scrub{ margin-top:var(--space-4); }
-  :where(html.is-phone) .mms-full.mms-spotify .mms-transport{ margin-top:var(--space-4); }
-  :where(html.is-phone) .mms-full.mms-spotify .mms-queue{ margin-top:var(--space-4); }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-art{ grid-column:1; grid-row:1 / -1; align-self:center; height:100%; width:auto; max-width:none; margin:0; }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-top, :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-meta, :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-scrub,
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-transport, :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-queue{ grid-column:2; }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-scrub{ margin-top:var(--space-4); }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-transport{ margin-top:var(--space-4); }
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full.mms-spotify .mms-queue{ margin-top:var(--space-4); }
   /* the sticker moves to the RIGHT corner: bottom-left is the screen / the cover now; its menu opens
      up from it, right-aligned so it stays on the screen */
-  :where(html.is-phone) .mms-full .mms-sticker-wrap{ left:auto; right:calc(env(safe-area-inset-right,0px) + var(--space-6));
+  :where(html.is-phone:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])) .mms-full .mms-sticker-wrap{ left:auto; right:calc(env(safe-area-inset-right,0px) + var(--space-6));
     --mms-sm-anchor-l:auto; --mms-sm-anchor-r:0; }
+}
+
+/* ===================== POCKET STAYS UPRIGHT (Dean, 2026-10-07: "if you even turn the phone sideways, it won't change it") =====
+   iOS lets no web page lock its orientation (MDN browser-compat-data 8.1.4: screen.orientation.lock() and the manifest's
+   `orientation` are both unsupported on iOS Safari), so the page DOES turn; with the Upright setting (html.pk-upright, the
+   default - music-skins.js) the full player is drawn as the phone's PORTRAIT box (the landscape viewport's height wide, its
+   width tall) and turned back by the screen's angle (html[data-ft-rot], pocket-lighting.js) about the screen's centre, so it
+   sits upright in the hand at its portrait size and layout. The D7 sideways layout above is the Sideways setting, untouched:
+   its selectors only gained `:not(.pk-upright[data-ft-rot="90"]):not(.pk-upright[data-ft-rot="270"])` (zero specificity), so
+   it also draws the frames of a turn BEFORE the angle stamp lands (the media query already says landscape, the stamp still
+   says 0: gate r1, measured; the upright box needs the angle to know which way to turn), exactly as today. A turn of -90deg puts the box's top at the screen's left:
+   angle 90 (the phone's top to the left) turns -90deg, angle 270 turns 90deg. The portrait safe areas follow the glass: each
+   box edge reads the screen edge it now lies on (--mms-up-*); the viewport units the chassis sizes from are re-pointed too
+   (in the box the phone's portrait width is the landscape vh). */
+@media (orientation: landscape) {
+  html.is-phone.pk-upright[data-ft-rot="90"] .mms-full,
+  html.is-phone.pk-upright[data-ft-rot="270"] .mms-full{
+    inset:auto; top:50%; left:50%;
+    width:100vh; width:100dvh; height:100vw;
+    --mms-up-70vw:70vh; --mms-up-26vw:26vh;
+    --mms-up-86vh:86vw; --mms-up-dvh:100vw; --mms-up-88vw:88vh; --mms-up-92vw:92vh; }
+  html.is-phone.pk-upright[data-ft-rot="90"] .mms-full{ transform:translate(-50%, -50%) rotate(-90deg);
+    --mms-up-top:env(safe-area-inset-left,0px); --mms-up-bottom:env(safe-area-inset-right,0px); --mms-up-left:env(safe-area-inset-bottom,0px); }
+  html.is-phone.pk-upright[data-ft-rot="90"] .mms-full :is(.ip-listview, .ipm-list, .mms-qlist),
+  html.is-phone.pk-upright[data-ft-rot="270"] .mms-full :is(.ip-listview, .ipm-list, .mms-qlist){ touch-action:pan-x pan-y; }
+  html.is-phone.pk-upright[data-ft-rot="270"] .mms-full{ transform:translate(-50%, -50%) rotate(90deg);
+    --mms-up-top:env(safe-area-inset-right,0px); --mms-up-bottom:env(safe-area-inset-left,0px); --mms-up-left:env(safe-area-inset-top,0px); }
 }
 
 /* the marquee keyframe (global; @keyframes are census-exempt) + a reduced-motion stop */

@@ -561,6 +561,13 @@
           </div>
           <p class="setup-note">On an iPod skin, Music &gt; Search uses your phone's keyboard instead of the wheel's letters. Off by default; remembered on this device only.</p>
         </div>
+        <!-- the iPod portrait lock (Dean, 2026-10-07): per-device (localStorage ft-pocket-sideways '1' = sideways; absent = upright, the default). -->
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="pocket-upright-check">Keep the iPod upright</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="pocket-upright-check" /></span></div>
+          </div>
+          <p class="setup-note">On: turning your phone sideways leaves the iPod as it is, upright in your hand. Off: the iPod lays itself out sideways when you turn the phone. On by default; remembered on this device only.</p>
+        </div>
         <!-- v1.230 (Dean): the mobile Music-player skin, per-device (localStorage ft-music-skin). -->
         <div class="setup-group">
           <h3 class="setup-heading">Music skin</h3>

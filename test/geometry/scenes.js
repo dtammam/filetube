@@ -244,6 +244,9 @@ const FAST_SCENES = [
 // images are skipped the way a running animation is; the pane box itself is still measured.
 const G4_SEQUENCES = [
   { id: 'pocket-rotation', owner: 'S7', modes: ['dark', 'light'], ignore: '.ipm-art *' },
+  // the iPod portrait lock (gate r1 QA W3): the same turn with the Sideways setting, so the UI pass D7 layout keeps its
+  // real-browser rotation check (pocket-rotation above now measures the default, Upright)
+  { id: 'pocket-rotation-sideways', owner: 'ipod-lock', modes: ['light'], ignore: '.ipm-art *', sideways: true },
   { id: 'kit-rotation', owner: 'step 4', modes: ['light'] },
 ];
 

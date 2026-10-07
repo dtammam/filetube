@@ -564,7 +564,76 @@
   // (the Music tab tapped again, the /music toolbar's iPod button, /music?pocket=1) on a phone whose chosen
   // skin carries the Pocket menus - a skin without menus has nothing to show without a track.
   function pocketEntryAvailable(phone, store) { return isPhone(phone) && !!menuStyle(activeSkinId(store)); }
-  if (typeof window !== 'undefined' && window.document) markPhoneClass(window);
+  // The iPod portrait lock (Dean, 2026-10-07: "if you even turn the phone sideways, it won't change it"; R7: "You can
+  // make it a setting to enable sideways"). html.pk-upright (a phone, and the Sideways setting off - the default) makes
+  // style.css draw the full player upright when the phone turns (the POCKET STAYS UPRIGHT block); without it the UI pass
+  // D7 sideways layout runs, unchanged. The setting is PER DEVICE (localStorage ft-pocket-sideways, '1' = sideways; it is
+  // NOT in prefs-sync's synced list: how a phone is held is that phone's). It is re-read at every turn and on a storage
+  // event (another tab's change), and set at once by setPocketSideways.
+  // The turn the full player is DRAWN with (style.css POCKET STAYS UPRIGHT), read off its computed transform - what is on
+  // the glass, never a second reading of the angle stamp - in degrees (0 = none). Anything that maps a finger's screen x/y
+  // onto the player (the haptic switch, the volume and seek bars) or a screen-axis tilt onto it (pocket-lighting.js) asks
+  // this one function, then turns the screen delta back with unturnDelta (LESSONS 12: one helper, never a per-handler copy).
+  function turnOf(el, win) {
+    try {
+      var w = win || (el && el.ownerDocument && el.ownerDocument.defaultView);
+      var t = el && w && w.getComputedStyle ? w.getComputedStyle(el).transform : 'none';
+      var m = /^matrix\(([^)]+)\)$/.exec(String(t || ''));
+      if (!m) return 0;
+      var v = m[1].split(',').map(Number);
+      var deg = Math.round(Math.atan2(v[1], v[0]) * 180 / Math.PI);
+      return ((deg % 360) + 360) % 360;
+    } catch (_) { return 0; }
+  }
+  // A screen-space delta (dx, dy) in the frame of a box turned by `deg` (turnOf): the inverse rotation.
+  function unturnDelta(dx, dy, deg) {
+    var a = ((Math.round(Number(deg) || 0) % 360) + 360) % 360;
+    if (!a) return { x: dx, y: dy };
+    // the quarter turns exactly (a float cos(90deg) is 6e-17, which would land in a CSS translate as an exponent)
+    if (a === 90) return { x: dy, y: -dx };
+    if (a === 180) return { x: -dx, y: -dy };
+    if (a === 270) return { x: -dy, y: dx };
+    var r = -a * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+    return { x: dx * c - dy * s, y: dx * s + dy * c };
+  }
+  var SIDEWAYS_KEY = 'ft-pocket-sideways';
+  var UPRIGHT_CLASS = 'pk-upright';
+  function pocketSideways(store) {
+    try { return !!store && store.getItem(SIDEWAYS_KEY) === '1'; } catch (_) { return false; }
+  }
+  function markUprightClass(win) {
+    try {
+      var html = win && win.document && win.document.documentElement;
+      if (!html) return false;
+      var store = null;
+      try { store = win.localStorage; } catch (_) { store = null; }
+      var on = html.classList.contains(PHONE_CLASS) && !pocketSideways(store);
+      if (html.classList.contains(UPRIGHT_CLASS) !== on) html.classList.toggle(UPRIGHT_CLASS, on);
+      return on;
+    } catch (_) { return false; }
+  }
+  function setPocketSideways(on, win) {
+    var w = win || (typeof window !== 'undefined' ? window : null);
+    try { if (on) w.localStorage.setItem(SIDEWAYS_KEY, '1'); else w.localStorage.removeItem(SIDEWAYS_KEY); } catch (_) { /* best-effort */ }
+    return markUprightClass(w);
+  }
+  // Its own function scope, so the window is held only by these listeners (a module-scope variable would be captured
+  // by every exported closure, keeping each loaded window alive for as long as the API is).
+  function installUpright(win) {
+    markUprightClass(win);
+    // a phone only: is-phone is set once at load and never changes, so a page that is not a phone never needs the re-read
+    if (!win.document.documentElement.classList.contains(PHONE_CLASS)) return;
+    var reUpright = function () { markUprightClass(win); };
+    try {
+      win.addEventListener('orientationchange', reUpright);
+      win.addEventListener('resize', reUpright);
+      win.addEventListener('storage', function (e) { if (!e || e.key === SIDEWAYS_KEY || e.key === null) reUpright(); });
+    } catch (_) { /* no listeners in a bare harness */ }
+  }
+  if (typeof window !== 'undefined' && window.document) {
+    markPhoneClass(window);
+    installUpright(window);
+  }
 
   // Measure AFTER settle (UI pass D7, F59). A size the skin reads once (the haptic ghost's
   // scale, the Brick canvas's backing store) goes stale when a rotate or the iOS toolbar
@@ -665,7 +734,12 @@
     // Lighting (2026-09-24, plan pocket-gyro-lighting): only where the controller says the driver
     // can light THIS skin (opts.hasLighting: a Click skin with pocket-lighting.js loaded) - never
     // a row that leads to nothing.
-    if (t === 'settings') return (o.hasLighting ? [{ label: 'Lighting', node: { type: 'lighting' } }] : []).concat([{ label: 'About', node: { type: 'about' } }]);
+    if (t === 'settings') {
+      return (o.hasLighting ? [{ label: 'Lighting', node: { type: 'lighting' } }] : [])
+        // the iPod portrait lock (R7): on a phone, a check row; checked = the player stays upright when the phone turns
+        .concat(o.hasUpright ? [{ label: 'Stay Upright', action: 'upright', check: !!o.upright }] : [])
+        .concat([{ label: 'About', node: { type: 'about' } }]);
+    }
     return null;
   }
   // Extras > Skins (v1.345): Original, then a row per iPod line (Classic, Mini, Nano, Shuffle, Touch, Custom), then Cider and
@@ -1181,6 +1255,7 @@
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
     skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, skinFamilies: skinFamilies, skinLines: skinLines, colorwayLabel: colorwayLabel, menuSkinItems: menuSkinItems, SEARCH_STRIP: SEARCH_STRIP, searchStripStep: searchStripStep, searchEdit: searchEdit, searchStripView: searchStripView, searchUrls: searchUrls, menuSearchItems: menuSearchItems, skinSearchItems: skinSearchItems, renderSearchBar: renderSearchBar, searchNextStop: searchNextStop, KB_SEARCH_KEY: KB_SEARCH_KEY, keyboardSearchOn: keyboardSearchOn, searchFromTyped: searchFromTyped, isClickColorway: isClickColorway,
     renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
+    SIDEWAYS_KEY: SIDEWAYS_KEY, UPRIGHT_CLASS: UPRIGHT_CLASS, pocketSideways: pocketSideways, markUprightClass: markUprightClass, setPocketSideways: setPocketSideways, turnOf: turnOf, unturnDelta: unturnDelta,
     remoteBadge: remoteBadge, volLevel: volLevel, skinActiveFor: skinActiveFor, pocketEntryAvailable: pocketEntryAvailable, isPhone: isPhone, phoneFrom: phoneFrom, markPhoneClass: markPhoneClass,
     PHONE_CLASS: PHONE_CLASS, PHONE_SHORT_SIDE_MAX: PHONE_SHORT_SIDE_MAX, observeSettled: observeSettled,
     // the pocket menus (the pure half - see the block above).
