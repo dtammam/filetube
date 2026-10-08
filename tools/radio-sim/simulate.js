@@ -28,6 +28,9 @@
 // Usage:
 //   node tools/radio-sim/simulate.js [--data DIR | --db FILE] [--trials 200] [--seed 1]
 //   node tools/radio-sim/simulate.js --selftest     (a SYNTHETIC library, to sanity-check the sim)
+//   --trace "kirby" [--why prince] [--user dean]   READ-ONLY: why an album's station plays what it plays -
+//                   the ladder, series words, game-music family, tier sizes and first batches per entry
+//                   point, from the REAL picker (v1.375.0; see traceAlbum)
 //   --picker new    runs v1.368.0's station picker (lib/music/radio.js pickRadioBatch, imported -
 //                   never a copy) instead of today's; in the repo it is required directly, over stdin
 //                   pipe the BUNDLE: node tools/radio-sim/bundle.js | docker exec -i <c> node - --picker new
@@ -47,6 +50,9 @@ function parseArgs(argv) {
     else if (a === '--seed') out.seed = parseInt(argv[++i], 10) || 1;
     else if (a === '--selftest') out.selftest = true;
     else if (a === '--picker') out.picker = argv[++i] === 'new' ? 'new' : 'today';
+    else if (a === '--trace') out.trace = argv[++i] || '';
+    else if (a === '--why') out.why = argv[++i] || '';
+    else if (a === '--user') out.user = argv[++i] || '';
     else if (a === '--help' || a === '-h') out.help = true;
   }
   return out;
@@ -252,7 +258,13 @@ function loadLibrary(dbPath) {
       musicProgressRows: count('user_music_progress'), mediaProgressRows: count('user_progress'),
       watchedRows: count('user_watched'),
     };
-    return { tracks, marks, metadata, notes, version, signals };
+    // --trace: every user's play history (each item's LAST play time; both progress stores), read-only
+    const history = [];
+    const users = new Map();
+    if (tables.has('users')) for (const r of db.prepare('SELECT id, username FROM users').all()) users.set(r.id, r.username);
+    if (tables.has('user_music_progress')) for (const r of db.prepare('SELECT user_id, track_id AS id, updated_at AS at FROM user_music_progress').all()) history.push({ user: users.get(r.user_id) || String(r.user_id), id: r.id, at: r.at || '' });
+    if (tables.has('user_progress')) for (const r of db.prepare('SELECT user_id, media_id AS id, updated_at AS at FROM user_progress').all()) history.push({ user: users.get(r.user_id) || String(r.user_id), id: r.id, at: r.at || '' });
+    return { tracks, marks, metadata, notes, version, signals, history };
   } finally {
     db.close();
   }
@@ -379,8 +391,7 @@ function simulateNewSession(list, seedTrack, rng, maxSec, radio) {
       const picks = radio.pickRadioBatch(profile, list, { exclude: playedIds.slice(-radio.EXCLUDE_CAP), count: radio.BATCH_COUNT, trace }, batchRng);
       const tierById = new Map(trace.map((x) => [x.id, x.tier]));
       const inQueue = new Set(queue.map((q) => q.id));
-      // the tier the picker DREW from (its trace), not a re-derivation: a station anchored on its
-      // recent plays tiers against that anchor, which the seed profile alone cannot see
+      // the tier the picker DREW from (its trace), not a re-derivation
       for (const p of picks) if (!inQueue.has(p.id)) queue.push(Object.assign({}, p, { arm: 'radio', tier: tierById.get(p.id) }));
     }
   }
@@ -593,7 +604,8 @@ function classLines(byClass) {
 function tierShare(tiers) {
   const total = Object.values(tiers).reduce((a, b) => a + b, 0);
   if (!total) return 'n/a';
-  return [1, 2, 3, 4, 5, 6, 7].map((k) => `T${k} ${fmt((tiers[k] || 0) / total, true)}`).join(' | ');
+  // v1.375.0: S series, G game music, N nearest genres (the series-first ladder), shown when drawn
+  return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10].filter((k) => k <= 7 || tiers[k]).map((k) => `${k <= 7 ? 'T' + k : { 8: 'S', 9: 'G', 10: 'N' }[k]} ${fmt((tiers[k] || 0) / total, true)}`).join(' | ');
 }
 
 function metricTable(rows, label) {
@@ -699,10 +711,134 @@ function syntheticLibrary(seed) {
   return { tracks, marks: {}, metadata, notes: ['SYNTHETIC library from --selftest: NOT a real library'], version: 'synthetic', signals: { musicLiked: 0, mediaLiked: 0, musicProgressRows: 0, mediaProgressRows: 0, watchedRows: 0 } };
 }
 
+// ---------------------------------------------------------------- --trace (v1.375.0; first written for Phase 2 step 0)
+// READ-ONLY: why does an album station play what it plays? `--trace "<words in the album title>"` finds
+// the matching albums and, for each, prints the station profile the REAL picker builds, its LADDER
+// (v1.375.0: the series-first ladder for a seed with no real genre or a game genre, else v1.368.0's
+// genre tiers), the series words it found (each word's title count, channels and weight, and the
+// candidates it REJECTED), the game-music family's size, the nearest genres, the size of every tier per
+// entry point (the album page Radio / the iPod album row, a song's Start radio, Autoplay after the album,
+// and - from the play history - the album page Radio after the session that came before it), the first
+// batch's tiers over 50 draws, and a 10-batch session's tier path. `--why "<artist words>"` counts that
+// artist's picks (default: prince). On production: `node tools/radio-sim/bundle.js > radio-sim-bundle.js`,
+// then `docker exec -i <container> node - --data /app/data --trace "kirby" < radio-sim-bundle.js`.
+const TIER_NAMES = { 0: 'recycled', 1: 'seed artist', 2: 'genre+year', 3: 'genre', 4: 'neighbour genre', 5: 'folder', 6: 'category', 7: 'the rest', 8: 'SERIES', 9: 'GAME music', 10: 'NEAREST genres' };
+const TIER_SHORT = { 0: 'R', 1: '1', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: 'S', 9: 'G', 10: 'N' };
+function traceAlbum(list, args, radio, lib) {
+  const L = [];
+  const want = String(args.trace || '').toLowerCase();
+  const why = String(args.why || 'prince').toLowerCase();
+  const isWhy = (t) => `${t.artist} ${t.albumArtist}`.toLowerCase().includes(why);
+  const cut = (v, n) => { const x = String(v == null ? '' : v); return x.length > n ? x.slice(0, n - 1) + '~' : x; };
+  const genreCounts = new Map();
+  for (const t of list) { const k = `${radio.primaryGenre(t) || '(none)'} [${t.source}]`; genreCounts.set(k, (genreCounts.get(k) || 0) + 1); }
+  L.push(`GENRES (primary [source]), top 25 of ${genreCounts.size}: ` + [...genreCounts].sort((x, y) => y[1] - x[1]).slice(0, 25).map(([k, n]) => `${k} ${n}`).join(' | '));
+  const whyAll = list.filter(isWhy);
+  L.push(`"${why}" tracks in the library: ${whyAll.length} of ${list.length}`);
+  L.push(`TIERS: ${Object.keys(TIER_NAMES).map((k) => `${TIER_SHORT[k]} ${TIER_NAMES[k]}`).join(', ')}`);
+  const albums = new Map();
+  for (const t of list) {
+    if (!t.album || !(`${t.album} ${t.albumArtist || ''}`).toLowerCase().includes(want)) continue;
+    const k = albumKeyFor(t);
+    if (!albums.has(k)) albums.set(k, []);
+    albums.get(k).push(t);
+  }
+  L.push(`ALBUMS whose title or album artist contains "${args.trace}": ${albums.size} (all traced, 50 draws per entry point)`);
+  const DRAWS = 50;
+  let n = 0;
+  // the session before the album: the client's exclude is every id played in the tab (music.js
+  // autoplayPlayedIds). v1.375.0 (Q3): it shapes the spacing and the exclusions only, never the
+  // station; the D entry replays it to SHOW that. From the user's play history (each item's LAST play
+  // only): the plays before the user's last play of the album.
+  const hist = (lib && Array.isArray(lib.history)) ? lib.history : [];
+  const perUser = new Map();
+  for (const h of hist) perUser.set(h.user, (perUser.get(h.user) || 0) + 1);
+  const user = args.user || [...perUser].sort((x, y) => y[1] - x[1]).map((x) => x[0])[0] || null;
+  const byIdT = new Map();
+  for (const t of list) { if (!byIdT.has(t.id)) byIdT.set(t.id, t); const base = String(t.id).replace(/::c\d+$/, ''); if (base !== t.id && !byIdT.has(base)) byIdT.set(base, t); }
+  const plays = hist.filter((h) => h.user === user && h.at && byIdT.has(h.id)).sort((x, y) => (x.at < y.at ? -1 : x.at > y.at ? 1 : 0));
+  L.push(`HISTORY: user ${JSON.stringify(user)} (${[...perUser].map(([u, c]) => `${u}=${c}`).join(', ')}), ${plays.length} plays resolve to a library track`);
+  const started = Date.now();
+  const dist = (o) => Object.keys(o).map(Number).sort((a, b) => a - b).map((k) => `${TIER_SHORT[k]} ${o[k]}`).join(', ');
+  for (const [key, members] of albums) {
+    n += 1;
+    const ids = members.map((t) => t.id);
+    const first = members[0];
+    const last = members[members.length - 1];
+    L.push('', `#${n} ${cut(key.replace('␟', ' / '), 90)}`);
+    L.push(`   ${members.length} tracks, source ${[...new Set(members.map((t) => t.source))].join('/')}, folder ${JSON.stringify(cut([...new Set(members.map((t) => t.folderName))].join(','), 50))}, genres ${JSON.stringify([...new Set(members.map((t) => t.genre || ''))].slice(0, 4))}`);
+    const entries = [
+      ['album page Radio / iPod album row', { kind: 'album', value: key }, { exclude: [], queued: ids }],
+      ['song Start radio (1st song)', { kind: 'track', value: first.id }, { exclude: [], queued: ids }],
+      ['Autoplay after the album', { kind: 'track', value: last.id }, { exclude: ids, queued: [] }],
+    ];
+    const memberBases = new Set(members.map((t) => String(t.id).replace(/::c\d+$/, '')).concat(ids));
+    let at = -1;
+    for (let k = plays.length - 1; k >= 0; k -= 1) if (memberBases.has(plays[k].id)) { at = k; break; }
+    if (at >= 0) {
+      const before = plays.slice(Math.max(0, at - 24), at).map((h) => byIdT.get(h.id));
+      const g = new Map(); let best = null; let bn = 0;
+      for (const t of before) { const k = radio.genreKey(t); if (!k) continue; const m = (g.get(k) || 0) + 1; g.set(k, m); if (m > bn) { best = k; bn = m; } }
+      L.push(`   last played ${plays[at].at}; the 24 plays before it were mostly ${JSON.stringify(best)} (v1.368.0 anchored a no-genre station on that; v1.375.0 never does): ${before.slice(-24).map((t) => `${cut(t.artist, 14)}[${radio.genreKey(t) || '-'}]`).join(', ')}`);
+      entries.push(['D album page Radio after that session', { kind: 'album', value: key }, { exclude: before.map((t) => t.id), queued: ids }]);
+    } else {
+      L.push('   (not in the history: no session to replay)');
+    }
+    for (const [label, seed, ctx0] of entries) {
+      const profile = radio.buildStationProfile(seed, list);
+      if (!profile) { L.push(`   ${label}: no profile`); continue; }
+      const plan = typeof radio.stationPlan === 'function' ? radio.stationPlan(profile, list) : null;
+      L.push(`   ${label}: genre=${JSON.stringify(profile.genre)} category=${JSON.stringify(profile.category || null)} folder=${JSON.stringify(cut(profile.folder, 30))} -> ${plan ? `SERIES ladder, game music: ${plan.game ? 'YES' : 'no'}` : 'GENRE ladder (v1.368.0 tiers)'}`);
+      if (plan && label.indexOf('D ') !== 0) {
+        L.push(`      series words (of ${plan.docs} titles): ${plan.terms.map((x) => `"${x.term}" ${x.kind} df${x.df} ch${x.artists} w${x.w.toFixed(2)}`).join(', ') || '(none)'}`);
+        const rej = plan.allTerms.filter((x) => !plan.terms.includes(x)).slice(0, 10);
+        if (rej.length) L.push(`      rejected words: ${rej.map((x) => `"${x.term}" df${x.df} ch${x.artists}`).join(', ')}`);
+        L.push(`      game-music family ${plan.familySize} tracks; nearest genres ${[...plan.near].sort((x, y) => y[1] - x[1]).slice(0, 8).map(([g, w]) => `${g}:${w}`).join(', ') || '(none)'}`);
+      }
+      const out = new Set(ctx0.exclude.concat(ctx0.queued));
+      const sizes = {};
+      const nb = plan ? null : radio.genreNeighbours(list, profile.genre);
+      for (const t of list) if (!out.has(t.id)) { const k = plan ? plan.tierOf(t) : radio.tierOf(t, profile, nb); sizes[k] = (sizes[k] || 0) + 1; }
+      L.push(`      tier sizes ${Object.keys(sizes).map(Number).sort((a, b) => a - b).map((k) => `${TIER_SHORT[k]}=${sizes[k]}`).join(' ')}`);
+      let firstWhy = 0; let anyWhy = 0; let widen = 0; let sample = null;
+      const firstTier = {}; const batchTier = {}; const seriesCh = new Map();
+      for (let r = 1; r <= DRAWS; r += 1) {
+        const trace = [];
+        const picks = radio.pickRadioBatch(profile, list, Object.assign({ count: 5, trace, now: Date.now() }, ctx0), createSeededRng(r));
+        const kept = picks.filter((t) => !ctx0.queued.includes(t.id));
+        if (picks.length && !kept.length) widen += 1;
+        if (picks[0] && isWhy(picks[0])) firstWhy += 1;
+        if (picks.some(isWhy)) anyWhy += 1;
+        if (trace[0]) firstTier[trace[0].tier] = (firstTier[trace[0].tier] || 0) + 1;
+        trace.forEach((x, i) => {
+          batchTier[x.tier] = (batchTier[x.tier] || 0) + 1;
+          if (x.tier === 8) { const c = picks[i].albumArtist || picks[i].artist; seriesCh.set(c, (seriesCh.get(c) || 0) + 1); }
+        });
+        if (!sample) sample = picks.map((t, i) => `${TIER_SHORT[trace[i] ? trace[i].tier : 0]} ${cut(t.artist, 18)} / ${cut(t.album || t.title, 30)}`).join('  ;  ');
+      }
+      L.push(`      first pick by tier (${DRAWS} draws): ${dist(firstTier)} | all picks by tier: ${dist(batchTier)} | "${why}" first ${firstWhy}/${DRAWS}, in the batch ${anyWhy}/${DRAWS}, widen ${widen}/${DRAWS}`);
+      if (seriesCh.size) L.push(`      series picks by channel: ${[...seriesCh].sort((x, y) => y[1] - x[1]).slice(0, 8).map(([c, k]) => `${cut(c, 20)} ${k}`).join(', ')}`);
+      L.push(`      e.g. ${sample}`);
+      // a 10-batch session (every pick a play): the tier path batch by batch - where the station widens
+      const path10 = []; const played = ctx0.exclude.slice(); const rng = createSeededRng(7);
+      for (let b = 0; b < 10; b += 1) {
+        const trace = [];
+        const picks = radio.pickRadioBatch(profile, list, { exclude: played.slice(-200), queued: ctx0.queued, count: 5, trace, now: Date.now() }, rng);
+        path10.push(trace.map((x) => TIER_SHORT[x.tier]).join(''));
+        for (const t of picks) played.push(t.id);
+      }
+      const whyIn = played.slice(ctx0.exclude.length).filter((id) => byIdT.has(id) && isWhy(byIdT.get(id))).length;
+      L.push(`      a 10-batch session, tiers per batch: ${path10.join(' ')} | "${why}" ${whyIn}/${played.length - ctx0.exclude.length}`);
+    }
+  }
+  L.push('', `(the trace took ${Date.now() - started} ms)`);
+  return L.join('\n');
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   if (args.help) {
-    process.stdout.write('usage: simulate.js [--data DIR | --db FILE] [--trials N] [--seed N] [--selftest] [--picker today|new]\n');
+    process.stdout.write('usage: simulate.js [--data DIR | --db FILE] [--trials N] [--seed N] [--selftest] [--picker today|new] [--trace "<album words>" [--why "<artist words>"] [--user <name>]]\n');
     return;
   }
   let lib; let label;
@@ -716,12 +852,13 @@ function main() {
     label = `${dbPath} (opened read-only, schema v${lib.version})`;
   }
   const list = buildList(lib);
+  if (args.trace !== undefined) { process.stdout.write(traceAlbum(list, args, loadRadio(), lib) + '\n'); return; }
   process.stdout.write(report(list, lib, args, label) + '\n');
 }
 
 // RADIO_SIM_NO_MAIN=1 lets a check script load the mirrored functions without running.
 if (process.env.RADIO_SIM_NO_MAIN) {
-  module.exports = { createSeededRng, fisherYatesShuffle, normalizeSeed, albumKeyFor, matchesArtist, expandAudioToTracks, apiMusicRandom, fetchAutoplayPicks, buildList };
+  module.exports = { createSeededRng, fisherYatesShuffle, normalizeSeed, albumKeyFor, matchesArtist, expandAudioToTracks, apiMusicRandom, fetchAutoplayPicks, buildList, traceAlbum };
 } else {
   main();
 }
