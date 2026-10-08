@@ -98,10 +98,10 @@ function makeFetchStub(opts) {
   return { fetchImpl, calls };
 }
 
-function loadIndex(fetchImpl, beforeParseExtra) {
+function loadIndex(fetchImpl, beforeParseExtra, pageUrl) {
   const html = fs.readFileSync(INDEX_HTML_PATH, 'utf8');
   const dom = new JSDOM(html, {
-    url: 'http://localhost/',
+    url: pageUrl || 'http://localhost/',
     runScripts: 'dangerously',
     pretendToBeVisual: true,
     virtualConsole: new VirtualConsole(),
@@ -591,5 +591,65 @@ test('the desktop hover preview still reaches its clip through the card media li
     const video = document.querySelector('#video-grid .video-card[data-id="yt1"] .card-preview video.card-preview-video');
     assert.ok(video, 'the hover started the preview clip');
     assert.strictEqual(video.getAttribute('src'), '/preview/yt1');
+  } finally { dom.window.close(); }
+});
+
+// ---- v1.376.0 W2, gate r1 (adversary W1): a PODCAST card's actions, driven through the REAL grid
+// and card menu. Each request's URL / method / body is the assertion (the mutants S-g, S-h, S-i:
+// a delete to /api/videos, a kind-less Watch later, a bare id in the reorder all passed before).
+
+const POD = { id: 'ep 1', kind: 'podcast', subId: 's1', title: 'Pod Ep', type: 'audio', showName: 'Show', addedAt: 100001, duration: 60 };
+function podcastStub(items, extra) {
+  const base = makeFetchStub({ items });
+  const fetchImpl = (input, init) => {
+    const url = typeof input === 'string' ? input : (input && input.url);
+    const method = (init && init.method) || 'GET';
+    const ok = (body) => Promise.resolve({ ok: true, status: 200, json: async () => body });
+    if (url === '/api/watch-later/ids') { base.calls.push({ url, method }); return ok({ ids: (extra && extra.listed) || [] }); }
+    if (url.indexOf('/api/watch-later?') === 0 && method === 'GET') { base.calls.push({ url, method }); return ok({ items, total: items.length, offset: 0, limit: 60 }); }
+    if (url.indexOf('/api/watch-later') === 0 || url.indexOf('/api/podcasts/episodes/') === 0) {
+      base.calls.push({ url, method, body: init && init.body });
+      return ok(url.indexOf('/api/watch-later/') === 0 && method !== 'PUT' ? { success: true, watchLater: method === 'POST' } : { ok: true, success: true });
+    }
+    return base.fetchImpl(input, init);
+  };
+  return { fetchImpl, calls: base.calls };
+}
+
+test('W2: a podcast card\'s Watch later states its kind; Move to Trash asks with the episode copy and sends ONE DELETE to the EPISODE route, never /api/videos', async () => {
+  const { fetchImpl, calls } = podcastStub([POD, ...makeItems()]);
+  const dom = await loadIndex(fetchImpl);
+  try {
+    await settle();
+    await openMenuByKebab(dom, 'ep 1');
+    click(dom, menuRow(dom.window.document, 'Watch later'));
+    await settle();
+    assert.deepStrictEqual(calls.filter((c) => c.method === 'POST' && c.url.indexOf('/api/watch-later/') === 0).map((c) => c.url), ['/api/watch-later/ep%201?kind=podcast']);
+    await frame();
+    let dlg = await openDeleteConfirm(dom, 'ep 1');
+    assert.match(dlg.querySelector('.ui-confirm__body').textContent, /“Pod Ep” moves to Trash\. You can restore it from the show's episode list\./);
+    click(dom, dlg.querySelector('.ui-confirm__actions .ui-btn--secondary'));
+    await settle(); await frame();
+    assert.strictEqual(deletes(calls).length, 0, 'Cancel sends nothing');
+    dlg = await openDeleteConfirm(dom, 'ep 1');
+    click(dom, dlg.querySelector('.ui-confirm__actions .ui-btn--primary'));
+    await settle(); await frame();
+    assert.deepStrictEqual(deletes(calls).map((c) => c.url), ['/api/podcasts/episodes/ep%201'], 'the episode route, once');
+    assert.strictEqual(dom.window.document.querySelector('#video-grid .video-card[data-id="ep 1"]'), null, 'the card leaves after the 2xx');
+  } finally { dom.window.close(); }
+});
+
+test('W2: on the Watch later list, Move to top sends the episode\'s `podcast:` KEY (and the media ids as they are)', async () => {
+  const { fetchImpl, calls } = podcastStub([...makeItems(), POD], { listed: ['yt1', 'local1', 'podcast:ep 1'] });
+  const dom = await loadIndex(fetchImpl, null, 'http://localhost/?watchlater=1');
+  try {
+    await settle(); await frame();
+    await openMenuByKebab(dom, 'ep 1');
+    assert.ok(menuLabels(dom.window.document).includes('Remove from Watch later'), 'listed: the toggle removes');
+    click(dom, menuRow(dom.window.document, 'Move to top'));
+    await settle();
+    const put = calls.find((c) => c.method === 'PUT' && c.url === '/api/watch-later/order');
+    assert.ok(put, 'the reorder was sent');
+    assert.deepStrictEqual(JSON.parse(put.body).ids, ['podcast:ep 1', 'yt1', 'local1']);
   } finally { dom.window.close(); }
 });

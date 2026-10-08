@@ -22,7 +22,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const crypto = require('node:crypto');
 const server0 = require('../../server');
-const { app, updateDatabase, ALBUMART_DIR, userStore, musicDb, __mintTestSession, resolveHomeItem, loadDatabase } = server0;
+const { app, updateDatabase, ALBUMART_DIR, userStore, musicDb, __mintTestSession, resolveHomeItem, loadDatabase, resolveHandoffTarget } = server0;
 const musicStore = require('../../lib/music/store');
 const artVersion = require('../../lib/music/artVersion');
 const { authenticateFetch } = require('../helpers/auth');
@@ -177,4 +177,16 @@ test('/albumart with a hostile id (NUL-prefixed, prototype keys, empty chapter) 
     assert.strictEqual(r.status, 200, JSON.stringify(id));
     assert.match(r.headers.get('content-type'), /svg/, `${JSON.stringify(id)} -> the placeholder`);
   }
+});
+
+// Gate r1 (adversary suggestion): the Listen Control card's art (resolveHandoffTarget) carries the version too -
+// reverting it to the bare /albumart URL passed every test before.
+test('the Listen Control (handoff) target of a song carries its picture\'s version, and a changed cover moves it', async () => {
+  const albumArt = path.join(ALBUMART_DIR, `${tWall.albumArtKey}.jpg`);
+  const t0 = resolveHandoffTarget(loadDatabase(), { kind: 'track', mediaId: tWall.id, duration: 0 });
+  assert.strictEqual(t0.thumbnailUrl, `/albumart/${tWall.id}?v=${encodeURIComponent(statV(albumArt))}`);
+  fs.writeFileSync(albumArt, 'NEW-WALL-COVER'); setTime(albumArt, 1_790_000_200_000);
+  const t1 = resolveHandoffTarget(loadDatabase(), { kind: 'track', mediaId: tWall.id, duration: 0 });
+  assert.notStrictEqual(t1.thumbnailUrl, t0.thumbnailUrl, 'a new cover is a new URL');
+  assert.strictEqual(t1.thumbnailUrl, `/albumart/${tWall.id}?v=${encodeURIComponent(statV(albumArt))}`);
 });

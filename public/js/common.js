@@ -4189,13 +4189,14 @@ function podcastShareUrl(id) {
   return origin + '/podcasts?play=' + encodeURIComponent(String(id));
 }
 
-// v1.376.0 W2: the ONE copy for trashing a podcast episode (the show's episode list, a home /
-// search card, a notification row): DELETE /api/podcasts/episodes/:id moves the file to the
-// podcasts Trash, restorable from the show's episode list. Pure, exported.
+// v1.376.0 W2: the copy for trashing a podcast episode from OUTSIDE its show (a home / search card,
+// a notification row): DELETE /api/podcasts/episodes/:id moves the file to the podcasts Trash,
+// restorable from the show's episode list (gate r1: there is no episode list on these surfaces,
+// so it names the show's; the episode list itself says "this episode list"). Pure, exported.
 function podcastTrashConfirmCopy(title) {
   return {
     title: 'Move to Trash?',
-    body: '“' + (typeof title === 'string' && title !== '' ? title : 'This episode') + '” moves to Trash. You can restore it from this episode list.',
+    body: '“' + (typeof title === 'string' && title !== '' ? title : 'This episode') + '” moves to Trash. You can restore it from the show\'s episode list.',
     confirmLabel: 'Move to Trash',
     cancelLabel: 'Cancel',
     danger: true,

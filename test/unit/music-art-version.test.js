@@ -184,3 +184,25 @@ test('the client song row, album card, artist mosaic and drill header carry the 
   assert.match(M.buildAlbumCardHtml({ albumKey: 'k', album: 'A', artist: 'B', artId: 'rep', artV: 'k9', trackCount: 2 }), /\/albumart\/rep\?s=\d+&amp;v=k9/);
   assert.match(M.buildArtistCardHtml({ artist: 'B', artIds: ['r1', 'r2'], artVs: ['v1', 'v2'], albumCount: 2, trackCount: 3 }), /\/albumart\/r1\?s=\d+&amp;v=v1"[\s\S]*\/albumart\/r2\?s=\d+&amp;v=v2"/);
 });
+
+// Gate r1 (qa W1 + adversary W2): the iPod menus build their art through music.js's ONE rule
+// (musicArtUrl) and must hand it the version the payload carries - an album's artV, an
+// artist's artVs[0], a track's artV - or a changed cover stays stale in iPod > Albums / Artists /
+// Songs / Recently played / the cover drift. Driven with the REAL musicArtUrl.
+test('iPod menus: every art site carries its version (albums, artists, songs, artist albums, recents, cover pool)', () => {
+  const M = load(musicPath);
+  const SK = load(require.resolve('../../public/js/music-skins.js'));
+  const art = M.musicArtUrl;
+  assert.strictEqual(SK.menuAlbumItems([{ album: 'A', artId: 'al1', artV: 'k1-2s' }], art)[0].art, '/albumart/al1?v=k1-2s');
+  assert.strictEqual(SK.menuArtistItems([{ artist: 'R', artIds: ['ar1', 'ar2'], artVs: ['v1', 'v2'] }], art)[0].art, '/albumart/ar1?v=v1');
+  const tracks = [{ id: 't1', artId: 'al1', artV: 'kv', title: 'S', artist: 'R', album: 'A', albumKey: 'R\u0000A', hasArt: true }];
+  assert.strictEqual(SK.menuSongItems(tracks, art)[0].art, '/albumart/al1?v=kv');
+  assert.strictEqual(SK.menuArtistAlbumItems(tracks, { key: 'R' }, art).map((i) => i.art).filter(Boolean)[0], '/albumart/al1?v=kv');
+  assert.strictEqual(SK.menuRecentArtistItems(tracks, art)[0].art, '/albumart/al1?v=kv');
+  assert.strictEqual(SK.menuRecentAlbumItems(tracks, art)[0].art, '/albumart/al1?v=kv');
+  const pool = SK.menuCoverPool(tracks, art);
+  assert.ok(pool.length > 0 && pool.every((u) => /\?v=kv$/.test(u)), 'the cover drift pool: ' + JSON.stringify(pool));
+  // No version sent (an older cached payload) = the URL as before; an explicit artUrl is used as sent.
+  assert.strictEqual(SK.menuAlbumItems([{ album: 'A', artId: 'al1' }], art)[0].art, '/albumart/al1');
+  assert.strictEqual(SK.menuSongItems([{ id: 'm', artUrl: '/thumbnail/m?v=z', artV: 'other' }], art)[0].art, '/thumbnail/m?v=z');
+});

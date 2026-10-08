@@ -855,7 +855,7 @@
     // Move to Trash is destructive (recoverable, but it moves the file): the DELETE runs only
     // after ui.confirm resolves true. Cancel, Esc, the scrim and Close all resolve false.
     function confirmTrashEpisode(ep) {
-      // The SAME words as common.js podcastTrashConfirmCopy (the card and the bell row ask it).
+      // common.js podcastTrashConfirmCopy is this copy for the surfaces outside the show ("the show's episode list").
       return window.ui.confirm({
         title: 'Move to Trash?',
         body: '“' + (ep.title || 'This episode') + '” moves to Trash. You can restore it from this episode list.',

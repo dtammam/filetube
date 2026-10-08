@@ -119,13 +119,7 @@ test('v1.72 / v1.376.0 kinds: podcast - queue, Watch later, like, Share, downloa
   assert.strictEqual(cardShareUrl(ep), '/podcasts?play=ep%2099', 'the episode link (absolute in a browser: location.origin + this)');
   const copy = cardDeleteConfirmCopy(ep);
   assert.deepStrictEqual([copy.title, copy.confirmLabel, copy.danger], ['Move to Trash?', 'Move to Trash', true]);
-  assert.match(copy.body, /“Ep” moves to Trash\. You can restore it from this episode list\./, 'the episode copy, not the library-file copy');
-  // The show's episode list asks the SAME words in its own literal (its confirm shape is source-locked
-  // in skin-surface.test.js): the two must never drift.
-  const podSrc = fs.readFileSync(path.join(__dirname, '../../public/js/podcasts.js'), 'utf8');
-  const tail = '” moves to Trash. You can restore it from this episode list.';
-  assert.ok(copy.body.endsWith(tail), 'the helper ends with the episode-list words');
-  assert.strictEqual(podSrc.split("(ep.title || 'This episode') + '" + tail + "'").length - 1, 1, 'the episode list asks the same words');
+  assert.match(copy.body, /“Ep” moves to Trash\. You can restore it from the show's episode list\./, 'gate r1: a card has no episode list - it names the show\'s');
 });
 
 test('v1.72 kinds: track - queue + like + its own download; book - like + download, never queue', () => {

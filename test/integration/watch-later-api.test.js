@@ -321,6 +321,28 @@ test('W2: the media path never removes a podcast row: a media finish / delete of
   assert.deepEqual(userStore.getWatchLater(uid), [`podcast:${eps.m.epId}`]);
 });
 
+// Gate r1 (qa W3 + adversary suggestion): the list's podcast arm of the watch filter and the
+// episode's own liked flag. Inputs where correct and broken DIVERGE: one episode New, one
+// Watching (progress), one Watched (played), one liked.
+test('W2: the watch filter reads each episode\'s OWN state; an episode carries its own liked flag', async () => {
+  seed({ v1: item('v1') });
+  const eps = await seedEpisodes([{ guid: 'n' }, { guid: 'w' }, { guid: 'd' }]);
+  for (const g of ['n', 'w', 'd']) await addPod(eps[g].epId);
+  await add('v1');
+  await fetch(`${base}/api/podcasts/progress`, { method: 'POST', headers: J, body: JSON.stringify({ episodeId: eps.w.epId, position: 30, duration: 100 }) });
+  await fetch(`${base}/api/podcasts/episodes/${eps.d.epId}/played`, { method: 'POST', headers: J, body: '{}' });
+  userStore.addWatchLater(uid, `podcast:${eps.d.epId}`, new Date().toISOString()); // mark played removed it: put it back to filter it
+  await fetch(`${base}/api/podcasts/episodes/${eps.n.epId}/liked`, { method: 'POST', headers: J });
+  const ids = async (q) => (await list(q)).items.map((i) => i.id).sort();
+  assert.deepEqual(await ids('?watch=new'), [eps.n.epId, 'v1'].sort());
+  assert.deepEqual(await ids('?watch=watching'), [eps.w.epId]);
+  assert.deepEqual(await ids('?watch=watched'), [eps.d.epId]);
+  const all = (await list()).items;
+  assert.deepEqual(all.filter((i) => i.kind === 'podcast').map((i) => [i.id, i.liked]).sort(),
+    [[eps.n.epId, true], [eps.w.epId, false], [eps.d.epId, false]].sort(), 'liked is the episode\'s own');
+});
+
+// LAST in the file: the restore replaces the users table, which ends this file's session.
 test('W2: a backup carries the podcast key verbatim and restores it', async () => {
   const eps = await seedEpisodes([{ guid: 'bk' }]);
   seed({ v1: item('v1') });

@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.376.0-notify-podcasts-polish
 anchor: outcome
 status: Approved @e6845b03
-next: build W1-W5 in parallel worktrees (W1 first lands the shared notification / Watch later seams), then the FULL gate (a schema migration, a Delete surface, Web Push actions, a file-writing race)
+next: build W1-W5 in parallel worktrees (W1 first lands the shared notification / Watch later seams), then the FULL gate (a new Watch later row kind, a Delete surface, Web Push actions, a file-writing race)
 design: Dean's intake 2026-10-08 (rulings R1-R9 below) + a read-only recon of every surface. Base main e6845b03 (v1.375.0).
 gate: pending
 ---
@@ -228,7 +228,7 @@ and the v1.374.0 sort-probe pattern: boot server.js on a seeded DATA_DIR, raw CD
 
 ## 6. Gate
 
-FULL gate (adversary + qa + security-brief): a schema migration (W2), a Delete surface (W2), Web Push payload + worker
+FULL gate (adversary + qa + security-brief): a new Watch later row kind (W2: built as the `podcast:<episodeId>` key in the existing column, NO schema migration - a v35 column would be a rollback floor), a Delete surface (W2), Web Push payload + worker
 actions (W1), a scan / file-writing race (W6), RBAC on a new list kind. Brief the adversary to DESTROY data on W2 (a
 migration that drops or re-keys Watch later rows; a podcast Delete that removes the wrong file or a file another user
 sees) and to make W6's scan index a pending file. The census tests a route or setting trips (LESSONS 3) - expect

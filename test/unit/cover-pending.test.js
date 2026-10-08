@@ -94,6 +94,31 @@ test('a walker spelling the folder through a symlinked root still matches, even 
   h2.release();
 });
 
+// Gate r1 (adversary): two BIND MOUNTS of one host folder have two real paths (realpath does not unify them) but
+// one device + inode. Modelled here with a second spelling of the folder while realpath is stubbed to the identity
+// (what a bind mount looks like to it); only the identity key can match. Both directions, and a channel folder
+// created after the claim (its identity learned from the FTCHDST path).
+test('a folder reached through a second BIND MOUNT (another real path, the same device + inode) still matches', () => {
+  const hostDir = path.join(tmp, 'host-downloads');
+  fs.mkdirSync(path.join(hostDir, 'Kyle Gordon'), { recursive: true });
+  const mountB = path.join(tmp, 'mount-b');
+  fs.symlinkSync(hostDir, mountB);
+  const realpath = fs.realpathSync;
+  fs.realpathSync = (p) => { fs.statSync(p); return path.resolve(p); }; // a bind mount: no unification by realpath
+  try {
+    const h = coverPending.claim({ dir: path.join(hostDir, 'Kyle Gordon'), videoId: VID });
+    assert.strictEqual(coverPending.isPending(path.join(mountB, 'Kyle Gordon', `Song [${VID}].mp3`)), true, 'claimed on mount A, walked on mount B');
+    assert.strictEqual(coverPending.isPending(path.join(mountB, 'Kyle Gordon', 'Other [zzzzzzzzzzz].mp3')), false, 'still only this video');
+    h.release();
+    // claimed on B before the channel folder exists; the FTCHDST path (on B) teaches the claim its identity
+    const h2 = coverPending.claim({ dir: path.join(mountB, 'New Channel'), videoId: VID });
+    fs.mkdirSync(path.join(hostDir, 'New Channel'));
+    assert.strictEqual(h2.addFile(path.join(mountB, 'New Channel', 'Renamed Final.mp3')), true);
+    assert.strictEqual(coverPending.isPending(path.join(hostDir, 'New Channel', 'Renamed Final.mp3')), true, 'walked on mount A');
+    h2.release();
+  } finally { fs.realpathSync = realpath; }
+});
+
 // ---- the video walker ------------------------------------------------------------------------------------------
 
 function walker() {

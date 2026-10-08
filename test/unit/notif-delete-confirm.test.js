@@ -77,7 +77,7 @@ test('v1.376.0 W2: a podcast row\'s Delete asks with the EPISODE copy; Cancel se
     h.click((await h.openMenu(43))['Delete file']);
     let c = await h.waitConfirm();
     assert.strictEqual(c.title, 'Move to Trash?');
-    assert.match(c.sheet.textContent, /“Episode” moves to Trash\. You can restore it from this episode list\./);
+    assert.match(c.sheet.textContent, /“Episode” moves to Trash\. You can restore it from the show's episode list\./);
     dismissConfirm(h, 'cancel');
     await closedConfirm(h);
     await wait(20);
@@ -448,7 +448,7 @@ test('the pure decisions: menu items per kind, the delete copy, the show link', 
   assert.deepStrictEqual(common.buildNotificationMenuItems(pod).map((i) => i.value), ['watchlater', 'channel', 'dismiss', 'delete'], 'v1.376.0 W2');
   assert.deepStrictEqual(common.buildNotificationMenuItems(pod, { inWatchLater: true }).map((i) => i.value), ['channel', 'dismiss', 'delete']);
   const podCopy = common.notifDeleteConfirmCopy(pod);
-  assert.match(podCopy.body, /“E” moves to Trash\. You can restore it from this episode list\./, 'a podcast row asks the episode copy');
+  assert.match(podCopy.body, /“E” moves to Trash\. You can restore it from the show's episode list\./, 'a podcast row asks the episode copy');
   assert.strictEqual(common.notifShowHref('/podcastart/%E0%A4%A'), null, 'a malformed escape is no link');
   assert.strictEqual(common.notifShowHref('/thumbnail/x'), null);
   const eng = common.buildNotificationRowModel({ id: 4, mediaId: 'engine:updated:1', kind: 'engine', title: 'E', createdAt: 1 });
