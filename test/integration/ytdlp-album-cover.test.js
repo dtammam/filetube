@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.374.0 (d) one cover art for a saved album (plan docs/exec-plans/active/2026-10-08-v1374-music-pass-cover.md,
+// [INTEGRATION] v1.374.0 (d) one cover art for a saved album (plan docs/exec-plans/completed/2026-10-08-v1374-music-pass-cover.md,
 // R1, R2): POST /api/ytdlp/download-playlist with album.coverId over the REAL one-off pipeline (launchOneShotJob ->
 // runExclusive -> runOneShot). The network seams are stubbed (run.probeChannel, run.runDownload - which writes a REAL file
 // and returns the FTCHSRC / FTCHDST lines a clean audio exit carries), and so are the cover module's two tool-facing calls

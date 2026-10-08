@@ -3,10 +3,10 @@ plan: v1374-music-pass-cover
 harness: v2 · lean
 branch: feat/v1.374.0-music-pass-cover
 anchor: outcome
-status: Gate:CHANGES r1 @0bf5a150
-next: (d) fix round r1 on feat/v1.374.0-cover (qa W1 + adversary S1-S5 + security INFO), then gate r2 delta re-confirmation; merge it here after APPROVED
+status: Shipped v1.374.0
+next: the release as v1.374.0 (dual-Node suites, release commit, protected-main PR, tag)
 design: Dean's intake 2026-10-08 (rulings R1-R4 below). Base main fa4e01aa.
-gate: CHANGES r1 @0bf5a150 - qa (adversary + security-brief APPROVED r1)
+gate: APPROVED r2 @20adcedf - adversary, qa, security-brief (r1 @0bf5a150: adversary + security APPROVED, qa CHANGES W1)
 ---
 
 # v1.374.0: Music device-pass fixes + one cover art for a saved album
@@ -127,4 +127,26 @@ picker sets a value nothing can post).
 
 ## 5. Gate
 
-(pending)
+- r1 @0bf5a150. security-brief APPROVED (INFO: force the input format when ffmpeg decodes the fetched image).
+  adversary APPROVED: 13 SIGKILLs mid-write of a 43 MB, 30-minute mp3 never damaged the original (11 left it byte-identical,
+  2 found the new file complete); `ulimit -f` (the ENOSPC analogue) left it identical with no temp; audio packets
+  byte-identical after a re-embed (mp3 and m4a), 11 tags and 6 chapters kept; hostile names (`concat:x/`, `-y [abc].m4a`)
+  handled; 36 mutants red, M17 (orphan sweep) and D3 (picker isOpen guard) survived. Suggestions: S1 bind the sweep, S2 an
+  ID3v2.4 date "20240101" came back "2024" and passed, S3 hqdefault covers carried black bands, S4 D3, S5 "ffmpeg failed
+  (null)" on a signal kill. qa CHANGES: W1 the verify compared 5 tags while its comment claimed every tag (the scan reads
+  13 + purl); S1 stale plan markers; S2 the R2 deviation disclosed in one place only. Full suite (sandbox): 11586 tests,
+  the only failures were sandbox-only (no .git / symlinked node_modules) and passed in a git checkout.
+- Fix round 20adcedf: the verify compares every scan-read tag the original had (13 keys with the scan's alias folds, plus
+  purl; a parity test against server.js), the orphan sweep bound by an integration test, the hqdefault 16:9 band crop,
+  `-f jpeg_pipe`, `err.code ?? err.signal`, the picker guard removed, the plan updated.
+- r2 @20adcedf: security-brief APPROVED (the filter graph is one of two constants chosen by OUR URL). qa APPROVED
+  (S-new-1: the parity test's key regex skipped `release_date`-style keys; S-new-2: a new alias fold is not caught).
+  adversary APPROVED: every r1 repro now refused or fixed; 4 real yt-dlp 2026.08.19 files (mp3/m4a, chapters, a multi-line
+  description, genre, purl) re-embed `{"ok":true}` with 0 tag differences; PNG / WebP bodies refused (fail safe); 14
+  mutants red.
+- Taken after r2 (one-liners, in the release commit): the parity regex reads any quoted key (a `release_date` mutant of
+  server.js now reds it, measured), and the cover.js comment says a new alias fold must be added in both places.
+- Disclosed residuals: a crash mid-write leaves a full-size hidden `.ftcover-*.tmp` until the next cover job into that same
+  album folder (no boot sweep); Cancel cannot stop a re-embed in progress (bounded by its 120 s timeout); a crash between
+  the cover fetch and the job's end leaks a `filetube-cover-*` temp folder; an ID3v2.4 original (a track yt-dlp could not
+  give its own thumbnail) is refused and keeps its own art; the Cover menu lists names only.

@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.374.0 (d) one cover art for a saved album (plan docs/exec-plans/active/2026-10-08-v1374-music-pass-cover.md):
+// [UNIT] v1.374.0 (d) one cover art for a saved album (plan docs/exec-plans/completed/2026-10-08-v1374-music-pass-cover.md):
 // lib/ytdlp/cover.js fetches the cover once (fixed host, maxres then hq, a non-200 / oversize / timeout is a failure),
 // builds the exact ffmpeg argv, and rewrites a just-downloaded file ONLY when the ffprobe of the temp proves the audio,
 // the duration, the tags, the chapters and one cover survived. Here the network and the two tools are injected: every

@@ -786,7 +786,7 @@ test('gate r1 (adversary S3): the Hide from feed row stays hidden until the list
   assert.strictEqual(picker().querySelector('.playlist-picker-feed .ui-row__meta').textContent, 'Out of your feed in Modern mode', 'says where (v1.97 applies to the Modern feed)');
 });
 
-// ---- v1.374.0 (d): one cover art for a saved album (plan docs/exec-plans/active/2026-10-08-v1374-music-pass-cover.md R2) ----
+// ---- v1.374.0 (d): one cover art for a saved album (plan docs/exec-plans/completed/2026-10-08-v1374-music-pass-cover.md R2) ----
 const coverRow = () => albumSection().querySelector('.playlist-picker-cover');
 const coverMeta = () => coverRow().querySelector('.ui-row__meta').textContent;
 const coverMenu = () => [...global.document.querySelectorAll('.ui-sheet')].find((s) => !s.querySelector('.playlist-picker') && s.querySelector('.ui-list') && !s.querySelector('.ui-field__input'));

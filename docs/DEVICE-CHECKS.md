@@ -194,8 +194,19 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
   Music, the folder and search still show them. Without the box they show in the feed as usual, still without a bell.
 - [x] v1.373.0 (Dean 2026-10-07: "Can confirm the hide works. Notification works. on iPhone it all displays beautifully.
   Show music in home feed is gone exactly.")
-- [ ] v1.373.0 - FOLLOW-UP (Dean 2026-10-07): desktop Music shows no visible way to sort, and a downloaded album on desktop
+- [x] v1.373.0 - FOLLOW-UP (Dean 2026-10-07; addressed in v1.374.0, checks below): desktop Music shows no visible way to sort, and a downloaded album on desktop
   is not in track order; on iPhone, Recent Artists / Recent Albums rows show no artist or album line under them. See
   ROADMAP Planned > Features "Music follow-ups after v1.373.0".
 - [ ] v1.373.0 - Music > Albums > a downloaded album: rows read "Track 1", "Track 2"... (if not, pick "Album order" in the
   sort menu once - the album sort is remembered). On the iPod: Artists > the artist > that album plays in track order.
+
+## Sort in any album, iPod artist lines, one album cover (v1.374.0)
+
+- [ ] v1.374.0 - Desktop and iPhone: Music home > tap an album in a shelf. The sort menu shows on the album page; if it
+  does not say "Album order", pick it once and the songs read Track 1, 2, 3 in order. If it already says Album order and the
+  songs are still out of order, tell me (that album's files would lack track numbers).
+- [ ] v1.374.0 - iPhone iPod: Music > Recent Albums shows the artist under each album; Recent Artists shows the album you
+  last played under each artist; Albums shows the artist under each album.
+- [ ] v1.374.0 - Playlist picker, Format Audio, Save as an album on: tap Cover, pick a song (names only in the menu - is
+  that enough?), download. Every new song of that album shows that one picture in Music (album card, song rows, iPod) on
+  desktop and phone. With "Each song's own art" nothing changes. An older video's cover can be a smaller square.

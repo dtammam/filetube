@@ -374,15 +374,6 @@
   invariants (exclude / queued split, no duplicate ids, the widen fallback, no shared cache), bound end to end with the
   real client + picker and a Kirby-shaped fixture where right and wrong picks diverge. Handoff prompt: Dean's 2026-10-07
   message (session of v1.370.0-v1.373.0).
-- [ ] **Music follow-ups after v1.373.0 (Dean's device pass, 2026-10-07)** - (1) desktop Music: no visible sort control,
-  and a downloaded album is not in track order there (the iPhone is); (2) iPhone Recent Artists / Recent Albums rows show
-  no artist / album line under the name. Measure each on the real page first (LESSONS 1).
-- [ ] **One cover art for a saved album (Dean, 2026-10-07)** - "we need to pick a base art. One base art. So if I download
-  an album/playlist some songs have their own art. I want to be able to pick one from the media and have it download as
-  that for the rest." In the picker's Save as an album: choose one video's thumbnail as the album's cover, embedded in
-  every track (today each track embeds its own video thumbnail; Music groups art per album from a representative track).
-  Intake first: pick from the playlist rows' thumbnails, or from art already in Music? Re-cover an album already
-  downloaded? Verify the yt-dlp thumbnail flags at source (LESSONS 11).
 - [ ] **Opus downloads never reach the library** - server.js AUDIO_EXTENSIONS lacks `.opus`; Opus keeps its tags per
   STREAM (the scan reads the container's); iPhone Safari Opus playback is unmeasured. Measure, then fix or drop Opus from
   the file-type list (Dean: its own release, queued after v1.373.0).
@@ -734,6 +725,30 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.374.0 - Sort inside any album, the artist under iPod albums, one cover for a saved album (2026-10-08)
+
+- Dean's v1.373.0 device pass (2026-10-07): "I don't see a way to sort in the desktop Music"; a downloaded album "not
+  showing up in the track list order" on desktop; on iPhone "I do not see the artist or album under Recent Artists or Recent
+  Albums"; and the ROADMAP ask "we need to pick a base art. One base art."
+- Measured first, on the real page (desktop 1440 and 390, a seeded library): an album or artist opened from a Home shelf
+  kept the Home tab, which reserves the sort, so the sort was hidden inside it on every device (shown only from the Albums
+  tab), and a remembered album sort could not be changed back there. Now only the Home landing reserves it. An album in the
+  default sort opened in track order from both paths; out of order only with another album sort remembered.
+- The iPod's Albums, Recent Albums (the album artist) and Recent Artists (the album last played) rows now draw their second
+  line: the builders set a field no renderer read (`sub`) instead of the row's `detail` slot. Search album hits show the
+  artist too. Measured: two lines inside the unchanged 34px row.
+- One cover for a saved album (Dean's rulings 2026-10-08: embed at download, new tracks only, a Cover row with the menu):
+  the picker's Save as an album group has "Cover" (default "Each song's own art"); picking a song fetches its YouTube
+  thumbnail once from a fixed host, crops it square (the 16:9 band first for the small fallback), and re-embeds it into
+  every file THIS job made, before the scan reads them: ffmpeg writes a temp beside the file, ffprobe must show the audio,
+  duration, every tag the scan reads and every chapter unchanged with one cover, then a rename. Anything else keeps the
+  song's own art and the download succeeds. yt-dlp has no argv for one image per playlist (read at source, 2026.08.19).
+  The menu lists names only (the menu primitive has no picture slot).
+- Gate (adversary + qa + security-brief): r1 @0bf5a150 adversary + security APPROVED (13 SIGKILLs and a full disk never
+  damaged an original), qa CHANGES (the verify compared 5 tags while claiming every tag); fix round 20adcedf; r2 @20adcedf
+  all three APPROVED. Residuals: a crash mid-write leaves a hidden temp until the next cover job in that folder; Cancel
+  waits for a re-embed in progress; an ID3v2.4 original keeps its own art.
 
 ### v1.373.0 - Hide a playlist download from your feed; album track numbers (2026-10-07)
 

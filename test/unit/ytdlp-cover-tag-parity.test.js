@@ -42,7 +42,7 @@ test('the cover\'s compared tags are exactly what parseFfprobeTags reads (plus p
 test('every key of server.js EMBEDDED_TAG_WHITELIST is compared (the list itself, read from the source)', () => {
   const src = fs.readFileSync(path.join(__dirname, '../../server.js'), 'utf8');
   const block = /const EMBEDDED_TAG_WHITELIST = \[([\s\S]*?)\];/.exec(src)[1].replace(/\/\/[^\n]*/g, '');
-  const keys = [...block.matchAll(/'([a-z]+)'/g)].map((m) => m[1]);
+  const keys = [...block.matchAll(/'([^']+)'/g)].map((m) => m[1]); // any quoted key (gate r2 qa: `release_date` too)
   assert.ok(keys.length >= 13, 'the list was read');
   assert.deepStrictEqual(keys, cover.SCAN_TAG_KEYS);
   assert.ok(cover.COMPARED_TAG_KEYS.includes('purl'));
