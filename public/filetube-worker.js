@@ -66,6 +66,72 @@ function decidePushDisplay(visibilityStates) {
   return { notify: !anyVisible, nudge: anyVisible };
 }
 
+// v1.376.0 W1 (Dean's R1): the banner's options as a PURE function. A payload naming one item
+// (an integer feed id + a media id + a known kind, lib/push/deliver.js pushWatchLaterFields)
+// gets a "Watch later" ACTION; a summary push ("4 new videos") or an older payload gets none,
+// exactly the pre-v1.376 banner. Platforms without action buttons ignore `actions` (an iOS
+// home-screen web app shows none: there the in-app bell row is the path).
+function pushNotificationOptions(payload) {
+  const p = payload || {};
+  const data = { url: p.url || '/' };
+  const opts = { body: p.body || '', icon: '/icons/icon-192.png', data };
+  const kind = p.kind === 'podcast' || p.kind === 'media' ? p.kind : null;
+  if (Number.isInteger(p.notifId) && typeof p.mediaId === 'string' && p.mediaId !== '' && kind) {
+    data.notifId = p.notifId;
+    data.mediaId = p.mediaId;
+    data.kind = kind;
+    data.title = typeof p.title === 'string' ? p.title : '';
+    opts.actions = [{ action: 'watchlater', title: 'Watch later' }];
+  }
+  return opts;
+}
+
+// v1.376.0 W1: what a click on the banner does, PURE. Only the 'watchlater' action on a banner
+// that carries its item adds; every other click (the banner body: action '', an unknown action,
+// a data-less banner) OPENS, byte-for-byte the pre-v1.376 behaviour.
+function decideNotificationClick(action, data) {
+  const d = data || {};
+  if (action === 'watchlater' && Number.isInteger(d.notifId) && typeof d.mediaId === 'string' && d.mediaId !== ''
+    && (d.kind === 'media' || d.kind === 'podcast')) {
+    return { kind: 'watchlater', mediaId: d.mediaId, itemKind: d.kind, notifId: d.notifId, url: d.url || '/', title: d.title || '' };
+  }
+  return { kind: 'open', url: d.url || '/' };
+}
+
+// v1.376.0 W1: the action itself - the SAME two requests the in-app row sends, in order: add
+// (POST /api/watch-later/:id, the session cookie rides a same-origin worker fetch), then
+// dismiss this notification for this user. No window opens. A failed add is said with a
+// follow-up banner whose tap opens the item (nothing was changed); a failed dismiss after a
+// good add is quiet (the item IS in Watch later; the bell row stays and can be dismissed).
+async function watchLaterFromPush(decision) {
+  let added = false;
+  try {
+    const res = await fetch('/api/watch-later/' + encodeURIComponent(decision.mediaId), {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ kind: decision.itemKind }),
+    });
+    added = res.ok;
+  } catch { added = false; }
+  if (!added) {
+    await self.registration.showNotification('Could not add to Watch later', {
+      body: decision.title || '',
+      icon: '/icons/icon-192.png',
+      data: { url: decision.url },
+    });
+    return;
+  }
+  try {
+    await fetch('/api/notifications/dismiss', {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: decision.notifId }),
+    });
+  } catch { /* the row stays in the bell; the item is in Watch later either way */ }
+}
+
 // Everything below registers against the service-worker globals, guarded
 // exactly like common.js guards `document`: requiring this file in
 // node:test (for the decidePushDisplay table) must not touch `self`. In a
@@ -91,17 +157,18 @@ self.addEventListener('push', (event) => {
       }
     }
     if (!decision.notify) return;
-    await self.registration.showNotification(payload.title || 'FileTube', {
-      body: payload.body || '',
-      icon: '/icons/icon-192.png',
-      data: { url: payload.url || '/' },
-    });
+    await self.registration.showNotification(payload.title || 'FileTube', pushNotificationOptions(payload));
   })());
 });
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const url = (event.notification.data && event.notification.data.url) || '/';
+  const decision = decideNotificationClick(event.action, event.notification.data);
+  if (decision.kind === 'watchlater') {
+    event.waitUntil(watchLaterFromPush(decision));
+    return;
+  }
+  const url = decision.url;
   event.waitUntil((async () => {
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     for (const c of wins) {
@@ -142,5 +209,5 @@ self.addEventListener('pushsubscriptionchange', (event) => {
 // node:test reaches decidePushDisplay through this (the common.js idiom);
 // a real service-worker runtime has no `module`, so this is inert there.
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { decidePushDisplay };
+  module.exports = { decidePushDisplay, pushNotificationOptions, decideNotificationClick };
 }

@@ -309,7 +309,9 @@ test('L1 dedup: tracks sharing a cover carry ONE artId across list, albums, arti
   assert.equal(added.status, 200);
   const queue = await (await asMember('/api/queue')).json();
   const entry = queue.entries.find((e) => e.mediaId === v2.id);
-  assert.equal(entry.item.artUrl, `/albumart/${v1.id}?s=256`, 'the queue row keys on the visible representative, at the row size');
+  // v1.376.0 W6 (c): and carries the version of that picture (the shared Wall cover file)
+  const wallV = require('../../lib/music/artVersion').versionOfStat(fs.statSync(path.join(ALBUMART_DIR, `${wallKey}.jpg`)));
+  assert.equal(entry.item.artUrl, `/albumart/${v1.id}?s=256&v=${encodeURIComponent(wallV)}`, 'the queue row keys on the visible representative, at the row size');
 
   // Every artId the member received resolves for the member (never the 404 a hidden pick would give).
   const art = await asMember(`/albumart/${v1.id}?s=128`);

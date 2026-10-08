@@ -124,3 +124,32 @@ test('resolveChannelDirFromFilePath: no usable folder (bare filename / empty / n
   assert.strictEqual(resolveChannelDirFromFilePath(null), null);
   assert.strictEqual(resolveChannelDirFromFilePath(42), null);
 });
+
+// ---- v1.376 W3 (R3): the uploader link carries the item's format for that visit ----
+
+test('resolveUploaderLinkHref: a video item links to its folder filtered to videos, an audio item to audio (v1.376 W3)', () => {
+  assert.strictEqual(
+    resolveUploaderLinkHref({ filePath: '/media/Chännel/clip.mp4', format: 'video' }),
+    '/?root=' + encodeURIComponent('/media/Chännel') + '&format=video'
+  );
+  assert.strictEqual(
+    resolveUploaderLinkHref({ filePath: '/media/Chännel/song.m4a', format: 'audio' }),
+    '/?root=' + encodeURIComponent('/media/Chännel') + '&format=audio'
+  );
+});
+
+test('resolveUploaderLinkHref: no format, or anything but video/audio, leaves the link as it was (v1.376 W3)', () => {
+  const plain = '/?root=' + encodeURIComponent('/media/Chännel');
+  for (const format of [undefined, '', 'both', 'Video', 'podcast', null, 1]) {
+    assert.strictEqual(resolveUploaderLinkHref({ filePath: '/media/Chännel/x.mp4', format }), plain, String(format));
+  }
+  assert.strictEqual(resolveUploaderLinkHref({ filePath: 'bare.mp4', format: 'video' }), null, 'no folder: still no link');
+});
+
+test('watch.js paintMetadata: the uploader link is built with the PAINTED item\'s own format (v1.376 W3 call-site lock)', () => {
+  const src = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', '..', 'public', 'js', 'watch.js'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const calls = src.match(/(?<!function )resolveUploaderLinkHref\(\{[^}]*\}\)/g) || [];
+  assert.deepStrictEqual(calls, ['resolveUploaderLinkHref({ filePath: plan.filePath, format: channelFormatForItem(item) })'],
+    'exactly one call site, passing the item format');
+});

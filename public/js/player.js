@@ -930,6 +930,39 @@ function formatVideoStateDetail(s) {
   if (c.series) out += ' fser=' + c.series;
   return out;
 }
+// v1.376.0 (W5, an INSTRUMENT, not a fix): Dean saw a thin line of the picture's colours under the phone
+// player's control bar (iPhone, watch page). The headless probe (Chromium and WebKit, DPR 3, 390 wide) did
+// NOT reproduce a 1-2 px line: the bar's bottom, the player's bottom and the stage's bottom coincide
+// (371.375 CSS px, no sub-pixel gap), and the only paint under the bar is the ambient glow's bloom (dark
+// mode, Ambient on, while it runs), a ~50 px fade in the sampled picture colours starting at the bar's
+// edge. The lifecycle log already says whether ambient ran (`amb=` on every video:* line); this line adds
+// what the device's own layout says about the strip, so an exported log taken when the line shows tells
+// the two causes apart. `m` (CSS px from getBoundingClientRect): vid / bar / wrap / stage = {t, b} boxes,
+// next = the top of the first thing after the stage, glow = the glow's bottom when it is on; dpr, vw,
+// mode, era, ctl ('native' | 'custom'), amb (the glow is on). gap = wrap.b - bar.b (anything but 0 is a
+// strip the bar does not cover); dev = the bar's and the player's bottom edge in DEVICE px (a fraction is
+// an edge the screen must round). Pure so it is testable; the format mirrors formatVideoStateDetail.
+function formatPlayerStripDetail(m) {
+  var c = m || {};
+  var n3 = function (v) { return (typeof v === 'number' && isFinite(v)) ? v.toFixed(3) : '-'; };
+  var box = function (b) { return b ? n3(b.t) + '-' + n3(b.b) : '-'; };
+  var dpr = (typeof c.dpr === 'number' && isFinite(c.dpr) && c.dpr > 0) ? c.dpr : null;
+  var gap = (c.wrap && c.bar && typeof c.wrap.b === 'number' && typeof c.bar.b === 'number') ? c.wrap.b - c.bar.b : null;
+  var dev = function (b) { return (b && dpr !== null && typeof b.b === 'number' && isFinite(b.b)) ? n3(b.b * dpr) : '-'; };
+  return 'dpr=' + (dpr === null ? '-' : String(dpr))
+    + ' vw=' + ((typeof c.vw === 'number' && isFinite(c.vw)) ? String(Math.round(c.vw)) : '-')
+    + ' m=' + (c.mode || '-') + ' e=' + (c.era || '-')
+    + ' ctl=' + (c.ctl || '-')
+    + ' amb=' + (c.amb ? '1' : '0')
+    + ' vid=' + box(c.vid)
+    + ' bar=' + box(c.bar)
+    + ' wrap=' + box(c.wrap)
+    + ' stage=' + box(c.stage)
+    + ' next=' + n3(c.next)
+    + ' gap=' + n3(gap)
+    + ' dev=' + dev(c.bar) + '/' + dev(c.wrap)
+    + (c.amb ? ' glow=' + n3(c.glow) : '');
+}
 // v1.336: what moved between two readings (b minus a); a counter either side lacks is null.
 function videoStateDelta(a, b) {
   var d = function (k) { return (a && b && typeof a[k] === 'number' && typeof b[k] === 'number' && isFinite(a[k]) && isFinite(b[k])) ? b[k] - a[k] : null; };
@@ -2046,6 +2079,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatPauseProvenance,
     // v1.336: the video's own state per media event (the D1 black-picture instrument).
     formatVideoStateDetail,
+    formatPlayerStripDetail, // v1.376.0 (W5): the player:strip line of the lifecycle log
     videoStateDelta,
     formatFrameSeries,
     // v1.362.2 (D5): the frozen-picture decision behind video:frozen / video:thawed.
@@ -2361,6 +2395,10 @@ if (typeof module !== 'undefined' && module.exports) {
 
   var dockCloseBtn = null;
   var dockChromeReady = false;
+  // v1.376.0 (W4): setDockShown's root signal (the class and the height property) and its observer.
+  var DOCK_SHOWN_CLASS = 'has-player-dock';
+  var DOCK_HEIGHT_PROP = '--player-dock-h';
+  var dockSizeObserver = null;
 
   // Player-scoped timers (raw handles, not covered by any AbortSignal) --
   // cleared on close() and whenever a genuinely NEW media is loaded.
@@ -4390,12 +4428,35 @@ if (typeof module !== 'undefined' && module.exports) {
   var VIDEO_CHECK_SAMPLES = 6;
   var VIDEO_CHECK_EVERY_MS = 1000;
   var videoStateCheckTimer = null;
+  // v1.376.0 (W5): the strip under the FULL player's bar, as the device lays it out (formatPlayerStripDetail
+  // says why). Recorded on the mount, each 'playing' and 'pause', and with the six-second video:check (the
+  // glow has faded in by then). Flag off, or not FULL: nothing is read.
+  function recordPlayerStrip(reason) {
+    if (!isDebugLifecycleEnabled() || !host || state !== STATE_FULL) return;
+    try {
+      var rect = function (el) { if (!el) return null; var r = el.getBoundingClientRect(); return { t: r.top, b: r.bottom }; };
+      var stage = host.closest ? host.closest('.watch-player-stage') : null;
+      var after = stage ? stage.nextElementSibling : null;
+      var glow = document.getElementById('ambient-glow');
+      var amb = !!(glow && !glow.hidden && glow.classList.contains('is-on'));
+      var root = document.documentElement;
+      recordLifecycleEvent('player:strip', { detail: reason + ' ' + formatPlayerStripDetail({
+        dpr: window.devicePixelRatio, vw: window.innerWidth,
+        mode: root.getAttribute('data-mode'), era: root.getAttribute('data-theme'),
+        ctl: host.classList.contains('native-controls') ? 'native' : 'custom', amb: amb,
+        vid: rect(mediaPlayer), bar: rect(host.querySelector('.player-controls')), wrap: rect(host), stage: rect(stage),
+        next: after ? after.getBoundingClientRect().top : null, glow: amb ? glow.getBoundingClientRect().bottom : null,
+      }) });
+    } catch (_) { /* a measurement must never break playback */ }
+  }
+
   function recordVideoState(evName) {
     if (!isDebugLifecycleEnabled() || !mediaPlayer) return;
     var s = readVideoState();
     // v1.362.3 (I1.2): a pause line says how far the frame count and the clock moved since its run began.
     if (evName === 'pause' && frozenRunStartState && frozenRunStartState.ld === s.ld) s.delta = videoStateDelta(frozenRunStartState, s);
     recordLifecycleEvent('video:' + evName, { detail: formatVideoStateDetail(s) });
+    if (evName === 'playing' || evName === 'pause') recordPlayerStrip(evName);
     // A new source starts its own count: its emptied / loadstart reading (0) is the new baseline, never a drop.
     if (evName === 'emptied' || evName === 'loadstart') lastFrameCount = null;
     else noteFrameCount(s);
@@ -4419,6 +4480,7 @@ if (typeof module !== 'undefined' && module.exports) {
       n.delta = videoStateDelta(s, n);
       n.series = formatFrameSeries(s.frames, samples);
       recordLifecycleEvent('video:check', { detail: formatVideoStateDetail(n) });
+      recordPlayerStrip('check');
     };
     videoStateCheckTimer = setTimeout(tick, VIDEO_CHECK_EVERY_MS);
   }
@@ -10025,6 +10087,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
     startFrozenSampler(); // v1.362.2 (D5): the dock stopped it; a still-playing expand resumes it (a no-op when the flag is off)
     scheduleCapRefresh(); // (Dean) measure the space below THIS view's player -> --player-cap-h
+    if (isDebugLifecycleEnabled()) requestAnimationFrame(function () { recordPlayerStrip('mount'); }); // v1.376.0 (W5)
   }
 
   // (Dean, all-views cap) Measure the space actually below the in-flow player and
@@ -10077,7 +10140,7 @@ if (typeof module !== 'undefined' && module.exports) {
     ensureDockChrome(dockEl);
     var wasPlaying = mediaPlayer && !mediaPlayer.paused;
     if (host.parentNode !== dockEl) dockEl.appendChild(host);
-    dockEl.hidden = false;
+    setDockShown(dockEl, true);
     state = STATE_DOCKED;
     applyControlsMode(); // reverts to the compact custom bar for this DOCKED mount (mirrors dock())
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
@@ -10136,8 +10199,40 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function hideDock() {
-    var dockEl = document.getElementById('player-dock');
-    if (dockEl) dockEl.hidden = true;
+    setDockShown(document.getElementById('player-dock'), false);
+  }
+
+  // v1.376.0 (W4, ruling R4): the ONE writer of whether the mini player shows. Every show (dock(),
+  // mountInDock()) and every exit (hideDock(): close(), an expand back into a slot, which is also how a
+  // navigation to the watch page and the fullscreen stage take the host) goes through here, so the root
+  // signal can never disagree with the dock's own [hidden]. The signal is DATA for other fixed surfaces
+  // that must not cover the dock (style.css: the phone's handoff card stacks above it, the narrow
+  // remote pill too): html.has-player-dock while it shows, and --player-dock-h, the dock's rendered
+  // height, kept current by a ResizeObserver (the dock's height follows the item's aspect ratio and
+  // audio mode). Hidden: the class and the value are removed and the observer is let go.
+  function setDockShown(dockEl, shown) {
+    if (!dockEl) return;
+    dockEl.hidden = !shown;
+    var root = document.documentElement;
+    if (!root) return;
+    root.classList.toggle(DOCK_SHOWN_CLASS, !!shown);
+    if (shown) {
+      measureDockHeight(dockEl);
+      if (!dockSizeObserver && typeof ResizeObserver !== 'undefined') {
+        dockSizeObserver = new ResizeObserver(function () { measureDockHeight(dockEl); });
+        dockSizeObserver.observe(dockEl);
+      }
+    } else {
+      if (dockSizeObserver) { dockSizeObserver.disconnect(); dockSizeObserver = null; }
+      root.style.removeProperty(DOCK_HEIGHT_PROP);
+    }
+  }
+  function measureDockHeight(dockEl) {
+    var root = document.documentElement;
+    if (!root || dockEl.hidden) return;
+    var h = 0;
+    try { h = dockEl.getBoundingClientRect().height || 0; } catch (_) { h = 0; }
+    root.style.setProperty(DOCK_HEIGHT_PROP, Math.ceil(h) + 'px');
   }
 
   function dock() {
@@ -10188,7 +10283,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var openSpeedSheetEl = document.querySelector('.speed-sheet-backdrop');
     if (openSpeedSheetEl && openSpeedSheetEl.parentNode) openSpeedSheetEl.parentNode.removeChild(openSpeedSheetEl);
     if (host.parentNode !== dockEl) dockEl.appendChild(host);
-    dockEl.hidden = false;
+    setDockShown(dockEl, true);
     state = STATE_DOCKED;
     applyControlsMode(); // re-toggles .ff-mobile for this DOCKED transition and reverts to the custom bar (native controls are FULL-only -- native-controls round)
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});

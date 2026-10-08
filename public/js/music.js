@@ -67,7 +67,7 @@ function nowPlayingFrom(t) {
 // An album card (square art + album + artist). `artId` is a representative
 // track id whose album art the /albumart route resolves.
 function buildAlbumCardHtml(album) {
-  var art = albumArtSrc(album.artId || '', musicArtCardPx()); // v1.339 L1: the card-sized rendition
+  var art = albumArtSrc(album.artId || '', musicArtCardPx(), album.artV); // v1.339 L1: the card-sized rendition; v1.376.0: versioned
   var count = album.trackCount ? album.trackCount + (album.trackCount === 1 ? ' track' : ' tracks') : '';
   return '' +
     '<button type="button" class="ui-tile music-album-card" data-album-key="' + escapeMusicHtml(album.albumKey) + '">' +
@@ -110,8 +110,9 @@ function buildArtistCardHtml(artist) {
       '</span>';
   } else {
     var ids = (Array.isArray(artist.artIds) && artist.artIds.length) ? artist.artIds.slice(0, 4) : [''];
-    var tiles = ids.map(function (id) {
-      return '<img class="art-shimmer" src="' + escapeMusicHtml(albumArtSrc(id || '', musicArtCardPx())) + '" alt="" loading="lazy" />';
+    var vs = Array.isArray(artist.artVs) ? artist.artVs : []; // v1.376.0 W6 (c): one version per tile, in artIds order
+    var tiles = ids.map(function (id, i) {
+      return '<img class="art-shimmer" src="' + escapeMusicHtml(albumArtSrc(id || '', musicArtCardPx(), vs[i])) + '" alt="" loading="lazy" />';
     }).join('');
     visual = '<span class="music-artist-mosaic" data-tiles="' + ids.length + '">' + tiles + '</span>';
   }
@@ -130,7 +131,7 @@ function buildArtistCardHtml(artist) {
 function buildJumpBackTileHtml(item) {
   return '' +
     '<button type="button" class="ui-tile music-jump-tile" data-id="' + escapeMusicHtml(item.id) + '">' +
-    '<img class="music-jump-art art-shimmer" src="' + escapeMusicHtml(albumArtSrc(musicArtId(item), musicArtCardPx())) + '" alt="" loading="lazy" />' +
+    '<img class="music-jump-art art-shimmer" src="' + escapeMusicHtml(albumArtSrc(musicArtId(item), musicArtCardPx(), musicArtV(item))) + '" alt="" loading="lazy" />' +
     '<span class="music-jump-title" title="' + escapeMusicHtml(item.title) + '">' + escapeMusicHtml(item.title || 'Unknown track') + '</span>' +
     '<span class="music-jump-sub" title="' + escapeMusicHtml(item.artist || '') + '">' + escapeMusicHtml(item.artist || '') + '</span>' +
     '</button>';
@@ -157,7 +158,8 @@ function buildArtistListRowHtml(artist) {
       '<img class="ui-avatar__img maa-img" src="' + escapeMusicHtml(artist.avatarUrl) + '" alt="" loading="lazy" /></span>';
   } else {
     var artId = (Array.isArray(artist.artIds) && artist.artIds[0]) || '';
-    circle = '<span class="ui-avatar ui-avatar--md music-artist-row-circle"><img class="ui-avatar__img art-shimmer" src="' + escapeMusicHtml(albumArtSrc(artId, MUSIC_ART_ROW_PX)) + '" alt="" loading="lazy" /></span>';
+    var artV = (Array.isArray(artist.artVs) && artist.artVs[0]) || ''; // v1.376.0 W6 (c)
+    circle = '<span class="ui-avatar ui-avatar--md music-artist-row-circle"><img class="ui-avatar__img art-shimmer" src="' + escapeMusicHtml(albumArtSrc(artId, MUSIC_ART_ROW_PX, artV)) + '" alt="" loading="lazy" /></span>';
   }
   return '' +
     '<button type="button" class="music-artist-row ui-row ui-row--default" role="listitem" data-artist="' + escapeMusicHtml(artist.artist) + '">' +
@@ -178,7 +180,7 @@ function buildRecentArtistTileHtml(item) {
   var name = item.artist || 'Unknown artist';
   return '' +
     '<button type="button" class="ui-tile music-artist-card" data-artist="' + escapeMusicHtml(name) + '">' +
-    '<span class="music-artist-mosaic" data-tiles="1"><img class="art-shimmer" src="' + escapeMusicHtml(albumArtSrc(musicArtId(item), musicArtCardPx())) + '" alt="" loading="lazy" /></span>' +
+    '<span class="music-artist-mosaic" data-tiles="1"><img class="art-shimmer" src="' + escapeMusicHtml(albumArtSrc(musicArtId(item), musicArtCardPx(), musicArtV(item))) + '" alt="" loading="lazy" /></span>' +
     '<span class="music-artist-name" title="' + escapeMusicHtml(name) + '">' + escapeMusicHtml(name) + '</span>' +
     '</button>';
 }
@@ -250,7 +252,7 @@ function buildSongRowHtml(item, index, opts) {
     '<div class="music-song-row ui-row ui-row--media" role="listitem" data-index="' + index + '" data-id="' + escapeMusicHtml(item.id) + '">' +
     '<span class="ui-row__lead"></span>' +
     '<span class="ui-row__media"><span class="music-song-thumb-wrap ui-art ui-avatar--lg">' +
-    '<img class="music-song-thumb ui-avatar__img art-shimmer" src="' + escapeMusicHtml(albumArtSrc(musicArtId(item), MUSIC_ART_ROW_PX)) + '" alt="" loading="lazy" />' +
+    '<img class="music-song-thumb ui-avatar__img art-shimmer" src="' + escapeMusicHtml(albumArtSrc(musicArtId(item), MUSIC_ART_ROW_PX, musicArtV(item))) + '" alt="" loading="lazy" />' +
     '<span class="music-eq" aria-hidden="true"><i></i><i></i><i></i></span>' +
     '</span></span>' +
     '<span class="ui-row__body">' +
@@ -291,9 +293,11 @@ function buildSongRowHtml(item, index, opts) {
 // v1.339 (L1, M2): `cssPx` (optional) = the CSS box the art renders in; the /albumart URL
 // then asks for the sized rendition fitting it (albumArtSrc). Omitted = the full-size file
 // (the big now-playing / skin art, the ambient sampler, the player's own art).
-function musicArtUrl(id, explicitArtUrl, cssPx) {
+// v1.376.0 W6 (c): `v` (optional) = the version of the picture (the server's `artV`, lib/music/artVersion.js); an
+// explicit artUrl from the server already carries its own.
+function musicArtUrl(id, explicitArtUrl, cssPx, v) {
   if (typeof explicitArtUrl === 'string' && explicitArtUrl) return explicitArtUrl;
-  return albumArtSrc(id, cssPx);
+  return albumArtSrc(id, cssPx, v);
 }
 
 // v1.339 (L1, M2): SIZED art. /albumart/:id?s=<px> serves the cover scaled to <px> on its
@@ -324,9 +328,16 @@ function musicArtSize(cssPx, dpr) {
   for (var i = 0; i < MUSIC_ART_SIZES.length; i++) if (MUSIC_ART_SIZES[i] >= need) return MUSIC_ART_SIZES[i];
   return 0;
 }
-function albumArtSrc(id, cssPx) {
+// v1.376.0 W6 (c): THE client writer of a Music /albumart URL. `v` = the picture's version (the server's `artV` /
+// `artVs`, read from the art file itself - lib/music/artVersion.js): a changed cover is a NEW URL, so the browser can
+// never keep painting the old one from its cache (measured: Mr. Jambo's row did, for a day). No version (an older
+// cached payload, a listen row) = the URL as before.
+function albumArtSrc(id, cssPx, v) {
   var s = cssPx ? musicArtSize(cssPx) : 0;
-  return '/albumart/' + encodeURIComponent(id == null ? '' : id) + (s ? '?s=' + s : '');
+  var q = [];
+  if (s) q.push('s=' + s);
+  if (typeof v === 'string' && v) q.push('v=' + encodeURIComponent(v));
+  return '/albumart/' + encodeURIComponent(id == null ? '' : id) + (q.length ? '?' + q.join('&') : '');
 }
 // v1.339 (L1, M2): the id a track's art URL keys on - the server's `artId` (the album's
 // visible representative, shared by every track of one cover: publicTrackListItem), else
@@ -335,6 +346,10 @@ function musicArtId(item) {
   if (item && typeof item.artId === 'string' && item.artId) return item.artId;
   return (item && item.id != null) ? String(item.id) : '';
 }
+// v1.376.0 W6 (c): the version of the picture musicArtId(item) points at (the server computes it for that same id).
+function musicArtV(item) {
+  return (item && typeof item.artV === 'string') ? item.artV : '';
+}
 
 // v1.317 M4: the image the desktop AMBIENT glow samples for the playing music track -
 // the SAME art rule the covers use (musicArtUrl), keyed on the BASE media id: a `::c<n>`
@@ -342,13 +357,14 @@ function musicArtId(item) {
 // (and a chapter advance never re-samples the same picture). The explicit art wins
 // (a projected / listen track's `/thumbnail/<base>`); a listen track the rebuilt queue
 // lost (the v1.253 W1 seam) keeps its thumbnail route through the listen marker; the
-// rest take `/albumart/<base>`. '' when nothing is playing.
-function musicAmbientArtUrl(id, entryArtUrl, listenId) {
+// rest take `/albumart/<base>`. '' when nothing is playing. v1.376.0 W6 (c): `v` = the entry's `artV` (the same
+// picture: a native track's album art file, a projected one's thumbnail).
+function musicAmbientArtUrl(id, entryArtUrl, listenId, v) {
   if (!id) return '';
   var base = String(id).replace(/::c\d+$/, '');
   var art = (typeof entryArtUrl === 'string' && entryArtUrl) ? entryArtUrl
     : ((listenId && String(listenId).replace(/::c\d+$/, '') === base) ? ('/thumbnail/' + encodeURIComponent(base)) : '');
-  return musicArtUrl(base, art);
+  return musicArtUrl(base, art, 0, v);
 }
 
 function buildNowPlayingPanelHtml(np, upNext) {
@@ -365,7 +381,7 @@ function buildNowPlayingPanelHtml(np, upNext) {
     // v1.317 (M2): each row's own length - an explicit durLabel wins (updateNowPlayingPanel
     // precomputes it), else derive it from the row's durationSec ('' for 0/unknown).
     var durLabel = (typeof it.durLabel === 'string') ? it.durLabel : formatTrackDuration(it.durationSec);
-    return { id: it.id, artUrl: musicArtUrl(musicArtId(it), it.artUrl, MUSIC_ART_ROW_PX), title: it.title, artist: it.artist, index: it.index, state: it.state, durLabel: durLabel };
+    return { id: it.id, artUrl: musicArtUrl(musicArtId(it), it.artUrl, MUSIC_ART_ROW_PX, musicArtV(it)), title: it.title, artist: it.artist, index: it.index, state: it.state, durLabel: durLabel };
   });
   // v1.317 (M1): subArtist makes the artist · album line a data-artist button (the artist drill,
   // or the channel grid for a listen video). Gate r1 W2: `np.artistTap === false` is the view's
@@ -508,6 +524,7 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
   var isAlbum = !!(drill && drill.type === 'album');
   var first = tracks[0] || {};
   var artId = first.id ? musicArtId(first) : ''; // v1.339 L1: the album's shared art id
+  var artV = first.id ? musicArtV(first) : ''; // v1.376.0 W6 (c): its picture's version
   var title = (drill && drill.label) || (isAlbum ? 'Album' : 'Artist');
   var artist = isAlbum ? ((typeof first.albumArtist === 'string' && first.albumArtist) || first.artist || '') : '';
   var count = tracks.length;
@@ -527,7 +544,7 @@ function buildDrillHeaderHtml(drill, tracks, opts) {
     // Gate r1 W2 (adversary): never request `/albumart/` with an EMPTY id (an empty drill has
     // no first track) - the slot keeps its box, srcless and unshimmered (nothing to reveal).
     (artId
-      ? '<img class="music-drill-art art-shimmer" src="' + escapeMusicHtml(albumArtSrc(artId, MUSIC_ART_DRILL_PX)) + '" alt="' + escapeMusicHtml(title) + '" />'
+      ? '<img class="music-drill-art art-shimmer" src="' + escapeMusicHtml(albumArtSrc(artId, MUSIC_ART_DRILL_PX, artV)) + '" alt="' + escapeMusicHtml(title) + '" />'
       : '<img class="music-drill-art" alt="" />') + // gate r2 S5: a srcless img paints its alt text - keep the box empty
     '<div class="music-drill-info">' +
     '<h3 class="music-drill-title" title="' + escapeMusicHtml(title) + '">' + escapeMusicHtml(title) + '</h3>' +
@@ -574,6 +591,7 @@ function buildStickyBarHtml(drill, tracks) {
   var isAlbum = !!(drill && drill.type === 'album');
   var first = tracks[0] || {};
   var artId = first.id ? musicArtId(first) : ''; // v1.339 L1: the album's shared art id
+  var artV = first.id ? musicArtV(first) : ''; // v1.376.0 W6 (c): its picture's version
   var title = (drill && drill.label) || (isAlbum ? 'Album' : 'Artist');
   return '' +
     '<div class="music-drill-sticky">' +
@@ -581,7 +599,7 @@ function buildStickyBarHtml(drill, tracks) {
     // step 7 (retire R2): the thumb is a ui-art (the row art primitive, 36px)
     '<span class="ui-art ui-avatar--md music-sticky-art">' +
     (artId
-      ? '<img class="ui-avatar__img music-sticky-thumb art-shimmer" src="' + escapeMusicHtml(albumArtSrc(artId, MUSIC_ART_ROW_PX)) + '" alt="" />'
+      ? '<img class="ui-avatar__img music-sticky-thumb art-shimmer" src="' + escapeMusicHtml(albumArtSrc(artId, MUSIC_ART_ROW_PX, artV)) + '" alt="" />'
       : '<img class="ui-avatar__img music-sticky-thumb" alt="" />') + // gate r1 W2: no empty-id art request
     '</span>' +
     '<span class="music-sticky-title" title="' + escapeMusicHtml(title) + '">' + escapeMusicHtml(title) + '</span>' +
@@ -1080,7 +1098,7 @@ if (typeof module !== 'undefined' && module.exports) {
     liveListenPosition, listenHandoffChapterIndex, chapterStartFor, handoffPaused,
     escapeMusicHtml, formatTrackDuration, buildAlbumCardHtml, buildArtistCardHtml, buildArtistListRowHtml, buildJumpBackTileHtml, buildMusicShelfHtml, buildRecentArtistTileHtml, buildSongRowHtml, songTrackLabel, sortAlbumOrder, // v1.373.0: album track numbers + the iPod's album order
     buildNowPlayingPanelHtml, musicArtUrl, musicAmbientArtUrl,
-    MUSIC_ART_SIZES, MUSIC_ART_DPR_CAP, MUSIC_ART_ROW_PX, MUSIC_ART_DRILL_PX, musicArtCardPx, musicArtSize, albumArtSrc, musicArtId,
+    MUSIC_ART_SIZES, MUSIC_ART_DPR_CAP, MUSIC_ART_ROW_PX, MUSIC_ART_DRILL_PX, musicArtCardPx, musicArtSize, albumArtSrc, musicArtId, musicArtV,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
     chapterAlbumBaseId, isChapterAlbum, chapterStamp, buildListenChapterTracks, channelFolderOf, nowPlayingFrom,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
@@ -1104,7 +1122,7 @@ if (typeof module !== 'undefined' && module.exports) {
   // SPA re-init paints the skin before its queue reloads; without this the big art fell back
   // to /albumart/<track id> - a second URL (and a second full-size download) for the cover
   // the player already shows under /albumart/<artId>.
-  var playingArtMemo = { id: null, artId: '' };
+  var playingArtMemo = { id: null, artId: '', artV: '' };
   // v1.44.2: the drill-header collapse IntersectionObserver. Module-scoped (NOT
   // in init's closure) so destroy() can disconnect it on the SPA #view-root
   // swap — leaving /music mid-drill must not leak an observer pointed at a
@@ -1406,7 +1424,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var entry = null;
       var q = Array.isArray(queue) ? queue : []; // init's `var queue` may not be assigned yet at the first seam
       for (var k = 0; k < q.length; k++) { if (q[k] && q[k].id === id) { entry = q[k]; break; } }
-      return A.ambientSameOriginUrl(musicAmbientArtUrl(id, entry && entry.artUrl, activeListenId));
+      return A.ambientSameOriginUrl(musicAmbientArtUrl(id, entry && entry.artUrl, activeListenId, musicArtV(entry)));
     }
     function ambientEligible() {
       if (SKINS && SKINS.isPhone && SKINS.isPhone()) return false; // desktop only
@@ -1695,8 +1713,10 @@ if (typeof module !== 'undefined' && module.exports) {
         track: { title: nowPlaying && nowPlaying.title, artist: nowPlaying && nowPlaying.artist, album: nowPlaying && nowPlaying.album,
           // v1.339 L1: keyed on the album's shared art id, so the next track of the same
           // album re-uses the cover already loaded (full size: the skin's big art).
+          // v1.376.0 W6 (c): versioned by the same item the id comes from
           artUrl: playingId ? musicArtUrl((ci >= 0 && queue[ci] && queue[ci].id === playingId) ? musicArtId(queue[ci])
-            : ((playingArtMemo.id === playingId && playingArtMemo.artId) ? playingArtMemo.artId : playingId), curArt) : '' },
+            : ((playingArtMemo.id === playingId && playingArtMemo.artId) ? playingArtMemo.artId : playingId), curArt, 0,
+          (ci >= 0 && queue[ci] && queue[ci].id === playingId) ? musicArtV(queue[ci]) : (playingArtMemo.id === playingId ? playingArtMemo.artV : '')) : '' },
         // v1.317 gate r1 W2: the view's veto on the artist line (the engine ANDs it with its
         // onArtist presence) - a listen video with no channel folder gets the plain line, and in
         // the pop-out a listen video's line is plain too (gate r2). The tooltip names the target.
@@ -2998,7 +3018,7 @@ if (typeof module !== 'undefined' && module.exports) {
         var start = Math.max(0, ci - 20); // keep a little history for jump-back
         for (var j = start; j < queue.length && rows.length < 200; j++) {
           rows.push({
-            id: queue[j].id, artId: queue[j].artId, artUrl: queue[j].artUrl, title: queue[j].title, artist: queue[j].artist, index: j,
+            id: queue[j].id, artId: queue[j].artId, artV: queue[j].artV, artUrl: queue[j].artUrl, title: queue[j].title, artist: queue[j].artist, index: j,
             state: j < ci ? 'played' : (j === ci ? 'current' : 'next'),
             // v1.317 (M2, Dean: "the length of a given section in the right-hand view"): each
             // row's own length - a chapter track's durationSec is that chapter's span.
@@ -4041,7 +4061,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     function loadTrack(item, i, opts) {
       opts = opts || {};
-      playingArtMemo = { id: item && item.id, artId: musicArtId(item) }; // v1.339 L1: survives a view re-init
+      playingArtMemo = { id: item && item.id, artId: musicArtId(item), artV: musicArtV(item) }; // v1.339 L1: survives a view re-init (v1.376.0: with its version)
       // Wave G: a PROJECTED library-audio track (source 'library') streams the
       // mp3 from the media byte route, arts from its YouTube thumbnail, and saves
       // progress to the MEDIA store - so it carries its OWN routes, which we
@@ -4063,7 +4083,7 @@ if (typeof module !== 'undefined' && module.exports) {
         albumKey: item.albumKey || '', // v1.104: so the player can re-seed the now-playing panel's album drill after a re-init
         channelFolder: channelFolderOf(item), // v1.317 (M1, D7): the channel folder survives a dock-return re-init via getCurrentMeta (the albumKey carry)
         duration: item.durationSec || 0,
-        artUrl: (isLib && item.artUrl) ? item.artUrl : ('/albumart/' + encodeURIComponent(musicArtId(item))), // v1.339 L1: the album's shared art id (full size: the big art)
+        artUrl: (isLib && item.artUrl) ? item.artUrl : albumArtSrc(musicArtId(item), 0, musicArtV(item)), // v1.339 L1: the album's shared art id (full size: the big art); v1.376.0: the one writer, versioned
         streamSrc: (isLib && item.streamSrc) ? item.streamSrc : ('/track/' + item.id),
         progressEndpoint: (isLib && item.progressEndpoint) ? item.progressEndpoint : '/api/music/progress',
         // v1.221: seek to the chapter start on load. v1.222: a chapter play now

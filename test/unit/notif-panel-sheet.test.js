@@ -148,7 +148,8 @@ test('Open channel / Open show navigate through the router and close the panel',
     let items = await h.openMenu(41);
     h.click(items['Open channel']);
     await wait(20);
-    assert.deepStrictEqual(went, ['/?folder=' + encodeURIComponent('Chännel Földer')]);
+    // v1.376 W3 (R3): a media row's channel opens filtered to the row's own type (a video row here).
+    assert.deepStrictEqual(went, ['/?folder=' + encodeURIComponent('Chännel Földer') + '&format=video']);
     await until(() => !h.panel() || !h.panel().classList.contains('is-open'), 'the panel closes');
     await wait(400);
     await h.open();

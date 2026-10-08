@@ -2127,6 +2127,33 @@ function setStoredFormatFilter(mode) {
   return normalized;
 }
 
+// v1.376 W3 (R3, Dean: filtered to Audio, opened a video, tapped its channel: a blank
+// list). A channel link opened FROM an item carries that item's type for THAT visit
+// (`&format=video|audio`); the folder / root view honours the URL format over the
+// remembered `filetube_format` and never writes it back. POSITIVE guards only (LESSONS
+// 12): a library media item (no kind, or kind 'media') of type 'video' or 'audio' maps to
+// itself; every other kind (podcast, track, book, tv-*) and every other type (an 'engine'
+// bell row, a missing type) carries nothing, so the remembered filter applies as before.
+function channelFormatForItem(item) {
+  if (!item || typeof item !== 'object') return '';
+  if (item.kind !== undefined && item.kind !== null && item.kind !== 'media') return '';
+  return (item.type === 'video' || item.type === 'audio') ? item.type : '';
+}
+// The channel href with the item's format appended (unchanged when there is none).
+function channelHrefForItem(href, item) {
+  const fmt = channelFormatForItem(item);
+  if (typeof href !== 'string' || href === '' || !fmt) return href;
+  return href + (href.indexOf('?') === -1 ? '?' : '&') + 'format=' + fmt;
+}
+// The `format=` a home URL asks for: one of FORMAT_FILTER_MODES, or null when absent or
+// junk (null = the remembered filter applies). `search` is location.search or a
+// URLSearchParams.
+function urlFormatFilter(search) {
+  let v = null;
+  try { v = (search instanceof URLSearchParams ? search : new URLSearchParams(search || '')).get('format'); } catch (_) { v = null; }
+  return FORMAT_FILTER_MODES.includes(v) ? v : null;
+}
+
 // v1.45.6 (Dean): library card/list VIEW-MODE preference — per-device, mirrors
 // the format-toggle persistence exactly. Default 'card' (today's grid).
 const VIEW_MODE_STORAGE_KEY = 'ft-view-mode';
@@ -4121,7 +4148,8 @@ function buildNotificationRowModel(row) {
     // channel page (the card byline's own `/?folder=` href, main.js), a podcast row its
     // show (podcasts.js reads ?show=). The API row is unchanged: the show id is read back
     // from the server's `/podcastart/<subId>` art URL. null = no channel to open.
-    channelHref: isPodcast ? notifShowHref(row.artUrl) : (folderName ? `/?folder=${encodeURIComponent(folderName)}` : null),
+    // v1.376 W3 (R3): a media row's channel opens filtered to the row's own type.
+    channelHref: isPodcast ? notifShowHref(row.artUrl) : (folderName ? channelHrefForItem(`/?folder=${encodeURIComponent(folderName)}`, row) : null),
   };
 }
 
@@ -4135,22 +4163,52 @@ function notifShowHref(artUrl) {
 }
 
 // Sweep S4 (D8.3, Dean: "Notification delete leaves the row"): the row menu - reached by
-// the trailing kebab, a long-press and a desktop right-click - in this order: Open channel
-// (when the row has one), Dismiss (every row), Delete file (MEDIA rows only: a podcast
-// episode or an engine event is not a /api/videos item). Pure, exported for tests.
-function buildNotificationMenuItems(m) {
+// the trailing kebab, a long-press and a desktop right-click - in this order: Watch later
+// (v1.376.0: media AND podcast rows not already in the list; the tap also dismisses
+// the row), Open channel / Open show (when the row has one), Dismiss (every row), Delete file
+// (media rows -> DELETE /api/videos/:id; v1.376.0 W2: podcast rows -> DELETE
+// /api/podcasts/episodes/:id; never an engine event). `opts.inWatchLater` is the caller's
+// membership read (watchLaterHas); unknown = offer it (the add is idempotent). Pure, exported.
+function notifRowHasItem(m) { return !!m && (m.kind === 'media' || m.kind === 'podcast'); }
+function buildNotificationMenuItems(m, opts) {
   if (!m) return [];
   const items = [];
+  if (notifRowHasItem(m) && !(opts && opts.inWatchLater === true)) items.push({ value: 'watchlater', icon: 'schedule', label: 'Watch later' });
   if (m.channelHref) items.push({ value: 'channel', icon: 'open_in_new', label: m.kind === 'podcast' ? 'Open show' : 'Open channel' });
   items.push({ value: 'dismiss', icon: 'close', label: 'Dismiss' });
-  if (m.kind === 'media') items.push({ value: 'delete', icon: 'delete', label: 'Delete file', danger: true });
+  if (notifRowHasItem(m)) items.push({ value: 'delete', icon: 'delete', label: 'Delete file', danger: true });
   return items;
 }
 
-// The delete confirm's copy says what the ONE delete path does: DELETE /api/videos/:id
-// moves the file to Trash (lib/media/routes.js, the v1.65 trash move; the card menu's
-// wording, main.js cardDeleteConfirmCopy) - never "permanently". Pure, exported.
+// v1.376.0 W2: the ONE share link for a podcast episode - its place in this app (the
+// /podcasts?play= link every surface opens it by), absolute so it pastes anywhere. Used by the
+// home / search card's Share (main.js cardShareUrl) and the episode kebab (podcasts.js). Pure.
+function podcastShareUrl(id) {
+  if (id == null || String(id) === '') return '';
+  const origin = typeof location !== 'undefined' && location.origin ? location.origin : '';
+  return origin + '/podcasts?play=' + encodeURIComponent(String(id));
+}
+
+// v1.376.0 W2: the copy for trashing a podcast episode from OUTSIDE its show (a home / search card,
+// a notification row): DELETE /api/podcasts/episodes/:id moves the file to the podcasts Trash,
+// restorable from the show's episode list (gate r1: there is no episode list on these surfaces,
+// so it names the show's; the episode list itself says "this episode list"). Pure, exported.
+function podcastTrashConfirmCopy(title) {
+  return {
+    title: 'Move to Trash?',
+    body: '“' + (typeof title === 'string' && title !== '' ? title : 'This episode') + '” moves to Trash. You can restore it from the show\'s episode list.',
+    confirmLabel: 'Move to Trash',
+    cancelLabel: 'Cancel',
+    danger: true,
+  };
+}
+
+// The delete confirm's copy says what the delete path does: DELETE /api/videos/:id moves the
+// file to Trash (lib/media/routes.js, the v1.65 trash move; the card menu's wording, main.js
+// cardDeleteConfirmCopy) - never "permanently"; a podcast row says the episode's own copy
+// (podcastTrashConfirmCopy, v1.376.0). Pure, exported.
 function notifDeleteConfirmCopy(m) {
+  if (m && m.kind === 'podcast') return podcastTrashConfirmCopy(m.title); // v1.376.0 W2: the episode's own copy
   const title = m && typeof m.title === 'string' && m.title !== '' ? m.title : 'This file';
   return {
     title: 'Move to Trash?',
@@ -4388,11 +4446,12 @@ function injectNotificationBellIfEnabled() {
       // resolved exactly `true`: Cancel, Esc, the scrim, Close, the panel closing (the
       // signal) and a late tap on a closing dialog all resolve false. One confirm at a time
       // for the whole panel; a row with a request in flight asks nothing. The request is
-      // the SAME one the v1.161 button sent: DELETE /api/videos/:id (-> Trash, recoverable),
+      // the SAME one the v1.161 button sent: DELETE /api/videos/:id (-> Trash, recoverable;
+      // a podcast row: DELETE /api/podcasts/episodes/:id, v1.376.0),
       // then a best-effort dismiss of the row's notification.
       let confirmOpen = false;
       const requestDelete = (m, row) => {
-        if (m.kind !== 'media') return; // a podcast/engine id is not a /api/videos item
+        if (!notifRowHasItem(m)) return; // an engine event has no file
         if (confirmOpen || busyRows.has(row) || !row.isConnected || !openCtl) return;
         const signal = openCtl.signal;
         confirmOpen = true;
@@ -4402,7 +4461,10 @@ function injectNotificationBellIfEnabled() {
             if (ok !== true) return;
             if (signal.aborted || !row.isConnected || busyRows.has(row)) return;
             busyRows.add(row);
-            fetch('/api/videos/' + encodeURIComponent(m.mediaId), { method: 'DELETE' })
+            // v1.376.0 W2: an episode trashes through ITS one route (podcasts Trash, restorable
+            // from the show's episode list); a media row keeps /api/videos.
+            const isPodcast = m.kind === 'podcast';
+            fetch((isPodcast ? '/api/podcasts/episodes/' : '/api/videos/') + encodeURIComponent(m.mediaId), { method: 'DELETE' })
               .then((res) => (res.ok ? res.json().catch(() => ({})) : Promise.reject(new Error(`delete failed: ${res.status}`))))
               .then((data) => {
                 // The video is gone -> best-effort dismiss its notification server-side so
@@ -4414,13 +4476,41 @@ function injectNotificationBellIfEnabled() {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ id: m.id }),
                 }).catch(() => { /* cosmetic - the row is already gone client-side */ });
-                if (typeof deleteResultToast === 'function') showToastSafe(deleteResultToast(data));
+                if (isPodcast) showToastSafe('Moved to Trash');
+                else if (typeof deleteResultToast === 'function') showToastSafe(deleteResultToast(data));
                 return removeNotifRowReconcile(row);
               })
               .catch(() => {
                 busyRows.delete(row); // non-optimistic: a failure keeps the row for a retry
-                showToastSafe('Could not delete the video.');
+                showToastSafe(isPodcast ? 'Could not delete the episode.' : 'Could not delete the video.');
               });
+          });
+      };
+
+      // ADD TO WATCH LATER (v1.376.0, Dean's R1): one tap adds the item to Watch later AND
+      // dismisses its notification (the per-user dismiss), without opening it. NON-OPTIMISTIC:
+      // the row leaves only after BOTH requests answered 2xx; a failed add keeps the row
+      // (nothing changed), a failed dismiss after a good add keeps the row too and says so
+      // (the item IS in Watch later; the menu then stops offering the add).
+      const watchLaterRow = (m, row) => {
+        if (!notifRowHasItem(m)) return; // an engine row has nothing to add
+        if (busyRows.has(row) || !row.isConnected) return;
+        busyRows.add(row);
+        requestWatchLater(m.mediaId, true, m.kind)
+          .catch(() => { throw new Error('add'); })
+          .then(() => fetch('/api/notifications/dismiss', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: m.id }),
+          }))
+          .then((res) => {
+            if (!res.ok) throw new Error('dismiss');
+            showToastSafe('Added to Watch later');
+            return removeNotifRowReconcile(row);
+          })
+          .catch((err) => {
+            busyRows.delete(row);
+            showToastSafe(err && err.message === 'add' ? 'Could not add to Watch later.' : 'Added to Watch later, but could not dismiss the notification.');
           });
       };
 
@@ -4437,9 +4527,10 @@ function injectNotificationBellIfEnabled() {
         if (!openCtl || !row.isConnected) return;
         U.menu({
           title: m.title || 'Notification', anchor, signal: openCtl.signal, doc: document,
-          items: buildNotificationMenuItems(m),
+          items: buildNotificationMenuItems(m, { inWatchLater: watchLaterHas(m.mediaId, m.kind) }),
           onSelect: (v) => {
-            if (v === 'channel') openChannel(m);
+            if (v === 'watchlater') watchLaterRow(m, row);
+            else if (v === 'channel') openChannel(m);
             else if (v === 'dismiss') dismissRow(m, row);
             else if (v === 'delete') requestDelete(m, row);
           },
@@ -4522,11 +4613,11 @@ function injectNotificationBellIfEnabled() {
         const FI = typeof window !== 'undefined' ? window.FTInteraction : null;
         if (!FI) return row;
         h.offMenu = FI.onActionMenu(row, () => openRowMenu(m, row, kebab));
-        // Swipe left: Dismiss (neutral) and, on a media row, Delete (danger). A full swipe
+        // Swipe left: Dismiss (neutral) and, on a media or podcast row, Delete (danger). A full swipe
         // past 60% DISMISSES - swipeRow refuses a danger full-swipe at setup - and the
         // Delete button only ever opens the confirm (requestDelete).
         const actions = [{ id: 'dismiss', label: 'Dismiss', kind: 'neutral', onSelect: () => dismissRow(m, row) }];
-        if (m.kind === 'media') actions.push({ id: 'delete', label: 'Delete', kind: 'danger', onSelect: () => requestDelete(m, row) });
+        if (notifRowHasItem(m)) actions.push({ id: 'delete', label: 'Delete', kind: 'danger', onSelect: () => requestDelete(m, row) });
         h.swipe = FI.swipeRow(row, { fullSwipe: 'dismiss', actions });
         return row.parentNode; // the parentless row now sits in its .ui-swipe wrapper
       };
@@ -4563,6 +4654,7 @@ function injectNotificationBellIfEnabled() {
         bellBtn.setAttribute('aria-expanded', 'true');
         sheet.open();
         loadRows();
+        fetchWatchLaterIds(true); // v1.376.0: fresh membership, so the row menu hides "Watch later" for an item already listed
       };
       function closePanel() {
         if (!panelOpen()) return;
@@ -7499,6 +7591,22 @@ function stripArtistPrefix(title, artist) {
   return rest || t;
 }
 
+// v1.376.0 (Dean's ruling R6): Save as an album numbers the songs that will be DOWNLOADED 1..N, in playlist order, with no
+// gaps - a pickable row (not "Already in library", not unavailable: those have no switch) that is ticked, each video
+// once (a video listed twice takes its first ticked row's place). Until v1.375.0 the number was the playlist position,
+// so a skipped, unavailable or already-owned video left a hole (Kyle Gordon Is Wonderful: 1, 3-10, 13, 14).
+// `rows` = the picker's rows in playlist order ({ id, box }). -> a plain map id -> track number.
+function albumTrackNumbers(rows) {
+  const out = {};
+  let n = 0;
+  (Array.isArray(rows) ? rows : []).forEach((r) => {
+    if (!r || !r.box || !r.box.checked || typeof r.id !== 'string' || Object.prototype.hasOwnProperty.call(out, r.id)) return;
+    n += 1;
+    out[r.id] = n;
+  });
+  return out;
+}
+
 function playlistApiUrl(link, page, peek) {
   const q = new URLSearchParams({ url: link });
   if (peek) q.set('peek', '1'); else q.set('page', String(page || 1));
@@ -7581,6 +7689,7 @@ function openPlaylistPicker(opts) {
   // the standard menu (ui.menu). Every NEW track of the job gets that song's thumbnail as its cover (the server fetches it
   // from YouTube's image host by the id; never a URL from here). Shown with the album's other options.
   const COVER_OWN_ART = 'Each song\'s own art';
+  const ALBUM_ROW_NOT_IN = 'Not in the album'; // v1.376.0 R6: an unticked row has no track number
   const coverRow = U.row({ title: 'Cover', meta: COVER_OWN_ART, onClick: (ev) => openCoverMenu(ev), doc: d });
   coverRow.classList.add('playlist-picker-cover'); // (a row with no actions is itself the button: ui.row)
   albumList.appendChild(coverRow);
@@ -7677,6 +7786,7 @@ function openPlaylistPicker(opts) {
   const picked = () => state.rows.filter((r) => r.box && r.box.checked).map((r) => r.id);
   function refresh() {
     const n = picked().length;
+    renderRows(); // v1.376.0 R6: a tick renumbers the album's tracks
     goBtn.textContent = n ? `Download (${n})` : 'Download';
     goBtn.disabled = n === 0 || state.posting || state.started;
     const pickable = state.rows.filter((r) => r.box).length;
@@ -7703,9 +7813,8 @@ function openPlaylistPicker(opts) {
     const media = U.thumb({ src: e.thumb, duration: e.durationSec || 0, context: 'row', doc: d });
     // v1.372.0: a pickable row's name is a tap target (ui.row's title link): with Save as an album on it renames the song,
     // off it ticks the row. Its meta line (`' '`: ui.row makes the span) carries "Track N" while the album is on.
-    // v1.371.0: `pos` = the row's place in the playlist, the track number when the videos are saved as an album
-    // (the server's `position`, counted before any bad row was dropped; the row count only as a fallback)
-    const rec = { id: e.id, unavailable: !!e.unavailable, box, pos: Number.isInteger(e.position) && e.position > 0 ? e.position : state.rows.length + 1, title: e.title || '', titleClean: typeof e.titleClean === 'string' ? e.titleClean : '', channel: e.channel || '', nameEl: null, metaEl: null };
+    // (v1.376.0 R6: the track numbers are no longer the playlist position - see albumTrackNumbers)
+    const rec = { id: e.id, unavailable: !!e.unavailable, box, title: e.title || '', titleClean: typeof e.titleClean === 'string' ? e.titleClean : '', channel: e.channel || '', nameEl: null, metaEl: null };
     const row = U.row({ title: e.title || e.id, meta: blocked || ' ', media, actions, onClick: blocked ? undefined : (ev) => tapRow(rec, ev), doc: d });
     if (blocked) row.classList.add('is-disabled');
     else {
@@ -7726,16 +7835,19 @@ function openPlaylistPicker(opts) {
     if (!cleanOn.checked) return r.title || r.id;
     return stripArtistPrefix(r.titleClean || r.title, albumArtist.input.value.trim()) || r.title || r.id;
   }
-  function renderRow(r) {
+  function renderRow(r, numbers) {
     if (!r.nameEl) return;
     const on = albumWanted();
     r.nameEl.textContent = on ? songName(r) : (r.title || r.id);
     // what the tap does, for a screen reader (gate r1 qa S5): rename with the album on, tick the row with it off
     r.nameEl.setAttribute('aria-label', on ? 'Rename ' + songName(r) : 'Select ' + (r.title || r.id));
-    r.metaEl.textContent = on ? `Track ${r.pos}` : ''; // (the "tap to rename" hint is on the Save as an album row: it fits a phone)
+    // (the "tap to rename" hint is on the Save as an album row: it fits a phone). An unticked row keeps a line too, so
+    // ticking it never changes the row's height.
+    const n = on ? (numbers || albumTrackNumbers(state.rows))[r.id] : undefined;
+    r.metaEl.textContent = on ? (n ? `Track ${n}` : ALBUM_ROW_NOT_IN) : '';
     r.metaEl.hidden = !on;
   }
-  function renderRows() { state.rows.forEach(renderRow); renderCover(); }
+  function renderRows() { const numbers = albumTrackNumbers(state.rows); state.rows.forEach((r) => renderRow(r, numbers)); renderCover(); }
   // the Cover row's line: the picked song's name as the rows show it (a rename follows), else "Each song's own art"
   const coverRec = () => (state.coverId ? state.rows.find((r) => r.id === state.coverId) || null : null);
   function renderCover() {
@@ -7834,13 +7946,14 @@ function openPlaylistPicker(opts) {
       const title = albumName.input.value.trim();
       const artist = albumArtist.input.value.trim();
       if (!title || !artist) { status.textContent = 'Name the album and its artist, or turn off Save as an album.'; return; }
-      const tracks = {};
+      // v1.376.0 R6: the songs that will be downloaded, numbered 1..N in playlist order (albumTrackNumbers); each one's
+      // shown name goes along when it differs from YouTube's (v1.372.0: written as it is, so the server runs no cleanup)
+      const tracks = albumTrackNumbers(state.rows);
       const titles = {};
-      // the ticked ROW's place (a video listed twice takes the row that was ticked, the first if both were); its shown
-      // name goes along when it differs from YouTube's (v1.372.0: written as it is, so the server runs no cleanup)
+      const named = new Set();
       state.rows.forEach((r) => {
-        if (!r.box || !r.box.checked || Object.prototype.hasOwnProperty.call(tracks, r.id)) return;
-        tracks[r.id] = r.pos;
+        if (!r.box || !r.box.checked || named.has(r.id)) return; // the ticked row (the first if both are)
+        named.add(r.id);
         const name = songName(r);
         // a row with no title shows its id: that is never sent as a name (gate r1 qa S3) unless the user typed one
         if (name !== r.title && (r.title || Object.prototype.hasOwnProperty.call(state.customNames, r.id))) titles[r.id] = name;
@@ -14996,22 +15109,38 @@ function fetchWatchLaterIds(force) {
   return watchLaterIdsPromise;
 }
 function watchLaterSnapshot() { return watchLaterIdsSet; }
+// v1.376.0 W2: the client spelling of a Watch later row key - the server's userStore.watchLaterKey
+// (a media id as-is, a podcast episode as `podcast:<id>`); GET /api/watch-later/ids returns keys.
+function watchLaterKey(id, kind) { return kind === 'podcast' ? 'podcast:' + String(id) : String(id); }
+// Membership of one item from the loaded snapshot: true / false, or null while unknown (not loaded).
+function watchLaterHas(id, kind) { return watchLaterIdsSet ? watchLaterIdsSet.has(watchLaterKey(id, kind)) : null; }
 
-// THE one Watch later verb: on=true adds, false removes. NON-optimistic (the set flips only after
-// the server says so). Toasts the outcome; resolves true/false = the new membership, or null on
-// failure (callers keep their previous state). Refreshes the sidebar entry's count gate.
-function setWatchLater(mediaId, on) {
-  return fetch('/api/watch-later/' + encodeURIComponent(mediaId), { method: on ? 'POST' : 'DELETE' })
+// The Watch later REQUEST, silent: on=true adds, false removes. NON-optimistic (the set flips
+// only after the server says so). Resolves the new membership; REJECTS on any failure so the
+// caller decides what to say (setWatchLater toasts; the bell row keeps itself, v1.376.0).
+// Refreshes the sidebar entry's count gate.
+// `kind` 'podcast' names a podcast episode (v1.376.0 W2: stated as ?kind=podcast, never inferred);
+// anything else is a media item, the v1.343 request byte for byte.
+function requestWatchLater(mediaId, on, kind) {
+  const q = kind === 'podcast' ? '?kind=podcast' : '';
+  return fetch('/api/watch-later/' + encodeURIComponent(mediaId) + q, { method: on ? 'POST' : 'DELETE' })
     .then((res) => (res.ok ? res.json() : Promise.reject(new Error('watch later request failed: ' + res.status))))
     .then((body) => {
       const now = body && typeof body.watchLater === 'boolean' ? body.watchLater : on;
       if (!watchLaterIdsSet) watchLaterIdsSet = new Set();
-      if (now) watchLaterIdsSet.add(String(mediaId)); else watchLaterIdsSet.delete(String(mediaId));
-      showToast(now ? 'Added to Watch later' : 'Removed from Watch later');
-      const list = document.getElementById('sidebar-folders-list');
+      const key = watchLaterKey(mediaId, kind);
+      if (now) watchLaterIdsSet.add(key); else watchLaterIdsSet.delete(key);
+      const list = typeof document !== 'undefined' ? document.getElementById('sidebar-folders-list') : null;
       if (list) applyWatchLaterSidebarEntry(list, { force: true });
       return now;
-    })
+    });
+}
+
+// THE one Watch later verb for a toggle: requestWatchLater plus the outcome toast. Resolves
+// true/false = the new membership, or null on failure (callers keep their previous state).
+function setWatchLater(mediaId, on, kind) {
+  return requestWatchLater(mediaId, on, kind)
+    .then((now) => { showToast(now ? 'Added to Watch later' : 'Removed from Watch later'); return now; })
     .catch(() => { showToast('Could not update Watch later.'); return null; }); // never fake success
 }
 
@@ -17945,7 +18074,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatSnapShift, snapShiftBlock, snapShiftSuggestion, snapGapBreak,
     // v1.286 (Dean, everything shareable): universal file-share + its pure strategy decision.
     shareMediaFile, chooseShareStrategy,
-    fetchWatchLaterIds, watchLaterSnapshot, setWatchLater, playAllWatchLater, applyWatchLaterSidebarEntry,
+    fetchWatchLaterIds, watchLaterSnapshot, watchLaterKey, watchLaterHas, requestWatchLater, podcastTrashConfirmCopy, podcastShareUrl, setWatchLater, playAllWatchLater, applyWatchLaterSidebarEntry,
     showChoiceModal,
     // Sweep S9: the dialogs on ui.sheet (jsdom-tested with the real ui.js).
     confirmHtmlToText, isLiveDialogOpen, showTranscriptModal,
@@ -18188,6 +18317,7 @@ if (typeof module !== 'undefined' && module.exports) {
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     formatPlaylistChipStatus, buildPlaylistRetryRequest, routeOneOffDownload, openPlaylistPicker, // v1.370.0 W4: the playlist picker
     defaultAlbumArtist, stripArtistPrefix, // v1.371.0: Save as an album; v1.372.0: the song names
+    albumTrackNumbers, // v1.376.0 R6: 1..N over the songs that will be downloaded
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     formatDownloadStaleNote, formatDownloadOfflineText, downloadChipRenderErrorCount, // v1.365.0 (W3)
     formatDownloadRowAge, downloadChipPollFaultCount, // v1.365.0 gate r1
@@ -18218,6 +18348,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // case (folded into sortItems above), F1 avatar fallback.
     countItems, formatItemCountLabel, renderItemCountBadge,
     getStoredFormatFilter, setStoredFormatFilter, filterByMediaType,
+    // v1.376 W3: the channel link carries the item's format for that visit.
+    channelFormatForItem, channelHrefForItem, urlFormatFilter,
     // v1.45.6 (Dean): library view-mode + per-page-sort helpers.
     getStoredViewMode, setStoredViewMode,
     isPerPageSortEnabled, setPerPageSortEnabled, pageSortKey, getPerPageSort, setPerPageSort,

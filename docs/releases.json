@@ -3604,5 +3604,11 @@
     "date": "2026-10-08",
     "title": "Radio that feels like radio: a game soundtrack plays more of that game, then other game music",
     "intent": "Starting Radio from a video game album now plays more music from the same game or series first, from any channel that has it, with a little of the album's own artist, then other game music, and only later anything wider. What you listened to before no longer steers the station, which is why a Kirby album could end up playing Prince. A channel's album that is not game music stays on that channel."
+  },
+  {
+    "version": "1.376.0",
+    "date": "2026-10-08",
+    "title": "Watch later from a notification, and podcasts get the same options as videos",
+    "intent": "Every video or episode in the notification list now has Watch later: one tap saves it for later and clears that notification, without opening it. On a computer, the notification that pops up has a Watch later button too. Podcast episodes can now be saved to Watch later, deleted and shared from the notification list, the home and search cards, and the show's episode list. Tapping a channel name now opens that channel showing the kind of thing you came from, and a list that is empty because of a filter tells you so with a Show all button. On a phone, the Listening on another device card shrinks to one line above the mini player instead of covering it. A saved album's chosen cover now shows everywhere in Music right away, and its songs are numbered without gaps."
   }
 ]

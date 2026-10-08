@@ -130,3 +130,68 @@ test('notificationclick focuses + navigates an existing window; opens one when n
   await waited2;
   assert.deepEqual(captured.opened, ['/watch.html?v=z']);
 });
+
+// ---- v1.376.0 W1 (Dean's R1): the banner's "Watch later" action -----------------------
+// Executed against the stubbed `self` with a scripted global fetch: the action adds then
+// dismisses, opens nothing; every click WITHOUT the action keeps the pre-v1.376 open path.
+
+const ITEM_PAYLOAD = { title: 'Vid', body: 'Chan', url: '/watch.html?v=m%201', notifId: 77, mediaId: 'm 1', kind: 'media' };
+
+async function fireClick(action, data, fetchImpl) {
+  const savedFetch = globalThis.fetch;
+  const fetches = [];
+  globalThis.fetch = async (url, init) => { fetches.push({ url, method: (init && init.method) || 'GET', body: init && init.body, credentials: init && init.credentials }); return fetchImpl ? fetchImpl(url, init) : { ok: true, status: 200, json: async () => ({}) }; };
+  captured.shown.length = 0;
+  globalThis.self.clients.matchAll = async () => windowsFor(['hidden']);
+  let waited;
+  try {
+    await listeners.notificationclick({ action, notification: { close() {}, data }, waitUntil: (p) => { waited = p; } });
+    await waited;
+  } finally { globalThis.fetch = savedFetch; }
+  return fetches;
+}
+
+test('v1.376.0 W1: an item push shows a "Watch later" action and carries its ids; a summary push shows the old banner exactly', async () => {
+  await firePush([], ITEM_PAYLOAD);
+  const o = captured.shown[0].opts;
+  assert.deepEqual(o.actions, [{ action: 'watchlater', title: 'Watch later' }]);
+  assert.deepEqual(o.data, { url: '/watch.html?v=m%201', notifId: 77, mediaId: 'm 1', kind: 'media', title: 'Vid' });
+  await firePush([], { title: '4 new videos', body: 'FileTube', url: '/' });
+  assert.deepEqual(captured.shown[0].opts, { body: 'FileTube', icon: '/icons/icon-192.png', data: { url: '/' } }, 'no action, no extra data');
+  await firePush([], { ...ITEM_PAYLOAD, kind: 'engine' });
+  assert.equal(captured.shown[0].opts.actions, undefined, 'an unknown kind gets no action');
+});
+
+test('v1.376.0 W1: the Watch later action POSTs the add (with its kind), THEN dismisses that notification, and opens NO window', async () => {
+  const data = { url: '/podcasts?play=e1', notifId: 78, mediaId: 'e1', kind: 'podcast', title: 'Ep' };
+  const fetches = await fireClick('watchlater', data);
+  assert.deepEqual(fetches.map((f) => [f.method, f.url]), [['POST', '/api/watch-later/e1'], ['POST', '/api/notifications/dismiss']]);
+  assert.deepEqual(JSON.parse(fetches[0].body), { kind: 'podcast' });
+  assert.deepEqual(JSON.parse(fetches[1].body), { id: 78 });
+  assert.ok(fetches.every((f) => f.credentials === 'same-origin'), 'the session cookie rides');
+  assert.deepEqual([captured.opened, captured.focused, captured.navigated], [[], [], []], 'nothing opened');
+  assert.equal(captured.shown.length, 0, 'no follow-up banner on success');
+});
+
+test('v1.376.0 W1: a failed add sends no dismiss and says so with a banner that opens the item', async () => {
+  const fetches = await fireClick('watchlater', { ...ITEM_PAYLOAD, url: '/watch.html?v=m%201' }, async () => ({ ok: false, status: 401 }));
+  assert.deepEqual(fetches.map((f) => f.url), ['/api/watch-later/m%201'], 'no dismiss after a failed add');
+  assert.equal(captured.shown.length, 1);
+  assert.equal(captured.shown[0].title, 'Could not add to Watch later');
+  assert.deepEqual(captured.shown[0].opts.data, { url: '/watch.html?v=m%201' }, 'its tap opens the item, and carries no action');
+  assert.deepEqual(captured.opened, []);
+});
+
+test('v1.376.0 W1: a click WITHOUT the action (the banner body, an unknown action) opens the item and fetches nothing', async () => {
+  for (const action of ['', undefined, 'open', 'WATCHLATER']) {
+    captured.opened.length = 0; captured.focused.length = 0; captured.navigated.length = 0;
+    const fetches = await fireClick(action, { ...ITEM_PAYLOAD });
+    assert.deepEqual(fetches, [], `no request for action ${JSON.stringify(action)}`);
+    assert.deepEqual(captured.navigated, ['/watch.html?v=m%201'], `the open path for action ${JSON.stringify(action)}`);
+  }
+  // The action on a banner that does not carry its item (an older payload) opens too.
+  captured.navigated.length = 0;
+  const f2 = await fireClick('watchlater', { url: '/watch.html?v=q' });
+  assert.deepEqual(f2, []);
+  assert.deepEqual(captured.navigated, ['/watch.html?v=q']);
+});

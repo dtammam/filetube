@@ -905,10 +905,13 @@
   // The builders take the VIEW's art rule (`artFor(id, explicitArtUrl)` - music.js passes its one
   // musicArtUrl) so the menus can never drift from the art the rest of Music shows. v1.339 (L1):
   // a track's art keys on its server `artId` (the album's shared representative) when it has one,
-  // so a menu of one album's songs requests its cover once.
-  function artVia(artFor, id, explicit) {
-    try { return (typeof artFor === 'function' && id) ? (artFor(id, explicit) || '') : ''; } catch (_) { return ''; }
+  // so a menu of one album's songs requests its cover once. v1.376.0 W6 (c, gate r1): `v` = the
+  // picture's version from the payload (an album's `artV`, an artist's `artVs[0]`, a track's `artV`),
+  // passed through to the view's rule so a changed cover is a new URL here too.
+  function artVia(artFor, id, explicit, v) {
+    try { return (typeof artFor === 'function' && id) ? (artFor(id, explicit, undefined, v) || '') : ''; } catch (_) { return ''; }
   }
+  function artVersionOf(x) { return (x && typeof x.artV === 'string') ? x.artV : undefined; }
   function menuArtistItems(artists, artFor) {
     return (Array.isArray(artists) ? artists : []).map(function (a) {
       var name = (a && typeof a.artist === 'string') ? a.artist : '';
@@ -916,7 +919,7 @@
       return {
         label: name || 'Unknown Artist',
         node: { type: 'artist', key: name, label: name || 'Unknown Artist' },
-        art: (a && typeof a.avatarUrl === 'string' && a.avatarUrl) ? a.avatarUrl : artVia(artFor, ids[0]),
+        art: (a && typeof a.avatarUrl === 'string' && a.avatarUrl) ? a.avatarUrl : artVia(artFor, ids[0], undefined, (a && Array.isArray(a.artVs) && typeof a.artVs[0] === 'string') ? a.artVs[0] : undefined),
       };
     });
   }
@@ -926,7 +929,7 @@
       return {
         label: name, detail: (a && typeof a.artist === 'string') ? a.artist : '',
         node: { type: 'album', key: (a && a.albumKey) || '', label: name },
-        art: artVia(artFor, a && a.artId),
+        art: artVia(artFor, a && a.artId, undefined, artVersionOf(a)),
       };
     });
   }
@@ -934,7 +937,7 @@
     return (Array.isArray(tracks) ? tracks : []).map(function (t, i) {
       return {
         label: (t && t.title) || 'Unknown Song', sub: (t && t.artist) || '',
-        id: t && t.id, song: true, trackIndex: i, art: artVia(artFor, t && (t.artId || t.id), t && t.artUrl),
+        id: t && t.id, song: true, trackIndex: i, art: artVia(artFor, t && (t.artId || t.id), t && t.artUrl, artVersionOf(t)),
       };
     });
   }
@@ -951,7 +954,7 @@
       if (seen[k]) return;
       seen[k] = true;
       var name = (typeof t.album === 'string' && t.album) ? t.album : 'Unknown Album';
-      albums.push({ label: name, node: { type: 'artistAlbum', key: k, artist: node.key || '', label: name }, art: artVia(artFor, t.artId || t.id, t.artUrl) });
+      albums.push({ label: name, node: { type: 'artistAlbum', key: k, artist: node.key || '', label: name }, art: artVia(artFor, t.artId || t.id, t.artUrl, artVersionOf(t)) });
     });
     if (albums.length > 1) albums.unshift({ label: 'All Songs', node: { type: 'artistAll', artist: node.key || '', label: node.label || 'All Songs' }, art: albums[0].art });
     return albums;
@@ -997,7 +1000,7 @@
         // v1.374.0 (Dean): the album of this artist's most recent play (the first row seen is the newest)
         detail: (typeof t.album === 'string') ? t.album : '',
         node: { type: 'artist', key: name, label: name || 'Unknown Artist' },
-        art: (typeof t.avatarUrl === 'string' && t.avatarUrl) ? t.avatarUrl : artVia(artFor, t.artId || t.id, t.artUrl),
+        art: (typeof t.avatarUrl === 'string' && t.avatarUrl) ? t.avatarUrl : artVia(artFor, t.artId || t.id, t.artUrl, artVersionOf(t)),
       });
       return out.length >= RECENT_ARTISTS_MAX;
     });
@@ -1020,7 +1023,7 @@
         // the album's artist: the grouping artist (albumArtist || artist, as the album key has it), not one song's credit
         label: name, detail: (typeof t.albumArtist === 'string' && t.albumArtist) || (typeof t.artist === 'string' ? t.artist : ''),
         node: { type: 'album', key: t.albumKey, label: name },
-        art: artVia(artFor, t.artId || t.id, t.artUrl),
+        art: artVia(artFor, t.artId || t.id, t.artUrl, artVersionOf(t)),
       });
       return out.length >= RECENT_ALBUMS_MAX;
     });
@@ -1067,7 +1070,7 @@
       if (!t || !t.hasArt) return;
       var k = 'k' + (t.albumKey || t.id);
       if (seen[k]) return;
-      var u = artVia(artFor, t.artId || t.id, t.artUrl);
+      var u = artVia(artFor, t.artId || t.id, t.artUrl, artVersionOf(t));
       if (!sameOriginPath(u)) return;
       seen[k] = true;
       all.push(u);

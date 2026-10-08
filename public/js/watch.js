@@ -172,11 +172,16 @@ let theatreGuideSeq = 0;
 // its channel's folder, so the parent dir IS the channel dir) and needs no
 // yt-dlp module. Returns null when there is no usable parent folder (bare
 // filename / empty) so the caller leaves the `<a>` inert plain text.
-function resolveUploaderLinkHref({ filePath }) {
+function resolveUploaderLinkHref({ filePath, format }) {
   if (!filePath || typeof filePath !== 'string') return null;
   var folder = filePath.replace(/[\\/][^\\/]*$/, ''); // strip trailing /file or \file
   if (!folder || folder === filePath) return null; // no separator -> no folder
-  return '/?root=' + encodeURIComponent(folder);
+  var href = '/?root=' + encodeURIComponent(folder);
+  // v1.376 W3 (R3): the item's own type (common.js channelFormatForItem) rides the link for
+  // that visit, so a remembered filter of the other type never lands on a blank channel.
+  // Only the two real formats are appended; anything else leaves the link as it was.
+  if (format === 'video' || format === 'audio') href += '&format=' + format;
+  return href;
 }
 
 // resolveChannelDirFromFilePath (v1.24.0, T6, B3): the RAW (non-URL-encoded)
@@ -1885,7 +1890,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // (/?root=<folder>). Re-set (or cleared) every paint so the
         // SPA-reused node never keeps a stale href from the previous item.
         if (plan.filePath !== undefined) {
-          const uploaderLinkHref = resolveUploaderLinkHref({ filePath: plan.filePath });
+          const uploaderLinkHref = resolveUploaderLinkHref({ filePath: plan.filePath, format: channelFormatForItem(item) });
           if (uploaderLinkHref) uploaderChannelName.href = uploaderLinkHref;
           else uploaderChannelName.removeAttribute('href');
         }

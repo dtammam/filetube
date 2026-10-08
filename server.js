@@ -4092,6 +4092,22 @@ function ownTrack(tracks, id) {
   return Object.prototype.hasOwnProperty.call(tracks, id) ? tracks[id] : undefined;
 }
 
+// v1.376.0 W6 (c): the version of the picture each Music art URL points at (lib/music/artVersion.js) - a changed
+// cover is a new URL, so the browser can never keep painting the old one. `artFileFor` is also the /albumart route's
+// own file resolution (lib/music/routes.js), so the version and the bytes come from one file.
+const musicArtVersion = require('./lib/music/artVersion');
+const musicArtVersions = musicArtVersion.createArtVersions({
+  fs,
+  path,
+  ALBUMART_DIR,
+  THUMBNAIL_DIR,
+  readTrack: (id) => musicDb.parts.tracks.get(id) || null, // a point query (an own key of the tracks table)
+  readMediaItem: (id) => {
+    const md = getCachedDatabase().metadata;
+    return md && Object.prototype.hasOwnProperty.call(md, id) ? md[id] : null;
+  },
+});
+
 // The public list-item shape for a track: the track record plus this user's
 // liked flag and resume position (per-user, keyed by req.user.id -- never the
 // frozen doc record). filePath is deliberately NOT surfaced (path scrub).
@@ -4117,8 +4133,13 @@ function trackIsLiked(track, likedSets) {
 // v1.339 (L1, M2): `artReps` (musicQuery.artRepresentatives over the tracks THIS viewer
 // can see) adds `artId` - the id the row's /albumart URL keys on, shared by every track
 // of one cover. Absent -> no artId (the client falls back to the track id).
-function publicTrackListItem(track, userId, likedSets, progressMap, artReps) {
+function publicTrackListItem(track, userId, likedSets, progressMap, artReps, artMemo) {
   const liked = trackIsLiked(track, likedSets);
+  // v1.376.0 W6 (c): the version of the picture this row's art URL points at (every track of one cover - the row's
+  // `artId` included - resolves to the same file: lib/music/artVersion.js). A projected track's own artUrl (its media
+  // thumbnail, the same file) carries it too. `artMemo` = one payload's memo (one stat per cover).
+  const artId = artReps ? musicQuery.artIdFor(track, artReps) : null;
+  const artV = (artMemo || musicArtVersions.memo()).ofTrack(track);
   const prog = progressMap ? progressMap[track.id] : null;
   // Wave G: a PROJECTED library-audio track (source 'library') streams the mp3
   // from the media byte route, arts from its YouTube thumbnail, and saves
@@ -4147,7 +4168,8 @@ function publicTrackListItem(track, userId, likedSets, progressMap, artReps) {
     // <Album>" line (the album/artist drill filters on this exact key).
     albumKey: musicStore.albumKeyFor(track),
     albumArtKey: track.albumArtKey,
-    ...(artReps ? { artId: musicQuery.artIdFor(track, artReps) } : {}),
+    ...(artReps ? { artId } : {}),
+    ...(artV ? { artV } : {}),
     // A library track's art is its media thumbnail (served via /albumart/:id ->
     // thumbnail fallback); a native track's is the extracted album-art file.
     hasArt: isLib ? !!track.hasEmbeddedArt : !!(track.albumArtKey && albumArtExists(track.albumArtKey)),
@@ -4166,7 +4188,7 @@ function publicTrackListItem(track, userId, likedSets, progressMap, artReps) {
     ...(isLib ? {
       source: track.source, // 'library' or 'library-chapter'
       streamSrc: track.streamSrc,
-      artUrl: track.artUrl,
+      artUrl: musicArtVersion.withArtVersion(track.artUrl, artV),
       progressEndpoint: track.progressEndpoint,
     } : {}),
     // v1.221: the seek offset for a virtual chapter-track (the client seeks the
@@ -4307,6 +4329,7 @@ musicRoutes.registerLibraryRoutes(app, {
   mediaVisibleTo,
   musicDb,
   musicLikedSets, // M3 chapter likes: the {music, media} like-set pair a row reads by source
+  musicArtVersions, // v1.376.0 W6 (c): the version each art URL carries
   musicListProgressMap,
   musicQuery,
   ownTrack,
@@ -4368,8 +4391,6 @@ const albumArtRenditions = artRendition.createArtRenditions({
   ffmpegIsAvailable: () => ffmpegAvailable,
 });
 musicRoutes.registerTrackRoutes(app, {
-  ALBUMART_DIR,
-  THUMBNAIL_DIR,
   albumArtRenditions,
   armMusicProgressFlushTimerIfNeeded, // assigns this file's musicProgressFlushTimer
   audioPath,
@@ -4381,10 +4402,10 @@ musicRoutes.registerTrackRoutes(app, {
   mediaVisibleTo,
   musicCodecNeedsTranscode,
   musicDb,
+  musicArtVersions, // v1.376.0 W6 (c): /albumart serves the file the versions are read from
   musicLikedSets, // M3 chapter likes: the {music, media} like-set pair a row reads by source
   musicListProgressMap,
   ownTrack,
-  path,
   pendingMusicProgress,
   pendingProgressKey,
   projectedLibraryTracks,
@@ -4971,6 +4992,7 @@ pushRoutes.registerRoutes(app, {
 queueRoutes.registerRoutes(app, {
   getCachedDatabase,
   mediaVisibleTo,
+  musicArtVersions, // v1.376.0 W6 (c): a queued track's art URL carries its picture's version
   musicDb,
   ownTrack, // the OWN-property track lookup shapedQueue uses (shared with the music routes)
   podcastEpisodeVisibleTo,
@@ -5051,6 +5073,7 @@ mediaRoutes.registerBrowseRoutes(app, {
   getCachedDatabase,
   homeFeed, // lib/home/feed - the pure home-row assembler
   mediaVisibleTo,
+  musicArtVersions, // v1.376.0 W6 (c)
   musicDb,
   ownTrack,
   path,
@@ -5105,7 +5128,7 @@ function resolveHomeItem(db, id, kind, progressPercent) {
   if (kind === 'track') {
     const track = musicDb.parts.tracks.get(id); // Wave 5 (gate pass B): a point query - this runs once PER ITEM of every home row
     if (!track) return null;
-    return { id, kind, title: track.title || 'Track', subtitle: track.artist || '', thumbnailUrl: `/albumart/${enc}`, href: `/music?play=${enc}`, progressPercent };
+    return { id, kind, title: track.title || 'Track', subtitle: track.artist || '', thumbnailUrl: musicArtVersion.albumArtUrl(id, { v: musicArtVersions.versionOf(id) }), href: `/music?play=${enc}`, progressPercent }; // v1.376.0 W6 (c): versioned
   }
   if (kind === 'podcast') {
     const ep = podcastsDb.parts.episodes.get(id) || null; // Wave 5 (gate pass B): a point query, per item
@@ -5256,7 +5279,7 @@ function resolveHandoffTarget(db, seen) {
     return {
       title: track.title || 'Track',
       subtitle: track.artist || '',
-      thumbnailUrl: `/albumart/${enc}`,
+      thumbnailUrl: musicArtVersion.albumArtUrl(id, { v: musicArtVersions.versionOf(id) }), // v1.376.0 W6 (c): versioned
       href: `/music?play=${enc}`,
       listen: true, // a music track is always listened to
       duration: seen.duration || track.durationSec || 0,
@@ -5391,7 +5414,8 @@ function resolveRemoteTracks(req, ids) {
   const wanted = Array.from(new Set(ids)).map((id) => byId.get(id)).filter(Boolean);
   const progressMap = musicListProgressMap(userId, wanted);
   const rows = new Map();
-  for (const t of wanted) rows.set(t.id, publicTrackListItem(t, userId, likedSets, progressMap, artReps));
+  const artMemo = musicArtVersions.memo(); // v1.376.0 W6 (c): one stat per cover for this payload
+  for (const t of wanted) rows.set(t.id, publicTrackListItem(t, userId, likedSets, progressMap, artReps, artMemo));
   return ids.map((id) => rows.get(id) || null);
 }
 
@@ -5436,7 +5460,8 @@ function resolveRemoteTrackCard(req, id) {
     title: track.title || 'Track',
     artist: track.artist || '',
     album: track.album || '',
-    artUrl: track.artUrl || `/albumart/${encodeURIComponent(track.id)}`,
+    // v1.376.0 W6 (c): versioned (a projected track's own artUrl is its thumbnail - the same file /albumart serves)
+    artUrl: musicArtVersion.withArtVersion(track.artUrl, musicArtVersions.versionOf(String(track.id))) || musicArtVersion.albumArtUrl(track.id, { v: musicArtVersions.versionOf(String(track.id)) }),
   };
 }
 
@@ -5498,6 +5523,7 @@ function leafStillEnumerated(p) {
 // the three shapedLiked*Items projections the listing is the only reader of.
 mediaUserRoutes.registerLikedRoutes(app, {
   albumArtExists, // the liked-track arm's cover-art presence probe
+  musicArtVersions, // v1.376.0 W6 (c): the version of each liked track's picture
   bookVisibleTo,
   booksDb,
   buildWatchUrl, // v1.338: the Liked cards' YouTube Share link
