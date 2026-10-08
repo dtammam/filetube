@@ -31,7 +31,7 @@ const common = require('../../public/js/common.js');
 // buildVideoCardEl reads these common.js globals at call time (the browser's
 // shared classic-script scope); the node harness supplies them.
 for (const k of ['resolveViewCountLabel', 'isFabricatedViewCount', 'formatRelativeTime', 'getStarRating',
-  'isYtdlpManagedItem', 'eraShowsFabricated', 'applyEraFlourish']) global[k] = common[k];
+  'isYtdlpManagedItem', 'eraShowsFabricated', 'applyEraFlourish', 'podcastShareUrl', 'podcastTrashConfirmCopy']) global[k] = common[k];
 
 const {
   cardKindPresentation,
@@ -95,21 +95,31 @@ test('Like reads the item: Like / Unlike with the filled heart when liked', () =
   assert.deepStrictEqual(buildCardMenuItems({ ...ITEM, liked: true }, {})[2], { id: 'like', icon: 'favorite.fill', label: 'Unlike' });
 });
 
-test('v1.343 Watch later: media only; label follows opts.watchLater; Move to top only when asked', () => {
+test('v1.343 Watch later: media and (v1.376.0) podcast episodes; label follows opts.watchLater; Move to top only when asked', () => {
   const wl = (it, opts) => buildCardMenuItems(it, {}, opts).filter((x) => x.id.startsWith('watchlater'));
   assert.deepStrictEqual(wl(ITEM, {}), [{ id: 'watchlater', icon: 'schedule', label: 'Watch later' }]);
   assert.deepStrictEqual(wl(ITEM, { watchLater: true }), [{ id: 'watchlater', icon: 'schedule', label: 'Remove from Watch later' }]);
   assert.deepStrictEqual(ids(wl(ITEM, { watchLater: true, watchLaterTop: true })), ['watchlater', 'watchlater-top']);
   assert.strictEqual(wl(ITEM, { watchLater: true, watchLaterTop: true })[1].label, 'Move to top');
-  for (const k of [{ id: 'e', kind: 'podcast', subId: 's' }, { id: 't', kind: 'track' }, { id: 'b', kind: 'book' }]) {
+  const ep = { id: 'e', kind: 'podcast', subId: 's' };
+  assert.deepStrictEqual(wl(ep, {}), [{ id: 'watchlater', icon: 'schedule', label: 'Watch later' }], 'v1.376.0 W2: an episode offers Watch later');
+  assert.deepStrictEqual(ids(wl(ep, { watchLater: true, watchLaterTop: true })), ['watchlater', 'watchlater-top']);
+  for (const k of [{ id: 't', kind: 'track' }, { id: 'b', kind: 'book' }]) {
     assert.deepStrictEqual(wl(k, { watchLater: true, watchLaterTop: true }), [], `no Watch later for kind ${k.kind}`);
   }
 });
 
-test('v1.72 kinds: podcast - kind download, queue, like; NEVER the media delete even with the capability', () => {
-  const ep = { id: 'ep99', kind: 'podcast', subId: 'sub42', title: 'Ep' };
-  assert.deepStrictEqual(ids(buildCardMenuItems(ep, { canModifyLibrary: true, reheatEnabled: true })), ['queue', 'like', 'download']);
-  assert.strictEqual(cardDownloadHref(ep), '/episode/ep99?download=1');
+test('v1.72 / v1.376.0 kinds: podcast - queue, Watch later, like, Share, download; Move to Trash ONLY with the capability; never reheat', () => {
+  const ep = { id: 'ep 99', kind: 'podcast', subId: 'sub42', title: 'Ep' };
+  assert.deepStrictEqual(ids(buildCardMenuItems(ep, { canModifyLibrary: true, reheatEnabled: true })), ['queue', 'watchlater', 'like', 'share', 'download', 'delete']);
+  for (const caps of [{}, { canModifyLibrary: false }, { canModifyLibrary: 'yes' }]) {
+    assert.ok(!ids(buildCardMenuItems(ep, caps)).includes('delete'), `no delete for caps=${JSON.stringify(caps)}`);
+  }
+  assert.strictEqual(cardDownloadHref(ep), '/episode/ep%2099?download=1');
+  assert.strictEqual(cardShareUrl(ep), '/podcasts?play=ep%2099', 'the episode link (absolute in a browser: location.origin + this)');
+  const copy = cardDeleteConfirmCopy(ep);
+  assert.deepStrictEqual([copy.title, copy.confirmLabel, copy.danger], ['Move to Trash?', 'Move to Trash', true]);
+  assert.match(copy.body, /“Ep” moves to Trash\. You can restore it from the show's episode list\./, 'gate r1: a card has no episode list - it names the show\'s');
 });
 
 test('v1.72 kinds: track - queue + like + its own download; book - like + download, never queue', () => {

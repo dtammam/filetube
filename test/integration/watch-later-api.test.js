@@ -183,3 +183,175 @@ test('POST /api/queue/watch-later stops at the queue cap: adds what fits, report
   assert.strictEqual(body.full, true);
   assert.strictEqual(userStore.getQueue(uid).entries.length, queueStore.QUEUE_CAP);
 });
+
+// ---- v1.376.0 W2: a podcast EPISODE in Watch later (Dean: "podcasts get the same options") ----
+// The row key is `podcast:<episodeId>` in the existing table (userStore.watchLaterKey); the kind
+// is STATED by the caller (`kind=podcast`). Bound: add (body and query), the neutral 404 for a
+// missing / pending / trashed / hidden episode, the mixed list (shaped like a Liked episode),
+// Play all ('podcast' queue entries), every way out (DELETE, finish at 95%, mark played, the
+// purge carrier), no cross-kind bleed, and the media contract unchanged.
+const { podcastsDb, updateDatabase } = require('../../server');
+const pstore = require('../../lib/podcasts/store');
+
+async function seedEpisodes(spec) {
+  // spec: [{ guid, status? ('downloaded' default | 'pending' | 'trashed'), feed? }]
+  const out = {};
+  for (const e of spec) {
+    const feed = e.feed || 'https://feeds.invalid/rss/wl';
+    const subId = pstore.subscriptionIdFor(feed);
+    const epId = pstore.episodeIdFor(subId, e.guid);
+    const file = path.join(DATA_DIR, 'podcasts', `wl-${e.guid}.mp3`);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, 'mp3');
+    await updateDatabase(() => podcastsDb.mutate((db) => {
+      const ns = pstore.ensurePodcasts(db);
+      if (!ns.subscriptions.some((x) => x && x.id === subId)) {
+        ns.subscriptions.push(pstore.subscriptionRecordFrom({ id: subId, feed: { feedUrlDisplay: feed }, name: `Shöw ${feed.slice(-2)}`, backfill: 'all', nowMs: 1000, order: 0 }));
+      }
+      pstore.reduceUpsertEpisodes(ns, subId, [{ guid: e.guid, title: `Ep ${e.guid}`, pubDateMs: 1000, durationSec: 60 }], 'pending', 1000);
+      if (e.status !== 'pending') pstore.reduceEpisodeDownloaded(ns, epId, { fileName: path.basename(file), filePath: file, bytes: 3, nowMs: 1000 });
+      if (e.status === 'trashed') pstore.reduceEpisodeTrashed(ns, epId, { trashPath: file + '.trash', nowMs: 2000 });
+      return true;
+    }));
+    out[e.guid] = { epId, subId };
+  }
+  return out;
+}
+const addPod = (id, cookie, via = 'body') => fetch(`${base}/api/watch-later/${encodeURIComponent(id)}${via === 'query' ? '?kind=podcast' : ''}`, {
+  method: 'POST', headers: hdr(cookie), body: via === 'body' ? JSON.stringify({ kind: 'podcast' }) : undefined,
+});
+const delPod = (id, cookie) => fetch(`${base}/api/watch-later/${encodeURIComponent(id)}?kind=podcast`, { method: 'DELETE', headers: cookie ? { Cookie: cookie } : {} });
+
+test('W2: an episode adds (body or query kind), lists MIXED in the user order shaped like a Liked episode, and the ids carry its key', async () => {
+  seed({ v1: item('v1'), v2: item('v2') });
+  const eps = await seedEpisodes([{ guid: 'a' }, { guid: 'b' }]);
+  assert.strictEqual((await add('v1')).status, 200);
+  assert.strictEqual((await addPod(eps.a.epId)).status, 200);
+  assert.strictEqual((await add('v2')).status, 200);
+  assert.strictEqual((await addPod(eps.b.epId, undefined, 'query')).status, 200);
+  assert.deepEqual(await idsOf(), ['v1', `podcast:${eps.a.epId}`, 'v2', `podcast:${eps.b.epId}`]);
+  const l = await list();
+  assert.deepEqual(l.items.map((i) => [i.kind, i.id]), [['media', 'v1'], ['podcast', eps.a.epId], ['media', 'v2'], ['podcast', eps.b.epId]]);
+  const ep = l.items[1];
+  assert.deepEqual([ep.title, ep.type, ep.subId, ep.showName, ep.watchLater, ep.liked], ['Ep a', 'audio', eps.a.subId, 'Shöw wl', true, false]);
+  assert.strictEqual(l.total, 4);
+  assert.deepEqual((await list('?format=video')).items.map((i) => i.id), ['v1', 'v2'], 'the format filter treats an episode as audio');
+  assert.deepEqual((await list('?format=audio')).items.map((i) => i.id), [eps.a.epId, eps.b.epId]);
+  // the media contract is unchanged: no kind = media, and an episode id WITHOUT the kind is a missing media id
+  assert.strictEqual((await add(eps.a.epId)).status, 404, 'an episode id sent as media is not found (kind is stated, never inferred)');
+});
+
+test('W2: the neutral 404 - a missing, pending, trashed or HIDDEN episode never stores (no oracle)', async () => {
+  seed({});
+  const eps = await seedEpisodes([{ guid: 'ok' }, { guid: 'pend', status: 'pending' }, { guid: 'tr', status: 'trashed' }]);
+  for (const id of [eps.pend.epId, eps.tr.epId, 'deadbeef', '__proto__']) {
+    assert.strictEqual((await addPod(id)).status, 404, `refused: ${id}`);
+  }
+  kid = __mintTestSession({ username: 'kidwlpod', role: 'member' });
+  userStore.setRestrictions(kid.user.id, [{ kind: 'library', value: 'podcasts' }]);
+  const hidden = await addPod(eps.ok.epId, kid.cookie);
+  assert.strictEqual(hidden.status, 404, 'a podcasts-restricted member cannot add a hidden episode');
+  assert.deepEqual(await hidden.json(), await (await addPod('deadbeef', kid.cookie)).json(), 'the same body as a missing one');
+  assert.deepEqual(await idsOf(kid.cookie), [], 'nothing stored for the member');
+  assert.deepEqual(await idsOf(), [], 'nothing stored for anyone');
+  // A row stored BEFORE the restriction never lists, never queues.
+  userStore.addWatchLater(kid.user.id, `podcast:${eps.ok.epId}`, new Date().toISOString());
+  const l = await list('', kid.cookie);
+  assert.deepEqual(l.items, []);
+  assert.ok(!JSON.stringify(l).includes('Ep ok'));
+  const q = await fetch(`${base}/api/queue/watch-later`, { method: 'POST', headers: hdr(kid.cookie) }).then((r) => r.json());
+  assert.strictEqual(q.added, 0);
+  assert.deepEqual(userStore.getQueue(kid.user.id).entries, [], 'Play all queued nothing hidden');
+});
+
+test('W2: a video-restricted member can still list an episode (the PODCAST gate decides, not the media one)', async () => {
+  seed({ v1: item('v1') });
+  const eps = await seedEpisodes([{ guid: 'g' }]);
+  kid = __mintTestSession({ username: 'kidwlvid', role: 'member' });
+  userStore.setRestrictions(kid.user.id, [{ kind: 'library', value: 'video' }]);
+  assert.strictEqual((await addPod(eps.g.epId, kid.cookie)).status, 200);
+  assert.strictEqual((await add('v1', kid.cookie)).status, 404, 'the video gate still bites on media');
+  assert.deepEqual((await list('', kid.cookie)).items.map((i) => i.id), [eps.g.epId]);
+});
+
+test('W2: Play all queues an episode as a podcast entry, in list order with the videos', async () => {
+  seed({ v1: item('v1') });
+  const eps = await seedEpisodes([{ guid: 'p' }, { guid: 'gone', status: 'trashed' }]);
+  await addPod(eps.p.epId);
+  await add('v1');
+  userStore.addWatchLater(uid, `podcast:${eps.gone.epId}`, new Date().toISOString());
+  const q = await fetch(`${base}/api/queue/watch-later`, { method: 'POST', headers: J }).then((r) => r.json());
+  assert.strictEqual(q.added, 2, 'the trashed episode is skipped');
+  assert.deepEqual(userStore.getQueue(uid).entries.map((e) => [e.kind, e.mediaId]), [['podcast', eps.p.epId], ['media', 'v1']]);
+  assert.strictEqual(q.first.mediaId, eps.p.epId);
+});
+
+test('W2: every way out - DELETE with the kind, finishing at 95%, mark played, the purge carrier; a media id twin is untouched', async () => {
+  const eps = await seedEpisodes([{ guid: 'x' }, { guid: 'y' }, { guid: 'z' }, { guid: 'w' }]);
+  seed({ [eps.w.epId]: item(eps.w.epId) }); // a MEDIA item whose id equals an episode id: the kinds never touch
+  for (const g of ['x', 'y', 'z', 'w']) await addPod(eps[g].epId);
+  await add(eps.w.epId);
+  const keys = () => userStore.getWatchLater(uid);
+  assert.strictEqual(keys().length, 5);
+  assert.strictEqual((await del(eps.x.epId)).status, 200);
+  assert.ok(keys().includes(`podcast:${eps.x.epId}`), 'a DELETE without the kind removes the MEDIA key only (no row)');
+  await delPod(eps.x.epId);
+  assert.ok(!keys().includes(`podcast:${eps.x.epId}`), 'DELETE ?kind=podcast removes it');
+  const prog = (position) => fetch(`${base}/api/podcasts/progress`, { method: 'POST', headers: J, body: JSON.stringify({ episodeId: eps.y.epId, position, duration: 100 }) });
+  await prog(94);
+  assert.ok(keys().includes(`podcast:${eps.y.epId}`), 'below 95% it stays');
+  await prog(95);
+  assert.ok(!keys().includes(`podcast:${eps.y.epId}`), 'the played latch removes it');
+  await fetch(`${base}/api/podcasts/episodes/${eps.z.epId}/played`, { method: 'POST', headers: J, body: JSON.stringify({ played: false }) });
+  assert.ok(keys().includes(`podcast:${eps.z.epId}`), 'UN-marking played does not remove');
+  await fetch(`${base}/api/podcasts/episodes/${eps.z.epId}/played`, { method: 'POST', headers: J, body: '{}' });
+  assert.ok(!keys().includes(`podcast:${eps.z.epId}`), 'mark played removes it');
+  userStore.removePodcastEpisodeState([eps.w.epId]);
+  assert.deepEqual(keys(), [eps.w.epId], 'the purge carrier drops the podcast row and NOT the media row with the same id');
+  userStore.removeMediaState([eps.w.epId]);
+  assert.deepEqual(keys(), []);
+});
+
+test('W2: the media path never removes a podcast row: a media finish / delete of an id leaves the episode key', async () => {
+  const eps = await seedEpisodes([{ guid: 'm' }]);
+  seed({ [eps.m.epId]: item(eps.m.epId) });
+  await addPod(eps.m.epId);
+  await ping(eps.m.epId, 95);
+  userStore.removeMediaState([eps.m.epId]);
+  assert.deepEqual(userStore.getWatchLater(uid), [`podcast:${eps.m.epId}`]);
+});
+
+// Gate r1 (qa W3 + adversary suggestion): the list's podcast arm of the watch filter and the
+// episode's own liked flag. Inputs where correct and broken DIVERGE: one episode New, one
+// Watching (progress), one Watched (played), one liked.
+test('W2: the watch filter reads each episode\'s OWN state; an episode carries its own liked flag', async () => {
+  seed({ v1: item('v1') });
+  const eps = await seedEpisodes([{ guid: 'n' }, { guid: 'w' }, { guid: 'd' }]);
+  for (const g of ['n', 'w', 'd']) await addPod(eps[g].epId);
+  await add('v1');
+  await fetch(`${base}/api/podcasts/progress`, { method: 'POST', headers: J, body: JSON.stringify({ episodeId: eps.w.epId, position: 30, duration: 100 }) });
+  await fetch(`${base}/api/podcasts/episodes/${eps.d.epId}/played`, { method: 'POST', headers: J, body: '{}' });
+  userStore.addWatchLater(uid, `podcast:${eps.d.epId}`, new Date().toISOString()); // mark played removed it: put it back to filter it
+  await fetch(`${base}/api/podcasts/episodes/${eps.n.epId}/liked`, { method: 'POST', headers: J });
+  const ids = async (q) => (await list(q)).items.map((i) => i.id).sort();
+  assert.deepEqual(await ids('?watch=new'), [eps.n.epId, 'v1'].sort());
+  assert.deepEqual(await ids('?watch=watching'), [eps.w.epId]);
+  assert.deepEqual(await ids('?watch=watched'), [eps.d.epId]);
+  const all = (await list()).items;
+  assert.deepEqual(all.filter((i) => i.kind === 'podcast').map((i) => [i.id, i.liked]).sort(),
+    [[eps.n.epId, true], [eps.w.epId, false], [eps.d.epId, false]].sort(), 'liked is the episode\'s own');
+});
+
+// LAST in the file: the restore replaces the users table, which ends this file's session.
+test('W2: a backup carries the podcast key verbatim and restores it', async () => {
+  const eps = await seedEpisodes([{ guid: 'bk' }]);
+  seed({ v1: item('v1') });
+  await add('v1');
+  await addPod(eps.bk.epId);
+  const exported = userStore.exportUsersForBackup ? userStore.exportUsersForBackup() : null;
+  assert.ok(exported, 'the store exposes the users export');
+  const me = exported.find((u) => u.id === uid);
+  assert.deepEqual(me.watchLater.map((w) => w.mediaId), ['v1', `podcast:${eps.bk.epId}`]);
+  userStore.replaceAllUsersRaw(exported);
+  assert.deepEqual(userStore.getWatchLater(uid), ['v1', `podcast:${eps.bk.epId}`], 'restored in order, the podcast key intact');
+});

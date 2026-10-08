@@ -202,18 +202,37 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
 
 ## Sort in any album, iPod artist lines, one album cover (v1.374.0)
 
-- [ ] v1.374.0 - Desktop and iPhone: Music home > tap an album in a shelf. The sort menu shows on the album page; if it
+- [x] v1.374.0 - (Dean 2026-10-08: "sort is good") Desktop and iPhone: Music home > tap an album in a shelf. The sort menu shows on the album page; if it
   does not say "Album order", pick it once and the songs read Track 1, 2, 3 in order. If it already says Album order and the
   songs are still out of order, tell me (that album's files would lack track numbers).
-- [ ] v1.374.0 - iPhone iPod: Music > Recent Albums shows the artist under each album; Recent Artists shows the album you
+- [x] v1.374.0 - (Dean 2026-10-08: "iPod lines good") iPhone iPod: Music > Recent Albums shows the artist under each album; Recent Artists shows the album you
   last played under each artist; Albums shows the artist under each album.
-- [ ] v1.374.0 - Playlist picker, Format Audio, Save as an album on: tap Cover, pick a song (names only in the menu - is
+- [x] v1.374.0 - (Dean 2026-10-08: good; every file carries the cover - his probe - but one Music row kept the old art: v1.376.0 W6) Playlist picker, Format Audio, Save as an album on: tap Cover, pick a song (names only in the menu - is
   that enough?), download. Every new song of that album shows that one picture in Music (album card, song rows, iPod) on
   desktop and phone. With "Each song's own art" nothing changes. An older video's cover can be a smaller square.
 
 ## Radio that feels like radio (v1.375.0)
 
-- [ ] v1.375.0 - Music > a Kirby album (e.g. a NESTALGIA or Vapid Kirby set) > Radio, right after playing some pop: the
+- [x] v1.375.0 - (Dean 2026-10-08: "Radio much better") Music > a Kirby album (e.g. a NESTALGIA or Vapid Kirby set) > Radio, right after playing some pop: the
   first songs are Kirby music from several channels, then other game music; no Prince or pop for a long while. Same from a
   Kirby song's Start radio and when Autoplay continues after the album. (Soundzantium / PSK Kirby sets may not appear:
   their channels file under YouTube "Music", by your round-3 choice.)
+
+## Watch later from a notification, podcast options, device-pass fixes (v1.376.0)
+
+- [ ] v1.376.0 - iPhone + desktop: the bell > a new video's row > kebab (or long-press / right-click) > Watch later: the video
+  is in Watch later, the row is gone, the video did not open. Same on a podcast episode's row.
+- [ ] v1.376.0 - Desktop Chrome: a new-video push shows a "Watch later" button doing the same (the iPhone shows no button:
+  Safari has none; use the bell there).
+- [ ] v1.376.0 - A podcast episode: Watch later and Delete (with its confirm) in the bell; Watch later, Share and Move to Trash
+  on a home / search card; Watch later and Share in the show's episode list. Watch later lists it and plays it; playing it to
+  the end removes it from Watch later.
+- [ ] v1.376.0 - Filter the home feed to Audio, open a video, tap its channel name: the channel shows its videos; back on Home
+  the filter is still Audio. A folder the filter empties says "No audio here" with "Show all".
+- [ ] v1.376.0 - iPhone, music playing on the Mac, a video in the mini player: the Listening on... card is a slim bar above the
+  mini player; both fully visible and tappable.
+- [ ] v1.376.0 - iPhone watch page, the line under the controls: turn Ambient OFF in the player's cog (or light mode) and look.
+  Gone = tell me (the glow's bloom is the cause). Still there = Settings > lifecycle log on, play with the line on screen,
+  Export the log and send it.
+- [ ] v1.376.0 - Save a playlist as an album with a Cover, skipping a song: every song shows that cover in every Music view
+  (iPod menus and artist rows included) on desktop and phone without a hard refresh; the songs read Track 1..N with no gap.

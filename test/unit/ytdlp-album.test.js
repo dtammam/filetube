@@ -26,6 +26,20 @@ test('albumFrom: a valid album is trimmed, its tracks keyed by the job ids only,
   assert.deepStrictEqual({ ...r.album.tracks }, { vid00000001: 1, vid00000003: 7 }, 'an id outside the job is dropped');
 });
 
+test('v1.376.0 R6: a pending entry a v1.371.0-v1.375.0 job wrote (playlist positions, with gaps) still validates, its numbers unchanged', () => {
+  const ids = ['vid00000001', 'vid00000003', 'vid00000013', 'vid00000014'];
+  // the shape v1.374.0 persisted (names map, a cover), numbered by playlist position: 1, 3, 13, 14
+  const entry = { title: 'Kyle Gordon Is Wonderful', artist: 'Kyle Gordon', cleanTitles: false,
+    tracks: { vid00000001: 1, vid00000003: 3, vid00000013: 13, vid00000014: 14 }, titles: { vid00000003: 'Mr. Jambo' }, coverId: 'c1Paj8je5sM' };
+  const r = album.albumFrom(JSON.parse(JSON.stringify(entry)), ids);
+  assert.strictEqual(r.ok, true, r.error);
+  assert.deepStrictEqual({ ...r.album.tracks }, entry.tracks);
+  assert.strictEqual(r.album.coverId, 'c1Paj8je5sM');
+  // and a v1.376.0 body (1..N) validates the same way
+  assert.deepStrictEqual({ ...album.albumFrom(Object.assign({}, entry, { tracks: { vid00000001: 1, vid00000003: 2, vid00000013: 3, vid00000014: 4 } }), ids).album.tracks },
+    { vid00000001: 1, vid00000003: 2, vid00000013: 3, vid00000014: 4 });
+});
+
 test('albumFrom: cleanTitles is true only for the boolean true', () => {
   assert.strictEqual(album.albumFrom(good({ cleanTitles: true }), IDS).album.cleanTitles, true);
   assert.strictEqual(album.albumFrom(good({ cleanTitles: 'true' }), IDS).album.cleanTitles, false);

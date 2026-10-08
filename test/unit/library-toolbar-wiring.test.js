@@ -50,7 +50,9 @@ test('buildVideosApiUrl: sends sort/format to the SERVER as query params -- no l
   assert.ok(fnMatch, 'expected to find buildVideosApiUrl() in main.js');
   const body = fnMatch[1];
   assert.match(body, /sort=\$\{encodeURIComponent\(currentSort\)\}/, 'expected the sort param to be forwarded to the server');
-  assert.match(body, /format=\$\{encodeURIComponent\(getStoredFormatFilter\(\)\)\}/, 'expected the format param to be forwarded to the server');
+  // v1.376 W3: the view's ACTIVE format (a URL `format=` for this visit, else the stored one).
+  assert.match(body, /format=\$\{encodeURIComponent\(activeFormatFilter\(\)\)\}/, 'expected the format param to be forwarded to the server');
+  assert.match(mainJs, /function activeFormatFilter\(\) \{ return viewFormatOverride \|\| getStoredFormatFilter\(\); \}/, 'the URL format wins, else the remembered one');
   assert.match(body, /limit=\$\{HOME_PAGE_LIMIT\}/, 'expected an explicit limit param (never relying on the server default)');
   assert.match(body, /offset=\$\{offset\}/);
   assert.match(body, /seed=\$\{currentSeed\}/);
@@ -114,9 +116,9 @@ test('buildVideosApiUrl: forwards the watched-state filter to the server (pagina
 // root.querySelector, never a document-wide lookup - the doubled-row class).
 test('mountLibraryChips: format + watch persist through their storage helpers and a tap resets to a fresh page 0, once', () => {
   const body = mainJs.slice(mainJs.indexOf('function mountLibraryChips() {'), mainJs.indexOf('function updateShuffleButtonVisibility() {'));
-  assert.match(body, /groups\.push\(\{ key: 'format', value: getStoredFormatFilter\(\), all: 'both'/, 'format: the live stored mode');
+  assert.match(body, /groups\.push\(\{ key: 'format', value: activeFormatFilter\(\), all: 'both'/, 'format: the live active mode (v1.376 W3: a URL format shows while it applies)');
   assert.match(body, /groups\.push\(\{ key: 'watch', value: getStoredWatchFilter\(\), all: 'all'/, 'watch: the live stored mode');
-  assert.match(body, /if \('format' in changes\) setStoredFormatFilter\(changes\.format\);/);
+  assert.match(body, /if \('format' in changes\) \{\s*setStoredFormatFilter\(changes\.format\);/);
   assert.match(body, /if \('watch' in changes\) setStoredWatchFilter\(changes\.watch\);/);
   assert.strictEqual((body.match(/resetAndReload\(\)/g) || []).length, 1, 'one reload per tap');
   assert.match(body, /chipHost\.replaceChildren\(row\)/, 'the row replaces its host content - never a second row');

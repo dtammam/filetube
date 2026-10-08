@@ -14,6 +14,7 @@
 //   - F41: Pin is BUSY (full opacity, not disabled) while the pins load;
 //   - D9: a failed load is an error state; the skeletons are the real list's classes.
 
+const commonJs = require('../../public/js/common.js'); // v1.376.0: the share link podcasts.js reads
 const { test } = require('node:test');
 const assert = require('node:assert');
 const { JSDOM } = require('jsdom');
@@ -65,6 +66,8 @@ async function boot(opts, run) {
     player: { currentId: null, getState: () => 'closed', getCurrentMeta: () => null, load() {}, expand() {}, setTrackNav() {} },
   };
   w.addToQueue = (id) => { calls.push('QUEUE ' + id); };
+  // a common.js global podcasts.js reads (the shared classic-script scope in a browser).
+  w.podcastShareUrl = commonJs.podcastShareUrl;
   global.fetch = (url, init) => {
     const u = String(url);
     const method = (init && init.method) || 'GET';
@@ -408,5 +411,40 @@ test('the add dialog is a ui.sheet; Subscribe posts the feed and closes', async 
     await settleMany();
     const post = c.bodies.find((b) => b.url === '/api/podcasts/subscriptions');
     assert.deepStrictEqual(post && post.body, { feedUrl: 'https://feeds.example.com/x.xml', backfill: '25' });
+  });
+});
+
+// ---- v1.376.0 W2 (Dean: "podcasts get the same options") ------------------------------------
+
+test('W2: a downloaded episode\'s kebab offers Watch later and Share; the toggle states kind podcast and follows membership; a trashed one offers neither', async () => {
+  await boot({}, async (c) => {
+    const wl = [];
+    const shared = [];
+    let listed = new Set();
+    c.w.watchLaterHas = (id, kind) => listed.has(kind + ':' + id);
+    c.w.setWatchLater = (id, on, kind) => { wl.push([id, on, kind]); return Promise.resolve(on); };
+    c.w.shareExternalUrl = (url, title) => { shared.push([url, title]); return Promise.resolve('copied'); };
+    openShow(c, 's1');
+    await settleMany();
+    openMenuFor(c, 'e1');
+    menuRow(c, 'Watch later').click();
+    await settleMany();
+    assert.deepStrictEqual(wl, [['e1', true, 'podcast']], 'the add, kind stated');
+    openMenuFor(c, 'e1');
+    menuRow(c, 'Share').click();
+    await settleMany();
+    assert.deepStrictEqual(shared, [['/podcasts?play=e1', 'Pilot']], 'the episode link (absolute in a browser)');
+    listed = new Set(['podcast:e1']);
+    openMenuFor(c, 'e1');
+    menuRow(c, 'Remove from Watch later').click();
+    await settleMany();
+    assert.deepStrictEqual(wl[1], ['e1', false, 'podcast'], 'a listed episode removes');
+    openMenuFor(c, 'e2');
+    await settleMany();
+    const menu = lastOf(c.d, '.ui-sheet--popover, .ui-sheet--bottom');
+    const labels = Array.from(menu.querySelectorAll('.ui-row')).map((r) => r.textContent.trim());
+    assert.ok(!labels.some((l) => /Watch later|Share/.test(l)), 'a trashed episode offers neither: ' + labels.join(', '));
+    c.d.dispatchEvent(new c.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await settleMany();
   });
 });
