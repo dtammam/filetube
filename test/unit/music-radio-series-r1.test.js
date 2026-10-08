@@ -208,30 +208,17 @@ test('gate r1 adversary W1: a game station costs at most 2.5x a real-genre (v1.3
 
 // ---- before r2 (the Architect): YouTube-"Music" uploads may JOIN the series; nothing else changes ----------
 
-test('before r2: only a yt-dlp upload joins the series without being game music - an untagged NATIVE file sharing "Kirby" never does', () => {
+test('gate r2: the series is GAME MUSIC only - a YouTube-"Music" Kirby set and an untagged NATIVE "Kirby" file never join', () => {
   const native = K.album('Kirby Smith', 'Kirby Live Lectures', '', 2011, ['Kirby Lecture One', 'Kirby Lecture Two']);
   const lib = LIB.concat(native);
   const [seed, ctx0] = albumSeed(lib, K.KIRBY_SETS.vapid);
   const plan = radio.stationPlan(radio.buildStationProfile(seed, lib), lib);
-  assert.ok(plan.inSeries(lib.find((t) => t.album === 'Kirby Orchestral Suite')), 'precondition: a YouTube-"Music" Kirby set joins');
-  for (const t of native) assert.ok(!plan.inSeries(t), t.title + ' (a native untagged file) joined the series');
+  const music = lib.filter((t) => t.album === 'Kirby Orchestral Suite');
+  assert.strictEqual(music[0].genre, 'Music', 'precondition: a YouTube-"Music" upload');
+  for (const t of music.concat(native)) assert.ok(!plan.inSeries(t), t.title + ' joined the series');
   let hits = 0;
   for (const s of sessions(lib, seed, ctx0)) hits += s.filter((x) => native.includes(x.t)).length;
   assert.strictEqual(hits, 0, 'native untagged picks in 20 x 25 plays: ' + hits);
-});
-
-test('before r2: the game verdict counts the series\' GAME songs only - a lofi channel\'s set whose franchise game music barely holds stays on the genre ladder', () => {
-  const lib = LIB.concat(
-    K.set('NESTALGIA', 'NESTALGIA', 'Pikmin Theme', 'Gaming', ['Pikmin Forest', 'Pikmin Cave']),
-    K.set('Vapid', 'vapidVGM', 'Pikmin Garden', 'Gaming', ['Pikmin Garden One', 'Pikmin Garden Two']),
-    ...['Lofi C', 'Lofi D', 'Lofi E'].map((ch, i) => K.set(ch, 'lofi' + i, 'Pikmin lofi beats ' + ch, 'Music', [1, 2, 3, 4, 5].map((n) => 'Pikmin Chill ' + ch + ' ' + n))));
-  const [seed] = albumSeed(lib, 'Pikmin lofi beats Lofi C');
-  const profile = radio.buildStationProfile(seed, lib);
-  const verdict = radio.stationPlan(profile, lib, { verdict: true });
-  assert.ok(verdict.terms.some((x) => x.term === 'pikmin'), 'precondition: "pikmin" is a series word (learned from 2 game channels)');
-  assert.ok(verdict.seriesSize >= 10, 'precondition: with the joined lofi uploads the series is 10+: ' + verdict.seriesSize);
-  assert.strictEqual(verdict.game, false, '4 game songs are no game station');
-  assert.strictEqual(radio.stationPlan(profile, lib), null);
 });
 
 test('before r2: a native REAL-GENRE song never joins, even sharing a QUALIFIED series word - "Kirby" in a rock and a classical title (20 x 25 plays)', () => {
@@ -245,4 +232,95 @@ test('before r2: a native REAL-GENRE song never joins, even sharing a QUALIFIED 
   let hits = 0;
   for (const s of sessions(lib, seed, ctx0)) hits += s.filter((x) => real.includes(x.t)).length;
   assert.strictEqual(hits, 0, 'real-genre picks in 20 x 25 plays: ' + hits);
+});
+
+// ---- gate r2 (Dean's round-3 ruling: simplify) -------------------------------------------------------------
+
+for (const [name, extra] of [
+  ['"Linkin Park - Forgotten (Official Audio)" (YouTube Music)', K.upload('Linkin Park', 'linkinpark', 'Linkin Park - Forgotten (Official Audio)', 'Music')],
+  ['"Bach - Cello Suite No. 1" (YouTube Music)', K.upload('Classical Uploads', 'classicaluploads', 'Bach - Cello Suite No. 1', 'Music')],
+]) {
+  test('gate r2 adversary C2: ' + name + ' never joins a Kirby station, though its word is learned from 2 game channels - every entry point, 20 x 25 plays', () => {
+    // "forgotten" and "suite" made series words by two game channels each
+    const lib = LIB.concat(extra,
+      K.set('Vapid', 'vapidVGM', 'Kirby Forgotten Land Suite', 'Gaming', ['Forgotten Suite One', 'Forgotten Suite Two', 'Forgotten Suite Three']));
+    const seeds = [albumSeed(lib, 'Kirby and the Forgotten Land - Full OST Medley'), albumSeed(lib, 'Kirby Orchestral Suite'),
+      songSeed(lib, 'Kirby and the Forgotten Land - Full OST Medley', 'Forgotten Land Opening')];
+    let qualified = 0; let hits = 0;
+    for (const [seed, ctx0] of seeds) {
+      const plan = radio.stationPlan(radio.buildStationProfile(seed, lib), lib);
+      if (!plan) continue;
+      if (plan.terms.some((x) => x.term === 'forgotten' || x.term === 'suite')) qualified += 1;
+      for (const t of extra) assert.ok(!plan.inSeries(t), name + ' joined the series');
+      for (const s of sessions(lib, seed, ctx0)) hits += s.filter((x) => extra.includes(x.t)).length;
+    }
+    assert.ok(qualified >= 1, 'precondition: the shared word is a qualified series word for some seed');
+    assert.strictEqual(hits, 0, name + ' picks: ' + hits);
+  });
+}
+
+test('gate r2 adversary W2\': a "Game Talk Pod" channel (3 Gaming episodes) is no game channel - its episodes and NESTALGIA\'s podcast never play (20 x 25 plays)', () => {
+  const pod = [1, 2, 3].map((n) => K.upload('Game Talk Pod', 'gametalkpod', 'Game Talk Podcast Ep ' + n + ' - our week in games', 'Gaming')).flat()
+    .concat(K.upload('Game Talk Pod', 'gametalkpod', 'Episode 4: Kirby retrospective', 'Gaming'));
+  const lib = LIB.concat(pod);
+  const [seed, ctx0] = albumSeed(lib, K.KIRBY_SETS.vapid);
+  const plan = radio.stationPlan(radio.buildStationProfile(seed, lib), lib);
+  const nest = lib.find((t) => t.title === 'NESTALGIA Podcast Episode 12');
+  for (const t of pod.concat([nest])) {
+    assert.ok(!plan.isGame(t), t.title + ' is game music');
+    assert.ok(!plan.inSeries(t), t.title + ' is in the series');
+  }
+  let hits = 0;
+  for (const s of sessions(lib, seed, ctx0)) hits += s.filter((x) => pod.includes(x.t) || x.t === nest).length;
+  assert.strictEqual(hits, 0, 'episode picks in 20 x 25 plays: ' + hits);
+});
+
+test('gate r2 S7: "radio" is a stop word - a lofi channel\'s "lofi hip hop radio" album never becomes a game station through two game channels\' radio sets', () => {
+  const lib = LIB.concat(
+    K.set('GameChops', 'gamechops', 'GameChops Radio Hour', 'Gaming', ['Chops One', 'Chops Two', 'Chops Three', 'Chops Four', 'Chops Five', 'Chops Six']),
+    K.set('Lofi Gaming', 'lofigaming', 'Lofi Gaming Radio', 'Gaming', ['Gaming Lofi One', 'Gaming Lofi Two', 'Gaming Lofi Three', 'Gaming Lofi Four', 'Gaming Lofi Five', 'Gaming Lofi Six']),
+    K.set('Beat Radio', 'beatradio', 'beat radio - lofi hip hop radio', 'Music', ['Beat Cut 1', 'Beat Cut 2', 'Beat Cut 3']));
+  const [seed] = albumSeed(lib, 'beat radio - lofi hip hop radio');
+  const verdict = radio.stationPlan(radio.buildStationProfile(seed, lib), lib, { verdict: true });
+  assert.ok(!verdict.allTerms.some((x) => x.term === 'radio'), '"radio" is no candidate word: ' + JSON.stringify(verdict.allTerms.map((x) => x.term)));
+  assert.strictEqual(verdict.game, false, 'not a game station');
+});
+
+test('gate r2 (Dean: stay on the channel): a non-game junk album station plays its own channel first - the YouTube category only when the channel runs out', () => {
+  const lib = LIB.concat(
+    K.set('Soundzantium', 'Soundzantium', 'Mario Orchestral Suite', 'Music', ['Mario Suite I', 'Mario Suite II', 'Mario Suite III', 'Mario Suite IV']),
+    K.set('Soundzantium', 'Soundzantium', 'Zelda Orchestral Suite', 'Music', ['Zelda Suite I', 'Zelda Suite II', 'Zelda Suite III', 'Zelda Suite IV']));
+  const [seed, ctx0] = albumSeed(lib, 'Final Fantasy Orchestral Suite');
+  const profile = radio.buildStationProfile(seed, lib);
+  assert.strictEqual(radio.stationPlan(profile, lib), null, 'precondition: not game music (the genre ladder)');
+  assert.strictEqual(profile.category, 'music', 'precondition: the album keeps its category');
+  let own = 0; let total = 0;
+  for (const s of sessions(lib, seed, ctx0, 50, 1)) { total += s.length; own += s.filter((x) => x.t.albumArtist === 'Soundzantium').length; }
+  assert.strictEqual(own, total, 'first batch on the channel: ' + own + '/' + total);
+});
+
+test('gate r2 S3: soundtrack-like genres are the nearest genres even with no artist bridge (Interstellar is N, Prince is not)', () => {
+  const [seed] = albumSeed(LIB, K.KIRBY_SETS.vapid);
+  const plan = radio.stationPlan(radio.buildStationProfile(seed, LIB), LIB);
+  assert.strictEqual(plan.tierOf(LIB.find((t) => t.album === 'Interstellar')), radio.TIER_NEAR);
+  assert.strictEqual(plan.tierOf(LIB.find((t) => t.artist === 'Prince')), 7);
+});
+
+test('gate r2 S3: a game station never spacing-jumps to the rest - with only its last set left it relaxes the run rule inside game music', () => {
+  const lib = [].concat(K.set('Tiny VGM', 'tinyvgm', 'Tiny Quest OST', '', ['Quest One', 'Quest Two', 'Quest Three']),
+    K.set('Tiny VGM', 'tinyvgm', 'Tiny Quest 2 OST', 'Gaming', ['Second One', 'Second Two', 'Second Three']),
+    K.set('Tiny VGM', 'tinyvgm', 'Tiny Quest 3 OST', 'Gaming', ['Third One', 'Third Two', 'Third Three']),
+    K.album('Jazz Person', 'Jazz Record', 'Jazz', 1960, ['J1', 'J2', 'J3', 'J4', 'J5', 'J6']));
+  const s1 = lib.filter((t) => t.album === 'Tiny Quest OST');
+  const s2 = lib.filter((t) => t.album === 'Tiny Quest 2 OST');
+  const s3 = lib.filter((t) => t.album === 'Tiny Quest 3 OST');
+  const profile = radio.buildStationProfile({ kind: 'album', value: store.albumKeyFor(s1[0]) }, lib);
+  assert.ok(radio.stationPlan(profile, lib), 'precondition: a game station');
+  assert.strictEqual(profile.genre, null);
+  // played: all of set 3 and two of set 2, the last two in a row from set 2; one song of set 2 left
+  const exclude = s3.map((t) => t.id).concat([s2[0].id, s2[1].id]);
+  for (let r = 1; r <= 20; r += 1) {
+    const p = radio.pickRadioBatch(profile, lib, { exclude, queued: s1.map((t) => t.id), count: 1 }, createSeededRng(r));
+    assert.strictEqual(p[0].id, s2[2].id, 'seed ' + r + ': the last game song, not the rest: ' + p[0].title);
+  }
 });

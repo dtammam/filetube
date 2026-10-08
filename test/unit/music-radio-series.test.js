@@ -70,12 +70,12 @@ test('Q1: a Kirby album station opens on the SAME SERIES from several channels -
       assert.strictEqual(prince, 0, `${where}: Prince picks: ${prince}`);
       const channels = Object.keys(byChannel);
       const top = Math.max(...Object.values(byChannel));
-      assert.ok(channels.length >= 4, `${where}: Kirby from several channels: ${JSON.stringify(byChannel)}`);
-      assert.ok(top / kirbyPicks < 0.5, `${where}: no one channel is half the Kirby (not only NESTALGIA): ${JSON.stringify(byChannel)}`);
-      // Dean's Q1 names Soundzantium (a YouTube-"Music" channel) in the first stretch: its Kirby is the series
-      // (PSK's too, unless PSK is the seed's own channel)
-      assert.ok(byChannel.Soundzantium > 20, `${where}: Soundzantium's Kirby suite in the first batches: ${JSON.stringify(byChannel)}`);
-      if (title !== K.KIRBY_SETS.psk) assert.ok(byChannel['PSK Beats n\' Vibes'] > 20, `${where}: PSK's Kirby set in the first batches: ${JSON.stringify(byChannel)}`);
+      assert.ok(channels.length >= 3, `${where}: Kirby from several channels: ${JSON.stringify(byChannel)}`);
+      assert.ok(top / kirbyPicks < 0.6, `${where}: no one channel is most of the Kirby (not only NESTALGIA): ${JSON.stringify(byChannel)}`);
+      // the series is GAME MUSIC only (Dean, gate r2): Soundzantium's and PSK's YouTube-"Music" Kirby sets
+      // reach a Kirby station only if their channel is game music - here it is not (disclosed in the plan)
+      assert.ok(!byChannel.Soundzantium, `${where}: Soundzantium's Kirby suite (not game music) in the first batches: ${JSON.stringify(byChannel)}`);
+      if (title !== K.KIRBY_SETS.psk) assert.ok(!byChannel['PSK Beats n\' Vibes'], `${where}: PSK's Kirby set (not game music) in the first batches: ${JSON.stringify(byChannel)}`);
     }
   }
 });
