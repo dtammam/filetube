@@ -3598,5 +3598,11 @@
     "date": "2026-10-08",
     "title": "Sort inside any album, see who made each album on the iPod, and pick one cover for a saved album",
     "intent": "The sort menu now shows inside an album or artist you open from the Music home page, so you can always switch an album back to album order. On the iPod, Albums and Recent Albums show the artist under each album, and Recent Artists shows the album you last played. When you save a playlist as an album you can now pick one song's picture as the cover, and every new song in that album gets the same cover."
+  },
+  {
+    "version": "1.375.0",
+    "date": "2026-10-08",
+    "title": "Radio that feels like radio: a game soundtrack plays more of that game, then other game music",
+    "intent": "Starting Radio from a video game album now plays more music from the same game or series first, from any channel that has it, with a little of the album's own artist, then other game music, and only later anything wider. What you listened to before no longer steers the station, which is why a Kirby album could end up playing Prince. A channel's album that is not game music stays on that channel."
   }
 ]
