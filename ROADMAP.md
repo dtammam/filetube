@@ -84,19 +84,6 @@
 
 ### Bugs
 
-- [ ] **A channel link opens on a blank list when the remembered type filter excludes it (Dean, 2026-10-08, "has
-  happened to me more than once")** - repro: the home feed filtered to Audio; a notification opens a VIDEO; watch it; tap
-  the channel name -> the channel's list is blank, because the Audio filter is still applied and the channel's content is
-  video. Ask: tapping a piece of content's channel name filters to THAT content's type (or at least never lands on an empty
-  list the filter caused). Measure first on the real page (which surface: watch page channel link, card channel link; is
-  the filter remembered per device and carried into the channel view?), then fix; bind the "never blank because of a
-  stale filter" case on every channel-link surface.
-- [ ] **The "Listening on <device> / Continue here" card covers the mini player on the phone (Dean, 2026-10-08,
-  screenshot)** - on iPhone, with music playing on another device (the Listen Control handoff card: "Listening on Work
-  MacBook Air", the art, 1:06:09 / 8:00:00, a red "Continue here"), the card sits at the bottom of the home feed over the
-  mini player's slot and blocks it. Dean: "maybe we shrink it on mobile or just have it not do that." Measure first (the
-  card's and the mini player's rects at 390 / 320, with and without a local mini player; the z-ladder), then pick: a compact
-  one-line bar on the phone, or stack it so it never overlaps the mini player (or both). Existing kit only.
 - [ ] **A thin line of the picture's colours at the bottom edge of the phone player (Dean, 2026-10-08, screenshot)** -
   iPhone, watch page, a playing video with the custom controls (scrubber row + transport row under the picture): a 1-2 px
   strip of light / colour runs along the player's bottom edge, under the controls and above the title, looking like the
@@ -104,6 +91,24 @@
   element and the control bar rects at 390 / 320 and DPR 3 (a sub-pixel rounding gap at DPR 3 is the leading suspect),
   the layers that paint in that strip (video vs poster vs the scrubber's buffered track), and whether it shows paused,
   playing, in theatre and on other eras; then fix at the cause (LESSONS 6 blast radius: the player rules are shared).
+  v1.376.0 (W5) MEASURED, NOT FIXED: headless Chromium + WebKit at DPR 3 (390 x 844 / 664, every era, light/dark,
+  playing/paused) shows NO gap - the bar, player and stage bottoms coincide (371.375) and hiding the video changes no row;
+  the only paint under the bar is the ambient glow's bloom (dark mode, glow on; 21,4,21 at the edge, fading over ~50 px).
+  Shipped an instrument instead of a theory: the lifecycle log's `player:strip` line (the device's own bar / video /
+  player / stage rects, gap, device-pixel edges, glow). Next: Dean turns Ambient off on the iPhone - gone = drop the
+  phone's below-bar bloom; still there = export the lifecycle log with the line on screen.
+- [ ] **Web Push is not filtered per user (v1.376.0 gate, security-brief, PRE-EXISTING)** - lib/push/deliver.js reads the
+  global feed per subscription and server.js resolvePushMeta(db, row) takes no user, while the bell filters per viewer: a
+  member restricted from a show or folder with push on gets the TITLE and channel of a new item there on the device (the
+  kid / allowlist account). The v1.376.0 Watch later action cannot act on it (the add 404s). Fix: resolve the meta per
+  subscriber with the viewer's visibility, skip a hidden row for that subscriber (cursor still advances).
+- [ ] **A watch filter (New / Watching / Watched) can empty a channel without saying so (v1.376.0 W3 builder)** - v1.376.0's
+  "No audio here / Show all" covers the format filter only.
+- [ ] **The Listen Control card on a NARROW NON-PHONE window covers the mini player (v1.376.0 W4 builder)** - an iPad in
+  Slide Over or a narrow desktop window (<= 768 px, not html.is-phone): 21120 px2 overlap at 390 and 700; R4 scoped the
+  compact bar to phones. Also at <= 768 non-phone the card covers the remote pill's Stop (pre-existing), and the
+  `#dl-status-chip` comment (style.css ~:6434, "never overlap on any width") is unmeasured (a chip wider than ~214 px at 390
+  would reach the dock).
 - [ ] **Lock-screen or headset Play with the Resume prompt up** (v1.363.0 gate, inherited from v1.161): the media-session `play`
   action (player.js `setMediaSessionAction('play', ...)`) calls `playActiveMedia()` with no prompt check, so a lock-screen or
   headset play while "Resume playback?" waits starts the video from 0 under it, and the progress saver can then overwrite the saved
@@ -385,17 +390,17 @@
 
 ### Features
 
-- [ ] **NEXT BRANCH: "Add to Watch later" on a notification, and podcasts get the same options (Dean, 2026-10-08)** -
-  "Notification setting roadmap for next branch. Add to watch later option"; ruled (AskUserQuestion): a BUTTON on each
-  notification, not an auto-add setting. Then: "Make it so that it removes the video from the notification list.
-  Additionally we need podcasts to get the same options - be able to add to watch later - be able to delete - etc."
-  (1) Every new-video notification - the bell list in the app AND the push on the phone - gets "Add to Watch later": one
-  tap adds the video to the existing Watch later list (v1.343.0) without opening it, AND removes that notification from the
-  list. (2) Podcast episodes get the same options as videos: Add to Watch later, Delete, "etc." - intake enumerates the
-  video options (card menu / Extras: Watch later, Delete / Move to Trash, Watched, queue, Like, Share...) and Dean picks
-  which podcasts need. Intake first: the push action (Web Push `actions`: iOS PWA support is limited - measure what the
-  iPhone shows); a notification for a video not yet downloaded; can Watch later hold a podcast episode (its store keys on
-  library media ids); a podcast Delete is a data-loss surface (full gate, seed from storage).
+- [ ] **Album files named and filed like an album (Dean, 2026-10-08, asked at the v1.376.0 build)** - today a saved album's
+  files keep `<YouTube title> [<id>].mp3` in the channel's folder; the tags are album, album artist, artist, track 1..N,
+  title (cleaned when asked) and the cover - no total-tracks ("3/14"), disc, genre or release year (the date is the
+  upload date). Ask whether he wants `Artist/Album/03 - Song.mp3` naming and the missing tags; renaming files on disk is a
+  data-loss surface (full gate).
+- [ ] **Music "Go to channel" carries the track's type (v1.376.0 W3 builder)** - thread `type` through nowPlayingFrom so the
+  link opens filtered like the card / watch / bell links.
+- [ ] **Versioned art beyond Music (v1.376.0 W6 builder)** - video-library thumbnails (cards, watch page, home video rows)
+  and listen-track `/thumbnail/<id>` art stay unversioned; an art-version TTL cache if the measured /api/music cost
+  (~23 -> 45 ms at 1300 rows) shows on Dean's library; renumber an album's tracks on the server when a ticked download
+  fails or another user already owns a song.
 - [ ] **Opus downloads never reach the library** - server.js AUDIO_EXTENSIONS lacks `.opus`; Opus keeps its tags per
   STREAM (the scan reads the container's); iPhone Safari Opus playback is unmeasured. Measure, then fix or drop Opus from
   the file-type list (Dean: its own release, queued after v1.373.0).
@@ -747,6 +752,31 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.376.0 - Watch later from a notification, podcasts get the video options, and four device-pass fixes (2026-10-08)
+
+- W1 (Dean's R1): every video and episode row in the bell has "Watch later" in its menu: one tap adds it to Watch later and
+  dismisses that notification, without opening it (non-optimistic; the row stays on any failure). Measured at 320@3: a
+  third swipe action makes the tray 271 px = 85 % of the row (past the 60 % full-swipe threshold), so it is a menu item.
+  The phone / desktop push gets a "Watch later" action (worker adds then dismisses, opens nothing); MDN compat data:
+  Safari (macOS + iOS) shows no notification actions, Chrome 48+ / Edge 18+ / Firefox 152+ do.
+- W2 (R2): podcast episodes join Watch later as the row key `podcast:<episodeId>` in the existing column (a kind column
+  would have been schema v35, a rollback floor); listed, played (Play all), removed at 95 % / mark played and by the purge,
+  carried by the backup. Episodes get Watch later + Delete in the bell, Watch later + Share + Move to Trash on home /
+  search cards, Watch later + Share in the show's episode list.
+- W3 (R3): a channel link (watch page, card byline, bell "Open channel") opens filtered to the item's own type for that
+  visit, never writing the remembered filter back; a list a filter emptied says "No audio here" with "Show all".
+- W4 (R4): on the phone, with the mini player up, the Listen Control card becomes a one-line bar stacked above it
+  (390: 374x132 over the dock -> 374x44, 8 px above it; desktop unchanged); the narrow remote pill lifts the same way.
+- W5: NOT fixed - the headless probe found no gap (only the dark-mode ambient bloom); a `player:strip` lifecycle-log line
+  ships as the instrument (ROADMAP Planned > Bugs keeps the item open).
+- W6 (Dean's private-window check confirmed the browser-cache diagnosis): a scan defers a track whose album cover is still
+  being embedded (claim before the spawn, matched by path, real path and device + inode; the prune keeps a deferred
+  entry); Music art URLs carry a version (`v=` = the picture's mtime + size) on every surface incl. the iPod menus;
+  "Save as an album" numbers the songs actually downloaded 1..N (R6).
+- Gate (adversary + qa + security-brief): r1 @4fe1f639 security APPROVED, qa CHANGES (iPod art unversioned, the off-show
+  delete copy, the watch filter's podcast arm unbound), adversary CHANGES (podcast card actions unbound); r2 @e03b98bc all
+  three APPROVED. Residuals: tracker #296.
 
 ### v1.375.0 - Radio that feels like radio: a Kirby album plays Kirby, then game music (2026-10-08)
 

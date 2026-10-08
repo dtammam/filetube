@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.376.0 W6 (c) (plan docs/exec-plans/active/2026-10-08-v1376-notify-podcasts-polish.md, W6): Music's art
+// [UNIT] v1.376.0 W6 (c) (plan docs/exec-plans/completed/2026-10-08-v1376-notify-podcasts-polish.md, W6): Music's art
 // URLs carry the VERSION of the picture they point at, so the browser can never keep painting a stale cover.
 //
 //   - lib/music/artVersion.js: the version (the art file's mtime + size), the URL writers, and artFileFor (the ONE

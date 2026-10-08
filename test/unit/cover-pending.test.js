@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.376.0 W6 (b) (plan docs/exec-plans/active/2026-10-08-v1376-notify-podcasts-polish.md, W6): a file whose
+// [UNIT] v1.376.0 W6 (b) (plan docs/exec-plans/completed/2026-10-08-v1376-notify-podcasts-polish.md, W6): a file whose
 // album cover is still being written is DEFERRED by every scan walker, and a deferred file is never pruned.
 //
 //   - lib/ytdlp/coverPending.js: what a claim covers (the job folder + the video's `[id]` bracket, an FTCHDST path in

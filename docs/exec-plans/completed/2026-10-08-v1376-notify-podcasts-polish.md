@@ -3,10 +3,10 @@ plan: v1376-notify-podcasts-polish
 harness: v2 · lean
 branch: feat/v1.376.0-notify-podcasts-polish
 anchor: outcome
-status: Approved @e6845b03
-next: build W1-W5 in parallel worktrees (W1 first lands the shared notification / Watch later seams), then the FULL gate (a new Watch later row kind, a Delete surface, Web Push actions, a file-writing race)
+status: Shipped v1.376.0
+next: none - shipped v1.376.0
 design: Dean's intake 2026-10-08 (rulings R1-R9 below) + a read-only recon of every surface. Base main e6845b03 (v1.375.0).
-gate: pending
+gate: APPROVED r2 @e03b98bc (adversary, qa, security-brief)
 ---
 
 # v1.376.0: Watch later from a notification, podcasts get the video options, and four device-pass fixes
@@ -316,3 +316,50 @@ Gate: APPROVED r2 @e03b98bc - adversary
   mutants run and their results, the measurement after.
 - W6: Dean's private-window check result (asked at the start of the wave).
 - Gate rounds and verdicts; both suite summaries; residuals disclosed.
+
+### Filled at ship (v1.376.0)
+
+- **W1** (6e0e45fa). Before: the bell row menu (real app, scratch w1-swipe-probe.js): row 320@3 with Dismiss + Delete =
+  163 px; a cloned "Watch later" action 108 px -> 271 px = 85 % of the row (390@3: 69 %; 1440: row 400, 68 %); the
+  full-swipe threshold is 60 % -> no third swipe action, a menu item. Push actions (MDN browser-compat-data
+  showNotification `options_actions_parameter`): chrome 48, edge 18, firefox 152, safari false, safari_ios false. After
+  (w12-reach-probe.js, 390@3 iPhone UA + 1440): media and podcast rows' menus [Watch later, Open channel / Open show,
+  Dismiss, Delete file]; rows 5 -> 4 -> 3; URL stays `/`; pageErrors []. Tests: test/unit/notif-watch-later.test.js (8),
+  push-delivery (2 new), push-sw-handler (4 new), notif-delete-confirm (updated + 2 new). Label "Watch later", not "Add to
+  Watch later": the v1.341.4 1-3 word label rule (button-label-rule.test.js) refused the 4-word label.
+- **W2** (6e0e45fa). Design: the `podcast:<episodeId>` key, no schema change (a v35 column = a rollback floor, measured in
+  lib/db/sqlite.js migrateSchema's refusal). After (same probe): stored keys [<mediaId>, podcast:<epId>]; /api/watch-later
+  lists [media, podcast]; the Watch later page's episode card -> /podcasts?play=<epId>; podcast card menu [Add to queue,
+  Remove from Watch later, Move to top, Like, Share, Save to device, Move to Trash]; episode kebab [Like, Mark played, Watch
+  later, Share, Save to device, Move to Trash]. Tests: watch-later-api (+8 W2), card-action-menu, card-action-menu-fullchain
+  (+2, r1), podcasts-ui-sweep (+1), notif-*. Mutants M01-M18 on 6e0e45fa: 18/18 KILLED.
+- **W3** (363ffde6, merged c4abae83). Before (raw CDP, 1440 and 390@3, filetube_format=audio): a video's watch uploader
+  link and search card link requested format=audio -> 0 cards, "No videos or audio yet" / "This folder is empty". After:
+  format=video, 4 cards, Videos chip, remembered still audio; "No audio here. The Audio filter is on. Show all" (90x44 at
+  390). Tests: test/integration/channel-link-format.test.js (8), uploader-channel-link (+3), library-toolbar (+4).
+  Mutants 14/14 KILLED.
+- **W4** (ceee7da5, merged 7275931e). Before (real /api/handoff driver, iPhone UA DPR 3): 390 card 8,632 374x132 over
+  the dock 222,630 160x134 = 21120 px2, every dock control hit the card; 320 same 21120 px2; desktop no overlap. After:
+  390 card 8,578 374x44 (8 px above the dock), 320 304x44, every control its own hit target in every era; desktop
+  16,752 320x132 unchanged. Tests: test/unit/player-dock-presence.test.js (8), test/geometry/handoff-dock.js (HDK 3 ok).
+  Mutants: unit 9/9, geometry 5/5 KILLED.
+- **W5** (367ef36b): NOT FIXED. Headless Chromium + WebKit, DPR 3, 390 x 844 / 664, every era, light/dark,
+  playing/paused: bar / player / stage bottoms coincide (371.375 / 370.797), gap 0, hiding the video changes no row; the
+  only paint under the bar is the dark-mode ambient bloom (21,4,21 at the edge, ~50 px fade). Instrument: the lifecycle
+  log's `player:strip` line (test/unit/player-strip-log.test.js, 6). Mutants 6/7 (S4 masked). Dean (AskUserQuestion,
+  2026-10-08): "Can't check now" -> instrument only; device check owed.
+- **W6** (9e4319a1, c89e7587, b8eeaa91, 2608700f, merged 4fe1f639). (a) Dean's private-window check (2026-10-08): "Yes,
+  chosen cover" - the browser-cache diagnosis CONFIRMED. (b) cover-pending claim + walker deferral + prune guard 1b;
+  tests cover-pending (7, +1 bind-mount r1), scan-cover-pending (6); mutants 21 (M4 survived then bound in 2608700f; M7
+  equivalent). (c) Before (w6-artcache-probe.js, 1440 + 390@3): /albumart/<id>?s=128, private max-age=86400, the
+  changed cover served from cache rgb [254,0,0]; after: ?s=128&v=<mtime-size>, network, [0,255,1]. Cost (1300 items,
+  median of 15): /api/music ~23 -> 45 ms, albums ~36 -> 47, artists ~21 -> 25. Mutants 15 (C14 equivalent). (d)
+  albumTrackNumbers 1..N; mutants D1-D6 KILLED.
+- **Gate.** r1 @4fe1f639: security-brief APPROVED; qa CHANGES (W1 iPod art unversioned, W2 off-show delete copy, W3 the
+  watch filter's podcast arm unbound); adversary CHANGES (W1 podcast card actions unbound, W2 iPod art). Fix e03b98bc;
+  builder mutants R01-R12 12/12 KILLED. r2 @e03b98bc: adversary, qa, security-brief APPROVED.
+- **Suites.** Node 22 `npm test` @4fe1f639 (pre-gate): tests 11734, pass 11724, fail 0, skipped 10. Release tree (the
+  release commit's tree): Node 22.23.1 `npm test` tests 11740, pass 11730, fail 0, cancelled 0, skipped 10; Node 24.20.0
+  tests 11740, pass 11730, fail 0, cancelled 0, skipped 10.
+- **Residuals.** Tracker #296; ROADMAP Planned (push not filtered per user, watch-filter empties, narrow non-phone
+  overlap, album file naming, Music "Go to channel" type, versioned art beyond Music).

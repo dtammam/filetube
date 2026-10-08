@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.376.0 W6 (b) (plan docs/exec-plans/active/2026-10-08-v1376-notify-podcasts-polish.md, W6): a scan
+// [INTEGRATION] v1.376.0 W6 (b) (plan docs/exec-plans/completed/2026-10-08-v1376-notify-podcasts-polish.md, W6): a scan
 // must never index an album track whose cover is still being written.
 //
 // The race the v1.374.0 builder named: a playlist saved as an album with a Cover writes each track with yt-dlp's OWN

@@ -217,3 +217,22 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
   first songs are Kirby music from several channels, then other game music; no Prince or pop for a long while. Same from a
   Kirby song's Start radio and when Autoplay continues after the album. (Soundzantium / PSK Kirby sets may not appear:
   their channels file under YouTube "Music", by your round-3 choice.)
+
+## Watch later from a notification, podcast options, device-pass fixes (v1.376.0)
+
+- [ ] v1.376.0 - iPhone + desktop: the bell > a new video's row > kebab (or long-press / right-click) > Watch later: the video
+  is in Watch later, the row is gone, the video did not open. Same on a podcast episode's row.
+- [ ] v1.376.0 - Desktop Chrome: a new-video push shows a "Watch later" button doing the same (the iPhone shows no button:
+  Safari has none; use the bell there).
+- [ ] v1.376.0 - A podcast episode: Watch later and Delete (with its confirm) in the bell; Watch later, Share and Move to Trash
+  on a home / search card; Watch later and Share in the show's episode list. Watch later lists it and plays it; playing it to
+  the end removes it from Watch later.
+- [ ] v1.376.0 - Filter the home feed to Audio, open a video, tap its channel name: the channel shows its videos; back on Home
+  the filter is still Audio. A folder the filter empties says "No audio here" with "Show all".
+- [ ] v1.376.0 - iPhone, music playing on the Mac, a video in the mini player: the Listening on... card is a slim bar above the
+  mini player; both fully visible and tappable.
+- [ ] v1.376.0 - iPhone watch page, the line under the controls: turn Ambient OFF in the player's cog (or light mode) and look.
+  Gone = tell me (the glow's bloom is the cause). Still there = Settings > lifecycle log on, play with the line on screen,
+  Export the log and send it.
+- [ ] v1.376.0 - Save a playlist as an album with a Cover, skipping a song: every song shows that cover in every Music view
+  (iPod menus and artist rows included) on desktop and phone without a hard refresh; the songs read Track 1..N with no gap.

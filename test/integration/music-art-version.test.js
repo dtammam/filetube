@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.376.0 W6 (c) (plan docs/exec-plans/active/2026-10-08-v1376-notify-podcasts-polish.md, W6): every
+// [INTEGRATION] v1.376.0 W6 (c) (plan docs/exec-plans/completed/2026-10-08-v1376-notify-podcasts-polish.md, W6): every
 // payload that hands the client a Music art id or art URL carries the VERSION of that picture (lib/music/artVersion.js),
 // so a changed cover is a new URL and the browser can never keep painting the old one (measured: Mr. Jambo's row kept
 // the old art from the browser cache, `private, max-age=86400`, under an unchanged URL).
