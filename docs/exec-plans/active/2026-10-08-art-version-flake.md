@@ -6,7 +6,7 @@ anchor: outcome
 status: Approved @9b9a7435
 next: W1 (the fixture's pictures get distinct versions + a distinctness floor), then W2 (records), then the gate (adversary)
 design: v1.377.0's PR #115 CI (ci (24) red once, rerun green) + a read of the test; Dean's device pass of v1.377.0 and v1.376.0 W5 (2026-10-08). Base main 9b9a7435 (v1.377.0).
-gate: pending
+gate: APPROVED r1 @71a5f449 (adversary)
 ---
 
 # A flaky art-version RBAC test, and the v1.377.0 device-pass records
@@ -85,9 +85,9 @@ auto-deleted - check `git ls-remote --heads origin`). No tag.
 
 ## 6. Gate verdicts
 
-(pending)
+Gate: APPROVED r1 @71a5f44909817badab3fd5876b6a41976cb679e9 — adversary
 
 ## 7. Evidence (the builder fills this)
 
-- W1: the forced-collision red (verbatim), the fix, the floor, the two mutants and their results, the 40-run loop.
-- W2: the lines changed. The gate verdict. Both suite summaries. Residuals, if any.
+- W1: forced-collision red on base (HIDDEN-ART and WALL-COVER setTime to one ms), verbatim: `not ok 4 - RBAC: a member never receives a hidden item's id or version; ...` / `error: "a hidden picture's version (mubbs7w4-a) never reaches the member"`, pass 6 fail 1. Fix: a `put(file, bytes, ms)` helper in before() gives WALL 1_789_999_000_000, SECRET ..._001_000, HIDDEN-ART ..._002_000 (OWN-ART kept ..._790_000_000_000); floor at the top of the RBAC check: the four fixture versions are a Set of size 4. Mutant (a) hidden thumb = wall mtime: floor red by name ("pairwise distinct versions (mubb6rwg-a, mubb6so8-c, mubbuco0-h, mubb6rwg-a)"). Mutant (b) floor dropped + shared mtime: RBAC red ("a hidden picture's version (mubb6rwg-a) never reaches the member"). Loop: 20/20 on Node 22.23.1, 20/20 on Node 24.20.0.
+- W2: DEVICE-CHECKS lines 234 (v1.376.0 line under the controls), 242, 245, 247 (v1.377.0) marked [x] with Dean's "good"; ROADMAP thin-line item gets Dean's Ambient-OFF answer, stays OPEN; next-waves plan completed via plan-complete.js ("Shipped v1.344.0"; the remaining path mentions are historical prose in completed plans, left); LESSONS section 2 flaky line extended (x7). Gate: APPROVED r1 @71a5f449 (adversary), no findings. Suites at 71a5f449: Node 22.23.1 `# tests 11750 / pass 11740 / fail 0 / skipped 10`; Node 24.20.0 `ℹ tests 11750 / pass 11740 / fail 0 / skipped 10`. Residuals: none.
