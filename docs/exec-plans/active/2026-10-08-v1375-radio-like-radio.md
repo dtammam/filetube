@@ -4,9 +4,9 @@ harness: v2 · lean
 branch: feat/v1.375.0-radio
 anchor: outcome
 status: Building
-next: the Architect's full dual-Node suite, then the gate (adversary floor + qa); then Dean runs the trace on production (below) before his device check
+next: gate r2 (both seats re-confirm the r1 fix round); then Dean runs the trace on production (below) before his device check
 design: Dean's rulings Q1-Q4 (2026-10-08), the diagnosis below (production traces, read-only). Base main de554c57 (rebased from fa4e01aa after v1.374.0 shipped).
-gate: pending
+gate: r1 CHANGES (qa W1 + S1-S4 @674cf4c1; adversary C1, W1-W3, S1 @674cf4c1) - fix round at 8805849f, 19f49a61, 4b18ffb5; r2 pending
 ---
 
 # v1.375.0: Music radio that feels like RADIO
@@ -73,9 +73,9 @@ the album page Radio and a song's Start radio of the same album draw the same la
 
 | Tier | What | Notes |
 |------|------|-------|
-| S (8) | SERIES: shares a series word of the seed | words from the seed's album title (and any word in half its songs' titles) count alone; words from the seed SONG's title count only when 2+ are shared |
+| S (8) | SERIES: GAME MUSIC sharing a series word of the seed | game music only (gate r1, the Architect's ruling on adversary C1: a rock, hip-hop, classical, latin or jazz song never enters it, whatever words it shares); a word of the seed's album title (or one in 3+ and half of its songs' titles) counts alone; words of the seed SONG's title count only when 2+ are shared, a two-word name and its own words counting as ONE |
 | 1 | the seed artist and the seed album's own songs | one slot per batch (a minority, Q2.3) |
-| G (9) | GAME MUSIC | a game genre tag, or a channel whose genre-tagged uploads are at least half game music (untagged chapters ride on their channel) |
+| G (9) | GAME MUSIC | a native game genre tag ('video game', 'chiptune'...), or an upload of a GAME CHANNEL: a strict majority of its genre-tagged uploads game music, and 3 at least (untagged chapters ride on their channel; YouTube's 'Gaming' category counts only this way). Never an upload filed in a non-music category (People & Blogs, Comedy, Entertainment, News & Politics, Education, Howto & Style...): the podcasts and vlogs of gate r1 adversary W2 |
 | N (10) | the NEAREST real genres | genres the family's artists also play (strength = artists), plus soundtrack / score / anime / orchestral / film (+1) |
 | 7 | the rest | only when every closer tier is spent, or widen=1 (unchanged) |
 
@@ -86,19 +86,30 @@ is already the seed artist or G. The seed album's own songs are recognised by al
 
 **Series words.** Folded (accents, `'s`, punctuation off), minus English glue and a stoplist of style / format / mood /
 platform / generic game words (lofi, remix, ost, music, chill, hours, happy, underrated, nintendo, super, world, land, man...),
-plus two-word names (two adjacent words, at least one a content word: "mega man", "kirby super"). A word QUALIFIES when it is
-in at least 2 distinct titles, at most max(8, 10%) of the library's titles, and used by 2+ channels (one channel's title
-template - Vapid's "2 Hours of Happy and Underrated <X> Music" - is no series); the strongest 8 by IDF are kept. Words that are
-the seed artist's own name are dropped (the artist has its own tier). Within S, each CHANNEL gets an equal share (so a channel
-with 13 Kirby sets never drowns the others: Q1 "from ANY artist"), and a song sharing more words is up to 2x as likely.
+plus two-word names (two adjacent words, at least one a content word: "mega man", "kirby super"). Only GAME-MUSIC titles are read,
+and the counts are over them: a word QUALIFIES when it is in at most max(8, 25%) of the game-music titles and used by 2+ channels
+(one channel's title template - Vapid's "2 Hours of Happy and Underrated <X> Music" - is no series); the strongest 8 by IDF are
+kept. What the 2+ channel rule costs (adversary S2): a franchise only ONE channel holds is never a series word, so its station
+plays that channel as the seed artist (one slot) and game music for the rest. Within S and within G each song weighs
+1/sqrt(its channel's songs in that tier): a big channel still plays the most, a 1-2 song channel can never out-weigh it (the r1
+"equal share per channel" let one stray track play early, adversary C1). Removed in the fix round as unbindable or unneeded
+(adversary W3): the per-song series score, the artist-word drop, df >= 2.
 
-**Game verdict.** The station is game music when its seed has a game genre, or most of its seed songs are game music, or most
-of its series candidates are (so a YouTube-"Music" Kirby set from a lofi channel is still game music).
+**Cost (gate r1 adversary W1).** Pass 1 tallies every channel's genre tags; pass 2 reads only game-music titles, each folded and
+split once, and looks its words (and a word + the next, after a word that starts a candidate pair) up among the seed's words: no
+per-title regex. Three pure-function memos keyed by the raw STRING (a title's folded words, a genre tag's folded genre, and a
+station's word list -> a title's mask, 8 stations kept), each bounded at 200,000 entries. They hold nothing library-derived and no
+viewer's view: a lookup is only ever made with a string from the caller's own visible list, so the v1.368.0 "no shared cache"
+invariant (a viewer's library never shapes another's station) holds.
+
+**Game verdict.** The station is game music when its seed has a game genre, or at least half of its seed songs are game music, or
+its series (game music only) holds 10+ songs from 2+ channels (so a YouTube-"Music" Kirby set from a lofi channel is still a
+game station). A junk-genre station that is none of these takes the genre ladder (gate r1 qa W1).
 
 **Batch plan (5):** series, series, the seed artist, series, family. Each slot has an order (`STATION_ORDERS`): series slots
 `S G 1 N 7`, the artist slot `1 S G N 7`, the family slot `G S 1 N 7`; a spent tier hands the slot on, so as the
-series empties game music takes over, then the nearest genres, and the whole library only last. Within G, 1/sqrt(channel
-size); within N, the genre's strength; likes x2 and the 24 h cool-down everywhere (R10).
+series empties game music takes over, then the nearest genres, and the whole library only last. Within S and G, 1/sqrt(the
+channel's songs in the tier) per song; within N, the genre's strength; likes x2 and the 24 h cool-down everywhere (R10).
 
 **Kept invariants (v1.368.0):** exclude / queued split (queued never picked, not plays), no duplicate ids in a batch, the
 widen=1 fallback, the seed never picked, artist spacing (a chapter is spaced by its SET) and its relax order, the recycle,
@@ -125,74 +136,79 @@ D entry replays the session before the album and says the session no longer stee
 
 ## 5. Measured (fixture results, instruments, mutants; numbers copied from the runs named)
 
-**Fixture** (test/helpers/radio-kirby-library.js, 660 tracks; the yt-dlp sets through the real
-`expandAudioToTracks`). Instrument: scratchpad `v1375-measure.js` on the committed tree dd3605ea (a /tmp git-archive
-sandbox), 100 rng seeds per row, every row after the 24-play Pop session (Prince x18, Tears for Fears x3, David Bowie x3):
+Gate r1 fix round. Every instrument below ran on the committed tree 4b18ffb5 in a /tmp git-archive sandbox (the scratchpad
+scripts named). The r0 numbers of 674cf4c1 are in git (cbde2741); they are superseded.
 
+**Fixture** (test/helpers/radio-kirby-library.js, 660 tracks; the yt-dlp sets through the real `expandAudioToTracks`; native files
+in per-album folders, as lib/music/scan.js sets them). `v1375-measure.js`, 100 rng seeds per row, every row after the 24-play Pop
+session (Prince x18, Tears for Fears x3, David Bowie x3):
+
+    library 660 tracks; Pop session 24 plays
     seed / entry | first pick Kirby | batches <3 Kirby | Prince | Kirby picks by channel (batch 1, 100 draws)
-    2 Hours of Happy and Underrated  / album | 100/100 | 0/100 | 0 | Soundzantium 71, PSK Beats n' Vibes 65, heavymachinegun 62, NESTALGIA 56, Jun Ishikawa 46
-    2 Hours of Happy and Underrated  / song | 100/100 | 0/100 | 0 | Soundzantium 71, PSK Beats n' Vibes 65, heavymachinegun 62, NESTALGIA 56, Jun Ishikawa 46
-    2 Hours of Happy and Underrated  / autoplay | 100/100 | 0/100 | 0 | Soundzantium 70, PSK Beats n' Vibes 64, heavymachinegun 61, NESTALGIA 60, Jun Ishikawa 45
-    Kirby Lofi Mix ~ chill beats to  / album | 100/100 | 0/100 | 0 | Soundzantium 58, PSK Beats n' Vibes 58, heavymachinegun 53, NESTALGIA 47, Jun Ishikawa 44, Vapid 40
-    Kirby Lofi Mix ~ chill beats to  / song | 100/100 | 0/100 | 0 | Soundzantium 59, heavymachinegun 53, PSK Beats n' Vibes 50, NESTALGIA 48, Vapid 45, Jun Ishikawa 45
-    Kirby Lofi Mix ~ chill beats to  / autoplay | 100/100 | 0/100 | 0 | Soundzantium 58, PSK Beats n' Vibes 58, heavymachinegun 53, NESTALGIA 47, Jun Ishikawa 44, Vapid 40
-    kirby lofi beats / album | 100/100 | 0/100 | 0 | Vapid 70, heavymachinegun 65, Jun Ishikawa 59, NESTALGIA 54, Soundzantium 52
-    kirby lofi beats / song | 100/100 | 0/100 | 0 | Vapid 70, heavymachinegun 65, Jun Ishikawa 59, NESTALGIA 54, Soundzantium 52
-    kirby lofi beats / autoplay | 100/100 | 0/100 | 0 | Vapid 70, heavymachinegun 65, Jun Ishikawa 59, NESTALGIA 54, Soundzantium 52
-    Kirby Super Star Original Soundt / album | 100/100 | 0/100 | 0 | NESTALGIA 90, Vapid 89, heavymachinegun 82, PSK Beats n' Vibes 72, Soundzantium 67
-    Kirby Super Star Original Soundt / song | 100/100 | 0/100 | 0 | NESTALGIA 90, Vapid 89, heavymachinegun 82, PSK Beats n' Vibes 72, Soundzantium 67
-    Kirby Super Star Original Soundt / autoplay | 100/100 | 0/100 | 0 | NESTALGIA 90, Vapid 89, heavymachinegun 82, PSK Beats n' Vibes 72, Soundzantium 67
-    Vapid album plan: terms kirby; game true; family 181; near [["electronic",1],["soundtrack",1]]; tier sizes {"1":30,"7":454,"8":45,"9":105,"10":14}
-    20 sessions x 195 plays from the Vapid album (no Pop session): last series pick at play (median) 80; first nearest-genre (N) pick 178; first real-genre pick 178; first T7 pick 194; first Prince -1 (-1 = never); min first real genre 174
+    2 Hours of Happy and Underrated  / album | 100/100 | 0/100 | 0 | NESTALGIA 122, Jun Ishikawa 99, heavymachinegun 79
+    2 Hours of Happy and Underrated  / song | 100/100 | 0/100 | 0 | NESTALGIA 122, Jun Ishikawa 99, heavymachinegun 79
+    2 Hours of Happy and Underrated  / autoplay | 100/100 | 0/100 | 0 | NESTALGIA 122, Jun Ishikawa 99, heavymachinegun 79
+    Kirby Lofi Mix ~ chill beats to  / album | 100/100 | 0/100 | 0 | Jun Ishikawa 80, Vapid 78, NESTALGIA 75, heavymachinegun 67
+    Kirby Lofi Mix ~ chill beats to  / song | 100/100 | 0/100 | 0 | Jun Ishikawa 80, Vapid 78, NESTALGIA 75, heavymachinegun 67
+    Kirby Lofi Mix ~ chill beats to  / autoplay | 100/100 | 0/100 | 0 | Jun Ishikawa 80, Vapid 78, NESTALGIA 75, heavymachinegun 67
+    kirby lofi beats / album | 100/100 | 0/100 | 0 | NESTALGIA 94, Vapid 86, Jun Ishikawa 61, heavymachinegun 59
+    kirby lofi beats / song | 100/100 | 0/100 | 0 | NESTALGIA 94, Vapid 86, Jun Ishikawa 61, heavymachinegun 59
+    kirby lofi beats / autoplay | 100/100 | 0/100 | 0 | NESTALGIA 94, Vapid 86, Jun Ishikawa 61, heavymachinegun 59
+    Kirby Super Star Original Soundt / album | 100/100 | 0/100 | 0 | NESTALGIA 158, Vapid 146, heavymachinegun 96
+    Kirby Super Star Original Soundt / song | 100/100 | 0/100 | 0 | NESTALGIA 158, Vapid 146, heavymachinegun 96
+    Kirby Super Star Original Soundt / autoplay | 100/100 | 0/100 | 0 | NESTALGIA 158, Vapid 146, heavymachinegun 96
+    Vapid album plan: terms kirby; game true; family 180; near [["electronic",1],["soundtrack",1]]; tier sizes {"1":30,"7":466,"8":34,"9":104,"10":14}
+    20 sessions x 195 plays from the Vapid album (no Pop session): last series pick at play (median) 65; first nearest-genre (N) pick 166; first real-genre pick 166; first T7 pick 182; first Prince 183 (-1 = never); min first real genre 164
 
-The same rows on base main fa4e01aa (the v1.368.0 picker, same fixture, same seeds), first column / second / Prince:
-Vapid album, song, autoplay 0/100, 100/100, 0 (it plays Vapid's Zelda and Mario sets: the Pop artists are spacing-blocked on
-this small fixture); Kirby Lofi Mix 17/100, 100/100, 0 each; PSK album 0/100, 100/100, **155** (song, autoplay 0); Kirby Super
-Star OST 0/100, 100/100, 0 each.
+The series is game music only now, so Soundzantium's and PSK's YouTube-"Music" Kirby sets are no longer in it (they were in r0's
+rows): a Kirby station draws Kirby from NESTALGIA, Vapid, heavymachinegun and Jun Ishikawa, then game music. In the long sessions
+Prince first plays at 183 of 195, after the nearest genres (166) and inside the rest (182): the whole library comes last.
 
 **Game-music family on production:** not measured here (no production data on this box). The trace prints it per album
-("game-music family N tracks"); the Architect copies it from Dean's run. Upper-bound reading of the step 0 genre counts:
-gaming[library-chapter] 2458 + video game 156 + chiptune 20 tagged tracks, plus the untagged chapters of every channel whose
-tagged uploads are mostly Gaming (NESTALGIA's ~4280 if its tags are; that is the number to confirm).
+("game-music family N tracks"); the Architect copies it from Dean's run.
 
-**Cost** (scratchpad `v1375-perf.js`, a 24,420-track library built from the fixture, 25 requests each, this box; the
-picker's work per request = profile + pick):
+**Cost** (`v1375-perf2.js`: three 24,420-track shapes built from the fixture - ASCII titles with 18 extra words, accented titles,
+and seed chapters sharing 30 words with every title - the Vapid album seed, 25 requests each, base fa4e01aa vs the fix round, this
+box):
 
-    base fa4e01aa: album seed (Vapid Kirby) median 60.1 p90 93.7 ms; song seed median 60.1 p90 69.5 ms; native rock album median 45.3 p90 53.9 ms
-    HEAD dd3605ea: album seed (Vapid Kirby): profile 16.4 ms, plan 45.5 ms, median 97.0 p90 146.7 ms
-                   song seed: profile 14.4 ms, plan 52.5 ms, median 95.7 p90 118.3 ms
-                   native rock album (v1.368 ladder): median 42.8 p90 62.4 ms
+    ascii (24420 tracks): base median 45.7 p90 54.9 max 82.3 ms | head median 57.1 p90 73.2 max 176.0 ms
+    accented (24420 tracks): base median 41.4 p90 51.3 max 76.5 ms | head median 50.4 p90 62.7 max 86.9 ms
+    shared (24420 tracks): base median 42.0 p90 43.2 max 58.0 ms | head median 50.5 p90 53.0 max 123.1 ms
 
-So a junk-genre / game seed costs about +37 ms median per request on 24k tracks (the plan pass; the synthetic library is
-Kirby-dense: ~10% of its titles hold "kirby", so more titles are folded than on Dean's); a real-genre seed is unchanged.
-A request is one per 5 songs. Profiled hot spots that remain: the object-keyed genre-key cache (shared with v1.368.0's path)
-and the per-track channel tally.
+Against the +25% target, medians: ASCII 57.1 / 45.7 = +25%, accented 50.4 / 41.4 = +22%, shared 50.5 / 42.0 = +20%. The box is
+noisy: an earlier run of the same instrument on 4b18ffb5 measured ASCII 63.0 / 46.3 = +36% (accented +18%, shared +20%), so the
+ASCII shape sits at the edge of the target (the ~5 ms album genre borrow scan and the plan's two passes). The max of each head
+row is the FIRST request, which fills the memos (cold: 123-176 ms). The unit
+test "gate r1 adversary W1: a game station costs at most 2.5x a real-genre..." binds a generous bound in the same run.
 
-**Mutants** (scratchpad `v1375-mutants.js`, one string replace each on lib/music/radio.js in a /tmp git-archive sandbox of
-the committed tree, the 8 radio test files, restored byte-identical). Run 1 on d8949c65: 12 red, 7 SURVIVED (M7, M10, M11,
-M15, M16, M17, M18) -> commit dd3605ea added one test per survivor. Run 2 on dd3605ea: 19 of 19 red.
+**Mutants** (`v1375-mutants3.js`, 33 mutants, one string replace each on lib/music/radio.js, the 9 radio test files, restored
+byte-identical). Run on 19f49a61: 31 red, 2 survived (M8 was a weak mutant that removed only "lofi" from the stoplist - rewritten
+to empty it; M22 the coverage 3-title minimum -> 4b18ffb5 binds it). Run on 4b18ffb5: **33 of 33 red**:
 
-| Mutant | Run 2 | Killed by (one of) |
-|--------|-------|--------------------|
-| M1 restore the session genre anchor (Q3) | RED, 7 fail | e2e "...the album page Radio...", P10 inverted, Q1, Q3 never steers, the trace test |
-| M2 drop the series tier | RED, 10 | all 3 e2e, Q1, Q4 |
-| M3 game music before the series (series slots) | RED, 9 | all 3 e2e, Q1 |
-| M4 nearest genres before game music | RED, 6 | all 3 e2e, Q4 |
-| M5 the seed artist first in every slot | RED, 9 | all 3 e2e, Q1 minority |
-| M6 no series plan (stationPlan -> null) | RED, 16 | e2e, Q1, Q3, Q4 |
-| M7 one channel makes a series | RED, 1 | "a word only ONE channel uses ... is no series" |
-| M8 no stoplist | RED, 3 | Q1, "series words: a title template..." |
-| M9 one shared song word is enough | RED, 2 | Q1, "series words..." (Green Hill Zone) |
-| M10 no per-channel balance | RED, 1 | "the series is balanced PER CHANNEL..." |
-| M11 folder / category tiers for game music | RED, 1 | Q4 from the native Kirby OST |
-| M12 no game verdict from the series | RED, 1 | "game music: ... a Music-category Kirby set..." |
-| M13 a game channel needs all tags game | RED, 3 | Q4, "game music: ..." |
-| M14 the seed artist slot dropped | RED, 4 | Q1 minority, Q4 |
-| M15 the family slot dropped | RED, 1 | "Q2: the first batch already mixes in other game music..." |
-| M16 an untagged album does not borrow | RED, 1 | "Q4 one rule for every entry point..." |
-| M17 the seed album's songs are series | RED, 1 | "Q1: the series is OTHER sets..." |
-| M18 the df cap off | RED, 1 | "a COMMON word ... love songs never join" |
-| M19 a native game genre takes the genre ladder | RED, 2 | Q1 (the Kirby Super Star OST rows), Q4 from the native OST |
+| Mutant | Fail | Killed by (one of) |
+|--------|------|--------------------|
+| M1 restore the session anchor | 6 | e2e album page Radio, P10 inverted, Q3 never steers |
+| M2 drop the series tier | 14 | all e2e, Q1 |
+| M3 G before S / M4 N before G / M5 artist first | 13 / 12 / 14 | all e2e, Q1, Q4 |
+| M6 no plan | 30 | most |
+| M7 one channel makes a word | 6 | "a word only ONE channel uses..." |
+| M8 no stoplist | 9 | "series words: a title template..." |
+| M9 one song word enough / M10 a name and its words apart | 4 / 1 | "Ice Cream Parlor ... ONE shared match" |
+| M11 flat S/G weight / M12 equal share per channel | 2 / 2 | W3 (U11) 1/sqrt, "weighed per channel by 1/sqrt" |
+| M13 no series verdict / M14 no seed-song verdict / M26 song seed without member ids | 3 / 2 / 1 | PSK game music, W3 (U7, U13) |
+| M15 half a majority / M16 no 3-upload minimum / M17 non-music admitted / M18 Gaming per upload | 1 each | W2 talk shows |
+| M19 the series admits any song | 11 | every C1 repro, e2e Forgotten Land |
+| M20 a non-game junk station gets the plan | 1 | qa W1 lofi radio |
+| M21 no coverage / M22 no 3-title minimum | 1 / 1 | W3 (U5); Pokemon "Route" |
+| M23 the df cap off | 1 | "a COMMON word ... love" |
+| M24 likes / M25 the 24 h cool-down dropped | 1 / 1 | W3 (U4, U12) |
+| M27 no accent fold | 1 | W3 (U6) |
+| M28 the seed album's songs in S | 1 | "the series is OTHER sets" |
+| M29 no album borrow / M30 no album category | 1 / 2 | "Q4 one rule...", qa W1 lofi radio |
+| M31 no family slot / M32 no artist slot / M33 native game genre on the genre ladder | 3 / 4 / 2 | Q2 family slot, Q1 minority, Q1 OST rows |
 
-M1 note: only the e2e ALBUM page test reds under the restored anchor, because a song / Autoplay seed of a 'Gaming' chapter
-has category 'gaming' and v1.368.0's anchor never ran for it (matches the step 0 finding: the album seeds were re-genred).
+The full output (every failing test name per mutant) is `v1375-mutants4.out` in the scratchpad.
+
+**Open (disclosed):** a channel that files 3+ talk uploads under Gaming (and no other genre) is still a game channel - the tags
+cannot tell it from a music channel; a YouTube-"Music" game-music channel (Soundzantium) is not game music, so its Kirby is not
+in a Kirby station's series; the 2+ channel rule (above); the ASCII cost shape at +25-36% and the cold first request.
