@@ -112,6 +112,21 @@ test('the cover is written into each track BEFORE the job triggers the scan (the
   assert.deepStrictEqual(seen[1], [[ids[0], 'AUDIO-WITH-ALBUM-COVER'], [ids[1], 'AUDIO-WITH-ALBUM-COVER']]);
 });
 
+test('a crash orphan (.ftcover-<pid>-<12hex>.tmp) in the album\'s folder is swept by the next cover job there; nothing else is', async () => {
+  const ids = [1].map(ID);
+  const folder = path.join(tmpDir, 'Kyle Gordon');
+  fs.mkdirSync(folder, { recursive: true });
+  const orphan = path.join(folder, '.ftcover-4242-0123456789ab.tmp');
+  const keep = path.join(folder, 'Earlier song [vid00000099].mp3');
+  fs.writeFileSync(orphan, 'half-written');
+  fs.writeFileSync(keep, 'kept');
+  const app = await startApp(makeDeps());
+  try { await settle(await startJob(app, job(ids, ALBUM(ids, { coverId: COVER_ID })))); } finally { await app.close(); }
+  assert.strictEqual(reembeds.length, 1);
+  assert.strictEqual(fs.existsSync(orphan), false, 'the orphan is gone');
+  assert.strictEqual(fs.readFileSync(keep, 'utf8'), 'kept', 'a library file beside it is untouched');
+});
+
 test('the cover is fetched ONCE per job (not per track), for the picked id, and released when the job ends', async () => {
   const ids = [1, 2, 3].map(ID);
   const app = await startApp(makeDeps());

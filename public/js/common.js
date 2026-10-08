@@ -7757,8 +7757,8 @@ function openPlaylistPicker(opts) {
     });
     U.menu({
       title: 'Cover', label: 'Album cover', items, signal, doc: d,
+      // (no "is the picker still open" check: a pick that lands on a closed picker sets a value nothing can post)
       onSelect: (v) => {
-        if (!sheet.isOpen()) return;
         state.coverId = v ? v : null;
         renderCover();
       },

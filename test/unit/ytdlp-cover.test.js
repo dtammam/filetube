@@ -127,9 +127,35 @@ test('embedCoverArgs: m4a has no ID3 flags and the ipod muxer; any other kind is
   assert.strictEqual(cover.embedCoverArgs('/m/a.opus', '/c/c.jpg', '/m/t', 'opus'), null);
 });
 
-test('cropSquareArgs: the centred square crop, a JPEG out', () => {
-  assert.deepStrictEqual(cover.cropSquareArgs('/t/raw.jpg', '/t/cover.jpg'),
-    ['-nostdin', '-v', 'error', '-n', '-i', '/t/raw.jpg', '-vf', "crop='min(iw,ih)':'min(iw,ih)'", '-frames:v', '1', '-q:v', '2', '-f', 'image2', '-c:v', 'mjpeg', '/t/cover.jpg']);
+test('cropSquareArgs: the input decoded only as a JPEG (-f jpeg_pipe), the centred square for maxresdefault', () => {
+  assert.deepStrictEqual(cover.cropSquareArgs('/t/raw.jpg', '/t/cover.jpg', 'https://i.ytimg.com/vi/c1Paj8je5sM/maxresdefault.jpg'),
+    ['-nostdin', '-v', 'error', '-n', '-f', 'jpeg_pipe', '-i', '/t/raw.jpg', '-vf', "crop='min(iw,ih)':'min(iw,ih)'", '-frames:v', '1', '-q:v', '2', '-f', 'image2', '-c:v', 'mjpeg', '/t/cover.jpg']);
+});
+
+test('cropSquareArgs: hqdefault (16:9 letterboxed in 4:3) takes its centred 16:9 band first, then the square', () => {
+  assert.deepStrictEqual(cover.cropSquareArgs('/t/raw.jpg', '/t/cover.jpg', 'https://i.ytimg.com/vi/c1Paj8je5sM/hqdefault.jpg'),
+    ['-nostdin', '-v', 'error', '-n', '-f', 'jpeg_pipe', '-i', '/t/raw.jpg', '-vf', "crop=iw:'trunc(iw*9/16)-4',crop='min(iw,ih)':'min(iw,ih)'", '-frames:v', '1', '-q:v', '2', '-f', 'image2', '-c:v', 'mjpeg', '/t/cover.jpg']);
+  assert.strictEqual(cover.coverCropFilter(undefined), "crop='min(iw,ih)':'min(iw,ih)'", 'no source: the square only');
+});
+
+test('prepareAlbumCover crops by the source it actually got: maxres 404 -> the hqdefault filter', async () => {
+  const runs = [];
+  const run = async (cmd, argv) => { runs.push(argv); fs.writeFileSync(argv[argv.length - 1], JPEG); return { ok: true, code: 0, stdout: '', stderr: '' }; };
+  const hq = await cover.prepareAlbumCover('c1Paj8je5sM', { tmpRoot: dir, run, fetch: async (u) => (u.endsWith('maxresdefault.jpg') ? resp(404, []) : resp(200, JPEG)) });
+  assert.strictEqual(runs[0][runs[0].indexOf('-vf') + 1], cover.coverCropFilter('https://i.ytimg.com/vi/c1Paj8je5sM/hqdefault.jpg'));
+  cover.releaseAlbumCover(hq);
+  const mx = await cover.prepareAlbumCover('c1Paj8je5sM', { tmpRoot: dir, run, fetch: async () => resp(200, JPEG) });
+  assert.strictEqual(runs[1][runs[1].indexOf('-vf') + 1], "crop='min(iw,ih)':'min(iw,ih)'");
+  cover.releaseAlbumCover(mx);
+});
+
+test('the default tool runner reports a KILLED child by its signal (never "null"), an exit by its code', async () => {
+  const killed = await cover.seams.run(process.execPath, ['-e', 'setTimeout(() => {}, 5000)'], 100);
+  assert.deepStrictEqual([killed.ok, killed.code], [false, 'SIGKILL']);
+  const exited = await cover.seams.run(process.execPath, ['-e', 'process.exit(3)'], 5000);
+  assert.deepStrictEqual([exited.ok, exited.code], [false, 3]);
+  const fine = await cover.seams.run(process.execPath, ['-e', ''], 5000);
+  assert.deepStrictEqual([fine.ok, fine.code], [true, 0]);
 });
 
 // ---- the verify (the rename decision) ----
@@ -145,6 +171,8 @@ test('verifyReembed: the same audio, duration, tags, chapters and one cover -> r
   assert.deepStrictEqual(cover.verifyReembed(P({ duration: 118.728 }), P({ duration: 118.8 })), { ok: true }, 'within 0.1 s');
   assert.deepStrictEqual(cover.verifyReembed(P(), P({ chapters: [0, 40.0009, 90.5] })), { ok: true }, 'within 0.001 s');
   assert.deepStrictEqual(cover.verifyReembed(P({ tags: { album: 'Brat' } }), P({ tags: { ALBUM: 'Brat', encoder: 'x' } })), { ok: true }, 'keys compared case-blind; only what the original had');
+  assert.deepStrictEqual(cover.verifyReembed(P({ tags: { title: 'T', encoder: 'Lavf60', synopsis: 'a' } }), P({ tags: { title: 'T', encoder: 'Lavf61' } })), { ok: true }, 'tags the scan never reads (encoder, synopsis) are not compared');
+  assert.deepStrictEqual(cover.verifyReembed(P({ tags: { title: 'T', album_artist: 'A' } }), P({ tags: { title: 'T', 'album artist': 'A' } })), { ok: true }, 'an alias read as the same key is the same tag');
 });
 
 const ONE_AUDIO_NO_PIC = [{ codec_type: 'audio', codec_name: 'mp3', disposition: { attached_pic: 0 } }];
@@ -157,7 +185,19 @@ const branches = [
   ['no duration in the temp', P(), P({ duration: 'N/A' }), 'the duration changed'],
   ['a tag lost (album)', P(), P({ tags: { album_artist: 'Charli xcx', track: '2', title: 'Club classics', artist: 'Charli xcx' } }), 'the album tag changed'],
   ['a tag changed (track)', P(), P({ tags: { album: 'Brat', album_artist: 'Charli xcx', track: '3', title: 'Club classics', artist: 'Charli xcx' } }), 'the track tag changed'],
-  ['a tag lost (album_artist)', P(), P({ tags: { album: 'Brat', track: '2', title: 'Club classics', artist: 'Charli xcx' } }), 'the album_artist tag changed'],
+  ['a tag lost (album_artist, read as albumartist)', P(), P({ tags: { album: 'Brat', track: '2', title: 'Club classics', artist: 'Charli xcx' } }), 'the albumartist tag changed'],
+  ['the date changed (an ID3v2.4 "20240101" written back as v2.3 "2024" - adversary, measured)', P({ tags: { title: 'T', date: '20240101' } }), P({ tags: { title: 'T', date: '2024' } }), 'the date tag changed'],
+  ['the date lost (read from the year alias)', P({ tags: { title: 'T', year: '2024' } }), P({ tags: { title: 'T' } }), 'the date tag changed'],
+  ['the disc changed', P({ tags: { title: 'T', disc: '1/2' } }), P({ tags: { title: 'T', disc: '1' } }), 'the disc tag changed'],
+  ['the disc lost (read from the discnumber alias)', P({ tags: { title: 'T', discnumber: '2' } }), P({ tags: { title: 'T' } }), 'the disc tag changed'],
+  ['the track lost (read from the tracknumber alias)', P({ tags: { title: 'T', tracknumber: '4' } }), P({ tags: { title: 'T' } }), 'the track tag changed'],
+  ['the genre changed', P({ tags: { title: 'T', genre: 'Music' } }), P({ tags: { title: 'T', genre: 'Pop' } }), 'the genre tag changed'],
+  ['the composer lost', P({ tags: { title: 'T', composer: 'X' } }), P({ tags: { title: 'T' } }), 'the composer tag changed'],
+  ['the description lost', P({ tags: { title: 'T', description: 'D' } }), P({ tags: { title: 'T' } }), 'the description tag changed'],
+  ['the comment lost (the source link)', P({ tags: { title: 'T', comment: 'https://www.youtube.com/watch?v=x' } }), P({ tags: { title: 'T' } }), 'the comment tag changed'],
+  ['the show lost', P({ tags: { title: 'T', show: 'S' } }), P({ tags: { title: 'T' } }), 'the show tag changed'],
+  ['the copyright lost', P({ tags: { title: 'T', copyright: 'C' } }), P({ tags: { title: 'T' } }), 'the copyright tag changed'],
+  ['the purl lost (the scan reads the YouTube id from it)', P({ tags: { title: 'T', purl: 'https://www.youtube.com/watch?v=x' } }), P({ tags: { title: 'T' } }), 'the purl tag changed'],
   ['a tag lost (title)', P(), P({ tags: { album: 'Brat', album_artist: 'Charli xcx', track: '2', artist: 'Charli xcx' } }), 'the title tag changed'],
   ['a tag lost (artist)', P(), P({ tags: { album: 'Brat', album_artist: 'Charli xcx', track: '2', title: 'Club classics' } }), 'the artist tag changed'],
   ['a chapter lost', P(), P({ chapters: [0, 40] }), 'the chapter count changed'],
@@ -362,7 +402,7 @@ test('prepareAlbumCover: fetched once, cropped by ffmpeg into a private folder; 
   const r = await cover.prepareAlbumCover('c1Paj8je5sM', { tmpRoot: dir, run: okRun, fetch: async () => resp(200, JPEG) });
   assert.strictEqual(r.ok, true);
   assert.strictEqual(path.dirname(r.path), r.dir);
-  assert.deepStrictEqual(runs[0], cover.cropSquareArgs(path.join(r.dir, 'raw.jpg'), r.path));
+  assert.deepStrictEqual(runs[0], cover.cropSquareArgs(path.join(r.dir, 'raw.jpg'), r.path, 'https://i.ytimg.com/vi/c1Paj8je5sM/maxresdefault.jpg'));
   cover.releaseAlbumCover(r);
   assert.strictEqual(fs.existsSync(r.dir), false, 'released at the job end');
   const bad = await cover.prepareAlbumCover('c1Paj8je5sM', { tmpRoot: dir, run: async (c, argv) => { fs.writeFileSync(argv[argv.length - 1], 'not a jpeg'); return { ok: true, code: 0 }; }, fetch: async () => resp(200, JPEG) });

@@ -3,10 +3,10 @@ plan: v1374-music-pass-cover
 harness: v2 · lean
 branch: feat/v1.374.0-music-pass-cover
 anchor: outcome
-status: Building
-next: the gate on (d) (full: it rewrites a just-downloaded file) - branch feat/v1.374.0-cover off this one; merge it here after APPROVED
+status: Gate:CHANGES r1 @0bf5a150
+next: (d) fix round r1 on feat/v1.374.0-cover (qa W1 + adversary S1-S5 + security INFO), then gate r2 delta re-confirmation; merge it here after APPROVED
 design: Dean's intake 2026-10-08 (rulings R1-R4 below). Base main fa4e01aa.
-gate: pending
+gate: CHANGES r1 @0bf5a150 - qa (adversary + security-brief APPROVED r1)
 ---
 
 # v1.374.0: Music device-pass fixes + one cover art for a saved album
@@ -53,6 +53,8 @@ remembered); Home landing still reserved. iPod rows: Recent Albums "Sodium Lamps
   already saved keep mixed art; no file already in the library is rewritten.
 - R2 (d) picker: **a Cover row with the existing menu** in the Save as an album group: "Cover: Each song's own art" by
   default; tapping opens the existing ui menu listing the playlist's songs (thumbnail + name); one pick.
+  As built (builder, disclosed): the menu lists the song NAMES only - ui.menu's media slot takes an icon, not a
+  thumbnail, and no new component was invented; the picker rows above it show the pictures. Device check in section 4.
 - R3 (c) under a Recent Artists row: **the album of that artist's most recent play.** Recent Albums: the album artist.
 - R4 (c) the full **Albums** list shows the artist too. Song lists stay one line.
 
@@ -72,7 +74,9 @@ fails to load fails the download, and the engine updates itself), and it adds no
 - Per track, after yt-dlp has finished it and before the library scan reads it: mp3 `ffmpeg -copyts -i in -i cover
   -map 0:a -map 1:0 -map_metadata 0 -map_chapters 0 -c copy -id3v2_version 3 -write_id3v1 1 -metadata:s:v "title=Album
   cover" -metadata:s:v "comment=Cover (front)" -disposition:v:0 attached_pic tmp` (m4a without the id3 flags), verified
-  by ffprobe (audio stream, tags, chapters), then renamed over the file. Any failure: the temp is removed, the file is
+  by ffprobe (one audio stream of the same codec; the duration within 0.1 s; every tag the library scan reads that the
+  original had, with the same value - server.js EMBEDDED_TAG_WHITELIST as parseFfprobeTags folds its aliases, plus
+  `purl`; the chapters within 0.001 s; exactly one attached picture), then renamed over the file. Any failure: the temp is removed, the file is
   untouched. `-copyts` is required (without it each mp3 remux moves chapters back 0.023 s).
 - Data-loss surface (full gate): the rename over a just-downloaded file, ENOSPC mid-write, a crash between write and
   rename, a concurrent scan, a file that is not this job's.
@@ -92,12 +96,23 @@ runOneShot, albumCoverTargets), the picker's Cover row in `public/js/common.js`.
 - Temp naming: `.ftcover-<pid>-<12 hex>.tmp` in the file's own folder (atomic rename, one filesystem). `.tmp` is not in
   AUDIO_EXTENSIONS / VIDEO_EXTENSIONS, so the scan never indexes it; ffmpeg is told the muxer (`-f mp3` / `-f ipod`) and
   `-n` (never overwrite). A crash between write and rename leaves an orphan, removed by `removeOrphanTemps` before the next
-  re-embed in that folder (exact name shape, regular files, never a temp in flight).
+  re-embed in that folder (disclosed: ONLY a later cover job into the same folder sweeps it; there is no boot sweep, so an
+  orphan in a folder no cover job reaches again stays; it is never indexed). The sweep takes our exact name shape, regular
+  files only, never a temp in flight.
 - Concurrency: every re-embed runs inside runExclusive, so no other download (subscription, one-off, reheat re-pull)
   writes meanwhile; an in-process claim refuses a second re-embed of the same file; just before the rename the file must
   still be the one probed (dev, ino, size, mtime), else the temp is dropped (a delete or another writer wins, the file is
   never resurrected). The rename keeps the file's mode and mtime (the scan's date and tombstone checks read mtime).
 - The menu: `ui.menu` has an icon slot only, no thumbnail, so it lists the song names (the rows above show the pictures).
+
+**Fix round r1 (builder, @0bf5a150 -> this commit).** qa W1 / adversary S2: the verify compared 5 tags; it now compares
+every tag the scan reads (`scanTagsOf` mirrors parseFfprobeTags, locked by test/unit/ytdlp-cover-tag-parity.test.js) plus
+`purl`; an ID3v2.4 date "20240101" that comes back "2024" is refused (measured with the real ffmpeg: the file is kept).
+yt-dlp's own mp3 is already ID3v2.3 (date "2026", measured), so its tracks still pass (real e2e re-run: both covers).
+S1: the orphan sweep is bound by an integration test. S3: hqdefault takes its centred 16:9 band (4 rows short of the
+measured band edge) before the square. Security INFO: the fetched image is decoded with `-f jpeg_pipe`. S5: a killed
+tool logs its signal. S4: the picker's "is the sheet open" check in the Cover pick was removed (a pick on a closed
+picker sets a value nothing can post).
 
 ## 4. Acceptance
 
@@ -106,6 +121,9 @@ runOneShot, albumCoverTargets), the picker's Cover row in `public/js/common.js`.
 3. A playlist saved as an album with a Cover picked: every downloaded track's embedded cover is that image, the album card,
    the song rows and the iPod show it (desktop and phone); with "Each song's own art" nothing changes. A failed cover
    fetch leaves each track's own art and the download succeeds.
+   Device check for Dean: the Cover menu lists the songs by NAME only (no thumbnails: ui.menu has no thumbnail slot) - say
+   whether that is enough to pick by, or whether the menu needs pictures (a new menu media slot, its own change). A
+   video with no maxresdefault image gets its hqdefault, cropped from the 16:9 band (smaller: 266 px square).
 
 ## 5. Gate
 
