@@ -324,3 +324,23 @@ test('gate r2 S3: a game station never spacing-jumps to the rest - with only its
     assert.strictEqual(p[0].id, s2[2].id, 'seed ' + r + ': the last game song, not the rest: ' + p[0].title);
   }
 });
+
+// ---- each W2 guard alone (the talk filter masked the others: gate r2 mutants M16, M17, M34, M35) -----------
+
+test('gate r2 W2 guards, one input each: 2 Gaming clips are no game channel; a game channel\'s People & Blogs upload, its Gaming "Podcast Ep 3", and a channel whose majority is only talk episodes stay out of game music', () => {
+  const clips = [].concat(K.upload('Short Clips', 'shortclips', 'Kirby clip compilation', 'Gaming'), K.upload('Short Clips', 'shortclips', 'Smash clip compilation', 'Gaming'));
+  const qa = K.upload('NESTALGIA', 'NESTALGIA', 'NESTALGIA Kirby Q and A', 'People & Blogs')[0]; // no talk words: the category alone
+  const pod = K.upload('NESTALGIA', 'NESTALGIA', 'Kirby Podcast Ep 3', 'Gaming')[0]; // a game channel, a Gaming tag: the title alone
+  const tipped = [1, 2, 3].map((n) => K.upload('Pod Plus Music', 'podplusmusic', 'Ep ' + n + ' - the week', 'Gaming')).flat()
+    .concat(K.upload('Pod Plus Music', 'podplusmusic', 'Kirby lofi cut A', 'Music'), K.upload('Pod Plus Music', 'podplusmusic', 'Kirby lofi cut B', 'Music'));
+  const lib = LIB.concat(clips, [qa, pod], tipped);
+  const [seed, ctx0] = albumSeed(lib, K.KIRBY_SETS.vapid);
+  const plan = radio.stationPlan(radio.buildStationProfile(seed, lib), lib);
+  const out = { 'a 2-upload Gaming channel (the 3-upload minimum)': clips, 'a People & Blogs upload (the category)': [qa], 'a Gaming "Podcast Ep 3" (the talk title)': [pod],
+    'Music songs of a channel tipped by talk episodes (talk is no majority)': tipped.filter((t) => t.genre === 'Music') };
+  for (const [why, ts] of Object.entries(out)) for (const t of ts) assert.ok(!plan.isGame(t) && !plan.inSeries(t), why + ': ' + t.title + ' is game music');
+  let hits = 0;
+  const all = new Set([].concat(...Object.values(out)));
+  for (const s of sessions(lib, seed, ctx0)) hits += s.filter((x) => all.has(x.t)).length;
+  assert.strictEqual(hits, 0, 'picks in 20 x 25 plays: ' + hits);
+});
