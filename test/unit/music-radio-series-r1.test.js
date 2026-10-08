@@ -205,3 +205,31 @@ test('gate r1 adversary W1: a game station costs at most 2.5x a real-genre (v1.3
   const g = time(game); const r = time(rock);
   assert.ok(g < 2.5 * r, `game station ${g.toFixed(1)} ms vs real-genre ${r.toFixed(1)} ms`);
 });
+
+// ---- before r2 (the Architect): YouTube-"Music" uploads may JOIN the series; nothing else changes ----------
+
+test('before r2: only a yt-dlp upload joins the series without being game music - an untagged NATIVE file sharing "Kirby" never does', () => {
+  const native = K.album('Kirby Smith', 'Kirby Live Lectures', '', 2011, ['Kirby Lecture One', 'Kirby Lecture Two']);
+  const lib = LIB.concat(native);
+  const [seed, ctx0] = albumSeed(lib, K.KIRBY_SETS.vapid);
+  const plan = radio.stationPlan(radio.buildStationProfile(seed, lib), lib);
+  assert.ok(plan.inSeries(lib.find((t) => t.album === 'Kirby Orchestral Suite')), 'precondition: a YouTube-"Music" Kirby set joins');
+  for (const t of native) assert.ok(!plan.inSeries(t), t.title + ' (a native untagged file) joined the series');
+  let hits = 0;
+  for (const s of sessions(lib, seed, ctx0)) hits += s.filter((x) => native.includes(x.t)).length;
+  assert.strictEqual(hits, 0, 'native untagged picks in 20 x 25 plays: ' + hits);
+});
+
+test('before r2: the game verdict counts the series\' GAME songs only - a lofi channel\'s set whose franchise game music barely holds stays on the genre ladder', () => {
+  const lib = LIB.concat(
+    K.set('NESTALGIA', 'NESTALGIA', 'Pikmin Theme', 'Gaming', ['Pikmin Forest', 'Pikmin Cave']),
+    K.set('Vapid', 'vapidVGM', 'Pikmin Garden', 'Gaming', ['Pikmin Garden One', 'Pikmin Garden Two']),
+    ...['Lofi C', 'Lofi D', 'Lofi E'].map((ch, i) => K.set(ch, 'lofi' + i, 'Pikmin lofi beats ' + ch, 'Music', [1, 2, 3, 4, 5].map((n) => 'Pikmin Chill ' + ch + ' ' + n))));
+  const [seed] = albumSeed(lib, 'Pikmin lofi beats Lofi C');
+  const profile = radio.buildStationProfile(seed, lib);
+  const verdict = radio.stationPlan(profile, lib, { verdict: true });
+  assert.ok(verdict.terms.some((x) => x.term === 'pikmin'), 'precondition: "pikmin" is a series word (learned from 2 game channels)');
+  assert.ok(verdict.seriesSize >= 10, 'precondition: with the joined lofi uploads the series is 10+: ' + verdict.seriesSize);
+  assert.strictEqual(verdict.game, false, '4 game songs are no game station');
+  assert.strictEqual(radio.stationPlan(profile, lib), null);
+});
