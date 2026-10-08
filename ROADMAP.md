@@ -365,6 +365,28 @@
 
 ### Features
 
+- [ ] **Music radio that feels like RADIO (Dean, 2026-10-07)** - a Kirby video game soundtrack album -> Radio played Prince
+  first ("not bad, but not really radio-like"). Diagnose before tuning: the leading hypothesis is that `genre` is junk for
+  downloads (yt-dlp --embed-metadata writes YouTube CATEGORIES - "Music" / "Gaming" - as genre), so Kirby and Prince look
+  like neighbours; second, a thin seed artist widens at once. Measure the candidate pool and score breakdown on real data
+  (an in-image probe if production is needed), then intake with Dean (same album / series / composer first? what is
+  "related" without real genres? widen vs end? per entry point?), then an artist-first candidate ladder keeping v1.368.0's
+  invariants (exclude / queued split, no duplicate ids, the widen fallback, no shared cache), bound end to end with the
+  real client + picker and a Kirby-shaped fixture where right and wrong picks diverge. Handoff prompt: Dean's 2026-10-07
+  message (session of v1.370.0-v1.373.0).
+- [ ] **Music follow-ups after v1.373.0 (Dean's device pass, 2026-10-07)** - (1) desktop Music: no visible sort control,
+  and a downloaded album is not in track order there (the iPhone is); (2) iPhone Recent Artists / Recent Albums rows show
+  no artist / album line under the name. Measure each on the real page first (LESSONS 1).
+- [ ] **One cover art for a saved album (Dean, 2026-10-07)** - "we need to pick a base art. One base art. So if I download
+  an album/playlist some songs have their own art. I want to be able to pick one from the media and have it download as
+  that for the rest." In the picker's Save as an album: choose one video's thumbnail as the album's cover, embedded in
+  every track (today each track embeds its own video thumbnail; Music groups art per album from a representative track).
+  Intake first: pick from the playlist rows' thumbnails, or from art already in Music? Re-cover an album already
+  downloaded? Verify the yt-dlp thumbnail flags at source (LESSONS 11).
+- [ ] **Opus downloads never reach the library** - server.js AUDIO_EXTENSIONS lacks `.opus`; Opus keeps its tags per
+  STREAM (the scan reads the container's); iPhone Safari Opus playback is unmeasured. Measure, then fix or drop Opus from
+  the file-type list (Dean: its own release, queued after v1.373.0).
+
 - [ ] **What the VPN runbook may point at (candidates, not planned; Dean picks after his runs)** - v1.362.1 shipped
   `docs/references/vpn-slowness-runbook.md`, built on the v1.307 `/diag` suite. What FileTube cannot measure or do today, each a
   possible next step once the numbers say which matters: response compression (the Compression delta row shows the saving);
