@@ -210,3 +210,10 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
 - [ ] v1.374.0 - Playlist picker, Format Audio, Save as an album on: tap Cover, pick a song (names only in the menu - is
   that enough?), download. Every new song of that album shows that one picture in Music (album card, song rows, iPod) on
   desktop and phone. With "Each song's own art" nothing changes. An older video's cover can be a smaller square.
+
+## Radio that feels like radio (v1.375.0)
+
+- [ ] v1.375.0 - Music > a Kirby album (e.g. a NESTALGIA or Vapid Kirby set) > Radio, right after playing some pop: the
+  first songs are Kirby music from several channels, then other game music; no Prince or pop for a long while. Same from a
+  Kirby song's Start radio and when Autoplay continues after the album. (Soundzantium / PSK Kirby sets may not appear:
+  their channels file under YouTube "Music", by your round-3 choice.)

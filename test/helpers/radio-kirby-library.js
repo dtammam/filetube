@@ -1,7 +1,7 @@
 'use strict';
 
 // v1.375.0 "radio that feels like radio": a KIRBY-SHAPED library (plan
-// docs/exec-plans/active/2026-10-08-v1375-radio-like-radio.md), shaped on Dean's production measurement
+// docs/exec-plans/completed/2026-10-08-v1375-radio-like-radio.md), shaped on Dean's production measurement
 // (2026-10-08): DJ-set chapters from yt-dlp channels whose genre is '' or a YouTube category, the
 // same franchise across several channels, one big channel that covers every franchise, and a native
 // pop artist who is half of all pop. The yt-dlp sets go through the REAL projection

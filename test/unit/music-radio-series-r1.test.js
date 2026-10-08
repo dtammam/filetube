@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.375.0 gate r1 (plan docs/exec-plans/active/2026-10-08-v1375-radio-like-radio.md): the adversary's
+// [UNIT] v1.375.0 gate r1 (plan docs/exec-plans/completed/2026-10-08-v1375-radio-like-radio.md): the adversary's
 // repros and the mechanisms its mutants left unbound, on the Kirby-shaped library plus the tracks each repro
 // needs. Every test is the input only its guard refuses (LESSONS 2), counted over rng seeds.
 

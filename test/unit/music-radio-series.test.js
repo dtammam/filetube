@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.375.0 "radio that feels like radio" (plan docs/exec-plans/active/2026-10-08-v1375-radio-like-radio.md,
+// [UNIT] v1.375.0 "radio that feels like radio" (plan docs/exec-plans/completed/2026-10-08-v1375-radio-like-radio.md,
 // Dean's rulings Q1-Q4): the series-first ladder of lib/music/radio.js on the Kirby-shaped library
 // (test/helpers/radio-kirby-library.js - right and wrong picks DIVERGE there). Every claim is COUNTED over
 // many rng seeds and every entry point (LESSONS 2): the album page Radio and the iPod's album row (seed

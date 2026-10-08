@@ -3,10 +3,10 @@ plan: v1375-radio-like-radio
 harness: v2 · lean
 branch: feat/v1.375.0-radio
 anchor: outcome
-status: Building
-next: the quick delta re-check of the gate r2 changes (Dean's round-3 ruling: simplify); then Dean runs the trace on production (below) before his device check
+status: Shipped v1.375.0
+next: the release as v1.375.0; then Dean runs the trace on production (below) and his device check
 design: Dean's rulings Q1-Q4 (2026-10-08), the diagnosis below (production traces, read-only). Base main de554c57 (rebased from fa4e01aa after v1.374.0 shipped).
-gate: r2 qa APPROVED, adversary CHANGES @aa306108; Dean ruled round 3 (2026-10-08): simplify - changes at 1c4d65db, 96b654ab, b12bbe86; delta re-check pending
+gate: APPROVED r3 @ce66a538 - adversary, qa (security as a section; no route changed)
 ---
 
 # v1.375.0: Music radio that feels like RADIO
@@ -221,3 +221,25 @@ The full output (every failing test name per mutant) is `v1375-mutants10.out` in
 Kirby station (Dean's choice at gate r2); a channel that files 3+ Gaming talk uploads WITHOUT a talk word in their titles is still
 a game channel; a franchise only one channel holds is never a series word (the 2+ channel rule); the ASCII and shared cost shapes
 at +31-38% (target +25%) and the cold first request.
+
+## 6. Gate
+
+- r1 @674cf4c1 (rebased: cbde2741). qa CHANGES: W1 a lofi-radio station (YouTube "Music") pulled Queen / The Buggles /
+  Sugarhill Gang through "radio" / "hip hop" series words (60 / 56 / 66 of 500 picks vs base 0); S1-S4. adversary CHANGES:
+  C1 ordinary title words became series words (Linkin Park "Forgotten" 19/20 sessions, Raekwon "Ice Cream" 20/20, Holst /
+  Bach "Suite", Shakira "para"; red end to end with the real client); W1 cost up to ~1 s per request; W2 Gaming-tagged
+  talk shows in the game family; W3 14 of 16 unclaimed mutants survived.
+- Fix round (8805849f, 19f49a61, 4b18ffb5) + the Architect's Q1 adjustment (fbb9d2b8: YouTube-"Music" uploads may join).
+- r2 @aa306108. qa APPROVED (full suite 11642 / 11629 pass / 0 fail). adversary CHANGES: C2 the join rule let yt-dlp
+  "Linkin Park - Forgotten (Official Audio)" join a Kirby station (15/20 sessions, from play 1) and "Bach - Cello Suite"
+  (13-16/20); W2' a Gaming-filed podcast channel still counted as game music; S2 a non-game DJ album left its channel.
+- Round 3: Dean ruled (2026-10-08) SIMPLIFY (drop the join rule; series = game music only) and "stay on the channel".
+  Changes 1c4d65db, 96b654ab, b12bbe86, ce66a538.
+- r3 @ce66a538: adversary APPROVED (C2 / W2' / S2 repros at 0, the real-client e2e 6/6, 6 delta mutants red; cost +25-31 ms
+  median on a 24k synthetic library vs ~1 s at r1). qa APPROVED (full suite 11649 / 11636 pass / 0 fail; section 5 identical
+  to the instrument).
+- Disclosed residuals (tracker #295): the talk filter can drop a game-music set titled "Episode" / "EP N" from the game
+  family (a missed pick, never unrelated content); a two-word name around a stop word ("hip hop radio") can still make a
+  lofi station a game station when game channels carry "hip hop radio" sets (no real-genre track is pulled in); YouTube-
+  "Music" game channels' Kirby sets (Soundzantium, PSK) are not in a Kirby station's series (Dean's choice); +25-38%
+  per-request cost and a 100-236 ms cold first request; a franchise held by one channel is never a series word.

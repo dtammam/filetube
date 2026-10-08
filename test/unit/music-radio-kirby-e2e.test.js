@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.375.0 "radio that feels like radio" (plan docs/exec-plans/active/2026-10-08-v1375-radio-like-radio.md),
+// [UNIT] v1.375.0 "radio that feels like radio" (plan docs/exec-plans/completed/2026-10-08-v1375-radio-like-radio.md),
 // END TO END (LESSONS 2, 5): the REAL music.js in jsdom, the REAL picker (lib/music/radio.js) behind a fake
 // /api/music/radio that answers exactly as the route does (seed, exclude, queued, widen, count, rng), on the
 // Kirby-shaped library (test/helpers/radio-kirby-library.js, the real chapter projection). Dean's case: he

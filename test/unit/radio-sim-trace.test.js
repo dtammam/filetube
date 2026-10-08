@@ -1,7 +1,7 @@
 'use strict';
 
 // [UNIT] v1.375.0: tools/radio-sim/simulate.js --trace, the read-only instrument Dean runs on production to
-// calibrate the series-first radio before his device check (plan docs/exec-plans/active/2026-10-08-v1375-radio-like-radio.md).
+// calibrate the series-first radio before his device check (plan docs/exec-plans/completed/2026-10-08-v1375-radio-like-radio.md).
 // It must run the REAL picker and print the NEW tiers per entry point; a trace that silently fell back to
 // the genre ladder (or lost the series words) would calibrate nothing. Driven on the Kirby-shaped library
 // with a play history whose session before the album is Pop.
