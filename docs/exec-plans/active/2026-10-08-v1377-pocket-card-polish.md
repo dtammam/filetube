@@ -236,6 +236,46 @@ Gate: CHANGES r1 @0791fe92 - adversary
   seed omitted -> rng seed 0 (client always sends one); the late pool is dropped by the engine (destroyed / poolReq) and
   slidesWanted gates the panel, a held game and visibility; `/albumart/<id>?v=<ver>` passes menuCoverPool's sameOriginPath (run).
 
+Gate: APPROVED r2 @8fce9999 - security-brief
+- r1 gap closed by the builder's report (`git diff --stat 4cc39c6e 0791fe92 -- package.json package-lock.json lib/ server.js` empty); I still have no Bash and did NOT run the 0791fe92..8fce9999 diff myself - the delta file list is the coordinator's.
+- Read at HEAD: player.js ~10207-10211 is a comment (no code on those lines); pocket-word-census.test.js requires only node:test/assert/fs/path, espree and jsdom (both already in package.json devDependencies), no child_process / network.
+- No runtime surface in the stated delta (comments + tests). r1 findings (none blocking) unchanged; nothing new.
+
+Gate: APPROVED r2 @8fce9999 - qa
+- r1 WARNING 1 (style.css:53-55, player.js setDockShown): fixed as prescribed - both now say the card sits beside the dock at
+  its height and only the remote pill stacks above.
+- r1 WARNING 2 ("cannot drift"): fixed as prescribed - the comment names the shared width token, the two literal 8px insets
+  mirrored by --space-4, and HDK as the binder (HDK checks bottom +-1px and gap >= 4px; true).
+- r1 SUGGESTIONS: hdk-height-off comment true; test E's title now points to the unit menuCoverPool test (test/unit/
+  pocket-quick-scroll.test.js:157 "one per album, art only, same-origin only" - exists); section 9 deferred to the release commit.
+- Instruments @8fce9999: 8 test files (incl. unit + integration pocket-quick-scroll) tests 111, pass 111, fail 0; lint:ui OK;
+  eslint on the 5 delta JS files clean; HDK "5 checks - 5 ok"; `--mutants --only HDK` "11 of 11 killed, 0 survived" (sandbox).
+- My mutants on the new tests (sandbox): pocketIdle never cleared when a song starts -> the art-return test red; the failed
+  sample promise kept cached -> the retry test red; the idle-art guard off -> test 1 red. 3 of 3 killed.
+- Nothing new: no new lying comment in the delta; the census's disclosed blind spots (split literals, fromCharCode, CSS content)
+  hold no "iPod" today. No security change in the delta (comments and tests only; no runtime code).
+
+Gate: APPROVED r2 @8fce9999 - adversary
+- Instruments (Node 22.23.1, /tmp git-archive sandbox of 8fce9999): HDK 5 checks - 5 ok; `--mutants --only HDK` the
+  builder's 11 of 11 killed (control red []); touched tests (pocket-quick-scroll, pocket-idle-art, pocket-word-census,
+  player-dock-presence, handoff-card*, token-scale-lock) tests 54, pass 54, fail 0; eslint on the delta files exit 0;
+  ui-lint OK. Full suite not re-run (delta = tests + comments).
+- r1 W1 HDK text safety: FIXED as prescribed. My r1 mutants re-run on 8fce9999: device ellipsis off, ellipsis-only off,
+  lead nowrap at <=369, age shown -> KILLED; a new one (headline spanning under the X) -> KILLED (phone-320). Survivors:
+  lead wrap at >=370 (EQUIVALENT: the lead fits one line there, nothing to observe - the builder's hdk-lead-wrap-wide narrows
+  the headline and is killed), full-card two-line (disclosed, not done; my r1 probe showed the full card identical to base).
+- r1 W2 clear axis: FIXED. Deleting `pocketIdle = false; // ... a song is up now` -> pocket-idle-art test 5 red; art
+  always empty -> test 5 red; idle guard off -> test 1 red.
+- r1 W2 retry: FIXED. `pr.catch(function () {})` -> test 6 red; sample always rejecting -> 6 of 6 red. INFO: dropping only
+  the `menuCoverPromise === pr` guard survives - its cost is one duplicate request when a stale failure lands after an
+  invalidate (reasoned), not a lost cover.
+- r1 lying comments: FIXED (style.css --player-dock-h, player.js setDockShown, the side-card "cannot drift" claim now names
+  the literal 8px insets and HDK's binding; hdk-height-off; test E title) - read against the rules, true.
+- r1 census SUGGESTION: FIXED. Worker 'Open the iPod' -> red; manifest description and short_name with iPod -> red (my two
+  first manifest mutants were equivalent: a duplicate JSON key the later one overrides). Split-string / fromCharCode / CSS
+  content disclosed in the header.
+- Nothing new introduced by the fix. Sandbox deleted; tree untouched apart from this block.
+
 ## 7. Release (v1.377.0)
 
 Exactly as v1.376.0 did (docs/RELEASING.md + AGENTS.md): after the gate APPROVES (all seats at the same sha), full
