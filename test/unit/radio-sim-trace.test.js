@@ -24,7 +24,7 @@ test('the --trace prints the series ladder, its words, the game family and every
   const out = sim.traceAlbum(list, { trace: 'happy and underrated kirby', why: 'prince' }, radio, { history });
   for (const line of [
     'ALBUMS whose title or album artist contains "happy and underrated kirby": 1',
-    'album page Radio / iPod album row: genre=null category=null',
+    'album page Radio / iPod album row: genre=null category="gaming"',
     '-> SERIES ladder, game music: YES',
     'series words (of ',
     '"kirby" album',

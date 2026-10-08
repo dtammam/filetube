@@ -5,7 +5,7 @@ branch: feat/v1.375.0-radio
 anchor: outcome
 status: Building
 next: the Architect's full dual-Node suite, then the gate (adversary floor + qa); then Dean runs the trace on production (below) before his device check
-design: Dean's rulings Q1-Q4 (2026-10-08), the diagnosis below (production traces, read-only). Base main fa4e01aa.
+design: Dean's rulings Q1-Q4 (2026-10-08), the diagnosis below (production traces, read-only). Base main de554c57 (rebased from fa4e01aa after v1.374.0 shipped).
 gate: pending
 ---
 
@@ -54,12 +54,20 @@ leaving the station nothing of its own to stay close to.
 **Q3.** The `if (!profile.genre && !profile.category)` block that borrowed the last 24 plays' genre is gone. The session's
 plays still shape the exclusions and the artist spacing (v1.368.0's R11/R12), nothing else.
 
-**Which ladder.** `stationPlan(profile, library)` returns a plan when the seed has NO real genre (none, or a YouTube category on
-yt-dlp audio) or a GAME genre (`GAME_GENRES`: gaming, video game, chiptune, vgm, game music...), and is not a genre station;
-otherwise null and the seed keeps v1.368.0's T1-T7 exactly (a native rock album is untouched). Deviation (stated): a native
-'Video Game' album also takes the series ladder - a native Kirby OST should behave like a yt-dlp Kirby set (Q4 one rule).
-Also (Q4): an untagged ALBUM now borrows its artists' / folder's most common genre exactly as a song of it always did, so the
-album page Radio and a song's Start radio of the same album draw the same ladder.
+**Which ladder.** `stationPlan(profile, library)` returns a plan only for a GAME-MUSIC station: a seed with a GAME genre
+(`GAME_GENRES`: gaming, video game, chiptune, vgm, game music...), or a seed with NO real genre (none, or a YouTube category on
+yt-dlp audio) whose songs or series candidates are mostly game music (the game verdict below). Everything else - a real genre, a
+genre station, and a junk-genre station that is NOT game music (a lofi channel, a vlog) - gets null and v1.368.0's T1-T7 exactly,
+minus the session anchor. Gate r1 qa W1: the first build gave every junk-genre station the series ladder, and a lofi channel's
+"Chillhop Radio - jazzy and lofi hip hop beats" found the series words "radio", "hip hop" and pulled Queen's "Radio Ga Ga", the
+Buggles and "Hip Hop Classics" (qa: Queen 60 / Sugarhill 66 / Buggles 56 of 500 picks); series words are now a game-music notion
+only. Deviation (stated): a native 'Video Game' album also takes the series ladder - a native Kirby OST should behave like a
+yt-dlp Kirby set (Q4 one rule). A native 'Soundtrack' / 'OST' / 'Score' album keeps the v1.368.0 genre ladder (gate r1 qa S3):
+those tags also cover film and TV scores, and a soundtrack station that stays in soundtrack (its genre tiers) is already right;
+they are the game ladder's nearest genres (N) instead.
+Also (Q4): an untagged ALBUM now borrows its artists' / folder's most common genre exactly as a song of it always did, and keeps
+its YouTube category (T6) as a song of it always did (a lofi album widens to other "Music" uploads before the whole library), so
+the album page Radio and a song's Start radio of the same album draw the same ladder.
 
 **The series-first ladder** (tier numbers in the picker's trace; the simulator prints S / G / N):
 
@@ -67,10 +75,14 @@ album page Radio and a song's Start radio of the same album draw the same ladder
 |------|------|-------|
 | S (8) | SERIES: shares a series word of the seed | words from the seed's album title (and any word in half its songs' titles) count alone; words from the seed SONG's title count only when 2+ are shared |
 | 1 | the seed artist and the seed album's own songs | one slot per batch (a minority, Q2.3) |
-| G (9) | GAME MUSIC (a game seed only) | a game genre tag, or a channel whose genre-tagged uploads are at least half game music (untagged chapters ride on their channel) |
-| 5, 6 | the seed's folder, then its YouTube category | a NON-game junk seed's family (v1.368.0's T5/T6); never for game music - a native seed's folder is the whole native library |
-| N (10) | the NEAREST real genres | genres the family's artists also play (strength = artists), plus soundtrack / score / anime / orchestral / film (+1) for game music |
+| G (9) | GAME MUSIC | a game genre tag, or a channel whose genre-tagged uploads are at least half game music (untagged chapters ride on their channel) |
+| N (10) | the NEAREST real genres | genres the family's artists also play (strength = artists), plus soundtrack / score / anime / orchestral / film (+1) |
 | 7 | the rest | only when every closer tier is spent, or widen=1 (unchanged) |
+
+No folder (T5) or category (T6) tier on this ladder (gate r1 qa S1 restated the reason): for game music the family IS the game
+channels (G); a folder is only where files sit - a native file's folder is its parent directory (lib/music/scan.js), an album
+folder on an Artist/Album layout but the whole library on a flat one (Prince included), and a yt-dlp folder is the channel, which
+is already the seed artist or G. The seed album's own songs are recognised by album key alone (gate r1 qa S2).
 
 **Series words.** Folded (accents, `'s`, punctuation off), minus English glue and a stoplist of style / format / mood /
 platform / generic game words (lofi, remix, ost, music, chill, hours, happy, underrated, nintendo, super, world, land, man...),
@@ -84,7 +96,7 @@ with 13 Kirby sets never drowns the others: Q1 "from ANY artist"), and a song sh
 of its series candidates are (so a YouTube-"Music" Kirby set from a lofi channel is still game music).
 
 **Batch plan (5):** series, series, the seed artist, series, family. Each slot has an order (`STATION_ORDERS`): series slots
-`S G 5 6 1 N 7`, the artist slot `1 S G 5 6 N 7`, the family slot `G 5 6 S 1 N 7`; a spent tier hands the slot on, so as the
+`S G 1 N 7`, the artist slot `1 S G N 7`, the family slot `G S 1 N 7`; a spent tier hands the slot on, so as the
 series empties game music takes over, then the nearest genres, and the whole library only last. Within G, 1/sqrt(channel
 size); within N, the genre's strength; likes x2 and the 24 h cool-down everywhere (R10).
 

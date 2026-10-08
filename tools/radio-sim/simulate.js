@@ -787,8 +787,12 @@ function traceAlbum(list, args, radio, lib) {
     for (const [label, seed, ctx0] of entries) {
       const profile = radio.buildStationProfile(seed, list);
       if (!profile) { L.push(`   ${label}: no profile`); continue; }
-      const plan = typeof radio.stationPlan === 'function' ? radio.stationPlan(profile, list) : null;
-      L.push(`   ${label}: genre=${JSON.stringify(profile.genre)} category=${JSON.stringify(profile.category || null)} folder=${JSON.stringify(cut(profile.folder, 30))} -> ${plan ? `SERIES ladder, game music: ${plan.game ? 'YES' : 'no'}` : 'GENRE ladder (v1.368.0 tiers)'}`);
+      // with { verdict: true } a junk-genre station that is NOT game music answers its verdict (game false)
+      // instead of null: the picker gives it the genre ladder, the trace says why
+      const verdict = typeof radio.stationPlan === 'function' ? radio.stationPlan(profile, list, undefined, { verdict: true }) : null;
+      const plan = verdict && verdict.game ? verdict : null;
+      const ladder = verdict && !verdict.game ? `GENRE ladder (v1.368.0 tiers): not game music (series candidates ${verdict.seriesN}, of them game music ${verdict.seriesGame})` : 'GENRE ladder (v1.368.0 tiers)';
+      L.push(`   ${label}: genre=${JSON.stringify(profile.genre)} category=${JSON.stringify(profile.category || null)} folder=${JSON.stringify(cut(profile.folder, 30))} -> ${plan ? 'SERIES ladder, game music: YES' : ladder}`);
       if (plan && label.indexOf('D ') !== 0) {
         L.push(`      series words (of ${plan.docs} titles): ${plan.terms.map((x) => `"${x.term}" ${x.kind} df${x.df} ch${x.artists} w${x.w.toFixed(2)}`).join(', ') || '(none)'}`);
         const rej = plan.allTerms.filter((x) => !plan.terms.includes(x)).slice(0, 10);

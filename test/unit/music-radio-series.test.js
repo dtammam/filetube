@@ -277,3 +277,32 @@ test('Q4 one rule for every entry point: an untagged album of a tagged artist dr
   assert.strictEqual(radio.stationPlan(albumP, lib), null, 'both take the genre ladder');
   assert.strictEqual(radio.stationPlan(songP, lib), null);
 });
+
+test('gate r1 qa W1: series words are a GAME-MUSIC notion - a lofi "radio" channel never pulls Queen\'s "Radio Ga Ga", the Buggles or "Hip Hop Classics" (100 rng seeds, every entry point)', () => {
+  const extra = [].concat(
+    K.set('Lofi Girl', 'lofigirl', 'lofi hip hop radio - beats to relax/study to', 'Music', ['Lofi Cut 1', 'Lofi Cut 2', 'Lofi Cut 3', 'Lofi Cut 4', 'Lofi Cut 5', 'Lofi Cut 6']),
+    K.set('Lofi Girl', 'lofigirl', 'synthwave radio', 'Music', ['Synth Cut 1', 'Synth Cut 2', 'Synth Cut 3', 'Synth Cut 4']),
+    K.set('Chillhop Radio', 'chillhopradio', 'Chillhop Radio - jazzy and lofi hip hop beats', 'Music', ['Jazzy Cut 1', 'Jazzy Cut 2', 'Jazzy Cut 3', 'Jazzy Cut 4', 'Jazzy Cut 5', 'Jazzy Cut 6']),
+    K.album('Queen', 'The Works', 'Rock', 1984, ['Radio Ga Ga', 'Hammer to Fall', 'I Want to Break Free']),
+    K.album('The Buggles', 'The Age of Plastic', 'New Wave', 1980, ['Video Killed the Radio Star', 'Living in the Plastic Age']),
+    K.album('The Sugarhill Gang', 'Hip Hop Classics', 'Hip-Hop', 1980, ['Rapper\'s Delight', 'Apache', '8th Wonder']));
+  const lib = LIB.concat(extra);
+  const far = new Set(['Queen', 'The Buggles', 'The Sugarhill Gang']);
+  const members = lib.filter((t) => t.album === 'Chillhop Radio - jazzy and lofi hip hop beats');
+  const ids = members.map((t) => t.id);
+  const seeds = [['album page Radio', { kind: 'album', value: store.albumKeyFor(members[0]) }, ids, []], ['song Start radio', { kind: 'track', value: ids[0] }, ids, []], ['Autoplay after the album', { kind: 'track', value: ids[ids.length - 1] }, [], ids]];
+  for (const [label, seed, queued, played] of seeds) {
+    const profile = radio.buildStationProfile(seed, lib);
+    const verdict = radio.stationPlan(profile, lib, undefined, { verdict: true });
+    assert.ok(verdict && verdict.game === false, label + ': precondition: a junk-genre station that is not game music');
+    assert.ok(verdict.terms.length > 0, label + ': precondition: it HAS candidate series words (' + verdict.terms.map((x) => x.term).join(', ') + ')');
+    assert.strictEqual(radio.stationPlan(profile, lib), null, label + ': no series plan: the v1.368.0 tiers');
+    let farPicks = 0; let picks = 0;
+    for (let r = 1; r <= 100; r += 1) {
+      const p = radio.pickRadioBatch(profile, lib, { exclude: played, queued, count: 5 }, createSeededRng(r));
+      picks += p.length;
+      farPicks += p.filter((t) => far.has(t.artist)).length;
+    }
+    assert.strictEqual(farPicks, 0, `${label}: Queen / Buggles / Sugarhill picks ${farPicks} of ${picks}`);
+  }
+});
