@@ -57,8 +57,11 @@ before(async () => {
     return true;
   }));
   fs.mkdirSync(ALBUMART_DIR, { recursive: true });
-  fs.writeFileSync(path.join(ALBUMART_DIR, `${tWall.albumArtKey}.jpg`), 'WALL-COVER');
-  fs.writeFileSync(path.join(ALBUMART_DIR, `${tHidden.albumArtKey}.jpg`), 'SECRET-COVER');
+  // every fixture picture gets its OWN mtime: a version is mtime + size, and two files written in one millisecond with
+  // the same size share a version string, which made the RBAC test below fail by chance (PR #115, ci (24))
+  const put = (file, bytes, ms) => { fs.writeFileSync(file, bytes); setTime(file, ms); };
+  put(path.join(ALBUMART_DIR, `${tWall.albumArtKey}.jpg`), 'WALL-COVER', 1_789_999_000_000);
+  put(path.join(ALBUMART_DIR, `${tHidden.albumArtKey}.jpg`), 'SECRET-COVER', 1_789_999_001_000);
   // two yt-dlp library audio items (projected into Music; art = their thumbnail), one under the blocked root
   const mediaRoot = path.join(libRoot, 'yt');
   const item = (id, dir, title) => ({ id, type: 'audio', title, name: `${id}.mp3`, filePath: path.join(dir, `${id}.mp3`), rootFolder: libRoot, folderName: 'Kyle Gordon',
@@ -69,7 +72,7 @@ before(async () => {
   fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
   fs.writeFileSync(path.join(THUMBNAIL_DIR, `${lib1.id}.jpg`), 'OWN-ART');
   setTime(path.join(THUMBNAIL_DIR, `${lib1.id}.jpg`), 1_790_000_000_000);
-  fs.writeFileSync(path.join(THUMBNAIL_DIR, `${libHidden.id}.jpg`), 'HIDDEN-ART');
+  put(path.join(THUMBNAIL_DIR, `${libHidden.id}.jpg`), 'HIDDEN-ART', 1_789_999_002_000);
   member = __mintTestSession({ username: 'artv', role: 'member' });
   userStore.setRestrictions(member.user.id, [{ kind: 'path', value: blockedRoot }]);
 });
@@ -150,6 +153,9 @@ test('RBAC: a member never receives a hidden item\'s id or version; their versio
   assert.strictEqual(byId(mine, tHidden.id), undefined);
   assert.strictEqual(byId(mine, libHidden.id), undefined);
   const hiddenVs = [statV(path.join(ALBUMART_DIR, `${tHidden.albumArtKey}.jpg`)), statV(path.join(THUMBNAIL_DIR, `${libHidden.id}.jpg`))];
+  // anti-vacuity floor: the check below means something only if each hidden version is unique among the fixture's four
+  const fixtureVs = [path.join(ALBUMART_DIR, `${tWall.albumArtKey}.jpg`), path.join(ALBUMART_DIR, `${tHidden.albumArtKey}.jpg`), path.join(THUMBNAIL_DIR, `${lib1.id}.jpg`), path.join(THUMBNAIL_DIR, `${libHidden.id}.jpg`)].map(statV);
+  assert.strictEqual(new Set(fixtureVs).size, 4, `the four fixture pictures have pairwise distinct versions (${fixtureVs.join(', ')})`);
   const sent = JSON.stringify([mine, (await json('/api/music/albums', true)).items, (await json('/api/music/artists', true)).items]);
   for (const v of hiddenVs) assert.ok(!sent.includes(v), `a hidden picture's version (${v}) never reaches the member`);
   const admin = (await json('/api/music?limit=100')).items;
