@@ -16,6 +16,24 @@ Every bug is MEASURED on the real page first (LESSONS 1: name the falsifying obs
 (iPhone UA, DPR 3), with a headless Chromium probe of the real app (scratch instruments; see scripts/music-fouc-probe.js
 and the v1.374.0 sort-probe pattern: boot server.js on a seeded DATA_DIR, raw CDP or tools/capture Playwright).
 
+## 0. Step 0 (the builder reads this first)
+
+- Read: AGENTS.md; docs/LESSONS.md sections 0, 1, 2, 4, 6, 9, 10, 11 (Classes; the Rules file for the sections you
+  touch); this plan top to bottom; docs/RELEASING.md "Cutting a release"; the memory index's box quirks if present.
+- Environment: export PATH="$HOME/.local/share/fnm/node-versions/v22.23.1/installation/bin:$PATH" before EVERY
+  node / npm / git command. `gh` is ~/.local/bin/gh. ffmpeg / ffprobe: ~/.local/bin/ffmpeg-static. Chromium for probes:
+  ~/.cache/ms-playwright (raw CDP) or tools/capture's Playwright. A worktree has no node_modules: symlink the main
+  checkout's for runs, never commit it.
+- Git: work on `feat/v1.376.0-notify-podcasts-polish` (this plan is committed there). Parallel waves in worktrees
+  (.claude/worktrees/) on sub-branches, merged back here in order. Stage EXPLICIT paths (never add -A / .), commit with
+  `git commit -F <file>`, never --no-verify, never force-push, never pipe a commit or push; verify with git log /
+  git ls-remote. main is PROTECTED: the release goes through a PR (section 7).
+- Stop rules (ask Dean with AskUserQuestion): a gate reaches round 3; a measurement contradicts a ruling or this plan's
+  diagnosis (W5, W6 especially: a shipped fix that fails on the device means the diagnosis was wrong); a product fork
+  the rulings do not cover; anything that would rewrite an existing library file (R5 forbids it).
+- Reporting: no step-by-step ceremony; report at decision points and at the end with two 10-cell progress bars
+  (`**This release (v1.376.0):** \`████░░░░░░\` 40%. ...` and `**Overall plan:** ...`) plus the measured numbers.
+
 ## 1. Outcomes (Dean's words, then the observable)
 
 - **W1. "Add to Watch later" on a notification (Dean: "Notification setting ... Add to watch later option"; "Make it
@@ -153,9 +171,9 @@ and the v1.374.0 sort-probe pattern: boot server.js on a seeded DATA_DIR, raw CD
   answer; failure toasts and keeps the row). Hidden when the item is already in Watch later or cannot be added
   (engine rows). Push: add `data.mediaId` + `data.kind` to payloadForRow and `actions: [{action:'watchlater', title:'Watch
   later'}]` in the worker's showNotification; notificationclick with event.action === 'watchlater' POSTs watch-later +
-  dismiss from the worker (same-origin credentials; no window opened) - MEASURE what iOS shows (Safari Web Push on iOS
-  does not display notification actions as of iOS 18: the in-app row is the iPhone path; the push action serves
-  desktop/Android; disclose). Never let a notificationclick without an action change behaviour (bind it).
+  dismiss from the worker (same-origin credentials; no window opened) - MEASURE what iOS shows (UNVERIFIED belief: an iOS home-screen web app does not show
+  notification action buttons; if so, the in-app row is the iPhone path and the push action serves desktop / Android;
+  read the platform docs and disclose what was found). Never let a notificationclick without an action change behaviour (bind it).
 - **W2 Podcasts get the options (needs W1's Watch later seam).** Watch later must accept a podcast episode: today
   user_watch_later keys on media_id and the POST 404s anything not in db.metadata. Design the smallest correct extension
   (a `kind` column 'media' | 'podcast' with an APPEND-ONLY migration + schema version bump + backup bundle coverage, or
@@ -217,3 +235,36 @@ sees) and to make W6's scan index a pending file. The census tests a route or se
 rbac-census / route classification / docs-diagrams to need updates if any route is added.
 
 (pending)
+
+## 7. Release (v1.376.0, one release for the wave)
+
+- After the gate APPROVES (all required seats at the same sha): full `npm test` on Node 22.23.1 then 24.20.0
+  (sequential; Node 24's reporter prints `ℹ`); report both summaries verbatim (a known flake: progress-coalescer AC4.1
+  #238 - re-run its file alone, never --no-verify).
+- Release commit on this branch: `npm version 1.376.0 --no-git-tag-version`; ROADMAP.md "Shipped" entry (and remove /
+  update the five Planned items this wave closes: "NEXT BRANCH: Add to Watch later on a notification...", the channel
+  link bug, the Listen Control card bug, the player-line bug); docs/releases.json ledger entry in PURE USER LANGUAGE (a
+  checker test enforces it); DEVICE-CHECKS lines (section 5); a LESSONS entry if the wave taught one; tracker rows for
+  disclosed residuals; `node scripts/plan-complete.js <this plan> "Shipped v1.376.0" --apply`, fix the path references
+  it lists, `git add` the moved plan.
+- Then: on main `git merge --no-ff` this branch locally, `git tag v1.376.0` on that merge, push THIS BRANCH + the tag in
+  ONE push (`GIT_SSH_COMMAND="ssh -o ServerAliveInterval=20 -o ServerAliveCountMax=60"`; the pre-push hook runs the
+  suite), `gh pr create`, wait for ci (22), ci (24), audit, secret-scan green (the visual job is a report, never a
+  gate), `gh pr merge --merge` (Dean authorizes merging on green; if the tool refuses, ask him), then on main
+  `git fetch && git reset --hard origin/main` after checking the tag's tree differs only by visual baselines, confirm
+  the tag's "Publish Docker Image" run is green, delete the branches (`git branch -d`; remote via
+  `gh api -X DELETE repos/dtammam/filetube/git/refs/heads/<b>`, then `git ls-remote`).
+
+## 8. Out of scope
+
+- Re-covering albums already saved, or a "Set album cover" action in Music (R5).
+- An auto-add-to-Watch-later setting (R1 chose the button).
+- The Opus library fix; the Shortcut reply (A); a pinned picker footer (B); the subtitles + 360 + cleanup wave; radio
+  residuals (tracker #295). Anything new goes to ROADMAP.md Planned.
+
+## 9. Evidence (the builder fills this)
+
+- Per wave: the measurement before the fix (instrument + numbers), the change, the tests that bind it (names), the
+  mutants run and their results, the measurement after.
+- W6: Dean's private-window check result (asked at the start of the wave).
+- Gate rounds and verdicts; both suite summaries; residuals disclosed.
