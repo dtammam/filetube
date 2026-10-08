@@ -132,4 +132,4 @@ const isGameMusic = (t) => GAME_CHANNELS.has(t.albumArtist) || t.genre === 'Vide
 // a REAL genre outside game music (what Q4 widens to only after the game family)
 const isRealGenre = (t) => t.source === 'native' && !isGameMusic(t);
 
-module.exports = { buildLibrary, KIRBY_SETS, isKirby, isGameMusic, isRealGenre, md5 };
+module.exports = { buildLibrary, KIRBY_SETS, isKirby, isGameMusic, isRealGenre, md5, set, album, upload };

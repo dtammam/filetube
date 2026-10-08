@@ -94,13 +94,14 @@ test('Q1: the seed artist is a MINORITY, and its other franchises never open the
   }
 });
 
-test('Q4: when the series runs out the station moves to OTHER GAME MUSIC before any real genre, and the whole library comes last (20 long sessions)', () => {
-  const [, seed, ctx0] = entryPoints(K.KIRBY_SETS.vapid)[0];
+// the yt-dlp Kirby set, and the NATIVE Kirby OST (whose folder is the whole native library, Prince included)
+for (const q4Title of [K.KIRBY_SETS.vapid, K.KIRBY_SETS.nativeOst]) test('Q4: when the series runs out the station moves to OTHER GAME MUSIC before any real genre, and the whole library comes last (10 long sessions) - ' + q4Title, () => {
+  const [, seed, ctx0] = entryPoints(q4Title)[0];
   const profile = radio.buildStationProfile(seed, LIB);
   const plan = radio.stationPlan(profile, LIB);
   const closeIds = LIB.filter((t) => [radio.TIER_SERIES, radio.TIER_GAME, 1].includes(plan.tierOf(t)) && !ctx0.queued.includes(t.id)).map((t) => t.id);
   assert.ok(closeIds.length > 150, 'precondition: a big game-music pool (' + closeIds.length + ')');
-  for (let r = 1; r <= 20; r += 1) {
+  for (let r = 1; r <= 10; r += 1) {
     const s = session(seed, ctx0, [], 39, r); // 195 plays, inside the 200-play exclude window
     const firstSeriesGone = s.findIndex((x, i) => x.tier !== radio.TIER_SERIES && s.slice(i).every((y) => y.tier !== radio.TIER_SERIES));
     const firstReal = s.findIndex((x) => K.isRealGenre(x.t));
@@ -190,4 +191,89 @@ test('game music: a channel is game music by its TAGGED uploads (untagged chapte
   assert.ok(!pskPlan.isGame(psk[0]), 'precondition: PSK\'s own channel is YouTube "Music", not game music');
   assert.strictEqual(pskPlan.game, true, 'its station is game music: most of its series is');
   assert.ok(pskPlan.familySize > 150, 'the family on this fixture: ' + pskPlan.familySize);
+});
+
+// ---- the survivors of the first mutant run (each test is the input ONLY that guard refuses) ----------------
+
+test('series words: a word only ONE channel uses (its own title template) is no series - a channel\'s other franchise stays out', () => {
+  // GlitchCat names every set "Glitchwave <X> Mix": "glitchwave" is rare (2 titles) and not a stop word,
+  // so only the 2+ channels rule keeps its Zelda set out of a Kirby station
+  const lib = LIB.concat(K.set('GlitchCat', 'glitchcat', 'Glitchwave Kirby Mix', 'Gaming', ['Glitch Greens', 'Glitch Race', 'Glitch Clouds']),
+    K.set('GlitchCat', 'glitchcat', 'Glitchwave Zelda Mix', 'Gaming', ['Glitch Field', 'Glitch Woods', 'Glitch Storms']));
+  const seedT = lib.find((t) => t.album === 'Glitchwave Kirby Mix');
+  const plan = radio.stationPlan(radio.buildStationProfile({ kind: 'album', value: store.albumKeyFor(seedT) }, lib), lib);
+  const gw = plan.allTerms.find((x) => x.term === 'glitchwave');
+  assert.ok(gw && gw.df === 2 && gw.artists === 1, 'precondition: a rare one-channel word: ' + JSON.stringify(gw));
+  assert.ok(!plan.terms.some((x) => x.term === 'glitchwave'), 'the one-channel word does not qualify');
+  for (const t of lib.filter((x) => x.album === 'Glitchwave Zelda Mix')) assert.notStrictEqual(plan.tierOf(t), radio.TIER_SERIES, 'the Zelda set is not the series');
+});
+
+test('series words: a COMMON word (over 10% of the titles, not a stop word) is no series - love songs never join a Kirby station', () => {
+  const love = [];
+  for (let a = 0; a < 20; a += 1) love.push(...K.album('Crooner ' + a, 'Love Record ' + a, 'Pop', 1990, Array.from({ length: 8 }, (_, i) => 'Love Song ' + a + '-' + (i + 1))));
+  const lib = LIB.concat(love, K.set('Heartbit', 'heartbit', 'Kirby Love Mix', 'Gaming', ['Heart Greens', 'Heart Race', 'Heart Clouds']));
+  const seedT = lib.find((t) => t.album === 'Kirby Love Mix');
+  const plan = radio.stationPlan(radio.buildStationProfile({ kind: 'album', value: store.albumKeyFor(seedT) }, lib), lib);
+  const lv = plan.allTerms.find((x) => x.term === 'love');
+  assert.ok(lv && lv.df > 0.1 * plan.docs && lv.artists >= 2, 'precondition: "love" is common and many-channel: ' + JSON.stringify(lv) + ' of ' + plan.docs);
+  assert.ok(!plan.terms.some((x) => x.term === 'love'), 'the common word does not qualify');
+  assert.ok(plan.terms.some((x) => x.term === 'kirby'), 'precondition: kirby still does');
+  assert.strictEqual(love.filter((t) => plan.tierOf(t) === radio.TIER_SERIES).length, 0, 'no love song is the series');
+});
+
+test('Q1: the series is balanced PER CHANNEL - a channel with 13 Kirby sets (Dean\'s NESTALGIA) never drowns the other channels', () => {
+  const extra = [];
+  for (let k = 0; k < 10; k += 1) extra.push(...K.set('NESTALGIA', 'NESTALGIA', 'Kirby Chill Set ' + (k + 1), '', ['Chill Cut A' + k, 'Chill Cut B' + k, 'Chill Cut C' + k, 'Chill Cut D' + k, 'Chill Cut E' + k, 'Chill Cut F' + k, 'Chill Cut G' + k, 'Chill Cut H' + k]));
+  const lib = LIB.concat(extra);
+  const members = lib.filter((t) => t.album === K.KIRBY_SETS.vapid);
+  const profile = radio.buildStationProfile({ kind: 'album', value: store.albumKeyFor(members[0]) }, lib);
+  const pool = lib.filter((t) => K.isKirby(t) && t.albumArtist !== 'Vapid');
+  const nestShare = pool.filter((t) => t.albumArtist === 'NESTALGIA').length / pool.length;
+  assert.ok(nestShare > 0.6, 'precondition: NESTALGIA is most of the Kirby: ' + nestShare.toFixed(2));
+  let nest = 0; let series = 0;
+  for (let r = 1; r <= 100; r += 1) {
+    const trace = [];
+    const picks = radio.pickRadioBatch(profile, lib, { exclude: [], queued: members.map((t) => t.id), count: 5, trace }, createSeededRng(r));
+    picks.forEach((t, i) => { if (trace[i].tier === radio.TIER_SERIES) { series += 1; if (t.albumArtist === 'NESTALGIA') nest += 1; } });
+  }
+  assert.ok(nest / series < 0.35, 'NESTALGIA share of the series picks (5 channels, about 0.2 each when balanced): ' + nest + '/' + series);
+});
+
+test('Q2: the first batch already mixes in other game music - one FAMILY slot of five, while the series still has songs (100 rng seeds)', () => {
+  const [, seed, ctx0] = entryPoints(K.KIRBY_SETS.vapid)[0];
+  const profile = radio.buildStationProfile(seed, LIB);
+  let lastSlotGame = 0;
+  for (let r = 1; r <= 100; r += 1) {
+    const trace = [];
+    radio.pickRadioBatch(profile, LIB, { exclude: [], queued: ctx0.queued, count: 5, trace }, createSeededRng(r));
+    assert.deepStrictEqual(trace.slice(0, 4).map((x) => x.tier), [radio.TIER_SERIES, radio.TIER_SERIES, 1, radio.TIER_SERIES], 'seed ' + r + ': series, series, the seed artist, series');
+    if (trace[4].tier === radio.TIER_GAME) lastSlotGame += 1;
+  }
+  assert.strictEqual(lastSlotGame, 100, 'the fifth slot is other game music: ' + lastSlotGame + '/100');
+});
+
+test('Q1: the series is OTHER sets - the seed album\'s own songs (not queued: the iPod album row) are the seed artist\'s one slot, never the series slots', () => {
+  const members = albumOf(K.KIRBY_SETS.vapid);
+  const ids = new Set(members.map((t) => t.id));
+  const profile = radio.buildStationProfile({ kind: 'album', value: store.albumKeyFor(members[0]) }, LIB);
+  let own = 0; let ownInSeries = 0;
+  for (let r = 1; r <= 100; r += 1) {
+    const trace = [];
+    const picks = radio.pickRadioBatch(profile, LIB, { exclude: [], queued: [], count: 5, trace }, createSeededRng(r));
+    picks.forEach((t, i) => { if (ids.has(t.id)) { own += 1; if (trace[i].tier === radio.TIER_SERIES) ownInSeries += 1; } });
+  }
+  assert.ok(own > 0, 'precondition: the album\'s own songs are drawn at all: ' + own);
+  assert.strictEqual(ownInSeries, 0, 'the seed album in the series tier: ' + ownInSeries);
+  assert.ok(own <= 100, 'at most the one artist slot per batch: ' + own + ' in 100 batches');
+});
+
+test('Q4 one rule for every entry point: an untagged album of a tagged artist draws the same ladder from its page Radio as from a song\'s Start radio', () => {
+  const lib = LIB.concat(K.album('Indie Band', 'Tagged Record', 'Indie', 2004, ['T1', 'T2', 'T3', 'T4']), K.album('Indie Band', 'Untagged Record', '', 2006, ['U1', 'U2', 'U3']));
+  const u = lib.filter((t) => t.album === 'Untagged Record');
+  const albumP = radio.buildStationProfile({ kind: 'album', value: store.albumKeyFor(u[0]) }, lib);
+  const songP = radio.buildStationProfile({ kind: 'track', value: u[0].id }, lib);
+  assert.strictEqual(songP.genre, 'indie', 'precondition: the song borrows its artist\'s genre (v1.368.0)');
+  assert.strictEqual(albumP.genre, 'indie', 'the album borrows it too');
+  assert.strictEqual(radio.stationPlan(albumP, lib), null, 'both take the genre ladder');
+  assert.strictEqual(radio.stationPlan(songP, lib), null);
 });
