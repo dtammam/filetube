@@ -70,11 +70,12 @@ test('Q1: a Kirby album station opens on the SAME SERIES from several channels -
       assert.strictEqual(prince, 0, `${where}: Prince picks: ${prince}`);
       const channels = Object.keys(byChannel);
       const top = Math.max(...Object.values(byChannel));
-      // the series is game music only (the Architect's ruling, gate r1): Soundzantium's and PSK's YouTube-"Music"
-      // Kirby sets are not in it; the game channels holding Kirby are NESTALGIA, Vapid, heavymachinegun, Jun Ishikawa
-      assert.ok(channels.length >= 3, `${where}: Kirby from several channels: ${JSON.stringify(byChannel)}`);
-      assert.ok(top / kirbyPicks < 0.6, `${where}: no one channel is most of the Kirby (not only NESTALGIA): ${JSON.stringify(byChannel)}`);
-      assert.ok(!byChannel.Soundzantium && (title === K.KIRBY_SETS.psk || !byChannel['PSK Beats n\' Vibes']), `${where}: a non-game channel's Kirby is not the series: ${JSON.stringify(byChannel)}`);
+      assert.ok(channels.length >= 4, `${where}: Kirby from several channels: ${JSON.stringify(byChannel)}`);
+      assert.ok(top / kirbyPicks < 0.5, `${where}: no one channel is half the Kirby (not only NESTALGIA): ${JSON.stringify(byChannel)}`);
+      // Dean's Q1 names Soundzantium (a YouTube-"Music" channel) in the first stretch: its Kirby is the series
+      // (PSK's too, unless PSK is the seed's own channel)
+      assert.ok(byChannel.Soundzantium > 20, `${where}: Soundzantium's Kirby suite in the first batches: ${JSON.stringify(byChannel)}`);
+      if (title !== K.KIRBY_SETS.psk) assert.ok(byChannel['PSK Beats n\' Vibes'] > 20, `${where}: PSK's Kirby set in the first batches: ${JSON.stringify(byChannel)}`);
     }
   }
 });
