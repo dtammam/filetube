@@ -12,7 +12,7 @@
 //   - the input under the turn, through the REAL skin engine: the haptic switch sits under the finger in the turned
 //     frame, and a tap on the seek bar seeks by the position ALONG the turned bar;
 //   - the tilt lighting maps by the screen's angle plus the drawn turn;
-//   - the two switches: the Pocket's Settings > Stay Upright row and Settings > Mobile player > Keep the iPod upright.
+//   - the two switches: the Pocket's Settings > Stay Upright row and Settings > Mobile player > Keep Pocket upright.
 // The real turn is measured in Chromium by tools/pocket-proof/upright-probe.js (evidence in the plan) and the settle by
 // test/geometry G4 pocket-rotation.
 
@@ -344,7 +344,7 @@ test('Pocket Settings: selecting Stay Upright flips the setting and re-lists the
   } finally { Object.assign(global, saved); }
 });
 
-test('Settings > Mobile player: "Keep the iPod upright" reflects and writes ft-pocket-sideways (checked = no key)', () => {
+test('Settings > Mobile player: "Keep Pocket upright" reflects and writes ft-pocket-sideways (checked = no key)', () => {
   const setup = require('../../public/js/setup.js');
   const html = fs.readFileSync(path.join(ROOT, 'public/setup.html'), 'utf8');
   const w = new JSDOM(html, { url: 'http://localhost/setup.html' }).window;
@@ -353,7 +353,7 @@ test('Settings > Mobile player: "Keep the iPod upright" reflects and writes ft-p
   try {
     const c = w.document.getElementById('pocket-upright-check');
     assert.ok(c.closest('details[data-collapse-key="mobile-player"]'), 'in Mobile player');
-    assert.strictEqual(w.document.querySelector('label[for="pocket-upright-check"]').textContent, 'Keep the iPod upright');
+    assert.strictEqual(w.document.querySelector('label[for="pocket-upright-check"]').textContent, 'Keep Pocket upright');
     assert.match(c.closest('.setup-group').querySelector('.setup-note').textContent, /On by default; remembered on this device only\./);
     setup.loadPocketUprightControl(w);
     assert.strictEqual(c.checked, true, 'on by default');

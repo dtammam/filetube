@@ -24,7 +24,7 @@ const { musicTabPocketUrl } = require('../../public/js/common.js');
 const VIEW_HTML = `<body><div id="view-root" data-view="music">
   <div class="music-toolbar"><div class="music-toolbar-actions">
     <select id="music-sort-select"></select><button id="music-view-toggle" hidden></button>
-    <button id="music-pocket-btn" type="button" hidden>iPod</button>
+    <button id="music-pocket-btn" type="button" hidden>Pocket</button>
     <button id="music-popout-btn" hidden></button><button id="music-shuffle-btn"></button><button id="music-scan-btn"></button>
     <div class="music-actions-wrap"><button id="music-actions-btn" type="button" hidden></button><div class="mms-sticker-menu" id="music-actions-menu" role="menu" hidden></div></div>
   </div></div>
