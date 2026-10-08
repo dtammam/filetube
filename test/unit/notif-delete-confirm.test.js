@@ -36,7 +36,7 @@ test('D8.3: the row menu holds Open channel, Dismiss and Delete file on a media 
   try {
     await h.open();
     const items = await h.openMenu(41);
-    assert.deepStrictEqual(Object.keys(items), ['Open channel', 'Dismiss', 'Delete file']);
+    assert.deepStrictEqual(Object.keys(items), ['Watch later', 'Open channel', 'Dismiss', 'Delete file']);
     assert.ok(items['Delete file'].classList.contains('ui-row--danger'), 'Delete file reads as destructive');
     h.click(items['Delete file']);
     const c = await h.waitConfirm();
@@ -51,22 +51,59 @@ test('D8.3: the row menu holds Open channel, Dismiss and Delete file on a media 
   } finally { await h.teardown(); }
 });
 
-test('D8.3: podcast and engine rows offer NO delete - not in the menu, not behind the swipe', async () => {
+test('D8.3 / v1.376.0 W2: a podcast row offers Watch later and Delete (its own route, behind the confirm); an engine row only dismisses', async () => {
   const h = await mountBell();
   try {
     await h.open();
     let items = await h.openMenu(43);
-    assert.deepStrictEqual(Object.keys(items), ['Open show', 'Dismiss'], 'a podcast row opens its show and dismisses');
+    assert.deepStrictEqual(Object.keys(items), ['Watch later', 'Open show', 'Dismiss', 'Delete file'], 'a podcast row: the media row\'s options');
     h.key(h.doc, 'Escape');
     await until(() => !h.menuItems(), 'the menu to close');
     items = await h.openMenu(44);
     assert.deepStrictEqual(Object.keys(items), ['Dismiss'], 'an engine row only dismisses');
     h.key(h.doc, 'Escape');
     await until(() => !h.menuItems(), 'the menu to close');
-    assert.deepStrictEqual(Array.from(h.wrap(43).querySelectorAll('.ui-swipe__action')).map((b) => b.dataset.action), ['dismiss']);
+    assert.deepStrictEqual(Array.from(h.wrap(43).querySelectorAll('.ui-swipe__action')).map((b) => b.dataset.action), ['dismiss', 'delete']);
     assert.deepStrictEqual(Array.from(h.wrap(44).querySelectorAll('.ui-swipe__action')).map((b) => b.dataset.action), ['dismiss']);
     assert.deepStrictEqual(Array.from(h.wrap(41).querySelectorAll('.ui-swipe__action')).map((b) => [b.dataset.action, b.className]),
       [['dismiss', 'ui-swipe__action ui-swipe__action--neutral'], ['delete', 'ui-swipe__action ui-swipe__action--danger']]);
+  } finally { await h.teardown(); }
+});
+
+test('v1.376.0 W2: a podcast row\'s Delete asks with the EPISODE copy; Cancel sends nothing; OK sends ONE DELETE /api/podcasts/episodes/:id, then the dismiss, and never /api/videos', async () => {
+  const h = await mountBell({ route: (method, url) => (method === 'DELETE' && url.indexOf('/api/podcasts/episodes/') === 0 ? res(200, { ok: true, status: 'trashed' }) : null) });
+  try {
+    await h.open();
+    h.click((await h.openMenu(43))['Delete file']);
+    let c = await h.waitConfirm();
+    assert.strictEqual(c.title, 'Move to Trash?');
+    assert.match(c.sheet.textContent, /“Episode” moves to Trash\. You can restore it from this episode list\./);
+    dismissConfirm(h, 'cancel');
+    await closedConfirm(h);
+    await wait(20);
+    assert.strictEqual(h.deletes().length, 0, 'Cancel: nothing sent');
+    assert.ok(h.row(43), 'the row stays');
+    h.click((await h.openMenu(43))['Delete file']);
+    c = await h.waitConfirm();
+    h.click(c.ok);
+    await until(() => !h.row(43), 'the row to leave');
+    assert.deepStrictEqual(h.deletes().map((d) => d.url), ['/api/podcasts/episodes/ep-1'], 'the episode route, once');
+    assert.deepStrictEqual(h.dismissals().map((d) => JSON.parse(d.body)), [{ id: 43 }]);
+  } finally { await h.teardown(); }
+});
+
+test('v1.376.0 W2: a failed podcast delete keeps the row and says so', async () => {
+  const toasts = [];
+  const h = await mountBell({ route: (method, url) => (method === 'DELETE' && url.indexOf('/api/podcasts/episodes/') === 0 ? res(403, { error: 'no' }) : null) });
+  h.w.showToast = (m) => toasts.push(m);
+  try {
+    await h.open();
+    h.click((await h.openMenu(43))['Delete file']);
+    h.click((await h.waitConfirm()).ok);
+    await until(() => toasts.length > 0, 'the toast');
+    assert.deepStrictEqual(toasts, ['Could not delete the episode.']);
+    assert.ok(h.row(43));
+    assert.strictEqual(h.dismissals().length, 0);
   } finally { await h.teardown(); }
 });
 
@@ -326,7 +363,7 @@ test('the row menu opens from the kebab, a long-press and a desktop right-click;
     h.row(42).querySelector('.ui-row__title').dispatchEvent(e);
     assert.ok(e.defaultPrevented, 'the native menu is replaced');
     await until(() => h.menuItems(), 'the right-click menu');
-    assert.deepStrictEqual(Object.keys(h.menuItems()), ['Open channel', 'Dismiss', 'Delete file']);
+    assert.deepStrictEqual(Object.keys(h.menuItems()), ['Watch later', 'Open channel', 'Dismiss', 'Delete file']);
     h.key(h.doc, 'Escape');
     await until(() => !h.menuItems(), 'the menu to close');
     await wait(30);
@@ -399,16 +436,24 @@ test('the pure decisions: menu items per kind, the delete copy, the show link', 
   const media = common.buildNotificationRowModel({ id: 1, mediaId: 'a', title: 'T', createdAt: 1, folderName: 'Földer Ä' });
   assert.strictEqual(media.channelHref, '/?folder=' + encodeURIComponent('Földer Ä'));
   assert.deepStrictEqual(common.buildNotificationMenuItems(media).map((i) => [i.value, i.label, !!i.danger]),
-    [['channel', 'Open channel', false], ['dismiss', 'Dismiss', false], ['delete', 'Delete file', true]]);
+    [['watchlater', 'Watch later', false], ['channel', 'Open channel', false], ['dismiss', 'Dismiss', false], ['delete', 'Delete file', true]]);
+  // v1.376.0: an item already in Watch later is not offered again; unknown membership offers it.
+  assert.deepStrictEqual(common.buildNotificationMenuItems(media, { inWatchLater: true }).map((i) => i.value), ['channel', 'dismiss', 'delete']);
+  assert.deepStrictEqual(common.buildNotificationMenuItems(media, { inWatchLater: false }).map((i) => i.value)[0], 'watchlater');
+  assert.deepStrictEqual(common.buildNotificationMenuItems(media, { inWatchLater: null }).map((i) => i.value)[0], 'watchlater');
   const noFolder = common.buildNotificationRowModel({ id: 2, mediaId: 'b', title: 'T', createdAt: 1 });
-  assert.deepStrictEqual(common.buildNotificationMenuItems(noFolder).map((i) => i.value), ['dismiss', 'delete'], 'no folder: no channel item');
+  assert.deepStrictEqual(common.buildNotificationMenuItems(noFolder).map((i) => i.value), ['watchlater', 'dismiss', 'delete'], 'no folder: no channel item');
   const pod = common.buildNotificationRowModel({ id: 3, mediaId: 'e', kind: 'podcast', title: 'E', createdAt: 1, artUrl: '/podcastart/s%C3%BCb%2Fx' });
   assert.strictEqual(pod.channelHref, '/podcasts?show=' + encodeURIComponent('süb/x'));
-  assert.deepStrictEqual(common.buildNotificationMenuItems(pod).map((i) => i.value), ['channel', 'dismiss']);
+  assert.deepStrictEqual(common.buildNotificationMenuItems(pod).map((i) => i.value), ['watchlater', 'channel', 'dismiss', 'delete'], 'v1.376.0 W2');
+  assert.deepStrictEqual(common.buildNotificationMenuItems(pod, { inWatchLater: true }).map((i) => i.value), ['channel', 'dismiss', 'delete']);
+  const podCopy = common.notifDeleteConfirmCopy(pod);
+  assert.match(podCopy.body, /“E” moves to Trash\. You can restore it from this episode list\./, 'a podcast row asks the episode copy');
   assert.strictEqual(common.notifShowHref('/podcastart/%E0%A4%A'), null, 'a malformed escape is no link');
   assert.strictEqual(common.notifShowHref('/thumbnail/x'), null);
   const eng = common.buildNotificationRowModel({ id: 4, mediaId: 'engine:updated:1', kind: 'engine', title: 'E', createdAt: 1 });
   assert.deepStrictEqual(common.buildNotificationMenuItems(eng).map((i) => i.value), ['dismiss']);
+  assert.deepStrictEqual(common.buildNotificationMenuItems(eng, { inWatchLater: false }).map((i) => i.value), ['dismiss'], 'an engine row never offers Watch later');
   const copy = common.notifDeleteConfirmCopy({ title: 'Ünïcode' });
   assert.deepStrictEqual([copy.title, copy.confirmLabel, copy.danger], ['Move to Trash?', 'Move to Trash', true]);
   assert.doesNotMatch(copy.title + copy.body + copy.confirmLabel, /permanent/i, 'the path is a trash move, never "permanently"');

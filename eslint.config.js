@@ -342,6 +342,10 @@ module.exports = [
         applyLikedSidebarEntry: 'readonly',
         fetchWatchLaterIds: 'readonly',
         watchLaterSnapshot: 'readonly',
+        watchLaterHas: 'readonly', // v1.376.0 W2
+        watchLaterKey: 'readonly',
+        podcastShareUrl: 'readonly',
+        podcastTrashConfirmCopy: 'readonly',
         setWatchLater: 'readonly',
         playAllWatchLater: 'readonly',
         applyWatchLaterSidebarEntry: 'readonly',

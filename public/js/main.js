@@ -582,9 +582,13 @@ function cardKindPresentation(item) {
       uploaderLabel: item.showName || 'Podcast',
       uploaderHref: '/podcasts',
       downloadHref: '/episode/' + encId + '?download=1',
-      // Queue rides the v1.71 'podcast' entry kind; delete/share/reheat are
-      // media affordances (episode delete lives in the podcasts place).
-      canQueue: true
+      // Queue rides the v1.71 'podcast' entry kind. v1.376.0 W2 (Dean: "podcasts get the
+      // same options"): Watch later (a `kind=podcast` row), Move to Trash (the episode's own
+      // route, DELETE /api/podcasts/episodes/:id) and Share (the episode's link here,
+      // cardShareUrl). Reheat stays a media affordance.
+      canQueue: true,
+      canWatchLater: true,
+      canDelete: true
     };
   }
   if (kind === 'track') {
@@ -687,6 +691,8 @@ function cardUi() {
 // re-approximated from a raw youtubeId - the v1.52 lesson). YouTube's watchUrl
 // wins; a download from another site shares its saved page link (v1.338).
 function cardShareUrl(item) {
+  // v1.376.0 W2: a podcast episode shares its place in this app (common.js podcastShareUrl).
+  if (item && item.kind === 'podcast') return typeof podcastShareUrl === 'function' ? podcastShareUrl(item.id) : '';
   if (item && typeof item.watchUrl === 'string' && item.watchUrl !== '') return item.watchUrl;
   if (item && typeof item.sourceShareUrl === 'string' && item.sourceShareUrl !== '') return item.sourceShareUrl;
   return '';
@@ -713,8 +719,9 @@ function buildCardMenuItems(item, caps, opts) {
   const kp = cardKindPresentation(it);
   const out = [];
   if (!kp || kp.canQueue) out.push({ id: 'queue', icon: 'playlist_add', label: 'Add to queue' });
-  // v1.343 Watch later: media (video/audio) only. opts.watchLater = already on the list.
-  if (!kp) {
+  // v1.343 Watch later: media (video/audio); v1.376.0 W2: podcast episodes too (kp.canWatchLater).
+  // opts.watchLater = already on the list.
+  if (!kp || kp.canWatchLater) {
     out.push({ id: 'watchlater', icon: 'schedule', label: opts && opts.watchLater ? 'Remove from Watch later' : 'Watch later' });
     if (opts && opts.watchLaterTop) out.push({ id: 'watchlater-top', icon: 'arrow_upward', label: 'Move to top' });
   }
@@ -728,7 +735,7 @@ function buildCardMenuItems(item, caps, opts) {
   if (!kp && it.hasSubtitles === true) out.push({ id: 'transcript', icon: 'subject', label: 'Transcript' });
   if (!kp && c.reheatEnabled === true) out.push({ id: 'reheat', icon: 'local_fire_department', label: 'Reheat metadata' });
   if (!kp && opts && opts.feedHideable) out.push({ id: 'feedhide', icon: 'visibility_off', label: 'Hide from feed' });
-  if (!kp && c.canModifyLibrary === true) out.push({ id: 'delete', icon: 'delete', label: 'Move to Trash', danger: true });
+  if ((!kp || kp.canDelete) && c.canModifyLibrary === true) out.push({ id: 'delete', icon: 'delete', label: 'Move to Trash', danger: true });
   return out;
 }
 
@@ -740,6 +747,7 @@ function buildCardMenuItems(item, caps, opts) {
 // The watch page's More menu and the Pocket extras ask this same copy (step 7 retired
 // the old checkbox-gated local-file dialog, showHardDeleteModal, which had no caller left).
 function cardDeleteConfirmCopy(item) {
+  if (item && item.kind === 'podcast' && typeof podcastTrashConfirmCopy === 'function') return podcastTrashConfirmCopy(item.title); // v1.376.0 W2
   const title = item && typeof item.title === 'string' && item.title !== '' ? item.title : 'This file';
   const local = typeof isYtdlpManagedItem === 'function' ? !isYtdlpManagedItem(item) : false;
   const body = '"' + title + '" leaves your library now. It stays in Trash, where you can restore it from Settings, until the Trash retention window empties it.'
@@ -2674,6 +2682,24 @@ const PreviewCards = (function () {
     // removeCardFromGrid() -- so it never refetches/re-renders the rest of
     // the already-loaded pages) -- no `window.location.reload()`/full
     // navigation either.
+    // v1.376.0 W2: a podcast card's Move to Trash - the episode's ONE route (DELETE
+    // /api/podcasts/episodes/:id: the podcasts Trash, restorable from the show's episode list).
+    // Non-optimistic: the card leaves only on a 2xx.
+    async function deletePodcastCard(id) {
+      try {
+        const res = await fetch('/api/podcasts/episodes/' + encodeURIComponent(id), { method: 'DELETE' });
+        if (res.status === 403) { showToast("You don't have permission to delete library files."); return; }
+        if (!res.ok) { showToast('Could not delete the episode.'); return; }
+        currentItems = currentItems.filter((item) => item.id !== id);
+        currentTotal = Math.max(0, currentTotal - 1);
+        removeCardFromGrid(id);
+        updateItemCountBadge();
+        showToast('Moved to Trash');
+      } catch (_) {
+        showToast('Could not delete the episode.');
+      }
+    }
+
     async function deleteCardById(id) {
       try {
         const res = await fetch(`/api/videos/${id}`, { method: 'DELETE' });
@@ -3080,9 +3106,9 @@ const PreviewCards = (function () {
     // shrinks by one, the hide-from-feed bookkeeping); elsewhere it only flips the menu label.
     async function toggleCardWatchLater(card, item) {
       if (!item || !item.id) return;
-      const snap = watchLaterSnapshot();
-      const inList = watchLaterFilter || !!(snap && snap.has(String(item.id)));
-      const now = await setWatchLater(item.id, !inList); // common.js: THE one verb, toasts the outcome
+      const kind = item.kind === 'podcast' ? 'podcast' : undefined; // v1.376.0 W2: an episode states its kind
+      const inList = watchLaterFilter || watchLaterHas(item.id, kind) === true;
+      const now = await setWatchLater(item.id, !inList, kind); // common.js: THE one verb, toasts the outcome
       if (now !== false || !watchLaterFilter) return;
       if (signal.aborted) return; // the view was left while the request ran
       if (card && card.isConnected) card.remove();
@@ -3096,7 +3122,9 @@ const PreviewCards = (function () {
     // window did not list (unloaded pages, another device's add) after them, so it never drops one.
     async function moveCardToTop(card, item) {
       if (!item || !item.id) return;
-      const ids = [String(item.id), ...currentItems.map((it) => String(it.id)).filter((x) => x !== String(item.id))];
+      // The order is in row KEYS (v1.376.0: an episode's key is `podcast:<id>`, watchLaterKey).
+      const keyOf = (it) => watchLaterKey(it.id, it.kind);
+      const ids = [keyOf(item), ...currentItems.map(keyOf).filter((x) => x !== keyOf(item))];
       try {
         const res = await fetch('/api/watch-later/order', {
           method: 'PUT',
@@ -3207,7 +3235,8 @@ const PreviewCards = (function () {
       const ok = await u.confirm(Object.assign({}, cardDeleteConfirmCopy(item), { signal: shown }));
       if (ok !== true) return;
       if (shown.aborted || signal.aborted) return;
-      deleteCardById(item.id);
+      if (item.kind === 'podcast') deletePodcastCard(item.id);
+      else deleteCardById(item.id);
     }
 
     // Items whose transcript is loading (see runCardAction's transcript arm).
@@ -3262,10 +3291,9 @@ const PreviewCards = (function () {
       const item = cardItemOf(card);
       const u = cardUi();
       if (!item || !u || typeof u.menu !== 'function') return;
-      const wlSnap = watchLaterSnapshot();
       const entries = buildCardMenuItems(item, cardCaps, {
         feedHideable: modernMode,
-        watchLater: watchLaterFilter || !!(wlSnap && wlSnap.has(String(item.id))),
+        watchLater: watchLaterFilter || watchLaterHas(item.id, item.kind) === true,
         watchLaterTop: watchLaterFilter && currentItems.length > 1 && currentItems[0] !== item,
       });
       if (!entries.length) return;

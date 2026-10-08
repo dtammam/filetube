@@ -42,7 +42,7 @@ test('the swipe\'s Dismiss button and a full swipe each POST {id} once for THAT 
   const h = await mountBell();
   try {
     await h.open();
-    await h.swipe(43, 60); // a podcast row: one action (77px), so 60px opens it
+    await h.swipe(43, 120); // a podcast row: two actions since v1.376.0 (Dismiss + Delete, 154px), so 120px opens it
     assert.ok(h.wrap(43).classList.contains('is-open'));
     h.tap(h.swipeAction(43, 'dismiss'));
     await until(() => !h.row(43), 'the podcast row leaves');

@@ -811,3 +811,32 @@ test('broadcast: sends to the allowed users only, honours opt-out and cooldown, 
   assert.strictEqual(sent, 1);
   assert.strictEqual(await delivery.broadcast({ title: 't' }), 0, 'no allowUser = nobody (fail closed)');
 });
+
+// ---- v1.376.0 W1: the "Watch later" action's fields ride each INDIVIDUAL push ----------
+// The worker (public/filetube-worker.js pushNotificationOptions) shows the action only for a
+// payload carrying notifId + mediaId + kind. Read back from the ENCRYPTED body a real round
+// sent (the v1.67.4 lesson: only the decrypted body proves what the device gets).
+
+test('v1.376.0 W1: an individual push carries notifId, mediaId and kind; a podcast row says podcast; a summary carries none', async () => {
+  const feed = bellFeed(2); // ids 10, 11
+  const meta = bellMeta(feed, []);
+  meta.b2 = { ...meta.b2, kind: 'podcast' };
+  const { sends, delivery } = harness({ subs: [{ ...SUB, lastPushedId: 9 }], feed, responses: [], meta });
+  await delivery.deliverRound();
+  const bodies = sends.map((s) => decryptSent(s.body));
+  assert.deepEqual(bodies.map((b) => [b.notifId, b.mediaId, b.kind]), [[10, 'b1', 'media'], [11, 'b2', 'podcast']]);
+  const big = bellFeed(5);
+  const r2 = harness({ subs: [{ ...SUB, lastPushedId: 9 }], feed: big, responses: [], meta: bellMeta(big, []) });
+  await r2.delivery.deliverRound();
+  const summary = decryptSent(r2.sends[0].body);
+  assert.equal(summary.title, '5 new videos');
+  assert.deepEqual([summary.notifId, summary.mediaId, summary.kind], [undefined, undefined, undefined], 'a summary names no item: no action');
+});
+
+test('v1.376.0 W1: pushWatchLaterFields refuses a row without an integer id or a media id', () => {
+  const { pushWatchLaterFields } = require('../../lib/push/deliver.js');
+  assert.deepEqual(pushWatchLaterFields({ id: 3, mediaId: 'm' }, { kind: 'media' }), { notifId: 3, mediaId: 'm', kind: 'media' });
+  assert.deepEqual(pushWatchLaterFields({ id: '3', mediaId: 'm' }, { kind: 'media' }), {});
+  assert.deepEqual(pushWatchLaterFields({ id: 3, mediaId: '' }, { kind: 'media' }), {});
+  assert.deepEqual(pushWatchLaterFields({ id: 3, mediaId: 'e' }, { kind: 'podcast' }).kind, 'podcast');
+});

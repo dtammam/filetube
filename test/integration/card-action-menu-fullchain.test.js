@@ -563,10 +563,12 @@ test('source guard: the ONLY caller of the delete request is confirmAndDeleteCar
   assert.strictEqual((src.match(/method: 'DELETE' \}\)/g) || []).length >= 1, true);
   const callers = src.match(/deleteCardById\(/g) || [];
   assert.strictEqual(callers.length, 2, 'the definition + ONE call');
+  // v1.376.0 W2: a podcast card trashes through its own route, behind the SAME confirm.
+  assert.strictEqual((src.match(/deletePodcastCard\(/g) || []).length, 2, 'the podcast delete: the definition + ONE call');
   const fn = src.slice(src.indexOf('async function confirmAndDeleteCard(item) {'), src.indexOf('function runCardAction('));
   // Gate r1 (adversary 3): the confirm carries the router's shown-view signal (this view is
   // cached on nav-away), and both signals are re-checked after the answer.
-  assert.match(fn, /const ok = await u\.confirm\(Object\.assign\(\{\}, cardDeleteConfirmCopy\(item\), \{ signal: shown \}\)\);\s*if \(ok !== true\) return;\s*if \(shown\.aborted \|\| signal\.aborted\) return;\s*deleteCardById\(item\.id\);/);
+  assert.match(fn, /const ok = await u\.confirm\(Object\.assign\(\{\}, cardDeleteConfirmCopy\(item\), \{ signal: shown \}\)\);\s*if \(ok !== true\) return;\s*if \(shown\.aborted \|\| signal\.aborted\) return;\s*if \(item\.kind === 'podcast'\) deletePodcastCard\(item\.id\);\s*else deleteCardById\(item\.id\);/);
   assert.match(src, /\} else if \(action === 'delete'\) \{\s*confirmAndDeleteCard\(item\);/, 'the menu entry routes through the confirm');
 });
 

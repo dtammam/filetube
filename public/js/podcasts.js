@@ -149,6 +149,8 @@
     controller = new AbortController();
     var signal = controller.signal;
     var extrasEpisodeDeleteBusy = false; // UI pass S7: one Extras delete confirm (or its request) at a time
+    // v1.376.0 W2: the episode kebab's Watch later label reads this membership (fresh per mount).
+    if (typeof window.fetchWatchLaterIds === 'function') window.fetchWatchLaterIds(true);
 
     var content = root.querySelector('#podcasts-content');
     var emptyNote = root.querySelector('#podcasts-empty');
@@ -737,8 +739,8 @@
 
     // UI pass S6 (F27): an episode is a ui-row - title, one quiet meta line (state, Played,
     // date, duration or time left), and two reserved trailing slots: Add to queue and a kebab
-    // holding Like, Mark played, Save to device and Move to Trash. Played is meta text, never a
-    // red fill; the row itself plays the episode.
+    // holding Like, Watch later, Share (v1.376.0), Mark played, Save to device and Move to Trash.
+    // Played is meta text, never a red fill; the row itself plays the episode.
     function buildEpisodeRow(ep) {
       var ui = window.ui;
       var rss = !ep.watchHref;
@@ -795,6 +797,11 @@
       // history and never reach this menu).
       items.push({ label: ep.played ? 'Mark unplayed' : 'Mark played', icon: 'check', onSelect: function () { togglePlayed(ep, row); } });
       if (ep.status === 'downloaded') {
+        // v1.376.0 W2 (Dean: "podcasts get the same options"): Watch later (a kind=podcast row in
+        // the ONE list; membership read at view mount) and Share (common.js podcastShareUrl).
+        var inWl = typeof window.watchLaterHas === 'function' && window.watchLaterHas(ep.id, 'podcast') === true;
+        items.push({ label: inWl ? 'Remove from Watch later' : 'Watch later', icon: 'schedule', onSelect: function () { toggleWatchLater(ep); } });
+        items.push({ label: 'Share', icon: 'share', onSelect: function () { shareEpisode(ep); } });
         // v1.71: save-to-device, the confined stream route's ?download=1 arm.
         items.push({ label: 'Save to device', icon: 'download', onSelect: function () { saveToDevice(ep); } });
         // v1.70: the recoverable delete - through ui.confirm, never an in-row arm.
@@ -820,6 +827,22 @@
         .catch(function () { setStatus('Could not update the like.'); });
     }
 
+    function toggleWatchLater(ep) {
+      if (typeof window.setWatchLater !== 'function') return;
+      var inWl = typeof window.watchLaterHas === 'function' && window.watchLaterHas(ep.id, 'podcast') === true;
+      return window.setWatchLater(ep.id, !inWl, 'podcast'); // common.js: THE one verb, toasts the outcome
+    }
+
+    function shareEpisode(ep) {
+      var url = typeof window.podcastShareUrl === 'function' ? window.podcastShareUrl(ep.id) : '';
+      if (!url || typeof window.shareExternalUrl !== 'function') return;
+      return window.shareExternalUrl(url, ep.title).then(function (outcome) {
+        if (typeof window.showToast !== 'function') return;
+        if (outcome === 'copied') window.showToast('Link copied');
+        if (outcome === 'copy-failed' || outcome === 'unavailable') window.showToast('Could not share the link.');
+      });
+    }
+
     function saveToDevice(ep) {
       var a = document.createElement('a');
       a.href = '/episode/' + encodeURIComponent(ep.id) + '?download=1';
@@ -832,6 +855,7 @@
     // Move to Trash is destructive (recoverable, but it moves the file): the DELETE runs only
     // after ui.confirm resolves true. Cancel, Esc, the scrim and Close all resolve false.
     function confirmTrashEpisode(ep) {
+      // The SAME words as common.js podcastTrashConfirmCopy (the card and the bell row ask it).
       return window.ui.confirm({
         title: 'Move to Trash?',
         body: '“' + (ep.title || 'This episode') + '” moves to Trash. You can restore it from this episode list.',

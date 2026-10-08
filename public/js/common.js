@@ -4135,22 +4135,51 @@ function notifShowHref(artUrl) {
 }
 
 // Sweep S4 (D8.3, Dean: "Notification delete leaves the row"): the row menu - reached by
-// the trailing kebab, a long-press and a desktop right-click - in this order: Open channel
-// (when the row has one), Dismiss (every row), Delete file (MEDIA rows only: a podcast
-// episode or an engine event is not a /api/videos item). Pure, exported for tests.
-function buildNotificationMenuItems(m) {
+// the trailing kebab, a long-press and a desktop right-click - in this order: Watch later
+// (v1.376.0: media AND podcast rows not already in the list; the tap also dismisses
+// the row), Open channel / Open show (when the row has one), Dismiss (every row), Delete file
+// (media rows -> DELETE /api/videos/:id; v1.376.0 W2: podcast rows -> DELETE
+// /api/podcasts/episodes/:id; never an engine event). `opts.inWatchLater` is the caller's
+// membership read (watchLaterHas); unknown = offer it (the add is idempotent). Pure, exported.
+function notifRowHasItem(m) { return !!m && (m.kind === 'media' || m.kind === 'podcast'); }
+function buildNotificationMenuItems(m, opts) {
   if (!m) return [];
   const items = [];
+  if (notifRowHasItem(m) && !(opts && opts.inWatchLater === true)) items.push({ value: 'watchlater', icon: 'schedule', label: 'Watch later' });
   if (m.channelHref) items.push({ value: 'channel', icon: 'open_in_new', label: m.kind === 'podcast' ? 'Open show' : 'Open channel' });
   items.push({ value: 'dismiss', icon: 'close', label: 'Dismiss' });
-  if (m.kind === 'media') items.push({ value: 'delete', icon: 'delete', label: 'Delete file', danger: true });
+  if (notifRowHasItem(m)) items.push({ value: 'delete', icon: 'delete', label: 'Delete file', danger: true });
   return items;
 }
 
-// The delete confirm's copy says what the ONE delete path does: DELETE /api/videos/:id
-// moves the file to Trash (lib/media/routes.js, the v1.65 trash move; the card menu's
-// wording, main.js cardDeleteConfirmCopy) - never "permanently". Pure, exported.
+// v1.376.0 W2: the ONE share link for a podcast episode - its place in this app (the
+// /podcasts?play= link every surface opens it by), absolute so it pastes anywhere. Used by the
+// home / search card's Share (main.js cardShareUrl) and the episode kebab (podcasts.js). Pure.
+function podcastShareUrl(id) {
+  if (id == null || String(id) === '') return '';
+  const origin = typeof location !== 'undefined' && location.origin ? location.origin : '';
+  return origin + '/podcasts?play=' + encodeURIComponent(String(id));
+}
+
+// v1.376.0 W2: the ONE copy for trashing a podcast episode (the show's episode list, a home /
+// search card, a notification row): DELETE /api/podcasts/episodes/:id moves the file to the
+// podcasts Trash, restorable from the show's episode list. Pure, exported.
+function podcastTrashConfirmCopy(title) {
+  return {
+    title: 'Move to Trash?',
+    body: '“' + (typeof title === 'string' && title !== '' ? title : 'This episode') + '” moves to Trash. You can restore it from this episode list.',
+    confirmLabel: 'Move to Trash',
+    cancelLabel: 'Cancel',
+    danger: true,
+  };
+}
+
+// The delete confirm's copy says what the delete path does: DELETE /api/videos/:id moves the
+// file to Trash (lib/media/routes.js, the v1.65 trash move; the card menu's wording, main.js
+// cardDeleteConfirmCopy) - never "permanently"; a podcast row says the episode's own copy
+// (podcastTrashConfirmCopy, v1.376.0). Pure, exported.
 function notifDeleteConfirmCopy(m) {
+  if (m && m.kind === 'podcast') return podcastTrashConfirmCopy(m.title); // v1.376.0 W2: the episode's own copy
   const title = m && typeof m.title === 'string' && m.title !== '' ? m.title : 'This file';
   return {
     title: 'Move to Trash?',
@@ -4388,11 +4417,12 @@ function injectNotificationBellIfEnabled() {
       // resolved exactly `true`: Cancel, Esc, the scrim, Close, the panel closing (the
       // signal) and a late tap on a closing dialog all resolve false. One confirm at a time
       // for the whole panel; a row with a request in flight asks nothing. The request is
-      // the SAME one the v1.161 button sent: DELETE /api/videos/:id (-> Trash, recoverable),
+      // the SAME one the v1.161 button sent: DELETE /api/videos/:id (-> Trash, recoverable;
+      // a podcast row: DELETE /api/podcasts/episodes/:id, v1.376.0),
       // then a best-effort dismiss of the row's notification.
       let confirmOpen = false;
       const requestDelete = (m, row) => {
-        if (m.kind !== 'media') return; // a podcast/engine id is not a /api/videos item
+        if (!notifRowHasItem(m)) return; // an engine event has no file
         if (confirmOpen || busyRows.has(row) || !row.isConnected || !openCtl) return;
         const signal = openCtl.signal;
         confirmOpen = true;
@@ -4402,7 +4432,10 @@ function injectNotificationBellIfEnabled() {
             if (ok !== true) return;
             if (signal.aborted || !row.isConnected || busyRows.has(row)) return;
             busyRows.add(row);
-            fetch('/api/videos/' + encodeURIComponent(m.mediaId), { method: 'DELETE' })
+            // v1.376.0 W2: an episode trashes through ITS one route (podcasts Trash, restorable
+            // from the show's episode list); a media row keeps /api/videos.
+            const isPodcast = m.kind === 'podcast';
+            fetch((isPodcast ? '/api/podcasts/episodes/' : '/api/videos/') + encodeURIComponent(m.mediaId), { method: 'DELETE' })
               .then((res) => (res.ok ? res.json().catch(() => ({})) : Promise.reject(new Error(`delete failed: ${res.status}`))))
               .then((data) => {
                 // The video is gone -> best-effort dismiss its notification server-side so
@@ -4414,13 +4447,41 @@ function injectNotificationBellIfEnabled() {
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ id: m.id }),
                 }).catch(() => { /* cosmetic - the row is already gone client-side */ });
-                if (typeof deleteResultToast === 'function') showToastSafe(deleteResultToast(data));
+                if (isPodcast) showToastSafe('Moved to Trash');
+                else if (typeof deleteResultToast === 'function') showToastSafe(deleteResultToast(data));
                 return removeNotifRowReconcile(row);
               })
               .catch(() => {
                 busyRows.delete(row); // non-optimistic: a failure keeps the row for a retry
-                showToastSafe('Could not delete the video.');
+                showToastSafe(isPodcast ? 'Could not delete the episode.' : 'Could not delete the video.');
               });
+          });
+      };
+
+      // ADD TO WATCH LATER (v1.376.0, Dean's R1): one tap adds the item to Watch later AND
+      // dismisses its notification (the per-user dismiss), without opening it. NON-OPTIMISTIC:
+      // the row leaves only after BOTH requests answered 2xx; a failed add keeps the row
+      // (nothing changed), a failed dismiss after a good add keeps the row too and says so
+      // (the item IS in Watch later; the menu then stops offering the add).
+      const watchLaterRow = (m, row) => {
+        if (!notifRowHasItem(m)) return; // an engine row has nothing to add
+        if (busyRows.has(row) || !row.isConnected) return;
+        busyRows.add(row);
+        requestWatchLater(m.mediaId, true, m.kind)
+          .catch(() => { throw new Error('add'); })
+          .then(() => fetch('/api/notifications/dismiss', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: m.id }),
+          }))
+          .then((res) => {
+            if (!res.ok) throw new Error('dismiss');
+            showToastSafe('Added to Watch later');
+            return removeNotifRowReconcile(row);
+          })
+          .catch((err) => {
+            busyRows.delete(row);
+            showToastSafe(err && err.message === 'add' ? 'Could not add to Watch later.' : 'Added to Watch later, but could not dismiss the notification.');
           });
       };
 
@@ -4437,9 +4498,10 @@ function injectNotificationBellIfEnabled() {
         if (!openCtl || !row.isConnected) return;
         U.menu({
           title: m.title || 'Notification', anchor, signal: openCtl.signal, doc: document,
-          items: buildNotificationMenuItems(m),
+          items: buildNotificationMenuItems(m, { inWatchLater: watchLaterHas(m.mediaId, m.kind) }),
           onSelect: (v) => {
-            if (v === 'channel') openChannel(m);
+            if (v === 'watchlater') watchLaterRow(m, row);
+            else if (v === 'channel') openChannel(m);
             else if (v === 'dismiss') dismissRow(m, row);
             else if (v === 'delete') requestDelete(m, row);
           },
@@ -4522,11 +4584,11 @@ function injectNotificationBellIfEnabled() {
         const FI = typeof window !== 'undefined' ? window.FTInteraction : null;
         if (!FI) return row;
         h.offMenu = FI.onActionMenu(row, () => openRowMenu(m, row, kebab));
-        // Swipe left: Dismiss (neutral) and, on a media row, Delete (danger). A full swipe
+        // Swipe left: Dismiss (neutral) and, on a media or podcast row, Delete (danger). A full swipe
         // past 60% DISMISSES - swipeRow refuses a danger full-swipe at setup - and the
         // Delete button only ever opens the confirm (requestDelete).
         const actions = [{ id: 'dismiss', label: 'Dismiss', kind: 'neutral', onSelect: () => dismissRow(m, row) }];
-        if (m.kind === 'media') actions.push({ id: 'delete', label: 'Delete', kind: 'danger', onSelect: () => requestDelete(m, row) });
+        if (notifRowHasItem(m)) actions.push({ id: 'delete', label: 'Delete', kind: 'danger', onSelect: () => requestDelete(m, row) });
         h.swipe = FI.swipeRow(row, { fullSwipe: 'dismiss', actions });
         return row.parentNode; // the parentless row now sits in its .ui-swipe wrapper
       };
@@ -4563,6 +4625,7 @@ function injectNotificationBellIfEnabled() {
         bellBtn.setAttribute('aria-expanded', 'true');
         sheet.open();
         loadRows();
+        fetchWatchLaterIds(true); // v1.376.0: fresh membership, so the row menu hides "Watch later" for an item already listed
       };
       function closePanel() {
         if (!panelOpen()) return;
@@ -14996,22 +15059,38 @@ function fetchWatchLaterIds(force) {
   return watchLaterIdsPromise;
 }
 function watchLaterSnapshot() { return watchLaterIdsSet; }
+// v1.376.0 W2: the client spelling of a Watch later row key - the server's userStore.watchLaterKey
+// (a media id as-is, a podcast episode as `podcast:<id>`); GET /api/watch-later/ids returns keys.
+function watchLaterKey(id, kind) { return kind === 'podcast' ? 'podcast:' + String(id) : String(id); }
+// Membership of one item from the loaded snapshot: true / false, or null while unknown (not loaded).
+function watchLaterHas(id, kind) { return watchLaterIdsSet ? watchLaterIdsSet.has(watchLaterKey(id, kind)) : null; }
 
-// THE one Watch later verb: on=true adds, false removes. NON-optimistic (the set flips only after
-// the server says so). Toasts the outcome; resolves true/false = the new membership, or null on
-// failure (callers keep their previous state). Refreshes the sidebar entry's count gate.
-function setWatchLater(mediaId, on) {
-  return fetch('/api/watch-later/' + encodeURIComponent(mediaId), { method: on ? 'POST' : 'DELETE' })
+// The Watch later REQUEST, silent: on=true adds, false removes. NON-optimistic (the set flips
+// only after the server says so). Resolves the new membership; REJECTS on any failure so the
+// caller decides what to say (setWatchLater toasts; the bell row keeps itself, v1.376.0).
+// Refreshes the sidebar entry's count gate.
+// `kind` 'podcast' names a podcast episode (v1.376.0 W2: stated as ?kind=podcast, never inferred);
+// anything else is a media item, the v1.343 request byte for byte.
+function requestWatchLater(mediaId, on, kind) {
+  const q = kind === 'podcast' ? '?kind=podcast' : '';
+  return fetch('/api/watch-later/' + encodeURIComponent(mediaId) + q, { method: on ? 'POST' : 'DELETE' })
     .then((res) => (res.ok ? res.json() : Promise.reject(new Error('watch later request failed: ' + res.status))))
     .then((body) => {
       const now = body && typeof body.watchLater === 'boolean' ? body.watchLater : on;
       if (!watchLaterIdsSet) watchLaterIdsSet = new Set();
-      if (now) watchLaterIdsSet.add(String(mediaId)); else watchLaterIdsSet.delete(String(mediaId));
-      showToast(now ? 'Added to Watch later' : 'Removed from Watch later');
-      const list = document.getElementById('sidebar-folders-list');
+      const key = watchLaterKey(mediaId, kind);
+      if (now) watchLaterIdsSet.add(key); else watchLaterIdsSet.delete(key);
+      const list = typeof document !== 'undefined' ? document.getElementById('sidebar-folders-list') : null;
       if (list) applyWatchLaterSidebarEntry(list, { force: true });
       return now;
-    })
+    });
+}
+
+// THE one Watch later verb for a toggle: requestWatchLater plus the outcome toast. Resolves
+// true/false = the new membership, or null on failure (callers keep their previous state).
+function setWatchLater(mediaId, on, kind) {
+  return requestWatchLater(mediaId, on, kind)
+    .then((now) => { showToast(now ? 'Added to Watch later' : 'Removed from Watch later'); return now; })
     .catch(() => { showToast('Could not update Watch later.'); return null; }); // never fake success
 }
 
@@ -17945,7 +18024,7 @@ if (typeof module !== 'undefined' && module.exports) {
     formatSnapShift, snapShiftBlock, snapShiftSuggestion, snapGapBreak,
     // v1.286 (Dean, everything shareable): universal file-share + its pure strategy decision.
     shareMediaFile, chooseShareStrategy,
-    fetchWatchLaterIds, watchLaterSnapshot, setWatchLater, playAllWatchLater, applyWatchLaterSidebarEntry,
+    fetchWatchLaterIds, watchLaterSnapshot, watchLaterKey, watchLaterHas, requestWatchLater, podcastTrashConfirmCopy, podcastShareUrl, setWatchLater, playAllWatchLater, applyWatchLaterSidebarEntry,
     showChoiceModal,
     // Sweep S9: the dialogs on ui.sheet (jsdom-tested with the real ui.js).
     confirmHtmlToText, isLiveDialogOpen, showTranscriptModal,
