@@ -119,10 +119,12 @@ function createPocketHarness(env) {
   const menu = (h) => click(h.dom, h.panel.querySelector('[data-skin-menu]'));
   const select = (h) => click(h.dom, h.panel.querySelector('[data-skin-select]'));
   const rows = (h) => [...h.panel.querySelectorAll('.ip-menuview .ipm-row:not(.ipm-skel)')];
-  const labels = (h) => rows(h).map((r) => r.querySelector('.ipm-lbl').textContent);
-  const cursorLabel = (h) => { const r = h.panel.querySelector('.ip-menuview .ipm-row.is-cursor'); return r ? r.querySelector('.ipm-lbl').textContent : null; };
+  // a row's NAME (v1.374.0: album and recent rows add an .ipm-detail line inside .ipm-lbl; info rows have no .ipm-name)
+  const nameOf = (r) => (r.querySelector('.ipm-name') || r.querySelector('.ipm-lbl')).textContent;
+  const labels = (h) => rows(h).map(nameOf);
+  const cursorLabel = (h) => { const r = h.panel.querySelector('.ip-menuview .ipm-row.is-cursor'); return r ? nameOf(r) : null; };
   const title = (h) => h.panel.querySelector('.ip-np').textContent;
-  const tapRow = (h, label) => { const r = rows(h).find((x) => x.querySelector('.ipm-lbl').textContent === label); if (!r) throw new Error('no row ' + label + ' in ' + labels(h).join('|')); click(h.dom, r); };
+  const tapRow = (h, label) => { const r = rows(h).find((x) => nameOf(x) === label); if (!r) throw new Error('no row ' + label + ' in ' + labels(h).join('|')); click(h.dom, r); };
   const inMenu = (h) => h.panel.classList.contains('mms-menumode');
   function spin(h, degs, msPerMove) {
     // the SAME gesture the v1.233 cursor tests drive: pointerdown on the wheel ring, sweep, release.

@@ -924,7 +924,7 @@
     return (Array.isArray(albums) ? albums : []).map(function (a) {
       var name = (a && typeof a.album === 'string' && a.album) ? a.album : 'Unknown Album';
       return {
-        label: name, sub: (a && typeof a.artist === 'string') ? a.artist : '',
+        label: name, detail: (a && typeof a.artist === 'string') ? a.artist : '',
         node: { type: 'album', key: (a && a.albumKey) || '', label: name },
         art: artVia(artFor, a && a.artId),
       };
@@ -994,6 +994,8 @@
       seen['k' + name] = true;
       out.push({
         label: name || 'Unknown Artist',
+        // v1.374.0 (Dean): the album of this artist's most recent play (the first row seen is the newest)
+        detail: (typeof t.album === 'string') ? t.album : '',
         node: { type: 'artist', key: name, label: name || 'Unknown Artist' },
         art: (typeof t.avatarUrl === 'string' && t.avatarUrl) ? t.avatarUrl : artVia(artFor, t.artId || t.id, t.artUrl),
       });
@@ -1015,7 +1017,8 @@
       seen['k' + t.albumKey] = true;
       var name = (typeof t.album === 'string' && t.album) ? t.album : 'Unknown Album';
       out.push({
-        label: name, sub: (typeof t.artist === 'string') ? t.artist : '',
+        // the album's artist: the grouping artist (albumArtist || artist, as the album key has it), not one song's credit
+        label: name, detail: (typeof t.albumArtist === 'string' && t.albumArtist) || (typeof t.artist === 'string' ? t.artist : ''),
         node: { type: 'album', key: t.albumKey, label: name },
         art: artVia(artFor, t.artId || t.id, t.artUrl),
       });
