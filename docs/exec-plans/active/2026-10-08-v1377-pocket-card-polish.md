@@ -170,6 +170,72 @@ so security-brief joins the gate; a force row cannot be dropped.)
 
 (pending)
 
+Gate: CHANGES r1 @0791fe92 - qa
+- Instruments (Node 22.23.1): touched + neighbour tests (pocket-idle-art, pocket-word-census, handoff-card, handoff-card-styling,
+  player-dock-presence, token-scale-lock, pocket-idle-seam, pocket-upright, settings-forms-sweep, pocket-quick-scroll) tests 104,
+  pass 104, fail 0; `npm run lint:ui` "ui-lint: OK - the live debt equals docs/ui-exceptions.json"; overlay-containment "clean
+  (0 violations)"; eslint on the 14 changed JS files 0 errors, 6 warnings (all in common.js, the same 6 at base 4cc39c6e);
+  `geometry/run.js --only HDK` 4 checks - 4 ok; `--mutants --only HDK` 7 of 7 killed (sandbox).
+- Mutants (my /tmp sandbox): 12 of 12 killed - idle-art guard off, whole-library pool, no invalidation, no fallback, always
+  fallback, no promise cache (pocket-idle-art); device label via innerHTML (handoff-card-styling); age folded into device
+  (handoff-card); "iPod" back on the button, in a music.js literal, in the setup note, in a lib/ response (census).
+- Extra probe (sandbox HDK, paused presence): "Paused listening on" fits unclipped at 370 (132px), 375 (137), 390, 414; wraps
+  to 2 lines at 320 (82x38); every check ok at 9 cases.
+- WARNING (lying comment): public/css/style.css:53-55 (--player-dock-h: "the phone's handoff card ... stack above the dock by
+  it") and public/js/player.js:10208-10209 ("the phone's handoff card stacks above it") still describe v1.376.0's bar; the card
+  now sits beside the dock. Reword both.
+- WARNING ("cannot drift" with two copies, LESSONS 12): style.css:2888-2889 says the card uses "the dock's own width token and
+  right inset, so the two cannot drift" - only the width is shared; the dock's right inset and bottom are literal 8px
+  (style.css:1378, 1384) while the card uses --space-4 (2897-2898). Reword (HDK binds bottom/gap) or share one value.
+- SUGGESTION: test/geometry/handoff-dock.js:46 hdk-height-off comment "the bar stacks above a zero-height dock" is stale.
+- SUGGESTION: pocket-quick-scroll test E title still claims "one per album"; the new expected set (every art track) no longer
+  binds it.
+- SUGGESTION: plan section 9 (Evidence, incl. the W3 census list) is still empty; fill before the release commit.
+- INFO security: device label written by textContent in all three spans (no innerHTML in the controller, mutant-proven); the
+  cover sample reads the same visibility-gated /api/music list (seed/limit normalised server-side, an integer seed client-side)
+  - no new surface. The tokens.css force row is a design-token false positive.
+- INFO: with no covers the idle pane is now EMPTY (not a placeholder) - better than the plan's "placeholder stays" wording.
+
+Gate: APPROVED r1 @0791fe92 - security-brief
+- Gap: no Bash, so `git diff 4cc39c6e 0791fe92` was NOT run; reviewed the named surfaces at HEAD (clean tree) plus a grep census of v1.377.0 markers (no lib/ or package file carries one; package.json still 1.376.0). The "package.json untouched" and "no new route" claims are inferred, not diffed.
+- (1) verified: handoff lead/device/age are set via textContent only (common.js render); no innerHTML in the card IIFE.
+- (2) verified: /api/music?sort=random reads visibleMusicList (trackVisibleTo + projectedLibraryTracks), the same gate as title-asc; seed via normalizeSeed (parseInt or undefined), limit via normalizeLimit (clamped to MAX_LIMIT); pool URLs pass sameOriginPath; the fallback is the same gated route.
+- (3) verified: buildSkinCtx's idle change only empties artUrl (fewer requests); tokens.css adds one px var, no url()/import.
+- Findings: none CRITICAL/HIGH/MEDIUM/LOW. INFO: the trigger was a false positive on design-token filenames.
+
+Gate: CHANGES r1 @0791fe92 - adversary
+- Instruments (Node 22.23.1, /tmp git-archive sandbox): `geometry/run.js --only HDK` 4 of 4 ok; `--mutants --only HDK` the builder's
+  7 of 7 killed. Full `npm test` in the sandbox: tests 11748, pass 11729, fail 8, skipped 11 - the 8 fail on the sandbox having
+  no .git (`git ls-files` fatal / EISDIR); those 7 files re-run in the clean checkout at 0791fe92: tests 69, pass 69, fail 0.
+  eslint on the changed files 0 errors, 6 warnings (same 6 at base); ui-lint OK; overlay-containment clean.
+- W1 measured (own probe, 44 cases, tree vs base 4cc39c6e): phone 430/414/390/375/370/369/360/320 x 4 eras (light) and 390/320
+  x 4 eras (dark), paused + listen ("Paused listening on", the longest lead) with a long and a short label: no overlap, every
+  part inside the card, lead unclipped (1 line from 370, 2 lines at 369 and below), no hit-test miss; the full card and the
+  dock's box identical to base in all 44; landscape 844, narrow non-phone 390/700 and desktop 1440 identical to base (the
+  narrow non-phone overlap is base behaviour, ROADMAP Planned).
+- WARNING (presence-not-binding, HDK): 5 of my 8 extra HDK mutants SURVIVE, 3 of them visible defects: device ellipsis off
+  (measured at 390 with a long label: the device text runs to x=228, past the card's right 214 and onto the dock at 222);
+  lead nowrap at <=369 (measured at 320, paused: "Paused listening on" is 128px in an 82px column, under the X); lead wrap at
+  >=370. Cause: every HDK case is state 'playing' ("Listening on"), short labels. Fix: a paused, long-label case at 320 and
+  at 370-390, asserting the lead's and the device's text ranges (Range.getClientRects) stay inside their boxes / off the X.
+- WARNING (W2 clear axis unbound): delete music.js `pocketIdle = false; // v1.364.0 (W2b): a song is up now` (the only clear
+  on a song start; others are dockToOrigin only) -> the 106-file W2 subset stays green (fail 0). v1.377.0 made that line
+  carry the art: a song started from the idle Pocket would keep artUrl '' (reasoned, not run). Bind: start a song from the
+  idle iPod in pocket-idle-art and assert the Now Playing art is the song's.
+- WARNING (W2 retry claim unbound): music.js says "a failure retries on the next ask"; mutant `pr.catch(function () {})`
+  survives the W2 subset (fail 0). Measured with a scratch jsdom test (first sample 500, then ok): real code 2 sample
+  requests and a cover on the pane; mutant 1 request and an EMPTY pane for the view's life. Add that test.
+- WARNING (concur with qa): lying comments style.css:53-55 and player.js:10208-10209 ("the handoff card stacks above").
+- SUGGESTION (census blind spots, none live today - grep 0 hits in each): public/filetube-worker.js (notification text),
+  public/manifest.webmanifest and CSS `content:` are not scanned; 'i' + 'Pod' / 'iP' + 'od' / fromCharCode beat it (mutants
+  measured: 0 fail each). Add the worker and the manifest to the scan; the concatenation forms can be disclosed.
+- SUGGESTION: the age-shown and full-card-two-line mutants survive HDK (the full card is only compared to itself); my probe
+  shows the full card unchanged vs base, so not a defect today. Concur with qa on test E's "one per album" title and the empty
+  section 9.
+- Verified by reading (not run): /api/music?sort=random filters through visibleMusicList before the sort for every viewer;
+  seed omitted -> rng seed 0 (client always sends one); the late pool is dropped by the engine (destroyed / poolReq) and
+  slidesWanted gates the panel, a held game and visibility; `/albumart/<id>?v=<ver>` passes menuCoverPool's sameOriginPath (run).
+
 ## 7. Release (v1.377.0)
 
 Exactly as v1.376.0 did (docs/RELEASING.md + AGENTS.md): after the gate APPROVES (all seats at the same sha), full
