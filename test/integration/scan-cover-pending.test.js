@@ -233,7 +233,16 @@ test('a library entry ALREADY held for a deferred path is retained by the scan (
   const id = getMediaId(p);
   const seeded = { id, name: path.basename(p), title: 'Mr. Jambo (as indexed)', filePath: p, folderName: 'Kyle Gordon', rootFolder: tmpDir,
     size: 7, ext: '.mp3', type: 'audio', addedAt: Date.now(), duration: 60, hasThumbnail: true };
-  seedState({ folders: [], folderSettings: {}, metadata: { [id]: seeded }, settings: SETTINGS });
+  // a second, settled library file under the same root: so the root never reads as vanished (the mount-loss guard
+  // would otherwise keep the deferred entry by itself and hide whether the walk's deferral reaches the prune - gate
+  // mutant M4, deferredPaths dropped from selectPrunableIds, survived without it)
+  const other = path.join(tmpDir, 'Other', 'Settled [vid00000099].mp3');
+  fs.mkdirSync(path.dirname(other), { recursive: true });
+  fs.writeFileSync(other, 'SETTLED');
+  const otherId = getMediaId(other);
+  const otherEntry = { id: otherId, name: path.basename(other), title: 'Settled', filePath: other, folderName: 'Other', rootFolder: tmpDir,
+    size: fs.statSync(other).size, ext: '.mp3', type: 'audio', addedAt: Date.now(), duration: 60, hasThumbnail: false };
+  seedState({ folders: [], folderSettings: {}, metadata: { [id]: seeded, [otherId]: otherEntry }, settings: SETTINGS });
   fs.mkdirSync(THUMBNAIL_DIR, { recursive: true });
   fs.writeFileSync(path.join(THUMBNAIL_DIR, `${id}.jpg`), 'thumb-as-indexed');
   const job = await startJobApp();
@@ -241,7 +250,14 @@ test('a library entry ALREADY held for a deferred path is retained by the scan (
     await until(() => fs.existsSync(landed), 'the file to land');
     fs.writeFileSync(gate, 'go');
     await reembed.started.promise;
-    await scanDirectories();
+    // the deferral must reach the prune itself (selectPrunableIds guard 1b): the entry is never even a prune
+    // CANDIDATE. Without it the final mutator's restore keep-guard (T-S2) would still keep the entry - it logs
+    // "NOT pruning ... live again" - so that line is the observable (gate mutant M4 survived the outcome checks).
+    const logged = [];
+    const realLog = console.log;
+    console.log = (...a) => { logged.push(a.join(' ')); realLog(...a); };
+    try { await scanDirectories(); } finally { console.log = realLog; }
+    assert.ok(!logged.some((l) => l.includes('NOT pruning') && l.includes(p)), 'the deferred entry was never a prune candidate');
     const e = entryOf(p);
     assert.ok(e, 'the deferred path\'s entry is NOT pruned');
     assert.strictEqual(e.title, 'Mr. Jambo (as indexed)', 'and not re-indexed (the file still holds its own art)');
