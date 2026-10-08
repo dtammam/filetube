@@ -97,6 +97,8 @@
   Shipped an instrument instead of a theory: the lifecycle log's `player:strip` line (the device's own bar / video /
   player / stage rects, gap, device-pixel edges, glow). Next: Dean turns Ambient off on the iPhone - gone = drop the
   phone's below-bar bloom; still there = export the lifecycle log with the line on screen.
+  Dean's answer (2026-10-08): with Ambient OFF the line is GONE, so the cause is the ambient glow's bloom below the
+  control bar on the phone. STILL OPEN as the fix to make: drop or clip the phone's below-bar bloom (measure first).
 - [ ] **Web Push is not filtered per user (v1.376.0 gate, security-brief, PRE-EXISTING)** - lib/push/deliver.js reads the
   global feed per subscription and server.js resolvePushMeta(db, row) takes no user, while the bell filters per viewer: a
   member restricted from a show or folder with push on gets the TITLE and channel of a new item there on the device (the
