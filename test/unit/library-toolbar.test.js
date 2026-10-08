@@ -27,6 +27,7 @@ const {
   FORMAT_FILTER_MODES, FORMAT_TOGGLE_OPTIONS,
   WATCH_TOGGLE_MODES, WATCH_TOGGLE_OPTIONS, getStoredWatchFilter, setStoredWatchFilter,
   buildFilterChipRow,
+  channelFormatForItem, channelHrefForItem, urlFormatFilter, buildNotificationRowModel,
 } = require('../../public/js/common.js');
 const { JSDOM } = require('jsdom');
 
@@ -563,4 +564,53 @@ test('v1.149 gate round 1: main.js source locks - deep-link init, ctx threading,
   // v1.205: the scope-toggle mount is now the else-branch of the type-chip row.
   // S2: no scope over a Liked view (its endpoint ignores search) - the chip row's
   // scope dimension is gated on a non-liked search (bound in the test above).
+});
+
+// ---- v1.376 W3 (R3): a channel link carries the item's type for that visit ----
+
+test('channelFormatForItem: a library media item maps to its own type; every other kind and type carries nothing (positive guards)', () => {
+  assert.strictEqual(channelFormatForItem({ type: 'video' }), 'video', 'a /api/videos item (no kind)');
+  assert.strictEqual(channelFormatForItem({ type: 'audio' }), 'audio');
+  assert.strictEqual(channelFormatForItem({ kind: 'media', type: 'video' }), 'video', 'a bell row (kind media)');
+  assert.strictEqual(channelFormatForItem({ kind: 'media', type: 'audio' }), 'audio');
+  for (const kind of ['podcast', 'track', 'book', 'tv-episode', 'tv-show', 'engine', 'Media', '']) {
+    assert.strictEqual(channelFormatForItem({ kind, type: 'audio' }), '', `kind ${JSON.stringify(kind)} never carries a format`);
+    assert.strictEqual(channelFormatForItem({ kind, type: 'video' }), '', `kind ${JSON.stringify(kind)} never carries a format`);
+  }
+  for (const type of [undefined, null, '', 'engine', 'Video', 'both', 'image']) {
+    assert.strictEqual(channelFormatForItem({ type }), '', `type ${JSON.stringify(type)} carries nothing`);
+  }
+  assert.strictEqual(channelFormatForItem(null), '');
+  assert.strictEqual(channelFormatForItem('video'), '');
+});
+
+test('channelHrefForItem: appends format to the channel href with the right separator, or leaves it as it was', () => {
+  assert.strictEqual(channelHrefForItem('/?folder=F%C3%B6lder', { type: 'video' }), '/?folder=F%C3%B6lder&format=video');
+  assert.strictEqual(channelHrefForItem('/?folder=x', { type: 'audio' }), '/?folder=x&format=audio');
+  assert.strictEqual(channelHrefForItem('/channel', { type: 'audio' }), '/channel?format=audio');
+  assert.strictEqual(channelHrefForItem('/?folder=x', { kind: 'podcast', type: 'audio' }), '/?folder=x');
+  assert.strictEqual(channelHrefForItem('/?folder=x', {}), '/?folder=x');
+  assert.strictEqual(channelHrefForItem('', { type: 'video' }), '');
+  assert.strictEqual(channelHrefForItem(null, { type: 'video' }), null);
+});
+
+test('urlFormatFilter: only the three format modes count; absent or junk is null (the remembered filter applies)', () => {
+  assert.strictEqual(urlFormatFilter('?folder=x&format=video'), 'video');
+  assert.strictEqual(urlFormatFilter('?format=audio'), 'audio');
+  assert.strictEqual(urlFormatFilter(new URLSearchParams('format=both')), 'both');
+  for (const q of ['', '?folder=x', '?format=', '?format=Audio', '?format=podcast', '?format=video%00']) {
+    assert.strictEqual(urlFormatFilter(q), null, q);
+  }
+  assert.strictEqual(urlFormatFilter(undefined), null);
+});
+
+test('bell row: a media row\'s "Open channel" carries the row\'s type (the server row shape); podcast and engine rows are unchanged', () => {
+  const vid = buildNotificationRowModel({ id: 1, mediaId: 'a', kind: 'media', type: 'video', title: 'T', createdAt: 1, folderName: 'Földer Ä' });
+  assert.strictEqual(vid.channelHref, '/?folder=' + encodeURIComponent('Földer Ä') + '&format=video');
+  const aud = buildNotificationRowModel({ id: 2, mediaId: 'b', kind: 'media', type: 'audio', title: 'T', createdAt: 1, folderName: 'Földer Ä' });
+  assert.strictEqual(aud.channelHref, '/?folder=' + encodeURIComponent('Földer Ä') + '&format=audio');
+  const pod = buildNotificationRowModel({ id: 3, mediaId: 'e', kind: 'podcast', type: 'audio', title: 'E', createdAt: 1, artUrl: '/podcastart/s1', folderName: 'Földer Ä' });
+  assert.strictEqual(pod.channelHref, '/podcasts?show=s1', 'a podcast row opens its show, never a filtered folder');
+  const eng = buildNotificationRowModel({ id: 4, mediaId: 'engine:x', kind: 'engine', type: 'engine', title: 'E', createdAt: 1 });
+  assert.strictEqual(eng.channelHref, null);
 });

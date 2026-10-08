@@ -2127,6 +2127,33 @@ function setStoredFormatFilter(mode) {
   return normalized;
 }
 
+// v1.376 W3 (R3, Dean: filtered to Audio, opened a video, tapped its channel: a blank
+// list). A channel link opened FROM an item carries that item's type for THAT visit
+// (`&format=video|audio`); the folder / root view honours the URL format over the
+// remembered `filetube_format` and never writes it back. POSITIVE guards only (LESSONS
+// 12): a library media item (no kind, or kind 'media') of type 'video' or 'audio' maps to
+// itself; every other kind (podcast, track, book, tv-*) and every other type (an 'engine'
+// bell row, a missing type) carries nothing, so the remembered filter applies as before.
+function channelFormatForItem(item) {
+  if (!item || typeof item !== 'object') return '';
+  if (item.kind !== undefined && item.kind !== null && item.kind !== 'media') return '';
+  return (item.type === 'video' || item.type === 'audio') ? item.type : '';
+}
+// The channel href with the item's format appended (unchanged when there is none).
+function channelHrefForItem(href, item) {
+  const fmt = channelFormatForItem(item);
+  if (typeof href !== 'string' || href === '' || !fmt) return href;
+  return href + (href.indexOf('?') === -1 ? '?' : '&') + 'format=' + fmt;
+}
+// The `format=` a home URL asks for: one of FORMAT_FILTER_MODES, or null when absent or
+// junk (null = the remembered filter applies). `search` is location.search or a
+// URLSearchParams.
+function urlFormatFilter(search) {
+  let v = null;
+  try { v = (search instanceof URLSearchParams ? search : new URLSearchParams(search || '')).get('format'); } catch (_) { v = null; }
+  return FORMAT_FILTER_MODES.includes(v) ? v : null;
+}
+
 // v1.45.6 (Dean): library card/list VIEW-MODE preference — per-device, mirrors
 // the format-toggle persistence exactly. Default 'card' (today's grid).
 const VIEW_MODE_STORAGE_KEY = 'ft-view-mode';
@@ -4121,7 +4148,8 @@ function buildNotificationRowModel(row) {
     // channel page (the card byline's own `/?folder=` href, main.js), a podcast row its
     // show (podcasts.js reads ?show=). The API row is unchanged: the show id is read back
     // from the server's `/podcastart/<subId>` art URL. null = no channel to open.
-    channelHref: isPodcast ? notifShowHref(row.artUrl) : (folderName ? `/?folder=${encodeURIComponent(folderName)}` : null),
+    // v1.376 W3 (R3): a media row's channel opens filtered to the row's own type.
+    channelHref: isPodcast ? notifShowHref(row.artUrl) : (folderName ? channelHrefForItem(`/?folder=${encodeURIComponent(folderName)}`, row) : null),
   };
 }
 
@@ -18218,6 +18246,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // case (folded into sortItems above), F1 avatar fallback.
     countItems, formatItemCountLabel, renderItemCountBadge,
     getStoredFormatFilter, setStoredFormatFilter, filterByMediaType,
+    // v1.376 W3: the channel link carries the item's format for that visit.
+    channelFormatForItem, channelHrefForItem, urlFormatFilter,
     // v1.45.6 (Dean): library view-mode + per-page-sort helpers.
     getStoredViewMode, setStoredViewMode,
     isPerPageSortEnabled, setPerPageSortEnabled, pageSortKey, getPerPageSort, setPerPageSort,
