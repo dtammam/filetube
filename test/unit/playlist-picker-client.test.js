@@ -327,7 +327,7 @@ test('v1.371.0: with the format controls, switching to Audio reveals the album, 
   assert.strictEqual(calls.find((x) => x.url === '/api/ytdlp/download-playlist').body.album, undefined, 'video never posts an album, even with the switch left on');
 });
 
-test('v1.371.0: Download posts the album - typed names, Clean up titles, and each track\'s PLAYLIST position (blocked rows counted)', async () => {
+test('v1.371.0 + v1.376.0 R6: Download posts the album - typed names, Clean up titles, and the downloaded songs numbered 1..N (a blocked row leaves no gap)', async () => {
   const c = fresh({ pages: { 1: KG } });
   c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio', quality: 'best', filetype: 'mp3' });
   await sleep(GUARD_MS + 20);
@@ -345,7 +345,7 @@ test('v1.371.0: Download posts the album - typed names, Clean up titles, and eac
   assert.deepStrictEqual(body.ids, [a, c3, d4]);
   // v1.372.0: the shown names go along when they differ from YouTube's (cleaned here: noise off on the server, prefix off
   // in the picker); "I'm a Horse" is unchanged, so it is not sent; the server runs no cleanup of its own (cleanTitles false)
-  assert.deepStrictEqual(body.album, { title: 'Kyle Gordon Is Wonderful', artist: 'Kyle Gordon', cleanTitles: false, tracks: { [a]: 1, [c3]: 3, [d4]: 4 },
+  assert.deepStrictEqual(body.album, { title: 'Kyle Gordon Is Wonderful', artist: 'Kyle Gordon', cleanTitles: false, tracks: { [a]: 1, [c3]: 2, [d4]: 3 },
     titles: { [a]: 'Introduction (feat. Daniel Radcliffe)', [c3]: 'My Life (Is the Worst Life Ever)' } });
 });
 
@@ -493,7 +493,7 @@ test('gate r1: Opus never offers the album (its tags are per stream; the scan re
   assert.strictEqual(albumSection().hidden, false);
 });
 
-test('gate r1: track numbers are the SERVER\'s list position (a dropped row shifts nothing); a video listed twice posts the ticked row', async () => {
+test('v1.376.0 R6: track numbers are 1..N over the ticked rows, never the server\'s list position; a video listed twice counts once, at its first ticked row', async () => {
   const page = { listId: L, title: 'T', total: 9, page: 1, nextPage: null, entries: [
     entry(1, { position: 1 }), entry(2, { position: 3 }), entry(1, { position: 4 }), entry(5, { position: 5 }),
   ] };
@@ -502,12 +502,54 @@ test('gate r1: track numbers are the SERVER\'s list position (a dropped row shif
   await albumOnNow();
   albumInput('Album artist').value = 'Someone'; // these rows credit nobody, so there is no default
   const sw = switches();
-  sw[0].checked = true; sw[1].checked = true; sw[3].checked = true; // video 1's FIRST listing (place 1), not its second (place 4)
+  sw[0].checked = true; sw[1].checked = true; sw[2].checked = true; sw[3].checked = true; // video 1 ticked at BOTH of its listings
   sw[1].dispatchEvent(new global.window.Event('change'));
+  assert.deepStrictEqual([0, 1, 2, 3].map(metaOf), ['Track 1', 'Track 2', 'Track 1', 'Track 3'], 'a video listed twice shows its one number on both rows');
   click(btn('Download'));
   await sleep(20);
   const body = calls.find((x) => x.url === '/api/ytdlp/download-playlist').body;
-  assert.deepStrictEqual(body.album.tracks, { [entry(1).id]: 1, [entry(2).id]: 3, [entry(5).id]: 5 });
+  assert.deepStrictEqual(body.album.tracks, { [entry(1).id]: 1, [entry(2).id]: 2, [entry(5).id]: 3 });
+});
+
+test('v1.376.0 R6 (Dean: "Kyle Gordon Is Wonderful has 1, 3-10, 13, 14"): owned, unavailable, unticked and server-dropped rows leave NO gap; the overline and the post agree, and a tick renumbers live', async () => {
+  // playlist order, with the server's positions (5 was a bad row the server dropped): the old positions and the new
+  // numbers DIVERGE on every downloaded row after the first
+  const page = { listId: L, title: 'T', total: 8, page: 1, nextPage: null, entries: [
+    entry(1, { position: 1 }),
+    entry(2, { position: 2, inLibrary: true }),
+    entry(3, { position: 3, unavailable: true }),
+    entry(4, { position: 4 }),
+    entry(6, { position: 6 }),
+    entry(1, { position: 7 }),
+    entry(8, { position: 8 }),
+  ] };
+  const c = fresh({ pages: { 1: page } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await albumOnNow();
+  albumInput('Album artist').value = 'Someone';
+  const sw = switches(); // the pickable rows only: 1, 4, 6, 1 (again), 8
+  assert.strictEqual(sw.length, 5);
+  sw[0].checked = true; sw[2].checked = true; sw[3].checked = true; sw[4].checked = true; // row 4 stays unticked
+  sw[0].dispatchEvent(new global.window.Event('change'));
+  assert.deepStrictEqual([0, 1, 2, 3, 4, 5, 6].map(metaOf), ['Track 1', 'Already in library', 'Unavailable', 'Not in the album', 'Track 2', 'Track 1', 'Track 3']);
+  // untick video 1's first listing: its second (ticked) listing now places it, after video 6
+  sw[0].checked = false; sw[0].dispatchEvent(new global.window.Event('change'));
+  assert.deepStrictEqual([0, 3, 4, 5, 6].map(metaOf), ['Track 2', 'Not in the album', 'Track 1', 'Track 2', 'Track 3'], 'renumbered on the tick');
+  click(btn('Download'));
+  await sleep(20);
+  const body = calls.find((x) => x.url === '/api/ytdlp/download-playlist').body;
+  assert.deepStrictEqual(body.album.tracks, { [entry(6).id]: 1, [entry(1).id]: 2, [entry(8).id]: 3 }, 'posted = shown, 1..N');
+  assert.deepStrictEqual(Object.values(body.album.tracks).sort(), [1, 2, 3]);
+});
+
+test('v1.376.0 R6 albumTrackNumbers: 1..N over the ticked pickable rows in order, each video once', () => {
+  const c = fresh({});
+  const box = (checked) => ({ checked });
+  assert.deepStrictEqual(c.albumTrackNumbers([
+    { id: 'a', box: box(true) }, { id: 'b', box: null }, { id: 'c', box: box(false) }, { id: 'd', box: box(true) }, { id: 'a', box: box(true) }, { id: 'e', box: box(true) },
+  ]), { a: 1, d: 2, e: 3 });
+  assert.deepStrictEqual(c.albumTrackNumbers([]), {});
+  assert.deepStrictEqual(c.albumTrackNumbers(null), {});
 });
 
 test('gate r1 (adversary ADVC1): Load more keeps a TYPED album and artist; an untouched one follows the rows', async () => {
@@ -562,12 +604,14 @@ test('v1.372.0: with the album on, each row shows the name the song WILL get and
   await sleep(GUARD_MS);
   pointerClick(albumSwitch('Save as an album'));
   assert.strictEqual(nameOf(0), KG.entries[0].title, 'album on, Clean up titles off: the name is unchanged');
+  assert.strictEqual(metaOf(0), 'Not in the album', 'v1.376.0 R6: an unticked row has no number (and keeps its line)');
+  switches()[0].checked = true; switches()[1].checked = true; switches()[0].dispatchEvent(new global.window.Event('change'));
   assert.strictEqual(metaOf(0), 'Track 1');
   assert.strictEqual(albumSection().querySelector('.ui-row__meta').textContent, 'Tap a song\'s name to rename it', 'the hint, on the switch row while on');
   pointerClick(albumSwitch('Clean up titles'));
   assert.strictEqual(nameOf(0), 'Introduction (feat. Daniel Radcliffe)', 'cleaned: the noise (server) and "Kyle Gordon - " (picker) off');
   assert.strictEqual(nameOf(2), 'My Life (Is the Worst Life Ever)', 'an en dash prefix too');
-  assert.strictEqual(metaOf(2), 'Track 3');
+  assert.strictEqual(metaOf(2), 'Track 2', 'v1.376.0 R6: the blocked row between them leaves no gap');
   assert.strictEqual(rowOf(1).querySelector('.ui-row__meta').textContent, 'Already in library', 'a blocked row keeps its note and no tap target');
   assert.strictEqual(rowOf(1).querySelector('.ui-row__link'), null);
   albumInput('Album artist').value = 'Somebody'; albumInput('Album artist').dispatchEvent(new global.window.Event('input'));

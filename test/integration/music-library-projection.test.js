@@ -127,7 +127,10 @@ test('v1.242: every projected library audio item carries its own media routes', 
   const nest = byId.get('nest1');
   assert.strictEqual(nest.source, 'library', 'the client branches on this');
   assert.strictEqual(nest.streamSrc, '/video/nest1', 'streams the mp3 from the media byte route');
-  assert.strictEqual(nest.artUrl, '/thumbnail/nest1');
+  // v1.376.0 W6 (c): the art URL carries the version of the thumbnail it points at (lib/music/artVersion.js)
+  const nestV = require('../../lib/music/artVersion').versionOfStat(fs.statSync(path.join(DATA_DIR, '.thumbnails', 'nest1.jpg')));
+  assert.strictEqual(nest.artUrl, `/thumbnail/nest1?v=${encodeURIComponent(nestV)}`);
+  assert.strictEqual(nest.artV, nestV);
   assert.strictEqual(nest.progressEndpoint, '/api/progress');
   assert.strictEqual(nest.artist, 'NESTALGIA');
   assert.strictEqual(nest.album, '', 'untitled album (no album tag)');

@@ -175,13 +175,22 @@ function buildBooksHomeSectionHtml(items, heading, seeAllHref) {
 // cover (often 1000px+). Keyed on the album's `artId` when the payload carries it, so the tile
 // shares one cached file with the album's rows on /music.
 var MUSIC_ROW_CARD_ART_SIZE = 512;
+// v1.376.0 W6 (c): Home's /albumart URL - the same shape public/js/music.js albumArtSrc writes for Music (main.js cannot
+// load music.js; test/unit/music-art-version.test.js locks the two byte-equal): `?s=<size>` for an allowlisted size,
+// `v=<version>` when the server sent the picture's version (`artV`), so a changed cover is a new URL.
+function musicArtSrc(id, size, v) {
+  var q = [];
+  if (size) q.push('s=' + size);
+  if (typeof v === 'string' && v) q.push('v=' + encodeURIComponent(v));
+  return '/albumart/' + encodeURIComponent(id == null ? '' : id) + (q.length ? '?' + q.join('&') : '');
+}
 function buildMusicRowCardHtml(item) {
   // Deep-link to the specific track so /music resumes it (consuming the
   // per-user resume pointer), mirroring the books row's /read.html?b=<id>.
   const artId = (typeof item.artId === 'string' && item.artId) ? item.artId : item.id;
   return `
     <a class="book-row-card music-row-card" href="/music?play=${encodeURIComponent(item.id)}" title="${escapeBookRowHtml(item.title)}">
-      <span class="book-row-cover music-row-cover"><img class="art-shimmer" src="/albumart/${encodeURIComponent(artId)}?s=${MUSIC_ROW_CARD_ART_SIZE}" alt="" loading="lazy" /></span>
+      <span class="book-row-cover music-row-cover"><img class="art-shimmer" src="${escapeBookRowHtml(musicArtSrc(artId, MUSIC_ROW_CARD_ART_SIZE, item.artV))}" alt="" loading="lazy" /></span>
       <span class="book-row-title">${escapeBookRowHtml(item.title)}</span>
       <span class="music-row-artist">${escapeBookRowHtml(item.artist || '')}</span>
     </a>
@@ -602,7 +611,7 @@ function cardKindPresentation(item) {
     return {
       kind,
       href: '/music?play=' + encId,
-      thumbSrc: '/albumart/' + encId,
+      thumbSrc: musicArtSrc(item && item.id != null ? String(item.id) : '', 0, item && item.artV), // v1.376.0 W6 (c): versioned
       uploaderLabel: trackByline,
       uploaderHref: '/music',
       downloadHref: '/track/' + encId + '?download=1',
@@ -977,6 +986,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildBookRowCardHtml,
     buildBooksHomeSectionHtml,
     buildMusicRowCardHtml,
+    musicArtSrc, // v1.376.0 W6 (c): Home's /albumart writer (locked to music.js albumArtSrc)
     buildListeningHomeSectionHtml,
     HOME_ROW_CAP,
     buildPodcastRowCardHtml,
