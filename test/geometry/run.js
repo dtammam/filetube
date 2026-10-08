@@ -11,7 +11,8 @@
 //   node test/geometry/run.js --only VPM   the viewport matrix alone
 //   npm run test:geometry:fast             G1-G3 on the 4 pre-push scenes (FAST_SCENES)
 //   (both also run DBLTAP, confirm-double-tap.js: a double-tap never answers the confirm
-//   its first tap opened; skip it with --only naming other checks)
+//   its first tap opened; skip it with --only naming other checks. The full run also runs
+//   HDK, handoff-dock.js: the handoff card never covers the mini player, v1.376.0)
 //   node test/geometry/run.js --mutants    every mutation must turn its check red
 //   node test/geometry/run.js [--only G1,G4] [--mutate NAME] [--json FILE]
 //        [--base URL --data DIR]           reuse a running fixture server instead of booting one
@@ -35,6 +36,7 @@ const checks = require('./checks.js');
 const { SURFACES, ERAS, MODES, FAST_SCENES, G4_SEQUENCES, vpmCells } = require('./scenes.js');
 const { MUTATIONS } = require('./mutations.js');
 const doubleTap = require('./confirm-double-tap.js');
+const handoffDock = require('./handoff-dock.js');
 const { newGuardedContext } = require('../../tools/capture/request-policy.js');
 
 const EXPECTED_PATH = path.join(__dirname, 'expected-failures.json');
@@ -328,7 +330,20 @@ async function main() {
         if (!ok) survived++;
         console.log(`${ok ? 'KILLED  ' : 'SURVIVED'} dbltap-guard-off (DBLTAP on stats-delete phone+desktop): control ${control} failure(s), mutated ${mutated} failure(s)`);
       }
-      const total = Object.values(MUTATIONS).filter((m) => !opts.only || opts.only.includes(m.check)).length + (!opts.only || opts.only.includes('DBLTAP') ? 1 : 0);
+      // HDK's mutants (CSS and a rewritten player.js): each must turn some case red, the control none.
+      let hdkTotal = 0;
+      if (!opts.only || opts.only.includes('HDK')) {
+        const fails = (rs) => rs.filter((r) => r.failures.length).map((r) => r.id);
+        const control = fails(await handoffDock.run(env));
+        for (const name of Object.keys(handoffDock.MUTANTS)) {
+          hdkTotal++;
+          const red = fails(await handoffDock.run(env, { mutate: name }));
+          const ok = red.length > 0 && control.length === 0;
+          if (!ok) survived++;
+          console.log(`${ok ? 'KILLED  ' : 'SURVIVED'} ${name} (HDK): red [${red.join(' ')}] control red [${control.join(' ')}]`);
+        }
+      }
+      const total = Object.values(MUTATIONS).filter((m) => !opts.only || opts.only.includes(m.check)).length + (!opts.only || opts.only.includes('DBLTAP') ? 1 : 0) + hdkTotal;
       console.log(`geometry --mutants: ${total - survived} of ${total} killed, ${survived} survived (${Math.round((Date.now() - t0) / 1000)}s)`);
       return survived ? 1 : 0;
     }
@@ -365,6 +380,7 @@ async function main() {
       results.push(...await runVPM(env, css));
     }
     if (!opts.only || opts.only.includes('DBLTAP')) results.push(...await doubleTap.run(env));
+    if (!opts.fast && (!opts.only || opts.only.includes('HDK'))) results.push(...await handoffDock.run(env));
     if (record.blockedRequests.length) results.push({ id: 'REQUEST-POLICY', failures: record.blockedRequests.map((b) => `${b.scene} ${b.method} ${b.url}`) });
 
     const { fail, lines, counts } = summarize(results, expected);

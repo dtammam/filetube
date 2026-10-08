@@ -50,6 +50,10 @@
   --md-nav-width: 250px;
   --md-divider-inset: 56px; /* row divider starts past the icon tile + gap */
   --tracking-caps: 0.05em;  /* uppercase group titles / badges */
+  /* v1.376.0 (W4): the shown mini player's height, 0 while it is hidden. player.js setDockShown writes the
+     live value on the root element while the dock shows and removes it on every exit; the phone's handoff
+     card and the narrow remote pill stack above the dock by it. */
+  --player-dock-h: 0px;
   /* Click wheel test (Settings › Experimental): a self-contained
      dark instrument surface, one visual world in every era/theme. These are
      token DEFINITIONS (census-exempt); every .whcal-* rule consumes them. */
@@ -2766,9 +2770,13 @@ select {
    bug class).
 
    Structurally this is #player-dock's twin: a fixed, persistent-shell card
-   that must clear the mobile .bottom-nav. It deliberately sits bottom-LEFT
-   where the dock sits bottom-RIGHT, so a docked player and a handoff offer
-   can be on screen together without overlapping.
+   that must clear the mobile .bottom-nav. On a wide screen it sits bottom-LEFT
+   where the dock sits bottom-RIGHT, so the two never meet there. At phone
+   width the card spans the screen and the dock sits on its row, so it would
+   cover the dock (v1.376.0, measured at 390: the card over 160 x 132 px of the
+   134 px dock, every dock control under it); there the card turns into a
+   one-line bar stacked ABOVE the dock while the dock shows (the rule after
+   the mobile block below).
 
    Every value is a token so all four eras skin it for free, and the card
    carries NO [data-theme]-scoped rules of its own -- which also sidesteps
@@ -2874,6 +2882,49 @@ select {
        lockstep through the iOS address-bar/home-indicator collapse. */
     bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4));
   }
+  /* v1.376.0 (W4, Dean's ruling R4): on a phone, while the mini player shows, the card is a
+     COMPACT one-line bar (art, "Listening on <device>", Continue here, the dismiss) STACKED
+     ABOVE the dock: its bottom is the dock's top (the dock's own bottom, the nav height plus 8px,
+     here --space-4, the same 8px; plus the dock's height) plus a --space-4 gap, so the two never
+     overlap. The SAME
+     element: the head, body and meta boxes dissolve (display: contents) so their children
+     line up in one row, and the second-line details (title, time, state glyph) and the button's
+     glyph step aside, so the words keep the room (the label stays: "Continue here").
+     html.has-player-dock and --player-dock-h are written by ONE place, player.js setDockShown
+     (every dock show and every exit), so the bar returns to the full card the moment the dock
+     goes. Phone-width only: a landscape phone (wider than 768) keeps the corner layout, where
+     the card and the dock never meet. */
+  html.is-phone.has-player-dock #handoff-card {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
+    bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4) + var(--player-dock-h) + var(--space-4));
+  }
+  html.is-phone.has-player-dock #handoff-card .handoff-head,
+  html.is-phone.has-player-dock #handoff-card .handoff-body,
+  html.is-phone.has-player-dock #handoff-card .handoff-meta {
+    display: contents;
+  }
+  html.is-phone.has-player-dock #handoff-card .handoff-state,
+  html.is-phone.has-player-dock #handoff-card .handoff-title,
+  html.is-phone.has-player-dock #handoff-card .handoff-time,
+  html.is-phone.has-player-dock #handoff-card .ui-btn--primary .ui-btn__icon {
+    display: none;
+  }
+  html.is-phone.has-player-dock #handoff-card .handoff-cover {
+    order: 1;
+    width: var(--av-lg);
+  }
+  html.is-phone.has-player-dock #handoff-card .handoff-headline {
+    order: 2;
+  }
+  html.is-phone.has-player-dock #handoff-card .ui-btn--primary {
+    order: 3;
+  }
+  html.is-phone.has-player-dock #handoff-card .handoff-head .ui-btn {
+    order: 4;
+  }
 }
 
 /* v1.348 Listen Control: the PC's "Controlled by <device>" pill (remote.js mountPill). A persistent-shell
@@ -2905,6 +2956,12 @@ select {
 }
 @media (max-width: 768px) {
   #remote-pill { bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4)); }
+  /* v1.376.0 (W4): the pill shows on a speaker, never on a phone, but a narrow window (an iPad in Slide
+     Over, a narrow desktop window) puts it on the dock's row: measured at 390 wide, it covered 59 x 40 px of
+     the dock. While the dock shows it stacks above it, the handoff card's rule (player.js setDockShown). */
+  html.has-player-dock #remote-pill {
+    bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4) + var(--player-dock-h) + var(--space-4));
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
