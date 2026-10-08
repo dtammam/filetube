@@ -3,7 +3,7 @@ plan: art-version-flake
 harness: v2 · lean
 branch: fix/art-version-flake
 anchor: outcome
-status: Approved @9b9a7435
+status: Shipped v1.377.0
 next: W1 (the fixture's pictures get distinct versions + a distinctness floor), then W2 (records), then the gate (adversary)
 design: v1.377.0's PR #115 CI (ci (24) red once, rerun green) + a read of the test; Dean's device pass of v1.377.0 and v1.376.0 W5 (2026-10-08). Base main 9b9a7435 (v1.377.0).
 gate: APPROVED r1 @71a5f449 (adversary)
