@@ -1714,7 +1714,10 @@ if (typeof module !== 'undefined' && module.exports) {
           // v1.339 L1: keyed on the album's shared art id, so the next track of the same
           // album re-uses the cover already loaded (full size: the skin's big art).
           // v1.376.0 W6 (c): versioned by the same item the id comes from
-          artUrl: playingId ? musicArtUrl((ci >= 0 && queue[ci] && queue[ci].id === playingId) ? musicArtId(queue[ci])
+          // v1.377.0 (W2): the IDLE iPod (no music track: nothing, or a podcast / video the player still
+          // holds) has no song art - `/albumart/<that id>` is the server's "Music" disc placeholder, which
+          // filled the menu's art pane (Dean's screenshot). The pane then shows the library cover drift.
+          artUrl: (playingId && !pocketIdle) ? musicArtUrl((ci >= 0 && queue[ci] && queue[ci].id === playingId) ? musicArtId(queue[ci])
             : ((playingArtMemo.id === playingId && playingArtMemo.artId) ? playingArtMemo.artId : playingId), curArt, 0,
           (ci >= 0 && queue[ci] && queue[ci].id === playingId) ? musicArtV(queue[ci]) : (playingArtMemo.id === playingId ? playingArtMemo.artV : '')) : '' },
         // v1.317 gate r1 W2: the view's veto on the artist line (the engine ANDs it with its
@@ -4763,6 +4766,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // exactly the order the album/artist drill behind the skin then shows. The builders take
     // musicArtUrl - the one art rule - so a menu thumbnail is the art the rest of Music shows.
     var menuSongsPromise = null; // the whole library (title order), fetched once per view instance
+    var menuCoverPromise = null; // the cover drift's pool (one random sample), fetched once per view instance
     var menuArtistCache = Object.create(null); // artist name -> Promise<tracks>
     var menuDataGen = 0; // bumped when the library changed under the menus (the engine re-loads its open levels)
     var menuLikedGen = 0; // bumped by a like/unlike (the engine re-loads an open Liked Songs level)
@@ -4775,6 +4779,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // levels already on its stack re-load - a menu never shows or plays a removed/re-timed track.
     function invalidateMenuData() {
       menuSongsPromise = null;
+      menuCoverPromise = null;
       menuArtistCache = Object.create(null);
       menuDataGen += 1;
     }
@@ -4838,10 +4843,30 @@ if (typeof module !== 'undefined' && module.exports) {
       var sort = play && play.ctx && play.ctx.sort;
       return { items: SKINS.menuSongItems(tracks, musicArtUrl), tracks: tracks, play: play, letters: SKINS.menuSortIsAlpha(sort) };
     }
-    // Addendum E: one cover per album from the whole library (the Songs level's own cached list),
-    // only the ones the server says HAVE art, through the one art rule.
+    // Addendum E: one cover per album, only the ones the server says HAVE art, through the one art rule.
+    // v1.377.0 (W2, Dean: "when one opens the iPod view, it always shows some art"): the covers come
+    // from ONE random sample of the library (the list route's seeded `random` sort, COVER_SAMPLE
+    // rows), never the whole Songs list - on a 23,754-song library that was five sequential
+    // 5,000-row pages (~15 MB) before the first cover, and the disc placeholder showed the whole
+    // wait. The drift draws at most COVER_POOL_MAX covers anyway. A sample with no covers falls back
+    // to the whole library (art on a few albums only), so the placeholder shows only when the
+    // library has no covers at all; a library no bigger than the sample is read whole either way.
+    // One request per view instance (the engine asks on every menu render until the pool lands);
+    // invalidateMenuData drops it with the other caches, and a failure retries on the next ask.
+    var COVER_SAMPLE = 400;
     function menuCoverPool() {
-      return menuAllSongs().then(function (t) { return SKINS.menuCoverPool(t, musicArtUrl); });
+      if (!menuCoverPromise) {
+        var seed = Math.floor(Math.random() * 2147483647);
+        var pr = fetchJson('/api/music?sort=random&seed=' + seed + '&limit=' + COVER_SAMPLE).then(function (d) {
+          var rows = menuItemsOf(d);
+          var pool = SKINS.menuCoverPool(rows, musicArtUrl);
+          if (pool.length || !(Number(d && d.total) > rows.length)) return pool;
+          return menuAllSongs().then(function (t) { return SKINS.menuCoverPool(t, musicArtUrl); });
+        });
+        menuCoverPromise = pr;
+        pr.catch(function () { if (menuCoverPromise === pr) menuCoverPromise = null; });
+      }
+      return menuCoverPromise;
     }
     // Addendum D: About's counts = the library routes' own totals for THIS user (the same
     // visibility-gated routes the levels read; limit=1 - only `total` is wanted), and the running
