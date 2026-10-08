@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 'use strict';
-// HDK (v1.376.0 W4, Dean's ruling R4): the handoff card ("Listening on <device> / Continue here") never
-// covers the mini player. Measured in headless Chromium against the seeded fixture server:
-//   phone (html.is-phone) at 390 and 320 wide: with no mini player the card is the full card; with the
-//     mini player showing it is a ONE-LINE bar (cover, headline, Continue here, dismiss on one row, at
-//     most 56px tall) whose bottom sits at least 4px above the dock's top and at or above the bottom nav,
-//     never intersecting the dock; every control of both (the card's cover, Continue here and dismiss;
-//     the dock's picture, play / pause and close) is the element under its own centre (elementFromPoint).
+// HDK (v1.376.0 W4; v1.377.0 W1, Dean's rulings R1 and R6): the handoff card ("Paused watching on / <device> /
+// Continue here") never covers the mini player, and on a phone it sits BESIDE it. Measured in headless
+// Chromium (phones at DPR 3 with the iPhone UA) against the seeded fixture server:
+//   phone (html.is-phone) at 390, 375 and 320 wide: with no mini player the card is the full card; with the
+//     mini player showing it sits LEFT of the dock - its bottom on the dock's bottom and its height the dock's
+//     (each +-1px), its top never above the dock's (nothing of the feed above them), at least 4px of gap
+//     before the dock's left edge, never into the bottom nav; the lead over the device name on two lines;
+//     every part inside the card's box; the art only from 370 wide (R6: the 320 card drops it); every
+//     control of both (the card's cover, Continue here and dismiss; the dock's picture, play / pause and
+//     close) is the element under its own centre (elementFromPoint).
 //     The CLEAR axis, from that populated state: a real tap on the dock's close returns the card to the
 //     full card's exact box and drops html.has-player-dock; a second dock, then a real tap on the dock
 //     (back to the watch page), drops it too.
@@ -24,14 +27,18 @@ const capture = require('../visual/capture.js');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const GAP_MIN = 4; // the rule's gap is --space-4 (8px); 4 leaves room for rounding, never for an overlap
-const BAR_MAX_H = 56; // one row: the cover (16:9 at --av-lg) and a small button, plus the bar's padding
+const ART_MIN_W = 370; // R6: below this the card has no art (style.css max-width 369px)
 
 // Each must turn HDK red (run.js --mutants). css: injected after load; js: player.js served rewritten.
 const MUTANTS = {
-  // the stacking dropped: the bar sits on the dock's row again
-  'hdk-stack-off': { css: 'html.is-phone.has-player-dock #handoff-card{bottom:calc(var(--mobile-bottom-nav-h) + var(--space-4))!important}' },
-  // the one-line form dropped: the stacked card lays its parts out as a column again
-  'hdk-compact-off': { css: 'html.is-phone.has-player-dock #handoff-card{flex-direction:column!important}' },
+  // the right edge dropped: the card spans the screen over the dock again
+  'hdk-side-off': { css: 'html.is-phone.has-player-dock #handoff-card{right:var(--space-4)!important}' },
+  // v1.376.0's stacking back: the card sits above the dock, not on its line
+  'hdk-stack-back': { css: 'html.is-phone.has-player-dock #handoff-card{bottom:calc(var(--mobile-bottom-nav-h) + var(--space-4) + var(--player-dock-h) + var(--space-4))!important}' },
+  // the two-line headline dropped: the lead and the device run on one line
+  'hdk-oneline': { css: 'html.is-phone.has-player-dock #handoff-card .handoff-lead,html.is-phone.has-player-dock #handoff-card .handoff-device{display:inline!important}' },
+  // R6's narrow form dropped: the 320 card keeps the art beside Continue here, which then runs out of the card
+  'hdk-narrow-off': { css: 'html.is-phone.has-player-dock #handoff-card{grid-template-columns:auto minmax(0,1fr) auto!important;grid-template-areas:"text text close" "art go go"!important}html.is-phone.has-player-dock #handoff-card .handoff-cover{display:block!important}' },
   // the desktop card follows the dock signal (desktop must be unchanged)
   'hdk-desktop-follows': { css: 'html.has-player-dock #handoff-card{padding:2px!important}' },
   // the clear axis: the signal is set on a show and never cleared on an exit
@@ -42,13 +49,15 @@ const MUTANTS = {
 
 const CASES = [
   { id: 'phone-390', vp: 'phone', w: 390, h: 844 },
+  // a SHORT device name: the lead must still own its line (a long one wraps onto the next line anyway)
+  { id: 'phone-375', vp: 'phone', w: 375, h: 667, label: 'iPad' },
   { id: 'phone-320', vp: 'phone', w: 320, h: 568 },
   { id: 'desktop-1440', vp: 'desktop', w: 1440, h: 900 },
 ];
 
-function presence(FX) {
+function presence(FX, label) {
   const id = FX.videoUnsub;
-  return { deviceId: 'geometry-mac', deviceLabel: 'Work MacBook Air', kind: 'media', mediaId: id, state: 'playing', position: 66,
+  return { deviceId: 'geometry-mac', deviceLabel: label || 'Work MacBook Air', kind: 'media', mediaId: id, state: 'playing', position: 66,
     ageSeconds: 2, title: 'A video on the Mac', subtitle: 'Northbound Field Notes', thumbnailUrl: '/thumbnail/' + encodeURIComponent(id),
     href: '/watch.html?v=' + encodeURIComponent(id), listen: true, duration: 480 };
 }
@@ -67,15 +76,15 @@ function measureIn() {
   };
   const q = (sel) => document.querySelector(sel);
   const parts = card ? {
-    cover: q('#handoff-card .handoff-cover'), headline: q('#handoff-card .handoff-headline'),
+    cover: q('#handoff-card .handoff-cover'), lead: q('#handoff-card .handoff-lead'), device: q('#handoff-card .handoff-device'),
     go: q('#handoff-card .ui-btn--primary'), dismiss: q('#handoff-card .handoff-head .ui-btn'),
   } : {};
-  const mids = Object.fromEntries(Object.entries(parts).map(([k, el]) => [k, shown(el) ? (() => { const r = el.getBoundingClientRect(); return r.top + r.height / 2; })() : null]));
+  const boxes = Object.fromEntries(Object.entries(parts).map(([k, el]) => [k, shown(el) ? box(el) : null]));
   const nav = q('.bottom-nav');
   return {
     cls: document.documentElement.classList.contains('has-player-dock'),
     cardShown: shown(card), dockShown: shown(dock),
-    card: box(card), dock: shown(dock) ? box(dock) : null, nav: shown(nav) ? box(nav) : null, mids,
+    card: box(card), dock: shown(dock) ? box(dock) : null, nav: shown(nav) ? box(nav) : null, boxes,
     hits: {
       cover: hit(parts.cover), go: hit(parts.go), dismiss: hit(parts.dismiss),
       dockPicture: hit(q('#player-dock #media-player')), dockPlay: hit(q('#player-dock #pp-btn')), dockClose: hit(q('#player-dock .player-dock-close')),
@@ -112,10 +121,10 @@ async function runCase(env, cs, mutant) {
   const measured = [];
   const record = capture.newRecord(env.base);
   const { ctx, page } = await capture.newScenePage(env.browser, { vp: cs.vp, mode: 'light', era: '2021', storageState: env.st,
-    tag: { scene: 'geometry:hdk-' + cs.id }, record, dpr: 1 });
+    tag: { scene: 'geometry:hdk-' + cs.id }, record, dpr: cs.vp === 'phone' ? 3 : 1 });
   try {
     await page.setViewportSize({ width: cs.w, height: cs.h });
-    const pres = presence(env.FX);
+    const pres = presence(env.FX, cs.label);
     await page.route('**/api/handoff?**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ presence: pres }) }));
     if (mutant && mutant.js) {
       await page.route('**/js/player.js*', async (route) => {
@@ -142,14 +151,23 @@ async function runCase(env, cs, mutant) {
     if (!st.cls) failures.push('html.has-player-dock is missing while the mini player shows');
     if (intersects(st.card, st.dock)) failures.push(`the card ${fmt(st.card)} overlaps the mini player ${fmt(st.dock)}`);
     for (const [k, ok] of Object.entries(st.hits)) if (ok === false) failures.push(`${k} is covered: elementFromPoint at its centre is not it`);
-    for (const k of ['cover', 'go', 'dismiss', 'dockPicture', 'dockPlay', 'dockClose']) if (st.hits[k] == null) failures.push(`VACUOUS: ${k} is not showing`);
+    const wantArt = !phone || cs.w >= ART_MIN_W;
+    for (const k of ['go', 'dismiss', 'dockPicture', 'dockPlay', 'dockClose'].concat(wantArt ? ['cover'] : [])) if (st.hits[k] == null) failures.push(`VACUOUS: ${k} is not showing`);
     if (phone) {
-      if (st.card && st.dock && st.dock.y - st.card.b < GAP_MIN) failures.push(`the bar's bottom ${st.card.b.toFixed(1)} is not ${GAP_MIN}px above the dock's top ${st.dock.y.toFixed(1)}`);
-      if (st.card && st.nav && st.card.b > st.nav.y + 0.5) failures.push('the bar reaches into the bottom nav');
-      if (st.card && st.card.h > BAR_MAX_H) failures.push(`the stacked card is ${st.card.h.toFixed(1)}px tall, not one line (max ${BAR_MAX_H})`);
-      const ys = Object.values(st.mids).filter((v) => v != null);
-      if (ys.length !== 4) failures.push(`VACUOUS: ${ys.length} of the bar's 4 parts showing (cover, headline, Continue here, dismiss)`);
-      else if (Math.max(...ys) - Math.min(...ys) > 3) failures.push(`the bar's parts are not on one row (centres ${ys.map((v) => v.toFixed(1)).join(', ')})`);
+      const c = st.card; const d = st.dock; const b = st.boxes;
+      if (c && d) {
+        if (Math.abs(c.b - d.b) > 1) failures.push(`the card's bottom ${c.b.toFixed(1)} is not the dock's ${d.b.toFixed(1)}`);
+        if (Math.abs(c.h - d.h) > 1) failures.push(`the card is ${c.h.toFixed(1)}px tall, the dock ${d.h.toFixed(1)}px`);
+        if (c.y < d.y - 1) failures.push(`the card's top ${c.y.toFixed(1)} is above the dock's ${d.y.toFixed(1)} (over the feed)`);
+        if (d.x - c.r < GAP_MIN) failures.push(`the card's right edge ${c.r.toFixed(1)} is not ${GAP_MIN}px left of the dock ${d.x.toFixed(1)}`);
+      }
+      if (c && st.nav && c.b > st.nav.y + 0.5) failures.push('the card reaches into the bottom nav');
+      if (!b.lead || !b.device) failures.push('VACUOUS: the lead or the device line is not showing');
+      else if (b.device.y < b.lead.b - 1) failures.push(`the device (top ${b.device.y.toFixed(1)}) is not on the line below the lead (bottom ${b.lead.b.toFixed(1)})`);
+      if (!wantArt && b.cover) failures.push(`the ${cs.w} card shows the art (R6: no art under ${ART_MIN_W})`);
+      for (const [k, r] of Object.entries(b)) {
+        if (r && c && (r.x < c.x - 0.5 || r.r > c.r + 0.5 || r.y < c.y - 0.5 || r.b > c.b + 0.5)) failures.push(`${k} ${fmt(r)} runs out of the card ${fmt(c)}`);
+      }
     } else if (!sameBox(st.card, full.card)) {
       failures.push(`desktop changed: the card is ${fmt(st.card)} with the dock, ${fmt(full.card)} without`);
     }

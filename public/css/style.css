@@ -1374,7 +1374,7 @@ img.art-shimmer.art-together { object-position: -100000px 0; }
 
 @media (max-width: 768px) {
   #player-dock {
-    width: 160px;
+    width: var(--player-dock-w);
     right: calc(8px + var(--scroll-lock-gap, 0px)); /* token-exempt: positional geometry (Stop A Batch A); v1.341.2 the scroll-lock gap */
     /* Clear the fixed .bottom-nav (see its own rule, ~72px incl. safe-area).
        Shares --mobile-bottom-nav-h (defined once, v1.17.0 FR-2) with
@@ -2774,9 +2774,9 @@ select {
    where the dock sits bottom-RIGHT, so the two never meet there. At phone
    width the card spans the screen and the dock sits on its row, so it would
    cover the dock (v1.376.0, measured at 390: the card over 160 x 132 px of the
-   134 px dock, every dock control under it); there the card turns into a
-   one-line bar stacked ABOVE the dock while the dock shows (the rule after
-   the mobile block below).
+   134 px dock, every dock control under it); there, while the dock shows, the
+   card sits BESIDE the dock, its height (v1.377.0; the rules in the mobile
+   block below).
 
    Every value is a token so all four eras skin it for free, and the card
    carries NO [data-theme]-scoped rules of its own -- which also sidesteps
@@ -2882,24 +2882,28 @@ select {
        lockstep through the iOS address-bar/home-indicator collapse. */
     bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4));
   }
-  /* v1.376.0 (W4, Dean's ruling R4): on a phone, while the mini player shows, the card is a
-     COMPACT one-line bar (art, "Listening on <device>", Continue here, the dismiss) STACKED
-     ABOVE the dock: its bottom is the dock's top (the dock's own bottom, the nav height plus 8px,
-     here --space-4, the same 8px; plus the dock's height) plus a --space-4 gap, so the two never
-     overlap. The SAME
-     element: the head, body and meta boxes dissolve (display: contents) so their children
-     line up in one row, and the second-line details (title, time, state glyph) and the button's
-     glyph step aside, so the words keep the room (the label stays: "Continue here").
-     html.has-player-dock and --player-dock-h are written by ONE place, player.js setDockShown
-     (every dock show and every exit), so the bar returns to the full card the moment the dock
-     goes. Phone-width only: a landscape phone (wider than 768) keeps the corner layout, where
-     the card and the dock never meet. */
+  /* v1.377.0 (W1, Dean's ruling R1: "make it the size of the miniplayer or directly to the left"): on a
+     phone, while the mini player shows, the card sits BESIDE it - from the left gutter to a --space-4 gap
+     before the dock's left edge (the dock's own width token and right inset, so the two cannot drift),
+     on the dock's bottom line and exactly the dock's height (--player-dock-h). It shows the lead
+     ("Paused watching on") over the device name (the only part that ellipsizes), the dismiss beside the
+     lead, and the art (a square) beside Continue here. The SAME element: the head, body and meta boxes
+     dissolve (display: contents) into one grid; the title, time, age, state glyph and the button's glyph
+     step aside. html.has-player-dock and --player-dock-h are written by ONE place, player.js
+     setDockShown (every dock show and every exit), so the card returns to the full card the moment the
+     dock goes. Phone-width only: a landscape phone (wider than 768) keeps the corner layout, where the
+     card and the dock never meet. */
   html.is-phone.has-player-dock #handoff-card {
-    flex-direction: row;
+    right: calc(var(--player-dock-w) + var(--space-4) + var(--scroll-lock-gap, 0px) + var(--space-4));
+    bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4));
+    height: var(--player-dock-h);
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "text text close" "art go go";
+    align-content: space-between;
     align-items: center;
-    gap: var(--space-4);
-    padding: var(--space-3) var(--space-3) var(--space-3) var(--space-4);
-    bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4) + var(--player-dock-h) + var(--space-4));
+    gap: var(--space-3) var(--space-4);
+    padding: var(--space-4) var(--space-3) var(--space-4) var(--space-4);
   }
   html.is-phone.has-player-dock #handoff-card .handoff-head,
   html.is-phone.has-player-dock #handoff-card .handoff-body,
@@ -2909,21 +2913,59 @@ select {
   html.is-phone.has-player-dock #handoff-card .handoff-state,
   html.is-phone.has-player-dock #handoff-card .handoff-title,
   html.is-phone.has-player-dock #handoff-card .handoff-time,
+  html.is-phone.has-player-dock #handoff-card .handoff-age,
   html.is-phone.has-player-dock #handoff-card .ui-btn--primary .ui-btn__icon {
     display: none;
   }
-  html.is-phone.has-player-dock #handoff-card .handoff-cover {
-    order: 1;
-    width: var(--av-lg);
-  }
   html.is-phone.has-player-dock #handoff-card .handoff-headline {
-    order: 2;
+    grid-area: text;
+    align-self: start;
+    white-space: normal;
   }
-  html.is-phone.has-player-dock #handoff-card .ui-btn--primary {
-    order: 3;
+  html.is-phone.has-player-dock #handoff-card .handoff-lead,
+  html.is-phone.has-player-dock #handoff-card .handoff-device {
+    display: block;
+    white-space: nowrap;
+  }
+  html.is-phone.has-player-dock #handoff-card .handoff-device {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    color: var(--ink-1);
   }
   html.is-phone.has-player-dock #handoff-card .handoff-head .ui-btn {
-    order: 4;
+    grid-area: close;
+    align-self: start;
+  }
+  html.is-phone.has-player-dock #handoff-card .handoff-cover {
+    grid-area: art;
+    width: var(--av-lg);
+  }
+  html.is-phone.has-player-dock #handoff-card .handoff-cover .ui-thumb {
+    aspect-ratio: 1;
+  }
+  html.is-phone.has-player-dock #handoff-card .ui-btn--primary {
+    grid-area: go;
+    justify-self: start;
+  }
+}
+/* v1.377.0 (W1, Dean's ruling R6, 2026-10-08: "Side card, no art"): a phone under 370 wide (a 320 iPhone SE:
+   136px beside the dock) cannot hold the art, the one-line lead and Continue here - "Paused watching on"
+   alone is 132px and Continue here 116px (measured at 320, DPR 3). The card keeps its place and height; the
+   art steps aside, the lead may wrap, and Continue here spans the card's second row. 370 = the full form's
+   need: a 186px card (the lead, the dismiss, the gap and the padding) beside the 160px dock and its insets. */
+@media (max-width: 369px) {
+  html.is-phone.has-player-dock #handoff-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "text close" "go go";
+  }
+  html.is-phone.has-player-dock #handoff-card .handoff-cover {
+    display: none;
+  }
+  html.is-phone.has-player-dock #handoff-card .handoff-lead {
+    white-space: normal;
+  }
+  html.is-phone.has-player-dock #handoff-card .ui-btn--primary {
+    justify-self: stretch;
   }
 }
 
@@ -2958,7 +3000,8 @@ select {
   #remote-pill { bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4)); }
   /* v1.376.0 (W4): the pill shows on a speaker, never on a phone, but a narrow window (an iPad in Slide
      Over, a narrow desktop window) puts it on the dock's row: measured at 390 wide, it covered 59 x 40 px of
-     the dock. While the dock shows it stacks above it, the handoff card's rule (player.js setDockShown). */
+     the dock. While the dock shows it stacks above it (player.js setDockShown's signal, the one the handoff
+     card's phone rule keys on). */
   html.has-player-dock #remote-pill {
     bottom: calc(var(--mobile-bottom-nav-h) + var(--space-4) + var(--player-dock-h) + var(--space-4));
   }

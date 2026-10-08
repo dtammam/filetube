@@ -36,6 +36,8 @@ const CONTRACT = {
   // Tier 4 batch 4a (2026-07-31, Dean's OQ7 ruling): the media-placeholder
   // surface, ex-phantom. Joins the contract per the v1.1 addendum.
   '--thumbnail-bg': '#222',
+  // v1.377.0 (W1): the phone mini player's width, shared with the handoff card that sits beside it.
+  '--player-dock-w': '160px',
   // Tranche F.5 (2026-07-31, Dean's ruling 2): the reading themes, the
   // reader's OWN AXIS - never era- or mode-wired. read.js derives these
   // same tokens for the epub iframe via getComputedStyle; this map is what
@@ -152,7 +154,7 @@ const CONTRACT = {
 };
 
 test('every new-layer token is defined EXACTLY ONCE with its contract value (mode-invariant by construction)', () => {
-  assert.equal(Object.keys(CONTRACT).length, 198, 'v1.353: -1 --mms-ipod-blue-hi (its one reader chain, --pk-s-sel-hi on the dormant volume fill, went); UI pass gate r1: -1 --size-touch-watch-action (no consumer since the watch action row became ui-btn); step 7 (retire R2): +1 --z-sticky (the in-content sticky bar on the ladder), +1 --tile-w (a card tile\'s width); step 3: +19 primitive metrics and grounds; step 1: +41 D2 scale tokens (--scrim renamed --scrim-legacy, same count); before that: the 60-name contract (see history) + the mobile-music-skin --mms-* tokens (Click (Matte) added 17 --mms-ipodm-* for the graphite body/wheel/edge palette - the ipod-black pattern) (v1.332 -11: the Zune palette tokens left with the Zune skin; -23 +1: Black/Matte moved into their colorway role blocks, the shared --mms-ipod-clear) (v1.232.2 added 2 silver-gloss stops): v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
+  assert.equal(Object.keys(CONTRACT).length, 199, 'v1.377.0: +1 --player-dock-w (the phone mini player width, shared with the handoff card beside it); v1.353: -1 --mms-ipod-blue-hi (its one reader chain, --pk-s-sel-hi on the dormant volume fill, went); UI pass gate r1: -1 --size-touch-watch-action (no consumer since the watch action row became ui-btn); step 7 (retire R2): +1 --z-sticky (the in-content sticky bar on the ladder), +1 --tile-w (a card tile\'s width); step 3: +19 primitive metrics and grounds; step 1: +41 D2 scale tokens (--scrim renamed --scrim-legacy, same count); before that: the 60-name contract (see history) + the mobile-music-skin --mms-* tokens (Click (Matte) added 17 --mms-ipodm-* for the graphite body/wheel/edge palette - the ipod-black pattern) (v1.332 -11: the Zune palette tokens left with the Zune skin; -23 +1: Black/Matte moved into their colorway role blocks, the shared --mms-ipod-clear) (v1.232.2 added 2 silver-gloss stops): v1.231 iPod-palette-wholesale + Apple grab (54), v1.231.1 +5 gloss-sheen stops, v1.232 +6 --mms-ipodk-* for the black iPod variant (body + wheel palette; the white LCD screen reuses the silver tokens). Oversized titles reuse the --fs-* scale, not bespoke tokens - the type-scale lock requires var(--fs-*)');
   for (const [name, value] of Object.entries(CONTRACT)) {
     const defs = [...css.matchAll(new RegExp(name.replace(/[-]/g, '\\-') + '\\s*:\\s*([^;]+);', 'g'))]
       .map((m) => m[1].trim());

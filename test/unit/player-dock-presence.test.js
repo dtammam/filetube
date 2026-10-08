@@ -2,13 +2,14 @@
 
 // [UNIT] v1.376.0 (W4, Dean's ruling R4): the mini player's ROOT SIGNAL. On a phone the handoff card
 // ("Listening on <device> / Continue here") spanned the screen on the dock's row and covered it (measured
-// at 390: 160 x 132 px of the 134 px dock, every dock control under the card). The card now stacks above
-// the dock as a one-line bar, keyed on html.has-player-dock and sized by --player-dock-h, which ONE place
+// at 390: 160 x 132 px of the 134 px dock, every dock control under the card). The card now sits beside
+// the dock at its height (v1.377.0; v1.376.0 stacked a one-line bar above it), keyed on html.has-player-dock
+// and sized by --player-dock-h, which ONE place
 // writes: player.js setDockShown, through which every dock show (dock(), mountInDock()) and every exit
 // (hideDock(): close(), an expand back into a slot) passes. This drives the REAL player.js in a jsdom watch
 // shell: each show sets both, each exit clears both, always from a POPULATED (docked) state (LESSONS 4:
-// reveal and clear are two axes; a clear test on an element born hidden is vacuous). The pixels (the bar
-// above the dock, every control hittable) are measured in a real engine by test/geometry/handoff-dock.js.
+// reveal and clear are two axes; a clear test on an element born hidden is vacuous). The pixels (the card
+// beside the dock, every control hittable) are measured in a real engine by test/geometry/handoff-dock.js.
 
 const { test, afterEach } = require('node:test');
 const assert = require('node:assert');

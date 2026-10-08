@@ -11479,13 +11479,21 @@ function formatHandoffAge(ageSeconds) {
 // audio player, not the video player. `presence.listen` is stamped by the
 // server resolver (true for tracks/podcasts and for a media item played via
 // Listen); absent/false means watch.
-function formatHandoffHeadline(presence) {
+// v1.377.0 (W1): the headline in its three parts - the lead ("Paused watching on"), the device and
+// the age (" - 3 min ago", paused only) - so the phone's card beside the mini player can set the lead
+// over the device on two lines and leave the age out. The full card shows the three in one line, the
+// same words formatHandoffHeadline joins.
+function handoffHeadlineParts(presence) {
   const label = (presence && presence.deviceLabel) || 'another device';
   const verb = presence && presence.listen ? 'Listening' : 'Watching';
   if (presence && presence.state === 'paused') {
-    return `Paused ${verb.toLowerCase()} on ${label} - ${formatHandoffAge(presence.ageSeconds)}`;
+    return { lead: `Paused ${verb.toLowerCase()} on`, device: label, age: ` - ${formatHandoffAge(presence.ageSeconds)}` };
   }
-  return `${verb} on ${label}`;
+  return { lead: `${verb} on`, device: label, age: '' };
+}
+function formatHandoffHeadline(presence) {
+  const p = handoffHeadlineParts(presence);
+  return `${p.lead} ${p.device}${p.age}`;
 }
 
 // "12:34 / 45:06", or just the position when the duration is unknown (a live
@@ -17671,6 +17679,16 @@ const handoffCard = (() => {
     state.appendChild(glyph('play_arrow'));
     const headline = document.createElement('span');
     headline.className = 'handoff-headline';
+    // v1.377.0 (W1): three parts (handoffHeadlineParts), one line on the full card, two on the phone's
+    // card beside the mini player (style.css). The space between lead and device is a text node, so the
+    // headline's text is the joined headline either way.
+    const lead = document.createElement('span');
+    lead.className = 'handoff-lead';
+    const device = document.createElement('span');
+    device.className = 'handoff-device';
+    const age = document.createElement('span');
+    age.className = 'handoff-age';
+    headline.append(lead, document.createTextNode(' '), device, age);
     const dismiss = U.button({ variant: 'plain', shape: 'icon', size: 'sm', icon: 'close', ariaLabel: 'Dismiss' });
     head.append(state, headline, dismiss);
 
@@ -17719,7 +17737,7 @@ const handoffCard = (() => {
       hide();
     });
 
-    el = { card, state, headline, img, fill, title, time, go, thumbLink, stateName: 'play_arrow' };
+    el = { card, state, headline, lead, device, age, img, fill, title, time, go, thumbLink, stateName: 'play_arrow' };
     return el;
   }
 
@@ -17734,7 +17752,10 @@ const handoffCard = (() => {
     if (!el) build();
     current = presence;
 
-    el.headline.textContent = formatHandoffHeadline(presence);
+    const parts = handoffHeadlineParts(presence);
+    el.lead.textContent = parts.lead;
+    el.device.textContent = parts.device;
+    el.age.textContent = parts.age;
     el.title.textContent = presence.title || '';
     el.time.textContent = formatHandoffTime(presence.position, presence.duration);
     const stateName = presence.state === 'paused' ? 'pause' : 'play_arrow';
@@ -18146,7 +18167,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.78: the card's pure decisions. The runtime around them is a thin
     // fetch/render shell on purpose - everything that can be WRONG is here,
     // where node:test can hold it without a browser.
-    shouldShowHandoffCard, bindHandoffToRemote, handoffSuppressionToken, formatHandoffHeadline,
+    shouldShowHandoffCard, bindHandoffToRemote, handoffSuppressionToken, formatHandoffHeadline, handoffHeadlineParts,
     formatHandoffTime, formatHandoffAge, handoffProgressPercent,
     HANDOFF_LIST_SURFACES, HANDOFF_POLL_MS,
     resolveIconSet, ICON_SET_REGISTRY, ICON_SETS, AUTO_ERA_ICON_MAP, migrateIconPref,
