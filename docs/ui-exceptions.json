@@ -34,7 +34,7 @@
       },
       {
         "key": "public/css/style.css|#player-dock|width",
-        "count": 2,
+        "count": 1,
         "reason": "player overlay rewrite (post black-screen fix)",
         "added": "2026-09-27"
       },

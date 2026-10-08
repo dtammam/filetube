@@ -239,9 +239,12 @@ test('C Extras > Games > Brick in the REAL music view: the view\'s own Brick hoo
   delete require.cache[BRICK];
 });
 
-test('E in the REAL view: the Click Main Menu drifts through covers from the real library (the view\'s pool: art-bearing, same-origin, one per album)', async () => {
+test('E in the REAL view: the Click Main Menu drifts through covers from the real library (the view\'s pool: art-bearing, same-origin; one per album is bound in the unit menuCoverPool tests)', async () => {
   const songs = (await realApi('/api/music?sort=title-asc&limit=10000')).items;
-  const pool = skins.menuCoverPool(songs, (id, explicit) => explicit || ('/albumart/' + encodeURIComponent(id)));
+  // v1.377.0 (W2): the view's pool is now drawn from a RANDOM sample of the library, so which track stands for an
+  // album (one cover per album) depends on the order the songs arrive - a library item's cover is its own thumbnail.
+  // Every art-bearing track's own cover is a valid pool member; menuCoverPool is applied per track (its one art rule).
+  const pool = [].concat(...songs.map((t) => skins.menuCoverPool([t], (id, explicit) => explicit || ('/albumart/' + encodeURIComponent(id)))));
   assert.ok(pool.length > 1, 'precondition: the real library has covers');
   await H.boot({ skin: 'ipod', play: 'q00', setup: (dom) => {
     // jsdom reports a hidden document unless told otherwise (the drift runs only while visible)
