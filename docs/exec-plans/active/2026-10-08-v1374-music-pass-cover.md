@@ -4,7 +4,7 @@ harness: v2 · lean
 branch: feat/v1.374.0-music-pass-cover
 anchor: outcome
 status: Building
-next: build (d) one cover per saved album on a worktree branch off this one; then the gate (full: (d) rewrites a just-downloaded file)
+next: the gate on (d) (full: it rewrites a just-downloaded file) - branch feat/v1.374.0-cover off this one; merge it here after APPROVED
 design: Dean's intake 2026-10-08 (rulings R1-R4 below). Base main fa4e01aa.
 gate: pending
 ---
@@ -76,6 +76,28 @@ fails to load fails the download, and the engine updates itself), and it adds no
   untouched. `-copyts` is required (without it each mp3 remux moves chapters back 0.023 s).
 - Data-loss surface (full gate): the rename over a just-downloaded file, ENOSPC mid-write, a crash between write and
   rename, a concurrent scan, a file that is not this job's.
+
+**Built (branch feat/v1.374.0-cover).** `lib/ytdlp/cover.js` (new), `album.js` (coverId), `index.js` (runPlaylistJob,
+runOneShot, albumCoverTargets), the picker's Cover row in `public/js/common.js`.
+- Ordering vs the scan: the re-embed runs inside runOneShot, awaited, inside the shared download gate, BEFORE the job's own
+  fire-and-forget `scanDirectories()` trigger, so the scan that indexes the track reads the new cover (bound by a test whose
+  scan stub reads the file at the trigger; moving the re-embed after the trigger turns it red). Residual window: a periodic
+  or manual scan that runs between yt-dlp's final move and the rename indexes the song's own art; the job's own scan then
+  sees a different size (`unchanged` = same path AND size, lib/scan/orchestrator.js) and takes the "new or updated file"
+  arm, which extracts the thumbnail again. An identical byte size would keep the old thumbnail (not seen; not tested).
+- Which files: only `albumCoverTargets` - a clean exit's FTCHDST final, `alreadyDownloaded` false, a FTCHSRC source with
+  `__real_download` true and the final's stem, and the `isFreshJobFile` fence (regular file, created during the job, under
+  the root and the job's folder). R1 rides the album tags: no tags (a video any library has) = no cover, and a job where
+  no track gets tags fetches nothing.
+- Temp naming: `.ftcover-<pid>-<12 hex>.tmp` in the file's own folder (atomic rename, one filesystem). `.tmp` is not in
+  AUDIO_EXTENSIONS / VIDEO_EXTENSIONS, so the scan never indexes it; ffmpeg is told the muxer (`-f mp3` / `-f ipod`) and
+  `-n` (never overwrite). A crash between write and rename leaves an orphan, removed by `removeOrphanTemps` before the next
+  re-embed in that folder (exact name shape, regular files, never a temp in flight).
+- Concurrency: every re-embed runs inside runExclusive, so no other download (subscription, one-off, reheat re-pull)
+  writes meanwhile; an in-process claim refuses a second re-embed of the same file; just before the rename the file must
+  still be the one probed (dev, ino, size, mtime), else the temp is dropped (a delete or another writer wins, the file is
+  never resurrected). The rename keeps the file's mode and mtime (the scan's date and tombstone checks read mtime).
+- The menu: `ui.menu` has an icon slot only, no thumbnail, so it lists the song names (the rows above show the pictures).
 
 ## 4. Acceptance
 

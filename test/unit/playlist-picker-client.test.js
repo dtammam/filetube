@@ -785,3 +785,132 @@ test('gate r1 (adversary S3): the Hide from feed row stays hidden until the list
   assert.strictEqual(picker().querySelector('.playlist-picker-feed').hidden, true, 'a list that could not be read offers no row');
   assert.strictEqual(picker().querySelector('.playlist-picker-feed .ui-row__meta').textContent, 'Out of your feed in Modern mode', 'says where (v1.97 applies to the Modern feed)');
 });
+
+// ---- v1.374.0 (d): one cover art for a saved album (plan docs/exec-plans/active/2026-10-08-v1374-music-pass-cover.md R2) ----
+const coverRow = () => albumSection().querySelector('.playlist-picker-cover');
+const coverMeta = () => coverRow().querySelector('.ui-row__meta').textContent;
+const coverMenu = () => [...global.document.querySelectorAll('.ui-sheet')].find((s) => !s.querySelector('.playlist-picker') && s.querySelector('.ui-list') && !s.querySelector('.ui-field__input'));
+const coverItems = () => [...coverMenu().querySelectorAll('.ui-row')];
+const KGU = Object.assign({}, KG, { entries: KG.entries.concat([entry(5, { unavailable: true, title: '[Private video]' }), entry(6, { id: KG.entries[0].id, title: KG.entries[0].title })]) });
+const postedAlbum = () => calls.find((x) => x.url === '/api/ytdlp/download-playlist').body.album;
+
+test('v1.374.0 (d): the Cover row shows only while Save as an album is on (and goes with the album for Video)', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, withFormatControls: true });
+  await sleep(20);
+  const format = picker().querySelector('select[aria-label="Format"]');
+  format.value = 'audio'; format.dispatchEvent(new global.window.Event('change'));
+  assert.ok(coverRow(), 'the row exists in the album group');
+  assert.strictEqual(coverRow().hidden, true, 'album off: no Cover row');
+  await sleep(GUARD_MS);
+  pointerClick(albumSwitch('Save as an album'));
+  assert.strictEqual(coverRow().hidden, false, 'album on: the Cover row');
+  assert.strictEqual(coverRow().querySelector('.ui-row__title').textContent, 'Cover');
+  assert.strictEqual(coverMeta(), 'Each song\'s own art', 'the default');
+  pointerClick(albumSwitch('Save as an album'));
+  assert.strictEqual(coverRow().hidden, true, 'album off again: hidden');
+  pointerClick(albumSwitch('Save as an album'));
+  format.value = 'video'; format.dispatchEvent(new global.window.Event('change'));
+  assert.strictEqual(albumSection().hidden, true, 'video hides the whole group, Cover with it');
+});
+
+test('v1.374.0 (d): tapping Cover opens the standard menu - own art first, then every loaded song in order (once, none unavailable); a pick names the song and is posted', async () => {
+  const c = fresh({ pages: { 1: KGU } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio', quality: 'best', filetype: 'mp3' });
+  await sleep(GUARD_MS + 20);
+  pointerClick(albumSwitch('Save as an album'));
+  pointerClick(albumSwitch('Clean up titles'));
+  pointerClick(coverRow());
+  assert.ok(coverMenu(), 'the menu is up');
+  assert.deepStrictEqual(coverItems().map((r) => r.textContent.trim()), [
+    'Each song\'s own art',
+    'Introduction (feat. Daniel Radcliffe)',
+    'Mr. Jambo (feat. Barry Bergen) [Official Music Video]',
+    'My Life (Is the Worst Life Ever)',
+    'I’m a Horse',
+  ], 'the names the rows show; the in-library row too; the unavailable row and the repeat are not offered');
+  assert.strictEqual(coverItems()[0].getAttribute('aria-current'), 'true', 'own art is the current choice');
+  await sleep(GUARD_MS);
+  pointerClick(coverItems()[4]);
+  await sleep(20);
+  assert.strictEqual(coverMeta(), 'I’m a Horse', 'the row names the picked song');
+  // the cover can be a song that is not downloaded: tick only the first
+  switches()[0].checked = true; switches()[0].dispatchEvent(new global.window.Event('change'));
+  click(btn('Download'));
+  await sleep(20);
+  assert.deepStrictEqual(postedAlbum().tracks, { [KG.entries[0].id]: 1 });
+  assert.strictEqual(postedAlbum().coverId, KG.entries[3].id, 'the picked song\'s id, never a URL');
+});
+
+test('v1.374.0 (d): "Each song\'s own art" sends no cover (after a song was picked), and the menu marks the current pick', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await sleep(GUARD_MS + 20);
+  pointerClick(albumSwitch('Save as an album'));
+  pointerClick(coverRow());
+  await sleep(GUARD_MS);
+  pointerClick(coverItems()[1]);
+  await sleep(400);
+  assert.strictEqual(coverMeta(), KG.entries[0].title);
+  pointerClick(coverRow());
+  assert.strictEqual(coverItems()[1].getAttribute('aria-current'), 'true', 'the pick is marked');
+  assert.strictEqual(coverItems()[0].getAttribute('aria-current'), null);
+  await sleep(GUARD_MS);
+  pointerClick(coverItems()[0]);
+  await sleep(20);
+  assert.strictEqual(coverMeta(), 'Each song\'s own art');
+  switches()[0].checked = true; switches()[0].dispatchEvent(new global.window.Event('change'));
+  click(btn('Download'));
+  await sleep(20);
+  assert.strictEqual(Object.prototype.hasOwnProperty.call(postedAlbum(), 'coverId'), false, 'no cover key at all');
+});
+
+test('v1.374.0 (d): a tap on Cover inside the sheet\'s activation window opens nothing; after it, the menu opens', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await sleep(20);
+  albumSwitch('Save as an album').checked = true; albumSwitch('Save as an album').dispatchEvent(new global.window.Event('change'));
+  assert.strictEqual(coverRow().hidden, false);
+  pointerClick(coverRow());
+  assert.strictEqual(coverMenu(), undefined, 'inside the window: refused');
+  await sleep(GUARD_MS);
+  pointerClick(coverRow());
+  assert.ok(coverMenu(), 'after it: the menu');
+});
+
+test('v1.374.0 (d): with the album off nothing is sent even if a cover was picked; a rename shows on the Cover row', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await sleep(GUARD_MS + 20);
+  pointerClick(albumSwitch('Save as an album'));
+  pointerClick(coverRow());
+  await sleep(GUARD_MS);
+  pointerClick(coverItems()[3]);
+  await sleep(400);
+  pointerClick(rowOf(2).querySelector('.ui-row__link'));
+  await sleep(GUARD_MS);
+  dialog().querySelector('.ui-field__input').value = 'My Life';
+  pointerClick(dialogBtn('Save'));
+  await sleep(20);
+  assert.strictEqual(coverMeta(), 'My Life', 'the row follows the song\'s new name');
+  await sleep(400);
+  pointerClick(albumSwitch('Save as an album'));
+  switches()[0].checked = true; switches()[0].dispatchEvent(new global.window.Event('change'));
+  click(btn('Download'));
+  await sleep(20);
+  assert.strictEqual(calls.find((x) => x.url === '/api/ytdlp/download-playlist').body.album, undefined);
+});
+
+test('v1.374.0 (d): a press on Cover INSIDE the window whose click lands after it opens nothing (the held-press rule)', async () => {
+  const c = fresh({ pages: { 1: KG } });
+  c.openPlaylistPicker({ link: `https://www.youtube.com/playlist?list=${L}`, format: 'audio' });
+  await sleep(20);
+  albumSwitch('Save as an album').checked = true; albumSwitch('Save as an album').dispatchEvent(new global.window.Event('change'));
+  const pd = new global.window.Event('pointerdown', { bubbles: true }); pd.pointerId = 1;
+  coverRow().dispatchEvent(pd);
+  await sleep(GUARD_MS);
+  pointerClick(coverRow());
+  assert.strictEqual(coverMenu(), undefined, 'the press began inside the window');
+  pointerClick(coverRow());
+  assert.ok(coverMenu());
+});

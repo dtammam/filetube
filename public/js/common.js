@@ -7577,6 +7577,14 @@ function openPlaylistPicker(opts) {
   albumList.appendChild(albumRow);
   albumList.appendChild(cleanRow);
   cleanRow.hidden = true;
+  // v1.374.0 (d, Dean's R2): the album's one cover - "Each song's own art" (today) or one of the loaded songs, picked from
+  // the standard menu (ui.menu). Every NEW track of the job gets that song's thumbnail as its cover (the server fetches it
+  // from YouTube's image host by the id; never a URL from here). Shown with the album's other options.
+  const COVER_OWN_ART = 'Each song\'s own art';
+  const coverRow = U.row({ title: 'Cover', meta: COVER_OWN_ART, onClick: (ev) => openCoverMenu(ev), doc: d });
+  coverRow.classList.add('playlist-picker-cover'); // (a row with no actions is itself the button: ui.row)
+  albumList.appendChild(coverRow);
+  coverRow.hidden = true;
   wrap.appendChild(albumList);
   wrap.appendChild(albumFields);
   // what the user typed is kept; the defaults follow the loaded rows until then
@@ -7627,6 +7635,7 @@ function openPlaylistPicker(opts) {
     albumList.hidden = !albumOffered() || list.hidden;
     albumFields.hidden = albumList.hidden || !albumOn.checked;
     cleanRow.hidden = !albumOn.checked;
+    coverRow.hidden = !albumOn.checked;
     // v1.372.0: while on, the switch's own line says how to rename (measured: a per-row hint was cut off at 390px)
     albumRow.querySelector('.ui-row__meta').textContent = albumOn.checked ? 'Tap a song\'s name to rename it' : 'Album, artist and track numbers';
     renderRows();
@@ -7652,13 +7661,13 @@ function openPlaylistPicker(opts) {
 
   // `started`: the job was accepted - Download stays off while the sheet closes (a second tap during the
   // close would start the same videos again)
-  const state = { listId: null, title: '', total: null, nextPage: null, rows: [], loading: false, posting: false, started: false, customNames: Object.create(null) };
+  const state = { listId: null, title: '', total: null, nextPage: null, rows: [], loading: false, posting: false, started: false, customNames: Object.create(null), coverId: null };
   // the view's signal (LESSONS 4): leaving the page closes the picker, never strands it over the next view
   const signal = o.signal || ((typeof window !== 'undefined' && window.FileTube && typeof window.FileTube.viewSignal === 'function') ? window.FileTube.viewSignal() : undefined);
   const sheet = U.sheet({ title: 'Choose from the playlist', content: wrap, doc: d, signal });
   // the activation guard (ui.js): guard() marks a press inside the window; each handler below ASKS accepts(e)
   // first - guard() alone refuses nothing (gate r1: a tap 200 ms after the open posted the job)
-  [allBtn, noneBtn, subBtn, moreBtn, goBtn, albumOn, cleanOn, feedOff].forEach((b) => sheet.guard(b));
+  [allBtn, noneBtn, subBtn, moreBtn, goBtn, albumOn, cleanOn, feedOff, coverRow].forEach((b) => sheet.guard(b));
   // a switch's click has toggled it before any listener runs; cancelling a refused click puts it back (the browser, and
   // jsdom, restore the state from before the click), and no change event fires
   [albumOn, cleanOn, feedOff].forEach((box) => box.addEventListener('click', (e) => { if (!sheet.accepts(e)) e.preventDefault(); }));
@@ -7696,7 +7705,7 @@ function openPlaylistPicker(opts) {
     // off it ticks the row. Its meta line (`' '`: ui.row makes the span) carries "Track N" while the album is on.
     // v1.371.0: `pos` = the row's place in the playlist, the track number when the videos are saved as an album
     // (the server's `position`, counted before any bad row was dropped; the row count only as a fallback)
-    const rec = { id: e.id, box, pos: Number.isInteger(e.position) && e.position > 0 ? e.position : state.rows.length + 1, title: e.title || '', titleClean: typeof e.titleClean === 'string' ? e.titleClean : '', channel: e.channel || '', nameEl: null, metaEl: null };
+    const rec = { id: e.id, unavailable: !!e.unavailable, box, pos: Number.isInteger(e.position) && e.position > 0 ? e.position : state.rows.length + 1, title: e.title || '', titleClean: typeof e.titleClean === 'string' ? e.titleClean : '', channel: e.channel || '', nameEl: null, metaEl: null };
     const row = U.row({ title: e.title || e.id, meta: blocked || ' ', media, actions, onClick: blocked ? undefined : (ev) => tapRow(rec, ev), doc: d });
     if (blocked) row.classList.add('is-disabled');
     else {
@@ -7726,7 +7735,35 @@ function openPlaylistPicker(opts) {
     r.metaEl.textContent = on ? `Track ${r.pos}` : ''; // (the "tap to rename" hint is on the Save as an album row: it fits a phone)
     r.metaEl.hidden = !on;
   }
-  function renderRows() { state.rows.forEach(renderRow); }
+  function renderRows() { state.rows.forEach(renderRow); renderCover(); }
+  // the Cover row's line: the picked song's name as the rows show it (a rename follows), else "Each song's own art"
+  const coverRec = () => (state.coverId ? state.rows.find((r) => r.id === state.coverId) || null : null);
+  function renderCover() {
+    const r = coverRec();
+    coverRow.querySelector('.ui-row__meta').textContent = r ? songName(r) : COVER_OWN_ART;
+  }
+  // the songs a cover can come from: every loaded row with a picture (ticked or not, in the library or not), once per
+  // video, in playlist order; an unavailable row has no thumbnail to fetch. ui.menu has no thumbnail slot (its media is
+  // an icon), so the menu lists the names; the rows above show the pictures.
+  function openCoverMenu(ev) {
+    if (!sheet.accepts(ev)) return;
+    if (!albumWanted()) return;
+    const seen = new Set();
+    const items = [{ label: COVER_OWN_ART, value: '', checked: !coverRec() }];
+    state.rows.forEach((r) => {
+      if (r.unavailable || seen.has(r.id)) return;
+      seen.add(r.id);
+      items.push({ label: songName(r), value: r.id, checked: state.coverId === r.id });
+    });
+    U.menu({
+      title: 'Cover', label: 'Album cover', items, signal, doc: d,
+      onSelect: (v) => {
+        if (!sheet.isOpen()) return;
+        state.coverId = v ? v : null;
+        renderCover();
+      },
+    });
+  }
   function tapRow(r, ev) {
     if (!sheet.accepts(ev)) return;
     if (!albumWanted()) { r.box.checked = !r.box.checked; refresh(); return; } // album off: the tap ticks the row
@@ -7809,6 +7846,7 @@ function openPlaylistPicker(opts) {
         if (name !== r.title && (r.title || Object.prototype.hasOwnProperty.call(state.customNames, r.id))) titles[r.id] = name;
       });
       albumBody = { title, artist, cleanTitles: false, tracks, titles };
+      if (coverRec()) albumBody.coverId = state.coverId; // v1.374.0 (d): none = each song keeps its own art
     }
     state.posting = true;
     refresh();
