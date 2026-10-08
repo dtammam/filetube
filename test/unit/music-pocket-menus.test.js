@@ -47,7 +47,7 @@ test('builders: artists (avatar wins, else the first album art), albums, songs (
     ['Tonzak', 'artist', 'Tonzak', '/albumart/nd1'], ['NESTALGIA', 'artist', 'NESTALGIA', 'https://yt/av.jpg'], ['Unknown Artist', 'artist', '', ''],
   ]);
   const al = skins.menuAlbumItems([{ album: 'Night Drive', artist: 'Tonzak', albumKey: 'Tonzak\u0000Night Drive', artId: 'nd1' }, { album: '', albumKey: 'Z\u0000', artId: 'z1' }], artFor);
-  assert.deepStrictEqual(al.map((r) => [r.label, r.sub, r.node.key, r.art]), [['Night Drive', 'Tonzak', 'Tonzak\u0000Night Drive', '/albumart/nd1'], ['Unknown Album', '', 'Z\u0000', '/albumart/z1']]);
+  assert.deepStrictEqual(al.map((r) => [r.label, r.detail, r.node.key, r.art]), [['Night Drive', 'Tonzak', 'Tonzak\u0000Night Drive', '/albumart/nd1'], ['Unknown Album', '', 'Z\u0000', '/albumart/z1']]);
   const so = skins.menuSongItems([{ id: 'a', title: 'One', artist: 'X' }, { id: 'mix::c1', title: 'Two', artUrl: '/thumbnail/mix' }], artFor);
   assert.deepStrictEqual(so.map((r) => [r.id, r.trackIndex, r.song, r.art]), [['a', 0, true, '/albumart/a'], ['mix::c1', 1, true, '/thumbnail/mix']]);
 });
@@ -89,6 +89,20 @@ test('menuWindow: only the rows near the viewport render; with no layout, a fixe
 });
 
 // ---------------------------------------------------------------- the renderers
+test('v1.374.0: the artist / album line under Albums, Recent Albums and Recent Artists rows is DRAWN (builder field = the renderer slot)', () => {
+  // Dean (iPhone): "I do not see the artist or album under Recent Artists or Recent Albums". The builders wrote `sub`,
+  // which no renderer reads; the row draws `detail` (.ipm-detail). Bind builder -> renderer, not the field alone.
+  const draw = (items) => skins.renderMenuList({ style: 'click', items, cursor: 0, start: 0, end: items.length, rowH: 34, state: 'ready' });
+  const details = (html) => (html.match(/<span class="ipm-detail">([^<]*)<\/span>/g) || []).map((m) => m.replace(/<[^>]+>/g, ''));
+  const albums = skins.menuAlbumItems([{ album: 'Night Drive', artist: 'Tonzak', albumKey: 'k1', artId: 'nd1' }], artFor);
+  assert.deepStrictEqual(details(draw(albums)), ['Tonzak'], 'Albums: the artist under the album');
+  const recentAlbums = skins.menuRecentAlbumItems([{ id: 'a', albumKey: 'k2', album: 'Mix', artist: 'Guest', albumArtist: 'Various Artists' }], artFor);
+  assert.deepStrictEqual(details(draw(recentAlbums)), ['Various Artists'], 'Recent Albums: the album artist under the album');
+  const recentArtists = skins.menuRecentArtistItems([{ id: 'b', artist: 'Tonzak', album: 'Night Drive' }], artFor);
+  assert.deepStrictEqual(details(draw(recentArtists)), ['Night Drive'], 'Recent Artists: the last album played under the artist');
+  assert.deepStrictEqual(details(draw(skins.menuRecentArtistItems([{ id: 'c', artist: 'Solo' }], artFor))), [], 'no album: no empty line');
+});
+
 test('renderMenuList: escaped labels, chevrons on drill rows, the playing mark, pads that hold the scroll height', () => {
   const items = [{ label: '<img src=x onerror=alert(1)>', node: { type: 'album' } }, { label: 'Song', id: 's1', song: true, sub: 'Artist' }];
   const html = skins.renderMenuList({ style: 'click', items, cursor: 1, currentId: 's1', start: 0, end: 2, rowH: 34, state: 'ready' });

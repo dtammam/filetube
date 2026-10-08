@@ -91,6 +91,9 @@ test('menuRecentArtistItems: recency order, duplicates collapsed on the Artists 
   assert.deepStrictEqual(rows[0].node, { type: 'artist', key: 'Tonzak', label: 'Tonzak' }, 'drills exactly like Artists > artist');
   assert.deepStrictEqual(rows[3].node, { type: 'artist', key: '', label: 'Unknown Artist' }, 'the untagged bucket keys on "" like the Artists level');
   assert.deepStrictEqual(rows.map((r) => r.art), ['/albumart/a1', '/albumart/b1', '/albumart/c1', '/albumart/u1', 'https://yt/zed.jpg']);
+  // v1.374.0 (Dean): under each artist, the album of their most recent play (the first row seen is the newest)
+  const withAlbums = skins.menuRecentArtistItems([{ id: 'p1', artist: 'Tonzak', album: 'Newest' }, { id: 'p2', artist: 'Tonzak', album: 'Older' }, { id: 'p3', artist: 'Solo' }], artFor);
+  assert.deepStrictEqual(withAlbums.map((r) => [r.label, r.detail]), [['Tonzak', 'Newest'], ['Solo', '']]);
   const many = Array.from({ length: 40 }, (_, i) => ({ id: 'x' + i, artist: 'Artist ' + i }));
   assert.strictEqual(skins.menuRecentArtistItems(many, artFor).length, skins.RECENT_ARTISTS_MAX);
   assert.strictEqual(skins.RECENT_ARTISTS_MAX, 25);
@@ -105,7 +108,11 @@ test('menuRecentAlbumItems (v1.350): recency order, duplicates collapsed on albu
   ];
   const rows = skins.menuRecentAlbumItems(t, artFor);
   assert.deepStrictEqual(rows.map((r) => r.label), ['Rec', 'Ner', 'Unknown Album'], 'recency order, the duplicate collapsed, keyless tracks skipped');
-  assert.deepStrictEqual(rows.map((r) => r.sub), ['Tonzak', 'NESTALGIA', 'Solo']);
+  // v1.374.0 (Dean: "I do not see the artist ... under Recent Albums"): the line is `detail`, the slot the renderer draws
+  assert.deepStrictEqual(rows.map((r) => r.detail), ['Tonzak', 'NESTALGIA', 'Solo']);
+  // the album's grouping artist (albumArtist), never one song's credited artist
+  const va = skins.menuRecentAlbumItems([{ id: 'g1', albumKey: 'Various Artists\u0001Mix', album: 'Mix', artist: 'Guest', albumArtist: 'Various Artists' }], artFor);
+  assert.strictEqual(va[0].detail, 'Various Artists');
   assert.deepStrictEqual(rows[0].node, { type: 'album', key: 'Tonzak\u0001Rec', label: 'Rec' }, 'drills like Albums > album');
   const albumsRow = skins.menuAlbumItems([{ album: 'Rec', artist: 'Tonzak', albumKey: 'Tonzak\u0001Rec', artId: 'rep1' }], artFor)[0];
   assert.deepStrictEqual(rows[0], albumsRow, 'the row equals the Albums row for the same album');

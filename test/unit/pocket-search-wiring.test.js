@@ -8,7 +8,7 @@ const assert = require('node:assert');
 const { createPocketHarness } = require('../helpers/pocket-menu-harness');
 
 const H = createPocketHarness(() => ({ base: 'http://localhost', authedFetch: async () => ({ ok: true, status: 200, json: async () => ({ items: [] }) }) }));
-const { menu, tapRow, settleNet, click, labels } = H;
+const { menu, tapRow, settleNet, click, labels, rows } = H;
 
 const song = (id, title) => ({ id, type: 'audio', title, artist: 'Band', album: 'Alb', albumKey: 'band|alb', genre: 'G', duration: 200, source: 'library', streamSrc: '/media/' + id, channelName: 'Band' });
 const json = (body) => ({ ok: true, status: 200, json: async () => body });
@@ -52,6 +52,7 @@ test('X17: Music > Search in the REAL view reads the three routes with the typed
       '/api/music?search=ABC&sort=title-asc&limit=30',
     ].sort(), 'one read per group, the whole word, once');
     assert.deepStrictEqual(labels(h), ['Songs', 'Probe One', 'Probe Two', 'Albums', 'Probe Album', 'Artists', 'Probe Band'], 'the real rows reach the screen');
+    assert.strictEqual(rows(h).find((r) => /Probe Album/.test(r.textContent)).querySelector('.ipm-detail').textContent, 'Band', 'v1.374.0: a search album hit shows its artist (the Albums row)');
   } });
 });
 

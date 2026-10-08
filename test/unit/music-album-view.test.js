@@ -96,6 +96,7 @@ async function boot(url, playerState, opts, run) {
   global.window.addToQueue = () => {};
   global.fetch = (opts && opts.fetch) ? opts.fetch(calls) : fetchMapFor(opts, calls);
   if (opts && opts.tabPref) { try { dom.window.localStorage.setItem('filetube_music_tab', opts.tabPref); } catch (_) { /* ignore */ } }
+  if (opts && opts.sortPref) { try { dom.window.localStorage.setItem('filetube_music_sort', opts.sortPref); } catch (_) { /* ignore */ } }
   try {
     delete require.cache[musicPath];
     require(musicPath);
@@ -350,6 +351,40 @@ test('redesign: Music opens on the HOME shelves by default; a shelf "See all" op
     assert.ok(content.querySelector('.music-artist-card'), 'the full grid is the Artists grid (artist cards)');
     assert.ok(!doc.getElementById('music-sort-select').hidden, 'the sort control returns on a sortable full tab');
     assert.ok(isShown(doc.getElementById('music-sort-select')), 'and is visible and interactive again (the reserve is cleared)');
+  });
+});
+
+test('v1.374.0: an album opened FROM Home shows the sort (drill options, the remembered album sort); Home itself stays reserved', async () => {
+  // Dean: "I don't see a way to sort in the desktop Music". Measured in the real app (desktop 1440 and 390): an album
+  // opened from a Home shelf kept tab 'home', so the sort stayed reserved inside it. The Songs-tab options and a
+  // remembered 'newest' album sort must not leak: the drill shows the DRILL list with the remembered value selected.
+  const fetchFn = () => (url) => {
+    if (url.indexOf('/api/music/artists') === 0) return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+    if (url.indexOf('/api/music/albums') === 0) {
+      return Promise.resolve({ ok: true, json: async () => ({ items: [{ albumKey: 'k1', album: 'Kirby OST', artist: 'Jun Ishikawa', trackCount: 2, artId: 'a1' }] }) });
+    }
+    if (url.indexOf('album=k1') !== -1) {
+      return Promise.resolve({ ok: true, json: async () => ({ items: [
+        { id: 'a1', title: 'Green Greens', artist: 'Jun Ishikawa', album: 'Kirby OST', albumKey: 'k1', trackNo: 1, durationSec: 60 },
+        { id: 'a2', title: 'Float Islands', artist: 'Jun Ishikawa', album: 'Kirby OST', albumKey: 'k1', trackNo: 2, durationSec: 60 },
+      ], total: 2 }) });
+    }
+    return Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  };
+  await boot('http://localhost/music', { state: 'docked', currentId: null }, { fetch: fetchFn, sortPref: JSON.stringify({ 'drill-album': 'title-asc' }) }, async (dom) => {
+    const doc = dom.window.document;
+    const sortSel = doc.getElementById('music-sort-select');
+    assert.ok(doc.querySelector('.music-home'), 'landed on the Home shelves');
+    assert.ok(isReserved(sortSel), 'Home itself: the sort stays reserved (no sortable list there)');
+    const card = doc.querySelector('.music-home .music-album-card[data-album-key="k1"]');
+    assert.ok(card, 'the Recently added shelf carries the album card');
+    card.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    for (let i = 0; i < 8; i++) await settle();
+    assert.ok(doc.querySelector('#music-content .music-song-row'), 'the album drill rendered');
+    assert.ok(isShown(sortSel), 'the sort is visible and interactive inside an album opened from Home');
+    const opts = Array.from(sortSel.options).map((o) => o.value);
+    assert.ok(opts.indexOf('album-order') !== -1, 'the drill option list (Album order), not the Songs tab list: ' + opts.join(','));
+    assert.strictEqual(sortSel.value, 'title-asc', 'the remembered album sort is the one shown, so it can be changed back');
   });
 });
 

@@ -3290,7 +3290,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // The HOME shelves are a fixed recently-added composition - no sortable
       // list, so the sort control is hidden there (gate: no inert/mislabeled
       // dropdown on the default landing). A drill IS sortable (friction pass:
-      // Dean wanted release-date order for an artist's songs).
+      // Dean wanted release-date order for an artist's songs), wherever it was opened from.
       // v1.339 (L1, M4): hidden by VISIBILITY, not display - the select keeps its slot, so
       // the toolbar never reflows between Home and the other tabs (display:none shifted
       // the wrapped mobile toolbar on every Home entry: CLS 0.019). visibility:hidden also
@@ -3298,7 +3298,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.339 (L1b): through the one slot writer (setToolbarSlot) with the other toolbar
       // controls; its WIDTH is fixed in CSS so a drill's longer option list ("Release date
       // (newest)") cannot widen it and reflow the row either.
-      var reserveOnly = tab === 'home';
+      // v1.374.0 (Dean: "I don't see a way to sort in the desktop Music"): a drill opened FROM Home (a shelf card) keeps
+      // tab 'home', so the old `tab === 'home'` test hid the sort inside every such album or artist, on every device
+      // (measured: hidden from Home, shown from the Albums tab) - a remembered drill sort could not be changed back there.
+      var reserveOnly = tab === 'home' && !drill;
       setToolbarSlot(wrap, reserveOnly ? 'reserved' : 'shown');
       if (reserveOnly) return;
       var key = activeSortKey();
