@@ -1386,6 +1386,13 @@ const PreviewCards = (function () {
     // v1.343 Watch later: `?watchlater=1` is a scope exactly like `?liked=1`, served by GET /api/watch-later
     // (the user's own ordered list; same item shape as Liked, so the same cards).
     const watchLaterFilter = urlParams.get('watchlater') === '1';
+    // v1.376 W3 (R3): a channel link opened from an item carries that item's type
+    // (`?format=video|audio`, common.js channelHrefForItem). While it applies, it wins over
+    // the remembered `filetube_format` for THIS view only and is never written back, so Home
+    // keeps the remembered filter. null = no URL format (the remembered filter applies).
+    // `let`: the empty state's "Show all" sets it to 'both'; the format chip clears it.
+    let viewFormatOverride = (typeof urlFormatFilter === 'function') ? urlFormatFilter(urlParams) : null;
+    function activeFormatFilter() { return viewFormatOverride || getStoredFormatFilter(); }
 
     // v1.79 home feed: the feed replaces the BARE home landing only. Drilling
     // into a folder / channel / search / liked view is always the classic list
@@ -1917,7 +1924,8 @@ const PreviewCards = (function () {
     // every server-authoritative param this view's controls affect: the
     // current search/folder/root scope (unchanged for the lifetime of this
     // view instance -- a new scope is a new page navigation, not a
-    // reset-in-place), `sort`/`format` (the persisted preferences), an
+    // reset-in-place), `sort`/`format` (the persisted preferences; a URL
+    // `format=` wins for this view, v1.376 W3 activeFormatFilter), an
     // explicit `limit` (never relies on the server's own default), and the
     // CURRENT reset's `seed`.
     function buildVideosApiUrl(offset) {
@@ -1943,7 +1951,7 @@ const PreviewCards = (function () {
       if (rootFilter) queryParams.push(`root=${encodeURIComponent(rootFilter)}`);
       if (subsFilter) queryParams.push('subs=1'); // v1.79.1: subscription-scoped browse
       queryParams.push(`sort=${encodeURIComponent(currentSort)}`);
-      queryParams.push(`format=${encodeURIComponent(getStoredFormatFilter())}`);
+      queryParams.push(`format=${encodeURIComponent(activeFormatFilter())}`);
       // v1.50: watched-state filter -- server-authoritative like format
       // (pagination would break under a client-side filter). Honored by
       // BOTH endpoints below (the v1.32 format-toggle parity posture).
@@ -2414,7 +2422,7 @@ const PreviewCards = (function () {
         searchIn: activeSearchScope, // v1.149 gate W1: the scope rides the ctx (encodeListContext drops 'all')
         folder: folderFilter,
         root: rootFilter,
-        format: getStoredFormatFilter(),
+        format: activeFormatFilter(),
       });
     }
 
@@ -2430,7 +2438,8 @@ const PreviewCards = (function () {
       const ctxParam = currentBrowseContextParam();
       const href = musicHrefForItem(item) || (kp ? kp.href : `/watch.html?v=${item.id}${ctxParam ? '&ctx=' + encodeURIComponent(ctxParam) : ''}`);
       const channelName = kp ? kp.uploaderLabel : resolveChannelName(item, folderSettings);
-      const channelHref = kp ? kp.uploaderHref : `/?folder=${encodeURIComponent(item.folderName)}`;
+      // v1.376 W3 (R3): a media card's channel opens filtered to the card's own type.
+      const channelHref = kp ? kp.uploaderHref : channelHrefForItem(`/?folder=${encodeURIComponent(item.folderName)}`, item);
       const chAv = (!kp && typeof modernCardAvatar === 'function')
         ? modernCardAvatar(channelName, item.channelAvatarUrl, typeof modernModeEnabled === 'function' && modernModeEnabled())
         : { kind: 'none' };
@@ -2606,6 +2615,25 @@ const PreviewCards = (function () {
       if (cur && cur.getAttribute('data-kind') === chipRowKind()) return;
       mountLibraryChips();
     }
+    // v1.376 W3: set (or, with null, drop) the view URL's `format=` without a history entry,
+    // keeping the entry's router state (the v1.362 gate r1 A2 posture in the chip handler).
+    function replaceViewFormatParam(value) {
+      try {
+        const u = new URL(window.location.href);
+        if (value === null) u.searchParams.delete('format');
+        else u.searchParams.set('format', value);
+        const prev = history.state;
+        history.replaceState(prev && typeof prev === 'object' ? Object.assign({}, prev, { url: u.pathname + u.search }) : prev, '', u);
+      } catch (_) { /* URL/history quirk - the in-view state still drives the fetch */ }
+    }
+    // The filtered empty state's "Show all": this view shows every format (the URL keeps
+    // `format=both`, so a reload or Back lands the same); the remembered filter is untouched.
+    function showAllFormats() {
+      viewFormatOverride = 'both';
+      replaceViewFormatParam('both');
+      mountLibraryChips();
+      resetAndReload();
+    }
     function mountLibraryChips() {
       if (!chipHost || typeof buildFilterChipRow !== 'function') return;
       const groups = [];
@@ -2613,7 +2641,7 @@ const PreviewCards = (function () {
         groups.push({ key: 'type', value: activeSearchType, all: 'all',
           options: SEARCH_TYPE_OPTIONS.map((o) => ({ value: o.chip, label: o.label })) });
       } else {
-        groups.push({ key: 'format', value: getStoredFormatFilter(), all: 'both',
+        groups.push({ key: 'format', value: activeFormatFilter(), all: 'both',
           options: FORMAT_TOGGLE_OPTIONS.map((o) => ({ value: o.mode, label: o.label })) });
         groups.push({ key: 'watch', value: getStoredWatchFilter(), all: 'all',
           options: WATCH_TOGGLE_OPTIONS.map((o) => ({ value: o.mode, label: o.label })) });
@@ -2623,7 +2651,13 @@ const PreviewCards = (function () {
         }
       }
       const row = buildFilterChipRow(groups, (changes) => {
-        if ('format' in changes) setStoredFormatFilter(changes.format);
+        // The format chip is the REMEMBERED filter's own control: a tap writes it (as on
+        // every view) and ends this visit's URL format (v1.376 W3), so the view and the
+        // remembered filter agree again.
+        if ('format' in changes) {
+          setStoredFormatFilter(changes.format);
+          if (viewFormatOverride !== null) { viewFormatOverride = null; replaceViewFormatParam(null); }
+        }
         if ('watch' in changes) setStoredWatchFilter(changes.watch);
         // The search dimensions are URL state (replaceState keeps the deep link
         // shareable without a history entry per tap).
@@ -2765,14 +2799,30 @@ const PreviewCards = (function () {
           ? '<a href="/" class="ui-btn ui-btn--secondary ui-btn--md empty-state-action"><span class="ui-btn__label">View All Media</span></a>'
           : '';
         let emptyOpts;
+        // v1.376 W3 (R3): an empty list while a format filter applies (the URL's or the
+        // remembered one) says the FILTER emptied it, with a "Show all" that lifts the
+        // filter for THIS view only (it never writes the remembered filter; the chip row
+        // is that control). Before this, a remembered Audio filter on a video-only channel
+        // read "This folder is empty." / "No videos or audio yet.".
+        const emptyFormat = activeFormatFilter();
         if (searchQuery) {
           emptyOpts = { icon: 'search', message: 'No results found.', hint: 'Try a different search, or browse all your media.', actionHtml };
+        } else if (emptyFormat === 'video' || emptyFormat === 'audio') {
+          const isAudio = emptyFormat === 'audio';
+          emptyOpts = {
+            icon: isAudio ? 'music_note' : 'smart_display',
+            message: isAudio ? 'No audio here.' : 'No videos here.',
+            hint: `The ${isAudio ? 'Audio' : 'Videos'} filter is on.`,
+            actionHtml: '<button type="button" class="ui-btn ui-btn--secondary ui-btn--md empty-state-action" data-format-show-all><span class="ui-btn__label">Show all</span></button>',
+          };
         } else if (folderFilter) {
           emptyOpts = { icon: 'folder', message: 'This folder is empty.', hint: 'Nothing here yet - new files in this folder show up after a scan.', actionHtml };
         } else {
           emptyOpts = { icon: 'smart_display', message: 'No videos or audio yet.', hint: 'Files in your media folders show up here - with thumbnails, durations, and playback that picks up where you left off.' };
         }
         videoGrid.innerHTML = buildEmptyStateHtml(emptyOpts);
+        const showAllBtn = videoGrid.querySelector('[data-format-show-all]');
+        if (showAllBtn) showAllBtn.addEventListener('click', showAllFormats, { signal });
         return;
       }
 

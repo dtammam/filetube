@@ -359,6 +359,11 @@ module.exports = [
         filterByMediaType: 'readonly',
         getStoredFormatFilter: 'readonly',
         setStoredFormatFilter: 'readonly',
+        // v1.376 W3: a channel link carries the item's format (common.js), consumed by
+        // main.js (the card byline, the view's URL format) and watch.js (the uploader link).
+        channelFormatForItem: 'readonly',
+        channelHrefForItem: 'readonly',
+        urlFormatFilter: 'readonly',
         // v1.50: the watched-state filter (common.js), consumed by main.js.
         getStoredWatchFilter: 'readonly',
         setStoredWatchFilter: 'readonly',

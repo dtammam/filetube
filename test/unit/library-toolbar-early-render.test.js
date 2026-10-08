@@ -36,7 +36,10 @@ test('loadLibrary renders the filter chip row BEFORE the first fetch (toolbar co
   assert.match(prefix, /buildSkeletonGrid\(SKELETON_CARD_COUNT, \{ avatar: !!modernMode, typeLine: isUnifiedSearch \}\)/, 'the grid skeleton is still seeded first (with the search type line on a global search)');
   assert.match(prefix, /ensureLibraryChips\(\);/, 'the chip row mounts in loadLibrary BEFORE the /api/config fetch');
   const mount = mainJs.slice(mainJs.indexOf('function mountLibraryChips() {'), mainJs.indexOf('function updateShuffleButtonVisibility() {'));
-  assert.match(mount, /getStoredFormatFilter\(\)[\s\S]*getStoredWatchFilter\(\)/, 'from the synchronous stored prefs');
+  // v1.376 W3: the format is the view's ACTIVE one (a URL format parsed at init, else the stored
+  // pref) - still synchronous.
+  assert.match(mount, /activeFormatFilter\(\)[\s\S]*getStoredWatchFilter\(\)/, 'from the synchronous stored prefs');
+  assert.match(mainJs, /function activeFormatFilter\(\) \{ return viewFormatOverride \|\| getStoredFormatFilter\(\); \}/, 'the active format is synchronous');
   assert.doesNotMatch(mount, /await|fetch\(/, 'the mount itself is synchronous');
 });
 
