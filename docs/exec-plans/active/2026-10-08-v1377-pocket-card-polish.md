@@ -59,6 +59,9 @@ playing a video then SPA-navigating to /) and test/geometry/handoff-dock.js (HDK
   classes, ids, storage keys and comments are NOT renamed (no behaviour change, no migration). Past release notes in
   docs/releases.json are history and stay as written.
 - R4 (standing) Desktop unchanged; existing design kit only (ui.btn / the handoff card's own parts); no new mechanisms.
+- R6 (AskUserQuestion, 2026-10-08, the W1 stop rule at 320) "Side card, no art": a phone under 370 wide (a 320 iPhone
+  SE has 136 px beside the dock; "Paused watching on" alone is 132 px, Continue here 116 px) keeps the card beside the
+  dock at its height, drops the art, lets the lead wrap and spans Continue here across the card's second row.
 - R5 (standing) Dean's device pass is the arbiter; one release for the wave (v1.377.0); the gate (adversary + qa, add
   security-brief only if the diff reaches auth / a route / the network).
 
@@ -95,6 +98,10 @@ playing a video then SPA-navigating to /) and test/geometry/handoff-dock.js (HDK
   to art URLs), (c) the launch path Dean uses (double-tap Music in the bottom nav, nothing playing) never reaches
   `syncSlides` (no render / visibility event after the pool resolves), (d) a skin / style other than 'click' that the
   drift does not serve. W2 MEASURES which before any change.
+- BUILD FINDING (2026-10-08, extends the diagnosis): the picture in Dean's screenshot is not the drift's empty pane but
+  the server's art PLACEHOLDER SVG (lib/music/routes.js musicArtPlaceholderSvg: navy, a disc, album text defaulting to
+  "Music"). (e): the idle iPod's ctx art was `/albumart/<the id the player still held>` (a paused podcast / video, not a
+  music track), and it filled the pane for the whole pool wait (a). (b), (c), (d) falsified. Fixed at (a) and (e).
 
 ### "iPod" in user-visible text (recon grep; the builder re-runs it as a census)
 - public/music.html:195: the Music page button `#music-pocket-btn` label "iPod", `title` and `aria-label` "Open the iPod".
@@ -157,7 +164,9 @@ playing a video then SPA-navigating to /) and test/geometry/handoff-dock.js (HDK
 adversary + qa (UI / layout on the phone's shared chrome, a client art lifecycle, a copy sweep). Brief the adversary on
 W1's blast radius (the card's rules at every width and both eras that change radius; narrow non-phone windows must not
 regress), W2's async reveal / clear axes (the pool landing after the view left, the panel down, a game holding the wheel)
-and W3's census completeness (a missed spelling). security-brief only if the diff touches a route, auth or the network.
+and W3's census completeness (a missed spelling). security-brief only if the diff touches a route, auth or the network. (Build: `.harness/scrutiny.toml`'s forced
+auth-and-secrets rule matches `**/*token*` - public/css/tokens.css and test/unit/token-scale-lock.test.js, design tokens -
+so security-brief joins the gate; a force row cannot be dropped.)
 
 (pending)
 

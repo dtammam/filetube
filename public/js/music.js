@@ -4846,7 +4846,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // Addendum E: one cover per album, only the ones the server says HAVE art, through the one art rule.
     // v1.377.0 (W2, Dean: "when one opens the iPod view, it always shows some art"): the covers come
     // from ONE random sample of the library (the list route's seeded `random` sort, COVER_SAMPLE
-    // rows), never the whole Songs list - on a 23,754-song library that was five sequential
+    // rows), never the whole Songs list - on a ~24,000-song library that was five sequential
     // 5,000-row pages (~15 MB) before the first cover, and the disc placeholder showed the whole
     // wait. The drift draws at most COVER_POOL_MAX covers anyway. A sample with no covers falls back
     // to the whole library (art on a few albums only), so the placeholder shows only when the
