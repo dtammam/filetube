@@ -231,7 +231,7 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
   the filter is still Audio. A folder the filter empties says "No audio here" with "Show all".
 - [x] v1.376.0 - (Dean 2026-10-08: "it all works"; the Listen Control bar's STYLE is a follow-up) iPhone, music playing on the Mac, a video in the mini player: the Listening on... card is a slim bar above the
   mini player; both fully visible and tappable.
-- [ ] v1.376.0 - iPhone watch page, the line under the controls: turn Ambient OFF in the player's cog (or light mode) and look.
+- [x] v1.376.0 - (Dean 2026-10-08: "good"; Ambient OFF makes the line go away, so the cause is the ambient glow: ROADMAP Planned) iPhone watch page, the line under the controls: turn Ambient OFF in the player's cog (or light mode) and look.
   Gone = tell me (the glow's bloom is the cause). Still there = Settings > lifecycle log on, play with the line on screen,
   Export the log and send it.
 - [x] v1.376.0 - (Dean 2026-10-08: "it all works") Save a playlist as an album with a Cover, skipping a song: every song shows that cover in every Music view
@@ -239,10 +239,10 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
 
 ## The Continue here card beside the mini player, Pocket art, "Pocket" (v1.377.0)
 
-- [ ] v1.377.0 - iPhone, music playing (or paused) on the Mac, a video in the mini player on Home: the "Paused watching on /
+- [x] v1.377.0 - (Dean 2026-10-08: "good") iPhone, music playing (or paused) on the Mac, a video in the mini player on Home: the "Paused watching on /
   Work MacBook Air" card sits directly LEFT of the mini player, the same height, nothing of the feed hidden above them;
   Continue here and the X work; closing the mini player brings back the normal card.
-- [ ] v1.377.0 - iPhone, nothing playing (also with a podcast or video paused): tap Music, then Music again to open Pocket:
+- [x] v1.377.0 - (Dean 2026-10-08: "good") iPhone, nothing playing (also with a podcast or video paused): tap Music, then Music again to open Pocket:
   the main menu's right side shows album covers drifting within a couple of seconds, never the disc with "Music".
-- [ ] v1.377.0 - The Music page button reads "Pocket"; Settings > Mobile player says "Keep Pocket upright"; no "iPod"
+- [x] v1.377.0 - (Dean 2026-10-08: "good") The Music page button reads "Pocket"; Settings > Mobile player says "Keep Pocket upright"; no "iPod"
   anywhere you can read in the app.

@@ -3,7 +3,7 @@ plan: next-waves
 harness: v2 · lean
 branch: one branch per wave (named in each wave below)
 anchor: this plan
-status: Building
+status: Shipped v1.344.0
 next: W1 (visual report-only + fast doc commits + the ceremony principle in AGENTS.md)
 design: Approved 2026-09-29 (Dean, Q&A: every ruling below is his answer, verbatim in intent)
 gate: per wave (adversary floor; W3 full gate)
