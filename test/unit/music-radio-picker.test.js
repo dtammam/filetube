@@ -26,21 +26,24 @@ test('P11: an untagged song borrows its ARTIST\'s most common genre, else its FO
   assert.strictEqual(radio.buildStationProfile({ kind: 'track', value: 'v' }, lib).genre, 'jazz', 'no artist genre: the folder\'s');
 });
 
-test('P10: a station with neither a genre nor a category anchors on the genre of its recent plays (drift, not a jump per pick)', () => {
+test('P10 (v1.375.0 Q3, inverted): a station with neither a genre nor a category is NOT anchored on the genre of its recent plays - the session never steers it', () => {
+  // v1.368.0 borrowed the most common genre of the last 24 plays here (the Kirby -> Prince cause);
+  // Dean's ruling: a station is defined by its seed only
   const lib = [nat('u0', 'Untagged', ''), nat('u1', 'Untagged', '')];
   for (let i = 0; i < 10; i += 1) lib.push(nat('r' + i, 'Rocker ' + i, 'Rock'));
   for (let i = 0; i < 30; i += 1) lib.push(nat('j' + i, 'Jazzer ' + i, 'Jazz'));
   const profile = radio.buildStationProfile({ kind: 'track', value: 'u0' }, lib);
   assert.strictEqual(profile.genre, null, 'precondition: nothing to stay close to');
   assert.strictEqual(profile.category, null);
-  // the session already stepped out into Rock: the next batch keeps that direction
+  // the session played three Rock songs before: the old anchor made this a Rock station (0 Jazz)
   const exclude = ['u0', 'r0', 'r1', 'r2'];
-  let jazz = 0;
+  let jazz = 0; let rock = 0;
   for (let k = 1; k <= 30; k += 1) {
     const picks = radio.pickRadioBatch(profile, lib, { exclude, count: 5 }, createSeededRng(k));
     jazz += picks.filter((t) => t.genre === 'Jazz').length;
+    rock += picks.filter((t) => t.genre === 'Rock').length;
   }
-  assert.strictEqual(jazz, 0, 'no Jazz once the session is in Rock (Jazz is three times Rock\'s size, so a direction-less draw takes it most)');
+  assert.ok(jazz > rock, 'the session\'s Rock did not steer it: Jazz (30 songs) is drawn more than the 7 Rock left: jazz ' + jazz + ', rock ' + rock);
 });
 
 test('P16: a neighbouring genre with more bridges is drawn more often (T4 weighs by strength)', () => {
@@ -69,7 +72,7 @@ test('P18: a YouTube category name on a NATIVE track is a real genre tag (only y
   assert.strictEqual(radio.genreKey({ genre: 'Music', source: 'library-chapter' }), null);
 });
 
-test('gate r2 S7: QUEUED songs are never picked but are NOT plays - they neither block the seed artist by spacing nor anchor the genre', () => {
+test('gate r2 S7: QUEUED songs are never picked but are NOT plays - they never block the seed artist by spacing', () => {
   const lib = [];
   for (let i = 0; i < 6; i += 1) lib.push(nat('a' + i, 'A', 'Rock'));
   for (let i = 0; i < 6; i += 1) lib.push(nat('r' + i, 'R' + i, 'Rock'));

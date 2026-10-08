@@ -84,6 +84,26 @@
 
 ### Bugs
 
+- [ ] **A channel link opens on a blank list when the remembered type filter excludes it (Dean, 2026-10-08, "has
+  happened to me more than once")** - repro: the home feed filtered to Audio; a notification opens a VIDEO; watch it; tap
+  the channel name -> the channel's list is blank, because the Audio filter is still applied and the channel's content is
+  video. Ask: tapping a piece of content's channel name filters to THAT content's type (or at least never lands on an empty
+  list the filter caused). Measure first on the real page (which surface: watch page channel link, card channel link; is
+  the filter remembered per device and carried into the channel view?), then fix; bind the "never blank because of a
+  stale filter" case on every channel-link surface.
+- [ ] **The "Listening on <device> / Continue here" card covers the mini player on the phone (Dean, 2026-10-08,
+  screenshot)** - on iPhone, with music playing on another device (the Listen Control handoff card: "Listening on Work
+  MacBook Air", the art, 1:06:09 / 8:00:00, a red "Continue here"), the card sits at the bottom of the home feed over the
+  mini player's slot and blocks it. Dean: "maybe we shrink it on mobile or just have it not do that." Measure first (the
+  card's and the mini player's rects at 390 / 320, with and without a local mini player; the z-ladder), then pick: a compact
+  one-line bar on the phone, or stack it so it never overlaps the mini player (or both). Existing kit only.
+- [ ] **A thin line of the picture's colours at the bottom edge of the phone player (Dean, 2026-10-08, screenshot)** -
+  iPhone, watch page, a playing video with the custom controls (scrubber row + transport row under the picture): a 1-2 px
+  strip of light / colour runs along the player's bottom edge, under the controls and above the title, looking like the
+  video (or its poster / storyboard) bleeding through below the control bar. Measure first: the player box, the video
+  element and the control bar rects at 390 / 320 and DPR 3 (a sub-pixel rounding gap at DPR 3 is the leading suspect),
+  the layers that paint in that strip (video vs poster vs the scrubber's buffered track), and whether it shows paused,
+  playing, in theatre and on other eras; then fix at the cause (LESSONS 6 blast radius: the player rules are shared).
 - [ ] **Lock-screen or headset Play with the Resume prompt up** (v1.363.0 gate, inherited from v1.161): the media-session `play`
   action (player.js `setMediaSessionAction('play', ...)`) calls `playActiveMedia()` with no prompt check, so a lock-screen or
   headset play while "Resume playback?" waits starts the video from 0 under it, and the progress saver can then overwrite the saved
@@ -365,15 +385,17 @@
 
 ### Features
 
-- [ ] **Music radio that feels like RADIO (Dean, 2026-10-07)** - a Kirby video game soundtrack album -> Radio played Prince
-  first ("not bad, but not really radio-like"). Diagnose before tuning: the leading hypothesis is that `genre` is junk for
-  downloads (yt-dlp --embed-metadata writes YouTube CATEGORIES - "Music" / "Gaming" - as genre), so Kirby and Prince look
-  like neighbours; second, a thin seed artist widens at once. Measure the candidate pool and score breakdown on real data
-  (an in-image probe if production is needed), then intake with Dean (same album / series / composer first? what is
-  "related" without real genres? widen vs end? per entry point?), then an artist-first candidate ladder keeping v1.368.0's
-  invariants (exclude / queued split, no duplicate ids, the widen fallback, no shared cache), bound end to end with the
-  real client + picker and a Kirby-shaped fixture where right and wrong picks diverge. Handoff prompt: Dean's 2026-10-07
-  message (session of v1.370.0-v1.373.0).
+- [ ] **NEXT BRANCH: "Add to Watch later" on a notification, and podcasts get the same options (Dean, 2026-10-08)** -
+  "Notification setting roadmap for next branch. Add to watch later option"; ruled (AskUserQuestion): a BUTTON on each
+  notification, not an auto-add setting. Then: "Make it so that it removes the video from the notification list.
+  Additionally we need podcasts to get the same options - be able to add to watch later - be able to delete - etc."
+  (1) Every new-video notification - the bell list in the app AND the push on the phone - gets "Add to Watch later": one
+  tap adds the video to the existing Watch later list (v1.343.0) without opening it, AND removes that notification from the
+  list. (2) Podcast episodes get the same options as videos: Add to Watch later, Delete, "etc." - intake enumerates the
+  video options (card menu / Extras: Watch later, Delete / Move to Trash, Watched, queue, Like, Share...) and Dean picks
+  which podcasts need. Intake first: the push action (Web Push `actions`: iOS PWA support is limited - measure what the
+  iPhone shows); a notification for a video not yet downloaded; can Watch later hold a podcast episode (its store keys on
+  library media ids); a podcast Delete is a data-loss surface (full gate, seed from storage).
 - [ ] **Opus downloads never reach the library** - server.js AUDIO_EXTENSIONS lacks `.opus`; Opus keeps its tags per
   STREAM (the scan reads the container's); iPhone Safari Opus playback is unmeasured. Measure, then fix or drop Opus from
   the file-type list (Dean: its own release, queued after v1.373.0).
@@ -725,6 +747,26 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.375.0 - Radio that feels like radio: a Kirby album plays Kirby, then game music (2026-10-08)
+
+- Dean (2026-10-07): a Kirby video game soundtrack album -> Radio played Prince ("not bad, but not really radio-like").
+- Diagnosed on production first (a read-only trace of the real picker, `tools/radio-sim/simulate.js --trace`): with an
+  empty session no Kirby album reached Prince (17 albums x 3 entry points x 50 draws: 0); the cause was the session
+  anchor - a station with no genre (yt-dlp "Gaming" / "Music" are categories, not genres) borrowed the genre of the last 24
+  plays. Dean's last Kirby station followed Prince x3 / Tears for Fears / Bowie / The Shins, so it became a pop station,
+  and Prince is 52% of the library's pop.
+- Dean's rulings: the same game / series from any artist first, a little of the album's artist, then other game music,
+  then a gentle widen; related = series words in titles, game music as a family, the channel as a minority; the session
+  anchor removed; no co-listening. Round 3: simplify (the series holds game music only) and stay on the channel.
+- Built (lib/music/radio.js): a station is its seed. A game-music seed gets a series-first ladder (series words learned
+  from game-music titles across 2+ channels -> the seed artist -> the game family -> nearest real genres -> the rest);
+  talk uploads (podcast / episode / ep N) never count as game music; real-genre stations keep v1.368.0's ladder minus the
+  anchor; a non-game channel's album stays on its channel. No route or client change. Kirby fixture: first pick Kirby
+  100/100 on every entry point after a 24-play pop session, Prince first at play 183 of 195 in long sessions.
+- Gate (adversary + qa): r1 CHANGES both (a lofi radio pulled Queen; ordinary words became series words - Linkin Park,
+  Raekwon, Holst; ~1 s per request; talk shows); r2 qa APPROVED, adversary CHANGES (a "join" rule let Linkin Park /
+  Bach uploads into a Kirby station); Dean ruled at round 3; r3 @ce66a538 both APPROVED. Residuals: tracker #295.
 
 ### v1.374.0 - Sort inside any album, the artist under iPod albums, one cover for a saved album (2026-10-08)
 
