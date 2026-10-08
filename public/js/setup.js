@@ -1654,7 +1654,7 @@ function wirePocketKbSearchControl(win, signal) {
     } catch (_) { /* storage disabled/full -- best-effort only */ }
   }, signal ? { signal } : undefined);
 }
-// The iPod portrait lock (Dean, 2026-10-07): Mobile player > Keep the iPod upright. Checked = upright (no key, the
+// The iPod portrait lock (Dean, 2026-10-07): Mobile player > Keep Pocket upright. Checked = upright (no key, the
 // default); unchecked stores ft-pocket-sideways = '1'. Through FileTubeMusicSkins.setPocketSideways, which also re-marks
 // html.pk-upright at once (the SPA keeps one window, so the player opened next is already right).
 function loadPocketUprightControl(win) {
@@ -3366,7 +3366,7 @@ function wireStaticControls(signal) {
   wireNoTapGlyphControl(window, signal); // v1.362.3 (E3): the black-picture glyph A/B
   wireDebugRotateControl(window, signal); // v1.355: the rotate debug log, applied at once (loadDebugRotateControl)
   wirePocketKbSearchControl(window, signal); // v1.355: Mobile player > Keyboard search (experimental)
-  wirePocketUprightControl(window, signal); // the iPod portrait lock: Mobile player > Keep the iPod upright
+  wirePocketUprightControl(window, signal); // the iPod portrait lock: Mobile player > Keep Pocket upright
 
   // v1.45.6 (Dean): per-page sort — a CLIENT toggle (localStorage), like the
   // debug-lifecycle overlay above. Prefill from + persist via the common.js
@@ -4772,7 +4772,7 @@ function wheelCalTemplate() {
       '<p><b>Angle mode:</b> if Inner sits high and Outer low, that falloff IS the bug. <b>Watch the flash vs your finger:</b> if it flashes at the rim but you feel nothing, the native crossing is failing out there instead.</p>' +
       '<p><b>The capture test:</b> the wheel "grabs" your finger part-way into a spin so it keeps tracking if you slide off the edge. Set <b>Capture: Off</b> and spin. On press (grab immediately) should feel worst; After 8px buzzes briefly then dies.</p>' +
       '<p><b>Grid (target-lock check):</b> a grid of real switches. iOS locks a touch to the ONE switch you land on, so a spin only ever toggles that one - watch <b>Distinct switches fired</b>: if it stays at 1 across a whole spin, target-lock is confirmed and a grid/ring can never work. Drag back and forth over one spot: if it ticks each way, the native tracking is alive.</p>' +
-      '<p><b>Sweep (the working path - tune it):</b> ONE tracked switch, moved smoothly under your finger so its midline genuinely sweeps past you each detent - no faked flip, no rate cap. It buzzes ~85% of notches; the goal is ~100%. <b>Dither</b> is how far the switch swings each notch - bump it up if notches are being missed. <b>Detent</b> is how many notches per turn - Fine is iPod-dense (96/rev), Coarse trades density for reliability. Find the combo that buzzes every notch, and those settings go into the real wheel.</p>' +
+      '<p><b>Sweep (the working path - tune it):</b> ONE tracked switch, moved smoothly under your finger so its midline genuinely sweeps past you each detent - no faked flip, no rate cap. It buzzes ~85% of notches; the goal is ~100%. <b>Dither</b> is how far the switch swings each notch - bump it up if notches are being missed. <b>Detent</b> is how many notches per turn - Fine is click-wheel-dense (96/rev), Coarse trades density for reliability. Find the combo that buzzes every notch, and those settings go into the real wheel.</p>' +
     '</div>' +
     '<div class="whcal-controls">' +
       '<div class="whcal-ctl"><span class="whcal-ctl-label">Engine</span>' +
@@ -5185,7 +5185,7 @@ function init(root) {
   loadNoTapGlyphControl(window); // v1.362.3 (E3)
   loadDebugRotateControl(window); // v1.355
   loadPocketKbSearchControl(window); // v1.355: Mobile player > Keyboard search
-  loadPocketUprightControl(window); // the iPod portrait lock: Mobile player > Keep the iPod upright
+  loadPocketUprightControl(window); // the iPod portrait lock: Mobile player > Keep Pocket upright
   // v1.246: open-audio-in-music toggle retired (audio always opens in the skin).
   loadHomeRowControl('home-continue-watching-check', 'ft-home-continue-watching');
   loadHomeRowControl('tv-continue-watching-check', 'ft-tv-continue-watching'); // v1.198.2: reflect-on-load (the v1.193 lesson)
@@ -5263,7 +5263,7 @@ if (typeof module !== 'undefined' && module.exports) {
     loadNoTapGlyphControl, wireNoTapGlyphControl, // v1.362.3 (E3): the no-glyph A/B switch
     loadEngineSection, // v1.365.0 (W3): its probe also reveals Troubleshooting > Download trace
     loadPocketKbSearchControl, wirePocketKbSearchControl, // v1.355: Mobile player > Keyboard search
-    loadPocketUprightControl, wirePocketUprightControl, // the iPod portrait lock: Mobile player > Keep the iPod upright
+    loadPocketUprightControl, wirePocketUprightControl, // the iPod portrait lock: Mobile player > Keep Pocket upright
     loadResumeModeControls, wireResumeModeControls, clampResumeSeconds, // v1.363: the resume mode + Ask me countdown controls
     // Click wheel test — the pure metering core (boundary- and
     // cross-lock-tested in wheel-cal-metering.test.js; the DOM/native-switch

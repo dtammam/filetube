@@ -13,7 +13,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const {
-  shouldShowHandoffCard, handoffSuppressionToken, formatHandoffHeadline,
+  shouldShowHandoffCard, handoffSuppressionToken, formatHandoffHeadline, handoffHeadlineParts,
   formatHandoffTime, formatHandoffAge, handoffProgressPercent,
   HANDOFF_LIST_SURFACES,
 } = require('../../public/js/common.js');
@@ -104,6 +104,18 @@ test('headline names the DEVICE + the MODALITY, and the paused arm carries the a
     'Paused watching on iPhone - 18 min ago');
   assert.equal(formatHandoffHeadline(presence({ deviceLabel: '' })), 'Watching on another device');
   assert.equal(formatHandoffHeadline(null), 'Watching on another device');
+});
+
+test('v1.377.0 (W1): the headline\'s three parts - the lead, the device, the paused age - join to the same words', () => {
+  // the phone card beside the mini player sets the lead over the device and leaves the age out (style.css)
+  assert.deepEqual(handoffHeadlineParts(presence({ state: 'paused', ageSeconds: 18 * 60 })), { lead: 'Paused watching on', device: 'iPhone', age: ' - 18 min ago' });
+  assert.deepEqual(handoffHeadlineParts(presence({ listen: true })), { lead: 'Listening on', device: 'iPhone', age: '' });
+  assert.deepEqual(handoffHeadlineParts(presence({ listen: true, state: 'paused', ageSeconds: 60 })).lead, 'Paused listening on');
+  assert.deepEqual(handoffHeadlineParts(null), { lead: 'Watching on', device: 'another device', age: '' });
+  for (const p of [presence(), presence({ state: 'paused', ageSeconds: 5 }), presence({ listen: true, deviceLabel: 'Work MacBook Air' }), null]) {
+    const x = handoffHeadlineParts(p);
+    assert.equal(`${x.lead} ${x.device}${x.age}`, formatHandoffHeadline(p), 'the full card reads the same words');
+  }
 });
 
 test('v1.304: a LISTENED item reads "Listening", in both the playing and paused arms', () => {

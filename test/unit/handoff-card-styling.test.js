@@ -122,7 +122,10 @@ test('the card owns exactly ONE interval, and stops it when the tab hides (the v
 test('the two client-supplied fields are written as textContent, never innerHTML', () => {
   // The device label is client-supplied. It is capped and sanitized
   // server-side, but it must never be treated as markup here.
-  assert.ok(/\.headline\.textContent = formatHandoffHeadline/.test(controller));
+  // v1.377.0 (W1): the headline is three parts (handoffHeadlineParts), each written as text - the device label too
+  assert.ok(/\.lead\.textContent = parts\.lead;/.test(controller));
+  assert.ok(/\.device\.textContent = parts\.device;/.test(controller));
+  assert.ok(/\.age\.textContent = parts\.age;/.test(controller));
   assert.ok(/\.title\.textContent = presence\.title/.test(controller));
   assert.ok(!/innerHTML/.test(controller), 'the handoff controller must never use innerHTML');
 });
@@ -152,6 +155,16 @@ test('AC4: every token the card consumes resolves in ALL FOUR era skins', () => 
 
   const consumed = new Set();
   for (const m of cardCss.matchAll(/var\((--[a-z0-9-]+)/g)) consumed.add(m[1]);
+  // Runtime properties, not tokens: written by a script, never by an era block, and read with a literal fallback.
+  const RUNTIME = {
+    '--scroll-lock-gap': 'body-scroll-lock.js writes it on <html> while a lock holds (v1.341.2); the phone card beside the dock mirrors the dock\'s right inset (v1.377.0)',
+  };
+  for (const [t, why] of Object.entries(RUNTIME)) {
+    if (!consumed.has(t)) continue;
+    const uses = cardCss.match(new RegExp('var\\(' + t + '[^)]*\\)', 'g')) || [];
+    assert.ok(uses.length && uses.every((u) => /,\s*0px\)$/.test(u)), t + ' is always read with its 0px fallback (' + why + '): ' + uses.join(' '));
+    consumed.delete(t);
+  }
   assert.ok(consumed.size >= 10, `expected the card's real token roster, derived ${consumed.size}`);
   // Sweep S9 (F57's family): the card paints the overlay roles, never a legacy surface / red.
   for (const t of ['--surface-overlay', '--shadow-overlay', '--ink-1', '--ink-2']) assert.ok(consumed.has(t), 'consumes ' + t);

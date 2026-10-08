@@ -10206,8 +10206,8 @@ if (typeof module !== 'undefined' && module.exports) {
   // mountInDock()) and every exit (hideDock(): close(), an expand back into a slot, which is also how a
   // navigation to the watch page and the fullscreen stage take the host) goes through here, so the root
   // signal can never disagree with the dock's own [hidden]. The signal is DATA for other fixed surfaces
-  // that must not cover the dock (style.css: the phone's handoff card stacks above it, the narrow
-  // remote pill too): html.has-player-dock while it shows, and --player-dock-h, the dock's rendered
+  // that must not cover the dock (style.css: the phone's handoff card sits beside it at its height, v1.377.0;
+  // the narrow remote pill stacks above it): html.has-player-dock while it shows, and --player-dock-h, the dock's rendered
   // height, kept current by a ResizeObserver (the dock's height follows the item's aspect ratio and
   // audio mode). Hidden: the class and the value are removed and the observer is let go.
   function setDockShown(dockEl, shown) {
