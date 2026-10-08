@@ -71,12 +71,14 @@ test('gate r1 adversary C1: a two-word name and its own words are ONE shared mat
   assert.ok(!plan.inSeries(lib.find((t) => t.title === 'Ice Cream Parlor')), 'one shared name is chance, not the series');
 });
 
-test('gate r1 adversary C1: a word in under half the seed set\'s songs is no album word - Pokemon\'s "Route" never makes Vapid\'s "Rainbow Route" the series', () => {
+test('gate r1 adversary C1: a word in under half (or under 3) of the seed set\'s songs is no album word - Pokemon\'s "Route" never makes Vapid\'s "Rainbow Route" the series', () => {
   const routes = ['Pallet Town', 'Route 1', 'Viridian City', 'Pewter City', 'Route 3', 'Cerulean City', 'Route 24', 'Vermilion City'];
   const lib = LIB.concat(K.set('PokeLofi', 'pokelofi', 'Pokemon Red Lofi', 'Gaming', routes), K.set('PokeLofi', 'pokelofi', 'Pokemon Blue Lofi', 'Gaming', ['Lavender Town', 'Celadon City', 'Saffron City']),
-    K.set('Pocket Beats', 'pocketbeats', 'Pokemon Chill', 'Gaming', ['Route Chill', 'Town Chill', 'Cave Chill']));
+    K.set('Pocket Beats', 'pocketbeats', 'Pokemon Chill', 'Gaming', ['Route Chill', 'Town Chill', 'Cave Chill']),
+    // two of three titles say "Route": half, but under the 3-title minimum - still no album word
+    K.set('PokeLofi', 'pokelofi', 'Pokemon Yellow Lofi', 'Gaming', ['Route 2', 'Route 22', 'Pallet Lofi']));
   const rainbow = lib.find((t) => t.title === 'Kirby Amazing Mirror - Rainbow Route');
-  for (const [seed] of [albumSeed(lib, 'Pokemon Red Lofi'), songSeed(lib, 'Pokemon Red Lofi', 'Route 1')]) {
+  for (const [seed] of [albumSeed(lib, 'Pokemon Red Lofi'), songSeed(lib, 'Pokemon Red Lofi', 'Route 1'), albumSeed(lib, 'Pokemon Yellow Lofi')]) {
     const plan = radio.stationPlan(radio.buildStationProfile(seed, lib), lib);
     assert.ok(plan.terms.some((x) => x.term === 'pokemon'), 'precondition: the franchise word qualifies');
     assert.ok(!plan.inSeries(rainbow), seed.kind + ': "route" alone made Kirby the Pokemon series');
