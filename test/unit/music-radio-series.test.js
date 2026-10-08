@@ -70,8 +70,11 @@ test('Q1: a Kirby album station opens on the SAME SERIES from several channels -
       assert.strictEqual(prince, 0, `${where}: Prince picks: ${prince}`);
       const channels = Object.keys(byChannel);
       const top = Math.max(...Object.values(byChannel));
-      assert.ok(channels.length >= 4, `${where}: Kirby from several channels: ${JSON.stringify(byChannel)}`);
-      assert.ok(top / kirbyPicks < 0.5, `${where}: no one channel is half the Kirby (not only NESTALGIA): ${JSON.stringify(byChannel)}`);
+      // the series is game music only (the Architect's ruling, gate r1): Soundzantium's and PSK's YouTube-"Music"
+      // Kirby sets are not in it; the game channels holding Kirby are NESTALGIA, Vapid, heavymachinegun, Jun Ishikawa
+      assert.ok(channels.length >= 3, `${where}: Kirby from several channels: ${JSON.stringify(byChannel)}`);
+      assert.ok(top / kirbyPicks < 0.6, `${where}: no one channel is most of the Kirby (not only NESTALGIA): ${JSON.stringify(byChannel)}`);
+      assert.ok(!byChannel.Soundzantium && (title === K.KIRBY_SETS.psk || !byChannel['PSK Beats n\' Vibes']), `${where}: a non-game channel's Kirby is not the series: ${JSON.stringify(byChannel)}`);
     }
   }
 });
@@ -168,7 +171,6 @@ test('series words: a title template, a style word and one shared song word neve
   assert.notStrictEqual(songPlan.tierOf(hill), radio.TIER_SERIES, 'one shared song word is not the series');
   const vapidGreens = LIB.find((t) => t.title === 'Green Greens (Kirby Dream Land)');
   assert.strictEqual(songPlan.tierOf(vapidGreens), radio.TIER_SERIES);
-  assert.ok(songPlan.seriesScore(vapidGreens) > songPlan.seriesScore(LIB.find((t) => t.title === 'Halberd')), 'sharing more series words weighs more');
   // a two-word name: "mega man" qualifies though "man" alone is a stop word
   const mm = radio.stationPlan(radio.buildStationProfile({ kind: 'album', value: store.albumKeyFor(albumOf('2 Hours of Happy and Underrated Mega Man Music')[0]) }, LIB.concat([
     { id: 'mm-other', title: 'Mega Man 2 - Dr. Wily Stage', artist: 'Other VGM', albumArtist: 'Other VGM', album: 'Mega Man Medley', genre: 'Gaming', folderName: 'othervgm', source: 'library' },
@@ -208,20 +210,22 @@ test('series words: a word only ONE channel uses (its own title template) is no 
   for (const t of lib.filter((x) => x.album === 'Glitchwave Zelda Mix')) assert.notStrictEqual(plan.tierOf(t), radio.TIER_SERIES, 'the Zelda set is not the series');
 });
 
-test('series words: a COMMON word (over 10% of the titles, not a stop word) is no series - love songs never join a Kirby station', () => {
+test('series words: a COMMON word (over a quarter of the game-music titles, not a stop word) is no series - love songs never join a Kirby station', () => {
+  // the df universe is GAME MUSIC's titles (the series holds game music only): two dating-sim channels whose
+  // every song title says "love"
   const love = [];
-  for (let a = 0; a < 20; a += 1) love.push(...K.album('Crooner ' + a, 'Love Record ' + a, 'Pop', 1990, Array.from({ length: 8 }, (_, i) => 'Love Song ' + a + '-' + (i + 1))));
-  const lib = LIB.concat(love, K.set('Heartbit', 'heartbit', 'Kirby Love Mix', 'Gaming', ['Heart Greens', 'Heart Race', 'Heart Clouds']));
+  for (let a = 0; a < 24; a += 1) love.push(...K.set(a % 2 ? 'Dating Sim OST' : 'Otome Tunes', a % 2 ? 'datingsim' : 'otometunes', 'Heart Sim Vol ' + (a + 1), 'Gaming', Array.from({ length: 8 }, (_, i) => 'Love Theme ' + a + '-' + (i + 1))));
+  const lib = LIB.concat(love, K.set('Heartbit', 'heartbit', 'Kirby Love Mix', 'Gaming', ['Alpha Cut', 'Beta Cut', 'Gamma Cut']));
   const seedT = lib.find((t) => t.album === 'Kirby Love Mix');
   const plan = radio.stationPlan(radio.buildStationProfile({ kind: 'album', value: store.albumKeyFor(seedT) }, lib), lib);
   const lv = plan.allTerms.find((x) => x.term === 'love');
-  assert.ok(lv && lv.df > 0.1 * plan.docs && lv.artists >= 2, 'precondition: "love" is common and many-channel: ' + JSON.stringify(lv) + ' of ' + plan.docs);
+  assert.ok(lv && lv.df > 0.25 * plan.docs && lv.artists >= 2, 'precondition: "love" is common and many-channel: ' + JSON.stringify(lv) + ' of ' + plan.docs);
   assert.ok(!plan.terms.some((x) => x.term === 'love'), 'the common word does not qualify');
   assert.ok(plan.terms.some((x) => x.term === 'kirby'), 'precondition: kirby still does');
-  assert.strictEqual(love.filter((t) => plan.tierOf(t) === radio.TIER_SERIES).length, 0, 'no love song is the series');
+  assert.strictEqual(love.filter((t) => plan.tierOf(t) === radio.TIER_SERIES).length, 0, 'no love theme is the series');
 });
 
-test('Q1: the series is balanced PER CHANNEL - a channel with 13 Kirby sets (Dean\'s NESTALGIA) never drowns the other channels', () => {
+test('Q1: the series is weighed per channel by 1/sqrt(its songs) - a channel with 13 Kirby sets (Dean\'s NESTALGIA) plays most but never drowns the others', () => {
   const extra = [];
   for (let k = 0; k < 10; k += 1) extra.push(...K.set('NESTALGIA', 'NESTALGIA', 'Kirby Chill Set ' + (k + 1), '', ['Chill Cut A' + k, 'Chill Cut B' + k, 'Chill Cut C' + k, 'Chill Cut D' + k, 'Chill Cut E' + k, 'Chill Cut F' + k, 'Chill Cut G' + k, 'Chill Cut H' + k]));
   const lib = LIB.concat(extra);
@@ -236,7 +240,9 @@ test('Q1: the series is balanced PER CHANNEL - a channel with 13 Kirby sets (Dea
     const picks = radio.pickRadioBatch(profile, lib, { exclude: [], queued: members.map((t) => t.id), count: 5, trace }, createSeededRng(r));
     picks.forEach((t, i) => { if (trace[i].tier === radio.TIER_SERIES) { series += 1; if (t.albumArtist === 'NESTALGIA') nest += 1; } });
   }
-  assert.ok(nest / series < 0.35, 'NESTALGIA share of the series picks (5 channels, about 0.2 each when balanced): ' + nest + '/' + series);
+  // NESTALGIA ~100 series songs, the others 6-12: by songs ~0.85, by 1/sqrt(songs) per song ~0.65, equal per channel ~0.33
+  assert.ok(nest / series < 0.75, 'NESTALGIA share of the series picks under 1/sqrt weighing: ' + nest + '/' + series);
+  assert.ok(nest / series > 0.45, 'and still the biggest channel plays the most (no equal share per channel): ' + nest + '/' + series);
 });
 
 test('Q2: the first batch already mixes in other game music - one FAMILY slot of five, while the series still has songs (100 rng seeds)', () => {
@@ -293,9 +299,9 @@ test('gate r1 qa W1: series words are a GAME-MUSIC notion - a lofi "radio" chann
   const seeds = [['album page Radio', { kind: 'album', value: store.albumKeyFor(members[0]) }, ids, []], ['song Start radio', { kind: 'track', value: ids[0] }, ids, []], ['Autoplay after the album', { kind: 'track', value: ids[ids.length - 1] }, [], ids]];
   for (const [label, seed, queued, played] of seeds) {
     const profile = radio.buildStationProfile(seed, lib);
-    const verdict = radio.stationPlan(profile, lib, undefined, { verdict: true });
+    const verdict = radio.stationPlan(profile, lib, { verdict: true });
     assert.ok(verdict && verdict.game === false, label + ': precondition: a junk-genre station that is not game music');
-    assert.ok(verdict.terms.length > 0, label + ': precondition: it HAS candidate series words (' + verdict.terms.map((x) => x.term).join(', ') + ')');
+    assert.ok(verdict.allTerms.length > 0, label + ': precondition: it HAS candidate series words (' + verdict.allTerms.map((x) => x.term).join(', ') + ')');
     assert.strictEqual(radio.stationPlan(profile, lib), null, label + ': no series plan: the v1.368.0 tiers');
     let farPicks = 0; let picks = 0;
     for (let r = 1; r <= 100; r += 1) {

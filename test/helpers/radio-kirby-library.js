@@ -44,12 +44,13 @@ function upload(channel, folder, title, genre) {
   if (genre) tags.genre = genre;
   return libraryAudio.expandAudioToTracks({ id, type: 'audio', title, name: title + '.mp3', filePath: path.join(ROOT, folder, title + '.mp3'), rootFolder: ROOT, folderName: folder, channelName: channel, duration: 1800, hasThumbnail: true, ext: '.mp3', addedAt: 1788000000000, tags }, () => []);
 }
-// a native album (the music store's shape)
+// a native album (the music store's shape; folderName = the file's parent directory, an album folder on
+// an Artist/Album layout - lib/music/scan.js; gate r1 qa S1 / adversary S1)
 let nativeN = 0;
 function album(artist, albumTitle, genre, year, titles) {
   return titles.map((title, i) => {
     nativeN += 1;
-    return { id: md5('native/' + artist + '/' + albumTitle + '/' + title), title, artist, albumArtist: artist, album: albumTitle, trackNo: i + 1, genre, year: String(year), folderName: 'Music', durationSec: 200 + (nativeN % 60), source: 'native' };
+    return { id: md5('native/' + artist + '/' + albumTitle + '/' + title), title, artist, albumArtist: artist, album: albumTitle, trackNo: i + 1, genre, year: String(year), folderName: albumTitle, durationSec: 200 + (nativeN % 60), source: 'native' };
   });
 }
 const n = (prefix, k) => Array.from({ length: k }, (_, i) => prefix + ' ' + (i + 1));
