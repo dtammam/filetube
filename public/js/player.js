@@ -2361,6 +2361,10 @@ if (typeof module !== 'undefined' && module.exports) {
 
   var dockCloseBtn = null;
   var dockChromeReady = false;
+  // v1.376.0 (W4): setDockShown's root signal (the class and the height property) and its observer.
+  var DOCK_SHOWN_CLASS = 'has-player-dock';
+  var DOCK_HEIGHT_PROP = '--player-dock-h';
+  var dockSizeObserver = null;
 
   // Player-scoped timers (raw handles, not covered by any AbortSignal) --
   // cleared on close() and whenever a genuinely NEW media is loaded.
@@ -10077,7 +10081,7 @@ if (typeof module !== 'undefined' && module.exports) {
     ensureDockChrome(dockEl);
     var wasPlaying = mediaPlayer && !mediaPlayer.paused;
     if (host.parentNode !== dockEl) dockEl.appendChild(host);
-    dockEl.hidden = false;
+    setDockShown(dockEl, true);
     state = STATE_DOCKED;
     applyControlsMode(); // reverts to the compact custom bar for this DOCKED mount (mirrors dock())
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
@@ -10136,8 +10140,40 @@ if (typeof module !== 'undefined' && module.exports) {
   }
 
   function hideDock() {
-    var dockEl = document.getElementById('player-dock');
-    if (dockEl) dockEl.hidden = true;
+    setDockShown(document.getElementById('player-dock'), false);
+  }
+
+  // v1.376.0 (W4, ruling R4): the ONE writer of whether the mini player shows. Every show (dock(),
+  // mountInDock()) and every exit (hideDock(): close(), an expand back into a slot, which is also how a
+  // navigation to the watch page and the fullscreen stage take the host) goes through here, so the root
+  // signal can never disagree with the dock's own [hidden]. The signal is DATA for other fixed surfaces
+  // that must not cover the dock (style.css: the phone's handoff card stacks above it, the narrow
+  // remote pill too): html.has-player-dock while it shows, and --player-dock-h, the dock's rendered
+  // height, kept current by a ResizeObserver (the dock's height follows the item's aspect ratio and
+  // audio mode). Hidden: the class and the value are removed and the observer is let go.
+  function setDockShown(dockEl, shown) {
+    if (!dockEl) return;
+    dockEl.hidden = !shown;
+    var root = document.documentElement;
+    if (!root) return;
+    root.classList.toggle(DOCK_SHOWN_CLASS, !!shown);
+    if (shown) {
+      measureDockHeight(dockEl);
+      if (!dockSizeObserver && typeof ResizeObserver !== 'undefined') {
+        dockSizeObserver = new ResizeObserver(function () { measureDockHeight(dockEl); });
+        dockSizeObserver.observe(dockEl);
+      }
+    } else {
+      if (dockSizeObserver) { dockSizeObserver.disconnect(); dockSizeObserver = null; }
+      root.style.removeProperty(DOCK_HEIGHT_PROP);
+    }
+  }
+  function measureDockHeight(dockEl) {
+    var root = document.documentElement;
+    if (!root || dockEl.hidden) return;
+    var h = 0;
+    try { h = dockEl.getBoundingClientRect().height || 0; } catch (_) { h = 0; }
+    root.style.setProperty(DOCK_HEIGHT_PROP, Math.ceil(h) + 'px');
   }
 
   function dock() {
@@ -10188,7 +10224,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var openSpeedSheetEl = document.querySelector('.speed-sheet-backdrop');
     if (openSpeedSheetEl && openSpeedSheetEl.parentNode) openSpeedSheetEl.parentNode.removeChild(openSpeedSheetEl);
     if (host.parentNode !== dockEl) dockEl.appendChild(host);
-    dockEl.hidden = false;
+    setDockShown(dockEl, true);
     state = STATE_DOCKED;
     applyControlsMode(); // re-toggles .ff-mobile for this DOCKED transition and reverts to the custom bar (native controls are FULL-only -- native-controls round)
     if (wasPlaying && mediaPlayer.paused) mediaPlayer.play().catch(function () {});
