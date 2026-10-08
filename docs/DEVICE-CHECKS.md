@@ -236,3 +236,13 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
   Export the log and send it.
 - [x] v1.376.0 - (Dean 2026-10-08: "it all works") Save a playlist as an album with a Cover, skipping a song: every song shows that cover in every Music view
   (iPod menus and artist rows included) on desktop and phone without a hard refresh; the songs read Track 1..N with no gap.
+
+## The Continue here card beside the mini player, Pocket art, "Pocket" (v1.377.0)
+
+- [ ] v1.377.0 - iPhone, music playing (or paused) on the Mac, a video in the mini player on Home: the "Paused watching on /
+  Work MacBook Air" card sits directly LEFT of the mini player, the same height, nothing of the feed hidden above them;
+  Continue here and the X work; closing the mini player brings back the normal card.
+- [ ] v1.377.0 - iPhone, nothing playing (also with a podcast or video paused): tap Music, then Music again to open Pocket:
+  the main menu's right side shows album covers drifting within a couple of seconds, never the disc with "Music".
+- [ ] v1.377.0 - The Music page button reads "Pocket"; Settings > Mobile player says "Keep Pocket upright"; no "iPod"
+  anywhere you can read in the app.

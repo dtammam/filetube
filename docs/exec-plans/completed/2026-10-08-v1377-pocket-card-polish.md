@@ -3,10 +3,10 @@ plan: v1377-pocket-card-polish
 harness: v2 · lean
 branch: feat/v1.377.0-pocket-card-polish
 anchor: outcome
-status: Approved @f14d3a61
-next: build W1-W3 (W1 and W2 can be parallel worktrees; W3 is a small sweep), then the gate (adversary + qa)
+status: Shipped v1.377.0
+next: shipped v1.377.0 - Dean's device checks (docs/DEVICE-CHECKS.md, v1.377.0)
 design: Dean's device pass of v1.376.0 (2026-10-08, two screenshots) + rulings R1-R5 below + a read-only recon. Base main f14d3a61 (v1.376.0).
-gate: pending
+gate: APPROVED r2 @8fce9999 (adversary, qa, security-brief)
 ---
 
 # v1.377.0: the Listen Control card beside the mini player, Pocket always shows art, and "Pocket" instead of "iPod"
@@ -301,7 +301,61 @@ a gate), `gh pr merge --merge` (Dean authorizes merging on green; if the tool re
 
 ## 9. Evidence (the builder fills this)
 
-- Per wave: the measurement before (instrument + numbers), the falsifying observation (W2), the change, the tests that
-  bind it (names), the mutants run and their results, the measurement after.
-- W3: the census list (every user-visible "iPod" with file:line, and each allowlisted non-visible one with its reason).
-- Gate rounds and verdicts; both suite summaries; residuals disclosed.
+Instruments: headless Chromium (tools/capture Playwright) against a seeded fixture server, phones at DPR 3 with the iPhone
+UA; numbers below are copied from the probe / runner output.
+
+### W1 - the card beside the mini player (b698e07b..ba7520d8, fix 8fce9999)
+- Before (HDK at f14d3a61 + probe): 390 full card 8,632 374x132; with the dock the v1.376.0 bar 8,578 374x44 above the dock
+  222,630 160x134; 320 dock 152,354 160x134 (bar 8,302 304x44). Natural widths at the card's 14/19 px font: "Paused watching
+  on" 132 px, "Listening on" 79.8, "Work MacBook Air" 122.2; Continue here (label only) 115.6x32; the X 32x32.
+- Stop rule hit at 320 (136 px beside the dock: the lead alone 132 px, art + Continue here ~180 px): asked Dean with renders
+  -> R6 "Side card, no art" (section 2). The full form needs a 186 px card, i.e. a 370 px viewport.
+- After: 390 card 8,630 206x134 | dock 222,630 160x134; 375 8,630 191x134 | 207; 370 8,586 186x134 | 202; 369 185 wide (narrow
+  form, Continue here 171 wide); 320 8,354 136x134 | 152,354; desktop 1440 the same box with and without the dock
+  (16,752 320x132). Every part inside the card; at 375 the X's right edge 193 and Continue here's 179.6, card right 199.
+- Tests: test/geometry/handoff-dock.js (HDK: 390 / 370 / 320 paused with a long name, 375 playing with a short one, desktop
+  1440); test/unit/handoff-card.test.js (handoffHeadlineParts); handoff-card-styling (three textContent writes; AC4 runtime
+  --scroll-lock-gap with its fallback); player-dock-presence (comment); token-scale-lock (+--player-dock-w, 199).
+- Mutants: HDK 11 of 11 killed (hdk-side-off, hdk-stack-back, hdk-oneline, hdk-ellipsis-off, hdk-lead-nowrap-narrow,
+  hdk-lead-wrap-wide, hdk-age-shown, hdk-narrow-off, hdk-desktop-follows, hdk-clear-off, hdk-height-off); unit 3 of 3 (AC4
+  fallback, device via innerText, parts age dropped).
+
+### W2 - Pocket always shows art (34645d95, fix 8fce9999)
+- Measured (probe: /music, then /music?pocket=1 as the Music tab's handler does; the fixture's bottom bar hides the tab):
+  fixture library (24 rows): the pool request starts 57 ms after the launch, resolves in 68 ms, a cover by +0.5 s on Click
+  5G, Transparent and Classic; warm SPA the same; reduced motion one still cover -> (b) (c) (d) FALSIFIED. A 23,754-song
+  model at 1.5 s per 5,000-row page: the placeholder through +5 s, the first cover between +8.9 and +10.7 s -> (a).
+- Falsifying observation (e), not in the plan: Dean's screenshot is the server's art PLACEHOLDER SVG (navy, a disc,
+  "Music"), not the drift's empty pane (my base render with nothing held: an empty grey pane). With a paused video held
+  by the player, the base code shows `/albumart/<that id>` = the same picture, for the whole pool wait.
+- Change: buildSkinCtx carries no art while pocketIdle; menuCoverPool = one `/api/music?sort=random&seed=<n>&limit=400`
+  per view instance, the whole library only when the sample has no covers and the library is bigger; reset with the menu
+  caches. After (same model, video held): one request, the cover at +0.4 s, the pane empty (never the disc) before it.
+- Tests: test/unit/pocket-idle-art.test.js (6: the held item's art never shows and a late pool turns the pane to a cover;
+  one sample, no whole-library read, a new sample after a library change; the fallback both ways; a song started from the
+  idle iPod gets its own art; a failed sample is asked again). pocket-quick-scroll integration E: expected pool updated.
+- Mutants: 6 of 6 (idle art back, whole library, no dedupe, no invalidate, no fallback, always fallback) + 2 of 2 at r1
+  (no retry, idle never cleared).
+
+### W3 - "Pocket" instead of "iPod" (b698e07b)
+- Census (comment-stripped literals via a tokenizer + every HTML shell, at f14d3a61). User-visible, changed:
+  - public/music.html:195 - the button label "iPod", title and aria-label "Open the iPod" -> "Pocket" / "Open Pocket".
+  - public/setup.html:562 - "On an iPod skin, Music > Search..." -> "On a Pocket skin...".
+  - public/setup.html:567 - "Keep the iPod upright" -> "Keep Pocket upright".
+  - public/setup.html:569 - "leaves the iPod as it is... the iPod lays itself out sideways" -> "leaves Pocket... Pocket lays...".
+  - public/js/setup.js:4775 - the wheel-tuning help "Fine is iPod-dense (96/rev)" -> "click-wheel-dense".
+- Allowlisted (with reason): public/js/common.js:11317 `'iPod'` - the device-name detector (a real iPod touch names itself).
+- Not user-visible (R3, left): skin ids `'ipod'`, `'ipod-*'` (music-skins.js registry ~130, setup.js colour lists),
+  classes `mms-ipod`, `.ipod-brick`, `ip-*`, lib/ytdlp/cover.js `'ipod'` (the ffmpeg muxer name), podcasts.js /
+  skin-surface.js `'ipod'` (a default skin id), every comment and test title; docs/releases.json history.
+- Measured the Music toolbar (Click skin): the button 77 -> 94 px; at 390 the toolbar keeps 112 px, at 320 152 px, every
+  button 32 px tall; desktop hides the button as before.
+- Tests: test/unit/pocket-word-census.test.js (+ the worker and the manifest at r1). Mutants: 5 of 5 + 2 of 2 at r1.
+
+### Gate and suites
+- r1 @0791fe92: security-brief APPROVED; qa CHANGES (2 WARNING comments); adversary CHANGES (3 WARNING bindings + qa's).
+  r2 @8fce9999: adversary, qa, security-brief APPROVED.
+- Pre-gate Node 22.23.1 npm test: tests 11748, pass 11738, fail 0, skipped 10.
+- Release tree (68235108, the code of 8fce9999): Node 22.23.1 npm test tests 11750, pass 11740, fail 0, skipped 10;
+  Node 24.20.0 tests 11750, pass 11740, fail 0, skipped 10.
+- Residuals: tracker #297.

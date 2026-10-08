@@ -753,6 +753,27 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.377.0 - The Listen Control card beside the phone mini player, Pocket always shows art, "Pocket" instead of "iPod" (2026-10-08)
+
+- W1 (Dean's R1; R6 at the 320 stop rule): on the phone, with the mini player up, the card sits LEFT of it at its height
+  (390: 8,630 206x134 beside the dock 222,630 160x134; was a 374x44 bar above it), "Paused watching on" over the device
+  name (only the name ellipsizes), the X, a 40 px art square and Continue here; under 370 wide (320: 136 px beside the dock)
+  the art steps aside, the lead wraps and Continue here spans the card. The dock width is a token (`--player-dock-w`) both
+  rules read; the full card and desktop are unchanged. HDK checks 390 / 370 / 375 / 320 (paused, long names) + desktop.
+- W2 (R2): measured, the plan's causes (b) empty pool, (c) no resync and (d) skin all FALSIFIED; (a) the pool read the
+  whole Songs list (a ~24,000-song library: five sequential 5,000-row pages, ~15 MB, the first cover at +9-11 s modelled)
+  and (e), new: Dean's "Music" disc was the server's art placeholder for `/albumart/<the id the player still held>` (a
+  paused podcast / video), the idle iPod's fallback art. Fixed at both: the idle iPod carries no song art, and the drift's
+  pool is ONE random 400-row sample (the list route's seeded random sort; the whole library only if the sample has no
+  covers). Modelled after: one request, a cover by +0.4 s; the pane is empty, never the disc, while it loads.
+- W3 (R3): "Pocket" on the Music page button (title / aria "Open Pocket") and in Settings ("Keep Pocket upright", "On a
+  Pocket skin"); a census test reads every shell and every script's literals (comments never count) plus the service
+  worker and the manifest.
+- Gate (adversary + qa + security-brief, the last forced by the `*token*` scrutiny rule matching tokens.css): r1 @0791fe92
+  security APPROVED, qa CHANGES (two comments still said the card stacks above the dock; a "cannot drift" claim),
+  adversary CHANGES (the side card's text, the song's art after the idle iPod and the pool retry unbound); r2 @8fce9999 all
+  three APPROVED. Residuals: tracker #297.
+
 ### v1.376.0 - Watch later from a notification, podcasts get the video options, and four device-pass fixes (2026-10-08)
 
 - W1 (Dean's R1): every video and episode row in the bell has "Watch later" in its menu: one tap adds it to Watch later and

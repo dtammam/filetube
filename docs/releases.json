@@ -3610,5 +3610,11 @@
     "date": "2026-10-08",
     "title": "Watch later from a notification, and podcasts get the same options as videos",
     "intent": "Every video or episode in the notification list now has Watch later: one tap saves it for later and clears that notification, without opening it. On a computer, the notification that pops up has a Watch later button too. Podcast episodes can now be saved to Watch later, deleted and shared from the notification list, the home and search cards, and the show's episode list. Tapping a channel name now opens that channel showing the kind of thing you came from, and a list that is empty because of a filter tells you so with a Show all button. On a phone, the Listening on another device card shrinks to one line above the mini player instead of covering it. A saved album's chosen cover now shows everywhere in Music right away, and its songs are numbered without gaps."
+  },
+  {
+    "version": "1.377.0",
+    "date": "2026-10-08",
+    "title": "The Continue here card sits beside the mini player, Pocket always shows album art, and Pocket is called Pocket",
+    "intent": "On a phone, when something is playing or paused on another device while your mini player is open, the Continue here card now sits right beside the mini player at the same height instead of over the feed. It shows \"Paused watching on\" with the device name on its own line, the cover, Continue here and the close button. On the smallest phones the cover steps aside so the words stay readable. Opening Pocket without playing anything now shows your albums' covers drifting by within a moment, never the plain Music disc, even when a podcast or video is still paused, and a big library no longer has to load every song first. The Music page button and the Settings options now say Pocket."
   }
 ]
