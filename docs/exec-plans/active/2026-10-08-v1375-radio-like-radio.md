@@ -6,7 +6,7 @@ anchor: outcome
 status: Building
 next: gate r2 (both seats re-confirm the r1 fix round); then Dean runs the trace on production (below) before his device check
 design: Dean's rulings Q1-Q4 (2026-10-08), the diagnosis below (production traces, read-only). Base main de554c57 (rebased from fa4e01aa after v1.374.0 shipped).
-gate: r1 CHANGES (qa W1 + S1-S4 @674cf4c1; adversary C1, W1-W3, S1 @674cf4c1) - fix round at 8805849f, 19f49a61, 4b18ffb5; r2 pending
+gate: r1 CHANGES (qa W1 + S1-S4 @674cf4c1; adversary C1, W1-W3, S1 @674cf4c1) - fix round at 8805849f, 19f49a61, 4b18ffb5, then the Architect's pre-r2 adjustment at fbb9d2b8, 65daa3e2, 21e9c9d3; r2 pending
 ---
 
 # v1.375.0: Music radio that feels like RADIO
@@ -73,7 +73,7 @@ the album page Radio and a song's Start radio of the same album draw the same la
 
 | Tier | What | Notes |
 |------|------|-------|
-| S (8) | SERIES: GAME MUSIC sharing a series word of the seed | game music only (gate r1, the Architect's ruling on adversary C1: a rock, hip-hop, classical, latin or jazz song never enters it, whatever words it shares); a word of the seed's album title (or one in 3+ and half of its songs' titles) counts alone; words of the seed SONG's title count only when 2+ are shared, a two-word name and its own words counting as ONE |
+| S (8) | SERIES: game music, or a yt-dlp upload untagged or in YouTube "Music", sharing a series word of the seed | never a native real-genre song (gate r1, the Architect's ruling on adversary C1: rock, hip-hop, classical, latin or jazz never enters it, whatever words it shares), never a native untagged file, never a non-music category upload; the Architect's pre-r2 adjustment let the YouTube-"Music" uploads JOIN because Dean's Q1 names Soundzantium in the first stretch - the words are still LEARNED only from game-music titles, and a non-game channel's YouTube "Gaming" upload does not join (that is the W2 talk show / vlog; a game channel's Gaming upload is game music already); a word of the seed's album title (or one in 3+ and half of its songs' titles) counts alone; words of the seed SONG's title count only when 2+ are shared, a two-word name and its own words counting as ONE |
 | 1 | the seed artist and the seed album's own songs | one slot per batch (a minority, Q2.3) |
 | G (9) | GAME MUSIC | a native game genre tag ('video game', 'chiptune'...), or an upload of a GAME CHANNEL: a strict majority of its genre-tagged uploads game music, and 3 at least (untagged chapters ride on their channel; YouTube's 'Gaming' category counts only this way). Never an upload filed in a non-music category (People & Blogs, Comedy, Entertainment, News & Politics, Education, Howto & Style...): the podcasts and vlogs of gate r1 adversary W2 |
 | N (10) | the NEAREST real genres | genres the family's artists also play (strength = artists), plus soundtrack / score / anime / orchestral / film (+1) |
@@ -103,7 +103,7 @@ viewer's view: a lookup is only ever made with a string from the caller's own vi
 invariant (a viewer's library never shapes another's station) holds.
 
 **Game verdict.** The station is game music when its seed has a game genre, or at least half of its seed songs are game music, or
-its series (game music only) holds 10+ songs from 2+ channels (so a YouTube-"Music" Kirby set from a lofi channel is still a
+its series holds 10+ GAME-MUSIC songs from 2+ game channels (the joined YouTube-"Music" uploads do not count) (so a YouTube-"Music" Kirby set from a lofi channel is still a
 game station). A junk-genre station that is none of these takes the genre ladder (gate r1 qa W1).
 
 **Batch plan (5):** series, series, the seed artist, series, family. Each slot has an order (`STATION_ORDERS`): series slots
@@ -136,8 +136,9 @@ D entry replays the session before the album and says the session no longer stee
 
 ## 5. Measured (fixture results, instruments, mutants; numbers copied from the runs named)
 
-Gate r1 fix round. Every instrument below ran on the committed tree 4b18ffb5 in a /tmp git-archive sandbox (the scratchpad
-scripts named). The r0 numbers of 674cf4c1 are in git (cbde2741); they are superseded.
+Gate r1 fix round plus the Architect's pre-r2 adjustment. Every instrument below ran on the committed tree 21e9c9d3 in a /tmp
+git-archive sandbox (the scratchpad scripts named). The numbers of 674cf4c1 (cbde2741) and of 4b18ffb5 (394e2f44) are in git;
+they are superseded.
 
 **Fixture** (test/helpers/radio-kirby-library.js, 660 tracks; the yt-dlp sets through the real `expandAudioToTracks`; native files
 in per-album folders, as lib/music/scan.js sets them). `v1375-measure.js`, 100 rng seeds per row, every row after the 24-play Pop
@@ -145,45 +146,45 @@ session (Prince x18, Tears for Fears x3, David Bowie x3):
 
     library 660 tracks; Pop session 24 plays
     seed / entry | first pick Kirby | batches <3 Kirby | Prince | Kirby picks by channel (batch 1, 100 draws)
-    2 Hours of Happy and Underrated  / album | 100/100 | 0/100 | 0 | NESTALGIA 122, Jun Ishikawa 99, heavymachinegun 79
-    2 Hours of Happy and Underrated  / song | 100/100 | 0/100 | 0 | NESTALGIA 122, Jun Ishikawa 99, heavymachinegun 79
-    2 Hours of Happy and Underrated  / autoplay | 100/100 | 0/100 | 0 | NESTALGIA 122, Jun Ishikawa 99, heavymachinegun 79
-    Kirby Lofi Mix ~ chill beats to  / album | 100/100 | 0/100 | 0 | Jun Ishikawa 80, Vapid 78, NESTALGIA 75, heavymachinegun 67
-    Kirby Lofi Mix ~ chill beats to  / song | 100/100 | 0/100 | 0 | Jun Ishikawa 80, Vapid 78, NESTALGIA 75, heavymachinegun 67
-    Kirby Lofi Mix ~ chill beats to  / autoplay | 100/100 | 0/100 | 0 | Jun Ishikawa 80, Vapid 78, NESTALGIA 75, heavymachinegun 67
-    kirby lofi beats / album | 100/100 | 0/100 | 0 | NESTALGIA 94, Vapid 86, Jun Ishikawa 61, heavymachinegun 59
-    kirby lofi beats / song | 100/100 | 0/100 | 0 | NESTALGIA 94, Vapid 86, Jun Ishikawa 61, heavymachinegun 59
-    kirby lofi beats / autoplay | 100/100 | 0/100 | 0 | NESTALGIA 94, Vapid 86, Jun Ishikawa 61, heavymachinegun 59
-    Kirby Super Star Original Soundt / album | 100/100 | 0/100 | 0 | NESTALGIA 158, Vapid 146, heavymachinegun 96
-    Kirby Super Star Original Soundt / song | 100/100 | 0/100 | 0 | NESTALGIA 158, Vapid 146, heavymachinegun 96
-    Kirby Super Star Original Soundt / autoplay | 100/100 | 0/100 | 0 | NESTALGIA 158, Vapid 146, heavymachinegun 96
-    Vapid album plan: terms kirby; game true; family 180; near [["electronic",1],["soundtrack",1]]; tier sizes {"1":30,"7":466,"8":34,"9":104,"10":14}
-    20 sessions x 195 plays from the Vapid album (no Pop session): last series pick at play (median) 65; first nearest-genre (N) pick 166; first real-genre pick 166; first T7 pick 182; first Prince 183 (-1 = never); min first real genre 164
+    2 Hours of Happy and Underrated  / album | 100/100 | 0/100 | 0 | NESTALGIA 83, Soundzantium 64, heavymachinegun 55, PSK Beats n' Vibes 50, Jun Ishikawa 48
+    2 Hours of Happy and Underrated  / song | 100/100 | 0/100 | 0 | NESTALGIA 83, Soundzantium 64, heavymachinegun 55, PSK Beats n' Vibes 50, Jun Ishikawa 48
+    2 Hours of Happy and Underrated  / autoplay | 100/100 | 0/100 | 0 | NESTALGIA 83, Soundzantium 64, heavymachinegun 55, PSK Beats n' Vibes 50, Jun Ishikawa 48
+    Kirby Lofi Mix ~ chill beats to  / album | 100/100 | 0/100 | 0 | NESTALGIA 62, Soundzantium 54, Vapid 53, heavymachinegun 51, Jun Ishikawa 47, PSK Beats n' Vibes 33
+    Kirby Lofi Mix ~ chill beats to  / song | 100/100 | 0/100 | 0 | NESTALGIA 62, Soundzantium 54, Vapid 53, heavymachinegun 51, Jun Ishikawa 47, PSK Beats n' Vibes 33
+    Kirby Lofi Mix ~ chill beats to  / autoplay | 100/100 | 0/100 | 0 | NESTALGIA 62, Soundzantium 54, Vapid 53, heavymachinegun 51, Jun Ishikawa 47, PSK Beats n' Vibes 33
+    kirby lofi beats / album | 100/100 | 0/100 | 0 | NESTALGIA 84, Vapid 73, Jun Ishikawa 50, heavymachinegun 49, Soundzantium 44
+    kirby lofi beats / song | 100/100 | 0/100 | 0 | NESTALGIA 84, Vapid 73, Jun Ishikawa 50, heavymachinegun 49, Soundzantium 44
+    kirby lofi beats / autoplay | 100/100 | 0/100 | 0 | NESTALGIA 84, Vapid 73, Jun Ishikawa 50, heavymachinegun 49, Soundzantium 44
+    Kirby Super Star Original Soundt / album | 100/100 | 0/100 | 0 | NESTALGIA 111, Vapid 105, heavymachinegun 68, Soundzantium 60, PSK Beats n' Vibes 56
+    Kirby Super Star Original Soundt / song | 100/100 | 0/100 | 0 | NESTALGIA 111, Vapid 105, heavymachinegun 68, Soundzantium 60, PSK Beats n' Vibes 56
+    Kirby Super Star Original Soundt / autoplay | 100/100 | 0/100 | 0 | NESTALGIA 111, Vapid 105, heavymachinegun 68, Soundzantium 60, PSK Beats n' Vibes 56
+    Vapid album plan: terms kirby; game true; family 180; near [["electronic",1],["soundtrack",1]]; tier sizes {"1":30,"7":455,"8":45,"9":104,"10":14}
+    20 sessions x 195 plays from the Vapid album (no Pop session): last series pick at play (median) 78; first nearest-genre (N) pick 177; first real-genre pick 177; first T7 pick 193; first Prince -1 (-1 = never); min first real genre 169
 
-The series is game music only now, so Soundzantium's and PSK's YouTube-"Music" Kirby sets are no longer in it (they were in r0's
-rows): a Kirby station draws Kirby from NESTALGIA, Vapid, heavymachinegun and Jun Ishikawa, then game music. In the long sessions
-Prince first plays at 183 of 195, after the nearest genres (166) and inside the rest (182): the whole library comes last.
+Soundzantium's and PSK's YouTube-"Music" Kirby sets are back in the first stretch (Dean's Q1). In the long sessions the series
+lasts to play 78 (median), the first real genre comes at 177 (never before 169), the rest at 193, Prince never in 195 plays.
 
 **Game-music family on production:** not measured here (no production data on this box). The trace prints it per album
 ("game-music family N tracks"); the Architect copies it from Dean's run.
 
 **Cost** (`v1375-perf2.js`: three 24,420-track shapes built from the fixture - ASCII titles with 18 extra words, accented titles,
-and seed chapters sharing 30 words with every title - the Vapid album seed, 25 requests each, base fa4e01aa vs the fix round, this
-box):
+and seed chapters sharing 30 words with every title - the Vapid album seed, 25 requests each, base fa4e01aa vs 21e9c9d3, this box):
 
-    ascii (24420 tracks): base median 45.7 p90 54.9 max 82.3 ms | head median 57.1 p90 73.2 max 176.0 ms
-    accented (24420 tracks): base median 41.4 p90 51.3 max 76.5 ms | head median 50.4 p90 62.7 max 86.9 ms
-    shared (24420 tracks): base median 42.0 p90 43.2 max 58.0 ms | head median 50.5 p90 53.0 max 123.1 ms
+    ascii (24420 tracks): base median 46.5 p90 53.4 max 82.4 ms | head median 59.3 p90 76.6 max 200.4 ms
+    accented (24420 tracks): base median 42.4 p90 57.6 max 87.0 ms | head median 50.7 p90 67.8 max 100.6 ms
+    shared (24420 tracks): base median 42.8 p90 44.7 max 55.8 ms | head median 54.8 p90 59.1 max 144.9 ms
 
-Against the +25% target, medians: ASCII 57.1 / 45.7 = +25%, accented 50.4 / 41.4 = +22%, shared 50.5 / 42.0 = +20%. The box is
-noisy: an earlier run of the same instrument on 4b18ffb5 measured ASCII 63.0 / 46.3 = +36% (accented +18%, shared +20%), so the
-ASCII shape sits at the edge of the target (the ~5 ms album genre borrow scan and the plan's two passes). The max of each head
-row is the FIRST request, which fills the memos (cold: 123-176 ms). The unit
-test "gate r1 adversary W1: a game station costs at most 2.5x a real-genre..." binds a generous bound in the same run.
+Against the +25% target, medians: ASCII 59.3 / 46.5 = +28%, accented 50.7 / 42.4 = +20%, shared 54.8 / 42.8 = +28%. The ASCII and
+shared shapes miss the target by a few points (the pre-r2 join reads the non-game uploads' titles too; the box is noisy - the
+same instrument on 4b18ffb5 gave +25% / +22% / +20% in one run, +36% ASCII in another). The max of each head row is the FIRST
+request, which fills the memos (cold: 100-200 ms). The unit test "gate r1 adversary W1: a game station costs at most 2.5x a
+real-genre..." binds a generous bound in the same run.
 
-**Mutants** (`v1375-mutants3.js`, 33 mutants, one string replace each on lib/music/radio.js, the 9 radio test files, restored
-byte-identical). Run on 19f49a61: 31 red, 2 survived (M8 was a weak mutant that removed only "lofi" from the stoplist - rewritten
-to empty it; M22 the coverage 3-title minimum -> 4b18ffb5 binds it). Run on 4b18ffb5: **33 of 33 red**:
+**Mutants** (`v1375-mutants3.js`, 37 mutants, one string replace each on lib/music/radio.js, the 9 radio test files, restored
+byte-identical). On 19f49a61: 31 of 33 red (M8 was a weak mutant, rewritten; M22 -> 4b18ffb5 binds it). On fbb9d2b8 (the pre-r2
+join, with M19 rewritten and M34-M37 added): M36 and M37 survived -> 65daa3e2 binds them; M19 reddened only the talk-show and
+native-untagged tests because the C1 repros share words that never qualify -> 21e9c9d3 adds a real-genre song sharing the series
+word itself. On 21e9c9d3: **37 of 37 red**:
 
 | Mutant | Fail | Killed by (one of) |
 |--------|------|--------------------|
@@ -192,13 +193,17 @@ to empty it; M22 the coverage 3-title minimum -> 4b18ffb5 binds it). Run on 4b18
 | M3 G before S / M4 N before G / M5 artist first | 13 / 12 / 14 | all e2e, Q1, Q4 |
 | M6 no plan | 30 | most |
 | M7 one channel makes a word | 6 | "a word only ONE channel uses..." |
-| M8 no stoplist | 9 | "series words: a title template..." |
+| M8 no stoplist | 10 | "series words: a title template..." |
 | M9 one song word enough / M10 a name and its words apart | 4 / 1 | "Ice Cream Parlor ... ONE shared match" |
 | M11 flat S/G weight / M12 equal share per channel | 2 / 2 | W3 (U11) 1/sqrt, "weighed per channel by 1/sqrt" |
 | M13 no series verdict / M14 no seed-song verdict / M26 song seed without member ids | 3 / 2 / 1 | PSK game music, W3 (U7, U13) |
 | M15 half a majority / M16 no 3-upload minimum / M17 non-music admitted / M18 Gaming per upload | 1 each | W2 talk shows |
-| M19 the series admits any song | 11 | every C1 repro, e2e Forgotten Land |
-| M20 a non-game junk station gets the plan | 1 | qa W1 lofi radio |
+| M19 any non-game song may join | 3 | W2 talk shows, native untagged, "a native REAL-GENRE song never joins ... Kirby" |
+| M34 no YouTube-"Music" allowance | 3 | Q1 (Soundzantium / PSK counts) |
+| M35 a non-game channel's Gaming upload joins | 1 | W2 talk shows |
+| M36 a native untagged file may join | 1 | "only a yt-dlp upload joins..." |
+| M37 the verdict counts the joined uploads | 1 | "the game verdict counts the series' GAME songs only..." |
+| M20 a non-game junk station gets the plan | 2 | qa W1 lofi radio |
 | M21 no coverage / M22 no 3-title minimum | 1 / 1 | W3 (U5); Pokemon "Route" |
 | M23 the df cap off | 1 | "a COMMON word ... love" |
 | M24 likes / M25 the 24 h cool-down dropped | 1 / 1 | W3 (U4, U12) |
@@ -207,8 +212,9 @@ to empty it; M22 the coverage 3-title minimum -> 4b18ffb5 binds it). Run on 4b18
 | M29 no album borrow / M30 no album category | 1 / 2 | "Q4 one rule...", qa W1 lofi radio |
 | M31 no family slot / M32 no artist slot / M33 native game genre on the genre ladder | 3 / 4 / 2 | Q2 family slot, Q1 minority, Q1 OST rows |
 
-The full output (every failing test name per mutant) is `v1375-mutants4.out` in the scratchpad.
+The full output (every failing test name per mutant) is `v1375-mutants7.out` in the scratchpad.
 
 **Open (disclosed):** a channel that files 3+ talk uploads under Gaming (and no other genre) is still a game channel - the tags
-cannot tell it from a music channel; a YouTube-"Music" game-music channel (Soundzantium) is not game music, so its Kirby is not
-in a Kirby station's series; the 2+ channel rule (above); the ASCII cost shape at +25-36% and the cold first request.
+cannot tell it from a music channel; a YouTube-"Music" game-music channel (Soundzantium) is not GAME MUSIC (its uploads join the series by their words, but its
+non-series sets are not in the game family G); the 2+ channel rule (above); the ASCII and shared cost shapes at about +28%
+(target +25%) and the cold first request.
