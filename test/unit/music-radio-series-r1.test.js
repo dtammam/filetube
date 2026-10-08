@@ -233,3 +233,16 @@ test('before r2: the game verdict counts the series\' GAME songs only - a lofi c
   assert.strictEqual(verdict.game, false, '4 game songs are no game station');
   assert.strictEqual(radio.stationPlan(profile, lib), null);
 });
+
+test('before r2: a native REAL-GENRE song never joins, even sharing a QUALIFIED series word - "Kirby" in a rock and a classical title (20 x 25 plays)', () => {
+  // the C1 repros above share words that never qualify (one channel); here the word is the series itself
+  const real = K.album('The Rockers', 'Garage Days', 'Rock', 1999, ['Kirby Is My Dog', 'Garage Door']).concat(K.album('A. Composer', 'Suites', 'Classical', 1890, ['Suite for Kirby', 'Nocturne']));
+  const lib = LIB.concat(real);
+  const [seed, ctx0] = albumSeed(lib, K.KIRBY_SETS.vapid);
+  const plan = radio.stationPlan(radio.buildStationProfile(seed, lib), lib);
+  assert.ok(plan.terms.some((x) => x.term === 'kirby'), 'precondition: "kirby" is the series word');
+  for (const t of real) assert.ok(!plan.inSeries(t), t.title + ' (' + t.genre + ') joined the series');
+  let hits = 0;
+  for (const s of sessions(lib, seed, ctx0)) hits += s.filter((x) => real.includes(x.t)).length;
+  assert.strictEqual(hits, 0, 'real-genre picks in 20 x 25 plays: ' + hits);
+});
