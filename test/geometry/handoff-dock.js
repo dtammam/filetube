@@ -7,7 +7,10 @@
 //     mini player showing it sits LEFT of the dock - its bottom on the dock's bottom and its height the dock's
 //     (each +-1px), its top never above the dock's (nothing of the feed above them), at least 4px of gap
 //     before the dock's left edge, never into the bottom nav; the lead over the device name on two lines;
-//     every part inside the card's box; the art only from 370 wide (R6: the 320 card drops it); every
+//     every part inside the card's box; the art only from 370 wide (R6: the 320 card drops it); the TEXT
+//     (gate r1): the lead never overflows its box nor reaches the dismiss, one line from 370 up; a device name
+//     too long for its line is clipped with an ellipsis, never painted onto the dock; no age on the side card
+//     (the 390, 370 and 320 cases are PAUSED with a long name - "Paused listening on", the longest lead); every
 //     control of both (the card's cover, Continue here and dismiss; the dock's picture, play / pause and
 //     close) is the element under its own centre (elementFromPoint).
 //     The CLEAR axis, from that populated state: a real tap on the dock's close returns the card to the
@@ -37,27 +40,35 @@ const MUTANTS = {
   'hdk-stack-back': { css: 'html.is-phone.has-player-dock #handoff-card{bottom:calc(var(--mobile-bottom-nav-h) + var(--space-4) + var(--player-dock-h) + var(--space-4))!important}' },
   // the two-line headline dropped: the lead and the device run on one line
   'hdk-oneline': { css: 'html.is-phone.has-player-dock #handoff-card .handoff-lead,html.is-phone.has-player-dock #handoff-card .handoff-device{display:inline!important}' },
+  // gate r1 (adversary): the text safety - the device name unclipped, the lead held to one line under 370 (it
+  // runs under the dismiss), the lead let wrap from 370 up, the age shown on the side card
+  'hdk-ellipsis-off': { css: 'html.is-phone.has-player-dock #handoff-card .handoff-device{overflow:visible!important;text-overflow:clip!important}' },
+  'hdk-lead-nowrap-narrow': { css: '@media (max-width:369px){html.is-phone.has-player-dock #handoff-card .handoff-lead{white-space:nowrap!important}}' },
+  'hdk-lead-wrap-wide': { css: '@media (min-width:370px){html.is-phone.has-player-dock #handoff-card .handoff-headline{max-width:60%!important}html.is-phone.has-player-dock #handoff-card .handoff-lead{white-space:normal!important}}' },
+  'hdk-age-shown': { css: 'html.is-phone.has-player-dock #handoff-card .handoff-age{display:inline!important}' },
   // R6's narrow form dropped: the 320 card keeps the art beside Continue here, which then runs out of the card
   'hdk-narrow-off': { css: 'html.is-phone.has-player-dock #handoff-card{grid-template-columns:auto minmax(0,1fr) auto!important;grid-template-areas:"text text close" "art go go"!important}html.is-phone.has-player-dock #handoff-card .handoff-cover{display:block!important}' },
   // the desktop card follows the dock signal (desktop must be unchanged)
   'hdk-desktop-follows': { css: 'html.has-player-dock #handoff-card{padding:2px!important}' },
   // the clear axis: the signal is set on a show and never cleared on an exit
   'hdk-clear-off': { js: { needle: 'root.classList.toggle(DOCK_SHOWN_CLASS, !!shown);', replace: 'if (shown) root.classList.add(DOCK_SHOWN_CLASS);' } },
-  // the height never measured: the bar stacks above a zero-height dock
+  // the height never measured: the card collapses to a zero-height dock
   'hdk-height-off': { js: { needle: "root.style.setProperty(DOCK_HEIGHT_PROP, Math.ceil(h) + 'px');", replace: "root.style.setProperty(DOCK_HEIGHT_PROP, '0px');" } },
 };
 
+const LONG = 'Work MacBook Air in the Studio';
 const CASES = [
-  { id: 'phone-390', vp: 'phone', w: 390, h: 844 },
+  { id: 'phone-390', vp: 'phone', w: 390, h: 844, paused: true, label: LONG },
+  { id: 'phone-370', vp: 'phone', w: 370, h: 800, paused: true, label: LONG },
   // a SHORT device name: the lead must still own its line (a long one wraps onto the next line anyway)
   { id: 'phone-375', vp: 'phone', w: 375, h: 667, label: 'iPad' },
-  { id: 'phone-320', vp: 'phone', w: 320, h: 568 },
+  { id: 'phone-320', vp: 'phone', w: 320, h: 568, paused: true, label: LONG },
   { id: 'desktop-1440', vp: 'desktop', w: 1440, h: 900 },
 ];
 
-function presence(FX, label) {
+function presence(FX, label, paused) {
   const id = FX.videoUnsub;
-  return { deviceId: 'geometry-mac', deviceLabel: label || 'Work MacBook Air', kind: 'media', mediaId: id, state: 'playing', position: 66,
+  return { deviceId: 'geometry-mac', deviceLabel: label || 'Work MacBook Air', kind: 'media', mediaId: id, state: paused ? 'paused' : 'playing', position: 66,
     ageSeconds: 2, title: 'A video on the Mac', subtitle: 'Northbound Field Notes', thumbnailUrl: '/thumbnail/' + encodeURIComponent(id),
     href: '/watch.html?v=' + encodeURIComponent(id), listen: true, duration: 480 };
 }
@@ -81,7 +92,17 @@ function measureIn() {
   } : {};
   const boxes = Object.fromEntries(Object.entries(parts).map(([k, el]) => [k, shown(el) ? box(el) : null]));
   const nav = q('.bottom-nav');
-  return {
+  // the text itself (gate r1): rects of the lead's text, its overflow, the device's clip, the age
+  const textRects = (el) => { if (!shown(el) || !el.firstChild) return []; const r = document.createRange(); r.selectNodeContents(el); return [...r.getClientRects()].map((x) => ({ x: x.left, y: x.top, r: x.right, b: x.bottom, w: x.width, h: x.height })).filter((x) => x.w > 0); };
+  const lead = parts.lead; const device = parts.device; const ageEl = card && card.querySelector('.handoff-age');
+  const text = {
+    leadRects: textRects(lead), leadOver: lead ? lead.scrollWidth - lead.clientWidth : 0,
+    leadLine: lead ? parseFloat(getComputedStyle(lead).lineHeight) || 19 : 19,
+    deviceOver: device ? device.scrollWidth - device.clientWidth : 0,
+    deviceClip: device ? (getComputedStyle(device).overflowX === 'hidden' && getComputedStyle(device).textOverflow === 'ellipsis') : false,
+    age: ageEl && ageEl.textContent ? (shown(ageEl) || ageEl.getClientRects().length > 0) : null,
+  };
+  return { text,
     cls: document.documentElement.classList.contains('has-player-dock'),
     cardShown: shown(card), dockShown: shown(dock),
     card: box(card), dock: shown(dock) ? box(dock) : null, nav: shown(nav) ? box(nav) : null, boxes,
@@ -124,7 +145,7 @@ async function runCase(env, cs, mutant) {
     tag: { scene: 'geometry:hdk-' + cs.id }, record, dpr: cs.vp === 'phone' ? 3 : 1 });
   try {
     await page.setViewportSize({ width: cs.w, height: cs.h });
-    const pres = presence(env.FX, cs.label);
+    const pres = presence(env.FX, cs.label, cs.paused);
     await page.route('**/api/handoff?**', (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ presence: pres }) }));
     if (mutant && mutant.js) {
       await page.route('**/js/player.js*', async (route) => {
@@ -165,6 +186,17 @@ async function runCase(env, cs, mutant) {
       if (!b.lead || !b.device) failures.push('VACUOUS: the lead or the device line is not showing');
       else if (b.device.y < b.lead.b - 1) failures.push(`the device (top ${b.device.y.toFixed(1)}) is not on the line below the lead (bottom ${b.lead.b.toFixed(1)})`);
       if (!wantArt && b.cover) failures.push(`the ${cs.w} card shows the art (R6: no art under ${ART_MIN_W})`);
+      const t = st.text;
+      if (t.leadOver > 1) failures.push(`the lead overflows its box by ${t.leadOver}px`);
+      if (!t.leadRects.length) failures.push('VACUOUS: the lead has no text rects');
+      const lines = new Set(t.leadRects.map((r) => Math.round(r.y))).size;
+      if (cs.w >= ART_MIN_W && lines !== 1) failures.push(`the lead runs on ${lines} lines at ${cs.w} (one line from ${ART_MIN_W} up)`);
+      if (b.dismiss && t.leadRects.some((r) => intersects(r, b.dismiss))) failures.push('the lead\'s text runs under the dismiss');
+      if (c && t.leadRects.some((r) => r.r > c.r + 0.5)) failures.push('the lead\'s text runs out of the card');
+      if (t.deviceOver > 1 && !t.deviceClip) failures.push(`the device name overflows by ${t.deviceOver}px with no ellipsis clip (it paints past the card)`);
+      if (cs.label === LONG && t.deviceOver <= 1 && cs.w <= 390) failures.push(`VACUOUS: the long device name fits at ${cs.w} - the clip is not exercised`);
+      if (cs.paused && t.age == null) failures.push('VACUOUS: the paused card has no age text');
+      if (t.age) failures.push('the age shows on the side card');
       for (const [k, r] of Object.entries(b)) {
         if (r && c && (r.x < c.x - 0.5 || r.r > c.r + 0.5 || r.y < c.y - 0.5 || r.b > c.b + 0.5)) failures.push(`${k} ${fmt(r)} runs out of the card ${fmt(c)}`);
       }

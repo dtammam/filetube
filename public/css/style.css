@@ -52,7 +52,7 @@
   --tracking-caps: 0.05em;  /* uppercase group titles / badges */
   /* v1.376.0 (W4): the shown mini player's height, 0 while it is hidden. player.js setDockShown writes the
      live value on the root element while the dock shows and removes it on every exit; the phone's handoff
-     card and the narrow remote pill stack above the dock by it. */
+     card sits beside the dock at this height (v1.377.0) and the narrow remote pill stacks above the dock by it. */
   --player-dock-h: 0px;
   /* Click wheel test (Settings › Experimental): a self-contained
      dark instrument surface, one visual world in every era/theme. These are
@@ -2884,8 +2884,10 @@ select {
   }
   /* v1.377.0 (W1, Dean's ruling R1: "make it the size of the miniplayer or directly to the left"): on a
      phone, while the mini player shows, the card sits BESIDE it - from the left gutter to a --space-4 gap
-     before the dock's left edge (the dock's own width token and right inset, so the two cannot drift),
-     on the dock's bottom line and exactly the dock's height (--player-dock-h). It shows the lead
+     before the dock's left edge (the width is the dock's own token, --player-dock-w; the dock's 8px right
+     and bottom insets are literals in its rule, mirrored here by --space-4, so test/geometry/handoff-dock.js
+     binds the shared bottom line and the gap), on the dock's bottom line and exactly the dock's height
+     (--player-dock-h). It shows the lead
      ("Paused watching on") over the device name (the only part that ellipsizes), the dismiss beside the
      lead, and the art (a square) beside Continue here. The SAME element: the head, body and meta boxes
      dissolve (display: contents) into one grid; the title, time, age, state glyph and the button's glyph

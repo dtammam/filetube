@@ -10,7 +10,10 @@
 //     (iPod, IPod, Ipod, IPOD - any context, so "iPod-dense" counts) or carries the lowercase word on its own in a
 //     literal with a space. Identifiers stay (R3): a bare id ('ipod', 'ipod-original'), a class ('mms-ipod',
 //     '.ipod-brick'), an ffmpeg muxer name.
+//   - (gate r1) the top-level scripts in public/ (the service worker's notification text) and the PWA manifest's strings.
 // ALLOW lists the only sanctioned survivors, each with its reason. Skin names never carried the word (Classic 4G...).
+// Known blind spots (gate r1, disclosed): a word split across literals ('i' + 'Pod'), String.fromCharCode and CSS
+// `content:` strings are not seen; none of them holds the word today (grep).
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -97,19 +100,24 @@ function census() {
     ...fs.readdirSync(path.join(ROOT, 'public')).filter((f) => f.endsWith('.html')).map((f) => path.join(ROOT, 'public', f)),
     ...walk(path.join(ROOT, 'lib'), '.html', []),
   ];
-  const js = [...walk(path.join(ROOT, 'public', 'js'), '.js', []), ...walk(path.join(ROOT, 'lib'), '.js', []), path.join(ROOT, 'server.js')];
+  const topJs = fs.readdirSync(path.join(ROOT, 'public')).filter((f) => f.endsWith('.js')).map((f) => path.join(ROOT, 'public', f));
+  const js = [...walk(path.join(ROOT, 'public', 'js'), '.js', []), ...topJs, ...walk(path.join(ROOT, 'lib'), '.js', []), path.join(ROOT, 'server.js')];
   const hits = [];
   const seen = new Set();
   const docs = {};
   for (const f of html) docs[rel(f)] = scanHtml(rel(f), fs.readFileSync(f, 'utf8'), hits, seen);
   for (const f of js) scanScript(rel(f), fs.readFileSync(f, 'utf8'), 0, hits, seen);
-  return { hits, seen, docs, counts: { html: html.length, js: js.length } };
+  const manifests = fs.readdirSync(path.join(ROOT, 'public')).filter((f) => /\.webmanifest$|^manifest\.json$/.test(f));
+  const strings = (v, out) => { if (typeof v === 'string') out.push(v); else if (v && typeof v === 'object') Object.values(v).forEach((x) => strings(x, out)); return out; };
+  for (const m of manifests) for (const v of strings(JSON.parse(fs.readFileSync(path.join(ROOT, 'public', m), 'utf8')), [])) if (/ipod/i.test(v)) hits.push(`public/${m}: "${v}"`);
+  return { hits, seen, docs, counts: { html: html.length, js: js.length, topJs: topJs.length, manifests: manifests.length } };
 }
 
 test('W3: no user-visible "iPod" in any shell or script (comments never count; identifiers stay)', () => {
   const { hits, counts } = census();
   assert.ok(counts.html >= 15, `precondition: the census reads every shell (${counts.html})`);
   assert.ok(counts.js >= 100, `precondition: the census reads the scripts (${counts.js})`);
+  assert.ok(counts.topJs >= 1 && counts.manifests >= 1, `precondition: the service worker and the manifest are read (${counts.topJs} scripts, ${counts.manifests} manifests)`);
   assert.deepStrictEqual(hits, [], 'user-visible "iPod" left behind - say Pocket');
 });
 

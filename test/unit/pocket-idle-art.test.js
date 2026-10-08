@@ -67,18 +67,28 @@ async function boot(o, run) {
   dom.window.setTimeout = (fn, ms, ...a) => realSet(fn, ms >= 5000 ? 5 : ms, ...a);
   const log = [];
   const json = (body) => ({ ok: true, status: 200, json: async () => body });
+  let failed = 0;
   global.fetch = (u) => {
     const url = String(u);
     log.push(url);
+    if (o.failSamples && /^\/api\/music\?sort=random&/.test(url) && failed < o.failSamples) { failed += 1; return Promise.resolve({ ok: false, status: 500, json: async () => ({}) }); }
     if (/^\/api\/music\?sort=random&/.test(url) && o.sample) return Promise.resolve(o.sample(url)).then(json);
     if (/^\/api\/music\?sort=title-asc&/.test(url) && o.whole) return Promise.resolve(o.whole(url)).then(json);
     return Promise.resolve(json({ items: [], total: 0 }));
   };
-  const meta = o.held ? { isMusic: false, id: 'vid-held', title: 'A podcast episode' } : null;
+  // The player stub mirrors the contract the view reads (pocket-menu-harness.js): load() makes the id current, its meta
+  // live and the player expanded - a song started from a menu.
+  const pst = { meta: o.held ? { isMusic: false, id: 'vid-held', title: 'A podcast episode' } : null, state: o.held ? 'docked' : 'hidden' };
+  const loads = [];
+  const player = {
+    currentId: pst.meta ? pst.meta.id : null,
+    getState: () => pst.state, getCurrentMeta: () => pst.meta, expand() { pst.state = 'full'; }, setTrackNav() {}, dock() {}, ensureTheaterButton: () => null,
+    load(id, data) { player.currentId = id; pst.meta = { isMusic: true, id, title: data.title, artist: data.channelName, album: data.album, albumKey: data.albumKey, browseCtx: data.browseCtx }; pst.state = 'full'; loads.push(id); },
+  };
   let mod = null;
   dom.window.FileTube = {
-    registerView: (n, m) => { mod = m; }, encodeListContext: () => '', decodeListContext: () => null, shimmerArt: () => {},
-    player: { currentId: meta ? meta.id : null, getState: () => (meta ? 'docked' : 'hidden'), getCurrentMeta: () => meta, expand() {}, setTrackNav() {}, load() {}, dock() {}, ensureTheaterButton: () => null },
+    registerView: (n, m) => { mod = m; }, encodeListContext: (c) => JSON.stringify(c), decodeListContext: (x) => { try { return JSON.parse(x); } catch (_) { return null; } }, shimmerArt: () => {},
+    player,
   };
   delete require.cache[skinsPath]; global.module = undefined;
   dom.window.FileTubeMusicSkins = require(skinsPath);
@@ -90,7 +100,7 @@ async function boot(o, run) {
     require(musicPath);
     mod.init(dom.window.document.getElementById('view-root'));
     await settleMany(10);
-    await run({ dom, log, pane: () => dom.window.document.querySelector('#music-nowplaying-panel .ip-menuview .ipm-art') });
+    await run({ dom, log, loads, panel: dom.window.document.getElementById('music-nowplaying-panel'), pane: () => dom.window.document.querySelector('#music-nowplaying-panel .ip-menuview .ipm-art') });
   } finally {
     try { mod && mod.destroy && mod.destroy(); } catch (_) { /* torn down */ }
     delete require.cache[musicPath]; delete require.cache[skinsPath]; delete require.cache[surfacePath];
@@ -156,5 +166,42 @@ test('W2: a sample that IS the whole library with no covers stays the empty pane
     assert.strictEqual(sampleReqs(log).length, 1);
     assert.deepStrictEqual(wholeReqs(log), [], 'nothing more to read: the library has no covers');
     assert.strictEqual(pane().querySelector('img'), null, 'the pane shows no cover');
+  });
+});
+
+// a real TAP (pointerdown, pointerup, click): the engine eats a click with no press before it (pocket-menu-harness.js)
+const tap = (dom, el) => {
+  el.dispatchEvent(new dom.window.MouseEvent('pointerdown', { bubbles: true }));
+  el.dispatchEvent(new dom.window.MouseEvent('pointerup', { bubbles: true }));
+  el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+};
+const rowNamed = (panel, name) => [...panel.querySelectorAll('.ip-menuview .ipm-row:not(.ipm-skel)')].find((r) => (r.querySelector('.ipm-name') || r.querySelector('.ipm-lbl')).textContent === name);
+
+test('W2 (gate r1, the clear axis): a song started from the idle iPod (a video still held) brings that song\'s own art back', async () => {
+  const songs = [row(1), row(2)];
+  await boot({ held: true, sample: () => ({ items: songs, total: 2 }), whole: () => ({ items: songs, total: 2 }) }, async ({ dom, panel, loads }) => {
+    tap(dom, rowNamed(panel, 'Music')); await settleMany(10);
+    tap(dom, rowNamed(panel, 'Songs')); await settleMany(20);
+    const song = rowNamed(panel, 'Song 1');
+    assert.ok(song, 'precondition: the Songs level lists the library');
+    tap(dom, song); await settleMany(30);
+    assert.deepStrictEqual(loads, ['tr1'], 'the song started (player.load)');
+    // Now Playing paints the song's art (the ctx art the idle iPod dropped): an /albumart/tr1 image outside the drift layers
+    const np = [...panel.querySelectorAll('img:not(.ipm-slide)')].map((i) => i.getAttribute('src') || '');
+    assert.ok(np.some((u) => /^\/albumart\/tr1(\?|$)/.test(u)) || /albumart\/tr1/.test(panel.querySelector('.ip-cover') ? panel.querySelector('.ip-cover').getAttribute('style') || '' : ''),
+      'the song\'s own art is on the iPod (' + np.join(', ') + ')');
+    assert.ok(!np.some((u) => /vid-held/.test(u)), 'never the held item\'s placeholder');
+  });
+});
+
+test('W2 (gate r1): a failed sample request is asked again on the next menu render, and its covers then drift', async () => {
+  await boot({ held: false, failSamples: 1, sample: () => ({ items: [row(1), row(2)], total: 2 }) }, async ({ dom, log, panel, pane }) => {
+    await settleMany(10);
+    const first = sampleReqs(log).length;
+    assert.ok(first >= 1, 'the sample was asked for');
+    tap(dom, rowNamed(panel, 'Music')); await settleMany(20); // a non-item level: the pane re-syncs and asks again if it must
+    // the failed request is never the cached answer: a later ask is a NEW request (a cached rejection would stay at 1)
+    assert.ok(sampleReqs(log).length >= 2, 'a new request after the failure (' + sampleReqs(log).length + ', first ' + first + ')');
+    assert.ok(pane() && pane().querySelector('img.ipm-slide'), 'and its covers drift');
   });
 });

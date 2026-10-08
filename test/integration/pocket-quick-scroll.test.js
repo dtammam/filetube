@@ -239,7 +239,7 @@ test('C Extras > Games > Brick in the REAL music view: the view\'s own Brick hoo
   delete require.cache[BRICK];
 });
 
-test('E in the REAL view: the Click Main Menu drifts through covers from the real library (the view\'s pool: art-bearing, same-origin, one per album)', async () => {
+test('E in the REAL view: the Click Main Menu drifts through covers from the real library (the view\'s pool: art-bearing, same-origin; one per album is bound in the unit menuCoverPool tests)', async () => {
   const songs = (await realApi('/api/music?sort=title-asc&limit=10000')).items;
   // v1.377.0 (W2): the view's pool is now drawn from a RANDOM sample of the library, so which track stands for an
   // album (one cover per album) depends on the order the songs arrive - a library item's cover is its own thumbnail.
