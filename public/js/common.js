@@ -7499,6 +7499,22 @@ function stripArtistPrefix(title, artist) {
   return rest || t;
 }
 
+// v1.376.0 (Dean's ruling R6): Save as an album numbers the songs that will be DOWNLOADED 1..N, in playlist order, with no
+// gaps - a pickable row (not "Already in library", not unavailable: those have no switch) that is ticked, each video
+// once (a video listed twice takes its first ticked row's place). Until v1.375.0 the number was the playlist position,
+// so a skipped, unavailable or already-owned video left a hole (Kyle Gordon Is Wonderful: 1, 3-10, 13, 14).
+// `rows` = the picker's rows in playlist order ({ id, box }). -> a plain map id -> track number.
+function albumTrackNumbers(rows) {
+  const out = {};
+  let n = 0;
+  (Array.isArray(rows) ? rows : []).forEach((r) => {
+    if (!r || !r.box || !r.box.checked || typeof r.id !== 'string' || Object.prototype.hasOwnProperty.call(out, r.id)) return;
+    n += 1;
+    out[r.id] = n;
+  });
+  return out;
+}
+
 function playlistApiUrl(link, page, peek) {
   const q = new URLSearchParams({ url: link });
   if (peek) q.set('peek', '1'); else q.set('page', String(page || 1));
@@ -7581,6 +7597,7 @@ function openPlaylistPicker(opts) {
   // the standard menu (ui.menu). Every NEW track of the job gets that song's thumbnail as its cover (the server fetches it
   // from YouTube's image host by the id; never a URL from here). Shown with the album's other options.
   const COVER_OWN_ART = 'Each song\'s own art';
+  const ALBUM_ROW_NOT_IN = 'Not in the album'; // v1.376.0 R6: an unticked row has no track number
   const coverRow = U.row({ title: 'Cover', meta: COVER_OWN_ART, onClick: (ev) => openCoverMenu(ev), doc: d });
   coverRow.classList.add('playlist-picker-cover'); // (a row with no actions is itself the button: ui.row)
   albumList.appendChild(coverRow);
@@ -7677,6 +7694,7 @@ function openPlaylistPicker(opts) {
   const picked = () => state.rows.filter((r) => r.box && r.box.checked).map((r) => r.id);
   function refresh() {
     const n = picked().length;
+    renderRows(); // v1.376.0 R6: a tick renumbers the album's tracks
     goBtn.textContent = n ? `Download (${n})` : 'Download';
     goBtn.disabled = n === 0 || state.posting || state.started;
     const pickable = state.rows.filter((r) => r.box).length;
@@ -7703,9 +7721,8 @@ function openPlaylistPicker(opts) {
     const media = U.thumb({ src: e.thumb, duration: e.durationSec || 0, context: 'row', doc: d });
     // v1.372.0: a pickable row's name is a tap target (ui.row's title link): with Save as an album on it renames the song,
     // off it ticks the row. Its meta line (`' '`: ui.row makes the span) carries "Track N" while the album is on.
-    // v1.371.0: `pos` = the row's place in the playlist, the track number when the videos are saved as an album
-    // (the server's `position`, counted before any bad row was dropped; the row count only as a fallback)
-    const rec = { id: e.id, unavailable: !!e.unavailable, box, pos: Number.isInteger(e.position) && e.position > 0 ? e.position : state.rows.length + 1, title: e.title || '', titleClean: typeof e.titleClean === 'string' ? e.titleClean : '', channel: e.channel || '', nameEl: null, metaEl: null };
+    // (v1.376.0 R6: the track numbers are no longer the playlist position - see albumTrackNumbers)
+    const rec = { id: e.id, unavailable: !!e.unavailable, box, title: e.title || '', titleClean: typeof e.titleClean === 'string' ? e.titleClean : '', channel: e.channel || '', nameEl: null, metaEl: null };
     const row = U.row({ title: e.title || e.id, meta: blocked || ' ', media, actions, onClick: blocked ? undefined : (ev) => tapRow(rec, ev), doc: d });
     if (blocked) row.classList.add('is-disabled');
     else {
@@ -7726,16 +7743,19 @@ function openPlaylistPicker(opts) {
     if (!cleanOn.checked) return r.title || r.id;
     return stripArtistPrefix(r.titleClean || r.title, albumArtist.input.value.trim()) || r.title || r.id;
   }
-  function renderRow(r) {
+  function renderRow(r, numbers) {
     if (!r.nameEl) return;
     const on = albumWanted();
     r.nameEl.textContent = on ? songName(r) : (r.title || r.id);
     // what the tap does, for a screen reader (gate r1 qa S5): rename with the album on, tick the row with it off
     r.nameEl.setAttribute('aria-label', on ? 'Rename ' + songName(r) : 'Select ' + (r.title || r.id));
-    r.metaEl.textContent = on ? `Track ${r.pos}` : ''; // (the "tap to rename" hint is on the Save as an album row: it fits a phone)
+    // (the "tap to rename" hint is on the Save as an album row: it fits a phone). An unticked row keeps a line too, so
+    // ticking it never changes the row's height.
+    const n = on ? (numbers || albumTrackNumbers(state.rows))[r.id] : undefined;
+    r.metaEl.textContent = on ? (n ? `Track ${n}` : ALBUM_ROW_NOT_IN) : '';
     r.metaEl.hidden = !on;
   }
-  function renderRows() { state.rows.forEach(renderRow); renderCover(); }
+  function renderRows() { const numbers = albumTrackNumbers(state.rows); state.rows.forEach((r) => renderRow(r, numbers)); renderCover(); }
   // the Cover row's line: the picked song's name as the rows show it (a rename follows), else "Each song's own art"
   const coverRec = () => (state.coverId ? state.rows.find((r) => r.id === state.coverId) || null : null);
   function renderCover() {
@@ -7834,13 +7854,14 @@ function openPlaylistPicker(opts) {
       const title = albumName.input.value.trim();
       const artist = albumArtist.input.value.trim();
       if (!title || !artist) { status.textContent = 'Name the album and its artist, or turn off Save as an album.'; return; }
-      const tracks = {};
+      // v1.376.0 R6: the songs that will be downloaded, numbered 1..N in playlist order (albumTrackNumbers); each one's
+      // shown name goes along when it differs from YouTube's (v1.372.0: written as it is, so the server runs no cleanup)
+      const tracks = albumTrackNumbers(state.rows);
       const titles = {};
-      // the ticked ROW's place (a video listed twice takes the row that was ticked, the first if both were); its shown
-      // name goes along when it differs from YouTube's (v1.372.0: written as it is, so the server runs no cleanup)
+      const named = new Set();
       state.rows.forEach((r) => {
-        if (!r.box || !r.box.checked || Object.prototype.hasOwnProperty.call(tracks, r.id)) return;
-        tracks[r.id] = r.pos;
+        if (!r.box || !r.box.checked || named.has(r.id)) return; // the ticked row (the first if both are)
+        named.add(r.id);
         const name = songName(r);
         // a row with no title shows its id: that is never sent as a name (gate r1 qa S3) unless the user typed one
         if (name !== r.title && (r.title || Object.prototype.hasOwnProperty.call(state.customNames, r.id))) titles[r.id] = name;
@@ -18188,6 +18209,7 @@ if (typeof module !== 'undefined' && module.exports) {
     nextDownloadChipPollDelay, buildOneShotRetryBody, chipItemLifecycle,
     formatPlaylistChipStatus, buildPlaylistRetryRequest, routeOneOffDownload, openPlaylistPicker, // v1.370.0 W4: the playlist picker
     defaultAlbumArtist, stripArtistPrefix, // v1.371.0: Save as an album; v1.372.0: the song names
+    albumTrackNumbers, // v1.376.0 R6: 1..N over the songs that will be downloaded
     buildDownloadChipItem, reduceDownloadChipState, formatDownloadChipSummary,
     formatDownloadStaleNote, formatDownloadOfflineText, downloadChipRenderErrorCount, // v1.365.0 (W3)
     formatDownloadRowAge, downloadChipPollFaultCount, // v1.365.0 gate r1
