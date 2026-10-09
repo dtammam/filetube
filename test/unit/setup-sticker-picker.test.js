@@ -45,10 +45,9 @@ test('setup.html (v1.350): Player sticker comes first in Mobile player and the w
   assert.ok(sticker > 0 && skin > 0, 'both pickers are in the section');
   assert.ok(sticker < skin, 'sticker first, skins last');
   assert.ok(mobile.indexOf('id="sticker-file-input"') < skin, 'the sticker file input is above the skin grid too');
-  // v1.367.0 (Dean, 2026-10-06): the page order is Player sticker, Music skin, Bottom bar, so the Bottom bar group is the one
-  // setup-group allowed after the skin grid (the keyboard switch stays above it).
-  assert.strictEqual((mobile.slice(skin).match(/class="setup-group"/g) || []).length, 1, 'only the Bottom bar group follows the skin grid');
-  assert.ok(mobile.indexOf('id="bottombar-editor"') > skin, 'and it is the Bottom bar');
+  // v1.380.0 (Dean): the Bottom bar group left Mobile player for its own Settings page, so the skin grid is the LAST group.
+  assert.strictEqual((mobile.slice(skin).match(/class="setup-group"/g) || []).length, 0, 'no setup-group follows the skin grid');
+  assert.ok(!mobile.includes('id="bottombar-editor"'), 'the Bottom bar editor is not in Mobile player any more');
 });
 
 // ---- setup.js: renderStickerPicker reads ft-sticker + wires the three kinds ------------

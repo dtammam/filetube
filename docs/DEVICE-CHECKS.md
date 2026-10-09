@@ -247,6 +247,24 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
 - [x] v1.377.0 - (Dean 2026-10-08: "good") The Music page button reads "Pocket"; Settings > Mobile player says "Keep Pocket upright"; no "iPod"
   anywhere you can read in the app.
 
+## Feed polish (v1.380.0)
+
+Home-screen app on the iPhone. Have a book you have never opened, a subscription with videos you have not watched and a podcast with a new episode.
+
+- [ ] v1.380.0 - Settings > any long page (Mobile player is the longest): scroll to the bottom; the back arrow and the page title stay pinned
+  under the app header the whole way, rows slide under them, and the arrow still goes back. Try a short page and a landscape turn.
+- [ ] v1.380.0 - Settings > Personalize has a "Bottom bar" page right after Mobile player: drag to reorder, switch items off and on. Mobile player no longer has it.
+- [ ] v1.380.0 - Start a Feed session (your first three on this phone): a small "Swipe up" cue sits at the bottom of the first card and fades when you
+  swipe or after about 4 seconds. The fourth session shows none.
+- [ ] v1.380.0 - A book you never opened comes as "Start something new": cover, author, what it is about, no pages of text until you tap "Read the opening"
+  (its first real chapter, not the cover or copyright page). Swipe away without tapping anything, then open the book in the reader: it opens at the very start, as unstarted
+  (not under "currently reading"). Only one such card per session.
+- [ ] v1.380.0 - "Start reading" on that card: the reader opens at the first real chapter; the book is now one you are reading and its next feed card continues from there.
+- [ ] v1.380.0 - Video and podcast cards read "Continue" or "New from <channel>" / "New episode of <show>" (Watch later keeps its word). Expect about one New for every two Continue.
+- [ ] v1.380.0 - Swipe past a NEW video after about 10 seconds: it is not under Continue watching afterwards and not marked watched. Stay on a new one for over a minute: it is.
+- [ ] v1.380.0 - A new video that starts with an intro chapter opens after it with "Skipped the intro" for 3 seconds; tap it to go back to the start.
+- [ ] v1.380.0 - Start a NEW podcast episode in Feed, swipe nowhere, go to Home while it keeps playing in the mini player, listen past a minute: open the podcasts page; the episode has a place.
+
 ## Feed mode (v1.379.0)
 
 Home-screen app on the iPhone, a book you are partway through, a podcast in progress, a few subscriptions, some liked songs.

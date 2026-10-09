@@ -153,10 +153,10 @@ test('view: a pick starts a session, fetches the first batch, builds every card 
     assert.strictEqual(bookText.querySelectorAll('p')[0].textContent, 'First <b>para</b>.');
     assert.ok(cards[0].textContent.includes('Chapter 1 of 3'));
     assert.ok(cards[0].querySelector('.ui-btn__label').textContent === 'Open in reader');
-    assert.strictEqual(cards[1].querySelector('.feed-card__kind').textContent, 'Podcast');
+    assert.strictEqual(cards[1].querySelector('.feed-card__kind').textContent, 'Podcast \u00b7 Continue', 'v1.380.0: a card with no fresh flag is a continuing one');
     assert.ok(cards[1].textContent.includes('4:00 of this episode'));
     assert.ok(cards[2].textContent.includes('Chapter 2 of 3: Middle'));
-    assert.strictEqual(cards[4].querySelector('.feed-card__kind').textContent, 'Watch later');
+    assert.strictEqual(cards[4].querySelector('.feed-card__kind').textContent, 'Watch later \u00b7 Continue');
     assert.ok(cards[1].querySelector('.feed-card__slot') && cards[2].querySelector('.feed-card__slot') && cards[3].querySelector('.feed-card__slot'));
     // card 0 (the book) is active; the player is untouched by a book
     assert.ok(cards[0].hasAttribute('data-active'));

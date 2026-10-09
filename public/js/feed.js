@@ -67,6 +67,62 @@ function feedKindLabel(card) {
   return '';
 }
 
+// v1.380.0 (R5, D6): what a video / episode / Watch later card says about the viewer's place in it. "Continue" when
+// they have one; "New from <channel>" (video) or "New episode of <show>" (podcast) when they have not. Watch later
+// keeps its own kind word beside it (the kind line reads "Watch later · Continue"). Books and songs say nothing here.
+function feedNewnessLabel(card) {
+  if (!card || (card.kind !== 'video' && card.kind !== 'podcast' && card.kind !== 'watchlater')) return '';
+  if (card.fresh !== true) return 'Continue';
+  if (card.media === 'podcast') return card.showName ? 'New episode of ' + card.showName : 'New episode';
+  return card.channelName ? 'New from ' + card.channelName : 'New video';
+}
+
+// The kind line: "Video · New from Lofi Girl", "Watch later · Continue", "Start something new" for an unstarted book.
+function feedKindLine(card) {
+  if (!card) return '';
+  if (card.kind === 'book' && card.newBook) return 'Start something new';
+  var kind = feedKindLabel(card);
+  var newness = feedNewnessLabel(card);
+  return newness ? kind + ' \u00b7 ' + newness : kind;
+}
+
+// v1.380.0 (R5, D7): a FRESH card counts as started only after about a minute of ACTUAL playback. The tracker adds the
+// media clock's forward movement between updates, capped by the wall time that passed (a seek moves the clock but not
+// the wall: it adds nothing), and nothing while paused. state: { last, wall, sec }. Pure; the view feeds it timeupdates.
+var FEED_FRESH_START_SEC = 60;
+var FEED_PLAY_STEP_MAX_SEC = 2.5; // a bigger jump between two updates is a seek, never playback
+function feedNewPlayTracker() { return { last: null, wall: 0, sec: 0 }; }
+function feedPlayedStep(state, currentTime, nowMs, playing, rate) {
+  var s = state || feedNewPlayTracker();
+  var t = Number(currentTime);
+  if (!playing || !isFinite(t)) { s.last = null; return s; }
+  if (s.last !== null) {
+    var delta = t - s.last;
+    var wallSec = Math.max(0, (Number(nowMs) - s.wall) / 1000);
+    var cap = wallSec * (Number(rate) > 0 ? Number(rate) : 1) + 0.25;
+    if (delta > 0 && delta <= FEED_PLAY_STEP_MAX_SEC) s.sec += Math.min(delta, cap);
+  }
+  s.last = t;
+  s.wall = Number(nowMs);
+  return s;
+}
+// A clip shorter than 75 s needs 80% of itself, never more than a minute (mirrors lib/feed/safe-progress.js freshNeedSec).
+function feedFreshNeedSec(durationSec) {
+  var d = Number(durationSec);
+  return isFinite(d) && d > 0 ? Math.min(FEED_FRESH_START_SEC, Math.max(1, d * 0.8)) : FEED_FRESH_START_SEC;
+}
+function feedFreshStarted(state, needSec) { return !!state && state.sec >= (typeof needSec === 'number' && needSec > 0 ? needSec : FEED_FRESH_START_SEC); }
+
+// v1.380.0 (R3, D3): the "Swipe up" cue shows on the first FEED_HINT_SESSIONS sessions on a device, then never again.
+var FEED_HINT_KEY = 'ft-feed-hint-sessions';
+var FEED_HINT_SESSIONS = 3;
+var FEED_HINT_MS = 4000;
+var FEED_INTRO_NOTE_MS = 3000;
+function feedHintShouldShow(count) {
+  var n = parseInt(count, 10);
+  return !(n >= FEED_HINT_SESSIONS);
+}
+
 // Which mounted card is active: the one with the largest visible ratio at or above the
 // floor; none when nothing crosses it (mid-swipe). Pure over [{index, ratio}].
 function feedActiveIndex(ratios, floor) {
@@ -320,6 +376,8 @@ if (typeof module !== 'undefined' && module.exports) {
     FEED_EXTEND_MIN, FEED_WIND_DOWN_CAP_SEC, FEED_HOLD_MS, FEED_WORDS_PER_PAGE, FEED_TIME_PEEK_MS, feedRestoreSummary,
     feedNormalizeMinutes, feedWeekLine, feedClock, feedKindLabel, feedActiveIndex, feedShouldPrefetch, feedExcludeIds,
     feedPlayerDescriptor, feedBookRead,
+    feedNewnessLabel, feedKindLine, FEED_FRESH_START_SEC, FEED_PLAY_STEP_MAX_SEC, feedNewPlayTracker, feedPlayedStep, feedFreshStarted, feedFreshNeedSec,
+    FEED_HINT_KEY, FEED_HINT_SESSIONS, FEED_HINT_MS, FEED_INTRO_NOTE_MS, feedHintShouldShow,
     feedDeadlineMs, feedRingFraction, feedRemainingSec, feedEmptySummary, feedCountActivity, feedRecapLines, feedRecapTitle,
     feedHoldStep, feedSummaryPayload,
   };
@@ -371,6 +429,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var bookActiveSince = 0; // ms clock when the active book card became active
     var bookActiveMs = {}; // card index -> accumulated active ms
     var bookWritten = {}; // card index -> true once the bookmark moved (or was refused)
+    var startingRead = {}; // card index -> true once "Start reading" was tapped (a double tap is one write)
     // the session clock (D10-D12)
     var summary = feedEmptySummary();
     var activity = {}; // card index -> { read, playedSec, done, ended }
@@ -381,6 +440,8 @@ if (typeof module !== 'undefined' && module.exports) {
     var windingDown = false; // time is up: the current card finishes, nothing new starts
     var hardStopMs = NaN; // wind-down: a playing slice stops here at the latest
     var recapCtrl = null;
+    var hintPending = false; // v1.380.0 (R3, D3): set when a session STARTS (not on a resume): the first card shows the swipe cue
+    var hintTimer = null;
     var peekTimer = null;
     var ring = null;
     var timeEl = null;
@@ -418,6 +479,7 @@ if (typeof module !== 'undefined' && module.exports) {
           if (signal.aborted) return;
           session = { id: body.session.id, plannedMin: body.session.plannedMin, startedAt: body.session.startedAt, extensions: 0 };
           extensions = 0;
+          hintPending = true;
           writeSession(session);
           showStack();
           startClock();
@@ -573,9 +635,10 @@ if (typeof module !== 'undefined' && module.exports) {
         node.appendChild(el('p', 'feed-notice', 'You’re through everything new. From here the feed starts over.'));
         return;
       }
-      node.appendChild(el('div', 'feed-card__kind', feedKindLabel(card)));
+      node.appendChild(el('div', 'feed-card__kind', feedKindLine(card)));
       node.appendChild(el('h3', 'feed-card__title', card.title || (card.track && card.track.title) || ''));
       var body = el('div', 'feed-card__body');
+      if (card.kind === 'book' && card.newBook) { fillNewBookCard(node, body, card, index); return; }
       if (card.kind === 'book') {
         node.appendChild(el('p', 'feed-card__meta', (card.author ? card.author + ' · ' : '') + (card.chapterLabel || '')));
         var text = el('div', 'feed-card__text');
@@ -635,6 +698,72 @@ if (typeof module !== 'undefined' && module.exports) {
       node.appendChild(playActions(card, index, label));
     }
 
+    // v1.380.0 (R4, D5): "Start something new" - an unstarted book. Cover, author, the book's own description (TEXT
+    // nodes only), an optional taste of the opening. Looking at any of it writes nothing; the only thing that starts the
+    // book is "Start reading", which moves the place to the first real chapter through the feed's forward-only write and
+    // then opens the reader. Swiping on leaves the book exactly as it was.
+    function fillNewBookCard(node, body, card, index) {
+      node.setAttribute('data-new-book', '');
+      node.appendChild(el('p', 'feed-card__meta', card.author || ''));
+      if (card.coverUrl) {
+        var cover = el('img', 'feed-card__cover');
+        cover.alt = '';
+        cover.src = card.coverUrl;
+        body.appendChild(cover);
+      }
+      if (card.description) body.appendChild(el('p', 'feed-card__desc', card.description)); // text, never markup
+      var taste = el('div', 'feed-card__text feed-card__taste');
+      taste.hidden = true;
+      (card.blocks || []).forEach(function (b) {
+        if (b.chapterStart && !b.heading) taste.appendChild(el('div', 'feed-card__chapter-start', 'Chapter ' + (b.spineIndex + 1)));
+        taste.appendChild(el(b.heading ? 'h3' : 'p', null, b.text));
+      });
+      body.appendChild(taste);
+      node.appendChild(body);
+      var actions = el('div', 'feed-card__actions');
+      var start = U() ? U().button({ variant: 'primary', size: 'sm', pill: true, icon: 'menu_book', label: 'Start reading', doc: document })
+        : el('button', 'ui-btn ui-btn--primary ui-btn--sm ui-btn--pill', 'Start reading');
+      start.type = 'button';
+      start.setAttribute('data-start-reading', '');
+      start.addEventListener('click', function () { startReading(index, start); }, { signal: signal });
+      var peek = U() ? U().button({ variant: 'tonal', size: 'sm', pill: true, label: 'Read the opening', doc: document })
+        : el('button', 'ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill', 'Read the opening');
+      peek.type = 'button';
+      peek.setAttribute('data-read-opening', '');
+      peek.setAttribute('aria-expanded', 'false');
+      peek.addEventListener('click', function () {
+        taste.hidden = !taste.hidden;
+        peek.setAttribute('aria-expanded', taste.hidden ? 'false' : 'true');
+        var label = peek.querySelector('.ui-btn__label') || peek;
+        label.textContent = taste.hidden ? 'Read the opening' : 'Hide the opening';
+      }, { signal: signal });
+      actions.appendChild(start);
+      if ((card.blocks || []).length) actions.appendChild(peek);
+      node.appendChild(actions);
+    }
+
+    // "Start reading": the place moves to the card's start (the first real chapter, block 0) - forward-only, served-and-not-stale,
+    // exactly as any move - and the reader opens. A refusal (another device started the book, or it moved) is final: the reader
+    // opens on whatever the stored place really is, and a stale one is said out loud.
+    function startReading(index, btn) {
+      var card = cards[index];
+      if (!card || startingRead[index]) return;
+      startingRead[index] = true;
+      if (btn) btn.disabled = true;
+      var go = function () {
+        if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(card.readerHref);
+        else window.location.assign(card.readerHref);
+      };
+      fetch('/api/feed/progress/book/' + encodeURIComponent(card.id), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(card.start), keepalive: true,
+      }).then(function (r) {
+        if (r.status !== 409) return null;
+        return r.json().then(function (body) {
+          if (body && body.reason === 'stale' && U()) U().toast({ text: 'Your place in ' + (card.title || 'this book') + ' moved on another device', doc: document });
+        });
+      }).catch(function () {}).then(go);
+    }
+
     function playActions(card, index, label) {
       var actions = el('div', 'feed-card__actions');
       actions.appendChild(el('span', 'feed-card__meta', label));
@@ -650,7 +779,7 @@ if (typeof module !== 'undefined' && module.exports) {
       cardEls.forEach(function (node, i) {
         if (i < active - FEED_KEEP_BEHIND) {
           if (cards[i] && cards[i].kind === 'notice') return; // one line of text: nothing heavy to drop
-          if (!node.hasAttribute('data-pruned')) { node.setAttribute('data-pruned', ''); node.replaceChildren(el('div', 'feed-card__kind', feedKindLabel(cards[i]))); }
+          if (!node.hasAttribute('data-pruned')) { node.setAttribute('data-pruned', ''); node.replaceChildren(el('div', 'feed-card__kind', feedKindLine(cards[i]))); }
         } else if (node.hasAttribute('data-pruned')) {
           node.removeAttribute('data-pruned');
           fillCard(node, cards[i], i);
@@ -679,10 +808,39 @@ if (typeof module !== 'undefined' && module.exports) {
       var card = cards[index];
       if (!node || !card) return;
       node.setAttribute('data-active', '');
+      if (index > 0) clearHint();
+      else if (hintPending) { hintPending = false; showHint(node); }
       if (card.kind === 'book') bookActiveSince = Date.now();
       else playCard(index);
       pruneBehind(index);
       if (feedShouldPrefetch(index, cards.length)) fetchBatch();
+    }
+
+    // R3, D3: a small "Swipe up" cue at the bottom of the FIRST card of a session, on the first FEED_HINT_SESSIONS sessions a device
+    // starts. It fades after the first swipe or FEED_HINT_MS; a per-device count in localStorage (try/caught) ends it for good.
+    function showHint(node) {
+      var count = parseInt(readPref(FEED_HINT_KEY, '0'), 10) || 0;
+      if (!feedHintShouldShow(count)) return;
+      writePref(FEED_HINT_KEY, count + 1);
+      clearHint();
+      var hint = el('div', 'feed-hint');
+      hint.id = 'feed-hint';
+      hint.setAttribute('aria-hidden', 'true');
+      var NS = 'http://www.w3.org/2000/svg';
+      var chev = document.createElementNS(NS, 'svg');
+      chev.setAttribute('class', 'feed-hint__chevron'); chev.setAttribute('viewBox', '0 0 24 24'); chev.setAttribute('aria-hidden', 'true'); chev.setAttribute('focusable', 'false');
+      var chevPath = document.createElementNS(NS, 'path');
+      chevPath.setAttribute('d', 'M6 15l6-6 6 6');
+      chev.appendChild(chevPath);
+      hint.appendChild(chev);
+      hint.appendChild(el('span', 'feed-hint__text', 'Swipe up'));
+      node.appendChild(hint);
+      hintTimer = window.setTimeout(clearHint, FEED_HINT_MS);
+    }
+    function clearHint() {
+      if (hintTimer) { window.clearTimeout(hintTimer); hintTimer = null; }
+      var h = document.getElementById('feed-hint');
+      if (h) h.remove();
     }
 
     function leaveCard(index) {
@@ -705,7 +863,7 @@ if (typeof module !== 'undefined' && module.exports) {
       counted[index] = true;
       if (!cards[index] || cards[index].kind === 'notice') return; // the notice is not a card the user did anything with
       var a = activity[index] || {};
-      if (cards[index] && cards[index].kind === 'book') a.read = !!bookWritten[index] || feedBookRead(bookActiveMs[index], cards[index].dwellSec);
+      if (cards[index] && cards[index].kind === 'book') a.read = !cards[index].newBook && (!!bookWritten[index] || feedBookRead(bookActiveMs[index], cards[index].dwellSec)); // a taste is not a page read
       feedCountActivity(summary, cards[index], a);
       if (session) { session.summary = summary; writeSession(session); } // the recap survives a navigation (W3)
     }
@@ -721,6 +879,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function finishBookCard(index, force) {
       var card = cards[index];
       if (!card || bookWritten[index]) return;
+      if (card.newBook) return; // an unstarted book is only ever started by the "Start reading" tap (R4): no dwell moves its place
       if (!force && !feedBookRead(bookActiveTotal(index), card.dwellSec)) return;
       bookWritten[index] = true;
       activity[index] = activity[index] || {};
@@ -754,6 +913,15 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!slot) return;
       var data = feedPlayerDescriptor(card);
       if (!data) return;
+      // v1.380.0 (R5, D7): a FRESH card writes nothing until a minute of actual playback. The guard rides the descriptor into the
+      // shared player, whose ONE progress writer (saveProgressToServer: pings, the pause / background checkpoint, a seek, the end)
+      // asks it before every POST and reports the played seconds the server checks again. Not-fresh cards carry no guard.
+      var tracker = card.fresh === true && card.kind !== 'song' ? feedNewPlayTracker() : null;
+      var needSec = feedFreshNeedSec(card.media === 'podcast' ? card.durationSec : card.duration);
+      if (tracker) {
+        data.progressGate = function () { return feedFreshStarted(tracker, needSec); };
+        data.playedSec = function () { return tracker.sec; };
+      }
       mediaCardIndex = index;
       p.load(card.id, data, { slot: slot });
       mediaEl = document.getElementById('media-player');
@@ -762,6 +930,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var left = node.querySelector('[data-left]');
       var act = activity[index] = activity[index] || { playedSec: 0, done: false, ended: false };
       var startAt = Number(data.startAt) || 0;
+      if (card.skippedIntro && startAt > 0) showIntroNote(node, startAt);
       var onTime = function () {
         if (mediaCardIndex !== index || !mediaEl) return;
         var t = mediaEl.currentTime || 0;
@@ -780,6 +949,22 @@ if (typeof module !== 'undefined' && module.exports) {
         }
       };
       mediaEl.addEventListener('timeupdate', onTime, { signal: signal });
+      // The played-time tracker is NOT tied to this view's signal (gate r1, adversary C1): the player keeps playing in the dock after
+      // the Feed is left, and its progress gate closes over this tracker - a tracker that died with the view would keep the gate shut
+      // for the rest of the listen and the item would never save. It stops when the minute is played or the player loads something else.
+      if (tracker) {
+        var media = mediaEl;
+        var src0 = null;
+        var track = function () {
+          var src = media.currentSrc || media.src || '';
+          if (src0 === null) src0 = src;
+          else if (src !== src0) { release(); return; } // the player moved on to another item
+          feedPlayedStep(tracker, media.currentTime || 0, Date.now(), !media.paused && !media.ended, media.playbackRate);
+          if (feedFreshStarted(tracker, needSec)) release();
+        };
+        var release = function () { media.removeEventListener('timeupdate', track); };
+        media.addEventListener('timeupdate', track);
+      }
       mediaEl.addEventListener('ended', function () {
         if (mediaCardIndex !== index) return;
         node.setAttribute('data-done', '');
@@ -787,6 +972,25 @@ if (typeof module !== 'undefined' && module.exports) {
         act.done = true;
         if (windingDown) finishNow();
       }, { signal: signal });
+    }
+
+    // D8: "Skipped the intro" for 3 s, tap to go back to the start. The tap is a seek (it adds no played time).
+    function showIntroNote(node, startAt) {
+      var existing = node.querySelector('.feed-card__intro-note');
+      if (existing) existing.remove();
+      var note = U() ? U().button({ variant: 'tonal', size: 'sm', pill: true, label: 'Skipped the intro \u00b7 tap to go back', doc: document })
+        : el('button', 'ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill', 'Skipped the intro \u00b7 tap to go back');
+      note.classList.add('feed-card__intro-note');
+      note.type = 'button';
+      var gone = window.setTimeout(function () { note.remove(); }, FEED_INTRO_NOTE_MS);
+      signal.addEventListener('abort', function () { window.clearTimeout(gone); });
+      note.addEventListener('click', function () {
+        window.clearTimeout(gone);
+        note.remove();
+        if (mediaEl && isFinite(startAt)) mediaEl.currentTime = 0;
+      }, { signal: signal });
+      var slotEl = node.querySelector('.feed-card__body');
+      (slotEl || node).appendChild(note);
     }
 
     function pauseMedia() {
@@ -932,8 +1136,8 @@ if (typeof module !== 'undefined' && module.exports) {
       if (tickTimer) { window.clearInterval(tickTimer); tickTimer = null; }
       session = null;
       writeSession(null);
-      cards = []; cardEls = []; activeIndex = -1; ratios = {}; exhaustedShown = false; activity = {}; counted = {}; bookActiveMs = {}; bookWritten = {};
-      summary = feedEmptySummary(); extensions = 0; windingDown = false; hardStopMs = NaN;
+      cards = []; cardEls = []; activeIndex = -1; ratios = {}; exhaustedShown = false; activity = {}; counted = {}; bookActiveMs = {}; bookWritten = {}; startingRead = {};
+      summary = feedEmptySummary(); extensions = 0; windingDown = false; hardStopMs = NaN; hintPending = false; clearHint();
       if (ring) ring.style.setProperty('--p', '0');
       stack.replaceChildren();
       sessionEl.hidden = true;
@@ -959,6 +1163,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (observer) { observer.disconnect(); observer = null; }
       if (tickTimer) { window.clearInterval(tickTimer); tickTimer = null; }
       if (peekTimer) { window.clearTimeout(peekTimer); peekTimer = null; }
+      if (hintTimer) { window.clearTimeout(hintTimer); hintTimer = null; }
       if (recapCtrl) { var c = recapCtrl; recapCtrl = null; try { c.close(); } catch (_) { /* gone */ } }
     });
   }
