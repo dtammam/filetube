@@ -3,8 +3,8 @@ plan: feed-tiktok
 harness: v2 · full
 branch: feat/v1.381.0-feed-tiktok
 anchor: outcome
-status: Planned (kickoff 2026-10-09, Opus Root); builder not started
-next: builder Step 0, then W1
+status: Built W1-W5 (builder, Opus); full dual-Node suite next, then the FULL gate
+next: the dual-Node suite at the W5 sha, then the gate (adversary, qa, security-brief)
 design: Dean's device feedback on v1.380.0 Feed (2026-10-09, eight points + swipe left/right); kickoff defaults D1-D11. Base main 42ec865c (v1.380.0).
 builder: smart (the shared player's gestures in a new full-bleed host, a layout rework of every card, and a deliberate progress RESET: a data-loss surface)
 gate: not yet run (FULL: adversary, qa, security-brief - "Start over" deletes a place; brief the Adversary to destroy data)
@@ -142,11 +142,48 @@ protected-main PR flow, shipped = the tag's "Publish Docker Image" run green, br
 
 ## 7. Evidence (builder fills: numbers copied from the runs named, verbatim verdict lines)
 
-- Layout before / after (rects, 390 / 320, each card kind):
-- D6 fitted pages (fixture books, 3 positions):
-- D7 edge rule on WebKit:
-- D10 stale-Continue cause and counts:
-- Start over + Undo falsifiers (each kind):
+- Layout before / after (rects, 390 / 320, each card kind): `node tools/feed-proof/layout.js <tree> <out> both` (Chromium + WebKit,
+  390x844 and 320x568, DPR 3, touch; every card kind of the shared fixture, the longest titles 121 / 103 characters). Base 42ec865c:
+  `SUMMARY layout: 4 runs, cards per run [6,6,6,6], scrollers 16, hudOverTitle>0 24`; the other-device card in the Feed
+  `{"handoff":"flex"}` on all 4 runs (Dean's point 1 reproduced). This branch (W2 bb933766, re-run at W3): `scrollers 0, hudOverTitle>0 0`,
+  the Feed `{"handoff":"none"}` and back on Home `{"handoff":"grid"}`. Chromium 390: card {x 0, y 56, w 390, h 716}, the playing video
+  {w 390, h 716, fit cover} (before: 340 x 191 under a poster), title {y 660, h 44, 2 lines} vs HUD {x 272, y 68, w 106, h 44}: 0 overlap
+  (before: 2392 px squared on every card); podcast / song art 147 px square at 390 (45%) over its blurred backdrop (before: the art
+  338 px plus the player's own art below it). 320: card {w 320, h 440}, video 320 x 440, art 115 px, 0 overlap. WebKit cards measure
+  24 px narrower: Linux WebKit draws classic scrollbars (`stackScrollbar` 12 px, plus the page's), iOS overlays them. Dean saw the
+  side-by-side sheets (Chromium 390 and 320) and answered "Looks right, go on".
+- D6 fitted pages: jsdom over a modelled page box (test/unit/feed-tiktok.test.js, `pageWords`): ['1:10 2:15', '2:25c', '3:3'] style
+  layouts per fixture, a heading never split, a page left with fewer than 8 words of room starts the next paragraph on the next page;
+  in the browser the fixture book's card (3 x 48-block chapters) lays out as "Page 1 of 3" at 390x844 and fills the page box (screenshot
+  in the W2 sheet). The place moves only to the first unread page's start: reading page 1 of 3 then swiping on writes (0,3), never the
+  card's next (0,6); a page shown under its dwell writes nothing; a page read after an unread one moves nothing past it.
+- D7 edge rule on WebKit: `node tools/feed-proof/gestures.js . out both` -> `SUMMARY gestures: 2/2 pass (chromium+webkit)`. Chromium with
+  REAL CDP touches: a swipe on the book card from x=10 stayed "Page 1 of 3", from x=300 went to "Page 2 of 3"; a swipe that starts on the
+  playing video went video -> the next card; tap paused at 6.4 s with the glyph (`art-play-glyph-flash`), tap played; a 900 ms hold read
+  rate 2 with the badge, the lift rate 1 still playing. WebKit: taps through page.touchscreen (pause / play), the swipes as synthetic
+  pointer events (Playwright's WebKit has no touch-move) with the same page results - so WebKit's own back gesture vs the 24 px rule is
+  a device check. Not reproduced: on the base tree in headless Chromium a swipe from the video ALSO moved the stack (and tap / hold did
+  nothing there), so "the player's touch cancel blocked the swipe" stays a reading of player.js, not a measurement.
+- D10 stale-Continue cause and counts: no path writes a place for a look (every writer is the player's one saveProgressToServer or the
+  reader's ping); the cause is the Feed's own test - a video was Continue above the 0.5% watching floor (6 s of a 20-minute video), an
+  episode at ANY position above 0 s. Fixture (test/integration/feed-stale-continue.test.js, the real routes): a 10 s watch-page look ->
+  `video Continue 2 moved by a feed session 1 {"under 1 min":1,"1-5 min":1}`, a 3 s episode -> `podcast Continue 1 ... {"under 1 min":1}`,
+  a reader-opened book moved by a feed card -> `book Continue 1 moved by a feed session 1`. Dean's data: not on this box (the dev
+  database has no places); the read-only command is in docs/DEVICE-CHECKS.md. Dean's ruling (AskUserQuestion, 2026-10-09): "Under 1 min
+  = New" - built in lib/feed/api.js (startedUnderAMinute), labels and the mix only, no stored place touched.
+- Start over + Undo falsifiers (each kind): test/integration/feed-start-over.test.js (13): exact restore per kind (video progress +
+  watched with their timestamps, Watch later kept; episode position + played; book place + finished); a parallel double tap = one 200 +
+  one 409 'nothing', one record; Undo after another device played = 409 'moved', the newer place stands, the record kept; Undo twice =
+  409 'undone'; a late Undo after more cards = exact; a staged ping is recorded and never resurrected; a pre-reset ping (with and
+  without playedSec 75) = 409 'too-early'; a book card cannot write after its reset ('not-served'); Undo re-checks visibility (hidden =
+  404, nothing restored); input (bad kind, empty, NUL, 300 chars, `__proto__`, another user's session / token); the record survives the
+  finish; never merged into by the next write; a failing record write resets nothing (fault-injected, 500). Mutants on 1664921f (a /tmp
+  git-archive sandbox): 17 / 17 killed (S1 record-after-reset, S2-S10, S12-S18), after S5, S10 and S17 first SURVIVED and got their own
+  tests (S10's first test was vacuous: the session check masked it). Browser: `node tools/feed-proof/start-over.js . out both` ->
+  `SUMMARY start-over: 2/2 pass (chromium+webkit)` - the real "...", confirm ("Your place, 0:50 of 1:00, will be forgotten."), the row
+  gone, the video at 0 and "New", the real toast's Undo -> the row back exactly {timestamp 50, duration 60, updatedAt
+  2026-10-01T10:00:00.000Z}, "Continue"; the book's place reset and restored exactly.
+- Other mutants: W2 12 / 12 killed (M9 and M12 first survived, then bound), W3 11 / 11 killed.
 - Suites (Node 22.23.1 / 24.20.0) at the reviewed sha:
 - Gate rounds:
 - Device checks owed:
@@ -154,3 +191,36 @@ protected-main PR flow, shipped = the tag's "Publish Docker Image" run green, br
 ## 8. Out of scope
 Start over outside the Feed (watch page, reader, podcasts page: ROADMAP Planned if Dean wants it everywhere); a scrubbable
 progress line; horizontal swipes on media cards; comments / likes overlays; new card kinds; the phase 2-3 Reading work.
+
+## 9. Ledger (as built; Dean overrules at the device pass)
+
+- **D1 / D2 (W1).** One CSS rule keyed on body[data-view="feed"] (stamped by the router on every view change) hides #handoff-card and
+  #dl-status-chip in the Feed; leaving restores both as they were; downloads go on. No !important (ui-lint): `html:root` lifts it
+  strictly above every display rule on either id.
+- **D3 (W2).** Every card: media layer (absolute, the full card), a HUD strip (the ring's height plus its inset), the stage, the overlay
+  (kind line, title clamped to 2 lines, meta, readout and buttons) over a dark fade. Edge to edge on the phone (the main column's side
+  padding dropped in the Feed only).
+- **D4 (W2).** Video object-fit cover; a Fit / Fill pill (stacked labels, no width change) switches every video card; `ft-feed-fit` per
+  device. The slot rules are keyed on #player-wrapper / #media-player to out-rank the full player's two-id 16:9 rules.
+- **D5 (W2).** Podcast / song: the art blurred and darkened as the backdrop (the music skin's recipe), the art once at 45% of the width;
+  the player's own surface draws nothing but its tap glyph.
+- **D6 (W2).** No scroller in a card. Book pages FITTED to the page box; the place moves to the first unread page's start (pages read in
+  order, each its own dwell); the recap counts the words on the pages read. The new-book card's cover + description are a page, the
+  taste is pages.
+- **D7 (W3).** Swipe left / right on a book card turns the page, never from within 24 px of a screen edge; arrow keys too. Past the last
+  page, the excerpt route in `continuation=1` mode (never re-stamps the served registry). The page cue on the first 3 sessions.
+- **D8 (W3).** A gesture layer over the media (never cancels a touch): tap = the player's picture tap (glyph), hold = engageHold /
+  releaseHold through a small player API with its own thresholds; audio never holds. A thin progress line shows the slice.
+  NOT as planned: no "hold-lock by drag" in the Feed (a drag is a swipe there); the loupe guard of the watch page (cancel every touch)
+  is NOT used, because it would block the swipe - the layer is an empty element, so the device check covers the magnifier.
+- **D9 (W4).** Start over as built in section 7; the record rides the existing `moves` carrier (backup, restore, the client-never-writes
+  rule); a book card is frozen after its reset; a 10 s Undo toast. Also fixed on the way: every Feed toast passed ui.toast one object
+  ("[object Object]" on the device since v1.379.0).
+- **D10 (W4).** Measured and ruled (section 7): under a minute in = New, in the Feed only; scripts/feed-stale-continue.js (read-only).
+- **D11.** Unchanged except the page cue.
+- **Dean, mid-build (2026-10-09): "It should not rotate when going sideways."** A player hosted in a Feed card ignores rotation (no faux
+  fullscreen, no expanded audio; iOS's rotate-into-native is bounced back without arming faux), keyed on where the host is
+  (`rotateIgnoredForHost`). A web app cannot lock the page upright on iOS: in landscape the Feed lays out wide.
+- **Dean, D10 (2026-10-09):** "Under 1 min = New (Recommended)".
+- **Dean, W2 look (2026-10-09):** "Looks right, go on (Recommended)".
+

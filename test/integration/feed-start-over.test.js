@@ -201,7 +201,11 @@ test('D9 a ping in flight from BEFORE the reset cannot put the old place back; t
   await flushPendingBookProgress();
   assert.strictEqual(userStore.getOneBookProgress(uid, bookId), null);
   assert.strictEqual((await undo(sid, s.token)).status, 200);
+  const recBefore = JSON.stringify(recordOf(sid, s.token)[0]);
   assert.strictEqual((await post('/api/feed/progress/media', { id: 'v1', timestamp: 320, duration: 600 })).status, 200, 'after Undo the card continues from its place');
+  assert.strictEqual(JSON.stringify(recordOf(sid, s.token)[0]), recBefore, 'the next write is a move of its own: it never merges into the Start over record');
+  const moves = userStore.getFeedSession(uid, sid).summary.moves;
+  assert.deepStrictEqual(moves[moves.length - 1].to, 320, 'appended after it');
   assert.strictEqual((await undo(sid, b.token)).status, 200);
 });
 
@@ -251,4 +255,46 @@ test('D9 the record survives the session\'s finish (the client\'s summary never 
   assert.strictEqual(recordOf(sid, s.token).length, 1, 'still recorded after the finish');
   assert.strictEqual((await undo(sid, s.token)).status, 200);
   void feedServed;
+});
+
+test('D9 Undo re-checks visibility: an item hidden from the user after their Start over is a neutral 404 and is NOT restored', async () => {
+  const m = __mintTestSession({ username: 'sover-member2', role: 'member' });
+  userStore.setProgress(m.user.id, 'v2', { timestamp: 222, duration: 600, updatedAt: T1 });
+  const sid = await session(m.cookie);
+  const s = await (await startOver(sid, 'media', 'v2', m.cookie)).json();
+  assert.ok(s.token);
+  userStore.setRestrictions(m.user.id, [{ kind: 'folder', value: 'Open' }]); // the admin hides the folder
+  const u = await undo(sid, s.token, m.cookie);
+  assert.strictEqual(u.status, 404);
+  assert.strictEqual(userStore.getOneProgress(m.user.id, 'v2'), null, 'nothing written for a hidden item');
+  userStore.setRestrictions(m.user.id, []);
+  assert.strictEqual((await undo(sid, s.token, m.cookie)).status, 200, 'the record still restores once it is visible again');
+  assert.strictEqual(userStore.getOneProgress(m.user.id, 'v2').timestamp, 222);
+});
+
+test('D9 the Start over record is never merged into: the card\'s next write (after Undo) is a move of its own, the record intact', async () => {
+  userStore.setProgress(uid, 'v2', { timestamp: 300, duration: 600, updatedAt: T1 });
+  const sid = await session();
+  for (let i = 0; i < 6; i++) await fetch(`${base}/api/feed?session=${sid}&count=5`);
+  const s = await (await startOver(sid, 'media', 'v2')).json();
+  assert.strictEqual((await undo(sid, s.token)).status, 200);
+  const rec = JSON.stringify(recordOf(sid, s.token)[0]);
+  assert.strictEqual((await post('/api/feed/progress/media', { id: 'v2', timestamp: 330, duration: 600 })).status, 200);
+  assert.strictEqual(JSON.stringify(recordOf(sid, s.token)[0]), rec, 'the record (its from, its to: null) is untouched');
+  const moves = userStore.getFeedSession(uid, sid).summary.moves;
+  assert.strictEqual(moves[moves.length - 1].to, 330, 'the write is appended after it');
+  assert.ok(!moves[moves.length - 1].startOver);
+});
+
+test('D9 the record comes FIRST: when writing it fails (a disk error), nothing is reset - the place is untouched and the answer is a 500', async () => {
+  userStore.setProgress(uid, 'v1', { timestamp: 444, duration: 600, updatedAt: T1 });
+  const before = videoPlace(uid, 'v1');
+  const sid = await session();
+  const real = userStore.appendFeedSessionMove;
+  userStore.appendFeedSessionMove = () => { const e = new Error('disk I/O error'); e.code = 'ERR_SQLITE_ERROR'; throw e; };
+  try {
+    const r = await startOver(sid, 'media', 'v1');
+    assert.strictEqual(r.status, 500);
+  } finally { userStore.appendFeedSessionMove = real; }
+  assert.deepStrictEqual(videoPlace(uid, 'v1'), before, 'nothing forgotten without its record');
 });

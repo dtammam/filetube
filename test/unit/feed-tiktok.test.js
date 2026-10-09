@@ -561,17 +561,36 @@ test('W4 view (D9): no "..." on a song or a new book; the menu on every other ki
   } finally { r.close(); }
 });
 
-test('W4 view (D9): the card under an open confirm changed (the session ended) - the confirm resets NOTHING', async () => {
-  const r = startOverRealm([PLACED_VID, POD], {});
+test('W4 view (D9): the card under an open confirm changed (the session ended, a new one began) - the confirm resets NOTHING', async () => {
+  const OTHER = Object.assign({}, VID, { id: 'v9', title: 'Other', progress: 300, fresh: false });
+  let phase = 'first';
+  let firstServed = false;
+  const r = feedRealm({
+    batches: [{ cards: [], exhausted: false }],
+    route: (m, u) => {
+      if (u === '/api/feed/start-over') return { status: 200, body: { ok: true, token: 'b'.repeat(24), previous: {} } };
+      if (u.indexOf('/api/feed?') !== 0) return null;
+      if (phase === 'gone') return { status: 404, body: { error: 'no such session' } };
+      if (phase === 'second') return { status: 200, body: { cards: [JSON.parse(JSON.stringify(OTHER)), JSON.parse(JSON.stringify(POD))], exhausted: false } };
+      if (firstServed) return { status: 200, body: { cards: [], exhausted: false } };
+      firstServed = true;
+      return { status: 200, body: { cards: [JSON.parse(JSON.stringify(PLACED_VID)), JSON.parse(JSON.stringify(POD))], exhausted: false } };
+    },
+  });
   try {
     await startRealm(r); r.show(0);
     const sheet = await openStartOver(r, 0);
     const ok = okBtn(sheet);
-    r.$('#feed-done-btn').click(); await r.settle(); // time is up: the recap; then Done -> the stack is gone
-    const done = r.$('#feed-recap-done');
-    if (done) { done.click(); await r.settle(); }
+    // the server forgets the session (a restart): the next batch is a 404 and the view resets to the picker
+    phase = 'gone';
+    r.show(1); await r.settle();
+    assert.strictEqual(r.$('#feed-session').hidden, true, 'back at the picker');
+    // a new session puts a DIFFERENT card at index 0
+    phase = 'second';
+    r.$('#feed-picker-choices button[data-minutes="10"]').click(); await r.settle();
+    assert.strictEqual(r.$$('.feed-card')[0].getAttribute('data-id'), 'v9', 'a new card sits where the old one was');
     ok.click(); await r.settle();
-    assert.strictEqual(r.calls('POST', '/api/feed/start-over').length, 0);
+    assert.strictEqual(r.calls('POST', '/api/feed/start-over').length, 0, 'the confirm was for v1, which is gone: nothing is reset');
   } finally { r.close(); }
 });
 
