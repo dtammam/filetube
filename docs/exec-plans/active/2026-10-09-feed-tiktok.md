@@ -3,11 +3,11 @@ plan: feed-tiktok
 harness: v2 · full
 branch: feat/v1.381.0-feed-tiktok
 anchor: outcome
-status: Gate r1 @bba614be: adversary CHANGES, qa CHANGES, security-brief APPROVED; r1 fixes ee4ecdac + bindings
-next: r2 delta re-confirmation with the same three seats
+status: Gate r2 @d9d58a57: adversary CHANGES (tests only), qa APPROVED, security-brief APPROVED
+next: round 3 is Dean's call (gate pacing rule): adopt the adversary's two test files + the NULL-latch and unrestorable-place fixes, re-confirm
 design: Dean's device feedback on v1.380.0 Feed (2026-10-09, eight points + swipe left/right); kickoff defaults D1-D11. Base main 42ec865c (v1.380.0).
 builder: smart (the shared player's gestures in a new full-bleed host, a layout rework of every card, and a deliberate progress RESET: a data-loss surface)
-gate: r1 CHANGES (FULL: adversary, qa, security-brief)
+gate: r2 adversary CHANGES (tests only), qa + security-brief APPROVED (FULL)
 ---
 
 # v1.381.0: Feed, TikTok style - full-screen cards, no scroll traps, tap / hold on video, Start over
@@ -409,3 +409,106 @@ with encodeURIComponent; error bodies carry err.code only. Not confirmed without
 - Targeted: feed unit + feed integration + route censuses `# tests 203 # pass 203 # fail 0` (before the last bindings); then feed
   unit + stale-continue `# pass 141 # fail 0`. Layout and gestures proofs re-run: unchanged (scrollers 0, hudOverTitle>0 0; 2/2).
 
+Gate: CHANGES r2 @d9d58a57 - adversary
+
+### adversary r2 @d9d58a57
+
+(worktree unchanged; mutants in /tmp git-archive d9d58a57 sandboxes, each diffed against a pristine copy)
+
+Instruments: feed unit + feed integration + mobile-player-height + route-write-classification + rbac-census - Node 22.23.1
+`# tests 265 # pass 265 # fail 0 # cancelled 0 # skipped 0`; Node 24.20.0 `tests 265 pass 265 fail 0 cancelled 0 skipped 0`;
+start-over.js both `2/2 pass`. No full suite at d9d58a57 yet (the last full dual-Node run is bfb7393c): one is owed before release.
+
+r1 against the fix: W1 FIXED (browser: both requests, "Your place is back", the row exact `{"timestamp":50,"duration":60,
+"updatedAt":"2026-10-01T10:00:00.000Z"}`; N12 / N13 killed; the refused toast no longer promises the record; ROADMAP discloses the
+way back). W2 FIXED (ADV-1 409 'moved'; N1, N2, N6 killed). W3 FIXED (A1, A6-A8, C6, C11, A14-A16 killed by name; also A2, A4, A5,
+A9-A11, A13, A17, A18, C1, C2, C7-C10, C12, C14, G1, G3, G5, G6; C5 / C13 no longer apply; benign survivors A3, A12 (likely
+equivalent), C3, C4, G2, G4 (equivalent)). W4 FIXED (N18 killed; a book's toast shows no time - correct). Suggestions: the
+started-over book card keeps its label, no "..." (N16 killed); G5 killed by a unit test; the FEED_MAX_PAGES cut via bookEnd (N15).
+
+WARNING
+- W5 (blocking, tests only). The fix round's own guards are partly unbound (19-test feed-start-over, 190 feed unit tests green
+  under each): stillAsReset 5 of 8 survive - N3 media ignores the watched latch, N4 podcast ignores a stored row, N5 podcast ignores
+  the played latch, N7 book ignores a stored row, N8 book ignores the finished latch (N4: another device plays to 120 s after the
+  reset, Undo writes 900 s over it); the late-reply guards - N10 drop `!signal.aborted && cards[index] === card` before
+  applyStartedOver (a reply after leaving loads the shared player into the dead card: `loads 1 1` at HEAD, `loads 1 2` under N10),
+  N11 drop `signal.aborted ||` in the Undo reply. Prescription, verified both ways: adopt /tmp/adversary-repros/adv-r2-arms.test.js
+  (ADV-r2-5: a row or latch written after the reset, each kind, 409 'moved', the newer state stands) and adv-r2-late.test.js
+  (ADV-r2-4). The plan's "15 / 15 killed" overstates until they land.
+
+Verified holding: the signal-free Start over / Undo never act on a dead or replaced view (ADV-r2-4 at HEAD); relayoutBook / boxH
+(N14, N17 killed); validRecordedPlace accepts every legitimate shape produced (a null progress with only a latch, a podcast with a
+null duration, a book place without updatedAt; every book place since v1.37 has a locator; N9 killed); the harness changes are
+stricter and no test lost its meaning.
+
+SUGGESTION
+- A latch with a NULL time is lost on Start over + Undo (since r1; reachability argued): placeOf reads `own(...) || null` and
+  stillAsReset tests own(...) for truth, so a latch row whose time is NULL counts as none. ADV-r2-1 (adv-r2.test.js, red at HEAD):
+  markWatched(uid,'v1',null) + 300 s, Start over records watchedAt null and deletes the latch, Undo 200, `watched after undo false`.
+  The only writer found: a backup restore of an entry without completedAt (store.js:2055). Fix: hasOwnProperty presence in both,
+  record the latch as present.
+- A negative stored timestamp (accepted by /api/progress) would make Undo refuse its own record ('invalid-record'); not reproduced
+  cleanly (the attempt got 409 'nothing' on the Start over).
+- The confirm still names the card's place (disclosed; the toast corrects it after the fact).
+
+Gate: APPROVED r2 @d9d58a57 - qa
+
+### qa r2 @d9d58a57
+
+(delta `git diff bba614be..d9d58a57`; runs and mutants in a /tmp `git archive d9d58a57` sandbox; the shared worktree untouched)
+
+Instruments (Node 22.23.1): targeted (feed-tiktok, feed-start-over, feed-stale-continue, feed-progress, feed-polish-view,
+feed-timer, feed-view, feed-api, rbac-census, route-write-classification) `# tests 145 # pass 145 # fail 0 # cancelled 0 # skipped
+0`; every feed / hold / loupe / rotate / faux / toast / handoff file `# tests 428 # pass 428 # fail 0`; ui-lint `OK - the live debt
+equals docs/ui-exceptions.json`; overlay-containment `clean (0 violations)`; eslint exit 0; start-over.js both `2/2 pass`,
+navReset null, navUndo `{"view":"home","progress":{"timestamp":50,"duration":60,"updatedAt":"2026-10-01T10:00:00.000Z"}}`,
+navExact true in both engines.
+
+r1 findings against the fix:
+- W1 FIXED as prescribed: my ported browser repro `QA-NAV {"viewNow":"home","toastsAfter":["Your place is back: The Complete
+  History ..."],"afterUndo":{"progress":{"timestamp":50,...},"watched":null},"exact":true}` (r1: "Could not undo", progress null).
+  Mutants R10 / R8 (the signal back on Start over / Undo) and R9 (the live session) killed.
+- W2 FIXED: qa-prune now `readout after rebuild: Page 4 of 4`, `book writes: [{"spineIndex":0,"blockIndex":6}]`; R1 (always
+  re-seed) and R2 (no same-box shortcut) killed.
+- W3 FIXED (the first option): qa-zero-ping now `undo status 409 {"ok":false,"reason":"moved"}`, the restore never written, the
+  newer 0 s save kept (my r1 test asserted a restore and now fails by design: the 0 s save is the newer intent). R3 / R4 / R5 (the
+  media pending check, a row only above 0 s, the book pending check) killed.
+- W4 FIXED: M8 and M13 killed. W5 FIXED: 161 / 130 / 119 px. S1, S3 (read, not re-run), S4 FIXED (R12 killed). S2 not bound
+  (non-blocking; the device check covers the hold).
+- The fix's own code: R7 (bookEnd ignoring the cap) killed; R6 (no validRecordedPlace) killed; checked against real stored shapes -
+  the reader's book route always stores a locator (lib/books/routes.js:680-707, cfi <= 2000 chars), media / episode updatedAt ISO
+  or null - no genuine record refused; R11 (the card's place in the toast) killed. The harness changes keep every existing test's
+  meaning. Comments checked accurate (routes.js header, stillAsReset, store.js, relayoutBook, bookEnd, the Start over / Undo
+  lifetime, the harness, LESSONS-rules, DEVICE-CHECKS). Security: no new surface.
+
+CRITICAL: none. WARNING: none. SUGGESTION: r1 S2 (hold drift) stands.
+
+Gate: APPROVED r2 @d9d58a57 - security-brief
+
+### security-brief r2 @d9d58a57
+
+(read-only, no Bash: read the worktree on disk; traced vs reasoned marked)
+
+CRITICAL: none. WARNING: none.
+
+- N1 FIXED (differently, and it holds): validRecordedPlace (lib/feed/routes.js:225-236) runs before any restore*Place - at the
+  one writer, so it covers every ingress, not only the importer; finite non-negative numbers, stamps null or <= 64 chars that
+  Date.parse accepts, the latch stamps too, a book place a non-array object with a locator object <= 4096 bytes; a bad record =
+  409 'invalid-record', nothing written, the record kept; store.js:1022 now points at the check. Bound by "r1 (security-brief N1)"
+  (four bad shapes).
+- N2 FIXED: "r1 (adversary ADV-2, security-brief N2)" - a hidden episode 404 on start-over (position 700 untouched) and on undo
+  after the show is hidden (still null); dropping podcastEpisodeVisibleTo would red both (reasoned).
+- Bypass of validRecordedPlace: rec.from always comes from JSON.parse of the stored summary - a "__proto__" key is an own
+  property, no inherited timestamp / locator; no Date / Buffer from JSON (reasoned); the 4 KB cap measures the whole progress (traced).
+- INFO, admin-backup-only: R2-1 a far-future stamp passes (parse + length only; the importer's own loop already accepts any
+  updatedAt string); R2-2 missing fields pass (fin(undefined); an array counts as an object for media / podcast) - media then binds
+  undefined, expected to throw in node:sqlite and roll back (500, nothing written, record kept; reasoned), podcast num() / string
+  guards null them; R2-3 a genuine server-written record with a negative or non-number legacy value would be refused (place not
+  undoable, record kept) - QA's area, not held.
+- stillAsReset (routes.js:220-224) is keyed on req.user.id at every lookup (both coalescers' keys, the three store reads, the
+  latches), after the token is found in the caller's own session and visibility passes: no cross-user signal (traced).
+- The captured session id: both routes still getFeedSession(req.user.id, sid) (WHERE user_id = ? AND id = ?); keepalive without
+  the view signal only lets the caller's own same-origin request finish (traced).
+- New toasts (feedStartedOverText, "Your place is back: <title>", "Could not undo: it was played since") go through toast() ->
+  String(text) -> ui.toast spanText; feed.js has no innerHTML / insertAdjacentHTML (traced). feed-stale-continue.js skips Start
+  over records, still read-only at the driver. lib/feed/api.js: a comment only.
