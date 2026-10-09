@@ -1218,6 +1218,71 @@ if (typeof module !== 'undefined' && module.exports) {
     autoplayPlayedIds.push(id);
     if (autoplayPlayedIds.length > 2000) autoplayPlayedIds.shift();
   }
+  // ---- v1.378.0 PLAY COUNTS (plan docs/exec-plans/active/2026-10-09-music-stations.md, D1) ------
+  // What the audio that plays HERE did, reported to POST /api/music/plays per SEGMENT (a chapter
+  // `<id>::c<n>` is its own track; its span is the segment, its start the chapter's offset):
+  //   play   = heard PLAY_MIN_SEC (30 s) or half the segment, whichever comes first - counted once per
+  //            load; only real playback counts (timeupdate steps of at most PLAY_MAX_STEP s: a seek is a
+  //            jump and adds nothing);
+  //   finish = the playhead is in the last FINISH_TAIL (5 %) of the segment (a seek that lands past the
+  //            segment is a move, not a finish), or the element ended;
+  //   skip   = the segment was LEFT (a new load, a chapter roll or seek past it) before the play
+  //            threshold and without a finish - a tap on another song, Next, a Pocket / remote Next.
+  //            A queue that advances at the end has already finished, so it is never a skip.
+  // Module-scoped like autoplayPlayedIds: a dock-return re-init (seedNowPlayingFromPlayer, no new
+  // load) keeps the running tally, so one song never counts twice. Counted where the audio PLAYS:
+  // while this device drives a speaker, playAt never loads here (remotePlayAt) and the speaker's own
+  // tab reports under ITS signed-in user; the controller's proxy element fires no timeupdate.
+  var PLAY_MIN_SEC = 30;
+  var PLAY_MAX_STEP = 2; // one timeupdate step of real playback is well under this; a seek is not
+  var FINISH_TAIL = 0.05;
+  var playCount = null; // { id, start, span, listened, lastT, played, finished }
+  function playCountPost(id, kind) {
+    try {
+      var p = fetch('/api/music/plays', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, kind: kind }), keepalive: true });
+      if (p && typeof p.catch === 'function') p.catch(function () { /* best-effort: a count, never playback */ });
+    } catch (_) { /* offline */ }
+  }
+  // A new segment is heard: close the previous one (a skip when it was left early), open this one.
+  // A listen video (a watchable item in Music's clothes) is not a music track: nothing is counted.
+  function playCountBegin(item) {
+    playCountEnd();
+    if (!item || typeof item.id !== 'string' || !item.id || item.listen) return;
+    var isChapter = item.source === 'library-chapter';
+    playCount = { id: item.id, start: isChapter ? (Number(item.chapterStartSec) || 0) : 0, span: Number(item.durationSec) || 0, listened: 0, lastT: null, played: false, finished: false };
+  }
+  // The segment is left: a skip when it reached neither the play threshold nor its end.
+  function playCountEnd() {
+    var pc = playCount;
+    playCount = null;
+    if (pc && !pc.played && !pc.finished) playCountPost(pc.id, 'skip');
+  }
+  // The element ended: the segment finished (once), and the tally stays - a Loop replay of the same
+  // load counts nothing more.
+  function playCountEnded() {
+    var pc = playCount;
+    if (pc && !pc.finished) { pc.finished = true; playCountPost(pc.id, 'finish'); }
+  }
+  // One timeupdate: `t` the element's position (file-absolute), `dur` its duration (for a plain
+  // track whose item carried no length).
+  function playCountTick(t, dur) {
+    var pc = playCount;
+    if (!pc || !isFinite(t)) return;
+    var span = pc.span > 0 ? pc.span : ((isFinite(dur) && dur > pc.start) ? dur - pc.start : 0);
+    if (pc.lastT !== null) {
+      var d = t - pc.lastT;
+      if (d > 0 && d <= PLAY_MAX_STEP) pc.listened += d;
+    }
+    pc.lastT = t;
+    if (!pc.played) {
+      var need = span > 0 ? Math.min(PLAY_MIN_SEC, span / 2) : PLAY_MIN_SEC;
+      if (pc.listened >= need) { pc.played = true; playCountPost(pc.id, 'play'); }
+    }
+    // the last 5 % of THIS segment: a position inside it (or one playback step past its end - a sparse
+    // timeupdate), never a seek that already left it (that is a chapter moved past, not finished)
+    var rel = t - pc.start;
+    if (!pc.finished && span > 0 && rel >= span * (1 - FINISH_TAIL) && rel < span + PLAY_MAX_STEP) { pc.finished = true; playCountPost(pc.id, 'finish'); }
+  }
   // v1.250 (F-UNIFY): the current init's IN-TAB shared-engine instance. Module-scoped so
   // destroy() can unbind it on the #view-root swap - the engine binds its own listeners
   // (not view-signal-scoped), so controller.abort() alone would leak them on the panel.
@@ -2010,6 +2075,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var t = null, ti = -1;
       for (var i = 0; i < queue.length; i++) { if (queue[i] && queue[i].id === id) { t = queue[i]; ti = i; break; } }
       if (t) nowPlaying = nowPlayingFrom(t);
+      playCountBegin(t); // v1.378.0: the chapter that rolled on is heard now (the one left: finished by its last 5 %, or a skip when it was seeked past early)
       // v1.311 (Dean, tech-debt #230 part i): a chaptered album is ONE file whose `::c`
       // chapters are queue entries; the playhead rolls through them WITHOUT a reload, so
       // registerTrackNav ran exactly once (at load, on the STARTED chapter) and never again.
@@ -2189,6 +2255,10 @@ if (typeof module !== 'undefined' && module.exports) {
       // seek-back lands before reflectChapter can advance the displayed chapter past the boundary.
       // enforceChapterExit is bound between them (v1.311): after the loop (Loop chapter outranks the
       // exit) and before reflect (so the solo-chapter identity guard still holds on the boundary tick).
+      // v1.378.0 play counts: the tally tick runs FIRST, so the position it reads still belongs to the
+      // segment reflectChapter may roll on from this very tick
+      mp.addEventListener('timeupdate', function () { playCountTick(Number(mp.currentTime), Number(mp.duration)); }, { signal: signal });
+      mp.addEventListener('ended', playCountEnded, { signal: signal });
       mp.addEventListener('timeupdate', enforceChapterLoop, { signal: signal });
       mp.addEventListener('timeupdate', enforceChapterExit, { signal: signal });
       mp.addEventListener('timeupdate', reflectChapter, { signal: signal });
@@ -4113,6 +4183,7 @@ if (typeof module !== 'undefined' && module.exports) {
       };
       playingId = item.id;
       autoplayNotePlayed(item.id); // v1.254: the autoplay picker's session no-repeat memory
+      if (!(playCount && playCount.id === item.id)) playCountBegin(item); // v1.378.0: a new segment is heard (a same-id adopt keeps the tally)
       activeListenId = item.listen ? item.id : null; // W1: a normal play ends the listen session's marker
       if (!item.listen) activeListenChapters = null; // #222: a non-listen play ends the chaptered-listen session too
       nowPlaying = nowPlayingFrom(item);

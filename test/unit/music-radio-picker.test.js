@@ -106,3 +106,49 @@ test('gate r2 W9: a candidate spacing skipped gets no head start - the slot afte
   assert.ok(s1 > 0.46 && s1 < 0.57, 'slot 1 Heavy share ~0.51 (a stale key gives ~0.74): ' + s1.toFixed(3));
   assert.ok(s2 > 0.23 && s2 < 0.33, 'slot 2 Heavy share ~0.28 (a stale key gives ~0.15): ' + s2.toFixed(3));
 });
+
+// ---- v1.378.0 music stations W1 (D3): the viewer's play counts weigh the draw ----------------------
+test('v1.378.0 D3: 2+ skips and no finish weigh 0.3x, a finish 1.2x, no counts 1x; 3+ skips and no finish is left out; a finish forgives the skips', () => {
+  assert.strictEqual(radio.playsWeight('x', {}), 1, 'no counts at all');
+  assert.strictEqual(radio.playsWeight('x', { plays: { x: { plays: 5, skips: 1, finishes: 0 } } }), 1, 'one skip is nothing');
+  assert.strictEqual(radio.playsWeight('x', { plays: { x: { plays: 0, skips: 2, finishes: 0 } } }), radio.SKIPPED_WEIGHT);
+  assert.strictEqual(radio.playsWeight('x', { plays: { x: { plays: 0, skips: 3, finishes: 0 } } }), null, 'left out');
+  assert.strictEqual(radio.playsWeight('x', { plays: { x: { plays: 0, skips: 9, finishes: 1 } } }), radio.FINISHED_WEIGHT, 'a finish forgives every skip');
+  assert.strictEqual(radio.playsWeight('x', { plays: { x: { plays: 2, skips: 0, finishes: 2 } } }), radio.FINISHED_WEIGHT);
+  assert.strictEqual(radio.playsWeight('__proto__', { plays: Object.create(null) }), 1, 'a hostile id reads no inherited row');
+});
+
+test('v1.378.0 D3 (statistical, the genre ladder): a 2x-skipped song\'s pick share drops by ~0.3x over 1000 single draws, a finished song rises ~1.2x; a 3x-skipped song never plays while others remain', () => {
+  // five Rock songs by five artists in one tier (T3 for a genre seed): equal weight without counts
+  const lib = ['a', 'b', 'c', 'd', 'e'].map((k) => nat(k, 'Art ' + k, 'Rock'));
+  const profile = radio.buildStationProfile({ kind: 'genre', value: 'Rock' }, lib);
+  const draw = (plays) => {
+    const tally = { a: 0, b: 0, c: 0, d: 0, e: 0 };
+    for (let k = 1; k <= 1000; k += 1) tally[radio.pickRadioBatch(profile, lib, { exclude: [], count: 1, plays }, createSeededRng(k))[0].id] += 1;
+    return tally;
+  };
+  const base = draw({});
+  const plays = { b: { plays: 1, skips: 2, finishes: 0 }, c: { plays: 3, skips: 0, finishes: 1 }, d: { plays: 0, skips: 3, finishes: 0 } };
+  const t = draw(plays);
+  assert.strictEqual(t.d, 0, 'the 3x-skipped song is left out: ' + JSON.stringify(t));
+  // with d out, the others' share scales; compare b and c against a and e (weight 1)
+  const ref = (t.a + t.e) / 2;
+  assert.ok(t.b / ref > 0.2 && t.b / ref < 0.45, '2 skips: ~0.3x of a plain song: b ' + t.b + ' vs ref ' + ref + ' (base ' + JSON.stringify(base) + ')');
+  assert.ok(t.c / ref > 1.05 && t.c / ref < 1.4, 'a finish: ~1.2x: c ' + t.c + ' vs ref ' + ref);
+  // the station would run dry: every other song excluded -> the skipped-out song comes back rather than silence
+  const dry = radio.pickRadioBatch(profile, lib, { exclude: ['a', 'b', 'c', 'e'], count: 2, plays }, createSeededRng(5)).map((x) => x.id);
+  assert.deepStrictEqual(dry[0], 'd', 'left out, but never silence: ' + dry.join(' '));
+});
+
+test('v1.378.0 D3 (the series ladder too): a game station weighs its family by the counts as well', () => {
+  const lib = [];
+  for (let i = 0; i < 6; i += 1) lib.push(nat('g' + i, 'Game Channel', 'Video Game', { folderName: 'games', year: '2000' }));
+  const profile = radio.buildStationProfile({ kind: 'track', value: 'g0' }, lib);
+  assert.ok(radio.stationPlan(profile, lib), 'precondition: a game-music station takes the series ladder');
+  const plays = { g1: { plays: 0, skips: 3, finishes: 0 }, g2: { plays: 0, skips: 2, finishes: 0 } };
+  const tally = {};
+  for (let k = 1; k <= 600; k += 1) { const id = radio.pickRadioBatch(profile, lib, { exclude: [], count: 1, plays }, createSeededRng(k))[0].id; tally[id] = (tally[id] || 0) + 1; }
+  assert.strictEqual(tally.g1, undefined, 'left out on the series ladder: ' + JSON.stringify(tally));
+  const ref = (tally.g3 + tally.g4 + tally.g5) / 3;
+  assert.ok(tally.g2 / ref < 0.5, '0.3x on the series ladder: g2 ' + tally.g2 + ' vs ref ' + ref);
+});
