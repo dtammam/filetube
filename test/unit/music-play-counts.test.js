@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.378.0 music stations W1 (plan docs/exec-plans/active/2026-10-09-music-stations.md, D1): the
+// [UNIT] v1.378.0 music stations W1 (plan docs/exec-plans/completed/2026-10-09-music-stations.md, D1): the
 // client's play / skip / finish reporting on the REAL music.js, driven through a <video> whose position
 // a test sets and whose timeupdate / ended it fires. Each rule has an input where the rule and its
 // absence DIVERGE (LESSONS 2): a seek adds no listening, a short song's half, a skip only before the
@@ -194,7 +194,7 @@ test('D1 chapters: each chapter is its own track - the roll finishes the one lef
     c.playThrough(115, 121); // the file rolls into chapter two at 120 (no reload)
     await settle();
     assert.deepStrictEqual(c.posts, ['film::c0 play', 'film::c0 finish'], 'the roll itself posts nothing new');
-    c.playThrough(122, 149); // the tally rolls on its own 120 tick (a quarter-second tolerance) and that tick is the segment's first step
+    c.playThrough(122, 149); // the tally rolls on its own 120 tick (a quarter-second tolerance): that tick opens the segment, 121 is its first counted step
     assert.deepStrictEqual(c.posts, ['film::c0 play', 'film::c0 finish'], 'chapter two: 29 s of its own segment heard, not yet');
     c.tick(150);
     assert.deepStrictEqual(c.posts, ['film::c0 play', 'film::c0 finish', 'film::c1 play'], 'chapter two: 30 s of ITS OWN segment is its play');
@@ -301,14 +301,41 @@ test('gate r1 qa S8 / adversary S2: a pick replaced before a single step of play
     c.getNav().onNext(); // t0 never played a step
     await settle();
     assert.deepStrictEqual(c.posts, [], 'never heard: no skip');
-    c.tick(0); c.tick(1);
+    c.tick(0); c.tick(100); // gate r2 adversary W-r2-1: a seek-only load (one jump, no real step) is no playback either
     c.getNav().onPrev();
     await settle();
-    assert.deepStrictEqual(c.posts, ['t1 skip'], 'one real step then moved on: a skip');
+    assert.deepStrictEqual(c.posts, [], 'a jump is not a step: still no skip');
+    c.tick(0); c.tick(1);
+    c.getNav().onNext();
+    await settle();
+    assert.deepStrictEqual(c.posts, ['t0 skip'], 'one real step then moved on: a skip');
   });
   const M = require('../../public/js/music.js');
   assert.strictEqual(typeof M.deriveNowPlayingLabel, 'function');
   const src = require('node:fs').readFileSync(musicPath, 'utf8');
   const begin = src.slice(src.indexOf('function playCountBegin(item, list) {'), src.indexOf('function playCountEnd() {'));
   assert.ok(begin.indexOf("|| item.listen) return;") > 0, 'a listen item returns before a tally is made');
+});
+
+// ---- gate r2 qa N1: once per LOAD holds for a chaptered file too --------------------------------------
+test('gate r2 qa N1: a looped chapter counts one play and one finish per load, not per pass; the file-level Loop rewind and a seek back into an earlier chapter never re-count', async () => {
+  await boot(CHAPTERS, 'film::c0', async (c) => {
+    c.setDuration(360);
+    c.playThrough(0, 119);
+    assert.deepStrictEqual(c.posts, ['film::c0 play', 'film::c0 finish']);
+    c.tick(0); // Loop chapter: the seek-back (a negative jump, no step)
+    c.playThrough(1, 119);
+    assert.deepStrictEqual(c.posts, ['film::c0 play', 'film::c0 finish'], 'a second pass of the looped chapter counts nothing more');
+    c.playThrough(120, 239); // then on through chapter two to its end
+    assert.deepStrictEqual(c.posts, ['film::c0 play', 'film::c0 finish', 'film::c1 play', 'film::c1 finish']);
+    c.tick(60); // a seek back into chapter one (chapter three never started: no skip for it)
+    c.playThrough(61, 119);
+    assert.deepStrictEqual(c.posts, ['film::c0 play', 'film::c0 finish', 'film::c1 play', 'film::c1 finish'], 'chapter one, re-entered within the same load, counts no second play');
+    c.playThrough(120, 359);
+    c.mp.dispatchEvent(new c.dom.window.Event('ended'));
+    const once = ['film::c0 play', 'film::c0 finish', 'film::c1 play', 'film::c1 finish', 'film::c2 play', 'film::c2 finish'];
+    assert.deepStrictEqual(c.posts, once);
+    c.tick(0); c.playThrough(1, 119); // the file-level Loop's rewind to 0: the same load again
+    assert.deepStrictEqual(c.posts, once, 'the whole-file loop re-plays chapter one without a new count');
+  });
 });

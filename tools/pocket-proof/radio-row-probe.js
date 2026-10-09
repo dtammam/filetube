@@ -1,6 +1,6 @@
 'use strict';
 /* global document, getComputedStyle */
-// REAL-BROWSER PROOF (v1.378.0 W4, plan docs/exec-plans/active/2026-10-09-music-stations.md, D11): the Pocket Radio row
+// REAL-BROWSER PROOF (v1.378.0 W4, plan docs/exec-plans/completed/2026-10-09-music-stations.md, D11): the Pocket Radio row
 // in the SMALLEST skin and on the smallest phone. Not a CI gate.
 //   node tools/pocket-proof/radio-row-probe.js [repoRoot]
 // A fresh seeded fixture server (test/visual/server.js), Chromium with an iPhone UA at 320x568 (and 390x844), the Nano 2G

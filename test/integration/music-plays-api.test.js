@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.378.0 music stations W1 (plan docs/exec-plans/active/2026-10-09-music-stations.md):
+// [INTEGRATION] v1.378.0 music stations W1 (plan docs/exec-plans/completed/2026-10-09-music-stations.md):
 // POST /api/music/plays through a real server on an isolated DATA_DIR with projected library audio
 // (the REAL /api/music shape, LESSONS 2): the session user's own counts only, every id validated against
 // the caller's VISIBLE list (a hidden-folder id is a 404 with nothing written - LESSONS 10), the body

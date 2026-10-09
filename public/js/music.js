@@ -199,7 +199,7 @@ function buildMusicShelfHtml(title, seeallTab, tilesHtml) {
     '</section>';
 }
 
-// ---- v1.378.0 music STATIONS (plan docs/exec-plans/active/2026-10-09-music-stations.md, D10) ----
+// ---- v1.378.0 music STATIONS (plan docs/exec-plans/completed/2026-10-09-music-stations.md, D10) ----
 // A station card: a 2x2 mosaic of its members' art (the server's artIds, the same representatives the
 // album / artist cards use) over the name and its subtitle ("52 songs", "Builds as you listen"), and a
 // menu button beside it (Edit / Delete for the viewer's own, Hide / Unhide for the rest). The tile and
@@ -1283,7 +1283,7 @@ if (typeof module !== 'undefined' && module.exports) {
     autoplayPlayedIds.push(id);
     if (autoplayPlayedIds.length > 2000) autoplayPlayedIds.shift();
   }
-  // ---- v1.378.0 PLAY COUNTS (plan docs/exec-plans/active/2026-10-09-music-stations.md, D1) ------
+  // ---- v1.378.0 PLAY COUNTS (plan docs/exec-plans/completed/2026-10-09-music-stations.md, D1) ------
   // What the audio that plays HERE did, reported to POST /api/music/plays per SEGMENT (a chapter
   // `<id>::c<n>` is its own track; its span is the segment, its start the chapter's offset):
   //   play   = heard PLAY_MIN_SEC (30 s) or half the segment, whichever comes first - counted once per
@@ -1304,11 +1304,14 @@ if (typeof module !== 'undefined' && module.exports) {
   // another page, so a song that ends in the dock still finishes (and never counts as a skip), and a
   // chaptered file keeps rolling its segments here too (the tally carries the file's chapter list).
   // Gate r1 qa S8: a load that never played a second (a 404 stream, a pick replaced at once) is no
-  // skip - a skip needs real playback first (`started`).
+  // skip - a skip needs real playback first (`started`). Gate r2 qa N1: within ONE file load a segment
+  // re-entered (a looped chapter, a seek back into an earlier chapter, the file-level Loop's rewind)
+  // never counts again - the load's `done` map remembers what each segment already posted, so "once
+  // per load" holds for a chaptered file exactly as for a plain song.
   var PLAY_MIN_SEC = 30;
   var PLAY_MAX_STEP = 4; // one timeupdate step of real playback, with iOS's sparse ticks (the LOOP / EXIT siblings' 4 s; gate r1 qa W2); a seek is not
   var FINISH_TAIL = 0.05;
-  var playCount = null; // { id, start, span, listened, lastT, started, played, finished, chapters }
+  var playCount = null; // { id, start, span, listened, lastT, started, played, finished, chapters, done }
   var playCountBound = typeof WeakSet === 'function' ? new WeakSet() : null;
   function bindPlayCountTo(mp) {
     if (!mp || typeof mp.addEventListener !== 'function') return;
@@ -1339,11 +1342,22 @@ if (typeof module !== 'undefined' && module.exports) {
   // A listen video (a watchable item in Music's clothes) is not a music track: nothing is counted.
   function playCountBegin(item, list) {
     if (playCount && item && playCount.id === item.id) return; // the same segment (a reflect of the roll the tally already made)
-    var chapters = playCountChaptersOf(item, list) || (playCount && playCount.chapters && item && item.source === 'library-chapter' && playCount.chapters.some(function (c) { return c.id === item.id; }) ? playCount.chapters : null);
+    // the same FILE LOAD rolling to another of its chapters keeps the load's chapter list and its done map
+    var sameLoad = !!(playCount && playCount.chapters && item && item.source === 'library-chapter' && playCount.chapters.some(function (c) { return c.id === item.id; }));
+    var chapters = sameLoad ? playCount.chapters : playCountChaptersOf(item, list);
+    var done = sameLoad ? playCount.done : {};
     playCountEnd();
     if (!item || typeof item.id !== 'string' || !item.id || item.listen) return;
     var isChapter = item.source === 'library-chapter';
-    playCount = { id: item.id, start: isChapter ? (Number(item.chapterStartSec) || 0) : 0, span: Number(item.durationSec) || 0, listened: 0, lastT: null, started: false, played: false, finished: false, chapters: chapters };
+    var was = Object.prototype.hasOwnProperty.call(done, item.id) ? done[item.id] : null;
+    playCount = { id: item.id, start: isChapter ? (Number(item.chapterStartSec) || 0) : 0, span: Number(item.durationSec) || 0, listened: 0, lastT: null, started: false,
+      played: !!(was && was.played), finished: !!(was && was.finished), chapters: chapters, done: done };
+  }
+  function playCountMark(pc, field) {
+    pc[field] = true;
+    if (!Object.prototype.hasOwnProperty.call(pc.done, pc.id)) pc.done[pc.id] = { played: false, finished: false };
+    pc.done[pc.id][field] = true;
+    playCountPost(pc.id, field === 'played' ? 'play' : 'finish');
   }
   // The segment is left: a skip when it PLAYED (at least one real step) and reached neither the play
   // threshold nor its end.
@@ -1353,10 +1367,10 @@ if (typeof module !== 'undefined' && module.exports) {
     if (pc && pc.started && !pc.played && !pc.finished) playCountPost(pc.id, 'skip');
   }
   // The element ended: the segment finished (once), and the tally stays - a Loop replay of the same
-  // load counts nothing more.
+  // load counts nothing more (a plain song, or a chaptered file whose segments the done map remembers).
   function playCountEnded() {
     var pc = playCount;
-    if (pc && !pc.finished) { pc.finished = true; playCountPost(pc.id, 'finish'); }
+    if (pc && !pc.finished) playCountMark(pc, 'finished');
   }
   // One timeupdate: `t` the element's position (file-absolute), `dur` its duration (for a plain
   // track whose item carried no length).
@@ -1381,12 +1395,12 @@ if (typeof module !== 'undefined' && module.exports) {
     pc.lastT = t;
     if (!pc.played) {
       var need = span > 0 ? Math.min(PLAY_MIN_SEC, span / 2) : PLAY_MIN_SEC;
-      if (pc.listened >= need) { pc.played = true; playCountPost(pc.id, 'play'); }
+      if (pc.listened >= need) playCountMark(pc, 'played');
     }
     // the last 5 % of THIS segment: a position inside it (or one playback step past its end - a sparse
     // timeupdate), never a seek that already left it (that is a chapter moved past, not finished)
     var rel = t - pc.start;
-    if (!pc.finished && span > 0 && rel >= span * (1 - FINISH_TAIL) && rel < span + PLAY_MAX_STEP) { pc.finished = true; playCountPost(pc.id, 'finish'); }
+    if (!pc.finished && span > 0 && rel >= span * (1 - FINISH_TAIL) && rel < span + PLAY_MAX_STEP) playCountMark(pc, 'finished');
   }
   // v1.250 (F-UNIFY): the current init's IN-TAB shared-engine instance. Module-scoped so
   // destroy() can unbind it on the #view-root swap - the engine binds its own listeners
@@ -4476,8 +4490,7 @@ if (typeof module !== 'undefined' && module.exports) {
       };
       playingId = item.id;
       autoplayNotePlayed(item.id); // v1.254: the autoplay picker's session no-repeat memory
-      playCountBegin(item, queue); // v1.378.0: a new segment is heard (a same-id adopt keeps the tally; the file's chapters ride along so the tally rolls them itself)
-      bindPlayCountTo(hostCtl('media-player')); // gate r1 qa C1: the listeners live on the element, never on the view's signal
+      playCountBegin(item, queue); // v1.378.0: a new segment is heard (a same-id adopt keeps the tally; the file's chapters ride along so the tally rolls them itself; the listeners are bound by ensureChapterReflect, once per element)
       activeListenId = item.listen ? item.id : null; // W1: a normal play ends the listen session's marker
       if (!item.listen) activeListenChapters = null; // #222: a non-listen play ends the chaptered-listen session too
       nowPlaying = nowPlayingFrom(item);

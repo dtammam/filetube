@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.378.0 music stations W2 (plan docs/exec-plans/active/2026-10-09-music-stations.md, D4-D8): the
+// [UNIT] v1.378.0 music stations W2 (plan docs/exec-plans/completed/2026-10-09-music-stations.md, D4-D8): the
 // pure station builder (lib/music/stations.js) and the picker's station ladder (lib/music/radio.js
 // stationLadder) on fixtures where each rule and its absence DIVERGE (LESSONS 2): the thresholds, the
 // whole-word style matcher (a word inside another word is no match), the release-year rule (a yt-dlp

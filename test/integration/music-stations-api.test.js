@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.378.0 music stations W2 (plan docs/exec-plans/active/2026-10-09-music-stations.md): the
+// [INTEGRATION] v1.378.0 music stations W2 (plan docs/exec-plans/completed/2026-10-09-music-stations.md): the
 // station routes through a real server on an isolated DATA_DIR with projected library audio (the REAL
 // /api/music shape, LESSONS 2). The plan's falsifiers: a restricted member's station list and counts
 // differ from the admin's EXACTLY by the hidden songs (D9), a Reggae station plays no non-reggae song in
@@ -233,5 +233,7 @@ test('gate r1 security W1: the station list and a station radio batch share the 
   assert.strictEqual(batch.status, 429, 'a station batch draws from the same bucket');
   const song = await api('GET', '/api/music/radio?seed=' + encodeURIComponent('track:rk0') + '&count=1', undefined, flood.cookie);
   assert.strictEqual(song.status, 200, 'a song radio batch is not behind the station bucket');
+  const preview = await api('POST', '/api/music/stations/preview', { name: 'x', artists: ['Rocker 1'] }, flood.cookie);
+  assert.strictEqual(preview.status, 200, 'the editor\'s preview has its own bucket (gate r2 qa S10): a spent station bucket never blocks typing, and fast typing never starves a station batch');
   assert.strictEqual((await api('GET', '/api/music/stations', undefined, other.cookie)).status, 200, 'another user\'s bucket is its own');
 });

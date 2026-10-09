@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.378.0 music stations W3 (plan docs/exec-plans/active/2026-10-09-music-stations.md, D7, D8,
+// [UNIT] v1.378.0 music stations W3 (plan docs/exec-plans/completed/2026-10-09-music-stations.md, D7, D8,
 // D10): the Stations shelf on the REAL music.js home - the cards from a fake GET /api/music/stations, a
 // card tap starting the station through the radio route with its NAME in the queue context (the
 // "Radio: <name>" line, the desktop panel's context line, the skin ctx), the card menu (Edit / Delete

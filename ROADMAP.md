@@ -71,16 +71,6 @@
   touched: history (ROADMAP Shipped entries, releases.json, completed plans, git). Cost to disclose in the ledger: an old
   Settings bookmark lands on the menu's first page. Measure first: grep for every old id and name, list what each pin protects.
 
-- [ ] **Named radio stations** _(in v1.378.0: the plan docs/exec-plans/active/2026-10-09-music-stations.md, building)_ - Favorites, Deep cuts, Throwback,
-  Recently added, stations made from the library's real genres and styles (Chill, Reggae, Synth...) and stations Dean makes, in the
-  standard view and in Pocket, built on the v1.368.0 radio picker.
-
-- [ ] **A radio row in the pocket iPod skins and on the speaker's now playing** _(in v1.378.0: the plan docs/exec-plans/active/2026-10-09-music-stations.md, building)_.
-
-- [ ] **Count plays, skips and finishes for music** _(in v1.378.0: the plan docs/exec-plans/active/2026-10-09-music-stations.md, building)_ - music has no
-  play counts today (`media_view_counts` is video only), no skips and no finished flag; a radio that weighs away from skips needs them
-  first.
-
 - [ ] **Opt-in outside similar-artist data for radio** _(parked by the v1.368.0 intake, R2)_ - Last.fm or ListenBrainz similar
   artists, off by default (a network call per station).
 
@@ -756,6 +746,32 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.378.0 - Radio stations (Chill, Reggae, Synthwave, Favorites, your own), play counts, Radio in Pocket and on the speaker (2026-10-09)
+
+- W1 (D1-D3): per-user play / skip / finish counts (schema v35, three additive tables; every carrier: a native prune / move, a
+  yt-dlp file's delete / move with its chapter rows, the backup bundle, the user cascade, the test reset). POST /api/music/plays
+  (the session user only, ids checked against the viewer's visible list, 20 per request, a 60-then-1/s bucket). The client
+  reports per SEGMENT: play = 30 s or half the song once per load (a seek adds nothing), finish = the last 5 % or ended, skip =
+  left before the play threshold without a finish; a chapter is its own segment; a dock return keeps the tally; a phone driving
+  a speaker never counts (the speaker tab counts under its user). The radio: 2+ skips and no finish 0.3x, a finish 1.2x, 3+
+  skips and no finish left out unless the station would run dry.
+- W2 (D4-D9): lib/music/stations.js - Favorites (likes + 3 plays with a finish; until counts exist the likes then the most
+  recently resumed, "Builds as you listen"), Deep cuts (with counts only), Throwback per decade from release years (never a
+  yt-dlp upload year; a saved album carries no year of its own), Recently added (the newest 200, newest-first weight), the
+  curated styles (whole words on genre / album / title / channel; Game music = the v1.375.0 family), real genres (40+ songs, 3+
+  artists, folded keys; a style absorbs its genre), your own stations (bounded definitions; one matching nothing is refused) and
+  hides, all from the viewer's visible list. `station:` seeds through the same picker: the members every slot, then the members'
+  nearest real genres, the whole library last; "stay strict" never widens (it repeats). Six routes, classified, census 276.
+  The T0 census (tools/radio-sim --stations): pending at ship - the bundle and the one-line command were sent 2026-10-09 02:16 UTC; the synthetic census runs (13 stations in 35 ms).
+- W3 (D10): the Stations shelf above the albums (cards with a 2x2 mosaic, name, count), New station, the editor with a live
+  count, the card menu (Edit / Delete, Hide / Unhide), More stations; "Radio: <name>" on the line above the player and the
+  desktop panel; a dock return keeps it.
+- W4 (D11, D12): Pocket's Main menu gains Radio after Music (the same list, hidden ones left out), "Radio: <name>" on every skin
+  (one writer), a station sent to a speaker plays THERE as a station and the phone's mirror says so. Measured in Chromium
+  (tools/pocket-proof/radio-row-probe.js): 7 main rows of 34 px in the Nano 2G and Classic 5G skins at 320 and 390 wide, the
+  Radio row one line, the station line one line inside the LCD (a long name ellipsizes at 320 wide like a long album name).
+- Gate: r1 @c42a52bc security-brief APPROVED, qa and adversary CHANGES (C1 the play tally died with the view, a song ending in the dock was a skip; C2 a strict station drifted on its run-dry paths; Favorites vanished on the first play; an unvalidated restore ingress; five surviving mutants); r2 @ac5b761b all three APPROVED, the two disclosed WARNINGs (a looped chapter counted per pass; a fixture gap) and the suggestions fixed in the release commit at the seats' allowance. Disclosed: a 429 on a station batch fails that leg's extension silently; no memo of the station build (buildStations 112-276 ms, a station batch about 209 ms on 23.8k synthetic tracks); the iOS timeupdate cadence falsifier (ticks of up to 4 s count) is owed on the device; a deliberate replay of the same loaded song counts no second play; a chapter absent from the queue is heard as part of its neighbour; the T0 census (tracker #298).
 
 ### v1.377.0 - The Listen Control card beside the phone mini player, Pocket always shows art, "Pocket" instead of "iPod" (2026-10-08)
 

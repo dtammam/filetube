@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.378.0 music stations W4 (plan docs/exec-plans/active/2026-10-09-music-stations.md, D11, D12): the
+// [UNIT] v1.378.0 music stations W4 (plan docs/exec-plans/completed/2026-10-09-music-stations.md, D11, D12): the
 // Pocket Radio row (the main menu, right after Music), the "Radio: <name>" line on EVERY skin (one writer,
 // the inert-sibling class: the test renders every registered skin), the remote channel carrying a station
 // (the phone's play command, the speaker's report, the phone's mirror) and the desktop panel's context line.

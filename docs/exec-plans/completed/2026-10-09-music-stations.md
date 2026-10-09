@@ -3,11 +3,11 @@ plan: music-stations
 harness: v2 · full
 branch: feat/v1.378.0-stations
 anchor: outcome
-status: Gate:CHANGES r1 @c42a52bc
-next: gate round 2 at the fix sha (re-engage the same three seats); T0 (Dean's census) pending, folded in when it lands
+status: Shipped v1.378.0
+next: Dean's device checks (docs/DEVICE-CHECKS.md v1.378.0); the T0 census as a follow-up when it lands (tracker #298)
 design: Dean's intake 2026-10-09 (rulings R1-R4 below; the rest are kickoff defaults D1-D12, Dean may overrule at his device pass). Base main 13fa0c72.
 builder: extreme (a schema migration plus new write routes: the full gate, data-carrier surface)
-gate: CHANGES r1 @c42a52bc - adversary, qa (security-brief APPROVED r1 @c42a52bc); round 2 pending
+gate: APPROVED r2 @ac5b761b - adversary, qa, security-brief (r1 @c42a52bc: security-brief APPROVED; qa, adversary CHANGES)
 ---
 
 # v1.378.0: Radio stations (Chill, Reggae, Synth, Favorites...), play counts, and Radio in Pocket
@@ -170,18 +170,60 @@ silence when a station runs dry, and the station surviving resume / dock / Shuff
 
 ## 8. Release
 docs/RELEASING.md and AGENTS.md exactly: version bump, CHANGELOG / releases.json in Dean's plain words (no process jargon), the
-plan closed out in the same PR (`node scripts/plan-complete.js docs/exec-plans/active/2026-10-09-music-stations.md "Shipped
+plan closed out in the same PR (`node scripts/plan-complete.js docs/exec-plans/completed/2026-10-09-music-stations.md "Shipped
 vX.Y.Z" --apply`), the protected-main PR flow (tag the local no-ff merge, push branch + tag in one push, `gh pr create`, every
 required CI job green, `gh pr merge --merge`, `git pull --ff-only`). Shipped = the tag's "Publish Docker Image" run is green.
 Delete the branch remote (`gh api -X DELETE .../git/refs/heads/<b>`) and local (`-d`).
 
 ## 9. Evidence (builder fills: numbers copied from the runs named, verbatim verdict lines)
 
-- T0 station census (Dean's library):
+- T0 station census (Dean's library): PENDING at ship (tracker #298) - the bundle (tools/radio-sim/bundle.js at 99c4a9d6) and the
+  one-line command (`docker exec -i filetube node - --data /app/data --stations < radio-sim-bundle.js > stations-census.txt`) went
+  to Dean 2026-10-09 02:16 UTC; the synthetic census (`node tools/radio-sim/simulate.js --selftest --stations`): 13 stations in
+  35 ms (6 decades, Recently added 200, hip hop 137, rock 122, jazz 70 (the style), electronic 63, folk 53, country 42; under the
+  thresholds: heavy metal 34, pop 32, acoustic fingerstyle 14, thrash metal 10, death metal 10, folk rock 10). When Dean's census
+  lands: drop or narrow any D5b word whose title / channel matches dwarf its genre matches; ask Dean only if Chill, Reggae or
+  Synth cannot be built.
 - Falsifiers (section 5), one line each with the output:
-- Migration v34 -> v35:
-- Suites (Node 22.23.1 / 24.20.0) at the reviewed sha:
-- Gate rounds:
+  - A Reggae station plays no non-reggae song in its first 20 picks: test/integration/music-stations-api.test.js "W2 (the Reggae
+    falsifier)" - admin and the restricted member each 20/20 inside the reggae set (30 tagged + 15 by title + 10 hidden for admin;
+    the member never gets a hidden one); the Kirby fixture's Game music station = the picker's game family exactly (180 songs; the
+    one oracle difference is a podcast episode filed under People & Blogs).
+  - A restricted user's station list and counts differ from the admin's exactly by the hidden songs: the same file, "W2 (D9)":
+    Reggae 55 (admin) vs 45 (member) = the 10 hidden songs; Rock equal; the Jazz station (40 songs, all in the hidden folder)
+    absent for the member; no art id of a hidden song in any member card; the rbac LIST SWEEP: a member blocked from every library
+    gets `stations: []` while admin lists stations.
+  - A skip-heavy song's pick share drops by D3's factor over 1000 draws: test/unit/music-radio-picker.test.js "v1.378.0 D3
+    (statistical)": the 3x-skipped song 0/1000, the 2x-skipped song at 0.2-0.45x of a plain song, a finished song 1.05-1.4x; the
+    same on a station draw (music-stations "gate r1 adversary M3"); through the real route (music-plays-api "W1 -> D3"): the
+    3x-skipped song 0/300 draws for the skipper, drawn by admin (another user's skips never reach them); the run-dry pool returns it
+    before silence (never a non-member of a strict station: "gate r1 C2", 40 seeds).
+  - A yt-dlp upload year never places a song in a Throwback decade: test/unit/music-stations.test.js "D6 Throwback": 1980s = 45
+    native songs, not the 60 uploads tagged 1987; `releaseYear` of a library track is null.
+  - A phone driving the speaker counts one play, not two: music-play-counts "counted where the audio PLAYS" (the tally's three entries
+    are a local load, a chapter roll and the tally's own tick; playAt leaves for the speaker before loadTrack; the controller's proxy
+    element has no listeners) + music-stations-pocket "gate r1 M27 / M28" (the phone sends the station, nothing loads on it; the
+    speaker plays it as a station).
+  - Play counting (D1): music-play-counts 12/12 (30 s = one play, a 100 s jump adds nothing, half of a 40 s song, the last 5 % or
+    ended = finish once, moved on before the threshold = skip, a chapter is its own segment, a re-init keeps the tally, a song
+    ending while the view is AWAY plays and finishes, steps of up to 4 s count, a looped chapter counts once per load).
+- Migration v34 -> v35: test/unit/db-sqlite-adapter.test.js "v34 -> v35 upgrade": the three tables born empty with the expected
+  columns, a like / a progress row / a watch-later row survive, every pre-existing namespace byte-equal, the user cascade reaches
+  user_music_plays; the carriers: music-plays-store.test.js 9/9 (prune, move, a yt-dlp file's base id with its ::c rows, the backup
+  round-trip, an older bundle restores empty losing nothing else, the cascade, the test reset); the restore validates like the
+  route (backup-restore: 7 refusals + a valid round trip). Rollback floor: docs/RELEASING.md "Sixteenth floor - schema v35".
+- Pocket Radio measured in Chromium (tools/pocket-proof/radio-row-probe.js, 2026-10-09): Nano 2G and Classic 5G at 320x568 and
+  390x844: 7 main rows of 34 px (no row shrinks), the Radio row one line, Now Playing reachable, the Radio level lists the stations,
+  the LCD reads "Radio: Recently added" on one line inside the LCD (ellipsized at 320 wide, whole at 390). ALL PASS, 40 checks.
+- Suites (Node 22.23.1 / 24.20.0) at the reviewed sha c42a52bc: Node 22.23.1 `# tests 11808` `# pass 11795` `# fail 0` `# skipped 13`;
+  Node 24.20.0 `ℹ tests 11808` `ℹ pass 11795` `ℹ fail 0` `ℹ skipped 13`. At the release tree (the release commit's code, before its own hook): Node 22.23.1 `# tests 11823` `# pass 11809` `# fail 1`
+  `# skipped 13`; Node 24.20.0 `ℹ tests 11823` `ℹ pass 11809` `ℹ fail 1` `ℹ skipped 13` - the one failure on both was
+  test/unit/music-plays-store.test.js "backup export -> restore round-trips" whose expectation predated the normalized restore
+  (the security seat's round-2 suggestion); the expectation was updated in the release commit (the file 9/9 after; the release
+  commit's pre-commit hook re-ran the whole unit suite green).
+- Gate rounds: r1 @c42a52bc (security-brief APPROVED; qa and adversary CHANGES) and r2 @ac5b761b (all three APPROVED) - the
+  sections above; the two round-2 disclosed WARNINGs and the suggestions fixed in the release commit at the seats' explicit
+  allowance (music-play-counts "gate r2 qa N1" and the S8 fixture; the preview bucket; the token order; the normalized restore).
 
 ### Gate round 1 (reviewed sha c42a52bc; the three seats reviewed in parallel; each verdict line is verbatim at the end of this file, the findings below are the builder's CONDENSED summary with the numbers copied from the reports)
 
@@ -212,7 +254,8 @@ Gate: CHANGES r1 @c42a52bc - adversary
 - security W1: GET /api/music/stations and a `station:` radio batch share the per-user stations bucket (60 then 2/s; bound: 429 after the burst, a song batch unbounded by it, another user unaffected). Disclosed: no memo of buildStations; cost per the seats' numbers above.
 - qa S1: a hidden station never holds one of the 12 shelf slots (bound). S4: a refused Delete is said (toast) and the card stays (bound). S5: a failed stations read is an error line with Retry in the shelf; Retry refetches (bound). S8: a skip needs at least one real step of playback first (bound: a pick replaced before any tick posts nothing).
 - adversary S1 / security INFO: the comments corrected (common.js seed kinds; the plays-route readers; stations.js on D6's saved-album year). S4: a deliberate replay of the same loaded song counts no second play - disclosed in the D1 ledger line.
-- Device checks owed:
+- Device checks owed: docs/DEVICE-CHECKS.md "Radio stations, play counts, Radio in Pocket (v1.378.0)" (five lines); the device
+  cadence falsifier for the play threshold (tick deltas on a locked phone) rides the last of them.
 
 ## 10. Out of scope
 Outside data (MusicBrainz / Last.fm), moods inferred from audio (BPM / energy), sharing stations between users, editing stations
@@ -222,3 +265,28 @@ Gate: APPROVED r1 @c42a52bc - security-brief
 Gate: CHANGES r1 @c42a52bc - qa
 
 Gate: CHANGES r1 @c42a52bc - adversary
+
+### Gate round 2 (reviewed sha ac5b761b, the fix commit; the same three seat instances, delta re-confirmation; each verdict line verbatim at the end of this file, the findings below the builder's CONDENSED summary) - CLOSED
+
+Gate: APPROVED r2 @ac5b761b - security-brief
+- W1 fixed as prescribed (the per-user bucket on GET /api/music/stations and a station: batch; song batches unchanged); L1 fixed as prescribed (every station row through validateCustomDef with the 12-hex id, hidden keys 1-120, play ids 1-200 NUL-free with non-negative counts, a bad row refuses the bundle; matchCustom reads lists defensively); the INFO comments fixed. No new ingress or exposure. Suggestions: take the station batch's token right after parseSeed; store the validator's normalized definition at restore (a four-digit STRING year passed validation and the matcher then dropped it).
+
+Gate: APPROVED r2 @ac5b761b - qa
+- C1, C2, W1, W2, S1, S4, S5, S6, S8 fixed and bound (the dock probe: `["t0 play","t0 finish"]` then `[... "t1 play","t1 finish"]`; the strict probe: `reg0, reg1, reg2, reg3, reg4`; the shelf: 12 shown with 3 hidden); S2, S3 disclosed. Instruments: lint:ui OK (3172); overlay clean; eslint 0 errors; targeted unit 149/149, integration 105/105; selftest census 13 stations.
+- WARNING N1 (introduced by the fix; safe to ship disclosed): the tally's own chapter roll made a LOOPED chapter count a play and a finish per pass, and a backward seek into an earlier chapter a second play. S9 a test comment. S10 the station batch shared the stations bucket with the editor's previews (30 s of fast typing on the last queued station song could 429 the batch).
+
+Gate: APPROVED r2 @ac5b761b - adversary
+- C1, C2, W1, W2, W3 fixed and verified (the dock probe 0 skips across two away songs and a real seed-only dock return; the strict probes 0 non-members; the restore probes build without throwing; M3 / M27 / M28 / M31 / M35 / M40 all killed; 29 mutants applied, 27 killed, 2 survived, one equivalent).
+- WARNING W-r2-1 (disclosed, safe to ship): N15 survived - the S8 test bound the `started` latch only against the zero-tick shape. S1 N22 equivalent (the bind in loadTrack duplicated ensureChapterReflect's). S2 the harness's reinit leaves ?play= in the URL (a divergent fixture; the real return measured clean). S3 a 429 on a station batch fails that leg's extension silently.
+
+### Gate round 2: the builder's dispositions (the two disclosed WARNINGs and the suggestions FIXED in the release commit, at the seats' explicit allowance, each bound; no third round)
+
+- qa N1: the tally keeps a per-LOAD `done` map - a segment re-entered within the same file load (a looped chapter, a seek back, the file-level Loop's rewind) never counts again (music-play-counts "gate r2 qa N1": a looped chapter, a backward seek and the whole-file rewind post nothing more).
+- adversary W-r2-1: the S8 test now holds the seek-only shape (`tick(0); tick(100)` then moved on: no skip). qa S9: the comment reworded. adversary S1: the duplicate bind in loadTrack dropped (ensureChapterReflect binds once per element).
+- qa S10 = adversary S3: the editor's previews have their own bucket (previewLimiter); a spent station bucket never blocks typing and fast typing never starves a station batch (bound in music-stations-api "gate r1 security W1"). A 429 on a station batch still fails that leg's extension silently - disclosed.
+- security: the station batch's token is taken right after parseSeed (a refused batch costs no list build); the restore stores the validator's normalized definition (lib/auth/store.js requires lib/music/stations.js, pure).
+
+Gate: APPROVED r2 @ac5b761b - security-brief
+Gate: APPROVED r2 @ac5b761b - qa
+
+Gate: APPROVED r2 @ac5b761b - adversary

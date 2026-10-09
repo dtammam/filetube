@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.378.0 music stations W1 (plan docs/exec-plans/active/2026-10-09-music-stations.md): the
+// [UNIT] v1.378.0 music stations W1 (plan docs/exec-plans/completed/2026-10-09-music-stations.md): the
 // per-user play / skip / finish counts (user_music_plays, schema v35), a user's own stations and the
 // hidden station keys, against a real temp SQLite adapter - counter bumps, cross-user isolation, every
 // id-keyed carrier (a native prune / move, a yt-dlp file's delete / move with its chapter rows), the
@@ -115,7 +115,8 @@ test('backup export -> restore round-trips the three namespaces per user; an old
   assert.deepStrictEqual(ab.musicStationHidden, [{ key: 'g:rock', hiddenAt: ISO(3) }]);
   store.replaceAllUsersRaw(JSON.parse(JSON.stringify(bundle)));
   assert.deepStrictEqual(store.getMusicPlays(a.id).t1, { plays: 1, skips: 1, finishes: 0, lastPlayedAt: ISO(1) }, 'restored verbatim, not added to');
-  assert.deepStrictEqual(store.getMusicStations(a.id), [{ id: 's1', name: 'Chill', genres: ['chill'], strict: true, createdAt: ISO(2), updatedAt: ISO(2) }]);
+  // a restored station is stored as the validator's NORMALIZED definition (v1.378.0 gate r2, security): every list present, years null
+  assert.deepStrictEqual(store.getMusicStations(a.id), [{ id: 's1', name: 'Chill', genres: ['chill'], artists: [], words: [], yearFrom: null, yearTo: null, exclude: [], strict: true, createdAt: ISO(2), updatedAt: ISO(2) }]);
   assert.deepStrictEqual(store.getMusicStationHidden(a.id), [{ key: 'g:rock', hiddenAt: ISO(3) }]);
   assert.strictEqual(store.getMusicPlays(b.id).t9.plays, 1);
   const older = JSON.parse(JSON.stringify(bundle));
