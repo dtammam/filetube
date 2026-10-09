@@ -3,8 +3,8 @@ plan: feed-tiktok
 harness: v2 · full
 branch: feat/v1.381.0-feed-tiktok
 anchor: outcome
-status: Gate r2 @d9d58a57: adversary CHANGES (tests only), qa APPROVED, security-brief APPROVED
-next: round 3 is Dean's call (gate pacing rule): adopt the adversary's two test files + the NULL-latch and unrestorable-place fixes, re-confirm
+status: Gate r2 @d9d58a57: adversary CHANGES (tests only), qa + security-brief APPROVED; Dean ruled round 3 (2026-10-09); r3 fixes 7340c48d, suites green
+next: r3 delta re-confirmation with the same three seats
 design: Dean's device feedback on v1.380.0 Feed (2026-10-09, eight points + swipe left/right); kickoff defaults D1-D11. Base main 42ec865c (v1.380.0).
 builder: smart (the shared player's gestures in a new full-bleed host, a layout rework of every card, and a deliberate progress RESET: a data-loss surface)
 gate: r2 adversary CHANGES (tests only), qa + security-brief APPROVED (FULL)
@@ -512,3 +512,19 @@ CRITICAL: none. WARNING: none.
 - New toasts (feedStartedOverText, "Your place is back: <title>", "Could not undo: it was played since") go through toast() ->
   String(text) -> ui.toast spanText; feed.js has no innerHTML / insertAdjacentHTML (traced). feed-stale-continue.js skips Start
   over records, still read-only at the driver. lib/feed/api.js: a comment only.
+
+### builder r3 (Dean, AskUserQuestion 2026-10-09: "Do round 3 (Recommended)") - 7340c48d
+
+- adversary r2 W5: ADV-r2-5 (every stillAsReset arm, each kind: 409 'moved', the newer state stands) and ADV-r2-4 (a Start over reply
+  after leaving the Feed loads nothing into the dead card, the toast with Undo still shows) adopted, plus an Undo reply after leaving.
+- adversary r2 suggestion (ADV-r2-1 / -2): a latch is its ROW's presence, recorded as a flag beside its time (watched / played /
+  finished) in placeOf, nothingToForget, stillAsReset and the restore; a NULL-time latch is recorded, forgotten and put back.
+- The builder's r2 finding (backup restore and account adoption store a book place of ANY object shape, store.js 2070 / 2287, so Start
+  over could forget a place validRecordedPlace then refuses): Start over refuses such a place up front (409 'unrestorable', nothing
+  recorded or reset; the card says "Could not start over: its saved place could not be undone, so it was kept"). Any finite number is
+  restorable (adversary r2: a negative stored time would have been refused as 'invalid-record').
+- Mutants on 7340c48d (a /tmp git-archive sandbox): 12 / 12 killed (N3, N4, N5, N7, N8, N10, N11; P1 latch by a truthy time, P2 restore
+  needing a time, P3 no unrestorable refusal, P4 negatives refused, P5 stillAsReset latch by time).
+- Suites at 7340c48d (`npm test`, the worktree, sequential): Node 22.23.1 `# tests 12033 # pass 12020 # fail 0 # cancelled 0 # skipped
+  13` (exit 0); Node 24.20.0 `tests 12033 pass 12020 fail 0 cancelled 0 skipped 13` (exit 0).
+
