@@ -99,6 +99,8 @@ test('v1.359 mobile edge to edge: one mobile rule drops the wrapper frame, exclu
     '#player-dock .player-container',
     '#player-wrapper.audio-mode.audio-expanded',
     '#player-wrapper.css-fullscreen',
+    // v1.381.0 (D3): the Feed card's slot drops the frame too (border 0, radius 0: the card is the frame), only inside a Feed card
+    '#view-root[data-view="feed"] .feed-card__slot > #player-wrapper',
     '.player-container',
     '.player-container:fullscreen, .player-container:-webkit-full-screen',
     '.reader-nowplaying .player-container',

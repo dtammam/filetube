@@ -27,6 +27,15 @@ function feedRealm(o) {
   const w = dom.window;
   w.matchMedia = (q) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
   w.scrollTo = () => {};
+  // v1.381.0 (D6): jsdom lays nothing out, so a book page box is MODELLED when a test asks: `pageWords` words fit a page
+  // (clientHeight = the budget, scrollHeight = the words drawn). Without it the box has no height and the view keeps the
+  // card on one unmeasured page, as a real card that is not laid out yet does.
+  if (opts.pageWords) {
+    const isPage = (el) => el && el.classList && el.classList.contains('feed-card__page');
+    const words = (el) => { const t = (el.textContent || '').trim(); return t ? t.split(/\s+/).length : 0; };
+    Object.defineProperty(w.HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return isPage(this) ? opts.pageWords : 0; } });
+    Object.defineProperty(w.HTMLElement.prototype, 'scrollHeight', { configurable: true, get() { return isPage(this) ? words(this) : 0; } });
+  }
   w.HTMLElement.prototype.scrollIntoView = function () { w.__scrolledInto = this; };
   // jsdom has no IntersectionObserver: a controllable stub the test drives
   const observers = [];

@@ -785,6 +785,15 @@ function shouldExitFauxOnRotate(ctx) {
   return !!(!opts.landscape && opts.fauxOn);
 }
 
+// v1.381.0 (Dean, 2026-10-09: "It should not rotate when going sideways"): a FULL player hosted in a Feed card
+// (its slot) ignores rotation - no faux fullscreen for a video, no expanded now-playing for audio, and iOS's own
+// rotate-into-native-fullscreen is bounced back to the card without arming faux. The card is the surface there.
+// Keyed on WHERE the host is (its parent is a .feed-card__slot), never on a load field: a watch page that adopts
+// the same media gets its rotate behaviour back at once. Exported for node:test.
+function rotateIgnoredForHost(hostParentClassList) {
+  return !!(hostParentClassList && typeof hostParentClassList.contains === 'function' && hostParentClassList.contains('feed-card__slot'));
+}
+
 // v1.277 (Dean, iOS music stuck-state): the reconcile GATE. iOS routinely DROPS
 // the matchMedia 'change'/orientationchange that onOrientationChange keys on, so
 // a rotate-to-landscape-then-back can strand a FULL audio player - host parked in
@@ -2131,6 +2140,7 @@ if (typeof module !== 'undefined' && module.exports) {
     MINIMIZE_COMMIT_FRAC,
     MINIMIZE_FLICK_V,
     shouldArtSingleTapAct,
+    rotateIgnoredForHost,
     resolveMobileFormFactor,
     isDesktopClassPlatform,
     resolveEndedAction,
@@ -8957,11 +8967,16 @@ if (typeof module !== 'undefined' && module.exports) {
         mediaPlayer.addEventListener('webkitbeginfullscreen', function () {
           if (!isMobileFormFactor() || inNativeControlsMode()) return;
           if (!currentData || currentData.type === 'audio') return;
+          // v1.381.0: in a Feed card the rotation is ignored - bounce iOS's native player straight back to the card (the same
+          // enter-window bounce as below, so it is not the established-fullscreen exit iOS pauses on), with no faux armed
+          var feedHost = rotateIgnoredForHost(host && host.parentElement && host.parentElement.classList);
           // v1.118 (Dean): arm faux FIRST (it sits ready underneath), and stamp
           // WHEN -- so a genuine LATER native-fullscreen exit (Fix A in onFsChange)
           // isn't misread as this instantaneous handoff.
-          fauxHandoffAt = Date.now();
-          setCssFullscreen(true);
+          if (!feedHost) {
+            fauxHandoffAt = Date.now();
+            setCssFullscreen(true);
+          }
           // Bounce OUT of iOS's native player onto our faux. webkitExitFullscreen
           // can NO-OP when called at the very START of the enter transition
           // (observed on Dean's device -- he stayed in native with faux armed
@@ -9195,6 +9210,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var mql = window.matchMedia('(orientation: landscape)');
     function onOrientationChange() {
       if (state !== STATE_FULL) return; // FULL-only shortcut/gesture surface
+      if (rotateIgnoredForHost(host && host.parentElement && host.parentElement.classList)) return; // v1.381.0: a Feed card stays a card
       // v1.68.1: every FULL-state rotation re-resolves the mobile height
       // caps (see nudgeViewportHeightCaps' header). Scheduled BEFORE the
       // auto-fullscreen decision: the nudge is fullscreen-safe (the capped
