@@ -71,13 +71,15 @@
   touched: history (ROADMAP Shipped entries, releases.json, completed plans, git). Cost to disclose in the ledger: an old
   Settings bookmark lands on the menu's first page. Measure first: grep for every old id and name, list what each pin protects.
 
-- [ ] **Named radio stations** _(parked by the v1.368.0 intake, R2)_ - Favorites, Genre, Throwback and Deep cuts stations built on
-  the v1.368.0 radio picker.
+- [ ] **Named radio stations** _(in v1.378.0: the plan docs/exec-plans/active/2026-10-09-music-stations.md, building)_ - Favorites, Deep cuts, Throwback,
+  Recently added, stations made from the library's real genres and styles (Chill, Reggae, Synth...) and stations Dean makes, in the
+  standard view and in Pocket, built on the v1.368.0 radio picker.
 
-- [ ] **A radio row in the pocket iPod skins and on the speaker's now playing** _(parked by the v1.368.0 intake, R2)_.
+- [ ] **A radio row in the pocket iPod skins and on the speaker's now playing** _(in v1.378.0: the plan docs/exec-plans/active/2026-10-09-music-stations.md, building)_.
 
-- [ ] **Count plays, skips and finishes for music** _(parked by the v1.368.0 intake, R2)_ - music has no play counts today
-  (`media_view_counts` is video only), no skips and no finished flag; a radio that weighs away from skips needs them first.
+- [ ] **Count plays, skips and finishes for music** _(in v1.378.0: the plan docs/exec-plans/active/2026-10-09-music-stations.md, building)_ - music has no
+  play counts today (`media_view_counts` is video only), no skips and no finished flag; a radio that weighs away from skips needs them
+  first.
 
 - [ ] **Opt-in outside similar-artist data for radio** _(parked by the v1.368.0 intake, R2)_ - Last.fm or ListenBrainz similar
   artists, off by default (a network call per station).
