@@ -299,12 +299,52 @@ test('view: an empty library shows the empty state and no session is kept; a liv
   } finally { r.close(); }
   const r2 = feedRealm();
   try {
-    r2.w.sessionStorage.setItem(feed.FEED_SESSION_KEY, JSON.stringify({ id: 'abcdef0123456789', plannedMin: 10, startedAt: '2026-10-09T10:00:00.000Z' }));
+    // started a minute ago (a fixed clock time flaked once the day passed its deadline: the first tick finished the session)
+    r2.w.sessionStorage.setItem(feed.FEED_SESSION_KEY, JSON.stringify({ id: 'abcdef0123456789', plannedMin: 10, startedAt: new Date(Date.now() - 60000).toISOString() }));
     r2.init(); await r2.settle();
     assert.strictEqual(r2.calls('POST', '/api/feed/sessions').length, 0, 'no new session');
     assert.strictEqual(r2.calls('GET', '/api/feed?').length, 1, 'the stack refills from the live session');
     assert.strictEqual(r2.$('#feed-picker').hidden, true);
   } finally { r2.close(); }
+});
+
+test('view (gate r2, qa W-R2-2): the "through everything new" notice is a card of its own after the batch - observed (the card before it pauses), never counted, never excluded', async () => {
+  const r = feedRealm({ batches: [{ cards: [BOOK, POD, VID], exhausted: true }] });
+  try {
+    r.init(); await r.settle();
+    r.$('#feed-picker-choices button[data-minutes="10"]').click(); await r.settle();
+    const all = r.$$('.feed-card');
+    assert.deepStrictEqual(all.map((c) => c.getAttribute('data-kind')), ['book', 'podcast', 'video', 'notice'], 'after the batch, not before it');
+    assert.strictEqual(all[3].getAttribute('data-index'), '3', 'a real entry');
+    assert.ok(r.observers[r.observers.length - 1].targets.includes(all[3]), 'observed');
+    assert.ok(all[3].textContent.includes('through everything new'));
+    r.show(1); // the podcast plays
+    assert.strictEqual(r.loads.filter((l) => l.id === 'ep1').length, 1);
+    const pausesBefore = r.loads.filter((l) => l.pause).length;
+    r.show(3); // the notice fills the screen
+    assert.strictEqual(r.loads.filter((l) => l.pause).length, pausesBefore + 1, 'the podcast paused');
+    assert.strictEqual(r.loads.filter((l) => l.id).length, 1, 'the notice loads nothing');
+    assert.ok(!feed.feedExcludeIds(r.$$('.feed-card').map((c) => ({ kind: c.getAttribute('data-kind'), id: c.getAttribute('data-id') }))).includes('notice'), 'never excluded');
+    r.$('#feed-done-btn').click(); await r.settle();
+    const fin = r.calls('POST', '/api/feed/sessions/abcdef0123456789/finish');
+    assert.strictEqual(fin[0].body.summary.cards, 2, 'the book and the podcast counted, the notice not');
+  } finally { r.close(); }
+});
+
+test('view (gate r2, adversary W6 + qa S1): a one-book session does not stall - the first batch prefetches at once, and a read book card refetches when nothing real is queued ahead', async () => {
+  const r = feedRealm({ batches: [{ cards: [BOOK], exhausted: false }, { cards: [], exhausted: true }, { cards: [{ ...BOOK, id: 'bk1', start: { spineIndex: 0, blockIndex: 3 }, next: { spineIndex: 0, blockIndex: 5 } }], exhausted: true }] });
+  try {
+    r.init(); await r.settle();
+    r.$('#feed-picker-choices button[data-minutes="10"]').click(); await r.settle();
+    assert.strictEqual(r.calls('GET', '/api/feed?').length, 2, 'a one-card first batch fetched again at once (qa S1 bound)');
+    assert.deepStrictEqual(r.$$('.feed-card').map((c) => c.getAttribute('data-kind')), ['book', 'notice'], 'the empty exhausted batch closed the stack with the notice');
+    r.advance(6000);
+    r.show(1); // onto the notice: the book was read
+    await r.settle();
+    assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk1').length, 1, 'the bookmark moved');
+    assert.strictEqual(r.calls('GET', '/api/feed?').length, 3, 'the moved place is servable again: fetched without waiting for a swipe');
+    assert.deepStrictEqual(r.$$('.feed-card').map((c) => c.getAttribute('data-kind')), ['book', 'notice', 'book'], 'the next pages arrived behind the notice');
+  } finally { r.close(); }
 });
 
 test('view: cards far behind the active one drop their heavy content and keep their height; swiping back rebuilds them', async () => {
@@ -315,8 +355,10 @@ test('view: cards far behind the active one drop their heavy content and keep th
     r.init(); await r.settle();
     r.$('#feed-picker-choices button[data-minutes="10"]').click(); await r.settle();
     r.show(6);
-    const cards = r.$$('.feed-card');
+    await r.settle(); // the prefetch (within two of the end) resolves
+    const cards = r.$$('.feed-card:not([data-kind="notice"])');
     assert.strictEqual(cards.length, 8);
+    assert.strictEqual(r.$$('.feed-card[data-kind="notice"]').length, 1, 'the prefetched second batch was exhausted: the notice card closes the stack');
     assert.ok(cards[0].hasAttribute('data-pruned') && cards[2].hasAttribute('data-pruned'));
     assert.ok(!cards[3].hasAttribute('data-pruned'), 'three behind stay');
     assert.strictEqual(cards[0].querySelector('.feed-card__text'), null);

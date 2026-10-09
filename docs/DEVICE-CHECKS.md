@@ -264,7 +264,7 @@ Home-screen app on the iPhone, a book you are partway through, a podcast in prog
   first, read on, then let the feed card finish: the toast "Your place in ... moved on another device" and the place is NOT moved back.
 - [ ] v1.379.0 - A book card you SKIP (swipe on within a few seconds): the reader still opens where you were, and that book does not
   come back in this session until you read or open it (gate r1: a skipped card never puts unread pages behind your place).
-- [ ] v1.379.0 - From a playing video card, open the video (tap the title / the watch page), drag the scrubber BACK and pause: the
+- [ ] v1.379.0 - While a video card plays, leave the feed and open that video from Home (the player carries over), drag the scrubber BACK and pause: the
   watch page keeps that earlier place (gate r1: the feed's forward-only rule stays in the feed).
 - [ ] v1.379.0 - The ring in the corner fills as the time runs; tap it: "m:ss left" for 3 s. When time is up mid-podcast the slice finishes
   (at most 2 more minutes) and the recap opens; when time is up on a book card the recap opens on your next swipe.

@@ -93,7 +93,7 @@ function feedExcludeIds(cards) {
   var out = [];
   var seen = {};
   (cards || []).forEach(function (c) {
-    if (!c || c.kind === 'book' || typeof c.id !== 'string') return;
+    if (!c || c.kind === 'book' || c.kind === 'notice' || typeof c.id !== 'string') return;
     if (seen[c.id]) return;
     seen[c.id] = 1;
     out.push(c.id);
@@ -362,6 +362,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var cardEls = [];
     var activeIndex = -1;
     var loading = false;
+    var fetchSeq = 0; // the request a trailing release belongs to (gate r2, qa S-R2-1)
     var exhaustedShown = false;
     var observer = null;
     var mediaEl = null; // the live media element while a media card plays
@@ -501,6 +502,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function fetchBatch() {
       if (loading || !session) return;
       loading = true;
+      var seq = ++fetchSeq;
       stack.setAttribute('aria-busy', 'true');
       var exclude = feedExcludeIds(cards);
       var url = '/api/feed?session=' + encodeURIComponent(session.id) + '&count=' + FEED_BATCH + (exclude.length ? '&exclude=' + exclude.map(encodeURIComponent).join(',') : '');
@@ -512,25 +514,23 @@ if (typeof module !== 'undefined' && module.exports) {
         })
         .then(function (body) {
           if (signal.aborted) return;
-          if (body.exhausted && !exhaustedShown) {
-            exhaustedShown = true;
-            // gate r1 (qa W3): a snap card of its own, so it is seen at rest (a bare div between snap cards never was)
-            var notice = el('article', 'feed-card feed-card--notice');
-            notice.setAttribute('data-kind', 'notice');
-            notice.appendChild(el('p', 'feed-notice', 'You’re through everything new. From here the feed starts over.'));
-            stack.appendChild(notice);
-          }
           if (!body.cards.length && !cards.length) {
             showEmpty();
             return;
           }
           body.cards.forEach(appendCard);
+          if (body.exhausted && !exhaustedShown && cards.length) {
+            exhaustedShown = true;
+            // gate r1 (qa W3) + r2 (W-R2-2): a card of its own AFTER this batch's last new card - observed like any card, so the one
+            // before it pauses when the notice fills the screen; never counted (countCard) and never excluded (feedExcludeIds)
+            appendCard({ kind: 'notice', id: 'notice', title: '' });
+          }
           loading = false; // gate r1 (qa S1): release the latch BEFORE the first activation, whose prefetch must be able to run
           stack.setAttribute('aria-busy', 'false');
           if (activeIndex < 0 && cardEls.length) setActive(0);
         })
         .catch(function () { /* a failed batch leaves the stack as it is; the next swipe retries */ })
-        .then(function () { loading = false; stack.setAttribute('aria-busy', 'false'); });
+        .then(function () { if (seq === fetchSeq) { loading = false; stack.setAttribute('aria-busy', 'false'); } });
     }
 
     function showEmpty() {
@@ -562,6 +562,11 @@ if (typeof module !== 'undefined' && module.exports) {
 
     function fillCard(node, card, index) {
       node.replaceChildren();
+      if (card.kind === 'notice') {
+        node.classList.add('feed-card--notice');
+        node.appendChild(el('p', 'feed-notice', 'You’re through everything new. From here the feed starts over.'));
+        return;
+      }
       node.appendChild(el('div', 'feed-card__kind', feedKindLabel(card)));
       node.appendChild(el('h3', 'feed-card__title', card.title || (card.track && card.track.title) || ''));
       var body = el('div', 'feed-card__body');
@@ -638,6 +643,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function pruneBehind(active) {
       cardEls.forEach(function (node, i) {
         if (i < active - FEED_KEEP_BEHIND) {
+          if (cards[i] && cards[i].kind === 'notice') return; // one line of text: nothing heavy to drop
           if (!node.hasAttribute('data-pruned')) { node.setAttribute('data-pruned', ''); node.replaceChildren(el('div', 'feed-card__kind', feedKindLabel(cards[i]))); }
         } else if (node.hasAttribute('data-pruned')) {
           node.removeAttribute('data-pruned');
@@ -691,6 +697,7 @@ if (typeof module !== 'undefined' && module.exports) {
     function countCard(index) {
       if (counted[index]) return;
       counted[index] = true;
+      if (!cards[index] || cards[index].kind === 'notice') return; // the notice is not a card the user did anything with
       var a = activity[index] || {};
       if (cards[index] && cards[index].kind === 'book') a.read = !!bookWritten[index] || feedBookRead(bookActiveMs[index], cards[index].dwellSec);
       feedCountActivity(summary, cards[index], a);
@@ -717,6 +724,9 @@ if (typeof module !== 'undefined' && module.exports) {
       fetch('/api/feed/progress/book/' + encodeURIComponent(card.id), {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(card.next || { atEnd: true }), keepalive: true,
       }).then(function (r) {
+        // gate r2 (adversary W6): the place moved, so a parked book is servable again - when nothing real is queued ahead
+        // (a single-book library: the batch after this card was empty), fetch now rather than on the next swipe
+        if (r.ok && !cards.slice(index + 1).some(function (c) { return c && c.kind !== 'notice'; })) fetchBatch();
         if (r.status !== 409) return null;
         return r.json().then(function (body) {
           // gate r1 (qa S2): only a STALE refusal is news to the user; backward / not-served are the feed's own

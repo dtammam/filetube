@@ -12722,6 +12722,12 @@ html[data-era-flourish="on"] .ft-unfabricated {
 #view-root[data-view="feed"] .feed-hud { position: absolute; top: var(--space-3); right: var(--space-3); z-index: var(--z-chip); }
 #view-root[data-view="feed"] .feed-notice { font: var(--t-footnote); color: var(--ink-2); text-align: center; padding: var(--space-3); }
 #view-root[data-view="feed"] .feed-card--notice { justify-content: center; align-items: center; }
+/* Above the phone breakpoint the two chrome tokens are undefined (tokens.css declares them inside the 768px query), so the
+   calc above would read 100vh under the 56px header and push the stack 80px below the fold (gate r2, qa W-R2-1, measured at
+   1280x800): the column takes the flex stretch there instead. */
+@media (min-width: 769px) {
+  #view-root[data-view="feed"] .feed-stack { height: auto; }
+}
 /* v1.379.0 Feed mode W4: the session ring, the time peek, the recap and the hold-to-extend button */
 #view-root[data-view="feed"] .feed-hud { display: flex; align-items: center; gap: var(--space-2); }
 #view-root[data-view="feed"] .feed-hud__time { font: var(--t-footnote); color: var(--ink-2); font-variant-numeric: tabular-nums; }
