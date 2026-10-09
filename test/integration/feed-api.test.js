@@ -30,7 +30,7 @@ const DATA_DIR = process.env.DATA_DIR;
 const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const {
-  app, updateDatabase, scanBooks, flushPendingBookProgress, __mintTestSession, userStore, booksDb, podcastsDb, musicDb, ytdlpDb, feedServed,
+  app, updateDatabase, scanBooks, flushPendingBookProgress, flushPendingProgress, effectiveBookProgress, effectiveProgress, __mintTestSession, userStore, booksDb, podcastsDb, musicDb, ytdlpDb, feedServed,
 } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
@@ -60,7 +60,13 @@ before(async () => {
   booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-feedapi-books-'));
   // three long books (150 chapters, ~78k words: ~170 cards each, so the weights falsifier never drains the kind) and one short one
   for (const t of ['Alpha', 'Beta', 'Gamma']) fs.writeFileSync(path.join(booksDir, `${t}.epub`), buildEpub({ title: t, author: 'W', chapters: Array.from({ length: 150 }, (_, i) => CHAPTER(i + 1)) }));
-  fs.writeFileSync(path.join(booksDir, 'Delta.epub'), buildEpub({ title: 'Delta', author: 'W', chapters: [CHAPTER(1), CHAPTER(2), CHAPTER(3)] }));
+  // v1.380.0: Delta opens with a copyright page (front matter: the first REAL chapter is spine item 1) and carries a publisher
+  // description full of hostile markup (it must reach the card as plain text); Epsilon is two more unliked, unstarted books (Epsilon, Zeta)
+  fs.writeFileSync(path.join(booksDir, 'Delta.epub'), buildEpub({
+    title: 'Delta', author: 'W', chapters: ['<h1>Copyright</h1><p>All rights reserved.</p>', CHAPTER(1), CHAPTER(2), CHAPTER(3)],
+    opfExtra: '<dc:description>&lt;img src=x onerror=alert(1)&gt;A lighthouse &amp; its keeper.&lt;script&gt;steal()&lt;/script&gt;&lt;p&gt;Second line.&lt;/p&gt;</dc:description>',
+  }));
+  for (const t of ['Epsilon', 'Zeta']) fs.writeFileSync(path.join(booksDir, `${t}.epub`), buildEpub({ title: t, author: 'W', chapters: [CHAPTER(1), CHAPTER(2)] }));
   await updateDatabase(() => booksDb.mutate((db) => { require('../../lib/books/store').ensureBooks(db).folders = [booksDir]; return true; }));
   await scanBooks();
   for (const b of Object.values(booksDb.read().items)) bookIds[b.title] = b.id;
@@ -68,7 +74,9 @@ before(async () => {
   // media: N_VIDEOS under 'Allowed' (a subscription folder), 10 under 'Hidden', 3 under 'Tiny' (the allowlisted user's whole world)
   for (const d of ['Allowed', 'Hidden', 'Tiny', 'Shelf']) fs.mkdirSync(path.join(DATA_DIR, d), { recursive: true });
   const metadata = {};
-  for (let i = 0; i < N_VIDEOS; i++) metadata[`va${i}`] = mediaItem(`va${i}`, 'Allowed', i === 0 ? { chapters: [{ startTime: 0, title: 'Intro' }, { startTime: 300, title: 'Middle' }, { startTime: 900, title: 'End' }] } : {});
+  // va0 has a place (a continuing video); the two NEWEST videos (they lead the fresh pool) open with an intro chapter (v1.380.0 D8)
+  const INTRO_CHAPTERS = [{ startTime: 0, title: 'Intro' }, { startTime: 60, title: 'The build' }, { startTime: 600, title: 'End' }];
+  for (let i = 0; i < N_VIDEOS; i++) metadata[`va${i}`] = mediaItem(`va${i}`, 'Allowed', i === 0 ? { chapters: [{ startTime: 0, title: 'Intro' }, { startTime: 300, title: 'Middle' }, { startTime: 900, title: 'End' }] } : i >= N_VIDEOS - 2 ? { chapters: INTRO_CHAPTERS } : {});
   for (let i = 0; i < 10; i++) metadata[`vh${i}`] = mediaItem(`vh${i}`, 'Hidden');
   for (let i = 0; i < 3; i++) metadata[`vt${i}`] = mediaItem(`vt${i}`, 'Tiny');
   for (let i = 0; i < 150; i++) metadata[`wl${i}`] = mediaItem(`wl${i}`, 'Shelf'); // Watch later rows outside the video pool (no subscription, no progress)
@@ -121,10 +129,13 @@ before(async () => {
   tiny = __mintTestSession({ username: 'feedtiny', role: 'member' });
   userStore.setRestrictions(tiny.user.id, [{ kind: 'mode', value: 'allowlist' }, { kind: 'folder', value: 'Tiny' }]);
 
-  // per-user state: the admin reads two books, likes the third and all songs, has an in-progress video and episode, a Watch later list
+  // per-user state: the admin reads three books, likes the fourth and all songs, has an in-progress video and episode, a Watch later list
   const now = new Date().toISOString();
   userStore.setBookProgress(uid, bookIds.Alpha, { locator: { kind: 'epub', cfi: 'epubcfi(/6/2!/4/4/1:0)', spineIndex: 0, blockIndex: 1 }, percent: 10, updatedAt: now });
   userStore.setBookProgress(uid, bookIds.Beta, { locator: { kind: 'epub', cfi: '', spineIndex: 1, blockIndex: 2 }, percent: 40, updatedAt: now });
+  // v1.380.0: an unstarted book is a NEW-book card (one a session, never read forward), so the weights falsifier's third long
+  // book is one the admin is reading; Delta stays liked and unstarted (the new-book tests)
+  userStore.setBookProgress(uid, bookIds.Gamma, { locator: { kind: 'epub', cfi: '', spineIndex: 2, blockIndex: 3 }, percent: 5, updatedAt: now });
   userStore.addBookLiked(uid, bookIds.Gamma, now);
   userStore.addBookLiked(uid, bookIds.Delta, now);
   for (let i = 0; i < N_SONGS; i++) userStore.addMusicLiked(uid, `trk${i}`, now);
@@ -181,7 +192,7 @@ test('cards: the admin\'s first batches carry every kind with the fields each ca
   }
   assert.deepStrictEqual(Object.keys(seen).sort(), ['book', 'podcast', 'song', 'video', 'watchlater']);
   const book = seen.book;
-  assert.ok(['Alpha', 'Beta'].includes(book.title), 'a book being read comes first');
+  assert.ok(['Alpha', 'Beta', 'Gamma'].includes(book.title), 'a book being read comes first');
   assert.ok(Array.isArray(book.blocks) && book.blocks.length > 0 && book.blocks.every((x) => typeof x.text === 'string' && !/</.test(x.text)));
   assert.ok(book.next === null || (Number.isInteger(book.next.spineIndex) && Number.isInteger(book.next.blockIndex)));
   assert.strictEqual(book.readerHref, `/read.html?b=${book.id}`);
@@ -201,10 +212,120 @@ test('cards: the admin\'s first batches carry every kind with the fields each ca
   assert.strictEqual(seen.song.track.liked, true, 'the music row shape (publicTrackListItem), liked as the admin liked it');
 });
 
+// ---- v1.380.0: the "Start something new" card (R4, D4, D5) ------------------------------------------------
+// (placed before the Delta read-through below: Delta must still be unstarted here; Epsilon and Zeta are liked for the
+// length of a test and left behind as books being read)
+
+async function newBookCards(sessionId, batches = 30) {
+  const out = [];
+  for (let i = 0; i < batches; i++) for (const c of (await batch(sessionId, 5)).cards) if (c.kind === 'book' && c.newBook) out.push(c);
+  return out;
+}
+
+test('v1.380.0 a book with no place is a NEW-book card: description as plain text, a taste from the first REAL chapter, nothing written by serving it, at most one a session', async () => {
+  assert.ok(!effectiveBookProgress(uid, bookIds.Delta), 'Delta is unstarted');
+  assert.strictEqual(userStore.getOneBookProgress(uid, bookIds.Delta), null);
+  const s = await startSession(30);
+  // the first batches serve Delta's card; then a SECOND liked unstarted book appears mid-session
+  const first = [];
+  for (let i = 0; i < 30 && first.length === 0; i++) for (const c of (await batch(s.id, 5)).cards) if (c.kind === 'book' && c.newBook) first.push(c);
+  assert.strictEqual(first.length, 1);
+  userStore.addBookLiked(uid, bookIds.Epsilon, new Date().toISOString());
+  const more = await newBookCards(s.id, 30);
+  assert.deepStrictEqual(more, [], 'at most ONE new-book card in a session, whatever else gets liked');
+  userStore.removeBookLiked(uid, bookIds.Epsilon);
+  const card = first[0];
+  assert.strictEqual(card.id, bookIds.Delta, 'the liked unstarted book is the new one');
+  assert.strictEqual(card.description, 'A lighthouse & its keeper. Second line.', 'hostile OPF markup arrives as plain text');
+  assert.deepStrictEqual(card.start, { spineIndex: 1, blockIndex: 0 }, 'the copyright page (spine 0) is skipped: the first real chapter');
+  assert.strictEqual(card.startRule, 'heuristic');
+  assert.ok(card.blocks.length > 0 && card.blocks.every((b) => b.spineIndex >= 1), 'the taste is from the first real chapter on');
+  assert.ok(card.words >= 150 && card.words < 400, `a taste, not an excerpt: ${card.words} words`);
+  assert.strictEqual(card.next, null, 'no next: reading it moves nothing');
+  assert.strictEqual(card.atEnd, false);
+  assert.strictEqual(card.coverUrl, null);
+  assert.strictEqual(card.chapterLabel, 'Chapter 2 of 4');
+  // serving wrote nothing; the stored place, the staged place and the finished latch are all still empty
+  assert.strictEqual(userStore.getOneBookProgress(uid, bookIds.Delta), null);
+  assert.ok(!effectiveBookProgress(uid, bookIds.Delta), 'nothing staged either');
+  assert.ok(!Object.prototype.hasOwnProperty.call(userStore.getBookFinished(uid), bookIds.Delta));
+  // a book being read is still the v1.379.0 card: no description, a next
+  const s2 = await startSession(30);
+  const reading = [];
+  for (let i = 0; i < 12; i++) for (const c of (await batch(s2.id, 5)).cards) if (c.kind === 'book' && !c.newBook) reading.push(c);
+  assert.ok(reading.length > 0 && reading.every((c) => c.description === undefined && c.next), 'a book being read is the v1.379.0 card');
+});
+
+test('v1.380.0 (gate r1, W1) several liked unstarted books at once still make ONE new-book card in a session, in a single big batch too', async () => {
+  const now = new Date().toISOString();
+  userStore.setBookFinished(uid, bookIds.Delta, now);
+  userStore.addBookLiked(uid, bookIds.Epsilon, now);
+  userStore.addBookLiked(uid, bookIds.Zeta, now);
+  try {
+    for (let run = 0; run < 8; run++) {
+      const s = await startSession(30);
+      const big = await batch(s.id, 20);
+      const inBatch = big.cards.filter((c) => c.kind === 'book' && c.newBook);
+      assert.ok(inBatch.length <= 1, `run ${run}: ${inBatch.length} new-book cards in one batch`);
+      const later = await newBookCards(s.id, 10);
+      assert.ok(inBatch.length + later.length <= 1, `run ${run}: more than one new-book card in a session`);
+    }
+  } finally {
+    userStore.removeBookLiked(uid, bookIds.Epsilon);
+    userStore.removeBookLiked(uid, bookIds.Zeta);
+    userStore.clearBookFinished(uid, bookIds.Delta);
+  }
+});
+
+test('v1.380.0 "Start reading" goes through the SAME forward-only path: never backward, never over another device; on a clean book it lands at the first real chapter', async () => {
+  const now = new Date().toISOString();
+  userStore.setBookFinished(uid, bookIds.Delta, now); // park Delta (finished books are skipped): Epsilon / Zeta are the only new candidates
+  try {
+    userStore.addBookLiked(uid, bookIds.Epsilon, now);
+    const s = await startSession(30);
+    const [card] = await newBookCards(s.id);
+    assert.ok(card && card.id === bookIds.Epsilon, 'Epsilon is the new-book card');
+    // another device started it first: the tap is refused as stale and the other device's place stands
+    userStore.setBookProgress(uid, bookIds.Epsilon, { locator: { kind: 'epub', cfi: '', spineIndex: 1, blockIndex: 2 }, percent: 70, updatedAt: new Date().toISOString() });
+    let r = await postJson(`/api/feed/progress/book/${card.id}`, card.start);
+    assert.strictEqual(r.status, 409);
+    assert.strictEqual((await r.json()).reason, 'stale');
+    assert.deepStrictEqual(effectiveBookProgress(uid, bookIds.Epsilon).locator, { kind: 'epub', cfi: '', spineIndex: 1, blockIndex: 2 });
+    // re-served from that place, the start (earlier) is backward
+    feedServed.mark(uid, 'book', bookIds.Epsilon, effectiveBookProgress(uid, bookIds.Epsilon).updatedAt, s.id);
+    r = await postJson(`/api/feed/progress/book/${card.id}`, card.start);
+    assert.strictEqual(r.status, 409);
+    assert.strictEqual((await r.json()).reason, 'backward');
+    assert.deepStrictEqual(effectiveBookProgress(uid, bookIds.Epsilon).locator, { kind: 'epub', cfi: '', spineIndex: 1, blockIndex: 2 }, 'the later place survived both taps');
+    userStore.removeBookLiked(uid, bookIds.Epsilon);
+    // a clean unstarted book (Zeta): the start lands at the card's start
+    userStore.addBookLiked(uid, bookIds.Zeta, now);
+    const s2 = await startSession(30);
+    const [zeta] = await newBookCards(s2.id);
+    assert.ok(zeta && zeta.id === bookIds.Zeta, 'Zeta is the new-book card');
+    r = await postJson(`/api/feed/progress/book/${zeta.id}`, zeta.start);
+    assert.strictEqual(r.status, 200, await r.text());
+    await flushPendingBookProgress();
+    assert.deepStrictEqual(effectiveBookProgress(uid, bookIds.Zeta).locator, { kind: 'epub', cfi: '', spineIndex: 0, blockIndex: 0 }, 'the first real chapter (spine 0 here), block 0');
+    // the book is now one being read: its next card is the ordinary one, from that place, in the same session
+    let next = null;
+    for (let i = 0; i < 30 && !next; i++) for (const c of (await batch(s2.id, 5)).cards) if (c.kind === 'book' && c.id === bookIds.Zeta) next = c;
+    assert.ok(next && !next.newBook && next.start.spineIndex === 0 && next.next, 'continues from the started place as an ordinary card');
+  } finally {
+    userStore.clearBookFinished(uid, bookIds.Delta);
+  }
+});
+
 // "read" a book card the way the view does after its dwell: the feed's write moves the place to the card's next
 async function readCard(c) {
   const r = await postJson(`/api/feed/progress/book/${c.id}`, c.next || { atEnd: true });
   assert.strictEqual(r.status, 200, `read ${c.title} ${JSON.stringify(c.next)}: ${await r.text()}`);
+}
+
+// the "Start reading" tap on a new-book card: the card's start through the same forward-only POST
+async function startReading(c) {
+  const r = await postJson(`/api/feed/progress/book/${c.id}`, c.start);
+  assert.strictEqual(r.status, 200, `start ${c.title} ${JSON.stringify(c.start)}: ${await r.text()}`);
 }
 
 test('a book is "the next pages" once these were READ: a read card\'s next starts the following card; a card swiped past parks the book until its place moves (gate r1, adversary W1); a finished book leaves the session', async () => {
@@ -238,7 +359,9 @@ test('a book is "the next pages" once these were READ: a read card\'s next start
   for (let i = 0; i < 60 && !(last && last.atEnd); i++) {
     for (const c of (await batch(s4.id, 5)).cards) {
       if (c.kind !== 'book') continue;
-      if (c.id === bookIds.Delta) { last = c; if (!c.atEnd) await readCard(c); }
+      if (c.id !== bookIds.Delta) continue;
+      if (c.newBook) { await startReading(c); continue; } // v1.380.0: an unstarted book starts by the "Start reading" tap, never by being read
+      last = c; if (!c.atEnd) await readCard(c);
     }
   }
   assert.ok(last && last.atEnd, 'Delta reached its end');
@@ -248,6 +371,98 @@ test('a book is "the next pages" once these were READ: a read card\'s next start
   const after = [];
   for (let i = 0; i < 12; i++) for (const c of (await batch(s4.id, 5)).cards) if (c.kind === 'book' && c.id === bookIds.Delta) after.push(c);
   assert.deepStrictEqual(after, [], 'a book read to its end is done');
+});
+
+// ---- v1.380.0: new vs continue (R5, D6-D8) and the one-minute rule (D7) ------------------------------------
+
+async function firstCards(pred, batches = 40) {
+  const s = await startSession(30);
+  const found = [];
+  for (let i = 0; i < batches; i++) for (const c of (await batch(s.id, 5)).cards) if (pred(c)) found.push(c);
+  return { session: s, found };
+}
+const snapshotMedia = (userId, id) => JSON.stringify({
+  progress: userStore.getOneProgress(userId, id) || null, staged: effectiveProgress(userId, id) || null,
+  watched: userStore.getWatchedIds(userId).includes(id), watchLater: userStore.getWatchLater(userId).includes(id),
+});
+
+test('v1.380.0 fresh flags: an item with no place is fresh (video, episode, Watch later); one with a place is not; the first video served is a continuing one', async () => {
+  const { found } = await firstCards((c) => c.media === 'video' || c.media === 'podcast', 12);
+  const byId = new Map(found.map((c) => [`${c.kind}:${c.id}`, c]));
+  const va0 = byId.get('video:va0'); const va1 = byId.get('video:va1');
+  assert.ok(va0 && va1, 'the continuing videos were served');
+  assert.strictEqual(va0.fresh, false); assert.strictEqual(va1.fresh, false);
+  assert.strictEqual(va0.skippedIntro, false, 'never an intro skip for a card the viewer has a place in');
+  const ep0 = byId.get(`podcast:${epIds.a[0]}`);
+  assert.ok(ep0 && ep0.fresh === false, 'the episode with a saved position continues');
+  const freshVideo = found.find((c) => c.kind === 'video' && c.fresh);
+  assert.ok(freshVideo && freshVideo.skippedIntro === true, 'a fresh video from the newest end opens after its intro chapter');
+  assert.ok(found.filter((c) => c.kind === 'podcast').every((c) => c.fresh === (c.id !== epIds.a[0])), 'episodes: fresh exactly when there is no saved position');
+  const firstVideo = found.find((c) => c.kind === 'video');
+  assert.strictEqual(firstVideo.fresh, false, 'D9: with continuing videos to show, the first video card is one of them');
+});
+
+test('v1.380.0 D8 intro skip: a fresh video opens on chapter 2 (startAt 60, chapter record), the others do not skip', async () => {
+  const { found } = await firstCards((c) => c.kind === 'video' && c.skippedIntro, 40);
+  assert.ok(found.length > 0, 'an intro-skipped card was served');
+  for (const c of found) {
+    assert.ok(['va449', 'va448'].includes(c.id));
+    assert.deepStrictEqual({ startAt: c.startAt, endAt: c.endAt, chapter: c.chapter, fresh: c.fresh }, { startAt: 60, endAt: 600, chapter: { index: 1, count: 3, title: 'The build' }, fresh: true });
+  }
+});
+
+test('v1.380.0 D7 falsifier: a FRESH video swiped at 10 s leaves user_progress, user_watched and user_watch_later byte-identical; at 70 s it has a position', async () => {
+  const { found } = await firstCards((c) => c.kind === 'video' && c.fresh && c.id === 'va449', 40);
+  assert.ok(found.length > 0, 'a fresh card was served');
+  const card = found[0];
+  userStore.addWatchLater(uid, card.id, new Date().toISOString());
+  await flushPendingProgress();
+  const before = snapshotMedia(uid, card.id);
+  // every shape of a write inside the first minute: a position ping at 10 s, a ping that would LATCH watched (95%) and leave
+  // Watch later, a ping with no playedSec, junk playedSec - all refused, none touches storage
+  const attempts = [
+    { timestamp: card.startAt + 10, playedSec: 10 }, { timestamp: 570, playedSec: 10 }, { timestamp: 570, playedSec: 59.9 },
+    { timestamp: card.startAt + 10 }, { timestamp: 570, playedSec: 'NaN' }, { timestamp: 570, playedSec: -1 }, { timestamp: 570, playedSec: 1e9 + 'x' },
+  ];
+  for (const a of attempts) {
+    const r = await postJson('/api/feed/progress/media', { id: card.id, duration: 600, ...a });
+    assert.strictEqual(r.status, 409, JSON.stringify(a));
+    assert.strictEqual((await r.json()).reason, 'too-early', JSON.stringify(a));
+  }
+  await flushPendingProgress();
+  assert.strictEqual(snapshotMedia(uid, card.id), before, 'user_progress / user_watched / user_watch_later byte-identical after the early attempts');
+  // 70 s of playing: it behaves exactly as v1.379.0 (forward-only, stale-refusing) and the item has a position
+  let r = await postJson('/api/feed/progress/media', { id: card.id, timestamp: card.startAt + 70, duration: 600, playedSec: 70 });
+  assert.strictEqual(r.status, 200, await r.text());
+  await flushPendingProgress();
+  assert.strictEqual(userStore.getOneProgress(uid, card.id).timestamp, card.startAt + 70);
+  // and from then on the card is no longer fresh: the next ping (a forward one) needs no playedSec, a backward one is still refused
+  r = await postJson('/api/feed/progress/media', { id: card.id, timestamp: card.startAt + 75, duration: 600 });
+  assert.strictEqual(r.status, 200);
+  r = await postJson('/api/feed/progress/media', { id: card.id, timestamp: card.startAt + 20, duration: 600, playedSec: 500 });
+  assert.strictEqual(r.status, 409);
+  assert.strictEqual((await r.json()).reason, 'backward');
+  // the watched latch + Watch later leave still ride the write once the minute is played
+  r = await postJson('/api/feed/progress/media', { id: card.id, timestamp: 570, duration: 600, playedSec: 500 });
+  assert.strictEqual(r.status, 200);
+  assert.ok(userStore.getWatchedIds(uid).includes(card.id));
+  assert.ok(!userStore.getWatchLater(uid).includes(card.id));
+});
+
+test('v1.380.0 D7 for a fresh podcast episode: nothing before 60 s of playing; then the old rule', async () => {
+  const { found } = await firstCards((c) => c.kind === 'podcast' && c.fresh, 40);
+  assert.ok(found.length > 0);
+  const card = found[0];
+  const before = JSON.stringify({ row: userStore.getOnePodcastProgress(uid, card.id), played: Object.prototype.hasOwnProperty.call(userStore.getPodcastPlayed(uid), card.id) });
+  for (const a of [{ timestamp: 10, playedSec: 10 }, { timestamp: 1790, playedSec: 20 }, { timestamp: 10 }]) {
+    const r = await postJson('/api/feed/progress/podcast', { id: card.id, duration: 1800, ...a });
+    assert.strictEqual(r.status, 409);
+    assert.strictEqual((await r.json()).reason, 'too-early');
+  }
+  assert.strictEqual(JSON.stringify({ row: userStore.getOnePodcastProgress(uid, card.id), played: Object.prototype.hasOwnProperty.call(userStore.getPodcastPlayed(uid), card.id) }), before, 'no row, no played latch');
+  const r = await postJson('/api/feed/progress/podcast', { id: card.id, timestamp: 75, duration: 1800, playedSec: 75 });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(userStore.getOnePodcastProgress(uid, card.id).position, 75);
 });
 
 test('D7 video slices: the saved place\'s chapter (to the next chapter start) or a 3-minute segment', async () => {

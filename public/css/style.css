@@ -6292,8 +6292,12 @@ html:has(> body.ft-audio-expanded),
 /* v1.154: iOS nav-bar detail header on phone - back chevron pinned to the left
    edge, title CENTERED, hairline under (Dean: the left-aligned title conflicted
    with the back button). Desktop reverts to a left-aligned pane heading below. */
+/* v1.380 (Dean: "if I scroll down I lose the ability to easily go back"): on the phone the header STAYS pinned flush under
+   the app header while the page scrolls. The page scrolls the document (no overflow ancestor between this and it), so sticky
+   holds; it paints the page's own ground so the rows slide under it. Desktop reverts to a plain heading below. */
 .md-detail-head {
-  position: relative; display: flex; align-items: center; justify-content: center;
+  position: sticky; top: var(--sticky-bar-top, 0px); z-index: var(--z-sticky); background-color: var(--surface-0);
+  display: flex; align-items: center; justify-content: center;
   min-height: var(--size-touch); padding: var(--space-3) var(--space-12) var(--space-5);
   border-bottom: 1px solid var(--separator); margin-bottom: var(--space-6);
 }
@@ -6367,6 +6371,7 @@ html:has(> body.ft-audio-expanded),
   /* desktop has no back button (both columns show), so the header is a plain
      left-aligned pane heading, not a centered nav-bar. */
   .md-detail-head {
+    position: relative; top: auto; background-color: transparent;
     justify-content: flex-start; min-height: 0; border-bottom: 0;
     padding: var(--space-4) 0 var(--space-8); margin-bottom: 0;
   }
@@ -12812,6 +12817,19 @@ html[data-era-flourish="on"] .ft-unfabricated {
 #view-root[data-view="feed"] .feed-ring__track { stroke: var(--separator); }
 /* --p (0..1, set by feed.js as DATA) is how much of the session has run; pathLength=100 makes the dash arithmetic unitless */
 #view-root[data-view="feed"] .feed-ring__fill { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 100 100; stroke-dashoffset: calc(100 - var(--p, 0) * 100); transform: rotate(-90deg); transform-origin: 50% 50%; }
+/* v1.380.0 Feed polish: the "Start something new" card, the intro note and the first-sessions swipe cue */
+#view-root[data-view="feed"] .feed-card__cover { width: min(100%, 28vh); aspect-ratio: 2 / 3; object-fit: cover; border-radius: var(--r-md); margin: 0 auto var(--space-3); display: block; background: var(--thumbnail-bg); }
+#view-root[data-view="feed"] .feed-card__desc { font: var(--t-body); color: var(--ink-2); margin: 0 0 var(--space-3); }
+#view-root[data-view="feed"] .feed-card__taste { margin-top: var(--space-3); padding-top: var(--space-3); border-top: var(--row-divider-style); }
+#view-root[data-view="feed"] .feed-card__intro-note { position: absolute; left: var(--space-4); bottom: var(--space-4); z-index: var(--z-chip); }
+#view-root[data-view="feed"] .feed-card { position: relative; }
+#view-root[data-view="feed"] .feed-hint { position: absolute; left: 0; right: 0; bottom: var(--space-3); z-index: var(--z-chip); display: flex; flex-direction: column; align-items: center; gap: var(--space-1); pointer-events: none; font: var(--t-footnote); color: var(--ink-2); animation: feed-hint-in var(--dur-slow) var(--ease-ui) both; }
+#view-root[data-view="feed"] .feed-hint__chevron { width: var(--icon-lg); height: var(--icon-lg); display: block; fill: none; stroke: currentColor; stroke-width: var(--ring-w); stroke-linecap: round; stroke-linejoin: round; animation: feed-hint-bob var(--dur-slow) var(--ease-ui) infinite alternate; }
+@keyframes feed-hint-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes feed-hint-bob { from { transform: translateY(0); } to { transform: translateY(calc(-1 * var(--space-2))); } }
+@media (prefers-reduced-motion: reduce) {
+  #view-root[data-view="feed"] .feed-hint, #view-root[data-view="feed"] .feed-hint__chevron { animation: none; }
+}
 .feed-recap__list { margin: 0 0 var(--space-4); padding: 0 0 0 var(--space-5); font: var(--t-body); color: var(--ink-1); }
 .feed-recap__list li { margin: 0 0 var(--space-2); }
 .feed-recap__hint { font: var(--t-footnote); color: var(--ink-3); margin: 0 0 var(--space-3); }

@@ -191,6 +191,10 @@ function applyAdoptFlavor(currentData, data) {
   if (Object.prototype.hasOwnProperty.call(data, 'progressEndpoint')) {
     currentData.progressEndpoint = (typeof data.progressEndpoint === 'string' && data.progressEndpoint) ? data.progressEndpoint : undefined;
   }
+  // v1.380.0: the progress gate belongs to the surface that DECLARED it (a Feed card); a surface that adopts the same media
+  // without declaring one (the watch page) must not inherit the feed's - it would never save.
+  currentData.progressGate = (typeof data.progressGate === 'function') ? data.progressGate : undefined;
+  currentData.playedSec = (typeof data.playedSec === 'function') ? data.playedSec : undefined;
   for (var f = 0; f < ADOPT_FLAVOR_STRING_FIELDS.length; f++) {
     var key = ADOPT_FLAVOR_STRING_FIELDS[f];
     if (Object.prototype.hasOwnProperty.call(data, key)) {
@@ -6253,6 +6257,10 @@ if (typeof module !== 'undefined' && module.exports) {
       timestamp: time,
       duration: (mediaPlayer && isFinite(mediaPlayer.duration) ? mediaPlayer.duration : 0) || (currentData && currentData.duration) || 0,
     };
+    // The same surface reports the seconds actually played (the server's feed route checks them again for a fresh card).
+    if (currentData && typeof currentData.playedSec === 'function') {
+      try { var played = Number(currentData.playedSec()); if (isFinite(played) && played >= 0) body.playedSec = Math.round(played * 10) / 10; } catch (_) { /* no report */ }
+    }
     // v1.78 device handoff: the presence piggyback. THIS is the one write site
     // for all three player-carried kinds (video, podcast episode, music track
     // -- they differ only by `progressEndpoint` below), so attaching here
@@ -6281,6 +6289,14 @@ if (typeof module !== 'undefined' && module.exports) {
       // "Listening"/"Watching". Derived from the loaded item's resumeMode; this
       // is the ONE ping writer, so every kind is covered exactly once.
       body.presenceSurface = presenceSurfaceForResumeMode(currentData && currentData.resumeMode);
+    }
+    // v1.380.0 (Feed polish, R5 / D7): a surface may hold ALL of this item's progress writes behind a gate (the Feed does for a card
+    // the viewer had not started: nothing is saved until a minute of actual playback). THIS is the one progress POSTer, so
+    // the gate sits where every write passes - the periodic ping, the pause / background checkpoint, a seek, the end.
+    if (currentData && typeof currentData.progressGate === 'function') {
+      var gateOpen = false;
+      try { gateOpen = currentData.progressGate() === true; } catch (_) { gateOpen = false; }
+      if (!gateOpen) return;
     }
     var fetchOpts = {
       method: 'POST',

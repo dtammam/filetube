@@ -439,7 +439,7 @@ function R3_SCENES(FX) {
 // [id digit, scene name, #collapse-key, scrolled half-way (phone only)] - the Settings sections sweep S8
 // migrated; a scene per section so each one's before/after pair is reviewable on its own.
 const SETTINGS_SECTIONS = [
-  ['0', 'appearance', 'appearance'], ['0b', 'mobile-player', 'mobile-player'], ['1', 'critters', 'critters'], ['2', 'videos', 'videos'],
+  ['0', 'appearance', 'appearance'], ['0b', 'mobile-player', 'mobile-player'], ['0c', 'bottom-bar', 'bottom-bar'], ['1', 'critters', 'critters'], ['2', 'videos', 'videos'],
   ['3', 'scan-cache', 'scan-cache'], ['4', 'home-page', 'home-page'], ['4b', 'playback', 'playback'], ['4c', 'notifications', 'notifications'],
   ['5', 'downloads', 'downloads'], ['6', 'trash', 'trash'], ['7', 'users', 'users'],
   ['8', 'backup', 'backup-restore'], ['9', 'experimental', 'experimental'],
