@@ -12773,6 +12773,12 @@ html[data-era-flourish="on"] .ft-unfabricated {
    scroll-snap, one card active at a time). Desktop shows the same stack as a centred phone-width
    column. Scoped to #view-root[data-view="feed"] (the SPA swaps only #view-root). Tokens only. */
 #view-root[data-view="feed"] { display: flex; flex-direction: column; min-height: 0; }
+/* v1.381.0 (W1, D1 + D2): the Feed is full screen, so the other-device card and the download chip stay out of it. Both live on
+   <body> (outside #view-root); the router stamps body[data-view] on every view change (common.js applyZoomPolicy), so leaving
+   the Feed brings them back as they were, and a presence poll or a download update cannot re-show them here. Downloads go on.
+   `html:root` lifts the rule (1,2,2) strictly above every display rule on either id (the strongest is the phone dock's
+   `html.is-phone.has-player-dock #handoff-card` grid, 1,2,1), so file order never decides it (no !important: ui-lint). */
+html:root body[data-view="feed"] #handoff-card, html:root body[data-view="feed"] #dl-status-chip { display: none; }
 #view-root[data-view="feed"] .feed-picker { max-width: 60vh; margin: 0 auto; padding: var(--space-6) var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
 #view-root[data-view="feed"] .feed-picker h2 { font: var(--t-headline); color: var(--ink-1); margin: 0; }
 #view-root[data-view="feed"] .feed-picker-blurb { font: var(--t-body); color: var(--ink-2); margin: 0; }
