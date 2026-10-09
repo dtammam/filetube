@@ -3,11 +3,11 @@ plan: feed-tiktok
 harness: v2 · full
 branch: feat/v1.381.0-feed-tiktok
 anchor: outcome
-status: Gate r2 @d9d58a57: adversary CHANGES (tests only), qa + security-brief APPROVED; Dean ruled round 3 (2026-10-09); r3 fixes 7340c48d, suites green
-next: r3 delta re-confirmation with the same three seats
+status: Gate APPROVED r3 @d4c4d293 by adversary, qa and security-brief; release commit next
+next: the release suites at the release sha, the plan close-out, the protected-main PR, Dean's merge
 design: Dean's device feedback on v1.380.0 Feed (2026-10-09, eight points + swipe left/right); kickoff defaults D1-D11. Base main 42ec865c (v1.380.0).
 builder: smart (the shared player's gestures in a new full-bleed host, a layout rework of every card, and a deliberate progress RESET: a data-loss surface)
-gate: r2 adversary CHANGES (tests only), qa + security-brief APPROVED (FULL)
+gate: APPROVED r3 @d4c4d293 (FULL: adversary, qa, security-brief)
 ---
 
 # v1.381.0: Feed, TikTok style - full-screen cards, no scroll traps, tap / hold on video, Start over
@@ -192,8 +192,16 @@ protected-main PR flow, shipped = the tag's "Publish Docker Image" run green, br
 - Disclosed for the gate: the Start over record rides `moves`, which keeps the newest FEED_SESSION_MOVES_CAP (300) entries a session;
   a book page write or a coalesced ping chain is about one move a minute, so eviction inside one session is unlikely but not
   impossible (an evicted record = an Undo that 404s, the reset itself already done).
-- Gate rounds:
-- Device checks owed:
+- Gate rounds: r1 @bba614be - adversary CHANGES (W1 Undo dead after leaving the Feed, W2 a 0 s staged save overwrote a 200 Undo, W3
+  unbound guards, W4 the confirm names the card's place), qa CHANGES (the same W1 / W2-overwrite, a rebuilt book card moving the place
+  past unread text, unbound paths, wrong art numbers), security-brief APPROVED (N1 an unchecked backup record, N2 an untested hidden
+  podcast). r2 @d9d58a57 - adversary CHANGES (tests only: 5 stillAsReset arms and 2 late-reply guards unbound), qa APPROVED,
+  security-brief APPROVED. Round 3 by Dean's ruling (AskUserQuestion, 2026-10-09: "Do round 3 (Recommended)"). r3 @d4c4d293 - all
+  three APPROVED (verdict lines in section 10). Mutants killed: W2 12, W3 11, W4 17, r1 fix 15, r2 fix 12, r3 test 4.
+- Device checks owed: docs/DEVICE-CHECKS.md "Feed, TikTok style (v1.381.0)" - 11 lines (each card kind full screen at the phone's
+  width; no inner scroll, page swipes, card swipes from the video; the back-swipe edge; tap / hold and no magnifier; Fit / Fill;
+  sideways turn; no banner / chip in the Feed and both back after; Start over + Undo on a video incl. Undo after leaving the Feed;
+  Start over on a podcast and a book; peeks say New; the optional read-only server report).
 
 ## 8. Out of scope
 Start over outside the Feed (watch page, reader, podcasts page: ROADMAP Planned if Dean wants it everywhere); a scrubbable
@@ -528,3 +536,89 @@ CRITICAL: none. WARNING: none.
 - Suites at 7340c48d (`npm test`, the worktree, sequential): Node 22.23.1 `# tests 12033 # pass 12020 # fail 0 # cancelled 0 # skipped
   13` (exit 0); Node 24.20.0 `tests 12033 pass 12020 fail 0 cancelled 0 skipped 13` (exit 0).
 
+Gate: APPROVED r3 @d4c4d293 - adversary
+
+### adversary r3 @d4c4d293
+
+(worktree unchanged; mutants in a /tmp git-archive d4c4d293 sandbox with a pristine copy, clean diff before deletion)
+
+Instruments: feed unit + feed integration + mobile-player-height + route-write-classification + rbac-census - Node 22.23.1 `# tests 271
+# pass 271 # fail 0 # cancelled 0 # skipped 0`; Node 24.20.0 `tests 271 pass 271 fail 0 cancelled 0 skipped 0`. The full-suite counts at
+7340c48d are the builder's.
+
+r2 W5 FIXED: N3 (re-spelled to has()), N4, N5, N7, N8 KILLED (feed-start-over 22, feed unit 193); N10 KILLED by the adopted ADV-r2-4;
+N11 KILLED by the Undo-reply-after-leaving test. r2 suggestions: the NULL-time latch fixed for media (R2, R5, R10 killed); a negative
+stored time fixed (R8 killed).
+
+Round 3's own change holds: 'unrestorable' (R1 killed) never blocks a place the server's own writers store - ADV-r3-1 drives each
+through the real routes, then Start over 200 and Undo exact: a staged /api/progress ping at 123.456 s, a flushed ping across the
+watched latch, POST /api/watched, a podcast from /api/podcasts/progress without duration (`{"position":77.5,"duration":0,...}`), a
+reader book place with the reader's 2000-character cfi, staged and flushed. The refusal records and resets nothing. Old records pass
+(flag(undefined)); their restore keys on a truthy watchedAt, so a NULL-time latch in such a record would not come back - only possible
+from the unreleased r1 / r2 builds. Undo never writes what a refused Start over would not have recorded (one validRecordedPlace).
+
+SUGGESTION
+- The NULL-time latch is bound for media only: R3 / R4 (played / finished read as a truthy time) and R6 / R7 (the restore ignoring the
+  played / finished flag) survive 22/22 - correct code; NULL rows come only from a backup entry without a time (store.js:2086, :2131).
+- R9 (flag() always true) survives 22/22: only a crafted record could use it.
+- The 4096-byte cap can refuse a real reader place: a cfi of 2500 three-byte characters (the reader keeps 2000, ~6000 bytes) makes
+  Start over answer 409 'unrestorable' (the place kept; the ping was 200). Real cfis are a few hundred ASCII characters. Fix: bound by
+  the reader's own limits (~2000 cfi characters, up to ~4 bytes each).
+- N12 (r2) applies again if Start over / Undo ever go back on the view's signal.
+
+Gate: APPROVED r3 @d4c4d293 - qa
+
+### qa r3 @d4c4d293
+
+(delta `git diff d9d58a57..d4c4d293`, code 7340c48d; runs and mutants in /tmp/qa3-sbx, a git archive d4c4d293; the shared worktree clean)
+
+Instruments (Node 22.23.1): targeted `# tests 151 # pass 151 # fail 0 # cancelled 0 # skipped 0`; every feed / hold / loupe / rotate /
+faux / toast / handoff / backup / restore file `# tests 506 # pass 506 # fail 0`; ui-lint `OK - the live debt equals
+docs/ui-exceptions.json`; overlay-containment `clean (0 violations)`; eslint exit 0.
+
+r2 S2 BOUND: M1 (drop the touchmove preventDefault while 2x is held) now KILLED by feed-tiktok.test.js:750 (not cancelled before the
+hold, cancelled while held, not cancelled after the lift).
+
+Mutants on round 3: KILLED U1 (no 'unrestorable'), U2 (video latch by its time), U3 (video restore skips a NULL-time latch), U5
+(restorable only >= 0), U10 (no 'unrestorable' toast). SURVIVED, harmless: U4 (nothingToForget keys on watchedAt: a NULL-time-only latch
+is refused as 'nothing', nothing deleted), U11 (flag() accepts anything: a tampered backup record only).
+
+WARNING (safe to ship once disclosed): the podcast and book halves of "a latch is its row's presence" are unbound - U6 (podcast restore
+skips a NULL-time played row), U7 (book restore skips a NULL-time finished row), U8 / U9 (played / finished flags read from the time)
+pass the tree's tests; reachable via a backup restore's NULL played_at / finished_at (store.js:2131, :2086). The code at this sha is
+correct: my sandbox test qa-null-latch.test.js prints `previous {"progress":null,"played":true,"playedAt":null}
+{"finished":true,"finishedAt":null}` / `after reset false false` / `undo 200 200` / `after undo true null true null` and kills U6, U7,
+U9 (U8 needs a position above 0 plus a NULL played row). Prescription: add that test (podcast and book, the episode with a position
+above 0) in the release commit and note it in the ledger.
+
+'unrestorable' blocks no legitimate Start over: media / episode updatedAt are always a string or null (store.js:730, :2030, :2282),
+times go through num(), the reader's book route and the feed's book write always store a locator (cfi capped at 2000 chars, inside 4 KB);
+it refuses only a pre-locator book position or a non-date string a backup brought in, deleting and recording nothing (the toast says so;
+the integration test checks the place kept exactly). Probe: Date.parse("1696000000000") is not finite - no current writer stores one.
+Comments accurate; restore*Place still accept flag-less records; no test weakened. Security: no new surface.
+CRITICAL: none. SUGGESTION: none beyond the warning.
+
+Gate: APPROVED r3 @d4c4d293 - security-brief
+
+### security-brief r3 @d4c4d293
+
+(read-only, no Bash: read lib/feed/routes.js 196-285 and store.js restore*Place 1033-1059; edited nothing)
+
+CRITICAL: none. WARNING: none.
+- 'unrestorable' is no oracle (traced): 400 bad input -> 404 not the caller's session -> one neutral 404 missing / hidden -> 409
+  'nothing' -> 409 'unrestorable' (routes.js:263); the last two only after visibility, reading only the caller's own place
+  (placeOf(req.user.id, ...)); refused before anything is recorded or reset, so a misfire refuses the user's own Start over and loses
+  nothing. Bound at feed-start-over.test.js:456.
+- The flags cannot plant a latch beyond what the user can set (traced): they come from the server's own snapshot (placeOf's
+  has(map, id)) or a backup record that also passes validRecordedPlace (flag(): boolean or absent); clients still cannot write
+  `moves`; Undo writes only under stillAsReset, to the caller's own row of a visible item - all within POST /api/watched/:id and the
+  played / finished routes' reach. Restores store a time only as a string, else NULL (media's watchedAt already passed stamp()).
+- INFO: fin() now accepts any finite number (exact is exact; own rows only). R2-1 / R2-2 unchanged (admin backup only).
+- The new client toast is a fixed string through toast() -> ui.toast text. stillAsReset / nothingToForget read row presence with
+  the same per-user lookups; nothing crosses users.
+
+### builder, after r3: QA's r3 WARNING prescription applied in the release commit (tests only, no production code)
+
+test/integration/feed-start-over.test.js "r3 (qa r3 WARNING, adopted)": a NULL-time played / finished latch (podcast, book), with and
+without an episode position, is recorded, forgotten and put back by Undo with its NULL time. Mutants U6, U7, U8, U9 KILLED on the
+release tree (a /tmp git-archive sandbox). The production code is the approved d4c4d293's.

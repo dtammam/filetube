@@ -472,3 +472,28 @@ test('r2 (builder): a stored place Undo could not put back exactly is never forg
   assert.strictEqual(userStore.getOneProgress(uid, 'v2').timestamp, -5);
   userStore.removeHistory(uid, 'v2');
 });
+
+test('r3 (qa r3 WARNING, adopted): a NULL-time played / finished latch (podcast, book) is recorded, forgotten and put back by Undo - with and without a position', async () => {
+  const has = (m, k) => Object.prototype.hasOwnProperty.call(m, k);
+  for (const position of [null, 300]) {
+    userStore.resetPodcastPlace(uid, epId); userStore.resetBookPlace(uid, bookId);
+    if (position) userStore.setPodcastProgress(uid, epId, { position, duration: 1800, updatedAt: T1 });
+    userStore.setPodcastPlayed(uid, epId, null); // a backup entry without a time
+    userStore.setBookProgress(uid, bookId, { locator: { kind: 'epub', cfi: 'epubcfi(/6/4!/4/2/1:0)', spineIndex: 1, blockIndex: 3 }, percent: 41, updatedAt: T1 });
+    userStore.setBookFinished(uid, bookId, null);
+    const sid = await session();
+    const p = await (await startOver(sid, 'podcast', epId)).json();
+    const b = await (await startOver(sid, 'book', bookId)).json();
+    assert.strictEqual(p.previous.played, true, 'position ' + position);
+    assert.strictEqual(p.previous.playedAt, null);
+    assert.strictEqual(b.previous.finished, true);
+    assert.strictEqual(b.previous.finishedAt, null);
+    assert.ok(!has(userStore.getPodcastPlayed(uid), epId) && !has(userStore.getBookFinished(uid), bookId), 'forgotten');
+    assert.strictEqual((await undo(sid, p.token)).status, 200);
+    assert.strictEqual((await undo(sid, b.token)).status, 200);
+    assert.ok(has(userStore.getPodcastPlayed(uid), epId) && userStore.getPodcastPlayed(uid)[epId] === null, 'the played latch back, its NULL time');
+    assert.ok(has(userStore.getBookFinished(uid), bookId) && userStore.getBookFinished(uid)[bookId] === null, 'the finished latch back, its NULL time');
+    if (position) assert.strictEqual(userStore.getOnePodcastProgress(uid, epId).position, 300);
+  }
+  userStore.resetPodcastPlace(uid, epId); userStore.resetBookPlace(uid, bookId);
+});

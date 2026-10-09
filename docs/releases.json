@@ -3634,5 +3634,11 @@
     "date": "2026-10-09",
     "title": "Feed polish: start something new, Continue or New, and a Settings that keeps its back arrow",
     "intent": "A book you have not started now gets its own card in Feed, \"Start something new\": the cover, the author, what the book is about, and a taste of its first real chapter if you ask for it. Looking at it never starts the book; only Start reading does. Videos and podcasts now say whether you are continuing or looking at something new (\"New from ...\", \"New episode of ...\"), a new one only counts as started after about a minute of playing, a short intro at the start of a new video is skipped, and the feed mixes in about one new item for every two you were already in the middle of. A small Swipe up hint shows on the first card for your first few sessions. In Settings, the back arrow and the page title now stay at the top while you scroll a page, and the Bottom bar has its own page under Personalize."
+  },
+  {
+    "version": "1.381.0",
+    "date": "2026-10-09",
+    "title": "Feed, TikTok style: full-screen cards, book pages you swipe, tap and hold on video, and Start over",
+    "intent": "Every Feed card now fills the screen: a video fills the card (tap Fit to see the whole picture), a podcast or song shows its art over a blurred backdrop, and the title and buttons sit at the bottom, clear of the timer. Nothing inside a card scrolls any more: a book shows one page at a time and you swipe left for the next page and right to go back, while swiping up or down still moves between cards from anywhere, even the playing video. On a video, tap to pause or play and press and hold for 2x; turning the phone sideways no longer jumps to full screen. The other-device card and the download pill stay out of the Feed. Anything you only peeked at for under a minute now shows as New rather than Continue, and a new Start over on each card forgets your place in that one item, with a 10-second Undo that puts it back exactly."
   }
 ]
