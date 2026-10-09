@@ -217,6 +217,23 @@ test('D5 book: the write lands only after a serve; it refuses stale, backward an
   assert.deepStrictEqual(effectiveBookProgress(uid, epubId), moved);
 });
 
+test('v1.381.0 (D7): a continuation read (more pages of the card on screen) never re-stamps the serve - a write after another device moved is still stale', async () => {
+  await readerPing({ kind: 'epub', cfi: 'epubcfi(/6/2!/4/4/1:0)', spineIndex: 0, blockIndex: 1 }, 10);
+  await excerpt('?words=10'); // the card is served from (0,1)
+  await readerPing({ kind: 'epub', cfi: 'epubcfi(/6/2!/4/6/1:0)', spineIndex: 0, blockIndex: 2 }, 20); // another device reads on to (0,2)
+  const moved = effectiveBookProgress(uid, epubId);
+  const more = await excerpt('?spine=0&block=2&words=10&continuation=1'); // the feed fetches the card's next pages
+  assert.ok(more.blocks.length > 0, 'the continuation carries text');
+  const r = await postJson(`/api/feed/progress/book/${epubId}`, { spineIndex: 0, blockIndex: 3 }); // forward of BOTH places
+  assert.strictEqual(r.status, 409);
+  assert.strictEqual((await r.json()).reason, 'stale', 'judged against the card\'s serve, not the continuation');
+  assert.deepStrictEqual(effectiveBookProgress(uid, epubId), moved, 'the other device\'s place stands');
+  // and a continuation of nothing served marks nothing
+  feedServed.forget(uid, 'book', epubId);
+  await excerpt('?spine=0&block=2&words=10&continuation=1');
+  assert.strictEqual(feedServed.status(uid, 'book', epubId, moved.updatedAt), 'unknown');
+});
+
 test('D5 book (gate r1, adversary W1): the end of a book latches finished only from a served, unmoved card; stale and not-served are refused', async () => {
   await readerPing({ kind: 'epub', cfi: 'epubcfi(/6/2!/4/4/1:0)', spineIndex: 0, blockIndex: 1 }, 10);
   feedServed.forget(uid, 'book', epubId);

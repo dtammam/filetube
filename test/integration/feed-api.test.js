@@ -140,7 +140,7 @@ before(async () => {
   userStore.addBookLiked(uid, bookIds.Delta, now);
   for (let i = 0; i < N_SONGS; i++) userStore.addMusicLiked(uid, `trk${i}`, now);
   userStore.setProgress(uid, 'va0', { timestamp: 400, duration: 1200, updatedAt: now }); // inside chapter "Middle" (300-900)
-  userStore.setProgress(uid, 'va1', { timestamp: 50, duration: 1200, updatedAt: now }); // no chapters: a 3-minute segment
+  userStore.setProgress(uid, 'va1', { timestamp: 90, duration: 1200, updatedAt: now }); // no chapters: a 3-minute segment (v1.381.0 D10: past the started minute, so it continues)
   userStore.setPodcastProgress(uid, epIds.a[0], { position: 600, duration: 1800, updatedAt: now });
   userStore.addWatchLater(uid, 'va5', now);
   userStore.addWatchLater(uid, userStore.watchLaterKey('podcast', epIds.a[3]), now);
@@ -473,7 +473,7 @@ test('D7 video slices: the saved place\'s chapter (to the next chapter start) or
   const va1 = cards.find((c) => c.id === 'va1' && c.kind === 'video');
   assert.ok(va0 && va1, 'both in-progress videos were served (they lead the pool)');
   assert.deepStrictEqual({ startAt: va0.startAt, endAt: va0.endAt, chapter: va0.chapter }, { startAt: 400, endAt: 900, chapter: { index: 1, count: 3, title: 'Middle' } });
-  assert.deepStrictEqual({ startAt: va1.startAt, endAt: va1.endAt, chapter: va1.chapter }, { startAt: 50, endAt: 230, chapter: null });
+  assert.deepStrictEqual({ startAt: va1.startAt, endAt: va1.endAt, chapter: va1.chapter }, { startAt: 90, endAt: 270, chapter: null });
 });
 
 // ---- D3: visibility and weights -------------------------------------------------------------

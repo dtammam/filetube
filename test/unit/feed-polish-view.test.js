@@ -91,7 +91,7 @@ test('feedHintShouldShow: the first three sessions only', () => {
 
 async function start(r) { r.init(); await r.settle(); r.$('#feed-picker-choices button[data-minutes="10"]').click(); await r.settle(); }
 
-test('view: a new-book card shows cover, title, author and the description as TEXT; the taste is hidden until asked; Open in reader is not offered', async () => {
+test('view: a new-book card shows cover, title, author and the description as TEXT; the taste is a page only when asked; Open in reader is not offered', async () => {
   const r = feedRealm({ batches: [{ cards: [NEW_BOOK, POD, VID], exhausted: false }] });
   try {
     await start(r);
@@ -103,19 +103,24 @@ test('view: a new-book card shows cover, title, author and the description as TE
     const desc = node.querySelector('.feed-card__desc');
     assert.strictEqual(desc.textContent, 'A <b>lighthouse</b> & a secret.<img src=x onerror=alert(1)>', 'the description is characters, not markup');
     assert.strictEqual(node.querySelectorAll('b, img[onerror], i').length, 0, 'no element came out of the text');
-    const taste = node.querySelector('.feed-card__taste');
-    assert.ok(taste && taste.hidden, 'the taste starts hidden');
-    assert.strictEqual(taste.querySelectorAll('i').length, 0);
-    assert.strictEqual(taste.querySelector('h3').textContent, 'Chapter <i>One</i>');
-    const labels = Array.from(node.querySelectorAll('.ui-btn__label')).map((l) => l.textContent);
-    assert.deepStrictEqual(labels, ['Start reading', 'Read the opening']);
+    // v1.381.0 (D6): the stage shows the cover and the description as a fitted page; the taste is not on screen until asked,
+    // then it IS the page (pages, never a scroller), and "Hide the opening" turns the page back
+    const page = node.querySelector('.feed-card__page');
+    assert.ok(page && page.contains(desc) && page.querySelector('.feed-card__cover'), 'cover and description are the page');
+    assert.strictEqual(page.querySelector('h3'), null, 'the taste starts hidden');
+    const label = (b) => (b.querySelector('.ui-btn__stack') || b.querySelector('.ui-btn__label')).getAttribute('data-label') || b.querySelector('.ui-btn__label').textContent;
+    assert.deepStrictEqual(Array.from(node.querySelectorAll('.feed-card__actions .ui-btn')).map(label), ['Start reading', 'Read the opening']);
     // the opening expands and collapses
     const peek = node.querySelector('[data-read-opening]');
     peek.click();
-    assert.strictEqual(taste.hidden, false);
+    assert.strictEqual(page.querySelector('h3').textContent, 'Chapter <i>One</i>');
+    assert.strictEqual(page.querySelectorAll('i').length, 0);
+    assert.strictEqual(page.querySelector('.feed-card__desc'), null);
     assert.strictEqual(peek.getAttribute('aria-expanded'), 'true');
+    assert.strictEqual(label(peek), 'Hide the opening');
     peek.click();
-    assert.strictEqual(taste.hidden, true);
+    assert.strictEqual(page.querySelector('h3'), null);
+    assert.ok(page.querySelector('.feed-card__desc'));
   } finally { r.close(); }
 });
 

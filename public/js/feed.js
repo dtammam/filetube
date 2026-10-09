@@ -30,6 +30,7 @@ var FEED_BATCH = 5;
 var FEED_PREFETCH_AHEAD = 2; // fetch the next batch when the active card is this close to the end
 var FEED_KEEP_BEHIND = 3; // cards further behind the active one than this drop their heavy content
 var FEED_ACTIVE_RATIO = 0.6;
+var FEED_FIT_KEY = 'ft-feed-fit'; // v1.381.0 (D4): 'fill' (default) or 'fit', per device
 
 function feedNormalizeMinutes(raw) {
   var n = parseInt(raw, 10);
@@ -54,6 +55,44 @@ function feedClock(sec) {
   var m = Math.floor(s / 60);
   var r = s % 60;
   return m + ':' + (r < 10 ? '0' : '') + r;
+}
+
+// v1.381.0 (D9): h:mm:ss once an hour is passed ("1:23:10 of 2:04:00"), else m:ss.
+function feedClockLong(sec) {
+  var s = Math.max(0, Math.round(Number(sec) || 0));
+  if (s < 3600) return feedClock(s);
+  var h = Math.floor(s / 3600);
+  var m = Math.floor((s % 3600) / 60);
+  var r = s % 60;
+  return h + ':' + (m < 10 ? '0' : '') + m + ':' + (r < 10 ? '0' : '') + r;
+}
+
+// v1.381.0 (D9): which item a card's Start over resets on the server ('media' | 'podcast' | 'book'), or '' for a card
+// that has none (a song: no place to keep; a new book: nothing to forget; the notice).
+function feedStartOverKind(card) {
+  if (!card || card.kind === 'song' || card.kind === 'notice') return '';
+  if (card.kind === 'book') return card.newBook ? '' : 'book';
+  if (card.media === 'podcast') return 'podcast';
+  return card.kind === 'video' || card.kind === 'watchlater' ? 'media' : '';
+}
+
+// The confirm's sentence: what is forgotten, named (D9a).
+function feedStartOverText(card) {
+  if (!card) return '';
+  if (card.kind === 'book') return 'Your place in ' + (card.title || 'this book') + (card.chapterLabel ? ' (' + card.chapterLabel + ')' : '') + ' will be forgotten. It opens at the beginning next time.';
+  var pos = card.media === 'podcast' ? Number(card.position) || 0 : Number(card.progress) || 0;
+  var dur = card.media === 'podcast' ? Number(card.durationSec) || 0 : Number(card.duration) || 0;
+  var place = pos > 0 ? 'Your place, ' + feedClockLong(pos) + (dur > 0 ? ' of ' + feedClockLong(dur) : '') + ', will be forgotten' : 'It will count as not started';
+  return place + (card.kind === 'watchlater' ? '. It stays in Watch later.' : '.');
+}
+
+// The Start over toast names the place the SERVER forgot (its `previous`, read from storage), not the card's: another
+// device may have moved it after the card was served (gate r1, adversary W4 - the confirm can only show what the card knows).
+function feedStartedOverText(card, previous) {
+  var title = (card && card.title) || 'this item';
+  var p = previous && previous.progress;
+  var sec = p ? Number(p.timestamp !== undefined ? p.timestamp : p.position) : 0;
+  return 'Started over: ' + title + (sec > 0 ? ' (it was at ' + feedClockLong(sec) + ')' : '');
 }
 
 // The kind label a card shows (its plain word; Watch later keeps its own name).
@@ -117,6 +156,8 @@ function feedFreshStarted(state, needSec) { return !!state && state.sec >= (type
 var FEED_HINT_KEY = 'ft-feed-hint-sessions';
 var FEED_HINT_SESSIONS = 3;
 var FEED_HINT_MS = 4000;
+var FEED_UNDO_MS = 10000; // v1.381.0 (D9b): the Start over toast's Undo lasts 10 s (the session's record keeps it after)
+var FEED_PAGE_HINT_KEY = 'ft-feed-page-hint-sessions'; // v1.381.0 (D11): "Swipe left for the next page", first 3 sessions
 var FEED_INTRO_NOTE_MS = 3000;
 function feedHintShouldShow(count) {
   var n = parseInt(count, 10);
@@ -221,6 +262,107 @@ function feedPlayerDescriptor(card) {
 // A book card counts as read when it was active for at least its dwellSec in total.
 function feedBookRead(activeMs, dwellSec) {
   return (Number(activeMs) || 0) >= (Math.max(5, Number(dwellSec) || 0)) * 1000;
+}
+
+// ---- v1.381.0 (D6): book pages - one screen of text at a time, never a scroller inside a card ----------------------
+
+// The words of a text (whitespace-separated runs), the server's count (lib/books/excerpt.js countWords).
+function feedWordCount(text) {
+  var t = String(text || '').trim();
+  return t ? t.split(/\s+/).length : 0;
+}
+
+// Lay a card's blocks into pages. `fits(blocks)` answers whether these blocks fit the page box (the view measures the real
+// box; tests pass a word budget). A block too long for an EMPTY page is split at a word boundary (the longest head that
+// fits, found by bisection); every part keeps the block's place (spineIndex, blockIndex) and the parts after the first are
+// marked `cont` (no chapter label, no heading). It always progresses: a one-word head is placed even when it does not fit.
+var FEED_MAX_PAGES = 400;
+var FEED_SPLIT_MIN_WORDS = 8;
+// The most words of block b (its text split into `words`) whose head still fits (bisection; 0 when not even one word does).
+function feedLongestHead(b, words, fitsHead) {
+  var lo = 1;
+  var hi = words.length - 1;
+  var best = 0;
+  while (lo <= hi) {
+    var mid = (lo + hi) >> 1;
+    if (fitsHead(Object.assign({}, b, { text: words.slice(0, mid).join(' ') }))) { best = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  return best;
+}
+function feedPaginate(blocks, fits) {
+  var pages = [];
+  var cur = [];
+  var queue = (blocks || []).slice();
+  while (queue.length && pages.length < FEED_MAX_PAGES) {
+    var b = queue.shift();
+    if (fits(cur.concat([b]))) { cur.push(b); continue; }
+    var words = String(b.text || '').trim().split(/\s+/);
+    if (cur.length) {
+      // the page has room left: a paragraph (never a heading, a cover or a description) continues onto the next page when at
+      // least FEED_SPLIT_MIN_WORDS of it fit here, so a page is not left half empty by one long paragraph
+      var head0 = !b.heading && !b.cover && !b.desc && words.length > FEED_SPLIT_MIN_WORDS * 2 ? feedLongestHead(b, words, function (h) { return fits(cur.concat([h])); }) : 0;
+      if (head0 >= FEED_SPLIT_MIN_WORDS) {
+        cur.push(Object.assign({}, b, { text: words.slice(0, head0).join(' ') }));
+        queue.unshift(Object.assign({}, b, { text: words.slice(head0).join(' '), cont: true, chapterStart: false, heading: false }));
+      } else queue.unshift(b);
+      pages.push(cur); cur = [];
+      continue;
+    }
+    if (words.length < 2) { pages.push([b]); continue; }
+    var best = Math.max(1, feedLongestHead(b, words, function (h) { return fits([h]); }));
+    pages.push([Object.assign({}, b, { text: words.slice(0, best).join(' ') })]);
+    queue.unshift(Object.assign({}, b, { text: words.slice(best).join(' '), cont: true, chapterStart: false, heading: false }));
+  }
+  if (cur.length) pages.push(cur);
+  return pages;
+}
+
+// Where a book card may move the place: the start of the first page NOT read, counting pages read IN ORDER from the first
+// (a page read after an unread one never moves the place past it - the v1.379.0 "shown is not read" lesson). Every page read:
+// the card's end (`end`: its next, or { atEnd: true }, or null when nothing readable followed). Null when no page was read,
+// or when the target is still the card's own start (a block split over pages 1 and 2, only page 1 read: nothing moves).
+function feedBookTarget(pages, read, end) {
+  var list = pages || [];
+  var k = 0;
+  while (k < list.length && read && read[k]) k += 1;
+  if (k === 0) return null;
+  if (k >= list.length) return end || null;
+  var first = list[k][0];
+  if (first && first.spineIndex < 0) return end || null; // only "The end." is left unread: every real page was read
+  var start = list[0][0];
+  if (!first || (start && first.spineIndex === start.spineIndex && first.blockIndex === start.blockIndex)) return null;
+  return { spineIndex: first.spineIndex, blockIndex: first.blockIndex };
+}
+
+// v1.381.0 (D7): a horizontal swipe on a book card turns its page: left = 'next', right = 'prev'. Never a swipe that STARTS
+// within FEED_EDGE_PX of either screen edge (those belong to the system's back / forward gesture), never a short one, never a
+// mostly vertical one (that moves the stack, card to card). o = { startX, dx, dy, width }.
+var FEED_EDGE_PX = 24;
+var FEED_SWIPE_MIN_PX = 40;
+function feedPageSwipe(o) {
+  var c = o || {};
+  var x = Number(c.startX), dx = Number(c.dx), dy = Number(c.dy), w = Number(c.width);
+  if (!isFinite(x) || !isFinite(dx) || !isFinite(w) || w <= 0) return null;
+  if (x < FEED_EDGE_PX || x > w - FEED_EDGE_PX) return null;
+  if (Math.abs(dx) < FEED_SWIPE_MIN_PX || Math.abs(dx) < 1.5 * Math.abs(isFinite(dy) ? dy : 0)) return null;
+  return dx < 0 ? 'next' : 'prev';
+}
+
+// The further of two book targets ({spineIndex, blockIndex}, or { atEnd: true }, the furthest of all); null-safe.
+function feedFurther(a, b) {
+  if (!a) return b || null;
+  if (!b) return a;
+  if (a.atEnd) return a;
+  if (b.atEnd) return b;
+  if (b.spineIndex !== a.spineIndex) return b.spineIndex > a.spineIndex ? b : a;
+  return b.blockIndex > a.blockIndex ? b : a;
+}
+
+// One page's dwell: the shipped rule (300 words a minute x 0.6, at least 5 s; lib/books/excerpt.js bookDwellSeconds) on the
+// words actually on that page.
+function feedPageDwellSec(page) {
+  var w = (page || []).reduce(function (n, b) { return n + feedWordCount(b && b.text); }, 0);
+  return w > 0 ? Math.max(5, Math.ceil((w / 300) * 60 * 0.6)) : 5;
 }
 
 // ---- the session clock, the wind-down, the recap (plan D10-D12) ----------------------
@@ -380,6 +522,9 @@ if (typeof module !== 'undefined' && module.exports) {
     FEED_HINT_KEY, FEED_HINT_SESSIONS, FEED_HINT_MS, FEED_INTRO_NOTE_MS, feedHintShouldShow,
     feedDeadlineMs, feedRingFraction, feedRemainingSec, feedEmptySummary, feedCountActivity, feedRecapLines, feedRecapTitle,
     feedHoldStep, feedSummaryPayload,
+    feedClockLong, feedStartOverKind, feedStartOverText, feedStartedOverText, FEED_UNDO_MS,
+    feedWordCount, feedPaginate, feedLongestHead, FEED_SPLIT_MIN_WORDS, feedBookTarget, feedPageDwellSec, FEED_MAX_PAGES, feedFurther, FEED_FIT_KEY,
+    FEED_EDGE_PX, FEED_SWIPE_MIN_PX, feedPageSwipe, FEED_PAGE_HINT_KEY,
   };
 }
 
@@ -395,6 +540,9 @@ if (typeof module !== 'undefined' && module.exports) {
   function writeSession(s) { try { if (s) window.sessionStorage.setItem(FEED_SESSION_KEY, JSON.stringify(s)); else window.sessionStorage.removeItem(FEED_SESSION_KEY); } catch (_) { /* storage disabled */ } }
   function player() { return window.FileTube && window.FileTube.player; }
   function U() { return window.ui || null; }
+  // v1.381.0: ui.toast's signature is toast(message, opts). Until this release every Feed toast passed ONE object
+  // ({ text, doc }), so on a device it read "[object Object]" (the test harness's object-taking stub hid it). One helper.
+  function toast(text, opts) { var u = U(); return u ? u.toast(String(text), Object.assign({ doc: document }, opts || {})) : null; }
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -426,9 +574,8 @@ if (typeof module !== 'undefined' && module.exports) {
     var observer = null;
     var mediaEl = null; // the live media element while a media card plays
     var mediaCardIndex = -1;
-    var bookActiveSince = 0; // ms clock when the active book card became active
-    var bookActiveMs = {}; // card index -> accumulated active ms
-    var bookWritten = {}; // card index -> true once the bookmark moved (or was refused)
+    var bookPages = {}; // v1.381.0 (D6): card index -> { blocks, pages, page, read, pageMs, since, end, measured, carry, written }
+    var fitMode = readPref(FEED_FIT_KEY, 'fill') === 'fit' ? 'fit' : 'fill'; // v1.381.0 (D4)
     var startingRead = {}; // card index -> true once "Start reading" was tapped (a double tap is one write)
     // the session clock (D10-D12)
     var summary = feedEmptySummary();
@@ -441,6 +588,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var hardStopMs = NaN; // wind-down: a playing slice stops here at the latest
     var recapCtrl = null;
     var hintPending = false; // v1.380.0 (R3, D3): set when a session STARTS (not on a resume): the first card shows the swipe cue
+    var pageHintPending = false; // v1.381.0 (D11): the first paged book card of a started session shows the page cue
     var hintTimer = null;
     var peekTimer = null;
     var ring = null;
@@ -480,12 +628,13 @@ if (typeof module !== 'undefined' && module.exports) {
           session = { id: body.session.id, plannedMin: body.session.plannedMin, startedAt: body.session.startedAt, extensions: 0 };
           extensions = 0;
           hintPending = true;
+          pageHintPending = true;
           writeSession(session);
           showStack();
           startClock();
           fetchBatch();
         })
-        .catch(function () { if (U()) U().toast({ text: 'Could not start the feed', doc: document }); });
+        .catch(function () { toast('Could not start the feed'); });
     }
 
     // D10: a thin ring in the corner fills with the time; no numbers unless tapped.
@@ -622,124 +771,382 @@ if (typeof module !== 'undefined' && module.exports) {
       node.setAttribute('data-index', String(index));
       node.setAttribute('data-id', card.id);
       if (card.width && card.height && card.height > card.width) node.setAttribute('data-portrait', '');
-      fillCard(node, card, index);
+      // in the stack BEFORE it is filled: a book card measures its own page box (D6)
       stack.appendChild(node);
       cardEls.push(node);
+      fillCard(node, card, index);
       if (observer) observer.observe(node);
     }
 
+    // v1.381.0 (D3-D6): ONE layout for every card - full screen, the media as the card's own layer, the words in an overlay at
+    // the bottom. A card is: .feed-card__media (the full-card layer: a video's poster and the player's slot, or a song's /
+    // episode's blurred art backdrop and the slot the audio plays from), .feed-card__hudspace (the strip the ring and Done sit
+    // in, kept free of the card's own content), .feed-card__stage (what sits between that strip and the overlay: a book's
+    // fitted page, a song's or episode's art at a moderate size), .feed-card__overlay (the kind line, the title on two lines
+    // at most, the channel / show / author, the readout and the buttons). Nothing inside a card scrolls (D6).
     function fillCard(node, card, index) {
       node.replaceChildren();
+      node.removeAttribute('data-media');
       if (card.kind === 'notice') {
         node.classList.add('feed-card--notice');
         node.appendChild(el('p', 'feed-notice', 'You’re through everything new. From here the feed starts over.'));
         return;
       }
-      node.appendChild(el('div', 'feed-card__kind', feedKindLine(card)));
-      node.appendChild(el('h3', 'feed-card__title', card.title || (card.track && card.track.title) || ''));
-      var body = el('div', 'feed-card__body');
-      if (card.kind === 'book' && card.newBook) { fillNewBookCard(node, body, card, index); return; }
+      var media = el('div', 'feed-card__media');
+      var stage = el('div', 'feed-card__stage');
+      var overlay = el('div', 'feed-card__overlay');
+      node.appendChild(media);
+      node.appendChild(el('div', 'feed-card__hudspace'));
+      node.appendChild(stage);
+      node.appendChild(overlay);
+      overlay.appendChild(el('div', 'feed-card__kind', feedKindLine(card)));
+      overlay.appendChild(el('h3', 'feed-card__title', card.title || (card.track && card.track.title) || ''));
       if (card.kind === 'book') {
-        node.appendChild(el('p', 'feed-card__meta', (card.author ? card.author + ' · ' : '') + (card.chapterLabel || '')));
-        var text = el('div', 'feed-card__text');
-        (card.blocks || []).forEach(function (b) {
-          if (b.chapterStart && !b.heading) text.appendChild(el('div', 'feed-card__chapter-start', 'Chapter ' + (b.spineIndex + 1)));
-          text.appendChild(el(b.heading ? 'h3' : 'p', null, b.text)); // text nodes only, never markup
-        });
-        if (card.atEnd) text.appendChild(el('p', 'feed-card__meta', 'The end.'));
-        body.appendChild(text);
-        node.appendChild(body);
-        var actions = el('div', 'feed-card__actions');
-        var open = U() ? U().button({ variant: 'tonal', size: 'sm', pill: true, icon: 'menu_book', label: 'Open in reader', doc: document })
-          : el('button', 'ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill', 'Open in reader');
-        open.type = 'button';
-        open.addEventListener('click', function () {
-          // gate r1 (qa W1): the bookmark moves only if the card was READ (its dwell); a tap within
-          // seconds of the card appearing must not move the place past text the reader is about to show
-          finishBookCard(index, false);
-          if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(card.readerHref);
-          else window.location.assign(card.readerHref);
-        }, { signal: signal });
-        actions.appendChild(open);
-        actions.appendChild(el('span', 'feed-card__left', Math.ceil(Math.max(1, Number(card.words) || 0) / 250) + ' min read'));
-        node.appendChild(actions);
+        if (card.newBook) fillNewBookCard(node, stage, overlay, card, index);
+        else fillBookCard(node, stage, overlay, card, index);
+        wirePageSwipes(stage, index);
         return;
       }
       if (card.kind === 'song') {
         var t = card.track || {};
-        node.appendChild(el('p', 'feed-card__meta', [t.artist, t.album].filter(Boolean).join(' · ')));
-        var art = el('img', 'feed-card__art');
-        art.alt = '';
-        art.src = t.artUrl || ('/albumart/' + encodeURIComponent(t.artId || card.id) + (t.artV ? '?v=' + encodeURIComponent(t.artV) : ''));
-        body.appendChild(art);
-        body.appendChild(el('div', 'feed-card__slot'));
-        node.appendChild(body);
-        node.appendChild(playActions(card, index, 'Whole song'));
+        fillAudioMedia(node, media, stage, t.artUrl || ('/albumart/' + encodeURIComponent(t.artId || card.id) + (t.artV ? '?v=' + encodeURIComponent(t.artV) : '')));
+        overlay.appendChild(el('p', 'feed-card__meta', [t.artist, t.album].filter(Boolean).join(' · ')));
+        overlay.appendChild(playActions(card, index, 'Whole song'));
+        wireMediaGestures(node, overlay, index, false);
         return;
       }
       // podcast / video / Watch later
       var isPod = card.media === 'podcast';
-      node.appendChild(el('p', 'feed-card__meta', isPod ? (card.showName || '') : (card.channelName || '')));
-      if (isPod) {
-        var podArt = el('img', 'feed-card__art');
-        podArt.alt = '';
-        podArt.src = card.artUrl;
-        body.appendChild(podArt);
+      overlay.appendChild(el('p', 'feed-card__meta', isPod ? (card.showName || '') : (card.channelName || '')));
+      if (isPod || card.media === 'audio') {
+        fillAudioMedia(node, media, stage, isPod ? card.artUrl : card.thumbnailUrl);
       } else {
+        node.setAttribute('data-media', 'video');
+        node.setAttribute('data-fit', fitMode);
         var poster = el('img', 'feed-card__poster');
         poster.alt = '';
         poster.src = card.thumbnailUrl;
-        body.appendChild(poster);
+        media.appendChild(poster);
+        media.appendChild(el('div', 'feed-card__slot'));
+        // D8: a thin line along the bottom edge shows how far into this card's slice the video is (not a control in v1)
+        var line = el('div', 'feed-card__progress');
+        line.setAttribute('aria-hidden', 'true');
+        media.appendChild(line);
       }
-      body.appendChild(el('div', 'feed-card__slot'));
-      node.appendChild(body);
       var label = isPod ? feedClock((card.endAt || 0) - (card.startAt || 0)) + ' of this episode'
         : (card.chapter ? 'Chapter ' + (card.chapter.index + 1) + ' of ' + card.chapter.count + (card.chapter.title ? ': ' + card.chapter.title : '') : feedClock((card.endAt || 0) - (card.startAt || 0)) + ' of this video');
-      node.appendChild(playActions(card, index, label));
+      overlay.appendChild(playActions(card, index, label));
+      wireMediaGestures(node, overlay, index, !isPod && card.media !== 'audio');
+    }
+
+    // ---- gestures (D7, D8) ---------------------------------------------------------------
+    // D8: a media card's gesture layer covers the picture / art (the overlay's buttons sit above it and keep their taps). It
+    // never cancels a touch, so a vertical swipe that starts on the picture moves the stack like anywhere else (the shared
+    // player's own picture listener cancels every touch - the watch page's loupe guard - which is why the layer is here and
+    // the player's picture never sees a Feed touch). A tap = the player's picture tap (play / pause + the centred glyph); on a
+    // VIDEO a press and hold = 2x while held (the player's engageHold / releaseHold, its own threshold and move tolerance).
+    function wireMediaGestures(node, overlay, index, canHold) {
+      var layer = el('div', 'feed-card__touch');
+      layer.setAttribute('aria-hidden', 'true');
+      node.insertBefore(layer, overlay);
+      var g = null; // { id, x, y, at, moved, held, timer }
+      var timings = function () { var p = player(); return (p && typeof p.gestureTimings === 'function' && p.gestureTimings()) || { holdMs: 500, moveTol: 16 }; };
+      var mine = function () { return index === activeIndex && mediaCardIndex === index; };
+      var end = function (tap) {
+        if (!g) return;
+        window.clearTimeout(g.timer);
+        var p = player();
+        if (g.held) { if (p && typeof p.holdEnd === 'function') p.holdEnd(); }
+        else if (tap && !g.moved && mine() && p && typeof p.pictureTap === 'function') p.pictureTap();
+        g = null;
+      };
+      layer.addEventListener('pointerdown', function (e) {
+        if (e.isPrimary === false || (typeof e.button === 'number' && e.button > 0)) return;
+        end(false);
+        g = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, held: false, timer: 0 };
+        if (canHold && mine()) {
+          var gg = g;
+          gg.timer = window.setTimeout(function () {
+            var p = player();
+            if (g === gg && !gg.moved && mine() && p && typeof p.holdStart === 'function') gg.held = !!p.holdStart();
+          }, timings().holdMs);
+        }
+      }, { signal: signal });
+      layer.addEventListener('pointermove', function (e) {
+        if (!g || e.pointerId !== g.id || g.held) return;
+        var tol = timings().moveTol;
+        if (Math.abs(e.clientX - g.x) > tol || Math.abs(e.clientY - g.y) > tol) { g.moved = true; window.clearTimeout(g.timer); }
+      }, { signal: signal });
+      layer.addEventListener('pointerup', function (e) { if (g && e.pointerId === g.id) end(true); }, { signal: signal });
+      layer.addEventListener('pointercancel', function () { end(false); }, { signal: signal }); // the browser took the touch (a scroll)
+      layer.addEventListener('lostpointercapture', function () { if (g && g.held) end(false); }, { signal: signal });
+      // while 2x is held the finger may drift: the stack stays put (only then; any other touch scrolls as usual)
+      layer.addEventListener('touchmove', function (e) { if (g && g.held && e.cancelable) e.preventDefault(); }, { passive: false, signal: signal });
+    }
+
+    // D7: on a book card a horizontal swipe turns the page (feedPageSwipe: the 24 px edge rule, never a vertical one);
+    // the stack keeps every vertical swipe (touch-action: pan-y on the stage).
+    function wirePageSwipes(stage, index) {
+      var g = null;
+      stage.addEventListener('pointerdown', function (e) {
+        if (e.isPrimary === false || (typeof e.button === 'number' && e.button > 0)) return;
+        g = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      }, { signal: signal });
+      stage.addEventListener('pointercancel', function () { g = null; }, { signal: signal });
+      stage.addEventListener('pointerup', function (e) {
+        if (!g || e.pointerId !== g.id) return;
+        var dir = feedPageSwipe({ startX: g.x, dx: e.clientX - g.x, dy: e.clientY - g.y, width: window.innerWidth || document.documentElement.clientWidth });
+        g = null;
+        if (dir && index === activeIndex) turnPage(index, dir === 'next' ? 1 : -1);
+      }, { signal: signal });
+    }
+
+    // The next / previous page of the active book card. Past the last page of a reading card, the next pages come from the
+    // excerpt route in CONTINUATION mode (it reads text and never touches the served registry, so the card's own serve stays
+    // the judge of every write); a new book's description and taste turn within what the card holds.
+    var continuing = {};
+    function turnPage(index, dir) {
+      var bp = bookPages[index];
+      var card = cards[index];
+      if (!bp || !card) return;
+      noteBookPage(index);
+      clearHint();
+      if (dir < 0) { if (bp.page > 0) { showPage(index, bp.page - 1); bp.since = Date.now(); } return; }
+      if (bp.page < bp.pages.length - 1) { showPage(index, bp.page + 1); bp.since = Date.now(); return; }
+      if (card.newBook || !bookEnd(bp) || bp.end.atEnd || continuing[index]) return;
+      continuing[index] = true;
+      var from = bp.end;
+      fetch('/api/books/' + encodeURIComponent(card.id) + '/excerpt?spine=' + from.spineIndex + '&block=' + from.blockIndex + '&continuation=1', { signal: signal })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (body) {
+          continuing[index] = false;
+          if (!body || !Array.isArray(body.blocks) || !body.blocks.length || bookPages[index] !== bp || bp.end !== from) return;
+          var more = body.blocks.slice();
+          if (body.atEnd) more.push({ spineIndex: -1, blockIndex: -1, text: 'The end.', end: true });
+          var node = cardEls[index];
+          var pageEl = node && node.querySelector('.feed-card__page');
+          // the new text gets pages of its own: the pages already shown (and read) never change under the reader
+          var newPages = pageEl && pageEl.clientHeight > 0
+            ? feedPaginate(more, function (blocks) { drawPage(pageEl, blocks); return pageEl.scrollHeight <= pageEl.clientHeight; })
+            : [more];
+          bp.blocks = bp.blocks.concat(more);
+          bp.pages = bp.pages.concat(newPages);
+          bp.end = body.atEnd ? { atEnd: true } : (body.next || null);
+          if (index === activeIndex) { showPage(index, bp.page + 1); bp.since = Date.now(); } else showPage(index, bp.page);
+        })
+        .catch(function () { continuing[index] = false; });
+    }
+
+    // the keyboard twin of the page swipe (a desktop has no swipe): the arrow keys turn the active book card's page
+    document.addEventListener('keydown', function (e) {
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
+      var t = e.target;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''))) return;
+      if (activeIndex < 0 || !bookPages[activeIndex] || !cards[activeIndex] || cards[activeIndex].kind !== 'book') return;
+      e.preventDefault();
+      turnPage(activeIndex, e.key === 'ArrowRight' ? 1 : -1);
+    }, { signal: signal });
+
+    // D5: a song's or an episode's art is the card's background (blurred and darkened, the music player's backdrop recipe)
+    // with the art itself at a moderate size above the overlay. The player's own surface (its slot) stays mounted - the audio
+    // plays from it - but is not drawn: the card shows the art once.
+    function fillAudioMedia(node, media, stage, artUrl) {
+      node.setAttribute('data-media', 'audio');
+      var back = el('img', 'feed-card__backdrop');
+      back.alt = '';
+      back.setAttribute('aria-hidden', 'true');
+      if (artUrl) back.src = artUrl;
+      media.appendChild(back);
+      media.appendChild(el('div', 'feed-card__slot'));
+      var art = el('img', 'feed-card__art');
+      art.alt = '';
+      if (artUrl) art.src = artUrl;
+      stage.appendChild(art);
+    }
+
+    // D6: a book card's text is laid into pages that fit the stage (feedPaginate over the real box); the card shows one page.
+    function fillBookCard(node, stage, overlay, card, index) {
+      node.setAttribute('data-paged', '');
+      overlay.appendChild(el('p', 'feed-card__meta', (card.author ? card.author + ' · ' : '') + (card.chapterLabel || '')));
+      var page = el('div', 'feed-card__text feed-card__page');
+      stage.appendChild(page);
+      var actions = el('div', 'feed-card__actions');
+      var open = U() ? U().button({ variant: 'tonal', size: 'sm', pill: true, icon: 'menu_book', label: 'Open in reader', doc: document })
+        : el('button', 'ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill', 'Open in reader');
+      open.type = 'button';
+      open.addEventListener('click', function () {
+        // the place moves only as far as the pages READ (each its own dwell); the reader opens there
+        noteBookPage(index);
+        finishBookCard(index);
+        if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(card.readerHref);
+        else window.location.assign(card.readerHref);
+      }, { signal: signal });
+      actions.appendChild(open);
+      var left = el('span', 'feed-card__left', '');
+      left.setAttribute('data-page-readout', '');
+      actions.appendChild(left);
+      if (!card.startedOver) appendCardMenu(actions, index); // started over: nothing left to forget (a second tap would say so)
+      overlay.appendChild(actions);
+      if (card.startedOver) overlay.querySelector('.feed-card__kind').textContent = 'Book \u00b7 Started over';
+      // gate r1 (qa W2): the blocks (the card's own and any continuation) are seeded ONCE, when the card's state is born; a card
+      // rebuilt after it was pruned re-lays the SAME blocks, and what was read is kept as a place (relayoutBook) - re-seeding
+      // dropped the continuation while its reads and end stayed, and the next write passed text never shown
+      var born = !bookPages[index];
+      var bp = bookState(index, card);
+      if (born) {
+        bp.blocks = (card.blocks || []).slice();
+        if (card.atEnd) bp.blocks.push({ spineIndex: -1, blockIndex: -1, text: 'The end.', end: true });
+        layoutPages(index);
+      } else relayoutBook(index);
     }
 
     // v1.380.0 (R4, D5): "Start something new" - an unstarted book. Cover, author, the book's own description (TEXT
     // nodes only), an optional taste of the opening. Looking at any of it writes nothing; the only thing that starts the
     // book is "Start reading", which moves the place to the first real chapter through the feed's forward-only write and
-    // then opens the reader. Swiping on leaves the book exactly as it was.
-    function fillNewBookCard(node, body, card, index) {
+    // then opens the reader. Swiping on leaves the book exactly as it was. v1.381.0 (D6): the cover and the description are
+    // fitted to the stage like a book's pages (a long description goes on to a second page); "Read the opening" turns the
+    // stage to the taste, also in pages, and "Hide the opening" turns it back.
+    function fillNewBookCard(node, stage, overlay, card, index) {
       node.setAttribute('data-new-book', '');
-      node.appendChild(el('p', 'feed-card__meta', card.author || ''));
-      if (card.coverUrl) {
-        var cover = el('img', 'feed-card__cover');
-        cover.alt = '';
-        cover.src = card.coverUrl;
-        body.appendChild(cover);
-      }
-      if (card.description) body.appendChild(el('p', 'feed-card__desc', card.description)); // text, never markup
-      var taste = el('div', 'feed-card__text feed-card__taste');
-      taste.hidden = true;
-      (card.blocks || []).forEach(function (b) {
-        if (b.chapterStart && !b.heading) taste.appendChild(el('div', 'feed-card__chapter-start', 'Chapter ' + (b.spineIndex + 1)));
-        taste.appendChild(el(b.heading ? 'h3' : 'p', null, b.text));
-      });
-      body.appendChild(taste);
-      node.appendChild(body);
+      node.setAttribute('data-paged', '');
+      overlay.appendChild(el('p', 'feed-card__meta', card.author || ''));
+      var page = el('div', 'feed-card__text feed-card__page');
+      stage.appendChild(page);
       var actions = el('div', 'feed-card__actions');
       var start = U() ? U().button({ variant: 'primary', size: 'sm', pill: true, icon: 'menu_book', label: 'Start reading', doc: document })
         : el('button', 'ui-btn ui-btn--primary ui-btn--sm ui-btn--pill', 'Start reading');
       start.type = 'button';
       start.setAttribute('data-start-reading', '');
       start.addEventListener('click', function () { startReading(index, start); }, { signal: signal });
-      var peek = U() ? U().button({ variant: 'tonal', size: 'sm', pill: true, label: 'Read the opening', doc: document })
-        : el('button', 'ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill', 'Read the opening');
-      peek.type = 'button';
-      peek.setAttribute('data-read-opening', '');
-      peek.setAttribute('aria-expanded', 'false');
-      peek.addEventListener('click', function () {
-        taste.hidden = !taste.hidden;
-        peek.setAttribute('aria-expanded', taste.hidden ? 'false' : 'true');
-        var label = peek.querySelector('.ui-btn__label') || peek;
-        label.textContent = taste.hidden ? 'Read the opening' : 'Hide the opening';
-      }, { signal: signal });
       actions.appendChild(start);
-      if ((card.blocks || []).length) actions.appendChild(peek);
-      node.appendChild(actions);
+      var bp = bookState(index, card);
+      var intro = [];
+      if (card.coverUrl) intro.push({ spineIndex: -1, blockIndex: -1, cover: card.coverUrl, text: '' });
+      if (card.description) intro.push({ spineIndex: -1, blockIndex: -1, desc: true, text: card.description });
+      bp.blocks = intro;
+      if ((card.blocks || []).length) {
+        var peek = U() ? U().button({ variant: 'tonal', size: 'sm', pill: true, labels: ['Read the opening', 'Hide the opening'], pressed: false, doc: document })
+          : el('button', 'ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill', 'Read the opening');
+        peek.type = 'button';
+        peek.setAttribute('data-read-opening', '');
+        peek.setAttribute('aria-expanded', 'false');
+        peek.addEventListener('click', function () {
+          var open = peek.getAttribute('aria-expanded') !== 'true';
+          peek.setAttribute('aria-expanded', open ? 'true' : 'false');
+          if (U() && typeof U().setPressed === 'function') U().setPressed(peek, open);
+          // the taste is text to look at: it is never a page READ (countCard, finishBookCard: a new book moves nothing)
+          bp.blocks = open ? (card.blocks || []).map(function (b) { return Object.assign({ taste: true }, b); }) : intro;
+          bp.page = 0;
+          layoutPages(index);
+        }, { signal: signal });
+        actions.appendChild(peek);
+      }
+      var left = el('span', 'feed-card__left', '');
+      left.setAttribute('data-page-readout', '');
+      actions.appendChild(left);
+      overlay.appendChild(actions);
+      layoutPages(index);
+    }
+
+    // ---- book pages (D6) ----------------------------------------------------------------
+    function bookState(index, card) {
+      var bp = bookPages[index];
+      if (!bp) {
+        bp = bookPages[index] = { blocks: [], pages: [], page: 0, read: {}, pageMs: {}, since: 0, end: card.atEnd ? { atEnd: true } : (card.next || null), measured: false };
+      }
+      return bp;
+    }
+
+    // one block as it is drawn on a page (text nodes only, never markup)
+    function blockNodes(b) {
+      var out = [];
+      if (b.cover) { var img = el('img', 'feed-card__cover'); img.alt = ''; img.src = b.cover; out.push(img); return out; }
+      if (b.desc) { out.push(el('p', 'feed-card__desc', b.text)); return out; }
+      if (b.end) { out.push(el('p', 'feed-card__meta', b.text)); return out; }
+      if (b.chapterStart && !b.heading && !b.cont) out.push(el('div', 'feed-card__chapter-start', 'Chapter ' + (b.spineIndex + 1)));
+      out.push(el(b.heading ? 'h3' : 'p', b.cont ? 'feed-card__cont' : null, b.text));
+      return out;
+    }
+    function drawPage(pageEl, blocks) {
+      pageEl.replaceChildren();
+      blocks.forEach(function (b) { blockNodes(b).forEach(function (n) { pageEl.appendChild(n); }); });
+    }
+
+    // A book card laid out AGAIN in a box of another size (a rotation or resize): the pages read so far are kept as a place
+    // (bp.carry: never lost, never moved past), the per-page read marks start over on the new pages, which are laid out to
+    // keep the reader on the page holding the block they were on.
+    function relayoutBook(index) {
+      var bp = bookPages[index];
+      if (!bp) return;
+      var node = cardEls[index];
+      var pageEl = node && node.querySelector('.feed-card__page');
+      // the same box (a rebuild after pruning): the SAME pages, their read marks still true - just draw the page again
+      if (bp.measured && pageEl && pageEl.clientHeight === bp.boxH) { showPage(index, bp.page); return; }
+      if (index === activeIndex) noteBookPage(index);
+      bp.carry = feedFurther(bp.carry, feedBookTarget(bp.pages, bp.read, bookEnd(bp)));
+      bp.read = {}; bp.pageMs = {};
+      layoutPages(index);
+    }
+    // the card's end as a write target: none once the pages hit FEED_MAX_PAGES (the blocks past the cap were never laid out,
+    // so "every page read" must not reach the card's next - adversary r1, reasoned)
+    function bookEnd(bp) { return bp.capped ? null : bp.end; }
+
+    // Lay the card's blocks into pages that fit its page box, then draw the current page. A box that has no height yet (a
+    // card not laid out) is not measured: everything goes on one page until the card is laid out (setActive, a resize).
+    // Re-laying keeps the reader on the page that holds the block they were on.
+    function layoutPages(index) {
+      var bp = bookPages[index];
+      var node = cardEls[index];
+      var pageEl = node && node.querySelector('.feed-card__page');
+      if (!bp || !pageEl) return;
+      var anchor = bp.pages[bp.page] && bp.pages[bp.page][0];
+      var box = pageEl.clientHeight;
+      if (box > 0) {
+        bp.pages = feedPaginate(bp.blocks, function (blocks) { drawPage(pageEl, blocks); return pageEl.scrollHeight <= pageEl.clientHeight; });
+        bp.measured = true;
+        bp.boxH = box;
+        bp.capped = bp.pages.length >= FEED_MAX_PAGES;
+      } else {
+        bp.pages = bp.blocks.length ? [bp.blocks.slice()] : [];
+        bp.measured = false;
+      }
+      bp.page = 0;
+      if (anchor) {
+        for (var i = 0; i < bp.pages.length; i++) {
+          if (bp.pages[i].some(function (b) { return b.spineIndex === anchor.spineIndex && b.blockIndex === anchor.blockIndex && b.text === anchor.text; })) { bp.page = i; break; }
+        }
+      }
+      showPage(index, bp.page);
+    }
+
+    function showPage(index, page) {
+      var bp = bookPages[index];
+      var node = cardEls[index];
+      var pageEl = node && node.querySelector('.feed-card__page');
+      if (!bp || !pageEl) return;
+      bp.page = Math.max(0, Math.min(page, bp.pages.length - 1));
+      drawPage(pageEl, bp.pages[bp.page] || []);
+      var readout = node.querySelector('[data-page-readout]');
+      if (readout) readout.textContent = cards[index] && cards[index].startedOver ? 'Opens at the beginning next time' : (bp.pages.length > 1 ? 'Page ' + (bp.page + 1) + ' of ' + bp.pages.length : '');
+    }
+
+    // The current page's time: started when the card or the page became active, counted when it stops being on screen.
+    // A page whose own dwell was met is READ; only pages read move the place (feedBookTarget).
+    function noteBookPage(index) {
+      var bp = bookPages[index];
+      if (!bp || !bp.since) return;
+      var p = bp.page;
+      bp.pageMs[p] = (bp.pageMs[p] || 0) + (Date.now() - bp.since);
+      bp.since = index === activeIndex ? Date.now() : 0;
+      var page = bp.pages[p];
+      if (page && !page.some(function (b) { return b.taste || b.desc || b.cover; }) && feedBookRead(bp.pageMs[p], feedPageDwellSec(page))) bp.read[p] = true;
+    }
+
+    // the words on the pages read (the recap's pages)
+    function bookWordsRead(index) {
+      var bp = bookPages[index];
+      if (!bp) return 0;
+      return bp.pages.reduce(function (n, page, i) { return bp.read[i] ? n + page.reduce(function (m, b) { return m + (b.end ? 0 : feedWordCount(b.text)); }, 0) : n; }, 0);
     }
 
     // "Start reading": the place moves to the card's start (the first real chapter, block 0) - forward-only, served-and-not-stale,
@@ -759,7 +1166,7 @@ if (typeof module !== 'undefined' && module.exports) {
       }).then(function (r) {
         if (r.status !== 409) return null;
         return r.json().then(function (body) {
-          if (body && body.reason === 'stale' && U()) U().toast({ text: 'Your place in ' + (card.title || 'this book') + ' moved on another device', doc: document });
+          if (body && body.reason === 'stale') toast('Your place in ' + (card.title || 'this book') + ' moved on another device');
         });
       }).catch(function () {}).then(go);
     }
@@ -770,7 +1177,136 @@ if (typeof module !== 'undefined' && module.exports) {
       var left = el('span', 'feed-card__left', '');
       left.setAttribute('data-left', '');
       actions.appendChild(left);
+      // D4: a video fills the card; Fit shows the whole picture (letterboxed) - this card now, and every card after on this device
+      if (card.media === 'video' || (card.kind !== 'song' && card.media !== 'podcast' && card.media !== 'audio')) {
+        var fit = U() ? U().button({ variant: 'tonal', size: 'sm', pill: true, labels: ['Fit', 'Fill'], pressed: fitMode === 'fit', doc: document })
+          : el('button', 'ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill', 'Fit');
+        fit.type = 'button';
+        fit.setAttribute('data-fit-toggle', '');
+        fit.setAttribute('aria-label', 'Show the whole picture');
+        fit.addEventListener('click', function () { setFitMode(fitMode === 'fit' ? 'fill' : 'fit'); }, { signal: signal });
+        actions.appendChild(fit);
+      }
+      appendCardMenu(actions, index);
       return actions;
+    }
+
+    // ---- D9: Start over - the ONE deliberate reset, from a card's "..." ----------------------------------------------
+    // The card that opened the menu is the card that is reset: its index AND its card object are captured at the tap and
+    // checked again at the confirm (the stack can change under an open sheet). A confirm names what is forgotten; the
+    // server records the previous place in this session BEFORE it resets, and a 10 s Undo puts exactly that back.
+    function appendCardMenu(actions, index) {
+      if (!feedStartOverKind(cards[index])) return;
+      var more = U() ? U().button({ variant: 'tonal', size: 'sm', shape: 'icon', icon: 'more_horiz', ariaLabel: 'More', doc: document })
+        : el('button', 'ui-btn ui-btn--tonal ui-btn--sm ui-btn--icon', '');
+      more.type = 'button';
+      more.setAttribute('aria-label', 'More');
+      more.setAttribute('data-card-menu', '');
+      more.addEventListener('click', function () { openCardMenu(index, cards[index]); }, { signal: signal });
+      actions.appendChild(more);
+    }
+
+    function openCardMenu(index, card) {
+      if (!U() || !card || cards[index] !== card) return;
+      U().menu({ label: 'Card', items: [{ label: 'Start over', icon: 'history', value: 'start-over', onSelect: function () { confirmStartOver(index, card); } }], signal: signal, doc: document });
+    }
+
+    function confirmStartOver(index, card) {
+      if (!U() || cards[index] !== card) return;
+      U().confirm({ title: 'Start over?', body: feedStartOverText(card), confirmLabel: 'Start over', danger: true, signal: signal, doc: document })
+        .then(function (yes) { if (yes && cards[index] === card) startOver(index, card); });
+    }
+
+    var startingOver = {}; // card index -> true while its Start over is in flight (one request, never two)
+    // gate r1 (qa W1, adversary W1): the request and its Undo OUTLIVE the view. The toast lives on <body> and survives a
+    // navigation, so neither fetch rides the view's abort signal and both use the session id captured at the tap (the
+    // view may have reset or started a new session by the time Undo is tapped). Only the CARD's update is skipped once the
+    // view is gone (signal.aborted): its DOM is detached.
+    function startOver(index, card) {
+      var kind = feedStartOverKind(card);
+      if (!kind || !session || startingOver[index]) return;
+      var sid = session.id;
+      startingOver[index] = true;
+      if (mediaCardIndex === index) { var p = player(); if (p && typeof p.pause === 'function') p.pause(); }
+      fetch('/api/feed/start-over', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sid, kind: kind, id: card.id }), keepalive: true })
+        .then(function (r) { return r.json().then(function (body) { return { status: r.status, body: body }; }); })
+        .then(function (res) {
+          startingOver[index] = false;
+          if (res.status === 409 && res.body && res.body.reason === 'nothing') { toast('Nothing to start over: it was not started'); return; }
+          if (res.status === 409 && res.body && res.body.reason === 'unrestorable') { toast('Could not start over: its saved place could not be undone, so it was kept'); return; }
+          if (res.status !== 200 || !res.body || !res.body.token) { toast('Could not start over'); return; }
+          var before = { fresh: card.fresh, progress: card.progress, position: card.position, startAt: card.startAt, endAt: card.endAt, chapter: card.chapter, skippedIntro: card.skippedIntro };
+          if (!signal.aborted && cards[index] === card) applyStartedOver(index, card, kind);
+          toast(feedStartedOverText(card, res.body.previous), { duration: FEED_UNDO_MS, action: { label: 'Undo', onAction: function () { undoStartOver(index, card, kind, res.body.token, before, sid); } } });
+        })
+        .catch(function () { startingOver[index] = false; toast('Could not start over'); });
+    }
+    // the card says New and plays from the start (a media card); a book card says it starts over and moves nothing more
+    function applyStartedOver(index, card, kind) {
+      if (kind === 'book') {
+        card.startedOver = true;
+        var bp = bookPages[index];
+        if (bp) bp.refused = true; // the server forgot the serve too: this card can never set a place again
+        var node = cardEls[index];
+        var kindEl = node && node.querySelector('.feed-card__kind');
+        if (kindEl) kindEl.textContent = 'Book \u00b7 Started over';
+        var readout = node && node.querySelector('[data-page-readout]');
+        if (readout) readout.textContent = 'Opens at the beginning next time';
+        return;
+      }
+      var slice = (Number(card.endAt) || 0) - (Number(card.startAt) || 0);
+      var dur = Number(card.media === 'podcast' ? card.durationSec : card.duration) || 0;
+      card.fresh = true;
+      card.progress = 0;
+      card.position = 0;
+      card.startAt = 0;
+      card.endAt = slice > 0 ? (dur > 0 ? Math.min(dur, slice) : slice) : card.endAt;
+      card.chapter = null;
+      card.skippedIntro = false;
+      refillMediaCard(index);
+    }
+
+    function refillMediaCard(index) {
+      var node = cardEls[index];
+      if (!node) return;
+      node.removeAttribute('data-done');
+      fillCard(node, cards[index], index);
+      if (index === activeIndex) playCard(index);
+    }
+
+    function undoStartOver(index, card, kind, token, before, sid) {
+      fetch('/api/feed/start-over/undo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sid, token: token }), keepalive: true })
+        .then(function (r) { return r.json().then(function (body) { return { status: r.status, body: body }; }); })
+        .then(function (res) {
+          if (res.status === 409 && res.body && res.body.reason === 'moved') { toast('Could not undo: it was played since'); return; }
+          if (res.status !== 200) { toast('Could not undo'); return; }
+          toast('Your place is back: ' + (card.title || 'this item'));
+          if (signal.aborted || cards[index] !== card) return; // the view is gone: the place is back, nothing to redraw
+          if (kind === 'book') {
+            card.startedOver = false;
+            var node = cardEls[index];
+            var kindEl = node && node.querySelector('.feed-card__kind');
+            if (kindEl) kindEl.textContent = feedKindLine(card);
+            var readout = node && node.querySelector('[data-page-readout]');
+            if (readout) readout.textContent = 'Your place is back';
+            return;
+          }
+          Object.keys(before).forEach(function (k) { card[k] = before[k]; });
+          refillMediaCard(index);
+        })
+        .catch(function () { toast('Could not undo'); });
+    }
+
+    // D4: Fill (the default: object-fit cover, a landscape video cropped like a phone feed) or Fit (contain, letterboxed).
+    // Remembered per device (localStorage, try/caught); every mounted video card follows at once.
+    function setFitMode(mode) {
+      fitMode = mode === 'fit' ? 'fit' : 'fill';
+      writePref(FEED_FIT_KEY, fitMode);
+      cardEls.forEach(function (n) { if (n.getAttribute('data-media') === 'video') n.setAttribute('data-fit', fitMode); });
+      Array.prototype.forEach.call(stack.querySelectorAll('[data-fit-toggle]'), function (b) {
+        if (U() && typeof U().setPressed === 'function') U().setPressed(b, fitMode === 'fit');
+        b.setAttribute('aria-label', fitMode === 'fit' ? 'Fill the screen' : 'Show the whole picture');
+      });
     }
 
     // Heavy content far behind the active card is dropped (the card keeps its height so the
@@ -808,20 +1344,29 @@ if (typeof module !== 'undefined' && module.exports) {
       var card = cards[index];
       if (!node || !card) return;
       node.setAttribute('data-active', '');
+      // the HUD reads light over a picture or art, the page's own ink over a book page
+      if (node.hasAttribute('data-media')) sessionEl.setAttribute('data-on-media', ''); else sessionEl.removeAttribute('data-on-media');
       if (index > 0) clearHint();
       else if (hintPending) { hintPending = false; showHint(node); }
-      if (card.kind === 'book') bookActiveSince = Date.now();
-      else playCard(index);
+      if (card.kind === 'book') {
+        var bp = bookPages[index];
+        if (bp && !bp.measured) layoutPages(index); // laid out now: fit the pages to the real box
+        if (bp) bp.since = Date.now();
+        if (pageHintPending && bp && bp.pages.length > 1 && !document.getElementById('feed-hint')) { pageHintPending = false; showHint(node, 'Swipe left for the next page', FEED_PAGE_HINT_KEY); }
+      } else playCard(index);
       pruneBehind(index);
       if (feedShouldPrefetch(index, cards.length)) fetchBatch();
     }
 
     // R3, D3: a small "Swipe up" cue at the bottom of the FIRST card of a session, on the first FEED_HINT_SESSIONS sessions a device
     // starts. It fades after the first swipe or FEED_HINT_MS; a per-device count in localStorage (try/caught) ends it for good.
-    function showHint(node) {
-      var count = parseInt(readPref(FEED_HINT_KEY, '0'), 10) || 0;
+    // v1.381.0 (D11): the same cue says "Swipe left for the next page" on the first BOOK card (with more than one page) of a
+    // session, on the first FEED_HINT_SESSIONS sessions, counted on its own key.
+    function showHint(node, text, key) {
+      var k = key || FEED_HINT_KEY;
+      var count = parseInt(readPref(k, '0'), 10) || 0;
       if (!feedHintShouldShow(count)) return;
-      writePref(FEED_HINT_KEY, count + 1);
+      writePref(k, count + 1);
       clearHint();
       var hint = el('div', 'feed-hint');
       hint.id = 'feed-hint';
@@ -830,11 +1375,12 @@ if (typeof module !== 'undefined' && module.exports) {
       var chev = document.createElementNS(NS, 'svg');
       chev.setAttribute('class', 'feed-hint__chevron'); chev.setAttribute('viewBox', '0 0 24 24'); chev.setAttribute('aria-hidden', 'true'); chev.setAttribute('focusable', 'false');
       var chevPath = document.createElementNS(NS, 'path');
-      chevPath.setAttribute('d', 'M6 15l6-6 6 6');
+      chevPath.setAttribute('d', k === FEED_PAGE_HINT_KEY ? 'M15 6l-6 6 6 6' : 'M6 15l6-6 6 6'); // left for a page, up for a card
       chev.appendChild(chevPath);
       hint.appendChild(chev);
-      hint.appendChild(el('span', 'feed-hint__text', 'Swipe up'));
-      node.appendChild(hint);
+      if (k === FEED_PAGE_HINT_KEY) hint.setAttribute('data-page-hint', '');
+      hint.appendChild(el('span', 'feed-hint__text', text || 'Swipe up'));
+      (node.querySelector('.feed-card__stage') || node).appendChild(hint); // above the overlay, never over its buttons
       hintTimer = window.setTimeout(clearHint, FEED_HINT_MS);
     }
     function clearHint() {
@@ -847,9 +1393,9 @@ if (typeof module !== 'undefined' && module.exports) {
       var card = cards[index];
       if (!card) return;
       if (card.kind === 'book') {
-        if (bookActiveSince) bookActiveMs[index] = (bookActiveMs[index] || 0) + (Date.now() - bookActiveSince);
-        bookActiveSince = 0;
-        if (feedBookRead(bookActiveMs[index], card.dwellSec)) finishBookCard(index, false);
+        noteBookPage(index);
+        if (bookPages[index]) bookPages[index].since = 0;
+        finishBookCard(index);
         countCard(index);
         return;
       }
@@ -863,31 +1409,32 @@ if (typeof module !== 'undefined' && module.exports) {
       counted[index] = true;
       if (!cards[index] || cards[index].kind === 'notice') return; // the notice is not a card the user did anything with
       var a = activity[index] || {};
-      if (cards[index] && cards[index].kind === 'book') a.read = !cards[index].newBook && (!!bookWritten[index] || feedBookRead(bookActiveMs[index], cards[index].dwellSec)); // a taste is not a page read
-      feedCountActivity(summary, cards[index], a);
+      var counts = cards[index];
+      if (counts.kind === 'book') {
+        // v1.381.0 (D6): the pages READ, each its own dwell (a taste, a description or a cover is never a page read)
+        var words = counts.newBook ? 0 : bookWordsRead(index);
+        a.read = words > 0;
+        counts = Object.assign({}, counts, { words: words });
+      }
+      feedCountActivity(summary, counts, a);
       if (session) { session.summary = summary; writeSession(session); } // the recap survives a navigation (W3)
     }
 
-    // The bookmark moves to the card's `next` - forward only, through the feed's rule. A
-    // refusal (another device moved on, or a stale card) is final for this card: the next
+    // v1.381.0 (D6): the bookmark moves only as far as the pages READ (each page its own dwell, in order from the first:
+    // feedBookTarget), forward only, through the feed's rule. Every page read: the card's end (its `next`, or the book's end
+    // through the same served / not-stale rule). A card can move the place again when more of it is read later (a page
+    // read on a return), never back. A refusal (another device moved on, a stale card) is final for this card: the next
     // book card the feed serves starts from wherever the place really is.
-    // the time a book card has been active: what leaveCard accumulated plus the live span of the active card
-    function bookActiveTotal(index) {
-      return (bookActiveMs[index] || 0) + (index === activeIndex && bookActiveSince ? Date.now() - bookActiveSince : 0);
-    }
-
-    function finishBookCard(index, force) {
+    function finishBookCard(index) {
       var card = cards[index];
-      if (!card || bookWritten[index]) return;
+      var bp = bookPages[index];
+      if (!card || !bp || bp.refused) return;
       if (card.newBook) return; // an unstarted book is only ever started by the "Start reading" tap (R4): no dwell moves its place
-      if (!force && !feedBookRead(bookActiveTotal(index), card.dwellSec)) return;
-      bookWritten[index] = true;
-      activity[index] = activity[index] || {};
-      activity[index].read = true;
-      if (!card.next && !card.atEnd) return; // the book is parked for this session (nothing readable followed)
-      // the end of the book latches finished through the same served / not-stale rule as a move
+      var target = feedFurther(feedBookTarget(bp.pages, bp.read, bookEnd(bp)), bp.carry);
+      if (!target || (bp.written && feedFurther(bp.written, target) === bp.written)) return; // nothing new read
+      bp.written = target;
       fetch('/api/feed/progress/book/' + encodeURIComponent(card.id), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(card.next || { atEnd: true }), keepalive: true,
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(target), keepalive: true,
       }).then(function (r) {
         // gate r2 (adversary W6): the place moved, so a parked book is servable again - when nothing real is queued ahead
         // (a single-book library: the batch after this card was empty), fetch now rather than on the next swipe
@@ -896,9 +1443,10 @@ if (typeof module !== 'undefined' && module.exports) {
           else fetchBatch();
         }
         if (r.status !== 409) return null;
+        bp.refused = true;
         return r.json().then(function (body) {
           // gate r1 (qa S2): only a STALE refusal is news to the user; backward / not-served are the feed's own
-          if (body && body.reason === 'stale' && U()) U().toast({ text: 'Your place in ' + (card.title || 'this book') + ' moved on another device', doc: document });
+          if (body && body.reason === 'stale') toast('Your place in ' + (card.title || 'this book') + ' moved on another device');
         });
       }).catch(function () {});
     }
@@ -928,6 +1476,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!mediaEl) return;
       var endAt = card.kind === 'song' ? null : Number(card.endAt);
       var left = node.querySelector('[data-left]');
+      var line = node.querySelector('.feed-card__progress');
       var act = activity[index] = activity[index] || { playedSec: 0, done: false, ended: false };
       var startAt = Number(data.startAt) || 0;
       if (card.skippedIntro && startAt > 0) showIntroNote(node, startAt);
@@ -938,6 +1487,7 @@ if (typeof module !== 'undefined' && module.exports) {
         if (endAt !== null && isFinite(endAt)) {
           var remain = endAt - t;
           if (left) left.textContent = remain > 0 ? feedClock(remain) + ' left' : 'Done';
+          if (line && endAt > startAt) line.style.setProperty('--p', String(Math.round(Math.min(1, Math.max(0, (t - startAt) / (endAt - startAt))) * 1000) / 1000));
           if (remain <= 0 && !node.hasAttribute('data-done')) {
             node.setAttribute('data-done', '');
             act.done = true;
@@ -989,8 +1539,7 @@ if (typeof module !== 'undefined' && module.exports) {
         note.remove();
         if (mediaEl && isFinite(startAt)) mediaEl.currentTime = 0;
       }, { signal: signal });
-      var slotEl = node.querySelector('.feed-card__body');
-      (slotEl || node).appendChild(note);
+      (node.querySelector('.feed-card__stage') || node).appendChild(note); // under the HUD strip, clear of the overlay
     }
 
     function pauseMedia() {
@@ -1122,7 +1671,7 @@ if (typeof module !== 'undefined' && module.exports) {
           if (activeIndex >= 0 && activeIndex + 1 < cardEls.length) cardEls[activeIndex + 1].scrollIntoView({ block: 'start' });
           fetchBatch();
         })
-        .catch(function () { if (U()) U().toast({ text: 'Could not add ten minutes', doc: document }); });
+        .catch(function () { toast('Could not add ten minutes'); });
     }
 
     // Back to where he came from (D12): the page before the feed when there is one, else Home.
@@ -1136,8 +1685,8 @@ if (typeof module !== 'undefined' && module.exports) {
       if (tickTimer) { window.clearInterval(tickTimer); tickTimer = null; }
       session = null;
       writeSession(null);
-      cards = []; cardEls = []; activeIndex = -1; ratios = {}; exhaustedShown = false; activity = {}; counted = {}; bookActiveMs = {}; bookWritten = {}; startingRead = {};
-      summary = feedEmptySummary(); extensions = 0; windingDown = false; hardStopMs = NaN; hintPending = false; clearHint();
+      cards = []; cardEls = []; activeIndex = -1; ratios = {}; exhaustedShown = false; activity = {}; counted = {}; bookPages = {}; startingRead = {};
+      summary = feedEmptySummary(); extensions = 0; windingDown = false; hardStopMs = NaN; hintPending = false; pageHintPending = false; clearHint();
       if (ring) ring.style.setProperty('--p', '0');
       stack.replaceChildren();
       sessionEl.hidden = true;
@@ -1155,6 +1704,23 @@ if (typeof module !== 'undefined' && module.exports) {
       resetToPicker();
     }
     if (doneBtn) doneBtn.addEventListener('click', function () { finishNow(); }, { signal: signal });
+
+    // D6: a rotation or a resize changes what fits on a page. The pages read so far are kept as a place (carry), then every
+    // book card is laid out again on the page that holds the block the reader was on.
+    var relayoutTimer = null;
+    window.addEventListener('resize', function () {
+      if (relayoutTimer) window.clearTimeout(relayoutTimer);
+      relayoutTimer = window.setTimeout(function () {
+        relayoutTimer = null;
+        Object.keys(bookPages).forEach(function (k) {
+          var i = Number(k);
+          var bp = bookPages[i];
+          if (!bp || !cardEls[i] || cardEls[i].hasAttribute('data-pruned')) return;
+          relayoutBook(i);
+        });
+      }, 150);
+    }, { signal: signal });
+    signal.addEventListener('abort', function () { if (relayoutTimer) window.clearTimeout(relayoutTimer); });
 
 
     // Leaving the page mid-card: a read book card still moves its bookmark (keepalive).
