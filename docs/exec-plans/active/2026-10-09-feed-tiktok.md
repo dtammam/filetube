@@ -184,7 +184,11 @@ protected-main PR flow, shipped = the tag's "Publish Docker Image" run green, br
   gone, the video at 0 and "New", the real toast's Undo -> the row back exactly {timestamp 50, duration 60, updatedAt
   2026-10-01T10:00:00.000Z}, "Continue"; the book's place reset and restored exactly.
 - Other mutants: W2 12 / 12 killed (M9 and M12 first survived, then bound), W3 11 / 11 killed.
-- Suites (Node 22.23.1 / 24.20.0) at the reviewed sha:
+- Suites (Node 22.23.1 / 24.20.0) at the reviewed sha: `npm test` at bfb7393c (the worktree, sequential) - Node 22.23.1: `# tests 12009
+  # pass 11996 # fail 0 # cancelled 0 # skipped 13` (exit 0); Node 24.20.0: `tests 12009 pass 11996 fail 0 cancelled 0 skipped 13` (exit 0).
+- Disclosed for the gate: the Start over record rides `moves`, which keeps the newest FEED_SESSION_MOVES_CAP (300) entries a session;
+  a book page write or a coalesced ping chain is about one move a minute, so eviction inside one session is unlikely but not
+  impossible (an evicted record = an Undo that 404s, the reset itself already done).
 - Gate rounds:
 - Device checks owed:
 
