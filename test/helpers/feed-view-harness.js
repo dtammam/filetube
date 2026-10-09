@@ -34,7 +34,8 @@ function feedRealm(o) {
   if (opts.pageWords || opts.unlaidPages) {
     const isPage = (el) => el && el.classList && el.classList.contains('feed-card__page');
     const words = (el) => { const t = (el.textContent || '').trim(); return t ? t.split(/\s+/).length : 0; };
-    Object.defineProperty(w.HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return isPage(this) ? (opts.pageWords || 0) : 0; } });
+    // `w.__pageWords` overrides the budget mid-test (a rotation: the box changes size)
+    Object.defineProperty(w.HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return isPage(this) ? (w.__pageWords !== undefined ? w.__pageWords : (opts.pageWords || 0)) : 0; } });
     Object.defineProperty(w.HTMLElement.prototype, 'scrollHeight', { configurable: true, get() { return isPage(this) ? words(this) : 0; } });
   }
   w.HTMLElement.prototype.scrollIntoView = function () { w.__scrolledInto = this; };
@@ -53,6 +54,8 @@ function feedRealm(o) {
   let finished = false;
   let extensions = 0;
   w.fetch = (u, init) => {
+    // gate r1 (adversary W1): a fetch on an ABORTED signal rejects at once, as the platform's does (the view's abort on leave)
+    if (init && init.signal && init.signal.aborted) return Promise.reject(new w.DOMException('The operation was aborted.', 'AbortError'));
     const method = (init && init.method) || 'GET';
     const url = String(u);
     const body = init && typeof init.body === 'string' ? (() => { try { return JSON.parse(init.body); } catch (_) { return init.body; } })() : null;
@@ -61,7 +64,9 @@ function feedRealm(o) {
     if (r) return json(r.status, r.body);
     if (url === '/api/feed/sessions/week') return json(200, finished ? { sessions: 3, totalSec: 1800 } : (opts.week || { sessions: 2, totalSec: 1500 }));
     if (url === '/api/feed/sessions' && method === 'POST') return json(200, { session: { id: 'abcdef0123456789', plannedMin: body.plannedMin, startedAt: opts.startedAt || new Date(w.Date.now()).toISOString(), extensions: 0 }, week: { sessions: 2, totalSec: 1500 } });
-    if (url.indexOf('/api/feed?') === 0) { const b = batches[Math.min(batchNo, batches.length - 1)]; batchNo += 1; return json(200, b); }
+    // a batch arrives as JSON (fresh objects every time, as from the server): the view may mutate its cards (a Start over
+    // does), and a test must never see another test's mutation on a shared fixture object
+    if (url.indexOf('/api/feed?') === 0) { const b = batches[Math.min(batchNo, batches.length - 1)]; batchNo += 1; return json(200, JSON.parse(JSON.stringify(b))); }
     if (url.indexOf('/api/feed/progress/book/') === 0) return json(opts.bookWriteStatus || 200, opts.bookWriteStatus === 409 ? { ok: false, reason: 'stale' } : { ok: true });
     if (url.indexOf('/api/feed/sessions/') === 0 && url.endsWith('/finish')) { finished = true; return json(200, { session: {}, week: { sessions: 3, totalSec: 1800 } }); }
     if (url.indexOf('/api/feed/sessions/') === 0 && url.endsWith('/extend')) { extensions += 1; return json(opts.extendStatus || 200, { session: { extensions } }); }

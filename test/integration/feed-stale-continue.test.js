@@ -20,7 +20,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert');
 const { execFileSync } = require('node:child_process');
 const {
-  app, updateDatabase, scanBooks, flushPendingBookProgress, flushPendingProgress, booksDb, podcastsDb, userStore,
+  app, __mintTestSession, updateDatabase, scanBooks, flushPendingBookProgress, flushPendingProgress, booksDb, podcastsDb, userStore,
 } = require('../../server');
 const { seedState } = require('../helpers/seed-state');
 const { authenticateFetch } = require('../helpers/auth');
@@ -39,16 +39,20 @@ before(async () => {
   epubId = Object.values(booksDb.read().items)[0].id;
   const D = process.env.DATA_DIR;
   const item = (id) => ({ id, title: id, filePath: path.join(D, `${id}.mp4`), folderName: 'F', rootFolder: D, type: 'video', ext: '.mp4', duration: 600, size: 1, addedAt: 1 });
-  for (const id of ['vlook', 'vfeed']) fs.writeFileSync(path.join(D, `${id}.mp4`), 'V');
-  seedState({ folders: [D], folderSettings: {}, metadata: { vlook: item('vlook'), vfeed: item('vfeed') }, liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
+  // vu1 / vu2 / vc: the r1 mix test's videos (no place for the first test's user)
+  for (const id of ['vlook', 'vfeed', 'vu1', 'vu2', 'vc']) fs.writeFileSync(path.join(D, `${id}.mp4`), 'V');
+  seedState({ folders: [D], folderSettings: {}, metadata: { vlook: item('vlook'), vfeed: item('vfeed'), vu1: item('vu1'), vu2: item('vu2'), vc: item('vc') }, liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
   const showDir = path.join(D, 'podcasts', 'Show'); fs.mkdirSync(showDir, { recursive: true });
   fs.writeFileSync(path.join(showDir, 'ep.mp3'), 'E');
   epId = podcastStore.episodeIdFor(subId, 'g1');
   await updateDatabase(() => podcastsDb.mutate((h) => {
     const p = podcastStore.ensurePodcasts(h); p.subscriptions = []; p.episodes = {};
     podcastStore.reduceAddSubscription(p, { id: subId, name: 'Show', feedUrl: 'https://e.com/f.xml' });
-    podcastStore.reduceUpsertEpisodes(p, subId, [{ guid: 'g1', title: 'Ep', pubDateMs: 1, durationSec: 1800 }], 'pending', 5000);
-    podcastStore.reduceEpisodeDownloaded(p, epId, { fileName: 'ep.mp3', filePath: path.join(showDir, 'ep.mp3'), bytes: 1, nowMs: 6000 });
+    podcastStore.reduceUpsertEpisodes(p, subId, [{ guid: 'g1', title: 'Ep', pubDateMs: 1, durationSec: 1800 }, { guid: 'g2', title: 'Ep2', pubDateMs: 2, durationSec: 1800 }, { guid: 'g3', title: 'Ep3', pubDateMs: 3, durationSec: 1800 }], 'pending', 5000);
+    for (const g of ['g1', 'g2', 'g3']) {
+      fs.writeFileSync(path.join(showDir, `${g}.mp3`), 'E');
+      podcastStore.reduceEpisodeDownloaded(p, podcastStore.episodeIdFor(subId, g), { fileName: `${g}.mp3`, filePath: path.join(showDir, `${g}.mp3`), bytes: 1, nowMs: 6000 });
+    }
     return true;
   }));
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
@@ -125,4 +129,43 @@ test('D10 (Dean\'s ruling 2026-10-09): in the Feed an item with less than a minu
   const early = await postJson('/api/feed/progress/podcast', { episodeId: epId, position: 20, duration: 1800, playedSec: 17 });
   assert.strictEqual(early.status, 409);
   assert.strictEqual((await early.json()).reason, 'too-early');
+});
+
+test('r1 (adversary W3 A14-A16): the mix counts under-a-minute items as NEW - the first card of a kind is the real Continue item, not a newer peek', async () => {
+  const now = Date.now();
+  const at = (ms) => new Date(now - ms).toISOString();
+  const ep = (g) => podcastStore.episodeIdFor(subId, g);
+  const firstOf = async (cookie, pred) => {
+    const sr = await fetch(`${base}/api/feed/sessions`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify({ plannedMin: 10 }) });
+    const sid = (await sr.json()).session.id;
+    for (let i = 0; i < 6; i++) {
+      const b = await (await fetch(`${base}/api/feed?session=${sid}&count=5`, { headers: { Cookie: cookie } })).json();
+      const c = b.cards.find(pred);
+      if (c) return c;
+    }
+    return null;
+  };
+  // videos: two peeks (10 s), NEWER than one real place (200 s)
+  const v = __mintTestSession({ username: 'mix-video', role: 'admin' });
+  userStore.setProgress(v.user.id, 'vu1', { timestamp: 10, duration: 600, updatedAt: at(1000) });
+  userStore.setProgress(v.user.id, 'vu2', { timestamp: 10, duration: 600, updatedAt: at(2000) });
+  userStore.setProgress(v.user.id, 'vc', { timestamp: 200, duration: 600, updatedAt: at(9000) });
+  const fv = await firstOf(v.cookie, (c) => c.kind === 'video');
+  assert.deepStrictEqual({ id: fv.id, fresh: fv.fresh }, { id: 'vc', fresh: false }, 'video');
+  // episodes: the same
+  const pu = __mintTestSession({ username: 'mix-podcast', role: 'admin' });
+  userStore.setPodcastProgress(pu.user.id, ep('g2'), { position: 5, duration: 1800, updatedAt: at(1000) });
+  userStore.setPodcastProgress(pu.user.id, ep('g3'), { position: 5, duration: 1800, updatedAt: at(2000) });
+  userStore.setPodcastProgress(pu.user.id, ep('g1'), { position: 300, duration: 1800, updatedAt: at(9000) });
+  const fp = await firstOf(pu.cookie, (c) => c.kind === 'podcast');
+  assert.deepStrictEqual({ id: fp.id, fresh: fp.fresh }, { id: ep('g1'), fresh: false }, 'podcast');
+  // Watch later episodes: the list's own order puts the peeks first; the first Watch later card is the real place
+  const w = __mintTestSession({ username: 'mix-wl', role: 'admin' });
+  for (const g of ['g2', 'g3', 'g1']) userStore.addWatchLater(w.user.id, userStore.watchLaterKey('podcast', ep(g)), at(1000));
+  userStore.setPodcastProgress(w.user.id, ep('g2'), { position: 5, duration: 1800, updatedAt: at(1000) });
+  userStore.setPodcastProgress(w.user.id, ep('g3'), { position: 5, duration: 1800, updatedAt: at(2000) });
+  userStore.setPodcastProgress(w.user.id, ep('g1'), { position: 300, duration: 1800, updatedAt: at(9000) });
+  const fw = await firstOf(w.cookie, (c) => c.kind === 'watchlater');
+  assert.ok(fw, 'a Watch later card');
+  assert.strictEqual(fw.fresh, false, 'Watch later: ' + fw.id);
 });

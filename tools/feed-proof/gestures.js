@@ -114,7 +114,9 @@ async function main() {
     console.log(`${row.pass ? 'PASS' : 'FAIL'} ${engine} ${JSON.stringify(row)}`);
   }
   const fails = results.filter((r) => !r.pass).length;
-  console.log(`SUMMARY gestures: ${results.length - fails}/${results.length} pass (${ENGINES.join('+')})`);
+  // gate r1 (qa S3): what each engine's PASS covers - Chromium: real touches (tap, hold, the stack swipe from the video, the page
+  // swipes); WebKit: real taps only, the page swipes as synthetic pointer events, no hold and no stack move (no touch-move API)
+  console.log(`SUMMARY gestures: ${results.length - fails}/${results.length} pass (${ENGINES.join('+')}; webkit = taps + synthetic page swipes only)`);
   if (OUT) fs.writeFileSync(OUT, JSON.stringify({ at: new Date().toISOString(), results }, null, 2));
   listening.closeAllConnections?.();
   await new Promise((resolve) => listening.close(resolve));

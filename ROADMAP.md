@@ -396,6 +396,10 @@
   podcasts say Continue or New and a new one counts as started after about a minute; a pinned Settings header with its back
   arrow; Bottom bar as its own Settings page; a swipe hint on the first sessions. Plan:
   `docs/exec-plans/completed/2026-10-09-feed-polish.md` (v1.380.0).
+- [ ] **A way back to a Start over's recorded place after its 10 s toast** _(v1.381.0 gate r1, adversary W1: disclosed, not built)_ -
+  Start over records the place it forgets in the feed session (the `moves` entry with `startOver`, `token`, `from`), and Undo
+  restores it while the item is unchanged; after the toast closes no screen offers it (the record is only in the database). Options:
+  a "Recently started over" row in the Feed picker, or a Restore in History. Measure first how often Dean misses the toast.
 - [ ] **Feed phase 2: a Reading section (news as files)** _(outlined at the 2026-10-09 feed kickoff, section 9; planned after Dean has
   used the feed a week or two)_ - RSS sources subscribed like channels, each new post saved as a local readable file (text and
   images, readability-style extraction) with a small daily cap per source; a Reading page beside Books; articles become a feed

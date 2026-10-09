@@ -42,7 +42,7 @@ function main() {
         let sum = null;
         try { sum = JSON.parse(s.summary_json || 'null'); } catch (_) { sum = null; }
         for (const m of (sum && Array.isArray(sum.moves) ? sum.moves : [])) {
-          if (!m || typeof m.id !== 'string') continue;
+          if (!m || typeof m.id !== 'string' || m.startOver) continue; // a Start over record is a reset, not a feed move (gate r1, qa S4)
           const k = `${m.kind}:${m.id}`;
           if (!fed.has(k) || String(m.at) < fed.get(k)) fed.set(k, String(m.at || ''));
         }

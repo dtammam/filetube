@@ -269,7 +269,8 @@ and a podcast you are partway through, a liked song, and something downloading.
 - [ ] v1.381.0 - In the Feed there is no "Watching on <device>" card and no download pill; go to Home: both are back, and the download went on.
 - [ ] v1.381.0 - Start over on a video you are partway through: "..." > Start over > the sheet says "Your place, h:mm:ss of h:mm:ss, will be
   forgotten". Confirm: the card says New and plays from the start. Tap Undo within 10 seconds: it is back at your place, says Continue. Do it
-  again and let the toast go: open the video on the watch page, it starts from the beginning.
+  again and let the toast go: open the video on the watch page, it starts from the beginning. Once more: Start over, tap Home within
+  10 seconds, then tap Undo on the toast still showing: "Your place is back", and the video resumes at your place.
 - [ ] v1.381.0 - Start over on a podcast and on a book card; Undo each. Then Start over a book and open it in the reader: it opens at the
   beginning. Songs and new books have no "...".
 - [ ] v1.381.0 - Things you only peeked at (under a minute) now say New, not Continue; anything you really watched or listened to still says Continue.

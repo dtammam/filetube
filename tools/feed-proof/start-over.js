@@ -1,12 +1,13 @@
 'use strict';
-/* global document */
+/* global document, window */
 // v1.381.0 Feed, TikTok style (plan W4, D9): Start over END TO END in a real browser against the real server, on the
 // shared fixture (tools/feed-proof/fixture.js). The landscape video is in progress at 50 s (a watched item is never
 // served, so the latch's reset and restore are bound by test/integration/feed-start-over.test.js instead); on its card:
 // "..." -> Start over -> the confirm (its text read back) -> Start over. Read back: the stored progress row is gone, the
 // card says New and the video restarts from 0; then the real toast's Undo button: the row is back EXACTLY (timestamp,
 // duration, updatedAt), the card says Continue. Then a book card:
-// Start over, its stored place gone; Undo, back exactly.
+// Start over, its stored place gone; Undo, back exactly. Then (gate r1) the video again: Start over, leave the Feed through the
+// SPA router, tap the toast's Undo on Home - the row is back exactly.
 //
 //   node tools/feed-proof/start-over.js <repoRoot> [out.json] [chromium|webkit|both]
 // Not a CI gate: a proof tool.
@@ -86,10 +87,28 @@ async function main() {
     await page.locator('.ui-toast__action', { hasText: 'Undo' }).last().click();
     await page.waitForTimeout(1500);
     row.bookExact = JSON.stringify(userStore.getOneBookProgress(user.id, bookId)) === JSON.stringify(bookBefore);
+    // gate r1 (qa W1, adversary W1): Start over, LEAVE the Feed (the SPA router), then the toast's Undo - still restores
+    await page.evaluate(() => document.querySelector('.feed-card[data-id="land1"]').scrollIntoView({ block: 'start' }));
+    await page.waitForTimeout(1200);
+    await page.click('.feed-card[data-id="land1"] [data-card-menu]');
+    await page.waitForTimeout(700);
+    await page.locator('.ui-sheet').last().getByText('Start over', { exact: true }).first().click();
+    await page.waitForTimeout(700);
+    await page.locator('.ui-confirm__actions .ui-btn', { hasText: 'Start over' }).last().click();
+    await page.waitForTimeout(1500);
+    await flushPendingProgress();
+    row.navReset = userStore.getOneProgress(user.id, 'land1');
+    await page.evaluate(() => window.FileTube.navigate('/'));
+    await page.waitForFunction(() => document.body.getAttribute('data-view') === 'home', null, { timeout: 15000 });
+    await page.locator('.ui-toast__action', { hasText: 'Undo' }).last().click();
+    await page.waitForTimeout(1500);
+    await flushPendingProgress();
+    row.navUndo = { view: await page.evaluate(() => document.body.getAttribute('data-view')), progress: userStore.getOneProgress(user.id, 'land1'), toast: await page.evaluate(() => Array.from(document.querySelectorAll('.ui-toast')).map((t) => t.textContent.replace(/\s+/g, ' ').trim()).pop() || null) };
+    row.navExact = row.navReset === null && JSON.stringify(row.navUndo.progress) === JSON.stringify(before.progress);
     await browser.close();
     row.pass = !!(/Your place, 0:50 of 1:00, will be forgotten\./.test(row.confirmText || '') && row.afterReset.progress === null && row.afterReset.watched === null
       && /New/.test(row.kindAfter) && row.mediaAfter !== null && row.mediaAfter < 4 && /Started over/.test(row.toast || '') && row.exact && /Continue/.test(row.kindUndo)
-      && row.bookAfterReset === null && row.bookExact && errors.length === 0);
+      && row.bookAfterReset === null && row.bookExact && row.navExact && errors.length === 0);
     results.push(row);
     console.log(`${row.pass ? 'PASS' : 'FAIL'} ${engine} ${JSON.stringify(row)}`);
   }

@@ -86,6 +86,15 @@ function feedStartOverText(card) {
   return place + (card.kind === 'watchlater' ? '. It stays in Watch later.' : '.');
 }
 
+// The Start over toast names the place the SERVER forgot (its `previous`, read from storage), not the card's: another
+// device may have moved it after the card was served (gate r1, adversary W4 - the confirm can only show what the card knows).
+function feedStartedOverText(card, previous) {
+  var title = (card && card.title) || 'this item';
+  var p = previous && previous.progress;
+  var sec = p ? Number(p.timestamp !== undefined ? p.timestamp : p.position) : 0;
+  return 'Started over: ' + title + (sec > 0 ? ' (it was at ' + feedClockLong(sec) + ')' : '');
+}
+
 // The kind label a card shows (its plain word; Watch later keeps its own name).
 function feedKindLabel(card) {
   if (!card) return '';
@@ -513,7 +522,7 @@ if (typeof module !== 'undefined' && module.exports) {
     FEED_HINT_KEY, FEED_HINT_SESSIONS, FEED_HINT_MS, FEED_INTRO_NOTE_MS, feedHintShouldShow,
     feedDeadlineMs, feedRingFraction, feedRemainingSec, feedEmptySummary, feedCountActivity, feedRecapLines, feedRecapTitle,
     feedHoldStep, feedSummaryPayload,
-    feedClockLong, feedStartOverKind, feedStartOverText, FEED_UNDO_MS,
+    feedClockLong, feedStartOverKind, feedStartOverText, feedStartedOverText, FEED_UNDO_MS,
     feedWordCount, feedPaginate, feedLongestHead, FEED_SPLIT_MIN_WORDS, feedBookTarget, feedPageDwellSec, FEED_MAX_PAGES, feedFurther, FEED_FIT_KEY,
     FEED_EDGE_PX, FEED_SWIPE_MIN_PX, feedPageSwipe, FEED_PAGE_HINT_KEY,
   };
@@ -904,7 +913,7 @@ if (typeof module !== 'undefined' && module.exports) {
       clearHint();
       if (dir < 0) { if (bp.page > 0) { showPage(index, bp.page - 1); bp.since = Date.now(); } return; }
       if (bp.page < bp.pages.length - 1) { showPage(index, bp.page + 1); bp.since = Date.now(); return; }
-      if (card.newBook || !bp.end || bp.end.atEnd || continuing[index]) return;
+      if (card.newBook || !bookEnd(bp) || bp.end.atEnd || continuing[index]) return;
       continuing[index] = true;
       var from = bp.end;
       fetch('/api/books/' + encodeURIComponent(card.id) + '/excerpt?spine=' + from.spineIndex + '&block=' + from.blockIndex + '&continuation=1', { signal: signal })
@@ -976,12 +985,19 @@ if (typeof module !== 'undefined' && module.exports) {
       var left = el('span', 'feed-card__left', '');
       left.setAttribute('data-page-readout', '');
       actions.appendChild(left);
-      appendCardMenu(actions, index);
+      if (!card.startedOver) appendCardMenu(actions, index); // started over: nothing left to forget (a second tap would say so)
       overlay.appendChild(actions);
+      if (card.startedOver) overlay.querySelector('.feed-card__kind').textContent = 'Book \u00b7 Started over';
+      // gate r1 (qa W2): the blocks (the card's own and any continuation) are seeded ONCE, when the card's state is born; a card
+      // rebuilt after it was pruned re-lays the SAME blocks, and what was read is kept as a place (relayoutBook) - re-seeding
+      // dropped the continuation while its reads and end stayed, and the next write passed text never shown
+      var born = !bookPages[index];
       var bp = bookState(index, card);
-      bp.blocks = (card.blocks || []).slice();
-      if (card.atEnd) bp.blocks.push({ spineIndex: -1, blockIndex: -1, text: 'The end.', end: true });
-      layoutPages(index);
+      if (born) {
+        bp.blocks = (card.blocks || []).slice();
+        if (card.atEnd) bp.blocks.push({ spineIndex: -1, blockIndex: -1, text: 'The end.', end: true });
+        layoutPages(index);
+      } else relayoutBook(index);
     }
 
     // v1.380.0 (R4, D5): "Start something new" - an unstarted book. Cover, author, the book's own description (TEXT
@@ -1056,6 +1072,25 @@ if (typeof module !== 'undefined' && module.exports) {
       blocks.forEach(function (b) { blockNodes(b).forEach(function (n) { pageEl.appendChild(n); }); });
     }
 
+    // A book card laid out AGAIN in a box of another size (a rotation or resize): the pages read so far are kept as a place
+    // (bp.carry: never lost, never moved past), the per-page read marks start over on the new pages, which are laid out to
+    // keep the reader on the page holding the block they were on.
+    function relayoutBook(index) {
+      var bp = bookPages[index];
+      if (!bp) return;
+      var node = cardEls[index];
+      var pageEl = node && node.querySelector('.feed-card__page');
+      // the same box (a rebuild after pruning): the SAME pages, their read marks still true - just draw the page again
+      if (bp.measured && pageEl && pageEl.clientHeight === bp.boxH) { showPage(index, bp.page); return; }
+      if (index === activeIndex) noteBookPage(index);
+      bp.carry = feedFurther(bp.carry, feedBookTarget(bp.pages, bp.read, bookEnd(bp)));
+      bp.read = {}; bp.pageMs = {};
+      layoutPages(index);
+    }
+    // the card's end as a write target: none once the pages hit FEED_MAX_PAGES (the blocks past the cap were never laid out,
+    // so "every page read" must not reach the card's next - adversary r1, reasoned)
+    function bookEnd(bp) { return bp.capped ? null : bp.end; }
+
     // Lay the card's blocks into pages that fit its page box, then draw the current page. A box that has no height yet (a
     // card not laid out) is not measured: everything goes on one page until the card is laid out (setActive, a resize).
     // Re-laying keeps the reader on the page that holds the block they were on.
@@ -1069,6 +1104,8 @@ if (typeof module !== 'undefined' && module.exports) {
       if (box > 0) {
         bp.pages = feedPaginate(bp.blocks, function (blocks) { drawPage(pageEl, blocks); return pageEl.scrollHeight <= pageEl.clientHeight; });
         bp.measured = true;
+        bp.boxH = box;
+        bp.capped = bp.pages.length >= FEED_MAX_PAGES;
       } else {
         bp.pages = bp.blocks.length ? [bp.blocks.slice()] : [];
         bp.measured = false;
@@ -1090,7 +1127,7 @@ if (typeof module !== 'undefined' && module.exports) {
       bp.page = Math.max(0, Math.min(page, bp.pages.length - 1));
       drawPage(pageEl, bp.pages[bp.page] || []);
       var readout = node.querySelector('[data-page-readout]');
-      if (readout) readout.textContent = bp.pages.length > 1 ? 'Page ' + (bp.page + 1) + ' of ' + bp.pages.length : '';
+      if (readout) readout.textContent = cards[index] && cards[index].startedOver ? 'Opens at the beginning next time' : (bp.pages.length > 1 ? 'Page ' + (bp.page + 1) + ' of ' + bp.pages.length : '');
     }
 
     // The current page's time: started when the card or the page became active, counted when it stops being on screen.
@@ -1181,24 +1218,28 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     var startingOver = {}; // card index -> true while its Start over is in flight (one request, never two)
+    // gate r1 (qa W1, adversary W1): the request and its Undo OUTLIVE the view. The toast lives on <body> and survives a
+    // navigation, so neither fetch rides the view's abort signal and both use the session id captured at the tap (the
+    // view may have reset or started a new session by the time Undo is tapped). Only the CARD's update is skipped once the
+    // view is gone (signal.aborted): its DOM is detached.
     function startOver(index, card) {
       var kind = feedStartOverKind(card);
       if (!kind || !session || startingOver[index]) return;
+      var sid = session.id;
       startingOver[index] = true;
       if (mediaCardIndex === index) { var p = player(); if (p && typeof p.pause === 'function') p.pause(); }
-      fetch('/api/feed/start-over', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: session.id, kind: kind, id: card.id }), signal: signal })
+      fetch('/api/feed/start-over', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sid, kind: kind, id: card.id }), keepalive: true })
         .then(function (r) { return r.json().then(function (body) { return { status: r.status, body: body }; }); })
         .then(function (res) {
           startingOver[index] = false;
           if (res.status === 409 && res.body && res.body.reason === 'nothing') { toast('Nothing to start over: it was not started'); return; }
           if (res.status !== 200 || !res.body || !res.body.token) { toast('Could not start over'); return; }
           var before = { fresh: card.fresh, progress: card.progress, position: card.position, startAt: card.startAt, endAt: card.endAt, chapter: card.chapter, skippedIntro: card.skippedIntro };
-          applyStartedOver(index, card, kind);
-          toast('Started over: ' + (card.title || 'this item'), { duration: FEED_UNDO_MS, action: { label: 'Undo', onAction: function () { undoStartOver(index, card, kind, res.body.token, before); } } });
+          if (!signal.aborted && cards[index] === card) applyStartedOver(index, card, kind);
+          toast(feedStartedOverText(card, res.body.previous), { duration: FEED_UNDO_MS, action: { label: 'Undo', onAction: function () { undoStartOver(index, card, kind, res.body.token, before, sid); } } });
         })
-        .catch(function () { startingOver[index] = false; });
+        .catch(function () { startingOver[index] = false; toast('Could not start over'); });
     }
-
     // the card says New and plays from the start (a media card); a book card says it starts over and moves nothing more
     function applyStartedOver(index, card, kind) {
       if (kind === 'book') {
@@ -1232,14 +1273,14 @@ if (typeof module !== 'undefined' && module.exports) {
       if (index === activeIndex) playCard(index);
     }
 
-    function undoStartOver(index, card, kind, token, before) {
-      if (!session) return;
-      fetch('/api/feed/start-over/undo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: session.id, token: token }), signal: signal })
+    function undoStartOver(index, card, kind, token, before, sid) {
+      fetch('/api/feed/start-over/undo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: sid, token: token }), keepalive: true })
         .then(function (r) { return r.json().then(function (body) { return { status: r.status, body: body }; }); })
         .then(function (res) {
-          if (res.status === 409 && res.body && res.body.reason === 'moved') { toast('Could not undo: it was played since. The old place is kept in this session\'s record'); return; }
+          if (res.status === 409 && res.body && res.body.reason === 'moved') { toast('Could not undo: it was played since'); return; }
           if (res.status !== 200) { toast('Could not undo'); return; }
-          if (cards[index] !== card) return;
+          toast('Your place is back: ' + (card.title || 'this item'));
+          if (signal.aborted || cards[index] !== card) return; // the view is gone: the place is back, nothing to redraw
           if (kind === 'book') {
             card.startedOver = false;
             var node = cardEls[index];
@@ -1388,7 +1429,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var bp = bookPages[index];
       if (!card || !bp || bp.refused) return;
       if (card.newBook) return; // an unstarted book is only ever started by the "Start reading" tap (R4): no dwell moves its place
-      var target = feedFurther(feedBookTarget(bp.pages, bp.read, bp.end), bp.carry);
+      var target = feedFurther(feedBookTarget(bp.pages, bp.read, bookEnd(bp)), bp.carry);
       if (!target || (bp.written && feedFurther(bp.written, target) === bp.written)) return; // nothing new read
       bp.written = target;
       fetch('/api/feed/progress/book/' + encodeURIComponent(card.id), {
@@ -1674,10 +1715,7 @@ if (typeof module !== 'undefined' && module.exports) {
           var i = Number(k);
           var bp = bookPages[i];
           if (!bp || !cardEls[i] || cardEls[i].hasAttribute('data-pruned')) return;
-          if (i === activeIndex) noteBookPage(i);
-          bp.carry = feedFurther(bp.carry, feedBookTarget(bp.pages, bp.read, bp.end));
-          bp.read = {}; bp.pageMs = {};
-          layoutPages(i);
+          relayoutBook(i);
         });
       }, 150);
     }, { signal: signal });

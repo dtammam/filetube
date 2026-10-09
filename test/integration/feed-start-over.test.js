@@ -298,3 +298,110 @@ test('D9 the record comes FIRST: when writing it fails (a disk error), nothing i
   } finally { userStore.appendFeedSessionMove = real; }
   assert.deepStrictEqual(videoPlace(uid, 'v1'), before, 'nothing forgotten without its record');
 });
+
+// ---- gate r1 fix round (adversary ADV-1..3 adopted; qa W3 / W4; adversary W3 A6-A8; security-brief N1, N2) ---------------
+
+test('r1 (adversary W2 / ADV-1, qa W3): a 0 s save STAGED after the reset is a newer intent - Undo answers moved, nothing flushes over a restore', async () => {
+  userStore.setProgress(uid, 'v1', { timestamp: 300, duration: 600, updatedAt: T1 });
+  const sid = await session();
+  const s = await (await startOver(sid, 'media', 'v1')).json();
+  assert.strictEqual((await post('/api/progress', { id: 'v1', timestamp: 0, duration: 600 })).status, 200); // the watch page's own "Start over"
+  const u = await undo(sid, s.token);
+  assert.strictEqual(u.status, 409);
+  assert.strictEqual((await u.json()).reason, 'moved');
+  assert.ok(!recordOf(sid, s.token)[0].undoneAt, 'the record stays');
+  await flushPendingProgress();
+  assert.strictEqual(userStore.getOneProgress(uid, 'v1').timestamp, 0, 'the newer intent stands, never a 200 that the flush then undoes');
+  // a 0 s ROW already flushed: Undo of a fresh reset is refused too (any row since = moved)
+  userStore.setProgress(uid, 'v1', { timestamp: 200, duration: 600, updatedAt: T1 });
+  const s2 = await (await startOver(sid, 'media', 'v1')).json();
+  userStore.setProgress(uid, 'v1', { timestamp: 0, duration: 600, updatedAt: T2 });
+  const u2 = await undo(sid, s2.token);
+  assert.strictEqual(u2.status, 409);
+  assert.strictEqual((await u2.json()).reason, 'moved');
+  assert.strictEqual(userStore.getOneProgress(uid, 'v1').timestamp, 0);
+});
+
+test('r1 (qa W3): a book place staged by the reader AFTER the reset makes Undo answer moved (no restore under a pending write)', async () => {
+  userStore.setBookProgress(uid, bookId, { locator: { kind: 'epub', cfi: '', spineIndex: 2, blockIndex: 1 }, percent: 70, updatedAt: T1 });
+  const sid = await session();
+  const s = await (await startOver(sid, 'book', bookId)).json();
+  assert.strictEqual((await post(`/api/books/${bookId}/progress`, { locator: { kind: 'epub', cfi: 'epubcfi(/6/2!/4/2/1:0)', spineIndex: 0, blockIndex: 0 }, percent: 0 })).status, 200);
+  const u = await undo(sid, s.token);
+  assert.strictEqual(u.status, 409);
+  assert.strictEqual((await u.json()).reason, 'moved');
+  await flushPendingBookProgress();
+  assert.strictEqual(userStore.getOneBookProgress(uid, bookId).locator.spineIndex, 0);
+});
+
+test('r1 (adversary ADV-3, qa W4 M8): a reader ping STAGED before a book Start over is recorded and never resurrected by the flush', async () => {
+  userStore.setBookProgress(uid, bookId, { locator: { kind: 'epub', cfi: '', spineIndex: 1, blockIndex: 0 }, percent: 30, updatedAt: T1 });
+  assert.strictEqual((await post(`/api/books/${bookId}/progress`, { locator: { kind: 'epub', cfi: 'epubcfi(/6/4!/4/2/1:0)', spineIndex: 2, blockIndex: 4 }, percent: 66 })).status, 200);
+  const sid = await session();
+  const s = await (await startOver(sid, 'book', bookId)).json();
+  assert.strictEqual(s.previous.progress.locator.spineIndex, 2, 'the snapshot includes the staged reader ping');
+  await flushPendingBookProgress();
+  assert.strictEqual(userStore.getOneBookProgress(uid, bookId), null, 'the flush did not resurrect the forgotten place');
+  assert.strictEqual((await undo(sid, s.token)).status, 200);
+  assert.strictEqual(userStore.getOneBookProgress(uid, bookId).locator.spineIndex, 2);
+});
+
+test('r1 (adversary ADV-2, security-brief N2): a hidden PODCAST is a neutral 404 on both routes - nothing reset, nothing restored', async () => {
+  const m = __mintTestSession({ username: 'sover-pod-member', role: 'member' });
+  userStore.setPodcastProgress(m.user.id, epId, { position: 700, duration: 1800, updatedAt: T1 });
+  userStore.setRestrictions(m.user.id, [{ kind: 'library', value: 'podcasts' }]);
+  const sid = await session(m.cookie);
+  assert.strictEqual((await startOver(sid, 'podcast', epId, m.cookie)).status, 404);
+  assert.strictEqual(userStore.getOnePodcastProgress(m.user.id, epId).position, 700);
+  userStore.setRestrictions(m.user.id, []);
+  const s = await (await startOver(sid, 'podcast', epId, m.cookie)).json();
+  userStore.setRestrictions(m.user.id, [{ kind: 'show', value: subId }]);
+  assert.strictEqual((await undo(sid, s.token, m.cookie)).status, 404);
+  assert.strictEqual(userStore.getOnePodcastProgress(m.user.id, epId), null);
+});
+
+test('r1 (adversary W3 A6-A8): an item with ONLY a latch (watched / played / finished, no position) is something to forget, and comes back', async () => {
+  const sid = await session();
+  userStore.removeHistory(uid, 'v2');
+  userStore.markWatched(uid, 'v2', T2);
+  const v = await startOver(sid, 'media', 'v2');
+  assert.strictEqual(v.status, 200, 'a watched latch alone');
+  assert.strictEqual(userStore.getWatchedTimes(uid).v2, undefined);
+  assert.strictEqual((await undo(sid, (await v.json()).token)).status, 200);
+  assert.strictEqual(userStore.getWatchedTimes(uid).v2, T2);
+  userStore.resetPodcastPlace(uid, epId);
+  userStore.setPodcastPlayed(uid, epId, T2);
+  const p = await startOver(sid, 'podcast', epId);
+  assert.strictEqual(p.status, 200, 'a played latch alone');
+  assert.strictEqual(userStore.getPodcastPlayed(uid)[epId], undefined);
+  assert.strictEqual((await undo(sid, (await p.json()).token)).status, 200);
+  assert.strictEqual(userStore.getPodcastPlayed(uid)[epId], T2);
+  userStore.resetBookPlace(uid, bookId);
+  userStore.setBookFinished(uid, bookId, T2);
+  const b = await startOver(sid, 'book', bookId);
+  assert.strictEqual(b.status, 200, 'a finished latch alone');
+  assert.strictEqual(userStore.getBookFinished(uid)[bookId], undefined);
+  assert.strictEqual((await undo(sid, (await b.json()).token)).status, 200);
+  assert.strictEqual(userStore.getBookFinished(uid)[bookId], T2);
+});
+
+test('r1 (security-brief N1): a recorded place of the wrong shape (a crafted or corrupted backup) is refused by Undo, nothing written', async () => {
+  const sid = await session();
+  userStore.removeHistory(uid, 'v1');
+  for (const [kind, id, from] of [
+    ['media', 'v1', { progress: { timestamp: 'abc', duration: 600, updatedAt: T1 }, watchedAt: null }],
+    ['media', 'v1', { progress: { timestamp: 10, duration: 600, updatedAt: '9'.repeat(80) }, watchedAt: null }],
+    ['book', bookId, { progress: { locator: { pad: 'x'.repeat(5000) }, updatedAt: T1 }, finishedAt: null }],
+    ['book', bookId, { progress: 'nope', finishedAt: null }],
+  ]) {
+    if (kind === 'book') userStore.resetBookPlace(uid, bookId);
+    const token = require('node:crypto').randomBytes(12).toString('hex');
+    const moves = (userStore.getFeedSession(uid, sid).summary || {}).moves || [];
+    userStore.setFeedSessionMoves(uid, sid, moves.concat([{ kind, id, startOver: true, token, from, to: null, at: T1 }]));
+    const u = await undo(sid, token);
+    assert.strictEqual(u.status, 409, JSON.stringify(from).slice(0, 60));
+    assert.strictEqual((await u.json()).reason, 'invalid-record');
+  }
+  assert.strictEqual(userStore.getOneProgress(uid, 'v1'), null);
+  assert.strictEqual(userStore.getOneBookProgress(uid, bookId), null);
+});

@@ -530,7 +530,7 @@ test('W4 view (D9): refusals are said in words - nothing to start over, an Undo 
     await startRealm(r2); r2.show(0);
     okBtn(await openStartOver(r2, 0)).click(); await r2.settle();
     r2.w.__toastOpts[r2.toasts.indexOf('Started over: V')].action.onAction(); await r2.settle();
-    assert.ok(r2.toasts.includes('Could not undo: it was played since. The old place is kept in this session\'s record'));
+    assert.ok(r2.toasts.includes('Could not undo: it was played since'), 'and no promise of a record the user cannot open (gate r1, adversary W1)');
     assert.strictEqual(r2.$$('.feed-card')[0].querySelector('.feed-card__kind').textContent, 'Video · New from C', 'the card stays started over');
   } finally { r2.close(); }
 });
@@ -598,4 +598,166 @@ test('W4 the Feed\'s toasts pass the real (message, opts) signature: no "[object
   const src = fs.readFileSync(path.join(ROOT, 'public/js/feed.js'), 'utf8');
   assert.ok(!/U\(\)\.toast\(\{/.test(src), 'no toast called with one object');
   assert.match(src, /function toast\(text, opts\) \{ var u = U\(\); return u \? u\.toast\(String\(text\), Object\.assign\(\{ doc: document \}, opts \|\| \{\}\)\) : null; \}/);
+});
+
+// ---- gate r1 fix round ---------------------------------------------------------------------------------------------
+
+test('r1 (qa W1, adversary W1): Undo tapped AFTER leaving the Feed still reaches the server, with the session the reset ran in', async () => {
+  const r = startOverRealm([PLACED_VID, POD], {});
+  try {
+    await startRealm(r); r.show(0);
+    okBtn(await openStartOver(r, 0)).click(); await r.settle();
+    const opts = r.w.__toastOpts[r.toasts.indexOf('Started over: V')];
+    r.destroy(); // the router leaves the Feed: the view's signal aborts (the harness's fetch now rejects on it, as the platform's does)
+    opts.action.onAction(); await r.settle();
+    assert.deepStrictEqual(r.calls('POST', '/api/feed/start-over/undo').map((c) => c.body), [{ session: 'abcdef0123456789', token: 'a'.repeat(24) }], 'the Undo the user tapped was sent');
+    assert.ok(r.toasts.includes('Your place is back: V'), 'and it says so');
+    assert.ok(!r.toasts.includes('Could not undo'));
+  } finally { r.close(); }
+});
+
+test('r1 (adversary W1): Undo tapped after the session ended and a NEW one began sends the reset\'s own session, not the new one', async () => {
+  const r = startOverRealm([PLACED_VID, POD], {});
+  try {
+    await startRealm(r); r.show(0);
+    okBtn(await openStartOver(r, 0)).click(); await r.settle();
+    const opts = r.w.__toastOpts[r.toasts.indexOf('Started over: V')];
+    r.$('#feed-done-btn').click(); await r.settle();
+    const done = r.$('#feed-recap-done'); if (done) { done.click(); await r.settle(); }
+    r.$('#feed-picker-choices button[data-minutes="10"]').click(); await r.settle();
+    opts.action.onAction(); await r.settle();
+    const undos = r.calls('POST', '/api/feed/start-over/undo');
+    assert.strictEqual(undos.length, 1);
+    assert.strictEqual(undos[0].body.session, 'abcdef0123456789');
+  } finally { r.close(); }
+});
+
+test('r1 (adversary W4): the toast names the place the SERVER forgot (its previous), which can differ from the card\'s', () => {
+  assert.strictEqual(feed.feedStartedOverText({ title: 'V' }, { progress: { timestamp: 4990, duration: 7440 } }), 'Started over: V (it was at 1:23:10)');
+  assert.strictEqual(feed.feedStartedOverText({ title: 'Ep' }, { progress: { position: 600 } }), 'Started over: Ep (it was at 10:00)');
+  assert.strictEqual(feed.feedStartedOverText({ title: 'Book' }, { progress: { locator: {} } }), 'Started over: Book');
+  assert.strictEqual(feed.feedStartedOverText({ title: 'V' }, { progress: null, watchedAt: 'x' }), 'Started over: V');
+});
+
+// a long paged book: 5 blocks laid into 3 pages of 25 words, a continuation of 2 more blocks (one page)
+const MORE = { blocks: [6, 7].map((i) => blk(i, 10)), next: { spineIndex: 0, blockIndex: 8 }, atEnd: false, words: 20 };
+function prunableRealm(extra) {
+  const SONG2 = { kind: 'song', id: 't9', track: { id: 't9', title: 'S', artist: 'A' } };
+  return feedRealm(Object.assign({ pageWords: 25, batches: [{ cards: [PAGED_BOOK, POD, VID, SONG2, Object.assign({}, VID, { id: 'v3' }), Object.assign({}, POD, { id: 'e3' })], exhausted: false }], route: (m, u) => (u.indexOf('/api/books/bk1/excerpt') === 0 ? { status: 200, body: MORE } : null) }, extra || {}));
+}
+
+test('r1 (qa W2): a book card rebuilt after it was pruned keeps its continuation pages and its reads - the place never jumps past unread text', async () => {
+  const r = prunableRealm();
+  try {
+    r.w.innerWidth = 390;
+    await startRealm(r); r.show(0);
+    const stage = () => r.$$('.feed-card')[0].querySelector('.feed-card__stage');
+    for (let i = 0; i < 3; i++) { r.advance(6000); swipe(r, stage(), 300, 200); }
+    await r.settle();
+    assert.strictEqual(readout(r), 'Page 4 of 4', 'the continuation is page 4');
+    r.advance(500); // a glance at page 4: not read
+    for (let i = 1; i <= 4; i++) { r.show(i); await r.settle(); }
+    assert.ok(r.$$('.feed-card')[0].hasAttribute('data-pruned'), 'card 0 was pruned');
+    r.show(0); await r.settle();
+    assert.strictEqual(readout(r), 'Page 4 of 4', 'rebuilt with ALL its pages, on the page the reader was on');
+    r.show(1); await r.settle();
+    assert.deepStrictEqual(r.calls('POST', '/api/feed/progress/book/bk1').map((c) => c.body), [{ spineIndex: 0, blockIndex: 6 }], 'only up to the unread page 4, never its end (0,8)');
+  } finally { r.close(); }
+});
+
+test('r1 (qa W4 M13): a resize re-lays the pages and keeps what was read as a place - the old read marks never cover new, unseen text', async () => {
+  const r = feedRealm({ pageWords: 25, batches: [{ cards: [PAGED_BOOK, POD, VID], exhausted: false }] });
+  try {
+    r.w.innerWidth = 390;
+    await startRealm(r); r.show(0);
+    r.advance(6000); // page 1 (blocks 1-2) read
+    r.w.__pageWords = 50; // the phone turns: a bigger box, pages of 50 words
+    r.w.dispatchEvent(new r.w.Event('resize'));
+    await new Promise((res) => setTimeout(res, 200));
+    assert.strictEqual(readout(r), '', 'one page now holds all five blocks');
+    r.advance(100); // the new, bigger page is barely looked at
+    r.show(1); await r.settle();
+    assert.deepStrictEqual(r.calls('POST', '/api/feed/progress/book/bk1').map((c) => c.body), [{ spineIndex: 0, blockIndex: 3 }], 'the place read before the turn, not the card\'s end');
+  } finally { r.close(); }
+});
+
+test('r1 (adversary suggestion): a book card that was started over stays so when rebuilt after pruning - no "..." again, never a write', async () => {
+  const r = prunableRealm({ route: (m, u) => (u === '/api/feed/start-over' ? { status: 200, body: { ok: true, token: 'c'.repeat(24), previous: {} } } : null) });
+  try {
+    r.w.innerWidth = 390;
+    await startRealm(r); r.show(0);
+    okBtn(await openStartOver(r, 0)).click(); await r.settle();
+    for (let i = 1; i <= 4; i++) { r.show(i); await r.settle(); }
+    r.show(0); await r.settle();
+    const node = r.$$('.feed-card')[0];
+    assert.strictEqual(node.querySelector('.feed-card__kind').textContent, 'Book · Started over');
+    assert.strictEqual(node.querySelector('[data-card-menu]'), null);
+    assert.strictEqual(readout(r), 'Opens at the beginning next time');
+    r.advance(30000); r.show(1); await r.settle();
+    assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk1').length, 0);
+  } finally { r.close(); }
+});
+
+test('r1 (adversary W3 C11): a continuation reply that lands after the session was replaced touches nothing on the new card', async () => {
+  let release = null;
+  const r = feedRealm({ pageWords: 25, batches: [{ cards: [PAGED_BOOK, POD, VID], exhausted: false }] });
+  const f = r.w.fetch;
+  r.w.fetch = (u, init) => (String(u).indexOf('/api/books/bk1/excerpt') === 0
+    ? new Promise((res) => { release = () => res({ ok: true, status: 200, json: async () => MORE }); })
+    : f(u, init));
+  try {
+    r.w.innerWidth = 390;
+    await startRealm(r); r.show(0);
+    const stage = () => r.$$('.feed-card')[0].querySelector('.feed-card__stage');
+    for (let i = 0; i < 3; i++) { r.advance(6000); swipe(r, stage(), 300, 200); }
+    await r.settle();
+    assert.ok(release, 'the continuation is in flight');
+    r.$('#feed-done-btn').click(); await r.settle();
+    const done = r.$('#feed-recap-done'); if (done) { done.click(); await r.settle(); }
+    r.$('#feed-picker-choices button[data-minutes="10"]').click(); await r.settle();
+    r.show(0); await r.settle();
+    assert.strictEqual(readout(r), 'Page 1 of 3', 'a new session, the same book, page 1');
+    release(); await r.settle();
+    assert.strictEqual(readout(r), 'Page 1 of 3', 'the old reply did not turn the new card');
+  } finally { r.close(); }
+});
+
+test('r1 (adversary W3 C6): feedBookTarget - only "The end." left unread means every real page was read: the card\'s end', () => {
+  const end = { atEnd: true };
+  const pages = [[blk(1, 10)], [blk(2, 10)], [{ spineIndex: -1, blockIndex: -1, text: 'The end.', end: true }]];
+  assert.deepStrictEqual(feed.feedBookTarget(pages, { 0: true, 1: true }, end), end);
+  assert.deepStrictEqual(feed.feedBookTarget(pages, { 0: true }, end), { spineIndex: 0, blockIndex: 2 });
+});
+
+test('r1 (adversary suggestion): past FEED_MAX_PAGES the blocks that were never laid out are never passed - every page read moves nothing past them', async () => {
+  const LONG = Object.assign({}, PAGED_BOOK, { blocks: Array.from({ length: 45 }, (_, i) => blk(i + 1, 10)), words: 450, next: { spineIndex: 0, blockIndex: 46 } });
+  const r = feedRealm({ pageWords: 1, batches: [{ cards: [LONG, POD, VID], exhausted: false }] });
+  try {
+    r.w.innerWidth = 390;
+    await startRealm(r); r.show(0);
+    assert.strictEqual(readout(r), 'Page 1 of ' + feed.FEED_MAX_PAGES, 'cut at the cap');
+    const stage = () => r.$$('.feed-card')[0].querySelector('.feed-card__stage');
+    for (let i = 0; i < feed.FEED_MAX_PAGES; i++) { r.advance(6000); swipe(r, stage(), 300, 200); }
+    r.advance(6000);
+    r.show(1); await r.settle();
+    const w = r.calls('POST', '/api/feed/progress/book/bk1').map((c) => c.body);
+    assert.ok(!w.some((b) => b.blockIndex === 46), 'never the card\'s next: ' + JSON.stringify(w));
+    assert.strictEqual(r.calls('GET', '/api/books/bk1/excerpt').length, 0, 'and no continuation past a cut card');
+  } finally { r.close(); }
+});
+
+test('r1 (qa S2, adversary G5): the video layer cancels a touchmove ONLY while 2x is held - any other touch keeps scrolling the stack', async () => {
+  const r = feedRealm({ batches: [{ cards: [VID, POD], exhausted: false }] });
+  try {
+    recordingPlayer(r);
+    await startRealm(r); r.show(0);
+    const layer = r.$$('.feed-card')[0].querySelector('.feed-card__touch');
+    const move = () => { const e = new r.w.Event('touchmove', { bubbles: true, cancelable: true }); layer.dispatchEvent(e); return e.defaultPrevented; };
+    pointer(r, layer, 'pointerdown', 200, 300);
+    assert.strictEqual(move(), false, 'before the hold: a swipe scrolls');
+    await wait(70);
+    assert.strictEqual(move(), true, 'while 2x is held: the stack stays put');
+    pointer(r, layer, 'pointerup', 200, 300);
+    assert.strictEqual(move(), false, 'after the lift: scrolls again');
+  } finally { r.close(); }
 });

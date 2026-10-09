@@ -148,8 +148,11 @@ protected-main PR flow, shipped = the tag's "Publish Docker Image" run green, br
   `{"handoff":"flex"}` on all 4 runs (Dean's point 1 reproduced). This branch (W2 bb933766, re-run at W3): `scrollers 0, hudOverTitle>0 0`,
   the Feed `{"handoff":"none"}` and back on Home `{"handoff":"grid"}`. Chromium 390: card {x 0, y 56, w 390, h 716}, the playing video
   {w 390, h 716, fit cover} (before: 340 x 191 under a poster), title {y 660, h 44, 2 lines} vs HUD {x 272, y 68, w 106, h 44}: 0 overlap
-  (before: 2392 px squared on every card); podcast / song art 147 px square at 390 (45%) over its blurred backdrop (before: the art
-  338 px plus the player's own art below it). 320: card {w 320, h 440}, video 320 x 440, art 115 px, 0 overlap. WebKit cards measure
+  (before: 2392 px squared on every card); podcast / song art 161 px square at Chromium 390 (45% of the stage's inner width, 16 px
+  padding each side; gate r1 qa W5 measured it - the 147 first written here was wrong) over its blurred backdrop (before: the art
+  338 px plus the player's own art below it). 320: card {w 320, h 440}, video 320 x 440, art 130 px (Chromium) / 119 px (WebKit), 0
+  overlap. Not measured: the download chip coming back after the Feed (the fixture runs no download: "chip":"absent"; the rule and
+  its specificity are unit-bound, the device check covers it). WebKit cards measure
   24 px narrower: Linux WebKit draws classic scrollbars (`stackScrollbar` 12 px, plus the page's), iOS overlays them. Dean saw the
   side-by-side sheets (Chromium 390 and 320) and answered "Looks right, go on".
 - D6 fitted pages: jsdom over a modelled page box (test/unit/feed-tiktok.test.js, `pageWords`): ['1:10 2:15', '2:25c', '3:3'] style
@@ -220,7 +223,9 @@ progress line; horizontal swipes on media cards; comments / likes overlays; new 
 - **D9 (W4).** Start over as built in section 7; the record rides the existing `moves` carrier (backup, restore, the client-never-writes
   rule); a book card is frozen after its reset; a 10 s Undo toast. Also fixed on the way: every Feed toast passed ui.toast one object
   ("[object Object]" on the device since v1.379.0).
-- **D10 (W4).** Measured and ruled (section 7): under a minute in = New, in the Feed only; scripts/feed-stale-continue.js (read-only).
+- **D10 (W4).** Measured and ruled (section 7): under a minute in = New, in the Feed only - the label, the mix's New / Continue balance
+  and the card's one-minute write guard (a card under a minute in writes nothing until it has played its minute); the stored place is
+  never changed. scripts/feed-stale-continue.js (read-only).
 - **D11.** Unchanged except the page cue.
 - **Dean, mid-build (2026-10-09): "It should not rotate when going sideways."** A player hosted in a Feed card ignores rotation (no faux
   fullscreen, no expanded audio; iOS's rotate-into-native is bounced back without arming faux), keyed on where the host is
