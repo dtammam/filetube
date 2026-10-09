@@ -118,6 +118,7 @@ function feedFreshStarted(state, needSec) { return !!state && state.sec >= (type
 var FEED_HINT_KEY = 'ft-feed-hint-sessions';
 var FEED_HINT_SESSIONS = 3;
 var FEED_HINT_MS = 4000;
+var FEED_PAGE_HINT_KEY = 'ft-feed-page-hint-sessions'; // v1.381.0 (D11): "Swipe left for the next page", first 3 sessions
 var FEED_INTRO_NOTE_MS = 3000;
 function feedHintShouldShow(count) {
   var n = parseInt(count, 10);
@@ -288,9 +289,24 @@ function feedBookTarget(pages, read, end) {
   if (k === 0) return null;
   if (k >= list.length) return end || null;
   var first = list[k][0];
+  if (first && first.spineIndex < 0) return end || null; // only "The end." is left unread: every real page was read
   var start = list[0][0];
   if (!first || (start && first.spineIndex === start.spineIndex && first.blockIndex === start.blockIndex)) return null;
   return { spineIndex: first.spineIndex, blockIndex: first.blockIndex };
+}
+
+// v1.381.0 (D7): a horizontal swipe on a book card turns its page: left = 'next', right = 'prev'. Never a swipe that STARTS
+// within FEED_EDGE_PX of either screen edge (those belong to the system's back / forward gesture), never a short one, never a
+// mostly vertical one (that moves the stack, card to card). o = { startX, dx, dy, width }.
+var FEED_EDGE_PX = 24;
+var FEED_SWIPE_MIN_PX = 40;
+function feedPageSwipe(o) {
+  var c = o || {};
+  var x = Number(c.startX), dx = Number(c.dx), dy = Number(c.dy), w = Number(c.width);
+  if (!isFinite(x) || !isFinite(dx) || !isFinite(w) || w <= 0) return null;
+  if (x < FEED_EDGE_PX || x > w - FEED_EDGE_PX) return null;
+  if (Math.abs(dx) < FEED_SWIPE_MIN_PX || Math.abs(dx) < 1.5 * Math.abs(isFinite(dy) ? dy : 0)) return null;
+  return dx < 0 ? 'next' : 'prev';
 }
 
 // The further of two book targets ({spineIndex, blockIndex}, or { atEnd: true }, the furthest of all); null-safe.
@@ -468,6 +484,7 @@ if (typeof module !== 'undefined' && module.exports) {
     feedDeadlineMs, feedRingFraction, feedRemainingSec, feedEmptySummary, feedCountActivity, feedRecapLines, feedRecapTitle,
     feedHoldStep, feedSummaryPayload,
     feedWordCount, feedPaginate, feedLongestHead, FEED_SPLIT_MIN_WORDS, feedBookTarget, feedPageDwellSec, FEED_MAX_PAGES, feedFurther, FEED_FIT_KEY,
+    FEED_EDGE_PX, FEED_SWIPE_MIN_PX, feedPageSwipe, FEED_PAGE_HINT_KEY,
   };
 }
 
@@ -528,6 +545,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var hardStopMs = NaN; // wind-down: a playing slice stops here at the latest
     var recapCtrl = null;
     var hintPending = false; // v1.380.0 (R3, D3): set when a session STARTS (not on a resume): the first card shows the swipe cue
+    var pageHintPending = false; // v1.381.0 (D11): the first paged book card of a started session shows the page cue
     var hintTimer = null;
     var peekTimer = null;
     var ring = null;
@@ -567,6 +585,7 @@ if (typeof module !== 'undefined' && module.exports) {
           session = { id: body.session.id, plannedMin: body.session.plannedMin, startedAt: body.session.startedAt, extensions: 0 };
           extensions = 0;
           hintPending = true;
+          pageHintPending = true;
           writeSession(session);
           showStack();
           startClock();
@@ -742,6 +761,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (card.kind === 'book') {
         if (card.newBook) fillNewBookCard(node, stage, overlay, card, index);
         else fillBookCard(node, stage, overlay, card, index);
+        wirePageSwipes(stage, index);
         return;
       }
       if (card.kind === 'song') {
@@ -749,6 +769,7 @@ if (typeof module !== 'undefined' && module.exports) {
         fillAudioMedia(node, media, stage, t.artUrl || ('/albumart/' + encodeURIComponent(t.artId || card.id) + (t.artV ? '?v=' + encodeURIComponent(t.artV) : '')));
         overlay.appendChild(el('p', 'feed-card__meta', [t.artist, t.album].filter(Boolean).join(' · ')));
         overlay.appendChild(playActions(card, index, 'Whole song'));
+        wireMediaGestures(node, overlay, index, false);
         return;
       }
       // podcast / video / Watch later
@@ -764,11 +785,124 @@ if (typeof module !== 'undefined' && module.exports) {
         poster.src = card.thumbnailUrl;
         media.appendChild(poster);
         media.appendChild(el('div', 'feed-card__slot'));
+        // D8: a thin line along the bottom edge shows how far into this card's slice the video is (not a control in v1)
+        var line = el('div', 'feed-card__progress');
+        line.setAttribute('aria-hidden', 'true');
+        media.appendChild(line);
       }
       var label = isPod ? feedClock((card.endAt || 0) - (card.startAt || 0)) + ' of this episode'
         : (card.chapter ? 'Chapter ' + (card.chapter.index + 1) + ' of ' + card.chapter.count + (card.chapter.title ? ': ' + card.chapter.title : '') : feedClock((card.endAt || 0) - (card.startAt || 0)) + ' of this video');
       overlay.appendChild(playActions(card, index, label));
+      wireMediaGestures(node, overlay, index, !isPod && card.media !== 'audio');
     }
+
+    // ---- gestures (D7, D8) ---------------------------------------------------------------
+    // D8: a media card's gesture layer covers the picture / art (the overlay's buttons sit above it and keep their taps). It
+    // never cancels a touch, so a vertical swipe that starts on the picture moves the stack like anywhere else (the shared
+    // player's own picture listener cancels every touch - the watch page's loupe guard - which is why the layer is here and
+    // the player's picture never sees a Feed touch). A tap = the player's picture tap (play / pause + the centred glyph); on a
+    // VIDEO a press and hold = 2x while held (the player's engageHold / releaseHold, its own threshold and move tolerance).
+    function wireMediaGestures(node, overlay, index, canHold) {
+      var layer = el('div', 'feed-card__touch');
+      layer.setAttribute('aria-hidden', 'true');
+      node.insertBefore(layer, overlay);
+      var g = null; // { id, x, y, at, moved, held, timer }
+      var timings = function () { var p = player(); return (p && typeof p.gestureTimings === 'function' && p.gestureTimings()) || { holdMs: 500, moveTol: 16 }; };
+      var mine = function () { return index === activeIndex && mediaCardIndex === index; };
+      var end = function (tap) {
+        if (!g) return;
+        window.clearTimeout(g.timer);
+        var p = player();
+        if (g.held) { if (p && typeof p.holdEnd === 'function') p.holdEnd(); }
+        else if (tap && !g.moved && mine() && p && typeof p.pictureTap === 'function') p.pictureTap();
+        g = null;
+      };
+      layer.addEventListener('pointerdown', function (e) {
+        if (e.isPrimary === false || (typeof e.button === 'number' && e.button > 0)) return;
+        end(false);
+        g = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, held: false, timer: 0 };
+        if (canHold && mine()) {
+          var gg = g;
+          gg.timer = window.setTimeout(function () {
+            var p = player();
+            if (g === gg && !gg.moved && mine() && p && typeof p.holdStart === 'function') gg.held = !!p.holdStart();
+          }, timings().holdMs);
+        }
+      }, { signal: signal });
+      layer.addEventListener('pointermove', function (e) {
+        if (!g || e.pointerId !== g.id || g.held) return;
+        var tol = timings().moveTol;
+        if (Math.abs(e.clientX - g.x) > tol || Math.abs(e.clientY - g.y) > tol) { g.moved = true; window.clearTimeout(g.timer); }
+      }, { signal: signal });
+      layer.addEventListener('pointerup', function (e) { if (g && e.pointerId === g.id) end(true); }, { signal: signal });
+      layer.addEventListener('pointercancel', function () { end(false); }, { signal: signal }); // the browser took the touch (a scroll)
+      layer.addEventListener('lostpointercapture', function () { if (g && g.held) end(false); }, { signal: signal });
+      // while 2x is held the finger may drift: the stack stays put (only then; any other touch scrolls as usual)
+      layer.addEventListener('touchmove', function (e) { if (g && g.held && e.cancelable) e.preventDefault(); }, { passive: false, signal: signal });
+    }
+
+    // D7: on a book card a horizontal swipe turns the page (feedPageSwipe: the 24 px edge rule, never a vertical one);
+    // the stack keeps every vertical swipe (touch-action: pan-y on the stage).
+    function wirePageSwipes(stage, index) {
+      var g = null;
+      stage.addEventListener('pointerdown', function (e) {
+        if (e.isPrimary === false || (typeof e.button === 'number' && e.button > 0)) return;
+        g = { id: e.pointerId, x: e.clientX, y: e.clientY };
+      }, { signal: signal });
+      stage.addEventListener('pointercancel', function () { g = null; }, { signal: signal });
+      stage.addEventListener('pointerup', function (e) {
+        if (!g || e.pointerId !== g.id) return;
+        var dir = feedPageSwipe({ startX: g.x, dx: e.clientX - g.x, dy: e.clientY - g.y, width: window.innerWidth || document.documentElement.clientWidth });
+        g = null;
+        if (dir && index === activeIndex) turnPage(index, dir === 'next' ? 1 : -1);
+      }, { signal: signal });
+    }
+
+    // The next / previous page of the active book card. Past the last page of a reading card, the next pages come from the
+    // excerpt route in CONTINUATION mode (it reads text and never touches the served registry, so the card's own serve stays
+    // the judge of every write); a new book's description and taste turn within what the card holds.
+    var continuing = {};
+    function turnPage(index, dir) {
+      var bp = bookPages[index];
+      var card = cards[index];
+      if (!bp || !card) return;
+      noteBookPage(index);
+      clearHint();
+      if (dir < 0) { if (bp.page > 0) { showPage(index, bp.page - 1); bp.since = Date.now(); } return; }
+      if (bp.page < bp.pages.length - 1) { showPage(index, bp.page + 1); bp.since = Date.now(); return; }
+      if (card.newBook || !bp.end || bp.end.atEnd || continuing[index]) return;
+      continuing[index] = true;
+      var from = bp.end;
+      fetch('/api/books/' + encodeURIComponent(card.id) + '/excerpt?spine=' + from.spineIndex + '&block=' + from.blockIndex + '&continuation=1', { signal: signal })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (body) {
+          continuing[index] = false;
+          if (!body || !Array.isArray(body.blocks) || !body.blocks.length || bookPages[index] !== bp || bp.end !== from) return;
+          var more = body.blocks.slice();
+          if (body.atEnd) more.push({ spineIndex: -1, blockIndex: -1, text: 'The end.', end: true });
+          var node = cardEls[index];
+          var pageEl = node && node.querySelector('.feed-card__page');
+          // the new text gets pages of its own: the pages already shown (and read) never change under the reader
+          var newPages = pageEl && pageEl.clientHeight > 0
+            ? feedPaginate(more, function (blocks) { drawPage(pageEl, blocks); return pageEl.scrollHeight <= pageEl.clientHeight; })
+            : [more];
+          bp.blocks = bp.blocks.concat(more);
+          bp.pages = bp.pages.concat(newPages);
+          bp.end = body.atEnd ? { atEnd: true } : (body.next || null);
+          if (index === activeIndex) { showPage(index, bp.page + 1); bp.since = Date.now(); } else showPage(index, bp.page);
+        })
+        .catch(function () { continuing[index] = false; });
+    }
+
+    // the keyboard twin of the page swipe (a desktop has no swipe): the arrow keys turn the active book card's page
+    document.addEventListener('keydown', function (e) {
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft')) return;
+      var t = e.target;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''))) return;
+      if (activeIndex < 0 || !bookPages[activeIndex] || !cards[activeIndex] || cards[activeIndex].kind !== 'book') return;
+      e.preventDefault();
+      turnPage(activeIndex, e.key === 'ArrowRight' ? 1 : -1);
+    }, { signal: signal });
 
     // D5: a song's or an episode's art is the card's background (blurred and darkened, the music player's backdrop recipe)
     // with the art itself at a moderate size above the overlay. The player's own surface (its slot) stays mounted - the audio
@@ -1039,6 +1173,7 @@ if (typeof module !== 'undefined' && module.exports) {
         var bp = bookPages[index];
         if (bp && !bp.measured) layoutPages(index); // laid out now: fit the pages to the real box
         if (bp) bp.since = Date.now();
+        if (pageHintPending && bp && bp.pages.length > 1 && !document.getElementById('feed-hint')) { pageHintPending = false; showHint(node, 'Swipe left for the next page', FEED_PAGE_HINT_KEY); }
       } else playCard(index);
       pruneBehind(index);
       if (feedShouldPrefetch(index, cards.length)) fetchBatch();
@@ -1046,10 +1181,13 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // R3, D3: a small "Swipe up" cue at the bottom of the FIRST card of a session, on the first FEED_HINT_SESSIONS sessions a device
     // starts. It fades after the first swipe or FEED_HINT_MS; a per-device count in localStorage (try/caught) ends it for good.
-    function showHint(node) {
-      var count = parseInt(readPref(FEED_HINT_KEY, '0'), 10) || 0;
+    // v1.381.0 (D11): the same cue says "Swipe left for the next page" on the first BOOK card (with more than one page) of a
+    // session, on the first FEED_HINT_SESSIONS sessions, counted on its own key.
+    function showHint(node, text, key) {
+      var k = key || FEED_HINT_KEY;
+      var count = parseInt(readPref(k, '0'), 10) || 0;
       if (!feedHintShouldShow(count)) return;
-      writePref(FEED_HINT_KEY, count + 1);
+      writePref(k, count + 1);
       clearHint();
       var hint = el('div', 'feed-hint');
       hint.id = 'feed-hint';
@@ -1058,10 +1196,11 @@ if (typeof module !== 'undefined' && module.exports) {
       var chev = document.createElementNS(NS, 'svg');
       chev.setAttribute('class', 'feed-hint__chevron'); chev.setAttribute('viewBox', '0 0 24 24'); chev.setAttribute('aria-hidden', 'true'); chev.setAttribute('focusable', 'false');
       var chevPath = document.createElementNS(NS, 'path');
-      chevPath.setAttribute('d', 'M6 15l6-6 6 6');
+      chevPath.setAttribute('d', k === FEED_PAGE_HINT_KEY ? 'M15 6l-6 6 6 6' : 'M6 15l6-6 6 6'); // left for a page, up for a card
       chev.appendChild(chevPath);
       hint.appendChild(chev);
-      hint.appendChild(el('span', 'feed-hint__text', 'Swipe up'));
+      if (k === FEED_PAGE_HINT_KEY) hint.setAttribute('data-page-hint', '');
+      hint.appendChild(el('span', 'feed-hint__text', text || 'Swipe up'));
       (node.querySelector('.feed-card__stage') || node).appendChild(hint); // above the overlay, never over its buttons
       hintTimer = window.setTimeout(clearHint, FEED_HINT_MS);
     }
@@ -1158,6 +1297,7 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!mediaEl) return;
       var endAt = card.kind === 'song' ? null : Number(card.endAt);
       var left = node.querySelector('[data-left]');
+      var line = node.querySelector('.feed-card__progress');
       var act = activity[index] = activity[index] || { playedSec: 0, done: false, ended: false };
       var startAt = Number(data.startAt) || 0;
       if (card.skippedIntro && startAt > 0) showIntroNote(node, startAt);
@@ -1168,6 +1308,7 @@ if (typeof module !== 'undefined' && module.exports) {
         if (endAt !== null && isFinite(endAt)) {
           var remain = endAt - t;
           if (left) left.textContent = remain > 0 ? feedClock(remain) + ' left' : 'Done';
+          if (line && endAt > startAt) line.style.setProperty('--p', String(Math.round(Math.min(1, Math.max(0, (t - startAt) / (endAt - startAt))) * 1000) / 1000));
           if (remain <= 0 && !node.hasAttribute('data-done')) {
             node.setAttribute('data-done', '');
             act.done = true;
@@ -1366,7 +1507,7 @@ if (typeof module !== 'undefined' && module.exports) {
       session = null;
       writeSession(null);
       cards = []; cardEls = []; activeIndex = -1; ratios = {}; exhaustedShown = false; activity = {}; counted = {}; bookPages = {}; startingRead = {};
-      summary = feedEmptySummary(); extensions = 0; windingDown = false; hardStopMs = NaN; hintPending = false; clearHint();
+      summary = feedEmptySummary(); extensions = 0; windingDown = false; hardStopMs = NaN; hintPending = false; pageHintPending = false; clearHint();
       if (ring) ring.style.setProperty('--p', '0');
       stack.replaceChildren();
       sessionEl.hidden = true;

@@ -30,10 +30,11 @@ function feedRealm(o) {
   // v1.381.0 (D6): jsdom lays nothing out, so a book page box is MODELLED when a test asks: `pageWords` words fit a page
   // (clientHeight = the budget, scrollHeight = the words drawn). Without it the box has no height and the view keeps the
   // card on one unmeasured page, as a real card that is not laid out yet does.
-  if (opts.pageWords) {
+  // `unlaidPages`: a page box with NO height yet but its text drawn (a real card before layout) - nothing may be measured then
+  if (opts.pageWords || opts.unlaidPages) {
     const isPage = (el) => el && el.classList && el.classList.contains('feed-card__page');
     const words = (el) => { const t = (el.textContent || '').trim(); return t ? t.split(/\s+/).length : 0; };
-    Object.defineProperty(w.HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return isPage(this) ? opts.pageWords : 0; } });
+    Object.defineProperty(w.HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return isPage(this) ? (opts.pageWords || 0) : 0; } });
     Object.defineProperty(w.HTMLElement.prototype, 'scrollHeight', { configurable: true, get() { return isPage(this) ? words(this) : 0; } });
   }
   w.HTMLElement.prototype.scrollIntoView = function () { w.__scrolledInto = this; };

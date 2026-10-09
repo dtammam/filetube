@@ -71,6 +71,10 @@ test('W2 feedPaginate: whole blocks while they fit; a long paragraph continues o
   assert.deepStrictEqual(shape(feed.feedPaginate([blk(1, 10), blk(2, 40), blk(3, 3)], budget(25))), ['1:10 2:15', '2:25c', '3:3']);
   const pages = feed.feedPaginate([blk(1, 10), blk(2, 40)], budget(25));
   assert.ok(pages[1].every((b) => b.spineIndex === 0 && b.blockIndex === 2), 'a continuation keeps its block\'s place');
+  // room for 3 words is below the 8-word minimum: the 20-word paragraph starts the next page whole (divergent from a split-anything rule)
+  assert.deepStrictEqual(shape(feed.feedPaginate([blk(1, 22), blk(2, 20)], budget(25))), ['1:22', '2:20']);
+  // room for 9: split
+  assert.deepStrictEqual(shape(feed.feedPaginate([blk(1, 16), blk(2, 20)], budget(25))), ['1:16 2:9', '2:11c']);
   // a heading is never split across a page break
   assert.deepStrictEqual(shape(feed.feedPaginate([blk(1, 20), blk(2, 30, { heading: true })], budget(25))), ['1:20', '2:25', '2:5c']);
   // a block longer than a whole page is cut at the longest head that fits; the parts after the first are `cont` without a chapter label
@@ -178,7 +182,11 @@ test('W2 view (D3, D5): every card is media + HUD strip + stage + overlay; an ep
   try {
     await startRealm(r);
     for (const node of r.$$('.feed-card')) {
-      assert.deepStrictEqual(Array.from(node.children).slice(0, 4).map((c) => c.className), ['feed-card__media', 'feed-card__hudspace', 'feed-card__stage', 'feed-card__overlay'], node.getAttribute('data-kind'));
+      const kids = Array.from(node.children).map((c) => c.className).filter((c) => c !== 'feed-hint');
+      const want = node.hasAttribute('data-media')
+        ? ['feed-card__media', 'feed-card__hudspace', 'feed-card__stage', 'feed-card__touch', 'feed-card__overlay'] // W3: the gesture layer under the overlay
+        : ['feed-card__media', 'feed-card__hudspace', 'feed-card__stage', 'feed-card__overlay'];
+      assert.deepStrictEqual(kids, want, node.getAttribute('data-kind'));
       assert.ok(node.querySelector('.feed-card__overlay .feed-card__title'), 'the title is in the overlay');
     }
     const pod = r.$('.feed-card[data-kind="podcast"]');
@@ -222,4 +230,196 @@ test('Dean 2026-10-09 ("It should not rotate when going sideways"): a player hos
   const intercept = src.slice(src.indexOf("mediaPlayer.addEventListener('webkitbeginfullscreen', function () {"), src.indexOf("mediaPlayer.addEventListener('webkitbeginfullscreen', function () {") + 1600);
   assert.match(intercept, /var feedHost = rotateIgnoredForHost\(/);
   assert.match(intercept, /if \(!feedHost\) \{\s*fauxHandoffAt = Date\.now\(\);\s*setCssFullscreen\(true\);\s*\}/, 'no faux armed for a Feed card; the bounce still runs');
+});
+
+test('W2 view (D6): a page box that is not laid out yet (no height) is never measured - the card keeps one page until it is', async () => {
+  const r = feedRealm({ unlaidPages: true, batches: [{ cards: [PAGED_BOOK, POD, VID], exhausted: false }] });
+  try {
+    await startRealm(r);
+    r.show(0);
+    const node = r.$$('.feed-card')[0];
+    assert.strictEqual(node.querySelectorAll('.feed-card__page p').length, 5, 'all five blocks on the one unmeasured page');
+    assert.strictEqual(node.querySelector('[data-page-readout]').textContent, '', 'no "Page 1 of 50" from measuring a zero box');
+  } finally { r.close(); }
+});
+
+// ---- W3 (D7, D8): page swipes with the edge rule, tap / hold on video ------------------------------------------------
+
+test('W3 feedPageSwipe: left = next, right = prev; never from within 24 px of either edge, never short, never mostly vertical', () => {
+  const w = 390;
+  assert.strictEqual(feed.feedPageSwipe({ startX: 200, dx: -80, dy: 10, width: w }), 'next');
+  assert.strictEqual(feed.feedPageSwipe({ startX: 200, dx: 80, dy: -10, width: w }), 'prev');
+  assert.strictEqual(feed.feedPageSwipe({ startX: 23, dx: 120, dy: 0, width: w }), null, 'the left edge belongs to the system\'s back gesture');
+  assert.strictEqual(feed.feedPageSwipe({ startX: 24, dx: 120, dy: 0, width: w }), 'prev', 'exactly 24 px in is the page\'s');
+  assert.strictEqual(feed.feedPageSwipe({ startX: w - 23, dx: -120, dy: 0, width: w }), null, 'the right edge too');
+  assert.strictEqual(feed.feedPageSwipe({ startX: w - 24, dx: -120, dy: 0, width: w }), 'next');
+  assert.strictEqual(feed.feedPageSwipe({ startX: 200, dx: -39, dy: 0, width: w }), null, 'shorter than 40 px');
+  assert.strictEqual(feed.feedPageSwipe({ startX: 200, dx: -60, dy: 41, width: w }), null, 'mostly vertical: the stack\'s');
+  assert.strictEqual(feed.feedPageSwipe({ startX: 200, dx: -60, dy: 40, width: w }), 'next', '1.5 to 1 is still a page turn');
+  assert.strictEqual(feed.feedPageSwipe(null), null);
+  assert.strictEqual(feed.FEED_EDGE_PX, 24);
+});
+
+function pointer(r, target, type, x, y, extra) {
+  const e = new r.w.Event(type, { bubbles: true, cancelable: true });
+  const props = Object.assign({ clientX: x, clientY: y, pointerId: 1, isPrimary: true, button: 0 }, extra || {});
+  for (const k of Object.keys(props)) Object.defineProperty(e, k, { value: props[k] });
+  target.dispatchEvent(e);
+}
+function swipe(r, target, x0, x1) { pointer(r, target, 'pointerdown', x0, 300); pointer(r, target, 'pointerup', x1, 305); }
+const readout = (r) => r.$$('.feed-card')[0].querySelector('[data-page-readout]').textContent;
+const firstWords = (r) => Array.from(r.$$('.feed-card')[0].querySelectorAll('.feed-card__page p')).map((p) => p.textContent.split(' ')[0]);
+
+test('W3 view (D7): a swipe left / right on a book card turns its page; one from the screen edge does nothing; the arrow keys turn it too', async () => {
+  const r = feedRealm({ pageWords: 25, batches: [{ cards: [PAGED_BOOK, POD, VID], exhausted: false }] });
+  try {
+    r.w.innerWidth = 390;
+    await startRealm(r);
+    r.show(0);
+    const stage = r.$$('.feed-card')[0].querySelector('.feed-card__stage');
+    swipe(r, stage, 300, 200);
+    assert.strictEqual(readout(r), 'Page 2 of 3');
+    assert.deepStrictEqual(firstWords(r), ['b3w0', 'b4w0']);
+    swipe(r, stage, 10, 200); // from the left edge: the system's
+    assert.strictEqual(readout(r), 'Page 2 of 3');
+    swipe(r, stage, 385, 200); // from the right edge
+    assert.strictEqual(readout(r), 'Page 2 of 3');
+    swipe(r, stage, 100, 200);
+    assert.strictEqual(readout(r), 'Page 1 of 3');
+    swipe(r, stage, 100, 200); // nothing before page 1
+    assert.strictEqual(readout(r), 'Page 1 of 3');
+    r.doc.dispatchEvent(new r.w.KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    assert.strictEqual(readout(r), 'Page 2 of 3');
+    r.doc.dispatchEvent(new r.w.KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    assert.strictEqual(readout(r), 'Page 1 of 3');
+  } finally { r.close(); }
+});
+
+test('W3 view (D6 + D7): pages read in order move the place page by page; a page skipped quickly holds the place at it; all read = the card\'s next', async () => {
+  const r = feedRealm({ pageWords: 25, batches: [{ cards: [PAGED_BOOK, POD, VID], exhausted: false }] });
+  try {
+    r.w.innerWidth = 390;
+    await startRealm(r);
+    r.show(0);
+    const stage = r.$$('.feed-card')[0].querySelector('.feed-card__stage');
+    r.advance(6000); swipe(r, stage, 300, 200); // page 1 read
+    r.advance(1000); swipe(r, stage, 300, 200); // page 2 glanced at for 1 s: not read
+    r.advance(9000); // page 3 read
+    r.show(1); await r.settle();
+    let w = r.calls('POST', '/api/feed/progress/book/bk1');
+    assert.deepStrictEqual(w.map((x) => x.body), [{ spineIndex: 0, blockIndex: 3 }], 'held at page 2\'s start: a page read after an unread one moves nothing past it');
+    // back to the card: page 3 is on screen (the card remembers its page); read page 2 properly, then everything is read
+    r.show(0);
+    swipe(r, stage, 100, 200); r.advance(6000); swipe(r, stage, 300, 200); r.advance(100);
+    r.show(1); await r.settle();
+    w = r.calls('POST', '/api/feed/progress/book/bk1');
+    assert.deepStrictEqual(w.map((x) => x.body), [{ spineIndex: 0, blockIndex: 3 }, { spineIndex: 0, blockIndex: 6 }], 'then the card\'s next, forward only');
+  } finally { r.close(); }
+});
+
+test('W3 view (D7): past the last page the next pages come from the excerpt route in CONTINUATION mode, as pages of their own; the place can then move into them', async () => {
+  const more = { blocks: [6, 7].map((i) => blk(i, 10)), next: { spineIndex: 0, blockIndex: 8 }, atEnd: false, words: 20 };
+  const r = feedRealm({ pageWords: 25, batches: [{ cards: [PAGED_BOOK, POD, VID], exhausted: false }], route: (m, u) => (u.indexOf('/api/books/bk1/excerpt') === 0 ? { status: 200, body: more } : null) });
+  try {
+    r.w.innerWidth = 390;
+    await startRealm(r);
+    r.show(0);
+    const stage = r.$$('.feed-card')[0].querySelector('.feed-card__stage');
+    for (let i = 0; i < 3; i++) { r.advance(6000); swipe(r, stage, 300, 200); }
+    await r.settle();
+    const gets = r.calls('GET', '/api/books/bk1/excerpt');
+    assert.strictEqual(gets.length, 1);
+    assert.strictEqual(gets[0].url, '/api/books/bk1/excerpt?spine=0&block=6&continuation=1', 'from the card\'s next, never re-stamping the serve');
+    assert.strictEqual(readout(r), 'Page 4 of 4');
+    assert.deepStrictEqual(firstWords(r), ['b6w0', 'b7w0']);
+    r.advance(6000);
+    r.show(1); await r.settle();
+    assert.deepStrictEqual(r.calls('POST', '/api/feed/progress/book/bk1').map((x) => x.body), [{ spineIndex: 0, blockIndex: 8 }], 'every page read, the continuation\'s next');
+  } finally { r.close(); }
+});
+
+function recordingPlayer(r, holdMs) {
+  const seen = [];
+  const p = r.w.__harness.player;
+  p.pictureTap = () => seen.push('tap');
+  p.holdStart = () => { seen.push('hold'); return true; };
+  p.holdEnd = () => seen.push('release');
+  p.gestureTimings = () => ({ holdMs: holdMs || 40, moveTol: 16 });
+  return seen;
+}
+const wait = (ms) => new Promise((res) => setTimeout(res, ms));
+
+test('W3 view (D8): on the playing video a tap is the player\'s picture tap; a press and hold is 2x while held (no tap); a drag is neither; a card not playing is not touched', async () => {
+  const r = feedRealm({ batches: [{ cards: [VID, POD, Object.assign({}, VID, { id: 'v2' })], exhausted: false }] });
+  try {
+    const seen = recordingPlayer(r);
+    await startRealm(r);
+    r.show(0);
+    const layer = r.$$('.feed-card')[0].querySelector('.feed-card__touch');
+    assert.ok(layer, 'the gesture layer');
+    pointer(r, layer, 'pointerdown', 200, 300); pointer(r, layer, 'pointerup', 202, 301);
+    assert.deepStrictEqual(seen, ['tap']);
+    pointer(r, layer, 'pointerdown', 200, 300); await wait(70); pointer(r, layer, 'pointerup', 200, 300);
+    assert.deepStrictEqual(seen, ['tap', 'hold', 'release'], 'held: 2x, then released at the lift - and no tap');
+    pointer(r, layer, 'pointerdown', 200, 300); pointer(r, layer, 'pointermove', 200, 340); await wait(70); pointer(r, layer, 'pointerup', 200, 340);
+    assert.deepStrictEqual(seen, ['tap', 'hold', 'release'], 'a drag (a swipe) is never a tap or a hold');
+    pointer(r, layer, 'pointerdown', 200, 300); await wait(70); pointer(r, layer, 'pointercancel', 200, 300);
+    assert.deepStrictEqual(seen.slice(3), ['hold', 'release'], 'the browser taking the touch releases a hold');
+    // the third card (another video) is not the playing one
+    const other = r.$$('.feed-card')[2].querySelector('.feed-card__touch');
+    pointer(r, other, 'pointerdown', 200, 300); await wait(70); pointer(r, other, 'pointerup', 200, 300);
+    assert.deepStrictEqual(seen.slice(5), [], 'nothing reaches the player from a card it is not playing');
+  } finally { r.close(); }
+});
+
+test('W3 view (D8): an episode or a song: a tap plays / pauses; a hold is NOT 2x', async () => {
+  const r = feedRealm({ batches: [{ cards: [POD, VID], exhausted: false }] });
+  try {
+    const seen = recordingPlayer(r);
+    await startRealm(r);
+    r.show(0);
+    const layer = r.$$('.feed-card')[0].querySelector('.feed-card__touch');
+    pointer(r, layer, 'pointerdown', 200, 300); await wait(70); pointer(r, layer, 'pointerup', 200, 300);
+    pointer(r, layer, 'pointerdown', 200, 300); pointer(r, layer, 'pointerup', 200, 300);
+    assert.ok(!seen.includes('hold'), 'no hold on audio');
+    assert.strictEqual(seen.filter((x) => x === 'tap').length, 2, 'a long press on audio is just a tap at the lift');
+  } finally { r.close(); }
+});
+
+test('W3 view (D8): the progress line follows the slice', async () => {
+  const r = feedRealm({ batches: [{ cards: [VID, POD], exhausted: false }] });
+  try {
+    await startRealm(r);
+    r.show(0);
+    r.timeAt(650); // VID slice 400..900: half
+    assert.strictEqual(r.$$('.feed-card')[0].querySelector('.feed-card__progress').style.getPropertyValue('--p'), '0.5');
+  } finally { r.close(); }
+});
+
+test('W3 view (D11): the first paged book card of a session says "Swipe left for the next page", on the first 3 sessions only', async () => {
+  for (const [count, shown] of [[0, true], [2, true], [3, false]]) {
+    const r = feedRealm({ pageWords: 25, batches: [{ cards: [VID, PAGED_BOOK, POD], exhausted: false }] });
+    try {
+      r.w.localStorage.setItem('ft-feed-page-hint-sessions', String(count));
+      r.w.localStorage.setItem('ft-feed-hint-sessions', '3'); // the "Swipe up" cue is done on this device
+      await startRealm(r);
+      r.show(0); r.show(1);
+      const hint = r.$('#feed-hint');
+      assert.strictEqual(!!(hint && hint.hasAttribute('data-page-hint')), shown, 'count ' + count);
+      if (shown) {
+        assert.strictEqual(hint.textContent, 'Swipe left for the next page');
+        assert.strictEqual(r.w.localStorage.getItem('ft-feed-page-hint-sessions'), String(count + 1));
+      }
+    } finally { r.close(); }
+  }
+});
+
+test('W3 player API (D8): the Feed\'s tap and hold are the player\'s own picture machinery, not a copy', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public/js/player.js'), 'utf8');
+  assert.match(src, /pictureTap: function \(\) \{ toggleArtPlayPause\('feed-tap'\); \}/);
+  assert.match(src, /holdStart: function \(\) \{ engageHold\(\); return holdActive; \}/);
+  assert.match(src, /holdEnd: function \(\) \{ if \(!holdActive\) return; holdGestureLive = false; releaseHold\(\); \}/);
+  assert.match(src, /gestureTimings: function \(\) \{ return \{ holdMs: HOLD_MS, moveTol: MOVE_TOL \}; \}/);
+  const feedSrc = fs.readFileSync(path.join(ROOT, 'public/js/feed.js'), 'utf8');
+  assert.ok(!/playbackRate\s*=/.test(feedSrc), 'the Feed never sets a rate itself');
 });

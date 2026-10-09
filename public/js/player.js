@@ -10581,6 +10581,14 @@ if (typeof module !== 'undefined' && module.exports) {
     play: function () { return playActiveMedia(); },
     pause: function () { pauseActiveMedia(); },
     togglePlay: function () { togglePlayPause('other'); },
+    // v1.381.0 (D8): the Feed card's own gesture layer (it sits over the picture, so the card can still be swiped) drives the
+    // SAME picture machinery the watch page's touches do: a tap is the picture tap (play / pause + the centred glyph, the
+    // "No glyph on picture taps" switch respected), a press and hold is engageHold / releaseHold (2x while held, the speed
+    // badge, FULL + playing only), with the same thresholds. No lock-by-drag here: a drag in the Feed is a swipe.
+    pictureTap: function () { toggleArtPlayPause('feed-tap'); },
+    holdStart: function () { engageHold(); return holdActive; },
+    holdEnd: function () { if (!holdActive) return; holdGestureLive = false; releaseHold(); },
+    gestureTimings: function () { return { holdMs: HOLD_MS, moveTol: MOVE_TOL }; },
     next: function () { manualTrackStep('next'); },
     prev: function () { manualTrackStep('prev'); },
     seek: function (sec) { if (typeof sec === 'number' && isFinite(sec) && sec >= 0) seekActiveMedia(sec, false); },

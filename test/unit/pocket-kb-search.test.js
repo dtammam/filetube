@@ -685,6 +685,8 @@ const CLASSIFIED = [
   // v1.379.0 Feed: the recap's hold-to-extend button (a hold of Enter or Space, released on keyup) - its own element only
   ['public/js/feed.js', "if (e.type === 'keydown') { if (e.key !== 'Enter' && e.key !== ' ') return; if (e.repeat) return; e.preventDefault(); }", 'element: the hold-to-extend button only (Enter or Space held); a key typed into the input never reaches it'],
   ['public/js/feed.js', "btn.addEventListener('keydown', down, { signal: signal });", 'element'],
+  // v1.381.0 (D7): the arrow keys turn the active book card's page; bubble, and it skips an INPUT / TEXTAREA / SELECT / editable target
+  ['public/js/feed.js', "document.addEventListener('keydown', function (e) {\n      if (e.defaultPrevented", 'bubble'],
   ['public/js/feed.js', "['pointerup', 'pointercancel', 'pointerleave', 'keyup', 'blur'].forEach(function (ev) { btn.addEventListener(ev, stop, { signal: signal }); });", 'element: the hold button releases on keyup'],
   ['public/js/player.js', "document.addEventListener('keydown', resumeCountdownCancelKey, true);", 'capture: observes only, any key just cancels the Resume prompt countdown (it never reads the key or acts on it), live only while that prompt shows'],
   ['public/js/player.js', "document.removeEventListener('keydown', resumeCountdownCancelKey, true);", 'capture: the removal of the one above'],

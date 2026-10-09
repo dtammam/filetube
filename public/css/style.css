@@ -12822,7 +12822,17 @@ html:root body[data-view="feed"] #handoff-card, html:root body[data-view="feed"]
 /* D5: a song's or an episode's art is the background (blurred, darkened: the music player's backdrop recipe) and, once, the
    art itself at about 45% of the card's width; the audio plays from the slot, which is mounted but not drawn */
 #view-root[data-view="feed"] .feed-card__backdrop { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; filter: blur(var(--space-12)) brightness(.6); transform: scale(1.3); }
-#view-root[data-view="feed"] .feed-card[data-media="audio"] .feed-card__slot { opacity: 0; pointer-events: none; }
+/* the audio plays from the slot, which draws nothing but the player's own tap glyph (D8: a tap shows it, centred) */
+#view-root[data-view="feed"] .feed-card[data-media="audio"] .feed-card__slot > #player-wrapper > :not(.art-play-glyph) { visibility: hidden; }
+/* ...and that glyph sits centred over the art (the stage), so an audio card's media layer is not its own stacking context:
+   the glyph's own local z (2) then paints above the stage inside the card (the card isolates) */
+#view-root[data-view="feed"] .feed-card[data-media="audio"] .feed-card__media { z-index: auto; }
+/* v1.381.0 (W3, D7, D8): the gesture layer over a media card's picture / art (under the overlay, which keeps its taps); it
+   never cancels a touch, so a vertical swipe still moves the stack. A book's stage keeps vertical pans for the stack and
+   gives horizontal ones to the page turn. The progress line is the slice's share, as data (--p 0..1, set by feed.js). */
+#view-root[data-view="feed"] .feed-card__touch { position: absolute; inset: 0; touch-action: pan-y; }
+#view-root[data-view="feed"] .feed-card[data-paged] .feed-card__stage { touch-action: pan-y; }
+#view-root[data-view="feed"] .feed-card__progress { position: absolute; left: 0; right: 0; bottom: 0; height: var(--progress-h); background: var(--accent); transform-origin: 0 50%; transform: scaleX(var(--p, 0)); pointer-events: none; }
 #view-root[data-view="feed"] .feed-card__art { width: 45%; max-height: 100%; aspect-ratio: 1 / 1; object-fit: cover; border-radius: var(--r-md); display: block; background: var(--thumbnail-bg); box-shadow: var(--shadow-modal); }
 #view-root[data-view="feed"] .feed-card__kind { font: var(--t-caption); color: var(--ink-3); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
 #view-root[data-view="feed"] .feed-card__title { font: var(--t-title); color: var(--ink-1); margin: 0; overflow-wrap: anywhere; }
