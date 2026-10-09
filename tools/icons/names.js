@@ -27,6 +27,8 @@ const NAMES = [
   // media
   'play_arrow', 'pause', 'skip_next', 'skip_previous', 'fast_forward', 'fullscreen', 'fullscreen_exit',
   'picture_in_picture_alt', 'closed_caption', 'speed', 'volume_up', 'volume_off',
+  // v1.379.0 Feed mode: the bottom-bar / sidebar glyph
+  'dynamic_feed',
   // Watch later (v1.343): the clock
   'schedule',
   // the locked 2x pill (v1.358)

@@ -3472,6 +3472,8 @@ function activeNavItem(pathname, search) {
   if (pathname === '/podcasts' || pathname === '/podcasts.html') return 'podcasts';
   // v1.64 history (count-gated entry, the Liked rule).
   if (pathname === '/history' || pathname === '/history.html') return 'history';
+  // v1.379.0 Feed mode: its own bottom-bar item and sidebar entry.
+  if (pathname === '/feed') return 'feed';
   // v1.75: `home` and `liked` SHARE the `/` path - the central Liked playlist
   // is the home grid scoped by `?liked=1` (main.js: `urlParams.get('liked') ===
   // '1'`) - so the highlight discriminates on the QUERY, mirroring that exact
@@ -3501,6 +3503,7 @@ const SIDEBAR_HREF_BY_NAV_KEY = {
   tv: '/tv',
   podcasts: '/podcasts',
   history: '/history',
+  feed: '/feed', // v1.379.0 Feed mode
 };
 
 // Paints the shell's nav highlight (bottom bar + sidebar) for a location.
@@ -5249,7 +5252,9 @@ function injectLibraryNavEntry(key, href, label, iconClass) {
   // list. v1.69: Podcasts slots between Books and History.
   // v1.73 (Dean ruling 5): Downloads sits FIRST - it anchors before every
   // other Library entry; the existing keys keep their relative ladder.
-  const anchor = (key === 'downloads')
+  const anchor = (key === 'feed')
+    ? (document.querySelector('[data-nav-sidebar="downloads"]') || document.querySelector('[data-nav-sidebar="music"]') || document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="tv"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
+    : (key === 'downloads')
     ? (document.querySelector('[data-nav-sidebar="music"]') || document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="tv"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
     : (key === 'music')
       ? (document.querySelector('[data-nav-sidebar="books"]') || document.querySelector('[data-nav-sidebar="tv"]') || document.querySelector('[data-nav-sidebar="podcasts"]') || document.querySelector('[data-nav-sidebar="history"]') || foldersList)
@@ -5387,6 +5392,15 @@ function injectPodcastsNavLinkIfEnabled() {
 // re-renders never wipe it; one boot call per page, no per-render re-apply).
 // Boot-gated only: the first-ever watch makes the entry appear on the next
 // page load, not live -- the Liked-entry trade-off, accepted at design.
+// v1.379.0 Feed mode: the Feed sidebar entry, injected like the other Library entries (one
+// choke point for every shell, never per-shell markup). Not count-gated: the page itself says
+// when the library has nothing for it.
+function injectFeedNavLink() {
+  if (typeof document === 'undefined') return;
+  if (document.querySelector('[data-nav-sidebar="feed"]')) return;
+  injectLibraryNavEntry('feed', '/feed', 'Feed', 'icon-feed');
+}
+
 function injectHistoryNavLinkIfEnabled() {
   if (typeof document === 'undefined' || typeof fetch === 'undefined') return;
   if (document.querySelector('[data-nav-sidebar="history"]')) return;
@@ -5415,7 +5429,10 @@ function injectHistoryNavLinkIfEnabled() {
 // mount these items in the DOM (`oneoff-download`/`subscriptions` are injected
 // AFTER Settings, hence last here), so the Settings editor's row order and the
 // bar's own default order are one list read one way.
-const BOTTOM_NAV_OPTIONAL = ['home', 'liked', 'playlists', 'history', 'podcasts', 'music', 'books', 'downloads', 'theme', 'oneoff-download', 'subscriptions', 'settings'];
+// v1.379.0 Feed mode (plan D1): `feed` joins the roster right after Liked (Liked keeps its slot
+// beside Home, the v1.75 lock), ON by default (not in BOTTOM_NAV_DEFAULT_HIDDEN) - the plan's
+// ruling; a user hides it from the Settings customizer.
+const BOTTOM_NAV_OPTIONAL = ['home', 'liked', 'feed', 'playlists', 'history', 'podcasts', 'music', 'books', 'downloads', 'theme', 'oneoff-download', 'subscriptions', 'settings'];
 // v1.71: items that are OFF unless the user explicitly turns them on (the
 // config's `shown` list). A default-hidden item ships in every shell's DOM
 // but never appears until Settings enables it - Dean's ruling for podcasts,
@@ -8325,6 +8342,8 @@ function deriveRouteView(pathname) {
   if (pathname === '/history' || pathname === '/history.html') return 'history';
   // v1.342 clean up: reached from the account menu + Stats, so no nav item of its own.
   if (pathname === '/cleanup') return 'cleanup';
+  // v1.379.0 Feed mode: the card feed (lib/feed/shell.js serves the History shell for it).
+  if (pathname === '/feed') return 'feed';
   return null;
 }
 
@@ -11019,7 +11038,9 @@ function shouldDockOnTransition(fromView, toView) {
   // instead of docking. v1.71: 'podcasts' joins them (the expanded
   // now-playing view mounts FULL into /podcasts' #player-slot). Mirrored
   // in player.js.
-  return (fromView === 'watch' || fromView === 'read' || fromView === 'music' || fromView === 'podcasts') && typeof toView === 'string' && toView !== fromView;
+  // v1.379.0: 'feed' joins them (a podcast, video or song card mounts the player FULL into the
+  // card's own slot). Mirrored in player.js.
+  return (fromView === 'watch' || fromView === 'read' || fromView === 'music' || fromView === 'podcasts' || fromView === 'feed') && typeof toView === 'string' && toView !== fromView;
 }
 
 // tech-debt #46: is this navigation a no-op — a request to go EXACTLY where we
@@ -11864,6 +11885,7 @@ if (typeof window !== 'undefined') { (function routerRuntime() {
     podcasts: '/js/podcasts.js',
     history: '/js/history.js',
     cleanup: '/js/cleanup.js',
+    feed: '/js/feed.js', // v1.379.0 Feed mode (registers { init, destroy } at parse time, no self-boot)
     // v1.151: lazy-load the Stats view script on first in-app navigation
     // (same posture as the other secondary views above). stats.js registers
     // { init, destroy } at parse time and has NO DOMContentLoaded self-boot,
@@ -18004,6 +18026,7 @@ document.addEventListener('DOMContentLoaded', () => {
   injectDownloadsNavLinkIfEnabled(); // v1.73: the Downloads hard entry + bottom-item gate
   // v1.64 history: same injection, gated on >=1 history item (the Liked rule).
   injectHistoryNavLinkIfEnabled();
+  injectFeedNavLink(); // v1.379.0 Feed mode
   // v1.117 (Dean bug): the PINNED sidebar is a SHELL-LEVEL surface (it lives in
   // #sidebar, outside #view-root), but its render was only booted by main.js
   // (home) and watch.js (watch) -- so pins vanished on Stats/Music/History/

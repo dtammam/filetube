@@ -12685,3 +12685,36 @@ html[data-era-flourish="on"] .ft-unfabricated {
 .errors-page h1 { font: var(--t-title); margin: 0 0 var(--space-2); }
 .errors-page pre { white-space: pre-wrap; word-break: break-word; font: var(--t-caption); color: var(--ink-2); }
 .errors-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0; }
+
+/* ---- v1.379.0 Feed mode: the /feed view (public/js/feed.js, lib/feed/shell.js) ----------------
+   Phone first: the length picker, then a full-height vertical card stack (one card per screen,
+   scroll-snap, one card active at a time). Desktop shows the same stack as a centred phone-width
+   column. Scoped to #view-root[data-view="feed"] (the SPA swaps only #view-root). Tokens only. */
+#view-root[data-view="feed"] { display: flex; flex-direction: column; min-height: 0; }
+#view-root[data-view="feed"] .feed-picker { max-width: 60vh; margin: 0 auto; padding: var(--space-6) var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
+#view-root[data-view="feed"] .feed-picker h2 { font: var(--t-headline); color: var(--ink-1); margin: 0; }
+#view-root[data-view="feed"] .feed-picker-blurb { font: var(--t-body); color: var(--ink-2); margin: 0; }
+#view-root[data-view="feed"] .feed-picker-choices { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+#view-root[data-view="feed"] .feed-week { font: var(--t-footnote); color: var(--ink-3); margin: 0; min-height: var(--t-footnote-size); }
+#view-root[data-view="feed"] .feed-session { position: relative; flex: 1; min-height: 0; display: flex; justify-content: center; }
+/* The stack fills the space between the header and the bottom bar; each card snaps to a screen. The outer
+   stack has no radius, so clip and scroll live on one element legitimately (no corner to escape). */
+#view-root[data-view="feed"] .feed-stack { width: min(100%, 60vh); height: calc(100dvh - var(--mobile-header-h) - var(--mobile-bottom-nav-h)); overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-type: y mandatory; -webkit-overflow-scrolling: touch; background: var(--surface-0); }
+#view-root[data-view="feed"] .feed-card { height: 100%; scroll-snap-align: start; scroll-snap-stop: always; display: flex; flex-direction: column; padding: var(--space-4); gap: var(--space-3); border-bottom: var(--row-divider-style); box-sizing: border-box; }
+#view-root[data-view="feed"] .feed-card__kind { font: var(--t-caption); color: var(--ink-3); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+#view-root[data-view="feed"] .feed-card__title { font: var(--t-title); color: var(--ink-1); margin: 0; }
+#view-root[data-view="feed"] .feed-card__meta { font: var(--t-footnote); color: var(--ink-2); margin: 0; }
+#view-root[data-view="feed"] .feed-card__body { flex: 1; min-height: 0; overflow-y: auto; }
+#view-root[data-view="feed"] .feed-card__text p { font: var(--t-body); color: var(--ink-1); margin: 0 0 var(--space-3); }
+#view-root[data-view="feed"] .feed-card__text h3 { font: var(--t-headline); color: var(--ink-1); margin: var(--space-4) 0 var(--space-3); }
+#view-root[data-view="feed"] .feed-card__text .feed-card__chapter-start { font: var(--t-caption); color: var(--ink-3); text-transform: uppercase; letter-spacing: var(--tracking-caps); margin: var(--space-4) 0 var(--space-2); }
+#view-root[data-view="feed"] .feed-card__slot { width: 100%; aspect-ratio: 16 / 9; background: var(--thumbnail-bg); border-radius: var(--r-md); overflow: hidden; } /* corner-clip-safe: the player host is never scrolled inside its slot */
+#view-root[data-view="feed"] .feed-card[data-portrait] .feed-card__slot { aspect-ratio: 9 / 16; max-height: 70vh; margin: 0 auto; width: auto; }
+#view-root[data-view="feed"] .feed-card__art { width: min(100%, 40vh); aspect-ratio: 1 / 1; object-fit: cover; border-radius: var(--r-md); margin: 0 auto; display: block; background: var(--thumbnail-bg); }
+#view-root[data-view="feed"] .feed-card__poster { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--r-md); display: block; background: var(--thumbnail-bg); }
+#view-root[data-view="feed"] .feed-card__actions { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
+#view-root[data-view="feed"] .feed-card__left { font: var(--t-footnote); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+#view-root[data-view="feed"] .feed-card[data-done] .feed-card__left { color: var(--ink-3); }
+#view-root[data-view="feed"] .feed-card[data-active] .feed-card__kind { color: var(--accent); }
+#view-root[data-view="feed"] .feed-hud { position: absolute; top: var(--space-3); right: var(--space-3); z-index: var(--z-chip); }
+#view-root[data-view="feed"] .feed-notice { font: var(--t-footnote); color: var(--ink-2); text-align: center; padding: var(--space-3); }

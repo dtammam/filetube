@@ -130,8 +130,10 @@ const SHELL_V175 = ['home', 'liked', 'playlists', 'history', 'podcasts', 'music'
 // item. The compat oracle below renders THIS with the v1.74 algorithm.
 const SHELL_V174 = SHELL_V175.filter((id) => id !== 'liked');
 
-test('v1.75: the roster is the 12 sortable ids, and home/settings are now IN it', () => {
-  assert.equal(BOTTOM_NAV_OPTIONAL.length, 12, 'nine optionals + home + settings + liked');
+test('v1.75: the roster is the 13 sortable ids (12 + the v1.379.0 feed), and home/settings are now IN it', () => {
+  // v1.379.0 Feed mode (plan D1): `feed` joins right after Liked (Liked stays beside Home), ON by default (not default-hidden).
+  assert.equal(BOTTOM_NAV_OPTIONAL.length, 13, 'nine optionals + home + settings + liked + feed');
+  assert.equal(BOTTOM_NAV_OPTIONAL[2], 'feed', 'Feed sits right after Liked');
   for (const id of ['home', 'settings', 'liked']) {
     assert.ok(BOTTOM_NAV_OPTIONAL.indexOf(id) >= 0, `${id} joined the sortable roster`);
   }

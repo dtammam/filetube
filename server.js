@@ -128,6 +128,7 @@ const pushRoutes = require('./lib/push/routes');
 const userRoutes = require('./lib/user/routes');
 const ytdlpArrivals = require('./lib/ytdlp/arrivals'); // v1.373.0: a playlist job's videos - quiet, and hidden from feed when asked
 const cleanupShell = require('./lib/cleanup/shell');
+const feedShell = require('./lib/feed/shell'); // v1.379.0: /feed is the History shell with its #view-root swapped
 const cleanupRoutes = require('./lib/cleanup/routes'); // v1.342: the read-only Clean up shortlist (the delete is the existing trash route)
 // Wave 7b, slice S1b: the identity routes (/api/auth, /api/users, /api/me)
 // and the pre-auth-era per-user media state routes (/api/liked,
@@ -3504,6 +3505,12 @@ app.get('*', (req, res, next) => {
   // page adds no second copy of the shell markup (the ui-lint debt ratchet counts every copy).
   if (req.path === '/cleanup') {
     if (!sendShellHtml(res, path.join(__dirname, 'public', 'history.html'), cleanupShell.renderCleanupShell)) return next();
+    return;
+  }
+  // v1.379.0 Feed mode (plan D1): the same shell route as /cleanup - the History shell carries the
+  // header, sidebar, bottom bar and player markup; lib/feed/shell.js swaps in the feed's view root.
+  if (req.path === '/feed') {
+    if (!sendShellHtml(res, path.join(__dirname, 'public', 'history.html'), feedShell.renderFeedShell)) return next();
     return;
   }
   const shell = shellHtmlForRequestPath(req.path);

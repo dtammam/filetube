@@ -225,7 +225,8 @@ function shouldDockOnTransition(fromView, toView) {
   // plays keeps the mini-player going); staying in the same view adopts instead
   // of docking. v1.71: 'podcasts' joins them (the expanded now-playing view
   // mounts FULL into /podcasts' #player-slot). MUST match common.js's copy.
-  return (fromView === 'watch' || fromView === 'read' || fromView === 'music' || fromView === 'podcasts') && typeof toView === 'string' && toView !== fromView;
+  // v1.379.0: 'feed' joins them (the card stack hosts the player FULL in a card's slot).
+  return (fromView === 'watch' || fromView === 'read' || fromView === 'music' || fromView === 'podcasts' || fromView === 'feed') && typeof toView === 'string' && toView !== fromView;
 }
 
 // The FULL/DOCKED/CLOSED transition a NAVIGATION (not a direct dock [x]/tap
