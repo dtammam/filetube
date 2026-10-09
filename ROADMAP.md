@@ -392,6 +392,21 @@
 
 ### Features
 
+- [ ] **Feed mode (Dean, 2026-10-09: "a feed mode where books, news articles, maybe some short content videos I could go through in a feed")** - a new
+  Feed page: pick 10 / 20 / 30 minutes, then an endless vertical feed of cards from his own library (the next pages of a book he
+  is reading, a few minutes of a podcast, one chapter of a video, a Watch later item, a song). What he does there is real
+  progress (the bookmark, the resume point, the watched state move; forward only, never back), the time runs out on the
+  current card, and a recap says where the time went; "Another 10 minutes" is a deliberate hold and shows in the recap. The
+  feed keeps its own session history so his Reddit time in iOS Screen Time can be compared. Plan:
+  `docs/exec-plans/active/2026-10-09-feed-mode.md` (v1.379.0; a Fable builder).
+- [ ] **Feed phase 2: a Reading section (news as files)** _(outlined at the 2026-10-09 feed kickoff, section 9; planned after Dean has
+  used the feed a week or two)_ - RSS sources subscribed like channels, each new post saved as a local readable file (text and
+  images, readability-style extraction) with a small daily cap per source; a Reading page beside Books; articles become a feed
+  card. Open: build the saver or point FileTube at an existing tool's output folder (FreshRSS, Wallabag, Readeck, ArchiveBox),
+  paywalls, retention ("preserved forever" against disk).
+- [ ] **Feed phase 3: hobby subs** _(outlined at the 2026-10-09 feed kickoff, section 9; after phase 2)_ - subreddits through their
+  RSS feeds (verify what still works after Reddit's 2023 API changes), posts saved with their images and clips, no comments
+  (Dean's ruling R5), the same daily cap; image and clip posts become moving feed cards.
 - [ ] **Album files named and filed like an album (Dean, 2026-10-08, asked at the v1.376.0 build)** - today a saved album's
   files keep `<YouTube title> [<id>].mp3` in the channel's folder; the tags are album, album artist, artist, track 1..N,
   title (cleaned when asked) and the cover - no total-tracks ("3/14"), disc, genre or release year (the date is the
