@@ -143,7 +143,9 @@ test('fresh open creates the full v1 schema with empty user tables', () => {
       // v1.97 schema v17: per-user "Hide from feed" prune, born empty.
       'user_feed_hidden',
       // v1.343 schema v34: per-user Watch later list, born empty.
-      'user_watch_later']) {
+      'user_watch_later',
+      // v1.378.0 schema v35: per-user music play counts, own stations, hidden station keys - born empty.
+      'user_music_plays', 'user_music_stations', 'user_music_station_hidden']) {
       const { c } = a.sql.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get();
       assert.strictEqual(c, 0, `${table} exists and is empty (born-complete schema, exec plan)`);
     }
@@ -268,6 +270,44 @@ test('v33 -> v34 upgrade: an existing populated db gains the empty user_watch_la
     const cols = b.sql.prepare("SELECT name FROM pragma_table_info('user_watch_later') ORDER BY name").all().map((r) => r.name);
     assert.deepStrictEqual(cols, ['added_at', 'media_id', 'position', 'user_id']);
     assert.deepStrictEqual(b.load(), fullFixtureForUpgrade(), 'every pre-existing namespace survives untouched');
+  } finally {
+    b.close();
+  }
+});
+
+test('v34 -> v35 upgrade: an existing populated db gains the three empty music-station tables, losing no rows', () => {
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  a.save(fullFixtureForUpgrade());
+  // a v34 database: the v35 tables absent, the stamp back at 34; every v34 row stays
+  a.sql.exec('DROP TABLE user_music_plays');
+  a.sql.exec('DROP TABLE user_music_stations');
+  a.sql.exec('DROP TABLE user_music_station_hidden');
+  // the v34 tables hold rows a bad migration could lose: a like, a progress row, a watch-later row
+  a.sql.exec("INSERT INTO users (id, username, display_name, password_hash, role, created_at) VALUES (7, 'u7', 'U7', 'h', 'member', '2026-01-01T00:00:00.000Z')");
+  a.sql.exec("INSERT INTO user_music_liked (user_id, track_id, liked_at) VALUES (7, 'trk', '2026-01-01T00:00:00.000Z')");
+  a.sql.exec("INSERT INTO user_music_progress (user_id, track_id, position_seconds, duration_seconds, updated_at) VALUES (7, 'trk', 12, 200, '2026-01-01T00:00:00.000Z')");
+  a.sql.exec("INSERT INTO user_watch_later (user_id, media_id, added_at, position) VALUES (7, 'vid', '2026-01-01T00:00:00.000Z', 0)");
+  a.sql.exec('PRAGMA user_version = 34');
+  a.close();
+
+  const b = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION, 'forward-only migration ran');
+    assert.ok(SCHEMA_VERSION >= 35);
+    for (const t of ['user_music_plays', 'user_music_stations', 'user_music_station_hidden']) {
+      assert.strictEqual(b.sql.prepare(`SELECT COUNT(*) AS c FROM ${t}`).get().c, 0, `${t} born empty`);
+    }
+    assert.deepStrictEqual(b.sql.prepare("SELECT name FROM pragma_table_info('user_music_plays') ORDER BY name").all().map((r) => r.name), ['finishes', 'last_played_at', 'plays', 'skips', 'track_id', 'user_id']);
+    assert.deepStrictEqual(b.sql.prepare("SELECT name FROM pragma_table_info('user_music_stations') ORDER BY name").all().map((r) => r.name), ['created_at', 'json', 'station_id', 'updated_at', 'user_id']);
+    assert.deepStrictEqual(b.sql.prepare("SELECT name FROM pragma_table_info('user_music_station_hidden') ORDER BY name").all().map((r) => r.name), ['hidden_at', 'station_key', 'user_id']);
+    assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_music_liked WHERE user_id = 7').get().c, 1, 'the like survived');
+    assert.strictEqual(b.sql.prepare('SELECT position_seconds AS p FROM user_music_progress WHERE user_id = 7').get().p, 12, 'the progress row survived');
+    assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_watch_later WHERE user_id = 7').get().c, 1, 'the watch-later row survived');
+    assert.deepStrictEqual(b.load(), fullFixtureForUpgrade(), 'every pre-existing namespace survives untouched');
+    // the user cascade reaches the new tables (a deleted account leaves no counts behind)
+    b.sql.exec("INSERT INTO user_music_plays (user_id, track_id, plays) VALUES (7, 'trk', 2)");
+    b.sql.exec('DELETE FROM users WHERE id = 7');
+    assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_music_plays').get().c, 0, 'FK cascade on the user');
   } finally {
     b.close();
   }

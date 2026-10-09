@@ -34,6 +34,11 @@
 //   --picker new    runs v1.368.0's station picker (lib/music/radio.js pickRadioBatch, imported -
 //                   never a copy) instead of today's; in the repo it is required directly, over stdin
 //                   pipe the BUNDLE: node tools/radio-sim/bundle.js | docker exec -i <c> node - --picker new
+//   --stations [--user <name>]   READ-ONLY (v1.378.0 T0): every station lib/music/stations.js would
+//                   generate for the given viewer (default: the first admin) - name, song count, artist
+//                   count, the top 5 artists by share - and, per style word, how many songs each FIELD
+//                   matches (genre / album / title / channel). Aggregate counts and artist names only:
+//                   no titles, no paths. Over stdin pipe the bundle, as for --picker new.
 // DATA dir default mirrors server.js:206: $DATA_DIR, else /app/data if it exists, else cwd.
 
 const fs = require('node:fs');
@@ -53,6 +58,7 @@ function parseArgs(argv) {
     else if (a === '--trace') out.trace = argv[++i] || '';
     else if (a === '--why') out.why = argv[++i] || '';
     else if (a === '--user') out.user = argv[++i] || '';
+    else if (a === '--stations') out.stations = true;
     else if (a === '--help' || a === '-h') out.help = true;
   }
   return out;
@@ -182,6 +188,9 @@ function projectAudioItem(item) {
     durationSec: Number(item.duration) || 0,
     fileDurationSec: Number(item.duration) || 0,
     source: 'library',
+    // lib/music/libraryAudio.js addedAtToIso: a media item's numeric epoch as the ISO string the music
+    // "newest" sorts (and v1.378.0's Recently added station) compare
+    addedAt: (typeof item.addedAt === 'number' && Number.isFinite(item.addedAt) && Math.abs(item.addedAt) <= 8.64e15) ? new Date(item.addedAt).toISOString() : (typeof item.addedAt === 'string' ? (/^\d+$/.test(item.addedAt) ? new Date(Number(item.addedAt)).toISOString() : item.addedAt) : ''),
   };
 }
 // lib/music/libraryAudio.js expandAudioToTracks.
@@ -264,7 +273,18 @@ function loadLibrary(dbPath) {
     if (tables.has('users')) for (const r of db.prepare('SELECT id, username FROM users').all()) users.set(r.id, r.username);
     if (tables.has('user_music_progress')) for (const r of db.prepare('SELECT user_id, track_id AS id, updated_at AS at FROM user_music_progress').all()) history.push({ user: users.get(r.user_id) || String(r.user_id), id: r.id, at: r.at || '' });
     if (tables.has('user_progress')) for (const r of db.prepare('SELECT user_id, media_id AS id, updated_at AS at FROM user_progress').all()) history.push({ user: users.get(r.user_id) || String(r.user_id), id: r.id, at: r.at || '' });
-    return { tracks, marks, metadata, notes, version, signals, history };
+    // --stations (v1.378.0): each user's own signals, the shape lib/music/stations.js buildStations reads
+    // (likes from BOTH like stores - a projected row's like is in user_liked; resume rows with their
+    // position; play counts, if the table exists yet)
+    const userSignals = new Map();
+    const sig = (uid) => { const k = users.get(uid) || String(uid); if (!userSignals.has(k)) userSignals.set(k, { role: null, liked: new Set(), progress: Object.create(null), plays: Object.create(null) }); return userSignals.get(k); };
+    if (tables.has('users')) for (const r of db.prepare('SELECT id, role FROM users').all()) sig(r.id).role = r.role;
+    if (tables.has('user_music_liked')) for (const r of db.prepare('SELECT user_id, track_id FROM user_music_liked').all()) sig(r.user_id).liked.add(r.track_id);
+    if (tables.has('user_liked')) for (const r of db.prepare('SELECT user_id, media_id FROM user_liked').all()) sig(r.user_id).liked.add(r.media_id);
+    if (tables.has('user_music_progress')) for (const r of db.prepare('SELECT user_id, track_id, position_seconds, updated_at FROM user_music_progress').all()) sig(r.user_id).progress[r.track_id] = { position: r.position_seconds, updatedAt: r.updated_at };
+    if (tables.has('user_progress')) for (const r of db.prepare('SELECT user_id, media_id, timestamp, updated_at FROM user_progress').all()) sig(r.user_id).progress[r.media_id] = { position: r.timestamp, updatedAt: r.updated_at };
+    if (tables.has('user_music_plays')) for (const r of db.prepare('SELECT user_id, track_id, plays, skips, finishes FROM user_music_plays').all()) sig(r.user_id).plays[r.track_id] = { plays: r.plays, skips: r.skips, finishes: r.finishes };
+    return { tracks, marks, metadata, notes, version, signals, history, userSignals };
   } finally {
     db.close();
   }
@@ -366,6 +386,64 @@ function loadRadio() {
     process.exit(2);
   }
 }
+// v1.378.0: the station builder (lib/music/stations.js), from the repo or the bundle (its second module).
+function loadStations() {
+  // eslint-disable-next-line no-undef
+  if (typeof __RADIO_BUNDLE__ === 'function') return __RADIO_BUNDLE__({ albumKeyFor }, './stations');
+  try {
+    return require(path.join(__dirname, '..', '..', 'lib', 'music', 'stations.js'));
+  } catch {
+    process.stderr.write('--stations needs lib/music/stations.js: run inside the repo, or pipe the bundle (node tools/radio-sim/bundle.js)\n');
+    process.exit(2);
+  }
+}
+
+// ---------------------------------------------------------------- --stations (v1.378.0 T0 census)
+// READ-ONLY. The stations the viewer would see (lib/music/stations.js buildStations over the admin's
+// list - this simulator builds the unrestricted list), with aggregate numbers only: per station its
+// song count, artist count and top 5 artists by share; per style word, how many songs each field
+// matches. The plan's T0 rule: a word that matches mostly unrelated songs is dropped or narrowed.
+function stationsCensus(list, lib, args, stations) {
+  const L = [];
+  const cut = (v, n) => { const x = String(v == null ? '' : v); return x.length > n ? x.slice(0, n - 1) + '~' : x; };
+  const signals = (lib && lib.userSignals) || new Map();
+  let userName = args.user || null;
+  if (!userName) for (const [name, sgn] of signals) { if (sgn.role === 'admin') { userName = name; break; } }
+  const sgn = (userName && signals.get(userName)) || { liked: new Set(), progress: Object.create(null), plays: Object.create(null) };
+  const addedAtOk = list.filter((t) => typeof t.addedAt === 'string' && t.addedAt).length;
+  L.push(`STATIONS (v1.378.0 T0): viewer ${JSON.stringify(userName)} (likes ${sgn.liked.size}, resume rows ${Object.keys(sgn.progress).length}, play-count rows ${Object.keys(sgn.plays).length}); ${list.length} tracks, ${addedAtOk} with addedAt`);
+  const started = Date.now();
+  const all = stations.buildStations(list, { liked: sgn.liked, progress: sgn.progress, plays: sgn.plays, custom: [], hidden: new Set() });
+  L.push(`  thresholds: a generated station needs ${stations.MIN_SONGS}+ songs from ${stations.MIN_ARTISTS}+ artists; ${stations.SHOWN_MAX} generated shown, the rest under More`);
+  L.push(`  ${all.length} stations (${Date.now() - started} ms):`);
+  L.push(`  ${pad('key', 22)} ${pad('name', 22)} ${pad('kind', 8)} ${pad('group', 6)} ${pad('songs', 6)} ${pad('artists', 8)} top 5 artists by share`);
+  for (const st of all) {
+    const counts = new Map();
+    for (const t of st.members) { const a = (t.artist || t.albumArtist || '').trim(); counts.set(a, (counts.get(a) || 0) + 1); }
+    const top = [...counts].sort((x, y) => y[1] - x[1]).slice(0, 5).map(([a, n]) => `${cut(a || '(none)', 18)} ${fmt(n / st.members.length, true)}`).join(', ');
+    L.push(`  ${pad(cut(st.key, 21), 22)} ${pad(cut(st.name, 21), 22)} ${pad(st.kind, 8)} ${pad(st.group, 6)} ${pad(st.members.length, 6)} ${pad(counts.size, 8)} ${top}`);
+  }
+  // the genres and styles that fell UNDER the thresholds (so a missing Reggae is explained)
+  const genreCounts = new Map();
+  for (const t of list) { const g = radioGenreKey(t); if (g) genreCounts.set(g, (genreCounts.get(g) || 0) + 1); }
+  const shown = new Set(all.map((s) => s.key));
+  const styleNamed = new Set(); // a genre a style already names is that style's station, not a missing one
+  for (const st of stations.STYLES) for (const w of st.words || []) styleNamed.add(loadRadio().genreKey({ genre: w, source: 'native' }));
+  const under = [...genreCounts].filter(([g, n]) => n >= 10 && !shown.has('g:' + g) && !styleNamed.has(g)).sort((x, y) => y[1] - x[1]).slice(0, 25);
+  L.push(`  real genres with 10+ songs but NO station (under the thresholds): ${under.map(([g, n]) => `${g} ${n}`).join(' | ') || '(none)'}`);
+  L.push('', 'STYLE WORDS (D5b): songs matched per field - genre / album / title / channel, and any field');
+  L.push(`  ${pad('style', 11)} ${pad('phrase', 16)} ${pad('genre', 7)} ${pad('album', 7)} ${pad('title', 7)} ${pad('channel', 8)} any`);
+  for (const r of stations.styleWordCensus(list)) {
+    L.push(`  ${pad(r.style, 11)} ${pad(JSON.stringify(r.phrase), 16)} ${pad(r.genre, 7)} ${pad(r.album, 7)} ${pad(r.title, 7)} ${pad(r.channel, 8)} ${r.any}`);
+  }
+  const years = { native: 0, nativeWithYear: 0 };
+  for (const t of list) if (t.source !== 'library' && t.source !== 'library-chapter') { years.native += 1; if (stations.releaseYear(t) !== null) years.nativeWithYear += 1; }
+  L.push('', `THROWBACK source: native tracks ${years.native}, with a release year ${years.nativeWithYear} (yt-dlp audio's year is its upload year and never counts)`);
+  L.push(`(the census took ${Date.now() - started} ms)`);
+  return L.join('\n');
+}
+// the picker's genre key (the real genre of a track, a YouTube category on yt-dlp audio folded to none)
+function radioGenreKey(t) { return loadRadio().genreKey(t); }
 // One station session, the v1.368.0 client: the seed track plays, and whenever the LAST queued track
 // starts the client asks for a batch against the station seed (R8: the first track, never the last),
 // sending the session's plays as the exclude list (R11, last 200). A radio chapter pick stops at its
@@ -692,7 +770,7 @@ function syntheticLibrary(seed) {
       // the small tail artists carry RARE genres in families (T0: 53 genres, many small: grunge / folk /
       // punk rock, thrash / death metal), so a rare-genre station must widen through its family
       const genre = a % 7 === 6 ? '' : (a >= 40 ? SYN_RARE[a % SYN_RARE.length] : SYN_GENRES[(a + (a % 5 === 0 && i % 3 === 0 ? 1 : 0)) % SYN_GENRES.length]);
-      tracks[tid] = { id: tid, title: 'T' + id, artist: 'Artist ' + a, albumArtist: 'Artist ' + a, album: 'Album ' + a + '-' + Math.floor(i / 10), durationSec: 150 + Math.floor(rng() * 180), source: 'native', genre, year: 1965 + ((a * 7) % 55), folderName: 'artist' + a };
+      tracks[tid] = { id: tid, title: 'T' + id, artist: 'Artist ' + a, albumArtist: 'Artist ' + a, album: 'Album ' + a + '-' + Math.floor(i / 10), durationSec: 150 + Math.floor(rng() * 180), source: 'native', genre, year: 1965 + ((a * 7) % 55), folderName: 'artist' + a, addedAt: new Date(Date.UTC(2026, 0, 1) - id * 3600000).toISOString() };
     }
   }
   const metadata = {};
@@ -722,8 +800,8 @@ function syntheticLibrary(seed) {
 // batch's tiers over 50 draws, and a 10-batch session's tier path. `--why "<artist words>"` counts that
 // artist's picks (default: prince). On production: `node tools/radio-sim/bundle.js > radio-sim-bundle.js`,
 // then `docker exec -i <container> node - --data /app/data --trace "kirby" < radio-sim-bundle.js`.
-const TIER_NAMES = { 0: 'recycled', 1: 'seed artist', 2: 'genre+year', 3: 'genre', 4: 'neighbour genre', 5: 'folder', 6: 'category', 7: 'the rest', 8: 'SERIES', 9: 'GAME music', 10: 'NEAREST genres' };
-const TIER_SHORT = { 0: 'R', 1: '1', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: 'S', 9: 'G', 10: 'N' };
+const TIER_NAMES = { 0: 'recycled', 1: 'seed artist', 2: 'genre+year', 3: 'genre', 4: 'neighbour genre', 5: 'folder', 6: 'category', 7: 'the rest', 8: 'SERIES', 9: 'GAME music', 10: 'NEAREST genres', 11: 'skipped-out (D3, ran dry)' };
+const TIER_SHORT = { 0: 'R', 1: '1', 2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: 'S', 9: 'G', 10: 'N', 11: 'K' };
 function traceAlbum(list, args, radio, lib) {
   const L = [];
   const want = String(args.trace || '').toLowerCase();
@@ -856,13 +934,14 @@ function main() {
     label = `${dbPath} (opened read-only, schema v${lib.version})`;
   }
   const list = buildList(lib);
+  if (args.stations) { process.stdout.write(stationsCensus(list, lib, args, loadStations()) + '\n'); return; }
   if (args.trace !== undefined) { process.stdout.write(traceAlbum(list, args, loadRadio(), lib) + '\n'); return; }
   process.stdout.write(report(list, lib, args, label) + '\n');
 }
 
 // RADIO_SIM_NO_MAIN=1 lets a check script load the mirrored functions without running.
 if (process.env.RADIO_SIM_NO_MAIN) {
-  module.exports = { createSeededRng, fisherYatesShuffle, normalizeSeed, albumKeyFor, matchesArtist, expandAudioToTracks, apiMusicRandom, fetchAutoplayPicks, buildList, traceAlbum };
+  module.exports = { createSeededRng, fisherYatesShuffle, normalizeSeed, albumKeyFor, matchesArtist, expandAudioToTracks, apiMusicRandom, fetchAutoplayPicks, buildList, traceAlbum, stationsCensus, syntheticLibrary };
 } else {
   main();
 }

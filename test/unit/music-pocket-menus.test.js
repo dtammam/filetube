@@ -31,8 +31,8 @@ test('registry census: a skin carries `menus` exactly when its screen is an LCD 
 // ---------------------------------------------------------------- static levels
 test('static levels: Main Menu (Now Playing only while a track exists), Music in the iPod order, Playlists with Liked', () => {
   const lbl = (rows) => rows.map((r) => r.label);
-  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: true })), ['Music', 'Settings', 'Shuffle Songs', 'Now Playing']);
-  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: false })), ['Music', 'Settings', 'Shuffle Songs'], 'nothing playing: no Now Playing row');
+  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: true })), ['Music', 'Radio', 'Settings', 'Shuffle Songs', 'Now Playing']); // v1.378.0: Radio after Music
+  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: false })), ['Music', 'Radio', 'Settings', 'Shuffle Songs'], 'nothing playing: no Now Playing row');
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'music' })), ['Recent Artists', 'Recent Albums', 'Playlists', 'Artists', 'Albums', 'Songs', 'Genres', 'Search']);
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'playlists' })), ['Liked Songs', 'Recently Added', 'Recently Played']);
   assert.strictEqual(skins.menuStaticItems({ type: 'artists' }), null, 'a library level is not static');
@@ -219,7 +219,7 @@ test('opens on Now Playing when something is loaded; with NOTHING loaded the fir
   try {
     b.engine.paint();
     assert.ok(P(b).classList.contains('mms-menumode'), 'nothing playing: the Main Menu');
-    assert.deepStrictEqual(lbls(b), ['Music', 'Settings', 'Shuffle Songs']);
+    assert.deepStrictEqual(lbls(b), ['Music', 'Radio', 'Settings', 'Shuffle Songs']); // v1.378.0: Radio after Music
     assert.strictEqual(P(b).querySelector('.ip-np').textContent, 'Click');
   } finally { b.restore(); }
 });

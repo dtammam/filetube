@@ -190,13 +190,25 @@
     if (!r || typeof r.label !== 'string') return '';
     return '<span class="mms-remote" role="button" tabindex="0" data-skin-playon aria-label="Playing on ' + esc(r.label) + '. Choose a device">on ' + esc(r.label) + '</span>';
   }
+  // v1.378.0 (D11, D12): "Radio: <name>" while a named station plays (ctx.radio = { name }, the music
+  // view's queue context; a speaker's report carries it to the phone's mirror). ONE writer for every
+  // renderer (the inert-sibling class): Cider and Nordic draw it as the context line over the title,
+  // the Click LCD in its album slot. '' when no station plays.
+  function radioName(ctx) {
+    var r = ctx && ctx.radio;
+    return (r && typeof r.name === 'string' && r.name.trim()) ? r.name.trim() : '';
+  }
+  function radioLine(ctx, cls) {
+    var n = radioName(ctx);
+    return n ? '<div class="' + cls + '">' + esc('Radio: ' + n) + '</div>' : '';
+  }
   function renderApple(ctx) {
     var a = ctx.track || {}; var u = artUrl(ctx);
     return (u ? '<div class="mms-bleed" style="background-image:url(&quot;' + esc(u) + '&quot;)"></div>' : '') +
       '<div class="mms-z">' +
       '<div class="mms-top"><button type="button" class="mms-grab" data-skin-collapse aria-label="Close player"></button>' + remoteBadge(ctx) + '</div>' +
       '<div class="mms-art"' + artVar(ctx) + '>' + artImg(ctx) + '</div>' +
-      '<div class="mms-head"><div class="mms-ttl" title="' + esc(a.title) + '">' + esc(a.title || 'Unknown track') + '</div>' + artistLine('mms-sub', a.artist, ctx.artistTap, ctx.artistTitle) + '</div>' +
+      '<div class="mms-head">' + radioLine(ctx, 'mms-ctx mms-radio') + '<div class="mms-ttl" title="' + esc(a.title) + '">' + esc(a.title || 'Unknown track') + '</div>' + artistLine('mms-sub', a.artist, ctx.artistTap, ctx.artistTitle) + '</div>' +
       '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
       volRow(ctx) +
       '<div class="mms-transport">' + prevBtn() + playBtn(ctx) + nextBtn() + '</div>' +
@@ -206,7 +218,7 @@
   // and the QUEUE right there. (No fake repeat/heart.)
   function renderSpotify(ctx) {
     var a = ctx.track || {};
-    return '<div class="mms-top">' + collapseBtn() + '<span class="mms-ctx">' + esc('Playing from ' + (a.album || 'album')) + '</span>' + (remoteBadge(ctx) || '<span class="mms-top-spacer" aria-hidden="true"></span>') + '</div>' +
+    return '<div class="mms-top">' + collapseBtn() + '<span class="mms-ctx' + (radioName(ctx) ? ' mms-radio' : '') + '">' + esc(radioName(ctx) ? 'Radio: ' + radioName(ctx) : 'Playing from ' + (a.album || 'album')) + '</span>' + (remoteBadge(ctx) || '<span class="mms-top-spacer" aria-hidden="true"></span>') + '</div>' +
       '<div class="mms-art"' + artVar(ctx) + '>' + artImg(ctx) + '</div>' +
       '<div class="mms-meta"><div class="mms-ttl">' + esc(a.title || 'Unknown track') + '</div>' + artistLine('mms-sub', a.artist, ctx.artistTap, ctx.artistTitle) + '</div>' +
       '<div class="mms-scrub"><div class="mms-bar" data-skin-seek role="slider" aria-label="Seek" tabindex="0"><div class="mms-fill" ' + fillW(ctx) + '></div></div><div class="mms-times">' + times(ctx) + '</div></div>' +
@@ -241,7 +253,7 @@
       '<div class="ip-meta">' +
       '<div class="ip-ttl">' + esc(a.title || 'Unknown track') + '</div>' +
       artistLine('ip-artist', a.artist, ctx.artistTap, ctx.artistTitle) +
-      '<div class="ip-album">' + esc(a.album || '') + '</div>' +
+      '<div class="ip-album' + (radioName(ctx) ? ' ip-radio' : '') + '">' + esc(radioName(ctx) ? 'Radio: ' + radioName(ctx) : (a.album || '')) + '</div>' +
       '<div class="ip-stars" aria-hidden="true">' + skGlyph('star') + skGlyph('star') + skGlyph('star') + skGlyph('star') + skGlyph('star') + '</div>' +
       '<div class="ip-nof">' + esc(nof) + '</div></div></div>' +
       '<div class="ip-scrub"><span class="mms-pos"' + volTap + '>' + esc(ctx.posLabel || '0:00') + '</span>' +
@@ -695,7 +707,7 @@
     { key: 'recent-played', label: 'Recently Played' },
   ];
   var ROOT_TITLE = { click: 'Click' }; // the cheeky name, never the product's (Dean)
-  var TYPE_TITLE = { playon: 'Speakers', music: 'Music', playlists: 'Playlists', artists: 'Artists', albums: 'Albums', songs: 'Songs', genres: 'Genres',
+  var TYPE_TITLE = { playon: 'Speakers', music: 'Music', radio: 'Radio', playlists: 'Playlists', artists: 'Artists', albums: 'Albums', songs: 'Songs', genres: 'Genres',
     recentArtists: 'Recent Artists', recentAlbums: 'Recent Albums', extras: 'Extras', skins: 'Skins', games: 'Games', settings: 'Settings', about: 'About', lighting: 'Lighting', search: 'Search', skinSearch: 'Search' };
   function menuTitle(node, style) {
     var n = node || {};
@@ -714,6 +726,7 @@
     var o = opts || {};
     if (t === 'main') {
       var rows = [{ label: 'Music', node: { type: 'music' } }];
+      rows.push({ label: 'Radio', node: { type: 'radio' } }); // v1.378.0 (D11): the stations, right after Music
       if (o.hasGames || o.hasSkins) rows.push({ label: 'Extras', node: { type: 'extras' } });
       rows.push({ label: 'Settings', node: { type: 'settings' } });
       rows.push({ label: 'Shuffle Songs', action: 'shuffle' });

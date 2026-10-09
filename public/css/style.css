@@ -7993,6 +7993,80 @@ html.is-phone #music-remote-btn { display: none; }
   width: var(--tile-w);
   scroll-snap-align: start;
 }
+/* v1.378.0: a station card is the same fixed tile on the shelf (the one --tile-w token; its own rule
+   because the card is a positioned WRAPPER around the tile, not a ui-tile itself) */
+.music-shelf-strip > .music-station-card {
+  flex: 0 0 auto;
+  width: var(--tile-w);
+  scroll-snap-align: start;
+}
+
+/* ===== v1.378.0 music STATIONS (D10): the Stations shelf's cards ===== */
+/* A station card = the tile (a ui-tile: a 2x2 art mosaic, the name, a subtitle) and its menu button
+   over the art's corner - siblings in a positioned wrapper (a button never nests a button). The
+   mosaic is the artist card's grid at the ALBUM's rounded square (a station is a mix of covers, not a
+   person). A hidden station (under More stations) is dimmed. */
+.music-station-card { position: relative; display: flex; flex-direction: column; min-width: 0; }
+.music-station-card.is-hidden .music-station-tile { opacity: 0.6; }
+.music-station-tile { width: 100%; }
+.music-station-mosaic {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--r-md);
+  background: var(--thumbnail-bg);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  gap: 0;
+  overflow: hidden;
+  transition: transform var(--dur-fast) var(--ease-ui);
+}
+.music-station-mosaic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.music-station-mosaic[data-tiles="1"] { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+.music-station-mosaic[data-tiles="2"] { grid-template-rows: 1fr; }
+.music-station-mosaic[data-tiles="3"] > img:first-child { grid-row: 1 / span 2; }
+@media (hover: hover) {
+  .music-station-tile:hover .music-station-mosaic { transform: translateY(-2px); }
+}
+/* the New station tile: a dashed, empty square with a plus */
+.music-station-plus { display: grid; place-items: center; background: transparent; border: var(--hairline) dashed var(--separator); color: var(--ink-2); }
+.music-station-plus .ui-icon { width: var(--icon-lg); height: var(--icon-lg); }
+.music-station-name {
+  font: var(--t-callout);
+  color: var(--ink-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.music-station-meta {
+  font: var(--t-footnote);
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* the menu button sits over the art's top-right corner (a positioned later sibling paints over the in-flow tile; no z-index needed) */
+.music-station-more {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  background: var(--scrim);
+  color: var(--ink-on-accent);
+}
+/* the unfolded "More stations" strip sits under the shelf's own strip */
+.music-stations-more { margin-top: var(--space-2); }
+/* a failed read of the stations: an error line with Retry in the shelf (never an empty shelf) */
+.music-stations-error { display: flex; align-items: center; gap: var(--space-3); font: var(--t-body); color: var(--ink-2); }
+/* v1.378.0 (D11, D12): the "Radio: <name>" line on the skins. Nordic reuses its context line (the
+   caps row over the art) and the Click LCD its album slot (no new rule: the same box, the same type);
+   Cider gets a small caps line over its big title. The desktop panel's context line sits over the
+   title in the meta block. One token set, the footnote role. */
+:where(html.is-phone, html.mms-popout) .mms-apple .mms-radio { font: var(--t-footnote); text-transform: uppercase; letter-spacing: var(--mms-ls-caps); opacity: 0.7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mnp-ctx { font: var(--t-footnote); text-transform: uppercase; letter-spacing: var(--mms-ls-caps); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* the editor (ui.sheet): the strict row and the live count */
+.music-station-strict { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-top: var(--space-4); }
+.music-station-strict-label { font: var(--t-body); color: var(--ink-1); }
+.music-station-count { margin: var(--space-4) 0 0; font: var(--t-footnote); color: var(--ink-2); }
 
 .music-crumb { display: flex; align-items: center; gap: var(--space-5); margin-bottom: var(--space-6); }
 

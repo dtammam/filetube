@@ -80,6 +80,12 @@ const CLASSIFICATION = {
   'POST /api/push/unsubscribe': 'personal',
   'POST /api/music/progress': 'personal',
   'POST /api/music/resume': 'personal',
+  'POST /api/music/plays': 'personal', // v1.378.0: the caller's own play / skip / finish counts; every id must be in the caller's visible list (404 otherwise), rate-bounded
+  'POST /api/music/stations': 'personal', // v1.378.0 W2: the caller's own station definitions (bounded; one matching nothing the caller can see is refused)
+  'PUT /api/music/stations/:id': 'personal',
+  'DELETE /api/music/stations/:id': 'personal',
+  'POST /api/music/stations/preview': 'personal', // v1.378.0 W2: a count over the caller's visible list, nothing written
+  'POST /api/music/stations/hidden': 'personal', // v1.378.0 W2: hide / unhide a station key the caller can see
   'POST /api/remote/command': 'personal', // v1.348 Listen Control: the caller's OWN devices only (bucketed by session user); every play id is filtered through trackVisibleTo
   'POST /api/remote/state': 'personal', // v1.348: a target reporting its own playback to the same user's controllers
   'POST /api/remote/off': 'personal', // v1.348: a device opting itself out
@@ -340,6 +346,12 @@ const VISIBILITY = {
   'POST /api/push/unsubscribe': 'personal',
   'POST /api/music/progress': 'personal',
   'POST /api/music/resume': 'personal',
+  'POST /api/music/plays': 'personal', // v1.378.0: the caller's own play / skip / finish counts; every id must be in the caller's visible list (404 otherwise), rate-bounded
+  'POST /api/music/stations': 'personal', // v1.378.0 W2: the caller's own station definitions (bounded; one matching nothing the caller can see is refused)
+  'PUT /api/music/stations/:id': 'personal',
+  'DELETE /api/music/stations/:id': 'personal',
+  'POST /api/music/stations/preview': 'personal', // v1.378.0 W2: a count over the caller's visible list, nothing written
+  'POST /api/music/stations/hidden': 'personal', // v1.378.0 W2: hide / unhide a station key the caller can see
   'POST /api/remote/command': 'personal', // v1.348 Listen Control: the caller's OWN devices only (bucketed by session user); every play id is filtered through trackVisibleTo
   'POST /api/remote/state': 'personal', // v1.348: a target reporting its own playback to the same user's controllers
   'POST /api/remote/off': 'personal', // v1.348: a device opting itself out

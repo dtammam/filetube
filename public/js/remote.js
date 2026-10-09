@@ -56,10 +56,12 @@
     }
     return at < 0 ? null : { ids: ids, index: at };
   }
-  function buildStatePayload(deviceId, snap, blocked, needsClick, queue) {
+  function buildStatePayload(deviceId, snap, blocked, needsClick, queue, radio) {
     var s = snap || {};
     var id = typeof s.id === 'string' && s.id ? s.id : null;
     var state = !id ? 'idle' : (blocked ? 'blocked' : (s.playing ? 'playing' : 'paused'));
+    // v1.378.0 (D12): the named station this PC plays, for the phone's "Radio: <name>" line
+    var radioName = radio && typeof radio.name === 'string' && radio.name.trim() ? radio.name.trim().slice(0, 60) : '';
     return {
       deviceId: deviceId,
       trackId: id,
@@ -71,7 +73,8 @@
       needsClick: !!needsClick,
       volume: Number.isFinite(s.volume) ? Math.round(Math.min(1, Math.max(0, s.volume)) * 100) / 100 : null,
       muted: s.muted === true,
-      queue: queue && Array.isArray(queue.ids) ? queue : null
+      queue: queue && Array.isArray(queue.ids) ? queue : null,
+      radio: id && radioName ? { name: radioName } : null
     };
   }
 
@@ -192,9 +195,9 @@
       try { viewId = nowPlayingId ? nowPlayingId() : null; } catch (_) { viewId = null; }
       var id = reportedTrackId(snap.id, viewId);
       if (id !== snap.id) snap = Object.assign({}, snap, { id: id });
-      var q = null;
-      try { var qr = queueReader ? queueReader() : null; q = qr ? queueWindow(qr.list, qr.index) : null; } catch (_) { q = null; }
-      post('/api/remote/state', buildStatePayload(env.deviceId(), snap, isBlocked(pl), needsClick, q));
+      var q = null; var radio = null;
+      try { var qr = queueReader ? queueReader() : null; q = qr ? queueWindow(qr.list, qr.index) : null; radio = qr && qr.radio ? qr.radio : null; } catch (_) { q = null; radio = null; }
+      post('/api/remote/state', buildStatePayload(env.deviceId(), snap, isBlocked(pl), needsClick, q, radio));
       if (cleared) notify();
     }
     function scheduleReport() {
@@ -274,7 +277,7 @@
     // A refused start is reported by onAutostart when the player raises its flag, not by a timer here.
     function runPlay(args) {
       if (!musicHandler) return;
-      musicHandler({ tracks: args.tracks, index: args.index, label: controllerLabel });
+      musicHandler({ tracks: args.tracks, index: args.index, label: controllerLabel, radio: args.radio || null }); // v1.378.0: a station rides (D11)
     }
     function handleCommand(c) {
       if (!c || typeof c.seq !== 'number' || c.seq <= lastSeq) return;
@@ -789,9 +792,12 @@
         return r.ok;
       }).catch(function () { return false; });
     }
-    function play(ids, index) {
+    // v1.378.0 (D11): `radio` = { seed: 'station:<key>', name } when the phone starts a named station on the speaker
+    function play(ids, index, radio) {
       var s = slicePlay(ids, index);
-      return send('play', { ids: s.ids, index: s.index });
+      var args = { ids: s.ids, index: s.index };
+      if (radio && typeof radio.seed === 'string' && radio.seed) args.radio = { seed: radio.seed, name: typeof radio.name === 'string' ? radio.name : '' };
+      return send('play', args);
     }
     // Scrubbing sends at most one seek per SEEK_THROTTLE_MS; the last position always goes out.
     function seek(sec) {
