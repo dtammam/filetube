@@ -3,10 +3,10 @@ plan: feed-polish
 harness: v2 · full
 branch: feat/v1.380.0-feed-polish
 anchor: outcome
-status: Planned (kickoff 2026-10-09, Opus Root); builder not started
-next: builder Step 0, then W1
+status: In progress (W1 done, W2 next)
+next: W2 feed server
 design: Dean's first use of v1.379.0 Feed (2026-10-09) and his rulings R1-R6 below; kickoff defaults D1-D9. Base main 23136250 (v1.379.0).
-builder: smart (changes when a feed card writes progress, and a Settings page split; no schema change)
+builder: standard (Sonnet; Dean ruled 2026-10-09, supersedes smart. Changes when a feed card writes progress, and a Settings page split; no schema change)
 gate: not yet run (FULL: adversary, qa; lib/ change = core-logic; the progress rule is a data-carrier surface - brief it as one)
 ---
 
@@ -122,7 +122,7 @@ protected-main PR flow, shipped = the tag's "Publish Docker Image" run green, br
 
 ## 7. Evidence (builder fills: numbers copied from the runs named, verbatim verdict lines)
 
-- D1 sticky measurement (390 / 320):
+- D1 sticky measurement (390 / 320): headless Chromium, mobile emulation, all 22 Settings pages, scrolled to the bottom, back button rect. The document scrolls (no overflow ancestor), the header is position:sticky and pins at top 56 (flush under the 56px app header); back button top 62 / bottom 94 on EVERY scrolled page, 390x844 (longest: Mobile player, docH 8597, scrollY 7753) and 320x568 (longest: Mobile player, docH 10127, scrollY 9559); all `vis:true`. Pages that do not scroll sit at 78/110 (unscrolled position). Desktop unchanged (position:relative, measured by test only). Probe: scratchpad sticky-probe.js.
 - D5 front-matter rule per fixture:
 - D7 falsifier (10 s vs 70 s):
 - Suites (Node 22.23.1 / 24.20.0) at the reviewed sha:

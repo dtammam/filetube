@@ -50,11 +50,11 @@ test('Settings builds the expected visible menu (admin sections hidden for a non
     const keys = Array.from(doc.querySelectorAll('.md-nav .md-row')).map((r) => r.getAttribute('data-md-target'));
     assert.deepStrictEqual(keys, [
       'trash',
-      'appearance', 'home-page', 'playback', 'mobile-player', 'critters',
+      'appearance', 'home-page', 'playback', 'mobile-player', 'bottom-bar', 'critters',
       'account',
       'videos', 'music', 'books', 'shows', 'podcasts', 'hidden',
       'troubleshooting', 'experimental', 'transcript-sharing',
-    ], 'v1.367.0: the 16 pages a member sees before any reveal (Scan & cache, Downloads, Notifications, Users, Backup are hidden), in group order');
+    ], 'v1.367.0: the 17 pages a member sees before any reveal (Scan & cache, Downloads, Notifications, Users, Backup are hidden), in group order');
     const groups = Array.from(doc.querySelectorAll('.md-nav .md-group-title')).map((t) => t.textContent);
     assert.deepStrictEqual(groups, ['System', 'Personalize', 'Account', 'Library', 'Advanced'], 'SYSTEM, PERSONALIZE, ACCOUNT, LIBRARY, ADVANCED');
   } finally { unload(dom); }
@@ -104,10 +104,10 @@ const OLD_TO_NEW = {
   'tv-folders': 'shows', 'podcasts-place': 'podcasts', 'feedhidden': 'hidden', 'transcript-ai': 'transcript-sharing',
 };
 const OLD_SAME = ['appearance', 'mobile-player', 'critters', 'downloads', 'trash', 'account', 'users', 'backup-restore', 'troubleshooting', 'experimental'];
-const NEW_KEYS = ['scan-cache', 'downloads', 'notifications', 'trash', 'appearance', 'home-page', 'playback', 'mobile-player', 'critters',
+const NEW_KEYS = ['scan-cache', 'downloads', 'notifications', 'trash', 'appearance', 'home-page', 'playback', 'mobile-player', 'bottom-bar', 'critters',
   'account', 'users', 'backup-restore', 'videos', 'music', 'books', 'shows', 'podcasts', 'hidden', 'troubleshooting', 'experimental', 'transcript-sharing'];
 
-test('v1.367.0: the markup holds exactly the 21 new pages, in group order', () => {
+test('v1.367.0: the markup holds exactly the 22 pages, in group order', () => {
   const { dom, doc } = load();
   try {
     const keys = Array.from(doc.querySelectorAll('.md-root > details[data-collapse-key]')).map((d) => d.getAttribute('data-collapse-key'));
@@ -271,4 +271,36 @@ test('v1.367.0: the Push notifications heading lives inside the hidden push grou
     const visibleHeadings = Array.from(notif.querySelectorAll('h3')).filter((h) => !h.closest('[hidden]')).map((h) => h.textContent);
     assert.deepStrictEqual(visibleHeadings, [], 'with nothing revealed, no heading shows');
   } finally { unload(dom); }
+});
+
+// v1.380.0 (Dean): "I can't find anywhere in settings to change the order of the bottom bar." The editor was a group
+// inside Mobile player; it is now its own Personalize page right after it. No alias: Mobile player stays Mobile player.
+test('v1.380.0: Bottom bar is its own Personalize page after Mobile player, holds the editor, and Mobile player no longer does', () => {
+  const { dom, doc, signal } = load();
+  try {
+    const page = doc.querySelector('details[data-collapse-key="bottom-bar"]');
+    assert.ok(page, 'the Bottom bar page exists');
+    assert.strictEqual(page.getAttribute('data-md-group'), 'Personalize');
+    assert.ok(page.querySelector('#bottombar-editor'), 'the editor lives on the Bottom bar page');
+    assert.strictEqual(doc.querySelector('details[data-collapse-key="mobile-player"] #bottombar-editor'), null, 'not under Mobile player any more');
+    assert.strictEqual(page.previousElementSibling.getAttribute('data-collapse-key'), 'mobile-player', 'right after Mobile player');
+    wireMasterDetail('setup', doc, signal);
+    assert.strictEqual(doc.querySelector('.md-row[data-md-target="bottom-bar"] .md-row-label').textContent, 'Bottom bar');
+    assert.ok(!/bottom-bar:|data-md-aliases="[^"]*mobile-player/.test(doc.querySelector('.md-root').getAttribute('data-md-aliases')), 'no alias layer from the old place');
+  } finally { unload(dom); }
+});
+
+// v1.380.0 (Dean: "if I scroll down I lose the ability to easily go back"): the phone's detail header (back arrow + title)
+// is sticky under the app header; desktop keeps a plain heading. Measured headless at 390x844 and 320x568 on all 22 pages:
+// after scrolling to the bottom the back button's rect stays at top 62 / bottom 94 (see the plan, section 7).
+test('v1.380.0: .md-detail-head is sticky under the app header on the phone (with a z-index and the page ground), plain on desktop', () => {
+  const css = fs.readFileSync(path.join(__dirname, '../../public/css/style.css'), 'utf8');
+  const base = css.match(/\n\.md-detail-head \{([^}]*)\}/);
+  assert.ok(base, 'the base .md-detail-head rule');
+  assert.match(base[1], /position:\s*sticky/);
+  assert.match(base[1], /top:\s*var\(--sticky-bar-top/);
+  assert.match(base[1], /z-index:\s*var\(--z-sticky\)/, 'every sticky rule declares a z-index');
+  assert.match(base[1], /background-color:\s*var\(--surface-0\)/);
+  const desk = css.match(/@media \(min-width: 769px\) \{[\s\S]*?\n {2}\.md-detail-head \{([^}]*)\}/);
+  assert.ok(desk && /position:\s*relative/.test(desk[1]), 'desktop reverts to a plain pane heading');
 });

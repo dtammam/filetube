@@ -6292,8 +6292,12 @@ html:has(> body.ft-audio-expanded),
 /* v1.154: iOS nav-bar detail header on phone - back chevron pinned to the left
    edge, title CENTERED, hairline under (Dean: the left-aligned title conflicted
    with the back button). Desktop reverts to a left-aligned pane heading below. */
+/* v1.380 (Dean: "if I scroll down I lose the ability to easily go back"): on the phone the header STAYS pinned flush under
+   the app header while the page scrolls. The page scrolls the document (no overflow ancestor between this and it), so sticky
+   holds; it paints the page's own ground so the rows slide under it. Desktop reverts to a plain heading below. */
 .md-detail-head {
-  position: relative; display: flex; align-items: center; justify-content: center;
+  position: sticky; top: var(--sticky-bar-top, 0px); z-index: var(--z-sticky); background-color: var(--surface-0);
+  display: flex; align-items: center; justify-content: center;
   min-height: var(--size-touch); padding: var(--space-3) var(--space-12) var(--space-5);
   border-bottom: 1px solid var(--separator); margin-bottom: var(--space-6);
 }
@@ -6367,6 +6371,7 @@ html:has(> body.ft-audio-expanded),
   /* desktop has no back button (both columns show), so the header is a plain
      left-aligned pane heading, not a centered nav-bar. */
   .md-detail-head {
+    position: relative; top: auto; background-color: transparent;
     justify-content: flex-start; min-height: 0; border-bottom: 0;
     padding: var(--space-4) 0 var(--space-8); margin-bottom: 0;
   }
