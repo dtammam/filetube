@@ -2491,7 +2491,7 @@ function encodeListContext(ctx) {
     if (ctx.album) out.album = String(ctx.album);
     if (ctx.artist) out.artist = String(ctx.artist);
     if (ctx.filter) out.filter = String(ctx.filter);
-    // v1.368.0 (R8, R14): a radio station's SEED (track:/artist:/album:/genre:) - the queue is the
+    // v1.368.0 (R8, R14): a radio station's SEED (track:/artist:/album:/genre:; v1.378.0: station:<key>) - the queue is the
     // station, so a resume re-seeds the radio from it (music.js rebuildPlayingQueue) instead of a list.
     if (typeof ctx.radio === 'string' && ctx.radio && ctx.radio.length <= 1000) out.radio = ctx.radio;
     // v1.378.0 (D10-D12): a named station's NAME (the "Radio: <name>" line) rides with a station: seed only

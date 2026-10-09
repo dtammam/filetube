@@ -89,7 +89,7 @@ async function boot(list, playId, run) {
   // real playback: one tick a second from `from` to `to` inclusive
   const playThrough = (from, to) => { for (let t = from; t <= to; t += 1) tick(t); };
   const root = () => dom.window.document.getElementById('view-root');
-  const ctx = { dom, mp, tick, playThrough, posts, setDuration: (d) => { dur = d; }, getNav: () => lastNav, playingId: () => playerState.currentId,
+  const ctx = { dom, mp, tick, playThrough, posts, setDuration: (d) => { dur = d; }, getNav: () => lastNav, playingId: () => playerState.currentId, view: () => registered,
     reinit: async () => { registered.destroy(); registered.init(root()); for (let i = 0; i < 10; i++) await settle(); } };
   try {
     delete require.cache[musicPath];
@@ -194,11 +194,11 @@ test('D1 chapters: each chapter is its own track - the roll finishes the one lef
     c.playThrough(115, 121); // the file rolls into chapter two at 120 (no reload)
     await settle();
     assert.deepStrictEqual(c.posts, ['film::c0 play', 'film::c0 finish'], 'the roll itself posts nothing new');
-    c.playThrough(122, 150); // the roll lands at the 120 tick (a quarter-second tolerance), so 121 is the segment's first step
+    c.playThrough(122, 149); // the tally rolls on its own 120 tick (a quarter-second tolerance) and that tick is the segment's first step
     assert.deepStrictEqual(c.posts, ['film::c0 play', 'film::c0 finish'], 'chapter two: 29 s of its own segment heard, not yet');
-    c.tick(151);
+    c.tick(150);
     assert.deepStrictEqual(c.posts, ['film::c0 play', 'film::c0 finish', 'film::c1 play'], 'chapter two: 30 s of ITS OWN segment is its play');
-    // a seek from 151 straight into chapter three: chapter two was played, not finished - not a skip either
+    // a seek from 150 straight into chapter three: chapter two was played, not finished - not a skip either
     c.tick(260);
     await settle();
     c.playThrough(261, 265);
@@ -231,10 +231,11 @@ test('D1 counted where the audio PLAYS: a phone driving a speaker never starts a
   const MUSIC = fs.readFileSync(musicPath, 'utf8');
   const lines = MUSIC.split('\n');
   const callers = lines.map((l, i) => [l, i]).filter(([l]) => /\bplayCountBegin\(/.test(l) && !/function playCountBegin/.test(l));
-  assert.strictEqual(callers.length, 2, 'exactly two entry points: ' + callers.map(([l]) => l.trim()).join(' | '));
+  assert.strictEqual(callers.length, 3, 'exactly three entry points: ' + callers.map(([l]) => l.trim()).join(' | '));
   const inFn = (lineNo, fnName) => { const start = lines.findIndex((l) => l.indexOf('function ' + fnName + '(') !== -1); return start >= 0 && lineNo > start && lineNo < start + 120; };
   assert.ok(callers.some(([, i]) => inFn(i, 'loadTrack')), 'one inside loadTrack');
   assert.ok(callers.some(([, i]) => inFn(i, 'reflectChapter')), 'one inside reflectChapter');
+  assert.ok(callers.some(([, i]) => inFn(i, 'playCountTick')), 'one inside the tally\'s own tick (a chapter roll while the view is away - gate r1 C1)');
   // the speaker path: playAt hands the queue to the speaker before anything loads here (bound in
   // music-remote-controller-wiring.test.js too) and the controller's stand-in element fires nothing
   assert.match(MUSIC, /function playAt\(i, opts\) \{\s*if \(i < 0[^\n]*\n\s*if \(remoteOn\(\)\) \{ remotePlayAt\(i\); return; \}/);
@@ -243,6 +244,71 @@ test('D1 counted where the audio PLAYS: a phone driving a speaker never starts a
   const bindAt = MUSIC.indexOf('function ensureChapterReflect() {');
   const bind = MUSIC.slice(bindAt, bindAt + 2500);
   assert.ok(bind.indexOf("var mp = hostCtl('media-player'); if (!mp) return;") > 0, 'the host element is resolved through hostCtl (the proxy while remote)');
-  assert.ok(bind.indexOf("mp.addEventListener('timeupdate', function () { playCountTick(") > 0, 'the tick is bound on it');
-  assert.ok(bind.indexOf("mp.addEventListener('ended', playCountEnded,") > 0, 'ended too');
+  assert.ok(bind.indexOf('bindPlayCountTo(mp);') > 0, 'the tally is bound on it, once per element');
+  // gate r1 C1 (qa + adversary): the tally's listeners carry NO view signal - they outlive the view
+  const binder = MUSIC.slice(MUSIC.indexOf('function bindPlayCountTo(mp) {'), MUSIC.indexOf('function playCountChaptersOf('));
+  assert.ok(binder.indexOf("mp.addEventListener('timeupdate', function () { playCountTick(Number(mp.currentTime), Number(mp.duration)); });") > 0, 'the tick, no signal');
+  assert.ok(binder.indexOf("mp.addEventListener('ended', playCountEnded);") > 0, 'ended, no signal');
+  assert.ok(!/signal/.test(binder), 'no signal anywhere in the binder');
+});
+
+// ---- gate r1 (qa C1 = adversary C1): the tally outlives the view --------------------------------------
+test('gate r1 C1: a song that plays to its end while the Music view is AWAY (destroyed, the player docked) finishes and is never a skip; the next song the dock advances to earns its own play; a chaptered file keeps rolling its segments', async () => {
+  await boot(NATIVE, 't0', async (c) => {
+    c.playThrough(0, 10);
+    const nav = c.getNav();
+    // the user leaves for another page: the view is torn down, the player keeps playing in the dock
+    c.view().destroy();
+    c.playThrough(11, 199);
+    c.mp.dispatchEvent(new c.dom.window.Event('ended'));
+    assert.deepStrictEqual(c.posts, ['t0 play', 't0 finish'], 'the away song played and finished');
+    nav.onNext(); // the dock's ended-advance through the surviving nav closures
+    await settle();
+    assert.strictEqual(c.playingId(), 't1');
+    assert.deepStrictEqual(c.posts, ['t0 play', 't0 finish'], 'no skip for the song that finished');
+    c.tick(0); c.playThrough(1, 199);
+    c.mp.dispatchEvent(new c.dom.window.Event('ended'));
+    assert.deepStrictEqual(c.posts, ['t0 play', 't0 finish', 't1 play', 't1 finish'], 'the next song, still away, counts too');
+    c.view().init(c.dom.window.document.getElementById('view-root')); // so the harness's destroy() has a view
+    await settle();
+  });
+  await boot(CHAPTERS, 'film::c0', async (c) => {
+    c.setDuration(360);
+    c.playThrough(0, 5);
+    c.view().destroy();
+    c.playThrough(6, 250); // rolls through chapter one's end (120) and chapter two's (240) while away
+    assert.deepStrictEqual(c.posts, ['film::c0 play', 'film::c0 finish', 'film::c1 play', 'film::c1 finish'], 'each chapter is its own segment while the view is away');
+    c.view().init(c.dom.window.document.getElementById('view-root'));
+    await settle();
+  });
+});
+
+test('gate r1 qa W2: iOS-sparse steps of up to 4 s count as playback (the LOOP / EXIT siblings\' step); a 5 s jump does not', async () => {
+  await boot(NATIVE, 't0', async (c) => {
+    for (let t = 0; t <= 28; t += 3.5) c.tick(t); // 3.5 s steps: 8 steps = 28 s heard
+    assert.deepStrictEqual(c.posts, [], '28 s: not yet');
+    c.tick(31.5);
+    assert.deepStrictEqual(c.posts, ['t0 play'], 'sparse ticks are playback');
+  });
+  await boot(NATIVE, 't0', async (c) => {
+    for (let t = 0; t <= 60; t += 5) c.tick(t); // 5 s jumps: never a step
+    assert.deepStrictEqual(c.posts, []);
+  });
+});
+
+test('gate r1 qa S8 / adversary S2: a pick replaced before a single step of playback is no skip; a listen video never starts a tally', async () => {
+  await boot(NATIVE, 't0', async (c) => {
+    c.getNav().onNext(); // t0 never played a step
+    await settle();
+    assert.deepStrictEqual(c.posts, [], 'never heard: no skip');
+    c.tick(0); c.tick(1);
+    c.getNav().onPrev();
+    await settle();
+    assert.deepStrictEqual(c.posts, ['t1 skip'], 'one real step then moved on: a skip');
+  });
+  const M = require('../../public/js/music.js');
+  assert.strictEqual(typeof M.deriveNowPlayingLabel, 'function');
+  const src = require('node:fs').readFileSync(musicPath, 'utf8');
+  const begin = src.slice(src.indexOf('function playCountBegin(item, list) {'), src.indexOf('function playCountEnd() {'));
+  assert.ok(begin.indexOf("|| item.listen) return;") > 0, 'a listen item returns before a tally is made');
 });

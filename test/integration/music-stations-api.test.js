@@ -207,3 +207,31 @@ test('W2 rate bound: a flood of previews from one user is a 429; another user is
   assert.ok(refused >= 24, 'the rest refused: ' + refused);
   assert.strictEqual((await api('POST', '/api/music/stations/preview', { name: 'x', artists: ['Rocker 1'] }, other.cookie)).status, 200);
 });
+
+// ---- gate r1 (adversary W3 M40, security W1) -----------------------------------------------------------
+test('gate r1 adversary M40: a user keeps at most CUSTOM_MAX stations - the 51st create is refused with nothing saved', async () => {
+  const hoarder = __mintTestSession({ username: 'stationshoarder', role: 'member' });
+  for (let i = 0; i < 50; i += 1) {
+    const r = await api('POST', '/api/music/stations', { name: 'S' + i, artists: ['Rocker ' + (i % 5)] }, hoarder.cookie);
+    assert.strictEqual(r.status, 201, 'create ' + i + ': ' + JSON.stringify(r.body));
+  }
+  const over = await api('POST', '/api/music/stations', { name: 'S50', artists: ['Rocker 1'] }, hoarder.cookie);
+  assert.deepStrictEqual([over.status, over.body.error], [400, 'you can keep at most 50 stations']);
+  assert.strictEqual(userStore.getMusicStations(hoarder.user.id).length, 50);
+});
+
+test('gate r1 security W1: the station list and a station radio batch share the per-user bucket (429 after the burst); another user is unaffected; a song radio batch is not bounded by it', async () => {
+  const flood = __mintTestSession({ username: 'stationslist', role: 'member' });
+  let okN = 0; let refused = 0;
+  for (let i = 0; i < 80; i += 1) {
+    const r = await api('GET', '/api/music/stations', undefined, flood.cookie);
+    if (r.status === 200) okN += 1; else if (r.status === 429) refused += 1; else assert.fail('unexpected ' + r.status);
+  }
+  assert.ok(okN >= 60 && okN <= 70, 'the burst (60) plus a little refill: ' + okN);
+  assert.ok(refused >= 10, 'then refused: ' + refused);
+  const batch = await api('GET', '/api/music/radio?seed=' + encodeURIComponent('station:g:rock') + '&count=1', undefined, flood.cookie);
+  assert.strictEqual(batch.status, 429, 'a station batch draws from the same bucket');
+  const song = await api('GET', '/api/music/radio?seed=' + encodeURIComponent('track:rk0') + '&count=1', undefined, flood.cookie);
+  assert.strictEqual(song.status, 200, 'a song radio batch is not behind the station bucket');
+  assert.strictEqual((await api('GET', '/api/music/stations', undefined, other.cookie)).status, 200, 'another user\'s bucket is its own');
+});

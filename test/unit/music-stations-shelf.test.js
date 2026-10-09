@@ -86,9 +86,9 @@ async function boot(run, opts) {
     if (u.indexOf('/api/music/stations/preview') === 0) return json({ count: body && body.artists && body.artists.length ? 7 * body.artists.length : 0, artists: body && body.artists ? body.artists.length : 0 });
     if (u.indexOf('/api/music/stations/hidden') === 0) { const st = stations.find((x) => x.key === body.key); if (st) st.hidden = body.hidden; return json({ ok: true }); }
     if (u === '/api/music/stations' && method === 'POST') { const st = { key: 'c:111111111111', name: body.name, kind: 'custom', subtitle: '14 songs', count: 14, strict: !!body.strict, group: 'main', hidden: false, artIds: ['a9'], artVs: [null], def: Object.assign({ id: '111111111111' }, body) }; stations.push(st); return json({ station: st }, 201); }
-    if (u.indexOf('/api/music/stations/') === 0 && method === 'DELETE') { stations = stations.filter((x) => x.def && x.def.id !== decodeURIComponent(u.slice('/api/music/stations/'.length))); return json({ ok: true }); }
+    if (u.indexOf('/api/music/stations/') === 0 && method === 'DELETE') { if (opts.deleteFails) return json({ error: 'nope' }, 500); stations = stations.filter((x) => x.def && x.def.id !== decodeURIComponent(u.slice('/api/music/stations/'.length))); return json({ ok: true }); }
     if (u.indexOf('/api/music/stations/') === 0 && method === 'PUT') { const id = decodeURIComponent(u.slice('/api/music/stations/'.length)); const st = stations.find((x) => x.def && x.def.id === id); if (st) { st.name = body.name; st.def = Object.assign({ id }, body); } return json({ station: st }); }
-    if (u === '/api/music/stations') return json({ stations });
+    if (u === '/api/music/stations') { if (opts.stationsFail && opts.stationsFail()) return Promise.resolve({ ok: false, status: 500, json: async () => ({ error: 'down' }) }); return json({ stations }); }
     if (u.indexOf('/api/music/radio?') === 0) return json({ items: PICKS });
     if (u.indexOf('/api/music/artists') === 0 || u.indexOf('/api/music/albums') === 0) return json({ items: [] });
     if (u.indexOf('/api/music?') === 0) return json({ items: [] });
@@ -270,4 +270,34 @@ test('D7: New station opens the editor; Save stays disabled until the definition
     assert.ok(c.calls.some((x) => x.toast === 'Station created.'));
     // an empty-axis definition cannot be saved: the words field cleared, artists cleared -> disabled
   });
+});
+
+// ---- gate r1 (qa S4, S5) ------------------------------------------------------------------------------
+test('gate r1 qa S5: a failed read of the stations is an ERROR state with Retry, never "no stations"; Retry refetches and the shelf repaints', async () => {
+  let fail = true;
+  await boot(async (c) => {
+    assert.ok(c.doc.querySelector('.music-stations-error'), 'the shelf shows the error');
+    assert.strictEqual(c.doc.querySelector('.music-station-new'), null, 'no New station tile over an unknown list');
+    assert.strictEqual(c.doc.querySelector('.music-station-tile'), null);
+    fail = false;
+    c.click('.music-stations-retry');
+    await settleAll(20);
+    assert.strictEqual(c.doc.querySelector('.music-stations-error'), null, 'the error is gone');
+    assert.ok(c.doc.querySelector('.music-station-tile[data-station-key="s:reggae"]'), 'the stations arrived on Retry');
+  }, { stationsFail: () => fail });
+});
+
+test('gate r1 qa S4: a refused Delete says so and the card stays', async () => {
+  await boot(async (c) => {
+    c.click('.music-station-more[data-station-key="c:abcdefabcdef"]');
+    await settleAll();
+    c.doc.querySelectorAll('.ui-sheet .ui-row')[1].dispatchEvent(new c.dom.window.MouseEvent('click', { bubbles: true }));
+    await settleAll();
+    const confirm = openDialog(c.doc);
+    await new Promise((r) => setTimeout(r, 450));
+    confirm.querySelectorAll('.ui-confirm__actions .ui-btn')[1].dispatchEvent(new c.dom.window.MouseEvent('click', { bubbles: true }));
+    await settleAll(20);
+    assert.ok(c.calls.some((x) => x.toast === 'Could not delete the station.'), 'the refusal is said: ' + JSON.stringify(c.calls.filter((x) => x.toast)));
+    assert.ok(c.doc.querySelector('[data-station-key="c:abcdefabcdef"]'), 'the card stays');
+  }, { deleteFails: true });
 });

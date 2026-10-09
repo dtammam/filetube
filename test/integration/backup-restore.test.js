@@ -954,3 +954,30 @@ test('v1.314 pushBell: a restore of a PRE-BELL bundle (field absent) reads the b
   assert.strictEqual(byId['sub-old'].pushBell, false, 'a pre-bell record reads OFF after restore (opt-in; the backfill runs on the restored rows)');
   assert.strictEqual(byId['sub-on'].pushBell, true, 'an ON bell survives the round trip');
 });
+
+// ---- v1.378.0 gate r1 (security L1 = qa S6 = adversary W1): the restore ingress validates like the route ------
+test('v1.378.0: a bundle\'s station / hidden / plays rows are validated like the routes - a malformed row refuses the WHOLE bundle; a valid station round-trips', async () => {
+  seedFullState();
+  const good = await getBackup();
+  assert.ok(Array.isArray(good.users) && good.users.length > 0, 'precondition: the bundle carries users');
+  const withUser = (patch) => ({ ...good, users: [{ ...good.users[0], ...patch }, ...good.users.slice(1)] });
+  const refused = async (patch, re, what) => {
+    const r = await postRestore(withUser(patch));
+    assert.equal(r.status, 400, what);
+    assert.match((await r.json()).error, re, what);
+  };
+  await refused({ musicStations: [{ id: 'evil', name: 'x', genres: ['rock'] }] }, /musicStations\[0\] must carry a 12-hex id/, 'a non-hex station id');
+  await refused({ musicStations: [{ id: 'abcdefabcdef', name: 'x', genres: 'rock' }] }, /musicStations\[0\]: genres must be a list/, 'a string where a list should be');
+  await refused({ musicStations: [{ id: 'abcdefabcdef', name: '' }] }, /name must be 1-40/, 'an empty name');
+  await refused({ musicStations: [{ id: 'abcdefabcdef', name: 'x', words: new Array(21).fill('w') }] }, /words holds at most 20 entries/, 'an oversized list');
+  await refused({ musicStationHidden: [{ key: 'k'.repeat(121) }] }, /musicStationHidden\[0\] must carry a key/, 'an over-long hidden key');
+  await refused({ musicPlays: [{ trackId: 'a\u0000b', plays: 1 }] }, /musicPlays\[0\] must carry a track id .* without NUL/, 'a NUL-bearing play id');
+  await refused({ musicPlays: [{ trackId: 'trk', plays: -1 }] }, /musicPlays\[0\]\.plays must be a non-negative integer/, 'a negative count');
+  // a valid station restores and is served
+  const ok = await postRestore(withUser({ musicStations: [{ id: 'abcdefabcdef', name: 'Mine', artists: ['Someone'], strict: true, createdAt: '2026-10-09T00:00:00.000Z', updatedAt: '2026-10-09T00:00:00.000Z' }], musicStationHidden: [{ key: 'g:rock', hiddenAt: '2026-10-09T00:00:00.000Z' }], musicPlays: [{ trackId: 'trk', plays: 3, skips: 0, finishes: 1, lastPlayedAt: '2026-10-09T00:00:00.000Z' }] }));
+  assert.equal(ok.status, 200, await ok.text());
+  const own = userStore.getMusicStations(good.users[0].id);
+  assert.deepEqual(own.map((s) => [s.id, s.name, s.artists, s.strict]), [['abcdefabcdef', 'Mine', ['Someone'], true]]);
+  assert.deepEqual(userStore.getMusicStationHidden(good.users[0].id).map((h) => h.key), ['g:rock']);
+  assert.deepEqual(userStore.getMusicPlays(good.users[0].id).trk, { plays: 3, skips: 0, finishes: 1, lastPlayedAt: '2026-10-09T00:00:00.000Z' });
+});

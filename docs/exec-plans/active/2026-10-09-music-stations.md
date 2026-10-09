@@ -3,11 +3,11 @@ plan: music-stations
 harness: v2 · full
 branch: feat/v1.378.0-stations
 anchor: outcome
-status: Building
-next: the full dual-Node suites at 20c7e02e, then gate round 1 (adversary, qa, security-brief); T0 (Dean's census) pending, folded in when it lands
+status: Gate:CHANGES r1 @c42a52bc
+next: gate round 2 at the fix sha (re-engage the same three seats); T0 (Dean's census) pending, folded in when it lands
 design: Dean's intake 2026-10-09 (rulings R1-R4 below; the rest are kickoff defaults D1-D12, Dean may overrule at his device pass). Base main 13fa0c72.
 builder: extreme (a schema migration plus new write routes: the full gate, data-carrier surface)
-gate: pending (FULL: adversary, qa, security-brief; alters-schema forces it)
+gate: CHANGES r1 @c42a52bc - adversary, qa (security-brief APPROVED r1 @c42a52bc); round 2 pending
 ---
 
 # v1.378.0: Radio stations (Chill, Reggae, Synth, Favorites...), play counts, and Radio in Pocket
@@ -182,8 +182,43 @@ Delete the branch remote (`gh api -X DELETE .../git/refs/heads/<b>`) and local (
 - Migration v34 -> v35:
 - Suites (Node 22.23.1 / 24.20.0) at the reviewed sha:
 - Gate rounds:
+
+### Gate round 1 (reviewed sha c42a52bc; the three seats reviewed in parallel; each verdict line is verbatim at the end of this file, the findings below are the builder's CONDENSED summary with the numbers copied from the reports)
+
+Gate: APPROVED r1 @c42a52bc - security-brief
+- WARNING (MEDIUM) W1: GET /api/music/stations and a `station:` radio batch had no rate bound; a member's 50 custom stations x 20 two-word words + 20 excludes make buildStations ~190M string ops per request on 24k tracks (estimated, not measured). LOW L1: the backup restore stored station / plays / hidden rows without the route's validation (a `genres: 'rock'` row made every station route 500 for that user). INFO: the plays-route comment omitted the backup export as a reader; stations.js vs D6's "a saved album's own year" (none exists).
+- Verified by reading: the route census and auth gate; session-user scoping; D9 on every output; the bounds; prototype keys; no user text in a RegExp or path; every renderer escapes; per-user buckets; the migration and carriers; the simulator prints no titles or paths.
+
+Gate: CHANGES r1 @c42a52bc - qa
+- CRITICAL C1 (= adversary C1): the tally's listeners were bound with the VIEW signal, so a song that ended while the user was on another page (the player docked) was recorded as a SKIP, never a play or finish (probe: `["t0 skip","t1 skip"]`, expected a play and a finish each); chapters rolling while away posted nothing.
+- CRITICAL C2 (= adversary C2): a "stay strict" station drifted on both run-dry paths - the skipped-out pool was gathered library-wide before the station's tierOf, and the R11 recycle walked the whole exclude list (songs played before the station started): picks `metal0, queen1, reg0...`.
+- WARNING W1: lib/music/radio.js's header never mentioned the station: seed kind, stationLadder or the D3 weights. WARNING W2: PLAY_MAX_STEP 2 s vs the LOOP / EXIT siblings' 4 s (iOS sparse ticks could record finishes but no plays).
+- S1 hidden generated stations consumed the 12 shelf slots (shelf showed 9). S2 D3 as built = 3+ skips AND never a finish. S3 the Favorites fallback = most RECENTLY resumed. S4 Delete never checked its answer. S5 a failed stations read rendered "New station" only. S6 = security L1. S7 bindings for C1 / C2 / a failed fetch. S8 a load that never played posted a skip on the next pick.
+- Instruments: lint:ui OK (3172); overlay clean; eslint 0 errors (6 pre-existing warnings, identical at base); targeted unit 138/138, integration 76/76; perf (synthetic 23.8k): buildStations 132-172 ms, a station batch 102 ms.
+
+Gate: CHANGES r1 @c42a52bc - adversary
+- CRITICAL C1, C2 as above (probes adv-dock-probe.js, adv-strict-probe.js: `Rock:id12 Rock:id13 Rock:id14 Reggae:id0 Reggae:id1` with three Rock plays before a strict station started).
+- WARNING W1: the bundle restore as a second unvalidated ingress (measured: `genres: 'rock'` THROWS in matchCustom). WARNING W2: Favorites VANISHED on the viewer's first play when they had no likes (a literal "until counts exist"). WARNING W3: surviving mutants - M3 a station draw without playsWeight, M27 the speaker never adopting the station, M28 the phone never sending it, M31 the style->genre absorption (the test's fixture could never form g:reggae), M40 CUSTOM_MAX unbound; 43 applied, 36 killed, 7 survived (M1 equivalent).
+- S1 stale comments (common.js seed kinds; the plays-route readers). S2 M35 the listen guard unbound. S3 cost at production size (synthetic 23,850 tracks): buildStations 112-276 ms, a station batch 209 ms vs 92 ms for a genre batch. S4 a deliberate replay of the same song never counts a second play (the same-id guard). S5 section 9 empty at the reviewed sha; T0 pending.
+
+### Gate round 1: the builder's dispositions (every CRITICAL / WARNING fixed; suggestions fixed or disclosed)
+
+- C1 (both seats): the tally lives OUTSIDE the view - `bindPlayCountTo` binds the tick and `ended` on the player element once per element with NO signal, and the tally carries the file's chapter list so it rolls segments itself while the view is away (reflectChapter's call is a no-op when the tally already rolled). Bound by the seats' probe as a test (music-play-counts "gate r1 C1": a song ending while destroyed posts play + finish, the next song too, chapters roll while away).
+- C2 (both seats): a tier-0 track (a strict station's non-member) never enters the skipped-out pool nor the recycle; the skipped-out pool holds the station's own candidates only. Bound (music-stations "gate r1 C2": three non-member plays before the station + a skipped-out non-member, 40 seeds, members only). D3 as built, stated: the skipped-out pool (candidates only) is drawn before the R11 recycle when the station would otherwise run dry.
+- qa W1: the radio.js header now carries v1.378.0 (the station: seed, stationLadder's tiers, the D3 weights, tier 11). qa W2: PLAY_MAX_STEP = 4 s (bound: 3.5 s steps count, 5 s jumps do not); the device falsifier stays owed (tick deltas on a locked phone).
+- adversary W1 = security L1 = qa S6: the restore validates every station row through validateCustomDef with the route's 12-hex id, bounds hidden keys (120) and play ids (200, NUL-free, non-negative counts) and refuses the whole bundle on a bad row (backup-restore test); matchCustom also reads lists defensively.
+- adversary W2: Favorites keeps its fallback (likes, then the most recently resumed, "Builds as you listen") until a COUNTED song qualifies (3+ plays and a finish); likes alone do not end it (bound: one play never empties it).
+- adversary W3: M3 bound (a station draw: a 3x-skipped member left out, a 2x-skipped member ~0.3x); M27 / M28 bound through the real music.js at both ends (a station card tapped with a speaker chosen sends `{ ids, idx, radio: { seed, name } }`; the speaker's handler plays it with the station context, the name and Autoplay on); M31 bound with a fixture where g:reggae WOULD form; M40 bound (the 51st create is a 400 with nothing saved). M35: a listen item returns before a tally is made (a source binding).
+- security W1: GET /api/music/stations and a `station:` radio batch share the per-user stations bucket (60 then 2/s; bound: 429 after the burst, a song batch unbounded by it, another user unaffected). Disclosed: no memo of buildStations; cost per the seats' numbers above.
+- qa S1: a hidden station never holds one of the 12 shelf slots (bound). S4: a refused Delete is said (toast) and the card stays (bound). S5: a failed stations read is an error line with Retry in the shelf; Retry refetches (bound). S8: a skip needs at least one real step of playback first (bound: a pick replaced before any tick posts nothing).
+- adversary S1 / security INFO: the comments corrected (common.js seed kinds; the plays-route readers; stations.js on D6's saved-album year). S4: a deliberate replay of the same loaded song counts no second play - disclosed in the D1 ledger line.
 - Device checks owed:
 
 ## 10. Out of scope
 Outside data (MusicBrainz / Last.fm), moods inferred from audio (BPM / energy), sharing stations between users, editing stations
 in Pocket, video stations.
+
+Gate: APPROVED r1 @c42a52bc - security-brief
+Gate: CHANGES r1 @c42a52bc - qa
+
+Gate: CHANGES r1 @c42a52bc - adversary

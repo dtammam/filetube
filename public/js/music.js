@@ -235,8 +235,13 @@ function buildNewStationCardHtml() {
 // (the rest, then the hidden ones marked Hidden with Unhide in their menu). `expanded` is the toggle's
 // state. An empty list still shows the shelf with New station: a library too small for any
 // generated station can still hold the viewer's own.
-function buildStationsShelfHtml(stations, expanded) {
+function buildStationsShelfHtml(stations, expanded, failed) {
   var list = Array.isArray(stations) ? stations : [];
+  // gate r1 qa S5 (the home page's own rule, UI pass S7 D9): a failed load is an ERROR state with Retry, never the empty library
+  if (failed) {
+    return '<section class="music-shelf music-stations"><div class="music-shelf-head"><h3 class="music-shelf-title">Stations</h3></div>' +
+      '<div class="music-stations-error" role="status">Could not load your stations. <button type="button" class="ui-btn ui-btn--plain ui-btn--sm music-stations-retry"><span class="ui-btn__label">Retry</span></button></div></section>';
+  }
   var shown = list.filter(function (st) { return st && st.group !== 'more' && !st.hidden; });
   var rest = list.filter(function (st) { return st && (st.group === 'more' || st.hidden); });
   var head = '<div class="music-shelf-head"><h3 class="music-shelf-title">Stations</h3>' +
@@ -1293,10 +1298,37 @@ if (typeof module !== 'undefined' && module.exports) {
   // load) keeps the running tally, so one song never counts twice. Counted where the audio PLAYS:
   // while this device drives a speaker, playAt never loads here (remotePlayAt) and the speaker's own
   // tab reports under ITS signed-in user; the controller's proxy element fires no timeupdate.
+  // Gate r1 qa C1: the tally OUTLIVES the view. Its listeners sit on the player element itself with
+  // NO view signal (bindPlayCountTo, once per element): the shared #media-player host survives the
+  // #view-root swap and the player's own ended-advance keeps playing music while the user browses
+  // another page, so a song that ends in the dock still finishes (and never counts as a skip), and a
+  // chaptered file keeps rolling its segments here too (the tally carries the file's chapter list).
+  // Gate r1 qa S8: a load that never played a second (a 404 stream, a pick replaced at once) is no
+  // skip - a skip needs real playback first (`started`).
   var PLAY_MIN_SEC = 30;
-  var PLAY_MAX_STEP = 2; // one timeupdate step of real playback is well under this; a seek is not
+  var PLAY_MAX_STEP = 4; // one timeupdate step of real playback, with iOS's sparse ticks (the LOOP / EXIT siblings' 4 s; gate r1 qa W2); a seek is not
   var FINISH_TAIL = 0.05;
-  var playCount = null; // { id, start, span, listened, lastT, played, finished }
+  var playCount = null; // { id, start, span, listened, lastT, started, played, finished, chapters }
+  var playCountBound = typeof WeakSet === 'function' ? new WeakSet() : null;
+  function bindPlayCountTo(mp) {
+    if (!mp || typeof mp.addEventListener !== 'function') return;
+    if (playCountBound) { if (playCountBound.has(mp)) return; playCountBound.add(mp); } else if (mp.__ftPlayCount) return; else mp.__ftPlayCount = true;
+    mp.addEventListener('timeupdate', function () { playCountTick(Number(mp.currentTime), Number(mp.duration)); });
+    mp.addEventListener('ended', playCountEnded);
+  }
+  // The chapter segments of a chaptered file (sorted by start), from the queue the item was played
+  // from, so the tally can roll on its own while the view is away: [{ id, start, span }].
+  function playCountChaptersOf(item, list) {
+    if (!item || item.source !== 'library-chapter' || !Array.isArray(list)) return null;
+    var base = String(item.id).replace(/::c\d+$/, '');
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      var x = list[i];
+      if (x && x.source === 'library-chapter' && String(x.id).replace(/::c\d+$/, '') === base) out.push({ id: x.id, start: Number(x.chapterStartSec) || 0, span: Number(x.durationSec) || 0 });
+    }
+    out.sort(function (a, b) { return a.start - b.start; });
+    return out.length > 1 ? out : null;
+  }
   function playCountPost(id, kind) {
     try {
       var p = fetch('/api/music/plays', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, kind: kind }), keepalive: true });
@@ -1305,17 +1337,20 @@ if (typeof module !== 'undefined' && module.exports) {
   }
   // A new segment is heard: close the previous one (a skip when it was left early), open this one.
   // A listen video (a watchable item in Music's clothes) is not a music track: nothing is counted.
-  function playCountBegin(item) {
+  function playCountBegin(item, list) {
+    if (playCount && item && playCount.id === item.id) return; // the same segment (a reflect of the roll the tally already made)
+    var chapters = playCountChaptersOf(item, list) || (playCount && playCount.chapters && item && item.source === 'library-chapter' && playCount.chapters.some(function (c) { return c.id === item.id; }) ? playCount.chapters : null);
     playCountEnd();
     if (!item || typeof item.id !== 'string' || !item.id || item.listen) return;
     var isChapter = item.source === 'library-chapter';
-    playCount = { id: item.id, start: isChapter ? (Number(item.chapterStartSec) || 0) : 0, span: Number(item.durationSec) || 0, listened: 0, lastT: null, played: false, finished: false };
+    playCount = { id: item.id, start: isChapter ? (Number(item.chapterStartSec) || 0) : 0, span: Number(item.durationSec) || 0, listened: 0, lastT: null, started: false, played: false, finished: false, chapters: chapters };
   }
-  // The segment is left: a skip when it reached neither the play threshold nor its end.
+  // The segment is left: a skip when it PLAYED (at least one real step) and reached neither the play
+  // threshold nor its end.
   function playCountEnd() {
     var pc = playCount;
     playCount = null;
-    if (pc && !pc.played && !pc.finished) playCountPost(pc.id, 'skip');
+    if (pc && pc.started && !pc.played && !pc.finished) playCountPost(pc.id, 'skip');
   }
   // The element ended: the segment finished (once), and the tally stays - a Loop replay of the same
   // load counts nothing more.
@@ -1328,10 +1363,20 @@ if (typeof module !== 'undefined' && module.exports) {
   function playCountTick(t, dur) {
     var pc = playCount;
     if (!pc || !isFinite(t)) return;
+    // a chaptered file rolled into another segment (the view may be away: nothing else would notice)
+    if (pc.chapters) {
+      var cur = null;
+      for (var k = 0; k < pc.chapters.length; k++) { if (t >= pc.chapters[k].start - 0.25) cur = pc.chapters[k]; else break; }
+      if (cur && cur.id !== pc.id) {
+        playCountBegin({ id: cur.id, source: 'library-chapter', chapterStartSec: cur.start, durationSec: cur.span }, null);
+        pc = playCount;
+        if (!pc) return;
+      }
+    }
     var span = pc.span > 0 ? pc.span : ((isFinite(dur) && dur > pc.start) ? dur - pc.start : 0);
     if (pc.lastT !== null) {
       var d = t - pc.lastT;
-      if (d > 0 && d <= PLAY_MAX_STEP) pc.listened += d;
+      if (d > 0 && d <= PLAY_MAX_STEP) { pc.listened += d; pc.started = true; }
     }
     pc.lastT = t;
     if (!pc.played) {
@@ -2140,7 +2185,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var t = null, ti = -1;
       for (var i = 0; i < queue.length; i++) { if (queue[i] && queue[i].id === id) { t = queue[i]; ti = i; break; } }
       if (t) nowPlaying = nowPlayingFrom(t);
-      playCountBegin(t); // v1.378.0: the chapter that rolled on is heard now (the one left: finished by its last 5 %, or a skip when it was seeked past early)
+      playCountBegin(t, queue); // v1.378.0: the chapter that rolled on is heard now (a no-op when the tally already rolled on its own tick)
       // v1.311 (Dean, tech-debt #230 part i): a chaptered album is ONE file whose `::c`
       // chapters are queue entries; the playhead rolls through them WITHOUT a reload, so
       // registerTrackNav ran exactly once (at load, on the STARTED chapter) and never again.
@@ -2320,10 +2365,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // seek-back lands before reflectChapter can advance the displayed chapter past the boundary.
       // enforceChapterExit is bound between them (v1.311): after the loop (Loop chapter outranks the
       // exit) and before reflect (so the solo-chapter identity guard still holds on the boundary tick).
-      // v1.378.0 play counts: the tally tick runs FIRST, so the position it reads still belongs to the
-      // segment reflectChapter may roll on from this very tick
-      mp.addEventListener('timeupdate', function () { playCountTick(Number(mp.currentTime), Number(mp.duration)); }, { signal: signal });
-      mp.addEventListener('ended', playCountEnded, { signal: signal });
+      bindPlayCountTo(mp); // v1.378.0 play counts: bound once per ELEMENT, not per view (gate r1 qa C1); first, so it reads the position before reflectChapter rolls
       mp.addEventListener('timeupdate', enforceChapterLoop, { signal: signal });
       mp.addEventListener('timeupdate', enforceChapterExit, { signal: signal });
       mp.addEventListener('timeupdate', reflectChapter, { signal: signal });
@@ -3430,6 +3472,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var queueCtxEncoded = '';
     var homeStations = []; // v1.378.0: the Stations shelf's last payload (GET /api/music/stations)
     var homeStationsExpanded = false; // the "More stations" toggle
+    var homeStationsFailed = false; // the last GET failed: the shelf shows an error with Retry (gate r1 qa S5)
     var urlParams = new URLSearchParams(window.location.search);
 
     // v1.103: sort is persisted PER TAB (sorting Songs by duration must not
@@ -3702,13 +3745,14 @@ if (typeof module !== 'undefined' && module.exports) {
           fetchJson('/api/music/artists?limit=12&sort=newest'),
           fetchJson('/api/music/albums?limit=12&sort=newest'),
           fetchJson('/api/music?filter=recent-listening&limit=60'),
-          // v1.378.0 (D10): the Stations shelf; a failure here leaves the shelf with New station only
-          fetchJson('/api/music/stations').catch(function () { return { stations: [] }; }),
+          // v1.378.0 (D10): the Stations shelf; a failure here is an ERROR state with Retry in the shelf (gate r1 qa S5), never "no stations"
+          fetchJson('/api/music/stations').catch(function () { return { stations: null }; }),
         ]);
         artists = Array.isArray(res[0].items) ? res[0].items : [];
         albums = Array.isArray(res[1].items) ? res[1].items : [];
         recent = Array.isArray(res[2].items) ? res[2].items : [];
-        homeStations = (res[3] && Array.isArray(res[3].stations)) ? res[3].stations : [];
+        homeStationsFailed = !(res[3] && Array.isArray(res[3].stations));
+        homeStations = homeStationsFailed ? [] : res[3].stations;
       } catch (_) {
         // UI pass S7 (D9): a failed load is an ERROR state with Retry, never the empty library
         if (typeof stillMine === 'function' && !stillMine()) return;
@@ -3729,7 +3773,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var html = '';
       if (recentArtists.length) html += buildMusicShelfHtml('Recently played', '', recentArtists.map(buildRecentArtistTileHtml).join(''));
       if (artists.length) html += buildMusicShelfHtml('Your artists', 'artists', artists.map(buildArtistCardHtml).join(''));
-      html += buildStationsShelfHtml(homeStations, homeStationsExpanded); // v1.378.0 (D10): above the albums
+      html += buildStationsShelfHtml(homeStations, homeStationsExpanded, homeStationsFailed); // v1.378.0 (D10): above the albums
       if (albums.length) html += buildMusicShelfHtml('Recently added', 'albums', albums.map(buildAlbumCardHtml).join(''));
       if (typeof stillMine === 'function' && !stillMine()) return; // gate r2 (adversary S4a): a menu pick owns the view now
       content.innerHTML = '<div class="music-home">' + html + '</div>';
@@ -4081,6 +4125,7 @@ if (typeof module !== 'undefined' && module.exports) {
         return;
       }
       if (e.target.closest('.music-station-new')) { openStationEditor(null); return; }
+      if (e.target.closest('.music-stations-retry')) { refreshStations(); return; } // gate r1 qa S5
       var stationsToggle = e.target.closest('.music-stations-toggle');
       if (stationsToggle) { homeStationsExpanded = !homeStationsExpanded; repaintStationsShelf(); return; }
       var stationTile = e.target.closest('.music-station-tile');
@@ -4154,17 +4199,22 @@ if (typeof module !== 'undefined' && module.exports) {
       var sec = content && content.querySelector('.music-stations');
       if (!sec) return;
       var tmp = document.createElement('div');
-      tmp.innerHTML = buildStationsShelfHtml(homeStations, homeStationsExpanded);
+      tmp.innerHTML = buildStationsShelfHtml(homeStations, homeStationsExpanded, homeStationsFailed);
       sec.replaceWith(tmp.firstChild);
       revealMusicArt();
     }
-    // Re-read the viewer's stations (after a save / delete / hide) and repaint the shelf.
+    // Re-read the viewer's stations (after a save / delete / hide, or the error state's Retry) and repaint the shelf.
     function refreshStations() {
       return fetchJson('/api/music/stations').then(function (d) {
         if (signal.aborted) return;
-        homeStations = (d && Array.isArray(d.stations)) ? d.stations : [];
+        homeStationsFailed = !(d && Array.isArray(d.stations));
+        homeStations = homeStationsFailed ? [] : d.stations;
         repaintStationsShelf();
-      }).catch(function () { /* the shelf keeps its last state */ });
+      }).catch(function () {
+        if (signal.aborted) return;
+        homeStationsFailed = true; // gate r1 qa S5: a failed read is an error state, never "no stations"
+        repaintStationsShelf();
+      });
     }
     function stationPost(method, path, body) {
       return fetch(path, { method: method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) })
@@ -4181,7 +4231,10 @@ if (typeof module !== 'undefined' && module.exports) {
           var ask = typeof U.confirm === 'function' ? U.confirm({ title: 'Delete this station?', body: st.name, confirmLabel: 'Delete', danger: true, signal: signal }) : Promise.resolve(true);
           Promise.resolve(ask).then(function (yes) {
             if (!yes || signal.aborted) return;
-            return stationPost('DELETE', '/api/music/stations/' + encodeURIComponent(st.def ? st.def.id : st.key.slice(2))).then(function () { return refreshStations(); });
+            return stationPost('DELETE', '/api/music/stations/' + encodeURIComponent(st.def ? st.def.id : st.key.slice(2))).then(function (r) {
+              if (!r.ok) throw new Error('delete'); // gate r1 qa S4: a refused delete is said, never shown as done
+              return refreshStations();
+            });
           }).catch(function () { if (typeof window.showToast === 'function') window.showToast('Could not delete the station.'); });
         } });
       } else {
@@ -4423,7 +4476,8 @@ if (typeof module !== 'undefined' && module.exports) {
       };
       playingId = item.id;
       autoplayNotePlayed(item.id); // v1.254: the autoplay picker's session no-repeat memory
-      if (!(playCount && playCount.id === item.id)) playCountBegin(item); // v1.378.0: a new segment is heard (a same-id adopt keeps the tally)
+      playCountBegin(item, queue); // v1.378.0: a new segment is heard (a same-id adopt keeps the tally; the file's chapters ride along so the tally rolls them itself)
+      bindPlayCountTo(hostCtl('media-player')); // gate r1 qa C1: the listeners live on the element, never on the view's signal
       activeListenId = item.listen ? item.id : null; // W1: a normal play ends the listen session's marker
       if (!item.listen) activeListenChapters = null; // #222: a non-listen play ends the chaptered-listen session too
       nowPlaying = nowPlayingFrom(item);

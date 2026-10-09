@@ -127,7 +127,7 @@ test('D5c / D8 / D9: order and groups - built-ins, your own, then generated bigg
   assert.deepStrictEqual(k.slice(2, 4), ['c:abc', 'c:none'], 'your own next, in creation order (an empty own station stays listed for its editor)');
   const gen = all.filter((s) => s.kind === 'genre');
   assert.strictEqual(gen[0].key, 'g:genre 14', 'biggest first');
-  assert.deepStrictEqual(gen.map((s) => s.group), new Array(12).fill('main').concat(['more', 'more', 'more']));
+  assert.deepStrictEqual(gen.map((s) => s.group), ['more'].concat(new Array(12).fill('main')).concat(['more', 'more']), 'the hidden biggest one takes no shelf slot (gate r1 qa S1): 12 non-hidden on the shelf');
   assert.strictEqual(gen[0].hidden, true, 'the hidden flag rides the station');
   assert.strictEqual(byKey(list, user, 'c:none').members.length, 0);
   assert.ok(!all.some((s) => s.kind !== 'custom' && !s.members.length), 'no empty generated / built-in station');
@@ -245,4 +245,76 @@ test('the T0 census is aggregate only: per style phrase, a count per field and i
   assert.deepStrictEqual(row('ska'), { style: 'reggae', phrase: 'ska', any: 1, genre: 0, album: 1, title: 0, channel: 0 });
   assert.ok(!rows.some((r) => r.style === 'game'), 'game music has no words');
   for (const r of rows) for (const k of Object.keys(r)) assert.ok(['style', 'phrase', 'any'].concat(stations.TEXT_FIELDS).includes(k), 'no title or path in a row: ' + k);
+});
+
+// ---- gate r1 (qa C2 = adversary C2, adversary W3 M3 / M31 / W2, W1) -------------------------------------
+test('gate r1 C2: a strict station never leaves its members on EITHER run-dry path - songs played before the station started are not recycled into it, a skipped-out non-member never enters it', () => {
+  const list = [];
+  list.push(...many(12, (i) => nat('Member ' + (i % 4), 'Reggae', { title: 'Reggae Tune ' + i })));
+  list.push(...many(10, (i) => nat('Rocker ' + (i % 3), 'Rock', { title: 'Rock ' + i })));
+  const members = new Set(list.filter((t) => /Reggae Tune/.test(t.title)).map((t) => t.id));
+  const rock = list.filter((t) => t.genre === 'Rock').map((t) => t.id);
+  const strict = { kind: 'station', key: 'c:x', name: 'Strict', artists: [], genre: null, category: null, year: null, folder: null, memberIds: members, weights: null, strict: true };
+  // (b) three Rock plays before the station started, then every member played: the recycle must return MEMBERS
+  const exclude = rock.slice(0, 3).concat([...members]);
+  const plays = {}; plays[rock[5]] = { plays: 0, skips: 3, finishes: 0 }; // (a) a skipped-out NON-member
+  for (let k = 1; k <= 40; k += 1) {
+    const picks = radio.pickRadioBatch(strict, list, { exclude, count: 5, plays }, createSeededRng(k));
+    assert.strictEqual(picks.length, 5, 'never silent');
+    assert.ok(picks.every((t) => members.has(t.id)), 'seed ' + k + ': a non-member in a strict station: ' + picks.map((t) => t.title).join(', '));
+  }
+  // a non-strict station: a skipped-out NON-member comes back only when every tier is spent, after the members' own recycle?
+  // no - D3 as built: the skipped-out pool (candidates of the station only) is drawn before the R11 recycle; a skipped-out
+  // song the station could never draw (tier 0) is not in it. Here every song is a candidate (T1 members, T7 rest):
+  const loose = Object.assign({}, strict, { strict: false });
+  const everything = list.map((t) => t.id).filter((id) => id !== rock[5]);
+  const dry = radio.pickRadioBatch(loose, list, { exclude: everything, count: 3, plays }, createSeededRng(3)).map((t) => t.id);
+  assert.strictEqual(dry[0], rock[5], 'non-strict, everything else spent: the skipped-out candidate returns before the recycle (D3 as built: "unless the station would run dry")');
+});
+
+test('gate r1 adversary M3: a station draw weighs the viewer\'s counts - a 3x-skipped member is left out while others remain, a 2x-skipped member draws ~0.3x', () => {
+  const list = many(5, (i) => nat('M' + i, 'Reggae', { title: 'Tune ' + i }));
+  const members = new Set(list.map((t) => t.id));
+  const profile = { kind: 'station', key: 's:reggae', name: 'Reggae', artists: [], genre: null, category: null, year: null, folder: null, memberIds: members, weights: null, strict: false };
+  const plays = {}; plays[list[0].id] = { plays: 0, skips: 3, finishes: 0 }; plays[list[1].id] = { plays: 1, skips: 2, finishes: 0 };
+  const tally = {};
+  for (let k = 1; k <= 1000; k += 1) { const id = radio.pickRadioBatch(profile, list, { exclude: [], count: 1, plays }, createSeededRng(k))[0].id; tally[id] = (tally[id] || 0) + 1; }
+  assert.strictEqual(tally[list[0].id], undefined, 'left out: ' + JSON.stringify(tally));
+  const ref = (tally[list[2].id] + tally[list[3].id] + tally[list[4].id]) / 3;
+  assert.ok(tally[list[1].id] / ref > 0.2 && tally[list[1].id] / ref < 0.45, '~0.3x: ' + tally[list[1].id] + ' vs ' + ref);
+});
+
+test('gate r1 adversary M31: a style absorbs a genre that WOULD form its own station (45 reggae-tagged songs from 3 artists: s:reggae only, never g:reggae)', () => {
+  const list = many(45, (i) => nat('Reggae Band ' + (i % 3), 'Reggae'));
+  list.push(...many(50, (i) => nat('Rocker ' + (i % 3), 'Rock')));
+  const k = keys(list);
+  assert.ok(k.includes('s:reggae') && !k.includes('g:reggae'), k.join(' '));
+  assert.ok(k.includes('g:rock'), 'a genre no style names keeps its own station');
+  assert.strictEqual(byKey(list, null, 's:reggae').members.length, 45);
+});
+
+test('gate r1 adversary W2: Favorites keeps its fallback (likes, then the most recently resumed) until a COUNTED song qualifies - one play never empties it; likes alone do not end the fallback', () => {
+  const list = many(10, (i) => nat('F' + i, 'Rock'));
+  const liked = new Set([list[0].id]);
+  const progress = {}; progress[list[5].id] = { position: 40, updatedAt: '2026-01-02T00:00:00.000Z' };
+  const one = {}; one[list[7].id] = { plays: 1, skips: 0, finishes: 0 };
+  const f = byKey(list, { liked, progress, plays: one, custom: [], hidden: new Set() }, 'favorites');
+  assert.ok(f, 'Favorites did not vanish on the first play');
+  assert.deepStrictEqual(f.members.map((t) => t.id), [list[0].id, list[5].id], 'likes then resumed, still the fallback');
+  assert.strictEqual(f.subtitle, 'Builds as you listen');
+  const noLikes = byKey(list, { liked: new Set(), progress, plays: one, custom: [], hidden: new Set() }, 'favorites');
+  assert.deepStrictEqual(noLikes.members.map((t) => t.id), [list[5].id], 'no likes, one play: the resumed song keeps Favorites alive');
+  const three = {}; three[list[7].id] = { plays: 3, skips: 0, finishes: 1 };
+  const f3 = byKey(list, { liked, progress, plays: three, custom: [], hidden: new Set() }, 'favorites');
+  assert.deepStrictEqual(f3.members.map((t) => t.id), [list[0].id, list[7].id], 'a counted song qualifies: likes + counted, the resumed one is out');
+  assert.strictEqual(f3.subtitle, '2 songs');
+});
+
+test('gate r1 adversary W1 / security L1: a stored definition with the wrong shapes never throws - matchCustom reads lists defensively', () => {
+  const list = many(5, (i) => nat('A' + i, 'Rock'));
+  assert.deepStrictEqual(stations.matchCustom({ genres: 'rock' }, list), [], 'a string where a list should be: no axis, no throw');
+  assert.deepStrictEqual(stations.matchCustom({ exclude: { a: 1 }, artists: ['A1'] }, list).map((t) => t.artist), ['A1']);
+  assert.deepStrictEqual(stations.matchCustom({ words: [1, null, 'nope'] }, list), []);
+  const bad = stations.buildStations(list, Object.assign({}, NO_USER, { custom: [{ id: 'abc', name: 'Bad', genres: 'rock' }] }));
+  assert.ok(bad.some((s) => s.key === 'c:abc' && s.members.length === 0), 'listed empty, the editor can fix it');
 });

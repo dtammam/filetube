@@ -95,3 +95,95 @@ test('D10: the desktop panel\'s context line (skin-surface buildPanelHtml) shows
     assert.ok(S.buildPanelHtml({ title: 'Song', subline: 'Band' }, []).indexOf('mnp-ctx') === -1);
   } finally { delete require.cache[require.resolve('../../public/js/skin-surface.js')]; Object.assign(global, saved); }
 });
+
+// ---- gate r1 adversary W3 (M27 / M28): the D11 wiring at BOTH ends, through the real music.js ---------
+test('gate r1 M27 / M28: a phone driving a speaker sends the station with its play command; a speaker handed a station plays it AS a station (its context and name, Autoplay on)', async () => {
+  const { JSDOM } = require('jsdom');
+  const common = require('../../public/js/common.js');
+  const musicPath = require.resolve('../../public/js/music.js');
+  const TRACKS = [
+    { id: 'r1', title: 'Reggae One', artist: 'Band A', album: 'Roots', albumKey: 'Band A␟Roots', durationSec: 200, source: 'native' },
+    { id: 'r2', title: 'Reggae Two', artist: 'Band B', album: 'Dub', albumKey: 'Band B␟Dub', durationSec: 200, source: 'native' },
+  ];
+  const STATIONS = [{ key: 's:reggae', name: 'Reggae', kind: 'style', subtitle: '52 songs', count: 52, strict: false, group: 'main', hidden: false, artIds: ['a1'], artVs: [null] }];
+  const VIEW_HTML = `<body><div id="view-root" data-view="music">
+    <select id="music-sort-select"></select><button id="music-view-toggle" hidden><i></i></button>
+    <button id="music-autoplay-btn" type="button" aria-pressed="false">Autoplay</button>
+    <div id="player-slot"></div><video id="media-player"></video>
+    <div id="music-nowplaying-panel" class="music-nowplaying-panel"></div>
+    <button type="button" class="music-nowplaying" id="music-nowplaying" hidden></button>
+    <section id="music-jumpback" hidden></section>
+    <div class="music-tabs" id="music-tabs" role="tablist"><button type="button" class="music-tab active" data-tab="home" role="tab">Home</button></div>
+    <div id="music-crumb" hidden></div><div id="music-status" role="status" hidden></div>
+    <div id="music-content"></div><div id="music-empty" hidden></div></div></body>`;
+  const settle = () => new Promise((r) => setImmediate(r));
+  async function settleAll(n) { for (let i = 0; i < (n || 12); i++) { await settle(); await new Promise((r) => setTimeout(r, 2)); } }
+  async function boot(remoteOn, run) {
+    const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music' });
+    const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController, Event: global.Event, requestAnimationFrame: global.requestAnimationFrame };
+    global.window = dom.window; global.document = dom.window.document; global.localStorage = dom.window.localStorage;
+    global.AbortController = dom.window.AbortController; global.Event = dom.window.Event; global.requestAnimationFrame = (cb) => setTimeout(cb, 0);
+    dom.window.localStorage.setItem('filetube_music_tab', 'home');
+    dom.window.localStorage.setItem('ft-music-autoplay', '0');
+    dom.window.matchMedia = (q) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
+    dom.window.scrollTo = () => {};
+    dom.window.encodeListContext = common.encodeListContext;
+    const calls = []; const rcPlays = []; let playHandler = null;
+    const playerState = { currentId: null, meta: null, lastData: null, state: 'docked' };
+    dom.window.FileTube = {
+      registerView: (n, m) => { dom.window.__m = m; },
+      encodeListContext: common.encodeListContext, decodeListContext: common.decodeListContext, shimmerArt: () => {},
+      player: { currentId: null, getState: () => playerState.state, expand: () => { playerState.state = 'full'; }, getCurrentMeta: () => playerState.meta, pause: () => {},
+        load: (id, data) => { playerState.currentId = id; dom.window.FileTube.player.currentId = id; playerState.state = 'full'; playerState.lastData = data; playerState.meta = { isMusic: true, id, browseCtx: data && data.browseCtx }; },
+        setTrackNav: () => {} },
+      // the controller handle (RC): a speaker chosen
+      remoteControl: { isRemote: () => remoteOn, state: () => ({ state: 'idle', track: null, queue: null, radio: null }), play: (ids, idx, radio) => { rcPlays.push({ ids, idx, radio }); return Promise.resolve(true); },
+        label: () => 'Desk', targetId: () => (remoteOn ? 'pc' : null), position: () => 0, seek: () => {}, leave: () => {}, select: () => {}, toggle: () => {}, prev: () => {}, next: () => {},
+        onChange: () => () => {}, consumeResume: () => null, fetchTargets: () => Promise.resolve([]), volume: () => null },
+      // the target handle (REMOTE): this tab as a speaker
+      remote: { setMusicPlayHandler: (fn) => { playHandler = fn; }, setQueueReader: () => {}, setNowPlayingResolver: () => {}, isOn: () => false, onChange: () => () => {}, toggle: () => {}, trackChanged: () => {} },
+    };
+    dom.window.showToast = () => {};
+    global.fetch = (url, init) => {
+      const u = String(url); const method = (init && init.method) || 'GET';
+      calls.push({ method, url: u, body: init && init.body ? JSON.parse(init.body) : undefined });
+      const json = (o) => Promise.resolve({ ok: true, status: 200, json: async () => o });
+      if (u === '/api/music/stations') return json({ stations: STATIONS });
+      if (u.indexOf('/api/music/radio?') === 0) return json({ items: TRACKS });
+      if (u.indexOf('/api/music/artists') === 0 || u.indexOf('/api/music/albums') === 0 || u.indexOf('/api/music?') === 0) return json({ items: [] });
+      return json({ ok: true, items: [] });
+    };
+    try {
+      delete require.cache[musicPath];
+      require(musicPath);
+      dom.window.__m.init(dom.window.document.getElementById('view-root'));
+      await settleAll();
+      await run({ dom, doc: dom.window.document, calls, rcPlays, playerState, handler: () => playHandler });
+      dom.window.__m.destroy();
+    } finally { delete require.cache[musicPath]; Object.assign(global, saved); }
+  }
+  // M28: the phone (a speaker chosen) taps a station card: the play command carries the seed and the name, nothing loads here
+  await boot(true, async (c) => {
+    const tile = c.doc.querySelector('.music-station-tile[data-station-key="s:reggae"]');
+    assert.ok(tile, 'the shelf rendered');
+    tile.dispatchEvent(new c.dom.window.MouseEvent('click', { bubbles: true }));
+    await settleAll();
+    assert.strictEqual(c.rcPlays.length, 1, 'one play command to the speaker');
+    assert.deepStrictEqual(c.rcPlays[0], { ids: ['r1', 'r2'], idx: 0, radio: { seed: 'station:s:reggae', name: 'Reggae' } });
+    assert.strictEqual(c.playerState.currentId, null, 'nothing loaded on the phone');
+  });
+  // M27: the speaker receives the command: it plays as a station (ctx + name), Autoplay turned on
+  await boot(false, async (c) => {
+    assert.strictEqual(typeof c.handler(), 'function', 'the view registered its play handler');
+    c.handler()({ tracks: TRACKS, index: 0, label: 'Phone', radio: { seed: 'station:s:reggae', name: 'Reggae' } });
+    await settleAll();
+    assert.strictEqual(c.playerState.currentId, 'r1');
+    assert.deepStrictEqual(JSON.parse(c.playerState.lastData.browseCtx), { src: 'music', radio: 'station:s:reggae', radioName: 'Reggae' }, 'the speaker\'s queue IS the station');
+    assert.strictEqual(c.dom.window.localStorage.getItem('ft-music-autoplay'), '1', 'Autoplay on so the station continues');
+    assert.strictEqual(c.doc.getElementById('music-nowplaying').textContent, 'Radio: Reggae');
+    // a plain play from the phone stays a plain flat list
+    c.handler()({ tracks: TRACKS, index: 1, label: 'Phone' });
+    await settleAll();
+    assert.strictEqual(JSON.parse(c.playerState.lastData.browseCtx).radio, undefined, 'no station: no seed in the context');
+  });
+});
