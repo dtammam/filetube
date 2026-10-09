@@ -2494,6 +2494,8 @@ function encodeListContext(ctx) {
     // v1.368.0 (R8, R14): a radio station's SEED (track:/artist:/album:/genre:) - the queue is the
     // station, so a resume re-seeds the radio from it (music.js rebuildPlayingQueue) instead of a list.
     if (typeof ctx.radio === 'string' && ctx.radio && ctx.radio.length <= 1000) out.radio = ctx.radio;
+    // v1.378.0 (D10-D12): a named station's NAME (the "Radio: <name>" line) rides with a station: seed only
+    if (out.radio && out.radio.indexOf('station:') === 0 && typeof ctx.radioName === 'string' && ctx.radioName && ctx.radioName.length <= 60) out.radioName = ctx.radioName;
   }
   // v1.88 (Dean): a Modern-mode home card carries src:'home-grid' plus the
   // active pill (`filter`) so next/prev/autoplay re-fetch /api/home?view=grid

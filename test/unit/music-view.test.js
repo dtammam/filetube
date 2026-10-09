@@ -381,7 +381,7 @@ test('v1.44.2 SOURCE-LOCK: the now-playing record is module-scoped (survives the
   assert.match(MUSIC_JS, /\/\/ v1\.44\.2:[^]*?var nowPlaying = null;/, 'nowPlaying is module-scoped');
   assert.match(MUSIC_JS, /updateNowPlaying\(\)/, 'render/loadTrack refresh the line');
   // It must cross-check the live player id (not just trust the stale record).
-  assert.match(MUSIC_JS, /deriveNowPlayingLabel\(nowPlaying, currentId\)/, 'the DOM update consults the live player currentId');
+  assert.match(MUSIC_JS, /deriveNowPlayingLabel\(nowPlaying, currentId, radioName\)/, 'the DOM update consults the live player currentId (v1.378.0: and the station playing, for the Radio: line)');
 });
 
 test('v1.44.2 SOURCE-LOCK (gate S1/W1): closing the player clears the stale row highlight + "Playing from" line, bound LAZILY', () => {

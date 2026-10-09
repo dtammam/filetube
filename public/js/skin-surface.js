@@ -1485,8 +1485,8 @@
         showNowPlaying();
         return;
       }
-      if (it.action === 'radio') { // v1.368.0: a level's "Start radio" row (an artist, an album, a genre)
-        try { if (typeof cfg.onStartRadio === 'function') cfg.onStartRadio(it.seed); } catch (_) { /* view best-effort */ }
+      if (it.action === 'radio') { // v1.368.0: a level's "Start radio" row (an artist, an album, a genre); v1.378.0: a Radio level's station row (its name rides)
+        try { if (typeof cfg.onStartRadio === 'function') cfg.onStartRadio(it.seed, it.stationName); } catch (_) { /* view best-effort */ }
         showNowPlaying();
         return;
       }
@@ -3497,7 +3497,9 @@
         ? '<button type="button" class="ui-link ui-link--block mnp-sub" data-artist="' + panelEscape(subArtist) + '" title="' + panelEscape((typeof np.subArtistTitle === 'string' && np.subArtistTitle) ? np.subArtistTitle : 'Go to artist') + '">' + panelEscape(np.subline) + '</button>'
         : '<div class="mnp-sub">' + panelEscape(np.subline) + '</div>';
     }
-    var meta = '<div class="mnp-meta">' +
+    // v1.378.0 (D10): a context line above the title ("Radio: <name>" while a named station plays)
+    var ctxLine = (typeof np.context === 'string' && np.context) ? '<div class="mnp-ctx">' + panelEscape(np.context) + '</div>' : '';
+    var meta = '<div class="mnp-meta">' + ctxLine +
       '<div class="mnp-title" title="' + panelEscape(np.title) + '">' + panelEscape(np.title || 'Unknown track') + '</div>' +
       sub +
       '</div>';

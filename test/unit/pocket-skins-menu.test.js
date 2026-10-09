@@ -31,7 +31,7 @@ test('groups are DERIVED from the registry: the Original, one per line generatio
 
 test('Extras > Skins rows: Skins appears only where hasSkins; Games only unless hasGames is false; the check follows the active skin', () => {
   const lbl = (rows) => rows.map((r) => r.label);
-  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: false, hasGames: false, hasSkins: true })), ['Music', 'Extras', 'Settings', 'Shuffle Songs']);
+  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: false, hasGames: false, hasSkins: true })), ['Music', 'Radio', 'Extras', 'Settings', 'Shuffle Songs']);
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'extras' }, { hasGames: true, hasSkins: true })), ['Games', 'Skins']);
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'extras' }, { hasGames: false, hasSkins: true })), ['Skins']);
   assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'extras' }, { hasGames: true })), ['Games']);
@@ -116,7 +116,7 @@ const idOfLabel = (label) => PREVIEW_POOL.find((x) => skins.colorwayLabel(x) ===
 test('the Main Menu reaches Extras > Skins > Classic > 5G > colorways; with no sticker seam (no way to re-render) the row does not exist', () => {
   const b = boot();
   try {
-    assert.deepStrictEqual(rowsOf(b).map((x) => x.querySelector('.ipm-lbl').textContent), ['Music', 'Extras', 'Settings', 'Shuffle Songs']);
+    assert.deepStrictEqual(rowsOf(b).map((x) => x.querySelector('.ipm-lbl').textContent), ['Music', 'Radio', 'Extras', 'Settings', 'Shuffle Songs']);
     tapLabel(b, 'Extras');
     assert.deepStrictEqual(rowsOf(b).map((x) => x.querySelector('.ipm-lbl').textContent), ['Skins'], 'no game here: Skins only');
     tapLabel(b, 'Skins');

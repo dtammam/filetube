@@ -78,7 +78,7 @@ test('Click: MENU climbs Now Playing -> Main Menu, every Music level renders the
     menu(h);
     assert.ok(inMenu(h), 'MENU from Now Playing climbs into the menu');
     assert.strictEqual(title(h), 'Click', 'status bar = the Main Menu name');
-    assert.deepStrictEqual(labels(h), ['Music', 'Extras', 'Settings', 'Shuffle Songs', 'Now Playing'], 'the device order (v1.344: Extras holds Skins here; this harness has no Brick hook, so no Games)');
+    assert.deepStrictEqual(labels(h), ['Music', 'Radio', 'Extras', 'Settings', 'Shuffle Songs', 'Now Playing'], 'the device order (v1.344: Extras holds Skins here; this harness has no Brick hook, so no Games; v1.378.0: Radio after Music)');
     assert.strictEqual(cursorLabel(h), 'Music', 'the blue bar starts on the first row');
     select(h); // center = drill in
     assert.strictEqual(title(h), 'Music');
@@ -303,7 +303,7 @@ test('v1.332 (D1) AC2: a device saved on the removed Seattle skin - localStorage
     assert.ok(h.panel.querySelector('.ip-wheel [data-skin-menu]'), 'the Click wheel');
     menu(h);
     assert.strictEqual(title(h), 'Click', 'the Click pocket menus (never Cider, the old unknown-id fallback)');
-    assert.deepStrictEqual(labels(h).filter((l) => l !== 'Extras'), ['Music', 'Settings', 'Shuffle Songs', 'Now Playing']);
+    assert.deepStrictEqual(labels(h).filter((l) => l !== 'Extras'), ['Music', 'Radio', 'Settings', 'Shuffle Songs', 'Now Playing']); // v1.378.0: Radio after Music
     assert.strictEqual(h.dom.window.localStorage.getItem('ft-music-skin'), 'ipod', 'the stored value was rewritten to Click');
     h.dom.window.__ftPrefsSync.flush(); // the debounced mirror, now (the boot GET has settled)
     for (let i = 0; i < 50 && (await serverSkin()) !== 'ipod'; i++) await settleNet(5);
