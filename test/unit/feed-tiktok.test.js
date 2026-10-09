@@ -423,3 +423,160 @@ test('W3 player API (D8): the Feed\'s tap and hold are the player\'s own picture
   const feedSrc = fs.readFileSync(path.join(ROOT, 'public/js/feed.js'), 'utf8');
   assert.ok(!/playbackRate\s*=/.test(feedSrc), 'the Feed never sets a rate itself');
 });
+
+// ---- W4 (D9): Start over from a card's "..." - confirm, the request, New from the start, Undo ---------------------
+
+test('W4 pure (D9): which reset a card has, and the confirm\'s sentence naming what is lost', () => {
+  assert.strictEqual(feed.feedStartOverKind(VID), 'media');
+  assert.strictEqual(feed.feedStartOverKind(POD), 'podcast');
+  assert.strictEqual(feed.feedStartOverKind({ kind: 'watchlater', media: 'podcast', id: 'e' }), 'podcast');
+  assert.strictEqual(feed.feedStartOverKind({ kind: 'watchlater', media: 'video', id: 'v' }), 'media');
+  assert.strictEqual(feed.feedStartOverKind(BOOK), 'book');
+  assert.strictEqual(feed.feedStartOverKind({ kind: 'book', newBook: true }), '', 'a new book has nothing to forget');
+  assert.strictEqual(feed.feedStartOverKind({ kind: 'song', id: 't' }), '', 'a song keeps no place');
+  assert.strictEqual(feed.feedStartOverKind(null), '');
+  assert.strictEqual(feed.feedClockLong(4990), '1:23:10');
+  assert.strictEqual(feed.feedClockLong(7440), '2:04:00');
+  assert.strictEqual(feed.feedClockLong(65), '1:05');
+  assert.strictEqual(feed.feedStartOverText({ kind: 'video', media: 'video', progress: 4990, duration: 7440 }), 'Your place, 1:23:10 of 2:04:00, will be forgotten.');
+  assert.strictEqual(feed.feedStartOverText({ kind: 'podcast', media: 'podcast', position: 600, durationSec: 1800 }), 'Your place, 10:00 of 30:00, will be forgotten.');
+  assert.strictEqual(feed.feedStartOverText({ kind: 'watchlater', media: 'video', progress: 30, duration: 600 }), 'Your place, 0:30 of 10:00, will be forgotten. It stays in Watch later.');
+  assert.strictEqual(feed.feedStartOverText({ kind: 'video', media: 'video', progress: 0, duration: 600 }), 'It will count as not started.');
+  assert.strictEqual(feed.feedStartOverText(BOOK), 'Your place in Alpha (Chapter 1 of 3) will be forgotten. It opens at the beginning next time.');
+  assert.strictEqual(feed.FEED_UNDO_MS, 10000);
+});
+
+const PLACED_VID = Object.assign({}, VID, { progress: 400, fresh: false });
+async function openStartOver(r, index) {
+  const card = r.$$('.feed-card')[index];
+  card.querySelector('[data-card-menu]').click();
+  await r.settle();
+  const row = Array.from(r.doc.querySelectorAll('.ui-sheet .ui-row, .ui-sheet [role="listitem"], .ui-sheet button')).find((b) => /Start over/.test(b.textContent));
+  assert.ok(row, 'the menu offers Start over');
+  row.click();
+  await r.settle();
+  const sheets = r.$$('.ui-sheet');
+  const confirm = sheets[sheets.length - 1];
+  assert.ok(confirm && /Start over\?/.test(confirm.textContent), 'a confirm asks');
+  return confirm;
+}
+const okBtn = (sheet) => Array.from(sheet.querySelectorAll('.ui-confirm__actions .ui-btn')).find((b) => /Start over/.test(b.textContent));
+const cancelBtn = (sheet) => Array.from(sheet.querySelectorAll('.ui-confirm__actions .ui-btn')).find((b) => /Cancel/.test(b.textContent));
+
+function startOverRealm(cards, routes) {
+  return feedRealm({
+    batches: [{ cards, exhausted: false }],
+    route: (m, u, body) => {
+      if (u === '/api/feed/start-over') return routes.start ? routes.start(body) : { status: 200, body: { ok: true, token: 'a'.repeat(24), previous: {} } };
+      if (u === '/api/feed/start-over/undo') return routes.undo ? routes.undo(body) : { status: 200, body: { ok: true } };
+      return null;
+    },
+  });
+}
+
+test('W4 view (D9): "..." > Start over > a confirm naming the place; Cancel sends nothing', async () => {
+  const r = startOverRealm([PLACED_VID, POD], {});
+  try {
+    await startRealm(r);
+    r.show(0);
+    const sheet = await openStartOver(r, 0);
+    assert.ok(/Your place, 6:40 of 20:00, will be forgotten\./.test(sheet.textContent));
+    cancelBtn(sheet).click(); await r.settle();
+    assert.strictEqual(r.calls('POST', '/api/feed/start-over').length, 0);
+  } finally { r.close(); }
+});
+
+test('W4 view (D9): a confirmed Start over sends ONE request for THIS card; the card says New and plays again from 0; Undo (10 s) puts the card back exactly', async () => {
+  const r = startOverRealm([PLACED_VID, POD], {});
+  try {
+    await startRealm(r);
+    r.show(0);
+    const loads0 = r.loads.filter((l) => l.id === 'v1').length;
+    const sheet = await openStartOver(r, 0);
+    okBtn(sheet).click(); okBtn(sheet).click(); await r.settle();
+    const posts = r.calls('POST', '/api/feed/start-over');
+    assert.strictEqual(posts.length, 1, 'one request, however many taps');
+    assert.deepStrictEqual(posts[0].body, { session: 'abcdef0123456789', kind: 'media', id: 'v1' });
+    const node = r.$$('.feed-card')[0];
+    assert.strictEqual(node.querySelector('.feed-card__kind').textContent, 'Video · New from C');
+    const reload = r.loads.filter((l) => l.id === 'v1');
+    assert.strictEqual(reload.length, loads0 + 1, 'the card plays again');
+    assert.strictEqual(reload[reload.length - 1].data.startAt, 0, 'from the start');
+    assert.strictEqual(typeof reload[reload.length - 1].data.progressGate, 'function', 'as a NEW card: the one-minute rule guards its writes');
+    const ti = r.toasts.indexOf('Started over: V');
+    assert.ok(ti >= 0, 'a toast says so');
+    const opts = r.w.__toastOpts[ti];
+    assert.strictEqual(opts.duration, 10000);
+    assert.strictEqual(opts.action.label, 'Undo');
+    opts.action.onAction(); await r.settle();
+    assert.deepStrictEqual(r.calls('POST', '/api/feed/start-over/undo').map((c) => c.body), [{ session: 'abcdef0123456789', token: 'a'.repeat(24) }]);
+    assert.strictEqual(node.querySelector('.feed-card__kind').textContent, 'Video · Continue');
+    const back = r.loads.filter((l) => l.id === 'v1');
+    assert.strictEqual(back[back.length - 1].data.startAt, 400, 'back at its place');
+    assert.strictEqual(back[back.length - 1].data.progressGate, undefined, 'and a continuing card again');
+  } finally { r.close(); }
+});
+
+test('W4 view (D9): refusals are said in words - nothing to start over, an Undo after the item was played elsewhere', async () => {
+  const r = startOverRealm([PLACED_VID, POD], { start: () => ({ status: 409, body: { ok: false, reason: 'nothing' } }) });
+  try {
+    await startRealm(r); r.show(0);
+    okBtn(await openStartOver(r, 0)).click(); await r.settle();
+    assert.ok(r.toasts.includes('Nothing to start over: it was not started'));
+    assert.strictEqual(r.$$('.feed-card')[0].querySelector('.feed-card__kind').textContent, 'Video · Continue', 'the card is unchanged');
+  } finally { r.close(); }
+  const r2 = startOverRealm([PLACED_VID, POD], { undo: () => ({ status: 409, body: { ok: false, reason: 'moved' } }) });
+  try {
+    await startRealm(r2); r2.show(0);
+    okBtn(await openStartOver(r2, 0)).click(); await r2.settle();
+    r2.w.__toastOpts[r2.toasts.indexOf('Started over: V')].action.onAction(); await r2.settle();
+    assert.ok(r2.toasts.includes('Could not undo: it was played since. The old place is kept in this session\'s record'));
+    assert.strictEqual(r2.$$('.feed-card')[0].querySelector('.feed-card__kind').textContent, 'Video · New from C', 'the card stays started over');
+  } finally { r2.close(); }
+});
+
+test('W4 view (D9): a book card started over says so and never moves the place again (its pages read or not)', async () => {
+  const r = startOverRealm([PAGED_BOOK, POD, VID], {});
+  try {
+    r.w.innerWidth = 390;
+    await startRealm(r); r.show(0);
+    okBtn(await openStartOver(r, 0)).click(); await r.settle();
+    assert.deepStrictEqual(r.calls('POST', '/api/feed/start-over')[0].body, { session: 'abcdef0123456789', kind: 'book', id: 'bk1' });
+    const node = r.$$('.feed-card')[0];
+    assert.strictEqual(node.querySelector('.feed-card__kind').textContent, 'Book · Started over');
+    r.advance(30000);
+    r.show(1); await r.settle();
+    assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk1').length, 0, 'a read page after a Start over moves nothing');
+  } finally { r.close(); }
+});
+
+test('W4 view (D9): no "..." on a song or a new book; the menu on every other kind', async () => {
+  const NEW = Object.assign({}, BOOK, { id: 'nb', newBook: true, blocks: [] });
+  const SONG = { kind: 'song', id: 't1', track: { id: 't1', title: 'S', artist: 'A' } };
+  const r = startOverRealm([SONG, NEW, PLACED_VID, POD, BOOK], {});
+  try {
+    await startRealm(r);
+    const has = r.$$('.feed-card').map((n) => n.getAttribute('data-kind') + (n.hasAttribute('data-new-book') ? ':new' : '') + '=' + !!n.querySelector('[data-card-menu]'));
+    assert.deepStrictEqual(has.slice(0, 5), ['song=false', 'book:new=false', 'video=true', 'podcast=true', 'book=true']);
+  } finally { r.close(); }
+});
+
+test('W4 view (D9): the card under an open confirm changed (the session ended) - the confirm resets NOTHING', async () => {
+  const r = startOverRealm([PLACED_VID, POD], {});
+  try {
+    await startRealm(r); r.show(0);
+    const sheet = await openStartOver(r, 0);
+    const ok = okBtn(sheet);
+    r.$('#feed-done-btn').click(); await r.settle(); // time is up: the recap; then Done -> the stack is gone
+    const done = r.$('#feed-recap-done');
+    if (done) { done.click(); await r.settle(); }
+    ok.click(); await r.settle();
+    assert.strictEqual(r.calls('POST', '/api/feed/start-over').length, 0);
+  } finally { r.close(); }
+});
+
+test('W4 the Feed\'s toasts pass the real (message, opts) signature: no "[object Object]" on a device', () => {
+  const src = fs.readFileSync(path.join(ROOT, 'public/js/feed.js'), 'utf8');
+  assert.ok(!/U\(\)\.toast\(\{/.test(src), 'no toast called with one object');
+  assert.match(src, /function toast\(text, opts\) \{ var u = U\(\); return u \? u\.toast\(String\(text\), Object\.assign\(\{ doc: document \}, opts \|\| \{\}\)\) : null; \}/);
+});

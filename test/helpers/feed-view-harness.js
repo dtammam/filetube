@@ -83,8 +83,9 @@ function feedRealm(o) {
   const toasts = [];
   w.__harness = { register: (name, h) => { if (name === 'feed') registered = h; }, player, navigate: (u) => { loads.push({ navigate: u }); } };
   const srcs = ['public/js/icons.js', 'public/js/glyph-pool.js', 'public/js/body-scroll-lock.js', 'public/js/ui.js', 'public/js/interaction.js', 'public/js/common.js'].map(read);
-  srcs.push('window.FileTube = window.FileTube || {}; window.FileTube.registerView = window.__harness.register; window.FileTube.player = window.__harness.player; window.FileTube.navigate = window.__harness.navigate; window.ui.toast = function (o) { window.__toasts.push(o && o.text); };');
+  srcs.push('window.FileTube = window.FileTube || {}; window.FileTube.registerView = window.__harness.register; window.FileTube.player = window.__harness.player; window.FileTube.navigate = window.__harness.navigate; window.ui.toast = function (m, o) { window.__toasts.push(typeof m === \'string\' ? m : \'[not a string: \' + typeof m + \']\'); window.__toastOpts.push(o || null); return { dismiss: function () {} }; };');
   w.__toasts = toasts;
+  w.__toastOpts = []; // v1.381.0: the real signature is toast(message, opts) - a stub that took one object hid a shipped "[object Object]" toast
   srcs.push(read('public/js/feed.js'));
   w.eval(srcs.join('\n;\n'));
   const root = w.document.getElementById('view-root');

@@ -57,6 +57,35 @@ function feedClock(sec) {
   return m + ':' + (r < 10 ? '0' : '') + r;
 }
 
+// v1.381.0 (D9): h:mm:ss once an hour is passed ("1:23:10 of 2:04:00"), else m:ss.
+function feedClockLong(sec) {
+  var s = Math.max(0, Math.round(Number(sec) || 0));
+  if (s < 3600) return feedClock(s);
+  var h = Math.floor(s / 3600);
+  var m = Math.floor((s % 3600) / 60);
+  var r = s % 60;
+  return h + ':' + (m < 10 ? '0' : '') + m + ':' + (r < 10 ? '0' : '') + r;
+}
+
+// v1.381.0 (D9): which item a card's Start over resets on the server ('media' | 'podcast' | 'book'), or '' for a card
+// that has none (a song: no place to keep; a new book: nothing to forget; the notice).
+function feedStartOverKind(card) {
+  if (!card || card.kind === 'song' || card.kind === 'notice') return '';
+  if (card.kind === 'book') return card.newBook ? '' : 'book';
+  if (card.media === 'podcast') return 'podcast';
+  return card.kind === 'video' || card.kind === 'watchlater' ? 'media' : '';
+}
+
+// The confirm's sentence: what is forgotten, named (D9a).
+function feedStartOverText(card) {
+  if (!card) return '';
+  if (card.kind === 'book') return 'Your place in ' + (card.title || 'this book') + (card.chapterLabel ? ' (' + card.chapterLabel + ')' : '') + ' will be forgotten. It opens at the beginning next time.';
+  var pos = card.media === 'podcast' ? Number(card.position) || 0 : Number(card.progress) || 0;
+  var dur = card.media === 'podcast' ? Number(card.durationSec) || 0 : Number(card.duration) || 0;
+  var place = pos > 0 ? 'Your place, ' + feedClockLong(pos) + (dur > 0 ? ' of ' + feedClockLong(dur) : '') + ', will be forgotten' : 'It will count as not started';
+  return place + (card.kind === 'watchlater' ? '. It stays in Watch later.' : '.');
+}
+
 // The kind label a card shows (its plain word; Watch later keeps its own name).
 function feedKindLabel(card) {
   if (!card) return '';
@@ -118,6 +147,7 @@ function feedFreshStarted(state, needSec) { return !!state && state.sec >= (type
 var FEED_HINT_KEY = 'ft-feed-hint-sessions';
 var FEED_HINT_SESSIONS = 3;
 var FEED_HINT_MS = 4000;
+var FEED_UNDO_MS = 10000; // v1.381.0 (D9b): the Start over toast's Undo lasts 10 s (the session's record keeps it after)
 var FEED_PAGE_HINT_KEY = 'ft-feed-page-hint-sessions'; // v1.381.0 (D11): "Swipe left for the next page", first 3 sessions
 var FEED_INTRO_NOTE_MS = 3000;
 function feedHintShouldShow(count) {
@@ -483,6 +513,7 @@ if (typeof module !== 'undefined' && module.exports) {
     FEED_HINT_KEY, FEED_HINT_SESSIONS, FEED_HINT_MS, FEED_INTRO_NOTE_MS, feedHintShouldShow,
     feedDeadlineMs, feedRingFraction, feedRemainingSec, feedEmptySummary, feedCountActivity, feedRecapLines, feedRecapTitle,
     feedHoldStep, feedSummaryPayload,
+    feedClockLong, feedStartOverKind, feedStartOverText, FEED_UNDO_MS,
     feedWordCount, feedPaginate, feedLongestHead, FEED_SPLIT_MIN_WORDS, feedBookTarget, feedPageDwellSec, FEED_MAX_PAGES, feedFurther, FEED_FIT_KEY,
     FEED_EDGE_PX, FEED_SWIPE_MIN_PX, feedPageSwipe, FEED_PAGE_HINT_KEY,
   };
@@ -500,6 +531,9 @@ if (typeof module !== 'undefined' && module.exports) {
   function writeSession(s) { try { if (s) window.sessionStorage.setItem(FEED_SESSION_KEY, JSON.stringify(s)); else window.sessionStorage.removeItem(FEED_SESSION_KEY); } catch (_) { /* storage disabled */ } }
   function player() { return window.FileTube && window.FileTube.player; }
   function U() { return window.ui || null; }
+  // v1.381.0: ui.toast's signature is toast(message, opts). Until this release every Feed toast passed ONE object
+  // ({ text, doc }), so on a device it read "[object Object]" (the test harness's object-taking stub hid it). One helper.
+  function toast(text, opts) { var u = U(); return u ? u.toast(String(text), Object.assign({ doc: document }, opts || {})) : null; }
 
   function el(tag, cls, text) {
     var e = document.createElement(tag);
@@ -591,7 +625,7 @@ if (typeof module !== 'undefined' && module.exports) {
           startClock();
           fetchBatch();
         })
-        .catch(function () { if (U()) U().toast({ text: 'Could not start the feed', doc: document }); });
+        .catch(function () { toast('Could not start the feed'); });
     }
 
     // D10: a thin ring in the corner fills with the time; no numbers unless tapped.
@@ -942,6 +976,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var left = el('span', 'feed-card__left', '');
       left.setAttribute('data-page-readout', '');
       actions.appendChild(left);
+      appendCardMenu(actions, index);
       overlay.appendChild(actions);
       var bp = bookState(index, card);
       bp.blocks = (card.blocks || []).slice();
@@ -1094,7 +1129,7 @@ if (typeof module !== 'undefined' && module.exports) {
       }).then(function (r) {
         if (r.status !== 409) return null;
         return r.json().then(function (body) {
-          if (body && body.reason === 'stale' && U()) U().toast({ text: 'Your place in ' + (card.title || 'this book') + ' moved on another device', doc: document });
+          if (body && body.reason === 'stale') toast('Your place in ' + (card.title || 'this book') + ' moved on another device');
         });
       }).catch(function () {}).then(go);
     }
@@ -1115,7 +1150,109 @@ if (typeof module !== 'undefined' && module.exports) {
         fit.addEventListener('click', function () { setFitMode(fitMode === 'fit' ? 'fill' : 'fit'); }, { signal: signal });
         actions.appendChild(fit);
       }
+      appendCardMenu(actions, index);
       return actions;
+    }
+
+    // ---- D9: Start over - the ONE deliberate reset, from a card's "..." ----------------------------------------------
+    // The card that opened the menu is the card that is reset: its index AND its card object are captured at the tap and
+    // checked again at the confirm (the stack can change under an open sheet). A confirm names what is forgotten; the
+    // server records the previous place in this session BEFORE it resets, and a 10 s Undo puts exactly that back.
+    function appendCardMenu(actions, index) {
+      if (!feedStartOverKind(cards[index])) return;
+      var more = U() ? U().button({ variant: 'tonal', size: 'sm', shape: 'icon', icon: 'more_horiz', ariaLabel: 'More', doc: document })
+        : el('button', 'ui-btn ui-btn--tonal ui-btn--sm ui-btn--icon', '');
+      more.type = 'button';
+      more.setAttribute('aria-label', 'More');
+      more.setAttribute('data-card-menu', '');
+      more.addEventListener('click', function () { openCardMenu(index, cards[index]); }, { signal: signal });
+      actions.appendChild(more);
+    }
+
+    function openCardMenu(index, card) {
+      if (!U() || !card || cards[index] !== card) return;
+      U().menu({ label: 'Card', items: [{ label: 'Start over', icon: 'history', value: 'start-over', onSelect: function () { confirmStartOver(index, card); } }], signal: signal, doc: document });
+    }
+
+    function confirmStartOver(index, card) {
+      if (!U() || cards[index] !== card) return;
+      U().confirm({ title: 'Start over?', body: feedStartOverText(card), confirmLabel: 'Start over', danger: true, signal: signal, doc: document })
+        .then(function (yes) { if (yes && cards[index] === card) startOver(index, card); });
+    }
+
+    var startingOver = {}; // card index -> true while its Start over is in flight (one request, never two)
+    function startOver(index, card) {
+      var kind = feedStartOverKind(card);
+      if (!kind || !session || startingOver[index]) return;
+      startingOver[index] = true;
+      if (mediaCardIndex === index) { var p = player(); if (p && typeof p.pause === 'function') p.pause(); }
+      fetch('/api/feed/start-over', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: session.id, kind: kind, id: card.id }), signal: signal })
+        .then(function (r) { return r.json().then(function (body) { return { status: r.status, body: body }; }); })
+        .then(function (res) {
+          startingOver[index] = false;
+          if (res.status === 409 && res.body && res.body.reason === 'nothing') { toast('Nothing to start over: it was not started'); return; }
+          if (res.status !== 200 || !res.body || !res.body.token) { toast('Could not start over'); return; }
+          var before = { fresh: card.fresh, progress: card.progress, position: card.position, startAt: card.startAt, endAt: card.endAt, chapter: card.chapter, skippedIntro: card.skippedIntro };
+          applyStartedOver(index, card, kind);
+          toast('Started over: ' + (card.title || 'this item'), { duration: FEED_UNDO_MS, action: { label: 'Undo', onAction: function () { undoStartOver(index, card, kind, res.body.token, before); } } });
+        })
+        .catch(function () { startingOver[index] = false; });
+    }
+
+    // the card says New and plays from the start (a media card); a book card says it starts over and moves nothing more
+    function applyStartedOver(index, card, kind) {
+      if (kind === 'book') {
+        card.startedOver = true;
+        var bp = bookPages[index];
+        if (bp) bp.refused = true; // the server forgot the serve too: this card can never set a place again
+        var node = cardEls[index];
+        var kindEl = node && node.querySelector('.feed-card__kind');
+        if (kindEl) kindEl.textContent = 'Book \u00b7 Started over';
+        var readout = node && node.querySelector('[data-page-readout]');
+        if (readout) readout.textContent = 'Opens at the beginning next time';
+        return;
+      }
+      var slice = (Number(card.endAt) || 0) - (Number(card.startAt) || 0);
+      var dur = Number(card.media === 'podcast' ? card.durationSec : card.duration) || 0;
+      card.fresh = true;
+      card.progress = 0;
+      card.position = 0;
+      card.startAt = 0;
+      card.endAt = slice > 0 ? (dur > 0 ? Math.min(dur, slice) : slice) : card.endAt;
+      card.chapter = null;
+      card.skippedIntro = false;
+      refillMediaCard(index);
+    }
+
+    function refillMediaCard(index) {
+      var node = cardEls[index];
+      if (!node) return;
+      node.removeAttribute('data-done');
+      fillCard(node, cards[index], index);
+      if (index === activeIndex) playCard(index);
+    }
+
+    function undoStartOver(index, card, kind, token, before) {
+      if (!session) return;
+      fetch('/api/feed/start-over/undo', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session: session.id, token: token }), signal: signal })
+        .then(function (r) { return r.json().then(function (body) { return { status: r.status, body: body }; }); })
+        .then(function (res) {
+          if (res.status === 409 && res.body && res.body.reason === 'moved') { toast('Could not undo: it was played since. The old place is kept in this session\'s record'); return; }
+          if (res.status !== 200) { toast('Could not undo'); return; }
+          if (cards[index] !== card) return;
+          if (kind === 'book') {
+            card.startedOver = false;
+            var node = cardEls[index];
+            var kindEl = node && node.querySelector('.feed-card__kind');
+            if (kindEl) kindEl.textContent = feedKindLine(card);
+            var readout = node && node.querySelector('[data-page-readout]');
+            if (readout) readout.textContent = 'Your place is back';
+            return;
+          }
+          Object.keys(before).forEach(function (k) { card[k] = before[k]; });
+          refillMediaCard(index);
+        })
+        .catch(function () { toast('Could not undo'); });
     }
 
     // D4: Fill (the default: object-fit cover, a landscape video cropped like a phone feed) or Fit (contain, letterboxed).
@@ -1267,7 +1404,7 @@ if (typeof module !== 'undefined' && module.exports) {
         bp.refused = true;
         return r.json().then(function (body) {
           // gate r1 (qa S2): only a STALE refusal is news to the user; backward / not-served are the feed's own
-          if (body && body.reason === 'stale' && U()) U().toast({ text: 'Your place in ' + (card.title || 'this book') + ' moved on another device', doc: document });
+          if (body && body.reason === 'stale') toast('Your place in ' + (card.title || 'this book') + ' moved on another device');
         });
       }).catch(function () {});
     }
@@ -1492,7 +1629,7 @@ if (typeof module !== 'undefined' && module.exports) {
           if (activeIndex >= 0 && activeIndex + 1 < cardEls.length) cardEls[activeIndex + 1].scrollIntoView({ block: 'start' });
           fetchBatch();
         })
-        .catch(function () { if (U()) U().toast({ text: 'Could not add ten minutes', doc: document }); });
+        .catch(function () { toast('Could not add ten minutes'); });
     }
 
     // Back to where he came from (D12): the page before the feed when there is one, else Home.
