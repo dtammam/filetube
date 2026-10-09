@@ -126,7 +126,7 @@ test('collectExcerpt: a start on an empty slot moves to the next readable block;
   assert.deepStrictEqual(b.next, { spineIndex: 2, blockIndex: 0 }, 'chapter 1 has no text, so the next READABLE position is chapter 3\'s start (never an empty chapter the write would refuse)');
 });
 
-test('collectExcerpt: nothing readable at or after the position is an empty excerpt at the end', () => {
+test('collectExcerpt: nothing readable at or after the position, with the spine ended, is an empty excerpt at the end', () => {
   const r = x.collectExcerpt({ loadBlocks: load, spineCount: 3, spineIndex: 2, blockIndex: 4, targetWords: 10 });
   assert.deepStrictEqual(r.blocks, []);
   assert.strictEqual(r.atEnd, true);
@@ -147,7 +147,7 @@ test('collectExcerpt is bounded: the block cap stops a long excerpt with next on
   const q = x.collectExcerpt({ loadBlocks: sparse, spineCount: 50, spineIndex: 0, blockIndex: 0, targetWords: 10 });
   assert.deepStrictEqual(q.blocks, []);
   assert.strictEqual(q.next, null);
-  assert.strictEqual(q.atEnd, true, 'no readable text within MAX_EMPTY_CHAPTERS consecutive text-less chapters reads as the end');
+  assert.strictEqual(q.atEnd, false, 'gate r1 (qa W2): a tripped empty-chapter bound is NOT the end of the book (a 13-plate picture section must never mark it finished)');
   assert.strictEqual(loads, x.MAX_EMPTY_CHAPTERS + 1, 'the walk loaded exactly the bounded run, not all 50 chapters');
   // a picture chapter inside a text book is skipped: text before, 3 empty, text after
   const gap = (s) => (s === 0 ? [{ blockIndex: 0, tag: 'p', text: 'a' }] : s === 4 ? [{ blockIndex: 0, tag: 'p', text: 'b' }] : s < 5 ? [] : null);

@@ -7,7 +7,8 @@
 // into view and reads back: how many #player-wrapper (the live host) elements exist, where the host's parent is,
 // that the media element plays from the card's startAt, the slice readout; then leaves for the
 // watch page of that video through the SPA router (FileTube.navigate) and reads: still one
-// host, mounted in the watch page's #player-slot, the position carried (>= the feed's).
+// host, mounted in the watch page's #player-slot, the position carried (>= the feed's); then seeks BACK and pauses
+// there: the save must go through the watch page's own route (gate r1, adversary C1), never the feed's.
 //
 //   node tools/feed-proof/card-player.js <repoRoot> [out.json] [chromium|webkit|both]
 // Not a CI gate: a proof tool (like tools/feed-proof/reader-resume.js).
@@ -104,7 +105,9 @@ async function main() {
       console.log('DIAG no active/mounted video card:', JSON.stringify({ state, requests, errors }));
       throw e;
     }
-    await page.waitForTimeout(2500);
+    // play from the slice start: wait for the seek (WebKit once read 4.9 s of a 6 s start after a fixed 2.5 s pause), then a little playback
+    await page.waitForFunction(() => { const v = document.getElementById('media-player'); return v && v.currentTime >= 6; }, null, { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(1500);
     const inCard = await page.evaluate(() => {
       const hosts = document.querySelectorAll('#player-wrapper');
       const card = document.querySelector('.feed-card[data-kind="video"]');
@@ -131,12 +134,23 @@ async function main() {
       const v = document.getElementById('media-player');
       return { hosts: hosts.length, videos: document.querySelectorAll('video').length, hostInWatchSlot: !!(hosts[0] && hosts[0].parentElement === document.getElementById('player-slot')), currentTime: v ? v.currentTime : null, paused: v ? v.paused : null, view: document.getElementById('view-root').getAttribute('data-view') };
     });
+    // gate r1 (adversary C1): the ADOPTED media saves through the watch page's own route again - a seek BACK
+    // and a pause must post /api/progress (200) with the lower time; the feed's forward-only route would have
+    // refused it (409) and the place would have stopped following the user.
+    const pings = [];
+    page.on('response', (rs) => { const u = rs.url().replace(base, ''); if (rs.request().method() === 'POST' && /\/api\/(feed\/)?progress/.test(u)) pings.push({ url: u, status: rs.status(), body: rs.request().postData() }); });
+    await page.evaluate(() => { const v = document.getElementById('media-player'); v.currentTime = 2.4; v.pause(); });
+    await page.waitForTimeout(3000);
+    const ownRoute = pings.filter((x) => x.url === '/api/progress' && x.status === 200 && (() => { try { return JSON.parse(x.body).timestamp < 5; } catch { return false; } })());
+    const feedRoute = pings.filter((x) => x.url.indexOf('/api/feed/progress') === 0);
+    const seekBack = { pings, ownRouteSaves: ownRoute.length, feedRoutePings: feedRoute.length };
     await browser.close();
     const pass = inCard.hosts === 1 && inCard.videos === 1 && inCard.hostInSlot && inCard.currentTime !== null && inCard.currentTime >= 6 && inCard.src.indexOf('/video/clip1') === 0
-      && onWatch.hosts === 1 && onWatch.videos === 1 && onWatch.hostInWatchSlot && onWatch.currentTime >= inCard.currentTime - 0.5 && errors.length === 0;
-    const row = { engine, inCard, onWatch, errors, resource404s: resource404s.length, pass };
+      && onWatch.hosts === 1 && onWatch.videos === 1 && onWatch.hostInWatchSlot && onWatch.currentTime >= inCard.currentTime - 0.5 && errors.length === 0
+      && seekBack.ownRouteSaves >= 1 && seekBack.feedRoutePings === 0;
+    const row = { engine, inCard, onWatch, seekBack, errors, resource404s: resource404s.length, pass };
     results.push(row);
-    console.log(`${pass ? 'PASS' : 'FAIL'} ${engine.padEnd(8)} inCard=${JSON.stringify(inCard)} onWatch=${JSON.stringify(onWatch)}${errors.length ? ' errors=' + JSON.stringify(errors) : ''}`);
+    console.log(`${pass ? 'PASS' : 'FAIL'} ${engine.padEnd(8)} inCard=${JSON.stringify(inCard)} onWatch=${JSON.stringify(onWatch)} seekBack=${JSON.stringify(seekBack)}${errors.length ? ' errors=' + JSON.stringify(errors) : ''}`);
   }
   const fails = results.filter((r) => !r.pass).length;
   console.log(`SUMMARY card-player: ${results.length - fails}/${results.length} pass (${ENGINES.join('+')})`);

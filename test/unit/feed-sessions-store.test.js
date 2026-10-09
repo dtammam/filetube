@@ -122,6 +122,34 @@ test('backup export -> restore round-trips every field per user; a bundle withou
   assert.deepStrictEqual(rows[1].summary, { ok: true });
 });
 
+test('restore (gate r1): a long session keeps its moves even when the client part is at the cap; moves are shape-checked and capped on their own', () => {
+  store.createFeedSession(a.id, { id: SID(1), startedAt: ISO(1), plannedMin: 30 });
+  const moves = Array.from({ length: store.FEED_SESSION_MOVES_CAP }, (_, i) => ({ kind: 'book', id: 'b' + i, from: { kind: 'epub', cfi: 'epubcfi(/6/2!/4/4/1:0)', spineIndex: 0, blockIndex: i }, to: { kind: 'epub', cfi: '', spineIndex: 0, blockIndex: i + 1 }, at: ISO(1) }));
+  store.setFeedSessionMoves(a.id, SID(1), moves);
+  store.updateFeedSession(a.id, SID(1), { actualSec: 2400, summary: { pages: 9, note: 'x'.repeat(store.FEED_SESSION_SUMMARY_MAX_BYTES - 200) } });
+  const before = store.getFeedSession(a.id, SID(1));
+  assert.ok(Buffer.byteLength(JSON.stringify(before.summary), 'utf8') > store.FEED_SESSION_SUMMARY_MAX_BYTES, 'the stored summary is over the client cap once the moves are in');
+  const bundle = store.exportUsersForBackup();
+  store.replaceAllUsersRaw(bundle);
+  const after = store.getFeedSession(a.id, SID(1));
+  assert.strictEqual(after.summary.moves.length, store.FEED_SESSION_MOVES_CAP, 'the moves survive the round trip');
+  assert.strictEqual(after.summary.pages, 9, 'and so do the client keys (they fit the cap on their own)');
+  // a client part over the cap loses the client keys and keeps the moves
+  const big = store.exportUsersForBackup();
+  big.find((u) => u.id === a.id).feedSessions[0].summary.note = 'y'.repeat(store.FEED_SESSION_SUMMARY_MAX_BYTES + 1);
+  store.replaceAllUsersRaw(big);
+  const trimmed = store.getFeedSession(a.id, SID(1)).summary;
+  assert.deepStrictEqual(Object.keys(trimmed), ['moves']);
+  // smuggled moves: non-objects dropped, the list capped to the newest
+  const hostile = store.exportUsersForBackup();
+  hostile.find((u) => u.id === a.id).feedSessions[0].summary = { pages: 1, moves: ['x', null, { kind: 'media', id: 'm' }, { id: 'no-kind' }].concat(Array.from({ length: 400 }, (_, i) => ({ kind: 'song', id: 's' + i }))) };
+  store.replaceAllUsersRaw(hostile);
+  const h = store.getFeedSession(a.id, SID(1)).summary;
+  assert.strictEqual(h.moves.length, store.FEED_SESSION_MOVES_CAP);
+  assert.ok(h.moves.every((m) => typeof m.kind === 'string' && typeof m.id === 'string'));
+  assert.strictEqual(h.moves[h.moves.length - 1].id, 's399', 'the NEWEST are kept');
+});
+
 test('deleting a user cascades their sessions away; the survivor is untouched; the test reset empties the table', () => {
   store.createFeedSession(a.id, { id: SID(1), startedAt: ISO(1), plannedMin: 10 });
   store.createFeedSession(b.id, { id: SID(1), startedAt: ISO(1), plannedMin: 10 });

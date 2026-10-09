@@ -284,25 +284,40 @@ function feedHoldStep(state, event, nowMs, holdMs) {
   return { state: s, fired: false, progress: progress };
 }
 
-// What the session's finish carries (plan D13): the recap counts, bounded (50 entries a kind).
+// The counts a stored session carries (sessionStorage), shape-checked back into an empty summary:
+// anything malformed is dropped, never thrown on.
+function feedRestoreSummary(stored) {
+  var s = feedEmptySummary();
+  if (!stored || typeof stored !== 'object') return s;
+  Object.keys(s).forEach(function (k) {
+    var v = stored[k];
+    if (Array.isArray(s[k])) { if (Array.isArray(v)) s[k] = v.filter(function (x) { return typeof x === 'string'; }); }
+    else if (typeof s[k] === 'object') { if (v && typeof v === 'object' && !Array.isArray(v)) s[k] = v; }
+    else if (typeof v === typeof s[k]) s[k] = v;
+  });
+  return s;
+}
+
+// What the session's finish carries (plan D13): the recap counts, bounded so the maximum (30 entries a
+// kind, 60-char titles, ~8 KB) stays under the finish route's 16 KB cap (gate r1: 50 x 120 could pass it).
 function feedSummaryPayload(summary, actualSec, extensions) {
   var s = summary || feedEmptySummary();
-  var cap = function (obj, shape) { return Object.keys(obj).slice(0, 50).map(function (id) { return shape(id, obj[id]); }); };
+  var cap = function (obj, shape) { return Object.keys(obj).slice(0, 30).map(function (id) { return shape(id, obj[id]); }); };
   return {
     minutes: Math.round((Number(actualSec) || 0) / 60),
     cards: s.cards,
     extensions: Number(extensions) || 0,
     songs: s.songs,
-    books: cap(s.books, function (id, b) { return { id: id, title: String(b.title).slice(0, 120), pages: b.pages, words: b.words }; }),
-    videos: cap(s.videos, function (id, v) { return { id: id, title: String(v.title).slice(0, 120), chapters: v.chapters, sec: Math.round(v.sec) }; }),
-    podcasts: cap(s.podcasts, function (id, p) { return { id: id, title: String(p.title).slice(0, 120), sec: Math.round(p.sec), finished: p.finished }; }),
+    books: cap(s.books, function (id, b) { return { id: id, title: String(b.title).slice(0, 60), pages: b.pages, words: b.words }; }),
+    videos: cap(s.videos, function (id, v) { return { id: id, title: String(v.title).slice(0, 60), chapters: v.chapters, sec: Math.round(v.sec) }; }),
+    podcasts: cap(s.podcasts, function (id, p) { return { id: id, title: String(p.title).slice(0, 60), sec: Math.round(p.sec), finished: p.finished }; }),
   };
 }
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     FEED_LENGTH_CHOICES, FEED_LENGTH_KEY, FEED_SESSION_KEY, FEED_BATCH, FEED_PREFETCH_AHEAD, FEED_KEEP_BEHIND, FEED_ACTIVE_RATIO,
-    FEED_EXTEND_MIN, FEED_WIND_DOWN_CAP_SEC, FEED_HOLD_MS, FEED_WORDS_PER_PAGE, FEED_TIME_PEEK_MS,
+    FEED_EXTEND_MIN, FEED_WIND_DOWN_CAP_SEC, FEED_HOLD_MS, FEED_WORDS_PER_PAGE, FEED_TIME_PEEK_MS, feedRestoreSummary,
     feedNormalizeMinutes, feedWeekLine, feedClock, feedKindLabel, feedActiveIndex, feedShouldPrefetch, feedExcludeIds,
     feedPlayerDescriptor, feedBookRead,
     feedDeadlineMs, feedRingFraction, feedRemainingSec, feedEmptySummary, feedCountActivity, feedRecapLines, feedRecapTitle,
@@ -385,7 +400,13 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // A live session (a dock-tap return, a reload) resumes its stack instead of asking again.
     var live = readSession();
-    if (live && live.id) { session = live; extensions = Number(live.extensions) || 0; showStack(); startClock(); fetchBatch(); }
+    if (live && live.id) {
+      session = live; extensions = Number(live.extensions) || 0;
+      // gate r1 (adversary W3): the recap's counts ride the stored session - Open in reader, a dock tap or
+      // back re-inits this view, and what was read before must still be in the recap
+      summary = feedRestoreSummary(live.summary);
+      showStack(); startClock(); fetchBatch();
+    }
 
     function startSession(min) {
       writePref(FEED_LENGTH_KEY, min);
@@ -457,7 +478,8 @@ if (typeof module !== 'undefined' && module.exports) {
     }
 
     // D11: time is up. A playing slice finishes (at most FEED_WIND_DOWN_CAP_SEC more), a book card
-    // waits until it is moved on from, an empty stack ends at once. Nothing new is fetched.
+    // waits until it is moved on from, an empty stack ends at once. Nothing new is fetched: moving
+    // on ends the session in setActive before its prefetch (gate r1, adversary M16: that is the one path).
     function beginWindDown(now) {
       windingDown = true;
       var card = cards[activeIndex];
@@ -477,7 +499,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // ---- batches ------------------------------------------------------------------
     function fetchBatch() {
-      if (loading || !session || windingDown) return;
+      if (loading || !session) return;
       loading = true;
       stack.setAttribute('aria-busy', 'true');
       var exclude = feedExcludeIds(cards);
@@ -492,13 +514,19 @@ if (typeof module !== 'undefined' && module.exports) {
           if (signal.aborted) return;
           if (body.exhausted && !exhaustedShown) {
             exhaustedShown = true;
-            stack.appendChild(el('div', 'feed-notice', 'You’re through everything new. From here the feed starts over.'));
+            // gate r1 (qa W3): a snap card of its own, so it is seen at rest (a bare div between snap cards never was)
+            var notice = el('article', 'feed-card feed-card--notice');
+            notice.setAttribute('data-kind', 'notice');
+            notice.appendChild(el('p', 'feed-notice', 'You’re through everything new. From here the feed starts over.'));
+            stack.appendChild(notice);
           }
           if (!body.cards.length && !cards.length) {
             showEmpty();
             return;
           }
           body.cards.forEach(appendCard);
+          loading = false; // gate r1 (qa S1): release the latch BEFORE the first activation, whose prefetch must be able to run
+          stack.setAttribute('aria-busy', 'false');
           if (activeIndex < 0 && cardEls.length) setActive(0);
         })
         .catch(function () { /* a failed batch leaves the stack as it is; the next swipe retries */ })
@@ -552,7 +580,9 @@ if (typeof module !== 'undefined' && module.exports) {
           : el('button', 'ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill', 'Open in reader');
         open.type = 'button';
         open.addEventListener('click', function () {
-          finishBookCard(index, true);
+          // gate r1 (qa W1): the bookmark moves only if the card was READ (its dwell); a tap within
+          // seconds of the card appearing must not move the place past text the reader is about to show
+          finishBookCard(index, false);
           if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(card.readerHref);
           else window.location.assign(card.readerHref);
         }, { signal: signal });
@@ -664,26 +694,34 @@ if (typeof module !== 'undefined' && module.exports) {
       var a = activity[index] || {};
       if (cards[index] && cards[index].kind === 'book') a.read = !!bookWritten[index] || feedBookRead(bookActiveMs[index], cards[index].dwellSec);
       feedCountActivity(summary, cards[index], a);
+      if (session) { session.summary = summary; writeSession(session); } // the recap survives a navigation (W3)
     }
 
     // The bookmark moves to the card's `next` - forward only, through the feed's rule. A
     // refusal (another device moved on, or a stale card) is final for this card: the next
     // book card the feed serves starts from wherever the place really is.
+    // the time a book card has been active: what leaveCard accumulated plus the live span of the active card
+    function bookActiveTotal(index) {
+      return (bookActiveMs[index] || 0) + (index === activeIndex && bookActiveSince ? Date.now() - bookActiveSince : 0);
+    }
+
     function finishBookCard(index, force) {
       var card = cards[index];
       if (!card || bookWritten[index]) return;
-      if (!force && !feedBookRead(bookActiveMs[index], card.dwellSec)) return;
+      if (!force && !feedBookRead(bookActiveTotal(index), card.dwellSec)) return;
       bookWritten[index] = true;
       activity[index] = activity[index] || {};
       activity[index].read = true;
-      if (!card.next) {
-        if (card.atEnd) fetch('/api/books/' + encodeURIComponent(card.id) + '/finished', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ finished: true }), keepalive: true }).catch(function () {});
-        return;
-      }
+      if (!card.next && !card.atEnd) return; // the book is parked for this session (nothing readable followed)
+      // the end of the book latches finished through the same served / not-stale rule as a move
       fetch('/api/feed/progress/book/' + encodeURIComponent(card.id), {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(card.next), keepalive: true,
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(card.next || { atEnd: true }), keepalive: true,
       }).then(function (r) {
-        if (r.status === 409 && U()) U().toast({ text: 'Your place in ' + (card.title || 'this book') + ' moved on another device', doc: document });
+        if (r.status !== 409) return null;
+        return r.json().then(function (body) {
+          // gate r1 (qa S2): only a STALE refusal is news to the user; backward / not-served are the feed's own
+          if (body && body.reason === 'stale' && U()) U().toast({ text: 'Your place in ' + (card.title || 'this book') + ' moved on another device', doc: document });
+        });
       }).catch(function () {});
     }
 
@@ -842,6 +880,7 @@ if (typeof module !== 'undefined' && module.exports) {
       btn.addEventListener('keydown', down, { signal: signal });
       ['pointerup', 'pointercancel', 'pointerleave', 'keyup', 'blur'].forEach(function (ev) { btn.addEventListener(ev, stop, { signal: signal }); });
       btn.addEventListener('click', function (e) { e.preventDefault(); }, { signal: signal }); // a tap does nothing
+      signal.addEventListener('abort', stop); // gate r1 (qa S3): the hold timer dies with the view
     }
 
     function extend() {

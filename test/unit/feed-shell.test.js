@@ -51,6 +51,14 @@ test('the SPA tables carry the route (inert sibling list): deriveRouteView, acti
   assert.strictEqual(common.shouldDockOnTransition('feed', 'feed'), false);
   assert.strictEqual(player.shouldDockOnTransition('feed', 'home'), true, 'the player.js mirror agrees');
   assert.match(read('public/js/setup.js'), /feed: 'Feed'/, 'the customizer labels it');
+  // gate r1 (qa W4): the sidebar entry's mask glyph exists - the asset, its rule, and both mask lists
+  assert.ok(fs.existsSync(path.join(ROOT, 'public/assets/icons/feed.svg')), 'the mask asset');
+  const css = read('public/css/style.css');
+  assert.match(css, /\.icon-feed \{ -webkit-mask-image: url\(\/assets\/icons\/feed\.svg\); mask-image: url\(\/assets\/icons\/feed\.svg\); \}/, 'the mask rule');
+  assert.strictEqual((css.match(/\.icon-feed\b/g) || []).length, 3, 'the rule plus the two mask lists (size/colour, and the @supports background-color)');
+  assert.match(src, /injectLibraryNavEntry\('feed', '\/feed', 'Feed', 'icon-feed'\)/, 'the entry asks for that glyph');
+  // gate r1 (qa S6): the phone's Playlists sheet lists Feed (a user who hides the bar item still has a path)
+  assert.match(src, /data-nav-sidebar="feed"[^\n]*\n[^\n]*href="\/feed" class="sidebar-item"><i class="' \+ mirroredGlyph\('feed', 'icon-feed'\)/, 'the Playlists sheet mirrors the Feed entry');
 });
 
 test('every shell carries the Feed bottom-bar item right after Liked, with the registry glyph', () => {

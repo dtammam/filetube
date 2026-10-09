@@ -173,12 +173,14 @@ async function main() {
   // Fallback arms. (a) a bad path inside a valid chapter: epub.js itself shows that chapter's start.
   // (b) a CFI naming a spine item past the book, with the locator's spineIndex: read.js's catch lands
   // in that chapter. (c) the same with no spineIndex: the start of the book (nothing better is known).
-  // (d) a feed block past the chapter's blocks: the chapter start (the node is missing).
+  // (d) a feed block past the chapter's blocks: the chapter's LAST block (gate r1, adversary W5), never its start.
   const FALLBACKS = [
     { name: 'bad-path-valid-chapter-lands-in-it', locator: { kind: 'epub', cfi: 'epubcfi(/6/4!/4/400/2)', spineIndex: 1, blockIndex: 5 }, expectSpine: 1 },
     { name: 'spine-past-book-with-spineIndex', locator: { kind: 'epub', cfi: 'epubcfi(/6/400!/4/2)', spineIndex: 1, blockIndex: 5 }, expectSpine: 1 },
     { name: 'spine-past-book-no-spineIndex', locator: { kind: 'epub', cfi: 'epubcfi(/6/400!/4/2)' }, expectSpine: 0 },
-    { name: 'feed-block-past-chapter-lands-in-chapter', locator: { kind: 'epub', cfi: '', spineIndex: 2, blockIndex: 99 }, expectSpine: 2 },
+    // on chapter 2 (15 blocks, two pages in both engines): the fixture's 7-block LAST chapter lays out as one page in
+    // headless Chromium with blocks 5-6 clipped at every target (pre-existing epub.js layout, not the clamp)
+    { name: 'feed-block-past-chapter-lands-on-last-block', locator: { kind: 'epub', cfi: '', spineIndex: 1, blockIndex: 99 }, expectSpine: 1, expectLast: true },
   ];
   for (const fb of FALLBACKS) {
     await flushPendingBookProgress();
@@ -186,7 +188,8 @@ async function main() {
     feedServed.forget(user.id, 'book', bookId);
     for (const engine of ENGINES) {
       const r = await openReader(engine, 0, fb.expectSpine);
-      const pass = !!r.ping && r.ping.spineIndex === fb.expectSpine;
+      const lastBlock = blocksOf(fb.expectSpine).length - 1;
+      const pass = !!r.ping && r.ping.spineIndex === fb.expectSpine && (!fb.expectLast || (r.visible.includes(lastBlock) && r.ping.blockIndex > 0));
       const row = { case: fb.name, locator: fb.locator, ...r, pass };
       results.push(row);
       console.log(`${pass ? 'PASS' : 'FAIL'} ${engine.padEnd(8)} ${fb.name.padEnd(42)} ping=${JSON.stringify(r.ping)} visible=[${r.visible.join(',')}]${r.errors.length ? ' errors=' + JSON.stringify(r.errors) : ''}`);

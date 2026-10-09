@@ -217,6 +217,27 @@ test('D5 book: the write lands only after a serve; it refuses stale, backward an
   assert.deepStrictEqual(effectiveBookProgress(uid, epubId), moved);
 });
 
+test('D5 book (gate r1, adversary W1): the end of a book latches finished only from a served, unmoved card; stale and not-served are refused', async () => {
+  await readerPing({ kind: 'epub', cfi: 'epubcfi(/6/2!/4/4/1:0)', spineIndex: 0, blockIndex: 1 }, 10);
+  feedServed.forget(uid, 'book', epubId);
+  let r = await postJson(`/api/feed/progress/book/${epubId}`, { atEnd: true });
+  assert.strictEqual(r.status, 409);
+  assert.strictEqual((await r.json()).reason, 'not-served');
+  assert.ok(!Object.prototype.hasOwnProperty.call(userStore.getBookFinished(uid), epubId), 'not finished');
+  await excerpt('?words=10'); // served
+  await readerPing({ kind: 'epub', cfi: 'epubcfi(/6/2!/4/6/1:0)', spineIndex: 0, blockIndex: 2 }, 20); // another device read on
+  r = await postJson(`/api/feed/progress/book/${epubId}`, { atEnd: true });
+  assert.strictEqual(r.status, 409);
+  assert.strictEqual((await r.json()).reason, 'stale');
+  assert.ok(!Object.prototype.hasOwnProperty.call(userStore.getBookFinished(uid), epubId), 'still not finished');
+  await excerpt('?words=10'); // served from the moved place
+  r = await postJson(`/api/feed/progress/book/${epubId}`, { atEnd: true });
+  assert.strictEqual(r.status, 200);
+  assert.deepStrictEqual(await r.json(), { ok: true, finished: true });
+  assert.ok(Object.prototype.hasOwnProperty.call(userStore.getBookFinished(uid), epubId), 'finished');
+  userStore.clearBookFinished(uid, epubId);
+});
+
 test('D5 book: a forward move stores a block position (empty cfi, spine, block) with a percent; previous is returned', async () => {
   const before = effectiveBookProgress(uid, epubId);
   await excerpt('?words=10'); // serve from the current place (0,2)
@@ -323,10 +344,10 @@ test('D5 podcast: not served -> 409; served -> forward only; the played latch an
   assert.ok(!userStore.getWatchLater(uid).includes(userStore.watchLaterKey('podcast', epId)), 'finishing left Watch later');
 });
 
-test('D5 podcast: a hidden episode is a neutral 404, an unknown episode 400, a malformed body 400; nothing is stored', async () => {
+test('D5 podcast: a hidden episode and an unknown one are the same neutral 404, a malformed body 400; nothing is stored', async () => {
   const hidden = await postJson('/api/feed/progress/podcast', { id: epId, timestamp: 50, duration: 1800 }, { headers: { Cookie: member.cookie } });
   assert.strictEqual(hidden.status, 404);
-  assert.strictEqual((await postJson('/api/feed/progress/podcast', { id: 'nope', timestamp: 50 })).status, 400);
+  assert.strictEqual((await postJson('/api/feed/progress/podcast', { id: 'nope', timestamp: 50 })).status, 404, 'gate r1: unknown and hidden are ONE 404 (episode ids are computable)');
   assert.strictEqual((await postJson('/api/feed/progress/podcast', { timestamp: 50 })).status, 400);
   assert.strictEqual((await postJson('/api/feed/progress/podcast', { id: epId, timestamp: -1 })).status, 400);
   assert.strictEqual((await postJson('/api/feed/progress/podcast', { id: epId, timestamp: 'x' })).status, 400);

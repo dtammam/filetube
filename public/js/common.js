@@ -12581,6 +12581,11 @@ function libraryEntriesHtml() {
       // Only a resolver-shaped class is trusted back into markup.
       return /^icon-[a-z0-9-]+$/.test(cls || '') ? cls : fallback;
     };
+    // v1.379.0 Feed (gate r1, qa S6): the sheet mirrors the Feed sidebar marker like every Library entry,
+    // so a phone whose bar hides the Feed item still has a way in. First, as in the sidebar.
+    if (document.querySelector('[data-nav-sidebar="feed"]')) {
+      html += '<a href="/feed" class="sidebar-item"><i class="' + mirroredGlyph('feed', 'icon-feed') + '"></i> Feed</a>';
+    }
     const downloadsEntry = document.querySelector('[data-nav-sidebar="downloads"]');
     if (downloadsEntry) {
       html += '<a href="' + escapeAttr(downloadsEntry.getAttribute('href') || '/') + '" class="sidebar-item"><i class="' + mirroredGlyph('downloads', 'icon-downloads') + '"></i> Downloads</a>';

@@ -117,8 +117,8 @@ test('init(): the reparent decision is derived from the LIVE controller state (c
 test('init(): the same-id "adopt" fast path (dock-tap / same-video reparent) is preserved, carrying the browse context (v1.40.0) + the v1.253 null flavor stamps + its own fatal-error guard', () => {
   assert.match(
     watchJs,
-    /entryReparentAction === 'adopt'\) \{[\s\S]{0,1400}?const mountedEarly = window\.FileTube\.player\.load\(mediaId, \{ browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, startAt \}, \{ slot: playerSlot \}\);[\s\S]{0,100}?if \(!mountedEarly\) showFatalViewError\(root\);/,
-    'expected the adopt branch to carry the browse context AND claim the plain-video flavor: player.load(mediaId, { browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, startAt }, { slot: playerSlot }) + the fatal-error guard (music follow-ups gate r1: the plain-video END too)'
+    /entryReparentAction === 'adopt'\) \{[\s\S]{0,1400}?const mountedEarly = window\.FileTube\.player\.load\(mediaId, \{ browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null, startAt \}, \{ slot: playerSlot \}\);[\s\S]{0,100}?if \(!mountedEarly\) showFatalViewError\(root\);/,
+    'expected the adopt branch to carry the browse context AND claim the plain-video flavor: player.load(mediaId, { browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null, startAt }, { slot: playerSlot }) + the fatal-error guard (music follow-ups gate r1: the plain-video END too; v1.379.0 feed gate r1 C1: the default save route too)'
   );
 });
 

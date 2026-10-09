@@ -58,8 +58,8 @@ function mediaItem(id, folder, extra) {
 before(async () => {
   // books: three EPUBs (two will be "reading", one liked unstarted)
   booksDir = fs.mkdtempSync(path.join(os.tmpdir(), 'filetube-feedapi-books-'));
-  // three long books (100 chapters, ~52k words: ~115 cards each, so the weights falsifier never drains the kind) and one short one
-  for (const t of ['Alpha', 'Beta', 'Gamma']) fs.writeFileSync(path.join(booksDir, `${t}.epub`), buildEpub({ title: t, author: 'W', chapters: Array.from({ length: 100 }, (_, i) => CHAPTER(i + 1)) }));
+  // three long books (150 chapters, ~78k words: ~170 cards each, so the weights falsifier never drains the kind) and one short one
+  for (const t of ['Alpha', 'Beta', 'Gamma']) fs.writeFileSync(path.join(booksDir, `${t}.epub`), buildEpub({ title: t, author: 'W', chapters: Array.from({ length: 150 }, (_, i) => CHAPTER(i + 1)) }));
   fs.writeFileSync(path.join(booksDir, 'Delta.epub'), buildEpub({ title: 'Delta', author: 'W', chapters: [CHAPTER(1), CHAPTER(2), CHAPTER(3)] }));
   await updateDatabase(() => booksDb.mutate((db) => { require('../../lib/books/store').ensureBooks(db).folders = [booksDir]; return true; }));
   await scanBooks();
@@ -139,6 +139,9 @@ before(async () => {
   userStore.addWatchLater(member.user.id, userStore.watchLaterKey('podcast', epIds.b[0]), now);
   userStore.addWatchLater(member.user.id, 'va2', now);
   userStore.setProgress(member.user.id, 'vh2', { timestamp: 100, duration: 1200, updatedAt: now });
+  // gate r1 (adversary W4 / M07): the member READS a hidden-library book and likes another - the book pool must still be empty for them
+  userStore.setBookProgress(member.user.id, bookIds.Alpha, { locator: { kind: 'epub', cfi: 'epubcfi(/6/2!/4/4/1:0)', spineIndex: 0, blockIndex: 1 }, percent: 10, updatedAt: now });
+  userStore.addBookLiked(member.user.id, bookIds.Gamma, now);
 });
 
 after(async () => {
@@ -195,28 +198,53 @@ test('cards: the admin\'s first batches carry every kind with the fields each ca
   assert.strictEqual(seen.song.track.liked, true, 'the music row shape (publicTrackListItem), liked as the admin liked it');
 });
 
-test('a book is "the next pages": the second card of the same book in a session continues from the first card\'s next, and a finished book leaves the session', async () => {
+// "read" a book card the way the view does after its dwell: the feed's write moves the place to the card's next
+async function readCard(c) {
+  const r = await postJson(`/api/feed/progress/book/${c.id}`, c.next || { atEnd: true });
+  assert.strictEqual(r.status, 200, `read ${c.title} ${JSON.stringify(c.next)}: ${await r.text()}`);
+}
+
+test('a book is "the next pages" once these were READ: a read card\'s next starts the following card; a card swiped past parks the book until its place moves (gate r1, adversary W1); a finished book leaves the session', async () => {
   const s = await startSession(30);
-  const alpha = [];
-  let last = null; // Delta's latest card (it is short: tracked from the first batch on)
-  for (let i = 0; i < 120 && !(alpha.length >= 3 && last && last.atEnd); i++) {
-    for (const c of (await batch(s.id, 5)).cards) {
+  // 1. Alpha's first card is served from the saved place; without a read, Alpha never comes again in this session
+  let first = null;
+  for (let i = 0; i < 12 && !first; i++) for (const c of (await batch(s.id, 5)).cards) if (c.kind === 'book' && c.id === bookIds.Alpha) first = c;
+  assert.ok(first, 'Alpha was served');
+  assert.deepStrictEqual(first.start, { spineIndex: 0, blockIndex: 1 }, 'from the saved place');
+  assert.ok(first.words >= 450 && first.words < 600);
+  const unread = [];
+  for (let i = 0; i < 12; i++) for (const c of (await batch(s.id, 5)).cards) if (c.kind === 'book' && c.id === bookIds.Alpha) unread.push(c);
+  assert.deepStrictEqual(unread, [], 'a card swiped past parks the book: no unread text ever goes behind the bookmark');
+  // 2. read it: the next Alpha card starts where the read one ended
+  await readCard(first);
+  let second = null;
+  for (let i = 0; i < 12 && !second; i++) for (const c of (await batch(s.id, 5)).cards) if (c.kind === 'book' && c.id === bookIds.Alpha) second = c;
+  assert.ok(second, 'Alpha returns once its place moved');
+  assert.deepStrictEqual(second.start, first.next, 'the second card starts where the first ended');
+  // 3. the reader moving the place (another device, even backward) serves the book again from there
+  await flushPendingBookProgress();
+  userStore.setBookProgress(uid, bookIds.Alpha, { locator: { kind: 'epub', cfi: '', spineIndex: 0, blockIndex: 1 }, percent: 10, updatedAt: new Date().toISOString() });
+  let third = null;
+  for (let i = 0; i < 12 && !third; i++) for (const c of (await batch(s.id, 5)).cards) if (c.kind === 'book' && c.id === bookIds.Alpha) third = c;
+  assert.ok(third, 'the moved place serves the book again');
+  assert.deepStrictEqual(third.start, { spineIndex: 0, blockIndex: 1 }, 'from the reader\'s place');
+  // 4. the short book (Delta, liked and unstarted) read card by card reaches its end and leaves the session.
+  // A session of its own: Delta was served (and swiped past, unread) during the Alpha steps, so it is parked in that one.
+  const s4 = await startSession(30);
+  let last = null;
+  for (let i = 0; i < 60 && !(last && last.atEnd); i++) {
+    for (const c of (await batch(s4.id, 5)).cards) {
       if (c.kind !== 'book') continue;
-      if (c.id === bookIds.Alpha) alpha.push(c);
-      if (c.id === bookIds.Delta) last = c;
+      if (c.id === bookIds.Delta) { last = c; if (!c.atEnd) await readCard(c); }
     }
   }
-  assert.ok(alpha.length >= 3, 'the same book keeps coming');
-  assert.deepStrictEqual(alpha[0].start, { spineIndex: 0, blockIndex: 1 }, 'from the saved place');
-  assert.deepStrictEqual(alpha[1].start, alpha[0].next, 'the second card starts where the first ended');
-  assert.deepStrictEqual(alpha[2].start, alpha[1].next);
-  assert.ok(alpha[0].words >= 450 && alpha[0].words < 600);
-  // the short book (Delta, liked and unstarted) was read to its end in a few cards: it stops being served in this session
   assert.ok(last && last.atEnd, 'Delta reached its end');
   assert.deepStrictEqual(last.next, null);
+  await readCard(last); // latches finished through the feed's rule
+  assert.ok(Object.prototype.hasOwnProperty.call(userStore.getBookFinished(uid), bookIds.Delta), 'finished');
   const after = [];
-  for (let i = 0; i < 12; i++) for (const c of (await batch(s.id, 5)).cards) if (c.kind === 'book' && c.id === bookIds.Delta) after.push(c);
-  assert.deepStrictEqual(after, [], 'a book read to its end is done for the session');
+  for (let i = 0; i < 12; i++) for (const c of (await batch(s4.id, 5)).cards) if (c.kind === 'book' && c.id === bookIds.Delta) after.push(c);
+  assert.deepStrictEqual(after, [], 'a book read to its end is done');
 });
 
 test('D7 video slices: the saved place\'s chapter (to the next chapter start) or a 3-minute segment', async () => {
@@ -256,12 +284,12 @@ test('D3 visibility: a restricted member\'s feed over 500 cards contains zero it
   // (checked above by the allowed sets); and their in-progress hidden video never leads the video pool
 });
 
-test('D3 weights: over 1000 cards every kind is within 5 points of 30/30/20/10/10 and never repeats consecutively', async () => {
+test('D3 weights: over 1000 cards (the book cards read) every kind is within 5 points of 30/30/20/10/10 and never repeats consecutively', async () => {
   const s = await startSession(30);
   const kinds = [];
   while (kinds.length < 1000) {
     const b = await batch(s.id, 10);
-    for (const c of b.cards) kinds.push(c.kind);
+    for (const c of b.cards) { kinds.push(c.kind); if (c.kind === 'book' && c.next) await readCard(c); }
   }
   const share = {};
   for (const k of kinds.slice(0, 1000)) share[k] = (share[k] || 0) + 0.1;

@@ -1556,7 +1556,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // Gate r1 (music follow-ups, qa W2 = adversary W3): autoAdvanceViaTrackNav false is part of
       // the same claim - a Listen play left music's `true`, and the adopted video's natural end
       // then advanced through this page's track nav even with Autoplay off.
-      const mountedEarly = window.FileTube.player.load(mediaId, { browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, startAt }, { slot: playerSlot });
+      const mountedEarly = window.FileTube.player.load(mediaId, { browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null, startAt }, { slot: playerSlot });
       if (!mountedEarly) showFatalViewError(root);
     } else if (entryReparentAction === 'reparent' && !canSeedPreload) {
       // Eagerly reparent the STILL-loaded previous video's host into THIS
@@ -1600,7 +1600,7 @@ if (typeof module !== 'undefined' && module.exports) {
       delete seedItemForLoad.chaptersManual;
       seedPreloaded = window.FileTube.player.load(
         mediaId,
-        { ...seedItemForLoad, channelName: currentChannelName, browseCtx: rawBrowseCtx, startAt },
+        { ...seedItemForLoad, channelName: currentChannelName, browseCtx: rawBrowseCtx, progressEndpoint: null, startAt },
         { slot: playerSlot }
       ) === true;
     }
@@ -1735,7 +1735,7 @@ if (typeof module !== 'undefined' && module.exports) {
         // adopt path (see the early-adopt call's comment) - AFTER the spread,
         // so a hypothetical readerHref/resumeMode on the fetched media payload
         // can never smuggle a stale surface flavor through.
-        const mounted = window.FileTube.player.load(mediaId, { ...mediaData, channelName, browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, startAt }, { slot: playerSlot });
+        const mounted = window.FileTube.player.load(mediaId, { ...mediaData, channelName, browseCtx: rawBrowseCtx, readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null, startAt }, { slot: playerSlot });
         if (!mounted) {
           showFatalViewError(root);
         }

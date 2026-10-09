@@ -621,7 +621,11 @@ if (typeof module !== 'undefined' && module.exports) {
         await rendition.display(startSpine);
         const contents = rendition.getContents()[0];
         const blocks = contents && contents.document ? contents.document.querySelectorAll(READER_BLOCK_SELECTOR) : [];
-        const node = blocks[feedBlock];
+        // Gate r1 (adversary W5): the chunker and the HTML parser can count blocks differently on
+        // lax markup (a block inside <p>, a stray <td>). A block past this DOM's count lands on the
+        // chapter's LAST block, never its start - the first relocated ping after display() stores
+        // the page shown, and the chapter start would move a real bookmark back a whole chapter.
+        const node = blocks.length ? blocks[Math.min(feedBlock, blocks.length - 1)] : null;
         if (node && typeof contents.cfiFromNode === 'function') await rendition.display(contents.cfiFromNode(node));
       } else {
         await rendition.display(startCfi);

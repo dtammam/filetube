@@ -76,6 +76,15 @@ test('feedRecapLines / feedRecapTitle / feedSummaryPayload', () => {
   assert.deepStrictEqual(p.videos[0], { id: 'v1', title: 'V', chapters: 2, sec: 800 });
   assert.deepStrictEqual(p.podcasts[1], { id: 'ep2', title: 'Short', sec: 240, finished: true });
   assert.ok(!('moves' in p), 'moves are the server\'s');
+  // gate r1: the maximal payload stays under the finish route's 16 KB cap
+  const big = feed.feedEmptySummary();
+  for (let i = 0; i < 80; i++) {
+    feed.feedCountActivity(big, { kind: 'book', id: 'b' + String(i).padStart(32, '0'), title: 'T'.repeat(200), words: 500 }, { read: true });
+    feed.feedCountActivity(big, { kind: 'video', media: 'video', id: 'v' + String(i).padStart(32, '0'), title: 'T'.repeat(200), chapter: { index: 0, count: 1 } }, { playedSec: 100, done: true });
+    feed.feedCountActivity(big, { kind: 'podcast', media: 'podcast', id: 'p' + String(i).padStart(32, '0'), title: 'T'.repeat(200), durationSec: 1000 }, { playedSec: 100 });
+  }
+  const bytes = Buffer.byteLength(JSON.stringify(feed.feedSummaryPayload(big, 3600, 2)), 'utf8');
+  assert.ok(bytes < 16 * 1024, 'maximal payload ' + bytes + ' bytes stays under the 16 KB cap');
 });
 
 test('feedHoldStep: a hold fires after FEED_HOLD_MS, a release before resets, progress reports the fill', () => {
@@ -126,6 +135,8 @@ test('view: time up with a BOOK active waits for the swipe, then stops playback,
     r.advance(10 * 60000 + 500); r.tickIntervals();
     assert.strictEqual(r.calls('POST', '/api/feed/sessions/abcdef0123456789/finish').length, 0, 'a book card is read until moved on');
     assert.strictEqual(r.$('.ui-sheet'), null);
+    r.advance(130000); r.tickIntervals(); // gate r1 (adversary M17): well past the 2-minute cap, a BOOK is never hard-stopped
+    assert.strictEqual(r.$('.ui-sheet'), null, 'the cap is for a playing slice, not a page being read');
     r.show(1); // the swipe on
     await r.settle();
     const fin = r.calls('POST', '/api/feed/sessions/abcdef0123456789/finish');
@@ -137,10 +148,23 @@ test('view: time up with a BOOK active waits for the swipe, then stops playback,
     assert.strictEqual(r.loads.filter((l) => l.id).length, 0, 'the swiped-to card never started');
     const sheet = r.$('.ui-sheet');
     assert.ok(sheet, 'the recap opened');
-    assert.strictEqual(sheet.querySelector('.ui-sheet__title').textContent, '10 minutes');
+    assert.strictEqual(sheet.querySelector('.ui-sheet__title').textContent, '12 minutes'); // the real time: 10 planned + the 2 minutes the page was still read
     assert.deepStrictEqual(Array.from(sheet.querySelectorAll('.feed-recap__list li')).map((li) => li.textContent), ['2 pages of Alpha']);
     assert.ok(r.$('#feed-extend-btn') && r.$('#feed-recap-done'));
     assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk1').length, 1, 'the bookmark moved too');
+  } finally { r.close(); }
+});
+
+test('view (gate r1, adversary M19): a card swiped back to and left again counts once', async () => {
+  const r = feedRealm();
+  try {
+    await started(r, 10);
+    r.advance(6000);
+    r.show(1); r.show(0); r.show(1); r.show(0); r.show(1); // back and forth over the read book
+    r.$('#feed-done-btn').click(); await r.settle();
+    const fin = r.calls('POST', '/api/feed/sessions/abcdef0123456789/finish');
+    assert.deepStrictEqual(fin[0].body.summary.books, [{ id: 'bk1', title: 'Alpha', pages: 2, words: 500 }], 'counted once');
+    assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk1').length, 1, 'written once');
   } finally { r.close(); }
 });
 
@@ -152,7 +176,7 @@ test('view: time up with a SLICE playing lets it finish, then recaps; the 2-minu
     r.timeAt(700);
     r.advance(10 * 60000 + 500); r.tickIntervals();
     assert.strictEqual(r.$('.ui-sheet'), null, 'the slice goes on');
-    assert.strictEqual(r.calls('GET', '/api/feed?').length, 1, 'no new batch after time up');
+    assert.strictEqual(r.calls('GET', '/api/feed?').length, 1, 'no new batch after time up (setActive ends the session before its prefetch)');
     r.timeAt(840); // the slice end
     await r.settle();
     assert.ok(r.$('.ui-sheet'), 'the recap opened when the slice ended');
@@ -222,6 +246,27 @@ test('view: "Another 10 minutes" ignores a tap, fires on a hold, extends the ses
     assert.strictEqual(r.$('#feed-picker').hidden, false);
     assert.strictEqual(r.w.sessionStorage.getItem(feed.FEED_SESSION_KEY), null);
   } finally { r.close(); }
+});
+
+test('view (gate r1, adversary W3): what was read before a navigation is still in the recap after the view re-inits', async () => {
+  const r = feedRealm();
+  try {
+    await started(r, 10);
+    r.advance(6000);
+    r.show(1); // the book was read: counted, and the count rides the stored session
+    const stored = JSON.parse(r.w.sessionStorage.getItem('ft-feed-session'));
+    assert.deepStrictEqual(Object.keys(stored.summary.books), ['bk1']);
+    r.destroy(); // Open in reader / a dock tap / back
+    r.init(); await r.settle();
+    r.$('#feed-done-btn').click(); await r.settle();
+    const fin = r.calls('POST', '/api/feed/sessions/abcdef0123456789/finish');
+    assert.strictEqual(fin.length, 1);
+    assert.deepStrictEqual(fin[0].body.summary.books, [{ id: 'bk1', title: 'Alpha', pages: 2, words: 500 }], 'the pages read before the navigation');
+    assert.deepStrictEqual(Array.from(r.$('.ui-sheet').querySelectorAll('.feed-recap__list li')).map((li) => li.textContent), ['2 pages of Alpha']);
+  } finally { r.close(); }
+  // the restore is shape-checked
+  assert.deepStrictEqual(feed.feedRestoreSummary(null), feed.feedEmptySummary());
+  assert.deepStrictEqual(feed.feedRestoreSummary({ cards: 'x', books: [], songs: 2, songIds: ['a', 3] }), { cards: 0, books: {}, videos: {}, podcasts: {}, songs: 2, songIds: ['a'] });
 });
 
 test('view: a resumed live session keeps its extensions and its deadline', async () => {

@@ -10,6 +10,8 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
+const fs = require('fs');
+const path = require('path');
 const feed = require('../../public/js/feed.js');
 
 // ---- pure helpers ---------------------------------------------------------------------
@@ -82,6 +84,25 @@ test('feedPlayerDescriptor: each kind starts at the card\'s startAt and saves th
   assert.strictEqual(lib.streamSrc, '/video/m1');
   assert.strictEqual(lib.progressEndpoint, '/api/progress', 'a projected library track keeps its own routes (the music.js rule)');
   assert.strictEqual(feed.feedPlayerDescriptor(null), null);
+});
+
+test('player adopt (gate r1, adversary C1): the progress route travels with the surface - a feed card\'s route is dropped by the watch page\'s null, taken by a feed card, replaced by the podcasts page\'s own', () => {
+  const { applyAdoptFlavor } = require('../../public/js/player.js');
+  const fromFeed = { progressEndpoint: '/api/feed/progress/media', resumeMode: undefined };
+  applyAdoptFlavor(fromFeed, { browseCtx: '', readerHref: null, resumeMode: null, autoAdvanceViaTrackNav: false, progressEndpoint: null, startAt: 8 });
+  assert.strictEqual(fromFeed.progressEndpoint, undefined, 'the watch page saves through /api/progress again');
+  const onWatch = { progressEndpoint: undefined };
+  applyAdoptFlavor(onWatch, feed.feedPlayerDescriptor(VID));
+  assert.strictEqual(onWatch.progressEndpoint, '/api/feed/progress/media', 'a card adopting the playing video saves through the feed\'s rule');
+  const pod = { progressEndpoint: '/api/feed/progress/podcast' };
+  applyAdoptFlavor(pod, { progressEndpoint: '/api/podcasts/progress', resumeMode: 'podcast' });
+  assert.strictEqual(pod.progressEndpoint, '/api/podcasts/progress');
+  const untouched = { progressEndpoint: '/api/tv/progress' };
+  applyAdoptFlavor(untouched, { title: 'x' });
+  assert.strictEqual(untouched.progressEndpoint, '/api/tv/progress', 'a load that says nothing about it leaves it');
+  // and the watch page's loads all declare it (the contract this test binds)
+  const watch = fs.readFileSync(path.join(__dirname, '../../public/js/watch.js'), 'utf8');
+  assert.strictEqual((watch.match(/progressEndpoint: null/g) || []).length, 3, 'the early load, the seed load and the data load');
 });
 
 test('feedBookRead: active for at least dwellSec (floor 5 s)', () => {
@@ -206,12 +227,12 @@ test('view: a book card moves the bookmark to its next ONLY after its dwell, onc
     // leaving it again never writes twice
     r.show(0); r.show(1);
     assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk1').length, 1);
-    // a book at its end: finished, never a progress write
+    // a book at its end: finished through the feed's rule (served, not stale), never the bare latch
     r.show(2);
     r.advance(20000);
     r.show(3);
-    assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk2').length, 0);
-    assert.deepStrictEqual(r.calls('POST', '/api/books/bk2/finished').map((f) => f.body), [{ finished: true }]);
+    assert.deepStrictEqual(r.calls('POST', '/api/feed/progress/book/bk2').map((f) => f.body), [{ atEnd: true }]);
+    assert.strictEqual(r.calls('POST', '/api/books/bk2/finished').length, 0);
   } finally { r.close(); }
 });
 
@@ -227,14 +248,17 @@ test('view: a refused book write (409) tells the user the place moved elsewhere'
   } finally { r.close(); }
 });
 
-test('view: "Open in reader" moves the bookmark (the user is going to read on) and navigates to the reader', async () => {
+test('view: "Open in reader" navigates to the reader and moves the bookmark ONLY when the card was read (its dwell met) - gate r1 qa W1', async () => {
   const r = feedRealm();
   try {
     r.init(); await r.settle();
     r.$('#feed-picker-choices button[data-minutes="10"]').click(); await r.settle();
     r.$$('.feed-card')[0].querySelector('button').click();
-    assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk1').length, 1);
+    assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk1').length, 0, 'a tap seconds after the card appeared: the reader opens where the place IS');
     assert.deepStrictEqual(r.loads.filter((l) => l.navigate), [{ navigate: '/read.html?b=bk1' }]);
+    r.advance(6000);
+    r.$$('.feed-card')[0].querySelector('button').click();
+    assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk1').length, 1, 'read for its dwell: the place moves to the card\'s next');
   } finally { r.close(); }
 });
 

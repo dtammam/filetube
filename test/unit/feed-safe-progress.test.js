@@ -98,6 +98,19 @@ test('served registry: unknown until marked, ok while the stamp matches, stale o
   assert.strictEqual(reg.status(7, 'book', 'b1', '2026-10-09T10:05:00.000Z'), 'unknown');
 });
 
+test('served registry: the session a card was served in is remembered, carried by advance, and kept by a session-less re-mark (gate r1 qa S5)', () => {
+  const reg = createServedRegistry({ now: () => 1 });
+  reg.mark(1, 'book', 'b', 't1', 'sess1');
+  assert.strictEqual(reg.sessionOf(1, 'book', 'b'), 'sess1');
+  reg.advance(1, 'book', 'b', 't2');
+  assert.strictEqual(reg.sessionOf(1, 'book', 'b'), 'sess1', 'advance keeps the session');
+  reg.mark(1, 'book', 'b', 't2');
+  assert.strictEqual(reg.sessionOf(1, 'book', 'b'), 'sess1', 'a mark with no session keeps the live one');
+  reg.mark(1, 'book', 'b', 't2', 'sess2');
+  assert.strictEqual(reg.sessionOf(1, 'book', 'b'), 'sess2', 'a mark with a session replaces it');
+  assert.strictEqual(reg.sessionOf(1, 'book', 'other'), null);
+});
+
 test('served registry: an unstarted item (no record) is served as the empty stamp and matches an absent stored stamp only', () => {
   const reg = createServedRegistry({ now: () => 1 });
   reg.mark(1, 'podcast', 'e1', '');

@@ -251,8 +251,8 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
 
 Home-screen app on the iPhone, a book you are partway through, a podcast in progress, a few subscriptions, some liked songs.
 
-- [ ] v1.379.0 - The bottom bar has Feed right after Liked (Liked stays hidden unless opted in, so Feed shows beside Home); the
-  sidebar has Feed under Library. Tap it: the length picker, your last pick highlighted, and "This week: ..." once a session exists.
+- [ ] v1.379.0 - The bottom bar has Feed (after Liked on an untouched bar, so beside Home; appended after your own items if you ever
+  reordered the bar - Settings lists it either way); the sidebar has Feed under Library, and so does the phone's Playlists sheet. Tap it: the length picker, your last pick highlighted, and "This week: ..." once a session exists.
 - [ ] v1.379.0 - Pick 10 min. Cards arrive; swipe up through five: the kind label, a book's text (plain, readable, "Open in reader"), a
   podcast's art with "4:00 of this episode", a video's chapter line, a Watch later label, a song's art. Never the same kind twice in a row.
 - [ ] v1.379.0 - A video card plays WITH sound from its saved place inside its card (no second player, no black picture after the swipe
@@ -262,6 +262,10 @@ Home-screen app on the iPhone, a book you are partway through, a podcast in prog
 - [ ] v1.379.0 - A book card: read it (stay about a minute on a 450-word card), swipe on, then open the book in the reader: it opens on
   the page that holds the next unread paragraph (the first paragraph of the card after it). Open the same book on another device
   first, read on, then let the feed card finish: the toast "Your place in ... moved on another device" and the place is NOT moved back.
+- [ ] v1.379.0 - A book card you SKIP (swipe on within a few seconds): the reader still opens where you were, and that book does not
+  come back in this session until you read or open it (gate r1: a skipped card never puts unread pages behind your place).
+- [ ] v1.379.0 - From a playing video card, open the video (tap the title / the watch page), drag the scrubber BACK and pause: the
+  watch page keeps that earlier place (gate r1: the feed's forward-only rule stays in the feed).
 - [ ] v1.379.0 - The ring in the corner fills as the time runs; tap it: "m:ss left" for 3 s. When time is up mid-podcast the slice finishes
   (at most 2 more minutes) and the recap opens; when time is up on a book card the recap opens on your next swipe.
 - [ ] v1.379.0 - The recap: the minutes, "N pages of <book>", "N chapters of <video>" or "N min of <video>", "N min of <episode>", "N songs";
