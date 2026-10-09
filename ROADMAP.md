@@ -384,13 +384,13 @@
 
 ### Features
 
-- [ ] **Feed mode (Dean, 2026-10-09: "a feed mode where books, news articles, maybe some short content videos I could go through in a feed")** - a new
+- [x] **Feed mode (Dean, 2026-10-09: "a feed mode where books, news articles, maybe some short content videos I could go through in a feed")** **Shipped v1.379.0 (2026-10-09).** - a new
   Feed page: pick 10 / 20 / 30 minutes, then an endless vertical feed of cards from his own library (the next pages of a book he
   is reading, a few minutes of a podcast, one chapter of a video, a Watch later item, a song). What he does there is real
   progress (the bookmark, the resume point, the watched state move; forward only, never back), the time runs out on the
   current card, and a recap says where the time went; "Another 10 minutes" is a deliberate hold and shows in the recap. The
   feed keeps its own session history so his Reddit time in iOS Screen Time can be compared. Plan:
-  `docs/exec-plans/active/2026-10-09-feed-mode.md` (v1.379.0; a Fable builder).
+  `docs/exec-plans/completed/2026-10-09-feed-mode.md` (v1.379.0; a Fable builder).
 - [ ] **Feed phase 2: a Reading section (news as files)** _(outlined at the 2026-10-09 feed kickoff, section 9; planned after Dean has
   used the feed a week or two)_ - RSS sources subscribed like channels, each new post saved as a local readable file (text and
   images, readability-style extraction) with a small daily cap per source; a Reading page beside Books; articles become a feed
@@ -761,6 +761,39 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.379.0 - Feed: your own library, one card at a time, for 10, 20 or 30 minutes (2026-10-09)
+
+- W1 (D4, D5): `GET /api/books/:id/excerpt` (about 450 words of plain text from the saved place, crossing chapters) and
+  the feed's forward-only writes (`POST /api/feed/progress/book/:id`, `/podcast`, `/media`): refused when the move is not
+  forward (409 `backward`), when the stored record moved since the card was served (409 `stale`) or when no card was
+  served (409 `not-served`); the previous position rides back and is kept in the session's `moves`; every accepted write
+  lands through the kind's existing writer (the books coalescer, `applyPodcastProgress`, `applyMediaProgressPing`).
+  Measured first (tools/feed-proof/reader-resume.js, WebKit 26.5 + Chromium, 16/16): a server-derived CFI landed every
+  target on block 0 (epub.js parses chapters through srcdoc), so the feed writes a BLOCK position
+  `{ cfi:'', spineIndex, blockIndex }` and the reader resolves it in epub.js's live DOM; a refused CFI lands in its
+  chapter, never at the start of the book.
+- W2 (D3, D6-D9, D13): `GET /api/feed?session=&count=&exclude=` from the viewer's VISIBLE items only (zero hidden items
+  over 500 cards for a restricted member); weights 30/30/20/10/10 as a credit-conserving weighted round robin with
+  jitter (within 5 points over 1000 cards, never the same kind twice in a row); a book continues card after card ONCE
+  each card was read (the dwell write moves the place; a card swiped past parks the book for the session, so no unread
+  page ever goes behind the bookmark - gate r1); everything else once per session, then `exhausted` recycles (a notice
+  card of its own). Schema v36 (`user_feed_sessions`:
+  start, extend, finish with the recap and the moves; backup carrier, reset, cascade). The served registry is per process
+  (disclosed: after a server restart a card served before it cannot write until a new card is served).
+- W3 (D1, D2, D7): `/feed` is the History shell with its view root swapped (lib/feed/shell.js); the Feed item sits after
+  Liked in every shell's bottom bar, ON by default, with a new glyph; a Feed entry under Library. The card stack
+  (scroll-snap, the active card at 60%), book text as text nodes, the shared player in the active card's slot from the
+  saved place (Chromium + WebKit, tools/feed-proof/card-player.js: one host, one video, the position carried to the watch
+  page). A read book card moves the bookmark after its dwell (words / 300 per minute x 0.6); "Open in reader".
+- W4 (D10-D12): the ring, the 2-minute wind-down, the recap built from what happened (pages, chapters or minutes, half /
+  finished, songs), Done goes back, "Another 10 minutes" is a 1.2 s hold.
+- Also: the bar's roster locks grew to 13 (Feed after Liked keeps Liked beside Home); v1.378.0's tag landed mid-build, so
+  the branch adopted its version files from the tag before main merged it (LESSONS 13).
+- Gate (adversary + qa + security-brief), three rounds: r1 CHANGES (the watch page ADOPTING a feed card kept the feed's
+  forward-only save route; the per-serve book cursor put unread text behind the bookmark; the schema v35 collision with
+  v1.378.0), r2 CHANGES (three small regressions from the r1 fixes), r3 r3 CHANGES (the desktop column; the schema renumber waiting on the merge of main), r4 APPROVED by all three seats at e90709df (the merge of main: schema v36). Device checks:
+  docs/DEVICE-CHECKS.md "Feed mode".
 
 ### v1.378.0 - Radio stations (Chill, Reggae, Synthwave, Favorites, your own), play counts, Radio in Pocket and on the speaker (2026-10-09)
 
