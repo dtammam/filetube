@@ -1,6 +1,6 @@
 // FileTube Feed (v1.379.0) -- the /feed view module (lib/feed/shell.js serves the shell;
 // the history.js / cleanup.js registered-view pattern). Plan docs/exec-plans/active/
-// 2026-10-09-feed-mode.md, D1-D9 in this wave; the time limit and the recap are W4.
+// 2026-10-09-feed-mode.md, D1-D13.
 //
 // What it does: a length picker (10 / 20 / 30 min) starts a feed SESSION
 // (POST /api/feed/sessions); the cards come in batches from GET /api/feed and stack
@@ -12,6 +12,12 @@
 // slot and plays from the card's startAt; a slice ends at endAt (the card pauses and
 // says so); leaving a card pauses it. Progress for those rides the player's own pings,
 // pointed at the feed's forward-only routes by `progressEndpoint`.
+//
+// The session has a deadline (the pick, plus 10 minutes per deliberate extension): a thin ring
+// in the corner fills with the time (tap it to read the minutes left); at time up the current
+// card winds down (a slice to its end, at most 2 more minutes; a book card until moved on),
+// playback stops, and a recap says where the time went, counted here from what actually
+// happened. "Another 10 minutes" is a HOLD, not a tap (D10-D12).
 //
 // Pure helpers first (node:test-covered without a browser), then the view.
 
@@ -161,11 +167,146 @@ function feedBookRead(activeMs, dwellSec) {
   return (Number(activeMs) || 0) >= (Math.max(5, Number(dwellSec) || 0)) * 1000;
 }
 
+// ---- the session clock, the wind-down, the recap (plan D10-D12) ----------------------
+
+var FEED_EXTEND_MIN = 10; // "Another 10 minutes"
+var FEED_WIND_DOWN_CAP_SEC = 120; // at time up a playing slice gets at most this much more
+var FEED_HOLD_MS = 1200; // the extension is a hold, not a tap
+var FEED_WORDS_PER_PAGE = 250; // the recap's "pages": a printed page is about 250 words
+var FEED_TIME_PEEK_MS = 3000; // tapping the ring shows the minutes left for this long
+
+// The session's end: the pick plus 10 minutes per extension, from when it started. NaN for junk.
+function feedDeadlineMs(startedAt, plannedMin, extensions) {
+  var start = Date.parse(startedAt);
+  if (!isFinite(start)) return NaN;
+  return start + ((Number(plannedMin) || 0) + FEED_EXTEND_MIN * (Number(extensions) || 0)) * 60000;
+}
+
+// How much of the session has run, 0..1 (1 once the deadline has passed or the span is empty).
+function feedRingFraction(nowMs, startMs, deadlineMs) {
+  var span = deadlineMs - startMs;
+  if (!(span > 0)) return 1;
+  return Math.min(1, Math.max(0, (nowMs - startMs) / span));
+}
+
+function feedRemainingSec(nowMs, deadlineMs) {
+  return Math.max(0, Math.ceil((deadlineMs - nowMs) / 1000));
+}
+
+function feedEmptySummary() {
+  return { cards: 0, books: {}, videos: {}, podcasts: {}, songs: 0, songIds: [] };
+}
+
+// Count ONE card's activity into the summary (mutated and returned). `activity`:
+// { read } for a book (its dwell was met), { playedSec, done, ended } for a media card
+// (seconds of the slice heard or seen, the slice reached its end, the file ended).
+// A song counts once it ended or ran 30 s; a podcast is "finished" when its slice reached the
+// episode's end; a chaptered video counts chapters whose slice finished, an unchaptered one
+// its seconds. Nothing is counted from a card merely scrolled past.
+function feedCountActivity(summary, card, activity) {
+  var s = summary || feedEmptySummary();
+  var a = activity || {};
+  if (!card) return s;
+  s.cards += 1;
+  if (card.kind === 'book') {
+    if (!a.read) return s;
+    var b = s.books[card.id] || (s.books[card.id] = { title: card.title || 'a book', pages: 0, words: 0, cards: 0 });
+    b.words += Number(card.words) || 0;
+    b.cards += 1;
+    b.pages = Math.max(b.cards, Math.round(b.words / FEED_WORDS_PER_PAGE));
+    return s;
+  }
+  var played = Math.max(0, Number(a.playedSec) || 0);
+  if (card.kind === 'song') {
+    if (a.ended || played >= 30) { s.songs += 1; s.songIds.push(card.id); }
+    return s;
+  }
+  if (played < 1 && !a.done) return s;
+  if (card.media === 'podcast') {
+    var p = s.podcasts[card.id] || (s.podcasts[card.id] = { title: card.title || 'an episode', sec: 0, durationSec: Number(card.durationSec) || 0, finished: false });
+    p.sec += played;
+    if (a.ended || (p.durationSec > 0 && (Number(card.startAt) || 0) + played >= p.durationSec - 1)) p.finished = true;
+    return s;
+  }
+  var v = s.videos[card.id] || (s.videos[card.id] = { title: card.title || 'a video', chapters: 0, sec: 0, chaptered: !!card.chapter });
+  v.sec += played;
+  if (card.chapter && a.done) v.chapters += 1;
+  return s;
+}
+
+function feedMinutesWord(sec) {
+  var m = Math.round((Number(sec) || 0) / 60);
+  return m < 1 ? 'under a minute' : m + ' min';
+}
+
+// "14 pages of Alpha", "2 chapters of V", "4 min of Ep" / "half of Ep" / "finished Ep", "3 songs".
+function feedRecapLines(summary) {
+  var s = summary || feedEmptySummary();
+  var lines = [];
+  Object.keys(s.books).forEach(function (id) {
+    var b = s.books[id];
+    lines.push(b.pages + (b.pages === 1 ? ' page' : ' pages') + ' of ' + b.title);
+  });
+  Object.keys(s.videos).forEach(function (id) {
+    var v = s.videos[id];
+    lines.push(v.chaptered && v.chapters > 0 ? v.chapters + (v.chapters === 1 ? ' chapter' : ' chapters') + ' of ' + v.title : feedMinutesWord(v.sec) + ' of ' + v.title);
+  });
+  Object.keys(s.podcasts).forEach(function (id) {
+    var p = s.podcasts[id];
+    var frac = p.durationSec > 0 ? p.sec / p.durationSec : 0;
+    lines.push(p.finished ? 'finished ' + p.title : (frac >= 0.45 && frac <= 0.55 ? 'half of ' + p.title : feedMinutesWord(p.sec) + ' of ' + p.title));
+  });
+  if (s.songs > 0) lines.push(s.songs + (s.songs === 1 ? ' song' : ' songs'));
+  return lines;
+}
+
+// "20 minutes", "30 minutes, extended once", "40 minutes, extended 2 times".
+function feedRecapTitle(actualSec, extensions) {
+  var m = Math.max(1, Math.round((Number(actualSec) || 0) / 60));
+  var t = m + (m === 1 ? ' minute' : ' minutes');
+  var e = Number(extensions) || 0;
+  if (e === 1) t += ', extended once';
+  else if (e > 1) t += ', extended ' + e + ' times';
+  return t;
+}
+
+// The hold-to-confirm machine. state: { holding, since }. event: 'down' | 'up' | 'tick'.
+// Returns { state, fired, progress }: fired once the hold has lasted holdMs; a release before
+// that resets; progress is 0..1 for the button's fill.
+function feedHoldStep(state, event, nowMs, holdMs) {
+  var need = typeof holdMs === 'number' ? holdMs : FEED_HOLD_MS;
+  var s = state || { holding: false, since: 0 };
+  if (event === 'down') return { state: { holding: true, since: nowMs }, fired: false, progress: 0 };
+  if (!s.holding) return { state: s, fired: false, progress: 0 };
+  if (event === 'up') return { state: { holding: false, since: 0 }, fired: false, progress: 0 };
+  var progress = Math.min(1, (nowMs - s.since) / need);
+  if (progress >= 1) return { state: { holding: false, since: 0 }, fired: true, progress: 1 };
+  return { state: s, fired: false, progress: progress };
+}
+
+// What the session's finish carries (plan D13): the recap counts, bounded (50 entries a kind).
+function feedSummaryPayload(summary, actualSec, extensions) {
+  var s = summary || feedEmptySummary();
+  var cap = function (obj, shape) { return Object.keys(obj).slice(0, 50).map(function (id) { return shape(id, obj[id]); }); };
+  return {
+    minutes: Math.round((Number(actualSec) || 0) / 60),
+    cards: s.cards,
+    extensions: Number(extensions) || 0,
+    songs: s.songs,
+    books: cap(s.books, function (id, b) { return { id: id, title: String(b.title).slice(0, 120), pages: b.pages, words: b.words }; }),
+    videos: cap(s.videos, function (id, v) { return { id: id, title: String(v.title).slice(0, 120), chapters: v.chapters, sec: Math.round(v.sec) }; }),
+    podcasts: cap(s.podcasts, function (id, p) { return { id: id, title: String(p.title).slice(0, 120), sec: Math.round(p.sec), finished: p.finished }; }),
+  };
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     FEED_LENGTH_CHOICES, FEED_LENGTH_KEY, FEED_SESSION_KEY, FEED_BATCH, FEED_PREFETCH_AHEAD, FEED_KEEP_BEHIND, FEED_ACTIVE_RATIO,
+    FEED_EXTEND_MIN, FEED_WIND_DOWN_CAP_SEC, FEED_HOLD_MS, FEED_WORDS_PER_PAGE, FEED_TIME_PEEK_MS,
     feedNormalizeMinutes, feedWeekLine, feedClock, feedKindLabel, feedActiveIndex, feedShouldPrefetch, feedExcludeIds,
     feedPlayerDescriptor, feedBookRead,
+    feedDeadlineMs, feedRingFraction, feedRemainingSec, feedEmptySummary, feedCountActivity, feedRecapLines, feedRecapTitle,
+    feedHoldStep, feedSummaryPayload,
   };
 }
 
@@ -213,6 +354,19 @@ if (typeof module !== 'undefined' && module.exports) {
     var bookActiveSince = 0; // ms clock when the active book card became active
     var bookActiveMs = {}; // card index -> accumulated active ms
     var bookWritten = {}; // card index -> true once the bookmark moved (or was refused)
+    // the session clock (D10-D12)
+    var summary = feedEmptySummary();
+    var activity = {}; // card index -> { read, playedSec, done, ended }
+    var counted = {}; // card index -> true once counted into the summary
+    var deadlineMs = NaN;
+    var extensions = 0;
+    var tickTimer = null;
+    var windingDown = false; // time is up: the current card finishes, nothing new starts
+    var hardStopMs = NaN; // wind-down: a playing slice stops here at the latest
+    var recapCtrl = null;
+    var peekTimer = null;
+    var ring = null;
+    var timeEl = null;
 
     // ---- the picker -------------------------------------------------------------
     var last = feedNormalizeMinutes(readPref(FEED_LENGTH_KEY, '20'));
@@ -231,7 +385,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // A live session (a dock-tap return, a reload) resumes its stack instead of asking again.
     var live = readSession();
-    if (live && live.id) { session = live; showStack(); fetchBatch(); }
+    if (live && live.id) { session = live; extensions = Number(live.extensions) || 0; showStack(); startClock(); fetchBatch(); }
 
     function startSession(min) {
       writePref(FEED_LENGTH_KEY, min);
@@ -239,12 +393,78 @@ if (typeof module !== 'undefined' && module.exports) {
         .then(function (r) { if (!r.ok) throw new Error('session ' + r.status); return r.json(); })
         .then(function (body) {
           if (signal.aborted) return;
-          session = { id: body.session.id, plannedMin: body.session.plannedMin, startedAt: body.session.startedAt };
+          session = { id: body.session.id, plannedMin: body.session.plannedMin, startedAt: body.session.startedAt, extensions: 0 };
+          extensions = 0;
           writeSession(session);
           showStack();
+          startClock();
           fetchBatch();
         })
         .catch(function () { if (U()) U().toast({ text: 'Could not start the feed', doc: document }); });
+    }
+
+    // D10: a thin ring in the corner fills with the time; no numbers unless tapped.
+    function ensureRing() {
+      var hud = root.querySelector('#feed-hud');
+      if (!hud || ring) return;
+      var NS = 'http://www.w3.org/2000/svg';
+      var svg = document.createElementNS(NS, 'svg');
+      svg.setAttribute('class', 'feed-ring');
+      svg.setAttribute('viewBox', '0 0 36 36');
+      svg.setAttribute('aria-hidden', 'true');
+      svg.setAttribute('focusable', 'false');
+      var track = document.createElementNS(NS, 'circle');
+      track.setAttribute('class', 'feed-ring__track'); track.setAttribute('cx', '18'); track.setAttribute('cy', '18'); track.setAttribute('r', '16');
+      var fill = document.createElementNS(NS, 'circle');
+      fill.setAttribute('class', 'feed-ring__fill'); fill.setAttribute('cx', '18'); fill.setAttribute('cy', '18'); fill.setAttribute('r', '16'); fill.setAttribute('pathLength', '100');
+      svg.appendChild(track); svg.appendChild(fill);
+      // an icon button whose glyph is the ring itself (no registry icon: the svg below replaces the content)
+      var btn = U() ? U().button({ variant: 'plain', shape: 'icon', ariaLabel: 'Time left', doc: document }) : el('button', 'ui-btn ui-btn--plain ui-btn--md ui-btn--icon');
+      btn.type = 'button';
+      btn.id = 'feed-ring-btn';
+      btn.setAttribute('aria-label', 'Time left');
+      btn.replaceChildren(svg);
+      timeEl = el('span', 'feed-hud__time', '');
+      timeEl.id = 'feed-time';
+      timeEl.hidden = true;
+      btn.addEventListener('click', function () {
+        if (!timeEl) return;
+        timeEl.textContent = feedClock(feedRemainingSec(Date.now(), deadlineMs)) + ' left';
+        timeEl.hidden = false;
+        if (peekTimer) window.clearTimeout(peekTimer);
+        peekTimer = window.setTimeout(function () { if (timeEl) timeEl.hidden = true; }, FEED_TIME_PEEK_MS);
+      }, { signal: signal });
+      hud.insertBefore(timeEl, hud.firstChild);
+      hud.insertBefore(btn, hud.firstChild);
+      ring = fill;
+    }
+
+    function startClock() {
+      if (!session) return;
+      deadlineMs = feedDeadlineMs(session.startedAt, session.plannedMin, extensions);
+      ensureRing();
+      if (tickTimer) window.clearInterval(tickTimer);
+      tick();
+      tickTimer = window.setInterval(tick, 1000);
+    }
+
+    function tick() {
+      if (!session) return;
+      var now = Date.now();
+      if (ring) ring.style.setProperty('--p', String(Math.round(feedRingFraction(now, Date.parse(session.startedAt), deadlineMs) * 1000) / 1000));
+      if (!windingDown && now >= deadlineMs) beginWindDown(now);
+      else if (windingDown && isFinite(hardStopMs) && now >= hardStopMs) finishNow();
+    }
+
+    // D11: time is up. A playing slice finishes (at most FEED_WIND_DOWN_CAP_SEC more), a book card
+    // waits until it is moved on from, an empty stack ends at once. Nothing new is fetched.
+    function beginWindDown(now) {
+      windingDown = true;
+      var card = cards[activeIndex];
+      if (!card) { finishNow(); return; }
+      if (card.kind === 'book') return; // until moved on (setActive -> finishNow)
+      if (cardEls[activeIndex] && cardEls[activeIndex].hasAttribute('data-done')) { finishNow(); return; }
+      hardStopMs = now + FEED_WIND_DOWN_CAP_SEC * 1000;
     }
 
     function showStack() {
@@ -257,14 +477,14 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // ---- batches ------------------------------------------------------------------
     function fetchBatch() {
-      if (loading || !session) return;
+      if (loading || !session || windingDown) return;
       loading = true;
       stack.setAttribute('aria-busy', 'true');
       var exclude = feedExcludeIds(cards);
       var url = '/api/feed?session=' + encodeURIComponent(session.id) + '&count=' + FEED_BATCH + (exclude.length ? '&exclude=' + exclude.map(encodeURIComponent).join(',') : '');
       fetch(url, { signal: signal })
         .then(function (r) {
-          if (r.status === 404) { endSession(true); throw new Error('session gone'); }
+          if (r.status === 404) { endSession(); throw new Error('session gone'); }
           if (!r.ok) throw new Error('feed ' + r.status);
           return r.json();
         })
@@ -410,6 +630,7 @@ if (typeof module !== 'undefined' && module.exports) {
 
     function setActive(index) {
       var prev = activeIndex;
+      if (windingDown && prev >= 0 && index !== prev) { finishNow(); return; } // D11: moving on after time up ends the session
       if (prev >= 0 && cardEls[prev]) { cardEls[prev].removeAttribute('data-active'); leaveCard(prev); }
       activeIndex = index;
       var node = cardEls[index];
@@ -429,9 +650,20 @@ if (typeof module !== 'undefined' && module.exports) {
         if (bookActiveSince) bookActiveMs[index] = (bookActiveMs[index] || 0) + (Date.now() - bookActiveSince);
         bookActiveSince = 0;
         if (feedBookRead(bookActiveMs[index], card.dwellSec)) finishBookCard(index, false);
+        countCard(index);
         return;
       }
       if (mediaCardIndex === index) pauseMedia();
+      countCard(index);
+    }
+
+    // D12: the recap is built from what happened - each card counted once, when it is left.
+    function countCard(index) {
+      if (counted[index]) return;
+      counted[index] = true;
+      var a = activity[index] || {};
+      if (cards[index] && cards[index].kind === 'book') a.read = !!bookWritten[index] || feedBookRead(bookActiveMs[index], cards[index].dwellSec);
+      feedCountActivity(summary, cards[index], a);
     }
 
     // The bookmark moves to the card's `next` - forward only, through the feed's rule. A
@@ -442,6 +674,8 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!card || bookWritten[index]) return;
       if (!force && !feedBookRead(bookActiveMs[index], card.dwellSec)) return;
       bookWritten[index] = true;
+      activity[index] = activity[index] || {};
+      activity[index].read = true;
       if (!card.next) {
         if (card.atEnd) fetch('/api/books/' + encodeURIComponent(card.id) + '/finished', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ finished: true }), keepalive: true }).catch(function () {});
         return;
@@ -469,22 +703,33 @@ if (typeof module !== 'undefined' && module.exports) {
       if (!mediaEl) return;
       var endAt = card.kind === 'song' ? null : Number(card.endAt);
       var left = node.querySelector('[data-left]');
+      var act = activity[index] = activity[index] || { playedSec: 0, done: false, ended: false };
+      var startAt = Number(data.startAt) || 0;
       var onTime = function () {
         if (mediaCardIndex !== index || !mediaEl) return;
         var t = mediaEl.currentTime || 0;
+        act.playedSec = Math.max(act.playedSec, t - startAt);
         if (endAt !== null && isFinite(endAt)) {
           var remain = endAt - t;
           if (left) left.textContent = remain > 0 ? feedClock(remain) + ' left' : 'Done';
           if (remain <= 0 && !node.hasAttribute('data-done')) {
             node.setAttribute('data-done', '');
+            act.done = true;
             p.pause();
+            if (windingDown) finishNow(); // D11: the slice finished after time up
           }
         } else if (left && isFinite(mediaEl.duration)) {
           left.textContent = feedClock(mediaEl.duration - t) + ' left';
         }
       };
       mediaEl.addEventListener('timeupdate', onTime, { signal: signal });
-      mediaEl.addEventListener('ended', function () { if (mediaCardIndex === index) node.setAttribute('data-done', ''); }, { signal: signal });
+      mediaEl.addEventListener('ended', function () {
+        if (mediaCardIndex !== index) return;
+        node.setAttribute('data-done', '');
+        act.ended = true;
+        act.done = true;
+        if (windingDown) finishNow();
+      }, { signal: signal });
     }
 
     function pauseMedia() {
@@ -493,22 +738,145 @@ if (typeof module !== 'undefined' && module.exports) {
       mediaCardIndex = -1;
     }
 
-    // ---- leaving --------------------------------------------------------------------
-    function endSession(gone) {
+    // ---- the end: playback stops, the recap (D11, D12) ----------------------------------
+    function actualSec() {
+      return session ? Math.max(0, Math.round((Date.now() - Date.parse(session.startedAt)) / 1000)) : 0;
+    }
+
+    function postFinish() {
+      if (!session) return;
+      var sec = actualSec();
+      fetch('/api/feed/sessions/' + encodeURIComponent(session.id) + '/finish', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+        body: JSON.stringify({ actualSec: sec, summary: feedSummaryPayload(summary, sec, extensions) }),
+      }).catch(function () {});
+    }
+
+    // Time is up (or Done was tapped): the current card is counted, playback stops, the session's
+    // finish is recorded, and the recap opens. The session stays live until the recap's Done or an
+    // extension decides (an extension re-records the finish at the real end).
+    function finishNow() {
+      if (recapCtrl) return;
+      if (tickTimer) { window.clearInterval(tickTimer); tickTimer = null; }
+      windingDown = false;
+      hardStopMs = NaN;
       if (activeIndex >= 0) leaveCard(activeIndex);
       pauseMedia();
       var p = player();
       if (p && typeof p.close === 'function') p.close();
-      var s = session;
+      postFinish();
+      openRecap();
+    }
+
+    function openRecap() {
+      var ui = U();
+      var content = document.createDocumentFragment();
+      var lines = feedRecapLines(summary);
+      if (lines.length) {
+        var list = el('ul', 'feed-recap__list');
+        lines.forEach(function (line) { list.appendChild(el('li', null, line)); });
+        content.appendChild(list);
+      } else {
+        content.appendChild(el('p', 'ui-confirm__body', 'Nothing counted this time: a card counts once you read or played it.'));
+      }
+      var hint = el('p', 'feed-recap__hint', 'Hold the button to add ten minutes.');
+      hint.id = 'feed-hold-hint';
+      content.appendChild(hint);
+      var row = el('div', 'feed-recap__actions');
+      var more = ui ? ui.button({ variant: 'tonal', size: 'md', pill: true, label: 'Another 10 minutes', doc: document }) : el('button', 'ui-btn ui-btn--tonal ui-btn--md ui-btn--pill', 'Another 10 minutes');
+      more.type = 'button';
+      more.classList.add('feed-hold');
+      more.id = 'feed-extend-btn';
+      more.setAttribute('aria-describedby', 'feed-hold-hint');
+      var done = ui ? ui.button({ variant: 'primary', size: 'md', pill: true, label: 'Done', doc: document }) : el('button', 'ui-btn ui-btn--primary ui-btn--md ui-btn--pill', 'Done');
+      done.type = 'button';
+      done.id = 'feed-recap-done';
+      row.appendChild(more);
+      row.appendChild(done);
+      content.appendChild(row);
+      var title = feedRecapTitle(actualSec(), extensions);
+      if (!ui) {
+        // no primitives (a stripped realm): the recap is an in-page block
+        var block = el('section', 'feed-recap');
+        block.id = 'feed-recap';
+        block.appendChild(el('h2', 'feed-card__title', title));
+        block.appendChild(content);
+        sessionEl.appendChild(block);
+        recapCtrl = { close: function () { block.remove(); }, isOpen: function () { return block.isConnected; }, guard: function () {}, accepts: function () { return true; }, open: function () {} };
+      } else {
+        recapCtrl = ui.sheet({ variant: 'dialog', title: title, content: content, doc: document, signal: signal, onClosing: function () { if (recapCtrl) { recapCtrl = null; resetToPicker(); } } });
+        recapCtrl.guard(done);
+        recapCtrl.guard(more);
+        recapCtrl.open();
+      }
+      done.addEventListener('click', function (e) {
+        if (recapCtrl && recapCtrl.accepts && !recapCtrl.accepts(e)) return;
+        var ctrl = recapCtrl; recapCtrl = null;
+        if (ctrl) ctrl.close();
+        resetToPicker();
+        goBack();
+      }, { signal: signal });
+      wireHold(more);
+    }
+
+    // "Another 10 minutes" is deliberate: a hold of FEED_HOLD_MS, pointer or keyboard, never a tap.
+    function wireHold(btn) {
+      var hold = { holding: false, since: 0 };
+      var holdTimer = null;
+      var paint = function (progress) { btn.style.setProperty('--hold', String(Math.round(progress * 100) / 100)); };
+      var stop = function () { if (holdTimer) { window.clearInterval(holdTimer); holdTimer = null; } hold = feedHoldStep(hold, 'up', Date.now()).state; paint(0); };
+      var step = function () {
+        var r = feedHoldStep(hold, 'tick', Date.now());
+        hold = r.state;
+        paint(r.progress);
+        if (r.fired) { stop(); extend(); }
+      };
+      var down = function (e) {
+        if (e.type === 'keydown') { if (e.key !== 'Enter' && e.key !== ' ') return; if (e.repeat) return; e.preventDefault(); }
+        if (e.type === 'pointerdown' && typeof e.button === 'number' && e.button !== 0) return;
+        hold = feedHoldStep(hold, 'down', Date.now()).state;
+        if (holdTimer) window.clearInterval(holdTimer);
+        holdTimer = window.setInterval(step, 50);
+      };
+      btn.addEventListener('pointerdown', down, { signal: signal });
+      btn.addEventListener('keydown', down, { signal: signal });
+      ['pointerup', 'pointercancel', 'pointerleave', 'keyup', 'blur'].forEach(function (ev) { btn.addEventListener(ev, stop, { signal: signal }); });
+      btn.addEventListener('click', function (e) { e.preventDefault(); }, { signal: signal }); // a tap does nothing
+    }
+
+    function extend() {
+      if (!session) return;
+      fetch('/api/feed/sessions/' + encodeURIComponent(session.id) + '/extend', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}', signal: signal })
+        .then(function (r) { if (!r.ok) throw new Error('extend ' + r.status); return r.json(); })
+        .then(function (body) {
+          if (signal.aborted || !session) return;
+          extensions = Number(body.session && body.session.extensions) || (extensions + 1);
+          session.extensions = extensions;
+          writeSession(session);
+          var ctrl = recapCtrl; recapCtrl = null;
+          if (ctrl) ctrl.close();
+          startClock();
+          // the card that was playing is done: move on to the next one, and fetch more
+          if (activeIndex >= 0 && activeIndex + 1 < cardEls.length) cardEls[activeIndex + 1].scrollIntoView({ block: 'start' });
+          fetchBatch();
+        })
+        .catch(function () { if (U()) U().toast({ text: 'Could not add ten minutes', doc: document }); });
+    }
+
+    // Back to where he came from (D12): the page before the feed when there is one, else Home.
+    function goBack() {
+      if (window.history && window.history.length > 1) { window.history.back(); return; }
+      if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate('/');
+      else window.location.assign('/');
+    }
+
+    function resetToPicker() {
+      if (tickTimer) { window.clearInterval(tickTimer); tickTimer = null; }
       session = null;
       writeSession(null);
-      if (s && !gone) {
-        fetch('/api/feed/sessions/' + encodeURIComponent(s.id) + '/finish', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
-          body: JSON.stringify({ actualSec: Math.max(0, Math.round((Date.now() - Date.parse(s.startedAt)) / 1000)), summary: { cards: cards.length } }),
-        }).catch(function () {});
-      }
-      cards = []; cardEls = []; activeIndex = -1; ratios = {}; exhaustedShown = false;
+      cards = []; cardEls = []; activeIndex = -1; ratios = {}; exhaustedShown = false; activity = {}; counted = {}; bookActiveMs = {}; bookWritten = {};
+      summary = feedEmptySummary(); extensions = 0; windingDown = false; hardStopMs = NaN;
+      if (ring) ring.style.setProperty('--p', '0');
       stack.replaceChildren();
       sessionEl.hidden = true;
       picker.hidden = false;
@@ -516,12 +884,24 @@ if (typeof module !== 'undefined' && module.exports) {
         if (!signal.aborted && weekEl) weekEl.textContent = feedWeekLine(week);
       }).catch(function () {});
     }
-    if (doneBtn) doneBtn.addEventListener('click', function () { endSession(false); }, { signal: signal });
+
+    // the session the server no longer knows (a restart, a purge): back to the picker, nothing recorded
+    function endSession() {
+      pauseMedia();
+      var p = player();
+      if (p && typeof p.close === 'function') p.close();
+      resetToPicker();
+    }
+    if (doneBtn) doneBtn.addEventListener('click', function () { finishNow(); }, { signal: signal });
+
 
     // Leaving the page mid-card: a read book card still moves its bookmark (keepalive).
     signal.addEventListener('abort', function () {
       if (activeIndex >= 0 && cards[activeIndex] && cards[activeIndex].kind === 'book') leaveCard(activeIndex);
       if (observer) { observer.disconnect(); observer = null; }
+      if (tickTimer) { window.clearInterval(tickTimer); tickTimer = null; }
+      if (peekTimer) { window.clearTimeout(peekTimer); peekTimer = null; }
+      if (recapCtrl) { var c = recapCtrl; recapCtrl = null; try { c.close(); } catch (_) { /* gone */ } }
     });
   }
 

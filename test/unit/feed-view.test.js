@@ -10,14 +10,7 @@
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const fs = require('node:fs');
-const path = require('node:path');
-const { JSDOM, VirtualConsole } = require('jsdom');
-
-const REPO = path.join(__dirname, '..', '..');
-const read = (f) => fs.readFileSync(path.join(REPO, f), 'utf8');
 const feed = require('../../public/js/feed.js');
-const { renderFeedShell } = require('../../lib/feed/shell');
 
 // ---- pure helpers ---------------------------------------------------------------------
 
@@ -98,80 +91,10 @@ test('feedBookRead: active for at least dwellSec (floor 5 s)', () => {
   assert.strictEqual(feed.feedBookRead(0, 0), false);
 });
 
-// ---- the real view in a jsdom realm ----------------------------------------------------
+// ---- the real view in a jsdom realm (test/helpers/feed-view-harness.js) -----------------------
 
-const BOOK = { kind: 'book', id: 'bk1', title: 'Alpha', author: 'W', chapterLabel: 'Chapter 1 of 3', readerHref: '/read.html?b=bk1', start: { spineIndex: 0, blockIndex: 1 }, blocks: [{ spineIndex: 0, blockIndex: 1, text: 'First <b>para</b>.', heading: false, chapterStart: false }, { spineIndex: 0, blockIndex: 2, text: 'Second.', heading: false, chapterStart: false }], words: 3, dwellSec: 5, next: { spineIndex: 0, blockIndex: 3 }, atEnd: false };
-const POD = { kind: 'podcast', media: 'podcast', id: 'ep1', title: 'Ep', showName: 'Show', subId: 's1', artUrl: '/podcastart/s1', streamSrc: '/episode/ep1', durationSec: 1800, position: 600, startAt: 600, endAt: 840, sliceSec: 240 };
-const VID = { kind: 'video', media: 'video', id: 'v1', title: 'V', channelName: 'C', duration: 1200, width: 1920, height: 1080, thumbnailUrl: '/thumbnail/v1', startAt: 400, endAt: 900, chapter: { index: 1, count: 3, title: 'Middle' } };
-const SONG = { kind: 'song', id: 't1', track: { id: 't1', title: 'Song', artist: 'Art', album: 'Al', durationSec: 200, liked: true } };
-const WL = { kind: 'watchlater', media: 'video', id: 'v5', title: 'Later', channelName: 'C', duration: 600, startAt: 0, endAt: 180, chapter: null, watchLater: true, thumbnailUrl: '/thumbnail/v5' };
-
-function feedRealm(o) {
-  const opts = o || {};
-  const vc = new VirtualConsole();
-  const html = renderFeedShell(read('public/history.html'));
-  const dom = new JSDOM(html, { url: 'http://localhost/feed', runScripts: 'outside-only', pretendToBeVisual: true, virtualConsole: vc });
-  const w = dom.window;
-  w.matchMedia = (q) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {} });
-  w.scrollTo = () => {};
-  // jsdom has no IntersectionObserver: a controllable stub the test drives
-  const observers = [];
-  w.IntersectionObserver = class { constructor(cb, init) { this.cb = cb; this.init = init; this.targets = []; observers.push(this); } observe(t) { this.targets.push(t); } unobserve() {} disconnect() { this.disconnected = true; } };
-  const fetches = [];
-  const json = (status, body) => Promise.resolve({ ok: status >= 200 && status < 300, status, json: async () => body, text: async () => JSON.stringify(body) });
-  const batches = opts.batches || [{ cards: [BOOK, POD, VID, SONG, WL], exhausted: false }];
-  let batchNo = 0;
-  let finished = false;
-  w.fetch = (u, init) => {
-    const method = (init && init.method) || 'GET';
-    const url = String(u);
-    const body = init && typeof init.body === 'string' ? (() => { try { return JSON.parse(init.body); } catch (_) { return init.body; } })() : null;
-    fetches.push({ method, url, body });
-    const r = opts.route ? opts.route(method, url, body) : null;
-    if (r) return json(r.status, r.body);
-    if (url === '/api/feed/sessions/week') return json(200, finished ? { sessions: 3, totalSec: 1800 } : (opts.week || { sessions: 2, totalSec: 1500 }));
-    if (url === '/api/feed/sessions' && method === 'POST') return json(200, { session: { id: 'abcdef0123456789', plannedMin: body.plannedMin, startedAt: '2026-10-09T10:00:00.000Z', extensions: 0 }, week: { sessions: 2, totalSec: 1500 } });
-    if (url.indexOf('/api/feed?') === 0) { const b = batches[Math.min(batchNo, batches.length - 1)]; batchNo += 1; return json(200, b); }
-    if (url.indexOf('/api/feed/progress/book/') === 0) return json(opts.bookWriteStatus || 200, opts.bookWriteStatus === 409 ? { ok: false, reason: 'stale' } : { ok: true });
-    if (url.indexOf('/api/feed/sessions/') === 0 && url.endsWith('/finish')) { finished = true; return json(200, { session: {}, week: { sessions: 3, totalSec: 1800 } }); }
-    if (url === '/api/auth/me') return json(200, { user: { username: 'admin', role: 'admin' } });
-    if (url === '/api/config') return json(200, { folders: ['/lib'], folderSettings: {} });
-    return json(200, {});
-  };
-  const loads = [];
-  let registered = null;
-  const media = w.document.createElement('video');
-  media.id = 'media-player';
-  const player = new Proxy({
-    currentId: null,
-    load: (id, data, lo) => { loads.push({ id, data, lo }); if (lo && lo.slot) lo.slot.appendChild(media); return true; },
-    pause: () => { loads.push({ pause: true }); },
-    close: () => { loads.push({ close: true }); },
-    getState: () => 'full',
-  }, { get(t, p) { return p in t ? t[p] : () => undefined; } });
-  const toasts = [];
-  w.__harness = { register: (name, h) => { if (name === 'feed') registered = h; }, player, navigate: (u) => { loads.push({ navigate: u }); } };
-  const srcs = ['public/js/icons.js', 'public/js/glyph-pool.js', 'public/js/body-scroll-lock.js', 'public/js/ui.js', 'public/js/interaction.js', 'public/js/common.js'].map(read);
-  srcs.push('window.FileTube = window.FileTube || {}; window.FileTube.registerView = window.__harness.register; window.FileTube.player = window.__harness.player; window.FileTube.navigate = window.__harness.navigate; window.ui.toast = function (o) { window.__toasts.push(o && o.text); };');
-  w.__toasts = toasts;
-  srcs.push(read('public/js/feed.js'));
-  w.eval(srcs.join('\n;\n'));
-  const root = w.document.getElementById('view-root');
-  const settle = async (n) => { for (let i = 0; i < (n || 12); i++) await new Promise((r) => setTimeout(r, 5)); };
-  // make card `index` the active one through the observer stub (ratios: the target full, the rest gone)
-  const show = (index) => {
-    const ob = observers[observers.length - 1];
-    const entries = ob.targets.map((t) => ({ target: t, isIntersecting: Number(t.getAttribute('data-index')) === index, intersectionRatio: Number(t.getAttribute('data-index')) === index ? 0.95 : 0 }));
-    ob.cb(entries);
-  };
-  return {
-    w, doc: w.document, $: (s) => w.document.querySelector(s), $$: (s) => Array.from(w.document.querySelectorAll(s)), fetches, loads, toasts, root, settle, show, media, observers,
-    calls: (method, prefix) => fetches.filter((f) => f.method === method && f.url.indexOf(prefix) === 0),
-    init: () => { if (!registered) throw new Error('feed.js did not register'); registered.init(root); },
-    destroy: () => registered.destroy(),
-    close: () => w.close(),
-  };
-}
+const { feedRealm, BOOK, POD, VID, SONG, WL } = require('../helpers/feed-view-harness');
+void POD; void VID; void SONG; void WL;
 
 test('view: the picker shows three choices with the last pick primary, and the week line', async () => {
   const r = feedRealm();
@@ -275,9 +198,8 @@ test('view: a book card moves the bookmark to its next ONLY after its dwell, onc
     assert.strictEqual(r.calls('POST', '/api/feed/progress/book/').length, 0);
     // back to the book, pretend it was active for its dwell (the clock is read at leave): fake Date.now
     r.show(0);
-    const realNow = r.w.Date.now;
-    r.w.Date.now = () => realNow() + 6000;
-    try { r.show(1); } finally { r.w.Date.now = realNow; }
+    r.advance(6000);
+    r.show(1);
     const writes = r.calls('POST', '/api/feed/progress/book/bk1');
     assert.strictEqual(writes.length, 1, 'one write after the dwell');
     assert.deepStrictEqual(writes[0].body, { spineIndex: 0, blockIndex: 3 }, 'the card\'s next');
@@ -286,8 +208,8 @@ test('view: a book card moves the bookmark to its next ONLY after its dwell, onc
     assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk1').length, 1);
     // a book at its end: finished, never a progress write
     r.show(2);
-    r.w.Date.now = () => realNow() + 20000;
-    try { r.show(3); } finally { r.w.Date.now = realNow; }
+    r.advance(20000);
+    r.show(3);
     assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk2').length, 0);
     assert.deepStrictEqual(r.calls('POST', '/api/books/bk2/finished').map((f) => f.body), [{ finished: true }]);
   } finally { r.close(); }
@@ -298,9 +220,8 @@ test('view: a refused book write (409) tells the user the place moved elsewhere'
   try {
     r.init(); await r.settle();
     r.$('#feed-picker-choices button[data-minutes="10"]').click(); await r.settle();
-    const realNow = r.w.Date.now;
-    r.w.Date.now = () => realNow() + 6000;
-    try { r.show(1); } finally { r.w.Date.now = realNow; }
+    r.advance(6000);
+    r.show(1);
     await r.settle();
     assert.deepStrictEqual(r.toasts, ['Your place in Alpha moved on another device']);
   } finally { r.close(); }
@@ -317,7 +238,7 @@ test('view: "Open in reader" moves the bookmark (the user is going to read on) a
   } finally { r.close(); }
 });
 
-test('view: Done finishes the session (actual seconds, the card count), closes the player and returns to the picker with a fresh week line', async () => {
+test('view: Done records the finish (actual seconds, the counted recap), closes the player and opens the recap; its Done returns to the picker with a fresh week line', async () => {
   const r = feedRealm();
   try {
     r.init(); await r.settle();
@@ -328,8 +249,12 @@ test('view: Done finishes the session (actual seconds, the card count), closes t
     const fin = r.calls('POST', '/api/feed/sessions/abcdef0123456789/finish');
     assert.strictEqual(fin.length, 1);
     assert.ok(Number.isInteger(fin[0].body.actualSec) && fin[0].body.actualSec >= 0);
-    assert.deepStrictEqual(fin[0].body.summary, { cards: 5 });
+    assert.strictEqual(fin[0].body.summary.cards, 2, 'the two cards left (the book unread, the podcast unplayed) are counted as cards');
+    assert.deepStrictEqual(fin[0].body.summary.books, []);
     assert.ok(r.loads.some((l) => l.close), 'the player is closed');
+    assert.ok(r.$('.ui-sheet'), 'the recap');
+    r.$('#feed-recap-done').click();
+    await r.settle();
     assert.strictEqual(r.$('#feed-picker').hidden, false);
     assert.strictEqual(r.$('#feed-session').hidden, true);
     assert.strictEqual(r.$$('.feed-card').length, 0);
@@ -382,9 +307,8 @@ test('view: destroy aborts the observer and the listeners; a book that was being
   try {
     r.init(); await r.settle();
     r.$('#feed-picker-choices button[data-minutes="10"]').click(); await r.settle();
-    const realNow = r.w.Date.now;
-    r.w.Date.now = () => realNow() + 6000;
-    try { r.destroy(); } finally { r.w.Date.now = realNow; }
+    r.advance(6000);
+    r.destroy();
     assert.ok(r.observers[r.observers.length - 1].disconnected);
     assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk1').length, 1, 'leaving the page counts the read card');
   } finally { r.close(); }

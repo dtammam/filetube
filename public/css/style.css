@@ -12718,3 +12718,17 @@ html[data-era-flourish="on"] .ft-unfabricated {
 #view-root[data-view="feed"] .feed-card[data-active] .feed-card__kind { color: var(--accent); }
 #view-root[data-view="feed"] .feed-hud { position: absolute; top: var(--space-3); right: var(--space-3); z-index: var(--z-chip); }
 #view-root[data-view="feed"] .feed-notice { font: var(--t-footnote); color: var(--ink-2); text-align: center; padding: var(--space-3); }
+/* v1.379.0 Feed mode W4: the session ring, the time peek, the recap and the hold-to-extend button */
+#view-root[data-view="feed"] .feed-hud { display: flex; align-items: center; gap: var(--space-2); }
+#view-root[data-view="feed"] .feed-hud__time { font: var(--t-footnote); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+#view-root[data-view="feed"] .feed-ring { width: var(--icon-lg); height: var(--icon-lg); display: block; }
+#view-root[data-view="feed"] .feed-ring circle { fill: none; stroke-width: var(--ring-w); }
+#view-root[data-view="feed"] .feed-ring__track { stroke: var(--separator); }
+/* --p (0..1, set by feed.js as DATA) is how much of the session has run; pathLength=100 makes the dash arithmetic unitless */
+#view-root[data-view="feed"] .feed-ring__fill { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 100 100; stroke-dashoffset: calc(100 - var(--p, 0) * 100); transform: rotate(-90deg); transform-origin: 50% 50%; }
+.feed-recap__list { margin: 0 0 var(--space-4); padding: 0 0 0 var(--space-5); font: var(--t-body); color: var(--ink-1); }
+.feed-recap__list li { margin: 0 0 var(--space-2); }
+.feed-recap__hint { font: var(--t-footnote); color: var(--ink-3); margin: 0 0 var(--space-3); }
+.feed-recap__actions { display: flex; gap: var(--space-3); justify-content: flex-end; flex-wrap: wrap; }
+/* the hold fills the button from the left as the hold lasts (--hold 0..1, set by feed.js as DATA) */
+.feed-hold { background-image: linear-gradient(var(--fill-selected), var(--fill-selected)); background-repeat: no-repeat; background-size: calc(var(--hold, 0) * 100%) 100%; }
