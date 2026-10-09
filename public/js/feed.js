@@ -1233,6 +1233,7 @@ if (typeof module !== 'undefined' && module.exports) {
         .then(function (res) {
           startingOver[index] = false;
           if (res.status === 409 && res.body && res.body.reason === 'nothing') { toast('Nothing to start over: it was not started'); return; }
+          if (res.status === 409 && res.body && res.body.reason === 'unrestorable') { toast('Could not start over: its saved place could not be undone, so it was kept'); return; }
           if (res.status !== 200 || !res.body || !res.body.token) { toast('Could not start over'); return; }
           var before = { fresh: card.fresh, progress: card.progress, position: card.position, startAt: card.startAt, endAt: card.endAt, chapter: card.chapter, skippedIntro: card.skippedIntro };
           if (!signal.aborted && cards[index] === card) applyStartedOver(index, card, kind);

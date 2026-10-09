@@ -777,3 +777,44 @@ test('r1 (qa W1, reasoned there): leaving the Feed while the Start over request 
     assert.strictEqual(r.w.__toastOpts[ti].action.label, 'Undo');
   } finally { r.close(); }
 });
+
+test('r2 (adversary ADV-r2-4, W5 N10 / N11): a Start over reply that lands after the Feed was left never loads the player into the dead card; the toast with Undo still shows', async () => {
+  let release;
+  const gate = new Promise((res) => { release = res; });
+  const r = startOverRealm([PLACED_VID, POD], { start: () => ({ status: 200, body: { ok: true, token: 'a'.repeat(24), previous: { progress: { timestamp: 400 } } } }) });
+  const f = r.w.fetch;
+  r.w.fetch = (u, init) => (String(u) === '/api/feed/start-over' ? gate.then(() => f(u, init)) : f(u, init));
+  try {
+    await startRealm(r); r.show(0); await r.settle();
+    okBtn(await openStartOver(r, 0)).click(); await r.settle();
+    const loadsBefore = r.loads.filter((l) => l.id).length;
+    r.destroy(); // left the Feed while the request is in flight
+    release(); await r.settle();
+    assert.strictEqual(r.loads.filter((l) => l.id).length, loadsBefore, 'no player load from a dead view');
+    assert.ok(r.toasts.includes('Started over: V (it was at 6:40)'), 'the toast (with Undo) still shows');
+  } finally { r.close(); }
+});
+
+test('r2 (W5 N11): an Undo reply that lands after the Feed was left redraws nothing (no player load into the dead card)', async () => {
+  const r = startOverRealm([PLACED_VID, POD], {});
+  try {
+    await startRealm(r); r.show(0); await r.settle();
+    okBtn(await openStartOver(r, 0)).click(); await r.settle();
+    const opts = r.w.__toastOpts[r.toasts.indexOf('Started over: V')];
+    const loadsBefore = r.loads.filter((l) => l.id).length;
+    r.destroy();
+    opts.action.onAction(); await r.settle();
+    assert.strictEqual(r.loads.filter((l) => l.id).length, loadsBefore, 'the place is back on the server; nothing redrawn');
+    assert.ok(r.toasts.includes('Your place is back: V'));
+  } finally { r.close(); }
+});
+
+test('r2: an unrestorable place is said in words, the card unchanged', async () => {
+  const r = startOverRealm([PLACED_VID, POD], { start: () => ({ status: 409, body: { ok: false, reason: 'unrestorable' } }) });
+  try {
+    await startRealm(r); r.show(0);
+    okBtn(await openStartOver(r, 0)).click(); await r.settle();
+    assert.ok(r.toasts.includes('Could not start over: its saved place could not be undone, so it was kept'));
+    assert.strictEqual(r.$$('.feed-card')[0].querySelector('.feed-card__kind').textContent, 'Video \u00b7 Continue');
+  } finally { r.close(); }
+});

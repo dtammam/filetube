@@ -84,7 +84,7 @@ test('D9 video: Start over forgets the place AND the watched latch, keeps Watch 
   assert.strictEqual(r.status, 200);
   const body = await r.json();
   assert.match(body.token, /^[0-9a-f]{24}$/);
-  assert.deepStrictEqual(body.previous, { progress: { timestamp: 300, duration: 600, updatedAt: T1 }, watchedAt: T2 });
+  assert.deepStrictEqual(body.previous, { progress: { timestamp: 300, duration: 600, updatedAt: T1 }, watched: true, watchedAt: T2 }, 'the latch is its row\'s presence, beside its time (gate r2)');
   assert.deepStrictEqual(videoPlace(uid, 'v1'), { progress: null, watched: null }, 'the place and the latch are forgotten');
   assert.ok(userStore.getWatchLater(uid).includes('v1'), 'Watch later is untouched');
   const rec = recordOf(sid, body.token);
@@ -404,4 +404,71 @@ test('r1 (security-brief N1): a recorded place of the wrong shape (a crafted or 
   }
   assert.strictEqual(userStore.getOneProgress(uid, 'v1'), null);
   assert.strictEqual(userStore.getOneBookProgress(uid, bookId), null);
+});
+
+// ---- gate r2 round (adversary W5 + suggestions; the builder's unrestorable-place finding) - Dean ruled round 3 -------------
+
+test('r2 (adversary ADV-r2-5, W5 N3-N8): every stillAsReset arm - a row or a latch written since the reset (each kind) makes Undo answer moved, the newer state stands', async () => {
+  const cases = [
+    ['podcast row', 'podcast', () => epId, () => userStore.setPodcastProgress(uid, epId, { position: 900, duration: 1800, updatedAt: T1 }), () => userStore.setPodcastProgress(uid, epId, { position: 120, duration: 1800, updatedAt: T2 }), () => userStore.getOnePodcastProgress(uid, epId).position === 120],
+    ['podcast played', 'podcast', () => epId, () => userStore.setPodcastProgress(uid, epId, { position: 900, duration: 1800, updatedAt: T1 }), () => userStore.setPodcastPlayed(uid, epId, T2), () => !userStore.getOnePodcastProgress(uid, epId)],
+    ['video watched', 'media', () => 'v2', () => userStore.setProgress(uid, 'v2', { timestamp: 300, duration: 600, updatedAt: T1 }), () => userStore.markWatched(uid, 'v2', T2), () => !userStore.getOneProgress(uid, 'v2')],
+    ['book row', 'book', () => bookId, () => userStore.setBookProgress(uid, bookId, { locator: { kind: 'epub', cfi: '', spineIndex: 2, blockIndex: 1 }, percent: 70, updatedAt: T1 }), () => userStore.setBookProgress(uid, bookId, { locator: { kind: 'epub', cfi: '', spineIndex: 0, blockIndex: 1 }, percent: 1, updatedAt: T2 }), () => userStore.getOneBookProgress(uid, bookId).locator.spineIndex === 0],
+    ['book finished', 'book', () => bookId, () => userStore.setBookProgress(uid, bookId, { locator: { kind: 'epub', cfi: '', spineIndex: 2, blockIndex: 1 }, percent: 70, updatedAt: T1 }), () => userStore.setBookFinished(uid, bookId, T2), () => !userStore.getOneBookProgress(uid, bookId)],
+  ];
+  for (const [name, kind, id, seed, since, newerStands] of cases) {
+    userStore.removeHistory(uid, 'v2'); userStore.resetPodcastPlace(uid, epId); userStore.resetBookPlace(uid, bookId);
+    seed();
+    const sid = await session();
+    const s = await (await startOver(sid, kind, id())).json();
+    since();
+    const u = await undo(sid, s.token);
+    const b = await u.json();
+    assert.strictEqual(u.status, 409, name + ' ' + JSON.stringify(b));
+    assert.strictEqual(b.reason, 'moved', name);
+    assert.ok(newerStands(), name + ': the newer state stands');
+  }
+  userStore.removeHistory(uid, 'v2'); userStore.resetPodcastPlace(uid, epId); userStore.resetBookPlace(uid, bookId);
+});
+
+test('r2 (adversary ADV-r2-1 / -2): a latch whose time is NULL is still a latch - recorded, forgotten, put back by Undo; and one set since the reset is "moved"', async () => {
+  userStore.setProgress(uid, 'v1', { timestamp: 300, duration: 600, updatedAt: T1 });
+  userStore.markWatched(uid, 'v1', null); // a backup entry without completedAt
+  const sid = await session();
+  const s = await (await startOver(sid, 'media', 'v1')).json();
+  assert.strictEqual(s.previous.watched, true);
+  assert.strictEqual(s.previous.watchedAt, null);
+  assert.ok(!Object.prototype.hasOwnProperty.call(userStore.getWatchedTimes(uid), 'v1'), 'forgotten');
+  assert.strictEqual((await undo(sid, s.token)).status, 200);
+  assert.ok(Object.prototype.hasOwnProperty.call(userStore.getWatchedTimes(uid), 'v1'), 'Undo put the latch back');
+  assert.strictEqual(userStore.getWatchedTimes(uid).v1, null, 'with its own (NULL) time');
+  // a NULL-time latch set AFTER a reset
+  userStore.removeHistory(uid, 'v2');
+  userStore.setProgress(uid, 'v2', { timestamp: 200, duration: 600, updatedAt: T1 });
+  const s2 = await (await startOver(sid, 'media', 'v2')).json();
+  userStore.markWatched(uid, 'v2', null);
+  const u2 = await undo(sid, s2.token);
+  assert.strictEqual(u2.status, 409);
+  assert.strictEqual((await u2.json()).reason, 'moved');
+  userStore.removeHistory(uid, 'v1'); userStore.removeHistory(uid, 'v2');
+});
+
+test('r2 (builder): a stored place Undo could not put back exactly is never forgotten - Start over answers unrestorable, nothing recorded or reset', async () => {
+  const odd = { cfi: 'epubcfi(/6/2!/4/2/1:0)', percent: 12, updatedAt: T1 }; // no locator: a shape a backup can bring in
+  userStore.setBookProgress(uid, bookId, odd);
+  const sid = await session();
+  const r = await startOver(sid, 'book', bookId);
+  assert.strictEqual(r.status, 409);
+  assert.strictEqual((await r.json()).reason, 'unrestorable');
+  assert.deepStrictEqual(userStore.getOneBookProgress(uid, bookId), odd, 'kept exactly');
+  assert.strictEqual(((userStore.getFeedSession(uid, sid).summary || {}).moves || []).length, 0, 'nothing recorded');
+  userStore.resetBookPlace(uid, bookId);
+  // and a NEGATIVE stored time (accepted by /api/progress) is restorable: exact is exact (adversary r2 suggestion)
+  userStore.setProgress(uid, 'v2', { timestamp: -5, duration: 600, updatedAt: T1 });
+  userStore.markWatched(uid, 'v2', T2);
+  const s = await (await startOver(sid, 'media', 'v2')).json();
+  assert.ok(s.token);
+  assert.strictEqual((await undo(sid, s.token)).status, 200);
+  assert.strictEqual(userStore.getOneProgress(uid, 'v2').timestamp, -5);
+  userStore.removeHistory(uid, 'v2');
 });
