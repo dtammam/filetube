@@ -3,11 +3,11 @@ plan: music-stations
 harness: v2 · full
 branch: feat/v1.378.0-stations
 anchor: outcome
-status: Planned (kickoff 2026-10-09, Opus Root); builder not started
-next: builder Step 0, then W0
+status: Building
+next: the full dual-Node suites at 20c7e02e, then gate round 1 (adversary, qa, security-brief); T0 (Dean's census) pending, folded in when it lands
 design: Dean's intake 2026-10-09 (rulings R1-R4 below; the rest are kickoff defaults D1-D12, Dean may overrule at his device pass). Base main 13fa0c72.
 builder: extreme (a schema migration plus new write routes: the full gate, data-carrier surface)
-gate: not yet run (FULL: adversary, qa, security-brief; alters-schema forces it)
+gate: pending (FULL: adversary, qa, security-brief; alters-schema forces it)
 ---
 
 # v1.378.0: Radio stations (Chill, Reggae, Synth, Favorites...), play counts, and Radio in Pocket
