@@ -602,10 +602,39 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // Resume from the saved locator, else the beginning.
     const startCfi = detail.locator && detail.locator.kind === 'epub' && detail.locator.cfi ? detail.locator.cfi : undefined;
+    const startSpine = detail.locator && detail.locator.kind === 'epub' && Number.isInteger(detail.locator.spineIndex) && detail.locator.spineIndex >= 0
+      ? detail.locator.spineIndex : null;
+    // v1.379.0 Feed mode (plan D4/D5): a place the FEED moved is a BLOCK position -
+    // { cfi: '', spineIndex, blockIndex } - because the server cannot write a CFI
+    // epub.js will honour (epub.js loads a chapter through srcdoc, i.e. the HTML
+    // parser, which inserts a <head> and re-nests lax markup, so an element path
+    // computed over the raw XHTML names the wrong node; measured in W1,
+    // tools/feed-proof/reader-resume.js). The reader is the one place that has
+    // epub.js's live DOM, so it resolves the block itself: open the chapter, take
+    // the blockIndex-th element of READER_BLOCK_SELECTOR (the chunker's own count),
+    // and display epub.js's CFI FOR THAT NODE. The reader's own locators keep their
+    // text-precise CFI and never enter this branch (their cfi is non-empty).
+    const feedBlock = startCfi === undefined && startSpine !== null
+      && Number.isInteger(detail.locator.blockIndex) && detail.locator.blockIndex >= 0 ? detail.locator.blockIndex : null;
     try {
-      await rendition.display(startCfi);
+      if (feedBlock !== null) {
+        await rendition.display(startSpine);
+        const contents = rendition.getContents()[0];
+        const blocks = contents && contents.document ? contents.document.querySelectorAll(READER_BLOCK_SELECTOR) : [];
+        const node = blocks[feedBlock];
+        if (node && typeof contents.cfiFromNode === 'function') await rendition.display(contents.cfiFromNode(node));
+      } else {
+        await rendition.display(startCfi);
+      }
     } catch (_) {
-      await rendition.display(); // a stale/foreign CFI falls back to the start
+      // A refused CFI lands in its CHAPTER when the locator names one, never at the
+      // start of the book: the first relocated ping after display() overwrites the
+      // saved place, so a start fallback would move a real bookmark to page 1.
+      try {
+        await rendition.display(startSpine === null ? undefined : startSpine);
+      } catch (__) {
+        await rendition.display();
+      }
     }
     // v1.37.3 (Dean: desktop pages sometimes EMPTY until a tap): epub.js can
     // complete display() without painting when the container was measured

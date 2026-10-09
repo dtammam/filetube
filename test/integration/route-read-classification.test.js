@@ -46,6 +46,7 @@ const READ = {
   '/api/auth/me': 'OWN_STATE',
   '/api/books': 'GATED',
   '/api/books/:id': 'GATED',
+  '/api/books/:id/excerpt': 'GATED', // v1.379.0 Feed: the book card's plain text; bookVisibleTo -> neutral 404, proven in feed-progress.test.js
   '/api/books/:id/tts/:spineIndex/status': 'NO_CONTENT',
   '/api/books/config': 'GATED',
   '/api/books/folders': 'GATED',

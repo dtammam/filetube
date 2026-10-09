@@ -153,6 +153,9 @@ const booksTtsConfig = require('./lib/books/tts-config');
 const booksTtsEngine = require('./lib/books/tts-engine');
 const booksTtsChunk = require('./lib/books/tts-chunk');
 const booksZip = require('./lib/books/zip'); // chapter XHTML extraction for TTS
+const booksExcerpt = require('./lib/books/excerpt'); // v1.379.0 Feed: plain-text excerpts + the block -> CFI derivation
+const feedRoutes = require('./lib/feed/routes'); // v1.379.0 Feed: the forward-only progress writes (plan D5)
+const feedServed = require('./lib/feed/served').createServedRegistry(); // v1.379.0 Feed: served positions, per process
 // C4 "fun stats" page (v1.24 UX Round, Wave 3): pure aggregation helpers over
 // `db.metadata`, unit-tested on their own against a synthetic fixture. See
 // lib/stats.js's header comment and `GET /api/stats` (now in
@@ -3642,11 +3645,13 @@ booksRoutes.registerRoutes(app, {
   bookScanState, // the LIVE scan-state object (never reassigned, only mutated)
   bookVisibleTo, // v1.80 RBAC: the per-user visibility gate for book items
   booksDb,
+  booksExcerpt, // v1.379.0 Feed: GET /api/books/:id/excerpt
   booksStore,
   contentDispositionAttachment,
   effectiveBookProgress, // pending-first reading position, per user
   escapeHtml,
   express, // only for express.raw on the cover upload
+  feedServed, // v1.379.0 Feed: serving an excerpt marks the position it was built from
   folderStore,
   foldersOverlap,
   fs,
@@ -3763,6 +3768,34 @@ booksRoutes.registerProgressRoute(app, {
   booksDb,
   pendingBookProgress, // the coalescer's staging Map - the LIVE object, never a copy
   pendingProgressKey,
+});
+
+// v1.379.0 Feed mode: the feed's forward-only, never-over-another-device writes of a
+// reading place or a resume point (plan D5). Each lands through the kind's EXISTING
+// writer (the books coalescer above, lib/podcasts' applyPodcastProgress,
+// lib/media/user-routes' applyMediaProgressPing) after the lib/feed/safe-progress
+// rule and the served-position registry have allowed it.
+feedRoutes.registerProgressRoutes(app, {
+  armBookProgressFlushTimerIfNeeded,
+  bookVisibleTo,
+  booksDb,
+  booksExcerpt,
+  effectiveBookProgress,
+  effectiveProgress,
+  feedServed,
+  fs,
+  getCachedDatabase,
+  // The same bundle POST /api/progress's effects read (mediaUserRoutes.registerProgressRoutes below).
+  mediaDeps: { armProgressFlushTimerIfNeeded, pendingProgress, pendingProgressKey, recordPresenceFromPing, userStore, videoQuery },
+  mediaUserRoutes,
+  mediaVisibleTo,
+  pendingBookProgress,
+  pendingProgressKey,
+  podcastDeps: { userStore, now: () => Date.now(), recordPresenceFromPing }, // what applyPodcastProgress reads of the podcasts bundle
+  podcastEpisodeVisibleTo,
+  podcasts,
+  podcastsDb,
+  userStore,
 });
 
 // Wave 7b (slice S10b): GET /api/scan-status moved VERBATIM to
@@ -7328,6 +7361,7 @@ if (require.main === module) {
 // beyond ensuring the data directories exist; it never starts listening.
 module.exports = {
   app,
+  feedServed, // v1.379.0 Feed: the served-position registry (tests mark a card served)
   chapterSilenceService, // Chapter Snap (2026-09-24): tests await a scan (whenIdle) and read its cache
   needsTranscode,
   transcodedPath,

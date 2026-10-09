@@ -40,6 +40,11 @@ const CLASSIFICATION = {
 
   // --- personal: the member's OWN state (never capability-gated, AC2) ---
   'POST /api/progress': 'personal',
+  // v1.379.0 Feed (plan D5): the feed's forward-only writes of the caller's OWN place; each checks the
+  // item's visibility first (hidden -> neutral 404, no oracle/persist) - proven in feed-progress.test.js.
+  'POST /api/feed/progress/book/:id': 'personal',
+  'POST /api/feed/progress/podcast': 'personal',
+  'POST /api/feed/progress/media': 'personal',
   'POST /api/videos/:id/view': 'personal',
   'POST /api/videos/:id/dimensions': 'personal',
   'POST /api/videos/:id/prepare-audio': 'personal',
@@ -263,6 +268,10 @@ const VISIBILITY = {
   // --- content-addressed, visibility ENFORCED ---
   'POST /api/videos/:id/view': 'enforced',
   'POST /api/videos/:id/dimensions': 'enforced',
+  // v1.379.0 Feed: bookVisibleTo / podcastEpisodeVisibleTo / mediaVisibleTo before any read of the stored place.
+  'POST /api/feed/progress/book/:id': 'enforced',
+  'POST /api/feed/progress/podcast': 'enforced',
+  'POST /api/feed/progress/media': 'enforced',
   'POST /api/videos/:id/prepare-audio': 'enforced',
   'POST /api/tv/episode/:id/prepare-audio': 'enforced', // v1.197: gated on tvEpisodeVisibleTo (restricted -> 404, no oracle/CPU sink)
   'POST /api/liked/:id': 'enforced',
