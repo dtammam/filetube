@@ -52,6 +52,7 @@ function feedRealm(o) {
   const batches = opts.batches || [{ cards: [BOOK, POD, VID, SONG, WL], exhausted: false }];
   let batchNo = 0;
   let finished = false;
+  let sessionNo = 0;
   let extensions = 0;
   w.fetch = (u, init) => {
     // gate r1 (adversary W1): a fetch on an ABORTED signal rejects at once, as the platform's does (the view's abort on leave)
@@ -63,7 +64,8 @@ function feedRealm(o) {
     const r = opts.route ? opts.route(method, url, body) : null;
     if (r) return json(r.status, r.body);
     if (url === '/api/feed/sessions/week') return json(200, finished ? { sessions: 3, totalSec: 1800 } : (opts.week || { sessions: 2, totalSec: 1500 }));
-    if (url === '/api/feed/sessions' && method === 'POST') return json(200, { session: { id: 'abcdef0123456789', plannedMin: body.plannedMin, startedAt: opts.startedAt || new Date(w.Date.now()).toISOString(), extensions: 0 }, week: { sessions: 2, totalSec: 1500 } });
+    // each session its own id (the first is the one most tests name): a test can tell the session a request rode
+    if (url === '/api/feed/sessions' && method === 'POST') { sessionNo += 1; return json(200, { session: { id: sessionNo === 1 ? 'abcdef0123456789' : 'abcdef01234567' + (89 + sessionNo), plannedMin: body.plannedMin, startedAt: opts.startedAt || new Date(w.Date.now()).toISOString(), extensions: 0 }, week: { sessions: 2, totalSec: 1500 } }); }
     // a batch arrives as JSON (fresh objects every time, as from the server): the view may mutate its cards (a Start over
     // does), and a test must never see another test's mutation on a shared fixture object
     if (url.indexOf('/api/feed?') === 0) { const b = batches[Math.min(batchNo, batches.length - 1)]; batchNo += 1; return json(200, JSON.parse(JSON.stringify(b))); }

@@ -89,6 +89,10 @@ test('D10: the report sorts each Continue item by how far in it is and whether a
   assert.strictEqual((await postJson(`/api/feed/progress/book/${epubId}`, { spineIndex: 0, blockIndex: 4 })).status, 200);
   await flushPendingProgress();
   await flushPendingBookProgress();
+  // a Start over and its Undo in the same session (gate r1, qa S4): the record is a reset, never "moved by a feed session"
+  const so = await (await postJson('/api/feed/start-over', { session: s.session.id, kind: 'media', id: 'vlook' })).json();
+  assert.strictEqual((await postJson('/api/feed/start-over/undo', { session: s.session.id, token: so.token })).status, 200);
+  await flushPendingProgress();
 
   const dbFile = path.join(process.env.DATA_DIR, 'filetube.db');
   const before = fs.readFileSync(dbFile);

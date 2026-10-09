@@ -628,7 +628,8 @@ test('r1 (adversary W1): Undo tapped after the session ended and a NEW one began
     opts.action.onAction(); await r.settle();
     const undos = r.calls('POST', '/api/feed/start-over/undo');
     assert.strictEqual(undos.length, 1);
-    assert.strictEqual(undos[0].body.session, 'abcdef0123456789');
+    assert.ok(r.calls('POST', '/api/feed/sessions').length >= 2, 'a second session began');
+    assert.strictEqual(undos[0].body.session, 'abcdef0123456789', 'the reset\'s session, not the new one (abcdef0123456791)');
   } finally { r.close(); }
 });
 
@@ -759,5 +760,20 @@ test('r1 (qa S2, adversary G5): the video layer cancels a touchmove ONLY while 2
     assert.strictEqual(move(), true, 'while 2x is held: the stack stays put');
     pointer(r, layer, 'pointerup', 200, 300);
     assert.strictEqual(move(), false, 'after the lift: scrolls again');
+  } finally { r.close(); }
+});
+
+test('r1 (qa W1, reasoned there): leaving the Feed while the Start over request is in flight still gives the Undo toast', async () => {
+  const r = startOverRealm([PLACED_VID, POD], {});
+  try {
+    await startRealm(r); r.show(0);
+    const sheet = await openStartOver(r, 0);
+    okBtn(sheet).click();
+    r.destroy(); // the router leaves in the same moment: the view's signal aborts before the request goes out
+    await r.settle();
+    assert.strictEqual(r.calls('POST', '/api/feed/start-over').length, 1);
+    const ti = r.toasts.indexOf('Started over: V');
+    assert.ok(ti >= 0, 'the toast came: ' + JSON.stringify(r.toasts));
+    assert.strictEqual(r.w.__toastOpts[ti].action.label, 'Undo');
   } finally { r.close(); }
 });

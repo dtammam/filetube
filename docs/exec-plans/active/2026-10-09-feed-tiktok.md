@@ -3,8 +3,8 @@ plan: feed-tiktok
 harness: v2 · full
 branch: feat/v1.381.0-feed-tiktok
 anchor: outcome
-status: Gate r1 @bba614be: adversary CHANGES, qa CHANGES, security-brief APPROVED
-next: the r1 fix round (adversary W1-W4, qa W1-W5, security N1-N2), then r2 with the same seats
+status: Gate r1 @bba614be: adversary CHANGES, qa CHANGES, security-brief APPROVED; r1 fixes ee4ecdac + bindings
+next: r2 delta re-confirmation with the same three seats
 design: Dean's device feedback on v1.380.0 Feed (2026-10-09, eight points + swipe left/right); kickoff defaults D1-D11. Base main 42ec865c (v1.380.0).
 builder: smart (the shared player's gestures in a new full-bleed host, a layout rework of every card, and a deliberate progress RESET: a data-loss surface)
 gate: r1 CHANGES (FULL: adversary, qa, security-brief)
@@ -380,3 +380,32 @@ routes classified; the excerpt `continuation=1` only skips feedServed.mark (remo
 openReadOnlyQuery is readOnly at the driver with constant SQL and no HTTP surface; the client renders server text through
 textContent only (no innerHTML / insertAdjacentHTML / eval; ui.toast spanText, ui.confirm textContent); URLs built server-side
 with encodeURIComponent; error bodies carry err.code only. Not confirmed without a diff: package.json / lockfile unchanged.
+
+### builder r2 (the fix after bba614be: ee4ecdac and the binding commit after it) - what changed per finding
+
+- adversary W1 / qa W1: Start over and Undo no longer ride the view's signal and carry the session captured at the tap; only the
+  card's redraw is skipped once the view is gone. The refused-Undo toast no longer promises a record no screen offers (ROADMAP
+  Planned: a way back after the toast). Proof: tools/feed-proof/start-over.js gained "Start over, navigate('/'), the toast's Undo":
+  `SUMMARY start-over: 2/2 pass (chromium+webkit)`, navUndo `{"view":"home","progress":{"timestamp":50,"duration":60,"updatedAt":
+  "2026-10-01T10:00:00.000Z"}}` in both engines (r1: "Could not undo", the place gone).
+- adversary W2 / qa W3: Undo's compare-and-set is stillAsReset - no stored row at all, no staged write (media and book coalescers),
+  no latch; ADV-1 adopted (409 'moved', the record kept, the newer 0 s place stands after the flush) plus a flushed 0 s row and a
+  staged book write after the reset.
+- adversary W3: A1 / M8 bound by ADV-3 (adopted); A6-A8 by a latch-only test per kind; C6 by a sentinel test; C11 by a delayed
+  continuation reply after the session was replaced; A14-A16 by a mix test per kind (two under-a-minute peeks newer than one real
+  place: the first card of the kind is the real one, fresh false); qa M13 by a resize test; qa S2 / adversary G5 by a touchmove
+  test (cancelled only while 2x is held).
+- adversary W4: the toast names the server's `previous` ("Started over: V (it was at 1:23:10)"); the confirm still names the card's.
+- qa W2: blocks seeded once when the card's state is born; a same-box rebuild redraws the same pages with their read marks; another
+  box re-lays and keeps what was read as a place (relayoutBook, shared with resize); past FEED_MAX_PAGES the card's end is never a
+  target; a started-over book card stays so when rebuilt.
+- qa W5 / S1 / S3 / S4, security-brief N1 / N2: the art sizes (161 / 130 / 119 px), the D10 wording (label, mix AND write guard), the
+  gestures summary says what WebKit covers, the report skips Start over records, Undo validates the recorded place (validRecordedPlace),
+  a hidden podcast on both routes (ADV-2).
+- The harness: fetch rejects on an aborted signal (as the platform's), each batch is fresh JSON (a shared fixture leaked a Start over
+  across tests), each session its own id.
+- Mutants on ee4ecdac (a /tmp git-archive sandbox): 15 / 15 killed after C2 (live session), C8 (Start over on the view's signal) and C9
+  (the report counting Start overs) first SURVIVED and got their tests.
+- Targeted: feed unit + feed integration + route censuses `# tests 203 # pass 203 # fail 0` (before the last bindings); then feed
+  unit + stale-continue `# pass 141 # fail 0`. Layout and gestures proofs re-run: unchanged (scrollers 0, hudOverTitle>0 0; 2/2).
+
