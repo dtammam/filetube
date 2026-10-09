@@ -388,3 +388,28 @@ test('W2 plain Autoplay: every batch is drawn against the SAME seed (R8) - the s
     assert.ok(h.log.slice(mark).some((u) => u === '/api/music/' + encodeURIComponent(playing)), 'it fetched the playing song itself (the rebuilt one-song queue)');
   } });
 });
+
+// ---- v1.378.0 music stations W4 (D11): the Pocket Radio row ----------------------------------------
+test('v1.378.0 D11 Pocket: Main Menu > Radio lists this viewer\'s stations (the shelf\'s list); a row starts the station with its NAME in the context, and the LCD reads "Radio: <name>"', async () => {
+  await H.boot({ skin: 'ipod', play: 'jz0', setup: (dom) => { realCodec(dom); dom.window.localStorage.setItem('ft-music-autoplay', '0'); dom.window.showToast = () => {}; }, run: async (h) => {
+    H.menu(h); await H.settleNet(); // Now Playing -> Main Menu
+    const main = H.labels(h);
+    assert.strictEqual(main[1], 'Radio', 'Radio right after Music: ' + main.join(' | '));
+    H.tapRow(h, 'Radio'); await H.settleNet();
+    const rows = H.labels(h);
+    // this library: no generated station (Rock has 4 artists but 17 songs; Jazz 40 songs from ONE artist); the built-in
+    // Recently added (every track carries addedAt) is the one station, the same list GET /api/music/stations serves
+    const served = (await api('/api/music/stations')).body.stations.filter((s) => !s.hidden).map((s) => s.name);
+    assert.deepStrictEqual(rows, served, 'the Radio level is the station list, in its order');
+    assert.ok(rows.includes('Recently added'), rows.join(' | '));
+    H.tapRow(h, 'Recently added'); await H.settleNet();
+    const calls = radioCalls(h.log);
+    assert.strictEqual(calls.length, 1, 'one station request');
+    assert.strictEqual(calls[0].searchParams.get('seed'), 'station:recent');
+    const first = h.spy.loads[h.spy.loads.length - 1];
+    assert.deepStrictEqual(ctxOf(first), { src: 'music', radio: 'station:recent', radioName: 'Recently added' }, 'the seed AND the name ride the context');
+    assert.strictEqual(h.dom.window.localStorage.getItem('ft-music-autoplay'), '1', 'Autoplay on so the station continues');
+    const album = h.dom.window.document.querySelector('#music-nowplaying-panel .ip-album');
+    assert.ok(album && album.textContent === 'Radio: Recently added', 'the LCD\'s album slot reads the station: ' + (album && album.textContent));
+  } });
+});

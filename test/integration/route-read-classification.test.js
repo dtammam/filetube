@@ -103,6 +103,7 @@ const READ = {
   '/api/music/liked': 'GATED',
   '/api/music/progress/:id': 'OWN_STATE',
   '/api/music/radio': 'GATED', // v1.368.0: a station's next batch, picked over visibleMusicList (the /api/music visible list); proven in music-radio-api.test.js
+  '/api/music/stations': 'GATED', // v1.378.0: the viewer's stations, counts and art, all built over visibleMusicList (D9); proven in music-stations-api.test.js
   '/api/music/resume': 'OWN_STATE',
   '/api/prefs': 'OWN_STATE', // v1.265: the caller's own preference rows, nothing else
 

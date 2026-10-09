@@ -56,6 +56,10 @@ test('the SPA tables carry the route (inert sibling list): deriveRouteView, acti
   const css = read('public/css/style.css');
   assert.match(css, /\.icon-feed \{ -webkit-mask-image: url\(\/assets\/icons\/feed\.svg\); mask-image: url\(\/assets\/icons\/feed\.svg\); \}/, 'the mask rule');
   assert.strictEqual((css.match(/\.icon-feed\b/g) || []).length, 3, 'the rule plus the two mask lists (size/colour, and the @supports background-color)');
+  // gate r3 (qa W-R3-1): the desktop column is the window minus the header and the main padding (never auto, never the phone tokens)
+  assert.match(css, /@media \(min-width: 769px\) \{\s*#view-root\[data-view="feed"\] \.feed-stack \{ height: calc\(100vh - var\(--header-h\) - 2 \* var\(--space-12\)\); height: calc\(100dvh - var\(--header-h\) - 2 \* var\(--space-12\)\); \}/, 'the desktop stack height');
+  assert.match(css, /^\.main-content \{[^}]*padding: var\(--space-12\);/m, 'the padding the rule subtracts is the one .main-content sets');
+  assert.match(fs.readFileSync(path.join(ROOT, 'public/css/tokens.css'), 'utf8'), /--header-h: 56px;/, 'the header token the rule subtracts');
   assert.match(src, /injectLibraryNavEntry\('feed', '\/feed', 'Feed', 'icon-feed'\)/, 'the entry asks for that glyph');
   // gate r1 (qa S6): the phone's Playlists sheet lists Feed (a user who hides the bar item still has a path)
   assert.match(src, /data-nav-sidebar="feed"[^\n]*\n[^\n]*href="\/feed" class="sidebar-item"><i class="' \+ mirroredGlyph\('feed', 'icon-feed'\)/, 'the Playlists sheet mirrors the Feed entry');

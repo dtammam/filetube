@@ -39,7 +39,9 @@ test('music.js registers the play handler per view, routes it through playFromMe
   assert.match(MUSIC, /REMOTE\.setMusicPlayHandler\(remotePlay\);/);
   // v1.352: the same abort also clears the chapter reader (music-remote-controller-wiring binds that half)
   assert.match(MUSIC, /signal\.addEventListener\('abort', function \(\) \{\s*REMOTE\.setMusicPlayHandler\(null\);/);
-  assert.match(MUSIC, /playFromMenu\(\{ tracks: req\.tracks, index: req\.index, play: \{ flat: true, label: 'From ' \+ /);
+  // v1.378.0: the play options are built first (a station sent from the phone adds its context) and stay FLAT
+  assert.match(MUSIC, /var play = \{ flat: true, label: 'From ' \+ \(req\.label \|\| 'another device'\) \};/);
+  assert.match(MUSIC, /playFromMenu\(\{ tracks: req\.tracks, index: req\.index, play: play \}\);/);
   assert.match(MUSIC, /remoteBtn\.addEventListener\('click', function \(\) \{ REMOTE\.toggle\(\); paintRemote\(\); \}, \{ signal \}\);/);
   assert.match(MUSIC, /var offRemote = REMOTE\.onChange\(paintRemote\);\s*signal\.addEventListener\('abort', offRemote\);/);
 });

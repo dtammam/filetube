@@ -4393,6 +4393,7 @@ function musicListProgressMap(userId, tracks) {
 // projectedLibraryTracks and ownTrack stay above (two register blocks and,
 // for the last two, /api/search + /api/home read them) and cross as deps.
 musicRoutes.registerLibraryRoutes(app, {
+  createRateLimiter: authGateLib.createRateLimiter, // v1.378.0: POST /api/music/plays is rate-bounded per user
   folderDisplayNameStore,
   getCachedDatabase,
   libraryAudio,

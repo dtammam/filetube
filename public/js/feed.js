@@ -363,6 +363,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var activeIndex = -1;
     var loading = false;
     var fetchSeq = 0; // the request a trailing release belongs to (gate r2, qa S-R2-1)
+    var refetchWanted = false; // a book write landed while a batch was in flight: fetch again when it lands (adversary P04)
     var exhaustedShown = false;
     var observer = null;
     var mediaEl = null; // the live media element while a media card plays
@@ -530,7 +531,12 @@ if (typeof module !== 'undefined' && module.exports) {
           if (activeIndex < 0 && cardEls.length) setActive(0);
         })
         .catch(function () { /* a failed batch leaves the stack as it is; the next swipe retries */ })
-        .then(function () { if (seq === fetchSeq) { loading = false; stack.setAttribute('aria-busy', 'false'); } });
+        .then(function () {
+          if (seq !== fetchSeq) return;
+          loading = false;
+          stack.setAttribute('aria-busy', 'false');
+          if (refetchWanted && !signal.aborted) { refetchWanted = false; fetchBatch(); }
+        });
     }
 
     function showEmpty() {
@@ -726,7 +732,10 @@ if (typeof module !== 'undefined' && module.exports) {
       }).then(function (r) {
         // gate r2 (adversary W6): the place moved, so a parked book is servable again - when nothing real is queued ahead
         // (a single-book library: the batch after this card was empty), fetch now rather than on the next swipe
-        if (r.ok && !cards.slice(index + 1).some(function (c) { return c && c.kind !== 'notice'; })) fetchBatch();
+        if (r.ok && !cards.slice(index + 1).some(function (c) { return c && c.kind !== 'notice'; })) {
+          if (loading) refetchWanted = true; // the prefetch that left beside this write saw the book still parked
+          else fetchBatch();
+        }
         if (r.status !== 409) return null;
         return r.json().then(function (body) {
           // gate r1 (qa S2): only a STALE refusal is news to the user; backward / not-served are the feed's own

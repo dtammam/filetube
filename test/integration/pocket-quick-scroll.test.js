@@ -222,7 +222,7 @@ test('C Extras > Games > Brick in the REAL music view: the view\'s own Brick hoo
     require(BRICK); // attaches window.FileTubeBrick (the harness has global.window = this jsdom window)
   }, run: async (h) => {
     menu(h);
-    assert.deepStrictEqual(labels(h), ['Music', 'Extras', 'Settings', 'Shuffle Songs', 'Now Playing'], 'the view supplies the hook: Extras shows');
+    assert.deepStrictEqual(labels(h), ['Music', 'Radio', 'Extras', 'Settings', 'Shuffle Songs', 'Now Playing'], 'the view supplies the hook: Extras shows');
     tapRow(h, 'Extras'); tapRow(h, 'Games');
     assert.deepStrictEqual(labels(h), ['Brick']);
     select(h);

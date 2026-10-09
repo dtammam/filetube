@@ -1,10 +1,10 @@
 'use strict';
 
 // [UNIT] v1.379.0 Feed mode, plan D13: the per-user user_feed_sessions table (schema
-// v35) against a real temp SQLite adapter: create / get / extend / finish / the
+// v36) against a real temp SQLite adapter: create / get / extend / finish / the
 // D5 move record, retention, the moves cap, cross-user isolation, the backup
 // carrier (export -> restore, a bundle without the key, a hostile bundle row),
-// the user cascade and the test reset. The v34 -> v35 migration is in
+// the user cascade and the test reset. The v35 -> v36 migration is in
 // db-sqlite-adapter.test.js beside the other floors.
 
 const { test, beforeEach, afterEach } = require('node:test');

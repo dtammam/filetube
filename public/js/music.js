@@ -199,6 +199,66 @@ function buildMusicShelfHtml(title, seeallTab, tilesHtml) {
     '</section>';
 }
 
+// ---- v1.378.0 music STATIONS (plan docs/exec-plans/completed/2026-10-09-music-stations.md, D10) ----
+// A station card: a 2x2 mosaic of its members' art (the server's artIds, the same representatives the
+// album / artist cards use) over the name and its subtitle ("52 songs", "Builds as you listen"), and a
+// menu button beside it (Edit / Delete for the viewer's own, Hide / Unhide for the rest). The tile and
+// the menu are siblings (a button never nests a button); both carry data-station-key. Every string
+// from the server is escaped here (a station name is the viewer's own text: never markup).
+function stationIsCustom(key) { return typeof key === 'string' && key.indexOf('c:') === 0; }
+function buildStationCardHtml(st) {
+  var ids = (Array.isArray(st.artIds) && st.artIds.length) ? st.artIds.slice(0, 4) : [''];
+  var vs = Array.isArray(st.artVs) ? st.artVs : [];
+  var tiles = ids.map(function (id, i) {
+    return '<img class="art-shimmer" src="' + escapeMusicHtml(albumArtSrc(id || '', musicArtCardPx(), vs[i] || '')) + '" alt="" loading="lazy" />';
+  }).join('');
+  var name = st.name || 'Station';
+  return '' +
+    '<div class="music-station-card' + (st.hidden ? ' is-hidden' : '') + '" data-station-key="' + escapeMusicHtml(st.key) + '">' +
+    '<button type="button" class="ui-tile music-station-tile" data-station-key="' + escapeMusicHtml(st.key) + '" title="' + escapeMusicHtml('Play ' + name) + '">' +
+    '<span class="music-station-mosaic" data-tiles="' + ids.length + '">' + tiles + '</span>' +
+    '<span class="music-station-name" title="' + escapeMusicHtml(name) + '">' + escapeMusicHtml(name) + '</span>' +
+    '<span class="music-station-meta">' + escapeMusicHtml(st.hidden ? 'Hidden' : (st.subtitle || '')) + '</span>' +
+    '</button>' +
+    '<button type="button" class="ui-btn ui-btn--plain ui-btn--sm ui-btn--icon music-station-more" data-station-key="' + escapeMusicHtml(st.key) + '" aria-haspopup="true" aria-label="' + escapeMusicHtml('More for ' + name) + '">' + songIconHtml('more_vert') + '</button>' +
+    '</div>';
+}
+// The "+ New station" tile at the end of the shelf (D10): the one way to the editor from the EMPTY
+// state too (LESSONS 5: an add affordance that needs the thing to exist can never create it).
+function buildNewStationCardHtml() {
+  return '<button type="button" class="ui-tile music-station-card music-station-new" title="New station">' +
+    '<span class="music-station-mosaic music-station-plus" data-tiles="1">' + songIconHtml('add') + '</span>' +
+    '<span class="music-station-name">New station</span><span class="music-station-meta">Your own mix</span></button>';
+}
+// The Stations shelf: the shown stations (group main, not hidden) and New station; a "More stations"
+// toggle in the head when any station is under More or hidden (D5c, D8), which unfolds a second strip
+// (the rest, then the hidden ones marked Hidden with Unhide in their menu). `expanded` is the toggle's
+// state. An empty list still shows the shelf with New station: a library too small for any
+// generated station can still hold the viewer's own.
+function buildStationsShelfHtml(stations, expanded, failed) {
+  var list = Array.isArray(stations) ? stations : [];
+  // gate r1 qa S5 (the home page's own rule, UI pass S7 D9): a failed load is an ERROR state with Retry, never the empty library
+  if (failed) {
+    return '<section class="music-shelf music-stations"><div class="music-shelf-head"><h3 class="music-shelf-title">Stations</h3></div>' +
+      '<div class="music-stations-error" role="status">Could not load your stations. <button type="button" class="ui-btn ui-btn--plain ui-btn--sm music-stations-retry"><span class="ui-btn__label">Retry</span></button></div></section>';
+  }
+  var shown = list.filter(function (st) { return st && st.group !== 'more' && !st.hidden; });
+  var rest = list.filter(function (st) { return st && (st.group === 'more' || st.hidden); });
+  var head = '<div class="music-shelf-head"><h3 class="music-shelf-title">Stations</h3>' +
+    (rest.length ? '<button type="button" class="ui-btn ui-btn--plain ui-btn--sm music-stations-toggle" aria-expanded="' + (expanded ? 'true' : 'false') + '"><span class="ui-btn__label">' + (expanded ? 'Fewer stations' : 'More stations') + '</span></button>' : '') +
+    '</div>';
+  var more = (expanded && rest.length)
+    ? '<div class="music-shelf-strip music-stations-more">' + rest.map(buildStationCardHtml).join('') + '</div>'
+    : '';
+  return '<section class="music-shelf music-stations">' + head +
+    '<div class="music-shelf-strip">' + shown.map(buildStationCardHtml).join('') + buildNewStationCardHtml() + '</div>' +
+    more + '</section>';
+}
+// The parts of a station editor's comma list: trimmed, empty dropped (the server bounds the count).
+function splitStationList(raw) {
+  return String(raw == null ? '' : raw).split(/[,;\n]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+}
+
 
 // A song row. UI pass S7 (plan D4.3): a ui-row in the song ui-list (music.js
 // SONG_LIST_OPEN) with RESERVED columns, so an optional child never moves one (AC5):
@@ -389,6 +449,7 @@ function buildNowPlayingPanelHtml(np, upNext) {
   var subArtist = (np.artistTap !== false && typeof np.artist === 'string') ? np.artist : '';
   var panelNp = { title: np.title, subline: subline, subArtist: subArtist };
   if (typeof np.artistTitle === 'string' && np.artistTitle) panelNp.subArtistTitle = np.artistTitle; // gate r2 S4: "Go to channel" for a listen video
+  if (typeof np.radioName === 'string' && np.radioName) panelNp.context = 'Radio: ' + np.radioName; // v1.378.0 (D10): the station playing
   return S.buildPanelHtml(panelNp, rows);
 }
 
@@ -616,8 +677,11 @@ function buildStickyBarHtml(drill, tracks) {
 // id plays as raw video). Today the album gate saves this (listen tracks carry
 // album: '') - if listen tracks ever gain an album string, this id-equality
 // guard alone no longer distinguishes them.
-function deriveNowPlayingLabel(np, currentId) {
+// v1.378.0 (D10): while a named STATION plays (`radioName`, the queue context's station name) the
+// line reads "Radio: <name>" instead - the station, not the song's album, is what is playing.
+function deriveNowPlayingLabel(np, currentId, radioName) {
   if (!np || !currentId || np.id !== currentId) return '';
+  if (typeof radioName === 'string' && radioName.trim()) return 'Radio: ' + radioName.trim();
   var album = np.album && String(np.album).trim();
   return album ? 'Playing from ' + album : '';
 }
@@ -1100,6 +1164,7 @@ if (typeof module !== 'undefined' && module.exports) {
     buildNowPlayingPanelHtml, musicArtUrl, musicAmbientArtUrl,
     MUSIC_ART_SIZES, MUSIC_ART_DPR_CAP, MUSIC_ART_ROW_PX, MUSIC_ART_DRILL_PX, musicArtCardPx, musicArtSize, albumArtSrc, musicArtId, musicArtV,
     drillYear, drillAlbumCount, buildDrillHeaderHtml, buildStickyBarHtml, deriveNowPlayingLabel,
+    buildStationCardHtml, buildStationsShelfHtml, buildNewStationCardHtml, splitStationList, stationIsCustom, // v1.378.0 stations
     chapterAlbumBaseId, isChapterAlbum, chapterStamp, buildListenChapterTracks, channelFolderOf, nowPlayingFrom,
     MUSIC_TABS, MUSIC_DEFAULT_TAB, normalizeMusicTab,
     MUSIC_SORTS, MUSIC_SORT_DEFAULTS, normalizeMusicSort,
@@ -1217,6 +1282,125 @@ if (typeof module !== 'undefined' && module.exports) {
     if (at !== -1) autoplayPlayedIds.splice(at, 1);
     autoplayPlayedIds.push(id);
     if (autoplayPlayedIds.length > 2000) autoplayPlayedIds.shift();
+  }
+  // ---- v1.378.0 PLAY COUNTS (plan docs/exec-plans/completed/2026-10-09-music-stations.md, D1) ------
+  // What the audio that plays HERE did, reported to POST /api/music/plays per SEGMENT (a chapter
+  // `<id>::c<n>` is its own track; its span is the segment, its start the chapter's offset):
+  //   play   = heard PLAY_MIN_SEC (30 s) or half the segment, whichever comes first - counted once per
+  //            load; only real playback counts (timeupdate steps of at most PLAY_MAX_STEP s: a seek is a
+  //            jump and adds nothing);
+  //   finish = the playhead is in the last FINISH_TAIL (5 %) of the segment (a seek that lands past the
+  //            segment is a move, not a finish), or the element ended;
+  //   skip   = the segment was LEFT (a new load, a chapter roll or seek past it) before the play
+  //            threshold and without a finish - a tap on another song, Next, a Pocket / remote Next.
+  //            A queue that advances at the end has already finished, so it is never a skip.
+  // Module-scoped like autoplayPlayedIds: a dock-return re-init (seedNowPlayingFromPlayer, no new
+  // load) keeps the running tally, so one song never counts twice. Counted where the audio PLAYS:
+  // while this device drives a speaker, playAt never loads here (remotePlayAt) and the speaker's own
+  // tab reports under ITS signed-in user; the controller's proxy element fires no timeupdate.
+  // Gate r1 qa C1: the tally OUTLIVES the view. Its listeners sit on the player element itself with
+  // NO view signal (bindPlayCountTo, once per element): the shared #media-player host survives the
+  // #view-root swap and the player's own ended-advance keeps playing music while the user browses
+  // another page, so a song that ends in the dock still finishes (and never counts as a skip), and a
+  // chaptered file keeps rolling its segments here too (the tally carries the file's chapter list).
+  // Gate r1 qa S8: a load that never played a second (a 404 stream, a pick replaced at once) is no
+  // skip - a skip needs real playback first (`started`). Gate r2 qa N1: within ONE file load a segment
+  // re-entered (a looped chapter, a seek back into an earlier chapter, the file-level Loop's rewind)
+  // never counts again - the load's `done` map remembers what each segment already posted, so "once
+  // per load" holds for a chaptered file exactly as for a plain song.
+  var PLAY_MIN_SEC = 30;
+  var PLAY_MAX_STEP = 4; // one timeupdate step of real playback, with iOS's sparse ticks (the LOOP / EXIT siblings' 4 s; gate r1 qa W2); a seek is not
+  var FINISH_TAIL = 0.05;
+  var playCount = null; // { id, start, span, listened, lastT, started, played, finished, chapters, done }
+  var playCountBound = typeof WeakSet === 'function' ? new WeakSet() : null;
+  function bindPlayCountTo(mp) {
+    if (!mp || typeof mp.addEventListener !== 'function') return;
+    if (playCountBound) { if (playCountBound.has(mp)) return; playCountBound.add(mp); } else if (mp.__ftPlayCount) return; else mp.__ftPlayCount = true;
+    mp.addEventListener('timeupdate', function () { playCountTick(Number(mp.currentTime), Number(mp.duration)); });
+    mp.addEventListener('ended', playCountEnded);
+  }
+  // The chapter segments of a chaptered file (sorted by start), from the queue the item was played
+  // from, so the tally can roll on its own while the view is away: [{ id, start, span }].
+  function playCountChaptersOf(item, list) {
+    if (!item || item.source !== 'library-chapter' || !Array.isArray(list)) return null;
+    var base = String(item.id).replace(/::c\d+$/, '');
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      var x = list[i];
+      if (x && x.source === 'library-chapter' && String(x.id).replace(/::c\d+$/, '') === base) out.push({ id: x.id, start: Number(x.chapterStartSec) || 0, span: Number(x.durationSec) || 0 });
+    }
+    out.sort(function (a, b) { return a.start - b.start; });
+    return out.length > 1 ? out : null;
+  }
+  function playCountPost(id, kind) {
+    try {
+      var p = fetch('/api/music/plays', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: id, kind: kind }), keepalive: true });
+      if (p && typeof p.catch === 'function') p.catch(function () { /* best-effort: a count, never playback */ });
+    } catch (_) { /* offline */ }
+  }
+  // A new segment is heard: close the previous one (a skip when it was left early), open this one.
+  // A listen video (a watchable item in Music's clothes) is not a music track: nothing is counted.
+  function playCountBegin(item, list) {
+    if (playCount && item && playCount.id === item.id) return; // the same segment (a reflect of the roll the tally already made)
+    // the same FILE LOAD rolling to another of its chapters keeps the load's chapter list and its done map
+    var sameLoad = !!(playCount && playCount.chapters && item && item.source === 'library-chapter' && playCount.chapters.some(function (c) { return c.id === item.id; }));
+    var chapters = sameLoad ? playCount.chapters : playCountChaptersOf(item, list);
+    var done = sameLoad ? playCount.done : {};
+    playCountEnd();
+    if (!item || typeof item.id !== 'string' || !item.id || item.listen) return;
+    var isChapter = item.source === 'library-chapter';
+    var was = Object.prototype.hasOwnProperty.call(done, item.id) ? done[item.id] : null;
+    playCount = { id: item.id, start: isChapter ? (Number(item.chapterStartSec) || 0) : 0, span: Number(item.durationSec) || 0, listened: 0, lastT: null, started: false,
+      played: !!(was && was.played), finished: !!(was && was.finished), chapters: chapters, done: done };
+  }
+  function playCountMark(pc, field) {
+    pc[field] = true;
+    if (!Object.prototype.hasOwnProperty.call(pc.done, pc.id)) pc.done[pc.id] = { played: false, finished: false };
+    pc.done[pc.id][field] = true;
+    playCountPost(pc.id, field === 'played' ? 'play' : 'finish');
+  }
+  // The segment is left: a skip when it PLAYED (at least one real step) and reached neither the play
+  // threshold nor its end.
+  function playCountEnd() {
+    var pc = playCount;
+    playCount = null;
+    if (pc && pc.started && !pc.played && !pc.finished) playCountPost(pc.id, 'skip');
+  }
+  // The element ended: the segment finished (once), and the tally stays - a Loop replay of the same
+  // load counts nothing more (a plain song, or a chaptered file whose segments the done map remembers).
+  function playCountEnded() {
+    var pc = playCount;
+    if (pc && !pc.finished) playCountMark(pc, 'finished');
+  }
+  // One timeupdate: `t` the element's position (file-absolute), `dur` its duration (for a plain
+  // track whose item carried no length).
+  function playCountTick(t, dur) {
+    var pc = playCount;
+    if (!pc || !isFinite(t)) return;
+    // a chaptered file rolled into another segment (the view may be away: nothing else would notice)
+    if (pc.chapters) {
+      var cur = null;
+      for (var k = 0; k < pc.chapters.length; k++) { if (t >= pc.chapters[k].start - 0.25) cur = pc.chapters[k]; else break; }
+      if (cur && cur.id !== pc.id) {
+        playCountBegin({ id: cur.id, source: 'library-chapter', chapterStartSec: cur.start, durationSec: cur.span }, null);
+        pc = playCount;
+        if (!pc) return;
+      }
+    }
+    var span = pc.span > 0 ? pc.span : ((isFinite(dur) && dur > pc.start) ? dur - pc.start : 0);
+    if (pc.lastT !== null) {
+      var d = t - pc.lastT;
+      if (d > 0 && d <= PLAY_MAX_STEP) { pc.listened += d; pc.started = true; }
+    }
+    pc.lastT = t;
+    if (!pc.played) {
+      var need = span > 0 ? Math.min(PLAY_MIN_SEC, span / 2) : PLAY_MIN_SEC;
+      if (pc.listened >= need) playCountMark(pc, 'played');
+    }
+    // the last 5 % of THIS segment: a position inside it (or one playback step past its end - a sparse
+    // timeupdate), never a seek that already left it (that is a chapter moved past, not finished)
+    var rel = t - pc.start;
+    if (!pc.finished && span > 0 && rel >= span * (1 - FINISH_TAIL) && rel < span + PLAY_MAX_STEP) playCountMark(pc, 'finished');
   }
   // v1.250 (F-UNIFY): the current init's IN-TAB shared-engine instance. Module-scoped so
   // destroy() can unbind it on the #view-root swap - the engine binds its own listeners
@@ -1626,6 +1810,7 @@ if (typeof module !== 'undefined' && module.exports) {
         posLabel: mmssMusic(pos), remLabel: dur > 0 ? ('-' + mmssMusic(dur - pos)) : '',
         curNum: 0, total: 0, // no "N of M": the PC's queue is not this device's
         volume: remoteVolume(), // v1.353: the speaker's player volume (null: it has not said)
+        radio: (st.radio && typeof st.radio.name === 'string' && st.radio.name) ? { name: st.radio.name } : null, // v1.378.0 (D12): the station the speaker plays
       };
     }
     function remotePlayAt(i) {
@@ -1640,7 +1825,10 @@ if (typeof module !== 'undefined' && module.exports) {
         if (q && !q.listen && typeof q.id === 'string') { if (j === i) idx = ids.length; ids.push(q.id); }
       }
       remoteDocked = false;
-      RC.play(ids, idx);
+      // v1.378.0 (D11): a named station starts ON the speaker as a station - its seed and name ride the
+      // play command, so the speaker's own queue continues it and shows "Radio: <name>"
+      var rseed = (queueCtx && typeof queueCtx.radio === 'string' && queueCtx.radio.indexOf('station:') === 0) ? queueCtx.radio : '';
+      RC.play(ids, idx, rseed ? { seed: rseed, name: stationRadioName() } : null);
     }
     function playOnItems() {
       var here = (window.FileTube && typeof window.FileTube.getDeviceLabel === 'function' && window.FileTube.getDeviceLabel()) || 'device';
@@ -1729,6 +1917,7 @@ if (typeof module !== 'undefined' && module.exports) {
         posLabel: mmssMusic(pos), remLabel: dur > 0 ? ('-' + mmssMusic(dur - pos)) : '',
         // iPod footer "N of M": the current track's 1-based place in the whole queue.
         curNum: ci + 1, total: queue.length,
+        radio: stationRadioName() ? { name: stationRadioName() } : null, // v1.378.0 (D11): "Radio: <name>" on every skin
       };
     }
     // v1.250 (F-UNIFY): the skin render/gesture/sticker ENGINE lives in the shared
@@ -1809,7 +1998,7 @@ if (typeof module !== 'undefined' && module.exports) {
           keyboardSearch: function () { var MS = window.FileTubeMusicSkins; return !!(MS && typeof MS.keyboardSearchOn === 'function' && MS.keyboardSearchOn()); },
           onPlay: function (req) { playFromMenu(req); },
           onShuffleAll: shuffleAllFromMenu,
-          onStartRadio: function (seed) { startRadio(seed); }, // v1.368.0: a level's Start radio row
+          onStartRadio: function (seed, name) { startRadio(seed, null, name); }, // v1.368.0: a level's Start radio row; v1.378.0: a station row with its name
           hasCurrent: function () { return remoteOn() || hasCurrentMusicTrack(); },
           hasPlayOn: function () { return !!RC; },
           onPlayOn: remoteChoose,
@@ -2010,6 +2199,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var t = null, ti = -1;
       for (var i = 0; i < queue.length; i++) { if (queue[i] && queue[i].id === id) { t = queue[i]; ti = i; break; } }
       if (t) nowPlaying = nowPlayingFrom(t);
+      playCountBegin(t, queue); // v1.378.0: the chapter that rolled on is heard now (a no-op when the tally already rolled on its own tick)
       // v1.311 (Dean, tech-debt #230 part i): a chaptered album is ONE file whose `::c`
       // chapters are queue entries; the playhead rolls through them WITHOUT a reload, so
       // registerTrackNav ran exactly once (at load, on the STARTED chapter) and never again.
@@ -2189,6 +2379,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // seek-back lands before reflectChapter can advance the displayed chapter past the boundary.
       // enforceChapterExit is bound between them (v1.311): after the loop (Loop chapter outranks the
       // exit) and before reflect (so the solo-chapter identity guard still holds on the boundary tick).
+      bindPlayCountTo(mp); // v1.378.0 play counts: bound once per ELEMENT, not per view (gate r1 qa C1); first, so it reads the position before reflectChapter rolls
       mp.addEventListener('timeupdate', enforceChapterLoop, { signal: signal });
       mp.addEventListener('timeupdate', enforceChapterExit, { signal: signal });
       mp.addEventListener('timeupdate', reflectChapter, { signal: signal });
@@ -2932,11 +3123,14 @@ if (typeof module !== 'undefined' && module.exports) {
       // the live player id) so the label matches the panel after a chapter roll (gate W2) and
       // still blanks for a video/book on the shared host.
       var currentId = effectiveCurrentId();
-      var label = deriveNowPlayingLabel(nowPlaying, currentId);
+      var radioName = stationRadioName();
+      var label = deriveNowPlayingLabel(nowPlaying, currentId, radioName);
       if (label) {
         nowPlayingEl.textContent = label;
         nowPlayingEl.hidden = false;
-        nowPlayingEl.setAttribute('data-album-key', (nowPlaying && nowPlaying.albumKey) || '');
+        // a station line names no album to open (a tap on it does nothing); the album line keeps its key
+        if (radioName) nowPlayingEl.removeAttribute('data-album-key');
+        else nowPlayingEl.setAttribute('data-album-key', (nowPlaying && nowPlaying.albumKey) || '');
       } else {
         nowPlayingEl.hidden = true;
         nowPlayingEl.removeAttribute('data-album-key');
@@ -3034,7 +3228,7 @@ if (typeof module !== 'undefined' && module.exports) {
       nowPlayingPanel.className = 'music-nowplaying-panel';
       // v1.317 gate r1 W2: the artist line is a control only when it has somewhere to go
       // (artistTapAvailable: a listen video with no channel renders the plain line).
-      nowPlayingPanel.innerHTML = buildNowPlayingPanelHtml(Object.assign({}, nowPlaying, { artistTap: artistTapAvailable(), artistTitle: artistTapTitle() }), rows);
+      nowPlayingPanel.innerHTML = buildNowPlayingPanelHtml(Object.assign({}, nowPlaying, { artistTap: artistTapAvailable(), artistTitle: artistTapTitle(), radioName: stationRadioName() }), rows);
       nowPlayingPanel.hidden = false;
       revealArt(nowPlayingPanel); // v1.339 L1: the panel's on-screen art reveals together
       // v1.224 (Dean): the up-next now includes played history above the current
@@ -3195,11 +3389,23 @@ if (typeof module !== 'undefined' && module.exports) {
     var REMOTE = window.FileTube && window.FileTube.remote;
     if (REMOTE && typeof REMOTE.setMusicPlayHandler === 'function') {
       var remotePlay = function (req) {
-        playFromMenu({ tracks: req.tracks, index: req.index, play: { flat: true, label: 'From ' + (req.label || 'another device') } });
+        // v1.378.0 (D11): a station sent from the phone is a STATION here too - its seed and name in the
+        // queue context (the next batches draw against it, the line says "Radio: <name>"), its songs
+        // remembered as picks, Autoplay turned on as Start radio does (the station could not continue otherwise)
+        var radio = req.radio && typeof req.radio.seed === 'string' && req.radio.seed.indexOf('station:') === 0 ? req.radio : null;
+        var play = { flat: true, label: 'From ' + (req.label || 'another device') };
+        if (radio) {
+          play.ctx = { src: 'music', radio: radio.seed };
+          if (typeof radio.name === 'string' && radio.name.trim()) play.ctx.radioName = radio.name.trim().slice(0, 60);
+          play.label = 'Radio';
+          if (!autoplayEnabled()) { setAutoplayEnabled(true); reflectPlaybackModes(); }
+          markAutoplayPicks(Array.isArray(req.tracks) ? req.tracks.slice(1) : []);
+        }
+        playFromMenu({ tracks: req.tracks, index: req.index, play: play });
       };
       REMOTE.setMusicPlayHandler(remotePlay);
       // v1.354: this PC's queue, for the phone's list (the target cuts it to 100 either side and reads it each report)
-      if (typeof REMOTE.setQueueReader === 'function') REMOTE.setQueueReader(function () { var ci = currentSkinIndex(); return ci >= 0 && ci < queue.length ? { list: queue, index: ci } : null; });
+      if (typeof REMOTE.setQueueReader === 'function') REMOTE.setQueueReader(function () { var ci = currentSkinIndex(); return ci >= 0 && ci < queue.length ? { list: queue, index: ci, radio: stationRadioName() ? { name: stationRadioName() } : null } : null; }); // v1.378.0 (D12): the station playing rides the report
       // v1.352: the chapter on screen is the one this PC reports to the phone (reflectChapter rolls it)
       if (typeof REMOTE.setNowPlayingResolver === 'function') REMOTE.setNowPlayingResolver(function () { return chapterViewId; });
       signal.addEventListener('abort', function () {
@@ -3278,6 +3484,9 @@ if (typeof module !== 'undefined' && module.exports) {
     var queue = [];
     var queueCtx = null;
     var queueCtxEncoded = '';
+    var homeStations = []; // v1.378.0: the Stations shelf's last payload (GET /api/music/stations)
+    var homeStationsExpanded = false; // the "More stations" toggle
+    var homeStationsFailed = false; // the last GET failed: the shelf shows an error with Retry (gate r1 qa S5)
     var urlParams = new URLSearchParams(window.location.search);
 
     // v1.103: sort is persisted PER TAB (sorting Songs by duration must not
@@ -3550,10 +3759,14 @@ if (typeof module !== 'undefined' && module.exports) {
           fetchJson('/api/music/artists?limit=12&sort=newest'),
           fetchJson('/api/music/albums?limit=12&sort=newest'),
           fetchJson('/api/music?filter=recent-listening&limit=60'),
+          // v1.378.0 (D10): the Stations shelf; a failure here is an ERROR state with Retry in the shelf (gate r1 qa S5), never "no stations"
+          fetchJson('/api/music/stations').catch(function () { return { stations: null }; }),
         ]);
         artists = Array.isArray(res[0].items) ? res[0].items : [];
         albums = Array.isArray(res[1].items) ? res[1].items : [];
         recent = Array.isArray(res[2].items) ? res[2].items : [];
+        homeStationsFailed = !(res[3] && Array.isArray(res[3].stations));
+        homeStations = homeStationsFailed ? [] : res[3].stations;
       } catch (_) {
         // UI pass S7 (D9): a failed load is an ERROR state with Retry, never the empty library
         if (typeof stillMine === 'function' && !stillMine()) return;
@@ -3574,6 +3787,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var html = '';
       if (recentArtists.length) html += buildMusicShelfHtml('Recently played', '', recentArtists.map(buildRecentArtistTileHtml).join(''));
       if (artists.length) html += buildMusicShelfHtml('Your artists', 'artists', artists.map(buildArtistCardHtml).join(''));
+      html += buildStationsShelfHtml(homeStations, homeStationsExpanded, homeStationsFailed); // v1.378.0 (D10): above the albums
       if (albums.length) html += buildMusicShelfHtml('Recently added', 'albums', albums.map(buildAlbumCardHtml).join(''));
       if (typeof stillMine === 'function' && !stillMine()) return; // gate r2 (adversary S4a): a menu pick owns the view now
       content.innerHTML = '<div class="music-home">' + html + '</div>';
@@ -3916,6 +4130,25 @@ if (typeof module !== 'undefined' && module.exports) {
         render().catch(function () {});
         return;
       }
+      // v1.378.0 (D10): the Stations shelf
+      var stationMore = e.target.closest('.music-station-more');
+      if (stationMore) {
+        e.preventDefault();
+        e.stopPropagation();
+        openStationMenu(stationMore.getAttribute('data-station-key'), stationMore);
+        return;
+      }
+      if (e.target.closest('.music-station-new')) { openStationEditor(null); return; }
+      if (e.target.closest('.music-stations-retry')) { refreshStations(); return; } // gate r1 qa S5
+      var stationsToggle = e.target.closest('.music-stations-toggle');
+      if (stationsToggle) { homeStationsExpanded = !homeStationsExpanded; repaintStationsShelf(); return; }
+      var stationTile = e.target.closest('.music-station-tile');
+      if (stationTile) {
+        var skey = stationTile.getAttribute('data-station-key');
+        var sdef = stationByKey(skey);
+        if (skey) startRadio('station:' + skey, null, sdef ? sdef.name : '');
+        return;
+      }
       var albumCard = e.target.closest('.music-album-card');
       if (albumCard) {
         var key = albumCard.getAttribute('data-album-key');
@@ -3969,6 +4202,150 @@ if (typeof module !== 'undefined' && module.exports) {
     // re-checked against it (a re-sorted queue never acts on the wrong track: LESSONS 4, the
     // row menu closes over the DATA id). Save to device is the stream route's download arm (the
     // v1.72 anchor, now a menu item); Go to artist opens the in-Music artist drill.
+    // ---- v1.378.0 music stations (D7, D8, D10): the card menu, the editor, the shelf refresh ----
+    function stationByKey(key) {
+      for (var i = 0; i < homeStations.length; i++) if (homeStations[i] && homeStations[i].key === key) return homeStations[i];
+      return null;
+    }
+    // Repaint the Stations shelf IN PLACE from `homeStations` (a toggle, a hide, a save) - the rest of
+    // the home page stays as it is; off the home tab there is nothing to repaint.
+    function repaintStationsShelf() {
+      var sec = content && content.querySelector('.music-stations');
+      if (!sec) return;
+      var tmp = document.createElement('div');
+      tmp.innerHTML = buildStationsShelfHtml(homeStations, homeStationsExpanded, homeStationsFailed);
+      sec.replaceWith(tmp.firstChild);
+      revealMusicArt();
+    }
+    // Re-read the viewer's stations (after a save / delete / hide, or the error state's Retry) and repaint the shelf.
+    function refreshStations() {
+      return fetchJson('/api/music/stations').then(function (d) {
+        if (signal.aborted) return;
+        homeStationsFailed = !(d && Array.isArray(d.stations));
+        homeStations = homeStationsFailed ? [] : d.stations;
+        repaintStationsShelf();
+      }).catch(function () {
+        if (signal.aborted) return;
+        homeStationsFailed = true; // gate r1 qa S5: a failed read is an error state, never "no stations"
+        repaintStationsShelf();
+      });
+    }
+    function stationPost(method, path, body) {
+      return fetch(path, { method: method, headers: { 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body) })
+        .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, body: j }; }); });
+    }
+    function openStationMenu(key, anchor) {
+      var U = window.ui;
+      var st = stationByKey(key);
+      if (!st || !U || typeof U.menu !== 'function') return;
+      var items = [];
+      if (stationIsCustom(st.key)) {
+        items.push({ label: 'Edit', icon: 'edit', onSelect: function () { openStationEditor(st); } });
+        items.push({ label: 'Delete', icon: 'delete', danger: true, onSelect: function () {
+          var ask = typeof U.confirm === 'function' ? U.confirm({ title: 'Delete this station?', body: st.name, confirmLabel: 'Delete', danger: true, signal: signal }) : Promise.resolve(true);
+          Promise.resolve(ask).then(function (yes) {
+            if (!yes || signal.aborted) return;
+            return stationPost('DELETE', '/api/music/stations/' + encodeURIComponent(st.def ? st.def.id : st.key.slice(2))).then(function (r) {
+              if (!r.ok) throw new Error('delete'); // gate r1 qa S4: a refused delete is said, never shown as done
+              return refreshStations();
+            });
+          }).catch(function () { if (typeof window.showToast === 'function') window.showToast('Could not delete the station.'); });
+        } });
+      } else {
+        items.push({ label: st.hidden ? 'Unhide' : 'Hide', icon: st.hidden ? 'visibility' : 'visibility_off', onSelect: function () {
+          stationPost('POST', '/api/music/stations/hidden', { key: st.key, hidden: !st.hidden }).then(function (r) {
+            if (!r.ok) throw new Error('hide');
+            return refreshStations();
+          }).catch(function () { if (typeof window.showToast === 'function') window.showToast('Could not change the station.'); });
+        } });
+      }
+      U.menu({ title: st.name, items: items, anchor: anchor, signal: signal });
+    }
+    // The editor (D7): name + any of genres / artists / words / a year range / exclude words (comma
+    // lists), "stay strict" (D4), a LIVE count (POST /preview, debounced) and Save, disabled while the
+    // definition matches nothing (a station that matches nothing cannot be saved). `existing` = the
+    // station to edit (its def), null = a new one. Field values are set as VALUES, never markup.
+    function openStationEditor(existing) {
+      var U = window.ui;
+      if (!U || typeof U.sheet !== 'function' || typeof U.field !== 'function') return;
+      var def = (existing && existing.def) || {};
+      var frag = document.createDocumentFragment();
+      var fName = U.field({ label: 'Name', value: def.name || '', placeholder: 'Late night chill' });
+      var fGenres = U.field({ label: 'Genres', value: (def.genres || []).join(', '), placeholder: 'chill, ambient', help: 'Comma separated. Any of them.' });
+      var fArtists = U.field({ label: 'Artists', value: (def.artists || []).join(', '), placeholder: 'Nas, Queen' });
+      var fWords = U.field({ label: 'Words', value: (def.words || []).join(', '), placeholder: 'lofi, radio', help: 'Whole words in the title, album, genre or channel.' });
+      var fFrom = U.field({ label: 'From year', value: def.yearFrom || '', placeholder: '1990' });
+      var fTo = U.field({ label: 'To year', value: def.yearTo || '', placeholder: '1999' });
+      var fExclude = U.field({ label: 'Leave out words', value: (def.exclude || []).join(', '), placeholder: 'live, remix' });
+      var strictOn = def.strict === true;
+      var strictRow = document.createElement('div');
+      strictRow.className = 'music-station-strict';
+      var strictLabel = document.createElement('span');
+      strictLabel.className = 'music-station-strict-label';
+      strictLabel.textContent = 'Stay strict: never widen past these songs';
+      var sw = (typeof U.switch === 'function') ? U.switch({ checked: strictOn, label: 'Stay strict', onChange: function (v) { strictOn = v; } }) : null;
+      strictRow.appendChild(strictLabel);
+      if (sw) strictRow.appendChild(sw);
+      var count = document.createElement('p');
+      count.className = 'music-station-count';
+      count.setAttribute('role', 'status');
+      count.textContent = 'Add a genre, an artist, a word or years';
+      var acts = document.createElement('div');
+      acts.className = 'ui-confirm__actions';
+      var cancel = U.button({ variant: 'secondary', label: 'Cancel' });
+      var save = U.button({ variant: 'primary', label: existing ? 'Save' : 'Create' });
+      save.disabled = true;
+      acts.appendChild(cancel); acts.appendChild(save);
+      [fName.el, fGenres.el, fArtists.el, fWords.el, fFrom.el, fTo.el, fExclude.el, strictRow, count, acts].forEach(function (n) { frag.appendChild(n); });
+      var ctrl = U.sheet({ variant: 'dialog', title: existing ? 'Edit station' : 'New station', content: frag, initialFocus: fName.input, signal: signal });
+      function readDef() {
+        return {
+          name: fName.input.value, genres: splitStationList(fGenres.input.value), artists: splitStationList(fArtists.input.value),
+          words: splitStationList(fWords.input.value), yearFrom: fFrom.input.value.trim() || null, yearTo: fTo.input.value.trim() || null,
+          exclude: splitStationList(fExclude.input.value), strict: strictOn,
+        };
+      }
+      var lastCount = 0;
+      var previewTimer = null;
+      var previewGen = 0;
+      function preview() {
+        var d = readDef();
+        var gen = ++previewGen;
+        var hasAxis = d.genres.length || d.artists.length || d.words.length || d.yearFrom || d.yearTo;
+        if (!hasAxis) { lastCount = 0; count.textContent = 'Add a genre, an artist, a word or years'; save.disabled = true; return; }
+        stationPost('POST', '/api/music/stations/preview', d).then(function (r) {
+          if (gen !== previewGen || !ctrl.isOpen()) return;
+          if (!r.ok) { lastCount = 0; count.textContent = (r.body && r.body.error) || 'Could not count'; save.disabled = true; return; }
+          lastCount = Number(r.body.count) || 0;
+          count.textContent = lastCount ? (lastCount + (lastCount === 1 ? ' song' : ' songs') + ' from ' + r.body.artists + (r.body.artists === 1 ? ' artist' : ' artists')) : 'No song matches yet';
+          save.disabled = !(lastCount > 0 && fName.input.value.trim());
+        }).catch(function () { if (gen === previewGen) { count.textContent = 'Could not count'; save.disabled = true; } });
+      }
+      function schedulePreview() {
+        if (previewTimer) window.clearTimeout(previewTimer);
+        previewTimer = window.setTimeout(function () { previewTimer = null; preview(); }, STATION_PREVIEW_MS);
+      }
+      [fGenres, fArtists, fWords, fFrom, fTo, fExclude].forEach(function (f) { f.input.addEventListener('input', schedulePreview); });
+      fName.input.addEventListener('input', function () { save.disabled = !(lastCount > 0 && fName.input.value.trim()); });
+      ctrl.guard(cancel); ctrl.guard(save);
+      cancel.addEventListener('click', function (e) { if (ctrl.accepts(e)) ctrl.close(); });
+      save.addEventListener('click', function (e) {
+        if (!ctrl.accepts(e) || save.disabled) return;
+        var d = readDef();
+        save.disabled = true;
+        var id = existing && existing.def ? existing.def.id : null;
+        stationPost(id ? 'PUT' : 'POST', id ? '/api/music/stations/' + encodeURIComponent(id) : '/api/music/stations', d).then(function (r) {
+          if (!r.ok) { save.disabled = false; count.textContent = (r.body && r.body.error) || 'Could not save'; return; }
+          ctrl.close();
+          if (typeof window.showToast === 'function') window.showToast(id ? 'Station saved.' : 'Station created.');
+          return refreshStations();
+        }).catch(function () { save.disabled = false; count.textContent = 'Could not save'; });
+      });
+      ctrl.open();
+      if (existing) preview(); // an existing station shows its count at once
+    }
+    var STATION_PREVIEW_MS = 300;
+
     function songOfRow(row) {
       var i = parseInt(row && row.getAttribute('data-index'), 10);
       var id = row && row.getAttribute('data-id');
@@ -4113,6 +4490,7 @@ if (typeof module !== 'undefined' && module.exports) {
       };
       playingId = item.id;
       autoplayNotePlayed(item.id); // v1.254: the autoplay picker's session no-repeat memory
+      playCountBegin(item, queue); // v1.378.0: a new segment is heard (a same-id adopt keeps the tally; the file's chapters ride along so the tally rolls them itself; the listeners are bound by ensureChapterReflect, once per element)
       activeListenId = item.listen ? item.id : null; // W1: a normal play ends the listen session's marker
       if (!item.listen) activeListenChapters = null; // #222: a non-listen play ends the chaptered-listen session too
       nowPlaying = nowPlayingFrom(item);
@@ -4402,6 +4780,14 @@ if (typeof module !== 'undefined' && module.exports) {
       reflectPlaybackModes();
     }
 
+    // v1.378.0 (D10-D12): the NAME of the named station the queue plays, else '' - a station: seed
+    // with its name recorded in the queue context (startRadio); a song / artist / album / genre
+    // radio has none (the album line stays).
+    function stationRadioName() {
+      var c = queueCtx;
+      if (!c || typeof c.radio !== 'string' || c.radio.indexOf('station:') !== 0) return '';
+      return (typeof c.radioName === 'string' && c.radioName) ? c.radioName : '';
+    }
     // The station a batch is drawn against (R8): the queue's recorded seed, else the song now playing.
     function stationSeedFor(cur) {
       var seed = queueCtx && typeof queueCtx.radio === 'string' && queueCtx.radio ? queueCtx.radio : '';
@@ -4612,7 +4998,7 @@ if (typeof module !== 'undefined' && module.exports) {
         queueCtx = ctx;
         queueCtxEncoded = (window.encodeListContext ? window.encodeListContext(ctx) : '');
         registerTrackNav(0);
-        updateNowPlayingPanel();
+        updateNowPlaying(); // v1.378.0: the "Radio: <name>" line reads the restored context too (it calls the panel)
         return;
       }
       var scope = ctx.album ? { type: 'album', key: ctx.album } : (ctx.artist ? { type: 'artist', key: ctx.artist } : null);
@@ -4834,6 +5220,22 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.368.0 (R3): an artist's, an album's or a genre's level ENDS with "Start radio" - last, so a
     // level still opens with the cursor on its first song (a centre press plays track 1, as it always
     // did); a song row's own trackIndex is unaffected; the letter jump skips action rows.
+    // v1.378.0 (D11): the Pocket Radio level - the same stations as the shelf, in the shelf's order, the
+    // hidden ones left out (D8); a row plays the station (the Start radio action with the name riding).
+    // No stations at all: one note row that says where to make one.
+    function menuRadioLevel() {
+      return fetchJson('/api/music/stations').then(function (d) {
+        var all = (d && Array.isArray(d.stations)) ? d.stations : [];
+        var rows = [];
+        for (var i = 0; i < all.length; i++) {
+          var st = all[i];
+          if (!st || !st.key || st.hidden) continue;
+          rows.push({ label: st.name || 'Station', detail: st.subtitle || '', action: 'radio', seed: 'station:' + st.key, stationName: st.name || '' });
+        }
+        if (!rows.length) rows.push({ label: 'No stations yet. Make one on the Music page.', info: true, note: true });
+        return { items: rows };
+      });
+    }
     function withRadioRow(level, seed) {
       if (!seed || !level || !Array.isArray(level.items) || !level.items.length) return level;
       level.items = level.items.concat([{ label: 'Start radio', action: 'radio', seed: seed }]);
@@ -4891,6 +5293,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var n = node || {};
       if (!SKINS) return Promise.resolve({ items: [] });
       if (n.type === 'playon') return RC ? playOnItems() : Promise.resolve({ items: [] });
+      if (n.type === 'radio') return menuRadioLevel(); // v1.378.0 (D11)
       if (n.type === 'artists') {
         return fetchAllRows('/api/music/artists?sort=title-asc').then(function (d) { return { items: SKINS.menuArtistItems(menuItemsOf(d), musicArtUrl), letters: true }; });
       }
@@ -5155,7 +5558,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // and a resume after a reload stay on this station. Autoplay is turned on if it was off (the
     // station could not continue otherwise), with a toast saying so. The station's picks are
     // remembered as picks, so Autoplay off retracts the unplayed ones like any station.
-    function startRadio(seed, seedItem) {
+    function startRadio(seed, seedItem, stationName) {
       if (typeof seed !== 'string' || !seed) return;
       askLightingForOpen(); // before the fetch spends the gesture (the Shuffle buttons' rule)
       var gen = playSelectGen;
@@ -5176,7 +5579,11 @@ if (typeof module !== 'undefined' && module.exports) {
           if (typeof window.showToast === 'function') window.showToast('Autoplay is on, so the radio keeps playing.');
         }
         markAutoplayPicks(picks);
-        playFromMenu({ tracks: tracks, index: 0, play: { ctx: { src: 'music', radio: seed }, label: 'Radio' } });
+        // v1.378.0 (D10-D12): a named station's NAME rides the context (the "Radio: <name>" line, a
+        // resume and a dock return keep it: common.js encodeListContext carries it with the seed)
+        var rctx = { src: 'music', radio: seed };
+        if (seed.indexOf('station:') === 0 && typeof stationName === 'string' && stationName.trim()) rctx.radioName = stationName.trim().slice(0, 60);
+        playFromMenu({ tracks: tracks, index: 0, play: { ctx: rctx, label: 'Radio' } });
       }).catch(function () {
         if (typeof window.showToast === 'function') window.showToast('Could not start the radio.');
       });

@@ -68,8 +68,8 @@ test('runs, jumps and picker targets: next/previous letter PRESENT (absent ones 
 // ---------------------------------------------------------------- the new levels + builders
 test('Main Menu: the device order with Extras ONLY when the game can run; Extras > Games > Brick; Settings > About', () => {
   const lbl = (rows) => rows.map((r) => r.label);
-  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: true, hasGames: true, style: 'click' })), ['Music', 'Extras', 'Settings', 'Shuffle Songs', 'Now Playing']);
-  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: false, hasGames: false, style: 'click' })), ['Music', 'Settings', 'Shuffle Songs']);
+  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: true, hasGames: true, style: 'click' })), ['Music', 'Radio', 'Extras', 'Settings', 'Shuffle Songs', 'Now Playing']);
+  assert.deepStrictEqual(lbl(skins.menuStaticItems({ type: 'main' }, { hasCurrent: false, hasGames: false, style: 'click' })), ['Music', 'Radio', 'Settings', 'Shuffle Songs']);
   assert.deepStrictEqual(skins.menuStaticItems({ type: 'extras' }), [{ label: 'Games', node: { type: 'games' } }]);
   assert.deepStrictEqual(skins.menuStaticItems({ type: 'games' }), [{ label: 'Brick', action: 'brick' }]);
   assert.deepStrictEqual(skins.menuStaticItems({ type: 'settings' }), [{ label: 'About', node: { type: 'about' } }]);
@@ -634,7 +634,7 @@ test('C: Extras > Games > Brick launches the EXISTING game through the view\'s h
   try {
     b.engine.paint();
     pressMenu(b);
-    assert.deepStrictEqual(lbls(b), ['Music', 'Extras', 'Settings', 'Shuffle Songs', 'Now Playing'], 'the iPod classic Main Menu, with Extras');
+    assert.deepStrictEqual(lbls(b), ['Music', 'Radio', 'Extras', 'Settings', 'Shuffle Songs', 'Now Playing'], 'the iPod classic Main Menu, with Extras');
     tapLabel(b, 'Extras');
     assert.strictEqual(b.engine.menuState().title, 'Extras');
     tapLabel(b, 'Games');
@@ -681,10 +681,10 @@ test('C availability, BOTH axes: shown in the main document with the hook on a C
   try { noHook.engine.paint(); pressMenu(noHook); assert.ok(!lbls(noHook).includes('Extras'), 'no hook: hidden'); } finally { noHook.restore(); }
   // the pop-out: the panel lives in ANOTHER document; the view still hands a hook that says yes
   const pop = bootEngine({ otherDoc: true, games: { visible: () => true, onTap: () => { throw new Error('never launched from a pop-out'); } } });
-  try { pop.engine.paint(); pressMenu(pop); assert.deepStrictEqual(lbls(pop), ['Music', 'Settings', 'Shuffle Songs', 'Now Playing'], 'the pop-out: no Extras entry at all'); } finally { pop.restore(); }
+  try { pop.engine.paint(); pressMenu(pop); assert.deepStrictEqual(lbls(pop), ['Music', 'Radio', 'Settings', 'Shuffle Songs', 'Now Playing'], 'the pop-out: no Extras entry at all'); } finally { pop.restore(); }
   // Brick's own rule says no (the hook's visible() is false) -> no Extras entry
   const no = bootEngine({ games: { visible: () => false, onTap: () => { throw new Error('never launched'); } } });
-  try { no.engine.paint(); pressMenu(no); assert.deepStrictEqual(lbls(no), ['Music', 'Settings', 'Shuffle Songs', 'Now Playing'], 'hidden by Brick\'s own availability rule'); } finally { no.restore(); }
+  try { no.engine.paint(); pressMenu(no); assert.deepStrictEqual(lbls(no), ['Music', 'Radio', 'Settings', 'Shuffle Songs', 'Now Playing'], 'hidden by Brick\'s own availability rule'); } finally { no.restore(); }
 });
 
 // ---------------------------------------------------------------- addendum D: Settings > About

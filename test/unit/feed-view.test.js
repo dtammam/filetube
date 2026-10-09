@@ -309,42 +309,82 @@ test('view: an empty library shows the empty state and no session is kept; a liv
 });
 
 test('view (gate r2, qa W-R2-2): the "through everything new" notice is a card of its own after the batch - observed (the card before it pauses), never counted, never excluded', async () => {
-  const r = feedRealm({ batches: [{ cards: [BOOK, POD, VID], exhausted: true }] });
+  const r = feedRealm({ batches: [{ cards: [BOOK, POD, VID, SONG, WL], exhausted: true }] });
   try {
     r.init(); await r.settle();
     r.$('#feed-picker-choices button[data-minutes="10"]').click(); await r.settle();
     const all = r.$$('.feed-card');
-    assert.deepStrictEqual(all.map((c) => c.getAttribute('data-kind')), ['book', 'podcast', 'video', 'notice'], 'after the batch, not before it');
-    assert.strictEqual(all[3].getAttribute('data-index'), '3', 'a real entry');
-    assert.ok(r.observers[r.observers.length - 1].targets.includes(all[3]), 'observed');
-    assert.ok(all[3].textContent.includes('through everything new'));
-    r.show(1); // the podcast plays
+    assert.deepStrictEqual(all.map((c) => c.getAttribute('data-kind')), ['book', 'podcast', 'video', 'song', 'watchlater', 'notice'], 'after the batch, not before it');
+    assert.strictEqual(all[5].getAttribute('data-index'), '5', 'a real entry');
+    assert.ok(r.observers[r.observers.length - 1].targets.includes(all[5]), 'observed');
+    assert.ok(all[5].textContent.includes('through everything new'));
+    r.advance(6000);
+    r.show(1); // the podcast plays; the book was read (its write lands) - real cards are queued ahead, so no refetch (adversary P05)
+    await r.settle();
+    assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk1').length, 1);
+    assert.strictEqual(r.calls('GET', '/api/feed?').length, 1, 'no refetch while real cards are ahead');
     assert.strictEqual(r.loads.filter((l) => l.id === 'ep1').length, 1);
     const pausesBefore = r.loads.filter((l) => l.pause).length;
-    r.show(3); // the notice fills the screen
+    r.show(5); // the notice fills the screen
     assert.strictEqual(r.loads.filter((l) => l.pause).length, pausesBefore + 1, 'the podcast paused');
     assert.strictEqual(r.loads.filter((l) => l.id).length, 1, 'the notice loads nothing');
     assert.ok(!feed.feedExcludeIds(r.$$('.feed-card').map((c) => ({ kind: c.getAttribute('data-kind'), id: c.getAttribute('data-id') }))).includes('notice'), 'never excluded');
     r.$('#feed-done-btn').click(); await r.settle();
     const fin = r.calls('POST', '/api/feed/sessions/abcdef0123456789/finish');
     assert.strictEqual(fin[0].body.summary.cards, 2, 'the book and the podcast counted, the notice not');
+    assert.deepStrictEqual(Object.keys(fin[0].body.summary.books.reduce((m, b) => (m[b.id] = 1, m), {})), ['bk1'], 'the read book is in the recap');
   } finally { r.close(); }
 });
 
-test('view (gate r2, adversary W6 + qa S1): a one-book session does not stall - the first batch prefetches at once, and a read book card refetches when nothing real is queued ahead', async () => {
-  const r = feedRealm({ batches: [{ cards: [BOOK], exhausted: false }, { cards: [], exhausted: true }, { cards: [{ ...BOOK, id: 'bk1', start: { spineIndex: 0, blockIndex: 3 }, next: { spineIndex: 0, blockIndex: 5 } }], exhausted: true }] });
+// The real server parks a book until its place moved: a GET that leaves in the same task as the POST (setActive's prefetch
+// beside leaveCard's write) is answered before the write staged, so it comes back empty. This fixture models that: the book
+// unparks only once the POST's response has resolved (gate r3, adversary P04: without the refetch after a successful write
+// the one-book session stalls on the notice; P05: no refetch with real cards ahead; P06: none on a refused write).
+function oneBookServer(writeStatus) {
+  const state = { wrote: false, gets: 0 };
+  const next = { ...BOOK, id: 'bk1', start: { spineIndex: 0, blockIndex: 3 }, next: { spineIndex: 0, blockIndex: 5 } };
+  state.route = (method, url) => {
+    if (method === 'POST' && url.indexOf('/api/feed/progress/book/bk1') === 0) {
+      if (writeStatus === 200) Promise.resolve().then(() => { state.wrote = true; }); // staged after the response, like the coalescer
+      return { status: writeStatus, body: writeStatus === 200 ? { ok: true } : { ok: false, reason: 'stale' } };
+    }
+    if (method === 'GET' && url.indexOf('/api/feed?') === 0) {
+      state.gets += 1;
+      if (state.gets === 1) return { status: 200, body: { cards: [BOOK], exhausted: false } };
+      return { status: 200, body: { cards: state.wrote ? [next] : [], exhausted: true } };
+    }
+    return null;
+  };
+  return state;
+}
+
+test('view (gate r2, adversary W6 + qa S1; r3 P04-P06): a one-book session does not stall - the first batch prefetches at once, a read book card refetches once its write landed, a refused write does not', async () => {
+  const srv = oneBookServer(200);
+  const r = feedRealm({ route: srv.route });
   try {
     r.init(); await r.settle();
     r.$('#feed-picker-choices button[data-minutes="10"]').click(); await r.settle();
-    assert.strictEqual(r.calls('GET', '/api/feed?').length, 2, 'a one-card first batch fetched again at once (qa S1 bound)');
+    assert.strictEqual(srv.gets, 2, 'a one-card first batch fetched again at once (qa S1 bound)');
     assert.deepStrictEqual(r.$$('.feed-card').map((c) => c.getAttribute('data-kind')), ['book', 'notice'], 'the empty exhausted batch closed the stack with the notice');
     r.advance(6000);
-    r.show(1); // onto the notice: the book was read
+    r.show(1); // onto the notice: the book was read; the prefetch beside the write still sees the book parked
     await r.settle();
     assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk1').length, 1, 'the bookmark moved');
-    assert.strictEqual(r.calls('GET', '/api/feed?').length, 3, 'the moved place is servable again: fetched without waiting for a swipe');
+    assert.strictEqual(srv.gets, 4, 'the prefetch beside the write came back empty; the refetch after the write fetched the next pages');
     assert.deepStrictEqual(r.$$('.feed-card').map((c) => c.getAttribute('data-kind')), ['book', 'notice', 'book'], 'the next pages arrived behind the notice');
   } finally { r.close(); }
+  // P06: a refused write (409) never refetches - the place did not move
+  const srv2 = oneBookServer(409);
+  const r2 = feedRealm({ route: srv2.route });
+  try {
+    r2.init(); await r2.settle();
+    r2.$('#feed-picker-choices button[data-minutes="10"]').click(); await r2.settle();
+    r2.advance(6000);
+    r2.show(1); await r2.settle();
+    assert.strictEqual(r2.calls('POST', '/api/feed/progress/book/bk1').length, 1);
+    assert.strictEqual(srv2.gets, 3, 'the prefetch only; no refetch on a refusal');
+    assert.deepStrictEqual(r2.$$('.feed-card').map((c) => c.getAttribute('data-kind')), ['book', 'notice']);
+  } finally { r2.close(); }
 });
 
 test('view: cards far behind the active one drop their heavy content and keep their height; swiping back rebuilds them', async () => {

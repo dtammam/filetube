@@ -736,3 +736,31 @@ test('v1.354 the target reports the registered reader\'s queue (cut to the windo
   h.advance(6000);
   assert.ok(h.states().slice(b2).every((x) => x.queue === null), 'a cleared reader is not read');
 });
+
+// ---- v1.378.0 music stations W4 (D11, D12) ----------------------------------------------------------
+test('v1.378.0 D11: a play command carrying a station hands it to the Music handler; one without hands null', () => {
+  const h = harness();
+  const seen = [];
+  h.t.setMusicPlayHandler((req) => seen.push(req));
+  h.t.setOn(true); h.attach('Dean iPhone');
+  h.sources[0].emit('command', { seq: 1, cmd: 'play', args: { tracks: [{ id: 'a' }, { id: 'b' }], index: 0, radio: { seed: 'station:s:reggae', name: 'Reggae' } } });
+  assert.deepStrictEqual(seen[0].radio, { seed: 'station:s:reggae', name: 'Reggae' });
+  h.sources[0].emit('command', { seq: 2, cmd: 'play', args: { tracks: [{ id: 'a' }], index: 0 } });
+  assert.strictEqual(seen[1].radio, null);
+});
+
+test('v1.378.0 D12: the report carries the station the queue reader names, and none when it names none', () => {
+  const h = harness();
+  h.t.setOn(true); h.attach();
+  let radio = { name: 'Chill' };
+  h.t.setQueueReader(() => ({ list: ['t1', 't2'], index: 0, radio }));
+  h.t.trackChanged();
+  h.advance(600); // past the report throttle (REPORT_THROTTLE_MS)
+  const last = () => h.states().slice(-1)[0];
+  assert.deepStrictEqual(last().radio, { name: 'Chill' });
+  radio = null;
+  h.advance(5000);
+  h.t.trackChanged();
+  h.advance(600);
+  assert.strictEqual(last().radio, null);
+});

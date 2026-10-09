@@ -688,3 +688,36 @@ test('v1.354 an idle target and a state without a queue list queue null', async 
   const list = await (await fetch(`${base}/api/remote/targets?deviceId=${PHONE}`)).json();
   assert.strictEqual(list.find((x) => x.deviceId === PC).state.queue, null);
 });
+
+// ---- v1.378.0 music stations W4 (D11, D12) ----------------------------------------------------------
+test('v1.378.0 D11: a play command carries a named station to the target (bounded); a non-station seed or a malformed radio is dropped, never a 400', async () => {
+  const t = await asTarget();
+  await t.next('hello');
+  const r = await cmd(PC, 'play', { ids: ['tonzak1', 'tonzak2'], index: 0, radio: { seed: 'station:s:reggae', name: '  Reggae  ' } });
+  assert.strictEqual(r.status, 202);
+  const f = await t.next('command');
+  assert.deepStrictEqual(f.data.args.radio, { seed: 'station:s:reggae', name: 'Reggae' });
+  for (const radio of [{ seed: 'track:tonzak1', name: 'x' }, { seed: 'station:', name: 'x' }, 'station:s:reggae', ['station:s:reggae'], { name: 'x' }, { seed: 'station:' + 'k'.repeat(300), name: 'x' }]) {
+    const r2 = await cmd(PC, 'play', { ids: ['tonzak1'], index: 0, radio });
+    assert.strictEqual(r2.status, 202, JSON.stringify(radio));
+    const f2 = await t.next('command');
+    assert.strictEqual(f2.data.args.radio, undefined, 'dropped: ' + JSON.stringify(radio));
+  }
+  const long = await cmd(PC, 'play', { ids: ['tonzak1'], index: 0, radio: { seed: 'station:s:reggae', name: 'n'.repeat(100) } });
+  assert.strictEqual(long.status, 202);
+  assert.strictEqual((await t.next('command')).data.args.radio.name.length, 60, 'the name is bounded');
+});
+
+test('v1.378.0 D12: a target\'s report carries the station it plays to the controller\'s resolved state (bounded): the poll and the targets list say it', async () => {
+  const t = await asTarget();
+  await t.next('hello');
+  const rep = await fetch(`${base}/api/remote/state`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId: PC, trackId: 'tonzak1', position: 3, duration: 100, state: 'playing', radio: { name: ' Reggae ' } }) });
+  assert.strictEqual(rep.status, 202);
+  const polled = await (await fetch(`${base}/api/remote/poll?deviceId=${PHONE}&role=controller&target=${PC}`)).json();
+  assert.deepStrictEqual(polled.state.radio, { name: 'Reggae' });
+  const listed = await (await fetch(`${base}/api/remote/targets?deviceId=${PHONE}`)).json();
+  assert.deepStrictEqual(listed.find((x) => x.deviceId === PC).state.radio, { name: 'Reggae' });
+  const none = await fetch(`${base}/api/remote/state`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ deviceId: PC, trackId: 'tonzak1', position: 4, duration: 100, state: 'playing', radio: { name: 42 } }) });
+  assert.strictEqual(none.status, 202);
+  assert.strictEqual((await (await fetch(`${base}/api/remote/poll?deviceId=${PHONE}&role=controller&target=${PC}`)).json()).state.radio, null, 'a malformed station is none');
+});

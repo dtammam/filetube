@@ -330,7 +330,8 @@ test('redesign: Music opens on the HOME shelves by default; a shelf "See all" op
     assert.ok(isReserved(sortSel), 'the sort control is hidden (slot reserved, inert, aria-hidden, unfocusable) on Home');
     assert.ok(!sortSel.hidden, 'never [hidden] on Home (that removes the slot and reflows the toolbar)');
     const shelves = home.querySelectorAll('.music-shelf');
-    assert.strictEqual(shelves.length, 2, 'Your artists + Recently added shelves');
+    assert.strictEqual(shelves.length, 3, 'Your artists + Stations (v1.378.0) + Recently added shelves');
+    assert.match(home.innerHTML, /Stations/, 'the stations shelf (v1.378.0), above the albums');
     assert.match(home.innerHTML, /Your artists/, 'the artists shelf');
     assert.match(home.innerHTML, /Recently added/, 'the albums shelf');
     assert.ok(home.querySelector('.music-artist-card'), 'the artist shelf reuses the artist card');

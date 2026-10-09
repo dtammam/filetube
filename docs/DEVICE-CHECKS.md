@@ -274,3 +274,21 @@ Home-screen app on the iPhone, a book you are partway through, a podcast in prog
 - [ ] v1.379.0 - iOS reparent caveat (D7): a playing video moved from one card's slot to the next keeps playing; the lock screen shows the
   card's title; backgrounding mid-card behaves like the watch page (the sidecar handoff).
 - [ ] v1.379.0 - After a week of using the feed: note your Reddit time in iOS Screen Time before and after (the plan's success measure).
+
+## Radio stations, play counts, Radio in Pocket (v1.378.0)
+
+- [ ] v1.378.0 - Music page: a Stations shelf sits above Recently added. Tap a station (a genre, a style like Chill or Reggae, or
+  Recently added): the first 20 songs are that kind and the line above the player says "Radio: <name>". If a station you
+  expect is missing, say which: a generated station needs 40 songs from 3 artists in your library.
+- [ ] v1.378.0 - "New station" at the end of the shelf: name it, add an artist or a word (lofi), watch the count change as you type,
+  Create: it is on the shelf and plays. Edit it from its menu; "Stay strict" on: it only ever plays those songs (and repeats them
+  when they run out). Delete it. Hide a generated station from its menu: it moves under "More stations" marked Hidden; Unhide it
+  there.
+- [ ] v1.378.0 - Pocket: Main menu > Radio (right after Music) lists the same stations; pick one: it plays and the Click LCD's album
+  line reads "Radio: <name>" (Cider and Nordic show it over the title). Minimize and come back: the line stays and Next keeps to
+  the station. On a 320-wide phone a long station name ellipsizes on that line, like a long album name.
+- [ ] v1.378.0 - Speakers: choose the PC, then Radio > a station: it starts ON the PC (the PC's page says "Radio: <name>" and its
+  queue keeps filling from that station); your phone's mirror shows the same line.
+- [ ] v1.378.0 - After a day of listening: Favorites holds your liked songs plus what you played 3+ times to the end (its subtitle stops
+  saying "Builds as you listen"), Deep cuts appears (songs you rarely play by artists you do play), and a song you skipped three
+  times stops coming up on the radio. Say if a skipped song keeps coming back.

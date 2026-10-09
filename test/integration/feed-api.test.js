@@ -66,11 +66,12 @@ before(async () => {
   for (const b of Object.values(booksDb.read().items)) bookIds[b.title] = b.id;
 
   // media: N_VIDEOS under 'Allowed' (a subscription folder), 10 under 'Hidden', 3 under 'Tiny' (the allowlisted user's whole world)
-  for (const d of ['Allowed', 'Hidden', 'Tiny']) fs.mkdirSync(path.join(DATA_DIR, d), { recursive: true });
+  for (const d of ['Allowed', 'Hidden', 'Tiny', 'Shelf']) fs.mkdirSync(path.join(DATA_DIR, d), { recursive: true });
   const metadata = {};
   for (let i = 0; i < N_VIDEOS; i++) metadata[`va${i}`] = mediaItem(`va${i}`, 'Allowed', i === 0 ? { chapters: [{ startTime: 0, title: 'Intro' }, { startTime: 300, title: 'Middle' }, { startTime: 900, title: 'End' }] } : {});
   for (let i = 0; i < 10; i++) metadata[`vh${i}`] = mediaItem(`vh${i}`, 'Hidden');
   for (let i = 0; i < 3; i++) metadata[`vt${i}`] = mediaItem(`vt${i}`, 'Tiny');
+  for (let i = 0; i < 150; i++) metadata[`wl${i}`] = mediaItem(`wl${i}`, 'Shelf'); // Watch later rows outside the video pool (no subscription, no progress)
   for (const it of Object.values(metadata)) fs.writeFileSync(it.filePath, 'V');
   seedState({ folders: [DATA_DIR], folderSettings: {}, metadata, liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
 
@@ -132,7 +133,9 @@ before(async () => {
   userStore.setPodcastProgress(uid, epIds.a[0], { position: 600, duration: 1800, updatedAt: now });
   userStore.addWatchLater(uid, 'va5', now);
   userStore.addWatchLater(uid, userStore.watchLaterKey('podcast', epIds.a[3]), now);
-  for (let i = 300; i < 410; i++) userStore.addWatchLater(uid, `va${i}`, now); // 110 more, so the Watch later pool never drains inside 1000 cards
+  // 150 more from a folder that is neither subscribed nor in progress (never in the video pool), so a video card showing a
+  // Watch later item cannot drain the Watch later kind (it did, 1 run in 3, at 110 rows shared with the video pool)
+  for (let i = 0; i < 150; i++) userStore.addWatchLater(uid, `wl${i}`, now);
   // the member likes songs and lists hidden things they cannot see
   for (let i = 0; i < N_SONGS; i++) userStore.addMusicLiked(member.user.id, `trk${i}`, now);
   userStore.addWatchLater(member.user.id, 'vh1', now);

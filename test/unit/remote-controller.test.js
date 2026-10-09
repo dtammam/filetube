@@ -265,3 +265,17 @@ test('v1.353 gate r1 (Dean: a muted PC shows empty, up un-mutes): a level above 
   g.c.volume(0);
   assert.deepStrictEqual([g.c.state().volume, g.c.state().muted], [0, true], '0 never un-mutes');
 });
+
+// ---- v1.378.0 music stations W4 (D11, D12) ----------------------------------------------------------
+test('v1.378.0 D11: play with a station sends its seed and name; without one the command is as before; the mirror keeps the state\'s radio', async () => {
+  const h = harness();
+  h.c.select(PC);
+  await h.c.play(['a', 'b'], 1, { seed: 'station:s:reggae', name: 'Reggae' });
+  assert.deepStrictEqual(h.cmds()[0].args, { ids: ['a', 'b'], index: 1, radio: { seed: 'station:s:reggae', name: 'Reggae' } });
+  await h.c.play(['a'], 0, null);
+  assert.deepStrictEqual(h.cmds()[1].args, { ids: ['a'], index: 0 });
+  await h.c.play(['a'], 0, { seed: '', name: 'x' });
+  assert.deepStrictEqual(h.cmds()[2].args, { ids: ['a'], index: 0 }, 'no seed, no station');
+  h.sources[0].emit('state', { deviceId: 'pc', state: 'playing', position: 1, duration: 10, track: { id: 'a', title: 'A' }, radio: { name: 'Reggae' } });
+  assert.deepStrictEqual(h.c.state().radio, { name: 'Reggae' });
+});
