@@ -304,6 +304,15 @@ migration. A v1.342-or-earlier build refuses a v34 database at boot; bundles
 gain a per-user `watchLater` array (an older bundle without it restores as an
 empty list, and an older build ignores the key it does not know).
 
+**Sixteenth floor - schema v35 (v1.379.0, Feed mode).** One new table,
+`user_feed_sessions` (`user_id`, `id`, `started_at`, `planned_min`,
+`extensions`, `actual_sec`, `summary_json`, PK `(user_id, id)`, FK cascade on
+the user), born empty by an additive migration: one row per feed session, its
+recap and the positions the feed moved (with what they moved from). A
+v1.378.x-or-earlier build refuses a v35 database at boot; bundles gain a
+per-user `feedSessions` array (an older bundle without it restores as empty,
+and an older build ignores the key it does not know).
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

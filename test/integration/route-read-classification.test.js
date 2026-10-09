@@ -47,6 +47,8 @@ const READ = {
   '/api/books': 'GATED',
   '/api/books/:id': 'GATED',
   '/api/books/:id/excerpt': 'GATED', // v1.379.0 Feed: the book card's plain text; bookVisibleTo -> neutral 404, proven in feed-progress.test.js
+  '/api/feed': 'GATED', // v1.379.0 Feed W2: cards built from the viewer's VISIBLE items only (every kind's own gate); zero hidden items over 500 cards proven in feed-api.test.js
+  '/api/feed/sessions/week': 'OWN_STATE', // v1.379.0 Feed W2: the caller's own session count and time this week; no library content
   '/api/books/:id/tts/:spineIndex/status': 'NO_CONTENT',
   '/api/books/config': 'GATED',
   '/api/books/folders': 'GATED',

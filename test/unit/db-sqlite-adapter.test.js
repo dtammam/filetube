@@ -143,7 +143,9 @@ test('fresh open creates the full v1 schema with empty user tables', () => {
       // v1.97 schema v17: per-user "Hide from feed" prune, born empty.
       'user_feed_hidden',
       // v1.343 schema v34: per-user Watch later list, born empty.
-      'user_watch_later']) {
+      'user_watch_later',
+      // v1.379.0 schema v35: per-user feed sessions, born empty.
+      'user_feed_sessions']) {
       const { c } = a.sql.prepare(`SELECT COUNT(*) AS c FROM ${table}`).get();
       assert.strictEqual(c, 0, `${table} exists and is empty (born-complete schema, exec plan)`);
     }
@@ -267,6 +269,26 @@ test('v33 -> v34 upgrade: an existing populated db gains the empty user_watch_la
     assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_watch_later').get().c, 0, 'watch-later table born empty');
     const cols = b.sql.prepare("SELECT name FROM pragma_table_info('user_watch_later') ORDER BY name").all().map((r) => r.name);
     assert.deepStrictEqual(cols, ['added_at', 'media_id', 'position', 'user_id']);
+    assert.deepStrictEqual(b.load(), fullFixtureForUpgrade(), 'every pre-existing namespace survives untouched');
+  } finally {
+    b.close();
+  }
+});
+
+test('v34 -> v35 upgrade: an existing populated db gains the empty user_feed_sessions table, losing no rows', () => {
+  const a = new SqliteAdapter(dbPath(), { log: () => {} });
+  a.save(fullFixtureForUpgrade());
+  a.sql.exec('DROP TABLE user_feed_sessions');
+  a.sql.exec('PRAGMA user_version = 34');
+  a.close();
+
+  const b = new SqliteAdapter(dbPath(), { log: () => {} });
+  try {
+    assert.strictEqual(b.sql.prepare('PRAGMA user_version').get().user_version, SCHEMA_VERSION, 'forward-only migration ran');
+    assert.ok(SCHEMA_VERSION >= 35);
+    assert.strictEqual(b.sql.prepare('SELECT COUNT(*) AS c FROM user_feed_sessions').get().c, 0, 'feed sessions table born empty');
+    const cols = b.sql.prepare("SELECT name FROM pragma_table_info('user_feed_sessions') ORDER BY name").all().map((r) => r.name);
+    assert.deepStrictEqual(cols, ['actual_sec', 'extensions', 'id', 'planned_min', 'started_at', 'summary_json', 'user_id']);
     assert.deepStrictEqual(b.load(), fullFixtureForUpgrade(), 'every pre-existing namespace survives untouched');
   } finally {
     b.close();

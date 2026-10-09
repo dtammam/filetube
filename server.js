@@ -153,8 +153,9 @@ const booksTtsConfig = require('./lib/books/tts-config');
 const booksTtsEngine = require('./lib/books/tts-engine');
 const booksTtsChunk = require('./lib/books/tts-chunk');
 const booksZip = require('./lib/books/zip'); // chapter XHTML extraction for TTS
-const booksExcerpt = require('./lib/books/excerpt'); // v1.379.0 Feed: plain-text excerpts + the block -> CFI derivation
+const booksExcerpt = require('./lib/books/excerpt'); // v1.379.0 Feed: plain-text excerpts + the saved place as block coordinates
 const feedRoutes = require('./lib/feed/routes'); // v1.379.0 Feed: the forward-only progress writes (plan D5)
+const feedApi = require('./lib/feed/api'); // v1.379.0 Feed: the cards and the session record (plan D3, D6-D9, D13)
 const feedServed = require('./lib/feed/served').createServedRegistry(); // v1.379.0 Feed: served positions, per process
 // C4 "fun stats" page (v1.24 UX Round, Wave 3): pure aggregation helpers over
 // `db.metadata`, unit-tested on their own against a synthetic fixture. See
@@ -3796,6 +3797,35 @@ feedRoutes.registerProgressRoutes(app, {
   podcasts,
   podcastsDb,
   userStore,
+});
+
+// v1.379.0 Feed mode: the feed itself (GET /api/feed) and the per-user session record
+// (POST /api/feed/sessions, GET .../week, POST .../:id/extend, POST .../:id/finish).
+// Cards are built from the viewer's VISIBLE items only, through the SAME per-kind
+// visibility decisions every list route uses (plan D3).
+feedApi.registerFeedRoutes(app, {
+  booksDb,
+  booksExcerpt,
+  bookVisibleTo,
+  effectiveBookProgress,
+  effectiveProgress,
+  feedServed,
+  fs,
+  getCachedDatabase,
+  mediaVisibleTo,
+  musicDb,
+  now: () => Date.now(),
+  podcastEpisodeVisibleTo,
+  podcastsDb,
+  // A song card's row is the SAME row shape GET /api/music serves (one shaper, no second spelling);
+  // artReps null = no shared art id (the client's albumArtSrc falls back to the track's own id).
+  publicTrackListItem: (track, userId) => publicTrackListItem(track, userId, musicLikedSets(userId), musicListProgressMap(userId, [track]), null, musicArtVersions.memo()),
+  resolveItemChapters,
+  rng: Math.random,
+  trackVisibleTo,
+  userStore,
+  videoQuery,
+  ytdlpDb,
 });
 
 // Wave 7b (slice S10b): GET /api/scan-status moved VERBATIM to
