@@ -304,6 +304,17 @@ migration. A v1.342-or-earlier build refuses a v34 database at boot; bundles
 gain a per-user `watchLater` array (an older bundle without it restores as an
 empty list, and an older build ignores the key it does not know).
 
+**Sixteenth floor - schema v35 (v1.378.0, music stations).** Three new per-user
+tables, born empty by one additive migration: `user_music_plays` (`user_id`,
+`track_id`, `plays`, `skips`, `finishes`, `last_played_at`, PK `(user_id,
+track_id)`), `user_music_stations` (`user_id`, `station_id`, `json`,
+`created_at`, `updated_at`) and `user_music_station_hidden` (`user_id`,
+`station_key`, `hidden_at`), each with the FK cascade on the user. A
+v1.377.0-or-earlier build refuses a v35 database at boot; bundles gain the
+per-user `musicPlays`, `musicStations` and `musicStationHidden` arrays (an older
+bundle without them restores empty, and an older build ignores the keys it does
+not know).
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:
