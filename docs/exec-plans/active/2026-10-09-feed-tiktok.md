@@ -3,11 +3,11 @@ plan: feed-tiktok
 harness: v2 · full
 branch: feat/v1.381.0-feed-tiktok
 anchor: outcome
-status: Built W1-W5 (builder, Opus); full dual-Node suite next, then the FULL gate
-next: the dual-Node suite at the W5 sha, then the gate (adversary, qa, security-brief)
+status: Gate r1 @bba614be: adversary CHANGES, qa CHANGES, security-brief APPROVED
+next: the r1 fix round (adversary W1-W4, qa W1-W5, security N1-N2), then r2 with the same seats
 design: Dean's device feedback on v1.380.0 Feed (2026-10-09, eight points + swipe left/right); kickoff defaults D1-D11. Base main 42ec865c (v1.380.0).
 builder: smart (the shared player's gestures in a new full-bleed host, a layout rework of every card, and a deliberate progress RESET: a data-loss surface)
-gate: not yet run (FULL: adversary, qa, security-brief - "Start over" deletes a place; brief the Adversary to destroy data)
+gate: r1 CHANGES (FULL: adversary, qa, security-brief)
 ---
 
 # v1.381.0: Feed, TikTok style - full-screen cards, no scroll traps, tap / hold on video, Start over
@@ -228,3 +228,150 @@ progress line; horizontal swipes on media cards; comments / likes overlays; new 
 - **Dean, D10 (2026-10-09):** "Under 1 min = New (Recommended)".
 - **Dean, W2 look (2026-10-09):** "Looks right, go on (Recommended)".
 
+## 10. Gate
+
+The three r1 seats ran in parallel on one tree, so each returned its verdict in its final message and the builder pasted it
+here verbatim (a parallel append to one file could clobber a line).
+
+Gate: CHANGES r1 @bba614be - adversary
+
+### adversary r1 @bba614be
+
+(no CRITICAL; worktree unchanged; repros and mutant lists in /tmp/adversary-repros/)
+
+Instruments, failures first: full suite Node 22.23.1 in a `git archive bba614be` sandbox `# tests 12009 # pass 11987 # fail 8
+# cancelled 0 # skipped 14` (exit 1) - all 8 are sandbox artifacts (6 "fatal: not a git repository", 2 EISDIR in
+comment-debt-census on the node_modules symlink); the 7 files pass 69 / 69 in a git clone at bba614be; the 14th skip not traced.
+Node 24.20.0 targeted (feed-start-over, feed-stale-continue, feed-progress, feed-api, feed-tiktok): 72 / 72. layout.js both
+engines at 390 and 320 `SUMMARY layout: 4 runs, cards per run [6,6,6,6], scrollers 0, hudOverTitle>0 0`, the handoff card hidden
+in the Feed and back on Home in all 4. gestures.js `2/2 pass (chromium+webkit)`.
+
+WARNING
+- W1 (blocking). Undo is unreachable once the user leaves the Feed, the session resets or a new one starts, while the toast still
+  offers it: ui.toast lives on <body>, undoStartOver uses the view's abort signal and the CURRENT session (resetToPicker sets it to
+  null: a silent return; a new session sends the old token with the new id: 404). Browser repro (adversary-nav-undo.js, Chromium):
+  `{"afterReset":null,"view":"home","undoButtonsAfterNav":1,"requests":["POST /api/feed/start-over"],"toasts":["Could not undo"],
+  "afterUndo":null}`. Unit repro ADV-4 (a fetch that rejects on an aborted signal): `undo posts 0 toasts ["Started over: V","Could not
+  undo"]`, not ok. And "kept in this session's record" points at nothing a user can open (no GET exposes summary.moves). Fix:
+  capture the session id at the reset, send Undo without the view signal, and either give the record a way back or stop promising it.
+- W2 (blocking). Undo can return 200 and lose the place at the next coalescer flush: the CAS treats a staged media ping at
+  timestamp 0 as "as the reset left it"; the restore writes the row, the pending 0 s entry flushes over it, and undoneAt refuses a
+  second Undo. Real 0 s savers: the watch page's startOverFromZero, a skip-back to 0. ADV-1: `undo 200` / `row right after undo
+  {"timestamp":300,...}` / `row after the flush {"timestamp":0,...}` / `record undoneAt 2026-10-09T20:48:35.098Z`, expected 300
+  actual 0. Checked fix: also 'moved' when pendingProgress has the key (ADV-1 then 409 'moved', 16 / 16); cleaner: compare against the
+  exact state the reset left (no row, no staged write, no latch) for every kind. The LESSONS rule is false until fixed.
+- W3 (blocking: test gaps on the data-loss surface; the rule claims one mutant per guard). Survived: A1 (drop
+  pendingBookProgress.delete in start-over; ADV-3 binds it), A6 / A7 / A8 (drop the played / finished / watched latch arm of
+  nothingToForget), C6 (drop the "The end." sentinel arm of feedBookTarget: 179 / 179), C11 (drop the continuation stale-response
+  guard: 179 / 179), A14 / A15 / A16 (drop the D10 under-a-minute arms feeding the mix's fresh / continue balance: 46 / 46; the
+  labels are bound). Killed: A2, A4, A5, A9-A11, C1, C2, C7-C10, C12-C14.
+- W4 (non-blocking if disclosed). The confirm names the CARD's place (feedStartOverText reads card.progress / position /
+  chapterLabel), the reset reads storage: after another device moved on, the sheet names the served place while a later one is
+  reset (the record and Undo hold the real one). Reasoned, not run. Fix: show the server's `previous` in the toast, or read the
+  stored place before the sheet.
+
+SUGGESTION
+- card.startedOver is written, never read: after a prune and rebuild the book card loses "Started over" and offers "..." again; a
+  second tap says "Nothing to start over: it was not started". Nothing lost (bp.refused survives).
+- Only the browser proof binds the video layer's touch handling (G5: an always-preventDefault touchmove passes every feed unit test;
+  gestures.js chromium catches it `0/1 pass`); the rotate guard and the webkitbeginfullscreen intercept are source-regex only.
+- The download chip coming back after the Feed is not measured (the fixture has no download: "chip":"absent").
+- Not reproduced: feedPaginate stops at FEED_MAX_PAGES (400) while bp.end stays the card's next - with a page box of ~1 word, reading
+  every page would move the place past the cut blocks.
+- restoreMediaPlace / restoreBookPlace pass record values through unchecked (podcast uses num()): only a crafted admin backup reaches
+  it. The session id length cap (A3) is untested, no behaviour impact.
+
+Verified holding: every restricted-user case incl. a podcast library restriction on both routes (ADV-2: 404 / 404, nothing reset or
+restored); a double tap = one 200 + one 409 'nothing', one record; a pre-reset ping refused too-early (the browser saw the pause
+checkpoint land as `POST /api/feed/progress/media 409` right after the reset); the continuation never re-stamps; the 24 px rule (C8,
+C9 killed); hold-to-2x released on dock / close; the watch page's own tests green; MAX_PLAY_RATE 2 = the player's top speed.
+
+Gate: CHANGES r1 @bba614be - qa
+
+### qa r1 @bba614be
+
+(review of `git diff 42ec865c..bba614be`, 30 files; runs and mutants in a /tmp `git archive bba614be` sandbox, the shared
+worktree untouched)
+
+Instruments (verbatim): targeted tests Node 22.23.1 `# tests 141 # pass 141 # fail 0 # cancelled 0 # skipped 0`; every feed /
+hold / loupe / rotate / faux / toast test file `# tests 410 # pass 410 # fail 0`; Node 24.20.0 `tests 386 pass 386 fail 0
+cancelled 0 skipped 0`; ui-lint `OK - the live debt equals docs/ui-exceptions.json`; overlay-containment `clean (0 violations)`;
+eslint clean. layout.js chromium 390x844 `SUMMARY layout: 1 runs, cards per run [6], scrollers 0, hudOverTitle>0 0` (W1 feed
+handoff none, Home grid); webkit 320x568 and chromium 320x568 the same 0 / 0. gestures.js both `2/2 pass` (WebKit: the stack did
+not move from the video and the hold was not run, yet PASS). start-over.js both `2/2 pass`, exact true for video and book. The
+"[object Object]" claim verified: ui.js:779 `toast(message, o)` renders `spanText(..., message)`.
+
+WARNING
+- W1. Undo after leaving the Feed fails and the place stays forgotten (VERIFIED in Chromium). feed.js undoStartOver / startOver
+  pass the VIEW's signal and read the live `session`; the toast lives on <body> and survives the SPA navigation, the view's abort
+  rejects the Undo fetch, "Could not undo", though the server would accept it. Repro (a copy of start-over.js navigating to '/'
+  after the reset): `QA-NAV {"spa":"function","viewNow":"home","toastStill":true,"toastsAfter":["Could not undo"],"afterUndo":
+  {"progress":null,"watched":null},"exact":false}`. Leaving mid-request resets with no Undo toast (reasoned). Fix: the two
+  fetches get their own lifetime, the session id captured at the tap; a test with a signal-honouring fetch.
+- W2. A book card rebuilt after pruning loses its continuation pages, and the bookmark then jumps past unread text (harness repro
+  test/qa/qa-prune.test.js): fillBookCard re-runs on un-prune and resets bp.blocks to card.blocks while bp.read / bp.end keep the
+  continuation's. Read 3 pages, fetch the continuation (blocks 6-7, next (0,8)), glance 0.5 s, move 4 cards on, come back, leave:
+  `readout after continuation: Page 4 of 4` / `card 0 pruned: true` / `readout after rebuild: Page 1 of 3` / `book writes:
+  [{"spineIndex":0,"blockIndex":6},{"spineIndex":0,"blockIndex":8}]` - the second is forward and accepted; 6-7 never read. Fix: seed
+  bp.blocks only when the state is created; a rebuild re-lays the existing blocks.
+- W3. An Undo that returns 200 is overwritten by a 0 s ping staged after the reset (real routes, test/qa/qa-zero-ping.test.js): v2
+  at 300 s, Start over, POST /api/progress {timestamp:0}, Undo: `undo status 200` / `after undo, before flush {"progress":
+  {"timestamp":300,...}}` / `after flush {"progress":{"timestamp":0,...}}`. nothingToForget's media arm treats a staged 0 s as
+  nothing and the pending entry flushes over the restore. Real sources: player.js startOverFromZero (the watch page's resume
+  prompt) and the on-ended save. Fix: in Undo any pending entry or stored row (even at 0) is 'moved'.
+- W4. Two data paths unbound: M8 (drop pendingBookProgress.delete in the book Start over) SURVIVED; M13 (drop `bp.read = {};
+  bp.pageMs = {};` in the resize re-layout) SURVIVED - no test of the resize / carry path. Killed: tap-after-move, no
+  continuation=1, the route always marking, holdEnd's holdGestureLive, hold on audio, Undo without CAS.
+- W5. Section 7's art sizes are wrong: layout.js at this sha measures 161 x 161 at Chromium 390, 130 at Chromium 320, 119 at
+  WebKit 320 (45% of the stage's inner width), not 147 / 115. Everything else re-measured matches.
+
+SUGGESTION
+- S1. lib/feed/api.js "Labels and the mix only" is half true: `fresh` also feeds feedServed.mark, so a card under a minute in is
+  now held by the server's one-minute write guard (feed-stale-continue.test.js asserts it). Reword there and in the ledger.
+- S2. M1 (drop the touchmove preventDefault while 2x is held) SURVIVED: a drifting finger during a hold is unbound.
+- S3. gestures.js's WebKit row passes without a stack move or a hold: say so in its criteria / summary.
+- S4. scripts/feed-stale-continue.js counts Start over records as "moved by a feed session": filter m.startOver.
+
+Regressions checked, no finding: the D1/D2 rule (1,2,2) beats every display rule, no inline style.display on either id; the slot
+and .main-content rules are scoped; rotateIgnoredForHost early-returns only in a Feed slot; pictureTap honours the glyph switch;
+holdStart / holdEnd go through engageHold / releaseHold; the intro note and hint paint above the touch layer (reasoned); edited
+tests keep their meaning; DEVICE-CHECKS matches behaviour except the missing "Undo after leaving the Feed" case.
+Security: input, ownership, visibility, client-forged records refused, continuation=1, the read-only script: no finding.
+
+Gate: APPROVED r1 @bba614be - security-brief
+
+### security-brief r1 @bba614be
+
+(read-only seat, no Bash: read the worktree on disk as bba614be; findings traced in code or reasoned, marked as such)
+
+CRITICAL: none. WARNING: none.
+
+NOTE
+- N1 (LOW, fix or accept). A start-over record that arrives in a BACKUP BUNDLE is restored by Undo without type checks:
+  normalizeFeedSessionForRestore (lib/auth/store.js:540-563) keeps moves that are plain objects with string kind / id and
+  checks nothing in `from`; restoreMediaPlace binds prev.progress.timestamp / duration / updatedAt as they are (no num(), no
+  string check - unlike the bundle's own progress loop, store.js:2029, and restorePodcastPlace), and restoreBookPlace stores
+  JSON.stringify(prev.progress) whole (no shape or size cap). Traced path: an admin restores a crafted or corrupted bundle with
+  {startOver:true, token:<24 hex>, kind:'media', id:<visible>, from:{progress:{timestamp:"abc", updatedAt:"9999-..."}}}; the user's
+  Undo plants a non-numeric timestamp and a far-future stamp. LOW: backup restore is admin-only, writes only the owner's own
+  rows for a visible, empty item, and the bundle's progress loop can already plant an unclamped updatedAt string. Fix: normalize
+  `from` per kind in the restore validator, or num() / string guards in restoreMediaPlace / restoreBookPlace (+ a byte cap).
+  Proof: a store test through replaceAllUsersRaw + the Undo route asserting a numeric row or a refusal.
+- N2 (test gap). No test drives a HIDDEN podcast episode through start-over or undo (test/integration/feed-start-over.test.js
+  covers a hidden video, a blocked book, a missing id). The podcast arm of visibleItem (lib/feed/routes.js:198) is correct by
+  trace but unbound: mutate it to `return ep ? ep : null` - expected to stay green today. Fix: a member restricted from a show,
+  an episode with stored progress, 404 and untouched.
+- N3 (INFO, accepted). The record is bounded by count (400 sessions x 300 moves a user), not by bytes; every `from` is built
+  server-side from stored rows; a member can only fill their own rows; the bound predates this release.
+- INFO: store.js:1021 "puts back EXACTLY what the route snapshotted" holds for server-written records, not for bundle-restored
+  ones (N1) - reword with the N1 fix.
+
+Checked clean (traced): session + token ownership (getFeedSession is WHERE user_id = ? AND id = ?; token looked up only in that
+session's moves; 404 before any write); visibility before the "nothing" check (missing = hidden = one 404 body), re-checked on
+Undo, no timing oracle (synchronous handlers); input (kind enum, plainId <= 256 and no char < 32 - keeps the NUL out of served.js
+keyOf, token ^[0-9a-f]{24}$, own-property lookups, prepared statements); Undo writes only the server's own record (the finish
+route refuses `moves`, updateFeedSession keeps them; a __proto__ summary stores nothing); compare-and-set before restore; both
+routes classified; the excerpt `continuation=1` only skips feedServed.mark (removes a registry-tamper path, adds no read);
+openReadOnlyQuery is readOnly at the driver with constant SQL and no HTTP surface; the client renders server text through
+textContent only (no innerHTML / insertAdjacentHTML / eval; ui.toast spanText, ui.confirm textContent); URLs built server-side
+with encodeURIComponent; error bodies carry err.code only. Not confirmed without a diff: package.json / lockfile unchanged.
