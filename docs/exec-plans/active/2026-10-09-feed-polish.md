@@ -3,8 +3,8 @@ plan: feed-polish
 harness: v2 · full
 branch: feat/v1.380.0-feed-polish
 anchor: outcome
-status: In progress (W1 done, W2 next)
-next: W2 feed server
+status: In progress (gate r1 fixed, r2 re-confirm)
+next: r2 re-confirm with the same seats, then the release flow
 design: Dean's first use of v1.379.0 Feed (2026-10-09) and his rulings R1-R6 below; kickoff defaults D1-D9. Base main 23136250 (v1.379.0).
 builder: standard (Sonnet; Dean ruled 2026-10-09, supersedes smart. Changes when a feed card writes progress, and a Settings page split; no schema change)
 gate: not yet run (FULL: adversary, qa; lib/ change = core-logic; the progress rule is a data-carrier surface - brief it as one)
@@ -115,6 +115,9 @@ write before 60 s (via the shared player's pings, a dock, a navigation away mid-
 removal), a "Start reading" that moves an existing bookmark backwards or over another device's newer place, a front-matter rule
 that skips a real first chapter, and the sticky header under every Settings page at 320 px.
 
+Gate: CHANGES r1 @fdccf1ece598b23707255ae1d5b3dbe916f4d7b5 — qa
+Gate: CHANGES r1 @fdccf1ece598b23707255ae1d5b3dbe916f4d7b5 — adversary
+
 ## 6. Release
 docs/RELEASING.md and AGENTS.md exactly: version bump, CHANGELOG / releases.json in Dean's plain words, the plan closed out in the
 same PR (`node scripts/plan-complete.js docs/exec-plans/active/2026-10-09-feed-polish.md "Shipped vX.Y.Z" --apply`), the
@@ -123,11 +126,11 @@ protected-main PR flow, shipped = the tag's "Publish Docker Image" run green, br
 ## 7. Evidence (builder fills: numbers copied from the runs named, verbatim verdict lines)
 
 - D1 sticky measurement (390 / 320): headless Chromium, mobile emulation, all 22 Settings pages, scrolled to the bottom, back button rect. The document scrolls (no overflow ancestor), the header is position:sticky and pins at top 56 (flush under the 56px app header); back button top 62 / bottom 94 on EVERY scrolled page, 390x844 (longest: Mobile player, docH 8597, scrollY 7753) and 320x568 (longest: Mobile player, docH 10127, scrollY 9559); all `vis:true`. Pages that do not scroll sit at 78/110 (unscrolled position). Desktop unchanged (position:relative, measured by test only). Probe: scratchpad sticky-probe.js.
-- D5 front-matter rule per fixture:
-- D7 falsifier (10 s vs 70 s):
-- Suites (Node 22.23.1 / 24.20.0) at the reviewed sha:
-- Gate rounds:
-- Device checks owed:
+- D5 front-matter rule per fixture (test/unit/books-first-chapter.test.js): Standard-Ebooks shape (nav landmarks bodymatter) -> spine 4, rule landmarks; landmarks naming a non-spine file -> heuristic; Gutenberg shape (no nav; copyright heading page + contents) -> spine 2, heuristic; Calibre shape (cover, title page, copyright, dedication, toc) -> spine 5, heuristic; real chapter 1 / short prologue / opening that merely mentions cover or contents (and, after gate r1, four short openings with acknowledged / cover / first edition / dedicated) -> spine 0, spine-0; all front matter -> spine 0, none; >12 leading picture pages -> none. The six seeded app EPUBs (Harbor Library, Night Reading): spine 0, spine-0, no description. Mutants of the 150-word bound, the landmarks branch, the text rule and the skip cap all fail the tests.
+- D7 falsifier (10 s vs 70 s): integration (test/integration/feed-api.test.js): a fresh video, seven early shapes of write (10 s, a 95% ping that would latch watched and leave Watch later, 59.9 s, no playedSec, junk) -> 409 too-early, user_progress / user_watched / user_watch_later byte-identical; playedSec 70 -> 200 with a position, then the old rule (backward 409, watched latch and Watch later leave ride the write). Real player in headless Chromium (a WAV episode): 0 progress POSTs before 60 s of playing, first write at 73.2 s played (200); a seek to 150 s then 31 s of playing: 0 POSTs, no row; gate r1 C1 repro (leave the Feed at ~20 s, keep listening in the dock): before the fix 0 POSTs over 137 s, after it writes at played 60.8 (200) every ping.
+- Suites (Node 22.23.1 / 24.20.0) at the reviewed sha: r1 fdccf1ec: 11958 tests, 11945 pass, 0 fail, 13 skipped on both. r2 sha: see below.
+- Gate rounds: r1 CHANGES by adversary (C1 tracker died with the view; C2 quadratic OPF / nav regexes; W1 several new-book cards a batch; W2 front-matter text rule skipped short real chapters; W3 sub-minute clips) and qa (W1 the same multi-card, W2 = C1); all fixed, r2 follows.
+- Device checks owed: docs/DEVICE-CHECKS.md "Feed polish (v1.380.0)" (8 lines: pinned header, Bottom bar page, swipe cue, new-book card, Start reading, labels, early swipe of a new video, intro skip).
 
 ## 8. Out of scope
 SponsorBlock or any outside data; PDF books in the feed; a Settings search; reordering Settings pages; the Settings alias cleanup

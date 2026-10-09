@@ -27,6 +27,15 @@ test('decideTimeMove: a fresh card writes nothing below 60 s of played time, the
   assert.strictEqual(safe.decideTimeMove({ ...base, served: 'unknown', fresh: true, playedSec: 70 }).reason, 'not-served');
 });
 
+test('decideTimeMove: a clip shorter than 75 s needs 80% of its own length (never more than a minute)', () => {
+  const base = { storedSec: 0, nextSec: 40, served: 'ok', fresh: true };
+  assert.strictEqual(safe.freshNeedSec(45), 36);
+  assert.strictEqual(safe.decideTimeMove({ ...base, playedSec: 35, durationSec: 45 }).reason, 'too-early');
+  assert.strictEqual(safe.decideTimeMove({ ...base, playedSec: 36, durationSec: 45 }).ok, true);
+  assert.strictEqual(safe.decideTimeMove({ ...base, playedSec: 36, durationSec: 0 }).reason, 'too-early', 'unknown length = the full minute');
+  assert.strictEqual(safe.decideTimeMove({ ...base, playedSec: 59, durationSec: 3600 }).reason, 'too-early');
+});
+
 test('decideTimeMove: a card that is not fresh is unchanged by playedSec (the old behaviour, byte for byte)', () => {
   assert.deepStrictEqual(safe.decideTimeMove({ storedSec: 20, nextSec: 30, served: 'ok' }), { ok: true, reason: 'ok' });
   assert.deepStrictEqual(safe.decideTimeMove({ storedSec: 20, nextSec: 30, served: 'ok', fresh: false, playedSec: 0 }), { ok: true, reason: 'ok' });

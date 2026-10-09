@@ -106,7 +106,12 @@ function feedPlayedStep(state, currentTime, nowMs, playing, rate) {
   s.wall = Number(nowMs);
   return s;
 }
-function feedFreshStarted(state) { return !!state && state.sec >= FEED_FRESH_START_SEC; }
+// A clip shorter than 75 s needs 80% of itself, never more than a minute (mirrors lib/feed/safe-progress.js freshNeedSec).
+function feedFreshNeedSec(durationSec) {
+  var d = Number(durationSec);
+  return isFinite(d) && d > 0 ? Math.min(FEED_FRESH_START_SEC, Math.max(1, d * 0.8)) : FEED_FRESH_START_SEC;
+}
+function feedFreshStarted(state, needSec) { return !!state && state.sec >= (typeof needSec === 'number' && needSec > 0 ? needSec : FEED_FRESH_START_SEC); }
 
 // v1.380.0 (R3, D3): the "Swipe up" cue shows on the first FEED_HINT_SESSIONS sessions on a device, then never again.
 var FEED_HINT_KEY = 'ft-feed-hint-sessions';
@@ -371,7 +376,7 @@ if (typeof module !== 'undefined' && module.exports) {
     FEED_EXTEND_MIN, FEED_WIND_DOWN_CAP_SEC, FEED_HOLD_MS, FEED_WORDS_PER_PAGE, FEED_TIME_PEEK_MS, feedRestoreSummary,
     feedNormalizeMinutes, feedWeekLine, feedClock, feedKindLabel, feedActiveIndex, feedShouldPrefetch, feedExcludeIds,
     feedPlayerDescriptor, feedBookRead,
-    feedNewnessLabel, feedKindLine, FEED_FRESH_START_SEC, FEED_PLAY_STEP_MAX_SEC, feedNewPlayTracker, feedPlayedStep, feedFreshStarted,
+    feedNewnessLabel, feedKindLine, FEED_FRESH_START_SEC, FEED_PLAY_STEP_MAX_SEC, feedNewPlayTracker, feedPlayedStep, feedFreshStarted, feedFreshNeedSec,
     FEED_HINT_KEY, FEED_HINT_SESSIONS, FEED_HINT_MS, FEED_INTRO_NOTE_MS, feedHintShouldShow,
     feedDeadlineMs, feedRingFraction, feedRemainingSec, feedEmptySummary, feedCountActivity, feedRecapLines, feedRecapTitle,
     feedHoldStep, feedSummaryPayload,
@@ -912,8 +917,9 @@ if (typeof module !== 'undefined' && module.exports) {
       // shared player, whose ONE progress writer (saveProgressToServer: pings, the pause / background checkpoint, a seek, the end)
       // asks it before every POST and reports the played seconds the server checks again. Not-fresh cards carry no guard.
       var tracker = card.fresh === true && card.kind !== 'song' ? feedNewPlayTracker() : null;
+      var needSec = feedFreshNeedSec(card.media === 'podcast' ? card.durationSec : card.duration);
       if (tracker) {
-        data.progressGate = function () { return feedFreshStarted(tracker); };
+        data.progressGate = function () { return feedFreshStarted(tracker, needSec); };
         data.playedSec = function () { return tracker.sec; };
       }
       mediaCardIndex = index;
@@ -928,7 +934,6 @@ if (typeof module !== 'undefined' && module.exports) {
       var onTime = function () {
         if (mediaCardIndex !== index || !mediaEl) return;
         var t = mediaEl.currentTime || 0;
-        if (tracker) feedPlayedStep(tracker, t, Date.now(), !mediaEl.paused && !mediaEl.ended, mediaEl.playbackRate);
         act.playedSec = Math.max(act.playedSec, t - startAt);
         if (endAt !== null && isFinite(endAt)) {
           var remain = endAt - t;
@@ -944,6 +949,22 @@ if (typeof module !== 'undefined' && module.exports) {
         }
       };
       mediaEl.addEventListener('timeupdate', onTime, { signal: signal });
+      // The played-time tracker is NOT tied to this view's signal (gate r1, adversary C1): the player keeps playing in the dock after
+      // the Feed is left, and its progress gate closes over this tracker - a tracker that died with the view would keep the gate shut
+      // for the rest of the listen and the item would never save. It stops when the minute is played or the player loads something else.
+      if (tracker) {
+        var media = mediaEl;
+        var src0 = null;
+        var track = function () {
+          var src = media.currentSrc || media.src || '';
+          if (src0 === null) src0 = src;
+          else if (src !== src0) { release(); return; } // the player moved on to another item
+          feedPlayedStep(tracker, media.currentTime || 0, Date.now(), !media.paused && !media.ended, media.playbackRate);
+          if (feedFreshStarted(tracker, needSec)) release();
+        };
+        var release = function () { media.removeEventListener('timeupdate', track); };
+        media.addEventListener('timeupdate', track);
+      }
       mediaEl.addEventListener('ended', function () {
         if (mediaCardIndex !== index) return;
         node.setAttribute('data-done', '');

@@ -396,9 +396,6 @@
   podcasts say Continue or New and a new one counts as started after about a minute; a pinned Settings header with its back
   arrow; Bottom bar as its own Settings page; a swipe hint on the first sessions. Plan:
   `docs/exec-plans/completed/2026-10-09-feed-polish.md` (v1.380.0).
-- [ ] **Feed: a fresh clip shorter than a minute never counts as started** _(found building v1.380.0, 2026-10-09)_ - the one-minute
-  rule is 60 s of playing, so a 30-second clip watched to its end from the feed leaves no watched mark and no place. Decide
-  whether the bar should be min(60 s, half the clip) before Dean's feed fills with short clips (phase 3).
 - [ ] **Feed phase 2: a Reading section (news as files)** _(outlined at the 2026-10-09 feed kickoff, section 9; planned after Dean has
   used the feed a week or two)_ - RSS sources subscribed like channels, each new post saved as a local readable file (text and
   images, readability-style extraction) with a small daily cap per source; a Reading page beside Books; articles become a feed
@@ -791,8 +788,12 @@ Kept verbatim for the record - the full release story lives in Shipped below.
   "Skipped the intro" for 3 s with a tap back to 0; a "Swipe up" cue on the first card of the first three sessions per device.
 - Measured (real Chromium, real player, a fresh podcast episode): no progress POST at all before 60 s of playing; the first
   write came at 73.2 s played (status 200); a seek to 150 s then 31 s of playing made no POST and left no row.
-- Disclosed: a fresh clip shorter than a minute never counts as started from the feed; "Skipped the intro, tap to go back"
-  rewinds but keeps the card's slice end; the one-minute rule is the feed's (the watch page and the podcasts page are as before).
+- Disclosed: a clip under 75 s needs 80% of itself played instead of a minute; "Skipped the intro, tap to go back" rewinds but
+  keeps the card's slice end; the one-minute rule is the feed's (the watch page and the podcasts page are as before); the
+  server's `playedSec` check trusts the player's report (the viewer's own data; the forward-only rule still holds).
+- Gate r1 (adversary + qa) found: a fresh card the user left mid-listen never saved (the tracker died with the view), a quadratic
+  OPF / nav parse (a 1 KB EPUB froze the server), more than one new-book card per batch, the front-matter text rule skipping
+  short real chapters, sub-minute clips never counting; all fixed and re-measured in r2.
 - Gate: see the completed plan (docs/exec-plans/completed/2026-10-09-feed-polish.md). Device checks owed: docs/DEVICE-CHECKS.md
   "Feed polish".
 

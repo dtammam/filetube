@@ -256,6 +256,27 @@ test('v1.380.0 a book with no place is a NEW-book card: description as plain tex
   assert.ok(reading.length > 0 && reading.every((c) => c.description === undefined && c.next), 'a book being read is the v1.379.0 card');
 });
 
+test('v1.380.0 (gate r1, W1) several liked unstarted books at once still make ONE new-book card in a session, in a single big batch too', async () => {
+  const now = new Date().toISOString();
+  userStore.setBookFinished(uid, bookIds.Delta, now);
+  userStore.addBookLiked(uid, bookIds.Epsilon, now);
+  userStore.addBookLiked(uid, bookIds.Zeta, now);
+  try {
+    for (let run = 0; run < 8; run++) {
+      const s = await startSession(30);
+      const big = await batch(s.id, 20);
+      const inBatch = big.cards.filter((c) => c.kind === 'book' && c.newBook);
+      assert.ok(inBatch.length <= 1, `run ${run}: ${inBatch.length} new-book cards in one batch`);
+      const later = await newBookCards(s.id, 10);
+      assert.ok(inBatch.length + later.length <= 1, `run ${run}: more than one new-book card in a session`);
+    }
+  } finally {
+    userStore.removeBookLiked(uid, bookIds.Epsilon);
+    userStore.removeBookLiked(uid, bookIds.Zeta);
+    userStore.clearBookFinished(uid, bookIds.Delta);
+  }
+});
+
 test('v1.380.0 "Start reading" goes through the SAME forward-only path: never backward, never over another device; on a clean book it lands at the first real chapter', async () => {
   const now = new Date().toISOString();
   userStore.setBookFinished(uid, bookIds.Delta, now); // park Delta (finished books are skipped): Epsilon / Zeta are the only new candidates

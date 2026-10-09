@@ -70,7 +70,7 @@ test('landmarks naming a file that is not in the spine falls back to the heurist
 test('Gutenberg shape (no nav): the licence/title pages and the contents are skipped by their text (rule: heuristic)', () => {
   const r = firstOf({
     items: [
-      { id: 'pg-header', href: 'pg-header.xhtml', body: para('The Project Gutenberg eBook. Copyright laws vary. ' + words(40)) },
+      { id: 'pg-header', href: 'pg-header.xhtml', body: '<h2>Copyright</h2>' + para('This eBook is for the use of anyone anywhere. ' + words(40)) },
       { id: 'item2', href: 'part0001.xhtml', body: '<h2>Contents</h2><p>I. Down the Rabbit-Hole</p><p>II. The Pool of Tears</p>' },
       { id: 'item3', href: 'part0002.xhtml', body: story(1) },
     ],
@@ -146,4 +146,35 @@ test('parseNavBodymatter: only the landmarks nav counts, the href resolves again
   assert.strictEqual(opf.parseNavBodymatter(nav, 'OEBPS/nav/nav.xhtml'), 'OEBPS/text/ch1.xhtml');
   assert.strictEqual(opf.parseNavBodymatter('<nav epub:type="toc"><ol></ol></nav>', 'nav.xhtml'), null);
   assert.strictEqual(opf.parseNavBodymatter(null, 'nav.xhtml'), null);
+});
+
+// gate r1 (adversary W2): the heuristic skipped real short first chapters whose text merely CONTAINED a front-matter word
+test('a real short chapter 1 is never skipped for a front-matter word in its text (acknowledged, dedicated, cover, first edition, prologue)', () => {
+  const openings = [
+    'She acknowledged the storm with a nod and went below. ' + words(30, 'sea'),
+    'Cover the windows, he said, and bar the door. ' + words(30, 'night'),
+    'Prologue. The first edition of the map was lost in the fire. ' + words(30, 'ash'),
+    'He had dedicated his life to the sea, and the sea had noticed. ' + words(30, 'salt'),
+  ];
+  for (const text of openings) {
+    const r = firstOf({ items: [{ id: 'ch1', href: 'ch1.xhtml', body: para(text) }, { id: 'ch2', href: 'ch2.xhtml', body: story(2) }] });
+    assert.deepStrictEqual({ spineIndex: r.spineIndex, rule: r.rule }, { spineIndex: 0, rule: 'spine-0' }, text.slice(0, 30));
+  }
+  // and the pages that ARE front matter by what they say still are
+  const r = firstOf({ items: [{ id: 'a', href: 'a.xhtml', body: '<h2>Acknowledgements</h2>' + para('Thanks to everyone. ' + words(30)) }, { id: 'b', href: 'b.xhtml', body: para('Published by X. ISBN 978-0-00-000000-0. ' + words(20)) }, { id: 'c', href: 'c.xhtml', body: story(1) }] });
+  assert.strictEqual(r.spineIndex, 2);
+});
+
+// gate r1 (adversary C2): a hostile OPF / nav must not stall the server (quadratic regexes froze it 26 s on a 1 KB EPUB)
+test('hostile OPF and nav input is parsed in linear time (a megabyte of "<", unterminated tags, repeated openers)', () => {
+  const timed = (fn) => { const t = Date.now(); fn(); return Date.now() - t; };
+  const budget = 1500;
+  assert.ok(timed(() => opf.parseOpf('<package><metadata><dc:description>' + '<'.repeat(200000) + '</dc:description></metadata></package>', 'a.opf')) < budget, 'description of "<"');
+  assert.ok(timed(() => opf.parseOpf('<description>'.repeat(60000), 'a.opf')) < budget, 'repeated unterminated openers');
+  assert.ok(timed(() => opf.plainDescription('<script '.repeat(100000))) < budget, 'unterminated script openers');
+  assert.ok(timed(() => opf.parseNavBodymatter('<nav'.repeat(60000), 'n.xhtml')) < budget, 'repeated <nav');
+  assert.ok(timed(() => opf.parseNavBodymatter('<nav epub:type="landmarks" '.repeat(30000), 'n.xhtml')) < budget, 'repeated landmarks openers');
+  assert.ok(timed(() => opf.parseNavBodymatter('<nav epub:type="landmarks">' + '<a '.repeat(60000), 'n.xhtml')) < budget, 'unterminated anchors');
+  // the bounds do not cost the ordinary case
+  assert.strictEqual(opf.parseOpf('<package><metadata><dc:description>Fine &amp; plain</dc:description></metadata></package>', 'a.opf').description, 'Fine & plain');
 });

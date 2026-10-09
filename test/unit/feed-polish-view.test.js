@@ -73,6 +73,14 @@ test('the played-time tracker: playback adds, a seek adds nothing, pause adds no
   assert.strictEqual(feed.feedFreshStarted({ sec: 59.9 }), false);
   assert.strictEqual(feed.feedFreshStarted({ sec: 60 }), true);
   assert.strictEqual(feed.feedFreshStarted(null), false);
+  // a short clip needs 80% of itself (gate r1, adversary W3), never more than a minute
+  assert.strictEqual(feed.feedFreshNeedSec(45), 36);
+  assert.strictEqual(feed.feedFreshNeedSec(75), 60);
+  assert.strictEqual(feed.feedFreshNeedSec(3600), 60);
+  assert.strictEqual(feed.feedFreshNeedSec(0), 60);
+  assert.strictEqual(feed.feedFreshNeedSec(undefined), 60);
+  assert.strictEqual(feed.feedFreshStarted({ sec: 36 }, 36), true);
+  assert.strictEqual(feed.feedFreshStarted({ sec: 35 }, 36), false);
 });
 
 test('feedHintShouldShow: the first three sessions only', () => {
@@ -224,6 +232,36 @@ test('view: a FRESH card hands the player a progress gate that opens only after 
     await start(r2);
     assert.strictEqual(typeof r2.loads.filter((l) => l.id === 'v5')[0].data.progressGate, 'function', 'a fresh Watch later card is gated too');
   } finally { r2.close(); }
+});
+
+test('view (gate r1, adversary C1): the played-time tracker outlives the view - leave the Feed mid-card, keep listening past the minute, and the gate opens', async () => {
+  const r = feedRealm({ batches: [{ cards: [BOOK, FRESH_POD], exhausted: false }] });
+  try {
+    await start(r);
+    r.show(1);
+    Object.defineProperty(r.media, 'paused', { value: false, configurable: true });
+    const data = r.loads.filter((l) => l.id === 'ef')[0].data;
+    for (let s = 0; s <= 20; s++) { r.advance(1000); r.timeAt(s); }
+    assert.strictEqual(data.progressGate(), false);
+    r.destroy(); // the user navigates away; the player (and its media element) keeps playing in the dock
+    for (let s = 21; s <= 70; s++) { r.advance(1000); r.timeAt(s); }
+    assert.strictEqual(data.progressGate(), true, `the gate opens at ${data.playedSec()} s played`);
+    assert.ok(data.playedSec() >= 60);
+  } finally { r.close(); }
+});
+
+test('view: a SHORT fresh clip needs 80% of its length, not a minute (gate r1, adversary W3)', async () => {
+  const r = feedRealm({ batches: [{ cards: [BOOK, { ...FRESH_VID, skippedIntro: false, startAt: 0, endAt: 45, duration: 45, chapter: null }], exhausted: false }] });
+  try {
+    await start(r);
+    r.show(1);
+    Object.defineProperty(r.media, 'paused', { value: false, configurable: true });
+    const data = r.loads.filter((l) => l.id === 'vf')[0].data;
+    for (let s = 0; s <= 30; s++) { r.advance(1000); r.timeAt(s); }
+    assert.strictEqual(data.progressGate(), false);
+    for (let s = 31; s <= 38; s++) { r.advance(1000); r.timeAt(s); }
+    assert.strictEqual(data.progressGate(), true, `${data.playedSec()} s of a 45 s clip`);
+  } finally { r.close(); }
 });
 
 test('view: a skipped intro says so for 3 s and a tap goes back to 0 (a seek: it adds no played time)', async () => {

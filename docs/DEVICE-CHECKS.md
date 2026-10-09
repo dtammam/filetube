@@ -263,6 +263,7 @@ Home-screen app on the iPhone. Have a book you have never opened, a subscription
 - [ ] v1.380.0 - Video and podcast cards read "Continue" or "New from <channel>" / "New episode of <show>" (Watch later keeps its word). Expect about one New for every two Continue.
 - [ ] v1.380.0 - Swipe past a NEW video after about 10 seconds: it is not under Continue watching afterwards and not marked watched. Stay on a new one for over a minute: it is.
 - [ ] v1.380.0 - A new video that starts with an intro chapter opens after it with "Skipped the intro" for 3 seconds; tap it to go back to the start.
+- [ ] v1.380.0 - Start a NEW podcast episode in Feed, swipe nowhere, go to Home while it keeps playing in the mini player, listen past a minute: open the podcasts page; the episode has a place.
 
 ## Feed mode (v1.379.0)
 
