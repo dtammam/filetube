@@ -3142,6 +3142,7 @@ select {
 .icon-download,
 .icon-flame,
 .icon-history,
+.icon-feed,
 .icon-queue,
 .icon-podcast,
 .icon-downloads,
@@ -3255,6 +3256,8 @@ select {
    like heart/share/flame -- an icon with no set-specific variant falls back
    to this one in every set (deliberate, not a gap). */
 .icon-history { -webkit-mask-image: url(/assets/icons/history.svg); mask-image: url(/assets/icons/history.svg); }
+/* v1.379.0: the Feed sidebar entry's glyph (Material `dynamic_feed`, the bottom bar's sprite twin). Base directory only. */
+.icon-feed { -webkit-mask-image: url(/assets/icons/feed.svg); mask-image: url(/assets/icons/feed.svg); }
 /* v1.67: the playback-queue glyph (three list lines + a play triangle),
    promoted from the v1.63 inline card <svg>. Base directory only, like
    heart/share/flame/history -- an icon with no set-specific variant falls
@@ -3317,7 +3320,7 @@ select {
   .icon-home, .icon-folder, .icon-delete,
   .icon-search, .icon-play, .icon-refresh, .icon-arrow-down,
   .icon-list, .icon-heart, .icon-share, .icon-transcript, .icon-more, .icon-download,
-  .icon-flame, .icon-history, .icon-queue, .icon-podcast, .icon-downloads, .icon-books, .icon-tv,
+  .icon-flame, .icon-history, .icon-feed, .icon-queue, .icon-podcast, .icon-downloads, .icon-books, .icon-tv,
   .icon-school, .icon-movies, .icon-shows, .icon-documents, .icon-music-note, .icon-kids, .icon-games, .icon-camcorder, .icon-photos, .icon-travel, .icon-work, .icon-cooking, .icon-fitness, .icon-comedy, .icon-pets, .icon-cars, .icon-archive, .icon-radio, .icon-favorites, .icon-liked {
     background-color: currentColor;
   }
@@ -12759,3 +12762,59 @@ html[data-era-flourish="on"] .ft-unfabricated {
 .errors-page h1 { font: var(--t-title); margin: 0 0 var(--space-2); }
 .errors-page pre { white-space: pre-wrap; word-break: break-word; font: var(--t-caption); color: var(--ink-2); }
 .errors-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: var(--space-3) 0; }
+
+/* ---- v1.379.0 Feed mode: the /feed view (public/js/feed.js, lib/feed/shell.js) ----------------
+   Phone first: the length picker, then a full-height vertical card stack (one card per screen,
+   scroll-snap, one card active at a time). Desktop shows the same stack as a centred phone-width
+   column. Scoped to #view-root[data-view="feed"] (the SPA swaps only #view-root). Tokens only. */
+#view-root[data-view="feed"] { display: flex; flex-direction: column; min-height: 0; }
+#view-root[data-view="feed"] .feed-picker { max-width: 60vh; margin: 0 auto; padding: var(--space-6) var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
+#view-root[data-view="feed"] .feed-picker h2 { font: var(--t-headline); color: var(--ink-1); margin: 0; }
+#view-root[data-view="feed"] .feed-picker-blurb { font: var(--t-body); color: var(--ink-2); margin: 0; }
+#view-root[data-view="feed"] .feed-picker-choices { display: flex; gap: var(--space-3); flex-wrap: wrap; }
+#view-root[data-view="feed"] .feed-week { font: var(--t-footnote); color: var(--ink-3); margin: 0; min-height: var(--t-footnote-size); }
+#view-root[data-view="feed"] .feed-session { position: relative; flex: 1; min-height: 0; display: flex; justify-content: center; }
+/* The stack fills the space between the header and the bottom bar; each card snaps to a screen. The outer
+   stack has no radius, so clip and scroll live on one element legitimately (no corner to escape). */
+#view-root[data-view="feed"] .feed-stack { width: min(100%, 60vh); height: calc(100vh - var(--mobile-header-h, 0px) - var(--mobile-bottom-nav-h, 0px)); height: calc(100dvh - var(--mobile-header-h, 0px) - var(--mobile-bottom-nav-h, 0px)); overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-type: y mandatory; -webkit-overflow-scrolling: touch; background: var(--surface-0); }
+#view-root[data-view="feed"] .feed-card { height: 100%; scroll-snap-align: start; scroll-snap-stop: always; display: flex; flex-direction: column; padding: var(--space-4); gap: var(--space-3); border-bottom: var(--row-divider-style); box-sizing: border-box; }
+#view-root[data-view="feed"] .feed-card__kind { font: var(--t-caption); color: var(--ink-3); letter-spacing: var(--tracking-caps); text-transform: uppercase; }
+#view-root[data-view="feed"] .feed-card__title { font: var(--t-title); color: var(--ink-1); margin: 0; }
+#view-root[data-view="feed"] .feed-card__meta { font: var(--t-footnote); color: var(--ink-2); margin: 0; }
+#view-root[data-view="feed"] .feed-card__body { flex: 1; min-height: 0; overflow-y: auto; }
+#view-root[data-view="feed"] .feed-card__text p { font: var(--t-body); color: var(--ink-1); margin: 0 0 var(--space-3); }
+#view-root[data-view="feed"] .feed-card__text h3 { font: var(--t-headline); color: var(--ink-1); margin: var(--space-4) 0 var(--space-3); }
+#view-root[data-view="feed"] .feed-card__text .feed-card__chapter-start { font: var(--t-caption); color: var(--ink-3); text-transform: uppercase; letter-spacing: var(--tracking-caps); margin: var(--space-4) 0 var(--space-2); }
+#view-root[data-view="feed"] .feed-card__slot { width: 100%; aspect-ratio: 16 / 9; background: var(--thumbnail-bg); border-radius: var(--r-md); overflow: hidden; } /* corner-clip-safe: the player host is never scrolled inside its slot */
+#view-root[data-view="feed"] .feed-card[data-portrait] .feed-card__slot { aspect-ratio: 9 / 16; max-height: 70vh; margin: 0 auto; width: auto; }
+#view-root[data-view="feed"] .feed-card__art { width: min(100%, 40vh); aspect-ratio: 1 / 1; object-fit: cover; border-radius: var(--r-md); margin: 0 auto; display: block; background: var(--thumbnail-bg); }
+#view-root[data-view="feed"] .feed-card__poster { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; border-radius: var(--r-md); display: block; background: var(--thumbnail-bg); }
+#view-root[data-view="feed"] .feed-card__actions { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
+#view-root[data-view="feed"] .feed-card__left { font: var(--t-footnote); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+#view-root[data-view="feed"] .feed-card[data-done] .feed-card__left { color: var(--ink-3); }
+#view-root[data-view="feed"] .feed-card[data-active] .feed-card__kind { color: var(--accent); }
+#view-root[data-view="feed"] .feed-hud { position: absolute; top: var(--space-3); right: var(--space-3); z-index: var(--z-chip); }
+#view-root[data-view="feed"] .feed-notice { font: var(--t-footnote); color: var(--ink-2); text-align: center; padding: var(--space-3); }
+#view-root[data-view="feed"] .feed-card--notice { justify-content: center; align-items: center; }
+/* Above the phone breakpoint the two chrome tokens are undefined (tokens.css declares them inside the 768px query), so the
+   calc above would read 100vh under the 56px header (gate r2, qa W-R2-1: 80px below the fold at 1280x800), and height:auto
+   made the column the sum of its cards (gate r3, qa W-R3-1: 591px below the fold). The desktop chrome is the 56px header
+   (--header-h) and .main-content's padding (--space-12 top and bottom): measured at 1280x800, stack 696px, the document
+   exactly the window, no page scroll after a card scroll. */
+@media (min-width: 769px) {
+  #view-root[data-view="feed"] .feed-stack { height: calc(100vh - var(--header-h) - 2 * var(--space-12)); height: calc(100dvh - var(--header-h) - 2 * var(--space-12)); }
+}
+/* v1.379.0 Feed mode W4: the session ring, the time peek, the recap and the hold-to-extend button */
+#view-root[data-view="feed"] .feed-hud { display: flex; align-items: center; gap: var(--space-2); }
+#view-root[data-view="feed"] .feed-hud__time { font: var(--t-footnote); color: var(--ink-2); font-variant-numeric: tabular-nums; }
+#view-root[data-view="feed"] .feed-ring { width: var(--icon-lg); height: var(--icon-lg); display: block; }
+#view-root[data-view="feed"] .feed-ring circle { fill: none; stroke-width: var(--ring-w); }
+#view-root[data-view="feed"] .feed-ring__track { stroke: var(--separator); }
+/* --p (0..1, set by feed.js as DATA) is how much of the session has run; pathLength=100 makes the dash arithmetic unitless */
+#view-root[data-view="feed"] .feed-ring__fill { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 100 100; stroke-dashoffset: calc(100 - var(--p, 0) * 100); transform: rotate(-90deg); transform-origin: 50% 50%; }
+.feed-recap__list { margin: 0 0 var(--space-4); padding: 0 0 0 var(--space-5); font: var(--t-body); color: var(--ink-1); }
+.feed-recap__list li { margin: 0 0 var(--space-2); }
+.feed-recap__hint { font: var(--t-footnote); color: var(--ink-3); margin: 0 0 var(--space-3); }
+.feed-recap__actions { display: flex; gap: var(--space-3); justify-content: flex-end; flex-wrap: wrap; }
+/* the hold fills the button from the left as the hold lasts (--hold 0..1, set by feed.js as DATA) */
+.feed-hold { background-image: linear-gradient(var(--fill-selected), var(--fill-selected)); background-repeat: no-repeat; background-size: calc(var(--hold, 0) * 100%) 100%; }

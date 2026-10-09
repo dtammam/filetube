@@ -161,12 +161,16 @@ function resolveBaseHandoff(prevId, nextId, t, paused, live) {
 // -> Watch adopt keeps it (harmless: resumeMode null ends isMusic).
 // Tracker #237 (music follow-ups, 2026-09-24): the contract now covers the FULL surface-flavor
 // set, enumerated from what the loaders pass (music.js loadTrack, podcasts.js, watch.js
-// initWatch) - every field that says how the item is PRESENTED or how it ENDS, never a field
-// that drives the loaded media (type/duration/streamSrc/progressEndpoint/chapter offsets: the
+// initWatch) - every field that says how the item is PRESENTED, how it ENDS or WHERE IT SAVES,
+// never a field that drives the loaded media (type/duration/streamSrc/chapter offsets: the
 // adopt keeps the media untouched, which is why adopt exists):
 //   - presentation strings: title, channelName, folderName, album, albumKey, channelFolder,
 //     artUrl, subId (getCurrentMeta, the music/podcasts re-init seeds, the lock screen);
-//   - autoAdvanceViaTrackNav (the 'ended' cascade's queue branch vs the video autoplay path).
+//   - autoAdvanceViaTrackNav (the 'ended' cascade's queue branch vs the video autoplay path);
+//   - progressEndpoint (v1.379.0, gate r1 adversary C1: a feed card saves through the feed's
+//     forward-only route; the watch / podcasts page that ADOPTS the same media must save through
+//     its own again - measured: a seek back on the watch page was refused as "backward" and the
+//     place stopped following the user. Declared null by watch.js = the default /api/progress).
 // MEASURED in headless Chromium before this: an audio item opened on the watch page, then
 // /music?play=<id>, ADOPTED with the watch load's title / channel (the re-init read "file-a1
 // Uploader"), album '' / albumKey '' (no album to rebuild) and no autoAdvanceViaTrackNav (the
@@ -183,6 +187,9 @@ function applyAdoptFlavor(currentData, data) {
   }
   if (Object.prototype.hasOwnProperty.call(data, 'resumeMode')) {
     currentData.resumeMode = (typeof data.resumeMode === 'string' && data.resumeMode) ? data.resumeMode : undefined;
+  }
+  if (Object.prototype.hasOwnProperty.call(data, 'progressEndpoint')) {
+    currentData.progressEndpoint = (typeof data.progressEndpoint === 'string' && data.progressEndpoint) ? data.progressEndpoint : undefined;
   }
   for (var f = 0; f < ADOPT_FLAVOR_STRING_FIELDS.length; f++) {
     var key = ADOPT_FLAVOR_STRING_FIELDS[f];
@@ -225,7 +232,8 @@ function shouldDockOnTransition(fromView, toView) {
   // plays keeps the mini-player going); staying in the same view adopts instead
   // of docking. v1.71: 'podcasts' joins them (the expanded now-playing view
   // mounts FULL into /podcasts' #player-slot). MUST match common.js's copy.
-  return (fromView === 'watch' || fromView === 'read' || fromView === 'music' || fromView === 'podcasts') && typeof toView === 'string' && toView !== fromView;
+  // v1.379.0: 'feed' joins them (the card stack hosts the player FULL in a card's slot).
+  return (fromView === 'watch' || fromView === 'read' || fromView === 'music' || fromView === 'podcasts' || fromView === 'feed') && typeof toView === 'string' && toView !== fromView;
 }
 
 // The FULL/DOCKED/CLOSED transition a NAVIGATION (not a direct dock [x]/tap

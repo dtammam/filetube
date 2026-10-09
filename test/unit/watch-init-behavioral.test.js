@@ -792,7 +792,9 @@ test('gate r1 F3: both watch player.load calls claim the plain-video end: autoAd
   realm.init(root);
   assert.equal(realm.loadCalls.length, 1, 'precondition: the early adopt ran synchronously');
   // v1.352 L1: startAt (the `&t=` start, null without one) rides every watch load
-  assert.deepStrictEqual(Object.keys(realm.loadCalls[0].data).sort(), ['autoAdvanceViaTrackNav', 'browseCtx', 'readerHref', 'resumeMode', 'startAt'], 'precondition: that is the mountedEarly call (flavor-only data)');
+  // v1.379.0 (feed gate r1, adversary C1): progressEndpoint null rides it too - the default save route after a feed card's adopt
+  assert.deepStrictEqual(Object.keys(realm.loadCalls[0].data).sort(), ['autoAdvanceViaTrackNav', 'browseCtx', 'progressEndpoint', 'readerHref', 'resumeMode', 'startAt'], 'precondition: that is the mountedEarly call (flavor-only data)');
+  assert.strictEqual(realm.loadCalls[0].data.progressEndpoint, null, 'the default save route is declared, so an adopted feed card stops saving through the feed');
   assert.strictEqual(realm.loadCalls[0].data.startAt, null, 'no &t= in the URL: no explicit start');
   for (let i = 0; i < 40 && realm.theaterCalls.length === 0; i++) await settle();
   for (let i = 0; i < 12; i++) await settle();

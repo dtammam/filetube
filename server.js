@@ -128,6 +128,7 @@ const pushRoutes = require('./lib/push/routes');
 const userRoutes = require('./lib/user/routes');
 const ytdlpArrivals = require('./lib/ytdlp/arrivals'); // v1.373.0: a playlist job's videos - quiet, and hidden from feed when asked
 const cleanupShell = require('./lib/cleanup/shell');
+const feedShell = require('./lib/feed/shell'); // v1.379.0: /feed is the History shell with its #view-root swapped
 const cleanupRoutes = require('./lib/cleanup/routes'); // v1.342: the read-only Clean up shortlist (the delete is the existing trash route)
 // Wave 7b, slice S1b: the identity routes (/api/auth, /api/users, /api/me)
 // and the pre-auth-era per-user media state routes (/api/liked,
@@ -153,6 +154,10 @@ const booksTtsConfig = require('./lib/books/tts-config');
 const booksTtsEngine = require('./lib/books/tts-engine');
 const booksTtsChunk = require('./lib/books/tts-chunk');
 const booksZip = require('./lib/books/zip'); // chapter XHTML extraction for TTS
+const booksExcerpt = require('./lib/books/excerpt'); // v1.379.0 Feed: plain-text excerpts + the saved place as block coordinates
+const feedRoutes = require('./lib/feed/routes'); // v1.379.0 Feed: the forward-only progress writes (plan D5)
+const feedApi = require('./lib/feed/api'); // v1.379.0 Feed: the cards and the session record (plan D3, D6-D9, D13)
+const feedServed = require('./lib/feed/served').createServedRegistry(); // v1.379.0 Feed: served positions, per process
 // C4 "fun stats" page (v1.24 UX Round, Wave 3): pure aggregation helpers over
 // `db.metadata`, unit-tested on their own against a synthetic fixture. See
 // lib/stats.js's header comment and `GET /api/stats` (now in
@@ -3502,6 +3507,12 @@ app.get('*', (req, res, next) => {
     if (!sendShellHtml(res, path.join(__dirname, 'public', 'history.html'), cleanupShell.renderCleanupShell)) return next();
     return;
   }
+  // v1.379.0 Feed mode (plan D1): the same shell route as /cleanup - the History shell carries the
+  // header, sidebar, bottom bar and player markup; lib/feed/shell.js swaps in the feed's view root.
+  if (req.path === '/feed') {
+    if (!sendShellHtml(res, path.join(__dirname, 'public', 'history.html'), feedShell.renderFeedShell)) return next();
+    return;
+  }
   const shell = shellHtmlForRequestPath(req.path);
   if (!shell) return next();
   if (!sendShellHtml(res, path.join(__dirname, 'public', shell))) return next();
@@ -3642,11 +3653,13 @@ booksRoutes.registerRoutes(app, {
   bookScanState, // the LIVE scan-state object (never reassigned, only mutated)
   bookVisibleTo, // v1.80 RBAC: the per-user visibility gate for book items
   booksDb,
+  booksExcerpt, // v1.379.0 Feed: GET /api/books/:id/excerpt
   booksStore,
   contentDispositionAttachment,
   effectiveBookProgress, // pending-first reading position, per user
   escapeHtml,
   express, // only for express.raw on the cover upload
+  feedServed, // v1.379.0 Feed: serving an excerpt marks the position it was built from
   folderStore,
   foldersOverlap,
   fs,
@@ -3763,6 +3776,63 @@ booksRoutes.registerProgressRoute(app, {
   booksDb,
   pendingBookProgress, // the coalescer's staging Map - the LIVE object, never a copy
   pendingProgressKey,
+});
+
+// v1.379.0 Feed mode: the feed's forward-only, never-over-another-device writes of a
+// reading place or a resume point (plan D5). Each lands through the kind's EXISTING
+// writer (the books coalescer above, lib/podcasts' applyPodcastProgress,
+// lib/media/user-routes' applyMediaProgressPing) after the lib/feed/safe-progress
+// rule and the served-position registry have allowed it.
+feedRoutes.registerProgressRoutes(app, {
+  armBookProgressFlushTimerIfNeeded,
+  bookVisibleTo,
+  booksDb,
+  booksExcerpt,
+  effectiveBookProgress,
+  effectiveProgress,
+  feedServed,
+  fs,
+  getCachedDatabase,
+  // The same bundle POST /api/progress's effects read (mediaUserRoutes.registerProgressRoutes below).
+  mediaDeps: { armProgressFlushTimerIfNeeded, pendingProgress, pendingProgressKey, recordPresenceFromPing, userStore, videoQuery },
+  mediaUserRoutes,
+  mediaVisibleTo,
+  pendingBookProgress,
+  pendingProgressKey,
+  podcastDeps: { userStore, now: () => Date.now(), recordPresenceFromPing }, // what applyPodcastProgress reads of the podcasts bundle
+  podcastEpisodeVisibleTo,
+  podcasts,
+  podcastsDb,
+  userStore,
+});
+
+// v1.379.0 Feed mode: the feed itself (GET /api/feed) and the per-user session record
+// (POST /api/feed/sessions, GET .../week, POST .../:id/extend, POST .../:id/finish).
+// Cards are built from the viewer's VISIBLE items only, through the SAME per-kind
+// visibility decisions every list route uses (plan D3).
+feedApi.registerFeedRoutes(app, {
+  booksDb,
+  booksExcerpt,
+  bookVisibleTo,
+  effectiveBookProgress,
+  effectiveProgress,
+  feedServed,
+  fs,
+  getCachedDatabase,
+  mediaVisibleTo,
+  musicDb,
+  now: () => Date.now(),
+  podcastEpisodeVisibleTo,
+  podcastsDb,
+  // A song card's row is the SAME row shape GET /api/music serves (one shaper, no second spelling);
+  // artReps null = no shared art id (the client's albumArtSrc falls back to the track's own id).
+  publicTrackListItem: (track, userId) => publicTrackListItem(track, userId, musicLikedSets(userId), musicListProgressMap(userId, [track]), null, musicArtVersions.memo()),
+  resolveItemChapters,
+  rng: Math.random,
+  trackVisibleTo,
+  userStore,
+  videoQuery,
+  ytdlpDb,
 });
 
 // Wave 7b (slice S10b): GET /api/scan-status moved VERBATIM to
@@ -7329,6 +7399,7 @@ if (require.main === module) {
 // beyond ensuring the data directories exist; it never starts listening.
 module.exports = {
   app,
+  feedServed, // v1.379.0 Feed: the served-position registry (tests mark a card served)
   chapterSilenceService, // Chapter Snap (2026-09-24): tests await a scan (whenIdle) and read its cache
   needsTranscode,
   transcodedPath,

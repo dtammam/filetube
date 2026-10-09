@@ -40,6 +40,16 @@ const CLASSIFICATION = {
 
   // --- personal: the member's OWN state (never capability-gated, AC2) ---
   'POST /api/progress': 'personal',
+  // v1.379.0 Feed (plan D5): the feed's forward-only writes of the caller's OWN place; each checks the
+  // item's visibility first (hidden -> neutral 404, no oracle/persist) - proven in feed-progress.test.js.
+  'POST /api/feed/progress/book/:id': 'personal',
+  'POST /api/feed/progress/podcast': 'personal',
+  'POST /api/feed/progress/media': 'personal',
+  // v1.379.0 Feed W2 (plan D13): the caller's OWN feed session record (start, extend, finish); another
+  // user's session id is a neutral 404 - proven in feed-api.test.js.
+  'POST /api/feed/sessions': 'personal',
+  'POST /api/feed/sessions/:id/extend': 'personal',
+  'POST /api/feed/sessions/:id/finish': 'personal',
   'POST /api/videos/:id/view': 'personal',
   'POST /api/videos/:id/dimensions': 'personal',
   'POST /api/videos/:id/prepare-audio': 'personal',
@@ -269,6 +279,15 @@ const VISIBILITY = {
   // --- content-addressed, visibility ENFORCED ---
   'POST /api/videos/:id/view': 'enforced',
   'POST /api/videos/:id/dimensions': 'enforced',
+  // v1.379.0 Feed: bookVisibleTo / podcastEpisodeVisibleTo / mediaVisibleTo before any read of the stored place.
+  'POST /api/feed/progress/book/:id': 'enforced',
+  'POST /api/feed/progress/podcast': 'enforced',
+  'POST /api/feed/progress/media': 'enforced',
+  // v1.379.0 Feed W2: a session row names no item - its summary is the client's recap counts and the
+  // server's record of the positions the feed moved (ids the viewer was already served).
+  'POST /api/feed/sessions': na('the caller\'s own feed session record (planned length); no content addressed'),
+  'POST /api/feed/sessions/:id/extend': na('the caller\'s own feed session record (one more extension); no content addressed'),
+  'POST /api/feed/sessions/:id/finish': na('the caller\'s own feed session record (the recap counts); no content addressed'),
   'POST /api/videos/:id/prepare-audio': 'enforced',
   'POST /api/tv/episode/:id/prepare-audio': 'enforced', // v1.197: gated on tvEpisodeVisibleTo (restricted -> 404, no oracle/CPU sink)
   'POST /api/liked/:id': 'enforced',

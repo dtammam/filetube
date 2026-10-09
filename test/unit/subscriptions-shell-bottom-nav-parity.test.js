@@ -32,6 +32,7 @@ test('the Subscriptions page bottom bar is the home shell\'s bar (same items, sa
 test('...and it carries every roster entry, none on a CSS mask', () => {
   const subs = navOf('lib/ytdlp/views/subscriptions.html');
   const ids = [...subs.matchAll(/data-nav="([a-z-]+)"/g)].map((m) => m[1]);
-  assert.deepStrictEqual(ids, ['home', 'liked', 'playlists', 'history', 'podcasts', 'music', 'books', 'downloads', 'theme', 'settings']);
+  // v1.379.0: Feed sits right after Liked (plan D1), on the sprite like every other item.
+  assert.deepStrictEqual(ids, ['home', 'liked', 'feed', 'playlists', 'history', 'podcasts', 'music', 'books', 'downloads', 'theme', 'settings']);
   assert.doesNotMatch(subs, /<i class="icon-/, 'no mask glyphs (they pop in late on iOS)');
 });

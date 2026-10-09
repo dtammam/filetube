@@ -354,7 +354,10 @@ test('injectors REPLACE their placeholders in place: the header and the bar keep
   assert.deepStrictEqual(kidsOf(hr), ['queue-btn', 'notif-bell-btn', 'search-toggle-btn', 'ytdlp-oneoff-btn', 'account-menu-root'], 'each real control took its placeholder\'s slot');
   const nav = doc.getElementById('bottom-nav');
   const visible = Array.from(nav.querySelectorAll('.bottom-nav-item')).filter((e) => !e.hidden).map((e) => e.getAttribute('data-nav'));
-  assert.deepStrictEqual(visible, ['home', 'playlists', 'history', 'oneoff-download', 'subscriptions', 'you']);
+  // v1.379.0: Feed is a static item ON by default (plan D1), so the bar gains it after Home even for a
+  // device whose last paint predates it (the pre-paint reserve hides what the last paint did not name;
+  // the DOMContentLoaded apply resolves from the roster and shows it).
+  assert.deepStrictEqual(visible, ['home', 'feed', 'playlists', 'history', 'oneoff-download', 'subscriptions', 'you']);
   assert.strictEqual(doc.querySelectorAll('[data-ft-reserve]').length, 0, 'no placeholder survives');
   assert.ok(nav.querySelector('[data-nav="subscriptions"] > .ui-btn__icon > svg.ui-icon') && nav.querySelector('[data-nav="oneoff-download"] > .ui-btn__icon > svg.ui-icon'),
     'Subs + Download tabs carry the inline sprite glyph (no iOS mask decode lag)');
@@ -441,7 +444,9 @@ test('apply at boot keeps a reserve IN its slot, even when the user\'s order put
   c.applyBottomNavCustomization(); // the DOMContentLoaded apply, before any tab has landed
   const visible = Array.from(doc.getElementById('bottom-nav').querySelectorAll('.bottom-nav-item')).filter((e) => !e.hidden)
     .map((e) => e.getAttribute('data-nav') || e.getAttribute('data-ft-reserve'));
-  assert.deepStrictEqual(visible, last, 'the bar resolves exactly as it painted (no re-space at DOMContentLoaded)');
+  // v1.379.0: a saved order written before Feed existed cannot name it; the resolver appends the new
+  // default-on item after the listed ones (the v1.75 compat rule), so it lands before the You tab.
+  assert.deepStrictEqual(visible, ['subscriptions', 'home', 'playlists', 'history', 'oneoff-download', 'feed', 'you'], 'the bar resolves as it painted, plus the new Feed item appended (no re-space of the painted items)');
 });
 
 test('the account menu takes its placeholder\'s SLOT (a later sibling stays after it)', async () => {

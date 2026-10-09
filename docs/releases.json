@@ -3622,5 +3622,11 @@
     "date": "2026-10-09",
     "title": "Radio stations: Chill, Reggae, Synthwave, Favorites and your own, on the Music page, in Pocket and on the speaker",
     "intent": "The Music page now has a Stations shelf: stations made from your own library (its real genres and styles such as Lofi, Synthwave, Chill, Reggae, Jazz and game music, where there are enough songs), plus Favorites, Deep cuts, a station per decade from your albums' release years, and Recently added. Tap one and the radio plays that kind; make your own from a name plus genres, artists, words or years, and hide the ones you do not want. Pocket has a Radio row right after Music with the same list, the screen says which station is playing, and a station picked for a speaker plays there. FileTube now counts your plays, skips and finishes for music, so Favorites and Deep cuts fill in as you listen and the radio leans away from songs you keep skipping."
+  },
+  {
+    "version": "1.379.0",
+    "date": "2026-10-09",
+    "title": "Feed: your own library, one card at a time, for 10, 20 or 30 minutes",
+    "intent": "A new Feed page (in the bottom bar and under Library): pick 10, 20 or 30 minutes and swipe through cards made from what you already keep here - the next pages of the book you are reading, a few minutes of a podcast you are into, one chapter of a video (or three minutes of one without chapters), something from Watch later, a song you like. Everything you do there counts for real: the pages you read move your bookmark forward (never back, and never over a place you reached on another device), a podcast or video slice moves your place, a finished book is marked finished. A thin ring shows the time running; when it is up the card you are on finishes and a recap says where the time went: pages, chapters, minutes, songs. Another ten minutes is a hold on the button, not a tap, and the recap says so. Your sessions are kept, with a line on the picker for this week, so you can compare them with the time you used to give Reddit."
   }
 ]
