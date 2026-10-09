@@ -214,6 +214,8 @@ Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#8-platform-facts-ios
 
 - **A place that advances on what the system SHOWED, not on what the user DID, puts unread text behind the bookmark.** v1.379.0's feed kept a per-session book cursor that moved on every card SERVED; skip four cards, read the fifth, and its forward write passed D5 with two unread chapters behind the mark (measured: 1802 words). Guard: anything that moves a saved place advances only on the user's act (the dwell write), a skipped card parks the item until its place moves, and the item's END goes through the same served / not-stale rule as a move. The forward-only rule alone is not safety: it cannot tell "read" from "shown". (v1.379.0 gate r1; x1)
 
+- **A guard that waits on a number the CLIENT reports must be proved end to end in the REAL client, or it fails closed and the item never saves; and it belongs at the ONE writer.** v1.380.0's "a new video counts as started after a minute" put the gate in the shared player's single progress POSTer (`saveProgressToServer`), not at each caller, and the server route re-checks the `playedSec` the player reports; a unit stub of the player would have been green with the number never leaving the browser. Guard: the headless run with the real player (no POST before 60 s of playing, the first write carries `playedSec`, a seek adds nothing) plus a mutation on each layer; a source-lock test that slices a function by character count breaks when you insert above the line it reads, so add new code below it. (v1.380.0; x1)
+
 Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#9-data-integrity-and-persistence-the-data-loss-core-full-gate-never-slimmed).
 
 ## 10. Security and access control

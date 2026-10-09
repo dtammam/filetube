@@ -391,6 +391,14 @@
   current card, and a recap says where the time went; "Another 10 minutes" is a deliberate hold and shows in the recap. The
   feed keeps its own session history so his Reddit time in iOS Screen Time can be compared. Plan:
   `docs/exec-plans/completed/2026-10-09-feed-mode.md` (v1.379.0; a Fable builder).
+- [x] **Feed polish (Dean, 2026-10-09, after his first Feed session)** **Shipped v1.380.0 (2026-10-09).** - an unstarted book is a
+  "Start something new" card (description, a taste of the first real chapter, nothing written until "Start reading"); videos and
+  podcasts say Continue or New and a new one counts as started after about a minute; a pinned Settings header with its back
+  arrow; Bottom bar as its own Settings page; a swipe hint on the first sessions. Plan:
+  `docs/exec-plans/completed/2026-10-09-feed-polish.md` (v1.380.0).
+- [ ] **Feed: a fresh clip shorter than a minute never counts as started** _(found building v1.380.0, 2026-10-09)_ - the one-minute
+  rule is 60 s of playing, so a 30-second clip watched to its end from the feed leaves no watched mark and no place. Decide
+  whether the bar should be min(60 s, half the clip) before Dean's feed fills with short clips (phase 3).
 - [ ] **Feed phase 2: a Reading section (news as files)** _(outlined at the 2026-10-09 feed kickoff, section 9; planned after Dean has
   used the feed a week or two)_ - RSS sources subscribed like channels, each new post saved as a local readable file (text and
   images, readability-style extraction) with a small daily cap per source; a Reading page beside Books; articles become a feed
@@ -761,6 +769,32 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.380.0 - Feed polish: start something new, Continue or New, and a Settings that keeps its back arrow (2026-10-09)
+
+- W1 (D1, D2): Settings' detail header (back arrow + title) is `position: sticky` under the app header on the phone, measured
+  headless at 390 x 844 and 320 x 568 on all 22 pages (the back button stays at top 62 / bottom 94 after scrolling to the
+  bottom of the longest, Mobile player at ~8.6k px); desktop keeps its plain heading. "Bottom bar" is its own Personalize page
+  right after Mobile player (no alias from the old place; the Settings censuses and the screenshot scenes carry it).
+- W2 (D4, D5, D6, D8, D9): an unstarted book is a new-book card (liked ones first, else the newest added; one a session):
+  cover, author, the OPF's `dc:description` as plain text (parsed on demand; markup, escaped markup and CDATA reduced to text,
+  capped at 600 characters) and a ~200-word taste from the FIRST REAL CHAPTER (the EPUB 3 `bodymatter` landmark, else a
+  front-matter heuristic: picture pages and short cover / title / copyright / dedication / contents / acknowledgement pages
+  are skipped, bounded at 12). Serving it writes nothing. Video / episode / Watch later cards carry `fresh`; a fresh video
+  opens after a short intro chapter (intro / introduction / opening / sponsor / ad / a bare 0:00, under 3 minutes); the picker
+  serves about one fresh media card per two continuing ones without touching the 30/30/20/10/10 kind weights. The feed's
+  media and podcast progress routes refuse a fresh card's write (409 `too-early`) until the player reports 60 s of playing.
+- W3 (D3, D5-D8): the "Start something new" card ("Read the opening" expands the taste; "Start reading" is the only thing that
+  writes, through the same forward-only POST, then opens the reader); Continue / "New from <channel>" / "New episode of
+  <show>" kind lines (Watch later keeps its word); the one-minute rule where every write passes (`saveProgressToServer`, the
+  player's ONE progress writer, asks the card's `progressGate` and reports `playedSec`; a seek and a pause add nothing);
+  "Skipped the intro" for 3 s with a tap back to 0; a "Swipe up" cue on the first card of the first three sessions per device.
+- Measured (real Chromium, real player, a fresh podcast episode): no progress POST at all before 60 s of playing; the first
+  write came at 73.2 s played (status 200); a seek to 150 s then 31 s of playing made no POST and left no row.
+- Disclosed: a fresh clip shorter than a minute never counts as started from the feed; "Skipped the intro, tap to go back"
+  rewinds but keeps the card's slice end; the one-minute rule is the feed's (the watch page and the podcasts page are as before).
+- Gate: see the completed plan (docs/exec-plans/completed/2026-10-09-feed-polish.md). Device checks owed: docs/DEVICE-CHECKS.md
+  "Feed polish".
 
 ### v1.379.0 - Feed: your own library, one card at a time, for 10, 20 or 30 minutes (2026-10-09)
 

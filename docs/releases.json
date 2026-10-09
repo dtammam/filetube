@@ -3628,5 +3628,11 @@
     "date": "2026-10-09",
     "title": "Feed: your own library, one card at a time, for 10, 20 or 30 minutes",
     "intent": "A new Feed page (in the bottom bar and under Library): pick 10, 20 or 30 minutes and swipe through cards made from what you already keep here - the next pages of the book you are reading, a few minutes of a podcast you are into, one chapter of a video (or three minutes of one without chapters), something from Watch later, a song you like. Everything you do there counts for real: the pages you read move your bookmark forward (never back, and never over a place you reached on another device), a podcast or video slice moves your place, a finished book is marked finished. A thin ring shows the time running; when it is up the card you are on finishes and a recap says where the time went: pages, chapters, minutes, songs. Another ten minutes is a hold on the button, not a tap, and the recap says so. Your sessions are kept, with a line on the picker for this week, so you can compare them with the time you used to give Reddit."
+  },
+  {
+    "version": "1.380.0",
+    "date": "2026-10-09",
+    "title": "Feed polish: start something new, Continue or New, and a Settings that keeps its back arrow",
+    "intent": "A book you have not started now gets its own card in Feed, \"Start something new\": the cover, the author, what the book is about, and a taste of its first real chapter if you ask for it. Looking at it never starts the book; only Start reading does. Videos and podcasts now say whether you are continuing or looking at something new (\"New from ...\", \"New episode of ...\"), a new one only counts as started after about a minute of playing, a short intro at the start of a new video is skipped, and the feed mixes in about one new item for every two you were already in the middle of. A small Swipe up hint shows on the first card for your first few sessions. In Settings, the back arrow and the page title now stay at the top while you scroll a page, and the Bottom bar has its own page under Personalize."
   }
 ]
