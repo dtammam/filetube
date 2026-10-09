@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.381.0 Feed, TikTok style (plan docs/exec-plans/active/2026-10-09-feed-tiktok.md).
+// [UNIT] v1.381.0 Feed, TikTok style (plan docs/exec-plans/completed/2026-10-09-feed-tiktok.md).
 // W1 (D1, D2): the other-device card (#handoff-card) and the download chip (#dl-status-chip) are not shown
 // in the Feed. Both live on <body>, outside #view-root, so the rule keys on body[data-view], which the router
 // stamps on every view change (common.js applyZoomPolicy -> deriveRouteView). jsdom cannot measure the cascade:

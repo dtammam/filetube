@@ -3,8 +3,8 @@ plan: feed-tiktok
 harness: v2 · full
 branch: feat/v1.381.0-feed-tiktok
 anchor: outcome
-status: Gate APPROVED r3 @d4c4d293 by adversary, qa and security-brief; release commit next
-next: the release suites at the release sha, the plan close-out, the protected-main PR, Dean's merge
+status: Shipped v1.381.0
+next: none (shipped); Dean's device checks: docs/DEVICE-CHECKS.md "Feed, TikTok style (v1.381.0)"
 design: Dean's device feedback on v1.380.0 Feed (2026-10-09, eight points + swipe left/right); kickoff defaults D1-D11. Base main 42ec865c (v1.380.0).
 builder: smart (the shared player's gestures in a new full-bleed host, a layout rework of every card, and a deliberate progress RESET: a data-loss surface)
 gate: APPROVED r3 @d4c4d293 (FULL: adversary, qa, security-brief)

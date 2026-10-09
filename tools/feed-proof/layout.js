@@ -1,6 +1,6 @@
 'use strict';
 /* global document, window, getComputedStyle */
-// v1.381.0 Feed, TikTok style (plan docs/exec-plans/active/2026-10-09-feed-tiktok.md, W1 + W2): the MEASURED layout.
+// v1.381.0 Feed, TikTok style (plan docs/exec-plans/completed/2026-10-09-feed-tiktok.md, W1 + W2): the MEASURED layout.
 // Boots the real server on a real library with one item of every card kind (a reading book, an unstarted book with a
 // cover and a description, a landscape video and a portrait video in progress with thumbnails, a podcast episode with
 // show art, a liked song), opens /feed in a real browser at 390 x 844 and 320 x 568 (DPR 3, touch), walks the real
