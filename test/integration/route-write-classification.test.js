@@ -50,6 +50,10 @@ const CLASSIFICATION = {
   'POST /api/feed/sessions': 'personal',
   'POST /api/feed/sessions/:id/extend': 'personal',
   'POST /api/feed/sessions/:id/finish': 'personal',
+  // v1.381.0 Feed (plan D9): Start over forgets the caller's OWN place in ONE item (recorded first) and Undo puts it back;
+  // the session and the token are the caller's own (another user's: neutral 404) - proven in feed-start-over.test.js.
+  'POST /api/feed/start-over': 'personal',
+  'POST /api/feed/start-over/undo': 'personal',
   'POST /api/videos/:id/view': 'personal',
   'POST /api/videos/:id/dimensions': 'personal',
   'POST /api/videos/:id/prepare-audio': 'personal',
@@ -288,6 +292,10 @@ const VISIBILITY = {
   'POST /api/feed/sessions': na('the caller\'s own feed session record (planned length); no content addressed'),
   'POST /api/feed/sessions/:id/extend': na('the caller\'s own feed session record (one more extension); no content addressed'),
   'POST /api/feed/sessions/:id/finish': na('the caller\'s own feed session record (the recap counts); no content addressed'),
+  // v1.381.0 Feed (D9): mediaVisibleTo / podcastEpisodeVisibleTo / bookVisibleTo before the place is read or reset, and
+  // again before an Undo restores it (a hidden or missing item: one neutral 404) - proven in feed-start-over.test.js.
+  'POST /api/feed/start-over': 'enforced',
+  'POST /api/feed/start-over/undo': 'enforced',
   'POST /api/videos/:id/prepare-audio': 'enforced',
   'POST /api/tv/episode/:id/prepare-audio': 'enforced', // v1.197: gated on tvEpisodeVisibleTo (restricted -> 404, no oracle/CPU sink)
   'POST /api/liked/:id': 'enforced',

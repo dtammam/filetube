@@ -247,6 +247,36 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
 - [x] v1.377.0 - (Dean 2026-10-08: "good") The Music page button reads "Pocket"; Settings > Mobile player says "Keep Pocket upright"; no "iPod"
   anywhere you can read in the app.
 
+## Feed, TikTok style (v1.381.0)
+
+Home-screen app on the iPhone (and once on a small phone if you have one, 320 wide). Have a book you are partway through, a video
+and a podcast you are partway through, a liked song, and something downloading.
+
+- [ ] v1.381.0 - Every card fills the screen edge to edge: a video fills it (cropped like a phone feed), the title, channel and readout sit
+  over a dark fade at the bottom, the ring and Done top right never touch the title. A podcast or song: the art blurred behind, the art
+  once in the middle, not huge. Check each kind at your phone's width.
+- [ ] v1.381.0 - Nothing inside a card scrolls. A book card shows one page; swipe left for the next page, right to go back ("Page 2 of 3").
+  Past the last page the next pages load. Swipe up or down moves card to card from anywhere on a card, including from the playing video.
+- [ ] v1.381.0 - The back swipe: start a swipe right at the very left edge on a book card. Safari's (or the app's) back gesture is the one
+  that happens, never a page turn. A swipe starting a thumb's width in turns the page.
+- [ ] v1.381.0 - On a playing video: tap pauses (a glyph in the middle), tap again plays; press and hold plays at 2x with the badge while
+  you hold, back to normal when you let go. Hold for a few seconds: no magnifier bubble. A podcast or song: tap pauses / plays, a hold
+  does not speed up.
+- [ ] v1.381.0 - Fit / Fill on a video: Fit shows the whole picture with bars, Fill crops to the screen. Your choice sticks for the next video
+  and the next session.
+- [ ] v1.381.0 - Turn the phone sideways while a video or song plays in the Feed: nothing goes full screen and the card stays a card (the page
+  itself may turn wide; a web app cannot lock it upright).
+- [ ] v1.381.0 - In the Feed there is no "Watching on <device>" card and no download pill; go to Home: both are back, and the download went on.
+- [ ] v1.381.0 - Start over on a video you are partway through: "..." > Start over > the sheet says "Your place, h:mm:ss of h:mm:ss, will be
+  forgotten". Confirm: the card says New and plays from the start. Tap Undo within 10 seconds: it is back at your place, says Continue. Do it
+  again and let the toast go: open the video on the watch page, it starts from the beginning. Once more: Start over, tap Home within
+  10 seconds, then tap Undo on the toast still showing: "Your place is back", and the video resumes at your place.
+- [ ] v1.381.0 - Start over on a podcast and on a book card; Undo each. Then Start over a book and open it in the reader: it opens at the
+  beginning. Songs and new books have no "...".
+- [ ] v1.381.0 - Things you only peeked at (under a minute) now say New, not Continue; anything you really watched or listened to still says Continue.
+- [ ] v1.381.0 - Optional, on the server: `docker exec -i <filetube container> node scripts/feed-stale-continue.js /app/data/filetube.db`
+  (read-only) and send the summary lines; they show how many of your Continue items were under a minute or were moved by a feed session.
+
 ## Feed polish (v1.380.0)
 
 Home-screen app on the iPhone. Have a book you have never opened, a subscription with videos you have not watched and a podcast with a new episode.

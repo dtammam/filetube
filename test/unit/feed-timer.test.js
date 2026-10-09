@@ -142,14 +142,14 @@ test('view: time up with a BOOK active waits for the swipe, then stops playback,
     const fin = r.calls('POST', '/api/feed/sessions/abcdef0123456789/finish');
     assert.strictEqual(fin.length, 1);
     assert.ok(fin[0].body.actualSec >= 600);
-    assert.deepStrictEqual(fin[0].body.summary.books, [{ id: 'bk1', title: 'Alpha', pages: 2, words: 500 }], 'the book was read (active past its dwell)');
+    assert.deepStrictEqual(fin[0].body.summary.books, [{ id: 'bk1', title: 'Alpha', pages: 1, words: 3 }], 'the book was read (its page active past its dwell); v1.381.0 (D6): the recap counts the words ON the pages read (the fixture page holds 3), not the card\'s word total');
     assert.strictEqual(fin[0].body.summary.cards, 1);
     assert.ok(r.loads.some((l) => l.close), 'playback stopped');
     assert.strictEqual(r.loads.filter((l) => l.id).length, 0, 'the swiped-to card never started');
     const sheet = r.$('.ui-sheet');
     assert.ok(sheet, 'the recap opened');
     assert.strictEqual(sheet.querySelector('.ui-sheet__title').textContent, '12 minutes'); // the real time: 10 planned + the 2 minutes the page was still read
-    assert.deepStrictEqual(Array.from(sheet.querySelectorAll('.feed-recap__list li')).map((li) => li.textContent), ['2 pages of Alpha']);
+    assert.deepStrictEqual(Array.from(sheet.querySelectorAll('.feed-recap__list li')).map((li) => li.textContent), ['1 page of Alpha']);
     assert.ok(r.$('#feed-extend-btn') && r.$('#feed-recap-done'));
     assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk1').length, 1, 'the bookmark moved too');
   } finally { r.close(); }
@@ -163,7 +163,7 @@ test('view (gate r1, adversary M19): a card swiped back to and left again counts
     r.show(1); r.show(0); r.show(1); r.show(0); r.show(1); // back and forth over the read book
     r.$('#feed-done-btn').click(); await r.settle();
     const fin = r.calls('POST', '/api/feed/sessions/abcdef0123456789/finish');
-    assert.deepStrictEqual(fin[0].body.summary.books, [{ id: 'bk1', title: 'Alpha', pages: 2, words: 500 }], 'counted once');
+    assert.deepStrictEqual(fin[0].body.summary.books, [{ id: 'bk1', title: 'Alpha', pages: 1, words: 3 }], 'counted once');
     assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk1').length, 1, 'written once');
   } finally { r.close(); }
 });
@@ -261,8 +261,8 @@ test('view (gate r1, adversary W3): what was read before a navigation is still i
     r.$('#feed-done-btn').click(); await r.settle();
     const fin = r.calls('POST', '/api/feed/sessions/abcdef0123456789/finish');
     assert.strictEqual(fin.length, 1);
-    assert.deepStrictEqual(fin[0].body.summary.books, [{ id: 'bk1', title: 'Alpha', pages: 2, words: 500 }], 'the pages read before the navigation');
-    assert.deepStrictEqual(Array.from(r.$('.ui-sheet').querySelectorAll('.feed-recap__list li')).map((li) => li.textContent), ['2 pages of Alpha']);
+    assert.deepStrictEqual(fin[0].body.summary.books, [{ id: 'bk1', title: 'Alpha', pages: 1, words: 3 }], 'the pages read before the navigation');
+    assert.deepStrictEqual(Array.from(r.$('.ui-sheet').querySelectorAll('.feed-recap__list li')).map((li) => li.textContent), ['1 page of Alpha']);
   } finally { r.close(); }
   // the restore is shape-checked
   assert.deepStrictEqual(feed.feedRestoreSummary(null), feed.feedEmptySummary());

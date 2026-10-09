@@ -396,6 +396,20 @@
   podcasts say Continue or New and a new one counts as started after about a minute; a pinned Settings header with its back
   arrow; Bottom bar as its own Settings page; a swipe hint on the first sessions. Plan:
   `docs/exec-plans/completed/2026-10-09-feed-polish.md` (v1.380.0).
+- [x] **Feed, TikTok style (Dean, 2026-10-09, after using v1.380.0: "optimize more to TikTok style feed")** **Shipped v1.381.0
+  (2026-10-09).** - full-screen cards with the words at the bottom; nothing scrolls inside a card (book pages by swipe, with the 24 px
+  back-gesture edge left alone); tap / hold for 2x on video; Fit / Fill; no other-device card or download pill in the Feed; no
+  rotation in a Feed card; under a minute in = New; Start over with a confirm and an exact Undo. Plan:
+  `docs/exec-plans/completed/2026-10-09-feed-tiktok.md` (v1.381.0).
+- [ ] **Start over: the hardening the v1.381.0 gate left as suggestions** _(gate r3, adversary + qa; none loses data)_ - (a) the
+  4096-byte bound on a recorded book place can refuse a real reader place whose cfi is ~1365+ multi-byte characters (refused and kept,
+  never lost): bound by the reader's own limit instead (2000 cfi characters, up to 4 bytes each); (b) survivors to bind: the
+  `flag()` shape check (R9 / U11) and nothingToForget keying a latch-only item on its time (U4: such an item is refused as 'nothing',
+  nothing deleted); (c) the confirm names the card's place, the toast the stored one - read the stored place before the confirm.
+- [ ] **A way back to a Start over's recorded place after its 10 s toast** _(v1.381.0 gate r1, adversary W1: disclosed, not built)_ -
+  Start over records the place it forgets in the feed session (the `moves` entry with `startOver`, `token`, `from`), and Undo
+  restores it while the item is unchanged; after the toast closes no screen offers it (the record is only in the database). Options:
+  a "Recently started over" row in the Feed picker, or a Restore in History. Measure first how often Dean misses the toast.
 - [ ] **Feed phase 2: a Reading section (news as files)** _(outlined at the 2026-10-09 feed kickoff, section 9; planned after Dean has
   used the feed a week or two)_ - RSS sources subscribed like channels, each new post saved as a local readable file (text and
   images, readability-style extraction) with a small daily cap per source; a Reading page beside Books; articles become a feed
@@ -766,6 +780,35 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.381.0 - Feed, TikTok style: full-screen cards, book pages you swipe, tap and hold on video, and Start over (2026-10-09)
+
+- W1 (D1, D2): the other-device card and the download chip are not shown in the Feed (one rule keyed on the router's
+  body[data-view]; leaving restores both; downloads go on). Measured: on v1.380.0 the other-device card stayed `display:flex` in the
+  Feed on all four runs (Dean's point 1); now `none`, and back on Home.
+- W2 (D3-D6): every card is the media as its own full layer, a strip for the ring and Done, and the words in a bottom overlay
+  (title two lines at most); edge to edge on the phone. A video is object-fit cover (Fit / Fill per device); a podcast or song
+  shows its art once (45% of the width) over its blurred art. Nothing in a card scrolls: a book card's text is FITTED into pages and
+  the place moves only to the first unread page's start (pages read in order, each its own dwell). Measured (tools/feed-proof/
+  layout.js, Chromium + WebKit, 390 and 320, every card kind): v1.380.0 had 16 inner scrollers and the timer over the title on 24 of
+  24 cards; now 0 and 0, the playing video 390 x 716 (was 340 x 191). Dean approved the look from the side-by-side screenshots.
+- W3 (D7, D8): swipe left / right on a book card turns the page (never from within 24 px of a screen edge; the arrow keys too; more
+  pages load through the excerpt route in a mode that never re-stamps the served place); on a video a tap is the player's own
+  picture tap and a hold its own 2x hold, through a small player API, from a gesture layer that never cancels a swipe; a thin
+  progress line. Dean, mid-build: a player in a Feed card ignores rotation.
+- W4 (D9, D10): Start over on a card ("..."): a confirm, the server records the place (from storage, pending writes included)
+  BEFORE it forgets it (video: progress + watched, episode: position + played, book: place + finished; Watch later kept), and a
+  10 s Undo restores the exact rows only while the item is exactly as the reset left it; a place Undo could not restore is never
+  forgotten. D10 measured: nothing writes a place for a look; the Feed called a 6 s look Continue. Dean ruled: under a minute in is
+  New, in the Feed. scripts/feed-stale-continue.js reports Continue items read-only.
+- Also fixed: every Feed toast showed "[object Object]" on a device since v1.379.0 (one object passed where ui.toast takes a
+  message; the test harness's stub took the same wrong shape).
+- Disclosed: the confirm names the card's place (the toast then names the stored one); after the 10 s toast no screen offers the
+  recorded place (ROADMAP Planned); the magnifier on a long hold is a device check (the Feed does not cancel touches, so it can swipe).
+- Gate (FULL: adversary, qa, security-brief): r1 found Undo dead after leaving the Feed, an Undo a 0 s save then overwrote, a rebuilt
+  book card moving the place past unread text, and unbound guards; r2 found more unbound guards; round 3 (Dean's call) closed them.
+  All three APPROVED at d4c4d293 (QA's r3 test for the podcast / book NULL-time latch added in this release commit, its mutants
+  U6-U9 killed). Mutants killed across the waves and rounds: W2 12, W3 11, W4 17, r1 15, r2 12, r3 4.
 
 ### v1.380.0 - Feed polish: start something new, Continue or New, and a Settings that keeps its back arrow (2026-10-09)
 
