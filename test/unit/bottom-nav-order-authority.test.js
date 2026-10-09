@@ -426,11 +426,13 @@ test('v1.75 EDITOR: every roster id has a real label - no raw slug reaches the p
   assert.equal(setup.BOTTOMBAR_LABELS.settings, 'Settings');
 });
 
-test('v1.75 EDITOR: rows list all twelve in the BAR\'s order, with the default ticks', () => {
+test('v1.75 EDITOR: rows list all thirteen (twelve + the v1.379.0 feed) in the BAR\'s order, with the default ticks', () => {
   withEditor({}, (dom, signal) => {
     setup.renderBottomBarEditor(signal);
     const rows = editorRows();
-    assert.equal(rows.length, 12);
+    assert.equal(rows.length, 13);
+    assert.equal(rows[2].label, 'Feed', 'v1.379.0: Feed right after Liked');
+    assert.equal(rows[2].checked, true, 'Feed ships visible (plan D1)');
     assert.equal(rows[0].label, 'Home', 'Home heads the list, as it heads the bar');
     assert.equal(rows[rows.length - 1].label, 'Settings', 'Settings tails both');
     assert.equal(rows[1].label, 'Liked');
@@ -529,8 +531,9 @@ test('v1.75 EDITOR: a move persists the FULL roster, which is what releases the 
     assert.equal(afterOne.order[1], 'home');
     moveHomeDown();
     const written = JSON.parse(dom.window.localStorage.getItem('ft-bottomnav'));
-    // And the bar honours it: Home is no longer first, and the pins are gone.
-    assert.equal(resolveBottomNavLayout(BOTTOM_NAV_OPTIONAL, written).visible[0], 'playlists');
+    // And the bar honours it: Home is no longer first, and the pins are gone. (v1.379.0: the row below the
+    // hidden Liked is Feed, visible by default, so two moves put Feed ahead of Home.)
+    assert.equal(resolveBottomNavLayout(BOTTOM_NAV_OPTIONAL, written).visible[0], 'feed');
     assert.equal(resolveBottomNavLayout(BOTTOM_NAV_OPTIONAL, written).visible[1], 'home');
     delete global.showToast;
   });

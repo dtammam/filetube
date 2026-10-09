@@ -230,7 +230,9 @@ test('source lock: the route surface never names the ytdlp tables or the dead do
   // the same surface, so the holder count below stays 12.
   // v1.342: the Clean up routes take ytdlpDb (server.js's deps entry + the module's destructure)
   // to read the subscription holder, one more crossing of the SAME store: 20 -> 21.
-  assert.strictEqual((surface.match(/\bytdlpDb,/g) || []).length, 21, 'every crossing carries the store, never the doc namespace');
+    // v1.379.0 Feed mode (W2): +1 - server.js hands the store to lib/feed/api.js's registerFeedRoutes
+  // (the video cards read the subscription names and the avatar registry through the holder).
+assert.strictEqual((surface.match(/\bytdlpDb,/g) || []).length, 22, 'every crossing carries the store, never the doc namespace');
   assert.strictEqual((surface.match(/ytdlp\.consumeDownloadChannelMeta\(ytScan, /g) || []).length, 2, 'both YouTube consume sites run on the scan holder');
   assert.strictEqual((surface.match(/ytdlp\.consumeUniversalDownloadMeta\(ytScan, /g) || []).length, 1);
   assert.strictEqual((surface.match(/ytdlp\.backfillChannelIdentityFromFolder\(ytScan, /g) || []).length, 1);

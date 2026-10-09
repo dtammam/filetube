@@ -315,6 +315,16 @@ per-user `musicPlays`, `musicStations` and `musicStationHidden` arrays (an older
 bundle without them restores empty, and an older build ignores the keys it does
 not know).
 
+**Seventeenth floor - schema v36 (v1.379.0, Feed mode).** One new table,
+`user_feed_sessions` (`user_id`, `id`, `started_at`, `planned_min`,
+`extensions`, `actual_sec`, `summary_json`, PK `(user_id, id)`, FK cascade on
+the user), born empty by an additive migration: one row per feed session, its
+recap and the positions the feed moved (with what they moved from). A
+v1.378.x-or-earlier build refuses a v36 database at boot; bundles gain a
+per-user `feedSessions` array (an older bundle without it restores as empty,
+and an older build ignores the key it does not know). v1.378.0's v35 landed
+first in merge order; this floor was renumbered at release.
+
 ## The publish pipeline: build once, smoke, promote (v1.148)
 
 Since v1.148 the publish job never rebuilds between testing and pushing:

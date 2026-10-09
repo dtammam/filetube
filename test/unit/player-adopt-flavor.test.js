@@ -167,14 +167,17 @@ test('applyAdoptFlavor (#237): album / albumKey / autoAdvanceViaTrackNav follow 
   assert.strictEqual(cur.autoAdvanceViaTrackNav, false, 'only a literal true arms the trackNav branch');
 });
 
-test('applyAdoptFlavor (gate r1, adversary W4): EVERY presentation field a loader declares is carried - title, channelName, folderName, artUrl, subId too - and a media field never is', () => {
+test('applyAdoptFlavor (gate r1, adversary W4; v1.379.0 feed gate r1 C1): EVERY presentation field a loader declares is carried - title, channelName, folderName, artUrl, subId, and WHERE IT SAVES (progressEndpoint) - and a media field never is', () => {
   const cur = { title: 'file-a1', channelName: 'Uploader', folderName: 'Uploads', streamSrc: '/video/a1', duration: 20, type: 'audio' };
   applyAdoptFlavor(cur, { title: 'Alpha One', channelName: 'Band', folderName: 'Band', artUrl: '/thumbnail/a1', subId: 's1', streamSrc: '/track/zz', duration: 99, type: 'video', progressEndpoint: '/x' });
   assert.deepStrictEqual(
     { title: cur.title, channelName: cur.channelName, folderName: cur.folderName, artUrl: cur.artUrl, subId: cur.subId },
     { title: 'Alpha One', channelName: 'Band', folderName: 'Band', artUrl: '/thumbnail/a1', subId: 's1' });
-  assert.deepStrictEqual({ streamSrc: cur.streamSrc, duration: cur.duration, type: cur.type, progressEndpoint: cur.progressEndpoint },
-    { streamSrc: '/video/a1', duration: 20, type: 'audio', progressEndpoint: undefined }, 'the loaded media is untouched (that is what adopt means)');
+  assert.deepStrictEqual({ streamSrc: cur.streamSrc, duration: cur.duration, type: cur.type },
+    { streamSrc: '/video/a1', duration: 20, type: 'audio' }, 'the loaded media is untouched (that is what adopt means)');
+  assert.strictEqual(cur.progressEndpoint, '/x', 'v1.379.0 (feed gate r1, adversary C1): the save route is a surface flavor - a feed card\'s forward-only route must not outlive the card');
+  applyAdoptFlavor(cur, { progressEndpoint: null });
+  assert.strictEqual(cur.progressEndpoint, undefined, 'declared null: the default route (the watch page\'s stamp)');
   applyAdoptFlavor(cur, { title: null });
   assert.strictEqual(cur.title, undefined, 'a declared non-string clears it');
 });

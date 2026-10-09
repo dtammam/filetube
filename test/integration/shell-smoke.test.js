@@ -476,6 +476,26 @@ test('shell smoke: /cleanup (the History shell rendered by lib/cleanup/shell.js)
 });
 
 // ---------------------------------------------------------------------------
+// /feed (v1.379.0)
+// ---------------------------------------------------------------------------
+
+test('shell smoke: /feed (the History shell rendered by lib/feed/shell.js) loads with zero uncaught errors and the feed view registers/boots', async () => {
+  const { renderFeedShell } = require('../../lib/feed/shell');
+  const result = await loadShell({ htmlPath: path.join(PUBLIC_DIR, 'history.html'), url: 'http://localhost/feed', transform: renderFeedShell });
+  try {
+    assertNoLoadErrors(result, '/feed');
+    assert.ok(result.dom.window.__ftRegisteredViews.includes('feed'), 'expected feed.js to have registered the "feed" view');
+    assert.ok(
+      result.dom.window.__ftFetchLog.includes('/api/feed/sessions/week'),
+      'expected feed.js init() to have fetched the week line (bootRouter derived "feed" for /feed)'
+    );
+    assert.strictEqual(result.dom.window.document.querySelectorAll('#feed-picker-choices button').length, 3, 'the length picker rendered its three choices');
+  } finally {
+    result.dom.window.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
 // history.html (v1.64)
 // ---------------------------------------------------------------------------
 

@@ -1965,7 +1965,7 @@ function wireHomeRowToggle(id, key, signal) {
 // retired, so all twelve ids need a label here. The unit suite binds this map
 // against common.js's live roster - an id without a label would otherwise
 // render as its raw slug in Dean's Settings panel.
-const BOTTOMBAR_LABELS = { home: 'Home', liked: 'Liked', playlists: 'Playlists', history: 'History', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark', podcasts: 'Podcasts', music: 'Music', books: 'Books', downloads: 'Downloads', settings: 'Settings' };
+const BOTTOMBAR_LABELS = { home: 'Home', feed: 'Feed', liked: 'Liked', playlists: 'Playlists', history: 'History', subscriptions: 'Subscriptions', 'oneoff-download': 'Download', theme: 'Light / Dark', podcasts: 'Podcasts', music: 'Music', books: 'Books', downloads: 'Downloads', settings: 'Settings' };
 // (v1.67's card-corner editor retired in UI pass sweep S2: every card action now
 // lives in the card's one action menu - kebab, long-press, right-click - so there
 // is no corner layout left to pick. The stored cornerTL..BR settings are ignored.)
