@@ -708,7 +708,18 @@ test('v1.382.0 D3: a New-only kind stays outside the New / Continue balance (pic
 
 test('v1.382.0 D4: From the beginning plays a started video / episode from 0 and shows a book from its first chapter; no saved place moves back', async () => {
   const fs0 = JSON.stringify({ which: { video: 'continue', podcast: 'continue', book: 'continue' }, where: { video: 'start', podcast: 'start', book: 'start' } });
+  // a STARTED Watch later item (every other Watch later row in the fixture is unstarted, which would make the check vacuous)
+  userStore.addWatchLater(uid, 'wl149', new Date().toISOString()); // idempotent: it is on the list
+  userStore.setProgress(uid, 'wl149', { timestamp: 300, duration: 1200, updatedAt: new Date().toISOString() });
+  // (a started item also joins the video pool, so with Videos on it comes as a Video card first; Videos off leaves the Watch
+  // later card alone, with the video "Where" still set to From the beginning)
+  const wlRun = await cardsWith(JSON.stringify({ off: ['video'], where: { video: 'start' } }), 200);
+  const wl0 = wlRun.cards.find((c) => c.kind === 'watchlater' && c.id === 'wl149');
+  assert.ok(wl0 && wl0.fresh === false, 'the started Watch later item was served');
+  assert.deepStrictEqual({ fromStart: wl0.fromStart, startAt: wl0.startAt }, { fromStart: false, startAt: 300 }, 'Watch later keeps its saved place');
   const { cards } = await cardsWith(fs0, 60);
+  const asVideo = cards.find((c) => c.kind === 'video' && c.id === 'wl149');
+  if (asVideo) assert.strictEqual(asVideo.fromStart, true, 'as a Video card it follows the Videos choice');
   const va0 = cards.find((c) => c.kind === 'video' && c.id === 'va0');
   const ep = cards.find((c) => c.kind === 'podcast' && c.id === epIds.a[0]);
   const beta = cards.find((c) => c.kind === 'book' && c.id === bookIds.Beta);
@@ -788,4 +799,21 @@ test('v1.382.0 D6: a fresh card writes nothing for a 10 s look, nothing short of
   assert.strictEqual(r.status, 200);
   await flushPendingProgress();
   userStore.removeHistory(uid, card.id);
+});
+
+test('v1.382.0 D2 / D3: when everything chosen has been shown, the refill (recycle) still honours the choices', async () => {
+  // the allowlisted member sees 3 subscription videos (all New) and has one in Watch later; Watch later is switched off
+  userStore.addWatchLater(tiny.user.id, 'vt1', new Date().toISOString());
+  const s = await startSession(30, tiny.cookie);
+  const fs1 = JSON.stringify({ off: ['watchlater'], which: { video: 'new' } });
+  let exhausted = false;
+  const seen = [];
+  for (let i = 0; i < 6; i++) {
+    const b = await batch(s.id, 5, tiny.cookie, undefined, fs1);
+    exhausted = exhausted || b.exhausted;
+    seen.push(...b.cards);
+  }
+  assert.ok(exhausted, 'the session ran through everything and refilled');
+  assert.ok(seen.length > 3, 'the refill served again');
+  assert.ok(seen.every((c) => c.kind === 'video' && c.fresh === true), 'never a Watch later card, never a continuing video: ' + JSON.stringify(seen.map((c) => c.kind + ':' + c.id)));
 });
