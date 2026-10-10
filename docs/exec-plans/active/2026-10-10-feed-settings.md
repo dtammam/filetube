@@ -235,3 +235,65 @@ Comments or captions overlays; per-kind weights or ratios; per-device (unsynced)
 ## 11. Gate
 
 Three r1 seats run in parallel on one tree: each returns its verdict in its final message and the builder pastes it here verbatim.
+
+Gate: CHANGES r1 @6ca6d90c - adversary
+Gate: CHANGES r1 @6ca6d90c - qa
+Gate: APPROVED r1 @6ca6d90c - security-brief
+
+### adversary r1 @6ca6d90c
+
+CRITICAL C1: Keep watching, then Listen (a chaptered video) moves the saved place BACKWARDS - the floor lives on currentData and
+survives only an adopt; Listen loads `<id>::cN` through music.js handoffFrom, a FRESH load (player.js currentData = data), and
+music's chapter save posts /api/progress for the base id behind the place. Measured (adv-kw-listen.js, chapters 0/12/24 on the
+30 s clip, place 25): after Listen and a pause, stored 24.29 (Chromium) / 24.25 (WebKit). Listen -> Watch (resolveBaseHandoff)
+reasoned to be the same. Fix direction: key the floor by the SAVE id at module level, checked against saveId.
+WARNING W1: D6 in Whole chapter mode - freshNeedSec lowers the guard to slice - 1 for ANY served slice; a fresh video whose first
+chapter is 8 s is served 0..8 and a 7.5 s look wrote (200, stored 7.5); base 056a482f refused it (409 too-early). The
+safe-progress comment ("the shortest reel is 30 s") is false for chapter slices. Fix: reels only, or a 30 s floor.
+WARNING W2: hiding the one "Start something new" book removes every new-book card for good (newCandidates slice(0, 1) is taken
+before the hidden filter). Measured: two unstarted books, hide the newest -> [] after.
+SUGGESTIONS: S1 the "proven in feed-hidden-api.test.js" pointers; S2 unbound in keepGoing: M31 (the p.play on a Done slice) and
+M32 (mediaCardIndex = -1) survive the tests and the browser proof; S3 M35 (the fs length cap) unbound, M29 masked by
+likeFromGesture's own check. M12 equivalent.
+Mutants: 38 run, 33 killed, 5 survived (M12 equivalent, M29, M31, M32, M35). Podcast Keep listening variant: the floor holds
+(stored stays 25). Sandbox diffed clean; worktree untouched.
+
+### qa r1 @6ca6d90c
+
+No CRITICAL. WARNINGs:
+W1 "Fewer from" on a name over 100 characters stores nothing but toasts success (feed.js feedFewerTarget / fewerFrom vs
+feed-settings.js fewerKey FEWER_NAME_MAX 100). Measured: a 108-char show name -> FS.fewerAdd([], key) = [].
+W2 the new hide-row families (song: / book: / podcast:) have no rekey or purge path (lib/auth/store.js :751 / :780 media only;
+rekeyMusicState :1833 carries likes, progress, plays but not song:<old>; book / episode / track delete paths :1335 / :1642 /
+:1757 leave rows). A song hidden then rekeyed by a move comes back.
+W3 stale text: rbac-census.test.js:77, route-read-classification.test.js:51, route-write-classification.test.js:302 point at
+feed-hidden-api.test.js (the proof is feed-api.test.js); feed-tiktok.test.js:560 title says no "..." on a song / new book;
+feed-api.test.js:143 comment "3-minute segment"; lib/feed/shell.js:16 picker blurb "a chapter of a video" (now a 60 s reel).
+W4 rows Home's "Hide from feed" made (and the v1.373.0 playlist auto-hides, lib/scan/orchestrator.js:2136) now also leave the
+Feed and list in Settings > Feed > Hidden and fewer; Unhide there brings them back on Home. Safe to ship once the ledger and a
+device check say so.
+Note: only the video Keep watching path measured in a browser; the podcast and library-audio paths are reasoned.
+SUGGESTIONS: 1 Settings New only rewrites Where to saved (switching back loses From the beginning); 2 the Fewer rows do not
+redraw after the prefs boot; 3 Bottom bar and Feed share data-md-icon "layers"; 4 safe-progress comment "a 10 s look never
+reaches it (the shortest reel is 30 s)" is false when the file's end shortens the slice (freshNeedSec(30, 10) = 9); 5 W5
+leftovers in feed-settings.js (clip, music, station; header cites D13 / D14), worst-case serialize with a 120-char CJK station
+593 bytes > 512 (unreachable today); 6 "Video reel length" also sets library-audio cards.
+Security section: no issue (fs, /api/feed/hidden, prefs cap); only the "proven in" pointers are wrong (W3).
+Ran: npm run test:unit in a sandbox 9436 / 9426 pass / 8 fail (all 8 "not a git repository" sandbox artefacts; re-run in the
+worktree 69 / 69 pass); targeted integration 88 / 88; flake check 15 x pass 3 / fail 0; lint:ui OK; overlay census clean;
+eslint clean; keep-watching.js chromium PASS. Tree unchanged.
+
+### security-brief r1 @6ca6d90c
+
+(read-only seat: no Bash; traced by reading, nothing executed; tree byte-identical)
+CRITICAL: none. WARNING: none.
+S1 (lying comment): test/integration/route-read-classification.test.js:51 names "feed-hidden-api.test.js" as the proof of
+/api/feed/hidden; the proof is test/integration/feed-api.test.js:855-883.
+S2 (info, not exploitable): podcast: / book: / song: rows in user_feed_hidden are never purged with their item (the purge and
+rekey paths are media-only, lib/auth/store.js:751,780); they ride the backup; GET skips them (lib/feed/api.js:537). Unbounded
+growth only; optional purge on item delete.
+Traced: (a) hide routes - validation (HIDE_KINDS, plainHideId), no existence oracle (one 404 body over 8 cases), DELETE is
+the caller's own row, GET re-checks every row, key collisions fail closed; (b) prefValueMaxBytes own-property on a frozen map,
+both ingress paths allowlist-then-cap, about 20 KB a user worst case; (c) `fs` string-only, at most 2048 chars, normalize builds
+fresh objects (no prototype pollution); (d) Fewer from only reorders a visibility-gated pool, draws capped at 5000; (e) titles
+render as text (ui.row fill -> textContent; toasts spanText).
