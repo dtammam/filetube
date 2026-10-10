@@ -3,11 +3,11 @@ plan: feed-settings
 harness: v2 · full
 branch: feat/v1.382.0-feed-settings
 anchor: outcome
-status: Built W1-W4 (W5 moved out by Dean, 2026-10-10); full suites and the FULL gate next
-next: the dual-Node suites, then the gate (adversary, qa)
+status: Built W1-W4 (W5 moved out by Dean, 2026-10-10); suites green at 722c28f4; FULL gate r1 running
+next: gate r1 (adversary, qa, security-brief: scrutiny.toml forces it for lib/auth/store.js)
 design: Dean's next-wave ask after passing every Feed check (2026-10-10) and his rulings R1-R4; kickoff defaults D1-D9. Base main 056a482f (v1.381.0).
 builder: smart (Dean offered Sonnet for the settings core; the add-ons he chose - preloading on the shared player, double-tap like on top of tap / hold, music under book cards - put it above standard; no reset, no schema change)
-gate: not yet run (FULL: adversary, qa; lib/ change = core-logic)
+gate: r1 running (FULL: adversary, qa, security-brief - auth-and-secrets rule forced by lib/auth/store.js)
 ---
 
 # v1.382.0: Feed settings, reels everywhere, like / hide from a card, instant swipes, and music under book pages
@@ -197,7 +197,9 @@ protected-main PR flow, shipped = the tag's "Publish Docker Image" run green, br
   check in likeFromGesture is MASKED by the same check in setLiked).
 - Fewer from, measured: drawn per batch, Show A on the list still got 34 cards to Show B's 46 over a session; drawn once per item a
   session it holds (a < half of b, every run), and with both shows listed 140+ distinct episodes still come.
-- Suites (Node 22.23.1 / 24.20.0) at the reviewed sha:
+- Suites (Node 22.23.1 / 24.20.0) at the reviewed sha: `npm test` at 722c28f4 in the worktree, sequential - Node 22.23.1: `# tests
+  12089 # pass 12076 # fail 0 # cancelled 0 # skipped 13` (exit 0); Node 24.20.0: `tests 12089 pass 12076 fail 0 cancelled 0
+  skipped 13` (exit 0).
 - Gate rounds:
 - Device checks owed: docs/DEVICE-CHECKS.md "Feed settings (v1.382.0)", 9 lines (ROADMAP Device checks owed 39-47).
 
@@ -229,3 +231,7 @@ Comments or captions overlays; per-kind weights or ratios; per-device (unsynced)
 - **D11.** Hide this (every kind, Undo 10 s, Settings list with Unhide); Fewer from (synced, 0.25 drawn once per item a session,
   Undo 10 s, Settings list with Remove).
 - **D12-D14.** Moved (section 5).
+
+## 11. Gate
+
+Three r1 seats run in parallel on one tree: each returns its verdict in its final message and the builder pastes it here verbatim.
