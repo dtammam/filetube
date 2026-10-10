@@ -65,7 +65,7 @@ test('feedExcludeIds: every shown non-book id once; books never (they continue)'
 
 test('feedPlayerDescriptor: each kind starts at the card\'s startAt and saves through the feed\'s route; a song is music\'s own, from the top', () => {
   const pod = feed.feedPlayerDescriptor({ kind: 'podcast', media: 'podcast', id: 'e', title: 'Ep', showName: 'Show', subId: 's1', artUrl: '/podcastart/s1', streamSrc: '/episode/e', durationSec: 1800, startAt: 600, endAt: 840 });
-  assert.deepStrictEqual(pod, { type: 'audio', title: 'Ep', channelName: 'Show', folderName: 'Show', duration: 1800, artUrl: '/podcastart/s1', streamSrc: '/episode/e', progressEndpoint: '/api/feed/progress/podcast', resumeMode: 'podcast', subId: 's1', startAt: 600, autoAdvanceViaTrackNav: false, browseCtx: '', readerHref: '/feed' });
+  assert.deepStrictEqual(pod, { type: 'audio', title: 'Ep', channelName: 'Show', folderName: 'Show', duration: 1800, artUrl: '/podcastart/s1', streamSrc: '/episode/e', progressEndpoint: '/api/feed/progress/podcast', resumeMode: 'podcast', subId: 's1', startAt: 600, autoAdvanceViaTrackNav: false, browseCtx: '', readerHref: '/feed', placeFloorSec: undefined }); // v1.382.0: every Feed card DECLARES its floor (none here), so a Feed adopt clears an older one
   const vid = feed.feedPlayerDescriptor({ kind: 'watchlater', media: 'video', id: 'v', title: 'V', channelName: 'C', duration: 1200, width: 720, height: 1280, startAt: 400, endAt: 900 });
   assert.strictEqual(vid.type, 'video');
   assert.strictEqual(vid.progressEndpoint, '/api/feed/progress/media');

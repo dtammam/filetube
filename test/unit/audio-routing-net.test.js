@@ -24,6 +24,11 @@ const DISPOSITIONS = {
     why: 'bell-row + queue-chrome FALLBACKS after audioOpenHref returned null (video/item-less), '
       + 'plus the legacy watch-URL matcher comment-adjacent site - all rule-consulting or inert.',
   },
+  'feed.js': {
+    count: 1,
+    why: 'v1.382.0 Keep watching (feedKeepHref): a VIDEO card opens its watch page; a library-audio card asks audioOpenHref '
+      + 'first and falls back to the watch page only where the rule is not loaded (node).',
+  },
   'history.js': {
     count: 1,
     why: 'the video fallback after audioOpenHref returned null (audio rows route to Music).',

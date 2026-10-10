@@ -111,7 +111,7 @@ function feedKindLabel(card) {
 // keeps its own kind word beside it (the kind line reads "Watch later · Continue"). Books and songs say nothing here.
 function feedNewnessLabel(card) {
   if (!card || (card.kind !== 'video' && card.kind !== 'podcast' && card.kind !== 'watchlater')) return '';
-  if (card.fresh !== true) return 'Continue';
+  if (card.fresh !== true) return card.fromStart === true ? 'From the beginning' : 'Continue'; // v1.382.0 (D4): the choice is visible
   if (card.media === 'podcast') return card.showName ? 'New episode of ' + card.showName : 'New episode';
   return card.channelName ? 'New from ' + card.channelName : 'New video';
 }
@@ -120,6 +120,7 @@ function feedNewnessLabel(card) {
 function feedKindLine(card) {
   if (!card) return '';
   if (card.kind === 'book' && card.newBook) return 'Start something new';
+  if (card.kind === 'book' && card.fromStart === true) return 'Book \u00b7 From the beginning'; // v1.382.0 (D4)
   var kind = feedKindLabel(card);
   var newness = feedNewnessLabel(card);
   return newness ? kind + ' \u00b7 ' + newness : kind;
@@ -146,9 +147,15 @@ function feedPlayedStep(state, currentTime, nowMs, playing, rate) {
   return s;
 }
 // A clip shorter than 75 s needs 80% of itself, never more than a minute (mirrors lib/feed/safe-progress.js freshNeedSec).
-function feedFreshNeedSec(durationSec) {
+// v1.382.0 (D6): and a reel shorter than that counts once played WHOLE (its length less FEED_REEL_END_SLACK_SEC, the last
+// update before the reel's end pause) - the same rule as the server's, which checks it again.
+var FEED_REEL_END_SLACK_SEC = 1;
+function feedFreshNeedSec(durationSec, sliceSec) {
   var d = Number(durationSec);
-  return isFinite(d) && d > 0 ? Math.min(FEED_FRESH_START_SEC, Math.max(1, d * 0.8)) : FEED_FRESH_START_SEC;
+  var need = isFinite(d) && d > 0 ? Math.min(FEED_FRESH_START_SEC, Math.max(1, d * 0.8)) : FEED_FRESH_START_SEC;
+  var sl = Number(sliceSec);
+  if (isFinite(sl) && sl > 0) need = Math.min(need, Math.max(1, sl - FEED_REEL_END_SLACK_SEC));
+  return need;
 }
 function feedFreshStarted(state, needSec) { return !!state && state.sec >= (typeof needSec === 'number' && needSec > 0 ? needSec : FEED_FRESH_START_SEC); }
 
@@ -240,6 +247,7 @@ function feedPlayerDescriptor(card) {
       autoAdvanceViaTrackNav: false,
       browseCtx: '',
       readerHref: '/feed',
+      placeFloorSec: feedPlaceFloorSec(card),
     };
   }
   return {
@@ -256,7 +264,52 @@ function feedPlayerDescriptor(card) {
     autoAdvanceViaTrackNav: false,
     browseCtx: '',
     readerHref: '/feed',
+    placeFloorSec: feedPlaceFloorSec(card),
   };
+}
+
+// v1.382.0 (D4, D7): a card played "From the beginning" carries its saved place as the player's FLOOR (player.js
+// placeFloorAllows): nothing saves at or below it, here or after Keep watching hands the player to the watch / podcasts page,
+// until playback passes it. undefined for every other card (the player's "none").
+function feedPlaceFloorSec(card) {
+  if (!card || card.fromStart !== true) return undefined;
+  var at = Number(card.media === 'podcast' ? card.position : card.progress);
+  return isFinite(at) && at > 0 ? at : undefined;
+}
+
+// v1.382.0 (D7): where "Keep watching / listening" takes a media card - the item's own full place, the shared player
+// carried over (the watch page or the podcasts page adopts the same id and plays on from the card's spot). '' = none.
+var FEED_KEEP_SEC = 10; // the pill shows in a slice's last 10 seconds and on its Done state
+function feedKeepHref(card) {
+  if (!card || typeof card.id !== 'string' || !card.id) return '';
+  if (card.media === 'podcast') return '/podcasts?play=' + encodeURIComponent(card.id);
+  // library audio opens in Music like every audio item (common.js audioOpenHref, the audio-routing net's one rule); the
+  // watch page is the video's place and the fallback when the rule is not on the page
+  var rule = typeof window !== 'undefined' ? window.audioOpenHref : null; // a classic-script global of common.js
+  if (card.media === 'audio' && typeof rule === 'function') { var a = rule({ id: card.id, type: 'audio', kind: 'media' }); if (a) return a; }
+  if (card.media === 'video' || card.media === 'audio') return '/watch.html?v=' + encodeURIComponent(card.id);
+  return '';
+}
+function feedKeepLabel(card) {
+  if (!card) return '';
+  if (card.kind === 'book') return 'Keep reading';
+  return card.media === 'video' ? 'Keep watching' : 'Keep listening';
+}
+// Show the pill? In the slice's last FEED_KEEP_SEC seconds, or once it is done (never after the whole FILE ended: nothing is left).
+function feedKeepDue(remainSec, done, ended) {
+  if (ended) return false;
+  return !!done || (typeof remainSec === 'number' && isFinite(remainSec) && remainSec <= FEED_KEEP_SEC);
+}
+
+// v1.382.0 (D2-D5, D8): the request's view of the Feed settings - the synced ft-feed-settings value read by the ONE reading
+// (public/js/feed-settings.js, on every shell). '' = the defaults (nothing to send). Read per batch: a change applies from
+// the next batch and never re-shuffles the cards on screen.
+function feedSettingsParam(storage, FS) {
+  if (!FS || typeof FS.serialize !== 'function') return '';
+  var raw = null;
+  try { raw = storage ? storage.getItem(FS.SETTINGS_KEY) : null; } catch (_) { raw = null; }
+  var v = FS.serialize(FS.normalize(raw));
+  return v === '{}' ? '' : '&fs=' + encodeURIComponent(v);
 }
 
 // A book card counts as read when it was active for at least its dwellSec in total.
@@ -523,6 +576,7 @@ if (typeof module !== 'undefined' && module.exports) {
     feedDeadlineMs, feedRingFraction, feedRemainingSec, feedEmptySummary, feedCountActivity, feedRecapLines, feedRecapTitle,
     feedHoldStep, feedSummaryPayload,
     feedClockLong, feedStartOverKind, feedStartOverText, feedStartedOverText, FEED_UNDO_MS,
+    FEED_REEL_END_SLACK_SEC, feedPlaceFloorSec, FEED_KEEP_SEC, feedKeepHref, feedKeepLabel, feedKeepDue, feedSettingsParam,
     feedWordCount, feedPaginate, feedLongestHead, FEED_SPLIT_MIN_WORDS, feedBookTarget, feedPageDwellSec, FEED_MAX_PAGES, feedFurther, FEED_FIT_KEY,
     FEED_EDGE_PX, FEED_SWIPE_MIN_PX, feedPageSwipe, FEED_PAGE_HINT_KEY,
   };
@@ -535,6 +589,7 @@ if (typeof module !== 'undefined' && module.exports) {
   var controller = null;
 
   function readPref(key, fallback) { try { return window.localStorage.getItem(key) || fallback; } catch (_) { return fallback; } }
+  function localStore() { try { return window.localStorage; } catch (_) { return null; } } // the getter itself can throw (storage off)
   function writePref(key, value) { try { window.localStorage.setItem(key, String(value)); } catch (_) { /* storage disabled */ } }
   function readSession() { try { return JSON.parse(window.sessionStorage.getItem(FEED_SESSION_KEY) || 'null'); } catch (_) { return null; } }
   function writeSession(s) { try { if (s) window.sessionStorage.setItem(FEED_SESSION_KEY, JSON.stringify(s)); else window.sessionStorage.removeItem(FEED_SESSION_KEY); } catch (_) { /* storage disabled */ } }
@@ -717,7 +772,8 @@ if (typeof module !== 'undefined' && module.exports) {
       var seq = ++fetchSeq;
       stack.setAttribute('aria-busy', 'true');
       var exclude = feedExcludeIds(cards);
-      var url = '/api/feed?session=' + encodeURIComponent(session.id) + '&count=' + FEED_BATCH + (exclude.length ? '&exclude=' + exclude.map(encodeURIComponent).join(',') : '');
+      var url = '/api/feed?session=' + encodeURIComponent(session.id) + '&count=' + FEED_BATCH + (exclude.length ? '&exclude=' + exclude.map(encodeURIComponent).join(',') : '')
+        + feedSettingsParam(localStore(), window.FileTubeFeedSettings);
       fetch(url, { signal: signal })
         .then(function (r) {
           if (r.status === 404) { endSession(); throw new Error('session gone'); }
@@ -1128,6 +1184,10 @@ if (typeof module !== 'undefined' && module.exports) {
       drawPage(pageEl, bp.pages[bp.page] || []);
       var readout = node.querySelector('[data-page-readout]');
       if (readout) readout.textContent = cards[index] && cards[index].startedOver ? 'Opens at the beginning next time' : (bp.pages.length > 1 ? 'Page ' + (bp.page + 1) + ' of ' + bp.pages.length : '');
+      // v1.382.0 (D7): the last page of a reading card's excerpt offers Keep reading (a new book has Start reading instead)
+      var c = cards[index];
+      if (c && c.kind === 'book' && !c.newBook && !c.startedOver && bp.measured && bp.page === bp.pages.length - 1) showKeepPill(index);
+      else hideKeepPill(index);
     }
 
     // The current page's time: started when the card or the page became active, counted when it stops being on screen.
@@ -1443,8 +1503,11 @@ if (typeof module !== 'undefined' && module.exports) {
           else fetchBatch();
         }
         if (r.status !== 409) return null;
-        bp.refused = true;
         return r.json().then(function (body) {
+          // v1.382.0 (D4): a card read From the beginning is BEHIND its saved place: the place stays (refused as backward) and
+          // the card may still move it once the pages read pass it - only that refusal leaves the card able to write
+          if (card.fromStart === true && body && body.reason === 'backward') { bp.written = null; return; }
+          bp.refused = true;
           // gate r1 (qa S2): only a STALE refusal is news to the user; backward / not-served are the feed's own
           if (body && body.reason === 'stale') toast('Your place in ' + (card.title || 'this book') + ' moved on another device');
         });
@@ -1465,7 +1528,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // shared player, whose ONE progress writer (saveProgressToServer: pings, the pause / background checkpoint, a seek, the end)
       // asks it before every POST and reports the played seconds the server checks again. Not-fresh cards carry no guard.
       var tracker = card.fresh === true && card.kind !== 'song' ? feedNewPlayTracker() : null;
-      var needSec = feedFreshNeedSec(card.media === 'podcast' ? card.durationSec : card.duration);
+      var needSec = feedFreshNeedSec(card.media === 'podcast' ? card.durationSec : card.duration, (Number(card.endAt) || 0) - (Number(card.startAt) || 0));
       if (tracker) {
         data.progressGate = function () { return feedFreshStarted(tracker, needSec); };
         data.playedSec = function () { return tracker.sec; };
@@ -1486,11 +1549,13 @@ if (typeof module !== 'undefined' && module.exports) {
         act.playedSec = Math.max(act.playedSec, t - startAt);
         if (endAt !== null && isFinite(endAt)) {
           var remain = endAt - t;
+          if (feedKeepDue(remain, act.done, act.ended)) showKeepPill(index); // v1.382.0 (D7): the way out, near the end
           if (left) left.textContent = remain > 0 ? feedClock(remain) + ' left' : 'Done';
           if (line && endAt > startAt) line.style.setProperty('--p', String(Math.round(Math.min(1, Math.max(0, (t - startAt) / (endAt - startAt))) * 1000) / 1000));
           if (remain <= 0 && !node.hasAttribute('data-done')) {
             node.setAttribute('data-done', '');
             act.done = true;
+            showKeepPill(index);
             p.pause();
             if (windingDown) finishNow(); // D11: the slice finished after time up
           }
@@ -1520,8 +1585,57 @@ if (typeof module !== 'undefined' && module.exports) {
         node.setAttribute('data-done', '');
         act.ended = true;
         act.done = true;
+        hideKeepPill(index); // the whole file ended: nothing is left to keep watching
         if (windingDown) finishNow();
       }, { signal: signal });
+    }
+
+    // ---- v1.382.0 (D7): Keep watching / listening / reading - leave the Feed into the full item -----------------------------
+    // A pill above the overlay text in a slice's last FEED_KEEP_SEC seconds and on its Done state (a book: on the last page of
+    // the card). It is a BUTTON in the overlay, above the gesture layer: its tap is never a play / pause tap. Tapping it ends the
+    // session as Done would (the card counted, the record and recap saved) WITHOUT the recap, and opens the item in its own
+    // place; a media card's shared player is carried over still playing, from where the card got to.
+    function showKeepPill(index) {
+      var node = cardEls[index];
+      var card = cards[index];
+      if (!node || !card || node.querySelector('[data-keep]')) return;
+      var overlay = node.querySelector('.feed-card__overlay');
+      if (!overlay || (card.kind !== 'book' && !feedKeepHref(card))) return;
+      var label = feedKeepLabel(card);
+      var pill = U() ? U().button({ variant: 'primary', size: 'sm', pill: true, icon: 'open_in_new', label: label, doc: document })
+        : el('button', 'ui-btn ui-btn--primary ui-btn--sm ui-btn--pill', label);
+      pill.type = 'button';
+      pill.classList.add('feed-card__keep');
+      pill.setAttribute('data-keep', '');
+      pill.addEventListener('click', function (e) {
+        if (e) e.stopPropagation();
+        if (cards[index] !== card) return; // the card changed under the tap
+        keepGoing(index, card);
+      }, { signal: signal });
+      overlay.insertBefore(pill, overlay.firstChild);
+    }
+    function hideKeepPill(index) {
+      var pill = cardEls[index] && cardEls[index].querySelector('[data-keep]');
+      if (pill) pill.remove();
+    }
+    var leaving = false;
+    function keepGoing(index, card) {
+      if (leaving || !session) return;
+      leaving = true;
+      var href = card.kind === 'book' ? card.readerHref : feedKeepHref(card);
+      if (!href) { leaving = false; return; }
+      var p = player();
+      // a media card: the player plays on (a Done slice is resumed inside this tap: iOS needs the gesture)
+      if (card.kind !== 'book' && mediaCardIndex === index && p && typeof p.play === 'function' && mediaEl && mediaEl.paused) { try { p.play(); } catch (_) { /* the full place starts it */ } }
+      if (card.kind === 'book') { noteBookPage(index); finishBookCard(index); }
+      countCard(index); // counted as left - the slice's time, a book's pages read
+      if (tickTimer) { window.clearInterval(tickTimer); tickTimer = null; }
+      postFinish(); // the session's record, as Done would (no recap: the user is going on)
+      mediaCardIndex = -1; // the player is the full place's now: nothing here pauses or closes it
+      resetToPicker();
+      leaving = false;
+      if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(href);
+      else window.location.assign(href);
     }
 
     // D8: "Skipped the intro" for 3 s, tap to go back to the start. The tap is a seek (it adds no played time).

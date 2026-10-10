@@ -12877,6 +12877,8 @@ html:root body[data-view="feed"] #handoff-card, html:root body[data-view="feed"]
 #view-root[data-view="feed"] .feed-card__cover { height: min(45%, 40vh); aspect-ratio: 2 / 3; object-fit: cover; border-radius: var(--r-md); margin: 0 auto var(--space-6); display: block; background: var(--thumbnail-bg); }
 #view-root[data-view="feed"] .feed-card__desc { font: var(--t-body); color: var(--ink-2); margin: 0 0 var(--space-3); }
 #view-root[data-view="feed"] .feed-card__intro-note { position: absolute; left: var(--space-8); top: 0; z-index: var(--z-chip); }
+/* v1.382.0 (D7): Keep watching / listening / reading sits first in the overlay, at its own width (a pill, never a full row) */
+#view-root[data-view="feed"] .feed-card__keep { align-self: flex-start; }
 #view-root[data-view="feed"] .feed-hint { position: absolute; left: 50%; transform: translateX(-50%); bottom: var(--space-6); z-index: var(--z-chip); display: flex; flex-direction: column; align-items: center; gap: var(--space-1); pointer-events: none; font: var(--t-footnote); color: var(--ink-1); background: var(--surface-overlay); padding: var(--space-4) var(--space-8); border-radius: var(--r-pill); box-shadow: var(--shadow-overlay); animation: feed-hint-in var(--dur-slow) var(--ease-ui) both; }
 #view-root[data-view="feed"] .feed-hint__chevron { width: var(--icon-lg); height: var(--icon-lg); display: block; fill: none; stroke: currentColor; stroke-width: var(--ring-w); stroke-linecap: round; stroke-linejoin: round; animation: feed-hint-bob var(--dur-slow) var(--ease-ui) infinite alternate; }
 @keyframes feed-hint-in { from { opacity: 0; } to { opacity: 1; } }

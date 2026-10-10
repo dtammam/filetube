@@ -180,6 +180,20 @@ function resolveBaseHandoff(prevId, nextId, t, paused, live) {
 // known quirk, measured a2 -> a1, a3 -> a2); watch.js now DECLARES it false beside its
 // readerHref/resumeMode null stamps, so that adopt clears it.
 var ADOPT_FLAVOR_STRING_FIELDS = ['title', 'channelName', 'folderName', 'album', 'albumKey', 'channelFolder', 'artUrl', 'subId'];
+// v1.382.0: a place floor is a positive, finite number of seconds; anything else is none.
+function validPlaceFloor(v) {
+  return typeof v === 'number' && isFinite(v) && v > 0 ? v : undefined;
+}
+// v1.382.0: may a progress save at `time` go out? Not while it is at or below the item's place floor (the forward-only rule's
+// own boundary: an equal position is not a move); the first save past it ends the floor for good.
+function placeFloorAllows(currentData, time) {
+  if (!currentData || currentData.placeFloorSec === undefined) return true;
+  var floor = validPlaceFloor(currentData.placeFloorSec);
+  if (floor === undefined) { currentData.placeFloorSec = undefined; return true; }
+  if (!(typeof time === 'number' && isFinite(time) && time > floor)) return false;
+  currentData.placeFloorSec = undefined;
+  return true;
+}
 function applyAdoptFlavor(currentData, data) {
   if (!currentData || !data) return currentData;
   if (Object.prototype.hasOwnProperty.call(data, 'readerHref')) {
@@ -195,6 +209,11 @@ function applyAdoptFlavor(currentData, data) {
   // without declaring one (the watch page) must not inherit the feed's - it would never save.
   currentData.progressGate = (typeof data.progressGate === 'function') ? data.progressGate : undefined;
   currentData.playedSec = (typeof data.playedSec === 'function') ? data.playedSec : undefined;
+  // v1.382.0 (Feed settings D4 + D7): a Feed card played "From the beginning" behind its saved place declares the place as a
+  // FLOOR: no save below it. Unlike the gate above it SURVIVES an adopt by a surface that does not declare one (the watch or
+  // podcasts page after "Keep watching"), so leaving the Feed into the full item can never move the saved place back; it ends
+  // once playback passes the place (placeFloorAllows) or another item loads (a full load replaces currentData).
+  if (Object.prototype.hasOwnProperty.call(data, 'placeFloorSec')) currentData.placeFloorSec = validPlaceFloor(data.placeFloorSec);
   for (var f = 0; f < ADOPT_FLAVOR_STRING_FIELDS.length; f++) {
     var key = ADOPT_FLAVOR_STRING_FIELDS[f];
     if (Object.prototype.hasOwnProperty.call(data, key)) {
@@ -2049,7 +2068,7 @@ if (typeof module !== 'undefined' && module.exports) {
     isAdoptLoad,
     resolveBaseHandoff, // v1.344.2: Listen -> Watch carries the chapter row's place (and pause)
     resolveExplicitStart, // v1.352 L1: &t= on a watch link
-    applyAdoptFlavor,
+    applyAdoptFlavor, placeFloorAllows, validPlaceFloor, // v1.382.0: the Feed's From the beginning floor
     presenceSurfaceForResumeMode, // v1.304 handoff modality: the ping's watch/listen flavor
     shouldDockOnTransition,
     nextPlayerState,
@@ -6308,6 +6327,8 @@ if (typeof module !== 'undefined' && module.exports) {
       try { gateOpen = currentData.progressGate() === true; } catch (_) { gateOpen = false; }
       if (!gateOpen) return;
     }
+    // v1.382.0: a Feed card played From the beginning never saves below the place it was started over from (placeFloorAllows)
+    if (!placeFloorAllows(currentData, time)) return;
     var fetchOpts = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
