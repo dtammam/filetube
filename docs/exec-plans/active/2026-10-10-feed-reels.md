@@ -139,6 +139,75 @@ PR flow, shipped = the tag's "Publish Docker Image" run green, branch deleted re
   then bound - C8 and C1b killed, C1 (`bookActive`) and C1c (the second token check) masked by the first token check.
 - Suites (Node 22.23.1 / 24.20.0) at the reviewed sha:
 - Gate rounds:
+  Gate: CHANGES r1 @f19b6c9f - adversary
+  - W1 (K2 b, recap) a 25% glimpse that springs back runs leaveCard + countCard on the card you are ON; countCard is once per card,
+    so nothing read or played after the glimpse reaches the recap. Measured (jsdom, the real view): book card, page 1 read, glimpse
+    to 26% and back, page 2 read, Done -> recap words 20 (control without the glimpse: 50), cards 2 (control 1: the glimpsed
+    podcast counts as a card), the podcast loaded once. Not a place loss (writes stay forward-only, measured 2 writes, both forward).
+  - W2 (K5) the same glimpse during a WHOLE song posts a skip for a song that is still playing: 45 s of one continuous listen ->
+    /api/music/plays ["skip","play"] (jsdom, the real view). feedSongLeave fires on every setActive away, and K2 b now leaves on 25%.
+  - W3 (K4/K5) one continuous listen that starts on a Feed song card and goes on in Music counts TWO plays: Chromium, the real
+    server, Whole song, title tapped at 33 s, Music on /music?play=trk1 playing at 69 s -> posts ["play","play"]. The Feed counted
+    at 30 s; Music's adopt starts a fresh tally (the Feed released it) and counts again at 30 s more. A clip heard to its end then
+    Keep listening on a song longer than ~1.5x its clip does the same.
+  - W4 (K2 a) the media warm is never consumed: real server, request log, both engines, the reels-flow wheel run: every warmed URL
+    the Feed later reached was fetched AGAIN from byte 0 by the media element (Chromium /episode, /video/port1, /track/trk1: a
+    later "bytes=0-"; WebKit /video/land1, /video/port1, /track/trk1: a later full GET). /video, /track, /episode send no
+    Cache-Control, ETag or Last-Modified, so the browser cache cannot serve the element from the warm. Section 7's evidence counts
+    warm requests ISSUED (presence, not binding). Any benefit left is server-side (disk cache), unmeasured.
+  - W5 (Start over x K2 b) refillMediaCard's two new resets are unbound: mutant M14 (drop the activity lastTime/done reset,
+    feed.js:2034) and M13 (drop trackers[index] = null, :2035) both survive feed-reels, feed-tiktok, feed-settings and
+    music-play-counts. M14's effect, measured: a video card played to 450 s, Start over -> the card loads at 450 (the place it
+    just forgot), real code loads at 0. M13 hands a started-over fresh card the old card's played seconds (the server's
+    since-reset rule then refuses, so the client and server disagree).
+  - W6 (K2 a) an ALAC song is warmed: feedStreamUrl({kind:'song', track:{needsTranscode:true}}) = '/track/t9' (measured);
+    GET /track/:id queues queueMusicTranscode for an ALAC codec (lib/music/routes.js:701-708, read). Section 9's "a file that needs
+    a transcode is never warmed" is false for songs. Small cost (one cached audio rendition); one-line fix with the track's flag.
+  - S1 (K6) Keep reading on a book card PAUSES the station song and clears music.current, so the view's abort no longer closes the
+    player: harness loads ["load:m1","pause","navigate:/read.html?b=bk1"] (Open in reader: [... ,"close"]). The comment at
+    feed.js:2372 ("the reader has no music") and :2591 ("never follows the user out") overclaim; mutant M42 (drop that
+    stopBookMusic) survives and is the BETTER behaviour.
+  - S2 (K3 b) BARE_CHAPTER_NUMBER_RX (excerpt.js:376) takes any word of roman-numeral letters: "Civil" -> "Chapter Civil", "Mix"
+    -> "Chapter Mix" (measured); "<span>XII</span>." reads "XII ."; Part One and Chapter 1 in one file -> "Part One" (first entry
+    wins; mutant S9 last-wins survives, S11 no percent-decode survives, S17 NCX-over-nav survives: those rules are unbound).
+  - S3 (K1 x K2 b) a Done card glimpsed and returned to replays its slice from the start and runs past its end with no pause and no
+    countdown (jsdom: loads v1@400, ep1@600, v1@400; at 905 s no pause, no "Next in"). Pre-existing on a 60% return; 25% makes it
+    common during the countdown.
+  - S4 survivors with no test: M5 hidden-card skip in nextShownIndex (and, reasoned not measured, a smooth scroll past a hidden card
+    crosses 25% and K2 b activates it anyway), M27 notice-card pause, M49 warmBookPages active guard, M59 continuation retry after
+    a failure, M60 a reset landing on a pruned card, S2 the array-locator shape check.
+  - S5 stale comment feed.js:224 "always starts from the top" (clips start a third in; K2 b resumes).
+  - Suspicions (not measured): a glimpse's pause checkpoint writes the NEXT card's place +0.x s and bumps its updatedAt; a 25%
+    glimpse in the wind-down now ends the session (finishNow) where 60% did; a reload-resumed session starts book music with no
+    gesture into a hidden slot (a refused play has no visible glyph).
+  - Verified holding: K7 a/c (S1 cfi bound, S3 rest bound, S3b, S4 place visibility 404, S5 input 400, S7 nothing, all killed);
+    the toc parsers on hostile input 3-25 ms for 0.3-1 MB; worst-case Feed settings value 488 bytes (<= 512); music.js tally guard
+    and base-id rule bound (S24, S25 killed); K4 stopPropagation survivor equivalent (no ancestor or document click listener acts
+    on a non-anchor title: common.js 10495/12327, interaction.js 97, player.js menus; read, not run). Mutants: client 44 (26 killed,
+    18 survived, 10 judged equivalent / dead / masked: M2 M4 M10 M11 M12 M17b M26 M28 M40 M41; the other 8 are W5, S1, S4), server 28 (24 killed, 4 survived).
+  - Suites at f19b6c9f (git-archive sandbox): Node 24.20.0 (git-initialised) 12154 tests, 12140 pass, 0 fail, 14 skipped. Node 22.23.1 12154 tests, 12132 pass, 8 fail, 14 skipped - all 8 are the sandbox
+    (not a git repo, a tracked node_modules symlink): the 7 files re-run 69/69 pass once git-initialised. eslint 0 errors (6
+    pre-existing warnings in common.js), lint:overlay 0, lint:ui OK.
+  - Gate: APPROVED r1 @f19b6c9f - security-brief. No CRITICAL, no WARNING. SUGGESTION S1: GET /api/feed/start-over/place
+    (lib/feed/routes.js:330-350) reads the whole EPUB synchronously (up to 64 MB) per call with no rate bound - parity with its
+    siblings /api/books/:id/excerpt and /api/feed/progress/book/:id, which do the same, so no new capability; a shared
+    openEpubBook memo is a ROADMAP candidate. INFO: TOC labels can hold a literal '<' after entity decoding (opf.js:167), every
+    consumer renders them as text (verified); the lower-cased index reuse in parseNavToc / parseNcxToc (opf.js:188-238) can
+    misalign on length-changing Unicode (labels only, still bounded); K7 a smuggling path closed (summary.moves is server-only,
+    api.js:237; Undo's write is parameterized, its item visibility-checked).
+  - Gate: CHANGES r1 @f19b6c9f - qa. Suites at f19b6c9f (measured by qa): Node 22.23.1 tests 12154 / pass 12141 / fail 0 /
+    skipped 13; Node 24.20.0 the same 12154 / 12141 / 0 / 13; lint 0 errors (6 pre-existing warnings, common.js), lint:ui OK,
+    overlay-containment clean. W1: music while reading plays a station's library-CHAPTER track (radio items with source
+    library-chapter + chapterStartSec, e.g. a chaptered lofi mix) from durationSec/3 file-absolute, without chapterStartSec /
+    baseMediaId (feed.js playSong 1283-1294 via feedPlayerDescriptor 225-245): the audio is in the wrong chapter, the chip names
+    another, and the next song only follows when the WHOLE file ends. W2: a song card is warmed even when its track
+    needsTranscode (ALAC): GET /track/<id> answers 503 and queues the music transcode for a card that may never be reached
+    (feed.js feedStreamUrl 347-353; its comment and the section 9 K2 ledger say a transcode is never warmed). SUGGESTIONS: S1 g:ambient
+    can never exist (stations.js drops every genre a style word names; Chill names "ambient"), so the order entry is inert and
+    "rarely" in section 9 is "never"; S2 BARE_CHAPTER_NUMBER_RX (excerpt.js:376) reads "Mild", "Vivid", "Civil", "Did", "C" as
+    numerals ("Chapter Vivid"); S3 a one-file book labels every card with the first TOC entry into that file; S4 the 512-byte
+    "worst case" test is not the worst (measured worst 490 bytes, still under the cap); S5 the countdown's aria-label stays "in 2
+    seconds" at "Next in 1"; S6 this plan's branch / Step 0 / next fields name the off-box feat/ branch and "no GitHub auth".
 - Device checks owed:
 
 ## 8. Out of scope
