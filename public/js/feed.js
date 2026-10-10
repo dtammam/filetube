@@ -1210,7 +1210,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // book's page swipes and consecutive book cards, and stops when any other card becomes active, the Feed ends or the view is
     // left. It never counts a play or a skip (nothing is posted, Music's tally is let go) and never saves a place (its gate is
     // shut). The phone's volume is never touched (iOS ignores a scripted volume: there is no ducking anywhere). A chip on the
-    // card names the song; its sheet has Like, Mute music for this session and Change station. Settings > Feed > Music while
+    // card names the song; its sheet has Like, Mute music (for the rest of this session) and Change station. Settings > Feed > Music while
     // reading (synced, on by default) and its Station.
     var MUSIC_PLAYED_CAP = 200;
     function musicWanted() {
@@ -1332,7 +1332,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var liked = !!item.liked;
       var items = [
         { label: liked ? 'Unlike the song' : 'Like the song', icon: 'favorite', value: liked ? 'unlike' : 'like', onSelect: function () { likeSong(item, !liked); } },
-        { label: 'Mute music for this session', icon: 'volume_off', value: 'mute', onSelect: muteMusic },
+        { label: 'Mute music', icon: 'volume_off', value: 'mute', onSelect: muteMusic },
       ];
       if (music.stations.length > 1) items.push({ label: 'Change station', icon: 'radio', value: 'station', onSelect: openStationSheet });
       U().menu({ label: 'Music', items: items, signal: signal, doc: document });

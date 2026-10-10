@@ -616,7 +616,7 @@ test('K6: a non-book card stops the music (a video\'s load replaces it, the chip
   } finally { r.close(); }
 });
 
-test('K6: Music while reading off - no music, no station read; Mute music for this session stops it for the session (a reload of the view keeps it muted)', async () => {
+test('K6: Music while reading off - no music, no station read; Mute music stops it for the rest of the session (a reload of the view keeps it muted)', async () => {
   const r = musicRealm([READING, POD]);
   try {
     r.w.localStorage.setItem('ft-feed-settings', '{"music":false}');
@@ -629,7 +629,7 @@ test('K6: Music while reading off - no music, no station read; Mute music for th
     await startRealm(r2); r2.show(0); await r2.settle();
     chip(r2, 0).click(); await r2.settle();
     const sheets = r2.$$('.ui-sheet');
-    const mute = Array.from(sheets[sheets.length - 1].querySelectorAll('.ui-row, [role="listitem"], button')).find((b) => /Mute music for this session/.test(b.textContent));
+    const mute = Array.from(sheets[sheets.length - 1].querySelectorAll('.ui-row, [role="listitem"], button')).find((b) => /^Mute music$/.test(b.textContent.trim()));
     assert.ok(mute, 'the sheet offers Mute');
     assert.ok(Array.from(sheets[sheets.length - 1].querySelectorAll('.ui-row, [role="listitem"], button')).some((b) => /Like the song/.test(b.textContent)), 'and Like');
     mute.click(); await r2.settle();
