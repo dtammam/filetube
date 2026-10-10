@@ -326,6 +326,15 @@ test('K6 settings: music on unless false; a station key is kept when it is a pla
   assert.strictEqual(FS.serialize({}), '{}');
   const worst = FS.serialize({ off: ['video', 'podcast', 'book', 'watchlater'], which: { video: 'new', podcast: 'new', book: 'new' }, where: { video: 'start', podcast: 'start', book: 'start' }, reel: 30, slice: 60, clip: 30, advance: false, music: false, station: '\u6f22'.repeat(40) });
   assert.ok(FS.utf8Bytes(worst) <= FS.SETTINGS_MAX_BYTES, 'worst case ' + FS.utf8Bytes(worst) + ' bytes');
+  // gate r1 (qa S4): the LONGEST value of every field - 'continue', the 3-digit lengths, and a 120-byte station of characters JSON
+  // doubles when it escapes them (" and \) - is the real worst case
+  for (const ch of ['"', '\\', '\u6f22']) {
+    const station = ch.repeat(Math.floor(FS.STATION_MAX / FS.utf8Bytes(ch)));
+    const longest = { off: ['video', 'podcast', 'book', 'watchlater'], which: { video: 'continue', podcast: 'continue', book: 'continue' }, where: { video: 'start', podcast: 'start', book: 'start' }, reel: 120, slice: 240, clip: 60, advance: false, music: false, station };
+    const out = FS.serialize(longest);
+    assert.strictEqual(FS.normalize(out).station, station, 'the station is kept at its limit');
+    assert.ok(FS.utf8Bytes(out) <= FS.SETTINGS_MAX_BYTES, 'longest with ' + JSON.stringify(ch) + ': ' + FS.utf8Bytes(out) + ' bytes');
+  }
   assert.deepStrictEqual(FS.MUSIC_STATION_ORDER, ['s:chill', 's:lofi', 's:jazz', 'g:ambient', 'favorites']);
 });
 

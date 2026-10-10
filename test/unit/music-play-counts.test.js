@@ -47,7 +47,7 @@ const settle = () => new Promise((r) => setImmediate(r));
 
 // Boot the real view with `list` as the Recently played queue and `?play=<id>`; `posts` collects every
 // POST /api/music/plays body as "<id> <kind>".
-async function boot(list, playId, run) {
+async function boot(list, playId, run, pre) {
   const dom = new JSDOM(VIEW_HTML, { url: 'http://localhost/music?play=' + encodeURIComponent(playId) });
   const saved = { window: global.window, document: global.document, localStorage: global.localStorage, fetch: global.fetch, AbortController: global.AbortController };
   global.window = dom.window; global.document = dom.window.document;
@@ -68,6 +68,7 @@ async function boot(list, playId, run) {
       setTrackNav: (h) => { lastNav = h || null; },
     },
   };
+  if (typeof pre === 'function') pre(dom.window); // v1.383.0: state another surface leaves before Music loads (the Feed's hand-over)
   global.window.addToQueue = () => {};
   global.fetch = (url, init) => {
     const s = String(url);
@@ -362,4 +363,35 @@ test('v1.383.0: the Feed lets the tally go before it loads (FileTube.musicPlayCo
     c.mp.dispatchEvent(new c.dom.window.Event('ended'));
     assert.deepStrictEqual(c.posts, [], 'the Feed counts its own card; Music counts nothing for it');
   });
+});
+
+// v1.383.0 (Feed K5, gate r1 adversary W3): a song carried over from a Feed card is ONE listen with the Feed's - Music's tally starts
+// from what the Feed heard and counted; a stale or another song's hand-over is ignored
+test('v1.383.0: a song carried over from the Feed (played there at 30 s) is not counted a second play by Music; its finish still counts', async () => {
+  await boot(NATIVE, 't0', async (c) => {
+    c.playThrough(33, 120);
+    assert.deepStrictEqual(c.posts, [], 'the Feed counted the play: Music does not count it again');
+    c.mp.dispatchEvent(new c.dom.window.Event('ended'));
+    assert.deepStrictEqual(c.posts, ['t0 finish'], 'heard to the end in Music: the finish');
+    assert.strictEqual(c.dom.window.FileTube.musicPlayCountHandoff, null, 'used once');
+  }, (w) => { w.FileTube.musicPlayCountHandoff = { at: Date.now(), id: 't0', listened: 31, played: true, finished: false }; });
+});
+
+test('v1.383.0: a hand-over under the play (10 s heard in the Feed) needs only the rest of the 30 s in Music; a stale or other-song hand-over is ignored', async () => {
+  await boot(NATIVE, 't0', async (c) => {
+    c.playThrough(10, 29);
+    assert.deepStrictEqual(c.posts, [], '10 s in the Feed + 19 s here: not yet');
+    c.tick(30);
+    assert.deepStrictEqual(c.posts, ['t0 play'], '10 s in the Feed + 20 s here: the play');
+  }, (w) => { w.FileTube.musicPlayCountHandoff = { at: Date.now(), id: 't0', listened: 10, played: false, finished: false }; });
+  await boot(NATIVE, 't0', async (c) => {
+    c.playThrough(0, 29);
+    assert.deepStrictEqual(c.posts, [], 'a minute-old hand-over: Music counts from 0');
+    c.tick(30);
+    assert.deepStrictEqual(c.posts, ['t0 play']);
+  }, (w) => { w.FileTube.musicPlayCountHandoff = { at: Date.now() - 60000, id: 't0', listened: 31, played: true, finished: false }; });
+  await boot(NATIVE, 't0', async (c) => {
+    c.playThrough(0, 30);
+    assert.deepStrictEqual(c.posts, ['t0 play'], 'another song\'s hand-over: ignored');
+  }, (w) => { w.FileTube.musicPlayCountHandoff = { at: Date.now(), id: 't1', listened: 31, played: true, finished: false }; });
 });

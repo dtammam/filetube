@@ -778,3 +778,196 @@ test('K6: a station answer that arrives after the reader moved on (another card,
     assert.deepStrictEqual(songLoads(r).map((l) => l.id), ['m6'], 'the stale answer never loads a second song');
   } finally { r.close(); }
 });
+
+// ==== gate r1 fixes (v1.383.0 finisher) =========================================================================================
+const fireRatios = (r, pairs) => { const ob = r.observers[r.observers.length - 1]; ob.cb(pairs.map(([i, ratio]) => ({ target: r.$$('.feed-card')[i], isIntersecting: ratio > 0, intersectionRatio: ratio }))); };
+const recapCards = (r) => { const s = JSON.parse(r.w.sessionStorage.getItem('ft-feed-session') || 'null'); return s && s.summary ? s.summary.cards : 0; };
+
+test('gate r1 (adversary W1): a quarter swipe that springs back counts nothing; the card is counted once the swipe SETTLES on the next card', async () => {
+  const r = flowRealm([VID, POD, Object.assign({}, VID, { id: 'v9' })]);
+  try {
+    await startRealm(r); r.show(0); r.timeAt(450);
+    fireRatios(r, [[0, 0.74], [1, 0.26]]); await r.settle(2);
+    assert.ok(r.loads.some((l) => l.id === 'ep1'), 'the episode loaded at a quarter (K2 b)');
+    assert.strictEqual(recapCards(r), 0, 'not counted while the swipe is open');
+    fireRatios(r, [[0, 0.88], [1, 0.12]]); await r.settle(2);
+    assert.strictEqual(recapCards(r), 0, 'a spring-back is not leaving: the video is not counted, nor the glimpsed episode');
+    fireRatios(r, [[0, 0.74], [1, 0.26]]); await r.settle(2);
+    fireRatios(r, [[0, 0.3], [1, 0.7]]); await r.settle(2);
+    assert.strictEqual(recapCards(r), 1, 'settled on the episode: the video is counted, once');
+  } finally { r.close(); }
+});
+
+test('gate r1 (adversary W2): a whole song glimpsed past at a quarter and swiped back is no skip; really left, it is', async () => {
+  const r = flowRealm([WHOLE, POD]);
+  try {
+    await startRealm(r); r.show(0);
+    playFrom(r, 0, 10);
+    fireRatios(r, [[0, 0.74], [1, 0.26]]); await r.settle(2);
+    fireRatios(r, [[0, 0.88], [1, 0.12]]); await r.settle(2);
+    assert.deepStrictEqual(playsOf(r), [], 'the glimpse: no skip');
+    r.show(1); await r.settle();
+    assert.deepStrictEqual(playsOf(r), ['t2 skip'], 'left for good after 10 s: the skip');
+  } finally { r.close(); }
+});
+
+test('gate r1 (adversary S3): a Done card come back to opens at its slice\'s end and pauses there - never its slice again, never past its end, no new countdown', async () => {
+  const r = flowRealm([VID, POD]);
+  try {
+    await startRealm(r); r.show(0);
+    r.timeAt(900); await r.settle(2);
+    assert.ok(advanceBtn(r, 0), 'Done: the countdown');
+    fireRatios(r, [[0, 0.74], [1, 0.26]]); await r.settle(2);
+    fireRatios(r, [[0, 0.88], [1, 0.12]]); await r.settle(2);
+    const back = r.loads.filter((l) => l.id === 'v1').pop();
+    assert.strictEqual(back.data.startAt, 900, 'at its slice\'s end (it was 400, the slice start)');
+    const n = r.loads.length;
+    r.timeAt(900); await r.settle(2);
+    assert.ok(r.loads.slice(n).some((l) => l.pause), 'paused at its end again');
+    assert.strictEqual(advanceBtn(r, 0), null, 'no new countdown: the user came back to it');
+  } finally { r.close(); }
+});
+
+test('gate r1: in the wind-down a quarter glimpse does not end the session; moving on (60%) does, as shipped', async () => {
+  const r = flowRealm([VID, POD]);
+  try {
+    await startRealm(r); r.show(0); r.timeAt(450);
+    r.advance(11 * 60000); r.tickIntervals(); // time is up mid-slice: winding down (the slice may finish)
+    assert.strictEqual(r.calls('POST', '/api/feed/sessions/abcdef0123456789/finish').length, 0, 'winding down, not over');
+    fireRatios(r, [[0, 0.74], [1, 0.26]]); await r.settle(2);
+    assert.strictEqual(r.calls('POST', '/api/feed/sessions/abcdef0123456789/finish').length, 0, 'a glimpse: the session goes on');
+    fireRatios(r, [[0, 0.3], [1, 0.7]]); await r.settle(2);
+    assert.ok(r.calls('POST', '/api/feed/sessions/abcdef0123456789/finish').length >= 1, 'moved on: the session ends (D11)');
+  } finally { r.close(); }
+});
+
+test('gate r1: the countdown\'s scroll passes a hidden card without making it active; it skips to the next shown card', async () => {
+  const r = flowRealm([VID, POD, Object.assign({}, VID, { id: 'v9' })]);
+  try {
+    await startRealm(r); r.show(0);
+    r.$$('.feed-card')[1].setAttribute('data-hidden', ''); // Hide this on the episode
+    r.timeAt(900); await r.settle(2);
+    await waitMs(2150);
+    assert.strictEqual(r.w.__scrolledInto, r.$$('.feed-card')[2], 'to the next SHOWN card');
+    fireRatios(r, [[0, 0.1], [1, 1]]); await r.settle(2); // the scroll crosses the hidden card
+    assert.ok(!r.loads.some((l) => l.id === 'ep1'), 'the hidden card it passes never loads');
+    fireRatios(r, [[1, 0.6], [2, 0.4]]); await r.settle(2);
+    assert.ok(r.loads.some((l) => l.id === 'v9'), 'its target becomes active');
+  } finally { r.close(); }
+});
+
+test('gate r1: the countdown tells a screen reader the second it is on', async () => {
+  const r = flowRealm([VID, POD]);
+  try {
+    await startRealm(r); r.show(0);
+    r.timeAt(900); await r.settle(2);
+    assert.ok(/in 2 seconds/.test(advanceBtn(r, 0).getAttribute('aria-label')));
+    await waitMs(1150);
+    assert.ok(/in 1 second\./.test(advanceBtn(r, 0).getAttribute('aria-label')), advanceBtn(r, 0).getAttribute('aria-label'));
+  } finally { r.close(); }
+});
+
+test('gate r1 (adversary W5): a Start over plays the card from its NEW start, never where it was left, and a fresh card\'s minute starts over too', async () => {
+  const r = realm([PLACED_VID, POD], {});
+  try {
+    await startRealm(r); r.show(0);
+    r.timeAt(450);
+    await openMenuRow(r, 0, /Start over/);
+    okBtn(lastSheet(r)).click(); await r.settle();
+    const after = r.loads.filter((l) => l.id === 'v1').pop();
+    assert.notStrictEqual(after.data.startAt, 450, 'not the place it just forgot');
+    assert.strictEqual(after.data.startAt, 0, 'from the start');
+  } finally { r.close(); }
+  const FRESH = Object.assign({}, POD, { fresh: true, position: 0, startAt: 0, endAt: 240 });
+  const r2 = realm([FRESH, VID], {});
+  try {
+    await startRealm(r2); r2.show(0); await r2.settle();
+    Object.defineProperty(r2.media, 'paused', { value: false, configurable: true });
+    for (let s = 0; s <= 40; s++) { r2.advance(1000); r2.timeAt(s); }
+    assert.ok(r2.loads.filter((l) => l.id === 'ep1')[0].data.playedSec() >= 39);
+    await openMenuRow(r2, 0, /Start over/);
+    okBtn(lastSheet(r2)).click(); await r2.settle();
+    const again = r2.loads.filter((l) => l.id === 'ep1').pop();
+    assert.strictEqual(again.data.playedSec(), 0, 'the started-over card\'s minute starts from nothing (the server counts since the reset)');
+  } finally { r2.close(); }
+});
+
+test('gate r1 (qa W2 = adversary W6): a song that needs a transcode (ALAC) is never warmed', async () => {
+  const ALAC = Object.assign({}, SONG, { track: Object.assign({}, SONG.track, { needsTranscode: true }) });
+  assert.strictEqual(feed.feedStreamUrl(ALAC), '');
+  const r = flowRealm([VID, ALAC]);
+  try {
+    await startRealm(r); r.show(0); await r.settle();
+    assert.strictEqual(r.fetches.filter((f) => f.headers && f.headers.Range).length, 0, 'no range request for the ALAC song');
+  } finally { r.close(); }
+});
+
+test('gate r1 (qa W1): a station song that is a CHAPTER of a library file plays a third into THAT chapter and ends at the chapter\'s end', async () => {
+  const CH = [
+    { id: 'mixA::c3', title: 'Track 4', artist: 'Lofi Mix', durationSec: 180, chapterStartSec: 1200, source: 'library-chapter', streamSrc: '/video/mixA', progressEndpoint: '/api/progress' },
+    { id: 'm9', title: 'Tune 9', artist: 'Band', durationSec: 120, liked: false },
+  ];
+  const r = feedRealm({
+    batches: [{ cards: [READING, POD], exhausted: false }],
+    route: (m, u) => {
+      if (u === '/api/music/stations') return { status: 200, body: { stations: [{ key: 's:lofi', name: 'Lofi' }] } };
+      if (u.indexOf('/api/music/radio?') === 0) return { status: 200, body: { items: CH } };
+      return null;
+    },
+  });
+  try {
+    await startRealm(r); r.show(0); await r.settle();
+    const load = r.loads.filter((l) => l.id === 'mixA::c3').pop();
+    assert.ok(load, 'the chapter track loaded');
+    assert.strictEqual(load.data.streamSrc, '/video/mixA');
+    assert.strictEqual(load.data.chapterStartSec, 1200, 'the player seeks the chapter by its own fields');
+    assert.strictEqual(load.data.baseMediaId, 'mixA');
+    assert.strictEqual(load.data.chapterResumeSec, 1260, 'a third into the chapter (180 s): 1200 + 60, never 60 s into the file');
+    assert.strictEqual(load.data.progressGate(), false, 'never a saved place');
+    r.timeAt(1300); await r.settle(2);
+    assert.ok(!r.loads.some((l) => l.id === 'm9'), 'inside the chapter: it plays on');
+    r.timeAt(1380); await r.settle(2);
+    assert.ok(r.loads.some((l) => l.id === 'm9'), 'at the chapter\'s end the next song comes (not at the file\'s end)');
+  } finally { r.close(); }
+});
+
+test('gate r1 (adversary S1): Keep reading closes the station song - the reader has no music left paused in the player', async () => {
+  const ONE_PAGE = Object.assign({}, READING, { blocks: READING.blocks.slice(0, 2), words: 20, next: { spineIndex: 7, blockIndex: 3 } });
+  const r = musicRealm([ONE_PAGE, POD], { realm: { pageWords: 100 } });
+  try {
+    await startRealm(r); r.show(0); await r.settle();
+    assert.strictEqual(songLoads(r).length, 1, 'music under the book');
+    const keep = r.$$('.feed-card')[0].querySelector('[data-keep]');
+    assert.ok(keep, 'Keep reading on the last page');
+    keep.click(); await r.settle();
+    const i = r.loads.findIndex((l) => l.navigate);
+    assert.ok(i > 0 && r.loads.slice(0, i).some((l) => l.close), 'the player is closed before the reader opens');
+  } finally { r.close(); }
+});
+
+test('gate r1 (adversary S4): the notice card pauses the music under a book (its media is none)', async () => {
+  const NOTICE = { kind: 'notice', id: 'notice', title: 'That is everything' };
+  const r = musicRealm([READING, NOTICE]);
+  try {
+    await startRealm(r); r.show(0); await r.settle();
+    assert.strictEqual(songLoads(r).length, 1);
+    const n = r.loads.length;
+    r.show(1); await r.settle();
+    assert.ok(r.loads.slice(n).some((l) => l.pause), 'paused');
+    assert.strictEqual(r.$('[data-music-chip]'), null);
+  } finally { r.close(); }
+});
+
+test('gate r1 (K3 b): chapter names - a well-formed numeral in one case reads "Chapter <n>", a word of numeral letters stays itself; a file several entries share has no name; hrefs are percent-decoded', () => {
+  const { chapterLabeler } = require('../../lib/books/excerpt');
+  const mk = (toc, hrefs) => chapterLabeler({ packageInfo: () => ({ toc }), loadBlocks: () => [] }, hrefs.map((h, i) => ({ idref: 'i' + i, href: h })));
+  const hrefs = ['t/a.xhtml', 't/b.xhtml', 't/c.xhtml', 't/d.xhtml', 't/e f.xhtml'];
+  const labelOf = mk([
+    { href: 't/a.xhtml', label: 'XII.' }, { href: 't/b.xhtml', label: 'Civil' }, { href: 't/c.xhtml', label: 'Mix' },
+    { href: 't/d.xhtml', label: 'Part One' }, { href: 't/d.xhtml', label: 'Chapter 1' }, { href: 't/e%20f.xhtml', label: 'iv' },
+  ], hrefs);
+  assert.deepStrictEqual([0, 1, 2, 3, 4].map(labelOf), ['Chapter XII', 'Civil', 'Mix', '', 'Chapter iv']);
+  const oneFile = mk([{ href: 'all.xhtml', label: 'Cover' }, { href: 'all.xhtml', label: 'Chapter 1' }, { href: 'all.xhtml', label: 'Chapter 2' }], ['all.xhtml']);
+  assert.strictEqual(oneFile(0), '', 'a whole book in one file: no one name (it said "Cover" on every page)');
+  assert.deepStrictEqual(opf.parseNavToc('<nav epub:type="toc"><ol><li><a href="c.xhtml"><span>XII</span>.</a></li></ol></nav>', 'OEBPS/nav.xhtml'), [{ href: 'OEBPS/c.xhtml', label: 'XII.' }], 'markup inside a label leaves no stray space');
+});
