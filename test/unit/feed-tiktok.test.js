@@ -344,9 +344,11 @@ function recordingPlayer(r, holdMs) {
   p.pictureTap = () => seen.push('tap');
   p.holdStart = () => { seen.push('hold'); return true; };
   p.holdEnd = () => seen.push('release');
-  p.gestureTimings = () => ({ holdMs: holdMs || 40, moveTol: 16 });
+  p.gestureTimings = () => ({ holdMs: holdMs || 40, moveTol: 16, doubleTapMs: TAP_WINDOW_MS });
   return seen;
 }
+// v1.382.0 (D10): a lone tap plays / pauses once the double-tap window has passed (a second tap inside it is the like)
+const TAP_WINDOW_MS = 30;
 const wait = (ms) => new Promise((res) => setTimeout(res, ms));
 
 test('W3 view (D8): on the playing video a tap is the player\'s picture tap; a press and hold is 2x while held (no tap); a drag is neither; a card not playing is not touched', async () => {
@@ -358,6 +360,8 @@ test('W3 view (D8): on the playing video a tap is the player\'s picture tap; a p
     const layer = r.$$('.feed-card')[0].querySelector('.feed-card__touch');
     assert.ok(layer, 'the gesture layer');
     pointer(r, layer, 'pointerdown', 200, 300); pointer(r, layer, 'pointerup', 202, 301);
+    assert.deepStrictEqual(seen, [], 'v1.382.0: not at the lift - the double-tap window first');
+    await wait(TAP_WINDOW_MS + 15);
     assert.deepStrictEqual(seen, ['tap']);
     pointer(r, layer, 'pointerdown', 200, 300); await wait(70); pointer(r, layer, 'pointerup', 200, 300);
     assert.deepStrictEqual(seen, ['tap', 'hold', 'release'], 'held: 2x, then released at the lift - and no tap');
@@ -380,7 +384,9 @@ test('W3 view (D8): an episode or a song: a tap plays / pauses; a hold is NOT 2x
     r.show(0);
     const layer = r.$$('.feed-card')[0].querySelector('.feed-card__touch');
     pointer(r, layer, 'pointerdown', 200, 300); await wait(70); pointer(r, layer, 'pointerup', 200, 300);
+    await wait(TAP_WINDOW_MS + 15); // v1.382.0: two taps inside the window would be a double tap (the like)
     pointer(r, layer, 'pointerdown', 200, 300); pointer(r, layer, 'pointerup', 200, 300);
+    await wait(TAP_WINDOW_MS + 15);
     assert.ok(!seen.includes('hold'), 'no hold on audio');
     assert.strictEqual(seen.filter((x) => x === 'tap').length, 2, 'a long press on audio is just a tap at the lift');
   } finally { r.close(); }
@@ -419,7 +425,8 @@ test('W3 player API (D8): the Feed\'s tap and hold are the player\'s own picture
   assert.match(src, /pictureTap: function \(\) \{ toggleArtPlayPause\('feed-tap'\); \}/);
   assert.match(src, /holdStart: function \(\) \{ engageHold\(\); return holdActive; \}/);
   assert.match(src, /holdEnd: function \(\) \{ if \(!holdActive\) return; holdGestureLive = false; releaseHold\(\); \}/);
-  assert.match(src, /gestureTimings: function \(\) \{ return \{ holdMs: HOLD_MS, moveTol: MOVE_TOL \}; \}/);
+  // v1.382.0 (D10): + the watch page's own double-tap window (the Feed's double-tap like waits it out before a lone tap)
+  assert.match(src, /gestureTimings: function \(\) \{ return \{ holdMs: HOLD_MS, moveTol: MOVE_TOL, doubleTapMs: DOUBLE_TAP_MS \}; \}/);
   const feedSrc = fs.readFileSync(path.join(ROOT, 'public/js/feed.js'), 'utf8');
   assert.ok(!/playbackRate\s*=/.test(feedSrc), 'the Feed never sets a rate itself');
 });
@@ -556,8 +563,19 @@ test('W4 view (D9): no "..." on a song or a new book; the menu on every other ki
   const r = startOverRealm([SONG, NEW, PLACED_VID, POD, BOOK], {});
   try {
     await startRealm(r);
+    // v1.382.0 (D10, D11): every card has its "..." now (Like, Hide this, Fewer from); Start over stays where it was
     const has = r.$$('.feed-card').map((n) => n.getAttribute('data-kind') + (n.hasAttribute('data-new-book') ? ':new' : '') + '=' + !!n.querySelector('[data-card-menu]'));
-    assert.deepStrictEqual(has.slice(0, 5), ['song=false', 'book:new=false', 'video=true', 'podcast=true', 'book=true']);
+    assert.deepStrictEqual(has.slice(0, 5), ['song=true', 'book:new=true', 'video=true', 'podcast=true', 'book=true']);
+    const offers = [];
+    for (let i = 0; i < 5; i++) {
+      r.$$('.feed-card')[i].querySelector('[data-card-menu]').click();
+      await r.settle();
+      const sheets = r.$$('.ui-sheet');
+      offers.push(/Start over/.test(sheets[sheets.length - 1].textContent));
+      r.w.document.dispatchEvent(new r.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      await r.settle();
+    }
+    assert.deepStrictEqual(offers, [false, false, true, true, true], 'Start over: not on a song or a new book');
   } finally { r.close(); }
 });
 
@@ -682,7 +700,7 @@ test('r1 (qa W4 M13): a resize re-lays the pages and keeps what was read as a pl
   } finally { r.close(); }
 });
 
-test('r1 (adversary suggestion): a book card that was started over stays so when rebuilt after pruning - no "..." again, never a write', async () => {
+test('r1 (adversary suggestion): a book card that was started over stays so when rebuilt after pruning - no Start over again, never a write', async () => {
   const r = prunableRealm({ route: (m, u) => (u === '/api/feed/start-over' ? { status: 200, body: { ok: true, token: 'c'.repeat(24), previous: {} } } : null) });
   try {
     r.w.innerWidth = 390;
@@ -692,7 +710,11 @@ test('r1 (adversary suggestion): a book card that was started over stays so when
     r.show(0); await r.settle();
     const node = r.$$('.feed-card')[0];
     assert.strictEqual(node.querySelector('.feed-card__kind').textContent, 'Book · Started over');
-    assert.strictEqual(node.querySelector('[data-card-menu]'), null);
+    // v1.382.0: the card keeps its "..." (Like, Hide this, Fewer from) but never offers Start over again
+    node.querySelector('[data-card-menu]').click(); await r.settle();
+    const sheets = r.$$('.ui-sheet');
+    assert.ok(!/Start over/.test(sheets[sheets.length - 1].textContent), 'no Start over on a started-over book');
+    r.w.document.dispatchEvent(new r.w.KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await r.settle();
     assert.strictEqual(readout(r), 'Opens at the beginning next time');
     r.advance(30000); r.show(1); await r.settle();
     assert.strictEqual(r.calls('POST', '/api/feed/progress/book/bk1').length, 0);

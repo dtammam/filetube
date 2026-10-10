@@ -12879,6 +12879,16 @@ html:root body[data-view="feed"] #handoff-card, html:root body[data-view="feed"]
 #view-root[data-view="feed"] .feed-card__intro-note { position: absolute; left: var(--space-8); top: 0; z-index: var(--z-chip); }
 /* v1.382.0 (D7): Keep watching / listening / reading sits first in the overlay, at its own width (a pill, never a full row) */
 #view-root[data-view="feed"] .feed-card__keep { align-self: flex-start; }
+/* v1.382.0 (D10): the double-tap heart pops where the finger was (--heart-x / --heart-y: the card's own coordinates, set by
+   feed.js as DATA); never a target (pointer-events none); reduced motion: a still heart that just fades */
+#view-root[data-view="feed"] .feed-heart { position: absolute; left: var(--heart-x, 50%); top: var(--heart-y, 50%); z-index: var(--z-chip); pointer-events: none; transform: translate(-50%, -50%); color: var(--danger); animation: feed-heart-pop var(--dur-slow) var(--ease-ui) both; }
+#view-root[data-view="feed"] .feed-heart__glyph { width: calc(var(--icon-lg) * 4); height: calc(var(--icon-lg) * 4); display: block; fill: currentColor; filter: drop-shadow(var(--shadow-overlay)); }
+#view-root[data-view="feed"] .feed-card[data-hidden] .feed-card__overlay { opacity: 0.5; }
+@keyframes feed-heart-pop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(0.4); } 30% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); } 100% { opacity: 0; transform: translate(-50%, -80%) scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  #view-root[data-view="feed"] .feed-heart { animation: feed-heart-fade var(--dur-slow) linear both; }
+}
+@keyframes feed-heart-fade { from { opacity: 1; } to { opacity: 0; } }
 #view-root[data-view="feed"] .feed-hint { position: absolute; left: 50%; transform: translateX(-50%); bottom: var(--space-6); z-index: var(--z-chip); display: flex; flex-direction: column; align-items: center; gap: var(--space-1); pointer-events: none; font: var(--t-footnote); color: var(--ink-1); background: var(--surface-overlay); padding: var(--space-4) var(--space-8); border-radius: var(--r-pill); box-shadow: var(--shadow-overlay); animation: feed-hint-in var(--dur-slow) var(--ease-ui) both; }
 #view-root[data-view="feed"] .feed-hint__chevron { width: var(--icon-lg); height: var(--icon-lg); display: block; fill: none; stroke: currentColor; stroke-width: var(--ring-w); stroke-linecap: round; stroke-linejoin: round; animation: feed-hint-bob var(--dur-slow) var(--ease-ui) infinite alternate; }
 @keyframes feed-hint-in { from { opacity: 0; } to { opacity: 1; } }

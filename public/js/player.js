@@ -10609,7 +10609,7 @@ if (typeof module !== 'undefined' && module.exports) {
     pictureTap: function () { toggleArtPlayPause('feed-tap'); },
     holdStart: function () { engageHold(); return holdActive; },
     holdEnd: function () { if (!holdActive) return; holdGestureLive = false; releaseHold(); },
-    gestureTimings: function () { return { holdMs: HOLD_MS, moveTol: MOVE_TOL }; },
+    gestureTimings: function () { return { holdMs: HOLD_MS, moveTol: MOVE_TOL, doubleTapMs: DOUBLE_TAP_MS }; }, // v1.382.0: + the watch page's double-tap window (the Feed's double-tap like)
     next: function () { manualTrackStep('next'); },
     prev: function () { manualTrackStep('prev'); },
     seek: function (sec) { if (typeof sec === 'number' && isFinite(sec) && sec >= 0) seekActiveMedia(sec, false); },

@@ -817,3 +817,104 @@ test('v1.382.0 D2 / D3: when everything chosen has been shown, the refill (recyc
   assert.ok(seen.length > 3, 'the refill served again');
   assert.ok(seen.every((c) => c.kind === 'video' && c.fresh === true), 'never a Watch later card, never a continuing video: ' + JSON.stringify(seen.map((c) => c.kind + ':' + c.id)));
 });
+
+// ---- v1.382.0 (D10, D11): Like / Watch later state on the cards, Hide this (every kind), Fewer from -----------------------
+function sendJson(method, urlPath, body, cookie) {
+  return fetch(`${base}${urlPath}`, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) }, body: JSON.stringify(body) });
+}
+
+test('v1.382.0 D11: Hide this works for every kind, lists with titles, and a hidden item is never served (and is again after Undo)', async () => {
+  const songId = 'trk7';
+  const targets = [{ kind: 'media', id: 'va3' }, { kind: 'podcast', id: epIds.a[5] }, { kind: 'book', id: bookIds.Gamma }, { kind: 'song', id: songId }, { kind: 'media', id: 'wl3' }];
+  for (const t of targets) {
+    const r = await sendJson('POST', '/api/feed/hidden', t);
+    assert.strictEqual(r.status, 200, JSON.stringify(t));
+  }
+  const rows = userStore.getFeedHidden(uid);
+  for (const k of ['va3', `podcast:${epIds.a[5]}`, `book:${bookIds.Gamma}`, `song:${songId}`, 'wl3']) assert.ok(rows.includes(k), k);
+  const list = await (await fetch(`${base}/api/feed/hidden`)).json();
+  const byKey = new Map(list.items.map((i) => [i.kind + ':' + i.id, i]));
+  assert.deepStrictEqual(byKey.get('media:va3'), { kind: 'media', id: 'va3', title: 'Video va3', sub: 'Allowed' });
+  assert.deepStrictEqual(byKey.get(`podcast:${epIds.a[5]}`), { kind: 'podcast', id: epIds.a[5], title: 'Ep a5', sub: 'Show A' });
+  assert.deepStrictEqual(byKey.get(`book:${bookIds.Gamma}`), { kind: 'book', id: bookIds.Gamma, title: 'Gamma', sub: 'W' });
+  assert.deepStrictEqual(byKey.get(`song:${songId}`), { kind: 'song', id: songId, title: 'Song 7', sub: 'Art' });
+  // never served, as itself or as a Watch later card (wl3 and a Watch later episode key share the hidden key)
+  userStore.addWatchLater(uid, userStore.watchLaterKey('podcast', epIds.a[5]), new Date().toISOString());
+  const { cards } = await cardsWith(JSON.stringify({ which: { video: 'continue' } }), 400);
+  const served = (k, id) => cards.some((c) => c.id === id && (k === 'any' || c.kind === k));
+  assert.ok(cards.length >= 300);
+  for (const t of targets) assert.ok(!served('any', t.id), 'hidden ' + t.kind + ' ' + t.id + ' was served');
+  // Undo: served again (Gamma is a long book the admin reads: its next card comes)
+  for (const t of targets) assert.strictEqual((await sendJson('DELETE', '/api/feed/hidden', t)).status, 200);
+  assert.ok(!userStore.getFeedHidden(uid).some((k) => /^(podcast|book|song):/.test(k) || k === 'va3' || k === 'wl3'));
+  const again = await cardsWith(null, 200);
+  assert.ok(again.cards.some((c) => c.kind === 'book' && c.id === bookIds.Gamma), 'the book is back');
+  assert.strictEqual((await sendJson('DELETE', '/api/feed/hidden', targets[0])).status, 200, 'Undo twice: idempotent');
+});
+
+test('v1.382.0 D11 access: Hide never reaches an item the viewer cannot see (one neutral 404, nothing written); bad input is refused; the list never leaks', async () => {
+  const mid = member.user.id;
+  const before = JSON.stringify(userStore.getFeedHidden(mid));
+  const blocked = [{ kind: 'media', id: 'vh1' }, { kind: 'podcast', id: epIds.b[0] }, { kind: 'book', id: bookIds.Alpha }, { kind: 'song', id: 'trk1' }];
+  const missing = [{ kind: 'media', id: 'nope' }, { kind: 'podcast', id: 'f'.repeat(32) }, { kind: 'book', id: 'nobook' }, { kind: 'song', id: 'notrack' }];
+  const bodies = new Set();
+  for (const t of blocked.concat(missing)) {
+    const r = await sendJson('POST', '/api/feed/hidden', t, member.cookie);
+    assert.strictEqual(r.status, 404, JSON.stringify(t));
+    bodies.add(await r.text());
+  }
+  assert.strictEqual(bodies.size, 1, 'one neutral body for hidden and missing');
+  for (const bad of [{ kind: 'video', id: 'va1' }, { kind: 'media', id: '' }, { kind: 'media', id: 'a\u0000b' }, { kind: 'media', id: 'x'.repeat(300) }, { kind: 'media' }, { kind: 'media', id: 7 }, {}, { kind: '__proto__', id: 'va1' }]) {
+    assert.strictEqual((await sendJson('POST', '/api/feed/hidden', bad, member.cookie)).status, 400, JSON.stringify(bad));
+    assert.strictEqual((await sendJson('DELETE', '/api/feed/hidden', bad, member.cookie)).status, 400, JSON.stringify(bad));
+  }
+  assert.strictEqual(JSON.stringify(userStore.getFeedHidden(mid)), before, 'nothing written');
+  // a row the member cannot see (written by another path, or hidden since) is never listed
+  userStore.addFeedHidden(mid, 'vh3', new Date().toISOString());
+  userStore.addFeedHidden(mid, `book:${bookIds.Beta}`, new Date().toISOString());
+  userStore.addFeedHidden(mid, `song:trk2`, new Date().toISOString());
+  userStore.addFeedHidden(mid, `podcast:${epIds.b[1]}`, new Date().toISOString());
+  assert.strictEqual((await sendJson('POST', '/api/feed/hidden', { kind: 'media', id: 'va2' }, member.cookie)).status, 200);
+  const list = await (await fetch(`${base}/api/feed/hidden`, { headers: { Cookie: member.cookie } })).json();
+  assert.deepStrictEqual(list.items.map((i) => i.kind + ':' + i.id), ['media:va2'], 'only what the member can see');
+  // the admin's list does not show the member's rows (per user)
+  const admin = await (await fetch(`${base}/api/feed/hidden`)).json();
+  assert.ok(!admin.items.some((i) => i.id === 'va2'));
+});
+
+test('v1.382.0 D11 Fewer from: a show in the synced list comes about a quarter as often (never dropped); the list is read from the viewer\'s stored prefs', async () => {
+  const count = async () => {
+    const { cards } = await cardsWith(JSON.stringify({ off: ['book', 'video', 'watchlater', 'song'], which: { podcast: 'new' } }), 80);
+    const a = cards.filter((c) => c.showName === 'Show A').length;
+    const b = cards.filter((c) => c.showName === 'Show B').length;
+    return { a, b };
+  };
+  const base0 = await count();
+  assert.ok(base0.a > 25 && base0.b > 25, 'precondition: both shows serve evenly ' + JSON.stringify(base0));
+  userStore.setPrefsLWW(uid, [{ key: 'ft-feed-fewer', value: JSON.stringify(['show:show a']), updatedAt: Date.now() }]);
+  const fewer = await count();
+  assert.ok(fewer.a < fewer.b * 0.5, 'Show A is held back: ' + JSON.stringify(fewer));
+  assert.ok(fewer.a > 0, 'held back, not hidden: ' + JSON.stringify(fewer));
+  userStore.setPrefsLWW(uid, [{ key: 'ft-feed-fewer', value: '', updatedAt: Date.now() + 1 }]);
+  const after = await count();
+  assert.ok(after.a > 25, 'removed from the list: back to even ' + JSON.stringify(after));
+});
+
+test('v1.382.0 D10: cards carry the viewer\'s Like and Watch later state (each kind\'s own rows)', async () => {
+  const now = new Date().toISOString();
+  userStore.addLiked(uid, 'va1', now);
+  userStore.addPodcastLiked(uid, epIds.a[0], now);
+  userStore.addWatchLater(uid, 'va1', now);
+  const { cards } = await cardsWith(JSON.stringify({ which: { video: 'continue', podcast: 'continue' } }), 60);
+  const va1 = cards.find((c) => c.kind === 'video' && c.id === 'va1');
+  const va0 = cards.find((c) => c.kind === 'video' && c.id === 'va0');
+  const ep = cards.find((c) => c.kind === 'podcast' && c.id === epIds.a[0]);
+  assert.deepStrictEqual({ liked: va1.liked, inWatchLater: va1.inWatchLater }, { liked: true, inWatchLater: true });
+  assert.deepStrictEqual({ liked: va0.liked, inWatchLater: va0.inWatchLater }, { liked: false, inWatchLater: false });
+  assert.strictEqual(ep.liked, true);
+  const book = cards.find((c) => c.kind === 'book' && c.id === bookIds.Gamma);
+  if (book) assert.strictEqual(book.liked, true, 'Gamma is liked in the fixture');
+  const song = cards.find((c) => c.kind === 'song');
+  assert.strictEqual(song.track.liked, true, 'a song carries music\'s own liked flag');
+  userStore.removeLiked(uid, 'va1'); userStore.removePodcastLiked(uid, epIds.a[0]); userStore.removeWatchLater(uid, 'va1');
+});

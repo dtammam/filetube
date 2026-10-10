@@ -2061,6 +2061,52 @@ function drawLibraryGlyphEditor(host, settings, signal) {
   });
 }
 
+// v1.382.0 (D11): Settings > Feed > Hidden and fewer - every item "Hide this" put aside (GET /api/feed/hidden: only what the
+// viewer can still see) with Unhide, and every "Fewer from" name (the synced ft-feed-fewer list) with Remove. Text only.
+const FEED_TUNING_KIND_WORDS = { media: 'Video', podcast: 'Episode', book: 'Book', song: 'Song' };
+const FEED_FEWER_TYPE_WORDS = { channel: 'Channel', show: 'Show', artist: 'Artist', author: 'Author' };
+function renderFeedTuning(doc, signal) {
+  const d = doc || document;
+  const win = d.defaultView || window;
+  const FS = win.FileTubeFeedSettings;
+  const host = d.getElementById('feed-tuning-list');
+  const empty = d.getElementById('feed-tuning-empty');
+  const U = win.ui;
+  if (!FS || !host || !U) return Promise.resolve();
+  const readFewer = () => { try { return FS.parseFewer(win.localStorage.getItem(FS.FEWER_KEY)); } catch (_) { return []; } };
+  const button = (label, onClick) => {
+    const b = U.button({ variant: 'tonal', size: 'sm', pill: true, label, doc: d });
+    b.type = 'button';
+    b.addEventListener('click', onClick, { signal });
+    return b;
+  };
+  let hidden = [];
+  const draw = () => {
+    if (signal && signal.aborted) return;
+    host.replaceChildren();
+    hidden.forEach((it) => {
+      host.appendChild(U.row({ doc: d, title: it.title || 'Untitled', meta: 'Hidden \u00b7 ' + (FEED_TUNING_KIND_WORDS[it.kind] || '') + (it.sub ? ' \u00b7 ' + it.sub : ''), actions: [button('Unhide', () => {
+        fetch('/api/feed/hidden', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: it.kind, id: it.id }) })
+          .then((r) => { if (r.ok) { hidden = hidden.filter((x) => x !== it); draw(); } })
+          .catch(() => {});
+      })] }));
+    });
+    readFewer().forEach((key) => {
+      const type = key.slice(0, key.indexOf(':'));
+      host.appendChild(U.row({ doc: d, title: FS.fewerLabel(key), meta: 'Fewer from \u00b7 ' + (FEED_FEWER_TYPE_WORDS[type] || ''), actions: [button('Remove', () => {
+        try { win.localStorage.setItem(FS.FEWER_KEY, FS.serializeFewer(FS.fewerRemove(readFewer(), key))); } catch (_) { return; }
+        draw();
+      })] }));
+    });
+    if (empty) empty.hidden = host.children.length > 0;
+  };
+  draw();
+  return fetch('/api/feed/hidden', { signal })
+    .then((r) => (r.ok ? r.json() : { items: [] }))
+    .then((body) => { hidden = Array.isArray(body && body.items) ? body.items : []; draw(); })
+    .catch(() => { draw(); });
+}
+
 // v1.382.0 (plan 2026-10-10-feed-settings D1-D5): Settings > Feed. Every control reads and writes ONE synced key
 // (ft-feed-settings) through the shared reading in public/js/feed-settings.js, so the page, the Feed and the server agree on
 // what a value means. Reflect-on-load AND after the account's copy lands (a fresh device: prefs-sync's boot GET). D2: the
@@ -2129,6 +2175,7 @@ function wireFeedSettingsPage(doc, signal) {
     try { win.localStorage.setItem(FS.SETTINGS_KEY, FS.serialize(st)); } catch (_) { /* storage off: nothing to keep */ }
     reflect();
   }
+  renderFeedTuning(d, signal);
   page.addEventListener('change', (e) => {
     const t = e.target;
     if (t && (t.hasAttribute('data-feed-kind') || t.hasAttribute('data-feed-which') || t.hasAttribute('data-feed-where') || t.id === 'feed-reel' || t.id === 'feed-slice')) save();
@@ -5380,7 +5427,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // no constant can stand in for.
     renderBottomBarEditor, BOTTOMBAR_LABELS,
     // v1.382.0: Settings > Feed (jsdom-bound with the real public/js/feed-settings.js)
-    wireFeedSettingsPage, FEED_WHERE_NEW_ONLY_HELP,
+    wireFeedSettingsPage, FEED_WHERE_NEW_ONLY_HELP, renderFeedTuning,
     // v1.146: the Downloads box's pure status->view-model mapper (the DOM
     // writer + wiring are the usual on-device-validated thin shell).
     buildEngineViewModel,
