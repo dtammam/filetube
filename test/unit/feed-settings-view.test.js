@@ -146,17 +146,39 @@ test('the player floor (REAL player.js): a From the beginning card saves nothing
     r.pauseAt(100); await settle();
     assert.strictEqual(r.progressPosts().length, 2, 'the floor ended once passed: the page saves as it always does');
   } finally { r.close(); }
+  // r1 mutant R1-M4: a Feed card ADOPTING the same item declares its own floor - here none (a Continue card): the old floor goes
+  const a = playerRealm();
+  try {
+    a.player.load('vs', Object.assign({ id: 'vs', filePath: '/lib/vs.mp4' }, feed.feedPlayerDescriptor(FROM_START_VID)), { slot: a.slot });
+    await settle();
+    a.player.load('vs', Object.assign({ id: 'vs', filePath: '/lib/vs.mp4' }, feed.feedPlayerDescriptor({ ...FROM_START_VID, fromStart: false, startAt: 400 })), { slot: a.slot });
+    await settle();
+    a.pauseAt(50); await settle();
+    assert.strictEqual(a.progressPosts().length, 1, 'the adopting Feed card cleared the floor: its save goes out (the feed route judges it)');
+  } finally { a.close(); }
 });
 
 test('the player floor (REAL player.js): opening ANOTHER item while floored - the outgoing save of the floored item is still guarded; the new item saves normally; a close ends it', async () => {
   const r = playerRealm();
   try {
+    // non-vacuity (r1 mutant R1-M1 first survived: jsdom media is paused and a paused element makes no outgoing save): the same
+    // switch from an UNFLOORED item, playing, does post its outgoing save
+    const ctl = playerRealm();
+    try {
+      ctl.player.load('vc', Object.assign({ id: 'vc', filePath: '/lib/vc.mp4' }, feed.feedPlayerDescriptor({ ...VID, id: 'vc', fresh: false })), { slot: ctl.slot });
+      await settle();
+      ctl.at(60); Object.defineProperty(ctl.w.document.getElementById('media-player'), 'paused', { value: false, configurable: true });
+      ctl.player.load('vo', { id: 'vo', type: 'video', title: 'Other', filePath: '/lib/vo.mp4', duration: 900, progressEndpoint: null, resumeMode: null }, { slot: ctl.slot });
+      await settle();
+      assert.deepStrictEqual(ctl.progressPosts().map((p) => [p.body.id, p.body.timestamp]), [['vc', 60]], 'precondition: a switch posts the outgoing item\'s place');
+    } finally { ctl.close(); }
     r.player.load('vs', Object.assign({ id: 'vs', filePath: '/lib/vs.mp4' }, feed.feedPlayerDescriptor(FROM_START_VID)), { slot: r.slot });
     await settle();
-    r.at(60);
+    r.at(60); Object.defineProperty(r.w.document.getElementById('media-player'), 'paused', { value: false, configurable: true });
     r.player.load('vo', { id: 'vo', type: 'video', title: 'Other', filePath: '/lib/vo.mp4', duration: 900, progressEndpoint: null, resumeMode: null }, { slot: r.slot });
     await settle();
     assert.ok(!r.progressPosts().some((p) => p.body.id === 'vs'), 'the outgoing save of the floored item (60 s, behind 400 s) never went out');
+    Object.defineProperty(r.w.document.getElementById('media-player'), 'paused', { value: true, configurable: true });
     r.pauseAt(30); await settle();
     assert.deepStrictEqual(r.progressPosts().map((p) => [p.body.id, p.body.timestamp]), [['vo', 30]], 'the other item saves: its own floor is none');
     // back to the first item on another surface (a plain load, no floor declared): the floor ended with the switch
@@ -259,7 +281,18 @@ test('D6 (view): a fresh 60 s reel opens its gate once the whole reel played, no
     for (let s = 58; s <= 59.5; s += 0.5) { r.advance(500); r.timeAt(s); }
     assert.strictEqual(data.progressGate(), true, `the whole reel: ${data.playedSec()} s`);
   } finally { r.close(); }
-  // gate r1 (adversary W1): a CHAPTER slice of 8 s (reelSec 0, as the server sends it) keeps the minute
+  // gate r1 (adversary W1): a CHAPTER slice (reelSec 0, as the server sends it) keeps the minute - an 8 s one, and (mutant
+  // R1-M10) a 40 s one, where the card's own length would have relaxed it; a reel the file's end cut to 10 s (mutant R1-M9) too
+  for (const [id, endAt, reelSec] of [['vc40', 40, 0], ['vr10', 10, 10]]) {
+    const c2 = feedRealm({ batches: [{ cards: [{ ...REEL_VID, id, fresh: true, startAt: 0, endAt, reelSec, chapter: null }, BOOK], exhausted: false }] });
+    try {
+      await start(c2);
+      Object.defineProperty(c2.media, 'paused', { value: false, configurable: true });
+      const data = c2.loads.filter((l) => l.id === id)[0].data;
+      for (let s = 0; s <= 45; s++) { c2.advance(1000); c2.timeAt(s); }
+      assert.strictEqual(data.progressGate(), false, `${id}: ${data.playedSec()} s is not started`);
+    } finally { c2.close(); }
+  }
   const c = feedRealm({ batches: [{ cards: [{ ...REEL_VID, id: 'vc8', fresh: true, startAt: 0, endAt: 8, reelSec: 0, chapter: { index: 0, count: 3, title: 'Cold open' } }, BOOK], exhausted: false }] });
   try {
     await start(c);

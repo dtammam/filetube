@@ -973,7 +973,8 @@ test('v1.382.0 gate r1 (adversary W2): hiding the offered "Start something new" 
   }
   // Fewer from the author of every candidate: still offered (held back, never dropped)
   userStore.setPrefsLWW(uid, [{ key: 'ft-feed-fewer', value: JSON.stringify(['author:W']), updatedAt: Date.now() + 10 }]);
-  assert.strictEqual((await newBookOf()).length, 1, 'held back is not hidden');
+  // every session (each its own draw: a held-back book is offered, never dropped - r1 mutant R1-M12 survived one session by chance)
+  for (let i = 0; i < 10; i++) assert.strictEqual((await newBookOf()).length, 1, 'held back is not hidden (session ' + i + ')');
   userStore.setPrefsLWW(uid, [{ key: 'ft-feed-fewer', value: '', updatedAt: Date.now() + 11 }]);
   for (const id of hidden) await sendJson('DELETE', '/api/feed/hidden', { kind: 'book', id });
 });
