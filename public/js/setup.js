@@ -2150,6 +2150,8 @@ function wireFeedSettingsPage(doc, signal) {
     if (reel) reel.value = String(st.reel);
     const slice = d.getElementById('feed-slice');
     if (slice) slice.value = String(st.slice);
+    const advance = d.getElementById('feed-advance'); // v1.383.0 (K1)
+    if (advance) advance.checked = st.advance;
     return st;
   }
   function save() {
@@ -2171,6 +2173,8 @@ function wireFeedSettingsPage(doc, signal) {
     if (reel) st.reel = Number(reel.value);
     const slice = d.getElementById('feed-slice');
     if (slice) st.slice = Number(slice.value);
+    const advance = d.getElementById('feed-advance');
+    if (advance) st.advance = advance.checked;
     // the shared reading decides (an all-off value reads as the default, so the last switch can never turn the Feed off)
     try { win.localStorage.setItem(FS.SETTINGS_KEY, FS.serialize(st)); } catch (_) { /* storage off: nothing to keep */ }
     reflect();
@@ -2178,7 +2182,7 @@ function wireFeedSettingsPage(doc, signal) {
   renderFeedTuning(d, signal);
   page.addEventListener('change', (e) => {
     const t = e.target;
-    if (t && (t.hasAttribute('data-feed-kind') || t.hasAttribute('data-feed-which') || t.hasAttribute('data-feed-where') || t.id === 'feed-reel' || t.id === 'feed-slice')) save();
+    if (t && (t.hasAttribute('data-feed-kind') || t.hasAttribute('data-feed-which') || t.hasAttribute('data-feed-where') || t.id === 'feed-reel' || t.id === 'feed-slice' || t.id === 'feed-advance')) save();
   }, { signal });
   reflect();
   // the account's copy can land after this page is drawn (a fresh device): draw it again then

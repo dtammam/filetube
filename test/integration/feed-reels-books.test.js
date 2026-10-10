@@ -47,8 +47,9 @@ before(async () => {
   assert.strictEqual(Object.keys(books).length, 3, 'all three books scanned');
   const D = process.env.DATA_DIR;
   fs.mkdirSync(path.join(D, 'Open'), { recursive: true });
-  const metadata = { v1: { id: 'v1', title: 'v1', filePath: path.join(D, 'Open', 'v1.mp4'), folderName: 'Open', rootFolder: D, type: 'video', ext: '.mp4', duration: 600, size: 1, addedAt: 1 } };
-  fs.writeFileSync(metadata.v1.filePath, 'V');
+  const vid = (id, extra) => Object.assign({ id, title: id, filePath: path.join(D, 'Open', id + '.mp4'), folderName: 'Open', rootFolder: D, type: 'video', ext: '.mp4', duration: 600, size: 1, addedAt: 1 }, extra || {});
+  const metadata = { v1: vid('v1'), vt: vid('vt', { ext: '.avi', needsTranscode: true }) };
+  for (const it of Object.values(metadata)) fs.writeFileSync(it.filePath, 'V');
   seedState({ folders: [D], folderSettings: {}, metadata, liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
   await new Promise((resolve) => { server = app.listen(0, '127.0.0.1', resolve); });
   base = `http://127.0.0.1:${server.address().port}`;
@@ -261,5 +262,24 @@ test('K7 b (U4): an item with ONLY a latch whose time is NULL (no place) is some
   assert.strictEqual((await post('/api/feed/start-over/undo', { session: sid, token: (await b.json()).token })).status, 200);
   assert.ok(has(userStore.getWatchedTimes(uid), 'v1') && userStore.getWatchedTimes(uid).v1 === null, 'the watched latch back, NULL time');
   assert.ok(has(userStore.getBookFinished(uid), se.id) && userStore.getBookFinished(uid)[se.id] === null, 'the finished latch back, NULL time');
+  resetAll();
+});
+
+// ---- W2 K2 a: a card for a file that needs a transcode says so (the client never warms it) ----------------------------------
+
+test('K2 a: a video card whose file needs a transcode carries transcode: true; a playable one carries no such key', async () => {
+  resetAll();
+  userStore.setProgress(uid, 'v1', { timestamp: 300, duration: 600, updatedAt: T1 });
+  userStore.setProgress(uid, 'vt', { timestamp: 300, duration: 600, updatedAt: T2 });
+  const sid = await session();
+  const seen = {};
+  for (let i = 0; i < 4 && Object.keys(seen).length < 2; i++) {
+    const body = await (await get(`/api/feed?session=${sid}&count=10`)).json();
+    for (const c of body.cards) if (c.kind === 'video') seen[c.id] = c;
+  }
+  assert.ok(seen.v1 && seen.vt, 'both served: ' + Object.keys(seen));
+  assert.strictEqual(seen.vt.transcode, true);
+  assert.ok(!('transcode' in seen.v1));
+  userStore.removeHistory(uid, 'vt');
   resetAll();
 });

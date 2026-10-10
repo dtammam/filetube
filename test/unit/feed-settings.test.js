@@ -25,7 +25,8 @@ test('normalize: junk, a non-object and an empty value read as the defaults (eve
     assert.deepStrictEqual(s.where, { video: 'saved', podcast: 'saved', book: 'saved' });
     assert.strictEqual(s.reel, 60);
     assert.strictEqual(s.slice, 120);
-    assert.deepStrictEqual(Object.keys(s).sort(), ['off', 'reel', 'slice', 'where', 'which'], 'v1.382.0 gate r1: the moved W5 fields (clip, music, station) are gone');
+    assert.strictEqual(s.advance, true, 'v1.383.0 (K1): Auto-advance is on by default');
+    assert.deepStrictEqual(Object.keys(s).sort(), ['advance', 'off', 'reel', 'slice', 'where', 'which'], 'v1.382.0 gate r1: the moved W5 fields (clip, music, station) are gone');
   }
 });
 
@@ -278,4 +279,26 @@ test('the Feed picker carries a gear to Settings > Feed', () => {
   assert.strictEqual(gear.getAttribute('href'), '/setup.html#feed');
   assert.strictEqual(gear.getAttribute('aria-label'), 'Feed settings');
   assert.ok(doc.querySelector('details[data-collapse-key="feed"]') === null, 'the page itself is Settings\'s (the feed shell does not carry it)');
+});
+
+// ---- v1.383.0 (plan 2026-10-10-feed-reels K1): Auto-advance ------------------------------------------------------------
+
+test('K1 Auto-advance: on by default and never written while on; only false switches it off (junk reads as on); the page persists AND reflects it', () => {
+  assert.strictEqual(FS.normalize(null).advance, true);
+  assert.strictEqual(FS.normalize({ advance: 'no' }).advance, true, 'only false is off');
+  assert.strictEqual(FS.normalize({ advance: 0 }).advance, true);
+  assert.strictEqual(FS.normalize({ advance: false }).advance, false);
+  assert.strictEqual(FS.serialize({}), '{}', 'the default is never stored');
+  assert.strictEqual(FS.serialize({ advance: false }), '{"advance":false}');
+  let b = boot();
+  try {
+    assert.strictEqual(b.$('feed-advance').checked, true, 'reflects the default');
+    b.change(b.$('feed-advance'), false);
+    assert.strictEqual(b.stored$().advance, false, 'persists off');
+    assert.strictEqual(b.dom.window.localStorage.getItem(FS.SETTINGS_KEY), '{"advance":false}');
+    b.change(b.$('feed-advance'), true);
+    assert.strictEqual(b.dom.window.localStorage.getItem(FS.SETTINGS_KEY), '{}', 'and back on');
+  } finally { b.done(); }
+  b = boot('{"advance":false}');
+  try { assert.strictEqual(b.$('feed-advance').checked, false, 'reflects a stored off on load'); } finally { b.done(); }
 });

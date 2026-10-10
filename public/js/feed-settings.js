@@ -1,4 +1,5 @@
-// FileTube Feed settings (v1.382.0, plan docs/exec-plans/completed/2026-10-10-feed-settings.md D1-D5, D11; D13-D14 moved out).
+// FileTube Feed settings (v1.382.0, plan docs/exec-plans/completed/2026-10-10-feed-settings.md D1-D5, D11; v1.383.0, plan
+// docs/exec-plans/active/2026-10-10-feed-reels.md K1 Auto-advance).
 //
 // The ONE reading of the Feed's synced settings, shared by the server (lib/feed/api.js requires this file), the Feed
 // view (public/js/feed.js) and the Settings > Feed page (public/js/setup.js). Two synced keys (lib/prefs-allowlist.js
@@ -63,6 +64,8 @@
       where: where,
       reel: pick(VIDEO_REELS, r.reel, DEFAULTS.reel),
       slice: pick(PODCAST_SLICES, r.slice, DEFAULTS.slice),
+      // v1.383.0 (K1): a finished media card moves on to the next one by itself - on unless switched off (only false is off)
+      advance: r.advance !== false,
     };
   }
 
@@ -76,6 +79,7 @@
       if (s.where[k] !== 'saved') { out.where = out.where || {}; out.where[k] = s.where[k]; }
     });
     ['reel', 'slice'].forEach(function (f) { if (s[f] !== DEFAULTS[f]) out[f] = s[f]; });
+    if (!s.advance) out.advance = false;
     return JSON.stringify(out);
   }
 

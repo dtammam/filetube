@@ -144,11 +144,18 @@ test('K3 b: parseNcxToc reads each navPoint\'s OWN label and content (a parent b
     { href: 'OEBPS/Text/c1.xhtml', label: '1. The Ferry' },
     { href: 'OEBPS/Text/c2.xhtml', label: '2.' },
   ], 'a point with no content is skipped, never given its child\'s src');
-  // hostile input stays linear: 200 KB of unclosed points
-  const t0 = Date.now();
-  opf.parseNcxToc('<navPoint>'.repeat(20000), 'x');
-  opf.parseNavToc('<nav epub:type="toc">' + '<a '.repeat(60000), 'x');
-  assert.ok(Date.now() - t0 < 2000, 'bounded: ' + (Date.now() - t0) + ' ms');
+  // hostile input stays linear (each shape once rescanned the rest of the document per tag: quadratic): unclosed points, anchors
+  // with no '>', anchors with no '</a>', points with no label - a full 256 KB each, then a quarter of it: the time must scale ~4x,
+  // never ~16x
+  const shapes = [(n) => '<navPoint>'.repeat(n / 10), (n) => '<nav epub:type="toc">' + '<a '.repeat(n / 3), (n) => '<nav epub:type="toc">' + '<a href="x">'.repeat(n / 12), (n) => '<navPoint><content src="a"/>'.repeat(n / 27)];
+  for (const make of shapes) {
+    const big = make(262144);
+    const small = make(65536);
+    const time = (input) => { const t = process.hrtime.bigint(); opf.parseNcxToc(input, 'x'); opf.parseNavToc(input, 'x'); return Number(process.hrtime.bigint() - t) / 1e6; };
+    time(small); // warm
+    const tBig = time(big);
+    assert.ok(tBig < 400, 'a full-size hostile document parses fast: ' + tBig.toFixed(1) + ' ms');
+  }
 });
 
 test('K3 b: parseOpf finds the NCX by the spine\'s toc id, else by its media type', () => {
@@ -204,4 +211,243 @@ test('K7 c: feedStartOverText reads the stored place when given one, and names n
   const pod = { kind: 'podcast', media: 'podcast', title: 'P', position: 30, durationSec: 600 };
   assert.strictEqual(feed.feedStartOverText(pod, { sec: 0 }), 'It will count as not started.');
   assert.strictEqual(feed.feedStartOverText({ kind: 'book', title: 'B', chapterLabel: 'Chapter I' }, { chapterLabel: '' }), 'Your place in B will be forgotten. It opens at the beginning next time.', 'the stored place\'s chapter, even when it has none');
+});
+
+// ==== W2 ======================================================================================================================
+const { SONG } = require('../helpers/feed-view-harness');
+const waitMs = (ms) => new Promise((res) => setTimeout(res, ms));
+const advanceBtn = (r, i) => r.$$('.feed-card')[i].querySelector('[data-advance]');
+function flowRealm(cards, extra) { return feedRealm(Object.assign({ batches: [{ cards, exhausted: false }] }, extra || {})); }
+
+// ---- K1 auto-advance -------------------------------------------------------------------------------------------------------
+
+test('K1: a video card that reaches its Done state shows "Next in 2" and then scrolls (smoothly) to the next card', async () => {
+  const r = flowRealm([VID, POD, VID]);
+  try {
+    await startRealm(r); r.show(0);
+    r.timeAt(500);
+    assert.strictEqual(advanceBtn(r, 0), null, 'not before Done');
+    r.timeAt(900); await r.settle(2);
+    const btn = advanceBtn(r, 0);
+    assert.ok(btn, 'the countdown shows');
+    assert.ok(/Next in 2/.test(btn.textContent));
+    assert.strictEqual(r.w.__scrolledInto, undefined, 'nothing moves yet');
+    await waitMs(1150);
+    assert.ok(/Next in 1/.test(advanceBtn(r, 0).textContent), 'it counts down');
+    await waitMs(1000);
+    assert.strictEqual(r.w.__scrolledInto, r.$$('.feed-card')[1], 'to the next card');
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(r.w.__scrolledArg)), { behavior: 'smooth', block: 'start' }, 'the same snap a swipe ends in');
+    assert.strictEqual(advanceBtn(r, 0), null, 'the countdown is gone');
+  } finally { r.close(); }
+});
+
+test('K1: a touch anywhere on the card during the countdown cancels it, and the card stays (a later end does not start it again)', async () => {
+  const r = flowRealm([VID, POD]);
+  try {
+    await startRealm(r); r.show(0);
+    r.timeAt(900); await r.settle(2);
+    assert.ok(advanceBtn(r, 0));
+    const ev = new r.w.Event('pointerdown', { bubbles: true }); ev.pointerId = 1;
+    r.$$('.feed-card')[0].querySelector('.feed-card__overlay').dispatchEvent(ev);
+    assert.strictEqual(advanceBtn(r, 0), null, 'cancelled at once');
+    r.media.dispatchEvent(new r.w.Event('ended')); await r.settle(2);
+    assert.strictEqual(advanceBtn(r, 0), null, 'stays until swiped');
+    await waitMs(2200);
+    assert.strictEqual(r.w.__scrolledInto, undefined, 'never moved');
+  } finally { r.close(); }
+});
+
+test('K1: the countdown\'s own button keeps the card too (a keyboard\'s way); moving on by hand ends a running countdown', async () => {
+  const r = flowRealm([VID, POD, Object.assign({}, POD, { id: 'ep2' })]);
+  try {
+    await startRealm(r); r.show(0);
+    r.timeAt(900); await r.settle(2);
+    advanceBtn(r, 0).click();
+    assert.strictEqual(advanceBtn(r, 0), null);
+    assert.ok(r.$$('.feed-card')[0].hasAttribute('data-advance-stay'));
+    // card 1 (podcast) done, then swiped by hand before the 2 s
+    r.show(1); await r.settle();
+    r.timeAt(840); await r.settle(2);
+    assert.ok(advanceBtn(r, 1), 'the episode counts down');
+    r.show(2); await r.settle();
+    assert.strictEqual(advanceBtn(r, 1), null, 'gone with the swipe');
+    r.w.__scrolledInto = undefined;
+    await waitMs(2200);
+    assert.strictEqual(r.w.__scrolledInto, undefined, 'and it never fires after');
+  } finally { r.close(); }
+});
+
+test('K1: a song that ends counts down; a book card never does; Auto-advance off: never', async () => {
+  const r = flowRealm([SONG, BOOK, POD]);
+  try {
+    await startRealm(r); r.show(0);
+    r.media.dispatchEvent(new r.w.Event('ended')); await r.settle(2);
+    assert.ok(advanceBtn(r, 0), 'a song');
+    r.show(1); await r.settle();
+    r.media.dispatchEvent(new r.w.Event('ended')); await r.settle(2);
+    assert.strictEqual(r.$('[data-advance]'), null, 'never on a book card');
+  } finally { r.close(); }
+  const r2 = flowRealm([VID, POD]);
+  try {
+    r2.w.localStorage.setItem('ft-feed-settings', '{"advance":false}');
+    await startRealm(r2); r2.show(0);
+    r2.timeAt(900); await r2.settle(2);
+    assert.strictEqual(advanceBtn(r2, 0), null, 'switched off');
+  } finally { r2.close(); }
+});
+
+test('K1 pure: feedAdvanceDue - media cards with the setting on, never a book, a notice or during the wind-down', () => {
+  for (const c of [VID, POD, SONG, Object.assign({}, VID, { kind: 'watchlater' })]) assert.strictEqual(feed.feedAdvanceDue(c, { advance: true }, false), true, c.kind);
+  assert.strictEqual(feed.feedAdvanceDue(VID, null, false), true, 'no reading: the default (on)');
+  assert.strictEqual(feed.feedAdvanceDue(BOOK, { advance: true }, false), false);
+  assert.strictEqual(feed.feedAdvanceDue({ kind: 'notice' }, { advance: true }, false), false);
+  assert.strictEqual(feed.feedAdvanceDue(VID, { advance: true }, true), false, 'the wind-down: the recap opens instead');
+  assert.strictEqual(feed.feedAdvanceDue(VID, { advance: false }, false), false);
+});
+
+test('K1: during the wind-down a Done card opens the recap, never the countdown', async () => {
+  const r = flowRealm([VID, POD], { startedAt: new Date(Date.now() - 11 * 60000).toISOString() });
+  try {
+    await startRealm(r); r.show(0);
+    r.tickIntervals(); // time is up: winding down
+    r.timeAt(900); await r.settle(4);
+    assert.strictEqual(advanceBtn(r, 0), null);
+    assert.ok(r.calls('POST', '/api/feed/sessions/abcdef0123456789/finish').length >= 1, 'the session finished (the recap)');
+  } finally { r.close(); }
+});
+
+// ---- K4 a way to the full item at any time ------------------------------------------------------------------------------
+
+test('K4: the title, the channel / show line and the open button each take the card to the full item mid-slice - once, never a play / pause or a like', async () => {
+  for (const which of ['title', 'meta', 'button']) {
+    const r = flowRealm([VID, POD]);
+    try {
+      const taps = [];
+      r.w.__harness.player.pictureTap = () => taps.push('tap');
+      await startRealm(r); r.show(0);
+      r.timeAt(500);
+      const node = r.$$('.feed-card')[0];
+      const target = which === 'title' ? node.querySelector('.feed-card__title') : which === 'meta' ? node.querySelector('.feed-card__overlay .feed-card__meta') : node.querySelector('[data-open-full]');
+      assert.ok(target, which);
+      target.click(); target.click();
+      await r.settle();
+      const navs = r.loads.filter((l) => l.navigate);
+      assert.deepStrictEqual(navs.map((l) => l.navigate), ['/watch.html?v=v1'], which + ': one exit to the full item');
+      assert.strictEqual(r.calls('POST', '/api/feed/sessions/abcdef0123456789/finish').length, 1, which + ': the session ends as Done would');
+      assert.ok(!r.loads.some((l) => l.pause || l.close), which + ': the player is carried over, never paused or closed');
+      await waitMs(400);
+      assert.deepStrictEqual(taps, [], which + ': never a play / pause');
+      assert.strictEqual(r.calls('POST', '/api/liked/').length, 0, which + ': never a like');
+    } finally { r.close(); }
+  }
+});
+
+test('K4: a podcast opens in the podcast player, a song in Music; the open button is a named button; a book card keeps Open in reader (no open button)', async () => {
+  const r = flowRealm([POD, SONG, BOOK]);
+  try {
+    await startRealm(r); r.show(0);
+    const btn = r.$$('.feed-card')[0].querySelector('[data-open-full]');
+    assert.strictEqual(btn.tagName, 'BUTTON');
+    assert.strictEqual(btn.getAttribute('aria-label'), 'Open the full item');
+    assert.ok(r.$$('.feed-card')[1].querySelector('[data-open-full]'), 'a song has one');
+    assert.strictEqual(r.$$('.feed-card')[2].querySelector('[data-open-full]'), null, 'a book card has none');
+    assert.strictEqual(r.$$('.feed-card')[2].querySelector('.feed-card__title').hasAttribute('data-open'), false);
+    btn.click(); await r.settle();
+    assert.deepStrictEqual(r.loads.filter((l) => l.navigate).map((l) => l.navigate), ['/podcasts?play=ep1']);
+  } finally { r.close(); }
+  const r2 = flowRealm([SONG, POD]);
+  try {
+    await startRealm(r2); r2.show(0);
+    r2.$$('.feed-card')[0].querySelector('.feed-card__title').click(); await r2.settle();
+    assert.deepStrictEqual(r2.loads.filter((l) => l.navigate).map((l) => l.navigate), ['/music?play=t1']);
+  } finally { r2.close(); }
+});
+
+// ---- K2 b the early load ----------------------------------------------------------------------------------------------------
+
+test('K2 b pure: feedNextActive - the next card from a quarter on screen, the active one holds while a quarter of it shows, a spring-back returns', () => {
+  const R = (pairs) => pairs.map(([index, ratio]) => ({ index, ratio }));
+  assert.strictEqual(feed.feedNextActive(R([[0, 1]]), -1), 0, 'the first card');
+  assert.strictEqual(feed.feedNextActive(R([[0, 1], [1, 0]]), 0), -1, 'at rest: nothing changes');
+  assert.strictEqual(feed.feedNextActive(R([[0, 0.8], [1, 0.2]]), 0), -1, 'a fifth of the next: not yet');
+  assert.strictEqual(feed.feedNextActive(R([[0, 0.75], [1, 0.25]]), 0), 1, 'a quarter of the next: it loads now (was at 60%)');
+  assert.strictEqual(feed.feedNextActive(R([[0, 0.7], [1, 0.3]]), 1), -1, 'the old card (70% on screen) does not take it straight back');
+  assert.strictEqual(feed.feedNextActive(R([[0, 0.85], [1, 0.15]]), 1), 0, 'a swipe that springs back: the old card again');
+  assert.strictEqual(feed.feedNextActive(R([[1, 0.2], [2, 0.8]]), 1), 2, 'past the active one: the best card at 60%');
+  assert.strictEqual(feed.feedNextActive(R([[1, 0.2], [0, 0.5]]), 1), -1, 'the active card under a quarter but nothing at 60% yet: keep');
+  assert.strictEqual(feed.feedNextActive(R([[2, 0.3], [1, 0.7]]), 2), -1, 'backwards the previous card waits for 60% (the old rule) once the active one is under a quarter');
+  assert.strictEqual(feed.feedNextActive([], 3), -1);
+});
+
+test('K2 b: the next card starts loading at a quarter on screen; a spring-back returns to the first card, which plays on from where it was (not its slice start)', async () => {
+  const r = flowRealm([VID, POD]);
+  try {
+    await startRealm(r); r.show(0);
+    r.timeAt(450);
+    const ob = r.observers[r.observers.length - 1];
+    const fire = (pairs) => ob.cb(pairs.map(([i, ratio]) => ({ target: r.$$('.feed-card')[i], isIntersecting: ratio > 0, intersectionRatio: ratio })));
+    fire([[0, 0.74], [1, 0.26]]);
+    await r.settle(2);
+    const podLoads = r.loads.filter((l) => l.id === 'ep1');
+    assert.strictEqual(podLoads.length, 1, 'the episode loads at a quarter on screen');
+    fire([[0, 0.88], [1, 0.12]]);
+    await r.settle(2);
+    const vLoads = r.loads.filter((l) => l.id === 'v1');
+    assert.strictEqual(vLoads.length, 2, 'back to the video');
+    assert.strictEqual(vLoads[1].data.startAt, 450, 'from where it was left (it said 400, its slice start)');
+  } finally { r.close(); }
+});
+
+// ---- K2 a warming the next card --------------------------------------------------------------------------------------------
+
+test('K2 a: the next card is warmed when a card becomes active - its first bytes by ONE range request and its art; only one card ahead, once', async () => {
+  const r = flowRealm([VID, POD, SONG, Object.assign({}, VID, { id: 'v9' })]);
+  try {
+    await startRealm(r); r.show(0); await r.settle();
+    const ranged = () => r.fetches.filter((f) => f.headers && f.headers.Range);
+    assert.deepStrictEqual(ranged().map((f) => [f.url, f.headers.Range]), [['/episode/ep1', 'bytes=0-262143']], 'the next card (the episode) only');
+    r.show(0); await r.settle();
+    assert.strictEqual(ranged().length, 1, 'once');
+    r.show(1); await r.settle();
+    assert.deepStrictEqual(ranged().map((f) => f.url), ['/episode/ep1', '/track/t1'], 'then the card after it - still one ahead');
+    assert.ok(!r.fetches.some((f) => f.url === '/video/v9'), 'never two ahead');
+    assert.ok(!r.loads.some((l) => l.id === 't1'), 'a warmed card is never loaded into the player before it is active');
+  } finally { r.close(); }
+});
+
+test('K2 a: a file that needs a transcode is never warmed (it would queue the transcode); a next book card is laid out into pages ahead', async () => {
+  const r = flowRealm([POD, Object.assign({}, VID, { transcode: true }), POD]);
+  try {
+    await startRealm(r); r.show(0); await r.settle();
+    assert.strictEqual(r.fetches.filter((f) => f.headers && f.headers.Range).length, 0);
+  } finally { r.close(); }
+  const r2 = flowRealm([POD, READING], { pageWords: 25 });
+  try {
+    await startRealm(r2); r2.show(0); await r2.settle();
+    assert.strictEqual(r2.$$('.feed-card')[1].querySelector('[data-page-readout]').textContent, 'Page 1 of 3', 'the next book card is already in fitted pages');
+  } finally { r2.close(); }
+});
+
+test('K2 a pure: feedStreamUrl is the URL the shared player loads for each kind; none for a transcode or a book', () => {
+  assert.strictEqual(feed.feedStreamUrl(VID), '/video/v1');
+  assert.strictEqual(feed.feedStreamUrl(Object.assign({}, VID, { media: 'audio', id: 'a b' })), '/video/a%20b');
+  assert.strictEqual(feed.feedStreamUrl(POD), '/episode/ep1');
+  assert.strictEqual(feed.feedStreamUrl(SONG), '/track/t1');
+  assert.strictEqual(feed.feedStreamUrl(Object.assign({}, SONG, { track: { streamSrc: '/x' } })), '/x');
+  assert.strictEqual(feed.feedStreamUrl(Object.assign({}, VID, { transcode: true })), '');
+  assert.strictEqual(feed.feedStreamUrl(BOOK), '');
+  assert.strictEqual(feed.feedPlayerDescriptor(SONG).streamSrc, feed.feedStreamUrl(SONG), 'the same URL the song card plays');
+  assert.strictEqual(feed.feedPlayerDescriptor(POD).streamSrc, feed.feedStreamUrl(POD), 'the same URL the episode card plays');
+});
+
+test('a media card reached by a jump of more than three cards (still pruned) is rebuilt BEFORE it plays - it loads into its own slot', async () => {
+  const cards = [VID, POD, Object.assign({}, POD, { id: 'ep2' }), Object.assign({}, POD, { id: 'ep3' }), Object.assign({}, POD, { id: 'ep4' }), Object.assign({}, POD, { id: 'ep5' })];
+  const r = flowRealm(cards);
+  try {
+    await startRealm(r); r.show(0); r.show(5); await r.settle();
+    assert.ok(r.$$('.feed-card')[0].hasAttribute('data-pruned'), 'card 0 is pruned');
+    r.show(0); await r.settle();
+    const last = r.loads.filter((l) => l.id === 'v1').pop();
+    assert.ok(last && last.lo && last.lo.slot && r.$$('.feed-card')[0].contains(last.lo.slot), 'loaded into the rebuilt card\'s slot');
+  } finally { r.close(); }
 });

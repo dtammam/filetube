@@ -38,7 +38,7 @@ function feedRealm(o) {
     Object.defineProperty(w.HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return isPage(this) ? (w.__pageWords !== undefined ? w.__pageWords : (opts.pageWords || 0)) : 0; } });
     Object.defineProperty(w.HTMLElement.prototype, 'scrollHeight', { configurable: true, get() { return isPage(this) ? words(this) : 0; } });
   }
-  w.HTMLElement.prototype.scrollIntoView = function () { w.__scrolledInto = this; };
+  w.HTMLElement.prototype.scrollIntoView = function (arg) { w.__scrolledInto = this; w.__scrolledArg = arg; };
   // jsdom has no IntersectionObserver: a controllable stub the test drives
   const observers = [];
   w.IntersectionObserver = class { constructor(cb, init) { this.cb = cb; this.init = init; this.targets = []; observers.push(this); } observe(t) { this.targets.push(t); } unobserve() {} disconnect() { this.disconnected = true; } };
@@ -60,7 +60,7 @@ function feedRealm(o) {
     const method = (init && init.method) || 'GET';
     const url = String(u);
     const body = init && typeof init.body === 'string' ? (() => { try { return JSON.parse(init.body); } catch (_) { return init.body; } })() : null;
-    fetches.push({ method, url, body });
+    fetches.push({ method, url, body, headers: (init && init.headers) || null }); // v1.383.0: headers too (the warm request's Range)
     const r = opts.route ? opts.route(method, url, body) : null;
     if (r) return json(r.status, r.body);
     if (url === '/api/feed/sessions/week') return json(200, finished ? { sessions: 3, totalSec: 1800 } : (opts.week || { sessions: 2, totalSec: 1500 }));
