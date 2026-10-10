@@ -12781,6 +12781,8 @@ html[data-era-flourish="on"] .ft-unfabricated {
 html:root body[data-view="feed"] #handoff-card, html:root body[data-view="feed"] #dl-status-chip { display: none; }
 #view-root[data-view="feed"] .feed-picker { max-width: 60vh; margin: 0 auto; padding: var(--space-6) var(--space-4); display: flex; flex-direction: column; gap: var(--space-4); }
 #view-root[data-view="feed"] .feed-picker h2 { font: var(--t-headline); color: var(--ink-1); margin: 0; }
+/* v1.382.0 (D1): the gear to Settings > Feed sits at the heading's end */
+#view-root[data-view="feed"] .feed-picker-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }
 #view-root[data-view="feed"] .feed-picker-blurb { font: var(--t-body); color: var(--ink-2); margin: 0; }
 #view-root[data-view="feed"] .feed-picker-choices { display: flex; gap: var(--space-3); flex-wrap: wrap; }
 #view-root[data-view="feed"] .feed-week { font: var(--t-footnote); color: var(--ink-3); margin: 0; min-height: var(--t-footnote-size); }
