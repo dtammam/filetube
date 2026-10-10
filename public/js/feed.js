@@ -111,7 +111,7 @@ function feedKindLabel(card) {
 // keeps its own kind word beside it (the kind line reads "Watch later · Continue"). Books and songs say nothing here.
 function feedNewnessLabel(card) {
   if (!card || (card.kind !== 'video' && card.kind !== 'podcast' && card.kind !== 'watchlater')) return '';
-  if (card.fresh !== true) return 'Continue';
+  if (card.fresh !== true) return card.fromStart === true ? 'From the beginning' : 'Continue'; // v1.382.0 (D4): the choice is visible
   if (card.media === 'podcast') return card.showName ? 'New episode of ' + card.showName : 'New episode';
   return card.channelName ? 'New from ' + card.channelName : 'New video';
 }
@@ -120,6 +120,7 @@ function feedNewnessLabel(card) {
 function feedKindLine(card) {
   if (!card) return '';
   if (card.kind === 'book' && card.newBook) return 'Start something new';
+  if (card.kind === 'book' && card.fromStart === true) return 'Book \u00b7 From the beginning'; // v1.382.0 (D4)
   var kind = feedKindLabel(card);
   var newness = feedNewnessLabel(card);
   return newness ? kind + ' \u00b7 ' + newness : kind;
@@ -146,9 +147,17 @@ function feedPlayedStep(state, currentTime, nowMs, playing, rate) {
   return s;
 }
 // A clip shorter than 75 s needs 80% of itself, never more than a minute (mirrors lib/feed/safe-progress.js freshNeedSec).
-function feedFreshNeedSec(durationSec) {
+// v1.382.0 (D6): and a REEL of at least FEED_REEL_MIN_SEC that is shorter than that counts once played WHOLE (its length less
+// FEED_REEL_END_SLACK_SEC, the last update before the reel's end pause) - the same rule as the server's, which checks it again.
+// The card's `reelSec` is the length the server registered (0 for a chapter slice: gate r1, adversary W1).
+var FEED_REEL_END_SLACK_SEC = 1;
+var FEED_REEL_MIN_SEC = 30;
+function feedFreshNeedSec(durationSec, sliceSec) {
   var d = Number(durationSec);
-  return isFinite(d) && d > 0 ? Math.min(FEED_FRESH_START_SEC, Math.max(1, d * 0.8)) : FEED_FRESH_START_SEC;
+  var need = isFinite(d) && d > 0 ? Math.min(FEED_FRESH_START_SEC, Math.max(1, d * 0.8)) : FEED_FRESH_START_SEC;
+  var sl = Number(sliceSec);
+  if (isFinite(sl) && sl >= FEED_REEL_MIN_SEC) need = Math.min(need, sl - FEED_REEL_END_SLACK_SEC);
+  return need;
 }
 function feedFreshStarted(state, needSec) { return !!state && state.sec >= (typeof needSec === 'number' && needSec > 0 ? needSec : FEED_FRESH_START_SEC); }
 
@@ -159,6 +168,7 @@ var FEED_HINT_MS = 4000;
 var FEED_UNDO_MS = 10000; // v1.381.0 (D9b): the Start over toast's Undo lasts 10 s (the session's record keeps it after)
 var FEED_PAGE_HINT_KEY = 'ft-feed-page-hint-sessions'; // v1.381.0 (D11): "Swipe left for the next page", first 3 sessions
 var FEED_INTRO_NOTE_MS = 3000;
+var FEED_HEART_MS = 900; // v1.382.0 (D10): the double-tap heart's life on the card
 function feedHintShouldShow(count) {
   var n = parseInt(count, 10);
   return !(n >= FEED_HINT_SESSIONS);
@@ -240,6 +250,7 @@ function feedPlayerDescriptor(card) {
       autoAdvanceViaTrackNav: false,
       browseCtx: '',
       readerHref: '/feed',
+      placeFloorSec: feedPlaceFloorSec(card),
     };
   }
   return {
@@ -256,7 +267,52 @@ function feedPlayerDescriptor(card) {
     autoAdvanceViaTrackNav: false,
     browseCtx: '',
     readerHref: '/feed',
+    placeFloorSec: feedPlaceFloorSec(card),
   };
+}
+
+// v1.382.0 (D4, D7): a card played "From the beginning" carries its saved place as the player's FLOOR (player.js
+// placeFloorAllows): nothing saves at or below it, here or after Keep watching hands the player to the watch / podcasts page,
+// until playback passes it. undefined for every other card (the player's "none").
+function feedPlaceFloorSec(card) {
+  if (!card || card.fromStart !== true) return undefined;
+  var at = Number(card.media === 'podcast' ? card.position : card.progress);
+  return isFinite(at) && at > 0 ? at : undefined;
+}
+
+// v1.382.0 (D7): where "Keep watching / listening" takes a media card - the item's own full place, the shared player
+// carried over (the watch page or the podcasts page adopts the same id and plays on from the card's spot). '' = none.
+var FEED_KEEP_SEC = 10; // the pill shows in a slice's last 10 seconds and on its Done state
+function feedKeepHref(card) {
+  if (!card || typeof card.id !== 'string' || !card.id) return '';
+  if (card.media === 'podcast') return '/podcasts?play=' + encodeURIComponent(card.id);
+  // library audio opens in Music like every audio item (common.js audioOpenHref, the audio-routing net's one rule); the
+  // watch page is the video's place and the fallback when the rule is not on the page
+  var rule = typeof window !== 'undefined' ? window.audioOpenHref : null; // a classic-script global of common.js
+  if (card.media === 'audio' && typeof rule === 'function') { var a = rule({ id: card.id, type: 'audio', kind: 'media' }); if (a) return a; }
+  if (card.media === 'video' || card.media === 'audio') return '/watch.html?v=' + encodeURIComponent(card.id);
+  return '';
+}
+function feedKeepLabel(card) {
+  if (!card) return '';
+  if (card.kind === 'book') return 'Keep reading';
+  return card.media === 'video' ? 'Keep watching' : 'Keep listening';
+}
+// Show the pill? In the slice's last FEED_KEEP_SEC seconds, or once it is done (never after the whole FILE ended: nothing is left).
+function feedKeepDue(remainSec, done, ended) {
+  if (ended) return false;
+  return !!done || (typeof remainSec === 'number' && isFinite(remainSec) && remainSec <= FEED_KEEP_SEC);
+}
+
+// v1.382.0 (D2-D5, D8): the request's view of the Feed settings - the synced ft-feed-settings value read by the ONE reading
+// (public/js/feed-settings.js, on every shell). '' = the defaults (nothing to send). Read per batch: a change applies from
+// the next batch and never re-shuffles the cards on screen.
+function feedSettingsParam(storage, FS) {
+  if (!FS || typeof FS.serialize !== 'function') return '';
+  var raw = null;
+  try { raw = storage ? storage.getItem(FS.SETTINGS_KEY) : null; } catch (_) { raw = null; }
+  var v = FS.serialize(FS.normalize(raw));
+  return v === '{}' ? '' : '&fs=' + encodeURIComponent(v);
 }
 
 // A book card counts as read when it was active for at least its dwellSec in total.
@@ -512,6 +568,70 @@ function feedSummaryPayload(summary, actualSec, extensions) {
   };
 }
 
+// ---- v1.382.0 (D10, D11): card actions ------------------------------------------------------------------------------------
+// The like route of a card's own kind (each kind's existing route, visibility-checked there as today): a video / library
+// audio / Watch later video is a media like, an episode a podcast like, a song music's, a book a book like.
+function feedLikeUrl(card) {
+  if (!card || typeof card.id !== 'string' || !card.id || card.kind === 'notice') return '';
+  var id = encodeURIComponent(card.id);
+  if (card.kind === 'song') return '/api/music/liked/' + id;
+  if (card.kind === 'book') return '/api/books/liked/' + id;
+  if (card.media === 'podcast') return '/api/podcasts/episodes/' + id + '/liked';
+  if (card.media === 'video' || card.media === 'audio') return '/api/liked/' + id;
+  return '';
+}
+function feedIsLiked(card) {
+  if (!card) return false;
+  return card.kind === 'song' ? !!(card.track && card.track.liked) : card.liked === true;
+}
+// Watch later: videos (and library audio) and episodes (the Watch later route's ?kind=podcast); '' for books and songs.
+function feedWatchLaterUrl(card) {
+  if (!card || typeof card.id !== 'string' || !card.id) return '';
+  if (card.media === 'podcast') return '/api/watch-later/' + encodeURIComponent(card.id) + '?kind=podcast';
+  if (card.media === 'video' || card.media === 'audio') return '/api/watch-later/' + encodeURIComponent(card.id);
+  return '';
+}
+// "Hide this": the hide route's { kind, id } for a card, or null.
+function feedHideTarget(card) {
+  if (!card || typeof card.id !== 'string' || !card.id || card.kind === 'notice') return null;
+  if (card.kind === 'song') return { kind: 'song', id: card.id };
+  if (card.kind === 'book') return { kind: 'book', id: card.id };
+  if (card.media === 'podcast') return { kind: 'podcast', id: card.id };
+  if (card.media === 'video' || card.media === 'audio') return { kind: 'media', id: card.id };
+  return null;
+}
+// "Fewer from <name>": the channel of a video, the show of an episode, the artist of a song, the author of a book. null when
+// the card names none.
+function feedFewerTarget(card) {
+  if (!card) return null;
+  var type = '';
+  var name = '';
+  if (card.kind === 'song') { type = 'artist'; name = card.track && card.track.artist; }
+  else if (card.kind === 'book') { type = 'author'; name = card.author; }
+  else if (card.media === 'podcast') { type = 'show'; name = card.showName; }
+  else if (card.media === 'video' || card.media === 'audio') { type = 'channel'; name = card.channelName; }
+  // the key through the shared reading's own rule (gate r1, qa W1): a name it cannot keep (over 100 characters, a control
+  // character) is never offered - before, the menu offered it, nothing was stored and the toast said it was
+  var FSr = feedSettingsReading();
+  var key = FSr && typeof name === 'string' ? FSr.fewerKey(type, name) : '';
+  return key ? { type: type, name: key.slice(type.length + 1), key: key } : null;
+}
+// The shared reading (public/js/feed-settings.js): the page's global in a browser, the module in node.
+function feedSettingsReading() {
+  if (typeof window !== 'undefined' && window.FileTubeFeedSettings) return window.FileTubeFeedSettings;
+  if (typeof module !== 'undefined' && module && typeof module.require === 'function') { try { return module.require('./feed-settings.js'); } catch (_) { return null; } }
+  return null;
+}
+// The tap / double-tap discrimination (the watch page's window, player.js DOUBLE_TAP_MS): a second tap inside the window and
+// near the first is a DOUBLE (the like); otherwise the tap is a SINGLE that fires once the window has passed (play / pause).
+// state: { at, x, y } of the last lone tap, or null. Pure.
+var FEED_DOUBLE_TAP_PX = 40;
+function feedTapKind(state, nowMs, x, y, windowMs) {
+  var w = typeof windowMs === 'number' && windowMs > 0 ? windowMs : 350;
+  if (state && nowMs - state.at < w && Math.abs(x - state.x) <= FEED_DOUBLE_TAP_PX && Math.abs(y - state.y) <= FEED_DOUBLE_TAP_PX) return 'double';
+  return 'single';
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = {
     FEED_LENGTH_CHOICES, FEED_LENGTH_KEY, FEED_SESSION_KEY, FEED_BATCH, FEED_PREFETCH_AHEAD, FEED_KEEP_BEHIND, FEED_ACTIVE_RATIO,
@@ -519,10 +639,12 @@ if (typeof module !== 'undefined' && module.exports) {
     feedNormalizeMinutes, feedWeekLine, feedClock, feedKindLabel, feedActiveIndex, feedShouldPrefetch, feedExcludeIds,
     feedPlayerDescriptor, feedBookRead,
     feedNewnessLabel, feedKindLine, FEED_FRESH_START_SEC, FEED_PLAY_STEP_MAX_SEC, feedNewPlayTracker, feedPlayedStep, feedFreshStarted, feedFreshNeedSec,
-    FEED_HINT_KEY, FEED_HINT_SESSIONS, FEED_HINT_MS, FEED_INTRO_NOTE_MS, feedHintShouldShow,
+    FEED_HINT_KEY, FEED_HINT_SESSIONS, FEED_HINT_MS, FEED_INTRO_NOTE_MS, feedHintShouldShow, FEED_HEART_MS,
     feedDeadlineMs, feedRingFraction, feedRemainingSec, feedEmptySummary, feedCountActivity, feedRecapLines, feedRecapTitle,
     feedHoldStep, feedSummaryPayload,
     feedClockLong, feedStartOverKind, feedStartOverText, feedStartedOverText, FEED_UNDO_MS,
+    FEED_REEL_END_SLACK_SEC, FEED_REEL_MIN_SEC, feedPlaceFloorSec, FEED_KEEP_SEC, feedKeepHref, feedKeepLabel, feedKeepDue, feedSettingsParam,
+    feedLikeUrl, feedIsLiked, feedWatchLaterUrl, feedHideTarget, feedFewerTarget, feedTapKind, FEED_DOUBLE_TAP_PX,
     feedWordCount, feedPaginate, feedLongestHead, FEED_SPLIT_MIN_WORDS, feedBookTarget, feedPageDwellSec, FEED_MAX_PAGES, feedFurther, FEED_FIT_KEY,
     FEED_EDGE_PX, FEED_SWIPE_MIN_PX, feedPageSwipe, FEED_PAGE_HINT_KEY,
   };
@@ -535,6 +657,7 @@ if (typeof module !== 'undefined' && module.exports) {
   var controller = null;
 
   function readPref(key, fallback) { try { return window.localStorage.getItem(key) || fallback; } catch (_) { return fallback; } }
+  function localStore() { try { return window.localStorage; } catch (_) { return null; } } // the getter itself can throw (storage off)
   function writePref(key, value) { try { window.localStorage.setItem(key, String(value)); } catch (_) { /* storage disabled */ } }
   function readSession() { try { return JSON.parse(window.sessionStorage.getItem(FEED_SESSION_KEY) || 'null'); } catch (_) { return null; } }
   function writeSession(s) { try { if (s) window.sessionStorage.setItem(FEED_SESSION_KEY, JSON.stringify(s)); else window.sessionStorage.removeItem(FEED_SESSION_KEY); } catch (_) { /* storage disabled */ } }
@@ -717,7 +840,8 @@ if (typeof module !== 'undefined' && module.exports) {
       var seq = ++fetchSeq;
       stack.setAttribute('aria-busy', 'true');
       var exclude = feedExcludeIds(cards);
-      var url = '/api/feed?session=' + encodeURIComponent(session.id) + '&count=' + FEED_BATCH + (exclude.length ? '&exclude=' + exclude.map(encodeURIComponent).join(',') : '');
+      var url = '/api/feed?session=' + encodeURIComponent(session.id) + '&count=' + FEED_BATCH + (exclude.length ? '&exclude=' + exclude.map(encodeURIComponent).join(',') : '')
+        + feedSettingsParam(localStore(), window.FileTubeFeedSettings);
       fetch(url, { signal: signal })
         .then(function (r) {
           if (r.status === 404) { endSession(); throw new Error('session gone'); }
@@ -849,21 +973,43 @@ if (typeof module !== 'undefined' && module.exports) {
       var layer = el('div', 'feed-card__touch');
       layer.setAttribute('aria-hidden', 'true');
       node.insertBefore(layer, overlay);
-      var g = null; // { id, x, y, at, moved, held, timer }
-      var timings = function () { var p = player(); return (p && typeof p.gestureTimings === 'function' && p.gestureTimings()) || { holdMs: 500, moveTol: 16 }; };
+      var g = null; // { id, x, y, at, moved, held, timer, card }
+      var timings = function () { var p = player(); return (p && typeof p.gestureTimings === 'function' && p.gestureTimings()) || { holdMs: 500, moveTol: 16, doubleTapMs: 350 }; };
       var mine = function () { return index === activeIndex && mediaCardIndex === index; };
-      var end = function (tap) {
+      // v1.382.0 (D10): a lone tap waits out the double-tap window before it plays / pauses; a second tap inside it is a like
+      var lastTap = null; // { at, x, y, card }
+      var singleTimer = 0;
+      var end = function (tap, e) {
         if (!g) return;
         window.clearTimeout(g.timer);
         var p = player();
-        if (g.held) { if (p && typeof p.holdEnd === 'function') p.holdEnd(); }
-        else if (tap && !g.moved && mine() && p && typeof p.pictureTap === 'function') p.pictureTap();
+        var gg = g;
         g = null;
+        if (gg.held) { if (p && typeof p.holdEnd === 'function') p.holdEnd(); return; }
+        if (!tap || gg.moved) return;
+        var now = Date.now();
+        var x = e && typeof e.clientX === 'number' ? e.clientX : gg.x;
+        var y = e && typeof e.clientY === 'number' ? e.clientY : gg.y;
+        var win = Number(timings().doubleTapMs) || 350;
+        if (lastTap && lastTap.card === gg.card && feedTapKind(lastTap, now, x, y, win) === 'double') {
+          window.clearTimeout(singleTimer);
+          lastTap = null;
+          likeFromGesture(index, gg.card, x, y); // the card the gesture STARTED on, checked again inside
+          return;
+        }
+        lastTap = { at: now, x: x, y: y, card: gg.card };
+        window.clearTimeout(singleTimer);
+        singleTimer = window.setTimeout(function () {
+          lastTap = null;
+          var pp = player();
+          if (cards[index] === gg.card && mine() && pp && typeof pp.pictureTap === 'function') pp.pictureTap();
+        }, win);
       };
+      signal.addEventListener('abort', function () { window.clearTimeout(singleTimer); });
       layer.addEventListener('pointerdown', function (e) {
         if (e.isPrimary === false || (typeof e.button === 'number' && e.button > 0)) return;
-        end(false);
-        g = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, held: false, timer: 0 };
+        if (g) { window.clearTimeout(g.timer); if (g.held) { var p0 = player(); if (p0 && typeof p0.holdEnd === 'function') p0.holdEnd(); } g = null; }
+        g = { id: e.pointerId, x: e.clientX, y: e.clientY, moved: false, held: false, timer: 0, card: cards[index] };
         if (canHold && mine()) {
           var gg = g;
           gg.timer = window.setTimeout(function () {
@@ -877,7 +1023,7 @@ if (typeof module !== 'undefined' && module.exports) {
         var tol = timings().moveTol;
         if (Math.abs(e.clientX - g.x) > tol || Math.abs(e.clientY - g.y) > tol) { g.moved = true; window.clearTimeout(g.timer); }
       }, { signal: signal });
-      layer.addEventListener('pointerup', function (e) { if (g && e.pointerId === g.id) end(true); }, { signal: signal });
+      layer.addEventListener('pointerup', function (e) { if (g && e.pointerId === g.id) end(true, e); }, { signal: signal });
       layer.addEventListener('pointercancel', function () { end(false); }, { signal: signal }); // the browser took the touch (a scroll)
       layer.addEventListener('lostpointercapture', function () { if (g && g.held) end(false); }, { signal: signal });
       // while 2x is held the finger may drift: the stack stays put (only then; any other touch scrolls as usual)
@@ -888,16 +1034,24 @@ if (typeof module !== 'undefined' && module.exports) {
     // the stack keeps every vertical swipe (touch-action: pan-y on the stage).
     function wirePageSwipes(stage, index) {
       var g = null;
+      var bookTap = null; // v1.382.0 (D10): the last lone tap on this page, for the double-tap like
       stage.addEventListener('pointerdown', function (e) {
         if (e.isPrimary === false || (typeof e.button === 'number' && e.button > 0)) return;
-        g = { id: e.pointerId, x: e.clientX, y: e.clientY };
+        g = { id: e.pointerId, x: e.clientX, y: e.clientY, card: cards[index] };
       }, { signal: signal });
       stage.addEventListener('pointercancel', function () { g = null; }, { signal: signal });
       stage.addEventListener('pointerup', function (e) {
         if (!g || e.pointerId !== g.id) return;
         var dir = feedPageSwipe({ startX: g.x, dx: e.clientX - g.x, dy: e.clientY - g.y, width: window.innerWidth || document.documentElement.clientWidth });
+        var still = Math.abs(e.clientX - g.x) <= FEED_DOUBLE_TAP_PX / 2 && Math.abs(e.clientY - g.y) <= FEED_DOUBLE_TAP_PX / 2;
+        var card0 = g.card;
         g = null;
-        if (dir && index === activeIndex) turnPage(index, dir === 'next' ? 1 : -1);
+        if (dir && index === activeIndex) { bookTap = null; turnPage(index, dir === 'next' ? 1 : -1); return; }
+        // v1.382.0 (D10): a double tap on the page likes the book (a single tap on a page does nothing, so nothing waits)
+        if (!still) { bookTap = null; return; }
+        var now = Date.now();
+        if (bookTap && bookTap.card === card0 && feedTapKind(bookTap, now, e.clientX, e.clientY, 350) === 'double') { bookTap = null; likeFromGesture(index, card0, e.clientX, e.clientY); return; }
+        bookTap = { at: now, x: e.clientX, y: e.clientY, card: card0 };
       }, { signal: signal });
     }
 
@@ -985,7 +1139,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var left = el('span', 'feed-card__left', '');
       left.setAttribute('data-page-readout', '');
       actions.appendChild(left);
-      if (!card.startedOver) appendCardMenu(actions, index); // started over: nothing left to forget (a second tap would say so)
+      appendCardMenu(actions, index); // v1.382.0: every card has its menu (a started-over book's has no Start over: nothing left to forget)
       overlay.appendChild(actions);
       if (card.startedOver) overlay.querySelector('.feed-card__kind').textContent = 'Book \u00b7 Started over';
       // gate r1 (qa W2): the blocks (the card's own and any continuation) are seeded ONCE, when the card's state is born; a card
@@ -1044,6 +1198,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var left = el('span', 'feed-card__left', '');
       left.setAttribute('data-page-readout', '');
       actions.appendChild(left);
+      appendCardMenu(actions, index); // v1.382.0 (D10, D11): Like, Hide this, Fewer from the author (no Start over: nothing to forget)
       overlay.appendChild(actions);
       layoutPages(index);
     }
@@ -1128,6 +1283,10 @@ if (typeof module !== 'undefined' && module.exports) {
       drawPage(pageEl, bp.pages[bp.page] || []);
       var readout = node.querySelector('[data-page-readout]');
       if (readout) readout.textContent = cards[index] && cards[index].startedOver ? 'Opens at the beginning next time' : (bp.pages.length > 1 ? 'Page ' + (bp.page + 1) + ' of ' + bp.pages.length : '');
+      // v1.382.0 (D7): the last page of a reading card's excerpt offers Keep reading (a new book has Start reading instead)
+      var c = cards[index];
+      if (c && c.kind === 'book' && !c.newBook && !c.startedOver && bp.measured && bp.page === bp.pages.length - 1) showKeepPill(index);
+      else hideKeepPill(index);
     }
 
     // The current page's time: started when the card or the page became active, counted when it stops being on screen.
@@ -1196,7 +1355,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // checked again at the confirm (the stack can change under an open sheet). A confirm names what is forgotten; the
     // server records the previous place in this session BEFORE it resets, and a 10 s Undo puts exactly that back.
     function appendCardMenu(actions, index) {
-      if (!feedStartOverKind(cards[index])) return;
+      var c0 = cards[index];
+      if (!c0 || c0.kind === 'notice') return;
       var more = U() ? U().button({ variant: 'tonal', size: 'sm', shape: 'icon', icon: 'more_horiz', ariaLabel: 'More', doc: document })
         : el('button', 'ui-btn ui-btn--tonal ui-btn--sm ui-btn--icon', '');
       more.type = 'button';
@@ -1206,9 +1366,126 @@ if (typeof module !== 'undefined' && module.exports) {
       actions.appendChild(more);
     }
 
+    // v1.382.0 (D10, D11): Like / Unlike, Add to / Remove from Watch later, Start over, Hide this, Fewer from <name>. Every action
+    // re-checks that the card is still the one the menu opened on.
     function openCardMenu(index, card) {
       if (!U() || !card || cards[index] !== card) return;
-      U().menu({ label: 'Card', items: [{ label: 'Start over', icon: 'history', value: 'start-over', onSelect: function () { confirmStartOver(index, card); } }], signal: signal, doc: document });
+      var items = [];
+      if (feedLikeUrl(card)) {
+        var liked = feedIsLiked(card);
+        items.push({ label: liked ? 'Unlike' : 'Like', icon: 'favorite', value: liked ? 'unlike' : 'like', onSelect: function () { setLiked(index, card, !liked, null); } });
+      }
+      if (feedWatchLaterUrl(card)) {
+        var inWl = card.inWatchLater === true;
+        items.push({ label: inWl ? 'Remove from Watch later' : 'Add to Watch later', icon: 'schedule', value: inWl ? 'unwatch-later' : 'watch-later', onSelect: function () { setWatchLater(index, card, !inWl); } });
+      }
+      if (feedStartOverKind(card) && !card.startedOver) items.push({ label: 'Start over', icon: 'history', value: 'start-over', onSelect: function () { confirmStartOver(index, card); } });
+      if (feedHideTarget(card)) items.push({ label: 'Hide this', icon: 'visibility_off', value: 'hide', onSelect: function () { hideCard(index, card); } });
+      var fewer = feedFewerTarget(card);
+      if (fewer) items.push({ label: 'Fewer from ' + fewer.name, icon: 'remove', value: 'fewer', onSelect: function () { fewerFrom(index, card, fewer); } });
+      if (!items.length) return;
+      U().menu({ label: 'Card', items: items, signal: signal, doc: document });
+    }
+
+    // D10: a double tap likes (on only - a second double tap never unlikes, the TikTok rule) with a heart where the finger was.
+    function likeFromGesture(index, card, x, y) {
+      if (cards[index] !== card) return; // the card changed under the gesture
+      showHeart(index, x, y);
+      if (!feedIsLiked(card)) setLiked(index, card, true, null);
+    }
+    function showHeart(index, x, y) {
+      var node = cardEls[index];
+      if (!node) return;
+      var old = node.querySelector('.feed-heart');
+      if (old) old.remove();
+      var heart = el('div', 'feed-heart');
+      heart.setAttribute('aria-hidden', 'true');
+      var NS = 'http://www.w3.org/2000/svg';
+      var svg = document.createElementNS(NS, 'svg');
+      svg.setAttribute('class', 'ui-icon feed-heart__glyph'); // the icon sprite's symbol, as every shell's markup uses it
+      svg.setAttribute('aria-hidden', 'true');
+      svg.setAttribute('focusable', 'false');
+      var use = document.createElementNS(NS, 'use');
+      use.setAttribute('href', '#i-favorite');
+      svg.appendChild(use);
+      heart.appendChild(svg);
+      var r = node.getBoundingClientRect();
+      // where the finger was, as DATA (the CSS places it): the card's own coordinates
+      heart.style.setProperty('--heart-x', Math.round((Number(x) || 0) - r.left) + 'px');
+      heart.style.setProperty('--heart-y', Math.round((Number(y) || 0) - r.top) + 'px');
+      node.appendChild(heart);
+      var gone = window.setTimeout(function () { heart.remove(); }, FEED_HEART_MS);
+      signal.addEventListener('abort', function () { window.clearTimeout(gone); });
+    }
+    var liking = {}; // card index -> true while its like / unlike is in flight (one request at a time)
+    function setLiked(index, card, on, done) {
+      var url = feedLikeUrl(card);
+      if (!url || liking[index] || cards[index] !== card) return;
+      liking[index] = true;
+      fetch(url, { method: on ? 'POST' : 'DELETE', keepalive: true })
+        .then(function (r) {
+          liking[index] = false;
+          if (!r.ok) { toast(on ? 'Could not like it' : 'Could not unlike it'); return; }
+          if (card.kind === 'song') { card.track = card.track || {}; card.track.liked = on; } else card.liked = on;
+          if (done) done();
+        })
+        .catch(function () { liking[index] = false; toast(on ? 'Could not like it' : 'Could not unlike it'); });
+    }
+    function setWatchLater(index, card, on) {
+      var url = feedWatchLaterUrl(card);
+      if (!url || cards[index] !== card) return;
+      fetch(url, { method: on ? 'POST' : 'DELETE', keepalive: true })
+        .then(function (r) {
+          if (!r.ok) { toast('Could not change Watch later'); return; }
+          card.inWatchLater = on;
+          toast(on ? 'Added to Watch later' : 'Removed from Watch later');
+        })
+        .catch(function () { toast('Could not change Watch later'); });
+    }
+
+    // D11: Hide this - the item never comes back to the Feed (the server's list); this card steps aside for the next one. Undo
+    // (10 s) takes it off the list again. The request and its Undo outlive the view (the Start over posture: no view signal).
+    function hideCard(index, card) {
+      var target = feedHideTarget(card);
+      if (!target || cards[index] !== card) return;
+      fetch('/api/feed/hidden', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(target), keepalive: true })
+        .then(function (r) {
+          if (!r.ok) { toast('Could not hide it'); return; }
+          if (!signal.aborted && cards[index] === card) {
+            var node = cardEls[index];
+            if (node) node.setAttribute('data-hidden', '');
+            if (index === activeIndex && cardEls[index + 1]) cardEls[index + 1].scrollIntoView({ block: 'start' });
+          }
+          toast('Hidden: ' + (card.title || (card.track && card.track.title) || 'this item'), { duration: FEED_UNDO_MS, action: { label: 'Undo', onAction: function () {
+            fetch('/api/feed/hidden', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(target), keepalive: true })
+              .then(function (u) {
+                if (!u.ok) { toast('Could not undo'); return; }
+                var n = cardEls[index];
+                if (!signal.aborted && cards[index] === card && n) n.removeAttribute('data-hidden');
+                toast('It is back in your Feed');
+              })
+              .catch(function () { toast('Could not undo'); });
+          } } });
+        })
+        .catch(function () { toast('Could not hide it'); });
+    }
+
+    // D11: Fewer from <name> - the synced ft-feed-fewer list (public/js/feed-settings.js); the next batches weigh it (the server
+    // reads the list from the account, so the change is sent at once rather than after the sync's one-second wait).
+    function fewerFrom(index, card, target) {
+      var FS = window.FileTubeFeedSettings;
+      var store = localStore();
+      if (!FS || !store || cards[index] !== card) return;
+      var write = function (list) {
+        try { store.setItem(FS.FEWER_KEY, FS.serializeFewer(list)); } catch (_) { return false; }
+        try { if (window.__ftPrefsSync && typeof window.__ftPrefsSync.flush === 'function') window.__ftPrefsSync.flush(); } catch (_) { /* the debounced flush still goes */ }
+        return true;
+      };
+      var read = function () { try { return FS.parseFewer(store.getItem(FS.FEWER_KEY)); } catch (_) { return []; } };
+      if (!write(FS.fewerAdd(read(), target.key))) { toast('Could not save that'); return; }
+      toast('Fewer from ' + target.name, { duration: FEED_UNDO_MS, action: { label: 'Undo', onAction: function () {
+        if (write(FS.fewerRemove(read(), target.key))) toast('Back to the usual for ' + target.name);
+      } } });
     }
 
     function confirmStartOver(index, card) {
@@ -1443,8 +1720,11 @@ if (typeof module !== 'undefined' && module.exports) {
           else fetchBatch();
         }
         if (r.status !== 409) return null;
-        bp.refused = true;
         return r.json().then(function (body) {
+          // v1.382.0 (D4): a card read From the beginning is BEHIND its saved place: the place stays (refused as backward) and
+          // the card may still move it once the pages read pass it - only that refusal leaves the card able to write
+          if (card.fromStart === true && body && body.reason === 'backward') { bp.written = null; return; }
+          bp.refused = true;
           // gate r1 (qa S2): only a STALE refusal is news to the user; backward / not-served are the feed's own
           if (body && body.reason === 'stale') toast('Your place in ' + (card.title || 'this book') + ' moved on another device');
         });
@@ -1465,7 +1745,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // shared player, whose ONE progress writer (saveProgressToServer: pings, the pause / background checkpoint, a seek, the end)
       // asks it before every POST and reports the played seconds the server checks again. Not-fresh cards carry no guard.
       var tracker = card.fresh === true && card.kind !== 'song' ? feedNewPlayTracker() : null;
-      var needSec = feedFreshNeedSec(card.media === 'podcast' ? card.durationSec : card.duration);
+      var needSec = feedFreshNeedSec(card.media === 'podcast' ? card.durationSec : card.duration, Number(card.reelSec) || 0);
       if (tracker) {
         data.progressGate = function () { return feedFreshStarted(tracker, needSec); };
         data.playedSec = function () { return tracker.sec; };
@@ -1486,11 +1766,13 @@ if (typeof module !== 'undefined' && module.exports) {
         act.playedSec = Math.max(act.playedSec, t - startAt);
         if (endAt !== null && isFinite(endAt)) {
           var remain = endAt - t;
+          if (feedKeepDue(remain, act.done, act.ended)) showKeepPill(index); // v1.382.0 (D7): the way out, near the end
           if (left) left.textContent = remain > 0 ? feedClock(remain) + ' left' : 'Done';
           if (line && endAt > startAt) line.style.setProperty('--p', String(Math.round(Math.min(1, Math.max(0, (t - startAt) / (endAt - startAt))) * 1000) / 1000));
           if (remain <= 0 && !node.hasAttribute('data-done')) {
             node.setAttribute('data-done', '');
             act.done = true;
+            showKeepPill(index);
             p.pause();
             if (windingDown) finishNow(); // D11: the slice finished after time up
           }
@@ -1520,8 +1802,60 @@ if (typeof module !== 'undefined' && module.exports) {
         node.setAttribute('data-done', '');
         act.ended = true;
         act.done = true;
+        hideKeepPill(index); // the whole file ended: nothing is left to keep watching
         if (windingDown) finishNow();
       }, { signal: signal });
+    }
+
+    // ---- v1.382.0 (D7): Keep watching / listening / reading - leave the Feed into the full item -----------------------------
+    // A pill above the overlay text in a slice's last FEED_KEEP_SEC seconds and on its Done state (a book: on the last page of
+    // the card). It is a BUTTON in the overlay, above the gesture layer: its tap is never a play / pause tap. Tapping it ends the
+    // session as Done would (the card counted, the record and recap saved) WITHOUT the recap, and opens the item in its own
+    // place; a media card's shared player is carried over still playing, from where the card got to.
+    function showKeepPill(index) {
+      var node = cardEls[index];
+      var card = cards[index];
+      if (!node || !card || node.querySelector('[data-keep]')) return;
+      var overlay = node.querySelector('.feed-card__overlay');
+      if (!overlay || (card.kind !== 'book' && !feedKeepHref(card))) return;
+      var label = feedKeepLabel(card);
+      var pill = U() ? U().button({ variant: 'primary', size: 'sm', pill: true, icon: 'open_in_new', label: label, doc: document })
+        : el('button', 'ui-btn ui-btn--primary ui-btn--sm ui-btn--pill', label);
+      pill.type = 'button';
+      pill.classList.add('feed-card__keep');
+      pill.setAttribute('data-keep', '');
+      pill.addEventListener('click', function (e) {
+        if (e) e.stopPropagation();
+        if (cards[index] !== card) return; // the card changed under the tap
+        keepGoing(index, card);
+      }, { signal: signal });
+      overlay.insertBefore(pill, overlay.firstChild);
+    }
+    function hideKeepPill(index) {
+      var pill = cardEls[index] && cardEls[index].querySelector('[data-keep]');
+      if (pill) pill.remove();
+    }
+    var leaving = false;
+    function keepGoing(index, card) {
+      if (leaving || !session) return;
+      leaving = true;
+      var href = card.kind === 'book' ? card.readerHref : feedKeepHref(card);
+      if (!href) { leaving = false; return; }
+      var p = player();
+      // a media card: the player plays on (a Done slice is resumed inside this tap: iOS needs the gesture)
+      if (card.kind !== 'book' && mediaCardIndex === index && p && typeof p.play === 'function' && mediaEl && mediaEl.paused) { try { p.play(); } catch (_) { /* the full place starts it */ } }
+      if (card.kind === 'book') { noteBookPage(index); finishBookCard(index); }
+      countCard(index); // counted as left - the slice's time, a book's pages read
+      if (tickTimer) { window.clearInterval(tickTimer); tickTimer = null; }
+      postFinish(); // the session's record, as Done would (no recap: the user is going on)
+      mediaCardIndex = -1; // the player is the full place's now: nothing here pauses or closes it
+      // the session is over (a return to /feed shows the picker), but the stack is NOT torn down here: the card's slot still
+      // holds the player, and taking a playing media element out of the document pauses it (measured in Chromium: the watch
+      // page received it paused). The navigation docks the player first and the view's teardown follows.
+      session = null;
+      writeSession(null);
+      if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(href);
+      else window.location.assign(href);
     }
 
     // D8: "Skipped the intro" for 3 s, tap to go back to the start. The tap is a seek (it adds no played time).

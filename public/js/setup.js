@@ -2061,6 +2061,132 @@ function drawLibraryGlyphEditor(host, settings, signal) {
   });
 }
 
+// v1.382.0 (D11): Settings > Feed > Hidden and fewer - every item "Hide this" put aside (GET /api/feed/hidden: only what the
+// viewer can still see) with Unhide, and every "Fewer from" name (the synced ft-feed-fewer list) with Remove. Text only.
+const FEED_TUNING_KIND_WORDS = { media: 'Video', podcast: 'Episode', book: 'Book', song: 'Song' };
+const FEED_FEWER_TYPE_WORDS = { channel: 'Channel', show: 'Show', artist: 'Artist', author: 'Author' };
+function renderFeedTuning(doc, signal) {
+  const d = doc || document;
+  const win = d.defaultView || window;
+  const FS = win.FileTubeFeedSettings;
+  const host = d.getElementById('feed-tuning-list');
+  const empty = d.getElementById('feed-tuning-empty');
+  const U = win.ui;
+  if (!FS || !host || !U) return Promise.resolve();
+  const readFewer = () => { try { return FS.parseFewer(win.localStorage.getItem(FS.FEWER_KEY)); } catch (_) { return []; } };
+  const button = (label, onClick) => {
+    const b = U.button({ variant: 'tonal', size: 'sm', pill: true, label, doc: d });
+    b.type = 'button';
+    b.addEventListener('click', onClick, { signal });
+    return b;
+  };
+  let hidden = [];
+  const draw = () => {
+    if (signal && signal.aborted) return;
+    host.replaceChildren();
+    hidden.forEach((it) => {
+      host.appendChild(U.row({ doc: d, title: it.title || 'Untitled', meta: 'Hidden \u00b7 ' + (FEED_TUNING_KIND_WORDS[it.kind] || '') + (it.sub ? ' \u00b7 ' + it.sub : ''), actions: [button('Unhide', () => {
+        fetch('/api/feed/hidden', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: it.kind, id: it.id }) })
+          .then((r) => { if (r.ok) { hidden = hidden.filter((x) => x !== it); draw(); } })
+          .catch(() => {});
+      })] }));
+    });
+    readFewer().forEach((key) => {
+      const type = key.slice(0, key.indexOf(':'));
+      host.appendChild(U.row({ doc: d, title: FS.fewerLabel(key), meta: 'Fewer from \u00b7 ' + (FEED_FEWER_TYPE_WORDS[type] || ''), actions: [button('Remove', () => {
+        try { win.localStorage.setItem(FS.FEWER_KEY, FS.serializeFewer(FS.fewerRemove(readFewer(), key))); } catch (_) { return; }
+        draw();
+      })] }));
+    });
+    if (empty) empty.hidden = host.children.length > 0;
+  };
+  draw();
+  return fetch('/api/feed/hidden', { signal })
+    .then((r) => (r.ok ? r.json() : { items: [] }))
+    .then((body) => { hidden = Array.isArray(body && body.items) ? body.items : []; draw(); })
+    .catch(() => { draw(); });
+}
+
+// v1.382.0 (plan 2026-10-10-feed-settings D1-D5): Settings > Feed. Every control reads and writes ONE synced key
+// (ft-feed-settings) through the shared reading in public/js/feed-settings.js, so the page, the Feed and the server agree on
+// what a value means. Reflect-on-load AND after the account's copy lands (a fresh device: prefs-sync's boot GET). D2: the
+// last kind still on cannot be switched off (its switch is disabled, with the note). D4: "Where they start" is disabled
+// with its reason while that kind shows New only (a new item always starts at the beginning).
+const FEED_WHERE_NEW_ONLY_HELP = 'New items always start at the beginning, so this applies only when started ones show.';
+function wireFeedSettingsPage(doc, signal) {
+  const d = doc || document;
+  const win = d.defaultView || window;
+  const FS = win.FileTubeFeedSettings;
+  const page = d.querySelector('details[data-collapse-key="feed"]');
+  if (!FS || !page) return null;
+  const read = () => { let raw = null; try { raw = win.localStorage.getItem(FS.SETTINGS_KEY); } catch (_) { /* storage off */ } return FS.normalize(raw); };
+  const kindBox = (k) => d.getElementById('feed-kind-' + k);
+  const note = d.getElementById('feed-kinds-note');
+  const helps = {};
+  FS.CHOICE_KINDS.forEach((k) => { const h = page.querySelector('[data-feed-where-help="' + k + '"]'); if (h) helps[k] = h.textContent; });
+  function reflect() {
+    const st = read();
+    const onCount = FS.KINDS.filter((k) => st.off.indexOf(k) === -1).length;
+    FS.KINDS.forEach((k) => {
+      const box = kindBox(k);
+      if (!box) return;
+      box.checked = st.off.indexOf(k) === -1;
+      box.disabled = box.checked && onCount <= 1; // D2: the last kind on stays on
+    });
+    if (note) note.textContent = onCount <= 1 ? 'Keep at least one on: switch another kind on to turn this one off.' : 'Keep at least one on. Watch later\'s videos and episodes follow its own switch.';
+    FS.CHOICE_KINDS.forEach((k) => {
+      const which = d.getElementById('feed-which-' + k);
+      const where = d.getElementById('feed-where-' + k);
+      const help = page.querySelector('[data-feed-where-help="' + k + '"]');
+      const kindOn = st.off.indexOf(k) === -1;
+      if (which) { which.value = st.which[k]; which.disabled = !kindOn; }
+      if (where) {
+        where.value = st.where[k];
+        where.disabled = !kindOn || st.which[k] === 'new';
+      }
+      if (help) help.textContent = st.which[k] === 'new' ? FEED_WHERE_NEW_ONLY_HELP : helps[k];
+    });
+    const reel = d.getElementById('feed-reel');
+    if (reel) reel.value = String(st.reel);
+    const slice = d.getElementById('feed-slice');
+    if (slice) slice.value = String(st.slice);
+    return st;
+  }
+  function save() {
+    const st = read();
+    FS.KINDS.forEach((k) => {
+      const box = kindBox(k);
+      if (!box) return;
+      const i = st.off.indexOf(k);
+      if (box.checked && i !== -1) st.off.splice(i, 1);
+      else if (!box.checked && i === -1) st.off.push(k);
+    });
+    FS.CHOICE_KINDS.forEach((k) => {
+      const which = d.getElementById('feed-which-' + k);
+      const where = d.getElementById('feed-where-' + k);
+      if (which) st.which[k] = which.value;
+      if (where && !where.disabled) st.where[k] = where.value;
+    });
+    const reel = d.getElementById('feed-reel');
+    if (reel) st.reel = Number(reel.value);
+    const slice = d.getElementById('feed-slice');
+    if (slice) st.slice = Number(slice.value);
+    // the shared reading decides (an all-off value reads as the default, so the last switch can never turn the Feed off)
+    try { win.localStorage.setItem(FS.SETTINGS_KEY, FS.serialize(st)); } catch (_) { /* storage off: nothing to keep */ }
+    reflect();
+  }
+  renderFeedTuning(d, signal);
+  page.addEventListener('change', (e) => {
+    const t = e.target;
+    if (t && (t.hasAttribute('data-feed-kind') || t.hasAttribute('data-feed-which') || t.hasAttribute('data-feed-where') || t.id === 'feed-reel' || t.id === 'feed-slice')) save();
+  }, { signal });
+  reflect();
+  // the account's copy can land after this page is drawn (a fresh device): draw it again then
+  // (both lists: the choices and, gate r1 qa suggestion 2, the Fewer from names under Hidden and fewer)
+  if (win.__ftPrefsSync && typeof win.__ftPrefsSync.whenBooted === 'function') win.__ftPrefsSync.whenBooted(() => { if (!signal || !signal.aborted) { reflect(); renderFeedTuning(d, signal); } });
+  return { reflect, save };
+}
+
 function renderBottomBarEditor(signal) {
   const host = document.getElementById('bottombar-editor');
   const FT = typeof window !== 'undefined' ? window.FileTube : null;
@@ -5192,6 +5318,7 @@ function init(root) {
   loadHomeRowControl('home-continue-listening-check', 'ft-home-continue-listening');
   loadHomeRowControl('home-continue-reading-check', 'ft-home-continue-reading');
   renderBottomBarEditor(controller.signal); // v1.44 T12 bottom-bar editor
+  wireFeedSettingsPage(document, controller.signal); // v1.382.0: Settings > Feed
   renderLibraryGlyphEditor(controller.signal); // v1.77 Library-icon pickers (Appearance box)
   renderTrashSection(controller.signal); // v1.65 trash list + actions
   renderFeedHiddenSection(controller.signal); // v1.97.1 Hidden (feed-hide restore) list
@@ -5300,6 +5427,8 @@ if (typeof module !== 'undefined' && module.exports) {
     // ORDER, its label coverage and its >=1-visible floor are all behaviour
     // no constant can stand in for.
     renderBottomBarEditor, BOTTOMBAR_LABELS,
+    // v1.382.0: Settings > Feed (jsdom-bound with the real public/js/feed-settings.js)
+    wireFeedSettingsPage, FEED_WHERE_NEW_ONLY_HELP, renderFeedTuning,
     // v1.146: the Downloads box's pure status->view-model mapper (the DOM
     // writer + wiring are the usual on-device-validated thin shell).
     buildEngineViewModel,

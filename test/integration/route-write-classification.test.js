@@ -54,6 +54,8 @@ const CLASSIFICATION = {
   // the session and the token are the caller's own (another user's: neutral 404) - proven in feed-start-over.test.js.
   'POST /api/feed/start-over': 'personal',
   'POST /api/feed/start-over/undo': 'personal',
+  'POST /api/feed/hidden': 'personal', // v1.382.0 Feed D11: the caller's own hide list
+  'DELETE /api/feed/hidden': 'personal',
   'POST /api/videos/:id/view': 'personal',
   'POST /api/videos/:id/dimensions': 'personal',
   'POST /api/videos/:id/prepare-audio': 'personal',
@@ -296,6 +298,9 @@ const VISIBILITY = {
   // again before an Undo restores it (a hidden or missing item: one neutral 404) - proven in feed-start-over.test.js.
   'POST /api/feed/start-over': 'enforced',
   'POST /api/feed/start-over/undo': 'enforced',
+  // v1.382.0 Feed (D11): Hide this checks the kind's own gate (mediaVisibleTo / podcastEpisodeVisibleTo / bookVisibleTo /
+  // trackVisibleTo) before the row is written; a hidden or missing item is one neutral 404 - proven in feed-api.test.js ("v1.382.0 D11 access").
+  'POST /api/feed/hidden': 'enforced',
   'POST /api/videos/:id/prepare-audio': 'enforced',
   'POST /api/tv/episode/:id/prepare-audio': 'enforced', // v1.197: gated on tvEpisodeVisibleTo (restricted -> 404, no oracle/CPU sink)
   'POST /api/liked/:id': 'enforced',
@@ -347,6 +352,7 @@ const VISIBILITY = {
   'DELETE /api/liked/:id': 'personal',
   'DELETE /api/watched/:id': 'personal',
   'DELETE /api/feed-hidden/:id': 'personal',
+  'DELETE /api/feed/hidden': 'personal', // v1.382.0: the Undo / Unhide of the caller's own row (idempotent, validated key)
   'DELETE /api/watch-later/:id': 'personal',
   'PUT /api/watch-later/order': 'personal',
   'POST /api/queue/watch-later': 'personal',

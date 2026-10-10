@@ -84,6 +84,22 @@ test('the value byte-cap rejects an oversized value (a data-URI does not belong 
   assert.deepEqual(json.applied, []);
 });
 
+// v1.382.0 (Dean's ruling 2026-10-10): the Feed's "Fewer from" list is the ONE key with an 8 KB cap (200 names); every
+// other key, the Feed's own settings included, stays at 512 bytes.
+test('the per-key cap: ft-feed-fewer takes 8 KB (and no more), ft-feed-settings and the rest stay at 512 bytes', async () => {
+  const post = (key, value) => fetch(`${base}/api/prefs`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries: [{ key, value, updatedAt: 1 }] }),
+  }).then((r) => r.json());
+  assert.deepEqual((await post('ft-feed-fewer', 'x'.repeat(8192))).applied, ['ft-feed-fewer']);
+  assert.deepEqual((await post('ft-feed-fewer', 'y'.repeat(8193))).rejected, ['ft-feed-fewer']);
+  assert.deepEqual((await post('ft-feed-settings', 'x'.repeat(513))).rejected, ['ft-feed-settings']);
+  assert.deepEqual((await post('ft-feed-settings', '{"reel":30}')).applied, ['ft-feed-settings']);
+  assert.deepEqual((await post('ft-era', 'x'.repeat(600))).rejected, ['ft-era'], 'the 8 KB cap is that key only');
+  const got = await (await fetch(`${base}/api/prefs`)).json();
+  assert.equal(got.prefs['ft-feed-fewer'].value.length, 8192, 'the 8 KB value stood; the 8193 one never replaced it');
+});
+
 test('route-level LWW: a stale updatedAt is reported skipped and changes nothing', async () => {
   const post = (updatedAt, value) => fetch(`${base}/api/prefs`, {
     method: 'POST',

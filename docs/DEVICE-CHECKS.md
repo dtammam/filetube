@@ -247,79 +247,102 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
 - [x] v1.377.0 - (Dean 2026-10-08: "good") The Music page button reads "Pocket"; Settings > Mobile player says "Keep Pocket upright"; no "iPod"
   anywhere you can read in the app.
 
+## Feed settings (v1.382.0)
+
+Home-screen app on the iPhone, and the desktop for one line. Have a video, a podcast and a book you are partway through, plus new
+ones of each.
+
+- [ ] v1.382.0 - Settings > Personalize > Feed (or the gear on the Feed's length picker): switch each kind off in turn and start a
+  session; that kind never shows. The last kind left on cannot be switched off. Open Settings > Feed on the desktop: the same choices.
+- [ ] v1.382.0 - Per kind (Videos, Podcasts, Books): New only shows only things you have not started; Only ones I started shows only
+  those (and Where they start greys out on New only, saying why).
+- [ ] v1.382.0 - Where they start = From the beginning on Videos: a started video plays from 0:00 and says "From the beginning". Swipe on,
+  then open it on the watch page: it resumes at your old place. Same with a podcast (Podcasts page) and a book (the reader).
+- [ ] v1.382.0 - Reels: a video card runs 60 seconds from its start, an episode 2 minutes. Try 30 s and Whole chapter for videos, 4 min for podcasts.
+- [ ] v1.382.0 - Near the end of a video card (and once it says Done) tap Keep watching: the watch page opens, still playing at the same
+  spot, no recap. Keep listening on a podcast: the Podcasts page, playing. Keep reading on a book card's last page: the reader.
+- [ ] v1.382.0 - From the beginning, then Keep watching early in the video, watch a bit and close: the video still resumes at your old place.
+  Once more with a video that has chapters: Keep watching, then Listen, let it play a little and close: still your old place.
+- [ ] v1.382.0 - Double-tap a video, a podcast, a song and a book page: a heart pops where you tapped and it is in Liked. A single tap
+  still pauses (after a short beat). "..." has Like / Unlike and Add to / Remove from Watch later.
+- [ ] v1.382.0 - "..." > Hide this on a video, a podcast, a song and a book; Undo one within 10 seconds. "..." > Fewer from on a channel.
+  Settings > Feed > Hidden and fewer lists them; Unhide and Remove work. A hidden item never comes back in a new session. Videos you
+  hid from Home earlier are there too and stay out of the Feed; Unhide one and it is back on Home as well.
+- [ ] v1.382.0 - A new video watched to the end of its 60-second reel says Continue next time; one you swiped after 10 seconds still says New.
+
 ## Feed, TikTok style (v1.381.0)
 
 Home-screen app on the iPhone (and once on a small phone if you have one, 320 wide). Have a book you are partway through, a video
 and a podcast you are partway through, a liked song, and something downloading.
 
-- [ ] v1.381.0 - Every card fills the screen edge to edge: a video fills it (cropped like a phone feed), the title, channel and readout sit
+- [x] v1.381.0 - (Dean 2026-10-10: "everything is good") Every card fills the screen edge to edge: a video fills it (cropped like a phone feed), the title, channel and readout sit
   over a dark fade at the bottom, the ring and Done top right never touch the title. A podcast or song: the art blurred behind, the art
   once in the middle, not huge. Check each kind at your phone's width.
-- [ ] v1.381.0 - Nothing inside a card scrolls. A book card shows one page; swipe left for the next page, right to go back ("Page 2 of 3").
+- [x] v1.381.0 - (Dean 2026-10-10: "everything is good") Nothing inside a card scrolls. A book card shows one page; swipe left for the next page, right to go back ("Page 2 of 3").
   Past the last page the next pages load. Swipe up or down moves card to card from anywhere on a card, including from the playing video.
-- [ ] v1.381.0 - The back swipe: start a swipe right at the very left edge on a book card. Safari's (or the app's) back gesture is the one
+- [x] v1.381.0 - (Dean 2026-10-10: "everything is good") The back swipe: start a swipe right at the very left edge on a book card. Safari's (or the app's) back gesture is the one
   that happens, never a page turn. A swipe starting a thumb's width in turns the page.
-- [ ] v1.381.0 - On a playing video: tap pauses (a glyph in the middle), tap again plays; press and hold plays at 2x with the badge while
+- [x] v1.381.0 - (Dean 2026-10-10: "everything is good") On a playing video: tap pauses (a glyph in the middle), tap again plays; press and hold plays at 2x with the badge while
   you hold, back to normal when you let go. Hold for a few seconds: no magnifier bubble. A podcast or song: tap pauses / plays, a hold
   does not speed up.
-- [ ] v1.381.0 - Fit / Fill on a video: Fit shows the whole picture with bars, Fill crops to the screen. Your choice sticks for the next video
+- [x] v1.381.0 - (Dean 2026-10-10: "everything is good") Fit / Fill on a video: Fit shows the whole picture with bars, Fill crops to the screen. Your choice sticks for the next video
   and the next session.
-- [ ] v1.381.0 - Turn the phone sideways while a video or song plays in the Feed: nothing goes full screen and the card stays a card (the page
+- [x] v1.381.0 - (Dean 2026-10-10: "everything is good") Turn the phone sideways while a video or song plays in the Feed: nothing goes full screen and the card stays a card (the page
   itself may turn wide; a web app cannot lock it upright).
-- [ ] v1.381.0 - In the Feed there is no "Watching on <device>" card and no download pill; go to Home: both are back, and the download went on.
-- [ ] v1.381.0 - Start over on a video you are partway through: "..." > Start over > the sheet says "Your place, h:mm:ss of h:mm:ss, will be
+- [x] v1.381.0 - (Dean 2026-10-10: "everything is good") In the Feed there is no "Watching on <device>" card and no download pill; go to Home: both are back, and the download went on.
+- [x] v1.381.0 - (Dean 2026-10-10: "everything is good") Start over on a video you are partway through: "..." > Start over > the sheet says "Your place, h:mm:ss of h:mm:ss, will be
   forgotten". Confirm: the card says New and plays from the start. Tap Undo within 10 seconds: it is back at your place, says Continue. Do it
   again and let the toast go: open the video on the watch page, it starts from the beginning. Once more: Start over, tap Home within
   10 seconds, then tap Undo on the toast still showing: "Your place is back", and the video resumes at your place.
-- [ ] v1.381.0 - Start over on a podcast and on a book card; Undo each. Then Start over a book and open it in the reader: it opens at the
+- [x] v1.381.0 - (Dean 2026-10-10: "everything is good") Start over on a podcast and on a book card; Undo each. Then Start over a book and open it in the reader: it opens at the
   beginning. Songs and new books have no "...".
-- [ ] v1.381.0 - Things you only peeked at (under a minute) now say New, not Continue; anything you really watched or listened to still says Continue.
-- [ ] v1.381.0 - Optional, on the server: `docker exec -i <filetube container> node scripts/feed-stale-continue.js /app/data/filetube.db`
+- [x] v1.381.0 - (Dean 2026-10-10: "everything is good") Things you only peeked at (under a minute) now say New, not Continue; anything you really watched or listened to still says Continue.
+- [x] v1.381.0 - (Dean 2026-10-10: "everything is good") Optional, on the server: `docker exec -i <filetube container> node scripts/feed-stale-continue.js /app/data/filetube.db`
   (read-only) and send the summary lines; they show how many of your Continue items were under a minute or were moved by a feed session.
 
 ## Feed polish (v1.380.0)
 
 Home-screen app on the iPhone. Have a book you have never opened, a subscription with videos you have not watched and a podcast with a new episode.
 
-- [ ] v1.380.0 - Settings > any long page (Mobile player is the longest): scroll to the bottom; the back arrow and the page title stay pinned
+- [x] v1.380.0 - (Dean 2026-10-10: "everything is good") Settings > any long page (Mobile player is the longest): scroll to the bottom; the back arrow and the page title stay pinned
   under the app header the whole way, rows slide under them, and the arrow still goes back. Try a short page and a landscape turn.
-- [ ] v1.380.0 - Settings > Personalize has a "Bottom bar" page right after Mobile player: drag to reorder, switch items off and on. Mobile player no longer has it.
-- [ ] v1.380.0 - Start a Feed session (your first three on this phone): a small "Swipe up" cue sits at the bottom of the first card and fades when you
+- [x] v1.380.0 - (Dean 2026-10-10: "everything is good") Settings > Personalize has a "Bottom bar" page right after Mobile player: drag to reorder, switch items off and on. Mobile player no longer has it.
+- [x] v1.380.0 - (Dean 2026-10-10: "everything is good") Start a Feed session (your first three on this phone): a small "Swipe up" cue sits at the bottom of the first card and fades when you
   swipe or after about 4 seconds. The fourth session shows none.
-- [ ] v1.380.0 - A book you never opened comes as "Start something new": cover, author, what it is about, no pages of text until you tap "Read the opening"
+- [x] v1.380.0 - (Dean 2026-10-10: "everything is good") A book you never opened comes as "Start something new": cover, author, what it is about, no pages of text until you tap "Read the opening"
   (its first real chapter, not the cover or copyright page). Swipe away without tapping anything, then open the book in the reader: it opens at the very start, as unstarted
   (not under "currently reading"). Only one such card per session.
-- [ ] v1.380.0 - "Start reading" on that card: the reader opens at the first real chapter; the book is now one you are reading and its next feed card continues from there.
-- [ ] v1.380.0 - Video and podcast cards read "Continue" or "New from <channel>" / "New episode of <show>" (Watch later keeps its word). Expect about one New for every two Continue.
-- [ ] v1.380.0 - Swipe past a NEW video after about 10 seconds: it is not under Continue watching afterwards and not marked watched. Stay on a new one for over a minute: it is.
-- [ ] v1.380.0 - A new video that starts with an intro chapter opens after it with "Skipped the intro" for 3 seconds; tap it to go back to the start.
-- [ ] v1.380.0 - Start a NEW podcast episode in Feed, swipe nowhere, go to Home while it keeps playing in the mini player, listen past a minute: open the podcasts page; the episode has a place.
+- [x] v1.380.0 - (Dean 2026-10-10: "everything is good") "Start reading" on that card: the reader opens at the first real chapter; the book is now one you are reading and its next feed card continues from there.
+- [x] v1.380.0 - (Dean 2026-10-10: "everything is good") Video and podcast cards read "Continue" or "New from <channel>" / "New episode of <show>" (Watch later keeps its word). Expect about one New for every two Continue.
+- [x] v1.380.0 - (Dean 2026-10-10: "everything is good") Swipe past a NEW video after about 10 seconds: it is not under Continue watching afterwards and not marked watched. Stay on a new one for over a minute: it is.
+- [x] v1.380.0 - (Dean 2026-10-10: "everything is good") A new video that starts with an intro chapter opens after it with "Skipped the intro" for 3 seconds; tap it to go back to the start.
+- [x] v1.380.0 - (Dean 2026-10-10: "everything is good") Start a NEW podcast episode in Feed, swipe nowhere, go to Home while it keeps playing in the mini player, listen past a minute: open the podcasts page; the episode has a place.
 
 ## Feed mode (v1.379.0)
 
 Home-screen app on the iPhone, a book you are partway through, a podcast in progress, a few subscriptions, some liked songs.
 
-- [ ] v1.379.0 - The bottom bar has Feed (after Liked on an untouched bar, so beside Home; appended after your own items if you ever
+- [x] v1.379.0 - (Dean 2026-10-10: "everything is good") The bottom bar has Feed (after Liked on an untouched bar, so beside Home; appended after your own items if you ever
   reordered the bar - Settings lists it either way); the sidebar has Feed under Library, and so does the phone's Playlists sheet. Tap it: the length picker, your last pick highlighted, and "This week: ..." once a session exists.
-- [ ] v1.379.0 - Pick 10 min. Cards arrive; swipe up through five: the kind label, a book's text (plain, readable, "Open in reader"), a
+- [x] v1.379.0 - (Dean 2026-10-10: "everything is good") Pick 10 min. Cards arrive; swipe up through five: the kind label, a book's text (plain, readable, "Open in reader"), a
   podcast's art with "4:00 of this episode", a video's chapter line, a Watch later label, a song's art. Never the same kind twice in a row.
-- [ ] v1.379.0 - A video card plays WITH sound from its saved place inside its card (no second player, no black picture after the swipe
+- [x] v1.379.0 - (Dean 2026-10-10: "everything is good") A video card plays WITH sound from its saved place inside its card (no second player, no black picture after the swipe
   from the previous card); the "left" readout counts down; at the slice end it pauses and says Done. Swipe to the next media card:
   the previous one is paused, the new one plays in ITS card. Then tap the mini player / go to the watch page: the position carried.
-- [ ] v1.379.0 - A podcast card resumes at the saved place and plays 4 minutes; the podcasts page afterwards shows the moved place.
-- [ ] v1.379.0 - A book card: read it (stay about a minute on a 450-word card), swipe on, then open the book in the reader: it opens on
+- [x] v1.379.0 - (Dean 2026-10-10: "everything is good") A podcast card resumes at the saved place and plays 4 minutes; the podcasts page afterwards shows the moved place.
+- [x] v1.379.0 - (Dean 2026-10-10: "everything is good") A book card: read it (stay about a minute on a 450-word card), swipe on, then open the book in the reader: it opens on
   the page that holds the next unread paragraph (the first paragraph of the card after it). Open the same book on another device
   first, read on, then let the feed card finish: the toast "Your place in ... moved on another device" and the place is NOT moved back.
-- [ ] v1.379.0 - A book card you SKIP (swipe on within a few seconds): the reader still opens where you were, and that book does not
+- [x] v1.379.0 - (Dean 2026-10-10: "everything is good") A book card you SKIP (swipe on within a few seconds): the reader still opens where you were, and that book does not
   come back in this session until you read or open it (gate r1: a skipped card never puts unread pages behind your place).
-- [ ] v1.379.0 - While a video card plays, leave the feed and open that video from Home (the player carries over), drag the scrubber BACK and pause: the
+- [x] v1.379.0 - (Dean 2026-10-10: "everything is good") While a video card plays, leave the feed and open that video from Home (the player carries over), drag the scrubber BACK and pause: the
   watch page keeps that earlier place (gate r1: the feed's forward-only rule stays in the feed).
-- [ ] v1.379.0 - The ring in the corner fills as the time runs; tap it: "m:ss left" for 3 s. When time is up mid-podcast the slice finishes
+- [x] v1.379.0 - (Dean 2026-10-10: "everything is good") The ring in the corner fills as the time runs; tap it: "m:ss left" for 3 s. When time is up mid-podcast the slice finishes
   (at most 2 more minutes) and the recap opens; when time is up on a book card the recap opens on your next swipe.
-- [ ] v1.379.0 - The recap: the minutes, "N pages of <book>", "N chapters of <video>" or "N min of <video>", "N min of <episode>", "N songs";
+- [x] v1.379.0 - (Dean 2026-10-10: "everything is good") The recap: the minutes, "N pages of <book>", "N chapters of <video>" or "N min of <video>", "N min of <episode>", "N songs";
   a TAP on "Another 10 minutes" does nothing; a HOLD (about a second, the button fills) adds ten minutes and the feed goes on; the next
   recap says ", extended once". Done returns to the page you came from.
-- [ ] v1.379.0 - iOS reparent caveat (D7): a playing video moved from one card's slot to the next keeps playing; the lock screen shows the
+- [x] v1.379.0 - (Dean 2026-10-10: "everything is good") iOS reparent caveat (D7): a playing video moved from one card's slot to the next keeps playing; the lock screen shows the
   card's title; backgrounding mid-card behaves like the watch page (the sidecar handoff).
 - [ ] v1.379.0 - After a week of using the feed: note your Reddit time in iOS Screen Time before and after (the plan's success measure).
 

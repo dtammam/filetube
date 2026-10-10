@@ -130,3 +130,23 @@ test('schema: user_feed_hidden exists at v17 and cascades on user delete (FK ON 
   // The surviving admin is unaffected.
   assert.deepEqual(store.getFeedHidden(a.id), []);
 });
+
+// v1.382.0 (Feed D11; gate r1 qa W2): the Feed's "Hide this" rows for an episode, a book and a song (feedHiddenKey: the ONE
+// spelling) are retired with their item and a hidden song follows its track's re-key - every carrier path, each kind alone.
+test('v1.382.0: feedHiddenKey rows of each kind are purged with their item, a song row follows its re-key, a media row is untouched by the others', () => {
+  const a = store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO(0));
+  const k = store.feedHiddenKey;
+  assert.deepEqual([k('media', 'm1'), k('podcast', 'e1'), k('book', 'b1'), k('song', 't1'), k('video', 'x')], ['m1', 'podcast:e1', 'book:b1', 'song:t1', '']);
+  assert.strictEqual(k('podcast', 'e1'), store.watchLaterKey('podcast', 'e1'), 'an episode\'s hide key is the Watch later key\'s spelling');
+  for (const key of ['m1', k('podcast', 'e1'), k('book', 'b1'), k('song', 't1'), k('song', 't2'), 'e1', 'b1', 't1']) store.addFeedHidden(a.id, key, ISO(1));
+  store.removePodcastEpisodeState(['e1']);
+  assert.ok(!store.getFeedHidden(a.id).includes('podcast:e1'), 'an episode purge sheds its hide row');
+  store.removeBookState(['b1']);
+  assert.ok(!store.getFeedHidden(a.id).includes('book:b1'), 'a book purge sheds its hide row');
+  store.removeMusicState(['t1']);
+  assert.ok(!store.getFeedHidden(a.id).includes('song:t1'), 'a track purge sheds its hide row');
+  store.rekeyMusicState('t2', 't9');
+  const rows = store.getFeedHidden(a.id);
+  assert.ok(rows.includes('song:t9') && !rows.includes('song:t2'), 'a moved track keeps its hide under the new id');
+  assert.deepEqual(['m1', 'e1', 'b1', 't1'].filter((x) => rows.includes(x)), ['m1', 'e1', 'b1', 't1'], 'bare ids (media rows) are never touched by another kind\'s path');
+});

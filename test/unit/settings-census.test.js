@@ -24,8 +24,9 @@ test('the census classifies every control (no unclassified id, no stale entry)',
 });
 
 // Controls added deliberately since the baseline (each named with its release): the iPod portrait lock's device-local switch.
-// (v1.372.0's Home > Show music in the home feed came and went: v1.373.0 removed it.)
-const ADDED_SINCE = ['pocket-upright-check|localStorage'];
+// (v1.372.0's Home > Show music in the home feed came and went: v1.373.0 removed it.) v1.382.0: the Settings > Feed page's
+// thirteen controls, one synced key.
+const ADDED_SINCE = ['pocket-upright-check|localStorage'].concat(['feed-kind-video', 'feed-kind-podcast', 'feed-kind-book', 'feed-kind-watchlater', 'feed-kind-song', 'feed-which-video', 'feed-where-video', 'feed-which-podcast', 'feed-where-podcast', 'feed-which-book', 'feed-where-book', 'feed-reel', 'feed-slice'].map((id) => id + '|/api/prefs (synced) + localStorage'));
 
 test('no control is lost, added or re-routed: (id, save path) equals the v1.366.1 baseline plus the named additions', () => {
   const now = census(HTML).pages.flatMap((p) => p.controls).map((c) => c.id + '|' + c.save).sort();
