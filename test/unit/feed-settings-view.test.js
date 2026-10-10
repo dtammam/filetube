@@ -241,7 +241,7 @@ test('D7 (view): Keep watching shows in the last 10 s and on Done; its tap saves
     const after = r.loads.slice(loadsBefore);
     assert.deepStrictEqual(after, [{ navigate: '/watch.html?v=vr' }], 'no pause, no close: the player goes on; the watch page opens');
     assert.strictEqual(r.w.sessionStorage.getItem(feed.FEED_SESSION_KEY), null, 'the session is over');
-    assert.strictEqual(r.$('#feed-picker').hidden, false);
+    assert.ok(r.$$('.feed-card')[0].querySelector('.feed-card__slot'), 'the stack (and the slot holding the player) is left for the navigation: taking the element out would pause it');
   } finally { r.close(); }
 });
 

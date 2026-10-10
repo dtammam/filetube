@@ -1838,8 +1838,11 @@ if (typeof module !== 'undefined' && module.exports) {
       if (tickTimer) { window.clearInterval(tickTimer); tickTimer = null; }
       postFinish(); // the session's record, as Done would (no recap: the user is going on)
       mediaCardIndex = -1; // the player is the full place's now: nothing here pauses or closes it
-      resetToPicker();
-      leaving = false;
+      // the session is over (a return to /feed shows the picker), but the stack is NOT torn down here: the card's slot still
+      // holds the player, and taking a playing media element out of the document pauses it (measured in Chromium: the watch
+      // page received it paused). The navigation docks the player first and the view's teardown follows.
+      session = null;
+      writeSession(null);
       if (window.FileTube && typeof window.FileTube.navigate === 'function') window.FileTube.navigate(href);
       else window.location.assign(href);
     }
