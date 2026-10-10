@@ -51,14 +51,14 @@ settings stay as shipped.
   "Next in 2" over the overlay and scrolls to the next card after 2 s (smooth, the same snap). A touch anywhere on the card during
   the countdown cancels it (that card then stays until swiped). Never on book or Start something new cards (reading pace). During
   the wind-down the recap opens instead (unchanged). A Feed setting "Auto-advance" On (default) / Off (synced, LESSONS 12 lists).
-- **K2 Instant cards (point 2, D12 made stronger).** MEASURE FIRST where the wait is, on WebKit and Chromium headless AND on the
-  device: add a `feed:start` line to the existing lifecycle log (the record + one-button export pattern) with swipe-settle ->
-  card active -> player moved -> load -> first frame / first audio timings, so Dean's export shows the real phone. Then fix the
-  measured cause: (a) network: preload the next card (poster / art, a range request at its start point, the next book page text;
-  1 card ahead, as D12 said); (b) the player move / load: start the next load as early as the snap allows; (c) a missing autoplay
-  after a swipe: the active card must start on its own, with sound, after the session's first gesture (the shared media element
-  keeps the gesture's permission; prove it on WebKit). Still never two PLAYING media elements on iOS. Target: under 500 ms from
-  swipe settle to first frame / first audio on the LAN; report before / after.
+- **K2 Instant cards (point 2, D12 made stronger; Dean 2026-10-10: NO instrumentation pass - build the fix directly).** Do all three
+  together, no measuring rig, no new log line: (a) WARM the next card while the current one is active: its poster / art, a small
+  range request at its start point (Dean: almost the whole library is faststart, so the start of the file is enough), and the next
+  book page text; 1 card ahead only; (b) START the next card's load as early as the snap allows (when it crosses ~25% on screen or
+  the scroll settles, not at the 60% active ratio), so the load overlaps the swipe; (c) AUTOPLAY: after the session's first gesture
+  the active card starts on its own, with sound (the shared media element keeps the gesture's permission; prove it in a WebKit
+  test). Still never two PLAYING media elements on iOS; a card that is warmed but never reached costs only its range request.
+  Dean's device pass is the arbiter ("a swipe starts playing at once").
 - **K3 Book bugs (point 3).** Two separate defects, root-cause each (never re-patch around them):
   (a) After Start over on a book card, the card still shows its old page (chapter 6) while the reader is correctly reset: the card
   must re-render from the reset place (the first real chapter, v1.380.0 D5's rule) right after the reset succeeds, and Undo must
@@ -86,19 +86,14 @@ settings stay as shipped.
 - public/js/feed.js (~1900 lines since v1.382.0): `FEED_KEEP_SEC` ~285, the Keep pill ~1818-1840 (`keepGoing`), `playCard`, the
   Start over / Undo flow ~1356-1450, `setActive` / `onIntersect`, book page swipes (v1.381.0).
 - Server: lib/feed/api.js (cards, slices, fresh, the settings), lib/books/excerpt.js (first real chapter), lib/feed/safe-progress.js.
-- The lifecycle log and its Settings export (the "record + one-button export" pattern; find the existing log module the
-  `player:strip` line of v1.376.0 used).
 
 ## 4. Waves
 
-- **W1 Measure + bugs:** the `feed:start` log line and the headless timings (K2 measure), K3 (a) and (b) root-caused and fixed,
-  K7.
-- **W2 Flow:** K1 auto-advance + its setting, K4 the always-visible way out, K2 fixes for the measured cause (preload / early load /
-  autoplay), before / after timings.
+- **W1 Bugs:** K3 (a) and (b) root-caused and fixed, K7.
+- **W2 Flow:** K1 auto-advance + its setting, K4 the always-visible way out, K2 (warm the next card, early load, autoplay).
 - **W3 Song reels:** K5 (+ the Song clip setting).
 - **W4 Music while reading:** K6 (+ its setting and station picker, the chip and its sheet).
-- **W5 Close-out:** ledger, device checks in docs/DEVICE-CHECKS.md (auto-advance and its cancel; a swipe starts playing at once -
-  export the log once with `feed:start` lines; Start over on a book card shows chapter 1 at once and Undo puts the page back; an
+- **W5 Close-out:** ledger, device checks in docs/DEVICE-CHECKS.md (auto-advance and its cancel; a swipe starts playing at once; Start over on a book card shows chapter 1 at once and Undo puts the page back; an
   unstarted book opens at its first real chapter; tap a podcast's title mid-slice -> the full episode playing; song clips from the
   chorus; music under book pages with its chip, across page swipes, stopping on a video), ROADMAP (close "Feed reels and speed" and
   the Start over hardening item), a LESSONS line if a new class appears.
@@ -117,7 +112,7 @@ PR flow, shipped = the tag's "Publish Docker Image" run green, branch deleted re
 
 ## 7. Evidence (builder fills: numbers copied from the runs named, verbatim verdict lines)
 
-- K2 swipe-settle to first frame / audio, before / after (WebKit, Chromium; device log if Dean exports it):
+- K2 tests (warm request issued 1 ahead, early load, autoplay after the first gesture on WebKit):
 - K3 (a) falsifier; K3 (b) the rule on Dean's book and the fixtures:
 - K1 / K4 falsifiers:
 - Suites (Node 22.23.1 / 24.20.0) at the reviewed sha:
