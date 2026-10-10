@@ -548,7 +548,7 @@ function musicRealm(cards, o) {
     batches: [{ cards, exhausted: false }],
     route: (m, u) => {
       if (u === '/api/music/stations') return { status: 200, body: { stations: opts.stations || [{ key: 'favorites', name: 'Favorites' }, { key: 's:lofi', name: 'Lofi' }, { key: 's:jazz', name: 'Jazz', hidden: true }] } };
-      if (u.indexOf('/api/music/radio?') === 0) { radio.push(u); const n = radio.length - 1; return { status: 200, body: { items: opts.empty ? [] : TRACKS.slice(n * 5, n * 5 + 5) } }; }
+      if (u.indexOf('/api/music/radio?') === 0) { radio.push(u); const n = radio.length - 1; const k = opts.batch || 5; return { status: 200, body: { items: opts.empty ? [] : TRACKS.slice(n * k, n * k + k) } }; }
       return null;
     },
   }, opts.realm || {}));
@@ -678,5 +678,40 @@ test('K6: Change station writes the synced setting and plays from the new statio
     assert.strictEqual(JSON.parse(r.w.localStorage.getItem('ft-feed-settings')).station, 'favorites', 'the synced setting');
     assert.ok(/seed=station%3Afavorites/.test(r.radio[r.radio.length - 1]), 'the new station\'s batch');
     assert.strictEqual(songLoads(r).length, 2, 'a song from it plays now');
+  } finally { r.close(); }
+});
+
+test('K6: a swipe off the book card before the station answers never starts the song over the next card', async () => {
+  const r = musicRealm([VID, READING, POD]);
+  try {
+    await startRealm(r); // the video card is active (the realm activates the first card)
+    r.show(1); r.show(2); // the book card, then the episode, in the same turn: the station is still being asked
+    await r.settle();
+    assert.ok(r.fetches.some((f) => f.url === '/api/music/stations'), 'the book card did ask for its music');
+    assert.strictEqual(songLoads(r).length, 0, 'no song loaded over the episode');
+    assert.strictEqual(r.loads.filter((l) => l.id).pop().id, 'ep1', 'the episode is what plays');
+  } finally { r.close(); }
+});
+
+test('K6: the next batch of the station is told what this session played (exclude) and what is still queued, so a song is never repeated', async () => {
+  const r = musicRealm([READING, POD], { batch: 2 });
+  try {
+    await startRealm(r); r.show(0); await r.settle();
+    assert.strictEqual(r.radio.length, 1);
+    r.media.dispatchEvent(new r.w.Event('ended')); await r.settle(); // m2 from the queue
+    r.media.dispatchEvent(new r.w.Event('ended')); await r.settle(); // the queue is empty: a new batch
+    assert.strictEqual(r.radio.length, 2);
+    assert.ok(/[?&]exclude=m1,m2(&|$)/.test(r.radio[1]), 'the session\'s songs as plays: ' + r.radio[1]);
+    assert.deepStrictEqual(songLoads(r).map((l) => l.id), ['m1', 'm2', 'm3']);
+  } finally { r.close(); }
+});
+
+test('K6: book, another card, book again in one turn - only the LAST ask for music plays (a stale answer is dropped): one song, never two', async () => {
+  const r = musicRealm([VID, READING, POD, Object.assign({}, READING, { id: 'bk4' })]);
+  try {
+    await startRealm(r);
+    r.show(1); r.show(2); r.show(3);
+    await r.settle();
+    assert.deepStrictEqual(songLoads(r).map((l) => l.id), ['m1'], 'one song for the book card that is active');
   } finally { r.close(); }
 });
