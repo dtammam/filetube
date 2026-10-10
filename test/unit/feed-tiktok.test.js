@@ -476,6 +476,13 @@ function startOverRealm(cards, routes) {
     route: (m, u, body) => {
       if (u === '/api/feed/start-over') return routes.start ? routes.start(body) : { status: 200, body: { ok: true, token: 'a'.repeat(24), previous: {} } };
       if (u === '/api/feed/start-over/undo') return routes.undo ? routes.undo(body) : { status: 200, body: { ok: true } };
+      // v1.383.0 (K7 c): the stored place the confirm names - by default the card's own (nothing moved it since it was served)
+      if (u.indexOf('/api/feed/start-over/place?') === 0) {
+        if (routes.place) return routes.place(u);
+        const id = decodeURIComponent(/[?&]id=([^&]*)/.exec(u)[1]);
+        const c = cards.find((x) => x.id === id) || {};
+        return { status: 200, body: { ok: true, nothing: false, sec: Number(c.media === 'podcast' ? c.position : c.progress) || 0, chapterLabel: c.chapterLabel || '' } };
+      }
       return null;
     },
   });

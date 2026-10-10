@@ -76,11 +76,21 @@ function feedStartOverKind(card) {
   return card.kind === 'video' || card.kind === 'watchlater' ? 'media' : '';
 }
 
-// The confirm's sentence: what is forgotten, named (D9a).
-function feedStartOverText(card) {
+// A reading book card's meta line: "<author> · <chapter as the book names it>", either part alone when the other is empty.
+function feedBookMeta(card) {
   if (!card) return '';
-  if (card.kind === 'book') return 'Your place in ' + (card.title || 'this book') + (card.chapterLabel ? ' (' + card.chapterLabel + ')' : '') + ' will be forgotten. It opens at the beginning next time.';
-  var pos = card.media === 'podcast' ? Number(card.position) || 0 : Number(card.progress) || 0;
+  return [card.author, card.chapterLabel].filter(function (x) { return typeof x === 'string' && x; }).join(' \u00b7 ');
+}
+
+// The confirm's sentence: what is forgotten, named (D9a). v1.383.0 (K7 c): `stored` is the place as STORED, read just before the
+// confirm (GET /api/feed/start-over/place: { sec } for media, { chapterLabel } for a book) - the card only knows the place it was
+// served from, and another device may have moved it since. Without `stored` (the read failed) nothing is named but the item.
+function feedStartOverText(card, stored) {
+  if (!card) return '';
+  if (stored === null) return (card.kind === 'book' ? 'Your place in ' + (card.title || 'this book') + ' will be forgotten. It opens at the beginning next time.' : 'Your place will be forgotten.' + (card.kind === 'watchlater' ? ' It stays in Watch later.' : ''));
+  var label = stored ? stored.chapterLabel : card.chapterLabel;
+  if (card.kind === 'book') return 'Your place in ' + (card.title || 'this book') + (label ? ' (' + label + ')' : '') + ' will be forgotten. It opens at the beginning next time.';
+  var pos = stored ? Number(stored.sec) || 0 : (card.media === 'podcast' ? Number(card.position) || 0 : Number(card.progress) || 0);
   var dur = card.media === 'podcast' ? Number(card.durationSec) || 0 : Number(card.duration) || 0;
   var place = pos > 0 ? 'Your place, ' + feedClockLong(pos) + (dur > 0 ? ' of ' + feedClockLong(dur) : '') + ', will be forgotten' : 'It will count as not started';
   return place + (card.kind === 'watchlater' ? '. It stays in Watch later.' : '.');
@@ -642,7 +652,7 @@ if (typeof module !== 'undefined' && module.exports) {
     FEED_HINT_KEY, FEED_HINT_SESSIONS, FEED_HINT_MS, FEED_INTRO_NOTE_MS, feedHintShouldShow, FEED_HEART_MS,
     feedDeadlineMs, feedRingFraction, feedRemainingSec, feedEmptySummary, feedCountActivity, feedRecapLines, feedRecapTitle,
     feedHoldStep, feedSummaryPayload,
-    feedClockLong, feedStartOverKind, feedStartOverText, feedStartedOverText, FEED_UNDO_MS,
+    feedClockLong, feedStartOverKind, feedStartOverText, feedBookMeta, feedStartedOverText, FEED_UNDO_MS,
     FEED_REEL_END_SLACK_SEC, FEED_REEL_MIN_SEC, feedPlaceFloorSec, FEED_KEEP_SEC, feedKeepHref, feedKeepLabel, feedKeepDue, feedSettingsParam,
     feedLikeUrl, feedIsLiked, feedWatchLaterUrl, feedHideTarget, feedFewerTarget, feedTapKind, FEED_DOUBLE_TAP_PX,
     feedWordCount, feedPaginate, feedLongestHead, FEED_SPLIT_MIN_WORDS, feedBookTarget, feedPageDwellSec, FEED_MAX_PAGES, feedFurther, FEED_FIT_KEY,
@@ -1121,7 +1131,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // D6: a book card's text is laid into pages that fit the stage (feedPaginate over the real box); the card shows one page.
     function fillBookCard(node, stage, overlay, card, index) {
       node.setAttribute('data-paged', '');
-      overlay.appendChild(el('p', 'feed-card__meta', (card.author ? card.author + ' · ' : '') + (card.chapterLabel || '')));
+      overlay.appendChild(el('p', 'feed-card__meta', feedBookMeta(card)));
       var page = el('div', 'feed-card__text feed-card__page');
       stage.appendChild(page);
       var actions = el('div', 'feed-card__actions');
@@ -1218,7 +1228,9 @@ if (typeof module !== 'undefined' && module.exports) {
       if (b.cover) { var img = el('img', 'feed-card__cover'); img.alt = ''; img.src = b.cover; out.push(img); return out; }
       if (b.desc) { out.push(el('p', 'feed-card__desc', b.text)); return out; }
       if (b.end) { out.push(el('p', 'feed-card__meta', b.text)); return out; }
-      if (b.chapterStart && !b.heading && !b.cont) out.push(el('div', 'feed-card__chapter-start', 'Chapter ' + (b.spineIndex + 1)));
+      // v1.383.0 (K3 b): the chapter's name as the BOOK gives it (the server's chapterLabeler), never its spine position - that drew
+      // "Chapter 6" over a book's chapter I; no name (front matter, an older server), no divider
+      if (b.chapterStart && !b.heading && !b.cont && typeof b.chapterLabel === 'string' && b.chapterLabel) out.push(el('div', 'feed-card__chapter-start', b.chapterLabel));
       out.push(el(b.heading ? 'h3' : 'p', b.cont ? 'feed-card__cont' : null, b.text));
       return out;
     }
@@ -1488,10 +1500,21 @@ if (typeof module !== 'undefined' && module.exports) {
       } } });
     }
 
+    // v1.383.0 (K7 c): the confirm names the STORED place, read just before it opens (never the card's served copy); a place with
+    // nothing to forget is said at once, without a confirm. A failed read still asks, naming only the item.
     function confirmStartOver(index, card) {
       if (!U() || cards[index] !== card) return;
-      U().confirm({ title: 'Start over?', body: feedStartOverText(card), confirmLabel: 'Start over', danger: true, signal: signal, doc: document })
-        .then(function (yes) { if (yes && cards[index] === card) startOver(index, card); });
+      var kind = feedStartOverKind(card);
+      if (!kind) return;
+      fetch('/api/feed/start-over/place?kind=' + encodeURIComponent(kind) + '&id=' + encodeURIComponent(card.id), { signal: signal })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; })
+        .then(function (stored) {
+          if (signal.aborted || cards[index] !== card) return;
+          if (stored && stored.nothing === true) { toast('Nothing to start over: it was not started'); return; }
+          U().confirm({ title: 'Start over?', body: feedStartOverText(card, stored && stored.ok ? stored : null), confirmLabel: 'Start over', danger: true, signal: signal, doc: document })
+            .then(function (yes) { if (yes && cards[index] === card) startOver(index, card); });
+        });
     }
 
     var startingOver = {}; // card index -> true while its Start over is in flight (one request, never two)
@@ -1512,19 +1535,33 @@ if (typeof module !== 'undefined' && module.exports) {
           if (res.status === 409 && res.body && res.body.reason === 'nothing') { toast('Nothing to start over: it was not started'); return; }
           if (res.status === 409 && res.body && res.body.reason === 'unrestorable') { toast('Could not start over: its saved place could not be undone, so it was kept'); return; }
           if (res.status !== 200 || !res.body || !res.body.token) { toast('Could not start over'); return; }
-          var before = { fresh: card.fresh, progress: card.progress, position: card.position, startAt: card.startAt, endAt: card.endAt, chapter: card.chapter, skippedIntro: card.skippedIntro };
-          if (!signal.aborted && cards[index] === card) applyStartedOver(index, card, kind);
+          var before = kind === 'book' ? bookSnapshot(index, card)
+            : { fresh: card.fresh, progress: card.progress, position: card.position, startAt: card.startAt, endAt: card.endAt, chapter: card.chapter, skippedIntro: card.skippedIntro };
+          if (!signal.aborted && cards[index] === card) applyStartedOver(index, card, kind, res.body.reset);
           toast(feedStartedOverText(card, res.body.previous), { duration: FEED_UNDO_MS, action: { label: 'Undo', onAction: function () { undoStartOver(index, card, kind, res.body.token, before, sid); } } });
         })
         .catch(function () { startingOver[index] = false; toast('Could not start over'); });
     }
-    // the card says New and plays from the start (a media card); a book card says it starts over and moves nothing more
-    function applyStartedOver(index, card, kind) {
+    // the card says New and plays from the start (a media card); a book card says it starts over, moves nothing more, and shows the
+    // place the reset left (v1.383.0, K3 a: the server's `reset` pages, its first real chapter) - before, only its labels changed
+    // and the old page stayed under them
+    function applyStartedOver(index, card, kind, reset) {
       if (kind === 'book') {
         card.startedOver = true;
         var bp = bookPages[index];
         if (bp) bp.refused = true; // the server forgot the serve too: this card can never set a place again
+        if (bp && reset && Array.isArray(reset.blocks) && reset.blocks.length) {
+          bp.blocks = reset.blocks.slice();
+          if (reset.atEnd) bp.blocks.push({ spineIndex: -1, blockIndex: -1, text: 'The end.', end: true });
+          bp.end = reset.atEnd ? { atEnd: true } : (reset.next || null);
+          bp.pages = []; bp.page = 0; bp.read = {}; bp.pageMs = {}; bp.carry = null; bp.written = null; bp.capped = false;
+          bp.measured = false; // laid out again on the reset text (now, or when a pruned card is rebuilt)
+          card.chapterLabel = typeof reset.chapterLabel === 'string' ? reset.chapterLabel : '';
+          layoutPages(index);
+        }
         var node = cardEls[index];
+        var meta = node && node.querySelector('.feed-card__overlay .feed-card__meta');
+        if (meta) meta.textContent = feedBookMeta(card);
         var kindEl = node && node.querySelector('.feed-card__kind');
         if (kindEl) kindEl.textContent = 'Book \u00b7 Started over';
         var readout = node && node.querySelector('[data-page-readout]');
@@ -1541,6 +1578,26 @@ if (typeof module !== 'undefined' && module.exports) {
       card.chapter = null;
       card.skippedIntro = false;
       refillMediaCard(index);
+    }
+
+    // v1.383.0 (K3 a): what a book card shows, kept at its Start over so Undo puts it back exactly - its blocks (the card's own and
+    // any continuation), its pages and the page it was on, and its chapter name. The read marks are kept too, but the card cannot
+    // write again (the server forgot its serve at the reset AND at the Undo: a next card of the book is served from the place).
+    var BOOK_SNAPSHOT_KEYS = ['blocks', 'pages', 'page', 'read', 'pageMs', 'end', 'measured', 'carry', 'written', 'capped', 'boxH'];
+    function bookSnapshot(index, card) {
+      var bp = bookPages[index];
+      var snap = { chapterLabel: card.chapterLabel, bp: null };
+      if (bp) { snap.bp = {}; BOOK_SNAPSHOT_KEYS.forEach(function (k) { snap.bp[k] = bp[k]; }); }
+      return snap;
+    }
+    function restoreBookSnapshot(index, card, snap) {
+      var bp = bookPages[index];
+      if (!snap) return;
+      card.chapterLabel = snap.chapterLabel;
+      if (!bp || !snap.bp) return;
+      BOOK_SNAPSHOT_KEYS.forEach(function (k) { bp[k] = snap.bp[k]; });
+      var node = cardEls[index];
+      if (node && !node.hasAttribute('data-pruned')) relayoutBook(index); // the same box: the same page; another box: laid out again on it
     }
 
     function refillMediaCard(index) {
@@ -1561,9 +1618,12 @@ if (typeof module !== 'undefined' && module.exports) {
           if (signal.aborted || cards[index] !== card) return; // the view is gone: the place is back, nothing to redraw
           if (kind === 'book') {
             card.startedOver = false;
+            restoreBookSnapshot(index, card, before); // v1.383.0 (K3 a): the pages the card showed before, on the page it was on
             var node = cardEls[index];
             var kindEl = node && node.querySelector('.feed-card__kind');
             if (kindEl) kindEl.textContent = feedKindLine(card);
+            var meta = node && node.querySelector('.feed-card__overlay .feed-card__meta');
+            if (meta) meta.textContent = feedBookMeta(card);
             var readout = node && node.querySelector('[data-page-readout]');
             if (readout) readout.textContent = 'Your place is back';
             return;

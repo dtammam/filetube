@@ -248,7 +248,10 @@ test('v1.380.0 a book with no place is a NEW-book card: description as plain tex
   assert.strictEqual(card.next, null, 'no next: reading it moves nothing');
   assert.strictEqual(card.atEnd, false);
   assert.strictEqual(card.coverUrl, null);
-  assert.strictEqual(card.chapterLabel, 'Chapter 2 of 4');
+  // v1.383.0 (K3 b): the first REAL chapter is the book's chapter 1 (spine item 2 here, after one front-matter page; this book has
+  // no table of contents, so the count starts there) - it said "Chapter 2 of 4", the spine position
+  assert.strictEqual(card.chapterLabel, 'Chapter 1');
+  assert.strictEqual(card.blocks[0].chapterLabel, 'Chapter 1', 'the chapter-start block carries the same name for the divider');
   // serving wrote nothing; the stored place, the staged place and the finished latch are all still empty
   assert.strictEqual(userStore.getOneBookProgress(uid, bookIds.Delta), null);
   assert.ok(!effectiveBookProgress(uid, bookIds.Delta), 'nothing staged either');
