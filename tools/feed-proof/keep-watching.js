@@ -60,6 +60,9 @@ async function main() {
   const results = [];
 
   for (const engine of ENGINES) {
+    // re-seeded per engine (gate r2, qa): the previous engine's run played past 90 % and latched the clip watched, so the next
+    // engine's Feed never served it - forget the place AND the latch first
+    userStore.removeHistory(user.id, 'clip1');
     userStore.setProgress(user.id, 'clip1', { timestamp: PLACE, duration: 30, updatedAt: new Date().toISOString() }); // started: Continue
     const browser = await pw[engine].launch({ args: engine === 'chromium' ? ['--autoplay-policy=no-user-gesture-required'] : [] });
     const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });

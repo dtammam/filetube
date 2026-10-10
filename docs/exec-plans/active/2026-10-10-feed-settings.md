@@ -305,3 +305,60 @@ the caller's own row, GET re-checks every row, key collisions fail closed; (b) p
 both ingress paths allowlist-then-cap, about 20 KB a user worst case; (c) `fs` string-only, at most 2048 chars, normalize builds
 fresh objects (no prototype pollution); (d) Fewer from only reorders a visibility-gated pool, draws capped at 5000; (e) titles
 render as text (ui.row fill -> textContent; toasts spanText).
+
+### builder, after r1 (b1f776b9 the fixes, ec29b744 the binding tests)
+
+adversary C1 / W1 / W2 and S2 / S3, qa W1-W4 and suggestions 1-6, security S1 / S2: as listed in b1f776b9's message. The fix's
+own mutants: 22, all killed after 5 got new tests (ec29b744).
+
+Gate: APPROVED r2 @ec29b744 - adversary
+Gate: CHANGES r2 @ec29b744 - qa
+Gate: APPROVED r2 @ec29b744 - security-brief
+
+### adversary r2 @ec29b744
+
+r1 findings vs the fix (each r1 repro re-run on ec29b744): C1 fixed - adv-kw-listen2.js (Keep watching, Listen, pause, Watch from
+Listen, seek 21.5, pause, play past): Chromium stored 25 with no saves behind, 26.80 past; WebKit the same (26.80); before the
+fix 24.29 / 24.25. Ended, seek, background checkpoints and the bgAudio element go through the one save function (reasoned; the
+seek measured). W1 fixed (adv-d6: 409 too-early, stored null). W2 fixed (adv-hidebook: ["book:Older(new)"], was []). S2/S3 bound.
+Mutants against the fix: 21 run, 20 killed (F01-F07 the floor, F08-F11 D6, F12 hidden book, F14-F17 store purges / rekey,
+F18-F21 keepGoing, the fs cap, the Fewer target). Survived F13 (authorHeldBack disabled).
+SUGGESTION S-r2-1: the new-book Fewer hold-back (authorHeldBack) is untested new behaviour.
+Instruments: 22 targeted files 305 / 305 pass; lint:ui OK; overlay census clean; keep-watching.js PASS chromium and webkit.
+Sandbox diffed clean; worktree untouched.
+
+### qa r2 @ec29b744
+
+r1 W1-W4 and suggestions 1-6: fixed / disclosed as prescribed (each re-verified, bound by tests). The C1 player.js change:
+correct (save-id rule matches saveProgressToServer; updated on adopt and after teardown; cleared on close; a load of another
+item or a Feed card without one clears it; applyAdoptFlavor no longer writes it); no regression found. Suspicion, not a finding:
+an adopt of a chapter id whose data omits chapterStartSec would key `<id>::cN` (no shipped caller builds it).
+NEW WARNING: docs/LESSONS-rules.md:90 teaches the r1 design C1 disproved ("carried by the ADOPT contract ... survives it as
+placeFloorSec ... Guard: the adopt test"); rewrite to the save-id-keyed player state with a fresh-slice-load proof as the guard.
+SUGGESTION (pre-existing): keep-watching.js `both` exits 2 - the first engine leaves the shared server's place past 25, WebKit then
+times out; each engine passes alone. Reseed per engine or drop `both`.
+Ran (ec29b744 sandbox): test:unit 9440 / 9430 pass / 8 sandbox-only fails (no .git; worktree re-run 69 / 69); targeted
+integration 91 / 91; lint:ui OK; overlay census clean; eslint clean; keep-watching.js chromium PASS (listenBehind 25 / 0, past
+27.503 / 1) and webkit PASS. Stale sweep: only LESSONS-rules.md:90. Tree unchanged.
+
+### security-brief r2 @ec29b744
+
+(read-only seat: traced by reading; nothing executed; no edits)
+CRITICAL: none. WARNING: none. r1 S1 fixed (route-read-classification.test.js:51); r1 S2 fixed (purges in removeBookState,
+removePodcastEpisodeState, removeMusicState; rekey in rekeyMusicState; one spelling, store feedHiddenKey, inside each function's
+transaction). Delta: the hide routes keep their validation and neutral 404 (the new hidden-book pre-filter runs after
+bookVisibleTo: it only narrows); the rekey's UPDATE OR REPLACE keeps each row's user_id (PRIMARY KEY (user_id, media_id)), so it
+cannot merge two users' rows and the song: prefix cannot touch another kind; `fs` still string-only, at most 2048, fresh objects,
+a kept `where` on New only has no effect (fromStart needs !fresh; a new book is hydrated before fromStart is read), the removed
+fields are ignored; the player floor can only withhold a save (the server's forward-only rule still enforces).
+SUGGESTION N1: the purge comments at lib/auth/store.js:1345 / :1654 / :1769 say "(lib/feed/api.js feedHiddenKey)" - it lives in
+store.js now.
+
+### builder, after r2
+
+qa r2 WARNING: docs/LESSONS-rules.md's floor line rewritten to the save-id design C1 proved (and its guard: a real-browser proof
+through a fresh slice load). security-brief r2 N1: the three store comments point at feedHiddenKey in store.js. qa r2 suggestion:
+keep-watching.js reseeds each engine (the first one's run latched the clip watched) - `node tools/feed-proof/keep-watching.js .
+<out> both` -> `SUMMARY keep-watching: 2/2 pass (chromium+webkit)`, each `listenBehind {stored 25, saves 0}`, past 27.50 / 27.50.
+Disclosed, not bound: adversary S-r2-1 (the new-book Fewer hold-back, authorHeldBack, mutant F13 survives - every fixture book
+shares one author, so the ordering cannot be measured without a second author).
