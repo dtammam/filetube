@@ -141,3 +141,40 @@ test('served registry: entries age out (TTL) and the oldest are evicted past the
   assert.strictEqual(reg.status(1, 'book', 'c', 'x'), 'unknown');
   assert.strictEqual(reg.status(1, 'book', 'b', 'x'), 'ok');
 });
+
+// ---- v1.382.0 (D6): a reel shorter than the minute counts once played whole; the minute stays the floor otherwise ------
+test('v1.382.0 D6 freshNeedSec(duration, slice): the whole reel less the slack, never above the minute, a 10 s look never enough', () => {
+  assert.strictEqual(safe.freshNeedSec(1200), 60, 'no slice: the shipped minute');
+  assert.strictEqual(safe.freshNeedSec(1200, 60), 60 - safe.REEL_END_SLACK_SEC, 'a 60 s reel: 59 s');
+  assert.strictEqual(safe.freshNeedSec(1200, 30), 29);
+  assert.strictEqual(safe.freshNeedSec(1200, 90), 60, 'a 90 s reel: the minute comes first');
+  assert.strictEqual(safe.freshNeedSec(45, 30), 29, 'a 45 s clip: 80% is 36, the 30 s reel 29');
+  assert.strictEqual(safe.freshNeedSec(1200, 0), 60, '0 = unknown');
+  assert.strictEqual(safe.freshNeedSec(1200, -5), 60);
+  assert.strictEqual(safe.freshNeedSec(1200, 'x'), 60);
+  assert.strictEqual(safe.freshNeedSec(1200, 0.5), 1, 'never below 1 s');
+  for (const slice of [30, 45, 60, 90, 120]) {
+    const d = safe.decideTimeMove({ storedSec: 0, nextSec: 10, served: 'ok', fresh: true, playedSec: 10, durationSec: 1200, sliceSec: slice });
+    assert.strictEqual(d.reason, 'too-early', 'a 10 s look writes nothing (' + slice + ' s reel)');
+  }
+  assert.strictEqual(safe.decideTimeMove({ storedSec: 0, nextSec: 60, served: 'ok', fresh: true, playedSec: 59.2, durationSec: 1200, sliceSec: 60 }).ok, true, 'the whole 60 s reel counts');
+  assert.strictEqual(safe.decideTimeMove({ storedSec: 0, nextSec: 60, served: 'ok', fresh: true, playedSec: 59.2, durationSec: 1200 }).reason, 'too-early', 'without the slice: the minute');
+});
+
+test('v1.382.0 D6 the served registry keeps the slice a card was served with, through a write and a Start over; a re-serve replaces it', () => {
+  let t = 1000;
+  const reg = createServedRegistry({ now: () => t });
+  reg.mark('u', 'media', 'v', '', 's1', true, 60);
+  assert.strictEqual(reg.sliceSecOf('u', 'media', 'v'), 60);
+  reg.advance('u', 'media', 'v', '2026-10-10T00:00:00.000Z');
+  assert.strictEqual(reg.sliceSecOf('u', 'media', 'v'), 60, 'kept through a landed write');
+  reg.markReset('u', 'media', 'v', 's1');
+  assert.strictEqual(reg.sliceSecOf('u', 'media', 'v'), 60, 'the started-over card replays its same slice');
+  reg.mark('u', 'media', 'v', '', 's1', true);
+  assert.strictEqual(reg.sliceSecOf('u', 'media', 'v'), 0, 'a serve with no slice: unknown (the minute rule alone)');
+  for (const junk of [-1, 'x', Infinity, 1e9]) { reg.mark('u', 'media', 'v', '', 's1', true, junk); assert.strictEqual(reg.sliceSecOf('u', 'media', 'v'), 0, String(junk)); }
+  assert.strictEqual(reg.sliceSecOf('u', 'media', 'nothing'), 0);
+  reg.mark('u', 'media', 'v', '', 's1', true, 30);
+  t += reg.size() ? 7 * 60 * 60 * 1000 : 0;
+  assert.strictEqual(reg.sliceSecOf('u', 'media', 'v'), 0, 'an aged-out entry is unknown');
+});
