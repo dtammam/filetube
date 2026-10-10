@@ -715,3 +715,66 @@ test('K6: book, another card, book again in one turn - only the LAST ask for mus
     assert.deepStrictEqual(songLoads(r).map((l) => l.id), ['m1'], 'one song for the book card that is active');
   } finally { r.close(); }
 });
+
+// ---- the finisher's bindings (v1.383.0 import, 2026-10-10): claims the mutation pass on the imported tree found unbound -------
+
+test('K2 a: a card come back to does not warm the card after it again - each card is warmed once in a session', async () => {
+  const r = flowRealm([VID, POD, SONG]);
+  try {
+    await startRealm(r); r.show(0); await r.settle();
+    r.show(1); await r.settle();
+    r.show(0); await r.settle(); // back: the episode after it was warmed already
+    const epWarms = r.fetches.filter((f) => f.headers && f.headers.Range && f.url === '/episode/ep1');
+    assert.strictEqual(epWarms.length, 1, 'the episode\'s first bytes asked for once');
+  } finally { r.close(); }
+});
+
+test('K2 b: a FRESH card left and come back to keeps the minute it already played (one tracker per card, not a new one)', async () => {
+  const FRESH = Object.assign({}, POD, { fresh: true });
+  const r = flowRealm([FRESH, VID]);
+  try {
+    await startRealm(r); r.show(0); await r.settle();
+    Object.defineProperty(r.media, 'paused', { value: false, configurable: true });
+    for (let s = 600; s <= 640; s++) { r.advance(1000); r.timeAt(s); }
+    const first = r.loads.filter((l) => l.id === 'ep1')[0].data;
+    assert.ok(first.playedSec() >= 39, `played ${first.playedSec()}`);
+    r.show(1); await r.settle();
+    r.show(0); await r.settle();
+    const again = r.loads.filter((l) => l.id === 'ep1');
+    assert.strictEqual(again.length, 2, 'the episode loaded again');
+    assert.ok(again[1].data.playedSec() >= 39, `the second load reports the same played time: ${again[1].data.playedSec()}`);
+    assert.strictEqual(again[1].data.progressGate(), false, 'still under the minute: still shut');
+  } finally { r.close(); }
+});
+
+test('K3 b: a book with no usable table of contents counts its chapters from its first REAL chapter ("Chapter 1"), front matter unnamed', () => {
+  const { chapterLabeler } = require('../../lib/books/excerpt');
+  const prose = Array.from({ length: 160 }, (_, i) => 'w' + i).join(' ');
+  const blocksAt = [[], [{ tag: 'p', text: 'Copyright 2020. All rights reserved.' }], [{ tag: 'p', text: prose }], [{ tag: 'p', text: prose }]];
+  const book = { packageInfo: () => ({ description: null, navXhtml: null, navPath: null, toc: [] }), loadBlocks: (i) => blocksAt[i] || [] };
+  const spine = [{ idref: 'cover', href: 'OEBPS/cover.xhtml' }, { idref: 'legal', href: 'OEBPS/legal.xhtml' }, { idref: 'a', href: 'OEBPS/a.xhtml' }, { idref: 'b', href: 'OEBPS/b.xhtml' }];
+  const labelOf = chapterLabeler(book, spine);
+  assert.deepStrictEqual([0, 1, 2, 3].map(labelOf), ['', '', 'Chapter 1', 'Chapter 2']);
+  assert.strictEqual(labelOf(9), '', 'out of range: no name');
+});
+
+test('K6: a station answer that arrives after the reader moved on (another card, then a new book card) is dropped - one song, never a second load', async () => {
+  const r = musicRealm([VID, READING, POD, Object.assign({}, READING, { id: 'bk4' })]);
+  try {
+    await startRealm(r);
+    const orig = r.w.fetch;
+    let release = null;
+    r.w.fetch = (u, init) => {
+      const p = orig(u, init);
+      if (String(u).indexOf('/api/music/radio?') === 0 && !release) return new Promise((res) => { release = () => res(p); });
+      return p;
+    };
+    r.show(1); await r.settle(); // the book card asks; its batch is held
+    assert.ok(release, 'the first batch is in flight');
+    r.show(2); await r.settle(); // the episode: the music stops
+    r.show(3); await r.settle(); // a new book card: its own ask, answered at once
+    assert.deepStrictEqual(songLoads(r).map((l) => l.id), ['m6'], 'the new book card\'s song');
+    release(); await r.settle(); // the first ask's late answer
+    assert.deepStrictEqual(songLoads(r).map((l) => l.id), ['m6'], 'the stale answer never loads a second song');
+  } finally { r.close(); }
+});
