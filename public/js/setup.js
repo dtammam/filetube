@@ -2182,7 +2182,8 @@ function wireFeedSettingsPage(doc, signal) {
   }, { signal });
   reflect();
   // the account's copy can land after this page is drawn (a fresh device): draw it again then
-  if (win.__ftPrefsSync && typeof win.__ftPrefsSync.whenBooted === 'function') win.__ftPrefsSync.whenBooted(() => { if (!signal || !signal.aborted) reflect(); });
+  // (both lists: the choices and, gate r1 qa suggestion 2, the Fewer from names under Hidden and fewer)
+  if (win.__ftPrefsSync && typeof win.__ftPrefsSync.whenBooted === 'function') win.__ftPrefsSync.whenBooted(() => { if (!signal || !signal.aborted) { reflect(); renderFeedTuning(d, signal); } });
   return { reflect, save };
 }
 

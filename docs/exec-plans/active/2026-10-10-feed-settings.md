@@ -216,20 +216,28 @@ Comments or captions overlays; per-kind weights or ratios; per-device (unsynced)
   the server requires and every shell loads.
 - **D2.** Five switches; the last one on is locked (with the note); an all-off value reads as all on everywhere.
 - **D3.** Per kind New and ones I started / New only / Only ones I started; the server filters by the label's fresh rule.
-- **D4.** From my saved place / From the beginning, greyed with its reason on New only. A From the beginning card says so in its kind
-  line and gives the player its saved place as a FLOOR (player.js placeFloorAllows): nothing saves at or below it, in the Feed or
-  after Keep watching's adopt, until playback passes it. NOT as planned: Watch later has no Where (it keeps its place, like D3's Both).
+- **D4.** From my saved place / From the beginning, greyed with its reason on New only (the choice is kept, not reset). A From the
+  beginning card says so in its kind line and gives the player its saved place as a FLOOR: player state keyed by the item's SAVE
+  id (gate r1, adversary C1), so nothing saves at or below it for that item - in the Feed, after Keep watching's adopt, after
+  Listen's fresh chapter load, and on the outgoing save when another item opens - until playback passes it or the player closes. NOT as planned: Watch later has no Where (it keeps its place, like D3's Both).
 - **D5.** 30 / 60 / 90 s / 2 min / Whole chapter (no chapters: 2 min, was 3); podcasts 1 / 2 / 4 min (default 2, was 4). A reel has
   no chapter record (the card says "1:00 of this video"; the recap counts its minutes).
-- **D6.** The served registry keeps each card's slice; a fresh card counts as started after its whole reel less 1 s when that is
-  shorter than the minute (client and server, one rule).
+- **D6.** The served registry keeps each card's REEL length (a podcast slice, a video reel; 0 for a Whole chapter slice: gate r1,
+  adversary W1); a fresh card counts as started after its whole reel less 1 s when that reel is 30 s or more and shorter than the
+  minute (client and server, one rule).
 - **D7.** Keep watching / listening (in the last 10 s and on Done, never after the file ended), Keep reading on a book card's last
   page. Video: /watch.html?v=; library audio: Music through audioOpenHref; podcast: /podcasts?play=; book: the reader. The session
-  ends as Done would (record saved, no recap); the player is carried over playing.
+  ends as Done would (record saved, no recap); the player is carried over playing. Measured in a browser: the video path (both
+  engines) and, by the r1 adversary, the podcast path (the floor holds). Reasoned only: library audio (a chaptered file opens its
+  base id in Music; a miss there bounces to /watch, the v1.236 contract).
 - **D8.** The settings ride each batch request; cards on screen never change.
 - **D10.** Double tap = like (on only) with a heart where the finger was; a lone tap waits the 350 ms window. The "..." on every card.
 - **D11.** Hide this (every kind, Undo 10 s, Settings list with Unhide); Fewer from (synced, 0.25 drawn once per item a session,
-  Undo 10 s, Settings list with Remove).
+  Undo 10 s, Settings list with Remove). One list both ways (gate r1, qa W4, disclosed): what Home's "Hide from feed" hid - and
+  the v1.373.0 playlist downloads hide automatically - is also never served in the Feed and is listed under Settings > Feed >
+  Hidden and fewer, where Unhide brings it back on Home too. A hidden episode / book / song row is retired with its item and a
+  hidden song follows its track's re-key (store feedHiddenKey, the one spelling). A name the synced list cannot keep (over 100
+  characters) is not offered as Fewer from.
 - **D12-D14.** Moved (section 5).
 
 ## 11. Gate

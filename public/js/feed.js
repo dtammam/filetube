@@ -147,14 +147,16 @@ function feedPlayedStep(state, currentTime, nowMs, playing, rate) {
   return s;
 }
 // A clip shorter than 75 s needs 80% of itself, never more than a minute (mirrors lib/feed/safe-progress.js freshNeedSec).
-// v1.382.0 (D6): and a reel shorter than that counts once played WHOLE (its length less FEED_REEL_END_SLACK_SEC, the last
-// update before the reel's end pause) - the same rule as the server's, which checks it again.
+// v1.382.0 (D6): and a REEL of at least FEED_REEL_MIN_SEC that is shorter than that counts once played WHOLE (its length less
+// FEED_REEL_END_SLACK_SEC, the last update before the reel's end pause) - the same rule as the server's, which checks it again.
+// The card's `reelSec` is the length the server registered (0 for a chapter slice: gate r1, adversary W1).
 var FEED_REEL_END_SLACK_SEC = 1;
+var FEED_REEL_MIN_SEC = 30;
 function feedFreshNeedSec(durationSec, sliceSec) {
   var d = Number(durationSec);
   var need = isFinite(d) && d > 0 ? Math.min(FEED_FRESH_START_SEC, Math.max(1, d * 0.8)) : FEED_FRESH_START_SEC;
   var sl = Number(sliceSec);
-  if (isFinite(sl) && sl > 0) need = Math.min(need, Math.max(1, sl - FEED_REEL_END_SLACK_SEC));
+  if (isFinite(sl) && sl >= FEED_REEL_MIN_SEC) need = Math.min(need, sl - FEED_REEL_END_SLACK_SEC);
   return need;
 }
 function feedFreshStarted(state, needSec) { return !!state && state.sec >= (typeof needSec === 'number' && needSec > 0 ? needSec : FEED_FRESH_START_SEC); }
@@ -608,8 +610,17 @@ function feedFewerTarget(card) {
   else if (card.kind === 'book') { type = 'author'; name = card.author; }
   else if (card.media === 'podcast') { type = 'show'; name = card.showName; }
   else if (card.media === 'video' || card.media === 'audio') { type = 'channel'; name = card.channelName; }
-  name = typeof name === 'string' ? name.replace(/\s+/g, ' ').trim() : '';
-  return type && name ? { type: type, name: name, key: type + ':' + name } : null;
+  // the key through the shared reading's own rule (gate r1, qa W1): a name it cannot keep (over 100 characters, a control
+  // character) is never offered - before, the menu offered it, nothing was stored and the toast said it was
+  var FSr = feedSettingsReading();
+  var key = FSr && typeof name === 'string' ? FSr.fewerKey(type, name) : '';
+  return key ? { type: type, name: key.slice(type.length + 1), key: key } : null;
+}
+// The shared reading (public/js/feed-settings.js): the page's global in a browser, the module in node.
+function feedSettingsReading() {
+  if (typeof window !== 'undefined' && window.FileTubeFeedSettings) return window.FileTubeFeedSettings;
+  if (typeof module !== 'undefined' && module && typeof module.require === 'function') { try { return module.require('./feed-settings.js'); } catch (_) { return null; } }
+  return null;
 }
 // The tap / double-tap discrimination (the watch page's window, player.js DOUBLE_TAP_MS): a second tap inside the window and
 // near the first is a DOUBLE (the like); otherwise the tap is a SINGLE that fires once the window has passed (play / pause).
@@ -632,7 +643,7 @@ if (typeof module !== 'undefined' && module.exports) {
     feedDeadlineMs, feedRingFraction, feedRemainingSec, feedEmptySummary, feedCountActivity, feedRecapLines, feedRecapTitle,
     feedHoldStep, feedSummaryPayload,
     feedClockLong, feedStartOverKind, feedStartOverText, feedStartedOverText, FEED_UNDO_MS,
-    FEED_REEL_END_SLACK_SEC, feedPlaceFloorSec, FEED_KEEP_SEC, feedKeepHref, feedKeepLabel, feedKeepDue, feedSettingsParam,
+    FEED_REEL_END_SLACK_SEC, FEED_REEL_MIN_SEC, feedPlaceFloorSec, FEED_KEEP_SEC, feedKeepHref, feedKeepLabel, feedKeepDue, feedSettingsParam,
     feedLikeUrl, feedIsLiked, feedWatchLaterUrl, feedHideTarget, feedFewerTarget, feedTapKind, FEED_DOUBLE_TAP_PX,
     feedWordCount, feedPaginate, feedLongestHead, FEED_SPLIT_MIN_WORDS, feedBookTarget, feedPageDwellSec, FEED_MAX_PAGES, feedFurther, FEED_FIT_KEY,
     FEED_EDGE_PX, FEED_SWIPE_MIN_PX, feedPageSwipe, FEED_PAGE_HINT_KEY,
@@ -1734,7 +1745,7 @@ if (typeof module !== 'undefined' && module.exports) {
       // shared player, whose ONE progress writer (saveProgressToServer: pings, the pause / background checkpoint, a seek, the end)
       // asks it before every POST and reports the played seconds the server checks again. Not-fresh cards carry no guard.
       var tracker = card.fresh === true && card.kind !== 'song' ? feedNewPlayTracker() : null;
-      var needSec = feedFreshNeedSec(card.media === 'podcast' ? card.durationSec : card.duration, (Number(card.endAt) || 0) - (Number(card.startAt) || 0));
+      var needSec = feedFreshNeedSec(card.media === 'podcast' ? card.durationSec : card.duration, Number(card.reelSec) || 0);
       if (tracker) {
         data.progressGate = function () { return feedFreshStarted(tracker, needSec); };
         data.playedSec = function () { return tracker.sec; };

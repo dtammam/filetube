@@ -557,7 +557,7 @@ test('W4 view (D9): a book card started over says so and never moves the place a
   } finally { r.close(); }
 });
 
-test('W4 view (D9): no "..." on a song or a new book; the menu on every other kind', async () => {
+test('W4 view (D9; v1.382.0): every card has its "..." now, and Start over is still never on a song or a new book', async () => {
   const NEW = Object.assign({}, BOOK, { id: 'nb', newBook: true, blocks: [] });
   const SONG = { kind: 'song', id: 't1', track: { id: 't1', title: 'S', artist: 'A' } };
   const r = startOverRealm([SONG, NEW, PLACED_VID, POD, BOOK], {});

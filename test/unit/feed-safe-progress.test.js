@@ -152,7 +152,11 @@ test('v1.382.0 D6 freshNeedSec(duration, slice): the whole reel less the slack, 
   assert.strictEqual(safe.freshNeedSec(1200, 0), 60, '0 = unknown');
   assert.strictEqual(safe.freshNeedSec(1200, -5), 60);
   assert.strictEqual(safe.freshNeedSec(1200, 'x'), 60);
-  assert.strictEqual(safe.freshNeedSec(1200, 0.5), 1, 'never below 1 s');
+  assert.strictEqual(safe.freshNeedSec(1200, 0.5), 60, 'a slice under REEL_MIN_SEC never relaxes the minute (gate r1, adversary W1)');
+  assert.strictEqual(safe.freshNeedSec(1200, 8), 60, 'an 8 s slice (a short chapter, a reel the file end cut) keeps the minute');
+  assert.strictEqual(safe.freshNeedSec(1200, 29.9), 60);
+  assert.strictEqual(safe.REEL_MIN_SEC, 30);
+  assert.strictEqual(safe.freshNeedSec(20, 8), 16, 'a 20 s clip keeps its own 80% rule');
   for (const slice of [30, 45, 60, 90, 120]) {
     const d = safe.decideTimeMove({ storedSec: 0, nextSec: 10, served: 'ok', fresh: true, playedSec: 10, durationSec: 1200, sliceSec: slice });
     assert.strictEqual(d.reason, 'too-early', 'a 10 s look writes nothing (' + slice + ' s reel)');

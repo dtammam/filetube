@@ -131,38 +131,82 @@ test('the player floor (REAL player.js): a From the beginning card saves nothing
     r.pauseAt(80); await settle();
     r.pauseAt(400); await settle();
     assert.strictEqual(r.progressPosts().length, 0, 'on the watch page, behind (and AT) the place: still nothing saved');
+    // gate r1 (adversary C1): Listen - a FRESH load of a chapter slice of the same item (music.js handoffFrom), which saves under
+    // the BASE id; behind the place it still saves nothing
+    r.player.load('vs::c1', { id: 'vs::c1', type: 'audio', title: 'Middle', filePath: '/lib/vs.mp4', duration: 1200, chapterStartSec: 300, baseMediaId: 'vs', progressEndpoint: '/api/progress', resumeMode: 'music', autoAdvanceViaTrackNav: true }, { slot: r.slot });
+    await settle();
+    r.pauseAt(350); await settle();
+    assert.strictEqual(r.progressPosts().length, 0, 'Listen (a fresh chapter load) behind the place: nothing saved');
     r.pauseAt(410); await settle();
     const after = r.progressPosts();
     assert.strictEqual(after.length, 1, 'past the place: it saves');
-    assert.strictEqual(after[0].url, '/api/progress', 'through the watch page\'s own route');
+    assert.strictEqual(after[0].url, '/api/progress', 'through the page\'s own route');
+    assert.strictEqual(after[0].body.id, 'vs', 'under the base id');
     assert.strictEqual(after[0].body.timestamp, 410);
     r.pauseAt(100); await settle();
-    assert.strictEqual(r.progressPosts().length, 2, 'the floor ended once passed: the watch page saves as it always does');
+    assert.strictEqual(r.progressPosts().length, 2, 'the floor ended once passed: the page saves as it always does');
   } finally { r.close(); }
 });
 
-test('the player floor: a surface that declares one (a Feed card) replaces or clears it; one that does not keeps it; junk is none', () => {
-  const { applyAdoptFlavor, placeFloorAllows, validPlaceFloor } = require('../../public/js/player.js');
-  const cur = { placeFloorSec: 400 };
-  applyAdoptFlavor(cur, { title: 'x', progressEndpoint: null });
-  assert.strictEqual(cur.placeFloorSec, 400, 'the watch page keeps it');
+test('the player floor (REAL player.js): opening ANOTHER item while floored - the outgoing save of the floored item is still guarded; the new item saves normally; a close ends it', async () => {
+  const r = playerRealm();
+  try {
+    r.player.load('vs', Object.assign({ id: 'vs', filePath: '/lib/vs.mp4' }, feed.feedPlayerDescriptor(FROM_START_VID)), { slot: r.slot });
+    await settle();
+    r.at(60);
+    r.player.load('vo', { id: 'vo', type: 'video', title: 'Other', filePath: '/lib/vo.mp4', duration: 900, progressEndpoint: null, resumeMode: null }, { slot: r.slot });
+    await settle();
+    assert.ok(!r.progressPosts().some((p) => p.body.id === 'vs'), 'the outgoing save of the floored item (60 s, behind 400 s) never went out');
+    r.pauseAt(30); await settle();
+    assert.deepStrictEqual(r.progressPosts().map((p) => [p.body.id, p.body.timestamp]), [['vo', 30]], 'the other item saves: its own floor is none');
+    // back to the first item on another surface (a plain load, no floor declared): the floor ended with the switch
+    r.player.load('vs', { id: 'vs', type: 'video', title: 'V', filePath: '/lib/vs.mp4', duration: 1200, progressEndpoint: null, resumeMode: null }, { slot: r.slot });
+    await settle();
+    r.pauseAt(20); await settle();
+    assert.ok(r.progressPosts().some((p) => p.body.id === 'vs' && p.body.timestamp === 20), 'a later, deliberate open of the item saves as always');
+  } finally { r.close(); }
+  const c = playerRealm();
+  try {
+    c.player.load('vs', Object.assign({ id: 'vs', filePath: '/lib/vs.mp4' }, feed.feedPlayerDescriptor(FROM_START_VID)), { slot: c.slot });
+    await settle();
+    c.at(60);
+    c.player.close();
+    await settle();
+    assert.strictEqual(c.progressPosts().length, 0, 'the close\'s last save is still guarded');
+    c.player.load('vs', { id: 'vs', type: 'video', title: 'V', filePath: '/lib/vs.mp4', duration: 1200, progressEndpoint: null, resumeMode: null }, { slot: c.slot });
+    await settle();
+    c.pauseAt(20); await settle();
+    assert.strictEqual(c.progressPosts().length, 1, 'after a close the floor is gone');
+  } finally { c.close(); }
+});
+
+test('the player floor (pure): a load that declares one sets or clears it; any load of the same SAVE id keeps it; another item ends it; junk is none', () => {
+  const { nextPlaceFloor, placeFloorAllows, validPlaceFloor, placeFloorSaveId, applyAdoptFlavor } = require('../../public/js/player.js');
+  let f = nextPlaceFloor(null, 'vs', { placeFloorSec: 400 });
+  assert.deepStrictEqual(f, { id: 'vs', sec: 400 });
+  assert.deepStrictEqual(nextPlaceFloor(f, 'vs', { title: 'x', progressEndpoint: null }), f, 'the watch page (no floor declared) keeps it');
+  assert.strictEqual(placeFloorSaveId('vs::c1', { chapterStartSec: 300, baseMediaId: 'vs' }), 'vs', 'a chapter track saves under its base id');
+  assert.strictEqual(placeFloorSaveId('vs::c1', { baseMediaId: 'vs' }), 'vs::c1', 'saveProgressToServer\'s own rule: chapterStartSec AND baseMediaId');
+  assert.deepStrictEqual(nextPlaceFloor(f, placeFloorSaveId('vs::c1', { chapterStartSec: 300, baseMediaId: 'vs' }), { chapterStartSec: 300, baseMediaId: 'vs' }), f, 'Listen keeps it');
+  assert.strictEqual(nextPlaceFloor(f, 'other', {}), null, 'another item ends it');
+  assert.deepStrictEqual(nextPlaceFloor(f, 'vs', { placeFloorSec: 120 }), { id: 'vs', sec: 120 }, 'a Feed card replaces it');
+  assert.strictEqual(nextPlaceFloor(f, 'vs', { placeFloorSec: undefined }), null, 'a Feed card without one clears it');
+  assert.strictEqual(nextPlaceFloor(null, 'vs', null), null);
+  for (const junk of [-1, 0, NaN, Infinity, '400', null]) { assert.strictEqual(validPlaceFloor(junk), undefined, String(junk)); assert.strictEqual(nextPlaceFloor(f, 'vs', { placeFloorSec: junk }), null, String(junk)); }
+  const g = { id: 'vs', sec: 60 };
+  assert.deepStrictEqual(placeFloorAllows(g, 'vs', 59), { allow: false, floor: g });
+  assert.deepStrictEqual(placeFloorAllows(g, 'vs', 60), { allow: false, floor: g }, 'equal is not past (the forward-only boundary)');
+  assert.deepStrictEqual(placeFloorAllows(g, 'vs', NaN), { allow: false, floor: g });
+  assert.deepStrictEqual(placeFloorAllows(g, 'vs', 61), { allow: true, floor: null }, 'passed: gone');
+  assert.deepStrictEqual(placeFloorAllows(g, 'other', 5), { allow: true, floor: g }, 'another item\'s save is not this floor\'s business');
+  assert.deepStrictEqual(placeFloorAllows(null, 'vs', 1), { allow: true, floor: null });
+  const cur = {};
   applyAdoptFlavor(cur, { placeFloorSec: 120 });
-  assert.strictEqual(cur.placeFloorSec, 120);
-  applyAdoptFlavor(cur, { placeFloorSec: undefined });
-  assert.strictEqual(cur.placeFloorSec, undefined, 'a Feed card without one clears it');
-  for (const junk of [-1, 0, NaN, Infinity, '400', null]) assert.strictEqual(validPlaceFloor(junk), undefined, String(junk));
-  const c2 = { placeFloorSec: 60 };
-  assert.strictEqual(placeFloorAllows(c2, 59), false);
-  assert.strictEqual(placeFloorAllows(c2, 60), false, 'equal is not past (the forward-only boundary)');
-  assert.strictEqual(placeFloorAllows(c2, NaN), false);
-  assert.strictEqual(c2.placeFloorSec, 60, 'a refused save leaves the floor');
-  assert.strictEqual(placeFloorAllows(c2, 61), true);
-  assert.strictEqual(c2.placeFloorSec, undefined, 'passed: gone');
-  assert.strictEqual(placeFloorAllows(null, 1), true);
-  assert.strictEqual(placeFloorAllows({ placeFloorSec: 'x' }, 1), true, 'a junk floor is none');
+  assert.ok(!Object.prototype.hasOwnProperty.call(cur, 'placeFloorSec'), 'the floor is the player\'s own state, never the load data (gate r1, C1)');
   const src = fs.readFileSync(path.join(REPO, 'public', 'js', 'player.js'), 'utf8');
   const fn = /function saveProgressToServer\(time, opts\) \{([\s\S]*?)\n {2}\}\n/.exec(src)[1];
-  assert.ok(fn.indexOf('placeFloorAllows(currentData, time)') > 0 && fn.indexOf('placeFloorAllows(currentData, time)') < fn.indexOf('fetch(progressEndpoint, fetchOpts)'), 'asked before the one POST');
+  const at = fn.indexOf('placeFloorAllows(placeFloor, saveId, time)');
+  assert.ok(at > fn.indexOf('var saveId') && at < fn.indexOf('fetch(progressEndpoint, fetchOpts)'), 'asked with the SAVE id, before the one POST');
 });
 
 // ---- the view ----------------------------------------------------------------------------------------------------
@@ -203,7 +247,7 @@ test('D4 (view): the kind line says From the beginning and the player gets the f
 });
 
 test('D6 (view): a fresh 60 s reel opens its gate once the whole reel played, not at 10 s (and not a minute)', async () => {
-  const r = feedRealm({ batches: [{ cards: [{ ...REEL_VID, fresh: true, startAt: 0, endAt: 60 }, BOOK], exhausted: false }] });
+  const r = feedRealm({ batches: [{ cards: [{ ...REEL_VID, fresh: true, startAt: 0, endAt: 60, reelSec: 60 }, BOOK], exhausted: false }] });
   try {
     await start(r);
     Object.defineProperty(r.media, 'paused', { value: false, configurable: true });
@@ -215,6 +259,15 @@ test('D6 (view): a fresh 60 s reel opens its gate once the whole reel played, no
     for (let s = 58; s <= 59.5; s += 0.5) { r.advance(500); r.timeAt(s); }
     assert.strictEqual(data.progressGate(), true, `the whole reel: ${data.playedSec()} s`);
   } finally { r.close(); }
+  // gate r1 (adversary W1): a CHAPTER slice of 8 s (reelSec 0, as the server sends it) keeps the minute
+  const c = feedRealm({ batches: [{ cards: [{ ...REEL_VID, id: 'vc8', fresh: true, startAt: 0, endAt: 8, reelSec: 0, chapter: { index: 0, count: 3, title: 'Cold open' } }, BOOK], exhausted: false }] });
+  try {
+    await start(c);
+    Object.defineProperty(c.media, 'paused', { value: false, configurable: true });
+    const data = c.loads.filter((l) => l.id === 'vc8')[0].data;
+    for (let s = 0; s <= 12; s++) { c.advance(1000); c.timeAt(s); }
+    assert.strictEqual(data.progressGate(), false, `a chapter slice: ${data.playedSec()} s is not started`);
+  } finally { c.close(); }
 });
 
 test('D7 (view): Keep watching shows in the last 10 s and on Done; its tap saves the session (no recap), keeps the player playing and opens the watch page', async () => {
@@ -240,6 +293,10 @@ test('D7 (view): Keep watching shows in the last 10 s and on Done; its tap saves
     assert.strictEqual(r.$('.ui-sheet, #feed-recap'), null, 'no recap');
     const after = r.loads.slice(loadsBefore);
     assert.deepStrictEqual(after, [{ navigate: '/watch.html?v=vr' }], 'no pause, no close: the player goes on; the watch page opens');
+    // gate r1 (adversary S2, M32): the navigation is async - a timeupdate reaching the slice's end before the view is torn down
+    // must not pause the player that now belongs to the watch page
+    r.timeAt(460); r.timeAt(461);
+    assert.deepStrictEqual(r.loads.slice(loadsBefore), [{ navigate: '/watch.html?v=vr' }], 'no pause after the tap');
     assert.strictEqual(r.w.sessionStorage.getItem(feed.FEED_SESSION_KEY), null, 'the session is over');
     assert.ok(r.$$('.feed-card')[0].querySelector('.feed-card__slot'), 'the stack (and the slot holding the player) is left for the navigation: taking the element out would pause it');
   } finally { r.close(); }
@@ -253,15 +310,24 @@ test('D7 (view): the Done state shows the pill; a file that ENDED drops it; a po
     r.timeAt(460);
     assert.ok(node.hasAttribute('data-done'));
     assert.ok(node.querySelector('[data-keep]'), 'Done: the pill');
+    // gate r1 (adversary S2, M31): Keep from the Done state starts the (paused) player again inside the tap - iOS needs the gesture
+    let plays = 0;
+    r.w.__harness.player.play = () => { plays += 1; };
+    Object.defineProperty(r.media, 'paused', { value: true, configurable: true });
+    const doneRealmCheck = node.querySelector('[data-keep]');
+    assert.ok(doneRealmCheck);
     r.media.dispatchEvent(new r.w.Event('ended'));
     assert.strictEqual(node.querySelector('[data-keep]'), null, 'the whole file ended: nothing to keep watching');
     r.show(1);
     r.timeAt(835);
     const pod = r.$$('.feed-card')[1].querySelector('[data-keep]');
     assert.match(pod.textContent, /Keep listening/);
+    r.timeAt(840); // the podcast slice is Done (paused at its end)
+    Object.defineProperty(r.media, 'paused', { value: true, configurable: true });
     pod.click();
     await r.settle();
     assert.deepStrictEqual(r.loads.filter((l) => l.navigate), [{ navigate: '/podcasts?play=ep1' }]);
+    assert.strictEqual(plays, 1, 'the Done slice was started again inside the tap (a playing one is left alone)');
   } finally { r.close(); }
 });
 

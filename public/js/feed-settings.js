@@ -1,4 +1,4 @@
-// FileTube Feed settings (v1.382.0, plan docs/exec-plans/active/2026-10-10-feed-settings.md D1-D5, D11, D13, D14).
+// FileTube Feed settings (v1.382.0, plan docs/exec-plans/active/2026-10-10-feed-settings.md D1-D5, D11; D13-D14 moved out).
 //
 // The ONE reading of the Feed's synced settings, shared by the server (lib/feed/api.js requires this file), the Feed
 // view (public/js/feed.js) and the Settings > Feed page (public/js/setup.js). Two synced keys (lib/prefs-allowlist.js
@@ -21,13 +21,11 @@
   var CHOICE_KINDS = ['video', 'podcast', 'book'];
   var WHICH = ['both', 'new', 'continue'];
   var WHERE = ['saved', 'start'];
-  // D5 / D13: the lengths, in seconds; 0 = the whole chapter (video) / the whole song.
+  // D5: the lengths, in seconds; 0 = the whole chapter (a video; library audio follows the video reel).
   var VIDEO_REELS = [30, 60, 90, 120, 0];
   var PODCAST_SLICES = [60, 120, 240];
-  var SONG_CLIPS = [30, 45, 60, 0];
-  var DEFAULTS = { reel: 60, slice: 120, clip: 45, music: 'on', station: '' };
+  var DEFAULTS = { reel: 60, slice: 120 };
   var VIDEO_NO_CHAPTER_SEC = 120; // D5: "Whole chapter" on a video without chapters = 2 min
-  var STATION_KEY_MAX = 120; // the music stations' own key cap (lib/music/routes.js POST /api/music/stations/hidden)
   var SETTINGS_MAX_BYTES = 512; // the synced pref's value cap (lib/prefs-allowlist.js PREF_VALUE_MAX_BYTES)
   // D11: Fewer from
   var FEWER_TYPES = ['channel', 'show', 'artist', 'author'];
@@ -55,19 +53,16 @@
     for (var j = 0; j < CHOICE_KINDS.length; j++) {
       var k = CHOICE_KINDS[j];
       which[k] = pick(WHICH, own(r.which, k) ? r.which[k] : null, 'both');
-      // D4: a New-only kind has no saved place to start from (new items always start at the beginning)
-      where[k] = which[k] === 'new' ? 'saved' : pick(WHERE, own(r.where, k) ? r.where[k] : null, 'saved');
+      // D4: kept as chosen even while the kind is New only (a new item always starts at the beginning, so it does nothing then;
+      // the Settings page greys it) - switching back to Both finds the choice the viewer made (gate r1, qa suggestion 1)
+      where[k] = pick(WHERE, own(r.where, k) ? r.where[k] : null, 'saved');
     }
-    var station = typeof r.station === 'string' && r.station.length <= STATION_KEY_MAX && !hasControl(r.station) ? r.station : '';
     return {
       off: off,
       which: which,
       where: where,
       reel: pick(VIDEO_REELS, r.reel, DEFAULTS.reel),
       slice: pick(PODCAST_SLICES, r.slice, DEFAULTS.slice),
-      clip: pick(SONG_CLIPS, r.clip, DEFAULTS.clip),
-      music: pick(['on', 'off'], r.music, DEFAULTS.music),
-      station: station,
     };
   }
 
@@ -80,7 +75,7 @@
       if (s.which[k] !== 'both') { out.which = out.which || {}; out.which[k] = s.which[k]; }
       if (s.where[k] !== 'saved') { out.where = out.where || {}; out.where[k] = s.where[k]; }
     });
-    ['reel', 'slice', 'clip', 'music', 'station'].forEach(function (f) { if (s[f] !== DEFAULTS[f]) out[f] = s[f]; });
+    ['reel', 'slice'].forEach(function (f) { if (s[f] !== DEFAULTS[f]) out[f] = s[f]; });
     return JSON.stringify(out);
   }
 
@@ -160,8 +155,8 @@
 
   var api = {
     SETTINGS_KEY: SETTINGS_KEY, FEWER_KEY: FEWER_KEY, KINDS: KINDS, KIND_LABELS: KIND_LABELS, CHOICE_KINDS: CHOICE_KINDS,
-    WHICH: WHICH, WHERE: WHERE, VIDEO_REELS: VIDEO_REELS, PODCAST_SLICES: PODCAST_SLICES, SONG_CLIPS: SONG_CLIPS,
-    DEFAULTS: DEFAULTS, VIDEO_NO_CHAPTER_SEC: VIDEO_NO_CHAPTER_SEC, SETTINGS_MAX_BYTES: SETTINGS_MAX_BYTES, STATION_KEY_MAX: STATION_KEY_MAX,
+    WHICH: WHICH, WHERE: WHERE, VIDEO_REELS: VIDEO_REELS, PODCAST_SLICES: PODCAST_SLICES,
+    DEFAULTS: DEFAULTS, VIDEO_NO_CHAPTER_SEC: VIDEO_NO_CHAPTER_SEC, SETTINGS_MAX_BYTES: SETTINGS_MAX_BYTES,
     FEWER_TYPES: FEWER_TYPES, FEWER_MAX: FEWER_MAX, FEWER_NAME_MAX: FEWER_NAME_MAX, FEWER_WEIGHT: FEWER_WEIGHT, FEWER_MAX_BYTES: FEWER_MAX_BYTES,
     normalize: normalize, serialize: serialize, isOn: isOn,
     fewerKey: fewerKey, fewerMatchKey: fewerMatchKey, parseFewer: parseFewer, serializeFewer: serializeFewer, fewerAdd: fewerAdd,

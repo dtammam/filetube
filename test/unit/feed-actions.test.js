@@ -69,6 +69,11 @@ test('D10 / D11 pure: each kind\'s like and Watch later route, its hide target, 
   assert.strictEqual(feed.feedHideTarget({ kind: 'notice', id: 'notice' }), null);
   assert.deepStrictEqual([VID, POD, SONG, BOOK].map((c) => feed.feedFewerTarget(c).key), ['channel:C', 'show:Show', 'artist:Art', 'author:W']);
   assert.strictEqual(feed.feedFewerTarget({ ...VID, channelName: '  ' }), null);
+  // gate r1 (qa W1): a name the synced list cannot keep is never offered (it was, nothing was stored, and the toast said it was)
+  assert.strictEqual(feed.feedFewerTarget({ ...POD, showName: 'S'.repeat(101) }), null, 'over 100 characters');
+  assert.ok(feed.feedFewerTarget({ ...POD, showName: 'S'.repeat(100) }), '100 is kept');
+  assert.strictEqual(feed.feedFewerTarget({ ...VID, channelName: 'a\u0001b' }), null, 'a control character');
+  assert.deepStrictEqual(feed.feedFewerTarget({ ...VID, channelName: '  Lofi   Girl ' }), { type: 'channel', name: 'Lofi Girl', key: 'channel:Lofi Girl' }, 'the stored spelling');
   assert.strictEqual(feed.feedTapKind(null, 100, 0, 0, 350), 'single');
   assert.strictEqual(feed.feedTapKind({ at: 0, x: 10, y: 10 }, 349, 20, 20, 350), 'double');
   assert.strictEqual(feed.feedTapKind({ at: 0, x: 10, y: 10 }, 350, 20, 20, 350), 'single', 'the window is exclusive');
@@ -245,5 +250,30 @@ test('Settings > Feed lists what was hidden (from the server) and every Fewer fr
     remove.click();
     assert.deepStrictEqual(JSON.parse(w.localStorage.getItem(FS.FEWER_KEY)), ['author:Le Guin']);
     assert.deepStrictEqual(rows(), ['Vid | Hidden · Video · Chan', 'Le Guin | Fewer from · Author']);
+  } finally { ctl.abort(); w.close(); delete global.window; delete global.document; global.fetch = realFetch; }
+});
+
+test('Settings > Feed (gate r1, qa suggestion 2): the Fewer from names are drawn again when the account copy lands after the page', async () => {
+  const html = fs.readFileSync(path.join(REPO, 'public', 'setup.html'), 'utf8');
+  const PAGE = html.match(/<details class="setup-box setup-sec sub-collapsible" data-collapse-key="feed"[\s\S]*?<\/details>/)[0];
+  const dom = new JSDOM(`<!DOCTYPE html><body>${PAGE}</body>`, { url: 'http://localhost/setup.html', runScripts: 'outside-only' });
+  const w = dom.window;
+  for (const f of ['public/js/icons.js', 'public/js/ui.js', 'public/js/feed-settings.js']) w.eval(fs.readFileSync(path.join(REPO, f), 'utf8'));
+  const waiters = [];
+  w.__ftPrefsSync = { whenBooted: (fn) => waiters.push(fn) };
+  w.fetch = () => Promise.resolve({ ok: true, json: async () => ({ items: [] }) });
+  const realFetch = global.fetch;
+  global.window = w; global.document = w.document; global.fetch = w.fetch;
+  delete require.cache[require.resolve('../../public/js/setup.js')];
+  const mod = require('../../public/js/setup.js');
+  const ctl = new w.AbortController();
+  try {
+    mod.wireFeedSettingsPage(w.document, ctl.signal);
+    await new Promise((res) => setTimeout(res, 10));
+    assert.strictEqual(w.document.querySelectorAll('#feed-tuning-list .ui-row').length, 0, 'nothing on this device yet');
+    w.localStorage.setItem(FS.FEWER_KEY, JSON.stringify(['show:Radiolab'])); // what applyServer writes (raw)
+    waiters.forEach((fn) => fn());
+    await new Promise((res) => setTimeout(res, 10));
+    assert.deepStrictEqual(Array.from(w.document.querySelectorAll('#feed-tuning-list .ui-row__title')).map((t) => t.textContent), ['Radiolab']);
   } finally { ctl.abort(); w.close(); delete global.window; delete global.document; global.fetch = realFetch; }
 });

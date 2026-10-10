@@ -4,7 +4,9 @@
 // "From the beginning" (Settings > Feed, Where they start) leaves the Feed into the watch page with ONE player, still
 // playing, from where the card got to - and the saved place (25 s) is never moved back by it: a pause on the watch page
 // BEHIND the place saves nothing (the player's place floor survives the adopt), a pause PAST it saves through the watch
-// page's own route. Also: the session's record is posted (finish) and no recap opens.
+// page's own route. Also: the session's record is posted (finish) and no recap opens. Gate r1 (adversary C1): the clip is
+// CHAPTERED and the proof then taps Listen on the watch page - a FRESH load of `clip1::cN` in Music, whose chapter save posts
+// /api/progress for the base id; a pause there behind the place must save nothing either.
 // Boots the real server with a real 30 s WebM (card-player.js's recipe), the session's settings in localStorage.
 //
 //   node tools/feed-proof/keep-watching.js <repoRoot> [out.json] [chromium|webkit|both]
@@ -49,7 +51,7 @@ async function main() {
   const dir = path.join(process.env.DATA_DIR, 'Clips'); fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, 'clip.webm');
   await makeWebm(file);
-  const metadata = { clip1: { id: 'clip1', title: 'Feed clip', filePath: file, folderName: 'Clips', rootFolder: process.env.DATA_DIR, type: 'video', ext: '.webm', duration: 30, size: fs.statSync(file).size, addedAt: Date.now(), channelName: 'Clips', width: 320, height: 180 } };
+  const metadata = { clip1: { id: 'clip1', title: 'Feed clip', filePath: file, folderName: 'Clips', rootFolder: process.env.DATA_DIR, type: 'video', ext: '.webm', duration: 30, chapters: [{ startTime: 0, title: 'Part one' }, { startTime: 12, title: 'Part two' }, { startTime: 24, title: 'Part three' }], size: fs.statSync(file).size, addedAt: Date.now(), channelName: 'Clips', width: 320, height: 180 } };
   seedState({ folders: [process.env.DATA_DIR], folderSettings: {}, metadata, liked: [], settings: { scanIntervalMinutes: 30, pruneMissing: true, cacheMaxBytes: null, cacheMaxAgeDays: 30 } });
   const listening = await new Promise((resolve) => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
   const base = `http://127.0.0.1:${listening.address().port}`;
@@ -96,7 +98,21 @@ async function main() {
     await page.waitForTimeout(1500);
     await flushPendingProgress();
     const behind = { stored: (userStore.getOneProgress(user.id, 'clip1') || {}).timestamp, saves: posts.filter((p) => p.url === '/api/progress').length };
-    // past the place: 27 s and pause - the watch page's own route saves it
+    // gate r1 (adversary C1): Listen - the same item as a fresh chapter load in Music; a pause behind the place saves nothing
+    await page.click('#listen-media-btn');
+    await page.waitForFunction(() => /\/music/.test(window.location.pathname) && document.getElementById('media-player'), null, { timeout: 15000 });
+    await page.waitForTimeout(2500);
+    const onListen = await page.evaluate(() => { const v = document.getElementById('media-player'); return { path: window.location.pathname + window.location.search, t: v.currentTime, playerId: window.FileTube.player.currentId, videos: document.querySelectorAll('video').length, audios: document.querySelectorAll('audio').length }; });
+    // play on across the 24 s chapter start (Music advances to the next chapter track: the save the adversary measured), still
+    // behind the 25 s place, then pause
+    await page.evaluate(() => { const v = document.getElementById('media-player'); if (v.paused) v.play().catch(() => {}); }); // paused by the watch step
+    await page.waitForFunction(() => { const v = document.getElementById('media-player'); return v && v.currentTime >= 24.2; }, null, { timeout: 15000 });
+    const crossed = await page.evaluate(() => ({ t: document.getElementById('media-player').currentTime, playerId: window.FileTube.player.currentId }));
+    await page.evaluate(() => { const v = document.getElementById('media-player'); v.pause(); });
+    await page.waitForTimeout(1500);
+    await flushPendingProgress();
+    const listenBehind = { stored: (userStore.getOneProgress(user.id, 'clip1') || {}).timestamp, saves: posts.filter((p) => p.url === '/api/progress').length };
+    // past the place: 27 s and pause (in Music now) - the item's own route saves it, the floor ended
     await page.evaluate(() => { const v = document.getElementById('media-player'); v.currentTime = 27; v.play().catch(() => {}); });
     await page.waitForTimeout(500);
     await page.evaluate(() => { const v = document.getElementById('media-player'); v.pause(); });
@@ -107,8 +123,8 @@ async function main() {
     await browser.close();
     const pass = kindLine === 'Video \u00b7 From the beginning' && atTap.t < PLACE && atTap.pill === 'Keep watching'
       && onWatch.hosts === 1 && onWatch.videos === 1 && onWatch.inWatchSlot && onWatch.paused === false && onWatch.t >= atTap.t - 0.5 && onWatch.recap === false
-      && behind.stored === PLACE && behind.saves === 0 && past.saves >= 1 && past.stored >= PLACE && finish === 1 && errors.length === 0;
-    const row = { engine, kindLine, atTap, onWatch, behind, past, finish, errors, pass };
+      && behind.stored === PLACE && behind.saves === 0 && onListen.t < PLACE && crossed.t < PLACE && listenBehind.stored === PLACE && listenBehind.saves === 0 && past.saves >= 1 && past.stored >= PLACE && finish === 1 && errors.length === 0;
+    const row = { engine, kindLine, atTap, onWatch, behind, onListen, crossed, listenBehind, past, finish, errors, pass };
     results.push(row);
     console.log(`${pass ? 'PASS' : 'FAIL'} ${engine.padEnd(8)} ${JSON.stringify(row)}`);
   }

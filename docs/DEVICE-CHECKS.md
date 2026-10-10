@@ -262,10 +262,12 @@ ones of each.
 - [ ] v1.382.0 - Near the end of a video card (and once it says Done) tap Keep watching: the watch page opens, still playing at the same
   spot, no recap. Keep listening on a podcast: the Podcasts page, playing. Keep reading on a book card's last page: the reader.
 - [ ] v1.382.0 - From the beginning, then Keep watching early in the video, watch a bit and close: the video still resumes at your old place.
+  Once more with a video that has chapters: Keep watching, then Listen, let it play a little and close: still your old place.
 - [ ] v1.382.0 - Double-tap a video, a podcast, a song and a book page: a heart pops where you tapped and it is in Liked. A single tap
   still pauses (after a short beat). "..." has Like / Unlike and Add to / Remove from Watch later.
 - [ ] v1.382.0 - "..." > Hide this on a video, a podcast, a song and a book; Undo one within 10 seconds. "..." > Fewer from on a channel.
-  Settings > Feed > Hidden and fewer lists them; Unhide and Remove work. A hidden item never comes back in a new session.
+  Settings > Feed > Hidden and fewer lists them; Unhide and Remove work. A hidden item never comes back in a new session. Videos you
+  hid from Home earlier are there too and stay out of the Feed; Unhide one and it is back on Home as well.
 - [ ] v1.382.0 - A new video watched to the end of its 60-second reel says Continue next time; one you swiped after 10 seconds still says New.
 
 ## Feed, TikTok style (v1.381.0)

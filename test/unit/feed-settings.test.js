@@ -25,31 +25,27 @@ test('normalize: junk, a non-object and an empty value read as the defaults (eve
     assert.deepStrictEqual(s.where, { video: 'saved', podcast: 'saved', book: 'saved' });
     assert.strictEqual(s.reel, 60);
     assert.strictEqual(s.slice, 120);
-    assert.strictEqual(s.clip, 45);
-    assert.strictEqual(s.music, 'on');
-    assert.strictEqual(s.station, '');
+    assert.deepStrictEqual(Object.keys(s).sort(), ['off', 'reel', 'slice', 'where', 'which'], 'v1.382.0 gate r1: the moved W5 fields (clip, music, station) are gone');
   }
 });
 
 test('normalize: every value is checked against its list; an off-list value is the default, never kept', () => {
-  const s = FS.normalize({ off: ['song', 'bogus', '__proto__'], which: { video: 'new', podcast: 'everything', book: 'continue' }, where: { video: 'start', podcast: 'start', book: 'middle' }, reel: 45, slice: 240, clip: 0, music: 'loud', station: 'x'.repeat(121) });
+  const s = FS.normalize({ off: ['song', 'bogus', '__proto__'], which: { video: 'new', podcast: 'everything', book: 'continue' }, where: { video: 'start', podcast: 'start', book: 'middle' }, reel: 45, slice: 240, clip: 0, music: 'loud', station: 'x' });
   assert.deepStrictEqual(s.off, ['song']);
   assert.deepStrictEqual(s.which, { video: 'new', podcast: 'both', book: 'continue' });
   assert.strictEqual(s.where.podcast, 'start');
   assert.strictEqual(s.where.book, 'saved', 'an unknown place is the saved place');
   assert.strictEqual(s.reel, 60, '45 s is not a video reel length');
   assert.strictEqual(s.slice, 240);
-  assert.strictEqual(s.clip, 0, 'Whole song');
-  assert.strictEqual(s.music, 'on');
-  assert.strictEqual(s.station, '', 'an over-long station key is dropped');
-  assert.strictEqual(FS.normalize({ station: 'a\u0000b' }).station, '', 'a control character never reaches a station key');
+  assert.ok(!('clip' in s) && !('music' in s) && !('station' in s), 'an unknown field (the moved W5 ones) never comes through');
   assert.strictEqual(FS.normalize({ reel: '60' }).reel, 60, 'a string is not the number (defaults anyway)');
   assert.strictEqual(FS.normalize({ reel: 30 }).reel, 30);
 });
 
-test('normalize D4: New only forces "where" to the saved place (a new item always starts at the beginning)', () => {
+test('normalize D4 (gate r1, qa suggestion 1): a chosen Where is kept while that kind is New only (it does nothing then) and is there when the kind goes back to Both', () => {
   const s = FS.normalize({ which: { video: 'new' }, where: { video: 'start' } });
-  assert.strictEqual(s.where.video, 'saved');
+  assert.strictEqual(s.where.video, 'start');
+  assert.strictEqual(FS.normalize(FS.serialize(s)).where.video, 'start', 'it survives the stored form');
   assert.strictEqual(FS.normalize({ which: { video: 'continue' }, where: { video: 'start' } }).where.video, 'start');
 });
 
@@ -60,7 +56,7 @@ test('normalize D2: a value with every kind off reads as all on (the Feed can ne
 
 test('serialize writes only what differs from the defaults, round-trips, and its worst case fits the 512-byte pref cap', () => {
   assert.strictEqual(FS.serialize({}), '{}');
-  const worst = { off: FS.KINDS.slice(1), which: { video: 'continue', podcast: 'continue', book: 'continue' }, where: { video: 'start', podcast: 'start', book: 'start' }, reel: 120, slice: 240, clip: 60, music: 'off', station: 'x'.repeat(FS.STATION_KEY_MAX) };
+  const worst = { off: FS.KINDS.slice(1), which: { video: 'continue', podcast: 'continue', book: 'continue' }, where: { video: 'start', podcast: 'start', book: 'start' }, reel: 120, slice: 240 };
   const out = FS.serialize(worst);
   assert.ok(FS.utf8Bytes(out) <= FS.SETTINGS_MAX_BYTES, 'worst case ' + FS.utf8Bytes(out) + ' bytes');
   assert.deepStrictEqual(FS.normalize(out), FS.normalize(worst));
@@ -239,6 +235,18 @@ test('D4: "Where they start" is disabled with its reason while that kind is New 
     assert.strictEqual(help.textContent, original);
     b.change(b.$('feed-kind-video'), false);
     assert.strictEqual(b.$('feed-which-video').disabled, true, 'a kind switched off greys its choices');
+  } finally { b.done(); }
+});
+
+test('D4 (gate r1, qa suggestion 1): From the beginning survives a trip through New only on the page', () => {
+  const b = boot();
+  try {
+    b.change(b.$('feed-where-video'), 'start');
+    b.change(b.$('feed-which-video'), 'new');
+    assert.strictEqual(b.$('feed-where-video').disabled, true);
+    b.change(b.$('feed-which-video'), 'both');
+    assert.strictEqual(b.$('feed-where-video').value, 'start', 'the choice is still there');
+    assert.strictEqual(b.stored$().where.video, 'start');
   } finally { b.done(); }
 });
 
