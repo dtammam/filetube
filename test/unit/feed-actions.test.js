@@ -181,7 +181,7 @@ test('D11 Hide this: posts the card\'s kind and id, steps the card aside, and it
     assert.strictEqual(opts.duration, feed.FEED_UNDO_MS);
     opts.action.onAction();
     await r.settle();
-    assert.deepStrictEqual(r.calls('DELETE', '/api/feed/hidden').map((c) => c.body), [{ kind: 'podcast', id: 'ep1' }]);
+    assert.deepStrictEqual(r.fetches.filter((f) => f.method === 'DELETE' && f.url === '/api/feed/hidden').map((c) => c.body), [{ kind: 'podcast', id: 'ep1' }], 'the exact route (a prefix match let a wrong one pass: mutant W4-M18)');
     assert.ok(!r.$$('.feed-card')[1].hasAttribute('data-hidden'));
     await menuPick(r, 2, 'Hide this');
     await menuPick(r, 3, 'Hide this');

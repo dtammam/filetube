@@ -895,7 +895,12 @@ test('v1.382.0 D11 Fewer from: a show in the synced list comes about a quarter a
   const fewer = await count();
   assert.ok(fewer.a < fewer.b * 0.5, 'Show A is held back: ' + JSON.stringify(fewer));
   assert.ok(fewer.a > 0, 'held back, not hidden: ' + JSON.stringify(fewer));
-  userStore.setPrefsLWW(uid, [{ key: 'ft-feed-fewer', value: '', updatedAt: Date.now() + 1 }]);
+  // held back, never dropped: with BOTH shows on the list the held-back episodes still come once the rest has run out
+  userStore.setPrefsLWW(uid, [{ key: 'ft-feed-fewer', value: JSON.stringify(['show:Show A', 'show:Show B']), updatedAt: Date.now() + 1 }]);
+  const all = await cardsWith(JSON.stringify({ off: ['book', 'video', 'watchlater', 'song'], which: { podcast: 'new' } }), 150);
+  const distinct = new Set(all.cards.map((c) => c.id)).size;
+  assert.ok(distinct >= 140, 'the held-back episodes still come in turn (distinct, not the kept quarter refilled): ' + distinct);
+  userStore.setPrefsLWW(uid, [{ key: 'ft-feed-fewer', value: '', updatedAt: Date.now() + 2 }]);
   const after = await count();
   assert.ok(after.a > 25, 'removed from the list: back to even ' + JSON.stringify(after));
 });
