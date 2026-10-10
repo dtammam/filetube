@@ -197,7 +197,9 @@ protected-main PR flow, shipped = the tag's "Publish Docker Image" run green, br
   check in likeFromGesture is MASKED by the same check in setLiked).
 - Fewer from, measured: drawn per batch, Show A on the list still got 34 cards to Show B's 46 over a session; drawn once per item a
   session it holds (a < half of b, every run), and with both shows listed 140+ distinct episodes still come.
-- Suites (Node 22.23.1 / 24.20.0) at the reviewed sha: `npm test` at 722c28f4 in the worktree, sequential - Node 22.23.1: `# tests
+- Suites (Node 22.23.1 / 24.20.0) at release: `npm test` at 518b9a13 (the release commit), sequential - Node 22.23.1: `# tests 12096
+  # pass 12083 # fail 0 # cancelled 0 # skipped 13` (exit 0); Node 24.20.0: `tests 12096 pass 12083 fail 0 cancelled 0 skipped 13`
+  (exit 0). Before the gate: `npm test` at 722c28f4 in the worktree, sequential - Node 22.23.1: `# tests
   12089 # pass 12076 # fail 0 # cancelled 0 # skipped 13` (exit 0); Node 24.20.0: `tests 12089 pass 12076 fail 0 cancelled 0
   skipped 13` (exit 0).
 - Gate rounds: r1 @6ca6d90c - adversary CHANGES (C1 Keep watching then Listen moved the place 25 -> 24.3 s; W1 an 8 s chapter
