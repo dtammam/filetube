@@ -160,3 +160,24 @@ test('adversarial W-A/W-C: the RESTORE loop enforces allowlist, byte cap, and th
   assert.equal(after['ft-mode'].updatedAt, NOW + 300000, 'the far-future stamp CLAMPED to now+5min - a clamped route write can out-rank it after the window');
   assert.equal(after['ft-icons'].updatedAt, 7, 'a sane stamp restores verbatim');
 });
+
+// v1.382.0 (Dean's ruling 2026-10-10): the restore loop asks the SAME per-key cap as the route - the Feed's "Fewer from"
+// list restores at 8 KB, one byte more is skipped, and every other key (the Feed's own settings included) stays at 512.
+test('restore enforces the per-key cap: ft-feed-fewer 8 KB, every other key 512 bytes', () => {
+  store.createFirstAdmin({ username: 'a', displayName: 'A', passwordHash: 'h' }, null, ISO(0));
+  const bundle = store.exportUsersForBackup();
+  bundle[0].prefs = [
+    { key: 'ft-feed-fewer', value: 'x'.repeat(8192), updatedAt: 1 },
+    { key: 'ft-feed-settings', value: 'y'.repeat(513), updatedAt: 1 },
+    { key: 'ft-era', value: 'z'.repeat(600), updatedAt: 1 },
+  ];
+  adapter.sql.exec('BEGIN');
+  store.replaceAllUsersRaw(bundle);
+  adapter.sql.exec('COMMIT');
+  assert.deepEqual(Object.keys(store.getPrefs(bundle[0].id)), ['ft-feed-fewer'], 'only the 8 KB Fewer list restored');
+  bundle[0].prefs = [{ key: 'ft-feed-fewer', value: 'x'.repeat(8193), updatedAt: 1 }];
+  adapter.sql.exec('BEGIN');
+  store.replaceAllUsersRaw(bundle);
+  adapter.sql.exec('COMMIT');
+  assert.deepEqual(store.getPrefs(bundle[0].id), {}, 'one byte over 8 KB is skipped');
+});

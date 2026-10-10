@@ -109,7 +109,9 @@ test('view: a new-book card shows cover, title, author and the description as TE
     assert.ok(page && page.contains(desc) && page.querySelector('.feed-card__cover'), 'cover and description are the page');
     assert.strictEqual(page.querySelector('h3'), null, 'the taste starts hidden');
     const label = (b) => (b.querySelector('.ui-btn__stack') || b.querySelector('.ui-btn__label')).getAttribute('data-label') || b.querySelector('.ui-btn__label').textContent;
-    assert.deepStrictEqual(Array.from(node.querySelectorAll('.feed-card__actions .ui-btn')).map(label), ['Start reading', 'Read the opening']);
+    // v1.382.0 (D10, D11): + the "..." (an icon button: Like, Hide this, Fewer from the author) - still no Open in reader
+    assert.deepStrictEqual(Array.from(node.querySelectorAll('.feed-card__actions .ui-btn:not([data-card-menu])')).map(label), ['Start reading', 'Read the opening']);
+    assert.ok(node.querySelector('.feed-card__actions [data-card-menu]'), 'the menu');
     // the opening expands and collapses
     const peek = node.querySelector('[data-read-opening]');
     peek.click();

@@ -76,7 +76,10 @@ before(async () => {
   const metadata = {};
   // va0 has a place (a continuing video); the two NEWEST videos (they lead the fresh pool) open with an intro chapter (v1.380.0 D8)
   const INTRO_CHAPTERS = [{ startTime: 0, title: 'Intro' }, { startTime: 60, title: 'The build' }, { startTime: 600, title: 'End' }];
-  for (let i = 0; i < N_VIDEOS; i++) metadata[`va${i}`] = mediaItem(`va${i}`, 'Allowed', i === 0 ? { chapters: [{ startTime: 0, title: 'Intro' }, { startTime: 300, title: 'Middle' }, { startTime: 900, title: 'End' }] } : i >= N_VIDEOS - 2 ? { chapters: INTRO_CHAPTERS } : {});
+  // v1.382.0 gate r1 (adversary W1): va447 opens with an 8 s chapter that is NOT an intro (no skip): in Whole chapter mode its
+  // fresh card is served 0..8
+  const SHORT_FIRST = [{ startTime: 0, title: 'Cold open' }, { startTime: 8, title: 'Main' }, { startTime: 600, title: 'End' }];
+  for (let i = 0; i < N_VIDEOS; i++) metadata[`va${i}`] = mediaItem(`va${i}`, 'Allowed', i === 0 ? { chapters: [{ startTime: 0, title: 'Intro' }, { startTime: 300, title: 'Middle' }, { startTime: 900, title: 'End' }] } : i >= N_VIDEOS - 2 ? { chapters: INTRO_CHAPTERS } : i === N_VIDEOS - 3 ? { chapters: SHORT_FIRST } : {});
   for (let i = 0; i < 10; i++) metadata[`vh${i}`] = mediaItem(`vh${i}`, 'Hidden');
   for (let i = 0; i < 3; i++) metadata[`vt${i}`] = mediaItem(`vt${i}`, 'Tiny');
   for (let i = 0; i < 150; i++) metadata[`wl${i}`] = mediaItem(`wl${i}`, 'Shelf'); // Watch later rows outside the video pool (no subscription, no progress)
@@ -140,7 +143,7 @@ before(async () => {
   userStore.addBookLiked(uid, bookIds.Delta, now);
   for (let i = 0; i < N_SONGS; i++) userStore.addMusicLiked(uid, `trk${i}`, now);
   userStore.setProgress(uid, 'va0', { timestamp: 400, duration: 1200, updatedAt: now }); // inside chapter "Middle" (300-900)
-  userStore.setProgress(uid, 'va1', { timestamp: 90, duration: 1200, updatedAt: now }); // no chapters: a 3-minute segment (v1.381.0 D10: past the started minute, so it continues)
+  userStore.setProgress(uid, 'va1', { timestamp: 90, duration: 1200, updatedAt: now }); // no chapters: a 60 s reel by default, a 2-minute segment in Whole chapter mode (v1.382.0 D5; v1.381.0 D10: past the started minute, so it continues)
   userStore.setPodcastProgress(uid, epIds.a[0], { position: 600, duration: 1800, updatedAt: now });
   userStore.addWatchLater(uid, 'va5', now);
   userStore.addWatchLater(uid, userStore.watchLaterKey('podcast', epIds.a[3]), now);
@@ -173,8 +176,9 @@ async function startSession(plannedMin, cookie) {
   assert.strictEqual(r.status, 200, text);
   return JSON.parse(text).session;
 }
-async function batch(sessionId, count, cookie, exclude) {
-  const q = `/api/feed?session=${sessionId}&count=${count}${exclude ? `&exclude=${exclude.join(',')}` : ''}`;
+// v1.382.0: `fs` = the Feed settings the client sends (the synced ft-feed-settings value), omitted = the defaults
+async function batch(sessionId, count, cookie, exclude, fs) {
+  const q = `/api/feed?session=${sessionId}&count=${count}${exclude ? `&exclude=${exclude.join(',')}` : ''}${fs ? `&fs=${encodeURIComponent(fs)}` : ''}`;
   const r = await fetch(`${base}${q}`, { headers: cookie ? { Cookie: cookie } : {} });
   const text = await r.text();
   assert.strictEqual(r.status, 200, text);
@@ -200,8 +204,8 @@ test('cards: the admin\'s first batches carry every kind with the fields each ca
   const pod = seen.podcast;
   assert.strictEqual(pod.media, 'podcast');
   assert.strictEqual(pod.streamSrc, `/episode/${pod.id}`);
-  assert.strictEqual(pod.sliceSec, 240);
-  if (pod.id === epIds.a[0]) { assert.strictEqual(pod.startAt, 600); assert.strictEqual(pod.endAt, 840); } else { assert.strictEqual(pod.startAt, 0); assert.strictEqual(pod.endAt, 240); }
+  assert.strictEqual(pod.sliceSec, 120, 'v1.382.0 (D5): the default slice is 2 minutes (was 4)');
+  if (pod.id === epIds.a[0]) { assert.strictEqual(pod.startAt, 600); assert.strictEqual(pod.endAt, 720); } else { assert.strictEqual(pod.startAt, 0); assert.strictEqual(pod.endAt, 120); }
   const vid = seen.video;
   assert.strictEqual(vid.media, 'video');
   assert.strictEqual(vid.thumbnailUrl, `/thumbnail/${vid.id}`);
@@ -375,10 +379,13 @@ test('a book is "the next pages" once these were READ: a read card\'s next start
 
 // ---- v1.380.0: new vs continue (R5, D6-D8) and the one-minute rule (D7) ------------------------------------
 
-async function firstCards(pred, batches = 40) {
+// v1.382.0 (D5): the shipped v1.380.0 / v1.381.0 tests below run with "Whole chapter" (reel 0), the slice they were written
+// for; the reel lengths have their own tests at the end of this file.
+const WHOLE_CHAPTER = JSON.stringify({ reel: 0 });
+async function firstCards(pred, batches = 40, fs = WHOLE_CHAPTER) {
   const s = await startSession(30);
   const found = [];
-  for (let i = 0; i < batches; i++) for (const c of (await batch(s.id, 5)).cards) if (pred(c)) found.push(c);
+  for (let i = 0; i < batches; i++) for (const c of (await batch(s.id, 5, undefined, undefined, fs)).cards) if (pred(c)) found.push(c);
   return { session: s, found };
 }
 const snapshotMedia = (userId, id) => JSON.stringify({
@@ -465,15 +472,15 @@ test('v1.380.0 D7 for a fresh podcast episode: nothing before 60 s of playing; t
   assert.strictEqual(userStore.getOnePodcastProgress(uid, card.id).position, 75);
 });
 
-test('D7 video slices: the saved place\'s chapter (to the next chapter start) or a 3-minute segment', async () => {
+test('D7 video slices (Whole chapter): the saved place\'s chapter (to the next chapter start) or a 2-minute segment (v1.382.0 D5; was 3)', async () => {
   const s = await startSession(10);
   const cards = [];
-  for (let i = 0; i < 12 && !(cards.find((c) => c.id === 'va0') && cards.find((c) => c.id === 'va1')); i++) cards.push(...(await batch(s.id, 5)).cards);
+  for (let i = 0; i < 12 && !(cards.find((c) => c.id === 'va0') && cards.find((c) => c.id === 'va1')); i++) cards.push(...(await batch(s.id, 5, undefined, undefined, WHOLE_CHAPTER)).cards);
   const va0 = cards.find((c) => c.id === 'va0' && c.kind === 'video');
   const va1 = cards.find((c) => c.id === 'va1' && c.kind === 'video');
   assert.ok(va0 && va1, 'both in-progress videos were served (they lead the pool)');
   assert.deepStrictEqual({ startAt: va0.startAt, endAt: va0.endAt, chapter: va0.chapter }, { startAt: 400, endAt: 900, chapter: { index: 1, count: 3, title: 'Middle' } });
-  assert.deepStrictEqual({ startAt: va1.startAt, endAt: va1.endAt, chapter: va1.chapter }, { startAt: 90, endAt: 270, chapter: null });
+  assert.deepStrictEqual({ startAt: va1.startAt, endAt: va1.endAt, chapter: va1.chapter }, { startAt: 90, endAt: 210, chapter: null });
 });
 
 // ---- D3: visibility and weights -------------------------------------------------------------
@@ -626,4 +633,357 @@ test('a feed write inside a session records the move with what it moved FROM; a 
   rec = userStore.getFeedSession(uid, s.id);
   assert.strictEqual(rec.summary.pages, 3);
   assert.strictEqual(rec.summary.moves.length, 2);
+});
+
+// ---- v1.382.0 Feed settings (plan 2026-10-10-feed-settings D2-D6): the serving falsifiers ---------------------------
+// Each request carries the settings as `fs` (the synced ft-feed-settings value), read by public/js/feed-settings.js.
+
+async function cardsWith(fs, n = 150) {
+  const s = await startSession(30);
+  const out = [];
+  while (out.length < n) {
+    const b = await batch(s.id, 10, undefined, undefined, fs);
+    if (!b.cards.length) break;
+    out.push(...b.cards);
+  }
+  return { session: s, cards: out };
+}
+
+test('v1.382.0 D2: a switched-off kind is never served (200 cards each), the others still are', async () => {
+  for (const off of [['song', 'book'], ['watchlater'], ['video', 'podcast']]) {
+    const { cards } = await cardsWith(JSON.stringify({ off }), 200);
+    assert.ok(cards.length >= 150, off + ': cards still come');
+    const kinds = new Set(cards.map((c) => c.kind));
+    for (const k of off) assert.ok(!kinds.has(k), `${off}: no ${k} card`);
+    for (const k of ['book', 'video', 'podcast', 'watchlater', 'song'].filter((x) => !off.includes(x))) assert.ok(kinds.has(k), `${off}: ${k} still served`);
+  }
+  // Watch later follows its OWN switch: with Videos and Podcasts off, its videos and episodes still come as Watch later cards
+  const { cards } = await cardsWith(JSON.stringify({ off: ['video', 'podcast'] }), 200);
+  const wl = cards.filter((c) => c.kind === 'watchlater');
+  assert.ok(wl.some((c) => c.media === 'video') && wl.some((c) => c.media === 'podcast'), 'Watch later videos and episodes');
+  // every kind off is not a value the Feed honours: it reads as all on (the last kind can never be switched off)
+  const all = await cardsWith(JSON.stringify({ off: ['video', 'podcast', 'book', 'watchlater', 'song'] }), 60);
+  assert.ok(new Set(all.cards.map((c) => c.kind)).size >= 4, 'all off = the defaults');
+});
+
+test('v1.382.0 D3: New only serves only new items and Continue only only started ones, per kind (both directions)', async () => {
+  let r = await cardsWith(JSON.stringify({ which: { video: 'new', podcast: 'new' } }), 150);
+  let vids = r.cards.filter((c) => c.kind === 'video');
+  let pods = r.cards.filter((c) => c.kind === 'podcast');
+  assert.ok(vids.length > 5 && pods.length > 5);
+  assert.ok(vids.every((c) => c.fresh === true), 'New only: no continuing video');
+  assert.ok(pods.every((c) => c.fresh === true), 'New only: no continuing episode');
+  assert.ok(!vids.some((c) => c.id === 'va0' || c.id === 'va1') && !pods.some((c) => c.id === epIds.a[0]));
+  assert.ok(r.cards.some((c) => c.kind === 'watchlater' && c.fresh === false) || r.cards.some((c) => c.kind === 'watchlater'), 'Watch later stays Both');
+  r = await cardsWith(JSON.stringify({ which: { video: 'continue', podcast: 'continue' } }), 80);
+  vids = r.cards.filter((c) => c.kind === 'video');
+  pods = r.cards.filter((c) => c.kind === 'podcast');
+  assert.deepStrictEqual(vids.map((c) => c.id).sort(), ['va0', 'va1'], 'Continue only: exactly the two started videos, then the kind drops out');
+  // exactly the episodes with a saved place past the started minute (earlier tests in this file start some): read from storage
+  const started = Object.entries(userStore.getPodcastProgress(uid)).filter(([, v]) => Number(v.position) >= 60).map(([k]) => k).sort();
+  assert.ok(started.includes(epIds.a[0]));
+  assert.deepStrictEqual(pods.map((c) => c.id).sort(), started, 'Continue only: the started episodes, each once');
+  assert.ok(vids.every((c) => c.fresh === false) && pods.every((c) => c.fresh === false));
+  // books: New only = the Start something new card alone; Continue only = never one
+  // earlier tests in this file start every unstarted book: make Zeta unstarted again so New only has its one card to serve
+  await flushPendingBookProgress();
+  userStore.resetBookPlace(uid, bookIds.Zeta);
+  assert.ok(!effectiveBookProgress(uid, bookIds.Zeta) && !Object.prototype.hasOwnProperty.call(userStore.getBookFinished(uid), bookIds.Zeta), 'precondition: Zeta is unstarted');
+  r = await cardsWith(JSON.stringify({ which: { book: 'new' } }), 80);
+  let books = r.cards.filter((c) => c.kind === 'book');
+  assert.strictEqual(books.length, 1, 'one new book a session, then the kind drops out');
+  assert.strictEqual(books[0].newBook, true);
+  r = await cardsWith(JSON.stringify({ which: { book: 'continue' } }), 120);
+  books = r.cards.filter((c) => c.kind === 'book');
+  assert.ok(books.length > 3 && books.every((c) => !c.newBook), 'Continue only: reading books, never Start something new');
+});
+
+test('v1.382.0 D3: a New-only kind stays outside the New / Continue balance (pickCards mixKinds)', () => {
+  const pools = { video: ['n1', 'n2', 'n3', 'n4'], watchlater: ['wc1', 'wn1', 'wc2', 'wn2'] };
+  const fresh = (k, id) => id.startsWith('n') || id.startsWith('wn');
+  const mm = { fresh: 0, cont: 0 };
+  mix.pickCards({ pools, count: 4, rng: mix.seededRng(3), isFresh: fresh, mediaMix: mm, weights: { book: 0, video: 50, podcast: 0, watchlater: 50, song: 0 }, mixKinds: ['podcast', 'watchlater'] });
+  assert.strictEqual(mm.fresh + mm.cont, 2, 'only the two Watch later picks are counted');
+  const mm2 = { fresh: 0, cont: 0 };
+  mix.pickCards({ pools: { video: ['n1', 'n2', 'n3', 'n4'], watchlater: ['wc1', 'wn1', 'wc2', 'wn2'] }, count: 4, rng: mix.seededRng(3), isFresh: fresh, mediaMix: mm2, weights: { book: 0, video: 50, podcast: 0, watchlater: 50, song: 0 } });
+  assert.strictEqual(mm2.fresh + mm2.cont, 4, 'the default counts every media kind');
+});
+
+test('v1.382.0 D4: From the beginning plays a started video / episode from 0 and shows a book from its first chapter; no saved place moves back', async () => {
+  const fs0 = JSON.stringify({ which: { video: 'continue', podcast: 'continue', book: 'continue' }, where: { video: 'start', podcast: 'start', book: 'start' } });
+  // a STARTED Watch later item (every other Watch later row in the fixture is unstarted, which would make the check vacuous)
+  userStore.addWatchLater(uid, 'wl149', new Date().toISOString()); // idempotent: it is on the list
+  userStore.setProgress(uid, 'wl149', { timestamp: 300, duration: 1200, updatedAt: new Date().toISOString() });
+  // (a started item also joins the video pool, so with Videos on it comes as a Video card first; Videos off leaves the Watch
+  // later card alone, with the video "Where" still set to From the beginning)
+  const wlRun = await cardsWith(JSON.stringify({ off: ['video'], where: { video: 'start' } }), 200);
+  const wl0 = wlRun.cards.find((c) => c.kind === 'watchlater' && c.id === 'wl149');
+  assert.ok(wl0 && wl0.fresh === false, 'the started Watch later item was served');
+  assert.deepStrictEqual({ fromStart: wl0.fromStart, startAt: wl0.startAt }, { fromStart: false, startAt: 300 }, 'Watch later keeps its saved place');
+  const { cards } = await cardsWith(fs0, 60);
+  const asVideo = cards.find((c) => c.kind === 'video' && c.id === 'wl149');
+  if (asVideo) assert.strictEqual(asVideo.fromStart, true, 'as a Video card it follows the Videos choice');
+  const va0 = cards.find((c) => c.kind === 'video' && c.id === 'va0');
+  const ep = cards.find((c) => c.kind === 'podcast' && c.id === epIds.a[0]);
+  const beta = cards.find((c) => c.kind === 'book' && c.id === bookIds.Beta);
+  assert.ok(va0 && ep && beta, 'the three started items were served');
+  assert.deepStrictEqual({ fromStart: va0.fromStart, startAt: va0.startAt, endAt: va0.endAt, progress: va0.progress }, { fromStart: true, startAt: 0, endAt: 60, progress: 400 });
+  const epStored = Number(userStore.getOnePodcastProgress(uid, epIds.a[0]).position);
+  assert.ok(epStored >= 600, 'the episode has its place (600 s, or further after the earlier tests)');
+  assert.deepStrictEqual({ fromStart: ep.fromStart, startAt: ep.startAt, endAt: ep.endAt, position: ep.position }, { fromStart: true, startAt: 0, endAt: 120, position: epStored });
+  assert.strictEqual(beta.fromStart, true);
+  assert.deepStrictEqual(beta.start, { spineIndex: 0, blockIndex: 0 }, 'the first real chapter (Beta has no front matter)');
+  assert.ok(cards.filter((c) => c.kind === 'watchlater').every((c) => !c.fromStart), 'Watch later has no Where choice: it keeps its place');
+  // the card's own writes while behind the saved place: refused, storage untouched
+  await flushPendingProgress(); await flushPendingBookProgress();
+  const before = JSON.stringify({ v: userStore.getOneProgress(uid, 'va0'), p: userStore.getOnePodcastProgress(uid, epIds.a[0]), b: effectiveBookProgress(uid, bookIds.Beta) });
+  let r = await postJson('/api/feed/progress/media', { id: 'va0', timestamp: 45, duration: 1200, playedSec: 45 });
+  assert.strictEqual(r.status, 409); assert.strictEqual((await r.json()).reason, 'backward');
+  r = await postJson('/api/feed/progress/podcast', { id: epIds.a[0], timestamp: 110, duration: 1800, playedSec: 110 });
+  assert.strictEqual(r.status, 409); assert.strictEqual((await r.json()).reason, 'backward');
+  r = await postJson(`/api/feed/progress/book/${bookIds.Beta}`, { spineIndex: 0, blockIndex: 20 });
+  assert.strictEqual(r.status, 409); assert.strictEqual((await r.json()).reason, 'backward');
+  await flushPendingProgress(); await flushPendingBookProgress();
+  assert.strictEqual(JSON.stringify({ v: userStore.getOneProgress(uid, 'va0'), p: userStore.getOnePodcastProgress(uid, epIds.a[0]), b: effectiveBookProgress(uid, bookIds.Beta) }), before, 'every saved place byte-identical');
+  // once playback passes the saved place, the place moves (the forward-only rule, unchanged)
+  r = await postJson('/api/feed/progress/media', { id: 'va0', timestamp: 410, duration: 1200, playedSec: 70 });
+  assert.strictEqual(r.status, 200, await r.text());
+  await flushPendingProgress();
+  assert.strictEqual(userStore.getOneProgress(uid, 'va0').timestamp, 410);
+  // a fresh item never says From the beginning (it starts there anyway); the default never does
+  const d = await cardsWith(null, 40);
+  assert.ok(d.cards.every((c) => !c.fromStart), 'the default: from the saved place');
+});
+
+test('v1.382.0 D5: the reel / slice lengths, the defaults (60 s, 2 min), and junk values reading as the defaults', async () => {
+  let r = await cardsWith(JSON.stringify({ reel: 30, slice: 60 }), 60);
+  const v = r.cards.filter((c) => c.kind === 'video');
+  const p = r.cards.filter((c) => c.kind === 'podcast');
+  assert.ok(v.length && p.length);
+  for (const c of v) { assert.ok(c.endAt - c.startAt <= 30 && c.endAt - c.startAt > 0, c.id); assert.strictEqual(c.chapter, null); }
+  for (const c of p) assert.strictEqual(c.endAt - c.startAt, 60);
+  const va0 = v.find((c) => c.id === 'va0');
+  if (va0) assert.strictEqual(va0.startAt, va0.progress, 'a reel starts at the saved place, not the chapter start');
+  for (const junk of ['{"reel":45,"slice":30}', 'not json', '{"reel":"60"}', 'x'.repeat(5000)]) {
+    r = await cardsWith(junk, 30);
+    for (const c of r.cards.filter((x) => x.kind === 'video')) assert.ok(c.endAt - c.startAt <= 60, junk.slice(0, 20));
+    for (const c of r.cards.filter((x) => x.kind === 'podcast')) assert.strictEqual(c.endAt - c.startAt, 120, junk.slice(0, 20));
+  }
+  r = await cardsWith(JSON.stringify({ reel: 120 }), 40);
+  assert.ok(r.cards.filter((c) => c.kind === 'video').every((c) => c.endAt - c.startAt === 120));
+});
+
+test('v1.382.0 D6: a fresh card writes nothing for a 10 s look, nothing short of its whole reel, and counts once the whole reel played', async () => {
+  for (const reel of [60, 30]) {
+    const { found } = await firstCards((c) => c.kind === 'video' && c.fresh && c.id === 'va448', 40, JSON.stringify({ reel }));
+    assert.ok(found.length, 'the fresh card was served with the ' + reel + ' s reel');
+    const card = found[found.length - 1];
+    assert.strictEqual(card.endAt - card.startAt, reel);
+    await flushPendingProgress();
+    const before = snapshotMedia(uid, card.id);
+    for (const playedSec of [10, reel - 2]) {
+      const r = await postJson('/api/feed/progress/media', { id: card.id, timestamp: card.startAt + playedSec, duration: 1200, playedSec });
+      assert.strictEqual(r.status, 409, reel + ' / ' + playedSec);
+      assert.strictEqual((await r.json()).reason, 'too-early');
+    }
+    await flushPendingProgress();
+    assert.strictEqual(snapshotMedia(uid, card.id), before, 'a look short of the reel left storage byte-identical');
+    const r = await postJson('/api/feed/progress/media', { id: card.id, timestamp: card.endAt, duration: 1200, playedSec: reel - 0.75 });
+    assert.strictEqual(r.status, 200, 'the whole reel (less the last update) counts as started: ' + reel);
+    await flushPendingProgress();
+    userStore.removeHistory(uid, card.id); // fresh again for the next reel length
+  }
+  // the 90 s reel: the minute rule is still the floor that counts (a minute is less than the reel)
+  const { found } = await firstCards((c) => c.kind === 'video' && c.fresh && c.id === 'va448', 40, JSON.stringify({ reel: 90 }));
+  const card = found[found.length - 1];
+  let r = await postJson('/api/feed/progress/media', { id: card.id, timestamp: card.startAt + 59, duration: 1200, playedSec: 59 });
+  assert.strictEqual(r.status, 409);
+  r = await postJson('/api/feed/progress/media', { id: card.id, timestamp: card.startAt + 61, duration: 1200, playedSec: 61 });
+  assert.strictEqual(r.status, 200);
+  await flushPendingProgress();
+  userStore.removeHistory(uid, card.id);
+});
+
+test('v1.382.0 D2 / D3: when everything chosen has been shown, the refill (recycle) still honours the choices', async () => {
+  // the allowlisted member sees 3 subscription videos (all New) and has one in Watch later; Watch later is switched off
+  userStore.addWatchLater(tiny.user.id, 'vt1', new Date().toISOString());
+  const s = await startSession(30, tiny.cookie);
+  const fs1 = JSON.stringify({ off: ['watchlater'], which: { video: 'new' } });
+  let exhausted = false;
+  const seen = [];
+  for (let i = 0; i < 6; i++) {
+    const b = await batch(s.id, 5, tiny.cookie, undefined, fs1);
+    exhausted = exhausted || b.exhausted;
+    seen.push(...b.cards);
+  }
+  assert.ok(exhausted, 'the session ran through everything and refilled');
+  assert.ok(seen.length > 3, 'the refill served again');
+  assert.ok(seen.every((c) => c.kind === 'video' && c.fresh === true), 'never a Watch later card, never a continuing video: ' + JSON.stringify(seen.map((c) => c.kind + ':' + c.id)));
+});
+
+// ---- v1.382.0 (D10, D11): Like / Watch later state on the cards, Hide this (every kind), Fewer from -----------------------
+function sendJson(method, urlPath, body, cookie) {
+  return fetch(`${base}${urlPath}`, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) }, body: JSON.stringify(body) });
+}
+
+test('v1.382.0 D11: Hide this works for every kind, lists with titles, and a hidden item is never served (and is again after Undo)', async () => {
+  const songId = 'trk7';
+  const targets = [{ kind: 'media', id: 'va3' }, { kind: 'podcast', id: epIds.a[5] }, { kind: 'book', id: bookIds.Gamma }, { kind: 'song', id: songId }, { kind: 'media', id: 'wl3' }];
+  for (const t of targets) {
+    const r = await sendJson('POST', '/api/feed/hidden', t);
+    assert.strictEqual(r.status, 200, JSON.stringify(t));
+  }
+  const rows = userStore.getFeedHidden(uid);
+  for (const k of ['va3', `podcast:${epIds.a[5]}`, `book:${bookIds.Gamma}`, `song:${songId}`, 'wl3']) assert.ok(rows.includes(k), k);
+  const list = await (await fetch(`${base}/api/feed/hidden`)).json();
+  const byKey = new Map(list.items.map((i) => [i.kind + ':' + i.id, i]));
+  assert.deepStrictEqual(byKey.get('media:va3'), { kind: 'media', id: 'va3', title: 'Video va3', sub: 'Allowed' });
+  assert.deepStrictEqual(byKey.get(`podcast:${epIds.a[5]}`), { kind: 'podcast', id: epIds.a[5], title: 'Ep a5', sub: 'Show A' });
+  assert.deepStrictEqual(byKey.get(`book:${bookIds.Gamma}`), { kind: 'book', id: bookIds.Gamma, title: 'Gamma', sub: 'W' });
+  assert.deepStrictEqual(byKey.get(`song:${songId}`), { kind: 'song', id: songId, title: 'Song 7', sub: 'Art' });
+  // never served, as itself or as a Watch later card (wl3 and a Watch later episode key share the hidden key)
+  userStore.addWatchLater(uid, userStore.watchLaterKey('podcast', epIds.a[5]), new Date().toISOString());
+  const { cards } = await cardsWith(JSON.stringify({ which: { video: 'continue' } }), 400);
+  const served = (k, id) => cards.some((c) => c.id === id && (k === 'any' || c.kind === k));
+  assert.ok(cards.length >= 300);
+  for (const t of targets) assert.ok(!served('any', t.id), 'hidden ' + t.kind + ' ' + t.id + ' was served');
+  // Undo: served again (Gamma is a long book the admin reads: its next card comes)
+  for (const t of targets) assert.strictEqual((await sendJson('DELETE', '/api/feed/hidden', t)).status, 200);
+  assert.ok(!userStore.getFeedHidden(uid).some((k) => /^(podcast|book|song):/.test(k) || k === 'va3' || k === 'wl3'));
+  const again = await cardsWith(null, 200);
+  assert.ok(again.cards.some((c) => c.kind === 'book' && c.id === bookIds.Gamma), 'the book is back');
+  assert.strictEqual((await sendJson('DELETE', '/api/feed/hidden', targets[0])).status, 200, 'Undo twice: idempotent');
+});
+
+test('v1.382.0 D11 access: Hide never reaches an item the viewer cannot see (one neutral 404, nothing written); bad input is refused; the list never leaks', async () => {
+  const mid = member.user.id;
+  const before = JSON.stringify(userStore.getFeedHidden(mid));
+  const blocked = [{ kind: 'media', id: 'vh1' }, { kind: 'podcast', id: epIds.b[0] }, { kind: 'book', id: bookIds.Alpha }, { kind: 'song', id: 'trk1' }];
+  const missing = [{ kind: 'media', id: 'nope' }, { kind: 'podcast', id: 'f'.repeat(32) }, { kind: 'book', id: 'nobook' }, { kind: 'song', id: 'notrack' }];
+  const bodies = new Set();
+  for (const t of blocked.concat(missing)) {
+    const r = await sendJson('POST', '/api/feed/hidden', t, member.cookie);
+    assert.strictEqual(r.status, 404, JSON.stringify(t));
+    bodies.add(await r.text());
+  }
+  assert.strictEqual(bodies.size, 1, 'one neutral body for hidden and missing');
+  for (const bad of [{ kind: 'video', id: 'va1' }, { kind: 'media', id: '' }, { kind: 'media', id: 'a\u0000b' }, { kind: 'media', id: 'x'.repeat(300) }, { kind: 'media' }, { kind: 'media', id: 7 }, {}, { kind: '__proto__', id: 'va1' }]) {
+    assert.strictEqual((await sendJson('POST', '/api/feed/hidden', bad, member.cookie)).status, 400, JSON.stringify(bad));
+    assert.strictEqual((await sendJson('DELETE', '/api/feed/hidden', bad, member.cookie)).status, 400, JSON.stringify(bad));
+  }
+  assert.strictEqual(JSON.stringify(userStore.getFeedHidden(mid)), before, 'nothing written');
+  // a row the member cannot see (written by another path, or hidden since) is never listed
+  userStore.addFeedHidden(mid, 'vh3', new Date().toISOString());
+  userStore.addFeedHidden(mid, `book:${bookIds.Beta}`, new Date().toISOString());
+  userStore.addFeedHidden(mid, `song:trk2`, new Date().toISOString());
+  userStore.addFeedHidden(mid, `podcast:${epIds.b[1]}`, new Date().toISOString());
+  assert.strictEqual((await sendJson('POST', '/api/feed/hidden', { kind: 'media', id: 'va2' }, member.cookie)).status, 200);
+  const list = await (await fetch(`${base}/api/feed/hidden`, { headers: { Cookie: member.cookie } })).json();
+  assert.deepStrictEqual(list.items.map((i) => i.kind + ':' + i.id), ['media:va2'], 'only what the member can see');
+  // the admin's list does not show the member's rows (per user)
+  const admin = await (await fetch(`${base}/api/feed/hidden`)).json();
+  assert.ok(!admin.items.some((i) => i.id === 'va2'));
+});
+
+test('v1.382.0 D11 Fewer from: a show in the synced list comes about a quarter as often (never dropped); the list is read from the viewer\'s stored prefs', async () => {
+  const count = async () => {
+    const { cards } = await cardsWith(JSON.stringify({ off: ['book', 'video', 'watchlater', 'song'], which: { podcast: 'new' } }), 80);
+    const a = cards.filter((c) => c.showName === 'Show A').length;
+    const b = cards.filter((c) => c.showName === 'Show B').length;
+    return { a, b };
+  };
+  const base0 = await count();
+  assert.ok(base0.a > 25 && base0.b > 25, 'precondition: both shows serve evenly ' + JSON.stringify(base0));
+  userStore.setPrefsLWW(uid, [{ key: 'ft-feed-fewer', value: JSON.stringify(['show:show a']), updatedAt: Date.now() }]);
+  const fewer = await count();
+  assert.ok(fewer.a < fewer.b * 0.5, 'Show A is held back: ' + JSON.stringify(fewer));
+  assert.ok(fewer.a > 0, 'held back, not hidden: ' + JSON.stringify(fewer));
+  // held back, never dropped: with BOTH shows on the list the held-back episodes still come once the rest has run out
+  userStore.setPrefsLWW(uid, [{ key: 'ft-feed-fewer', value: JSON.stringify(['show:Show A', 'show:Show B']), updatedAt: Date.now() + 1 }]);
+  const all = await cardsWith(JSON.stringify({ off: ['book', 'video', 'watchlater', 'song'], which: { podcast: 'new' } }), 150);
+  const distinct = new Set(all.cards.map((c) => c.id)).size;
+  assert.ok(distinct >= 140, 'the held-back episodes still come in turn (distinct, not the kept quarter refilled): ' + distinct);
+  userStore.setPrefsLWW(uid, [{ key: 'ft-feed-fewer', value: '', updatedAt: Date.now() + 2 }]);
+  const after = await count();
+  assert.ok(after.a > 25, 'removed from the list: back to even ' + JSON.stringify(after));
+});
+
+test('v1.382.0 D10: cards carry the viewer\'s Like and Watch later state (each kind\'s own rows)', async () => {
+  const now = new Date().toISOString();
+  userStore.addLiked(uid, 'va1', now);
+  userStore.addPodcastLiked(uid, epIds.a[0], now);
+  userStore.addWatchLater(uid, 'va1', now);
+  const { cards } = await cardsWith(JSON.stringify({ which: { video: 'continue', podcast: 'continue' } }), 60);
+  const va1 = cards.find((c) => c.kind === 'video' && c.id === 'va1');
+  const va0 = cards.find((c) => c.kind === 'video' && c.id === 'va0');
+  const ep = cards.find((c) => c.kind === 'podcast' && c.id === epIds.a[0]);
+  assert.deepStrictEqual({ liked: va1.liked, inWatchLater: va1.inWatchLater }, { liked: true, inWatchLater: true });
+  assert.deepStrictEqual({ liked: va0.liked, inWatchLater: va0.inWatchLater }, { liked: false, inWatchLater: false });
+  assert.strictEqual(ep.liked, true);
+  const book = cards.find((c) => c.kind === 'book' && c.id === bookIds.Gamma);
+  if (book) assert.strictEqual(book.liked, true, 'Gamma is liked in the fixture');
+  const song = cards.find((c) => c.kind === 'song');
+  assert.strictEqual(song.track.liked, true, 'a song carries music\'s own liked flag');
+  userStore.removeLiked(uid, 'va1'); userStore.removePodcastLiked(uid, epIds.a[0]); userStore.removeWatchLater(uid, 'va1');
+});
+
+test('v1.382.0 gate r1 (adversary W1): a chapter slice never relaxes the one-minute guard - an 8 s first chapter in Whole chapter mode, a 7.5 s look writes nothing', async () => {
+  const { found } = await firstCards((c) => c.kind === 'video' && c.fresh && c.id === 'va447', 40, JSON.stringify({ reel: 0 }));
+  assert.ok(found.length, 'the fresh card was served in Whole chapter mode');
+  const card = found[found.length - 1];
+  assert.deepStrictEqual({ startAt: card.startAt, endAt: card.endAt, reelSec: card.reelSec }, { startAt: 0, endAt: 8, reelSec: 0 });
+  await flushPendingProgress();
+  const before = snapshotMedia(uid, 'va447');
+  for (const playedSec of [7.5, 10, 59]) {
+    const r = await postJson('/api/feed/progress/media', { id: 'va447', timestamp: playedSec, duration: 1200, playedSec });
+    assert.strictEqual(r.status, 409, String(playedSec));
+    assert.strictEqual((await r.json()).reason, 'too-early');
+  }
+  await flushPendingProgress();
+  assert.strictEqual(snapshotMedia(uid, 'va447'), before, 'byte-identical');
+  const ok = await postJson('/api/feed/progress/media', { id: 'va447', timestamp: 61, duration: 1200, playedSec: 61 });
+  assert.strictEqual(ok.status, 200, 'the minute still counts');
+  await flushPendingProgress();
+  userStore.removeHistory(uid, 'va447');
+  // the same video as a 30 s reel: the whole reel counts (the relaxation is for reels)
+  const reel = await firstCards((c) => c.kind === 'video' && c.fresh && c.id === 'va447', 40, JSON.stringify({ reel: 30 }));
+  const rc = reel.found[reel.found.length - 1];
+  assert.deepStrictEqual({ endAt: rc.endAt, reelSec: rc.reelSec }, { endAt: 30, reelSec: 30 });
+  assert.strictEqual((await postJson('/api/feed/progress/media', { id: 'va447', timestamp: 30, duration: 1200, playedSec: 29.3 })).status, 200);
+  await flushPendingProgress();
+  userStore.removeHistory(uid, 'va447');
+});
+
+test('v1.382.0 gate r1 (adversary W2): hiding the offered "Start something new" book offers the next one (the hide applies before the one slot is chosen)', async () => {
+  await flushPendingBookProgress();
+  for (const t of ['Delta', 'Epsilon', 'Zeta']) userStore.resetBookPlace(uid, bookIds[t]);
+  const newBookOf = async () => (await cardsWith(JSON.stringify({ which: { book: 'new' } }), 40)).cards.filter((c) => c.kind === 'book' && c.newBook).map((c) => c.title);
+  const first = await newBookOf();
+  assert.strictEqual(first.length, 1, 'one new book: ' + JSON.stringify(first));
+  const hidden = [];
+  let offered = first[0];
+  for (let i = 0; i < 2; i++) {
+    const id = bookIds[offered];
+    assert.strictEqual((await sendJson('POST', '/api/feed/hidden', { kind: 'book', id })).status, 200);
+    hidden.push(id);
+    const next = await newBookOf();
+    assert.strictEqual(next.length, 1, 'still one new book after hiding ' + offered + ': ' + JSON.stringify(next));
+    assert.ok(!hidden.includes(bookIds[next[0]]), 'never a hidden one');
+    offered = next[0];
+  }
+  // Fewer from the author of every candidate: still offered (held back, never dropped)
+  userStore.setPrefsLWW(uid, [{ key: 'ft-feed-fewer', value: JSON.stringify(['author:W']), updatedAt: Date.now() + 10 }]);
+  // every session (each its own draw: a held-back book is offered, never dropped - r1 mutant R1-M12 survived one session by chance)
+  for (let i = 0; i < 10; i++) assert.strictEqual((await newBookOf()).length, 1, 'held back is not hidden (session ' + i + ')');
+  userStore.setPrefsLWW(uid, [{ key: 'ft-feed-fewer', value: '', updatedAt: Date.now() + 11 }]);
+  for (const id of hidden) await sendJson('DELETE', '/api/feed/hidden', { kind: 'book', id });
+});
+
+test('v1.382.0 gate r1 (adversary S3, M35): an `fs` over the length cap is ignored whole (the defaults), even when it is valid JSON', async () => {
+  const padded = JSON.stringify({ reel: 30, slice: 60 }) + ' '.repeat(3000);
+  const { cards } = await cardsWith(padded, 40);
+  assert.ok(!cards.some((x) => x.kind === 'video' && x.endAt - x.startAt === 30), 'never the padded 30 s reel');
+  for (const c of cards.filter((x) => x.kind === 'podcast')) assert.strictEqual(c.endAt - c.startAt, 120, 'the default slice, not the padded 60');
+  const ok = await cardsWith(JSON.stringify({ slice: 60 }) + ' '.repeat(100), 40);
+  assert.ok(ok.cards.filter((x) => x.kind === 'podcast').every((c) => c.endAt - c.startAt === 60), 'under the cap it is read');
 });

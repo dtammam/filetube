@@ -589,6 +589,111 @@
           <p class="setup-note">Show/hide and reorder every item in the mobile bottom bar - Home, Liked and Settings included. Drag a row to reorder it (press and hold on a touch screen), or focus its handle and use the arrow keys. Keep at least one item showing. Some items (Subscriptions, Download) only appear when their feature is enabled. Device-local.</p>
         </div>
       </details>
+      <!-- v1.382.0 (Dean, 2026-10-10): the Feed's own page - which kinds it shows, which items and where they start, how long a
+           card plays. Synced to your account (ft-feed-settings, public/js/feed-settings.js); the Feed's gear opens it. -->
+      <details class="setup-box setup-sec sub-collapsible" data-collapse-key="feed" data-md-icon="clock" data-md-group="Personalize" open>
+        <summary>Feed</summary>
+        <p class="setup-intro">What the Feed shows and how long each card plays. Changes apply from the next cards the Feed loads, and they follow you to your other devices.</p>
+        <h3 class="setup-heading">Show in the Feed</h3>
+        <div class="setup-group">
+          <div class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list" id="feed-kinds">
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="feed-kind-video">Videos</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="feed-kind-video" data-feed-kind="video" checked /></span></div>
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="feed-kind-podcast">Podcasts</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="feed-kind-podcast" data-feed-kind="podcast" checked /></span></div>
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="feed-kind-book">Books</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="feed-kind-book" data-feed-kind="book" checked /></span></div>
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="feed-kind-watchlater">Watch later</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="feed-kind-watchlater" data-feed-kind="watchlater" checked /></span></div>
+            <div class="ui-row ui-row--default" role="listitem"><span class="ui-row__lead"></span><span class="ui-row__media"></span><span class="ui-row__body"><label class="ui-row__title" for="feed-kind-song">Songs</label></span><span class="ui-row__aside"></span><span class="ui-row__actions"><input type="checkbox" role="switch" class="ui-switch" id="feed-kind-song" data-feed-kind="song" checked /></span></div>
+          </div>
+          <p class="setup-note" id="feed-kinds-note">Keep at least one on. Watch later's videos and episodes follow its own switch.</p>
+        </div>
+          <h3 class="setup-heading">Videos</h3>
+          <div class="setup-group" data-feed-choices="video">
+            <div class="ui-field setup-field">
+              <label class="ui-field__label" for="feed-which-video">Which videos show</label>
+              <span class="ui-select"><select id="feed-which-video" class="ui-select__native" data-feed-which="video">
+                  <option value="both">New and ones I started</option>
+                  <option value="new">New only</option>
+                  <option value="continue">Only ones I started</option>
+                </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+              <p class="ui-field__help">New means you have not started it, or watched under a minute.</p>
+            </div>
+            <div class="ui-field setup-field">
+              <label class="ui-field__label" for="feed-where-video">Where they start</label>
+              <span class="ui-select"><select id="feed-where-video" class="ui-select__native" data-feed-where="video">
+                  <option value="saved">From my saved place</option>
+                  <option value="start">From the beginning</option>
+                </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+              <p class="ui-field__help" data-feed-where-help="video">From the beginning plays a started video from its start. Your saved place stays where it is until you pass it.</p>
+            </div>
+          </div>
+          <h3 class="setup-heading">Podcasts</h3>
+          <div class="setup-group" data-feed-choices="podcast">
+            <div class="ui-field setup-field">
+              <label class="ui-field__label" for="feed-which-podcast">Which podcasts show</label>
+              <span class="ui-select"><select id="feed-which-podcast" class="ui-select__native" data-feed-which="podcast">
+                  <option value="both">New and ones I started</option>
+                  <option value="new">New only</option>
+                  <option value="continue">Only ones I started</option>
+                </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+              <p class="ui-field__help">New means you have not started the episode, or heard under a minute.</p>
+            </div>
+            <div class="ui-field setup-field">
+              <label class="ui-field__label" for="feed-where-podcast">Where they start</label>
+              <span class="ui-select"><select id="feed-where-podcast" class="ui-select__native" data-feed-where="podcast">
+                  <option value="saved">From my saved place</option>
+                  <option value="start">From the beginning</option>
+                </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+              <p class="ui-field__help" data-feed-where-help="podcast">From the beginning plays a started episode from its start. Your saved place stays where it is until you pass it.</p>
+            </div>
+          </div>
+          <h3 class="setup-heading">Books</h3>
+          <div class="setup-group" data-feed-choices="book">
+            <div class="ui-field setup-field">
+              <label class="ui-field__label" for="feed-which-book">Which books show</label>
+              <span class="ui-select"><select id="feed-which-book" class="ui-select__native" data-feed-which="book">
+                  <option value="both">New and ones I started</option>
+                  <option value="new">New only</option>
+                  <option value="continue">Only ones I started</option>
+                </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+              <p class="ui-field__help">New books show as Start something new.</p>
+            </div>
+            <div class="ui-field setup-field">
+              <label class="ui-field__label" for="feed-where-book">Where they start</label>
+              <span class="ui-select"><select id="feed-where-book" class="ui-select__native" data-feed-where="book">
+                  <option value="saved">From my saved place</option>
+                  <option value="start">From the beginning</option>
+                </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+              <p class="ui-field__help" data-feed-where-help="book">From the beginning shows a started book from its first chapter. Your bookmark stays where it is until you read past it.</p>
+            </div>
+          </div>
+          <h3 class="setup-heading">How long a card plays</h3>
+          <div class="setup-group">
+            <div class="ui-field setup-field">
+              <label class="ui-field__label" for="feed-reel">Video reel length</label>
+              <span class="ui-select"><select id="feed-reel" class="ui-select__native">
+                  <option value="30">30 seconds</option>
+                  <option value="60">60 seconds</option>
+                  <option value="90">90 seconds</option>
+                  <option value="120">2 minutes</option>
+                  <option value="0">Whole chapter</option>
+                </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+              <p class="ui-field__help">Audio files in your library follow it too. A video without chapters plays 2 minutes when set to Whole chapter.</p>
+            </div>
+            <div class="ui-field setup-field">
+              <label class="ui-field__label" for="feed-slice">Podcast slice length</label>
+              <span class="ui-select"><select id="feed-slice" class="ui-select__native">
+                  <option value="60">1 minute</option>
+                  <option value="120">2 minutes</option>
+                  <option value="240">4 minutes</option>
+                </select><svg class="ui-icon ui-icon--md ui-select__chevron" aria-hidden="true"><use href="#i-expand_more"/></svg></span>
+            </div>
+          </div>
+          <h3 class="setup-heading" id="feed-tuning-heading">Hidden and fewer</h3>
+          <!-- v1.382.0 (D11): what "Hide this" and "Fewer from" on a Feed card put aside; rows rendered by setup.js -->
+          <div class="setup-group">
+            <div id="feed-tuning-list" class="ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped" role="list" aria-labelledby="feed-tuning-heading"></div>
+            <p class="setup-note" id="feed-tuning-empty" hidden>Nothing hidden, nothing held back. A card's "..." menu has Hide this and Fewer from.</p>
+          </div>
+      </details>
       <!-- v1.171 / v1.174 (Dean): Critters get their OWN section; the mode + density are per-DEVICE (ids unchanged). -->
       <details class="setup-box setup-sec sub-collapsible" data-collapse-key="critters" data-md-icon="paw" data-md-group="Personalize" open>
         <summary>Critters</summary>
@@ -1239,6 +1344,7 @@
   <script src="/js/main.js"></script>
   <script src="/js/ambient.js"></script>
   <script src="/js/watch.js"></script>
+  <script src="/js/feed-settings.js"></script>
   <script src="/js/setup.js"></script>
   <script src="/js/player.js"></script>
 </body>

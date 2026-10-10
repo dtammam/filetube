@@ -180,6 +180,35 @@ function resolveBaseHandoff(prevId, nextId, t, paused, live) {
 // known quirk, measured a2 -> a1, a3 -> a2); watch.js now DECLARES it false beside its
 // readerHref/resumeMode null stamps, so that adopt clears it.
 var ADOPT_FLAVOR_STRING_FIELDS = ['title', 'channelName', 'folderName', 'album', 'albumKey', 'channelFolder', 'artUrl', 'subId'];
+// v1.382.0 (Feed settings D4 + D7; gate r1 adversary C1): a Feed card played "From the beginning" behind its saved place
+// declares that place as a FLOOR (load data `placeFloorSec`): no progress save for that ITEM at or below it until playback
+// passes it. The floor is the player's own state keyed by the SAVE id (the base media id a chapter track saves under), NOT a
+// field of the load data: it must survive every later load of the same item - an adopt (Keep watching, the podcasts page)
+// AND a fresh load of a slice of it (Listen's `<id>::cN`, Watch from Listen), which replace the load data. Measured in r1: a
+// floor on the load data was dropped by Listen's fresh load and music's chapter save moved the place from 25 s to 24.3 s.
+// A load that DECLARES `placeFloorSec` (every Feed card) sets or clears it; a load of another item, or a close, ends it.
+function validPlaceFloor(v) {
+  return typeof v === 'number' && isFinite(v) && v > 0 ? v : undefined;
+}
+// The id a load's progress saves under (saveProgressToServer's own rule: a chapter track saves under its base file id).
+function placeFloorSaveId(id, data) {
+  return data && typeof data.chapterStartSec === 'number' && data.baseMediaId ? String(data.baseMediaId) : String(id);
+}
+// The floor after a load of (saveId, data): { id, sec } or null.
+function nextPlaceFloor(floor, saveId, data) {
+  if (data && Object.prototype.hasOwnProperty.call(data, 'placeFloorSec')) {
+    var sec = validPlaceFloor(data.placeFloorSec);
+    return sec === undefined ? null : { id: saveId, sec: sec };
+  }
+  return floor && floor.id === saveId ? floor : null;
+}
+// May a save of `saveId` at `time` go out? Not at or below the floor (the forward-only rule's boundary: an equal position is
+// not a move). Returns { allow, floor }: the first save past the floor ends it for good.
+function placeFloorAllows(floor, saveId, time) {
+  if (!floor || floor.id !== String(saveId)) return { allow: true, floor: floor || null };
+  if (!(typeof time === 'number' && isFinite(time) && time > floor.sec)) return { allow: false, floor: floor };
+  return { allow: true, floor: null };
+}
 function applyAdoptFlavor(currentData, data) {
   if (!currentData || !data) return currentData;
   if (Object.prototype.hasOwnProperty.call(data, 'readerHref')) {
@@ -2049,7 +2078,7 @@ if (typeof module !== 'undefined' && module.exports) {
     isAdoptLoad,
     resolveBaseHandoff, // v1.344.2: Listen -> Watch carries the chapter row's place (and pause)
     resolveExplicitStart, // v1.352 L1: &t= on a watch link
-    applyAdoptFlavor,
+    applyAdoptFlavor, placeFloorAllows, validPlaceFloor, nextPlaceFloor, placeFloorSaveId, // v1.382.0: the Feed's From the beginning floor
     presenceSurfaceForResumeMode, // v1.304 handoff modality: the ping's watch/listen flavor
     shouldDockOnTransition,
     nextPlayerState,
@@ -2191,6 +2220,7 @@ if (typeof module !== 'undefined' && module.exports) {
   var state = STATE_CLOSED;
   var currentId = null;
   var currentData = null;
+  var placeFloor = null; // v1.382.0: { id: <save id>, sec } - see nextPlaceFloor / placeFloorAllows above
   var loadGeneration = 0; // invalidated on every real (non-adopt) load/close so a stale poll/timer can never act on the wrong media
 
   // The single, ever-cloned host + the elements inside it (queried once).
@@ -6308,6 +6338,10 @@ if (typeof module !== 'undefined' && module.exports) {
       try { gateOpen = currentData.progressGate() === true; } catch (_) { gateOpen = false; }
       if (!gateOpen) return;
     }
+    // v1.382.0: a Feed card played From the beginning never saves its item below its saved place (placeFloorAllows)
+    var floorCheck = placeFloorAllows(placeFloor, saveId, time);
+    placeFloor = floorCheck.floor;
+    if (!floorCheck.allow) return;
     var fetchOpts = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -10333,6 +10367,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // v1.339 R1 (T-C3): the closing item's final position, FIRST (see saveOutgoingPosition).
     // Marked 'paused' like the pause save it replaces: a closed player is not playing.
     saveOutgoingPosition({ presenceState: 'paused' });
+    placeFloor = null; // v1.382.0: the floor ends with the player (after its last save, which it still guarded)
     // v1.138 gate S1 (both seats, defensive - no reachable trigger was
     // constructed): a close while staged must not leave the browser
     // fullscreen on an emptied black stage with the flag stuck true.
@@ -10489,6 +10524,7 @@ if (typeof module !== 'undefined' && module.exports) {
     if (!ensureHost()) return false;
     var adopt = isAdoptLoad(currentId, id, state);
     if (adopt) {
+      placeFloor = nextPlaceFloor(placeFloor, placeFloorSaveId(id, data), data); // v1.382.0 (gate r1, C1): every load
       // v1.40.0: an adopt reuses the loaded media untouched, but the BROWSE
       // CONTEXT can differ when the same video is re-opened from a different
       // list view (e.g. docked, then clicked again from a shuffled home grid).
@@ -10553,6 +10589,8 @@ if (typeof module !== 'undefined' && module.exports) {
     loadStartAt = (data && typeof data.startAt === 'number') ? data.startAt : null;
     appliedStartAt = loadStartAt;
     teardownMediaState({ preserveImmersive: loadImmersiveCarry });
+    // v1.382.0 (gate r1, C1): AFTER the teardown - its outgoing save of the previous item is still guarded by that item's floor
+    placeFloor = nextPlaceFloor(placeFloor, placeFloorSaveId(id, data), data);
     currentId = id;
     currentData = data || {};
     // v1.44.2: `dock:true` mounts straight into the corner mini-player (the
@@ -10588,7 +10626,7 @@ if (typeof module !== 'undefined' && module.exports) {
     pictureTap: function () { toggleArtPlayPause('feed-tap'); },
     holdStart: function () { engageHold(); return holdActive; },
     holdEnd: function () { if (!holdActive) return; holdGestureLive = false; releaseHold(); },
-    gestureTimings: function () { return { holdMs: HOLD_MS, moveTol: MOVE_TOL }; },
+    gestureTimings: function () { return { holdMs: HOLD_MS, moveTol: MOVE_TOL, doubleTapMs: DOUBLE_TAP_MS }; }, // v1.382.0: + the watch page's double-tap window (the Feed's double-tap like)
     next: function () { manualTrackStep('next'); },
     prev: function () { manualTrackStep('prev'); },
     seek: function (sec) { if (typeof sec === 'number' && isFinite(sec) && sec >= 0) seekActiveMedia(sec, false); },

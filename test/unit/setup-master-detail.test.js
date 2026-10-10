@@ -50,11 +50,11 @@ test('Settings builds the expected visible menu (admin sections hidden for a non
     const keys = Array.from(doc.querySelectorAll('.md-nav .md-row')).map((r) => r.getAttribute('data-md-target'));
     assert.deepStrictEqual(keys, [
       'trash',
-      'appearance', 'home-page', 'playback', 'mobile-player', 'bottom-bar', 'critters',
+      'appearance', 'home-page', 'playback', 'mobile-player', 'bottom-bar', 'feed', 'critters',
       'account',
       'videos', 'music', 'books', 'shows', 'podcasts', 'hidden',
       'troubleshooting', 'experimental', 'transcript-sharing',
-    ], 'v1.367.0: the 17 pages a member sees before any reveal (Scan & cache, Downloads, Notifications, Users, Backup are hidden), in group order');
+    ], 'v1.367.0: the 18 pages (v1.382.0: + Feed) a member sees before any reveal (Scan & cache, Downloads, Notifications, Users, Backup are hidden), in group order');
     const groups = Array.from(doc.querySelectorAll('.md-nav .md-group-title')).map((t) => t.textContent);
     assert.deepStrictEqual(groups, ['System', 'Personalize', 'Account', 'Library', 'Advanced'], 'SYSTEM, PERSONALIZE, ACCOUNT, LIBRARY, ADVANCED');
   } finally { unload(dom); }
@@ -104,10 +104,10 @@ const OLD_TO_NEW = {
   'tv-folders': 'shows', 'podcasts-place': 'podcasts', 'feedhidden': 'hidden', 'transcript-ai': 'transcript-sharing',
 };
 const OLD_SAME = ['appearance', 'mobile-player', 'critters', 'downloads', 'trash', 'account', 'users', 'backup-restore', 'troubleshooting', 'experimental'];
-const NEW_KEYS = ['scan-cache', 'downloads', 'notifications', 'trash', 'appearance', 'home-page', 'playback', 'mobile-player', 'bottom-bar', 'critters',
+const NEW_KEYS = ['scan-cache', 'downloads', 'notifications', 'trash', 'appearance', 'home-page', 'playback', 'mobile-player', 'bottom-bar', 'feed', 'critters',
   'account', 'users', 'backup-restore', 'videos', 'music', 'books', 'shows', 'podcasts', 'hidden', 'troubleshooting', 'experimental', 'transcript-sharing'];
 
-test('v1.367.0: the markup holds exactly the 22 pages, in group order', () => {
+test('v1.367.0: the markup holds exactly the 23 pages (v1.382.0: + Feed), in group order', () => {
   const { dom, doc } = load();
   try {
     const keys = Array.from(doc.querySelectorAll('.md-root > details[data-collapse-key]')).map((d) => d.getAttribute('data-collapse-key'));

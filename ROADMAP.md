@@ -46,6 +46,15 @@
   36. v1.363.1 - Add chapters on a chapterless mp3: chapter tracks after re-list and next pick; the playing song untouched
   37. v1.363.1 - watch cog: Add / Edit chapters row; the new sticker rows match the old
   38. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
+  39. v1.382.0 - Settings > Feed: each kind off, the last one locked on, the same on the desktop
+  40. v1.382.0 - New only / Only ones I started per kind; Where greys out on New only
+  41. v1.382.0 - From the beginning (video, podcast, book) without losing the saved place
+  42. v1.382.0 - 60 s reels and 2 min slices; 30 s, Whole chapter, 4 min
+  43. v1.382.0 - Keep watching / listening / reading lands still playing at the same spot, no recap
+  44. v1.382.0 - From the beginning + Keep watching early: the old place stays
+  45. v1.382.0 - double-tap like on each kind with the heart; a tap still pauses; menu Like and Watch later
+  46. v1.382.0 - Hide this and Fewer from with Undo; Settings > Feed > Hidden and fewer
+  47. v1.382.0 - a new video watched through its 60 s reel says Continue; a 10 s look stays New
 
   Passed 2026-10-06 (deleted from DEVICE-CHECKS.md): [x] v1.367.0 - Settings reorganized, admin and member views; [x] v1.365.0 - a one-off download with the server stopped: "Can't reach FileTube", it clears; [x] v1.365.0 - stuck row "updated N ago", queued "waiting N"; [x] v1.365.0 - Download trace saves a .txt in the home-screen app; [x] v1.366.0 - 360 view checks (iPhone live picture, drag direction and Move to look, native full screen and PiP, Video type Flat/Auto, container ffprobe detection).
 
@@ -384,6 +393,20 @@
 
 ### Features
 
+- [ ] **Feed reels and speed (moved out of v1.382.0 by Dean, 2026-10-10)** _(plan docs/exec-plans/completed/2026-10-10-feed-settings.md,
+  section 3)_ - Dean resumes it as its own release. D12 instant next card: measure swipe-settle to first frame / first audio
+  (WebKit and Chromium headless, then the device), then preload WITHOUT a second player (the next card's poster / art, a small
+  range request at its start point, the next book page text; at most 1 card ahead); target under 500 ms on the LAN. D13 song
+  reels: a "Song clip" setting 30 / 45 / 60 s / Whole song (default 45 s) from a third in, Keep listening plays the whole song in
+  Music; a clip played to its end counts a play, a swipe is never a skip. D14 music under book cards: "Music while reading" On /
+  Off and its station (default the first of Chill, Lofi, Jazz, Ambient, then Favorites, then liked songs), playing across a book's
+  page swipes and book cards, stopping on a non-book card; an attribution chip "♫ <song> · <artist>" with Like / Mute for this
+  session / Change station; background listening never counts plays or skips.
+- [ ] **Real YouTube comments on the watch page (Dean, 2026-10-10)** - fetch the top 20-30 comments when a video downloads (yt-dlp
+  can write comments; cap them, store per item) and show them where the watch page now shows its mock retro comments
+  (public/js/watch.js, the `.ft-fabricated` mock commenters); older downloads through the existing metadata re-pull. Keep the mock
+  comments only where no real ones exist (Dean to rule at intake). Privacy and size caps to settle at intake.
+
 - [x] **Feed mode (Dean, 2026-10-09: "a feed mode where books, news articles, maybe some short content videos I could go through in a feed")** **Shipped v1.379.0 (2026-10-09).** - a new
   Feed page: pick 10 / 20 / 30 minutes, then an endless vertical feed of cards from his own library (the next pages of a book he
   is reading, a few minutes of a podcast, one chapter of a video, a Watch later item, a song). What he does there is real
@@ -611,6 +634,10 @@
 
 ### Chores
 
+- [ ] **Tidy the Cleanup page (Dean, 2026-10-10: "a little messy"; better section headers)** - /cleanup (lib/cleanup/shell.js, the
+  cleanup view): measure first (each section, its header, what it lists, at phone and desktop widths), then clearer headers and
+  grouping.
+
 - [ ] **The error log folds repeats** _(qa gate r1 SUGGESTION, v1.364.0)_ - the boot error recorder (every shell's first head
   script, `ft-boot-errors`) keeps only the LAST 50 entries, so an error that repeats (a timer or animation-frame handler throwing
   every tick) pushes out the boot error that caused it within 50 ticks, and each record re-reads and rewrites up to 64000 chars of
@@ -780,6 +807,30 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.382.0 - Feed settings: choose what the Feed shows and where it starts, 60-second reels, Keep watching, double-tap like, Hide and Fewer from (2026-10-10)
+
+- W1 (D1-D5): Settings > Personalize > Feed (and a gear on the Feed's picker): each kind on or off (the last one stays on), per
+  kind New only / Only ones I started / both and From my saved place / From the beginning, the video reel (30 s to Whole chapter,
+  default 60 s) and the podcast slice (1 / 2 / 4 min, default 2). Two synced keys read by ONE shared file
+  (public/js/feed-settings.js) that the server, the Feed and Settings all use; Dean ruled an 8 KB cap for the Fewer from list only.
+- W2: GET /api/feed serves the choices (a switched-off kind never, New / Continue by the label's own rule, the refill too); a fresh
+  card counts as started after its whole reel (reels of 30 s or more) as well as the minute; a 10 s look still writes nothing.
+- W3: From the beginning never moves a saved place back - the player keeps the place as a floor keyed by the item, so nothing
+  saves below it in the Feed, on the watch page after Keep watching, or in Music after Listen. Keep watching / listening / reading
+  near the end of a card leaves the Feed into the full item still playing, with no recap. Measured (tools/feed-proof/
+  keep-watching.js, Chromium and WebKit): one player, playing on the watch page, the place stays 25 s through Listen and saves
+  27.5 s once past; before the gate's fix Listen moved it to 24.3 s.
+- W4 (D10, D11): double-tap like with a heart (a lone tap waits the watch page's 350 ms window); the card's "..." has Like,
+  Watch later, Hide this (every kind, Dean's ruling) and Fewer from (a quarter as often, drawn once a session), each with Undo, and
+  Settings > Feed lists what was hidden or held back.
+- Moved out by Dean (2026-10-10): instant next card (preloading), song reels and music under book cards - ROADMAP Planned.
+- Disclosed: Home's earlier hides also leave the Feed and list in Settings > Feed; the Keep listening path for library audio is
+  reasoned, not measured; the new-book Fewer hold-back is unbound by a test.
+- Gate (FULL: adversary, qa, security-brief): r1 found the Listen place loss (a CRITICAL), a short chapter letting a 7.5 s look
+  write, a hidden new book blocking every other, Fewer from failing silently on long names, hide rows outliving their items, and
+  stale text; r2: adversary and security-brief APPROVED at ec29b744, qa held one lessons line (fixed after). Dean ruled to ship
+  on round 2. Mutants: W1 + W2 26, W3 18, W4 22 of 23 (one masked), r1 fixes 22 (all killed after binding).
 
 ### v1.381.0 - Feed, TikTok style: full-screen cards, book pages you swipe, tap and hold on video, and Start over (2026-10-09)
 

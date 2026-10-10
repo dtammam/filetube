@@ -20,12 +20,15 @@ const HTML = path.join(__dirname, '..', 'public', 'setup.html');
 const S = '/api/settings';
 const D = 'localStorage';
 const U = '/api/me/settings';
+const P = '/api/prefs (synced) + ' + D; // v1.382.0: a synced pref (prefs-sync.js mirrors the localStorage write)
 // id -> [save path, roles that see the control today ("all" | "admin" | "library-write" | "push-on")]
 const SAVE = {
   'hide-stars-check': [U + ' + ' + D, 'all'],
   'logo-file-input': ['/api/settings/logo', 'all'], 'logo-upload-btn': ['/api/settings/logo', 'all'], 'logo-reset-btn': ['/api/settings/logo', 'all'],
   'logo-file-input-dark': ['/api/settings/logo', 'all'], 'logo-upload-btn-dark': ['/api/settings/logo', 'all'], 'logo-reset-btn-dark': ['/api/settings/logo', 'all'],
   'sticker-file-input': ['/api/me/sticker', 'all'],
+  // v1.382.0: Settings > Feed, all one synced key (ft-feed-settings, public/js/feed-settings.js)
+  'feed-kind-video': [P, 'all'], 'feed-kind-podcast': [P, 'all'], 'feed-kind-book': [P, 'all'], 'feed-kind-watchlater': [P, 'all'], 'feed-kind-song': [P, 'all'], 'feed-which-video': [P, 'all'], 'feed-where-video': [P, 'all'], 'feed-which-podcast': [P, 'all'], 'feed-where-podcast': [P, 'all'], 'feed-which-book': [P, 'all'], 'feed-where-book': [P, 'all'], 'feed-reel': [P, 'all'], 'feed-slice': [P, 'all'],
   'pocket-kb-search-check': [D, 'all'], 'pocket-upright-check': [D, 'all'], 'music-skin-filter': ['none (search box)', 'all'],
   'critter-mode-check': [D, 'all'], 'critter-density-select': [D, 'all'], 'critter-size-select': [D, 'all'],
   'critter-kiss-check': [D, 'all'], 'critter-randomsound-check': [D, 'all'],
