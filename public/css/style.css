@@ -12885,6 +12885,8 @@ html:root body[data-view="feed"] #handoff-card, html:root body[data-view="feed"]
 #view-root[data-view="feed"] .feed-card__titlerow .feed-card__title { flex: 1 1 0; min-width: 0; }
 #view-root[data-view="feed"] .feed-card__open { flex: none; }
 #view-root[data-view="feed"] .feed-card[data-media] .feed-card__open { color: var(--on-overlay); }
+/* v1.383.0 (K6): the music chip ("<song> · <artist>") sits first in a book card's overlay at its own width, never wider than it */
+#view-root[data-view="feed"] .feed-card__music { align-self: flex-start; max-width: 100%; }
 /* v1.383.0 (K1): "Next in 2" sits in the stage's top corner opposite the intro note, clear of the overlay's buttons */
 #view-root[data-view="feed"] .feed-card__advance { position: absolute; right: var(--space-8); top: 0; z-index: var(--z-chip); }
 /* v1.382.0 (D10): the double-tap heart pops where the finger was (--heart-x / --heart-y: the card's own coordinates, set by

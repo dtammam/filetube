@@ -402,6 +402,28 @@ function feedSongLeave(st) {
   return ['skip'];
 }
 
+// ---- v1.383.0 (K6 = v1.382.0 D14): music while reading --------------------------------------------------------------------
+// The station that plays under book cards: the chosen one when the viewer can see it (GET /api/music/stations lists only theirs,
+// a hidden one left out), else the first of `order` (feed-settings MUSIC_STATION_ORDER: Chill, Lofi, Jazz, Ambient, Favorites -
+// Favorites is the liked songs until counts exist) they have. '' = none: no music, no chip.
+function feedMusicStation(stations, chosen, order) {
+  var keys = (stations || []).filter(function (st) { return st && typeof st.key === 'string' && st.key && !st.hidden; }).map(function (st) { return st.key; });
+  if (typeof chosen === 'string' && chosen && keys.indexOf(chosen) !== -1) return chosen;
+  var o = order || [];
+  for (var i = 0; i < o.length; i++) { if (keys.indexOf(o[i]) !== -1) return o[i]; }
+  return '';
+}
+// a song under a book starts about a third in (the song reels' rule); 0 for an unknown length
+function feedMusicStartSec(durationSec) {
+  var d = Number(durationSec);
+  return isFinite(d) && d > 0 ? Math.round((d / 3) * 10) / 10 : 0;
+}
+// the chip's words: "<song> · <artist>"
+function feedMusicChipText(track) {
+  var t = track || {};
+  return [t.title, t.artist].filter(function (x) { return typeof x === 'string' && x; }).join(' \u00b7 ');
+}
+
 // v1.382.0 (D2-D5, D8): the request's view of the Feed settings - the synced ft-feed-settings value read by the ONE reading
 // (public/js/feed-settings.js, on every shell). '' = the defaults (nothing to send). Read per batch: a change applies from
 // the next batch and never re-shuffles the cards on screen.
@@ -742,6 +764,7 @@ if (typeof module !== 'undefined' && module.exports) {
     feedHoldStep, feedSummaryPayload,
     feedClockLong, feedStartOverKind, feedStartOverText, feedBookMeta, feedStartedOverText, FEED_UNDO_MS,
     FEED_REEL_END_SLACK_SEC, FEED_REEL_MIN_SEC, feedPlaceFloorSec, FEED_KEEP_SEC, feedKeepHref, feedKeepLabel, feedKeepDue, feedSettingsParam,
+    feedMusicStation, feedMusicStartSec, feedMusicChipText,
     feedSongTally, feedSongTick, feedSongEnd, feedSongLeave, FEED_SONG_CLIP_SLACK_SEC, FEED_SONG_SKIP_MIN_SEC,
     FEED_ADVANCE_MS, FEED_EARLY_RATIO, FEED_WARM_BYTES, feedAdvanceDue, feedNextActive, feedStreamUrl, feedArtUrl,
     feedLikeUrl, feedIsLiked, feedWatchLaterUrl, feedHideTarget, feedFewerTarget, feedTapKind, FEED_DOUBLE_TAP_PX,
@@ -802,6 +825,13 @@ if (typeof module !== 'undefined' && module.exports) {
     var startingRead = {}; // card index -> true once "Start reading" was tapped (a double tap is one write)
     var advance = null; // v1.383.0 (K1): the running "Next in 2" countdown { index, btn, tick, timer }
     var warmed = {}; // v1.383.0 (K2 a): card index -> true once warmed (each card once, 1 ahead only)
+    // v1.383.0 (K6): music under book cards - the station (null until resolved, '' = none), the songs queued and played this
+    // session, the one playing (null = none), and the hidden slot the shared player plays it from (a book card has no media)
+    var music = { station: null, stations: [], queue: [], played: [], current: null, loading: false, token: 0, failures: 0 };
+    var musicSlot = el('div', 'feed-music-slot');
+    musicSlot.hidden = true;
+    musicSlot.setAttribute('aria-hidden', 'true');
+    if (sessionEl) sessionEl.appendChild(musicSlot);
     var songTallies = {}; // v1.383.0 (K5): card index -> its song's play / finish / skip tally (feedSongTally)
     var trackers = {}; // v1.383.0 (K2 b): card index -> its fresh card's played-time tracker, kept across a return to the card
     // the session clock (D10-D12)
@@ -1172,6 +1202,178 @@ if (typeof module !== 'undefined' && module.exports) {
           .then(function (r) { return r && r.ok ? r.arrayBuffer() : null; })
           .catch(function () { /* a warm that fails costs nothing: the card loads as before */ });
       }
+    }
+
+    // ---- v1.383.0 (K6 = v1.382.0 D14): music while reading ------------------------------------------------------------------
+    // While a book card (or a Start something new card) is active, a song from the station plays through the ONE shared player,
+    // from the Feed's own hidden slot, starting about a third in; the next song follows when one ends. It plays on across the
+    // book's page swipes and consecutive book cards, and stops when any other card becomes active, the Feed ends or the view is
+    // left. It never counts a play or a skip (nothing is posted, Music's tally is let go) and never saves a place (its gate is
+    // shut). The phone's volume is never touched (iOS ignores a scripted volume: there is no ducking anywhere). A chip on the
+    // card names the song; its sheet has Like, Mute music for this session and Change station. Settings > Feed > Music while
+    // reading (synced, on by default) and its Station.
+    var MUSIC_PLAYED_CAP = 200;
+    function musicWanted() {
+      var st = feedSettingsNow();
+      return (!st || st.music !== false) && !(session && session.musicMuted);
+    }
+    function bookActive() { var c = cards[activeIndex]; return !!c && c.kind === 'book'; }
+    function startBookMusic() {
+      if (!musicWanted() || !bookActive()) return;
+      if (music.current) { showMusicChip(activeIndex); return; } // playing on across page swipes and book cards
+      nextSong();
+    }
+    function stopBookMusic(pause) {
+      music.token += 1;
+      music.loading = false;
+      var was = music.current;
+      music.current = null;
+      if (was && pause && mediaCardIndex === -1) { var p = player(); if (p && typeof p.pause === 'function') p.pause(); }
+      showMusicChip(-1);
+    }
+    function resolveStation() {
+      if (music.station !== null) return Promise.resolve(music.station);
+      return fetch('/api/music/stations', { signal: signal })
+        .then(function (r) { return r.ok ? r.json() : { stations: [] }; })
+        .catch(function () { return { stations: [] }; })
+        .then(function (body) {
+          var FSr = window.FileTubeFeedSettings;
+          var st = feedSettingsNow();
+          music.stations = Array.isArray(body && body.stations) ? body.stations.filter(function (x) { return x && typeof x.key === 'string' && !x.hidden; }) : [];
+          music.station = feedMusicStation(music.stations, st ? st.station : '', FSr ? FSr.MUSIC_STATION_ORDER : []);
+          return music.station;
+        });
+    }
+    // the next batch of the station (lib/music/radio.js, the same picker Music's stations use): what this session played is sent
+    // as plays, what is still queued as queued (LESSONS 5: the picker and the client share one knowledge of the session); a batch
+    // that kept nothing asks once more, widened
+    function fillMusicQueue(key, widen) {
+      var enc = encodeURIComponent;
+      var url = '/api/music/radio?seed=' + enc('station:' + key) + '&count=5'
+        + (music.played.length ? '&exclude=' + music.played.slice(-MUSIC_PLAYED_CAP).map(enc).join(',') : '')
+        + (music.queue.length ? '&queued=' + music.queue.map(function (t) { return enc(t.id); }).join(',') : '')
+        + (widen ? '&widen=1' : '');
+      return fetch(url, { signal: signal })
+        .then(function (r) { return r.ok ? r.json() : { items: [] }; })
+        .then(function (body) {
+          (Array.isArray(body && body.items) ? body.items : []).forEach(function (t) {
+            if (t && typeof t.id === 'string' && music.played.indexOf(t.id) === -1 && !music.queue.some(function (q) { return q.id === t.id; })) music.queue.push(t);
+          });
+        });
+    }
+    function nextSong() {
+      if (music.loading) return;
+      var tok = ++music.token;
+      music.loading = true;
+      resolveStation()
+        .then(function (key) {
+          if (!key || tok !== music.token) return null;
+          if (music.queue.length) return music.queue.shift();
+          return fillMusicQueue(key, false)
+            .then(function () { return music.queue.length ? null : fillMusicQueue(key, true); })
+            .then(function () { return music.queue.shift() || null; });
+        })
+        .then(function (item) {
+          if (tok !== music.token) return;
+          music.loading = false;
+          if (item && !signal.aborted && musicWanted() && bookActive()) playSong(item);
+        })
+        .catch(function () { if (tok === music.token) music.loading = false; });
+    }
+    function playSong(item) {
+      var p = player();
+      if (!p) return;
+      var data = feedPlayerDescriptor({ kind: 'song', id: item.id, track: item, startAt: feedMusicStartSec(item.durationSec) });
+      data.progressGate = function () { return false; }; // never a saved place
+      if (window.FileTube && typeof window.FileTube.musicPlayCountRelease === 'function') window.FileTube.musicPlayCountRelease(); // never a count
+      music.current = item;
+      music.played.push(item.id);
+      if (music.played.length > MUSIC_PLAYED_CAP) music.played.shift();
+      mediaCardIndex = -1; // no card owns it: leaving a book card never pauses it
+      p.load(item.id, data, { slot: musicSlot });
+      mediaEl = document.getElementById('media-player');
+      if (mediaEl) {
+        var el0 = mediaEl;
+        var done = function (failed) {
+          el0.removeEventListener('ended', onEnded);
+          el0.removeEventListener('error', onError);
+          if (music.current !== item) return;
+          music.current = null;
+          music.failures = failed ? music.failures + 1 : 0;
+          if (music.failures < 3) nextSong(); // a station whose songs will not play stops trying
+        };
+        var onEnded = function () { done(false); };
+        var onError = function () { done(true); };
+        el0.addEventListener('ended', onEnded, { signal: signal });
+        el0.addEventListener('error', onError, { signal: signal });
+      }
+      showMusicChip(activeIndex);
+    }
+    // the chip on the active book card ("♫ <song> · <artist>"); -1 = none anywhere
+    function showMusicChip(index) {
+      Array.prototype.forEach.call(stack.querySelectorAll('[data-music-chip]'), function (n) { n.remove(); });
+      var node = cardEls[index];
+      var item = music.current;
+      if (!node || !item || !cards[index] || cards[index].kind !== 'book') return;
+      var overlay = node.querySelector('.feed-card__overlay');
+      if (!overlay) return;
+      var text = feedMusicChipText(item);
+      var chip = U() ? U().button({ variant: 'tonal', size: 'sm', pill: true, icon: 'music_note', label: text, doc: document })
+        : el('button', 'ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill', text);
+      chip.type = 'button';
+      chip.classList.add('feed-card__music');
+      chip.setAttribute('data-music-chip', '');
+      chip.setAttribute('aria-label', 'Playing ' + text + '. Music options');
+      chip.addEventListener('click', function (e) { if (e) e.stopPropagation(); openMusicSheet(item); }, { signal: signal });
+      overlay.insertBefore(chip, overlay.firstChild);
+    }
+    function openMusicSheet(item) {
+      if (!U() || music.current !== item) return;
+      var liked = !!item.liked;
+      var items = [
+        { label: liked ? 'Unlike the song' : 'Like the song', icon: 'favorite', value: liked ? 'unlike' : 'like', onSelect: function () { likeSong(item, !liked); } },
+        { label: 'Mute music for this session', icon: 'volume_off', value: 'mute', onSelect: muteMusic },
+      ];
+      if (music.stations.length > 1) items.push({ label: 'Change station', icon: 'radio', value: 'station', onSelect: openStationSheet });
+      U().menu({ label: 'Music', items: items, signal: signal, doc: document });
+    }
+    function likeSong(item, on) {
+      fetch('/api/music/liked/' + encodeURIComponent(item.id), { method: on ? 'POST' : 'DELETE', keepalive: true })
+        .then(function (r) {
+          if (!r.ok) { toast(on ? 'Could not like it' : 'Could not unlike it'); return; }
+          item.liked = on;
+          toast(on ? 'Liked: ' + (item.title || 'the song') : 'Unliked: ' + (item.title || 'the song'));
+        })
+        .catch(function () { toast(on ? 'Could not like it' : 'Could not unlike it'); });
+    }
+    function muteMusic() {
+      if (session) { session.musicMuted = true; writeSession(session); }
+      stopBookMusic(true);
+      toast('Music off for this session');
+    }
+    // Change station: the synced setting (Settings > Feed > Station) - this session and every one after
+    function openStationSheet() {
+      if (!U()) return;
+      var items = music.stations.map(function (st) {
+        return { label: String(st.name || st.key), value: st.key, icon: st.key === music.station ? 'radio' : undefined, onSelect: function () { changeStation(st.key); } };
+      });
+      U().menu({ label: 'Station', items: items, signal: signal, doc: document });
+    }
+    function changeStation(key) {
+      var FSr = window.FileTubeFeedSettings;
+      var store = localStore();
+      if (FSr && store) {
+        try {
+          var st = FSr.normalize(store.getItem(FSr.SETTINGS_KEY));
+          st.station = key;
+          store.setItem(FSr.SETTINGS_KEY, FSr.serialize(st));
+          if (window.__ftPrefsSync && typeof window.__ftPrefsSync.flush === 'function') window.__ftPrefsSync.flush();
+        } catch (_) { /* storage off: this session only */ }
+      }
+      music.station = key;
+      music.queue = [];
+      stopBookMusic(true);
+      startBookMusic();
     }
 
     // ---- gestures (D7, D8) ---------------------------------------------------------------
@@ -1922,8 +2124,13 @@ if (typeof module !== 'undefined' && module.exports) {
         if (bp && !bp.measured) layoutPages(index); // laid out now: fit the pages to the real box
         if (bp) bp.since = Date.now();
         warmBookPages(index); // v1.383.0 (K2 a)
+        startBookMusic(); // v1.383.0 (K6)
         if (pageHintPending && bp && bp.pages.length > 1 && !document.getElementById('feed-hint')) { pageHintPending = false; showHint(node, 'Swipe left for the next page', FEED_PAGE_HINT_KEY); }
-      } else playCard(index);
+      } else {
+        // v1.383.0 (K6): any other card ends the music (a media card's load replaces it; the notice card pauses it)
+        stopBookMusic(card.kind === 'notice');
+        playCard(index);
+      }
       warmNext(index); // v1.383.0 (K2 a)
       if (feedShouldPrefetch(index, cards.length)) fetchBatch();
     }
@@ -2162,7 +2369,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var p = player();
       // a media card: the player plays on (a Done slice is resumed inside this tap: iOS needs the gesture)
       if (card.kind !== 'book' && mediaCardIndex === index && p && typeof p.play === 'function' && mediaEl && mediaEl.paused) { try { p.play(); } catch (_) { /* the full place starts it */ } }
-      if (card.kind === 'book') { noteBookPage(index); finishBookCard(index); }
+      if (card.kind === 'book') { noteBookPage(index); finishBookCard(index); stopBookMusic(true); } // v1.383.0 (K6): the reader has no music
       countCard(index); // counted as left - the slice's time, a book's pages read
       if (tickTimer) { window.clearInterval(tickTimer); tickTimer = null; }
       postFinish(); // the session's record, as Done would (no recap: the user is going on)
@@ -2223,6 +2430,7 @@ if (typeof module !== 'undefined' && module.exports) {
       windingDown = false;
       hardStopMs = NaN;
       if (activeIndex >= 0) leaveCard(activeIndex);
+      stopBookMusic(false); // v1.383.0 (K6): the close below stops it
       pauseMedia();
       var p = player();
       if (p && typeof p.close === 'function') p.close();
@@ -2338,6 +2546,8 @@ if (typeof module !== 'undefined' && module.exports) {
       session = null;
       writeSession(null);
       stopAdvance();
+      stopBookMusic(false);
+      music.queue = []; music.played = []; music.station = null; music.failures = 0;
       cards = []; cardEls = []; activeIndex = -1; ratios = {}; exhaustedShown = false; activity = {}; counted = {}; bookPages = {}; startingRead = {}; warmed = {}; trackers = {}; songTallies = {};
       summary = feedEmptySummary(); extensions = 0; windingDown = false; hardStopMs = NaN; hintPending = false; pageHintPending = false; clearHint();
       if (ring) ring.style.setProperty('--p', '0');
@@ -2378,6 +2588,8 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // Leaving the page mid-card: a read book card still moves its bookmark (keepalive).
     signal.addEventListener('abort', function () {
+      // v1.383.0 (K6): music while reading never follows the user out of the Feed
+      if (music.current && mediaCardIndex === -1) { music.current = null; music.token += 1; var pm = player(); if (pm && typeof pm.close === 'function') pm.close(); }
       if (activeIndex >= 0 && cards[activeIndex] && cards[activeIndex].kind === 'book') leaveCard(activeIndex);
       if (observer) { observer.disconnect(); observer = null; }
       if (tickTimer) { window.clearInterval(tickTimer); tickTimer = null; }

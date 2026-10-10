@@ -27,7 +27,9 @@ test('normalize: junk, a non-object and an empty value read as the defaults (eve
     assert.strictEqual(s.slice, 120);
     assert.strictEqual(s.advance, true, 'v1.383.0 (K1): Auto-advance is on by default');
     assert.strictEqual(s.clip, 45, 'v1.383.0 (K5): a 45 s song clip by default');
-    assert.deepStrictEqual(Object.keys(s).sort(), ['advance', 'clip', 'off', 'reel', 'slice', 'where', 'which'], 'v1.383.0: Auto-advance (K1) and the song clip (K5) joined; music and station only with W4');
+    assert.strictEqual(s.music, true, 'v1.383.0 (K6): music while reading is on by default');
+    assert.strictEqual(s.station, '', 'and its station is chosen for you');
+    assert.deepStrictEqual(Object.keys(s).sort(), ['advance', 'clip', 'music', 'off', 'reel', 'slice', 'station', 'where', 'which'], 'v1.383.0: Auto-advance (K1), the song clip (K5), music while reading and its station (K6)');
   }
 });
 
@@ -43,7 +45,9 @@ test('normalize: every value is checked against its list; an off-list value is t
   assert.strictEqual(FS.normalize({ clip: 40 }).clip, 45, 'an off-list clip is the default');
   assert.strictEqual(FS.normalize({ clip: '30' }).clip, 45, 'a string is not the number');
   assert.deepStrictEqual(FS.SONG_CLIPS, [30, 45, 60, 0]);
-  assert.ok(!('music' in s) && !('station' in s), 'an unknown field never comes through');
+  assert.strictEqual(s.music, true, 'v1.383.0 (K6): only false switches music off ("loud" is on)');
+  assert.strictEqual(s.station, 'x', 'a plain short station key is kept');
+  assert.ok(!('bogus' in FS.normalize({ bogus: 1 })), 'an unknown field never comes through');
   assert.strictEqual(FS.normalize({ reel: '60' }).reel, 60, 'a string is not the number (defaults anyway)');
   assert.strictEqual(FS.normalize({ reel: 30 }).reel, 30);
 });
@@ -306,4 +310,44 @@ test('K1 Auto-advance: on by default and never written while on; only false swit
   } finally { b.done(); }
   b = boot('{"advance":false}');
   try { assert.strictEqual(b.$('feed-advance').checked, false, 'reflects a stored off on load'); } finally { b.done(); }
+});
+
+// ---- v1.383.0 (plan 2026-10-10-feed-reels K6): music while reading ---------------------------------------------------------
+
+test('K6 settings: music on unless false; a station key is kept when it is a plain string within 120 BYTES (a long multi-byte key reads as chosen for you); the whole value never passes the 512-byte cap', () => {
+  assert.strictEqual(FS.normalize({ music: false }).music, false);
+  assert.strictEqual(FS.normalize({ music: 0 }).music, true);
+  assert.strictEqual(FS.normalize({ station: 's:lofi' }).station, 's:lofi');
+  assert.strictEqual(FS.normalize({ station: 7 }).station, '');
+  assert.strictEqual(FS.normalize({ station: 'a\u0000b' }).station, '', 'a control character');
+  assert.strictEqual(FS.normalize({ station: '\u6f22'.repeat(40) }).station.length, 40, '120 bytes exactly');
+  assert.strictEqual(FS.normalize({ station: '\u6f22'.repeat(41) }).station, '', '123 bytes: chosen for you');
+  assert.strictEqual(FS.serialize({ music: false, station: 's:jazz' }), '{"music":false,"station":"s:jazz"}');
+  assert.strictEqual(FS.serialize({}), '{}');
+  const worst = FS.serialize({ off: ['video', 'podcast', 'book', 'watchlater'], which: { video: 'new', podcast: 'new', book: 'new' }, where: { video: 'start', podcast: 'start', book: 'start' }, reel: 30, slice: 60, clip: 30, advance: false, music: false, station: '\u6f22'.repeat(40) });
+  assert.ok(FS.utf8Bytes(worst) <= FS.SETTINGS_MAX_BYTES, 'worst case ' + FS.utf8Bytes(worst) + ' bytes');
+  assert.deepStrictEqual(FS.MUSIC_STATION_ORDER, ['s:chill', 's:lofi', 's:jazz', 'g:ambient', 'favorites']);
+});
+
+test('K6 settings page: the switch and the Station persist AND reflect; the station list is the viewer\'s own (hidden ones left out); a stored station not in the list keeps its option; Station is greyed while music is off', async () => {
+  const b = boot('{"station":"c:gone"}');
+  try {
+    assert.strictEqual(b.$('feed-music').checked, true);
+    assert.strictEqual(b.$('feed-station').value, 'c:gone', 'a stored choice survives the first draw (the list is not loaded)');
+    b.dom.window.fetch = global.fetch = async (u) => ({ ok: true, json: async () => (String(u) === '/api/music/stations' ? { stations: [{ key: 's:lofi', name: 'Lofi' }, { key: 'favorites', name: 'Favorites' }, { key: 's:jazz', name: 'Jazz', hidden: true }] } : {}) });
+    await b.mod.fillFeedStations(b.dom.window.document, null, b.page.reflect);
+    const opts = Array.from(b.$('feed-station').options).map((o) => o.value);
+    assert.deepStrictEqual(opts, ['', 's:lofi', 'favorites', 'c:gone'], 'the viewer\'s stations (no hidden Jazz), and the stored one');
+    b.change(b.$('feed-station'), 's:lofi');
+    assert.strictEqual(b.stored$().station, 's:lofi');
+    b.change(b.$('feed-music'), false);
+    assert.strictEqual(b.stored$().music, false);
+    assert.strictEqual(b.$('feed-station').disabled, true, 'greyed while music is off');
+    assert.strictEqual(b.stored$().station, 's:lofi', 'the station is kept while music is off');
+  } finally { b.done(); delete global.fetch; }
+  const b2 = boot('{"music":false,"station":"s:jazz"}');
+  try {
+    assert.strictEqual(b2.$('feed-music').checked, false, 'reflects off on load');
+    assert.strictEqual(b2.$('feed-station').value, 's:jazz');
+  } finally { b2.done(); }
 });

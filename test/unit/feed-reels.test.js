@@ -538,3 +538,145 @@ test('K5: a clip swiped past early counts nothing (never a skip); a whole song s
     assert.deepStrictEqual(playsOf(r), ['t2 skip'], 'a glimpse of t3: nothing');
   } finally { r.close(); }
 });
+
+// ==== W4 music while reading (K6) =============================================================================================
+const TRACKS = [1, 2, 3, 4, 5, 6].map((i) => ({ id: 'm' + i, title: 'Tune ' + i, artist: 'Band ' + i, durationSec: 90 + i * 3, liked: false }));
+function musicRealm(cards, o) {
+  const opts = o || {};
+  const radio = [];
+  const r = feedRealm(Object.assign({
+    batches: [{ cards, exhausted: false }],
+    route: (m, u) => {
+      if (u === '/api/music/stations') return { status: 200, body: { stations: opts.stations || [{ key: 'favorites', name: 'Favorites' }, { key: 's:lofi', name: 'Lofi' }, { key: 's:jazz', name: 'Jazz', hidden: true }] } };
+      if (u.indexOf('/api/music/radio?') === 0) { radio.push(u); const n = radio.length - 1; return { status: 200, body: { items: opts.empty ? [] : TRACKS.slice(n * 5, n * 5 + 5) } }; }
+      return null;
+    },
+  }, opts.realm || {}));
+  r.radio = radio;
+  return r;
+}
+const songLoads = (r) => r.loads.filter((l) => l.id && /^m\d$/.test(l.id));
+const chip = (r, i) => r.$$('.feed-card')[i].querySelector('[data-music-chip]');
+
+test('K6 pure: the station - the chosen one when the viewer can see it, else the first of Chill / Lofi / Jazz / Ambient / Favorites they have; a hidden one never; none: no music', () => {
+  const FSm = require('../../public/js/feed-settings.js');
+  const st = (keys) => keys.map((k) => ({ key: k, name: k }));
+  assert.strictEqual(feed.feedMusicStation(st(['favorites', 's:jazz', 's:lofi']), '', FSm.MUSIC_STATION_ORDER), 's:lofi', 'Lofi before Jazz before Favorites');
+  assert.strictEqual(feed.feedMusicStation(st(['favorites', 's:chill']), '', FSm.MUSIC_STATION_ORDER), 's:chill');
+  assert.strictEqual(feed.feedMusicStation(st(['favorites']), '', FSm.MUSIC_STATION_ORDER), 'favorites', 'the liked songs (Favorites) last');
+  assert.strictEqual(feed.feedMusicStation(st(['favorites', 'c:abc']), 'c:abc', FSm.MUSIC_STATION_ORDER), 'c:abc', 'the chosen one');
+  assert.strictEqual(feed.feedMusicStation(st(['favorites']), 'c:gone', FSm.MUSIC_STATION_ORDER), 'favorites', 'a chosen one that is gone falls back');
+  assert.strictEqual(feed.feedMusicStation([{ key: 's:lofi', hidden: true }, { key: 'favorites' }], 's:lofi', FSm.MUSIC_STATION_ORDER), 'favorites', 'a hidden station never');
+  assert.strictEqual(feed.feedMusicStation([], '', FSm.MUSIC_STATION_ORDER), '');
+  assert.strictEqual(feed.feedMusicStartSec(90), 30);
+  assert.strictEqual(feed.feedMusicStartSec(0), 0);
+  assert.strictEqual(feed.feedMusicChipText({ title: 'T', artist: 'A' }), 'T · A');
+});
+
+test('K6: a book card plays a song from the station a third in, from the Feed\'s hidden slot, with a chip naming it; it plays on across page turns and the next book card; never a saved place, never a count', async () => {
+  const BOOK2 = Object.assign({}, READING, { id: 'bk2', title: 'Beta' });
+  const r = musicRealm([READING, BOOK2, VID], { realm: { pageWords: 25 } });
+  try {
+    let released = 0;
+    r.w.FileTube.musicPlayCountRelease = () => { released += 1; };
+    await startRealm(r); r.show(0); await r.settle();
+    assert.strictEqual(r.radio.length, 1);
+    assert.ok(/seed=station%3As%3Alofi/.test(r.radio[0]), 'Lofi (Jazz is hidden; Lofi comes before Favorites): ' + r.radio[0]);
+    const loads = songLoads(r);
+    assert.strictEqual(loads.length, 1);
+    assert.strictEqual(loads[0].id, 'm1');
+    assert.strictEqual(loads[0].data.startAt, 31, 'a third into the 93 s song');
+    assert.strictEqual(loads[0].data.progressGate(), false, 'never a saved place');
+    assert.ok(loads[0].lo.slot.classList.contains('feed-music-slot') && loads[0].lo.slot.hidden, 'the Feed\'s hidden slot (a book card has no media)');
+    assert.ok(released >= 1, 'Music\'s tally let go: never a count');
+    assert.ok(/Tune 1 · Band 1/.test(chip(r, 0).textContent), 'the chip');
+    pressRight(r); await r.settle();
+    r.show(1); await r.settle();
+    assert.strictEqual(songLoads(r).length, 1, 'page turns and the next book card: the same song plays on');
+    assert.strictEqual(chip(r, 0), null);
+    assert.ok(chip(r, 1), 'the chip moved to the active book card');
+    assert.strictEqual(r.calls('POST', '/api/music/plays').length, 0, 'nothing counted');
+    // the song ends: the next one from the station
+    r.media.dispatchEvent(new r.w.Event('ended')); await r.settle();
+    assert.deepStrictEqual(songLoads(r).map((l) => l.id), ['m1', 'm2']);
+    assert.ok(/Tune 2/.test(chip(r, 1).textContent));
+    assert.strictEqual(r.calls('POST', '/api/music/plays').length, 0, 'an ended song under a book is not a play or a finish');
+  } finally { r.close(); }
+});
+
+test('K6: a non-book card stops the music (a video\'s load replaces it, the chip is gone); back on a book card a NEW song comes (the session\'s songs are sent as plays, never repeated)', async () => {
+  const r = musicRealm([READING, VID, Object.assign({}, READING, { id: 'bk3' })], { realm: { pageWords: 25 } });
+  try {
+    await startRealm(r); r.show(0); await r.settle();
+    r.show(1); await r.settle();
+    assert.strictEqual(r.$('[data-music-chip]'), null, 'no chip on a video');
+    assert.strictEqual(r.loads[r.loads.length - 1].id, 'v1', 'the video plays');
+    r.show(2); await r.settle();
+    assert.deepStrictEqual(songLoads(r).map((l) => l.id), ['m1', 'm2'], 'the queue\'s next song, not m1 again');
+  } finally { r.close(); }
+});
+
+test('K6: Music while reading off - no music, no station read; Mute music for this session stops it for the session (a reload of the view keeps it muted)', async () => {
+  const r = musicRealm([READING, POD]);
+  try {
+    r.w.localStorage.setItem('ft-feed-settings', '{"music":false}');
+    await startRealm(r); r.show(0); await r.settle();
+    assert.strictEqual(songLoads(r).length, 0);
+    assert.ok(!r.fetches.some((f) => f.url === '/api/music/stations'), 'not even the station list');
+  } finally { r.close(); }
+  const r2 = musicRealm([READING, POD, Object.assign({}, READING, { id: 'bk9' })]);
+  try {
+    await startRealm(r2); r2.show(0); await r2.settle();
+    chip(r2, 0).click(); await r2.settle();
+    const sheets = r2.$$('.ui-sheet');
+    const mute = Array.from(sheets[sheets.length - 1].querySelectorAll('.ui-row, [role="listitem"], button')).find((b) => /Mute music for this session/.test(b.textContent));
+    assert.ok(mute, 'the sheet offers Mute');
+    assert.ok(Array.from(sheets[sheets.length - 1].querySelectorAll('.ui-row, [role="listitem"], button')).some((b) => /Like the song/.test(b.textContent)), 'and Like');
+    mute.click(); await r2.settle();
+    assert.ok(r2.loads.some((l) => l.pause), 'paused now');
+    assert.strictEqual(r2.$('[data-music-chip]'), null);
+    assert.ok(r2.toasts.includes('Music off for this session'));
+    assert.strictEqual(JSON.parse(r2.w.sessionStorage.getItem('ft-feed-session')).musicMuted, true, 'kept with the session');
+    r2.show(1); await r2.settle(); r2.show(2); await r2.settle();
+    assert.strictEqual(songLoads(r2).length, 1, 'no music on the next book card');
+  } finally { r2.close(); }
+});
+
+test('K6: no station the viewer has - no music and no chip; leaving the Feed with music playing closes the player (it never follows the user out)', async () => {
+  const r = musicRealm([READING, POD], { stations: [] });
+  try {
+    await startRealm(r); r.show(0); await r.settle();
+    assert.strictEqual(songLoads(r).length, 0);
+    assert.strictEqual(r.$('[data-music-chip]'), null);
+    assert.strictEqual(r.radio.length, 0);
+  } finally { r.close(); }
+  const r2 = musicRealm([READING, POD]);
+  try {
+    await startRealm(r2); r2.show(0); await r2.settle();
+    assert.strictEqual(songLoads(r2).length, 1);
+    r2.destroy(); await r2.settle();
+    assert.ok(r2.loads.some((l) => l.close), 'closed with the view');
+  } finally { r2.close(); }
+});
+
+test('K6: Change station writes the synced setting and plays from the new station at once; Like the song uses music\'s own route', async () => {
+  const r = musicRealm([READING, POD]);
+  try {
+    await startRealm(r); r.show(0); await r.settle();
+    chip(r, 0).click(); await r.settle();
+    let sheets = r.$$('.ui-sheet');
+    Array.from(sheets[sheets.length - 1].querySelectorAll('.ui-row, [role="listitem"], button')).find((b) => /Like the song/.test(b.textContent)).click();
+    await r.settle();
+    assert.deepStrictEqual(r.calls('POST', '/api/music/liked/').map((c) => c.url), ['/api/music/liked/m1']);
+    chip(r, 0).click(); await r.settle();
+    sheets = r.$$('.ui-sheet');
+    Array.from(sheets[sheets.length - 1].querySelectorAll('.ui-row, [role="listitem"], button')).find((b) => /Change station/.test(b.textContent)).click();
+    await r.settle();
+    sheets = r.$$('.ui-sheet');
+    Array.from(sheets[sheets.length - 1].querySelectorAll('.ui-row, [role="listitem"], button')).find((b) => /^Favorites$/.test(b.textContent.trim())).click();
+    await r.settle();
+    assert.strictEqual(JSON.parse(r.w.localStorage.getItem('ft-feed-settings')).station, 'favorites', 'the synced setting');
+    assert.ok(/seed=station%3Afavorites/.test(r.radio[r.radio.length - 1]), 'the new station\'s batch');
+    assert.strictEqual(songLoads(r).length, 2, 'a song from it plays now');
+  } finally { r.close(); }
+});

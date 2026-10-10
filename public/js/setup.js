@@ -2154,6 +2154,16 @@ function wireFeedSettingsPage(doc, signal) {
     if (advance) advance.checked = st.advance;
     const clip = d.getElementById('feed-clip'); // v1.383.0 (K5)
     if (clip) clip.value = String(st.clip);
+    const music = d.getElementById('feed-music'); // v1.383.0 (K6)
+    if (music) music.checked = st.music;
+    const station = d.getElementById('feed-station');
+    if (station) {
+      // a stored station not (yet) in the list - the list has not loaded, or the station is gone - keeps an option of its own,
+      // so drawing the page never rewrites the choice
+      if (st.station && !Array.prototype.some.call(station.options, (o) => o.value === st.station)) station.appendChild(feedStationOption(d, st.station.replace(/^[a-z]+:/, ''), st.station));
+      station.value = st.station;
+      station.disabled = !st.music;
+    }
     return st;
   }
   function save() {
@@ -2179,6 +2189,10 @@ function wireFeedSettingsPage(doc, signal) {
     if (advance) st.advance = advance.checked;
     const clip = d.getElementById('feed-clip');
     if (clip) st.clip = Number(clip.value);
+    const music = d.getElementById('feed-music');
+    if (music) st.music = music.checked;
+    const station = d.getElementById('feed-station');
+    if (station && !station.disabled) st.station = station.value;
     // the shared reading decides (an all-off value reads as the default, so the last switch can never turn the Feed off)
     try { win.localStorage.setItem(FS.SETTINGS_KEY, FS.serialize(st)); } catch (_) { /* storage off: nothing to keep */ }
     reflect();
@@ -2186,13 +2200,38 @@ function wireFeedSettingsPage(doc, signal) {
   renderFeedTuning(d, signal);
   page.addEventListener('change', (e) => {
     const t = e.target;
-    if (t && (t.hasAttribute('data-feed-kind') || t.hasAttribute('data-feed-which') || t.hasAttribute('data-feed-where') || t.id === 'feed-reel' || t.id === 'feed-slice' || t.id === 'feed-advance' || t.id === 'feed-clip')) save();
+    if (t && (t.hasAttribute('data-feed-kind') || t.hasAttribute('data-feed-which') || t.hasAttribute('data-feed-where') || t.id === 'feed-reel' || t.id === 'feed-slice' || t.id === 'feed-advance' || t.id === 'feed-clip' || t.id === 'feed-music' || t.id === 'feed-station')) save();
   }, { signal });
   reflect();
+  fillFeedStations(d, signal, reflect);
   // the account's copy can land after this page is drawn (a fresh device): draw it again then
   // (both lists: the choices and, gate r1 qa suggestion 2, the Fewer from names under Hidden and fewer)
   if (win.__ftPrefsSync && typeof win.__ftPrefsSync.whenBooted === 'function') win.__ftPrefsSync.whenBooted(() => { if (!signal || !signal.aborted) { reflect(); renderFeedTuning(d, signal); } });
   return { reflect, save };
+}
+
+// v1.383.0 (K6): the Station picker lists the viewer's own stations (GET /api/music/stations: only what they can see), hidden ones
+// left out; "Chosen for you" stays first. Names are set as option TEXT, never markup.
+function feedStationOption(d, text, value) {
+  const o = d.createElement('option');
+  o.value = value;
+  o.textContent = text;
+  return o;
+}
+function fillFeedStations(doc, signal, reflect) {
+  const d = doc || document;
+  const sel = d.getElementById('feed-station');
+  if (!sel || typeof fetch !== 'function') return Promise.resolve();
+  return fetch('/api/music/stations', { signal })
+    .then((r) => (r.ok ? r.json() : { stations: [] }))
+    .then((body) => {
+      if (signal && signal.aborted) return;
+      const list = Array.isArray(body && body.stations) ? body.stations.filter((st) => st && typeof st.key === 'string' && !st.hidden) : [];
+      while (sel.options.length > 1) sel.remove(1);
+      list.forEach((st) => sel.appendChild(feedStationOption(d, String(st.name || st.key), st.key)));
+      reflect();
+    })
+    .catch(() => { /* the picker keeps Chosen for you (and a stored choice) */ });
 }
 
 function renderBottomBarEditor(signal) {
@@ -5436,7 +5475,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // no constant can stand in for.
     renderBottomBarEditor, BOTTOMBAR_LABELS,
     // v1.382.0: Settings > Feed (jsdom-bound with the real public/js/feed-settings.js)
-    wireFeedSettingsPage, FEED_WHERE_NEW_ONLY_HELP, renderFeedTuning,
+    wireFeedSettingsPage, FEED_WHERE_NEW_ONLY_HELP, renderFeedTuning, fillFeedStations,
     // v1.146: the Downloads box's pure status->view-model mapper (the DOM
     // writer + wiring are the usual on-device-validated thin shell).
     buildEngineViewModel,
