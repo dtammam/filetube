@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.382.0 Feed settings, the client (plan docs/exec-plans/active/2026-10-10-feed-settings.md W3): the request carries
+// [UNIT] v1.382.0 Feed settings, the client (plan docs/exec-plans/completed/2026-10-10-feed-settings.md W3): the request carries
 // the settings (D8: from the next batch on), the "From the beginning" kind line and the player's place FLOOR (D4), the reel-aware
 // played-time gate (D6), and Keep watching / listening / reading (D7) - through the REAL view in the jsdom harness and the REAL
 // player.js for the floor.

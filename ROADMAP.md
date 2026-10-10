@@ -808,6 +808,30 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.382.0 - Feed settings: choose what the Feed shows and where it starts, 60-second reels, Keep watching, double-tap like, Hide and Fewer from (2026-10-10)
+
+- W1 (D1-D5): Settings > Personalize > Feed (and a gear on the Feed's picker): each kind on or off (the last one stays on), per
+  kind New only / Only ones I started / both and From my saved place / From the beginning, the video reel (30 s to Whole chapter,
+  default 60 s) and the podcast slice (1 / 2 / 4 min, default 2). Two synced keys read by ONE shared file
+  (public/js/feed-settings.js) that the server, the Feed and Settings all use; Dean ruled an 8 KB cap for the Fewer from list only.
+- W2: GET /api/feed serves the choices (a switched-off kind never, New / Continue by the label's own rule, the refill too); a fresh
+  card counts as started after its whole reel (reels of 30 s or more) as well as the minute; a 10 s look still writes nothing.
+- W3: From the beginning never moves a saved place back - the player keeps the place as a floor keyed by the item, so nothing
+  saves below it in the Feed, on the watch page after Keep watching, or in Music after Listen. Keep watching / listening / reading
+  near the end of a card leaves the Feed into the full item still playing, with no recap. Measured (tools/feed-proof/
+  keep-watching.js, Chromium and WebKit): one player, playing on the watch page, the place stays 25 s through Listen and saves
+  27.5 s once past; before the gate's fix Listen moved it to 24.3 s.
+- W4 (D10, D11): double-tap like with a heart (a lone tap waits the watch page's 350 ms window); the card's "..." has Like,
+  Watch later, Hide this (every kind, Dean's ruling) and Fewer from (a quarter as often, drawn once a session), each with Undo, and
+  Settings > Feed lists what was hidden or held back.
+- Moved out by Dean (2026-10-10): instant next card (preloading), song reels and music under book cards - ROADMAP Planned.
+- Disclosed: Home's earlier hides also leave the Feed and list in Settings > Feed; the Keep listening path for library audio is
+  reasoned, not measured; the new-book Fewer hold-back is unbound by a test.
+- Gate (FULL: adversary, qa, security-brief): r1 found the Listen place loss (a CRITICAL), a short chapter letting a 7.5 s look
+  write, a hidden new book blocking every other, Fewer from failing silently on long names, hide rows outliving their items, and
+  stale text; r2: adversary and security-brief APPROVED at ec29b744, qa held one lessons line (fixed after). Dean ruled to ship
+  on round 2. Mutants: W1 + W2 26, W3 18, W4 22 of 23 (one masked), r1 fixes 22 (all killed after binding).
+
 ### v1.381.0 - Feed, TikTok style: full-screen cards, book pages you swipe, tap and hold on video, and Start over (2026-10-09)
 
 - W1 (D1, D2): the other-device card and the download chip are not shown in the Feed (one rule keyed on the router's

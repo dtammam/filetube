@@ -3640,5 +3640,11 @@
     "date": "2026-10-09",
     "title": "Feed, TikTok style: full-screen cards, book pages you swipe, tap and hold on video, and Start over",
     "intent": "Every Feed card now fills the screen: a video fills the card (tap Fit to see the whole picture), a podcast or song shows its art over a blurred backdrop, and the title and buttons sit at the bottom, clear of the timer. Nothing inside a card scrolls any more: a book shows one page at a time and you swipe left for the next page and right to go back, while swiping up or down still moves between cards from anywhere, even the playing video. On a video, tap to pause or play and press and hold for 2x; turning the phone sideways no longer jumps to full screen. The other-device card and the download pill stay out of the Feed. Anything you only peeked at for under a minute now shows as New rather than Continue, and a new Start over on each card forgets your place in that one item, with a 10-second Undo that puts it back exactly."
+  },
+  {
+    "version": "1.382.0",
+    "date": "2026-10-10",
+    "title": "Feed settings: choose what the Feed shows and where it starts, 60-second reels, Keep watching, double-tap like, Hide and Fewer from",
+    "intent": "A new Feed page in Settings (or the gear on the Feed's picker) lets you switch each kind of card on or off, choose new things only, ones you started only, or both, and start started ones from the beginning without ever losing your place. Videos now play as 60-second reels and podcasts as 2-minute slices (both adjustable), and near the end of a card Keep watching or Keep listening takes you straight into the full video or episode, still playing. Double-tap a card to like it, and use its menu to save it for later, hide it, or see less from that channel, show, artist or author, with an Undo every time."
   }
 ]

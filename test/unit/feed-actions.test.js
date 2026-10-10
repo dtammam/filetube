@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.382.0 Feed card actions (plan docs/exec-plans/active/2026-10-10-feed-settings.md W4, D10-D11): double-tap like
+// [UNIT] v1.382.0 Feed card actions (plan docs/exec-plans/completed/2026-10-10-feed-settings.md W4, D10-D11): double-tap like
 // (on only, a heart where the finger was, a lone tap still plays / pauses after the window), the "..." menu's Like / Watch
 // later / Hide this / Fewer from with their Undo, and Settings > Feed's "Hidden and fewer" list - through the REAL view in the
 // jsdom harness and the REAL setup.js.

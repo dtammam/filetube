@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.382.0 Feed settings (plan docs/exec-plans/active/2026-10-10-feed-settings.md D1-D5, D11): the ONE shared
+// [UNIT] v1.382.0 Feed settings (plan docs/exec-plans/completed/2026-10-10-feed-settings.md D1-D5, D11): the ONE shared
 // reading (public/js/feed-settings.js, required by the server too) and the Settings > Feed page through the REAL setup.js
 // over the page exactly as setup.html ships it (lifted, not re-typed).
 

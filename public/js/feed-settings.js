@@ -1,4 +1,4 @@
-// FileTube Feed settings (v1.382.0, plan docs/exec-plans/active/2026-10-10-feed-settings.md D1-D5, D11; D13-D14 moved out).
+// FileTube Feed settings (v1.382.0, plan docs/exec-plans/completed/2026-10-10-feed-settings.md D1-D5, D11; D13-D14 moved out).
 //
 // The ONE reading of the Feed's synced settings, shared by the server (lib/feed/api.js requires this file), the Feed
 // view (public/js/feed.js) and the Settings > Feed page (public/js/setup.js). Two synced keys (lib/prefs-allowlist.js

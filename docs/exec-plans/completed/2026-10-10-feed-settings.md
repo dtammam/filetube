@@ -3,11 +3,11 @@ plan: feed-settings
 harness: v2 · full
 branch: feat/v1.382.0-feed-settings
 anchor: outcome
-status: Built W1-W4 (W5 moved out by Dean, 2026-10-10); suites green at 722c28f4; FULL gate r1 running
-next: gate r1 (adversary, qa, security-brief: scrutiny.toml forces it for lib/auth/store.js)
+status: Shipped v1.382.0
+next: Dean's device checks (docs/DEVICE-CHECKS.md "Feed settings (v1.382.0)"); W5 is ROADMAP Planned "Feed reels and speed"
 design: Dean's next-wave ask after passing every Feed check (2026-10-10) and his rulings R1-R4; kickoff defaults D1-D9. Base main 056a482f (v1.381.0).
 builder: smart (Dean offered Sonnet for the settings core; the add-ons he chose - preloading on the shared player, double-tap like on top of tap / hold, music under book cards - put it above standard; no reset, no schema change)
-gate: r1 running (FULL: adversary, qa, security-brief - auth-and-secrets rule forced by lib/auth/store.js)
+gate: closed r2 @ec29b744 by Dean's ruling "Ship on round 2" (adversary APPROVED, security-brief APPROVED, qa's one held docs line fixed in 0c645a91)
 ---
 
 # v1.382.0: Feed settings, reels everywhere, like / hide from a card, instant swipes, and music under book pages
@@ -200,7 +200,12 @@ protected-main PR flow, shipped = the tag's "Publish Docker Image" run green, br
 - Suites (Node 22.23.1 / 24.20.0) at the reviewed sha: `npm test` at 722c28f4 in the worktree, sequential - Node 22.23.1: `# tests
   12089 # pass 12076 # fail 0 # cancelled 0 # skipped 13` (exit 0); Node 24.20.0: `tests 12089 pass 12076 fail 0 cancelled 0
   skipped 13` (exit 0).
-- Gate rounds:
+- Gate rounds: r1 @6ca6d90c - adversary CHANGES (C1 Keep watching then Listen moved the place 25 -> 24.3 s; W1 an 8 s chapter
+  slice let a 7.5 s look write; W2 a hidden new book blocked every other), qa CHANGES (W1-W4), security-brief APPROVED. r2
+  @ec29b744 - adversary APPROVED, security-brief APPROVED, qa CHANGES (one lessons line teaching the disproved floor design;
+  fixed in 0c645a91 with two comment / proof-tool fixes, no product code). Dean (AskUserQuestion, 2026-10-10): "Ship on round 2"
+  - so the approvals stay bound to ec29b744 and the delta after it (0c645a91: docs/LESSONS-rules.md, three comments in
+  lib/auth/store.js, tools/feed-proof/keep-watching.js, this plan) was not re-reviewed.
 - Device checks owed: docs/DEVICE-CHECKS.md "Feed settings (v1.382.0)", 9 lines (ROADMAP Device checks owed 39-47).
 
 ## 9. Out of scope
