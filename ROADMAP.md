@@ -46,6 +46,15 @@
   36. v1.363.1 - Add chapters on a chapterless mp3: chapter tracks after re-list and next pick; the playing song untouched
   37. v1.363.1 - watch cog: Add / Edit chapters row; the new sticker rows match the old
   38. VPN runbook: send the run ids and the filled section 7 results template (docs/references/vpn-slowness-runbook.md)
+  39. v1.382.0 - Settings > Feed: each kind off, the last one locked on, the same on the desktop
+  40. v1.382.0 - New only / Only ones I started per kind; Where greys out on New only
+  41. v1.382.0 - From the beginning (video, podcast, book) without losing the saved place
+  42. v1.382.0 - 60 s reels and 2 min slices; 30 s, Whole chapter, 4 min
+  43. v1.382.0 - Keep watching / listening / reading lands still playing at the same spot, no recap
+  44. v1.382.0 - From the beginning + Keep watching early: the old place stays
+  45. v1.382.0 - double-tap like on each kind with the heart; a tap still pauses; menu Like and Watch later
+  46. v1.382.0 - Hide this and Fewer from with Undo; Settings > Feed > Hidden and fewer
+  47. v1.382.0 - a new video watched through its 60 s reel says Continue; a 10 s look stays New
 
   Passed 2026-10-06 (deleted from DEVICE-CHECKS.md): [x] v1.367.0 - Settings reorganized, admin and member views; [x] v1.365.0 - a one-off download with the server stopped: "Can't reach FileTube", it clears; [x] v1.365.0 - stuck row "updated N ago", queued "waiting N"; [x] v1.365.0 - Download trace saves a .txt in the home-screen app; [x] v1.366.0 - 360 view checks (iPhone live picture, drag direction and Move to look, native full screen and PiP, Video type Flat/Auto, container ffprobe detection).
 
@@ -384,6 +393,20 @@
 
 ### Features
 
+- [ ] **Feed reels and speed (moved out of v1.382.0 by Dean, 2026-10-10)** _(plan docs/exec-plans/completed/2026-10-10-feed-settings.md,
+  section 3)_ - Dean resumes it as its own release. D12 instant next card: measure swipe-settle to first frame / first audio
+  (WebKit and Chromium headless, then the device), then preload WITHOUT a second player (the next card's poster / art, a small
+  range request at its start point, the next book page text; at most 1 card ahead); target under 500 ms on the LAN. D13 song
+  reels: a "Song clip" setting 30 / 45 / 60 s / Whole song (default 45 s) from a third in, Keep listening plays the whole song in
+  Music; a clip played to its end counts a play, a swipe is never a skip. D14 music under book cards: "Music while reading" On /
+  Off and its station (default the first of Chill, Lofi, Jazz, Ambient, then Favorites, then liked songs), playing across a book's
+  page swipes and book cards, stopping on a non-book card; an attribution chip "♫ <song> · <artist>" with Like / Mute for this
+  session / Change station; background listening never counts plays or skips.
+- [ ] **Real YouTube comments on the watch page (Dean, 2026-10-10)** - fetch the top 20-30 comments when a video downloads (yt-dlp
+  can write comments; cap them, store per item) and show them where the watch page now shows its mock retro comments
+  (public/js/watch.js, the `.ft-fabricated` mock commenters); older downloads through the existing metadata re-pull. Keep the mock
+  comments only where no real ones exist (Dean to rule at intake). Privacy and size caps to settle at intake.
+
 - [x] **Feed mode (Dean, 2026-10-09: "a feed mode where books, news articles, maybe some short content videos I could go through in a feed")** **Shipped v1.379.0 (2026-10-09).** - a new
   Feed page: pick 10 / 20 / 30 minutes, then an endless vertical feed of cards from his own library (the next pages of a book he
   is reading, a few minutes of a podcast, one chapter of a video, a Watch later item, a song). What he does there is real
@@ -610,6 +633,10 @@
   any site, sharing the source URL recorded at download time. Nothing else.
 
 ### Chores
+
+- [ ] **Tidy the Cleanup page (Dean, 2026-10-10: "a little messy"; better section headers)** - /cleanup (lib/cleanup/shell.js, the
+  cleanup view): measure first (each section, its header, what it lists, at phone and desktop widths), then clearer headers and
+  grouping.
 
 - [ ] **The error log folds repeats** _(qa gate r1 SUGGESTION, v1.364.0)_ - the boot error recorder (every shell's first head
   script, `ft-boot-errors`) keeps only the LAST 50 entries, so an error that repeats (a timer or animation-frame handler throwing

@@ -247,6 +247,27 @@ Settings > Experimental > "Use custom player controls on touch devices" ON.
 - [x] v1.377.0 - (Dean 2026-10-08: "good") The Music page button reads "Pocket"; Settings > Mobile player says "Keep Pocket upright"; no "iPod"
   anywhere you can read in the app.
 
+## Feed settings (v1.382.0)
+
+Home-screen app on the iPhone, and the desktop for one line. Have a video, a podcast and a book you are partway through, plus new
+ones of each.
+
+- [ ] v1.382.0 - Settings > Personalize > Feed (or the gear on the Feed's length picker): switch each kind off in turn and start a
+  session; that kind never shows. The last kind left on cannot be switched off. Open Settings > Feed on the desktop: the same choices.
+- [ ] v1.382.0 - Per kind (Videos, Podcasts, Books): New only shows only things you have not started; Only ones I started shows only
+  those (and Where they start greys out on New only, saying why).
+- [ ] v1.382.0 - Where they start = From the beginning on Videos: a started video plays from 0:00 and says "From the beginning". Swipe on,
+  then open it on the watch page: it resumes at your old place. Same with a podcast (Podcasts page) and a book (the reader).
+- [ ] v1.382.0 - Reels: a video card runs 60 seconds from its start, an episode 2 minutes. Try 30 s and Whole chapter for videos, 4 min for podcasts.
+- [ ] v1.382.0 - Near the end of a video card (and once it says Done) tap Keep watching: the watch page opens, still playing at the same
+  spot, no recap. Keep listening on a podcast: the Podcasts page, playing. Keep reading on a book card's last page: the reader.
+- [ ] v1.382.0 - From the beginning, then Keep watching early in the video, watch a bit and close: the video still resumes at your old place.
+- [ ] v1.382.0 - Double-tap a video, a podcast, a song and a book page: a heart pops where you tapped and it is in Liked. A single tap
+  still pauses (after a short beat). "..." has Like / Unlike and Add to / Remove from Watch later.
+- [ ] v1.382.0 - "..." > Hide this on a video, a podcast, a song and a book; Undo one within 10 seconds. "..." > Fewer from on a channel.
+  Settings > Feed > Hidden and fewer lists them; Unhide and Remove work. A hidden item never comes back in a new session.
+- [ ] v1.382.0 - A new video watched to the end of its 60-second reel says Continue next time; one you swiped after 10 seconds still says New.
+
 ## Feed, TikTok style (v1.381.0)
 
 Home-screen app on the iPhone (and once on a small phone if you have one, 320 wide). Have a book you are partway through, a video

@@ -3,8 +3,8 @@ plan: feed-settings
 harness: v2 · full
 branch: feat/v1.382.0-feed-settings
 anchor: outcome
-status: Planned (kickoff 2026-10-10, Opus Root); builder not started
-next: builder Step 0, then W1
+status: Built W1-W4 (W5 moved out by Dean, 2026-10-10); full suites and the FULL gate next
+next: the dual-Node suites, then the gate (adversary, qa)
 design: Dean's next-wave ask after passing every Feed check (2026-10-10) and his rulings R1-R4; kickoff defaults D1-D9. Base main 056a482f (v1.381.0).
 builder: smart (Dean offered Sonnet for the settings core; the add-ons he chose - preloading on the shared player, double-tap like on top of tap / hold, music under book cards - put it above standard; no reset, no schema change)
 gate: not yet run (FULL: adversary, qa; lib/ change = core-logic)
@@ -135,13 +135,17 @@ really want to go for that specific thing."
 
 ## 5. Waves
 
+**Scope cut (Dean, 2026-10-10, relayed by the Root and confirmed by Dean through AskUserQuestion: "Yes, cut W5"):** v1.382.0 ships
+W1-W4. W5 (D12 preloading, D13 song reels, D14 music under book cards) is MOVED, not built: ROADMAP.md Planned > Features "Feed
+reels and speed (moved out of v1.382.0 by Dean, 2026-10-10)" points here (section 3 holds D12-D14). W6 closes out W1-W4 only.
+
 - **W1 Settings page + prefs:** D1, D2-D5 controls (with the disabled-when-New-only rule), synced keys, censuses, the picker gear.
 - **W2 Server:** GET /api/feed reads kinds / which / where / lengths (validated), D2-D5 serving, D6 guard rule (server side of the
   played-seconds check).
 - **W3 Client:** cards honour the choices (kind line "From the beginning"), D6 client side, D7 Keep watching / listening / reading
   pill and the exit path, D8.
 - **W4 Card actions:** D10 double-tap like + menu Like / Watch later, D11 Hide / Fewer from with Undo and the settings list.
-- **W5 Reels and speed:** D13 song reels, D14 music under book cards (setting, station source, attribution chip), D12 measured
+- **W5 Reels and speed (MOVED out of v1.382.0, see above):** D13 song reels, D14 music under book cards (setting, station source, attribution chip), D12 measured
   preloading.
 - **W6 Close-out:** ledger, device checks in docs/DEVICE-CHECKS.md (each switch; New only / Continue only per kind; From the
   beginning without losing the saved place; 60 s reels; Keep watching lands on the watch page still playing at the same spot;
@@ -164,15 +168,64 @@ protected-main PR flow, shipped = the tag's "Publish Docker Image" run green, br
 
 ## 8. Evidence (builder fills: numbers copied from the runs named, verbatim verdict lines)
 
-- Serving falsifiers (kinds off, New only, Continue only, From the beginning, lengths):
-- D6 (10 s look vs a whole 60 s reel):
-- D7 exit path (position and single player):
-- D12 swipe-to-first-frame before / after (WebKit, Chromium):
-- D10 added pause latency from the double-tap window:
-- D14 book music: counts untouched, stops on a non-book card:
+- Serving falsifiers (kinds off, New only, Continue only, From the beginning, lengths): test/integration/feed-api.test.js, the real
+  routes over the shared fixture: "v1.382.0 D2" (each of song+book / watchlater / video+podcast off over 200 cards: never served, the
+  rest still are; Watch later follows its own switch; all-off reads as all on), "D3" (New only: every video / episode card fresh,
+  never va0 / va1 / the started episode; Only ones I started: exactly the started items from storage, then the kind drops out; books:
+  New only = one Start something new card, Continue only = never one; mixKinds keeps a New-only kind out of the balance), "D4" (va0 at
+  400 s served fromStart 0..60, the episode 0..120, Beta from its first chapter {0,0}; feed writes at 45 s / 110 s / block (0,20)
+  each 409 'backward' with all three stored places byte-identical; 410 s then lands; a started Watch later item keeps its place
+  {fromStart false, startAt 300}), "D5" (30 s / 1 min, 2 min, junk = 60 s / 2 min), "D2 / D3 refill" (the allowlisted member
+  exhausts and refills: never a Watch later or continuing card).
+- D6 (10 s look vs a whole 60 s reel): feed-api "v1.382.0 D6": a fresh card with a 60 s reel and with a 30 s reel - playedSec 10
+  and reel-2 are 409 'too-early' with storage byte-identical, reel-0.75 s lands (200); a 90 s reel still needs the minute (59 s
+  409, 61 s 200). Client: feed-settings-view "D6 (view)": the gate shut at 10 s and 57 s of a 60 s reel, open at 59.5 s; the
+  client rule equals the server's over a duration x slice grid.
+- D7 exit path (position and single player): `node tools/feed-proof/keep-watching.js . <out> <engine>` (a 30 s WebM, saved place
+  25 s, From the beginning, 30 s reels). First run, Chromium: FAIL - the watch page got ONE player at 20.41 s but paused (the tap
+  tore the stack down before navigating; fixed in cc11aa4e). After: `PASS chromium` atTap 20.39 s, onWatch {hosts 1, videos 1,
+  t 21.29, paused false, recap false}, behind {stored 25, saves 0}, past {stored 27.50, saves 1}, finish 1; `PASS webkit` twice
+  (onWatch t 21.28 / 21.29 playing, behind stored 25 with 0 saves, past 27.50). The shipped `tools/feed-proof/card-player.js . -
+  both`: `SUMMARY card-player: 2/2 pass (chromium+webkit)`.
+- D12 swipe-to-first-frame before / after: MOVED with W5 (not measured in v1.382.0).
+- D10 added pause latency from the double-tap window: 350 ms - by construction, the watch page's own DOUBLE_TAP_MS (player.js),
+  which a lone tap on a media card now waits out before it plays / pauses; a book page has no single-tap action, so nothing waits.
+- D14 book music: MOVED with W5.
+- Mutants (each in a /tmp git-archive sandbox of the committed wave, tests by name): W1 + W2 26 / 26 killed (the refill ignoring
+  the choices and a Watch later card taking From the beginning first SURVIVED, then bound in e99b9471); W3 18 / 18; W4 22 / 23
+  (Fewer from dropping the held-back items and a prefix-matched Undo route first survived, bound in 09e58aff; removing the card
+  check in likeFromGesture is MASKED by the same check in setLiked).
+- Fewer from, measured: drawn per batch, Show A on the list still got 34 cards to Show B's 46 over a session; drawn once per item a
+  session it holds (a < half of b, every run), and with both shows listed 140+ distinct episodes still come.
 - Suites (Node 22.23.1 / 24.20.0) at the reviewed sha:
 - Gate rounds:
-- Device checks owed:
+- Device checks owed: docs/DEVICE-CHECKS.md "Feed settings (v1.382.0)", 9 lines (ROADMAP Device checks owed 39-47).
 
 ## 9. Out of scope
 Comments or captions overlays; per-kind weights or ratios; per-device (unsynced) feed settings; new kinds; phases 2-3 (Reading); Start over outside the Feed.
+
+## 10. Ledger (as built; Dean overrules at the device pass)
+
+- **Dean's rulings during the build (AskUserQuestion, 2026-10-10):** "Hide every kind (Recommended)" - the home feed's hide list
+  only held media, so Hide this stores episodes, books and songs under their own kind's key in the same list; "Bigger cap for this
+  key (Recommended)" - ft-feed-fewer alone gets 8 KB (200 names), both ingress paths ask prefValueMaxBytes(key); "Yes, cut W5".
+- **D1 (W1).** Settings > Personalize > Feed after Bottom bar; the picker's gear opens /setup.html#feed. Two synced keys
+  (ft-feed-settings: only what differs from the defaults; ft-feed-fewer) read by ONE shared file, public/js/feed-settings.js, which
+  the server requires and every shell loads.
+- **D2.** Five switches; the last one on is locked (with the note); an all-off value reads as all on everywhere.
+- **D3.** Per kind New and ones I started / New only / Only ones I started; the server filters by the label's fresh rule.
+- **D4.** From my saved place / From the beginning, greyed with its reason on New only. A From the beginning card says so in its kind
+  line and gives the player its saved place as a FLOOR (player.js placeFloorAllows): nothing saves at or below it, in the Feed or
+  after Keep watching's adopt, until playback passes it. NOT as planned: Watch later has no Where (it keeps its place, like D3's Both).
+- **D5.** 30 / 60 / 90 s / 2 min / Whole chapter (no chapters: 2 min, was 3); podcasts 1 / 2 / 4 min (default 2, was 4). A reel has
+  no chapter record (the card says "1:00 of this video"; the recap counts its minutes).
+- **D6.** The served registry keeps each card's slice; a fresh card counts as started after its whole reel less 1 s when that is
+  shorter than the minute (client and server, one rule).
+- **D7.** Keep watching / listening (in the last 10 s and on Done, never after the file ended), Keep reading on a book card's last
+  page. Video: /watch.html?v=; library audio: Music through audioOpenHref; podcast: /podcasts?play=; book: the reader. The session
+  ends as Done would (record saved, no recap); the player is carried over playing.
+- **D8.** The settings ride each batch request; cards on screen never change.
+- **D10.** Double tap = like (on only) with a heart where the finger was; a lone tap waits the 350 ms window. The "..." on every card.
+- **D11.** Hide this (every kind, Undo 10 s, Settings list with Unhide); Fewer from (synced, 0.25 drawn once per item a session,
+  Undo 10 s, Settings list with Remove).
+- **D12-D14.** Moved (section 5).
