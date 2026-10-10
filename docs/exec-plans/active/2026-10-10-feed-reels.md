@@ -1,13 +1,13 @@
 ---
 plan: feed-reels
 harness: v2 · full
-branch: feat/v1.383.0-feed-reels
+branch: import/v1.383.0-feed-reels (the off-box build's patch on feat/v1.383.0-feed-reels 70777f8a; released from feat/v1.383.0-feed-reels)
 anchor: outcome
-status: Built (W1-W5 on feat/v1.383.0-feed-reels); in review
-next: the FULL gate (adversary, qa) at the reviewed sha; then the release up to the push (no GitHub auth on this box)
+status: Built off-box (W1-W5), imported by patch and finished on this box; in review (gate r2)
+next: gate r2 (adversary, qa, security-brief re-confirm) on the r1 fixes; then the release
 design: v1.382.0's moved W5 (its plan section 3, D12-D14) plus Dean's device feedback on v1.382.0 (2026-10-10, four points) and the v1.381.0 Start over hardening (ROADMAP). Base main 207256de (v1.382.0).
 builder: smart (preloading and auto-advance on the shared player, music through the shared player under book cards, two Feed bugs to root-cause)
-gate: not yet run (FULL: adversary, qa)
+gate: FULL (adversary, qa, security-brief - added by the finisher: Start over's reset / Undo is a data-loss surface and there is a new read route)
 ---
 
 # v1.383.0: Feed reels and speed - instant cards, auto-advance, song reels, music while reading, and the Feed's book bugs
@@ -112,32 +112,29 @@ PR flow, shipped = the tag's "Publish Docker Image" run green, branch deleted re
 
 ## 7. Evidence (builder fills: numbers copied from the runs named, verbatim verdict lines)
 
-- K2 tests (warm request issued 1 ahead, early load, autoplay after the first gesture on WebKit): `node tools/feed-proof/reels-flow.js
-  <repo> out both` -> "SUMMARY reels-flow: 2/2 pass (chromium+webkit)". Per engine: every media card reached by the wheel after ONE
-  click played on its own, unmuted, no refused play() (Chromium 4/4, WebKit 26.5 4/4); plays before the first tap 0; most media
-  elements playing at once 1; warm requests (bytes=0-262143) Chromium 5, WebKit 4, each the card right after the active one, each
-  card once. Unit: test/unit/feed-reels.test.js "K2 a" / "K2 b" (warm one ahead and once, never a transcode, a next book laid out;
-  feedNextActive at 25%, hold, spring-back; resume where left).
-- K3 (a) falsifier; K3 (b) the rule on Dean's book and the fixtures: Dean's book not named (his ruling: generic). The rule on the three
-  real-shaped fixtures (measured before the fix): first real chapter right in 3 of 3 (spine 5 / 3 / 3); labels "Chapter 6 of 10",
-  "Chapter 4 of 7", "Chapter 4 of 6" over the books' "I", "Chapter One", "Prologue" - after the fix "Chapter I", "Chapter One",
-  "Prologue" (test/integration/feed-reels-books.test.js "K3 b"). K3 (a): Start over on the fixture book at chapter III -> the reset
-  pages start at spine 5, first block "I", label "Chapter I"; Undo restores the stored place exactly ("K3 a"); the card redraws and
-  Undo returns to the page it was on (test/unit/feed-reels.test.js "K3 a").
-- K1 / K4 falsifiers: reels-flow.js - after the slice's end "Next in 2" showed and the next card became active with no input (Chromium
-  index 1 -> 2, WebKit 0 -> 1); the title tapped mid-slice opened /watch.html?v=land1 playing, one player (both engines). Unit: the
-  countdown, its cancel by touch and by its button, never on a book, never in the wind-down, off by the setting; title / show line /
-  open button each exit once, never a play / pause or a like.
-- K5: `node tools/feed-proof/song-reels.js <repo> out both` -> "SUMMARY song-reels: 2/2 pass (chromium+webkit)": a 30 s clip started at
-  20 s, stopped at 50.2 s / 50.1 s, posted exactly one play, the song's saved place untouched; Keep listening at 41.1 s / 41.2 s ->
-  Music on the same song, playing at 43.8 s / 44.0 s, one player.
-- K6: `node tools/feed-proof/book-music.js <repo> out both` -> "SUMMARY book-music: 2/2 pass (chromium+webkit)": the station song from
-  the hidden slot at 21.4 s (a third into 60 s), unmuted, the chip naming it; a page turn did not reload it; a video card replaced it
-  (no chip, the slot empty); plays posted 0; saved place none; most playing at once 1.
-- Mutants (each in a /tmp `git archive` sandbox of the committed tree): W1 9 of 9 killed; W2 + W3 21 of 22 (A11 masked: Keep's
-  `leaving` guard sits behind `!session`, which keepGoing clears first); W4 17 run, 15 killed at first, the 2 survivors (C1, C8)
-  then bound - C8 and C1b killed, C1 (`bookActive`) and C1c (the second token check) masked by the first token check.
-- Suites (Node 22.23.1 / 24.20.0) at the reviewed sha:
+Provenance: W1-W5 were built OFF this box by another agent and imported by patch (`git am`, 2026-10-10) onto
+feat/v1.383.0-feed-reels 70777f8a as 487e5b3c..64bc6f23. The evidence that build wrote here (suites "at ccc16171", its mutant counts,
+its proof numbers) was bound to commits that do not exist on this box and is replaced below by the finisher's own runs.
+
+- Suites at the imported tip 64bc6f23 (finisher, a throwaway worktree): Node 22.23.1 tests 12150 / pass 12137 / fail 0 / skipped 13;
+  Node 24.20.0 tests 12150 / pass 12137 / fail 0 / skipped 13. The 13 skips are environment (no ffmpeg / ffprobe binary, tools/capture
+  Playwright in the suite's own sandbox), not this diff. The off-box claim "16 fail, 14 pre-existing" does not reproduce here: nothing
+  to triage against main.
+- Mutants at 64bc6f23 (finisher, /tmp `git archive` sandbox, pristine copy diffed identical after): 36 run, 31 killed, 5 survived -
+  warm "each card once", the fresh card's tracker kept across a return, the no-table-of-contents count from the first real chapter, the
+  stale station answer (the off-box ledger called this one "C1c, masked": it is reachable with a late radio batch), and the title's
+  stopPropagation (equivalent: nothing above the title acts on a click; the r1 adversary agreed). The four real ones were bound in
+  f19b6c9f and each then KILLED (re-run at f19b6c9f).
+- Browser proofs at f19b6c9f (finisher, Chromium + WebKit, the real server): `node tools/feed-proof/reels-flow.js` -> "SUMMARY
+  reels-flow: 2/2 pass (chromium+webkit)": every media card reached by the wheel after ONE click played on its own, unmuted, no refused
+  play() (4/4 per engine); plays before the first tap 0; most playing at once 1; warm requests (bytes=0-262143) 4 per engine, each the
+  card right after the active one; "Next in 2" then the next card active with no input; the title tapped mid-slice opened
+  /watch.html?v=land1 playing, one player. `song-reels.js` -> "2/2 pass": a 30 s clip from 20 s stopped at 50.2 s (Chromium) / 50.0 s
+  (WebKit), one play posted, no saved place; Keep listening -> /music?play=trk1 playing at 43.7 s / 43.8 s, one player, 0 plays from
+  the Feed. `book-music.js` -> "2/2 pass": the station song from the hidden slot at 21.4 s / 21.5 s, unmuted, its chip; a page turn did
+  not reload it; a video card replaced it (no chip, slot empty); plays 0; saved place none; most playing at once 1.
+- K2 a, measured by the r1 adversary: the player never reuses the warm's bytes (both engines fetch the file from byte 0 again; the media
+  routes send no cache validators). Dean's ruling (2026-10-10): keep it as a server-side disk warm, described as exactly that.
 - Gate rounds:
   Gate: CHANGES r1 @f19b6c9f - adversary
   - W1 (K2 b, recap) a 25% glimpse that springs back runs leaveCard + countCard on the card you are ON; countCard is once per card,
@@ -240,14 +237,18 @@ new card kinds; per-kind weights.
   (songs open in Music: /music?play=); book cards keep Open in reader.
 - **K2 (W2).** No measuring rig (Dean). (a) warm ONE card ahead, once: its art, a 256 KB range at its start, a next book card laid
   out into pages, and the pages after an active reading card's last page; a file that needs a transcode is never warmed (the warm
-  would queue the transcode). (b) the next card becomes active from 25% on screen; the active card holds while 25% of it shows; a
+  would queue the transcode; a video, an episode and, since gate r1, an ALAC song). The 256 KB range is a SERVER disk warm only: the
+  player does not reuse its bytes (gate r1, measured; kept by Dean's ruling). A card left at a quarter swipe is paused at once but
+  counted (the recap, a whole song's skip) only when the swipe settles; a card only glimpsed is never counted; the wind-down keeps the
+  60% rule (gate r1). (b) the next card becomes active from 25% on screen; the active card holds while 25% of it shows; a
   card returned to plays on from where it was (needed by the early load: a swipe that springs back). (c) autoplay: measured, no
   priming needed - the one persistent element keeps the first tap's permission in WebKit 26.5 and Chromium (user-gesture-required).
 - **K5 (W3).** As D13, plus: a clip never moves the song's saved place in Music (its gate is shut; Music's adopt drops it on Keep
   listening); a WHOLE song's skip needs 3 s heard (the early load plays a song for a moment on a swipe that springs back).
 - **K6 (W4).** As D14. Chosen for you = the first that exists of Chill, Lofi, Jazz, Ambient, Favorites (Favorites is the liked
-  songs until play counts exist). Ambient is rarely its own station: the Chill style's words include "ambient", so most libraries
-  get Chill. Change station writes the synced Station setting. Mute lasts the session. No ducking: iOS ignores a scripted volume,
+  songs until play counts exist). Ambient is never its own station (gate r1 qa, measured): the Chill style's words include
+  "ambient", so ambient music plays through Chill; the 'g:ambient' entry is a harmless no-op. A station song that is a chapter of a
+  library file plays a third into that chapter and ends at its end (gate r1). Change station writes the synced Station setting. Mute lasts the session. No ducking: iOS ignores a scripted volume,
   and the Feed never lowers it anywhere. The station key is bounded at 120 BYTES (a longer one reads as chosen for you) so the
   synced value stays under 512 bytes.
 - **Found and fixed on the way:** Music's play tally counted another surface's playback (a Feed card, the watch page) to the last
@@ -255,4 +256,7 @@ new card kinds; per-kind weights.
   (silent); the table-of-contents parsers W1 added rescanned per tag (2575 ms on 256 KB of hostile input, now 24 ms).
 - **Disclosed:** the reader's own listen bar still says "Chapter <spine + 1>" (public/js/read.js; out of this plan: ROADMAP
   Planned); swipe-to-first-frame was not measured (Dean: build it directly); masked mutants A11 (Keep's `leaving` guard behind
-  `!session`), C1 (`bookActive`) and C1c (the second token check) behind the first token check.
+  `!session`) and C1 (`bookActive`); C1c was NOT masked (gate r1: bound). Gate r1 open suggestions kept for later: the place
+  route's per-call EPUB read with no rate limit (as its two siblings; ROADMAP), a glimpse's pause checkpoint may move a continuing
+  card's place by under a second (forward-only), a reload-resumed session starts book music without a new gesture (as media cards
+  always have), unbound guards (warmBookPages' active check, a continuation retry, the nav-over-NCX order).

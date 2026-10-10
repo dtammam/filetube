@@ -318,7 +318,7 @@ function feedKeepDue(remainSec, done, ended) {
 // ---- v1.383.0 (plan docs/exec-plans/active/2026-10-10-feed-reels.md K1, K2): moving on by itself, the early load, warming --
 var FEED_ADVANCE_MS = 2000; // K1: "Next in 2", then the next card
 var FEED_EARLY_RATIO = 0.25; // K2 b: the next card starts loading once a quarter of it is on screen
-var FEED_WARM_BYTES = 262144; // K2 a: what a warmed card's media asks for - its first bytes (the library is faststart)
+var FEED_WARM_BYTES = 262144; // K2 a: what a warmed card's media asks for - its first bytes, a server disk warm (warmNext)
 // K1: does a DONE card move on by itself? A media card (video, library audio, episode, Watch later, song) with Auto-advance on;
 // never during the wind-down (the recap opens instead, unchanged) and never a book or a notice card (reading pace).
 function feedAdvanceDue(card, settings, windingDown) {
@@ -1191,10 +1191,13 @@ if (typeof module !== 'undefined' && module.exports) {
     signal.addEventListener('abort', stopAdvance);
 
     // ---- v1.383.0 (K2 a): warm the next card while this one plays ---------------------------------------------------------
-    // ONE card ahead, once each: its picture (poster / art) and the first FEED_WARM_BYTES of its media (a range request at its
-    // start: the library is faststart, so that is enough to start), or, for a book card, its pages laid out now (so the swipe shows
-    // a fitted page at once). Nothing is played: the shared player loads a card only when it becomes active, so there is never a
-    // second media element. A warmed card that is never reached costs its range request.
+    // ONE card ahead, once each: its picture (poster / art, which the card's <img> then reuses from the browser's cache), or, for a
+    // book card, its pages laid out now (so the swipe shows a fitted page at once), and the first FEED_WARM_BYTES of its media. That
+    // range request is a SERVER-side warm only: measured (gate r1, Chromium and WebKit), the player never reuses its bytes - the media
+    // routes send no cache validators, so the element asks for the file again from byte 0. What it buys is the file's start read
+    // off the server's disk ahead of the swipe (a slow or sleeping drive); it was kept on that understanding (Dean, 2026-10-10).
+    // Nothing is played: the shared player loads a card only when it becomes active, so there is never a second media element. A
+    // warmed card that is never reached costs its range request.
     function warmNext(index) {
       var i = index + 1;
       var card = cards[i];

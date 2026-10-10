@@ -255,7 +255,9 @@ and (for the music) a Lofi, Chill or Jazz station in Music or a few liked songs.
 - [ ] v1.383.0 - Let a video card play to its end: "Next in 2" shows and the Feed moves to the next card by itself. Again, and touch
   the card while it counts down: it stays. Settings > Feed > Auto-advance off: a finished card stays. A book card never moves on.
 - [ ] v1.383.0 - Swipe to the next card: it starts playing at once, with sound, without a tap (after the session's first tap on
-  10 / 20 / 30 min). Swipe a little and let go (the card springs back): the card you were on plays on from where it was.
+  10 / 20 / 30 min). Swipe a little and let go (the card springs back): the card you were on plays on from where it was, and the
+  recap at the end counts it once (a glimpse of the next card is not counted). Leave the Feed on one card for a few minutes, then
+  let it move on: the next card starts as quickly as the rest (its file's start was read ahead on the server).
 - [ ] v1.383.0 - Mid-way through a podcast card, tap its title (or its show line, or the small open button by the title): the full
   episode opens in Podcasts, still playing at the same spot. Same on a video (the watch page) and a song (Music).
 - [ ] v1.383.0 - A book card you are partway through: "..." > Start over > Start over. The card shows the book's first chapter at
@@ -267,7 +269,8 @@ and (for the music) a Lofi, Chill or Jazz station in Music or a few liked songs.
   listening opens the song in Music, playing on. A clip heard to its end counts one play; swiping past one early never counts a skip.
 - [ ] v1.383.0 - On a book card, music starts on its own with a chip (a note icon, then "song · artist"); it keeps playing as you swipe pages and on to
   the next book card, and stops when a video or podcast card comes. Tap the chip: Like the song, Mute music (for the rest of the session),
-  Change station. Settings > Feed > Music while reading off: silence. The Feed never lowers the phone's volume (iOS does not let it).
+  Change station. With a long mix with chapters in the station, one chapter plays and then the next song. Keep reading: the music
+  stops. Settings > Feed > Music while reading off: silence. The Feed never lowers the phone's volume (iOS does not let it).
 
 ## Feed settings (v1.382.0)
 
