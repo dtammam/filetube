@@ -26,7 +26,8 @@ test('normalize: junk, a non-object and an empty value read as the defaults (eve
     assert.strictEqual(s.reel, 60);
     assert.strictEqual(s.slice, 120);
     assert.strictEqual(s.advance, true, 'v1.383.0 (K1): Auto-advance is on by default');
-    assert.deepStrictEqual(Object.keys(s).sort(), ['advance', 'off', 'reel', 'slice', 'where', 'which'], 'v1.382.0 gate r1: the moved W5 fields (clip, music, station) are gone');
+    assert.strictEqual(s.clip, 45, 'v1.383.0 (K5): a 45 s song clip by default');
+    assert.deepStrictEqual(Object.keys(s).sort(), ['advance', 'clip', 'off', 'reel', 'slice', 'where', 'which'], 'v1.383.0: Auto-advance (K1) and the song clip (K5) joined; music and station only with W4');
   }
 });
 
@@ -38,7 +39,11 @@ test('normalize: every value is checked against its list; an off-list value is t
   assert.strictEqual(s.where.book, 'saved', 'an unknown place is the saved place');
   assert.strictEqual(s.reel, 60, '45 s is not a video reel length');
   assert.strictEqual(s.slice, 240);
-  assert.ok(!('clip' in s) && !('music' in s) && !('station' in s), 'an unknown field (the moved W5 ones) never comes through');
+  assert.strictEqual(s.clip, 0, 'v1.383.0 (K5): 0 is Whole song, a value on the list');
+  assert.strictEqual(FS.normalize({ clip: 40 }).clip, 45, 'an off-list clip is the default');
+  assert.strictEqual(FS.normalize({ clip: '30' }).clip, 45, 'a string is not the number');
+  assert.deepStrictEqual(FS.SONG_CLIPS, [30, 45, 60, 0]);
+  assert.ok(!('music' in s) && !('station' in s), 'an unknown field never comes through');
   assert.strictEqual(FS.normalize({ reel: '60' }).reel, 60, 'a string is not the number (defaults anyway)');
   assert.strictEqual(FS.normalize({ reel: 30 }).reel, 30);
 });

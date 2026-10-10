@@ -1,5 +1,5 @@
 // FileTube Feed settings (v1.382.0, plan docs/exec-plans/completed/2026-10-10-feed-settings.md D1-D5, D11; v1.383.0, plan
-// docs/exec-plans/active/2026-10-10-feed-reels.md K1 Auto-advance).
+// docs/exec-plans/active/2026-10-10-feed-reels.md K1 Auto-advance, K5 Song clip).
 //
 // The ONE reading of the Feed's synced settings, shared by the server (lib/feed/api.js requires this file), the Feed
 // view (public/js/feed.js) and the Settings > Feed page (public/js/setup.js). Two synced keys (lib/prefs-allowlist.js
@@ -25,7 +25,9 @@
   // D5: the lengths, in seconds; 0 = the whole chapter (a video; library audio follows the video reel).
   var VIDEO_REELS = [30, 60, 90, 120, 0];
   var PODCAST_SLICES = [60, 120, 240];
-  var DEFAULTS = { reel: 60, slice: 120 };
+  // v1.383.0 (K5 = v1.382.0 D13): a song card plays a clip of this many seconds from a third in; 0 = the whole song
+  var SONG_CLIPS = [30, 45, 60, 0];
+  var DEFAULTS = { reel: 60, slice: 120, clip: 45 };
   var VIDEO_NO_CHAPTER_SEC = 120; // D5: "Whole chapter" on a video without chapters = 2 min
   var SETTINGS_MAX_BYTES = 512; // the synced pref's value cap (lib/prefs-allowlist.js PREF_VALUE_MAX_BYTES)
   // D11: Fewer from
@@ -64,6 +66,7 @@
       where: where,
       reel: pick(VIDEO_REELS, r.reel, DEFAULTS.reel),
       slice: pick(PODCAST_SLICES, r.slice, DEFAULTS.slice),
+      clip: pick(SONG_CLIPS, r.clip, DEFAULTS.clip),
       // v1.383.0 (K1): a finished media card moves on to the next one by itself - on unless switched off (only false is off)
       advance: r.advance !== false,
     };
@@ -78,7 +81,7 @@
       if (s.which[k] !== 'both') { out.which = out.which || {}; out.which[k] = s.which[k]; }
       if (s.where[k] !== 'saved') { out.where = out.where || {}; out.where[k] = s.where[k]; }
     });
-    ['reel', 'slice'].forEach(function (f) { if (s[f] !== DEFAULTS[f]) out[f] = s[f]; });
+    ['reel', 'slice', 'clip'].forEach(function (f) { if (s[f] !== DEFAULTS[f]) out[f] = s[f]; });
     if (!s.advance) out.advance = false;
     return JSON.stringify(out);
   }
@@ -159,7 +162,7 @@
 
   var api = {
     SETTINGS_KEY: SETTINGS_KEY, FEWER_KEY: FEWER_KEY, KINDS: KINDS, KIND_LABELS: KIND_LABELS, CHOICE_KINDS: CHOICE_KINDS,
-    WHICH: WHICH, WHERE: WHERE, VIDEO_REELS: VIDEO_REELS, PODCAST_SLICES: PODCAST_SLICES,
+    WHICH: WHICH, WHERE: WHERE, VIDEO_REELS: VIDEO_REELS, PODCAST_SLICES: PODCAST_SLICES, SONG_CLIPS: SONG_CLIPS,
     DEFAULTS: DEFAULTS, VIDEO_NO_CHAPTER_SEC: VIDEO_NO_CHAPTER_SEC, SETTINGS_MAX_BYTES: SETTINGS_MAX_BYTES,
     FEWER_TYPES: FEWER_TYPES, FEWER_MAX: FEWER_MAX, FEWER_NAME_MAX: FEWER_NAME_MAX, FEWER_WEIGHT: FEWER_WEIGHT, FEWER_MAX_BYTES: FEWER_MAX_BYTES,
     normalize: normalize, serialize: serialize, isOn: isOn,

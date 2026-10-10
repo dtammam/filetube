@@ -238,7 +238,7 @@ function feedPlayerDescriptor(card) {
       streamSrc: t.streamSrc || ('/track/' + encodeURIComponent(card.id)),
       progressEndpoint: t.progressEndpoint || '/api/music/progress',
       resumeMode: 'music',
-      startAt: 0,
+      startAt: Number(card.startAt) || 0, // v1.383.0 (K5): a clip starts a third in (0: the whole song)
       autoAdvanceViaTrackNav: false,
       browseCtx: '',
       readerHref: '/feed',
@@ -357,6 +357,49 @@ function feedArtUrl(card) {
   if (card.kind === 'song') { var t = card.track || {}; return t.artUrl || ('/albumart/' + encodeURIComponent(t.artId || card.id) + (t.artV ? '?v=' + encodeURIComponent(t.artV) : '')); }
   if (card.media === 'podcast') return card.artUrl || '';
   return card.media === 'video' || card.media === 'audio' ? (card.thumbnailUrl || '') : '';
+}
+
+// ---- v1.383.0 (K5 = v1.382.0 D13): what a song card counts (POST /api/music/plays) -----------------------------------------
+// A CLIP (a song card with clipSec) counts a play when it is heard to its end - real playback, not a seek: at least its length
+// less FEED_SONG_CLIP_SLACK_SEC heard - and nothing else: a swipe is never a skip (a reel is not a rejection) and a clip never
+// finishes the song. A WHOLE song (Song clip: Whole song) counts by Music's own rules (public/js/music.js PLAY_MIN_SEC, the
+// 4 s step, the last 5 %): a play at 30 s or half the song, a finish in its last 5 % or at its end, a skip when it is swiped
+// past after playing but before either - and, unlike Music, only after FEED_SONG_SKIP_MIN_SEC heard: the Feed loads a card from a
+// quarter of a swipe, so a swipe that springs back plays a song for a moment, and that glimpse is not a rejection. Keep listening is never a skip either: the song plays on in Music, which counts it from
+// there. Pure: each call returns the kinds to post now ('play' | 'finish' | 'skip'), each at most once per card.
+var FEED_SONG_PLAY_MIN_SEC = 30;
+var FEED_SONG_STEP_MAX_SEC = 4;
+var FEED_SONG_FINISH_TAIL = 0.05;
+var FEED_SONG_CLIP_SLACK_SEC = 1.5;
+var FEED_SONG_SKIP_MIN_SEC = 3;
+function feedSongTally(clipSec) { return { clip: Number(clipSec) > 0 ? Number(clipSec) : 0, listened: 0, lastT: null, started: false, played: false, finished: false }; }
+function feedSongTick(st, t, startSec, spanSec) {
+  var out = [];
+  if (!st || !isFinite(Number(t))) return out;
+  if (st.lastT !== null) { var d = t - st.lastT; if (d > 0 && d <= FEED_SONG_STEP_MAX_SEC) { st.listened += d; st.started = true; } }
+  st.lastT = t;
+  if (st.clip) return out; // a clip counts only at its end (feedSongEnd)
+  var span = Number(spanSec) > 0 ? Number(spanSec) : 0;
+  if (!st.played && st.listened >= (span > 0 ? Math.min(FEED_SONG_PLAY_MIN_SEC, span / 2) : FEED_SONG_PLAY_MIN_SEC)) { st.played = true; out.push('play'); }
+  var rel = t - (Number(startSec) || 0);
+  if (!st.finished && span > 0 && rel >= span * (1 - FEED_SONG_FINISH_TAIL) && rel < span + FEED_SONG_STEP_MAX_SEC) { st.finished = true; out.push('finish'); }
+  return out;
+}
+// the clip reached its end, or the file ended
+function feedSongEnd(st) {
+  if (!st) return [];
+  if (st.clip) {
+    if (!st.played && st.listened >= st.clip - FEED_SONG_CLIP_SLACK_SEC) { st.played = true; return ['play']; }
+    return [];
+  }
+  if (!st.finished) { st.finished = true; return ['finish']; }
+  return [];
+}
+// the card was swiped past
+function feedSongLeave(st) {
+  if (!st || st.clip || !st.started || st.played || st.finished || st.listened < FEED_SONG_SKIP_MIN_SEC) return [];
+  st.finished = true; // left: nothing more is counted for this card
+  return ['skip'];
 }
 
 // v1.382.0 (D2-D5, D8): the request's view of the Feed settings - the synced ft-feed-settings value read by the ONE reading
@@ -699,6 +742,7 @@ if (typeof module !== 'undefined' && module.exports) {
     feedHoldStep, feedSummaryPayload,
     feedClockLong, feedStartOverKind, feedStartOverText, feedBookMeta, feedStartedOverText, FEED_UNDO_MS,
     FEED_REEL_END_SLACK_SEC, FEED_REEL_MIN_SEC, feedPlaceFloorSec, FEED_KEEP_SEC, feedKeepHref, feedKeepLabel, feedKeepDue, feedSettingsParam,
+    feedSongTally, feedSongTick, feedSongEnd, feedSongLeave, FEED_SONG_CLIP_SLACK_SEC, FEED_SONG_SKIP_MIN_SEC,
     FEED_ADVANCE_MS, FEED_EARLY_RATIO, FEED_WARM_BYTES, feedAdvanceDue, feedNextActive, feedStreamUrl, feedArtUrl,
     feedLikeUrl, feedIsLiked, feedWatchLaterUrl, feedHideTarget, feedFewerTarget, feedTapKind, FEED_DOUBLE_TAP_PX,
     feedWordCount, feedPaginate, feedLongestHead, FEED_SPLIT_MIN_WORDS, feedBookTarget, feedPageDwellSec, FEED_MAX_PAGES, feedFurther, FEED_FIT_KEY,
@@ -758,6 +802,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var startingRead = {}; // card index -> true once "Start reading" was tapped (a double tap is one write)
     var advance = null; // v1.383.0 (K1): the running "Next in 2" countdown { index, btn, tick, timer }
     var warmed = {}; // v1.383.0 (K2 a): card index -> true once warmed (each card once, 1 ahead only)
+    var songTallies = {}; // v1.383.0 (K5): card index -> its song's play / finish / skip tally (feedSongTally)
     var trackers = {}; // v1.383.0 (K2 b): card index -> its fresh card's played-time tracker, kept across a return to the card
     // the session clock (D10-D12)
     var summary = feedEmptySummary();
@@ -999,7 +1044,7 @@ if (typeof module !== 'undefined' && module.exports) {
         var t = card.track || {};
         fillAudioMedia(node, media, stage, t.artUrl || ('/albumart/' + encodeURIComponent(t.artId || card.id) + (t.artV ? '?v=' + encodeURIComponent(t.artV) : '')));
         overlay.appendChild(openTarget(el('p', 'feed-card__meta', [t.artist, t.album].filter(Boolean).join(' · ')), index));
-        overlay.appendChild(playActions(card, index, 'Whole song'));
+        overlay.appendChild(playActions(card, index, Number(card.clipSec) > 0 ? feedClock(card.clipSec) + ' of this song' : 'Whole song'));
         wireMediaGestures(node, overlay, index, false);
         return;
       }
@@ -1858,6 +1903,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var prev = activeIndex;
       if (windingDown && prev >= 0 && index !== prev) { finishNow(); return; } // D11: moving on after time up ends the session
       if (index !== prev) stopAdvance(); // v1.383.0 (K1): moving on (by hand or by the countdown) ends the countdown
+      if (index !== prev && prev >= 0 && cards[prev] && cards[prev].kind === 'song') postSongCounts(cards[prev], feedSongLeave(songTallies[prev])); // K5: a whole song swiped past early
       if (prev >= 0 && cardEls[prev]) { cardEls[prev].removeAttribute('data-active'); leaveCard(prev); }
       activeIndex = index;
       var node = cardEls[index];
@@ -1999,6 +2045,12 @@ if (typeof module !== 'undefined' && module.exports) {
         data.progressGate = function () { return feedFreshStarted(tracker, needSec); };
         data.playedSec = function () { return tracker.sec; };
       }
+      // v1.383.0 (K5): a song CLIP never moves the song's saved place in Music (it is a taste from a third in); Keep listening hands
+      // the song to Music, whose adopt drops this gate (player.js applyAdoptFlavor) and saves from there
+      if (card.kind === 'song' && Number(card.clipSec) > 0) data.progressGate = function () { return false; };
+      // v1.383.0 (K5, K6): Music's play tally sits on this same element; it is let go before the Feed loads (it would count this
+      // playback to the last Music song)
+      if (window.FileTube && typeof window.FileTube.musicPlayCountRelease === 'function') window.FileTube.musicPlayCountRelease();
       var act = activity[index] = activity[index] || { playedSec: 0, done: false, ended: false };
       var startAt = Number(data.startAt) || 0; // the slice's own start (its played time counts from here)
       // v1.383.0 (K2 b): a card come back to before it was done plays on from where it was left (the early load can leave a card
@@ -2012,10 +2064,12 @@ if (typeof module !== 'undefined' && module.exports) {
       var left = node.querySelector('[data-left]');
       var line = node.querySelector('.feed-card__progress');
       if (card.skippedIntro && startAt > 0 && data.startAt === startAt) showIntroNote(node, startAt);
+      var tally = card.kind === 'song' ? (songTallies[index] || (songTallies[index] = feedSongTally(card.clipSec))) : null;
       var onTime = function () {
         if (mediaCardIndex !== index || !mediaEl) return;
         var t = mediaEl.currentTime || 0;
         act.lastTime = t;
+        if (tally) postSongCounts(card, feedSongTick(tally, t, 0, Number(card.track && card.track.durationSec) || mediaEl.duration));
         act.playedSec = Math.max(act.playedSec, t - startAt);
         if (endAt !== null && isFinite(endAt)) {
           var remain = endAt - t;
@@ -2025,6 +2079,7 @@ if (typeof module !== 'undefined' && module.exports) {
           if (remain <= 0 && !node.hasAttribute('data-done')) {
             node.setAttribute('data-done', '');
             act.done = true;
+            if (tally) postSongCounts(card, feedSongEnd(tally)); // v1.383.0 (K5): a clip heard to its end is a play
             showKeepPill(index);
             p.pause();
             if (windingDown) finishNow(); // D11: the slice finished after time up
@@ -2056,13 +2111,19 @@ if (typeof module !== 'undefined' && module.exports) {
         node.setAttribute('data-done', '');
         act.ended = true;
         act.done = true;
+        if (tally) postSongCounts(card, feedSongEnd(tally)); // v1.383.0 (K5): the whole song ended
         hideKeepPill(index); // the whole file ended: nothing is left to keep watching
         if (windingDown) finishNow();
         else startAdvance(index); // v1.383.0 (K1)
       }, { signal: signal });
     }
-    // the slice's end a card pauses at (null: a song plays to its own end)
-    function endAtOf(card) { return card.kind === 'song' ? null : Number(card.endAt); }
+    // the slice's end a card pauses at (null: a whole song plays to its own end; v1.383.0 K5: a song clip ends at its endAt)
+    function endAtOf(card) { return card.kind === 'song' && !(Number(card.clipSec) > 0) ? null : Number(card.endAt); }
+    function postSongCounts(card, kinds) {
+      (kinds || []).forEach(function (kind) {
+        fetch('/api/music/plays', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: card.id, kind: kind }), keepalive: true }).catch(function () { /* a count, never playback */ });
+      });
+    }
 
     // ---- v1.382.0 (D7): Keep watching / listening / reading - leave the Feed into the full item -----------------------------
     // A pill above the overlay text in a slice's last FEED_KEEP_SEC seconds and on its Done state (a book: on the last page of
@@ -2277,7 +2338,7 @@ if (typeof module !== 'undefined' && module.exports) {
       session = null;
       writeSession(null);
       stopAdvance();
-      cards = []; cardEls = []; activeIndex = -1; ratios = {}; exhaustedShown = false; activity = {}; counted = {}; bookPages = {}; startingRead = {}; warmed = {}; trackers = {};
+      cards = []; cardEls = []; activeIndex = -1; ratios = {}; exhaustedShown = false; activity = {}; counted = {}; bookPages = {}; startingRead = {}; warmed = {}; trackers = {}; songTallies = {};
       summary = feedEmptySummary(); extensions = 0; windingDown = false; hardStopMs = NaN; hintPending = false; pageHintPending = false; clearHint();
       if (ring) ring.style.setProperty('--p', '0');
       stack.replaceChildren();

@@ -990,3 +990,22 @@ test('v1.382.0 gate r1 (adversary S3, M35): an `fs` over the length cap is ignor
   const ok = await cardsWith(JSON.stringify({ slice: 60 }) + ' '.repeat(100), 40);
   assert.ok(ok.cards.filter((x) => x.kind === 'podcast').every((c) => c.endAt - c.startAt === 60), 'under the cap it is read');
 });
+
+// ---- v1.383.0 (plan 2026-10-10-feed-reels K5 = v1.382.0 D13): song reels ---------------------------------------------------
+
+test('v1.383.0 K5: a song card carries its clip (default 45 s from a third in of the 200 s song); 30 / 60 s follow the setting; Whole song carries none', async () => {
+  const songs = async (fs) => (await cardsWith(fs, 40)).cards.filter((c) => c.kind === 'song');
+  const def = await songs(undefined);
+  assert.ok(def.length, 'songs served');
+  for (const c of def) assert.deepStrictEqual({ startAt: c.startAt, endAt: c.endAt, clipSec: c.clipSec }, { startAt: 66.7, endAt: 111.7, clipSec: 45 }, c.id);
+  for (const [clip, want] of [[30, { startAt: 66.7, endAt: 96.7, clipSec: 30 }], [60, { startAt: 66.7, endAt: 126.7, clipSec: 60 }]]) {
+    const got = await songs(JSON.stringify({ clip }));
+    assert.ok(got.length);
+    for (const c of got) assert.deepStrictEqual({ startAt: c.startAt, endAt: c.endAt, clipSec: c.clipSec }, want, clip + ' ' + c.id);
+  }
+  const whole = await songs(JSON.stringify({ clip: 0 }));
+  assert.ok(whole.length);
+  for (const c of whole) assert.ok(!('clipSec' in c) && !('startAt' in c) && !('endAt' in c), 'Whole song: no clip');
+  const junk = await songs(JSON.stringify({ clip: 7 }));
+  for (const c of junk) assert.strictEqual(c.clipSec, 45, 'an off-list clip is the default');
+});

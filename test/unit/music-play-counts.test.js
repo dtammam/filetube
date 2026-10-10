@@ -339,3 +339,27 @@ test('gate r2 qa N1: a looped chapter counts one play and one finish per load, n
     assert.deepStrictEqual(c.posts, once, 'the whole-file loop re-plays chapter one without a new count');
   });
 });
+
+// ---- v1.383.0 (Feed reels K5 / K6): the tally belongs to the load Music made -------------------------------------------------
+
+test('v1.383.0: another surface loading into the shared element (a Feed card) ends the tally SILENTLY - its playback never counts to the last Music song', async () => {
+  await boot(NATIVE, 't0', async (c) => {
+    c.playThrough(0, 10); // a Music song heard 10 s (no play yet)
+    // the Feed (or the watch page) loads another item into the same element
+    c.dom.window.FileTube.player.currentId = 'feed-video';
+    c.playThrough(0, 200);
+    c.mp.dispatchEvent(new c.dom.window.Event('ended'));
+    assert.deepStrictEqual(c.posts, [], 'no play, no finish, no skip for t0 from someone else\'s playback');
+  });
+});
+
+test('v1.383.0: the Feed lets the tally go before it loads (FileTube.musicPlayCountRelease) - even for the very song Music last had', async () => {
+  await boot(NATIVE, 't0', async (c) => {
+    c.playThrough(0, 5);
+    assert.strictEqual(typeof c.dom.window.FileTube.musicPlayCountRelease, 'function');
+    c.dom.window.FileTube.musicPlayCountRelease(); // the Feed's song card plays t0 itself
+    c.playThrough(60, 200);
+    c.mp.dispatchEvent(new c.dom.window.Event('ended'));
+    assert.deepStrictEqual(c.posts, [], 'the Feed counts its own card; Music counts nothing for it');
+  });
+});

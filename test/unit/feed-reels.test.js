@@ -451,3 +451,90 @@ test('a media card reached by a jump of more than three cards (still pruned) is 
     assert.ok(last && last.lo && last.lo.slot && r.$$('.feed-card')[0].contains(last.lo.slot), 'loaded into the rebuilt card\'s slot');
   } finally { r.close(); }
 });
+
+// ==== W3 song reels (K5) ======================================================================================================
+const { songClipFor } = require('../../lib/feed/api');
+const CLIP = Object.assign({}, SONG, { track: Object.assign({}, SONG.track, { durationSec: 200 }), startAt: 66.7, endAt: 111.7, clipSec: 45 });
+const WHOLE = Object.assign({}, SONG, { id: 't2', track: Object.assign({}, SONG.track, { id: 't2', durationSec: 200 }) });
+const playsOf = (r) => r.calls('POST', '/api/music/plays').map((c) => c.body.id + ' ' + c.body.kind);
+const playFrom = (r, from, to, step) => { for (let t = from; t <= to + 1e-9; t += (step || 0.5)) r.timeAt(Math.round(t * 10) / 10); };
+
+test('K5 pure: songClipFor - the clip from a third in, moved earlier to end before the song; a song no longer than the clip, Whole song or no length: none', () => {
+  assert.deepStrictEqual(songClipFor(200, 45), { startAt: 66.7, endAt: 111.7 });
+  assert.deepStrictEqual(songClipFor(60, 45), { startAt: 15, endAt: 60 }, 'a third in (20 s) would run past the end: moved to 15 s');
+  assert.strictEqual(songClipFor(45, 45), null, 'no longer than the clip: the whole song');
+  assert.strictEqual(songClipFor(200, 0), null, 'Whole song');
+  assert.strictEqual(songClipFor(0, 45), null, 'unknown length');
+  assert.strictEqual(songClipFor(NaN, 30), null);
+});
+
+test('K5 pure: a clip counts ONE play when heard to its end and never a skip or a finish; a seek to its end is not hearing it', () => {
+  const st = feed.feedSongTally(45);
+  for (let t = 66.7; t <= 111.7; t += 0.5) assert.deepStrictEqual(feed.feedSongTick(st, t, 0, 200), [], 'a clip never counts on the way');
+  assert.deepStrictEqual(feed.feedSongEnd(st), ['play']);
+  assert.deepStrictEqual(feed.feedSongEnd(st), [], 'once');
+  assert.deepStrictEqual(feed.feedSongLeave(st), [], 'never a skip');
+  const seek = feed.feedSongTally(45);
+  feed.feedSongTick(seek, 66.7, 0, 200); feed.feedSongTick(seek, 110, 0, 200); feed.feedSongTick(seek, 111.7, 0, 200);
+  assert.deepStrictEqual(feed.feedSongEnd(seek), [], 'a jump to the end: not heard');
+  const early = feed.feedSongTally(45);
+  for (let t = 66.7; t <= 80; t += 0.5) feed.feedSongTick(early, t, 0, 200);
+  assert.deepStrictEqual(feed.feedSongLeave(early), [], 'a clip swiped past at 13 s: not a skip (a reel is not a rejection)');
+});
+
+test('K5 pure: a WHOLE song counts by Music\'s rules - a play at 30 s, a finish in its last 5 %, a skip only when swiped past after 3 s heard and before the play', () => {
+  const st = feed.feedSongTally(0);
+  const got = [];
+  for (let t = 0; t <= 200; t += 1) got.push(...feed.feedSongTick(st, t, 0, 200));
+  assert.deepStrictEqual(got, ['play', 'finish']);
+  assert.deepStrictEqual(feed.feedSongEnd(st), [], 'the end after a finish adds nothing');
+  const skip = feed.feedSongTally(0);
+  for (let t = 0; t <= 10; t += 1) feed.feedSongTick(skip, t, 0, 200);
+  assert.deepStrictEqual(feed.feedSongLeave(skip), ['skip']);
+  const glimpse = feed.feedSongTally(0);
+  for (let t = 0; t <= 2; t += 0.5) feed.feedSongTick(glimpse, t, 0, 200);
+  assert.deepStrictEqual(feed.feedSongLeave(glimpse), [], 'a 2 s glimpse during a swipe that sprang back: not a skip');
+  const short = feed.feedSongTally(0);
+  const s2 = [];
+  for (let t = 0; t <= 20; t += 1) s2.push(...feed.feedSongTick(short, t, 0, 40));
+  assert.deepStrictEqual(s2, ['play'], 'half of a 40 s song');
+});
+
+test('K5: a song clip card plays from its start a third in, says how long, never saves the song\'s place, and counts ONE play heard to its end; Keep listening opens the song in Music', async () => {
+  const r = flowRealm([CLIP, POD]);
+  try {
+    let released = 0;
+    r.w.FileTube.musicPlayCountRelease = () => { released += 1; };
+    await startRealm(r); r.show(0);
+    const load = r.loads.filter((l) => l.id === 't1').pop();
+    assert.strictEqual(load.data.startAt, 66.7, 'from a third in');
+    assert.strictEqual(load.data.progressGate(), false, 'a clip never moves the song\'s saved place');
+    assert.ok(released >= 1, 'Music\'s tally was let go before the load');
+    assert.ok(/0:45 of this song/.test(r.$$('.feed-card')[0].textContent));
+    playFrom(r, 66.7, 111.7);
+    await r.settle(2);
+    assert.deepStrictEqual(playsOf(r), ['t1 play'], 'heard to its end: one play');
+    assert.ok(r.$$('.feed-card')[0].hasAttribute('data-done'), 'the clip ends at its end (Done)');
+    const keep = r.$$('.feed-card')[0].querySelector('[data-keep]');
+    assert.ok(keep && /Keep listening/.test(keep.textContent));
+    keep.click(); await r.settle();
+    assert.deepStrictEqual(r.loads.filter((l) => l.navigate).map((l) => l.navigate), ['/music?play=t1'], 'the whole song in Music');
+  } finally { r.close(); }
+});
+
+test('K5: a clip swiped past early counts nothing (never a skip); a whole song swiped past after 3 s is a skip, a glimpse is not', async () => {
+  const r = flowRealm([CLIP, WHOLE, POD, Object.assign({}, WHOLE, { id: 't3' })]);
+  try {
+    await startRealm(r); r.show(0);
+    playFrom(r, 66.7, 80);
+    r.show(1); await r.settle();
+    assert.deepStrictEqual(playsOf(r), [], 'the clip: nothing');
+    playFrom(r, 0, 6);
+    r.show(2); await r.settle();
+    assert.deepStrictEqual(playsOf(r), ['t2 skip'], 'the whole song: a skip');
+    r.show(3); await r.settle();
+    playFrom(r, 0, 1.5);
+    r.show(2); await r.settle();
+    assert.deepStrictEqual(playsOf(r), ['t2 skip'], 'a glimpse of t3: nothing');
+  } finally { r.close(); }
+});
