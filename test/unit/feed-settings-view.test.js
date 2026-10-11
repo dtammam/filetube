@@ -54,7 +54,7 @@ test('D7 pure: where Keep goes, what it says, when it shows', () => {
   assert.strictEqual(feed.feedKeepHref(VID), '/watch.html?v=v1');
   assert.strictEqual(feed.feedKeepHref({ ...VID, media: 'audio', id: 'a b' }), '/watch.html?v=a%20b');
   assert.strictEqual(feed.feedKeepHref(POD), '/podcasts?play=ep1');
-  assert.strictEqual(feed.feedKeepHref({ kind: 'song', id: 't1' }), '');
+  assert.strictEqual(feed.feedKeepHref({ kind: 'song', id: 't1' }), '/music?play=t1', 'v1.383.0 (K4, K5): a song opens in Music (it had no way out)');
   assert.strictEqual(feed.feedKeepHref(null), '');
   assert.strictEqual(feed.feedKeepLabel(VID), 'Keep watching');
   assert.strictEqual(feed.feedKeepLabel(POD), 'Keep listening');

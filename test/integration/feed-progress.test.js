@@ -122,7 +122,7 @@ test('excerpt: an unstarted book starts at (0,0); the blocks are the chunker\'s 
   const e = await excerpt('?words=13');
   assert.strictEqual(e.format, 'epub');
   assert.strictEqual(e.spineCount, 3);
-  assert.strictEqual(e.chapterLabel, 'Chapter 1 of 3');
+  assert.strictEqual(e.chapterLabel, 'Chapter 1'); // v1.383.0 (K3 b): the book's chapter, no longer "of <spine count>"
   assert.strictEqual(e.stored, null);
   const want = chapterBlocks(0);
   assert.deepStrictEqual(e.blocks.map((b) => b.text), [want[0].text, want[1].text, want[2].text]);
@@ -144,12 +144,12 @@ test('excerpt: three positions, the chapter boundary among them, equal the chunk
   const b = await excerpt('?spine=0&block=3&words=1');
   assert.deepStrictEqual(b.blocks.map((t) => t.text), [chapterBlocks(0)[3].text]);
   assert.deepStrictEqual(b.next, { spineIndex: 1, blockIndex: 0 });
-  assert.strictEqual(b.chapterLabel, 'Chapter 1 of 3');
+  assert.strictEqual(b.chapterLabel, 'Chapter 1');
   // position C: chapter 2's empty blockquote slot -> starts on the quoted paragraph inside it
   const c = await excerpt('?spine=1&block=1&words=3');
   assert.deepStrictEqual(c.start, { spineIndex: 1, blockIndex: 2 });
   assert.deepStrictEqual(c.blocks.map((t) => t.text), [chapterBlocks(1)[2].text]);
-  assert.strictEqual(c.chapterLabel, 'Chapter 2 of 3');
+  assert.strictEqual(c.chapterLabel, 'Chapter 2');
   assert.deepStrictEqual(c.next, { spineIndex: 1, blockIndex: 3 });
   // crossing: from the end of chapter 2 with a big target runs into chapter 3 and the book's end
   const d = await excerpt('?spine=1&block=3&words=400');

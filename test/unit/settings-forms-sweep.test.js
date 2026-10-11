@@ -352,7 +352,7 @@ const viewRoot = (html) => {
 
 // Sweep S3's merge follow-up: the resume-countdown switch left with the countdown (the modal it
 // configured is gone, D8.2), so the Settings switches numbered 28; v1.355 added two (the rotate log, keyboard search): 30.
-test('Settings (F09): every checkbox is a ui-switch with role=switch; there are 39', () => {
+test('Settings (F09): every checkbox is a ui-switch with role=switch; there are 41', () => {
   const root = viewRoot(SETUP_HTML);
   const boxes = root.querySelectorAll('input[type="checkbox"]');
   // v1.355 DELIBERATE bump (28 -> 30): Troubleshooting > Show rotate debug log (#debug-rotate-check) and
@@ -363,7 +363,9 @@ test('Settings (F09): every checkbox is a ui-switch with role=switch; there are 
   // The iPod portrait lock DELIBERATE bump (33 -> 34): Mobile player > Keep Pocket upright (#pocket-upright-check).
   // v1.372.0 DELIBERATE bump (34 -> 35): Home > Show music in the home feed; v1.373.0 removed it again (35 -> 34, Dean).
   // v1.382.0 DELIBERATE bump (34 -> 39): Settings > Feed's five kind switches (#feed-kind-*).
-  assert.strictEqual(boxes.length, 39, 'the same settings (no key dropped), the rotate log, keyboard search, the on-screen log switch, the no-glyph test, the resume-prompt countdown switch, Keep Pocket upright and the five Feed kinds');
+  // v1.383.0 DELIBERATE bump (39 -> 40): Settings > Feed > Moving on > Auto-advance (#feed-advance, K1).
+  // v1.383.0 DELIBERATE bump (40 -> 41): Settings > Feed > Music while reading (#feed-music, K6).
+  assert.strictEqual(boxes.length, 41, 'the same settings (no key dropped), the rotate log, keyboard search, the on-screen log switch, the no-glyph test, the resume-prompt countdown switch, Keep Pocket upright, the five Feed kinds, Auto-advance and Music while reading');
   for (const b of boxes) {
     assert.ok(b.classList.contains('ui-switch'), b.id + ' is a ui-switch');
     assert.strictEqual(b.getAttribute('role'), 'switch', b.id);

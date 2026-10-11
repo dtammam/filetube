@@ -76,11 +76,21 @@ function feedStartOverKind(card) {
   return card.kind === 'video' || card.kind === 'watchlater' ? 'media' : '';
 }
 
-// The confirm's sentence: what is forgotten, named (D9a).
-function feedStartOverText(card) {
+// A reading book card's meta line: "<author> · <chapter as the book names it>", either part alone when the other is empty.
+function feedBookMeta(card) {
   if (!card) return '';
-  if (card.kind === 'book') return 'Your place in ' + (card.title || 'this book') + (card.chapterLabel ? ' (' + card.chapterLabel + ')' : '') + ' will be forgotten. It opens at the beginning next time.';
-  var pos = card.media === 'podcast' ? Number(card.position) || 0 : Number(card.progress) || 0;
+  return [card.author, card.chapterLabel].filter(function (x) { return typeof x === 'string' && x; }).join(' \u00b7 ');
+}
+
+// The confirm's sentence: what is forgotten, named (D9a). v1.383.0 (K7 c): `stored` is the place as STORED, read just before the
+// confirm (GET /api/feed/start-over/place: { sec } for media, { chapterLabel } for a book) - the card only knows the place it was
+// served from, and another device may have moved it since. Without `stored` (the read failed) nothing is named but the item.
+function feedStartOverText(card, stored) {
+  if (!card) return '';
+  if (stored === null) return (card.kind === 'book' ? 'Your place in ' + (card.title || 'this book') + ' will be forgotten. It opens at the beginning next time.' : 'Your place will be forgotten.' + (card.kind === 'watchlater' ? ' It stays in Watch later.' : ''));
+  var label = stored ? stored.chapterLabel : card.chapterLabel;
+  if (card.kind === 'book') return 'Your place in ' + (card.title || 'this book') + (label ? ' (' + label + ')' : '') + ' will be forgotten. It opens at the beginning next time.';
+  var pos = stored ? Number(stored.sec) || 0 : (card.media === 'podcast' ? Number(card.position) || 0 : Number(card.progress) || 0);
   var dur = card.media === 'podcast' ? Number(card.durationSec) || 0 : Number(card.duration) || 0;
   var place = pos > 0 ? 'Your place, ' + feedClockLong(pos) + (dur > 0 ? ' of ' + feedClockLong(dur) : '') + ', will be forgotten' : 'It will count as not started';
   return place + (card.kind === 'watchlater' ? '. It stays in Watch later.' : '.');
@@ -211,7 +221,7 @@ function feedExcludeIds(cards) {
 // The descriptor the shared player loads for a media card (player.js load(id, data)).
 // Every kind starts at the card's startAt (an explicit start: no progress read, no resume
 // prompt) and saves through the feed's forward-only route for its kind; a song saves to
-// music's own route (no D5 rule for songs) and always starts from the top.
+// music's own route (no D5 rule for songs) and starts at its startAt (v1.383.0 K5: a clip a third in; 0: the whole song).
 function feedPlayerDescriptor(card) {
   if (!card) return null;
   if (card.kind === 'song') {
@@ -228,7 +238,7 @@ function feedPlayerDescriptor(card) {
       streamSrc: t.streamSrc || ('/track/' + encodeURIComponent(card.id)),
       progressEndpoint: t.progressEndpoint || '/api/music/progress',
       resumeMode: 'music',
-      startAt: 0,
+      startAt: Number(card.startAt) || 0, // v1.383.0 (K5): a clip starts a third in (0: the whole song)
       autoAdvanceViaTrackNav: false,
       browseCtx: '',
       readerHref: '/feed',
@@ -285,6 +295,7 @@ function feedPlaceFloorSec(card) {
 var FEED_KEEP_SEC = 10; // the pill shows in a slice's last 10 seconds and on its Done state
 function feedKeepHref(card) {
   if (!card || typeof card.id !== 'string' || !card.id) return '';
+  if (card.kind === 'song') return '/music?play=' + encodeURIComponent(card.id); // v1.383.0 (K4, K5): the song in Music (the queue's track link)
   if (card.media === 'podcast') return '/podcasts?play=' + encodeURIComponent(card.id);
   // library audio opens in Music like every audio item (common.js audioOpenHref, the audio-routing net's one rule); the
   // watch page is the video's place and the fallback when the rule is not on the page
@@ -302,6 +313,115 @@ function feedKeepLabel(card) {
 function feedKeepDue(remainSec, done, ended) {
   if (ended) return false;
   return !!done || (typeof remainSec === 'number' && isFinite(remainSec) && remainSec <= FEED_KEEP_SEC);
+}
+
+// ---- v1.383.0 (plan docs/exec-plans/completed/2026-10-10-feed-reels.md K1, K2): moving on by itself, the early load, warming --
+var FEED_ADVANCE_MS = 2000; // K1: "Next in 2", then the next card
+var FEED_EARLY_RATIO = 0.25; // K2 b: the next card starts loading once a quarter of it is on screen
+var FEED_WARM_BYTES = 262144; // K2 a: what a warmed card's media asks for - its first bytes, a server disk warm (warmNext)
+// K1: does a DONE card move on by itself? A media card (video, library audio, episode, Watch later, song) with Auto-advance on;
+// never during the wind-down (the recap opens instead, unchanged) and never a book or a notice card (reading pace).
+function feedAdvanceDue(card, settings, windingDown) {
+  if (!card || windingDown) return false;
+  if (card.kind !== 'song' && card.kind !== 'video' && card.kind !== 'podcast' && card.kind !== 'watchlater') return false;
+  return !settings || settings.advance !== false;
+}
+// K2 b: which card should be active now; -1 = keep the active one. The shipped rule (the best card at FEED_ACTIVE_RATIO) with two
+// changes: the card AFTER the active one takes over once FEED_EARLY_RATIO of it is on screen, so its load overlaps the swipe; and
+// the active card keeps the slot while FEED_EARLY_RATIO of it still shows, so the card it just took over from (75% on screen)
+// never takes it straight back. A swipe that springs back drops the new card under that and the old one is active again. Pure
+// over [{index, ratio}].
+function feedNextActive(ratios, activeIndex) {
+  var list = ratios || [];
+  var ratioOf = function (i) { for (var k = 0; k < list.length; k++) { if (list[k] && list[k].index === i) return Number(list[k].ratio) || 0; } return 0; };
+  if (activeIndex >= 0) {
+    if (ratioOf(activeIndex + 1) >= FEED_EARLY_RATIO) return activeIndex + 1;
+    if (ratioOf(activeIndex) >= FEED_EARLY_RATIO) return -1;
+  }
+  var best = feedActiveIndex(list);
+  return best === activeIndex ? -1 : best;
+}
+// K2 a: the bytes a card's media starts with - the URL the shared player will load for it (player.js: a song's /track, an
+// episode's own stream, '/video/<id>' for a video or library audio item). '' for a card with no media, and for an item that needs
+// a transcode (asking for it would queue the transcode for a card that may never be reached).
+function feedStreamUrl(card) {
+  if (!card || typeof card.id !== 'string' || !card.id) return '';
+  if (card.kind === 'song') return card.track && card.track.needsTranscode ? '' : ((card.track && card.track.streamSrc) || ('/track/' + encodeURIComponent(card.id)));
+  if (card.media === 'podcast') return typeof card.streamSrc === 'string' ? card.streamSrc : '';
+  if ((card.media === 'video' || card.media === 'audio') && card.transcode !== true) return '/video/' + encodeURIComponent(card.id);
+  return '';
+}
+// the picture a card shows first (a video's poster, an episode's show art, a song's album art)
+function feedArtUrl(card) {
+  if (!card) return '';
+  if (card.kind === 'song') { var t = card.track || {}; return t.artUrl || ('/albumart/' + encodeURIComponent(t.artId || card.id) + (t.artV ? '?v=' + encodeURIComponent(t.artV) : '')); }
+  if (card.media === 'podcast') return card.artUrl || '';
+  return card.media === 'video' || card.media === 'audio' ? (card.thumbnailUrl || '') : '';
+}
+
+// ---- v1.383.0 (K5 = v1.382.0 D13): what a song card counts (POST /api/music/plays) -----------------------------------------
+// A CLIP (a song card with clipSec) counts a play when it is heard to its end - real playback, not a seek: at least its length
+// less FEED_SONG_CLIP_SLACK_SEC heard - and nothing else: a swipe is never a skip (a reel is not a rejection) and a clip never
+// finishes the song. A WHOLE song (Song clip: Whole song) counts by Music's own rules (public/js/music.js PLAY_MIN_SEC, the
+// 4 s step, the last 5 %): a play at 30 s or half the song, a finish in its last 5 % or at its end, a skip when it is swiped
+// past after playing but before either - and, unlike Music, only after FEED_SONG_SKIP_MIN_SEC heard: the Feed loads a card from a
+// quarter of a swipe, so a swipe that springs back plays a song for a moment, and that glimpse is not a rejection. Keep listening is never a skip either: the song plays on in Music, which counts it from
+// there. Pure: each call returns the kinds to post now ('play' | 'finish' | 'skip'), each at most once per card.
+var FEED_SONG_PLAY_MIN_SEC = 30;
+var FEED_SONG_STEP_MAX_SEC = 4;
+var FEED_SONG_FINISH_TAIL = 0.05;
+var FEED_SONG_CLIP_SLACK_SEC = 1.5;
+var FEED_SONG_SKIP_MIN_SEC = 3;
+function feedSongTally(clipSec) { return { clip: Number(clipSec) > 0 ? Number(clipSec) : 0, listened: 0, lastT: null, started: false, played: false, finished: false }; }
+function feedSongTick(st, t, startSec, spanSec) {
+  var out = [];
+  if (!st || !isFinite(Number(t))) return out;
+  if (st.lastT !== null) { var d = t - st.lastT; if (d > 0 && d <= FEED_SONG_STEP_MAX_SEC) { st.listened += d; st.started = true; } }
+  st.lastT = t;
+  if (st.clip) return out; // a clip counts only at its end (feedSongEnd)
+  var span = Number(spanSec) > 0 ? Number(spanSec) : 0;
+  if (!st.played && st.listened >= (span > 0 ? Math.min(FEED_SONG_PLAY_MIN_SEC, span / 2) : FEED_SONG_PLAY_MIN_SEC)) { st.played = true; out.push('play'); }
+  var rel = t - (Number(startSec) || 0);
+  if (!st.finished && span > 0 && rel >= span * (1 - FEED_SONG_FINISH_TAIL) && rel < span + FEED_SONG_STEP_MAX_SEC) { st.finished = true; out.push('finish'); }
+  return out;
+}
+// the clip reached its end, or the file ended
+function feedSongEnd(st) {
+  if (!st) return [];
+  if (st.clip) {
+    if (!st.played && st.listened >= st.clip - FEED_SONG_CLIP_SLACK_SEC) { st.played = true; return ['play']; }
+    return [];
+  }
+  if (!st.finished) { st.finished = true; return ['finish']; }
+  return [];
+}
+// the card was swiped past
+function feedSongLeave(st) {
+  if (!st || st.clip || !st.started || st.played || st.finished || st.listened < FEED_SONG_SKIP_MIN_SEC) return [];
+  st.finished = true; // left: nothing more is counted for this card
+  return ['skip'];
+}
+
+// ---- v1.383.0 (K6 = v1.382.0 D14): music while reading --------------------------------------------------------------------
+// The station that plays under book cards: the chosen one when the viewer can see it (GET /api/music/stations lists only theirs,
+// a hidden one left out), else the first of `order` (feed-settings MUSIC_STATION_ORDER: Chill, Lofi, Jazz, Ambient, Favorites -
+// Favorites is the liked songs until counts exist) they have. '' = none: no music, no chip.
+function feedMusicStation(stations, chosen, order) {
+  var keys = (stations || []).filter(function (st) { return st && typeof st.key === 'string' && st.key && !st.hidden; }).map(function (st) { return st.key; });
+  if (typeof chosen === 'string' && chosen && keys.indexOf(chosen) !== -1) return chosen;
+  var o = order || [];
+  for (var i = 0; i < o.length; i++) { if (keys.indexOf(o[i]) !== -1) return o[i]; }
+  return '';
+}
+// a song under a book starts about a third in (the song reels' rule); 0 for an unknown length
+function feedMusicStartSec(durationSec) {
+  var d = Number(durationSec);
+  return isFinite(d) && d > 0 ? Math.round((d / 3) * 10) / 10 : 0;
+}
+// the chip's words: "<song> · <artist>"
+function feedMusicChipText(track) {
+  var t = track || {};
+  return [t.title, t.artist].filter(function (x) { return typeof x === 'string' && x; }).join(' \u00b7 ');
 }
 
 // v1.382.0 (D2-D5, D8): the request's view of the Feed settings - the synced ft-feed-settings value read by the ONE reading
@@ -642,8 +762,11 @@ if (typeof module !== 'undefined' && module.exports) {
     FEED_HINT_KEY, FEED_HINT_SESSIONS, FEED_HINT_MS, FEED_INTRO_NOTE_MS, feedHintShouldShow, FEED_HEART_MS,
     feedDeadlineMs, feedRingFraction, feedRemainingSec, feedEmptySummary, feedCountActivity, feedRecapLines, feedRecapTitle,
     feedHoldStep, feedSummaryPayload,
-    feedClockLong, feedStartOverKind, feedStartOverText, feedStartedOverText, FEED_UNDO_MS,
+    feedClockLong, feedStartOverKind, feedStartOverText, feedBookMeta, feedStartedOverText, FEED_UNDO_MS,
     FEED_REEL_END_SLACK_SEC, FEED_REEL_MIN_SEC, feedPlaceFloorSec, FEED_KEEP_SEC, feedKeepHref, feedKeepLabel, feedKeepDue, feedSettingsParam,
+    feedMusicStation, feedMusicStartSec, feedMusicChipText,
+    feedSongTally, feedSongTick, feedSongEnd, feedSongLeave, FEED_SONG_CLIP_SLACK_SEC, FEED_SONG_SKIP_MIN_SEC,
+    FEED_ADVANCE_MS, FEED_EARLY_RATIO, FEED_WARM_BYTES, feedAdvanceDue, feedNextActive, feedStreamUrl, feedArtUrl,
     feedLikeUrl, feedIsLiked, feedWatchLaterUrl, feedHideTarget, feedFewerTarget, feedTapKind, FEED_DOUBLE_TAP_PX,
     feedWordCount, feedPaginate, feedLongestHead, FEED_SPLIT_MIN_WORDS, feedBookTarget, feedPageDwellSec, FEED_MAX_PAGES, feedFurther, FEED_FIT_KEY,
     FEED_EDGE_PX, FEED_SWIPE_MIN_PX, feedPageSwipe, FEED_PAGE_HINT_KEY,
@@ -700,6 +823,21 @@ if (typeof module !== 'undefined' && module.exports) {
     var bookPages = {}; // v1.381.0 (D6): card index -> { blocks, pages, page, read, pageMs, since, end, measured, carry, written }
     var fitMode = readPref(FEED_FIT_KEY, 'fill') === 'fit' ? 'fit' : 'fill'; // v1.381.0 (D4)
     var startingRead = {}; // card index -> true once "Start reading" was tapped (a double tap is one write)
+    var advance = null; // v1.383.0 (K1): the running "Next in 2" countdown { index, btn, tick, timer }
+    var scrollingTo = null; // v1.383.0 (K1): the countdown's own scroll { index, until } - the cards it passes are not made active
+    var FEED_SCROLL_TARGET_MS = 1500;
+    var leftPending = -1; // v1.383.0 (K2 b): the card left at a quarter swipe - counted only once the swipe settles (settleLeave)
+    var settledOn = {}; // v1.383.0 (K2 b): card index -> true once a swipe SETTLED on it (60% on screen while active): only those count
+    var warmed = {}; // v1.383.0 (K2 a): card index -> true once warmed (each card once, 1 ahead only)
+    // v1.383.0 (K6): music under book cards - the station (null until resolved, '' = none), the songs queued and played this
+    // session, the one playing (null = none), and the hidden slot the shared player plays it from (a book card has no media)
+    var music = { station: null, stations: [], queue: [], played: [], current: null, loading: false, token: 0, failures: 0 };
+    var musicSlot = el('div', 'feed-music-slot');
+    musicSlot.hidden = true;
+    musicSlot.setAttribute('aria-hidden', 'true');
+    if (sessionEl) sessionEl.appendChild(musicSlot);
+    var songTallies = {}; // v1.383.0 (K5): card index -> its song's play / finish / skip tally (feedSongTally)
+    var trackers = {}; // v1.383.0 (K2 b): card index -> its fresh card's played-time tracker, kept across a return to the card
     // the session clock (D10-D12)
     var summary = feedEmptySummary();
     var activity = {}; // card index -> { read, playedSec, done, ended }
@@ -900,6 +1038,9 @@ if (typeof module !== 'undefined' && module.exports) {
       cardEls.push(node);
       fillCard(node, card, index);
       if (observer) observer.observe(node);
+      // v1.383.0 (K1): a touch anywhere on the card during the countdown keeps it here (until it is swiped); captured, so a
+      // button's own tap and the gesture layer both count, and the touch still does what it does
+      node.addEventListener('pointerdown', function () { if (advance && advance.index === index) stayHere(index); }, { capture: true, signal: signal });
     }
 
     // v1.381.0 (D3-D6): ONE layout for every card - full screen, the media as the card's own layer, the words in an overlay at
@@ -924,7 +1065,9 @@ if (typeof module !== 'undefined' && module.exports) {
       node.appendChild(stage);
       node.appendChild(overlay);
       overlay.appendChild(el('div', 'feed-card__kind', feedKindLine(card)));
-      overlay.appendChild(el('h3', 'feed-card__title', card.title || (card.track && card.track.title) || ''));
+      var titleEl = el('h3', 'feed-card__title', card.title || (card.track && card.track.title) || '');
+      if (card.kind === 'book') overlay.appendChild(titleEl);
+      else overlay.appendChild(titleRow(titleEl, index));
       if (card.kind === 'book') {
         if (card.newBook) fillNewBookCard(node, stage, overlay, card, index);
         else fillBookCard(node, stage, overlay, card, index);
@@ -934,14 +1077,14 @@ if (typeof module !== 'undefined' && module.exports) {
       if (card.kind === 'song') {
         var t = card.track || {};
         fillAudioMedia(node, media, stage, t.artUrl || ('/albumart/' + encodeURIComponent(t.artId || card.id) + (t.artV ? '?v=' + encodeURIComponent(t.artV) : '')));
-        overlay.appendChild(el('p', 'feed-card__meta', [t.artist, t.album].filter(Boolean).join(' · ')));
-        overlay.appendChild(playActions(card, index, 'Whole song'));
+        overlay.appendChild(openTarget(el('p', 'feed-card__meta', [t.artist, t.album].filter(Boolean).join(' · ')), index));
+        overlay.appendChild(playActions(card, index, Number(card.clipSec) > 0 ? feedClock(card.clipSec) + ' of this song' : 'Whole song'));
         wireMediaGestures(node, overlay, index, false);
         return;
       }
       // podcast / video / Watch later
       var isPod = card.media === 'podcast';
-      overlay.appendChild(el('p', 'feed-card__meta', isPod ? (card.showName || '') : (card.channelName || '')));
+      overlay.appendChild(openTarget(el('p', 'feed-card__meta', isPod ? (card.showName || '') : (card.channelName || '')), index));
       if (isPod || card.media === 'audio') {
         fillAudioMedia(node, media, stage, isPod ? card.artUrl : card.thumbnailUrl);
       } else {
@@ -961,6 +1104,310 @@ if (typeof module !== 'undefined' && module.exports) {
         : (card.chapter ? 'Chapter ' + (card.chapter.index + 1) + ' of ' + card.chapter.count + (card.chapter.title ? ': ' + card.chapter.title : '') : feedClock((card.endAt || 0) - (card.startAt || 0)) + ' of this video');
       overlay.appendChild(playActions(card, index, label));
       wireMediaGestures(node, overlay, index, !isPod && card.media !== 'audio');
+    }
+
+    // ---- v1.383.0 (K4): a way to the full item at any time ----------------------------------------------------------------
+    // A media card's title and its channel / show / artist line open the full item, and so does a small "open" button at the end
+    // of the title row: the same exit as Keep watching / listening (keepGoing - the session ends as Done would, the player carried
+    // over still playing, from where the card got to). They sit in the overlay, above the gesture layer: a tap on them is never a
+    // play / pause tap and never half of a double-tap like. The Keep pill in a slice's last seconds stays as the nudge.
+    function titleRow(titleEl, index) {
+      var row = el('div', 'feed-card__titlerow');
+      row.appendChild(openTarget(titleEl, index));
+      var btn = U() ? U().button({ variant: 'plain', size: 'sm', shape: 'icon', icon: 'open_in_new', ariaLabel: 'Open the full item', doc: document })
+        : el('button', 'ui-btn ui-btn--plain ui-btn--sm ui-btn--icon', '');
+      btn.type = 'button';
+      btn.classList.add('feed-card__open');
+      btn.setAttribute('aria-label', 'Open the full item');
+      btn.setAttribute('data-open-full', '');
+      btn.addEventListener('click', function (e) { if (e) e.stopPropagation(); openFull(index); }, { signal: signal });
+      row.appendChild(btn);
+      return row;
+    }
+    function openTarget(node, index) {
+      node.setAttribute('data-open', '');
+      node.addEventListener('click', function (e) { if (e) e.stopPropagation(); openFull(index); }, { signal: signal });
+      return node;
+    }
+    function openFull(index) {
+      var card = cards[index];
+      if (!card || card.kind === 'book' || card.kind === 'notice' || !feedKeepHref(card)) return;
+      keepGoing(index, card);
+    }
+
+    // ---- v1.383.0 (K1): auto-advance -------------------------------------------------------------------------------------
+    // A media card that reaches its Done state (its slice's end, or the file's) shows "Next in 2" and, unless the card is touched,
+    // the Feed scrolls to the next card after FEED_ADVANCE_MS (the same snap a swipe ends in). A touch keeps the card here until it
+    // is swiped; the countdown's own button says so for a keyboard. Never on a book or a new-book card, never during the
+    // wind-down (feedAdvanceDue), never with Auto-advance off (Settings > Feed, synced).
+    function feedSettingsNow() {
+      var FSr = window.FileTubeFeedSettings;
+      if (!FSr) return null;
+      var raw = null;
+      try { var st = localStore(); raw = st ? st.getItem(FSr.SETTINGS_KEY) : null; } catch (_) { raw = null; }
+      return FSr.normalize(raw);
+    }
+    function nextShownIndex(index) {
+      for (var i = index + 1; i < cardEls.length; i++) { if (!cardEls[i].hasAttribute('data-hidden')) return i; }
+      return -1;
+    }
+    function startAdvance(index) {
+      var node = cardEls[index];
+      if (!node || advance || index !== activeIndex || node.hasAttribute('data-advance-stay')) return;
+      if (!feedAdvanceDue(cards[index], feedSettingsNow(), windingDown) || nextShownIndex(index) < 0) return;
+      var btn = U() ? U().button({ variant: 'tonal', size: 'sm', pill: true, label: 'Next in 2', doc: document })
+        : el('button', 'ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill', 'Next in 2');
+      btn.type = 'button';
+      btn.classList.add('feed-card__advance');
+      btn.setAttribute('data-advance', '');
+      btn.setAttribute('aria-label', 'Next card in 2 seconds. Tap to stay on this one');
+      btn.addEventListener('click', function () { stayHere(index); }, { signal: signal });
+      (node.querySelector('.feed-card__stage') || node).appendChild(btn);
+      var a = advance = { index: index, btn: btn, tick: 0, timer: 0 };
+      var label = function (text) { var l = btn.querySelector('.ui-btn__label'); if (l) l.textContent = text; else btn.textContent = text; };
+      a.tick = window.setTimeout(function () { if (advance === a) { label('Next in 1'); btn.setAttribute('aria-label', 'Next card in 1 second. Tap to stay on this one'); } }, FEED_ADVANCE_MS / 2);
+      a.timer = window.setTimeout(function () {
+        if (advance !== a) return;
+        stopAdvance();
+        if (activeIndex !== index) return;
+        var to = nextShownIndex(index);
+        if (to < 0) return;
+        // the smooth scroll may pass a hidden card on its way: only the card it is going to becomes active (scrollingTo, onIntersect)
+        scrollingTo = { index: to, until: Date.now() + FEED_SCROLL_TARGET_MS };
+        cardEls[to].scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, FEED_ADVANCE_MS);
+    }
+    function stopAdvance() {
+      if (!advance) return;
+      window.clearTimeout(advance.tick);
+      window.clearTimeout(advance.timer);
+      advance.btn.remove();
+      advance = null;
+    }
+    function stayHere(index) {
+      stopAdvance();
+      if (cardEls[index]) cardEls[index].setAttribute('data-advance-stay', '');
+    }
+    signal.addEventListener('abort', stopAdvance);
+
+    // ---- v1.383.0 (K2 a): warm the next card while this one plays ---------------------------------------------------------
+    // ONE card ahead, once each: its picture (poster / art, which the card's <img> then reuses from the browser's cache), or, for a
+    // book card, its pages laid out now (so the swipe shows a fitted page at once), and the first FEED_WARM_BYTES of its media. That
+    // range request is a SERVER-side warm only: measured (gate r1, Chromium and WebKit), the player never reuses its bytes - the media
+    // routes send no cache validators, so the element asks for the file again from byte 0. What it buys is the file's start read
+    // off the server's disk ahead of the swipe (a slow or sleeping drive); it was kept on that understanding (Dean, 2026-10-10).
+    // Nothing is played: the shared player loads a card only when it becomes active, so there is never a second media element. A
+    // warmed card that is never reached costs its range request.
+    function warmNext(index) {
+      var i = index + 1;
+      var card = cards[i];
+      if (!card || !cardEls[i] || warmed[i]) return;
+      warmed[i] = true;
+      if (card.kind === 'book') { var bp = bookPages[i]; if (bp && !bp.measured && !cardEls[i].hasAttribute('data-pruned')) layoutPages(i); return; }
+      var art = feedArtUrl(card);
+      if (art && typeof window.Image === 'function') { var img = new window.Image(); img.decoding = 'async'; img.src = art; }
+      var src = feedStreamUrl(card);
+      if (src) {
+        fetch(src, { headers: { Range: 'bytes=0-' + (FEED_WARM_BYTES - 1) }, signal: signal })
+          .then(function (r) { return r && r.ok ? r.arrayBuffer() : null; })
+          .catch(function () { /* a warm that fails costs nothing: the card loads as before */ });
+      }
+    }
+
+    // ---- v1.383.0 (K6 = v1.382.0 D14): music while reading ------------------------------------------------------------------
+    // While a book card (or a Start something new card) is active, a song from the station plays through the ONE shared player,
+    // from the Feed's own hidden slot, starting about a third in; the next song follows when one ends. It plays on across the
+    // book's page swipes and consecutive book cards, and stops when any other card becomes active, the Feed ends or the view is
+    // left. It never counts a play or a skip (nothing is posted, Music's tally is let go) and never saves a place (its gate is
+    // shut). The phone's volume is never touched (iOS ignores a scripted volume: there is no ducking anywhere). A chip on the
+    // card names the song; its sheet has Like, Mute music (for the rest of this session) and Change station. Settings > Feed > Music while
+    // reading (synced, on by default) and its Station.
+    var MUSIC_PLAYED_CAP = 200;
+    function musicWanted() {
+      var st = feedSettingsNow();
+      return (!st || st.music !== false) && !(session && session.musicMuted);
+    }
+    function bookActive() { var c = cards[activeIndex]; return !!c && c.kind === 'book'; }
+    function startBookMusic() {
+      if (!musicWanted() || !bookActive()) return;
+      if (music.current) { showMusicChip(activeIndex); return; } // playing on across page swipes and book cards
+      nextSong();
+    }
+    function stopBookMusic(pause) {
+      music.token += 1;
+      music.loading = false;
+      var was = music.current;
+      music.current = null;
+      if (was && pause && mediaCardIndex === -1) { var p = player(); if (p && typeof p.pause === 'function') p.pause(); }
+      showMusicChip(-1);
+    }
+    // the station song stops and the player lets it go (leaving the Feed: Keep reading, the view's teardown)
+    function closeBookMusic() {
+      if (!music.current || mediaCardIndex !== -1) { stopBookMusic(false); return; }
+      stopBookMusic(false);
+      var p = player();
+      if (p && typeof p.close === 'function') p.close();
+    }
+    function resolveStation() {
+      if (music.station !== null) return Promise.resolve(music.station);
+      return fetch('/api/music/stations', { signal: signal })
+        .then(function (r) { return r.ok ? r.json() : { stations: [] }; })
+        .catch(function () { return { stations: [] }; })
+        .then(function (body) {
+          var FSr = window.FileTubeFeedSettings;
+          var st = feedSettingsNow();
+          music.stations = Array.isArray(body && body.stations) ? body.stations.filter(function (x) { return x && typeof x.key === 'string' && !x.hidden; }) : [];
+          music.station = feedMusicStation(music.stations, st ? st.station : '', FSr ? FSr.MUSIC_STATION_ORDER : []);
+          return music.station;
+        });
+    }
+    // the next batch of the station (lib/music/radio.js, the same picker Music's stations use): what this session played is sent
+    // as plays, what is still queued as queued (LESSONS 5: the picker and the client share one knowledge of the session); a batch
+    // that kept nothing asks once more, widened
+    function fillMusicQueue(key, widen) {
+      var enc = encodeURIComponent;
+      var url = '/api/music/radio?seed=' + enc('station:' + key) + '&count=5'
+        + (music.played.length ? '&exclude=' + music.played.slice(-MUSIC_PLAYED_CAP).map(enc).join(',') : '')
+        + (music.queue.length ? '&queued=' + music.queue.map(function (t) { return enc(t.id); }).join(',') : '')
+        + (widen ? '&widen=1' : '');
+      return fetch(url, { signal: signal })
+        .then(function (r) { return r.ok ? r.json() : { items: [] }; })
+        .then(function (body) {
+          (Array.isArray(body && body.items) ? body.items : []).forEach(function (t) {
+            if (t && typeof t.id === 'string' && music.played.indexOf(t.id) === -1 && !music.queue.some(function (q) { return q.id === t.id; })) music.queue.push(t);
+          });
+        });
+    }
+    function nextSong() {
+      if (music.loading) return;
+      var tok = ++music.token;
+      music.loading = true;
+      resolveStation()
+        .then(function (key) {
+          if (!key || tok !== music.token) return null;
+          if (music.queue.length) return music.queue.shift();
+          return fillMusicQueue(key, false)
+            .then(function () { return music.queue.length ? null : fillMusicQueue(key, true); })
+            .then(function () { return music.queue.shift() || null; });
+        })
+        .then(function (item) {
+          if (tok !== music.token) return;
+          music.loading = false;
+          if (item && !signal.aborted && musicWanted() && bookActive()) playSong(item);
+        })
+        .catch(function () { if (tok === music.token) music.loading = false; });
+    }
+    function playSong(item) {
+      var p = player();
+      if (!p) return;
+      var data = feedPlayerDescriptor({ kind: 'song', id: item.id, track: item, startAt: feedMusicStartSec(item.durationSec) });
+      data.progressGate = function () { return false; }; // never a saved place
+      // gate r1 (qa W1): a station song may be a CHAPTER of a library file (lib/music/libraryAudio.js: id <file>::c<n>, the whole
+      // file's stream, chapterStartSec, durationSec = the chapter's span). The player seeks a chapter by its own fields (the same
+      // ones Music's load passes); startAt would be a place in the whole file. It starts a third into the chapter and ends at the
+      // chapter's end (chapterEnd below), not the file's.
+      var chStart = item.source === 'library-chapter' ? Number(item.chapterStartSec) : NaN;
+      var chEnd = NaN;
+      if (isFinite(chStart) && chStart >= 0) {
+        var span = Number(item.durationSec) || 0;
+        data.chapterStartSec = chStart;
+        data.baseMediaId = String(item.id).replace(/::c\d+$/, '');
+        data.chapterResumeSec = chStart + feedMusicStartSec(span);
+        data.startAt = 0;
+        if (span > 0) chEnd = chStart + span;
+      }
+      if (window.FileTube && typeof window.FileTube.musicPlayCountRelease === 'function') window.FileTube.musicPlayCountRelease(); // never a count
+      music.current = item;
+      music.played.push(item.id);
+      if (music.played.length > MUSIC_PLAYED_CAP) music.played.shift();
+      mediaCardIndex = -1; // no card owns it: leaving a book card never pauses it
+      p.load(item.id, data, { slot: musicSlot });
+      mediaEl = document.getElementById('media-player');
+      if (mediaEl) {
+        var el0 = mediaEl;
+        var done = function (failed) {
+          el0.removeEventListener('ended', onEnded);
+          el0.removeEventListener('error', onError);
+          el0.removeEventListener('timeupdate', chapterEnd);
+          if (music.current !== item) return;
+          music.current = null;
+          music.failures = failed ? music.failures + 1 : 0;
+          if (music.failures < 3) nextSong(); // a station whose songs will not play stops trying
+        };
+        var onEnded = function () { done(false); };
+        var onError = function () { done(true); };
+        var chapterEnd = function () { if (isFinite(chEnd) && music.current === item && (el0.currentTime || 0) >= chEnd) done(false); };
+        el0.addEventListener('ended', onEnded, { signal: signal });
+        el0.addEventListener('error', onError, { signal: signal });
+        if (isFinite(chEnd)) el0.addEventListener('timeupdate', chapterEnd, { signal: signal });
+      }
+      showMusicChip(activeIndex);
+    }
+    // the chip on the active book card ("♫ <song> · <artist>"); -1 = none anywhere
+    function showMusicChip(index) {
+      Array.prototype.forEach.call(stack.querySelectorAll('[data-music-chip]'), function (n) { n.remove(); });
+      var node = cardEls[index];
+      var item = music.current;
+      if (!node || !item || !cards[index] || cards[index].kind !== 'book') return;
+      var overlay = node.querySelector('.feed-card__overlay');
+      if (!overlay) return;
+      var text = feedMusicChipText(item);
+      var chip = U() ? U().button({ variant: 'tonal', size: 'sm', pill: true, icon: 'music_note', label: text, doc: document })
+        : el('button', 'ui-btn ui-btn--tonal ui-btn--sm ui-btn--pill', text);
+      chip.type = 'button';
+      chip.classList.add('feed-card__music');
+      chip.setAttribute('data-music-chip', '');
+      chip.setAttribute('aria-label', 'Playing ' + text + '. Music options');
+      chip.addEventListener('click', function (e) { if (e) e.stopPropagation(); openMusicSheet(item); }, { signal: signal });
+      overlay.insertBefore(chip, overlay.firstChild);
+    }
+    function openMusicSheet(item) {
+      if (!U() || music.current !== item) return;
+      var liked = !!item.liked;
+      var items = [
+        { label: liked ? 'Unlike the song' : 'Like the song', icon: 'favorite', value: liked ? 'unlike' : 'like', onSelect: function () { likeSong(item, !liked); } },
+        { label: 'Mute music', icon: 'volume_off', value: 'mute', onSelect: muteMusic },
+      ];
+      if (music.stations.length > 1) items.push({ label: 'Change station', icon: 'radio', value: 'station', onSelect: openStationSheet });
+      U().menu({ label: 'Music', items: items, signal: signal, doc: document });
+    }
+    function likeSong(item, on) {
+      fetch('/api/music/liked/' + encodeURIComponent(item.id), { method: on ? 'POST' : 'DELETE', keepalive: true })
+        .then(function (r) {
+          if (!r.ok) { toast(on ? 'Could not like it' : 'Could not unlike it'); return; }
+          item.liked = on;
+          toast(on ? 'Liked: ' + (item.title || 'the song') : 'Unliked: ' + (item.title || 'the song'));
+        })
+        .catch(function () { toast(on ? 'Could not like it' : 'Could not unlike it'); });
+    }
+    function muteMusic() {
+      if (session) { session.musicMuted = true; writeSession(session); }
+      stopBookMusic(true);
+      toast('Music off for this session');
+    }
+    // Change station: the synced setting (Settings > Feed > Station) - this session and every one after
+    function openStationSheet() {
+      if (!U()) return;
+      var items = music.stations.map(function (st) {
+        return { label: String(st.name || st.key), value: st.key, icon: st.key === music.station ? 'radio' : undefined, onSelect: function () { changeStation(st.key); } };
+      });
+      U().menu({ label: 'Station', items: items, signal: signal, doc: document });
+    }
+    function changeStation(key) {
+      var FSr = window.FileTubeFeedSettings;
+      var store = localStore();
+      if (FSr && store) {
+        try {
+          var st = FSr.normalize(store.getItem(FSr.SETTINGS_KEY));
+          st.station = key;
+          store.setItem(FSr.SETTINGS_KEY, FSr.serialize(st));
+          if (window.__ftPrefsSync && typeof window.__ftPrefsSync.flush === 'function') window.__ftPrefsSync.flush();
+        } catch (_) { /* storage off: this session only */ }
+      }
+      music.station = key;
+      music.queue = [];
+      stopBookMusic(true);
+      startBookMusic();
     }
 
     // ---- gestures (D7, D8) ---------------------------------------------------------------
@@ -1070,10 +1517,10 @@ if (typeof module !== 'undefined' && module.exports) {
       if (card.newBook || !bookEnd(bp) || bp.end.atEnd || continuing[index]) return;
       continuing[index] = true;
       var from = bp.end;
-      fetch('/api/books/' + encodeURIComponent(card.id) + '/excerpt?spine=' + from.spineIndex + '&block=' + from.blockIndex + '&continuation=1', { signal: signal })
-        .then(function (r) { return r.ok ? r.json() : null; })
+      continuationOf(index, card, from)
         .then(function (body) {
           continuing[index] = false;
+          if (bp.cont && bp.cont.from === from) bp.cont = null; // used (or failed: the next turn asks again)
           if (!body || !Array.isArray(body.blocks) || !body.blocks.length || bookPages[index] !== bp || bp.end !== from) return;
           var more = body.blocks.slice();
           if (body.atEnd) more.push({ spineIndex: -1, blockIndex: -1, text: 'The end.', end: true });
@@ -1089,6 +1536,26 @@ if (typeof module !== 'undefined' && module.exports) {
           if (index === activeIndex) { showPage(index, bp.page + 1); bp.since = Date.now(); } else showPage(index, bp.page);
         })
         .catch(function () { continuing[index] = false; });
+    }
+
+    // v1.383.0 (K2 a): the next pages of a reading card, asked for ONCE per place - early, while its last page is on screen
+    // (showPage), so the turn past it has them at once; the turn takes the same answer. Text only (continuation mode).
+    function continuationOf(index, card, from) {
+      var bp = bookPages[index];
+      if (bp && bp.cont && bp.cont.from === from) return bp.cont.p;
+      var p = fetch('/api/books/' + encodeURIComponent(card.id) + '/excerpt?spine=' + from.spineIndex + '&block=' + from.blockIndex + '&continuation=1', { signal: signal })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; });
+      if (bp) bp.cont = { from: from, p: p };
+      return p;
+    }
+
+    // on the last page of the ACTIVE reading card (a turn there, or the card becoming active on it), ask for the pages after it now
+    function warmBookPages(index) {
+      var bp = bookPages[index];
+      var c = cards[index];
+      if (!bp || !c || c.kind !== 'book' || c.newBook || index !== activeIndex || bp.page !== bp.pages.length - 1 || !bookEnd(bp) || bp.end.atEnd) return;
+      continuationOf(index, c, bp.end);
     }
 
     // the keyboard twin of the page swipe (a desktop has no swipe): the arrow keys turn the active book card's page
@@ -1121,7 +1588,7 @@ if (typeof module !== 'undefined' && module.exports) {
     // D6: a book card's text is laid into pages that fit the stage (feedPaginate over the real box); the card shows one page.
     function fillBookCard(node, stage, overlay, card, index) {
       node.setAttribute('data-paged', '');
-      overlay.appendChild(el('p', 'feed-card__meta', (card.author ? card.author + ' · ' : '') + (card.chapterLabel || '')));
+      overlay.appendChild(el('p', 'feed-card__meta', feedBookMeta(card)));
       var page = el('div', 'feed-card__text feed-card__page');
       stage.appendChild(page);
       var actions = el('div', 'feed-card__actions');
@@ -1218,7 +1685,9 @@ if (typeof module !== 'undefined' && module.exports) {
       if (b.cover) { var img = el('img', 'feed-card__cover'); img.alt = ''; img.src = b.cover; out.push(img); return out; }
       if (b.desc) { out.push(el('p', 'feed-card__desc', b.text)); return out; }
       if (b.end) { out.push(el('p', 'feed-card__meta', b.text)); return out; }
-      if (b.chapterStart && !b.heading && !b.cont) out.push(el('div', 'feed-card__chapter-start', 'Chapter ' + (b.spineIndex + 1)));
+      // v1.383.0 (K3 b): the chapter's name as the BOOK gives it (the server's chapterLabeler), never its spine position - that drew
+      // "Chapter 6" over a book's chapter I; no name (front matter, an older server), no divider
+      if (b.chapterStart && !b.heading && !b.cont && typeof b.chapterLabel === 'string' && b.chapterLabel) out.push(el('div', 'feed-card__chapter-start', b.chapterLabel));
       out.push(el(b.heading ? 'h3' : 'p', b.cont ? 'feed-card__cont' : null, b.text));
       return out;
     }
@@ -1287,6 +1756,7 @@ if (typeof module !== 'undefined' && module.exports) {
       var c = cards[index];
       if (c && c.kind === 'book' && !c.newBook && !c.startedOver && bp.measured && bp.page === bp.pages.length - 1) showKeepPill(index);
       else hideKeepPill(index);
+      warmBookPages(index);
     }
 
     // The current page's time: started when the card or the page became active, counted when it stops being on screen.
@@ -1488,10 +1958,21 @@ if (typeof module !== 'undefined' && module.exports) {
       } } });
     }
 
+    // v1.383.0 (K7 c): the confirm names the STORED place, read just before it opens (never the card's served copy); a place with
+    // nothing to forget is said at once, without a confirm. A failed read still asks, naming only the item.
     function confirmStartOver(index, card) {
       if (!U() || cards[index] !== card) return;
-      U().confirm({ title: 'Start over?', body: feedStartOverText(card), confirmLabel: 'Start over', danger: true, signal: signal, doc: document })
-        .then(function (yes) { if (yes && cards[index] === card) startOver(index, card); });
+      var kind = feedStartOverKind(card);
+      if (!kind) return;
+      fetch('/api/feed/start-over/place?kind=' + encodeURIComponent(kind) + '&id=' + encodeURIComponent(card.id), { signal: signal })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .catch(function () { return null; })
+        .then(function (stored) {
+          if (signal.aborted || cards[index] !== card) return;
+          if (stored && stored.nothing === true) { toast('Nothing to start over: it was not started'); return; }
+          U().confirm({ title: 'Start over?', body: feedStartOverText(card, stored && stored.ok ? stored : null), confirmLabel: 'Start over', danger: true, signal: signal, doc: document })
+            .then(function (yes) { if (yes && cards[index] === card) startOver(index, card); });
+        });
     }
 
     var startingOver = {}; // card index -> true while its Start over is in flight (one request, never two)
@@ -1512,19 +1993,33 @@ if (typeof module !== 'undefined' && module.exports) {
           if (res.status === 409 && res.body && res.body.reason === 'nothing') { toast('Nothing to start over: it was not started'); return; }
           if (res.status === 409 && res.body && res.body.reason === 'unrestorable') { toast('Could not start over: its saved place could not be undone, so it was kept'); return; }
           if (res.status !== 200 || !res.body || !res.body.token) { toast('Could not start over'); return; }
-          var before = { fresh: card.fresh, progress: card.progress, position: card.position, startAt: card.startAt, endAt: card.endAt, chapter: card.chapter, skippedIntro: card.skippedIntro };
-          if (!signal.aborted && cards[index] === card) applyStartedOver(index, card, kind);
+          var before = kind === 'book' ? bookSnapshot(index, card)
+            : { fresh: card.fresh, progress: card.progress, position: card.position, startAt: card.startAt, endAt: card.endAt, chapter: card.chapter, skippedIntro: card.skippedIntro };
+          if (!signal.aborted && cards[index] === card) applyStartedOver(index, card, kind, res.body.reset);
           toast(feedStartedOverText(card, res.body.previous), { duration: FEED_UNDO_MS, action: { label: 'Undo', onAction: function () { undoStartOver(index, card, kind, res.body.token, before, sid); } } });
         })
         .catch(function () { startingOver[index] = false; toast('Could not start over'); });
     }
-    // the card says New and plays from the start (a media card); a book card says it starts over and moves nothing more
-    function applyStartedOver(index, card, kind) {
+    // the card says New and plays from the start (a media card); a book card says it starts over, moves nothing more, and shows the
+    // place the reset left (v1.383.0, K3 a: the server's `reset` pages, its first real chapter) - before, only its labels changed
+    // and the old page stayed under them
+    function applyStartedOver(index, card, kind, reset) {
       if (kind === 'book') {
         card.startedOver = true;
         var bp = bookPages[index];
         if (bp) bp.refused = true; // the server forgot the serve too: this card can never set a place again
+        if (bp && reset && Array.isArray(reset.blocks) && reset.blocks.length) {
+          bp.blocks = reset.blocks.slice();
+          if (reset.atEnd) bp.blocks.push({ spineIndex: -1, blockIndex: -1, text: 'The end.', end: true });
+          bp.end = reset.atEnd ? { atEnd: true } : (reset.next || null);
+          bp.pages = []; bp.page = 0; bp.read = {}; bp.pageMs = {}; bp.carry = null; bp.written = null; bp.capped = false;
+          bp.measured = false; // laid out again on the reset text (now, or when a pruned card is rebuilt)
+          card.chapterLabel = typeof reset.chapterLabel === 'string' ? reset.chapterLabel : '';
+          layoutPages(index);
+        }
         var node = cardEls[index];
+        var meta = node && node.querySelector('.feed-card__overlay .feed-card__meta');
+        if (meta) meta.textContent = feedBookMeta(card);
         var kindEl = node && node.querySelector('.feed-card__kind');
         if (kindEl) kindEl.textContent = 'Book \u00b7 Started over';
         var readout = node && node.querySelector('[data-page-readout]');
@@ -1543,10 +2038,35 @@ if (typeof module !== 'undefined' && module.exports) {
       refillMediaCard(index);
     }
 
+    // v1.383.0 (K3 a): what a book card shows, kept at its Start over so Undo puts it back exactly - its blocks (the card's own and
+    // any continuation), its pages and the page it was on, and its chapter name. The read marks are kept too, but the card cannot
+    // write again (the server forgot its serve at the reset AND at the Undo: a next card of the book is served from the place).
+    var BOOK_SNAPSHOT_KEYS = ['blocks', 'pages', 'page', 'read', 'pageMs', 'end', 'measured', 'carry', 'written', 'capped', 'boxH'];
+    function bookSnapshot(index, card) {
+      var bp = bookPages[index];
+      var snap = { chapterLabel: card.chapterLabel, bp: null };
+      if (bp) { snap.bp = {}; BOOK_SNAPSHOT_KEYS.forEach(function (k) { snap.bp[k] = bp[k]; }); }
+      return snap;
+    }
+    function restoreBookSnapshot(index, card, snap) {
+      var bp = bookPages[index];
+      if (!snap) return;
+      card.chapterLabel = snap.chapterLabel;
+      if (!bp || !snap.bp) return;
+      BOOK_SNAPSHOT_KEYS.forEach(function (k) { bp[k] = snap.bp[k]; });
+      var node = cardEls[index];
+      if (node && !node.hasAttribute('data-pruned')) relayoutBook(index); // the same box: the same page; another box: laid out again on it
+    }
+
     function refillMediaCard(index) {
       var node = cardEls[index];
       if (!node) return;
       node.removeAttribute('data-done');
+      node.removeAttribute('data-advance-stay');
+      // v1.383.0: the card plays from ITS new start (a Start over: 0; an Undo: the place put back), never from where it was left,
+      // and a fresh card's minute starts over with it
+      if (activity[index]) { activity[index].lastTime = null; activity[index].done = false; activity[index].ended = false; }
+      trackers[index] = null;
       fillCard(node, cards[index], index);
       if (index === activeIndex) playCard(index);
     }
@@ -1561,9 +2081,12 @@ if (typeof module !== 'undefined' && module.exports) {
           if (signal.aborted || cards[index] !== card) return; // the view is gone: the place is back, nothing to redraw
           if (kind === 'book') {
             card.startedOver = false;
+            restoreBookSnapshot(index, card, before); // v1.383.0 (K3 a): the pages the card showed before, on the page it was on
             var node = cardEls[index];
             var kindEl = node && node.querySelector('.feed-card__kind');
             if (kindEl) kindEl.textContent = feedKindLine(card);
+            var meta = node && node.querySelector('.feed-card__overlay .feed-card__meta');
+            if (meta) meta.textContent = feedBookMeta(card);
             var readout = node && node.querySelector('[data-page-readout]');
             if (readout) readout.textContent = 'Your place is back';
             return;
@@ -1608,14 +2131,48 @@ if (typeof module !== 'undefined' && module.exports) {
         ratios[idx] = e.isIntersecting ? e.intersectionRatio : 0;
       });
       var list = Object.keys(ratios).map(function (k) { return { index: Number(k), ratio: ratios[k] }; });
-      var next = feedActiveIndex(list);
-      if (next >= 0 && next !== activeIndex) setActive(next);
+      // v1.383.0 (K1): the countdown's scroll makes only its target active - never a hidden card it passes on the way
+      if (scrollingTo) {
+        if (Date.now() < scrollingTo.until && cardEls[scrollingTo.index]) {
+          if ((ratios[scrollingTo.index] || 0) >= FEED_EARLY_RATIO) { var to = scrollingTo.index; scrollingTo = null; if (to !== activeIndex) setActive(to, (ratios[to] || 0) < FEED_ACTIVE_RATIO); }
+          return;
+        }
+        scrollingTo = null;
+      }
+      // v1.383.0 (K2 b): the next card from a quarter on screen - except in the wind-down, where moving on ends the session (D11),
+      // so it takes the shipped 60% as before: a glimpse must not end it
+      var next = windingDown ? feedActiveIndex(list) : feedNextActive(list, activeIndex);
+      if (next >= 0 && next !== activeIndex) setActive(next, (ratios[next] || 0) < FEED_ACTIVE_RATIO);
+      // the swipe settled on the new card: the card left at a quarter is left for good (its count, a song's skip)
+      if (activeIndex >= 0 && (ratios[activeIndex] || 0) >= FEED_ACTIVE_RATIO) { settledOn[activeIndex] = true; settleLeave(); }
     }
 
-    function setActive(index) {
+    // v1.383.0 (K2 b, gate r1 adversary W1 / W2): the card left at a quarter swipe is paused (and a book card's pages read are
+    // noted and its bookmark moved, forward-only) at once, but it is COUNTED - the recap's card, a whole song's skip - only when
+    // the swipe settles on the new card or moves on again. A swipe that springs back is not leaving: nothing is counted, and the
+    // card's count, read pages and played time stay whole for when it is really left. A card only GLIMPSED (never settled on: the
+    // one a spring-back leaves) is never counted at all - it was not a card the user stayed on.
+    function settleLeave() {
+      var i = leftPending;
+      if (i < 0) return;
+      leftPending = -1;
+      if (!settledOn[i]) return;
+      if (cards[i] && cards[i].kind === 'song') postSongCounts(cards[i], feedSongLeave(songTallies[i])); // K5: a whole song swiped past early
+      countCard(i);
+    }
+
+    // `early`: v1.383.0 (K2 b) - made active by a quarter on screen (a swipe still open), not yet settled on
+    function setActive(index, early) {
       var prev = activeIndex;
+      if (!early) settledOn[index] = true;
       if (windingDown && prev >= 0 && index !== prev) { finishNow(); return; } // D11: moving on after time up ends the session
-      if (prev >= 0 && cardEls[prev]) { cardEls[prev].removeAttribute('data-active'); leaveCard(prev); }
+      if (index !== prev) stopAdvance(); // v1.383.0 (K1): moving on (by hand or by the countdown) ends the countdown
+      // v1.383.0 (K2 b): back on the card left at a quarter (a spring-back) is not a leave; a move to yet another card is
+      if (index !== prev && leftPending >= 0) { if (leftPending === index) leftPending = -1; else settleLeave(); }
+      if (prev >= 0 && cardEls[prev]) {
+        cardEls[prev].removeAttribute('data-active');
+        if (index !== prev) { leaveCard(prev, true); leftPending = prev; } else leaveCard(prev);
+      }
       activeIndex = index;
       var node = cardEls[index];
       var card = cards[index];
@@ -1625,13 +2182,22 @@ if (typeof module !== 'undefined' && module.exports) {
       if (node.hasAttribute('data-media')) sessionEl.setAttribute('data-on-media', ''); else sessionEl.removeAttribute('data-on-media');
       if (index > 0) clearHint();
       else if (hintPending) { hintPending = false; showHint(node); }
+      // v1.383.0: a card reached by a jump of more than FEED_KEEP_BEHIND cards (the countdown, Hide this, a far swipe back) may
+      // still be pruned: rebuild it BEFORE it plays - played first, its slot did not exist yet and the card stayed silent
+      pruneBehind(index);
       if (card.kind === 'book') {
         var bp = bookPages[index];
         if (bp && !bp.measured) layoutPages(index); // laid out now: fit the pages to the real box
         if (bp) bp.since = Date.now();
+        warmBookPages(index); // v1.383.0 (K2 a)
+        startBookMusic(); // v1.383.0 (K6)
         if (pageHintPending && bp && bp.pages.length > 1 && !document.getElementById('feed-hint')) { pageHintPending = false; showHint(node, 'Swipe left for the next page', FEED_PAGE_HINT_KEY); }
-      } else playCard(index);
-      pruneBehind(index);
+      } else {
+        // v1.383.0 (K6): any other card ends the music (a media card's load replaces it; the notice card pauses it)
+        stopBookMusic(card.kind === 'notice');
+        playCard(index);
+      }
+      warmNext(index); // v1.383.0 (K2 a)
       if (feedShouldPrefetch(index, cards.length)) fetchBatch();
     }
 
@@ -1666,18 +2232,19 @@ if (typeof module !== 'undefined' && module.exports) {
       if (h) h.remove();
     }
 
-    function leaveCard(index) {
+    // `held`: v1.383.0 (K2 b) - the card is paused / noted but not counted yet (settleLeave counts it when the swipe settles)
+    function leaveCard(index, held) {
       var card = cards[index];
       if (!card) return;
       if (card.kind === 'book') {
         noteBookPage(index);
         if (bookPages[index]) bookPages[index].since = 0;
         finishBookCard(index);
-        countCard(index);
+        if (!held) countCard(index);
         return;
       }
       if (mediaCardIndex === index) pauseMedia();
-      countCard(index);
+      if (!held) countCard(index);
     }
 
     // D12: the recap is built from what happened - each card counted once, when it is left.
@@ -1744,25 +2311,48 @@ if (typeof module !== 'undefined' && module.exports) {
       // v1.380.0 (R5, D7): a FRESH card writes nothing until a minute of actual playback. The guard rides the descriptor into the
       // shared player, whose ONE progress writer (saveProgressToServer: pings, the pause / background checkpoint, a seek, the end)
       // asks it before every POST and reports the played seconds the server checks again. Not-fresh cards carry no guard.
-      var tracker = card.fresh === true && card.kind !== 'song' ? feedNewPlayTracker() : null;
+      // v1.383.0 (K2 b): ONE tracker per card, kept when the card is left and come back to (a swipe that springs back), so the
+      // minute already played still counts; a Start over replaces it (refillMediaCard)
+      var tracker = card.fresh === true && card.kind !== 'song' ? (trackers[index] || (trackers[index] = feedNewPlayTracker())) : null;
       var needSec = feedFreshNeedSec(card.media === 'podcast' ? card.durationSec : card.duration, Number(card.reelSec) || 0);
       if (tracker) {
         data.progressGate = function () { return feedFreshStarted(tracker, needSec); };
         data.playedSec = function () { return tracker.sec; };
       }
+      // v1.383.0 (K5): a song CLIP never moves the song's saved place in Music (it is a taste from a third in); Keep listening hands
+      // the song to Music, whose adopt drops this gate (player.js applyAdoptFlavor) and saves from there
+      if (card.kind === 'song' && Number(card.clipSec) > 0) data.progressGate = function () { return false; };
+      // v1.383.0 (K5, K6): Music's play tally sits on this same element; it is let go before the Feed loads (it would count this
+      // playback to the last Music song)
+      if (window.FileTube && typeof window.FileTube.musicPlayCountRelease === 'function') window.FileTube.musicPlayCountRelease();
+      var act = activity[index] = activity[index] || { playedSec: 0, done: false, ended: false };
+      var startAt = Number(data.startAt) || 0; // the slice's own start (its played time counts from here)
+      // v1.383.0 (K2 b): a card come back to before it was done plays on from where it was left (the early load can leave a card
+      // at a quarter of a swipe that then springs back: it must not start its slice again)
+      if (!act.done && typeof act.lastTime === 'number' && act.lastTime > startAt + 1 && (endAtOf(card) === null || act.lastTime < endAtOf(card))) data.startAt = act.lastTime;
+      // ...and a card come back to after its Done state (gate r1 adversary S3) opens at its slice's end, where the end check pauses it
+      // again - never its slice from the start, and never on past its end. A slice that ended with its FILE (gate r2 adversary S1)
+      // opens half a second before the end (at the very end the player starts the file over) and ends again. It does not count down
+      // again: the user came back to it.
+      else if (act.done && endAtOf(card) !== null && isFinite(endAtOf(card))) {
+        data.startAt = act.ended ? Math.max(startAt, endAtOf(card) - 0.5) : endAtOf(card);
+        node.removeAttribute('data-done');
+        node.setAttribute('data-advance-stay', '');
+      }
       mediaCardIndex = index;
       p.load(card.id, data, { slot: slot });
       mediaEl = document.getElementById('media-player');
       if (!mediaEl) return;
-      var endAt = card.kind === 'song' ? null : Number(card.endAt);
+      var endAt = endAtOf(card);
       var left = node.querySelector('[data-left]');
       var line = node.querySelector('.feed-card__progress');
-      var act = activity[index] = activity[index] || { playedSec: 0, done: false, ended: false };
-      var startAt = Number(data.startAt) || 0;
-      if (card.skippedIntro && startAt > 0) showIntroNote(node, startAt);
+      if (card.skippedIntro && startAt > 0 && data.startAt === startAt) showIntroNote(node, startAt);
+      var tally = card.kind === 'song' ? (songTallies[index] || (songTallies[index] = feedSongTally(card.clipSec))) : null;
       var onTime = function () {
         if (mediaCardIndex !== index || !mediaEl) return;
         var t = mediaEl.currentTime || 0;
+        act.lastTime = t;
+        if (tally) postSongCounts(card, feedSongTick(tally, t, 0, Number(card.track && card.track.durationSec) || mediaEl.duration));
         act.playedSec = Math.max(act.playedSec, t - startAt);
         if (endAt !== null && isFinite(endAt)) {
           var remain = endAt - t;
@@ -1772,9 +2362,11 @@ if (typeof module !== 'undefined' && module.exports) {
           if (remain <= 0 && !node.hasAttribute('data-done')) {
             node.setAttribute('data-done', '');
             act.done = true;
+            if (tally) postSongCounts(card, feedSongEnd(tally)); // v1.383.0 (K5): a clip heard to its end is a play
             showKeepPill(index);
             p.pause();
             if (windingDown) finishNow(); // D11: the slice finished after time up
+            else startAdvance(index); // v1.383.0 (K1)
           }
         } else if (left && isFinite(mediaEl.duration)) {
           left.textContent = feedClock(mediaEl.duration - t) + ' left';
@@ -1802,9 +2394,18 @@ if (typeof module !== 'undefined' && module.exports) {
         node.setAttribute('data-done', '');
         act.ended = true;
         act.done = true;
+        if (tally) postSongCounts(card, feedSongEnd(tally)); // v1.383.0 (K5): the whole song ended
         hideKeepPill(index); // the whole file ended: nothing is left to keep watching
         if (windingDown) finishNow();
+        else startAdvance(index); // v1.383.0 (K1)
       }, { signal: signal });
+    }
+    // the slice's end a card pauses at (null: a whole song plays to its own end; v1.383.0 K5: a song clip ends at its endAt)
+    function endAtOf(card) { return card.kind === 'song' && !(Number(card.clipSec) > 0) ? null : Number(card.endAt); }
+    function postSongCounts(card, kinds) {
+      (kinds || []).forEach(function (kind) {
+        fetch('/api/music/plays', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: card.id, kind: kind }), keepalive: true }).catch(function () { /* a count, never playback */ });
+      });
     }
 
     // ---- v1.382.0 (D7): Keep watching / listening / reading - leave the Feed into the full item -----------------------------
@@ -1844,7 +2445,13 @@ if (typeof module !== 'undefined' && module.exports) {
       var p = player();
       // a media card: the player plays on (a Done slice is resumed inside this tap: iOS needs the gesture)
       if (card.kind !== 'book' && mediaCardIndex === index && p && typeof p.play === 'function' && mediaEl && mediaEl.paused) { try { p.play(); } catch (_) { /* the full place starts it */ } }
-      if (card.kind === 'book') { noteBookPage(index); finishBookCard(index); }
+      // v1.383.0 (K6, gate r1 adversary S1): the reader has no music - the station song is CLOSED, not left paused in the player
+      if (card.kind === 'book') { noteBookPage(index); finishBookCard(index); closeBookMusic(); }
+      settleLeave(); // v1.383.0 (K2 b): a card left at a quarter swipe is counted too
+      // v1.383.0 (K5, gate r1 adversary W3): a song goes on in Music as ONE listen - Music's tally starts from what the Feed already
+      // heard and counted (a play at 30 s is not counted twice; the rest of the 30 s is not asked for again)
+      var tally = card.kind === 'song' ? songTallies[index] : null;
+      if (tally && window.FileTube) window.FileTube.musicPlayCountHandoff = { at: Date.now(), id: card.id, listened: tally.listened, played: tally.played, finished: !tally.clip && tally.finished };
       countCard(index); // counted as left - the slice's time, a book's pages read
       if (tickTimer) { window.clearInterval(tickTimer); tickTimer = null; }
       postFinish(); // the session's record, as Done would (no recap: the user is going on)
@@ -1904,7 +2511,9 @@ if (typeof module !== 'undefined' && module.exports) {
       if (tickTimer) { window.clearInterval(tickTimer); tickTimer = null; }
       windingDown = false;
       hardStopMs = NaN;
+      settleLeave(); // v1.383.0 (K2 b): a card left at a quarter swipe is counted too
       if (activeIndex >= 0) leaveCard(activeIndex);
+      stopBookMusic(false); // v1.383.0 (K6): the close below stops it
       pauseMedia();
       var p = player();
       if (p && typeof p.close === 'function') p.close();
@@ -2019,7 +2628,11 @@ if (typeof module !== 'undefined' && module.exports) {
       if (tickTimer) { window.clearInterval(tickTimer); tickTimer = null; }
       session = null;
       writeSession(null);
-      cards = []; cardEls = []; activeIndex = -1; ratios = {}; exhaustedShown = false; activity = {}; counted = {}; bookPages = {}; startingRead = {};
+      stopAdvance();
+      stopBookMusic(false);
+      leftPending = -1; scrollingTo = null; settledOn = {};
+      music.queue = []; music.played = []; music.station = null; music.failures = 0;
+      cards = []; cardEls = []; activeIndex = -1; ratios = {}; exhaustedShown = false; activity = {}; counted = {}; bookPages = {}; startingRead = {}; warmed = {}; trackers = {}; songTallies = {};
       summary = feedEmptySummary(); extensions = 0; windingDown = false; hardStopMs = NaN; hintPending = false; pageHintPending = false; clearHint();
       if (ring) ring.style.setProperty('--p', '0');
       stack.replaceChildren();
@@ -2059,6 +2672,9 @@ if (typeof module !== 'undefined' && module.exports) {
 
     // Leaving the page mid-card: a read book card still moves its bookmark (keepalive).
     signal.addEventListener('abort', function () {
+      if (session) settleLeave(); // v1.383.0 (K2 b): a card left at a quarter swipe is counted (the recap rides the stored session)
+      // v1.383.0 (K6): music while reading never follows the user out of the Feed
+      if (music.current && mediaCardIndex === -1) closeBookMusic();
       if (activeIndex >= 0 && cards[activeIndex] && cards[activeIndex].kind === 'book') leaveCard(activeIndex);
       if (observer) { observer.disconnect(); observer = null; }
       if (tickTimer) { window.clearInterval(tickTimer); tickTimer = null; }
