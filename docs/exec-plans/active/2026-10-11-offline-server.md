@@ -4,7 +4,7 @@ harness: v2 · full
 branch: feat/v1.387.0-offline-server
 anchor: spec
 status: Draft
-next: plan review r2 (the same adversary re-confirms the r1 fixes), then hand to an Extreme builder
+next: hand to an Extreme builder (plan review r2 fixes applied at the next commit)
 design: docs/references/ios-offline.md (Dean's rulings 2026-10-11) + the iOS Root's contract asks and custom-scheme spike (2026-10-11, simulator iOS 27 + iPhone XS iOS 18). Base = d405012e (the speed pass's docs commit; merge main once v1.386.0 lands).
 builder: extreme (a new credential at the auth gate, a schema migration, and writes to every kind's saved positions)
 gate: pending
@@ -32,7 +32,7 @@ TV episodes or seasons for **offline playback**; the app downloads them and play
 on the phone plays in FileTube's own player from the phone's copy. Listening or watching offline still counts: positions and
 "finished" sync back when the phone is online, and a newer position from another device is never overwritten. A restricted
 (kid) account can only ever download what it can already see. Revoking a device in Settings stops it at once. Browsers and the
-PWA see no change at all.
+PWA see no change, except the Settings Devices list (D1) and one renamed podcast setting (correction 4).
 
 This plan is the SERVER and WEB half (sequence step 1 of ios-offline.md). The app half is the iOS Root's plan, written against
 the contract this plan commits.
@@ -84,7 +84,8 @@ the contract this plan commits.
   Stored as sha256 only; compared via the hash lookup (the UNIQUE index) then `tokensEqual` on the hash. Shown once, at issue.
 - **Issue**: `POST /api/devices` `{ name, platform, password }` -> `201 { id, token, name, platform, createdAt }`. Accepted
   ONLY from a cookie session (refused 403 when the request itself came in on a device token: a token never mints a token), AND
-  only with the account's password, verified like login (scrypt, the login rate bucket, the dummy-hash timing guard) (gate r1
+  only with the account's password, verified like login (scrypt, the login rate bucket, the dummy-hash timing guard) but NEVER the login re-hash step
+  (auth/routes.js:115-116 bumps `token_version`, which would sign out the web view mid-pairing) (gate r1
   W7: a session cookie alone, e.g. stolen by any script injection, must not mint a credential that outlives logout). The app
   asks for the password in a NATIVE prompt and posts it with the web view's cookies; it never crosses the JS bridge. Requires
   `Content-Type: application/json`. `name` 1..64 chars, `platform` enum `ios` (add-only). At most 20 live tokens per user
@@ -125,7 +126,7 @@ the contract this plan commits.
 - **Backup**: `device_tokens` is NOT in the bundle (the `push_subscriptions` precedent, sqlite.js:208-219, "secrets don't ride
   bundles"); a restore drops the rows by cascade, so every device re-pairs. No backup-exclusion census exists, so add a test:
   export a bundle from a database with a paired device and assert no `token_hash`, no `ftd_`, and no `device_tokens` key
-  anywhere in it. `users.device_epoch` rides the bundle like `token_version` does (the restore code then bumps it).
+  anywhere in it. `users.device_epoch` is NOT in the bundle either (no bundle schema change): the device rows go with the users on a restore.
 - **Settings**: Account (setup.html `#account-box`, `initAccountSection` setup.js:3830) gains a "Devices" row: each device's
   name, "added <date>", "last used <relative>", and a Remove button with a confirm. Shown to every signed-in user, browser
   included (it is where a lost phone is cut off from a laptop). The Users panel's per-user detail shows the same list with Remove
@@ -169,7 +170,12 @@ the contract this plan commits.
   aac / mp3 / alac / flac / ac3 / eac3 / pcm (ALAC and FLAC stay lossless). Otherwise a cached transcode the existing queue can
   make (`TRANSCODE_DIR/<id>.mp4`, `tv-<id>.mp4`); otherwise (ogg / opus / webm with no transcode path, ffmpeg absent, or the
   transcode `failed`, streams.js:264, server.js:3934) the item is not offerable: `409 {error:'not playable on this device'}`,
-  terminal, never a 503 loop. The iOS Root confirms the table on a device before W2 closes (one file per row); anything it
+  terminal, never a 503 loop. The `hvc1` tag is not stored anywhere (ffprobe is asked only for `codec_name`, server.js:2643;
+  TV and music store only `codec`): for an HEVC item, D2 runs a lazy ffprobe of `codec_tag_string` at manifest time, cached in
+  memory by id + fingerprint (NOT a per-item `db.metadata` field and NOT a scan change: LESSONS 9); `hev1` or unknown -> the
+  transcode side. Podcast episodes have no stored codec: decided by file extension only (mp3 / m4a / aac / mp4 served, others
+  not offerable). The builder confirms `queueTranscode` (server.js:1958) works for an item the BROWSER rule plays directly (an
+  MKV with h264 / aac) without changing how the web plays it (`transcodeStatus` read at player.js:5970, 10117). The iOS Root confirms the table on a device before W2 closes (one file per row); anything it
   cannot play moves to the transcode or not-offerable side.
 - `GET /api/offline/file/:kind/:id`: the file the rule picks; a transcode not cached yet -> `503 {error:'transcoding'}` with
   `Retry-After: 60`, and the transcode is queued through the existing queue (never a second ffmpeg path). Every serve of a
@@ -195,7 +201,11 @@ the contract this plan commits.
   `atServer = at + skew`, then clamps to `<= serverNow`. A phone a year ahead or behind therefore compares correctly; the prefs
   clamp alone would let a year-ahead phone beat every laptop write and make a behind phone's real positions "older" forever.
   Residual error = network latency plus any clock change on the phone between `at` and `sentAt` (disclosed in D7). The app
-  never sends a stored `sentAt`; it stamps each retry anew.
+  never sends a stored `sentAt`; it stamps each retry anew. **Progress sync is a normal foreground request whose body is built
+  immediately before it is sent, never an iOS background upload task** (gate r2 NEW-2: a background upload fixes the body,
+  `sentAt` included, when the task is created and iOS may send it hours later, and the server would read that delay as skew and
+  push old events past newer laptop writes). The server refuses a batch whose `sentAt` is more than 5 minutes ahead of server
+  time with `400 {error:'restamp'}`, and the app re-stamps and retries.
 - Per event, in order: resolve + visibility check (hidden / missing -> `{applied:false, reason:'gone'}`); validate numbers
   (finite, >= 0, position <= duration + 1; `durationSec` > 0; `at`, `sentAt` finite); then **newer wins**: apply only when
   `atServer` is strictly later than the stored position's `updatedAt` for that user + item (a null / missing / unparsable
@@ -250,8 +260,10 @@ the contract this plan commits.
   battery / network: offline.js binds its OWN `pagehide` (unsubscribe) and persisted-`pageshow` (re-subscribe, then replace the
   map from the new snapshot) handlers. skin-surface.js's `hostReassert` is private, covers three registries and is bound only
   when a Pocket owner claims (skin-surface.js:729-736), so it is not reused.
-- Adapter: one event per item, so no array support is needed in `fieldOk` (host-adapter.js:54-63). Conformance test
-  (test/unit/native-bridge-contract.test.js) binds every new entry both ways.
+- Adapter: the `lenient` mapping (unknown `state` -> `none`, unknown `error` -> `other`) applies to each `downloadsSnapshot`
+  element as well as to a `download` event; today it applies only to top-level fields (host-adapter.js:120-127), so W4 extends
+  it. `downloadsSnapshot.items` has `maxItems: 10000` in the schema; a longer array is dropped whole (the app never sends one).
+  Conformance test (test/unit/native-bridge-contract.test.js) binds every new entry both ways.
 
 ### D6 The web (only where `host.has('downloads')`; no host = identical DOM, no listeners beyond inert ones)
 - One module (public/js/offline.js) owns the subscription (shared across the page, the v1.384 one-subscription lesson), the
@@ -285,7 +297,7 @@ prompt, the returned token into the Keychain), the header (`Authorization: Beare
 meanings (D1, D3), the 180-day unused expiry, live revocation ending an open download, every D2 / D3 / D4 route with request /
 response examples, the album / season / chapter id rules, the iOS playability table, the fingerprint (source file) and ETag
 (served file) rules, the 5 GB LRU caveat, id = md5(path) (moves read as gone), "gone means remove the copy", the newer-wins rule
-with `at` + `sentAt` and its residual error, and what is not synced (music play counts).
+with `at` + `sentAt` and its residual error (sync is a foreground request built just before sending, never a background upload; `400 restamp`), and what is not synced (music play counts).
 
 ## 4. Waves
 - **W1** D1: migration 37, devices store, gate branch + scope allowlist + census, issue / list / revoke routes, admin routes,
@@ -337,3 +349,5 @@ unlocks them later); the separately found restore gap (user restrictions do not 
 restore drops every restriction: its own fix, ROADMAP Planned > Bugs, security).
 
 Gate: CHANGES r1 @6d23b845 — adversary (plan review)
+
+Gate: CHANGES r2 @67b2b49e — adversary (plan review)
