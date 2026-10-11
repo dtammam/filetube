@@ -23,7 +23,7 @@ on each release; following a pinned `1.4.2` never moves.
 ## Where each check runs (ci slim, 2026-10-11)
 
 Each tree is tested once per lane, not once per trigger:
-- **Pull request:** `ci` (Node 22 and Node 24), `audit`, `secret-scan`, and Visual. This is the merge gate, and it runs on the merge result.
+- **Pull request:** `lint` (once), `ci` (Node 22 in four shards, Node 24 as one whole-suite job), `audit`, `secret-scan`, and Visual. This is the merge gate, and it runs on the merge result.
 - **Push to `main` (after the merge):** no `ci` run (the PR just tested that tree). Only `Publish Docker Image` runs, with a Node 22 `qualify`, to publish `edge`.
 - **Tag `vX.Y.Z`:** `Publish Docker Image` with a Node 22 `qualify` + `audit` + `secret-scan` before `latest` moves.
 - **Local:** Node 22.23.1 only. Node 24 is PR CI's job.

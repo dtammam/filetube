@@ -58,28 +58,21 @@ jobs:
       - name: Dependency audit gate (high/critical fail closed)
         run: npm run audit:check
 
-  # v1.123 T5: lint + token-ratchet + suite across BOTH Node versions the app is
-  # verified on. Was a single Node-22 job whose comment claimed "the only Node
-  # that matters" while the release ceremony (CLAUDE.md) verifies dual-Node 22 +
-  # 24 - the matrix makes CI match the ceremony it contradicted. Node 24's
-  # reporter prints `ℹ`, not `#` (memory: an empty grep is not green).
-  ci:
+  # Lint + UI ratchet, ONCE (ci slim, 2026-10-11): they do not depend on the Node version or
+  # the shard, so they no longer repeat in every suite leg.
+  lint:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        node-version: ['22', '24']
     steps:
-      # fetch-depth 0: ui-exceptions-ratchet.test.js diffs docs/ui-exceptions.json against
-      # the merge-base with origin/main (a shallow clone has no base and would skip it).
+      # fetch-depth 0: ui-exceptions-ratchet diffs docs/ui-exceptions.json against the
+      # merge-base with origin/main (a shallow clone has no base and would skip it).
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - name: Set up Node.js ${{ matrix.node-version }}
+      - name: Set up Node.js 22
         uses: actions/setup-node@v5
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: package-lock.json
 
@@ -96,6 +89,39 @@ jobs:
       - name: UI ratchet
         run: npm run lint:ui
 
+  # The suite, on BOTH Node versions the app is verified on, every PR (production is
+  # node:22-alpine; 24 is the insurance for the upgrade). Node 22 is split into four shards
+  # (`node --test --test-shard=i/4`, by file), Node 24 runs the whole suite as one job
+  # (shard 0). Every test file runs on both Nodes per PR. Local verification is Node 22 only.
+  # Node 24's reporter prints `ℹ`, not `#` (an empty grep is not green).
+  ci:
+    name: ci (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { node-version: '22', shard: 1, label: '22 shard 1/4' }
+          - { node-version: '22', shard: 2, label: '22 shard 2/4' }
+          - { node-version: '22', shard: 3, label: '22 shard 3/4' }
+          - { node-version: '22', shard: 4, label: '22 shard 4/4' }
+          - { node-version: '24', shard: 0, label: '24' }
+    steps:
+      # fetch-depth 0: see the lint job (the ratchet test lives in the suite too).
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
       # v1.47.8: the output is teed to a file and uploaded on failure.
       #
       # WHY: CI failed on `main` (run 338) and PASSED on a commit with a
@@ -109,18 +135,27 @@ jobs:
       # WITHOUT pipefail, so `npm test | tee` would exit with tee's status (0)
       # and a failing suite would report GREEN. That would be strictly worse
       # than the problem this step exists to solve.
+      #
+      # Shard 0 is the whole suite (`npm test`); shards 1-4 are the same command with
+      # `--test-shard=<i>/4`, so the four together run every file exactly once.
       - name: Test
         shell: bash
+        env:
+          SHARD: ${{ matrix.shard }}
         run: |
           set -o pipefail
-          npm test 2>&1 | tee test-output.txt
+          if [ "$SHARD" = "0" ]; then
+            npm test 2>&1 | tee test-output.txt
+          else
+            node --require ./test/helpers/tmp-cleanup.js --test --test-shard="$SHARD/4" test/*/*.test.js 2>&1 | tee test-output.txt
+          fi
 
       - name: Upload test output (on failure)
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           # Matrix-scoped name: upload-artifact@v4 errors on a duplicate name, so
-          # the two Node legs must not both upload `test-output`.
-          name: test-output-node${{ matrix.node-version }}
+          # every leg needs its own (node version + shard).
+          name: test-output-node${{ matrix.node-version }}-shard${{ matrix.shard }}
           path: test-output.txt
           retention-days: 14

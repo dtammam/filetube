@@ -119,8 +119,8 @@ blood more than once. The full guards are in `docs/LESSONS.md` (sections noted):
 Every step between a commit and a release must earn its time (Dean's standing rule, 2026-09-28).
 The **screenshot shuffle** is a named anti-pattern: a check that fails on an INTENDED change and is
 only satisfied by push, wait, fail, download artifacts, commit them, push, wait again. Never create
-one, and never treat a non-required check as a merge gate. Merge on green unit CI (`ci (22)`,
-`ci (24)`, `audit`, `secret-scan`) plus the review gate. **Visual reports, never blocks:** a PR shows
+one, and never treat a non-required check as a merge gate. Merge on green unit CI (`lint`, the four `ci (22 shard i/4)`
+legs, `ci (24)`, `audit`, `secret-scan`) plus the review gate. **Visual reports, never blocks:** a PR shows
 a look change as one comment with crops, and after a merge to main a bot opens and merges a
 baselines-only PR (`docs/RELEASING.md`; Dean's ruling 2026-09-30). A commit that touches only `.md` files or `docs/` takes the fast pre-commit path.
 
