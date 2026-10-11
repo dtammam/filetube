@@ -10,6 +10,9 @@ this page is fixed.
 - **Add-only within v1.** A new message type or a new optional field is fine; renaming or removing anything needs v2.
 - **Both sides ignore what they do not know.** Unknown message types and unknown fields are ignored, never errors.
 - **Fire and forget, web to native.** No web-to-native message waits for a reply; native-to-web news arrives as events.
+- **The host releases every capability request** (orientation lock, hidden status bar, battery and network subscriptions) on
+  every main-frame navigation commit and when the web view goes away. A page restored from the back-forward cache (`pageshow`
+  with `event.persisted`) must re-post every capability request it still holds.
 - **Only the configured server.** Native accepts a message only from the main frame whose security origin equals the server
   origin the user configured.
 
