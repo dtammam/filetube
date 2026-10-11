@@ -210,9 +210,9 @@ other stamp revalidates; the CSS bust chain), test/integration/static-assets-she
 `no-cache`, the login shell's files load signed out, root files keep `no-cache`).
 
 ### Suites
-\`npm test\` on Node 22.23.1 (local), on the W4 tree: \`# tests 12302 / # pass 12292 / # fail 0 / # skipped 10\`, exit 0. (The first full
-run, before the lock updates, was \`# tests 12300 / # pass 12287 / # fail 3\`: the cleanup shell's exact \`<script src>\` lock, the
-DIAGRAMS registration count, and the music read census - each an intended change, updated with its intent kept.) \`npm run lint:ui\`:
+`npm test` on Node 22.23.1 (local), on the W4 tree: `# tests 12302 / # pass 12292 / # fail 0 / # skipped 10`, exit 0. (The first full
+run, before the lock updates, was `# tests 12300 / # pass 12287 / # fail 3`: the cleanup shell's exact `<script src>` lock, the
+DIAGRAMS registration count, and the music read census - each an intended change, updated with its intent kept.) `npm run lint:ui`:
 OK (debt equals docs/ui-exceptions.json); eslint clean on every changed file. Node 24 runs in PR CI.
 
 ### Binding (my own sweep, before the gate)
