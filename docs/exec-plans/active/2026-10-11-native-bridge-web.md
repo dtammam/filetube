@@ -15,11 +15,10 @@ gate: not yet run (FULL: adversary, qa, security-brief - a new public route and 
 Version note: take the next free minor at release time (CI slim ships with no version of its own).
 
 Norms: no em dashes; stage files by name; `git commit -F <file>`; never pipe a commit or push; fnm Node 22.23.1 PATH before any
-node/npm/git command (local verification is Node 22 only once CI slim has merged; until then follow AGENTS.md as it stands);
-never `--no-verify`; never self-merge.
+node/npm/git command (local verification is Node 22.23.1, AGENTS.md:160); never `--no-verify`; never self-merge.
 
 Read first: AGENTS.md; docs/references/ios-host.md, native-bridge.md and native-bridge.v1.schema.json (the contract: follow it
-exactly; if it is wrong, STOP and ask, never improvise a message); docs/LESSONS.md sections 0, 1, 2, 6, 10, 12; the wheel
+exactly; if it is wrong, STOP and ask, never improvise a message); docs/LESSONS.md sections 0, 1, 2, 3 (censuses), 4 (lifecycle: D5's exits), 6, 8 (iOS / WebKit), 10, 12; the wheel
 haptics plan docs/exec-plans/active/2026-09-03-wheel-haptics.md (why the switch-tracking trick exists).
 
 ## Step 0 (builder)
@@ -43,8 +42,10 @@ nothing changes at all.
   every call is a no-op returning false. It must load before any script that uses it: prefer loading it from an existing script
   every shell already loads (common.js's early section or a `<script>` that all shells share) and say which; if a new script tag
   in every shell is unavoidable, update the shell censuses deliberately (app-look-l2 byte-identical inline script, shell-list
-  tests). On load with a host: `post('host.hello', { web: { version } })` with the FileTube version the page already knows (find
-  where; if none, the server injects it).
+  tests) AND allowlist the new script for the logged-out shells in `lib/auth/gate.js` `ALLOW_EXACT` (~:108-141; login.html and
+  welcome.html load the shared scripts, and a script the gate blocks broke login once: gate.js ~:124-128). On load with a host:
+  `post('host.hello', { web: { version } })` with the version from `appVersionString()` (common.js ~:6750; the server's
+  `APP_VERSION`, server.js ~:188).
 - **D2 Conformance**: test/unit/native-bridge-contract.test.js parses docs/references/native-bridge.v1.schema.json and asserts
   the adapter's message table has exactly the schema's web-to-native types, each with the schema's required fields and allowed
   values, and the event table matches native-to-web types (no JSON-schema dependency; read the JSON and compare). A schema edit
@@ -52,8 +53,10 @@ nothing changes at all.
 - **D3 Fake host**: test/helpers/fake-host.js installs a `window.FileTubeHost` (configurable capabilities) that records every
   `post` and can `emit(detail)` events; the feature tests below use it. No-host tests assert the browser path is byte-for-byte the
   old behaviour (same DOM classes, same listeners, same calls).
-- **D4 `GET /api/host-info`** (lib/ or server.js where the public routes live, BEFORE the login gate): `{ app: 'filetube',
-  version: <package.json version>, bridge: { min: 1, max: 1 } }`, `Cache-Control: no-store`, nothing else (no user data, no
+- **D4 `GET /api/host-info`**: register it with the other routes (NOT before `app.use(authGate)`, server.js ~:3157:
+  test/integration/route-census.test.js fails a route registered ahead of the gate) and make it reachable logged out by adding
+  `/api/host-info` (GET) to `ALLOW_EXACT` in lib/auth/gate.js (~:108-141; no `/api/*` GET is there today, so update
+  route-census / any gate census deliberately). Body: `{ app: 'filetube', version: APP_VERSION, bridge: { min: 1, max: 1 } }`, `Cache-Control: no-store`, nothing else (no user data, no
   paths, no config). Integration test: reachable logged out, exact shape (validated against the schema's `hostInfo`), and no
   extra keys.
 - **D5 Pocket upright = rotation lock**: in music-skins.js / skin-surface.js, find the one seam where the FULL Pocket player
@@ -62,24 +65,39 @@ nothing changes at all.
   ~612): `orientation.lock { orientation: 'portrait' }` on show, `orientation.unlock` on every exit (idempotent: a double unlock is
   harmless; never leave it locked after Pocket closes). Sideways on: never lock. The CSS upright drawing (`html.pk-upright`,
   `markUprightClass`, `turnOf`) stays untouched: it is the browser path and harmless in the app (the screen never turns).
-- **D6 Haptic wheel**: skin-surface.js WHEEL HAPTICS (~2836-3150). With `host.has('haptics')`: `hapticCapable()` returns false so
-  the switch "ghost" never mounts (no arming cover, no body-scroll carve-out from it); the DETENT maths stays exactly as it is
-  (the same `st.detentDeg` / step, the same `HAPTIC_MIN_MS` throttle, drop-never-queue) and where it sets `flip = true` today,
-  post `haptics.tick { style: 'detent' }` instead; `hapticLetterTick` posts `{ style: 'letter' }`; the gesture start
-  (`hapticGestureStart`) posts `haptics.prepare`. Split the code so "a detent was crossed" is one function both outputs share
-  (LESSONS 12: one helper); the wheel's input, scrolling, selection and volume / seek behaviour must be identical with and without
-  the host (tests with the fake host prove the ticks fire per detent at the throttle and that no ghost element exists).
-- **D7 Feed snap**: feed.js `setActive` (a new card becomes active after a swipe) posts `haptics.tick { style: 'snap' }` when
-  `host.has('haptics')`; not on the first card of a session, not on a programmatic re-activation (a rebuild), once per change.
-- **D8 Battery**: find Pocket's status-bar battery (skin-surface.js status bar ~2015, the skins' status-bar markup and CSS). With
-  `host.has('battery')`: `battery.subscribe` when a status bar becomes visible, `battery.unsubscribe` when none is, and draw the
-  `battery` event's `level` (rounded, the skin's existing glyph / fill) and `state` (a charging mark if the skin has one; if none,
-  level only). `level: null` keeps today's drawing. No host: today's drawing exactly.
+- **D6 Haptic wheel**: skin-surface.js WHEEL HAPTICS (~:2836-3150) and the centre hold (~:1919, ~:1930). Today every haptic
+  function opens with `if (!wheelGhost || !wheelGhost.isConnected) return;` (`hapticGestureStart` ~:3071, `hapticOnMove` ~:3106,
+  `hapticLetterTick` ~:3135), and the ghost mounts only when `hapticCapable()` (~:2887) is true. With `host.has('haptics')`:
+  `hapticCapable()` returns false (the ghost never mounts: no arming cover, no body-scroll carve-out from it) and a HOST BRANCH
+  runs at the top of each of those functions, BEFORE the ghost guard:
+  - gesture start: reset the same per-gesture state the ghost path resets (`st.hapAccum`, `st.hapLast`) and post
+    `haptics.prepare`;
+  - move: count detents from the accumulated rotation with the SAME step (`st.detentDeg`, default `HAPTIC_STEP_DEG` 3.75) and the
+    SAME `HAPTIC_MIN_MS` throttle (drop, never queue) for EVERY engine (ghost and sweep alike: the sweep path has no detent
+    counter today, so the host branch owns the one counter), and post `haptics.tick { style: 'detent' }` per counted detent; in
+    LETTER mode post nothing per degree (the letter tick covers it, as today);
+  - letter crossing: `{ style: 'letter' }`;
+  - the centre hold sites (~:1919, ~:1930) post `{ style: 'detent' }` (one firm tick), not 'letter';
+  - the user's Buzz setting off (`st.buzz === false`): post no ticks at all (prepare is harmless).
+  Put "a detent was crossed" in ONE helper the ghost path and the host branch share (LESSONS 12). The wheel's input, scrolling,
+  selection and volume / seek behaviour must be identical with and without the host; fake-host tests prove: ticks fire per detent
+  at the throttle on both engines, none with Buzz off, the centre hold ticks once, and no ghost element exists.
+- **D7 Feed snap**: feed.js `setActive(index, early)` (~:2165) has no source argument, and programmatic scrolls (the countdown
+  auto-advance ~:1176-1177, "Hide this" ~:1927, ~:2614) reach it through the same observer as a swipe. Tick ONLY for a user
+  swipe: record the time of the last touch / pointer / wheel input on the stack, and post `haptics.tick { style: 'snap' }` when
+  `host.has('haptics')`, the active index CHANGED from the last ticked one, and a user input happened within ~1 s. No tick on
+  the first card, on auto-advance, on Hide, on a rebuild, or when a quarter-swipe springs back to the same card.
+- **D8 Battery**: the battery is `.ip-batt` (music-skins.js ~:248, the classic skin's status bar) drawn from the CSS variable
+  `--pk-batt-level` (style.css ~:8875, a static 82% today; drawn ~:8952-8953). With `host.has('battery')`: `battery.subscribe`
+  when a status bar with a battery becomes visible, `battery.unsubscribe` when none is, and set `--pk-batt-level` from the
+  `battery` event's `level` (clamped 0..1, rounded to a percent). No skin has a charging mark: level only (state is ignored for
+  drawing in v1). `level: null` keeps today's drawing. No host: today's drawing exactly.
 - **D9 Server address row**: with `host.has('serverSettings')`, Settings shows one row "Server address" (find the most fitting
   existing page, e.g. SYSTEM or ACCOUNT; follow the settings censuses) whose tap posts `host.openServerSettings`. Absent
   otherwise (the census must accept a host-only row; say how).
-- **D10 Standalone checks**: grep `navigator.standalone` and `display-mode: standalone` (common.js, player.js, setup.js,
-  pocket-lighting.js at least). In the app neither is true. For each use, decide whether the hosted app should behave like the
+- **D10 Standalone checks**: grep `navigator.standalone` and `display-mode: standalone` (common.js ~:8541, player.js ~:4670,
+  setup.js ~:1809 and ~:1901, pocket-lighting.js ~:130; public/errors.html ~:54 does not load common.js, so the adapter cannot
+  reach it: name it in the ledger as out of reach). In the app neither is true. For each use, decide whether the hosted app should behave like the
   home-screen app (most likely yes: it is an installed full-screen app); route that decision through one adapter helper
   (`FileTube.host.appLike()` = standalone OR host present) only where the answer is yes, and list every use with its decision
   in the ledger. Browser results unchanged.
@@ -103,6 +121,11 @@ route leaking anything beyond its three keys or sitting behind / leaking past au
 docs/RELEASING.md and AGENTS.md exactly; the plan closed in the same PR (`node scripts/plan-complete.js
 docs/exec-plans/active/2026-10-11-native-bridge-web.md "Shipped vX.Y.Z" --apply`); ask Dean before `gh pr merge`; shipped = the
 tag's "Publish Docker Image" green; branches deleted remote and local.
+
+Docs kickoff gate (branch docs/ios-host-kickoff, slim, adversary): r1 CHANGES @02ec34d6 - W1 the public route belongs in
+gate.js ALLOW_EXACT (not before authGate), W2 the haptic host branch must run before the ghost guard (and Buzz off, sweep, centre
+hold); S1-S7 (battery seam, Feed snap source, errors.html, Node line, LESSONS list, capability count, two Mac traps). All fixed in
+the follow-up commit; r2 below.
 
 ## 6. Evidence (builder fills)
 - Seams (file:line) for D1, D5 exits, D6, D7, D8, D9:

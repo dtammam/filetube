@@ -22,7 +22,8 @@ tested with a bundled test page (step 9).
   Developer Mode on (iOS asks for a restart). Free installs expire after 7 days: re-run from Xcode.
 - Capabilities / Info.plist: Background Modes > Audio; `UISupportedInterfaceOrientations` lists portrait AND both landscapes
   (the app locks at runtime); `NSLocalNetworkUsageDescription` ("FileTube connects to your own server on your network.");
-  ATS: `NSAllowsLocalNetworking` true (plain-http LAN servers); no `WKAppBoundDomains` (it would break the bridge).
+  ATS: `NSAllowsLocalNetworking` true (plain-http LAN servers; it may not cover a dotted LAN name such as `http://nas.lan`:
+  test on the device and add an `NSExceptionDomains` entry if it fails); no `WKAppBoundDomains` (it would break the bridge).
 - Give the repo the same working norms as FileTube in a short AGENTS.md + CLAUDE.md (plans in docs/exec-plans, stage by
   name, no force-push, never self-merge, report failures verbatim), and a README.
 
@@ -34,7 +35,8 @@ tested with a bundled test page (step 9).
    say so), checks `app == "filetube"` and that `bridge.min...max` includes 1, then saves. This native request is what triggers
    iOS's Local Network prompt for a LAN server: do it here, in the foreground. Clear errors: unreachable, not FileTube, versions
    don't overlap.
-3. **Web view** (`WKWebView` in a `UIViewRepresentable`, or a UIKit root controller - pick what makes step 6 simplest):
+3. **Web view** (`WKWebView` in a `UIViewRepresentable`, or a UIKit root controller - pick what makes step 7 simplest). Set
+   these on the `WKWebViewConfiguration` BEFORE creating the web view (set afterwards they do nothing):
    `allowsInlineMediaPlayback = true`; `mediaTypesRequiringUserActionForPlayback = []`; `allowsPictureInPictureMediaPlayback =
    true`; `allowsAirPlayForMediaPlayback = true`; `scrollView.contentInsetAdjustmentBehavior = .never` and ignore safe areas
    (edge to edge; FileTube's CSS already uses `env(safe-area-inset-*)`); persistent website data store (the login survives
@@ -52,7 +54,9 @@ tested with a bundled test page (step 9).
    `message.frameInfo.isMainFrame` and its security origin equals the configured server's origin, decodes it with `Codable`
    types written from the schema, and ignores unknown types. Native-to-web events: `evaluateJavaScript` of
    `window.dispatchEvent(new CustomEvent('filetube-host', { detail: <json> }))`.
-7. **Orientation**: the root controller's `supportedInterfaceOrientations` returns `.portrait` while locked, `.all` (minus upside
+7. **Orientation**: in a SwiftUI app the root is a `UIHostingController`, which does not ask your views: use a subclassed
+   hosting controller (or `UIApplicationDelegate.application(_:supportedInterfaceOrientationsFor:)` reading the lock state). Its
+   `supportedInterfaceOrientations` returns `.portrait` while locked, `.all` (minus upside
    down) otherwise; on lock / unlock call `setNeedsUpdateOfSupportedInterfaceOrientations()` and, on lock, `requestGeometryUpdate`
    to portrait so a sideways phone turns back at once.
 8. **Haptics**: one `CHHapticEngine` (start on `haptics.prepare` or first tick; restart on its reset / stopped handlers); `tick`

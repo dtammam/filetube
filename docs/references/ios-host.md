@@ -57,8 +57,8 @@ server address, a native bridge adds what the web cannot) and Basecamp's Hotwire
 
 Server address screen and a "can't reach your server" screen; background audio for the existing web player; motion
 permission granted silently (no prompt); autoplay without a tap; picture-in-picture and AirPlay allowed; edge to edge; and
-three bridge capabilities: Pocket locked upright, the haptic wheel (and Feed swipes), and the real battery level in Pocket's
-status bar. The web half: [the native-bridge-web plan](../exec-plans/active/2026-10-11-native-bridge-web.md); the Mac half:
+four bridge capabilities: Pocket locked upright, the haptic wheel (and Feed swipes), the real battery level in Pocket's status
+bar, and a Settings entry that opens the app's server address screen. The web half: [the native-bridge-web plan](../exec-plans/active/2026-10-11-native-bridge-web.md); the Mac half:
 [ios-spike-1.md](ios-spike-1.md).
 
 ## Facts this rests on (checked 2026-10-11; recheck before relying on them)
