@@ -205,3 +205,17 @@ test('the adapter loads twice without replacing the first host object', () => {
   assert.equal(win.FileTube.host, host);
   win.close();
 });
+
+test('post: a null where the schema wants a number is dropped; prototype keys are no event type', () => {
+  const { win, fake, host } = windowWith({});
+  fake.clear();
+  assert.equal(host.post('haptics.tick', { style: 'detent', intensity: null }), false, 'intensity is a number, not nullable');
+  assert.deepEqual(fake.posts, []);
+  for (const k of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+    let called = 0;
+    host.on(k, () => { called++; });
+    fake.emit({ v: 1, type: k, level: 0.5, state: 'full' });
+    assert.equal(called, 0, k);
+  }
+  win.close();
+});

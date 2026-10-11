@@ -597,8 +597,45 @@
     var want = orientOwners.length > 0 && !orientSidewaysOn();
     if (want && !orientLocked) { orientLocked = true; h.post('orientation.lock', { orientation: 'portrait' }); }
     else if (!want) orientUnlock(h);
-    if (orientOwners.length && !orientTimer && typeof window !== 'undefined') orientTimer = window.setInterval(orientApply, 1000);
-    else if (!orientOwners.length && orientTimer) { window.clearInterval(orientTimer); orientTimer = null; }
+    hostPollSync();
+  }
+  // The battery (D8) is the same shape: ONE subscription while ANY engine's status bar shows (two engines can exist at once:
+  // one engine's destroy must not unsubscribe the other's bar), dropped by the same self-heal poll when a bar leaves the page
+  // with no engine call. Each owner is { showing(), draw(level) }; the host's level is kept here and drawn on every owner.
+  var battOwners = [];
+  var battSubbed = false;
+  var battOff = null;
+  var battLevel = null; // the last level the host reported (0..1) or null (unknown: today's drawing)
+  function batteryHost() {
+    var h = (typeof window !== 'undefined' && window.FileTube && window.FileTube.host) || null;
+    return (h && h.has('battery')) ? h : null;
+  }
+  function battApply() {
+    var h = batteryHost();
+    if (!h) return;
+    battOwners = battOwners.filter(function (o) { var on = false; try { on = o.showing(); } catch (_) { on = false; } return on; });
+    if (battOwners.length && !battSubbed) {
+      battSubbed = true;
+      battOff = h.on('battery', function (d) {
+        battLevel = (d && typeof d.level === 'number' && isFinite(d.level)) ? d.level : null;
+        battOwners.forEach(function (o) { o.draw(battLevel); });
+      });
+      h.post('battery.subscribe');
+    } else if (!battOwners.length && battSubbed) {
+      battSubbed = false;
+      if (battOff) { battOff(); battOff = null; }
+      h.post('battery.unsubscribe');
+    }
+    battOwners.forEach(function (o) { o.draw(battLevel); }); // re-applied after every repaint / remount
+    hostPollSync();
+  }
+  function battClaim(owner) { if (battOwners.indexOf(owner) < 0) battOwners.push(owner); battApply(); }
+  function battRelease(owner) { var i = battOwners.indexOf(owner); if (i >= 0) battOwners.splice(i, 1); battApply(); }
+  // ONE 1 s self-heal poll for both registries, running only while either has an owner
+  function hostPollSync() {
+    var need = orientOwners.length > 0 || battOwners.length > 0 || orientLocked || battSubbed;
+    if (need && !orientTimer && typeof window !== 'undefined') orientTimer = window.setInterval(function () { orientApply(); battApply(); }, 1000);
+    else if (!need && orientTimer) { window.clearInterval(orientTimer); orientTimer = null; }
   }
   function orientBindPage() {
     if (orientPageBound || typeof window === 'undefined') return;
@@ -1841,39 +1878,21 @@
     // `showing` = the full player is on the glass; the status-bar battery is drawn only on the Click structure.
     function fullPlayerShowing() { return !!(inMainDoc && bound && panel.isConnected && !panel.hidden && panel.classList.contains('mms-full')); }
     var orientOwner = { showing: fullPlayerShowing };
-    var battSub = false;      // battery.subscribe is out
-    var battOff = null;       // the 'battery' event unsubscribe
-    var battLevel = null;     // the last level the host reported (0..1) or null (unknown: today's drawing)
     var hostWatch = null;     // a MutationObserver on the panel's hidden/class (an exit with no engine call)
-    function batteryHost() {
-      var h = (typeof window !== 'undefined' && window.FileTube && window.FileTube.host) || null;
-      return (h && h.has('battery')) ? h : null;
-    }
     // --pk-batt-level is declared on the .mms-ipod PANEL itself (style.css), which beats a value inherited from html,
     // so the live level is written there (never on .ip-batt i: ipScreen rebuilds it on every repaint). An unknown
     // level (null) removes the inline value, so today's drawing (the static 82%) comes back.
-    function applyBattery() {
+    function drawBattery(level) {
       var target = panel.classList.contains('mms-ipod') ? panel : (panel.querySelector('.mms-ipod') || panel);
-      if (battLevel === null) { target.style.removeProperty('--pk-batt-level'); return; }
-      var pct = Math.round(Math.min(1, Math.max(0, battLevel)) * 100);
+      if (level === null) { target.style.removeProperty('--pk-batt-level'); return; }
+      var pct = Math.round(Math.min(1, Math.max(0, level)) * 100);
       target.style.setProperty('--pk-batt-level', pct + '%');
     }
-    function onBatteryEvent(d) {
-      battLevel = (d && typeof d.level === 'number' && isFinite(d.level)) ? d.level : null;
-      if (battSub) applyBattery();
-    }
-    function batterySync() {
-      var h = batteryHost();
-      if (!h) return;
-      var want = fullPlayerShowing() && !!panel.querySelector('.ip-batt');
-      if (want && !battSub) { battSub = true; battOff = h.on('battery', onBatteryEvent); h.post('battery.subscribe'); }
-      else if (!want && battSub) { battSub = false; if (battOff) { battOff(); battOff = null; } h.post('battery.unsubscribe'); }
-      if (want) applyBattery(); // re-applied after every repaint / remount
-    }
+    var battOwner = { showing: function () { return fullPlayerShowing() && !!panel.querySelector('.ip-batt'); }, draw: drawBattery };
     function hostSync() {
       if (!inMainDoc) return;
       if (orientHost()) { if (fullPlayerShowing()) orientClaim(orientOwner); else orientRelease(orientOwner); }
-      batterySync();
+      if (batteryHost()) { if (battOwner.showing()) battClaim(battOwner); else battRelease(battOwner); }
     }
     function watchHost() {
       if (hostWatch || !inMainDoc) return;
@@ -3581,7 +3600,7 @@
       bound = false;
       // v1.384.0: the host seams die with the surface (bound is false now, so fullPlayerShowing() is false)
       if (hostWatch) { try { hostWatch.disconnect(); } catch (_) { /* gone */ } hostWatch = null; }
-      if (inMainDoc) { orientRelease(orientOwner); batterySync(); }
+      if (inMainDoc) { orientRelease(orientOwner); battRelease(battOwner); }
       // clear the full-screen body class this view may have set (the v1.227 leak lesson - a
       // podcasts<->music swap must never strand the frozen-scroll cover).
       try { doc.body.classList.remove('mms-on'); } catch (_) { /* ignore */ }

@@ -115,3 +115,13 @@ test('D7 (control): WITH the capability the same probe sees the three listeners 
     assert.strictEqual(attached, 3);
   } finally { r.close(); }
 });
+
+test('D7: the FIRST settle is the baseline even with a gesture just made - no tick on the first card', async () => {
+  const r = realm({});
+  try {
+    await start(r);
+    drag(r, -120); // a finger on the stack before anything settled
+    r.show(0);
+    assert.deepStrictEqual(snaps(r), [], 'the first card never ticks');
+  } finally { r.close(); }
+});

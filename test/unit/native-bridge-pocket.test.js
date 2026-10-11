@@ -233,3 +233,21 @@ test('D8: destroy unsubscribes', () => {
     assert.deepStrictEqual(b.fake.of('battery.unsubscribe').length, 1);
   } finally { b.restore(); }
 });
+
+test('D8: two engines share ONE subscription - one engine\'s destroy keeps the other\'s bar subscribed; a bar that leaves the page with no engine call is dropped by the poll', () => {
+  const b = boot({ host: {} });
+  try {
+    const second = b.make('panel2');
+    b.engine.paint(); second.paint();
+    assert.strictEqual(b.fake.of('battery.subscribe').length, 1, 'one subscription for two bars');
+    b.fake.emit({ v: 1, type: 'battery', level: 0.3, state: 'unplugged' });
+    assert.strictEqual(b.sdom.window.document.getElementById('panel2').style.getPropertyValue('--pk-batt-level'), '30%', 'every showing bar is drawn');
+    b.fake.clear();
+    b.engine.destroy();
+    assert.deepStrictEqual(b.fake.of('battery.unsubscribe'), [], 'the other bar is still up: stay subscribed');
+    b.sdom.window.document.getElementById('panel2').remove(); // gone with no engine call at all
+    b.clock.tick(1000);
+    assert.strictEqual(b.fake.of('battery.unsubscribe').length, 1, 'the poll drops the subscription once no bar is left');
+    assert.strictEqual(b.clock.live(), 0, 'and stops');
+  } finally { b.restore(); }
+});
