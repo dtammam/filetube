@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/dtammam/filetube/docs/references/native-bridge.v1.schema.json",
+  "title": "FileTube native bridge, contract v1",
+  "description": "The authority for the web UI <-> native host contract (docs/references/native-bridge.md explains it). Add-only within v1.",
+  "$defs": {
+    "host": {
+      "description": "window.FileTubeHost as injected by a native host before page scripts run.",
+      "type": "object",
+      "required": ["bridge", "app", "capabilities"],
+      "properties": {
+        "bridge": { "const": 1 },
+        "app": {
+          "type": "object",
+          "required": ["name", "version"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "version": { "type": "string", "minLength": 1 },
+            "build": { "type": "string" }
+          }
+        },
+        "platform": { "type": "string" },
+        "capabilities": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings"] }
+        }
+      }
+    },
+    "webToNative": {
+      "description": "A message the web posts through FileTubeHost.post.",
+      "type": "object",
+      "required": ["v", "type"],
+      "properties": { "v": { "const": 1 } },
+      "oneOf": [
+        { "properties": { "type": { "const": "host.hello" }, "web": { "type": "object", "required": ["version"], "properties": { "version": { "type": "string" } } } }, "required": ["web"] },
+        { "properties": { "type": { "const": "orientation.lock" }, "orientation": { "const": "portrait" } }, "required": ["orientation"] },
+        { "properties": { "type": { "const": "orientation.unlock" } } },
+        { "properties": { "type": { "const": "haptics.prepare" } } },
+        { "properties": { "type": { "const": "haptics.tick" }, "style": { "enum": ["detent", "letter", "snap"] }, "intensity": { "type": "number", "minimum": 0, "maximum": 1 } }, "required": ["style"] },
+        { "properties": { "type": { "const": "battery.subscribe" } } },
+        { "properties": { "type": { "const": "battery.unsubscribe" } } },
+        { "properties": { "type": { "const": "host.openServerSettings" } } }
+      ]
+    },
+    "nativeToWeb": {
+      "description": "event.detail of a 'filetube-host' CustomEvent native dispatches on window.",
+      "type": "object",
+      "required": ["v", "type"],
+      "properties": { "v": { "const": 1 } },
+      "oneOf": [
+        {
+          "properties": {
+            "type": { "const": "battery" },
+            "level": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+            "state": { "enum": ["unplugged", "charging", "full", "unknown"] }
+          },
+          "required": ["level", "state"]
+        }
+      ]
+    },
+    "hostInfo": {
+      "description": "GET /api/host-info response (public, no login).",
+      "type": "object",
+      "required": ["app", "version", "bridge"],
+      "properties": {
+        "app": { "const": "filetube" },
+        "version": { "type": "string" },
+        "bridge": {
+          "type": "object",
+          "required": ["min", "max"],
+          "properties": { "min": { "type": "integer", "minimum": 1 }, "max": { "type": "integer", "minimum": 1 } }
+        }
+      }
+    }
+  }
+}
