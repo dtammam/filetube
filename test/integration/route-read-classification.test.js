@@ -147,7 +147,9 @@ const READ = {
   '/api/users/:id/avatar': 'NO_CONTENT',
   '/api/users/:id/restrictions': 'ADMIN',
   '/api/users/:id/devices': 'ADMIN', // v1.387.0 offline D1: a user's paired phones (name, platform, dates - never the token or its hash); requireAdmin; proven in device-tokens.test.js
-  '/api/devices': 'OWN_STATE', // v1.387.0 offline D1: the caller's own paired phones (cookie only; a device token is 403); never the token or its hash; proven in device-tokens.test.js
+  '/api/devices': 'OWN_STATE',
+  '/api/offline/manifest': 'GATED', // v1.387.0 offline D2: every item through its kind's visibility wrapper; a hidden or missing single item is a neutral 404, an album / season omits hidden members; proven in offline-manifest.test.js
+  '/api/offline/file/:kind/:id': 'GATED', // v1.387.0 offline D3: the bytes the iOS rule picks, gated like the matching byte route (404 hidden); proven in offline-manifest.test.js // v1.387.0 offline D1: the caller's own paired phones (cookie only; a device token is 403); never the token or its hash; proven in device-tokens.test.js
   '/api/videos': 'GATED',
   '/api/videos/:id': 'GATED',
   '/api/videos/:id/chapter-snap': 'GATED', // Chapter Snap (2026-09-24): requireModifyLibrary + the single-item 404 (chapter-snap.test.js RBAC)

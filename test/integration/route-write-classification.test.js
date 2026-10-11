@@ -84,6 +84,7 @@ const CLASSIFICATION = {
   'POST /api/queue/pointer': 'personal',
   'POST /api/queue/reorder': 'personal',
   'POST /api/me/settings': 'personal',
+  'POST /api/offline/status': 'personal', // v1.387.0 offline D3: a READ by POST (a batch of up to 500 ids): each item re-checked through its kind's visibility, a hidden item answers 'gone'; writes nothing; proven in offline-manifest.test.js
   'POST /api/devices': 'personal', // v1.387.0 offline D1: pair the caller's OWN phone (cookie + the account password; a device token is 403); proven in device-tokens.test.js
   'DELETE /api/devices/:id': 'personal', // v1.387.0 offline D1: revoke the caller's OWN phone (another user's id is a 404)
   'POST /api/me/avatar': 'personal', // v1.82: self-service profile photo (own state)
@@ -371,6 +372,7 @@ const VISIBILITY = {
   'POST /api/queue/pointer': 'personal',
   'POST /api/queue/reorder': 'personal',
   'POST /api/me/settings': 'personal',
+  'POST /api/offline/status': 'enforced', // v1.387.0 offline D3: every item through its kind's visibility wrapper (hidden = 'gone', the restriction wins on the phone too)
   'POST /api/devices': 'personal', // v1.387.0: the caller's own phone; no library item addressed
   'DELETE /api/devices/:id': 'personal', // v1.387.0: the caller's own phone; no library item addressed
   'POST /api/me/avatar': 'personal',

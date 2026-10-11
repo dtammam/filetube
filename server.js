@@ -4621,7 +4621,7 @@ function foldersOverlap(a, b) {
 }
 
 const tvRoutes = require('./lib/tv/routes'); // Wave 7b S4: the module's require sits at its call site so parallel slices never touch the same hunk
-tvRoutes.registerRoutes(app, {
+const tvRouteHandles = tvRoutes.registerRoutes(app, {
   DATA_DIR,
   TRANSCODE_CRF,
   TRANSCODE_DIR, // the SHARED transcode cache the tv renditions + sidecars live in
@@ -4658,6 +4658,46 @@ tvRoutes.registerRoutes(app, {
   videoQuery,
   visibleConfigRoots,
   visibleTvEpisodes, // shared with GET /api/search
+});
+
+// ---- v1.387.0 offline playback (plan D2 + D3 + D4): the manifest, the file route, status, progress sync.
+// lib/offline/routes.js owns the bodies; every item resolves through the visibility wrappers above. The
+// HEVC codec TAG is not stored anywhere (the scan asks ffprobe only for codec_name), so the manifest runs a
+// lazy, cached, single-flight ffprobe for it (never a per-item db.metadata field, LESSONS 9); a probe that
+// cannot answer reads as "unknown" and the item takes the transcode side.
+function probeHevcTag(filePath) {
+  return new Promise((resolve) => {
+    if (!ffmpegAvailable) return resolve(null);
+    const args = ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name,codec_tag_string', '-of', 'json', filePath];
+    execFile('ffprobe', args, { timeout: 15000, killSignal: 'SIGKILL', maxBuffer: 1024 * 1024 }, (err, stdout) => {
+      if (err) return resolve(null);
+      try {
+        const j = JSON.parse(stdout);
+        const s = Array.isArray(j.streams) && j.streams[0];
+        resolve(s && typeof s.codec_tag_string === 'string' ? s.codec_tag_string.toLowerCase() : null);
+      } catch { resolve(null); }
+    });
+  });
+}
+const offlineRoutes = require('./lib/offline/routes');
+offlineRoutes.registerRoutes(app, {
+  fs, path, mime,
+  getCachedDatabase, musicDb, tvDb, podcastsDb, userStore,
+  mediaVisibleTo, trackVisibleTo, podcastEpisodeVisibleTo, tvEpisodeVisibleTo,
+  projectedLibraryTracks,
+  effectiveProgress, effectiveMusicProgress,
+  resolveItemChapters,
+  findSubtitleSidecar: (filePath) => subtitles.findSubtitleSidecar(filePath),
+  transcodedPath, queueTranscode,
+  tvRenditionPath: tvRouteHandles.tvRenditionPath, queueTvTranscode: tvRouteHandles.queueTvTranscode,
+  ffmpegIsAvailable: () => ffmpegAvailable, // LIVE reader (the boot probe flips it later)
+  markServed,
+  // The /episode route's own confinement: the podcasts root is read the way that route reads it.
+  podcastEpisodeConfined: (ep) => podcasts.isConfinedUnderRoot(ep.filePath, podcasts.resolvePodcastsRoot(null, { dataDir: DATA_DIR })),
+  probeHevcTag,
+  podcastContentTypes: podcasts.CONTENT_TYPES,
+  musicContentTypes: musicRoutes.MUSIC_CONTENT_TYPES,
+  tvContentTypes: tvRouteHandles.TV_CONTENT_TYPES,
 });
 
 // The visible-episode array for the requester (the SINGLE visibility decision).
@@ -7763,6 +7803,7 @@ module.exports = {
   TRANSCODE_CACHE_MAX_BYTES,
   TRANSCODE_CRF,
   TRANSCODE_DIR,
+  recentlyServed, // v1.387.0: tests assert the offline file route marks the served file live (LRU protection)
   VIDEO_EXTENSIONS,
   AUDIO_EXTENSIONS,
   TRANSCODE_EXTENSIONS,

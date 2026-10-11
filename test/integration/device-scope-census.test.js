@@ -37,6 +37,9 @@ const EXPECTED_REACHABLE = [
   'GET /tvposter/:showId',
   'GET /podcastart/:subId',
   'GET /api/subtitles/:id',
+  'GET /api/offline/manifest',
+  'GET /api/offline/file/:kind/:id',
+  'POST /api/offline/status',
 ].sort();
 
 function liveRoutes() {
@@ -74,7 +77,7 @@ test('NO DEAD PATTERN: every allowlist entry names a live route, spelled exactly
   assert.deepStrictEqual([...DEVICE_SCOPE].sort(), EXPECTED_REACHABLE, 'the allowlist and the expected set are one list');
 });
 
-test('NOTHING THAT WRITES: no mutating route is in scope (the offline progress sync, plan D4, is the one exception and lands in W3)', () => {
+test('NOTHING THAT WRITES: the only non-GET routes in scope are the offline status check (a read by POST) and, from W3, the offline progress sync (plan D4)', () => {
   const writes = DEVICE_SCOPE.filter((e) => !e.startsWith('GET '));
-  assert.deepStrictEqual(writes, []);
+  assert.deepStrictEqual(writes, ['POST /api/offline/status']);
 });
