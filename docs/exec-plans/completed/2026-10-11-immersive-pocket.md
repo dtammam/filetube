@@ -3,11 +3,11 @@ plan: immersive-pocket
 harness: v2 · full
 branch: feat/v1.385.0-immersive-pocket
 anchor: spec
-status: Gate round 2 (r1 fixes applied)
+status: Shipped v1.385.0
 next: delta re-confirm with the same seats, then release
 design: the iOS Root's contract proposal (2026-10-11), confirmed by Dean to the FileTube Root ("Yes, all in one release"). Base main = v1.384.0.
 builder: standard (the contract shape and every seam are fixed here, on top of v1.384.0's mapped registry)
-gate: not yet run (FULL: adversary, qa, security-brief - a contract change and native-facing calls)
+gate: closed r2 - adversary, qa, security-brief APPROVED @77055344
 ---
 
 # v1.385.0: immersive Pocket - iOS's status bar hidden in Pocket, Pocket's own bar shows time, battery and connection
@@ -101,5 +101,8 @@ re-pin the contract and announce the two capabilities.
 Signal bars (no iOS API); anything native; changing the PWA; a clock outside Pocket.
 
 Gate: APPROVED r1 @8d1d31ed — security-brief
+Gate: APPROVED r2 @77055344 — security-brief
 Gate: APPROVED r1 @8d1d31ed — qa
 Gate: CHANGES r1 @8d1d31ed — adversary
+Gate: APPROVED r2 @77055344 — qa
+Gate: APPROVED r2 @77055344 — adversary
