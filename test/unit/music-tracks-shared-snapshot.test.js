@@ -122,3 +122,15 @@ test('readPartShared refuses a part that is not a map', () => {
   assert.throws(() => store.readPartShared('folders'), /needs a map part/);
   assert.throws(() => store.readPartShared('nope'), /needs a map part/);
 });
+
+test('a read INSIDE a transaction is never cached: rollback, then a committed write that lands on the same counter value', () => {
+  store.readPartShared('tracks');
+  adapter.begin();
+  store.parts.tracks.set('c', trk('c')); // the counter moves to G+1 inside the transaction
+  assert.ok(store.readPartShared('tracks').c, 'the transaction sees its own row');
+  adapter.rollback(); // back to G
+  store.parts.tracks.set('d', trk('d')); // a committed write: the counter is G+1 again - the value the in-transaction read saw
+  const after = store.readPartShared('tracks'); // no read in between: a cached in-transaction snapshot would answer here
+  assert.ok(after.d, 'the committed row is there');
+  assert.ok(!after.c, 'the rolled-back row never comes back from a cache');
+});

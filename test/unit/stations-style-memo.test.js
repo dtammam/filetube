@@ -53,3 +53,11 @@ test('topN equals sort-then-slice for a total order (ties on the date broken by 
     assert.deepStrictEqual(stations.topN(xs, cmp, n).map((x) => x.id), xs.slice().sort(cmp).slice(0, n).map((x) => x.id), 'n=' + n);
   }
 });
+
+test('a PLAIN (unfrozen) track edited in place between builds is matched on its new text (only frozen tracks are memoised)', () => {
+  const plain = list(200);
+  const lofi = (xs) => strip(stations.buildStations(xs, user)).find((s) => s.key === 's:lofi');
+  assert.ok(lofi(plain).members.includes('t0'));
+  Object.assign(plain[0], { title: 'plain words 0', album: 'nothing', genre: 'Classical', folderName: 'Z' });
+  assert.ok(!lofi(plain).members.includes('t0'), 'the edit is seen');
+});
