@@ -4,7 +4,7 @@ harness: v2 · full
 branch: perf/v1.386.0-speed-pass
 anchor: outcome
 status: Building
-next: W4 close-out (after numbers, device checks), then the FULL gate
+next: the FULL gate (adversary, qa, security-brief) on this sha
 design: Dean's friction report (2026-10-11) and the Root's first read; measure-first. Base main = v1.385.0.
 builder: smart (an open diagnosis: measure, decide the cause, then fix; shared caching rules touch every page)
 gate: not yet run (FULL: adversary, qa - caching mistakes ship stale code to every device)
@@ -134,6 +134,90 @@ docs/exec-plans/active/2026-10-11-speed-pass.md "Shipped vX.Y.Z" --apply`); ask 
   compares every sort and grouping).
 - **JSON compression** (lib/jsonCompression.js): a GET's JSON 200 of 8 KB or more goes out brotli/gzip; Express's ETag and
   304 are untouched.
+
+### W4: after (HEAD of perf/v1.386.0-speed-pass, the same instruments)
+
+Browser (tools/speed-proof/results/after-browser.jsonl; the Coil pick rows: before had 0 failed reps too):
+
+| engine | network | open | Home drawn (ms) | last main-thread stall ends (ms) | requests reaching the server (200 / 304) | bytes over the wire | music API server ms (sum) | all server ms (sum) |
+|---|---|---|---|---|---|---|---|---|
+| chromium | home (4 ms RTT, 300 Mbit/s) | cold | 640 | 644 | 144 / 1 | 3.07 MB | 767 | 1707 |
+| chromium | home (4 ms RTT, 300 Mbit/s) | warm | 585 | 569 | 0 / 22 | 7 KB | 730 | 1219 |
+| chromium | vpn (80 ms RTT, 20 Mbit/s) | cold | 1401 | 0 | 142 / 1 | 3.03 MB | 777 | 1054 |
+| chromium | vpn (80 ms RTT, 20 Mbit/s) | warm | 894 | 911 | 0 / 22 | 7 KB | 585 | 924 |
+| webkit | home (4 ms RTT, 300 Mbit/s) | cold | 742 | 778 | 104 / 0 | 2.44 MB | 698 | 1347 |
+| webkit | home (4 ms RTT, 300 Mbit/s) | warm | 746 | 772 | 103 / 0 | 2.44 MB | 647 | 1257 |
+| webkit | vpn (80 ms RTT, 20 Mbit/s) | cold | 1520 | 1528 | 103 / 0 | 2.44 MB | 875 | 1507 |
+| webkit | vpn (80 ms RTT, 20 Mbit/s) | warm | 1411 | 1421 | 103 / 0 | 2.44 MB | 567 | 1137 |
+
+| engine | network | pick | tap -> Coil shown (ms) | Coil shown WITHOUT its photos (ms) | photos arrive after tap (ms) | photo bytes this pick | failed reps |
+|---|---|---|---|---|---|---|---|
+| chromium | home | cold | 23 | 0 | -30 | 0 KB | 0 |
+| chromium | home | warm | 24 | 0 | -34 | 0 KB | 0 |
+| chromium | vpn | cold | 176 | 0 | 145 | 360 KB | 0 |
+| chromium | vpn | warm | 27 | 0 | -26 | 0 KB | 0 |
+| webkit | home | cold | 9 | 0 | -67 | 0 KB | 0 |
+| webkit | home | warm | 8 | 0 | -63 | 0 KB | 0 |
+| webkit | vpn | cold | 158 | 0 | 126 | 125 KB | 0 |
+| webkit | vpn | warm | 160 | 0 | 126 | 125 KB | 0 |
+
+Server cost per call, 23,000 tracks, median of 5 sequential requests on loopback (results/before-api.jsonl, after-api.jsonl;
+"after" bytes are brotli when the browser accepts it):
+
+| call | server ms before | after | on the wire before | after |
+|---|---|---|---|---|
+| `/api/music/artists?limit=12&sort=newest` | 432 | 72 | 4 KB | 4 KB |
+| `/api/music/albums?limit=12&sort=newest` | 349 | 57 | 3 KB | 3 KB |
+| `/api/music?filter=recent-listening&limit=60` | 297 | 32 | 44 B | 44 B |
+| `/api/music/stations` | 659 | 154 | 6 KB | 6 KB |
+| `/api/music?sort=newest&limit=1000` | 374 | 123 | 524 KB | 41 KB |
+| `/api/music/albums?limit=10000&sort=title-asc` | 598 | 118 | 566 KB | 112 KB |
+| `/api/music/artists?limit=10000&sort=title-asc` | 466 | 62 | 41 KB | 11 KB |
+| `/api/music?limit=1` | 386 | 90 | 489 B | 489 B |
+| `/api/music?sort=title-asc&limit=5000&offset=0` | 3292 | 264 | 2.61 MB | 339 KB |
+| `/api/music?sort=title-asc&limit=5000&offset=20000` | 3080 | 190 | 1.56 MB | 201 KB |
+| `/api/music/albums?sort=title-asc&limit=5000&offset=0` | 500 | 117 | 566 KB | 112 KB |
+| `/api/music/artists?sort=title-asc&limit=5000&offset=0` | 353 | 64 | 41 KB | 11 KB |
+| `/api/music?filter=recent-listening&include=finished&limit=200` | 273 | 30 | 45 B | 45 B |
+| `/api/liked?limit=1` | 239 | 3 | 43 B | 43 B |
+| `/api/queue` | 236 | 3 | 46 B | 46 B |
+| `/api/config` | 2 | 2 | 139 B | 139 B |
+| `/api/history?limit=1` | 2 | 2 | 43 B | 43 B |
+| `/api/subscriptions/health` | 2 | 3 | 163 B | 163 B |
+| `/api/watch-later/ids` | 2 | 2 | 10 B | 10 B |
+| `/albumart/<id>?s=256 (x12)` | 476 | 3 | - | - |
+
+Read together (copied from the tables above):
+- The Coil is never shown without its photos: 0 ms in all 8 cells (was 4-259 ms; 136-259 ms over the VPN model). Over the VPN
+  a first-ever pick shows 158-176 ms after the tap (the old look stays meanwhile); once cached, 8-27 ms.
+- Home drawn: Chromium 3888 -> 640 ms cold / 3905 -> 585 ms warm at home; 3698 -> 1401 ms cold / 3249 -> 894 ms warm on the VPN
+  model. WebKit 3026 -> 742 / 2958 -> 746 at home, 3766 -> 1520 / 3759 -> 1411 on the VPN model (its warm row re-downloads:
+  see the instrument limits). Server time for one open: 17,590-22,569 ms -> 924-1,707 ms (Chromium, all requests summed).
+- A warm open reaches the server with 0 x 200 + 22 x 304 (the shell, the API reads, /logo) instead of 6 + 49: no static file,
+  font, icon or cover is asked for at all.
+- The cold wire is ~3 MB now and was ~4.6 MB; the remaining bytes are mostly album covers, which now finish inside the window
+  (each cover cost 476 ms of server time before, 3 ms now, so before most were still queued when the window closed).
+
+### The cache-busting proof (plan section 4's most dangerous outcome)
+`tools/speed-proof/cache-bust-proof.js` (results/cache-bust-proof.jsonl): Chromium and WebKit with a PERSISTENT profile.
+Build A is opened, then re-opened (0 requests for the two files: cached); a release (server stopped, icons.js and style.css
+changed to build B, a new server process on the same origin) is followed by an ordinary open: both engines run B for JS AND CSS,
+each file fetched once under its new stamp; an edit on a running server also reaches the next open. 10/10 checks pass.
+Negative control (`SPEED_MUTANT=unversioned`, a year-long cache with no stamp; results/cache-bust-negative-control.jsonl): the 6
+release checks FAIL (both engines stay on build A), so the proof sees the danger it guards. Unit and integration binding:
+test/unit/static-assets.test.js (a census over every shipped static file: immutable only under the hash of its bytes, any
+other stamp revalidates; the CSS bust chain), test/integration/static-assets-shells.test.js (every shell stamped and
+`no-cache`, the login shell's files load signed out, root files keep `no-cache`).
+
+### Suites
+\`npm test\` on Node 22.23.1 (local), on the W4 tree: \`# tests 12302 / # pass 12292 / # fail 0 / # skipped 10\`, exit 0. (The first full
+run, before the lock updates, was \`# tests 12300 / # pass 12287 / # fail 3\`: the cleanup shell's exact \`<script src>\` lock, the
+DIAGRAMS registration count, and the music read census - each an intended change, updated with its intent kept.) \`npm run lint:ui\`:
+OK (debt equals docs/ui-exceptions.json); eslint clean on every changed file. Node 24 runs in PR CI.
+
+### Binding (my own sweep, before the gate)
+20 mutants on the committed tree in a /tmp `git archive` sandbox, each against its test: 18 killed first time; the 2
+survivors (a snapshot cached inside a transaction; the style memo on a mutable track) got tests (1e0db0ee) and are killed.
 
 ## 7. Out of scope
 Offline downloads (docs/references/ios-offline.md, its own plans); anything native; changing how any page looks.

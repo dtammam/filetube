@@ -3664,5 +3664,11 @@
     "date": "2026-10-11",
     "title": "A fuller Pocket in the iPhone app: no second status bar",
     "intent": "Nothing changes in your browser or home-screen app. In the FileTube iPhone app, opening Pocket now hides the phone's own status bar, and Pocket's own bar shows the time, the battery and how you are connected (Wi-Fi, cellular or none), so there is only ever one battery on screen. Swiping back into a page keeps Pocket upright and full screen."
+  },
+  {
+    "version": "1.386.0",
+    "date": "2026-10-11",
+    "title": "A faster FileTube: skins that appear whole, a music library that opens quickly",
+    "intent": "Picking a skin with photos, like the Transparent Coil, now keeps your current look until the new one is ready, so you never see it half drawn. The music library opens much faster on a big collection, at home and away, and pages load quicker because FileTube's own files are kept on your device until an update changes them."
   }
 ]
