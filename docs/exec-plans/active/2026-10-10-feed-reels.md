@@ -192,6 +192,7 @@ its proof numbers) was bound to commits that do not exist on this box and is rep
     consumer renders them as text (verified); the lower-cased index reuse in parseNavToc / parseNcxToc (opf.js:188-238) can
     misalign on length-changing Unicode (labels only, still bounded); K7 a smuggling path closed (summary.moves is server-only,
     api.js:237; Undo's write is parameterized, its item visibility-checked).
+  - Gate: APPROVED r2 @f08854cf - security-brief
   - Gate: CHANGES r1 @f19b6c9f - qa. Suites at f19b6c9f (measured by qa): Node 22.23.1 tests 12154 / pass 12141 / fail 0 /
     skipped 13; Node 24.20.0 the same 12154 / 12141 / 0 / 13; lint 0 errors (6 pre-existing warnings, common.js), lint:ui OK,
     overlay-containment clean. W1: music while reading plays a station's library-CHAPTER track (radio items with source
@@ -205,6 +206,59 @@ its proof numbers) was bound to commits that do not exist on this box and is rep
     numerals ("Chapter Vivid"); S3 a one-file book labels every card with the first TOC entry into that file; S4 the 512-byte
     "worst case" test is not the worst (measured worst 490 bytes, still under the cap); S5 the countdown's aria-label stays "in 2
     seconds" at "Next in 1"; S6 this plan's branch / Step 0 / next fields name the off-box feat/ branch and "no GitHub auth".
+  - Gate: CHANGES r2 @f08854cf - qa. Suites at f08854cf (measured by qa): Node 24.20.0 tests 12168 / pass 12155 / fail 0 /
+    skipped 13; Node 22.23.1 tests 12168 / pass 12150 / fail 5 / skipped 13 under a loaded box (load ~8, other suites running):
+    progress-coalescer AC4.1, music-plays W1 rate bound, api flushPendingProgress, ytdlp-album-cover, ytdlp-playlist-job (timing /
+    fetch failed; none of these files is in the diff) - the 5 files re-run alone: 98 / 98 pass. lint 0 errors (6 pre-existing
+    warnings), lint:ui OK, overlay clean. r1 findings: W1 fixed as prescribed (the player's chapter branch runs before the explicit
+    start; chapter end ends the song; test drives the real libraryAudio shape); W2 fixed; S1, S2, S4, S5, S6 fixed; S3 fixed
+    differently and the fix is NEW W1 below. NEW W1 (K3 b, regression of the S3 fix, excerpt.js chapterLabeler): any file that a
+    nested section entry points into ("Chapter 1: Origins" with "1.1 Early days" -> c1.xhtml#s1, the usual non-fiction nav)
+    is "shared" and gets '' - measured: labels ["", "", "Chapter 3: Plain"] where f19b6c9f gave the chapter names; the card
+    loses its chapter name and the divider. Prescription: keep the nav / NCX depth and let a file's SHALLOWEST entry name it; ''
+    only when several entries at that depth with different labels point into it (a one-file book). Never a wrong name, so it
+    can ship disclosed if the Architect rules so. S1 (new): a Done card come back to loads at its endAt and plays until the first
+    timeupdate (up to ~250 ms of sound past the slice) before the end check pauses it.
+  Gate: CHANGES r2 @f08854cf - adversary
+  - r1 findings at f08854cf, re-measured with my r1 probes: W1 fixed (jsdom: book read, 26% glimpse and back, read on, Done ->
+    words 50, cards 1, the same as without the glimpse; a real swipe 26% -> 70% -> 100% then Done -> cards 2, the podcast's 30 s
+    counted). W2 fixed (45 s whole song with a glimpse -> ["play"]). W3 fixed (Chromium, the r1 probe: Whole song, title at 33 s,
+    Music at 69 s -> ONE "play"). W4 ruled by Dean; feed.js warmNext comment, section 9 and DEVICE-CHECKS now describe a server
+    disk warm, and I find no claim left that the player reuses the bytes. W5 fixed (two tests; M14 and M13 are now killed by them).
+    W6 fixed (N25 killed). S1 fixed (Keep reading -> ["load:m1","close","navigate"]). S3 fixed for a slice that ends inside the
+    file (jsdom: back on a Done card -> v1@900, paused). S5 fixed.
+  - NEW W1 (K3 b, introduced by the S2/qa-S3 fix; qa measured it too): the "shared file -> ''" rule blanks every chapter whose
+    table of contents lists sections inside its own file. Measured: nav "Chapter 1: Basics" (ch1.xhtml) + "1.1 Setup"
+    (ch1.xhtml#s1) + ..., "Chapter 3: Plain" -> labels ["", "", "", "Chapter 3: Plain"] (the split file ch1b inherits the
+    blank). At f19b6c9f the same nav gave the chapter names. Never a wrong name, only a missing one.
+  - NEW W2 (the W1 fix is half unbound): mutant N3 (onIntersect stops setting settledOn[activeIndex] when a swipe settles)
+    survives feed-reels, feed-tiktok, feed-timer, feed-polish-view, music-play-counts, feed-settings, books-opf,
+    books-excerpt and feed-reels-books. A card activated early at 25% is only marked settled by that line, so this is the path
+    of every real swipe. Measured: 4 cards, each reached by 26% -> 70% -> 100%, then Done -> recap cards 4 (real code), 2
+    (N3). No test drives a card that is activated early, then settled, then left.
+  - NEW W3 (the W3 fix is half unbound): mutant N11 (keepGoing never sets FileTube.musicPlayCountHandoff) survives the same
+    nine files. The music.js tests set the handoff themselves, so nothing checks that the Feed sends it. The real-browser
+    probe shows the behaviour works today; without a test, a refactor reverts it silently.
+  - S1 the S3 fix does not cover a slice that ends AT the file's end: in Chromium the fixture's land1 slice (6 -> 60 s) ends with
+    'ended', the player rewinds to 0 (seek log: 59.0, pause 60, seeked 0), so act.ended is true and a 30% glimpse and back
+    reloads at startAt 6 and plays on. Same as r1 for that shape. (If no 'ended' fires, the new branch hands the player
+    startAt = endAt = duration, which player.js resolveExplicitStart turns into 0: a suspicion, not seen in a browser.)
+  - S2 the strict numeral still turns all-caps or all-lowercase real words into chapters: "MIX", "mix", "CD", "DC", "MD", "LI"
+    -> "Chapter MIX" etc. (measured; "Mix", "Civil" stay as written).
+  - S3 more survivors with no test: N8 / N9 / N10 (settleLeave in finishNow, keepGoing, abort - near-equivalent, since a
+    settled swipe clears leftPending at once), N15c (the handoff's finished seed: a whole song finished in the Feed and then
+    handed over can count a second finish in Music), N26b, N27b, N31. Equivalent: N16 (a clip tally is never finished).
+  - S4 (reasoned) for up to 1.5 s after the countdown fires (scrollingTo), onIntersect ignores every change except the
+    target reaching 25%: a user who grabs the stack and swipes the other way is not followed until it expires.
+  - Mutants of the new code: 35 run, 25 killed, 10 survived (N3 N8 N9 N10 N11 N15c N16 N26b N27b N31 as above; all are
+    listed in S3 or the new WARNINGs). Every mutant restored, verified with diff -rq against a pristine archive.
+  - Suites at f08854cf (a /tmp clone): Node 22.23.1 tests 12168, pass 12153, fail 2, skipped 13; Node 24.20.0 tests 12168,
+    pass 12153, fail 2, skipped 13. Both fails are books-api.test.js T6 ("5 pings -> ONE batch transaction": expected 1,
+    actual 0; and the test after it) under load from other seats. That file and its code are not in the diff. Re-runs: the
+    file alone 15/15 pass x3; test/integration/* 2666 tests, 0 fail; the full Node 22.23.1 suite again at low load: 12168
+    tests, 12155 pass, 0 fail, 13 skipped. Load-timing flake, unproven root cause.
+  - To close: NEW W1 has the fix qa prescribed (the shallowest entry names the file; '' only for a one-file book), or it ships
+    disclosed by the Architect's ruling. NEW W2 and W3 each need one test. This would be round 3 (ASK per the gate-pacing norm).
 - Device checks owed:
 
 ## 8. Out of scope
