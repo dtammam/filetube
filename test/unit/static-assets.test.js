@@ -52,6 +52,8 @@ before(async () => {
     '.f{background:url(https://example.com/x.png)}',
   ].join('\n') + '\n' + '/* pad */'.repeat(200));
   write('manifest.webmanifest', '{}');
+  write('js/.secret.js', 'var hidden = 1;');
+  write('assets/.git/config', '[core]');
   assets = createStaticAssets({ publicDir: dir });
   const app = express();
   fellThrough = [];
@@ -80,6 +82,7 @@ test('rewriteHtml stamps scripts, stylesheets and preloads with the hash of the 
   assert.ok(out.includes('<script src="https://cdn.example/x.js"></script>'));
   assert.ok(out.includes('<script src="/js/app.js?already=1"></script>'));
   assert.ok(out.includes('<img src="/assets/skins/board.webp">'));
+  assert.strictEqual(assets.versionOf('/js/.secret.js'), null, 'a dotfile is never stamped');
 });
 
 test('a stylesheet stamps its own url() targets, so a changed image changes the stylesheet hash (the bust chain)', async () => {
@@ -168,7 +171,7 @@ test('a Range request, a traversal, a root file and an unknown file fall through
   fellThrough.length = 0;
   const range = await fetch(base + '/js/app.js', { headers: { Range: 'bytes=0-3' } });
   assert.strictEqual(range.status, 418);
-  for (const p of ['/js/../manifest.webmanifest', '/js/%2e%2e/manifest.webmanifest', '/manifest.webmanifest', '/js/none.js', '/js/', '/js/%E0%A4%A']) {
+  for (const p of ['/js/.secret.js', '/assets/.git/config', '/js/../manifest.webmanifest', '/js/%2e%2e/manifest.webmanifest', '/manifest.webmanifest', '/js/none.js', '/js/', '/js/%E0%A4%A']) {
     const r = await fetch(base + p);
     assert.strictEqual(r.status, 418, p);
   }
