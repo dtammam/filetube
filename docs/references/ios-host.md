@@ -71,3 +71,10 @@ bar, and a Settings entry that opens the app's server address screen. The web ha
   (`WKUIDelegate` device-orientation-and-motion permission).
 - Core Haptics transient events suit a fast wheel; a bridge `postMessage` is a one-way hop of a few milliseconds.
 - iOS builds need macOS and Xcode; cloud macOS runners can build and upload later.
+
+## Addendum 2026-10-11 (v1.385.0): the immersive Pocket, six capabilities
+
+Contract v1 (add-only) grows from four capabilities to six: `statusBar` (the web asks the app to hide and restore iOS's own
+status bar; Pocket hides it while the full player is up) and `network` (the app reports the connection type, which Pocket's
+status bar shows beside the time and the battery, so there are never two batteries). Signal bars are not possible: iOS gives
+apps no public signal-strength API. Details and owners: [native-bridge.md](native-bridge.md) sections 2, 3 and 5.

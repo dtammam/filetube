@@ -809,6 +809,12 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 
 ## Shipped
 
+### v1.385.0 - The immersive Pocket: iOS's status bar hidden in Pocket, with the time and connection in Pocket's own bar (2026-10-11)
+
+- Contract v1 grows by two capabilities (add-only): `statusBar` (hide / show iOS's status bar) and `network` (subscribe / unsubscribe, and a `network` event whose kind field is `connection`, not `type`: the envelope's own `type` is `network`). Docs: native-bridge.md, the schema, ios-host.md addendum.
+- In the app only: opening Pocket hides iOS's status bar; every exit shows it (hide, class reset, destroy, a detached panel, pagehide); Sideways does not block it, a pop-out never hides it. Pocket's bar shows the time (re-drawn on the minute, no per-second timer) and a connection mark (Wi-Fi, cellular, wired, other, none); one shared network subscription. Browsers and the home-screen app: identical DOM, no clock, no mark.
+- Swipe-back (back-forward cache): pagehide releases every hold and a pageshow re-asserts whatever is still wanted (orientation lock, hidden bar, battery and network subscriptions) through one path; this also fixes v1.384.0's battery subscription, which was never re-sent after a swipe-back. Disclosed: signal bars are impossible (no iOS API); the hidden bar, the marks and the swipe-back need the device.
+
 ### v1.384.0 - The web half of the iOS bridge: invisible in every browser (2026-10-11)
 
 - iOS host, web side (contract v1, docs/references/native-bridge.md): `public/js/host-adapter.js` is the one door to the app (no host = silent no-ops; a conformance test binds it to the schema both ways); a public `GET /api/host-info` (app, version, bridge range, nothing else) on the gate allowlist so the app can check a server before sign-in.
