@@ -64,7 +64,7 @@ bar, and a Settings entry that opens the app's server address screen. The web ha
 ## Facts this rests on (checked 2026-10-11; recheck before relying on them)
 
 - Free signing installs on Dean's own iPhone from Xcode: 7-day expiry, Developer Mode on, a few apps, no push. TestFlight needs
-  the paid program ($99/yr); internal testers (up to 100) need no review; builds expire after 90 days; uploads need Xcode 26.
+  the paid program ($99/yr); internal testers (up to 100) need no review; builds expire after 90 days; uploads need Xcode 26 or newer (Dean's Mac runs Xcode 27).
 - `WKWebView` traffic never triggers the Local Network prompt; native requests to a LAN address do (even through an HTTPS name
   that resolves to a home IP), so the app triggers it in the foreground during server setup.
 - Raw gyro / accelerometer need no permission natively, and the app can grant the web page's own motion permission silently

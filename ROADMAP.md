@@ -393,6 +393,7 @@
 
 ### Features
 
+- [ ] **Auto picture-in-picture from an inline video on swipe-home when hosted** _(iOS Root, 2026-10-11)_ - the PiP button and full-screen PiP work in the app; only inline swipe-home does not auto-enter.
 - [ ] **The iOS app (filetube-ios): a host for the web UI** _(Dean, 2026-10-11: committed long-term)_ - decision record docs/references/ios-host.md; contract docs/references/native-bridge.md + native-bridge.v1.schema.json. Spin one: the web half (docs/exec-plans/active/2026-10-11-native-bridge-web.md) and the Mac spike (docs/references/ios-spike-1.md). Later steps, each its own plan: a native audio engine (only if the in-app web player still has gaps), a native Downloads page (offline), APNs push, widgets, the share sheet, CarPlay, an App Store build.
 - [x] **Feed reels and speed (moved out of v1.382.0 by Dean, 2026-10-10)** **Shipped v1.383.0 (2026-10-11).** - auto-advance, the
   next card started at a quarter swipe and warmed, a way to the full item from the title, song clips, music under book cards, book
@@ -807,6 +808,12 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.384.0 - The web half of the iOS bridge: invisible in every browser (2026-10-11)
+
+- iOS host, web side (contract v1, docs/references/native-bridge.md): `public/js/host-adapter.js` is the one door to the app (no host = silent no-ops; a conformance test binds it to the schema both ways); a public `GET /api/host-info` (app, version, bridge range, nothing else) on the gate allowlist so the app can check a server before sign-in.
+- In the app only: Pocket locks portrait while it shows (every exit unlocks; never with Sideways on); real haptic ticks for the click wheel (detent, letter, holds) and Feed swipes; the real battery in Pocket's status bar; Settings > Account > Server address; the installed-app checks (last-page restore, export headers, turn inset) treat the app as installed.
+- The native side (spin one) lives in filetube-ios. Disclosed: the drawn battery width and the lock need the device (jsdom has no cascade or rotation); errors.html and the player's timing-log label are left as they were.
 
 ### CI slim (on top of v1.383.0, 2026-10-11)
 
