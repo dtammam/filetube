@@ -3,8 +3,8 @@ plan: immersive-pocket
 harness: v2 · full
 branch: feat/v1.385.0-immersive-pocket
 anchor: spec
-status: Planned (kickoff 2026-10-11, Opus Root); builder not started
-next: builder Step 0, then W1
+status: Building (W1 + W2 code landed; W3 close-out next)
+next: full suite, W3 close-out, then the gate
 design: the iOS Root's contract proposal (2026-10-11), confirmed by Dean to the FileTube Root ("Yes, all in one release"). Base main = v1.384.0.
 builder: standard (the contract shape and every seam are fixed here, on top of v1.384.0's mapped registry)
 gate: not yet run (FULL: adversary, qa, security-brief - a contract change and native-facing calls)
@@ -36,9 +36,10 @@ Browsers and the PWA: no change at all.
 - Web to native: `statusBar.hide` (no fields; cap `statusBar`): native hides the system status bar now. `statusBar.show` (no
   fields; cap `statusBar`): native restores it. `network.subscribe` (no fields; cap `network`): native sends one `network` event
   now and one per change. `network.unsubscribe` (no fields; cap `network`).
-- Native to web event: `network` with required `type: 'wifi' | 'cellular' | 'wired' | 'other' | 'none'` and optional
-  `constrained: boolean` (Low Data Mode), `expensive: boolean`. The web ignores unknown future values (treats an unknown type as
+- Native to web event: `network` with required `connection: 'wifi' | 'cellular' | 'wired' | 'other' | 'none'` and optional
+  `constrained: boolean` (Low Data Mode), `expensive: boolean`. The web ignores unknown future values (treats an unknown connection as
   'other').
+  Note: field renamed to connection (iOS Root + FileTube Root, 2026-10-11: envelope collision).
 - Owners (native-bridge.md section 5): statusBar = web decides when (Pocket shown / not), native enforces; network = native owns,
   web displays.
 - Native semantics (the app's, document them): like orientation and battery, both are released by the host on every main-frame
@@ -55,7 +56,7 @@ Browsers and the PWA: no change at all.
 - **D3 Pocket's own bar**: only when `host.has('statusBar')` (so the PWA, which keeps iOS's bar, never shows a second clock), the
   `.ip-status` bar (music-skins.js ~:247-248) gains, beside the existing battery: the time (local, the device's 12/24-hour
   preference via `toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })`, re-drawn on the minute boundary, never a
-  per-second timer) and, when `host.has('network')`, a connection glyph from the latest `network` event (wifi / cellular / wired /
+  per-second timer) and, when `host.has('network')`, a connection glyph from the latest `network` event's `connection` (wifi / cellular / wired /
   other / none-or-unknown = a "no connection" mark; `constrained` may dim it). Use the icon set's existing glyphs if they exist
   (search the resolve-icon-set census), else add them through the icon pipeline with its census; fit the existing row (measure at
   320 / 390, the memory norm "rows wrap, buttons never shrink"; truncate the title, never the clock). Re-applied after every

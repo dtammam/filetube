@@ -76,6 +76,20 @@
   function skGlyph(name) {
     return '<svg class="mms-g mms-g-' + name + '" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="' + SK_GLYPH[name] + '"/></svg>';
   }
+  // v1.385.0: the connection marks in Pocket's status bar (statusBar + network announced). Drawn like the other marks: one
+  // filled SVG, currentColor, sized by the bar's font. wifi = a dot and three arcs, cellular = four rising bars, wired = a
+  // plug, other = a dot, none = the wifi dot crossed out. An unknown kind draws as 'none'.
+  var CONN_GLYPH = {
+    wifi: 'M12 18.5a1.6 1.6 0 1 0 0 3.2 1.6 1.6 0 0 0 0-3.2zM12 13c-1.9 0-3.6.8-4.8 2l1.5 1.5A4.8 4.8 0 0 1 12 15.2c1.3 0 2.5.5 3.3 1.3l1.5-1.5A6.9 6.9 0 0 0 12 13zm0-5C8.8 8 5.9 9.3 3.8 11.4l1.5 1.5A9.1 9.1 0 0 1 12 10.2c2.5 0 4.8 1 6.6 2.7l1.5-1.5C18.1 9.3 15.2 8 12 8z',
+    cellular: 'M3 17h3v4H3zM8.5 13h3v8h-3zM14 9h3v12h-3zM19.5 4h3v17h-3z',
+    wired: 'M9 3h6v5h2v6h-3v3h-4v-3H7V8h2zM11 17h2v4h-2z',
+    other: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z',
+    none: 'M12 18.5a1.6 1.6 0 1 0 0 3.2 1.6 1.6 0 0 0 0-3.2zM12 13c-1.9 0-3.6.8-4.8 2l1.5 1.5A4.8 4.8 0 0 1 12 15.2c1.3 0 2.5.5 3.3 1.3l1.5-1.5A6.9 6.9 0 0 0 12 13zM3.4 3.4 2 4.8l17.8 17.8 1.4-1.4z',
+  };
+  function connGlyph(kind) {
+    var d = Object.prototype.hasOwnProperty.call(CONN_GLYPH, kind) ? CONN_GLYPH[kind] : CONN_GLYPH.none;
+    return '<svg class="mms-g mms-g-conn" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="' + d + '"/></svg>';
+  }
   function playIndHtml(paused) {
     return '<span class="mms-playind' + (paused ? ' is-paused' : '') + '" aria-hidden="true">' + skGlyph('play') + skGlyph('pause') + '</span>';
   }
@@ -1275,7 +1289,7 @@
     normalizeSkinId: normalizeSkinId, activeSkinId: activeSkinId, setActiveSkin: setActiveSkin,
     skinById: skinById, panelClass: panelClass, clickColorways: clickColorways, skinFamilies: skinFamilies, skinLines: skinLines, colorwayLabel: colorwayLabel, menuSkinItems: menuSkinItems, SEARCH_STRIP: SEARCH_STRIP, searchStripStep: searchStripStep, searchEdit: searchEdit, searchStripView: searchStripView, searchUrls: searchUrls, menuSearchItems: menuSearchItems, skinSearchItems: skinSearchItems, renderSearchBar: renderSearchBar, searchNextStop: searchNextStop, KB_SEARCH_KEY: KB_SEARCH_KEY, keyboardSearchOn: keyboardSearchOn, searchFromTyped: searchFromTyped, isClickColorway: isClickColorway,
     renderFull: function (id, ctx) { ctx = ctx || {}; return skinById(id).renderFull(ctx); },
-    SIDEWAYS_KEY: SIDEWAYS_KEY, UPRIGHT_CLASS: UPRIGHT_CLASS, pocketSideways: pocketSideways, markUprightClass: markUprightClass, setPocketSideways: setPocketSideways, turnOf: turnOf, unturnDelta: unturnDelta,
+    SIDEWAYS_KEY: SIDEWAYS_KEY, UPRIGHT_CLASS: UPRIGHT_CLASS, pocketSideways: pocketSideways, connGlyph: connGlyph, markUprightClass: markUprightClass, setPocketSideways: setPocketSideways, turnOf: turnOf, unturnDelta: unturnDelta,
     remoteBadge: remoteBadge, volLevel: volLevel, skinActiveFor: skinActiveFor, pocketEntryAvailable: pocketEntryAvailable, isPhone: isPhone, phoneFrom: phoneFrom, markPhoneClass: markPhoneClass,
     PHONE_CLASS: PHONE_CLASS, PHONE_SHORT_SIDE_MAX: PHONE_SHORT_SIDE_MAX, observeSettled: observeSettled,
     // the pocket menus (the pure half - see the block above).

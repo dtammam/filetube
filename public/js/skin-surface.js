@@ -563,23 +563,34 @@
     try { return (typeof module !== 'undefined' && module.require) ? module.require('./body-scroll-lock.js') : null; } catch (_) { return null; }
   }
 
-  // ==== v1.384.0 (native bridge D5): POCKET UPRIGHT = the host's rotation lock ============================
+  // ==== v1.384.0 / v1.385.0 (native bridge): POCKET IMMERSIVE = the host's rotation lock, status bar and network ======
   // When a native host announces `orientation`, the FULL player (a main-document panel wearing mms-full, shown) locks the
-  // app to portrait and every exit unlocks it - unless the per-device Sideways setting is on (never lock then). The web's
-  // own upright drawing (html.pk-upright, music-skins.js markUprightClass / turnOf) is untouched: it is the browser path.
+  // app to portrait and every exit unlocks it - unless the per-device Sideways setting is on (never lock then). When it
+  // announces `statusBar` (v1.385.0), the same "full player showing" owners hide iOS's own status bar and every exit shows
+  // it again; Sideways does NOT block that (a sideways Pocket is still immersive). The web's own upright drawing
+  // (html.pk-upright, music-skins.js markUprightClass / turnOf) is untouched: it is the browser path.
   // The state is MODULE-level because two engines can exist at once (music + podcasts views, a skin preview) and the phone
-  // has one rotation: it is locked while ANY owner shows, unlocked when none does. The exits are caught three ways, so
-  // no teardown nobody wrote can strand the lock (the v1.256 ghost-lock lesson): the engine's own seams (paint, destroy,
-  // a MutationObserver on hidden/class), reflect() on every playback tick, and a 1 s self-heal poll that runs ONLY while
-  // locked and drops any owner whose panel left the page (view swap, innerHTML reset, a thrown render). pagehide unlocks
-  // (the phone leaves the page); pageshow re-applies. Idempotent both ways: a double unlock is harmless to the host.
+  // has one rotation and one status bar: held while ANY owner shows, released when none does. The exits are caught three
+  // ways, so no teardown nobody wrote can strand either hold (the v1.256 ghost-lock lesson): the engine's own seams (paint,
+  // destroy, a MutationObserver on hidden/class), reflect() on every playback tick, and a 1 s self-heal poll that runs ONLY
+  // while something is held and drops any owner whose panel left the page (view swap, innerHTML reset, a thrown render).
+  // pagehide RELEASES everything held (the phone leaves the page; the host drops it all on the navigation commit anyway) and
+  // pageshow RE-ASSERTS whatever is currently wanted through the same registries: a page restored from the back-forward
+  // cache re-runs no script, so this is the only way the lock, the hidden bar and the subscriptions come back (D5).
+  // Idempotent both ways: a double unlock / show / unsubscribe is harmless to the host, and the flags below make a double
+  // re-assert post nothing.
   var orientOwners = [];
   var orientLocked = false;
+  var sbHidden = false;
   var orientTimer = null;
   var orientPageBound = false;
   function orientHost() {
     var h = (typeof window !== 'undefined' && window.FileTube && window.FileTube.host) || null;
     return (h && h.has('orientation')) ? h : null;
+  }
+  function statusHost() {
+    var h = (typeof window !== 'undefined' && window.FileTube && window.FileTube.host) || null;
+    return (h && h.has('statusBar')) ? h : null;
   }
   function orientSidewaysOn() {
     var SK = (typeof window !== 'undefined' && window.FileTubeMusicSkins) || null;
@@ -590,13 +601,25 @@
     orientLocked = false;
     h.post('orientation.unlock');
   }
+  function sbShow(h) {
+    if (!sbHidden) return;
+    sbHidden = false;
+    h.post('statusBar.show');
+  }
   function orientApply() {
-    var h = orientHost();
-    if (!h) return;
+    var oh = orientHost();
+    var sh = statusHost();
+    if (!oh && !sh) return;
     orientOwners = orientOwners.filter(function (o) { var on = false; try { on = o.showing(); } catch (_) { on = false; } return on; });
-    var want = orientOwners.length > 0 && !orientSidewaysOn();
-    if (want && !orientLocked) { orientLocked = true; h.post('orientation.lock', { orientation: 'portrait' }); }
-    else if (!want) orientUnlock(h);
+    if (oh) {
+      var want = orientOwners.length > 0 && !orientSidewaysOn();
+      if (want && !orientLocked) { orientLocked = true; oh.post('orientation.lock', { orientation: 'portrait' }); }
+      else if (!want) orientUnlock(oh);
+    }
+    if (sh) {
+      if (orientOwners.length > 0 && !sbHidden) { sbHidden = true; sh.post('statusBar.hide'); }
+      else if (!orientOwners.length) sbShow(sh);
+    }
     hostPollSync();
   }
   // The battery (D8) is the same shape: ONE subscription while ANY engine's status bar shows (two engines can exist at once:
@@ -610,6 +633,12 @@
     var h = (typeof window !== 'undefined' && window.FileTube && window.FileTube.host) || null;
     return (h && h.has('battery')) ? h : null;
   }
+  function battDrop(h) {
+    if (!battSubbed) return;
+    battSubbed = false;
+    if (battOff) { battOff(); battOff = null; }
+    h.post('battery.unsubscribe');
+  }
   function battApply() {
     var h = batteryHost();
     if (!h) return;
@@ -621,37 +650,94 @@
         battOwners.forEach(function (o) { o.draw(battLevel); });
       });
       h.post('battery.subscribe');
-    } else if (!battOwners.length && battSubbed) {
-      battSubbed = false;
-      if (battOff) { battOff(); battOff = null; }
-      h.post('battery.unsubscribe');
-    }
+    } else if (!battOwners.length) battDrop(h);
     battOwners.forEach(function (o) { o.draw(battLevel); }); // re-applied after every repaint / remount
     hostPollSync();
   }
-  function battClaim(owner) { if (battOwners.indexOf(owner) < 0) battOwners.push(owner); battApply(); }
+  function battClaim(owner) { hostBindPage(); if (battOwners.indexOf(owner) < 0) battOwners.push(owner); battApply(); }
   function battRelease(owner) { var i = battOwners.indexOf(owner); if (i >= 0) battOwners.splice(i, 1); battApply(); }
-  // ONE 1 s self-heal poll for both registries, running only while either has an owner
+  // Pocket's own bar (v1.385.0, D3 + D4): with `statusBar` announced the status bar also shows the time, and with `network`
+  // too, the connection glyph. The clock is re-drawn on the MINUTE boundary only (one setTimeout re-armed per minute, never a
+  // per-second timer); the network subscription is ONE across engines, the battery's shape. Each owner is
+  // { showing(), draw(clock, net, withNet) } where net is the latest `network` detail or null (nothing reported yet).
+  var barOwners = [];
+  var barSubbed = false;
+  var barOff = null;
+  var barNet = null;
+  var barClock = '';
+  var barClockTimer = null;
+  function networkHost() {
+    var h = (typeof window !== 'undefined' && window.FileTube && window.FileTube.host) || null;
+    return (h && h.has('network')) ? h : null;
+  }
+  function barClockText() {
+    try { return new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); } catch (_) { return ''; }
+  }
+  function barDrawAll() {
+    var withNet = !!networkHost();
+    barOwners.forEach(function (o) { o.draw(barClock, barNet, withNet); });
+  }
+  function barDrop(h) {
+    if (!barSubbed) return;
+    barSubbed = false;
+    if (barOff) { barOff(); barOff = null; }
+    if (h) h.post('network.unsubscribe');
+  }
+  function barClockStop() { if (barClockTimer && typeof window !== 'undefined') { window.clearTimeout(barClockTimer); barClockTimer = null; } }
+  function barClockTick() {
+    barClockTimer = null;
+    if (!barOwners.length || typeof window === 'undefined') return;
+    barClock = barClockText();
+    barDrawAll();
+    barClockTimer = window.setTimeout(barClockTick, 60000 - (Date.now() % 60000) + 50);
+  }
+  function barApply() {
+    var sh = statusHost();
+    if (!sh) return;
+    barOwners = barOwners.filter(function (o) { var on = false; try { on = o.showing(); } catch (_) { on = false; } return on; });
+    var nh = networkHost();
+    if (barOwners.length && nh && !barSubbed) {
+      barSubbed = true;
+      barOff = nh.on('network', function (d) { barNet = d || null; barDrawAll(); });
+      nh.post('network.subscribe');
+    } else if (!barOwners.length || !nh) barDrop(nh);
+    if (barOwners.length) {
+      barClock = barClockText();
+      if (!barClockTimer && typeof window !== 'undefined') barClockTimer = window.setTimeout(barClockTick, 60000 - (Date.now() % 60000) + 50);
+      barDrawAll(); // re-applied after every repaint / remount
+    } else barClockStop();
+    hostPollSync();
+  }
+  function barClaim(owner) { hostBindPage(); if (barOwners.indexOf(owner) < 0) barOwners.push(owner); barApply(); }
+  function barRelease(owner) { var i = barOwners.indexOf(owner); if (i >= 0) barOwners.splice(i, 1); barApply(); }
+  // ONE 1 s self-heal poll for every registry, running only while any holds something or has an owner
   function hostPollSync() {
-    var need = orientOwners.length > 0 || battOwners.length > 0 || orientLocked || battSubbed;
-    if (need && !orientTimer && typeof window !== 'undefined') orientTimer = window.setInterval(function () { orientApply(); battApply(); }, 1000);
+    var need = orientOwners.length > 0 || battOwners.length > 0 || barOwners.length > 0 || orientLocked || sbHidden || battSubbed || barSubbed;
+    if (need && !orientTimer && typeof window !== 'undefined') orientTimer = window.setInterval(function () { orientApply(); battApply(); barApply(); }, 1000);
     else if (!need && orientTimer) { window.clearInterval(orientTimer); orientTimer = null; }
   }
-  function orientBindPage() {
+  // pagehide: release EVERYTHING held. pageshow (a bfcache restore runs no script, the host released all on the commit):
+  // re-assert whatever the registries still want. Both are idempotent.
+  function hostReleaseAll() {
+    var oh = orientHost(); if (oh) orientUnlock(oh);
+    var sh = statusHost(); if (sh) sbShow(sh);
+    var bh = batteryHost(); if (bh) battDrop(bh);
+    barDrop(networkHost());
+    barClockStop();
+    if (orientTimer) { window.clearInterval(orientTimer); orientTimer = null; }
+  }
+  function hostReassert() { orientApply(); battApply(); barApply(); }
+  function hostBindPage() {
     if (orientPageBound || typeof window === 'undefined') return;
     orientPageBound = true;
     try {
-      window.addEventListener('pagehide', function () {
-        var h = orientHost();
-        if (h) orientUnlock(h);
-        if (orientTimer) { window.clearInterval(orientTimer); orientTimer = null; }
-      });
-      window.addEventListener('pageshow', orientApply);
+      window.addEventListener('pagehide', hostReleaseAll);
+      window.addEventListener('pageshow', hostReassert);
     } catch (_) { /* a bare harness */ }
   }
   function orientClaim(owner) {
     if (orientOwners.indexOf(owner) < 0) orientOwners.push(owner);
-    orientBindPage();
+    hostBindPage();
     orientApply();
   }
   function orientRelease(owner) {
@@ -1889,15 +1975,35 @@
       target.style.setProperty('--pk-batt-level', pct + '%');
     }
     var battOwner = { showing: function () { return fullPlayerShowing() && !!panel.querySelector('.ip-batt'); }, draw: drawBattery };
+    // v1.385.0 (D3): the time (statusBar announced) and the connection glyph (network announced too) join the status bar's
+    // right cluster, in front of the play mark. ipScreen rebuilds the bar on every repaint, so hostSync re-draws them (an
+    // element already there is only touched when its text / kind changed). net = the latest `network` detail or null: an
+    // unknown connection (nothing reported yet, or 'none') draws the no-connection mark; `constrained` dims it.
+    function drawBar(clock, net, withNet) {
+      var rt = panel.querySelector('.ip-status-rt');
+      if (!rt) return;
+      var c = rt.querySelector('.ip-clock');
+      if (!c) { c = doc.createElement('span'); c.className = 'ip-clock'; rt.insertBefore(c, rt.firstChild); }
+      if (c.textContent !== clock) c.textContent = clock;
+      var g = rt.querySelector('.ip-conn');
+      if (!withNet) { if (g) g.remove(); return; }
+      var kind = net && typeof net.connection === 'string' ? net.connection : 'none';
+      var dim = !!(net && net.constrained === true);
+      if (!g) { g = doc.createElement('span'); g.className = 'ip-conn'; g.setAttribute('aria-hidden', 'true'); rt.insertBefore(g, c.nextSibling); }
+      if (g.getAttribute('data-conn') !== kind) { g.setAttribute('data-conn', kind); g.innerHTML = SKINS.connGlyph(kind); }
+      g.classList.toggle('is-constrained', dim);
+    }
+    var barOwner = { showing: function () { return fullPlayerShowing() && !!panel.querySelector('.ip-status-rt'); }, draw: drawBar };
     function hostSync() {
       if (!inMainDoc) return;
-      if (orientHost()) { if (fullPlayerShowing()) orientClaim(orientOwner); else orientRelease(orientOwner); }
+      if (orientHost() || statusHost()) { if (fullPlayerShowing()) orientClaim(orientOwner); else orientRelease(orientOwner); }
       if (batteryHost()) { if (battOwner.showing()) battClaim(battOwner); else battRelease(battOwner); }
+      if (statusHost()) { if (barOwner.showing()) barClaim(barOwner); else barRelease(barOwner); }
     }
     function watchHost() {
       if (hostWatch || !inMainDoc) return;
       var MO = win.MutationObserver || (typeof MutationObserver !== 'undefined' ? MutationObserver : null);
-      if (!MO || !(orientHost() || batteryHost())) return;
+      if (!MO || !(orientHost() || statusHost() || batteryHost())) return;
       hostWatch = new MO(function () { hostSync(); });
       try { hostWatch.observe(panel, { attributes: true, attributeFilter: ['hidden', 'class'] }); } catch (_) { hostWatch = null; }
     }
@@ -3600,7 +3706,7 @@
       bound = false;
       // v1.384.0: the host seams die with the surface (bound is false now, so fullPlayerShowing() is false)
       if (hostWatch) { try { hostWatch.disconnect(); } catch (_) { /* gone */ } hostWatch = null; }
-      if (inMainDoc) { orientRelease(orientOwner); battRelease(battOwner); }
+      if (inMainDoc) { orientRelease(orientOwner); battRelease(battOwner); barRelease(barOwner); }
       // clear the full-screen body class this view may have set (the v1.227 leak lesson - a
       // podcasts<->music swap must never strand the frozen-scroll cover).
       try { doc.body.classList.remove('mms-on'); } catch (_) { /* ignore */ }

@@ -23,7 +23,7 @@
         "capabilities": {
           "type": "array",
           "uniqueItems": true,
-          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings"] }
+          "items": { "type": "string", "enum": ["orientation", "haptics", "battery", "serverSettings", "statusBar", "network"] }
         }
       }
     },
@@ -40,7 +40,11 @@
         { "properties": { "type": { "const": "haptics.tick" }, "style": { "enum": ["detent", "letter", "snap"] }, "intensity": { "type": "number", "minimum": 0, "maximum": 1 } }, "required": ["style"] },
         { "properties": { "type": { "const": "battery.subscribe" } } },
         { "properties": { "type": { "const": "battery.unsubscribe" } } },
-        { "properties": { "type": { "const": "host.openServerSettings" } } }
+        { "properties": { "type": { "const": "host.openServerSettings" } } },
+        { "properties": { "type": { "const": "statusBar.hide" } } },
+        { "properties": { "type": { "const": "statusBar.show" } } },
+        { "properties": { "type": { "const": "network.subscribe" } } },
+        { "properties": { "type": { "const": "network.unsubscribe" } } }
       ]
     },
     "nativeToWeb": {
@@ -56,6 +60,15 @@
             "state": { "enum": ["unplugged", "charging", "full", "unknown"] }
           },
           "required": ["level", "state"]
+        },
+        {
+          "properties": {
+            "type": { "const": "network" },
+            "connection": { "enum": ["wifi", "cellular", "wired", "other", "none"] },
+            "constrained": { "type": "boolean" },
+            "expensive": { "type": "boolean" }
+          },
+          "required": ["connection"]
         }
       ]
     },

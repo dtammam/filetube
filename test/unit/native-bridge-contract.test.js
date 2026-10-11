@@ -219,3 +219,34 @@ test('post: a null where the schema wants a number is dropped; prototype keys ar
   }
   win.close();
 });
+
+test('v1.385.0: statusBar and network messages, gated by their own capability, no fields', () => {
+  const { win, fake, host } = windowWith({ capabilities: ['statusBar', 'network'] });
+  fake.clear();
+  for (const t of ['statusBar.hide', 'statusBar.show', 'network.subscribe', 'network.unsubscribe']) assert.equal(host.post(t, { junk: 1 }), true, t);
+  assert.deepEqual(fake.types(), ['statusBar.hide', 'statusBar.show', 'network.subscribe', 'network.unsubscribe']);
+  assert.deepEqual(fake.posts[0], { v: 1, type: 'statusBar.hide' }, 'no fields leave the page');
+  win.close();
+  const other = windowWith({ capabilities: ['battery'] });
+  other.fake.clear();
+  for (const t of ['statusBar.hide', 'statusBar.show', 'network.subscribe', 'network.unsubscribe']) assert.equal(other.host.post(t), false, t + ' needs its capability');
+  assert.equal(other.host.has('statusBar'), false);
+  other.win.close();
+});
+
+test('v1.385.0: the network event is validated as data; an unknown connection kind reads as other', () => {
+  const { win, fake, host } = windowWith({ capabilities: ['network'] });
+  const got = [];
+  host.on('network', (d) => got.push(d));
+  fake.emit({ v: 1, type: 'network', connection: 'wifi', constrained: true, expensive: false, sneaky: 1 });
+  fake.emit({ v: 1, type: 'network', connection: 'satellite' });
+  fake.emit({ v: 1, type: 'network' });
+  fake.emit({ v: 1, type: 'network', connection: 3 });
+  fake.emit({ v: 1, type: 'network', connection: 'cellular', constrained: 'yes' });
+  fake.emit({ v: 2, type: 'network', connection: 'wifi' });
+  assert.deepEqual(got, [
+    { connection: 'wifi', constrained: true, expensive: false },
+    { connection: 'other' },
+  ]);
+  win.close();
+});
