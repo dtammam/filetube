@@ -20,6 +20,14 @@ So consumers can:
 [Watchtower](https://containrrr.dev/watchtower/) following `latest` auto-updates
 on each release; following a pinned `1.4.2` never moves.
 
+## Where each check runs (ci slim, 2026-10-11)
+
+Each tree is tested once per lane, not once per trigger:
+- **Pull request:** `ci` (Node 22 and Node 24), `audit`, `secret-scan`, and Visual. This is the merge gate, and it runs on the merge result.
+- **Push to `main` (after the merge):** no `ci` run (the PR just tested that tree). Only `Publish Docker Image` runs, with a Node 22 `qualify`, to publish `edge`.
+- **Tag `vX.Y.Z`:** `Publish Docker Image` with a Node 22 `qualify` + `audit` + `secret-scan` before `latest` moves.
+- **Local:** Node 22.23.1 only. Node 24 is PR CI's job.
+
 ## Release notes (the ledger)
 
 v1.144 (Dean): every release carries USER-LANGUAGE release notes, and the
@@ -376,7 +384,7 @@ as PRs; see the tiered auto-merge below.
 
 ## Tiered Dependabot auto-merge (v1.206, reverses v1.148's no-auto-merge)
 
-A low-risk Dependabot PR that passes full CI (both Node legs + the audit
+A low-risk Dependabot PR that passes full CI (the Node 22 and 24 legs + the audit
 gate) merges itself; a high-risk one waits for Dean.
 `.github/workflows/dependabot-auto-merge.yml` arms `gh pr merge --auto`
 (which GitHub holds until the required checks pass) only for the AUTO tier:

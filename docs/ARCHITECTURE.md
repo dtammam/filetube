@@ -262,9 +262,9 @@ ffmpeg + espeak-ng + pip yt-dlp; `VOLUME /app/data`; explicit COPYs (never
 `COPY . .` - a leaked local file can't enter the image).
 
 CI (`.github/workflows/ci.yml`): pinned gitleaks working-tree scan + a
-dual-Node (22/24) lint + token-ratchet + full-suite matrix. Publish
+dual-Node (22/24) lint + token-ratchet + full-suite matrix, on pull requests only. Publish
 (`docker-publish.yml`): gated - the image only builds after a qualify job
-re-runs the dual-Node suite and the secret scan on the exact ref; tags
+re-runs the Node 22 suite and the secret scan on the exact ref; tags
 `edge`/`sha-*` from main, semver + `latest` from `v*` tags.
 
 ## Testing

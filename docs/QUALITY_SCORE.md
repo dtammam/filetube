@@ -92,7 +92,7 @@ integration files, run on a Node 22 + 24 matrix in CI and for every release).
   and shell-ownership class keep needing the lesson re-applied (v1.117's
   sidebar parity net helped); Tests moves to B- on the strength of the
   parity/forcing nets.
-- **Build/test/release (A-):** dual-Node 22+24 CI matrix, publish gated on
+- **Build/test/release (A-):** Node 22+24 PR CI matrix, publish gated on
   re-qualifying the EXACT pushed ref + a pinned secret scan, a tag==package
   version assert, serialized publish lanes, checker-first docs censuses
   (status, links, tracker topology - each executed in the suite), and the
