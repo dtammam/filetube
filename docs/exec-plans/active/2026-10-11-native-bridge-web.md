@@ -133,7 +133,8 @@ gate.js ALLOW_EXACT (not before authGate), W2 the haptic host branch must run be
 hold); S1-S7 (battery seam, Feed snap source, errors.html, Node line, LESSONS list, capability count, two Mac traps). Fixed at
 30df1d8f. r2 CHANGES @30df1d8f: W-r2-a the battery variable must be set on the .mms-ipod panel (html is overridden), W-r2-b the
 hold fires (centre ~:1930, MENU ~:3269) tick once via a style argument, ~:1919 is prepare only; suggestion: Feed snap ignores taps
-on controls. Fixed in the next commit; round 3 (Dean, 2026-10-11: "Quick round 3, then merge").
+on controls. Fixed in the next commit; round 3 (Dean, 2026-10-11: "Quick round 3, then merge"). r3 APPROVED @cceac09e (adversary; 87 docs files, 2189 / 2189 pass). Leftover for the builder: D6's tests cover the MENU
+hold-to-home tick too, not only the centre hold.
 
 ## 6. Evidence (builder fills)
 - Seams (file:line) for D1, D5 exits, D6, D7, D8, D9:
