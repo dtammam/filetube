@@ -1379,7 +1379,7 @@ if (typeof module !== 'undefined' && module.exports) {
     var pc = playCount;
     if (pc && !pc.finished) playCountMark(pc, 'finished');
   }
-  // v1.383.0 (Feed reels, plan docs/exec-plans/active/2026-10-10-feed-reels.md K5 / K6): the tally belongs to the load MUSIC
+  // v1.383.0 (Feed reels, plan docs/exec-plans/completed/2026-10-10-feed-reels.md K5 / K6): the tally belongs to the load MUSIC
   // made. Its listeners sit on the shared element for good, so once another surface loads into that element (a Feed card, a song
   // under a book card, the watch page) every tick of THAT playback was counted to the last Music song - plays and finishes it
   // never had. The tally is let go, silently (another surface taking the player is not a rejection of the song): here when the

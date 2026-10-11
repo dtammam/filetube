@@ -3646,5 +3646,11 @@
     "date": "2026-10-10",
     "title": "Feed settings: choose what the Feed shows and where it starts, 60-second reels, Keep watching, double-tap like, Hide and Fewer from",
     "intent": "A new Feed page in Settings (or the gear on the Feed's picker) lets you switch each kind of card on or off, choose new things only, ones you started only, or both, and start started ones from the beginning without ever losing your place. Videos now play as 60-second reels and podcasts as 2-minute slices (both adjustable), and near the end of a card Keep watching or Keep listening takes you straight into the full video or episode, still playing. Double-tap a card to like it, and use its menu to save it for later, hide it, or see less from that channel, show, artist or author, with an Undo every time."
+  },
+  {
+    "version": "1.383.0",
+    "date": "2026-10-11",
+    "title": "Feed reels and speed: cards that move on and start on their own, song clips, music while you read, and book chapters named right",
+    "intent": "When a video, episode or song card finishes, the Feed now moves to the next one after a two-second countdown (touch the card to stay; Settings > Feed > Auto-advance turns it off), and a swipe starts the next card playing at once. Tap a card's title or its channel or show line any time to open the full item, still playing. Songs play as 45-second clips from about a third in (30 s, 60 s or the whole song in Settings), and a clip you hear to the end counts as a play. Book cards now play music from a station while you read, with a chip to like the song, mute it or change the station. Books name their chapters the way the book does (no more \"Chapter 6\" for a book's first chapter), and Start over on a book card shows its first chapter at once, with Undo putting your page back."
   }
 ]

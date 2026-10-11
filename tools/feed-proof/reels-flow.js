@@ -1,6 +1,6 @@
 'use strict';
 /* global document, window, HTMLMediaElement, MutationObserver */
-// v1.383.0 Feed reels and speed (plan docs/exec-plans/active/2026-10-10-feed-reels.md W2: K1, K2, K4) END TO END in a real browser
+// v1.383.0 Feed reels and speed (plan docs/exec-plans/completed/2026-10-10-feed-reels.md W2: K1, K2, K4) END TO END in a real browser
 // against the real server, on the shared fixture (tools/feed-proof/fixture.js: two videos, an episode, a reading book, a new book
 // and a liked song, real media files).
 //

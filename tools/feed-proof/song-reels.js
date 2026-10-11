@@ -1,6 +1,6 @@
 'use strict';
 /* global document, window */
-// v1.383.0 Feed reels and speed (plan docs/exec-plans/active/2026-10-10-feed-reels.md W3, K5 = v1.382.0 D13) END TO END in a real
+// v1.383.0 Feed reels and speed (plan docs/exec-plans/completed/2026-10-10-feed-reels.md W3, K5 = v1.382.0 D13) END TO END in a real
 // browser against the real server, on the shared fixture (tools/feed-proof/fixture.js: a liked 60 s song, real audio).
 // Settings > Feed > Song clip = 30 s, so the song card plays 20 s .. 50 s (a third in).
 //   A  heard to its end: the card starts at 20 s, plays to 50 s, stops (Done) and the Feed posts exactly ONE play for the song

@@ -393,15 +393,16 @@
 
 ### Features
 
-- [ ] **Feed reels and speed (moved out of v1.382.0 by Dean, 2026-10-10)** _(plan docs/exec-plans/completed/2026-10-10-feed-settings.md,
-  section 3)_ - Dean resumes it as its own release. D12 instant next card: measure swipe-settle to first frame / first audio
-  (WebKit and Chromium headless, then the device), then preload WITHOUT a second player (the next card's poster / art, a small
-  range request at its start point, the next book page text; at most 1 card ahead); target under 500 ms on the LAN. D13 song
-  reels: a "Song clip" setting 30 / 45 / 60 s / Whole song (default 45 s) from a third in, Keep listening plays the whole song in
-  Music; a clip played to its end counts a play, a swipe is never a skip. D14 music under book cards: "Music while reading" On /
-  Off and its station (default the first of Chill, Lofi, Jazz, Ambient, then Favorites, then liked songs), playing across a book's
-  page swipes and book cards, stopping on a non-book card; an attribution chip "♫ <song> · <artist>" with Like / Mute for this
-  session / Change station; background listening never counts plays or skips.
+- [x] **Feed reels and speed (moved out of v1.382.0 by Dean, 2026-10-10)** **Shipped v1.383.0 (2026-10-11).** - auto-advance, the
+  next card started at a quarter swipe and warmed, a way to the full item from the title, song clips, music under book cards, book
+  chapters named as the book names them, Start over redrawing a book card. Plan: `docs/exec-plans/completed/2026-10-10-feed-reels.md`.
+- [ ] **Feed reels follow-ups (v1.383.0 gate, disclosed)** - (a) GET /api/feed/start-over/place, /api/books/:id/excerpt and the Feed's
+  book progress route each read the whole EPUB per call with no rate limit: one shared cache of opened books (path, mtime, size);
+  (b) a podcast whose RSS length is longer than its file reopens at 0:00 when its Done card is come back to: remember the time the
+  file ended; (c) a nav built with `<ul>` gives no section depth (chapter names blank there); (d) all-caps / all-lowercase words that
+  are valid numerals ("MIX") read as chapter numbers; (e) the reader's own listen bar still says "Chapter <spine + 1>"
+  (public/js/read.js): name it by the book's table of contents like the Feed; (f) the 256 KB next-card warm is a server disk warm
+  only (the player does not reuse its bytes): measure on the device whether it earns its request.
 - [ ] **Real YouTube comments on the watch page (Dean, 2026-10-10)** - fetch the top 20-30 comments when a video downloads (yt-dlp
   can write comments; cap them, store per item) and show them where the watch page now shows its mock retro comments
   (public/js/watch.js, the `.ft-fabricated` mock commenters); older downloads through the existing metadata re-pull. Keep the mock
@@ -424,11 +425,9 @@
   back-gesture edge left alone); tap / hold for 2x on video; Fit / Fill; no other-device card or download pill in the Feed; no
   rotation in a Feed card; under a minute in = New; Start over with a confirm and an exact Undo. Plan:
   `docs/exec-plans/completed/2026-10-09-feed-tiktok.md` (v1.381.0).
-- [ ] **Start over: the hardening the v1.381.0 gate left as suggestions** _(gate r3, adversary + qa; none loses data)_ - (a) the
-  4096-byte bound on a recorded book place can refuse a real reader place whose cfi is ~1365+ multi-byte characters (refused and kept,
-  never lost): bound by the reader's own limit instead (2000 cfi characters, up to 4 bytes each); (b) survivors to bind: the
-  `flag()` shape check (R9 / U11) and nothingToForget keying a latch-only item on its time (U4: such an item is refused as 'nothing',
-  nothing deleted); (c) the confirm names the card's place, the toast the stored one - read the stored place before the confirm.
+- [x] **Start over: the hardening the v1.381.0 gate left as suggestions** **Shipped v1.383.0 (2026-10-11).** - (a) a recorded book
+  place is bounded by the reader's own 2000-character cfi limit; (b) the flag shape check and a latch-only item bound by tests; (c)
+  the confirm reads the stored place before it names it.
 - [ ] **A way back to a Start over's recorded place after its 10 s toast** _(v1.381.0 gate r1, adversary W1: disclosed, not built)_ -
   Start over records the place it forgets in the feed session (the `moves` entry with `startOver`, `token`, `from`), and Undo
   restores it while the item is unchanged; after the toast closes no screen offers it (the record is only in the database). Options:
@@ -807,6 +806,27 @@ Kept verbatim for the record - the full release story lives in Shipped below.
 - [x] **yt-dlp prune/mount-loss deep redesign** (#10) — ✅ PARTIALLY CLOSED v1.33.0: Dean's Option C shipped globally (`detectVanishedRoots` — empty-but-present mountpoint = unmount signature, protect don't reap; escape hatch = remove the folder from Settings). Cases 2–3 (changed download-dir orphaning, disabled+transient unmount) remain in the tracker. — treat "a root's entire content vanished at once" as an unmount signature globally so an empty-but-present mountpoint can't reap library entries/watch-progress.
 
 ## Shipped
+
+### v1.383.0 - Feed reels and speed: cards that move on and start on their own, song clips, music while you read, and book chapters named right (2026-10-11)
+
+- Built off this box by another agent (W1-W5), imported by patch and finished here: re-measured from scratch (dual suites, a mutant
+  pass that found 4 unbound claims, three browser proofs in Chromium and WebKit) and taken through a full gate.
+- K1: a finished video, episode, Watch later or song card shows "Next in 2" and moves on (a touch keeps it; Settings > Feed >
+  Auto-advance); never on a book, never in the wind-down. K4: the title, the channel / show / artist line and an open button take
+  any media card to the full item, still playing.
+- K2: the next card starts loading at a quarter swipe and plays with sound after the session's first tap (measured: no refused play
+  in either engine, never two playing); the card after it is warmed (art, the next book's pages, and a 256 KB range that is a
+  server disk warm only - Dean's ruling). A swipe that springs back counts nothing.
+- K5: song cards play 30 / 45 / 60 s clips or the whole song from a third in; a clip heard to its end is one play, never a skip;
+  Keep listening carries the listen into Music as one. K6: music from a station (Chill, Lofi, Jazz, Favorites) under book cards with
+  its chip (Like, Mute music, Change station); it never counts or saves anything, and a chapter of a long mix plays as one song.
+- K3: book chapters are named from the book's own table of contents (the Feed said "Chapter 6 of 10" over a book's chapter I: the
+  first-real-chapter rule was right, the label was the spine position); Start over on a book card shows its first chapter at once
+  and Undo puts the page back. K7: the Start over hardening from v1.381.0.
+- Gate (FULL: adversary, qa, security-brief), 3 rounds (round 3 on Dean's call): r1 found a glimpse counting cards and skips, one
+  listen counting two plays, a mix's chapter playing from the file's start, an ALAC song warmed, the warm itself unused by the
+  player, unbound Start over resets; r2 found my chapter-name fix blanking sectioned books; r3 APPROVED at 79861296 by all three.
+- Disclosed: ROADMAP Planned "Feed reels follow-ups" (a)-(f).
 
 ### v1.382.0 - Feed settings: choose what the Feed shows and where it starts, 60-second reels, Keep watching, double-tap like, Hide and Fewer from (2026-10-10)
 

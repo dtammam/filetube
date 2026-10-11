@@ -1,6 +1,6 @@
 'use strict';
 /* global document, window, HTMLMediaElement */
-// v1.383.0 Feed reels and speed (plan docs/exec-plans/active/2026-10-10-feed-reels.md W4, K6 = v1.382.0 D14) END TO END in a
+// v1.383.0 Feed reels and speed (plan docs/exec-plans/completed/2026-10-10-feed-reels.md W4, K6 = v1.382.0 D14) END TO END in a
 // real browser against the real server, on the shared fixture (tools/feed-proof/fixture.js: a reading book, an unstarted book,
 // two videos, a liked 60 s song - the Favorites station). Settings > Feed: books and videos only, so book and video cards meet.
 //   A  on the first book card a song from the station plays from the Feed's hidden slot (the ONE shared player, not drawn),

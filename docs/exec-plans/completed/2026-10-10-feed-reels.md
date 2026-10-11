@@ -3,11 +3,11 @@ plan: feed-reels
 harness: v2 · full
 branch: import/v1.383.0-feed-reels (the off-box build's patch on feat/v1.383.0-feed-reels 70777f8a; released from feat/v1.383.0-feed-reels)
 anchor: outcome
-status: Built off-box (W1-W5), imported by patch and finished on this box; in review (gate r2)
-next: gate r2 (adversary, qa, security-brief re-confirm) on the r1 fixes; then the release
+status: Shipped v1.383.0
+next: Dean's device checks (docs/DEVICE-CHECKS.md, Feed reels and speed v1.383.0)
 design: v1.382.0's moved W5 (its plan section 3, D12-D14) plus Dean's device feedback on v1.382.0 (2026-10-10, four points) and the v1.381.0 Start over hardening (ROADMAP). Base main 207256de (v1.382.0).
 builder: smart (preloading and auto-advance on the shared player, music through the shared player under book cards, two Feed bugs to root-cause)
-gate: FULL (adversary, qa, security-brief - added by the finisher: Start over's reset / Undo is a data-loss surface and there is a new read route)
+gate: APPROVED r3 @79861296 (FULL: adversary, qa, security-brief - the last added by the finisher: Start over is a data-loss surface and there is a new read route)
 ---
 
 # v1.383.0: Feed reels and speed - instant cards, auto-advance, song reels, music while reading, and the Feed's book bugs
@@ -135,6 +135,11 @@ its proof numbers) was bound to commits that do not exist on this box and is rep
   not reload it; a video card replaced it (no chip, slot empty); plays 0; saved place none; most playing at once 1.
 - K2 a, measured by the r1 adversary: the player never reuses the warm's bytes (both engines fetch the file from byte 0 again; the media
   routes send no cache validators). Dean's ruling (2026-10-10): keep it as a server-side disk warm, described as exactly that.
+- Suites at the gate's final sha 79861296: qa and the adversary each ran both - Node 22.23.1 tests 12172 / pass 12159 / fail 0 /
+  skipped 13; Node 24.20.0 tests 12172 / pass 12159 / fail 0 / skipped 13 (verbatim in their r3 blocks below). Round-3 fix mutants
+  (finisher): 8 of 8 killed.
+- Gate closed r3 @79861296: adversary, qa and security-brief APPROVED (r1 CHANGES 2 / APPROVED 1, r2 CHANGES 2 / APPROVED 1; round 3
+  on Dean's "fix all, quick r3"). Open suggestions are disclosed in section 9 and on the ROADMAP.
 - Gate rounds:
   Gate: CHANGES r1 @f19b6c9f - adversary
   - W1 (K2 b, recap) a 25% glimpse that springs back runs leaveCard + countCard on the card you are ON; countCard is once per card,
@@ -193,6 +198,7 @@ its proof numbers) was bound to commits that do not exist on this box and is rep
     misalign on length-changing Unicode (labels only, still bounded); K7 a smuggling path closed (summary.moves is server-only,
     api.js:237; Undo's write is parameterized, its item visibility-checked).
   - Gate: APPROVED r2 @f08854cf - security-brief
+  - Gate: APPROVED r3 @79861296 - security-brief
   - Gate: CHANGES r1 @f19b6c9f - qa. Suites at f19b6c9f (measured by qa): Node 22.23.1 tests 12154 / pass 12141 / fail 0 /
     skipped 13; Node 24.20.0 the same 12154 / 12141 / 0 / 13; lint 0 errors (6 pre-existing warnings, common.js), lint:ui OK,
     overlay-containment clean. W1: music while reading plays a station's library-CHAPTER track (radio items with source
@@ -259,7 +265,33 @@ its proof numbers) was bound to commits that do not exist on this box and is rep
     tests, 12155 pass, 0 fail, 13 skipped. Load-timing flake, unproven root cause.
   - To close: NEW W1 has the fix qa prescribed (the shallowest entry names the file; '' only for a one-file book), or it ships
     disclosed by the Architect's ruling. NEW W2 and W3 each need one test. This would be round 3 (ASK per the gate-pacing norm).
-- Device checks owed:
+  - Gate: APPROVED r3 @79861296 - qa. Suites at 79861296 (measured by qa): Node 22.23.1 tests 12172 / pass 12159 / fail 0 /
+    skipped 13; Node 24.20.0 tests 12172 / pass 12159 / fail 0 / skipped 13; lint 0 errors (6 pre-existing warnings). r2 W1 fixed
+    as prescribed: the nav and NCX parsers record depth (nav: open minus closed <ol> before each <a>; NCX: points opened minus
+    closed), and the shallowest entry names a file. Measured through the real parsers: the sectioned nav gives ["Chapter 1:
+    Origins", "Chapter 2: Growth", "Chapter 3: Plain"], the NCX depths are [1,2,1], a one-file book gives '', and Part One with a
+    nested Chapter 1 in the same file gives "Part One". Bound by "gate r2 (qa W1 = adversary W1)". The ended-with-file reopen at
+    endAt - 0.5 s is consistent with the comment and with the section 9 / disclosed S1. No new findings.
+  Gate: APPROVED r3 @79861296 - adversary
+  - r2 findings at 79861296: NEW W1 fixed (the shallowest entry names the file). Measured through the real parsers: a nav
+    chapter with "1.1 Setup" in its own file -> ["Chapter 1: Basics", "Chapter 1: Basics" (its split file), "Chapter 2"]; the
+    NCX shape -> ["Chapter 1", "Chapter 2"]; a one-file book of sibling entries -> ''; Part One + Chapter 1 in one file ->
+    "Part One". NEW W2 fixed (N3 killed by "gate r2 (adversary W2)"). NEW W3 fixed (N11 killed by "gate r2 (adversary W3)").
+  - Depth counting attacked: 60000 nested <ol> 27 ms, 12000 <ol><a> pairs 25 ms, 50000 stray </ol> 8 ms, 30000 <navPoint>
+    35 ms (all linear, at most 2000 entries). Unbalanced or odd shapes never give a WRONG name, only '': a nav built from
+    <ul> (depth unknown, so all depth 1), stray </ol> before the list, <ol> outside <li>, a self-closing <navPoint/>.
+  - Mutants of the delta: 13 run, 11 killed (D1 nav closes ignored, D2 nav depth 1, D4 / D5 NCX depth, D6 deepest wins, D7 first
+    wins, D8 depth ignored, D9 same-level labels, D10 ended -> endAt, N3, N11), 2 survived and judged equivalent (D3 the
+    "<ol[\s>]" filter, D11 the startAt floor on an ended slice shorter than 0.5 s). Sandbox diff -rq clean after.
+  - S1 (disclosed, not blocking): the ended-slice return uses endAt - 0.5, and endAt comes from the stored duration. A podcast
+    episode whose RSS itunes:duration is longer than its file (measured: fixture episode set to 75 s, file 60 s, Chromium):
+    the return loads at 74.5, the player clamps a start past the real end to 0 (seek log: seeked 0), and the card sits at
+    0:00, paused. No write moves (forward-only). A fix would be to remember the time the file ended rather than endAt.
+  - S2: a nav that uses <ul> rather than the required <ol> gets no depth, so a chapter with sections in its own file is
+    unnamed there, as at r2.
+  - Suites at 79861296 (a /tmp clone): Node 22.23.1 tests 12172, pass 12159, fail 0, skipped 13; Node 24.20.0 tests 12172,
+    pass 12159, fail 0, skipped 13.
+- Device checks owed: the seven lines under "Feed reels and speed (v1.383.0)" in docs/DEVICE-CHECKS.md.
 
 ## 8. Out of scope
 Real YouTube comments and the Cleanup tidy (their own ROADMAP items); the Start over "way back after the toast"; Feed phases 2-3;
@@ -308,6 +340,10 @@ new card kinds; per-kind weights.
 - **Found and fixed on the way:** Music's play tally counted another surface's playback (a Feed card, the watch page) to the last
   Music song (now let go silently; LESSONS 5); a card reached by a jump of more than three cards played before it was rebuilt
   (silent); the table-of-contents parsers W1 added rescanned per tag (2575 ms on 256 KB of hostile input, now 24 ms).
+- **Disclosed at the gate's close (r3):** a podcast whose stored length (RSS) is longer than its file reopens at 0:00, paused, when a
+  Done card is come back to (no write moves); a nav built with `<ul>` instead of `<ol>` has no depth, so a chapter with sections in
+  its own file is unnamed there; an all-caps or all-lowercase word that is a valid numeral ("MIX", "cd") reads as a chapter number;
+  up to a quarter second of sound past a slice when a Done card is come back to. ROADMAP Planned.
 - **Disclosed:** the reader's own listen bar still says "Chapter <spine + 1>" (public/js/read.js; out of this plan: ROADMAP
   Planned); swipe-to-first-frame was not measured (Dean: build it directly); masked mutants A11 (Keep's `leaving` guard behind
   `!session`) and C1 (`bookActive`); C1c was NOT masked (gate r1: bound). Gate r1 open suggestions kept for later: the place

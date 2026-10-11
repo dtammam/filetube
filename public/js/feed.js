@@ -315,7 +315,7 @@ function feedKeepDue(remainSec, done, ended) {
   return !!done || (typeof remainSec === 'number' && isFinite(remainSec) && remainSec <= FEED_KEEP_SEC);
 }
 
-// ---- v1.383.0 (plan docs/exec-plans/active/2026-10-10-feed-reels.md K1, K2): moving on by itself, the early load, warming --
+// ---- v1.383.0 (plan docs/exec-plans/completed/2026-10-10-feed-reels.md K1, K2): moving on by itself, the early load, warming --
 var FEED_ADVANCE_MS = 2000; // K1: "Next in 2", then the next card
 var FEED_EARLY_RATIO = 0.25; // K2 b: the next card starts loading once a quarter of it is on screen
 var FEED_WARM_BYTES = 262144; // K2 a: what a warmed card's media asks for - its first bytes, a server disk warm (warmNext)

@@ -1,6 +1,6 @@
 'use strict';
 
-// [INTEGRATION] v1.383.0 Feed reels and speed, W1 (plan docs/exec-plans/active/2026-10-10-feed-reels.md K3, K7), through the real
+// [INTEGRATION] v1.383.0 Feed reels and speed, W1 (plan docs/exec-plans/completed/2026-10-10-feed-reels.md K3, K7), through the real
 // server on three EPUBs shaped like real books (test/helpers/real-epubs.js: a Standard Ebooks EPUB 3, a Calibre split EPUB 2, a
 // publisher EPUB 2 with a short prologue):
 //   K3 b  measured cause of "books are not starting in chapter 1": the first-real-chapter rule picks the right spine item in

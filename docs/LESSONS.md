@@ -71,6 +71,9 @@ Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#1-gate-diagnosis-and
 
 - **A pure decision function binds the rule, not the wiring that calls it.** v1.366's `vrMountDecision` was tested per input while every listener that fed it (navigation, dock, native full screen, context loss, the host observer) could be deleted with 1019 tests green; a stub-module wiring test through the real view harness killed all 13. Also: an unchanged-only rescan saves nothing, so a reuse-arm test must make the scan SAVE (index one new file) or a dropped derived field never reaches disk. Guard: for each pure decision, a wiring test that drives the real events through a stub and counts the effect. (v1.366.0)
 
+- **A warm is presence, not binding, until the CONSUMER is shown to reuse it.** v1.383.0's next-card warm counted its range requests issued (evidence: "4 warms, each one ahead") while the player asked every warmed file again from byte 0 - the media routes send no cache validators, so nothing could reuse the bytes. Guard: measure the consumer's own requests (a server-side request log of the later load) before claiming a cache or prefetch speeds anything; say what the warm really buys (here: the server's disk). (v1.383.0 gate r1; x1)
+- **A fix's new rule needs the sibling shapes the old rule served: "a file several TOC entries share has no name" fixed the one-file book and blanked every chapter whose sections live in its own file.** Guard: before changing a classification rule, list the real shapes it sees (one file per chapter, split chapters, sections in the chapter's file, one-file books) and test each through the real parser. (v1.383.0 gate r2; x1)
+
 Rules for this section: [LESSONS-rules.md](LESSONS-rules.md#2-test-binding-can-the-test-actually-fail).
 
 ## 3. Locks, censuses and instruments

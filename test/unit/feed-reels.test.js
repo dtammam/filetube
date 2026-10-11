@@ -1,6 +1,6 @@
 'use strict';
 
-// [UNIT] v1.383.0 Feed reels and speed (plan docs/exec-plans/active/2026-10-10-feed-reels.md). W1: the book bugs and the Start
+// [UNIT] v1.383.0 Feed reels and speed (plan docs/exec-plans/completed/2026-10-10-feed-reels.md). W1: the book bugs and the Start
 // over hardening, through the REAL feed view in jsdom (test/helpers/feed-view-harness.js) and the real lib parsers:
 //   K3 a  a book card that started over shows the reset pages (the server's `reset`) at once, and Undo puts the pages it showed
 //         back - on the page it was on
