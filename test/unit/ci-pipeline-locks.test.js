@@ -160,6 +160,9 @@ test('ci slim R4: the PR suite is four Node 22 shards plus one whole-suite Node 
   const names = (job) => wf.jobs[job].steps.map((st) => st.name || '');
   assert.ok(!names('ci').includes('Lint') && !names('ci').includes('UI ratchet'), 'lint does not repeat in every suite leg');
   assert.ok(names('lint').includes('Lint') && names('lint').includes('UI ratchet'), 'lint and the UI ratchet still run (once)');
+  const runOf = (n) => (wf.jobs.lint.steps.find((st) => st.name === n) || {}).run;
+  assert.match(runOf('Lint'), /^npm run lint$/, 'the Lint step runs the real command');
+  assert.match(runOf('UI ratchet'), /^npm run lint:ui$/, 'the ratchet step runs the real command');
   assert.ok(wf.jobs.ci.steps.find((st) => st.uses && st.uses.startsWith('actions/checkout')).with['fetch-depth'] === 0, 'the ratchet test in the suite needs the merge base');
   const up = wf.jobs.ci.steps.find((st) => st.uses && st.uses.startsWith('actions/upload-artifact'));
   assert.match(up.with.name, /shard\$\{\{ matrix\.shard \}\}/, 'per-shard artifact names are distinct');

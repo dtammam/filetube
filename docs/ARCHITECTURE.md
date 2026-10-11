@@ -262,7 +262,7 @@ ffmpeg + espeak-ng + pip yt-dlp; `VOLUME /app/data`; explicit COPYs (never
 `COPY . .` - a leaked local file can't enter the image).
 
 CI (`.github/workflows/ci.yml`): pinned gitleaks working-tree scan + a
-dual-Node (22/24) lint + token-ratchet + full-suite matrix, on pull requests only. Publish
+lint + token-ratchet job and a full-suite matrix (Node 22 in four shards, Node 24 whole), on pull requests only. Publish
 (`docker-publish.yml`): gated - the image only builds after a qualify job
 re-runs the Node 22 suite and the secret scan on the exact ref; tags
 `edge`/`sha-*` from main, semver + `latest` from `v*` tags.
@@ -272,8 +272,8 @@ re-runs the Node 22 suite and the secret scan on the exact ref; tags
 `node:test`, no runner deps. 346 unit files (pure logic, jsdom, source
 locks) + 190 integration files (real server, real Express table, real SQLite
 in temp DATA_DIRs); full suite 6,986 tests (all counts measured at v1.135.0
-INCLUDING this wave's own additions; they grow every wave), run on BOTH
-Node 22 and 24 before every release. The house pattern is the FORCING NET - tests that fail
+INCLUDING this wave's own additions; they grow every wave), run on Node 22
+locally before a release (Node 24 gates every PR in CI). The house pattern is the FORCING NET - tests that fail
 on absence (an unclassified route, an unlisted namespace, a view style outside
 style.css) so a discipline can't be silently skipped. Auth in tests is a real
 minted cookie, never an env bypass. The pre-commit hook runs lint + the unit

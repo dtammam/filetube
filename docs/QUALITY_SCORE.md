@@ -15,7 +15,7 @@ history through v1.128, `docs/exec-plans/tech-debt-tracker.md` (116 open
 items, count hook-derived and test-bound), the recurring bug classes the
 gates have caught, two external static reviews (2026-08-14/15) and the three
 waves that answered them, and the test suite (6,928 tests, 340 unit + 190
-integration files, run on a Node 22 + 24 matrix in CI and for every release).
+integration files, run on a Node 22 + 24 matrix in PR CI and on Node 22 for every release).
 
 | Domain | Types | Repo | Service | Runtime | UI | Tests | Overall |
 |--------|-------|------|---------|---------|-----|-------|---------|

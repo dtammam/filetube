@@ -106,6 +106,15 @@ test('CLI: exit 3 (fallback) on a staged script, exit 0 with the list on a relat
   assert.match(fb.stderr, /whole unit suite/);
 });
 
+test('CLI: a selector crash (not a git repo) exits 3 = whole suite, never 0', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'related-nogit-'));
+  const env = {};
+  for (const k of Object.keys(process.env)) if (!k.startsWith('GIT_') && k !== 'NODE_TEST_CONTEXT') env[k] = process.env[k];
+  const r = spawnSync(process.execPath, [SCRIPT], { cwd: root, env, encoding: 'utf8' });
+  assert.strictEqual(r.status, 3, r.stderr);
+  assert.strictEqual(r.stdout, '', 'a crash selects nothing on stdout');
+});
+
 test('the hook wires the selector in and keeps the whole-suite fallback, lint and the UI ratchet', () => {
   const hook = fs.readFileSync(path.join(ROOT, 'hooks', 'pre-commit'), 'utf8');
   assert.match(hook, /precommit-related-tests\.js/);
