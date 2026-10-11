@@ -77,20 +77,26 @@ nothing changes at all.
     counter today, so the host branch owns the one counter), and post `haptics.tick { style: 'detent' }` per counted detent; in
     LETTER mode post nothing per degree (the letter tick covers it, as today);
   - letter crossing: `{ style: 'letter' }`;
-  - the centre hold sites (~:1919, ~:1930) post `{ style: 'detent' }` (one firm tick), not 'letter';
+  - the two HOLD fires share `hapticLetterTick` with real letter crossings, so give the shared tick a style argument: the centre
+    hold fire (~:1930) and the MENU hold-to-home (~:3269) each post ONE `{ style: 'detent' }`; ~:1919 is the centre hold's gesture
+    start (`hapticGestureStart`: prepare only, no tick);
   - the user's Buzz setting off (`st.buzz === false`): post no ticks at all (prepare is harmless).
   Put "a detent was crossed" in ONE helper the ghost path and the host branch share (LESSONS 12). The wheel's input, scrolling,
   selection and volume / seek behaviour must be identical with and without the host; fake-host tests prove: ticks fire per detent
   at the throttle on both engines, none with Buzz off, the centre hold ticks once, and no ghost element exists.
 - **D7 Feed snap**: feed.js `setActive(index, early)` (~:2165) has no source argument, and programmatic scrolls (the countdown
   auto-advance ~:1176-1177, "Hide this" ~:1927, ~:2614) reach it through the same observer as a swipe. Tick ONLY for a user
-  swipe: record the time of the last touch / pointer / wheel input on the stack, and post `haptics.tick { style: 'snap' }` when
+  swipe: record the time of the last SCROLL-GESTURE input on the stack (touchmove / wheel; NOT a tap on a control such as
+  "Hide this", the menu or Keep watching), and post `haptics.tick { style: 'snap' }` when
   `host.has('haptics')`, the active index CHANGED from the last ticked one, and a user input happened within ~1 s. No tick on
   the first card, on auto-advance, on Hide, on a rebuild, or when a quarter-swipe springs back to the same card.
 - **D8 Battery**: the battery is `.ip-batt` (music-skins.js ~:248, the classic skin's status bar) drawn from the CSS variable
   `--pk-batt-level` (style.css ~:8875, a static 82% today; drawn ~:8952-8953). With `host.has('battery')`: `battery.subscribe`
   when a status bar with a battery becomes visible, `battery.unsubscribe` when none is, and set `--pk-batt-level` from the
-  `battery` event's `level` (clamped 0..1, rounded to a percent). No skin has a charging mark: level only (state is ignored for
+  `battery` event's `level` (clamped 0..1, rounded to a percent) ON THE `.mms-ipod` PANEL ELEMENT (style.css ~:8873-8875 declares
+  `--pk-batt-level` on `.mms-ipod` itself, which beats a value inherited from html, so setting it on html changes nothing; not on
+  `.ip-batt i` either, which `ipScreen` rebuilds on repaint), re-applied after a repaint / remount. The test asserts the panel's
+  inline property, and the device check confirms the drawn width (jsdom does not compute this cascade). No skin has a charging mark: level only (state is ignored for
   drawing in v1). `level: null` keeps today's drawing. No host: today's drawing exactly.
 - **D9 Server address row**: with `host.has('serverSettings')`, Settings shows one row "Server address" (find the most fitting
   existing page, e.g. SYSTEM or ACCOUNT; follow the settings censuses) whose tap posts `host.openServerSettings`. Absent
@@ -124,8 +130,10 @@ tag's "Publish Docker Image" green; branches deleted remote and local.
 
 Docs kickoff gate (branch docs/ios-host-kickoff, slim, adversary): r1 CHANGES @02ec34d6 - W1 the public route belongs in
 gate.js ALLOW_EXACT (not before authGate), W2 the haptic host branch must run before the ghost guard (and Buzz off, sweep, centre
-hold); S1-S7 (battery seam, Feed snap source, errors.html, Node line, LESSONS list, capability count, two Mac traps). All fixed in
-the follow-up commit; r2 below.
+hold); S1-S7 (battery seam, Feed snap source, errors.html, Node line, LESSONS list, capability count, two Mac traps). Fixed at
+30df1d8f. r2 CHANGES @30df1d8f: W-r2-a the battery variable must be set on the .mms-ipod panel (html is overridden), W-r2-b the
+hold fires (centre ~:1930, MENU ~:3269) tick once via a style argument, ~:1919 is prepare only; suggestion: Feed snap ignores taps
+on controls. Fixed in the next commit; round 3 (Dean, 2026-10-11: "Quick round 3, then merge").
 
 ## 6. Evidence (builder fills)
 - Seams (file:line) for D1, D5 exits, D6, D7, D8, D9:
