@@ -119,8 +119,8 @@ blood more than once. The full guards are in `docs/LESSONS.md` (sections noted):
 Every step between a commit and a release must earn its time (Dean's standing rule, 2026-09-28).
 The **screenshot shuffle** is a named anti-pattern: a check that fails on an INTENDED change and is
 only satisfied by push, wait, fail, download artifacts, commit them, push, wait again. Never create
-one, and never treat a non-required check as a merge gate. Merge on green unit CI (`ci (22)`,
-`ci (24)`, `audit`, `secret-scan`) plus the review gate. **Visual reports, never blocks:** a PR shows
+one, and never treat a non-required check as a merge gate. Merge on green unit CI (`lint`, the four `ci (22 shard i/4)`
+legs, `ci (24)`, `audit`, `secret-scan`) plus the review gate. **Visual reports, never blocks:** a PR shows
 a look change as one comment with crops, and after a merge to main a bot opens and merges a
 baselines-only PR (`docs/RELEASING.md`; Dean's ruling 2026-09-30). A commit that touches only `.md` files or `docs/` takes the fast pre-commit path.
 
@@ -137,7 +137,7 @@ baselines-only PR (`docs/RELEASING.md`; Dean's ruling 2026-09-30). A commit that
 - **Release ceremony is FileTube-specific — follow `docs/RELEASING.md` and the
   ROADMAP/ledger discipline, not the generic `/release`.** The real steps
   (`npm version` bump, ROADMAP.md "Shipped" entry, the `docs/releases.json`
-  user-language ledger enforced by a tone-checking test, dual-Node suites, tag →
+  user-language ledger enforced by a tone-checking test, the Node 22 suite, tag →
   Docker auto-publish, branch delete) are the authority; the harness `/release`
   command is a generic skeleton to adapt, never the source of truth. Kept in docs
   because the command files are harness-owned and regenerate on `--update`.
@@ -157,9 +157,10 @@ baselines-only PR (`docs/RELEASING.md`; Dean's ruling 2026-09-30). A commit that
   fails an undated or misplaced plan (`docs/RELEASING.md` step 1).
 - **Environment** — export the fnm Node PATH before EVERY npm/node/git-hook command:
   `export PATH="$HOME/.local/share/fnm/node-versions/v22.23.1/installation/bin:$PATH"`.
-  Dual-Node verification uses **v22.23.1 and v24.20.0**, sequential, never parallel
-  with a reviewer working the tree. Node 24's reporter prints `ℹ`, not `#` — an empty
-  grep is NOT green. The suite IS the npm scripts (`npm test`, `npm run test:unit`);
+  Local verification uses **Node v22.23.1 only** (production is `node:22-alpine`),
+  never run in parallel with a reviewer working the tree; **Node 24 runs in PR CI only**
+  (`ci (24)`) and gates every PR there. Node 24's reporter prints `ℹ`, not `#` — an empty
+  grep is NOT green (read it when a CI log shows Node 24). The suite IS the npm scripts (`npm test`, `npm run test:unit`);
   a bare `node --test` is not equivalent.
 - **Git hygiene** (LESSONS 13) — stage EXPLICIT paths (no `git add -A`/`.`/`commit -a`; a hook
   blocks it); verify every commit landed with `git log` (the pre-commit hook runs

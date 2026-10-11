@@ -38,10 +38,10 @@ Standards for keeping this project stable and maintainable.
   Chromium capture tests (three cases across two files) run only where a
   separately-installed Playwright exists and skip cleanly elsewhere.
 - **CI** (`.github/workflows/ci.yml`): runs `npm run lint` + `npm test` on a
-  Node **22 + 24 matrix** for every push and PR (matching the dual-Node
-  release ceremony; v1.123). The Docker publish workflow re-qualifies the
-  exact pushed ref on the same matrix plus a secret scan before any image is
-  built. `pre-commit` gates lint + unit tests locally; `pre-push` runs the
+  Node **22 + 24 matrix** for every PR (not on the main push: the PR already
+  tested that tree; ci slim, 2026-10-11). Local verification is Node 22 only. The
+  Docker publish workflow re-qualifies the exact pushed ref on Node 22 plus a
+  secret scan before any image is built. `pre-commit` gates lint + unit tests locally; `pre-push` runs the
   full suite.
 
 ## Monitoring

@@ -39,17 +39,18 @@ jobs:
   # v1.123 T5: publish is GATED on qualification of the EXACT ref being
   # published. Before this, docker-publish fired on any push to main / any v* tag
   # with ZERO dependency on CI - a red suite still shipped `latest`. `qualify`
-  # re-runs the full lint + token-ratchet + dual-Node suite on this ref, and a
+  # re-runs the full lint + token-ratchet + Node 22 suite on this ref, and a
   # secret scan (a TAG push does NOT trigger ci.yml, so the released tree would
   # otherwise never be scanned); `publish` `needs` it, so a red qualify blocks
-  # the push. This is intentionally self-contained (not a cross-workflow
+  # the push. Node 22 only (production is node:22-alpine); Node 24 gates every PR in
+  # ci.yml. This is intentionally self-contained (not a cross-workflow
   # dependency) so the gate travels with the artifact.
   qualify:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: true
       matrix:
-        node-version: ['22', '24']
+        node-version: ['22']
     steps:
       - uses: actions/checkout@v5
       - name: Set up Node.js ${{ matrix.node-version }}

@@ -48,7 +48,7 @@ const PKG = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package
 
 test('ci.yml carries the audit job wired to npm run audit:check (its own job, no npm ci needed)', () => {
   assert.match(CI, /^ {2}audit:$/m, 'the audit job exists');
-  const jobBody = CI.slice(CI.indexOf('\n  audit:'), CI.indexOf('\n  ci:'));
+  const jobBody = CI.slice(CI.indexOf('\n  audit:'), CI.indexOf('\n  lint:'));
   assert.match(jobBody, /npm run audit:check/, 'the job runs the gate script');
   assert.doesNotMatch(jobBody, /npm ci/, 'lockfile-only: the job must not install');
 });
@@ -138,6 +138,42 @@ test('docker-publish: the audit gate is MIRRORED onto the release path (QA W2 - 
   const jobBody = PUBLISH.slice(PUBLISH.indexOf('\n  audit:'), PUBLISH.indexOf('\n  secret-scan:'));
   assert.match(jobBody, /npm run audit:check/);
   assert.doesNotMatch(jobBody, /npm ci/, 'lockfile-only here too');
+});
+
+test('ci slim R1: CI runs on pull_request only (a main push re-tested the tree the PR just tested)', () => {
+  const on = yaml.load(raw('.github/workflows/ci.yml')).on;
+  assert.ok(on.pull_request !== undefined, 'ci.yml still runs on pull_request');
+  assert.equal(on.push, undefined, 'ci.yml must not trigger on push');
+});
+
+test('ci slim R4: the PR suite is four Node 22 shards plus one whole-suite Node 24 job, lint once', () => {
+  const wf = yaml.load(raw('.github/workflows/ci.yml'));
+  const legs = wf.jobs.ci.strategy.matrix.include;
+  assert.deepEqual(legs.filter((l) => l['node-version'] === '22').map((l) => l.shard), [1, 2, 3, 4], 'Node 22: shards 1..4, each exactly once');
+  assert.deepEqual(legs.filter((l) => l['node-version'] === '24').map((l) => l.shard), [0], 'Node 24: one whole-suite job (shard 0)');
+  assert.equal(legs.length, 5);
+  const test = wf.jobs.ci.steps.find((st) => st.name === 'Test');
+  assert.match(test.run, /--test-shard="\$SHARD\/4"/, 'a shard runs i/4 of the files');
+  assert.match(test.run, /test\/\*\/\*\.test\.js/, 'the shard glob is the whole suite glob');
+  assert.match(test.run, /set -o pipefail/, 'a failing suite must not report green through tee');
+  assert.match(test.run, /npm test 2>&1/, 'shard 0 is the unsharded suite');
+  const names = (job) => wf.jobs[job].steps.map((st) => st.name || '');
+  assert.ok(!names('ci').includes('Lint') && !names('ci').includes('UI ratchet'), 'lint does not repeat in every suite leg');
+  assert.ok(names('lint').includes('Lint') && names('lint').includes('UI ratchet'), 'lint and the UI ratchet still run (once)');
+  const runOf = (n) => (wf.jobs.lint.steps.find((st) => st.name === n) || {}).run;
+  assert.match(runOf('Lint'), /^npm run lint$/, 'the Lint step runs the real command');
+  assert.match(runOf('UI ratchet'), /^npm run lint:ui$/, 'the ratchet step runs the real command');
+  assert.ok(wf.jobs.ci.steps.find((st) => st.uses && st.uses.startsWith('actions/checkout')).with['fetch-depth'] === 0, 'the ratchet test in the suite needs the merge base');
+  const up = wf.jobs.ci.steps.find((st) => st.uses && st.uses.startsWith('actions/upload-artifact'));
+  assert.match(up.with.name, /shard\$\{\{ matrix\.shard \}\}/, 'per-shard artifact names are distinct');
+});
+
+test('ci slim R1: publish still needs a Node 22 qualify, on the tag lane and the main (edge) lane', () => {
+  const wf = yaml.load(raw('.github/workflows/docker-publish.yml'));
+  assert.deepEqual(wf.jobs.qualify.strategy.matrix['node-version'], ['22'], 'qualify runs on Node 22 only (production is node:22-alpine)');
+  assert.ok(wf.jobs.publish.needs.includes('qualify'), 'publish needs qualify - no image ships without it');
+  assert.ok(wf.on.push.branches.includes('main') && wf.on.push.tags, 'both the edge lane and the tag lane still publish');
+  assert.match(PUBLISH, /npm test 2>&1/, 'qualify runs the full suite');
 });
 
 test('docker-publish: single-arch by decision - no QEMU, no platforms key (intake decision 6)', () => {

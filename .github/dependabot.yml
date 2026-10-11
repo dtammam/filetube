@@ -4,7 +4,7 @@
 # - Dependabot over Renovate: native to GitHub (no third-party app on this
 #   repo), one file, and its limits don't bite at three runtime deps.
 # - TIERED AUTO-MERGE (Dean, 2026-08-29, REVERSING the v1.148 no-auto-merge
-#   decision): a low-risk dependency PR that passes full CI (both Node legs +
+#   decision): a low-risk dependency PR that passes full CI (all Node 22/24 legs +
 #   the audit gate) merges itself; a high-risk one waits for Dean.
 #   * AUTO (self-merges once CI is green): a patch/minor bump of a DEV
 #     dependency, and any non-major github-actions bump. These are the
