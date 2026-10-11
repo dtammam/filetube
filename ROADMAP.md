@@ -393,6 +393,7 @@
 
 ### Features
 
+- [ ] **The iOS app (filetube-ios): a host for the web UI** _(Dean, 2026-10-11: committed long-term)_ - decision record docs/references/ios-host.md; contract docs/references/native-bridge.md + native-bridge.v1.schema.json. Spin one: the web half (docs/exec-plans/active/2026-10-11-native-bridge-web.md) and the Mac spike (docs/references/ios-spike-1.md). Later steps, each its own plan: a native audio engine (only if the in-app web player still has gaps), a native Downloads page (offline), APNs push, widgets, the share sheet, CarPlay, an App Store build.
 - [x] **Feed reels and speed (moved out of v1.382.0 by Dean, 2026-10-10)** **Shipped v1.383.0 (2026-10-11).** - auto-advance, the
   next card started at a quarter swipe and warmed, a way to the full item from the title, song clips, music under book cards, book
   chapters named as the book names them, Start over redrawing a book card. Plan: `docs/exec-plans/completed/2026-10-10-feed-reels.md`.
