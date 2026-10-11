@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Pre-commit hook — fast gate before every commit: lint + unit tests.
+# Pre-commit hook — fast gate before every commit: lint + the related unit tests.
 # Full integration tests run on pre-push instead, to keep commits snappy.
 set -euo pipefail
 
@@ -52,8 +52,24 @@ npm run --silent lint
 echo "→ ui ratchet (lint:ui --enforce)"
 npm run --silent lint:ui
 
-# Fast unit tests only (no server boot)
-echo "→ unit tests"
-npm run --silent test:unit
+# RELATED unit tests (ci slim, Dean 2026-10-11): only the unit tests that name the staged
+# files (scripts/precommit-related-tests.js says which and why). It falls back to the WHOLE
+# unit suite when a staged source file is named by no unit test, when shared machinery
+# (test/helpers, hooks, scripts, package*.json) is staged, when more than ~40 source files
+# are staged, or when the selector itself fails (set -e is off inside the `if`). pre-push
+# runs the full suite + geometry, so nothing reaches GitHub on this hook's choice alone.
+related_script="$(dirname "$0")/../scripts/precommit-related-tests.js"
+if [ -f "$related_script" ] && related="$(node "$related_script")"; then
+  if [ -n "$related" ]; then
+    echo "→ related unit tests"
+    mapfile -t related_files <<< "$related"
+    node --require ./test/helpers/tmp-cleanup.js --test "${related_files[@]}"
+  else
+    echo "→ no unit tests relate to this commit (pre-push runs the full suite)"
+  fi
+else
+  echo "→ unit tests (whole suite)"
+  npm run --silent test:unit
+fi
 
 echo "Pre-commit checks passed."
