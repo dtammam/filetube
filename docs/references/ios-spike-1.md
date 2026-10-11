@@ -3,7 +3,7 @@
 For a Claude Code session (Opus) on Dean's Mac with Xcode. The decision behind it: [ios-host.md](ios-host.md). The contract:
 [native-bridge.md](native-bridge.md) and [native-bridge.v1.schema.json](native-bridge.v1.schema.json) (copy the schema into the
 new repo and pin it as "contract v1 from FileTube <commit>"). The web half is a separate FileTube release
-([the native-bridge-web plan](../exec-plans/active/2026-10-11-native-bridge-web.md)); until it ships, the bridge features are
+([the native-bridge-web plan](../exec-plans/completed/2026-10-11-native-bridge-web.md)); until it ships, the bridge features are
 tested with a bundled test page (step 9).
 
 ## Outcome (what Dean feels on his iPhone)

@@ -58,6 +58,7 @@ const READ = {
   '/api/books/scan-status': 'NO_CONTENT',
   '/api/books/tts/config': 'NO_CONTENT',
   '/api/cache/size': 'NO_CONTENT',
+  '/api/host-info': 'NO_CONTENT', // v1.384.0: public; app name, version and bridge range only (the iOS app's pre-load check)
   '/api/channels': 'GATED',
   '/api/config': 'GATED',
   '/api/duplicates': 'GATED',

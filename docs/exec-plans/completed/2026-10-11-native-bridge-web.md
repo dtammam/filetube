@@ -3,11 +3,11 @@ plan: native-bridge-web
 harness: v2 · full
 branch: feat/v1.384.0-native-bridge-web
 anchor: spec
-status: Planned (kickoff 2026-10-11, Opus Root); builder not started
-next: builder Step 0, then W1
+status: Shipped v1.384.0
+next: release v1.384.0 (PR, CI, Dean's merge OK, tag)
 design: docs/references/ios-host.md (Dean's decision, 2026-10-11), docs/references/native-bridge.md + native-bridge.v1.schema.json (contract v1). Base: main after the ios-host docs PR merges.
 builder: standard (the contract and every seam are fixed here; nothing to invent; a browser must see NO change)
-gate: not yet run (FULL: adversary, qa, security-brief - a new public route and a bridge to native code)
+gate: closed r2 - adversary, qa, security-brief APPROVED @ef3e23b0
 ---
 
 # v1.384.0: the web half of the iOS bridge (invisible in every browser)
@@ -136,12 +136,20 @@ hold fires (centre ~:1930, MENU ~:3269) tick once via a style argument, ~:1919 i
 on controls. Fixed in the next commit; round 3 (Dean, 2026-10-11: "Quick round 3, then merge"). r3 APPROVED @cceac09e (adversary; 87 docs files, 2189 / 2189 pass). Leftover for the builder: D6's tests cover the MENU
 hold-to-home tick too, not only the centre hold.
 
+Gate r1 @ec8f043e: Gate: APPROVED r1 @ec8f043ee0f6f62d0762ccd7bc116b81bcfcf334 - qa; Gate: APPROVED r1 @ec8f043ee0f6f62d0762ccd7bc116b81bcfcf334 - security-brief; adversary APPROVED r1 with one WARNING (battery subscription per engine) fixed at ef3e23b0.
+Gate: APPROVED r2 @ef3e23b0c5ac88525fa7a951c9cabfb1afb5a338 - adversary
+Gate: APPROVED r2 @ef3e23b0c5ac88525fa7a951c9cabfb1afb5a338 - qa
+
 ## 6. Evidence (builder fills)
-- Seams (file:line) for D1, D5 exits, D6, D7, D8, D9:
-- Conformance test output:
-- No-host equality tests:
-- D10 standalone decisions:
-- Suites, gate rounds, device checks owed:
+- Seams (file:line, at a225bbb7 + W4):
+  - D1 public/js/host-adapter.js (new; script tag before glyph-pool.js in the 12 public shells + lib/ytdlp/views/subscriptions.html; gate.js ALLOW_EXACT ~:134 holds '/js/host-adapter.js' and '/api/host-info'). D4 server.js:4738 (after authGate, before the shell catch-all).
+  - D5 skin-surface.js owner registry :576-:640 (orientOwners, orientApply, pagehide/pageshow); engine seams :1842 fullPlayerShowing, :1873 hostSync (paint end, reflect, hidden/class MutationObserver :1878, destroy). Exits covered: hide, class reset, destroy, panel removed with no engine call (1 s poll, only while locked), pagehide; Sideways on = never lock; pop-out never.
+  - D6 skin-surface.js :3000 hostHaptics, :3008 hapticDetentsCrossed (the ONE detent helper, ghost + host), :3019 hapticCapable (false under a host), :3203 hapticGestureStart, :3244 hapticOnMove, :3274 hapticLetterTick(style); hold fires :2036 (centre) and :3418 (MENU) pass 'detent'.
+  - D7 feed.js :2135 snapHost, :2151 noteSettled (called from the settled branch of onIntersect :2181). D8 skin-surface.js :1855 applyBattery (on the .mms-ipod panel), :1865 batterySync. D9 setup.js :3766 wireServerAddressRow (JS-built, so setup.html and the settings census are untouched), wired :5427.
+- Conformance test output: test/unit/native-bridge-contract.test.js 13/13 (schema message types, fields, enums, events, capabilities both ways).
+- No-host equality tests: native-bridge-wheel (ghost mounts, nothing posted; host without haptics keeps the ghost), -pocket (no poll, no inline style), -feed (no listeners attached, probe-verified with a control), -settings (page byte-identical). Mutants killed: 15 of 15 (ghost under host, destroy unlock, poll, battery on html, letter style, letter throttle, Buzz, Sideways, gesture check, settled dedupe, capability gate, row gate, common routing, letter branch, MENU hold style).
+- D10 standalone decisions: common.js isStandaloneDisplay YES (last-page restore/clear apply to the app); setup.js export headers x2 YES (via exportIsAppLike); pocket-lighting.js turn inset YES (edge-to-edge app; unmeasured in the app, harmless since Pocket is locked); player.js bgTimingDisplayMode NO (a measurement label; mislabelling the app 'pwa' would pollute the lock-audio timing comparisons); public/errors.html OUT OF REACH (loads no common.js or adapter; it says "browser tab" in the app).
+- Suites, gate rounds, device checks owed: targeted 1133/1133 (W2+W3 set); full Node 22.23.1 unit suite at ec8f043e (the pre-commit run): 9570 tests, 9569 pass, 0 fail, 1 skipped; gate r1 @ec8f043e: adversary APPROVED (1 WARNING: battery subscription per engine, fixed), qa APPROVED, security-brief APPROVED; delta r2 @ef3e23b0: adversary and qa APPROVED (security's surface untouched by the delta). Suggestions not taken, disclosed: Feed snap window stamps touchmove/wheel only (a slow momentum settle past 1 s would not tick; device check 5 covers it); pagehide does not post battery.unsubscribe (the host drops it with the page); the app should reset the lock on every main-frame load (native half). Device checks: docs/DEVICE-CHECKS.md "The iOS bridge (v1.384.0)" (8 lines).
 
 ## 7. Out of scope
 Any native code (that is filetube-ios); a native audio engine; downloads; push; media tokens; changing what the PWA does.

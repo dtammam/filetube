@@ -7,6 +7,20 @@ ROADMAP.md Planned > Bugs). Tracker row #284 points here for its open check (the
 
 ## Whole app, layout and dialogs
 
+## The iOS bridge (v1.384.0)
+
+Browser and home-screen app: nothing should look or behave differently (Pocket, the wheel, Feed, Settings, the battery stays the static drawing).
+In the FileTube iOS app (filetube-ios, once it re-checks this server):
+
+- [ ] v1.384.0 - Browser / home-screen app: Pocket turns upright as before, the wheel ticks as before, Feed, Settings and Pocket's battery look exactly as before; Settings > Account has no Server address row.
+- [ ] v1.384.0 - App: connect to the server; the "basic check" / older-server notice is gone (GET /api/host-info answers while signed out).
+- [ ] v1.384.0 - App: open Pocket and turn the phone sideways with the phone's own rotation lock OFF: Pocket stays portrait. Close Pocket (dock, Home, another tab): the app turns with the phone again. With Settings > Mobile player > Keep Pocket upright OFF, Pocket is not locked.
+- [ ] v1.384.0 - App: spin the wheel slowly and fast, quick-scroll a long list (a tick per letter), hold the center and hold MENU: real ticks, no dropped-out stretches, none with Buzz off.
+- [ ] v1.384.0 - App: swipe Feed cards: one tick as each card settles; none on the first card, on the auto-advance, on Hide this, or when a swipe springs back.
+- [ ] v1.384.0 - App: Pocket's battery bar matches the phone's level (and follows it as it changes); Cider / Nordic skins unchanged.
+- [ ] v1.384.0 - App: Settings > Account > Server address > Change opens the app's own address screen.
+- [ ] v1.384.0 - App: force-quit while on a music page and reopen: it returns to that page, as the home-screen app does (the last-page restore now treats the app as installed).
+
 ## Minimize into the mini player (v1.362.0)
 
 Settings > Experimental > "Use custom player controls on touch devices" ON for all of these.

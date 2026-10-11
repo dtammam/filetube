@@ -1795,6 +1795,13 @@ function readBootErrorEntries(w) {
 
 // Export error log builds the text from localStorage and hands it to exportDiagnosticLog in the SAME click turn;
 // Clear error log asks through the one confirm step and removes the log only on an explicit yes.
+// v1.384.0 (native bridge D10): the export headers' "standalone app" line is true for the home-screen PWA AND the iOS app (the host
+// adapter's appLike(); without the adapter, or in a browser, exactly the old standalone check).
+function exportIsAppLike(w, nav) {
+  const host = w.FileTube && w.FileTube.host;
+  if (host && typeof host.appLike === 'function') return host.appLike();
+  return nav.standalone === true || !!(w.matchMedia && w.matchMedia('(display-mode: standalone)').matches);
+}
 function wireBootErrorLogControls(win, signal) {
   const w = win || window;
   const doc = w.document;
@@ -1806,7 +1813,7 @@ function wireBootErrorLogControls(win, signal) {
       if (!exp) return;
       const nav = w.navigator || {};
       let standalone = false;
-      try { standalone = nav.standalone === true || !!(w.matchMedia && w.matchMedia('(display-mode: standalone)').matches); } catch (_) { standalone = false; }
+      try { standalone = exportIsAppLike(w, nav); } catch (_) { standalone = false; }
       const now = new Date();
       const text = formatBootErrorLogForExport(readBootErrorEntries(w), {
         exportedAt: now.getTime(),
@@ -1898,7 +1905,7 @@ function wireLifecycleLogControls(win, signal) {
       if (!exp) return;
       const nav = w.navigator || {};
       let standalone = false;
-      try { standalone = nav.standalone === true || !!(w.matchMedia && w.matchMedia('(display-mode: standalone)').matches); } catch (_) { standalone = false; }
+      try { standalone = exportIsAppLike(w, nav); } catch (_) { standalone = false; }
       const now = new Date();
       const text = formatLifecycleLogForExport(readLifecycleLogEntries(w), {
         exportedAt: now.getTime(),
@@ -3752,6 +3759,43 @@ function wireStaticControls(signal) {
   }
 }
 
+// v1.384.0 (native bridge D9): "Server address" (Settings > Account), shown ONLY inside the iOS app (the host announces
+// `serverSettings`). The row is built here, never in setup.html, so a browser's Settings page has no trace of it (and the
+// settings census, which reads setup.html's static controls, rightly never sees it: it is a host-only button, not a setting
+// - it stores nothing and saves nothing). A tap posts host.openServerSettings; the app shows its own address screen.
+function wireServerAddressRow(win) {
+  const w = win || window;
+  const host = w.FileTube && w.FileTube.host;
+  if (!host || !host.has('serverSettings')) return;
+  const box = w.document.getElementById('account-box');
+  if (!box || w.document.getElementById('server-address-group')) return;
+  const el = (tag, cls, text) => { const n = w.document.createElement(tag); if (cls) n.className = cls; if (text) n.textContent = text; return n; };
+  const group = el('div', 'setup-group');
+  group.id = 'server-address-group';
+  const list = el('div', 'ui-list ui-list--default ui-list--media-none ui-list--actions-1 ui-list--divider-inset ui-list--grouped');
+  list.setAttribute('role', 'list');
+  const row = el('div', 'ui-row ui-row--default');
+  row.setAttribute('role', 'listitem');
+  row.appendChild(el('span', 'ui-row__lead'));
+  row.appendChild(el('span', 'ui-row__media'));
+  const body = el('span', 'ui-row__body');
+  body.appendChild(el('span', 'ui-row__title', 'Server address'));
+  row.appendChild(body);
+  row.appendChild(el('span', 'ui-row__aside'));
+  const actions = el('span', 'ui-row__actions');
+  const btn = el('button', 'ui-btn ui-btn--secondary ui-btn--sm');
+  btn.type = 'button';
+  btn.id = 'server-address-btn';
+  btn.appendChild(el('span', 'ui-btn__label', 'Change'));
+  btn.addEventListener('click', () => { host.post('host.openServerSettings'); });
+  actions.appendChild(btn);
+  row.appendChild(actions);
+  list.appendChild(row);
+  group.appendChild(list);
+  group.appendChild(el('p', 'setup-note', 'The address of your FileTube server. Change opens the app\'s own screen for it.'));
+  box.appendChild(group);
+}
+
 // v1.349: "This device's name" (Settings > Account). Per browser (localStorage ft-device-name, via
 // common.js setDeviceName); every consumer reads getDeviceLabel() per request, so a save reaches
 // Speakers, the "Controlled by" pill and the handoff card with no reload. Text only: the label is
@@ -5380,6 +5424,7 @@ function init(root) {
   // v1.43: Account chip + sign out + (admin) user management.
   initAccountSection(controller.signal);
   wireDeviceName(controller.signal); // v1.349: this browser's name
+  wireServerAddressRow(window); // v1.384.0: inside the iOS app only
 
   // v1.117 (Dean bug, slim-gate WARNING): the desktop-sidebar pin BOOT render
   // moved to common.js's shell-level DOMContentLoaded (the single owner, running
@@ -5437,6 +5482,7 @@ if (typeof module !== 'undefined' && module.exports) {
     loadNoTapGlyphControl, wireNoTapGlyphControl, // v1.362.3 (E3): the no-glyph A/B switch
     loadEngineSection, // v1.365.0 (W3): its probe also reveals Troubleshooting > Download trace
     loadPocketKbSearchControl, wirePocketKbSearchControl, // v1.355: Mobile player > Keyboard search
+    wireServerAddressRow, // v1.384.0: the iOS app's Server address row
     loadPocketUprightControl, wirePocketUprightControl, // the iPod portrait lock: Mobile player > Keep Pocket upright
     loadResumeModeControls, wireResumeModeControls, clampResumeSeconds, // v1.363: the resume mode + Ask me countdown controls
     // Click wheel test — the pure metering core (boundary- and

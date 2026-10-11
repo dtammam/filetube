@@ -58,13 +58,13 @@ server address, a native bridge adds what the web cannot) and Basecamp's Hotwire
 Server address screen and a "can't reach your server" screen; background audio for the existing web player; motion
 permission granted silently (no prompt); autoplay without a tap; picture-in-picture and AirPlay allowed; edge to edge; and
 four bridge capabilities: Pocket locked upright, the haptic wheel (and Feed swipes), the real battery level in Pocket's status
-bar, and a Settings entry that opens the app's server address screen. The web half: [the native-bridge-web plan](../exec-plans/active/2026-10-11-native-bridge-web.md); the Mac half:
+bar, and a Settings entry that opens the app's server address screen. The web half: [the native-bridge-web plan](../exec-plans/completed/2026-10-11-native-bridge-web.md); the Mac half:
 [ios-spike-1.md](ios-spike-1.md).
 
 ## Facts this rests on (checked 2026-10-11; recheck before relying on them)
 
 - Free signing installs on Dean's own iPhone from Xcode: 7-day expiry, Developer Mode on, a few apps, no push. TestFlight needs
-  the paid program ($99/yr); internal testers (up to 100) need no review; builds expire after 90 days; uploads need Xcode 26.
+  the paid program ($99/yr); internal testers (up to 100) need no review; builds expire after 90 days; uploads need Xcode 26 or newer (Dean's Mac runs Xcode 27).
 - `WKWebView` traffic never triggers the Local Network prompt; native requests to a LAN address do (even through an HTTPS name
   that resolves to a home IP), so the app triggers it in the foreground during server setup.
 - Raw gyro / accelerometer need no permission natively, and the app can grant the web page's own motion permission silently

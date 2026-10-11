@@ -1,0 +1,221 @@
+'use strict';
+
+// [UNIT] v1.384.0 (plan D2): the conformance net between docs/references/native-bridge.v1.schema.json
+// (the authority) and public/js/host-adapter.js (its mirror). No JSON-schema dependency: the schema is read
+// as JSON and compared with the adapter's message and event tables, so a schema edit without an adapter
+// edit fails here, and the other way round. Then the adapter itself: a message the schema does not allow
+// is never posted, an unannounced capability is never used, and events are validated as data.
+
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const path = require('node:path');
+const { JSDOM } = require('jsdom');
+const adapterModule = require('../../public/js/host-adapter.js');
+const { installFakeHost, loadAdapter } = require('../helpers/fake-host');
+
+const SCHEMA = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'references', 'native-bridge.v1.schema.json'), 'utf8'));
+const { MESSAGES, EVENTS, CAPABILITIES } = adapterModule;
+
+// One schema branch -> { type, fields: { name: spec } } in the adapter's vocabulary.
+function specOf(s) {
+  if (s.const !== undefined) return { eq: s.const };
+  if (s.enum) return { enum: s.enum.slice() };
+  const types = Array.isArray(s.type) ? s.type : [s.type];
+  const out = { is: types.find((t) => t !== 'null') };
+  if (types.includes('null')) out.nullable = true;
+  if (s.minimum !== undefined) out.min = s.minimum;
+  if (s.maximum !== undefined) out.max = s.maximum;
+  if (s.properties) out.props = fieldsOf(s.properties, s.required || []);
+  return out;
+}
+function fieldsOf(props, required) {
+  const out = {};
+  for (const [k, v] of Object.entries(props)) {
+    if (k === 'type' || k === 'v') continue;
+    const spec = specOf(v);
+    if (required.includes(k)) spec.req = true;
+    out[k] = spec;
+  }
+  return out;
+}
+function branches(def) {
+  return def.oneOf.map((b) => ({ type: b.properties.type.const, fields: fieldsOf(b.properties, b.required || []) }));
+}
+// An object spec's `props` carry their own req flags; strip `cap` before comparing (not a schema field).
+test('conformance: the adapter sends exactly the schema\'s web-to-native types, with the schema\'s fields', () => {
+  const want = branches(SCHEMA.$defs.webToNative);
+  assert.deepEqual(Object.keys(MESSAGES).sort(), want.map((b) => b.type).sort(), 'message types drifted from the schema');
+  for (const b of want) assert.deepEqual(MESSAGES[b.type].fields, b.fields, `fields of ${b.type} drifted from the schema`);
+});
+
+test('conformance: the adapter accepts exactly the schema\'s native-to-web events, with the schema\'s fields', () => {
+  const want = branches(SCHEMA.$defs.nativeToWeb);
+  assert.deepEqual(Object.keys(EVENTS).sort(), want.map((b) => b.type).sort(), 'event types drifted from the schema');
+  for (const b of want) assert.deepEqual(EVENTS[b.type].fields, b.fields, `fields of ${b.type} drifted from the schema`);
+});
+
+test('conformance: the capability list equals the schema\'s and every message names a known capability', () => {
+  assert.deepEqual(CAPABILITIES.slice().sort(), SCHEMA.$defs.host.properties.capabilities.items.enum.slice().sort());
+  for (const [type, def] of Object.entries(MESSAGES)) {
+    assert.ok(def.cap === null || CAPABILITIES.includes(def.cap), `${type} names an unknown capability`);
+  }
+  assert.equal(MESSAGES['host.hello'].cap, null, 'host.hello needs no capability');
+});
+
+function windowWith(opts) {
+  const dom = new JSDOM('<!doctype html><html><head><meta name="ft-version" content="1.384.0"></head><body></body></html>', { runScripts: 'outside-only', url: 'http://localhost/' });
+  const win = dom.window;
+  const fake = opts ? installFakeHost(win, opts) : null;
+  const host = loadAdapter(win);
+  return { win, fake, host };
+}
+
+test('no host: present false, every call a silent no-op', () => {
+  const { win, host } = windowWith(null);
+  assert.equal(host.present, false);
+  assert.equal(host.bridge, 0);
+  assert.equal(host.has('haptics'), false);
+  assert.equal(host.post('haptics.tick', { style: 'detent' }), false);
+  const un = host.on('battery', () => assert.fail('no host, no events'));
+  win.dispatchEvent(new win.CustomEvent('filetube-host', { detail: { v: 1, type: 'battery', level: 0.5, state: 'full' } }));
+  assert.equal(typeof un, 'function');
+  un();
+  win.close();
+});
+
+test('host present: host.hello goes out once on load with the server version', () => {
+  const { win, fake, host } = windowWith({});
+  assert.equal(host.present, true);
+  assert.equal(host.bridge, 1);
+  assert.deepEqual(fake.posts, [{ v: 1, type: 'host.hello', web: { version: '1.384.0' } }]);
+  win.close();
+});
+
+test('post: valid messages are sent in the contract shape; invalid ones are dropped, never thrown', () => {
+  const { win, fake, host } = windowWith({});
+  fake.clear();
+  assert.equal(host.post('orientation.lock', { orientation: 'portrait' }), true);
+  assert.equal(host.post('orientation.lock', { orientation: 'landscape' }), false, 'only portrait is in the contract');
+  assert.equal(host.post('orientation.lock'), false, 'orientation is required');
+  assert.equal(host.post('orientation.unlock'), true);
+  assert.equal(host.post('haptics.tick', { style: 'detent', intensity: 0.5 }), true);
+  assert.equal(host.post('haptics.tick', { style: 'thud' }), false, 'style is an enum');
+  assert.equal(host.post('haptics.tick', { style: 'letter', intensity: 2 }), false, 'intensity is 0..1');
+  assert.equal(host.post('haptics.tick'), false, 'style is required');
+  assert.equal(host.post('haptics.tick', { style: 'snap', sneaky: 'x' }), true);
+  assert.equal(host.post('made.up'), false);
+  assert.equal(host.post('__proto__'), false);
+  assert.equal(host.post('constructor'), false);
+  assert.equal(host.post('host.hello', { web: {} }), false, 'web.version is required');
+  assert.deepEqual(fake.posts, [
+    { v: 1, type: 'orientation.lock', orientation: 'portrait' },
+    { v: 1, type: 'orientation.unlock' },
+    { v: 1, type: 'haptics.tick', style: 'detent', intensity: 0.5 },
+    { v: 1, type: 'haptics.tick', style: 'snap' },
+  ], 'unknown fields never leave the page; v and type cannot be overridden');
+  assert.equal(host.post('orientation.unlock', { v: 9, type: 'x' }), true);
+  assert.deepEqual(fake.posts[fake.posts.length - 1], { v: 1, type: 'orientation.unlock' });
+  win.close();
+});
+
+test('post: a capability the host did not announce is never used', () => {
+  const { win, fake, host } = windowWith({ capabilities: ['haptics'] });
+  fake.clear();
+  assert.equal(host.has('haptics'), true);
+  assert.equal(host.has('battery'), false);
+  assert.equal(host.post('battery.subscribe'), false);
+  assert.equal(host.post('orientation.unlock'), false);
+  assert.equal(host.post('host.openServerSettings'), false);
+  assert.equal(host.post('haptics.prepare'), true);
+  assert.deepEqual(fake.types(), ['haptics.prepare']);
+  win.close();
+});
+
+test('post: a native call that throws never reaches the page', () => {
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', { runScripts: 'outside-only' });
+  dom.window.FileTubeHost = { bridge: 1, capabilities: ['haptics'], post() { throw new Error('native gone'); } };
+  const host = loadAdapter(dom.window);
+  assert.equal(host.post('haptics.prepare'), false);
+  dom.window.close();
+});
+
+test('discovery: a host that does not match the contract is no host', () => {
+  for (const bad of [{ bridge: 2, capabilities: ['haptics'], post() {} }, { bridge: 1, capabilities: 'haptics', post() {} }, { bridge: 1, capabilities: [] }, 'yes', 7]) {
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', { runScripts: 'outside-only' });
+    dom.window.FileTubeHost = bad;
+    assert.equal(loadAdapter(dom.window).present, false, JSON.stringify(bad));
+    dom.window.close();
+  }
+  const dom = new JSDOM('<!doctype html><html><body></body></html>', { runScripts: 'outside-only' });
+  dom.window.FileTubeHost = { bridge: 1, capabilities: ['haptics', 'teleport', 'haptics'], post() {} };
+  const host = loadAdapter(dom.window);
+  assert.equal(host.has('haptics'), true);
+  assert.equal(host.has('teleport'), false, 'an unknown capability is ignored');
+  dom.window.close();
+});
+
+test('on: valid events arrive; malformed, unknown and wrong-version ones are ignored; unsubscribe works', () => {
+  const { win, fake, host } = windowWith({});
+  const got = [];
+  const un = host.on('battery', (d) => got.push(d));
+  fake.emit({ v: 1, type: 'battery', level: 0.42, state: 'charging', extra: 'x' });
+  fake.emit({ v: 1, type: 'battery', level: null, state: 'unknown' });
+  fake.emit({ v: 2, type: 'battery', level: 0.5, state: 'full' });
+  fake.emit({ v: 1, type: 'battery', level: 7, state: 'full' });
+  fake.emit({ v: 1, type: 'battery', level: '0.5', state: 'full' });
+  fake.emit({ v: 1, type: 'battery', level: 0.5, state: 'sparkling' });
+  fake.emit({ v: 1, type: 'battery', level: 0.5 });
+  fake.emit({ v: 1, type: 'telepathy', level: 0.5, state: 'full' });
+  fake.emit(null);
+  assert.deepEqual(got, [{ level: 0.42, state: 'charging' }, { level: null, state: 'unknown' }]);
+  un();
+  fake.emit({ v: 1, type: 'battery', level: 0.1, state: 'full' });
+  assert.equal(got.length, 2, 'unsubscribed');
+  assert.equal(typeof host.on('telepathy', () => {}), 'function', 'an unknown type gives a no-op unsubscribe');
+  assert.equal(typeof host.on('battery', null), 'function');
+  win.close();
+});
+
+test('on: a throwing listener never breaks the page or the next listener', () => {
+  const { win, fake, host } = windowWith({});
+  let second = 0;
+  host.on('battery', () => { throw new Error('listener bug'); });
+  host.on('battery', () => { second++; });
+  fake.emit({ v: 1, type: 'battery', level: 0.5, state: 'full' });
+  assert.equal(second, 1);
+  win.close();
+});
+
+test('appLike: standalone OR host present', () => {
+  const a = windowWith(null);
+  assert.equal(a.host.appLike(), false);
+  a.win.navigator.standalone; // jsdom: undefined
+  Object.defineProperty(a.win.navigator, 'standalone', { value: true, configurable: true });
+  assert.equal(a.host.appLike(), true, 'the home-screen PWA');
+  a.win.close();
+  const b = windowWith({});
+  assert.equal(b.host.appLike(), true, 'the native host');
+  b.win.close();
+});
+
+test('the adapter loads twice without replacing the first host object', () => {
+  const { win, host } = windowWith({});
+  loadAdapter(win);
+  assert.equal(win.FileTube.host, host);
+  win.close();
+});
+
+test('post: a null where the schema wants a number is dropped; prototype keys are no event type', () => {
+  const { win, fake, host } = windowWith({});
+  fake.clear();
+  assert.equal(host.post('haptics.tick', { style: 'detent', intensity: null }), false, 'intensity is a number, not nullable');
+  assert.deepEqual(fake.posts, []);
+  for (const k of ['toString', 'constructor', '__proto__', 'hasOwnProperty']) {
+    let called = 0;
+    host.on(k, () => { called++; });
+    fake.emit({ v: 1, type: k, level: 0.5, state: 'full' });
+    assert.equal(called, 0, k);
+  }
+  win.close();
+});
